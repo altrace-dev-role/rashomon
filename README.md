@@ -9,8 +9,10 @@ the permission flow resolves, so the store contains records for calls the user
 went on to deny. That is deliberate: a declaration is the agent's stated intent,
 and intent is worth keeping whether or not it was granted. Every record carries
 `permission_mode` so that a later comparison can exclude what was never allowed
-to run. Closing the loop properly — matching declarations against what actually
-executed — needs `PostToolUse` and a comparison step. Neither is in scope here.
+to run. `PostToolUse` closes the loop: an execution record says a declared call
+ran. A declaration with one ran; a declaration without one was denied, or
+failed, or had its execution go unrecorded — and nothing here claims to know
+which of the three.
 
 The store exists to be joined against. Every record carries `tool_use_id`,
 `session_id`, `prompt_id`, and, inside a subagent call, `agent_id`. Without those
@@ -21,25 +23,68 @@ Claude Code only. No other agent harness is in scope.
 
 ## Commands
 
-- `attest watch` — install the `PreToolUse` recorder and the `SessionStart` /
-  `SessionEnd` liveness probe. The only command that writes to your
-  configuration.
+- `attest watch` — install the `PreToolUse` and `PostToolUse` recorders and the
+  `SessionStart` / `SessionEnd` liveness probe. The only command that writes to
+  your configuration. It prints the exact `detach --install <id>` line that
+  undoes it without a store.
 - `attest detach` — remove them, leaving everything else in the file as it was
   found.
-- `attest report [--session S]` — render declarations and coverage as JSON.
+- `attest detach --install <id>` — remove the entries carrying one install id,
+  opening no store.
+- `attest detach --all` — remove every entry whose command line carries an
+  attest install marker, whatever its id, for when the store is gone and the id
+  with it.
+- `attest status` — say what is installed here: the store and its install id,
+  each of the four entries as present, absent or unreadable, the install ids of
+  anything else sharing the file, and whether hooks are disabled and by which
+  layer. It reads; it writes nothing and creates no store.
+- `attest report [--session S]` — render declarations, executions and coverage
+  as text for a terminal. `--json` renders the same facts as JSON for a
+  consumer. What is null in the JSON reads as `unknown` in the text — or `not
+  read` for the counts of a transcript that could not be read — and never as
+  `0`. The accounting equation is rendered once per transcript the run's
+  declarations named, because a nested `claude -p` writes its own transcript
+  under the parent's session id.
 - `attest forget --since T` — evict records recorded at or after `T` (an RFC 3339
   time, or a duration such as `24h` meaning that long ago), leaving a coverage
   gap record behind.
+- `attest forget --before T` — the retention counterpart: evict records recorded
+  before `T`, leaving the same gap record. The two are opposite open ends of one
+  window and one code path; naming both is refused rather than resolved.
 
-Invoked by Claude Code, never by hand: `attest hook` for `PreToolUse` and
-`attest probe start|end` for `SessionStart` and `SessionEnd`. Each carries
-`--install <id>` in the installed command line, which is how `watch` and
-`detach` tell their entries from another install's.
+Invoked by Claude Code, never by hand: `attest hook` for `PreToolUse`,
+`attest post` for `PostToolUse`, and `attest probe start|end` for
+`SessionStart` and `SessionEnd`. Each carries `--install <id>` in the installed
+command line. That id is how `watch` and `detach` tell their entries from
+another install's, and the hook paths read it too: an entry naming an install
+other than the one this environment resolves stands down — exit 0, one fixed
+line on stderr, and nothing written to the store, not even a run directory for
+a session it has never seen. An entry naming no install records exactly as it
+always has. `watch` names the other installs whose entries share the file,
+because those entries fire in this environment and record nothing in it.
 
 The store is at `$ATTEST_HOME`, else `$XDG_STATE_HOME/attest`, else
 `~/.local/state/attest`. `ATTEST_STORE_CAP_BYTES` bounds it (default 512 MiB;
 the oldest runs not written to within an hour are evicted, each leaving a gap
 record). `CLAUDE_CONFIG_DIR` is honoured exactly as Claude Code honours it.
+
+## Installing
+
+    go install github.com/altrace-dev-role/altrace-attest/cmd/attest@latest
+
+Or from the tap. The tap repository is not named `homebrew-…`, so it is tapped
+by URL rather than by the `brew install owner/tap/formula` shorthand:
+
+    brew tap altrace-dev-role/altrace-homebrew-tap https://github.com/altrace-dev-role/altrace-homebrew-tap
+    brew install attest
+
+`watch` must be run from a built binary. It writes the running executable's
+path into `~/.claude/settings.json`, and the binary `go run` compiles lives in a
+`go-build` temporary directory that is gone when the process exits, so the
+installed entry would name a file that no longer exists and every tool call
+would fire a hook that cannot start. `watch` refuses rather than install that:
+`go build ./cmd/attest && ./attest watch`, or install one of the two ways above.
+The other commands are unaffected.
 
 ## The constraint that shapes everything
 
@@ -102,6 +147,21 @@ because in that arrangement hooks do run, so `watch` must not refuse. Getting
 this right means implementing Claude Code's settings precedence including the
 managed path, which is more work than a single file read.
 
+Recovering when the binary or the store is gone. The installed command line is
+an absolute path to the binary. Delete the binary and Claude Code errors on
+every tool call, and `detach` — which is that binary — cannot run: install
+`attest` again, anywhere, and run the line `watch` printed at install time,
+`attest detach --install <id>`. An entry is recognised by the marker in its
+command line and never by the path, which is what lets a binary at a new path
+remove the old install's entries. Delete the store and the install id goes with
+it; `attest detach --all` is for that case, and removes every entry carrying an
+attest install marker whatever its id. Neither form opens the store, so neither
+can create one. A plain `attest detach` does read the id from the store, and on
+a machine that has none it names the two forms above rather than creating a
+store to answer its own question. Both refuse, naming the field, when an entry
+they would remove has been edited, and both leave every foreign entry byte for
+byte as it was found.
+
 ## What is captured
 
 The `PreToolUse` payload carries twelve fields: `session_id`, `prompt_id`
@@ -122,6 +182,32 @@ under a per-install random key, so the same command digests differently on two
 installs and the store cannot be run as a dictionary attack against known command
 strings. The key file is mode `0600`.
 
+The digest covers the command line alone for a shell tool, and the whole
+canonical `tool_input` for every other tool. Claude Code attaches a free-text
+`description` to a `Bash` call and the wording differs from call to call, so a
+digest over the whole input would give the same `git status` a fresh value on
+every call and group nothing. A `Write` call has no command line, and there the
+whole input is all there is to tell two of them apart.
+
+A command line is split as a shell would split it, without expanding anything.
+The token an unterminated quote interrupts is not among the tokens returned: it
+was never completed, and emitting it would carry bytes from inside the quoted
+string out into `program`.
+
+The `PostToolUse` payload carries the same session fields plus `tool_name`,
+`tool_use_id`, `tool_input` and `tool_response`. The execution record persists
+three of them — `tool_use_id`, `session_id`, `tool_name` — beside its own
+`seq`, `recorded_at_unix_ms` and `schema_version`, and nothing else.
+
+`tool_response` is tool output: the file a `Read` returned, the bytes a command
+printed. The payload struct has no field for it, so `encoding/json` discards it
+and it is never a value in this process. The guarantee is structural rather
+than a matter of remembering to redact, and the record has no field whose width
+it could move: a 20-byte response and a 20-KB one serialize to the same number
+of bytes. `tool_input` has no field there either — the post handler derives no
+shape, and the declaration it answers already carries the one derived at
+`PreToolUse`.
+
 ## Terminal records
 
 Every entry is followed by a terminal record on every exit path the program
@@ -136,13 +222,53 @@ When the instrumentation itself fails, the coverage record carries `state` and
 `reason` and no count field of any kind. A run that could not measure itself does
 not get to report a number.
 
+## Declarations, executions, and three lists that are not the same claim
+
+`report` renders three lists about executions, and reading any of them as
+another is the mistake this section exists to prevent.
+
+`declarations.without_execution` names the declared `tool_use_id`s with no
+execution record, each with the `permission_mode` it was declared in. It is not
+a list of denials. It holds the denied, the failed, and the calls whose
+`PostToolUse` invocation recorded nothing, together; the mode is carried so
+that a consumer can exclude the modes in which nothing is ever denied, which is
+as close to a verdict as this store can honestly get.
+
+`executed_but_unrecorded` names the ids the transcript holds a `tool_result`
+for and this store holds no execution record for. That is a coverage failure —
+the tool finished and the recorder did not fire or did not land — and it adds
+`execution_mismatch` to the run's coverage reasons.
+
+`declared_without_result` names the declared ids the transcript holds no
+`tool_result` for. That is not a coverage failure. It is a denial, a tool
+error, or a transcript that has not caught up, and it is never to be rendered
+as a count of denials.
+
+Both transcript lists are `null` rather than empty when the transcript could
+not be read, under the same rule as every count beside them: "no results" and
+"could not look" are different facts.
+
 ## The store
 
 Directory `0700`, files `0600`, one JSON object per line, `schema_version` on
-every record.
+every record. The two modes are a Unix guarantee. Windows cannot express them —
+`CreateDirectory` ignores the mode argument and `Chmod` toggles only the
+read-only attribute — so there the store is protected by the ACL its parent
+directory hands down, and by nothing this program set. Same store, weaker claim,
+stated rather than quietly dropped.
 
-`forget --since` and size-cap eviction each write a coverage gap record. Records
-leave the store only with a marker saying they did.
+`forget` and size-cap eviction each write a coverage gap record. Records leave
+the store only with a marker saying they did.
+
+[`docs/store-schema.json`](docs/store-schema.json) is that contract in a form a
+machine can check: a JSON Schema (draft 2020-12) with one definition per record
+type, every key required, nullable keys typed as such, closed vocabularies as
+enums, and `additionalProperties: false` so a key nobody declared is a
+validation failure rather than a surprise. It cannot drift from the tests:
+`TestStoreSchemaMatchesTheAllowlists` holds each definition's property set equal
+to the key allowlist H-13 enforces on the records themselves, and
+`TestStoreSchemaReasonsAreTheCodeReasons` holds every reason code in the
+implementation to appearing in an enum there.
 
 ## Coverage is decided at run time
 
@@ -202,7 +328,10 @@ does nothing but `exit 0`.
 **H-3 — the installed entry, read back in full.** After `watch`: the entry is
 under `hooks.PreToolUse` and not a sibling event, `type == "command"`,
 `matcher == "*"`, `timeout == 5`, and the command path resolves to a file that
-exists and is executable.
+exists and is executable. The `PostToolUse` entry is read back the same way.
+Installed from a copy of the binary in a directory whose name contains a space,
+the command line still splits with that path as its first field and still
+records a declaration when run through `sh -c`.
 
 **H-4 — foreign hooks survive.** Seed the target with a foreign `PreToolUse`
 entry under a *different* matcher, which is the arrangement that actually occurs.
@@ -217,7 +346,9 @@ run Claude Code.
 
 **H-6 — idempotent install, one owner concept.** `watch` twice installs exactly
 one entry of ours. `detach` removes our entry when no other install claims it,
-and removes only its own claim otherwise. Both paths asserted.
+and removes only its own claim otherwise. Both paths asserted. Both installs'
+entries then fire against one store, and only ours records; the other's leaves
+no run directory at all, and `watch` says it is there.
 
 **H-7 — detach preserves concurrent edits.** Install, append an entry to
 `permissions.allow` simulating an accepted "always allow", `detach`, then assert
@@ -266,11 +397,13 @@ command strings to disk.
 **H-14 — shape fields degrade honestly.** `program`, `verb_class`, `argc`,
 `digest`, and `schema_version` are present. A command that will not tokenize
 records `argc: null`, never `0`. Two separate installs produce different digests
-for the same command, and the key file is mode `0600`.
+for the same command, and the key file is mode `0600`. The same command under
+two different `description` values digests identically, and two `Write` calls
+differing only in `content` digest differently.
 
 **H-15 — the store contract.** Directory `0700`, files `0600`, one JSON object
-per line, `schema_version` on every record. `forget --since` and size-cap
-eviction each write a coverage gap record, asserted after each. Never a silent
+per line, `schema_version` on every record. `forget` and size-cap eviction
+each write a coverage gap record, asserted after each. Never a silent
 deletion.
 
 **H-16 — concurrency, with the window actually opened.** 64 concurrent handlers,
@@ -290,6 +423,16 @@ leaves `~/.claude/settings.json` absent or unchanged.
 
 **H-19 — detach does not rewrite history.** `watch`, one tool call, `detach`,
 `report`: the completed run still renders its true coverage.
+
+**H-20 — the execution record.** One record per `PostToolUse` invocation,
+carrying ids and the tool name and nothing else: its key set equals an explicit
+allowlist, and its serialized width is identical for a 20-byte and a 20-KB
+`tool_response`. A canary nested inside a 20-KB response reaches neither the
+store, nor stdout, nor stderr, nor `report`. A transcript `tool_result` with no
+execution record renders `execution_mismatch`; a declaration with no
+`tool_result` renders nothing that reads as a denial. The five panicking faults
+at both post-path injection points exit 0 with no traceback, and an entry
+belonging to another install writes nothing at all.
 
 ### Live
 
@@ -322,14 +465,21 @@ is reported as a spec defect.
     python3 test/mutation/sweep.py
 
 The acceptance suite compiles the binary with `-tags attestfault` and execs it.
-That tag adds the fault injection points H-1, H-8, H-11 and H-12 need; a
-released binary carries no injection path at all, because an environment
-variable that made the recorder abandon a run would attack the one guarantee
-this program exists to provide.
+That tag adds the fault injection points H-1, H-8, H-11, H-12 and H-20 need,
+and one kind, `fail=N`, that returns an error instead of panicking because it
+exercises a retry a panic would never let run; a released binary carries no
+injection path at all, because an environment variable that made the recorder
+abandon a run would attack the one guarantee this program exists to provide.
 
 `sweep.py` is the other half of the contract: it applies one deliberate break
 per headless item and confirms the item's tests go red. An item it reports as
 undetected is a spec defect and should be treated as one.
+
+Three parsers are also tested directly, beside the acceptance suite: the command
+line tokenizer, the settings document parser's refusals and its byte-identity
+round trip, and `shellQuote`. Each is an input-to-output function whose failures
+reach the acceptance suite only as an install that quietly does nothing, and
+`sweep.py` carries a break for each.
 
 `test/live/l-items.sh` runs the three live items against a real `claude`
 session on the machine it is run on. It writes to the real
@@ -339,7 +489,11 @@ session on the machine it is run on. It writes to the real
 
 Complete against the specification above. Every headless item is green and has
 been shown to fail under a named break; the three live items were run against
-real Claude Code sessions rather than by hand.
+real Claude Code sessions rather than by hand. The `PostToolUse` follow-on the
+specification deferred is in: `watch` installs a fourth entry with the same
+matcher and timeout, each completed call leaves an execution record, and
+`report` renders the three lists described above. Its headless item is
+**H-20**, which continues the numbering rather than amending an item above.
 
 **Decisions the specification asked to have stated.**
 
@@ -372,6 +526,20 @@ real Claude Code sessions rather than by hand.
   refreshing a moved binary is what `watch` is for.
 - Fault injection is a build tag, not an environment variable, for the reason
   given under building and testing.
+- Standing down: two installs' entries can sit in one `settings.json` — the
+  arrangement H-6 models, and the one `detach` preserves by removing only its
+  own claim — and Claude Code runs both with one environment. Both therefore
+  resolve the same store, and every tool call would be recorded twice. An entry
+  that does not belong to the store it resolves writes nothing at all rather
+  than a record saying it declined: a run directory for a session this install
+  never saw is itself a false trace. The stderr line is a constant, because
+  hook stderr is written to Claude Code's debug log.
+- The post phase's coverage record resolves the `PostToolUse` entry, not the
+  recorder's. A configuration carrying one and not the other is exactly the
+  arrangement in which reading the wrong one lies.
+- An execution that cannot take the append lock goes to `spill.ndjson` with a
+  null `seq`, as a terminal does. It is the only record its `tool_use_id` gets,
+  and dropping one would read afterwards as a call that never ran.
 
 **Where the specification was found wanting.**
 
@@ -388,21 +556,66 @@ real Claude Code sessions rather than by hand.
   is structural, not `recover`.
 - H-16's red-check, as above, does not work against an implementation that
   writes each record in one call.
+- H-14's digest stability is not achievable over the whole `tool_input`. Claude
+  Code attaches a free-text `description` to a `Bash` call, so the same command
+  arrives with different bytes on every call and the digest groups nothing. A
+  shell tool digests its command line alone; the fixture that made the
+  whole-input digest look stable carried no description.
 
 **What the live runs showed.** `claude -p` fires `SessionStart`, `PreToolUse`
 and `SessionEnd` hooks. Claude Code applies a change to `~/.claude/settings.json`
 inside a running session in both directions: the recorder started firing in the
 session that wrote the file, and stopped firing in a session it was detached
 from, which is what L-3 relies on. A nested `claude -p` inherits the parent
-session's id from the environment unless `--session-id` is given.
+session's id from the environment unless `--session-id` is given. It also
+writes its own transcript, so one run directory holds declarations against more
+than one `transcript_path`. H-10's equation is therefore computed per transcript
+and rendered as `transcripts`, an array sorted by path: checked against a single
+transcript, the same records read as a mismatch in both directions and a run
+that had captured every call rendered unverified for nothing. Declarations
+naming no transcript join no group and are counted in
+`declarations.without_transcript`.
+
+**Windows.** The append lock is `LockFileEx` with
+`LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY` over the maximum byte
+range, polled on the same budget and backoff as the `flock` path — a lock
+covers a range rather than a file, and a range fixed at acquisition would leave
+every appended byte outside it. Record files are opened `O_RDWR` rather than
+`O_WRONLY` for one Windows reason: an `O_APPEND` handle is granted
+`FILE_APPEND_DATA` and neither `FILE_READ_DATA` nor `FILE_WRITE_DATA`, and
+`LockFileEx` refuses a handle holding neither, so every append would have
+failed to lock. Four differences from Unix survive and none is hidden: `0700`
+and `0600` are inexpressible, as above; byte-range locks are mandatory rather
+than advisory, so while a handler holds the append lock a reader of that range
+is refused rather than served a partial line, and `report` can fail where on
+Unix it would read; a file another process has open cannot be deleted, so
+size-cap eviction can fail against a live run, and because the gap record is
+written before the removal a failed removal leaves a gap naming records that
+are still there, returned as an error rather than swallowed; and `SIGTERM` is
+never delivered, so a hook timeout there is the uncontrolled path — no terminal
+record, and the run reads `unverified` with `unterminated_entry`. None of this
+was run on Windows. The module builds and vets under `GOOS=windows` for amd64,
+386 and arm64, and `internal/store/lock_test.go` states the lock contract the
+Windows code has to meet, with three breaks in `sweep.py`. Two headless items
+would not pass there as written: H-15 asserts the two modes, and H-17's halves
+skip themselves without `unshare` and `strace`.
 
 **Known limits.** The probe detects hook-system death and nothing subtler;
 H-10 is what catches a recorder that runs and drops records. `forget` rewriting
 `spill.ndjson` can race a spill write that waited out its fifty-millisecond
 patience; the loss is one terminal, which reads as unverified and never as
-verified. `watch` refuses to install a `go run` binary. Locking is implemented
-for Unix; on other platforms the store refuses to open rather than corrupt
-itself.
+verified. `watch` refuses to install a `go run` binary, and the command line it
+installs is quoted for a POSIX shell, which is a second thing to fix before a
+Windows install is usable. Locking is implemented for Unix and Windows; on any
+other platform the store refuses to open rather than corrupt itself. A failed
+settings read is retried three times a few milliseconds apart before
+`hook_entry` resolves to `unknown`, so another tool's non-atomic rewrite of
+`settings.json` no longer taints a run, and a rewrite that outlasts the retry
+still reads as unverified rather than as present. A foreign install's entry
+firing where this environment's store does not yet exist still creates the
+empty store to learn that the id does not match; an `--install` given with no
+store present cannot be ours, and standing down before opening would avoid even
+that trace.
 
 ## License
 
