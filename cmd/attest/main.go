@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -55,7 +56,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case "watch":
 		return guarded(stderr, func() error { return cmdWatch(stdout) })
 	case "detach":
-		return guarded(stderr, func() error { return cmdDetach(stdout) })
+		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
 	case "report":
 		return guarded(stderr, func() error { return cmdReport(rest, stdout) })
 	case "forget":
@@ -199,6 +200,29 @@ func openStore() (*store.Store, error) {
 	return store.Open(root)
 }
 
+// installMetaFile is the store file carrying the install id. Its presence is
+// what a plain detach tests, rather than opening the store, because opening
+// one creates it: the command that removes an installation must not be the
+// command that leaves a fresh store behind on a machine that had none.
+const installMetaFile = "install.json"
+
+// storedInstallID reads this machine's install id from a store that is already
+// there, and otherwise says what to run instead of creating one.
+func storedInstallID() (string, error) {
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(filepath.Join(root, installMetaFile)); err != nil {
+		return "", fmt.Errorf("no store at %s, so the install id is not known here; run `attest detach --install <id>` with the id watch printed, or `attest detach --all` to remove every attest entry whatever its id", root)
+	}
+	st, err := openStore()
+	if err != nil {
+		return "", err
+	}
+	return st.InstallID(), nil
+}
+
 // editAttempts bounds the read-modify-write loop against a file Claude Code
 // may rewrite at any moment. Three is generous: the window is one small write.
 const editAttempts = 3
@@ -280,23 +304,38 @@ func cmdWatch(stdout io.Writer) error {
 		fmt.Fprintf(stdout, "attest: entries from other installs are present (%s); they will fire in this environment and record nothing\n",
 			strings.Join(foreign, ", "))
 	}
+	// Printed in full, on its own line, because it is the line that still works
+	// once this binary or the store is gone: the id cannot be read back from a
+	// store that is not there, and there is nowhere else it is written down.
+	fmt.Fprintln(stdout, "attest: undo with this line -- it needs no store, and any attest binary will do:")
+	fmt.Fprintf(stdout, "attest detach --install %s\n", st.InstallID())
 	return nil
 }
 
-func cmdDetach(stdout io.Writer) error {
+func cmdDetach(args []string, stdout io.Writer) error {
+	installID, all, err := detachTarget(args)
+	if err != nil {
+		return err
+	}
+
+	remove := func(doc *settings.Document) (int, error) {
+		return install.Remove(doc, install.Spec{InstallID: installID})
+	}
+	who := "install " + installID
+	if all {
+		remove = func(doc *settings.Document) (int, error) {
+			return install.RemoveIf(doc, func(string) bool { return true })
+		}
+		who = "every install"
+	}
+
 	path, err := settings.UserPath()
 	if err != nil {
 		return err
 	}
-	st, err := openStore()
-	if err != nil {
-		return err
-	}
-	spec := install.Spec{InstallID: st.InstallID()}
-
 	removed := 0
 	changed, err := editSettings(path, func(doc *settings.Document) (bool, error) {
-		n, err := install.Remove(doc, spec)
+		n, err := remove(doc)
 		removed = n
 		return n > 0, err
 	})
@@ -304,11 +343,39 @@ func cmdDetach(stdout io.Writer) error {
 		return err
 	}
 	if !changed {
-		fmt.Fprintf(stdout, "attest: nothing to detach (install %s) in %s\n", st.InstallID(), path)
+		fmt.Fprintf(stdout, "attest: nothing to detach (%s) in %s\n", who, path)
 		return nil
 	}
-	fmt.Fprintf(stdout, "attest: detached (install %s, %d entries) from %s\n", st.InstallID(), removed, path)
+	fmt.Fprintf(stdout, "attest: detached (%s, %d entries) from %s\n", who, removed, path)
 	return nil
+}
+
+// detachTarget resolves which entries a detach removes: the install named on
+// the command line, every install that left a marker, or -- for a plain detach
+// -- the one this machine's store records.
+func detachTarget(args []string) (installID string, all bool, err error) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--install":
+			if i+1 >= len(args) {
+				return "", false, errors.New("--install needs a value")
+			}
+			installID = args[i+1]
+			i++
+		case "--all":
+			all = true
+		default:
+			return "", false, fmt.Errorf("unknown argument %q", args[i])
+		}
+	}
+	if all && installID != "" {
+		return "", false, errors.New("--install and --all name different sets of entries; pass one or the other")
+	}
+	if all || installID != "" {
+		return installID, all, nil
+	}
+	installID, err = storedInstallID()
+	return installID, false, err
 }
 
 func cmdReport(args []string, stdout io.Writer) error {
@@ -397,6 +464,9 @@ usage:
   attest watch                 install the PreToolUse recorder and the
                                SessionStart/SessionEnd liveness probe
   attest detach                remove them, leaving everything else as found
+  attest detach --install <id> remove one install's entries, reading no store
+  attest detach --all          remove every entry carrying an attest install
+                               marker, whatever its id
   attest report [--session S]  render declarations and coverage as JSON
   attest forget --since T      evict records, leaving a coverage gap behind
   attest version               print the version

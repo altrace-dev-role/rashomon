@@ -210,9 +210,21 @@ func (e *ErrModified) Error() string {
 	return fmt.Sprintf("install: our %s entry was modified (%s); not touching it", e.Event, e.Detail)
 }
 
-// Remove drops every entry of ours and reports how many. It touches nothing
-// else, and it refuses if any entry of ours is not intact.
+// Remove drops every entry claimed by one install and reports how many. It
+// touches nothing else, and it refuses if any entry of ours is not intact.
 func Remove(doc *settings.Document, spec Spec) (int, error) {
+	return RemoveIf(doc, func(id string) bool { return id == spec.InstallID })
+}
+
+// RemoveIf drops every entry of ours whose install id satisfies match, under
+// the same rules as Remove. It is what detach --all needs: on a machine whose
+// store is gone the install id cannot be read back, and the marker in the
+// command line is then the only thing left that recognises an entry as ours.
+//
+// An entry that is not ours is never offered to match. Its id is "", and a
+// predicate written to accept anything would otherwise delete another tool's
+// hooks.
+func RemoveIf(doc *settings.Document, match func(installID string) bool) (int, error) {
 	total := 0
 	for _, event := range Events {
 		entries, err := doc.HookEntries(event)
@@ -225,7 +237,8 @@ func Remove(doc *settings.Document, spec Spec) (int, error) {
 			removed int
 		)
 		for _, e := range entries {
-			if Owner(e, event) != spec.InstallID {
+			id := Owner(e, event)
+			if id == "" || !match(id) {
 				out = append(out, e)
 				continue
 			}

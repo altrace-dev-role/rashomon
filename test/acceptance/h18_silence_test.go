@@ -19,6 +19,10 @@ func TestH18_NothingInstallsSilently(t *testing.T) {
 		e.run("", nil, "report")
 		e.forget("1h")
 		e.detach()
+		// The recovery forms too: they take the id rather than reading it, so
+		// nothing stops them running on a machine that never installed at all.
+		e.run("", nil, "detach", "--install", installA)
+		e.run("", nil, "detach", "--all")
 	}
 
 	t.Run("absent stays absent", func(t *testing.T) {

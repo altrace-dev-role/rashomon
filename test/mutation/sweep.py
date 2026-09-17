@@ -34,12 +34,31 @@ m("H-5  absent settings file is an error", "internal/settings/document.go",
   "\tif err != nil {\n\t\treturn nil, err\n\t}\n\t_ = errors.Is\n\t_ = fs.ErrNotExist\n\treturn Parse(data)", "TestH5_")
 m("H-6  watch appends a second entry of ours", "internal/install/install.go", "\t\tif !found {\n\t\t\tout = append(out, want)", "\t\tif true {\n\t\t\tout = append(out, want)", "TestH6_")
 m("H-6  detach removes every install's entries", "internal/install/install.go",
-  "\t\tfor _, e := range entries {\n\t\t\tif Owner(e, event) != spec.InstallID {\n\t\t\t\tout = append(out, e)\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif detail",
-  "\t\tfor _, e := range entries {\n\t\t\tif Owner(e, event) == \"\" {\n\t\t\t\tout = append(out, e)\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif detail", "TestH6_")
+  "\treturn RemoveIf(doc, func(id string) bool { return id == spec.InstallID })",
+  "\treturn RemoveIf(doc, func(string) bool { return true })", "TestH6_")
 m("H-6  another install's entry records into this store", "cmd/attest/main.go",
   "\tif id == \"\" || id == st.InstallID() {", "\tif id == \"\" || true {", "TestH6_ForeignInstallEntryStandsDown")
 m("H-6  watch does not say another install's entries are present", "cmd/attest/main.go",
   "\tif len(foreign) > 0 {", "\tif false && len(foreign) > 0 {", "TestH6_ForeignInstallEntryStandsDown")
+m("H-6  detach --install ignores the id it was given", "internal/install/install.go",
+  "\t\t\tif id == \"\" || !match(id) {", "\t\t\tif id == \"\" {", "TestH6_DetachByInstallIDNeedsNoStore")
+m("H-6  detach --all removes only this machine's install", "cmd/attest/main.go",
+  "\t\t\treturn install.RemoveIf(doc, func(string) bool { return true })",
+  "\t\t\treturn install.Remove(doc, install.Spec{InstallID: installID})", "TestH6_DetachAllRemovesEveryInstall")
+m("H-6  removing by predicate skips the intact check", "internal/install/install.go",
+  "\t\t\tif detail := intact(e, event); detail != \"\" {\n\t\t\t\treturn 0, &ErrModified{Event: event, Detail: detail}\n\t\t\t}\n\t\t\tremoved++",
+  "\t\t\tremoved++", "TestH6_DetachAllRefusesAnEditedEntry")
+m("H-6  detach drops the entries it is not removing", "internal/install/install.go",
+  "\t\t\tif id == \"\" || !match(id) {\n\t\t\t\tout = append(out, e)\n\t\t\t\tcontinue\n\t\t\t}",
+  "\t\t\tif id == \"\" || !match(id) {\n\t\t\t\tcontinue\n\t\t\t}", "TestH6_Detach")
+m("H-6  detach opens the store although it was given the id", "cmd/attest/main.go",
+  "\tpath, err := settings.UserPath()\n\tif err != nil {\n\t\treturn err\n\t}\n\tremoved := 0",
+  "\tpath, err := settings.UserPath()\n\tif err != nil {\n\t\treturn err\n\t}\n\tif _, err := openStore(); err != nil {\n\t\treturn err\n\t}\n\tremoved := 0", "TestH6_Detach")
+m("H-6  plain detach creates a store to learn the id", "cmd/attest/main.go",
+  "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err != nil {",
+  "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil && false {", "TestH6_PlainDetachLeavesNoStoreBehind")
+m("H-6  watch does not print the undo line", "cmd/attest/main.go",
+  "\tfmt.Fprintf(stdout, \"attest detach --install %s\\n\", st.InstallID())\n", "", "TestH6_WatchPrintsTheUndoLine")
 m("H-7  edit drops every other top-level key", "internal/settings/document.go",
   "\tif h := d.find(hooksKey); h != nil {\n\t\th.raw = obj\n\t} else {\n\t\td.members = append(d.members, member{key: hooksKey, raw: obj})\n\t}\n\treturn nil",
   "\td.members = []member{{key: hooksKey, raw: obj}}\n\treturn nil", "TestH7_DetachPreservesConcurrentEdits")
@@ -79,6 +98,9 @@ m("H-17 handler opens a socket (no net import, so only the trace sees it)", "int
   "\tfault.Inject(fault.PointHookStart)\n", "\tfault.Inject(fault.PointHookStart)\n\tif fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, 0); err == nil {\n\t\tsyscall.Close(fd)\n\t}\n", "TestH17_HandlerOpensNoSockets")
 m("H-18 the hook installs on every call", "cmd/attest/main.go",
   "\th := hook.New(st, time.Now)\n", "\t_ = cmdWatch(io.Discard)\n\th := hook.New(st, time.Now)\n", "TestH18_")
+m("H-18 detach writes the settings file although it changed nothing", "cmd/attest/main.go",
+  "\t\tn, err := remove(doc)\n\t\tremoved = n\n\t\treturn n > 0, err",
+  "\t\tn, err := remove(doc)\n\t\tremoved = n\n\t\treturn true, err", "TestH18_")
 m("H-19 report re-reads today's config to judge a past run", "internal/report/report.go",
   "\t\tsess := build(run)\n", "\t\tsess := build(run)\n\t\tif p, err := settings.UserPath(); err == nil {\n\t\t\tif doc, err := settings.Load(p); err == nil {\n\t\t\t\tif ok, _ := install.Present(doc, st.InstallID(), install.EventPreToolUse); !ok {\n\t\t\t\t\tsess.Coverage.add(store.ReasonHookEntryAbsent)\n\t\t\t\t}\n\t\t\t}\n\t\t}\n", "TestH19_")
 

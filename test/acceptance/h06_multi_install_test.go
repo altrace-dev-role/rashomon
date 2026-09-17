@@ -177,8 +177,8 @@ func TestH6_ForeignInstallEntryStandsDown(t *testing.T) {
 		if first.exitCode != 0 {
 			t.Fatalf("watch: exit %d, stderr %q", first.exitCode, first.stderr)
 		}
-		if got := strings.Count(first.stdout, "\n"); got != 1 {
-			t.Errorf("watch wrote %d lines with no other install present: %q", got, first.stdout)
+		if strings.Contains(first.stdout, "other installs") {
+			t.Errorf("watch warned about other installs when none is present: %q", first.stdout)
 		}
 		seedOtherInstall(e)
 
