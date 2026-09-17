@@ -1,0 +1,23 @@
+# altrace-attest dependency updates
+#
+# There is no `gomod` entry because there is nothing for it to update: go.mod
+# declares no requirements at all. This module is standard library only, by
+# design -- a PreToolUse hook that blocks tool calls when it panics has no room
+# for a supply chain. Add the entry the day that stops being true.
+version: 2
+
+updates:
+  # GitHub Actions. Every `uses:` in .github/workflows is pinned to a full
+  # commit SHA, which is exactly the arrangement that goes stale silently:
+  # nothing in CI notices that a pin is two years behind. Dependabot bumps the
+  # SHA and rewrites the version comment with it.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"

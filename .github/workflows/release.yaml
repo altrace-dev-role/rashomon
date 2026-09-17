@@ -1,0 +1,58 @@
+# altrace-attest Release -- cross-platform binaries, archives, checksums and
+# the Homebrew formula, all from .goreleaser.yml.
+#
+# Triggered on version tag push (e.g. v0.1.0, v1.0.0-rc.1).
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}  # Deny all at workflow level, grant per job.
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Create the GitHub release and upload its artifacts.
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4.3.0
+        with:
+          # GoReleaser builds the changelog from git history and reads the
+          # previous tag to bound it; a shallow clone has neither.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          # No go.sum: this module declares no requirements, and setup-go looks
+          # for go.sum to key the cache.
+          cache-dependency-path: go.mod
+
+      # NOT PINNED -- FILL THIS IN BEFORE THE FIRST RELEASE.
+      #
+      # Every other `uses:` in this repository is pinned to a full commit SHA
+      # with the tag in a trailing comment, copied from the altrace-agent
+      # repository this module was split out of. That repository does not use
+      # goreleaser-action anywhere, so there was no SHA to copy and none is
+      # invented here. Replace the ref below with the full 40-character commit
+      # SHA of the goreleaser/goreleaser-action release you intend to pin (v6
+      # is the current major line) and move the tag into the trailing comment.
+      # Until then this job fails at the "unable to resolve action" step, which
+      # is the intended loud failure rather than an unpinned release path.
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@REPLACE_WITH_COMMIT_SHA  # goreleaser/goreleaser-action, tag TBD (unpinned placeholder)
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The formula is committed to altrace-dev-role/altrace-homebrew-tap,
+          # a different repository, which GITHUB_TOKEN cannot write to. This
+          # secret must hold a token with `contents: write` on the tap repo. If
+          # it is absent the brews step fails and the release stops after the
+          # archives are uploaded.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

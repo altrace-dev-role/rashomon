@@ -1,0 +1,78 @@
+# altrace-attest GoReleaser configuration
+#
+# Usage:
+#   goreleaser check                           # validate this file
+#   goreleaser build --snapshot --clean        # local build, all targets
+#   goreleaser release --snapshot --clean      # full pipeline without publishing
+#
+# One pure-Go binary, no cgo, so all six targets cross-compile natively.
+
+version: 2
+
+project_name: attest
+
+builds:
+  - id: attest
+    main: ./cmd/attest
+    binary: attest
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      # Keep the build directory out of the binary: paths recorded by the
+      # compiler are the one place a "no content, ever" tool could leak the
+      # machine it was built on.
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: attest
+    ids:
+      - attest
+    name_template: "attest_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# Homebrew tap -- updates Formula/attest.rb on release.
+brews:
+  - ids:
+      - attest
+    repository:
+      owner: altrace-dev-role
+      name: altrace-homebrew-tap
+      # Writing to another repository; GITHUB_TOKEN cannot do it.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    name: attest
+    homepage: "https://github.com/altrace-dev-role/altrace-attest"
+    description: "Records what a Claude Code session asked to run, and the evidence the recorder was running"
+    license: "Apache-2.0"
+    install: |
+      bin.install "attest"
+    # `attest version` is the only command that writes nothing, touches no
+    # settings file and needs no store: the one safe thing to run in a sandbox
+    # that brew builds and tears down.
+    test: |
+      system "#{bin}/attest", "version"
+
+changelog:
+  use: git
+  filters:
+    exclude:
+      - "^Merge "

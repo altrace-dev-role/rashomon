@@ -1,0 +1,124 @@
+# altrace-attest CI
+#
+# Paths here are relative to the repository root because this module is the
+# repository root: altrace-attest ships as its own repository, and go.mod sits
+# beside this file's .github directory.
+#
+# Stages: gofmt -> vet (both build tags) -> race tests -> mutation sweep, with
+# a cross-build matrix alongside.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  # No `branches:` filter, deliberately. With one, a pull request whose base is
+  # another feature branch schedules none of these jobs and merges on a green
+  # rollup that proves only that it links.
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      # The race detector requires cgo. Nothing in this module needs cgo to
+      # build -- the released binaries are CGO_ENABLED=0 -- so it is enabled on
+      # this job only, and the cross-build job sets it back to 0.
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4.3.0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          # Read from go.mod rather than pinned here, so the version CI builds
+          # with cannot drift from the one the module declares. go.mod carries
+          # no `toolchain` directive on purpose, so this resolves to the latest
+          # patch of the declared minor.
+          go-version-file: go.mod
+          cache: true
+          # There is no go.sum in this repository -- the module declares no
+          # requirements -- and setup-go looks for go.sum to key the cache.
+          # Point it at go.mod. What is being cached is the build cache, which
+          # the mutation sweep's 25 compile-and-test cycles do use.
+          cache-dependency-path: go.mod
+
+      # The mutation sweep and the acceptance suite shell out to python3, git,
+      # unshare and strace. ubuntu-latest ships the first three; strace is not
+      # in the image.
+      #
+      # Two H-17 tests are written to skip -- with a message saying why -- when
+      # the runner will not let them run. TestH17_CaptureIsIdenticalWithNetworkDenied
+      # needs `unshare -n` to be permitted; TestH17_HandlerOpensNoSockets needs
+      # strace to attach, which a hardened or containerised runner can deny
+      # even with the binary installed. A skipped test is invisible in the
+      # default `go test` output; add -v to the test step to see the skip and
+      # its message.
+      - name: Install strace
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends strace
+
+      # Prints nothing on failure by design -- run `gofmt -l .` locally to see
+      # which files are unformatted.
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
+      # The acceptance suite compiles the binary with -tags attestfault, so the
+      # fault-injection points are code no release contains and nothing else
+      # compiles. Vet them under the tag rather than letting them rot.
+      - name: Vet (attestfault build tag)
+        run: go vet -tags attestfault ./...
+
+      - name: Test with race detector
+        run: go test ./... -count=1 -race
+
+      # The other half of the acceptance contract: break the implementation one
+      # item at a time and confirm each item's tests go red. Exits non-zero if
+      # any break goes undetected.
+      - name: Mutation sweep
+        run: python3 test/mutation/sweep.py
+
+  cross-build:
+    name: Cross build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    env:
+      # Matches the release build: pure Go, so cross-compiling all six targets
+      # needs no C toolchain.
+      CGO_ENABLED: "0"
+    strategy:
+      # One broken target must not hide the state of the other five.
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4.3.0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod  # No go.sum; see the test job.
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./cmd/attest
+
+      # `go build ./cmd/attest` reaches only what main imports, and the test
+      # job vets for linux. The store has a lock_unix.go / lock_other.go split,
+      # so the non-Unix half is otherwise never vetted. Vet's result depends on
+      # GOOS and not on GOARCH, so this runs once rather than in both windows
+      # cells.
+      - name: Vet for windows
+        if: matrix.goos == 'windows' && matrix.goarch == 'amd64'
+        env:
+          GOOS: windows
+        run: go vet ./...
