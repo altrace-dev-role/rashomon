@@ -36,6 +36,10 @@ m("H-6  watch appends a second entry of ours", "internal/install/install.go", "\
 m("H-6  detach removes every install's entries", "internal/install/install.go",
   "\t\tfor _, e := range entries {\n\t\t\tif Owner(e, event) != spec.InstallID {\n\t\t\t\tout = append(out, e)\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif detail",
   "\t\tfor _, e := range entries {\n\t\t\tif Owner(e, event) == \"\" {\n\t\t\t\tout = append(out, e)\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif detail", "TestH6_")
+m("H-6  another install's entry records into this store", "cmd/attest/main.go",
+  "\tif id == \"\" || id == st.InstallID() {", "\tif id == \"\" || true {", "TestH6_ForeignInstallEntryStandsDown")
+m("H-6  watch does not say another install's entries are present", "cmd/attest/main.go",
+  "\tif len(foreign) > 0 {", "\tif false && len(foreign) > 0 {", "TestH6_ForeignInstallEntryStandsDown")
 m("H-7  edit drops every other top-level key", "internal/settings/document.go",
   "\tif h := d.find(hooksKey); h != nil {\n\t\th.raw = obj\n\t} else {\n\t\td.members = append(d.members, member{key: hooksKey, raw: obj})\n\t}\n\treturn nil",
   "\td.members = []member{{key: hooksKey, raw: obj}}\n\treturn nil", "TestH7_DetachPreservesConcurrentEdits")

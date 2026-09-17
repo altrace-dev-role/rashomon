@@ -160,14 +160,29 @@ func (e *env) sh(line, stdin string) result {
 
 func (e *env) hook(payload string, extraEnv ...string) result {
 	e.t.Helper()
-	return e.run(payload, extraEnv, "hook", "--install", "ignored-by-the-handler")
+	return e.run(payload, extraEnv, append([]string{"hook"}, e.installArgs()...)...)
 }
 
 func (e *env) probe(phase, sessionID string, extraEnv ...string) result {
 	e.t.Helper()
-	payload := fmt.Sprintf(`{"session_id":%q,"hook_event_name":"Session%s","transcript_path":"/tmp/none.jsonl","cwd":%q}`,
+	return e.run(e.sessionPayload(phase, sessionID), extraEnv, append([]string{"probe", phase}, e.installArgs()...)...)
+}
+
+func (e *env) sessionPayload(phase, sessionID string) string {
+	return fmt.Sprintf(`{"session_id":%q,"hook_event_name":"Session%s","transcript_path":"/tmp/none.jsonl","cwd":%q}`,
 		sessionID, strings.ToUpper(phase[:1])+phase[1:], e.cwd)
-	return e.run(payload, extraEnv, "probe", phase)
+}
+
+// installArgs names this environment's store, as watch would have named it in
+// the installed command line. Several tests invoke a hook before anything has
+// opened that store: there is then no id to name, and passing none is also how
+// an entry installed before this argument existed arrives.
+func (e *env) installArgs() []string {
+	e.t.Helper()
+	if _, err := os.Stat(filepath.Join(e.home, "install.json")); err != nil {
+		return nil
+	}
+	return []string{"--install", e.installID()}
 }
 
 func (e *env) watch(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "watch") }

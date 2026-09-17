@@ -36,7 +36,10 @@ const (
 	// Timeout is in seconds. Claude Code's documented default is 600.
 	Timeout = 5
 
-	marker = "--install"
+	// Marker precedes the install id in an installed command line. The hook
+	// paths read it back to tell an entry of ours from one belonging to
+	// another install that shares the settings file.
+	Marker = "--install"
 )
 
 // Spec is what an installed entry points at and who owns it.
@@ -79,7 +82,7 @@ func subcommand(event string) string {
 
 // Command is the shell command line installed for an event.
 func (s Spec) Command(event string) string {
-	return shellQuote(s.Executable) + " " + subcommand(event) + " " + marker + " " + s.InstallID
+	return shellQuote(s.Executable) + " " + subcommand(event) + " " + Marker + " " + s.InstallID
 }
 
 type hookCommand struct {
@@ -130,7 +133,7 @@ func Owner(raw json.RawMessage, event string) string {
 	if json.Unmarshal(raw, &g) != nil {
 		return ""
 	}
-	suffix := " " + subcommand(event) + " " + marker + " "
+	suffix := " " + subcommand(event) + " " + Marker + " "
 	for _, h := range g.Hooks {
 		if i := strings.LastIndex(h.Command, suffix); i >= 0 {
 			if id := h.Command[i+len(suffix):]; isInstallID(id) {
@@ -256,6 +259,34 @@ func Present(doc *settings.Document, installID, event string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// ForeignOwners lists the install ids other than ours that claim an entry
+// under any of our events, in the order the file presents them and once each.
+//
+// It decides nothing about ownership: those entries belong to the installs
+// that wrote them, and neither watch nor detach touches them. It exists so
+// that watch can say they are there, because Claude Code runs every entry with
+// one environment and the foreign ones will resolve this store, find another
+// install's id in it, and record nothing.
+func ForeignOwners(doc *settings.Document, installID string) ([]string, error) {
+	var out []string
+	seen := map[string]bool{}
+	for _, event := range Events {
+		entries, err := doc.HookEntries(event)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			id := Owner(e, event)
+			if id == "" || id == installID || seen[id] {
+				continue
+			}
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // intact describes how an entry of ours differs from what watch installs, or

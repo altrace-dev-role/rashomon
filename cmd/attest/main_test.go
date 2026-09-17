@@ -26,9 +26,15 @@ func TestRunNeverReturnsTwo(t *testing.T) {
 		nil,
 		{},
 		{"hook"},
+		{"hook", "--install", foreignInstallID},
+		{"hook", "--install"},
+		{"hook", "--install", "not an id"},
 		{"probe"},
 		{"probe", "start"},
 		{"probe", "end"},
+		{"probe", "start", "--install", foreignInstallID},
+		{"probe", "end", "--install"},
+		{"probe", "start", "--install", "--install"},
 		{"probe", "sideways"},
 		{"version"},
 		{"watch"},
@@ -58,8 +64,17 @@ func TestRunNeverReturnsTwo(t *testing.T) {
 	}
 }
 
+// foreignInstallID is an id this environment cannot be holding: the store's id
+// is random and created on first open, so any literal names another install.
+const foreignInstallID = "ffffffffffffffffffffffffffffffff"
+
 // TestHookPathsAlwaysExitZero is the stricter rule for the paths Claude Code
 // itself invokes: not merely never 2, but always 0, whatever they were given.
+//
+// An --install naming another install is the ordinary case rather than an
+// abusive one -- it is what a second install's entry passes -- and it stands
+// down. A malformed one still exits 0: an argument this program cannot read is
+// not grounds for blocking a tool call.
 func TestHookPathsAlwaysExitZero(t *testing.T) {
 	t.Setenv("ATTEST_HOME", t.TempDir())
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
@@ -67,8 +82,14 @@ func TestHookPathsAlwaysExitZero(t *testing.T) {
 	for _, args := range [][]string{
 		{"hook"},
 		{"hook", "--install", "x"},
+		{"hook", "--install", foreignInstallID},
+		{"hook", "--install"},
+		{"hook", "--install", "not an id"},
 		{"probe", "start"},
 		{"probe", "end"},
+		{"probe", "start", "--install", foreignInstallID},
+		{"probe", "end", "--install"},
+		{"probe", "start", "--install", "--install"},
 		{"probe"},
 		{"probe", "neither"},
 	} {

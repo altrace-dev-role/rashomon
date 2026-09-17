@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/altrace-attest/internal/hook"
@@ -47,7 +48,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	switch args[0] {
 	case "hook":
-		return cmdHook(stdin, stderr)
+		return cmdHook(rest, stdin, stderr)
 	case "probe":
 		return cmdProbe(rest, stdin, stderr)
 
@@ -92,12 +93,15 @@ func guarded(stderr io.Writer, fn func() error) int {
 // Nothing is written to stdout on this path. Claude Code parses hook stdout as
 // control output, so anything printed there is a second way to affect a
 // decision this program has no business affecting.
-func cmdHook(stdin io.Reader, stderr io.Writer) int {
+func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	sig := hook.WatchSignals()
 	defer sig.Stop()
 
 	st := openForHook(stderr)
 	if st == nil {
+		return exitOK
+	}
+	if standsDown(args, st, stderr) {
 		return exitOK
 	}
 
@@ -126,8 +130,48 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 	if st == nil {
 		return exitOK
 	}
+	if standsDown(args, st, stderr) {
+		return exitOK
+	}
 	_ = safe.Guard(func() error { hook.RunProbe(sig, phase, stdin, st, time.Now); return nil })
 	return exitOK
+}
+
+// standDownLine is the whole of what an entry from another install says.
+//
+// Hook stderr reaches Claude Code's debug log, so nothing derived from the
+// invocation goes into it -- not the id that was passed, not the one that was
+// expected.
+const standDownLine = "attest: entry belongs to another install; standing down"
+
+// standsDown reports whether this invocation was installed by another install,
+// in which case it must write nothing at all.
+//
+// Two installs' entries can sit in one settings.json -- neither watch nor
+// detach touches the other's -- and Claude Code runs both of them with one
+// environment. Both therefore resolve the same store, and without this check
+// every tool call is recorded twice. An invocation that names no install is
+// from a command line written before this was read, and is handled as it
+// always was.
+func standsDown(args []string, st *store.Store, stderr io.Writer) bool {
+	id := installArg(args)
+	if id == "" || id == st.InstallID() {
+		return false
+	}
+	fmt.Fprintln(stderr, standDownLine)
+	return true
+}
+
+// installArg returns the install id the command line names, or "" for one that
+// names none. Anything else in args is ignored: these are the paths Claude
+// Code invokes, and there is no argument they are allowed to fail over.
+func installArg(args []string) string {
+	for i, a := range args {
+		if a == install.Marker && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
 }
 
 // openForHook opens the store for a hook-invoked path. It prints a fixed
@@ -212,17 +256,30 @@ func cmdWatch(stdout io.Writer) error {
 	}
 	spec := install.Spec{Executable: exe, InstallID: st.InstallID()}
 
+	var foreign []string
 	changed, err := editSettings(loc.User, func(doc *settings.Document) (bool, error) {
-		return install.Apply(doc, spec)
+		applied, err := install.Apply(doc, spec)
+		if err != nil {
+			return false, err
+		}
+		foreign, err = install.ForeignOwners(doc, spec.InstallID)
+		return applied, err
 	})
 	if err != nil {
 		return err
 	}
-	if !changed {
+	if changed {
+		fmt.Fprintf(stdout, "attest: watching (install %s) via %s\n", st.InstallID(), loc.User)
+	} else {
 		fmt.Fprintf(stdout, "attest: already watching (install %s) via %s\n", st.InstallID(), loc.User)
-		return nil
 	}
-	fmt.Fprintf(stdout, "attest: watching (install %s) via %s\n", st.InstallID(), loc.User)
+	// Said here because there is nowhere else it can be said: the foreign
+	// entries run under this environment, stand down against this store, and
+	// leave nothing behind to notice afterwards.
+	if len(foreign) > 0 {
+		fmt.Fprintf(stdout, "attest: entries from other installs are present (%s); they will fire in this environment and record nothing\n",
+			strings.Join(foreign, ", "))
+	}
 	return nil
 }
 
@@ -345,7 +402,11 @@ usage:
   attest version               print the version
 
 invoked by Claude Code, never by hand:
-  attest hook                  handle one PreToolUse invocation
-  attest probe start|end       handle SessionStart / SessionEnd
+  attest hook [--install ID]   handle one PreToolUse invocation
+  attest probe start|end [--install ID]
+                               handle SessionStart / SessionEnd
+
+--install names the install whose entry is running. An entry belonging to
+another install stands down: it records nothing in this environment.
 `)
 }
