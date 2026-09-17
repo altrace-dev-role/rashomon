@@ -183,12 +183,13 @@ type reportSession struct {
 		HookEntryAtEnd   string   `json:"hook_entry_at_end"`
 	} `json:"coverage"`
 	Declarations struct {
-		Recorded     int            `json:"recorded"`
-		Unterminated []string       `json:"unterminated"`
-		Dropped      []string       `json:"dropped"`
-		ByTool       map[string]int `json:"by_tool"`
+		Recorded          int            `json:"recorded"`
+		WithoutTranscript int            `json:"without_transcript"`
+		Unterminated      []string       `json:"unterminated"`
+		Dropped           []string       `json:"dropped"`
+		ByTool            map[string]int `json:"by_tool"`
 	} `json:"declarations"`
-	Transcript *struct {
+	Transcripts []struct {
 		Path                  string   `json:"path"`
 		Readable              bool     `json:"readable"`
 		Files                 *int     `json:"files"`
@@ -196,7 +197,7 @@ type reportSession struct {
 		IDsRecorded           int      `json:"ids_recorded"`
 		MissingFromStore      []string `json:"missing_from_store"`
 		MissingFromTranscript []string `json:"missing_from_transcript"`
-	} `json:"transcript"`
+	} `json:"transcripts"`
 	Gaps []map[string]any `json:"gaps"`
 }
 

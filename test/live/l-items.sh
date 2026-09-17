@@ -56,7 +56,7 @@ claude -p "Do exactly these three things using tools, in this order, then stop. 
   --session-id "$S1" --allowedTools "Bash(echo:*),Write,mcp__attest-ping__ping" --max-turns 8 --output-format json < /dev/null > "$LIVE/l1.out"
 "$BIN" report --session "$S1" | tee "$LIVE/l1-report.json" | python3 -c '
 import sys, json
-s = json.load(sys.stdin)["sessions"][0]; t = s["transcript"]
+s = json.load(sys.stdin)["sessions"][0]; t = s["transcripts"][0]
 print("by_tool:", s["declarations"]["by_tool"])
 print("coverage:", s["coverage"]["state"], s["coverage"]["reasons"])
 print("ids in transcript:", t["ids_in_transcript"], "| recorded:", t["ids_recorded"], "| missing either way:", t["missing_from_store"], t["missing_from_transcript"])'
@@ -80,7 +80,7 @@ echo "first declaration landed; detaching while the session runs:"; "$BIN" detac
 wait $CPID
 "$BIN" report --session "$S3" | tee "$LIVE/l3-report.json" | python3 -c '
 import sys, json
-s = json.load(sys.stdin)["sessions"][0]; t = s["transcript"]
+s = json.load(sys.stdin)["sessions"][0]; t = s["transcripts"][0]
 print("declarations recorded:", s["declarations"]["recorded"])
 print("coverage:", s["coverage"]["state"], s["coverage"]["reasons"], "| end recorded:", s["coverage"]["end_recorded"])
 print("ids in transcript:", t["ids_in_transcript"], "| recorded:", t["ids_recorded"], "| missing_from_store:", t["missing_from_store"])'

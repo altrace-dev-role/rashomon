@@ -5,6 +5,14 @@
 // today's configuration to judge a past run: if it did, detach would
 // retroactively invalidate every run ever captured, and the one action users
 // are told is safe would destroy everything they had collected.
+//
+// The accounting equation is computed per transcript, not per run. A nested
+// claude -p inherits the parent session's id and writes its own transcript, so
+// one run directory holds declarations against two or more transcript paths.
+// Checking every recorded id against one of those transcripts reports the
+// other transcripts' ids as missing from the store and its own as missing from
+// the transcript: a mismatch in both directions, manufactured by the grouping
+// rather than found in the records.
 package report
 
 import (
@@ -37,21 +45,29 @@ type Coverage struct {
 	HookEntryAtEnd   string `json:"hook_entry_at_end"`
 }
 
-// Declarations summarises what was recorded. Recorded is always known: it is a
-// count of this store's own records. What is not known is how many were
-// missed, and that number is never rendered as a count.
+// Declarations summarises what was recorded. Recorded and WithoutTranscript
+// are always known: both are counts of this store's own records, so zero is an
+// honest answer for either. What is not known is how many were missed, and
+// that number is never rendered as a count.
+//
+// WithoutTranscript counts the declarations that named no transcript path.
+// They form no accounting group, because there is nothing to check them
+// against.
 type Declarations struct {
-	Recorded     int            `json:"recorded"`
-	Unterminated []string       `json:"unterminated"`
-	Dropped      []string       `json:"dropped"`
-	ByTool       map[string]int `json:"by_tool"`
+	Recorded          int            `json:"recorded"`
+	WithoutTranscript int            `json:"without_transcript"`
+	Unterminated      []string       `json:"unterminated"`
+	Dropped           []string       `json:"dropped"`
+	ByTool            map[string]int `json:"by_tool"`
 }
 
-// Transcript is the accounting equation: the recorded id set against the
-// distinct id set parsed from the transcript and its subagent files. Every
-// field after Readable is null when the transcript could not be read, because
-// "zero ids in the transcript" and "could not read the transcript" are
-// different facts and only one of them is a count.
+// Transcript is the accounting equation for one transcript path: the ids
+// recorded against that path, set against the distinct id set parsed from that
+// transcript and its subagent files. Every field after Readable is null when
+// the transcript could not be read, because "zero ids in the transcript" and
+// "could not read the transcript" are different facts and only one of them is
+// a count. That holds per group: one unreadable transcript renders null beside
+// another's counts.
 type Transcript struct {
 	Path                  string   `json:"path"`
 	Readable              bool     `json:"readable"`
@@ -62,13 +78,14 @@ type Transcript struct {
 	MissingFromTranscript []string `json:"missing_from_transcript"`
 }
 
-// Session is one run's report.
+// Session is one run's report. Transcripts holds one accounting group per
+// distinct transcript path the run's declarations named, sorted by path.
 type Session struct {
 	SessionID      string       `json:"session_id"`
 	InstallID      string       `json:"install_id"`
 	Coverage       Coverage     `json:"coverage"`
 	Declarations   Declarations `json:"declarations"`
-	Transcript     *Transcript  `json:"transcript"`
+	Transcripts    []Transcript `json:"transcripts"`
 	Gaps           []store.Gap  `json:"gaps"`
 	SkippedRecords int          `json:"skipped_records"`
 }
@@ -151,6 +168,7 @@ func build(run *store.Run) Session {
 			Dropped:      nonNil(run.Dropped()),
 			ByTool:       map[string]int{},
 		},
+		Transcripts: []Transcript{},
 		Coverage: Coverage{
 			Reasons:          []string{},
 			HookEntryAtStart: store.EntryUnknown,
@@ -193,25 +211,38 @@ func build(run *store.Run) Session {
 		sess.Coverage.add(store.ReasonLockTimeout)
 	}
 
-	// The accounting equation, when the transcript can be read.
-	if path := transcriptPath(run); path != "" {
-		sess.Transcript = accounting(path, run)
-		if sess.Transcript.Readable &&
-			(len(sess.Transcript.MissingFromStore) > 0 || len(sess.Transcript.MissingFromTranscript) > 0) {
+	// The accounting equation, once per transcript the run's declarations
+	// named. A declaration naming none is counted rather than grouped.
+	byPath := map[string]map[string]bool{}
+	for _, d := range run.Declarations {
+		if d.TranscriptPath == "" {
+			sess.Declarations.WithoutTranscript++
+			continue
+		}
+		ids := byPath[d.TranscriptPath]
+		if ids == nil {
+			ids = map[string]bool{}
+			byPath[d.TranscriptPath] = ids
+		}
+		ids[d.ToolUseID] = true
+	}
+	paths := make([]string, 0, len(byPath))
+	for path := range byPath {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		t := accounting(path, byPath[path])
+		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0) {
 			sess.Coverage.add(ReasonTranscriptMismatch)
 		}
+		sess.Transcripts = append(sess.Transcripts, t)
 	}
 	return sess
 }
 
-func accounting(path string, run *store.Run) *Transcript {
-	t := &Transcript{Path: path}
-
-	recorded := map[string]bool{}
-	for _, d := range run.Declarations {
-		recorded[d.ToolUseID] = true
-	}
-	t.IDsRecorded = len(recorded)
+func accounting(path string, recorded map[string]bool) Transcript {
+	t := Transcript{Path: path, IDsRecorded: len(recorded)}
 
 	ids, files, err := TranscriptIDs(path)
 	if err != nil {
@@ -242,15 +273,6 @@ func accounting(path string, run *store.Run) *Transcript {
 	sort.Strings(t.MissingFromStore)
 	sort.Strings(t.MissingFromTranscript)
 	return t
-}
-
-func transcriptPath(run *store.Run) string {
-	for _, d := range run.Declarations {
-		if d.TranscriptPath != "" {
-			return d.TranscriptPath
-		}
-	}
-	return ""
 }
 
 func (c *Coverage) add(reason string) {
