@@ -18,6 +18,8 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+
+	"github.com/altrace-dev-role/altrace-attest/internal/fault"
 )
 
 // member is one key of a JSON object, with its value held raw.
@@ -36,6 +38,13 @@ type Document struct {
 // neither, and refusing to install on such a machine would be refusing the
 // first user.
 func Load(path string) (*Document, error) {
+	fault.Inject(fault.PointSettingsLoad)
+	// Fail is the one injection that returns instead of panicking: what it
+	// exercises is the caller's retry, which a panic would never let run.
+	if err := fault.Fail(fault.PointSettingsLoad); err != nil {
+		return nil, err
+	}
+
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return &Document{}, nil

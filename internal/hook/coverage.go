@@ -23,14 +23,15 @@ type Resolution struct {
 // been narrowed to "Bash" is "absent" for coverage purposes, because that is
 // what it is: a config under which most tool calls produce no declaration.
 //
-// Every failure resolves to "unknown". That is a real answer and a worse one
-// than "present", which is the point: a handler that cannot read its own
-// configuration must not claim to know it.
+// Every failure that lasts resolves to "unknown". That is a real answer and a
+// worse one than "present", which is the point: a handler that cannot read its
+// own configuration must not claim to know it. A failure that does not last is
+// a different thing and is retried; see loadSettings.
 func Resolve(st *store.Store, sessionID string) Resolution {
 	res := Resolution{HookEntry: store.EntryUnknown, Probe: store.ProbeUnknown}
 
 	if path, err := settings.UserPath(); err == nil {
-		if doc, err := settings.Load(path); err == nil {
+		if doc, err := loadSettings(path); err == nil {
 			if present, err := install.Present(doc, st.InstallID(), install.EventPreToolUse); err == nil {
 				res.HookEntry = store.EntryAbsent
 				if present {
@@ -47,6 +48,33 @@ func Resolve(st *store.Store, sessionID string) Resolution {
 		}
 	}
 	return res
+}
+
+// How far loadSettings goes before it gives up.
+const (
+	settingsAttempts   = 3
+	settingsRetryPause = 3 * time.Millisecond
+)
+
+// loadSettings reads the settings document, retrying a read that failed.
+//
+// Claude Code and other tools rewrite this file during normal use, and a
+// rewrite that is not atomic shows up here, for the instant it lasts, as a
+// failed read or a parse of a half-written file. Resolving "unknown" on that
+// instant costs the run and not just the call: one unverified call is enough
+// to make the whole run unverified in report.
+//
+// The bound is as load-bearing as the retry. A file that is genuinely
+// unreadable has to reach "unknown" rather than hold the hook open, and the
+// first attempt is not preceded by a wait, so a healthy read pays nothing for
+// this.
+func loadSettings(path string) (*settings.Document, error) {
+	doc, err := settings.Load(path)
+	for attempt := 1; err != nil && attempt < settingsAttempts; attempt++ {
+		time.Sleep(settingsRetryPause)
+		doc, err = settings.Load(path)
+	}
+	return doc, err
 }
 
 // BuildCoverage assembles the coverage record for one hook invocation. A
