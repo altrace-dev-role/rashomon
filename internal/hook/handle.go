@@ -1,7 +1,6 @@
 package hook
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -95,6 +94,8 @@ func (h *Handler) Capture(in io.Reader) error {
 		return err
 	}
 	h.opened = true
+
+	fault.Inject(fault.PointHookAfterDeclaration)
 	return nil
 }
 
@@ -102,21 +103,29 @@ func (h *Handler) Capture(in io.Reader) error {
 // record for this invocation. It is called on every path Capture can leave by,
 // including a recovered panic.
 //
-// ctx carries signal cancellation. SIGTERM is what a hook timeout cancellation
+// sig reports signal delivery. SIGTERM is what a hook timeout cancellation
 // delivers and it is catchable, so it is a controlled exit and gets a terminal
 // record. SIGKILL is not catchable: nothing runs, no terminal record appears,
-// and that absence is what report reads as an unterminated entry.
-func (h *Handler) Close(ctx context.Context, captureErr error) {
+// and that absence is what the end-of-run probe reads as an unterminated entry.
+func (h *Handler) Close(sig *Signals, captureErr error) {
 	outcome, reason := store.OutcomeOK, ""
 	switch {
-	case ctx.Err() != nil:
+	case sig.Delivered():
 		outcome, reason = store.OutcomeSignal, store.ReasonTerminatedBySignal
+	case errors.Is(captureErr, store.ErrLockTimeout):
+		outcome, reason = store.OutcomeError, store.ReasonLockTimeout
 	case captureErr != nil:
 		outcome, reason = store.OutcomeError, store.ReasonInternalError
 	}
 
-	if h.opened {
-		_ = h.st.AppendTerminal(store.Terminal{
+	// A terminal closes a declaration that landed, whatever its id. It is also
+	// written when the declaration itself could not be written for want of the
+	// lock: it then carries the only trace of that tool_use_id, and goes
+	// straight to the spill file -- the ordered stream's lock has already cost
+	// its full budget once, and a second wait would push the handler past the
+	// hook timeout.
+	if h.opened || (h.toolUseID != "" && reason == store.ReasonLockTimeout) {
+		term := store.Terminal{
 			Type:          store.TypeTerminal,
 			SchemaVersion: store.SchemaVersion,
 			RecordedAtMS:  h.now().UnixMilli(),
@@ -124,27 +133,15 @@ func (h *Handler) Close(ctx context.Context, captureErr error) {
 			SessionID:     h.sessionID,
 			Outcome:       outcome,
 			Reason:        nilIfEmpty(reason),
-		})
+		}
+		if reason == store.ReasonLockTimeout {
+			_ = h.st.SpillTerminal(term)
+		} else {
+			_ = h.st.AppendTerminal(term)
+		}
 	}
 
-	state := store.StateVerified
-	if reason != "" {
-		state = store.StateUnverified
-	}
-
-	_ = h.st.AppendCoverage(store.Coverage{
-		Type:          store.TypeCoverage,
-		SchemaVersion: store.SchemaVersion,
-		RecordedAtMS:  h.now().UnixMilli(),
-		SessionID:     h.sessionID,
-		InstallID:     h.st.InstallID(),
-		State:         state,
-		Reason:        nilIfEmpty(reason),
-		// Resolving this needs the settings precedence walk that watch and
-		// detach are built on. Until that lands it is unknown, and unknown is
-		// what it says -- not "present" on the assumption that we are running.
-		HookEntry: store.EntryUnknown,
-	})
+	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.now()))
 }
 
 func readPayload(r io.Reader) ([]byte, error) {

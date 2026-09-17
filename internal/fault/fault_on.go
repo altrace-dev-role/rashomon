@@ -4,7 +4,11 @@ package fault
 
 import (
 	"os"
+	"os/signal"
+	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/altrace-dev-role/altrace-attest/internal/safe"
 )
@@ -14,9 +18,13 @@ import (
 // point.
 const EnvVar = "ATTEST_FAULT"
 
-// Fault kinds. Every one of these panics; none of them returns an error. That
-// is the point -- a fault that returns an error exercises error handling, not
-// the panic barrier, and exit code 1 does not block a tool call.
+// Fault kinds. Every one of these except Hang panics; none returns an error. A
+// fault that returned an error would exercise error handling, not the panic
+// barrier, and exit code 1 does not block a tool call.
+//
+// Hang holds the process open, until a SIGTERM arrives or a bound expires, so
+// that the signal paths can be exercised: "hang" waits ten seconds, "hang=N"
+// waits N.
 const (
 	NilMapWrite         = "nil_map_write"
 	NilPointerDeref     = "nil_pointer_deref"
@@ -24,6 +32,7 @@ const (
 	SendOnClosedChannel = "send_on_closed_channel"
 	GoroutinePanic      = "goroutine_panic"
 	PlainPanic          = "plain_panic"
+	Hang                = "hang"
 )
 
 // Enabled reports whether fault injection is compiled in.
@@ -50,6 +59,11 @@ func Inject(point string) {
 }
 
 func trigger(kind string) {
+	if strings.HasPrefix(kind, Hang) {
+		hang(kind)
+		return
+	}
+
 	switch kind {
 	case NilMapWrite:
 		var m map[string]string
@@ -78,6 +92,26 @@ func trigger(kind string) {
 
 	case PlainPanic:
 		panic("injected fault")
+	}
+}
+
+func hang(kind string) {
+	wait := 10 * time.Second
+	if _, secs, ok := strings.Cut(kind, "="); ok {
+		if n, err := strconv.Atoi(secs); err == nil {
+			wait = time.Duration(n) * time.Second
+		}
+	}
+
+	// Notified alongside main's own handler: both channels receive the signal,
+	// so main still sees the cancellation once this returns.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM, os.Interrupt)
+	defer signal.Stop(sig)
+
+	select {
+	case <-time.After(wait):
+	case <-sig:
 	}
 }
 

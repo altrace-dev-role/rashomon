@@ -54,6 +54,13 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 		Digest:    digest(key, toolName, toolInput),
 	}
 
+	// Only a shell tool's input carries a command line. An MCP tool or a
+	// custom tool may have a "command" field with any meaning at all, and
+	// tokenizing it would both misclassify the call and count tokens of
+	// something that is not a shell line.
+	if s.VerbClass != VerbExecute {
+		return s
+	}
 	cmd, ok := commandField(toolInput)
 	if !ok {
 		return s

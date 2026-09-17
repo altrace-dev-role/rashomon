@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Binaries under test. They are real compiled binaries, exec'd as subprocesses,
@@ -75,36 +76,155 @@ func build(dir, name, pkg string, tags ...string) (string, error) {
 	return out, nil
 }
 
-// result is everything a hook invocation is judged on.
+// env is one isolated machine: its own store, its own Claude configuration
+// directory, its own working directory for project-level settings, and a
+// managed-policy path that does not exist unless a test creates it.
+type env struct {
+	t         *testing.T
+	home      string
+	configDir string
+	cwd       string
+}
+
+func newEnv(t *testing.T) *env {
+	t.Helper()
+	return &env{t: t, home: t.TempDir(), configDir: t.TempDir(), cwd: t.TempDir()}
+}
+
+func (e *env) settingsPath() string { return filepath.Join(e.configDir, "settings.json") }
+func (e *env) managedPath() string  { return filepath.Join(e.configDir, "managed-settings.json") }
+
+func (e *env) environ(extra ...string) []string {
+	base := append(os.Environ(),
+		"ATTEST_HOME="+e.home,
+		"CLAUDE_CONFIG_DIR="+e.configDir,
+		"ATTEST_MANAGED_SETTINGS_PATH="+e.managedPath(),
+	)
+	return append(base, extra...)
+}
+
+// result is everything an invocation is judged on.
 type result struct {
 	exitCode int
 	stdout   string
 	stderr   string
 }
 
-// runHook invokes `attest hook` with payload on stdin against an isolated store.
-func runHook(t *testing.T, home, payload string, env ...string) result {
-	t.Helper()
+func (e *env) command(stdin string, extraEnv []string, args ...string) *exec.Cmd {
+	cmd := exec.Command(attestBin, args...)
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Env = e.environ(extraEnv...)
+	cmd.Dir = e.cwd
+	return cmd
+}
 
-	cmd := exec.Command(attestBin, "hook")
-	cmd.Stdin = strings.NewReader(payload)
-	cmd.Env = append(os.Environ(), "ATTEST_HOME="+home)
-	cmd.Env = append(cmd.Env, env...)
-
+func (e *env) run(stdin string, extraEnv []string, args ...string) result {
+	e.t.Helper()
+	cmd := e.command(stdin, extraEnv, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-
 	// An error here is expected whenever the exit code is non-zero; the exit
 	// code is read from ProcessState, so a failure to start is what matters.
 	if err := cmd.Run(); err != nil && cmd.ProcessState == nil {
-		t.Fatalf("starting %s: %v", attestBin, err)
+		e.t.Fatalf("starting %s %v: %v", attestBin, args, err)
 	}
-	return result{
-		exitCode: cmd.ProcessState.ExitCode(),
-		stdout:   stdout.String(),
-		stderr:   stderr.String(),
+	return result{exitCode: cmd.ProcessState.ExitCode(), stdout: stdout.String(), stderr: stderr.String()}
+}
+
+func (e *env) hook(payload string, extraEnv ...string) result {
+	e.t.Helper()
+	return e.run(payload, extraEnv, "hook", "--install", "ignored-by-the-handler")
+}
+
+func (e *env) probe(phase, sessionID string, extraEnv ...string) result {
+	e.t.Helper()
+	payload := fmt.Sprintf(`{"session_id":%q,"hook_event_name":"Session%s","transcript_path":"/tmp/none.jsonl","cwd":%q}`,
+		sessionID, strings.ToUpper(phase[:1])+phase[1:], e.cwd)
+	return e.run(payload, extraEnv, "probe", phase)
+}
+
+func (e *env) watch(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "watch") }
+func (e *env) detach(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "detach") }
+func (e *env) forget(since string) result {
+	e.t.Helper()
+	return e.run("", nil, "forget", "--since", since)
+}
+
+// watched installs the hook and starts a session, which is the state every
+// verified-coverage assertion assumes.
+func (e *env) watched(sessionID string) {
+	e.t.Helper()
+	if res := e.watch(); res.exitCode != 0 {
+		e.t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
+	if res := e.probe("start", sessionID); res.exitCode != 0 {
+		e.t.Fatalf("probe start: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+}
+
+func (e *env) mustHook(payload string) {
+	e.t.Helper()
+	if res := e.hook(payload); res.exitCode != 0 {
+		e.t.Fatalf("hook: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+}
+
+// reportSession is the report output contract, as a test reads it.
+type reportSession struct {
+	SessionID string `json:"session_id"`
+	InstallID string `json:"install_id"`
+	Coverage  struct {
+		State            string   `json:"state"`
+		Reasons          []string `json:"reasons"`
+		StartRecorded    bool     `json:"start_recorded"`
+		EndRecorded      bool     `json:"end_recorded"`
+		HookEntryAtStart string   `json:"hook_entry_at_start"`
+		HookEntryAtEnd   string   `json:"hook_entry_at_end"`
+	} `json:"coverage"`
+	Declarations struct {
+		Recorded     int            `json:"recorded"`
+		Unterminated []string       `json:"unterminated"`
+		Dropped      []string       `json:"dropped"`
+		ByTool       map[string]int `json:"by_tool"`
+	} `json:"declarations"`
+	Transcript *struct {
+		Path                  string   `json:"path"`
+		Readable              bool     `json:"readable"`
+		Files                 *int     `json:"files"`
+		IDsInTranscript       *int     `json:"ids_in_transcript"`
+		IDsRecorded           int      `json:"ids_recorded"`
+		MissingFromStore      []string `json:"missing_from_store"`
+		MissingFromTranscript []string `json:"missing_from_transcript"`
+	} `json:"transcript"`
+	Gaps []map[string]any `json:"gaps"`
+}
+
+func (e *env) report(sessionID string) reportSession {
+	e.t.Helper()
+	res := e.run("", nil, "report", "--session", sessionID)
+	if res.exitCode != 0 {
+		e.t.Fatalf("report: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	var rep struct {
+		Sessions []reportSession `json:"sessions"`
+	}
+	if err := json.Unmarshal([]byte(res.stdout), &rep); err != nil {
+		e.t.Fatalf("report output is not JSON: %v\n%s", err, res.stdout)
+	}
+	if len(rep.Sessions) != 1 {
+		e.t.Fatalf("report returned %d sessions, want 1", len(rep.Sessions))
+	}
+	return rep.Sessions[0]
+}
+
+func (e *env) hasReason(sess reportSession, reason string) bool {
+	for _, r := range sess.Coverage.Reasons {
+		if r == reason {
+			return true
+		}
+	}
+	return false
 }
 
 // record is one parsed NDJSON line alongside the bytes it was parsed from, so a
@@ -119,12 +239,53 @@ func (r record) typ() string {
 	return s
 }
 
-// readRecords parses one NDJSON file from a run directory. A missing file reads
-// as no records, which is a real and distinct outcome from an empty one.
-func readRecords(t *testing.T, home, sessionID, name string) []record {
-	t.Helper()
+func (r record) str(key string) string {
+	s, _ := r.fields[key].(string)
+	return s
+}
 
-	path := filepath.Join(home, "runs", sessionID, name)
+// read parses one NDJSON file from a run directory. A missing file reads as no
+// records, which is a real and distinct outcome from an empty one.
+func (e *env) read(sessionID, name string) []record {
+	e.t.Helper()
+	return readNDJSON(e.t, filepath.Join(e.home, "runs", sessionID, name))
+}
+
+// records returns declarations and terminals, from the ordered stream and the
+// spill file together, which is how a reader sees them.
+func (e *env) records(sessionID string) []record {
+	e.t.Helper()
+	return append(e.read(sessionID, "records.ndjson"), e.read(sessionID, "spill.ndjson")...)
+}
+
+func (e *env) declarations(sessionID string) []record {
+	e.t.Helper()
+	return recordsOfType(e.records(sessionID), "declaration")
+}
+
+func (e *env) terminals(sessionID string) []record {
+	e.t.Helper()
+	return recordsOfType(e.records(sessionID), "terminal")
+}
+
+func (e *env) coverage(sessionID, phase string) []record {
+	e.t.Helper()
+	var out []record
+	for _, r := range recordsOfType(e.read(sessionID, "coverage.ndjson"), "coverage") {
+		if r.str("phase") == phase {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (e *env) gaps() []record {
+	e.t.Helper()
+	return readNDJSON(e.t, filepath.Join(e.home, "gaps.ndjson"))
+}
+
+func readNDJSON(t *testing.T, path string) []record {
+	t.Helper()
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return nil
@@ -187,13 +348,11 @@ func pathsOf(r record) map[string]bool {
 
 func assertKeySet(t *testing.T, r record, allowed []string) {
 	t.Helper()
-
 	want := map[string]bool{}
 	for _, k := range allowed {
 		want[k] = true
 	}
 	got := pathsOf(r)
-
 	for k := range got {
 		if !want[k] {
 			t.Errorf("record carries key %q, which is not in the allowlist", k)
@@ -206,19 +365,50 @@ func assertKeySet(t *testing.T, r record, allowed []string) {
 	}
 }
 
-// walkStore returns every regular file in the store with its mode and contents,
-// for the canary sweep and the permission assertions.
+// nested walks a dotted key path into a record.
+func nested(r record, path string) (any, bool) {
+	var cur any = r.fields
+	for _, part := range strings.Split(path, ".") {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		cur, ok = obj[part]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
+}
+
+// declarationsAfter runs the hook once per command against one store and
+// returns the declarations in order, so two records differ only by the input
+// that produced them.
+func (e *env) declarationsAfter(commands ...string) []record {
+	e.t.Helper()
+	for _, c := range commands {
+		p := defaultPayload()
+		p.ToolInput = map[string]any{"command": c}
+		e.mustHook(p.build(e.t))
+	}
+	decls := e.declarations(testSession)
+	if len(decls) != len(commands) {
+		e.t.Fatalf("got %d declarations, want %d", len(decls), len(commands))
+	}
+	return decls
+}
+
+// walkStore returns every entry in the store with its mode and contents, for
+// the canary sweep and the permission assertions.
 func walkStore(t *testing.T, home string) map[string]struct {
 	mode fs.FileMode
 	body []byte
 } {
 	t.Helper()
-
 	out := map[string]struct {
 		mode fs.FileMode
 		body []byte
 	}{}
-
 	err := filepath.WalkDir(home, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -250,39 +440,126 @@ func walkStore(t *testing.T, home string) map[string]struct {
 	return out
 }
 
-// nested walks a dotted key path into a record.
-func nested(r record, path string) (any, bool) {
-	var cur any = r.fields
-	for _, part := range strings.Split(path, ".") {
-		obj, ok := cur.(map[string]any)
-		if !ok {
-			return nil, false
-		}
-		cur, ok = obj[part]
-		if !ok {
-			return nil, false
-		}
-	}
-	return cur, true
+// settingsFile is the user's settings.json as a test reads it back: through a
+// generic decoder, which is the only reader that matters for validity.
+type settingsFile struct {
+	Hooks map[string][]matcherGroup  `json:"hooks"`
+	Other map[string]json.RawMessage `json:"-"`
 }
 
-// declarationsAfter runs the hook once per command against one store and
-// returns the declarations in order, so two records differ only by the input
-// that produced them.
-func declarationsAfter(t *testing.T, home string, commands ...string) []record {
-	t.Helper()
+type matcherGroup struct {
+	Matcher *string `json:"matcher"`
+	Hooks   []struct {
+		Type    string `json:"type"`
+		Command string `json:"command"`
+		Timeout int    `json:"timeout"`
+	} `json:"hooks"`
+	raw json.RawMessage
+}
 
-	for _, c := range commands {
-		p := defaultPayload()
-		p.ToolInput = map[string]any{"command": c}
-		if res := runHook(t, home, p.build(t)); res.exitCode != 0 {
-			t.Fatalf("exit code %d, want 0 (stderr: %q)", res.exitCode, res.stderr)
+func (e *env) settings() settingsFile {
+	e.t.Helper()
+	data, err := os.ReadFile(e.settingsPath())
+	if err != nil {
+		e.t.Fatalf("reading settings: %v", err)
+	}
+	var sf settingsFile
+	if err := json.Unmarshal(data, &sf); err != nil {
+		e.t.Fatalf("settings.json is not valid JSON: %v\n%s", err, data)
+	}
+	// Keep every matcher group's raw bytes too, for byte-identity assertions.
+	var loose struct {
+		Hooks map[string][]json.RawMessage `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &loose); err == nil {
+		for event, raws := range loose.Hooks {
+			for i := range raws {
+				if i < len(sf.Hooks[event]) {
+					sf.Hooks[event][i].raw = raws[i]
+				}
+			}
 		}
 	}
+	return sf
+}
 
-	decls := recordsOfType(readRecords(t, home, testSession, "records.ndjson"), "declaration")
-	if len(decls) != len(commands) {
-		t.Fatalf("got %d declarations, want %d", len(decls), len(commands))
+func (e *env) settingsBytes() []byte {
+	e.t.Helper()
+	data, err := os.ReadFile(e.settingsPath())
+	if os.IsNotExist(err) {
+		return nil
 	}
-	return decls
+	if err != nil {
+		e.t.Fatalf("reading settings: %v", err)
+	}
+	return data
+}
+
+func (e *env) writeSettings(content string) {
+	e.t.Helper()
+	if err := os.WriteFile(e.settingsPath(), []byte(content), 0o644); err != nil {
+		e.t.Fatalf("seeding settings: %v", err)
+	}
+}
+
+// ours returns the matcher groups under an event that carry an --install id.
+func ours(groups []matcherGroup) []matcherGroup {
+	var out []matcherGroup
+	for _, g := range groups {
+		for _, h := range g.Hooks {
+			if strings.Contains(h.Command, " --install ") {
+				out = append(out, g)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func (e *env) installID() string {
+	e.t.Helper()
+	data, err := os.ReadFile(filepath.Join(e.home, "install.json"))
+	if err != nil {
+		e.t.Fatalf("reading install.json: %v", err)
+	}
+	var meta struct {
+		InstallID string `json:"install_id"`
+	}
+	if err := json.Unmarshal(data, &meta); err != nil || meta.InstallID == "" {
+		e.t.Fatalf("install.json is malformed: %s", data)
+	}
+	return meta.InstallID
+}
+
+// waitFor polls until cond holds or the deadline passes.
+func waitFor(t *testing.T, timeout time.Duration, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
+func jsonCanonical(v any) ([]byte, error) {
+	// encoding/json sorts map keys, which is all canonical needs to mean here.
+	return json.Marshal(v)
+}
+
+func (e *env) reportAll() []reportSession {
+	e.t.Helper()
+	res := e.run("", nil, "report")
+	if res.exitCode != 0 {
+		e.t.Fatalf("report: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	var rep struct {
+		Sessions []reportSession `json:"sessions"`
+	}
+	if err := json.Unmarshal([]byte(res.stdout), &rep); err != nil {
+		e.t.Fatalf("report output is not JSON: %v\n%s", err, res.stdout)
+	}
+	return rep.Sessions
 }

@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-var errLockTimeout = errors.New("store: timed out waiting for the append lock")
-
 const lockBudget = 2 * time.Second
 
 // lockFile refuses rather than pretending. Without an advisory lock, concurrent

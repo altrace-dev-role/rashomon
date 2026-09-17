@@ -9,19 +9,16 @@ import (
 	"time"
 )
 
-// errLockTimeout is returned when the lock could not be taken inside the
-// budget. It is a give-up, and the caller records it rather than hiding it.
-var errLockTimeout = errors.New("store: timed out waiting for the append lock")
-
 // lockBudget bounds the wait well under the 5-second hook timeout.
 //
 // There is a real tension here: returning promptly under contention pulls
 // against landing every record. This is the choice, stated plainly -- wait up
 // to two seconds, because an append is a sub-millisecond operation and sixty-
 // four of them serialise in single-digit milliseconds, so reaching this budget
-// means something is wrong rather than merely busy. On give-up the caller still
-// writes a terminal record, so a dropped declaration is visible as a gap rather
-// than as a success.
+// means something is wrong rather than merely busy. On give-up the caller
+// writes a terminal record to the spill file, which needs no lock, so the
+// dropped declaration is visible under its own tool_use_id rather than as a
+// success.
 const lockBudget = 2 * time.Second
 
 // lockFile takes an exclusive advisory lock on f, polling so the wait can be
@@ -42,7 +39,7 @@ func lockFile(f *os.File, budget time.Duration) (func(), error) {
 			return nil, err
 		}
 		if time.Now().After(deadline) {
-			return nil, errLockTimeout
+			return nil, ErrLockTimeout
 		}
 		time.Sleep(backoff)
 		if backoff < 10*time.Millisecond {

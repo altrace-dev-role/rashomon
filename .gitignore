@@ -3,7 +3,8 @@ dist/
 *.exe
 *.test
 *.out
-coverage.*
+coverage.out
+coverage.html
 
 .DS_Store
 .idea/

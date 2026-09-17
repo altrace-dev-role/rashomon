@@ -9,9 +9,12 @@ import (
 
 // Injection points, mirroring internal/fault.
 const (
-	pointHookStart  = "hook.start"
-	pointHookParsed = "hook.parsed"
-	pointStoreWrite = "store.write"
+	pointHookStart            = "hook.start"
+	pointHookParsed           = "hook.parsed"
+	pointStoreWrite           = "store.write"
+	pointHookAfterDeclaration = "hook.after_declaration"
+	pointSettingsOpened       = "settings.write.opened"
+	pointSettingsBeforeRename = "settings.write.before_rename"
 )
 
 // Faults that panic rather than return an error. A fault that returns an error
@@ -25,7 +28,7 @@ var panickingFaults = []string{
 	"plain_panic",
 }
 
-var injectionPoints = []string{pointHookStart, pointHookParsed, pointStoreWrite}
+var injectionPoints = []string{pointHookStart, pointHookParsed, pointStoreWrite, pointHookAfterDeclaration}
 
 // TestH1Control is the assertion the rest of H-1 rests on.
 //
@@ -51,13 +54,13 @@ func TestH1Control_HarnessObservesExitTwo(t *testing.T) {
 // vacuous: a binary built without the fault tag injects nothing, so every fault
 // case below would pass by never having faulted.
 func TestH1InjectionIsCompiledIn(t *testing.T) {
-	home := t.TempDir()
-	res := runHook(t, home, defaultPayload().build(t), "ATTEST_FAULT="+pointHookStart+":plain_panic")
+	e := newEnv(t)
+	res := e.hook(defaultPayload().build(t), "ATTEST_FAULT="+pointHookStart+":plain_panic")
 
 	if res.exitCode != 0 {
 		t.Fatalf("exit code %d, want 0", res.exitCode)
 	}
-	if got := recordsOfType(readRecords(t, home, testSession, "records.ndjson"), "declaration"); len(got) != 0 {
+	if got := e.declarations(testSession); len(got) != 0 {
 		t.Fatalf("a fault at %s still produced %d declaration(s); the binary under test was built without fault injection", pointHookStart, len(got))
 	}
 }
@@ -68,8 +71,9 @@ func TestH1_NoFaultBlocksTheToolCall(t *testing.T) {
 	for _, fault := range panickingFaults {
 		for _, point := range injectionPoints {
 			t.Run(fault+"@"+point, func(t *testing.T) {
-				home := t.TempDir()
-				res := runHook(t, home, defaultPayload().build(t), "ATTEST_FAULT="+point+":"+fault)
+				e := newEnv(t)
+				e.watched(testSession)
+				res := e.hook(defaultPayload().build(t), "ATTEST_FAULT="+point+":"+fault)
 
 				if res.exitCode != 0 {
 					t.Fatalf("exit code %d, want 0 (2 would block the tool call)", res.exitCode)
@@ -83,10 +87,21 @@ func TestH1_NoFaultBlocksTheToolCall(t *testing.T) {
 				if point == pointHookStart {
 					session = "unattributed" // the payload was never parsed
 				}
-				if got := recordsOfType(readRecords(t, home, session, "records.ndjson"), "declaration"); len(got) != 0 {
+				decls := e.declarations(session)
+				if point == pointHookAfterDeclaration {
+					// The declaration landed before the fault; what must be
+					// true is that it was still closed and the run still
+					// admits the failure.
+					if len(decls) != 1 {
+						t.Errorf("got %d declarations, want 1", len(decls))
+					}
+					if terms := e.terminals(session); len(terms) != 1 || terms[0].str("outcome") != "error" {
+						t.Errorf("terminal records %v, want one with outcome error", terms)
+					}
+				} else if len(decls) != 0 {
 					t.Errorf("declaration was written despite a fault at %s", point)
 				}
-				assertCoverage(t, home, session, "unverified", "internal_error")
+				assertCallCoverage(t, e, session, "unverified", "internal_error")
 			})
 		}
 	}
@@ -100,25 +115,25 @@ func TestH1_NoFaultBlocksTheToolCall(t *testing.T) {
 func TestH1_GoroutinePanicIsContained(t *testing.T) {
 	for _, point := range injectionPoints {
 		t.Run(point, func(t *testing.T) {
-			home := t.TempDir()
-			res := runHook(t, home, defaultPayload().build(t), "ATTEST_FAULT="+point+":goroutine_panic")
+			e := newEnv(t)
+			e.watched(testSession)
+			res := e.hook(defaultPayload().build(t), "ATTEST_FAULT="+point+":goroutine_panic")
 
 			if res.exitCode != 0 {
 				t.Fatalf("exit code %d, want 0; a goroutine panic escaped its recover", res.exitCode)
 			}
 			assertNoTraceback(t, res)
 
-			if got := recordsOfType(readRecords(t, home, testSession, "records.ndjson"), "declaration"); len(got) != 1 {
+			if got := e.declarations(testSession); len(got) != 1 {
 				t.Errorf("got %d declarations, want 1: a contained goroutine panic should not cost the record", len(got))
 			}
-			assertCoverage(t, home, testSession, "verified", "")
+			assertCallCoverage(t, e, testSession, "verified", "")
 		})
 	}
 }
 
 func assertNoTraceback(t *testing.T, res result) {
 	t.Helper()
-
 	// Hook stdout and stderr are written to Claude Code's debug log, so a
 	// traceback here is both a panic that escaped and a content leak: panic
 	// values routinely carry the string the program was holding.
@@ -132,19 +147,19 @@ func assertNoTraceback(t *testing.T, res result) {
 	}
 }
 
-func assertCoverage(t *testing.T, home, session, wantState, wantReason string) {
+// assertCallCoverage checks the most recent call-phase coverage record.
+func assertCallCoverage(t *testing.T, e *env, session, wantState, wantReason string) {
 	t.Helper()
-
-	recs := recordsOfType(readRecords(t, home, session, "coverage.ndjson"), "coverage")
-	if len(recs) != 1 {
-		t.Fatalf("got %d coverage records for session %q, want 1", len(recs), session)
+	recs := e.coverage(session, "call")
+	if len(recs) == 0 {
+		t.Fatalf("no call-phase coverage record for session %q", session)
 	}
+	last := recs[len(recs)-1]
 
-	if got, _ := recs[0].fields["state"].(string); got != wantState {
-		t.Errorf("coverage state is %q, want %q", got, wantState)
+	if got := last.str("state"); got != wantState {
+		t.Errorf("coverage state is %q, want %q (reason %v)", got, wantState, last.fields["reason"])
 	}
-
-	reason := recs[0].fields["reason"]
+	reason := last.fields["reason"]
 	if wantReason == "" {
 		if reason != nil {
 			t.Errorf("coverage reason is %v, want null", reason)

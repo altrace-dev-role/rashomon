@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Show that every headless acceptance item fails when its implementation is broken.
+
+An H-item that cannot be made to fail by breaking the implementation is not a
+test; it is a line that happens to be green. This script applies one deliberate
+break per item, runs the tests that item names, and reports whether they went
+red. Every file is restored afterwards, whatever happens.
+
+Run from the module root:  python3 test/mutation/sweep.py
+"""
+import pathlib
+import subprocess
+import sys
+
+
+M = []  # (name, file, old, new, test regex)
+def m(name, f, old, new, test): M.append((name, f, old, new, test))
+
+
+m("H-1  Guard no longer recovers", "internal/safe/safe.go",
+  "\tdefer func() {\n\t\tif v := recover(); v != nil {\n\t\t\terr = newPanicError(v)\n\t\t}\n\t}()\n\treturn fn()", "\treturn fn()", "TestH1_NoFaultBlocksTheToolCall")
+m("H-1  Go no longer recovers inside the goroutine", "internal/safe/safe.go",
+  "\t\tdefer func() {\n\t\t\tif v := recover(); v != nil && onPanic != nil {\n\t\t\t\tdefer func() { _ = recover() }()\n\t\t\t\tonPanic(newPanicError(v))\n\t\t\t}\n\t\t}()\n\t\tfn()", "\t\tfn()", "TestH1_GoroutinePanicIsContained")
+m("H-2  terminal record never written", "internal/hook/handle.go",
+  "\tif h.opened || (h.toolUseID != \"\" && reason == store.ReasonLockTimeout) {", "\tif false {", "TestH2_HealthyPath")
+
+m("H-3  matcher installed as Bash", "internal/install/install.go", 'Matcher = "*"', 'Matcher = "Bash"', "TestH3_")
+m("H-3  timeout installed as 600", "internal/install/install.go", "Timeout = 5\n", "Timeout = 600\n", "TestH3_")
+m("H-4  installer assigns instead of appends (foreign entries dropped)", "internal/install/install.go",
+  "\t\t\tif Owner(e, event) != spec.InstallID {\n\t\t\t\tout = append(out, e)\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif detail := intact(e, event); detail != \"\" {\n\t\t\t\t// Someone",
+  "\t\t\tif Owner(e, event) != spec.InstallID {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif detail := intact(e, event); detail != \"\" {\n\t\t\t\t// Someone", "TestH4_")
+m("H-5  absent settings file is an error", "internal/settings/document.go",
+  "\tif errors.Is(err, fs.ErrNotExist) {\n\t\treturn &Document{}, nil\n\t}\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\treturn Parse(data)",
+  "\tif err != nil {\n\t\treturn nil, err\n\t}\n\t_ = errors.Is\n\t_ = fs.ErrNotExist\n\treturn Parse(data)", "TestH5_")
+m("H-6  watch appends a second entry of ours", "internal/install/install.go", "\t\tif !found {\n\t\t\tout = append(out, want)", "\t\tif true {\n\t\t\tout = append(out, want)", "TestH6_")
+m("H-6  detach removes every install's entries", "internal/install/install.go",
+  "\t\tfor _, e := range entries {\n\t\t\tif Owner(e, event) != spec.InstallID {\n\t\t\t\tout = append(out, e)\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif detail",
+  "\t\tfor _, e := range entries {\n\t\t\tif Owner(e, event) == \"\" {\n\t\t\t\tout = append(out, e)\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif detail", "TestH6_")
+m("H-7  edit drops every other top-level key", "internal/settings/document.go",
+  "\tif h := d.find(hooksKey); h != nil {\n\t\th.raw = obj\n\t} else {\n\t\td.members = append(d.members, member{key: hooksKey, raw: obj})\n\t}\n\treturn nil",
+  "\td.members = []member{{key: hooksKey, raw: obj}}\n\treturn nil", "TestH7_DetachPreservesConcurrentEdits")
+m("H-7  detach never notices an edited entry", "internal/install/install.go",
+  "func intact(raw json.RawMessage, event string) string {\n", "func intact(raw json.RawMessage, event string) string {\n\tif true {\n\t\treturn \"\"\n\t}\n", "TestH7_DetachSaysSoWhenItCannot")
+m("H-8  settings written in place instead of temp+rename", "internal/settings/write.go",
+  "\ttmp, err := os.CreateTemp(dir, \".settings.json.attest-*\")", "\ttmp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)", "TestH8_")
+m("H-9  managed layer not consulted", "internal/settings/locate.go", "\t\t{LayerManaged, loc.Managed},\n", "", "TestH9_")
+m("H-9  only the user layer consulted", "internal/settings/locate.go",
+  "\t\t{LayerManaged, loc.Managed},\n\t\t{LayerLocal, loc.Local},\n\t\t{LayerProject, loc.Project},\n", "", "TestH9_")
+m("H-10 accounting compares counts, not sets", "internal/report/report.go",
+  "\tt.MissingFromStore = []string{}\n\tfor id := range ids {", "\tt.MissingFromStore = []string{}\n\tfor id := range ids {\n\t\tif len(ids) == len(recorded) {\n\t\t\tbreak\n\t\t}", "TestH10_SetsNotCounts")
+m("H-11 end probe does not scan for unterminated entries", "internal/hook/probe.go",
+  "\t\t\tif len(run.Unterminated()) > 0 {\n\t\t\t\treason = store.ReasonUnterminatedEntry\n\t\t\t}", "\t\t\t_ = run", "TestH11_")
+m("H-12 SIGTERM ignored on the close path", "internal/hook/handle.go", "\tcase sig.Delivered():\n\t\toutcome, reason = store.OutcomeSignal", "\tcase false && sig.Delivered():\n\t\toutcome, reason = store.OutcomeSignal", "TestH12_SIGTERM")
+m("H-13 program carries the whole command line", "internal/shape/shape.go", "prog := path.Base(toks[0])", "prog := cmd + path.Base(\"\")", "TestH13_")
+m("H-14 untokenizable command records argc 0", "internal/shape/shape.go",
+  "\tif err == nil {\n\t\tn := len(toks)\n\t\ts.Argc = &n\n\t}", "\tn := len(toks)\n\tif err != nil {\n\t\tn = 0\n\t}\n\ts.Argc = &n", "TestH14_Untokenizable")
+m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n\n\tif records != nil && removedRec > 0 {", "\tif records != nil && removedRec > 0 {", "TestH15_ForgetLeavesAGap")
+m("H-15 eviction deletes without a gap record", "internal/store/gaps.go", "\t\tif _, err := gf.Write(line); err != nil {", "\t\tif _, err := gf.Write(line[:0]); err != nil {", "TestH15_SizeCap")
+m("H-16 append lock removed", "internal/store/store.go",
+  "\tunlock, err := lockFile(f, lockBudget)\n\tif err != nil {\n\t\treturn err\n\t}\n\tdefer unlock()\n\n\tseq, err := nextSeq(dir)",
+  "\tseq, err := nextSeq(dir)", "TestH16_")
+m("H-17 handler opens a socket (no net import, so only the trace sees it)", "internal/hook/handle.go",
+  "\tfault.Inject(fault.PointHookStart)\n", "\tfault.Inject(fault.PointHookStart)\n\tif fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, 0); err == nil {\n\t\tsyscall.Close(fd)\n\t}\n", "TestH17_HandlerOpensNoSockets")
+m("H-18 the hook installs on every call", "cmd/attest/main.go",
+  "\th := hook.New(st, time.Now)\n", "\t_ = cmdWatch(io.Discard)\n\th := hook.New(st, time.Now)\n", "TestH18_")
+m("H-19 report re-reads today's config to judge a past run", "internal/report/report.go",
+  "\t\tsess := build(run)\n", "\t\tsess := build(run)\n\t\tif p, err := settings.UserPath(); err == nil {\n\t\t\tif doc, err := settings.Load(p); err == nil {\n\t\t\t\tif ok, _ := install.Present(doc, st.InstallID(), install.EventPreToolUse); !ok {\n\t\t\t\t\tsess.Coverage.add(store.ReasonHookEntryAbsent)\n\t\t\t\t}\n\t\t\t}\n\t\t}\n", "TestH19_")
+
+# Import additions some mutants need.
+IMPORTS = {
+  "H-17 handler opens a socket (no net import, so only the trace sees it)": ("internal/hook/handle.go", '\t"io"\n', '\t"io"\n\t"syscall"\n'),
+  "H-19 report re-reads today's config to judge a past run": ("internal/report/report.go", '\t"github.com/altrace-dev-role/altrace-attest/internal/store"\n', '\t"github.com/altrace-dev-role/altrace-attest/internal/install"\n\t"github.com/altrace-dev-role/altrace-attest/internal/settings"\n\t"github.com/altrace-dev-role/altrace-attest/internal/store"\n'),
+}
+
+backups = {}
+def backup(f):
+    if f not in backups:
+        backups[f] = pathlib.Path(f).read_bytes()
+def restore():
+    for f, b in backups.items():
+        pathlib.Path(f).write_bytes(b)
+
+undetected = []
+try:
+    for name, f, old, new, test in M:
+        backup(f)
+        s = pathlib.Path(f).read_text()
+        if old not in s:
+            print(f"  ANCHOR MISSING <- {name}"); undetected.append(name); continue
+        s = s.replace(old, new, 1)
+        pathlib.Path(f).write_text(s)
+        if name in IMPORTS:
+            fi, io_, in_ = IMPORTS[name]; backup(fi)
+            t = pathlib.Path(fi).read_text(); assert io_ in t; pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
+        r = subprocess.run(["go", "test", "./...", "-run", test, "-count=1"], capture_output=True, text=True)
+        if r.returncode == 0:
+            print(f"  NOT DETECTED   <- {name}   (spec defect: the test cannot be made to fail)"); undetected.append(name)
+        elif "build failed" in r.stdout + r.stderr or "cannot" in r.stderr and "FAIL" not in r.stdout:
+            print(f"  BUILD BROKEN   <- {name}\n{r.stdout}{r.stderr}"); undetected.append(name)
+        else:
+            print(f"  went red       <- {name}")
+        restore()
+finally:
+    restore()
+
+print()
+print("undetected:", undetected if undetected else "none")
+sys.exit(1 if undetected else 0)

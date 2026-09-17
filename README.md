@@ -21,13 +21,25 @@ Claude Code only. No other agent harness is in scope.
 
 ## Commands
 
-- `attest watch` — install the hook entry and the liveness probe. The only
-  command that writes to your configuration.
-- `attest detach` — remove our entry, leaving everything else in the file as it
-  was found.
-- `attest report` — render a run's declarations and its coverage state.
-- `attest forget --since <when>` — evict records, leaving a coverage gap marker
-  behind.
+- `attest watch` — install the `PreToolUse` recorder and the `SessionStart` /
+  `SessionEnd` liveness probe. The only command that writes to your
+  configuration.
+- `attest detach` — remove them, leaving everything else in the file as it was
+  found.
+- `attest report [--session S]` — render declarations and coverage as JSON.
+- `attest forget --since T` — evict records recorded at or after `T` (an RFC 3339
+  time, or a duration such as `24h` meaning that long ago), leaving a coverage
+  gap record behind.
+
+Invoked by Claude Code, never by hand: `attest hook` for `PreToolUse` and
+`attest probe start|end` for `SessionStart` and `SessionEnd`. Each carries
+`--install <id>` in the installed command line, which is how `watch` and
+`detach` tell their entries from another install's.
+
+The store is at `$ATTEST_HOME`, else `$XDG_STATE_HOME/attest`, else
+`~/.local/state/attest`. `ATTEST_STORE_CAP_BYTES` bounds it (default 512 MiB;
+the oldest runs not written to within an hour are evicted, each leaving a gap
+record). `CLAUDE_CONFIG_DIR` is honoured exactly as Claude Code honours it.
 
 ## The constraint that shapes everything
 
@@ -307,37 +319,90 @@ is reported as a spec defect.
 
     go build ./cmd/attest
     go test ./...
+    python3 test/mutation/sweep.py
 
 The acceptance suite compiles the binary with `-tags attestfault` and execs it.
-That tag adds the fault injection points H-1 needs; a released binary carries no
-injection path at all, because an environment variable that made the recorder
-abandon a run would attack the one guarantee this program exists to provide.
+That tag adds the fault injection points H-1, H-8, H-11 and H-12 need; a
+released binary carries no injection path at all, because an environment
+variable that made the recorder abandon a run would attack the one guarantee
+this program exists to provide.
+
+`sweep.py` is the other half of the contract: it applies one deliberate break
+per headless item and confirms the item's tests go red. An item it reports as
+undetected is a spec defect and should be treated as one.
+
+`test/live/l-items.sh` runs the three live items against a real `claude`
+session on the machine it is run on. It writes to the real
+`~/.claude/settings.json` — that is the test — and removes what it wrote.
 
 ## Status
 
-Piece two, capture and delivery accounting, is implemented. Piece one, install
-and restore, is not: `watch`, `detach`, `report` and `forget` are declared and
-refuse rather than half-work.
+Complete against the specification above. Every headless item is green and has
+been shown to fail under a named break; the three live items were run against
+real Claude Code sessions rather than by hand.
 
-Green, and each shown to fail when the implementation is broken rather than
-merely observed to pass:
+**Decisions the specification asked to have stated.**
 
-- **H-1**, including the control fixture and a guard against the suite going
-  vacuous if the binary is built without fault injection.
-- **H-2**, plus the absent-versus-empty distinction and the subagent join keys.
-- **H-12**, internal-error path only.
-- **H-13**, all three: closed key sets asserted over nested paths, width
-  independent of input size, and the canary sweep behind them.
-- **H-14**, including basename-only programs and per-install digests.
-- **H-15**, permissions, framing and schema version. Also session ids that
-  cannot escape the store, which the acceptance list does not name and should.
-- **H-17**, structurally: the binary's transitive imports contain no `net`,
-  `net/http`, `crypto/tls` or `os/exec`, so there is no code path to a socket.
+- Goroutines: this program starts none of its own. The only goroutine in the
+  process is the runtime's signal-delivery loop. `safe.Go` exists so that H-1's
+  goroutine-panic case exercises the guard a future goroutine would need; it
+  has no production caller.
+- H-16's tension: the append lock is waited on for at most two seconds against
+  the five-second hook timeout. On give-up the terminal record goes to
+  `spill.ndjson`, which is written without waiting, and carries the
+  `tool_use_id` of the declaration that was dropped. A handler that has already
+  spent the budget does not spend it again.
+- H-16's "delete the lock": on Linux and macOS a single `write(2)` under
+  `O_APPEND` is serialised by the kernel, so with one write per record the lock
+  protected nothing and removing it could not make the test go red. Records now
+  carry a per-run `seq` allocated inside the critical section, which gives the
+  file a total order and gives the lock an invariant. The lock is on the data
+  file's inode rather than a separate file, so the check is done by removing
+  the acquisition, not by deleting a file.
+- "At start and at end": `watch` installs `SessionStart` and `SessionEnd` hooks
+  alongside the recorder. They are the liveness probe, and their coverage
+  records are the start and end of the run, written by the run itself. The
+  end-phase record is where an unterminated entry is recorded, at run time.
+- Byte identity for foreign entries: the settings file is held as ordered raw
+  members and only the `hooks → event → array` levels this program edits are
+  re-encoded. Everything else, including every foreign matcher group, is
+  written back as the bytes it was read as.
+- `detach` and `watch` refuse to touch an entry of ours whose matcher, hook
+  count, type or timeout has changed. The executable path is not protected:
+  refreshing a moved binary is what `watch` is for.
+- Fault injection is a build tag, not an environment variable, for the reason
+  given under building and testing.
 
-Not yet covered: **H-3** through **H-9** and **H-19**, which are the install and
-restore surface; **H-10**, which needs transcript parsing; **H-11** and the
-SIGTERM half of **H-12**; **H-16**; the gap records **H-15** requires of `forget`
-and size-cap eviction; and all three live items.
+**Where the specification was found wanting.**
+
+- H-13's width assertion is not achievable as written. `argc` is a count that
+  legitimately varies with the command, and its decimal width changes the
+  record's width, so a 20 KB command with spaces cannot serialise to the same
+  length as a 20-byte one. The invariant that holds — and is tested — is that
+  width does not move when argument *bytes* grow with the shape held constant.
+- §0's inventory of exit-2 causes is incomplete. Runtime fatal errors also exit
+  2 and `recover()` cannot catch them: concurrent map access, stack exhaustion,
+  out of memory, all-goroutine deadlock. An unbounded read of `tool_input` is
+  therefore a path to blocking the user's tool call with no panic involved.
+  stdin is capped at 8 MiB for that reason, and the barrier against this class
+  is structural, not `recover`.
+- H-16's red-check, as above, does not work against an implementation that
+  writes each record in one call.
+
+**What the live runs showed.** `claude -p` fires `SessionStart`, `PreToolUse`
+and `SessionEnd` hooks. Claude Code applies a change to `~/.claude/settings.json`
+inside a running session in both directions: the recorder started firing in the
+session that wrote the file, and stopped firing in a session it was detached
+from, which is what L-3 relies on. A nested `claude -p` inherits the parent
+session's id from the environment unless `--session-id` is given.
+
+**Known limits.** The probe detects hook-system death and nothing subtler;
+H-10 is what catches a recorder that runs and drops records. `forget` rewriting
+`spill.ndjson` can race a spill write that waited out its fifty-millisecond
+patience; the loss is one terminal, which reads as unverified and never as
+verified. `watch` refuses to install a `go run` binary. Locking is implemented
+for Unix; on other platforms the store refuses to open rather than corrupt
+itself.
 
 ## License
 
