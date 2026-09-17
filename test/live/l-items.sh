@@ -58,6 +58,8 @@ claude -p "Do exactly these three things using tools, in this order, then stop. 
 import sys, json
 s = json.load(sys.stdin)["sessions"][0]; t = s["transcripts"][0]
 print("by_tool:", s["declarations"]["by_tool"])
+print("executions recorded:", s["executions"]["recorded"])
+print("declared without an execution:", s["declarations"]["without_execution"])
 print("coverage:", s["coverage"]["state"], s["coverage"]["reasons"])
 print("ids in transcript:", t["ids_in_transcript"], "| recorded:", t["ids_recorded"], "| missing either way:", t["missing_from_store"], t["missing_from_transcript"])'
 

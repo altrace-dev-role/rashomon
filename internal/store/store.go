@@ -118,6 +118,28 @@ func (s *Store) AppendDeclaration(rec Declaration) error {
 	})
 }
 
+// AppendExecution records that a declared call ran, allocating its seq. If the
+// ordered stream's lock cannot be taken it falls back to the spill file: an
+// execution is the only record its tool_use_id gets, so dropping it would read
+// afterwards as a call that never ran.
+func (s *Store) AppendExecution(rec Execution) error {
+	err := s.appendOrdered(rec.SessionID, func(seq int64) any {
+		rec.Seq = &seq
+		return rec
+	})
+	if !errors.Is(err, ErrLockTimeout) {
+		return err
+	}
+	return s.SpillExecution(rec)
+}
+
+// SpillExecution writes an execution to the spill file without touching the
+// ordered stream, under the same rule as SpillTerminal.
+func (s *Store) SpillExecution(rec Execution) error {
+	rec.Seq = nil
+	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileSpill), rec, spillBudget, true)
+}
+
 // AppendTerminal closes a declaration. If the ordered stream's lock cannot be
 // taken it falls back to the spill file, so that the terminal -- and the
 // tool_use_id it names -- lands regardless.

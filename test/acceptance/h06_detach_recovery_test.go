@@ -24,6 +24,7 @@ const (
 // The events watch installs into, with the subcommand each one runs.
 var installedEvents = []struct{ event, sub string }{
 	{"PreToolUse", "hook"},
+	{"PostToolUse", "post"},
 	{"SessionStart", "probe start"},
 	{"SessionEnd", "probe end"},
 }
@@ -197,7 +198,7 @@ func installEntry(t *testing.T, sub, id string) string {
 	m := map[string]any{"hooks": []map[string]any{{
 		"type": "command", "command": attestBin + " " + sub + " --install " + id, "timeout": 5,
 	}}}
-	if sub == "hook" {
+	if sub == "hook" || sub == "post" {
 		m["matcher"] = "*"
 	}
 	b, err := json.Marshal(m)

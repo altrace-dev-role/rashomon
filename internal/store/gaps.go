@@ -17,14 +17,14 @@ import (
 // is still live, so that eviction never races an append.
 const evictGrace = time.Hour
 
-// Forget removes every declaration and terminal recorded at or after since,
-// leaving a gap record per affected run. Coverage records stay: they describe
-// whether the run could be trusted, which remains true of it after its content
-// has been forgotten.
+// Forget removes every declaration, execution and terminal recorded at or
+// after since, leaving a gap record per affected run. Coverage records stay:
+// they describe whether the run could be trusted, which remains true of it
+// after its content has been forgotten.
 //
-// A declaration and its terminal leave together. Removing by timestamp alone
-// can split a pair that straddles the instant, and a declaration left without
-// its terminal reads exactly like a handler that was killed.
+// The records sharing a tool_use_id leave together. Removing by timestamp
+// alone can split a set that straddles the instant, and a declaration left
+// without its terminal reads exactly like a handler that was killed.
 func (s *Store) Forget(since, now time.Time) ([]Gap, error) {
 	names, err := s.Runs()
 	if err != nil {

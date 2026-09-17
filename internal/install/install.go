@@ -15,23 +15,32 @@ import (
 	"github.com/altrace-dev-role/altrace-attest/internal/settings"
 )
 
-// Events we install into. PreToolUse is the recorder. SessionStart and
-// SessionEnd are the liveness probe, and they are also what makes "at start
-// and at end" in the coverage record literal rather than approximate.
+// Events we install into. PreToolUse records what was asked for and
+// PostToolUse records what ran. SessionStart and SessionEnd are the liveness
+// probe, and they are also what makes "at start and at end" in the coverage
+// record literal rather than approximate.
 const (
 	EventPreToolUse   = "PreToolUse"
+	EventPostToolUse  = "PostToolUse"
 	EventSessionStart = "SessionStart"
 	EventSessionEnd   = "SessionEnd"
 )
 
 // Events in the order they are installed.
-var Events = []string{EventPreToolUse, EventSessionStart, EventSessionEnd}
+var Events = []string{EventPreToolUse, EventPostToolUse, EventSessionStart, EventSessionEnd}
+
+// hasMatcher reports whether an event's entry carries a matcher. The tool
+// events match on tool name; the session events match on source or reason, and
+// omitting the matcher is the documented way to match every one of those.
+func hasMatcher(event string) bool {
+	return event == EventPreToolUse || event == EventPostToolUse
+}
 
 const (
-	// Matcher is installed on PreToolUse. A narrower matcher is the classic
-	// silent under-count: "Bash" means Edit, Write, WebFetch and every mcp__*
-	// call produce no declaration while the report goes on claiming full
-	// coverage.
+	// Matcher is installed on the tool events. A narrower matcher is the
+	// classic silent under-count: "Bash" means Edit, Write, WebFetch and every
+	// mcp__* call produce no declaration while the report goes on claiming
+	// full coverage.
 	Matcher = "*"
 	// Timeout is in seconds. Claude Code's documented default is 600.
 	Timeout = 5
@@ -72,6 +81,8 @@ func subcommand(event string) string {
 	switch event {
 	case EventPreToolUse:
 		return "hook"
+	case EventPostToolUse:
+		return "post"
 	case EventSessionStart:
 		return "probe start"
 	case EventSessionEnd:
@@ -102,9 +113,7 @@ func (s Spec) group(event string) matcherGroup {
 		Command: s.Command(event),
 		Timeout: Timeout,
 	}}}
-	// Session events match on source or reason, not tool name; omitting the
-	// matcher is the documented way to match every one.
-	if event == EventPreToolUse {
+	if hasMatcher(event) {
 		m := Matcher
 		g.Matcher = &m
 	}
@@ -313,13 +322,13 @@ func intact(raw json.RawMessage, event string) string {
 	}
 
 	switch {
-	case event == EventPreToolUse && (g.Matcher == nil || *g.Matcher != Matcher):
+	case hasMatcher(event) && (g.Matcher == nil || *g.Matcher != Matcher):
 		got := "absent"
 		if g.Matcher != nil {
 			got = fmt.Sprintf("%q", *g.Matcher)
 		}
 		return fmt.Sprintf("matcher is %s, expected %q", got, Matcher)
-	case event != EventPreToolUse && g.Matcher != nil && *g.Matcher != "":
+	case !hasMatcher(event) && g.Matcher != nil && *g.Matcher != "":
 		return fmt.Sprintf("matcher is %q, expected none", *g.Matcher)
 	}
 

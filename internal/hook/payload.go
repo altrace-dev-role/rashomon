@@ -1,4 +1,4 @@
-// Package hook turns a PreToolUse payload into records.
+// Package hook turns a PreToolUse or PostToolUse payload into records.
 package hook
 
 import "encoding/json"

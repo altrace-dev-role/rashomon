@@ -11,7 +11,8 @@ import (
 
 // TestH3_InstalledEntryReadBackInFull reads the file back through a generic
 // decoder -- the only reader whose opinion matters -- and checks every field
-// the spec names, plus the two probe entries watch installs beside the recorder.
+// the spec names, plus the PostToolUse recorder and the two probe entries
+// watch installs beside it.
 func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
@@ -22,7 +23,7 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	// Under hooks.PreToolUse: not a sibling event, not a typo.
 	for event := range sf.Hooks {
 		switch event {
-		case "PreToolUse", "SessionStart", "SessionEnd":
+		case "PreToolUse", "PostToolUse", "SessionStart", "SessionEnd":
 		default:
 			t.Errorf("watch wrote an entry under hooks.%s", event)
 		}
@@ -61,6 +62,32 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	wantExe, _ := filepath.EvalSymlinks(attestBin)
 	if exe != wantExe {
 		t.Errorf("command path is %q, want the binary under test %q", exe, wantExe)
+	}
+
+	// PostToolUse, installed exactly as the recorder is. A declaration is a
+	// request; this is the entry that records what ran, and a narrower matcher
+	// or a shorter timeout here under-counts executions while the declarations
+	// go on arriving in full.
+	post := ours(sf.Hooks["PostToolUse"])
+	if len(post) != 1 {
+		t.Fatalf("got %d entries of ours under hooks.PostToolUse, want 1", len(post))
+	}
+	pg := post[0]
+	if pg.Matcher == nil || *pg.Matcher != "*" {
+		t.Errorf("PostToolUse matcher is %v, want \"*\"", pg.Matcher)
+	}
+	if len(pg.Hooks) != 1 {
+		t.Fatalf("PostToolUse entry carries %d hooks, want 1", len(pg.Hooks))
+	}
+	ph := pg.Hooks[0]
+	if ph.Type != "command" {
+		t.Errorf("PostToolUse type is %q, want \"command\"", ph.Type)
+	}
+	if ph.Timeout != 5 {
+		t.Errorf("PostToolUse timeout is %d, want 5", ph.Timeout)
+	}
+	if want := " post --install " + e.installID(); !strings.HasSuffix(ph.Command, want) {
+		t.Errorf("PostToolUse command %q does not end with %q", ph.Command, want)
 	}
 
 	// The probe, installed alongside.
@@ -172,7 +199,7 @@ func TestH6_IdempotentInstallOneOwner(t *testing.T) {
 			t.Errorf("a second watch changed the file")
 		}
 		sf := e.settings()
-		for _, event := range []string{"PreToolUse", "SessionStart", "SessionEnd"} {
+		for _, event := range []string{"PreToolUse", "PostToolUse", "SessionStart", "SessionEnd"} {
 			if got := len(ours(sf.Hooks[event])); got != 1 {
 				t.Errorf("after two watches, %d entries of ours under %s, want 1", got, event)
 			}
@@ -182,7 +209,7 @@ func TestH6_IdempotentInstallOneOwner(t *testing.T) {
 			t.Fatalf("detach: exit %d, stderr %q", res.exitCode, res.stderr)
 		}
 		sf = e.settings()
-		for _, event := range []string{"PreToolUse", "SessionStart", "SessionEnd"} {
+		for _, event := range []string{"PreToolUse", "PostToolUse", "SessionStart", "SessionEnd"} {
 			if got := len(ours(sf.Hooks[event])); got != 0 {
 				t.Errorf("after detach, %d entries of ours remain under %s", got, event)
 			}
@@ -199,7 +226,7 @@ func TestH6_IdempotentInstallOneOwner(t *testing.T) {
 			m := map[string]any{"hooks": []map[string]any{{
 				"type": "command", "command": attestBin + " " + sub + " --install " + other, "timeout": 5,
 			}}}
-			if sub == "hook" {
+			if sub == "hook" || sub == "post" {
 				m["matcher"] = "*"
 			}
 			return m
@@ -209,7 +236,7 @@ func TestH6_IdempotentInstallOneOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 		hooks := doc["hooks"].(map[string]any)
-		for event, sub := range map[string]string{"PreToolUse": "hook", "SessionStart": "probe start", "SessionEnd": "probe end"} {
+		for event, sub := range map[string]string{"PreToolUse": "hook", "PostToolUse": "post", "SessionStart": "probe start", "SessionEnd": "probe end"} {
 			hooks[event] = append(hooks[event].([]any), otherEntry(sub))
 		}
 		out, _ := json.MarshalIndent(doc, "", "  ")
@@ -224,7 +251,7 @@ func TestH6_IdempotentInstallOneOwner(t *testing.T) {
 		}
 
 		sf := e.settings()
-		for _, event := range []string{"PreToolUse", "SessionStart", "SessionEnd"} {
+		for _, event := range []string{"PreToolUse", "PostToolUse", "SessionStart", "SessionEnd"} {
 			remaining := ours(sf.Hooks[event])
 			if len(remaining) != 1 {
 				t.Errorf("under %s, %d install entries remain, want 1 (the other install's)", event, len(remaining))

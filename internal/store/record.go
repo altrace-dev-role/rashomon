@@ -9,6 +9,7 @@ const SchemaVersion = 1
 // Record type discriminators.
 const (
 	TypeDeclaration = "declaration"
+	TypeExecution   = "execution"
 	TypeTerminal    = "terminal"
 	TypeCoverage    = "coverage"
 	TypeGap         = "gap"
@@ -54,6 +55,30 @@ type Declaration struct {
 	PermissionMode string      `json:"permission_mode"`
 	ToolName       string      `json:"tool_name"`
 	Shape          shape.Shape `json:"shape"`
+}
+
+// Execution records that a declared call ran, one per PostToolUse invocation.
+//
+// A declaration with an execution beside it ran. A declaration without one was
+// denied, failed, or had its execution go unrecorded, and nothing here claims
+// to know which of the three it was.
+//
+// It carries the join key, the clock and the tool name, and no field that could
+// hold any part of a tool response. The PostToolUse payload carries the
+// response; internal/hook does not declare a field for it, so it is never a
+// value in this process, and there is nowhere here for it to be put if it were.
+//
+// Seq is null when the record was written to the spill file because the
+// ordered stream's lock could not be taken. The id lands either way; what a
+// lock timeout costs is the position in the total order, not the record.
+type Execution struct {
+	Type          string `json:"type"`
+	SchemaVersion int    `json:"schema_version"`
+	Seq           *int64 `json:"seq"`
+	RecordedAtMS  int64  `json:"recorded_at_unix_ms"`
+	ToolUseID     string `json:"tool_use_id"`
+	SessionID     string `json:"session_id"`
+	ToolName      string `json:"tool_name"`
 }
 
 // Terminal outcomes.
@@ -107,6 +132,7 @@ const (
 const (
 	PhaseStart = "start"
 	PhaseCall  = "call"
+	PhasePost  = "post"
 	PhaseEnd   = "end"
 )
 

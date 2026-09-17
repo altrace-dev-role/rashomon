@@ -13,6 +13,8 @@ const (
 	pointHookParsed           = "hook.parsed"
 	pointStoreWrite           = "store.write"
 	pointHookAfterDeclaration = "hook.after_declaration"
+	pointPostStart            = "post.start"
+	pointPostParsed           = "post.parsed"
 	pointSettingsOpened       = "settings.write.opened"
 	pointSettingsBeforeRename = "settings.write.before_rename"
 )
@@ -150,23 +152,29 @@ func assertNoTraceback(t *testing.T, res result) {
 // assertCallCoverage checks the most recent call-phase coverage record.
 func assertCallCoverage(t *testing.T, e *env, session, wantState, wantReason string) {
 	t.Helper()
-	recs := e.coverage(session, "call")
+	assertPhaseCoverage(t, e, session, "call", wantState, wantReason)
+}
+
+// assertPhaseCoverage checks the most recent coverage record of one phase.
+func assertPhaseCoverage(t *testing.T, e *env, session, phase, wantState, wantReason string) {
+	t.Helper()
+	recs := e.coverage(session, phase)
 	if len(recs) == 0 {
-		t.Fatalf("no call-phase coverage record for session %q", session)
+		t.Fatalf("no %s-phase coverage record for session %q", phase, session)
 	}
 	last := recs[len(recs)-1]
 
 	if got := last.str("state"); got != wantState {
-		t.Errorf("coverage state is %q, want %q (reason %v)", got, wantState, last.fields["reason"])
+		t.Errorf("%s coverage state is %q, want %q (reason %v)", phase, got, wantState, last.fields["reason"])
 	}
 	reason := last.fields["reason"]
 	if wantReason == "" {
 		if reason != nil {
-			t.Errorf("coverage reason is %v, want null", reason)
+			t.Errorf("%s coverage reason is %v, want null", phase, reason)
 		}
 		return
 	}
 	if got, _ := reason.(string); got != wantReason {
-		t.Errorf("coverage reason is %v, want %q", reason, wantReason)
+		t.Errorf("%s coverage reason is %v, want %q", phase, reason, wantReason)
 	}
 }

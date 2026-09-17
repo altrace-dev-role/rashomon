@@ -19,6 +19,10 @@ var (
 		"transcript_path", "permission_mode", "tool_name",
 		"shape", "shape.program", "shape.verb_class", "shape.argc", "shape.digest",
 	}
+	executionKeys = []string{
+		"type", "schema_version", "seq", "recorded_at_unix_ms",
+		"tool_use_id", "session_id", "tool_name",
+	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
 		"tool_use_id", "session_id", "outcome", "reason",
@@ -33,11 +37,15 @@ func TestH13_RecordKeySetsAreClosed(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 	e.mustHook(defaultPayload().build(t))
+	e.mustPost(defaultPost().build(t))
 	e.probe("end", testSession)
 
 	assertKeySet(t, e.declarations(testSession)[0], declarationKeys)
+	assertKeySet(t, e.executions(testSession)[0], executionKeys)
 	assertKeySet(t, e.terminals(testSession)[0], terminalKeys)
-	for _, phase := range []string{"start", "call", "end"} {
+	// The post phase writes a coverage record like any other phase, and phase
+	// is a key the allowlist already carries: a new phase adds no key.
+	for _, phase := range []string{"start", "call", "post", "end"} {
 		assertKeySet(t, e.coverage(testSession, phase)[0], coverageKeys)
 	}
 }

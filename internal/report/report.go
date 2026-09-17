@@ -6,6 +6,13 @@
 // retroactively invalidate every run ever captured, and the one action users
 // are told is safe would destroy everything they had collected.
 //
+// A declaration is a request; an execution record is that request having run.
+// What the absence of one means is three things at once -- the call was denied,
+// or it failed, or its PostToolUse invocation recorded nothing -- and no field
+// here picks between them. The ids are named and the permission mode each was
+// declared in is named beside them, because that is what a consumer needs to
+// exclude the modes in which nothing is ever denied.
+//
 // The accounting equation is computed per transcript, not per run. A nested
 // claude -p inherits the parent session's id and writes its own transcript, so
 // one run directory holds declarations against two or more transcript paths.
@@ -28,6 +35,7 @@ import (
 const (
 	ReasonRunNotClosed       = "run_not_closed"
 	ReasonTranscriptMismatch = "transcript_mismatch"
+	ReasonExecutionMismatch  = "execution_mismatch"
 	ReasonGap                = "gap"
 )
 
@@ -58,7 +66,25 @@ type Declarations struct {
 	WithoutTranscript int            `json:"without_transcript"`
 	Unterminated      []string       `json:"unterminated"`
 	Dropped           []string       `json:"dropped"`
+	WithoutExecution  []Unexecuted   `json:"without_execution"`
 	ByTool            map[string]int `json:"by_tool"`
+}
+
+// Unexecuted names a declaration that no execution record answers. It is not a
+// denial: PreToolUse fires before the permission flow, so this list holds the
+// denied, the failed and the unrecorded together, and it carries the
+// permission mode so that a consumer can drop the modes in which nothing is
+// denied rather than being handed a verdict this program cannot reach.
+type Unexecuted struct {
+	ToolUseID      string `json:"tool_use_id"`
+	PermissionMode string `json:"permission_mode"`
+}
+
+// Executions counts what the PostToolUse recorder wrote. It is a count of this
+// store's own records, so zero is an honest answer: it says no execution was
+// recorded, which is exactly what is known.
+type Executions struct {
+	Recorded int `json:"recorded"`
 }
 
 // Transcript is the accounting equation for one transcript path: the ids
@@ -76,6 +102,19 @@ type Transcript struct {
 	IDsRecorded           int      `json:"ids_recorded"`
 	MissingFromStore      []string `json:"missing_from_store"`
 	MissingFromTranscript []string `json:"missing_from_transcript"`
+	// The execution half of the same equation. IDsExecuted counts this store's
+	// records and is therefore always known; ResultsInTranscript is null when
+	// the transcript could not be read, under the same rule as the counts
+	// above.
+	//
+	// ExecutedButUnrecorded is a failure: the transcript says the call
+	// finished and no execution record says so. DeclaredWithoutResult is not
+	// one. It holds the denied, the failed and the transcript that has not
+	// caught up, and it is never to be read as a count of denials.
+	IDsExecuted           int      `json:"ids_executed"`
+	ResultsInTranscript   *int     `json:"results_in_transcript"`
+	ExecutedButUnrecorded []string `json:"executed_but_unrecorded"`
+	DeclaredWithoutResult []string `json:"declared_without_result"`
 }
 
 // Session is one run's report. Transcripts holds one accounting group per
@@ -85,6 +124,7 @@ type Session struct {
 	InstallID      string       `json:"install_id"`
 	Coverage       Coverage     `json:"coverage"`
 	Declarations   Declarations `json:"declarations"`
+	Executions     Executions   `json:"executions"`
 	Transcripts    []Transcript `json:"transcripts"`
 	Gaps           []store.Gap  `json:"gaps"`
 	SkippedRecords int          `json:"skipped_records"`
@@ -163,11 +203,13 @@ func build(run *store.Run) Session {
 		SessionID:      run.SessionID(),
 		SkippedRecords: run.Skipped,
 		Declarations: Declarations{
-			Recorded:     len(run.Declarations),
-			Unterminated: nonNil(run.Unterminated()),
-			Dropped:      nonNil(run.Dropped()),
-			ByTool:       map[string]int{},
+			Recorded:         len(run.Declarations),
+			Unterminated:     nonNil(run.Unterminated()),
+			Dropped:          nonNil(run.Dropped()),
+			WithoutExecution: []Unexecuted{},
+			ByTool:           map[string]int{},
 		},
+		Executions:  Executions{Recorded: len(run.Executions)},
 		Transcripts: []Transcript{},
 		Coverage: Coverage{
 			Reasons:          []string{},
@@ -175,8 +217,18 @@ func build(run *store.Run) Session {
 			HookEntryAtEnd:   store.EntryUnknown,
 		},
 	}
+	mode := map[string]string{}
 	for _, d := range run.Declarations {
 		sess.Declarations.ByTool[d.ToolName]++
+		mode[d.ToolUseID] = d.PermissionMode
+	}
+	executed := map[string]bool{}
+	for _, x := range run.Executions {
+		executed[x.ToolUseID] = true
+	}
+	for _, id := range run.Unexecuted() {
+		sess.Declarations.WithoutExecution = append(sess.Declarations.WithoutExecution,
+			Unexecuted{ToolUseID: id, PermissionMode: mode[id]})
 	}
 
 	// What the run said about itself, phase by phase.
@@ -232,19 +284,31 @@ func build(run *store.Run) Session {
 	}
 	sort.Strings(paths)
 	for _, path := range paths {
-		t := accounting(path, byPath[path])
+		t := accounting(path, byPath[path], executed)
 		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0) {
 			sess.Coverage.add(ReasonTranscriptMismatch)
+		}
+		// A result in the transcript with no execution record beside it is the
+		// PostToolUse recorder having not fired or not landed. The reverse --
+		// a declaration with no result -- is the ordinary shape of a denial
+		// and says nothing about coverage.
+		if t.Readable && len(t.ExecutedButUnrecorded) > 0 {
+			sess.Coverage.add(ReasonExecutionMismatch)
 		}
 		sess.Transcripts = append(sess.Transcripts, t)
 	}
 	return sess
 }
 
-func accounting(path string, recorded map[string]bool) Transcript {
+func accounting(path string, recorded, executed map[string]bool) Transcript {
 	t := Transcript{Path: path, IDsRecorded: len(recorded)}
+	for id := range recorded {
+		if executed[id] {
+			t.IDsExecuted++
+		}
+	}
 
-	ids, files, err := TranscriptIDs(path)
+	ids, results, files, err := TranscriptIDs(path)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			// A transcript that exists but cannot be read is still unreadable;
@@ -257,6 +321,8 @@ func accounting(path string, recorded map[string]bool) Transcript {
 	t.Files = &files
 	n := len(ids)
 	t.IDsInTranscript = &n
+	nResults := len(results)
+	t.ResultsInTranscript = &nResults
 
 	t.MissingFromStore = []string{}
 	for id := range ids {
@@ -270,8 +336,22 @@ func accounting(path string, recorded map[string]bool) Transcript {
 			t.MissingFromTranscript = append(t.MissingFromTranscript, id)
 		}
 	}
+	t.ExecutedButUnrecorded = []string{}
+	for id := range results {
+		if !executed[id] {
+			t.ExecutedButUnrecorded = append(t.ExecutedButUnrecorded, id)
+		}
+	}
+	t.DeclaredWithoutResult = []string{}
+	for id := range recorded {
+		if !results[id] {
+			t.DeclaredWithoutResult = append(t.DeclaredWithoutResult, id)
+		}
+	}
 	sort.Strings(t.MissingFromStore)
 	sort.Strings(t.MissingFromTranscript)
+	sort.Strings(t.ExecutedButUnrecorded)
+	sort.Strings(t.DeclaredWithoutResult)
 	return t
 }
 

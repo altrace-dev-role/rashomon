@@ -27,7 +27,7 @@ func seedOtherInstall(e *env) {
 		m := map[string]any{"hooks": []map[string]any{{
 			"type": "command", "command": attestBin + " " + sub + " --install " + otherInstall, "timeout": 5,
 		}}}
-		if sub == "hook" {
+		if sub == "hook" || sub == "post" {
 			m["matcher"] = "*"
 		}
 		return m
@@ -37,7 +37,7 @@ func seedOtherInstall(e *env) {
 		e.t.Fatal(err)
 	}
 	hooks := doc["hooks"].(map[string]any)
-	for event, sub := range map[string]string{"PreToolUse": "hook", "SessionStart": "probe start", "SessionEnd": "probe end"} {
+	for event, sub := range map[string]string{"PreToolUse": "hook", "PostToolUse": "post", "SessionStart": "probe start", "SessionEnd": "probe end"} {
 		hooks[event] = append(hooks[event].([]any), otherEntry(sub))
 	}
 	out, _ := json.MarshalIndent(doc, "", "  ")
@@ -195,7 +195,7 @@ func TestH6_ForeignInstallEntryStandsDown(t *testing.T) {
 		}
 		// Reported, not adjudicated: the install still proceeds and the other
 		// install's entries are still its own.
-		for _, event := range []string{"PreToolUse", "SessionStart", "SessionEnd"} {
+		for _, event := range []string{"PreToolUse", "PostToolUse", "SessionStart", "SessionEnd"} {
 			if got := len(ours(e.settings().Hooks[event])); got != 2 {
 				t.Errorf("under %s, %d install entries, want 2 (ours and theirs)", event, got)
 			}

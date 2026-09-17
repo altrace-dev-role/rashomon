@@ -22,6 +22,8 @@ const (
 	PointHookParsed           = "hook.parsed"
 	PointStoreWrite           = "store.write"
 	PointHookAfterDeclaration = "hook.after_declaration"
+	PointPostStart            = "post.start"
+	PointPostParsed           = "post.parsed"
 	PointSettingsLoad         = "settings.load"
 	PointSettingsOpened       = "settings.write.opened"
 	PointSettingsBeforeRename = "settings.write.before_rename"

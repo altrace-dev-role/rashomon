@@ -163,6 +163,12 @@ func (e *env) hook(payload string, extraEnv ...string) result {
 	return e.run(payload, extraEnv, append([]string{"hook"}, e.installArgs()...)...)
 }
 
+// post runs the PostToolUse path, as watch installs it.
+func (e *env) post(payload string, extraEnv ...string) result {
+	e.t.Helper()
+	return e.run(payload, extraEnv, append([]string{"post"}, e.installArgs()...)...)
+}
+
 func (e *env) probe(phase, sessionID string, extraEnv ...string) result {
 	e.t.Helper()
 	return e.run(e.sessionPayload(phase, sessionID), extraEnv, append([]string{"probe", phase}, e.installArgs()...)...)
@@ -211,6 +217,13 @@ func (e *env) mustHook(payload string) {
 	}
 }
 
+func (e *env) mustPost(payload string) {
+	e.t.Helper()
+	if res := e.post(payload); res.exitCode != 0 {
+		e.t.Fatalf("post: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+}
+
 // reportSession is the report output contract, as a test reads it.
 type reportSession struct {
 	SessionID string `json:"session_id"`
@@ -224,12 +237,19 @@ type reportSession struct {
 		HookEntryAtEnd   string   `json:"hook_entry_at_end"`
 	} `json:"coverage"`
 	Declarations struct {
-		Recorded          int            `json:"recorded"`
-		WithoutTranscript int            `json:"without_transcript"`
-		Unterminated      []string       `json:"unterminated"`
-		Dropped           []string       `json:"dropped"`
-		ByTool            map[string]int `json:"by_tool"`
+		Recorded          int      `json:"recorded"`
+		WithoutTranscript int      `json:"without_transcript"`
+		Unterminated      []string `json:"unterminated"`
+		Dropped           []string `json:"dropped"`
+		WithoutExecution  []struct {
+			ToolUseID      string `json:"tool_use_id"`
+			PermissionMode string `json:"permission_mode"`
+		} `json:"without_execution"`
+		ByTool map[string]int `json:"by_tool"`
 	} `json:"declarations"`
+	Executions struct {
+		Recorded int `json:"recorded"`
+	} `json:"executions"`
 	Transcripts []struct {
 		Path                  string   `json:"path"`
 		Readable              bool     `json:"readable"`
@@ -238,6 +258,10 @@ type reportSession struct {
 		IDsRecorded           int      `json:"ids_recorded"`
 		MissingFromStore      []string `json:"missing_from_store"`
 		MissingFromTranscript []string `json:"missing_from_transcript"`
+		IDsExecuted           int      `json:"ids_executed"`
+		ResultsInTranscript   *int     `json:"results_in_transcript"`
+		ExecutedButUnrecorded []string `json:"executed_but_unrecorded"`
+		DeclaredWithoutResult []string `json:"declared_without_result"`
 	} `json:"transcripts"`
 	Gaps []map[string]any `json:"gaps"`
 }
@@ -308,6 +332,11 @@ func (e *env) declarations(sessionID string) []record {
 func (e *env) terminals(sessionID string) []record {
 	e.t.Helper()
 	return recordsOfType(e.records(sessionID), "terminal")
+}
+
+func (e *env) executions(sessionID string) []record {
+	e.t.Helper()
+	return recordsOfType(e.records(sessionID), "execution")
 }
 
 func (e *env) coverage(sessionID, phase string) []record {

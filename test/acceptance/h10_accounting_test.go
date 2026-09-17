@@ -12,7 +12,12 @@ import (
 // object per line, tool_use blocks inside assistant messages, subagent
 // transcripts beside the main one. The tool inputs carry a canary so that a
 // reader that persisted anything beyond ids would be caught by H-13's sweep.
-func writeTranscript(t *testing.T, dir, sessionID string, ids []string, subagents map[string][]string) string {
+//
+// results names the ids that also get a tool_result block. It is a subset
+// because a transcript routinely holds a call without its result -- the call
+// was denied, or it failed, or the file has not caught up -- and the ids that
+// have one are what H-20 checks the execution records against.
+func writeTranscript(t *testing.T, dir, sessionID string, ids, results []string, subagents map[string][]string) string {
 	t.Helper()
 	line := func(id string) string {
 		return fmt.Sprintf(`{"type":"assistant","uuid":"u-%s","message":{"role":"assistant","content":[{"type":"text","text":"Running it."},{"type":"tool_use","id":%q,"name":"Bash","input":{"command":"echo TRANSCRIPT-CANARY-%s"}}]}}`, id, id, id)
@@ -20,10 +25,17 @@ func writeTranscript(t *testing.T, dir, sessionID string, ids []string, subagent
 	result := func(id string) string {
 		return fmt.Sprintf(`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":%q,"content":"ok"}]}}`, id)
 	}
+	answered := map[string]bool{}
+	for _, id := range results {
+		answered[id] = true
+	}
 	body := `{"type":"summary","summary":"a session"}` + "\n" +
 		`{"type":"user","message":{"role":"user","content":"plain string content"}}` + "\n"
 	for _, id := range ids {
-		body += line(id) + "\n" + result(id) + "\n"
+		body += line(id) + "\n"
+		if answered[id] {
+			body += result(id) + "\n"
+		}
 	}
 	body += "this line is not JSON and must be skipped\n"
 
@@ -64,7 +76,7 @@ func TestH10_AccountingEquationHolds(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 	transcript := writeTranscript(t, t.TempDir(), testSession,
-		[]string{"toolu_a", "toolu_b", "toolu_c"},
+		[]string{"toolu_a", "toolu_b", "toolu_c"}, nil,
 		map[string][]string{"explore": {"toolu_d"}, "plan": {"toolu_e", "toolu_a"}})
 	e.hookIDs(transcript, "toolu_a", "toolu_b", "toolu_c", "toolu_d", "toolu_e")
 	e.probe("end", testSession)
@@ -100,7 +112,7 @@ func TestH10_MissingDeclarationIsNamed(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 	transcript := writeTranscript(t, t.TempDir(), testSession,
-		[]string{"toolu_a", "toolu_b", "toolu_c"}, map[string][]string{"sub": {"toolu_d"}})
+		[]string{"toolu_a", "toolu_b", "toolu_c"}, nil, map[string][]string{"sub": {"toolu_d"}})
 	e.hookIDs(transcript, "toolu_a", "toolu_b", "toolu_c") // toolu_d never recorded
 	e.probe("end", testSession)
 
@@ -122,7 +134,7 @@ func TestH10_MissingDeclarationIsNamed(t *testing.T) {
 func TestH10_SetsNotCounts(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
-	transcript := writeTranscript(t, t.TempDir(), testSession, []string{"toolu_a", "toolu_b", "toolu_c", "toolu_d"}, nil)
+	transcript := writeTranscript(t, t.TempDir(), testSession, []string{"toolu_a", "toolu_b", "toolu_c", "toolu_d"}, nil, nil)
 	e.hookIDs(transcript, "toolu_a", "toolu_b", "toolu_c", "toolu_zz") // same count, different set
 	e.probe("end", testSession)
 
@@ -180,9 +192,9 @@ func TestH10_UnreadableTranscriptIsNotZero(t *testing.T) {
 func twoTranscripts(t *testing.T) (parent, spawned string) {
 	t.Helper()
 	dir := t.TempDir()
-	parent = writeTranscript(t, dir, "parent", []string{"toolu_a", "toolu_b"},
+	parent = writeTranscript(t, dir, "parent", []string{"toolu_a", "toolu_b"}, nil,
 		map[string][]string{"explore": {"toolu_c"}})
-	spawned = writeTranscript(t, dir, "spawned", []string{"toolu_d", "toolu_e"}, nil)
+	spawned = writeTranscript(t, dir, "spawned", []string{"toolu_d", "toolu_e"}, nil, nil)
 	return parent, spawned
 }
 
@@ -277,7 +289,7 @@ func TestH10_PerTranscriptMismatchStaysInItsGroup(t *testing.T) {
 func TestH10_DeclarationsWithoutATranscript(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
-	transcript := writeTranscript(t, t.TempDir(), testSession, []string{"toolu_a"}, nil)
+	transcript := writeTranscript(t, t.TempDir(), testSession, []string{"toolu_a"}, nil, nil)
 	for _, id := range []string{"toolu_x", "toolu_y"} {
 		p := defaultPayload()
 		p.ToolUseID = id

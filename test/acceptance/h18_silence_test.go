@@ -14,6 +14,7 @@ func TestH18_NothingInstallsSilently(t *testing.T) {
 	exercise := func(e *env) {
 		e.run("", nil, "version")
 		e.hook(defaultPayload().build(t))
+		e.post(defaultPost().build(t))
 		e.probe("start", testSession)
 		e.probe("end", testSession)
 		e.run("", nil, "report")

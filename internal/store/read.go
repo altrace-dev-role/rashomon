@@ -20,6 +20,7 @@ type Run struct {
 	// when that id is a plain path element and a digest of it otherwise.
 	Dir          string
 	Declarations []Declaration
+	Executions   []Execution
 	Terminals    []Terminal
 	Coverage     []Coverage
 	// Skipped counts lines that did not parse, carried an unknown type, or
@@ -104,6 +105,13 @@ func (s *Store) ReadRunDir(name string) (*Run, error) {
 				return
 			}
 			run.Declarations = append(run.Declarations, rec)
+		case TypeExecution:
+			var rec Execution
+			if json.Unmarshal(line, &rec) != nil {
+				run.Skipped++
+				return
+			}
+			run.Executions = append(run.Executions, rec)
 		case TypeTerminal:
 			var rec Terminal
 			if json.Unmarshal(line, &rec) != nil {
@@ -178,6 +186,24 @@ func (r *Run) Unterminated() []string {
 	var ids []string
 	for _, d := range r.Declarations {
 		if !closed[d.ToolUseID] {
+			ids = append(ids, d.ToolUseID)
+		}
+	}
+	return ids
+}
+
+// Unexecuted returns the tool_use_ids of declarations that no execution record
+// names: a call that was denied, that failed, or whose PostToolUse invocation
+// did not record one. Which of the three it was is not something this store
+// knows, and nothing here narrows it down.
+func (r *Run) Unexecuted() []string {
+	executed := map[string]bool{}
+	for _, x := range r.Executions {
+		executed[x.ToolUseID] = true
+	}
+	var ids []string
+	for _, d := range r.Declarations {
+		if !executed[d.ToolUseID] {
 			ids = append(ids, d.ToolUseID)
 		}
 	}

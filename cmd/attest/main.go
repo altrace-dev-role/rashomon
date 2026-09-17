@@ -50,6 +50,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "hook":
 		return cmdHook(rest, stdin, stderr)
+	case "post":
+		return cmdPost(rest, stdin, stderr)
 	case "probe":
 		return cmdProbe(rest, stdin, stderr)
 
@@ -109,6 +111,30 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	h := hook.New(st, time.Now)
 	captureErr := safe.Guard(func() error { return h.Capture(stdin) })
 	_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })
+	return exitOK
+}
+
+// cmdPost handles one PostToolUse invocation, under the same rule as hook: it
+// is invoked by Claude Code, it always succeeds, and it writes nothing to
+// stdout.
+//
+// A declaration is a request. This is what closes it: the record that the call
+// the agent asked for went on to run.
+func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
+	sig := hook.WatchSignals()
+	defer sig.Stop()
+
+	st := openForHook(stderr)
+	if st == nil {
+		return exitOK
+	}
+	if standsDown(args, st, stderr) {
+		return exitOK
+	}
+
+	p := hook.NewPost(st, time.Now)
+	captureErr := safe.Guard(func() error { return p.Capture(stdin) })
+	_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
 	return exitOK
 }
 
@@ -461,8 +487,9 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `attest -- record what a Claude Code session asked to run
 
 usage:
-  attest watch                 install the PreToolUse recorder and the
-                               SessionStart/SessionEnd liveness probe
+  attest watch                 install the PreToolUse and PostToolUse
+                               recorders and the SessionStart/SessionEnd
+                               liveness probe
   attest detach                remove them, leaving everything else as found
   attest detach --install <id> remove one install's entries, reading no store
   attest detach --all          remove every entry carrying an attest install
@@ -473,6 +500,7 @@ usage:
 
 invoked by Claude Code, never by hand:
   attest hook [--install ID]   handle one PreToolUse invocation
+  attest post [--install ID]   handle one PostToolUse invocation
   attest probe start|end [--install ID]
                                handle SessionStart / SessionEnd
 

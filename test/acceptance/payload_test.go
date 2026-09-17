@@ -40,6 +40,56 @@ func defaultPayload() payloadOpts {
 	}
 }
 
+// postOpts builds a PostToolUse payload. It carries the same session fields as
+// the PreToolUse one plus tool_response, which is tool output: every test that
+// uses this builder is checking what happens to that field, so it is always
+// present and never empty.
+type postOpts struct {
+	SessionID      string
+	TranscriptPath string
+	PermissionMode string
+	ToolName       string
+	ToolInput      map[string]any
+	ToolUseID      string
+	ToolResponse   any
+}
+
+func defaultPost() postOpts {
+	return postOpts{
+		SessionID:      testSession,
+		TranscriptPath: "/tmp/transcripts/sess-1.jsonl",
+		PermissionMode: "default",
+		ToolName:       "Bash",
+		ToolInput:      map[string]any{"command": "git status --short"},
+		ToolUseID:      testToolUseID,
+		ToolResponse: map[string]any{
+			"stdout":      " M README.md\n",
+			"stderr":      "",
+			"interrupted": false,
+		},
+	}
+}
+
+func (o postOpts) build(t *testing.T) string {
+	t.Helper()
+
+	b, err := json.Marshal(map[string]any{
+		"hook_event_name": "PostToolUse",
+		"session_id":      o.SessionID,
+		"transcript_path": o.TranscriptPath,
+		"cwd":             "/tmp/project",
+		"permission_mode": o.PermissionMode,
+		"tool_name":       o.ToolName,
+		"tool_input":      o.ToolInput,
+		"tool_use_id":     o.ToolUseID,
+		"tool_response":   o.ToolResponse,
+	})
+	if err != nil {
+		t.Fatalf("building payload: %v", err)
+	}
+	return string(b)
+}
+
 func (o payloadOpts) build(t *testing.T) string {
 	t.Helper()
 

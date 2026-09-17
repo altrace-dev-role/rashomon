@@ -74,11 +74,51 @@ m("H-8  settings written in place instead of temp+rename", "internal/settings/wr
 m("H-9  managed layer not consulted", "internal/settings/locate.go", "\t\t{LayerManaged, loc.Managed},\n", "", "TestH9_")
 m("H-9  only the user layer consulted", "internal/settings/locate.go",
   "\t\t{LayerManaged, loc.Managed},\n\t\t{LayerLocal, loc.Local},\n\t\t{LayerProject, loc.Project},\n", "", "TestH9_")
+m("H-20 PostToolUse is not installed", "internal/install/install.go",
+  "var Events = []string{EventPreToolUse, EventPostToolUse, EventSessionStart, EventSessionEnd}",
+  "var Events = []string{EventPreToolUse, EventSessionStart, EventSessionEnd}", "TestH3_")
+m("H-20 the post entry is installed without a matcher", "internal/install/install.go",
+  "\treturn event == EventPreToolUse || event == EventPostToolUse", "\treturn event == EventPreToolUse", "TestH3_")
+m("H-20 the execution record is never written", "internal/hook/post.go",
+  "\treturn p.st.AppendExecution(store.Execution{", "\tif true {\n\t\treturn nil\n\t}\n\treturn p.st.AppendExecution(store.Execution{",
+  "TestH20_PostRecordsTheExecution")
+m("H-20 an execution the lock refuses is dropped", "internal/store/store.go",
+  "\treturn s.SpillExecution(rec)", "\treturn err", "TestAppendExecutionSpillsWhenTheLockIsHeld")
+m("H-20 the post path ignores the install it was told it belongs to", "cmd/attest/main.go",
+  "\tif standsDown(args, st, stderr) {\n\t\treturn exitOK\n\t}\n\n\tp := hook.NewPost(st, time.Now)", "\tp := hook.NewPost(st, time.Now)",
+  "TestH20_PostFromAnotherInstallStandsDown")
+m("H-20 post coverage resolves the recorder's entry instead of its own", "internal/hook/coverage.go",
+  "\tif phase == store.PhasePost {", "\tif false {", "TestH20_PostCoverageReadsItsOwnEntry")
+m("H-20 the report ignores tool_result blocks", "internal/report/transcript.go",
+  "\t\t\tcase b.Type == \"tool_result\" && b.ToolUseID != \"\":", "\t\t\tcase false:", "TestH20_ExecutionAccounting")
+m("H-20 a result with no execution record is not a coverage failure", "internal/report/report.go",
+  "\t\tif t.Readable && len(t.ExecutedButUnrecorded) > 0 {\n\t\t\tsess.Coverage.add(ReasonExecutionMismatch)\n\t\t}\n", "",
+  "TestH20_ExecutionAccounting")
+m("H-20 a declaration with no result is treated as a coverage failure", "internal/report/report.go",
+  "\t\tif t.Readable && len(t.ExecutedButUnrecorded) > 0 {", "\t\tif t.Readable && len(t.DeclaredWithoutResult) > 0 {",
+  "TestH20_ExecutionAccounting")
+m("H-20 declarations with no execution are not named", "internal/store/read.go",
+  "\t\tif !executed[d.ToolUseID] {", "\t\tif false {", "TestH20_DeclarationWithoutAnExecutionIsNamed")
+m("H-20 the unexecuted list drops the permission mode", "internal/report/report.go",
+  "Unexecuted{ToolUseID: id, PermissionMode: mode[id]})", "Unexecuted{ToolUseID: id})",
+  "TestH20_DeclarationWithoutAnExecutionIsNamed")
+m("H-20 the post path runs outside the panic barrier", "cmd/attest/main.go",
+  "\tcaptureErr := safe.Guard(func() error { return p.Capture(stdin) })", "\tcaptureErr := p.Capture(stdin)",
+  "TestH20_NoFaultOnThePostPathReachesTheAgent")
+m("H-18 the post path installs on every call", "cmd/attest/main.go",
+  "\tp := hook.NewPost(st, time.Now)\n", "\t_ = cmdWatch(io.Discard)\n\tp := hook.NewPost(st, time.Now)\n", "TestH18_")
+m("H-20 the post payload declares tool_response, and it reaches the debug log", "internal/hook/post.go",
+  "\tvar pl PostPayload\n", "\tvar pl struct {\n\t\tPostPayload\n\t\tToolResponse json.RawMessage `json:\"tool_response\"`\n\t}\n\tdefer func() { fmt.Fprintln(os.Stderr, string(pl.ToolResponse)) }()\n",
+  "TestH20_ToolResponseNeverReachesDisk")
+m("H-20 the response is measured, and the measurement moves the record's width", "internal/hook/post.go",
+  "\t\tToolName:      pl.ToolName,\n", "\t\tToolName:      pl.ToolName + strconv.Itoa(len(raw)),\n",
+  "TestH20_ExecutionWidthIsIndependentOfTheResponse")
+
 m("H-10 accounting compares counts, not sets", "internal/report/report.go",
   "\tt.MissingFromStore = []string{}\n\tfor id := range ids {", "\tt.MissingFromStore = []string{}\n\tfor id := range ids {\n\t\tif len(ids) == len(recorded) {\n\t\t\tbreak\n\t\t}", "TestH10_SetsNotCounts")
 m("H-10 every transcript is checked against the union of the run's ids", "internal/report/report.go",
-  "\tfor _, path := range paths {\n\t\tt := accounting(path, byPath[path])",
-  "\tunion := map[string]bool{}\n\tfor _, ids := range byPath {\n\t\tfor id := range ids {\n\t\t\tunion[id] = true\n\t\t}\n\t}\n\tfor _, path := range paths {\n\t\tt := accounting(path, union)", "TestH10_PerTranscript")
+  "\tfor _, path := range paths {\n\t\tt := accounting(path, byPath[path], executed)",
+  "\tunion := map[string]bool{}\n\tfor _, ids := range byPath {\n\t\tfor id := range ids {\n\t\t\tunion[id] = true\n\t\t}\n\t}\n\tfor _, path := range paths {\n\t\tt := accounting(path, union, executed)", "TestH10_PerTranscript")
 m("H-10 declarations naming no transcript are not counted", "internal/report/report.go",
   "\t\tif d.TranscriptPath == \"\" {\n\t\t\tsess.Declarations.WithoutTranscript++\n\t\t\tcontinue\n\t\t}",
   "\t\tif d.TranscriptPath == \"\" {\n\t\t\tcontinue\n\t\t}", "TestH10_DeclarationsWithoutATranscript")
@@ -135,6 +175,8 @@ m("settings reads a non-object top level as an empty document", "internal/settin
 
 # Import additions some mutants need.
 IMPORTS = {
+  "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
+  "H-20 the response is measured, and the measurement moves the record's width": ("internal/hook/post.go", '\t"io"\n', '\t"io"\n\t"strconv"\n'),
   "H-17 handler opens a socket (no net import, so only the trace sees it)": ("internal/hook/handle.go", '\t"io"\n', '\t"io"\n\t"syscall"\n'),
   "H-19 report re-reads today's config to judge a past run": ("internal/report/report.go", '\t"github.com/altrace-dev-role/altrace-attest/internal/store"\n', '\t"github.com/altrace-dev-role/altrace-attest/internal/install"\n\t"github.com/altrace-dev-role/altrace-attest/internal/settings"\n\t"github.com/altrace-dev-role/altrace-attest/internal/store"\n'),
 }

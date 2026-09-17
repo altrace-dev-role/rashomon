@@ -42,7 +42,7 @@ jobs:
           # There is no go.sum in this repository -- the module declares no
           # requirements -- and setup-go looks for go.sum to key the cache.
           # Point it at go.mod. What is being cached is the build cache, which
-          # the mutation sweep's 25 compile-and-test cycles do use.
+          # the mutation sweep's compile-and-test cycles do use.
           cache-dependency-path: go.mod
 
       # The mutation sweep and the acceptance suite shell out to python3, git,
