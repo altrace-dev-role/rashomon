@@ -144,7 +144,10 @@ func TestH20_ToolResponseNeverReachesDisk(t *testing.T) {
 		t.Fatalf("exit code %d, want 0", res.exitCode)
 	}
 	e.probe("end", testSession)
-	rep := e.run("", nil, "report", "--session", testSession)
+	// Both forms: the text renderer reads the same records through its own
+	// code, and a renderer is where a field nobody meant to print gets printed.
+	repJSON := e.run("", nil, "report", "--json", "--session", testSession)
+	repText := e.run("", nil, "report", "--session", testSession)
 
 	// Guard the premise: a canary is absent from a store nothing was written
 	// to, and that would pass every assertion below.
@@ -159,7 +162,12 @@ func TestH20_ToolResponseNeverReachesDisk(t *testing.T) {
 	}
 	// Hook stdout and stderr reach Claude Code's debug log, which puts them on
 	// disk as surely as the store does. And report is output.
-	for name, s := range map[string]string{"post stdout": res.stdout, "post stderr": res.stderr, "report": rep.stdout} {
+	for name, s := range map[string]string{
+		"post stdout":   res.stdout,
+		"post stderr":   res.stderr,
+		"report --json": repJSON.stdout,
+		"report text":   repText.stdout,
+	} {
 		if strings.Contains(s, canary) {
 			t.Errorf("%s contains the canary", name)
 		}

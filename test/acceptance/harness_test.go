@@ -193,9 +193,15 @@ func (e *env) installArgs() []string {
 
 func (e *env) watch(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "watch") }
 func (e *env) detach(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "detach") }
+func (e *env) status(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "status") }
 func (e *env) forget(since string) result {
 	e.t.Helper()
 	return e.run("", nil, "forget", "--since", since)
+}
+
+func (e *env) forgetBefore(before string) result {
+	e.t.Helper()
+	return e.run("", nil, "forget", "--before", before)
 }
 
 // watched installs the hook and starts a session, which is the state every
@@ -266,9 +272,12 @@ type reportSession struct {
 	Gaps []map[string]any `json:"gaps"`
 }
 
+// report renders one session as JSON. The JSON form is what a consumer parses
+// and what every assertion below is written against; the text form is for a
+// terminal and is asserted separately, in report_test.go.
 func (e *env) report(sessionID string) reportSession {
 	e.t.Helper()
-	res := e.run("", nil, "report", "--session", sessionID)
+	res := e.run("", nil, "report", "--json", "--session", sessionID)
 	if res.exitCode != 0 {
 		e.t.Fatalf("report: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
@@ -622,7 +631,7 @@ func jsonCanonical(v any) ([]byte, error) {
 
 func (e *env) reportAll() []reportSession {
 	e.t.Helper()
-	res := e.run("", nil, "report")
+	res := e.run("", nil, "report", "--json")
 	if res.exitCode != 0 {
 		e.t.Fatalf("report: exit %d, stderr %q", res.exitCode, res.stderr)
 	}

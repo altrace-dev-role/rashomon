@@ -130,6 +130,25 @@ m("H-14 untokenizable command records argc 0", "internal/shape/shape.go",
   "\tif err == nil {\n\t\tn := len(toks)\n\t\ts.Argc = &n\n\t}", "\tn := len(toks)\n\tif err != nil {\n\t\tn = 0\n\t}\n\ts.Argc = &n", "TestH14_Untokenizable")
 m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n\n\tif records != nil && removedRec > 0 {", "\tif records != nil && removedRec > 0 {", "TestH15_ForgetLeavesAGap")
 m("H-15 eviction deletes without a gap record", "internal/store/gaps.go", "\t\tif _, err := gf.Write(line); err != nil {", "\t\tif _, err := gf.Write(line[:0]); err != nil {", "TestH15_SizeCap")
+m("H-15 eviction does not count the executions it removed", "internal/store/gaps.go",
+  "RemovedRecords: len(run.Declarations) + len(run.Executions) + len(run.Terminals),",
+  "RemovedRecords: len(run.Declarations) + len(run.Terminals),", "TestH15_SizeCap")
+m("H-15 forget --before behaves like --since", "cmd/attest/main.go",
+  "\t\t\tif flag == \"--since\" {\n\t\t\t\tfrom = &t\n\t\t\t} else {\n\t\t\t\tto = &t\n\t\t\t}", "\t\t\tfrom = &t",
+  "TestH15_Forget")
+m("H-15 forget takes both windows and resolves them itself", "cmd/attest/main.go",
+  "\tcase from != nil && to != nil:\n\t\treturn errors.New(\"--since and --before name opposite ends of the store's timeline; pass one or the other\")\n",
+  "", "TestH15_ForgetRefusesBothWindows")
+m("H-15 executions are not part of forget's doomed plan", "internal/store/gaps.go",
+  "\t\tif json.Unmarshal(line, &h) != nil {\n\t\t\tcontinue\n\t\t}",
+  "\t\tif json.Unmarshal(line, &h) != nil || bytes.Contains(line, []byte(`\"type\":\"execution\"`)) {\n\t\t\tcontinue\n\t\t}",
+  "TestH15_ForgetTakesTheExecutionWithThePair")
+m("H-15 forget --before writes no gap record", "internal/store/gaps.go",
+  "\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}",
+  "\tif !w.openBelow() {\n\t\tif err := s.AppendGap(g); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}",
+  "TestH15_Forget")
+m("H-15 the gap's open end is closed by the bound nobody named", "internal/store/gaps.go",
+  "\tif w.openBelow() {\n\t\tfrom = earliest\n\t}", "", "TestH15_ForgetBeforeLeavesAGap")
 m("H-16 append lock removed", "internal/store/store.go",
   "\tunlock, err := lockFile(f, lockBudget)\n\tif err != nil {\n\t\treturn err\n\t}\n\tdefer unlock()\n\n\tseq, err := nextSeq(dir)",
   "\tseq, err := nextSeq(dir)", "TestH16_")
@@ -148,6 +167,33 @@ m("H-18 detach writes the settings file although it changed nothing", "cmd/attes
   "\t\tn, err := remove(doc)\n\t\tremoved = n\n\t\treturn true, err", "TestH18_")
 m("H-19 report re-reads today's config to judge a past run", "internal/report/report.go",
   "\t\tsess := build(run)\n", "\t\tsess := build(run)\n\t\tif p, err := settings.UserPath(); err == nil {\n\t\t\tif doc, err := settings.Load(p); err == nil {\n\t\t\t\tif ok, _ := install.Present(doc, st.InstallID(), install.EventPreToolUse); !ok {\n\t\t\t\t\tsess.Coverage.add(store.ReasonHookEntryAbsent)\n\t\t\t\t}\n\t\t\t}\n\t\t}\n", "TestH19_")
+
+m("report text renders a count it does not have as 0", "internal/report/text.go",
+  "\tif p == nil {\n\t\treturn notRead\n\t}", "\tif p == nil {\n\t\treturn \"0\"\n\t}", "TestReport_")
+m("report text renders a comparison it could not make as an empty list", "internal/report/text.go",
+  "\tif ids == nil {\n\t\treturn unknown\n\t}", "\tif ids == nil {\n\t\treturn none\n\t}", "TestReport_")
+m("report --json is accepted and ignored", "cmd/attest/main.go",
+  "\t\tcase \"--json\":\n\t\t\tasJSON = true", "\t\tcase \"--json\":\n\t\t\tasJSON = false", "TestReport_")
+m("status opens the store, which creates one", "cmd/attest/main.go",
+  "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {\n\t\tst, err := openStore()",
+  "\tif true {\n\t\tst, err := openStore()", "TestH18_")
+m("status reports an entry present whatever it finds", "cmd/attest/main.go",
+  "\tcase present:\n\t\treturn \"present\"\n\tdefault:\n\t\treturn \"absent\"\n\t}",
+  "\tcase present:\n\t\treturn \"present\"\n\tdefault:\n\t\treturn \"present\"\n\t}", "TestStatus_")
+m("status does not name the other installs sharing the file", "cmd/attest/main.go",
+  "\t\tfmt.Fprintf(stdout, \"  %s: %s\\n\", label, strings.Join(others, \", \"))",
+  "\t\tfmt.Fprintf(stdout, \"  %s: none\\n\", label)", "TestStatus_")
+m("status does not resolve the layer that disabled hooks", "cmd/attest/main.go",
+  "\tcase decision.Disabled:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)",
+  "\tcase false:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)", "TestStatus_")
+m("the store schema drops a record's key", "docs/store-schema.json",
+  "        \"agent_type\": {\n          \"description\": \"Null outside a subagent call.\",\n          \"type\": [\"string\", \"null\"]\n        },\n",
+  "", "TestStoreSchema")
+m("the store schema declares a key no record carries", "docs/store-schema.json",
+  "        \"tool_name\": { \"type\": \"string\" }\n      }",
+  "        \"tool_name\": { \"type\": \"string\" },\n        \"tool_response\": { \"type\": \"string\" }\n      }", "TestStoreSchema")
+m("the store schema's coverage reasons are a subset of the code's", "docs/store-schema.json",
+  "            \"probe_unresolved\"\n", "", "TestStoreSchema")
 
 m("H-14 shell digest covers the whole tool_input again", "internal/shape/shape.go",
   "\ts.Digest = digest(key, toolName, []byte(cmd))", "\ts.Digest = digest(key, toolName, canonical(toolInput))",
@@ -179,6 +225,7 @@ IMPORTS = {
   "H-20 the response is measured, and the measurement moves the record's width": ("internal/hook/post.go", '\t"io"\n', '\t"io"\n\t"strconv"\n'),
   "H-17 handler opens a socket (no net import, so only the trace sees it)": ("internal/hook/handle.go", '\t"io"\n', '\t"io"\n\t"syscall"\n'),
   "H-19 report re-reads today's config to judge a past run": ("internal/report/report.go", '\t"github.com/altrace-dev-role/altrace-attest/internal/store"\n', '\t"github.com/altrace-dev-role/altrace-attest/internal/install"\n\t"github.com/altrace-dev-role/altrace-attest/internal/settings"\n\t"github.com/altrace-dev-role/altrace-attest/internal/store"\n'),
+  "H-15 executions are not part of forget's doomed plan": ("internal/store/gaps.go", '\t"bufio"\n', '\t"bufio"\n\t"bytes"\n'),
 }
 
 backups = {}

@@ -39,6 +39,18 @@ const (
 	ReasonGap                = "gap"
 )
 
+// Reasons lists the coverage reason codes this package derives, as
+// store.Reasons lists the ones a record carries. Together they are the whole
+// vocabulary a reader of a report can meet.
+func Reasons() []string {
+	return []string{
+		ReasonRunNotClosed,
+		ReasonTranscriptMismatch,
+		ReasonExecutionMismatch,
+		ReasonGap,
+	}
+}
+
 // Coverage is the run's trust state, as recorded at run time and as derived
 // from the records themselves.
 type Coverage struct {

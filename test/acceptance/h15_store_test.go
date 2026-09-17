@@ -114,6 +114,7 @@ func TestH15_ForgetLeavesAGap(t *testing.T) {
 		t.Fatalf("got %d gap records, want exactly 1", len(gaps))
 	}
 	g := gaps[0]
+	assertKeySet(t, g, gapKeys)
 	if g.str("reason") != "forget" || g.str("session_id") != testSession {
 		t.Errorf("gap is %v, want reason forget for %s", g.fields, testSession)
 	}
@@ -160,6 +161,169 @@ func TestH15_ForgetIsBounded(t *testing.T) {
 	}
 }
 
+// TestH15_ForgetBeforeLeavesAGap is the retention counterpart of the item
+// above: --since forgets what just happened, --before forgets what is old, and
+// both leave the same marker. A window with its lower end open has no bound to
+// name, so the gap's own span starts at the earliest record it removed.
+func TestH15_ForgetBeforeLeavesAGap(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.declarationsAfter("ls", "pwd", "git status")
+	first := e.declarations(testSession)[0].fields["recorded_at_unix_ms"]
+
+	cut := time.Now().UTC().Add(time.Hour)
+	res := e.forgetBefore(cut.Format(time.RFC3339Nano))
+	if res.exitCode != 0 {
+		t.Fatalf("forget --before: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+
+	if got := e.declarations(testSession); len(got) != 0 {
+		t.Errorf("%d declarations survived forget --before, want 0", len(got))
+	}
+	gaps := e.gaps()
+	if len(gaps) != 1 {
+		t.Fatalf("got %d gap records, want exactly 1", len(gaps))
+	}
+	g := gaps[0]
+	assertKeySet(t, g, gapKeys)
+	if g.str("reason") != "forget" || g.str("session_id") != testSession {
+		t.Errorf("gap is %v, want reason forget for %s", g.fields, testSession)
+	}
+	if g.fields["removed_records"] != float64(6) {
+		t.Errorf("gap says %v records removed, want 6", g.fields["removed_records"])
+	}
+	if g.fields["from_unix_ms"] != first {
+		t.Errorf("gap starts at %v, want %v: with no lower bound named, the span starts at the earliest record removed",
+			g.fields["from_unix_ms"], first)
+	}
+	if g.fields["to_unix_ms"] != float64(cut.UnixMilli()) {
+		t.Errorf("gap ends at %v, want %v: the bound the caller named", g.fields["to_unix_ms"], cut.UnixMilli())
+	}
+
+	rep := e.report(testSession)
+	if len(rep.Gaps) != 1 || !e.hasReason(rep, "gap") {
+		t.Errorf("report does not surface the gap: gaps=%d reasons=%v", len(rep.Gaps), rep.Coverage.Reasons)
+	}
+	if len(e.coverage(testSession, "call")) != 3 {
+		t.Errorf("forget --before removed coverage records; it must only remove declarations, executions and terminals")
+	}
+}
+
+// TestH15_ForgetBeforeIsBounded is TestH15_ForgetIsBounded pointed the other
+// way: --before removes what is strictly before the instant and nothing at or
+// after it.
+func TestH15_ForgetBeforeIsBounded(t *testing.T) {
+	e := newEnv(t)
+	call := func(id, command string) {
+		p := defaultPayload()
+		p.ToolUseID = id
+		p.ToolInput = map[string]any{"command": command}
+		e.mustHook(p.build(t))
+	}
+	call("toolu_before_1", "first")
+	call("toolu_before_2", "second")
+	cut := time.Now().UTC().Add(50 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
+	call("toolu_after", "third")
+
+	res := e.forgetBefore(cut.Format(time.RFC3339Nano))
+	if res.exitCode != 0 {
+		t.Fatalf("forget --before: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	decls := e.declarations(testSession)
+	if len(decls) != 1 {
+		t.Fatalf("%d declarations survived, want the 1 recorded at or after the cut", len(decls))
+	}
+	if got := decls[0].str("tool_use_id"); got != "toolu_after" {
+		t.Errorf("the surviving declaration is %q, want toolu_after", got)
+	}
+}
+
+// TestH15_ForgetRefusesBothWindows: the two flags name opposite ends of one
+// window, and a command given both has been asked for two different things.
+// Resolving that silently would remove whichever set the implementation
+// happened to prefer.
+func TestH15_ForgetRefusesBothWindows(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.declarationsAfter("ls", "pwd")
+
+	res := e.run("", nil, "forget", "--since", "1h", "--before", "1h")
+	if res.exitCode != 1 {
+		t.Fatalf("forget --since --before: exit %d, want 1", res.exitCode)
+	}
+	if !strings.Contains(res.stderr, "--since") || !strings.Contains(res.stderr, "--before") {
+		t.Errorf("the refusal does not name both flags: %q", res.stderr)
+	}
+	if got := len(e.declarations(testSession)); got != 2 {
+		t.Errorf("%d declarations survived a refused forget, want 2", got)
+	}
+	if got := len(e.gaps()); got != 0 {
+		t.Errorf("a refused forget wrote %d gap records", got)
+	}
+}
+
+// TestH15_ForgetTakesTheExecutionWithThePair: executions arrived after forget
+// did, and a plan built from declarations and terminals alone would leave an
+// execution record for a call whose declaration is gone -- a call that reads as
+// having run without ever having been asked for.
+func TestH15_ForgetTakesTheExecutionWithThePair(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.mustHook(defaultPayload().build(t))
+	e.mustPost(defaultPost().build(t))
+
+	// Re-stamp the set around the cut: the execution before it, the
+	// declaration and its terminal after. Only the execution is in the window,
+	// and all three have to leave together.
+	cut := time.Now().UTC().Truncate(time.Second)
+	restamp(t, e, map[string]time.Time{
+		"declaration": cut.Add(time.Second),
+		"terminal":    cut.Add(time.Second),
+		"execution":   cut.Add(-time.Second),
+	})
+
+	if res := e.forgetBefore(cut.Format(time.RFC3339)); res.exitCode != 0 {
+		t.Fatalf("forget --before: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if got := e.records(testSession); len(got) != 0 {
+		t.Errorf("%d records survived; the declaration, its execution and its terminal leave together: %v", len(got), got)
+	}
+	gaps := e.gaps()
+	if len(gaps) != 1 || gaps[0].fields["removed_records"] != float64(3) {
+		t.Errorf("gaps are %v, want one gap removing 3 records", gaps)
+	}
+}
+
+// restamp rewrites records.ndjson with one recorded-at instant per record type,
+// which is how a test puts a set of records on chosen sides of a cut.
+func restamp(t *testing.T, e *env, at map[string]time.Time) {
+	t.Helper()
+	path := filepath.Join(e.home, "runs", testSession, "records.ndjson")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for _, line := range bytes.Split(bytes.TrimSpace(body), []byte("\n")) {
+		var rec map[string]any
+		if err := json.Unmarshal(line, &rec); err != nil {
+			t.Fatal(err)
+		}
+		typ, _ := rec["type"].(string)
+		when, ok := at[typ]
+		if !ok {
+			t.Fatalf("premise broken: no instant given for a %q record", typ)
+		}
+		rec["recorded_at_unix_ms"] = when.UnixMilli()
+		out, _ := json.Marshal(rec)
+		lines = append(lines, string(out))
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestH15_SizeCapEvictionLeavesAGap: the other way records leave.
 func TestH15_SizeCapEvictionLeavesAGap(t *testing.T) {
 	e := newEnv(t)
@@ -167,6 +331,9 @@ func TestH15_SizeCapEvictionLeavesAGap(t *testing.T) {
 	p := defaultPayload()
 	p.SessionID = "old-session"
 	e.mustHook(p.build(t))
+	x := defaultPost()
+	x.SessionID = "old-session"
+	e.mustPost(x.build(t))
 	e.probe("end", "old-session")
 
 	// Age the old run past the grace period, then bring a new session up
@@ -196,8 +363,10 @@ func TestH15_SizeCapEvictionLeavesAGap(t *testing.T) {
 	if gaps[0].str("reason") != "size_cap" || gaps[0].str("session_id") != "old-session" {
 		t.Errorf("gap is %v, want reason size_cap for old-session", gaps[0].fields)
 	}
-	if gaps[0].fields["removed_records"] != float64(2) {
-		t.Errorf("gap says %v records removed, want 2", gaps[0].fields["removed_records"])
+	// A declaration, its terminal and its execution: the count covers every
+	// record type the run held, not the two that existed when it was written.
+	if gaps[0].fields["removed_records"] != float64(3) {
+		t.Errorf("gap says %v records removed, want 3", gaps[0].fields["removed_records"])
 	}
 }
 

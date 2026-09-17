@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/altrace-dev-role/altrace-attest/docs/store-schema.json",
+  "title": "attest store records",
+  "description": "One record of an attest store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. No field here carries content: no prompt, no response, no argument value, no command string. Identifiers are not content and are stored verbatim.",
+  "oneOf": [
+    { "$ref": "#/$defs/declaration" },
+    { "$ref": "#/$defs/execution" },
+    { "$ref": "#/$defs/terminal" },
+    { "$ref": "#/$defs/coverage" },
+    { "$ref": "#/$defs/gap" }
+  ],
+  "$defs": {
+    "declaration": {
+      "title": "declaration",
+      "description": "What the agent asked to run, written by the PreToolUse recorder. It is not an execution: PreToolUse fires before the permission flow resolves, so a declaration exists for a call the user went on to deny, and permission_mode is carried so that a later comparison can exclude those.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "seq",
+        "recorded_at_unix_ms",
+        "tool_use_id",
+        "session_id",
+        "prompt_id",
+        "agent_id",
+        "agent_type",
+        "transcript_path",
+        "permission_mode",
+        "tool_name",
+        "shape"
+      ],
+      "properties": {
+        "type": { "enum": ["declaration"] },
+        "schema_version": { "type": "integer", "enum": [1] },
+        "seq": {
+          "description": "Allocated under the run's append lock and strictly increasing within records.ndjson. A declaration is never spilled, so it always has one.",
+          "type": "integer"
+        },
+        "recorded_at_unix_ms": { "type": "integer" },
+        "tool_use_id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "prompt_id": {
+          "description": "Null until the first input of a session.",
+          "type": ["string", "null"]
+        },
+        "agent_id": {
+          "description": "Null outside a subagent call.",
+          "type": ["string", "null"]
+        },
+        "agent_type": {
+          "description": "Null outside a subagent call.",
+          "type": ["string", "null"]
+        },
+        "transcript_path": { "type": "string" },
+        "permission_mode": {
+          "description": "The mode the call was declared in, as Claude Code named it. Not a closed vocabulary: it is copied from the payload, and a mode this program has never heard of is still the mode the call was declared in.",
+          "type": "string"
+        },
+        "tool_name": { "type": "string" },
+        "shape": {
+          "description": "The derived shape of tool_input. Nothing from inside tool_input is persisted; everything here is a closed vocabulary, a count, or a keyed digest.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["program", "verb_class", "argc", "digest"],
+          "properties": {
+            "program": {
+              "description": "Null when the command would not tokenize, or when the tool is not a shell tool.",
+              "type": ["string", "null"]
+            },
+            "verb_class": {
+              "enum": [
+                "read",
+                "write",
+                "network",
+                "execute",
+                "vcs",
+                "package",
+                "agent",
+                "mcp",
+                "unknown"
+              ]
+            },
+            "argc": {
+              "description": "Null when the command would not tokenize. Never 0: zero is a count, and in that case there is not one.",
+              "type": ["integer", "null"]
+            },
+            "digest": {
+              "description": "HMAC under a per-install key, so the same command digests differently on two installs.",
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "execution": {
+      "title": "execution",
+      "description": "That a declared call ran, written by the PostToolUse recorder, one per invocation. A declaration with no execution beside it was denied, failed, or had its execution go unrecorded, and nothing here says which.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "seq",
+        "recorded_at_unix_ms",
+        "tool_use_id",
+        "session_id",
+        "tool_name"
+      ],
+      "properties": {
+        "type": { "enum": ["execution"] },
+        "schema_version": { "type": "integer", "enum": [1] },
+        "seq": {
+          "description": "Null in spill.ndjson: the record landed, its place in the run's total order did not.",
+          "type": ["integer", "null"]
+        },
+        "recorded_at_unix_ms": { "type": "integer" },
+        "tool_use_id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "tool_name": { "type": "string" }
+      }
+    },
+    "terminal": {
+      "title": "terminal",
+      "description": "Closes a declaration on every exit path the recorder controls: a clean return, an error return, and SIGTERM. SIGKILL is not catchable, so a declaration with no terminal is the signature of the uncontrolled path, and that absence is the only honest record of it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "seq",
+        "recorded_at_unix_ms",
+        "tool_use_id",
+        "session_id",
+        "outcome",
+        "reason"
+      ],
+      "properties": {
+        "type": { "enum": ["terminal"] },
+        "schema_version": { "type": "integer", "enum": [1] },
+        "seq": {
+          "description": "Null in spill.ndjson, under the same rule as an execution's.",
+          "type": ["integer", "null"]
+        },
+        "recorded_at_unix_ms": { "type": "integer" },
+        "tool_use_id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "outcome": { "enum": ["ok", "error", "signal"] },
+        "reason": {
+          "description": "Null when the outcome is ok.",
+          "type": ["string", "null"],
+          "enum": [null, "terminated_by_signal", "lock_timeout", "internal_error"]
+        }
+      }
+    },
+    "coverage": {
+      "title": "coverage",
+      "description": "The resolved configuration state as it was when a handler ran, written once per hook invocation. report reads these and never re-reads today's configuration to judge a past run. It carries no count of any kind: a run whose instrumentation failed must not be able to report a number.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "recorded_at_unix_ms",
+        "session_id",
+        "install_id",
+        "phase",
+        "state",
+        "reason",
+        "hook_entry",
+        "probe"
+      ],
+      "properties": {
+        "type": { "enum": ["coverage"] },
+        "schema_version": { "type": "integer", "enum": [1] },
+        "recorded_at_unix_ms": { "type": "integer" },
+        "session_id": { "type": "string" },
+        "install_id": { "type": "string" },
+        "phase": {
+          "description": "Which hook wrote the record.",
+          "enum": ["start", "call", "post", "end"]
+        },
+        "state": { "enum": ["verified", "unverified"] },
+        "reason": {
+          "description": "Null when the state is verified. Fixed codes, never free text and never derived from input.",
+          "type": ["string", "null"],
+          "enum": [
+            null,
+            "internal_error",
+            "lock_timeout",
+            "terminated_by_signal",
+            "unterminated_entry",
+            "hook_entry_absent",
+            "hook_entry_unresolved",
+            "probe_absent",
+            "probe_unresolved"
+          ]
+        },
+        "hook_entry": {
+          "description": "Whether our entry for this phase's event was installed as watch installs it. An entry narrowed by hand is absent, because that is what it is.",
+          "enum": ["present", "absent", "unknown"]
+        },
+        "probe": { "enum": ["fresh", "absent", "unknown"] }
+      }
+    },
+    "gap": {
+      "title": "gap",
+      "description": "That records left the store, and why. It is the only way records leave: a deletion with no gap record is a silent deletion, and a store that can be silently edited is worth nothing as evidence.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "recorded_at_unix_ms",
+        "session_id",
+        "reason",
+        "from_unix_ms",
+        "to_unix_ms",
+        "removed_records"
+      ],
+      "properties": {
+        "type": { "enum": ["gap"] },
+        "schema_version": { "type": "integer", "enum": [1] },
+        "recorded_at_unix_ms": { "type": "integer" },
+        "session_id": { "type": "string" },
+        "reason": { "enum": ["forget", "size_cap"] },
+        "from_unix_ms": {
+          "description": "The start of the window that was emptied: the bound the caller named, or the earliest record removed when that end was left open.",
+          "type": "integer"
+        },
+        "to_unix_ms": { "type": "integer" },
+        "removed_records": { "type": "integer" }
+      }
+    },
+    "report_reason": {
+      "title": "report reason",
+      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file.",
+      "type": "string",
+      "enum": ["run_not_closed", "transcript_mismatch", "execution_mismatch", "gap"]
+    }
+  }
+}

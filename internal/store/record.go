@@ -128,6 +128,22 @@ const (
 	ReasonProbeUnresolved     = "probe_unresolved"
 )
 
+// Reasons lists every coverage reason code a record can carry. It exists so
+// that the store schema can be checked against the vocabulary the code writes
+// rather than against a copy of it that drifts.
+func Reasons() []string {
+	return []string{
+		ReasonInternalError,
+		ReasonLockTimeout,
+		ReasonTerminatedBySignal,
+		ReasonUnterminatedEntry,
+		ReasonHookEntryAbsent,
+		ReasonHookEntryUnresolved,
+		ReasonProbeAbsent,
+		ReasonProbeUnresolved,
+	}
+}
+
 // Coverage phases: which hook wrote the record.
 const (
 	PhaseStart = "start"

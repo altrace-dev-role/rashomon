@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,22 +18,53 @@ import (
 // is still live, so that eviction never races an append.
 const evictGrace = time.Hour
 
-// Forget removes every declaration, execution and terminal recorded at or
-// after since, leaving a gap record per affected run. Coverage records stay:
-// they describe whether the run could be trusted, which remains true of it
-// after its content has been forgotten.
+// window is the half-open range of record instants a forget removes, in Unix
+// milliseconds. An open side is held as the extreme of the range, so one
+// comparison serves a bounded side and an unbounded one alike.
+type window struct {
+	fromMS, toMS int64
+}
+
+func newWindow(from, to *time.Time) window {
+	w := window{fromMS: math.MinInt64, toMS: math.MaxInt64}
+	if from != nil {
+		w.fromMS = from.UnixMilli()
+	}
+	if to != nil {
+		w.toMS = to.UnixMilli()
+	}
+	return w
+}
+
+func (w window) holds(ms int64) bool { return ms >= w.fromMS && ms < w.toMS }
+
+func (w window) openBelow() bool { return w.fromMS == math.MinInt64 }
+func (w window) openAbove() bool { return w.toMS == math.MaxInt64 }
+
+// ForgetWindow removes every declaration, execution and terminal recorded in
+// the half-open window [from, to), leaving a gap record per affected run.
+// Coverage records stay: they describe whether the run could be trusted, which
+// remains true of it after its content has been forgotten.
 //
-// The records sharing a tool_use_id leave together. Removing by timestamp
-// alone can split a set that straddles the instant, and a declaration left
-// without its terminal reads exactly like a handler that was killed.
-func (s *Store) Forget(since, now time.Time) ([]Gap, error) {
+// A nil bound is unbounded on that side, which is what the two flags are:
+// --since names the lower bound and removes everything after it, --before names
+// the upper bound and removes everything before it. They are the same operation
+// with opposite ends left open, and one code path so that neither end can
+// acquire a rule the other does not have.
+//
+// The records sharing a tool_use_id leave together -- declaration, execution
+// and terminal. Removing by timestamp alone can split a set that straddles the
+// instant, and a declaration left without its terminal reads exactly like a
+// handler that was killed.
+func (s *Store) ForgetWindow(from, to *time.Time, now time.Time) ([]Gap, error) {
+	w := newWindow(from, to)
 	names, err := s.Runs()
 	if err != nil {
 		return nil, err
 	}
 	var gaps []Gap
 	for _, name := range names {
-		g, err := s.forgetRun(filepath.Join(s.root, dirRuns, name), since.UnixMilli(), now)
+		g, err := s.forgetRun(filepath.Join(s.root, dirRuns, name), w, now)
 		if err != nil {
 			return gaps, err
 		}
@@ -50,7 +82,7 @@ type lineHead struct {
 	SessionID    string `json:"session_id"`
 }
 
-func (s *Store) forgetRun(dir string, sinceMS int64, now time.Time) (*Gap, error) {
+func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
 	recordsPath := filepath.Join(dir, FileRecords)
 	spillPath := filepath.Join(dir, FileSpill)
 
@@ -89,18 +121,29 @@ func (s *Store) forgetRun(dir string, sinceMS int64, now time.Time) (*Gap, error
 		if sessionID == "" {
 			sessionID = h.SessionID
 		}
-		if h.RecordedAtMS >= sinceMS {
+		if w.holds(h.RecordedAtMS) {
 			doomed[h.ToolUseID] = true
 		}
 	}
 	if len(doomed) == 0 {
 		return nil, nil
 	}
+	// The earliest instant actually removed, which is what the gap's own span
+	// starts at when the window was left open below: there is no lower bound
+	// to name there, and the records are the only thing that says how far back
+	// the removal reached.
+	earliest := int64(math.MaxInt64)
 	keep := func(line []byte) bool {
 		var h lineHead
 		// A line that does not parse is kept: forget removes what it can
 		// identify, and never widens into "remove whatever is here".
-		return json.Unmarshal(line, &h) != nil || !doomed[h.ToolUseID]
+		if json.Unmarshal(line, &h) != nil || !doomed[h.ToolUseID] {
+			return true
+		}
+		if h.RecordedAtMS < earliest {
+			earliest = h.RecordedAtMS
+		}
+		return false
 	}
 	keptRec, removedRec := partition(recLines, keep)
 	keptSpill, removedSpill := partition(spillLines, keep)
@@ -109,6 +152,18 @@ func (s *Store) forgetRun(dir string, sinceMS int64, now time.Time) (*Gap, error
 	}
 	if sessionID == "" {
 		sessionID = filepath.Base(dir)
+	}
+
+	// The gap spans what was removed. A bound the caller named is that bound;
+	// an open side is closed by what was there -- the earliest record removed
+	// below, and this instant above -- so the record never claims a window
+	// wider than the one it emptied.
+	from, to := w.fromMS, w.toMS
+	if w.openBelow() {
+		from = earliest
+	}
+	if w.openAbove() {
+		to = now.UnixMilli()
 	}
 
 	// The gap lands before anything is removed. A failure between the two
@@ -120,8 +175,8 @@ func (s *Store) forgetRun(dir string, sinceMS int64, now time.Time) (*Gap, error
 		RecordedAtMS:   now.UnixMilli(),
 		SessionID:      sessionID,
 		Reason:         GapForget,
-		FromUnixMS:     sinceMS,
-		ToUnixMS:       now.UnixMilli(),
+		FromUnixMS:     from,
+		ToUnixMS:       to,
 		RemovedRecords: removedRec + removedSpill,
 	}
 	if err := s.AppendGap(g); err != nil {
@@ -231,7 +286,7 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 			Reason:         GapSizeCap,
 			FromUnixMS:     from,
 			ToUnixMS:       to,
-			RemovedRecords: len(run.Declarations) + len(run.Terminals),
+			RemovedRecords: len(run.Declarations) + len(run.Executions) + len(run.Terminals),
 		}
 
 		// The gap lands before the run goes, for the same reason as in forget.
@@ -270,6 +325,9 @@ func recordSpan(run *Run, fallback time.Time) (from, to int64) {
 	}
 	for _, d := range run.Declarations {
 		consider(d.RecordedAtMS)
+	}
+	for _, x := range run.Executions {
+		consider(x.RecordedAtMS)
 	}
 	for _, t := range run.Terminals {
 		consider(t.RecordedAtMS)

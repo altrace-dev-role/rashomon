@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -18,7 +19,10 @@ func TestH18_NothingInstallsSilently(t *testing.T) {
 		e.probe("start", testSession)
 		e.probe("end", testSession)
 		e.run("", nil, "report")
+		e.run("", nil, "report", "--json")
+		e.status()
 		e.forget("1h")
+		e.forgetBefore("1h")
 		e.detach()
 		// The recovery forms too: they take the id rather than reading it, so
 		// nothing stops them running on a machine that never installed at all.
@@ -41,6 +45,27 @@ func TestH18_NothingInstallsSilently(t *testing.T) {
 		exercise(e)
 		if got := e.settingsBytes(); !bytes.Equal(got, []byte(seed)) {
 			t.Fatalf("settings.json changed without watch:\n%s", got)
+		}
+	})
+
+	// The same rule pointed at the store, from TestH6_PlainDetachLeavesNoStoreBehind.
+	// status is the command a user runs when they suspect nothing is installed;
+	// opening a store creates one, so the command that reports "nothing here"
+	// must not be the command that puts something here.
+	t.Run("status leaves no store behind", func(t *testing.T) {
+		e := newEnv(t)
+		if err := os.RemoveAll(e.home); err != nil {
+			t.Fatal(err)
+		}
+		res := e.status()
+		if res.exitCode != 0 {
+			t.Fatalf("status: exit %d, stderr %q", res.exitCode, res.stderr)
+		}
+		if _, err := os.Stat(e.home); !os.IsNotExist(err) {
+			t.Errorf("status created a store at %s (stat: %v)", e.home, err)
+		}
+		if !strings.Contains(res.stdout, "present: no") {
+			t.Errorf("status does not say the store is absent:\n%s", res.stdout)
 		}
 	})
 

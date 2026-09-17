@@ -59,6 +59,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdWatch(stdout) })
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
+	case "status":
+		return guarded(stderr, func() error { return cmdStatus(stdout) })
 	case "report":
 		return guarded(stderr, func() error { return cmdReport(rest, stdout) })
 	case "forget":
@@ -404,8 +406,145 @@ func detachTarget(args []string) (installID string, all bool, err error) {
 	return installID, false, err
 }
 
+// cmdStatus prints what is installed here and what the store holds, and writes
+// nothing at all.
+//
+// Reading the store is the easy way to break that. Opening a store creates one,
+// key material and all, so the command whose whole answer may be "nothing is
+// installed on this machine" must not be the command that installs something.
+// It looks for the store the same way a plain detach does: by the one file that
+// is only there if a store is.
+func cmdStatus(stdout io.Writer) error {
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "store: %s\n", root)
+
+	installID := ""
+	if _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {
+		st, err := openStore()
+		if err != nil {
+			return err
+		}
+		installID = st.InstallID()
+		fmt.Fprintf(stdout, "  present: yes (install %s)\n", installID)
+		runs, err := st.Runs()
+		if err != nil {
+			fmt.Fprintf(stdout, "  runs: %s\n", statusUnknown)
+		} else {
+			fmt.Fprintf(stdout, "  runs: %d\n", len(runs))
+		}
+	} else {
+		fmt.Fprintln(stdout, "  present: no")
+	}
+
+	if err := statusSettings(stdout, installID); err != nil {
+		return err
+	}
+	return statusHooks(stdout)
+}
+
+// The words status prints for a thing it could not resolve. A status that
+// rendered an unreadable settings file as "absent" would be reporting the one
+// state it does not have as the one state users act on.
+const (
+	statusUnknown    = "unknown"
+	statusUnreadable = "unreadable"
+)
+
+// statusSettings reports our entry per event, and the other installs sharing
+// the file. Without a store there is no install id, and so no entry in the file
+// is ours: the ids the entries carry are then all there is to report, and they
+// are reported as that rather than as a verdict about ownership.
+func statusSettings(stdout io.Writer, installID string) error {
+	path, err := settings.UserPath()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "settings: %s\n", path)
+
+	label := "other installs"
+	if installID == "" {
+		label = "install ids present"
+	}
+
+	doc, err := settings.Load(path)
+	if err != nil {
+		for _, event := range install.Events {
+			fmt.Fprintf(stdout, "  %s: %s\n", event, statusUnreadable)
+		}
+		fmt.Fprintf(stdout, "  %s: %s\n", label, statusUnreadable)
+		return nil
+	}
+
+	if installID == "" {
+		fmt.Fprintln(stdout, "  no store here, so no install id is ours and no entry can be called ours")
+	}
+	for _, event := range install.Events {
+		fmt.Fprintf(stdout, "  %s: %s\n", event, entryState(doc, installID, event))
+	}
+
+	others, err := install.ForeignOwners(doc, installID)
+	switch {
+	case err != nil:
+		fmt.Fprintf(stdout, "  %s: %s\n", label, statusUnreadable)
+	case len(others) == 0:
+		fmt.Fprintf(stdout, "  %s: none\n", label)
+	default:
+		fmt.Fprintf(stdout, "  %s: %s\n", label, strings.Join(others, ", "))
+	}
+	return nil
+}
+
+// entryState is the word for our entry under one event: present as watch
+// installs it, absent, or a file that could not be read.
+func entryState(doc *settings.Document, installID, event string) string {
+	if installID == "" {
+		// Present compares against an id, and "" is not one: an entry that
+		// belongs to no install carries "" too and would match it.
+		return statusUnknown
+	}
+	switch present, err := install.Present(doc, installID, event); {
+	case err != nil:
+		return statusUnreadable
+	case present:
+		return "present"
+	default:
+		return "absent"
+	}
+}
+
+// statusHooks reports whether an installed entry would run at all, resolved for
+// the working directory: the project and local layers are part of that answer
+// and they are per-directory.
+func statusHooks(stdout io.Writer) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	loc, err := settings.DefaultLocations(cwd)
+	if err != nil {
+		return err
+	}
+	decision, err := settings.HooksDisabled(loc)
+	switch {
+	case err != nil:
+		fmt.Fprintf(stdout, "hooks: %s; a settings layer could not be read\n", statusUnknown)
+	case decision.Disabled:
+		fmt.Fprintf(stdout, "hooks: disabled by the %s settings layer\n", decision.Layer)
+	case decision.Layer != "":
+		fmt.Fprintf(stdout, "hooks: enabled by the %s settings layer\n", decision.Layer)
+	default:
+		fmt.Fprintln(stdout, "hooks: enabled; no settings layer sets disableAllHooks")
+	}
+	fmt.Fprintf(stdout, "  resolved for %s\n", cwd)
+	return nil
+}
+
 func cmdReport(args []string, stdout io.Writer) error {
 	sessionID := ""
+	asJSON := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--session":
@@ -414,6 +553,8 @@ func cmdReport(args []string, stdout io.Writer) error {
 			}
 			sessionID = args[i+1]
 			i++
+		case "--json":
+			asJSON = true
 		default:
 			return fmt.Errorf("unknown argument %q", args[i])
 		}
@@ -427,38 +568,54 @@ func cmdReport(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if !asJSON {
+		return report.Text(stdout, rep)
+	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(rep)
 }
 
+// cmdForget evicts records at one end of the store's timeline.
+//
+// --since is the privacy form: forget what just happened. --before is the
+// retention form: forget what is old. They are the two open ends of one window
+// and one code path, and naming both would name an empty intersection, so
+// naming both is refused rather than resolved.
 func cmdForget(args []string, stdout io.Writer) error {
-	var since time.Time
+	var from, to *time.Time
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--since":
+		switch flag := args[i]; flag {
+		case "--since", "--before":
 			if i+1 >= len(args) {
-				return errors.New("--since needs a value")
+				return fmt.Errorf("%s needs a value", flag)
 			}
-			t, err := parseSince(args[i+1], time.Now())
+			t, err := parseInstant(flag, args[i+1], time.Now())
 			if err != nil {
 				return err
 			}
-			since = t
+			if flag == "--since" {
+				from = &t
+			} else {
+				to = &t
+			}
 			i++
 		default:
 			return fmt.Errorf("unknown argument %q", args[i])
 		}
 	}
-	if since.IsZero() {
-		return errors.New("forget needs --since <RFC3339 time or duration such as 24h>")
+	switch {
+	case from != nil && to != nil:
+		return errors.New("--since and --before name opposite ends of the store's timeline; pass one or the other")
+	case from == nil && to == nil:
+		return errors.New("forget needs --since or --before <RFC3339 time or duration such as 24h>")
 	}
 
 	st, err := openStore()
 	if err != nil {
 		return err
 	}
-	gaps, err := st.Forget(since, time.Now())
+	gaps, err := st.ForgetWindow(from, to, time.Now())
 	if err != nil {
 		return err
 	}
@@ -466,21 +623,28 @@ func cmdForget(args []string, stdout io.Writer) error {
 	for _, g := range gaps {
 		total += g.RemovedRecords
 	}
-	fmt.Fprintf(stdout, "attest: forgot %d records across %d runs since %s; %d gap records written\n",
-		total, len(gaps), since.UTC().Format(time.RFC3339), len(gaps))
+	// Exactly one bound was named; the refusal above is what makes that true.
+	var bound string
+	if from != nil {
+		bound = "since " + from.UTC().Format(time.RFC3339)
+	} else {
+		bound = "before " + to.UTC().Format(time.RFC3339)
+	}
+	fmt.Fprintf(stdout, "attest: forgot %d records across %d runs %s; %d gap records written\n",
+		total, len(gaps), bound, len(gaps))
 	return nil
 }
 
-// parseSince accepts a duration ("24h", meaning that long ago) or an RFC3339
+// parseInstant accepts a duration ("24h", meaning that long ago) or an RFC3339
 // timestamp.
-func parseSince(v string, now time.Time) (time.Time, error) {
+func parseInstant(flag, v string, now time.Time) (time.Time, error) {
 	if d, err := time.ParseDuration(v); err == nil {
 		return now.Add(-d), nil
 	}
 	if t, err := time.Parse(time.RFC3339, v); err == nil {
 		return t, nil
 	}
-	return time.Time{}, fmt.Errorf("--since %q is neither a duration nor an RFC3339 time", v)
+	return time.Time{}, fmt.Errorf("%s %q is neither a duration nor an RFC3339 time", flag, v)
 }
 
 func usage(w io.Writer) {
@@ -494,8 +658,14 @@ usage:
   attest detach --install <id> remove one install's entries, reading no store
   attest detach --all          remove every entry carrying an attest install
                                marker, whatever its id
-  attest report [--session S]  render declarations and coverage as JSON
-  attest forget --since T      evict records, leaving a coverage gap behind
+  attest status                say what is installed and what the store holds,
+                               writing nothing and creating no store
+  attest report [--session S] [--json]
+                               render declarations and coverage, as text for a
+                               terminal or as JSON for a consumer
+  attest forget --since T      evict records recorded at or after T
+  attest forget --before T     evict records recorded before T
+                               either way, leaving a coverage gap behind
   attest version               print the version
 
 invoked by Claude Code, never by hand:

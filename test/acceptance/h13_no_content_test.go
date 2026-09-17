@@ -31,6 +31,10 @@ var (
 		"type", "schema_version", "recorded_at_unix_ms",
 		"session_id", "install_id", "phase", "state", "reason", "hook_entry", "probe",
 	}
+	gapKeys = []string{
+		"type", "schema_version", "recorded_at_unix_ms",
+		"session_id", "reason", "from_unix_ms", "to_unix_ms", "removed_records",
+	}
 )
 
 func TestH13_RecordKeySetsAreClosed(t *testing.T) {
@@ -102,7 +106,11 @@ func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 		t.Fatalf("exit code %d, want 0", res.exitCode)
 	}
 	e.probe("end", testSession)
-	rep := e.run("", nil, "report", "--session", testSession)
+	// Both forms of the report: they render the same records through different
+	// code, and a renderer is exactly where a field nobody meant to print gets
+	// printed.
+	repJSON := e.run("", nil, "report", "--json", "--session", testSession)
+	repText := e.run("", nil, "report", "--session", testSession)
 
 	for rel, f := range walkStore(t, e.home) {
 		if bytes.Contains(f.body, []byte(canary)) {
@@ -111,7 +119,12 @@ func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 	}
 	// Hook stdout and stderr are written to Claude Code's debug log, which puts
 	// them on disk just as surely as the store does. And report is output.
-	for name, s := range map[string]string{"hook stdout": res.stdout, "hook stderr": res.stderr, "report": rep.stdout} {
+	for name, s := range map[string]string{
+		"hook stdout":   res.stdout,
+		"hook stderr":   res.stderr,
+		"report --json": repJSON.stdout,
+		"report text":   repText.stdout,
+	} {
 		if strings.Contains(s, canary) {
 			t.Errorf("%s contains the canary", name)
 		}
