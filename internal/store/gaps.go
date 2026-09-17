@@ -152,7 +152,7 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 	// One evictor at a time. Holding the gaps file's lock for the whole pass
 	// means a second handler that arrives mid-eviction sees the removals and
 	// does not write a second gap record for a run that is already gone.
-	gf, err := os.OpenFile(filepath.Join(s.root, FileGaps), os.O_CREATE|os.O_WRONLY|os.O_APPEND, fileMode)
+	gf, err := os.OpenFile(filepath.Join(s.root, FileGaps), appendFlags, fileMode)
 	if err != nil {
 		return nil, err
 	}

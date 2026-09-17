@@ -177,6 +177,12 @@ func (s *Store) ProbeFresh(sessionID string) (bool, error) {
 	return false, err
 }
 
+// appendFlags open a record file for appending. The read access is not for
+// reading: Windows grants an O_APPEND handle FILE_APPEND_DATA and neither
+// FILE_READ_DATA nor FILE_WRITE_DATA, and LockFileEx refuses such a handle, so
+// without O_RDWR every append on Windows fails to take its lock.
+const appendFlags = os.O_CREATE | os.O_RDWR | os.O_APPEND
+
 // appendOrdered appends one record to records.ndjson under the run's lock,
 // allocating its seq inside the same critical section.
 func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error {
@@ -185,7 +191,7 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 		return err
 	}
 
-	f, err := os.OpenFile(filepath.Join(dir, FileRecords), os.O_CREATE|os.O_WRONLY|os.O_APPEND, fileMode)
+	f, err := os.OpenFile(filepath.Join(dir, FileRecords), appendFlags, fileMode)
 	if err != nil {
 		return err
 	}
@@ -230,7 +236,7 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 		return err
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, fileMode)
+	f, err := os.OpenFile(path, appendFlags, fileMode)
 	if err != nil {
 		return err
 	}
