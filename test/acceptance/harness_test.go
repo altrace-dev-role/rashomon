@@ -120,16 +120,42 @@ func (e *env) command(stdin string, extraEnv []string, args ...string) *exec.Cmd
 
 func (e *env) run(stdin string, extraEnv []string, args ...string) result {
 	e.t.Helper()
-	cmd := e.command(stdin, extraEnv, args...)
+	return e.wait(e.command(stdin, extraEnv, args...))
+}
+
+func (e *env) wait(cmd *exec.Cmd) result {
+	e.t.Helper()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	// An error here is expected whenever the exit code is non-zero; the exit
 	// code is read from ProcessState, so a failure to start is what matters.
 	if err := cmd.Run(); err != nil && cmd.ProcessState == nil {
-		e.t.Fatalf("starting %s %v: %v", attestBin, args, err)
+		e.t.Fatalf("starting %v: %v", cmd.Args, err)
 	}
 	return result{exitCode: cmd.ProcessState.ExitCode(), stdout: stdout.String(), stderr: stderr.String()}
+}
+
+// runBin runs a binary other than the one under test, which is how a test
+// exercises an install made from a copy sitting at a path of its choosing.
+func (e *env) runBin(bin, stdin string, args ...string) result {
+	e.t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Env = e.environ()
+	cmd.Dir = e.cwd
+	return e.wait(cmd)
+}
+
+// sh runs an installed command line through a shell, which is what Claude Code
+// does with it and the only reader whose opinion about quoting matters.
+func (e *env) sh(line, stdin string) result {
+	e.t.Helper()
+	cmd := exec.Command("sh", "-c", line)
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Env = e.environ()
+	cmd.Dir = e.cwd
+	return e.wait(cmd)
 }
 
 func (e *env) hook(payload string, extraEnv ...string) result {

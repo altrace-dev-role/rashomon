@@ -24,7 +24,9 @@ var errUnterminated = errors.New("unterminated quote")
 //
 // On an unterminated quote it returns the tokens completed so far along with
 // the error, so a caller can still name the program of a line it could not
-// finish counting.
+// finish counting. The token the quote interrupted is not one of them: it was
+// never completed, and for a double quote emitting it would carry bytes from
+// inside the quoted string out to the program name.
 func tokenize(s string) ([]string, error) {
 	var (
 		toks    []string
@@ -61,7 +63,6 @@ func tokenize(s string) ([]string, error) {
 		case c == '\'':
 			j := strings.IndexByte(s[i+1:], '\'')
 			if j < 0 {
-				flush()
 				return toks, errUnterminated
 			}
 			cur.WriteString(s[i+1 : i+1+j])
@@ -92,8 +93,6 @@ func tokenize(s string) ([]string, error) {
 				cur.WriteByte(s[i])
 			}
 			if !closed {
-				started = true
-				flush()
 				return toks, errUnterminated
 			}
 			started = true

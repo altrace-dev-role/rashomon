@@ -49,22 +49,28 @@ type Shape struct {
 // different digests for identical input, so a store cannot be used as a lookup
 // table against a dictionary of known commands.
 func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
-	s := Shape{
-		VerbClass: verbForTool(toolName),
-		Digest:    digest(key, toolName, toolInput),
-	}
+	s := Shape{VerbClass: verbForTool(toolName)}
 
 	// Only a shell tool's input carries a command line. An MCP tool or a
 	// custom tool may have a "command" field with any meaning at all, and
 	// tokenizing it would both misclassify the call and count tokens of
 	// something that is not a shell line.
-	if s.VerbClass != VerbExecute {
+	var (
+		cmd     string
+		isShell bool
+	)
+	if s.VerbClass == VerbExecute {
+		cmd, isShell = commandField(toolInput)
+	}
+	if !isShell {
+		s.Digest = digest(key, toolName, canonical(toolInput))
 		return s
 	}
-	cmd, ok := commandField(toolInput)
-	if !ok {
-		return s
-	}
+
+	// A shell tool digests its command line and nothing else. Claude Code
+	// attaches a free-text description to a Bash call, so a digest over the
+	// whole input would move whenever the wording did and would group nothing.
+	s.Digest = digest(key, toolName, []byte(cmd))
 
 	toks, err := tokenize(cmd)
 	toks = dropLeadingAssignments(toks)
@@ -103,15 +109,15 @@ func commandField(raw json.RawMessage) (string, bool) {
 	return cmd, true
 }
 
-// digest is HMAC-SHA256 over the tool name and a canonical rendering of the
-// input, hex encoded. Its width is fixed at 64 characters regardless of how
-// large the input was, which is what lets a record's serialized length be
-// independent of the size of what it describes.
-func digest(key []byte, toolName string, raw json.RawMessage) string {
+// digest is HMAC-SHA256 over the tool name and a body, hex encoded. Its width
+// is fixed at 64 characters regardless of how large the body was, which is what
+// lets a record's serialized length be independent of the size of what it
+// describes.
+func digest(key []byte, toolName string, body []byte) string {
 	m := hmac.New(sha256.New, key)
 	m.Write([]byte(toolName))
 	m.Write([]byte{0})
-	m.Write(canonical(raw))
+	m.Write(body)
 	return hex.EncodeToString(m.Sum(nil))
 }
 

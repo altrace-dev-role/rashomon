@@ -452,3 +452,92 @@ func TestH7_WatchRefusesAnEntryItNoLongerRecognises(t *testing.T) {
 		t.Errorf("a refusing watch still changed the file")
 	}
 }
+
+// TestH3_SpacedExecutablePathRunsAsInstalled follows the installed command line
+// all the way to a shell. A path with a space in it is ordinary -- macOS puts
+// one in "Application Support" -- and an installer that writes it bare produces
+// a configuration that parses, reads plausibly, and records nothing at all.
+func TestH3_SpacedExecutablePathRunsAsInstalled(t *testing.T) {
+	e := newEnv(t)
+	exe := copyBinary(t, attestBin, filepath.Join(t.TempDir(), "Application Support", "attest"))
+
+	if res := e.runBin(exe, "", "watch"); res.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	groups := ours(e.settings().Hooks["PreToolUse"])
+	if len(groups) != 1 {
+		t.Fatalf("got %d entries of ours under hooks.PreToolUse, want 1", len(groups))
+	}
+	line := groups[0].Hooks[0].Command
+
+	fields := shellSplit(t, line)
+	if len(fields) == 0 || fields[0] != exe {
+		t.Fatalf("the command line %s splits to %q; a shell would run something other than %q", line, fields, exe)
+	}
+
+	res := e.sh(line, defaultPayload().build(t))
+	if res.exitCode != 0 {
+		t.Fatalf("sh -c %s: exit %d, stderr %q", line, res.exitCode, res.stderr)
+	}
+	if got := len(e.declarations(testSession)); got != 1 {
+		t.Errorf("the installed command line recorded %d declarations, want 1", got)
+	}
+}
+
+// copyBinary places a copy of a binary at dst, creating its directory. The path
+// it sits at is the whole point of the copy.
+func copyBinary(t *testing.T, src, dst string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		t.Fatalf("creating %s: %v", filepath.Dir(dst), err)
+	}
+	body, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("reading %s: %v", src, err)
+	}
+	if err := os.WriteFile(dst, body, 0o700); err != nil {
+		t.Fatalf("writing %s: %v", dst, err)
+	}
+	resolved, err := filepath.EvalSymlinks(dst)
+	if err != nil {
+		t.Fatalf("resolving %s: %v", dst, err)
+	}
+	return resolved
+}
+
+// shellSplit splits a command line on whitespace outside single quotes, which
+// is as much of a shell as an installed path needs. It is written out here
+// rather than borrowed from the tokenizer under test, which would agree with
+// whatever that produced.
+func shellSplit(t *testing.T, line string) []string {
+	t.Helper()
+	var (
+		fields  []string
+		cur     strings.Builder
+		quoted  bool
+		started bool
+	)
+	for i := 0; i < len(line); i++ {
+		switch c := line[i]; {
+		case c == '\'':
+			quoted = !quoted
+			started = true
+		case (c == ' ' || c == '\t') && !quoted:
+			if started {
+				fields = append(fields, cur.String())
+				cur.Reset()
+				started = false
+			}
+		default:
+			cur.WriteByte(c)
+			started = true
+		}
+	}
+	if quoted {
+		t.Fatalf("the command line has an unbalanced quote: %s", line)
+	}
+	if started {
+		fields = append(fields, cur.String())
+	}
+	return fields
+}

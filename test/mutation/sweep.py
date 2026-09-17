@@ -78,6 +78,30 @@ m("H-18 the hook installs on every call", "cmd/attest/main.go",
 m("H-19 report re-reads today's config to judge a past run", "internal/report/report.go",
   "\t\tsess := build(run)\n", "\t\tsess := build(run)\n\t\tif p, err := settings.UserPath(); err == nil {\n\t\t\tif doc, err := settings.Load(p); err == nil {\n\t\t\t\tif ok, _ := install.Present(doc, st.InstallID(), install.EventPreToolUse); !ok {\n\t\t\t\t\tsess.Coverage.add(store.ReasonHookEntryAbsent)\n\t\t\t\t}\n\t\t\t}\n\t\t}\n", "TestH19_")
 
+m("H-14 shell digest covers the whole tool_input again", "internal/shape/shape.go",
+  "\ts.Digest = digest(key, toolName, []byte(cmd))", "\ts.Digest = digest(key, toolName, canonical(toolInput))",
+  "TestH14_ShellDigestCoversTheCommandAlone")
+m("H-14 non-shell digest covers only the tool name", "internal/shape/shape.go",
+  "\t\ts.Digest = digest(key, toolName, canonical(toolInput))", "\t\ts.Digest = digest(key, toolName, nil)",
+  "TestH14_NonShellDigestCoversTheWholeInput")
+m("H-3  executable path installed unquoted", "internal/install/install.go",
+  "\tif safe {\n\t\treturn s\n\t}\n", "\tif safe || true {\n\t\treturn s\n\t}\n",
+  "TestShellQuote|TestH3_SpacedExecutablePathRunsAsInstalled")
+
+m("tokenizer does not split on metacharacters", "internal/shape/tokenize.go",
+  "\t\tcase isMeta(c):\n", "\t\tcase isMeta(c) && false:\n", "TestTokenize")
+m("tokenizer emits the token an unterminated quote interrupted", "internal/shape/tokenize.go",
+  "\t\t\tif !closed {\n\t\t\t\treturn toks, errUnterminated",
+  "\t\t\tif !closed {\n\t\t\t\tstarted = true\n\t\t\t\tflush()\n\t\t\t\treturn toks, errUnterminated", "TestTokenize")
+m("settings accepts a duplicate key", "internal/settings/document.go",
+  "\t\tif seen[key] {\n\t\t\treturn nil, fmt.Errorf(\"duplicate key %q\", key)\n\t\t}\n\t\tseen[key] = true", "\t\tseen[key] = true",
+  "TestParseRefuses|TestHookEntriesRefusesDuplicateEventKeys")
+m("settings accepts trailing data after the object", "internal/settings/document.go",
+  "\t\tif _, err := dec.Token(); err != io.EOF {\n\t\t\treturn nil, errors.New(\"trailing data after the top-level object\")\n\t\t}", "\t\t_ = io.EOF",
+  "TestParseRefuses")
+m("settings reads a non-object top level as an empty document", "internal/settings/document.go",
+  "\t\treturn nil, errors.New(\"not a JSON object\")", "\t\treturn nil, nil", "TestParseRefuses")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-17 handler opens a socket (no net import, so only the trace sees it)": ("internal/hook/handle.go", '\t"io"\n', '\t"io"\n\t"syscall"\n'),

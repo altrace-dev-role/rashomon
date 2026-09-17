@@ -112,6 +112,68 @@ func TestH14_SameInstallDigestsAreStable(t *testing.T) {
 	}
 }
 
+// TestH14_ShellDigestCoversTheCommandAlone is what makes stability hold for the
+// tool the store sees most. Claude Code attaches a free-text description to a
+// Bash call, and that wording differs from call to call, so a digest over the
+// whole tool_input would give `git status` a fresh value every time and group
+// nothing. The fixture the stability test uses carries no description, which is
+// why that test passes either way and this one is needed beside it.
+func TestH14_ShellDigestCoversTheCommandAlone(t *testing.T) {
+	e := newEnv(t)
+	for _, in := range []map[string]any{
+		{"command": "git status", "description": "Check the working tree"},
+		{"command": "git status", "description": "See what changed before committing"},
+		{"command": "git diff", "description": "Check the working tree"},
+	} {
+		p := defaultPayload()
+		p.ToolInput = in
+		e.mustHook(p.build(t))
+	}
+
+	decls := e.declarations(testSession)
+	if len(decls) != 3 {
+		t.Fatalf("got %d declarations, want 3", len(decls))
+	}
+	same, reworded, other := digestOf(t, decls[0]), digestOf(t, decls[1]), digestOf(t, decls[2])
+	if same != reworded {
+		t.Errorf("the same command digested differently under a different description: %s vs %s", same, reworded)
+	}
+	if same == other {
+		t.Errorf("two different commands share the digest %s", same)
+	}
+}
+
+// TestH14_NonShellDigestCoversTheWholeInput is the other side of that split. A
+// Write call has no command line, so the whole canonical input is all there is
+// to tell two of them apart.
+func TestH14_NonShellDigestCoversTheWholeInput(t *testing.T) {
+	e := newEnv(t)
+	for _, content := range []string{"first draft", "second draft"} {
+		p := defaultPayload()
+		p.ToolName = "Write"
+		p.ToolInput = map[string]any{"file_path": "/tmp/project/notes.md", "content": content}
+		e.mustHook(p.build(t))
+	}
+
+	decls := e.declarations(testSession)
+	if len(decls) != 2 {
+		t.Fatalf("got %d declarations, want 2", len(decls))
+	}
+	if a, b := digestOf(t, decls[0]), digestOf(t, decls[1]); a == b {
+		t.Errorf("two Write calls with different content share the digest %s", a)
+	}
+}
+
+func digestOf(t *testing.T, r record) string {
+	t.Helper()
+	v, _ := nested(r, "shape.digest")
+	s, ok := v.(string)
+	if !ok || !hex64.MatchString(s) {
+		t.Fatalf("digest is %v, want 64 hex characters", v)
+	}
+	return s
+}
+
 func TestH14_KeyFileIsOwnerOnly(t *testing.T) {
 	e := newEnv(t)
 	e.declarationsAfter("ls")
