@@ -54,7 +54,7 @@ echo; echo "################ L-1: Bash + Write + mcp__* in one session #########
 S1=$(uuid)
 claude -p "Do exactly these three things using tools, in this order, then stop. 1) Use the Bash tool to run: echo l1-bash. 2) Use the Write tool to create a file named l1.txt containing the single word hello. 3) Call the MCP tool mcp__attest-ping__ping with no arguments. After all three, reply with the single word: done." \
   --session-id "$S1" --allowedTools "Bash(echo:*),Write,mcp__attest-ping__ping" --max-turns 8 --output-format json < /dev/null > "$LIVE/l1.out"
-"$BIN" report --session "$S1" | tee "$LIVE/l1-report.json" | python3 -c '
+"$BIN" report --json --session "$S1" | tee "$LIVE/l1-report.json" | python3 -c '
 import sys, json
 s = json.load(sys.stdin)["sessions"][0]; t = s["transcripts"][0]
 print("by_tool:", s["declarations"]["by_tool"])
@@ -80,7 +80,7 @@ CPID=$!
 i=0; while [ $i -lt 240 ] && ! grep -qs '"declaration"' "$ATTEST_HOME/runs/$S3/records.ndjson"; do sleep 0.5; i=$((i+1)); done
 echo "first declaration landed; detaching while the session runs:"; "$BIN" detach
 wait $CPID
-"$BIN" report --session "$S3" | tee "$LIVE/l3-report.json" | python3 -c '
+"$BIN" report --json --session "$S3" | tee "$LIVE/l3-report.json" | python3 -c '
 import sys, json
 s = json.load(sys.stdin)["sessions"][0]; t = s["transcripts"][0]
 print("declarations recorded:", s["declarations"]["recorded"])

@@ -51,6 +51,7 @@ Claude Code only. No other agent harness is in scope.
 - `attest forget --before T` — the retention counterpart: evict records recorded
   before `T`, leaving the same gap record. The two are opposite open ends of one
   window and one code path; naming both is refused rather than resolved.
+- `attest version` — print the version.
 
 Invoked by Claude Code, never by hand: `attest hook` for `PreToolUse`,
 `attest post` for `PostToolUse`, and `attest probe start|end` for
