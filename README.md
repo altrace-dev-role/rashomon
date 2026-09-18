@@ -1,6 +1,6 @@
-# altrace-attest
+# rashomon
 
-`attest` records what a Claude Code session *asked* to run, and the evidence that
+`rashomon` records what a Claude Code session *asked* to run, and the evidence that
 the recorder was running while it did. It captures identifiers and the derived
 shape of each tool call. It never captures content.
 
@@ -19,42 +19,80 @@ The store exists to be joined against. Every record carries `tool_use_id`,
 keys the capture is a pile of anonymous shapes and nothing downstream can
 integrate it.
 
+Point it at an observing proxy's store as well and it will join the two
+records: what the session said it would do, against what actually left the
+machine. That comparison is the one thing neither half can produce alone — a
+host reached by a command that never named it appears in no transcript and in
+no hook log, because nothing in the session knows about it.
+
 Claude Code only. No other agent harness is in scope.
+
+Built by [Altrace](https://github.com/altrace-dev-role). The proxy whose store
+this reads is a separate, closed product; `rashomon` is useful without it and
+reports honestly when it is absent.
 
 ## Commands
 
-- `attest watch` — install the `PreToolUse` and `PostToolUse` recorders and the
+- `rashomon watch` — install the `PreToolUse` and `PostToolUse` recorders and the
   `SessionStart` / `SessionEnd` liveness probe. The only command that writes to
   your configuration. It prints the exact `detach --install <id>` line that
   undoes it without a store.
-- `attest detach` — remove them, leaving everything else in the file as it was
+- `rashomon detach` — remove them, leaving everything else in the file as it was
   found.
-- `attest detach --install <id>` — remove the entries carrying one install id,
+- `rashomon detach --install <id>` — remove the entries carrying one install id,
   opening no store.
-- `attest detach --all` — remove every entry whose command line carries an
-  attest install marker, whatever its id, for when the store is gone and the id
+- `rashomon detach --all` — remove every entry whose command line carries an
+  rashomon install marker, whatever its id, for when the store is gone and the id
   with it.
-- `attest status` — say what is installed here: the store and its install id,
-  each of the four entries as present, absent or unreadable, the install ids of
-  anything else sharing the file, and whether hooks are disabled and by which
-  layer. It reads; it writes nothing and creates no store.
-- `attest report [--session S]` — render declarations, executions and coverage
-  as text for a terminal. `--json` renders the same facts as JSON for a
-  consumer. What is null in the JSON reads as `unknown` in the text — or `not
-  read` for the counts of a transcript that could not be read — and never as
-  `0`. The accounting equation is rendered once per transcript the run's
-  declarations named, because a nested `claude -p` writes its own transcript
-  under the parent's session id.
-- `attest forget --since T` — evict records recorded at or after `T` (an RFC 3339
+- `rashomon status` — say what is installed here: the store and its install id,
+  each entry as present, absent or unreadable, the install ids of anything else
+  sharing the file, and whether hooks are disabled and by which layer. It
+  reads; it writes nothing and creates no store — not even the store it is
+  reporting on, because a command whose whole answer may be "nothing is
+  installed here" must not be the command that installs something.
+- `rashomon report [--session S] [--json] [--redact] [--proxy-store PATH]` —
+  render declarations, executions and coverage as text for a terminal, or as
+  JSON for a consumer. What is null in the JSON reads as `unknown` in the text
+  — or `not read` for the counts of a transcript that could not be read — and
+  never as `0`. The accounting equation is rendered once per transcript the
+  run's declarations named, because a nested `claude -p` writes its own
+  transcript under the parent's session id.
+
+  `--proxy-store PATH` adds the destinations section, joining what the session
+  declared against what an observing proxy saw; see below. `--redact` replaces
+  every hostname with a keyed digest and drops the agent's summary entirely, so
+  the report can be shared with someone who should not learn where you went.
+  Like `status`, it creates no store: a location that has recorded nothing
+  renders "no sessions recorded" rather than minting an install identity to say
+  so.
+- `rashomon forget --host H` — evict every call that named host `H`, its rows
+  from the view, and its entry in the project baseline. It does not delete from
+  the proxy's own store: that database is hash-chained and opened read-only
+  here, so the gap record carries a keyed digest of the host and the report
+  keeps the destination suppressed rather than claiming the row is gone.
+- `rashomon forget --since T` — evict records recorded at or after `T` (an RFC 3339
   time, or a duration such as `24h` meaning that long ago), leaving a coverage
   gap record behind.
-- `attest forget --before T` — the retention counterpart: evict records recorded
+- `rashomon forget --before T` — the retention counterpart: evict records recorded
   before `T`, leaving the same gap record. The two are opposite open ends of one
   window and one code path; naming both is refused rather than resolved.
-- `attest version` — print the version.
+  Forgetting what was never recorded is a satisfied request, not an error.
+- `rashomon env [--port N]` — print the proxy variables to export, for use with
+  `eval`. HTTPS only: plain HTTP is not observed in this release, so no
+  variable for it is printed.
+- `rashomon run -- <cmd...>` — run a command with those variables set, if and
+  only if an observe-mode proxy is running, and report on the session it
+  produced. It checks first and launches anyway without the variables when the
+  check fails, saying why in one line: you asked to run your command, and a
+  wrapper that declined because a status file was missing would be worse than
+  one that runs without recording. The exception is that nothing is recording
+  at all, where it refuses and tells you to run `watch` first. The child's exit
+  code is returned unchanged and the report goes to stderr, so the child's
+  stdout stays pipeable.
+- `rashomon version` — print the version.
 
-Invoked by Claude Code, never by hand: `attest hook` for `PreToolUse`,
-`attest post` for `PostToolUse`, and `attest probe start|end` for
+Invoked by Claude Code, never by hand: `rashomon hook` for `PreToolUse`,
+`rashomon post` for `PostToolUse`, and `rashomon probe start|end` for
 `SessionStart` and `SessionEnd`. Each carries `--install <id>` in the installed
 command line. That id is how `watch` and `detach` tell their entries from
 another install's, and the hook paths read it too: an entry naming an install
@@ -64,28 +102,36 @@ a session it has never seen. An entry naming no install records exactly as it
 always has. `watch` names the other installs whose entries share the file,
 because those entries fire in this environment and record nothing in it.
 
-The store is at `$ATTEST_HOME`, else `$XDG_STATE_HOME/attest`, else
-`~/.local/state/attest`. `ATTEST_STORE_CAP_BYTES` bounds it (default 512 MiB;
+The store is at `$RASHOMON_HOME`, else `$XDG_STATE_HOME/rashomon`, else
+`~/.local/state/rashomon`. `RASHOMON_STORE_CAP_BYTES` bounds it (default 512 MiB;
 the oldest runs not written to within an hour are evicted, each leaving a gap
 record). `CLAUDE_CONFIG_DIR` is honoured exactly as Claude Code honours it.
 
 ## Installing
 
-    go install github.com/altrace-dev-role/altrace-attest/cmd/attest@latest
+    go install github.com/altrace-dev-role/rashomon/cmd/rashomon@latest
 
 Or from the tap. The tap repository is not named `homebrew-…`, so it is tapped
 by URL rather than by the `brew install owner/tap/formula` shorthand:
 
     brew tap altrace-dev-role/altrace-homebrew-tap https://github.com/altrace-dev-role/altrace-homebrew-tap
-    brew install attest
+    brew install rashomon
 
-`watch` must be run from a built binary. It writes the running executable's
-path into `~/.claude/settings.json`, and the binary `go run` compiles lives in a
-`go-build` temporary directory that is gone when the process exits, so the
-installed entry would name a file that no longer exists and every tool call
-would fire a hook that cannot start. `watch` refuses rather than install that:
-`go build ./cmd/attest && ./attest watch`, or install one of the two ways above.
-The other commands are unaffected.
+INSTALL FROM A STABLE LOCATION. `watch` writes the running executable's
+ABSOLUTE PATH into `~/.claude/settings.json`, and Claude Code executes that
+path on every tool call for as long as the entry is installed. Whatever the
+binary was when you ran `watch` is what fires afterwards, so a binary that
+moves, is deleted, or is rebuilt somewhere else leaves an entry naming a file
+that no longer exists — and every tool call then fires a hook that cannot
+start.
+
+`watch` refuses the worst case outright: the binary `go run` compiles lives in
+a `go-build` temporary directory that is gone when the process exits, so
+installing from it would be installing a path guaranteed to be dead within
+seconds. The cases it cannot refuse are yours to avoid — build into a
+directory you keep, or install one of the two ways above, and re-run `watch`
+after any move. The other commands are unaffected: they do not care where the
+binary lives.
 
 ## The constraint that shapes everything
 
@@ -151,13 +197,13 @@ managed path, which is more work than a single file read.
 Recovering when the binary or the store is gone. The installed command line is
 an absolute path to the binary. Delete the binary and Claude Code errors on
 every tool call, and `detach` — which is that binary — cannot run: install
-`attest` again, anywhere, and run the line `watch` printed at install time,
-`attest detach --install <id>`. An entry is recognised by the marker in its
+`rashomon` again, anywhere, and run the line `watch` printed at install time,
+`rashomon detach --install <id>`. An entry is recognised by the marker in its
 command line and never by the path, which is what lets a binary at a new path
 remove the old install's entries. Delete the store and the install id goes with
-it; `attest detach --all` is for that case, and removes every entry carrying an
-attest install marker whatever its id. Neither form opens the store, so neither
-can create one. A plain `attest detach` does read the id from the store, and on
+it; `rashomon detach --all` is for that case, and removes every entry carrying an
+rashomon install marker whatever its id. Neither form opens the store, so neither
+can create one. A plain `rashomon detach` does read the id from the store, and on
 a machine that has none it names the two forms above rather than creating a
 store to answer its own question. Both refuse, naming the field, when an entry
 they would remove has been edited, and both leave every foreign entry byte for
@@ -249,6 +295,72 @@ Both transcript lists are `null` rather than empty when the transcript could
 not be read, under the same rule as every count beside them: "no results" and
 "could not look" are different facts.
 
+## Destinations: what the wire saw, and what no transcript can tell you
+
+Everything above is the session's own account of itself: what it declared, what
+ran, what the recorder could vouch for. `--proxy-store PATH` adds the other
+side. Altrace's proxy, in observe mode, writes a hash-chained row for every
+CONNECT it admits or refuses; pointing `report` at that database joins the two
+records and prints what the comparison shows.
+
+The join is the point, and one line of it cannot be produced any other way:
+
+    reached but never named: files.pythonhosted.org, pypi.org
+
+`pip download requests` names no hostname anywhere in its command line. The
+transcript cannot tell you where it went, the hook log cannot, and neither can
+the agent — it does not know. The proxy saw both hosts. The report's other
+lines are the symmetric cases: `declared but not observed`, for a host a call
+named that never appeared on the wire (denied, cached, failed before
+connecting, or simply not seen), and `executed differently from declared`, for
+a call whose recorded execution does not match the shape it declared.
+
+WHAT IT REFUSES TO CLAIM matters as much as what it shows.
+
+- `client plane` is listed separately, not as a finding. Claude Code's own
+  model traffic transits the same proxy, so `api.anthropic.com` appears with no
+  declaring tool call in every single session — and an agent's own request to
+  that host is indistinguishable from the client's. Reporting it as a finding
+  would make the central line fire falsely every time, and a reader who saw it
+  be wrong once would discount it when it was right.
+- `proxy on path` has three values, not two. `unknown` is a real answer: the
+  store was readable and held no rows inside this session's window, so whether
+  the proxy was on the path cannot be determined. Collapsing that into `false`
+  would assert an absence that was never measured.
+- `inherited` counts rows from outside the session's window and excludes them
+  from every other number, so another session's traffic through the same proxy
+  cannot enter this one's totals.
+- Tool-family coverage is DERIVED FROM THE JOIN, never probed. Four statuses,
+  because each says something different: `transit measured` (it declared hosts
+  and at least one was observed — proof for this session, not a claim about the
+  program in general), `declared hosts not observed` (it named hosts and none
+  appeared, which does not distinguish "does not honour the variables" from
+  "the calls did not run" from "the response was cached"), `exercised, no hosts
+  declared` (`go build`, `git status` — nothing to join on), and `unknown` (the
+  store could not be read). The last one is the row that matters most: without
+  it every family would read as unobserved when the store was simply missing,
+  which blames the families for the reader's own blindness.
+
+### What this cannot observe, whatever the session did
+
+Printed on every report, including a completely healthy one, because these are
+properties of the instrument rather than of the session. A reader told only
+what WAS observed will read the rest as an absence of traffic rather than an
+absence of observation.
+
+- Node's built-in `fetch`. Measured, not assumed: on v22.19.0 it made a request
+  with no CONNECT reaching the proxy, with and without `NODE_USE_ENV_PROXY`.
+- `ssh`, and git over ssh — not CONNECT, so outside what this proxy sees.
+- DNS resolution: a name is resolved before any proxy is consulted.
+- Raw sockets: no proxy variable applies.
+- Plain HTTP: not observed in this release, since no `HTTP_PROXY` is exported.
+
+The proxy's database is opened READ-ONLY and never written to. It belongs to a
+different program, its records are hash-chained, and deleting a row would break
+the chain it exists to provide — which is why `forget --host` suppresses a
+destination from this report's view rather than claiming to have removed it
+from there.
+
 ## The store
 
 Directory `0700`, files `0600`, one JSON object per line, `schema_version` on
@@ -286,6 +398,17 @@ destroy everything the user had collected.
 the documentation rather than in a footnote: the probe detects hook-system death.
 It cannot detect a recorder that runs and drops records. H-10 below is what
 catches that, and the probe should not be credited with more than it does.
+
+VERIFIED COVERAGE IS SCOPED TO A PERSISTENT INSTALL. The probe resolves the
+settings file Claude Code itself resolves, and asks whether OUR entry — our
+matcher, our timeout, our install id — is in it. So coverage reads `verified`
+only for a session whose recorder was installed in that file by `watch`. A
+session started with `claude --settings <some other file>`, or under a
+`CLAUDE_CONFIG_DIR` that differs from the one the probe resolves, records its
+declarations perfectly well and still reports `hook_entry_absent`: the probe
+honestly cannot confirm an entry that is not in the file it reads. That is the
+right failure direction — it under-claims — but it means a temporary or
+side-loaded install cannot produce a verified report, by construction.
 
 ## Constraints
 
@@ -461,11 +584,11 @@ is reported as a spec defect.
 
 ## Building and testing
 
-    go build ./cmd/attest
+    go build ./cmd/rashomon
     go test ./...
     python3 test/mutation/sweep.py
 
-The acceptance suite compiles the binary with `-tags attestfault` and execs it.
+The acceptance suite compiles the binary with `-tags rashomonfault` and execs it.
 That tag adds the fault injection points H-1, H-8, H-11, H-12 and H-20 need,
 and one kind, `fail=N`, that returns an error instead of panicking because it
 exercises a retry a panic would never let run; a released binary carries no
@@ -491,17 +614,27 @@ session on the machine it is run on. It writes to the real
 Complete against the specification above. Every headless item is green and has
 been shown to fail under a named break; the three live items were run against
 real Claude Code sessions rather than by hand. The `PostToolUse` follow-on the
-specification deferred is in: `watch` installs a fourth entry with the same
-matcher and timeout, each completed call leaves an execution record, and
-`report` renders the three lists described above. Its headless item is
-**H-20**, which continues the numbering rather than amending an item above.
+specification deferred is in: `watch` installs it with the same matcher and
+timeout, each completed call leaves an execution record, and `report` renders
+the three lists described above. Its headless item is **H-20**, which
+continues the numbering rather than amending an item above.
+
+`watch` installs FIVE entries in total: `PreToolUse`, `PostToolUse`,
+`PostToolUseFailure`, `SessionStart` and `SessionEnd`. The failure event is
+subscribed because without it a call that failed left an execution record
+claiming it succeeded — the outcome was not unknown, it was wrong.
 
 **Decisions the specification asked to have stated.**
 
-- Goroutines: this program starts none of its own. The only goroutine in the
-  process is the runtime's signal-delivery loop. `safe.Go` exists so that H-1's
-  goroutine-panic case exercises the guard a future goroutine would need; it
-  has no production caller.
+- Goroutines: one, and it is not on the recorder's path. `safe.Go` had no
+  production caller when this was written; `rashomon run` now uses it for the
+  signal relay that forwards a `SIGTERM` sent to the wrapper on to the child,
+  so a supervisor or a timeout cannot orphan the command you asked to run. It
+  is cancelled and waited for before the call returns, so it cannot outlive the
+  launch or leave a handler installed for the report. The hook, post and probe
+  paths still start none: a test asserts `internal/hook` cannot reach
+  `internal/launch`, so the recorder cannot acquire a goroutine — or the
+  `os/exec` that package needs — by accident.
 - H-16's tension: the append lock is waited on for at most two seconds against
   the five-second hook timeout. On give-up the terminal record goes to
   `spill.ndjson`, which is written without waiting, and carries the
