@@ -129,13 +129,18 @@ record). `CLAUDE_CONFIG_DIR` is honoured exactly as Claude Code honours it.
 
 ## Installing
 
-    go install github.com/altrace-dev-role/rashomon/cmd/rashomon@latest
+    go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
 
-Or from the tap. The tap repository is not named `homebrew-…`, so it is tapped
-by URL rather than by the `brew install owner/tap/formula` shorthand:
+Or clone and build:
 
-    brew tap altrace-dev-role/altrace-homebrew-tap https://github.com/altrace-dev-role/altrace-homebrew-tap
-    brew install rashomon
+    git clone https://github.com/altrace-dev-role/rashomon
+    cd rashomon && go build ./cmd/rashomon
+
+`@main` rather than `@latest` because there are no released versions yet and
+`@latest` has nothing to resolve to. Once the first `v*` tag exists, `@latest`
+is the one to use and will resolve to it.
+
+A Homebrew formula follows the first release.
 
 INSTALL FROM A STABLE LOCATION. `watch` writes the running executable's
 ABSOLUTE PATH into `~/.claude/settings.json`, and Claude Code executes that
@@ -149,8 +154,8 @@ start.
 a `go-build` temporary directory that is gone when the process exits, so
 installing from it would be installing a path guaranteed to be dead within
 seconds. The cases it cannot refuse are yours to avoid — build into a
-directory you keep, or install one of the two ways above, and re-run `watch`
-after any move. The other commands are unaffected: they do not care where the
+directory you keep, or `go install` it so it lands in your GOBIN, and re-run
+`watch` after any move. The other commands are unaffected: they do not care where the
 binary lives.
 
 ## The constraint that shapes everything
