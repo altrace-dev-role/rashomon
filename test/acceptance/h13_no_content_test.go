@@ -150,7 +150,7 @@ func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 func TestH12_InternalErrorCoverageCarriesNoCount(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
-	res := e.hook(defaultPayload().build(t), "ATTEST_FAULT="+pointStoreWrite+":plain_panic")
+	res := e.hook(defaultPayload().build(t), "RASHOMON_FAULT="+pointStoreWrite+":plain_panic")
 	if res.exitCode != 0 {
 		t.Fatalf("exit code %d, want 0", res.exitCode)
 	}

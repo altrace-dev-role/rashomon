@@ -18,9 +18,9 @@ func TestRunNeverReturnsTwo(t *testing.T) {
 	// Every path below that touches disk must touch a throwaway. A test that
 	// opened the real store or the real settings file would be H-18's own
 	// failure mode, committed by the suite meant to prevent it.
-	t.Setenv("ATTEST_HOME", t.TempDir())
+	t.Setenv("RASHOMON_HOME", t.TempDir())
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	t.Setenv("ATTEST_MANAGED_SETTINGS_PATH", filepath.Join(t.TempDir(), "absent"))
+	t.Setenv("RASHOMON_MANAGED_SETTINGS_PATH", filepath.Join(t.TempDir(), "absent"))
 
 	cases := [][]string{
 		nil,
@@ -85,7 +85,7 @@ const foreignInstallID = "ffffffffffffffffffffffffffffffff"
 // down. A malformed one still exits 0: an argument this program cannot read is
 // not grounds for blocking a tool call.
 func TestHookPathsAlwaysExitZero(t *testing.T) {
-	t.Setenv("ATTEST_HOME", t.TempDir())
+	t.Setenv("RASHOMON_HOME", t.TempDir())
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 
 	for _, args := range [][]string{

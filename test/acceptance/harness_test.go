@@ -19,7 +19,7 @@ import (
 // test cannot observe one, and `go run` reports its child's exit status as 1,
 // which would mask the single value that matters here.
 var (
-	rashomonBin   string
+	rashomonBin string
 	panickerBin string
 	moduleRoot  string
 )
@@ -96,9 +96,9 @@ func (e *env) managedPath() string  { return filepath.Join(e.configDir, "managed
 
 func (e *env) environ(extra ...string) []string {
 	base := append(os.Environ(),
-		"ATTEST_HOME="+e.home,
+		"RASHOMON_HOME="+e.home,
 		"CLAUDE_CONFIG_DIR="+e.configDir,
-		"ATTEST_MANAGED_SETTINGS_PATH="+e.managedPath(),
+		"RASHOMON_MANAGED_SETTINGS_PATH="+e.managedPath(),
 	)
 	return append(base, extra...)
 }

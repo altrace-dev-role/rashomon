@@ -366,7 +366,7 @@ func TestH8_AtomicWriteWithTheWindowForced(t *testing.T) {
 		e.writeSettings(seed)
 		var extra []string
 		if point != "" {
-			extra = []string{"ATTEST_FAULT=" + point + ":plain_panic"}
+			extra = []string{"RASHOMON_FAULT=" + point + ":plain_panic"}
 		}
 		res := e.watch(extra...)
 		if res.exitCode == 2 {

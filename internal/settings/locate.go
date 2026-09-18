@@ -65,13 +65,13 @@ func DefaultLocations(cwd string) (Locations, error) {
 
 // managedPath is where enterprise policy lives on each platform.
 //
-// ATTEST_MANAGED_SETTINGS_PATH exists so the refusal path can be tested
+// RASHOMON_MANAGED_SETTINGS_PATH exists so the refusal path can be tested
 // against a policy file that is not really installed on the machine. Claude
 // Code does not read this variable, so pointing it at a permissive file cannot
 // make a hook run that policy has disabled; it can only make watch install an
 // entry that will then never fire.
 func managedPath() string {
-	if v := os.Getenv("ATTEST_MANAGED_SETTINGS_PATH"); v != "" {
+	if v := os.Getenv("RASHOMON_MANAGED_SETTINGS_PATH"); v != "" {
 		return v
 	}
 	switch runtime.GOOS {

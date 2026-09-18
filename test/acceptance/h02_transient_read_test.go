@@ -17,7 +17,7 @@ func TestH2_TransientSettingsReadIsRetried(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 
-	res := e.hook(defaultPayload().build(t), "ATTEST_FAULT="+pointSettingsLoad+":fail=1")
+	res := e.hook(defaultPayload().build(t), "RASHOMON_FAULT="+pointSettingsLoad+":fail=1")
 	if res.exitCode != 0 {
 		t.Fatalf("exit code %d, want 0 (stderr: %q)", res.exitCode, res.stderr)
 	}
@@ -50,7 +50,7 @@ func TestH2_PersistentSettingsReadIsUnresolved(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 
-	res := e.hook(defaultPayload().build(t), "ATTEST_FAULT="+pointSettingsLoad+":fail=10")
+	res := e.hook(defaultPayload().build(t), "RASHOMON_FAULT="+pointSettingsLoad+":fail=10")
 	if res.exitCode != 0 {
 		t.Fatalf("exit code %d, want 0 (stderr: %q)", res.exitCode, res.stderr)
 	}

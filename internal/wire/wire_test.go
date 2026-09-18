@@ -148,7 +148,7 @@ func TestRead_AttemptsAndDistinctAreSeparate(t *testing.T) {
 	for i := 1; i <= 4; i++ {
 		rows = append(rows, fixtureRow{
 			seq: int64(i), requestID: fmt.Sprintf("req-%d", i),
-			ts: stamp(base.Add(time.Duration(i)*time.Second), float64(i)),
+			ts:     stamp(base.Add(time.Duration(i)*time.Second), float64(i)),
 			action: "ALLOW", reason: "under_limit", host: "api.anthropic.com:443",
 		})
 	}

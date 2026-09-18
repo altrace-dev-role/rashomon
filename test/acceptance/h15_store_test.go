@@ -354,7 +354,7 @@ func TestH15_SizeCapEvictionLeavesAGap(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if res := e.probe("start", "new-session", "ATTEST_STORE_CAP_BYTES=1"); res.exitCode != 0 {
+	if res := e.probe("start", "new-session", "RASHOMON_STORE_CAP_BYTES=1"); res.exitCode != 0 {
 		t.Fatalf("probe start: exit %d", res.exitCode)
 	}
 
@@ -384,7 +384,7 @@ func TestH15_LiveRunsAreNotEvicted(t *testing.T) {
 	p := defaultPayload()
 	p.SessionID = "recent"
 	e.mustHook(p.build(t))
-	e.probe("start", "another", "ATTEST_STORE_CAP_BYTES=1")
+	e.probe("start", "another", "RASHOMON_STORE_CAP_BYTES=1")
 
 	if _, err := os.Stat(filepath.Join(e.home, "runs", "recent")); err != nil {
 		t.Errorf("a run written seconds ago was evicted")
@@ -492,7 +492,7 @@ func TestH15_EvictedRunsStillReportTheirGap(t *testing.T) {
 	for _, f := range entries {
 		_ = os.Chtimes(filepath.Join(oldDir, f.Name()), old, old)
 	}
-	e.probe("start", "new-session", "ATTEST_STORE_CAP_BYTES=1")
+	e.probe("start", "new-session", "RASHOMON_STORE_CAP_BYTES=1")
 	if _, err := os.Stat(oldDir); !os.IsNotExist(err) {
 		t.Fatal("premise broken: old run was not evicted")
 	}

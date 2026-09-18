@@ -57,7 +57,7 @@ func TestH1Control_HarnessObservesExitTwo(t *testing.T) {
 // case below would pass by never having faulted.
 func TestH1InjectionIsCompiledIn(t *testing.T) {
 	e := newEnv(t)
-	res := e.hook(defaultPayload().build(t), "ATTEST_FAULT="+pointHookStart+":plain_panic")
+	res := e.hook(defaultPayload().build(t), "RASHOMON_FAULT="+pointHookStart+":plain_panic")
 
 	if res.exitCode != 0 {
 		t.Fatalf("exit code %d, want 0", res.exitCode)
@@ -75,7 +75,7 @@ func TestH1_NoFaultBlocksTheToolCall(t *testing.T) {
 			t.Run(fault+"@"+point, func(t *testing.T) {
 				e := newEnv(t)
 				e.watched(testSession)
-				res := e.hook(defaultPayload().build(t), "ATTEST_FAULT="+point+":"+fault)
+				res := e.hook(defaultPayload().build(t), "RASHOMON_FAULT="+point+":"+fault)
 
 				if res.exitCode != 0 {
 					t.Fatalf("exit code %d, want 0 (2 would block the tool call)", res.exitCode)
@@ -119,7 +119,7 @@ func TestH1_GoroutinePanicIsContained(t *testing.T) {
 		t.Run(point, func(t *testing.T) {
 			e := newEnv(t)
 			e.watched(testSession)
-			res := e.hook(defaultPayload().build(t), "ATTEST_FAULT="+point+":goroutine_panic")
+			res := e.hook(defaultPayload().build(t), "RASHOMON_FAULT="+point+":goroutine_panic")
 
 			if res.exitCode != 0 {
 				t.Fatalf("exit code %d, want 0; a goroutine panic escaped its recover", res.exitCode)

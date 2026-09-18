@@ -12,7 +12,7 @@
 set -eu
 LIVE=${LIVE:-/tmp/rashomon-live}
 BIN=$LIVE/rashomon
-export ATTEST_HOME=$LIVE/store
+export RASHOMON_HOME=$LIVE/store
 if [ -e "$HOME/.claude/settings.json" ]; then
   echo "refusing: $HOME/.claude/settings.json exists; move it aside first" >&2; exit 1
 fi
@@ -66,7 +66,7 @@ print("ids in transcript:", t["ids_in_transcript"], "| recorded:", t["ids_record
 echo; echo "################ L-2: the foreign hook fired alongside ours ################"
 echo "sentinel ids:"; cat "$LIVE/foreign.log"
 echo "our Bash declarations for them:"
-python3 - "$ATTEST_HOME" "$LIVE/foreign.log" <<'PY'
+python3 - "$RASHOMON_HOME" "$LIVE/foreign.log" <<'PY'
 import sys, json, glob, os
 ours = {json.loads(l)["tool_use_id"]: json.loads(l)["tool_name"] for f in glob.glob(os.path.join(sys.argv[1], "runs", "*", "records.ndjson")) for l in open(f) if '"declaration"' in l}
 for sid in open(sys.argv[2]).read().split(): print(" ", sid, "->", ours.get(sid, "not in this store (another session's store, or another install)"))
@@ -77,7 +77,7 @@ S3=$(uuid)
 claude -p "Use the Bash tool to run: sleep 25. Then use the Bash tool to run: echo after-detach. Then reply with the single word: done." \
   --session-id "$S3" --allowedTools "Bash(sleep:*),Bash(echo:*)" --max-turns 6 --output-format json < /dev/null > "$LIVE/l3.out" &
 CPID=$!
-i=0; while [ $i -lt 240 ] && ! grep -qs '"declaration"' "$ATTEST_HOME/runs/$S3/records.ndjson"; do sleep 0.5; i=$((i+1)); done
+i=0; while [ $i -lt 240 ] && ! grep -qs '"declaration"' "$RASHOMON_HOME/runs/$S3/records.ndjson"; do sleep 0.5; i=$((i+1)); done
 echo "first declaration landed; detaching while the session runs:"; "$BIN" detach
 wait $CPID
 "$BIN" report --json --session "$S3" | tee "$LIVE/l3-report.json" | python3 -c '

@@ -378,7 +378,7 @@ func TestH20_NoFaultOnThePostPathReachesTheAgent(t *testing.T) {
 				e.watched(testSession)
 				e.mustHook(defaultPayload().build(t))
 
-				res := e.post(defaultPost().build(t), "ATTEST_FAULT="+point+":"+fault)
+				res := e.post(defaultPost().build(t), "RASHOMON_FAULT="+point+":"+fault)
 				if res.exitCode != 0 {
 					t.Fatalf("exit code %d, want 0 whatever went wrong inside this program", res.exitCode)
 				}
@@ -409,7 +409,7 @@ func TestH20_GoroutinePanicOnThePostPathIsContained(t *testing.T) {
 			e.watched(testSession)
 			e.mustHook(defaultPayload().build(t))
 
-			res := e.post(defaultPost().build(t), "ATTEST_FAULT="+point+":goroutine_panic")
+			res := e.post(defaultPost().build(t), "RASHOMON_FAULT="+point+":goroutine_panic")
 			if res.exitCode != 0 {
 				t.Fatalf("exit code %d, want 0; a goroutine panic escaped its recover", res.exitCode)
 			}

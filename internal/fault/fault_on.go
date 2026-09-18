@@ -17,7 +17,7 @@ import (
 // EnvVar selects a fault. Its value is either "<kind>", which fires at the
 // first injection point reached, or "<point>:<kind>", which fires only at that
 // point.
-const EnvVar = "ATTEST_FAULT"
+const EnvVar = "RASHOMON_FAULT"
 
 // Fault kinds. Every one of these except Hang and FailN panics. A fault that
 // returned an error would exercise error handling, not the panic barrier, and

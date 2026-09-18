@@ -8,7 +8,7 @@ import (
 
 func (e *env) process(payload string) (signal func(syscall.Signal), wait func() int) {
 	e.t.Helper()
-	cmd := e.command(payload, []string{"ATTEST_FAULT=" + pointHookAfterDeclaration + ":hang"}, "hook")
+	cmd := e.command(payload, []string{"RASHOMON_FAULT=" + pointHookAfterDeclaration + ":hang"}, "hook")
 	if err := cmd.Start(); err != nil {
 		e.t.Fatal(err)
 	}

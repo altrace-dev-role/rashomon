@@ -51,10 +51,10 @@ type installMeta struct {
 
 // DefaultRoot resolves the store location.
 //
-// ATTEST_HOME wins so that a test never has to touch a real home directory, and
+// RASHOMON_HOME wins so that a test never has to touch a real home directory, and
 // so that a user can put the store on a volume they control.
 func DefaultRoot() (string, error) {
-	if v := os.Getenv("ATTEST_HOME"); v != "" {
+	if v := os.Getenv("RASHOMON_HOME"); v != "" {
 		return v, nil
 	}
 	if v := os.Getenv("XDG_STATE_HOME"); v != "" {
@@ -523,12 +523,12 @@ func createExclusive(path string, content []byte) error {
 }
 
 // DefaultCapBytes bounds the store before eviction starts removing the oldest
-// runs. ATTEST_STORE_CAP_BYTES overrides it; zero disables eviction.
+// runs. RASHOMON_STORE_CAP_BYTES overrides it; zero disables eviction.
 const DefaultCapBytes = 512 << 20
 
 // CapBytes resolves the store size cap.
 func CapBytes() int64 {
-	if v := os.Getenv("ATTEST_STORE_CAP_BYTES"); v != "" {
+	if v := os.Getenv("RASHOMON_STORE_CAP_BYTES"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			return n
 		}
