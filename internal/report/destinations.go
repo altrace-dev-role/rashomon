@@ -48,6 +48,44 @@ type Destinations struct {
 	// direction and a blind spot in the other.
 	ClientPlane []string `json:"client_plane"`
 
+	// DeclaredNotObserved is the comparison's other direction: hosts a tool
+	// call named that no wire row inside this window shows.
+	//
+	// It is a WEAKER claim than WireOnly by nature, and the rendering says so.
+	// A declared host with no row may have been a call the user denied, a call
+	// that failed before it connected, a response served from a cache, or a
+	// host the proxy did not see. The report names the hosts and not the cause.
+	//
+	// It is EMPTY whenever the store could not be read. Without a store every
+	// declared host trivially has no row, so listing them would turn "we were
+	// not watching" into a finding against the agent for every host it honestly
+	// named -- firing hardest on exactly the sessions where the tool observed
+	// least.
+	DeclaredNotObserved []string `json:"declared_not_observed"`
+
+	// NotObservable are declared destinations outside what a CONNECT proxy can
+	// see at all: ssh and git+ssh hosts.
+	//
+	// They are neither finding: an ssh host with no wire row is not a gap in
+	// the record, it is a limitation of the instrument, and reporting a
+	// limitation of the tool as a property of the session is the error this
+	// field exists to prevent.
+	NotObservable []string `json:"not_observable"`
+
+	// ExecutedNotAsDeclared counts calls whose executed input digest differs
+	// from the digest of the input they were declared with.
+	//
+	// A COUNT and not a diff. Neither input is stored, so the report can say
+	// that a call ran differently from how it was asked for and cannot say how
+	// -- which is the honest limit of a digest, and the reason the number is
+	// rendered plainly as "0" on the overwhelming majority of sessions rather
+	// than being hidden when it is zero. A line that only ever appeared when
+	// non-zero would give a reader no way to know it was being checked.
+	//
+	// Only comparable pairs count: an execution with no digest (a payload that
+	// carried no tool_input) is unknown, and unknown is not a difference.
+	ExecutedNotAsDeclared int `json:"executed_not_as_declared"`
+
 	// ProxyOnPath answers "was the proxy actually observing this session":
 	// true, false, or unknown. Derived from the join rather than from a probe,
 	// so it is a statement about records that exist rather than about
@@ -110,21 +148,32 @@ const mcpTool = "mcp__"
 // declarations.
 func buildDestinations(run *store.Run, obs wire.Observation) Destinations {
 	d := Destinations{
-		Observed:      obs.Observed,
-		Reason:        obs.Reason,
-		Hosts:         obs.Hosts,
-		Attempts:      obs.Attempts,
-		DistinctHosts: obs.DistinctHosts,
-		Inherited:     obs.Inherited,
-		WindowApplied: obs.WindowApplied,
-		WireOnly:      []string{},
-		ClientPlane:   []string{},
-		ProxyOnPath:   ProxyOnPathUnknown,
+		Observed:            obs.Observed,
+		Reason:              obs.Reason,
+		Hosts:               obs.Hosts,
+		Attempts:            obs.Attempts,
+		DistinctHosts:       obs.DistinctHosts,
+		Inherited:           obs.Inherited,
+		WindowApplied:       obs.WindowApplied,
+		WireOnly:            []string{},
+		ClientPlane:         []string{},
+		DeclaredNotObserved: []string{},
+		NotObservable:       sshDeclared(run),
+		// Computed whether or not the proxy store was read: it compares two
+		// records the recorder wrote itself and has nothing to do with the
+		// wire.
+		ExecutedNotAsDeclared: executedNotAsDeclared(run),
+		ProxyOnPath:           ProxyOnPathUnknown,
 	}
 	if d.Hosts == nil {
 		d.Hosts = []wire.Destination{}
 	}
 	if !obs.Observed {
+		// DeclaredNotObserved stays empty. See its field comment: without a
+		// store every declared host trivially has no row, and listing them
+		// would accuse the agent for every host it honestly named. The
+		// NotObservable list is still correct, because it is a property of the
+		// declarations rather than of the observation.
 		d.ProxyNote = "the proxy's store could not be read, so whether it was on the path is unknown"
 		return d
 	}
@@ -164,8 +213,25 @@ func buildDestinations(run *store.Run, obs wire.Observation) Destinations {
 		}
 		d.WireOnly = append(d.WireOnly, h.Host)
 	}
+	// The other direction, computed only now that the observation is known to
+	// be real. A host counts as observed only through a NON-inherited row: its
+	// only rows belonging to an earlier session means this session did not
+	// observe it.
+	seen := map[string]bool{}
+	for _, h := range obs.Hosts {
+		if !h.Inherited && h.Attempts > 0 {
+			seen[h.Host] = true
+		}
+	}
+	for h := range declared {
+		if !seen[h] {
+			d.DeclaredNotObserved = append(d.DeclaredNotObserved, h)
+		}
+	}
+
 	sort.Strings(d.WireOnly)
 	sort.Strings(d.ClientPlane)
+	sort.Strings(d.DeclaredNotObserved)
 
 	// Derived from the join, in three cases, because each says something
 	// different and one boolean cannot carry them.
@@ -192,6 +258,65 @@ func buildDestinations(run *store.Run, obs wire.Observation) Destinations {
 // proxy, so folding them in would let an ssh host suppress a wire-only finding
 // for the same name reached over https -- and they belong under coverage as
 // "not observable", never in this comparison.
+// executedNotAsDeclared counts calls that ran with a different input from the
+// one they were declared with, joined on tool_use_id.
+//
+// Three cases are deliberately NOT counted, and each would inflate the number
+// on ordinary sessions:
+//
+//   - an execution with no digest, because the payload carried no tool_input.
+//     Unknown is not a difference.
+//   - an execution whose declaration is absent from this run. There is nothing
+//     to compare it against, and comparing it against nothing would make every
+//     spilled or evicted declaration look like a rewrite.
+//   - a declaration with no shape digest at all, which a schema 1 record can
+//     be.
+func executedNotAsDeclared(run *store.Run) int {
+	// Pre-sized from the run's own record count, which the store's size cap
+	// bounds; the keys are tool_use_ids read back from disk, not values a
+	// caller supplies, so there is no unbounded axis here.
+	declared := make(map[string]string, len(run.Declarations))
+	for _, d := range run.Declarations {
+		if d.Shape.Digest != "" {
+			declared[d.ToolUseID] = d.Shape.Digest
+		}
+	}
+	var n int
+	for _, x := range run.Executions {
+		if x.ExecutedDigest == "" {
+			continue
+		}
+		want, ok := declared[x.ToolUseID]
+		if !ok {
+			continue
+		}
+		if x.ExecutedDigest != want {
+			n++
+		}
+	}
+	return n
+}
+
+// sshDeclared is the sorted, de-duplicated set of ssh hosts the session named.
+//
+// Always returns a non-nil slice so the JSON carries an empty list rather than
+// null: "no ssh host was named" is a fact, and null would read as "we did not
+// look".
+func sshDeclared(run *store.Run) []string {
+	set := map[string]bool{}
+	for _, d := range run.Declarations {
+		for _, h := range d.SSHHosts {
+			set[h] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // madeMCPCall reports whether the session declared any MCP tool call.
 //
 // The declaration is the evidence, not the host: an MCP call names no hostname

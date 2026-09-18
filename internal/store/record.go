@@ -146,6 +146,25 @@ type Execution struct {
 	// DurationMS is how long the call took, as the client measured it (v2).
 	// Null when absent; never 0, for the same reason as ExitCode.
 	DurationMS *int64 `json:"duration_ms"`
+
+	// ExecutedDigest is the shape digest of the input as it ACTUALLY RAN (v2).
+	//
+	// Measured on Claude Code 2.1.258: PreToolUse carries tool_input as the
+	// model asked for it and PostToolUse carries it after any hook rewrote it,
+	// under the same tool_use_id. Comparing this against the declaration's
+	// shape.digest is therefore the only way a rewriting hook is visible at
+	// all -- the transcript keeps only the pre-rewrite input, which is exactly
+	// the record an agent with shell access could have shaped.
+	//
+	// A digest and never the input. Both sides are HMAC'd with the same
+	// per-install key, so they are comparable to each other and to nothing
+	// else; the report can say the executed call differed from the declared one
+	// without being able to say how.
+	//
+	// Empty when the payload carried no tool_input. Empty must NOT compare
+	// unequal to a declared digest: an unknown digest counted as a difference
+	// would report every such call as rewritten.
+	ExecutedDigest string `json:"executed_digest"`
 }
 
 // Execution outcomes (v2).

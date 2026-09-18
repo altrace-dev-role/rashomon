@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -22,8 +23,10 @@ import (
 // key no field claims, so the response is never a value here at all. The
 // guarantee is structural: there is nothing to forget to redact.
 //
-// tool_input is absent for a smaller reason: post derives no shape, and the
-// declaration this execution answers already carries the one derived from it.
+// tool_input IS declared, as of the executed-digest field below. It was absent
+// while post derived no shape; it is present now because the post-rewrite
+// input is the only evidence a rewriting hook leaves anywhere, and only its
+// digest survives this function.
 type PostPayload struct {
 	SessionID string `json:"session_id"`
 	ToolName  string `json:"tool_name"`
@@ -50,6 +53,19 @@ type PostPayload struct {
 
 	// DurationMS is the client's own measurement of the call.
 	DurationMS *int64 `json:"duration_ms"`
+
+	// ToolInput is the input as it ACTUALLY RAN, after any hook rewrote it.
+	//
+	// Declaring it is a deliberate reversal of the original note above, and the
+	// asymmetry with tool_response is the whole reason it is safe. tool_response
+	// is tool OUTPUT and nothing here needs it, so the guarantee for it stays
+	// structural: no field claims it, so it is never a value in this process.
+	// tool_input is different -- it is the one field that can show a rewriting
+	// hook, and the declaration path already unmarshals and digests the same
+	// field. Only the digest survives this function; internal/shape is still
+	// the only package that looks inside it. A canary test sweeps the store,
+	// both report renders and both hook streams for this field's contents.
+	ToolInput json.RawMessage `json:"tool_input"`
 }
 
 // FailureEvent is the hook event name Claude Code fires instead of
@@ -116,6 +132,14 @@ func (p *Post) Capture(in io.Reader) error {
 		ToolName:      pl.ToolName,
 		Outcome:       store.ExecOK,
 		DurationMS:    positive(pl.DurationMS),
+	}
+	// Derived through the same function the declaration path uses, with the
+	// same per-install key, or the two digests would never be comparable. An
+	// absent tool_input leaves it empty rather than digesting nothing, because
+	// the digest of an empty input is a real value that would compare unequal
+	// to every declaration and report every such call as rewritten.
+	if len(pl.ToolInput) > 0 {
+		rec.ExecutedDigest = shape.Derive(pl.ToolName, pl.ToolInput, p.st.Key()).Digest
 	}
 	if pl.HookEventName == FailureEvent {
 		rec.Outcome = store.ExecFailed

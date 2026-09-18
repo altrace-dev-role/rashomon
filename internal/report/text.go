@@ -178,6 +178,17 @@ func stamp(ms int64) string {
 // statements, and printing the second when the first is true is the single
 // failure this whole product exists to avoid: silence read as zero.
 func writeDestinations(b *bytes.Buffer, d Destinations) {
+	// BEFORE the not-observed return, because this count compares two records
+	// the recorder wrote itself and has nothing to do with the proxy. Printing
+	// it only when the wire was readable would hide a rewritten call precisely
+	// on the sessions where the proxy was not running.
+	//
+	// Always rendered, including the zero: "executed differently from declared:
+	// 0" tells a reader the comparison ran, where a line that appeared only when
+	// non-zero would leave them unable to tell a clean session from an unchecked
+	// one -- the same silence-as-zero error in a different field.
+	fmt.Fprintf(b, "  executed differently from declared: %d\n", d.ExecutedNotAsDeclared)
+
 	if !d.Observed {
 		fmt.Fprintf(b, "  destinations: not observed (%s)\n", d.Reason)
 		fmt.Fprintf(b, "  proxy on path: %s -- %s\n", d.ProxyOnPath, d.ProxyNote)
@@ -210,6 +221,27 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 		fmt.Fprintf(b, "  client plane: %s\n", list(d.ClientPlane))
 		fmt.Fprintln(b, "    (the client's own model traffic transits the same proxy;"+
 			" an agent request to the same host is indistinguishable)")
+	}
+
+	// The comparison's other direction, rendered with its own weakness stated.
+	// Naming the four causes is not hedging: without them a reader takes the
+	// line as "the agent claimed a host it never used", which is one of four
+	// possibilities and the only accusatory one.
+	if len(d.DeclaredNotObserved) == 0 {
+		fmt.Fprintln(b, "  declared but not observed: none")
+	} else {
+		fmt.Fprintf(b, "  declared but not observed: %s\n", list(d.DeclaredNotObserved))
+		fmt.Fprintln(b, "    (a call that was denied, that failed before connecting,"+
+			" that was served from a cache, or a host the proxy did not see)")
+	}
+
+	// Rendered under the destinations block rather than beside the findings,
+	// because these are limitations of the instrument and not facts about the
+	// session. A reader scanning for what the agent did should not meet them
+	// among the findings at all.
+	if len(d.NotObservable) > 0 {
+		fmt.Fprintf(b, "  not observable (ssh/git, outside what a CONNECT proxy sees): %s\n",
+			list(d.NotObservable))
 	}
 
 	for _, h := range d.Hosts {

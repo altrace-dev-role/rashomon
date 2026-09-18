@@ -270,6 +270,17 @@ type reportSession struct {
 		DeclaredWithoutResult []string `json:"declared_without_result"`
 	} `json:"transcripts"`
 	Gaps []map[string]any `json:"gaps"`
+	// The destinations block, as much of it as the acceptance tests assert on.
+	Destinations struct {
+		Observed              bool     `json:"observed"`
+		Reason                string   `json:"reason"`
+		WireOnly              []string `json:"wire_only"`
+		ClientPlane           []string `json:"client_plane"`
+		DeclaredNotObserved   []string `json:"declared_not_observed"`
+		NotObservable         []string `json:"not_observable"`
+		ProxyOnPath           string   `json:"proxy_on_path"`
+		ExecutedNotAsDeclared int      `json:"executed_not_as_declared"`
+	} `json:"destinations"`
 }
 
 // report renders one session as JSON. The JSON form is what a consumer parses

@@ -32,6 +32,10 @@ var (
 		// carry a substring of a tool response: the failure MESSAGE is read to
 		// produce exit_code and has no field it could be assigned to.
 		"outcome", "exit_code", "is_interrupt", "duration_ms",
+		// v2. A keyed digest of the executed input: 64 hex characters, fixed
+		// width, and the only thing that survives reading tool_input on the
+		// post path.
+		"executed_digest",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
