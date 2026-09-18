@@ -234,21 +234,36 @@ func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, f
 		// NotObservable list is still correct, because it is a property of the
 		// declarations rather than of the observation.
 		d.ProxyNote = "the proxy's store could not be read, so whether it was on the path is unknown"
+		// Novelty is assigned HERE as well as below, because this return is
+		// above the assignment and the zero value it used to leave behind was a
+		// degraded state carrying no reason -- rendering as neither "nothing was
+		// new" nor "we could not tell". This is also the most common case rather
+		// than an edge: no proxy store at all is what a user without the proxy
+		// running has.
+		d.Novelty = Novelty{
+			Hosts: []string{},
+			Reason: "the proxy store could not be read, so no destination could be " +
+				"compared against this project's baseline",
+		}
 		return d
 	}
 
-	// Whether every inherited attempt is the client's own traffic. Computed from
-	// the observation rather than from the post-filter lists, because inherited
-	// hosts are skipped before those are built.
-	d.InheritedAllClientPlane = inheritedIsAllClientPlane(obs)
+	// Whether every inherited attempt is the client's own traffic. Read from the
+	// suppressed list, like everything below it.
+	d.InheritedAllClientPlane = inheritedIsAllClientPlane(d.Hosts)
 
 	declared := declaredHosts(run)
 	// An mcp__* declaration attributes the MCP transport to the agent's work.
 	// Computed once: it is a property of the session, not of a host.
 	mcpAttributed := madeMCPCall(run)
 
+	// d.Hosts, NOT obs.Hosts. The comment above suppress() says forgotten
+	// destinations are dropped from the whole view before anything else looks
+	// at them; reading the observation here meant they were dropped from the
+	// per-host list alone, and a forgotten host came back as a wire-only
+	// finding and as a novelty candidate. The suppressed list is the view.
 	var matched int
-	for _, h := range obs.Hosts {
+	for _, h := range d.Hosts {
 		if h.Inherited {
 			continue
 		}
@@ -300,7 +315,7 @@ func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, f
 	// Novelty is folded in only from hosts this session actually reached, with
 	// loopback and the client plane excluded -- a session should not be told
 	// that the client's own control plane is a new destination for its project.
-	d.Novelty = buildNovelty(run, storeRoot, novelHostCandidates(obs, mcpAttributed))
+	d.Novelty = buildNovelty(run, storeRoot, novelHostCandidates(d.Hosts, mcpAttributed))
 
 	// Derived from the join, in three cases, because each says something
 	// different and one boolean cannot carry them.
@@ -427,9 +442,9 @@ func plural(n int) string {
 // inheritedIsAllClientPlane reports whether the inherited attempts are entirely
 // the client's own. False when there are none: a clause explaining traffic that
 // does not exist would be noise.
-func inheritedIsAllClientPlane(obs wire.Observation) bool {
+func inheritedIsAllClientPlane(hosts []wire.Destination) bool {
 	var inherited, clientPlane int
-	for _, h := range obs.Hosts {
+	for _, h := range hosts {
 		if h.InheritedAttempts == 0 {
 			continue
 		}
@@ -496,12 +511,13 @@ func window(run *store.Run) wire.Window {
 // Folding the client plane into a baseline would make api.anthropic.com a
 // "new destination for this project" on the first session of every project,
 // which is the novelty line's most obvious way to make itself worthless.
-func novelHostCandidates(obs wire.Observation, mcpAttributed bool) []string {
-	if !obs.Observed {
-		return nil
-	}
+// It takes the SUPPRESSED host list rather than the observation, because a
+// host the user asked to forget must not be handed to the baseline: doing so
+// re-adds the entry forget --host just cleared, and the next report calls it
+// new.
+func novelHostCandidates(hosts []wire.Destination, mcpAttributed bool) []string {
 	var out []string
-	for _, h := range obs.Hosts {
+	for _, h := range hosts {
 		if h.Inherited || h.Attempts == 0 || loopbackHosts[h.Host] {
 			continue
 		}

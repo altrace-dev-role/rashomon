@@ -81,8 +81,18 @@ type File struct {
 	// established it" -- so novelty is computed normally rather than suppressed
 	// for a session that cannot be identified as the first. The field is additive
 	// and the version is unchanged, so such a file still loads.
-	EstablishedBySession string           `json:"established_by_session,omitempty"`
-	Hosts                map[string]entry `json:"hosts"`
+	EstablishedBySession string `json:"established_by_session,omitempty"`
+	// EstablishedAtUnixMS is that session's own start instant, which is what
+	// lets the establisher correct toward an earlier session exactly as host
+	// ownership does.
+	//
+	// Without it the establisher was first-RENDER-wins: a user who worked for a
+	// week and then rendered one recent session gave that session the slot
+	// permanently, and the project's chronologically first session afterwards
+	// reported every host it reached as new -- while the recent one claimed to
+	// have been first.
+	EstablishedAtUnixMS int64            `json:"established_at_unix_ms,omitempty"`
+	Hosts               map[string]entry `json:"hosts"`
 }
 
 // Result is what one session's render learned.
@@ -194,12 +204,29 @@ func Update(root, key, sessionID string, sessionStart time.Time, hosts []string)
 		res.Err = err
 		return res
 	}
-	if !existed {
+	stamp := sessionStart.UTC().UnixMilli()
+	switch {
+	case !existed:
 		f.EstablishedBySession = sessionID
+		f.EstablishedAtUnixMS = stamp
+	case f.EstablishedBySession != "" && stamp > 0 &&
+		(f.EstablishedAtUnixMS == 0 || stamp < f.EstablishedAtUnixMS):
+		// An earlier session than the recorded establisher. It was the project's
+		// first, so it takes the slot -- the same earliest-wins correction the
+		// per-host entries make, for the same reason: the answer must be a
+		// property of the sessions and not of the order someone read them in.
+		// Monotone, so it converges rather than oscillating.
+		//
+		// Guarded on a recorded establisher EXISTING. A file written before this
+		// field names nobody, and "nobody established it" must not become "the
+		// next session to render claims it" -- that would hand the slot, and the
+		// suppression of every novelty finding that comes with it, to whoever
+		// happened to run report first on an upgraded install.
+		f.EstablishedBySession = sessionID
+		f.EstablishedAtUnixMS = stamp
 	}
 	res.Established = f.EstablishedBySession != "" && f.EstablishedBySession == sessionID
 
-	stamp := sessionStart.UTC().UnixMilli()
 	for _, h := range hosts {
 		if h == "" {
 			continue

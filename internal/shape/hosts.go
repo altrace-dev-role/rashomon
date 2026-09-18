@@ -64,6 +64,20 @@ func Hosts(toolName string, toolInput json.RawMessage) (wire []string, ssh []str
 }
 
 // collect finds every hostname in text introduced by one of the given prefixes.
+//
+// The scan and the slice both read `lower`, and they have to be the same
+// string. strings.ToLower is NOT length-preserving in UTF-8 -- U+212A KELVIN
+// SIGN is three bytes and lowercases to one, U+212B and U+2126 are three and
+// lowercase to two -- so searching the lowered copy and slicing the original
+// put the slice 8-k bytes from the true host for k bytes of shrink earlier in
+// the command. Under 8, the slice began inside "https://" and the host was
+// silently dropped, so a host the command NAMED came back as "reached but
+// never named". Over 8, it began before the scheme and a fragment of the
+// command line was accepted as a hostname and written to the store, which
+// nothing else in this program permits (CWE-176).
+//
+// Reading the lowered copy costs nothing: host.Canonical lower-cases what it
+// returns, and DNS is case-insensitive, so the original case was never wanted.
 func collect(text string, prefixes []string) []string {
 	seen := map[string]struct{}{}
 	lower := strings.ToLower(text)
@@ -77,7 +91,7 @@ func collect(text string, prefixes []string) []string {
 			}
 			at := from + i + len(p)
 			from = at
-			if h, ok := host.Canonical(authority(text[at:])); ok {
+			if h, ok := host.Canonical(authority(lower[at:])); ok {
 				seen[h] = struct{}{}
 			}
 		}

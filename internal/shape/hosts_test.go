@@ -126,3 +126,81 @@ func TestHosts_CarriesNoContent(t *testing.T) {
 		t.Fatalf("wire = %v, want exactly [api.example.com]", wire)
 	}
 }
+
+// TestHosts_NonASCIIBeforeTheURLDoesNotMoveTheIndex is the defect an Opus
+// review of this branch found, and it has two failure modes, one of which
+// breaks the content guarantee.
+//
+// collect() searched a lowercased copy and sliced the ORIGINAL with the index
+// it found. strings.ToLower is not length-preserving in UTF-8: U+212A KELVIN
+// SIGN is three bytes and lowercases to one, U+212B ANGSTROM SIGN and U+2126
+// OHM SIGN are three and lowercase to two. With k bytes of shrink before the
+// match, the slice starts 8-k bytes from the true host:
+//
+//	k of 1..7  -- the slice begins INSIDE "https://", authority() returns
+//	              nothing usable, and the host is silently not recorded. The
+//	              report then lists it under "reached but never named" for a
+//	              call that named it explicitly, which is this product's
+//	              central finding inverted by one character of input.
+//
+//	k above 8  -- the slice begins BEFORE the scheme, and neither authority()
+//	              nor plausible() rejects bytes above 0x7f, so a fragment of
+//	              the command line is accepted as a hostname and persisted
+//	              into Declaration.Hosts. That is command text reaching the
+//	              store, which nothing else in this program allows.
+//
+// No row in this file's twenty cases had a non-ASCII byte, so neither mode was
+// reachable by the existing tests. CWE-176.
+func TestHosts_NonASCIIBeforeTheURLDoesNotMoveTheIndex(t *testing.T) {
+	cases := []struct {
+		name string
+		cmd  string
+		want string
+	}{
+		{
+			name: "one kelvin sign shrinks two bytes",
+			cmd:  "echo K && curl https://pypi.org/simple/",
+			want: "pypi.org",
+		},
+		{
+			name: "four angstrom signs shrink four bytes",
+			cmd:  "echo ÅÅÅÅ && curl https://pypi.org/simple/",
+			want: "pypi.org",
+		},
+		{
+			name: "enough shrink to walk past the scheme",
+			cmd:  "echo KKKKK && curl https://pypi.org/simple/",
+			want: "pypi.org",
+		},
+		{
+			name: "non-ascii in the middle of a real argument",
+			cmd:  "curl -H 'X-Trace: ΩΩ' https://files.pythonhosted.org/x",
+			want: "files.pythonhosted.org",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wire, _ := Hosts("Bash", bashInput(t, tc.cmd))
+
+			var found bool
+			for _, h := range wire {
+				if h == tc.want {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("hosts = %v, want %q. A host the command NAMED was not recorded, "+
+					"so the report will list it as reached but never named.", wire, tc.want)
+			}
+			// And nothing that is not a host may appear: the second failure mode
+			// puts fragments of the command line into the store.
+			for _, h := range wire {
+				if h != tc.want {
+					t.Errorf("hosts = %v, and %q is not a hostname from this command. "+
+						"Command text must never reach the store.", wire, h)
+				}
+			}
+		})
+	}
+}

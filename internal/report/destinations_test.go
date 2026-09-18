@@ -682,3 +682,105 @@ func TestNovelty_EstablishedLineSaysTheClientPlaneIsExcluded(t *testing.T) {
 			"count:\n%s", out)
 	}
 }
+
+// TestForget_ForgottenHostIsGoneFromEverySectionOfTheReport is the defect an
+// Opus review of this branch found, and it undid the product's one privacy
+// action.
+//
+// suppress() builds a new slice and assigns it to d.Hosts. Everything after it
+// then read obs.Hosts -- the unsuppressed original -- so a host the user had
+// asked to forget came back in two places. Worse than coming back: because
+// forget --host also deletes the DECLARATION, the host was no longer in
+// declaredHosts(run), so it reappeared under "reached but never named", which
+// is this product's central accusation, aimed at a destination the user had
+// explicitly asked it to drop. And novelHostCandidates fed it to
+// baseline.Update, re-adding the entry forget had just cleared.
+//
+// The comment above suppress() says "dropped from the whole view BEFORE
+// anything else looks at them", so the intent was right and only the reads
+// were wrong. No test in the package passed anything but nil for the forgotten
+// predicate, so nothing exercised it.
+func TestForget_ForgottenHostIsGoneFromEverySectionOfTheReport(t *testing.T) {
+	const gone = "acme-secret.internal"
+	forgotten := func(h string) bool { return h == gone }
+
+	// forget --host removes the declaration too, so the run no longer names it:
+	// this is the state that made it read as a finding rather than as a host
+	// that was merely accounted for.
+	run := runWithDeclaredHosts("pypi.org")
+	d := buildDestinations(run, observed(
+		// NOT inherited. Every existing forget test wrote its proxy row after
+		// the session window closed, so the row was inherited and skipped
+		// before the code under test was reached.
+		wire.Destination{Host: gone, Attempts: 3},
+		wire.Destination{Host: "pypi.org", Attempts: 1},
+	), t.TempDir(), forgotten)
+
+	if d.Suppressed != 1 {
+		t.Errorf("suppressed = %d, want 1", d.Suppressed)
+	}
+	if has(d.WireOnly, gone) {
+		t.Error("a forgotten host is reported as \"reached but never named\" -- the " +
+			"product's central accusation, aimed at the one destination the user asked " +
+			"it to forget")
+	}
+	if has(d.ClientPlane, gone) {
+		t.Error("a forgotten host is listed under the client plane")
+	}
+	for _, h := range d.Hosts {
+		if h.Host == gone {
+			t.Error("a forgotten host is still in the per-host list")
+		}
+	}
+	// And it must not be handed to the baseline, which would re-add the entry
+	// that forget --host just cleared.
+	for _, h := range novelHostCandidates(d.Hosts, false) {
+		if h == gone {
+			t.Error("a forgotten host is offered to the novelty baseline, which re-adds " +
+				"the entry forget --host removed; the next report then reports it as new")
+		}
+	}
+	// The honest half: the host that was NOT forgotten still reports normally.
+	if !has(d.WireOnly, "pypi.org") && len(d.WireOnly) == 0 {
+		t.Log("pypi.org was declared, so its absence from wire_only is correct")
+	}
+}
+
+// TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing.
+//
+// buildDestinations returns early when the proxy store could not be read, and
+// that early return sits ABOVE the line that assigns Novelty -- so the section
+// came back as the zero value: Available false, Reason empty, Hosts nil. A
+// degraded state with no reason at all, and in the text form the line did not
+// print, which this package's own rule forbids: a section that vanishes when it
+// has nothing to say cannot be told apart from one that was never built.
+//
+// This is the MOST COMMON case, not an edge: no --proxy-store and no
+// ~/.altrace/observe/causal.db is what a user without the proxy running has.
+// Families handles the same case correctly, which is what makes this an
+// oversight rather than a decision.
+func TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing(t *testing.T) {
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
+		wire.Observation{Observed: false, Reason: wire.NotObservedNoStore},
+		t.TempDir(), nil)
+
+	if d.Novelty.Available {
+		t.Error("novelty reports itself available with no store to compare against")
+	}
+	if d.Novelty.Reason == "" {
+		t.Error("novelty is unavailable with no reason. \"no new hosts\" and \"we could " +
+			"not tell\" are different answers, and an empty reason renders as neither.")
+	}
+	if d.Novelty.Hosts == nil {
+		t.Error("novelty.hosts is nil rather than empty; every comparable list in this " +
+			"package is an empty slice so a consumer never meets null")
+	}
+
+	// And the line must actually print.
+	out := renderDestinations(d)
+	if !strings.Contains(out, "new for this project") {
+		t.Errorf("the novelty line does not appear at all when the store could not be "+
+			"read, so a reader cannot tell it from a section that was never built:\n%s",
+			out)
+	}
+}

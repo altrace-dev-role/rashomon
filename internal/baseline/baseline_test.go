@@ -390,3 +390,51 @@ func TestUpdate_EstablishedSurvivesAPreFixBaselineFile(t *testing.T) {
 		t.Errorf("novel = %v, want [x.example]: novelty must still be computed", res.Novel)
 	}
 }
+
+// TestUpdate_TheEstablisherCorrectsTowardTheEarlierSession is the last survivor
+// of the render-versus-session bug, found by an Opus review after the first two
+// halves were fixed.
+//
+// HOST ownership already corrects toward the earlier session. BASELINE
+// ownership did not: whoever rendered first became the establisher forever.
+//
+// The failure is a real sequence, not a contrived one. A user runs watch, works
+// for a week without rendering, then renders ONE recent session. That session
+// takes the establisher slot. The next full report walks sessions oldest-first,
+// and the project's chronologically first session then reports Established
+// false with every host it reached listed as new -- the "true and useless"
+// finding storm the established line exists to prevent -- while the recent
+// session claims to have been first, which it was not.
+func TestUpdate_TheEstablisherCorrectsTowardTheEarlierSession(t *testing.T) {
+	root := t.TempDir()
+
+	// A recent session is rendered first and provisionally establishes.
+	later := Update(root, "/proj", "sess-late", t0.Add(time.Hour), []string{"a.example"})
+	if !later.Established {
+		t.Fatal("premise: the first render of a project establishes the baseline")
+	}
+
+	// Then the project's actually-first session is rendered.
+	earlier := Update(root, "/proj", "sess-early", t0, []string{"b.example"})
+	if !earlier.Established {
+		t.Error("the chronologically FIRST session of the project does not report " +
+			"establishing its baseline, so every host it reached is about to be " +
+			"reported as new for a project that had nothing before it")
+	}
+	if len(earlier.Novel) != 0 {
+		t.Errorf("earlier.Novel = %v, want empty: the establishing session has nothing "+
+			"to be novel against", earlier.Novel)
+	}
+
+	// And the later session gives the claim up, gaining real novelty instead.
+	againLater := Update(root, "/proj", "sess-late", t0.Add(time.Hour), []string{"a.example"})
+	if againLater.Established {
+		t.Error("a session that is no longer the earliest still claims to have " +
+			"established the baseline")
+	}
+	if !reflect.DeepEqual(againLater.Novel, []string{"a.example"}) {
+		t.Errorf("againLater.Novel = %v, want [a.example]: once an earlier session is "+
+			"known, this session's hosts can be compared and a.example is its own",
+			againLater.Novel)
+	}
+}

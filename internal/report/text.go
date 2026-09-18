@@ -193,6 +193,11 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 	if !d.Observed {
 		fmt.Fprintf(b, "  destinations: not observed (%s)\n", d.Reason)
 		fmt.Fprintf(b, "  proxy on path: %s -- %s\n", d.ProxyOnPath, d.ProxyNote)
+		// The novelty line prints here too. A section that vanishes when it has
+		// nothing to say cannot be told apart from one that was never built --
+		// the rule this package states for family coverage and broke for
+		// novelty, on the most common path of all.
+		writeNovelty(b, d.Novelty)
 		return
 	}
 
