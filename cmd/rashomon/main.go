@@ -22,6 +22,8 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/launch"
+	"github.com/altrace-dev-role/rashomon/internal/posture"
 	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
@@ -70,6 +72,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdForget(rest, stdout) })
 	case "env":
 		return guarded(stderr, func() error { return cmdEnv(rest, stdout) })
+	case "run":
+		// Not under guarded(): run returns the CHILD's exit code, and a
+		// wrapper that flattened it to 0 or 1 would break every script that
+		// checks the status of the command it thought it was running.
+		return cmdRun(rest, stdin, stdout, stderr)
 
 	case "version":
 		fmt.Fprintln(stdout, version)
@@ -706,6 +713,9 @@ usage:
   rashomon env [--port N]        print the proxy variables to export, for use
                                with eval; HTTPS only, since plain HTTP is not
                                observed in this release
+  rashomon run -- <cmd...>     run a command with the proxy variables set, if
+                               and only if an observe-mode proxy is running,
+                               then report on the session it produced
   rashomon version               print the version
 
 invoked by Claude Code, never by hand:
@@ -883,4 +893,136 @@ func clearBaselines(root, host string) (int, error) {
 		cleared += n
 	}
 	return cleared, nil
+}
+
+// cmdRun runs the user's command with the proxy variables set, when it is safe
+// to, and reports on the session afterwards.
+//
+// The whole value of this command is that it makes the SAFE thing the easy
+// thing. Exporting the variables by hand works, and gets you a broken session
+// the day the proxy is in enforce mode or has crashed -- because an
+// enforce-mode proxy refuses the client's own API tunnels, so the failure is
+// not "no destinations recorded" but "the agent cannot reach the API at all".
+// This checks first, and launches WITHOUT the variables when the check fails
+// rather than refusing to launch: the user asked to run their command, and a
+// wrapper that declined because a status file was missing would be worse than
+// one that runs without recording.
+//
+// It returns the child's exit code. The report is rendered after the child
+// exits, which is why the launcher spawns and waits rather than exec-replacing
+// this process -- there would otherwise be nothing left to render it.
+func cmdRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	statusPath := posture.DefaultPath()
+	var argv []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--":
+			argv = args[i+1:]
+			i = len(args)
+		case "--proxy-status":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "rashomon: --proxy-status needs a value")
+				return exitFail
+			}
+			statusPath = args[i+1]
+			i++
+		case "--help", "-h":
+			fmt.Fprintln(stdout, "Usage: rashomon run [--proxy-status PATH] -- <command> [args...]")
+			return exitOK
+		default:
+			fmt.Fprintf(stderr, "rashomon: unknown argument %q (the command goes after --)\n", args[i])
+			return exitFail
+		}
+	}
+	if len(argv) == 0 {
+		fmt.Fprintln(stderr, "rashomon: run needs a command after --, for example: rashomon run -- claude")
+		return exitFail
+	}
+
+	// Refuse before launching if nothing is recording. Unlike a missing proxy,
+	// this one is worth stopping for: without the hooks installed there will be
+	// no session to report on, so the command would run, finish, and produce
+	// nothing -- and the user would reasonably conclude the tool does not work.
+	if !storeInstalled() {
+		fmt.Fprintln(stderr, "rashomon: nothing is recording -- run `rashomon watch` first, "+
+			"then `rashomon run -- <command>`")
+		return exitFail
+	}
+
+	v := posture.Read(statusPath)
+	var env []string
+	if v.Export {
+		env = launch.Env(v.File.ListenAddr)
+		fmt.Fprintf(stderr, "rashomon: %s; destinations will be recorded\n", v.Reason)
+	} else {
+		// One line, on stderr, saying why. This is the difference between a
+		// session that quietly records nothing and one the user knows records
+		// nothing.
+		fmt.Fprintf(stderr, "rashomon: running WITHOUT proxy variables -- %s\n", v.Reason)
+	}
+
+	code, runErr := launch.Run(argv, env, stdin, stdout, stderr)
+	if runErr != nil {
+		fmt.Fprintln(stderr, "rashomon:", runErr)
+		return code
+	}
+
+	// The report follows the child, on stderr's side of the conversation: the
+	// child's own stdout is the user's output and must not have a report
+	// appended to it, or piping the command anywhere would corrupt the pipe.
+	if err := reportNewest(stderr, v); err != nil {
+		fmt.Fprintln(stderr, "rashomon: the session report could not be rendered:", err)
+	}
+	return code
+}
+
+// reportNewest renders the most recently written session.
+//
+// The newest run rather than a named session, because the session id is Claude
+// Code's and this process never sees it: the hooks record it, and the only
+// thing this side knows is that whatever ran last is what just finished.
+func reportNewest(w io.Writer, v posture.Verdict) error {
+	st, err := openStore()
+	if err != nil {
+		return err
+	}
+	newest, err := st.NewestRun()
+	if err != nil {
+		return err
+	}
+	if newest == "" {
+		fmt.Fprintln(w, "rashomon: no session was recorded for that command")
+		return nil
+	}
+
+	opts := []report.Option{}
+	if v.File.CausalDB != "" {
+		// The proxy told us where it writes, so the report does not have to
+		// guess at a storage layout it should not know.
+		opts = append(opts, report.WithProxyStore(v.File.CausalDB))
+	} else {
+		opts = append(opts, report.WithProxyStore(defaultProxyStore()))
+	}
+
+	rep, err := report.Build(st, newest, time.Now(), opts...)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(w)
+	return report.Text(w, rep)
+}
+
+// storeInstalled reports whether watch has ever run, by the presence of the
+// install marker.
+//
+// The marker rather than opening the store, for the same reason a plain detach
+// tests it: opening the store CREATES one, and a command that asks "has this
+// been set up" must not set it up as a side effect of asking.
+func storeInstalled() bool {
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(root, installMetaFile))
+	return err == nil
 }

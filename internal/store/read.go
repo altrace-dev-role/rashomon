@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 )
 
 // maxLine bounds a single record on read. Records are small by construction;
@@ -229,4 +230,38 @@ func (r *Run) Dropped() []string {
 		}
 	}
 	return ids
+}
+
+// NewestRun returns the run directory most recently written to, or "" when the
+// store holds none.
+//
+// Most recently WRITTEN rather than most recently created, because a session's
+// directory is created at its first tool call and appended to for as long as it
+// runs: two overlapping sessions would otherwise be ordered by which started
+// first rather than which just finished.
+//
+// It exists for `rashomon run`, which has to report on the session its child
+// just produced and never learns that session's id -- the id is Claude Code's,
+// the hooks record it, and this side of the process only knows that whatever
+// ran last is what finished.
+func (s *Store) NewestRun() (string, error) {
+	names, err := s.Runs()
+	if err != nil {
+		return "", err
+	}
+	var newest string
+	var newestAt time.Time
+	for _, name := range names {
+		// The records file rather than the directory: a directory's mtime moves
+		// when a child is created, which happens once, while the records file
+		// is appended to for the life of the session.
+		info, err := os.Stat(filepath.Join(s.root, dirRuns, name, FileRecords))
+		if err != nil {
+			continue
+		}
+		if newest == "" || info.ModTime().After(newestAt) {
+			newest, newestAt = name, info.ModTime()
+		}
+	}
+	return newest, nil
 }
