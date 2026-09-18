@@ -126,6 +126,81 @@ func TestClientPlane_RendersSeparatelyAndIsNotAFinding(t *testing.T) {
 	}
 }
 
+// TestClientPlane_MCPProxyIsClientPlaneWithoutAnMCPCall is the first branch of
+// the mcp-proxy ruling.
+//
+// mcp-proxy.anthropic.com is the client's own transport. A session that made no
+// mcp__* call did not reach it through any tool call, so reporting it as
+// "reached but never named" would be true of the bytes and false about the
+// agent -- the client contacted it whatever the agent did. Six attempts of it
+// showed up in the first real demo session and were reported as a finding,
+// which is what prompted the ruling.
+func TestClientPlane_MCPProxyIsClientPlaneWithoutAnMCPCall(t *testing.T) {
+	d := buildDestinations(
+		runWithDeclaredHosts("pypi.org"),
+		observed(
+			wire.Destination{Host: "mcp-proxy.anthropic.com", Attempts: 6},
+			wire.Destination{Host: "pypi.org", Attempts: 1},
+		),
+	)
+
+	if has(d.WireOnly, "mcp-proxy.anthropic.com") {
+		t.Error("mcp-proxy.anthropic.com is reported as a finding on a session with no " +
+			"mcp__* call. The client contacts it on its own behalf, so the line would " +
+			"be true of the bytes and false about the agent.")
+	}
+	if !has(d.ClientPlane, "mcp-proxy.anthropic.com") {
+		t.Errorf("client_plane = %v, want mcp-proxy.anthropic.com", d.ClientPlane)
+	}
+}
+
+// TestClientPlane_MCPProxyIsAttributedWhenTheSessionMadeAnMCPCall is the second
+// branch, and the reason the ruling is not simply "add it to the list".
+//
+// When the session DID make an mcp__* call, that host is the transport those
+// calls travelled over. Attributing it to them is more accurate than filing it
+// under the client plane: the traffic genuinely belongs to the agent's work, and
+// burying it would hide the one destination an MCP call can be observed at.
+//
+// It is still not a wire-only finding. The declaration exists, so the host was
+// accounted for -- what changes is which section it is accounted for IN.
+func TestClientPlane_MCPProxyIsAttributedWhenTheSessionMadeAnMCPCall(t *testing.T) {
+	run := &store.Run{Declarations: []store.Declaration{
+		{ToolUseID: "t1", ToolName: "mcp__deploy__status"},
+		{ToolUseID: "t2", ToolName: "Bash", Hosts: []string{"pypi.org"}},
+	}}
+
+	d := buildDestinations(run, observed(
+		wire.Destination{Host: "mcp-proxy.anthropic.com", Attempts: 6},
+		wire.Destination{Host: "pypi.org", Attempts: 1},
+	))
+
+	if has(d.ClientPlane, "mcp-proxy.anthropic.com") {
+		t.Error("mcp-proxy.anthropic.com is under client_plane although this session made " +
+			"an mcp__* call. It is the transport those calls used, so it belongs to the " +
+			"agent's work rather than to the client's own traffic.")
+	}
+	if has(d.WireOnly, "mcp-proxy.anthropic.com") {
+		t.Error("mcp-proxy.anthropic.com is reported as reached-but-never-named; the " +
+			"mcp__* declaration accounts for it")
+	}
+	if d.ProxyOnPath != ProxyOnPathTrue {
+		t.Errorf("proxy_on_path = %q, want true", d.ProxyOnPath)
+	}
+	// It must still appear in the per-host list either way: the section it is
+	// filed under changes, the record of it does not.
+	var listed bool
+	for _, h := range d.Hosts {
+		if h.Host == "mcp-proxy.anthropic.com" {
+			listed = true
+		}
+	}
+	if !listed {
+		t.Error("mcp-proxy.anthropic.com vanished from the host list; attribution changes " +
+			"which section reports a host, never whether it is reported")
+	}
+}
+
 // TestProxyOnPath_UnknownWhenTheStoreCouldNotBeRead is the degradation case.
 // Printing false would say "the proxy was not observing", which is a different
 // and unsupported claim.

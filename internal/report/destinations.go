@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -71,17 +72,39 @@ var loopbackHosts = map[string]bool{
 	"localhost": true, "127.0.0.1": true, "0.0.0.0": true, "[::1]": true, "::1": true,
 }
 
-// clientPlaneHosts are the client's own control-plane destinations.
+// clientPlaneHosts are the hosts the client contacts on its own behalf,
+// regardless of the agent's tool calls.
 //
-// A fixed list, and deliberately short. Guessing at this set is worse than
-// under-covering it: a host wrongly placed here is a real finding suppressed,
-// which is the one error this report must not make.
+// A fixed list, and it grows only by a RECORDED DECISION, never by an agent's
+// judgement in the moment. That rule is the important part: a host wrongly
+// placed here is a real finding permanently suppressed, which is the one error
+// this report must not make, and the cost of leaving a client host out is only
+// that it renders as a finding until somebody rules on it.
+//
+// mcp-proxy.anthropic.com was added after the first real session reported six
+// attempts of it as "reached but never named" -- true of the bytes, false about
+// the agent. See mcpProxyHost for the case where it belongs to the agent after
+// all.
 var clientPlaneHosts = map[string]bool{
-	"api.anthropic.com":     true,
-	"statsig.anthropic.com": true,
-	"statsig.com":           true,
-	"sentry.io":             true,
+	"api.anthropic.com":       true,
+	"statsig.anthropic.com":   true,
+	"statsig.com":             true,
+	"sentry.io":               true,
+	"mcp-proxy.anthropic.com": true,
 }
+
+// mcpProxyHost is the one client-plane host that can belong to the agent.
+//
+// It is the transport an mcp__* tool call travels over. On a session that made
+// such a call, filing its traffic under the client plane would bury the only
+// destination an MCP call can be observed at; on a session that made none, the
+// client contacted it anyway and calling it a finding would accuse the agent of
+// traffic it did not cause. Which of the two is true is decided by the
+// declarations, not by the host.
+const mcpProxyHost = "mcp-proxy.anthropic.com"
+
+// mcpTool is the prefix every MCP tool name carries.
+const mcpTool = "mcp__"
 
 // buildDestinations reconciles the proxy's observation against the session's
 // declarations.
@@ -107,6 +130,9 @@ func buildDestinations(run *store.Run, obs wire.Observation) Destinations {
 	}
 
 	declared := declaredHosts(run)
+	// An mcp__* declaration attributes the MCP transport to the agent's work.
+	// Computed once: it is a property of the session, not of a host.
+	mcpAttributed := madeMCPCall(run)
 
 	var matched int
 	for _, h := range obs.Hosts {
@@ -115,6 +141,12 @@ func buildDestinations(run *store.Run, obs wire.Observation) Destinations {
 		}
 		switch {
 		case loopbackHosts[h.Host]:
+			continue
+		case h.Host == mcpProxyHost && mcpAttributed:
+			// Accounted for by the mcp__* declarations, so neither a finding
+			// nor client-plane traffic. It stays in the per-host list; only
+			// the section it is filed under changes.
+			matched++
 			continue
 		case clientPlaneHosts[h.Host]:
 			d.ClientPlane = append(d.ClientPlane, h.Host)
@@ -160,6 +192,20 @@ func buildDestinations(run *store.Run, obs wire.Observation) Destinations {
 // proxy, so folding them in would let an ssh host suppress a wire-only finding
 // for the same name reached over https -- and they belong under coverage as
 // "not observable", never in this comparison.
+// madeMCPCall reports whether the session declared any MCP tool call.
+//
+// The declaration is the evidence, not the host: an MCP call names no hostname
+// of its own, so the transport is the only place it can be observed, and this
+// is what connects the two.
+func madeMCPCall(run *store.Run) bool {
+	for _, d := range run.Declarations {
+		if strings.HasPrefix(d.ToolName, mcpTool) {
+			return true
+		}
+	}
+	return false
+}
+
 func declaredHosts(run *store.Run) map[string]bool {
 	out := map[string]bool{}
 	for _, decl := range run.Declarations {
