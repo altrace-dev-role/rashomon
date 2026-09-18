@@ -162,7 +162,13 @@ func TestH24_AccountIsDroppedNotPartiallyCleaned(t *testing.T) {
 
 	plain := e.run("", nil, "report", "--session", testSession).stdout
 	if !strings.Contains(plain, secret) {
-		t.Skipf("premise: the plain report does not quote the summary here:\n%s", plain)
+		// Fatalf, not Skipf. A skip is invisible in default go test output, so
+		// if buildAccount ever stopped reading transcripts this test would go
+		// quiet instead of red -- and what it is guarding is that --redact
+		// removes the one field that can contain anything. Every other premise
+		// guard in this suite fails; this one was the exception.
+		t.Fatalf("premise broken: the plain report does not quote the summary, so the "+
+			"redaction assertion below would pass without redacting anything:\n%s", plain)
 	}
 
 	out := e.run("", nil, "report", "--session", testSession, "--redact").stdout

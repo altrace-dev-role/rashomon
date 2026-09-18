@@ -229,3 +229,115 @@ func TestH17_HandlerOpensNoSockets(t *testing.T) {
 		t.Errorf("traced run recorded %d declarations, want 1", len(got))
 	}
 }
+
+// sanctionedSource names, per forbidden package, the ONLY of this module's own
+// packages allowed to import it DIRECTLY.
+//
+// Direct imports, not transitive ones, and that distinction is the whole
+// difference between a bound and a formality. The membership test above asks
+// whether the forbidden package is in the SQLite driver's dependency set -- and
+// the driver's set contains net AND os/exec, so its predicate is satisfied
+// whoever actually reached for them. Transitive provenance is no better: every
+// package that touches the store inherits the driver's whole subtree, so
+// internal/report and internal/wire "have an explanation" for os/exec without
+// anybody having written a subprocess.
+//
+// What a reviewer actually wants to know is whether anyone in this module
+// reached for one of these, and that is a question about import statements. It
+// is also the question that would catch the temptation internal/baseline
+// documents resisting, where walking up for .git replaced shelling out to
+// `git rev-parse`.
+var sanctionedSource = map[string]string{
+	"os/exec": "github.com/altrace-dev-role/rashomon/internal/launch",
+}
+
+// TestH17_NoPackageOfOursReachesForANetworkImport is the provenance assertion
+// the prose has been making all along.
+//
+// Every forbidden package is either imported by nobody here, or by exactly the
+// one package sanctioned to. Nothing is said about the driver's own subtree:
+// that code is not ours, it is the reason the exception exists, and the test
+// above is what keeps the exception tied to the driver actually being present.
+func TestH17_NoPackageOfOursReachesForANetworkImport(t *testing.T) {
+	const modulePrefix = "github.com/altrace-dev-role/rashomon"
+
+	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}} {{join .Imports \",\"}}", "./...")
+	cmd.Dir = moduleRoot
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("listing direct imports: %v", err)
+	}
+
+	packages := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		pkg := fields[0]
+		if !strings.HasPrefix(pkg, modulePrefix) {
+			continue
+		}
+		packages++
+		if len(fields) < 2 {
+			continue
+		}
+		for _, imp := range strings.Split(fields[1], ",") {
+			why, forbidden := forbiddenImports[imp]
+			if !forbidden {
+				continue
+			}
+			source, sanctioned := sanctionedSource[imp]
+			if sanctioned && source == pkg {
+				continue
+			}
+			allowed := "Nothing in this module may"
+			if sanctioned {
+				allowed = "Only " + source + " may, and it is a separate package for " +
+					"exactly this reason"
+			}
+			t.Errorf("%s imports %s directly, which %s. %s: code that runs inside every "+
+				"tool call must not be able to acquire a socket or a child process.",
+				pkg, imp, why, allowed)
+		}
+	}
+
+	// The failure mode of every source-scanning check is to scan nothing.
+	if packages < 8 {
+		t.Fatalf("inspected only %d packages of our own; this test is not looking at "+
+			"the module any more", packages)
+	}
+}
+
+// TestH17_TheSanctionedSourcesAreNotVacuous guards the map above against the
+// way it would go quiet: an entry naming a package that no longer imports the
+// thing it is excused for excuses nothing, and the next reader would read it as
+// a live bound.
+func TestH17_TheSanctionedSourcesAreNotVacuous(t *testing.T) {
+	for forbidden, source := range sanctionedSource {
+		imports := directImports(t, source)
+		if !imports[forbidden] {
+			t.Errorf("%s is sanctioned to import %s and no longer does. Remove the entry "+
+				"and let the whole-module ban cover it, rather than leaving an exception "+
+				"that reads as though something still needs excusing.", source, forbidden)
+		}
+	}
+}
+
+// directImports returns one package's own import statements.
+func directImports(t *testing.T, pattern string) map[string]bool {
+	t.Helper()
+	cmd := exec.Command("go", "list", "-f", "{{join .Imports \",\"}}", pattern)
+	cmd.Dir = moduleRoot
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("listing direct imports of %s: %v", pattern, err)
+	}
+	set := map[string]bool{}
+	for _, imp := range strings.Split(strings.TrimSpace(string(out)), ",") {
+		if p := strings.TrimSpace(imp); p != "" {
+			set[p] = true
+		}
+	}
+	return set
+}

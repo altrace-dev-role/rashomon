@@ -32,8 +32,8 @@ func TestOwner(t *testing.T) {
 		raw   string
 		want  string
 	}{
-		{"ours", EventPreToolUse, string(spec(oneID).Entry(EventPreToolUse)), oneID},
-		{"another install", EventPreToolUse, string(spec(otherID).Entry(EventPreToolUse)), otherID},
+		{"ours", EventPreToolUse, string(mustEntry(t, spec(oneID), EventPreToolUse)), oneID},
+		{"another install", EventPreToolUse, string(mustEntry(t, spec(otherID), EventPreToolUse)), otherID},
 		{"a foreign group", EventPreToolUse, foreignHook, ""},
 		{
 			// Still ours, so that intact() gets the chance to refuse over the
@@ -119,7 +119,7 @@ func TestRemoveIfRefusesAnEntryThatIsNotIntact(t *testing.T) {
 	narrowed := `{"matcher":"Bash","hooks":[{"type":"command","command":"` +
 		spec(otherID).Command(EventPreToolUse) + `","timeout":5}]}`
 	doc, err := settings.Parse([]byte(`{"hooks":{"PreToolUse":[` +
-		string(spec(oneID).Entry(EventPreToolUse)) + `,` + narrowed + `]}}`))
+		string(mustEntry(t, spec(oneID), EventPreToolUse)) + `,` + narrowed + `]}}`))
 	if err != nil {
 		t.Fatalf("seeding: %v", err)
 	}
@@ -148,7 +148,7 @@ func seedDocument(t *testing.T) *settings.Document {
 		if i > 0 {
 			b.WriteString(",")
 		}
-		fmt.Fprintf(&b, "%q:[%s,%s,%s]", event, foreignHook, spec(oneID).Entry(event), spec(otherID).Entry(event))
+		fmt.Fprintf(&b, "%q:[%s,%s,%s]", event, foreignHook, mustEntry(t, spec(oneID), event), mustEntry(t, spec(otherID), event))
 	}
 	b.WriteString("}}")
 
@@ -183,4 +183,15 @@ func TestShellQuote(t *testing.T) {
 			}
 		})
 	}
+}
+
+// mustEntry renders an entry and fails the test rather than ignoring the error,
+// which is what the old panicking signature let callers do implicitly.
+func mustEntry(t *testing.T, s Spec, event string) json.RawMessage {
+	t.Helper()
+	raw, err := s.Entry(event)
+	if err != nil {
+		t.Fatalf("rendering the %s entry: %v", event, err)
+	}
+	return raw
 }

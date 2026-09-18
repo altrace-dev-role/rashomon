@@ -150,12 +150,20 @@ func (s Spec) group(event string) matcherGroup {
 
 // Entry renders our matcher group as it sits as an item of hooks.<event>,
 // indented for that position so it reads as native in the file.
-func (s Spec) Entry(event string) json.RawMessage {
+//
+// It returns an error rather than panicking. The values marshalled here are
+// this package's own structs, so a failure is not reachable by any input --
+// which is exactly the argument that made a panic look free. It is not free:
+// this package is on the recorder's import path (internal/hook imports it), a
+// panic in library code is a Law 14 violation, and the recorder's whole
+// contract is that nothing it does can exit 2 and block a tool call. The only
+// caller already returns an error.
+func (s Spec) Entry(event string) (json.RawMessage, error) {
 	b, err := json.MarshalIndent(s.group(event), settings.Indent(3), "  ")
 	if err != nil {
-		panic("install: static entry does not marshal: " + err.Error())
+		return nil, fmt.Errorf("install: rendering the %s entry: %w", event, err)
 	}
-	return b
+	return b, nil
 }
 
 // Owner returns the install id an entry claims for an event, or "" for an
@@ -193,7 +201,10 @@ func Apply(doc *settings.Document, spec Spec) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		want := spec.Entry(event)
+		want, err := spec.Entry(event)
+		if err != nil {
+			return false, err
+		}
 
 		var (
 			out          []json.RawMessage

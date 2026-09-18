@@ -33,6 +33,17 @@ const (
 	NotObservedUnreadable  = "proxy_store_unreadable"
 	NotObservedNoTable     = "proxy_store_has_no_records_table"
 	NotObservedQueryFailed = "proxy_store_query_failed"
+
+	// NotObservedNoWindow is the run's own gap rather than the store's: the run
+	// recorded no coverage, so there is no interval to read the store against.
+	//
+	// It is separate from a parse failure because the consequence is opposite.
+	// With an unusable clock the rows still belong to this session and are
+	// reported with the window flag down. With no window at all, NOTHING can be
+	// attributed -- and treating that as "every row is in window" made an
+	// evicted run render as a phantom session whose reached-but-never-named
+	// list was the entire proxy database.
+	NotObservedNoWindow = "run_recorded_no_window"
 )
 
 // Destination is one host the proxy saw, with how often.
@@ -85,6 +96,11 @@ type Observation struct {
 	// in which case every row is reported and the report must say the window
 	// was not applied. Claiming a window that was not enforced would attribute
 	// another session's destinations to this one.
+	//
+	// It does NOT also mean "the run recorded no window": that is
+	// NotObservedNoWindow, with Observed false. The two used to share this flag
+	// and the single message blamed the timestamps, which in that case had
+	// parsed perfectly.
 	WindowApplied bool `json:"window_applied"`
 }
 
@@ -234,7 +250,16 @@ func parseStamp(s string) (time.Time, bool) {
 
 // summarise folds rows into destinations.
 func summarise(rows []row, w Window, path string) Observation {
-	obs := Observation{Observed: true, Store: path, WindowApplied: !w.Start.IsZero()}
+	if w.Start.IsZero() {
+		// No interval to read the store against, so nothing here can be
+		// attributed to this run. Reporting the rows anyway made every one of
+		// them count as this session's: with no declarations to match, every
+		// host became "reached but never named" and proxy-on-path became true.
+		// Reachable through the shipped path, because report renders evicted run
+		// directories and an evicted run has no coverage records.
+		return Observation{Store: path, Reason: NotObservedNoWindow, Hosts: []Destination{}}
+	}
+	obs := Observation{Observed: true, Store: path, WindowApplied: true}
 	if !anyParsed(rows) {
 		// Without a usable clock the window cannot be enforced. Every row is
 		// reported and the flag says the window was not applied; pretending
@@ -248,12 +273,22 @@ func summarise(rows []row, w Window, path string) Observation {
 	// attached -- counting both would double every failed dial.
 	byRequest := map[string]*row{}
 	outcome := map[string]string{}
+	// hostOutcome is the fallback for a dial outcome that carries no request id
+	// to be folded onto. Without it such a row became its own attempt and then
+	// missed the outcome lookup, so the host read as REACHED when its
+	// connection had been refused -- the one distinction this field exists to
+	// make, wrong in the direction that overstates what was observed.
+	hostOutcome := map[string]string{}
 	var order []string
 	for i := range rows {
 		r := rows[i]
 		if strings.HasPrefix(r.reason, dialFailedPrefix) {
 			if r.requestID != "" {
 				outcome[r.requestID] = r.reason
+				continue
+			}
+			if h, ok := host.Canonical(r.host); ok {
+				hostOutcome[h] = r.reason
 				continue
 			}
 		}
@@ -297,12 +332,20 @@ func summarise(rows []row, w Window, path string) Observation {
 		}
 		d.Actions = addOnce(d.Actions, r.action)
 		d.Reasons = addOnce(d.Reasons, r.reason)
-		if o, failed := outcome[key]; failed {
+		switch o, failed := outcome[key]; {
+		case failed:
 			d.Reasons = addOnce(d.Reasons, o)
-		} else {
+		case hostOutcome[h] != "":
+			d.Reasons = addOnce(d.Reasons, hostOutcome[h])
+		default:
 			d.Unreached = false
 		}
-		if r.whenOK {
+		// Timestamps from IN-WINDOW rows only. The attempt counts are kept apart
+		// so another session's traffic cannot enter this session's numbers, and
+		// first_seen/last_seen are part of those numbers: computed over every
+		// row, a consumer reading them got an instant from a session that is
+		// deliberately excluded from everything else on this line.
+		if r.whenOK && !inherited {
 			stamp := r.when.UTC().Format(time.RFC3339)
 			if d.FirstSeen == "" || stamp < d.FirstSeen {
 				d.FirstSeen = stamp

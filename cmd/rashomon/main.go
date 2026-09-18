@@ -111,20 +111,29 @@ func guarded(stderr io.Writer, fn func() error) int {
 // control output, so anything printed there is a second way to affect a
 // decision this program has no business affecting.
 func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
-	sig := hook.WatchSignals()
-	defer sig.Stop()
+	// The WHOLE body, not just Capture and Close. The prologue -- signal
+	// watching, opening the store, reading the install id -- was outside the
+	// barrier, and a panic there exits 2, which blocks the user's tool call:
+	// the single outcome this program is built to make impossible. Its own file
+	// comment says "not for a panic", and three of the four entry points took
+	// it on faith for the first few statements.
+	_ = safe.Guard(func() error {
+		sig := hook.WatchSignals()
+		defer sig.Stop()
 
-	st := openForHook(stderr)
-	if st == nil {
-		return exitOK
-	}
-	if standsDown(args, st, stderr) {
-		return exitOK
-	}
+		st := openForHook(stderr)
+		if st == nil {
+			return nil
+		}
+		if standsDown(args, st, stderr) {
+			return nil
+		}
 
-	h := hook.New(st, time.Now)
-	captureErr := safe.Guard(func() error { return h.Capture(stdin) })
-	_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })
+		h := hook.New(st, time.Now)
+		captureErr := safe.Guard(func() error { return h.Capture(stdin) })
+		_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })
+		return nil
+	})
 	return exitOK
 }
 
@@ -135,20 +144,24 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 // A declaration is a request. This is what closes it: the record that the call
 // the agent asked for went on to run.
 func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
-	sig := hook.WatchSignals()
-	defer sig.Stop()
+	// Guarded whole, for the reason given in cmdHook.
+	_ = safe.Guard(func() error {
+		sig := hook.WatchSignals()
+		defer sig.Stop()
 
-	st := openForHook(stderr)
-	if st == nil {
-		return exitOK
-	}
-	if standsDown(args, st, stderr) {
-		return exitOK
-	}
+		st := openForHook(stderr)
+		if st == nil {
+			return nil
+		}
+		if standsDown(args, st, stderr) {
+			return nil
+		}
 
-	p := hook.NewPost(st, time.Now)
-	captureErr := safe.Guard(func() error { return p.Capture(stdin) })
-	_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
+		p := hook.NewPost(st, time.Now)
+		captureErr := safe.Guard(func() error { return p.Capture(stdin) })
+		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
+		return nil
+	})
 	return exitOK
 }
 
@@ -167,14 +180,18 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		return exitOK
 	}
 
-	st := openForHook(stderr)
-	if st == nil {
-		return exitOK
-	}
-	if standsDown(args, st, stderr) {
-		return exitOK
-	}
-	_ = safe.Guard(func() error { hook.RunProbe(sig, phase, stdin, st, time.Now); return nil })
+	// Guarded whole, for the reason given in cmdHook.
+	_ = safe.Guard(func() error {
+		st := openForHook(stderr)
+		if st == nil {
+			return nil
+		}
+		if standsDown(args, st, stderr) {
+			return nil
+		}
+		hook.RunProbe(sig, phase, stdin, st, time.Now)
+		return nil
+	})
 	return exitOK
 }
 

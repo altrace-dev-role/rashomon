@@ -432,3 +432,138 @@ func TestRead_Deterministic(t *testing.T) {
 		t.Errorf("hosts are not sorted: %v", first.Hosts)
 	}
 }
+
+// TestSummarise_ARunWithNoWindowIsNotObservedRatherThanEverything is the
+// phantom-session defect an Opus review of this branch found.
+//
+// WindowApplied carried TWO distinct degradations on one flag: the store's
+// timestamps could not be parsed, and the RUN recorded no window at all. The
+// second makes isInherited return false for every row, so the whole proxy
+// database counts as this session's traffic -- with no declarations to match,
+// every host becomes "reached but never named" and proxy-on-path becomes true.
+//
+// It is reachable through the shipped path: report deliberately renders evicted
+// run directories, and an evicted run has no coverage records. After any
+// size-cap eviction, the report grew a phantom session whose accusation list
+// was the entire store.
+//
+// And the only explanation offered was the wrong one: the text said "the
+// proxy's timestamps could not be parsed" when they had parsed perfectly. Two
+// causes, one message, and the message named the cause that was not true.
+func TestSummarise_ARunWithNoWindowIsNotObservedRatherThanEverything(t *testing.T) {
+	// Rows whose timestamps parse fine, and a run that recorded no window.
+	rows := []row{
+		{seq: 1, requestID: "r1", host: "someone-elses.example", when: base, whenOK: true},
+		{seq: 2, requestID: "r2", host: "another.example", when: base, whenOK: true},
+	}
+
+	obs := summarise(rows, Window{}, "/tmp/causal.db")
+
+	if obs.Observed {
+		t.Error("a run with no recorded window reports its destinations as observed, so " +
+			"the whole store's history is attributed to it: with no declarations every " +
+			"host becomes \"reached but never named\"")
+	}
+	if obs.Reason != NotObservedNoWindow {
+		t.Errorf("reason = %q, want %q; the timestamps parsed, so blaming them names a "+
+			"cause that is not true", obs.Reason, NotObservedNoWindow)
+	}
+	if len(obs.Hosts) != 0 {
+		t.Errorf("hosts = %v, want none: these rows belong to whichever sessions did "+
+			"record a window", obs.Hosts)
+	}
+}
+
+// TestSummarise_UnparseableTimestampsAreStillReportedWithTheWindowFlag is the
+// other half, and the reason the two must not share a code. Here the run DOES
+// have a window and the clock is unusable, so reporting every row with the flag
+// set is right -- the rows exist and the reader is told the window could not be
+// enforced.
+func TestSummarise_UnparseableTimestampsAreStillReportedWithTheWindowFlag(t *testing.T) {
+	rows := []row{
+		{seq: 1, requestID: "r1", host: "pypi.org", whenOK: false},
+	}
+
+	obs := summarise(rows, Window{Start: base}, "/tmp/causal.db")
+
+	if !obs.Observed {
+		t.Fatal("rows with unparseable timestamps are dropped entirely; the destinations " +
+			"were seen and only their instants are unknown")
+	}
+	if obs.WindowApplied {
+		t.Error("window_applied is true with no usable clock")
+	}
+	if len(obs.Hosts) != 1 {
+		t.Errorf("hosts = %v, want the one row reported", obs.Hosts)
+	}
+}
+
+// TestSummarise_ADialFailureWithNoRequestIDStillMarksTheHostUnreached.
+//
+// Dial outcomes are folded onto the verdict row by request_id. A dial_failed
+// row carrying no request id fell through that branch, became its own attempt
+// keyed by sequence number, and then missed the outcome lookup -- so Unreached
+// stayed false and the report asserted the host WAS contacted when the
+// connection had been refused. "Allowed but never reached" and "reached" are
+// the two facts this field exists to separate.
+//
+// The reader already has an explicit branch for an empty request id two lines
+// below, so it evidently considers one possible; whether the proxy emits such a
+// row is a question about the closed product's writer. Handling it costs one
+// fallback keyed on the host, and not handling it is wrong in the direction
+// that overstates what was observed.
+func TestSummarise_ADialFailureWithNoRequestIDStillMarksTheHostUnreached(t *testing.T) {
+	rows := []row{
+		{seq: 1, requestID: "", host: "unreachable.example", action: "ALLOW",
+			reason: "under_limit", when: base, whenOK: true},
+		{seq: 2, requestID: "", host: "unreachable.example",
+			reason: dialFailedPrefix + "timeout", when: base, whenOK: true},
+	}
+
+	obs := summarise(rows, Window{Start: base.Add(-time.Minute)}, "/tmp/causal.db")
+
+	if len(obs.Hosts) != 1 {
+		t.Fatalf("hosts = %v, want one destination", obs.Hosts)
+	}
+	if !obs.Hosts[0].Unreached {
+		t.Error("a host whose dial failed is reported as reached, because the outcome " +
+			"row carried no request id to fold it onto")
+	}
+}
+
+// TestSummarise_TimestampsExcludeInheritedRows. The Destination doc is explicit
+// that in-window and inherited counts are kept apart so another session's
+// traffic cannot enter this session's numbers -- and then first_seen/last_seen
+// were computed over every row, so a consumer reading them got another
+// session's instant. Not rendered in the text form; JSON carries them.
+func TestSummarise_TimestampsExcludeInheritedRows(t *testing.T) {
+	windowStart := base
+	rows := []row{
+		// Well before the window: another session's traffic.
+		{seq: 1, requestID: "old", host: "pypi.org", action: "ALLOW",
+			when: base.Add(-time.Hour), whenOK: true},
+		// This session's.
+		{seq: 2, requestID: "mine", host: "pypi.org", action: "ALLOW",
+			when: base.Add(time.Minute), whenOK: true},
+	}
+
+	obs := summarise(rows, Window{Start: windowStart}, "/tmp/causal.db")
+
+	if len(obs.Hosts) != 1 {
+		t.Fatalf("hosts = %v, want one", obs.Hosts)
+	}
+	d := obs.Hosts[0]
+	if d.InheritedAttempts != 1 || d.Attempts != 1 {
+		t.Fatalf("premise: attempts %d in window, %d inherited, want 1 and 1",
+			d.Attempts, d.InheritedAttempts)
+	}
+	got, err := time.Parse(time.RFC3339, d.FirstSeen)
+	if err != nil {
+		t.Fatalf("first_seen %q does not parse: %v", d.FirstSeen, err)
+	}
+	if got.Before(windowStart) {
+		t.Errorf("first_seen = %s, which is before this session's window opened at %s: "+
+			"it is another session's instant, and the counts are kept apart precisely "+
+			"so that cannot happen", d.FirstSeen, windowStart.UTC().Format(time.RFC3339))
+	}
+}
