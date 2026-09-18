@@ -93,7 +93,7 @@ func entryEvent(phase string) string {
 // resolved from configuration; after that, the entry's state outranks the
 // probe's, because an absent entry explains an absent probe and not the other
 // way round.
-func BuildCoverage(st *store.Store, sessionID, phase, reason string, now time.Time) store.Coverage {
+func BuildCoverage(st *store.Store, sessionID, phase, reason, cwd string, now time.Time) store.Coverage {
 	res := Resolve(st, sessionID, entryEvent(phase))
 	if phase == store.PhaseStart {
 		// This invocation is the probe; it has just marked itself.

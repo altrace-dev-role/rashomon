@@ -44,6 +44,12 @@ var (
 	coverageKeys = []string{
 		"type", "schema_version", "recorded_at_unix_ms",
 		"session_id", "install_id", "phase", "state", "reason", "hook_entry", "probe",
+		// v2. The working directory, which is the novelty baseline's project
+		// key. Metadata of the same class as transcript_path, which this store
+		// has always kept verbatim. Note what is still absent: Coverage has no
+		// numeric field, so the rule that a run whose instrumentation failed
+		// cannot report a count is untouched.
+		"cwd",
 	}
 	gapKeys = []string{
 		"type", "schema_version", "recorded_at_unix_ms",

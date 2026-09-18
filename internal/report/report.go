@@ -237,7 +237,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		// report is the cost of that: a window is a property of the run, and
 		// sharing one observation across sessions would attribute each
 		// session's destinations to all of them.
-		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, window(run)))
+		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, window(run)), st.Root())
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
 		sess.SilentFailures = buildSilentFailures(run, sess.Account)

@@ -66,6 +66,10 @@ type PostPayload struct {
 	// the only package that looks inside it. A canary test sweeps the store,
 	// both report renders and both hook streams for this field's contents.
 	ToolInput json.RawMessage `json:"tool_input"`
+
+	// CWD is carried onto the coverage record so the project key is present on
+	// every phase rather than only the two the probe writes.
+	CWD string `json:"cwd"`
 }
 
 // FailureEvent is the hook event name Claude Code fires instead of
@@ -89,6 +93,7 @@ type Post struct {
 	now func() time.Time
 
 	sessionID string
+	cwd       string
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -120,6 +125,7 @@ func (p *Post) Capture(in io.Reader) error {
 	if pl.SessionID != "" {
 		p.sessionID = pl.SessionID
 	}
+	p.cwd = pl.CWD
 
 	fault.Inject(fault.PointPostParsed)
 
@@ -206,5 +212,5 @@ func (p *Post) Close(sig *Signals, captureErr error) {
 		reason = store.ReasonInternalError
 	}
 
-	_ = p.st.AppendCoverage(BuildCoverage(p.st, p.sessionID, store.PhasePost, reason, p.now()))
+	_ = p.st.AppendCoverage(BuildCoverage(p.st, p.sessionID, store.PhasePost, reason, p.cwd, p.now()))
 }

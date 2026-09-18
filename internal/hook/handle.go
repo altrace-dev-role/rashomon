@@ -40,6 +40,7 @@ type Handler struct {
 
 	sessionID string
 	toolUseID string
+	cwd       string
 	opened    bool
 }
 
@@ -70,6 +71,7 @@ func (h *Handler) Capture(in io.Reader) error {
 		h.sessionID = p.SessionID
 	}
 	h.toolUseID = p.ToolUseID
+	h.cwd = p.CWD
 
 	fault.Inject(fault.PointHookParsed)
 
@@ -146,7 +148,7 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 		}
 	}
 
-	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.now()))
+	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.cwd, h.now()))
 }
 
 func readPayload(r io.Reader) ([]byte, error) {

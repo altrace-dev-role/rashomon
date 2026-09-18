@@ -13,6 +13,10 @@ import (
 // program reads. The rest -- source, reason, cwd -- is not needed and not kept.
 type sessionPayload struct {
 	SessionID string `json:"session_id"`
+	// CWD is read now: the novelty baseline is per project and the project is
+	// derived from this path. The rest of a session payload -- source, reason
+	// -- is still not needed and not kept.
+	CWD string `json:"cwd"`
 }
 
 // RunProbe handles a SessionStart or SessionEnd invocation.
@@ -28,6 +32,7 @@ type sessionPayload struct {
 func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time) {
 	sessionID := UnattributedSession
 	reason := ""
+	cwd := ""
 
 	err := safe.Guard(func() error {
 		raw, err := readPayload(in)
@@ -41,6 +46,7 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 		if p.SessionID != "" {
 			sessionID = p.SessionID
 		}
+		cwd = p.CWD
 
 		switch phase {
 		case store.PhaseStart:
@@ -65,7 +71,7 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 	}
 
 	_ = safe.Guard(func() error {
-		return st.AppendCoverage(BuildCoverage(st, sessionID, phase, reason, now()))
+		return st.AppendCoverage(BuildCoverage(st, sessionID, phase, reason, cwd, now()))
 	})
 
 	// Eviction runs at session boundaries, off the per-call path. The session

@@ -235,6 +235,8 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 			" that was served from a cache, or a host the proxy did not see)")
 	}
 
+	writeNovelty(b, d.Novelty)
+
 	// Rendered under the destinations block rather than beside the findings,
 	// because these are limitations of the instrument and not facts about the
 	// session. A reader scanning for what the agent did should not meet them
@@ -325,4 +327,25 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // field of the report.
 func collapse(s string) string {
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// writeNovelty renders the per-project first-seen line.
+//
+// Three distinct states, and collapsing any two of them would make the line
+// worthless: the baseline was just created (nothing to be novel against), the
+// baseline exists and nothing was new, or the baseline could not be read. Only
+// the middle one is "no new hosts"; printing that for either of the others is
+// the silence-as-zero error again, in the field most likely to be skimmed.
+func writeNovelty(b *bytes.Buffer, n Novelty) {
+	switch {
+	case !n.Available:
+		fmt.Fprintf(b, "  new for this project: %s (%s)\n", unknown, n.Reason)
+	case n.Established:
+		fmt.Fprintf(b, "  new for this project: baseline established (%d hosts)\n", n.KnownHosts)
+	case len(n.Hosts) == 0:
+		fmt.Fprintf(b, "  new for this project: none (%d known)\n", n.KnownHosts)
+	default:
+		fmt.Fprintf(b, "  new for this project: %s\n", list(n.Hosts))
+		fmt.Fprintf(b, "    (first seen in this project by this session; %d hosts known)\n", n.KnownHosts)
+	}
 }

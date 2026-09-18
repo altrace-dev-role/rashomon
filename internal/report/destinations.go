@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/wire"
 )
@@ -86,12 +87,42 @@ type Destinations struct {
 	// carried no tool_input) is unknown, and unknown is not a difference.
 	ExecutedNotAsDeclared int `json:"executed_not_as_declared"`
 
+	// Novelty says which of this session's destinations are new for this
+	// project. See internal/baseline for why ownership is earliest-session-wins
+	// and why the file lives outside the evictable run store.
+	Novelty Novelty `json:"novelty"`
+
 	// ProxyOnPath answers "was the proxy actually observing this session":
 	// true, false, or unknown. Derived from the join rather than from a probe,
 	// so it is a statement about records that exist rather than about
 	// configuration that was read.
 	ProxyOnPath string `json:"proxy_on_path"`
 	ProxyNote   string `json:"proxy_note"`
+}
+
+// Novelty is the per-project first-seen line.
+//
+// Its value depends entirely on not crying wolf. A novelty line that fires on
+// a quarter of sessions is read once and ignored afterwards, which is why the
+// ubiquitous list exists, why the first session in a project establishes rather
+// than reports, and why an unreadable baseline renders unknown instead of
+// treating every host as new.
+type Novelty struct {
+	// Available is false when the baseline could not be read or written.
+	// Novelty then renders as unknown: "no new hosts" and "we could not tell"
+	// are different answers, and a corrupt baseline must not present as the
+	// former.
+	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
+	// Established is true when this render created the project's baseline. The
+	// first session has nothing to be novel against, so reporting every host it
+	// reached as new would be true and useless.
+	Established bool `json:"established"`
+	// KnownHosts is the size of the baseline after this session.
+	KnownHosts int `json:"known_hosts"`
+	// Hosts are this session's novel destinations, sorted, excluding the
+	// ubiquitous list.
+	Hosts []string `json:"hosts"`
 }
 
 // Proxy-on-path verdicts. Three values, not two: "we could not tell" is a real
@@ -146,7 +177,7 @@ const mcpTool = "mcp__"
 
 // buildDestinations reconciles the proxy's observation against the session's
 // declarations.
-func buildDestinations(run *store.Run, obs wire.Observation) Destinations {
+func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string) Destinations {
 	d := Destinations{
 		Observed:            obs.Observed,
 		Reason:              obs.Reason,
@@ -232,6 +263,11 @@ func buildDestinations(run *store.Run, obs wire.Observation) Destinations {
 	sort.Strings(d.WireOnly)
 	sort.Strings(d.ClientPlane)
 	sort.Strings(d.DeclaredNotObserved)
+
+	// Novelty is folded in only from hosts this session actually reached, with
+	// loopback and the client plane excluded -- a session should not be told
+	// that the client's own control plane is a new destination for its project.
+	d.Novelty = buildNovelty(run, storeRoot, novelHostCandidates(obs, mcpAttributed))
 
 	// Derived from the join, in three cases, because each says something
 	// different and one boolean cannot carry them.
@@ -388,4 +424,103 @@ func window(run *store.Run) wire.Window {
 		}
 	}
 	return w
+}
+
+// novelHostCandidates are the hosts a novelty baseline should consider: what
+// this session reached, minus loopback and minus the client's own plane.
+//
+// Folding the client plane into a baseline would make api.anthropic.com a
+// "new destination for this project" on the first session of every project,
+// which is the novelty line's most obvious way to make itself worthless.
+func novelHostCandidates(obs wire.Observation, mcpAttributed bool) []string {
+	if !obs.Observed {
+		return nil
+	}
+	var out []string
+	for _, h := range obs.Hosts {
+		if h.Inherited || h.Attempts == 0 || loopbackHosts[h.Host] {
+			continue
+		}
+		if clientPlaneHosts[h.Host] && !(h.Host == mcpProxyHost && mcpAttributed) {
+			continue
+		}
+		out = append(out, h.Host)
+	}
+	return out
+}
+
+// buildNovelty consults the project baseline.
+//
+// The project key comes from the cwd the RUN recorded, never from the process
+// rendering the report: a report run from a different directory must not key a
+// past session to the reader's project. A session with no recorded cwd has no
+// project, and novelty is unavailable rather than guessed.
+func buildNovelty(run *store.Run, storeRoot string, hosts []string) Novelty {
+	n := Novelty{Hosts: []string{}}
+	cwd := runCWD(run)
+	if cwd == "" {
+		n.Reason = "the run recorded no working directory, so its project is unknown"
+		return n
+	}
+	if storeRoot == "" {
+		n.Reason = "no store root, so the baseline could not be located"
+		return n
+	}
+	// Ownership is recorded per session id, so an empty one makes every
+	// comparison vacuous: two unidentified runs would each appear to own the
+	// other's hosts and every host would read as novel. Found by a fixture that
+	// omitted the id, which is exactly how a real run with an unattributed
+	// session would arrive.
+	if run.SessionID() == "" {
+		n.Reason = "the run has no session id, so baseline ownership cannot be attributed"
+		return n
+	}
+
+	res := baseline.Update(storeRoot, baseline.Key(cwd), run.SessionID(),
+		time.UnixMilli(runStartMS(run)), hosts)
+	if res.Err != nil {
+		// Deliberately not the error text: it carries the baseline path, and a
+		// path carries someone's directory names.
+		n.Reason = "the project baseline could not be read or written"
+		return n
+	}
+	n.Available = true
+	n.Established = res.Established
+	n.KnownHosts = res.Known
+	if res.Novel != nil {
+		n.Hosts = res.Novel
+	}
+	return n
+}
+
+// runCWD is the working directory the run recorded, preferring the start-phase
+// record because that is the one written before any tool call could change it.
+func runCWD(run *store.Run) string {
+	for _, c := range run.Coverage {
+		if c.Phase == store.PhaseStart && c.CWD != "" {
+			return c.CWD
+		}
+	}
+	for _, c := range run.Coverage {
+		if c.CWD != "" {
+			return c.CWD
+		}
+	}
+	return ""
+}
+
+// runStartMS is the session's own start instant, which decides baseline
+// ownership. Falling back to the earliest record keeps a run with no start
+// probe comparable rather than sorting it before everything.
+func runStartMS(run *store.Run) int64 {
+	var earliest int64
+	for _, c := range run.Coverage {
+		if c.Phase == store.PhaseStart {
+			return c.RecordedAtMS
+		}
+		if earliest == 0 || c.RecordedAtMS < earliest {
+			earliest = c.RecordedAtMS
+		}
+	}
+	return earliest
 }

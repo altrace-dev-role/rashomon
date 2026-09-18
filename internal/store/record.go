@@ -5,9 +5,10 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // SchemaVersion is carried by every record. A reader that does not recognise it
 // should skip the record rather than guess at it.
 //
-// v2 is additive over v1: declaration gained hosts and ssh_hosts, execution
-// gained outcome, exit_code, is_interrupt and duration_ms. No v1 field changed
-// meaning and none was removed, which is what makes reading both safe.
+// v2 is additive over v1: declaration gained hosts and ssh_hosts; execution
+// gained outcome, exit_code, is_interrupt, duration_ms and executed_digest;
+// coverage gained cwd. No v1 field changed meaning and none was removed, which
+// is what makes reading both safe.
 const SchemaVersion = 2
 
 // Accepts reports whether a reader understands a record's schema version.
@@ -284,6 +285,22 @@ type Coverage struct {
 	Reason        *string `json:"reason"`
 	HookEntry     string  `json:"hook_entry"`
 	Probe         string  `json:"probe"`
+
+	// CWD is the working directory the session ran in (v2).
+	//
+	// It is here because the novelty baseline is per PROJECT, and the project
+	// is derived from this path -- so without it the report would have to guess
+	// at the project from the transcript path's mangled form, or key every
+	// session on this machine to one baseline.
+	//
+	// It is metadata of the same class as transcript_path, which this store has
+	// always kept verbatim: a path the client supplied, used as a join key. It
+	// is not content, and note what it still cannot hold -- Coverage has no
+	// numeric field and gains none here, so the rule that a run whose
+	// instrumentation failed cannot report a count is untouched.
+	//
+	// Empty on a record written by a path that had no cwd to report.
+	CWD string `json:"cwd"`
 }
 
 // Gap reasons.
