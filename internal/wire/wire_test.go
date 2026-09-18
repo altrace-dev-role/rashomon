@@ -567,3 +567,145 @@ func TestSummarise_TimestampsExcludeInheritedRows(t *testing.T) {
 			"so that cannot happen", d.FirstSeen, windowStart.UTC().Format(time.RFC3339))
 	}
 }
+
+// newWALStore builds the fixture the read-only test actually needs: the proxy's
+// real store is WAL, and an uncheckpointed WAL leaves -wal and -shm sidecars
+// beside the database.
+//
+// The existing fixture is built in SQLite's default delete-journal mode, so the
+// case that matters for "we never write to another product's audit store" was
+// the one not covered. Whether mode=ro on a WAL database with a live -wal
+// either writes, recovers, or errors is exactly what an assertion should
+// settle rather than a comment.
+func newWALStore(t *testing.T, rows []fixtureRow) string {
+	// The writer connection stays OPEN for the test's lifetime. Closing the last
+	// connection checkpoints the WAL and deletes it, whatever
+	// wal_autocheckpoint says, so a fixture that closed cleanly presented no
+	// sidecar at all -- which the premise guard in the test below caught.
+	// Holding it open is also the real situation: the proxy is running.
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "causal.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	// One connection, so the pragmas and the open handle belong together.
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`PRAGMA journal_mode=WAL`); err != nil {
+		t.Fatalf("set WAL: %v", err)
+	}
+	// Off, so closing does not checkpoint the WAL away and leave the very
+	// sidecars this fixture exists to present.
+	if _, err := db.Exec(`PRAGMA wal_autocheckpoint=0`); err != nil {
+		t.Fatalf("disable autocheckpoint: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE causal_records (
+		sequence_num INTEGER PRIMARY KEY,
+		record_id TEXT NOT NULL DEFAULT '',
+		request_id TEXT NOT NULL DEFAULT '',
+		run_id TEXT NOT NULL DEFAULT '',
+		timestamp DATETIME NOT NULL,
+		reason TEXT NOT NULL DEFAULT '',
+		action TEXT NOT NULL DEFAULT '',
+		target_host TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	for _, r := range rows {
+		if _, err := db.Exec(
+			`INSERT INTO causal_records (sequence_num, request_id, run_id, timestamp, reason, action, target_host)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			r.seq, r.requestID, r.runID, r.ts, r.reason, r.action, r.host,
+		); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+	// Force the WAL to exist on disk with content: a transaction after the
+	// pragma, not checkpointed.
+	if _, err := db.Exec(`INSERT INTO causal_records (sequence_num, timestamp, target_host)
+	                      VALUES (9999, ?, '')`, stamp(base, 9)); err != nil {
+		t.Fatalf("wal-resident insert: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return path
+}
+
+// dirSnapshot records every file in a directory with its size and modification
+// time, which is what a "nothing was written" assertion has to compare -- the
+// sidecars are separate files, so reading only the database's bytes cannot see
+// a -wal being created, grown, or checkpointed away.
+func dirSnapshot(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	out := map[string]string{}
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			t.Fatalf("stat %s: %v", e.Name(), err)
+		}
+		out[e.Name()] = fmt.Sprintf("size=%d mtime=%s", info.Size(),
+			info.ModTime().UTC().Format(time.RFC3339Nano))
+	}
+	return out
+}
+
+// TestRead_NeverWritesToAWALStoreOrItsSidecars is the invariant that matters
+// most in this package, tested against the journal mode the real store uses.
+//
+// rashomon must never write into the proxy's causal.db: it is the closed
+// product's hash-chained audit store, opened read-only, and a modification
+// would break the chain it exists to provide. The existing test compares the
+// database file's bytes in delete-journal mode, which cannot observe a -wal or
+// -shm being created, grown, or checkpointed away -- and a checkpoint is a
+// write to the database itself.
+func TestRead_NeverWritesToAWALStoreOrItsSidecars(t *testing.T) {
+	path := newWALStore(t, []fixtureRow{
+		{seq: 1, requestID: "a", ts: stamp(base, 1), action: "WARN", host: "pypi.org:443"},
+		{seq: 2, requestID: "b", ts: stamp(base, 2), action: "ALLOW", host: "files.pythonhosted.org:443"},
+	})
+	dir := filepath.Dir(path)
+
+	// Premise: the fixture really is presenting a WAL sidecar. Without it this
+	// test silently degrades into the delete-journal one.
+	before := dirSnapshot(t, dir)
+	if _, ok := before["causal.db-wal"]; !ok {
+		t.Fatalf("premise broken: no -wal sidecar beside the fixture, so this is not a "+
+			"WAL store and the case under test is not present. Files: %v", before)
+	}
+
+	obs := Read(path, Window{Start: base.Add(-time.Minute)})
+	if !obs.Observed {
+		t.Fatalf("a WAL store was not readable: %s", obs.Reason)
+	}
+	// Two hosts: the third fixture row carries an empty target_host, which the
+	// query filters out, and it exists only to keep content in the WAL.
+	if len(obs.Hosts) != 2 {
+		t.Errorf("hosts = %v, want both named rows; a reader that cannot see "+
+			"uncheckpointed rows would silently under-report every recent destination",
+			obs.Hosts)
+	}
+
+	after := dirSnapshot(t, dir)
+	for name, was := range before {
+		now, still := after[name]
+		if !still {
+			t.Errorf("%s disappeared after a read; a checkpoint removed it, and a "+
+				"checkpoint is a write to the audit database", name)
+			continue
+		}
+		if now != was {
+			t.Errorf("%s changed after a read: %s -> %s. The proxy's store is a "+
+				"hash-chained audit record opened mode=ro; nothing here may modify it.",
+				name, was, now)
+		}
+	}
+	for name := range after {
+		if _, existed := before[name]; !existed {
+			t.Errorf("reading created %s in the proxy's own directory", name)
+		}
+	}
+}

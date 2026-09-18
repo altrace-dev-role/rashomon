@@ -64,9 +64,18 @@ m("H-6  plain detach creates a store to learn the id", "cmd/rashomon/main.go",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil && false {", "TestH6_PlainDetachLeavesNoStoreBehind")
 m("H-6  watch does not print the undo line", "cmd/rashomon/main.go",
   "\tfmt.Fprintf(stdout, \"rashomon detach --install %s\\n\", st.InstallID())\n", "", "TestH6_WatchPrintsTheUndoLine")
+# Two edit paths, two mutations. SetHookEntries is what watch uses and what
+# detach uses while entries remain; RemoveHookEvent is what detach uses once an
+# event empties, and it did not exist when this mutation was written -- so the
+# H-7 mutation went NOT DETECTED, because the detach test that judged it no
+# longer executes the line being mutated. The test filter is widened to the
+# install paths that still reach it.
 m("H-7  edit drops every other top-level key", "internal/settings/document.go",
   "\tif h := d.find(hooksKey); h != nil {\n\t\th.raw = obj\n\t} else {\n\t\td.members = append(d.members, member{key: hooksKey, raw: obj})\n\t}\n\treturn nil",
-  "\td.members = []member{{key: hooksKey, raw: obj}}\n\treturn nil", "TestH7_DetachPreservesConcurrentEdits")
+  "\td.members = []member{{key: hooksKey, raw: obj}}\n\treturn nil", "TestH3_|TestH7_|TestH06_")
+m("H-7  removing a hook event drops every other top-level key", "internal/settings/document.go",
+  "\tif len(kept) == 0 {\n\t\td.removeMember(hooksKey)\n\t\treturn nil\n\t}",
+  "\tif len(kept) == 0 {\n\t\td.members = nil\n\t\treturn nil\n\t}", "TestH06_")
 m("H-7  detach never notices an edited entry", "internal/install/install.go",
   "func intact(raw json.RawMessage, event string) string {\n", "func intact(raw json.RawMessage, event string) string {\n\tif true {\n\t\treturn \"\"\n\t}\n", "TestH7_DetachSaysSoWhenItCannot")
 m("H-8  settings written in place instead of temp+rename", "internal/settings/write.go",
@@ -75,17 +84,18 @@ m("H-9  managed layer not consulted", "internal/settings/locate.go", "\t\t{Layer
 m("H-9  only the user layer consulted", "internal/settings/locate.go",
   "\t\t{LayerManaged, loc.Managed},\n\t\t{LayerLocal, loc.Local},\n\t\t{LayerProject, loc.Project},\n", "", "TestH9_")
 m("H-20 PostToolUse is not installed", "internal/install/install.go",
-  "var Events = []string{EventPreToolUse, EventPostToolUse, EventSessionStart, EventSessionEnd}",
-  "var Events = []string{EventPreToolUse, EventSessionStart, EventSessionEnd}", "TestH3_")
+  "\tEventPostToolUse,\n\tEventPostToolUseFailure,\n", "", "TestH3_")
 m("H-20 the post entry is installed without a matcher", "internal/install/install.go",
-  "\treturn event == EventPreToolUse || event == EventPostToolUse", "\treturn event == EventPreToolUse", "TestH3_")
+  "\treturn event == EventPreToolUse ||\n\t\tevent == EventPostToolUse ||\n\t\tevent == EventPostToolUseFailure",
+  "\treturn event == EventPreToolUse", "TestH3_")
 m("H-20 the execution record is never written", "internal/hook/post.go",
-  "\treturn p.st.AppendExecution(store.Execution{", "\tif true {\n\t\treturn nil\n\t}\n\treturn p.st.AppendExecution(store.Execution{",
+  "\treturn p.st.AppendExecution(rec)", "\treturn nil",
   "TestH20_PostRecordsTheExecution")
 m("H-20 an execution the lock refuses is dropped", "internal/store/store.go",
   "\treturn s.SpillExecution(rec)", "\treturn err", "TestAppendExecutionSpillsWhenTheLockIsHeld")
 m("H-20 the post path ignores the install it was told it belongs to", "cmd/rashomon/main.go",
-  "\tif standsDown(args, st, stderr) {\n\t\treturn exitOK\n\t}\n\n\tp := hook.NewPost(st, time.Now)", "\tp := hook.NewPost(st, time.Now)",
+  "\t\tif standsDown(args, st, stderr) {\n\t\t\treturn nil\n\t\t}\n\n\t\tp := hook.NewPost(st, time.Now)",
+  "\t\tp := hook.NewPost(st, time.Now)",
   "TestH20_PostFromAnotherInstallStandsDown")
 m("H-20 post coverage resolves the recorder's entry instead of its own", "internal/hook/coverage.go",
   "\tif phase == store.PhasePost {", "\tif false {", "TestH20_PostCoverageReadsItsOwnEntry")
@@ -111,7 +121,8 @@ m("H-20 the post payload declares tool_response, and it reaches the debug log", 
   "\tvar pl PostPayload\n", "\tvar pl struct {\n\t\tPostPayload\n\t\tToolResponse json.RawMessage `json:\"tool_response\"`\n\t}\n\tdefer func() { fmt.Fprintln(os.Stderr, string(pl.ToolResponse)) }()\n",
   "TestH20_ToolResponseNeverReachesDisk")
 m("H-20 the response is measured, and the measurement moves the record's width", "internal/hook/post.go",
-  "\t\tToolName:      pl.ToolName,\n", "\t\tToolName:      pl.ToolName + strconv.Itoa(len(raw)),\n",
+  "\t\tToolName:      pl.ToolName,\n",
+  "\t\tToolName:      pl.ToolName + strconv.Itoa(len(raw)),\n",
   "TestH20_ExecutionWidthIsIndependentOfTheResponse")
 
 m("H-10 accounting compares counts, not sets", "internal/report/report.go",
@@ -189,9 +200,14 @@ m("status does not resolve the layer that disabled hooks", "cmd/rashomon/main.go
 m("the store schema drops a record's key", "docs/store-schema.json",
   "        \"agent_type\": {\n          \"description\": \"Null outside a subagent call.\",\n          \"type\": [\"string\", \"null\"]\n        },\n",
   "", "TestStoreSchema")
+# Anchored on schema 2, where tool_name is no longer the last property of the
+# declaration block. The previous anchor assumed it was and silently stopped
+# matching when hosts/ssh_hosts were added -- reported as ANCHOR MISSING, which
+# lands in the same bucket as a real gap.
 m("the store schema declares a key no record carries", "docs/store-schema.json",
-  "        \"tool_name\": { \"type\": \"string\" }\n      }",
-  "        \"tool_name\": { \"type\": \"string\" },\n        \"tool_response\": { \"type\": \"string\" }\n      }", "TestStoreSchema")
+  "        \"tool_name\": { \"type\": \"string\" },\n        \"shape\": {",
+  "        \"tool_name\": { \"type\": \"string\" },\n        \"tool_response\": { \"type\": \"string\" },\n        \"shape\": {",
+  "TestStoreSchema")
 m("the store schema's coverage reasons are a subset of the code's", "docs/store-schema.json",
   "            \"probe_unresolved\"\n", "", "TestStoreSchema")
 
@@ -222,7 +238,6 @@ m("settings reads a non-object top level as an empty document", "internal/settin
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
-  "H-20 the response is measured, and the measurement moves the record's width": ("internal/hook/post.go", '\t"io"\n', '\t"io"\n\t"strconv"\n'),
   "H-17 handler opens a socket (no net import, so only the trace sees it)": ("internal/hook/handle.go", '\t"io"\n', '\t"io"\n\t"syscall"\n'),
   "H-19 report re-reads today's config to judge a past run": ("internal/report/report.go", '\t"github.com/altrace-dev-role/rashomon/internal/store"\n', '\t"github.com/altrace-dev-role/rashomon/internal/install"\n\t"github.com/altrace-dev-role/rashomon/internal/settings"\n\t"github.com/altrace-dev-role/rashomon/internal/store"\n'),
   "H-15 executions are not part of forget's doomed plan": ("internal/store/gaps.go", '\t"bufio"\n', '\t"bufio"\n\t"bytes"\n'),
@@ -236,7 +251,26 @@ def restore():
     for f, b in backups.items():
         pathlib.Path(f).write_bytes(b)
 
+# GREEN BASELINE, before the first mutation.
+#
+# The sweep decides "the test went red" from a non-zero exit. With a
+# pre-existing failure anywhere the filter happens to match, every mutation
+# reports as detected and the sweep certifies a suite it never exercised --
+# the tool whose job is guarding premises, not guarding its own. Found by a
+# review that noticed the tree was red while the sweep would have passed.
+print("baseline: the suite must be green before anything is mutated")
+_baseline = subprocess.run(["go", "test", "./...", "-count=1"], capture_output=True, text=True)
+if _baseline.returncode != 0:
+    print("BASELINE NOT GREEN. Every mutation below would report as detected, because a\n"
+          "mutation is judged by a non-zero exit and the suite already gives one. Fix the\n"
+          "failure first; the sweep proves nothing until then.\n")
+    print(_baseline.stdout[-4000:])
+    print(_baseline.stderr[-2000:])
+    sys.exit(1)
+print("baseline: green\n")
+
 undetected = []
+skipped = []
 try:
     for name, f, old, new, test in M:
         backup(f)
@@ -248,8 +282,19 @@ try:
         if name in IMPORTS:
             fi, io_, in_ = IMPORTS[name]; backup(fi)
             t = pathlib.Path(fi).read_text(); assert io_ in t; pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
-        r = subprocess.run(["go", "test", "./...", "-run", test, "-count=1"], capture_output=True, text=True)
-        if r.returncode == 0:
+        r = subprocess.run(["go", "test", "./...", "-run", test, "-count=1", "-v"], capture_output=True, text=True)
+        judged = r.stdout + r.stderr
+        if r.returncode == 0 and ("--- SKIP" in judged or "no tests to run" in judged):
+            # The judging test did not RUN, so this mutation was not judged.
+            # Reporting it as "the test cannot be made to fail" would name a
+            # spec defect that may not exist: the socket half of H-17 needs
+            # strace, which ubuntu-latest installs in CI and macOS does not
+            # have, so the same mutation is judged there and unjudgeable here.
+            # A verdict that cannot tell "we checked and it passed" from "we
+            # could not check" is the error this whole suite exists to prevent.
+            print(f"  NOT JUDGED     <- {name}   (the judging test skipped here)")
+            skipped.append(name)
+        elif r.returncode == 0:
             print(f"  NOT DETECTED   <- {name}   (spec defect: the test cannot be made to fail)"); undetected.append(name)
         elif "build failed" in r.stdout + r.stderr or "cannot" in r.stderr and "FAIL" not in r.stdout:
             print(f"  BUILD BROKEN   <- {name}\n{r.stdout}{r.stderr}"); undetected.append(name)
@@ -261,4 +306,9 @@ finally:
 
 print()
 print("undetected:", undetected if undetected else "none")
+if skipped:
+    print("not judged here:", skipped)
+    print("  These were not checked because the judging test skipped in this")
+    print("  environment. They are not passes. Run the sweep where those tests")
+    print("  run -- CI installs strace on ubuntu-latest for exactly this reason.")
 sys.exit(1 if undetected else 0)
