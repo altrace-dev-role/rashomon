@@ -20,20 +20,45 @@ import (
 // probe, and they are also what makes "at start and at end" in the coverage
 // record literal rather than approximate.
 const (
-	EventPreToolUse   = "PreToolUse"
-	EventPostToolUse  = "PostToolUse"
-	EventSessionStart = "SessionStart"
-	EventSessionEnd   = "SessionEnd"
+	EventPreToolUse  = "PreToolUse"
+	EventPostToolUse = "PostToolUse"
+	// EventPostToolUseFailure is where a failed call goes, and subscribing to
+	// it is not an improvement in coverage -- it is the difference between
+	// recording failures and recording none.
+	//
+	// Measured on Claude Code 2.1.258: a failing Bash call fires THIS event and
+	// not PostToolUse. With only PostToolUse installed, every failed call left
+	// a declaration with no execution beside it, which is the same shape on
+	// disk as a call the user denied and a call whose execution went
+	// unrecorded. The report could not have told the three apart, so the
+	// silent-failure line -- the one that says how many calls failed while the
+	// final message mentioned none -- would have counted zero on every session.
+	//
+	// It shares the `post` command line rather than getting one of its own:
+	// the payloads have the same shape, `post` dispatches on hook_event_name,
+	// and a second command line would be a second place for the attribution
+	// and panic-barrier discipline to drift.
+	EventPostToolUseFailure = "PostToolUseFailure"
+	EventSessionStart       = "SessionStart"
+	EventSessionEnd         = "SessionEnd"
 )
 
 // Events in the order they are installed.
-var Events = []string{EventPreToolUse, EventPostToolUse, EventSessionStart, EventSessionEnd}
+var Events = []string{
+	EventPreToolUse,
+	EventPostToolUse,
+	EventPostToolUseFailure,
+	EventSessionStart,
+	EventSessionEnd,
+}
 
 // hasMatcher reports whether an event's entry carries a matcher. The tool
 // events match on tool name; the session events match on source or reason, and
 // omitting the matcher is the documented way to match every one of those.
 func hasMatcher(event string) bool {
-	return event == EventPreToolUse || event == EventPostToolUse
+	return event == EventPreToolUse ||
+		event == EventPostToolUse ||
+		event == EventPostToolUseFailure
 }
 
 const (
@@ -81,7 +106,10 @@ func subcommand(event string) string {
 	switch event {
 	case EventPreToolUse:
 		return "hook"
-	case EventPostToolUse:
+	case EventPostToolUse, EventPostToolUseFailure:
+		// One subcommand, two events. `post` reads hook_event_name and decides
+		// which it is; see EventPostToolUseFailure for why that is preferable
+		// to a second command line.
 		return "post"
 	case EventSessionStart:
 		return "probe start"

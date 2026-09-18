@@ -87,6 +87,11 @@ func (h *Handler) Capture(in io.Reader) error {
 		ToolName:       p.ToolName,
 		Shape:          shape.Derive(p.ToolName, p.ToolInput, h.st.Key()),
 	}
+	// Hostnames are metadata and are stored verbatim, because they are both
+	// the join key against the proxy's record and the finding itself. Nothing
+	// else from tool_input is persisted, and shape is still the only package
+	// that reads inside it.
+	decl.Hosts, decl.SSHHosts = shape.Hosts(p.ToolName, p.ToolInput)
 
 	fault.Inject(fault.PointStoreWrite)
 

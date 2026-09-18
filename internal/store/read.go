@@ -93,7 +93,11 @@ func (s *Store) ReadRunDir(name string) (*Run, error) {
 			Type          string `json:"type"`
 			SchemaVersion int    `json:"schema_version"`
 		}
-		if json.Unmarshal(line, &head) != nil || head.SchemaVersion != SchemaVersion {
+		// Accepts, not equality against SchemaVersion: a store written before
+		// the v2 fields existed is still readable, and equality here would have
+		// silently skipped every record already on disk the moment the writer
+		// moved on.
+		if json.Unmarshal(line, &head) != nil || !Accepts(head.SchemaVersion) {
 			run.Skipped++
 			return
 		}

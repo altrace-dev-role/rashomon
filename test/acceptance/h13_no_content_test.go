@@ -18,10 +18,20 @@ var (
 		"tool_use_id", "session_id", "prompt_id", "agent_id", "agent_type",
 		"transcript_path", "permission_mode", "tool_name",
 		"shape", "shape.program", "shape.verb_class", "shape.argc", "shape.digest",
+		// v2. Hostnames only: the extractor returns a canonical hostname or
+		// nothing, so neither list can carry a path, a query or a credential.
+		// They are here rather than under shape because the report joins on
+		// them and a nested list is harder to read back than a top-level one.
+		"hosts", "ssh_hosts",
 	}
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
 		"tool_use_id", "session_id", "tool_name",
+		// v2. An enum from a closed set, an integer parsed out of a fixed
+		// prefix, a boolean, and the client's own millisecond count. None can
+		// carry a substring of a tool response: the failure MESSAGE is read to
+		// produce exit_code and has no field it could be assigned to.
+		"outcome", "exit_code", "is_interrupt", "duration_ms",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",

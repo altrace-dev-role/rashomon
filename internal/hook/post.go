@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
@@ -26,7 +28,40 @@ type PostPayload struct {
 	SessionID string `json:"session_id"`
 	ToolName  string `json:"tool_name"`
 	ToolUseID string `json:"tool_use_id"`
+
+	// HookEventName is what makes one subcommand serve two events (v2).
+	// PostToolUse and PostToolUseFailure carry the same shape and are
+	// dispatched here rather than by two separate installed command lines,
+	// because two command lines would be two places for the attribution and
+	// panic-barrier discipline to drift apart.
+	HookEventName string `json:"hook_event_name"`
+
+	// Error is the failure message, and it is the ONE field on this path that
+	// comes close to content. It is read and never stored: only a parsed
+	// integer exit code survives this function. The message itself can carry a
+	// fragment of what the command printed, which is exactly why there is no
+	// record field it could be assigned to.
+	Error string `json:"error"`
+
+	// IsInterrupt distinguishes a user interrupt from a command that failed on
+	// its own. Measured on Claude Code 2.1.258: present on the failure event,
+	// false for an ordinary non-zero exit.
+	IsInterrupt *bool `json:"is_interrupt"`
+
+	// DurationMS is the client's own measurement of the call.
+	DurationMS *int64 `json:"duration_ms"`
 }
+
+// FailureEvent is the hook event name Claude Code fires instead of
+// PostToolUse when a tool call ends badly.
+//
+// Measured on 2.1.258: a failing Bash call fires this event and NOT
+// PostToolUse, carrying error: "Exit code 1", is_interrupt: false and
+// duration_ms, with no tool_response. Subscribing to PostToolUse alone is
+// therefore not a partial view of failures, it is a complete absence of them:
+// every failed call would have a declaration and no execution, which is the
+// same shape as a call the user denied.
+const FailureEvent = "PostToolUseFailure"
 
 // Post captures one PostToolUse invocation and then closes it out.
 //
@@ -72,14 +107,65 @@ func (p *Post) Capture(in io.Reader) error {
 
 	fault.Inject(fault.PointPostParsed)
 
-	return p.st.AppendExecution(store.Execution{
+	rec := store.Execution{
 		Type:          store.TypeExecution,
 		SchemaVersion: store.SchemaVersion,
 		RecordedAtMS:  p.now().UnixMilli(),
 		ToolUseID:     pl.ToolUseID,
 		SessionID:     p.sessionID,
 		ToolName:      pl.ToolName,
-	})
+		Outcome:       store.ExecOK,
+		DurationMS:    positive(pl.DurationMS),
+	}
+	if pl.HookEventName == FailureEvent {
+		rec.Outcome = store.ExecFailed
+		rec.IsInterrupt = pl.IsInterrupt
+		rec.ExitCode = exitCode(pl.Error)
+		if pl.IsInterrupt != nil && *pl.IsInterrupt {
+			rec.Outcome = store.ExecInterrupted
+		}
+	}
+	return p.st.AppendExecution(rec)
+}
+
+// exitCodePrefix is the whole of what is parsed out of a failure message.
+//
+// The message is the only field on this path that can carry a fragment of what
+// a command printed, so what leaves this function is an integer or nothing.
+// Matching a fixed prefix rather than searching the message means a command
+// whose OUTPUT happens to contain the words "Exit code 137" cannot put a
+// number into the record.
+const exitCodePrefix = "Exit code "
+
+// exitCode parses the process exit status out of a failure message.
+//
+// Returns nil rather than 0 for every shape it does not recognise. Zero is an
+// exit status that means success, so writing it for "no code was stated" would
+// record the opposite of what happened -- and this record's whole purpose is to
+// say that the call did not succeed.
+func exitCode(msg string) *int {
+	if !strings.HasPrefix(msg, exitCodePrefix) {
+		return nil
+	}
+	digits := strings.TrimSpace(msg[len(exitCodePrefix):])
+	if digits == "" {
+		return nil
+	}
+	n, err := strconv.Atoi(digits)
+	if err != nil || n == 0 {
+		return nil
+	}
+	return &n
+}
+
+// positive returns d only when it is a duration we actually have. A zero or
+// negative duration is not a measurement, and recording 0 would claim a call
+// took no time rather than that nobody timed it.
+func positive(d *int64) *int64 {
+	if d == nil || *d <= 0 {
+		return nil
+	}
+	return d
 }
 
 // Close writes the coverage record for this invocation. There is no terminal

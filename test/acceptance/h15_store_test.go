@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // TestH15_Permissions asserts the store is readable only by its owner. The
@@ -84,9 +86,15 @@ func TestH15_SchemaVersionOnEveryRecord(t *testing.T) {
 	if len(all) == 0 {
 		t.Fatal("no records were written")
 	}
+	// Asserted against the writer's own constant rather than a literal. The
+	// invariant is "every record carries the version the writer was at", not
+	// "every record says 1", and a literal here is a line to chase on every
+	// schema bump -- which is how a bump ends up landing with some records
+	// carrying the new version and some the old.
+	want := float64(store.SchemaVersion)
 	for i, r := range all {
-		if r.fields["schema_version"] != float64(1) {
-			t.Errorf("record %d (type %q) has schema_version %v, want 1", i, r.typ(), r.fields["schema_version"])
+		if r.fields["schema_version"] != want {
+			t.Errorf("record %d (type %q) has schema_version %v, want %v", i, r.typ(), r.fields["schema_version"], want)
 		}
 		if r.typ() == "" {
 			t.Errorf("record %d has no type discriminator", i)

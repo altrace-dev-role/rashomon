@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"github.com/altrace-dev-role/rashomon/internal/store"
 	"regexp"
 	"testing"
 )
@@ -24,8 +25,8 @@ func TestH14_ShapeFieldsArePresent(t *testing.T) {
 	if s, _ := digest.(string); !hex64.MatchString(s) {
 		t.Errorf("digest is %v, want 64 hex characters", digest)
 	}
-	if got := d.fields["schema_version"]; got != float64(1) {
-		t.Errorf("schema_version is %v, want 1", got)
+	if got, want := d.fields["schema_version"], float64(store.SchemaVersion); got != want {
+		t.Errorf("schema_version is %v, want %v", got, want)
 	}
 }
 

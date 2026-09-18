@@ -3,6 +3,7 @@ package acceptance
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/altrace-dev-role/rashomon/internal/install"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,13 +21,22 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	}
 	sf := e.settings()
 
-	// Under hooks.PreToolUse: not a sibling event, not a typo.
+	// Under hooks.PreToolUse: not a sibling event, not a typo. The set is
+	// install.Events rather than a literal list, so adding an event has to be a
+	// deliberate change to the installer and not something a test tolerated.
+	allowed := map[string]bool{}
+	for _, ev := range install.Events {
+		allowed[ev] = true
+	}
 	for event := range sf.Hooks {
-		switch event {
-		case "PreToolUse", "PostToolUse", "SessionStart", "SessionEnd":
-		default:
+		if !allowed[event] {
 			t.Errorf("watch wrote an entry under hooks.%s", event)
 		}
+	}
+	// Guard the premise: an empty Events slice would make the loop above
+	// accept nothing and pass anyway on a settings file with no entries.
+	if len(allowed) < 5 {
+		t.Fatalf("install.Events lists %d events; watch installs five", len(allowed))
 	}
 	groups := ours(sf.Hooks["PreToolUse"])
 	if len(groups) != 1 {
