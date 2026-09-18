@@ -157,6 +157,10 @@ type Session struct {
 	Account        Account           `json:"account"`
 	Subagents      []SubagentSummary `json:"subagents"`
 	SilentFailures SilentFailures    `json:"silent_failures"`
+
+	// Families is which of this session's tool families were confirmed to
+	// transit the proxy, derived from the join rather than from a probe.
+	Families FamilyCoverage `json:"families"`
 }
 
 // Option configures Build.
@@ -246,6 +250,8 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		// sharing one observation across sessions would attribute each
 		// session's destinations to all of them.
 		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, window(run)), st.Root(), forgotten)
+		sess.Families = buildFamilies(run, observedHostSet(sess.Destinations),
+			sess.Destinations.Observed, sess.Destinations.Reason)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
 		sess.SilentFailures = buildSilentFailures(run, sess.Account)

@@ -55,6 +55,7 @@ func writeSession(b *bytes.Buffer, sess Session) {
 	writeSubagents(b, sess.Subagents)
 	writeSilentFailures(b, sess.SilentFailures)
 	writeDestinations(b, sess.Destinations)
+	writeFamilies(b, sess.Families)
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
 	fmt.Fprintf(b, "  reasons: %s\n", list(sess.Coverage.Reasons))
 	fmt.Fprintf(b, "  start recorded: %s\n", yesNo(sess.Coverage.StartRecorded))
@@ -351,5 +352,35 @@ func writeNovelty(b *bytes.Buffer, n Novelty) {
 	default:
 		fmt.Fprintf(b, "  new for this project: %s\n", list(n.Hosts))
 		fmt.Fprintf(b, "    (first seen in this project by this session; %d hosts known)\n", n.KnownHosts)
+	}
+}
+
+// writeFamilies renders which tool families were confirmed to transit.
+//
+// The not-observable list prints on EVERY report, including a completely
+// healthy one. These are properties of the instrument rather than of the
+// session, and a reader told only what was observed will read the rest as an
+// absence of traffic rather than an absence of observation.
+func writeFamilies(b *bytes.Buffer, fc FamilyCoverage) {
+	if !fc.Available {
+		fmt.Fprintf(b, "  tool families: %s (%s)\n", unknown, fc.Reason)
+	} else if len(fc.Families) == 0 {
+		fmt.Fprintln(b, "  tool families: none of the known families ran in this session")
+	} else {
+		fmt.Fprintln(b, "  tool families:")
+		for _, f := range fc.Families {
+			fmt.Fprintf(b, "    %s (%s): %d call(s), %d/%d declared hosts observed -- %s\n",
+				f.Name, strings.Join(f.Programs, " "), f.Calls,
+				f.HostsObserved, f.HostsDeclared, f.Status)
+		}
+	}
+	if len(fc.NotExercised) > 0 {
+		// Counted and named on one line rather than one line each: ten
+		// "not exercised" lines would bury the families that did run.
+		fmt.Fprintf(b, "    not exercised: %s\n", list(fc.NotExercised))
+	}
+	fmt.Fprintln(b, "  not observable, whatever the session did:")
+	for _, n := range fc.NotObservable {
+		fmt.Fprintf(b, "    %s\n", n)
 	}
 }
