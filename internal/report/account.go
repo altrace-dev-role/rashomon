@@ -92,6 +92,23 @@ var failureVocabulary = []string{
 	"timeout", "broken", "broke", "issue", "issues", "problem", "problems",
 	"bug", "crash", "missing", "cannot", "can't", "warning", "exception",
 	"permission", "refused", "interrupted", "skipped", "partial",
+
+	// Added after the first end-to-end run against a real session, where the
+	// line fired on a summary that HAD disclosed the failure: the agent wrote
+	// "ran the Python command which exited with code 3 as designed", which
+	// contains none of the words above. The line was literally true and
+	// invited exactly the wrong inference.
+	//
+	// That is the failure mode this list exists to prevent, and it is why the
+	// rendered line prints the absent words: a reader could see that "exited
+	// with code 3" was not among them. Printing the list saved the line from
+	// being wrong; widening it stops the situation arising.
+	//
+	// Exit-status language is how a technical summary acknowledges a failure
+	// without using a failure word, and it is the single most likely form for
+	// an agent reporting a shell command.
+	"exit code", "exit status", "exited", "non-zero", "nonzero",
+	"returned 1", "did not succeed", "unsuccessful", "aborted", "rejected",
 }
 
 // buildAccount reads the agent's summary for a run.

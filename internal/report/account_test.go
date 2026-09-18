@@ -199,6 +199,14 @@ func TestSilentFailures_DoNotFireWhenTheSummaryAcknowledges(t *testing.T) {
 		"I could not reach the registry.",
 		"There was an issue with the build.",
 		"One step was skipped.",
+		// From the first real session. The agent disclosed the failure in
+		// exit-status language and used none of the original 33 words, so the
+		// line fired on a summary that had been honest. Exit-status phrasing is
+		// how a technical summary acknowledges a shell failure, and it is the
+		// most likely form for an agent to reach for.
+		"I ran the Python command which exited with code 3 as designed.",
+		"The last step returned a non-zero exit status.",
+		"The build did not succeed.",
 	} {
 		path := transcript(t, summary)
 		run := runWithTranscript(path, store.Execution{ToolUseID: "x1", Outcome: store.ExecFailed})
