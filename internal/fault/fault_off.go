@@ -1,4 +1,4 @@
-//go:build !attestfault
+//go:build !rashomonfault
 
 package fault
 

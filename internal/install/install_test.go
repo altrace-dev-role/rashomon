@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/settings"
+	"github.com/altrace-dev-role/rashomon/internal/settings"
 )
 
 // Two installs and a hook that is nobody's install: the arrangement every
@@ -18,7 +18,7 @@ const (
 	foreignHook = `{"matcher":"Bash","hooks":[{"type":"command","command":"echo foreign-sentinel","timeout":30}]}`
 )
 
-func spec(id string) Spec { return Spec{Executable: "/usr/local/bin/attest", InstallID: id} }
+func spec(id string) Spec { return Spec{Executable: "/usr/local/bin/rashomon", InstallID: id} }
 
 // TestOwner covers what an entry is recognised by. Ownership is read out of the
 // command line rather than out of a matcher or a position, because the command
@@ -171,11 +171,11 @@ func entriesOf(t *testing.T, doc *settings.Document, event string) []json.RawMes
 func TestShellQuote(t *testing.T) {
 	for _, tc := range []struct{ name, in, want string }{
 		{"a path of safe characters is left bare",
-			"/usr/local/bin/attest", "/usr/local/bin/attest"},
+			"/usr/local/bin/rashomon", "/usr/local/bin/rashomon"},
 		{"a space is quoted",
-			"/Users/sam/Application Support/attest", "'/Users/sam/Application Support/attest'"},
+			"/Users/sam/Application Support/rashomon", "'/Users/sam/Application Support/rashomon'"},
 		{"a single quote is closed, escaped and reopened",
-			"/home/o'brien/bin/attest", `'/home/o'\''brien/bin/attest'`},
+			"/home/o'brien/bin/rashomon", `'/home/o'\''brien/bin/rashomon'`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := shellQuote(tc.in); got != tc.want {

@@ -1,4 +1,4 @@
-//go:build attestfault
+//go:build rashomonfault
 
 package fault
 
@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/safe"
+	"github.com/altrace-dev-role/rashomon/internal/safe"
 )
 
 // EnvVar selects a fault. Its value is either "<kind>", which fires at the

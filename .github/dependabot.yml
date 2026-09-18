@@ -1,4 +1,4 @@
-# altrace-attest dependency updates
+# rashomon dependency updates
 #
 # There is no `gomod` entry because there is nothing for it to update: go.mod
 # declares no requirements at all. This module is standard library only, by

@@ -41,13 +41,13 @@ m("H-6  watch appends a second entry of ours", "internal/install/install.go", "\
 m("H-6  detach removes every install's entries", "internal/install/install.go",
   "\treturn RemoveIf(doc, func(id string) bool { return id == spec.InstallID })",
   "\treturn RemoveIf(doc, func(string) bool { return true })", "TestH6_")
-m("H-6  another install's entry records into this store", "cmd/attest/main.go",
+m("H-6  another install's entry records into this store", "cmd/rashomon/main.go",
   "\tif id == \"\" || id == st.InstallID() {", "\tif id == \"\" || true {", "TestH6_ForeignInstallEntryStandsDown")
-m("H-6  watch does not say another install's entries are present", "cmd/attest/main.go",
+m("H-6  watch does not say another install's entries are present", "cmd/rashomon/main.go",
   "\tif len(foreign) > 0 {", "\tif false && len(foreign) > 0 {", "TestH6_ForeignInstallEntryStandsDown")
 m("H-6  detach --install ignores the id it was given", "internal/install/install.go",
   "\t\t\tif id == \"\" || !match(id) {", "\t\t\tif id == \"\" {", "TestH6_DetachByInstallIDNeedsNoStore")
-m("H-6  detach --all removes only this machine's install", "cmd/attest/main.go",
+m("H-6  detach --all removes only this machine's install", "cmd/rashomon/main.go",
   "\t\t\treturn install.RemoveIf(doc, func(string) bool { return true })",
   "\t\t\treturn install.Remove(doc, install.Spec{InstallID: installID})", "TestH6_DetachAllRemovesEveryInstall")
 m("H-6  removing by predicate skips the intact check", "internal/install/install.go",
@@ -56,21 +56,21 @@ m("H-6  removing by predicate skips the intact check", "internal/install/install
 m("H-6  detach drops the entries it is not removing", "internal/install/install.go",
   "\t\t\tif id == \"\" || !match(id) {\n\t\t\t\tout = append(out, e)\n\t\t\t\tcontinue\n\t\t\t}",
   "\t\t\tif id == \"\" || !match(id) {\n\t\t\t\tcontinue\n\t\t\t}", "TestH6_Detach")
-m("H-6  detach opens the store although it was given the id", "cmd/attest/main.go",
+m("H-6  detach opens the store although it was given the id", "cmd/rashomon/main.go",
   "\tpath, err := settings.UserPath()\n\tif err != nil {\n\t\treturn err\n\t}\n\tremoved := 0",
   "\tpath, err := settings.UserPath()\n\tif err != nil {\n\t\treturn err\n\t}\n\tif _, err := openStore(); err != nil {\n\t\treturn err\n\t}\n\tremoved := 0", "TestH6_Detach")
-m("H-6  plain detach creates a store to learn the id", "cmd/attest/main.go",
+m("H-6  plain detach creates a store to learn the id", "cmd/rashomon/main.go",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err != nil {",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil && false {", "TestH6_PlainDetachLeavesNoStoreBehind")
-m("H-6  watch does not print the undo line", "cmd/attest/main.go",
-  "\tfmt.Fprintf(stdout, \"attest detach --install %s\\n\", st.InstallID())\n", "", "TestH6_WatchPrintsTheUndoLine")
+m("H-6  watch does not print the undo line", "cmd/rashomon/main.go",
+  "\tfmt.Fprintf(stdout, \"rashomon detach --install %s\\n\", st.InstallID())\n", "", "TestH6_WatchPrintsTheUndoLine")
 m("H-7  edit drops every other top-level key", "internal/settings/document.go",
   "\tif h := d.find(hooksKey); h != nil {\n\t\th.raw = obj\n\t} else {\n\t\td.members = append(d.members, member{key: hooksKey, raw: obj})\n\t}\n\treturn nil",
   "\td.members = []member{{key: hooksKey, raw: obj}}\n\treturn nil", "TestH7_DetachPreservesConcurrentEdits")
 m("H-7  detach never notices an edited entry", "internal/install/install.go",
   "func intact(raw json.RawMessage, event string) string {\n", "func intact(raw json.RawMessage, event string) string {\n\tif true {\n\t\treturn \"\"\n\t}\n", "TestH7_DetachSaysSoWhenItCannot")
 m("H-8  settings written in place instead of temp+rename", "internal/settings/write.go",
-  "\ttmp, err := os.CreateTemp(dir, \".settings.json.attest-*\")", "\ttmp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)", "TestH8_")
+  "\ttmp, err := os.CreateTemp(dir, \".settings.json.rashomon-*\")", "\ttmp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)", "TestH8_")
 m("H-9  managed layer not consulted", "internal/settings/locate.go", "\t\t{LayerManaged, loc.Managed},\n", "", "TestH9_")
 m("H-9  only the user layer consulted", "internal/settings/locate.go",
   "\t\t{LayerManaged, loc.Managed},\n\t\t{LayerLocal, loc.Local},\n\t\t{LayerProject, loc.Project},\n", "", "TestH9_")
@@ -84,7 +84,7 @@ m("H-20 the execution record is never written", "internal/hook/post.go",
   "TestH20_PostRecordsTheExecution")
 m("H-20 an execution the lock refuses is dropped", "internal/store/store.go",
   "\treturn s.SpillExecution(rec)", "\treturn err", "TestAppendExecutionSpillsWhenTheLockIsHeld")
-m("H-20 the post path ignores the install it was told it belongs to", "cmd/attest/main.go",
+m("H-20 the post path ignores the install it was told it belongs to", "cmd/rashomon/main.go",
   "\tif standsDown(args, st, stderr) {\n\t\treturn exitOK\n\t}\n\n\tp := hook.NewPost(st, time.Now)", "\tp := hook.NewPost(st, time.Now)",
   "TestH20_PostFromAnotherInstallStandsDown")
 m("H-20 post coverage resolves the recorder's entry instead of its own", "internal/hook/coverage.go",
@@ -102,10 +102,10 @@ m("H-20 declarations with no execution are not named", "internal/store/read.go",
 m("H-20 the unexecuted list drops the permission mode", "internal/report/report.go",
   "Unexecuted{ToolUseID: id, PermissionMode: mode[id]})", "Unexecuted{ToolUseID: id})",
   "TestH20_DeclarationWithoutAnExecutionIsNamed")
-m("H-20 the post path runs outside the panic barrier", "cmd/attest/main.go",
+m("H-20 the post path runs outside the panic barrier", "cmd/rashomon/main.go",
   "\tcaptureErr := safe.Guard(func() error { return p.Capture(stdin) })", "\tcaptureErr := p.Capture(stdin)",
   "TestH20_NoFaultOnThePostPathReachesTheAgent")
-m("H-18 the post path installs on every call", "cmd/attest/main.go",
+m("H-18 the post path installs on every call", "cmd/rashomon/main.go",
   "\tp := hook.NewPost(st, time.Now)\n", "\t_ = cmdWatch(io.Discard)\n\tp := hook.NewPost(st, time.Now)\n", "TestH18_")
 m("H-20 the post payload declares tool_response, and it reaches the debug log", "internal/hook/post.go",
   "\tvar pl PostPayload\n", "\tvar pl struct {\n\t\tPostPayload\n\t\tToolResponse json.RawMessage `json:\"tool_response\"`\n\t}\n\tdefer func() { fmt.Fprintln(os.Stderr, string(pl.ToolResponse)) }()\n",
@@ -133,10 +133,10 @@ m("H-15 eviction deletes without a gap record", "internal/store/gaps.go", "\t\ti
 m("H-15 eviction does not count the executions it removed", "internal/store/gaps.go",
   "RemovedRecords: len(run.Declarations) + len(run.Executions) + len(run.Terminals),",
   "RemovedRecords: len(run.Declarations) + len(run.Terminals),", "TestH15_SizeCap")
-m("H-15 forget --before behaves like --since", "cmd/attest/main.go",
+m("H-15 forget --before behaves like --since", "cmd/rashomon/main.go",
   "\t\t\tif flag == \"--since\" {\n\t\t\t\tfrom = &t\n\t\t\t} else {\n\t\t\t\tto = &t\n\t\t\t}", "\t\t\tfrom = &t",
   "TestH15_Forget")
-m("H-15 forget takes both windows and resolves them itself", "cmd/attest/main.go",
+m("H-15 forget takes both windows and resolves them itself", "cmd/rashomon/main.go",
   "\tcase from != nil && to != nil:\n\t\treturn errors.New(\"--since and --before name opposite ends of the store's timeline; pass one or the other\")\n",
   "", "TestH15_ForgetRefusesBothWindows")
 m("H-15 executions are not part of forget's doomed plan", "internal/store/gaps.go",
@@ -160,9 +160,9 @@ m("H-16 the lock gives up without waiting out the budget", "internal/store/lock_
   "\t\tif time.Now().After(deadline) {", "\t\tif !time.Now().After(deadline) {", "TestLockFileIsExclusiveAndBounded")
 m("H-17 handler opens a socket (no net import, so only the trace sees it)", "internal/hook/handle.go",
   "\tfault.Inject(fault.PointHookStart)\n", "\tfault.Inject(fault.PointHookStart)\n\tif fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, 0); err == nil {\n\t\tsyscall.Close(fd)\n\t}\n", "TestH17_HandlerOpensNoSockets")
-m("H-18 the hook installs on every call", "cmd/attest/main.go",
+m("H-18 the hook installs on every call", "cmd/rashomon/main.go",
   "\th := hook.New(st, time.Now)\n", "\t_ = cmdWatch(io.Discard)\n\th := hook.New(st, time.Now)\n", "TestH18_")
-m("H-18 detach writes the settings file although it changed nothing", "cmd/attest/main.go",
+m("H-18 detach writes the settings file although it changed nothing", "cmd/rashomon/main.go",
   "\t\tn, err := remove(doc)\n\t\tremoved = n\n\t\treturn n > 0, err",
   "\t\tn, err := remove(doc)\n\t\tremoved = n\n\t\treturn true, err", "TestH18_")
 m("H-19 report re-reads today's config to judge a past run", "internal/report/report.go",
@@ -172,18 +172,18 @@ m("report text renders a count it does not have as 0", "internal/report/text.go"
   "\tif p == nil {\n\t\treturn notRead\n\t}", "\tif p == nil {\n\t\treturn \"0\"\n\t}", "TestReport_")
 m("report text renders a comparison it could not make as an empty list", "internal/report/text.go",
   "\tif ids == nil {\n\t\treturn unknown\n\t}", "\tif ids == nil {\n\t\treturn none\n\t}", "TestReport_")
-m("report --json is accepted and ignored", "cmd/attest/main.go",
+m("report --json is accepted and ignored", "cmd/rashomon/main.go",
   "\t\tcase \"--json\":\n\t\t\tasJSON = true", "\t\tcase \"--json\":\n\t\t\tasJSON = false", "TestReport_")
-m("status opens the store, which creates one", "cmd/attest/main.go",
+m("status opens the store, which creates one", "cmd/rashomon/main.go",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {\n\t\tst, err := openStore()",
   "\tif true {\n\t\tst, err := openStore()", "TestH18_")
-m("status reports an entry present whatever it finds", "cmd/attest/main.go",
+m("status reports an entry present whatever it finds", "cmd/rashomon/main.go",
   "\tcase present:\n\t\treturn \"present\"\n\tdefault:\n\t\treturn \"absent\"\n\t}",
   "\tcase present:\n\t\treturn \"present\"\n\tdefault:\n\t\treturn \"present\"\n\t}", "TestStatus_")
-m("status does not name the other installs sharing the file", "cmd/attest/main.go",
+m("status does not name the other installs sharing the file", "cmd/rashomon/main.go",
   "\t\tfmt.Fprintf(stdout, \"  %s: %s\\n\", label, strings.Join(others, \", \"))",
   "\t\tfmt.Fprintf(stdout, \"  %s: none\\n\", label)", "TestStatus_")
-m("status does not resolve the layer that disabled hooks", "cmd/attest/main.go",
+m("status does not resolve the layer that disabled hooks", "cmd/rashomon/main.go",
   "\tcase decision.Disabled:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)",
   "\tcase false:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)", "TestStatus_")
 m("the store schema drops a record's key", "docs/store-schema.json",
@@ -224,7 +224,7 @@ IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
   "H-20 the response is measured, and the measurement moves the record's width": ("internal/hook/post.go", '\t"io"\n', '\t"io"\n\t"strconv"\n'),
   "H-17 handler opens a socket (no net import, so only the trace sees it)": ("internal/hook/handle.go", '\t"io"\n', '\t"io"\n\t"syscall"\n'),
-  "H-19 report re-reads today's config to judge a past run": ("internal/report/report.go", '\t"github.com/altrace-dev-role/altrace-attest/internal/store"\n', '\t"github.com/altrace-dev-role/altrace-attest/internal/install"\n\t"github.com/altrace-dev-role/altrace-attest/internal/settings"\n\t"github.com/altrace-dev-role/altrace-attest/internal/store"\n'),
+  "H-19 report re-reads today's config to judge a past run": ("internal/report/report.go", '\t"github.com/altrace-dev-role/rashomon/internal/store"\n', '\t"github.com/altrace-dev-role/rashomon/internal/install"\n\t"github.com/altrace-dev-role/rashomon/internal/settings"\n\t"github.com/altrace-dev-role/rashomon/internal/store"\n'),
   "H-15 executions are not part of forget's doomed plan": ("internal/store/gaps.go", '\t"bufio"\n', '\t"bufio"\n\t"bytes"\n'),
 }
 

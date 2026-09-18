@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/settings"
+	"github.com/altrace-dev-role/rashomon/internal/settings"
 )
 
 // Events we install into. PreToolUse records what was asked for and
@@ -72,7 +72,7 @@ func Executable() (string, error) {
 		return "", err
 	}
 	if strings.Contains(p, string(filepath.Separator)+"go-build") {
-		return "", errors.New("install: refusing to install a `go run` temporary binary; build attest and run the built binary")
+		return "", errors.New("install: refusing to install a `go run` temporary binary; build rashomon and run the built binary")
 	}
 	return p, nil
 }

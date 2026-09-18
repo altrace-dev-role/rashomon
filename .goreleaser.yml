@@ -1,4 +1,4 @@
-# altrace-attest GoReleaser configuration
+# rashomon GoReleaser configuration
 #
 # Usage:
 #   goreleaser check                           # validate this file
@@ -9,12 +9,12 @@
 
 version: 2
 
-project_name: attest
+project_name: rashomon
 
 builds:
-  - id: attest
-    main: ./cmd/attest
-    binary: attest
+  - id: rashomon
+    main: ./cmd/rashomon
+    binary: rashomon
     env:
       - CGO_ENABLED=0
     goos:
@@ -33,10 +33,10 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 archives:
-  - id: attest
+  - id: rashomon
     ids:
-      - attest
-    name_template: "attest_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+      - rashomon
+    name_template: "rashomon_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
       - goos: windows
@@ -49,27 +49,27 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
-# Homebrew tap -- updates Formula/attest.rb on release.
+# Homebrew tap -- updates Formula/rashomon.rb on release.
 brews:
   - ids:
-      - attest
+      - rashomon
     repository:
       owner: altrace-dev-role
       name: altrace-homebrew-tap
       # Writing to another repository; GITHUB_TOKEN cannot do it.
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    name: attest
-    homepage: "https://github.com/altrace-dev-role/altrace-attest"
+    name: rashomon
+    homepage: "https://github.com/altrace-dev-role/rashomon"
     description: "Records what a Claude Code session asked to run, and the evidence the recorder was running"
     license: "Apache-2.0"
     install: |
-      bin.install "attest"
-    # `attest version` is the only command that writes nothing, touches no
+      bin.install "rashomon"
+    # `rashomon version` is the only command that writes nothing, touches no
     # settings file and needs no store: the one safe thing to run in a sandbox
     # that brew builds and tears down.
     test: |
-      system "#{bin}/attest", "version"
+      system "#{bin}/rashomon", "version"
 
 changelog:
   use: git

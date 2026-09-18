@@ -24,7 +24,7 @@ func TestH17_NoNetworkInTheDependencyGraph(t *testing.T) {
 		"net/http/httptrace": "implies a network client",
 	}
 
-	cmd := exec.Command("go", "list", "-deps", "./cmd/attest")
+	cmd := exec.Command("go", "list", "-deps", "./cmd/rashomon")
 	cmd.Dir = moduleRoot
 	out, err := cmd.Output()
 	if err != nil {
@@ -68,7 +68,7 @@ func TestH17_CaptureIsIdenticalWithNetworkDenied(t *testing.T) {
 
 	denied := defaultPayload()
 	denied.ToolUseID = "toolu_denied"
-	cmd := exec.Command("unshare", "-n", attestBin, "hook")
+	cmd := exec.Command("unshare", "-n", rashomonBin, "hook")
 	cmd.Stdin = strings.NewReader(denied.build(t))
 	cmd.Env = e.environ()
 	cmd.Dir = e.cwd
@@ -112,7 +112,7 @@ func TestH17_HandlerOpensNoSockets(t *testing.T) {
 	e.watched(testSession)
 	trace := filepath.Join(t.TempDir(), "trace")
 
-	cmd := exec.Command("strace", "-f", "-e", "trace=socket,connect,sendto,sendmsg", "-o", trace, attestBin, "hook")
+	cmd := exec.Command("strace", "-f", "-e", "trace=socket,connect,sendto,sendmsg", "-o", trace, rashomonBin, "hook")
 	cmd.Stdin = strings.NewReader(defaultPayload().build(t))
 	cmd.Env = e.environ()
 	cmd.Dir = e.cwd

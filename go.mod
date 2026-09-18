@@ -1,4 +1,4 @@
-module github.com/altrace-dev-role/altrace-attest
+module github.com/altrace-dev-role/rashomon
 
 // No `toolchain` directive on purpose, matching the convention in the sibling
 // repository: builder images set GOTOOLCHAIN=local, which ignores it, so it

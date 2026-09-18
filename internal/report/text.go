@@ -31,7 +31,7 @@ const (
 // records this reads.
 func Text(w io.Writer, rep *Report) error {
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "attest report -- generated %s\n", stamp(rep.GeneratedAtUnixMS))
+	fmt.Fprintf(&b, "rashomon report -- generated %s\n", stamp(rep.GeneratedAtUnixMS))
 	if len(rep.Sessions) == 0 {
 		fmt.Fprintln(&b, "\nno sessions recorded")
 		_, err := w.Write(b.Bytes())

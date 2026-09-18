@@ -28,7 +28,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // Coverage reasons a report can add beyond those the run recorded.

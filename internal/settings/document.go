@@ -19,7 +19,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 )
 
 // member is one key of a JSON object, with its value held raw.

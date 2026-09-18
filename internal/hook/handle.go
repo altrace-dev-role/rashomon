@@ -6,9 +6,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/fault"
-	"github.com/altrace-dev-role/altrace-attest/internal/shape"
-	"github.com/altrace-dev-role/altrace-attest/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/shape"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // MaxPayloadBytes bounds how much of stdin is read.

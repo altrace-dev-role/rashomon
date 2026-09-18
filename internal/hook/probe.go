@@ -5,8 +5,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/safe"
-	"github.com/altrace-dev-role/altrace-attest/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/safe"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // sessionPayload is the part of a SessionStart or SessionEnd payload this

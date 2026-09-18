@@ -1,7 +1,7 @@
-# altrace-attest CI
+# rashomon CI
 #
 # Paths here are relative to the repository root because this module is the
-# repository root: altrace-attest ships as its own repository, and go.mod sits
+# repository root: rashomon ships as its own repository, and go.mod sits
 # beside this file's .github directory.
 #
 # Stages: gofmt -> vet (both build tags) -> race tests -> mutation sweep, with
@@ -69,11 +69,11 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # The acceptance suite compiles the binary with -tags attestfault, so the
+      # The acceptance suite compiles the binary with -tags rashomonfault, so the
       # fault-injection points are code no release contains and nothing else
       # compiles. Vet them under the tag rather than letting them rot.
-      - name: Vet (attestfault build tag)
-        run: go vet -tags attestfault ./...
+      - name: Vet (rashomonfault build tag)
+        run: go vet -tags rashomonfault ./...
 
       - name: Test with race detector
         run: go test ./... -count=1 -race
@@ -110,9 +110,9 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build ./cmd/attest
+        run: go build ./cmd/rashomon
 
-      # `go build ./cmd/attest` reaches only what main imports, and the test
+      # `go build ./cmd/rashomon` reaches only what main imports, and the test
       # job vets for linux. The store has a lock_unix.go / lock_other.go split,
       # so the non-Unix half is otherwise never vetted. Vet's result depends on
       # GOOS and not on GOARCH, so this runs once rather than in both windows

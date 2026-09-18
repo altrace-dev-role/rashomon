@@ -1,4 +1,4 @@
-# altrace-attest Release -- cross-platform binaries, archives, checksums and
+# rashomon Release -- cross-platform binaries, archives, checksums and
 # the Homebrew formula, all from .goreleaser.yml.
 #
 # Triggered on version tag push (e.g. v0.1.0, v1.0.0-rc.1).

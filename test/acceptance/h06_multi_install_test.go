@@ -25,7 +25,7 @@ func seedOtherInstall(e *env) {
 	e.t.Helper()
 	otherEntry := func(sub string) map[string]any {
 		m := map[string]any{"hooks": []map[string]any{{
-			"type": "command", "command": attestBin + " " + sub + " --install " + otherInstall, "timeout": 5,
+			"type": "command", "command": rashomonBin + " " + sub + " --install " + otherInstall, "timeout": 5,
 		}}}
 		if sub == "hook" || sub == "post" {
 			m["matcher"] = "*"

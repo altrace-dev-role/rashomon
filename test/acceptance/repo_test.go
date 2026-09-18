@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/report"
-	"github.com/altrace-dev-role/altrace-attest/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/report"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // TestNoSourceFileIsGitIgnored exists because a `coverage.*` pattern once

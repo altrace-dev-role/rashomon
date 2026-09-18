@@ -1,6 +1,6 @@
 package store
 
-import "github.com/altrace-dev-role/altrace-attest/internal/shape"
+import "github.com/altrace-dev-role/rashomon/internal/shape"
 
 // SchemaVersion is carried by every record. A reader that does not recognise it
 // should skip the record rather than guess at it.

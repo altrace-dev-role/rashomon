@@ -1,7 +1,7 @@
 // Package fault injects faults so the panic barrier and the atomic-write
 // guarantee can be tested against the failures that actually break them.
 //
-// The injection points are compiled in only under the `attestfault` build tag.
+// The injection points are compiled in only under the `rashomonfault` build tag.
 // A released binary contains no injection path at all, which matters for more
 // than tidiness: an attacker who could set an environment variable and make the
 // recorder abandon a run would be attacking exactly the coverage guarantee this

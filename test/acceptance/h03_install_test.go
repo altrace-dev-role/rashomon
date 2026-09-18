@@ -59,7 +59,7 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	if info.Mode()&0o111 == 0 {
 		t.Errorf("command path %q is not executable (mode %04o)", exe, info.Mode().Perm())
 	}
-	wantExe, _ := filepath.EvalSymlinks(attestBin)
+	wantExe, _ := filepath.EvalSymlinks(rashomonBin)
 	if exe != wantExe {
 		t.Errorf("command path is %q, want the binary under test %q", exe, wantExe)
 	}
@@ -224,7 +224,7 @@ func TestH6_IdempotentInstallOneOwner(t *testing.T) {
 		const other = "ffffffffffffffffffffffffffffffff"
 		otherEntry := func(sub string) map[string]any {
 			m := map[string]any{"hooks": []map[string]any{{
-				"type": "command", "command": attestBin + " " + sub + " --install " + other, "timeout": 5,
+				"type": "command", "command": rashomonBin + " " + sub + " --install " + other, "timeout": 5,
 			}}}
 			if sub == "hook" || sub == "post" {
 				m["matcher"] = "*"
@@ -385,7 +385,7 @@ func TestH8_AtomicWriteWithTheWindowForced(t *testing.T) {
 
 	entries, _ := os.ReadDir(e.configDir)
 	for _, en := range entries {
-		if strings.HasPrefix(en.Name(), ".settings.json.attest-") {
+		if strings.HasPrefix(en.Name(), ".settings.json.rashomon-") {
 			t.Errorf("a temporary file was left behind: %s", en.Name())
 		}
 	}
@@ -486,7 +486,7 @@ func TestH7_WatchRefusesAnEntryItNoLongerRecognises(t *testing.T) {
 // a configuration that parses, reads plausibly, and records nothing at all.
 func TestH3_SpacedExecutablePathRunsAsInstalled(t *testing.T) {
 	e := newEnv(t)
-	exe := copyBinary(t, attestBin, filepath.Join(t.TempDir(), "Application Support", "attest"))
+	exe := copyBinary(t, rashomonBin, filepath.Join(t.TempDir(), "Application Support", "rashomon"))
 
 	if res := e.runBin(exe, "", "watch"); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)

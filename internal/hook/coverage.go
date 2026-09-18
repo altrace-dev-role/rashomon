@@ -3,9 +3,9 @@ package hook
 import (
 	"time"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/install"
-	"github.com/altrace-dev-role/altrace-attest/internal/settings"
-	"github.com/altrace-dev-role/altrace-attest/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/settings"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // Resolution is the configuration state as this process sees it, at the moment

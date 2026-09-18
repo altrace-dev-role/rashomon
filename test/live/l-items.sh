@@ -10,15 +10,15 @@
 # by machine on purpose: these are the items the specification says are read
 # by a person.
 set -eu
-LIVE=${LIVE:-/tmp/attest-live}
-BIN=$LIVE/attest
+LIVE=${LIVE:-/tmp/rashomon-live}
+BIN=$LIVE/rashomon
 export ATTEST_HOME=$LIVE/store
 if [ -e "$HOME/.claude/settings.json" ]; then
   echo "refusing: $HOME/.claude/settings.json exists; move it aside first" >&2; exit 1
 fi
 rm -rf "$LIVE"; mkdir -p "$LIVE/work"
-go build -o "$BIN" ./cmd/attest
-trap '"$BIN" detach >/dev/null 2>&1 || true; rm -f "$HOME/.claude/settings.json"; claude mcp remove -s user attest-ping >/dev/null 2>&1 || true' EXIT
+go build -o "$BIN" ./cmd/rashomon
+trap '"$BIN" detach >/dev/null 2>&1 || true; rm -f "$HOME/.claude/settings.json"; claude mcp remove -s user rashomon-ping >/dev/null 2>&1 || true' EXIT
 
 # L-2 needs a foreign PreToolUse hook already present under a narrow matcher,
 # leaving a sentinel keyed by tool_use_id.
@@ -38,13 +38,13 @@ def reply(i, r):
 for line in sys.stdin:
     if not line.strip(): continue
     m = json.loads(line); method, i = m.get("method"), m.get("id")
-    if method == "initialize": reply(i, {"protocolVersion": m["params"].get("protocolVersion", "2024-11-05"), "capabilities": {"tools": {}}, "serverInfo": {"name": "attest-ping", "version": "0"}})
+    if method == "initialize": reply(i, {"protocolVersion": m["params"].get("protocolVersion", "2024-11-05"), "capabilities": {"tools": {}}, "serverInfo": {"name": "rashomon-ping", "version": "0"}})
     elif method == "tools/list": reply(i, {"tools": [{"name": "ping", "description": "Replies pong.", "inputSchema": {"type": "object", "properties": {}}}]})
     elif method == "tools/call": reply(i, {"content": [{"type": "text", "text": "pong"}]})
     elif method == "ping": reply(i, {})
     elif i is not None: sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": i, "error": {"code": -32601, "message": "method not found"}}) + "\n"); sys.stdout.flush()
 PY
-claude mcp add -s user attest-ping -- python3 "$LIVE/mcp_ping.py" >/dev/null
+claude mcp add -s user rashomon-ping -- python3 "$LIVE/mcp_ping.py" >/dev/null
 
 "$BIN" watch
 cd "$LIVE/work"
@@ -52,8 +52,8 @@ uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
 
 echo; echo "################ L-1: Bash + Write + mcp__* in one session ################"
 S1=$(uuid)
-claude -p "Do exactly these three things using tools, in this order, then stop. 1) Use the Bash tool to run: echo l1-bash. 2) Use the Write tool to create a file named l1.txt containing the single word hello. 3) Call the MCP tool mcp__attest-ping__ping with no arguments. After all three, reply with the single word: done." \
-  --session-id "$S1" --allowedTools "Bash(echo:*),Write,mcp__attest-ping__ping" --max-turns 8 --output-format json < /dev/null > "$LIVE/l1.out"
+claude -p "Do exactly these three things using tools, in this order, then stop. 1) Use the Bash tool to run: echo l1-bash. 2) Use the Write tool to create a file named l1.txt containing the single word hello. 3) Call the MCP tool mcp__rashomon-ping__ping with no arguments. After all three, reply with the single word: done." \
+  --session-id "$S1" --allowedTools "Bash(echo:*),Write,mcp__rashomon-ping__ping" --max-turns 8 --output-format json < /dev/null > "$LIVE/l1.out"
 "$BIN" report --json --session "$S1" | tee "$LIVE/l1-report.json" | python3 -c '
 import sys, json
 s = json.load(sys.stdin)["sessions"][0]; t = s["transcripts"][0]

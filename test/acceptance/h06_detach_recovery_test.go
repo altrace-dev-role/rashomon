@@ -155,7 +155,7 @@ func TestH6_WatchPrintsTheUndoLine(t *testing.T) {
 		if res.exitCode != 0 {
 			t.Fatalf("%s: exit %d, stderr %q", which, res.exitCode, res.stderr)
 		}
-		want := "attest detach --install " + e.installID()
+		want := "rashomon detach --install " + e.installID()
 		if !hasLine(res.stdout, want) {
 			t.Errorf("%s did not print the line %q:\n%s", which, want, res.stdout)
 		}
@@ -196,7 +196,7 @@ func seedInstalls(e *env, ids ...string) {
 func installEntry(t *testing.T, sub, id string) string {
 	t.Helper()
 	m := map[string]any{"hooks": []map[string]any{{
-		"type": "command", "command": attestBin + " " + sub + " --install " + id, "timeout": 5,
+		"type": "command", "command": rashomonBin + " " + sub + " --install " + id, "timeout": 5,
 	}}}
 	if sub == "hook" || sub == "post" {
 		m["matcher"] = "*"

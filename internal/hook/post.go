@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/fault"
-	"github.com/altrace-dev-role/altrace-attest/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // PostPayload is the PostToolUse hook input, reduced to the three fields an

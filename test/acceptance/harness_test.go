@@ -19,7 +19,7 @@ import (
 // test cannot observe one, and `go run` reports its child's exit status as 1,
 // which would mask the single value that matters here.
 var (
-	attestBin   string
+	rashomonBin   string
 	panickerBin string
 	moduleRoot  string
 )
@@ -40,7 +40,7 @@ func buildAndRun(m *testing.M) (int, error) {
 	}
 	moduleRoot = root
 
-	dir, err := os.MkdirTemp("", "attest-bins-")
+	dir, err := os.MkdirTemp("", "rashomon-bins-")
 	if err != nil {
 		return 0, err
 	}
@@ -49,7 +49,7 @@ func buildAndRun(m *testing.M) (int, error) {
 	// The binary under test carries the fault-injection points. A released
 	// binary does not, which is why the tag exists: the injection path must not
 	// ship, but the panic barrier it exercises is the same code either way.
-	attestBin, err = build(dir, "attest", "./cmd/attest", "attestfault")
+	rashomonBin, err = build(dir, "rashomon", "./cmd/rashomon", "rashomonfault")
 	if err != nil {
 		return 0, err
 	}
@@ -111,7 +111,7 @@ type result struct {
 }
 
 func (e *env) command(stdin string, extraEnv []string, args ...string) *exec.Cmd {
-	cmd := exec.Command(attestBin, args...)
+	cmd := exec.Command(rashomonBin, args...)
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Env = e.environ(extraEnv...)
 	cmd.Dir = e.cwd

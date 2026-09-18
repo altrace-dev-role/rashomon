@@ -1,4 +1,4 @@
-// Command attest records what a Claude Code session asked to run.
+// Command rashomon records what a Claude Code session asked to run.
 //
 // This program never exits with status 2. Exit code 2 from a PreToolUse hook
 // blocks the tool call, and Claude Code documents that a JSON permissionDecision
@@ -17,12 +17,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/hook"
-	"github.com/altrace-dev-role/altrace-attest/internal/install"
-	"github.com/altrace-dev-role/altrace-attest/internal/report"
-	"github.com/altrace-dev-role/altrace-attest/internal/safe"
-	"github.com/altrace-dev-role/altrace-attest/internal/settings"
-	"github.com/altrace-dev-role/altrace-attest/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
+	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/report"
+	"github.com/altrace-dev-role/rashomon/internal/safe"
+	"github.com/altrace-dev-role/rashomon/internal/settings"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // version is set at build time.
@@ -81,7 +81,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // reason to let this binary learn how to produce that number anywhere.
 func guarded(stderr io.Writer, fn func() error) int {
 	if err := safe.Guard(fn); err != nil {
-		fmt.Fprintln(stderr, "attest:", err)
+		fmt.Fprintln(stderr, "rashomon:", err)
 		return exitFail
 	}
 	return exitOK
@@ -151,7 +151,7 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		phase = args[0]
 	}
 	if phase != store.PhaseStart && phase != store.PhaseEnd {
-		fmt.Fprintln(stderr, "attest: probe expects start or end")
+		fmt.Fprintln(stderr, "rashomon: probe expects start or end")
 		return exitOK
 	}
 
@@ -171,7 +171,7 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 // Hook stderr reaches Claude Code's debug log, so nothing derived from the
 // invocation goes into it -- not the id that was passed, not the one that was
 // expected.
-const standDownLine = "attest: entry belongs to another install; standing down"
+const standDownLine = "rashomon: entry belongs to another install; standing down"
 
 // standsDown reports whether this invocation was installed by another install,
 // in which case it must write nothing at all.
@@ -209,12 +209,12 @@ func installArg(args []string) string {
 func openForHook(stderr io.Writer) *store.Store {
 	root, err := store.DefaultRoot()
 	if err != nil {
-		fmt.Fprintln(stderr, "attest: store location unresolved")
+		fmt.Fprintln(stderr, "rashomon: store location unresolved")
 		return nil
 	}
 	st, err := store.Open(root)
 	if err != nil {
-		fmt.Fprintln(stderr, "attest: store unavailable")
+		fmt.Fprintln(stderr, "rashomon: store unavailable")
 		return nil
 	}
 	return st
@@ -242,7 +242,7 @@ func storedInstallID() (string, error) {
 		return "", err
 	}
 	if _, err := os.Stat(filepath.Join(root, installMetaFile)); err != nil {
-		return "", fmt.Errorf("no store at %s, so the install id is not known here; run `attest detach --install <id>` with the id watch printed, or `attest detach --all` to remove every attest entry whatever its id", root)
+		return "", fmt.Errorf("no store at %s, so the install id is not known here; run `rashomon detach --install <id>` with the id watch printed, or `rashomon detach --all` to remove every rashomon entry whatever its id", root)
 	}
 	st, err := openStore()
 	if err != nil {
@@ -321,22 +321,22 @@ func cmdWatch(stdout io.Writer) error {
 		return err
 	}
 	if changed {
-		fmt.Fprintf(stdout, "attest: watching (install %s) via %s\n", st.InstallID(), loc.User)
+		fmt.Fprintf(stdout, "rashomon: watching (install %s) via %s\n", st.InstallID(), loc.User)
 	} else {
-		fmt.Fprintf(stdout, "attest: already watching (install %s) via %s\n", st.InstallID(), loc.User)
+		fmt.Fprintf(stdout, "rashomon: already watching (install %s) via %s\n", st.InstallID(), loc.User)
 	}
 	// Said here because there is nowhere else it can be said: the foreign
 	// entries run under this environment, stand down against this store, and
 	// leave nothing behind to notice afterwards.
 	if len(foreign) > 0 {
-		fmt.Fprintf(stdout, "attest: entries from other installs are present (%s); they will fire in this environment and record nothing\n",
+		fmt.Fprintf(stdout, "rashomon: entries from other installs are present (%s); they will fire in this environment and record nothing\n",
 			strings.Join(foreign, ", "))
 	}
 	// Printed in full, on its own line, because it is the line that still works
 	// once this binary or the store is gone: the id cannot be read back from a
 	// store that is not there, and there is nowhere else it is written down.
-	fmt.Fprintln(stdout, "attest: undo with this line -- it needs no store, and any attest binary will do:")
-	fmt.Fprintf(stdout, "attest detach --install %s\n", st.InstallID())
+	fmt.Fprintln(stdout, "rashomon: undo with this line -- it needs no store, and any rashomon binary will do:")
+	fmt.Fprintf(stdout, "rashomon detach --install %s\n", st.InstallID())
 	return nil
 }
 
@@ -371,10 +371,10 @@ func cmdDetach(args []string, stdout io.Writer) error {
 		return err
 	}
 	if !changed {
-		fmt.Fprintf(stdout, "attest: nothing to detach (%s) in %s\n", who, path)
+		fmt.Fprintf(stdout, "rashomon: nothing to detach (%s) in %s\n", who, path)
 		return nil
 	}
-	fmt.Fprintf(stdout, "attest: detached (%s, %d entries) from %s\n", who, removed, path)
+	fmt.Fprintf(stdout, "rashomon: detached (%s, %d entries) from %s\n", who, removed, path)
 	return nil
 }
 
@@ -630,7 +630,7 @@ func cmdForget(args []string, stdout io.Writer) error {
 	} else {
 		bound = "before " + to.UTC().Format(time.RFC3339)
 	}
-	fmt.Fprintf(stdout, "attest: forgot %d records across %d runs %s; %d gap records written\n",
+	fmt.Fprintf(stdout, "rashomon: forgot %d records across %d runs %s; %d gap records written\n",
 		total, len(gaps), bound, len(gaps))
 	return nil
 }
@@ -648,30 +648,30 @@ func parseInstant(flag, v string, now time.Time) (time.Time, error) {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `attest -- record what a Claude Code session asked to run
+	fmt.Fprint(w, `rashomon -- record what a Claude Code session asked to run
 
 usage:
-  attest watch                 install the PreToolUse and PostToolUse
+  rashomon watch                 install the PreToolUse and PostToolUse
                                recorders and the SessionStart/SessionEnd
                                liveness probe
-  attest detach                remove them, leaving everything else as found
-  attest detach --install <id> remove one install's entries, reading no store
-  attest detach --all          remove every entry carrying an attest install
+  rashomon detach                remove them, leaving everything else as found
+  rashomon detach --install <id> remove one install's entries, reading no store
+  rashomon detach --all          remove every entry carrying an rashomon install
                                marker, whatever its id
-  attest status                say what is installed and what the store holds,
+  rashomon status                say what is installed and what the store holds,
                                writing nothing and creating no store
-  attest report [--session S] [--json]
+  rashomon report [--session S] [--json]
                                render declarations and coverage, as text for a
                                terminal or as JSON for a consumer
-  attest forget --since T      evict records recorded at or after T
-  attest forget --before T     evict records recorded before T
+  rashomon forget --since T      evict records recorded at or after T
+  rashomon forget --before T     evict records recorded before T
                                either way, leaving a coverage gap behind
-  attest version               print the version
+  rashomon version               print the version
 
 invoked by Claude Code, never by hand:
-  attest hook [--install ID]   handle one PreToolUse invocation
-  attest post [--install ID]   handle one PostToolUse invocation
-  attest probe start|end [--install ID]
+  rashomon hook [--install ID]   handle one PreToolUse invocation
+  rashomon post [--install ID]   handle one PostToolUse invocation
+  rashomon probe start|end [--install ID]
                                handle SessionStart / SessionEnd
 
 --install names the install whose entry is running. An entry belonging to

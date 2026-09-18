@@ -38,7 +38,7 @@ func TestH16_ConcurrentHandlersAllLand(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					cmd := exec.Command(attestBin, "hook")
+					cmd := exec.Command(rashomonBin, "hook")
 					cmd.Stdin = strings.NewReader(payload)
 					cmd.Env = e.environ()
 					cmd.Dir = e.cwd

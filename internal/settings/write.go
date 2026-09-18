@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/altrace-dev-role/altrace-attest/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 )
 
 // ErrChanged reports that the file changed between being read and being
@@ -38,7 +38,7 @@ func Write(path string, original, data []byte) error {
 		mode = info.Mode().Perm()
 	}
 
-	tmp, err := os.CreateTemp(dir, ".settings.json.attest-*")
+	tmp, err := os.CreateTemp(dir, ".settings.json.rashomon-*")
 	if err != nil {
 		return err
 	}

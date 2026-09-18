@@ -58,13 +58,13 @@ func DefaultRoot() (string, error) {
 		return v, nil
 	}
 	if v := os.Getenv("XDG_STATE_HOME"); v != "" {
-		return filepath.Join(v, "attest"), nil
+		return filepath.Join(v, "rashomon"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "state", "attest"), nil
+	return filepath.Join(home, ".local", "state", "rashomon"), nil
 }
 
 // Open prepares the store, creating the root, the per-install HMAC key and the
