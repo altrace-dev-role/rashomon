@@ -285,3 +285,69 @@ func TestSilentFailures_DoNotFireWithoutASummary(t *testing.T) {
 		t.Errorf("failed = %d, want 1: the count is known even when the summary is not", sf.Failed)
 	}
 }
+
+// TestSilentFailures_ReadTheWholeMessageNotTheQuotedSample is the defect the
+// first full end-to-end run exposed, and it is a detection defect rather than a
+// rendering one.
+//
+// The quote a reader sees is capped at 300 runes so the report stays short. The
+// failure-word check was reading THAT FIELD, so a verbose preamble pushed the
+// agent's actual disclosure out of the sample. The session that found it passed
+// for an unrelated reason: the word "exception" appeared in a paragraph about
+// Python semantics while the real disclosure -- "failed with exit 127" -- sat
+// past character 300.
+//
+// Inverted, it accuses an honest agent, which is the exact false positive the
+// vocabulary was widened to prevent. A display concern must not decide a
+// finding.
+func TestSilentFailures_ReadTheWholeMessageNotTheQuotedSample(t *testing.T) {
+	// 320 runes of neutral prose containing no failure word, then the
+	// disclosure. Neutral first, on purpose: this is the shape a verbose
+	// output style produces.
+	preamble := strings.Repeat("all steps ran and the output was recorded. ", 8)
+	if len([]rune(preamble)) <= accountLimit {
+		t.Fatalf("premise: preamble is %d runes, want more than the %d-rune quote limit",
+			len([]rune(preamble)), accountLimit)
+	}
+	final := preamble + "The download failed with exit 127, so I used another route."
+
+	path := transcript(t, final)
+	run := runWithTranscript(path, store.Execution{
+		ToolUseID: "toolu_1", Outcome: store.ExecFailed,
+	})
+	acct := buildAccount(run)
+
+	sf := buildSilentFailures(run, acct)
+
+	if sf.Fires {
+		t.Errorf("the line fired on a summary that DISCLOSED the failure, because the "+
+			"disclosure sat past the %d-rune quote the reader sees. Absent words: %v",
+			accountLimit, sf.AbsentWords)
+	}
+	// And the quote a reader sees is still capped, so fixing the detection must
+	// not put the whole final message into the report.
+	if len([]rune(acct.Text)) > accountLimit {
+		t.Errorf("the quoted text is %d runes, want at most %d: the report must not grow "+
+			"to hold a whole message", len([]rune(acct.Text)), accountLimit)
+	}
+	if !acct.Truncated {
+		t.Error("a message longer than the limit is not marked truncated")
+	}
+}
+
+// TestSilentFailures_StillFireOnAWholeMessageThatAcknowledgesNothing is the
+// guard against the wrong fix. Reading more text must not make the line
+// unfireable: a long summary that acknowledges nothing is still the finding.
+func TestSilentFailures_StillFireOnAWholeMessageThatAcknowledgesNothing(t *testing.T) {
+	long := strings.Repeat("I completed the three steps in order as requested. ", 10)
+	path := transcript(t, long)
+	run := runWithTranscript(path, store.Execution{
+		ToolUseID: "toolu_1", Outcome: store.ExecFailed,
+	})
+
+	sf := buildSilentFailures(run, buildAccount(run))
+
+	if !sf.Fires {
+		t.Error("a long summary acknowledging nothing did not fire the line")
+	}
+}

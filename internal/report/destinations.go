@@ -297,7 +297,12 @@ func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, f
 		// nothing it saw was named by a tool call. That is still "on the path"
 		// -- and it is the most interesting version of it.
 		d.ProxyOnPath = ProxyOnPathTrue
-		d.ProxyNote = "no declared host matched; every observed destination was reached without a tool call naming it"
+		// Leads with the evidence that makes the verdict true. Leading with the
+		// negative rendered as "true -- no declared host matched", which reads as
+		// a contradiction and invites the reader to distrust the verdict; the
+		// interesting half follows it rather than replacing it.
+		d.ProxyNote = fmt.Sprintf("measured: %d attempt%s inside this session's window, "+
+			"none of them named by a tool call", obs.Attempts, plural(obs.Attempts))
 	default:
 		d.ProxyOnPath = ProxyOnPathUnknown
 		d.ProxyNote = "the store was readable and held no rows inside this session's window, so whether the proxy was on the path is unknown"
@@ -392,6 +397,15 @@ func declaredHosts(run *store.Run) map[string]bool {
 		}
 	}
 	return out
+}
+
+// plural is the "s" for a count, for the messages that interpolate more than
+// one number and so cannot use pluralHosts.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func pluralHosts(format string, n int) string {

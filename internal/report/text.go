@@ -196,7 +196,8 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 		return
 	}
 
-	fmt.Fprintf(b, "  destinations: %d distinct, %d attempts\n", d.DistinctHosts, d.Attempts)
+	fmt.Fprintf(b, "  destinations: %d distinct, %d attempt%s\n",
+		d.DistinctHosts, d.Attempts, plural(d.Attempts))
 	fmt.Fprintf(b, "  proxy on path: %s -- %s\n", d.ProxyOnPath, d.ProxyNote)
 	if !d.WindowApplied {
 		// Stated whenever it is true. A window that was not enforced means
@@ -210,7 +211,8 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 			"forget --host (the proxy's own records are not deleted)\n", d.Suppressed)
 	}
 	if d.Inherited > 0 {
-		fmt.Fprintf(b, "  inherited: %d attempts from outside this session's window, excluded from the counts above\n", d.Inherited)
+		fmt.Fprintf(b, "  inherited: %d attempt%s from outside this session's window, "+
+			"excluded from the counts above\n", d.Inherited, plural(d.Inherited))
 	}
 
 	// The finding.
@@ -346,7 +348,8 @@ func writeNovelty(b *bytes.Buffer, n Novelty) {
 	case !n.Available:
 		fmt.Fprintf(b, "  new for this project: %s (%s)\n", unknown, n.Reason)
 	case n.Established:
-		fmt.Fprintf(b, "  new for this project: baseline established (%d hosts)\n", n.KnownHosts)
+		fmt.Fprintf(b, "  new for this project: baseline established (%d host%s)\n",
+			n.KnownHosts, plural(n.KnownHosts))
 	case len(n.Hosts) == 0:
 		fmt.Fprintf(b, "  new for this project: none (%d known)\n", n.KnownHosts)
 	default:

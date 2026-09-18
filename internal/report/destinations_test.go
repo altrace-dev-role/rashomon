@@ -1,6 +1,7 @@
 package report
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/shape"
@@ -555,3 +556,47 @@ func TestNovelty_ClientPlaneIsNeverNovel(t *testing.T) {
 }
 
 const t0ms = int64(1789000000000)
+
+// TestProxyOnPath_ATrueVerdictCitesWhatWasMeasured pins the contract the note
+// carries rather than its prose: whenever the verdict is true, the note says
+// what was measured to make it true.
+//
+// Both true branches are checked because only one of them was wrong. The
+// no-declared-match branch led with the negative and rendered as
+// "true -- no declared host matched", which reads as a contradiction and
+// invites a reader to distrust a verdict that is correct. Seen in the first
+// full end-to-end run, where every destination was genuinely reached without
+// a tool call naming it -- the most interesting thing this report can say,
+// phrased as though it were a failure.
+func TestProxyOnPath_ATrueVerdictCitesWhatWasMeasured(t *testing.T) {
+	cases := []struct {
+		name string
+		d    Destinations
+	}{
+		{
+			name: "a declared host was observed",
+			d: buildDestinations(runWithDeclaredHosts("pypi.org"),
+				observed(wire.Destination{Host: "pypi.org", Attempts: 2}), "", nil),
+		},
+		{
+			name: "rows in the window, none of them declared",
+			d: buildDestinations(runWithDeclaredHosts(),
+				observed(wire.Destination{Host: "pypi.org", Attempts: 3}), "", nil),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.d.ProxyOnPath != ProxyOnPathTrue {
+				t.Fatalf("premise: proxy_on_path = %q, want true", tc.d.ProxyOnPath)
+			}
+			if !strings.Contains(tc.d.ProxyNote, "measured:") {
+				t.Errorf("note for a true verdict does not cite a measurement: %q",
+					tc.d.ProxyNote)
+			}
+			if strings.HasPrefix(tc.d.ProxyNote, "no ") {
+				t.Errorf("note for a true verdict opens with a negation, which reads as a "+
+					"contradiction of the verdict: %q", tc.d.ProxyNote)
+			}
+		})
+	}
+}

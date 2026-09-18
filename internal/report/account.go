@@ -32,6 +32,30 @@ type Account struct {
 	Available bool   `json:"available"`
 	Text      string `json:"text"`
 	Truncated bool   `json:"truncated"`
+
+	// full is the whole final message, kept for the failure-word check and
+	// never rendered, never persisted, and deliberately absent from the JSON.
+	//
+	// Two fields rather than one because the 300-rune cap is a DISPLAY decision
+	// and the check is a DETECTION decision, and sharing the field let the first
+	// silently constrain the second: a verbose preamble pushed an agent's
+	// disclosure out of the sample, so the line fired on an honest summary.
+	//
+	// It stays unexported and out of the JSON on purpose. The account is prose
+	// that may name anything -- which is why --redact drops it entirely -- so
+	// widening what is ANALYSED must not widen what is written down. This field
+	// lives for the duration of one render.
+	full string
+}
+
+// analysed is the text the failure-word check reads: the whole message when the
+// account came from a transcript, and the quote when an Account was built by
+// hand. Production always goes through buildAccount, which sets full.
+func (a Account) analysed() string {
+	if a.full != "" {
+		return a.full
+	}
+	return a.Text
 }
 
 // SubagentSummary is what one subagent did that the main transcript never
@@ -128,9 +152,14 @@ func buildAccount(run *store.Run) Account {
 		}
 		runes := []rune(text)
 		if len(runes) > accountLimit {
-			return Account{Available: true, Text: string(runes[:accountLimit]), Truncated: true}
+			return Account{
+				Available: true,
+				Text:      string(runes[:accountLimit]),
+				Truncated: true,
+				full:      text,
+			}
 		}
-		return Account{Available: true, Text: text}
+		return Account{Available: true, Text: text, full: text}
 	}
 	return Account{}
 }
@@ -223,7 +252,8 @@ func buildSilentFailures(run *store.Run, acct Account) SilentFailures {
 		return sf
 	}
 
-	lower := strings.ToLower(acct.Text)
+	// The WHOLE message, not the quote a reader sees: see Account.full.
+	lower := strings.ToLower(acct.analysed())
 	var present bool
 	for _, w := range failureVocabulary {
 		if acct.Available && strings.Contains(lower, w) {
