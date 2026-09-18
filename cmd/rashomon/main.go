@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdReport(rest, stdout) })
 	case "forget":
 		return guarded(stderr, func() error { return cmdForget(rest, stdout) })
+	case "env":
+		return guarded(stderr, func() error { return cmdEnv(rest, stdout) })
 
 	case "version":
 		fmt.Fprintln(stdout, version)
@@ -656,7 +659,7 @@ usage:
                                liveness probe
   rashomon detach                remove them, leaving everything else as found
   rashomon detach --install <id> remove one install's entries, reading no store
-  rashomon detach --all          remove every entry carrying an rashomon install
+  rashomon detach --all          remove every entry carrying a rashomon install
                                marker, whatever its id
   rashomon status                say what is installed and what the store holds,
                                writing nothing and creating no store
@@ -666,6 +669,9 @@ usage:
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T
                                either way, leaving a coverage gap behind
+  rashomon env [--port N]        print the proxy variables to export, for use
+                               with eval; HTTPS only, since plain HTTP is not
+                               observed in this release
   rashomon version               print the version
 
 invoked by Claude Code, never by hand:
@@ -677,4 +683,82 @@ invoked by Claude Code, never by hand:
 --install names the install whose entry is running. An entry belonging to
 another install stands down: it records nothing in this environment.
 `)
+}
+
+// observeDefaultPort is the observe profile's listener.
+//
+// 18080 rather than 8080: the enforcing profile holds 8080, both are loopback
+// installs on one host, and 8080 is the most commonly occupied port on a
+// developer machine. The proxy prints the same number in its own banner.
+const observeDefaultPort = 18080
+
+// noProxyValue is what NO_PROXY is set to.
+//
+// Loopback and *.local are excluded because proxying them breaks local
+// development tooling for no observational gain. Private ranges are
+// deliberately NOT excluded: an agent reaching an internal service is exactly
+// the finding this tool exists to surface, so LAN egress stays on the path.
+const noProxyValue = "localhost,127.0.0.1,::1,0.0.0.0,*.local"
+
+// cmdEnv prints the variables that put the observe proxy on a session's path.
+//
+// It prints rather than exports, because a process cannot alter its parent's
+// environment; the operator runs `eval $(rashomon env)`. That is why nothing
+// but assignments may reach stdout — one line of prose and eval tries to run
+// it as a command — and why the explanatory text goes to no stream at all
+// rather than being commented into the output.
+//
+// HTTPS only. Plain HTTP is not observed in this release, so exporting
+// HTTP_PROXY would route traffic through a proxy that does not record it and
+// then report nothing: silence read as zero, the one thing the coverage rules
+// forbid. The lowercase form is not a duplicate for tidiness either — curl
+// reads only lowercase https_proxy, and curl is the first thing anyone tests
+// with.
+//
+// It reads no store and creates none. This is the first command an operator
+// runs, and making it depend on having already recorded something would be
+// backwards.
+func cmdEnv(args []string, stdout io.Writer) error {
+	port, err := envPort(args)
+	if err != nil {
+		return err
+	}
+	addr := fmt.Sprintf("http://127.0.0.1:%d", port)
+	fmt.Fprintf(stdout, "export HTTPS_PROXY=%s\n", addr)
+	fmt.Fprintf(stdout, "export https_proxy=%s\n", addr)
+	fmt.Fprintf(stdout, "export NO_PROXY=%s\n", noProxyValue)
+	return nil
+}
+
+// envPort resolves --port, refusing anything that is not a usable port.
+//
+// Refusing rather than falling back to the default is the whole point: a
+// silently ignored --port sends the operator's traffic to whatever is
+// listening on 18080, which may be another person's proxy or nothing at all,
+// and they would have no way to tell from the output that their flag was
+// dropped.
+func envPort(args []string) (int, error) {
+	port := observeDefaultPort
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--port":
+			if i+1 >= len(args) {
+				return 0, errors.New("env: --port needs a value")
+			}
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil {
+				return 0, fmt.Errorf("env: --port %q is not a number", args[i])
+			}
+			if n < 1 || n > 65535 {
+				return 0, fmt.Errorf("env: --port %d is outside 1-65535", n)
+			}
+			port = n
+		case "--help", "-h":
+			return 0, errors.New("env: prints the proxy variables to export; --port N selects the listener (default 18080)")
+		default:
+			return 0, fmt.Errorf("env: unknown argument %q", args[i])
+		}
+	}
+	return port, nil
 }
