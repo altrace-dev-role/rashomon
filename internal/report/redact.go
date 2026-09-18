@@ -29,8 +29,13 @@ import (
 // which is unavoidable for any scheme that keeps equal hosts equal. Its job is
 // to be short enough to read and long enough that two hosts in one report do
 // not collide. Treating it as secrecy against a determined reader would be the
-// dangerous misreading, which is why it is documented here and in the rendered
-// legend.
+// dangerous misreading, which is why it is documented here and in the README.
+//
+// An earlier version of this comment said the limitation was also stated in a
+// "rendered legend". There is no legend: nothing in the redacted output says
+// the digest is unkeyed, so the README is the only place a reader is told.
+// Putting one line in the redacted render would be better, since the render is
+// the artifact that gets shared and the README is not.
 const redactedHostLen = 8
 
 // redactHost renders a hostname as a digest plus its public suffix.

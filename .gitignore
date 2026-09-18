@@ -4,7 +4,10 @@ dist/
 *.test
 *.out
 
-# The binary `go build ./cmd/rashomon` drops in the repository root. The module
+# The binary `go build ./cmd/rashomon
+
+# Agent and editor state, which is per-machine and not this project's.
+/.claude/` drops in the repository root. The module
 # IS the repository root, so the output lands beside go.mod as a ten-megabyte
 # file named exactly `rashomon` -- and the README tells a contributor to run
 # that command, then `./rashomon watch`, because watch has to be run from a

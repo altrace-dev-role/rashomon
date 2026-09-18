@@ -34,9 +34,13 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           # Read from go.mod rather than pinned here, so the version CI builds
-          # with cannot drift from the one the module declares. go.mod carries
-          # no `toolchain` directive on purpose, so this resolves to the latest
-          # patch of the declared minor.
+          # with cannot drift from the one the module declares.
+          #
+          # NOTE: go.mod names an exact patch, and setup-go treats that string
+          # as an exact version rather than an X-range -- so this pins the
+          # patch, it does not float to the latest of the minor. An earlier
+          # comment here claimed the opposite. To float, go.mod would have to
+          # say `go 1.24` with no patch.
           go-version-file: go.mod
           cache: true
           # go.sum, not go.mod. This module declared no requirements when these

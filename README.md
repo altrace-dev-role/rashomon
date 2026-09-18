@@ -14,8 +14,10 @@ ran. A declaration with one ran; a declaration without one was denied, or
 failed, or had its execution go unrecorded — and nothing here claims to know
 which of the three.
 
-The store exists to be joined against. Every record carries `tool_use_id`,
-`session_id`, `prompt_id`, and, inside a subagent call, `agent_id`. Without those
+The store exists to be joined against. Every declaration carries
+`tool_use_id`, `session_id`, `prompt_id`, and, inside a subagent call,
+`agent_id`; executions and terminals carry `tool_use_id` and `session_id`;
+coverage and gap records are per session. Without those
 keys the capture is a pile of anonymous shapes and nothing downstream can
 integrate it.
 
@@ -33,7 +35,8 @@ reports honestly when it is absent.
 
 ## Commands
 
-- `rashomon watch` — install the `PreToolUse` and `PostToolUse` recorders and the
+- `rashomon watch` — install the `PreToolUse`, `PostToolUse` and
+  `PostToolUseFailure` recorders and the
   `SessionStart` / `SessionEnd` liveness probe. The only command that writes to
   your configuration. It prints the exact `detach --install <id>` line that
   undoes it without a store.
@@ -58,13 +61,29 @@ reports honestly when it is absent.
   run's declarations named, because a nested `claude -p` writes its own
   transcript under the parent's session id.
 
-  `--proxy-store PATH` adds the destinations section, joining what the session
-  declared against what an observing proxy saw; see below. `--redact` replaces
-  every hostname with a keyed digest and drops the agent's summary entirely, so
-  the report can be shared with someone who should not learn where you went.
-  Like `status`, it creates no store: a location that has recorded nothing
-  renders "no sessions recorded" rather than minting an install identity to say
-  so.
+  The destinations section is rendered whenever a proxy store can be read.
+  With no flag, `report` looks for `~/.altrace/observe/causal.db`, which is
+  where the observe profile puts it; `--proxy-store PATH` points somewhere
+  else. There is no flag to turn the join off — remove the store, or point the
+  flag at a path that does not exist.
+
+  `--redact` drops the agent's summary entirely and replaces each hostname with
+  a truncated SHA-256 plus the host's last label, stable within one report so a
+  host can be followed across its sections. IT IS NOT A PRIVACY BOUNDARY AND IS
+  NOT MEANT TO BE ONE. The digest is UNKEYED and 32 bits: anyone holding a
+  candidate hostname can hash it and compare, which is unavoidable for any
+  scheme that keeps equal hosts equal. It makes a report readable without the
+  names in front of a colleague; it does not make one safe to publish. (The
+  keyed digest described further down is a different thing, used by
+  `forget --host` inside the store, where a per-install key really is applied.)
+
+  `report` creates no store — a location that has recorded nothing renders "no
+  sessions recorded" rather than minting an install identity to say so — but it
+  is not read-only either: when a proxy store is readable it WRITES the project
+  baseline, `baseline/<project>.json` under the store root, holding the project
+  path and the hostnames seen for it. That file is what "new for this project"
+  compares against, and it lives outside `runs/` so that evicting runs cannot
+  make every host novel again.
 - `rashomon forget --host H` — evict every call that named host `H`, its rows
   from the view, and its entry in the project baseline. It does not delete from
   the proxy's own store: that database is hash-chained and opened read-only
@@ -80,8 +99,9 @@ reports honestly when it is absent.
 - `rashomon env [--port N]` — print the proxy variables to export, for use with
   `eval`. HTTPS only: plain HTTP is not observed in this release, so no
   variable for it is printed.
-- `rashomon run -- <cmd...>` — run a command with those variables set, if and
-  only if an observe-mode proxy is running, and report on the session it
+- `rashomon run [--proxy-status PATH] -- <cmd...>` — run a command with those
+  variables set, if and only if an observe-mode proxy is running
+  (`--proxy-status` overrides where that is checked), and report on the session it
   produced. It checks first and launches anyway without the variables when the
   check fails, saying why in one line: you asked to run your command, and a
   wrapper that declined because a status file was missing would be worse than
@@ -220,10 +240,15 @@ Persisted: `tool_use_id`, `session_id`, `prompt_id`, `agent_id`,
 `transcript_path`, `permission_mode`, `tool_name`, and the derived shape of
 `tool_input`.
 
-Nothing from inside `tool_input` is persisted.
+Nothing else from inside `tool_input` is persisted. The exception is
+hostnames: `hosts` and `ssh_hosts` carry the hosts a call NAMED, extracted
+from inside `tool_input` and stored in clear, because the whole destinations
+comparison is "what did it say it would reach" against "what did the wire
+see", and a digest cannot be joined against a proxy's rows. Argument values,
+command strings, prompts and responses are not persisted.
 
-The derived shape is `program`, `verb_class`, `argc`, `digest`, and
-`schema_version`. A command that will not tokenize records `argc: null`, never
+The derived shape is `program`, `verb_class`, `argc` and `digest`; the record
+that carries it carries `schema_version`. A command that will not tokenize records `argc: null`, never
 `0` — zero is a count, and in that case we do not have one. `digest` is an HMAC
 under a per-install random key, so the same command digests differently on two
 installs and the store cannot be run as a dictionary attack against known command
@@ -243,8 +268,16 @@ string out into `program`.
 
 The `PostToolUse` payload carries the same session fields plus `tool_name`,
 `tool_use_id`, `tool_input` and `tool_response`. The execution record persists
-three of them — `tool_use_id`, `session_id`, `tool_name` — beside its own
-`seq`, `recorded_at_unix_ms` and `schema_version`, and nothing else.
+`tool_use_id`, `session_id` and `tool_name` beside its own `seq`,
+`recorded_at_unix_ms` and `schema_version`, and — since schema 2 — how the call
+ENDED: `outcome`, `exit_code`, `is_interrupt`, `duration_ms`, and
+`executed_digest`.
+
+That last one is why the post path reads `tool_input` at all. It derives the
+same shape digest the declaration derived, under the same per-install key, so
+the two can be compared: a call whose executed digest differs from its declared
+one is reported as having executed differently from what was declared. The
+input itself is not persisted — only the digest of it survives.
 
 `tool_response` is tool output: the file a `Read` returned, the bytes a command
 printed. The payload struct has no field for it, so `encoding/json` discards it
@@ -323,7 +356,8 @@ WHAT IT REFUSES TO CLAIM matters as much as what it shows.
   that host is indistinguishable from the client's. Reporting it as a finding
   would make the central line fire falsely every time, and a reader who saw it
   be wrong once would discount it when it was right.
-- `proxy on path` has three values, not two. `unknown` is a real answer: the
+- `proxy on path` has two reachable values and a third reserved. `unknown`
+  is a real answer, and covers two cases: the store could not be read, or the
   store was readable and held no rows inside this session's window, so whether
   the proxy was on the path cannot be determined. Collapsing that into `false`
   would assert an absence that was never measured.
@@ -412,13 +446,16 @@ side-loaded install cannot produce a verified report, by construction.
 
 ## Constraints
 
-- No content, ever: prompts, responses, argument values, command strings, tool
+- No content is ever written to the store: prompts, responses, argument
+  values, command strings, tool
   outputs. Identifiers (`tool_use_id`, `session_id`, `prompt_id`, `agent_id`,
   `transcript_path`, `permission_mode`) are not content and are persisted
   verbatim; without them the store has no join key.
 - Never render zero when we mean unknown.
 - No model in any path.
-- `127.0.0.1` only. No account, no telemetry, no phone-home.
+- No account, no telemetry, no phone-home. `rashomon env` prints `127.0.0.1`
+  only; `rashomon run` exports the listen address the proxy's own status file
+  names, and does not today check that it is loopback.
 - Installing the package writes nothing. Only an explicit `watch` touches the
   configuration.
 
@@ -595,9 +632,17 @@ exercises a retry a panic would never let run; a released binary carries no
 injection path at all, because an environment variable that made the recorder
 abandon a run would attack the one guarantee this program exists to provide.
 
-`sweep.py` is the other half of the contract: it applies one deliberate break
-per headless item and confirms the item's tests go red. An item it reports as
-undetected is a spec defect and should be treated as one.
+`sweep.py` is the other half of the contract: it applies deliberate breaks and
+confirms the corresponding tests go red. An item it reports as undetected is a
+spec defect and should be treated as one.
+
+Its coverage is not uniform, and the boundary is worth stating: the breaks
+cover the items documented in this section, plus the settings and tokenizer
+parsers. The later items — the destinations join, the launcher, the redaction
+and baseline work — are covered by their own tests and by construction-truth
+assertions, not yet by a mutation. The sweep now refuses to run at all unless
+the suite is green first, and reports a mutation whose judging test SKIPPED as
+"not judged" rather than as a pass.
 
 Three parsers are also tested directly, beside the acceptance suite: the command
 line tokenizer, the settings document parser's refusals and its byte-identity

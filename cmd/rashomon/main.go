@@ -753,9 +753,9 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `rashomon -- record what a Claude Code session asked to run
 
 usage:
-  rashomon watch                 install the PreToolUse and PostToolUse
-                               recorders and the SessionStart/SessionEnd
-                               liveness probe
+  rashomon watch                 install the PreToolUse, PostToolUse and
+                               PostToolUseFailure recorders and the
+                               SessionStart/SessionEnd liveness probe
   rashomon detach                remove them, leaving everything else as found
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
@@ -773,9 +773,11 @@ usage:
   rashomon env [--port N]        print the proxy variables to export, for use
                                with eval; HTTPS only, since plain HTTP is not
                                observed in this release
-  rashomon run -- <cmd...>     run a command with the proxy variables set, if
+  rashomon run [--proxy-status PATH] -- <cmd...>
+                               run a command with the proxy variables set, if
                                and only if an observe-mode proxy is running,
-                               then report on the session it produced
+                               then report on the session it produced;
+                               --proxy-status overrides where that is checked
   rashomon version               print the version
 
 invoked by Claude Code, never by hand:
@@ -869,9 +871,9 @@ func envPort(args []string) (int, error) {
 
 // defaultProxyStore is where the observe-mode proxy writes its records.
 //
-// The path is a contract between two programs that ship separately: the proxy
-// derives <data dir>/causal.db from server.storage.root, and its observe
-// profile sets that root to ~/.altrace/observe. Hard-coding it here rather
+// The path is a contract between two programs that ship separately: the
+// observe-mode proxy writes causal.db under ~/.altrace/observe. Hard-coding it
+// here rather
 // than reading the proxy's config is deliberate -- this tool must not need to
 // parse the closed product's configuration to do its job, and --proxy-store
 // covers every operator who moved it.
