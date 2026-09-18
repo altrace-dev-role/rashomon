@@ -16,6 +16,7 @@ package acceptance
 // when it is true.
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -23,16 +24,22 @@ import (
 // degradedMarkers are the exact substrings a healthy report must not contain.
 // Each one is a line this report emits when it cannot answer a question.
 var degradedMarkers = []string{
-	"not observed (",                // destinations: the proxy store was unreadable
-	"proxy on path: unknown",        // no rows in the window, or no store
-	"window: NOT applied",           // the proxy's timestamps did not parse
-	"suppressed:",                   // a host-scoped forget removed rows from the view
-	"the agent's account: unknown",  // the transcript could not be read
-	"new for this project: unknown", // the baseline could not be read
-	"tool families: unknown",        // the store could not be read
-	"declarations unverified",       // coverage degradation
-	"outcome unobserved",            // a call whose ending was never recorded
-	"could not be read",             // any reason string built from a read failure
+	"not observed (",               // destinations: the proxy store was unreadable
+	"proxy on path: unknown",       // no rows in the window, or no store
+	"window: NOT applied",          // the proxy's timestamps did not parse
+	"suppressed:",                  // a host-scoped forget removed rows from the view
+	"the agent's account: unknown", // the transcript could not be read
+	// The novelty degradation, named by the literal a reader sees. "new for this
+	// project: unknown" is composed from a format string in one file and a reason
+	// in another, so no source check could confirm it and no fixture here can
+	// produce it: the probe defaults cwd to the process's working directory, so
+	// the current binary never records an empty one. It arrives only on records
+	// written before that field existed.
+	"the run recorded no working directory",
+	"tool families: unknown", // the store could not be read
+	"coverage: unverified",   // coverage degradation
+	"outcome unobserved",     // a call whose ending was never recorded
+	"could not be read",      // any reason string built from a read failure
 }
 
 // TestH28_AHealthyRunShowsNoDegradationLine builds the healthiest session this
@@ -124,38 +131,104 @@ func TestH28_AHealthyRunStillShowsWhatCannotBeObserved(t *testing.T) {
 	}
 }
 
-// TestH28_EveryDegradedLineIsReachable guards this file against itself.
+// TestH28_EveryDegradedLineIsReachable guards this file against itself, and the
+// guard's default is REACHABILITY MUST BE SHOWN.
 //
 // A marker list that had drifted from the renderer would make the test above
 // pass by asserting the absence of strings the report can no longer produce.
-// So each marker is shown to appear in SOME render: the degraded session below
-// has no proxy store, no transcript and no baseline, which is the shape that
-// produces most of them at once.
+// The first version of this test checked four hand-picked markers and left six
+// unproven, and one of those six -- "declarations unverified" -- was a string
+// no render path could emit. The absence assertion for it had been passing
+// vacuously since it was written. So the list is now checked in full: every
+// marker must appear in at least one render this test produces, and a marker
+// that cannot be produced fails here rather than quietly weakening the test
+// above.
 func TestH28_EveryDegradedLineIsReachable(t *testing.T) {
-	e := newEnv(t)
-	e.watched(testSession)
-	p := defaultPayload()
-	p.TranscriptPath = "/nonexistent/transcript.jsonl"
-	e.mustHook(p.build(t))
-	e.probe("end", testSession)
+	var renders []string
 
-	// No --proxy-store, so the wire side is unavailable.
-	out := e.run("", nil, "report", "--session", testSession,
-		"--proxy-store", "/nonexistent/causal.db").stdout
+	// R1: no proxy store, an unreadable transcript, and a declaration whose
+	// ending was never recorded. The shape that produces most of them at once.
+	{
+		e := newEnv(t)
+		e.watched(testSession)
+		p := defaultPayload()
+		p.TranscriptPath = "/nonexistent/transcript.jsonl"
+		e.mustHook(p.build(t))
+		e.probe("end", testSession)
+		renders = append(renders, e.run("", nil, "report", "--session", testSession,
+			"--proxy-store", "/nonexistent/causal.db").stdout)
+	}
 
-	// The subset this shape is expected to produce. Not all of them: some need
-	// a forget, or an unparseable timestamp, and those are covered where they
-	// are built.
-	for _, want := range []string{
-		"not observed (",
-		"proxy on path: unknown",
-		"the agent's account: unknown",
-		"tool families: unknown",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("the degraded session did not produce %q, so the healthy-twin test "+
-				"may be asserting the absence of a string the report can no longer "+
-				"emit:\n%s", want, out)
+	// R2: a failed call whose transcript cannot be read, which is the only way
+	// the comparison reports that it did not happen.
+	{
+		e := newEnv(t)
+		e.watched(testSession)
+		p := defaultPayload()
+		p.TranscriptPath = "/nonexistent/transcript.jsonl"
+		e.mustHook(p.build(t))
+		e.mustPost(failurePayload(t, testToolUseID, "Exit code 1", false, 30))
+		e.probe("end", testSession)
+		renders = append(renders, e.run("", nil, "report", "--session", testSession).stdout)
+	}
+
+	// R3: a host-scoped forget, which removes rows from the view and says so.
+	{
+		e := newEnv(t)
+		e.watched(testSession)
+		p := defaultPayload()
+		p.ToolInput = map[string]any{"command": "curl https://gone.example"}
+		e.mustHook(p.build(t))
+		db := e.writeProxyStore(t, "gone.example")
+		e.probe("end", testSession)
+		if r := e.run("", nil, "forget", "--host", "gone.example"); r.exitCode != 0 {
+			t.Fatalf("forget: exit %d, stderr %q", r.exitCode, r.stderr)
 		}
+		renders = append(renders, e.run("", nil, "report", "--session", testSession,
+			"--proxy-store", db).stdout)
+	}
+
+	// R4: a proxy store whose timestamps do not parse, so the window cannot be
+	// applied and every row is shown rather than silently dropped.
+	{
+		e := newEnv(t)
+		e.watched(testSession)
+		e.mustHook(defaultPayload().build(t))
+		db := e.writeProxyStoreBadStamps(t, "unparseable.example")
+		e.probe("end", testSession)
+		renders = append(renders, e.run("", nil, "report", "--session", testSession,
+			"--proxy-store", db).stdout)
+	}
+
+	all := strings.Join(renders, "\n")
+
+	// A marker that no fixture here produces must at least exist as a literal in
+	// the report package. The two that qualify are reachable only from state this
+	// harness cannot create through the binary -- a record written before a field
+	// existed -- and an allowlist naming them would be a judgement call that
+	// decays. A source check is mechanical and admits no such call: the dead
+	// marker that prompted this, "declarations unverified", fails BOTH halves.
+	//
+	// It reads the whole package rather than the renderer alone, because a
+	// degradation line is a format string in text.go and a reason built beside
+	// the code that discovered it. The known weakness is that a literal in a
+	// COMMENT would satisfy the check; the render union above is the primary
+	// defence, and it covers eight of the ten.
+	source, err := packageSource(filepath.Join("..", "..", "internal", "report"))
+	if err != nil {
+		t.Fatalf("read the report package to check marker reachability: %v", err)
+	}
+	renderer := []byte(source)
+
+	for _, marker := range degradedMarkers {
+		if strings.Contains(all, marker) {
+			continue
+		}
+		if strings.Contains(string(renderer), marker) {
+			continue
+		}
+		t.Errorf("%q is produced by no render here AND appears in no literal in the "+
+			"renderer, so the absence assertion above passes vacuously. Either correct "+
+			"the marker or add a fixture that reaches it.", marker)
 	}
 }

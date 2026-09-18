@@ -31,6 +31,17 @@ type Destinations struct {
 	Attempts      int                `json:"attempts"`
 	DistinctHosts int                `json:"distinct_hosts"`
 	Inherited     int                `json:"inherited"`
+	// InheritedAllClientPlane is true when every inherited attempt is on a
+	// client-plane host.
+	//
+	// One inherited attempt appears on a COMPLETELY FRESH proxy store, every
+	// time: the client opens its own API tunnel before the SessionStart hook has
+	// written the window's left edge. The exclusion is right and the count is
+	// honest, but a reader who sees it on a store that never held anything else
+	// goes looking for a previous session that does not exist. When an AGENT
+	// destination is inherited the bare line stays, because then another session
+	// really did run.
+	InheritedAllClientPlane bool `json:"inherited_all_client_plane"`
 
 	// WindowApplied is false when the proxy's timestamps could not be parsed,
 	// in which case rows from other sessions may be included and the report has
@@ -226,6 +237,11 @@ func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, f
 		return d
 	}
 
+	// Whether every inherited attempt is the client's own traffic. Computed from
+	// the observation rather than from the post-filter lists, because inherited
+	// hosts are skipped before those are built.
+	d.InheritedAllClientPlane = inheritedIsAllClientPlane(obs)
+
 	declared := declaredHosts(run)
 	// An mcp__* declaration attributes the MCP transport to the agent's work.
 	// Computed once: it is a property of the session, not of a host.
@@ -406,6 +422,23 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// inheritedIsAllClientPlane reports whether the inherited attempts are entirely
+// the client's own. False when there are none: a clause explaining traffic that
+// does not exist would be noise.
+func inheritedIsAllClientPlane(obs wire.Observation) bool {
+	var inherited, clientPlane int
+	for _, h := range obs.Hosts {
+		if h.InheritedAttempts == 0 {
+			continue
+		}
+		inherited += h.InheritedAttempts
+		if clientPlaneHosts[h.Host] {
+			clientPlane += h.InheritedAttempts
+		}
+	}
+	return inherited > 0 && inherited == clientPlane
 }
 
 func pluralHosts(format string, n int) string {

@@ -765,3 +765,63 @@ func (e *env) writeFullTranscript(t *testing.T, toolUseID, final string) string 
 	}
 	return path
 }
+
+// writeProxyStoreBadStamps writes a proxy store whose timestamps are in no
+// format this reader parses, which is how the window-not-applied path is
+// reached. The rows are otherwise identical to writeProxyStore's.
+func (e *env) writeProxyStoreBadStamps(t *testing.T, hosts ...string) string {
+	t.Helper()
+	path := filepath.Join(e.home, "causal-badstamps.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open proxy store: %v", err)
+	}
+	defer db.Close() //nolint:errcheck // the exec errors below are what matter
+
+	if _, err := db.Exec(`CREATE TABLE causal_records (
+		sequence_num INTEGER PRIMARY KEY,
+		request_id TEXT NOT NULL DEFAULT '',
+		run_id TEXT NOT NULL DEFAULT '',
+		timestamp DATETIME NOT NULL,
+		reason TEXT NOT NULL DEFAULT '',
+		action TEXT NOT NULL DEFAULT '',
+		target_host TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatalf("create proxy store: %v", err)
+	}
+	for i, h := range hosts {
+		if _, err := db.Exec(
+			`INSERT INTO causal_records (sequence_num, request_id, timestamp, reason, action, target_host)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			i+1, fmt.Sprintf("req-%d", i), "not-a-timestamp-at-all",
+			"host_not_in_allowlist_observed", "WARN", h+":443",
+		); err != nil {
+			t.Fatalf("insert proxy row: %v", err)
+		}
+	}
+	return path
+}
+
+// packageSource concatenates a package's non-test Go source, for tests that
+// check a string the binary can produce but this harness cannot reach.
+func packageSource(dir string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return "", err
+		}
+		b.Write(body)
+		b.WriteByte('\n')
+	}
+	return b.String(), nil
+}

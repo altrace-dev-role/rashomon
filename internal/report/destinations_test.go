@@ -1,6 +1,7 @@
 package report
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -24,6 +25,12 @@ func observed(hosts ...wire.Destination) wire.Observation {
 	obs := wire.Observation{Observed: true, WindowApplied: true, Hosts: hosts}
 	for _, h := range hosts {
 		obs.Attempts += h.Attempts
+		// Inherited attempts are carried too. The helper used to drop them, so a
+		// fixture with an inherited host produced a Destinations whose Inherited
+		// was zero and whose inherited line therefore never rendered -- which is
+		// why the first version of the client-plane test failed with the flag set
+		// correctly and no line to show it on.
+		obs.Inherited += h.InheritedAttempts
 		if h.Attempts > 0 {
 			obs.DistinctHosts++
 		}
@@ -598,5 +605,80 @@ func TestProxyOnPath_ATrueVerdictCitesWhatWasMeasured(t *testing.T) {
 					"contradiction of the verdict: %q", tc.d.ProxyNote)
 			}
 		})
+	}
+}
+
+// renderDestinations renders just the destinations section, for the two lines
+// below whose wording is the whole point of them.
+func renderDestinations(d Destinations) string {
+	var b bytes.Buffer
+	writeDestinations(&b, d)
+	return b.String()
+}
+
+// TestInherited_SaysSoWhenEveryInheritedAttemptIsClientPlane.
+//
+// One inherited attempt appears on a COMPLETELY FRESH proxy store, every time:
+// the client opens its own api.anthropic.com tunnel before the SessionStart
+// hook has written the window's left edge. The exclusion is correct and the
+// count is honest, but a reader who sees "1 attempt from outside this session's
+// window" on a store that has never held anything else is being invited to look
+// for a previous session that does not exist.
+//
+// The clause is added only when EVERY inherited attempt is client-plane. A
+// genuinely inherited agent destination must keep the bare line, because that
+// one does mean another session ran.
+func TestInherited_SaysSoWhenEveryInheritedAttemptIsClientPlane(t *testing.T) {
+	d := buildDestinations(runWithDeclaredHosts(),
+		observed(
+			wire.Destination{Host: "api.anthropic.com", InheritedAttempts: 1, Inherited: true},
+			wire.Destination{Host: "pypi.org", Attempts: 2},
+		), "", nil)
+
+	if !d.InheritedAllClientPlane {
+		t.Fatal("inherited_all_client_plane = false although the only inherited host is the client's own API")
+	}
+	out := renderDestinations(d)
+	if !strings.Contains(out, "client-plane traffic before the session's first hook") {
+		t.Errorf("the inherited line does not say the traffic is the client's own:\n%s", out)
+	}
+}
+
+// TestInherited_StaysBareWhenAnAgentDestinationIsInherited is the other half.
+// A tool-call destination carried in from another session is exactly the case
+// where a reader SHOULD go looking, so the reassuring clause must not appear.
+func TestInherited_StaysBareWhenAnAgentDestinationIsInherited(t *testing.T) {
+	d := buildDestinations(runWithDeclaredHosts(),
+		observed(
+			wire.Destination{Host: "api.anthropic.com", InheritedAttempts: 1, Inherited: true},
+			wire.Destination{Host: "internal.example", InheritedAttempts: 3, Inherited: true},
+		), "", nil)
+
+	if d.InheritedAllClientPlane {
+		t.Error("inherited_all_client_plane = true although an agent destination was inherited")
+	}
+	out := renderDestinations(d)
+	if strings.Contains(out, "client-plane traffic before the session's first hook") {
+		t.Errorf("the reassuring clause appears although another session's agent traffic "+
+			"was inherited:\n%s", out)
+	}
+}
+
+// TestNovelty_EstablishedLineSaysTheClientPlaneIsExcluded.
+//
+// The line reports the baseline size and the destinations are listed beneath
+// it, so "established (2 hosts)" above four destinations reads as a
+// disagreement. The client plane is excluded from novelty on purpose -- a
+// session should not be told the client's own control plane is a new
+// destination for its project -- and the line now says so rather than leaving
+// the reader to work out which two.
+func TestNovelty_EstablishedLineSaysTheClientPlaneIsExcluded(t *testing.T) {
+	var b bytes.Buffer
+	writeNovelty(&b, Novelty{Available: true, Established: true, KnownHosts: 2, Hosts: []string{}})
+
+	out := b.String()
+	if !strings.Contains(out, "client plane excluded") {
+		t.Errorf("the established line does not say the client plane is excluded from the "+
+			"count:\n%s", out)
 	}
 }

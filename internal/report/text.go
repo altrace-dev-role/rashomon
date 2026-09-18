@@ -213,6 +213,11 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 	if d.Inherited > 0 {
 		fmt.Fprintf(b, "  inherited: %d attempt%s from outside this session's window, "+
 			"excluded from the counts above\n", d.Inherited, plural(d.Inherited))
+		if d.InheritedAllClientPlane {
+			// Says which previous session to go looking for: none. This is the
+			// client's own tunnel, opened before the first hook ran.
+			fmt.Fprintln(b, "    (client-plane traffic before the session's first hook)")
+		}
 	}
 
 	// The finding.
@@ -348,8 +353,11 @@ func writeNovelty(b *bytes.Buffer, n Novelty) {
 	case !n.Available:
 		fmt.Fprintf(b, "  new for this project: %s (%s)\n", unknown, n.Reason)
 	case n.Established:
-		fmt.Fprintf(b, "  new for this project: baseline established (%d host%s)\n",
-			n.KnownHosts, plural(n.KnownHosts))
+		// The count says which hosts it counted. The destinations are listed
+		// below this line, and the client plane is excluded from novelty on
+		// purpose, so a bare count reads as disagreeing with the list.
+		fmt.Fprintf(b, "  new for this project: baseline established "+
+			"(%d host%s, client plane excluded)\n", n.KnownHosts, plural(n.KnownHosts))
 	case len(n.Hosts) == 0:
 		fmt.Fprintf(b, "  new for this project: none (%d known)\n", n.KnownHosts)
 	default:
