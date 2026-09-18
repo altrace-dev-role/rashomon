@@ -183,8 +183,21 @@ func WithProxyStore(path string) Option {
 
 // Report is the rendered output.
 type Report struct {
-	GeneratedAtUnixMS int64     `json:"generated_at_unix_ms"`
-	Sessions          []Session `json:"sessions"`
+	GeneratedAtUnixMS int64 `json:"generated_at_unix_ms"`
+	// Sessions always marshals as an array, never null.
+	//
+	// null and [] are the same absence to a reader and different values to a
+	// consumer: the natural loop over sessions throws on one and is a no-op on
+	// the other, and "no sessions yet" is the state every user is in exactly
+	// once, before anything has been recorded.
+	Sessions []Session `json:"sessions"`
+}
+
+// Empty is the report for a location that has recorded nothing, built without a
+// store so that asking the question cannot create one. It is the same shape
+// Build returns for a store with no runs.
+func Empty(now time.Time) *Report {
+	return &Report{GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
 }
 
 // Build renders one session, or every session when sessionID is empty.
@@ -237,7 +250,9 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		return nil, err
 	}
 
-	rep := &Report{GeneratedAtUnixMS: now.UnixMilli()}
+	// Sessions starts as an empty slice rather than nil, so a store with no runs
+	// marshals the same array a store with runs does. See the field comment.
+	rep := &Report{GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
 	for _, name := range names {
 		run, err := st.ReadRunDir(name)
 		if err != nil {

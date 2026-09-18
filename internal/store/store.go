@@ -94,6 +94,34 @@ func Open(root string) (*Store, error) {
 	return &Store{root: root, installID: meta.InstallID, key: key}, nil
 }
 
+// ErrNoStore reports that no store has been created at a location. It is a
+// sentinel rather than a plain error because the read commands must be able to
+// tell "nothing has been recorded here" from "the store is broken", and only
+// the second is a failure.
+var ErrNoStore = errors.New("store: no store at this location")
+
+// OpenExisting opens a store WITHOUT creating one, returning ErrNoStore when
+// none is there.
+//
+// Open creates the root, the install identity and the per-install HMAC key on
+// first use, which is right for watch and wrong for every command that only
+// asks a question: a read that mints key material means a user who ran `report`
+// once now has an install identity they never installed, and the next `status`
+// truthfully reports a store as present because a different command fabricated
+// it. Presence is decided by the same file a plain detach looks for.
+func OpenExisting(root string) (*Store, error) {
+	if root == "" {
+		return nil, ErrNoStore
+	}
+	if _, err := os.Stat(filepath.Join(root, fileInstallMeta)); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, ErrNoStore
+		}
+		return nil, err
+	}
+	return Open(root)
+}
+
 // Root is the directory this store occupies.
 func (s *Store) Root() string { return s.root }
 

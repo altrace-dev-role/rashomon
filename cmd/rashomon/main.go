@@ -232,6 +232,46 @@ func openForHook(stderr io.Writer) *store.Store {
 	return st
 }
 
+// reportOrEmpty builds the report, or the empty one when nothing has ever been
+// recorded here.
+//
+// "Nothing recorded yet" is not a failure and must not read as one: it is the
+// state every user is in exactly once, and it is the state in which they have
+// no way to tell a broken tool from one with nothing to say. The empty report
+// is the same shape as any other, so a consumer does not have to know whether
+// a store exists in order to parse the answer.
+func reportOrEmpty(sessionID, proxyStore string, now time.Time) (*report.Report, error) {
+	st, err := openStoreForRead()
+	if errors.Is(err, store.ErrNoStore) {
+		return report.Empty(now), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return report.Build(st, sessionID, now, report.WithProxyStore(proxyStore))
+}
+
+// openStoreForRead opens the store without creating one, and reports
+// ErrNoStore when there is nothing here.
+//
+// Every command that only reads or evicts uses this. Creating a store to answer
+// a question mints an install identity and a per-install HMAC key, so a user
+// who ran `report` or `forget` once would afterwards be told by `status` that a
+// store is present -- true, and only because a different command fabricated it.
+func openStoreForRead() (*store.Store, error) {
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return nil, err
+	}
+	return store.OpenExisting(root)
+}
+
+// nothingRecordedHere is what an evicting command says when there is no store.
+// Not an error: asking to forget something on a machine that has recorded
+// nothing is a satisfied request, and exiting non-zero would tell a user their
+// privacy action failed when it had nothing to do.
+const nothingRecordedHere = "nothing has been recorded here, so there is nothing to forget"
+
 func openStore() (*store.Store, error) {
 	root, err := store.DefaultRoot()
 	if err != nil {
@@ -585,11 +625,10 @@ func cmdReport(args []string, stdout io.Writer) error {
 		proxyStore = defaultProxyStore()
 	}
 
-	st, err := openStore()
-	if err != nil {
-		return err
-	}
-	rep, err := report.Build(st, sessionID, time.Now(), report.WithProxyStore(proxyStore))
+	// Opened WITHOUT creating: a command that only asks a question must not mint
+	// an install identity and an HMAC key as a side effect of being asked. The
+	// same rule status follows, and for the same reason.
+	rep, err := reportOrEmpty(sessionID, proxyStore, time.Now())
 	if err != nil {
 		return err
 	}
@@ -653,7 +692,11 @@ func cmdForget(args []string, stdout io.Writer) error {
 		return errors.New("forget needs --since or --before <RFC3339 time or duration such as 24h>, or --host <hostname>")
 	}
 
-	st, err := openStore()
+	st, err := openStoreForRead()
+	if errors.Is(err, store.ErrNoStore) {
+		fmt.Fprintln(stdout, nothingRecordedHere)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -840,7 +883,11 @@ func defaultProxyStore() string {
 // carries the host, and the report reads it to keep the destination suppressed
 // from its view.
 func forgetHost(host string, stdout io.Writer) error {
-	st, err := openStore()
+	st, err := openStoreForRead()
+	if errors.Is(err, store.ErrNoStore) {
+		fmt.Fprintln(stdout, nothingRecordedHere)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
