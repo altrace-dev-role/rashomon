@@ -28,9 +28,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-          # No go.sum: this module declares no requirements, and setup-go looks
-          # for go.sum to key the cache.
-          cache-dependency-path: go.mod
+          # go.sum: the module has requirements now. See the note in ci.yaml.
+          cache-dependency-path: go.sum
 
       # NOT PINNED -- FILL THIS IN BEFORE THE FIRST RELEASE.
       #

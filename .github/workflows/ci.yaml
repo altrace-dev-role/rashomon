@@ -39,11 +39,13 @@ jobs:
           # patch of the declared minor.
           go-version-file: go.mod
           cache: true
-          # There is no go.sum in this repository -- the module declares no
-          # requirements -- and setup-go looks for go.sum to key the cache.
-          # Point it at go.mod. What is being cached is the build cache, which
-          # the mutation sweep's compile-and-test cycles do use.
-          cache-dependency-path: go.mod
+          # go.sum, not go.mod. This module declared no requirements when these
+          # workflows were written and now depends on modernc.org/sqlite plus
+          # its indirect set, so keying the cache on go.mod would miss every
+          # dependency change and serve a stale module cache. What is cached is
+          # both the module cache and the build cache, and the mutation sweep's
+          # compile-and-test cycles use the second heavily.
+          cache-dependency-path: go.sum
 
       # The mutation sweep and the acceptance suite shell out to python3, git,
       # unshare and strace. ubuntu-latest ships the first three; strace is not
@@ -104,7 +106,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-          cache-dependency-path: go.mod  # No go.sum; see the test job.
+          cache-dependency-path: go.sum  # See the test job.
 
       - name: Build
         env:

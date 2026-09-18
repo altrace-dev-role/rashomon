@@ -1,12 +1,35 @@
 # rashomon dependency updates
 #
-# There is no `gomod` entry because there is nothing for it to update: go.mod
-# declares no requirements at all. This module is standard library only, by
-# design -- a PreToolUse hook that blocks tool calls when it panics has no room
-# for a supply chain. Add the entry the day that stops being true.
+# This file used to say there was no `gomod` entry because the module declared
+# no requirements -- standard library only, on the grounds that a PreToolUse
+# hook which blocks tool calls when it panics has no room for a supply chain --
+# and to add one the day that stopped being true. That day arrived with the
+# destinations work: reading the proxy's store needs a SQLite driver.
+#
+# The recorder's guarantee did not change, and it is not the absence of
+# dependencies that holds it up. modernc.org/sqlite is pure Go, so it adds no
+# C toolchain and no cgo; it reaches the hook's own dependency graph not at all
+# (a test asserts internal/hook imports no networking package, and a second
+# asserts only internal/launch may import os/exec); and it is opened read-only
+# against a database this program never writes. What a dependency DOES add is
+# a supply chain, which is what this entry watches.
 version: 2
 
 updates:
+  # Go modules. Pinned by go.sum, which is the thing that makes a bump
+  # reviewable: dependabot raises the version and the checksum together, so a
+  # substituted artifact fails verification rather than landing quietly.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+
   # GitHub Actions. Every `uses:` in .github/workflows is pinned to a full
   # commit SHA, which is exactly the arrangement that goes stale silently:
   # nothing in CI notices that a pin is two years behind. Dependabot bumps the
