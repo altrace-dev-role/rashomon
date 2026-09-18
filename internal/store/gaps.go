@@ -2,6 +2,9 @@ package store
 
 import (
 	"bufio"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -420,4 +423,217 @@ func rewriteAt(path string, lines [][]byte) error {
 	}
 	defer unlock()
 	return rewrite(f, lines)
+}
+
+// declHead is what a host-scoped forget needs from a record: the join key and
+// the hostnames a declaration named.
+type declHead struct {
+	Type      string   `json:"type"`
+	ToolUseID string   `json:"tool_use_id"`
+	SessionID string   `json:"session_id"`
+	Hosts     []string `json:"hosts"`
+	SSHHosts  []string `json:"ssh_hosts"`
+}
+
+// ForgetHost removes every record of every call that NAMED the given host,
+// across all runs, leaving a gap record per affected run.
+//
+// It removes whole calls rather than editing the host out of a declaration's
+// list. Editing would keep more information -- a call that named two hosts
+// loses the record of the other this way -- but it means rewriting a record's
+// contents, and every other removal in this store works by dropping whole
+// lines whose tool_use_id is doomed. One mechanism, already tested, is worth
+// more here than the extra field survived: the caller asked for that host's
+// records to be gone, and the declaration IS that host's record.
+//
+// The host is matched against both declared lists. An ssh host is not
+// observable on the wire, but it is still something the session named and still
+// something a user can ask to have forgotten.
+//
+// What this canNOT do is delete the row from the PROXY's store. That is the
+// closed product's hash-chained audit database, opened read-only here, and
+// deleting from it would break the chain it exists to provide. The gap record
+// carries the host so the report keeps the destination suppressed from its
+// view instead, and says so rather than implying the row is gone.
+func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
+	if host == "" {
+		return nil, errors.New("store: forget --host needs a host")
+	}
+	names, err := s.Runs()
+	if err != nil {
+		return nil, err
+	}
+	var gaps []Gap
+	for _, name := range names {
+		g, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)
+		if err != nil {
+			return gaps, err
+		}
+		if g != nil {
+			gaps = append(gaps, *g)
+		}
+	}
+	return gaps, nil
+}
+
+func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
+	recordsPath := filepath.Join(dir, FileRecords)
+	spillPath := filepath.Join(dir, FileSpill)
+
+	records, err := os.OpenFile(recordsPath, os.O_RDWR, fileMode)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	if records != nil {
+		defer records.Close() //nolint:errcheck // Sync reports the write failure
+		unlock, err := lockFile(records, lockBudget)
+		if err != nil {
+			return nil, err
+		}
+		defer unlock()
+	}
+
+	recLines, err := readLines(records)
+	if err != nil {
+		return nil, err
+	}
+	spillLines, err := readLinesAt(spillPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Plan: every tool_use_id whose DECLARATION named the host. Only a
+	// declaration carries hostnames, so only a declaration can nominate a call
+	// for removal; its execution and terminal follow it out by id, exactly as
+	// they do for a window forget.
+	doomed := map[string]bool{}
+	sessionID := ""
+	for _, line := range append(append([][]byte{}, recLines...), spillLines...) {
+		var h declHead
+		if json.Unmarshal(line, &h) != nil {
+			continue
+		}
+		if sessionID == "" {
+			sessionID = h.SessionID
+		}
+		if h.Type != TypeDeclaration {
+			continue
+		}
+		if namesHost(h, host) {
+			doomed[h.ToolUseID] = true
+		}
+	}
+	if len(doomed) == 0 {
+		return nil, nil
+	}
+
+	earliest, latest := int64(math.MaxInt64), int64(math.MinInt64)
+	keep := func(line []byte) bool {
+		var h lineHead
+		if json.Unmarshal(line, &h) != nil || !doomed[h.ToolUseID] {
+			return true
+		}
+		if h.RecordedAtMS < earliest {
+			earliest = h.RecordedAtMS
+		}
+		if h.RecordedAtMS > latest {
+			latest = h.RecordedAtMS
+		}
+		return false
+	}
+	keptRec, removedRec := partition(recLines, keep)
+	keptSpill, removedSpill := partition(spillLines, keep)
+	if removedRec+removedSpill == 0 {
+		return nil, nil
+	}
+	if sessionID == "" {
+		sessionID = filepath.Base(dir)
+	}
+
+	// The gap spans what was actually removed rather than all of time: a
+	// host-scoped forget names no window, so the records themselves are the
+	// only honest bounds.
+	g := Gap{
+		Type:           TypeGap,
+		SchemaVersion:  SchemaVersion,
+		RecordedAtMS:   now.UnixMilli(),
+		SessionID:      sessionID,
+		Reason:         GapForgetHost,
+		FromUnixMS:     earliest,
+		ToUnixMS:       latest,
+		RemovedRecords: removedRec + removedSpill,
+		HostDigest:     s.HostDigest(host),
+	}
+	// The gap lands first, as it does for a window forget: a failure between
+	// the two leaves a gap for records that still exist, an overstatement a
+	// reader can see, rather than a deletion nothing admits to.
+	if err := s.AppendGap(g); err != nil {
+		return nil, err
+	}
+
+	if records != nil && removedRec > 0 {
+		if err := rewrite(records, keptRec); err != nil {
+			return &g, err
+		}
+	}
+	if removedSpill > 0 {
+		if err := rewriteAt(spillPath, keptSpill); err != nil {
+			return &g, err
+		}
+	}
+	return &g, nil
+}
+
+// namesHost reports whether a declaration named the host, in either list.
+func namesHost(h declHead, host string) bool {
+	for _, list := range [][]string{h.Hosts, h.SSHHosts} {
+		for _, got := range list {
+			if got == host {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// HostDigest is the keyed identifier a gap record carries for a forgotten
+// host.
+//
+// HMAC under the per-install key, for the reason set out on Gap.HostDigest: the
+// report has to recognise the host again while the store must not hold its
+// name. Two installs produce different digests for the same host, so a store
+// cannot be tested against a dictionary of hostnames.
+func (s *Store) HostDigest(host string) string {
+	if host == "" {
+		return ""
+	}
+	m := hmac.New(sha256.New, s.Key())
+	m.Write([]byte("forget-host\x00"))
+	m.Write([]byte(host))
+	return hex.EncodeToString(m.Sum(nil))
+}
+
+// ForgottenHost reports whether a host has been removed by a host-scoped
+// forget, by recomputing its keyed digest and looking for it among the gaps.
+//
+// Returned as a predicate rather than a set of names because the names are not
+// recoverable: the caller asks about a host it already has, which is exactly
+// what the report does for each destination it observed.
+func (s *Store) ForgottenHost() (func(string) bool, error) {
+	gaps, err := s.ReadGaps()
+	if err != nil {
+		return nil, err
+	}
+	digests := map[string]bool{}
+	for _, g := range gaps {
+		if g.Reason == GapForgetHost && g.HostDigest != "" {
+			digests[g.HostDigest] = true
+		}
+	}
+	if len(digests) == 0 {
+		// A predicate that allocates and hashes nothing on the overwhelmingly
+		// common path where nothing has been forgotten.
+		return func(string) bool { return false }, nil
+	}
+	return func(host string) bool { return digests[s.HostDigest(host)] }, nil
 }

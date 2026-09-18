@@ -225,6 +225,14 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		names = append(names, evicted...)
 	}
 
+	// Read once for the whole report: the forgotten set is a property of the
+	// store, not of a session, and re-reading the gaps per session would be the
+	// same answer at more cost.
+	forgotten, err := st.ForgottenHost()
+	if err != nil {
+		return nil, err
+	}
+
 	rep := &Report{GeneratedAtUnixMS: now.UnixMilli()}
 	for _, name := range names {
 		run, err := st.ReadRunDir(name)
@@ -237,7 +245,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		// report is the cost of that: a window is a property of the run, and
 		// sharing one observation across sessions would attribute each
 		// session's destinations to all of them.
-		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, window(run)), st.Root())
+		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, window(run)), st.Root(), forgotten)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
 		sess.SilentFailures = buildSilentFailures(run, sess.Account)

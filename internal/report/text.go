@@ -204,6 +204,10 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 		fmt.Fprintln(b, "  window: NOT applied (the proxy's timestamps could not be parsed);"+
 			" rows from other sessions may be included")
 	}
+	if d.Suppressed > 0 {
+		fmt.Fprintf(b, "  suppressed: %d destination(s) removed from this view by "+
+			"forget --host (the proxy's own records are not deleted)\n", d.Suppressed)
+	}
 	if d.Inherited > 0 {
 		fmt.Fprintf(b, "  inherited: %d attempts from outside this session's window, excluded from the counts above\n", d.Inherited)
 	}

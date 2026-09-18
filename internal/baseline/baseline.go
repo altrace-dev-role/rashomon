@@ -324,3 +324,31 @@ func dedupe(xs []string) []string {
 	}
 	return out
 }
+
+// ForgetFile removes a host from one baseline file by path, returning 1 when it
+// was present and 0 when it was not.
+//
+// By PATH rather than by project key, because `forget --host` is not told which
+// project the caller meant and must clear the host from every baseline that
+// remembers it. That is the conservative direction: a host the user asked to
+// forget must not survive in a project they did not think to name.
+func ForgetFile(path, host string) (int, error) {
+	if path == "" || host == "" {
+		return 0, nil
+	}
+	f, existed, err := load(path, "")
+	if err != nil || !existed {
+		// A corrupt or unreadable baseline is not a reason to fail the forget.
+		// The records are already gone; reporting zero cleared here is honest
+		// and the caller prints the count.
+		return 0, nil
+	}
+	if _, ok := f.Hosts[host]; !ok {
+		return 0, nil
+	}
+	delete(f.Hosts, host)
+	if err := save(filepath.Dir(path), path, f); err != nil {
+		return 0, err
+	}
+	return 1, nil
+}

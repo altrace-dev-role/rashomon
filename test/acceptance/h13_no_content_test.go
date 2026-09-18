@@ -54,6 +54,10 @@ var (
 	gapKeys = []string{
 		"type", "schema_version", "recorded_at_unix_ms",
 		"session_id", "reason", "from_unix_ms", "to_unix_ms", "removed_records",
+		// v2. A keyed HMAC of the forgotten host, empty for a window forget.
+		// Not the hostname: the report must recognise the host again while
+		// `forget --host` must make the name leave the store's bytes.
+		"host_digest",
 	}
 )
 

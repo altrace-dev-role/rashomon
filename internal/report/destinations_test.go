@@ -47,12 +47,11 @@ func has(xs []string, want string) bool {
 // index redirected to and which no tool call ever mentioned. No transcript
 // reader and no hook log can produce that second host.
 func TestWireOnly_FiresOnAHostNoDeclarationNamed(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org"),
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
 		observed(
 			wire.Destination{Host: "pypi.org", Attempts: 1},
 			wire.Destination{Host: "files.pythonhosted.org", Attempts: 1},
-		), "")
+		), "", nil)
 
 	if !has(d.WireOnly, "files.pythonhosted.org") {
 		t.Errorf("wire_only = %v, want files.pythonhosted.org", d.WireOnly)
@@ -69,12 +68,11 @@ func TestWireOnly_FiresOnAHostNoDeclarationNamed(t *testing.T) {
 // that fired on a well-behaved session would be noise, and a reader who saw it
 // once when it was wrong would discount it when it was right.
 func TestWireOnly_DoesNotFireWhenEveryHostWasNamed(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org", "files.pythonhosted.org"),
+	d := buildDestinations(runWithDeclaredHosts("pypi.org", "files.pythonhosted.org"),
 		observed(
 			wire.Destination{Host: "pypi.org", Attempts: 1},
 			wire.Destination{Host: "files.pythonhosted.org", Attempts: 2},
-		), "")
+		), "", nil)
 
 	if len(d.WireOnly) != 0 {
 		t.Errorf("wire_only = %v, want empty: every observed host was declared", d.WireOnly)
@@ -88,13 +86,12 @@ func TestWireOnly_DoesNotFireWhenEveryHostWasNamed(t *testing.T) {
 // accusation. An agent talking to 127.0.0.1 is not going somewhere nobody
 // wrote down.
 func TestWireOnly_LoopbackIsNeverAFinding(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts(),
+	d := buildDestinations(runWithDeclaredHosts(),
 		observed(
 			wire.Destination{Host: "127.0.0.1", Attempts: 3},
 			wire.Destination{Host: "localhost", Attempts: 1},
 			wire.Destination{Host: "[::1]", Attempts: 1},
-		), "")
+		), "", nil)
 	if len(d.WireOnly) != 0 {
 		t.Errorf("wire_only = %v, want empty for loopback only", d.WireOnly)
 	}
@@ -106,12 +103,11 @@ func TestWireOnly_LoopbackIsNeverAFinding(t *testing.T) {
 // no declaring tool call in every run — and an agent's own request to that host
 // is indistinguishable from the client's.
 func TestClientPlane_RendersSeparatelyAndIsNotAFinding(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org"),
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
 		observed(
 			wire.Destination{Host: "api.anthropic.com", Attempts: 4},
 			wire.Destination{Host: "pypi.org", Attempts: 1},
-		), "")
+		), "", nil)
 
 	if has(d.WireOnly, "api.anthropic.com") {
 		t.Error("api.anthropic.com is in wire_only. It appears with no declaring tool " +
@@ -133,12 +129,11 @@ func TestClientPlane_RendersSeparatelyAndIsNotAFinding(t *testing.T) {
 // showed up in the first real demo session and were reported as a finding,
 // which is what prompted the ruling.
 func TestClientPlane_MCPProxyIsClientPlaneWithoutAnMCPCall(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org"),
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
 		observed(
 			wire.Destination{Host: "mcp-proxy.anthropic.com", Attempts: 6},
 			wire.Destination{Host: "pypi.org", Attempts: 1},
-		), "")
+		), "", nil)
 
 	if has(d.WireOnly, "mcp-proxy.anthropic.com") {
 		t.Error("mcp-proxy.anthropic.com is reported as a finding on a session with no " +
@@ -169,7 +164,7 @@ func TestClientPlane_MCPProxyIsAttributedWhenTheSessionMadeAnMCPCall(t *testing.
 	d := buildDestinations(run, observed(
 		wire.Destination{Host: "mcp-proxy.anthropic.com", Attempts: 6},
 		wire.Destination{Host: "pypi.org", Attempts: 1},
-	), "")
+	), "", nil)
 
 	if has(d.ClientPlane, "mcp-proxy.anthropic.com") {
 		t.Error("mcp-proxy.anthropic.com is under client_plane although this session made " +
@@ -201,9 +196,8 @@ func TestClientPlane_MCPProxyIsAttributedWhenTheSessionMadeAnMCPCall(t *testing.
 // Printing false would say "the proxy was not observing", which is a different
 // and unsupported claim.
 func TestProxyOnPath_UnknownWhenTheStoreCouldNotBeRead(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org"),
-		wire.Observation{Observed: false, Reason: wire.NotObservedNoStore}, "")
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
+		wire.Observation{Observed: false, Reason: wire.NotObservedNoStore}, "", nil)
 
 	if d.Observed {
 		t.Error("observed = true for an unreadable store")
@@ -226,9 +220,8 @@ func TestProxyOnPath_UnknownWhenTheStoreCouldNotBeRead(t *testing.T) {
 // unknown, and the notes differ, because neither supports the claim that the
 // proxy was observing this session.
 func TestProxyOnPath_UnknownWhenTheWindowIsEmpty(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org"),
-		wire.Observation{Observed: true, WindowApplied: true}, "")
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
+		wire.Observation{Observed: true, WindowApplied: true}, "", nil)
 
 	if d.ProxyOnPath != ProxyOnPathUnknown {
 		t.Errorf("proxy_on_path = %q, want unknown for a readable store with no rows in "+
@@ -243,9 +236,8 @@ func TestProxyOnPath_UnknownWhenTheWindowIsEmpty(t *testing.T) {
 // version of "on the path": the proxy was observing, and not one destination it
 // saw was named by a tool call.
 func TestProxyOnPath_TrueWhenNothingMatchedButRowsExist(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("declared-but-never-reached.example"),
-		observed(wire.Destination{Host: "surprise.example", Attempts: 1}), "")
+	d := buildDestinations(runWithDeclaredHosts("declared-but-never-reached.example"),
+		observed(wire.Destination{Host: "surprise.example", Attempts: 1}), "", nil)
 
 	if d.ProxyOnPath != ProxyOnPathTrue {
 		t.Errorf("proxy_on_path = %q, want true: rows inside the window prove the proxy "+
@@ -266,7 +258,7 @@ func TestDeclaredSSHHostsDoNotSuppressAFinding(t *testing.T) {
 		SSHHosts:  []string{"github.com"},
 	}}}
 
-	d := buildDestinations(run, observed(wire.Destination{Host: "github.com", Attempts: 1}), "")
+	d := buildDestinations(run, observed(wire.Destination{Host: "github.com", Attempts: 1}), "", nil)
 
 	if !has(d.WireOnly, "github.com") {
 		t.Errorf("wire_only = %v, want github.com. It was declared only as an ssh host, "+
@@ -281,9 +273,8 @@ func TestDeclaredSSHHostsDoNotSuppressAFinding(t *testing.T) {
 // denied, a call that failed before connecting, a cached response, or a host
 // the proxy simply did not see. The report says which hosts, not why.
 func TestDeclaredNotObserved_FiresOnADeclaredHostWithNoWireRow(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org", "never-reached.example"),
-		observed(wire.Destination{Host: "pypi.org", Attempts: 1}), "")
+	d := buildDestinations(runWithDeclaredHosts("pypi.org", "never-reached.example"),
+		observed(wire.Destination{Host: "pypi.org", Attempts: 1}), "", nil)
 
 	if !has(d.DeclaredNotObserved, "never-reached.example") {
 		t.Errorf("declared_not_observed = %v, want never-reached.example", d.DeclaredNotObserved)
@@ -296,9 +287,8 @@ func TestDeclaredNotObserved_FiresOnADeclaredHostWithNoWireRow(t *testing.T) {
 // TestDeclaredNotObserved_IsEmptyWhenEverythingWasObserved is the negative
 // fixture.
 func TestDeclaredNotObserved_IsEmptyWhenEverythingWasObserved(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org"),
-		observed(wire.Destination{Host: "pypi.org", Attempts: 1}), "")
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
+		observed(wire.Destination{Host: "pypi.org", Attempts: 1}), "", nil)
 	if len(d.DeclaredNotObserved) != 0 {
 		t.Errorf("declared_not_observed = %v, want empty", d.DeclaredNotObserved)
 	}
@@ -313,9 +303,8 @@ func TestDeclaredNotObserved_IsEmptyWhenEverythingWasObserved(t *testing.T) {
 // possible inversion, because it fires hardest on the sessions where the tool
 // was doing the least.
 func TestDeclaredNotObserved_IsEmptyWhenTheStoreCouldNotBeRead(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org", "api.github.com"),
-		wire.Observation{Observed: false, Reason: wire.NotObservedNoStore}, "")
+	d := buildDestinations(runWithDeclaredHosts("pypi.org", "api.github.com"),
+		wire.Observation{Observed: false, Reason: wire.NotObservedNoStore}, "", nil)
 
 	if len(d.DeclaredNotObserved) != 0 {
 		t.Errorf("declared_not_observed = %v with no store read. Every declared host "+
@@ -329,8 +318,7 @@ func TestDeclaredNotObserved_IsEmptyWhenTheStoreCouldNotBeRead(t *testing.T) {
 // belong to an earlier session was not observed for THIS session, so it belongs
 // in this list.
 func TestDeclaredNotObserved_ExcludesInheritedRows(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org"),
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
 		wire.Observation{
 			Observed:      true,
 			WindowApplied: true,
@@ -338,7 +326,7 @@ func TestDeclaredNotObserved_ExcludesInheritedRows(t *testing.T) {
 			Hosts: []wire.Destination{
 				{Host: "pypi.org", InheritedAttempts: 2, Inherited: true},
 			},
-		}, "")
+		}, "", nil)
 
 	if !has(d.DeclaredNotObserved, "pypi.org") {
 		t.Errorf("declared_not_observed = %v, want pypi.org: its only rows are another "+
@@ -361,7 +349,7 @@ func TestSSHHostsRenderAsNotObservableNeverAsAFinding(t *testing.T) {
 		SSHHosts:  []string{"github.com", "deploy.example.com"},
 	}}}
 
-	d := buildDestinations(run, observed(wire.Destination{Host: "pypi.org", Attempts: 1}), "")
+	d := buildDestinations(run, observed(wire.Destination{Host: "pypi.org", Attempts: 1}), "", nil)
 
 	for _, h := range []string{"github.com", "deploy.example.com"} {
 		if has(d.DeclaredNotObserved, h) {
@@ -381,9 +369,8 @@ func TestSSHHostsRenderAsNotObservableNeverAsAFinding(t *testing.T) {
 // TestNotObservableIsEmptyWithoutSSHHosts is the negative fixture: the line
 // must not appear on a session that used no ssh host.
 func TestNotObservableIsEmptyWithoutSSHHosts(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org"),
-		observed(wire.Destination{Host: "pypi.org", Attempts: 1}), "")
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
+		observed(wire.Destination{Host: "pypi.org", Attempts: 1}), "", nil)
 	if len(d.NotObservable) != 0 {
 		t.Errorf("not_observable = %v, want empty", d.NotObservable)
 	}
@@ -406,7 +393,7 @@ func TestExecutedNotAsDeclared_IsCountedWithoutAProxyStore(t *testing.T) {
 		Executions: []store.Execution{{ToolUseID: "t1", ExecutedDigest: "bbbb"}},
 	}
 
-	d := buildDestinations(run, wire.Observation{Observed: false, Reason: wire.NotObservedNoStore}, "")
+	d := buildDestinations(run, wire.Observation{Observed: false, Reason: wire.NotObservedNoStore}, "", nil)
 
 	if d.ExecutedNotAsDeclared != 1 {
 		t.Errorf("executed_not_as_declared = %d, want 1 even with no proxy store: the "+
@@ -443,7 +430,7 @@ func TestExecutedNotAsDeclared_UnknownDigestIsNotADifference(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			d := buildDestinations(tc.run, observed(), "")
+			d := buildDestinations(tc.run, observed(), "", nil)
 			if d.ExecutedNotAsDeclared != 0 {
 				t.Errorf("executed_not_as_declared = %d, want 0: an incomparable pair is "+
 					"not a difference", d.ExecutedNotAsDeclared)
@@ -455,8 +442,7 @@ func TestExecutedNotAsDeclared_UnknownDigestIsNotADifference(t *testing.T) {
 // TestInheritedHostIsNotAFinding keeps another session's traffic out of this
 // session's accusation.
 func TestInheritedHostIsNotAFinding(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org"),
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
 		wire.Observation{
 			Observed:      true,
 			WindowApplied: true,
@@ -467,7 +453,7 @@ func TestInheritedHostIsNotAFinding(t *testing.T) {
 				{Host: "pypi.org", Attempts: 1},
 				{Host: "someone-elses.example", InheritedAttempts: 2, Inherited: true},
 			},
-		}, "")
+		}, "", nil)
 
 	if has(d.WireOnly, "someone-elses.example") {
 		t.Errorf("wire_only = %v; an inherited host was not reached by this session and "+
@@ -483,11 +469,9 @@ func TestInheritedHostIsNotAFinding(t *testing.T) {
 // unknown rather than render "none" — which would read as "this session
 // reached nothing new" on a session where nothing was checked.
 func TestNovelty_UnavailableWithoutARecordedProject(t *testing.T) {
-	d := buildDestinations(
-		runWithDeclaredHosts("pypi.org"),
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"),
 		observed(wire.Destination{Host: "new.example", Attempts: 1}),
-		t.TempDir(),
-	)
+		t.TempDir(), nil)
 
 	if d.Novelty.Available {
 		t.Error("novelty available with no recorded cwd; the project is unknown")
@@ -513,7 +497,7 @@ func TestNovelty_UsesTheRunsOwnCWDNotTheReadersCWD(t *testing.T) {
 		}},
 	}
 
-	first := buildDestinations(run, observed(wire.Destination{Host: "a.example", Attempts: 1}), root)
+	first := buildDestinations(run, observed(wire.Destination{Host: "a.example", Attempts: 1}), root, nil)
 	if !first.Novelty.Available {
 		t.Fatalf("novelty unavailable: %s", first.Novelty.Reason)
 	}
@@ -531,7 +515,7 @@ func TestNovelty_UsesTheRunsOwnCWDNotTheReadersCWD(t *testing.T) {
 	second := buildDestinations(run2, observed(
 		wire.Destination{Host: "a.example", Attempts: 1},
 		wire.Destination{Host: "b.example", Attempts: 1},
-	), root)
+	), root, nil)
 
 	if second.Novelty.Established {
 		t.Error("the second session established the baseline again")
@@ -557,12 +541,12 @@ func TestNovelty_ClientPlaneIsNeverNovel(t *testing.T) {
 		}
 	}
 	// Establish, then a later session whose only new host is client plane.
-	buildDestinations(mk("sess-1", t0ms), observed(wire.Destination{Host: "a.example", Attempts: 1}), root)
+	buildDestinations(mk("sess-1", t0ms), observed(wire.Destination{Host: "a.example", Attempts: 1}), root, nil)
 	d := buildDestinations(mk("sess-2", t0ms+3600000), observed(
 		wire.Destination{Host: "a.example", Attempts: 1},
 		wire.Destination{Host: "api.anthropic.com", Attempts: 4},
 		wire.Destination{Host: "127.0.0.1", Attempts: 2},
-	), root)
+	), root, nil)
 
 	if len(d.Novelty.Hosts) != 0 {
 		t.Errorf("novelty hosts = %v, want empty: the client plane and loopback are not "+

@@ -87,6 +87,12 @@ type Destinations struct {
 	// carried no tool_input) is unknown, and unknown is not a difference.
 	ExecutedNotAsDeclared int `json:"executed_not_as_declared"`
 
+	// Suppressed counts destinations removed from this view by a host-scoped
+	// forget. It is rendered, because a view that silently omitted rows would
+	// be the same failure as a report that printed nothing when it was not
+	// watching: the reader has to be able to see that something was withheld.
+	Suppressed int `json:"suppressed"`
+
 	// Novelty says which of this session's destinations are new for this
 	// project. See internal/baseline for why ownership is earliest-session-wins
 	// and why the file lives outside the evictable run store.
@@ -177,7 +183,7 @@ const mcpTool = "mcp__"
 
 // buildDestinations reconciles the proxy's observation against the session's
 // declarations.
-func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string) Destinations {
+func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, forgotten func(string) bool) Destinations {
 	d := Destinations{
 		Observed:            obs.Observed,
 		Reason:              obs.Reason,
@@ -196,8 +202,19 @@ func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string) D
 		ExecutedNotAsDeclared: executedNotAsDeclared(run),
 		ProxyOnPath:           ProxyOnPathUnknown,
 	}
+	// Forgotten destinations are dropped from the whole view before anything
+	// else looks at them. The proxy's store is not ours to delete from, so
+	// without this a host whose records were forgotten reappears in the next
+	// report as a destination reached and never named -- the forget reading as
+	// though it had been undone, or worse, as a finding.
+	d.Hosts, d.Suppressed = suppress(d.Hosts, forgotten)
 	if d.Hosts == nil {
 		d.Hosts = []wire.Destination{}
+	}
+	// The counts must follow, or the totals keep describing rows the report no
+	// longer shows.
+	if d.Suppressed > 0 {
+		d.Attempts, d.DistinctHosts, d.Inherited = recount(d.Hosts)
 	}
 	if !obs.Observed {
 		// DeclaredNotObserved stays empty. See its field comment: without a
@@ -523,4 +540,35 @@ func runStartMS(run *store.Run) int64 {
 		}
 	}
 	return earliest
+}
+
+// suppress drops forgotten destinations from the observed list, returning how
+// many went.
+func suppress(hosts []wire.Destination, forgotten func(string) bool) ([]wire.Destination, int) {
+	if forgotten == nil || len(hosts) == 0 {
+		return hosts, 0
+	}
+	kept := make([]wire.Destination, 0, len(hosts))
+	var gone int
+	for _, h := range hosts {
+		if forgotten(h.Host) {
+			gone++
+			continue
+		}
+		kept = append(kept, h)
+	}
+	return kept, gone
+}
+
+// recount recomputes the totals after suppression, so the headline numbers
+// describe the rows the report actually shows.
+func recount(hosts []wire.Destination) (attempts, distinct, inherited int) {
+	for _, h := range hosts {
+		attempts += h.Attempts
+		inherited += h.InheritedAttempts
+		if h.Attempts > 0 {
+			distinct++
+		}
+	}
+	return attempts, distinct, inherited
 }

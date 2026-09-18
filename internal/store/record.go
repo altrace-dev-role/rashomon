@@ -305,8 +305,9 @@ type Coverage struct {
 
 // Gap reasons.
 const (
-	GapForget  = "forget"
-	GapSizeCap = "size_cap"
+	GapForget     = "forget"
+	GapForgetHost = "forget_host"
+	GapSizeCap    = "size_cap"
 )
 
 // Gap records that records left the store, and why. It is the only way records
@@ -321,4 +322,23 @@ type Gap struct {
 	FromUnixMS     int64  `json:"from_unix_ms"`
 	ToUnixMS       int64  `json:"to_unix_ms"`
 	RemovedRecords int    `json:"removed_records"`
+
+	// HostDigest identifies the destination a host-scoped forget removed (v2),
+	// as an HMAC under the per-install key. Empty for a window forget, which
+	// removes by time and names no host.
+	//
+	// A DIGEST and not the hostname, and the reason is a conflict this field
+	// had to resolve. The report needs to keep suppressing the host, because
+	// the proxy's store is not ours to delete from and the destination would
+	// otherwise reappear in the next report as "reached but never named" -- the
+	// forget reading as undone, or as a finding. But `forget --host` also has
+	// to make the hostname LEAVE the store's bytes, which is the whole point of
+	// forgetting it. Writing the name here would have satisfied the first
+	// requirement by breaking the second.
+	//
+	// Keyed with the same per-install HMAC key the shape digests use, so the
+	// report can recompute it from an observed host while a reader of the store
+	// -- or of a copy of it -- cannot turn it back into a name, and cannot test
+	// a guess without the key.
+	HostDigest string `json:"host_digest"`
 }

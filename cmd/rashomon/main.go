@@ -12,12 +12,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/report"
@@ -606,8 +608,15 @@ func cmdReport(args []string, stdout io.Writer) error {
 // naming both is refused rather than resolved.
 func cmdForget(args []string, stdout io.Writer) error {
 	var from, to *time.Time
+	host := ""
 	for i := 0; i < len(args); i++ {
 		switch flag := args[i]; flag {
+		case "--host":
+			if i+1 >= len(args) {
+				return errors.New("--host needs a value")
+			}
+			host = args[i+1]
+			i++
 		case "--since", "--before":
 			if i+1 >= len(args) {
 				return fmt.Errorf("%s needs a value", flag)
@@ -627,10 +636,14 @@ func cmdForget(args []string, stdout io.Writer) error {
 		}
 	}
 	switch {
+	case host != "" && (from != nil || to != nil):
+		return errors.New("--host removes by destination and --since/--before remove by time; pass one kind or the other")
+	case host != "":
+		return forgetHost(host, stdout)
 	case from != nil && to != nil:
 		return errors.New("--since and --before name opposite ends of the store's timeline; pass one or the other")
 	case from == nil && to == nil:
-		return errors.New("forget needs --since or --before <RFC3339 time or duration such as 24h>")
+		return errors.New("forget needs --since or --before <RFC3339 time or duration such as 24h>, or --host <hostname>")
 	}
 
 	st, err := openStore()
@@ -685,6 +698,8 @@ usage:
   rashomon report [--session S] [--json] [--redact] [--proxy-store PATH]
                                render declarations and coverage, as text for a
                                terminal or as JSON for a consumer
+  rashomon forget --host H       evict every call that named host H, and its
+                               baseline entry
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T
                                either way, leaving a coverage gap behind
@@ -799,4 +814,73 @@ func defaultProxyStore() string {
 		return ""
 	}
 	return filepath.Join(home, ".altrace", "observe", "causal.db")
+}
+
+// forgetHost removes every call that named a host, and the host's entry in the
+// project baseline.
+//
+// Both halves are required for the operation to mean anything. Removing the
+// records while the baseline still remembers the host would leave it suppressed
+// as "seen before" forever, with nothing left to explain why -- a deletion that
+// silently changes future reports is worse than no deletion.
+//
+// It does NOT delete from the proxy's store, and says so. That database is the
+// closed product's hash-chained audit record, opened read-only here, and
+// removing a row would break the chain it exists to provide. The gap record
+// carries the host, and the report reads it to keep the destination suppressed
+// from its view.
+func forgetHost(host string, stdout io.Writer) error {
+	st, err := openStore()
+	if err != nil {
+		return err
+	}
+	gaps, err := st.ForgetHost(host, time.Now())
+	if err != nil {
+		return err
+	}
+	total := 0
+	for _, g := range gaps {
+		total += g.RemovedRecords
+	}
+
+	// The baseline is keyed per project, and a forget is not told which project
+	// the caller meant, so every project that remembers the host loses it. That
+	// is the conservative direction: a host the user asked to forget must not
+	// survive in a baseline they did not think to name.
+	cleared, err := clearBaselines(st.Root(), host)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(stdout, "rashomon: forgot %d records naming %s across %d runs; "+
+		"%d gap records written; %d project baseline(s) cleared\n",
+		total, host, len(gaps), len(gaps), cleared)
+	fmt.Fprintln(stdout, "rashomon: the proxy's own records are not ours to delete "+
+		"(they are a hash-chained audit store, opened read-only), so the report "+
+		"suppresses this destination from its view rather than claiming the row is gone")
+	return nil
+}
+
+// clearBaselines removes a host from every project baseline in the store.
+func clearBaselines(root, host string) (int, error) {
+	dir := filepath.Join(root, "baseline")
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	var cleared int
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		n, err := baseline.ForgetFile(filepath.Join(dir, e.Name()), host)
+		if err != nil {
+			return cleared, err
+		}
+		cleared += n
+	}
+	return cleared, nil
 }
