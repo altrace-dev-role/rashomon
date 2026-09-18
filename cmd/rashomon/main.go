@@ -548,6 +548,7 @@ func statusHooks(stdout io.Writer) error {
 func cmdReport(args []string, stdout io.Writer) error {
 	sessionID := ""
 	asJSON := false
+	proxyStore := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--session":
@@ -556,18 +557,27 @@ func cmdReport(args []string, stdout io.Writer) error {
 			}
 			sessionID = args[i+1]
 			i++
+		case "--proxy-store":
+			if i+1 >= len(args) {
+				return errors.New("--proxy-store needs a value")
+			}
+			proxyStore = args[i+1]
+			i++
 		case "--json":
 			asJSON = true
 		default:
 			return fmt.Errorf("unknown argument %q", args[i])
 		}
 	}
+	if proxyStore == "" {
+		proxyStore = defaultProxyStore()
+	}
 
 	st, err := openStore()
 	if err != nil {
 		return err
 	}
-	rep, err := report.Build(st, sessionID, time.Now())
+	rep, err := report.Build(st, sessionID, time.Now(), report.WithProxyStore(proxyStore))
 	if err != nil {
 		return err
 	}
@@ -663,7 +673,7 @@ usage:
                                marker, whatever its id
   rashomon status                say what is installed and what the store holds,
                                writing nothing and creating no store
-  rashomon report [--session S] [--json]
+  rashomon report [--session S] [--json] [--proxy-store PATH]
                                render declarations and coverage, as text for a
                                terminal or as JSON for a consumer
   rashomon forget --since T      evict records recorded at or after T
@@ -761,4 +771,23 @@ func envPort(args []string) (int, error) {
 		}
 	}
 	return port, nil
+}
+
+// defaultProxyStore is where the observe-mode proxy writes its records.
+//
+// The path is a contract between two programs that ship separately: the proxy
+// derives <data dir>/causal.db from server.storage.root, and its observe
+// profile sets that root to ~/.altrace/observe. Hard-coding it here rather
+// than reading the proxy's config is deliberate -- this tool must not need to
+// parse the closed product's configuration to do its job, and --proxy-store
+// covers every operator who moved it.
+//
+// A home directory that cannot be resolved yields "", which the reader reports
+// as "not observed (no_proxy_store)" rather than guessing at a relative path.
+func defaultProxyStore() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".altrace", "observe", "causal.db")
 }

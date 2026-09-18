@@ -42,12 +42,19 @@ const (
 // seconds is one destination and four attempts, and a report that prints only
 // the larger number makes a retrying client look like a busy agent.
 type Destination struct {
-	Host      string   `json:"host"`
-	Attempts  int      `json:"attempts"`
-	Actions   []string `json:"actions"`
-	Reasons   []string `json:"reasons"`
-	FirstSeen string   `json:"first_seen"`
-	LastSeen  string   `json:"last_seen"`
+	Host string `json:"host"`
+	// Attempts counts only rows inside the window. InheritedAttempts counts the
+	// rest, separately, because a host can have both: the same destination
+	// reached by this session and by an earlier one through the same proxy.
+	// Folding them into one number would put another session's traffic into
+	// this session's headline count, and a host that appears in both is
+	// precisely the case where nobody would notice.
+	Attempts          int      `json:"attempts"`
+	InheritedAttempts int      `json:"inherited_attempts"`
+	Actions           []string `json:"actions"`
+	Reasons           []string `json:"reasons"`
+	FirstSeen         string   `json:"first_seen"`
+	LastSeen          string   `json:"last_seen"`
 	// Inherited marks a row from outside the watched window, or one carrying
 	// another session's run id. Such rows are excluded from accounting rather
 	// than dropped: "the proxy saw traffic that was not this session's" is a
@@ -275,16 +282,19 @@ func summarise(rows []row, w Window, path string) Observation {
 
 		d, exists := agg[h]
 		if !exists {
-			d = &Destination{Host: h, Inherited: inherited, Unreached: true}
+			d = &Destination{Host: h, Unreached: true}
 			agg[h] = d
 			hostOrder = append(hostOrder, h)
 		}
-		// A host is inherited only if EVERY row for it is. One in-window row
-		// makes the destination this session's.
-		if !inherited {
-			d.Inherited = false
+		// Counted on the side the row belongs to. A host is INHERITED only when
+		// every row for it is out of window; one in-window row makes the
+		// destination this session's, but it does not make the out-of-window
+		// rows this session's attempts.
+		if inherited {
+			d.InheritedAttempts++
+		} else {
+			d.Attempts++
 		}
-		d.Attempts++
 		d.Actions = addOnce(d.Actions, r.action)
 		d.Reasons = addOnce(d.Reasons, r.reason)
 		if o, failed := outcome[key]; failed {
@@ -308,13 +318,17 @@ func summarise(rows []row, w Window, path string) Observation {
 		d := agg[h]
 		sort.Strings(d.Actions)
 		sort.Strings(d.Reasons)
+		// Inherited is derived at the end rather than tracked: it means "this
+		// destination is not this session's at all", which is only knowable
+		// once every row for the host has been seen.
+		d.Inherited = d.Attempts == 0 && d.InheritedAttempts > 0
 		obs.Hosts = append(obs.Hosts, *d)
-		if d.Inherited {
-			obs.Inherited += d.Attempts
-			continue
-		}
+
+		obs.Inherited += d.InheritedAttempts
 		obs.Attempts += d.Attempts
-		obs.DistinctHosts++
+		if d.Attempts > 0 {
+			obs.DistinctHosts++
+		}
 	}
 	return obs
 }

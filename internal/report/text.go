@@ -47,6 +47,11 @@ func Text(w io.Writer, rep *Report) error {
 func writeSession(b *bytes.Buffer, sess Session) {
 	fmt.Fprintf(b, "\nsession %s\n", sess.SessionID)
 	fmt.Fprintf(b, "  install: %s\n", orUnknown(sess.InstallID))
+	// Destinations first, before the recorder's own accounting. The comparison
+	// is what the reader came for; the coverage and declaration counts are how
+	// far it can be trusted, and they read better after the finding than
+	// before it.
+	writeDestinations(b, sess.Destinations)
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
 	fmt.Fprintf(b, "  reasons: %s\n", list(sess.Coverage.Reasons))
 	fmt.Fprintf(b, "  start recorded: %s\n", yesNo(sess.Coverage.StartRecorded))
@@ -161,4 +166,57 @@ func orUnknown(s string) string {
 
 func stamp(ms int64) string {
 	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
+}
+
+// writeDestinations renders what the wire saw beside what was declared.
+//
+// The degraded case prints a REASON and never an empty list. "destinations:
+// not observed (no_proxy_store)" and "destinations: none" are different
+// statements, and printing the second when the first is true is the single
+// failure this whole product exists to avoid: silence read as zero.
+func writeDestinations(b *bytes.Buffer, d Destinations) {
+	if !d.Observed {
+		fmt.Fprintf(b, "  destinations: not observed (%s)\n", d.Reason)
+		fmt.Fprintf(b, "  proxy on path: %s -- %s\n", d.ProxyOnPath, d.ProxyNote)
+		return
+	}
+
+	fmt.Fprintf(b, "  destinations: %d distinct, %d attempts\n", d.DistinctHosts, d.Attempts)
+	fmt.Fprintf(b, "  proxy on path: %s -- %s\n", d.ProxyOnPath, d.ProxyNote)
+	if !d.WindowApplied {
+		// Stated whenever it is true. A window that was not enforced means
+		// another session's destinations may be in this list, and a reader who
+		// is not told that will attribute them to this session.
+		fmt.Fprintln(b, "  window: NOT applied (the proxy's timestamps could not be parsed);"+
+			" rows from other sessions may be included")
+	}
+	if d.Inherited > 0 {
+		fmt.Fprintf(b, "  inherited: %d attempts from outside this session's window, excluded from the counts above\n", d.Inherited)
+	}
+
+	// The finding.
+	if len(d.WireOnly) == 0 {
+		fmt.Fprintln(b, "  reached but never named: none")
+	} else {
+		fmt.Fprintf(b, "  reached but never named: %s\n", list(d.WireOnly))
+		fmt.Fprintln(b, "    (these hosts appear in no tool call's declared hosts;"+
+			" no transcript or hook log can produce this line)")
+	}
+
+	if len(d.ClientPlane) > 0 {
+		fmt.Fprintf(b, "  client plane: %s\n", list(d.ClientPlane))
+		fmt.Fprintln(b, "    (the client's own model traffic transits the same proxy;"+
+			" an agent request to the same host is indistinguishable)")
+	}
+
+	for _, h := range d.Hosts {
+		suffix := ""
+		if h.Inherited {
+			suffix = " [inherited]"
+		}
+		if h.Unreached {
+			suffix += " [allowed, never reached]"
+		}
+		fmt.Fprintf(b, "    %s: %d attempt(s)%s\n", h.Host, h.Attempts, suffix)
+	}
 }

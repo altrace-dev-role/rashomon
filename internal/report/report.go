@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
+	"github.com/altrace-dev-role/rashomon/internal/wire"
 )
 
 // Coverage reasons a report can add beyond those the run recorded.
@@ -140,6 +141,29 @@ type Session struct {
 	Transcripts    []Transcript `json:"transcripts"`
 	Gaps           []store.Gap  `json:"gaps"`
 	SkippedRecords int          `json:"skipped_records"`
+	// Destinations is what the proxy observed, reconciled against what this
+	// session declared. Always present: when no proxy store was configured it
+	// carries Observed false with a reason, because a report that simply
+	// omitted the section would read as "nothing was reached".
+	Destinations Destinations `json:"destinations"`
+}
+
+// Option configures Build.
+//
+// Variadic options rather than a wider signature, so a caller that does not
+// know about the proxy store keeps compiling and keeps getting an honest
+// "not observed" rather than being forced to pass a path it has no opinion
+// about.
+type Option func(*options)
+
+type options struct {
+	proxyStore string
+}
+
+// WithProxyStore names the proxy's causal store. An empty path means no store
+// was configured, which the destinations section reports as not observed.
+func WithProxyStore(path string) Option {
+	return func(o *options) { o.proxyStore = path }
 }
 
 // Report is the rendered output.
@@ -149,7 +173,11 @@ type Report struct {
 }
 
 // Build renders one session, or every session when sessionID is empty.
-func Build(st *store.Store, sessionID string, now time.Time) (*Report, error) {
+func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*Report, error) {
+	var cfg options
+	for _, o := range opts {
+		o(&cfg)
+	}
 	gaps, err := st.ReadGaps()
 	if err != nil {
 		return nil, err
@@ -193,6 +221,12 @@ func Build(st *store.Store, sessionID string, now time.Time) (*Report, error) {
 			return nil, err
 		}
 		sess := build(run)
+		// The destinations section is built per session, from the session's own
+		// window. Reading the store once per session rather than once per
+		// report is the cost of that: a window is a property of the run, and
+		// sharing one observation across sessions would attribute each
+		// session's destinations to all of them.
+		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, window(run)))
 		sess.Gaps = byDir[name]
 		if sess.Gaps == nil {
 			sess.Gaps = []store.Gap{}

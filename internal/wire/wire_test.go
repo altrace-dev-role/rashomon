@@ -242,6 +242,53 @@ func TestRead_RowsOutsideTheWindowAreInherited(t *testing.T) {
 	}
 }
 
+// TestRead_HostInAndOutOfWindowCountsOnlyTheInWindowRows is the case found by
+// running the real thing rather than by reading the code.
+//
+// The same proxy serves session after session, so a popular host — pypi.org,
+// registry.npmjs.org — very often has rows from an EARLIER session and rows
+// from this one. The destination is rightly not marked inherited, since this
+// session did reach it. The trap is the count: folding both sides into
+// attempts puts the earlier session's traffic into this session's headline
+// number, and a host that appears on both sides is exactly where nobody would
+// notice. The first end-to-end run reported "2 distinct, 4 attempts" for two
+// hosts reached twice each, and half of those attempts were another session's.
+func TestRead_HostInAndOutOfWindowCountsOnlyTheInWindowRows(t *testing.T) {
+	path := newStore(t, []fixtureRow{
+		// Earlier session, same proxy, same host.
+		{seq: 1, requestID: "old-1", ts: stamp(base.Add(-time.Hour), 1), action: "WARN", host: "pypi.org:443"},
+		{seq: 2, requestID: "old-2", ts: stamp(base.Add(-time.Hour), 2), action: "WARN", host: "pypi.org:443"},
+		// This session.
+		{seq: 3, requestID: "mine-1", ts: stamp(base.Add(time.Second), 3), action: "WARN", host: "pypi.org:443"},
+	})
+
+	obs := Read(path, Window{Start: base, End: base.Add(time.Minute)})
+
+	d, ok := find(obs, "pypi.org")
+	if !ok {
+		t.Fatalf("pypi.org missing: %+v", obs.Hosts)
+	}
+	if d.Inherited {
+		t.Error("the destination is marked inherited although this session reached it")
+	}
+	if d.Attempts != 1 {
+		t.Errorf("attempts = %d, want 1: only the in-window row is this session's", d.Attempts)
+	}
+	if d.InheritedAttempts != 2 {
+		t.Errorf("inherited_attempts = %d, want 2", d.InheritedAttempts)
+	}
+	if obs.Attempts != 1 {
+		t.Errorf("total attempts = %d, want 1. Counting the earlier session's rows here "+
+			"puts its traffic in this session's headline number.", obs.Attempts)
+	}
+	if obs.Inherited != 2 {
+		t.Errorf("total inherited = %d, want 2", obs.Inherited)
+	}
+	if obs.DistinctHosts != 1 {
+		t.Errorf("distinct = %d, want 1", obs.DistinctHosts)
+	}
+}
+
 // TestRead_ForeignRunIDIsInherited is the other ground, and it is decisive
 // whatever the clock says.
 func TestRead_ForeignRunIDIsInherited(t *testing.T) {
