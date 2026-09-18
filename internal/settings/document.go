@@ -126,6 +126,58 @@ func (d *Document) SetHookEntries(event string, entries []json.RawMessage) error
 	return nil
 }
 
+// RemoveHookEvent deletes one event key from the hooks object, and the hooks
+// object itself when that leaves it empty.
+//
+// Writing an empty array instead parses identically and READS differently, and
+// the difference is the whole promise detach makes. watch creates the hooks
+// object and one key per event it installs; a detach that only emptied them
+// left a hooks object and four event keys in a file that had none before, and
+// the file had to be repaired by hand. A user checks "as found" by looking at
+// the file, or at git diff on a dotfiles repository.
+//
+// Only a key emptied by the caller is removed. An event another tool owns keeps
+// its entries and its key, and an events object that still holds anything keeps
+// both -- tidying those would be editing settings nobody asked us to touch.
+func (d *Document) RemoveHookEvent(event string) error {
+	events, err := d.hookEvents()
+	if err != nil {
+		return err
+	}
+	kept := make([]member, 0, len(events))
+	for _, m := range events {
+		if m.key == event {
+			continue
+		}
+		kept = append(kept, m)
+	}
+	if len(kept) == len(events) {
+		// Not present. Nothing to remove, and nothing to rewrite: an
+		// unconditional rewrite here would reformat a hooks object this call was
+		// not asked to change.
+		return nil
+	}
+	h := d.find(hooksKey)
+	if h == nil {
+		return nil
+	}
+	if len(kept) == 0 {
+		d.removeMember(hooksKey)
+		return nil
+	}
+	h.raw = writeObject(kept, 1)
+	return nil
+}
+
+func (d *Document) removeMember(key string) {
+	for i := range d.members {
+		if d.members[i].key == key {
+			d.members = append(d.members[:i], d.members[i+1:]...)
+			return
+		}
+	}
+}
+
 func (d *Document) hookEvents() ([]member, error) {
 	h := d.find(hooksKey)
 	if h == nil || isNull(h.raw) {

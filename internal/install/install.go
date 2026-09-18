@@ -286,7 +286,16 @@ func RemoveIf(doc *settings.Document, match func(installID string) bool) (int, e
 		}
 
 		if removed > 0 {
-			if err := doc.SetHookEntries(event, out); err != nil {
+			// An event we emptied loses its key rather than keeping an empty
+			// array. watch creates the key, so leaving it behind means detach
+			// does not keep its own promise to leave everything else as found:
+			// on a file with no hooks at all, watch-then-detach left a hooks
+			// object and one empty key per installed event.
+			if len(out) == 0 {
+				if err := doc.RemoveHookEvent(event); err != nil {
+					return 0, err
+				}
+			} else if err := doc.SetHookEntries(event, out); err != nil {
 				return 0, err
 			}
 			total += removed

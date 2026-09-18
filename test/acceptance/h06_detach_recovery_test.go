@@ -227,3 +227,105 @@ func assertInstallEntries(e *env, id string, want int) {
 		}
 	}
 }
+
+// TestH06_DetachLeavesTheFileByteForByteAsFound is the strongest available form
+// of the promise detach makes in its own help text: "remove them, leaving
+// everything else as found".
+//
+// Byte equality rather than semantic equality, because the settings document is
+// a byte-preserving editor by design and because byte equality is what the user
+// checks: they look at the file, or at `git diff` on a dotfiles repository. A
+// residue that parses the same but reads differently still costs them a
+// diff they have to think about.
+//
+// FOUND THE HARD WAY. watch creates a hooks object and one key per event it
+// installs; detach removed its entries and left those keys behind as empty
+// arrays. On a file that had no hooks at all, watch-then-detach left four empty
+// event keys and a hooks object that were not there before, and the file had to
+// be repaired by hand.
+func TestH06_DetachLeavesTheFileByteForByteAsFound(t *testing.T) {
+	e := newEnv(t)
+
+	// A file with no hooks key at all, which is the shape that shows the residue.
+	original := []byte(`{
+  "env": {
+    "SOMETHING": "1"
+  },
+  "model": "opus"
+}
+`)
+	if err := os.WriteFile(e.settingsPath(), original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	watch := e.run("", nil, "watch")
+	if watch.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", watch.exitCode, watch.stderr)
+	}
+	installed, err := os.ReadFile(e.settingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(installed, original) {
+		t.Fatal("premise: watch did not change the file, so detach has nothing to restore")
+	}
+
+	detach := e.run("", nil, "detach")
+	if detach.exitCode != 0 {
+		t.Fatalf("detach: exit %d, stderr %q", detach.exitCode, detach.stderr)
+	}
+
+	after, err := os.ReadFile(e.settingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, original) {
+		t.Errorf("detach did not leave the file as found.\n--- before ---\n%s\n--- after ---\n%s",
+			original, after)
+	}
+}
+
+// TestH06_DetachKeepsAForeignHookEventIntact is the guard against the wrong fix.
+//
+// Removing empty keys must not become removing keys: an event another tool owns,
+// or an event whose array the user left empty themselves inside a hooks object
+// they wrote, is not ours to tidy. Only a hooks object we emptied completely
+// goes away with us.
+func TestH06_DetachKeepsAForeignHookEventIntact(t *testing.T) {
+	e := newEnv(t)
+	original := []byte(`{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/other-tool"
+          }
+        ]
+      }
+    ]
+  }
+}
+`)
+	if err := os.WriteFile(e.settingsPath(), original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if r := e.run("", nil, "watch"); r.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", r.exitCode, r.stderr)
+	}
+	if r := e.run("", nil, "detach"); r.exitCode != 0 {
+		t.Fatalf("detach: exit %d, stderr %q", r.exitCode, r.stderr)
+	}
+
+	after, err := os.ReadFile(e.settingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, original) {
+		t.Errorf("a file with a foreign hook was not left as found.\n--- before ---\n%s\n"+
+			"--- after ---\n%s", original, after)
+	}
+}
