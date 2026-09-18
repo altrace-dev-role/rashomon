@@ -47,10 +47,13 @@ func Text(w io.Writer, rep *Report) error {
 func writeSession(b *bytes.Buffer, sess Session) {
 	fmt.Fprintf(b, "\nsession %s\n", sess.SessionID)
 	fmt.Fprintf(b, "  install: %s\n", orUnknown(sess.InstallID))
-	// Destinations first, before the recorder's own accounting. The comparison
-	// is what the reader came for; the coverage and declaration counts are how
-	// far it can be trusted, and they read better after the finding than
-	// before it.
+	// The account-versus-record block first, then destinations, then the
+	// recorder's own accounting. The comparison is what the reader came for;
+	// coverage and the declaration counts are how far it can be trusted, and
+	// they read better after the finding than before it.
+	writeAccount(b, sess.Account)
+	writeSubagents(b, sess.Subagents)
+	writeSilentFailures(b, sess.SilentFailures)
 	writeDestinations(b, sess.Destinations)
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
 	fmt.Fprintf(b, "  reasons: %s\n", list(sess.Coverage.Reasons))
@@ -219,4 +222,75 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 		}
 		fmt.Fprintf(b, "    %s: %d attempt(s)%s\n", h.Host, h.Attempts, suffix)
 	}
+}
+
+// writeAccount renders the agent's own summary.
+//
+// It is quoted, on its own line, and marked when truncated, so a reader can see
+// that they are looking at the agent's words rather than the tool's. An
+// unreadable transcript renders "unknown" and not an empty quotation: the
+// second would read as an agent that said nothing.
+func writeAccount(b *bytes.Buffer, a Account) {
+	if !a.Available {
+		fmt.Fprintf(b, "  the agent's account: %s (no assistant message could be read)\n", unknown)
+		return
+	}
+	suffix := ""
+	if a.Truncated {
+		fmt.Fprintf(b, "  the agent's account (first %d characters):\n", accountLimit)
+		suffix = "..."
+	} else {
+		fmt.Fprintln(b, "  the agent's account:")
+	}
+	// Newlines are collapsed so a multi-line summary cannot be mistaken for
+	// the report's own structure.
+	fmt.Fprintf(b, "    %q%s\n", collapse(a.Text), suffix)
+}
+
+// writeSubagents renders what the main transcript never shows.
+func writeSubagents(b *bytes.Buffer, subs []SubagentSummary) {
+	if len(subs) == 0 {
+		fmt.Fprintln(b, "  subagents: none")
+		return
+	}
+	fmt.Fprintf(b, "  subagents: %d\n", len(subs))
+	for _, s := range subs {
+		fmt.Fprintf(b, "    %s (%s): %d declarations, %d executions, %d Bash\n",
+			s.AgentID, orUnknown(s.AgentType), s.Declarations, s.Executions, s.BashCalls)
+	}
+	fmt.Fprintln(b, "    (these calls do not appear in the main transcript)")
+}
+
+// writeSilentFailures renders the failure count beside the summary.
+//
+// The wording is a fact about text and stops there. It says how many calls
+// failed and which acknowledgement words are absent; it does not say the agent
+// concealed anything, because this program cannot know that. A test greps this
+// package for the words that would cross that line.
+func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
+	if sf.Unobserved > 0 {
+		fmt.Fprintf(b, "  outcome unobserved: %d call(s) recorded no ending\n", sf.Unobserved)
+	}
+	if sf.Failed == 0 {
+		fmt.Fprintln(b, "  failed calls: 0")
+		return
+	}
+	fmt.Fprintf(b, "  failed calls: %d\n", sf.Failed)
+	if !sf.FinalMessageAvailable {
+		fmt.Fprintln(b, "    the final message could not be read, so it was not compared")
+		return
+	}
+	if !sf.Fires {
+		fmt.Fprintln(b, "    the final message uses at least one failure word")
+		return
+	}
+	fmt.Fprintf(b, "    the final message contains none of these %d words: %s\n",
+		len(sf.AbsentWords), list(sf.AbsentWords))
+}
+
+// collapse turns a multi-line message into one line. The report's own
+// structure is line-based, so an agent's newline would otherwise look like a
+// field of the report.
+func collapse(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }

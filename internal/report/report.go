@@ -146,6 +146,17 @@ type Session struct {
 	// carries Observed false with a reason, because a report that simply
 	// omitted the section would read as "nothing was reached".
 	Destinations Destinations `json:"destinations"`
+
+	// Account is the agent's own summary, read from the transcript at render
+	// time and never stored. Subagents is what the main transcript never
+	// shows. SilentFailures sets the failure count against that summary.
+	//
+	// All three are always present, for the same reason Destinations is: a
+	// section that vanishes when it has nothing to say cannot be told apart
+	// from one that was never built.
+	Account        Account           `json:"account"`
+	Subagents      []SubagentSummary `json:"subagents"`
+	SilentFailures SilentFailures    `json:"silent_failures"`
 }
 
 // Option configures Build.
@@ -227,6 +238,9 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		// sharing one observation across sessions would attribute each
 		// session's destinations to all of them.
 		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, window(run)))
+		sess.Account = buildAccount(run)
+		sess.Subagents = buildSubagents(run)
+		sess.SilentFailures = buildSilentFailures(run, sess.Account)
 		sess.Gaps = byDir[name]
 		if sess.Gaps == nil {
 			sess.Gaps = []store.Gap{}
