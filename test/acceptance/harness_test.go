@@ -3,6 +3,7 @@ package acceptance
 import (
 	"bufio"
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 // Binaries under test. They are real compiled binaries, exec'd as subprocesses,
@@ -653,4 +656,66 @@ func (e *env) reportAll() []reportSession {
 		e.t.Fatalf("report output is not JSON: %v\n%s", err, res.stdout)
 	}
 	return rep.Sessions
+}
+
+// writeTranscript writes a transcript holding one assistant message, and
+// returns its path. Used by the redaction tests, which need the agent's own
+// summary to exist before they can check it is not shared.
+func (e *env) writeTranscript(t *testing.T, text string) string {
+	t.Helper()
+	path := filepath.Join(e.home, "transcript.jsonl")
+	body, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"role":    "assistant",
+			"content": []map[string]any{{"type": "text", "text": text}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(body, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// writeProxyStore builds a causal.db in the proxy's shape and returns its path.
+//
+// The timestamp is written the way the PROXY writes it -- Go's time.Time
+// String() rendering with the monotonic suffix attached -- because a fixture in
+// RFC 3339 would let these tests pass against a reader that cannot parse the
+// real thing.
+func (e *env) writeProxyStore(t *testing.T, hosts ...string) string {
+	t.Helper()
+	path := filepath.Join(e.home, "causal.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open proxy store: %v", err)
+	}
+	defer db.Close() //nolint:errcheck // the exec errors below are what matter
+
+	if _, err := db.Exec(`CREATE TABLE causal_records (
+		sequence_num INTEGER PRIMARY KEY,
+		request_id TEXT NOT NULL DEFAULT '',
+		run_id TEXT NOT NULL DEFAULT '',
+		timestamp DATETIME NOT NULL,
+		reason TEXT NOT NULL DEFAULT '',
+		action TEXT NOT NULL DEFAULT '',
+		target_host TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatalf("create proxy store: %v", err)
+	}
+	for i, h := range hosts {
+		ts := time.Now().Format("2006-01-02 15:04:05.999999999 -0700 MST") +
+			fmt.Sprintf(" m=+%d.000000000", i)
+		if _, err := db.Exec(
+			`INSERT INTO causal_records (sequence_num, request_id, timestamp, reason, action, target_host)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			i+1, fmt.Sprintf("req-%d", i), ts, "host_not_in_allowlist_observed", "WARN", h+":443",
+		); err != nil {
+			t.Fatalf("insert proxy row: %v", err)
+		}
+	}
+	return path
 }

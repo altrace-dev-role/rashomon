@@ -548,6 +548,7 @@ func statusHooks(stdout io.Writer) error {
 func cmdReport(args []string, stdout io.Writer) error {
 	sessionID := ""
 	asJSON := false
+	redact := false
 	proxyStore := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -565,6 +566,8 @@ func cmdReport(args []string, stdout io.Writer) error {
 			i++
 		case "--json":
 			asJSON = true
+		case "--redact":
+			redact = true
 		default:
 			return fmt.Errorf("unknown argument %q", args[i])
 		}
@@ -580,6 +583,12 @@ func cmdReport(args []string, stdout io.Writer) error {
 	rep, err := report.Build(st, sessionID, time.Now(), report.WithProxyStore(proxyStore))
 	if err != nil {
 		return err
+	}
+	if redact {
+		// Applied to the whole report before either renderer sees it, so the
+		// two forms cannot disagree about what was hidden and a caller cannot
+		// render the plain form from the same value by mistake.
+		rep = report.Redact(rep)
 	}
 	if !asJSON {
 		return report.Text(stdout, rep)
@@ -673,7 +682,7 @@ usage:
                                marker, whatever its id
   rashomon status                say what is installed and what the store holds,
                                writing nothing and creating no store
-  rashomon report [--session S] [--json] [--proxy-store PATH]
+  rashomon report [--session S] [--json] [--redact] [--proxy-store PATH]
                                render declarations and coverage, as text for a
                                terminal or as JSON for a consumer
   rashomon forget --since T      evict records recorded at or after T
