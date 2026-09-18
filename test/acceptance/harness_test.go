@@ -719,3 +719,49 @@ func (e *env) writeProxyStore(t *testing.T, hosts ...string) string {
 	}
 	return path
 }
+
+// writeFullTranscript writes a transcript that matches a recorded call: an
+// assistant tool_use block with the given id, a user tool_result answering it,
+// and a final assistant message.
+//
+// The accounting equation is checked per transcript, so a fixture whose
+// transcript names none of the recorded ids renders as a mismatch in both
+// directions -- which is correct behaviour and makes such a fixture useless for
+// testing the HEALTHY path. This is the shape a real session produces.
+func (e *env) writeFullTranscript(t *testing.T, toolUseID, final string) string {
+	t.Helper()
+	path := filepath.Join(e.home, "full-transcript.jsonl")
+
+	lines := []map[string]any{
+		{"message": map[string]any{
+			"role": "assistant",
+			"content": []map[string]any{
+				{"type": "tool_use", "id": toolUseID, "name": "Bash", "input": map[string]any{}},
+			},
+		}},
+		{"message": map[string]any{
+			"role": "user",
+			"content": []map[string]any{
+				{"type": "tool_result", "tool_use_id": toolUseID},
+			},
+		}},
+		{"message": map[string]any{
+			"role":    "assistant",
+			"content": []map[string]any{{"type": "text", "text": final}},
+		}},
+	}
+
+	var buf bytes.Buffer
+	for _, l := range lines {
+		body, err := json.Marshal(l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		buf.Write(body)
+		buf.WriteByte('\n')
+	}
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}

@@ -313,3 +313,80 @@ func contains(haystack, needle string) bool {
 		return false
 	})()
 }
+
+// TestUpdate_EstablishedIsAPropertyOfTheSessionNotTheRender is the other half of
+// TestUpdate_RerenderIsStable, which pinned the novel SET across renders and let
+// this flag through.
+//
+// Deciding it from whether the file existed makes it a property of the render:
+// the first render creates the file, so the second render of the SAME session
+// reports something different, and `report` -- which looks like a query --
+// changes its own answer by being run. Found by an acceptance test asserting
+// that two renders of one store agree.
+func TestUpdate_EstablishedIsAPropertyOfTheSessionNotTheRender(t *testing.T) {
+	root := t.TempDir()
+
+	first := Update(root, "/proj", "sess-1", t0, []string{"a.example"})
+	if !first.Established {
+		t.Fatal("premise: the first session in a project establishes the baseline")
+	}
+
+	again := Update(root, "/proj", "sess-1", t0, []string{"a.example"})
+	if !again.Established {
+		t.Error("re-rendering the establishing session reports the baseline as already " +
+			"established, so running report twice gives two different answers for one session")
+	}
+	if len(again.Novel) != 0 {
+		t.Errorf("again.Novel = %v; the establishing session has nothing to be novel "+
+			"against, in either render", again.Novel)
+	}
+}
+
+// TestUpdate_ALaterSessionDoesNotInheritEstablished guards the fix from the
+// obvious wrong version of itself: keying "established" on the file's contents
+// rather than on the session would make every session in the project report
+// that it established the baseline, and novelty would never fire again.
+func TestUpdate_ALaterSessionDoesNotInheritEstablished(t *testing.T) {
+	root := t.TempDir()
+	Update(root, "/proj", "sess-1", t0, []string{"a.example"})
+
+	later := Update(root, "/proj", "sess-2", t0.Add(time.Hour), []string{"a.example", "x.example"})
+
+	if later.Established {
+		t.Error("a later session reports that it established the baseline, which would " +
+			"suppress its novelty line")
+	}
+	if !reflect.DeepEqual(later.Novel, []string{"x.example"}) {
+		t.Errorf("later.Novel = %v, want [x.example]", later.Novel)
+	}
+}
+
+// TestUpdate_EstablishedSurvivesAPreFixBaselineFile. A baseline written before
+// the establishing session was recorded names nobody, and the safe reading is
+// that nobody established it: novelty is then computed normally rather than
+// suppressed for a session that cannot be identified as the first.
+func TestUpdate_EstablishedSurvivesAPreFixBaselineFile(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "baseline")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A v1 file with no establishing session, as the previous code wrote it.
+	body := `{"version":1,"project":"/proj","hosts":{"a.example":` +
+		`{"first_seen_session":"sess-old","first_seen_at_unix_ms":1}}}`
+	if err := os.WriteFile(filepath.Join(dir, fileName("/proj")), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	res := Update(root, "/proj", "sess-new", t0, []string{"x.example"})
+
+	if res.Err != nil {
+		t.Fatalf("a baseline from the previous version was rejected: %v", res.Err)
+	}
+	if res.Established {
+		t.Error("a session reports establishing a baseline that already existed")
+	}
+	if !reflect.DeepEqual(res.Novel, []string{"x.example"}) {
+		t.Errorf("novel = %v, want [x.example]: novelty must still be computed", res.Novel)
+	}
+}

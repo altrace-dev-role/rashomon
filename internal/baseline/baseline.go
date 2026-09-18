@@ -65,23 +65,43 @@ type entry struct {
 
 // File is one project's baseline.
 type File struct {
-	Version int              `json:"version"`
-	Project string           `json:"project"`
-	Hosts   map[string]entry `json:"hosts"`
+	Version int    `json:"version"`
+	Project string `json:"project"`
+	// EstablishedBySession is the session that created this file.
+	//
+	// Recorded rather than inferred, because "did this session establish the
+	// baseline" must be a property of the SESSION and not of the render. Deciding
+	// it from whether the file existed made the first render of a session differ
+	// from the second: the first created the file, so the second reported the
+	// baseline as pre-existing and every host the session had reached read as
+	// novel. A query that changes its own answer by being run is the worst shape
+	// available for an instrument.
+	//
+	// Empty on a file written before this field existed, which reads as "nobody
+	// established it" -- so novelty is computed normally rather than suppressed
+	// for a session that cannot be identified as the first. The field is additive
+	// and the version is unchanged, so such a file still loads.
+	EstablishedBySession string           `json:"established_by_session,omitempty"`
+	Hosts                map[string]entry `json:"hosts"`
 }
 
 // Result is what one session's render learned.
 type Result struct {
-	// Established is true when this render created the baseline. The first
+	// Established is true when THIS SESSION created the baseline. The first
 	// session in a project has no previous runs to be novel against, so every
 	// host it reached would otherwise be reported as new -- which is true and
 	// useless. The report says "baseline established (N hosts)" instead.
+	//
+	// It stays true on every later render of that session, which is what makes a
+	// re-render stable; see File.EstablishedBySession.
 	Established bool
 	// Novel are this session's hosts that no earlier session reached, minus the
 	// ubiquitous list. Sorted.
 	Novel []string
-	// Known is the size of the baseline after this session, which is what the
-	// established line reports.
+	// Known is the size of the baseline AFTER this session -- a property of the
+	// comparison at render time rather than of the session, and reported as such
+	// ("N known"). It grows as other sessions run; what does not change is which
+	// hosts this session owns.
 	Known int
 	// Path is the file consulted, for the report to name when it could not be
 	// read.
@@ -174,7 +194,10 @@ func Update(root, key, sessionID string, sessionStart time.Time, hosts []string)
 		res.Err = err
 		return res
 	}
-	res.Established = !existed
+	if !existed {
+		f.EstablishedBySession = sessionID
+	}
+	res.Established = f.EstablishedBySession != "" && f.EstablishedBySession == sessionID
 
 	stamp := sessionStart.UTC().UnixMilli()
 	for _, h := range hosts {

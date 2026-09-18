@@ -128,5 +128,6 @@ func BuildCoverage(st *store.Store, sessionID, phase, reason, cwd string, now ti
 		Reason:        nilIfEmpty(reason),
 		HookEntry:     res.HookEntry,
 		Probe:         res.Probe,
+		CWD:           cwd,
 	}
 }
