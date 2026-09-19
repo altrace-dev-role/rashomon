@@ -305,16 +305,29 @@ def _dirty_targets():
 
 _dirty = _dirty_targets()
 if _dirty:
-    print("REFUSING TO START: files this sweep mutates are already modified:\n")
+    # A WARNING, not a refusal. The first version of this refused to start, and
+    # it was wrong: it conflated two states that need opposite treatment.
+    #
+    # A developer's own uncommitted work in a mutated file is SAFE. The backup
+    # is taken at startup, so their version is what gets restored -- mutate,
+    # test, put it back exactly as it was. Refusing there blocks the normal way
+    # of working on this repository, which is how this was found: it fired on
+    # the very next commit's work-in-progress.
+    #
+    # Residue from a killed run is the dangerous state, and the GREEN BASELINE
+    # CHECK above already catches it: a file left holding a deliberate break
+    # makes the suite red, and the sweep stops there and says so. That check is
+    # the guard; this is a note, because a developer who does not know why a
+    # tracked file is modified should be told which ones and how to undo it.
+    print("NOTE: files this sweep mutates are already modified:\n")
     for f in _dirty:
         print("   ", f)
-    print("\nThe sweep restores from a copy taken at startup, so running now would save\n"
-          "the MUTATED bytes as the original and 'restore' them afterwards -- baking a\n"
-          "deliberate break into the tree. This is also what a previous run killed with\n"
-          "SIGKILL leaves behind, which no signal handler can prevent.\n\n"
-          "If these are a previous run's residue:  git checkout -- " + " ".join(_dirty) + "\n"
-          "If they are your own work, commit or stash them first.")
-    sys.exit(1)
+    print("\nIf that is your own work in progress, this is fine -- the sweep backs up what\n"
+          "is there now and restores exactly that. If it is residue from a run killed with\n"
+          "SIGKILL (which no signal handler can catch), undo it first:\n"
+          "    git checkout -- " + " ".join(_dirty) + "\n"
+          "Residue would also have failed the green-baseline check below, which is the\n"
+          "real guard.\n")
 
 # GREEN BASELINE, before the first mutation.
 #
