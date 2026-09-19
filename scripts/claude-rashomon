@@ -1,0 +1,31 @@
+#!/bin/sh
+# claude-rashomon -- start a Claude Code session with the rashomon recorder on.
+#
+# Runs `rashomon watch` (idempotent: one entry per install, and a re-run
+# refreshes a moved binary's path), then execs `claude` with every argument
+# passed through. Because watch runs before the session starts, the session
+# reports verified coverage.
+#
+# Install once:  ln -sf "$(pwd)/scripts/claude-rashomon" ~/.local/bin/claude-rashomon
+set -eu
+
+RASHOMON=""
+if command -v rashomon >/dev/null 2>&1; then
+	RASHOMON=$(command -v rashomon)
+elif [ -x "$HOME/.local/bin/rashomon" ]; then
+	RASHOMON="$HOME/.local/bin/rashomon"
+fi
+
+if [ -z "$RASHOMON" ]; then
+	echo "claude-rashomon: no rashomon binary on PATH or in ~/.local/bin" >&2
+	echo "claude-rashomon: from the rashomon repo:  go build -o ~/.local/bin/rashomon ./cmd/rashomon" >&2
+	exit 1
+fi
+
+# watch refusing (for example, hooks disabled by a managed setting) is not a
+# reason to withhold the session the user asked for -- say so and start anyway.
+if ! "$RASHOMON" watch >&2; then
+	echo "claude-rashomon: 'rashomon watch' refused; starting claude UNRECORDED" >&2
+fi
+
+exec claude "$@"

@@ -1,6 +1,6 @@
 ---
 name: rashomon
-description: 'Start recording what this Claude Code session asks to run. Use when the user says "rashomon", "start rashomon", "watch this session", "record my session", or asks to turn the recorder on. For reports use rashomon-report; to stop use rashomon-stop; for install state use rashomon-status.'
+description: 'Start recording what this Claude Code session asks to run. Use when the user says "rashomon", "start rashomon", "claude rashomon", "watch this session", "record my session", asks to turn the recorder on, or wants an easier way to launch recorded sessions. For reports use rashomon-report; to stop use rashomon-stop; for install state use rashomon-status.'
 ---
 
 Install the rashomon recorder so every tool call from now on is recorded as a
@@ -32,6 +32,16 @@ declaration (identifiers and shape only — never content).
      started after this install report verified coverage.
    - `/rashomon-report` renders what was recorded; `/rashomon-stop` removes
      the hooks and keeps the store.
+
+5. Offer the one-word launcher once, if it is not already on their PATH.
+   From the rashomon repo:
+
+       ln -sf "$(pwd)/scripts/claude-rashomon" ~/.local/bin/claude-rashomon
+
+   From then on `claude-rashomon` in any directory runs `watch` and starts
+   `claude` in one step, and because watch runs before the session starts,
+   those sessions report verified coverage. Extra arguments pass through to
+   `claude` unchanged.
 
 Do not edit `~/.claude/settings.json` by hand and do not install the hook
 entries yourself — `watch` is the only writer, and it preserves foreign
