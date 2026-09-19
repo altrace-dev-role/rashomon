@@ -241,6 +241,18 @@ m("B2 the reader stops accepting schema 3", "internal/store/record.go",
   "\treturn version == 1 || version == 2 || version == 3",
   "\treturn version == 1 || version == 2", "TestAcceptsAdmits")
 
+# Part 1 -- the in-window counters. Both mutations are the two ways the
+# distinction they exist to make can be lost silently: counting traffic that is
+# not this session's, and counting rows rather than folded requests. Neither
+# changes any existing number, so only a test written for them can catch either.
+m("P1 inherited rows count toward this session's reached/failed",
+  "internal/wire/wire.go",
+  "\t\tif !inherited {\n\t\t\tif reached {", "\t\tif true {\n\t\t\tif reached {",
+  "TestInWindow")
+m("P1 the counters are derived separately from Unreached", "internal/wire/wire.go",
+  "\t\t\td.Unreached = false\n\t\t\treached = true", "\t\t\td.Unreached = false",
+  "TestInWindow")
+
 # Re-anchored after the schema-3 bump reformatted the file. The mutation is
 # unchanged: remove a declared key and confirm the allowlist test notices.
 m("the store schema drops a record's key", "docs/store-schema.json",

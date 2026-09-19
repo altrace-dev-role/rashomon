@@ -77,6 +77,19 @@ type Destination struct {
 	// report that cannot tell them apart will assert a host was contacted when
 	// the connection was refused.
 	Unreached bool `json:"unreached"`
+	// InWindowReached and InWindowFailed answer the same question as Unreached
+	// -- did a connection actually happen -- but about THIS SESSION rather than
+	// about the host, and Unreached cannot be reused for it: any row that is
+	// not a dial failure clears it, including a row from outside the window. So
+	// a host reached yesterday and refused today reads as reached, which is the
+	// right answer for the destinations section and the wrong one for a link in
+	// a chain.
+	//
+	// They count FOLDED REQUESTS, not rows, for the same reason Attempts does:
+	// one attempt writes up to two rows and counting rows reports a single
+	// refused attempt as two.
+	InWindowReached int `json:"in_window_reached"`
+	InWindowFailed  int `json:"in_window_failed"`
 }
 
 // Observation is what one session's window yields.
@@ -332,6 +345,7 @@ func summarise(rows []row, w Window, path string) Observation {
 		}
 		d.Actions = addOnce(d.Actions, r.action)
 		d.Reasons = addOnce(d.Reasons, r.reason)
+		reached := false
 		switch o, failed := outcome[key]; {
 		case failed:
 			d.Reasons = addOnce(d.Reasons, o)
@@ -339,6 +353,19 @@ func summarise(rows []row, w Window, path string) Observation {
 			d.Reasons = addOnce(d.Reasons, hostOutcome[h])
 		default:
 			d.Unreached = false
+			reached = true
+		}
+		// Derived from the same branch that clears Unreached rather than from a
+		// second test of the same condition. The two answer one question at
+		// different scopes, and a chain link saying "reached" above a
+		// destination line saying "never reached" is exactly what a reader
+		// cannot resolve. One predicate, read twice.
+		if !inherited {
+			if reached {
+				d.InWindowReached++
+			} else {
+				d.InWindowFailed++
+			}
 		}
 		// Timestamps from IN-WINDOW rows only. The attempt counts are kept apart
 		// so another session's traffic cannot enter this session's numbers, and
