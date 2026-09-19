@@ -56,13 +56,42 @@ reports honestly when it is absent.
   reads; it writes nothing and creates no store — not even the store it is
   reporting on, because a command whose whole answer may be "nothing is
   installed here" must not be the command that installs something.
-- `rashomon report [--session S] [--json] [--redact] [--proxy-store PATH]` —
+- `rashomon report [--session S] [--json] [--redact] [--chain] [--proxy-store PATH]` —
   render declarations, executions and coverage as text for a terminal, or as
   JSON for a consumer. What is null in the JSON reads as `unknown` in the text
   — or `not read` for the counts of a transcript that could not be read — and
   never as `0`. The accounting equation is rendered once per transcript the
   run's declarations named, because a nested `claude -p` writes its own
   transcript under the parent's session id.
+
+  Beside coverage and the accounting equation, a session report carries
+  `failed calls: N` (calls that ended non-zero, set against what the agent's
+  own final message said about them — a call that failed while the summary
+  mentioned none is the line worth reading), `denied by user` for the calls the
+  transcript says the user refused, `by tool` and `by label` counts, and
+  `subagents` when any call ran inside one.
+
+  `--chain` lists the calls under each prompt, which is the view that answers
+  "what did this session actually do". Each call renders its `seq`, its tool,
+  what it turned out to be, how it ended, and the hosts it named with the state
+  of each:
+
+      prompt p2
+        13  Bash (ssh, network)  ok  ssh: prod.example.com (not observable)
+        19  Bash (rm, write)  denied by user
+        23  WebFetch (network)  no execution record  -> docs.python.org not observed
+
+  A chain is the calls sharing one `(transcript_path, prompt_id)`, ordered by
+  `seq`. Calls that belong to no prompt — recorded before the first input, or
+  carrying no transcript path — render in their own groups rather than
+  vanishing. The default text report carries a `chains: N` line so that a view
+  nobody knows exists is not the same as one never built; JSON always carries
+  the full `chains` object whether or not the flag was given.
+
+  A host's state on a link is that host's state across the whole session, not
+  proof that this particular call reached it. The proxy join is by time window,
+  so nothing here attributes a row to a call, and the section says so in its
+  own header.
 
   The destinations section is rendered whenever a proxy store can be read.
   With no flag, `report` looks for `~/.altrace/observe/causal.db`, which is
@@ -152,6 +181,20 @@ Or clone and build:
 is the one to use and will resolve to it.
 
 A Homebrew formula follows the first release.
+
+WINDOWS IS NOT USABLE YET, AND THE ARCHIVES DO NOT SAY SO. The release builds
+`windows/amd64` and `windows/arm64`, but the hook command line `watch` writes
+is quoted for a POSIX shell, so a Windows executable path comes out wrapped in
+apostrophes:
+
+    'C:\Users\alice\go\bin\rashomon.exe' hook --install 0123...
+
+`cmd.exe` does not honour those, looks for a program with that literal name,
+and fails — on every tool call, silently, because a hook that cannot start
+records nothing rather than reporting an error. `watch` will appear to
+succeed. Until the quoting is fixed, treat the Windows archives as
+unsupported. `internal/install/windows_quoting_test.go` pins the behaviour so
+this paragraph cannot outlive it.
 
 INSTALL FROM A STABLE LOCATION. `watch` writes the running executable's
 ABSOLUTE PATH into `~/.claude/settings.json`, and Claude Code executes that
@@ -309,6 +352,21 @@ comparison is "what did it say it would reach" against "what did the wire
 see", and a digest cannot be joined against a proxy's rows. Argument values,
 command strings, prompts and responses are not persisted.
 
+A declaration also carries `file_label`: one value from a closed vocabulary
+saying what the file the call named LOOKS LIKE, derived at hook time from the
+path's basename and suffix and nothing else. The vocabulary is `ssh-key`,
+`credential-shaped`, `cloud-config`, `env-file`, `certificate`, `none` and
+`unknown`, and the report counts them per session under `by label`.
+
+The path itself is never stored, and there are three different answers, not
+two. Null means the tool names no file, so nobody looked. `none` means a real
+path was read and matched no row. `unknown` means a path could not be read at
+all — absent, empty, or not a string. A label is not a finding: it says what
+the path looks like, never what the call did to it, and nothing renders it
+with an adjective. `Bash` gets no label, because extracting a file target from
+a command line is a guess, and a guess wearing a closed vocabulary's clothes
+is worse than no answer.
+
 The derived shape is `program`, `verb_class`, `argc` and `digest`; the record
 that carries it carries `schema_version`. A command that will not tokenize records `argc: null`, never
 `0` — zero is a count, and in that case we do not have one. `digest` is an HMAC
@@ -382,9 +440,16 @@ the tool finished and the recorder did not fire or did not land — and it adds
 `execution_mismatch` to the run's coverage reasons.
 
 `declared_without_result` names the declared ids the transcript holds no
-`tool_result` for. That is not a coverage failure. It is a denial, a tool
-error, or a transcript that has not caught up, and it is never to be rendered
-as a count of denials.
+`tool_result` for. That is not a coverage failure. It is a tool error or a
+transcript that has not caught up, and it is never to be rendered as a count
+of denials.
+
+Denials are not in that list and have not been since the denial record landed:
+`denied_by_user` is its own list, built from what the transcript says outright
+rather than inferred from an absence. The distinction is the point. An id with
+no result is one the tool has no answer for; an id under `denied_by_user` is
+one the user refused. Reading the first as the second is the mistake this
+section exists to prevent, and for a while this paragraph invited it.
 
 Both transcript lists are `null` rather than empty when the transcript could
 not be read, under the same rule as every count beside them: "no results" and
