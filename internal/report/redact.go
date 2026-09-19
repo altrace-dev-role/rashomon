@@ -1,6 +1,7 @@
 package report
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
@@ -24,19 +25,25 @@ import (
 
 // redactedHostLen is how much of the digest is kept.
 //
-// Eight hex characters is 32 bits. That is NOT a privacy boundary and is not
-// meant to be one: anyone holding a candidate hostname can hash it and compare,
-// which is unavoidable for any scheme that keeps equal hosts equal. Its job is
-// to be short enough to read and long enough that two hosts in one report do
-// not collide. Treating it as secrecy against a determined reader would be the
-// dangerous misreading, which is why it is documented here and in the README.
+// Eight hex characters is 32 bits, and the digest is now an HMAC under the
+// per-install key rather than a bare hash. That is the difference between a
+// recipient recovering every hostname and a recipient recovering none: the
+// space of hostnames is tiny and guessable, so an UNKEYED digest was a
+// dictionary lookup -- sha256("pypi.org")[:8] is a4aa2ac2, which is what this
+// function used to print. Without the key, a candidate cannot be tested at all.
 //
-// An earlier version of this comment said the limitation was also stated in a
-// "rendered legend". There is no legend: nothing in the redacted output says
-// the digest is unkeyed, so the README is the only place a reader is told.
-// Putting one line in the redacted render would be better, since the render is
-// the artifact that gets shared and the README is not.
+// What 32 bits still costs: two hosts in one report can collide (birthday, so
+// it becomes likely in the tens of thousands), and the last label is kept in
+// clear on purpose. Neither is secrecy against someone holding the key --
+// anyone who can read the store can compute these. The legend in the redacted
+// render says so, because the render is the artifact that gets shared and the
+// README is not.
 const redactedHostLen = 8
+
+// redactDomain separates this digest from every other use of the install key.
+// store.HostDigest uses "forget-host\x00" for gap records; reusing it here
+// would make a shared report's digests testable against a store's gaps.
+const redactDomain = "redact\x00"
 
 // redactHost renders a hostname as a digest plus its public suffix.
 //
@@ -51,12 +58,24 @@ const redactedHostLen = 8
 // digest plus its last octet. Doing it properly needs the PSL, which is a
 // dependency and a data file that goes stale; the last label is honest about
 // what it is and never reveals more than a true PSL lookup would.
-func redactHost(h string) string {
+func redactHost(h string, key []byte) string {
 	if h == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(h))
-	digest := hex.EncodeToString(sum[:])[:redactedHostLen]
+	// No key means no store, which means no hosts -- so this is unreachable in
+	// practice. It says so rather than falling back to an unkeyed hash, because
+	// a silent fall back to the exact primitive being removed is how a fix
+	// becomes a regression nobody notices.
+	if len(key) == 0 {
+		return "[redacted: no install key available to digest with]"
+	}
+	mac := hmac.New(sha256.New, key)
+	// Domain separator, and NOT the one store.HostDigest uses. The same key
+	// serves both, so without separation a shared report would carry a token
+	// that can be tested directly against a store's gap records.
+	mac.Write([]byte(redactDomain))
+	mac.Write([]byte(h))
+	digest := hex.EncodeToString(mac.Sum(nil))[:redactedHostLen]
 
 	// A bracketed IPv6 literal has no meaningful suffix to keep, and its last
 	// hextet is not one -- it is part of the address.
@@ -71,13 +90,13 @@ func redactHost(h string) string {
 }
 
 // redactList redacts a list of hostnames, preserving order.
-func redactList(hosts []string) []string {
+func redactList(hosts []string, key []byte) []string {
 	if len(hosts) == 0 {
 		return hosts
 	}
 	out := make([]string, len(hosts))
 	for i, h := range hosts {
-		out[i] = redactHost(h)
+		out[i] = redactHost(h, key)
 	}
 	return out
 }
@@ -93,30 +112,34 @@ func redactList(hosts []string) []string {
 // nobody adds it here, which would leak one host into an otherwise redacted
 // report. A test walks the rendered output for the plain hostnames rather than
 // checking the fields this function happens to know about.
-func Redact(rep *Report) *Report {
+func Redact(rep *Report, key []byte) *Report {
 	if rep == nil {
 		return nil
 	}
 	out := *rep
+	// The report says of itself that it is redacted, so the renderer can carry
+	// the legend and a JSON consumer is not left inferring it from the shape of
+	// the hostnames.
+	out.Redacted = true
 	out.Sessions = make([]Session, len(rep.Sessions))
 	for i, sess := range rep.Sessions {
 		s := sess
 		d := sess.Destinations
 
-		d.WireOnly = redactList(d.WireOnly)
-		d.ClientPlane = redactList(d.ClientPlane)
-		d.DeclaredNotObserved = redactList(d.DeclaredNotObserved)
-		d.NotObservable = redactList(d.NotObservable)
+		d.WireOnly = redactList(d.WireOnly, key)
+		d.ClientPlane = redactList(d.ClientPlane, key)
+		d.DeclaredNotObserved = redactList(d.DeclaredNotObserved, key)
+		d.NotObservable = redactList(d.NotObservable, key)
 
 		hosts := make([]wire.Destination, 0, len(d.Hosts))
 		for _, h := range d.Hosts {
-			h.Host = redactHost(h.Host)
+			h.Host = redactHost(h.Host, key)
 			hosts = append(hosts, h)
 		}
 		d.Hosts = hosts
 
 		n := d.Novelty
-		n.Hosts = redactList(n.Hosts)
+		n.Hosts = redactList(n.Hosts, key)
 		d.Novelty = n
 
 		s.Destinations = d
@@ -133,14 +156,76 @@ func Redact(rep *Report) *Report {
 		// customer's name.
 		ts := make([]Transcript, len(sess.Transcripts))
 		for j, t := range sess.Transcripts {
-			t.Path = redactHost(t.Path)
+			t.Path = redactHost(t.Path, key)
 			ts[j] = t
 		}
 		s.Transcripts = ts
+		s.Chains = redactChains(sess.Chains, key)
 
 		out.Sessions[i] = s
 	}
 	return &out
+}
+
+// redactChains digests the names in the causal view.
+//
+// EVERY LEVEL IS REBUILT, and that is the whole substance of this function.
+// Redact returns a new report so the caller can still render the original --
+// `rashomon report --redact` and a plain `report` are the same code path with a
+// different flag -- but Go's value copy of a struct shares its slices. So
+// assigning into `chain.Links[j].Hosts[k].Host` through a shallow copy writes
+// the digest into the ORIGINAL report's backing array: the unredacted render
+// would then print digests, and, far worse for a function whose users are
+// deciding what to send someone, a second render of the same in-memory report
+// would look correctly redacted while sharing state with an object the caller
+// believes is untouched.
+//
+// Three levels of slice, three allocations. The transcript path is digested
+// with the same keyed helper the Transcript section uses -- one path, not a
+// second one that could drift from it.
+func redactChains(c Chains, key []byte) Chains {
+	out := Chains{
+		Prompts:      make([]Chain, 0, len(c.Prompts)),
+		Unattributed: redactLinks(c.Unattributed, key),
+		Dropped:      redactLinks(c.Dropped, key),
+	}
+	for _, chain := range c.Prompts {
+		ch := chain
+		ch.TranscriptPath = redactHost(chain.TranscriptPath, key)
+		ch.Links = redactLinks(chain.Links, key)
+		out.Prompts = append(out.Prompts, ch)
+	}
+	return out
+}
+
+// redactLinks rebuilds a link slice and every name-bearing slice inside it.
+//
+// Hosts AND SSHHosts: an ssh host is a hostname like any other, and it is the
+// one most likely to be an internal name -- the deploy target, the bastion --
+// so leaving it in clear because it sits in a different field would redact the
+// public names and publish the private ones.
+func redactLinks(links []Link, key []byte) []Link {
+	out := make([]Link, 0, len(links))
+	for _, link := range links {
+		l := link
+		l.Hosts = make([]LinkHost, 0, len(link.Hosts))
+		for _, h := range link.Hosts {
+			// The state is carried through untouched: it is a verdict, not a
+			// name, and it is the only thing left worth reading.
+			l.Hosts = append(l.Hosts, LinkHost{Host: redactHost(h.Host, key), State: h.State})
+		}
+		l.SSHHosts = make([]string, 0, len(link.SSHHosts))
+		for _, h := range link.SSHHosts {
+			l.SSHHosts = append(l.SSHHosts, redactHost(h, key))
+		}
+		// Rebuilt although it holds no names: the whole point of this function
+		// is that the copy shares no backing array with the original, and a
+		// slice left aliased because today's contents look harmless is the
+		// aliasing bug waiting for someone to put a name in it.
+		l.Outcomes = append([]string{}, link.Outcomes...)
+		out = append(out, l)
+	}
+	return out
 }
 
 // accountRedacted is what stands in for the agent's summary in a shared

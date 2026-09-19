@@ -8,7 +8,9 @@ red. Every file is restored afterwards, whatever happens.
 
 Run from the module root:  python3 test/mutation/sweep.py
 """
+import os
 import pathlib
+import signal
 import subprocess
 import sys
 
@@ -101,6 +103,29 @@ m("H-20 post coverage resolves the recorder's entry instead of its own", "intern
   "\tif phase == store.PhasePost {", "\tif false {", "TestH20_PostCoverageReadsItsOwnEntry")
 m("H-20 the report ignores tool_result blocks", "internal/report/transcript.go",
   "\t\t\tcase b.Type == \"tool_result\" && b.ToolUseID != \"\":", "\t\t\tcase false:", "TestH20_ExecutionAccounting")
+# B3 -- keyed redaction. Both halves: the key itself, and the domain separator
+# that keeps this digest from colliding with the one forget --host stores.
+m("B3 redaction falls back to an unkeyed hash", "internal/report/redact.go",
+  "\tmac := hmac.New(sha256.New, key)", "\tmac := hmac.New(sha256.New, nil)",
+  "TestRedact_")
+m("B3 redaction reuses the forget-host domain separator", "internal/report/redact.go",
+  '\tmac.Write([]byte(redactDomain))', '\tmac.Write([]byte("forget-host\\x00"))',
+  "TestRedact_")
+
+# H-30 -- denials. Both halves of the conjunction get a mutation, because each
+# is wrong in its own direction: dropping is_error turns any output that quotes
+# the sentence into a denial (hiding a real execution), and dropping the prefix
+# turns every failed command into one.
+m("H-30 a denial is recognised on the prefix alone, without is_error", "internal/report/transcript.go",
+  "\treturn isError && strings.HasPrefix(text, deniedPrefix)",
+  "\treturn strings.HasPrefix(text, deniedPrefix)", "TestTranscript_|TestH30")
+m("H-30 every failed call is treated as a denial", "internal/report/transcript.go",
+  "\treturn isError && strings.HasPrefix(text, deniedPrefix)",
+  "\treturn isError", "TestTranscript_|TestH30")
+m("H-30 denials are counted as results again", "internal/report/transcript.go",
+  "\t\t\t\tif isDenial(b.IsError, resultText(b.Content)) {\n\t\t\t\t\tdenied[b.ToolUseID] = true\n\t\t\t\t\tcontinue\n\t\t\t\t}\n",
+  "\t\t\t\tif isDenial(b.IsError, resultText(b.Content)) {\n\t\t\t\t\tdenied[b.ToolUseID] = true\n\t\t\t\t}\n",
+  "TestH30")
 m("H-20 a result with no execution record is not a coverage failure", "internal/report/report.go",
   "\t\tif t.Readable && len(t.ExecutedButUnrecorded) > 0 {\n\t\t\tsess.Coverage.add(ReasonExecutionMismatch)\n\t\t}\n", "",
   "TestH20_ExecutionAccounting")
@@ -197,16 +222,116 @@ m("status does not name the other installs sharing the file", "cmd/rashomon/main
 m("status does not resolve the layer that disabled hooks", "cmd/rashomon/main.go",
   "\tcase decision.Disabled:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)",
   "\tcase false:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)", "TestStatus_")
+# B9 -- naming the rewritten calls. The wording split is the correctness half:
+# shape.Derive digests the whole input for every tool but Bash, so calling a
+# non-Bash difference a changed COMMAND is false.
+m("B9 every rewritten call is described as a command", "internal/report/text.go",
+  '\t\twhat := "input changed"\n\t\tif r.ToolName == "Bash" {\n\t\t\twhat = "command changed"\n\t\t}',
+  '\t\twhat := "command changed"', "TestRewritten")
+m("B9 the count and the rows are computed separately", "internal/report/destinations.go",
+  "\treturn len(rewrittenCalls(run))", "\treturn len(rewrittenCalls(run)) + 1", "TestRewritten|TestWireOnly")
+
+# B2 -- the version gate itself. Putting a schema-3 field in the TOP-LEVEL
+# required is the tempting edit and it invalidates every record already on
+# disk, so it gets its own mutation.
+m("B2 a schema-3 field is required at every version", "docs/store-schema.json",
+  '        "tool_name",\n        "shape",\n', '        "tool_name",\n        "shape",\n        "host_source",\n',
+  "TestSchema3|TestStoreSchema")
+m("B2 the reader stops accepting schema 3", "internal/store/record.go",
+  "\treturn version == 1 || version == 2 || version == 3",
+  "\treturn version == 1 || version == 2", "TestAcceptsAdmits")
+
+# Part 1 -- the in-window counters. Both mutations are the two ways the
+# distinction they exist to make can be lost silently: counting traffic that is
+# not this session's, and counting rows rather than folded requests. Neither
+# changes any existing number, so only a test written for them can catch either.
+m("P1 inherited rows count toward this session's reached/failed",
+  "internal/wire/wire.go",
+  "\t\tif !inherited {\n\t\t\tif reached {", "\t\tif true {\n\t\t\tif reached {",
+  "TestInWindow")
+m("P1 the counters are derived separately from Unreached", "internal/wire/wire.go",
+  "\t\t\td.Unreached = false\n\t\t\treached = true", "\t\t\td.Unreached = false",
+  "TestInWindow")
+
+# Part 1 -- the chain view. Each of these is a way the view keeps rendering
+# while asserting something the store does not support.
+m("P1 chains are keyed on the prompt id alone", "internal/report/chains.go",
+  "\t\tk := key{transcript: d.TranscriptPath, prompt: *d.PromptID}",
+  "\t\tk := key{prompt: *d.PromptID}", "TestChains")
+m("P1 links are left in store order", "internal/report/chains.go",
+  "\t\tsort.SliceStable(c.Links, func(i, j int) bool { return c.Links[i].Seq < c.Links[j].Seq })",
+  "", "TestChains")
+m("P1 an unattributable window still yields host verdicts", "internal/report/chains.go",
+  "\tif !dests.WindowApplied {\n\t\treturn LinkUnknown\n\t}\n", "", "TestChains|TestH31")
+m("P1 a denial reads as a missing execution record", "internal/report/chains.go",
+  "\t\tif denied[id] {\n\t\t\treturn LinkOutcomeDenied, []string{}, 0\n\t\t}\n", "",
+  "TestChains|TestH31")
+# The aliasing one. It is the reason redactChains rebuilds three slices rather
+# than copying the struct, and a shallow copy compiles and renders correctly --
+# the damage is entirely to the ORIGINAL report the caller still holds.
+# The notices union. CI found this one: the linked set is platform-dependent,
+# so a host-only check is wrong in the stale direction on every platform.
+# Pinned to windows rather than "drop the env", because dropping it is a
+# MACHINE-DEPENDENT break: a darwin host links a superset of every platform, so
+# removing the override changes nothing there and the mutation reads as
+# undetected on the developer's machine while being detected in Linux CI. A
+# mutation whose verdict depends on who runs it is not evidence. Windows is the
+# one platform that lacks a module another links (google/uuid), so pinning to it
+# collapses the union everywhere.
+m("the notices union collapses to one platform", "test/acceptance/notices_test.go",
+  "\t\tcmd.Env = append(os.Environ(), \"GOOS=\"+p.goos, \"GOARCH=\"+p.goarch)",
+  "\t\tcmd.Env = append(os.Environ(), \"GOOS=windows\", \"GOARCH=\"+p.goarch)",
+  "TestThirdPartyNotices")
+m("the release matrix drops a shipped platform", "test/acceptance/notices_test.go",
+  "\t{\"windows\", \"amd64\"}, {\"windows\", \"arm64\"},", "", "TestThirdPartyNotices")
+m("P1 a forgotten host is dropped instead of named", "internal/report/chains.go",
+  "\tif forgotten != nil && forgotten(h) {\n\t\treturn LinkForgotten\n\t}\n", "", "TestChains|TestH31")
+m("P1 loopback reads as a finding", "internal/report/chains.go",
+  "\tif loopbackHosts[h] {\n\t\treturn LinkLoopback\n\t}\n", "", "TestChains|TestH31")
+m("P1 client plane is re-derived instead of read from the view",
+  "internal/report/chains.go",
+  "\tfor _, c := range dests.ClientPlane {\n\t\tif c == h {\n\t\t\treturn LinkClientPlane\n\t\t}\n\t}\n",
+  "\tif clientPlaneHosts[h] {\n\t\treturn LinkClientPlane\n\t}\n", "TestChains")
+m("P1 the structural states collapse under the window gate",
+  "internal/report/chains.go",
+  "\tif forgotten != nil && forgotten(h) {", "\tif !dests.WindowApplied {\n\t\treturn LinkUnknown\n\t}\n\tif forgotten != nil && forgotten(h) {",
+  "TestChains")
+m("P1 the later slice index wins over the higher seq", "internal/report/chains.go",
+  "\t\t\treturn execSeq(recs[i]) < execSeq(recs[j])", "\t\t\treturn false", "TestChains")
+m("P1 a record with no seq outranks one that has a position",
+  "internal/report/chains.go", "\t\treturn -1", "\t\treturn 1<<62", "TestChains")
+m("P1 the second execution record is not reported", "internal/report/chains.go",
+  "\treturn all[len(all)-1], all, len(recs)", "\treturn all[len(all)-1], all[:1], 1", "TestChains")
+m("P1 unattributed calls lose their ids", "internal/report/chains.go",
+  "\t\t\tout.Unattributed = append(out.Unattributed,\n\t\t\t\tbuildLink(d, executed, denied, state, dests, forgotten))\n\t\t\tcontinue",
+  "\t\t\tcontinue", "TestChains|TestH31")
+m("P1 dropped declarations vanish", "internal/report/chains.go",
+  "\tfor _, id := range run.Dropped() {", "\tfor _, id := range []string{} {", "TestChains")
+m("P1 ssh hosts are joined into the observable list", "internal/report/chains.go",
+  "\tl.SSHHosts = append(l.SSHHosts, d.SSHHosts...)", "", "TestChains|TestH31")
+m("P1 redaction leaves ssh hosts in clear", "internal/report/redact.go",
+  "\t\tfor _, h := range link.SSHHosts {\n\t\t\tl.SSHHosts = append(l.SSHHosts, redactHost(h, key))\n\t\t}",
+  "\t\tl.SSHHosts = append(l.SSHHosts, link.SSHHosts...)", "TestRedact|TestH31")
+m("P1 the chain count hides behind the flag too", "internal/report/text.go",
+  '\tfmt.Fprintf(b, "  chains: %d\\n", len(c.Prompts))', "", "TestH31|TestChains")
+m("P1 the chain flag is inverted", "cmd/rashomon/main.go",
+  "\t\tif chain {\n\t\t\topts = append(opts, report.WithChain())",
+  "\t\tif !chain {\n\t\t\topts = append(opts, report.WithChain())", "TestH31")
+m("P1 redaction writes through to the unredacted report", "internal/report/redact.go",
+  "\t\tl.Hosts = make([]LinkHost, 0, len(link.Hosts))\n\t\tfor _, h := range link.Hosts {\n\t\t\t// The state is carried through untouched: it is a verdict, not a\n\t\t\t// name, and it is the only thing left worth reading.\n\t\t\tl.Hosts = append(l.Hosts, LinkHost{Host: redactHost(h.Host, key), State: h.State})\n\t\t}",
+  "\t\tfor k := range l.Hosts {\n\t\t\tl.Hosts[k].Host = redactHost(l.Hosts[k].Host, key)\n\t\t}",
+  "TestRedactChains")
+
+# Re-anchored after the schema-3 bump reformatted the file. The mutation is
+# unchanged: remove a declared key and confirm the allowlist test notices.
 m("the store schema drops a record's key", "docs/store-schema.json",
-  "        \"agent_type\": {\n          \"description\": \"Null outside a subagent call.\",\n          \"type\": [\"string\", \"null\"]\n        },\n",
-  "", "TestStoreSchema")
+  '        "agent_type": {\n', '        "agent_type_REMOVED": {\n', "TestStoreSchema")
 # Anchored on schema 2, where tool_name is no longer the last property of the
 # declaration block. The previous anchor assumed it was and silently stopped
 # matching when hosts/ssh_hosts were added -- reported as ANCHOR MISSING, which
 # lands in the same bucket as a real gap.
 m("the store schema declares a key no record carries", "docs/store-schema.json",
-  "        \"tool_name\": { \"type\": \"string\" },\n        \"shape\": {",
-  "        \"tool_name\": { \"type\": \"string\" },\n        \"tool_response\": { \"type\": \"string\" },\n        \"shape\": {",
+  '        "shape": {\n', '        "tool_response": {\n          "type": "string"\n        },\n        "shape": {\n',
   "TestStoreSchema")
 m("the store schema's coverage reasons are a subset of the code's", "docs/store-schema.json",
   "            \"probe_unresolved\"\n", "", "TestStoreSchema")
@@ -251,6 +376,68 @@ def restore():
     for f, b in backups.items():
         pathlib.Path(f).write_bytes(b)
 
+# RESTORE ON SIGNAL, not only on the way out of the try block.
+#
+# This script rewrites TRACKED SOURCE FILES IN PLACE and puts them back from an
+# in-memory copy. `finally` covers a normal exit and an exception; it does not
+# run when the process is killed. The realistic case is not exotic: piping the
+# sweep into `head` or `grep` that exits early delivers SIGPIPE, and Python's
+# default disposition terminates the process. What is left behind is a source
+# file that has been broken ON PURPOSE, in a tree somebody is about to commit
+# from -- and `git status` showing it is how a peer found one mid-run and had
+# to ask whether it was a real edit.
+#
+# Each handler restores and then re-raises with the default disposition, so the
+# exit status still says the process was signalled. Swallowing the signal would
+# trade one lie for another.
+def _restore_and_reraise(signum, _frame):
+    restore()
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
+
+for _sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGPIPE):
+    signal.signal(_sig, _restore_and_reraise)
+
+# SIGKILL CANNOT BE CAUGHT, and neither can a hard OOM kill. The backup is in
+# memory, so it dies with the process and no handler can help. That residue is
+# real and this script cannot prevent it -- what it can do is refuse to start
+# on top of it, below, rather than mutating an already-mutated file and
+# restoring it to the wrong bytes.
+def _dirty_targets():
+    """Files this run would mutate that git already reports as modified."""
+    targets = sorted({f for _, f, _, _, _ in M} | {f for f, _, _ in IMPORTS.values()})
+    r = subprocess.run(["git", "status", "--porcelain", "--"] + targets,
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return []  # not a git checkout, or git unavailable: not this script's problem
+    return [ln[3:] for ln in r.stdout.splitlines() if ln.strip()]
+
+_dirty = _dirty_targets()
+if _dirty:
+    # A WARNING, not a refusal. The first version of this refused to start, and
+    # it was wrong: it conflated two states that need opposite treatment.
+    #
+    # A developer's own uncommitted work in a mutated file is SAFE. The backup
+    # is taken at startup, so their version is what gets restored -- mutate,
+    # test, put it back exactly as it was. Refusing there blocks the normal way
+    # of working on this repository, which is how this was found: it fired on
+    # the very next commit's work-in-progress.
+    #
+    # Residue from a killed run is the dangerous state, and the GREEN BASELINE
+    # CHECK above already catches it: a file left holding a deliberate break
+    # makes the suite red, and the sweep stops there and says so. That check is
+    # the guard; this is a note, because a developer who does not know why a
+    # tracked file is modified should be told which ones and how to undo it.
+    print("NOTE: files this sweep mutates are already modified:\n")
+    for f in _dirty:
+        print("   ", f)
+    print("\nIf that is your own work in progress, this is fine -- the sweep backs up what\n"
+          "is there now and restores exactly that. If it is residue from a run killed with\n"
+          "SIGKILL (which no signal handler can catch), undo it first:\n"
+          "    git checkout -- " + " ".join(_dirty) + "\n"
+          "Residue would also have failed the green-baseline check below, which is the\n"
+          "real guard.\n")
+
 # GREEN BASELINE, before the first mutation.
 #
 # The sweep decides "the test went red" from a non-zero exit. With a
@@ -284,7 +471,15 @@ try:
             t = pathlib.Path(fi).read_text(); assert io_ in t; pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
         r = subprocess.run(["go", "test", "./...", "-run", test, "-count=1", "-v"], capture_output=True, text=True)
         judged = r.stdout + r.stderr
-        if r.returncode == 0 and ("--- SKIP" in judged or "no tests to run" in judged):
+        # "--- SKIP" ONLY, never "no tests to run". The suite is invoked as
+        # `go test ./... -run <regex>`, so every package without a matching
+        # test prints "no tests to run" -- which made any mutation whose tests
+        # passed look unjudged rather than UNDETECTED. It masked a real one:
+        # a count mutation that no test asserted against was reported as "not
+        # judged here" instead of as the gap it was. A check that cannot tell
+        # "nothing ran" from "nothing matched in this package" is worse than no
+        # check, because it converts findings into reassurance.
+        if r.returncode == 0 and "--- SKIP" in judged:
             # The judging test did not RUN, so this mutation was not judged.
             # Reporting it as "the test cannot be made to fail" would name a
             # spec defect that may not exist: the socket half of H-17 needs

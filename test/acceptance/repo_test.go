@@ -91,22 +91,95 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 }
 
 // TestStoreSchemaReasonsAreTheCodeReasons: the reason codes are a closed
-// vocabulary, and a schema listing a subset of it would refuse a record this
-// program writes.
+// vocabulary, and the schema and the code have to agree in BOTH directions.
+//
+// It used to check one: every code reason appears in the schema. That misses
+// the other failure, and the other failure had already happened --
+// store.GapForgetHost was absent from the fixed `want` list here, so nothing
+// noticed whether the schema knew about it. A one-directional check over a
+// hand-maintained list is a check that decays exactly as fast as the list.
+//
+// The reverse direction matters for a different reason: a schema enum naming a
+// reason the code never emits is a contract promising a value consumers will
+// wait for forever.
 func TestStoreSchemaReasonsAreTheCodeReasons(t *testing.T) {
 	enums := map[string]bool{}
-	collectEnums(readSchema(t), enums)
-	if len(enums) < 20 {
-		t.Fatalf("only %d enum values found in %s; the walk is not finding them", len(enums), schemaPath)
+	collectReasonEnums(readSchema(t), "", enums)
+	// A floor, not a count: the bidirectional comparison below is the real
+	// check and it asserts exact equality. This only catches the walk finding
+	// NOTHING, which is how a source-scanning test goes quietly green. The
+	// number was 20 when this walk collected every enum in the file --
+	// including type, outcome, phase and state -- and 20 became unreachable
+	// the moment it was scoped to reasons alone.
+	if len(enums) < 10 {
+		t.Fatalf("only %d reason enum values found in %s; the walk is not finding them",
+			len(enums), schemaPath)
 	}
 
-	var want []string
-	want = append(want, store.Reasons()...)
-	want = append(want, report.Reasons()...)
-	want = append(want, store.GapForget, store.GapSizeCap)
-	for _, reason := range want {
+	want := map[string]bool{}
+	for _, r := range store.Reasons() {
+		want[r] = true
+	}
+	for _, r := range report.Reasons() {
+		want[r] = true
+	}
+	// Every gap reason the store can write. GapForgetHost was the one missing
+	// from this list, which is why it is spelled out rather than folded into a
+	// helper that could omit one again silently.
+	for _, r := range []string{store.GapForget, store.GapForgetHost, store.GapSizeCap} {
+		want[r] = true
+	}
+
+	for reason := range want {
 		if !enums[reason] {
-			t.Errorf("the reason code %q appears in no enum in %s", reason, schemaPath)
+			t.Errorf("the reason code %q appears in no reason enum in %s, so a record "+
+				"carrying it fails the published contract", reason, schemaPath)
+		}
+	}
+	for reason := range enums {
+		if !want[reason] {
+			t.Errorf("%s declares the reason %q, which no code path emits. A contract that "+
+				"names a value the program never produces tells a consumer to wait for "+
+				"something that will not arrive.", schemaPath, reason)
+		}
+	}
+}
+
+// collectReasonEnums gathers enum values from properties that carry REASON
+// codes, and only those.
+//
+// Scoped deliberately: the schema is full of other closed vocabularies -- the
+// record type discriminator, schema_version, outcome, host_source, coverage
+// state -- and a bidirectional check over all of them would compare the reason
+// vocabulary against values that were never meant to be reasons.
+func collectReasonEnums(node any, key string, into map[string]bool) {
+	switch v := node.(type) {
+	case map[string]any:
+		// A property named reason/reasons, or a named definition whose name
+		// ends in _reason -- report_reason is declared once at the top level
+		// and referenced, so a walk keyed only on property names finds the
+		// record reasons and silently misses the report ones.
+		if key == "reason" || key == "reasons" || strings.HasSuffix(key, "_reason") {
+			for _, e := range toAnySlice(v["enum"]) {
+				if s, ok := e.(string); ok {
+					into[s] = true
+				}
+			}
+			// reasons is usually an array of strings with the enum on items.
+			if items, ok := v["items"].(map[string]any); ok {
+				for _, e := range toAnySlice(items["enum"]) {
+					if s, ok := e.(string); ok {
+						into[s] = true
+					}
+				}
+			}
+		}
+		for k, child := range v {
+			collectReasonEnums(child, k, into)
+		}
+	case []any:
+		for _, child := range v {
+			collectReasonEnums(child, key, into)
 		}
 	}
 }
@@ -158,6 +231,28 @@ func schemaKeyPaths(t *testing.T, def map[string]any, prefix string, into map[st
 			t.Fatalf("%s requires %v, which is not a key", where, name)
 		}
 		required[key] = true
+	}
+	// A field introduced by a later schema version is required AT THAT VERSION,
+	// through an `if schema_version == N then required` in allOf, and must NOT
+	// be in the top-level required list -- every record already on disk lacks
+	// it and would stop validating against its own published contract.
+	//
+	// So the convention this check enforces is "no key is optional", not "every
+	// key is in one list". A version-gated key is not optional: a v3 record
+	// without it is rejected. Counting it as required here is what lets the two
+	// rules coexist.
+	for _, entry := range toAnySlice(def["allOf"]) {
+		e, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		then, _ := e["then"].(map[string]any)
+		if then == nil {
+			continue
+		}
+		for key := range toStringSet(then["required"]) {
+			required[key] = true
+		}
 	}
 	for key, raw := range props {
 		path := key

@@ -19,8 +19,13 @@ const SchemaVersion = 2
 // the writer moved to v2 every v1 record already on disk would have been
 // skipped -- a store that had been recording for weeks would have rendered an
 // empty report, and nothing would have said why.
+// Schema 3 is admitted BEFORE anything writes it. The rule-match layer lands
+// on another branch and will write v3 records; a reader that did not accept
+// them yet would skip every one, and skipping is silent by design -- the
+// symptom is an empty report, not an error. Accepting a version this writer
+// does not yet produce costs nothing and closes that window.
 func Accepts(version int) bool {
-	return version == 1 || version == 2
+	return version == 1 || version == 2 || version == 3
 }
 
 // Record type discriminators.
@@ -94,6 +99,46 @@ type Declaration struct {
 	// look" must stay distinguishable for a v1 record read back.
 	Hosts    []string `json:"hosts"`
 	SSHHosts []string `json:"ssh_hosts"`
+
+	// FileLabel is what the file this call named looks like (v3).
+	//
+	// RESERVED AND NOT YET POPULATED, like the two below it. The label layer
+	// lives in internal/shape and internal/hook, which another branch owns;
+	// this declares the field so that branch adds behaviour rather than a
+	// fourth schema version, and can delete its own copy on rebase.
+	//
+	// No omitempty, deliberately. The key is always present and null until
+	// something writes it, because the record allowlist is an exact set in
+	// both directions -- a key that appears only sometimes is a key the
+	// allowlist cannot describe, and "sometimes present" is the shape a
+	// reader cannot tell from "absent because nothing looked".
+	//
+	// Three states, all different: null means the tool names no file, so
+	// nobody looked; "none" means a real path matched no row; "unknown" means
+	// a path could not be read at all. The path itself is never stored.
+	FileLabel *string `json:"file_label"`
+
+	// HostSource says where each entry of Hosts came from, positionally (v3).
+	// "structured" is a host read from a field whose value is a URL, so the
+	// call names it by construction; "lexical" is one extracted from command
+	// text, where a mention and a destination are not the same thing --
+	// `echo see https://example.com` yields the host and reaches nothing.
+	//
+	// RESERVED AND NOT YET POPULATED. The extraction that would fill it lives
+	// in internal/shape and internal/hook, which another branch owns; this
+	// declares the shape so that branch adds behaviour rather than a second
+	// schema version. Null here means nobody looked, which is not the same as
+	// an empty list.
+	HostSource []string `json:"host_source"`
+
+	// RuleMatch is the rule-match layer's verdict for this call (v3).
+	//
+	// ITS SHAPE BELONGS TO THAT LAYER and is deliberately open, so the layer
+	// can add fields without a fourth schema version. Null means NOT COMPUTED
+	// BY THIS VERSION -- not "no rule matched", which is a result and will be
+	// expressed inside the object. A reader that cannot tell those apart
+	// reports an absence of rules as an absence of matches.
+	RuleMatch map[string]any `json:"rule_match"`
 }
 
 // Execution records that a declared call ran, one per PostToolUse invocation.
@@ -166,6 +211,10 @@ type Execution struct {
 	// unequal to a declared digest: an unknown digest counted as a difference
 	// would report every such call as rewritten.
 	ExecutedDigest string `json:"executed_digest"`
+
+	// RuleMatch is the rule-match layer's verdict for the call as it RAN (v3).
+	// Reserved and not yet populated; see the note on Declaration.RuleMatch.
+	RuleMatch map[string]any `json:"rule_match"`
 }
 
 // Execution outcomes (v2).

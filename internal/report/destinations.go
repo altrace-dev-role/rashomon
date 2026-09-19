@@ -98,6 +98,12 @@ type Destinations struct {
 	// carried no tool_input) is unknown, and unknown is not a difference.
 	ExecutedNotAsDeclared int `json:"executed_not_as_declared"`
 
+	// Rewritten names them. The count above answers "how many"; this answers
+	// "which", which the store can support and the report was withholding.
+	// Always an array, never null, so a consumer does not have to tell an
+	// empty session from an unbuilt field.
+	Rewritten []Rewritten `json:"rewritten"`
+
 	// Suppressed counts destinations removed from this view by a host-scoped
 	// forget. It is rendered, because a view that silently omitted rows would
 	// be the same failure as a report that printed nothing when it was not
@@ -211,6 +217,7 @@ func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, f
 		// records the recorder wrote itself and has nothing to do with the
 		// wire.
 		ExecutedNotAsDeclared: executedNotAsDeclared(run),
+		Rewritten:             rewrittenCalls(run),
 		ProxyOnPath:           ProxyOnPathUnknown,
 	}
 	// Forgotten destinations are dropped from the whole view before anything
@@ -360,30 +367,75 @@ func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, f
 //     spilled or evicted declaration look like a rewrite.
 //   - a declaration with no shape digest at all, which a schema 1 record can
 //     be.
-func executedNotAsDeclared(run *store.Run) int {
-	// Pre-sized from the run's own record count, which the store's size cap
-	// bounds; the keys are tool_use_ids read back from disk, not values a
-	// caller supplies, so there is no unbounded axis here.
-	declared := make(map[string]string, len(run.Declarations))
-	for _, d := range run.Declarations {
-		if d.Shape.Digest != "" {
-			declared[d.ToolUseID] = d.Shape.Digest
-		}
+//
+// Rewritten is one call whose executed input differed from its declared input.
+//
+// EVERY FIELD IS ALREADY IN THE STORE. There is no command string here because
+// there is none anywhere: the declaration keeps a program name, a verb class,
+// an argument count and a keyed digest, and this row is assembled from exactly
+// those. The digests themselves are deliberately not carried -- they are keyed,
+// so they are not content, but two opaque hashes side by side invite a reader
+// to treat them as evidence of WHAT changed, which they are not.
+type Rewritten struct {
+	ToolUseID string `json:"tool_use_id"`
+	ToolName  string `json:"tool_name"`
+	// Program is the executable a Bash call named, empty for every other tool.
+	Program string `json:"program"`
+	// VerbClass is the derived class of the action: read, write, network...
+	VerbClass string `json:"verb_class"`
+}
+
+// rewrittenCalls is executedNotAsDeclared with the ids kept.
+//
+// The two walk the same pairs under the same rule, and the count is defined as
+// the length of this list so they cannot disagree.
+func rewrittenCalls(run *store.Run) []Rewritten {
+	type decl struct {
+		digest string
+		tool   string
+		prog   string
+		verb   string
 	}
-	var n int
+	declared := make(map[string]decl, len(run.Declarations))
+	for _, d := range run.Declarations {
+		if d.Shape.Digest == "" {
+			continue
+		}
+		e := decl{digest: d.Shape.Digest, tool: d.ToolName, verb: d.Shape.VerbClass}
+		if d.Shape.Program != nil {
+			e.prog = *d.Shape.Program
+		}
+		declared[d.ToolUseID] = e
+	}
+
+	out := []Rewritten{}
 	for _, x := range run.Executions {
+		// An execution with no digest carried no tool_input to derive one
+		// from. Unknown is not a difference, and never has been here.
 		if x.ExecutedDigest == "" {
 			continue
 		}
-		want, ok := declared[x.ToolUseID]
-		if !ok {
+		d, ok := declared[x.ToolUseID]
+		if !ok || x.ExecutedDigest == d.digest {
 			continue
 		}
-		if x.ExecutedDigest != want {
-			n++
-		}
+		out = append(out, Rewritten{
+			ToolUseID: x.ToolUseID,
+			ToolName:  d.tool,
+			Program:   d.prog,
+			VerbClass: d.verb,
+		})
 	}
-	return n
+	sort.Slice(out, func(i, j int) bool { return out[i].ToolUseID < out[j].ToolUseID })
+	return out
+}
+
+func executedNotAsDeclared(run *store.Run) int {
+	// DEFINED AS the length of the row list, not a second walk of the same
+	// pairs under the same rule. Two implementations of one predicate is how a
+	// count and a list come to disagree, and a reader who sees "2" above one
+	// row has no way to tell which is wrong.
+	return len(rewrittenCalls(run))
 }
 
 // sshDeclared is the sorted, de-duplicated set of ssh hosts the session named.

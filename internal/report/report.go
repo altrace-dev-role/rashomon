@@ -121,12 +121,23 @@ type Transcript struct {
 	// above.
 	//
 	// ExecutedButUnrecorded is a failure: the transcript says the call
-	// finished and no execution record says so. DeclaredWithoutResult is not
-	// one. It holds the denied, the failed and the transcript that has not
-	// caught up, and it is never to be read as a count of denials.
+	// finished and no execution record says so.
+	//
+	// DeniedByUser is not a failure and not a recording gap. It is the user
+	// refusing the call at the permission prompt, which is the product working.
+	// It is named separately because it used to be counted twice -- once in
+	// ExecutedButUnrecorded, because a denial does produce a tool_result, and
+	// once in DeclaredWithoutResult -- so a user exercising the prompt inflated
+	// a list that exists to surface a broken recorder, and added
+	// execution_mismatch to the coverage reasons.
+	//
+	// DeclaredWithoutResult is now what remains: the failed, and the transcript
+	// that has not caught up. Denials are no longer among them, so the three
+	// lists are disjoint and each means one thing.
 	IDsExecuted           int      `json:"ids_executed"`
 	ResultsInTranscript   *int     `json:"results_in_transcript"`
 	ExecutedButUnrecorded []string `json:"executed_but_unrecorded"`
+	DeniedByUser          []string `json:"denied_by_user"`
 	DeclaredWithoutResult []string `json:"declared_without_result"`
 }
 
@@ -161,6 +172,11 @@ type Session struct {
 	// Families is which of this session's tool families were confirmed to
 	// transit the proxy, derived from the join rather than from a probe.
 	Families FamilyCoverage `json:"families"`
+
+	// Chains is the causal view: which prompt produced which calls. Every other
+	// section here is a set, and a set is exactly the structure that discards
+	// the edge between a request and its consequences.
+	Chains Chains `json:"chains"`
 }
 
 // Option configures Build.
@@ -184,6 +200,10 @@ func WithProxyStore(path string) Option {
 // Report is the rendered output.
 type Report struct {
 	GeneratedAtUnixMS int64 `json:"generated_at_unix_ms"`
+	// Redacted says the hostnames in this report are keyed digests rather than
+	// names. Carried on the report itself so the renderer can print the legend
+	// and a JSON consumer does not have to infer it from the shape of a string.
+	Redacted bool `json:"redacted"`
 	// Sessions always marshals as an array, never null.
 	//
 	// null and [] are the same absence to a reader and different values to a
@@ -267,6 +287,11 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, window(run)), st.Root(), forgotten)
 		sess.Families = buildFamilies(run, observedHostSet(sess.Destinations),
 			sess.Destinations.Observed, sess.Destinations.Reason)
+		// After Destinations, and reading it rather than the observation: the
+		// chain's host states must be the ones the destinations section already
+		// suppressed and accounted for, or a forgotten host returns in a
+		// different section under a different name for the same row.
+		sess.Chains = buildChains(run, sess.Destinations, deniedSet(sess.Transcripts), forgotten)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
 		sess.SilentFailures = buildSilentFailures(run, sess.Account)
@@ -397,7 +422,7 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 		}
 	}
 
-	ids, results, files, err := TranscriptIDs(path)
+	ids, results, denied, files, err := TranscriptIDs(path)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			// A transcript that exists but cannot be read is still unreadable;
@@ -431,15 +456,23 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 			t.ExecutedButUnrecorded = append(t.ExecutedButUnrecorded, id)
 		}
 	}
+	t.DeniedByUser = []string{}
+	for id := range denied {
+		t.DeniedByUser = append(t.DeniedByUser, id)
+	}
+	// What remains after the denials are named: failed, or the transcript has
+	// not caught up. A denied call is in neither this list nor
+	// ExecutedButUnrecorded -- it has its own, and the three are disjoint.
 	t.DeclaredWithoutResult = []string{}
 	for id := range recorded {
-		if !results[id] {
+		if !results[id] && !denied[id] {
 			t.DeclaredWithoutResult = append(t.DeclaredWithoutResult, id)
 		}
 	}
 	sort.Strings(t.MissingFromStore)
 	sort.Strings(t.MissingFromTranscript)
 	sort.Strings(t.ExecutedButUnrecorded)
+	sort.Strings(t.DeniedByUser)
 	sort.Strings(t.DeclaredWithoutResult)
 	return t
 }

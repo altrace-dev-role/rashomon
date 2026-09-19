@@ -44,38 +44,38 @@ archives:
     files:
       - README.md
       - LICENSE*
+      # The binaries are statically linked and pure Go, so every third-party
+      # module is compiled INTO them. Their licences have to travel with the
+      # artifact, not just live in the repository.
+      - THIRD_PARTY_NOTICES
 
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
-# Homebrew tap -- updates Formula/rashomon.rb on release.
+# NO HOMEBREW BLOCK, deliberately, and this is the record of why.
 #
-# `brews` is deprecated in goreleaser v2.10+ in favor of `homebrew_casks`,
-# and is kept anyway: casks quarantine what they download, Gatekeeper refuses
-# a quarantined binary that is not signed and notarized -- these are not --
-# and casks do not exist on Linux, which this formula also serves. Revisit
-# only together with code signing.
-brews:
-  - ids:
-      - rashomon
-    repository:
-      owner: altrace-dev-role
-      name: altrace-homebrew-tap
-      # Writing to another repository; GITHUB_TOKEN cannot do it.
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
-    name: rashomon
-    homepage: "https://github.com/altrace-dev-role/rashomon"
-    description: "Records what a Claude Code session asked to run, and the evidence the recorder was running"
-    license: "Apache-2.0"
-    install: |
-      bin.install "rashomon"
-    # `rashomon version` is the only command that writes nothing, touches no
-    # settings file and needs no store: the one safe thing to run in a sandbox
-    # that brew builds and tears down.
-    test: |
-      system "#{bin}/rashomon", "version"
+# It published to altrace-dev-role/altrace-homebrew-tap, which is PRIVATE and
+# also carries a different, closed product's formulae. So the public README's
+# `brew tap ...` instruction failed for everyone who was not the author, and it
+# has been removed; and the release job held HOMEBREW_TAP_TOKEN, a credential
+# with contents:write on that closed product's distribution path, reachable
+# from any code execution in this workflow.
+#
+# Three smaller things went with it. `brews` is hard-deprecated since goreleaser
+# v2.16, and `goreleaser check` exits 2 on any deprecation -- so the command
+# this file's own header advertises failed against this file. It also had no
+# `skip_upload: auto`, so tagging a release candidate, which the release
+# workflow's header names as expected, would have rewritten the stable formula
+# and moved every existing user onto an RC on their next `brew upgrade`. And
+# `brews` is removed entirely in goreleaser v3, so keeping it pinned this repo
+# to v2 forever.
+#
+# Homebrew comes back with a PUBLIC tap of its own -- altrace-dev-role/
+# homebrew-rashomon, which also earns the `brew install owner/tap/formula`
+# shorthand -- as `homebrew_casks` if the macOS binary is ever signed and
+# notarized, or as a formula in a tap that serves Linux too. Until then
+# `go install` is the documented route and it works today.
 
 changelog:
   use: git
