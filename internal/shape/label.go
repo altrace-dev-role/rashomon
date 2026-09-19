@@ -165,34 +165,21 @@ func Label(toolName string, toolInput json.RawMessage) string {
 	if !ok {
 		return ""
 	}
-	p, ok := pathField(toolInput, field)
+	// stringField, not a reader of its own. A second copy of it here would
+	// put two functions that look inside tool_input in the one file that
+	// exists so that only one has to be audited, which is the claim at the
+	// top of shape.go and is worth more than the four lines a local copy
+	// would save.
+	//
+	// A non-object input, a missing field, a field that is not a string, and
+	// an empty one all arrive here as absent, and all are LabelUnknown: "this
+	// tool should have named a file and this input does not" is a real
+	// outcome, and it is not LabelNone.
+	p, ok := stringField(toolInput, field)
 	if !ok || p == "" {
 		return LabelUnknown
 	}
 	return labelForBase(basename(p))
-}
-
-// pathField reports the named string field of a tool input. A non-object
-// input, a missing field, or a field that is not a string all read as absent,
-// which the caller turns into LabelUnknown: "the tool should have named a file
-// and this input does not" is a real outcome and is not LabelNone.
-func pathField(raw json.RawMessage, field string) (string, bool) {
-	if len(raw) == 0 {
-		return "", false
-	}
-	var obj map[string]json.RawMessage
-	if json.Unmarshal(raw, &obj) != nil {
-		return "", false
-	}
-	v, ok := obj[field]
-	if !ok {
-		return "", false
-	}
-	var s string
-	if json.Unmarshal(v, &s) != nil {
-		return "", false
-	}
-	return s, true
 }
 
 // basename reduces a path to the last element, case-folded.
