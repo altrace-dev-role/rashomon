@@ -124,6 +124,19 @@ var valueFlags = map[string]string{
 	"rsync": "eBTfM@",
 }
 
+// longTakesValue are the long options that consume the FOLLOWING token and
+// whose value can look like a remote spec. An option not listed here is
+// assumed to carry its value attached with '=', which is how the great
+// majority are written.
+var longTakesValue = map[string]bool{
+	"--compare-dest": true, "--copy-dest": true, "--link-dest": true,
+	"--backup-dir": true, "--temp-dir": true, "--partial-dir": true,
+	"--files-from": true, "--exclude-from": true, "--include-from": true,
+	"--log-file": true, "--password-file": true, "--write-batch": true,
+	"--read-batch": true, "--only-write-batch": true, "--rsh": true,
+	"--sockopts": true, "--address": true, "--port": true,
+}
+
 func takesValue(prog string, flag byte) bool {
 	return strings.IndexByte(valueFlags[prog], flag) >= 0
 }
@@ -212,9 +225,19 @@ func destinations(prog string, args []string) []string {
 				continue
 			}
 			if strings.HasPrefix(a, "--") {
-				// A long option. Its value is attached with '=' when it has
-				// one; a form that separates them is not modelled, and the
-				// cost of guessing wrong is reading a value as a host.
+				// A long option. Most carry their value attached with '=',
+				// and an unknown one is left alone.
+				//
+				// The listed ones are different, and leaving them alone was a
+				// false-host bug rather than a missed one: every option here
+				// takes a LOCAL path, and rsync's --compare-dest, --link-dest
+				// and --copy-dest are routinely given a remote-SHAPED value.
+				// `rsync --compare-dest backup.example.com:/old ./
+				// host.example.com:/new` recorded both, and only one of them
+				// is a destination.
+				if longTakesValue[a] {
+					i++
+				}
 				continue
 			}
 			// A short flag or a cluster of them. Only the last letter can
@@ -239,47 +262,26 @@ func destinations(prog string, args []string) []string {
 	return out
 }
 
-// destinationHost parses one [user@]host[:path] token.
+// destinationHost parses one [user[:password]@]host[:path] token and returns
+// the host, or reports that the token names none.
 //
-// The user part is stripped here rather than left to host.Canonical, which
-// REFUSES an authority carrying userinfo and refuses it for a good reason: in
-// a URL, user:password@host is credential-bearing and dropping the credential
-// silently is worse than dropping the host. In an ssh destination user@host is
-// the documented syntax and carries no password, so the two cases need
-// opposite handling, and this is the only place that may do the stripping --
-// the URL scan in collect still hands the whole authority to Canonical.
+// The user is stripped here rather than left to host.Canonical, which REFUSES
+// an authority carrying userinfo: in a URL, user:password@host is
+// credential-bearing and dropping the credential silently is worse than
+// dropping the host, while in an ssh destination user@host is the documented
+// syntax. The two need opposite handling, and this is the only place that may
+// do the stripping -- the URL scan in collect still hands Canonical the whole
+// authority. A destination that DOES carry a password is refused outright
+// below rather than stripped, which keeps that refusal true of both paths.
 //
-// requireRemote is set for scp and rsync, where an argument is only a
-// destination if it looks like one: it carries a user, or a colon that comes
-// before any slash. Without that test the LOCAL side of every copy would be
-// read as a host.
+// requireRemote is set for scp and rsync. Each step's reasoning is at the
+// step, not repeated here: this file is the one that has to be cheap to
+// audit, and a rationale in two places is a rationale that can disagree with
+// itself.
 func destinationHost(tok string, requireRemote bool) (string, bool) {
 	if tok == "" {
 		return "", false
 	}
-
-	// A bracketed IPv6 literal, with an optional user in front of it. Its own
-	// colons are not host:path separators, so it is recognised before any
-	// colon is looked for.
-	rest, hadUser := tok, false
-	if at := strings.IndexByte(tok, '@'); at >= 0 && strings.HasPrefix(tok[at+1:], "[") {
-		rest, hadUser = tok[at+1:], true
-	}
-	if strings.HasPrefix(rest, "[") {
-		end := strings.Index(rest, "]")
-		if end < 0 {
-			return "", false
-		}
-		if requireRemote && !hadUser && !strings.HasPrefix(rest[end+1:], ":") {
-			return "", false
-		}
-		return host.Canonical(rest[:end+1])
-	}
-
-	// The PATH is split off before the user, and the order is the whole
-	// point: a path may contain an '@' of its own. Splitting on the last '@'
-	// in the token turned `deploy@host:/srv/app@1.2.3/` into "1.2.3/" and the
-	// destination was lost.
 	// A URL is not an ssh destination spec. Without this, `rsync -av
 	// rsync://mirror.example/pub/ ./` splits at the scheme's own colon and
 	// records a host called "rsync" while the real one is recorded nowhere:
@@ -289,31 +291,60 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 		return "", false
 	}
 
-	colon := strings.IndexByte(tok, ':')
-	slash := strings.IndexByte(tok, '/')
-	hostPart := tok
-	remoteByColon := false
-	switch {
-	case colon >= 0 && (slash < 0 || colon < slash):
-		hostPart = tok[:colon]
-		remoteByColon = true
-	case slash >= 0:
-		hostPart = tok[:slash]
+	// The token is [user[:password]@]host[:path], and the three parts have to
+	// be separated in that order. The PATH goes first, because a path may
+	// carry an '@' of its own -- `deploy@host:/srv/app@1.2.3/` -- and taking
+	// the last '@' in the whole token would leave "1.2.3/". The USER goes
+	// second, and only from within what remains.
+	//
+	// Nothing before the first '/' can be a path, so that prefix is where the
+	// user and host live.
+	prefix := tok
+	if slash := strings.IndexByte(tok, '/'); slash >= 0 {
+		prefix = tok[:slash]
 	}
 
-	// Only now is the user stripped, and only from within the host part.
-	//
-	// It is stripped here rather than left to host.Canonical, which REFUSES
-	// an authority carrying userinfo and refuses it for a good reason: in a
-	// URL, user:password@host is credential-bearing and dropping the
-	// credential silently is worse than dropping the host. In an ssh
-	// destination user@host is the documented syntax and carries no password,
-	// so the two cases need opposite handling, and this is the only place
-	// that may do the stripping -- the URL scan in collect still hands the
-	// whole authority to Canonical.
-	if at := strings.LastIndexByte(hostPart, '@'); at >= 0 {
+	hadUser := false
+	rest := prefix
+	if at := strings.IndexByte(prefix, '@'); at >= 0 {
+		// A colon inside the USERINFO is a password, and this is the exact
+		// string authority() documents refusing: splitting
+		// "u:p@internal.example" at the first colon returns "u", a
+		// plausible-looking hostname that is really the username out of a
+		// credential-bearing destination. Measured before this check:
+		// `ssh svc-deploy:s3cr3t-token@host.example.com` recorded
+		// "svc-deploy" and lost the host (CWE-522).
+		if strings.IndexByte(prefix[:at], ':') >= 0 {
+			return "", false
+		}
 		hadUser = true
-		hostPart = hostPart[at+1:]
+		rest = prefix[at+1:]
+	}
+
+	// A bracketed IPv6 literal: its own colons are not separators.
+	if strings.HasPrefix(rest, "[") {
+		end := strings.Index(rest, "]")
+		if end < 0 {
+			return "", false
+		}
+		if requireRemote && !strings.HasPrefix(rest[end+1:], ":") {
+			return "", false
+		}
+		return host.Canonical(rest[:end+1])
+	}
+
+	hostPart := rest
+	remoteByColon := false
+	if colon := strings.IndexByte(rest, ':'); colon >= 0 {
+		hostPart = rest[:colon]
+		remoteByColon = true
+		// More than one colon left, unbracketed, is an address this cannot
+		// read: `ssh 2606:4700::1111` was recording "2606". Nothing here can
+		// tell a path colon from an address colon, and a false host is worse
+		// than a missing one, so it is refused and stated as a limit.
+		if strings.IndexByte(rest[colon+1:], ':') >= 0 {
+			return "", false
+		}
 	}
 
 	// requireRemote is set for scp and rsync, where an argument names a host
@@ -329,41 +360,54 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 	if remoteByColon && !hadUser && len(hostPart) < 2 {
 		return "", false
 	}
-	// An unbracketed address with more than one colon is ambiguous: the first
-	// colon may separate a path or may be part of an IPv6 literal, and
-	// `ssh 2606:4700::1111` was recording "2606". Nothing here can tell them
-	// apart, and a false host is worse than a missing one, so it is refused
-	// and the limitation is stated rather than guessed at.
-	if strings.Count(tok, ":") > 1 && !strings.HasPrefix(tok, "[") {
+	if !hostnameShaped(hostPart) {
 		return "", false
 	}
-
-	// The host part must BE an authority, not merely start with one.
-	//
-	// This is the guarantee the rest of the package rests on. collect, which
-	// scans URLs out of surrounding text, truncates at the first character
-	// that cannot be part of a host, because there the host is embedded in a
-	// command line. Here the token IS the destination, so truncating would
-	// answer a question nobody asked: `ssh 'host;evil'` would record "host",
-	// a hostname the user never typed. Measured before this check existed,
-	// `ssh $HOST` recorded "$host" and `ssh 'host;evil'` recorded the whole
-	// string -- raw command text in a record, in the report and on stdout,
-	// which is the one thing this package exists to prevent.
-	if hostPart == "" || authority(hostPart) != hostPart {
-		return "", false
-	}
-	// No hostname is longer than this, and without a bound a several-hundred
-	// byte fragment of a command line can be persisted as one.
-	if len(hostPart) > 253 {
-		return "", false
-	}
-
 	// An ssh-config alias has no dots and resolves to something this function
 	// cannot see. It is recorded as the command named it and never resolved:
 	// resolving would mean reading ~/.ssh/config, which is a file this package
 	// is not allowed to open, and guessing would put a name in the store that
 	// the user never typed.
 	return host.Canonical(hostPart)
+}
+
+// hostnameShaped reports whether every byte of s could appear in a hostname.
+//
+// A whitelist, not a terminator set, and that is the point. authority() stops
+// at the punctuation a URL is surrounded by in a command line, which is right
+// where a host is embedded in text; it does not stop at '=' or '!', so
+// `ssh HOST=bad` recorded "host=bad" and `ssh h.example.com!x` recorded itself
+// -- raw command text passing as a canonical hostname. Here the token IS the
+// destination, so the question is not "where does the host end" but "is this a
+// host at all", and only a whitelist answers that one.
+//
+// The length bound is the longest a hostname can be. Without it a
+// several-hundred byte fragment of a command line can be persisted as one.
+func hostnameShaped(s string) bool {
+	if s == "" || len(s) > 253 {
+		return false
+	}
+	if s[0] == '-' || s[0] == '.' || s[len(s)-1] == '-' {
+		return false
+	}
+	// An empty label is not a hostname. One TRAILING dot is: "pypi.org." is
+	// the fully-qualified spelling of the same name, and host.Canonical drops
+	// it. Two in a row are never right.
+	if strings.Contains(s, "..") {
+		return false
+	}
+	alnum := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+			alnum = true
+		case c == '-' || c == '.' || c == '_':
+		default:
+			return false
+		}
+	}
+	return alnum
 }
 
 // collect finds every hostname in text introduced by one of the given prefixes.

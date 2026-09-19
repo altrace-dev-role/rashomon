@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -16,10 +17,12 @@ import (
 // deploy@host:/srv/` recorded nothing at all. Nothing false was claimed; the
 // report was silently incomplete about the one transport it names.
 //
-// The number is provisional and deliberately outside the spec's reservation:
-// H-30 is Phase B's and H-31 through H-69 belong to docs/spec-chain-and-scope.md,
-// whose own rule greps `H-[3-6][0-9]` against the merge target. H-70 clears
-// both and is re-grepped before this merges.
+// The number is provisional and leaves a deliberate gap after H-29, which is
+// the highest this tree uses. H-30 is claimed by work not yet on the shared
+// remote, and H-31 through H-69 are reserved by a specification under review
+// on another branch; neither is visible from the merge target, so the gap is
+// the only way to avoid a collision that could not be checked here. It is
+// re-grepped against the merge target before this merges.
 
 // sshHostsOf drives one Bash call and returns the ssh_hosts its declaration
 // carries, and the wire hosts beside them, because the second list is where
@@ -173,25 +176,60 @@ func TestH70_CommandTextNeverBecomesAHost(t *testing.T) {
 // satisfied the list above by recording every argument would pass it
 // completely, and would fill the store with filenames.
 //
+// The expected host is per case, not shared. An earlier version whitelisted
+// one hostname across all four subtests, which made "not an ssh program"
+// unfailable -- that command can produce no other host -- and the whole
+// acceptance group stayed green when the sshDestPrograms gate was deleted
+// entirely. A whitelist wider than the case it serves is a hole.
+//
 // Break: record every non-flag argument as a host.
+// Second break: treat every program as an ssh program.
 func TestH70_LocalArgumentsAreNotHosts(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		cmd  string
+		want []string // exactly these, in this order
 	}{
 		{name: "local to local", cmd: "scp a b"},
 		{name: "windows drive", cmd: `rsync C:/src /dst`},
-		{name: "remote command after the destination", cmd: "ssh h.example.com ls /etc"},
+		{name: "remote command after the destination", cmd: "ssh h.example.com ls /etc",
+			want: []string{"h.example.com"}},
 		{name: "not an ssh program", cmd: "cat deploy@h.example.com:/tmp/f"},
+		{name: "not an ssh program, scp-shaped", cmd: "tar -cf a.tar deploy@h.example.com:/tmp/f"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ssh, _ := sshHostsOf(t, tc.cmd)
-			for _, h := range ssh {
-				switch h {
-				case "h.example.com":
-					continue // the real destination of the ssh case
-				}
-				t.Errorf("ssh_hosts = %v for %q, which names no such host", ssh, tc.cmd)
+			if !reflect.DeepEqual(ssh, tc.want) {
+				t.Errorf("ssh_hosts = %v for %q, want %v", ssh, tc.cmd, tc.want)
+			}
+		})
+	}
+}
+
+// TestH70_ArgumentsStopAtTheCommandBoundary pins the rule that a program's
+// arguments end where the next command begins. Nothing held it in place
+// before: deleting the boundary and letting the scan run to the end of the
+// token list was detected by no test at all, and it is the code path the
+// newline defect ran through.
+//
+// Break: let a program's arguments run to the end of the line.
+func TestH70_ArgumentsStopAtTheCommandBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cmd  string
+		want []string
+	}{
+		{name: "two ssh calls on one line", cmd: "ssh deploy@h1.example.com; ssh deploy@h2.example.com",
+			want: []string{"h1.example.com", "h2.example.com"}},
+		{name: "two ssh calls on two lines", cmd: "ssh deploy@h1.example.com\nssh deploy@h2.example.com",
+			want: []string{"h1.example.com", "h2.example.com"}},
+		{name: "a later command is not an argument", cmd: "scp a b && curl http://example.com/x"},
+		{name: "a later command on a new line is not an argument", cmd: "scp a b\ncurl http://example.com/x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ssh, _ := sshHostsOf(t, strings.ReplaceAll(tc.cmd, "\\n", "\n"))
+			if !reflect.DeepEqual(ssh, tc.want) {
+				t.Errorf("ssh_hosts = %v for %q, want %v", ssh, tc.cmd, tc.want)
 			}
 		})
 	}

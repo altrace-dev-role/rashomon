@@ -428,3 +428,89 @@ func TestSSHDestinationsAcrossLines(t *testing.T) {
 		t.Errorf("ssh hosts across two lines = %v, want %v: the second command's host was lost", gotSSH, want)
 	}
 }
+
+// TestSSHDestinationRefusesACredential is CWE-522 on the positional path.
+//
+// A destination carrying a password is refused, not stripped. Splitting at
+// the first colon and stripping the user afterwards landed the split INSIDE
+// the credential: `ssh svc-deploy:s3cr3t-token@host.example.com` recorded
+// "svc-deploy" -- the username persisted to the store, and the real host lost
+// in the same token. That is verbatim the failure authority() documents
+// refusing, and the positional path has to refuse it too or the refusal is
+// only true of one of the two paths.
+func TestSSHDestinationRefusesACredential(t *testing.T) {
+	for _, cmd := range []string{
+		"ssh svc-deploy:s3cr3t-token@host.example.com",
+		"sftp admin:hunter2@files.example.com",
+		"scp f svc-deploy:s3cr3t@host.example.com:/p",
+		"rsync -a ./ user:pw@host.example.com:/srv/",
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			_, gotSSH := Hosts("Bash", bashInput(t, cmd))
+			if len(gotSSH) != 0 {
+				t.Errorf("ssh hosts = %v, want none: a destination carrying a password is refused, never stripped", gotSSH)
+			}
+		})
+	}
+}
+
+// TestSSHDestinationIsHostnameShaped: the host must be a host, not merely
+// something authority() would stop scanning at. authority() does not stop at
+// '=' or '!', so `ssh HOST=bad` recorded "host=bad" and `ssh h.example.com!x`
+// recorded itself. A whitelist is the only thing that answers "is this a
+// host at all".
+func TestSSHDestinationIsHostnameShaped(t *testing.T) {
+	for _, cmd := range []string{
+		"ssh HOST=bad",
+		"ssh h.example.com!x",
+		"ssh -",
+		"ssh .",
+		"ssh host..",
+		"ssh -leading",
+		"ssh trailing-",
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			if _, gotSSH := Hosts("Bash", bashInput(t, cmd)); len(gotSSH) != 0 {
+				t.Errorf("ssh hosts for %q = %v, want none", cmd, gotSSH)
+			}
+		})
+	}
+}
+
+// TestSSHLongOptionsWithALocalValue: --compare-dest and its siblings take a
+// LOCAL directory and are routinely given a remote-shaped one. Leaving them
+// unmodelled was not a missed host but an invented one.
+func TestSSHLongOptionsWithALocalValue(t *testing.T) {
+	for _, tc := range []struct {
+		cmd  string
+		want []string
+	}{
+		{cmd: "rsync --compare-dest backup.example.com:/old ./ host.example.com:/new", want: []string{"host.example.com"}},
+		{cmd: "rsync --link-dest prev.example.com:/x ./ host.example.com:/new", want: []string{"host.example.com"}},
+		{cmd: "rsync --rsh ssh ./ host.example.com:/new", want: []string{"host.example.com"}},
+		{cmd: "rsync --rsh=ssh ./ host.example.com:/new", want: []string{"host.example.com"}},
+	} {
+		t.Run(tc.cmd, func(t *testing.T) {
+			_, gotSSH := Hosts("Bash", bashInput(t, tc.cmd))
+			if !reflect.DeepEqual(gotSSH, tc.want) {
+				t.Errorf("ssh hosts = %v, want %v", gotSSH, tc.want)
+			}
+		})
+	}
+}
+
+// TestSSHHostsAreSortedAndDeduped asserts the order explicitly rather than
+// leaving it to a map walk that happens to come out right. The record has to
+// be byte-identical across two runs of one command, and a determinism
+// property held in place by Go randomising only large maps is not held at all.
+func TestSSHHostsAreSortedAndDeduped(t *testing.T) {
+	cmd := "ssh deploy@zulu.example.com; ssh deploy@alpha.example.com; " +
+		"ssh deploy@mike.example.com; ssh deploy@alpha.example.com"
+	want := []string{"alpha.example.com", "mike.example.com", "zulu.example.com"}
+	for i := 0; i < 50; i++ {
+		_, gotSSH := Hosts("Bash", bashInput(t, cmd))
+		if !reflect.DeepEqual(gotSSH, want) {
+			t.Fatalf("run %d: ssh hosts = %v, want %v", i, gotSSH, want)
+		}
+	}
+}
