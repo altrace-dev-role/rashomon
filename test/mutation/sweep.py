@@ -269,6 +269,21 @@ m("P1 a denial reads as a missing execution record", "internal/report/chains.go"
 # The aliasing one. It is the reason redactChains rebuilds three slices rather
 # than copying the struct, and a shallow copy compiles and renders correctly --
 # the damage is entirely to the ORIGINAL report the caller still holds.
+# The notices union. CI found this one: the linked set is platform-dependent,
+# so a host-only check is wrong in the stale direction on every platform.
+# Pinned to windows rather than "drop the env", because dropping it is a
+# MACHINE-DEPENDENT break: a darwin host links a superset of every platform, so
+# removing the override changes nothing there and the mutation reads as
+# undetected on the developer's machine while being detected in Linux CI. A
+# mutation whose verdict depends on who runs it is not evidence. Windows is the
+# one platform that lacks a module another links (google/uuid), so pinning to it
+# collapses the union everywhere.
+m("the notices union collapses to one platform", "test/acceptance/notices_test.go",
+  "\t\tcmd.Env = append(os.Environ(), \"GOOS=\"+p.goos, \"GOARCH=\"+p.goarch)",
+  "\t\tcmd.Env = append(os.Environ(), \"GOOS=windows\", \"GOARCH=\"+p.goarch)",
+  "TestThirdPartyNotices")
+m("the release matrix drops a shipped platform", "test/acceptance/notices_test.go",
+  "\t{\"windows\", \"amd64\"}, {\"windows\", \"arm64\"},", "", "TestThirdPartyNotices")
 m("P1 a forgotten host is dropped instead of named", "internal/report/chains.go",
   "\tif forgotten != nil && forgotten(h) {\n\t\treturn LinkForgotten\n\t}\n", "", "TestChains|TestH31")
 m("P1 loopback reads as a finding", "internal/report/chains.go",

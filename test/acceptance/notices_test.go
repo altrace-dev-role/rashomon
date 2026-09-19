@@ -23,28 +23,90 @@ import (
 // for those would overstate what is in the binary, which is its own kind of
 // wrong.
 
-// linkedModules is what actually ends up in the binary.
+// releasePlatforms is the matrix .goreleaser.yml builds: three operating
+// systems by two architectures.
+//
+// It is here rather than parsed out of the yaml because a wrong list fails
+// LOUDLY -- TestThirdPartyNotices_MatchesTheReleaseMatrix compares it against
+// the file and goes red on any drift -- whereas a yaml parser that silently
+// read nothing would make this whole check pass by testing an empty set.
+var releasePlatforms = []struct{ goos, goarch string }{
+	{"linux", "amd64"}, {"linux", "arm64"},
+	{"darwin", "amd64"}, {"darwin", "arm64"},
+	{"windows", "amd64"}, {"windows", "arm64"},
+}
+
+// linkedModules is what ends up in the binaries -- the UNION over every
+// platform the release ships, not the one the tests happen to run on.
+//
+// THE UNION IS THE WHOLE POINT, and it was learned from this check failing in
+// CI after passing locally. The linked set is platform-dependent: go-isatty
+// and go-strftime are compiled in on darwin and windows and not on linux;
+// google/uuid on darwin and linux and not on windows. So NO single platform's
+// dependency list describes the set of archives a release publishes, and a
+// host-only check is wrong in the stale direction on every platform -- it
+// demanded go-isatty be listed when run on a Mac and demanded it be absent
+// when run on Linux, for one file that has to satisfy both.
+//
+// One notices file ships in all six archives. It therefore has to cover the
+// union, and only a module linked on NO shipped platform is genuinely stale.
 func linkedModules(t *testing.T) map[string]string {
 	t.Helper()
-	cmd := exec.Command("go", "list", "-deps", "-f",
-		"{{if .Module}}{{.Module.Path}} {{.Module.Version}}{{end}}", "./cmd/rashomon")
-	cmd.Dir = moduleRoot
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("listing linked modules: %v", err)
-	}
 	mods := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		f := strings.Fields(line)
-		if len(f) != 2 || strings.HasPrefix(f[0], "github.com/altrace-dev-role/rashomon") {
-			continue
+	for _, p := range releasePlatforms {
+		cmd := exec.Command("go", "list", "-deps", "-f",
+			"{{if .Module}}{{.Module.Path}} {{.Module.Version}}{{end}}", "./cmd/rashomon")
+		cmd.Dir = moduleRoot
+		cmd.Env = append(os.Environ(), "GOOS="+p.goos, "GOARCH="+p.goarch)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("listing linked modules for %s/%s: %v", p.goos, p.goarch, err)
 		}
-		mods[f[0]] = f[1]
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			f := strings.Fields(line)
+			if len(f) != 2 || strings.HasPrefix(f[0], "github.com/altrace-dev-role/rashomon") {
+				continue
+			}
+			mods[f[0]] = f[1]
+		}
 	}
 	if len(mods) == 0 {
 		t.Fatal("no linked modules found; this check is not looking at the build any more")
 	}
 	return mods
+}
+
+// TestThirdPartyNotices_MatchesTheReleaseMatrix keeps releasePlatforms honest.
+//
+// The union above is only the right answer if it is a union over the platforms
+// actually shipped. If .goreleaser.yml gains an operating system and this list
+// does not, the notices file silently stops covering an archive that ships --
+// and it fails in the direction where nobody notices, because adding a platform
+// can only ADD modules and the existing assertions would stay green.
+func TestThirdPartyNotices_MatchesTheReleaseMatrix(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(moduleRoot, ".goreleaser.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(body)
+
+	seen := map[string]bool{}
+	for _, p := range releasePlatforms {
+		seen[p.goos] = true
+		if !strings.Contains(text, "      - "+p.goos+"\n") {
+			t.Errorf("releasePlatforms builds %s and .goreleaser.yml does not list it", p.goos)
+		}
+		if !strings.Contains(text, "      - "+p.goarch+"\n") {
+			t.Errorf("releasePlatforms builds %s and .goreleaser.yml does not list it", p.goarch)
+		}
+	}
+	for _, goos := range []string{"linux", "darwin", "windows", "freebsd", "openbsd"} {
+		if strings.Contains(text, "      - "+goos+"\n") && !seen[goos] {
+			t.Errorf(".goreleaser.yml ships %s and releasePlatforms does not cover it, so "+
+				"THIRD_PARTY_NOTICES is not checked against that archive's dependency set",
+				goos)
+		}
+	}
 }
 
 // TestThirdPartyNotices_CoversEveryLinkedModule fails in BOTH directions. A
