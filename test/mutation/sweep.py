@@ -397,6 +397,9 @@ m("H-70 every non-flag argument is recorded as a host", "internal/shape/hosts.go
 m("H-70 the path is not split off before the user", "internal/shape/hosts.go",
   "\tprefix := tok\n\tif slash := strings.IndexByte(tok, '/'); slash >= 0 {\n\t\tprefix = tok[:slash]\n\t}",
   "\tprefix := tok", "TestSSHFlagTables|TestH70_SSH")
+m("H-27 run reports the newest session whether or not the command produced it", "cmd/rashomon/main.go",
+  "\tif newest == \"\" || writtenAt.Before(since) {", "\tif newest == \"\" {",
+  "TestH27_ReportsNothingWhenTheCommandRecordedNothing")
 m("settings reads a non-object top level as an empty document", "internal/settings/document.go",
   "\t\treturn nil, errors.New(\"not a JSON object\")", "\t\treturn nil, nil", "TestParseRefuses")
 

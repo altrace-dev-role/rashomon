@@ -244,10 +244,15 @@ func (r *Run) Dropped() []string {
 // just produced and never learns that session's id -- the id is Claude Code's,
 // the hooks record it, and this side of the process only knows that whatever
 // ran last is what finished.
-func (s *Store) NewestRun() (string, error) {
+//
+// The modification time is returned with the name because "whatever ran last"
+// is only the right answer when something ran at all. A caller that launched a
+// child has to be able to tell a session that child produced from one that was
+// already in the store, and the name alone cannot say.
+func (s *Store) NewestRun() (string, time.Time, error) {
 	names, err := s.Runs()
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	var newest string
 	var newestAt time.Time
@@ -263,5 +268,5 @@ func (s *Store) NewestRun() (string, error) {
 			newest, newestAt = name, info.ModTime()
 		}
 	}
-	return newest, nil
+	return newest, newestAt, nil
 }

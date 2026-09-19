@@ -1049,6 +1049,10 @@ func cmdRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "rashomon: running WITHOUT proxy variables -- %s\n", v.Reason)
 	}
 
+	// Taken before the child starts, so the report can tell a session the
+	// child produced from one that was already in the store.
+	startedAt := time.Now()
+
 	code, runErr := launch.Run(argv, env, stdin, stdout, stderr)
 	if runErr != nil {
 		fmt.Fprintln(stderr, "rashomon:", runErr)
@@ -1058,27 +1062,40 @@ func cmdRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// The report follows the child, on stderr's side of the conversation: the
 	// child's own stdout is the user's output and must not have a report
 	// appended to it, or piping the command anywhere would corrupt the pipe.
-	if err := reportNewest(stderr, v); err != nil {
+	if err := reportNewest(stderr, v, startedAt); err != nil {
 		fmt.Fprintln(stderr, "rashomon: the session report could not be rendered:", err)
 	}
 	return code
 }
 
-// reportNewest renders the most recently written session.
+// reportNewest renders the session the child produced, if it produced one.
 //
 // The newest run rather than a named session, because the session id is Claude
 // Code's and this process never sees it: the hooks record it, and the only
 // thing this side knows is that whatever ran last is what just finished.
-func reportNewest(w io.Writer, v posture.Verdict) error {
+//
+// since is when the child was launched, and the comparison against it is the
+// whole point. Without it, a command that records nothing -- anything that is
+// not a Claude Code session, or a session whose hooks never fired -- printed a
+// full report for whatever happened to be newest in the store, from minutes or
+// days earlier, under a heading that reads as though the command just produced
+// it. That is this program's own discipline broken: a claim it has no evidence
+// for, and the one failure it exists to make impossible.
+//
+// The residual limit, stated rather than papered over: a DIFFERENT session
+// writing concurrently with the child can still be the newest when the child
+// exits. Nothing this side sees can separate those two, because the session id
+// belongs to Claude Code and never reaches this process.
+func reportNewest(w io.Writer, v posture.Verdict, since time.Time) error {
 	st, err := openStore()
 	if err != nil {
 		return err
 	}
-	newest, err := st.NewestRun()
+	newest, writtenAt, err := st.NewestRun()
 	if err != nil {
 		return err
 	}
-	if newest == "" {
+	if newest == "" || writtenAt.Before(since) {
 		fmt.Fprintln(w, "rashomon: no session was recorded for that command")
 		return nil
 	}
