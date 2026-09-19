@@ -231,11 +231,16 @@ func TestChains_DeniedIsNotAFailure(t *testing.T) {
 	}
 }
 
-// TestChains_UnchainedCallsAreCounted. A v1 declaration carries no prompt id
-// and cannot be placed in any chain. Dropping such calls silently is the defect
-// -- the chain view would look complete while omitting real work -- so they are
-// counted and the count is rendered.
-func TestChains_UnchainedCallsAreCounted(t *testing.T) {
+// TestChains_UnattributedCallsKeepTheirIDs.
+//
+// A v1 declaration carries no prompt id, and so does a subagent call whose
+// payload never had one. They cannot be placed under a prompt.
+//
+// They are kept as LINKS rather than counted, and the difference is what makes
+// H-31's set equality checkable at all: a count says how much is missing and a
+// set equality needs to know WHICH, so only the second can prove nothing
+// vanished. The first version of this carried a number.
+func TestChains_UnattributedCallsKeepTheirIDs(t *testing.T) {
 	run := &store.Run{Declarations: []store.Declaration{
 		chainDecl(1, "t1", "Bash", "p1", "/main.jsonl"),
 		chainDecl(2, "t2", "Bash", "", "/main.jsonl"),
@@ -243,42 +248,268 @@ func TestChains_UnchainedCallsAreCounted(t *testing.T) {
 	}}
 
 	c := buildChains(run, Destinations{}, nil, nil)
-	if c.Unchained != 2 {
-		t.Errorf("unchained = %d, want 2. A call with no prompt id cannot be placed, and a "+
-			"chain view that drops it silently reads as complete while omitting real work.",
-			c.Unchained)
+	if len(c.Unattributed) != 2 {
+		t.Fatalf("unattributed = %+v, want the two calls with no prompt id", c.Unattributed)
+	}
+	if c.Unattributed[0].ToolUseID != "t2" || c.Unattributed[1].ToolUseID != "t3" {
+		t.Errorf("unattributed = %+v, want t2 then t3 in seq order", c.Unattributed)
 	}
 	if len(c.Prompts) != 1 {
 		t.Errorf("chains = %+v, want only the one with a prompt id", c.Prompts)
 	}
 }
 
-// TestChains_ForgottenHostsAreDroppedFromLinks.
+// TestChains_ForgottenHostsReadAsForgotten replaces a test that asserted the
+// opposite, and the correction is the point.
 //
-// `forget --host` suppresses a destination from the report's view because the
-// proxy's store is not ours to delete from. The chain reads the DECLARATION
-// side, which is a second place the name lives -- so without this the forgotten
-// host reappears here, and the forget reads as though it had been undone.
-func TestChains_ForgottenHostsAreDroppedFromLinks(t *testing.T) {
+// I had the link DROP a forgotten host. That is more private and less honest,
+// and honesty is the product: a link that silently omits a host makes the next
+// report read as though the forget had been undone, and a silent omission is
+// the exact failure every other line of this program is arranged against. The
+// destinations section renders a Suppressed COUNT for precisely this reason
+// rather than quietly shortening its list.
+//
+// The name is still gone from the rendered state -- `forgotten` says a host was
+// suppressed here, not which one -- so nothing is leaked by saying so.
+func TestChains_ForgottenHostsReadAsForgotten(t *testing.T) {
 	run := &store.Run{Declarations: []store.Declaration{
 		chainDecl(1, "t1", "Bash", "p1", "/main.jsonl", "keep.example", "forgotten.example"),
 	}}
 	forgotten := func(h string) bool { return h == "forgotten.example" }
 
 	hosts := buildChains(run, Destinations{WindowApplied: true}, nil, forgotten).Prompts[0].Links[0].Hosts
+	if len(hosts) != 2 {
+		t.Fatalf("hosts = %+v, want both: a suppressed host is rendered as suppressed, "+
+			"not omitted", hosts)
+	}
+	states := map[string]string{}
 	for _, h := range hosts {
-		if h.Host == "forgotten.example" {
-			t.Errorf("a forgotten host reappeared on the declaration side: %+v", hosts)
+		states[h.Host] = h.State
+	}
+	if states["forgotten.example"] != LinkForgotten {
+		t.Errorf("forgotten.example = %q, want %q. Dropping it makes the next report read "+
+			"as though the forget had been undone.", states["forgotten.example"], LinkForgotten)
+	}
+	if states["keep.example"] != LinkNotObserved {
+		t.Errorf("keep.example = %q; only the forgotten host changes", states["keep.example"])
+	}
+}
+
+// TestChains_LoopbackIsNotAFinding is the case the review predicted verbatim:
+// "a declared curl http://localhost:3000 reads not_observed_in_window on every
+// session (loopback is never proxied)".
+//
+// It did. `not observed` is a CLAIM -- the wire was watched and this host never
+// appeared -- and for loopback it is wrong on every session that ever ran a
+// local server, forever, because loopback is never proxied and no row can
+// exist.
+func TestChains_LoopbackIsNotAFinding(t *testing.T) {
+	run := &store.Run{Declarations: []store.Declaration{
+		chainDecl(1, "t1", "Bash", "p1", "/main.jsonl", "localhost", "127.0.0.1"),
+	}}
+
+	for _, h := range buildChains(run, Destinations{WindowApplied: true}, nil, nil).Prompts[0].Links[0].Hosts {
+		if h.State != LinkLoopback {
+			t.Errorf("%s = %q, want %q: loopback is never proxied, so no row can exist and "+
+				"'not observed' accuses every session that ran a local server",
+				h.Host, h.State, LinkLoopback)
 		}
 	}
-	if len(hosts) != 1 {
-		t.Errorf("hosts = %+v, want only keep.example", hosts)
+}
+
+// TestChains_ClientPlaneReadsFromTheViewNotThePredicate.
+//
+// The state comes from the destinations view's OWN client-plane list rather
+// than from clientPlaneHosts directly, and the difference is not cosmetic:
+// mcp-proxy.anthropic.com belongs to the AGENT on a session that made mcp__*
+// calls, and the view already knows that. Re-deriving the predicate here would
+// put two sections of one report into disagreement about one host.
+func TestChains_ClientPlaneReadsFromTheViewNotThePredicate(t *testing.T) {
+	run := &store.Run{Declarations: []store.Declaration{
+		chainDecl(1, "t1", "Bash", "p1", "/main.jsonl", "api.anthropic.com"),
+	}}
+	d := Destinations{WindowApplied: true, ClientPlane: []string{"api.anthropic.com"}}
+
+	got := buildChains(run, d, nil, nil).Prompts[0].Links[0].Hosts[0].State
+	if got != LinkClientPlane {
+		t.Errorf("state = %q, want %q", got, LinkClientPlane)
+	}
+
+	// The same host, with the view NOT listing it as client plane -- which is
+	// what an mcp-attributed session produces for the mcp proxy host. The link
+	// must follow the view.
+	d2 := Destinations{WindowApplied: true, ClientPlane: nil}
+	if got := buildChains(run, d2, nil, nil).Prompts[0].Links[0].Hosts[0].State; got == LinkClientPlane {
+		t.Error("the link called it client plane while the view did not. The view is the " +
+			"one that knows about mcp attribution; two sections of one report must not " +
+			"disagree about one host.")
+	}
+}
+
+// TestChains_StructuralStatesSurviveNoWindow. forgotten, loopback and client
+// plane are facts about a host or about an instruction the user gave -- not
+// observations -- so a window has nothing to bound and they must not collapse
+// to unknown with everything else.
+func TestChains_StructuralStatesSurviveNoWindow(t *testing.T) {
+	run := &store.Run{Declarations: []store.Declaration{
+		chainDecl(1, "t1", "Bash", "p1", "/main.jsonl",
+			"localhost", "api.anthropic.com", "gone.example", "ordinary.example"),
+	}}
+	d := Destinations{WindowApplied: false, ClientPlane: []string{"api.anthropic.com"}}
+	forgotten := func(h string) bool { return h == "gone.example" }
+
+	want := map[string]string{
+		"localhost":         LinkLoopback,
+		"api.anthropic.com": LinkClientPlane,
+		"gone.example":      LinkForgotten,
+		"ordinary.example":  LinkUnknown,
+	}
+	for _, h := range buildChains(run, d, nil, forgotten).Prompts[0].Links[0].Hosts {
+		if h.State != want[h.Host] {
+			t.Errorf("%s = %q, want %q", h.Host, h.State, want[h.Host])
+		}
+	}
+}
+
+// TestChains_TwoPostRecordsKeepBoth. PostToolUse and PostToolUseFailure can
+// both write for one id. The previous version kept a bare map assigned in slice
+// order, so the last record read won silently -- and in the two-record case
+// that is a coin toss that can discard the FAILURE, which is the half a reader
+// most needs.
+func TestChains_TwoPostRecordsKeepBoth(t *testing.T) {
+	lo, hi := int64(1), int64(2)
+	run := &store.Run{
+		Declarations: []store.Declaration{chainDecl(1, "t1", "Bash", "p1", "/m.jsonl")},
+		Executions: []store.Execution{
+			// Deliberately reversed in the slice: the pick must come from seq.
+			{ToolUseID: "t1", Outcome: store.ExecFailed, Seq: &hi},
+			{ToolUseID: "t1", Outcome: store.ExecOK, Seq: &lo},
+		},
+	}
+
+	l := buildChains(run, Destinations{}, nil, nil).Prompts[0].Links[0]
+	if l.ExecutionRecords != 2 {
+		t.Errorf("execution_records = %d, want 2", l.ExecutionRecords)
+	}
+	if l.Outcome != store.ExecFailed {
+		t.Errorf("outcome = %q, want %q -- the HIGHER seq wins, not the later slice index",
+			l.Outcome, store.ExecFailed)
+	}
+	if len(l.Outcomes) != 2 {
+		t.Errorf("outcomes = %v, want both listed: showing only the winner hides the "+
+			"disagreement worth seeing", l.Outcomes)
+	}
+}
+
+// TestChains_ARecordWithNoSeqDoesNotOutrankOne. Execution.Seq is a nullable
+// pointer: a record written to the spill file when the append lock could not be
+// taken lands without a position. Letting an unknown position win would make
+// the pick rule arbitrary again by another route.
+func TestChains_ARecordWithNoSeqDoesNotOutrankOne(t *testing.T) {
+	seq := int64(5)
+	run := &store.Run{
+		Declarations: []store.Declaration{chainDecl(1, "t1", "Bash", "p1", "/m.jsonl")},
+		Executions: []store.Execution{
+			{ToolUseID: "t1", Outcome: store.ExecFailed, Seq: &seq},
+			{ToolUseID: "t1", Outcome: store.ExecOK, Seq: nil},
+		},
+	}
+
+	if got := buildChains(run, Destinations{}, nil, nil).Prompts[0].Links[0].Outcome; got != store.ExecFailed {
+		t.Errorf("outcome = %q, want %q: the record with a known position wins", got, store.ExecFailed)
+	}
+}
+
+// TestChains_EveryDeclarationIsReachable is H-31's set equality. Nothing may
+// vanish: a declaration lands under a prompt or in the unattributed group, and
+// a terminal with no declaration gets a link carrying the one thing known
+// about it.
+func TestChains_EveryDeclarationIsReachable(t *testing.T) {
+	run := &store.Run{
+		Declarations: []store.Declaration{
+			chainDecl(1, "t1", "Bash", "p1", "/m.jsonl"),
+			chainDecl(2, "t2", "Bash", "", "/m.jsonl"),
+		},
+		Terminals: []store.Terminal{{ToolUseID: "t_dropped"}},
+	}
+
+	c := buildChains(run, Destinations{}, nil, nil)
+	seen := map[string]bool{}
+	for _, ch := range c.Prompts {
+		for _, l := range ch.Links {
+			seen[l.ToolUseID] = true
+		}
+	}
+	for _, l := range append(append([]Link{}, c.Unattributed...), c.Dropped...) {
+		seen[l.ToolUseID] = true
+	}
+
+	for _, id := range []string{"t1", "t2", "t_dropped"} {
+		if !seen[id] {
+			t.Errorf("%s appears in no chain, no unattributed group and no dropped link. "+
+				"A view that loses a call reads as a complete account of the session.", id)
+		}
+	}
+	if len(c.Dropped) != 1 || c.Dropped[0].ToolName != LinkUnknown {
+		t.Errorf("dropped = %+v; a terminal with no declaration is one link whose every "+
+			"field but the id is unknown", c.Dropped)
+	}
+}
+
+// TestChains_SSHHostsAreCarriedApart replaces a test that joined them into the
+// host list with a `not observable` state. The spec keeps ssh_hosts a separate,
+// never-joined field, and the reason is sound: a verdict column beside a host
+// the wire could never have shown is answering a question nobody could ask.
+func TestChains_SSHHostsAreCarriedApart(t *testing.T) {
+	d := chainDecl(1, "t1", "Bash", "p1", "/main.jsonl", "wire.example")
+	d.SSHHosts = []string{"git.example"}
+	run := &store.Run{Declarations: []store.Declaration{d}}
+
+	l := buildChains(run, Destinations{WindowApplied: true}, nil, nil).Prompts[0].Links[0]
+	if len(l.Hosts) != 1 || l.Hosts[0].Host != "wire.example" {
+		t.Errorf("hosts = %+v, want only the wire-observable one", l.Hosts)
+	}
+	if len(l.SSHHosts) != 1 || l.SSHHosts[0] != "git.example" {
+		t.Errorf("ssh_hosts = %v, want the ssh host carried in its own field", l.SSHHosts)
+	}
+}
+
+// TestRedactChains_SSHHostsAreDigestedToo closes a gap a mutation found: with
+// ssh hosts moved to their own field, nothing asserted they were redacted at
+// all.
+//
+// They are the hostnames most likely to be worth hiding. A public package index
+// says little about an organisation; a bastion, a deploy target or an internal
+// git host is the organisation's own topology, and it is exactly the name that
+// would have survived in clear because it sat in a different field from the one
+// the redaction test was watching.
+func TestRedactChains_SSHHostsAreDigestedToo(t *testing.T) {
+	rep := &Report{Sessions: []Session{{
+		Chains: Chains{Prompts: []Chain{{
+			PromptID: "p1",
+			Links:    []Link{{ToolUseID: "t1", SSHHosts: []string{"bastion.internal.example"}}},
+		}}},
+	}}}
+
+	red := Redact(rep, []byte("k"))
+	got := red.Sessions[0].Chains.Prompts[0].Links[0].SSHHosts
+
+	if len(got) != 1 {
+		t.Fatalf("ssh_hosts = %v, want the one host carried through redaction", got)
+	}
+	if got[0] == "bastion.internal.example" {
+		t.Error("a redacted report still names the ssh host in clear. It sits in its own " +
+			"field, which is precisely why it was missed: the redaction test was watching " +
+			"the other one.")
+	}
+	if rep.Sessions[0].Chains.Prompts[0].Links[0].SSHHosts[0] != "bastion.internal.example" {
+		t.Error("the ORIGINAL report's ssh host was overwritten; the copy shares its slice")
 	}
 }
 
 // TestRedactChains_DoesNotWriteThroughToTheOriginal is the aliasing test, and
-// it is the reason redactChains rebuilds all three slices rather than copying
-// the struct.
+// it is the reason redactLinks rebuilds every slice rather than copying the
+// struct.
 //
 // Redact returns a NEW report so the caller can still render the original --
 // `report` and `report --redact` are one code path with a flag. But a Go struct
@@ -288,6 +519,12 @@ func TestChains_ForgottenHostsAreDroppedFromLinks(t *testing.T) {
 // in-memory report would look correctly redacted while sharing state with an
 // object the caller believes is untouched. For a function whose users are
 // deciding what is safe to send someone, that is the worst direction to fail in.
+//
+// THIS TEST WAS DELETED AND RESTORED. A text-range edit during the Part 1
+// rework replaced a block that happened to contain it, the suite stayed green
+// because a suite with fewer tests is still a green suite, and only the
+// mutation sweep noticed -- the aliasing break stopped being detected while
+// every gate still passed. That is the argument for the sweep in one line.
 func TestRedactChains_DoesNotWriteThroughToTheOriginal(t *testing.T) {
 	rep := &Report{Sessions: []Session{{
 		Chains: Chains{Prompts: []Chain{{
@@ -328,7 +565,7 @@ func TestRedactChains_DoesNotWriteThroughToTheOriginal(t *testing.T) {
 // TestRedactChains_UsesTheSameKeyedDigestAsTheRestOfTheReport. One path, not
 // two: a second digest that drifted from redactHost would make the same host
 // unmatchable between the chain view and the destinations section of one
-// report.
+// report. Deleted and restored alongside the test above.
 func TestRedactChains_UsesTheSameKeyedDigestAsTheRestOfTheReport(t *testing.T) {
 	key := []byte("install-key")
 	rep := &Report{Sessions: []Session{{
@@ -347,24 +584,5 @@ func TestRedactChains_UsesTheSameKeyedDigestAsTheRestOfTheReport(t *testing.T) {
 		t.Errorf("one host digested two ways: %q in destinations, %q in the chain. A reader "+
 			"cannot join them, which is the one thing a digest has to preserve.",
 			inDest, inChain)
-	}
-}
-
-// TestChains_SSHHostsAreNotObservableRatherThanMissing. The proxy cannot see
-// ssh at all, so an ssh host with no row is expected. Rendering it as "named
-// and never seen" would accuse the session of hiding traffic the wire was never
-// able to show.
-func TestChains_SSHHostsAreNotObservableRatherThanMissing(t *testing.T) {
-	d := chainDecl(1, "t1", "Bash", "p1", "/main.jsonl")
-	d.SSHHosts = []string{"git.example"}
-	run := &store.Run{Declarations: []store.Declaration{d}}
-
-	hosts := buildChains(run, Destinations{WindowApplied: true}, nil, nil).Prompts[0].Links[0].Hosts
-	if len(hosts) != 1 || hosts[0].Host != "git.example" {
-		t.Fatalf("hosts = %+v, want the ssh host carried", hosts)
-	}
-	if hosts[0].State != LinkNotObservable {
-		t.Errorf("state = %q, want %q: the proxy cannot see ssh, so its absence from the "+
-			"wire is not evidence about the call", hosts[0].State, LinkNotObservable)
 	}
 }

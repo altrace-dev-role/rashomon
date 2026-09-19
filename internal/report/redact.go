@@ -184,22 +184,46 @@ func Redact(rep *Report, key []byte) *Report {
 // with the same keyed helper the Transcript section uses -- one path, not a
 // second one that could drift from it.
 func redactChains(c Chains, key []byte) Chains {
-	out := Chains{Prompts: make([]Chain, 0, len(c.Prompts)), Unchained: c.Unchained}
+	out := Chains{
+		Prompts:      make([]Chain, 0, len(c.Prompts)),
+		Unattributed: redactLinks(c.Unattributed, key),
+		Dropped:      redactLinks(c.Dropped, key),
+	}
 	for _, chain := range c.Prompts {
 		ch := chain
 		ch.TranscriptPath = redactHost(chain.TranscriptPath, key)
-		ch.Links = make([]Link, 0, len(chain.Links))
-		for _, link := range chain.Links {
-			l := link
-			l.Hosts = make([]LinkHost, 0, len(link.Hosts))
-			for _, h := range link.Hosts {
-				// The state is carried through untouched: it is a verdict, not
-				// a name, and it is the only thing left worth reading.
-				l.Hosts = append(l.Hosts, LinkHost{Host: redactHost(h.Host, key), State: h.State})
-			}
-			ch.Links = append(ch.Links, l)
-		}
+		ch.Links = redactLinks(chain.Links, key)
 		out.Prompts = append(out.Prompts, ch)
+	}
+	return out
+}
+
+// redactLinks rebuilds a link slice and every name-bearing slice inside it.
+//
+// Hosts AND SSHHosts: an ssh host is a hostname like any other, and it is the
+// one most likely to be an internal name -- the deploy target, the bastion --
+// so leaving it in clear because it sits in a different field would redact the
+// public names and publish the private ones.
+func redactLinks(links []Link, key []byte) []Link {
+	out := make([]Link, 0, len(links))
+	for _, link := range links {
+		l := link
+		l.Hosts = make([]LinkHost, 0, len(link.Hosts))
+		for _, h := range link.Hosts {
+			// The state is carried through untouched: it is a verdict, not a
+			// name, and it is the only thing left worth reading.
+			l.Hosts = append(l.Hosts, LinkHost{Host: redactHost(h.Host, key), State: h.State})
+		}
+		l.SSHHosts = make([]string, 0, len(link.SSHHosts))
+		for _, h := range link.SSHHosts {
+			l.SSHHosts = append(l.SSHHosts, redactHost(h, key))
+		}
+		// Rebuilt although it holds no names: the whole point of this function
+		// is that the copy shares no backing array with the original, and a
+		// slice left aliased because today's contents look harmless is the
+		// aliasing bug waiting for someone to put a name in it.
+		l.Outcomes = append([]string{}, link.Outcomes...)
+		out = append(out, l)
 	}
 	return out
 }

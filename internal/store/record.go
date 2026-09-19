@@ -100,6 +100,24 @@ type Declaration struct {
 	Hosts    []string `json:"hosts"`
 	SSHHosts []string `json:"ssh_hosts"`
 
+	// FileLabel is what the file this call named looks like (v3).
+	//
+	// RESERVED AND NOT YET POPULATED, like the two below it. The label layer
+	// lives in internal/shape and internal/hook, which another branch owns;
+	// this declares the field so that branch adds behaviour rather than a
+	// fourth schema version, and can delete its own copy on rebase.
+	//
+	// No omitempty, deliberately. The key is always present and null until
+	// something writes it, because the record allowlist is an exact set in
+	// both directions -- a key that appears only sometimes is a key the
+	// allowlist cannot describe, and "sometimes present" is the shape a
+	// reader cannot tell from "absent because nothing looked".
+	//
+	// Three states, all different: null means the tool names no file, so
+	// nobody looked; "none" means a real path matched no row; "unknown" means
+	// a path could not be read at all. The path itself is never stored.
+	FileLabel *string `json:"file_label"`
+
 	// HostSource says where each entry of Hosts came from, positionally (v3).
 	// "structured" is a host read from a field whose value is a URL, so the
 	// call names it by construction; "lexical" is one extracted from command

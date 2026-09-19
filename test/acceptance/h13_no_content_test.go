@@ -30,7 +30,10 @@ var (
 		// shape that layer owns; it is reserved here so that layer adds
 		// behaviour rather than a second schema bump. Both are null on every
 		// record this build writes.
-		"host_source", "rule_match",
+		// file_label is the label layer's reservation: what the file a call
+		// named LOOKS LIKE, from a closed vocabulary, never the path. Null on
+		// every record this build writes.
+		"host_source", "rule_match", "file_label",
 	}
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",

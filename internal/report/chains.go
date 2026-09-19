@@ -20,12 +20,26 @@ const (
 	// LinkNotObserved: the call named this host and no row on the wire matches
 	// it inside the window.
 	LinkNotObserved = "not observed"
-	// LinkNotObservable: an ssh host. The proxy cannot see ssh at all, so the
-	// absence of a row is a property of the transport rather than evidence
-	// about the call -- and unlike every other state here it survives
-	// WindowApplied being false, because it was never an observation.
-	LinkNotObservable = "not observable"
-	LinkUnknown       = "unknown"
+	LinkUnknown     = "unknown"
+
+	// The three below are STRUCTURAL: they are facts about the host or about
+	// an instruction the user gave, not observations of the wire. So they are
+	// decided ABOVE the window gate and survive WindowApplied being false --
+	// there is nothing for a window to bound.
+
+	// LinkForgotten: `forget --host` suppressed this host. Rendered rather
+	// than dropped. A link that silently omitted the host would make the
+	// forget read as undone on the next report, and a silent omission is the
+	// failure this whole program is arranged against -- the destinations
+	// section renders a Suppressed count for exactly this reason.
+	LinkForgotten = "forgotten"
+	// LinkLoopback: loopback is never proxied, so no wire row can exist and
+	// "not observed" would be a finding against every session that ever ran a
+	// local server.
+	LinkLoopback = "loopback"
+	// LinkClientPlane: a host the client contacts on its own behalf every
+	// session, so a row there is not evidence about this call.
+	LinkClientPlane = "client plane"
 )
 
 // How one link ended. store.ExecOK, store.ExecFailed and store.ExecInterrupted
@@ -58,13 +72,25 @@ type Link struct {
 	ToolName  string `json:"tool_name"`
 	Program   string `json:"program,omitempty"`
 	VerbClass string `json:"verb_class"`
-	Outcome   string `json:"outcome"`
+	// Outcome comes from the execution record with the HIGHER SEQ when there
+	// are two -- a PostToolUse and a PostToolUseFailure can both write for one
+	// id. Outcomes lists both, and ExecutionRecords counts them, because
+	// picking one and showing only it is how the failure becomes the half that
+	// disappears.
+	Outcome          string   `json:"outcome"`
+	Outcomes         []string `json:"outcomes"`
+	ExecutionRecords int      `json:"execution_records"`
 	// Hosts is what this call NAMED, never what it reached. The proxy's store
 	// carries no tool_use_id, so no wire row can be attributed to an individual
 	// call; a host's state here is the state of that host across this session's
 	// window. The renderer says so in its legend, because a per-call reading is
 	// the obvious misreading and it is the kind that overstates what is known.
 	Hosts []LinkHost `json:"hosts"`
+	// SSHHosts is kept APART from Hosts and carries no state, because there is
+	// no observation to carry: the proxy cannot see ssh at all. Joining them
+	// into one list puts a host the wire could never have shown beside hosts it
+	// could, under a column that reads as a verdict on both.
+	SSHHosts []string `json:"ssh_hosts"`
 }
 
 // Chain is one prompt and the calls it produced.
@@ -84,10 +110,18 @@ type Chain struct {
 // holds no content by construction.
 type Chains struct {
 	Prompts []Chain `json:"prompts"`
-	// Unchained counts declarations carrying no prompt id, which is every v1
-	// record. They cannot be placed, and a view that dropped them silently
-	// would read as complete while omitting real work.
-	Unchained int `json:"unchained_calls"`
+	// Unattributed holds declarations carrying no prompt id -- every v1
+	// record, and a subagent call whose payload never carried one. They cannot
+	// be placed under a prompt, so they are placed HERE, as links with ids,
+	// rather than counted: a count says how much is missing and a set equality
+	// check needs to know WHICH, and only the second can prove nothing
+	// vanished.
+	Unattributed []Link `json:"unattributed"`
+	// Dropped is one link per terminal record whose declaration never landed.
+	// Every field but the id is unknown, because every field but the id is
+	// genuinely unknown -- but the call happened, and a view that omitted it
+	// would be a complete-looking account of a session with a hole in it.
+	Dropped []Link `json:"dropped"`
 }
 
 // deniedSet collects the ids the transcripts say the user refused.
@@ -113,16 +147,13 @@ func deniedSet(ts []Transcript) map[string]bool {
 // for, and a second consumer reading around it is how a suppressed host comes
 // back in a different section.
 func buildChains(run *store.Run, dests Destinations, denied map[string]bool, forgotten func(string) bool) Chains {
-	out := Chains{Prompts: []Chain{}}
+	out := Chains{Prompts: []Chain{}, Unattributed: []Link{}, Dropped: []Link{}}
 	if run == nil {
 		return out
 	}
 
 	state := hostStates(dests)
-	executed := map[string]store.Execution{}
-	for _, e := range run.Executions {
-		executed[e.ToolUseID] = e
-	}
+	executed := executionsByID(run)
 
 	type key struct{ transcript, prompt string }
 	byKey := map[key]*Chain{}
@@ -131,7 +162,8 @@ func buildChains(run *store.Run, dests Destinations, denied map[string]bool, for
 
 	for _, d := range run.Declarations {
 		if d.PromptID == nil || *d.PromptID == "" {
-			out.Unchained++
+			out.Unattributed = append(out.Unattributed,
+				buildLink(d, executed, denied, state, dests, forgotten))
 			continue
 		}
 		k := key{transcript: d.TranscriptPath, prompt: *d.PromptID}
@@ -145,8 +177,28 @@ func buildChains(run *store.Run, dests Destinations, denied map[string]bool, for
 		if d.Seq < first[k] {
 			first[k] = d.Seq
 		}
-		c.Links = append(c.Links, buildLink(d, executed, denied, state, dests.WindowApplied, forgotten))
+		c.Links = append(c.Links, buildLink(d, executed, denied, state, dests, forgotten))
 	}
+
+	// Terminals whose declaration never landed. The id is all there is, and
+	// saying so is the point: these are calls the run made and cannot describe.
+	for _, id := range run.Dropped() {
+		out.Dropped = append(out.Dropped, Link{
+			ToolUseID: id,
+			ToolName:  LinkUnknown,
+			VerbClass: LinkUnknown,
+			Outcome:   LinkUnknown,
+			Outcomes:  []string{},
+			Hosts:     []LinkHost{},
+			SSHHosts:  []string{},
+		})
+	}
+	sort.SliceStable(out.Dropped, func(i, j int) bool {
+		return out.Dropped[i].ToolUseID < out.Dropped[j].ToolUseID
+	})
+	sort.SliceStable(out.Unattributed, func(i, j int) bool {
+		return out.Unattributed[i].Seq < out.Unattributed[j].Seq
+	})
 
 	// Chains by where they start, links by seq. Both are the same claim -- that
 	// this is the order things happened in -- and it is the only claim of that
@@ -160,12 +212,47 @@ func buildChains(run *store.Run, dests Destinations, denied map[string]bool, for
 	return out
 }
 
+// executionsByID groups the run's execution records by tool_use_id.
+//
+// A single id can have TWO: PostToolUse and PostToolUseFailure both write, and
+// the previous version of this code kept a bare map assigned in slice order, so
+// the last record read won silently -- which in the two-record case is a coin
+// toss that can discard the failure. Slice order is not a safe proxy for seq
+// either: Execution.Seq is a nullable pointer, because a record written to the
+// spill file when the ordered stream's lock could not be taken lands without a
+// position.
+func executionsByID(run *store.Run) map[string][]store.Execution {
+	out := map[string][]store.Execution{}
+	for _, e := range run.Executions {
+		out[e.ToolUseID] = append(out[e.ToolUseID], e)
+	}
+	for id := range out {
+		recs := out[id]
+		// Highest seq last. A record with no seq sorts BELOW one that has a
+		// position, never above it: it is the record whose order nobody knows,
+		// and letting an unknown position outrank a known one is how the pick
+		// rule becomes arbitrary again by another route.
+		sort.SliceStable(recs, func(i, j int) bool {
+			return execSeq(recs[i]) < execSeq(recs[j])
+		})
+		out[id] = recs
+	}
+	return out
+}
+
+func execSeq(e store.Execution) int64 {
+	if e.Seq == nil {
+		return -1
+	}
+	return *e.Seq
+}
+
 func buildLink(
 	d store.Declaration,
-	executed map[string]store.Execution,
+	executed map[string][]store.Execution,
 	denied map[string]bool,
 	state map[string]string,
-	windowApplied bool,
+	dests Destinations,
 	forgotten func(string) bool,
 ) Link {
 	l := Link{
@@ -173,27 +260,22 @@ func buildLink(
 		ToolUseID: d.ToolUseID,
 		ToolName:  d.ToolName,
 		VerbClass: d.Shape.VerbClass,
-		Outcome:   linkOutcome(d.ToolUseID, executed, denied),
 		Hosts:     []LinkHost{},
+		SSHHosts:  []string{},
 	}
 	if d.Shape.Program != nil {
 		l.Program = *d.Shape.Program
 	}
+	l.Outcome, l.Outcomes, l.ExecutionRecords = linkOutcome(d.ToolUseID, executed, denied)
 
 	for _, h := range d.Hosts {
-		if forgotten != nil && forgotten(h) {
-			continue
-		}
-		l.Hosts = append(l.Hosts, LinkHost{Host: h, State: hostState(h, state, windowApplied)})
+		l.Hosts = append(l.Hosts, LinkHost{Host: h, State: hostState(h, state, dests, forgotten)})
 	}
-	for _, h := range d.SSHHosts {
-		if forgotten != nil && forgotten(h) {
-			continue
-		}
-		// Not routed through hostState: this one is true whatever the window
-		// did, because it is a fact about the transport and not an observation.
-		l.Hosts = append(l.Hosts, LinkHost{Host: h, State: LinkNotObservable})
-	}
+	// Carried, never joined, and never given a state: the proxy cannot see ssh,
+	// so there is no observation to report and a column that reads as a verdict
+	// would be answering a question nobody could have asked of the wire.
+	l.SSHHosts = append(l.SSHHosts, d.SSHHosts...)
+	sort.Strings(l.SSHHosts)
 	return l
 }
 
@@ -204,8 +286,34 @@ func buildLink(
 // appeared" is not a thing that was observed -- it is a thing that could not be
 // observed -- and reporting it as the former is the failure this whole package
 // is built to avoid.
-func hostState(h string, state map[string]string, windowApplied bool) string {
-	if !windowApplied {
+func hostState(h string, state map[string]string, dests Destinations, forgotten func(string) bool) string {
+	// THE THREE STRUCTURAL ANSWERS COME FIRST, above the window gate, because
+	// none of them is an observation and a window bounds observations. Each one
+	// replaced a `not observed` that was a false finding: forgotten made the
+	// forget read as undone, loopback accused every session that ever ran a
+	// local server, and client plane accused the client's own traffic.
+	if forgotten != nil && forgotten(h) {
+		return LinkForgotten
+	}
+	if loopbackHosts[h] {
+		return LinkLoopback
+	}
+	// Read from the view's OWN client-plane list rather than from
+	// clientPlaneHosts directly. The two differ in one case that matters:
+	// mcp-proxy.anthropic.com belongs to the agent on a session that made
+	// mcp__* calls, and the view already knows that. Re-deriving the predicate
+	// here would put the chain and the destinations section into disagreement
+	// about the same host in the same report.
+	for _, c := range dests.ClientPlane {
+		if c == h {
+			return LinkClientPlane
+		}
+	}
+
+	// The window gate applies to the ABSENT case as well as the present one.
+	// With no window enforced, "this host never appeared" is not a thing that
+	// was observed -- it is a thing that could not be observed.
+	if !dests.WindowApplied {
 		return LinkUnknown
 	}
 	if s, ok := state[h]; ok {
@@ -244,18 +352,34 @@ func destinationState(d wire.Destination) string {
 	}
 }
 
-func linkOutcome(id string, executed map[string]store.Execution, denied map[string]bool) string {
-	if e, ok := executed[id]; ok {
-		if e.Outcome == "" {
-			return LinkOutcomeUnobserved
+// linkOutcome returns the headline outcome, every outcome recorded for the id,
+// and how many records there were.
+//
+// All three, because one number and one word answer different questions and a
+// reader given only the word cannot tell a single clean result from a pair
+// that disagreed.
+func linkOutcome(id string, executed map[string][]store.Execution, denied map[string]bool) (string, []string, int) {
+	recs, ok := executed[id]
+	if !ok || len(recs) == 0 {
+		// Checked only when no execution record exists. A denial produces no
+		// execution record, so the two cannot both be true -- and were a future
+		// change to make them so, the record would be the stronger evidence.
+		if denied[id] {
+			return LinkOutcomeDenied, []string{}, 0
 		}
-		return e.Outcome
+		return LinkOutcomeNoRecord, []string{}, 0
 	}
-	// Checked only when no execution record exists. A denial produces no
-	// execution record, so the two cannot both be true -- and were a future
-	// change to make them so, the record would be the stronger evidence.
-	if denied[id] {
-		return LinkOutcomeDenied
+
+	all := make([]string, 0, len(recs))
+	for _, e := range recs {
+		o := e.Outcome
+		if o == "" {
+			o = LinkOutcomeUnobserved
+		}
+		all = append(all, o)
 	}
-	return LinkOutcomeNoRecord
+	// The LAST record after the seq sort: the highest position wins. Both are
+	// listed above it either way, so the pick decides emphasis and not what the
+	// reader is allowed to see.
+	return all[len(all)-1], all, len(recs)
 }

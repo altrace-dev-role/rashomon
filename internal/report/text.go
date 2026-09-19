@@ -456,7 +456,8 @@ func writeFamilies(b *bytes.Buffer, fc FamilyCoverage) {
 // misreading, and the misreading overstates what is known -- so the line saying
 // so is printed every time the section is, not once in the documentation.
 func writeChains(b *bytes.Buffer, c Chains, expand bool) {
-	if len(c.Prompts) == 0 && c.Unchained == 0 {
+	extra := len(c.Unattributed) + len(c.Dropped)
+	if len(c.Prompts) == 0 && extra == 0 {
 		return
 	}
 	fmt.Fprintf(b, "  chains: %d\n", len(c.Prompts))
@@ -471,10 +472,7 @@ func writeChains(b *bytes.Buffer, c Chains, expand bool) {
 		if len(c.Prompts) > 0 {
 			fmt.Fprintf(b, "    --chain lists the calls under each prompt\n")
 		}
-		if c.Unchained > 0 {
-			fmt.Fprintf(b, "    %d call%s could not be placed in a chain "+
-				"(no prompt id recorded)\n", c.Unchained, plural(c.Unchained))
-		}
+		writeChainTail(b, c, false)
 		return
 	}
 
@@ -491,21 +489,67 @@ func writeChains(b *bytes.Buffer, c Chains, expand bool) {
 		}
 		fmt.Fprintf(b, "    prompt %s\n", ch.PromptID)
 		for _, l := range ch.Links {
-			shape := l.VerbClass
-			if l.Program != "" {
-				shape = l.Program + ", " + l.VerbClass
-			}
-			fmt.Fprintf(b, "      %d  %s (%s)  %s%s\n",
-				l.Seq, l.ToolName, shape, l.Outcome, linkHosts(l.Hosts))
+			writeLink(b, l)
 		}
 	}
-	if c.Unchained > 0 {
-		// Said plainly rather than omitted. These are real calls, and a section
-		// that silently dropped them would read as a complete account of the
-		// session while leaving work out of it.
-		fmt.Fprintf(b, "    %d call%s could not be placed in a chain "+
-			"(no prompt id recorded)\n", c.Unchained, plural(c.Unchained))
+	writeChainTail(b, c, true)
+}
+
+// writeChainTail renders the two groups that belong to no prompt.
+//
+// Both are announced whether or not the listing is expanded, because both are
+// statements about COMPLETENESS -- how much of the session the chains above do
+// not account for -- and a reader deciding whether to trust the view needs that
+// without having to ask for more output.
+func writeChainTail(b *bytes.Buffer, c Chains, expand bool) {
+	if n := len(c.Unattributed); n > 0 {
+		fmt.Fprintf(b, "    %d call%s could not be placed under a prompt "+
+			"(prompt not recorded)\n", n, plural(n))
+		if expand {
+			for _, l := range c.Unattributed {
+				writeLink(b, l)
+			}
+		}
 	}
+	if n := len(c.Dropped); n > 0 {
+		// The declaration never landed, so the id is the whole of what is
+		// known. Named anyway: this is a call the session made and cannot
+		// describe, which is worth more to a reader than a tidy omission.
+		fmt.Fprintf(b, "    %d call%s ran with no declaration recorded\n", n, plural(n))
+		if expand {
+			for _, l := range c.Dropped {
+				fmt.Fprintf(b, "      %s  everything but the id is unknown\n", l.ToolUseID)
+			}
+		}
+	}
+}
+
+func writeLink(b *bytes.Buffer, l Link) {
+	shape := l.VerbClass
+	if l.Program != "" {
+		shape = l.Program + ", " + l.VerbClass
+	}
+	outcome := l.Outcome
+	// Two post records for one id. The headline is the higher-seq one and this
+	// says the other existed, because a link that showed only the winner would
+	// hide precisely the disagreement worth seeing.
+	if l.ExecutionRecords > 1 {
+		outcome = fmt.Sprintf("%s (%d records: %s)", l.Outcome,
+			l.ExecutionRecords, strings.Join(l.Outcomes, ", "))
+	}
+	fmt.Fprintf(b, "      %d  %s (%s)  %s%s%s\n",
+		l.Seq, l.ToolName, shape, outcome, linkHosts(l.Hosts), linkSSH(l.SSHHosts))
+}
+
+// linkSSH renders the ssh hosts a call named, kept apart from the observable
+// ones and carrying no state: the proxy cannot see ssh, so there is nothing to
+// report about them and a verdict column would be answering a question the wire
+// was never able to be asked.
+func linkSSH(hosts []string) string {
+	if len(hosts) == 0 {
+		return ""
+	}
+	return "  ssh: " + strings.Join(hosts, ", ") + " (not observable)"
 }
 
 // linkHosts renders the hosts a call named, or nothing at all when it named

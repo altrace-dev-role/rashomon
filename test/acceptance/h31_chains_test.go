@@ -53,9 +53,9 @@ func TestH31_ChainsGroupCallsUnderTheirPrompt(t *testing.T) {
 		t.Fatalf("executions recorded = %d, want 3. The fixture is not exercising the "+
 			"execution path and the outcomes below mean nothing.", rep.Executions.Recorded)
 	}
-	if rep.Chains.Unchained != 0 {
-		t.Fatalf("unchained = %d, want 0: every declaration here carries a prompt id",
-			rep.Chains.Unchained)
+	if len(rep.Chains.Unattributed) != 0 {
+		t.Fatalf("unattributed = %+v, want none: every declaration here carries a prompt id",
+			rep.Chains.Unattributed)
 	}
 	if len(rep.Chains.Prompts) != 2 {
 		t.Fatalf("chains = %d, want 2: two prompts produced these calls. %+v",
@@ -226,5 +226,60 @@ func TestH31_TheChainSurvivesRedaction(t *testing.T) {
 	if !strings.Contains(out, "chains: 1") {
 		t.Errorf("the chain section vanished under --redact; redaction removes names, not "+
 			"structure:\n%s", out)
+	}
+}
+
+// TestH31_LoopbackAndClientPlaneAreNotFindings drives the two cases the review
+// predicted, end to end.
+//
+// Both were real in the first implementation of this view. A declared
+// `curl http://localhost:3000` read "not observed" -- which says the wire was
+// watched and this host never appeared -- on every session, forever, because
+// loopback is never proxied and no row can ever exist. The same for the
+// client's own traffic. Neither is a finding, and rendering them as one
+// accuses the agent of the recorder's blind spots.
+func TestH31_LoopbackAndClientPlaneAreNotFindings(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+
+	p := defaultPayload()
+	p.ToolInput = map[string]any{"command": "curl http://localhost:3000/health"}
+	e.mustHook(p.build(t))
+	e.probe("end", testSession)
+
+	hosts := e.report(testSession).Chains.Prompts[0].Links[0].Hosts
+	if len(hosts) != 1 {
+		t.Fatalf("hosts = %+v, want the one named", hosts)
+	}
+	if hosts[0].State != "loopback" {
+		t.Errorf("%s = %q, want \"loopback\". Loopback is never proxied, so no row can "+
+			"exist and \"not observed\" accuses every session that ran a local server.",
+			hosts[0].Host, hosts[0].State)
+	}
+}
+
+// TestH31_SSHHostsAreCarriedApartEndToEnd. The proxy cannot see ssh, so an ssh
+// host gets its own field and no state: a verdict column beside it would be
+// answering a question the wire could never be asked.
+func TestH31_SSHHostsAreCarriedApartEndToEnd(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+
+	p := defaultPayload()
+	p.ToolInput = map[string]any{"command": "git clone ssh://git.example.com/infra.git"}
+	e.mustHook(p.build(t))
+	e.probe("end", testSession)
+
+	l := e.report(testSession).Chains.Prompts[0].Links[0]
+	if len(l.Hosts) != 0 {
+		t.Errorf("hosts = %+v, want none: the only host named is an ssh one", l.Hosts)
+	}
+	if len(l.SSHHosts) != 1 || l.SSHHosts[0] != "git.example.com" {
+		t.Errorf("ssh_hosts = %v, want it carried in its own field", l.SSHHosts)
+	}
+
+	out := e.run("", nil, "report", "--session", testSession, "--chain").stdout
+	if !strings.Contains(out, "ssh: git.example.com (not observable)") {
+		t.Errorf("the render does not carry the ssh host apart:\n%s", out)
 	}
 }

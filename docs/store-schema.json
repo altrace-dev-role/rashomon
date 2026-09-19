@@ -165,6 +165,23 @@
             "type": "string"
           }
         },
+        "file_label": {
+          "description": "Schema 3, RESERVED. What the file this call named looks like, derived at hook time from the path's basename and suffix alone; the path itself is never stored. A LABEL and not a finding: it says what the path looks like, not what the call did to it. `none` is a real answer about a real path that matched no row; `unknown` is a path that could not be read at all, absent, non-string or empty -- and the two are kept apart because the first is a measurement and the second is its absence. Null on a tool that names no file, which is a third thing again: nobody looked, because there was nothing to look at. The vocabulary is closed and lives in shape.Labels(); it is declared here so the layer that populates it adds behaviour rather than a fourth schema version.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "ssh-key",
+            "credential-shaped",
+            "cloud-config",
+            "env-file",
+            "certificate",
+            "none",
+            "unknown"
+          ]
+        },
         "host_source": {
           "description": "Schema 3. Where each entry of `hosts` came from. STRUCTURED means the host was read from a field whose value is a URL -- WebFetch's `url`, for instance -- so the call names that host by construction. LEXICAL means it was extracted from command text, where a mention and a destination are not the same thing: `curl https://example.com` and `echo see https://example.com` both yield the host. Both satisfy the destinations join and `forget --host` applies to both; the distinction is rendered so a reader can tell 'named in a tool argument' from 'mentioned in command text'. Null on records written before schema 3, which is not the same as an empty list: it means nobody looked.",
           "type": [
@@ -202,7 +219,8 @@
           "then": {
             "required": [
               "host_source",
-              "rule_match"
+              "rule_match",
+              "file_label"
             ]
           }
         }

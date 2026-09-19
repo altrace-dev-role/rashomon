@@ -308,19 +308,27 @@ type reportSession struct {
 			TranscriptPath string `json:"transcript_path"`
 			PromptID       string `json:"prompt_id"`
 			Links          []struct {
-				Seq       int64  `json:"seq"`
-				ToolUseID string `json:"tool_use_id"`
-				ToolName  string `json:"tool_name"`
-				Program   string `json:"program"`
-				VerbClass string `json:"verb_class"`
-				Outcome   string `json:"outcome"`
-				Hosts     []struct {
+				Seq              int64    `json:"seq"`
+				Outcomes         []string `json:"outcomes"`
+				ExecutionRecords int      `json:"execution_records"`
+				SSHHosts         []string `json:"ssh_hosts"`
+				ToolUseID        string   `json:"tool_use_id"`
+				ToolName         string   `json:"tool_name"`
+				Program          string   `json:"program"`
+				VerbClass        string   `json:"verb_class"`
+				Outcome          string   `json:"outcome"`
+				Hosts            []struct {
 					Host  string `json:"host"`
 					State string `json:"state"`
 				} `json:"hosts"`
 			} `json:"links"`
 		} `json:"prompts"`
-		Unchained int `json:"unchained_calls"`
+		Unattributed []struct {
+			ToolUseID string `json:"tool_use_id"`
+		} `json:"unattributed"`
+		Dropped []struct {
+			ToolUseID string `json:"tool_use_id"`
+		} `json:"dropped"`
 	} `json:"chains"`
 }
 
