@@ -4,8 +4,8 @@
 # repository root: rashomon ships as its own repository, and go.mod sits
 # beside this file's .github directory.
 #
-# Stages: gofmt -> vet (both build tags) -> race tests -> mutation sweep, with
-# a cross-build matrix alongside.
+# Stages: gofmt -> vet (both build tags) -> race tests -> H-17 skip gate ->
+# mutation sweep, with a cross-build matrix alongside.
 name: CI
 
 on:
@@ -52,20 +52,34 @@ jobs:
           cache-dependency-path: go.sum
 
       # The mutation sweep and the acceptance suite shell out to python3, git,
-      # unshare and strace. ubuntu-latest ships the first three; strace is not
-      # in the image.
+      # unshare and strace. ubuntu-latest ships the first three (unshare comes
+      # with util-linux); strace is not in the image.
       #
-      # Two H-17 tests are written to skip -- with a message saying why -- when
-      # the runner will not let them run. TestH17_CaptureIsIdenticalWithNetworkDenied
-      # needs `unshare -n` to be permitted; TestH17_HandlerOpensNoSockets needs
-      # strace to attach, which a hardened or containerised runner can deny
-      # even with the binary installed. A skipped test is invisible in the
-      # default `go test` output; add -v to the test step to see the skip and
-      # its message.
-      - name: Install strace
+      # This job is the guaranteed home of H-17's two dynamic tests, which are
+      # Linux-only and skip -- with a message saying why -- anywhere their
+      # tooling is missing or not permitted. A macOS laptop runs only the
+      # static-import half and still exits green:
+      #
+      #   TestH17_CaptureIsIdenticalWithNetworkDenied  needs `unshare -n`
+      #   TestH17_HandlerOpensNoSockets                needs strace to attach
+      #
+      # `unshare -n` creates a network namespace WITHOUT a user namespace,
+      # which takes CAP_SYS_ADMIN, and the runner user is unprivileged -- so
+      # without the setcap below the test's probe (`unshare -n true`) gets
+      # EPERM and the test skips. The file capability grants that one binary
+      # that one capability on a throwaway VM, and keeps `go test` itself
+      # unprivileged; running the suite under sudo would instead run every
+      # test as root and quietly change what they exercise (ownership, modes,
+      # HOME).
+      #
+      # A skipped test is invisible in the default `go test` output, which is
+      # how this coverage went missing once already. The "H-17 dynamic tests"
+      # step below re-runs them verbosely and turns any SKIP into a red build.
+      - name: Install strace, and let unshare create network namespaces
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends strace
+          sudo setcap cap_sys_admin+ep "$(command -v unshare)"
 
       # Prints nothing on failure by design -- run `gofmt -l .` locally to see
       # which files are unformatted.
@@ -83,6 +97,42 @@ jobs:
 
       - name: Test with race detector
         run: go test ./... -count=1 -race
+
+      # H-17's runtime evidence must actually run here, not merely not-fail.
+      # The race step above already executed these tests; this step exists to
+      # make their SKIP path fatal. `go test` exits 0 for a skipped test, so a
+      # runner-image change that dropped strace or the unshare grant would
+      # otherwise shed the coverage without a trace.
+      #
+      # Two checks, because they fail differently:
+      #   - any `--- SKIP` in the H-17 run fails, with the test's own skip
+      #     message in the log right above it;
+      #   - each dynamic test must positively `--- PASS`, so renaming or
+      #     deleting one cannot slip past a grep that only hunts skips.
+      #
+      # What this job still does NOT cover: TestRead_AgainstARealProxyStore
+      # (internal/wire/real_store_check_test.go) stays opt-in behind
+      # RASHOMON_REAL_STORE=/path/to/causal.db and has never run, here or
+      # anywhere. It is the one test that would catch the Altrace proxy
+      # drifting causal.db's schema out from under internal/wire's reader,
+      # and it needs a store the real proxy wrote, which the proxy team has
+      # yet to provide. When such a fixture lands, wire it into this job.
+      - name: H-17 dynamic tests (a SKIP is a failure)
+        shell: bash
+        run: |
+          go test -v -count=1 -run '^TestH17_' ./test/acceptance | tee "$RUNNER_TEMP/h17.out"
+          failed=0
+          for t in TestH17_CaptureIsIdenticalWithNetworkDenied TestH17_HandlerOpensNoSockets; do
+            if ! grep -q -- "--- PASS: ${t} " "$RUNNER_TEMP/h17.out"; then
+              echo "::error::${t} did not PASS on this runner, so H-17's runtime evidence is gone"
+              failed=1
+            fi
+          done
+          if grep -- '--- SKIP' "$RUNNER_TEMP/h17.out"; then
+            echo "::error::an H-17 test skipped; its reason is in the lines above"
+            failed=1
+          fi
+          exit "${failed}"
 
       # The other half of the acceptance contract: break the implementation one
       # item at a time and confirm each item's tests go red. Exits non-zero if
