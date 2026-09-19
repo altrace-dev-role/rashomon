@@ -104,6 +104,24 @@ type Destinations struct {
 	// empty session from an unbuilt field.
 	Rewritten []Rewritten `json:"rewritten"`
 
+	// How this session's rows were attributed. Printed as two numbers rather
+	// than one word: "joined on the token" over a set that is half
+	// window-matched claims a precision the data does not have.
+	//
+	// OtherToken is rows that are provably ANOTHER run's -- reported so an
+	// operator can see the overlap exists, never admitted into this session's
+	// counts. Without a token those rows are indistinguishable from this run's;
+	// with one they are positively someone else's, which is what the token buys.
+	TokenMatched  int `json:"token_matched"`
+	WindowMatched int `json:"window_matched"`
+	OtherToken    int `json:"other_token"`
+	// TokenRequested says a tag was in play for THIS RENDER, which is not the
+	// same as any row having carried one. The renderer needs both: "no tag was
+	// used" and "a tag was used and nothing carried it" are different facts,
+	// and the second is a real diagnostic -- your proxy or your clients are not
+	// doing what you think.
+	TokenRequested bool `json:"token_requested"`
+
 	// Suppressed counts destinations removed from this view by a host-scoped
 	// forget. It is rendered, because a view that silently omitted rows would
 	// be the same failure as a report that printed nothing when it was not
@@ -209,6 +227,9 @@ func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, f
 		DistinctHosts:       obs.DistinctHosts,
 		Inherited:           obs.Inherited,
 		WindowApplied:       obs.WindowApplied,
+		TokenMatched:        obs.TokenMatched,
+		WindowMatched:       obs.WindowMatched,
+		OtherToken:          obs.OtherToken,
 		WireOnly:            []string{},
 		ClientPlane:         []string{},
 		DeclaredNotObserved: []string{},
