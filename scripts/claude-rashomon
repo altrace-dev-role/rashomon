@@ -7,47 +7,73 @@
 # probe is in place from the session's first moment, so coverage is not
 # downgraded the way a mid-session install's is (probe_absent).
 #
+# An invocation that starts no session installs nothing: --help, --version
+# and the management subcommands pass straight through without watch.
+#
 # Install once (POSIX; on Windows use scripts/claude-rashomon.ps1):
 #   mkdir -p ~/.local/bin
 #   ln -sf "$(git rev-parse --show-toplevel)/scripts/claude-rashomon" ~/.local/bin/claude-rashomon
 set -eu
 
-# claude is checked before watch: watch mutates ~/.claude/settings.json, and
-# a launcher that installs hooks and then fails to launch has changed the
+# claude is checked before anything else: watch mutates ~/.claude/settings.json,
+# and a launcher that installs hooks and then fails to launch has changed the
 # machine as a side effect of a command that visibly did nothing.
 if ! command -v claude >/dev/null 2>&1; then
 	echo "claude-rashomon: no 'claude' on PATH; not installing hooks" >&2
 	exit 127
 fi
 
-# Pinned locations win over PATH -- a project-local impostor must not be the
-# binary that gets handed `watch`. Only absolute resolutions are used.
-RASHOMON=""
-if [ -n "${HOME:-}" ] && [ -x "${HOME:-}/.local/bin/rashomon" ]; then
-	RASHOMON="$HOME/.local/bin/rashomon"
-elif [ -n "${HOME:-}" ] && [ -x "${HOME:-}/go/bin/rashomon" ]; then
-	RASHOMON="$HOME/go/bin/rashomon"
-elif [ -x /opt/homebrew/bin/rashomon ]; then
-	RASHOMON=/opt/homebrew/bin/rashomon
-elif [ -x /usr/local/bin/rashomon ]; then
-	RASHOMON=/usr/local/bin/rashomon
-elif command -v rashomon >/dev/null 2>&1; then
-	RASHOMON="$(command -v rashomon)"
-	case "$RASHOMON" in /*) ;; *) RASHOMON="" ;; esac
-fi
+# Does this invocation start a session? -h/--help/-v/--version anywhere
+# before a "--" mean no, and so does a management subcommand named first --
+# the ones the CLI reference documents as starting, hosting, attaching to or
+# restarting nothing (checked 2026-09-19). Those run without watch, the
+# subcommands with one line on stderr so the skip is visible. Everything else
+# gets watch: the list errs toward installing, so an unlisted management
+# subcommand costs one idempotent install, never an unrecorded session.
+watch=yes
+for arg do
+	case "$arg" in
+		--) break ;;
+		-h|--help|-v|--version) watch=no; break ;;
+	esac
+done
+case "${1:-}" in
+	help) watch=no ;;
+	update|install|doctor|auth|setup-token|mcp|plugin|auto-mode|daemon|logs|rm|stop|project)
+		watch=no
+		echo "claude-rashomon: 'claude $1' starts no session; watch not run" >&2 ;;
+esac
 
-if [ -z "$RASHOMON" ]; then
-	echo "claude-rashomon: no rashomon binary in ~/.local/bin, ~/go/bin, the Homebrew bins, or on PATH" >&2
-	echo "claude-rashomon: from the rashomon repo:  go build -o ~/.local/bin/rashomon ./cmd/rashomon" >&2
-	exit 1
-fi
+if [ "$watch" = yes ]; then
+	# Pinned locations win over PATH -- a project-local impostor must not be
+	# the binary that gets handed `watch`. Only absolute resolutions are used.
+	RASHOMON=""
+	if [ -n "${HOME:-}" ] && [ -x "${HOME:-}/.local/bin/rashomon" ]; then
+		RASHOMON="$HOME/.local/bin/rashomon"
+	elif [ -n "${HOME:-}" ] && [ -x "${HOME:-}/go/bin/rashomon" ]; then
+		RASHOMON="$HOME/go/bin/rashomon"
+	elif [ -x /opt/homebrew/bin/rashomon ]; then
+		RASHOMON=/opt/homebrew/bin/rashomon
+	elif [ -x /usr/local/bin/rashomon ]; then
+		RASHOMON=/usr/local/bin/rashomon
+	elif command -v rashomon >/dev/null 2>&1; then
+		RASHOMON="$(command -v rashomon)"
+		case "$RASHOMON" in /*) ;; *) RASHOMON="" ;; esac
+	fi
 
-# watch refusing or failing is not a reason to withhold the session the user
-# asked for -- say so, pause long enough for the line to be seen before the
-# TUI clears the screen, and start anyway.
-if ! "$RASHOMON" watch >&2; then
-	echo "claude-rashomon: 'rashomon watch' did not install (refused or failed); starting claude UNRECORDED" >&2
-	if [ -t 2 ]; then sleep 2; fi
+	if [ -z "$RASHOMON" ]; then
+		echo "claude-rashomon: no rashomon binary in ~/.local/bin, ~/go/bin, the Homebrew bins, or on PATH" >&2
+		echo "claude-rashomon: from the rashomon repo:  go build -o ~/.local/bin/rashomon ./cmd/rashomon" >&2
+		exit 1
+	fi
+
+	# watch refusing or failing is not a reason to withhold the session the
+	# user asked for -- say so, pause long enough for the line to be seen
+	# before the TUI clears the screen, and start anyway.
+	if ! "$RASHOMON" watch >&2; then
+		echo "claude-rashomon: 'rashomon watch' did not install (refused or failed); starting claude UNRECORDED" >&2
+		if [ -t 2 ]; then sleep 2; fi
+	fi
 fi
 
 # ${1+"$@"}: plain "$@" with zero arguments trips `set -u` on bash <= 4.3,

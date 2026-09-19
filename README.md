@@ -147,7 +147,10 @@ the optional state line below.
 
 - `scripts/claude-rashomon` (POSIX) and `scripts/claude-rashomon.ps1`
   (Windows) start a recorded session in one word: check `claude` exists, run
-  `watch`, then start `claude` with arguments passed through.
+  `watch`, then start `claude` with arguments passed through. An invocation
+  that starts no session installs nothing: `--help`, `--version`, and the
+  management subcommands (`doctor`, `mcp`, `update`, and the rest listed in
+  the script) pass straight through without `watch`.
 - `scripts/rashomon-sessionstart.sh` is an optional `SessionStart` hook that
   puts one line of recorder state into a session's context. This repository
   does not install it; its header shows the entry to add to your own

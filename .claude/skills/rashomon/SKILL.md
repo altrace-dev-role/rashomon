@@ -58,7 +58,8 @@ declaration (identifiers and shape only — never content).
    From then on `claude-rashomon` in any directory runs `watch` and starts
    `claude` in one step, with the liveness probe in place from the session's
    first moment — no mid-session `probe_absent` downgrade. Extra arguments
-   pass through to `claude` unchanged.
+   pass through to `claude` unchanged; `--help`, `--version` and management
+   subcommands such as `doctor` pass through without running `watch`.
 
 Do not edit `~/.claude/settings.json` by hand and do not install the hook
 entries yourself — `watch` is the only writer, and it preserves foreign
