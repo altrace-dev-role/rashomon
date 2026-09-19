@@ -3,6 +3,7 @@ package shape
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -369,5 +370,61 @@ func TestSSHFlagTablesArePerProgram(t *testing.T) {
 				t.Errorf("ssh hosts for %q = %v, want %v%s", tc.cmd, gotSSH, tc.wantSSH, becauseHost(tc.why))
 			}
 		})
+	}
+}
+
+// TestSSHDestinationRefusesWhatIsNotAHost is the no-content guarantee for the
+// positional path, and it is the one that was actually broken: `ssh $HOST`
+// recorded "$host" and `ssh 'host;evil'` recorded the whole string. Raw
+// command text in a record, in the report and on stdout is the single thing
+// this package exists to prevent.
+//
+// The refusals are refusals, not truncations. collect truncates at the first
+// character that cannot be in a host, because there a host is embedded in
+// surrounding text; here the token IS the destination, so truncating would
+// answer a question nobody asked and record a hostname the user never typed.
+func TestSSHDestinationRefusesWhatIsNotAHost(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cmd  string
+		why  string
+	}{
+		{name: "unexpanded variable", cmd: "ssh $HOST",
+			why: "recorded \"$host\" before: a command-line substring in the store"},
+		{name: "braced variable", cmd: "ssh ${HOST}"},
+		{name: "quoted punctuation", cmd: "ssh 'host;evil'",
+			why: "truncating would record \"host\", which nobody typed"},
+		{name: "command substitution", cmd: "ssh \"$(cat h)\""},
+		{name: "backtick", cmd: "ssh `cat h`"},
+		{name: "glob", cmd: "ssh host*"},
+		{name: "a scheme is not a destination spec", cmd: "rsync -av rsync://mirror.example/pub/ ./",
+			why: "split at the scheme's colon and recorded \"rsync\" while losing the real host"},
+		{name: "local file with an at sign", cmd: "scp a@b c",
+			why: "scp with no colon copies two local files; \"b\" is a filename"},
+		{name: "bare unbracketed ipv6", cmd: "ssh 2606:4700::1111",
+			why: "recorded \"2606\"; nothing here can tell a path colon from an address colon"},
+		{name: "quoted metacharacter does not start a command", cmd: "echo ';' ssh h.example.com",
+			why: "a quoted ';' and an operator ';' are the same bytes; only the tokenizer knows which"},
+		{name: "over the hostname length bound", cmd: "ssh " + strings.Repeat("a", 300) + ".example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, gotSSH := Hosts("Bash", bashInput(t, tc.cmd))
+			if len(gotSSH) != 0 {
+				t.Errorf("ssh hosts for %q = %v, want none%s", tc.cmd, gotSSH, becauseHost(tc.why))
+			}
+		})
+	}
+}
+
+// TestSSHDestinationsAcrossLines: a newline separates two commands. The
+// tokenizer treats it as whitespace on purpose, because Derive counts
+// arguments over the whole line and that count is its own contract, so the
+// split happens here instead.
+func TestSSHDestinationsAcrossLines(t *testing.T) {
+	cmd := "ssh deploy@h1.example.com\nssh deploy@h2.example.com"
+	_, gotSSH := Hosts("Bash", bashInput(t, cmd))
+	want := []string{"h1.example.com", "h2.example.com"}
+	if !reflect.DeepEqual(gotSSH, want) {
+		t.Errorf("ssh hosts across two lines = %v, want %v: the second command's host was lost", gotSSH, want)
 	}
 }

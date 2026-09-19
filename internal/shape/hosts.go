@@ -139,45 +139,53 @@ func takesValue(prog string, flag byte) bool {
 // completed along with the error, and a destination that appeared before an
 // unterminated quote is still a destination the command named.
 func sshCommandHosts(text string) []string {
-	toks, _ := tokenize(text)
+	var out []string
+	// A newline separates two commands, and the tokenizer treats it as
+	// whitespace -- deliberately, because Derive counts arguments over the
+	// whole line and that count is its own contract. Splitting here rather
+	// than changing the tokenizer keeps `ssh a` and `ssh b` on two lines from
+	// collapsing into one invocation whose second host is never seen.
+	for _, line := range strings.Split(text, "\n") {
+		out = append(out, sshLineHosts(line)...)
+	}
+	return out
+}
+
+func sshLineHosts(line string) []string {
+	toks, meta, _ := tokenizeMarked(line)
 
 	var out []string
 	atCommand := true
 	for i := 0; i < len(toks); i++ {
-		tok := toks[i]
-		if isMetaToken(tok) {
+		// meta comes from the tokenizer, never from the token's text: a
+		// quoted ';' and an operator ';' are the same two bytes, and reading
+		// the text would let `echo ';' ssh host` record a host for a command
+		// that opened no connection.
+		if i < len(meta) && meta[i] {
 			atCommand = true
 			continue
 		}
 		if !atCommand {
 			continue
 		}
-		if isAssignment(tok) {
+		if isAssignment(toks[i]) {
 			// Still at a command position: `FOO=bar ssh host` runs ssh.
 			continue
 		}
 		atCommand = false
 
-		prog := path.Base(tok)
+		prog := path.Base(toks[i])
 		if !sshDestPrograms[prog] {
 			continue
 		}
-		// Arguments run to the end of this command, which the next
-		// metacharacter token ends.
 		end := i + 1
-		for end < len(toks) && !isMetaToken(toks[end]) {
+		for end < len(toks) && !(end < len(meta) && meta[end]) {
 			end++
 		}
 		out = append(out, destinations(prog, toks[i+1:end])...)
 		i = end - 1
 	}
 	return out
-}
-
-// isMetaToken reports whether a token is one the tokenizer emitted for a shell
-// metacharacter, which is where one command ends and the next begins.
-func isMetaToken(tok string) bool {
-	return tok != "" && len(tok) <= 2 && isMeta(tok[0])
 }
 
 // destinations returns the hosts named by one ssh-family invocation's
@@ -272,6 +280,15 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 	// point: a path may contain an '@' of its own. Splitting on the last '@'
 	// in the token turned `deploy@host:/srv/app@1.2.3/` into "1.2.3/" and the
 	// destination was lost.
+	// A URL is not an ssh destination spec. Without this, `rsync -av
+	// rsync://mirror.example/pub/ ./` splits at the scheme's own colon and
+	// records a host called "rsync" while the real one is recorded nowhere:
+	// an invented host AND a lost one from a single token. The ssh URL forms
+	// are already found by collect, above.
+	if strings.Contains(tok, "://") {
+		return "", false
+	}
+
 	colon := strings.IndexByte(tok, ':')
 	slash := strings.IndexByte(tok, '/')
 	hostPart := tok
@@ -299,17 +316,45 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 		hostPart = hostPart[at+1:]
 	}
 
-	// requireRemote is set for scp and rsync, where an argument is only a
-	// destination if it looks like one: it carries a user, or a colon that
-	// comes before any slash. Without that test the LOCAL side of every copy
-	// would be read as a host.
-	if requireRemote && !hadUser && !remoteByColon {
+	// requireRemote is set for scp and rsync, where an argument names a host
+	// only if a colon precedes the path. A user with no colon is a LOCAL
+	// filename that happens to contain an '@' -- `scp a@b c` copies two local
+	// files -- and reading it as a host invents one out of a filename.
+	if requireRemote && !remoteByColon {
 		return "", false
 	}
 	// A single-character host before a colon is a Windows drive letter far
 	// more often than a hostname, and `rsync C:/src dst` must not record a
 	// host called "c".
 	if remoteByColon && !hadUser && len(hostPart) < 2 {
+		return "", false
+	}
+	// An unbracketed address with more than one colon is ambiguous: the first
+	// colon may separate a path or may be part of an IPv6 literal, and
+	// `ssh 2606:4700::1111` was recording "2606". Nothing here can tell them
+	// apart, and a false host is worse than a missing one, so it is refused
+	// and the limitation is stated rather than guessed at.
+	if strings.Count(tok, ":") > 1 && !strings.HasPrefix(tok, "[") {
+		return "", false
+	}
+
+	// The host part must BE an authority, not merely start with one.
+	//
+	// This is the guarantee the rest of the package rests on. collect, which
+	// scans URLs out of surrounding text, truncates at the first character
+	// that cannot be part of a host, because there the host is embedded in a
+	// command line. Here the token IS the destination, so truncating would
+	// answer a question nobody asked: `ssh 'host;evil'` would record "host",
+	// a hostname the user never typed. Measured before this check existed,
+	// `ssh $HOST` recorded "$host" and `ssh 'host;evil'` recorded the whole
+	// string -- raw command text in a record, in the report and on stdout,
+	// which is the one thing this package exists to prevent.
+	if hostPart == "" || authority(hostPart) != hostPart {
+		return "", false
+	}
+	// No hostname is longer than this, and without a bound a several-hundred
+	// byte fragment of a command line can be persisted as one.
+	if len(hostPart) > 253 {
 		return "", false
 	}
 

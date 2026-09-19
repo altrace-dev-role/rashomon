@@ -137,6 +137,38 @@ func TestH70_ForwardingSpecsAreNotHosts(t *testing.T) {
 	}
 }
 
+// TestH70_CommandTextNeverBecomesAHost is the no-content guarantee for the
+// positional path, at the record rather than at the function.
+//
+// It is the failure that actually happened: `ssh $HOST` put "$host" in a
+// declaration, in the JSON report and in the text report. A hostname is the
+// only thing this path may emit, and an unexpanded variable or a quoted
+// fragment is not one.
+//
+// Break: hand the token to host.Canonical without requiring it to be an
+// authority.
+func TestH70_CommandTextNeverBecomesAHost(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cmd  string
+	}{
+		{name: "unexpanded variable", cmd: "ssh $HOST"},
+		{name: "quoted punctuation", cmd: "ssh 'host;evil'"},
+		{name: "a scheme is not a destination", cmd: "rsync -av rsync://mirror.example/pub/ ./"},
+		{name: "local file with an at sign", cmd: "scp a@b c"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ssh, wire := sshHostsOf(t, tc.cmd)
+			if len(ssh) != 0 {
+				t.Errorf("ssh_hosts = %v for %q, want none: only a hostname may leave this path", ssh, tc.cmd)
+			}
+			if len(wire) != 0 {
+				t.Errorf("hosts = %v for %q, want none", wire, tc.cmd)
+			}
+		})
+	}
+}
+
 // TestH70_LocalArgumentsAreNotHosts is the negative twin. An extractor that
 // satisfied the list above by recording every argument would pass it
 // completely, and would fill the store with filenames.

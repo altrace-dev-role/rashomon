@@ -357,6 +357,9 @@ m("settings accepts a duplicate key", "internal/settings/document.go",
 m("settings accepts trailing data after the object", "internal/settings/document.go",
   "\t\tif _, err := dec.Token(); err != io.EOF {\n\t\t\treturn nil, errors.New(\"trailing data after the top-level object\")\n\t\t}", "\t\t_ = io.EOF",
   "TestParseRefuses")
+m("H-70 the destination is not required to be an authority", "internal/shape/hosts.go",
+  "\tif hostPart == \"\" || authority(hostPart) != hostPart {\n\t\treturn \"\", false\n\t}",
+  "\tif hostPart == \"\" {\n\t\treturn \"\", false\n\t}", "TestH70_CommandText|TestSSHDestinationRefuses")
 m("H-70 one flag table for all four programs", "internal/shape/hosts.go",
   "var valueFlags = map[string]string{\n\t\"ssh\":   \"BbcDEeFIiJLlmOoPpQRSWw\",\n\t\"scp\":   \"cDFiJloPSX\",\n\t\"sftp\":  \"BbcDFiJloPRSsX\",\n\t\"rsync\": \"eBTfM@\",\n}",
   "var valueFlags = map[string]string{\n\t\"ssh\":   \"pPioljJFe\",\n\t\"scp\":   \"pPioljJFe\",\n\t\"sftp\":  \"pPioljJFe\",\n\t\"rsync\": \"pPioljJFe\",\n}",
