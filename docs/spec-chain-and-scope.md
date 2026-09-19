@@ -1,9 +1,20 @@
-# Chain view and scope layer
+# Chain view and rule-match layer
 
-Status: proposed. Sign-off: approve the pull request that carries this file.
+Status: proposed, revision 2. Sign-off: approve the pull request that carries
+this file; a comment may scope the approval to Part 1 alone.
 Scope of change: Go, in `internal/report`, `internal/shape`, `internal/hook`,
-`internal/store`, `cmd/rashomon`; store schema 3. No new dependency, no new
-witness, no other harness.
+`internal/store`, `cmd/rashomon`; store schema 3 for Part 2 only. No new
+dependency, no new witness, no other harness.
+
+Revision 2 follows the first review, which found that revision 1 overstated
+two things. It attributed wire evidence to individual calls when the proxy
+join is by session window and hostname, not by call; and it called a match
+against permission rules "authorized scope", read those rules in the wrong
+order, got cross-scope precedence backwards, treated `dontAsk` as a bypass
+mode, snapshotted rules that change during a session, and would have
+evaluated a hook-rewritten call against its pre-rewrite input. Every one of
+those is corrected below, and each has an acceptance item that fails under
+the old behaviour.
 
 ## Why
 
@@ -11,17 +22,17 @@ witness, no other harness.
 declared, what ran, and what the wire saw -- and says in fixed vocabulary what
 it does not know. Two things a reader still cannot get from a report:
 
-1. An explanation, per prompt, of what the agent caused: which calls, in what
-   order, which of them have evidence from outside the client, and which are
-   known only because the client said so.
-2. Whether each call was inside the scope the user had granted when it was
-   declared.
+1. A timeline per prompt of what the agent asked for, with each piece of
+   evidence about each call kept apart: recorded here, in the transcript, on
+   the wire -- and, for the wire, at what granularity.
+2. Which permission rule, as written on disk at that moment, matched each
+   call when it was declared and when it ran.
 
-This document specifies both. The first is a rendering of records the store
-already holds. The second adds one field to the declaration record and one
-new record type, and it is decided at run time for the same reason coverage
-is: a report that judged a past run by today's rules would change its verdict
-every time the rules changed.
+Neither is a judgement. The first is a rendering of records the store already
+holds. The second is a rule match, recorded at the time it was computed, and
+it is named that way everywhere because a rule match is not authorization:
+the inputs Claude Code consults that this tool cannot see are listed in Part
+2, and an allowed tool can still be used beyond what the user meant.
 
 ## What exists and is reused unchanged
 
@@ -31,26 +42,32 @@ every time the rules changed.
 - The three-way reconciliation: declaration, execution (`outcome`,
   `exit_code`, `duration_ms`, `executed_digest`), and the transcript's
   `tool_result` set; plus the proxy join when `--proxy-store` names a store.
+- The proxy join's granularity: rows are attributed to a session by the run
+  id they carry, or by the session's time window when they carry none, and
+  to a host by name. Nothing on the wire carries a `tool_use_id`. The join is
+  the window; this document builds on that and does not pretend otherwise.
 - Coverage decided at run time and read back by `report`, never re-derived
-  from today's configuration.
+  from today's configuration. The coverage record is already written once per
+  hook invocation, resolving the settings files each time.
 - One reader of `tool_input`: `shape.Derive`. Nothing else looks inside it,
   and nothing from inside it is persisted.
-- The per-project host baseline (`internal/baseline`): earliest-session-wins
-  novelty, with the ubiquitous-host list.
-- Settings layer precedence, already implemented for `disableAllHooks`:
-  managed, then local, then project, then user (`settings.HooksDisabled`).
+- The per-project host baseline (`internal/baseline`).
+- The settings layers and their locations (`settings.Locations`).
 
 ## Non-goals
 
 - No new witness. Nothing here observes files, processes or sockets; the only
-  independent evidence remains the proxy's store. A chain link with no wire
-  evidence is rendered as such, not filled in.
-- No verdict of "safe" or "violation". `in_scope` means an allow rule
-  matched; `would_ask` means Claude Code would have prompted; neither is a
-  judgement about harm.
+  evidence from outside the client remains the proxy's store.
+- No per-call wire attribution. Until the wire carries a correlation key,
+  "this host was reached during this session" is the strongest true
+  statement, and the report says exactly that.
+- No verdict of "authorized", "safe", or "violation". A rule match says which
+  rule matched; it does not say what the user meant.
+- No inference from a permission mode about what should or should not have
+  run. Modes are rendered as the payload named them.
 - No enforcement. The hook path records; it never blocks. Exit code 2 stays
   impossible.
-- Scope never feeds coverage. A run's `coverage.state` is about whether the
+- Rule matches never feed coverage. `coverage.state` is about whether the
   recorder was watching, and stays that.
 - Claude Code only.
 
@@ -64,49 +81,42 @@ labelled `before first input`; they are never merged into a neighbour. A
 session has as many chains as distinct prompt ids, in order of first `seq`.
 
 Subagent declarations (`agent_id` non-null) are rendered inside their chain,
-grouped by `agent_id`. Which parent call spawned them is NOT recorded, and the
-chain does not infer it from timing: the group is labelled with its
-`agent_type` and `spawned by: not recorded`.
+grouped by `agent_id` and labelled with `agent_type`. Which parent call spawned
+them is NOT recorded, and the chain does not infer it from timing: the group
+reads `spawned by: not recorded`.
 
-### Link
+### Link: evidence kept apart
 
-One declaration renders as one link:
+One declaration renders as one link. Its evidence fields are separate and
+are never folded into a single "strength" value, because the fields come from
+sources of different independence and one of them is not per-call.
 
-| field | source | null means |
+| field | source | meaning of null |
 | --- | --- | --- |
 | `seq`, `tool_use_id`, `recorded_at_unix_ms` | declaration | -- |
 | `tool_name`, `verb_class`, `program`, `permission_mode`, `agent_id`, `agent_type` | declaration | as the record's own null |
-| `execution` | execution record for the id | `null`: no execution record. Rendered as `unrecorded`, never as denied (the README's three-way ambiguity holds) |
-| `execution.outcome`, `exit_code`, `duration_ms` | execution record | schema 1 record: outcome `unobserved` |
+| `executed` | execution record for the id | `null`: no execution record. Rendered `unrecorded`, never `denied`: the README's three-way ambiguity holds |
+| `executed.outcome`, `exit_code`, `duration_ms` | execution record | a schema 1 record renders outcome `unobserved` |
 | `result_in_transcript` | the id's transcript group | `null`: transcript unreadable |
 | `rewritten` | `executed_digest != shape.digest` | `null`: no execution record, or `executed_digest` empty |
 | `hosts_declared` | declaration `hosts` | as the record: null when none named, never `[]` |
-| `hosts_observed` | destinations join | per host: `observed`, `not_observed`, or `unknown` |
+| `hosts_observed_in_session` | destinations join | per declared host: `observed_in_session`, `not_observed_in_session`, or `unknown` |
+| `wire_attribution` | constant | always `"session"`: the wire evidence above is a property of the session and the host, not of this call |
 | `ssh_hosts` | declaration | rendered under `not observable`, never joined |
-| `scope` | Part 2 | `null` on a schema 1 or 2 record: rendered `unknown` |
+| `rule_match` | Part 2 | `null` on a schema 1 or 2 record: rendered `unknown` |
 
-`hosts_observed` is `unknown` for every host when the proxy store is absent,
-unreadable, or the run recorded no window -- the same conditions under which
-the destinations section says `not observed` with a reason. It is
-`not_observed` only when the store was read, the window applied, and the host
-was not among the rows.
+`hosts_observed_in_session` is `observed_in_session` for a host only when the
+destinations join counts at least one row for that host as this session's --
+in window, and not inherited from another run. It is `unknown` for every host
+when the proxy store is absent, unreadable, or the run recorded no window,
+which are exactly the conditions under which the destinations section says
+`not observed` with a reason. It is `not_observed_in_session` only when the
+store was read, the window applied, and the host was not among this
+session's rows.
 
-### Evidence class
-
-Each link carries a derived `evidence` value, a closed vocabulary ordered by
-independence from the client:
-
-1. `observed_on_wire` -- at least one declared host was observed in window.
-   The only class that comes from outside the client.
-2. `result_in_transcript` -- the client's transcript holds a result.
-3. `executed` -- the client's PostToolUse fired and this store recorded it.
-4. `declared` -- PreToolUse only.
-
-A link's `evidence` is the strongest class it reaches. Classes 2 and 3 are
-both the client's own account, and the text renderer says so in the section
-header once, not per link. A call whose tool names no host (a `Read`, a
-`git status`) tops out at class 2 or 3 by construction, and the renderer must
-not present that as a shortfall.
+Two calls in one session that name the same host therefore carry the same
+value for it, whatever each call did. The section header states this once:
+"host reached during the session; which call reached it is not recorded."
 
 ### Rendering
 
@@ -117,8 +127,7 @@ not present that as a shortfall.
 - `--redact` applies to chains exactly as to destinations: hostnames become
   the keyed digest.
 - No count of missing links. A chain covers recorded declarations; the ids
-  the transcript holds and this store does not stay where they are, in
-  `missing_from_store`.
+  the transcript holds and this store does not stay in `missing_from_store`.
 
 ### Acceptance
 
@@ -129,223 +138,275 @@ item.
 - **H-30 -- chain set equality.** The union of link ids over every chain of a
   session equals the session's recorded declaration id set, `before first
   input` included. Break: drop the null-prompt chain.
-- **H-31 -- unknown is not not-observed.** With no proxy store, every
-  `hosts_observed` entry reads `unknown`. With a store and a window, a
-  declared host absent from the rows reads `not_observed`. Break: default the
-  absent-store case to `not_observed`.
-- **H-32 -- rewritten degrades to null.** `rewritten` is null when the
+- **H-31 -- shared host, no attribution.** Two declarations in one session
+  name the same host; the proxy fixture holds one row for it inside the
+  window. Both links read `observed_in_session`; both read
+  `wire_attribution: session`; no field on either link claims the row.
+  Break: attribute the row to the declaration closest in time.
+- **H-32 -- unknown is not not-observed.** With no proxy store, every
+  `hosts_observed_in_session` entry reads `unknown`. With a store and a
+  window, a declared host absent from this session's rows reads
+  `not_observed_in_session`. Break: default the absent-store case to
+  `not_observed_in_session`.
+- **H-33 -- rewritten degrades to null.** `rewritten` is null when the
   execution record's `executed_digest` is empty or there is no execution
-  record; it is true only for a non-empty digest that differs. Break: treat
-  empty as different.
-- **H-33 -- redaction covers chains.** A canary hostname declared by a
-  fixture call appears nowhere in `report --chain --redact` text or `--json`.
+  record; true only for a non-empty digest that differs. Break: treat empty
+  as different.
+- **H-34 -- redaction covers chains.** A canary hostname declared by a
+  fixture call appears nowhere in `report --chain --redact`, text or JSON.
   Break: skip chains in the redactor.
-- **H-34 -- no inferred parentage.** A subagent group renders `spawned by:
-  not recorded` even when exactly one `Task` declaration precedes it. Break:
-  attribute by nearest preceding agent-class call.
+- **H-35 -- no inferred parentage.** A subagent group reads `spawned by: not
+  recorded` even when exactly one agent-class declaration precedes it.
+  Break: attribute by nearest preceding agent-class call.
 
 ### Effort
 
-About one week: `internal/report/chain.go`, text and JSON rendering, five
+About one week: `internal/report/chain.go`, text and JSON rendering, six
 acceptance items and their sweep breaks. No schema change, no hook-path
 change.
 
-## Part 2: scope layer, version 1
+## Part 2: rule-match layer, version 1
 
 ### The question it answers
 
-"Was each declared call inside the permission scope the user had granted at
-the time?" -- answered from the rules Claude Code itself applies, snapshotted
-when the session started and evaluated when the call was declared.
+"Which permission rule on disk matched this call when it was declared, and
+which matched the input that actually ran?" -- nothing wider. The rules are
+Claude Code's own `permissions.allow`, `permissions.deny` and
+`permissions.ask`; the matching is this tool's reimplementation of Claude
+Code's documented evaluation; and the result is a rule match, recorded at
+the moment it was computed.
 
-### Policy source
+### What is visible and what is not
 
-Claude Code's permission rules: `permissions.allow`, `permissions.deny`,
-`permissions.ask`, and `permissions.defaultMode`, resolved across the settings
-layers in the precedence `HooksDisabled` already implements (managed, local,
-project, user), with arrays merged the way Claude Code merges them.
+Visible at each hook invocation:
 
-Rule grammar supported in version 1:
+- the four settings files as they are at that moment: managed, local,
+  project, user. This includes `.claude/settings.local.json`, which Claude
+  Code appends to during a session when the user picks "don't ask again" for
+  a command or a domain -- so the rules a later call is matched against are
+  not the rules an earlier call was;
+- `permission_mode`, from the payload, per call;
+- at `PostToolUse`, the input as it actually ran, after any hook rewrote it.
 
-- bare tool: `Read`
-- exact: `Bash(npm run test)`
-- prefix: `Bash(git *)`
-- domain: `WebFetch(domain:example.com)`
-- path: `Edit(src/**)`, `Read(~/.zshrc)`; an `Edit` rule covers every
-  file-writing tool, as Claude Code's own matching does
+Not visible, and therefore never inferred:
 
-A rule the parser cannot classify is kept as `unparsed`. A call that an
-unparsed rule might cover evaluates to `unknown`, never to `in_scope`.
+- command-line grants such as `--allowedTools` and `--disallowedTools`;
+- session-only approvals: Claude Code does not write a file-modification
+  approval to disk, and a one-time approval writes nothing;
+- the built-in read-only command list, the working-directory read
+  allowance, and MCP tool and connector controls, all of which let a call
+  run with no rule matching it;
+- what Claude Code's own evaluation concluded. This tool matches rules; it
+  does not observe the decision.
 
-### Snapshot at run time
+Consequently `no_rule_match` means no rule on disk matched. It does not mean
+the user was prompted, and `no_rule_match` beside an execution record does
+not mean the user said yes.
 
-At `probe start`, the rules are resolved, compiled to a canonical form, and
-recorded as a new record type, `policy`, in the run's `coverage.ndjson`:
+### Resolution at each hook invocation
 
-| field | meaning |
+There is no snapshot and no copy of the rules. At every `PreToolUse` and
+`PostToolUse` invocation the hook path reads the settings files -- as the
+coverage record already does -- and matches the call against the rules it
+finds. Two things are persisted, and only these:
+
+- on the declaration, and on the execution record, a `rule_match` object
+  (below) carrying a verdict and the keyed digest of the matching rule;
+- in the run's `coverage.ndjson`, a `policy` record whenever the canonical
+  rule set's digest differs from the last one this run recorded: the first
+  at `probe start`, then one per change. It is a revision log, and it holds
+  no rule text.
+
+| `policy` field | meaning |
 | --- | --- |
-| `type` | `policy` |
-| `schema_version` | 3 |
+| `type`, `schema_version` | `policy`, 3 |
 | `recorded_at_unix_ms`, `session_id`, `install_id` | as every record |
 | `layers` | per layer `managed`, `local`, `project`, `user`: `present`, `absent`, or `unreadable` |
-| `default_mode` | `permissions.defaultMode` as resolved, or null when unset |
-| `rule_counts` | `allow`, `deny`, `ask`, `unparsed` -- counts of policy rules, which are the user's configuration and not this instrument's measurements, so zero is honest |
+| `default_mode` | `permissions.defaultMode` as resolved by layer precedence, with the layer that set it; null when unset |
+| `rule_counts` | `allow`, `deny`, `ask`, `unparsed` -- counts of the user's rules, not of this instrument's measurements, so zero is honest |
 | `rules_digest` | HMAC under the per-install key of the canonical rule set |
 
-Rule text is never written to a record: a rule can carry a path or a host,
-which is one step from content. The compiled rule set the hook path needs is
-written beside the run's records as `policy.json`, mode `0600`, evicted with
-the run. It is a working file, not evidence; the record carries the digest so
-a later reader can say whether two runs saw the same rules without being able
-to say what they were.
+Rule text can carry a full command line or a path. It never reaches a record,
+a file in the store, stdout or stderr. The no-content promise in the README
+gains one sentence saying so, and H-41 holds it.
 
-A run with no `policy` record -- an older run, or one whose probe never fired
--- evaluates every declaration to `unknown`, and the report's scope section
-says `policy: not recorded`.
+### Matching
 
-### Evaluation at declaration time
+Rules from all four layers are merged into one list. Layer precedence does
+not apply to the rule arrays: a deny rule from any scope blocks an allow rule
+from any other, in Claude Code's own words, "because deny rules from any
+scope are evaluated before allow rules." Layer precedence applies to the
+scalar `defaultMode`, which is recorded with its layer and otherwise unused.
 
-`rashomon hook` evaluates the declared `tool_input` against the run's
-compiled rules and writes the verdict on the declaration record, schema 3:
+Evaluation order is Claude Code's: deny, then ask, then allow; the first match
+decides, and specificity does not reorder it.
 
-```
-"scope": { "verdict": "in_scope" | "denied_by_rule" | "would_ask" | "unknown",
-           "rule": "<keyed digest of the matching rule>" | null }
-```
+| verdict | condition |
+| --- | --- |
+| `deny_rule_match` | a deny rule matches |
+| `ask_rule_match` | no deny matches; an ask rule matches |
+| `allow_rule_match` | no deny or ask matches; an allow rule matches |
+| `no_rule_match` | no rule on disk matches |
+| `unknown` | no settings file readable, a parse or evaluation failure, or an unparsed rule that might apply |
 
-- A `deny` rule matches: `denied_by_rule`. Deny beats allow, as in Claude
-  Code.
-- An `allow` rule matches: `in_scope`.
-- An `ask` rule matches, or nothing matches: `would_ask` -- Claude Code would
-  have prompted. Whether the user then granted the call is what the execution
-  record says, not this field.
-- No `policy.json`, a parse failure, an evaluation error, or an unparsed rule
-  that might apply: `unknown`.
+Grammar supported in version 1: bare tool (`Read`); exact (`Bash(npm run
+test)`); prefix, both spellings (`Bash(git *)`, `Bash(git:*)`); domain
+(`WebFetch(domain:example.com)`); path (`Edit(src/**)`, `Read(~/.zshrc)`),
+with an `Edit` rule covering every file-writing tool; and a glob in the
+tool-name position of a deny or ask rule (`"*"`, `mcp__*`). A rule the parser
+cannot classify is kept as `unparsed`, counted, and forces `unknown` on any
+call it might cover.
 
-The verdict is what the rules SAY about the call. `permission_mode` sits
-beside it on the same record, and the report renders both, because under
-`bypassPermissions` or `dontAsk` a call runs whatever the rules say; the
-verdict is still worth having, and presenting `in_scope` as "was granted" in
-those modes would be a claim the record cannot support.
+### Two verdicts per call
+
+Claude Code evaluates permission rules against the input as it stands after
+`PreToolUse` hooks have run, and a hook may rewrite that input. This tool's
+declaration is the input before any rewrite. Matching the declaration alone
+would therefore match the wrong input for every rewritten call. So:
+
+- the declaration carries `rule_match.declared`, computed at `PreToolUse` on
+  the declared input;
+- the execution record carries `rule_match.executed`, computed at
+  `PostToolUse` on the input that ran; `unknown` when the payload carried no
+  input, which is also when `executed_digest` is empty.
+
+Both are `{"verdict": ..., "rule": <keyed digest> | null}`. The declared
+verdict describes intent; the executed verdict describes what ran. They
+differ exactly when a rewrite changed which rule applied, and `rewritten`
+says whether a rewrite happened at all.
 
 Invariants the hook path keeps:
 
-- `shape.Derive` stays the one reader of `tool_input`. Evaluation is added
-  inside it -- `shape.Derive(input, rules)` returns the shape and the verdict
-  together -- so no second reader appears.
-- Evaluation is bounded: rule count capped, input already capped at 8 MiB
-  by the stdin limit, glob matching without backtracking blow-up.
-- Any failure inside evaluation is recovered into `unknown`. Exit code 2 stays
+- `shape.Derive` stays the one reader of `tool_input`: matching is added
+  inside it, and the post handler's existing digest derivation gains the
+  executed-input match the same way.
+- Matching is bounded: rule count capped, input already capped at 8 MiB by
+  the stdin limit, glob matching without backtracking blow-up, and the
+  settings files read with the size limit the coverage path already applies.
+- Any failure inside matching is recovered into `unknown`. Exit code 2 stays
   impossible; the fault-injection points H-1 exercises gain one inside
-  evaluation.
+  matching.
 
 ### Report
 
-A `scope` section per session:
+A `rule_matches` section per session:
 
-- `policy`: `recorded` or `not recorded`, the layers that were present, the
-  default mode, the rule counts, the rules digest.
-- `by_verdict`: counts of this store's declarations per verdict. These are
-  counts of records this store holds, so zero is honest.
-- `denied_by_rule`: ids, each with its execution status and mode.
-- `denied_yet_executed`: the ids for which all three hold -- `denied_by_rule`,
-  an execution record exists, and `permission_mode` is not a bypass mode.
-  This is the one line in the section that is alarming on its own, and it is
-  the only line allowed to read that way.
-- `would_ask`: ids, each with execution status: an execution record means the
-  prompt was answered yes; none means denied, failed, or unrecorded --
-  the README's three-way ambiguity, restated, never collapsed.
-- `unknown`: ids.
+- `policy`: how many revisions the run recorded, and for the latest: the
+  layers present, the default mode and its layer, the rule counts, the
+  digest. `not recorded` for a run with no `policy` record, in which case
+  every verdict below reads `unknown`.
+- `by_verdict`: counts of this store's declarations per declared verdict and
+  per executed verdict. Counts of records this store holds, so zero is
+  honest.
+- `deny_rule_match_executed`: the ids whose EXECUTED verdict is
+  `deny_rule_match` and which have an execution record. Rendered with the
+  permission mode beside each. The line is a discrepancy between this tool's
+  matcher and the fact that the call ran; the section says that it may be
+  this matcher's error, an input this tool cannot see, or a decision Claude
+  Code made for reasons the docs cover mode by mode -- and that this tool
+  cannot tell which.
+- `verdict_changed_by_rewrite`: the ids whose declared and executed verdicts
+  differ.
+- `unknown`: ids, with the reason class.
 
-Host scope: `WebFetch(domain:...)` rules give network tools a scope and are
-evaluated like any rule. A host named on a `Bash` command line has no rule
-grammar in Claude Code, so its only scope signal remains the project baseline
-(`new for this project`), and the section says so rather than inventing one.
+Host rules: `WebFetch(domain:...)` rules give network tools a match like any
+rule. A host named on a `Bash` command line has no rule grammar in Claude
+Code, so its only signal remains the project baseline (`new for this
+project`), and the section says so.
 
-JSON: `Session` gains `scope` with the fields above; chain links carry the
-verdict. `--redact` leaves the section untouched: it holds ids and digests
-only.
-
-### Honesty rules
-
-- The snapshot decides. `report` never re-reads settings to evaluate a past
-  run.
-- No rule text in any record, in stdout, or in stderr.
-- `in_scope` requires a matching allow rule; nothing defaults to it.
-- An unparsed rule that might apply forces `unknown`.
-- Scope verdicts never change `coverage.state` or its reasons.
+JSON: `Session` gains `rule_matches`; chain links carry both verdicts.
+`--redact` leaves the section untouched: it holds ids and digests only.
 
 ### Acceptance
 
-- **H-35 -- the snapshot decides.** Change the settings' rules after `probe
-  start`; every verdict for that run is unchanged, and a run with no policy
-  record renders every verdict `unknown` with `policy: not recorded`. Break:
-  resolve rules at report time.
-- **H-36 -- in_scope only by allow.** A declaration matching no rule is
-  `would_ask`; broaden the matcher to accept a near-miss and the item goes
-  red. Break: prefix-match without the rule's own boundary.
-- **H-37 -- unparsed forces unknown.** A rule in an unrecognised grammar that
+- **H-36 -- order is deny, ask, allow.** A call matched by both an ask rule
+  and an allow rule reads `ask_rule_match`; matched by a deny rule and an
+  allow rule, `deny_rule_match`. Break: evaluate allow before ask.
+- **H-37 -- deny wins across scopes.** A user-level deny with a project-level
+  allow reads `deny_rule_match`; so does a managed deny with a local allow.
+  Break: apply layer precedence to the rule arrays.
+- **H-38 -- rules are read when the call is declared.** Append an allow rule
+  to `.claude/settings.local.json` between two declarations of the same
+  call: the first reads `no_rule_match`, the second `allow_rule_match`, and
+  the run holds exactly two `policy` records with different digests. Break:
+  cache the rules read at `probe start`.
+- **H-39 -- the executed input decides the executed verdict.** A fixture
+  `PreToolUse` hook rewrites a command that a deny rule matches into one an
+  allow rule matches: the declaration reads `deny_rule_match`, the execution
+  record `allow_rule_match`, `rewritten` is true, and
+  `deny_rule_match_executed` is empty. Break: use the declared verdict for
+  that line.
+- **H-40 -- unparsed forces unknown.** A rule in an unrecognised grammar that
   names the declared tool makes that tool's verdicts `unknown`, and
   `rule_counts.unparsed` says so. Break: drop unparsed rules silently.
-- **H-38 -- no rule text.** A rule carrying a canary string reaches no record,
-  no report output, no stdout and no stderr; only `policy.json` in the run
-  directory holds it, and the run's eviction removes that file. Break: write
-  the matching rule into `scope.rule`.
-- **H-39 -- no fault reaches the agent.** The five panicking faults of H-1,
-  injected inside evaluation, exit 0 with the declaration recorded and its
-  verdict `unknown`. Break: remove the recover.
-- **H-40 -- denied yet executed needs all three.** The line lists an id only
-  with `denied_by_rule`, an execution record, and a non-bypass mode; each
-  of the three removed alone empties it. Break: drop the mode condition.
-- **H-41 -- precedence, both directions.** Managed deny over user allow reads
-  `denied_by_rule`; user deny over project allow reads `in_scope`, because the
-  project layer outranks the user layer. Break: read the user file first.
+- **H-41 -- no rule text, no rule file.** A rule carrying a canary string
+  reaches no record, no file under the store directory, no report output,
+  no stdout and no stderr. Break: write the matching rule into
+  `rule_match.rule`; second break: write a compiled copy of the rules into
+  the run directory.
+- **H-42 -- no fault reaches the agent.** The five panicking faults of H-1,
+  injected inside matching, exit 0 with the declaration recorded and its
+  verdict `unknown`.
+- **H-43 -- no rule match is not a prompt.** A declaration with
+  `no_rule_match` and an execution record renders as `no rule on disk
+  matched; ran`, and no output anywhere renders it as prompted, approved, or
+  granted. Break: label it `approved`.
+- **H-44 -- modes are rendered, not interpreted.** For a `deny_rule_match`
+  executed under `dontAsk`, under `bypassPermissions`, and under a mode name
+  the test invents, the line renders the mode verbatim and no other output
+  differs between the three. Break: suppress the line for a mode the code
+  considers a bypass.
 
 ### Effort
 
-Two to three weeks: rule parsing and matching in `internal/shape` (with its
-own direct tests beside the acceptance suite, as the tokenizer has), the
-`policy` record and `policy.json` in `internal/store`, the snapshot in
-`internal/hook/probe.go`, evaluation in `internal/hook/handle.go`, the report
-section, seven acceptance items and their sweep breaks, and the schema file
-update with `TestStoreSchemaMatchesTheAllowlists` extended to the new record.
+About three weeks: rule parsing and matching in `internal/shape` (with its own
+direct tests beside the acceptance suite, as the tokenizer has), the `policy`
+record and per-call resolution in `internal/hook`, the report section, nine
+acceptance items and their sweep breaks, the schema file update with
+`TestStoreSchemaMatchesTheAllowlists` extended to the new record and the new
+fields, and the one-sentence README change.
 
 ## Sequencing
 
 Part 1 first. It changes no schema and does not touch the hook path, so it
-ships on its own and is the demonstration: one prompt, its calls, which had
-wire evidence, which are the client's word alone.
+ships on its own and is the demonstration: one prompt, its calls, what the
+client recorded about each, and which hosts the wire saw during the session.
 
 Part 2 second, behind schema 3. It touches the hook path, so it carries the
-exit-2 constraint and H-39 before anything else.
+exit-2 constraint and H-42 before anything else.
 
 ## Schema
 
-`schema_version` 3: the declaration gains `scope`; `policy` is a new record
-type in `coverage.ndjson`; `docs/store-schema.json` gains both, every key
-required, `additionalProperties: false`. A reader meeting a schema 1 or 2
-declaration renders `scope` as `unknown`. A reader meeting a record version it
-does not know continues to skip it.
+`schema_version` 3: the declaration gains `rule_match`, the execution record
+gains `rule_match`, and `policy` is a new record type in `coverage.ndjson`;
+`docs/store-schema.json` gains all three, every key required,
+`additionalProperties: false`. A reader meeting a schema 1 or 2 record renders
+the verdicts as `unknown`. A reader meeting a record version it does not know
+continues to skip it.
 
 ## Open decisions
 
 1. `--chain` as a flag (proposed) or the chain section always on in text.
    JSON carries `chains` either way.
-2. The version-1 rule grammar above versus a wider one. Proposed: ship the
-   subset, let `unparsed` count what it misses, widen from evidence.
-3. `policy.json` in the run directory (proposed, `0600`, evicted with the
-   run) versus re-resolving the settings files on every hook invocation.
-4. Host scope for hosts named on `Bash` command lines: baseline only
-   (proposed) or a `rashomon`-owned allowlist file, which is a new
-   configuration surface.
-5. Whether `denied_yet_executed` should also render in the default text
-   report, outside `--chain` and the scope section.
+2. The version-1 grammar above versus a wider one. Proposed: ship the subset,
+   let `unparsed` count what it misses, widen from evidence.
+3. Reading the settings files on every hook invocation (proposed: the
+   coverage path already does, and the files are small) versus caching by
+   modification time.
+4. Hosts named on `Bash` command lines: baseline only (proposed) or a
+   `rashomon`-owned allowlist file, which is a new configuration surface.
+5. Whether `deny_rule_match_executed` also renders in the default text
+   report, outside the section.
 6. Ship schema 3 with Part 2 only (proposed), keeping Part 1 on schema 2.
+7. Whether to pursue per-call wire attribution later. It needs a correlation
+   key on the wire side that the proxy does not emit today, so it is a change
+   to the other product, not to this one.
 
 ## Sign-off
 
-Approving this pull request approves building Part 1 immediately and Part 2
-as specified, with the open decisions settled by review comments on this
-file. Each part lands as its own pull request against the acceptance items
-above, reported the way every H-item is: the command that ran it and its
-output, and the break that made it fail first.
+Approving this pull request approves building Part 1 immediately. Part 2 is
+approved for implementation as specified here, revision 2; a review comment
+may hold it back while the open decisions are settled. Each part lands as its
+own pull request against the acceptance items above, reported the way every
+H-item is: the command that ran it and its output, and the break that made it
+fail first.
