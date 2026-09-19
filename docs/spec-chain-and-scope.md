@@ -1,6 +1,6 @@
 # Chain view and rule-match layer
 
-Status: proposed, revision 3. Sign-off: approve the pull request that carries
+Status: proposed, revision 4. Sign-off: approve the pull request that carries
 this file; a comment may scope the approval to Part 1 alone.
 Scope of change: Go, in `internal/report`, `internal/shape`, `internal/hook`,
 `internal/store`, `internal/settings`, `cmd/rashomon`; store schema 3 for
@@ -11,12 +11,18 @@ evidence attributed to individual calls, "authorized scope" for what is a
 rule match, the wrong rule-evaluation order, cross-scope precedence
 backwards, `dontAsk` treated as a bypass mode, a start-of-session snapshot of
 rules that change mid-session, and evaluation of a hook-rewritten call
-against its pre-rewrite input. Revision 3 corrects the second review's
+against its pre-rewrite input. Revision 3 corrected the second review's
 findings: wire attribution described as run-id-capable when the join is by
 time window alone, a verdict change attributed to rewrites alone, `unknown`
 too narrow for partially readable policy and unsupported command structure,
 and two wrong assumptions about existing code -- the redaction digest and the
-settings loader -- recorded below.
+settings loader. Revision 4 corrects the third review's findings: a bare
+allow rule was allowed to conclude over a deny rule the matcher could not
+evaluate; policy revisions were keyed on rule text alone, so a layer turning
+unreadable and back left no trace; the `/path` anchor was described as the
+settings file's directory when it is the primary working directory; and the
+chain's reached-versus-attempted distinction would have reused an
+aggregation that counts rows outside the window.
 
 ## Why
 
@@ -31,11 +37,11 @@ it does not know. Two things a reader still cannot get from a report:
    call when it was declared and when it ran.
 
 Neither is a judgement. The first is a rendering of records the store already
-holds. The second is a rule match, recorded with the time and the policy it
-was computed against, and it is named that way everywhere because a rule
-match is not authorization: the inputs Claude Code consults that this tool
-cannot see are listed in Part 2, and an allowed tool can still be used beyond
-what the user meant.
+holds. The second is a rule match, recorded with the time and the policy
+revision it was computed against, and it is named that way everywhere because
+a rule match is not authorization: the inputs Claude Code consults that this
+tool cannot see are listed in Part 2, and an allowed tool can still be used
+beyond what the user meant.
 
 ## What exists and is reused unchanged
 
@@ -51,12 +57,17 @@ what the user meant.
   a Claude Code session id, so the report leaves it empty on purpose -- "the
   window is the join" (`internal/report/destinations.go`). Nothing on the
   wire carries a `tool_use_id`. Two sessions whose windows overlap cannot be
-  told apart on the wire. The wire layer already distinguishes a host that
-  was reached from one whose every row was a dial failure
-  (`Destination.Unreached`).
+  told apart on the wire.
+- The wire layer's `Destination.Unreached`, which is true only when every row
+  for a host ended in a dial failure -- computed over ALL of the host's rows,
+  in window and out (`internal/wire/wire.go`, `summarise`). Part 1 needs the
+  same distinction restricted to in-window rows and computes it separately;
+  it does not reuse this field (H-34).
 - Coverage decided at run time and read back by `report`, never re-derived
   from today's configuration. The coverage record is already written once per
-  hook invocation, resolving the settings files each time.
+  hook invocation, resolving the settings files each time; the `start` record
+  carries the session's `cwd`, which is the primary working directory at
+  launch.
 - One reader of `tool_input`: `shape.Derive`. Nothing else looks inside it,
   and nothing from inside it is persisted. Its tokenizer splits a command
   line as a shell would, without expanding anything.
@@ -79,9 +90,9 @@ the claims below.
 - **The settings loader is unbounded.** `settings.Load` calls `os.ReadFile`
   with no size limit. Part 2 reads the settings files on every hook
   invocation, so an explicit cap is a prerequisite, not an existing property:
-  a file over the cap is treated as `unreadable`, never parsed, and the
-  loader returns before allocating. The coverage path, which already reads
-  these files per call, gains the same protection as a side effect.
+  a file over the cap is treated as `oversized`, never parsed, and the loader
+  returns before allocating. The coverage path, which already reads these
+  files per call, gains the same protection as a side effect.
 
 ## Non-goals
 
@@ -130,17 +141,20 @@ sources of different independence and one of them is not per-call.
 | `result_in_transcript` | the id's transcript group | `null`: transcript unreadable |
 | `rewritten` | `executed_digest != shape.digest` | `null`: no execution record, or `executed_digest` empty |
 | `hosts_declared` | declaration `hosts` | as the record: null when none named, never `[]` |
-| `hosts_observed_in_window` | destinations join | per declared host: `reached_in_window`, `attempted_in_window`, `not_observed_in_window`, or `unknown` |
+| `hosts_observed_in_window` | destinations join, in-window rows only | per declared host: `reached_in_window`, `attempted_in_window`, `not_observed_in_window`, or `unknown` |
 | `wire_attribution` | constant | always `"time_window"`: the wire evidence above is a property of the session's window and the host, not of this call, and not of this session alone when windows overlap |
 | `ssh_hosts` | declaration | rendered under `not observable`, never joined |
 | `rule_match` | Part 2 | `null` on a schema 1 or 2 record: rendered `unknown` |
 
-`hosts_observed_in_window` per declared host:
+`hosts_observed_in_window` per declared host, computed over the rows the
+join places inside this session's window and over no others:
 
-- `reached_in_window`: the join counts at least one in-window row for the
-  host that was not a dial failure.
+- `reached_in_window`: at least one in-window row for the host was not a dial
+  failure.
 - `attempted_in_window`: in-window rows exist for the host and every one of
-  them is a dial failure -- a connection was attempted and did not succeed.
+  them is a dial failure. A successful connection to the same host outside
+  the window does not change this: that is another session's or another
+  time's fact.
 - `not_observed_in_window`: the store was read, the window applied, and no
   in-window row names the host.
 - `unknown`: the proxy store is absent or unreadable, or the run recorded no
@@ -187,25 +201,30 @@ item.
   every entry reads `unknown`. With a store and a window: a declared host
   with no in-window rows reads `not_observed_in_window`; one whose only
   in-window rows are dial failures reads `attempted_in_window`; one with a
-  non-failed row reads `reached_in_window`. Break: default the absent-store
-  case to `not_observed_in_window`; second break: render a dial failure as
-  reached.
-- **H-34 -- rewritten degrades to null.** `rewritten` is null when the
+  non-failed in-window row reads `reached_in_window`. Break: default the
+  absent-store case to `not_observed_in_window`; second break: render a dial
+  failure as reached.
+- **H-34 -- the window bounds reached-versus-attempted.** The fixture holds
+  a successful row for a host BEFORE the window and only dial-failure rows
+  for it INSIDE the window. The link reads `attempted_in_window`. Break:
+  derive the value from `Destination.Unreached`, which considers the
+  out-of-window success.
+- **H-35 -- rewritten degrades to null.** `rewritten` is null when the
   execution record's `executed_digest` is empty or there is no execution
   record; true only for a non-empty digest that differs. Break: treat empty
   as different.
-- **H-35 -- redaction covers chains.** A canary hostname declared by a
+- **H-36 -- redaction covers chains.** A canary hostname declared by a
   fixture call appears nowhere in `report --chain --redact`, text or JSON.
   Break: skip chains in the redactor.
-- **H-36 -- no inferred parentage.** A subagent group reads `spawned by: not
+- **H-37 -- no inferred parentage.** A subagent group reads `spawned by: not
   recorded` even when exactly one agent-class declaration precedes it.
   Break: attribute by nearest preceding agent-class call.
 
 ### Effort
 
-About one week: `internal/report/chain.go`, text and JSON rendering, seven
-acceptance items and their sweep breaks. No schema change, no hook-path
-change.
+About one week: `internal/report/chain.go` with its own in-window
+reached/attempted derivation, text and JSON rendering, eight acceptance items
+and their sweep breaks. No schema change, no hook-path change.
 
 ## Part 2: rule-match layer, version 1
 
@@ -217,7 +236,7 @@ post hook observed it?" -- nothing wider. The rules are Claude Code's own
 `permissions.allow`, `permissions.deny` and `permissions.ask`; the matching is
 this tool's reimplementation of Claude Code's documented evaluation; and each
 result is a rule match, recorded with the time it was computed and the
-digest of the policy it was computed against.
+revision of the policy it was computed against.
 
 ### What is visible and what is not
 
@@ -229,7 +248,8 @@ Visible at each hook invocation:
   a command or a domain -- so the rules a later call is matched against are
   not the rules an earlier call was;
 - `permission_mode`, from the payload, per call;
-- `cwd`, from the payload, which path rules need;
+- `cwd`, from the payload, and the session's launch `cwd`, from the run's
+  `start` coverage record;
 - at `PostToolUse`, the input as it actually ran, after any hook rewrote it.
 
 Not visible, and therefore never inferred:
@@ -241,7 +261,8 @@ Not visible, and therefore never inferred:
   allowance, wrapper stripping, and MCP tool and connector controls, all of
   which let a call run, or stop it, with no rule matching it;
 - the rules in effect at any instant other than the two hook invocations. A
-  policy that changed between them is visible only as two different digests;
+  policy that changed between them is visible only as two different
+  revisions;
 - what Claude Code's own evaluation concluded. This tool matches rules; it
   does not observe the decision.
 
@@ -258,10 +279,14 @@ against the rules it finds. Persisted, and only these:
 
 - on the declaration, and on the execution record, a `rule_match` object
   (below);
-- in the run's `coverage.ndjson`, a `policy` record whenever the canonical
-  rule set's digest differs from the last one this run recorded: the first
-  at `probe start`, then one per change. It is a revision log, and it holds
-  no rule text.
+- in the run's `coverage.ndjson`, a `policy` record whenever ANY recorded
+  policy state differs from the last record this run wrote: the layers'
+  states, the default mode and its layer, the rule counts, or the rule set's
+  digest. The first is written at `probe start`, then one per change. A
+  managed file that is readable, then unreadable, then readable again with
+  the same rules produces three records, because a report that described
+  the middle interval as readable would be wrong about the rules its matches
+  were computed against. It is a revision log, and it holds no rule text.
 
 | `policy` field | meaning |
 | --- | --- |
@@ -270,11 +295,12 @@ against the rules it finds. Persisted, and only these:
 | `layers` | per layer `managed`, `local`, `project`, `user`: `present`, `absent`, `unreadable`, or `oversized` |
 | `default_mode` | `permissions.defaultMode` as resolved by layer precedence, with the layer that set it; null when unset |
 | `rule_counts` | `allow`, `deny`, `ask`, `unparsed` -- counts of the user's rules, not of this instrument's measurements, so zero is honest |
-| `rules_digest` | HMAC under the per-install key of the canonical rule set read from the readable layers |
+| `rules_digest` | HMAC under the per-install key of the canonical rule set read from the readable layers; for comparing rule contents across revisions and runs |
+| `policy_revision` | HMAC under the per-install key of the whole recorded state above -- layers, default mode and layer, counts, rules digest. Two revisions are the same policy state if and only if these agree |
 
 Rule text can carry a full command line or a path. It never reaches a record,
 a file in the store, stdout or stderr. The no-content promise in the README
-gains one sentence saying so, and H-46 holds it.
+gains one sentence saying so, and H-48 holds it.
 
 ### Matching
 
@@ -289,22 +315,63 @@ decides, and specificity does not reorder it.
 
 | verdict | condition |
 | --- | --- |
-| `deny_rule_match` | a deny rule matches |
-| `ask_rule_match` | no deny matches; an ask rule matches |
-| `allow_rule_match` | no deny or ask matches; an allow rule matches |
-| `no_rule_match` | every layer was readable or absent, the input was fully evaluable, and no rule matched |
+| `deny_rule_match` | a deny rule is confirmed to match |
+| `ask_rule_match` | every applicable deny rule is ruled out; an ask rule is confirmed to match |
+| `allow_rule_match` | every applicable deny and ask rule is ruled out; an allow rule is confirmed to match |
+| `no_rule_match` | every applicable rule is ruled out, every layer was readable or absent, and the input was fully evaluable |
 | `unknown` | anything else; the reason is recorded, from the closed list below |
+
+**The conclusiveness invariant.** A confirmed deny is conclusive on its own.
+An ask verdict requires every applicable deny rule to have been ruled out. An
+allow verdict requires every applicable deny AND ask rule to have been ruled
+out. "Applicable" means every deny or ask rule that names the call's tool, or
+a tool glob that covers it -- and, for a `Bash` call, every `Read` and `Edit`
+deny or ask rule, because Claude Code applies those to file commands it
+recognises inside a command line and to the targets of redirections. A rule
+that is applicable and cannot be evaluated against this input is not ruled
+out, and the verdict is `unknown`. In particular a bare `Bash` allow rule
+concludes `allow_rule_match` only when no argument-pattern deny or ask rule
+applies to the call, or every one that does has been ruled out.
 
 Grammar supported in version 1: bare tool (`Read`); exact (`Bash(npm run
 test)`); prefix, both spellings (`Bash(git *)`, `Bash(git:*)`); domain
 (`WebFetch(domain:example.com)`); path (`Edit(src/**)`, `Read(~/.zshrc)`),
-with an `Edit` rule covering every file-writing tool and the four
-documented prefixes resolved as Claude Code documents them -- `//` from the
-filesystem root, `~/` from home, `/` from the settings source's directory,
-and bare or `./` from `cwd`; and a glob in the tool-name position of a deny
-or ask rule (`"*"`, `mcp__*`). A rule the parser cannot classify, including
-any `!` negation pattern, is kept as `unparsed`, counted, and forces
-`unknown` on any call it might cover.
+with an `Edit` rule covering every file-writing tool; and a glob in the
+tool-name position of a deny or ask rule (`"*"`, `mcp__*`). A rule the parser
+cannot classify, including any `!` negation pattern, is kept as `unparsed`,
+counted, and treated as applicable-and-not-evaluable for any tool it might
+cover.
+
+### Path rules: anchors and symlinks
+
+A path pattern's anchor depends on its prefix and on which settings source
+defined the rule, as Claude Code documents:
+
+| pattern | anchor |
+| --- | --- |
+| `//path` | the filesystem root |
+| `~/path` | the home directory |
+| `/path` in project or local settings | the session's PRIMARY WORKING DIRECTORY -- not the `.claude` directory that holds the file, and not the repository root when the session started elsewhere |
+| `/path` in user settings | `~/.claude` |
+| `/path` in managed settings | the managed source's documented anchor; version 1 does not implement it and yields `unknown` for such rules |
+| `path` or `./path` | the invocation's `cwd` |
+
+The primary working directory is the directory the session was launched in,
+which the run's `start` coverage record already holds as `cwd`. A session can
+be moved with `/cd`, after which the invocation's `cwd` is no longer the
+primary working directory; version 1 detects this as a call whose `cwd`
+differs from the run's start `cwd`, and yields `unknown` for every `/path`
+rule on that call rather than anchoring at the wrong directory.
+
+Claude Code checks a path rule against two paths: the one named and the one
+it resolves to through symlinks. An allow rule applies only when both match;
+a deny or ask rule applies when either matches, and a deny or ask rule written
+through a symlinked directory also applies at the real location. Version 1
+therefore resolves the declared path (bounded, no network, a failure is a
+failure) and evaluates rules against both forms with exactly those
+semantics. When resolution fails, or the rule's anchor itself cannot be
+resolved, the rule is applicable-and-not-evaluable and the verdict is
+`unknown`.
 
 ### Conservative fallbacks: when the verdict is `unknown`
 
@@ -320,10 +387,11 @@ records why when it cannot:
 | reason | condition |
 | --- | --- |
 | `no_policy_readable` | at least one layer is present and none is readable |
-| `policy_partially_readable` | a present layer is `unreadable` or `oversized`; a readable deny rule still yields `deny_rule_match`, since a deny is conclusive whatever the unreadable layer held, but no other verdict can be concluded |
+| `policy_partially_readable` | a present layer is `unreadable` or `oversized`; a confirmed deny in a readable layer still yields `deny_rule_match`, since a deny is conclusive whatever the unreadable layer held, but no other verdict can be concluded |
 | `unparsed_rule_may_apply` | an unparsed rule names the tool, or a tool glob that covers it |
-| `unsupported_input_structure` | the command line contains a separator, subshell, command substitution, backtick, control-flow keyword, redirection into a command, or a wrapper prefix; a bare-tool rule (`Bash`, `"*"`) still yields its verdict, because it does not depend on structure, and a deny or ask rule matching a top-level subcommand still yields its verdict, because Claude Code applies those when any subcommand matches |
-| `path_context_unavailable` | a path rule needs `cwd` or a settings source directory the invocation does not have |
+| `unsupported_input_structure` | the command line contains a separator, subshell, command substitution, backtick, control-flow keyword, redirection, or a wrapper prefix, and an applicable argument-pattern rule could not be ruled out because of it. A bare-tool deny still concludes, because it does not depend on structure. A deny or ask rule matching a top-level subcommand still concludes, because Claude Code applies those when any subcommand matches. A bare-tool allow does NOT conclude while any applicable deny or ask rule remains unevaluated |
+| `path_context_unavailable` | a `/path` rule's anchor is not known: the invocation's `cwd` differs from the run's start `cwd`, the start record is absent, or the rule's source is one version 1 does not anchor |
+| `path_resolution_unsupported` | the declared path or a rule anchor could not be resolved through symlinks |
 | `input_unavailable` | the post payload carried no input; `executed_digest` is empty in the same case |
 | `evaluation_failure` | any recovered failure inside matching |
 
@@ -337,7 +405,8 @@ and each match says what it was computed against:
 
 ```
 "rule_match": { "verdict": ..., "reason": ... | null, "rule": <keyed digest> | null,
-                "policy_digest": <rules_digest at this invocation>,
+                "policy_revision": <policy_revision at this invocation>,
+                "rules_digest": <rules_digest at this invocation>,
                 "evaluated_at_unix_ms": ... }
 ```
 
@@ -347,9 +416,12 @@ and each match says what it was computed against:
   the input that ran, against the rules on disk at that invocation -- which
   are not necessarily the rules in effect when execution began.
 
-`rule` is the HMAC of the matching rule's canonical text under the
-per-install key: enough to say two matches hit the same rule, not enough to
-recover it.
+`policy_revision` binds the match to the full recorded policy state it was
+computed under; `rules_digest` is carried beside it so a reader can tell a
+revision that changed the rules from one that changed only a layer's
+readability. `rule` is the HMAC of the matching rule's canonical text under
+the per-install key: enough to say two matches hit the same rule, not enough
+to recover it.
 
 Invariants the hook path keeps:
 
@@ -358,7 +430,7 @@ Invariants the hook path keeps:
   executed-input match the same way.
 - Matching is bounded: rule count capped, input already capped at 8 MiB by
   the stdin limit, glob matching without backtracking blow-up, settings files
-  under the new size cap.
+  under the new size cap, path resolution local and bounded.
 - Any failure inside matching is recovered into `unknown` with
   `evaluation_failure`. Exit code 2 stays impossible; the fault-injection
   points H-1 exercises gain one inside matching.
@@ -369,23 +441,26 @@ A `rule_matches` section per session:
 
 - `policy`: how many revisions the run recorded, and for the latest: the
   layers and their states, the default mode and its layer, the rule counts,
-  the digest. `not recorded` for a run with no `policy` record, in which case
-  every verdict below reads `unknown`.
+  both digests. `not recorded` for a run with no `policy` record, in which
+  case every verdict below reads `unknown`.
 - `by_verdict`: counts of this store's declarations per declared verdict and
   per executed verdict, with `unknown` broken down by reason. Counts of
   records this store holds, so zero is honest.
 - `deny_rule_match_executed`: the ids whose EXECUTED match is
   `deny_rule_match` and which have an execution record. Rendered with the
-  permission mode and both policy digests beside each. The line is a
+  permission mode and both policy revisions beside each. The line is a
   discrepancy between this tool's matcher and the fact that the call ran; the
   section says that it may be this matcher's error, an input this tool cannot
   see, a rule added after execution began, or a decision Claude Code made for
   reasons the docs cover mode by mode -- and that this tool cannot tell which.
 - `verdict_changed`: the ids whose declared and executed verdicts differ,
-  each with `input_changed` (from `rewritten`, null when unknowable) and
-  `policy_changed` (the two policy digests differ). The two are independent:
-  an unchanged input under a rule added mid-call is `input_changed: false,
-  policy_changed: true`.
+  each with `input_changed` (from `rewritten`, null when unknowable),
+  `policy_changed` (the two `policy_revision` values differ) and
+  `rules_changed` (the two `rules_digest` values differ). The three are
+  independent: an unchanged input under a rule added mid-call is
+  `input_changed: false, policy_changed: true, rules_changed: true`; a layer
+  that turned unreadable mid-call is `policy_changed: true, rules_changed:
+  false`.
 - `unknown`: ids, grouped by reason.
 
 Host rules: `WebFetch(domain:...)` rules give network tools a match like any
@@ -398,63 +473,93 @@ JSON: `Session` gains `rule_matches`; chain links carry both matches.
 
 ### Acceptance
 
-- **H-37 -- order is deny, ask, allow.** A call matched by both an ask rule
+- **H-38 -- order is deny, ask, allow.** A call matched by both an ask rule
   and an allow rule reads `ask_rule_match`; matched by a deny rule and an
   allow rule, `deny_rule_match`. Break: evaluate allow before ask.
-- **H-38 -- deny wins across scopes.** A user-level deny with a project-level
+- **H-39 -- deny wins across scopes.** A user-level deny with a project-level
   allow reads `deny_rule_match`; so does a managed deny with a local allow.
   Break: apply layer precedence to the rule arrays.
-- **H-39 -- rules are read when the call is declared.** Append an allow rule
+- **H-40 -- rules are read when the call is declared.** Append an allow rule
   to `.claude/settings.local.json` between two declarations of the same
   call: the first reads `no_rule_match`, the second `allow_rule_match`, their
-  `policy_digest` values differ, and the run holds exactly two `policy`
-  records. Break: cache the rules read at `probe start`.
-- **H-40 -- the executed input decides the executed match.** A fixture
+  `policy_revision` and `rules_digest` values differ, and the run holds
+  exactly two `policy` records. Break: cache the rules read at `probe
+  start`.
+- **H-41 -- the executed input decides the executed match.** A fixture
   `PreToolUse` hook rewrites a command that a deny rule matches into one an
   allow rule matches: the declaration reads `deny_rule_match`, the execution
   record `allow_rule_match`, `rewritten` is true, `verdict_changed` lists the
   id with `input_changed: true, policy_changed: false`, and
   `deny_rule_match_executed` is empty. Break: use the declared match for that
   line.
-- **H-41 -- unchanged input, changed policy.** A call declared under an
+- **H-42 -- unchanged input, changed policy.** A call declared under an
   allow rule; a deny rule for it is appended to the settings before the post
   hook runs. The declaration reads `allow_rule_match`, the execution record
   `deny_rule_match`, `rewritten` is false, `verdict_changed` lists the id
-  with `input_changed: false, policy_changed: true`, and the two
-  `policy_digest` values differ. Break: derive `policy_changed` from
-  `rewritten`.
-- **H-42 -- unparsed forces unknown.** A rule in an unrecognised grammar that
+  with `input_changed: false, policy_changed: true, rules_changed: true`.
+  Break: derive `policy_changed` from `rewritten`.
+- **H-43 -- unparsed forces unknown.** A rule in an unrecognised grammar that
   names the declared tool makes that tool's verdicts `unknown` with
   `unparsed_rule_may_apply`, and `rule_counts.unparsed` says so. Break: drop
   unparsed rules silently.
-- **H-43 -- unsupported structure forces unknown.** With only `Bash(git *)`
-  in allow, the command `git status && curl example.com` reads `unknown`
-  with `unsupported_input_structure`; with a bare `Bash` allow rule the same
-  command reads `allow_rule_match`; with `Bash(curl *)` in deny it reads
-  `deny_rule_match`. Break: match the prefix rule against the first token
+- **H-44 -- structure never lets an allow past an unevaluated deny.** Four
+  cases. With only `Bash(git *)` in allow, `git status && curl example.com`
+  reads `unknown` with `unsupported_input_structure`. With a bare `Bash`
+  allow and no deny or ask rule applicable to `Bash`, the same command reads
+  `allow_rule_match`. With a bare `Bash` allow AND `Bash(curl *)` in deny,
+  `echo "$(curl example.com)"` reads `unknown` -- the deny cannot be
+  evaluated inside the substitution and so is not ruled out. With
+  `Bash(curl *)` in deny, `git status && curl example.com` reads
+  `deny_rule_match`, because the deny matches a top-level subcommand. Break:
+  let a bare-tool allow conclude while an argument-pattern deny remains
+  unevaluated; second break: match the prefix rule against the first token
   only.
-- **H-44 -- partial policy forces unknown.** With the managed layer present
+- **H-45 -- partial policy forces unknown.** With the managed layer present
   but unreadable and a project-level allow rule that matches, the verdict is
   `unknown` with `policy_partially_readable`; with a project-level deny rule
   that matches, it is `deny_rule_match`. Break: skip unreadable layers
   silently.
-- **H-45 -- oversized settings are unreadable, not parsed.** A settings file
+- **H-46 -- oversized settings are unreadable, not parsed.** A settings file
   over the cap makes its layer `oversized`, the verdict `unknown` with
   `policy_partially_readable`, and the loader returns without reading past
   the cap; the hook exits 0. Break: remove the cap.
-- **H-46 -- no rule text, no rule file.** A rule carrying a canary string
+- **H-47 -- a revision is any change of recorded state.** An empty, readable
+  managed file is made unreadable between two declarations and readable
+  again before a third, with the rules unchanged throughout. The run holds
+  three `policy` records with three distinct `policy_revision` values and
+  one `rules_digest`; the middle declaration's match carries the middle
+  revision, reads `unknown` with `policy_partially_readable`, and the report
+  describes that interval as unreadable. Break: write a `policy` record only
+  when `rules_digest` changes.
+- **H-48 -- no rule text, no rule file.** A rule carrying a canary string
   reaches no record, no file under the store directory, no report output,
   no stdout and no stderr. Break: write the matching rule into
   `rule_match.rule`; second break: write a compiled copy of the rules into
   the run directory.
-- **H-47 -- no fault reaches the agent.** The five panicking faults of H-1,
+- **H-49 -- path anchors are the documented ones.** `Edit(/src/**)` in
+  project settings matches `<primary working directory>/src/a.ts` and does
+  not match `<primary working directory>/.claude/src/a.ts`; `Read(/secrets/**)`
+  in user settings matches `~/.claude/secrets/x` and not
+  `<primary working directory>/secrets/x`; after the invocation's `cwd`
+  differs from the run's start `cwd`, every `/path` rule on that call reads
+  `unknown` with `path_context_unavailable`. Break: anchor `/path` at the
+  settings file's directory; second break: anchor at the invocation's
+  `cwd`.
+- **H-50 -- symlinks are checked both ways.** With `Read(./project/**)`
+  allowed and `Read(~/.ssh/**)` denied, a declared read of
+  `./project/key` that is a symlink to `~/.ssh/id_rsa` reads
+  `deny_rule_match`; a declared read of `./project/plain` that resolves
+  inside `./project` reads `allow_rule_match`; a declared path whose
+  resolution fails reads `unknown` with `path_resolution_unsupported`.
+  Break: evaluate the named path only.
+- **H-51 -- no fault reaches the agent.** The five panicking faults of H-1,
   injected inside matching, exit 0 with the declaration recorded and its
   verdict `unknown` with `evaluation_failure`.
-- **H-48 -- no rule match is not a prompt.** A declaration with
+- **H-52 -- no rule match is not a prompt.** A declaration with
   `no_rule_match` and an execution record renders as `no rule on disk
   matched; ran`, and no output anywhere renders it as prompted, approved, or
   granted. Break: label it `approved`.
-- **H-49 -- modes are rendered, not interpreted.** For a `deny_rule_match`
+- **H-53 -- modes are rendered, not interpreted.** For a `deny_rule_match`
   executed under `dontAsk`, under `bypassPermissions`, and under a mode name
   the test invents, the line renders the mode verbatim and no other output
   differs between the three. Break: suppress the line for a mode the code
@@ -462,13 +567,14 @@ JSON: `Session` gains `rule_matches`; chain links carry both matches.
 
 ### Effort
 
-About three weeks: the settings size cap; rule parsing, structure detection
-and matching in `internal/shape` (with direct tests beside the acceptance
-suite, as the tokenizer has); the `policy` record and per-call resolution in
-`internal/hook`; the report section; thirteen acceptance items and their
-sweep breaks; the schema file update with `TestStoreSchemaMatchesTheAllowlists`
-extended to the new record and fields; and the one-sentence README change for
-the no-content promise.
+About three and a half weeks: the settings size cap; rule parsing, structure
+detection, the conclusiveness invariant, path anchoring and symlink
+resolution in `internal/shape` (with direct tests beside the acceptance
+suite, as the tokenizer has); the `policy` record, full-state revisions and
+per-call resolution in `internal/hook`; the report section; sixteen
+acceptance items and their sweep breaks; the schema file update with
+`TestStoreSchemaMatchesTheAllowlists` extended to the new record and fields;
+and the one-sentence README change for the no-content promise.
 
 ## Sequencing
 
@@ -477,7 +583,7 @@ ships on its own and is the demonstration: one prompt, its calls, what the
 client recorded about each, and which hosts the wire saw inside the window.
 
 Part 2 second, behind schema 3. It touches the hook path, so it carries the
-exit-2 constraint and H-47 before anything else, and the settings size cap
+exit-2 constraint and H-51 before anything else, and the settings size cap
 before that.
 
 ## Schema
@@ -500,19 +606,22 @@ record version it does not know continues to skip it.
    coverage path already does, and under the cap they are small) versus
    caching by modification time.
 4. The settings size cap. Proposed: 1 MiB per file.
-5. Hosts named on `Bash` command lines: baseline only (proposed) or a
+5. Whether version 1 should anchor `/path` rules from managed settings at
+   all, or leave them `unknown` (proposed) until the anchor is confirmed
+   against Claude Code's own behaviour.
+6. Hosts named on `Bash` command lines: baseline only (proposed) or a
    `rashomon`-owned allowlist file, which is a new configuration surface.
-6. Whether `deny_rule_match_executed` also renders in the default text
+7. Whether `deny_rule_match_executed` also renders in the default text
    report, outside the section.
-7. Ship schema 3 with Part 2 only (proposed), keeping Part 1 on schema 2.
-8. Whether to pursue per-call wire attribution later. It needs a correlation
+8. Ship schema 3 with Part 2 only (proposed), keeping Part 1 on schema 2.
+9. Whether to pursue per-call wire attribution later. It needs a correlation
    key that both the wire and this store hold, which the proxy does not emit
    today; it is a change to the other product, not to this one.
 
 ## Sign-off
 
 Approving this pull request approves building Part 1 immediately. Part 2 is
-approved for implementation as specified here, revision 3; a review comment
+approved for implementation as specified here, revision 4; a review comment
 may hold it back while the open decisions are settled. Each part lands as its
 own pull request against the acceptance items above, reported the way every
 H-item is: the command that ran it and its output, and the break that made it
