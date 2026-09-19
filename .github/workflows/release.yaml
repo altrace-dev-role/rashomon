@@ -31,19 +31,8 @@ jobs:
           # go.sum: the module has requirements now. See the note in ci.yaml.
           cache-dependency-path: go.sum
 
-      # NOT PINNED -- FILL THIS IN BEFORE THE FIRST RELEASE.
-      #
-      # Every other `uses:` in this repository is pinned to a full commit SHA
-      # with the tag in a trailing comment, copied from the altrace-agent
-      # repository this module was split out of. That repository does not use
-      # goreleaser-action anywhere, so there was no SHA to copy and none is
-      # invented here. Replace the ref below with the full 40-character commit
-      # SHA of the goreleaser/goreleaser-action release you intend to pin (v6
-      # is the current major line) and move the tag into the trailing comment.
-      # Until then this job fails at the "unable to resolve action" step, which
-      # is the intended loud failure rather than an unpinned release path.
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@REPLACE_WITH_COMMIT_SHA  # goreleaser/goreleaser-action, tag TBD (unpinned placeholder)
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7.2.3
         with:
           version: "~> v2"
           args: release --clean
