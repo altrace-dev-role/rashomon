@@ -3,22 +3,21 @@ dist/
 *.exe
 *.test
 *.out
+coverage.out
+coverage.html
 
-# The binary `go build ./cmd/rashomon
-
-# Agent and editor state, which is per-machine and not this project's.
-/.claude/` drops in the repository root. The module
+# The binary `go build ./cmd/rashomon` drops in the repository root. The module
 # IS the repository root, so the output lands beside go.mod as a ten-megabyte
 # file named exactly `rashomon` -- and the README tells a contributor to run
 # that command, then `./rashomon watch`, because watch has to be run from a
 # built binary. `*.exe` already covered the Windows spelling; this covers the
 # one everyone else gets. Anchored, so it cannot swallow a source path.
 /rashomon
-coverage.out
-coverage.html
 
 .DS_Store
 .idea/
 .vscode/
 
+# .claude/ itself is NOT ignored: this repository tracks its own project
+# settings and skills. Only the per-machine file is ignored.
 .claude/settings.local.json
