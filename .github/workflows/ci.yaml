@@ -33,15 +33,24 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          # Read from go.mod rather than pinned here, so the version CI builds
-          # with cannot drift from the one the module declares.
+          # BUILD TOOLCHAIN, pinned here and NOT read from go.mod.
           #
-          # NOTE: go.mod names an exact patch, and setup-go treats that string
-          # as an exact version rather than an X-range -- so this pins the
-          # patch, it does not float to the latest of the minor. An earlier
-          # comment here claimed the opposite. To float, go.mod would have to
-          # say `go 1.24` with no patch.
-          go-version-file: go.mod
+          # go.mod's `go 1.24.0` is the LANGUAGE MINIMUM -- the oldest Go a
+          # consumer needs to build this module. It is not a statement about
+          # what the release should be built WITH, and reading the build
+          # version from it conflated the two: setup-go treats that string as
+          # an exact version, so the released binary was pinned to the oldest
+          # toolchain the module tolerates.
+          #
+          # That is not cosmetic. Measured with govulncheck: building with
+          # go1.25.6 leaves two REACHABLE standard-library vulnerabilities in
+          # the binary (GO-2026-4601 net/url, GO-2026-4602 os), both fixed in
+          # go1.25.8, and both clear at that version. A released artifact is
+          # the wrong place to ship the oldest toolchain that compiles.
+          #
+          # Bump this when a stdlib advisory lands; go.mod moves only when the
+          # module actually needs newer language features.
+          go-version: "1.25.8"
           cache: true
           # go.sum, not go.mod. This module declared no requirements when these
           # workflows were written and now depends on modernc.org/sqlite plus
@@ -90,6 +99,14 @@ jobs:
       - name: Mutation sweep
         run: python3 test/mutation/sweep.py
 
+      # .goreleaser.yml advertises this command in its own header, and until
+      # the brews block was removed it failed against its own file -- exit 2 on
+      # the deprecation. Running it here is what keeps that from coming back
+      # silently, since nothing else executes the release config until a tag,
+      # and a tag cannot be cleanly re-cut.
+      - name: GoReleaser config check
+        run: go run github.com/goreleaser/goreleaser/v2@v2.18.2 check
+
   cross-build:
     name: Cross build (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
@@ -108,7 +125,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version: "1.25.8"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 

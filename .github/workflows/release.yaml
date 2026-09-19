@@ -1,5 +1,5 @@
-# rashomon Release -- cross-platform binaries, archives, checksums and
-# the Homebrew formula, all from .goreleaser.yml.
+# rashomon Release -- cross-platform binaries, archives and checksums, all
+# from .goreleaser.yml.
 #
 # Triggered on version tag push (e.g. v0.1.0, v1.0.0-rc.1).
 name: Release
@@ -15,6 +15,8 @@ jobs:
   release:
     name: Build and publish
     runs-on: ubuntu-latest
+    # A release that hangs holds a write-scoped token open for six hours.
+    timeout-minutes: 30
     permissions:
       contents: write  # Create the GitHub release and upload its artifacts.
     steps:
@@ -23,24 +25,67 @@ jobs:
           # GoReleaser builds the changelog from git history and reads the
           # previous tag to bound it; a shallow clone has neither.
           fetch-depth: 0
+          # Do not leave a usable token in .git/config for the rest of the job.
+          # The default is true, which means every later step -- including one
+          # that compiles and runs third-party module code -- runs beside a
+          # credential it has no reason to hold. Nothing here pushes.
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version-file: go.mod
+          # BUILD TOOLCHAIN, pinned here and NOT read from go.mod.
+          #
+          # go.mod's `go 1.24.0` is the LANGUAGE MINIMUM -- the oldest Go a
+          # consumer needs to build this module. It is not a statement about
+          # what the release should be built WITH, and reading the build
+          # version from it conflated the two: setup-go treats that string as
+          # an exact version, so the released binary was pinned to the oldest
+          # toolchain the module tolerates.
+          #
+          # That is not cosmetic. Measured with govulncheck: building with
+          # go1.25.6 leaves two REACHABLE standard-library vulnerabilities in
+          # the binary (GO-2026-4601 net/url, GO-2026-4602 os), both fixed in
+          # go1.25.8, and both clear at that version. A released artifact is
+          # the wrong place to ship the oldest toolchain that compiles.
+          #
+          # Bump this when a stdlib advisory lands; go.mod moves only when the
+          # module actually needs newer language features.
+          go-version: "1.25.8"
           cache: true
           # go.sum: the module has requirements now. See the note in ci.yaml.
           cache-dependency-path: go.sum
 
+      # A TAG DOES NOT RUN CI. ci.yaml triggers on push-to-main and on pull
+      # requests, neither of which fires for `git push --tags`, so without
+      # these steps the first thing a release proves is that it compiles.
+      # A published tag cannot be cleanly re-cut, so the gates run here too.
+      - name: Test
+        run: go test ./... -count=1 -race
+
+      - name: Vet
+        run: go vet ./...
+
+      # The module gained a dependency graph when it started reading the
+      # proxy's SQLite store. Publishing a binary with a known-vulnerable
+      # module in it is the failure this catches, and a release is the last
+      # moment it is cheap to catch.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7.2.3
         with:
-          version: "~> v2"
+          # EXACT, not a constraint. "~> v2" pinned the wrapper action by SHA
+          # while leaving the tool that actually compiles and publishes free to
+          # be whatever v2.x was newest on release day -- so two tags cut a week
+          # apart could be built by different toolchains with no diff in this
+          # repository to point at. That is the failure the SHA pin above it
+          # exists to prevent, left open in the same file.
+          version: "v2.18.2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The formula is committed to altrace-dev-role/altrace-homebrew-tap,
-          # a different repository, which GITHUB_TOKEN cannot write to. This
-          # secret must hold a token with `contents: write` on the tap repo. If
-          # it is absent the brews step fails and the release stops after the
-          # archives are uploaded.
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # No HOMEBREW_TAP_TOKEN. The tap it wrote to is private and carries a
+          # different, closed product's formulae, so this job held a credential
+          # with contents:write on that product's distribution path. See the
+          # note in .goreleaser.yml for what replaces it.
