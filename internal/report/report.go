@@ -28,6 +28,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/wire"
 )
@@ -43,6 +44,25 @@ const (
 // Reasons lists the coverage reason codes this package derives, as
 // store.Reasons lists the ones a record carries. Together they are the whole
 // vocabulary a reader of a report can meet.
+// knownLabel clamps a stored file_label to the vocabulary shape.Labels()
+// defines, mapping anything else to unknown.
+//
+// The value comes off disk, and this map's KEYS are rendered verbatim in both
+// the text report and the JSON one. A record written by an older build, a
+// newer one, or a hand-edited file could carry any string at all, and without
+// this the report would print it -- which is the one thing every other line of
+// this program is arranged to prevent. Counting it as unknown keeps the total
+// honest and the rendered vocabulary closed; dropping it would lose a
+// declaration the run really made.
+func knownLabel(v string) string {
+	for _, l := range shape.Labels() {
+		if v == l {
+			return v
+		}
+	}
+	return shape.LabelUnknown
+}
+
 func Reasons() []string {
 	return []string{
 		ReasonRunNotClosed,
@@ -81,6 +101,14 @@ type Declarations struct {
 	Dropped           []string       `json:"dropped"`
 	WithoutExecution  []Unexecuted   `json:"without_execution"`
 	ByTool            map[string]int `json:"by_tool"`
+
+	// ByLabel counts declarations per file_label (v3). A declaration whose
+	// tool names no file is not counted at all, so the total here is the
+	// number of calls that named one, not the number of declarations.
+	//
+	// Empty until schema 3 carries the field, because a label the hook path
+	// dropped is a label this count never sees.
+	ByLabel map[string]int `json:"by_label"`
 }
 
 // Unexecuted names a declaration that no execution record answers. It is not a
@@ -322,6 +350,7 @@ func build(run *store.Run) Session {
 			Dropped:          nonNil(run.Dropped()),
 			WithoutExecution: []Unexecuted{},
 			ByTool:           map[string]int{},
+			ByLabel:          map[string]int{},
 		},
 		Executions:  Executions{Recorded: len(run.Executions)},
 		Transcripts: []Transcript{},
@@ -334,6 +363,9 @@ func build(run *store.Run) Session {
 	mode := map[string]string{}
 	for _, d := range run.Declarations {
 		sess.Declarations.ByTool[d.ToolName]++
+		if d.FileLabel != nil {
+			sess.Declarations.ByLabel[knownLabel(*d.FileLabel)]++
+		}
 		mode[d.ToolUseID] = d.PermissionMode
 	}
 	executed := map[string]bool{}

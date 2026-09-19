@@ -271,7 +271,8 @@ type reportSession struct {
 			ToolUseID      string `json:"tool_use_id"`
 			PermissionMode string `json:"permission_mode"`
 		} `json:"without_execution"`
-		ByTool map[string]int `json:"by_tool"`
+		ByTool  map[string]int `json:"by_tool"`
+		ByLabel map[string]int `json:"by_label"`
 	} `json:"declarations"`
 	Executions struct {
 		Recorded int `json:"recorded"`

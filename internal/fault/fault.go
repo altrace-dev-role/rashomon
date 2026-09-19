@@ -18,8 +18,14 @@ package fault
 // so that a test naming a point that no longer exists fails to compile instead
 // of silently injecting nothing.
 const (
-	PointHookStart            = "hook.start"
-	PointHookParsed           = "hook.parsed"
+	PointHookStart  = "hook.start"
+	PointHookParsed = "hook.parsed"
+	// PointLabel is inside the file-label derivation, within its own
+	// recovered region. It belongs to the hook package and not to shape
+	// because shape is the audited file the no-content guarantee rests on,
+	// and keeping an injection hook out of it keeps that file's dependency
+	// list as short as the audit needs.
+	PointLabel                = "hook.label"
 	PointStoreWrite           = "store.write"
 	PointHookAfterDeclaration = "hook.after_declaration"
 	PointPostStart            = "post.start"

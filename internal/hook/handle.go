@@ -95,6 +95,22 @@ func (h *Handler) Capture(in io.Reader) error {
 	// that reads inside it.
 	decl.Hosts, decl.SSHHosts = shape.Hosts(p.ToolName, p.ToolInput)
 
+	// The label is computed on every declaration, and attached only to a
+	// record whose schema carries the field.
+	//
+	// Computed unconditionally on purpose: the recover inside fileLabel runs
+	// on every call, so the path H-46 exercises is the path that runs in the
+	// field, not one that only wakes up when the schema moves.
+	//
+	// Written unconditionally now. The Phase B reservation declares
+	// file_label in the record and in docs/store-schema.json, where it is
+	// permitted at every version and required only at schema 3, so there is
+	// no longer a version to gate on: the field is always present, and this
+	// decides whether it is null or a label.
+	if label := fileLabel(p.ToolName, p.ToolInput); label != "" {
+		decl.FileLabel = &label
+	}
+
 	fault.Inject(fault.PointStoreWrite)
 
 	if err := h.st.AppendDeclaration(decl); err != nil {
@@ -167,4 +183,26 @@ func nilIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// fileLabel derives the label under its own recover.
+//
+// The recover is inside this function, and therefore before the declaration is
+// appended, for the reason H-46 names: a panic in labelling must cost the label
+// and nothing else. Recovering further out -- in the barrier that wraps Capture
+// -- would lose the record itself, and a missing declaration is a far worse
+// answer than an unknown label.
+//
+// The empty string means the tool names no file and the record's field stays
+// null. A panic means the tool did name one and the label could not be derived,
+// which is LabelUnknown; shape.Label returns early for an unlabelled tool, so
+// the two cannot be confused.
+func fileLabel(toolName string, toolInput json.RawMessage) (label string) {
+	defer func() {
+		if v := recover(); v != nil {
+			label = shape.LabelUnknown
+		}
+	}()
+	fault.Inject(fault.PointLabel)
+	return shape.Label(toolName, toolInput)
 }

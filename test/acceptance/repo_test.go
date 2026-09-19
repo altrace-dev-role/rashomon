@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/report"
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -296,6 +297,64 @@ func collectEnums(node any, into map[string]bool) {
 	case []any:
 		for _, child := range v {
 			collectEnums(child, into)
+		}
+	}
+}
+
+// TestStoreSchemaLabelsAreTheCodeLabels: file_label is a closed vocabulary
+// like the reason codes, and it needs a check of its own.
+//
+// collectReasonEnums is scoped to keys named reason, reasons or *_reason --
+// deliberately, so that a bidirectional check does not compare reasons
+// against vocabularies that were never reasons. The cost of that scoping is
+// that every OTHER closed vocabulary needs its own walk, or it drifts from
+// the schema in silence and the drift surfaces as a record in the field that
+// the published contract refuses.
+//
+// This one is bidirectional, which the reason check is not: a label the code
+// can emit and the schema forbids is a record that fails validation, and a
+// label the schema offers and the code cannot emit is a promise to a reader
+// that nothing will ever keep.
+func TestStoreSchemaLabelsAreTheCodeLabels(t *testing.T) {
+	inSchema := map[string]bool{}
+	collectNamedEnum(readSchema(t), "", "file_label", inSchema)
+	if len(inSchema) == 0 {
+		t.Fatalf("no file_label enum found in %s; the walk is not finding it", schemaPath)
+	}
+
+	inCode := map[string]bool{}
+	for _, l := range shape.Labels() {
+		inCode[l] = true
+		if !inSchema[l] {
+			t.Errorf("shape.Labels() carries %q, which appears in no file_label enum in %s", l, schemaPath)
+		}
+	}
+	for l := range inSchema {
+		if !inCode[l] {
+			t.Errorf("%s offers the label %q, which shape.Labels() cannot emit", schemaPath, l)
+		}
+	}
+}
+
+// collectNamedEnum gathers the string members of the enum on every property
+// with the given name. Null members are skipped: the nullability is carried
+// by the type, and Labels() is a list of labels rather than of states.
+func collectNamedEnum(node any, key, want string, into map[string]bool) {
+	switch v := node.(type) {
+	case map[string]any:
+		if key == want {
+			for _, e := range toAnySlice(v["enum"]) {
+				if s, ok := e.(string); ok {
+					into[s] = true
+				}
+			}
+		}
+		for k, child := range v {
+			collectNamedEnum(child, k, want, into)
+		}
+	case []any:
+		for _, child := range v {
+			collectNamedEnum(child, key, want, into)
 		}
 	}
 }
