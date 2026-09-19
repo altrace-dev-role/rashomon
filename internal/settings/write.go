@@ -28,6 +28,21 @@ var ErrChanged = errors.New("settings: file changed since it was read")
 // is written and ErrChanged is returned, so an edit Claude Code made in the
 // meantime is not silently discarded.
 func Write(path string, original, data []byte) error {
+	// Follow a symlink to its target before choosing what to replace.
+	//
+	// rename(2) replaces the LINK, not the file it points at, so a
+	// dotfile-managed settings.json -- stow, chezmoi, yadm, all common among
+	// the people who would run this -- was silently turned into a regular
+	// file. The managed file stopped being the one Claude Code reads, kept
+	// its stale contents, and detach could not put the link back because by
+	// then there was no link to restore.
+	//
+	// Resolution failure is not fatal: a path that does not exist yet cannot
+	// be resolved and is the ordinary first-install case.
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err

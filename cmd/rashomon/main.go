@@ -418,18 +418,18 @@ func cmdWatch(stdout io.Writer) error {
 }
 
 func cmdDetach(args []string, stdout io.Writer) error {
-	installID, all, err := detachTarget(args)
+	installID, all, force, err := detachTarget(args)
 	if err != nil {
 		return err
 	}
 
-	remove := func(doc *settings.Document) (int, error) {
-		return install.Remove(doc, install.Spec{InstallID: installID})
+	remove := func(doc *settings.Document) (int, []install.Modified, error) {
+		return install.Remove(doc, install.Spec{InstallID: installID}, force)
 	}
 	who := "install " + installID
 	if all {
-		remove = func(doc *settings.Document) (int, error) {
-			return install.RemoveIf(doc, func(string) bool { return true })
+		remove = func(doc *settings.Document) (int, []install.Modified, error) {
+			return install.RemoveIf(doc, func(string) bool { return true }, force)
 		}
 		who = "every install"
 	}
@@ -439,48 +439,60 @@ func cmdDetach(args []string, stdout io.Writer) error {
 		return err
 	}
 	removed := 0
+	var left []install.Modified
 	changed, err := editSettings(path, func(doc *settings.Document) (bool, error) {
-		n, err := remove(doc)
-		removed = n
+		n, l, err := remove(doc)
+		removed, left = n, l
 		return n > 0, err
 	})
 	if err != nil {
 		return err
+	}
+	// Named before the outcome, because an entry left behind still fires on
+	// every tool call and that is the part the user has to act on.
+	for _, m := range left {
+		fmt.Fprintf(stdout, "rashomon: removed the %s entry you had edited (%s), because --force was given\n", m.Event, m.Detail)
 	}
 	if !changed {
 		fmt.Fprintf(stdout, "rashomon: nothing to detach (%s) in %s\n", who, path)
 		return nil
 	}
 	fmt.Fprintf(stdout, "rashomon: detached (%s, %d entries) from %s\n", who, removed, path)
+
 	return nil
 }
 
 // detachTarget resolves which entries a detach removes: the install named on
 // the command line, every install that left a marker, or -- for a plain detach
 // -- the one this machine's store records.
-func detachTarget(args []string) (installID string, all bool, err error) {
+func detachTarget(args []string) (installID string, all, force bool, err error) {
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--install":
 			if i+1 >= len(args) {
-				return "", false, errors.New("--install needs a value")
+				return "", false, false, errors.New("--install needs a value")
 			}
 			installID = args[i+1]
 			i++
 		case "--all":
 			all = true
+		case "--force":
+			// The way out of an entry someone edited. Without it, one edited
+			// value left every entry installed and no supported way to
+			// remove them.
+			force = true
 		default:
-			return "", false, fmt.Errorf("unknown argument %q", args[i])
+			return "", false, false, fmt.Errorf("unknown argument %q", args[i])
 		}
 	}
 	if all && installID != "" {
-		return "", false, errors.New("--install and --all name different sets of entries; pass one or the other")
+		return "", false, false, errors.New("--install and --all name different sets of entries; pass one or the other")
 	}
 	if all || installID != "" {
-		return installID, all, nil
+		return installID, all, force, nil
 	}
 	installID, err = storedInstallID()
-	return installID, false, err
+	return installID, false, force, err
 }
 
 // cmdStatus prints what is installed here and what the store holds, and writes
