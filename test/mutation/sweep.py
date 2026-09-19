@@ -320,12 +320,16 @@ m("NONO the client plane is reported as traffic the sandbox missed",
   "TestSeam_TheReconciliation")
 m("NONO redaction skips the sandbox section", "internal/report/redact.go",
   "\t\ts.Nono = redactNono(sess.Nono, key)", "", "TestRedact_EveryDeclared")
-m("NONO a new host field needs no classification",
-  "internal/report/redact_enumerate_test.go",
-  "\t\t\tundeclared = append(undeclared, p)", "\t\t\t_ = p", "TestRedact_TheHostBearingSet")
+# Simulates the defect the vocabulary exists for: somebody adds a host-bearing
+# field and classifies nothing. Mutating the test's own collection loop was a
+# no-op, because with a complete vocabulary there is nothing for it to collect.
+m("NONO a new host field appears with no classification", "internal/report/nono.go",
+  "\tSessions  int `json:\"sessions\"`",
+  "\tSessions  int `json:\"sessions\"`\n\tNewHosts []string `json:\"new_hosts\"`",
+  "TestRedact_TheHostBearingSet")
 m("NONO a file of unlearned record types reads as a quiet sandbox",
-  "internal/nono/nono.go", "\t\tcase \"network\":\n\t\t\tparsed++",
-  "\t\tcase \"network\":", "TestRead_AFileOfUnlearned")
+  "internal/nono/nono.go", "\t\tswitch head.Type {", "\t\tparsed++\n\t\tswitch head.Type {",
+  "TestRead_AFileOfUnlearned")
 m("NONO the drop counters are discarded on the bail-out path",
   "internal/nono/nono.go", "\t\tobs.Reason = NotObservedNoRecords",
   "\t\tobs = Observation{Trail: path}\n\t\tobs.Reason = NotObservedNoRecords",
