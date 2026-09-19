@@ -227,3 +227,83 @@ func eq(a, b []string) bool {
 	}
 	return true
 }
+
+// TestRead_AnEmptyOrWrongShapedFileIsNotAQuietSession.
+//
+// Observed used to be set on a successful open, so three different broken
+// inputs all reported "the sandbox watched and saw nothing" -- silence read as
+// zero, which is the failure this package's own doc says it exists to prevent.
+func TestRead_AnEmptyOrWrongShapedFileIsNotAQuietSession(t *testing.T) {
+	for _, c := range []struct{ name, body string }{
+		{"empty", ""},
+		{"blank lines", "\n   \n\t\n"},
+		{"not ndjson", "hello\nworld\n"},
+		{"valid json, wrong shape", `{"foo":1}` + "\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "audit-events.ndjson")
+			if err := os.WriteFile(path, []byte(c.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			obs := Read(path, Window{Start: time.Now().Add(-time.Hour)})
+			if obs.Observed {
+				t.Errorf("reported as observed with zero records; a reader cannot tell this "+
+					"from a session where the sandbox genuinely saw nothing (reason=%q)",
+					obs.Reason)
+			}
+			if obs.Reason != NotObservedNoRecords {
+				t.Errorf("reason = %q, want %q", obs.Reason, NotObservedNoRecords)
+			}
+		})
+	}
+}
+
+// TestRead_DroppedRecordsAreCounted. Four paths used to drop a record with no
+// trace, so a trail that was three-quarters unreadable rendered identically to
+// a quiet one.
+func TestRead_DroppedRecordsAreCounted(t *testing.T) {
+	raw, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "mixed.ndjson")
+	body := string(raw) +
+		"{\"sequence\": 90, \"eve\n" + // torn
+		`{"sequence": 91}` + "\n" + // no event
+		`{"sequence": 92, "event": {"type": "network", "event": {"target": "", "decision": "allow"}}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := Read(path, fixtureWindow(t))
+	if obs.Skipped != 2 {
+		t.Errorf("skipped = %d, want 2 (a torn line and one with no event)", obs.Skipped)
+	}
+	if obs.UnparseableTargets != 1 {
+		t.Errorf("unparseable_targets = %d, want 1. A DENY on a credential-bearing target "+
+			"is the most interesting record a sandbox can write, and it used to vanish here.",
+			obs.UnparseableTargets)
+	}
+}
+
+// TestRead_ACredentialBearingTargetIsRefusedAndCounted.
+func TestRead_ACredentialBearingTargetIsRefusedAndCounted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "creds.ndjson")
+	body := `{"sequence":0,"event":{"type":"session_started"}}` + "\n" +
+		`{"sequence":1,"event":{"type":"network","event":{"timestamp_unix_ms":1,` +
+		`"mode":"connect","decision":"deny","denial_category":"host_denied",` +
+		`"target":"user:hunter2@internal.example","port":443}}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := Read(path, Window{Start: time.UnixMilli(0)})
+	for _, e := range obs.Events {
+		if strings.Contains(e.Host, "@") || strings.Contains(e.Host, "hunter2") {
+			t.Errorf("a credential reached an event: %+v", e)
+		}
+	}
+	if obs.UnparseableTargets != 1 {
+		t.Errorf("unparseable_targets = %d, want 1", obs.UnparseableTargets)
+	}
+}

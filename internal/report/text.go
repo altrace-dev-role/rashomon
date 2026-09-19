@@ -685,8 +685,16 @@ func writeNono(b *bytes.Buffer, n Nono) {
 		fmt.Fprintf(b, "  sandbox (nono): not observed (%s)\n", orUnknown(n.Reason))
 		return
 	}
-	fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied, across %d session%s\n",
-		len(n.Allowed), len(n.Denied), n.Sessions, plural(n.Sessions))
+	fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied in this session's window\n",
+		len(n.Allowed), len(n.Denied))
+	// SAID SEPARATELY, because it is a LIFETIME count beside two windowed ones.
+	// nono's session_started record carries an ISO string and no millisecond
+	// instant, so there is nothing to window it on -- and joining all three in
+	// one sentence rendered "0 allowed, 0 denied, across 1 session", which
+	// reads as "a sandbox session ran and did nothing".
+	fmt.Fprintf(b, "    the trail holds %d sandbox session%s in total (not "+
+		"window-filtered: nono's session record carries no millisecond instant)\n",
+		n.Sessions, plural(n.Sessions))
 	if len(n.Denied) > 0 {
 		// Named, because a denial is the sandbox doing its job and it is
 		// evidence about the AGENT: it tried to go somewhere it could not.
@@ -695,14 +703,38 @@ func writeNono(b *bytes.Buffer, n Nono) {
 	if len(n.SawWhatTheProxyDidNot) > 0 {
 		fmt.Fprintf(b, "    seen by the sandbox and not on the wire: %s\n",
 			list(n.SawWhatTheProxyDidNot))
-		if n.PlainHTTPOnly > 0 {
-			fmt.Fprintf(b, "      %d of these are plain HTTP, which this proxy does not "+
-				"observe -- a known boundary, not a recording gap\n", n.PlainHTTPOnly)
+		if len(n.PlainHTTP) > 0 {
+			// NAMED, not counted. A bare count beside a list invites the reader
+			// to conclude the whole list is benign when the numbers happen to
+			// match, and leaves the unexplained host -- the only one that
+			// mattered -- unidentifiable.
+			fmt.Fprintf(b, "      plain HTTP, which this proxy does not observe (a known "+
+				"boundary, not a recording gap): %s\n", list(n.PlainHTTP))
 		}
 	}
 	if len(n.ProxySawWhatItDidNot) > 0 {
 		fmt.Fprintf(b, "    on the wire and not in the sandbox's trail: %s\n",
 			list(n.ProxySawWhatItDidNot))
+	}
+	if len(n.DeniedButReached) > 0 {
+		// LOUDEST LINE IN THE SECTION. The sandbox refused it and the wire
+		// recorded reaching it anyway: traffic that escaped the sandbox.
+		fmt.Fprintf(b, "    REFUSED BY THE SANDBOX AND REACHED ANYWAY: %s\n",
+			list(n.DeniedButReached))
+	}
+	if n.Skipped > 0 || n.UnparseableTargets > 0 {
+		fmt.Fprintf(b, "    %d trail record%s could not be read, %d target%s could not be "+
+			"parsed\n", n.Skipped, plural(n.Skipped),
+			n.UnparseableTargets, plural(n.UnparseableTargets))
+	}
+	if n.UnknownModes > 0 {
+		fmt.Fprintf(b, "    %d event%s carried a transport this reader does not know\n",
+			n.UnknownModes, plural(n.UnknownModes))
+	}
+	if n.UnknownDecisions > 0 {
+		fmt.Fprintf(b, "    %d sandbox event%s carried a decision this reader does not "+
+			"know, and were counted in neither column\n",
+			n.UnknownDecisions, plural(n.UnknownDecisions))
 	}
 	if n.Inherited > 0 {
 		fmt.Fprintf(b, "    %d sandbox event%s outside this session's window, excluded\n",

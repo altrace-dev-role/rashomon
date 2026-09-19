@@ -384,7 +384,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		// heading.
 		sess.Nono = buildNono(
 			nono.Read(cfg.nonoTrail, nono.Window{Start: w.Start, End: w.End}),
-			sess.Destinations, cfg.nonoTrail != "")
+			sess.Destinations, cfg.nonoTrail != "", forgotten)
 		sess.Chains = buildChains(run, sess.Destinations, deniedSet(sess.Transcripts), forgotten)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)

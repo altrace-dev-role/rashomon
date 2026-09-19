@@ -1,6 +1,8 @@
 package acceptance
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -281,5 +283,45 @@ func TestH31_SSHHostsAreCarriedApartEndToEnd(t *testing.T) {
 	out := e.run("", nil, "report", "--session", testSession, "--chain").stdout
 	if !strings.Contains(out, "ssh: git.example.com (not observable)") {
 		t.Errorf("the render does not carry the ssh host apart:\n%s", out)
+	}
+}
+
+// TestH31_NonoTrailReachesTheCLI drives the flag end to end.
+//
+// Written because the adapter reached the report and NOT the command line: the
+// seam test guarded Build -> buildNono while the wire that was actually cut
+// was main -> WithNonoTrail, so every report a user could produce printed
+// nothing about the sandbox. A guard one level below the break is not a guard.
+func TestH31_NonoTrailReachesTheCLI(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.mustHook(defaultPayload().build(t))
+	e.probe("end", testSession)
+
+	// The real capture, copied where the binary can read it.
+	raw, err := os.ReadFile(filepath.Join(moduleRoot, "test/fixtures/nono/audit-events.ndjson"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	trail := filepath.Join(e.home, "audit-events.ndjson")
+	if err := os.WriteFile(trail, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := e.run("", nil, "report", "--session", testSession, "--nono-audit", trail).stdout
+	if !strings.Contains(out, "sandbox (nono):") {
+		t.Errorf("--nono-audit produced no sandbox section:\n%s", out)
+	}
+	// The events are from a real capture whose instants precede this test's
+	// window, so they are inherited -- which the section must SAY rather than
+	// rendering as a quiet sandbox.
+	if !strings.Contains(out, "outside this session's window") {
+		t.Errorf("the section does not account for the out-of-window events:\n%s", out)
+	}
+
+	// And without the flag, silence.
+	plain := e.run("", nil, "report", "--session", testSession).stdout
+	if strings.Contains(plain, "sandbox (nono)") {
+		t.Errorf("a session with no trail configured rendered a sandbox line:\n%s", plain)
 	}
 }

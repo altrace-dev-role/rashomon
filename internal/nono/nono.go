@@ -41,6 +41,10 @@ const (
 	NotObservedNoTrail    = "no_nono_audit"
 	NotObservedUnreadable = "nono_audit_unreadable"
 	NotObservedNoWindow   = "run_recorded_no_window"
+	// NotObservedNoRecords: the file opened and held no parseable record.
+	// Separate from an absent file, because "nono wrote nothing here" and
+	// "nono was never run" are different facts about the session.
+	NotObservedNoRecords = "nono_audit_no_records"
 )
 
 // Decisions, as nono writes them.
@@ -88,7 +92,23 @@ type Observation struct {
 	Inherited int `json:"inherited"`
 	// Sessions counts session_started records seen, so a reader can tell one
 	// sandbox session from several sharing a trail.
+	//
+	// NOT window-filtered, and it cannot be: the record carries an ISO string
+	// and no timestamp_unix_ms, so there is nothing to filter on. That makes
+	// it a lifetime count beside two windowed ones, which the renderer has to
+	// say rather than joining all three in one sentence.
 	Sessions int `json:"sessions"`
+	// Skipped counts records this reader COULD NOT READ: a torn line, an
+	// absent or unparseable event, an event type nono emits that this reader
+	// has not learned. It does NOT count session_ended, which is known and
+	// deliberately unused -- a counter that rose on every healthy trail would
+	// be ignored by the time it mattered. UnparseableTargets
+	// counts network events whose target the canonicaliser refused.
+	//
+	// Both exist because silence is not an answer. Without them a trail that
+	// was three-quarters unreadable rendered identically to a quiet session.
+	Skipped            int `json:"skipped"`
+	UnparseableTargets int `json:"unparseable_targets"`
 }
 
 // Window is the watched interval. End zero means "up to the last event".
@@ -152,7 +172,14 @@ func Read(path string, w Window) Observation {
 	}
 	defer func() { _ = f.Close() }()
 
-	obs := Observation{Observed: true, Trail: path, Events: []Event{}}
+	obs := Observation{Trail: path, Events: []Event{}}
+	// Observed is set only once a record PARSES. Setting it on a successful
+	// open made an empty, truncated or wrong-format file report as "the
+	// sandbox watched and saw nothing" -- silence read as zero, which is the
+	// failure this package's own doc says it exists to prevent. Three inputs
+	// produced it: a zero-byte file, blank lines, and valid JSON of the wrong
+	// shape.
+	var parsed int
 	sc := bufio.NewScanner(f)
 	// A generous line cap: nono's session_started carries a whole command line,
 	// and a scanner that stopped at the default 64KB would silently truncate
@@ -169,27 +196,50 @@ func Read(path string, w Window) Observation {
 		if err := json.Unmarshal([]byte(line), &env); err != nil {
 			// One malformed line is not a reason to discard the rest. A trail
 			// is append-only and a torn final write is the ordinary case.
+			// COUNTED, though: four separate paths used to drop a record with
+			// no trace, so a file that was three-quarters unreadable reported
+			// the same as a quiet session.
+			obs.Skipped++
 			continue
 		}
 		var head eventHead
 		if err := json.Unmarshal(env.Event, &head); err != nil {
+			obs.Skipped++
 			continue
 		}
+		parsed++
 		switch head.Type {
 		case "session_started":
 			// COUNTED, NEVER READ. This record carries the sandboxed command
 			// line, and nothing below touches any field of it.
 			obs.Sessions++
 			continue
+		case "session_ended":
+			// KNOWN AND DELIBERATELY IGNORED, not skipped. It carries an exit
+			// code and an ISO instant, neither of which this reader joins on.
+			// Counting it as a drop would put a skipped-record line on every
+			// healthy trail -- the crying-wolf failure H-28 exists to prevent,
+			// and the reason Skipped must mean "a record I could not read"
+			// rather than "a record I did not use".
+			continue
 		case "network":
 			// fall through
 		default:
+			// A type nono has and this reader has not learned. Counted,
+			// because schema drift is a measured property of this dependency:
+			// its documentation named event types the program does not emit.
+			obs.Skipped++
 			continue
 		}
 
 		n := head.Event
 		h, ok := host.Canonical(n.Target)
 		if !ok {
+			// The single most interesting record a sandbox can write -- a DENY
+			// on a credential-bearing target -- was erased here without a
+			// trace. Refusing to carry the string is right; refusing to carry
+			// the count was not.
+			obs.UnparseableTargets++
 			// An unparseable target is dropped rather than guessed at. The
 			// canonicaliser refuses anything carrying userinfo or a path, so
 			// a credential in a target cannot reach a record from here.
@@ -214,6 +264,13 @@ func Read(path string, w Window) Observation {
 		// so is the whole contract of this package.
 		return Observation{Reason: NotObservedUnreadable, Trail: path, Events: []Event{}}
 	}
+
+	if parsed == 0 {
+		// Nothing in this file was a record. Distinct from an absent file and
+		// from a readable-but-quiet one, and the reader has to be able to tell.
+		return Observation{Reason: NotObservedNoRecords, Trail: path, Events: []Event{}}
+	}
+	obs.Observed = true
 
 	sort.SliceStable(obs.Events, func(i, j int) bool {
 		if obs.Events[i].At.Equal(obs.Events[j].At) {

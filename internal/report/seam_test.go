@@ -340,3 +340,105 @@ func seamSessionAt(t *testing.T, at time.Time) (*store.Store, string, time.Time)
 	}
 	return st, id, at.Add(time.Hour)
 }
+
+// TestSeam_TheReconciliationActuallyExecutes.
+//
+// The review's sharpest finding was not a bug but a DEAD REGION: the only test
+// reaching buildNono passed no proxy store, so dests.Observed was false, the
+// function returned at its first guard, and the entire reconciliation --
+// both disagreement columns, the plain-HTTP explanation, the denied-host
+// exclusion -- never ran in any test in the repo. Eleven mutations survived
+// inside it.
+//
+// This supplies BOTH sides, so the region executes, and pins the three
+// defects that were living in it.
+func TestSeam_TheReconciliationActuallyExecutes(t *testing.T) {
+	at := firstNonoEvent(t)
+	st, id, now := seamSessionAt(t, at)
+
+	// The wire: one host both sides saw, one the sandbox refused, one that is
+	// loopback, one that is the client's own plane.
+	db := seamStore(t, [][4]string{
+		{"r1", "", "pypi.org", ""},
+		{"r2", "", "github.com", ""},
+		{"r3", "", "localhost", ""},
+		{"r4", "", "api.anthropic.com", ""},
+	}, at)
+
+	rep, err := Build(st, id, now, WithNonoTrail(nonoFixture), WithProxyStore(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := rep.Sessions[0].Nono
+
+	if !n.Observed {
+		t.Fatalf("premise: trail not observed (%s)", n.Reason)
+	}
+
+	// github.com is DENIED by the sandbox and present on the wire. It must not
+	// appear in both columns -- the fixture's own data used to produce
+	// "refused by the sandbox: github.com" and "on the wire and not in the
+	// sandbox's trail: github.com" in the same section.
+	for _, h := range n.ProxySawWhatItDidNot {
+		if h == "github.com" {
+			t.Error("github.com is listed as missing from the trail AND refused by it. " +
+				"The proxy records the attempt regardless of the sandbox's verdict, so a " +
+				"denial is agreement, not a gap.")
+		}
+	}
+
+	// Loopback and the client plane must not read as traffic the sandbox
+	// missed. They are the categories the rest of this package argues at
+	// length must never read as findings.
+	for _, h := range n.ProxySawWhatItDidNot {
+		if h == "localhost" || h == "api.anthropic.com" {
+			t.Errorf("%s is in the sandbox-missed column; it is %s", h,
+				map[string]string{
+					"localhost":         "loopback, which is never proxied",
+					"api.anthropic.com": "the client's own plane",
+				}[h])
+		}
+	}
+
+	// And the region really ran: example.com is allowed in the trail and
+	// absent from this wire fixture, so the other column must be non-empty.
+	var sawExample bool
+	for _, h := range n.SawWhatTheProxyDidNot {
+		if h == "example.com" {
+			sawExample = true
+		}
+	}
+	if !sawExample {
+		t.Errorf("saw_what_the_proxy_did_not = %v; the reconciliation did not run",
+			n.SawWhatTheProxyDidNot)
+	}
+}
+
+// TestSeam_AForgottenHostDoesNotReturnUnderTheSandboxHeading.
+//
+// buildNono read the Destinations view for the stated reason that it has
+// "already suppressed forgotten hosts" -- true of the wire side only. The
+// trail is a second place the name lives, and leaving it unfiltered did worse
+// than republish: suppression removes the host from the wire side, so the
+// forgotten host became the one thing the section calls out. Forgetting
+// PROMOTED it.
+func TestSeam_AForgottenHostDoesNotReturnUnderTheSandboxHeading(t *testing.T) {
+	at := firstNonoEvent(t)
+	st, id, now := seamSessionAt(t, at)
+
+	if _, err := st.ForgetHost("pypi.org", now); err != nil {
+		t.Fatalf("forget --host: %v", err)
+	}
+
+	rep, err := Build(st, id, now, WithNonoTrail(nonoFixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := Text(&b, rep); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "pypi.org") {
+		t.Errorf("a forgotten host returned under the sandbox heading:\n%s", b.String())
+	}
+}
