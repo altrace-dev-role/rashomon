@@ -3,8 +3,9 @@
 #
 # Checks that claude exists, runs `rashomon watch` (idempotent: one entry per
 # install, and a re-run refreshes a moved binary's path), then execs `claude`
-# with every argument passed through. Because watch runs before the session
-# starts, the session reports verified coverage.
+# with every argument passed through. Because watch runs first, the liveness
+# probe is in place from the session's first moment, so coverage is not
+# downgraded the way a mid-session install's is (probe_absent).
 #
 # Install once (POSIX; on Windows use scripts/claude-rashomon.ps1):
 #   mkdir -p ~/.local/bin
@@ -26,13 +27,17 @@ if [ -n "${HOME:-}" ] && [ -x "${HOME:-}/.local/bin/rashomon" ]; then
 	RASHOMON="$HOME/.local/bin/rashomon"
 elif [ -n "${HOME:-}" ] && [ -x "${HOME:-}/go/bin/rashomon" ]; then
 	RASHOMON="$HOME/go/bin/rashomon"
+elif [ -x /opt/homebrew/bin/rashomon ]; then
+	RASHOMON=/opt/homebrew/bin/rashomon
+elif [ -x /usr/local/bin/rashomon ]; then
+	RASHOMON=/usr/local/bin/rashomon
 elif command -v rashomon >/dev/null 2>&1; then
 	RASHOMON="$(command -v rashomon)"
 	case "$RASHOMON" in /*) ;; *) RASHOMON="" ;; esac
 fi
 
 if [ -z "$RASHOMON" ]; then
-	echo "claude-rashomon: no rashomon binary in ~/.local/bin, ~/go/bin, or on PATH" >&2
+	echo "claude-rashomon: no rashomon binary in ~/.local/bin, ~/go/bin, the Homebrew bins, or on PATH" >&2
 	echo "claude-rashomon: from the rashomon repo:  go build -o ~/.local/bin/rashomon ./cmd/rashomon" >&2
 	exit 1
 fi

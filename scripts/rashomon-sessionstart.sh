@@ -15,13 +15,17 @@ if [ -n "${HOME:-}" ] && [ -x "${HOME:-}/.local/bin/rashomon" ]; then
 	RASHOMON="$HOME/.local/bin/rashomon"
 elif [ -n "${HOME:-}" ] && [ -x "${HOME:-}/go/bin/rashomon" ]; then
 	RASHOMON="$HOME/go/bin/rashomon"
+elif [ -x /opt/homebrew/bin/rashomon ]; then
+	RASHOMON=/opt/homebrew/bin/rashomon
+elif [ -x /usr/local/bin/rashomon ]; then
+	RASHOMON=/usr/local/bin/rashomon
 elif command -v rashomon >/dev/null 2>&1; then
 	RASHOMON="$(command -v rashomon)"
 	case "$RASHOMON" in /*) ;; *) RASHOMON="" ;; esac
 fi
 
 if [ -z "$RASHOMON" ]; then
-	echo "rashomon: no binary on this machine, so this session is not recorded. If the user wants recording, the rashomon skill builds and installs it (/rashomon)."
+	echo "rashomon: no binary found (checked ~/.local/bin, ~/go/bin, the Homebrew bins, and PATH), so this session is not recorded. If the user wants recording, the rashomon skill builds and installs it (/rashomon)."
 	exit 0
 fi
 

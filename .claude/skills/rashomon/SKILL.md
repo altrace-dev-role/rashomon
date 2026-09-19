@@ -10,6 +10,8 @@ declaration (identifiers and shape only — never content).
    path that works:
    - `~/.local/bin/rashomon` if present and executable
    - `~/go/bin/rashomon` if present and executable (where `go install` puts it)
+   - `/opt/homebrew/bin/rashomon` or `/usr/local/bin/rashomon` (brew installs;
+     checked explicitly because a GUI-launched app's PATH may not carry them)
    - `command -v rashomon`, kept only when it returns an absolute path
    - None found: if `command -v go` also fails, stop and point the user at the
      README's install options instead of building. With Go present, build from
@@ -36,7 +38,8 @@ declaration (identifiers and shape only — never content).
    - Recording covers tool calls from this point on. A session the recorder
      joined mid-way reports its coverage as `unverified` (reason
      `probe_absent`) — that is honest accounting, not a failure. Sessions
-     started after this install report verified coverage.
+     started after this install are eligible for verified coverage, because
+     the probe is in place from their first moment; the report is the proof.
    - `/rashomon-report` renders what was recorded; `/rashomon-stop` removes
      the hooks and keeps the store.
 
@@ -53,9 +56,9 @@ declaration (identifiers and shape only — never content).
    `scripts\` on PATH); the POSIX launcher and the SessionStart state line
    need Git Bash, which Claude Code uses for hooks on Windows when present.
    From then on `claude-rashomon` in any directory runs `watch` and starts
-   `claude` in one step, and because watch runs before the session starts,
-   those sessions report verified coverage. Extra arguments pass through to
-   `claude` unchanged.
+   `claude` in one step, with the liveness probe in place from the session's
+   first moment — no mid-session `probe_absent` downgrade. Extra arguments
+   pass through to `claude` unchanged.
 
 Do not edit `~/.claude/settings.json` by hand and do not install the hook
 entries yourself — `watch` is the only writer, and it preserves foreign
