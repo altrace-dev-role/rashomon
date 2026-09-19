@@ -4,11 +4,21 @@
   "title": "rashomon store records",
   "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. No field here carries content: no prompt, no response, no argument value, no command string. Identifiers are not content and are stored verbatim.",
   "oneOf": [
-    { "$ref": "#/$defs/declaration" },
-    { "$ref": "#/$defs/execution" },
-    { "$ref": "#/$defs/terminal" },
-    { "$ref": "#/$defs/coverage" },
-    { "$ref": "#/$defs/gap" }
+    {
+      "$ref": "#/$defs/declaration"
+    },
+    {
+      "$ref": "#/$defs/execution"
+    },
+    {
+      "$ref": "#/$defs/terminal"
+    },
+    {
+      "$ref": "#/$defs/coverage"
+    },
+    {
+      "$ref": "#/$defs/gap"
+    }
   ],
   "$defs": {
     "declaration": {
@@ -34,42 +44,80 @@
         "ssh_hosts"
       ],
       "properties": {
-        "type": { "enum": ["declaration"] },
-        "schema_version": { "type": "integer", "enum": [1, 2] },
+        "type": {
+          "enum": [
+            "declaration"
+          ]
+        },
+        "schema_version": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            3
+          ]
+        },
         "seq": {
           "description": "Allocated under the run's append lock and strictly increasing within records.ndjson. A declaration is never spilled, so it always has one.",
           "type": "integer"
         },
-        "recorded_at_unix_ms": { "type": "integer" },
-        "tool_use_id": { "type": "string" },
-        "session_id": { "type": "string" },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "tool_use_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
         "prompt_id": {
           "description": "Null until the first input of a session.",
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "agent_id": {
           "description": "Null outside a subagent call.",
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "agent_type": {
           "description": "Null outside a subagent call.",
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "transcript_path": { "type": "string" },
+        "transcript_path": {
+          "type": "string"
+        },
         "permission_mode": {
           "description": "The mode the call was declared in, as Claude Code named it. Not a closed vocabulary: it is copied from the payload, and a mode this program has never heard of is still the mode the call was declared in.",
           "type": "string"
         },
-        "tool_name": { "type": "string" },
+        "tool_name": {
+          "type": "string"
+        },
         "shape": {
           "description": "The derived shape of tool_input. Nothing from inside tool_input is persisted; everything here is a closed vocabulary, a count, or a keyed digest.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["program", "verb_class", "argc", "digest"],
+          "required": [
+            "program",
+            "verb_class",
+            "argc",
+            "digest"
+          ],
           "properties": {
             "program": {
               "description": "Null when the command would not tokenize, or when the tool is not a shell tool.",
-              "type": ["string", "null"]
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "verb_class": {
               "enum": [
@@ -86,7 +134,10 @@
             },
             "argc": {
               "description": "Null when the command would not tokenize. Never 0: zero is a count, and in that case there is not one.",
-              "type": ["integer", "null"]
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "digest": {
               "description": "HMAC under a per-install key, so the same command digests differently on two installs.",
@@ -96,15 +147,66 @@
         },
         "hosts": {
           "description": "Schema 2. Hostnames this call NAMED, behind http(s):// or ws(s)://, canonicalised: lower-cased, port stripped, one trailing dot dropped, userinfo refused outright rather than stripped (CWE-522). A declaration and not an observation -- the host is here because the agent wrote it down, whether or not the call ran and whether or not the wire ever saw it, which is what makes the report's \"reached but never named\" line meaningful. Sorted and de-duplicated, so two runs of one command produce byte-identical records. Null when the call named none, never an empty array: \"we looked and found none\" must stay distinguishable from a schema 1 record that was never looked at.",
-          "type": ["array", "null"],
-          "items": { "type": "string" }
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
         },
         "ssh_hosts": {
           "description": "Schema 2. Hostnames named behind ssh://, git+ssh:// or git@, canonicalised identically. Separate from hosts because the two have opposite fates in the report: the proxy cannot observe ssh at all, so an ssh host with no wire record is expected and renders under coverage as not observable, never as a finding. Merging the two and filtering downstream is how the second kind gets printed as the first.",
-          "type": ["array", "null"],
-          "items": { "type": "string" }
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "host_source": {
+          "description": "Schema 3. Where each entry of `hosts` came from. STRUCTURED means the host was read from a field whose value is a URL -- WebFetch's `url`, for instance -- so the call names that host by construction. LEXICAL means it was extracted from command text, where a mention and a destination are not the same thing: `curl https://example.com` and `echo see https://example.com` both yield the host. Both satisfy the destinations join and `forget --host` applies to both; the distinction is rendered so a reader can tell 'named in a tool argument' from 'mentioned in command text'. Null on records written before schema 3, which is not the same as an empty list: it means nobody looked.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "enum": [
+              "structured",
+              "lexical"
+            ]
+          }
+        },
+        "rule_match": {
+          "description": "Schema 3. The rule-match layer's verdict for this record. Its SHAPE IS DEFINED BY THAT LAYER and is deliberately left open here, so the layer can add fields without a fourth schema version; this entry reserves the key and the null. NULL MEANS NOT COMPUTED BY THIS VERSION -- not 'no rule matched', which is a result and will be expressed inside the object. A reader that cannot tell those apart will report an absence of rules as an absence of matches.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 3
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "host_source",
+              "rule_match"
+            ]
+          }
+        }
+      ]
     },
     "execution": {
       "title": "execution",
@@ -126,37 +228,99 @@
         "executed_digest"
       ],
       "properties": {
-        "type": { "enum": ["execution"] },
-        "schema_version": { "type": "integer", "enum": [1, 2] },
+        "type": {
+          "enum": [
+            "execution"
+          ]
+        },
+        "schema_version": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            3
+          ]
+        },
         "seq": {
           "description": "Null in spill.ndjson: the record landed, its place in the run's total order did not.",
-          "type": ["integer", "null"]
+          "type": [
+            "integer",
+            "null"
+          ]
         },
-        "recorded_at_unix_ms": { "type": "integer" },
-        "tool_use_id": { "type": "string" },
-        "session_id": { "type": "string" },
-        "tool_name": { "type": "string" },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "tool_use_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "tool_name": {
+          "type": "string"
+        },
         "outcome": {
           "description": "Schema 2. How the TOOL CALL ended. Deliberately not the terminal record's vocabulary, which says how the RECORDER's own invocation ended -- two facts about two processes, and one shared vocabulary would let a sentence about the agent be built out of a fact about the recorder. A schema 1 record carries none, and a reader must render that tool_use_id as outcome unobserved rather than as a success: defaulting an unknown ending to ok turns a call nobody recorded the end of into a call claimed to have worked.",
-          "enum": ["ok", "failed", "interrupted"]
+          "enum": [
+            "ok",
+            "failed",
+            "interrupted"
+          ]
         },
         "exit_code": {
           "description": "Schema 2. Process exit status, parsed from the failure payload's fixed \"Exit code N\" prefix. Null on success and on every message shape not recognised. Never 0: zero is an exit status meaning success, so writing it for \"no code was stated\" records the opposite of what happened. The prefix is matched rather than searched for, so a command whose OUTPUT contains those words cannot put a number here.",
-          "type": ["integer", "null"]
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "is_interrupt": {
           "description": "Schema 2. True when the call was interrupted rather than having failed on its own; an interrupt is its own outcome so that a user pressing escape is never counted as a failure the agent concealed. Null when the payload did not say, which for a successful call is always.",
-          "type": ["boolean", "null"]
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "duration_ms": {
           "description": "Schema 2. How long the call took, as the client measured it. Null when absent, and never 0: zero would claim the call took no time rather than that nobody timed it.",
-          "type": ["integer", "null"]
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "executed_digest": {
           "description": "Schema 2. The shape digest of the input as it ACTUALLY RAN. Measured on Claude Code 2.1.258: PreToolUse carries tool_input as the model asked for it and PostToolUse carries it after any hook rewrote it, under the same tool_use_id, so comparing this against the declaration's shape.digest is the only way a rewriting hook is visible at all -- the transcript keeps only the pre-rewrite input. HMAC'd with the same per-install key as the declared digest, so the two are comparable to each other and to nothing else: a reader can say the executed call differed from the declared one and cannot say how. Empty string when the payload carried no tool_input; empty must NOT compare unequal to a declared digest, because an unknown digest counted as a difference would report every such call as rewritten.",
           "type": "string"
+        },
+        "rule_match": {
+          "description": "Schema 3. The rule-match layer's verdict for this record. Its SHAPE IS DEFINED BY THAT LAYER and is deliberately left open here, so the layer can add fields without a fourth schema version; this entry reserves the key and the null. NULL MEANS NOT COMPUTED BY THIS VERSION -- not 'no rule matched', which is a result and will be expressed inside the object. A reader that cannot tell those apart will report an absence of rules as an absence of matches.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 3
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "rule_match"
+            ]
+          }
+        }
+      ]
     },
     "terminal": {
       "title": "terminal",
@@ -174,20 +338,54 @@
         "reason"
       ],
       "properties": {
-        "type": { "enum": ["terminal"] },
-        "schema_version": { "type": "integer", "enum": [1, 2] },
+        "type": {
+          "enum": [
+            "terminal"
+          ]
+        },
+        "schema_version": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            3
+          ]
+        },
         "seq": {
           "description": "Null in spill.ndjson, under the same rule as an execution's.",
-          "type": ["integer", "null"]
+          "type": [
+            "integer",
+            "null"
+          ]
         },
-        "recorded_at_unix_ms": { "type": "integer" },
-        "tool_use_id": { "type": "string" },
-        "session_id": { "type": "string" },
-        "outcome": { "enum": ["ok", "error", "signal"] },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "tool_use_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "ok",
+            "error",
+            "signal"
+          ]
+        },
         "reason": {
           "description": "Null when the outcome is ok.",
-          "type": ["string", "null"],
-          "enum": [null, "terminated_by_signal", "lock_timeout", "internal_error"]
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "terminated_by_signal",
+            "lock_timeout",
+            "internal_error"
+          ]
         }
       }
     },
@@ -210,19 +408,49 @@
         "cwd"
       ],
       "properties": {
-        "type": { "enum": ["coverage"] },
-        "schema_version": { "type": "integer", "enum": [1, 2] },
-        "recorded_at_unix_ms": { "type": "integer" },
-        "session_id": { "type": "string" },
-        "install_id": { "type": "string" },
+        "type": {
+          "enum": [
+            "coverage"
+          ]
+        },
+        "schema_version": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            3
+          ]
+        },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "install_id": {
+          "type": "string"
+        },
         "phase": {
           "description": "Which hook wrote the record.",
-          "enum": ["start", "call", "post", "end"]
+          "enum": [
+            "start",
+            "call",
+            "post",
+            "end"
+          ]
         },
-        "state": { "enum": ["verified", "unverified"] },
+        "state": {
+          "enum": [
+            "verified",
+            "unverified"
+          ]
+        },
         "reason": {
           "description": "Null when the state is verified. Fixed codes, never free text and never derived from input.",
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "enum": [
             null,
             "internal_error",
@@ -237,13 +465,23 @@
         },
         "hook_entry": {
           "description": "Whether our entry for this phase's event was installed as watch installs it. An entry narrowed by hand is absent, because that is what it is.",
-          "enum": ["present", "absent", "unknown"]
+          "enum": [
+            "present",
+            "absent",
+            "unknown"
+          ]
         },
         "cwd": {
           "description": "Schema 2. The working directory the session ran in. It is here because the novelty baseline is per PROJECT and the project is derived from this path; without it a reader would have to guess the project from the transcript path's mangled form, or key every session on the machine to one baseline. Metadata of the same class as transcript_path, which this store has always kept verbatim: a path the client supplied, used as a join key. Empty on a record written by a path that had no cwd to report. Note what the coverage record still cannot hold -- it has no numeric field and gains none here, so a run whose instrumentation failed remains unable to report a count.",
           "type": "string"
         },
-        "probe": { "enum": ["fresh", "absent", "unknown"] }
+        "probe": {
+          "enum": [
+            "fresh",
+            "absent",
+            "unknown"
+          ]
+        }
       }
     },
     "gap": {
@@ -263,28 +501,58 @@
         "host_digest"
       ],
       "properties": {
-        "type": { "enum": ["gap"] },
-        "schema_version": { "type": "integer", "enum": [1, 2] },
-        "recorded_at_unix_ms": { "type": "integer" },
-        "session_id": { "type": "string" },
-        "reason": { "enum": ["forget", "forget_host", "size_cap"] },
+        "type": {
+          "enum": [
+            "gap"
+          ]
+        },
+        "schema_version": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            3
+          ]
+        },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "forget",
+            "forget_host",
+            "size_cap"
+          ]
+        },
         "from_unix_ms": {
           "description": "The start of the window that was emptied: the bound the caller named, or the earliest record removed when that end was left open.",
           "type": "integer"
         },
-        "to_unix_ms": { "type": "integer" },
+        "to_unix_ms": {
+          "type": "integer"
+        },
         "host_digest": {
           "description": "Schema 2. An HMAC under the per-install key identifying the destination a host-scoped forget removed; empty string for a window forget, which removes by time and names no host. A DIGEST and not the hostname, resolving a conflict the field had to settle: the report needs to keep suppressing the destination, because the proxy's store is not this tool's to delete from and the host would otherwise reappear in the next report as reached-but-never-named, yet forget --host also has to make the hostname leave this store's bytes. Writing the name would satisfy the first requirement by breaking the second. Keyed with the same per-install key the shape digests use, so the report can recompute it from an observed host while a reader of the store cannot turn it back into a name or test a guess.",
           "type": "string"
         },
-        "removed_records": { "type": "integer" }
+        "removed_records": {
+          "type": "integer"
+        }
       }
     },
     "report_reason": {
       "title": "report reason",
       "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file.",
       "type": "string",
-      "enum": ["run_not_closed", "transcript_mismatch", "execution_mismatch", "gap"]
+      "enum": [
+        "run_not_closed",
+        "transcript_mismatch",
+        "execution_mismatch",
+        "gap"
+      ]
     }
   }
 }

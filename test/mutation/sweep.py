@@ -222,16 +222,26 @@ m("status does not name the other installs sharing the file", "cmd/rashomon/main
 m("status does not resolve the layer that disabled hooks", "cmd/rashomon/main.go",
   "\tcase decision.Disabled:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)",
   "\tcase false:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)", "TestStatus_")
+# B2 -- the version gate itself. Putting a schema-3 field in the TOP-LEVEL
+# required is the tempting edit and it invalidates every record already on
+# disk, so it gets its own mutation.
+m("B2 a schema-3 field is required at every version", "docs/store-schema.json",
+  '        "tool_name",\n        "shape",\n', '        "tool_name",\n        "shape",\n        "host_source",\n',
+  "TestSchema3|TestStoreSchema")
+m("B2 the reader stops accepting schema 3", "internal/store/record.go",
+  "\treturn version == 1 || version == 2 || version == 3",
+  "\treturn version == 1 || version == 2", "TestAcceptsAdmits")
+
+# Re-anchored after the schema-3 bump reformatted the file. The mutation is
+# unchanged: remove a declared key and confirm the allowlist test notices.
 m("the store schema drops a record's key", "docs/store-schema.json",
-  "        \"agent_type\": {\n          \"description\": \"Null outside a subagent call.\",\n          \"type\": [\"string\", \"null\"]\n        },\n",
-  "", "TestStoreSchema")
+  '        "agent_type": {\n', '        "agent_type_REMOVED": {\n', "TestStoreSchema")
 # Anchored on schema 2, where tool_name is no longer the last property of the
 # declaration block. The previous anchor assumed it was and silently stopped
 # matching when hosts/ssh_hosts were added -- reported as ANCHOR MISSING, which
 # lands in the same bucket as a real gap.
 m("the store schema declares a key no record carries", "docs/store-schema.json",
-  "        \"tool_name\": { \"type\": \"string\" },\n        \"shape\": {",
-  "        \"tool_name\": { \"type\": \"string\" },\n        \"tool_response\": { \"type\": \"string\" },\n        \"shape\": {",
+  '        "shape": {\n', '        "tool_response": {\n          "type": "string"\n        },\n        "shape": {\n',
   "TestStoreSchema")
 m("the store schema's coverage reasons are a subset of the code's", "docs/store-schema.json",
   "            \"probe_unresolved\"\n", "", "TestStoreSchema")
