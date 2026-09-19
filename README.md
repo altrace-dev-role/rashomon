@@ -148,6 +148,13 @@ the optional state line below.
 - `scripts/claude-rashomon` (POSIX) and `scripts/claude-rashomon.ps1`
   (Windows) start a recorded session in one word: check `claude` exists, run
   `watch`, then start `claude` with arguments passed through.
+- `scripts/rashomon-sessionstart.sh` is an optional `SessionStart` hook that
+  puts one line of recorder state into a session's context. This repository
+  does not install it; its header shows the entry to add to your own
+  `~/.claude/settings.json` if you want the line. It runs `status`, creates
+  no store, always exits 0, tells present, absent and unreadable-or-unknown
+  entries apart, and says `unknown` for anything it cannot establish. On
+  Windows it needs Git Bash, which Claude Code uses for hooks when present.
 - `.claude/skills/rashomon*` are the slash commands: `/rashomon` starts
   recording (the only one that may install anything), `/rashomon-report`,
   `/rashomon-status`, and `/rashomon-stop` only read or detach.
