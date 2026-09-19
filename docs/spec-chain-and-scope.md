@@ -16,7 +16,7 @@ findings: wire attribution described as run-id-capable when the join is by
 time window alone, a verdict change attributed to rewrites alone, `unknown`
 too narrow for partially readable policy and unsupported command structure,
 and two wrong assumptions about existing code -- the redaction digest and the
-settings loader -- recorded below as corrections this work depends on.
+settings loader -- recorded below.
 
 ## Why
 
@@ -63,20 +63,19 @@ what the user meant.
 - The per-project host baseline (`internal/baseline`).
 - The settings layers and their locations (`settings.Locations`).
 
-## Corrections to existing code this work depends on
+## Assumptions about existing code, corrected
 
 Two assumptions revision 2 made about the code were wrong, and both matter to
 the claims below.
 
 - **Redaction is not keyed.** `--redact` renders a host as an unkeyed SHA-256
   truncated to eight hex characters plus the host's last label
-  (`internal/report/redact.go`). The code's own comment says so and says the
-  README is the only place a reader is told. The README's `Commands` section
-  nevertheless calls it "a keyed digest". That sentence is wrong and should
-  be corrected in a separate change; this specification describes redaction
-  as it is, and the chain section inherits it unchanged -- including its
-  stated limitation that a short unkeyed hash resists casual reading, not a
-  determined one.
+  (`internal/report/redact.go`), and the README says exactly that: it is not
+  a privacy boundary, anyone holding a candidate hostname can hash it and
+  compare, and the keyed digest is a different thing, used by `forget --host`
+  inside the store. Revision 2 of this document wrongly called the report's
+  redaction a keyed digest. This specification describes it as it is, and
+  the chain section inherits it unchanged, limitation included.
 - **The settings loader is unbounded.** `settings.Load` calls `os.ReadFile`
   with no size limit. Part 2 reads the settings files on every hook
   invocation, so an explicit cap is a prerequisite, not an existing property:
@@ -468,8 +467,8 @@ and matching in `internal/shape` (with direct tests beside the acceptance
 suite, as the tokenizer has); the `policy` record and per-call resolution in
 `internal/hook`; the report section; thirteen acceptance items and their
 sweep breaks; the schema file update with `TestStoreSchemaMatchesTheAllowlists`
-extended to the new record and fields; the one-sentence README change for
-the no-content promise; and, separately, the README correction on redaction.
+extended to the new record and fields; and the one-sentence README change for
+the no-content promise.
 
 ## Sequencing
 
