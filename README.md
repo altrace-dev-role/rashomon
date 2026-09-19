@@ -27,7 +27,10 @@ machine. That comparison is the one thing neither half can produce alone — a
 host reached by a command that never named it appears in no transcript and in
 no hook log, because nothing in the session knows about it.
 
-Claude Code only. No other agent harness is in scope.
+Claude Code only: the hooks, the store and the report describe Claude Code
+sessions and nothing else, and no other agent harness is recorded. The Cursor
+command files in this repository operate the tool from Cursor; they do not
+record it, and nothing here can.
 
 Built by [Altrace](https://github.com/altrace-dev-role). The proxy whose store
 this reads is a separate, closed product; `rashomon` is useful without it and
@@ -157,6 +160,52 @@ seconds. The cases it cannot refuse are yours to avoid — build into a
 directory you keep, or `go install` it so it lands in your GOBIN, and re-run
 `watch` after any move. The other commands are unaffected: they do not care where the
 binary lives.
+
+## Claude Code integration in this repository
+
+This repository carries its own Claude Code surface, and none of it bends the
+rule above about settings files: the binary still writes only to
+`~/.claude/settings.json`, and only when you run `watch`. The repository
+installs no hook of its own — there is no committed `.claude/settings.json` —
+so nothing here runs in your sessions until you run `watch` yourself or add
+the optional state line below.
+
+- `scripts/claude-rashomon` (POSIX) and `scripts/claude-rashomon.ps1`
+  (Windows) start a recorded session in one word: check `claude` exists, run
+  `watch`, then start `claude` with arguments passed through. An invocation
+  that starts no session installs nothing: `--help`, `--version`, and the
+  management subcommands (`doctor`, `mcp`, `update`, and the rest listed in
+  the script) pass straight through without `watch`.
+- `scripts/rashomon-sessionstart.sh` is an optional `SessionStart` hook that
+  puts one line of recorder state into a session's context. This repository
+  does not install it; its header shows the entry to add to your own
+  `~/.claude/settings.json` if you want the line. It runs `status`, creates
+  no store, always exits 0, tells present, absent and unreadable-or-unknown
+  entries apart, and says `unknown` for anything it cannot establish. On
+  Windows it needs Git Bash, which Claude Code uses for hooks when present.
+- `skills/rashomon*` are the slash commands: `/rashomon` starts recording
+  (the only one that may install anything), `/rashomon-forget` erases
+  records, and `/rashomon-report`, `/rashomon-status` and `/rashomon-stop`
+  only read or detach.
+
+  THEY ARE ASSETS YOU INSTALL, not project settings of this repository, and
+  they are deliberately not under `.claude/` here. A skill in this
+  repository's `.claude/skills` would load only for someone who has THIS
+  repository open — which is the one place the commands are least useful.
+  You want them where you actually work, so copy the ones you want:
+
+      cp -r skills/rashomon* ~/.claude/skills/        # every project
+      cp -r skills/rashomon* /path/to/project/.claude/skills/   # one project
+
+  The same reasoning as the optional `SessionStart` hook above: this
+  repository ships the asset and says how to install it, and installs
+  nothing itself.
+- `.cursor/commands/rashomon*.md` give Cursor the same slash commands for
+  OPERATING the tool — status, report, detach, and arming `watch` for the
+  machine's Claude Code sessions. They do not extend the scope stated at the
+  top of this file: Cursor's own agent loop is not recorded, every command
+  says so, and recording Cursor would be a new adapter in the binary, not a
+  script.
 
 ## The constraint that shapes everything
 
