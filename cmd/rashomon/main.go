@@ -257,15 +257,23 @@ func openForHook(stderr io.Writer) *store.Store {
 // no way to tell a broken tool from one with nothing to say. The empty report
 // is the same shape as any other, so a consumer does not have to know whether
 // a store exists in order to parse the answer.
-func reportOrEmpty(sessionID, proxyStore string, now time.Time) (*report.Report, error) {
+// It also returns the per-install key, which --redact needs: the redaction
+// digest is an HMAC under it, so a shared report cannot be dictionary-attacked
+// by a recipient holding a candidate hostname. A location with no store has no
+// key, and also no hosts, so the nil is never used to digest anything.
+func reportOrEmpty(sessionID, proxyStore string, now time.Time) (*report.Report, []byte, error) {
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {
-		return report.Empty(now), nil
+		return report.Empty(now), nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return report.Build(st, sessionID, now, report.WithProxyStore(proxyStore))
+	rep, err := report.Build(st, sessionID, now, report.WithProxyStore(proxyStore))
+	if err != nil {
+		return nil, nil, err
+	}
+	return rep, st.Key(), nil
 }
 
 // openStoreForRead opens the store without creating one, and reports
@@ -645,7 +653,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 	// Opened WITHOUT creating: a command that only asks a question must not mint
 	// an install identity and an HMAC key as a side effect of being asked. The
 	// same rule status follows, and for the same reason.
-	rep, err := reportOrEmpty(sessionID, proxyStore, time.Now())
+	rep, key, err := reportOrEmpty(sessionID, proxyStore, time.Now())
 	if err != nil {
 		return err
 	}
@@ -653,7 +661,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 		// Applied to the whole report before either renderer sees it, so the
 		// two forms cannot disagree about what was hidden and a caller cannot
 		// render the plain form from the same value by mistake.
-		rep = report.Redact(rep)
+		rep = report.Redact(rep, key)
 	}
 	if !asJSON {
 		return report.Text(stdout, rep)

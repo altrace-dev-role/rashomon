@@ -195,6 +195,10 @@ func WithProxyStore(path string) Option {
 // Report is the rendered output.
 type Report struct {
 	GeneratedAtUnixMS int64 `json:"generated_at_unix_ms"`
+	// Redacted says the hostnames in this report are keyed digests rather than
+	// names. Carried on the report itself so the renderer can print the legend
+	// and a JSON consumer does not have to infer it from the shape of a string.
+	Redacted bool `json:"redacted"`
 	// Sessions always marshals as an array, never null.
 	//
 	// null and [] are the same absence to a reader and different values to a

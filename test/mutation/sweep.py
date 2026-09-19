@@ -103,6 +103,15 @@ m("H-20 post coverage resolves the recorder's entry instead of its own", "intern
   "\tif phase == store.PhasePost {", "\tif false {", "TestH20_PostCoverageReadsItsOwnEntry")
 m("H-20 the report ignores tool_result blocks", "internal/report/transcript.go",
   "\t\t\tcase b.Type == \"tool_result\" && b.ToolUseID != \"\":", "\t\t\tcase false:", "TestH20_ExecutionAccounting")
+# B3 -- keyed redaction. Both halves: the key itself, and the domain separator
+# that keeps this digest from colliding with the one forget --host stores.
+m("B3 redaction falls back to an unkeyed hash", "internal/report/redact.go",
+  "\tmac := hmac.New(sha256.New, key)", "\tmac := hmac.New(sha256.New, nil)",
+  "TestRedact_")
+m("B3 redaction reuses the forget-host domain separator", "internal/report/redact.go",
+  '\tmac.Write([]byte(redactDomain))', '\tmac.Write([]byte("forget-host\\x00"))',
+  "TestRedact_")
+
 # H-30 -- denials. Both halves of the conjunction get a mutation, because each
 # is wrong in its own direction: dropping is_error turns any output that quotes
 # the sentence into a denial (hiding a real execution), and dropping the prefix

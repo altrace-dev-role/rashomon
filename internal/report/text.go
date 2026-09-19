@@ -32,6 +32,21 @@ const (
 func Text(w io.Writer, rep *Report) error {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "rashomon report -- generated %s\n", stamp(rep.GeneratedAtUnixMS))
+
+	// The legend goes in the REDACTED render only, and near the top, because
+	// this is the copy that leaves the machine and its reader has no README.
+	if rep.Redacted {
+		fmt.Fprintln(&b, "hostnames are redacted: <digest>.<last label>, an HMAC under this "+
+			"install's own key.")
+		fmt.Fprintln(&b, "Equal hosts give equal digests here and DIFFERENT digests on another "+
+			"machine, so a")
+		fmt.Fprintln(&b, "reader without that key cannot test a guess. Eight hex characters is "+
+			"32 bits: two")
+		fmt.Fprintln(&b, "hosts can collide, the last label is kept in clear, and anyone who "+
+			"can read this")
+		fmt.Fprintln(&b, "install's store can compute these. The agent's summary is dropped "+
+			"whole, not cleaned.")
+	}
 	if len(rep.Sessions) == 0 {
 		fmt.Fprintln(&b, "\nno sessions recorded")
 		_, err := w.Write(b.Bytes())
