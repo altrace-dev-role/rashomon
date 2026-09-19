@@ -2,6 +2,7 @@ package shape
 
 import (
 	"encoding/json"
+	"path"
 	"sort"
 	"strings"
 
@@ -60,7 +61,232 @@ func Hosts(toolName string, toolInput json.RawMessage) (wire []string, ssh []str
 	if text == "" {
 		return nil, nil
 	}
-	return collect(text, wireSchemes), collect(text, sshSchemes)
+	ssh = collect(text, sshSchemes)
+	if verbForTool(toolName) == VerbExecute {
+		ssh = mergeHosts(ssh, sshCommandHosts(text))
+	}
+	return collect(text, wireSchemes), ssh
+}
+
+// mergeHosts unions two host lists, sorted and de-duplicated, preserving the
+// nil-for-empty convention the record depends on: null means the call named
+// none, and an empty array would be a different claim.
+func mergeHosts(a, b []string) []string {
+	if len(b) == 0 {
+		return a
+	}
+	seen := make(map[string]struct{}, len(a)+len(b))
+	for _, h := range a {
+		seen[h] = struct{}{}
+	}
+	for _, h := range b {
+		seen[h] = struct{}{}
+	}
+	out := make([]string, 0, len(seen))
+	for h := range seen {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// sshDestPrograms are the programs whose ARGUMENTS name a host reached over
+// ssh, as opposed to the URL forms sshSchemes already finds.
+//
+// Without this the report is quietly incomplete about the one transport it
+// advertises as its blind spot. Measured before this existed: `ssh
+// git@github.com` extracted github.com only by the coincidence of the user
+// being named git, and `ssh deploy@git.example.com`, `ssh git.example.com`,
+// `scp f deploy@host:/tmp/` and `rsync -a ./ deploy@host:/srv/` named a
+// destination that appeared nowhere in the report -- not as a host, and not
+// under "not observable" either.
+var sshDestPrograms = map[string]bool{"ssh": true, "scp": true, "rsync": true, "sftp": true}
+
+// takesValue reports whether a short flag consumes the following token.
+//
+// Skipping these is what keeps a flag's value from being read as the
+// destination: without it `ssh -i key host` records the key file's name and
+// `rsync -e ssh src dst` records "ssh".
+//
+// -J is here to be SKIPPED, not collected. Its value is a jump host, which is
+// a destination the command named, but recording it would mean this function
+// returns hosts from two different positions with no way for a reader to tell
+// them apart. It is left for a later version that can say which is which.
+//
+// -e belongs to rsync alone. Applying it everywhere would swallow the argument
+// after a -e that some other program uses as a boolean.
+func takesValue(prog string, flag byte) bool {
+	switch flag {
+	case 'p', 'P', 'i', 'o', 'l', 'J', 'F':
+		return true
+	case 'e':
+		return prog == "rsync"
+	}
+	return false
+}
+
+// sshCommandHosts extracts the ssh destinations named by a command line.
+//
+// It reads the tokens, not the raw text, because a destination is positional:
+// it is an argument of a particular program, and which token that is depends
+// on which flags came before it. A regular expression over the whole line
+// cannot know that `key` in `ssh -i key host` is not a host.
+//
+// A tokenizer error is not fatal here. tokenize returns the tokens it
+// completed along with the error, and a destination that appeared before an
+// unterminated quote is still a destination the command named.
+func sshCommandHosts(text string) []string {
+	toks, _ := tokenize(text)
+
+	var out []string
+	atCommand := true
+	for i := 0; i < len(toks); i++ {
+		tok := toks[i]
+		if isMetaToken(tok) {
+			atCommand = true
+			continue
+		}
+		if !atCommand {
+			continue
+		}
+		if isAssignment(tok) {
+			// Still at a command position: `FOO=bar ssh host` runs ssh.
+			continue
+		}
+		atCommand = false
+
+		prog := path.Base(tok)
+		if !sshDestPrograms[prog] {
+			continue
+		}
+		// Arguments run to the end of this command, which the next
+		// metacharacter token ends.
+		end := i + 1
+		for end < len(toks) && !isMetaToken(toks[end]) {
+			end++
+		}
+		out = append(out, destinations(prog, toks[i+1:end])...)
+		i = end - 1
+	}
+	return out
+}
+
+// isMetaToken reports whether a token is one the tokenizer emitted for a shell
+// metacharacter, which is where one command ends and the next begins.
+func isMetaToken(tok string) bool {
+	return tok != "" && len(tok) <= 2 && isMeta(tok[0])
+}
+
+// destinations returns the hosts named by one ssh-family invocation's
+// arguments.
+//
+// ssh and sftp take exactly one destination and everything after it is the
+// remote command, which must not be scanned: `ssh host ls /etc` names one
+// host, not a host and a directory.
+//
+// scp and rsync are different, and deliberately not "the first non-flag
+// argument": their first argument is usually the LOCAL side. In `scp f
+// deploy@host:/tmp/` the destination is the second. So every non-flag
+// argument is examined and the ones shaped like a remote spec are taken,
+// which also records both ends of `rsync a@h1:/x b@h2:/y`.
+func destinations(prog string, args []string) []string {
+	var out []string
+	endOfFlags := false
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if !endOfFlags && strings.HasPrefix(a, "-") && a != "-" {
+			if a == "--" {
+				endOfFlags = true
+				continue
+			}
+			if strings.HasPrefix(a, "--") {
+				// A long option. Its value is attached with '=' when it has
+				// one; a form that separates them is not modelled, and the
+				// cost of guessing wrong is reading a value as a host.
+				continue
+			}
+			// A short flag or a cluster of them. Only the last letter can
+			// take the following token as its value: in -ave the value
+			// belongs to -e, and in -p2222 it is already attached.
+			if takesValue(prog, a[len(a)-1]) {
+				i++
+			}
+			continue
+		}
+
+		if prog == "ssh" || prog == "sftp" {
+			if h, ok := destinationHost(a, false); ok {
+				out = append(out, h)
+			}
+			return out
+		}
+		if h, ok := destinationHost(a, true); ok {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// destinationHost parses one [user@]host[:path] token.
+//
+// The user part is stripped here rather than left to host.Canonical, which
+// REFUSES an authority carrying userinfo and refuses it for a good reason: in
+// a URL, user:password@host is credential-bearing and dropping the credential
+// silently is worse than dropping the host. In an ssh destination user@host is
+// the documented syntax and carries no password, so the two cases need
+// opposite handling, and this is the only place that may do the stripping --
+// the URL scan in collect still hands the whole authority to Canonical.
+//
+// requireRemote is set for scp and rsync, where an argument is only a
+// destination if it looks like one: it carries a user, or a colon that comes
+// before any slash. Without that test the LOCAL side of every copy would be
+// read as a host.
+func destinationHost(tok string, requireRemote bool) (string, bool) {
+	if tok == "" {
+		return "", false
+	}
+	hadUser := false
+	if at := strings.LastIndexByte(tok, '@'); at >= 0 {
+		hadUser = true
+		tok = tok[at+1:]
+	}
+
+	var h string
+	switch {
+	case strings.HasPrefix(tok, "["):
+		// A bracketed IPv6 literal. Its own colons are not separators, and
+		// Canonical wants the brackets kept.
+		end := strings.Index(tok, "]")
+		if end < 0 {
+			return "", false
+		}
+		h = tok[:end+1]
+	default:
+		colon := strings.IndexByte(tok, ':')
+		slash := strings.IndexByte(tok, '/')
+		isRemote := hadUser || (colon >= 0 && (slash < 0 || colon < slash))
+		if requireRemote && !isRemote {
+			return "", false
+		}
+		if colon >= 0 && (slash < 0 || colon < slash) {
+			h = tok[:colon]
+			// A single-character host before a colon is a Windows drive
+			// letter far more often than a hostname, and `rsync C:/src dst`
+			// must not record a host called "c".
+			if !hadUser && len(h) < 2 {
+				return "", false
+			}
+		} else {
+			h = tok
+		}
+	}
+	// An ssh-config alias has no dots and resolves to something this function
+	// cannot see. It is recorded as the command named it and never resolved:
+	// resolving would mean reading ~/.ssh/config, which is a file this package
+	// is not allowed to open, and guessing would put a name in the store that
+	// the user never typed.
+	return host.Canonical(h)
 }
 
 // collect finds every hostname in text introduced by one of the given prefixes.

@@ -204,3 +204,107 @@ func TestHosts_NonASCIIBeforeTheURLDoesNotMoveTheIndex(t *testing.T) {
 		})
 	}
 }
+
+// TestSSHDestinations covers the transport this report advertises as its known
+// blind spot and, until now, was quietly incomplete about. Every case is a
+// form someone actually types; the eight at the top are the forms measured
+// against the previous implementation, six of which named a destination that
+// appeared nowhere in the report.
+func TestSSHDestinations(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		cmd     string
+		wantSSH []string
+		why     string
+	}{
+		// The eight measured forms.
+		{name: "measured: ssh git@host", cmd: "ssh git@github.com", wantSSH: []string{"github.com"},
+			why: "extracted before this change, but only by the coincidence of the user being named git"},
+		{name: "measured: ssh:// url", cmd: "git clone ssh://host/r.git", wantSSH: []string{"host"}},
+		{name: "measured: git+ssh:// url", cmd: "git clone git+ssh://host/r.git", wantSSH: []string{"host"}},
+		{name: "measured: ssh user@host", cmd: "ssh deploy@git.example.com", wantSSH: []string{"git.example.com"},
+			why: "named nothing before: the user was not literally git"},
+		{name: "measured: ssh bare host", cmd: "ssh git.example.com", wantSSH: []string{"git.example.com"}},
+		{name: "measured: scp to remote", cmd: "scp f deploy@host:/tmp/", wantSSH: []string{"host"},
+			why: "the destination is the SECOND argument; the first is local"},
+		{name: "measured: rsync to remote", cmd: "rsync -a ./ deploy@host:/srv/", wantSSH: []string{"host"}},
+		{name: "measured: sftp user@host", cmd: "sftp deploy@files.example.com", wantSSH: []string{"files.example.com"}},
+
+		// Flags that take a value must not be read as the destination.
+		{name: "ssh -i key", cmd: "ssh -i ~/.ssh/id_rsa deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -p port", cmd: "ssh -p 2222 deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -p attached", cmd: "ssh -p2222 h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -o option", cmd: "ssh -o StrictHostKeyChecking=no h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -l login", cmd: "ssh -l deploy h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -F config", cmd: "ssh -F /dev/null h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "rsync -e ssh", cmd: "rsync -e ssh ./ deploy@h.example.com:/srv/", wantSSH: []string{"h.example.com"},
+			why: "-e belongs to rsync; its value must not be read as a host"},
+		{name: "rsync short cluster ending in e", cmd: "rsync -ave ssh ./ deploy@h.example.com:/srv/", wantSSH: []string{"h.example.com"},
+			why: "only the last letter of a cluster can take the following token"},
+		{name: "scp -P port", cmd: "scp -P 2222 f deploy@h.example.com:/tmp/", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -J jump is skipped, not collected", cmd: "ssh -J jump.example.com target.example.com",
+			wantSSH: []string{"target.example.com"},
+			why:     "the jump host is a destination, but v1 cannot say which is which, so it is left out"},
+
+		// Separator, IPv6, bare host:, alias.
+		{name: "double dash", cmd: "ssh -- h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "bracketed ipv6", cmd: "ssh deploy@[2001:db8::1]", wantSSH: []string{"[2001:db8::1]"},
+			why: "the literal's own colons are not a host:path separator"},
+		{name: "bracketed ipv6 with path", cmd: "scp f [2001:db8::1]:/tmp/", wantSSH: []string{"[2001:db8::1]"}},
+		{name: "bare host colon, no user", cmd: "scp host.example.com:/etc/f .", wantSSH: []string{"host.example.com"}},
+		{name: "ssh config alias", cmd: "ssh myserver", wantSSH: []string{"myserver"},
+			why: "recorded as named and never resolved: resolving would mean reading ~/.ssh/config"},
+
+		// What must NOT be recorded.
+		{name: "remote command is not a host", cmd: "ssh h.example.com ls /etc", wantSSH: []string{"h.example.com"},
+			why: "everything after the destination is the remote command"},
+		{name: "local to local scp", cmd: "scp a b"},
+		{name: "windows drive is not a host", cmd: `rsync C:/src /dst`,
+			why: "a single character before a colon is a drive letter far more often than a hostname"},
+		{name: "not an ssh program", cmd: "cat deploy@h.example.com:/tmp/f"},
+
+		// Command position.
+		{name: "after a separator", cmd: "git status && ssh deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "after an assignment", cmd: "FOO=bar ssh deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "by absolute path", cmd: "/usr/bin/ssh deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "both ends of an rsync", cmd: "rsync a@h1.example.com:/x b@h2.example.com:/y",
+			wantSSH: []string{"h1.example.com", "h2.example.com"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, gotSSH := Hosts("Bash", bashInput(t, tc.cmd))
+			if !reflect.DeepEqual(gotSSH, tc.wantSSH) {
+				t.Errorf("ssh hosts for %q = %v, want %v%s", tc.cmd, gotSSH, tc.wantSSH, becauseHost(tc.why))
+			}
+		})
+	}
+}
+
+// TestSSHDestinationsNeverReachWire is the boundary this whole list depends
+// on: an ssh destination is not observable by the proxy, so it must never
+// appear in the wire list, where it would read as a host the session was
+// expected to reach and did not.
+func TestSSHDestinationsNeverReachWire(t *testing.T) {
+	for _, cmd := range []string{
+		"ssh deploy@h.example.com",
+		"scp f deploy@h.example.com:/tmp/",
+		"rsync -a ./ deploy@h.example.com:/srv/",
+		"sftp deploy@h.example.com",
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			wire, ssh := Hosts("Bash", bashInput(t, cmd))
+			if len(wire) != 0 {
+				t.Errorf("wire hosts for %q = %v, want none", cmd, wire)
+			}
+			if len(ssh) == 0 {
+				t.Errorf("ssh hosts for %q = none, want the destination", cmd)
+			}
+		})
+	}
+}
+
+func becauseHost(why string) string {
+	if why == "" {
+		return ""
+	}
+	return "\n  " + why
+}
