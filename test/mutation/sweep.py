@@ -377,9 +377,9 @@ m("H-46 Bash is labelled from its first path-like token", "internal/shape/label.
   "\tfield, ok := pathFields[toolName]\n\tif !ok {\n\t\treturn \"\"\n\t}",
   "\tfield, ok := pathFields[toolName]\n\tif !ok {\n\t\tif toolName == \"Bash\" {\n\t\t\tcmd, _ := stringField(toolInput, \"command\")\n\t\t\tfor _, tok := range strings.Fields(cmd) {\n\t\t\t\tif strings.Contains(tok, \"/\") {\n\t\t\t\t\treturn labelForBase(basename(tok))\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\treturn \"\"\n\t}",
   "TestH46_|TestLabel")
-m("H-44 file_label ships on a record whose schema forbids it", "internal/hook/handle.go",
-  "\tif label := fileLabel(p.ToolName, p.ToolInput); label != \"\" && store.SchemaVersion >= schemaVersionFileLabel {",
-  "\tif label := fileLabel(p.ToolName, p.ToolInput); label != \"\" {", "TestH13_")
+m("H-44 the label is computed and thrown away", "internal/hook/handle.go",
+  "\tif label := fileLabel(p.ToolName, p.ToolInput); label != \"\" {\n\t\tdecl.FileLabel = &label\n\t}",
+  "\t_ = fileLabel(p.ToolName, p.ToolInput)", "TestH44_|TestH45_|TestH46_")
 m("H-44 a stored label reaches the report unclamped", "internal/report/report.go",
   "\t\t\tsess.Declarations.ByLabel[knownLabel(*d.FileLabel)]++",
   "\t\t\tsess.Declarations.ByLabel[*d.FileLabel]++", "TestByLabel_")

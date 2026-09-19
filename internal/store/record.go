@@ -78,25 +78,6 @@ type Declaration struct {
 	ToolName       string      `json:"tool_name"`
 	Shape          shape.Shape `json:"shape"`
 
-	// FileLabel is what the file this call named looks like (v3).
-	//
-	// One value from shape.Labels(), derived at hook time from the path's
-	// basename and suffix alone. The path itself is never stored. It is a
-	// label and not a finding: it says what the path looks like, not what the
-	// call did to it, and nothing renders it with an adjective.
-	//
-	// Null when the tool names no file at all -- Bash, Agent, WebFetch -- and
-	// that is a different statement from "unknown", which is what a tool that
-	// should have named one but did not gets.
-	//
-	// The omitempty is temporary and is the only reason this field can exist
-	// before schema 3 does: docs/store-schema.json pins schema_version to
-	// [1, 2] under additionalProperties: false, so a declaration carrying this
-	// key would fail the published contract today. The reservation being cut
-	// on the Phase B branch makes the field always-present-nullable, and the
-	// tag loses its omitempty in the same commit.
-	FileLabel *string `json:"file_label,omitempty"`
-
 	// Hosts and SSHHosts are the hostnames this call NAMED (v2).
 	//
 	// They are a declaration, not an observation: a host here is one the agent

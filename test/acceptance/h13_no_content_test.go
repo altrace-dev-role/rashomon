@@ -83,16 +83,12 @@ func TestH13_RecordKeySetsAreClosed(t *testing.T) {
 
 	// A path-naming tool as well as the Bash call defaultPayload builds.
 	//
-	// Without this second declaration the item is blind to exactly one class
-	// of regression, and it is the class this schema is currently exposed to:
-	// shape.Label returns the empty string for Bash, so a Bash declaration
-	// never carries file_label whether the hook path writes it or not.
-	// Removing the schema gate in internal/hook/handle.go -- shipping
-	// file_label on a schema-2 record, which docs/store-schema.json forbids
-	// under additionalProperties: false -- left this test, TestH4[456]_ and
-	// TestStoreSchemaMatchesTheAllowlists all green. The allowlist comparison
-	// cannot see it either: it compares the schema document against the
-	// static slice above, never against a record.
+	// Without this second declaration the item is blind to one whole class of
+	// regression. shape.Label returns the empty string for Bash, so a Bash
+	// declaration's file_label is null whatever the hook path does with the
+	// field -- and a null is indistinguishable from a value nobody wrote. The
+	// allowlist comparison cannot see it either: it compares the schema
+	// document against the static slice above, never against a record.
 	pathCall := defaultPayload()
 	pathCall.ToolName = "Read"
 	pathCall.ToolUseID = "toolu_2"

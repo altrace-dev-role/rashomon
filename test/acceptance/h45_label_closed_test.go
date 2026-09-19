@@ -55,11 +55,6 @@ func TestH45_NoneVersusUnknown(t *testing.T) {
 // The vocabulary is the schema's enum, and a value outside it is a record that
 // fails the published contract in the field.
 func TestH45_EveryLabelIsInTheVocabulary(t *testing.T) {
-	// Gated here rather than in each subtest: sixteen skips under a PASS
-	// summary line is the shape a reader mistakes for coverage.
-	if !labelSchemaLive(t) {
-		t.Skip(labelSchemaSkip)
-	}
 	vocab := map[string]bool{}
 	for _, l := range shape.Labels() {
 		vocab[l] = true
@@ -82,8 +77,7 @@ func TestH45_EveryLabelIsInTheVocabulary(t *testing.T) {
 }
 
 // labelFromRun drives one Read call through a fresh install and returns the
-// label its declaration carries, or the empty string when this build's schema
-// does not carry the field yet.
+// label its declaration carries.
 func labelFromRun(t *testing.T, path string) string {
 	t.Helper()
 	e := newEnv(t)
@@ -97,17 +91,6 @@ func labelFromRun(t *testing.T, path string) string {
 	decls := e.declarations(testSession)
 	if len(decls) != 1 {
 		t.Fatalf("got %d declarations, want 1", len(decls))
-	}
-	// schema_version, not the presence of file_label. Gating on the field
-	// would mean a regression that stopped emitting it -- an entry falling
-	// out of pathFields, an early return in shape.Label -- silently switched
-	// off the tests that exist to catch that.
-	v, ok := decls[0].fields["schema_version"].(float64)
-	if !ok {
-		t.Fatalf("declaration carries no numeric schema_version: %v", decls[0].fields["schema_version"])
-	}
-	if v < 3 {
-		t.Skip(labelSchemaSkip)
 	}
 	return decls[0].str("file_label")
 }

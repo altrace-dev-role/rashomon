@@ -18,15 +18,6 @@ const pointLabel = "hook.label"
 //
 // Break: label Bash from its first path-like token.
 func TestH46_OnlyWhereAPathIsRead(t *testing.T) {
-	// Gated at the parent, not per subtest. Under schema 2 the field is
-	// absent for EVERY tool, so "Bash carries no label" is true of a build
-	// that labels Bash enthusiastically and of one that does not: every case
-	// here would pass against the break this item is named after. Gating each
-	// subtest instead would leave this parent reporting PASS over nothing but
-	// skips, which reads as coverage.
-	if !labelSchemaLive(t) {
-		t.Skip(labelSchemaSkip)
-	}
 	for _, tc := range []struct {
 		name      string
 		tool      string

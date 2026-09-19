@@ -102,14 +102,12 @@ func (h *Handler) Capture(in io.Reader) error {
 	// on every call, so the path H-46 exercises is the path that runs in the
 	// field, not one that only wakes up when the schema moves.
 	//
-	// Dropped under schema 2, and this is the coordination point with the
-	// other track. Schema 3 reserves file_label and is being cut on the Phase
-	// B branch; until it lands, docs/store-schema.json pins schema_version to
-	// [1, 2] under additionalProperties: false, so a declaration carrying the
-	// key would fail the published contract. Turning the field on is
-	// therefore a one-line change to store.SchemaVersion in that reservation
-	// and nothing on this path moves.
-	if label := fileLabel(p.ToolName, p.ToolInput); label != "" && store.SchemaVersion >= schemaVersionFileLabel {
+	// Written unconditionally now. The Phase B reservation declares
+	// file_label in the record and in docs/store-schema.json, where it is
+	// permitted at every version and required only at schema 3, so there is
+	// no longer a version to gate on: the field is always present, and this
+	// decides whether it is null or a label.
+	if label := fileLabel(p.ToolName, p.ToolInput); label != "" {
 		decl.FileLabel = &label
 	}
 
@@ -186,14 +184,6 @@ func nilIfEmpty(s string) *string {
 	}
 	return &s
 }
-
-// schemaVersionFileLabel is the schema version that carries file_label.
-//
-// It lives here rather than in store because this package is the only one that
-// decides whether to write the field, and because the reservation is being cut
-// on another branch: a constant here can be compared against store.SchemaVersion
-// without this branch touching the schema it does not own.
-const schemaVersionFileLabel = 3
 
 // fileLabel derives the label under its own recover.
 //
