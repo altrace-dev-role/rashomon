@@ -133,6 +133,26 @@ directory you keep, or install one of the two ways above, and re-run `watch`
 after any move. The other commands are unaffected: they do not care where the
 binary lives.
 
+## Claude Code integration in this repository
+
+This repository carries its own Claude Code surface, and none of it bends the
+rule above about settings files: the binary still writes only to
+`~/.claude/settings.json`, and only when you run `watch`.
+
+- `.claude/settings.json` installs a `SessionStart` hook for sessions opened
+  in this repo. It is read-only, emits one fixed line of recorder state into
+  the session's context, creates no store, and always exits 0. Claude Code
+  asks you to approve project hooks on first use; declining it costs you only
+  that state line. On Windows it needs Git Bash, which Claude Code uses for
+  hooks when present — without Git Bash the hook cannot run and errors once
+  per session start.
+- `scripts/claude-rashomon` (POSIX) and `scripts/claude-rashomon.ps1`
+  (Windows) start a recorded session in one word: check `claude` exists, run
+  `watch`, then start `claude` with arguments passed through.
+- `.claude/skills/rashomon*` are the slash commands: `/rashomon` starts
+  recording (the only one that may install anything), `/rashomon-report`,
+  `/rashomon-status`, and `/rashomon-stop` only read or detach.
+
 ## The constraint that shapes everything
 
 Exit code 2 from a `PreToolUse` hook **blocks the tool call**. Claude Code's hook

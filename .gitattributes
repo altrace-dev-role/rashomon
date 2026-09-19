@@ -1,0 +1,6 @@
+# The shell scripts must check out LF everywhere: with Git for Windows'
+# default core.autocrlf=true they would otherwise arrive CRLF and fail under
+# Git Bash on the \r before doing anything ($'\r': command not found).
+*.sh text eol=lf
+/scripts/claude-rashomon text eol=lf
+*.ps1 text eol=crlf

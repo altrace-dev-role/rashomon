@@ -6,13 +6,20 @@ description: 'Start recording what this Claude Code session asks to run. Use whe
 Install the rashomon recorder so every tool call from now on is recorded as a
 declaration (identifiers and shape only — never content).
 
-1. Resolve the binary, in this order. Set `$RASHOMON` to the first that works:
-   - `command -v rashomon`
+1. Resolve the binary, in this order. Set `$RASHOMON` to the first absolute
+   path that works:
    - `~/.local/bin/rashomon` if present and executable
-   - Neither: build it from this repository if the cwd is the rashomon repo
-     (`go build -o ~/.local/bin/rashomon ./cmd/rashomon`), otherwise
-     `go install github.com/altrace-dev-role/rashomon/cmd/rashomon@latest`
-     (binary lands in `$(go env GOPATH)/bin`).
+   - `~/go/bin/rashomon` if present and executable (where `go install` puts it)
+   - `command -v rashomon`, kept only when it returns an absolute path
+   - None found: if `command -v go` also fails, stop and point the user at the
+     README's install options instead of building. With Go present, build from
+     this repository when the cwd is the rashomon repo
+     (`go build -o ~/.local/bin/rashomon ./cmd/rashomon`; on Windows,
+     PowerShell does not expand `~` for go — use
+     `go install ./cmd/rashomon`, which lands `rashomon.exe` in
+     `"$(go env GOPATH)\bin"`). Outside the repo, ask the user where their
+     rashomon checkout is rather than fetching an unpinned module from the
+     network.
    Never install from a `go run` path — `watch` refuses temporary build
    directories because the installed hook entry records the absolute path.
 
@@ -34,10 +41,17 @@ declaration (identifiers and shape only — never content).
      the hooks and keeps the store.
 
 5. Offer the one-word launcher once, if it is not already on their PATH.
-   From the rashomon repo:
+   From the rashomon repo, on macOS or Linux:
 
-       ln -sf "$(pwd)/scripts/claude-rashomon" ~/.local/bin/claude-rashomon
+       mkdir -p ~/.local/bin
+       ln -sf "$(git rev-parse --show-toplevel)/scripts/claude-rashomon" ~/.local/bin/claude-rashomon
+       case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo 'add ~/.local/bin to your PATH' ;; esac
 
+   macOS does not ship `~/.local/bin` or put it on PATH — the mkdir and the
+   PATH check matter there. On Windows, the launcher is
+   `scripts\claude-rashomon.ps1` (run it with `powershell -File`, or put
+   `scripts\` on PATH); the POSIX launcher and the SessionStart state line
+   need Git Bash, which Claude Code uses for hooks on Windows when present.
    From then on `claude-rashomon` in any directory runs `watch` and starts
    `claude` in one step, and because watch runs before the session starts,
    those sessions report verified coverage. Extra arguments pass through to

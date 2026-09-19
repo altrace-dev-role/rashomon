@@ -6,8 +6,10 @@ description: 'Render the rashomon report: declarations, executions, per-transcri
 Render what the recorder captured. This command reads; it writes nothing and
 creates no store.
 
-1. Resolve the binary as the `rashomon` skill does (PATH, then
-   `~/.local/bin/rashomon`, then build/install).
+1. Resolve the binary: `~/.local/bin/rashomon`, then `~/go/bin/rashomon`,
+   then `command -v rashomon`. If no binary exists there is nothing to
+   report — say so and point at `/rashomon`; never build or install from a
+   read-only command.
 
 2. Pick flags from what the user asked for, passing through any they named:
    - default: `$RASHOMON report` — text for a terminal

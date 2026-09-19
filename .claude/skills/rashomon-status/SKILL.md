@@ -3,12 +3,16 @@ name: rashomon-status
 description: 'Say what rashomon has installed here: hook entries, store location, install ids, whether hooks are disabled. Use when the user says "rashomon status", "is rashomon running", "is the recorder on".'
 ---
 
-1. Resolve the binary as the `rashomon` skill does (PATH, then
-   `~/.local/bin/rashomon`, then build/install).
+1. Resolve the binary: `~/.local/bin/rashomon`, then `~/go/bin/rashomon`,
+   then `command -v rashomon`. This skill answers a question — if no binary
+   exists, the answer is "rashomon is not installed on this machine"; say
+   that and point at `/rashomon`. Never build or install anything from here.
 
 2. Run `$RASHOMON status` and show the output as-is. It reads; it writes
-   nothing and creates no store — a machine where nothing is installed
-   answers "nothing is installed here" without minting an install identity.
+   nothing and creates no store. Entries read `present`, `absent`,
+   `unreadable`, or `unknown` — and on a machine with no store, every event
+   reads `unknown`, because with no install id nothing can be called ours.
+   That is the correct answer, not a failure.
 
 3. If entries read `absent` and the user wanted recording, point them at
    `/rashomon`. If another install's entries share the file, relay that

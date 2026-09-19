@@ -1,31 +1,50 @@
 #!/bin/sh
 # claude-rashomon -- start a Claude Code session with the rashomon recorder on.
 #
-# Runs `rashomon watch` (idempotent: one entry per install, and a re-run
-# refreshes a moved binary's path), then execs `claude` with every argument
-# passed through. Because watch runs before the session starts, the session
-# reports verified coverage.
+# Checks that claude exists, runs `rashomon watch` (idempotent: one entry per
+# install, and a re-run refreshes a moved binary's path), then execs `claude`
+# with every argument passed through. Because watch runs before the session
+# starts, the session reports verified coverage.
 #
-# Install once:  ln -sf "$(pwd)/scripts/claude-rashomon" ~/.local/bin/claude-rashomon
+# Install once (POSIX; on Windows use scripts/claude-rashomon.ps1):
+#   mkdir -p ~/.local/bin
+#   ln -sf "$(git rev-parse --show-toplevel)/scripts/claude-rashomon" ~/.local/bin/claude-rashomon
 set -eu
 
+# claude is checked before watch: watch mutates ~/.claude/settings.json, and
+# a launcher that installs hooks and then fails to launch has changed the
+# machine as a side effect of a command that visibly did nothing.
+if ! command -v claude >/dev/null 2>&1; then
+	echo "claude-rashomon: no 'claude' on PATH; not installing hooks" >&2
+	exit 127
+fi
+
+# Pinned locations win over PATH -- a project-local impostor must not be the
+# binary that gets handed `watch`. Only absolute resolutions are used.
 RASHOMON=""
-if command -v rashomon >/dev/null 2>&1; then
-	RASHOMON=$(command -v rashomon)
-elif [ -x "$HOME/.local/bin/rashomon" ]; then
+if [ -n "${HOME:-}" ] && [ -x "${HOME:-}/.local/bin/rashomon" ]; then
 	RASHOMON="$HOME/.local/bin/rashomon"
+elif [ -n "${HOME:-}" ] && [ -x "${HOME:-}/go/bin/rashomon" ]; then
+	RASHOMON="$HOME/go/bin/rashomon"
+elif command -v rashomon >/dev/null 2>&1; then
+	RASHOMON="$(command -v rashomon)"
+	case "$RASHOMON" in /*) ;; *) RASHOMON="" ;; esac
 fi
 
 if [ -z "$RASHOMON" ]; then
-	echo "claude-rashomon: no rashomon binary on PATH or in ~/.local/bin" >&2
+	echo "claude-rashomon: no rashomon binary in ~/.local/bin, ~/go/bin, or on PATH" >&2
 	echo "claude-rashomon: from the rashomon repo:  go build -o ~/.local/bin/rashomon ./cmd/rashomon" >&2
 	exit 1
 fi
 
-# watch refusing (for example, hooks disabled by a managed setting) is not a
-# reason to withhold the session the user asked for -- say so and start anyway.
+# watch refusing or failing is not a reason to withhold the session the user
+# asked for -- say so, pause long enough for the line to be seen before the
+# TUI clears the screen, and start anyway.
 if ! "$RASHOMON" watch >&2; then
-	echo "claude-rashomon: 'rashomon watch' refused; starting claude UNRECORDED" >&2
+	echo "claude-rashomon: 'rashomon watch' did not install (refused or failed); starting claude UNRECORDED" >&2
+	if [ -t 2 ]; then sleep 2; fi
 fi
 
-exec claude "$@"
+# ${1+"$@"}: plain "$@" with zero arguments trips `set -u` on bash <= 4.3,
+# which is macOS's /bin/sh.
+exec claude ${1+"$@"}
