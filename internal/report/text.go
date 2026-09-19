@@ -208,6 +208,7 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 	// non-zero would leave them unable to tell a clean session from an unchecked
 	// one -- the same silence-as-zero error in a different field.
 	fmt.Fprintf(b, "  executed differently from declared: %d\n", d.ExecutedNotAsDeclared)
+	writeRewritten(b, d.Rewritten)
 
 	if !d.Observed {
 		fmt.Fprintf(b, "  destinations: not observed (%s)\n", d.Reason)
@@ -417,5 +418,32 @@ func writeFamilies(b *bytes.Buffer, fc FamilyCoverage) {
 	fmt.Fprintln(b, "  not observable, whatever the session did:")
 	for _, n := range fc.NotObservable {
 		fmt.Fprintf(b, "    %s\n", n)
+	}
+}
+
+// writeRewritten names the calls behind the count above.
+//
+// THE WORDING DEPENDS ON THE TOOL, and that is correctness rather than style.
+// shape.Derive digests the whole canonicalised tool_input for every tool
+// EXCEPT Bash, where it digests the command. So for an Edit or a Write, a
+// reworded `description` -- which changes nothing about what the call does to
+// the file -- moves the digest and lands here. Calling that "the command
+// changed" would be false twice: there is no command, and what changed may not
+// affect the effect at all.
+//
+// Neither line says WHAT changed, because nothing here knows. Both inputs are
+// gone; only their digests were ever kept.
+func writeRewritten(b *bytes.Buffer, rows []Rewritten) {
+	for _, r := range rows {
+		what := "input changed"
+		if r.ToolName == "Bash" {
+			what = "command changed"
+		}
+		shape := r.VerbClass
+		if r.Program != "" {
+			shape = r.Program + ", " + r.VerbClass
+		}
+		fmt.Fprintf(b, "    %s  %s (%s): %s between declaration and execution\n",
+			r.ToolUseID, r.ToolName, shape, what)
 	}
 }

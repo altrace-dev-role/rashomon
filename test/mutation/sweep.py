@@ -222,6 +222,15 @@ m("status does not name the other installs sharing the file", "cmd/rashomon/main
 m("status does not resolve the layer that disabled hooks", "cmd/rashomon/main.go",
   "\tcase decision.Disabled:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)",
   "\tcase false:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)", "TestStatus_")
+# B9 -- naming the rewritten calls. The wording split is the correctness half:
+# shape.Derive digests the whole input for every tool but Bash, so calling a
+# non-Bash difference a changed COMMAND is false.
+m("B9 every rewritten call is described as a command", "internal/report/text.go",
+  '\t\twhat := "input changed"\n\t\tif r.ToolName == "Bash" {\n\t\t\twhat = "command changed"\n\t\t}',
+  '\t\twhat := "command changed"', "TestRewritten")
+m("B9 the count and the rows are computed separately", "internal/report/destinations.go",
+  "\treturn len(rewrittenCalls(run))", "\treturn len(rewrittenCalls(run)) + 1", "TestRewritten|TestWireOnly")
+
 # B2 -- the version gate itself. Putting a schema-3 field in the TOP-LEVEL
 # required is the tempting edit and it invalidates every record already on
 # disk, so it gets its own mutation.
@@ -381,7 +390,15 @@ try:
             t = pathlib.Path(fi).read_text(); assert io_ in t; pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
         r = subprocess.run(["go", "test", "./...", "-run", test, "-count=1", "-v"], capture_output=True, text=True)
         judged = r.stdout + r.stderr
-        if r.returncode == 0 and ("--- SKIP" in judged or "no tests to run" in judged):
+        # "--- SKIP" ONLY, never "no tests to run". The suite is invoked as
+        # `go test ./... -run <regex>`, so every package without a matching
+        # test prints "no tests to run" -- which made any mutation whose tests
+        # passed look unjudged rather than UNDETECTED. It masked a real one:
+        # a count mutation that no test asserted against was reported as "not
+        # judged here" instead of as the gap it was. A check that cannot tell
+        # "nothing ran" from "nothing matched in this package" is worse than no
+        # check, because it converts findings into reassurance.
+        if r.returncode == 0 and "--- SKIP" in judged:
             # The judging test did not RUN, so this mutation was not judged.
             # Reporting it as "the test cannot be made to fail" would name a
             # spec defect that may not exist: the socket half of H-17 needs
