@@ -28,6 +28,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/wire"
 )
@@ -43,6 +44,25 @@ const (
 // Reasons lists the coverage reason codes this package derives, as
 // store.Reasons lists the ones a record carries. Together they are the whole
 // vocabulary a reader of a report can meet.
+// knownLabel clamps a stored file_label to the vocabulary shape.Labels()
+// defines, mapping anything else to unknown.
+//
+// The value comes off disk, and this map's KEYS are rendered verbatim in both
+// the text report and the JSON one. A record written by an older build, a
+// newer one, or a hand-edited file could carry any string at all, and without
+// this the report would print it -- which is the one thing every other line of
+// this program is arranged to prevent. Counting it as unknown keeps the total
+// honest and the rendered vocabulary closed; dropping it would lose a
+// declaration the run really made.
+func knownLabel(v string) string {
+	for _, l := range shape.Labels() {
+		if v == l {
+			return v
+		}
+	}
+	return shape.LabelUnknown
+}
+
 func Reasons() []string {
 	return []string{
 		ReasonRunNotClosed,
@@ -344,7 +364,7 @@ func build(run *store.Run) Session {
 	for _, d := range run.Declarations {
 		sess.Declarations.ByTool[d.ToolName]++
 		if d.FileLabel != nil {
-			sess.Declarations.ByLabel[*d.FileLabel]++
+			sess.Declarations.ByLabel[knownLabel(*d.FileLabel)]++
 		}
 		mode[d.ToolUseID] = d.PermissionMode
 	}

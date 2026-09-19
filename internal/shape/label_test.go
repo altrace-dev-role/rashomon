@@ -215,3 +215,51 @@ func TestLabelNeverReadsACommandLine(t *testing.T) {
 		})
 	}
 }
+
+// TestLabelEdgeCasesFromTheHunt pins the cases an edge-case sweep of the table
+// turned up. Each one is a path a real tool writes or a real user has, and
+// each was wrong before it was listed here.
+func TestLabelEdgeCasesFromTheHunt(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want string
+		why  string
+	}{
+		{path: "/infra/terraform.tfstate.backup", want: LabelCloudConfig,
+			why: "terraform apply writes it every run and it holds the same cleartext secrets"},
+		{path: "/infra/terraform.tfstate.bak", want: LabelCloudConfig},
+		{path: "/home/u/.config/gcloud/credentials.json", want: LabelCredentialShaped,
+			why: "GCP service-account keys ship under this name"},
+		{path: "/app/config/credentials.yml.enc", want: LabelCredentialShaped,
+			why: "Rails writes its credentials here"},
+
+		{path: "/srv/.environment", want: LabelNone,
+			why: "a bare .env prefix would swallow prose the way a bare secret prefix would"},
+		{path: "/srv/.envelope", want: LabelNone},
+		{path: "/srv/.env", want: LabelEnvFile},
+		{path: "/srv/.env.staging", want: LabelEnvFile},
+		{path: "/srv/.env-local", want: LabelEnvFile},
+
+		{path: "/vault/secret.key", want: LabelCredentialShaped,
+			why: "a name that says what the file is beats an extension that says how it is encoded"},
+		{path: "/vault/credentials.pem", want: LabelCredentialShaped},
+		{path: "/etc/ssl/server.key", want: LabelCertificate,
+			why: "the X.509 row still owns a name that says nothing else"},
+		{path: "/etc/ssl/server.pem", want: LabelCertificate},
+
+		{path: "/docs/release.asc", want: LabelNone,
+			why: "an armoured .asc is most often a detached signature, which is public by construction"},
+
+		{path: "/srv/app/..", want: LabelUnknown,
+			why: "a directory reference names no file; it belongs with the empty basename, not with none"},
+		{path: "/srv/app/.", want: LabelUnknown},
+		{path: "/srv/app/", want: LabelUnknown,
+			why: "a trailing separator names a directory, and path.Base would hand back its name as a file"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			if got := Label("Read", pathInput(t, "file_path", tc.path)); got != tc.want {
+				t.Errorf("Label(Read, %q) = %q, want %q%s", tc.path, got, tc.want, because(tc.why))
+			}
+		})
+	}
+}
