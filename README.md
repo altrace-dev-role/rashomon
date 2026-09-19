@@ -152,6 +152,12 @@ rule above about settings files: the binary still writes only to
 - `.claude/skills/rashomon*` are the slash commands: `/rashomon` starts
   recording (the only one that may install anything), `/rashomon-report`,
   `/rashomon-status`, and `/rashomon-stop` only read or detach.
+- `.cursor/commands/rashomon*.md` give Cursor the same slash commands for
+  OPERATING the tool — status, report, detach, and arming `watch` for the
+  machine's Claude Code sessions. They do not extend the scope stated at the
+  top of this file: Cursor's own agent loop is not recorded, every command
+  says so, and recording Cursor would be a new adapter in the binary, not a
+  script.
 
 ## The constraint that shapes everything
 
