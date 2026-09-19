@@ -78,8 +78,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// checks the status of the command it thought it was running.
 		return cmdRun(rest, stdin, stdout, stderr)
 
-	case "version":
+	// An explicit request for the version or the usage is a successful
+	// command, so it goes to stdout and exits 0. Only a command we did not
+	// understand is a usage ERROR, on stderr and non-zero.
+	//
+	// All six spellings, because `--version` is the first thing a packager
+	// tries and `--help` is the first thing a person tries, and both landed
+	// in `default:` -- usage on stderr, exit 1 -- while only the bare
+	// `version` subcommand worked.
+	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, version)
+		return exitOK
+
+	case "help", "--help", "-h":
+		usage(stdout)
 		return exitOK
 
 	default:
