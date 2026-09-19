@@ -23,6 +23,17 @@ var (
 		// They are here rather than under shape because the report joins on
 		// them and a nested list is harder to read back than a top-level one.
 		"hosts", "ssh_hosts",
+		// v3, RESERVED and not yet written. host_source says which entries of
+		// `hosts` were read from a URL-valued field and which were extracted
+		// from command text -- a closed two-value enum, so it can carry no
+		// text. rule_match is the rule-match layer's verdict, an object whose
+		// shape that layer owns; it is reserved here so that layer adds
+		// behaviour rather than a second schema bump. Both are null on every
+		// record this build writes.
+		// file_label is the label layer's reservation: what the file a call
+		// named LOOKS LIKE, from a closed vocabulary, never the path. Null on
+		// every record this build writes.
+		"host_source", "rule_match", "file_label",
 	}
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
@@ -36,6 +47,8 @@ var (
 		// width, and the only thing that survives reading tool_input on the
 		// post path.
 		"executed_digest",
+		// v3, RESERVED. See the note on the declaration list.
+		"rule_match",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",

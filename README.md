@@ -71,14 +71,22 @@ reports honestly when it is absent.
   flag at a path that does not exist.
 
   `--redact` drops the agent's summary entirely and replaces each hostname with
-  a truncated SHA-256 plus the host's last label, stable within one report so a
-  host can be followed across its sections. IT IS NOT A PRIVACY BOUNDARY AND IS
-  NOT MEANT TO BE ONE. The digest is UNKEYED and 32 bits: anyone holding a
-  candidate hostname can hash it and compare, which is unavoidable for any
-  scheme that keeps equal hosts equal. It makes a report readable without the
-  names in front of a colleague; it does not make one safe to publish. (The
-  keyed digest described further down is a different thing, used by
-  `forget --host` inside the store, where a per-install key really is applied.)
+  an HMAC under THIS INSTALL'S OWN KEY plus the host's last label, stable
+  within a report and across reports from the same machine, so a host can be
+  followed across sections and between runs.
+
+  What the key buys: the same host digests DIFFERENTLY on another machine, so a
+  recipient who does not have your key cannot test a guess. It was previously
+  an unkeyed hash, which made it a dictionary lookup — the space of hostnames
+  is small and guessable, and a reader holding a candidate simply hashed it and
+  compared.
+
+  What it does not buy: eight hex characters is 32 bits, so two hosts can
+  collide; the last label is kept in clear on purpose, because `.internal` and
+  `.amazonaws.com` say something true about where traffic went without naming
+  anyone; and anyone who can read this install's store can compute these. The
+  redacted report states all of that in its own header, because the report is
+  what gets shared and this file is not.
 
   `report` creates no store — a location that has recorded nothing renders "no
   sessions recorded" rather than minting an install identity to say so — but it

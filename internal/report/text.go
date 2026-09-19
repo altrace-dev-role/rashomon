@@ -23,28 +23,67 @@ const (
 	none    = "none"
 )
 
+// TextOption configures the terminal rendering.
+//
+// Variadic for the same reason Build's options are: a caller that has no
+// opinion about the chain view keeps compiling and keeps getting the summary.
+type TextOption func(*textOptions)
+
+type textOptions struct{ chain bool }
+
+// WithChain expands the causal view from a count into the per-call listing.
+//
+// Off by default because it is the only section whose LENGTH GROWS WITH THE
+// SESSION -- one line per tool call, so a long day's work buries a fixed-size
+// report that a reader opens to see coverage and findings. The count is always
+// shown, so the view can never be invisible; the flag decides whether it is
+// expanded, not whether it exists. JSON always carries the whole structure,
+// because that reader is a program and is not scrolling.
+func WithChain() TextOption {
+	return func(o *textOptions) { o.chain = true }
+}
+
 // Text renders a report for a terminal.
 //
 // Nothing beyond the store's own fields is printed: ids, tool names, transcript
 // paths, counts and reason codes. There is no field here that could carry a
 // command line or a tool response, because there is no such field in the
 // records this reads.
-func Text(w io.Writer, rep *Report) error {
+func Text(w io.Writer, rep *Report, opts ...TextOption) error {
+	var cfg textOptions
+	for _, o := range opts {
+		o(&cfg)
+	}
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "rashomon report -- generated %s\n", stamp(rep.GeneratedAtUnixMS))
+
+	// The legend goes in the REDACTED render only, and near the top, because
+	// this is the copy that leaves the machine and its reader has no README.
+	if rep.Redacted {
+		fmt.Fprintln(&b, "hostnames are redacted: <digest>.<last label>, an HMAC under this "+
+			"install's own key.")
+		fmt.Fprintln(&b, "Equal hosts give equal digests here and DIFFERENT digests on another "+
+			"machine, so a")
+		fmt.Fprintln(&b, "reader without that key cannot test a guess. Eight hex characters is "+
+			"32 bits: two")
+		fmt.Fprintln(&b, "hosts can collide, the last label is kept in clear, and anyone who "+
+			"can read this")
+		fmt.Fprintln(&b, "install's store can compute these. The agent's summary is dropped "+
+			"whole, not cleaned.")
+	}
 	if len(rep.Sessions) == 0 {
 		fmt.Fprintln(&b, "\nno sessions recorded")
 		_, err := w.Write(b.Bytes())
 		return err
 	}
 	for _, sess := range rep.Sessions {
-		writeSession(&b, sess)
+		writeSession(&b, sess, cfg)
 	}
 	_, err := w.Write(b.Bytes())
 	return err
 }
 
-func writeSession(b *bytes.Buffer, sess Session) {
+func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	fmt.Fprintf(b, "\nsession %s\n", sess.SessionID)
 	fmt.Fprintf(b, "  install: %s\n", orUnknown(sess.InstallID))
 	// The account-versus-record block first, then destinations, then the
@@ -56,6 +95,7 @@ func writeSession(b *bytes.Buffer, sess Session) {
 	writeSilentFailures(b, sess.SilentFailures)
 	writeDestinations(b, sess.Destinations)
 	writeFamilies(b, sess.Families)
+	writeChains(b, sess.Chains, cfg.chain)
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
 	fmt.Fprintf(b, "  reasons: %s\n", list(sess.Coverage.Reasons))
 	fmt.Fprintf(b, "  start recorded: %s\n", yesNo(sess.Coverage.StartRecorded))
@@ -83,6 +123,10 @@ func writeSession(b *bytes.Buffer, sess Session) {
 		fmt.Fprintf(b, "    missing from store: %s\n", set(t.MissingFromStore))
 		fmt.Fprintf(b, "    missing from transcript: %s\n", set(t.MissingFromTranscript))
 		fmt.Fprintf(b, "    executed but unrecorded: %s\n", set(t.ExecutedButUnrecorded))
+		// Between the two lists it sits between, and named rather than folded
+		// into either: a denial is not a recording failure and not a call
+		// waiting on its result. It is the permission prompt working.
+		fmt.Fprintf(b, "    denied by user: %s\n", set(t.DeniedByUser))
 		fmt.Fprintf(b, "    declared without result: %s\n", set(t.DeclaredWithoutResult))
 	}
 
@@ -189,6 +233,7 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 	// non-zero would leave them unable to tell a clean session from an unchecked
 	// one -- the same silence-as-zero error in a different field.
 	fmt.Fprintf(b, "  executed differently from declared: %d\n", d.ExecutedNotAsDeclared)
+	writeRewritten(b, d.Rewritten)
 
 	if !d.Observed {
 		fmt.Fprintf(b, "  destinations: not observed (%s)\n", d.Reason)
@@ -398,5 +443,152 @@ func writeFamilies(b *bytes.Buffer, fc FamilyCoverage) {
 	fmt.Fprintln(b, "  not observable, whatever the session did:")
 	for _, n := range fc.NotObservable {
 		fmt.Fprintf(b, "    %s\n", n)
+	}
+}
+
+// writeChains renders the causal spine: which prompt produced which calls.
+//
+// THE LEGEND IS NOT DECORATION. A host on a link reads as though that call
+// reached it, and it does not mean that: the proxy's store carries no
+// tool_use_id, so no wire row can be attributed to an individual call. The
+// state is that host's state across the session's window, sitting next to the
+// call that named it. That is a genuinely useful join and a genuinely easy
+// misreading, and the misreading overstates what is known -- so the line saying
+// so is printed every time the section is, not once in the documentation.
+func writeChains(b *bytes.Buffer, c Chains, expand bool) {
+	extra := len(c.Unattributed) + len(c.Dropped)
+	if len(c.Prompts) == 0 && extra == 0 {
+		return
+	}
+	fmt.Fprintf(b, "  chains: %d\n", len(c.Prompts))
+
+	// The COUNT is unconditional and the listing is not. This section is the
+	// only one whose length grows with the session -- one line per tool call --
+	// so on a long day it buries a report whose other sections are fixed size
+	// and which a reader opens for coverage and findings. Hiding it entirely
+	// behind a flag would be the opposite error: a view nobody knows exists is
+	// the same as one that was never built.
+	if !expand {
+		if len(c.Prompts) > 0 {
+			fmt.Fprintf(b, "    --chain lists the calls under each prompt\n")
+		}
+		writeChainTail(b, c, false)
+		return
+	}
+
+	if len(c.Prompts) > 0 {
+		fmt.Fprintf(b, "    a host's state is that host's across this session, "+
+			"not proof this call reached it\n")
+	}
+
+	var lastPath string
+	for _, ch := range c.Prompts {
+		if ch.TranscriptPath != lastPath {
+			fmt.Fprintf(b, "    %s\n", ch.TranscriptPath)
+			lastPath = ch.TranscriptPath
+		}
+		fmt.Fprintf(b, "    prompt %s\n", ch.PromptID)
+		for _, l := range ch.Links {
+			writeLink(b, l)
+		}
+	}
+	writeChainTail(b, c, true)
+}
+
+// writeChainTail renders the two groups that belong to no prompt.
+//
+// Both are announced whether or not the listing is expanded, because both are
+// statements about COMPLETENESS -- how much of the session the chains above do
+// not account for -- and a reader deciding whether to trust the view needs that
+// without having to ask for more output.
+func writeChainTail(b *bytes.Buffer, c Chains, expand bool) {
+	if n := len(c.Unattributed); n > 0 {
+		fmt.Fprintf(b, "    %d call%s could not be placed under a prompt "+
+			"(prompt not recorded)\n", n, plural(n))
+		if expand {
+			for _, l := range c.Unattributed {
+				writeLink(b, l)
+			}
+		}
+	}
+	if n := len(c.Dropped); n > 0 {
+		// The declaration never landed, so the id is the whole of what is
+		// known. Named anyway: this is a call the session made and cannot
+		// describe, which is worth more to a reader than a tidy omission.
+		fmt.Fprintf(b, "    %d call%s ran with no declaration recorded\n", n, plural(n))
+		if expand {
+			for _, l := range c.Dropped {
+				fmt.Fprintf(b, "      %s  everything but the id is unknown\n", l.ToolUseID)
+			}
+		}
+	}
+}
+
+func writeLink(b *bytes.Buffer, l Link) {
+	shape := l.VerbClass
+	if l.Program != "" {
+		shape = l.Program + ", " + l.VerbClass
+	}
+	outcome := l.Outcome
+	// Two post records for one id. The headline is the higher-seq one and this
+	// says the other existed, because a link that showed only the winner would
+	// hide precisely the disagreement worth seeing.
+	if l.ExecutionRecords > 1 {
+		outcome = fmt.Sprintf("%s (%d records: %s)", l.Outcome,
+			l.ExecutionRecords, strings.Join(l.Outcomes, ", "))
+	}
+	fmt.Fprintf(b, "      %d  %s (%s)  %s%s%s\n",
+		l.Seq, l.ToolName, shape, outcome, linkHosts(l.Hosts), linkSSH(l.SSHHosts))
+}
+
+// linkSSH renders the ssh hosts a call named, kept apart from the observable
+// ones and carrying no state: the proxy cannot see ssh, so there is nothing to
+// report about them and a verdict column would be answering a question the wire
+// was never able to be asked.
+func linkSSH(hosts []string) string {
+	if len(hosts) == 0 {
+		return ""
+	}
+	return "  ssh: " + strings.Join(hosts, ", ") + " (not observable)"
+}
+
+// linkHosts renders the hosts a call named, or nothing at all when it named
+// none -- which is most calls, and a trailing "->" on every one of them would
+// bury the ones that matter.
+func linkHosts(hosts []LinkHost) string {
+	if len(hosts) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(hosts))
+	for _, h := range hosts {
+		parts = append(parts, h.Host+" "+h.State)
+	}
+	return "  -> " + strings.Join(parts, ", ")
+}
+
+// writeRewritten names the calls behind the count above.
+//
+// THE WORDING DEPENDS ON THE TOOL, and that is correctness rather than style.
+// shape.Derive digests the whole canonicalised tool_input for every tool
+// EXCEPT Bash, where it digests the command. So for an Edit or a Write, a
+// reworded `description` -- which changes nothing about what the call does to
+// the file -- moves the digest and lands here. Calling that "the command
+// changed" would be false twice: there is no command, and what changed may not
+// affect the effect at all.
+//
+// Neither line says WHAT changed, because nothing here knows. Both inputs are
+// gone; only their digests were ever kept.
+func writeRewritten(b *bytes.Buffer, rows []Rewritten) {
+	for _, r := range rows {
+		what := "input changed"
+		if r.ToolName == "Bash" {
+			what = "command changed"
+		}
+		shape := r.VerbClass
+		if r.Program != "" {
+			shape = r.Program + ", " + r.VerbClass
+		}
+		fmt.Fprintf(b, "    %s  %s (%s): %s between declaration and execution\n",
+			r.ToolUseID, r.ToolName, shape, what)
 	}
 }

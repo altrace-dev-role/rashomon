@@ -287,6 +287,7 @@ type reportSession struct {
 		IDsExecuted           int      `json:"ids_executed"`
 		ResultsInTranscript   *int     `json:"results_in_transcript"`
 		ExecutedButUnrecorded []string `json:"executed_but_unrecorded"`
+		DeniedByUser          []string `json:"denied_by_user"`
 		DeclaredWithoutResult []string `json:"declared_without_result"`
 	} `json:"transcripts"`
 	Gaps []map[string]any `json:"gaps"`
@@ -301,6 +302,34 @@ type reportSession struct {
 		ProxyOnPath           string   `json:"proxy_on_path"`
 		ExecutedNotAsDeclared int      `json:"executed_not_as_declared"`
 	} `json:"destinations"`
+	// The causal view: which prompt produced which calls.
+	Chains struct {
+		Prompts []struct {
+			TranscriptPath string `json:"transcript_path"`
+			PromptID       string `json:"prompt_id"`
+			Links          []struct {
+				Seq              int64    `json:"seq"`
+				Outcomes         []string `json:"outcomes"`
+				ExecutionRecords int      `json:"execution_records"`
+				SSHHosts         []string `json:"ssh_hosts"`
+				ToolUseID        string   `json:"tool_use_id"`
+				ToolName         string   `json:"tool_name"`
+				Program          string   `json:"program"`
+				VerbClass        string   `json:"verb_class"`
+				Outcome          string   `json:"outcome"`
+				Hosts            []struct {
+					Host  string `json:"host"`
+					State string `json:"state"`
+				} `json:"hosts"`
+			} `json:"links"`
+		} `json:"prompts"`
+		Unattributed []struct {
+			ToolUseID string `json:"tool_use_id"`
+		} `json:"unattributed"`
+		Dropped []struct {
+			ToolUseID string `json:"tool_use_id"`
+		} `json:"dropped"`
+	} `json:"chains"`
 }
 
 // report renders one session as JSON. The JSON form is what a consumer parses
