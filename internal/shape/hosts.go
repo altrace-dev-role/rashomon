@@ -2,6 +2,7 @@ package shape
 
 import (
 	"encoding/json"
+	"path"
 	"sort"
 	"strings"
 
@@ -60,7 +61,353 @@ func Hosts(toolName string, toolInput json.RawMessage) (wire []string, ssh []str
 	if text == "" {
 		return nil, nil
 	}
-	return collect(text, wireSchemes), collect(text, sshSchemes)
+	ssh = collect(text, sshSchemes)
+	if verbForTool(toolName) == VerbExecute {
+		ssh = mergeHosts(ssh, sshCommandHosts(text))
+	}
+	return collect(text, wireSchemes), ssh
+}
+
+// mergeHosts unions two host lists, sorted and de-duplicated, preserving the
+// nil-for-empty convention the record depends on: null means the call named
+// none, and an empty array would be a different claim.
+func mergeHosts(a, b []string) []string {
+	if len(b) == 0 {
+		return a
+	}
+	seen := make(map[string]struct{}, len(a)+len(b))
+	for _, h := range a {
+		seen[h] = struct{}{}
+	}
+	for _, h := range b {
+		seen[h] = struct{}{}
+	}
+	out := make([]string, 0, len(seen))
+	for h := range seen {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// sshDestPrograms are the programs whose ARGUMENTS name a host reached over
+// ssh, as opposed to the URL forms sshSchemes already finds.
+//
+// Without this the report is quietly incomplete about the one transport it
+// advertises as its blind spot. Measured before this existed: `ssh
+// git@github.com` extracted github.com only by the coincidence of the user
+// being named git, and `ssh deploy@git.example.com`, `ssh git.example.com`,
+// `scp f deploy@host:/tmp/` and `rsync -a ./ deploy@host:/srv/` named a
+// destination that appeared nowhere in the report -- not as a host, and not
+// under "not observable" either.
+var sshDestPrograms = map[string]bool{"ssh": true, "scp": true, "rsync": true, "sftp": true}
+
+// valueFlags are the short flags that consume the FOLLOWING token, one set
+// per program, taken from each program's own usage line.
+//
+// One shared table was wrong in both directions and wrong in the way that
+// matters: it treated rsync's -P and -i and scp's -p, which are booleans, as
+// though they took a value, so `rsync -avP deploy@host:/srv/ ./` swallowed
+// the destination and recorded nothing; and it was missing most of ssh's real
+// value flags, so `ssh -L 8080:localhost:80 deploy@bastion` recorded "8080"
+// and missed the host entirely. A false host is worse than a missing one, and
+// one table for four programs produces both.
+//
+// -J is in ssh's set to be SKIPPED, not collected. Its value is a jump host,
+// which is a destination the command named, but recording it would mean this
+// function returns hosts from two different positions with no way for a
+// reader to tell them apart. It is left for a version that can say which.
+var valueFlags = map[string]string{
+	"ssh":   "BbcDEeFIiJLlmOoPpQRSWw",
+	"scp":   "cDFiJloPSX",
+	"sftp":  "BbcDFiJloPRSsX",
+	"rsync": "eBTfM@",
+}
+
+// longTakesValue are the long options that consume the FOLLOWING token and
+// whose value can look like a remote spec. An option not listed here is
+// assumed to carry its value attached with '=', which is how the great
+// majority are written.
+var longTakesValue = map[string]bool{
+	"--compare-dest": true, "--copy-dest": true, "--link-dest": true,
+	"--backup-dir": true, "--temp-dir": true, "--partial-dir": true,
+	"--files-from": true, "--exclude-from": true, "--include-from": true,
+	"--log-file": true, "--password-file": true, "--write-batch": true,
+	"--read-batch": true, "--only-write-batch": true, "--rsh": true,
+	"--sockopts": true, "--address": true, "--port": true,
+}
+
+func takesValue(prog string, flag byte) bool {
+	return strings.IndexByte(valueFlags[prog], flag) >= 0
+}
+
+// sshCommandHosts extracts the ssh destinations named by a command line.
+//
+// It reads the tokens, not the raw text, because a destination is positional:
+// it is an argument of a particular program, and which token that is depends
+// on which flags came before it. A regular expression over the whole line
+// cannot know that `key` in `ssh -i key host` is not a host.
+//
+// A tokenizer error is not fatal here. tokenize returns the tokens it
+// completed along with the error, and a destination that appeared before an
+// unterminated quote is still a destination the command named.
+func sshCommandHosts(text string) []string {
+	var out []string
+	// A newline separates two commands, and the tokenizer treats it as
+	// whitespace -- deliberately, because Derive counts arguments over the
+	// whole line and that count is its own contract. Splitting here rather
+	// than changing the tokenizer keeps `ssh a` and `ssh b` on two lines from
+	// collapsing into one invocation whose second host is never seen.
+	for _, line := range strings.Split(text, "\n") {
+		out = append(out, sshLineHosts(line)...)
+	}
+	return out
+}
+
+func sshLineHosts(line string) []string {
+	toks, meta, _ := tokenizeMarked(line)
+
+	var out []string
+	atCommand := true
+	for i := 0; i < len(toks); i++ {
+		// meta comes from the tokenizer, never from the token's text: a
+		// quoted ';' and an operator ';' are the same two bytes, and reading
+		// the text would let `echo ';' ssh host` record a host for a command
+		// that opened no connection.
+		if i < len(meta) && meta[i] {
+			atCommand = true
+			continue
+		}
+		if !atCommand {
+			continue
+		}
+		if isAssignment(toks[i]) {
+			// Still at a command position: `FOO=bar ssh host` runs ssh.
+			continue
+		}
+		atCommand = false
+
+		prog := path.Base(toks[i])
+		if !sshDestPrograms[prog] {
+			continue
+		}
+		end := i + 1
+		for end < len(toks) && !(end < len(meta) && meta[end]) {
+			end++
+		}
+		out = append(out, destinations(prog, toks[i+1:end])...)
+		i = end - 1
+	}
+	return out
+}
+
+// destinations returns the hosts named by one ssh-family invocation's
+// arguments.
+//
+// ssh and sftp take exactly one destination and everything after it is the
+// remote command, which must not be scanned: `ssh host ls /etc` names one
+// host, not a host and a directory.
+//
+// scp and rsync are different, and deliberately not "the first non-flag
+// argument": their first argument is usually the LOCAL side. In `scp f
+// deploy@host:/tmp/` the destination is the second. So every non-flag
+// argument is examined and the ones shaped like a remote spec are taken,
+// which also records both ends of `rsync a@h1:/x b@h2:/y`.
+func destinations(prog string, args []string) []string {
+	var out []string
+	endOfFlags := false
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if !endOfFlags && strings.HasPrefix(a, "-") && a != "-" {
+			if a == "--" {
+				endOfFlags = true
+				continue
+			}
+			if strings.HasPrefix(a, "--") {
+				// A long option. Most carry their value attached with '=',
+				// and an unknown one is left alone.
+				//
+				// The listed ones are different, and leaving them alone was a
+				// false-host bug rather than a missed one: every option here
+				// takes a LOCAL path, and rsync's --compare-dest, --link-dest
+				// and --copy-dest are routinely given a remote-SHAPED value.
+				// `rsync --compare-dest backup.example.com:/old ./
+				// host.example.com:/new` recorded both, and only one of them
+				// is a destination.
+				if longTakesValue[a] {
+					i++
+				}
+				continue
+			}
+			// A short flag or a cluster of them. Only the last letter can
+			// take the following token as its value: in -ave the value
+			// belongs to -e, and in -p2222 it is already attached.
+			if takesValue(prog, a[len(a)-1]) {
+				i++
+			}
+			continue
+		}
+
+		if prog == "ssh" || prog == "sftp" {
+			if h, ok := destinationHost(a, false); ok {
+				out = append(out, h)
+			}
+			return out
+		}
+		if h, ok := destinationHost(a, true); ok {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// destinationHost parses one [user[:password]@]host[:path] token and returns
+// the host, or reports that the token names none.
+//
+// The user is stripped here rather than left to host.Canonical, which REFUSES
+// an authority carrying userinfo: in a URL, user:password@host is
+// credential-bearing and dropping the credential silently is worse than
+// dropping the host, while in an ssh destination user@host is the documented
+// syntax. The two need opposite handling, and this is the only place that may
+// do the stripping -- the URL scan in collect still hands Canonical the whole
+// authority. A destination that DOES carry a password is refused outright
+// below rather than stripped, which keeps that refusal true of both paths.
+//
+// requireRemote is set for scp and rsync. Each step's reasoning is at the
+// step, not repeated here: this file is the one that has to be cheap to
+// audit, and a rationale in two places is a rationale that can disagree with
+// itself.
+func destinationHost(tok string, requireRemote bool) (string, bool) {
+	if tok == "" {
+		return "", false
+	}
+	// A URL is not an ssh destination spec. Without this, `rsync -av
+	// rsync://mirror.example/pub/ ./` splits at the scheme's own colon and
+	// records a host called "rsync" while the real one is recorded nowhere:
+	// an invented host AND a lost one from a single token. The ssh URL forms
+	// are already found by collect, above.
+	if strings.Contains(tok, "://") {
+		return "", false
+	}
+
+	// The token is [user[:password]@]host[:path], and the three parts have to
+	// be separated in that order. The PATH goes first, because a path may
+	// carry an '@' of its own -- `deploy@host:/srv/app@1.2.3/` -- and taking
+	// the last '@' in the whole token would leave "1.2.3/". The USER goes
+	// second, and only from within what remains.
+	//
+	// Nothing before the first '/' can be a path, so that prefix is where the
+	// user and host live.
+	prefix := tok
+	if slash := strings.IndexByte(tok, '/'); slash >= 0 {
+		prefix = tok[:slash]
+	}
+
+	hadUser := false
+	rest := prefix
+	if at := strings.IndexByte(prefix, '@'); at >= 0 {
+		// A colon inside the USERINFO is a password, and this is the exact
+		// string authority() documents refusing: splitting
+		// "u:p@internal.example" at the first colon returns "u", a
+		// plausible-looking hostname that is really the username out of a
+		// credential-bearing destination. Measured before this check:
+		// `ssh svc-deploy:s3cr3t-token@host.example.com` recorded
+		// "svc-deploy" and lost the host (CWE-522).
+		if strings.IndexByte(prefix[:at], ':') >= 0 {
+			return "", false
+		}
+		hadUser = true
+		rest = prefix[at+1:]
+	}
+
+	// A bracketed IPv6 literal: its own colons are not separators.
+	if strings.HasPrefix(rest, "[") {
+		end := strings.Index(rest, "]")
+		if end < 0 {
+			return "", false
+		}
+		if requireRemote && !strings.HasPrefix(rest[end+1:], ":") {
+			return "", false
+		}
+		return host.Canonical(rest[:end+1])
+	}
+
+	hostPart := rest
+	remoteByColon := false
+	if colon := strings.IndexByte(rest, ':'); colon >= 0 {
+		hostPart = rest[:colon]
+		remoteByColon = true
+		// More than one colon left, unbracketed, is an address this cannot
+		// read: `ssh 2606:4700::1111` was recording "2606". Nothing here can
+		// tell a path colon from an address colon, and a false host is worse
+		// than a missing one, so it is refused and stated as a limit.
+		if strings.IndexByte(rest[colon+1:], ':') >= 0 {
+			return "", false
+		}
+	}
+
+	// requireRemote is set for scp and rsync, where an argument names a host
+	// only if a colon precedes the path. A user with no colon is a LOCAL
+	// filename that happens to contain an '@' -- `scp a@b c` copies two local
+	// files -- and reading it as a host invents one out of a filename.
+	if requireRemote && !remoteByColon {
+		return "", false
+	}
+	// A single-character host before a colon is a Windows drive letter far
+	// more often than a hostname, and `rsync C:/src dst` must not record a
+	// host called "c".
+	if remoteByColon && !hadUser && len(hostPart) < 2 {
+		return "", false
+	}
+	if !hostnameShaped(hostPart) {
+		return "", false
+	}
+	// An ssh-config alias has no dots and resolves to something this function
+	// cannot see. It is recorded as the command named it and never resolved:
+	// resolving would mean reading ~/.ssh/config, which is a file this package
+	// is not allowed to open, and guessing would put a name in the store that
+	// the user never typed.
+	return host.Canonical(hostPart)
+}
+
+// hostnameShaped reports whether every byte of s could appear in a hostname.
+//
+// A whitelist, not a terminator set, and that is the point. authority() stops
+// at the punctuation a URL is surrounded by in a command line, which is right
+// where a host is embedded in text; it does not stop at '=' or '!', so
+// `ssh HOST=bad` recorded "host=bad" and `ssh h.example.com!x` recorded itself
+// -- raw command text passing as a canonical hostname. Here the token IS the
+// destination, so the question is not "where does the host end" but "is this a
+// host at all", and only a whitelist answers that one.
+//
+// The length bound is the longest a hostname can be. Without it a
+// several-hundred byte fragment of a command line can be persisted as one.
+func hostnameShaped(s string) bool {
+	if s == "" || len(s) > 253 {
+		return false
+	}
+	if s[0] == '-' || s[0] == '.' || s[len(s)-1] == '-' {
+		return false
+	}
+	// An empty label is not a hostname. One TRAILING dot is: "pypi.org." is
+	// the fully-qualified spelling of the same name, and host.Canonical drops
+	// it. Two in a row are never right.
+	if strings.Contains(s, "..") {
+		return false
+	}
+	alnum := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+			alnum = true
+		case c == '-' || c == '.' || c == '_':
+		default:
+			return false
+		}
+	}
+	return alnum
 }
 
 // collect finds every hostname in text introduced by one of the given prefixes.
