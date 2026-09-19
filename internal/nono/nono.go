@@ -173,7 +173,14 @@ func Read(path string, w Window) Observation {
 	defer func() { _ = f.Close() }()
 
 	obs := Observation{Trail: path, Events: []Event{}}
-	// Observed is set only once a record PARSES. Setting it on a successful
+	// Observed is set only once a record of a type this reader KNOWS parses.
+	// Counting the parse before the type switch let a file of well-formed
+	// records of unlearned types -- log_allowed and log_denied, the exact
+	// names this package's doc records nono's documentation as using and the
+	// program as not emitting -- report as a successfully observed quiet
+	// sandbox. The drift case was the one the guard missed.
+	//
+	// Setting it on a successful
 	// open made an empty, truncated or wrong-format file report as "the
 	// sandbox watched and saw nothing" -- silence read as zero, which is the
 	// failure this package's own doc says it exists to prevent. Three inputs
@@ -207,14 +214,16 @@ func Read(path string, w Window) Observation {
 			obs.Skipped++
 			continue
 		}
-		parsed++
+
 		switch head.Type {
 		case "session_started":
 			// COUNTED, NEVER READ. This record carries the sandboxed command
 			// line, and nothing below touches any field of it.
 			obs.Sessions++
+			parsed++
 			continue
 		case "session_ended":
+			parsed++
 			// KNOWN AND DELIBERATELY IGNORED, not skipped. It carries an exit
 			// code and an ISO instant, neither of which this reader joins on.
 			// Counting it as a drop would put a skipped-record line on every
@@ -223,7 +232,7 @@ func Read(path string, w Window) Observation {
 			// rather than "a record I did not use".
 			continue
 		case "network":
-			// fall through
+			parsed++
 		default:
 			// A type nono has and this reader has not learned. Counted,
 			// because schema drift is a measured property of this dependency:
@@ -262,13 +271,24 @@ func Read(path string, w Window) Observation {
 	if err := sc.Err(); err != nil {
 		// A read that failed partway is not a complete observation, and saying
 		// so is the whole contract of this package.
-		return Observation{Reason: NotObservedUnreadable, Trail: path, Events: []Event{}}
+		obs.Observed = false
+		obs.Reason = NotObservedUnreadable
+		obs.Events = []Event{}
+		return obs
 	}
 
 	if parsed == 0 {
 		// Nothing in this file was a record. Distinct from an absent file and
 		// from a readable-but-quiet one, and the reader has to be able to tell.
-		return Observation{Reason: NotObservedNoRecords, Trail: path, Events: []Event{}}
+		// The counters are CARRIED OUT, not discarded. Both bail-out returns
+		// used to build a fresh Observation, which zeroed exactly the numbers
+		// that answer the question a failed read raises: how much was
+		// unreadable? A 10,000-line corrupt trail and a 1-line one returned
+		// byte-identical observations.
+		obs.Observed = false
+		obs.Reason = NotObservedNoRecords
+		obs.Events = []Event{}
+		return obs
 	}
 	obs.Observed = true
 

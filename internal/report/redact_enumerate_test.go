@@ -21,7 +21,7 @@ import (
 // This exists because Redact's own comment -- "every field that can hold a
 // hostname is covered here... the risk is that a LATER field is added and
 // nobody adds it here" -- described the defect correctly and then suffered it:
-// Session gained the sandbox section with four hostname lists, Redact was not
+// Session gained the sandbox section with hostname lists, Redact was not
 // taught about them, and --redact published internal hostnames in clear under
 // a legend asserting they were digested. A legend is what a user checks
 // INSTEAD of the hostnames, so that is worse than no redaction at all.

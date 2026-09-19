@@ -307,3 +307,30 @@ func TestRead_ACredentialBearingTargetIsRefusedAndCounted(t *testing.T) {
 		t.Errorf("unparseable_targets = %d, want 1", obs.UnparseableTargets)
 	}
 }
+
+// TestRead_AFileOfUnlearnedTypesIsNotAQuietSession is the drift case, and it
+// is the one the first version of the Observed guard missed.
+//
+// `parsed++` ran above the type switch, so a well-formed record of a type this
+// reader has not learned counted as parsed. log_allowed and log_denied are not
+// hypothetical names: this package's doc records them as what nono's own
+// documentation claims the program emits, and it does not. A future version
+// that does emit them would have rendered as a quiet sandbox.
+func TestRead_AFileOfUnlearnedTypesIsNotAQuietSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "drift.ndjson")
+	body := `{"sequence":0,"event":{"type":"log_allowed","target":"x.example"}}` + "\n" +
+		`{"sequence":1,"event":{"type":"log_denied","target":"y.example"}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := Read(path, Window{Start: time.UnixMilli(0)})
+	if obs.Observed {
+		t.Errorf("a file of only unlearned record types reported as observed; it is "+
+			"indistinguishable from a sandbox that genuinely saw nothing (reason=%q, "+
+			"skipped=%d)", obs.Reason, obs.Skipped)
+	}
+	if obs.Skipped != 2 {
+		t.Errorf("skipped = %d, want 2", obs.Skipped)
+	}
+}

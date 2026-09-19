@@ -2,6 +2,8 @@ package report
 
 import (
 	"database/sql"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -479,4 +481,77 @@ func TestSeam_AForgottenHostDoesNotReturnUnderTheSandboxHeading(t *testing.T) {
 		t.Fatalf("premise: the sandbox section did not render, so this test proves "+
 			"nothing:\n%s", b.String())
 	}
+}
+
+// TestSeam_PlainHTTPMeansOnly is the headline claim of the plain-HTTP rework,
+// and until this existed FIVE separate mutations to it all survived the whole
+// suite: reverting the split to the old `mode=="reverse" || port==80`, turning
+// `plainOnly && !observable` back into `plainOnly`, never populating the list,
+// deleting the rendered line, and deleting the sort.
+//
+// Nothing reached it because the only reverse-mode event in the real capture is
+// a DENY, and denies short-circuit before the mode branch. The fixture could
+// not produce a single plain-HTTP explanation, so the correction the commit
+// message argues for was unverifiable by construction.
+//
+// Two hosts, and the distinction between them is the whole point:
+//
+//	reverse-only  seen only over nono's reverse proxy -- plain HTTP, which this
+//	              proxy genuinely cannot observe. A known boundary.
+//	mixed         seen over BOTH reverse and connect. The connect leg IS
+//	              proxy-observable, so its absence from the wire is a real gap
+//	              and must not be excused by the presence of the other leg.
+func TestSeam_PlainHTTPMeansOnly(t *testing.T) {
+	at := firstNonoEvent(t)
+	st, id, now := seamSessionAt(t, at)
+
+	trail := filepath.Join(t.TempDir(), "plain.ndjson")
+	ms := at.UnixMilli()
+	body := `{"sequence":0,"event":{"type":"session_started"}}` + "\n" +
+		ev(1, ms, "reverse", "allow", "reverse-only.example", 80) +
+		ev(2, ms, "reverse", "allow", "mixed.example", 80) +
+		ev(3, ms, "connect", "allow", "mixed.example", 443)
+	if err := os.WriteFile(trail, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A wire that saw neither host, so both land in the disagreement column.
+	db := seamStore(t, [][4]string{{"r1", "", "elsewhere.example", ""}}, at)
+
+	rep, err := Build(st, id, now, WithNonoTrail(trail), WithProxyStore(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := rep.Sessions[0].Nono
+
+	if len(n.SawWhatTheProxyDidNot) != 2 {
+		t.Fatalf("premise: both hosts should be missing from the wire, got %v",
+			n.SawWhatTheProxyDidNot)
+	}
+	if len(n.PlainHTTP) != 1 || n.PlainHTTP[0] != "reverse-only.example" {
+		t.Errorf("plain_http = %v, want exactly [reverse-only.example]. \"Only\" means "+
+			"only: mixed.example has a proxy-observable connect leg, so its absence "+
+			"from the wire is a real gap and excusing it is false comfort.", n.PlainHTTP)
+	}
+
+	var b strings.Builder
+	if err := Text(&b, rep); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "plain HTTP, which this proxy does not observe") {
+		t.Errorf("the explanation line was not rendered:\n%s", out)
+	}
+	// NAMED, not counted -- the reason the field stopped being an int.
+	if !strings.Contains(out, "reverse-only.example") {
+		t.Errorf("the explanation does not name the host it excuses:\n%s", out)
+	}
+}
+
+// ev builds one nono network record.
+func ev(seq int, ms int64, mode, decision, target string, port int) string {
+	return fmt.Sprintf(
+		`{"sequence":%d,"event":{"type":"network","event":{"timestamp_unix_ms":%d,`+
+			`"mode":%q,"decision":%q,"target":%q,"port":%d}}}`+"\n",
+		seq, ms, mode, decision, target, port)
 }
