@@ -95,6 +95,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	writeSilentFailures(b, sess.SilentFailures)
 	writeDestinations(b, sess.Destinations)
 	writeFamilies(b, sess.Families)
+	writeNono(b, sess.Nono)
 	writeChains(b, sess.Chains, cfg.chain)
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
 	fmt.Fprintf(b, "  reasons: %s\n", list(sess.Coverage.Reasons))
@@ -657,5 +658,54 @@ func writeJoin(b *bytes.Buffer, d Destinations) {
 		fmt.Fprintf(b, "  other sessions in this window: %d request%s, "+
 			"identified by their own token and excluded from the counts above\n",
 			d.OtherToken, plural(d.OtherToken))
+	}
+}
+
+// writeNono renders what the sandbox saw, and what it disagrees with.
+//
+// ALWAYS PRINTS A LINE, including when no trail was configured. A section that
+// vanishes when it has nothing to say cannot be told apart from one that was
+// never built -- the rule this package states for family coverage and has now
+// broken twice.
+//
+// THE DISAGREEMENT IS NOT PRESENTED AS A FAULT. A host the sandbox saw and the
+// proxy did not is usually plain HTTP, which rashomon structurally cannot see
+// because it exports no HTTP_PROXY. Rendering that as "the proxy missed it"
+// would turn a documented boundary into an accusation against the recorder --
+// the same error as calling loopback "not observed".
+func writeNono(b *bytes.Buffer, n Nono) {
+	if !n.Configured {
+		// SILENT, not "not observed". A sandbox nobody asked for is not a
+		// degraded observation -- it is a feature that was not in use, and
+		// H-28 is right that printing a degradation marker on a healthy run
+		// teaches readers to discount the word.
+		return
+	}
+	if !n.Observed {
+		fmt.Fprintf(b, "  sandbox (nono): not observed (%s)\n", orUnknown(n.Reason))
+		return
+	}
+	fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied, across %d session%s\n",
+		len(n.Allowed), len(n.Denied), n.Sessions, plural(n.Sessions))
+	if len(n.Denied) > 0 {
+		// Named, because a denial is the sandbox doing its job and it is
+		// evidence about the AGENT: it tried to go somewhere it could not.
+		fmt.Fprintf(b, "    refused by the sandbox: %s\n", list(n.Denied))
+	}
+	if len(n.SawWhatTheProxyDidNot) > 0 {
+		fmt.Fprintf(b, "    seen by the sandbox and not on the wire: %s\n",
+			list(n.SawWhatTheProxyDidNot))
+		if n.PlainHTTPOnly > 0 {
+			fmt.Fprintf(b, "      %d of these are plain HTTP, which this proxy does not "+
+				"observe -- a known boundary, not a recording gap\n", n.PlainHTTPOnly)
+		}
+	}
+	if len(n.ProxySawWhatItDidNot) > 0 {
+		fmt.Fprintf(b, "    on the wire and not in the sandbox's trail: %s\n",
+			list(n.ProxySawWhatItDidNot))
+	}
+	if n.Inherited > 0 {
+		fmt.Fprintf(b, "    %d sandbox event%s outside this session's window, excluded\n",
+			n.Inherited, plural(n.Inherited))
 	}
 }
