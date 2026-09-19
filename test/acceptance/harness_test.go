@@ -97,8 +97,25 @@ func newEnv(t *testing.T) *env {
 func (e *env) settingsPath() string { return filepath.Join(e.configDir, "settings.json") }
 func (e *env) managedPath() string  { return filepath.Join(e.configDir, "managed-settings.json") }
 
+// environ starts from the runner's own environment minus any proxy variables
+// (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, in either case). H-27 asserts on the
+// proxy variables a child does and does not receive, and `run` passes its own
+// environment through, so a corporate proxy or CI egress proxy configured on
+// the machine running the tests would reach the child and read as a failure.
+// The strip belongs HERE and not in `run`: a user's pre-existing proxy
+// variables are not the tool's to remove, and the promise under test is only
+// that run does not add its own when the observe-proxy check fails.
 func (e *env) environ(extra ...string) []string {
-	base := append(os.Environ(),
+	var base []string
+	for _, kv := range os.Environ() {
+		name, _, _ := strings.Cut(kv, "=")
+		switch strings.ToUpper(name) {
+		case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY":
+			continue
+		}
+		base = append(base, kv)
+	}
+	base = append(base,
 		"RASHOMON_HOME="+e.home,
 		"CLAUDE_CONFIG_DIR="+e.configDir,
 		"RASHOMON_MANAGED_SETTINGS_PATH="+e.managedPath(),
