@@ -8,7 +8,9 @@ red. Every file is restored afterwards, whatever happens.
 
 Run from the module root:  python3 test/mutation/sweep.py
 """
+import os
 import pathlib
+import signal
 import subprocess
 import sys
 
@@ -264,6 +266,55 @@ def backup(f):
 def restore():
     for f, b in backups.items():
         pathlib.Path(f).write_bytes(b)
+
+# RESTORE ON SIGNAL, not only on the way out of the try block.
+#
+# This script rewrites TRACKED SOURCE FILES IN PLACE and puts them back from an
+# in-memory copy. `finally` covers a normal exit and an exception; it does not
+# run when the process is killed. The realistic case is not exotic: piping the
+# sweep into `head` or `grep` that exits early delivers SIGPIPE, and Python's
+# default disposition terminates the process. What is left behind is a source
+# file that has been broken ON PURPOSE, in a tree somebody is about to commit
+# from -- and `git status` showing it is how a peer found one mid-run and had
+# to ask whether it was a real edit.
+#
+# Each handler restores and then re-raises with the default disposition, so the
+# exit status still says the process was signalled. Swallowing the signal would
+# trade one lie for another.
+def _restore_and_reraise(signum, _frame):
+    restore()
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
+
+for _sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGPIPE):
+    signal.signal(_sig, _restore_and_reraise)
+
+# SIGKILL CANNOT BE CAUGHT, and neither can a hard OOM kill. The backup is in
+# memory, so it dies with the process and no handler can help. That residue is
+# real and this script cannot prevent it -- what it can do is refuse to start
+# on top of it, below, rather than mutating an already-mutated file and
+# restoring it to the wrong bytes.
+def _dirty_targets():
+    """Files this run would mutate that git already reports as modified."""
+    targets = sorted({f for _, f, _, _, _ in M} | {f for f, _, _ in IMPORTS.values()})
+    r = subprocess.run(["git", "status", "--porcelain", "--"] + targets,
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return []  # not a git checkout, or git unavailable: not this script's problem
+    return [ln[3:] for ln in r.stdout.splitlines() if ln.strip()]
+
+_dirty = _dirty_targets()
+if _dirty:
+    print("REFUSING TO START: files this sweep mutates are already modified:\n")
+    for f in _dirty:
+        print("   ", f)
+    print("\nThe sweep restores from a copy taken at startup, so running now would save\n"
+          "the MUTATED bytes as the original and 'restore' them afterwards -- baking a\n"
+          "deliberate break into the tree. This is also what a previous run killed with\n"
+          "SIGKILL leaves behind, which no signal handler can prevent.\n\n"
+          "If these are a previous run's residue:  git checkout -- " + " ".join(_dirty) + "\n"
+          "If they are your own work, commit or stash them first.")
+    sys.exit(1)
 
 # GREEN BASELINE, before the first mutation.
 #
