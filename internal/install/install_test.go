@@ -169,17 +169,30 @@ func entriesOf(t *testing.T, doc *settings.Document, event string) []json.RawMes
 }
 
 func TestShellQuote(t *testing.T) {
-	for _, tc := range []struct{ name, in, want string }{
-		{"a path of safe characters is left bare",
-			"/usr/local/bin/rashomon", "/usr/local/bin/rashomon"},
-		{"a space is quoted",
-			"/Users/sam/Application Support/rashomon", "'/Users/sam/Application Support/rashomon'"},
-		{"a single quote is closed, escaped and reopened",
-			"/home/o'brien/bin/rashomon", `'/home/o'\''brien/bin/rashomon'`},
+	for _, tc := range []struct {
+		name, goos, in, want string
+	}{
+		// POSIX (darwin / linux)
+		{"posix: safe path left bare",
+			"linux", "/usr/local/bin/rashomon", "/usr/local/bin/rashomon"},
+		{"posix: space is single-quoted",
+			"linux", "/Users/sam/Application Support/rashomon", "'/Users/sam/Application Support/rashomon'"},
+		{"posix: single quote is closed, escaped and reopened",
+			"linux", "/home/o'brien/bin/rashomon", `'/home/o'\''brien/bin/rashomon'`},
+		{"posix: darwin safe path left bare",
+			"darwin", "/usr/local/bin/rashomon", "/usr/local/bin/rashomon"},
+
+		// Windows (cmd.exe double-quote syntax)
+		{"windows: safe path left bare",
+			"windows", `C:\Users\sam\go\bin\rashomon.exe`, `C:\Users\sam\go\bin\rashomon.exe`},
+		{"windows: space is double-quoted",
+			"windows", `C:\Users\sam\My Go Bin\rashomon.exe`, `"C:\Users\sam\My Go Bin\rashomon.exe"`},
+		{"windows: double quote inside path is doubled",
+			"windows", `C:\weird"path\rashomon.exe`, `"C:\weird""path\rashomon.exe"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := shellQuote(tc.in); got != tc.want {
-				t.Errorf("shellQuote(%q) is %s, want %s", tc.in, got, tc.want)
+			if got := shellQuoteForOS(tc.in, tc.goos); got != tc.want {
+				t.Errorf("shellQuoteForOS(%q, %q) = %s, want %s", tc.in, tc.goos, got, tc.want)
 			}
 		})
 	}

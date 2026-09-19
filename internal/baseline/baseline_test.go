@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -233,6 +234,9 @@ func TestFileName_DistinctKeysNeverCollide(t *testing.T) {
 // ever reached -- a longer-lived and more revealing artefact than any single
 // run, and a hostname is the most sensitive field this product holds.
 func TestUpdate_PermissionsAreOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce POSIX permission bits")
+	}
 	root := t.TempDir()
 	res := Update(root, "/proj", "sess-1", t0, []string{"a.example"})
 	if res.Err != nil {

@@ -88,7 +88,7 @@ func TestThirdPartyNotices_MatchesTheReleaseMatrix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(body)
+	text := strings.ReplaceAll(string(body), "\r\n", "\n")
 
 	seen := map[string]bool{}
 	for _, p := range releasePlatforms {

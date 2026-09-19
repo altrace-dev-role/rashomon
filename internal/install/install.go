@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/settings"
@@ -416,8 +417,21 @@ func isInstallID(s string) bool {
 
 // shellQuote quotes a path for the shell Claude Code runs hook commands
 // through. Paths made of safe characters are left bare so the common case
-// reads plainly in the file.
+// reads plainly in the file. On Windows cmd.exe double-quote syntax is used;
+// on all other platforms POSIX single-quote syntax is used.
 func shellQuote(s string) string {
+	return shellQuoteForOS(s, runtime.GOOS)
+}
+
+func shellQuoteForOS(s, goos string) string {
+	if goos == "windows" {
+		return windowsQuote(s)
+	}
+	return posixQuote(s)
+}
+
+// posixQuote quotes a path for POSIX shells (sh/bash/zsh).
+func posixQuote(s string) string {
 	safe := s != "" && strings.IndexFunc(s, func(r rune) bool {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
@@ -431,4 +445,23 @@ func shellQuote(s string) string {
 		return s
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// windowsQuote quotes a path for cmd.exe, the shell Claude Code uses on
+// Windows. Backslashes are literal inside double-quoted strings; only double
+// quotes themselves need escaping (by doubling).
+func windowsQuote(s string) string {
+	safe := s != "" && strings.IndexFunc(s, func(r rune) bool {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			return false
+		case r == '\\', r == '/', r == '.', r == '_', r == '-', r == '+', r == ':':
+			return false
+		}
+		return true
+	}) < 0
+	if safe {
+		return s
+	}
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }

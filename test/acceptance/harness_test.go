@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -64,6 +65,9 @@ func buildAndRun(m *testing.M) (int, error) {
 }
 
 func build(dir, name, pkg string, tags ...string) (string, error) {
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
 	out := filepath.Join(dir, name)
 	args := []string{"build", "-o", out}
 	if len(tags) > 0 {
@@ -169,13 +173,60 @@ func (e *env) runBin(bin, stdin string, args ...string) result {
 
 // sh runs an installed command line through a shell, which is what Claude Code
 // does with it and the only reader whose opinion about quoting matters.
+// On POSIX systems /bin/sh is used. On Windows the command line is parsed
+// directly using Windows double-quote rules and the binary is exec'd without
+// a shell, sidestepping the layered-quoting complexity of cmd.exe /C.
 func (e *env) sh(line, stdin string) result {
 	e.t.Helper()
-	cmd := exec.Command("sh", "-c", line)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		fields := winParseCmdLine(line)
+		if len(fields) == 0 {
+			e.t.Fatalf("sh: empty command line")
+		}
+		cmd = exec.Command(fields[0], fields[1:]...)
+	} else {
+		cmd = exec.Command("sh", "-c", line)
+	}
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Env = e.environ()
 	cmd.Dir = e.cwd
 	return e.wait(cmd)
+}
+
+// winParseCmdLine splits a Windows double-quote-style command line into
+// fields — the same rule windowsQuote writes and cmd.exe reads.
+func winParseCmdLine(line string) []string {
+	var fields []string
+	var cur strings.Builder
+	quoted := false
+	started := false
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case c == '"':
+			if quoted && i+1 < len(line) && line[i+1] == '"' {
+				cur.WriteByte('"') // doubled "" → literal "
+				i++
+			} else {
+				quoted = !quoted
+			}
+			started = true
+		case (c == ' ' || c == '\t') && !quoted:
+			if started {
+				fields = append(fields, cur.String())
+				cur.Reset()
+				started = false
+			}
+		default:
+			cur.WriteByte(c)
+			started = true
+		}
+	}
+	if started {
+		fields = append(fields, cur.String())
+	}
+	return fields
 }
 
 func (e *env) hook(payload string, extraEnv ...string) result {

@@ -6,12 +6,14 @@
 package store
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -253,7 +255,7 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	}
 	defer unlock()
 
-	seq, err := nextSeq(dir)
+	seq, err := nextSeq(dir, f)
 	if err != nil {
 		return err
 	}
@@ -323,19 +325,23 @@ func marshalLine(rec any) ([]byte, error) {
 }
 
 // nextSeq allocates the next sequence number for a run. It must be called with
-// the run's records lock held.
+// the run's records lock held. f is the already-open, locked records file.
 //
 // The counter is advanced and synced before the record that uses it is
 // written. A crash between the two skips a number, which is visible and
 // harmless; the other order could hand the same number to two records, which
 // is neither.
-func nextSeq(dir string) (int64, error) {
+func nextSeq(dir string, f *os.File) (int64, error) {
 	path := filepath.Join(dir, FileSeq)
 
 	last, err := readSeq(path)
 	if err != nil {
 		// Missing or unreadable: the records themselves are the authority.
-		last, err = maxSeq(filepath.Join(dir, FileRecords))
+		// Must use the caller's already-open handle rather than opening a new
+		// one: on Windows, LockFileEx holds a mandatory lock that prevents any
+		// other handle — including one opened by the same process — from reading
+		// the locked range.
+		last, err = maxSeqFromFile(f)
 		if err != nil {
 			return 0, err
 		}
@@ -346,6 +352,32 @@ func nextSeq(dir string) (int64, error) {
 		return 0, err
 	}
 	return next, nil
+}
+
+// maxSeqFromFile scans an already-open records file for the highest seq,
+// seeking to the start first and leaving the position at the end.
+// It is used by nextSeq when the seq counter file is absent, and must go
+// through the caller's locked handle rather than a fresh os.Open.
+func maxSeqFromFile(f *os.File) (int64, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return 0, err
+	}
+	var max int64
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var probe struct {
+			Seq int64 `json:"seq"`
+		}
+		if json.Unmarshal(line, &probe) == nil && probe.Seq > max {
+			max = probe.Seq
+		}
+	}
+	return max, sc.Err()
 }
 
 func readSeq(path string) (int64, error) {

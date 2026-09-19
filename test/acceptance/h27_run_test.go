@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,9 @@ func liveStatus() map[string]any {
 // The child prints its own environment so the test reads what it actually got,
 // rather than trusting what the parent believes it set.
 func TestH27_ExportsWhenTheProxyIsObservingAndAlive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test child command uses sh, which is not available on Windows")
+	}
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d", res.exitCode)
@@ -81,6 +85,9 @@ func TestH27_ExportsWhenTheProxyIsObservingAndAlive(t *testing.T) {
 // TestH27_LaunchesWithoutVariablesAndSaysWhy covers every refusal. The command
 // still runs: that is the whole point.
 func TestH27_LaunchesWithoutVariablesAndSaysWhy(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test child command uses sh, which is not available on Windows")
+	}
 	for _, tc := range []struct {
 		name     string
 		status   func(map[string]any)
@@ -151,6 +158,9 @@ func TestH27_RefusesWhenNothingIsRecording(t *testing.T) {
 // would break every script checking the exit code of the command it thought it
 // was running.
 func TestH27_ReturnsTheChildsExitCode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test child command uses sh, which is not available on Windows")
+	}
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d", res.exitCode)
@@ -167,6 +177,9 @@ func TestH27_ReturnsTheChildsExitCode(t *testing.T) {
 // of replacing this process: there has to be something left to render the
 // report.
 func TestH27_ReportsAfterTheCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test child command uses sh, which is not available on Windows")
+	}
 	e := newEnv(t)
 	e.watched(testSession)
 	e.mustHook(defaultPayload().build(t))
