@@ -84,7 +84,7 @@ func TestH31_ChainsGroupCallsUnderTheirPrompt(t *testing.T) {
 		}
 	}
 
-	out := e.run("", nil, "report", "--session", testSession).stdout
+	out := e.run("", nil, "report", "--session", testSession, "--chain").stdout
 	if !strings.Contains(out, "chains: 2") {
 		t.Errorf("the render does not carry the chain section:\n%s", out)
 	}
@@ -123,6 +123,82 @@ func TestH31_ADeniedCallRendersAsDeniedInItsChain(t *testing.T) {
 		t.Errorf("outcome = %q, want \"denied by user\". Without the transcript this is "+
 			"indistinguishable from an unrecorded execution, and calling it one reports the "+
 			"product working as the product broken.", got)
+	}
+}
+
+// TestH31_NoProxyStoreMeansUnknownRatherThanNotObserved is the honesty
+// property of the whole view, tested through the WIRING rather than the
+// function.
+//
+// The unit test pins hostState given WindowApplied false. What it cannot show
+// is that "no proxy store" actually reaches that flag -- and if it did not,
+// every host a call named would render "not observed", which says the wire was
+// watched and this host never appeared. With no store the wire was not watched
+// at all. That is a recorder gap being rendered as a finding against the agent,
+// in the most common configuration there is: a user who has not run the proxy.
+func TestH31_NoProxyStoreMeansUnknownRatherThanNotObserved(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+
+	p := defaultPayload()
+	p.ToolInput = map[string]any{"command": "curl https://pypi.org/simple/"}
+	e.mustHook(p.build(t))
+	post := defaultPost()
+	post.ToolInput = p.ToolInput
+	e.mustPost(post.build(t))
+	e.probe("end", testSession)
+
+	rep := e.report(testSession)
+	if rep.Destinations.Observed {
+		t.Fatal("premise: this env has no proxy store, so nothing should be observed")
+	}
+	hosts := rep.Chains.Prompts[0].Links[0].Hosts
+	if len(hosts) != 1 || hosts[0].Host != "pypi.org" {
+		t.Fatalf("hosts = %+v, want the one the command named", hosts)
+	}
+	if hosts[0].State != "unknown" {
+		t.Errorf("state = %q, want \"unknown\". With no proxy store the wire was never "+
+			"watched, and \"not observed\" asserts that it was and this host never appeared "+
+			"-- a missing recorder rendered as a finding against the agent.", hosts[0].State)
+	}
+}
+
+// TestH31_TheListingIsBehindAFlagAndTheCountIsNot.
+//
+// The chain section is the only one whose length grows with the session, so on
+// a long day it buries a report whose other sections are fixed size. But hiding
+// it entirely would be the opposite error -- a view nobody knows exists is the
+// same as one that was never built -- so the count always renders and the flag
+// only expands it.
+func TestH31_TheListingIsBehindAFlagAndTheCountIsNot(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+
+	p := defaultPayload()
+	e.mustHook(p.build(t))
+	post := defaultPost()
+	e.mustPost(post.build(t))
+	e.probe("end", testSession)
+
+	plain := e.run("", nil, "report", "--session", testSession).stdout
+	if !strings.Contains(plain, "chains: 1") {
+		t.Errorf("the default report does not say a chain exists:\n%s", plain)
+	}
+	if strings.Contains(plain, "prompt prompt-1") {
+		t.Errorf("the default report expanded the listing:\n%s", plain)
+	}
+
+	expanded := e.run("", nil, "report", "--session", testSession, "--chain").stdout
+	if !strings.Contains(expanded, "prompt prompt-1") {
+		t.Errorf("--chain did not expand the listing:\n%s", expanded)
+	}
+
+	// JSON carries the structure either way: that reader is a program selecting
+	// fields, and a consumer must not be able to parse a report and silently
+	// miss a section because a flag was absent.
+	if len(e.report(testSession).Chains.Prompts) != 1 {
+		t.Error("the JSON form dropped the chain without --chain; a consumer selecting " +
+			"fields would see a session with no chains rather than a flag it did not pass")
 	}
 }
 

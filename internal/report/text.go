@@ -23,13 +23,37 @@ const (
 	none    = "none"
 )
 
+// TextOption configures the terminal rendering.
+//
+// Variadic for the same reason Build's options are: a caller that has no
+// opinion about the chain view keeps compiling and keeps getting the summary.
+type TextOption func(*textOptions)
+
+type textOptions struct{ chain bool }
+
+// WithChain expands the causal view from a count into the per-call listing.
+//
+// Off by default because it is the only section whose LENGTH GROWS WITH THE
+// SESSION -- one line per tool call, so a long day's work buries a fixed-size
+// report that a reader opens to see coverage and findings. The count is always
+// shown, so the view can never be invisible; the flag decides whether it is
+// expanded, not whether it exists. JSON always carries the whole structure,
+// because that reader is a program and is not scrolling.
+func WithChain() TextOption {
+	return func(o *textOptions) { o.chain = true }
+}
+
 // Text renders a report for a terminal.
 //
 // Nothing beyond the store's own fields is printed: ids, tool names, transcript
 // paths, counts and reason codes. There is no field here that could carry a
 // command line or a tool response, because there is no such field in the
 // records this reads.
-func Text(w io.Writer, rep *Report) error {
+func Text(w io.Writer, rep *Report, opts ...TextOption) error {
+	var cfg textOptions
+	for _, o := range opts {
+		o(&cfg)
+	}
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "rashomon report -- generated %s\n", stamp(rep.GeneratedAtUnixMS))
 
@@ -53,13 +77,13 @@ func Text(w io.Writer, rep *Report) error {
 		return err
 	}
 	for _, sess := range rep.Sessions {
-		writeSession(&b, sess)
+		writeSession(&b, sess, cfg)
 	}
 	_, err := w.Write(b.Bytes())
 	return err
 }
 
-func writeSession(b *bytes.Buffer, sess Session) {
+func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	fmt.Fprintf(b, "\nsession %s\n", sess.SessionID)
 	fmt.Fprintf(b, "  install: %s\n", orUnknown(sess.InstallID))
 	// The account-versus-record block first, then destinations, then the
@@ -71,7 +95,7 @@ func writeSession(b *bytes.Buffer, sess Session) {
 	writeSilentFailures(b, sess.SilentFailures)
 	writeDestinations(b, sess.Destinations)
 	writeFamilies(b, sess.Families)
-	writeChains(b, sess.Chains)
+	writeChains(b, sess.Chains, cfg.chain)
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
 	fmt.Fprintf(b, "  reasons: %s\n", list(sess.Coverage.Reasons))
 	fmt.Fprintf(b, "  start recorded: %s\n", yesNo(sess.Coverage.StartRecorded))
@@ -431,11 +455,29 @@ func writeFamilies(b *bytes.Buffer, fc FamilyCoverage) {
 // call that named it. That is a genuinely useful join and a genuinely easy
 // misreading, and the misreading overstates what is known -- so the line saying
 // so is printed every time the section is, not once in the documentation.
-func writeChains(b *bytes.Buffer, c Chains) {
+func writeChains(b *bytes.Buffer, c Chains, expand bool) {
 	if len(c.Prompts) == 0 && c.Unchained == 0 {
 		return
 	}
 	fmt.Fprintf(b, "  chains: %d\n", len(c.Prompts))
+
+	// The COUNT is unconditional and the listing is not. This section is the
+	// only one whose length grows with the session -- one line per tool call --
+	// so on a long day it buries a report whose other sections are fixed size
+	// and which a reader opens for coverage and findings. Hiding it entirely
+	// behind a flag would be the opposite error: a view nobody knows exists is
+	// the same as one that was never built.
+	if !expand {
+		if len(c.Prompts) > 0 {
+			fmt.Fprintf(b, "    --chain lists the calls under each prompt\n")
+		}
+		if c.Unchained > 0 {
+			fmt.Fprintf(b, "    %d call%s could not be placed in a chain "+
+				"(no prompt id recorded)\n", c.Unchained, plural(c.Unchained))
+		}
+		return
+	}
+
 	if len(c.Prompts) > 0 {
 		fmt.Fprintf(b, "    a host's state is that host's across this session, "+
 			"not proof this call reached it\n")

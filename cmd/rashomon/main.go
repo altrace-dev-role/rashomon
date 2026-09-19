@@ -623,6 +623,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 	sessionID := ""
 	asJSON := false
 	redact := false
+	chain := false
 	proxyStore := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -642,6 +643,8 @@ func cmdReport(args []string, stdout io.Writer) error {
 			asJSON = true
 		case "--redact":
 			redact = true
+		case "--chain":
+			chain = true
 		default:
 			return fmt.Errorf("unknown argument %q", args[i])
 		}
@@ -664,7 +667,15 @@ func cmdReport(args []string, stdout io.Writer) error {
 		rep = report.Redact(rep, key)
 	}
 	if !asJSON {
-		return report.Text(stdout, rep)
+		// --chain expands the text listing only. The JSON carries the whole
+		// structure either way: that reader is a program selecting fields, not
+		// a person scrolling, and making it pass a flag to receive a section
+		// would mean a consumer could parse a report and silently miss one.
+		var opts []report.TextOption
+		if chain {
+			opts = append(opts, report.WithChain())
+		}
+		return report.Text(stdout, rep, opts...)
 	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
@@ -770,9 +781,12 @@ usage:
                                marker, whatever its id
   rashomon status                say what is installed and what the store holds,
                                writing nothing and creating no store
-  rashomon report [--session S] [--json] [--redact] [--proxy-store PATH]
+  rashomon report [--session S] [--json] [--redact] [--chain]
+                  [--proxy-store PATH]
                                render declarations and coverage, as text for a
-                               terminal or as JSON for a consumer
+                               terminal or as JSON for a consumer; --chain
+                               lists the calls under each prompt, which JSON
+                               always carries
   rashomon forget --host H       evict every call that named host H, and its
                                baseline entry
   rashomon forget --since T      evict records recorded at or after T

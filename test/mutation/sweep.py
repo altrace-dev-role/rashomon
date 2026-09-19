@@ -270,6 +270,11 @@ m("P1 a denial reads as a missing execution record", "internal/report/chains.go"
 # The aliasing one. It is the reason redactChains rebuilds three slices rather
 # than copying the struct, and a shallow copy compiles and renders correctly --
 # the damage is entirely to the ORIGINAL report the caller still holds.
+m("P1 the chain count hides behind the flag too", "internal/report/text.go",
+  '\tfmt.Fprintf(b, "  chains: %d\\n", len(c.Prompts))', "", "TestH31|TestChains")
+m("P1 the chain flag is inverted", "cmd/rashomon/main.go",
+  "\t\tif chain {\n\t\t\topts = append(opts, report.WithChain())",
+  "\t\tif !chain {\n\t\t\topts = append(opts, report.WithChain())", "TestH31")
 m("P1 redaction writes through to the unredacted report", "internal/report/redact.go",
   "\t\t\tl.Hosts = make([]LinkHost, 0, len(link.Hosts))\n\t\t\tfor _, h := range link.Hosts {\n\t\t\t\t// The state is carried through untouched: it is a verdict, not\n\t\t\t\t// a name, and it is the only thing left worth reading.\n\t\t\t\tl.Hosts = append(l.Hosts, LinkHost{Host: redactHost(h.Host, key), State: h.State})\n\t\t\t}",
   "\t\t\tfor k := range l.Hosts {\n\t\t\t\tl.Hosts[k].Host = redactHost(l.Hosts[k].Host, key)\n\t\t\t}",
