@@ -53,7 +53,7 @@ declaration (identifiers and shape only — never content).
    macOS does not ship `~/.local/bin` or put it on PATH — the mkdir and the
    PATH check matter there. On Windows, the launcher is
    `scripts\claude-rashomon.ps1` (run it with `powershell -File`, or put
-   `scripts\` on PATH); the POSIX launcher and the SessionStart state line
+   `scripts\` on PATH); the POSIX launcher and the optional state-line hook
    need Git Bash, which Claude Code uses for hooks on Windows when present.
    From then on `claude-rashomon` in any directory runs `watch` and starts
    `claude` in one step, with the liveness probe in place from the session's

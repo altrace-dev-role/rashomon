@@ -25,7 +25,10 @@ machine. That comparison is the one thing neither half can produce alone — a
 host reached by a command that never named it appears in no transcript and in
 no hook log, because nothing in the session knows about it.
 
-Claude Code only. No other agent harness is in scope.
+Claude Code only: the hooks, the store and the report describe Claude Code
+sessions and nothing else, and no other agent harness is recorded. The Cursor
+command files in this repository operate the tool from Cursor; they do not
+record it, and nothing here can.
 
 Built by [Altrace](https://github.com/altrace-dev-role). The proxy whose store
 this reads is a separate, closed product; `rashomon` is useful without it and
@@ -137,15 +140,11 @@ binary lives.
 
 This repository carries its own Claude Code surface, and none of it bends the
 rule above about settings files: the binary still writes only to
-`~/.claude/settings.json`, and only when you run `watch`.
+`~/.claude/settings.json`, and only when you run `watch`. The repository
+installs no hook of its own — there is no committed `.claude/settings.json` —
+so nothing here runs in your sessions until you run `watch` yourself or add
+the optional state line below.
 
-- `.claude/settings.json` installs a `SessionStart` hook for sessions opened
-  in this repo. It is read-only, emits one fixed line of recorder state into
-  the session's context, creates no store, and always exits 0. Claude Code
-  asks you to approve project hooks on first use; declining it costs you only
-  that state line. On Windows it needs Git Bash, which Claude Code uses for
-  hooks when present — without Git Bash the hook cannot run and errors once
-  per session start.
 - `scripts/claude-rashomon` (POSIX) and `scripts/claude-rashomon.ps1`
   (Windows) start a recorded session in one word: check `claude` exists, run
   `watch`, then start `claude` with arguments passed through.

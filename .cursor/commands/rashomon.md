@@ -3,8 +3,9 @@
 Arm the rashomon recorder from Cursor.
 
 Be precise with the user about what this does and does not do: rashomon
-records **Claude Code sessions only** ("Claude Code only. No other agent
-harness is in scope" — README). Running this from Cursor installs the
+records **Claude Code sessions only** ("Claude Code only: the hooks, the
+store and the report describe Claude Code sessions and nothing else" —
+README). Running this from Cursor installs the
 recorder for the machine's *Claude Code* sessions. **This Cursor session is
 not recorded**, and rashomon has no hook into Cursor's agent loop today.
 Never imply otherwise.
