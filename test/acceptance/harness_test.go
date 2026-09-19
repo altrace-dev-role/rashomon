@@ -302,6 +302,26 @@ type reportSession struct {
 		ProxyOnPath           string   `json:"proxy_on_path"`
 		ExecutedNotAsDeclared int      `json:"executed_not_as_declared"`
 	} `json:"destinations"`
+	// The causal view: which prompt produced which calls.
+	Chains struct {
+		Prompts []struct {
+			TranscriptPath string `json:"transcript_path"`
+			PromptID       string `json:"prompt_id"`
+			Links          []struct {
+				Seq       int64  `json:"seq"`
+				ToolUseID string `json:"tool_use_id"`
+				ToolName  string `json:"tool_name"`
+				Program   string `json:"program"`
+				VerbClass string `json:"verb_class"`
+				Outcome   string `json:"outcome"`
+				Hosts     []struct {
+					Host  string `json:"host"`
+					State string `json:"state"`
+				} `json:"hosts"`
+			} `json:"links"`
+		} `json:"prompts"`
+		Unchained int `json:"unchained_calls"`
+	} `json:"chains"`
 }
 
 // report renders one session as JSON. The JSON form is what a consumer parses

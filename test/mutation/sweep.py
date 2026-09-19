@@ -253,6 +253,28 @@ m("P1 the counters are derived separately from Unreached", "internal/wire/wire.g
   "\t\t\td.Unreached = false\n\t\t\treached = true", "\t\t\td.Unreached = false",
   "TestInWindow")
 
+# Part 1 -- the chain view. Each of these is a way the view keeps rendering
+# while asserting something the store does not support.
+m("P1 chains are keyed on the prompt id alone", "internal/report/chains.go",
+  "\t\tk := key{transcript: d.TranscriptPath, prompt: *d.PromptID}",
+  "\t\tk := key{prompt: *d.PromptID}", "TestChains")
+m("P1 links are left in store order", "internal/report/chains.go",
+  "\t\tsort.SliceStable(c.Links, func(i, j int) bool { return c.Links[i].Seq < c.Links[j].Seq })",
+  "", "TestChains")
+m("P1 an unattributable window still yields host verdicts", "internal/report/chains.go",
+  "\tif !windowApplied {\n\t\treturn LinkUnknown\n\t}\n", "", "TestChains")
+m("P1 calls with no prompt id are dropped silently", "internal/report/chains.go",
+  "\t\t\tout.Unchained++\n\t\t\tcontinue", "\t\t\tcontinue", "TestChains")
+m("P1 a denial reads as a missing execution record", "internal/report/chains.go",
+  "\tif denied[id] {\n\t\treturn LinkOutcomeDenied\n\t}\n", "", "TestChains|TestH31")
+# The aliasing one. It is the reason redactChains rebuilds three slices rather
+# than copying the struct, and a shallow copy compiles and renders correctly --
+# the damage is entirely to the ORIGINAL report the caller still holds.
+m("P1 redaction writes through to the unredacted report", "internal/report/redact.go",
+  "\t\t\tl.Hosts = make([]LinkHost, 0, len(link.Hosts))\n\t\t\tfor _, h := range link.Hosts {\n\t\t\t\t// The state is carried through untouched: it is a verdict, not\n\t\t\t\t// a name, and it is the only thing left worth reading.\n\t\t\t\tl.Hosts = append(l.Hosts, LinkHost{Host: redactHost(h.Host, key), State: h.State})\n\t\t\t}",
+  "\t\t\tfor k := range l.Hosts {\n\t\t\t\tl.Hosts[k].Host = redactHost(l.Hosts[k].Host, key)\n\t\t\t}",
+  "TestRedactChains")
+
 # Re-anchored after the schema-3 bump reformatted the file. The mutation is
 # unchanged: remove a declared key and confirm the allowlist test notices.
 m("the store schema drops a record's key", "docs/store-schema.json",

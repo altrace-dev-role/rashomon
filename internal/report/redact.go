@@ -160,10 +160,48 @@ func Redact(rep *Report, key []byte) *Report {
 			ts[j] = t
 		}
 		s.Transcripts = ts
+		s.Chains = redactChains(sess.Chains, key)
 
 		out.Sessions[i] = s
 	}
 	return &out
+}
+
+// redactChains digests the names in the causal view.
+//
+// EVERY LEVEL IS REBUILT, and that is the whole substance of this function.
+// Redact returns a new report so the caller can still render the original --
+// `rashomon report --redact` and a plain `report` are the same code path with a
+// different flag -- but Go's value copy of a struct shares its slices. So
+// assigning into `chain.Links[j].Hosts[k].Host` through a shallow copy writes
+// the digest into the ORIGINAL report's backing array: the unredacted render
+// would then print digests, and, far worse for a function whose users are
+// deciding what to send someone, a second render of the same in-memory report
+// would look correctly redacted while sharing state with an object the caller
+// believes is untouched.
+//
+// Three levels of slice, three allocations. The transcript path is digested
+// with the same keyed helper the Transcript section uses -- one path, not a
+// second one that could drift from it.
+func redactChains(c Chains, key []byte) Chains {
+	out := Chains{Prompts: make([]Chain, 0, len(c.Prompts)), Unchained: c.Unchained}
+	for _, chain := range c.Prompts {
+		ch := chain
+		ch.TranscriptPath = redactHost(chain.TranscriptPath, key)
+		ch.Links = make([]Link, 0, len(chain.Links))
+		for _, link := range chain.Links {
+			l := link
+			l.Hosts = make([]LinkHost, 0, len(link.Hosts))
+			for _, h := range link.Hosts {
+				// The state is carried through untouched: it is a verdict, not
+				// a name, and it is the only thing left worth reading.
+				l.Hosts = append(l.Hosts, LinkHost{Host: redactHost(h.Host, key), State: h.State})
+			}
+			ch.Links = append(ch.Links, l)
+		}
+		out.Prompts = append(out.Prompts, ch)
+	}
+	return out
 }
 
 // accountRedacted is what stands in for the agent's summary in a shared

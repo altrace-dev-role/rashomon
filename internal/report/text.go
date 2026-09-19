@@ -71,6 +71,7 @@ func writeSession(b *bytes.Buffer, sess Session) {
 	writeSilentFailures(b, sess.SilentFailures)
 	writeDestinations(b, sess.Destinations)
 	writeFamilies(b, sess.Families)
+	writeChains(b, sess.Chains)
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
 	fmt.Fprintf(b, "  reasons: %s\n", list(sess.Coverage.Reasons))
 	fmt.Fprintf(b, "  start recorded: %s\n", yesNo(sess.Coverage.StartRecorded))
@@ -419,6 +420,64 @@ func writeFamilies(b *bytes.Buffer, fc FamilyCoverage) {
 	for _, n := range fc.NotObservable {
 		fmt.Fprintf(b, "    %s\n", n)
 	}
+}
+
+// writeChains renders the causal spine: which prompt produced which calls.
+//
+// THE LEGEND IS NOT DECORATION. A host on a link reads as though that call
+// reached it, and it does not mean that: the proxy's store carries no
+// tool_use_id, so no wire row can be attributed to an individual call. The
+// state is that host's state across the session's window, sitting next to the
+// call that named it. That is a genuinely useful join and a genuinely easy
+// misreading, and the misreading overstates what is known -- so the line saying
+// so is printed every time the section is, not once in the documentation.
+func writeChains(b *bytes.Buffer, c Chains) {
+	if len(c.Prompts) == 0 && c.Unchained == 0 {
+		return
+	}
+	fmt.Fprintf(b, "  chains: %d\n", len(c.Prompts))
+	if len(c.Prompts) > 0 {
+		fmt.Fprintf(b, "    a host's state is that host's across this session, "+
+			"not proof this call reached it\n")
+	}
+
+	var lastPath string
+	for _, ch := range c.Prompts {
+		if ch.TranscriptPath != lastPath {
+			fmt.Fprintf(b, "    %s\n", ch.TranscriptPath)
+			lastPath = ch.TranscriptPath
+		}
+		fmt.Fprintf(b, "    prompt %s\n", ch.PromptID)
+		for _, l := range ch.Links {
+			shape := l.VerbClass
+			if l.Program != "" {
+				shape = l.Program + ", " + l.VerbClass
+			}
+			fmt.Fprintf(b, "      %d  %s (%s)  %s%s\n",
+				l.Seq, l.ToolName, shape, l.Outcome, linkHosts(l.Hosts))
+		}
+	}
+	if c.Unchained > 0 {
+		// Said plainly rather than omitted. These are real calls, and a section
+		// that silently dropped them would read as a complete account of the
+		// session while leaving work out of it.
+		fmt.Fprintf(b, "    %d call%s could not be placed in a chain "+
+			"(no prompt id recorded)\n", c.Unchained, plural(c.Unchained))
+	}
+}
+
+// linkHosts renders the hosts a call named, or nothing at all when it named
+// none -- which is most calls, and a trailing "->" on every one of them would
+// bury the ones that matter.
+func linkHosts(hosts []LinkHost) string {
+	if len(hosts) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(hosts))
+	for _, h := range hosts {
+		parts = append(parts, h.Host+" "+h.State)
+	}
+	return "  -> " + strings.Join(parts, ", ")
 }
 
 // writeRewritten names the calls behind the count above.

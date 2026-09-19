@@ -172,6 +172,11 @@ type Session struct {
 	// Families is which of this session's tool families were confirmed to
 	// transit the proxy, derived from the join rather than from a probe.
 	Families FamilyCoverage `json:"families"`
+
+	// Chains is the causal view: which prompt produced which calls. Every other
+	// section here is a set, and a set is exactly the structure that discards
+	// the edge between a request and its consequences.
+	Chains Chains `json:"chains"`
 }
 
 // Option configures Build.
@@ -282,6 +287,11 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, window(run)), st.Root(), forgotten)
 		sess.Families = buildFamilies(run, observedHostSet(sess.Destinations),
 			sess.Destinations.Observed, sess.Destinations.Reason)
+		// After Destinations, and reading it rather than the observation: the
+		// chain's host states must be the ones the destinations section already
+		// suppressed and accounted for, or a forgotten host returns in a
+		// different section under a different name for the same row.
+		sess.Chains = buildChains(run, sess.Destinations, deniedSet(sess.Transcripts), forgotten)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
 		sess.SilentFailures = buildSilentFailures(run, sess.Account)
