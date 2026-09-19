@@ -1,6 +1,6 @@
 # Chain view, sensitive-file labels, and rule-match layer
 
-Status: proposed, revision 6. Sign-off is per part. Part 1 (chain view) is
+Status: proposed, revision 7. Sign-off is per part. Part 1 (chain view) is
 approved to build with the changes this revision carries. Part 2
 (sensitive-file labels) is the first thing this track builds, ahead of Part
 3. Part 3 (rule-match layer) is held until the three owed measurements are
@@ -37,7 +37,13 @@ sign-off now names the pull request it asks for a comment on, so the
 reference survives the squash merge; the `--settings` clause is attributed to
 its real source and measurement 2's population is pinned to match; and H-69
 bounds the filesystem access Part 3 introduces into the hook path, which
-revision 5 observed and left uncovered.
+revision 5 observed and left uncovered. Revision 7 takes the maintainer's three
+rulings on revision 6: the chain's hosts render under the keyed digest Phase
+B introduced, not the unkeyed one; the default text report carries a
+`chains: N` line so the flag is discoverable; and the schema reservation is
+fields only -- `file_label` moves onto the Phase B branch, where it should
+have been, and the `policy` record type is not reserved at all, because a
+structure from an unapproved part does not belong in a published contract.
 
 ## Why
 
@@ -242,11 +248,16 @@ section header says so once.
 ### Rendering
 
 - `rashomon report --chain` adds a `chains` section per session (decision
-  1). The default text report is unchanged. JSON gains `chains`, always
-  present, `[]` when empty.
+  1). The default text report carries one line, `chains: N`, and keeps the
+  listing behind the flag: a view nobody knows exists is the same as one
+  never built, and the count is what tells a reader there is something to
+  ask for. JSON gains `chains`, always present, `[]` when empty.
 - Every rendered list is sorted. `--redact` deep-copies chains and every
   link's host slices, so redaction never mutates the caller's report; hosts
-  render as the destinations section's unkeyed truncated digest.
+  render as the destinations section's digest, which Phase B made an HMAC
+  under the install key in `896fb9c`. Part 1 lands after Phase B, so that is
+  the digest it inherits; the "what exists" note above describes the merge
+  target as it stands today, before that commit.
 - No count of missing links; `missing_from_store` keeps them.
 
 ### Acceptance
@@ -855,15 +866,26 @@ Phase B branch.
 
 ## Schema
 
-Schema 3 is being cut on the Phase B branch; this document reserves, not
-defines: `host_source` on declaration hosts; `rule_match`, nullable, on the
-declaration and the execution record; the `policy` record type; the reason
-enum as this revision names it; and -- new, for Part 2 -- `file_label`,
-nullable, on the declaration, which the reservation does not yet carry. The
-reservation makes `rule_match` and `file_label` required only under
-`schema_version == 3` (an `allOf` keyed on the version), so no record on disk
-fails the published contract, and `store.Accepts` admits 3. This track's
-branches add behaviour to that schema, not schema.
+Schema 3 is cut on the Phase B branch, and this document reserves nothing on
+its own. The reservation carries `host_source` on declaration hosts;
+`rule_match`, nullable, on the declaration and the execution record; and
+`file_label`, nullable, on the declaration. `file_label` was missing from the
+reservation as first written and is being added on the Phase B branch before
+that pull request opens, so Part 2 rebases onto it and adds nothing to the
+schema at all.
+
+Each is required only under `schema_version == 3`, through an `allOf` keyed
+on the version, so no record already on disk fails the published contract,
+and `store.Accepts` admits 3.
+
+The `policy` record type is NOT reserved, and the rule is worth stating
+because it is the general one: reserve a field whose only commitment is that
+it may be null; never reserve a structure. `policy` is a whole record type
+with named fields belonging to a part that has not been approved, and putting
+that shape in the published contract would freeze a design that may still
+move. Part 3's own pull request adds it, once Part 3 is approved.
+
+This track's branches add behaviour to that schema, not schema.
 
 ## Decisions taken
 
@@ -877,8 +899,9 @@ branches add behaviour to that schema, not schema.
 6. Hosts named on `Bash` command lines: baseline only. The allowlist-file
    alternative is a product non-goal; closed.
 7. `matcher_disagreements` renders only in its section.
-8. One schema-3 bump on the Phase B branch, reserving the fields above plus
-   `file_label`.
+8. One schema-3 bump on the Phase B branch, reserving `host_source`,
+   `rule_match` and `file_label` -- fields, and only fields. `policy` is not
+   reserved; Part 3's pull request adds it on approval.
 9. Per-call wire attribution: later; proxy-side.
 
 ## Ownership and order
