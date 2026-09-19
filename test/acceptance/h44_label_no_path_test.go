@@ -39,6 +39,36 @@ func labelSchemaGate(t *testing.T, e *env, sessionID string) {
 	t.Skipf("declarations are schema %d, which does not carry file_label: schema 3 reserves it and is being cut on the Phase B branch (decision 8)", int(v))
 }
 
+// labelSchemaLive answers the same question as labelSchemaGate for a test
+// that must decide BEFORE it opens any subtests.
+//
+// A parent whose every subtest skips still reports PASS, and a green summary
+// line over nothing but skips is read as coverage -- the same mistake the
+// gate exists to prevent. A parent that has to gate calls this once and skips
+// itself.
+func labelSchemaLive(t *testing.T) bool {
+	t.Helper()
+	e := newEnv(t)
+	e.watched(testSession)
+
+	p := defaultPayload()
+	p.ToolName = "Read"
+	p.ToolInput = map[string]any{"file_path": "/home/u/.ssh/id_rsa"}
+	e.mustHook(p.build(t))
+
+	decls := e.declarations(testSession)
+	if len(decls) == 0 {
+		t.Fatal("no declaration to read a schema version from")
+	}
+	v, ok := decls[0].fields["schema_version"].(float64)
+	if !ok {
+		t.Fatalf("declaration carries no numeric schema_version: %v", decls[0].fields["schema_version"])
+	}
+	return v >= 3
+}
+
+const labelSchemaSkip = "declarations are schema 2, which does not carry file_label: schema 3 reserves it and is being cut on the Phase B branch (decision 8)"
+
 // TestH44_NoPathEverReachesTheStore is H-44.
 //
 // The label is derived from a path, and a path is the most content-shaped
@@ -47,6 +77,13 @@ func labelSchemaGate(t *testing.T, e *env, sessionID string) {
 // keeps nothing of it, so the canary here is a path SEGMENT, placed in
 // file_path and in notebook_path, the two fields shape.Label is allowed to
 // read.
+//
+// This half is NOT gated and always runs, because it covers every route a
+// path could take into the store or the output. Under schema 2 the label
+// never reaches a record, so it cannot observe the label channel itself --
+// H-44's named break, "store the basename", would be swallowed by the writer
+// gate. That claim is TestH44_PositiveTwin's, which is gated, and the unit
+// tests in internal/shape carry it today.
 //
 // Break: store the basename.
 func TestH44_NoPathEverReachesTheStore(t *testing.T) {
@@ -98,28 +135,6 @@ func TestH44_NoPathEverReachesTheStore(t *testing.T) {
 				}
 			}
 
-			// What the sweep above proves today, and what it does not.
-			//
-			// Under schema 2 the label never reaches a record, so the sweep
-			// covers every OTHER route a path could take into the store or
-			// the output -- which is worth running and is why it is not
-			// gated. It cannot, however, observe the label channel itself:
-			// H-44's named break is "store the basename", and a derivation
-			// that did exactly that would still be swallowed by the gate.
-			//
-			// This is the assertion that closes that hole once the field
-			// lands: the label channel was live, it produced a value, and
-			// the value is a vocabulary constant rather than anything drawn
-			// from the path.
-			labelSchemaGate(t, e, testSession)
-
-			got := e.declarations(testSession)[0].str("file_label")
-			if got == "" {
-				t.Fatal("schema carries file_label but the record has none, so this sweep observed nothing about the label channel")
-			}
-			if strings.Contains(got, canary) {
-				t.Errorf("file_label is %q, which carries the canary", got)
-			}
 		})
 	}
 }
@@ -140,8 +155,15 @@ func TestH44_PositiveTwin(t *testing.T) {
 
 	labelSchemaGate(t, e, testSession)
 
-	decls := e.declarations(testSession)
-	if got := decls[0].str("file_label"); got != "ssh-key" {
+	got := e.declarations(testSession)[0].str("file_label")
+	if got != "ssh-key" {
 		t.Errorf("file_label = %q, want %q", got, "ssh-key")
+	}
+	// The label channel is live here, which is what makes the next line an
+	// assertion rather than a tautology: a derivation that returned the
+	// basename would put it in this field, and the sweep above cannot see
+	// that while the writer gate is closed.
+	if strings.Contains(got, "id_rsa") {
+		t.Errorf("file_label is %q, which carries a piece of the path", got)
 	}
 }
