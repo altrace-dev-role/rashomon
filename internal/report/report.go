@@ -81,6 +81,14 @@ type Declarations struct {
 	Dropped           []string       `json:"dropped"`
 	WithoutExecution  []Unexecuted   `json:"without_execution"`
 	ByTool            map[string]int `json:"by_tool"`
+
+	// ByLabel counts declarations per file_label (v3). A declaration whose
+	// tool names no file is not counted at all, so the total here is the
+	// number of calls that named one, not the number of declarations.
+	//
+	// Empty until schema 3 carries the field, because a label the hook path
+	// dropped is a label this count never sees.
+	ByLabel map[string]int `json:"by_label"`
 }
 
 // Unexecuted names a declaration that no execution record answers. It is not a
@@ -322,6 +330,7 @@ func build(run *store.Run) Session {
 			Dropped:          nonNil(run.Dropped()),
 			WithoutExecution: []Unexecuted{},
 			ByTool:           map[string]int{},
+			ByLabel:          map[string]int{},
 		},
 		Executions:  Executions{Recorded: len(run.Executions)},
 		Transcripts: []Transcript{},
@@ -334,6 +343,9 @@ func build(run *store.Run) Session {
 	mode := map[string]string{}
 	for _, d := range run.Declarations {
 		sess.Declarations.ByTool[d.ToolName]++
+		if d.FileLabel != nil {
+			sess.Declarations.ByLabel[*d.FileLabel]++
+		}
 		mode[d.ToolUseID] = d.PermissionMode
 	}
 	executed := map[string]bool{}
