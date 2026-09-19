@@ -1,6 +1,6 @@
 # Chain view, sensitive-file labels, and rule-match layer
 
-Status: proposed, revision 5. Sign-off is per part. Part 1 (chain view) is
+Status: proposed, revision 6. Sign-off is per part. Part 1 (chain view) is
 approved to build with the changes this revision carries. Part 2
 (sensitive-file labels) is the first thing this track builds, ahead of Part
 3. Part 3 (rule-match layer) is held until the three owed measurements are
@@ -32,7 +32,12 @@ rate unmeasured; `policy` concurrency unspecified; `shape.Derive` unable to
 host matching; two settings sources the matcher never reads; three semantics
 the docs contradict; stale claims about the tree; the labels ordered first;
 and two measurements taken, one of which rejected a mechanism revision 4
-relied on.
+relied on. Revision 6 takes an internal review of revision 5: the
+sign-off now names the pull request it asks for a comment on, so the
+reference survives the squash merge; the `--settings` clause is attributed to
+its real source and measurement 2's population is pinned to match; and H-69
+bounds the filesystem access Part 3 introduces into the hook path, which
+revision 5 observed and left uncovered.
 
 ## Why
 
@@ -411,7 +416,12 @@ inside a `Bash` call.
    four layers per invocation is up to twelve reads, doubled across both
    hooks.
 2. **The unknown rate.** The share of declarations on real stored sessions
-   that would read `unknown`, per reason, before any build. On a machine with
+   that would read `unknown`, per reason, before any build. Population: real
+   stored sessions from plain launches and, once the wrapper named under
+   "what is not visible" exists, launches under it, the two reported apart --
+   a launch under `--settings` carries a layer this matcher can never read,
+   so its unknown rate is not the plain one and averaging them would hide
+   the gap the flag opens. On a machine with
    a `.env` or `.ssh` deny rule most `Bash` verdicts may read
    `file_target_not_extractable`; if so, version 1 ships that number rather
    than a matcher that pretends otherwise.
@@ -436,8 +446,15 @@ Not visible, and therefore never inferred:
   `unknown` with `workspace_trust_unknown`;
 - **`--settings <file>`**, which applies above user, project and local and
   below managed, carries its own `permissions.*` and its own `/path` anchor
-  (`<directory of file>/path`) -- and is present by construction under the
-  team's own recommended v0.1 wrapper; **session rules** entered through
+  (`<directory of file>/path`). That this flag is present by construction
+  under the team's own recommended v0.1 wrapper is the maintainer's third
+  review comment on pull request #7, and that comment is its only source: it
+  is not read off the tree. At revision 6 nothing in this repository passes
+  the flag -- `internal/launch/launch.go` execs the user's own argv and
+  appends environment variables, injecting no `--settings`, and the only
+  mention of it on any branch is the README naming it as a limitation. The
+  claim is recorded here as the maintainer's, to be re-checked against that
+  wrapper once it exists; **session rules** entered through
   `/permissions`; **MDM or console-managed policy** delivered other than as
   the managed file. `layers.managed: absent` means "no managed file at the
   documented path", never "no managed policy";
@@ -804,13 +821,35 @@ Host rules: `WebFetch(domain:...)` matches like any rule; a host named on a
 - **H-68 -- the reasons are the code's reasons.** `shape.Reasons()` equals
   the schema enum, and every reason the implementation can emit is in it.
   Break: add a reason to the code and not to the function.
+- **H-69 -- the filesystem reach of the hook path is bounded by the call's
+  own input.** Over a fixture run, every path the hook path stats or
+  resolves is one the call's own `tool_input` named, or an ancestor or link
+  target reached from it under the documented resolution; no path derived
+  from a settings file, an environment variable, the transcript or the store
+  is stat'd; no path is ever opened for its contents, the settings layers
+  excepted, which are read through the bounded loader alone; and resolution
+  stops inside the matching deadline and the link-depth cap. Break: resolve
+  a path taken from anywhere but the call's input.
+
+  This item stands alone; it does not extend H-17's forbidden-import check.
+  H-17 asserts a property of the import graph -- `go list -deps` over the
+  recorder, against a list of packages that give code a path to a socket --
+  and the property here is behavioural: not which packages are linked, but
+  which paths a running hook touches. The two are not interchangeable, and
+  the obvious way to make H-17 carry it does not work: `os` cannot join the
+  forbidden list, because the store, the settings loader and the coverage
+  path all require it, so adding it would fail the check on code that
+  predates Part 3 and says nothing about paths either way. What H-17 does
+  establish stays true and is relied on here -- Part 3 adds no networking
+  package, and `os/exec` remains forbidden, so nothing on this path can
+  reach a filesystem through a child process either.
 
 ### Effort
 
 About four weeks after approval, after Part 2: bounded loader and layer-state
 detection; `shape.Match` with raw-string structure detection, the invariant,
 path anchoring, resolution and platform rules; the `policy` record with its
-lock-protected last-state file and cap; the report section; twenty-two items
+lock-protected last-state file and cap; the report section; twenty-three items
 and their breaks; the live items; the README sentence. Schema 3 is on the
 Phase B branch.
 
@@ -856,6 +895,10 @@ branches add behaviour to that schema, not schema.
 Part 1 is approved to build against H-31 through H-43. Part 2 is approved to
 build against H-44 through H-46 and starts now. Part 3 is approved for
 implementation once the three measurements are reported inside their budgets,
-by a further comment on this pull request. Each part lands as its own pull
-request, reported the way every H-item is: the command that ran it and its
-output, and the break that made it fail first.
+by a further comment on the pull request that carried this document: #7,
+<https://github.com/altrace-dev-role/rashomon/pull/7>. The number and the
+link are written out because a squash merge leaves this file in `main` with
+no other pointer to that thread, and the comment is where the approval
+lives. Each part lands as its own pull request, reported the way every
+H-item is: the command that ran it and its output, and the break that made
+it fail first.
