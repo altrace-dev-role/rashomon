@@ -40,7 +40,7 @@ type Nono struct {
 	// It is NOT automatically a recording failure, and the report must not
 	// present it as one: rashomon exports no HTTP_PROXY, so plain HTTP is
 	// outside what its proxy can see, while nono's reverse-proxy path sees it.
-	// PlainHTTPOnly counts how many of these are explained by exactly that.
+	// PlainHTTP names the subset explained by exactly that.
 	SawWhatTheProxyDidNot []string `json:"saw_what_the_proxy_did_not"`
 	// PlainHTTP NAMES the subset explained by plain HTTP rather than counting
 	// it. A count beside a list lets a reader conclude the whole list is benign
@@ -107,10 +107,25 @@ func buildNono(obs nono.Observation, dests Destinations, configured bool, forgot
 	n.Allowed = obs.Hosts()
 	n.Denied = obs.Denied()
 
+	// COUNTED ABOVE THE WIRE GUARD. This sat below it, so on the default path
+	// -- no proxy store, which is most users -- an unknown decision was
+	// absorbed silently, making the Decision field's own comment false in the
+	// one configuration it mattered.
+	for _, e := range obs.Events {
+		if e.Decision != nono.DecisionAllow && e.Decision != nono.DecisionDeny {
+			n.UnknownDecisions++
+		}
+	}
+
 	// The comparison is only meaningful when BOTH sides observed something.
 	// Against an unread proxy store every sandbox host would read as "the
 	// proxy missed it", which blames the wire for not being there.
-	if !dests.Observed {
+	if !dests.Observed || !dests.WindowApplied {
+		// WINDOW APPLIED TOO, not just observed. With unparseable proxy
+		// timestamps the destinations section prints "rows from other sessions
+		// may be included" -- and this section then listed every historical
+		// wire host as traffic the sandbox missed, with no caveat. chains.go
+		// gates hostState on this same flag for this same reason.
 		return n
 	}
 
@@ -164,11 +179,8 @@ func buildNono(obs nono.Observation, dests Destinations, configured bool, forgot
 			continue
 		}
 		if e.Decision != nono.DecisionAllow {
-			// Neither allow nor deny: a vocabulary this reader does not know.
-			// Counted rather than dropped -- the Decision field is carried
-			// verbatim precisely so a third value cannot be absorbed silently,
-			// and absorbing it here would have made that comment false.
-			n.UnknownDecisions++
+			// Already counted above the wire guard; skipped here so the
+			// number does not double when a proxy store is present.
 			continue
 		}
 		if excluded(e.Host) {

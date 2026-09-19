@@ -426,11 +426,43 @@ func TestSeam_AForgottenHostDoesNotReturnUnderTheSandboxHeading(t *testing.T) {
 	at := firstNonoEvent(t)
 	st, id, now := seamSessionAt(t, at)
 
+	// A DECLARATION NAMING THE HOST, because forget --host writes a gap only
+	// for runs where it evicted something -- and the predicate that drives
+	// suppression is built from those gaps. Without this the forget is a
+	// silent no-op and the test passes for the wrong reason.
+	//
+	// THAT IS ALSO A PRODUCT FINDING, recorded here because the test is where
+	// it was found: a host that appears ONLY in the sandbox's trail and never
+	// in rashomon's own records cannot be forgotten at all. `forget --host`
+	// forgets what rashomon recorded; the fourth evidence source has a hole.
+	if err := st.AppendDeclaration(store.Declaration{
+		Type: "declaration", SchemaVersion: 2, SessionID: id,
+		ToolUseID: "toolu_forget", ToolName: "Bash",
+		RecordedAtMS: at.UnixMilli(), Hosts: []string{"pypi.org"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := st.ForgetHost("pypi.org", now); err != nil {
 		t.Fatalf("forget --host: %v", err)
 	}
+	forgotten, err := st.ForgottenHost()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !forgotten("pypi.org") {
+		t.Fatal("premise: the forget wrote no gap, so nothing is suppressed and this " +
+			"test would pass for the wrong reason")
+	}
 
-	rep, err := Build(st, id, now, WithNonoTrail(nonoFixture))
+	// A PROXY STORE, because without one buildNono returns at its first guard
+	// and never reaches the code this test exists to pin. The first version
+	// omitted it: deleting suppressTrail entirely left this test -- and the
+	// whole suite -- green. A test that cannot fail when its subject is
+	// removed is not pinning anything, and this one was written for a defect
+	// that had already shipped once.
+	db := seamStore(t, [][4]string{{"r1", "", "example.com", ""}}, at)
+
+	rep, err := Build(st, id, now, WithNonoTrail(nonoFixture), WithProxyStore(db))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,5 +472,11 @@ func TestSeam_AForgottenHostDoesNotReturnUnderTheSandboxHeading(t *testing.T) {
 	}
 	if strings.Contains(b.String(), "pypi.org") {
 		t.Errorf("a forgotten host returned under the sandbox heading:\n%s", b.String())
+	}
+	// And the premise: the section must have RENDERED, or the absence above
+	// proves only that nothing was printed at all.
+	if !strings.Contains(b.String(), "sandbox (nono):") {
+		t.Fatalf("premise: the sandbox section did not render, so this test proves "+
+			"nothing:\n%s", b.String())
 	}
 }
