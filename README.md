@@ -158,9 +158,23 @@ the optional state line below.
   no store, always exits 0, tells present, absent and unreadable-or-unknown
   entries apart, and says `unknown` for anything it cannot establish. On
   Windows it needs Git Bash, which Claude Code uses for hooks when present.
-- `.claude/skills/rashomon*` are the slash commands: `/rashomon` starts
-  recording (the only one that may install anything), `/rashomon-report`,
-  `/rashomon-status`, and `/rashomon-stop` only read or detach.
+- `skills/rashomon*` are the slash commands: `/rashomon` starts recording
+  (the only one that may install anything), `/rashomon-forget` erases
+  records, and `/rashomon-report`, `/rashomon-status` and `/rashomon-stop`
+  only read or detach.
+
+  THEY ARE ASSETS YOU INSTALL, not project settings of this repository, and
+  they are deliberately not under `.claude/` here. A skill in this
+  repository's `.claude/skills` would load only for someone who has THIS
+  repository open — which is the one place the commands are least useful.
+  You want them where you actually work, so copy the ones you want:
+
+      cp -r skills/rashomon* ~/.claude/skills/        # every project
+      cp -r skills/rashomon* /path/to/project/.claude/skills/   # one project
+
+  The same reasoning as the optional `SessionStart` hook above: this
+  repository ships the asset and says how to install it, and installs
+  nothing itself.
 - `.cursor/commands/rashomon*.md` give Cursor the same slash commands for
   OPERATING the tool — status, report, detach, and arming `watch` for the
   machine's Claude Code sessions. They do not extend the scope stated at the

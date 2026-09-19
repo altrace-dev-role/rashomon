@@ -34,14 +34,22 @@ declaration (identifiers and shape only — never content).
 3. Run `$RASHOMON status` and show the result, so the user sees the five
    entries as present and where the store lives.
 
-4. Tell the user, briefly:
+4. Tell the user, briefly, and say the SCOPE first — it is the part they are
+   actually agreeing to:
+   - Recording is USER-WIDE AND OPEN-ENDED, not this session and not this
+     project. The entries go in `~/.claude/settings.json`, which Claude Code
+     reads for every project on this machine, so every session from now on is
+     recorded — including unrelated repositories and client work — until
+     `/rashomon-stop` or the `detach --install <id>` line removes them.
+     Someone who is under an agreement not to instrument a particular
+     codebase needs to know that before saying yes, not after.
    - Recording covers tool calls from this point on. A session the recorder
      joined mid-way reports its coverage as `unverified` (reason
      `probe_absent`) — that is honest accounting, not a failure. Sessions
      started after this install are eligible for verified coverage, because
      the probe is in place from their first moment; the report is the proof.
    - `/rashomon-report` renders what was recorded; `/rashomon-stop` removes
-     the hooks and keeps the store.
+     the hooks and keeps the store; `/rashomon-forget` erases records.
 
 5. Offer the one-word launcher once, if it is not already on their PATH.
    From the rashomon repo, on macOS or Linux:
