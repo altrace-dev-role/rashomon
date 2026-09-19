@@ -24,15 +24,14 @@ Modules, in the order `go list` reports them:
 
   github.com/dustin/go-humanize v1.0.1
   github.com/google/uuid v1.6.0
-  github.com/mattn/go-isatty v0.0.20
+  github.com/mattn/go-isatty v0.0.24
   github.com/ncruces/go-strftime v1.0.0
   github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec
-  golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546
-  golang.org/x/sys v0.37.0
-  modernc.org/libc v1.67.6
+  golang.org/x/sys v0.47.0
+  modernc.org/libc v1.75.7
   modernc.org/mathutil v1.7.1
-  modernc.org/memory v1.11.0
-  modernc.org/sqlite v1.46.1
+  modernc.org/memory v1.12.1
+  modernc.org/sqlite v1.59.0
 
 
 ==============================================================================
@@ -99,7 +98,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
 github.com/mattn/go-isatty
-v0.0.20
+v0.0.24
 (LICENSE)
 ==============================================================================
 
@@ -176,42 +175,8 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
-golang.org/x/exp
-v0.0.0-20251023183803-a4bb9ffd2546
-(LICENSE)
-==============================================================================
-
-Copyright 2009 The Go Authors.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-   * Redistributions of source code must retain the above copyright
-notice, this list of conditions and the following disclaimer.
-   * Redistributions in binary form must reproduce the above
-copyright notice, this list of conditions and the following disclaimer
-in the documentation and/or other materials provided with the
-distribution.
-   * Neither the name of Google LLC nor the names of its
-contributors may be used to endorse or promote products derived from
-this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-==============================================================================
 golang.org/x/sys
-v0.37.0
+v0.47.0
 (LICENSE)
 ==============================================================================
 
@@ -245,7 +210,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
 modernc.org/libc
-v1.67.6
+v1.75.7
 (LICENSE)
 ==============================================================================
 
@@ -313,7 +278,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
 modernc.org/memory
-v1.11.0
+v1.12.1
 (LICENSE)
 ==============================================================================
 
@@ -347,7 +312,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==============================================================================
 modernc.org/sqlite
-v1.46.1
+v1.59.0
 (LICENSE)
 ==============================================================================
 
