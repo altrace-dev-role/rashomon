@@ -59,43 +59,40 @@ func stringsOf(v any) []string {
 
 // TestH70_SSHDestinationsReachTheRecord is H-70.
 //
+// The expectation is the WHOLE list, not a membership test. Asserting only
+// that the wanted host is present cannot fail on a fabricated one, and a
+// false host is the failure this item cares most about: measured against an
+// extractor that appended a host of its own invention to every call, a
+// contains-style assertion stayed green.
+//
 // Break: extract ssh hosts from URL schemes only.
+// Second break: fabricate a host.
 func TestH70_SSHDestinationsReachTheRecord(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		cmd  string
-		want string
+		want []string
 	}{
-		{name: "ssh user@host", cmd: "ssh deploy@git.example.com", want: "git.example.com"},
-		{name: "ssh bare host", cmd: "ssh git.example.com", want: "git.example.com"},
-		{name: "scp to remote", cmd: "scp f deploy@host.example.com:/tmp/", want: "host.example.com"},
-		{name: "rsync to remote", cmd: "rsync -a ./ deploy@host.example.com:/srv/", want: "host.example.com"},
-		{name: "sftp user@host", cmd: "sftp deploy@files.example.com", want: "files.example.com"},
-		{name: "flag value is not the host", cmd: "ssh -i /k -p 2222 deploy@h.example.com", want: "h.example.com"},
-		{name: "config alias, recorded as named", cmd: "ssh myserver", want: "myserver"},
-		{name: "rsync boolean cluster", cmd: "rsync -avP deploy@host.example.com:/srv/ ./", want: "host.example.com"},
-		{name: "scp boolean -p", cmd: "scp -p deploy@host.example.com:/a ./", want: "host.example.com"},
-		{name: "at sign inside the path", cmd: "scp f deploy@host.example.com:/srv/app@1.2.3/", want: "host.example.com"},
+		{name: "ssh user@host", cmd: "ssh deploy@git.example.com", want: []string{"git.example.com"}},
+		{name: "ssh bare host", cmd: "ssh git.example.com", want: []string{"git.example.com"}},
+		{name: "scp to remote", cmd: "scp f deploy@host.example.com:/tmp/", want: []string{"host.example.com"}},
+		{name: "rsync to remote", cmd: "rsync -a ./ deploy@host.example.com:/srv/", want: []string{"host.example.com"}},
+		{name: "sftp user@host", cmd: "sftp deploy@files.example.com", want: []string{"files.example.com"}},
+		{name: "flag value is not the host", cmd: "ssh -i /k -p 2222 deploy@h.example.com", want: []string{"h.example.com"}},
+		{name: "config alias, recorded as named", cmd: "ssh myserver", want: []string{"myserver"}},
+		{name: "rsync boolean cluster", cmd: "rsync -avP deploy@host.example.com:/srv/ ./", want: []string{"host.example.com"}},
+		{name: "scp boolean -p", cmd: "scp -p deploy@host.example.com:/a ./", want: []string{"host.example.com"}},
+		{name: "at sign inside the path", cmd: "scp f deploy@host.example.com:/srv/app@1.2.3/", want: []string{"host.example.com"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ssh, wire := sshHostsOf(t, tc.cmd)
-
-			var found bool
-			for _, h := range ssh {
-				if h == tc.want {
-					found = true
-				}
+			if !reflect.DeepEqual(ssh, tc.want) {
+				t.Errorf("ssh_hosts = %v for %q, want exactly %v", ssh, tc.cmd, tc.want)
 			}
-			if !found {
-				t.Errorf("ssh_hosts = %v, want it to carry %q: the report calls ssh its blind spot, and a destination that reaches no list is not even that", ssh, tc.want)
-			}
-			// The same host must never reach the wire list. There it would
-			// read as something the session was expected to reach and did
-			// not, which is a finding rather than a known limitation.
-			for _, h := range wire {
-				if h == tc.want {
-					t.Errorf("hosts = %v, which carries the ssh destination %q: the proxy cannot see it, so it must not be counted as unreached", wire, tc.want)
-				}
+			// None of it may reach the wire list, where it would read as
+			// something the session was expected to reach and did not.
+			if len(wire) != 0 {
+				t.Errorf("hosts = %v for %q, want none: the proxy cannot see ssh", wire, tc.cmd)
 			}
 		})
 	}
