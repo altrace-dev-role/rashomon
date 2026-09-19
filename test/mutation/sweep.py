@@ -357,14 +357,18 @@ m("settings accepts a duplicate key", "internal/settings/document.go",
 m("settings accepts trailing data after the object", "internal/settings/document.go",
   "\t\tif _, err := dec.Token(); err != io.EOF {\n\t\t\treturn nil, errors.New(\"trailing data after the top-level object\")\n\t\t}", "\t\t_ = io.EOF",
   "TestParseRefuses")
+m("H-70 one flag table for all four programs", "internal/shape/hosts.go",
+  "var valueFlags = map[string]string{\n\t\"ssh\":   \"BbcDEeFIiJLlmOoPpQRSWw\",\n\t\"scp\":   \"cDFiJloPSX\",\n\t\"sftp\":  \"BbcDFiJloPRSsX\",\n\t\"rsync\": \"eBTfM@\",\n}",
+  "var valueFlags = map[string]string{\n\t\"ssh\":   \"pPioljJFe\",\n\t\"scp\":   \"pPioljJFe\",\n\t\"sftp\":  \"pPioljJFe\",\n\t\"rsync\": \"pPioljJFe\",\n}",
+  "TestH70_Forwarding|TestSSHFlagTables")
 m("H-70 ssh hosts come from URL schemes only", "internal/shape/hosts.go",
   "\t\tssh = mergeHosts(ssh, sshCommandHosts(text))", "\t\t_ = sshCommandHosts", "TestH70_SSH|TestSSHDestinations")
 m("H-70 every non-flag argument is recorded as a host", "internal/shape/hosts.go",
   "\t\tif prog == \"ssh\" || prog == \"sftp\" {\n\t\t\tif h, ok := destinationHost(a, false); ok {\n\t\t\t\tout = append(out, h)\n\t\t\t}\n\t\t\treturn out\n\t\t}\n\t\tif h, ok := destinationHost(a, true); ok {\n\t\t\tout = append(out, h)\n\t\t}",
   "\t\tif h, ok := destinationHost(a, false); ok {\n\t\t\tout = append(out, h)\n\t\t}", "TestH70_Local|TestSSHDestinations")
 m("H-70 the whole argument is recorded instead of its host", "internal/shape/hosts.go",
-  "\thadUser := false\n\tif at := strings.LastIndexByte(tok, '@'); at >= 0 {\n\t\thadUser = true\n\t\ttok = tok[at+1:]\n\t}",
-  "\thadUser := false\n\tif at := strings.LastIndexByte(tok, '@'); at >= 0 {\n\t\thadUser = true\n\t\ttok = tok[at+1:]\n\t}\n\tif requireRemote && hadUser {\n\t\treturn tok, true\n\t}",
+  "\trest, hadUser := tok, false\n",
+  "\trest, hadUser := tok, false\n\tif requireRemote && strings.Contains(tok, \"@\") {\n\t\treturn tok, true\n\t}\n",
   "TestH70_NoArgumentText|TestSSHDestinations")
 m("settings reads a non-object top level as an empty document", "internal/settings/document.go",
   "\t\treturn nil, errors.New(\"not a JSON object\")", "\t\treturn nil, nil", "TestParseRefuses")

@@ -308,3 +308,66 @@ func becauseHost(why string) string {
 	}
 	return "\n  " + why
 }
+
+// TestSSHFlagTablesArePerProgram is the regression table for the defects a
+// single shared flag set produced. One table for four programs is wrong in
+// both directions at once: it invents value flags for the programs that use
+// those letters as booleans, and it is missing most of the value flags of the
+// program with the longest usage line.
+func TestSSHFlagTablesArePerProgram(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		cmd     string
+		wantSSH []string
+		why     string
+	}{
+		// rsync and scp booleans that a shared table read as value flags.
+		{name: "rsync -avP", cmd: "rsync -avP deploy@host.example.com:/srv/ ./", wantSSH: []string{"host.example.com"},
+			why: "rsync -P is --partial --progress, a boolean; a shared table let it swallow the destination"},
+		{name: "rsync -i", cmd: "rsync -i deploy@host.example.com:/srv/ ./", wantSSH: []string{"host.example.com"},
+			why: "rsync -i is --itemize-changes, a boolean, though ssh -i takes a file"},
+		{name: "scp -p", cmd: "scp -p deploy@host.example.com:/a ./", wantSSH: []string{"host.example.com"},
+			why: "scp -p preserves times; it is scp -P that takes a port"},
+		{name: "scp -P port still consumes", cmd: "scp -P 2222 f deploy@host.example.com:/tmp/", wantSSH: []string{"host.example.com"}},
+
+		// ssh value flags that were missing, each of which recorded a false
+		// host built out of a forwarding spec.
+		{name: "ssh -L local forward", cmd: "ssh -L 8080:localhost:80 deploy@bastion.example.com",
+			wantSSH: []string{"bastion.example.com"},
+			why:     "recorded \"8080\" before: a port read as a hostname is worse than no host at all"},
+		{name: "ssh -D dynamic forward", cmd: "ssh -D 1080 deploy@bastion.example.com", wantSSH: []string{"bastion.example.com"}},
+		{name: "ssh -R remote forward", cmd: "ssh -R 9090:localhost:90 deploy@bastion.example.com", wantSSH: []string{"bastion.example.com"}},
+		{name: "ssh -W stdio forward", cmd: "ssh -W host:22 deploy@bastion.example.com", wantSSH: []string{"bastion.example.com"}},
+		{name: "ssh -b bind address", cmd: "ssh -b 10.0.0.1 deploy@bastion.example.com", wantSSH: []string{"bastion.example.com"}},
+		{name: "ssh -c cipher", cmd: "ssh -c aes256-gcm@openssh.com deploy@h.example.com", wantSSH: []string{"h.example.com"},
+			why: "the cipher name contains an @, which must not be read as a destination"},
+		{name: "ssh -E log file", cmd: "ssh -E /tmp/log deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -Q query", cmd: "ssh -Q cipher deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -m mac", cmd: "ssh -m hmac-sha2-256 deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -O control", cmd: "ssh -O check deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -S control path", cmd: "ssh -S /tmp/sock deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -I pkcs11", cmd: "ssh -I /usr/lib/p11.so deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+		{name: "ssh -w tunnel", cmd: "ssh -w 0:0 deploy@h.example.com", wantSSH: []string{"h.example.com"}},
+
+		// sftp and rsync value flags off their own usage lines.
+		{name: "sftp -b batch", cmd: "sftp -b /tmp/cmds deploy@files.example.com", wantSSH: []string{"files.example.com"}},
+		{name: "sftp -R requests", cmd: "sftp -R 64 deploy@files.example.com", wantSSH: []string{"files.example.com"}},
+		{name: "sftp -s subsystem", cmd: "sftp -s sftp deploy@files.example.com", wantSSH: []string{"files.example.com"}},
+		{name: "rsync -T temp dir", cmd: "rsync -T /tmp ./ deploy@h.example.com:/srv/", wantSSH: []string{"h.example.com"}},
+		{name: "rsync -f filter", cmd: "rsync -f '- *.log' ./ deploy@h.example.com:/srv/", wantSSH: []string{"h.example.com"}},
+		{name: "rsync -@ modify window", cmd: "rsync -@ 1 ./ deploy@h.example.com:/srv/", wantSSH: []string{"h.example.com"}},
+
+		// The path is split before the user, because a path may carry an '@'.
+		{name: "at sign inside the path", cmd: "scp f deploy@host.example.com:/srv/app@1.2.3/", wantSSH: []string{"host.example.com"},
+			why: "splitting on the LAST @ in the token left \"1.2.3/\" and lost the destination"},
+		{name: "at sign in path, no user", cmd: "scp f host.example.com:/srv/app@1.2.3/", wantSSH: []string{"host.example.com"}},
+		{name: "at sign in an ssh remote command", cmd: "ssh deploy@h.example.com cat /srv/a@b", wantSSH: []string{"h.example.com"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, gotSSH := Hosts("Bash", bashInput(t, tc.cmd))
+			if !reflect.DeepEqual(gotSSH, tc.wantSSH) {
+				t.Errorf("ssh hosts for %q = %v, want %v%s", tc.cmd, gotSSH, tc.wantSSH, becauseHost(tc.why))
+			}
+		})
+	}
+}

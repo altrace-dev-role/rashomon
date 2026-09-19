@@ -102,27 +102,30 @@ func mergeHosts(a, b []string) []string {
 // under "not observable" either.
 var sshDestPrograms = map[string]bool{"ssh": true, "scp": true, "rsync": true, "sftp": true}
 
-// takesValue reports whether a short flag consumes the following token.
+// valueFlags are the short flags that consume the FOLLOWING token, one set
+// per program, taken from each program's own usage line.
 //
-// Skipping these is what keeps a flag's value from being read as the
-// destination: without it `ssh -i key host` records the key file's name and
-// `rsync -e ssh src dst` records "ssh".
+// One shared table was wrong in both directions and wrong in the way that
+// matters: it treated rsync's -P and -i and scp's -p, which are booleans, as
+// though they took a value, so `rsync -avP deploy@host:/srv/ ./` swallowed
+// the destination and recorded nothing; and it was missing most of ssh's real
+// value flags, so `ssh -L 8080:localhost:80 deploy@bastion` recorded "8080"
+// and missed the host entirely. A false host is worse than a missing one, and
+// one table for four programs produces both.
 //
-// -J is here to be SKIPPED, not collected. Its value is a jump host, which is
-// a destination the command named, but recording it would mean this function
-// returns hosts from two different positions with no way for a reader to tell
-// them apart. It is left for a later version that can say which is which.
-//
-// -e belongs to rsync alone. Applying it everywhere would swallow the argument
-// after a -e that some other program uses as a boolean.
+// -J is in ssh's set to be SKIPPED, not collected. Its value is a jump host,
+// which is a destination the command named, but recording it would mean this
+// function returns hosts from two different positions with no way for a
+// reader to tell them apart. It is left for a version that can say which.
+var valueFlags = map[string]string{
+	"ssh":   "BbcDEeFIiJLlmOoPpQRSWw",
+	"scp":   "cDFiJloPSX",
+	"sftp":  "BbcDFiJloPRSsX",
+	"rsync": "eBTfM@",
+}
+
 func takesValue(prog string, flag byte) bool {
-	switch flag {
-	case 'p', 'P', 'i', 'o', 'l', 'J', 'F':
-		return true
-	case 'e':
-		return prog == "rsync"
-	}
-	return false
+	return strings.IndexByte(valueFlags[prog], flag) >= 0
 }
 
 // sshCommandHosts extracts the ssh destinations named by a command line.
@@ -246,47 +249,76 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 	if tok == "" {
 		return "", false
 	}
-	hadUser := false
-	if at := strings.LastIndexByte(tok, '@'); at >= 0 {
-		hadUser = true
-		tok = tok[at+1:]
-	}
 
-	var h string
-	switch {
-	case strings.HasPrefix(tok, "["):
-		// A bracketed IPv6 literal. Its own colons are not separators, and
-		// Canonical wants the brackets kept.
-		end := strings.Index(tok, "]")
+	// A bracketed IPv6 literal, with an optional user in front of it. Its own
+	// colons are not host:path separators, so it is recognised before any
+	// colon is looked for.
+	rest, hadUser := tok, false
+	if at := strings.IndexByte(tok, '@'); at >= 0 && strings.HasPrefix(tok[at+1:], "[") {
+		rest, hadUser = tok[at+1:], true
+	}
+	if strings.HasPrefix(rest, "[") {
+		end := strings.Index(rest, "]")
 		if end < 0 {
 			return "", false
 		}
-		h = tok[:end+1]
-	default:
-		colon := strings.IndexByte(tok, ':')
-		slash := strings.IndexByte(tok, '/')
-		isRemote := hadUser || (colon >= 0 && (slash < 0 || colon < slash))
-		if requireRemote && !isRemote {
+		if requireRemote && !hadUser && !strings.HasPrefix(rest[end+1:], ":") {
 			return "", false
 		}
-		if colon >= 0 && (slash < 0 || colon < slash) {
-			h = tok[:colon]
-			// A single-character host before a colon is a Windows drive
-			// letter far more often than a hostname, and `rsync C:/src dst`
-			// must not record a host called "c".
-			if !hadUser && len(h) < 2 {
-				return "", false
-			}
-		} else {
-			h = tok
-		}
+		return host.Canonical(rest[:end+1])
 	}
+
+	// The PATH is split off before the user, and the order is the whole
+	// point: a path may contain an '@' of its own. Splitting on the last '@'
+	// in the token turned `deploy@host:/srv/app@1.2.3/` into "1.2.3/" and the
+	// destination was lost.
+	colon := strings.IndexByte(tok, ':')
+	slash := strings.IndexByte(tok, '/')
+	hostPart := tok
+	remoteByColon := false
+	switch {
+	case colon >= 0 && (slash < 0 || colon < slash):
+		hostPart = tok[:colon]
+		remoteByColon = true
+	case slash >= 0:
+		hostPart = tok[:slash]
+	}
+
+	// Only now is the user stripped, and only from within the host part.
+	//
+	// It is stripped here rather than left to host.Canonical, which REFUSES
+	// an authority carrying userinfo and refuses it for a good reason: in a
+	// URL, user:password@host is credential-bearing and dropping the
+	// credential silently is worse than dropping the host. In an ssh
+	// destination user@host is the documented syntax and carries no password,
+	// so the two cases need opposite handling, and this is the only place
+	// that may do the stripping -- the URL scan in collect still hands the
+	// whole authority to Canonical.
+	if at := strings.LastIndexByte(hostPart, '@'); at >= 0 {
+		hadUser = true
+		hostPart = hostPart[at+1:]
+	}
+
+	// requireRemote is set for scp and rsync, where an argument is only a
+	// destination if it looks like one: it carries a user, or a colon that
+	// comes before any slash. Without that test the LOCAL side of every copy
+	// would be read as a host.
+	if requireRemote && !hadUser && !remoteByColon {
+		return "", false
+	}
+	// A single-character host before a colon is a Windows drive letter far
+	// more often than a hostname, and `rsync C:/src dst` must not record a
+	// host called "c".
+	if remoteByColon && !hadUser && len(hostPart) < 2 {
+		return "", false
+	}
+
 	// An ssh-config alias has no dots and resolves to something this function
 	// cannot see. It is recorded as the command named it and never resolved:
 	// resolving would mean reading ~/.ssh/config, which is a file this package
 	// is not allowed to open, and guessing would put a name in the store that
 	// the user never typed.
-	return host.Canonical(h)
+	return host.Canonical(hostPart)
 }
 
 // collect finds every hostname in text introduced by one of the given prefixes.

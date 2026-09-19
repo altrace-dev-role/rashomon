@@ -70,6 +70,9 @@ func TestH70_SSHDestinationsReachTheRecord(t *testing.T) {
 		{name: "sftp user@host", cmd: "sftp deploy@files.example.com", want: "files.example.com"},
 		{name: "flag value is not the host", cmd: "ssh -i /k -p 2222 deploy@h.example.com", want: "h.example.com"},
 		{name: "config alias, recorded as named", cmd: "ssh myserver", want: "myserver"},
+		{name: "rsync boolean cluster", cmd: "rsync -avP deploy@host.example.com:/srv/ ./", want: "host.example.com"},
+		{name: "scp boolean -p", cmd: "scp -p deploy@host.example.com:/a ./", want: "host.example.com"},
+		{name: "at sign inside the path", cmd: "scp f deploy@host.example.com:/srv/app@1.2.3/", want: "host.example.com"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ssh, wire := sshHostsOf(t, tc.cmd)
@@ -90,6 +93,45 @@ func TestH70_SSHDestinationsReachTheRecord(t *testing.T) {
 				if h == tc.want {
 					t.Errorf("hosts = %v, which carries the ssh destination %q: the proxy cannot see it, so it must not be counted as unreached", wire, tc.want)
 				}
+			}
+		})
+	}
+}
+
+// TestH70_ForwardingSpecsAreNotHosts is the negative twin, and it is the case
+// that actually went wrong: a missing value flag did not merely lose the
+// destination, it recorded a PORT as a hostname. A false host in this list is
+// worse than a missing one -- it is a destination the report claims the
+// session named, and nobody typed it.
+//
+// Break: one flag table for all four programs.
+func TestH70_ForwardingSpecsAreNotHosts(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cmd  string
+		want string
+		bad  string
+	}{
+		{name: "-L local forward", cmd: "ssh -L 8080:localhost:80 deploy@bastion.example.com",
+			want: "bastion.example.com", bad: "8080"},
+		{name: "-D dynamic forward", cmd: "ssh -D 1080 deploy@bastion.example.com",
+			want: "bastion.example.com", bad: "1080"},
+		{name: "-R remote forward", cmd: "ssh -R 9090:localhost:90 deploy@bastion.example.com",
+			want: "bastion.example.com", bad: "9090"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ssh, _ := sshHostsOf(t, tc.cmd)
+			var found bool
+			for _, h := range ssh {
+				if h == tc.bad {
+					t.Errorf("ssh_hosts = %v, which carries %q: that is a port out of a forwarding spec, not a host anyone named", ssh, tc.bad)
+				}
+				if h == tc.want {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("ssh_hosts = %v, want it to carry %q", ssh, tc.want)
 			}
 		})
 	}
