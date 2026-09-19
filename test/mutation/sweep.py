@@ -400,6 +400,33 @@ m("H-70 the path is not split off before the user", "internal/shape/hosts.go",
 m("settings reads a non-object top level as an empty document", "internal/settings/document.go",
   "\t\treturn nil, errors.New(\"not a JSON object\")", "\t\treturn nil, nil", "TestParseRefuses")
 
+# Part 2, sensitive-file labels. Each filter names the acceptance item AND the
+# shape unit tests, deliberately: until schema 3 carries file_label the record
+# does not show the label, so the acceptance halves that read it skip and the
+# unit tests are what observe the break. This is the same widening the H-7
+# mutation above needed, for the same reason -- a mutation judged only by a
+# test that no longer executes the mutated line goes NOT DETECTED and says
+# nothing.
+m("H-44 the basename is stored as the label", "internal/shape/label.go",
+  "\t}\n\treturn LabelNone\n}", "\t}\n\treturn base\n}", "TestH44_|TestLabel")
+m("H-45 an unmatched path falls back to a substring of itself", "internal/shape/label.go",
+  "\t}\n\treturn LabelNone\n}",
+  "\t}\n\tif i := strings.LastIndexByte(base, '.'); i >= 0 {\n\t\treturn base[i+1:]\n\t}\n\treturn LabelNone\n}",
+  "TestH45_|TestLabel")
+m("H-46 Bash is labelled from its first path-like token", "internal/shape/label.go",
+  "\tfield, ok := pathFields[toolName]\n\tif !ok {\n\t\treturn \"\"\n\t}",
+  "\tfield, ok := pathFields[toolName]\n\tif !ok {\n\t\tif toolName == \"Bash\" {\n\t\t\tcmd, _ := stringField(toolInput, \"command\")\n\t\t\tfor _, tok := range strings.Fields(cmd) {\n\t\t\t\tif strings.Contains(tok, \"/\") {\n\t\t\t\t\treturn labelForBase(basename(tok))\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\treturn \"\"\n\t}",
+  "TestH46_|TestLabel")
+m("H-44 the label is computed and thrown away", "internal/hook/handle.go",
+  "\tif label := fileLabel(p.ToolName, p.ToolInput); label != \"\" {\n\t\tdecl.FileLabel = &label\n\t}",
+  "\t_ = fileLabel(p.ToolName, p.ToolInput)", "TestH44_|TestH45_|TestH46_")
+m("H-44 a stored label reaches the report unclamped", "internal/report/report.go",
+  "\t\t\tsess.Declarations.ByLabel[knownLabel(*d.FileLabel)]++",
+  "\t\t\tsess.Declarations.ByLabel[*d.FileLabel]++", "TestByLabel_")
+m("H-46 labelling recovers after the append instead of before it", "internal/hook/handle.go",
+  "\tdefer func() {\n\t\tif v := recover(); v != nil {\n\t\t\tlabel = shape.LabelUnknown\n\t\t}\n\t}()\n\tfault.Inject(fault.PointLabel)",
+  "\tfault.Inject(fault.PointLabel)", "TestH46_NoFault")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

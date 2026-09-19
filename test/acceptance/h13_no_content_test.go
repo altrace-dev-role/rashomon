@@ -81,7 +81,23 @@ func TestH13_RecordKeySetsAreClosed(t *testing.T) {
 	e.mustPost(defaultPost().build(t))
 	e.probe("end", testSession)
 
-	assertKeySet(t, e.declarations(testSession)[0], declarationKeys)
+	// A path-naming tool as well as the Bash call defaultPayload builds.
+	//
+	// Without this second declaration the item is blind to one whole class of
+	// regression. shape.Label returns the empty string for Bash, so a Bash
+	// declaration's file_label is null whatever the hook path does with the
+	// field -- and a null is indistinguishable from a value nobody wrote. The
+	// allowlist comparison cannot see it either: it compares the schema
+	// document against the static slice above, never against a record.
+	pathCall := defaultPayload()
+	pathCall.ToolName = "Read"
+	pathCall.ToolUseID = "toolu_2"
+	pathCall.ToolInput = map[string]any{"file_path": "/home/u/.ssh/id_rsa"}
+	e.mustHook(pathCall.build(t))
+
+	for _, d := range e.declarations(testSession) {
+		assertKeySet(t, d, declarationKeys)
+	}
 	assertKeySet(t, e.executions(testSession)[0], executionKeys)
 	assertKeySet(t, e.terminals(testSession)[0], terminalKeys)
 	// The post phase writes a coverage record like any other phase, and phase

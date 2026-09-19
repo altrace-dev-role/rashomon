@@ -106,7 +106,8 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	d := sess.Declarations
 	fmt.Fprintf(b, "  declarations recorded: %d\n", d.Recorded)
 	fmt.Fprintf(b, "  declarations without a transcript path: %d\n", d.WithoutTranscript)
-	fmt.Fprintf(b, "  by tool: %s\n", byTool(d.ByTool))
+	fmt.Fprintf(b, "  by tool: %s\n", byName(d.ByTool))
+	fmt.Fprintf(b, "  by label: %s\n", byName(d.ByLabel))
 	fmt.Fprintf(b, "  unterminated: %s\n", list(d.Unterminated))
 	fmt.Fprintf(b, "  dropped: %s\n", list(d.Dropped))
 	fmt.Fprintf(b, "  without execution: %s\n", unexecuted(d.WithoutExecution))
@@ -179,7 +180,7 @@ func unexecuted(items []Unexecuted) string {
 	return strings.Join(out, ", ")
 }
 
-func byTool(counts map[string]int) string {
+func byName(counts map[string]int) string {
 	if len(counts) == 0 {
 		return none
 	}
