@@ -83,6 +83,10 @@ func writeSession(b *bytes.Buffer, sess Session) {
 		fmt.Fprintf(b, "    missing from store: %s\n", set(t.MissingFromStore))
 		fmt.Fprintf(b, "    missing from transcript: %s\n", set(t.MissingFromTranscript))
 		fmt.Fprintf(b, "    executed but unrecorded: %s\n", set(t.ExecutedButUnrecorded))
+		// Between the two lists it sits between, and named rather than folded
+		// into either: a denial is not a recording failure and not a call
+		// waiting on its result. It is the permission prompt working.
+		fmt.Fprintf(b, "    denied by user: %s\n", set(t.DeniedByUser))
 		fmt.Fprintf(b, "    declared without result: %s\n", set(t.DeclaredWithoutResult))
 	}
 

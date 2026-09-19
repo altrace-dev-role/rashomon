@@ -287,6 +287,7 @@ type reportSession struct {
 		IDsExecuted           int      `json:"ids_executed"`
 		ResultsInTranscript   *int     `json:"results_in_transcript"`
 		ExecutedButUnrecorded []string `json:"executed_but_unrecorded"`
+		DeniedByUser          []string `json:"denied_by_user"`
 		DeclaredWithoutResult []string `json:"declared_without_result"`
 	} `json:"transcripts"`
 	Gaps []map[string]any `json:"gaps"`

@@ -121,12 +121,23 @@ type Transcript struct {
 	// above.
 	//
 	// ExecutedButUnrecorded is a failure: the transcript says the call
-	// finished and no execution record says so. DeclaredWithoutResult is not
-	// one. It holds the denied, the failed and the transcript that has not
-	// caught up, and it is never to be read as a count of denials.
+	// finished and no execution record says so.
+	//
+	// DeniedByUser is not a failure and not a recording gap. It is the user
+	// refusing the call at the permission prompt, which is the product working.
+	// It is named separately because it used to be counted twice -- once in
+	// ExecutedButUnrecorded, because a denial does produce a tool_result, and
+	// once in DeclaredWithoutResult -- so a user exercising the prompt inflated
+	// a list that exists to surface a broken recorder, and added
+	// execution_mismatch to the coverage reasons.
+	//
+	// DeclaredWithoutResult is now what remains: the failed, and the transcript
+	// that has not caught up. Denials are no longer among them, so the three
+	// lists are disjoint and each means one thing.
 	IDsExecuted           int      `json:"ids_executed"`
 	ResultsInTranscript   *int     `json:"results_in_transcript"`
 	ExecutedButUnrecorded []string `json:"executed_but_unrecorded"`
+	DeniedByUser          []string `json:"denied_by_user"`
 	DeclaredWithoutResult []string `json:"declared_without_result"`
 }
 
@@ -397,7 +408,7 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 		}
 	}
 
-	ids, results, files, err := TranscriptIDs(path)
+	ids, results, denied, files, err := TranscriptIDs(path)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			// A transcript that exists but cannot be read is still unreadable;
@@ -431,15 +442,23 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 			t.ExecutedButUnrecorded = append(t.ExecutedButUnrecorded, id)
 		}
 	}
+	t.DeniedByUser = []string{}
+	for id := range denied {
+		t.DeniedByUser = append(t.DeniedByUser, id)
+	}
+	// What remains after the denials are named: failed, or the transcript has
+	// not caught up. A denied call is in neither this list nor
+	// ExecutedButUnrecorded -- it has its own, and the three are disjoint.
 	t.DeclaredWithoutResult = []string{}
 	for id := range recorded {
-		if !results[id] {
+		if !results[id] && !denied[id] {
 			t.DeclaredWithoutResult = append(t.DeclaredWithoutResult, id)
 		}
 	}
 	sort.Strings(t.MissingFromStore)
 	sort.Strings(t.MissingFromTranscript)
 	sort.Strings(t.ExecutedButUnrecorded)
+	sort.Strings(t.DeniedByUser)
 	sort.Strings(t.DeclaredWithoutResult)
 	return t
 }
