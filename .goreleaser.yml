@@ -50,6 +50,12 @@ checksum:
   algorithm: sha256
 
 # Homebrew tap -- updates Formula/rashomon.rb on release.
+#
+# `brews` is deprecated in goreleaser v2.10+ in favor of `homebrew_casks`,
+# and is kept anyway: casks quarantine what they download, Gatekeeper refuses
+# a quarantined binary that is not signed and notarized -- these are not --
+# and casks do not exist on Linux, which this formula also serves. Revisit
+# only together with code signing.
 brews:
   - ids:
       - rashomon
