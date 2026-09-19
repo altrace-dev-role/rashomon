@@ -46,16 +46,20 @@ func TestH46_OnlyWhereAPathIsRead(t *testing.T) {
 			if len(decls) != 1 {
 				t.Fatalf("got %d declarations, want 1", len(decls))
 			}
-			v, present := decls[0].fields["file_label"]
+			// The gate runs for the negative cases too, and that is not
+			// pedantry. Under schema 2 the field is absent for EVERY tool, so
+			// "Bash carries no label" is true of a build that labels Bash
+			// enthusiastically and of one that does not: the assertion would
+			// pass against the break it is named after. A vacuous pass is
+			// worse than a skip, because it is read as coverage.
+			labelSchemaGate(t, e, testSession)
 
+			v, present := decls[0].fields["file_label"]
 			if tc.wantLabel == "" {
 				if present && v != nil {
 					t.Errorf("%s carries file_label %v, want null: this tool names no file in version 1", tc.tool, v)
 				}
 				return
-			}
-			if !present {
-				t.Skip("this build's declarations carry no file_label: schema 3 reserves it and is being cut on the Phase B branch (decision 8)")
 			}
 			if got, _ := v.(string); got != tc.wantLabel {
 				t.Errorf("%s carries file_label %q, want %q", tc.tool, got, tc.wantLabel)

@@ -12,23 +12,31 @@ import (
 // The field is derived on every declaration today and dropped before the
 // record is written, because docs/store-schema.json pins schema_version to
 // [1, 2] under additionalProperties: false and schema 3 is being cut on the
-// Phase B branch. This is the same shape as H-17's two halves, which skip when
-// unshare or strace is not on the machine: the assertion is real, the
+// Phase B branch. This is the same shape as H-17's two halves, which skip
+// when unshare or strace is not on the machine: the assertion is real, the
 // precondition is not met here, and the skip says which.
 //
-// It is deliberately written against the RECORD rather than against a
-// constant, so the day the reservation lands these halves start running with
-// no edit to this file.
+// It reads schema_version and NOT the presence of file_label, and the
+// difference is the whole point. Gating on the field's presence would mean a
+// regression that stopped emitting the label -- an entry falling out of
+// pathFields, an early return added to shape.Label -- silently switched off
+// every test that exists to catch it. The precondition is the schema, so the
+// schema is what is read; the day the reservation lands these halves start
+// running with no edit to this file.
 func labelSchemaGate(t *testing.T, e *env, sessionID string) {
 	t.Helper()
 	decls := e.declarations(sessionID)
 	if len(decls) == 0 {
 		t.Fatal("no declaration to read a schema version from")
 	}
-	if _, ok := decls[0].fields["file_label"]; ok {
+	v, ok := decls[0].fields["schema_version"].(float64)
+	if !ok {
+		t.Fatalf("declaration carries no numeric schema_version: %v", decls[0].fields["schema_version"])
+	}
+	if v >= 3 {
 		return
 	}
-	t.Skip("this build's declarations carry no file_label: schema 3 reserves it and is being cut on the Phase B branch (decision 8)")
+	t.Skipf("declarations are schema %d, which does not carry file_label: schema 3 reserves it and is being cut on the Phase B branch (decision 8)", int(v))
 }
 
 // TestH44_NoPathEverReachesTheStore is H-44.
@@ -88,6 +96,29 @@ func TestH44_NoPathEverReachesTheStore(t *testing.T) {
 				if strings.Contains(s, canary) {
 					t.Errorf("%s contains the canary path segment", name)
 				}
+			}
+
+			// What the sweep above proves today, and what it does not.
+			//
+			// Under schema 2 the label never reaches a record, so the sweep
+			// covers every OTHER route a path could take into the store or
+			// the output -- which is worth running and is why it is not
+			// gated. It cannot, however, observe the label channel itself:
+			// H-44's named break is "store the basename", and a derivation
+			// that did exactly that would still be swallowed by the gate.
+			//
+			// This is the assertion that closes that hole once the field
+			// lands: the label channel was live, it produced a value, and
+			// the value is a vocabulary constant rather than anything drawn
+			// from the path.
+			labelSchemaGate(t, e, testSession)
+
+			got := e.declarations(testSession)[0].str("file_label")
+			if got == "" {
+				t.Fatal("schema carries file_label but the record has none, so this sweep observed nothing about the label channel")
+			}
+			if strings.Contains(got, canary) {
+				t.Errorf("file_label is %q, which carries the canary", got)
 			}
 		})
 	}

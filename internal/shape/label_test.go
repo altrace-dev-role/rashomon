@@ -43,9 +43,20 @@ func TestLabel(t *testing.T) {
 		{name: "kubeconfig", tool: "Read", field: "file_path", path: "/home/a/.kube/kubeconfig", want: LabelCloudConfig},
 		{name: "terraform state", tool: "Read", field: "file_path", path: "/infra/terraform.tfstate", want: LabelCloudConfig,
 			why: "state holds provider secrets in cleartext"},
-		{name: "gcloud adc beats the generic credential row", tool: "Read", field: "file_path",
+		{name: "gcloud adc", tool: "Read", field: "file_path",
 			path: "/home/a/.config/gcloud/application_default_credentials.json", want: LabelCloudConfig,
-			why: "cloud-config precedes credential-shaped in the table, and the order is the contract"},
+			why: "an exact name in the cloud-config row; it matches no other row, so it says nothing about order"},
+
+		// Row order is a stated contract, so it needs basenames that really
+		// do match two rows. These three do; the gcloud name above does not,
+		// and claiming it proved the ordering was the kind of assertion that
+		// passes whatever the order is.
+		{name: "order: cloud-config beats credential-shaped", tool: "Read", field: "file_path",
+			path: "/infra/secrets.tfvars", want: LabelCloudConfig,
+			why: "matches the .tfvars suffix AND the secrets. prefix; the provider's own convention wins"},
+		{name: "order: credential-shaped beats certificate", tool: "Read", field: "file_path",
+			path: "/vault/secrets.pem", want: LabelCredentialShaped,
+			why: "matches the secrets. prefix AND the .pem suffix; a name that says what the file is beats an encoding"},
 
 		{name: "pem", tool: "Read", field: "file_path", path: "/etc/ssl/server.pem", want: LabelCertificate},
 		{name: "private key half of the same family", tool: "Read", field: "file_path", path: "/etc/ssl/server.key", want: LabelCertificate,
