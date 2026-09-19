@@ -28,8 +28,22 @@ var errUnterminated = errors.New("unterminated quote")
 // never completed, and for a double quote emitting it would carry bytes from
 // inside the quoted string out to the program name.
 func tokenize(s string) ([]string, error) {
+	toks, _, err := tokenizeMarked(s)
+	return toks, err
+}
+
+// tokenizeMarked is tokenize plus one bit per token: whether the tokenizer
+// emitted it for an unquoted metacharacter.
+//
+// The bit cannot be recovered from the token text afterwards. A quoted ';' and
+// an operator ';' are the same two bytes, so a reader that re-derives the
+// answer by looking at the string treats `echo ';' ssh host` as though a new
+// command began, and reads ssh as a program that was never run. Only the
+// tokenizer knows which it saw, so only the tokenizer can say.
+func tokenizeMarked(s string) ([]string, []bool, error) {
 	var (
 		toks    []string
+		meta    []bool
 		cur     strings.Builder
 		started bool
 	)
@@ -37,6 +51,7 @@ func tokenize(s string) ([]string, error) {
 	flush := func() {
 		if started {
 			toks = append(toks, cur.String())
+			meta = append(meta, false)
 			cur.Reset()
 			started = false
 		}
@@ -52,7 +67,7 @@ func tokenize(s string) ([]string, error) {
 		case c == '\\':
 			if i+1 >= len(s) {
 				flush()
-				return toks, errUnterminated
+				return toks, meta, errUnterminated
 			}
 			i++
 			if s[i] != '\n' { // a backslash-newline is a line continuation
@@ -63,7 +78,7 @@ func tokenize(s string) ([]string, error) {
 		case c == '\'':
 			j := strings.IndexByte(s[i+1:], '\'')
 			if j < 0 {
-				return toks, errUnterminated
+				return toks, meta, errUnterminated
 			}
 			cur.WriteString(s[i+1 : i+1+j])
 			started = true
@@ -93,7 +108,7 @@ func tokenize(s string) ([]string, error) {
 				cur.WriteByte(s[i])
 			}
 			if !closed {
-				return toks, errUnterminated
+				return toks, meta, errUnterminated
 			}
 			started = true
 
@@ -107,6 +122,7 @@ func tokenize(s string) ([]string, error) {
 				}
 			}
 			toks = append(toks, s[i:j])
+			meta = append(meta, true)
 			i = j - 1
 
 		default:
@@ -116,7 +132,7 @@ func tokenize(s string) ([]string, error) {
 	}
 
 	flush()
-	return toks, nil
+	return toks, meta, nil
 }
 
 func isMeta(c byte) bool {
