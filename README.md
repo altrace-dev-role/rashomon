@@ -96,9 +96,13 @@ running your command for nothing. It returns the child's exit code unchanged
 and writes the report to stderr, so the child's stdout stays pipeable.
 
 `run` exports proxy variables only when a status file names a live process that
-identifies itself as an Altrace proxy in observe mode. **It does not yet check
-that the address is loopback** — a status file naming a routable address will be
-honoured. Treat the status file as trusted input until that check lands.
+identifies itself as an Altrace proxy in observe mode **on a loopback address**.
+A status file naming a routable host is refused, and `run` launches your command
+without the variables and says why.
+
+That check is not cosmetic: the status file is writable by the same user the
+agent runs as, so without it an agent could name a host it controls and have the
+next session's whole HTTPS stream — API key included — sent there in cleartext.
 
 `report` looks for the proxy's database at `~/.altrace/observe/causal.db`;
 `--proxy-store PATH` points elsewhere.
