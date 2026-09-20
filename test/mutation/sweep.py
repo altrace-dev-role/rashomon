@@ -161,7 +161,10 @@ m("H-10 declarations naming no transcript are not counted", "internal/report/rep
 m("H-11 end probe does not scan for unterminated entries", "internal/hook/probe.go",
   "\t\t\tif len(run.Unterminated()) > 0 {\n\t\t\t\treason = store.ReasonUnterminatedEntry\n\t\t\t}", "\t\t\t_ = run", "TestH11_")
 m("H-12 SIGTERM ignored on the close path", "internal/hook/handle.go", "\tcase sig.Delivered():\n\t\toutcome, reason = store.OutcomeSignal", "\tcase false && sig.Delivered():\n\t\toutcome, reason = store.OutcomeSignal", "TestH12_SIGTERM")
-m("H-13 program carries the whole command line", "internal/shape/shape.go", "prog := path.Base(toks[0])", "prog := cmd + path.Base(\"\")", "TestH13_")
+m("H-13 program carries the whole command line", "internal/shape/shape.go", "prog := path.Base(toks[i])", "prog := cmd + path.Base(toks[i][:0])", "TestH13_")
+m("H-13 program is whatever token came first, operator or not", "internal/shape/shape.go",
+  "\t\tcase isMetaTok, toks[i] == \"{\", isAssignment(toks[i]):\n\t\t\t// Skipped.",
+  "\t\tcase false:\n\t\t\t// Skipped.", "TestProgramIsAProgram")
 m("H-14 untokenizable command records argc 0", "internal/shape/shape.go",
   "\tif err == nil {\n\t\tn := len(toks)\n\t\ts.Argc = &n\n\t}", "\tn := len(toks)\n\tif err != nil {\n\t\tn = 0\n\t}\n\ts.Argc = &n", "TestH14_Untokenizable")
 m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n\n\tif records != nil && removedRec > 0 {", "\tif records != nil && removedRec > 0 {", "TestH15_ForgetLeavesAGap")

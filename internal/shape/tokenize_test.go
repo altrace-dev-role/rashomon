@@ -50,9 +50,16 @@ func TestTokenize(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := tokenize(tc.in)
+			got, marks, err := tokenizeMarked(tc.in)
 			if tc.drop {
-				got = dropLeadingAssignments(got)
+				// Through programToken, which owns this behaviour now: the
+				// assignment prefix is skipped as part of finding the
+				// program, not by a separate pass.
+				if i, ok := programToken(got, marks); ok {
+					got = got[i:]
+				} else {
+					got = nil
+				}
 			}
 			if err != tc.err {
 				t.Errorf("error is %v, want %v", err, tc.err)

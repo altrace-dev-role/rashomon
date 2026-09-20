@@ -72,11 +72,10 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	// whole input would move whenever the wording did and would group nothing.
 	s.Digest = digest(key, toolName, []byte(cmd))
 
-	toks, err := tokenize(cmd)
-	toks = dropLeadingAssignments(toks)
+	toks, meta, err := tokenizeMarked(cmd)
 
-	if len(toks) > 0 {
-		prog := path.Base(toks[0])
+	if i, ok := programToken(toks, meta); ok {
+		prog := path.Base(toks[i])
 		s.Program = &prog
 		s.VerbClass = verbForProgram(prog)
 	}
@@ -140,14 +139,52 @@ func canonical(raw json.RawMessage) []byte {
 	return out
 }
 
-// dropLeadingAssignments removes a `FOO=bar` prefix, which is environment
-// setting rather than the program being run. Only the token count changes; no
-// assignment value is read.
-func dropLeadingAssignments(toks []string) []string {
-	for len(toks) > 0 && isAssignment(toks[0]) {
-		toks = toks[1:]
+// programToken finds the index of the token naming the program, if a token
+// does.
+//
+// It skips what cannot be a program: a `FOO=bar` prefix, which is environment
+// setting rather than a command; the tokenizer's own metacharacter tokens; a
+// redirection's target, which follows the operator and is a filename; and the
+// `{` of a brace group, which is a shell keyword the tokenizer does not treat
+// as a metacharacter.
+//
+// Measured on a real session before this existed: three of twenty-six
+// declarations recorded a "program" of `&&`, `(` or nothing -- about one in
+// eight of the single field that is supposed to say what ran. `( cd x && ls )`
+// recorded `(`, and a brace group recorded `{`. A value that cannot possibly
+// be a program is worse than no value, because null already means "we could
+// not tell" and is read as such, while `&&` is read as a fact.
+//
+// The metacharacter bits come from the tokenizer rather than from the token's
+// text, because a QUOTED `;` and an operator `;` are the same two bytes and
+// only the tokenizer knows which it saw.
+//
+// Returning false leaves Program null, which is the honest answer for a line
+// that names no program at all.
+func programToken(toks []string, meta []bool) (int, bool) {
+	for i := 0; i < len(toks); i++ {
+		isMetaTok := i < len(meta) && meta[i]
+		switch {
+		case isMetaTok && isRedirect(toks[i]):
+			// The operator and the filename after it.
+			i++
+		case isMetaTok, toks[i] == "{", isAssignment(toks[i]):
+			// Skipped.
+		default:
+			return i, true
+		}
 	}
-	return toks
+	return 0, false
+}
+
+// isRedirect reports whether a metacharacter token redirects, and so is
+// followed by a filename rather than by a command.
+func isRedirect(tok string) bool {
+	switch tok {
+	case ">", "<", ">>", "<<":
+		return true
+	}
+	return false
 }
 
 func isAssignment(tok string) bool {
