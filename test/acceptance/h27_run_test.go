@@ -322,11 +322,6 @@ func TestH27_SessionTokenIsCapabilityGated(t *testing.T) {
 func TestH27_ARefusedPostureMintsNoToken(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
-	// A recorded call, so a session exists for the post-run report to render.
-	// Without it `run` prints "no session was recorded for that command" and
-	// the assertions below cannot observe anything -- which is how the first
-	// version of this test passed under its own mutation.
-	e.mustHook(defaultPayload().build(t))
 	db := filepath.Join(e.home, "causal.db")
 	seedForeignRow(t, db)
 
@@ -336,9 +331,21 @@ func TestH27_ARefusedPostureMintsNoToken(t *testing.T) {
 	fields["causal_db"] = db
 	status := statusFile(t, e, fields)
 
-	res := e.run("", nil, "run", "--proxy-status", status, "--", "sh", "-c", "true")
+	// THE CHILD RECORDS THE SESSION, rather than the test recording one before
+	// the run. `run` now reports only a session the command itself produced
+	// (the `since` guard), so a session created beforehand renders nothing and
+	// every assertion below becomes unobservable -- which is exactly what the
+	// mutation sweep caught when that guard landed. The two changes are both
+	// right and they interact.
+	child := fmt.Sprintf("%s hook %s <<'EOF'\n%s\nEOF",
+		shQuote(rashomonBin), strings.Join(e.installArgs(), " "), defaultPayload().build(t))
+	res := e.run("", nil, "run", "--proxy-status", status, "--", "sh", "-c", child)
 	if res.exitCode != 0 {
 		t.Fatalf("run: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if strings.Contains(res.stderr, "no session was recorded") {
+		t.Fatalf("premise: the child recorded nothing, so nothing below can be "+
+			"observed:\n%s", res.stderr)
 	}
 	// THE OBSERVABLE CONSEQUENCE, and finding it took a second attempt worth
 	// recording. The first version of this test asserted that the foreign row
