@@ -41,8 +41,8 @@ m("H-5  absent settings file is an error", "internal/settings/document.go",
   "\tif err != nil {\n\t\treturn nil, err\n\t}\n\t_ = errors.Is\n\t_ = fs.ErrNotExist\n\treturn Parse(data)", "TestH5_")
 m("H-6  watch appends a second entry of ours", "internal/install/install.go", "\t\tif !found {\n\t\t\tout = append(out, want)", "\t\tif true {\n\t\t\tout = append(out, want)", "TestH6_")
 m("H-6  detach removes every install's entries", "internal/install/install.go",
-  "\treturn RemoveIf(doc, func(id string) bool { return id == spec.InstallID })",
-  "\treturn RemoveIf(doc, func(string) bool { return true })", "TestH6_")
+  "\treturn RemoveIf(doc, func(id string) bool { return id == spec.InstallID }, force)",
+  "\treturn RemoveIf(doc, func(string) bool { return true }, force)", "TestH6_")
 m("H-6  another install's entry records into this store", "cmd/rashomon/main.go",
   "\tif id == \"\" || id == st.InstallID() {", "\tif id == \"\" || true {", "TestH6_ForeignInstallEntryStandsDown")
 m("H-6  watch does not say another install's entries are present", "cmd/rashomon/main.go",
@@ -50,11 +50,11 @@ m("H-6  watch does not say another install's entries are present", "cmd/rashomon
 m("H-6  detach --install ignores the id it was given", "internal/install/install.go",
   "\t\t\tif id == \"\" || !match(id) {", "\t\t\tif id == \"\" {", "TestH6_DetachByInstallIDNeedsNoStore")
 m("H-6  detach --all removes only this machine's install", "cmd/rashomon/main.go",
-  "\t\t\treturn install.RemoveIf(doc, func(string) bool { return true })",
-  "\t\t\treturn install.Remove(doc, install.Spec{InstallID: installID})", "TestH6_DetachAllRemovesEveryInstall")
+  "\t\t\treturn install.RemoveIf(doc, func(string) bool { return true }, force)",
+  "\t\t\treturn install.Remove(doc, install.Spec{InstallID: installID}, force)", "TestH6_DetachAllRemovesEveryInstall")
 m("H-6  removing by predicate skips the intact check", "internal/install/install.go",
-  "\t\t\tif detail := intact(e, event); detail != \"\" {\n\t\t\t\treturn 0, &ErrModified{Event: event, Detail: detail}\n\t\t\t}\n\t\t\tremoved++",
-  "\t\t\tremoved++", "TestH6_DetachAllRefusesAnEditedEntry")
+  "\t\t\t\tif !force {\n\t\t\t\t\treturn 0, nil, &ErrModified{Event: event, Detail: detail}\n\t\t\t\t}",
+  "\t\t\t\tif false {\n\t\t\t\t\treturn 0, nil, &ErrModified{Event: event, Detail: detail}\n\t\t\t\t}", "TestH6_DetachAllRefusesAnEditedEntry")
 m("H-6  detach drops the entries it is not removing", "internal/install/install.go",
   "\t\t\tif id == \"\" || !match(id) {\n\t\t\t\tout = append(out, e)\n\t\t\t\tcontinue\n\t\t\t}",
   "\t\t\tif id == \"\" || !match(id) {\n\t\t\t\tcontinue\n\t\t\t}", "TestH6_Detach")
@@ -199,8 +199,8 @@ m("H-17 handler opens a socket (no net import, so only the trace sees it)", "int
 m("H-18 the hook installs on every call", "cmd/rashomon/main.go",
   "\th := hook.New(st, time.Now)\n", "\t_ = cmdWatch(io.Discard)\n\th := hook.New(st, time.Now)\n", "TestH18_")
 m("H-18 detach writes the settings file although it changed nothing", "cmd/rashomon/main.go",
-  "\t\tn, err := remove(doc)\n\t\tremoved = n\n\t\treturn n > 0, err",
-  "\t\tn, err := remove(doc)\n\t\tremoved = n\n\t\treturn true, err", "TestH18_")
+  "\t\tn, l, err := remove(doc)\n\t\tremoved, left = n, l\n\t\treturn n > 0, err",
+  "\t\tn, l, err := remove(doc)\n\t\tremoved, left = n, l\n\t\treturn true, err", "TestH18_")
 m("H-19 report re-reads today's config to judge a past run", "internal/report/report.go",
   "\t\tsess := build(run)\n", "\t\tsess := build(run)\n\t\tif p, err := settings.UserPath(); err == nil {\n\t\t\tif doc, err := settings.Load(p); err == nil {\n\t\t\t\tif ok, _ := install.Present(doc, st.InstallID(), install.EventPreToolUse); !ok {\n\t\t\t\t\tsess.Coverage.add(store.ReasonHookEntryAbsent)\n\t\t\t\t}\n\t\t\t}\n\t\t}\n", "TestH19_")
 
@@ -444,6 +444,11 @@ m("H-70 every non-flag argument is recorded as a host", "internal/shape/hosts.go
 m("H-70 the path is not split off before the user", "internal/shape/hosts.go",
   "\tprefix := tok\n\tif slash := strings.IndexByte(tok, '/'); slash >= 0 {\n\t\tprefix = tok[:slash]\n\t}",
   "\tprefix := tok", "TestSSHFlagTables|TestH70_SSH")
+m("H-6 detach has no way past an entry someone edited", "cmd/rashomon/main.go",
+  "\t\tcase \"--force\":", "\t\tcase \"--force-disabled\":", "TestH6_DetachForceRemovesAnEditedEntry")
+m("H-6 --force also removes hooks that are not ours", "internal/install/install.go",
+  "\t\t\tid := Owner(e, event)\n\t\t\tif id == \"\" || !match(id) {", "\t\t\tid := Owner(e, event)\n\t\t\tif id == \"\" && !force || id != \"\" && !match(id) {",
+  "TestH6_DetachForceRemovesAnEditedEntry|TestH4_")
 m("settings reads a non-object top level as an empty document", "internal/settings/document.go",
   "\t\treturn nil, errors.New(\"not a JSON object\")", "\t\treturn nil, nil", "TestParseRefuses")
 
