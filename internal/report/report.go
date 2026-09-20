@@ -217,6 +217,40 @@ type Option func(*options)
 
 type options struct {
 	proxyStore string
+	runToken   string
+	// tokenRequested records that a tag WAS in play, separately from whether
+	// any row carried one. Without it the renderer inferred "no token was in
+	// use" from a zero match count, which is a statement about the reporting
+	// process printed as a statement about the session -- and it was false in
+	// the two most interesting cases: a re-render, and a tokened run whose
+	// clients all stripped the credential.
+	tokenRequested bool
+	isOurs         func(string) bool
+}
+
+// WithRunToken supplies the session tag this run handed to the proxy.
+//
+// IN MEMORY ONLY, and deliberately not read from disk. The join needs the RAW
+// token -- a digest cannot be compared against the proxy's run_id column -- so
+// retaining it anywhere would mean storing a value that identifies a session's
+// traffic. It is available exactly while the process that minted it is alive,
+// which is when `run` renders its automatic report; a later `rashomon report`
+// has no token and falls back to the window, and says which it used.
+func WithRunToken(token string) Option {
+	return func(o *options) {
+		o.runToken = token
+		o.tokenRequested = token != ""
+	}
+}
+
+// WithTokenVerifier supplies the test for whether a FOREIGN run_id is a tag
+// this install issued.
+//
+// Only a tag that verifies may be treated as another session's and excluded.
+// Anything else is not evidence about anybody and falls back to the clock --
+// see internal/wire's joinOf for the two ways the alternative failed.
+func WithTokenVerifier(isOurs func(string) bool) Option {
+	return func(o *options) { o.isOurs = isOurs }
 }
 
 // WithProxyStore names the proxy's causal store. An empty path means no store
@@ -312,7 +346,15 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		// report is the cost of that: a window is a property of the run, and
 		// sharing one observation across sessions would attribute each
 		// session's destinations to all of them.
-		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, window(run)), st.Root(), forgotten)
+		w := window(run)
+		w.RunID = cfg.runToken
+		w.IsOurs = cfg.isOurs
+		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, w), st.Root(), forgotten)
+		// Set here rather than threaded through buildDestinations: it is a fact
+		// about THIS RENDER, not about the observation, and widening that
+		// function's signature would have touched every existing caller to say
+		// "false" -- churn that hides the one call site that matters.
+		sess.Destinations.TokenRequested = cfg.tokenRequested
 		sess.Families = buildFamilies(run, observedHostSet(sess.Destinations),
 			sess.Destinations.Observed, sess.Destinations.Reason)
 		// After Destinations, and reading it rather than the observation: the

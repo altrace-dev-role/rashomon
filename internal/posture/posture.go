@@ -20,6 +20,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -50,6 +51,18 @@ type File struct {
 	PID         int    `json:"pid"`
 	StartedAt   string `json:"started_at"`
 	CausalDB    string `json:"causal_db"`
+
+	// SessionToken is the proxy advertising that it accepts a session tag as
+	// the password half of a Proxy-Authorization credential on CONNECT, and
+	// writes it into its run_id column.
+	//
+	// ABSENT MEANS NO, and that is the whole reason this field exists rather
+	// than the launcher simply always sending one. A proxy that does not know
+	// about the credential is entitled to answer 407 to a CONNECT carrying it,
+	// which would break every request of every session against any build older
+	// than the feature. Capability first, then use -- the alternative is a
+	// launcher whose new feature bricks the old server.
+	SessionToken bool `json:"session_token"`
 }
 
 // Verdict is the decision and the reason for it.
@@ -67,6 +80,40 @@ type Verdict struct {
 	File File
 	// Path is where it was looked for, so a reason can name it.
 	Path string
+}
+
+// isLoopback reports whether an address's HOST half is loopback.
+//
+// The host half, not the string: "127.0.0.1:18080" and "[::1]:18080" are the
+// shapes the proxy writes, and a check that matched a prefix would accept
+// "127.0.0.1.evil.example:80".
+// It splits the host by hand rather than with net.SplitHostPort, and that is
+// not a style choice: H-17 forbids `net` anywhere in the recorder's dependency
+// graph, and importing it here for one helper failed that acceptance item
+// immediately. The invariant is the point -- code that runs inside an agent's
+// tool calls must not be able to reach the network -- and a convenience import
+// is exactly how such a graph grows a capability nobody decided to add.
+func isLoopback(addr string) bool {
+	host := addr
+	if strings.HasPrefix(host, "[") {
+		// Bracketed IPv6 literal: "[::1]:18080". The host is inside the
+		// brackets, and the colons within it are not the port separator.
+		if end := strings.Index(host, "]"); end > 0 {
+			host = host[1:end]
+		}
+	} else if i := strings.LastIndex(host, ":"); i >= 0 {
+		// A bare "::1" has several colons and no port; splitting on the last
+		// one would leave "::" and read as not-loopback. Only split when what
+		// follows looks like a port and the host half has no colon of its own.
+		if !strings.Contains(host[:i], ":") {
+			host = host[:i]
+		}
+	}
+	switch strings.ToLower(host) {
+	case "127.0.0.1", "::1", "localhost":
+		return true
+	}
+	return false
 }
 
 // DefaultPath is ~/.altrace/observe/status.json.
@@ -127,6 +174,22 @@ func Read(path string) Verdict {
 	}
 	if v.File.ListenAddr == "" {
 		v.Reason = "the proxy status file names no listen address"
+		return v
+	}
+	if !isLoopback(v.File.ListenAddr) {
+		// THIS FILE IS WRITABLE BY THE USER THE AGENT RUNS AS, which makes a
+		// non-loopback address an escalation across sessions rather than a
+		// misconfiguration: an agent in one session writes a status file naming
+		// a host it controls, and the next `rashomon run` sends every request
+		// -- and, since the session tag rides in the proxy URL as userinfo, the
+		// tag as well -- to that host in cleartext, before any report exists to
+		// notice. Refusing here rather than in the launcher because a reader
+		// that returns Export true for a remote proxy has already made the
+		// decision; the launcher only carries it out.
+		v.Reason = "the proxy status file names a non-loopback listen address (" +
+			v.File.ListenAddr + "); refusing, because exporting proxy variables to a " +
+			"remote host would send this session's traffic and its session tag off " +
+			"this machine"
 		return v
 	}
 	if !alive(v.File.PID) {

@@ -250,6 +250,7 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 	fmt.Fprintf(b, "  destinations: %d distinct, %d attempt%s\n",
 		d.DistinctHosts, d.Attempts, plural(d.Attempts))
 	fmt.Fprintf(b, "  proxy on path: %s -- %s\n", d.ProxyOnPath, d.ProxyNote)
+	writeJoin(b, d)
 	if !d.WindowApplied {
 		// Stated whenever it is true. A window that was not enforced means
 		// another session's destinations may be in this list, and a reader who
@@ -262,8 +263,22 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 			"forget --host (the proxy's own records are not deleted)\n", d.Suppressed)
 	}
 	if d.Inherited > 0 {
-		fmt.Fprintf(b, "  inherited: %d attempt%s from outside this session's window, "+
-			"excluded from the counts above\n", d.Inherited, plural(d.Inherited))
+		// WHY they were excluded, not just that they were. This line used to
+		// say "from outside this session's window" unconditionally, which the
+		// token join made false: a row carrying another run's tag is excluded
+		// while sitting squarely INSIDE the window, and telling a reader to go
+		// looking outside it would send them after a session that does not
+		// exist. The two reasons are different facts and now read differently.
+		reason := "from outside this session's window"
+		switch {
+		case d.OtherToken > 0 && d.OtherToken == d.Inherited:
+			reason = "carrying another session's token"
+		case d.OtherToken > 0:
+			reason = fmt.Sprintf("from outside this session's window or carrying "+
+				"another session's token (%d of them)", d.OtherToken)
+		}
+		fmt.Fprintf(b, "  inherited: %d attempt%s %s, excluded from the counts above\n",
+			d.Inherited, plural(d.Inherited), reason)
 		if d.InheritedAllClientPlane {
 			// Says which previous session to go looking for: none. This is the
 			// client's own tunnel, opened before the first hook ran.
@@ -591,5 +606,56 @@ func writeRewritten(b *bytes.Buffer, rows []Rewritten) {
 		}
 		fmt.Fprintf(b, "    %s  %s (%s): %s between declaration and execution\n",
 			r.ToolUseID, r.ToolName, shape, what)
+	}
+}
+
+// writeJoin says how this session's rows were attributed, and never as one
+// word.
+//
+// "join: token" over a set that is half window-matched is a claim of precision
+// the data does not support, and the mixture is not the exception -- it is what
+// every real tokened session looks like, because not every client carries the
+// credential.
+//
+// THE CLIENT FAMILIES ARE NAMED, with the measurement, because a reader who
+// sees some rows joined by the clock will reasonably wonder whether the token
+// is broken. It is not: git strips proxy userinfo and expects a credential
+// helper. Saying which client and how it was established turns a suspicious
+// number into a known limit.
+func writeJoin(b *bytes.Buffer, d Destinations) {
+	if d.TokenMatched == 0 && d.WindowMatched == 0 && d.OtherToken == 0 {
+		return
+	}
+	switch {
+	case d.TokenMatched == 0 && !d.TokenRequested:
+		// No tag was in play. Said plainly rather than dressed up as a join.
+		fmt.Fprintf(b, "  join: window (%d request%s); no session token was in use\n",
+			d.WindowMatched, plural(d.WindowMatched))
+	case d.TokenMatched == 0:
+		// A tag WAS in play and no row carried it. This is a diagnostic, not a
+		// quiet fallback: either the proxy is not writing run_id, or every
+		// client stripped the credential. Inferring "no token was in use" from
+		// the zero -- as this did -- reported the failure as its own opposite.
+		fmt.Fprintf(b, "  join: window (%d request%s); a session token was in use and NO row "+
+			"carried it -- the proxy may not be recording it\n",
+			d.WindowMatched, plural(d.WindowMatched))
+	default:
+		fmt.Fprintf(b, "  join: token (%d request%s) + window (%d request%s)\n",
+			d.TokenMatched, plural(d.TokenMatched),
+			d.WindowMatched, plural(d.WindowMatched))
+		if d.WindowMatched > 0 {
+			fmt.Fprintln(b, "    some clients do not send the proxy credential and are "+
+				"attributed by time alone:")
+			fmt.Fprintln(b, "    git (measured: no Proxy-Authorization on CONNECT, via "+
+				"HTTPS_PROXY or git -c http.proxy)")
+		}
+	}
+	if d.OtherToken > 0 {
+		// The overlap is visible WITHOUT those rows entering this session's
+		// numbers. Before tokens an operator could not know another session was
+		// active at all; now the report can say so and still refuse to count it.
+		fmt.Fprintf(b, "  other sessions in this window: %d request%s, "+
+			"identified by their own token and excluded from the counts above\n",
+			d.OtherToken, plural(d.OtherToken))
 	}
 }

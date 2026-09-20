@@ -290,17 +290,25 @@ func TestRead_HostInAndOutOfWindowCountsOnlyTheInWindowRows(t *testing.T) {
 }
 
 // TestRead_ForeignRunIDIsInherited is the other ground, and it is decisive
-// whatever the clock says.
+// whatever the clock says -- BUT ONLY FOR A TAG WE CAN PROVE WE ISSUED.
+//
+// The verifier is what makes the exclusion safe. Without it, any non-empty
+// run_id that was not ours excluded a row, and two things followed: the
+// observed agent could forge one to delete its own destinations from the
+// report, and the proxy's OWN X-Altrace-Run-ID correlation column -- a shared
+// namespace, not a rashomon-private one -- would have had every row deleted
+// and blamed on a session that never existed.
 func TestRead_ForeignRunIDIsInherited(t *testing.T) {
 	path := newStore(t, []fixtureRow{
 		{seq: 1, requestID: "a", runID: "other-run", ts: stamp(base, 1), action: "WARN", host: "elsewhere.example:443"},
 		{seq: 2, requestID: "b", runID: "mine", ts: stamp(base, 2), action: "WARN", host: "pypi.org:443"},
 	})
 
-	obs := Read(path, Window{RunID: "mine", Start: base.Add(-time.Minute)})
+	ours := func(tok string) bool { return tok == "other-run" }
+	obs := Read(path, Window{RunID: "mine", Start: base.Add(-time.Minute), IsOurs: ours})
 
 	if d, _ := find(obs, "elsewhere.example"); !d.Inherited {
-		t.Error("a row carrying another run id was not marked inherited")
+		t.Error("a row carrying another run id we DID issue was not marked inherited")
 	}
 	if d, _ := find(obs, "pypi.org"); d.Inherited {
 		t.Error("this session's own row was marked inherited")
