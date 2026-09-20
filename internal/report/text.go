@@ -124,7 +124,8 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 		fmt.Fprintf(b, "    ids executed: %d\n", t.IDsExecuted)
 		fmt.Fprintf(b, "    missing from store: %s\n", set(t.MissingFromStore))
 		fmt.Fprintf(b, "    missing from transcript: %s\n", set(t.MissingFromTranscript))
-		fmt.Fprintf(b, "    executed but unrecorded: %s\n", set(t.ExecutedButUnrecorded))
+		fmt.Fprintf(b, "    executed but unrecorded: %s\n",
+			overlapping(t.ExecutedButUnrecorded, t.MissingFromStore, "missing from store"))
 		// Between the two lists it sits between, and named rather than folded
 		// into either: a denial is not a recording failure and not a call
 		// waiting on its result. It is the permission prompt working.
@@ -206,6 +207,39 @@ func writeReasons(b *bytes.Buffer, reasons []string) {
 		// without this map must not silently drop the new value.
 		fmt.Fprintf(b, "    %s\n", r)
 	}
+}
+
+// overlapping renders a list that may repeat one printed just above it.
+//
+// These two lists are the same set whenever the recorder was installed after
+// the calls ran: every id in the transcript but not in the store also has a
+// result the store recorded no execution for. In a real report that meant the
+// same eight hundred and fifty-eight ids printed twice, four hundred
+// characters for one fact, and a reader who has to compare two walls of
+// opaque ids to notice they are identical.
+//
+// It states the overlap and NOT its cause. "The recorder was installed after
+// these ran" is an inference; the reasons block above already carries
+// probe_absent with its sentence, and this line is not the place to guess at
+// a second explanation.
+func overlapping(items, printed []string, where string) string {
+	if len(items) == 0 || len(printed) == 0 {
+		return set(items)
+	}
+	above := make(map[string]bool, len(printed))
+	for _, id := range printed {
+		above[id] = true
+	}
+	for _, id := range items {
+		if !above[id] {
+			// Not a subset: the reader needs the list itself.
+			return set(items)
+		}
+	}
+	if len(items) == len(printed) {
+		return fmt.Sprintf("the same %d, listed under %q above", len(items), where)
+	}
+	return fmt.Sprintf("%d, all of them among those under %q above", len(items), where)
 }
 
 // listWidth is how many characters of a list a terminal line will carry
