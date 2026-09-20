@@ -78,8 +78,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// checks the status of the command it thought it was running.
 		return cmdRun(rest, stdin, stdout, stderr)
 
-	case "version":
+	// An explicit request for the version or the usage is a successful
+	// command, so it goes to stdout and exits 0. Only a command we did not
+	// understand is a usage ERROR, on stderr and non-zero.
+	//
+	// All six spellings, because `--version` is the first thing a packager
+	// tries and `--help` is the first thing a person tries, and both landed
+	// in `default:` -- usage on stderr, exit 1 -- while only the bare
+	// `version` subcommand worked.
+	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, version)
+		return exitOK
+
+	case "help", "--help", "-h":
+		usage(stdout)
 		return exitOK
 
 	default:
@@ -269,11 +281,42 @@ func reportOrEmpty(sessionID, proxyStore string, now time.Time) (*report.Report,
 	if err != nil {
 		return nil, nil, err
 	}
-	rep, err := report.Build(st, sessionID, now, report.WithProxyStore(proxyStore))
+	opts := []report.Option{report.WithProxyStore(proxyStore)}
+	// Only a tag this install signed may be treated as another session's; an
+	// unverifiable run_id is not evidence about anybody and falls back to the
+	// clock.
+	key := st.Key()
+	opts = append(opts, report.WithTokenVerifier(func(t string) bool {
+		return launch.IsOurs(t, key)
+	}))
+	// A TAG RECOVERED FROM OUR OWN ENVIRONMENT, which is what makes
+	// `eval $(rashomon env --token)` followed by `rashomon report` do what the
+	// flag's help says. Without this the only path from a tag to a join was
+	// `run`'s in-memory value, so a tagged shell produced rows the report then
+	// declined to use while telling the user no tag was in play.
+	//
+	// Verified before use: an ambient HTTPS_PROXY may be a real corporate proxy
+	// with real credentials, and reading somebody's password as a session tag
+	// would put a live secret into the join. TokenFromProxyURL already refuses
+	// any username but ours; IsOurs then refuses anything we did not sign.
+	if t := launch.TokenFromProxyURL(os.Getenv("HTTPS_PROXY")); t != "" && launch.IsOurs(t, key) {
+		opts = append(opts, report.WithRunToken(t))
+	}
+
+	rep, err := report.Build(st, sessionID, now, opts...)
 	if err != nil {
 		return nil, nil, err
 	}
-	return rep, st.Key(), nil
+	return rep, key, nil
+}
+
+// storeKey is the install key, or nil when there is no store to read it from.
+func storeKey() []byte {
+	st, err := openStoreForRead()
+	if err != nil {
+		return nil
+	}
+	return st.Key()
 }
 
 // openStoreForRead opens the store without creating one, and reports
@@ -418,18 +461,18 @@ func cmdWatch(stdout io.Writer) error {
 }
 
 func cmdDetach(args []string, stdout io.Writer) error {
-	installID, all, err := detachTarget(args)
+	installID, all, force, err := detachTarget(args)
 	if err != nil {
 		return err
 	}
 
-	remove := func(doc *settings.Document) (int, error) {
-		return install.Remove(doc, install.Spec{InstallID: installID})
+	remove := func(doc *settings.Document) (int, []install.Modified, error) {
+		return install.Remove(doc, install.Spec{InstallID: installID}, force)
 	}
 	who := "install " + installID
 	if all {
-		remove = func(doc *settings.Document) (int, error) {
-			return install.RemoveIf(doc, func(string) bool { return true })
+		remove = func(doc *settings.Document) (int, []install.Modified, error) {
+			return install.RemoveIf(doc, func(string) bool { return true }, force)
 		}
 		who = "every install"
 	}
@@ -439,48 +482,60 @@ func cmdDetach(args []string, stdout io.Writer) error {
 		return err
 	}
 	removed := 0
+	var left []install.Modified
 	changed, err := editSettings(path, func(doc *settings.Document) (bool, error) {
-		n, err := remove(doc)
-		removed = n
+		n, l, err := remove(doc)
+		removed, left = n, l
 		return n > 0, err
 	})
 	if err != nil {
 		return err
+	}
+	// Named before the outcome, because an entry left behind still fires on
+	// every tool call and that is the part the user has to act on.
+	for _, m := range left {
+		fmt.Fprintf(stdout, "rashomon: removed the %s entry you had edited (%s), because --force was given\n", m.Event, m.Detail)
 	}
 	if !changed {
 		fmt.Fprintf(stdout, "rashomon: nothing to detach (%s) in %s\n", who, path)
 		return nil
 	}
 	fmt.Fprintf(stdout, "rashomon: detached (%s, %d entries) from %s\n", who, removed, path)
+
 	return nil
 }
 
 // detachTarget resolves which entries a detach removes: the install named on
 // the command line, every install that left a marker, or -- for a plain detach
 // -- the one this machine's store records.
-func detachTarget(args []string) (installID string, all bool, err error) {
+func detachTarget(args []string) (installID string, all, force bool, err error) {
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--install":
 			if i+1 >= len(args) {
-				return "", false, errors.New("--install needs a value")
+				return "", false, false, errors.New("--install needs a value")
 			}
 			installID = args[i+1]
 			i++
 		case "--all":
 			all = true
+		case "--force":
+			// The way out of an entry someone edited. Without it, one edited
+			// value left every entry installed and no supported way to
+			// remove them.
+			force = true
 		default:
-			return "", false, fmt.Errorf("unknown argument %q", args[i])
+			return "", false, false, fmt.Errorf("unknown argument %q", args[i])
 		}
 	}
 	if all && installID != "" {
-		return "", false, errors.New("--install and --all name different sets of entries; pass one or the other")
+		return "", false, false, errors.New("--install and --all name different sets of entries; pass one or the other")
 	}
 	if all || installID != "" {
-		return installID, all, nil
+		return installID, all, force, nil
 	}
 	installID, err = storedInstallID()
-	return installID, false, err
+	return installID, false, force, err
 }
 
 // cmdStatus prints what is installed here and what the store holds, and writes
@@ -820,13 +875,19 @@ another install stands down: it records nothing in this environment.
 // developer machine. The proxy prints the same number in its own banner.
 const observeDefaultPort = 18080
 
-// noProxyValue is what NO_PROXY is set to.
+// NO_PROXY now comes from launch.NoProxyValue, the single spelling.
+//
+// This file used to carry its own copy, and launch's comment on that constant
+// had already named the hazard: "two spellings of the same list would
+// eventually differ, and the one that differed would be the one somebody
+// debugged for an hour". Routing `env` through launch.Env to carry the session
+// token left this copy unreferenced, so the duplication is gone rather than
+// merely documented.
 //
 // Loopback and *.local are excluded because proxying them breaks local
 // development tooling for no observational gain. Private ranges are
 // deliberately NOT excluded: an agent reaching an internal service is exactly
 // the finding this tool exists to surface, so LAN egress stays on the path.
-const noProxyValue = "localhost,127.0.0.1,::1,0.0.0.0,*.local"
 
 // cmdEnv prints the variables that put the observe proxy on a session's path.
 //
@@ -851,11 +912,52 @@ func cmdEnv(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	addr := fmt.Sprintf("http://127.0.0.1:%d", port)
-	fmt.Fprintf(stdout, "export HTTPS_PROXY=%s\n", addr)
-	fmt.Fprintf(stdout, "export https_proxy=%s\n", addr)
-	fmt.Fprintf(stdout, "export NO_PROXY=%s\n", noProxyValue)
+	token, err := envToken(args)
+	if err != nil {
+		return err
+	}
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	for _, kv := range launch.Env(addr, token) {
+		fmt.Fprintf(stdout, "export %s\n", kv)
+	}
 	return nil
+}
+
+// envToken mints a session tag when --token is given, under the SAME gate run
+// uses.
+//
+// It was originally ungated, and that was the defect: the whole justification
+// for the capability check -- a proxy that does not understand the credential
+// may answer 407 to every CONNECT, breaking the session's entire network --
+// applies verbatim to a shell the user is about to export these into, and
+// `eval $(rashomon env --token)` is harder to undo than a single `run`.
+//
+// It needs the install key too, so it opens the store WITHOUT creating one.
+// `env` promises to create nothing, and a flag that minted an install identity
+// as a side effect of asking a question would break that promise.
+//
+// There is deliberately no way to SET a specific tag: one a user can choose is
+// one another user can guess.
+func envToken(args []string) (string, error) {
+	var want bool
+	for _, a := range args {
+		if a == "--token" {
+			want = true
+		}
+	}
+	if !want {
+		return "", nil
+	}
+	st, err := openStoreForRead()
+	if err != nil {
+		return "", errors.New("env --token: nothing is recording yet -- run `rashomon watch` first, " +
+			"so the tag can be signed with this install's key")
+	}
+	if !posture.Read(posture.DefaultPath()).File.SessionToken {
+		return "", errors.New("env --token: the observe proxy does not advertise session_token, " +
+			"so a tagged proxy URL may be refused on every CONNECT; re-run without --token")
+	}
+	return launch.NewToken(st.Key()), nil
 }
 
 // envPort resolves --port, refusing anything that is not a usable port.
@@ -882,8 +984,13 @@ func envPort(args []string) (int, error) {
 				return 0, fmt.Errorf("env: --port %d is outside 1-65535", n)
 			}
 			port = n
+		case "--token":
+			// Consumed here and read again by envToken. Two readers of one
+			// flag is worth it: envPort's job is to REFUSE what it does not
+			// understand, and a flag it silently ignored would be the same
+			// defect as the dropped --port this function exists to prevent.
 		case "--help", "-h":
-			return 0, errors.New("env: prints the proxy variables to export; --port N selects the listener (default 18080)")
+			return 0, errors.New("env: prints the proxy variables to export; --port N selects the listener (default 18080); --token tags this shell's traffic so the report can attribute it exactly")
 		default:
 			return 0, fmt.Errorf("env: unknown argument %q", args[i])
 		}
@@ -1037,10 +1144,40 @@ func cmdRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitFail
 	}
 
+	// The install key, read before the mint. storeInstalled() above proved a
+	// store exists, so this opens without creating one.
+	var runKey []byte
+	if st, err := openStoreForRead(); err == nil {
+		runKey = st.Key()
+	}
+
 	v := posture.Read(statusPath)
+
+	// Minted only when the proxy says it understands the credential AND the
+	// posture was accepted. Both halves matter, and the second was missing:
+	// posture.Read fills v.File from any parseable JSON and only THEN decides
+	// Export, so an enforce-mode proxy, a dead pid or a status file with a type
+	// error in an unrelated field still yielded SessionToken true. The tag was
+	// minted, never exported -- and still handed to the report, where it
+	// reclassified every foreign run_id in the store.
+	//
+	// A proxy that does not understand the credential is entitled to answer 407
+	// to a CONNECT carrying one, so an unconditional tag would break every
+	// session against an older build.
+	//
+	// It is never written to disk in the clear and never logged. It is in the
+	// child's environment, which is a DISCLOSURE and not containment: the
+	// observed agent can read its own environment. That is why the tag carries
+	// a MAC -- see internal/launch, and internal/wire's joinOf for what a tag
+	// that does not verify is worth, which is nothing.
+	var token string
+	if v.Export && v.File.SessionToken {
+		token = launch.NewToken(runKey)
+	}
+
 	var env []string
 	if v.Export {
-		env = launch.Env(v.File.ListenAddr)
+		env = launch.Env(v.File.ListenAddr, token)
 		fmt.Fprintf(stderr, "rashomon: %s; destinations will be recorded\n", v.Reason)
 	} else {
 		// One line, on stderr, saying why. This is the difference between a
@@ -1062,7 +1199,7 @@ func cmdRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// The report follows the child, on stderr's side of the conversation: the
 	// child's own stdout is the user's output and must not have a report
 	// appended to it, or piping the command anywhere would corrupt the pipe.
-	if err := reportNewest(stderr, v, startedAt); err != nil {
+	if err := reportNewest(stderr, v, startedAt, token); err != nil {
 		fmt.Fprintln(stderr, "rashomon: the session report could not be rendered:", err)
 	}
 	return code
@@ -1086,7 +1223,11 @@ func cmdRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // writing concurrently with the child can still be the newest when the child
 // exits. Nothing this side sees can separate those two, because the session id
 // belongs to Claude Code and never reaches this process.
-func reportNewest(w io.Writer, v posture.Verdict, since time.Time) error {
+// token is this run's session tag, when the proxy advertised that it accepts
+// one. It reaches the report in memory and is never persisted: the join needs
+// the RAW tag, so retaining it would mean storing a value that identifies a
+// session's traffic.
+func reportNewest(w io.Writer, v posture.Verdict, since time.Time, token string) error {
 	st, err := openStore()
 	if err != nil {
 		return err
@@ -1107,6 +1248,22 @@ func reportNewest(w io.Writer, v posture.Verdict, since time.Time) error {
 		opts = append(opts, report.WithProxyStore(v.File.CausalDB))
 	} else {
 		opts = append(opts, report.WithProxyStore(defaultProxyStore()))
+	}
+
+	if token != "" {
+		// Handed over in memory, never persisted. The raw token is what the
+		// join needs -- a digest cannot be compared against the proxy's
+		// run_id column -- so retaining it on disk would mean storing a value
+		// that identifies a session's traffic. It is available exactly while
+		// the process that minted it is alive, which is when the automatic
+		// report runs, and a later `rashomon report` falls back to the window.
+		opts = append(opts, report.WithRunToken(token))
+	}
+	if key := storeKey(); len(key) > 0 {
+		// Only a tag this install signed may be treated as another session's.
+		opts = append(opts, report.WithTokenVerifier(func(t string) bool {
+			return launch.IsOurs(t, key)
+		}))
 	}
 
 	rep, err := report.Build(st, newest, time.Now(), opts...)

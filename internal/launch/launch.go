@@ -25,14 +25,34 @@ import (
 // that differed would be the one somebody debugged for an hour.
 const NoProxyValue = "localhost,127.0.0.1,::1,0.0.0.0,*.local"
 
+// ProxyUser is the username half of the session credential.
+//
+// Fixed, and not a secret. The proxy accepts the credential only in observe
+// mode and treats the password as OPAQUE -- no lookup, no validation beyond
+// this username, and it is never logged. The username exists so the proxy can
+// tell a session tag from somebody's real proxy credentials and decline to
+// touch the second.
+const ProxyUser = "rashomon"
+
 // Env is the variables to export, or nothing.
 //
 // HTTPS only. Plain HTTP is not observed in this release, so exporting
 // HTTP_PROXY would route traffic through a proxy that does not record it and
 // then report nothing: silence read as zero. The lowercase form is not a
 // duplicate -- curl reads only lowercase https_proxy.
-func Env(listenAddr string) []string {
+//
+// A non-empty token is carried as the userinfo of the proxy URL, which clients
+// turn into `Proxy-Authorization: Basic ...` on CONNECT, and the proxy writes
+// into its run_id column. MEASURED 2026-09-19 against a recording CONNECT
+// proxy: curl, pip and Go's net/http all send it; GIT DOES NOT, by either the
+// environment or `git -c http.proxy`. That is why the reader attributes
+// untokened in-window rows by the clock instead of dropping them -- see
+// internal/wire. A tokened run is never worse informed than an untokened one.
+func Env(listenAddr, token string) []string {
 	addr := "http://" + listenAddr
+	if token != "" {
+		addr = "http://" + ProxyUser + ":" + token + "@" + listenAddr
+	}
 	return []string{
 		"HTTPS_PROXY=" + addr,
 		"https_proxy=" + addr,

@@ -115,14 +115,44 @@ type Observation struct {
 	// and the single message blamed the timestamps, which in that case had
 	// parsed perfectly.
 	WindowApplied bool `json:"window_applied"`
+
+	// How each attributed request was attributed, and how many were provably
+	// somebody else's. Folded requests, like Attempts.
+	//
+	// The report prints these rather than one word, because "joined on the
+	// token" over a set that is half window-matched is a claim of precision the
+	// data does not support. MEASURED 2026-09-19 with a recording CONNECT
+	// proxy: curl, pip and Go's net/http send the credential; GIT DOES NOT,
+	// via the environment or `git -c http.proxy`. So a tokened run's github.com
+	// rows arrive untokened, and a rule of "token, else window only when no
+	// token was set" would drop every one of them.
+	//
+	// OtherToken is the prize. Without a token a concurrent session's rows are
+	// indistinguishable from this run's and the window has to guess; with one
+	// they are positively someone else's. They are counted and reported, never
+	// admitted: an operator has to be able to see that an overlap exists
+	// without those rows entering this session's numbers.
+	TokenMatched  int `json:"token_matched"`
+	WindowMatched int `json:"window_matched"`
+	OtherToken    int `json:"other_token"`
 }
 
 // Window is the watched interval. End is zero when the session has not ended,
 // which means "up to the last row".
 type Window struct {
 	RunID string
-	Start time.Time
-	End   time.Time
+	// IsOurs reports whether a foreign run_id is a tag THIS INSTALL issued.
+	//
+	// A callback rather than a key, because this package must never import
+	// internal/launch: that package holds os/exec, and H-17 bounds the
+	// recorder's dependency graph. It also keeps the decision where the key
+	// lives instead of copying the key here.
+	//
+	// Nil means nothing can be verified, so nothing is excluded -- the
+	// fallback is the clock, which is the behaviour that predates tags.
+	IsOurs func(string) bool
+	Start  time.Time
+	End    time.Time
 }
 
 // row is one causal record, reduced to the columns this reader uses.
@@ -296,6 +326,22 @@ func summarise(rows []row, w Window, path string) Observation {
 	for i := range rows {
 		r := rows[i]
 		if strings.HasPrefix(r.reason, dialFailedPrefix) {
+			// CLASSIFIED BEFORE THE OUTCOME MAPS. They are built with no
+			// run_id filter, and hostOutcome is keyed by HOST across the
+			// proxy's whole database -- so another run's refused dial to a
+			// host this session reached successfully marked OUR destination
+			// Unreached, inverting the one distinction that field exists to
+			// make. The row had already been classified as somebody else's by
+			// the time the attempt counters ran; the outcome path never asked.
+			//
+			// Dropped rather than folded: a dial outcome is the SECOND row of
+			// somebody else's request, and their first row is counted as their
+			// attempt already. Skipping the whole row here instead would have
+			// removed it from the counts entirely -- which is what the first
+			// version of this fix did, and what the other-token test caught.
+			if joinOf(r, w) == joinOther {
+				continue
+			}
 			if r.requestID != "" {
 				outcome[r.requestID] = r.reason
 				continue
@@ -342,6 +388,21 @@ func summarise(rows []row, w Window, path string) Observation {
 			d.InheritedAttempts++
 		} else {
 			d.Attempts++
+		}
+		// Counted from the SAME classification isInherited used, not a second
+		// test of the same condition.
+		switch joinOf(*r, w) {
+		case joinToken:
+			obs.TokenMatched++
+		case joinOther:
+			obs.OtherToken++
+		default:
+			if !inherited {
+				// Only in-window rows are attributed by the clock. An
+				// out-of-window untokened row is another session's and is
+				// already counted as inherited.
+				obs.WindowMatched++
+			}
 		}
 		d.Actions = addOnce(d.Actions, r.action)
 		d.Reasons = addOnce(d.Reasons, r.reason)
@@ -419,8 +480,66 @@ func anyParsed(rows []row) bool {
 // decides, but only when it can be enforced: with no usable timestamp, calling
 // a row inherited would quietly delete a real destination from the report, and
 // the honest answer is to include it and say the window was not applied.
+// join classifies one folded request against this run's token, if it has one.
+type join int
+
+const (
+	joinToken  join = iota // run_id is this run's token: exactly ours
+	joinWindow             // no run_id: attributed by the clock, and said so
+	joinOther              // run_id belongs to another run: provably not ours
+)
+
+// joinOf decides how a request is attributed. It is the whole three-state rule
+// in one place, so the counters and isInherited cannot disagree about a row --
+// two implementations of one predicate is how a count and a list come to
+// describe different sets.
+//
+// Named joinOf rather than classify because this package already has a
+// classify, for errors: one name for two unrelated judgements is how a reader
+// ends up at the wrong function.
+func joinOf(r row, w Window) join {
+	if w.RunID == "" || r.runID == "" {
+		return joinWindow
+	}
+	// Plain ==, deliberately, and not crypto/subtle. This compares a row's tag
+	// against our own to decide ATTRIBUTION, not to admit anybody: an attacker
+	// positioned to time it can read the proxy's store directly, which hands
+	// them the tags outright. The unforgeability that matters is the MAC check
+	// below, which is constant-time.
+	if r.runID == w.RunID {
+		return joinToken
+	}
+	// A FOREIGN TAG IS ONLY ANOTHER SESSION IF WE CAN PROVE WE ISSUED IT.
+	//
+	// Otherwise it is not evidence about anybody and the clock decides, which
+	// is precisely the behaviour that predates tags. Two reasons, and the
+	// second is not hypothetical:
+	//
+	// The observed agent reads HTTPS_PROXY from its own environment, swaps the
+	// password, and routes its traffic through the same proxy. Treating any
+	// unequal tag as another session let it delete its own destinations from
+	// the reached-but-never-named finding and from novelty -- a one-line
+	// opt-out from the product's central claim, handed to the subject.
+	//
+	// And run_id is NOT a rashomon-private column. The proxy already fills it
+	// from an X-Altrace-Run-ID header, so an SDK-instrumented client sharing
+	// the proxy would have had its rows deleted and blamed on a session that
+	// never existed.
+	if w.IsOurs != nil && w.IsOurs(r.runID) {
+		return joinOther
+	}
+	return joinWindow
+}
+
 func isInherited(r row, w Window, windowApplied bool) bool {
-	if w.RunID != "" && r.runID != "" && r.runID != w.RunID {
+	switch joinOf(r, w) {
+	case joinToken:
+		// The token was issued to this process and no other, so it outranks the
+		// clock. A row carrying it outside the window is this run's row with a
+		// bad timestamp -- which is a real case, since the proxy stamps rows
+		// from its own clock and a session can outlive a skew correction.
+		return false
+	case joinOther:
 		return true
 	}
 	if !windowApplied || !r.whenOK {

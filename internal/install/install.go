@@ -254,14 +254,25 @@ type ErrModified struct {
 	Detail string
 }
 
-func (e *ErrModified) Error() string {
-	return fmt.Sprintf("install: our %s entry was modified (%s); not touching it", e.Event, e.Detail)
+// Modified names an entry of ours that someone has edited, so a caller can
+// say which and leave it alone without abandoning the rest.
+type Modified struct {
+	Event  string
+	Detail string
 }
 
-// Remove drops every entry claimed by one install and reports how many. It
-// touches nothing else, and it refuses if any entry of ours is not intact.
-func Remove(doc *settings.Document, spec Spec) (int, error) {
-	return RemoveIf(doc, func(id string) bool { return id == spec.InstallID })
+func (e *ErrModified) Error() string {
+	// The recovery is named, because the refusal without one is what made a
+	// single edited value feel like a locked door: restore the value, or say
+	// --force and have it removed as it stands.
+	return fmt.Sprintf("install: our %s entry was modified (%s); not touching it "+
+		"-- restore that value, or re-run detach with --force to remove it as it stands", e.Event, e.Detail)
+}
+
+// Remove drops every entry claimed by one install and reports how many, along
+// with any entry it left alone because someone had edited it.
+func Remove(doc *settings.Document, spec Spec, force bool) (int, []Modified, error) {
+	return RemoveIf(doc, func(id string) bool { return id == spec.InstallID }, force)
 }
 
 // RemoveIf drops every entry of ours whose install id satisfies match, under
@@ -272,12 +283,13 @@ func Remove(doc *settings.Document, spec Spec) (int, error) {
 // An entry that is not ours is never offered to match. Its id is "", and a
 // predicate written to accept anything would otherwise delete another tool's
 // hooks.
-func RemoveIf(doc *settings.Document, match func(installID string) bool) (int, error) {
+func RemoveIf(doc *settings.Document, match func(installID string) bool, force bool) (int, []Modified, error) {
 	total := 0
+	var left []Modified
 	for _, event := range Events {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 
 		var (
@@ -291,7 +303,21 @@ func RemoveIf(doc *settings.Document, match func(installID string) bool) (int, e
 				continue
 			}
 			if detail := intact(e, event); detail != "" {
-				return 0, &ErrModified{Event: event, Detail: detail}
+				// Refusing to clobber an entry someone edited is deliberate
+				// and is H-6's and H-7's contract, so the default is
+				// unchanged: the whole document is left alone and the caller
+				// is told which entry and why.
+				//
+				// force is the way out, and it exists because without one a
+				// single edited timeout -- the most natural edit there is to
+				// these entries -- left detach, detach --all and watch all
+				// failing, every entry installed, and no supported way to
+				// remove them. Refusing is right; refusing with no override
+				// is a trap.
+				if !force {
+					return 0, nil, &ErrModified{Event: event, Detail: detail}
+				}
+				left = append(left, Modified{Event: event, Detail: detail})
 			}
 			removed++
 		}
@@ -304,15 +330,15 @@ func RemoveIf(doc *settings.Document, match func(installID string) bool) (int, e
 			// object and one empty key per installed event.
 			if len(out) == 0 {
 				if err := doc.RemoveHookEvent(event); err != nil {
-					return 0, err
+					return 0, nil, err
 				}
 			} else if err := doc.SetHookEntries(event, out); err != nil {
-				return 0, err
+				return 0, nil, err
 			}
 			total += removed
 		}
 	}
-	return total, nil
+	return total, left, nil
 }
 
 // Present reports whether our entry for an event is installed as watch

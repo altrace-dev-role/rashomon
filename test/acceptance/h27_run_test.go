@@ -15,6 +15,7 @@ package acceptance
 // conclude the tool is broken.
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -248,3 +249,143 @@ func TestH27_ReportsNothingWhenTheCommandRecordedNothing(t *testing.T) {
 
 // shQuote wraps a path for the POSIX shell the child command is handed to.
 func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// TestH27_SessionTokenIsCapabilityGated is the compatibility rule, end to end.
+//
+// A proxy that does not understand the credential is entitled to answer 407 to
+// a CONNECT carrying one, which would break every request of every session
+// against any build older than the feature. So the launcher sends a tag only
+// when the proxy's own status file says it accepts one, and ABSENT MEANS NO --
+// the safe direction, and the one every existing status file on disk takes.
+//
+// This is the test that would have caught shipping it unconditionally: the
+// default fixture has no such field, and it asserts the plain URL is unchanged.
+func TestH27_SessionTokenIsCapabilityGated(t *testing.T) {
+	run := func(t *testing.T, mutate func(map[string]any)) string {
+		t.Helper()
+		e := newEnv(t)
+		if res := e.watch(); res.exitCode != 0 {
+			t.Fatalf("watch: exit %d", res.exitCode)
+		}
+		fields := liveStatus()
+		if mutate != nil {
+			mutate(fields)
+		}
+		status := statusFile(t, e, fields)
+		res := e.run("", nil, "run", "--proxy-status", status, "--", "sh", "-c",
+			"echo HTTPS_PROXY=$HTTPS_PROXY")
+		if res.exitCode != 0 {
+			t.Fatalf("run: exit %d, stderr %q", res.exitCode, res.stderr)
+		}
+		return res.stdout
+	}
+
+	t.Run("absent means no", func(t *testing.T) {
+		out := run(t, nil)
+		if strings.Contains(out, "@") || strings.Contains(out, "rashomon:") {
+			t.Errorf("a proxy that never advertised the capability received a credential; "+
+				"an older build may answer 407 to every CONNECT:\n%s", out)
+		}
+	})
+
+	t.Run("explicit false means no", func(t *testing.T) {
+		out := run(t, func(m map[string]any) { m["session_token"] = false })
+		if strings.Contains(out, "@") {
+			t.Errorf("session_token:false still produced a credential:\n%s", out)
+		}
+	})
+
+	t.Run("true mints one", func(t *testing.T) {
+		out := run(t, func(m map[string]any) { m["session_token"] = true })
+		if !strings.Contains(out, "http://rashomon:rt_") {
+			t.Errorf("session_token:true did not produce a tagged proxy URL:\n%s", out)
+		}
+		if !strings.Contains(out, "@127.0.0.1:18080") {
+			t.Errorf("the tagged URL lost its host:\n%s", out)
+		}
+	})
+}
+
+// TestH27_ARefusedPostureMintsNoToken closes a gap a review predicted and a
+// mutation confirmed: the fix was made and never tested.
+//
+// posture.Read fills v.File from any parseable JSON and only THEN decides
+// Export, so an enforce-mode proxy, a dead pid, or a type error in an
+// unrelated field all yield SessionToken true with Export false. The token was
+// minted, never exported -- and still handed to the report, where it
+// reclassified every foreign run_id in the store as another session and
+// dropped those rows from the counts.
+//
+// The observable consequence is in the REPORT, not in the child's environment,
+// which is why the earlier capability test could not see it: with no export
+// there is no credential either way.
+func TestH27_ARefusedPostureMintsNoToken(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	// A recorded call, so a session exists for the post-run report to render.
+	// Without it `run` prints "no session was recorded for that command" and
+	// the assertions below cannot observe anything -- which is how the first
+	// version of this test passed under its own mutation.
+	e.mustHook(defaultPayload().build(t))
+	db := filepath.Join(e.home, "causal.db")
+	seedForeignRow(t, db)
+
+	fields := liveStatus()
+	fields["connect_mode"] = "enforce" // refused: Export will be false
+	fields["session_token"] = true     // and yet the capability says yes
+	fields["causal_db"] = db
+	status := statusFile(t, e, fields)
+
+	res := e.run("", nil, "run", "--proxy-status", status, "--", "sh", "-c", "true")
+	if res.exitCode != 0 {
+		t.Fatalf("run: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	// THE OBSERVABLE CONSEQUENCE, and finding it took a second attempt worth
+	// recording. The first version of this test asserted that the foreign row
+	// was not excluded -- and passed under the mutation, because the row's tag
+	// is UNSIGNED and the verifier already refuses to exclude it. The security
+	// fix made the thing I was testing for unobservable by that route.
+	//
+	// What a spuriously minted token does change is what the report SAYS about
+	// itself: TokenRequested flips, and the join line becomes the diagnostic
+	// "a session token was in use and NO row carried it" -- on a run that
+	// exported nothing and therefore made no proxy traffic at all. A user is
+	// told to go looking for a proxy misconfiguration that does not exist.
+	if strings.Contains(res.stderr, "NO row carried it") {
+		t.Errorf("a refused posture minted a token, so the report claims a tag was in "+
+			"use on a run that exported nothing and made no proxy traffic:\n%s",
+			res.stderr)
+	}
+	if strings.Contains(res.stderr, "join: token") {
+		t.Errorf("a refused posture produced a token join:\n%s", res.stderr)
+	}
+}
+
+// seedForeignRow writes a proxy store with a single row carrying a foreign tag.
+func seedForeignRow(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	if _, err := db.Exec(`CREATE TABLE causal_records (
+		sequence_num INTEGER PRIMARY KEY,
+		record_id TEXT NOT NULL DEFAULT '',
+		request_id TEXT NOT NULL DEFAULT '',
+		run_id TEXT NOT NULL DEFAULT '',
+		timestamp DATETIME NOT NULL,
+		reason TEXT NOT NULL DEFAULT '',
+		action TEXT NOT NULL DEFAULT '',
+		target_host TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	stamp := time.Now().UTC().Format("2006-01-02 15:04:05.999999999 -0700 MST")
+	if _, err := db.Exec(
+		`INSERT INTO causal_records (sequence_num, request_id, run_id, timestamp, action, target_host)
+		 VALUES (1, 'r1', 'rt_another_run', ?, 'ALLOW', 'other.example')`, stamp); err != nil {
+		t.Fatal(err)
+	}
+}

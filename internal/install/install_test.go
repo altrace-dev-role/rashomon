@@ -61,7 +61,7 @@ func TestOwner(t *testing.T) {
 func TestRemoveIfAnyInstallID(t *testing.T) {
 	doc := seedDocument(t)
 
-	n, err := RemoveIf(doc, func(string) bool { return true })
+	n, _, err := RemoveIf(doc, func(string) bool { return true }, false)
 	if err != nil {
 		t.Fatalf("RemoveIf: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestRemoveIfAnyInstallID(t *testing.T) {
 func TestRemoveNamedInstallLeavesTheOther(t *testing.T) {
 	doc := seedDocument(t)
 
-	n, err := Remove(doc, Spec{InstallID: oneID})
+	n, _, err := Remove(doc, Spec{InstallID: oneID}, false)
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestRemoveIfRefusesAnEntryThatIsNotIntact(t *testing.T) {
 	}
 	before := string(doc.Bytes())
 
-	n, err := RemoveIf(doc, func(string) bool { return true })
+	n, _, err := RemoveIf(doc, func(string) bool { return true }, false)
 	var modified *ErrModified
 	if !errors.As(err, &modified) {
 		t.Fatalf("RemoveIf removed %d entries and returned %v, want a refusal", n, err)
