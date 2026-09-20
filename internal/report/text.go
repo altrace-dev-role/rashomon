@@ -98,7 +98,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	writeNono(b, sess.Nono)
 	writeChains(b, sess.Chains, cfg.chain)
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
-	fmt.Fprintf(b, "  reasons: %s\n", list(sess.Coverage.Reasons))
+	writeReasons(b, sess.Coverage.Reasons)
 	fmt.Fprintf(b, "  start recorded: %s\n", yesNo(sess.Coverage.StartRecorded))
 	fmt.Fprintf(b, "  end recorded: %s\n", yesNo(sess.Coverage.EndRecorded))
 	fmt.Fprintf(b, "  hook entry at start: %s\n", sess.Coverage.HookEntryAtStart)
@@ -163,11 +163,95 @@ func set(ids []string) string {
 	return list(ids)
 }
 
+// reasonText explains a coverage reason in one line.
+//
+// The codes are the contract and stay on the line, because a reader who greps
+// or a consumer reading JSON needs them. The sentence beside each is for the
+// person who has never read this source.
+//
+// Reported from a real first run: a report carrying "probe_absent,
+// run_not_closed, transcript_mismatch, execution_mismatch" and eight hundred
+// tool-use ids, where all four codes had a single cause -- the recorder was
+// installed in the middle of a session that had not finished -- and the
+// report said none of it. A reader cannot act on a vocabulary they have to go
+// and look up.
+var reasonText = map[string]string{
+	"probe_absent":          "no session-start was recorded, so the recorder was not installed when this session began",
+	"probe_unresolved":      "the session-start probe could not be read, so the start of this session is unaccounted for",
+	"run_not_closed":        "no session-end was recorded: the session is still open, or it ended without one",
+	"transcript_mismatch":   "the transcript holds tool calls this store does not",
+	"execution_mismatch":    "the transcript holds results for calls this store recorded no execution for",
+	"gap":                   "records were deliberately evicted by `forget`, and a gap record says so",
+	"internal_error":        "a hook invocation failed inside this program; the call still ran",
+	"lock_timeout":          "a hook could not take the store lock in time, so its record went to the spill file or was lost",
+	"terminated_by_signal":  "a hook was killed before it finished, most often a hook timeout",
+	"unterminated_entry":    "a declaration was never closed, so the call's end was not observed",
+	"hook_entry_absent":     "the recorder's own entry was not in the settings file when the hook ran",
+	"hook_entry_unresolved": "the settings file could not be read, so whether the recorder was installed is unknown",
+}
+
+// writeReasons renders the coverage reasons, one per line with its meaning.
+func writeReasons(b *bytes.Buffer, reasons []string) {
+	if len(reasons) == 0 {
+		fmt.Fprintf(b, "  reasons: %s\n", none)
+		return
+	}
+	fmt.Fprintln(b, "  reasons:")
+	for _, r := range reasons {
+		if text, ok := reasonText[r]; ok {
+			fmt.Fprintf(b, "    %-22s %s\n", r, text)
+			continue
+		}
+		// A reason with no sentence still renders. A vocabulary that grows
+		// without this map must not silently drop the new value.
+		fmt.Fprintf(b, "    %s\n", r)
+	}
+}
+
+// listWidth is how many characters of a list a terminal line will carry
+// before it summarises, and listMax how many items.
+//
+// Two bounds because this function renders two very different things: a
+// handful of short words, which should all fit, and hundreds of opaque
+// tool-use ids, which must not. Bounding only the count would still emit a
+// thousand characters of ids; bounding only the width would cut a list of
+// short words mid-thought.
+const (
+	listWidth = 200
+	listMax   = 12
+)
+
+// list renders a list for a terminal, summarising one too long to read.
+//
+// The summary names NO type. This function is called with ids, with tool
+// families and with ordinary English words, and an earlier version that said
+// "N ids" labelled all three as ids -- which was simply false for two of them.
+//
+// Nothing is dropped: the JSON carries every item and the line says so.
+// Rendering a bare count instead would lose them, which is the thing the
+// accounting equation exists to avoid.
+//
+// Reported from a real first run, where eight hundred and sixty ids joined
+// into a single line of roughly twenty-five thousand characters and buried
+// every other line in the report.
 func list(items []string) string {
 	if len(items) == 0 {
 		return none
 	}
-	return strings.Join(items, ", ")
+
+	shown, width := 0, 0
+	for _, it := range items {
+		next := width + len(it) + 2
+		if shown == listMax || (shown > 0 && next > listWidth) {
+			break
+		}
+		width, shown = next, shown+1
+	}
+	if shown == len(items) {
+		return strings.Join(items, ", ")
+	}
+	return fmt.Sprintf("%s and %d more of %d (--json lists them all)",
+		strings.Join(items[:shown], ", "), len(items)-shown, len(items))
 }
 
 func unexecuted(items []Unexecuted) string {
