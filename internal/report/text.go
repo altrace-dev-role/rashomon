@@ -108,6 +108,11 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	fmt.Fprintf(b, "  declarations recorded: %d\n", d.Recorded)
 	fmt.Fprintf(b, "  declarations without a transcript path: %d\n", d.WithoutTranscript)
 	fmt.Fprintf(b, "  by tool: %s\n", byName(d.ByTool))
+	// What the session DID, as far as a recorder that keeps no content can
+	// say: which programs ran and what kind of thing each call was. "by tool:
+	// Bash 23" is the door, not the work.
+	fmt.Fprintf(b, "  by verb: %s\n", byName(d.ByVerbClass))
+	fmt.Fprintf(b, "  by program: %s\n", programs(d.ByProgram, d.ProgramsUnknown))
 	fmt.Fprintf(b, "  by label: %s\n", byName(d.ByLabel))
 	fmt.Fprintf(b, "  unterminated: %s\n", list(d.Unterminated))
 	fmt.Fprintf(b, "  dropped: %s\n", list(d.Dropped))
@@ -321,6 +326,26 @@ func byName(counts map[string]int) string {
 		out[i] = fmt.Sprintf("%s %d", name, counts[name])
 	}
 	return strings.Join(out, ", ")
+}
+
+// programs renders the per-program counts, with the shell calls whose
+// program could not be told reported beside them rather than among them.
+//
+// Beside, not among: "unknown" is not a program, and a reader scanning the
+// list for what ran must not meet it sitting between `git` and `go` as though
+// it were one more command.
+func programs(counts map[string]int, unknown int) string {
+	if len(counts) == 0 && unknown == 0 {
+		return none
+	}
+	out := byName(counts)
+	if unknown == 0 {
+		return out
+	}
+	if len(counts) == 0 {
+		return fmt.Sprintf("%s (%d shell call(s) named none)", none, unknown)
+	}
+	return fmt.Sprintf("%s (and %d shell call(s) whose program could not be told)", out, unknown)
 }
 
 func yesNo(b bool) string {

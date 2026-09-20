@@ -162,6 +162,11 @@ m("H-11 end probe does not scan for unterminated entries", "internal/hook/probe.
   "\t\t\tif len(run.Unterminated()) > 0 {\n\t\t\t\treason = store.ReasonUnterminatedEntry\n\t\t\t}", "\t\t\t_ = run", "TestH11_")
 m("H-12 SIGTERM ignored on the close path", "internal/hook/handle.go", "\tcase sig.Delivered():\n\t\toutcome, reason = store.OutcomeSignal", "\tcase false && sig.Delivered():\n\t\toutcome, reason = store.OutcomeSignal", "TestH12_SIGTERM")
 m("H-13 program carries the whole command line", "internal/shape/shape.go", "prog := path.Base(toks[i])", "prog := cmd + path.Base(toks[i][:0])", "TestH13_")
+m("the report counts an unknown program among the real ones", "internal/report/report.go",
+  "\t\tcase d.ToolName == \"Bash\":", "\t\tcase false:", "TestProgramsUnknownIsCountedApart|TestNonShell")
+m("the report stops counting programs at all", "internal/report/report.go",
+  "\t\t\tsess.Declarations.ByProgram[*d.Shape.Program]++", "\t\t\t_ = d.Shape.Program",
+  "TestByProgramAndVerb")
 m("H-13 program is whatever token came first, operator or not", "internal/shape/shape.go",
   "\t\tcase isMetaTok, toks[i] == \"{\", isAssignment(toks[i]):\n\t\t\t// Skipped.",
   "\t\tcase false:\n\t\t\t// Skipped.", "TestProgramIsAProgram")
