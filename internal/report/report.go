@@ -28,6 +28,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/nono"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/wire"
@@ -201,6 +202,12 @@ type Session struct {
 	// transit the proxy, derived from the join rather than from a probe.
 	Families FamilyCoverage `json:"families"`
 
+	// Nono is what a sandbox saw, when one was supervising. A fourth evidence
+	// source, carried because it DISAGREES with the other three in ways that
+	// are informative rather than alarming: it sees plain HTTP, which this
+	// proxy structurally cannot.
+	Nono Nono `json:"nono"`
+
 	// Chains is the causal view: which prompt produced which calls. Every other
 	// section here is a set, and a set is exactly the structure that discards
 	// the edge between a request and its consequences.
@@ -217,6 +224,7 @@ type Option func(*options)
 
 type options struct {
 	proxyStore string
+	nonoTrail  string
 	runToken   string
 	// tokenRequested records that a tag WAS in play, separately from whether
 	// any row carried one. Without it the renderer inferred "no token was in
@@ -226,6 +234,15 @@ type options struct {
 	// clients all stripped the credential.
 	tokenRequested bool
 	isOurs         func(string) bool
+}
+
+// WithNonoTrail names a nono audit-events.ndjson to reconcile against.
+//
+// An empty path means none was configured, which the report states as a
+// coverage line rather than omitting -- a section that vanishes when it has
+// nothing to say cannot be told apart from one that was never built.
+func WithNonoTrail(path string) Option {
+	return func(o *options) { o.nonoTrail = path }
 }
 
 // WithRunToken supplies the session tag this run handed to the proxy.
@@ -361,6 +378,13 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		// chain's host states must be the ones the destinations section already
 		// suppressed and accounted for, or a forgotten host returns in a
 		// different section under a different name for the same row.
+		// After Destinations, and reading it rather than the raw observation:
+		// the comparison must use the view that has already suppressed
+		// forgotten hosts, or a forgotten host returns here under a different
+		// heading.
+		sess.Nono = buildNono(
+			nono.Read(cfg.nonoTrail, nono.Window{Start: w.Start, End: w.End}),
+			sess.Destinations, cfg.nonoTrail != "", forgotten)
 		sess.Chains = buildChains(run, sess.Destinations, deniedSet(sess.Transcripts), forgotten)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)

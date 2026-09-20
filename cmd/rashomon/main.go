@@ -273,7 +273,7 @@ func openForHook(stderr io.Writer) *store.Store {
 // digest is an HMAC under it, so a shared report cannot be dictionary-attacked
 // by a recipient holding a candidate hostname. A location with no store has no
 // key, and also no hosts, so the nil is never used to digest anything.
-func reportOrEmpty(sessionID, proxyStore string, now time.Time) (*report.Report, []byte, error) {
+func reportOrEmpty(sessionID, proxyStore, nonoTrail string, now time.Time) (*report.Report, []byte, error) {
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {
 		return report.Empty(now), nil, nil
@@ -281,7 +281,7 @@ func reportOrEmpty(sessionID, proxyStore string, now time.Time) (*report.Report,
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := []report.Option{report.WithProxyStore(proxyStore)}
+	opts := []report.Option{report.WithProxyStore(proxyStore), report.WithNonoTrail(nonoTrail)}
 	// Only a tag this install signed may be treated as another session's; an
 	// unverifiable run_id is not evidence about anybody and falls back to the
 	// clock.
@@ -679,6 +679,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 	asJSON := false
 	redact := false
 	chain := false
+	nonoTrail := ""
 	proxyStore := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -700,6 +701,12 @@ func cmdReport(args []string, stdout io.Writer) error {
 			redact = true
 		case "--chain":
 			chain = true
+		case "--nono-audit":
+			if i+1 >= len(args) {
+				return errors.New("--nono-audit needs a value")
+			}
+			nonoTrail = args[i+1]
+			i++
 		default:
 			return fmt.Errorf("unknown argument %q", args[i])
 		}
@@ -711,7 +718,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 	// Opened WITHOUT creating: a command that only asks a question must not mint
 	// an install identity and an HMAC key as a side effect of being asked. The
 	// same rule status follows, and for the same reason.
-	rep, key, err := reportOrEmpty(sessionID, proxyStore, time.Now())
+	rep, key, err := reportOrEmpty(sessionID, proxyStore, nonoTrail, time.Now())
 	if err != nil {
 		return err
 	}
@@ -837,7 +844,7 @@ usage:
   rashomon status                say what is installed and what the store holds,
                                writing nothing and creating no store
   rashomon report [--session S] [--json] [--redact] [--chain]
-                  [--proxy-store PATH]
+                  [--proxy-store PATH] [--nono-audit PATH]
                                render declarations and coverage, as text for a
                                terminal or as JSON for a consumer; --chain
                                lists the calls under each prompt, which JSON

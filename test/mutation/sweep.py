@@ -296,6 +296,46 @@ m("TB1 the loopback check matches a prefix", "internal/posture/posture.go",
   "\tswitch strings.ToLower(host) {\n\tcase \"127.0.0.1\", \"::1\", \"localhost\":\n\t\treturn true\n\t}\n\treturn false",
   "\treturn strings.HasPrefix(strings.ToLower(host), \"127.0.0.1\") ||\n\t\tstrings.HasPrefix(strings.ToLower(host), \"localhost\") || host == \"::1\"",
   "TestIsLoopback")
+# The nono adapter. A verification review found the sweep had NO entry for any
+# line of it, so the sweep certified nothing about a fourth evidence source --
+# and separately found that five mutations to the plain-HTTP correction all
+# survived the whole suite. These are the breaks with judging tests that exist.
+m("NONO suppressTrail is removed, so forget --host is bypassed",
+  "internal/report/nono.go", "\tobs = suppressTrail(obs, forgotten)", "\t_ = forgotten",
+  "TestSeam_AForgotten")
+m("NONO plain HTTP stops meaning ONLY plain HTTP", "internal/report/nono.go",
+  "plainOnly[h] && !observable[h]", "plainOnly[h]", "TestSeam_PlainHTTP")
+m("NONO the plain-HTTP list is never populated", "internal/report/nono.go",
+  "n.PlainHTTP = append(n.PlainHTTP, h)", "_ = h", "TestSeam_PlainHTTP")
+m("NONO a denied host is reported as missing from the trail",
+  "internal/report/nono.go", "\t\tif denied[h] {", "\t\tif false {",
+  "TestSeam_TheReconciliation")
+m("NONO loopback is reported as traffic the sandbox missed",
+  "internal/report/nono.go",
+  "return loopbackHosts[h] || clientPlane[h]", "return clientPlane[h]",
+  "TestSeam_TheReconciliation")
+m("NONO the client plane is reported as traffic the sandbox missed",
+  "internal/report/nono.go",
+  "\tfor _, h := range dests.ClientPlane {\n\t\tclientPlane[h] = true\n\t}", "",
+  "TestSeam_TheReconciliation")
+m("NONO redaction skips the sandbox section", "internal/report/redact.go",
+  "\t\ts.Nono = redactNono(sess.Nono, key)", "", "TestRedact_EveryDeclared")
+# Simulates the defect the vocabulary exists for: somebody adds a host-bearing
+# field and classifies nothing. Mutating the test's own collection loop was a
+# no-op, because with a complete vocabulary there is nothing for it to collect.
+m("NONO a new host field appears with no classification", "internal/report/nono.go",
+  "\tSessions  int `json:\"sessions\"`",
+  "\tSessions  int `json:\"sessions\"`\n\tNewHosts []string `json:\"new_hosts\"`",
+  "TestRedact_TheHostBearingSet")
+m("NONO a file of unlearned record types reads as a quiet sandbox",
+  "internal/nono/nono.go", "\t\tswitch head.Type {", "\t\tparsed++\n\t\tswitch head.Type {",
+  "TestRead_AFileOfUnlearned")
+m("NONO the drop counters are discarded on the bail-out path",
+  "internal/nono/nono.go", "\t\tobs.Reason = NotObservedNoRecords",
+  "\t\tobs = Observation{Trail: path}\n\t\tobs.Reason = NotObservedNoRecords",
+  "TestRead_AFileOfUnlearned")
+m("NONO the trail is not read at all from the CLI", "cmd/rashomon/main.go",
+  "report.WithNonoTrail(nonoTrail)", "report.WithNonoTrail(\"\")", "TestH31_NonoTrail")
 m("TB1 SEAM the token never reaches the join", "internal/report/report.go",
   "\t\tw.RunID = cfg.runToken", "", "TestSeam")
 m("TB1 SEAM the counters never cross into the report", "internal/report/destinations.go",
