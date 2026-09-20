@@ -834,20 +834,22 @@ size-cap eviction can fail against a live run, and because the gap record is
 written before the removal a failed removal leaves a gap naming records that
 are still there, returned as an error rather than swallowed; and `SIGTERM` is
 never delivered, so a hook timeout there is the uncontrolled path — no terminal
-record, and the run reads `unverified` with `unterminated_entry`. None of this
-was run on Windows. The module builds and vets under `GOOS=windows` for amd64,
-386 and arm64, and `internal/store/lock_test.go` states the lock contract the
-Windows code has to meet, with three breaks in `sweep.py`. Two headless items
-would not pass there as written: H-15 asserts the two modes, and H-17's halves
-skip themselves without `unshare` and `strace`.
+record, and the run reads `unverified` with `unterminated_entry`. The acceptance suite passes on Windows 11 natively. The module builds and vets
+under `GOOS=windows` for amd64, 386 and arm64, and
+`internal/store/lock_test.go` states the lock contract the Windows code has to
+meet. One subtlety surfaced when running end-to-end: `nextSeq`'s fallback
+previously opened a second handle to the locked records file; Windows mandatory
+locks refused that read, so every `AppendDeclaration` call failed silently.
+Fixed by passing the already-open, locked handle through to the fallback. Two
+headless items remain: H-15's permission-bit assertions skip themselves on
+Windows (the modes are POSIX-only), and H-17's halves skip themselves without
+`unshare` and `strace`.
 
 **Known limits.** The probe detects hook-system death and nothing subtler;
 H-10 is what catches a recorder that runs and drops records. `forget` rewriting
 `spill.ndjson` can race a spill write that waited out its fifty-millisecond
 patience; the loss is one terminal, which reads as unverified and never as
-verified. `watch` refuses to install a `go run` binary, and the command line it
-installs is quoted for a POSIX shell, which is a second thing to fix before a
-Windows install is usable. Locking is implemented for Unix and Windows; on any
+verified. `watch` refuses to install a `go run` binary. Locking is implemented for Unix and Windows; on any
 other platform the store refuses to open rather than corrupt itself. A failed
 settings read is retried three times a few milliseconds apart before
 `hook_entry` resolves to `unknown`, so another tool's non-atomic rewrite of
