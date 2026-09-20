@@ -17,6 +17,7 @@ package acceptance
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -171,11 +172,16 @@ func TestH27_ReturnsTheChildsExitCode(t *testing.T) {
 func TestH27_ReportsAfterTheCommand(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
-	e.mustHook(defaultPayload().build(t))
-	e.probe("end", testSession)
 	status := statusFile(t, e, liveStatus())
 
-	res := e.run("", nil, "run", "--proxy-status", status, "--", "sh", "-c", "echo done")
+	// The CHILD records the session, which is the only arrangement that makes
+	// this item mean what its name says. Recording one first and then running
+	// a command that records nothing asserts that a report appears for a
+	// session the command did not produce -- which is the behaviour
+	// TestH27_ReportsNothingWhenTheCommandRecordedNothing now forbids.
+	child := fmt.Sprintf("%s hook %s <<'EOF'\n%s\nEOF",
+		shQuote(rashomonBin), strings.Join(e.installArgs(), " "), defaultPayload().build(t))
+	res := e.run("", nil, "run", "--proxy-status", status, "--", "sh", "-c", child)
 
 	if res.exitCode != 0 {
 		t.Fatalf("run: exit %d, stderr %q", res.exitCode, res.stderr)
@@ -204,6 +210,45 @@ func TestH27_NeedsACommandAfterTheSeparator(t *testing.T) {
 		}
 	}
 }
+
+// TestH27_ReportsNothingWhenTheCommandRecordedNothing: a command that produces
+// no session gets no report, even when the store holds an older one.
+//
+// Measured before this item existed: `rashomon run -- date` printed a complete
+// report for a session recorded minutes earlier, under a heading that reads as
+// though the command had just produced it -- `failed calls: 1` and all. That
+// is this program's own discipline broken, a claim with no evidence behind it,
+// and the message for the empty case already existed and said the right thing.
+//
+// Break: report the newest run without comparing it to the launch.
+func TestH27_ReportsNothingWhenTheCommandRecordedNothing(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.mustHook(defaultPayload().build(t))
+	e.probe("end", testSession)
+	status := statusFile(t, e, liveStatus())
+
+	// A second of separation, because the guard compares the run's
+	// modification time against the launch and a same-second write is a real
+	// ambiguity rather than a bug to paper over.
+	time.Sleep(1100 * time.Millisecond)
+
+	res := e.run("", nil, "run", "--proxy-status", status, "--", "sh", "-c", "echo done")
+
+	if res.exitCode != 0 {
+		t.Fatalf("run: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if !strings.Contains(res.stderr, "no session was recorded for that command") {
+		t.Errorf("a command that recorded nothing did not say so:\n%s", res.stderr)
+	}
+	if strings.Contains(res.stderr, "session "+testSession) {
+		t.Errorf("the report named %s, a session this command did not produce:\n%s",
+			testSession, res.stderr)
+	}
+}
+
+// shQuote wraps a path for the POSIX shell the child command is handed to.
+func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // TestH27_SessionTokenIsCapabilityGated is the compatibility rule, end to end.
 //
@@ -277,11 +322,6 @@ func TestH27_SessionTokenIsCapabilityGated(t *testing.T) {
 func TestH27_ARefusedPostureMintsNoToken(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
-	// A recorded call, so a session exists for the post-run report to render.
-	// Without it `run` prints "no session was recorded for that command" and
-	// the assertions below cannot observe anything -- which is how the first
-	// version of this test passed under its own mutation.
-	e.mustHook(defaultPayload().build(t))
 	db := filepath.Join(e.home, "causal.db")
 	seedForeignRow(t, db)
 
@@ -291,9 +331,21 @@ func TestH27_ARefusedPostureMintsNoToken(t *testing.T) {
 	fields["causal_db"] = db
 	status := statusFile(t, e, fields)
 
-	res := e.run("", nil, "run", "--proxy-status", status, "--", "sh", "-c", "true")
+	// THE CHILD RECORDS THE SESSION, rather than the test recording one before
+	// the run. `run` now reports only a session the command itself produced
+	// (the `since` guard), so a session created beforehand renders nothing and
+	// every assertion below becomes unobservable -- which is exactly what the
+	// mutation sweep caught when that guard landed. The two changes are both
+	// right and they interact.
+	child := fmt.Sprintf("%s hook %s <<'EOF'\n%s\nEOF",
+		shQuote(rashomonBin), strings.Join(e.installArgs(), " "), defaultPayload().build(t))
+	res := e.run("", nil, "run", "--proxy-status", status, "--", "sh", "-c", child)
 	if res.exitCode != 0 {
 		t.Fatalf("run: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if strings.Contains(res.stderr, "no session was recorded") {
+		t.Fatalf("premise: the child recorded nothing, so nothing below can be "+
+			"observed:\n%s", res.stderr)
 	}
 	// THE OBSERVABLE CONSEQUENCE, and finding it took a second attempt worth
 	// recording. The first version of this test asserted that the foreign row
