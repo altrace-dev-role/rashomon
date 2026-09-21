@@ -1,10 +1,16 @@
 # Claude Code integration: plugin install, recording state, and the post-turn digest
 
-Status: proposed, revision 6. Sign-off is per part, and Part 5 additionally
+Status: proposed, revision 7. Sign-off is per part, and Part 5 additionally
 depends on a constraints amendment this document asks for by name. Parts 1
 through 4 are one release and are useful without Part 5.
 
-Revision history. Revision 6 replaces revision 5's minimum-schema refusal
+Revision history. Revision 7 takes the first three implementations. It
+corrects two of this document's own errors -- a 50 ms digest budget that was
+unreachable before a record was read, and an H-81 that asserted a paused
+machine creates nothing when it must create a marker -- adds H-103 for silent
+double-counting in the migration window and H-104 for a digest that wedges on
+an open stdin, and records the O(session-size) scaling the store's lack of an
+index imposes. Revision 6 replaces revision 5's minimum-schema refusal
 with H-102, after finding that the store already degrades per-record and the
 real gap is that SkippedRecords drives no coverage reason -- so a store full
 of records this binary cannot parse renders verified today. Revision 5 adds H-101 -- a Stop hook that continues the
@@ -53,7 +59,7 @@ number this document renders is already in the store.
 
 Numbering. H-70 is the highest item on the merge target, so items here are
 provisional from H-71 and are grepped against the merge target
-(`H-\(7[1-9]\|[89][0-9]\|10[0-2]\)`) before they become the contract.
+(`H-\(7[1-9]\|[89][0-9]\|10[0-4]\)`) before they become the contract.
 
 ## Why
 
@@ -143,8 +149,29 @@ declarations.
 
 Owed before Part 3 is approved, each with a budget:
 
-4. The digest's wall time and byte size on the largest session available,
-   budget 50 ms and the ceiling Part 3 sets.
+4. **Measured, and the budget revision 1 set was unreachable.** Across the
+   three real sessions, with stdin closed: 0 records 66 ms, 18 records 58 ms,
+   4,264 records 122 ms; output 755 B to 1,399 B, comfortably inside the
+   8 KiB ceiling.
+
+   The floor is ~58 ms on an **empty** session, because measurement 3 already
+   showed process start and exit alone costs 24 ms and `store.Open` accounts
+   for much of the rest. A 50 ms budget was therefore unreachable before a
+   single record was read, and naming it was an error in revision 1.
+
+   **The cost is O(total session size), not O(turn size)**, because finding a
+   turn's boundaries means reading the run's whole `records.ndjson` and
+   `coverage.ndjson` -- the store carries no index, and this matches what
+   `report.Build` already does. A long session's later turns therefore cost
+   progressively more to digest even though each turn is small.
+
+   Revised budget, on the quantity that matters: **the recap runs once per
+   turn, not once per call, so 122 ms is acceptable and unbounded growth is
+   not.** The ceiling is 250 ms at 10,000 records. If a projection exceeds it,
+   the remedy is a tail read -- the records for the current turn are at the
+   end of an append-only file, so scanning backwards to the first record of a
+   prior `prompt_id` turns this back into O(turn) -- and that is a follow-up,
+   not a blocker for Part 3.
 5. Whether a `/config` plugin-option change reaches a running session's next
    hook invocation, or needs `/reload-plugins`. This is undocumented. Part 2
    no longer depends on it, having chosen a state file over an environment
@@ -350,9 +377,33 @@ nothing it owns.
 refusal and the same session records every call twice, which H-74 then
 catches.
 
-**H-74 -- one call, one declaration.** With both origins installed and the
-refusal bypassed in a fixture, exactly one declaration per tool call. Break:
-remove the guard and the count doubles.
+**H-74 -- a plugin invocation is not mistaken for a foreign install.**
+`standsDown` must not treat a plugin entry's empty `--install` id as another
+install's and drop the declaration. Break: remove the `id == ""` branch and a
+plugin-only install records nothing at all.
+
+**H-103 -- more declarations than distinct calls is a named finding.**
+Revision 1's H-74 asked for "one call, one declaration" in a dual install,
+which was confused: `watch` refusing cannot prevent the state, because
+rashomon is not in the loop when a user enables a plugin. Measured in
+implementation, the migration window -- `watch` first, plugin enabled after --
+renders `declarations recorded: 2`, `coverage: verified`, `reasons: none` for
+one tool call. Silent inflation, which is worse than the under-claim this
+tool was designed around: a reader can act on an under-claim and cannot act
+on a number they do not know is wrong.
+
+The detector is a record invariant, not a plugin check: **a run whose
+declaration count exceeds its count of distinct `tool_use_id`s has more than
+one recorder.** Origin-agnostic, so it catches a third origin or a
+misconfigured duplicate too. Measured safe against the real store -- 1,433
+declarations across two sessions, every id appearing exactly once, including
+in a session with denied calls. It applies to declarations only, never
+executions: `chains.go:215-217` documents that one id legitimately carries
+two executions.
+
+The counts stay doubled and the reason explains them. De-duplicating would be
+inventing data. Break: remove the invariant and the migration-window fixture
+renders verified with no reason over doubled counts.
 
 **H-75 -- `status` names both origins.** Break: collapse them into one line
 and a user with a stale settings entry cannot tell which is recording.
@@ -463,9 +514,15 @@ settings edit and a plugin-only install cannot be paused at all.
 return early before the coverage write and the gap renders identically to a
 crash.
 
-**H-81 -- a paused machine with no store creates nothing.** Assert no store
-root after a full paused session. Break: move the check after `openForHook`
-and every paused tool call mints key material.
+**H-81 -- a paused machine never acquires an install identity.** Assert that
+after `pause` and a full session of hook invocations, no `install.json`,
+`install.key` or `runs/` exists. Note what it does *not* assert: `pause` has
+to create the store root to hold its own marker, because `status` must be
+able to report paused state before any store exists. Revision 1 said "creates
+nothing", which is literally false and was caught in implementation. The
+regression that matters is minting identity, not making a directory. Break:
+move the check after `openForHook` and every paused tool call mints key
+material.
 
 **H-82 -- `status` distinguishes paused, absent and unknown.** Break: collapse
 paused into absent and the user cannot tell "I turned it off" from "it was
@@ -620,6 +677,14 @@ while every field is within its own cap.
 **H-89 -- subagent calls land in the parent turn and are counted separately.**
 Break: key on `(transcript, prompt)` instead of `prompt_id` alone, and the
 digest silently undercounts by the subagent's share.
+
+**H-104 -- the digest never blocks on stdin.** Invoke it with stdin an open
+pipe that sends no EOF, and it completes. Reading stdin is explicit, not
+inferred from whether stdin is a terminal: a script's stdin is neither a
+terminal nor closed, so terminal-detection guesses wrong in the commonest
+non-interactive case and wedges. Break: gate the read on `IsTerminal` and the
+test hangs rather than failing, which is itself the point -- a recap that can
+wedge a turn is worse than one that says nothing.
 
 **H-100 -- a concurrent writer does not produce a smaller clean count.** Run
 the digest against a run directory while a writer appends, and a torn tail
