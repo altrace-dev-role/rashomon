@@ -1,8 +1,31 @@
 # Claude Code integration: plugin install, recording state, and the post-turn digest
 
-Status: proposed, revision 1. Sign-off is per part, and Part 5 additionally
+Status: proposed, revision 2. Sign-off is per part, and Part 5 additionally
 depends on a constraints amendment this document asks for by name. Parts 1
 through 4 are one release and are useful without Part 5.
+
+Revision history. Revision 2 takes an architecture, security and test review
+of revision 1, which found six things wrong with it. The digest grouped by
+`(transcript, prompt)` while claiming to include subagent calls, and those
+contradict -- subagent declarations carry their own transcript path, so the
+paired key drops a median 51% of the calls in the 22% of sessions that use
+them, silently. `SilentFailures` reads the last message of the whole
+transcript, so a turn-scoped digest would have judged one turn's failures
+against another's text, and raced the flush at `Stop` besides. The read path
+takes no lock, which never mattered for `report` and does for a digest running
+at `Stop`. `WithoutExecution` and `ReasonUnterminatedEntry` are the same
+"not yet is not missing" mistake as `run_not_closed`, which revision 1 caught
+once and then missed twice. `hook_entry` was going to collapse plugin presence
+into the existing boolean, which would have destroyed what `verified` means.
+And `pause` wrote a coverage record but no gap record, leaving the paused span
+on-disk identical to one that was never recorded. Revision 2 also adds the
+injection requirements to Part 5 and a sanitisation requirement to Part 4, and
+drops PATH resolution from the hook path.
+
+One review claim was checked and rejected: that `README.md` already states a
+side-loaded install "cannot produce a verified report, by construction". No
+such text exists on the merge target, so H-71 is not a reversal of a published
+property.
 
 Scope of change. A new `plugin/` tree; `internal/install` and
 `internal/settings` for ownership; `cmd/rashomon` for two new commands and a
@@ -192,6 +215,22 @@ place, because the existing function has a precise meaning that `detach` and
 `intact` keep calling the old one, since a plugin's entries are not theirs to
 remove.
 
+**The record names the origin; it does not collapse to a boolean.**
+`hook_entry` gains `present_settings` and `present_plugin` beside the existing
+`absent` and `unknown`. This is the difference between a defensible fix and a
+hollow one: `entryEvent` (`coverage.go:84-89`) deliberately checks the
+*PostToolUse* entry during the post phase so a run cannot claim its executions
+were covered by an entry that records none, and any fix shaped "I am running,
+therefore I am installed" destroys the only thing `verified` means. Two
+sources of truth are fine when the record says which one answered, and fatal
+when they merge. `status` becomes an origin table for the same reason.
+
+**Owed, and it bounds the whole part:** can a hook confirm the plugin is
+*enabled for this session*, or only that it is present on disk? If only
+present, plugin origin tops out at `unknown` rather than `present_plugin`, and
+H-71 becomes unreachable as written. The answer goes in the code and in
+Measurements before Part 1 is approved.
+
 `standsDown` is unchanged in shape. A plugin invocation names no `--install`,
 which already records normally (`main.go:226-233`).
 
@@ -228,7 +267,12 @@ with the five recorder entries plus Part 4's; `bin/` with the binary; and
 currently called `rashomon`. Their cross-references are updated with them.
 
 Hook commands use exec form (`args`), which takes no shell and passes each
-element verbatim. That sidesteps the Windows defect in `shellQuote` for the
+element verbatim, and they name the **plugin-local binary absolutely** via
+`${CLAUDE_PLUGIN_ROOT}`. They do not resolve `rashomon` on `PATH`: a
+PATH-resolved shim invoked on every tool call is a hijack primitive on the
+hottest path in the product. `status` prints the resolved absolute path so a
+user can see which binary is running. The ported skills lose their
+three-path preamble for the same reason. That sidesteps the Windows defect in `shellQuote` for the
 plugin path; it does not fix `shellQuote`, which `watch` still uses, and that
 bug stays open.
 
@@ -325,6 +369,18 @@ A paused session writes a coverage record carrying a new reason,
 `recording_paused`, so a reader sees a deliberate gap rather than an
 unexplained one.
 
+**A coverage record alone is not enough, and revision 1 stopped a step
+short.** Between `pause` and `resume` the hooks do not run at all, so nothing
+writes anything and the paused span is on-disk identical to a span where the
+recorder was never installed -- zero rendering as clean, the failure this
+codebase refuses everywhere else. So `pause` and `resume` each write a **gap
+record** from the command itself, using the machinery in
+`internal/store/gaps.go` that already carries a reason and a from/to window
+and is already how eviction leaves its trace. The report renders that span as
+a named unknown. The two records answer different questions: the coverage
+record says "this invocation stood down", the gap record says "this window has
+no records, and here is why".
+
 This conflicts with checking before the store is opened, and the conflict is
 resolved rather than hidden: **where a store already exists, the paused record
 is written; where none exists, the machine stays silent and records nothing,
@@ -379,11 +435,16 @@ raise a finding from an early turn against an unrelated later one. The digest
 is therefore scoped to one `prompt_id`, reusing the `(transcript, prompt)`
 grouping at `chains.go:169`.
 
-**Subagent calls are attributed to the parent turn**, because a subagent's
-`PreToolUse` payload carries the parent's `prompt_id`
-(`spec-chain-and-scope.md:129`) -- that is what the records say, and inventing
-a different boundary would mean inventing data. The digest names the subagent
-count separately so a reader can see the composition.
+**Grouped by `prompt_id` alone, not by `(transcript, prompt)`.** Revision 1
+said both, and they contradict: a subagent's declarations carry their **own**
+`TranscriptPath` (`internal/store/record.go:76`), so the paired key puts them
+in a different bucket and drops them silently. Measured in `account.go:63-68`:
+22% of sessions use subagents, and in those they make a median 51% of all
+calls -- so the paired key would render a confident half-count as a clean
+number. Subagent calls are attributed to the parent turn, because a subagent's
+`PreToolUse` carries the parent's `prompt_id`
+(`spec-chain-and-scope.md:129`), and the digest names the subagent count
+separately so a reader can see the composition.
 
 ### Reading, and only reading
 
@@ -391,6 +452,23 @@ Assembled from `st.ReadRun` (`read.go:83`) -- three NDJSON files in one
 directory -- plus `buildSilentFailures` (`account.go:235`) and the counting
 and coverage loops at `report.go:425-435` and `:447-470`, which are extracted
 so both callers share one implementation rather than drifting.
+
+**The digest does not open the transcript.** `buildAccount` (`account.go:144`)
+reads the last assistant message of the *whole* transcript, which is
+cross-turn by construction: scope the failures to a turn and they are judged
+against a later turn's text. At `Stop` it is also racy, because the final
+message may not be flushed, which would report `FinalMessageAvailable: false`
+on a healthy turn. The summary text comes from the `Stop` payload's
+`last_assistant_message` instead, passed in. `buildSilentFailures`' counting
+half is pure record work and is already turn-safe.
+
+**The read path takes no lock, and this is new exposure.** `eachLine`
+(`read.go:161`) scans without one; writers take `lockFile`
+(`store.go:250`, `:295`). `report` ran after the fact and never raced. The
+digest runs at `Stop`, concurrent with in-flight `PostToolUse` writes from
+backgrounded shells and subagents, so it can read a torn tail line and bump
+`Skipped`. A torn tail must surface as an explicit unknown, never as a
+smaller clean count.
 
 It opens the store with `OpenExisting`, never `Open`. It does not read the
 proxy database, does not glob subagent transcripts, and **does not write
@@ -407,6 +485,14 @@ The digest therefore carries **turn coverage**, whose clean state is reachable
 mid-session: the probe fired at start, the entry was present for the calls in
 this turn, and no gap intersects it. `run_not_closed` is not among its reasons.
 Session coverage is unchanged and stays where it is.
+
+Two more fields are the same mistake wearing a different name, and turn
+coverage must treat both as *in flight* rather than missing:
+`WithoutExecution` (`report.go:409-411`), where a call still running at `Stop`
+is "declared, not yet executed"; and `ReasonUnterminatedEntry`
+(`report.go:436-438`, `read.go:186`), where a backgrounded shell in flight is
+unterminated for the ordinary reason. Rendering either as missing would mark a
+healthy turn unverified.
 
 ### Never zero for unknown
 
@@ -603,8 +689,32 @@ Part 5 takes the narrow scope. The wider one is a later question.
   does not preserve "the hook path records; it never blocks". Part 5 must
   answer this outright rather than let the mechanism choice answer it.
 
-Also carried: cost, retention, and what an injected instruction in transcript
-or tool output can make the reader do.
+Also carried: cost and retention.
+
+### Injection, which is not deferrable to implementation
+
+A poisoned repository, page or MCP result reaches the transcript, the reader
+reads it, and its text prints in rashomon's voice -- and, if the finding
+channel continues the turn, re-enters the audited agent's context. The audit
+tool becomes the laundering channel. Requirements, which are part of the
+contract and not implementation detail:
+
+- `type: "prompt"` only. **`type: "agent"` is forbidden** -- a reader with
+  Read, Grep and Glob is a reader that injected text can aim at the filesystem.
+- Model output is untrusted data: attributed, control characters stripped,
+  length capped, and **every claim citing an evidence id present in the digest
+  or dropped**.
+- Inform-only by default.
+
+**A second carrier exists today and is not Part 5's fault.** `shape.program`
+is `path.Base()` of the first non-meta token of a command line -- unbounded,
+attacker-influenceable text -- and the report renders such values with `%s`,
+unquoted (`internal/report/text.go:108-115`). A binary named with CR or ANSI
+bytes can therefore overwrite a rendered line, including forging a clean one.
+This lands the moment `ByProgram` renders (#20), so **sanitising tool-derived
+values -- capped, non-graphic runes rejected, quoted on render -- is a Part 4
+requirement asserted as a value-level check in H-13's family**, not a Part 5
+one.
 
 ### Acceptance
 
