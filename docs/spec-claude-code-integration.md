@@ -1,10 +1,12 @@
 # Claude Code integration: plugin install, recording state, and the post-turn digest
 
-Status: proposed, revision 2. Sign-off is per part, and Part 5 additionally
+Status: proposed, revision 3. Sign-off is per part, and Part 5 additionally
 depends on a constraints amendment this document asks for by name. Parts 1
 through 4 are one release and are useful without Part 5.
 
-Revision history. Revision 2 takes an architecture, security and test review
+Revision history. Revision 3 corrects one of revision 2's own claims, adds
+H-100 for the read-path race, and requires the summary text to arrive on
+stdin and never be echoed. Revision 2 takes an architecture, security and test review
 of revision 1, which found six things wrong with it. The digest grouped by
 `(transcript, prompt)` while claiming to include subagent calls, and those
 contradict -- subagent declarations carry their own transcript path, so the
@@ -22,10 +24,15 @@ on-disk identical to one that was never recorded. Revision 2 also adds the
 injection requirements to Part 5 and a sanitisation requirement to Part 4, and
 drops PATH resolution from the hook path.
 
-One review claim was checked and rejected: that `README.md` already states a
-side-loaded install "cannot produce a verified report, by construction". No
-such text exists on the merge target, so H-71 is not a reversal of a published
-property.
+Two claims were checked and rejected. A review said `README.md` already
+states a side-loaded install "cannot produce a verified report, by
+construction"; no such text exists on the merge target, so H-71 is not a
+reversal of a published property. And revision 2 itself asserted that a
+backgrounded shell in flight at `Stop` shows up as `ReasonUnterminatedEntry`;
+it does not -- `read.go:184` and `post.go:201-203` make `Unterminated` a fact
+about the hook process, not the tool, and the in-flight case is
+`WithoutExecution` alone. The implementer caught that one, which is the right
+direction for a correction to travel.
 
 Scope of change. A new `plugin/` tree; `internal/install` and
 `internal/settings` for ownership; `cmd/rashomon` for two new commands and a
@@ -36,7 +43,7 @@ number this document renders is already in the store.
 
 Numbering. H-70 is the highest item on the merge target, so items here are
 provisional from H-71 and are grepped against the merge target
-(`H-\(7[1-9]\|9[0-9]\)`) before they become the contract.
+(`H-\(7[1-9]\|[89][0-9]\|100\)`) before they become the contract.
 
 ## Why
 
@@ -446,7 +453,7 @@ number. Subagent calls are attributed to the parent turn, because a subagent's
 (`spec-chain-and-scope.md:129`), and the digest names the subagent count
 separately so a reader can see the composition.
 
-### Reading, and only reading
+### Reading, and only reading, and not echoing
 
 Assembled from `st.ReadRun` (`read.go:83`) -- three NDJSON files in one
 directory -- plus `buildSilentFailures` (`account.go:235`) and the counting
@@ -459,8 +466,14 @@ cross-turn by construction: scope the failures to a turn and they are judged
 against a later turn's text. At `Stop` it is also racy, because the final
 message may not be flushed, which would report `FinalMessageAvailable: false`
 on a healthy turn. The summary text comes from the `Stop` payload's
-`last_assistant_message` instead, passed in. `buildSilentFailures`' counting
-half is pure record work and is already turn-safe.
+`last_assistant_message` instead, passed in **on stdin, not in argv** -- that
+text runs to kilobytes and argv is readable by any process that can run `ps`.
+
+The digest **never echoes it back**. It is attacker-influenceable: a poisoned
+repository or page reaches the transcript and the summary quotes it. Absent
+words, counts and booleans derived from the message may be rendered; the
+message may not. `buildSilentFailures`' counting half is pure record work and
+is already turn-safe.
 
 **The read path takes no lock, and this is new exposure.** `eachLine`
 (`read.go:161`) scans without one; writers take `lockFile`
@@ -486,13 +499,20 @@ mid-session: the probe fired at start, the entry was present for the calls in
 this turn, and no gap intersects it. `run_not_closed` is not among its reasons.
 Session coverage is unchanged and stays where it is.
 
-Two more fields are the same mistake wearing a different name, and turn
-coverage must treat both as *in flight* rather than missing:
-`WithoutExecution` (`report.go:409-411`), where a call still running at `Stop`
-is "declared, not yet executed"; and `ReasonUnterminatedEntry`
-(`report.go:436-438`, `read.go:186`), where a backgrounded shell in flight is
-unterminated for the ordinary reason. Rendering either as missing would mark a
-healthy turn unverified.
+The in-flight case is `WithoutExecution` (`report.go:409-411`): a call still
+running at `Stop` is "declared, not yet executed", and rendering it as missing
+would mark a healthy turn unverified.
+
+`ReasonUnterminatedEntry` is **not** the same thing, and revision 2 said it
+was. `read.go:184` defines `Unterminated` as "the signature of a handler that
+was killed between the two" -- the hook *process*, not the tool -- and
+`post.go:201-203` is explicit that "an execution record is not an entry that
+something later closes, it is the close". A backgrounded shell still running
+therefore surfaces as `WithoutExecution`, not as `Unterminated`. The gate is
+applied to both regardless, for the same reason `run_not_closed` is
+suppressed: while the run is open, neither drives a coverage *verdict*. Both
+lists stay visible; only the trigger is gated, and both behave exactly as
+`report` does today once `EndRecorded` is true.
 
 ### Never zero for unknown
 
@@ -548,8 +568,16 @@ fields independently and a turn wide in five dimensions exceeds the total
 while every field is within its own cap.
 
 **H-89 -- subagent calls land in the parent turn and are counted separately.**
-Break: drop the separate count and a turn that was half subagent work reads as
-if the main agent did all of it.
+Break: key on `(transcript, prompt)` instead of `prompt_id` alone, and the
+digest silently undercounts by the subagent's share.
+
+**H-100 -- a concurrent writer does not produce a smaller clean count.** Run
+the digest against a run directory while a writer appends, and a torn tail
+must surface as an explicit unknown. Break: drop the lock and let `Skipped`
+pass unreported, and a turn reads clean because the evidence of its
+messiness was half-written when it was read. Numbered above Part 5's range
+because Part 3's block was already allocated, and numbered at all because an
+unnumbered regression test is one nobody defends.
 
 ### Effort
 
