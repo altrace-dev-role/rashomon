@@ -749,17 +749,28 @@ func cmdReport(args []string, stdout io.Writer) error {
 
 // cmdDigest renders one turn's projection as JSON.
 //
-// Unlike report, it takes stdin: a future Stop hook's payload carries
+// Unlike report, it can take stdin: a future Stop hook's payload carries
 // last_assistant_message there, and that text -- a model's own final reply,
 // which can run to several KB -- must never travel through argv, where any
 // process on the machine sharing this user can read it via ps. The
 // --last-assistant-message flag exists only so a person can drive this by
-// hand; the hook path is expected to use stdin.
+// hand.
+//
+// stdin is read ONLY when --stdin is given, never by sniffing what stdin
+// happens to be. H-104 is why: a live terminal is not the only stdin that
+// never sends EOF -- an inherited pipe that stays open does the same thing,
+// and it is the more common case for a command invoked from a script or a
+// parent process, not a shell prompt. Guessing intent from the file's mode
+// narrows the failure to terminals and leaves every other never-closing
+// stdin free to wedge the caller. --stdin is a promise from the caller that
+// it will close the pipe, the same promise hook/post/probe already rely on
+// from Claude Code without any sniffing at all.
 func cmdDigest(args []string, stdin io.Reader, stdout io.Writer) error {
 	sessionID := ""
 	promptID := ""
 	lastMsg := ""
 	haveLastMsg := false
+	readStdin := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--session":
@@ -781,14 +792,16 @@ func cmdDigest(args []string, stdin io.Reader, stdout io.Writer) error {
 			lastMsg = args[i+1]
 			haveLastMsg = true
 			i++
+		case "--stdin":
+			readStdin = true
 		default:
 			return fmt.Errorf("unknown argument %q", args[i])
 		}
 	}
-	// The flag wins when given; stdin is the fallback, not a merge, so a
-	// manual invocation with an empty flag value cannot be silently overruled
-	// by a payload sitting on stdin from an unrelated redirect.
-	if !haveLastMsg {
+	// The flag wins when given; stdin is the fallback, not a merge, so an
+	// explicit empty value cannot be silently overruled by whatever a caller
+	// that also passed --stdin left on the pipe.
+	if !haveLastMsg && readStdin {
 		if m, ok := readStdinLastMessage(stdin); ok {
 			lastMsg = m
 		}
@@ -813,19 +826,12 @@ func cmdDigest(args []string, stdin io.Reader, stdout io.Writer) error {
 	return err
 }
 
-// readStdinLastMessage reads an optional JSON payload from stdin carrying
+// readStdinLastMessage reads a JSON payload from stdin carrying
 // last_assistant_message -- the shape a Stop hook's own stdin would carry.
-//
-// A live terminal is never read. This command is also run by hand, and
-// blocking on a human's terminal for an EOF that will never come is worse
-// than treating an interactive invocation as carrying no message.
+// It is only ever called when the caller passed --stdin, which is the
+// promise that made this read safe -- see cmdDigest's doc on why sniffing
+// stdin's type cannot make that promise itself.
 func readStdinLastMessage(in io.Reader) (string, bool) {
-	if f, ok := in.(*os.File); ok {
-		st, err := f.Stat()
-		if err != nil || st.Mode()&os.ModeCharDevice != 0 {
-			return "", false
-		}
-	}
 	raw, err := io.ReadAll(io.LimitReader(in, hook.MaxPayloadBytes+1))
 	if err != nil || len(raw) == 0 || len(raw) > hook.MaxPayloadBytes {
 		return "", false
@@ -974,14 +980,17 @@ usage:
                                lists the calls under each prompt, which JSON
                                always carries
   rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT]
+                  [--stdin]
                                render one turn's projection as JSON: what one
                                prompt_id recorded, read-only and never larger
                                than 8 KiB; --session and --prompt default to
                                the most recent session and its most recently
-                               started turn. The final message may also be
-                               piped as JSON on stdin ({"last_assistant_message"
-                               : "..."}), which is how a hook is expected to
-                               supply it rather than as an argument.
+                               started turn. --stdin reads a JSON payload
+                               ({"last_assistant_message": "..."}) from
+                               stdin for the final message instead of the
+                               flag; omitted by default, because reading
+                               stdin unless told to is how a caller that
+                               never closes its pipe gets hung forever.
   rashomon forget --host H       evict every call that named host H, and its
                                baseline entry
   rashomon forget --since T      evict records recorded at or after T
