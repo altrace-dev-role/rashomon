@@ -36,6 +36,21 @@ import (
 
 // Coverage reasons a report can add beyond those the run recorded.
 //
+// ReasonDuplicateDeclarations is a statement about records, not about why
+// there are two: more declaration records than distinct tool_use_ids means
+// more than one recorder wrote into this run, whatever put it there -- a
+// plugin and a settings install both live, a future third origin, a
+// duplicated settings entry. No coverage record can know this at write time
+// -- each hook invocation sees exactly one call and has no visibility into
+// whether another origin also recorded it -- so it is derived here, once,
+// over the whole run's declarations, the same way ReasonGap is derived from
+// the whole run's gap records rather than carried by any single one.
+//
+// Deliberately never applied to executions: chains.go documents that one
+// tool_use_id legitimately carries two of those (PostToolUse and
+// PostToolUseFailure), so the same check there would misfire on every
+// healthy failed call.
+//
 // ReasonRecordsUnreadable belongs here and not in store.Reasons(), even
 // though it is about the records: it is derived from run.Skipped while
 // reading the whole run, the way ReasonRunNotClosed is derived from the
@@ -46,11 +61,12 @@ import (
 // writes, the same inverse drift TestStoreSchemaMatchesTheAllowlists exists
 // to catch on every other field.
 const (
-	ReasonRunNotClosed       = "run_not_closed"
-	ReasonRecordsUnreadable  = "records_unreadable"
-	ReasonTranscriptMismatch = "transcript_mismatch"
-	ReasonExecutionMismatch  = "execution_mismatch"
-	ReasonGap                = "gap"
+	ReasonRunNotClosed          = "run_not_closed"
+	ReasonRecordsUnreadable     = "records_unreadable"
+	ReasonTranscriptMismatch    = "transcript_mismatch"
+	ReasonExecutionMismatch     = "execution_mismatch"
+	ReasonGap                   = "gap"
+	ReasonDuplicateDeclarations = "duplicate_declarations"
 )
 
 // Reasons lists the coverage reason codes this package derives, as
@@ -82,6 +98,7 @@ func Reasons() []string {
 		ReasonTranscriptMismatch,
 		ReasonExecutionMismatch,
 		ReasonGap,
+		ReasonDuplicateDeclarations,
 	}
 }
 
@@ -463,6 +480,7 @@ func build(run *store.Run) Session {
 		},
 	}
 	mode := map[string]string{}
+	declByID := map[string]int{}
 	for _, d := range run.Declarations {
 		sess.Declarations.ByTool[d.ToolName]++
 		if d.Shape.VerbClass != "" {
@@ -481,6 +499,13 @@ func build(run *store.Run) Session {
 			sess.Declarations.ByLabel[knownLabel(*d.FileLabel)]++
 		}
 		mode[d.ToolUseID] = d.PermissionMode
+		// Empty is excluded, the same way WithoutTranscript counts a missing
+		// path rather than grouping every such declaration under one key: an
+		// id this program never received is not evidence that two records
+		// share an identity, only that neither carries one.
+		if d.ToolUseID != "" {
+			declByID[d.ToolUseID]++
+		}
 	}
 	executed := map[string]bool{}
 	for _, x := range run.Executions {
@@ -538,6 +563,12 @@ func build(run *store.Run) Session {
 	}
 	if len(sess.Declarations.Dropped) > 0 {
 		sess.Coverage.add(store.ReasonLockTimeout)
+	}
+	for _, n := range declByID {
+		if n > 1 {
+			sess.Coverage.add(ReasonDuplicateDeclarations)
+			break
+		}
 	}
 
 	// The accounting equation, once per transcript the run's declarations

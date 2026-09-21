@@ -594,6 +594,9 @@ m("H-76 the plugin's watch skill keeps the standalone three-path preamble", "plu
   "TestH76_")
 m("H-77 the manifest ships enabled by default", "plugin/.claude-plugin/plugin.json",
   '"defaultEnabled": false', '"defaultEnabled": true', "TestH77_")
+m("H-103 the duplicate-declarations guard is dropped", "internal/report/report.go",
+  "\tfor _, n := range declByID {\n\t\tif n > 1 {\n\t\t\tsess.Coverage.add(ReasonDuplicateDeclarations)\n\t\t\tbreak\n\t\t}\n\t}\n",
+  "", "TestH103_")
 m("a legacy present record is treated with suspicion and renders unverified", "internal/report/report.go",
   "\t\tif c.State == store.StateUnverified && c.Reason != nil {\n\t\t\tsess.Coverage.add(*c.Reason)\n\t\t}\n\t}\n\tif !sess.Coverage.StartRecorded {",
   "\t\tif c.State == store.StateUnverified && c.Reason != nil {\n\t\t\tsess.Coverage.add(*c.Reason)\n\t\t}\n\t\tif c.HookEntry == store.EntryPresent {\n\t\t\tsess.Coverage.add(ReasonRunNotClosed)\n\t\t}\n\t}\n\tif !sess.Coverage.StartRecorded {",

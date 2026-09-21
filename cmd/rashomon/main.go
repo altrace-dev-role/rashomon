@@ -797,14 +797,16 @@ func cmdStatus(stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	// Named here because nothing else does: a settings install and an enabled
-	// plugin can share one machine during the migration window Part 1's spec
-	// describes, and nothing removes either of them on its own. detach is the
-	// resolution, and it is the settings entries it removes -- the plugin's are
-	// not detach's to touch.
+	// Named here so a user sees it without running report, and in the SAME
+	// words report uses (duplicate_declarations): a settings install and an
+	// enabled plugin can share one machine during the migration window Part 1's
+	// spec describes, and nothing removes either of them on its own. detach is
+	// the resolution, and it is the settings entries it removes -- the
+	// plugin's are not detach's to touch.
 	if settingsLive && pluginLive {
 		fmt.Fprintln(stdout, "overlap: both a settings install and the rashomon plugin provide these entries, "+
-			"recording every tool call twice; run `rashomon detach` to remove the settings entries and keep the plugin")
+			"recording every tool call twice (report will read coverage: unverified, reason duplicate_declarations); "+
+			"run `rashomon detach` to remove the settings entries and keep the plugin")
 	}
 	return statusHooks(stdout)
 }

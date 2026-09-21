@@ -567,14 +567,15 @@
     },
     "report_reason": {
       "title": "report reason",
-      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file.",
+      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file. duplicate_declarations: more declaration records than distinct tool_use_ids in one run, meaning more than one recorder wrote into it -- a statement about records, not about why; report cannot know whether the second writer was a plugin, a settings install, or a duplicated entry, only that there were two.",
       "type": "string",
       "enum": [
         "run_not_closed",
         "records_unreadable",
         "transcript_mismatch",
         "execution_mismatch",
-        "gap"
+        "gap",
+        "duplicate_declarations"
       ]
     }
   }
