@@ -1,10 +1,14 @@
 # Claude Code integration: plugin install, recording state, and the post-turn digest
 
-Status: proposed, revision 7. Sign-off is per part, and Part 5 additionally
+Status: proposed, revision 8. Sign-off is per part, and Part 5 additionally
 depends on a constraints amendment this document asks for by name. Parts 1
 through 4 are one release and are useful without Part 5.
 
-Revision history. Revision 7 takes the first three implementations. It
+Revision history. Revision 8 drops Part 4's fifth trigger as infeasible --
+novelty needs the proxy join and the per-project baseline, and the digest
+opens neither by design -- and records a mutation-detection regression the
+extraction in Part 3 introduced: a textually-matching anchor whose code is no
+longer on any tested path. Revision 7 takes the first three implementations. It
 corrects two of this document's own errors -- a 50 ms digest budget that was
 unreachable before a record was read, and an H-81 that asserted a paused
 machine creates nothing when it must create a marker -- adds H-103 for silent
@@ -706,8 +710,20 @@ is something to look at.
 ### When it speaks
 
 Coverage not verified; a recorded failure; a declaration without recorded
-execution; a destination new for this project; a truncated or unknown digest.
-A turn with none of those prints nothing.
+execution; a truncated or unknown digest. A turn with none of those prints
+nothing.
+
+Revision 7 listed a fifth trigger, "a destination new for this project", and
+it is **infeasible as scoped**. Novelty is computed by `buildNovelty`
+(`internal/report/destinations.go:611`), which needs the store root to locate
+the per-project baseline *and* the host list from the proxy join. Part 3's
+digest opens neither, deliberately: that is the same decision that keeps it
+side-effect-free and cheap at `Stop`, and `report.Build` writes `baseline/`
+on every call, which is why the digest could not simply reuse it. There is no
+honest way for the recap to know a destination is new without widening the
+digest's contract or reintroducing those side effects once per turn. The
+trigger is dropped rather than faked; it belongs to a surface that already
+has the proxy open.
 
 The reasoning is that a line which is identical on almost every turn is
 trained out within a week, and a notification nobody reads is the third
