@@ -100,6 +100,61 @@ func TestAppendExecutionSpillsWhenTheLockIsHeld(t *testing.T) {
 	}
 }
 
+// TestReadRunConsistent_RespectsAHeldLock is H-100's deterministic proof that
+// digest's read path (ReadRunConsistent) actually attempts the same lock a
+// writer holds, rather than reading straight through it.
+//
+// Held for longer than the read's own budget, this is a timing property fully
+// under the test's control rather than a race against real disk I/O: a read
+// that never tried to lock at all returns near-instantly regardless of who
+// holds the file; one that does spends close to its own budget retrying
+// before it gives up and falls back to reading anyway (see
+// store.eachLineLocked's doc on why giving up is not treated as fatal).
+func TestReadRunConsistent_RespectsAHeldLock(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	const session = "sess-locked"
+	dir := st.RunDir(session)
+	if err := os.MkdirAll(dir, dirMode); err != nil {
+		t.Fatal(err)
+	}
+	recordsPath := filepath.Join(dir, FileRecords)
+	line := `{"type":"declaration","schema_version":2,"seq":1,"tool_use_id":"toolu_1","session_id":"sess-locked"}` + "\n"
+	if err := os.WriteFile(recordsPath, []byte(line), fileMode); err != nil {
+		t.Fatal(err)
+	}
+
+	unlock, err := lockFile(openForAppend(t, recordsPath), lockBudget)
+	if err != nil {
+		t.Fatalf("taking the records lock: %v", err)
+	}
+
+	const budget = 30 * time.Millisecond
+	start := time.Now()
+	run, err := st.ReadRunConsistent(session, budget)
+	waited := time.Since(start)
+	unlock()
+
+	if err != nil {
+		t.Fatalf("ReadRunConsistent while the lock was held: %v", err)
+	}
+	if len(run.Declarations) != 1 {
+		t.Fatalf("got %d declarations, want 1: a contended lock must still fall back to "+
+			"reading, not fail the read entirely", len(run.Declarations))
+	}
+	if waited < budget {
+		t.Fatalf("ReadRunConsistent returned after %v, before its own %v budget -- it did not "+
+			"attempt the lock at all. Break: read unlocked (eachLine instead of eachLineLocked) "+
+			"and this returns near-instantly regardless of who holds the file.", waited, budget)
+	}
+	if waited > time.Second {
+		t.Fatalf("ReadRunConsistent waited %v for a %v budget -- it is borrowing something "+
+			"closer to the WRITER's own lockBudget (2s) instead of its own short one", waited, budget)
+	}
+}
+
 func openForAppend(t *testing.T, path string) *os.File {
 	t.Helper()
 	f, err := os.OpenFile(path, appendFlags, fileMode)

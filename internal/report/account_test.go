@@ -175,7 +175,7 @@ func TestSilentFailures_FireOnFailuresAndAnUnacknowledgingSummary(t *testing.T) 
 	)
 	acct := buildAccount(run)
 
-	sf := buildSilentFailures(run, acct)
+	sf := BuildSilentFailures(run, acct)
 
 	if !sf.Fires {
 		t.Error("did not fire on two failures and a summary that acknowledges nothing")
@@ -211,7 +211,7 @@ func TestSilentFailures_DoNotFireWhenTheSummaryAcknowledges(t *testing.T) {
 		path := transcript(t, summary)
 		run := runWithTranscript(path, store.Execution{ToolUseID: "x1", Outcome: store.ExecFailed})
 
-		sf := buildSilentFailures(run, buildAccount(run))
+		sf := BuildSilentFailures(run, buildAccount(run))
 		if sf.Fires {
 			t.Errorf("fired on a summary that acknowledges failure: %q", summary)
 		}
@@ -224,7 +224,7 @@ func TestSilentFailures_DoNotFireWithoutFailures(t *testing.T) {
 	path := transcript(t, "All done.")
 	run := runWithTranscript(path, store.Execution{ToolUseID: "x1", Outcome: store.ExecOK})
 
-	sf := buildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, buildAccount(run))
 	if sf.Fires {
 		t.Error("fired with zero failed calls")
 	}
@@ -240,7 +240,7 @@ func TestSilentFailures_InterruptIsNotAFailure(t *testing.T) {
 	path := transcript(t, "All done.")
 	run := runWithTranscript(path, store.Execution{ToolUseID: "x1", Outcome: store.ExecInterrupted})
 
-	sf := buildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, buildAccount(run))
 	if sf.Failed != 0 {
 		t.Errorf("failed = %d, want 0: an interrupt is the user's action", sf.Failed)
 	}
@@ -255,7 +255,7 @@ func TestSilentFailures_UnobservedOutcomeIsCountedSeparately(t *testing.T) {
 	path := transcript(t, "All done.")
 	run := runWithTranscript(path, store.Execution{ToolUseID: "x1"})
 
-	sf := buildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, buildAccount(run))
 	if sf.Unobserved != 1 {
 		t.Errorf("unobserved = %d, want 1", sf.Unobserved)
 	}
@@ -274,7 +274,7 @@ func TestSilentFailures_DoNotFireWithoutASummary(t *testing.T) {
 	run := runWithTranscript(filepath.Join(t.TempDir(), "absent.jsonl"),
 		store.Execution{ToolUseID: "x1", Outcome: store.ExecFailed})
 
-	sf := buildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, buildAccount(run))
 	if sf.Fires {
 		t.Error("fired although no final message could be read")
 	}
@@ -317,7 +317,7 @@ func TestSilentFailures_ReadTheWholeMessageNotTheQuotedSample(t *testing.T) {
 	})
 	acct := buildAccount(run)
 
-	sf := buildSilentFailures(run, acct)
+	sf := BuildSilentFailures(run, acct)
 
 	if sf.Fires {
 		t.Errorf("the line fired on a summary that DISCLOSED the failure, because the "+
@@ -345,7 +345,7 @@ func TestSilentFailures_StillFireOnAWholeMessageThatAcknowledgesNothing(t *testi
 		ToolUseID: "toolu_1", Outcome: store.ExecFailed,
 	})
 
-	sf := buildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, buildAccount(run))
 
 	if !sf.Fires {
 		t.Error("a long summary acknowledging nothing did not fire the line")
