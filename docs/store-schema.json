@@ -478,6 +478,7 @@
             "hook_entry_absent",
             "hook_entry_unresolved",
             "probe_absent",
+            "recording_paused",
             "probe_unresolved"
           ]
         },
@@ -504,7 +505,7 @@
     },
     "gap": {
       "title": "gap",
-      "description": "That records left the store, and why. It is the only way records leave: a deletion with no gap record is a silent deletion, and a store that can be silently edited is worth nothing as evidence.",
+      "description": "That records left the store, or that a deliberate pause meant none were made, and why either way. A deletion with no gap record is a silent deletion, and a store that can be silently edited is worth nothing as evidence.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -542,6 +543,7 @@
           "enum": [
             "forget",
             "forget_host",
+            "paused",
             "size_cap"
           ]
         },

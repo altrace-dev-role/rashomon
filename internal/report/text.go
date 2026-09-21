@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // The words that stand in for a value this program does not have.
@@ -148,6 +150,15 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	} else {
 		fmt.Fprintf(b, "  gaps: %d\n", len(sess.Gaps))
 		for _, g := range sess.Gaps {
+			// A paused window removed nothing -- there was nothing to
+			// remove -- so "N records removed" would be true and misleading
+			// at once. It gets its own line: not a clean count, not an
+			// absence, but a named, bounded reason nothing was recorded.
+			if g.Reason == store.GapPaused {
+				fmt.Fprintf(b, "    %s: not recorded, deliberately, %s to %s\n",
+					g.Reason, stamp(g.FromUnixMS), stamp(g.ToUnixMS))
+				continue
+			}
 			fmt.Fprintf(b, "    %s: %d records removed, covering %s to %s\n",
 				g.Reason, g.RemovedRecords, stamp(g.FromUnixMS), stamp(g.ToUnixMS))
 		}

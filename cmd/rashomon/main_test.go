@@ -43,6 +43,8 @@ func TestRunNeverReturnsTwo(t *testing.T) {
 		{"version"},
 		{"watch"},
 		{"detach"},
+		{"pause"},
+		{"resume"},
 		{"status"},
 		{"report"},
 		{"report", "--json"},

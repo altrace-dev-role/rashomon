@@ -276,6 +276,12 @@ const (
 	ReasonHookEntryUnresolved = "hook_entry_unresolved"
 	ReasonProbeAbsent         = "probe_absent"
 	ReasonProbeUnresolved     = "probe_unresolved"
+	// ReasonRecordingPaused marks an invocation that found recording paused
+	// (Part 2). It is not a failure -- nothing here is broken -- but reason is
+	// the only field a coverage record has to say "no, and here is why", and a
+	// second field just for this would let a reader check State and miss it.
+	// checkPaused in cmd/rashomon/main.go is the only writer.
+	ReasonRecordingPaused = "recording_paused"
 )
 
 // Reasons lists every coverage reason code a record can carry. It exists so
@@ -291,6 +297,7 @@ func Reasons() []string {
 		ReasonHookEntryUnresolved,
 		ReasonProbeAbsent,
 		ReasonProbeUnresolved,
+		ReasonRecordingPaused,
 	}
 }
 
@@ -357,11 +364,25 @@ const (
 	GapForget     = "forget"
 	GapForgetHost = "forget_host"
 	GapSizeCap    = "size_cap"
+	// GapPaused marks a window pause and resume opened together, rather than
+	// one either removed anything from. Every other reason above describes
+	// records that existed and left; this one describes records that were
+	// never made, on purpose -- RemovedRecords is legitimately 0 for it. It is
+	// written twice per pause/resume cycle: once by pause, zero-width, as
+	// evidence the window began even if resume never follows; once by resume,
+	// spanning the whole window, which is the one a reader actually wants. See
+	// cmd/rashomon's cmdPause and cmdResume.
+	GapPaused = "paused"
 )
 
-// Gap records that records left the store, and why. It is the only way records
-// leave: a deletion with no gap record is a silent deletion, and a store that
-// can be silently edited is worth nothing as evidence.
+// Gap records that records left the store, or that a deliberate pause meant
+// none were made, and why either way. Before Part 2 it was only the first of
+// those, and "the only way records leave" was a complete description; a
+// paused window is the one case a Gap records where nothing left because
+// nothing was ever there, and reusing this type rather than inventing a
+// second one keeps "is there a hole here, and why" answerable from one place.
+// A deletion with no gap record is a silent deletion, and a store that can be
+// silently edited is worth nothing as evidence.
 type Gap struct {
 	Type           string `json:"type"`
 	SchemaVersion  int    `json:"schema_version"`
