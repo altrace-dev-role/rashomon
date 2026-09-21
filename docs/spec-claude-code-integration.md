@@ -86,21 +86,29 @@ declarations.
 2. **About 1,811 bytes per recorded call.** A 500-call session costs roughly
    906 KB. The 512 MiB cap is reached at about 298,000 calls. Command length
    is irrelevant: a 5,000-character command costs 4 bytes more than `ls`.
-3. **A declaration reaches its terminal record in a median 8 ms**, p95 12 ms,
-   and its coverage record in a median 16 ms, p95 22 ms, measured across 254
-   real records. Process start is 10-20 ms. One `PreToolUse` invocation is
-   therefore in the region of 25-35 ms, which is inference from record
-   timestamps rather than a measured process lifetime, and Part 3 owes the
-   measured figure.
+3. **One `PreToolUse` invocation costs 42 ms end to end, and process start is
+   58% of it.** Measured over 30 sequential invocations against a fresh store,
+   shell overhead subtracted: `rashomon hook` 42 ms, `rashomon version`
+   (process start and exit, no store work) 24.3 ms. rashomon's own work --
+   read, derive, append, fsync, resolve coverage, append, fsync -- is therefore
+   about 18 ms, and each invocation writes two records plus one coverage
+   record.
+
+   This bounds what optimisation can achieve: most of the cost is a 10.9 MB Go
+   binary starting, and the SQLite driver is linked into it whether or not a
+   hook path uses it. It also settles Part 2's cost question -- a `stat` before
+   the store opens is a rounding error against 24 ms of startup -- and it says
+   the 50 ms budget is already 84% spent, so nothing further belongs on the
+   per-call path. Part 4's entry is on `Stop`, once per turn, and not on it.
 
 Owed before Part 3 is approved, each with a budget:
 
 4. The digest's wall time and byte size on the largest session available,
    budget 50 ms and the ceiling Part 3 sets.
-5. One `rashomon hook` process lifetime, measured end to end, budget 50 ms.
-6. Whether a `/config` plugin-option change reaches a running session's next
-   hook invocation, or needs `/reload-plugins`. This is undocumented and Part
-   2's mechanism choice depends on it.
+5. Whether a `/config` plugin-option change reaches a running session's next
+   hook invocation, or needs `/reload-plugins`. This is undocumented. Part 2
+   no longer depends on it, having chosen a state file over an environment
+   variable, but Part 1 wants it for the `/config` surface.
 
 ## Constraints: an amendment this document asks for
 
