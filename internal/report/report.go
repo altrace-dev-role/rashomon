@@ -481,7 +481,7 @@ func build(run *store.Run) Session {
 			HookEntryAtEnd:   store.EntryUnknown,
 		},
 	}
-	byTool, byLabel, withoutExecution, executed := CountDeclarations(run.Declarations, run.Executions)
+	byTool, byLabel, withoutExecution, executed := CountDeclarations(run)
 	sess.Declarations.ByTool = byTool
 	sess.Declarations.ByLabel = byLabel
 	sess.Declarations.WithoutExecution = withoutExecution
@@ -650,23 +650,32 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 	return t
 }
 
-// CountDeclarations tallies a set of declarations against a set of
-// executions: per-tool and per-label counts, the executed set keyed by
-// tool_use_id, and the declarations no execution answers, each carrying the
-// permission mode it was declared under.
+// CountDeclarations tallies a run's declarations against its executions:
+// per-tool and per-label counts, the executed set keyed by tool_use_id, and
+// the declarations no execution answers -- via run.Unexecuted(), not a
+// second copy of that check, each carrying the permission mode it was
+// declared under.
 //
-// It takes slices rather than a *store.Run so a caller scoped to less than a
-// whole run counts its own subset under the exact same rule report uses for a
-// whole session. digest is that caller: it hands this the declarations and
-// executions of ONE TURN, and gets back the turn's own tallies rather than a
-// second implementation that could drift from this one.
-func CountDeclarations(decls []store.Declaration, execs []store.Execution) (
+// It takes a *store.Run, the same currency BuildSilentFailures already
+// does, so a caller scoped to less than a whole run builds one small Run
+// value -- Declarations and Executions only, as digest's turnRun does -- and
+// counts its own subset under the exact same rule report uses for a whole
+// session. A first version of this took plain slices and re-derived
+// run.Unexecuted()'s check inline instead of calling it, which left that
+// method with no production caller at all: the mutation that breaks it
+// (H-20) still found an anchor to match, because the TEXT of the check moved
+// here verbatim, but nothing on any live path ran it any more, and the
+// sweep could only report "not detected" -- indistinguishable from noise --
+// rather than "orphaned". Calling the method instead of re-deriving its
+// check is what makes that failure mode structurally impossible: report and
+// digest are back to sharing the one place this is decided.
+func CountDeclarations(run *store.Run) (
 	byTool, byLabel map[string]int, withoutExecution []Unexecuted, executed map[string]bool,
 ) {
 	byTool = map[string]int{}
 	byLabel = map[string]int{}
 	mode := map[string]string{}
-	for _, d := range decls {
+	for _, d := range run.Declarations {
 		byTool[d.ToolName]++
 		if d.FileLabel != nil {
 			byLabel[knownLabel(*d.FileLabel)]++
@@ -674,16 +683,12 @@ func CountDeclarations(decls []store.Declaration, execs []store.Execution) (
 		mode[d.ToolUseID] = d.PermissionMode
 	}
 	executed = map[string]bool{}
-	for _, x := range execs {
+	for _, x := range run.Executions {
 		executed[x.ToolUseID] = true
 	}
 	withoutExecution = []Unexecuted{}
-	for _, d := range decls {
-		if !executed[d.ToolUseID] {
-			id := d.ToolUseID
-			withoutExecution = append(withoutExecution,
-				Unexecuted{ToolUseID: id, PermissionMode: mode[id]})
-		}
+	for _, id := range run.Unexecuted() {
+		withoutExecution = append(withoutExecution, Unexecuted{ToolUseID: id, PermissionMode: mode[id]})
 	}
 	return byTool, byLabel, withoutExecution, executed
 }

@@ -269,7 +269,11 @@ func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage stri
 	}
 
 	turnExecs := filterExecutions(run.Executions, turnToolUseIDs(w))
-	byTool, byLabel, withoutExec, _ := report.CountDeclarations(w.declarations, turnExecs)
+	// One small Run -- this turn's own declarations and executions, nothing
+	// else -- built once and shared by CountDeclarations and
+	// BuildSilentFailures below, the same currency both already take.
+	turnRun := &store.Run{Declarations: w.declarations, Executions: turnExecs}
+	byTool, byLabel, withoutExec, _ := report.CountDeclarations(turnRun)
 	d.Declarations = Declarations{
 		Recorded:         len(w.declarations),
 		WithoutExecution: withoutExec,
@@ -298,7 +302,6 @@ func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage stri
 	d.SkippedRecords = run.Skipped
 
 	acct := report.AccountFromMessage(lastAssistantMessage)
-	turnRun := &store.Run{Declarations: w.declarations, Executions: turnExecs}
 	d.SilentFailures = report.BuildSilentFailures(turnRun, acct)
 
 	d.Gaps = gapsInWindow(gaps, w)
