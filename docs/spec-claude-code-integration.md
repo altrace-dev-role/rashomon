@@ -1027,6 +1027,24 @@ happens.
 Each part lands as its own pull request, reported the way every H-item is: the
 command that ran it and its output, and the break that made it fail first.
 
+**A mutation is checked under three conditions, not two.** The anchor still
+matches; the mutant still compiles; and **the mutated code is still on a path
+some test reaches.** The third is written down because Part 3's extraction
+satisfied the first two and lost a guarantee anyway: `CountDeclarations`
+reimplemented `store.Unexecuted()` inline, leaving that method with no
+production caller, so mutating it stopped failing
+`TestH20_DeclarationWithoutAnExecutionIsNamed` -- detected on the merge
+target, undetected once the branch was merged. Because the anchor still
+matched, the sweep could only report "undetected", which reads like noise and
+was duly logged as pre-existing by the next agent to see it. An extraction
+that leaves a dead twin behind takes the guarantee with it, and nothing in
+the existing two checks says so.
+
+**Each part is also merged with the others before any of them lands.** Four
+individually-green branches conflicted in three places, one of them semantic
+and invisible to git: #22 added a counter inside the loop #24 extracted, and
+either side taken whole is coherent code that silently drops something.
+
 Approval, and the constraints amendment, are requested by comment on the pull
 request carrying this document: #21,
 <https://github.com/altrace-dev-role/rashomon/pull/21>. The number and the link
