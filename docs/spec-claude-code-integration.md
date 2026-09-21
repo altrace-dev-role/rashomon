@@ -913,6 +913,25 @@ Unknown until the three questions are answered. Not estimated here.
 
 ## Schema, and who owns migration
 
+**Two reason vocabularies, and new reasons must pick the right one.** The
+coverage record's `reason` enum and `store.Reasons()` hold what a **record
+carries**, written by a hook in the moment it runs. The schema's separate
+top-level `report_reason` def and `report.Reasons()` hold what the **report
+derives** by reading a whole run -- `run_not_closed`, `gap`,
+`transcript_mismatch`. A hook sees one call, so anything that requires looking
+at the run belongs in the second: `duplicate_declarations` (H-103) and
+`records_unreadable` (H-102) are both derived, and putting either in the
+record vocabulary publishes a record shape rashomon never writes.
+
+This nearly went wrong in both directions at once, and the test that should
+have caught it could not: `TestStoreSchemaReasonsAreTheCodeReasons` pools
+`store.Reasons()`, `report.Reasons()` and the gap reasons into one set,
+collects every reason enum in the schema into another, and compares the two
+unions -- so a reason in the wrong vocabulary passes as long as it is
+somewhere in each, despite the test's own comment claiming it "asserts exact
+equality". Tightening it to compare per vocabulary lands with H-102.
+
+
 One new coverage reason, `recording_paused` (Part 2), added to the reason
 vocabulary in `internal/store/record.go` and to `docs/store-schema.json`. It is
 a reason and not a record type, so it needs no version bump.
