@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // H-71 through H-77 -- Part 1 of the Claude Code integration spec: a plugin
@@ -461,5 +463,82 @@ func TestH77_ManifestShipsDisabled(t *testing.T) {
 	// normally rather than refusing.
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("watch refused with only a disabled plugin present: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+}
+
+// TestLegacyPresentRendersVerified is not one of H-71 through H-77; it pins a
+// compatibility guarantee this PR's own rename creates a way to break.
+//
+// EntryPresent ("present") is no longer written by anything in this tree --
+// Resolve always picks present_settings, present_plugin, absent or unknown --
+// but every binary shipped before Part 1 wrote it, into schema-2 records that
+// are still on disk and are not going anywhere. This constructs exactly one
+// of those: a real run, with one of its coverage records patched to carry the
+// legacy value in place of whatever the current binary actually wrote, and
+// checks the report still renders it as verified.
+//
+// Break: add special-casing in report.go's per-record loop that treats
+// hook_entry == store.EntryPresent with suspicion -- adding a coverage
+// reason for it, the way a future "let's warn about the legacy value" change
+// might -- and this renders unverified retroactively, which report.go's own
+// stated invariant forbids. (Resolve can no longer produce this value itself,
+// which is why the break has to live in report.go's read path rather than in
+// Resolve's own switch: there is nothing left there to narrow.)
+func TestLegacyPresentRendersVerified(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession) // writes settings entries + a "start"-phase record
+	if res := e.probe("end", testSession); res.exitCode != 0 {
+		t.Fatalf("probe end: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+
+	path := filepath.Join(e.home, "runs", testSession, "coverage.ndjson")
+	rewriteHookEntry(t, path, "start", store.EntryPresent)
+
+	rep := e.report(testSession)
+	if rep.Coverage.State != "verified" {
+		t.Fatalf("coverage is %s (%v), want verified -- a legacy present record must not read as a regression",
+			rep.Coverage.State, rep.Coverage.Reasons)
+	}
+	if rep.Coverage.HookEntryAtStart != "present" {
+		t.Errorf("hook entry at start renders %q, want the legacy value passed through unchanged", rep.Coverage.HookEntryAtStart)
+	}
+	if rep.Coverage.HookEntryAtEnd != "present_settings" {
+		t.Errorf("hook entry at end renders %q; only the start record was patched", rep.Coverage.HookEntryAtEnd)
+	}
+}
+
+// rewriteHookEntry patches the hook_entry field of the first coverage record
+// of the given phase in an NDJSON file, leaving every other line untouched --
+// simulating one record a pre-Part-1 binary wrote sitting beside records the
+// current one did.
+func rewriteHookEntry(t *testing.T, path, phase, hookEntry string) {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	lines := bytes.Split(bytes.TrimSuffix(body, []byte("\n")), []byte("\n"))
+	patched := false
+	for i, line := range lines {
+		var c store.Coverage
+		if err := json.Unmarshal(line, &c); err != nil {
+			t.Fatalf("%s line %d is not a coverage record: %v", path, i, err)
+		}
+		if c.Phase != phase || patched {
+			continue
+		}
+		c.HookEntry = hookEntry
+		out, err := json.Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines[i] = out
+		patched = true
+	}
+	if !patched {
+		t.Fatalf("%s has no %s-phase record to patch", path, phase)
+	}
+	if err := os.WriteFile(path, append(bytes.Join(lines, []byte("\n")), '\n'), 0o600); err != nil {
+		t.Fatalf("writing %s: %v", path, err)
 	}
 }

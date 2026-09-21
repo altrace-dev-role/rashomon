@@ -321,9 +321,29 @@ const (
 // Collapsing them into one value would let a coverage record claim the
 // stronger kind of evidence while holding the weaker kind -- see
 // internal/hook/coverage.go's Resolve for where each is decided.
+//
+// EntryPresent is never written by this code -- Resolve always picks one of
+// the two origin-specific values above, or Absent, or Unknown -- but it is
+// not retired, because every binary shipped before Part 1 wrote it, into
+// records that are schema version 2 and are not going anywhere. Removing it
+// from this list would make the enum describe a narrower store than the one
+// actually on disk: a real consumer validating a real store against
+// docs/store-schema.json would fail on records this program itself wrote,
+// which is the exact failure TestStoreSchemaMatchesTheAllowlists exists to
+// catch in the other direction. A reader that meets it should treat it as
+// "present, origin unknown" -- true of both origins before this document
+// existed to tell them apart -- and it costs nothing to keep meaning that:
+// report.go copies HookEntry through unexamined for display, and nothing
+// re-derives a stored record's own State from HookEntry at read time (that
+// decision was made once, by whichever binary wrote the record, and is
+// carried in State itself) -- so a legacy Present value was frozen as
+// verified the day it was written and renders that way today, unchanged.
+// TestLegacyPresentRendersVerified pins that rather than leaving it
+// incidental.
 const (
 	EntryPresentSettings = "present_settings"
 	EntryPresentPlugin   = "present_plugin"
+	EntryPresent         = "present"
 	EntryAbsent          = "absent"
 	EntryUnknown         = "unknown"
 

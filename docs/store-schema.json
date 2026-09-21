@@ -483,10 +483,11 @@
           ]
         },
         "hook_entry": {
-          "description": "Whether a recorder of ours is configured to run here, and which of two origins answered: present_settings when our entry for this phase's event is installed in settings.json as watch installs it; present_plugin when this process is itself running as the rashomon plugin's own hook binary for that event. An entry narrowed by hand is absent, because that is what it is.",
+          "description": "Whether a recorder of ours is configured to run here, and which of two origins answered: present_settings when our entry for this phase's event is installed in settings.json as watch installs it; present_plugin when this process is itself running as the rashomon plugin's own hook binary for that event. An entry narrowed by hand is absent, because that is what it is. \"present\" is a legacy value: every binary shipped before the plugin existed wrote it for what is now called present_settings, and those schema-2 records are still on disk and still valid -- a reader that meets it should treat it as \"present, origin unknown\".",
           "enum": [
             "present_settings",
             "present_plugin",
+            "present",
             "absent",
             "unknown"
           ]

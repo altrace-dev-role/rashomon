@@ -594,6 +594,10 @@ m("H-76 the plugin's watch skill keeps the standalone three-path preamble", "plu
   "TestH76_")
 m("H-77 the manifest ships enabled by default", "plugin/.claude-plugin/plugin.json",
   '"defaultEnabled": false', '"defaultEnabled": true', "TestH77_")
+m("a legacy present record is treated with suspicion and renders unverified", "internal/report/report.go",
+  "\t\tif c.State == store.StateUnverified && c.Reason != nil {\n\t\t\tsess.Coverage.add(*c.Reason)\n\t\t}\n\t}\n\tif !sess.Coverage.StartRecorded {",
+  "\t\tif c.State == store.StateUnverified && c.Reason != nil {\n\t\t\tsess.Coverage.add(*c.Reason)\n\t\t}\n\t\tif c.HookEntry == store.EntryPresent {\n\t\t\tsess.Coverage.add(ReasonRunNotClosed)\n\t\t}\n\t}\n\tif !sess.Coverage.StartRecorded {",
+  "TestLegacyPresentRendersVerified")
 
 # Import additions some mutants need.
 IMPORTS = {
