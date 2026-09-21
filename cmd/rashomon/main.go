@@ -21,10 +21,12 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/digest"
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/launch"
 	"github.com/altrace-dev-role/rashomon/internal/posture"
+	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
@@ -60,6 +62,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdPost(rest, stdin, stderr)
 	case "probe":
 		return cmdProbe(rest, stdin, stderr)
+	case "recap":
+		// Not under guarded(): guarded exits 1 and writes to stderr on error,
+		// which a hook renders as a visible "hook error" -- fine for a command
+		// a person typed, wrong for the one entry that speaks only when it has
+		// a finding. cmdRecap follows hook/post/probe's own rule instead and
+		// always returns exitOK; see its comment.
+		return cmdRecap(rest, stdin, stdout, stderr)
 
 	case "watch":
 		return guarded(stderr, func() error { return cmdWatch(stdout) })
@@ -223,6 +232,168 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 		hook.RunProbe(sig, phase, stdin, st, time.Now)
+		return nil
+	})
+	return exitOK
+}
+
+// recapStdinTimeout bounds how long cmdRecap waits for the Stop/StopFailure
+// payload on stdin before giving up and proceeding as though none arrived.
+//
+// Not a flag, and not IsTerminal-based: H-104 fixed digest's own hang by
+// requiring an explicit --stdin flag from the caller -- a promise that the
+// pipe will close, which is fine for a command a person or a script invokes
+// deliberately. This entry has no such caller-supplied promise to lean on:
+// Claude Code always writes the Stop payload on stdin and this process
+// cannot ask it to close the pipe, so unconditionally reading with a bounded
+// TIME budget is the only option that is both always-correct on the healthy
+// path and incapable of wedging the turn on a broken one. Three seconds
+// leaves a wide margin inside the entry's own 10-second timeout
+// (install.RecapTimeout) even after the ~120ms this command's own work can
+// cost at several thousand records (the spec's Measurements taken).
+const recapStdinTimeout = 3 * time.Second
+
+// recapPayload is the slice of the Stop/StopFailure hook payload this command
+// reads. session_id is Claude Code's own, not a tool call's or a
+// transcript's, and last_assistant_message is handed straight to
+// digest.Build exactly as a --stdin cmdDigest invocation would -- never
+// opened as a file, never echoed back (see internal/digest's package doc and
+// report.AccountFromMessage). This command has its own reader
+// (readRecapPayload) rather than reusing cmdDigest's readStdinLastMessage:
+// that function is only ever safe to call behind --stdin's promise, and
+// this entry has no equivalent flag to gate on -- see recapStdinTimeout.
+type recapPayload struct {
+	SessionID            string `json:"session_id"`
+	LastAssistantMessage string `json:"last_assistant_message"`
+}
+
+// readRecapPayload reads and parses stdin within a fixed budget, whatever
+// stdin is and whatever it does.
+//
+// safe.Go, not a bare `go`: a panic on this goroutine cannot be recovered by
+// its caller (internal/safe's own doc), and this command's entire contract
+// is that it never produces a non-zero exit -- see cmdRecap. The result
+// travels over a buffered channel rather than a variable the goroutine
+// writes into directly, so there is nothing left to race once the timeout
+// fires, this function has returned, and the abandoned goroutine is still
+// blocked in Read: it can only ever send into a channel nothing is
+// receiving from any more, once, and then it is done.
+func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
+	type parsed struct {
+		payload recapPayload
+		ok      bool
+	}
+	ch := make(chan parsed, 1)
+	safe.Go(func() {
+		raw, err := io.ReadAll(io.LimitReader(in, hook.MaxPayloadBytes+1))
+		if err != nil || len(raw) == 0 || len(raw) > hook.MaxPayloadBytes {
+			ch <- parsed{}
+			return
+		}
+		var p recapPayload
+		if json.Unmarshal(raw, &p) != nil {
+			ch <- parsed{}
+			return
+		}
+		ch <- parsed{payload: p, ok: true}
+	}, nil)
+
+	select {
+	case r := <-ch:
+		return r.payload
+	case <-time.After(timeout):
+		return recapPayload{}
+	}
+}
+
+// cmdRecap handles one Stop or StopFailure invocation: read-only, printing
+// at most one line, and never producing a hook error.
+//
+// It departs from hook/post/probe in one way beyond dispatch: those three
+// exist to record and their contract is "never exit 2, whatever else goes
+// wrong". This entry's contract is narrower still -- "never exit non-zero,
+// and print nothing on any internal failure" -- because under exception-only
+// notification a broken recap would be the only thing on screen, every turn
+// (spec, "Mechanism, and the failure rule"). guarded() is therefore never
+// used here: it exits 1 and writes to stderr, which is right for a command a
+// person typed and wrong for this one.
+func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	_ = safe.Guard(func() error {
+		fault.Inject(fault.PointRecapStart)
+
+		now := time.Now()
+		payload := readRecapPayload(stdin, recapStdinTimeout)
+
+		root, err := store.DefaultRoot()
+		if err != nil {
+			return nil
+		}
+
+		st, err := openStoreForRead()
+		if errors.Is(err, store.ErrNoStore) {
+			// A Stop firing before this machine has ever opened a store
+			// cannot happen honestly -- SessionStart's own probe already
+			// opens one -- and minting recap's bookkeeping file here to say
+			// so would be the exact "creating something to say nothing
+			// happened" mistake pause's own rule (Part 2) refuses. There is
+			// also, genuinely, nothing to record a failure against: no
+			// install.json means storeExists(root) is false and Claim/
+			// RecordFailure are already a no-op against it.
+			return nil
+		}
+		if err != nil {
+			// A store that exists but could not be opened -- a malformed
+			// install.key or install.json -- is exactly H-93's second case.
+			// Unlike ErrNoStore, root DOES already hold a store here, so the
+			// failure is recorded where status can show it.
+			recap.RecordFailure(root, now)
+			return nil
+		}
+		if standsDown(args, st, stderr) {
+			return nil
+		}
+
+		sessionID := payload.SessionID
+		if sessionID == "" {
+			// Mirrors digestOrEmpty's own fallback: this process never learns
+			// Claude Code's session id any other way than being told it.
+			newest, _, nerr := st.NewestRun()
+			if nerr != nil {
+				recap.RecordFailure(root, now)
+				return nil
+			}
+			if newest == "" {
+				return nil
+			}
+			sessionID = newest
+		}
+
+		d, derr := digest.Build(st, sessionID, "", payload.LastAssistantMessage, now)
+		if derr != nil {
+			recap.RecordFailure(root, now)
+			return nil
+		}
+
+		line, wantSpeak := recap.Line(d, d.SessionID)
+		// Claim's own error is intentionally ignored: recap.json is
+		// bookkeeping, not evidence, and a failure to persist it must cost at
+		// most a future duplicate or a stale health timestamp, never a
+		// missing line and never a hook error (see Claim's doc).
+		speak, _ := recap.Claim(root, d.SessionID, d.PromptID, now, wantSpeak)
+		if !speak {
+			return nil
+		}
+
+		b, merr := json.Marshal(map[string]string{"systemMessage": line})
+		if merr != nil {
+			return nil
+		}
+		// The human channel: systemMessage in JSON on stdout, capped at
+		// 10,000 characters by Claude Code itself. Plain stdout on a hook
+		// goes to the debug log, which is why hook/post above write nothing
+		// there at all -- this is the one entry that has something for a
+		// human to read, and this JSON envelope is how it reaches them.
+		_, _ = stdout.Write(b)
 		return nil
 	})
 	return exitOK
@@ -811,7 +982,36 @@ func cmdStatus(stdout io.Writer) error {
 			"recording every tool call twice (report will read coverage: unverified, reason duplicate_declarations); "+
 			"run `rashomon detach` to remove the settings entries and keep the plugin")
 	}
-	return statusHooks(stdout)
+	if err := statusHooks(stdout); err != nil {
+		return err
+	}
+	return statusRecap(stdout, root)
+}
+
+// statusRecap reports the exception line's own evaluation history: whether a
+// Stop/StopFailure has ever been evaluated here, when the last one was, and
+// whether it completed cleanly (H-92).
+//
+// Silence on Stop is a notification policy, never a claim that the turn was
+// clean -- a plugin can be disabled, a hook can fail to run, a turn can end
+// without Stop at all -- so this is the fact silence itself cannot carry.
+// "Evaluated, no findings" and "not evaluated" have to read as different
+// lines here, or exception-only notification collapses into silence-reads-
+// as-zero, which is the whole failure this part exists to avoid.
+func statusRecap(stdout io.Writer, root string) error {
+	evaluated, lastAt, healthy, err := recap.Status(root)
+	switch {
+	case err != nil:
+		fmt.Fprintf(stdout, "recap: %s (state unreadable)\n", statusUnknown)
+	case !evaluated:
+		fmt.Fprintln(stdout, "recap: not evaluated (no Stop/StopFailure has completed here yet)")
+	case !healthy:
+		fmt.Fprintf(stdout, "recap: evaluated, last at %s -- that run did not complete cleanly\n",
+			lastAt.UTC().Format(time.RFC3339))
+	default:
+		fmt.Fprintf(stdout, "recap: evaluated, last at %s\n", lastAt.UTC().Format(time.RFC3339))
+	}
+	return nil
 }
 
 // statusRecording says whether hooks will record, which is the one thing pause
@@ -1281,8 +1481,9 @@ func usage(w io.Writer) {
 
 usage:
   rashomon watch                 install the PreToolUse, PostToolUse and
-                               PostToolUseFailure recorders and the
-                               SessionStart/SessionEnd liveness probe
+                               PostToolUseFailure recorders, the
+                               SessionStart/SessionEnd liveness probe, and the
+                               Stop/StopFailure exception-only recap
   rashomon detach                remove them, leaving everything else as found
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
@@ -1331,6 +1532,11 @@ invoked by Claude Code, never by hand:
   rashomon post [--install ID]   handle one PostToolUse invocation
   rashomon probe start|end [--install ID]
                                handle SessionStart / SessionEnd
+  rashomon recap [--install ID]  handle Stop / StopFailure: print an
+                               exception-only line on stdout as a
+                               systemMessage when a turn has something worth
+                               looking at, and nothing otherwise; never
+                               exits non-zero
 
 --install names the install whose entry is running. An entry belonging to
 another install stands down: it records nothing in this environment.

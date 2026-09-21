@@ -35,8 +35,10 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	}
 	// Guard the premise: an empty Events slice would make the loop above
 	// accept nothing and pass anyway on a settings file with no entries.
-	if len(allowed) < 5 {
-		t.Fatalf("install.Events lists %d events; watch installs five", len(allowed))
+	// Seven, not five: Part 4 adds Stop and StopFailure for the recap
+	// alongside the five recorder entries this test already knew about.
+	if len(allowed) < 7 {
+		t.Fatalf("install.Events lists %d events; watch installs seven", len(allowed))
 	}
 	groups := ours(sf.Hooks["PreToolUse"])
 	if len(groups) != 1 {
@@ -112,6 +114,27 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 		}
 		if len(pg[0].Hooks) != 1 || pg[0].Hooks[0].Timeout != 5 || pg[0].Hooks[0].Type != "command" {
 			t.Errorf("%s entry is %+v, want one command hook with timeout 5", event, pg[0].Hooks)
+		}
+	}
+
+	// The recap (Part 4): no matcher, like the probe, but its own ten-second
+	// timeout -- not five -- because it reads a whole run to find one turn's
+	// boundaries and the spec's own measurements say that costs more than the
+	// per-call recorder entries ever do.
+	for _, event := range []string{"Stop", "StopFailure"} {
+		pg := ours(sf.Hooks[event])
+		if len(pg) != 1 {
+			t.Errorf("got %d entries of ours under hooks.%s, want 1", len(pg), event)
+			continue
+		}
+		if pg[0].Matcher != nil {
+			t.Errorf("%s entry has matcher %q; Claude Code documents no matcher for it", event, *pg[0].Matcher)
+		}
+		if len(pg[0].Hooks) != 1 || pg[0].Hooks[0].Timeout != 10 || pg[0].Hooks[0].Type != "command" {
+			t.Errorf("%s entry is %+v, want one command hook with timeout 10", event, pg[0].Hooks)
+		}
+		if want := " recap --install " + e.installID(); len(pg[0].Hooks) == 1 && !strings.HasSuffix(pg[0].Hooks[0].Command, want) {
+			t.Errorf("%s command %q does not end with %q", event, pg[0].Hooks[0].Command, want)
 		}
 	}
 }
