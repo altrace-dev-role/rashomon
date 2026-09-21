@@ -41,6 +41,15 @@ const (
 	EventPostToolUseFailure = "PostToolUseFailure"
 	EventSessionStart       = "SessionStart"
 	EventSessionEnd         = "SessionEnd"
+	// EventStop and EventStopFailure are the sixth entry: the exception-only
+	// recap (Part 4), read-only and printed at most once per turn. Two
+	// events sharing one subcommand, for the same reason PostToolUseFailure
+	// shares `post` rather than getting its own command line -- see that
+	// constant's comment. A turn that ends by user interrupt fires neither;
+	// an API error routes to StopFailure instead of Stop, and both are turns
+	// worth evaluating, so both are subscribed.
+	EventStop        = "Stop"
+	EventStopFailure = "StopFailure"
 )
 
 // Events in the order they are installed.
@@ -50,11 +59,15 @@ var Events = []string{
 	EventPostToolUseFailure,
 	EventSessionStart,
 	EventSessionEnd,
+	EventStop,
+	EventStopFailure,
 }
 
 // hasMatcher reports whether an event's entry carries a matcher. The tool
 // events match on tool name; the session events match on source or reason, and
-// omitting the matcher is the documented way to match every one of those.
+// omitting the matcher is the documented way to match every one of those. Stop
+// and StopFailure are neither: Claude Code documents no matcher for either, so
+// they fall through to false alongside the session events.
 func hasMatcher(event string) bool {
 	return event == EventPreToolUse ||
 		event == EventPostToolUse ||
@@ -69,12 +82,32 @@ const (
 	Matcher = "*"
 	// Timeout is in seconds. Claude Code's documented default is 600.
 	Timeout = 5
+	// RecapTimeout is Stop/StopFailure's own timeout, not Timeout: the recap
+	// reads a whole run to find one turn's boundaries -- O(session size), not
+	// O(turn size), per the spec's own measurements -- and 122 ms was already
+	// observed at 4,264 records against a 50 ms hope. Ten seconds is a wide
+	// margin over that, and still nowhere near Claude Code's platform default
+	// of 600 that the ordinary five-second entries are deliberately kept well
+	// under.
+	RecapTimeout = 10
 
 	// Marker precedes the install id in an installed command line. The hook
 	// paths read it back to tell an entry of ours from one belonging to
 	// another install that shares the settings file.
 	Marker = "--install"
 )
+
+// timeoutFor is the per-event timeout `group` installs and `intact` checks
+// against. A single constant covered every event until the recap needed a
+// wider one; this keeps the exception the two Stop events are, rather than
+// widening Timeout itself and loosening the budget the five recorder entries
+// are held to.
+func timeoutFor(event string) int {
+	if event == EventStop || event == EventStopFailure {
+		return RecapTimeout
+	}
+	return Timeout
+}
 
 // Spec is what an installed entry points at and who owns it.
 type Spec struct {
@@ -115,6 +148,11 @@ func subcommand(event string) string {
 		return "probe start"
 	case EventSessionEnd:
 		return "probe end"
+	case EventStop, EventStopFailure:
+		// One subcommand, two events, for the reason EventPostToolUseFailure's
+		// comment gives: the payloads share a shape and a second command line
+		// would be a second place for this discipline to drift.
+		return "recap"
 	}
 	return ""
 }
@@ -139,7 +177,7 @@ func (s Spec) group(event string) matcherGroup {
 	g := matcherGroup{Hooks: []hookCommand{{
 		Type:    "command",
 		Command: s.Command(event),
-		Timeout: Timeout,
+		Timeout: timeoutFor(event),
 	}}}
 	if hasMatcher(event) {
 		m := Matcher
@@ -413,8 +451,8 @@ func intact(raw json.RawMessage, event string) string {
 	if h.Type != "command" {
 		return fmt.Sprintf("hook type is %q, expected \"command\"", h.Type)
 	}
-	if h.Timeout != Timeout {
-		return fmt.Sprintf("timeout is %d, expected %d", h.Timeout, Timeout)
+	if want := timeoutFor(event); h.Timeout != want {
+		return fmt.Sprintf("timeout is %d, expected %d", h.Timeout, want)
 	}
 	return ""
 }

@@ -189,6 +189,38 @@ func (e *env) post(payload string, extraEnv ...string) result {
 	return e.run(payload, extraEnv, append([]string{"post"}, e.installArgs()...)...)
 }
 
+// recap runs the Stop/StopFailure path, as watch installs it.
+func (e *env) recap(payload string, extraEnv ...string) result {
+	e.t.Helper()
+	return e.run(payload, extraEnv, append([]string{"recap"}, e.installArgs()...)...)
+}
+
+// recapOutput is the JSON envelope cmdRecap writes to stdout when it has
+// something to say: `systemMessage`, the one field Claude Code shows a
+// human on a hook's stdout.
+type recapOutput struct {
+	SystemMessage string `json:"systemMessage"`
+}
+
+// recapLine runs recap and reports the line it printed, if any. It fails the
+// test on a non-zero exit or on stdout that is neither empty nor valid JSON,
+// which recap's own contract (H-93) says it must never produce.
+func (e *env) recapLine(payload string, extraEnv ...string) (string, bool) {
+	e.t.Helper()
+	res := e.recap(payload, extraEnv...)
+	if res.exitCode != 0 {
+		e.t.Fatalf("recap: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res.stdout == "" {
+		return "", false
+	}
+	var out recapOutput
+	if err := json.Unmarshal([]byte(res.stdout), &out); err != nil {
+		e.t.Fatalf("recap stdout is not JSON: %v\n%s", err, res.stdout)
+	}
+	return out.SystemMessage, true
+}
+
 func (e *env) probe(phase, sessionID string, extraEnv ...string) result {
 	e.t.Helper()
 	return e.run(e.sessionPayload(phase, sessionID), extraEnv, append([]string{"probe", phase}, e.installArgs()...)...)

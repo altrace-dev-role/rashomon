@@ -25,13 +25,13 @@ declaration (identifiers and shape only — never content).
    Never install from a `go run` path — `watch` refuses temporary build
    directories because the installed hook entry records the absolute path.
 
-2. Run `$RASHOMON watch`. It writes five hook entries (PreToolUse,
-   PostToolUse, PostToolUseFailure, SessionStart, SessionEnd) into
-   `~/.claude/settings.json` and prints an install id plus the exact
-   `detach --install <id>` line that undoes it. Quote that undo line back to
-   the user verbatim.
+2. Run `$RASHOMON watch`. It writes seven hook entries (PreToolUse,
+   PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, Stop,
+   StopFailure) into `~/.claude/settings.json` and prints an install id plus
+   the exact `detach --install <id>` line that undoes it. Quote that undo
+   line back to the user verbatim.
 
-3. Run `$RASHOMON status` and show the result, so the user sees the five
+3. Run `$RASHOMON status` and show the result, so the user sees the seven
    entries as present and where the store lives.
 
 4. Tell the user, briefly, and say the SCOPE first — it is the part they are
@@ -50,6 +50,13 @@ declaration (identifiers and shape only — never content).
      the probe is in place from their first moment; the report is the proof.
    - `/rashomon-report` renders what was recorded; `/rashomon-stop` removes
      the hooks and keeps the store; `/rashomon-forget` erases records.
+   - After a turn, they may occasionally see a short line starting `※
+     rashomon:` in Claude Code's own output. That is the recap: exception-only,
+     so it says nothing on a clean turn and prints once when a turn has a
+     recorded failure, a declaration without recorded execution, coverage
+     that did not verify, or a truncated projection. It always points at
+     `/rashomon-report --session <id>` for the detail rather than trying to
+     say more itself.
 
 5. Offer the one-word launcher once, if it is not already on their PATH.
    From the rashomon repo, on macOS or Linux:
