@@ -516,8 +516,8 @@ m("H-44 the label is computed and thrown away", "internal/hook/handle.go",
   "\tif label := fileLabel(p.ToolName, p.ToolInput); label != \"\" {\n\t\tdecl.FileLabel = &label\n\t}",
   "\t_ = fileLabel(p.ToolName, p.ToolInput)", "TestH44_|TestH45_|TestH46_")
 m("H-44 a stored label reaches the report unclamped", "internal/report/report.go",
-  "\t\t\tsess.Declarations.ByLabel[knownLabel(*d.FileLabel)]++",
-  "\t\t\tsess.Declarations.ByLabel[*d.FileLabel]++", "TestByLabel_")
+  "\t\t\tbyLabel[knownLabel(*d.FileLabel)]++",
+  "\t\t\tbyLabel[*d.FileLabel]++", "TestByLabel_")
 m("H-46 labelling recovers after the append instead of before it", "internal/hook/handle.go",
   "\tdefer func() {\n\t\tif v := recover(); v != nil {\n\t\t\tlabel = shape.LabelUnknown\n\t\t}\n\t}()\n\tfault.Inject(fault.PointLabel)",
   "\tfault.Inject(fault.PointLabel)", "TestH46_NoFault")

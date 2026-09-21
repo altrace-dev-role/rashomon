@@ -20,10 +20,13 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/digest"
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/launch"
 	"github.com/altrace-dev-role/rashomon/internal/posture"
+	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
@@ -59,15 +62,32 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdPost(rest, stdin, stderr)
 	case "probe":
 		return cmdProbe(rest, stdin, stderr)
+	case "recap":
+		// Not under guarded(): guarded exits 1 and writes to stderr on error,
+		// which a hook renders as a visible "hook error" -- fine for a command
+		// a person typed, wrong for the one entry that speaks only when it has
+		// a finding. cmdRecap follows hook/post/probe's own rule instead and
+		// always returns exitOK; see its comment.
+		return cmdRecap(rest, stdin, stdout, stderr)
 
 	case "watch":
 		return guarded(stderr, func() error { return cmdWatch(stdout) })
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
+	case "enable-reading":
+		// Part 5, and the ONLY path that ever writes its entry (H-105). watch
+		// never calls this, Apply never calls this: a default install --
+		// watch, a session, `report` -- touches no code in this branch at
+		// all, so nothing about a default install can call a model.
+		return guarded(stderr, func() error { return cmdEnableReading(stdout) })
+	case "disable-reading":
+		return guarded(stderr, func() error { return cmdDisableReading(stdout) })
 	case "status":
 		return guarded(stderr, func() error { return cmdStatus(stdout) })
 	case "report":
 		return guarded(stderr, func() error { return cmdReport(rest, stdout) })
+	case "digest":
+		return guarded(stderr, func() error { return cmdDigest(rest, stdin, stdout) })
 	case "forget":
 		return guarded(stderr, func() error { return cmdForget(rest, stdout) })
 	case "env":
@@ -202,6 +222,168 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 		hook.RunProbe(sig, phase, stdin, st, time.Now)
+		return nil
+	})
+	return exitOK
+}
+
+// recapStdinTimeout bounds how long cmdRecap waits for the Stop/StopFailure
+// payload on stdin before giving up and proceeding as though none arrived.
+//
+// Not a flag, and not IsTerminal-based: H-104 fixed digest's own hang by
+// requiring an explicit --stdin flag from the caller -- a promise that the
+// pipe will close, which is fine for a command a person or a script invokes
+// deliberately. This entry has no such caller-supplied promise to lean on:
+// Claude Code always writes the Stop payload on stdin and this process
+// cannot ask it to close the pipe, so unconditionally reading with a bounded
+// TIME budget is the only option that is both always-correct on the healthy
+// path and incapable of wedging the turn on a broken one. Three seconds
+// leaves a wide margin inside the entry's own 10-second timeout
+// (install.RecapTimeout) even after the ~120ms this command's own work can
+// cost at several thousand records (the spec's Measurements taken).
+const recapStdinTimeout = 3 * time.Second
+
+// recapPayload is the slice of the Stop/StopFailure hook payload this command
+// reads. session_id is Claude Code's own, not a tool call's or a
+// transcript's, and last_assistant_message is handed straight to
+// digest.Build exactly as a --stdin cmdDigest invocation would -- never
+// opened as a file, never echoed back (see internal/digest's package doc and
+// report.AccountFromMessage). This command has its own reader
+// (readRecapPayload) rather than reusing cmdDigest's readStdinLastMessage:
+// that function is only ever safe to call behind --stdin's promise, and
+// this entry has no equivalent flag to gate on -- see recapStdinTimeout.
+type recapPayload struct {
+	SessionID            string `json:"session_id"`
+	LastAssistantMessage string `json:"last_assistant_message"`
+}
+
+// readRecapPayload reads and parses stdin within a fixed budget, whatever
+// stdin is and whatever it does.
+//
+// safe.Go, not a bare `go`: a panic on this goroutine cannot be recovered by
+// its caller (internal/safe's own doc), and this command's entire contract
+// is that it never produces a non-zero exit -- see cmdRecap. The result
+// travels over a buffered channel rather than a variable the goroutine
+// writes into directly, so there is nothing left to race once the timeout
+// fires, this function has returned, and the abandoned goroutine is still
+// blocked in Read: it can only ever send into a channel nothing is
+// receiving from any more, once, and then it is done.
+func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
+	type parsed struct {
+		payload recapPayload
+		ok      bool
+	}
+	ch := make(chan parsed, 1)
+	safe.Go(func() {
+		raw, err := io.ReadAll(io.LimitReader(in, hook.MaxPayloadBytes+1))
+		if err != nil || len(raw) == 0 || len(raw) > hook.MaxPayloadBytes {
+			ch <- parsed{}
+			return
+		}
+		var p recapPayload
+		if json.Unmarshal(raw, &p) != nil {
+			ch <- parsed{}
+			return
+		}
+		ch <- parsed{payload: p, ok: true}
+	}, nil)
+
+	select {
+	case r := <-ch:
+		return r.payload
+	case <-time.After(timeout):
+		return recapPayload{}
+	}
+}
+
+// cmdRecap handles one Stop or StopFailure invocation: read-only, printing
+// at most one line, and never producing a hook error.
+//
+// It departs from hook/post/probe in one way beyond dispatch: those three
+// exist to record and their contract is "never exit 2, whatever else goes
+// wrong". This entry's contract is narrower still -- "never exit non-zero,
+// and print nothing on any internal failure" -- because under exception-only
+// notification a broken recap would be the only thing on screen, every turn
+// (spec, "Mechanism, and the failure rule"). guarded() is therefore never
+// used here: it exits 1 and writes to stderr, which is right for a command a
+// person typed and wrong for this one.
+func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	_ = safe.Guard(func() error {
+		fault.Inject(fault.PointRecapStart)
+
+		now := time.Now()
+		payload := readRecapPayload(stdin, recapStdinTimeout)
+
+		root, err := store.DefaultRoot()
+		if err != nil {
+			return nil
+		}
+
+		st, err := openStoreForRead()
+		if errors.Is(err, store.ErrNoStore) {
+			// A Stop firing before this machine has ever opened a store
+			// cannot happen honestly -- SessionStart's own probe already
+			// opens one -- and minting recap's bookkeeping file here to say
+			// so would be the exact "creating something to say nothing
+			// happened" mistake pause's own rule (Part 2) refuses. There is
+			// also, genuinely, nothing to record a failure against: no
+			// install.json means storeExists(root) is false and Claim/
+			// RecordFailure are already a no-op against it.
+			return nil
+		}
+		if err != nil {
+			// A store that exists but could not be opened -- a malformed
+			// install.key or install.json -- is exactly H-93's second case.
+			// Unlike ErrNoStore, root DOES already hold a store here, so the
+			// failure is recorded where status can show it.
+			recap.RecordFailure(root, now)
+			return nil
+		}
+		if standsDown(args, st, stderr) {
+			return nil
+		}
+
+		sessionID := payload.SessionID
+		if sessionID == "" {
+			// Mirrors digestOrEmpty's own fallback: this process never learns
+			// Claude Code's session id any other way than being told it.
+			newest, _, nerr := st.NewestRun()
+			if nerr != nil {
+				recap.RecordFailure(root, now)
+				return nil
+			}
+			if newest == "" {
+				return nil
+			}
+			sessionID = newest
+		}
+
+		d, derr := digest.Build(st, sessionID, "", payload.LastAssistantMessage, now)
+		if derr != nil {
+			recap.RecordFailure(root, now)
+			return nil
+		}
+
+		line, wantSpeak := recap.Line(d, d.SessionID)
+		// Claim's own error is intentionally ignored: recap.json is
+		// bookkeeping, not evidence, and a failure to persist it must cost at
+		// most a future duplicate or a stale health timestamp, never a
+		// missing line and never a hook error (see Claim's doc).
+		speak, _ := recap.Claim(root, d.SessionID, d.PromptID, now, wantSpeak)
+		if !speak {
+			return nil
+		}
+
+		b, merr := json.Marshal(map[string]string{"systemMessage": line})
+		if merr != nil {
+			return nil
+		}
+		// The human channel: systemMessage in JSON on stdout, capped at
+		// 10,000 characters by Claude Code itself. Plain stdout on a hook
+		// goes to the debug log, which is why hook/post above write nothing
+		// there at all -- this is the one entry that has something for a
+		// human to read, and this JSON envelope is how it reaches them.
+		_, _ = stdout.Write(b)
 		return nil
 	})
 	return exitOK
@@ -538,6 +720,82 @@ func detachTarget(args []string) (installID string, all, force bool, err error) 
 	return installID, false, force, err
 }
 
+// cmdEnableReading installs Part 5's model-phrased reading: a "type":
+// "prompt" hook on Stop and StopFailure that asks a model (Haiku, Claude
+// Code's own documented default for this hook type) whether the turn's
+// final message contradicts itself. It is the one command that writes it --
+// see internal/install/reading.go's ApplyReading doc for why watch never
+// does, which is the whole of H-105.
+//
+// It deliberately does NOT check for or require a store: this entry's
+// identity is a marker in the rendered prompt text (internal/install's
+// isReadingEntry), not an install id, so it is orthogonal to whether this
+// machine has ever recorded anything. Refusing to enable it on a fresh
+// machine would tie two independent decisions together for no reason.
+//
+// What it CANNOT do is what a reader of Part 5's design might expect: check
+// the final message against this session's recorded tool calls. There is no
+// documented Claude Code channel for a "type": "prompt" hook to see this
+// program's own digest -- see internal/install/reading.go's package doc for
+// the full account of why, found while wiring this rather than assumed
+// beforehand. The entry installed here is scoped to what it can honestly
+// check: whether the message contradicts itself.
+func cmdEnableReading(stdout io.Writer) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	loc, err := settings.DefaultLocations(cwd)
+	if err != nil {
+		return err
+	}
+	decision, err := settings.HooksDisabled(loc)
+	if err != nil {
+		return err
+	}
+	if decision.Disabled {
+		return fmt.Errorf("hooks are disabled by the %s settings layer; an installed entry would never run", decision.Layer)
+	}
+
+	changed, err := editSettings(loc.User, func(doc *settings.Document) (bool, error) {
+		return install.ApplyReading(doc, true)
+	})
+	if err != nil {
+		return err
+	}
+	if changed {
+		fmt.Fprintf(stdout, "rashomon: model-phrased reading enabled via %s\n", loc.User)
+	} else {
+		fmt.Fprintf(stdout, "rashomon: model-phrased reading already enabled via %s\n", loc.User)
+	}
+	fmt.Fprintln(stdout, "rashomon: this asks a model (Haiku) whether the turn's final message "+
+		"contradicts itself; it cannot check the message against recorded tool calls -- see "+
+		"the README")
+	fmt.Fprintln(stdout, "rashomon: undo with: rashomon disable-reading")
+	return nil
+}
+
+// cmdDisableReading is enable-reading's undo, the same shape detach is to
+// watch.
+func cmdDisableReading(stdout io.Writer) error {
+	path, err := settings.UserPath()
+	if err != nil {
+		return err
+	}
+	changed, err := editSettings(path, func(doc *settings.Document) (bool, error) {
+		return install.ApplyReading(doc, false)
+	})
+	if err != nil {
+		return err
+	}
+	if changed {
+		fmt.Fprintf(stdout, "rashomon: model-phrased reading disabled via %s\n", path)
+	} else {
+		fmt.Fprintf(stdout, "rashomon: model-phrased reading was not enabled in %s\n", path)
+	}
+	return nil
+}
+
 // cmdStatus prints what is installed here and what the store holds, and writes
 // nothing at all.
 //
@@ -574,7 +832,68 @@ func cmdStatus(stdout io.Writer) error {
 	if err := statusSettings(stdout, installID); err != nil {
 		return err
 	}
-	return statusHooks(stdout)
+	if err := statusHooks(stdout); err != nil {
+		return err
+	}
+	if err := statusReading(stdout); err != nil {
+		return err
+	}
+	return statusRecap(stdout, root)
+}
+
+// statusReading reports whether Part 5's model-phrased reading is installed
+// -- the visible half of H-105. A user must be able to SEE that nothing
+// calls a model on a default install, not merely be told so in a doc, and
+// this is the one place that answer is read back from the settings file
+// itself rather than from what this program intended to write.
+func statusReading(stdout io.Writer) error {
+	path, err := settings.UserPath()
+	if err != nil {
+		return err
+	}
+	doc, err := settings.Load(path)
+	if err != nil {
+		fmt.Fprintf(stdout, "reading: %s\n", statusUnreadable)
+		return nil
+	}
+	present, err := install.ReadingPresent(doc)
+	if err != nil {
+		fmt.Fprintf(stdout, "reading: %s\n", statusUnreadable)
+		return nil
+	}
+	if present {
+		fmt.Fprintln(stdout, "reading: enabled (a model sees last_assistant_message on Stop/StopFailure; "+
+			"disable with rashomon disable-reading)")
+	} else {
+		fmt.Fprintln(stdout, "reading: disabled (no model is called; enable with rashomon enable-reading)")
+	}
+	return nil
+}
+
+// statusRecap reports the exception line's own evaluation history: whether a
+// Stop/StopFailure has ever been evaluated here, when the last one was, and
+// whether it completed cleanly (H-92).
+//
+// Silence on Stop is a notification policy, never a claim that the turn was
+// clean -- a plugin can be disabled, a hook can fail to run, a turn can end
+// without Stop at all -- so this is the fact silence itself cannot carry.
+// "Evaluated, no findings" and "not evaluated" have to read as different
+// lines here, or exception-only notification collapses into silence-reads-
+// as-zero, which is the whole failure this part exists to avoid.
+func statusRecap(stdout io.Writer, root string) error {
+	evaluated, lastAt, healthy, err := recap.Status(root)
+	switch {
+	case err != nil:
+		fmt.Fprintf(stdout, "recap: %s (state unreadable)\n", statusUnknown)
+	case !evaluated:
+		fmt.Fprintln(stdout, "recap: not evaluated (no Stop/StopFailure has completed here yet)")
+	case !healthy:
+		fmt.Fprintf(stdout, "recap: evaluated, last at %s -- that run did not complete cleanly\n",
+			lastAt.UTC().Format(time.RFC3339))
+	default:
+		fmt.Fprintf(stdout, "recap: evaluated, last at %s\n", lastAt.UTC().Format(time.RFC3339))
+	}
+	return nil
 }
 
 // The words status prints for a thing it could not resolve. A status that
@@ -744,6 +1063,133 @@ func cmdReport(args []string, stdout io.Writer) error {
 	return enc.Encode(rep)
 }
 
+// cmdDigest renders one turn's projection as JSON.
+//
+// Unlike report, it can take stdin: a future Stop hook's payload carries
+// last_assistant_message there, and that text -- a model's own final reply,
+// which can run to several KB -- must never travel through argv, where any
+// process on the machine sharing this user can read it via ps. The
+// --last-assistant-message flag exists only so a person can drive this by
+// hand.
+//
+// stdin is read ONLY when --stdin is given, never by sniffing what stdin
+// happens to be. H-104 is why: a live terminal is not the only stdin that
+// never sends EOF -- an inherited pipe that stays open does the same thing,
+// and it is the more common case for a command invoked from a script or a
+// parent process, not a shell prompt. Guessing intent from the file's mode
+// narrows the failure to terminals and leaves every other never-closing
+// stdin free to wedge the caller. --stdin is a promise from the caller that
+// it will close the pipe, the same promise hook/post/probe already rely on
+// from Claude Code without any sniffing at all.
+func cmdDigest(args []string, stdin io.Reader, stdout io.Writer) error {
+	sessionID := ""
+	promptID := ""
+	lastMsg := ""
+	haveLastMsg := false
+	readStdin := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--session":
+			if i+1 >= len(args) {
+				return errors.New("--session needs a value")
+			}
+			sessionID = args[i+1]
+			i++
+		case "--prompt":
+			if i+1 >= len(args) {
+				return errors.New("--prompt needs a value")
+			}
+			promptID = args[i+1]
+			i++
+		case "--last-assistant-message":
+			if i+1 >= len(args) {
+				return errors.New("--last-assistant-message needs a value")
+			}
+			lastMsg = args[i+1]
+			haveLastMsg = true
+			i++
+		case "--stdin":
+			readStdin = true
+		default:
+			return fmt.Errorf("unknown argument %q", args[i])
+		}
+	}
+	// The flag wins when given; stdin is the fallback, not a merge, so an
+	// explicit empty value cannot be silently overruled by whatever a caller
+	// that also passed --stdin left on the pipe.
+	if !haveLastMsg && readStdin {
+		if m, ok := readStdinLastMessage(stdin); ok {
+			lastMsg = m
+		}
+	}
+
+	d, err := digestOrEmpty(sessionID, promptID, lastMsg, time.Now())
+	if err != nil {
+		return err
+	}
+	// Marshalled directly with json.Marshal, byte for byte the same call
+	// truncate.go's oversize() held the ceiling against -- an indented
+	// encoding, or json.Encoder's own trailing newline folded into that
+	// measurement, would each be a different number of bytes than the one the
+	// ceiling was actually enforced on. The document is for a script to parse
+	// (Part 4's exception line, or a slash command), not a terminal to read,
+	// so nothing is lost by staying compact.
+	b, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	_, err = stdout.Write(append(b, '\n'))
+	return err
+}
+
+// readStdinLastMessage reads a JSON payload from stdin carrying
+// last_assistant_message -- the shape a Stop hook's own stdin would carry.
+// It is only ever called when the caller passed --stdin, which is the
+// promise that made this read safe -- see cmdDigest's doc on why sniffing
+// stdin's type cannot make that promise itself.
+func readStdinLastMessage(in io.Reader) (string, bool) {
+	raw, err := io.ReadAll(io.LimitReader(in, hook.MaxPayloadBytes+1))
+	if err != nil || len(raw) == 0 || len(raw) > hook.MaxPayloadBytes {
+		return "", false
+	}
+	var p struct {
+		LastAssistantMessage string `json:"last_assistant_message"`
+	}
+	if json.Unmarshal(raw, &p) != nil {
+		return "", false
+	}
+	return p.LastAssistantMessage, p.LastAssistantMessage != ""
+}
+
+// digestOrEmpty builds the digest, or the empty one when there is nothing
+// recorded here at all -- mirroring reportOrEmpty's rule and for the same
+// reason: a command that only asks a question must not mint an install
+// identity and an HMAC key as a side effect of being asked.
+func digestOrEmpty(sessionID, promptID, lastAssistantMessage string, now time.Time) (*digest.Digest, error) {
+	st, err := openStoreForRead()
+	if errors.Is(err, store.ErrNoStore) {
+		return digest.Empty(now, sessionID, promptID), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if sessionID == "" {
+		// No session named: the newest run, under the same rule `run` reports
+		// on its child by -- this process never learns Claude Code's session
+		// id any other way. A store with no runs at all is "nothing recorded
+		// here", not an error.
+		newest, _, err := st.NewestRun()
+		if err != nil {
+			return nil, err
+		}
+		if newest == "" {
+			return digest.Empty(now, "", promptID), nil
+		}
+		sessionID = newest
+	}
+	return digest.Build(st, sessionID, promptID, lastAssistantMessage, now)
+}
+
 // cmdForget evicts records at one end of the store's timeline.
 //
 // --since is the privacy form: forget what just happened. --before is the
@@ -835,8 +1281,9 @@ func usage(w io.Writer) {
 
 usage:
   rashomon watch                 install the PreToolUse, PostToolUse and
-                               PostToolUseFailure recorders and the
-                               SessionStart/SessionEnd liveness probe
+                               PostToolUseFailure recorders, the
+                               SessionStart/SessionEnd liveness probe, and the
+                               Stop/StopFailure exception-only recap
   rashomon detach                remove them, leaving everything else as found
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
@@ -849,6 +1296,18 @@ usage:
                                terminal or as JSON for a consumer; --chain
                                lists the calls under each prompt, which JSON
                                always carries
+  rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT]
+                  [--stdin]
+                               render one turn's projection as JSON: what one
+                               prompt_id recorded, read-only and never larger
+                               than 8 KiB; --session and --prompt default to
+                               the most recent session and its most recently
+                               started turn. --stdin reads a JSON payload
+                               ({"last_assistant_message": "..."}) from
+                               stdin for the final message instead of the
+                               flag; omitted by default, because reading
+                               stdin unless told to is how a caller that
+                               never closes its pipe gets hung forever.
   rashomon forget --host H       evict every call that named host H, and its
                                baseline entry
   rashomon forget --since T      evict records recorded at or after T
@@ -864,11 +1323,25 @@ usage:
                                --proxy-status overrides where that is checked
   rashomon version               print the version
 
+not installed by watch, and off unless you run this yourself (Part 5):
+  rashomon enable-reading         install a "type": "prompt" hook on
+                               Stop/StopFailure that asks a model (Haiku)
+                               whether the turn's final message contradicts
+                               itself. THE ONLY command that calls a model,
+                               and the only one that writes this entry; a
+                               plain watch/session/report never does
+  rashomon disable-reading        remove it
+
 invoked by Claude Code, never by hand:
   rashomon hook [--install ID]   handle one PreToolUse invocation
   rashomon post [--install ID]   handle one PostToolUse invocation
   rashomon probe start|end [--install ID]
                                handle SessionStart / SessionEnd
+  rashomon recap [--install ID]  handle Stop / StopFailure: print an
+                               exception-only line on stdout as a
+                               systemMessage when a turn has something worth
+                               looking at, and nothing otherwise; never
+                               exits non-zero
 
 --install names the install whose entry is running. An entry belonging to
 another install stands down: it records nothing in this environment.

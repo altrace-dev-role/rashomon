@@ -75,10 +75,23 @@ claude                              # work normally
 rashomon report                     # read the sessions back
 ```
 
-`watch` adds five entries to your Claude Code settings — `PreToolUse`,
-`PostToolUse`, `PostToolUseFailure`, `SessionStart`, `SessionEnd` — each with
-matcher `*` and a 5-second timeout. `rashomon detach` removes them again,
-leaving every other entry byte-for-byte as found.
+`watch` adds seven entries to your Claude Code settings — `PreToolUse`,
+`PostToolUse`, `PostToolUseFailure`, `SessionStart`, `SessionEnd`, `Stop`,
+`StopFailure`. The first three match `*` (every tool); `SessionStart`,
+`SessionEnd`, `Stop` and `StopFailure` carry no matcher, since Claude Code
+documents none for the session and turn-end events. All seven run a
+5-second timeout except `Stop` and `StopFailure`, which get 10: finding a
+turn's boundaries means reading a whole run, not one call.
+`rashomon detach` removes them again, leaving every other entry byte-for-byte
+as found.
+
+`Stop` and `StopFailure` drive an exception-only recap: after a turn, it
+prints at most one line — and only when there is something worth looking
+at (a recorded failure, a declaration without recorded execution, coverage
+that did not verify, or a truncated/unknown projection) — with a pointer to
+`rashomon report --session <id>` for the detail. A clean turn prints
+nothing at all; `rashomon status` says whether a turn has actually been
+evaluated, so silence never gets read as proof the turn was clean.
 
 ### Seeing network destinations
 

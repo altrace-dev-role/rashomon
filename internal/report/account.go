@@ -3,6 +3,7 @@ package report
 import (
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -150,18 +151,79 @@ func buildAccount(run *store.Run) Account {
 		if !ok {
 			continue
 		}
-		runes := []rune(text)
-		if len(runes) > accountLimit {
-			return Account{
-				Available: true,
-				Text:      string(runes[:accountLimit]),
-				Truncated: true,
-				full:      text,
-			}
-		}
-		return Account{Available: true, Text: text, full: text}
+		return finishAccount(text)
 	}
 	return Account{}
+}
+
+// finishAccount applies the one rule both accessors to a final message share:
+// the field a person reads is capped at accountLimit runes, and the field the
+// failure-word check reads is not.
+func finishAccount(text string) Account {
+	runes := []rune(text)
+	if len(runes) > accountLimit {
+		return Account{Available: true, Text: string(runes[:accountLimit]), Truncated: true, full: text}
+	}
+	return Account{Available: true, Text: text, full: text}
+}
+
+// messageCap bounds a caller-supplied final message before it is used at all.
+//
+// A digest never opens a transcript (see AccountFromMessage), so nothing
+// here already bounded the size of what arrives -- the transcript reader's
+// maxLine did that job for buildAccount. 64 KiB is far past any real final
+// message and exists only to keep a pathological input from costing more than
+// a bounded string comparison should.
+const messageCap = 64 << 10
+
+// AccountFromMessage builds an Account from a message the CALLER already has,
+// rather than one read from a transcript.
+//
+// buildAccount's FinalAssistantText reads the transcript's LAST assistant
+// message -- a whole-session, whole-file read. A turn digest must not do
+// that: the message is session-wide while the digest is turn-scoped, so
+// checking a turn's failures against it would set an early turn's findings
+// against a later turn's words, and at Stop the file may not even hold the
+// final line yet, which is a coverage problem wearing a content-shaped
+// costume. The caller of `rashomon digest` -- a future Stop hook -- already
+// has the message in the hook payload's own last_assistant_message field, and
+// handing it here means this package never opens a second content path to get
+// the same fact.
+//
+// The text is never rendered by the digest -- see Account.full's comment: it
+// exists for the failure-word CHECK, not for display, and the digest carries
+// only booleans and counts derived from it (SilentFailures), never the
+// message itself. It is still sanitised before that comparison runs: the
+// message is attacker-influenceable (a poisoned page or repo can end up
+// quoted back by the model), so control and other non-graphic runes are
+// stripped first. strings.Contains cannot be corrupted by a crafted byte
+// sequence, but stripping keeps this function's OWN behaviour independent of
+// bytes it did not choose to accept, which is the same posture the rest of
+// this package takes toward content it is handed rather than content it
+// generated.
+func AccountFromMessage(msg string) Account {
+	msg = sanitizeMessage(msg)
+	if msg == "" {
+		return Account{}
+	}
+	return finishAccount(msg)
+}
+
+// sanitizeMessage caps length and drops non-graphic runes other than
+// whitespace. Applied before the message is compared against anything, not
+// applied to anything this package renders -- the digest never renders this
+// text at all.
+func sanitizeMessage(msg string) string {
+	runes := []rune(msg)
+	if len(runes) > messageCap {
+		runes = runes[:messageCap]
+	}
+	return strings.Map(func(r rune) rune {
+		if unicode.IsGraphic(r) || unicode.IsSpace(r) {
+			return r
+		}
+		return -1
+	}, string(runes))
 }
 
 // buildSubagents groups declarations by the agent that made them.
@@ -231,8 +293,15 @@ func buildSubagents(run *store.Run) []SubagentSummary {
 	return out
 }
 
-// buildSilentFailures compares the failure count against the final message.
-func buildSilentFailures(run *store.Run, acct Account) SilentFailures {
+// BuildSilentFailures compares the failure count against the final message.
+//
+// Exported so digest can call it with a turn-scoped run: the Failed and
+// Unobserved counts below only ever read run.Executions, so a run holding
+// only one turn's executions counts only that turn -- the transcript-reading
+// half of Account is a separate concern, upstream of this function, and
+// AccountFromMessage's doc explains why a digest builds one without opening
+// anything.
+func BuildSilentFailures(run *store.Run, acct Account) SilentFailures {
 	sf := SilentFailures{
 		AbsentWords:           []string{},
 		FinalMessageAvailable: acct.Available,
