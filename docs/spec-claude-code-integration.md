@@ -1,10 +1,13 @@
 # Claude Code integration: plugin install, recording state, and the post-turn digest
 
-Status: proposed, revision 5. Sign-off is per part, and Part 5 additionally
+Status: proposed, revision 6. Sign-off is per part, and Part 5 additionally
 depends on a constraints amendment this document asks for by name. Parts 1
 through 4 are one release and are useful without Part 5.
 
-Revision history. Revision 5 adds H-101 -- a Stop hook that continues the
+Revision history. Revision 6 replaces revision 5's minimum-schema refusal
+with H-102, after finding that the store already degrades per-record and the
+real gap is that SkippedRecords drives no coverage reason -- so a store full
+of records this binary cannot parse renders verified today. Revision 5 adds H-101 -- a Stop hook that continues the
 turn makes Stop fire again for the same prompt, and `stop_hook_active` guards
 recursion rather than duplicate output, so the naive recap prints one
 finding twice -- plus the schema-migration owner, digest versioning, and the
@@ -50,7 +53,7 @@ number this document renders is already in the store.
 
 Numbering. H-70 is the highest item on the merge target, so items here are
 provisional from H-71 and are grepped against the merge target
-(`H-\(7[1-9]\|[89][0-9]\|10[01]\)`) before they become the contract.
+(`H-\(7[1-9]\|[89][0-9]\|10[0-2]\)`) before they become the contract.
 
 ## Why
 
@@ -718,6 +721,14 @@ a malformed store; the hook exits 0 and prints nothing both times. Break:
 wrap it in `guarded()` and a corrupt store puts an error on screen after every
 turn.
 
+**H-102 -- a store this binary cannot fully read never renders verified.**
+Write a record at an unrecognised schema version into a run, then render.
+`skipped records` is non-zero and coverage is **not** `verified`. Break: leave
+`SkippedRecords` as a rendered number that drives no reason -- today's
+behaviour -- and a mixed-vintage store reports clean with the evidence of its
+own incompleteness printed two lines above. This is Part 1's migration story
+and a standing defect at once.
+
 **H-101 -- one turn produces at most one line.** A `Stop` hook that continues
 the conversation causes `Stop` to fire **again for the same prompt**.
 `stop_hook_active` guards recursion, not duplicate output, so the naive
@@ -854,14 +865,28 @@ an older one, with no `watch` run in between to reconcile them.
 and nothing today says who checks it, who migrates, or what a mixed-vintage
 store renders.
 
-Resolution: **the plugin declares a minimum store schema and refuses to enable
-below it**, naming the version it found and the one it needs. "Refuse and say
-why" is this tool's existing register -- it is what `watch` already does under
-`disableAllHooks` -- and rendering mixed vintages honestly would be a second
-honesty surface nobody asked for. The refusal is at enable time. The hook path
-does not refuse, because the hook path must never block a tool call; where a
-hook meets a store it cannot read, it records that fact and exits 0, which is
-what it already does for every other unreadable input.
+**The store already degrades correctly, and the gap is one line from the
+render.** A record whose `schema_version` is not in `Accepts` is skipped and
+counted, not fatal (`read.go:92-103`), so a binary meeting a newer store opens
+it, reads what it understands, writes its own records at its own version, and
+counts the rest in `run.Skipped`. There is no circularity: the binary that
+cannot read a record can still record that it could not.
+
+What is missing is that **`SkippedRecords` never reaches coverage.** It is
+rendered as a number (`text.go:144`) and drives no reason, so a store holding
+records this binary cannot parse reports `coverage: verified` with
+`skipped records: 12` printed beside it. That is rendering clean over
+unreadable evidence, which is the one thing this tool refuses, and it is a
+defect today independent of anything here.
+
+Resolution, which is smaller and stronger than a version gate:
+**`SkippedRecords > 0` adds a coverage reason**, a new `store.Reason*` in the
+vocabulary at `record.go:271-291` so it flows through `Coverage.add` and the
+schema check covers it. No minimum-version declaration, no enable-time
+refusal, and nothing for a silent plugin auto-update to skip, because it is
+evaluated when the report is rendered rather than when the plugin is
+installed. The hook path still never refuses -- it must never block a tool
+call -- and needs no new behaviour at all.
 
 ## Decisions taken
 
