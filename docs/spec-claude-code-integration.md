@@ -1,10 +1,14 @@
 # Claude Code integration: plugin install, recording state, and the post-turn digest
 
-Status: proposed, revision 3. Sign-off is per part, and Part 5 additionally
+Status: proposed, revision 4. Sign-off is per part, and Part 5 additionally
 depends on a constraints amendment this document asks for by name. Parts 1
 through 4 are one release and are useful without Part 5.
 
-Revision history. Revision 3 corrects one of revision 2's own claims, adds
+Revision history. Revision 4 reinstates a review claim revision 2 rejected
+against the wrong tree: the README did say a side-loaded install cannot
+produce a verified report by construction, until #15 deleted the paragraph
+six commits ago without changing the code. H-71 therefore reverses a designed
+property and now argues for it. Revision 3 corrects one of revision 2's own claims, adds
 H-100 for the read-path race, and requires the summary text to arrive on
 stdin and never be echoed. Revision 2 takes an architecture, security and test review
 of revision 1, which found six things wrong with it. The digest grouped by
@@ -24,10 +28,9 @@ on-disk identical to one that was never recorded. Revision 2 also adds the
 injection requirements to Part 5 and a sanitisation requirement to Part 4, and
 drops PATH resolution from the hook path.
 
-Two claims were checked and rejected. A review said `README.md` already
-states a side-loaded install "cannot produce a verified report, by
-construction"; no such text exists on the merge target, so H-71 is not a
-reversal of a published property. And revision 2 itself asserted that a
+One claim was checked, rejected, and then reinstated -- see "H-71 reverses a
+designed property" below; the reviewer was right and the rejection was made
+against the wrong tree. And revision 2 itself asserted that a
 backgrounded shell in flight at `Stop` shows up as `ReasonUnterminatedEntry`;
 it does not -- `read.go:184` and `post.go:201-203` make `Unterminated` a fact
 about the hook process, not the tool, and the in-flight case is
@@ -192,6 +195,41 @@ not built until they are signed off.
 - Claude Code only.
 
 ## Part 1: the plugin, and ownership without a shared secret
+
+### H-71 reverses a designed property, and must argue for it
+
+Until six commits ago `README.md` said this, and `0c9c9a0` (#15) deleted the
+paragraph without changing the code:
+
+> ...asks whether OUR entry -- our matcher, our timeout, our install id -- is
+> in it. So coverage reads `verified` only for a session whose recorder was
+> installed in that file by `watch`. A session started with `claude --settings
+> <some other file>`, or under a `CLAUDE_CONFIG_DIR` that differs from the one
+> the probe resolves, records its declarations perfectly well and still
+> reports `hook_entry_absent`: the probe honestly cannot confirm an entry that
+> is not in the file it reads. That is the right failure direction -- it
+> under-claims -- but it means a temporary or side-loaded install cannot
+> produce a verified report, by construction.
+
+A plugin install is a side-loaded install. So H-71 is not a bug fix; it
+reverses a property that was designed, documented, and called the right
+failure direction. The spec has to earn it rather than assume it.
+
+**The argument.** The paragraph's own reasoning is that *the probe honestly
+cannot confirm an entry that is not in the file it reads*. Origin-aware
+ownership does not weaken that predicate -- it widens **what the probe can
+read**. The probe gains the plugin manifest, so for a plugin install it can
+honestly confirm, and the under-claim is preserved exactly where confirmation
+is still impossible.
+
+**What that makes non-negotiable.** If the hook cannot confirm the plugin is
+*enabled for this session* rather than merely present on disk, the honest
+value is `unknown` and never `present_plugin`. The under-claim survives the
+change or the change is not worth making, and an implementation that reaches
+for `present_plugin` to make H-71 pass has broken the only thing `verified`
+means. If enablement turns out to be unobservable from a hook, H-71 is
+unreachable as written and this part changes -- which is a better outcome
+than a green test that over-claims.
 
 ### The problem underneath
 
