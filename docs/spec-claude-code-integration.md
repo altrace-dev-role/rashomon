@@ -734,6 +734,13 @@ contract and not implementation detail:
   or dropped**.
 - Inform-only by default.
 
+**The digest's JSON encoding is not a defence for Part 4.** `encoding/json`
+escapes control bytes structurally, so a digest carrying a hostile program
+name is safe *as a document*. A consumer that decodes it and prints the value
+with `%s` restores the bytes exactly. The guarantee is at the boundary, not
+end to end, so Part 4's renderer sanitises on output regardless of what the
+digest did on input.
+
 **A second carrier exists today and is not Part 5's fault.** `shape.program`
 is `path.Base()` of the first non-meta token of a command line -- unbounded,
 attacker-influenceable text -- and the report renders such values with `%s`,
