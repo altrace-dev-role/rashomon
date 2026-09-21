@@ -1,10 +1,23 @@
 # Claude Code integration: plugin install, recording state, and the post-turn digest
 
-Status: proposed, revision 8. Sign-off is per part, and Part 5 additionally
+Status: proposed, revision 9. Sign-off is per part, and Part 5 additionally
 depends on a constraints amendment this document asks for by name. Parts 1
 through 4 are one release and are useful without Part 5.
 
-Revision history. Revision 8 drops Part 4's fifth trigger as infeasible --
+Revision history. Revision 9 corrects Part 5's central premise, found by
+wiring it rather than by re-reading the docs: a `type: "prompt"` hook's only
+input is `$ARGUMENTS`, which Claude Code fills with that event's own fixed
+Stop payload, and there is no documented channel for rashomon's own digest
+to reach it. "A model given the digest and the message can check consistency
+between what was said and what was recorded" -- revision 8's framing -- is
+therefore not buildable as written. Part 5 narrows to the one question
+`$ARGUMENTS` can actually support: whether the final message contradicts
+itself. Two of the three open questions revision 8 carried turn out to be
+resolved by the same finding (no authentication, since rashomon never makes
+the call; no blocking, since Part 4 and Part 5 are independent parallel
+hooks), and H-99 needs no new sanctioned import at all, which is stronger
+than revision 8 expected. Adds H-105 for the default-off guarantee. Revision
+8 drops Part 4's fifth trigger as infeasible --
 novelty needs the proxy join and the per-project baseline, and the digest
 opens neither by design -- and records a mutation-detection regression the
 extraction in Part 3 introduced: a textually-matching anchor whose code is no
@@ -63,7 +76,7 @@ number this document renders is already in the store.
 
 Numbering. H-70 is the highest item on the merge target, so items here are
 provisional from H-71 and are grepped against the merge target
-(`H-\(7[1-9]\|[89][0-9]\|10[0-4]\)`) before they become the contract.
+(`H-\(7[1-9]\|[89][0-9]\|10[0-5]\)`) before they become the contract.
 
 ## Why
 
@@ -837,37 +850,83 @@ Days.
 
 **Not built until the first two constraints above are signed off.** It is a
 separate proposal that happens to live in this document, and it inherits no
-approval from Parts 1 through 4.
+approval from Parts 1 through 4. **Ships default-off regardless**: two new
+commands, `rashomon enable-reading` and `rashomon disable-reading`, are the
+only code paths that ever write or remove its entry. `watch` never calls
+either. A machine that only ever ran `watch` -- which is every machine today
+-- calls no model, and that is checkable, not merely claimed: H-105.
 
-### What it can actually claim
+### What it can actually claim, and this is narrower than revision 8 believed
 
-`Stop` carries `last_assistant_message`, which is the final response and not
-the request. A model given the digest and that message can check **consistency
-between what was said and what was recorded**. It cannot judge whether the work
-matched the task, because nothing in this path carries the task. The planning
-premise that a model "knows the conversation, so it can say whether the agent
-stayed on task" does not survive: either the scope narrows to consistency, or
-bounded task context is supplied with the disclosure that goes with it.
+Revision 8 said "a model given the digest and that message can check
+consistency between what was said and what was recorded." **That sentence
+describes something the mechanism this document already settled on cannot
+build**, and the gap was found by wiring it, not by reading the docs a second
+time.
 
-Part 5 takes the narrow scope. The wider one is a later question.
+A `type: "prompt"` hook's prompt text has exactly one substitution,
+`$ARGUMENTS`, and Claude Code fills it with **that event's own fixed
+payload** -- `session_id`, `transcript_path`, `last_assistant_message`,
+`stop_hook_active`, and nothing else. There is no documented channel for a
+third party's own private data to reach it: no cross-hook piping (every hook
+matching one event sees an identical, unmodified copy of that event's input,
+and none sees another's output or return value), no command substitution
+inside `prompt`, no file inclusion. rashomon's digest is exactly that kind of
+private data -- it is this program's own document, never part of Claude
+Code's event schema -- so **there is no digest in the model's context to
+compare against, and "cites a digest field" (H-96, as revision 8 wrote it)
+would be a validator with no live caller**, the same dead-code shape the
+sign-off section's third mutation condition warns a sweep will not catch.
+The one hook type that *could* read the digest off disk, `type: "agent"`
+with Read/Grep/Glob, is the type this document already forbids, for the
+injection reason given below.
 
-### Three unresolved questions it carries
+**What is honestly reachable through `$ARGUMENTS` alone**: whether
+`last_assistant_message` contradicts *itself* -- asserts completion in one
+place while admitting a failure or an incomplete step elsewhere in the same
+text. That is the whole of Part 5's scope. It is not "consistency with the
+record", because it never sees the record; it is not "whether the work
+matched the task", which revision 7 had already ruled out. It is a strictly
+smaller claim than either, and the spec says so rather than shipping
+something that quietly claims more than it checks.
 
-- **Authentication.** `ANTHROPIC_API_KEY` is usually absent, because setting it
-  overrides a subscription. The OAuth token is not reachable by a subprocess in
-  any documented way. A native `type: "prompt"` hook avoids the question
-  entirely but returns only `{ok, reason, impossible}` and cannot print a line;
-  on `Stop`, `ok: false` hands its text to the audited agent as its next
-  instruction, which is the thing this whole design exists to avoid.
-- **Blocking.** Display and non-blocking are mutually exclusive: an
-  `async: true` hook's `systemMessage` is explicitly not shown to the user. A
-  user-visible model line means the user waits, which contradicts the original
-  goal of a background summary. Part 5 owes a deadline and a defined fallback
-  to Part 4's line.
-- **Whether it may cause more agent work.** `additionalContext` on `Stop`
-  avoids exit 2 and the error notice, but still continues the conversation. It
-  does not preserve "the hook path records; it never blocks". Part 5 must
-  answer this outright rather than let the mechanism choice answer it.
+Whether this narrower thing is worth having is a real question and not
+resolved here: it catches nothing rashomon's own facts do not already catch
+more reliably (`SilentFailures` is a record-grounded version of nearly the
+same signal), and its entire value is a second, independent read of the same
+text. Karthik's sign-off should treat that as part of what he is approving,
+not as a settled premise.
+
+### What the finding resolves, not just narrows
+
+Wiring this also closed two of revision 8's three open questions, in
+rashomon's favour:
+
+- **Authentication is moot.** rashomon's own process never makes a model
+  call and structurally cannot: the entry names no command, no binary, no
+  key. Claude Code authenticates the call on its own connection, the same
+  way it would for any other `type: "prompt"` hook. H-99 asserts the
+  consequence directly: `internal/install` (which renders the entry) carries
+  none of H-17's forbidden imports, and the recorder's own dependency graph
+  is unaffected by the entry's existence.
+- **Blocking is architectural, not a race to defend against.** Part 4's
+  `recap` and Part 5's entry are two separate, parallel hook registrations
+  under the same events. Every matching hook for one event runs against an
+  identical, unmodified copy of that event's input, with no shared state, so
+  one entry's timeout, absence or slow reply cannot delay or duplicate what
+  the other does. Part 4's line is therefore never gated on Part 5, with or
+  without a deadline written down for it.
+
+One question survives, sharpened rather than closed:
+
+- **Whether it may cause more agent work.** On `Stop`, `ok: false` still
+  feeds `reason` back to the agent as its next instruction and the turn
+  continues -- unchanged from revision 8. What changed is the stakes: the
+  reason it can ever return is now only ever a verbatim quote of two
+  contradicting phrases from the agent's own last message, never a claim
+  about missed work the record alone could support. Whether that is worth
+  causing another turn over is Karthik's call, not a mechanism this document
+  resolves.
 
 Also carried: cost and retention.
 
@@ -881,9 +940,14 @@ contract and not implementation detail:
 
 - `type: "prompt"` only. **`type: "agent"` is forbidden** -- a reader with
   Read, Grep and Glob is a reader that injected text can aim at the filesystem.
-- Model output is untrusted data: attributed, control characters stripped,
-  length capped, and **every claim citing an evidence id present in the digest
-  or dropped**.
+- Model output is untrusted data. Revision 8 required "every claim citing an
+  evidence id present in the digest or dropped"; with no digest reachable
+  from this mechanism (see above), the requirement becomes the nearest thing
+  actually enforceable: **the only grounded answer the prompt permits is a
+  verbatim quote of the one document the model was handed**,
+  `last_assistant_message` itself, so a reply cannot introduce a claim about
+  anything else. Nothing in this binary parses or acts on the reply either
+  way, since it never reaches this process.
 - Inform-only by default.
 
 **The digest's JSON encoding is not a defence for Part 4.** `encoding/json`
@@ -905,27 +969,74 @@ one.
 
 ### Acceptance
 
-**H-95 -- the facts render with the reading, never instead of it.** Break:
-render the model's prose alone and the only checkable half is gone.
+**H-95 -- the facts render with the reading, never instead of it.** Given the
+finding above this is now a structural guarantee rather than a behaviour to
+implement: a `type: "prompt"` hook's result is consumed by Claude Code
+itself and never reaches this binary, so there is no code path in which Part
+5 could suppress Part 4's line even by accident -- `recap` does not know
+Part 5 exists. Break: couple them anyway (have `recap` branch on whether the
+reading entry is installed) and this stops holding.
 
-**H-96 -- every model claim cites a digest field.** Break: allow free prose and
-the line can assert something no record supports.
+**H-96 -- adapted, and the adaptation is itself the finding.** Revision 8
+wrote this as "every model claim cites a digest field", which cannot be
+built for the reason above -- there is no digest in the model's context to
+cite. What ships instead: the prompt is written so the only grounded answer
+it is permitted to give is a verbatim quote of the one document it was
+actually handed, `last_assistant_message` itself, and nothing else. Break:
+let the prompt permit free-form assertion and a reply can claim something
+neither the message nor any record supports.
 
-**H-97 -- a timeout falls back to Part 4's line exactly once.** Break: allow a
-late response and the same turn is reported twice.
+**H-97 -- a timeout falls back to Part 4's line exactly once.** Also a
+structural guarantee once the parallel-hooks fact above is taken into
+account, rather than a race this binary defends against: Part 4's own
+idempotency key (H-101) already bounds it to at most one line per
+`(session_id, prompt_id)` regardless of what Part 5's entry does or how long
+it takes. What this item actually checks, honestly, is the half inside this
+binary's process boundary -- that Part 4's line is unaffected by whether the
+reading entry is present, absent, or was just toggled -- since Claude Code's
+own handling of a slow or timed-out `type: "prompt"` hook is outside what a
+test here can observe. Break: allow a late response and the same turn is
+reported twice.
 
-**H-98 -- prompt injection cannot widen the reader.** Instructions embedded in
-a transcript and in tool output must not make it read files, run commands, or
-spawn an agent. Break: grant it tools and the fixture exfiltrates.
+**H-98 -- prompt injection cannot widen the reader.** `type: "agent"` is
+forbidden, mechanically -- checked both in the rendered settings entry and
+by scanning this package's own source (excluding comments, so the prose
+explaining *why* it is forbidden cannot itself trip the check) for the
+literal value assigned anywhere outside a comment. The fixed prompt text
+tells the model to treat `last_assistant_message` as data it is evaluating,
+never as an instruction to it, regardless of phrasing -- the one mitigation
+available given that nothing in this binary ever parses the reply to check
+it mechanically. Break: grant it tools and the fixture exfiltrates; or drop
+the data/instruction framing from the prompt and a poisoned message has
+nothing standing between it and the model.
 
-**H-99 -- the recorder still reaches no network.** Whatever holds the model
-call is a named sanctioned source in the shape of H-26, the recorder cannot
-reach it, and no third source hides behind it. Break: import it from
-`internal/hook` and H-99 fails.
+**H-99 -- the recorder still reaches no network, and needs no new sanctioned
+source to say so.** Revision 8 expected Part 5 to need one, "in the shape of
+H-26" -- it does not. Claude Code makes the call, not rashomon, so
+`internal/install` (the whole of Part 5's footprint) carries none of H-17's
+forbidden imports on its own, and `internal/hook`'s existing, unrelated
+dependency on `internal/install` (coverage resolution reads it for
+`install.Present`, a dependency this part did not create) grows nothing
+alongside it. Break: import a forbidden package into `internal/install` and
+the first half fails; wire reading.go as a caller of `internal/hook` and the
+second half fails.
+
+**H-105 -- the default install calls no model.** Added beyond the spec's own
+numbered range because it is the one claim every other item in this section
+assumes without checking: that a plain `watch` -- the only thing any
+existing user has ever run -- writes no `type: "prompt"` entry and a full
+session on such a machine leaves the settings file's hook set unchanged.
+Break: fold `enable-reading`'s write into `watch` or `Apply`'s own path and
+a default install starts calling a model with nobody having asked it to.
 
 ### Effort
 
-Unknown until the three questions are answered. Not estimated here.
+Days for the mechanism now that it is scoped to what `$ARGUMENTS` actually
+carries -- the earlier "unknown" reflected an authentication and blocking
+design the finding above resolved rather than a workload that grew. What is
+still genuinely unresolved is not effort: it is whether the narrowed claim
+(self-contradiction alone) is worth the two constraints it asks Karthik to
+amend.
 
 ## Schema, and who owns migration
 
