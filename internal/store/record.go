@@ -311,10 +311,21 @@ const (
 
 // Resolved states of the installed hook entry and of the liveness probe, as
 // they were at the moment the record was written.
+//
+// EntryPresentSettings and EntryPresentPlugin are two different questions with
+// two different kinds of answer, not two spellings of one "present". A
+// settings entry is verified by a fresh read of a file Claude Code's own file
+// watcher keeps current; a plugin's is verified by this process itself running
+// as that plugin's hook binary, because there is no documented guarantee that
+// enabling a plugin reaches an already-running session before its next call.
+// Collapsing them into one value would let a coverage record claim the
+// stronger kind of evidence while holding the weaker kind -- see
+// internal/hook/coverage.go's Resolve for where each is decided.
 const (
-	EntryPresent = "present"
-	EntryAbsent  = "absent"
-	EntryUnknown = "unknown"
+	EntryPresentSettings = "present_settings"
+	EntryPresentPlugin   = "present_plugin"
+	EntryAbsent          = "absent"
+	EntryUnknown         = "unknown"
 
 	ProbeFresh   = "fresh"
 	ProbeAbsent  = "absent"

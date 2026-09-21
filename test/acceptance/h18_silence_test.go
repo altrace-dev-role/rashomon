@@ -107,8 +107,8 @@ func TestH19_DetachDoesNotRewriteHistory(t *testing.T) {
 	if after.Coverage.State != "verified" {
 		t.Errorf("detach retroactively invalidated a completed run: %v", after.Coverage.Reasons)
 	}
-	if after.Coverage.HookEntryAtStart != "present" || after.Coverage.HookEntryAtEnd != "present" {
-		t.Errorf("hook entry renders %s/%s after detach; the run recorded present at both ends",
+	if after.Coverage.HookEntryAtStart != "present_settings" || after.Coverage.HookEntryAtEnd != "present_settings" {
+		t.Errorf("hook entry renders %s/%s after detach; the run recorded present_settings at both ends",
 			after.Coverage.HookEntryAtStart, after.Coverage.HookEntryAtEnd)
 	}
 	if !reflect.DeepEqual(before, after) {

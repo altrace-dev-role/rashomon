@@ -18,6 +18,14 @@ coverage.html
 .idea/
 .vscode/
 
+# plugin/bin/ is where the built binary is packaged for the Claude Code
+# plugin. It is a build artefact like any other and stays out of git for the
+# same reason the bin/ rule above exists; the directory itself is tracked (a
+# placeholder, not a binary) so `plugin/` reads as a complete tree on a fresh
+# checkout.
+!/plugin/bin/
+!/plugin/bin/.gitkeep
+
 # .claude/ itself is NOT ignored: this repository tracks its own project
 # settings and skills. Only the per-machine file is ignored.
 .claude/settings.local.json

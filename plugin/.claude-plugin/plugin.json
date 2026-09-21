@@ -1,0 +1,12 @@
+{
+  "name": "rashomon",
+  "version": "0.1.0",
+  "description": "Records what a Claude Code session asks to run, and what actually ran -- identifiers and shape only, never content. Ships disabled: installing this plugin does not start recording, enabling it does.",
+  "author": {
+    "name": "Altrace"
+  },
+  "homepage": "https://github.com/altrace-dev-role/rashomon",
+  "repository": "https://github.com/altrace-dev-role/rashomon",
+  "license": "Apache-2.0",
+  "defaultEnabled": false
+}

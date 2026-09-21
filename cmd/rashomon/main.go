@@ -480,6 +480,23 @@ func cmdWatch(stdout io.Writer) error {
 		return fmt.Errorf("hooks are disabled by the %s settings layer; an installed entry would never run", decision.Layer)
 	}
 
+	// A live plugin refuses a settings install, the same shape as the refusal
+	// above: proceeding would produce a configuration that does not work.
+	// standsDown cannot save this arrangement -- it stands down on an
+	// install-id MISMATCH, and a plugin invocation names no id to mismatch
+	// against, so both origins would record every tool call.
+	userDoc, err := settings.Load(loc.User)
+	if err != nil {
+		return err
+	}
+	if p, err := install.FindPlugin(userDoc); err != nil {
+		return err
+	} else if p != nil && p.Enabled && len(p.Events) > 0 {
+		return fmt.Errorf("the %s plugin is enabled and already provides these hook entries (%s); "+
+			"installing here would record every tool call twice -- run `/plugin disable %s` first, "+
+			"or skip watch and keep using the plugin", p.Key, strings.Join(p.Events, ", "), p.Key)
+	}
+
 	exe, err := install.Executable()
 	if err != nil {
 		return err
@@ -772,8 +789,22 @@ func cmdStatus(stdout io.Writer) error {
 		fmt.Fprintln(stdout, "  present: no")
 	}
 
-	if err := statusSettings(stdout, installID); err != nil {
+	settingsLive, err := statusSettings(stdout, installID)
+	if err != nil {
 		return err
+	}
+	pluginLive, err := statusPlugin(stdout)
+	if err != nil {
+		return err
+	}
+	// Named here because nothing else does: a settings install and an enabled
+	// plugin can share one machine during the migration window Part 1's spec
+	// describes, and nothing removes either of them on its own. detach is the
+	// resolution, and it is the settings entries it removes -- the plugin's are
+	// not detach's to touch.
+	if settingsLive && pluginLive {
+		fmt.Fprintln(stdout, "overlap: both a settings install and the rashomon plugin provide these entries, "+
+			"recording every tool call twice; run `rashomon detach` to remove the settings entries and keep the plugin")
 	}
 	return statusHooks(stdout)
 }
@@ -814,10 +845,13 @@ const (
 // the file. Without a store there is no install id, and so no entry in the file
 // is ours: the ids the entries carry are then all there is to report, and they
 // are reported as that rather than as a verdict about ownership.
-func statusSettings(stdout io.Writer, installID string) error {
+//
+// It returns whether any of our settings entries reads present, which is the
+// half of the overlap check that belongs to this origin.
+func statusSettings(stdout io.Writer, installID string) (bool, error) {
 	path, err := settings.UserPath()
 	if err != nil {
-		return err
+		return false, err
 	}
 	fmt.Fprintf(stdout, "settings: %s\n", path)
 
@@ -832,14 +866,19 @@ func statusSettings(stdout io.Writer, installID string) error {
 			fmt.Fprintf(stdout, "  %s: %s\n", event, statusUnreadable)
 		}
 		fmt.Fprintf(stdout, "  %s: %s\n", label, statusUnreadable)
-		return nil
+		return false, nil
 	}
 
 	if installID == "" {
 		fmt.Fprintln(stdout, "  no store here, so no install id is ours and no entry can be called ours")
 	}
+	live := false
 	for _, event := range install.Events {
-		fmt.Fprintf(stdout, "  %s: %s\n", event, entryState(doc, installID, event))
+		state := entryState(doc, installID, event)
+		if state == "present" {
+			live = true
+		}
+		fmt.Fprintf(stdout, "  %s: %s\n", event, state)
 	}
 
 	others, err := install.ForeignOwners(doc, installID)
@@ -851,7 +890,57 @@ func statusSettings(stdout io.Writer, installID string) error {
 	default:
 		fmt.Fprintf(stdout, "  %s: %s\n", label, strings.Join(others, ", "))
 	}
-	return nil
+	return live, nil
+}
+
+// statusPlugin reports the plugin origin separately from the settings origin,
+// so a user with both can tell which is live rather than seeing one collapsed
+// verdict. It is a disk-based answer -- install.FindPlugin, not
+// install.PluginPresent -- because status is not itself running as anything's
+// hook and has no self-identification to report; that is a real limit and the
+// resolved absolute path is printed so a user can tell what was checked.
+//
+// It returns whether the plugin currently provides these entries, enabled and
+// declaring at least one of them -- the other half of the overlap check.
+func statusPlugin(stdout io.Writer) (bool, error) {
+	path, err := settings.UserPath()
+	if err != nil {
+		return false, err
+	}
+	doc, err := settings.Load(path)
+	if err != nil {
+		fmt.Fprintf(stdout, "plugin: %s\n", statusUnreadable)
+		return false, nil
+	}
+
+	p, err := install.FindPlugin(doc)
+	if err != nil {
+		fmt.Fprintf(stdout, "plugin: %s\n", statusUnreadable)
+		return false, nil
+	}
+	if p == nil {
+		fmt.Fprintln(stdout, "plugin: none installed")
+		return false, nil
+	}
+
+	enabled := "disabled"
+	if p.Enabled {
+		enabled = "enabled"
+	}
+	fmt.Fprintf(stdout, "plugin: %s (%s) at %s\n", p.Key, enabled, p.Root)
+
+	declares := map[string]bool{}
+	for _, event := range p.Events {
+		declares[event] = true
+	}
+	for _, event := range install.Events {
+		state := "absent"
+		if declares[event] {
+			state = "present"
+		}
+		fmt.Fprintf(stdout, "  plugin %s: %s\n", event, state)
+	}
+	return p.Enabled && len(p.Events) > 0, nil
 }
 
 // entryState is the word for our entry under one event: present as watch

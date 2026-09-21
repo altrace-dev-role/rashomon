@@ -561,6 +561,39 @@ m("H-46 labelling recovers after the append instead of before it", "internal/hoo
 
 m("a paused session probe counts as the session's start or end", "internal/report/report.go",
   "\t\tcase paused:\n", "\t\tcase paused && false:\n", "TestPausedSessionProbeIsNotReportedAsRecorded")
+# Part 1 -- the plugin, and origin-aware ownership. H-71 through H-77 are
+# provisional from H-71 (H-70 is the highest item on the merge target) and are
+# grepped against it before they become the contract.
+m("H-71 coverage reverts to the settings-only Present check", "internal/hook/coverage.go",
+  "\tcase pluginPresent:\n\t\tres.HookEntry = store.EntryPresentPlugin",
+  "\tcase false && pluginPresent:\n\t\tres.HookEntry = store.EntryPresentPlugin",
+  "TestH71_|TestH72_")
+m("H-73 watch's live-plugin refusal is dropped", "cmd/rashomon/main.go",
+  "\t} else if p != nil && p.Enabled && len(p.Events) > 0 {",
+  "\t} else if false && p != nil && p.Enabled && len(p.Events) > 0 {",
+  "TestH73_")
+# H-74's own break is "remove the guard", but H-73's refusal is never reached
+# by H-74's fixture -- it bypasses watch entirely, constructing both origins
+# as files, exactly as the spec's own migration window does without running
+# watch a second time. What H-74 actually guards is standsDown treating a
+# plugin invocation (no --install marker) as belonging to a foreign install
+# and silently dropping its declaration -- the same line H-6's mutations
+# touch, mutated a different way: dropping the id == "" branch rather than
+# forcing the whole condition true.
+m("H-74 a plugin invocation's declaration is silently dropped", "cmd/rashomon/main.go",
+  "\tif id == \"\" || id == st.InstallID() {",
+  "\tif id == st.InstallID() {",
+  "TestH74_")
+m("H-75 status collapses the two origins into one line", "cmd/rashomon/main.go",
+  "\tif settingsLive && pluginLive {",
+  "\tif false && settingsLive && pluginLive {",
+  "TestH75_")
+m("H-76 the plugin's watch skill keeps the standalone three-path preamble", "plugin/skills/watch/SKILL.md",
+  "1. The binary is `${CLAUDE_PLUGIN_ROOT}/bin/rashomon` — it ships with this\n   plugin, so there is nothing to resolve and nothing to build. Set\n   `$RASHOMON` to that path.",
+  "1. Resolve the binary: `~/.local/bin/rashomon`, then `~/go/bin/rashomon`,\n   then `command -v rashomon`.",
+  "TestH76_")
+m("H-77 the manifest ships enabled by default", "plugin/.claude-plugin/plugin.json",
+  '"defaultEnabled": false', '"defaultEnabled": true', "TestH77_")
 
 # Import additions some mutants need.
 IMPORTS = {
