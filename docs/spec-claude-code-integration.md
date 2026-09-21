@@ -671,6 +671,7 @@ Each part lands as its own pull request, reported the way every H-item is: the
 command that ran it and its output, and the break that made it fail first.
 
 Approval, and the constraints amendment, are requested by comment on the pull
-request carrying this document. The number and link are written here once it
-exists, because a squash merge leaves this file in `main` with no other pointer
-to that thread, and the comment is where the approval lives.
+request carrying this document: #21,
+<https://github.com/altrace-dev-role/rashomon/pull/21>. The number and the link
+are written out because a squash merge leaves this file in `main` with no other
+pointer to that thread, and the comment is where the approval lives.
