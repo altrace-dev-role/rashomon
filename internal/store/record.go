@@ -276,7 +276,6 @@ const (
 	ReasonHookEntryUnresolved = "hook_entry_unresolved"
 	ReasonProbeAbsent         = "probe_absent"
 	ReasonProbeUnresolved     = "probe_unresolved"
-	ReasonRecordsUnreadable   = "records_unreadable"
 )
 
 // Reasons lists every coverage reason code a record can carry. It exists so
@@ -292,7 +291,6 @@ func Reasons() []string {
 		ReasonHookEntryUnresolved,
 		ReasonProbeAbsent,
 		ReasonProbeUnresolved,
-		ReasonRecordsUnreadable,
 	}
 }
 

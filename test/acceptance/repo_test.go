@@ -92,95 +92,104 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 }
 
 // TestStoreSchemaReasonsAreTheCodeReasons: the reason codes are a closed
-// vocabulary, and the schema and the code have to agree in BOTH directions.
+// vocabulary, and the schema and the code have to agree in BOTH directions --
+// per vocabulary, not pooled into one set.
 //
-// It used to check one: every code reason appears in the schema. That misses
-// the other failure, and the other failure had already happened --
-// store.GapForgetHost was absent from the fixed `want` list here, so nothing
-// noticed whether the schema knew about it. A one-directional check over a
-// hand-maintained list is a check that decays exactly as fast as the list.
+// There are two deliberately separate vocabularies. store.Reasons() names
+// reasons a RECORD carries: a hook writes them into a coverage or terminal
+// record at the moment it runs, so they belong in those records' own
+// `reason` enums. report.Reasons() names reasons the REPORT derives by
+// looking at the whole run after the fact -- no record a hook writes ever
+// carries one, which is exactly why they live in their own report_reason
+// def rather than in a record's enum.
 //
-// The reverse direction matters for a different reason: a schema enum naming a
-// reason the code never emits is a contract promising a value consumers will
-// wait for forever.
+// It used to check one union: every code reason (from both vocabularies,
+// pooled) appears somewhere in the schema (any enum named reason/reasons or
+// *_reason), and vice versa. That passes a reason placed in the WRONG
+// vocabulary -- present in store.Reasons() and present somewhere in the
+// schema, just not in the record enum it claims to describe -- which is
+// exactly the shape of the store.GapForgetHost gap this test's history
+// already names once. Comparing each vocabulary against its own part of the
+// schema is what catches that.
 func TestStoreSchemaReasonsAreTheCodeReasons(t *testing.T) {
-	enums := map[string]bool{}
-	collectReasonEnums(readSchema(t), "", enums)
-	// A floor, not a count: the bidirectional comparison below is the real
-	// check and it asserts exact equality. This only catches the walk finding
-	// NOTHING, which is how a source-scanning test goes quietly green. The
-	// number was 20 when this walk collected every enum in the file --
-	// including type, outcome, phase and state -- and 20 became unreachable
-	// the moment it was scoped to reasons alone.
-	if len(enums) < 10 {
-		t.Fatalf("only %d reason enum values found in %s; the walk is not finding them",
-			len(enums), schemaPath)
-	}
+	defs := schemaDefs(t)
 
-	want := map[string]bool{}
-	for _, r := range store.Reasons() {
-		want[r] = true
-	}
-	for _, r := range report.Reasons() {
-		want[r] = true
-	}
-	// Every gap reason the store can write. GapForgetHost was the one missing
-	// from this list, which is why it is spelled out rather than folded into a
-	// helper that could omit one again silently.
-	for _, r := range []string{store.GapForget, store.GapForgetHost, store.GapSizeCap} {
-		want[r] = true
-	}
-
-	for reason := range want {
-		if !enums[reason] {
-			t.Errorf("the reason code %q appears in no reason enum in %s, so a record "+
-				"carrying it fails the published contract", reason, schemaPath)
+	// A record's reason lives on coverage.reason or terminal.reason.
+	// terminal.reason is a deliberate subset -- a Terminal only ever closes
+	// with signal/lock_timeout/internal_error -- so the two enums are pooled
+	// before comparing against store.Reasons() in full; checking terminal's
+	// enum alone against the whole list would fail on a subset that is
+	// correct by design.
+	recordReasons := map[string]bool{}
+	for _, def := range []string{"coverage", "terminal"} {
+		for r := range reasonEnum(t, defs, def) {
+			recordReasons[r] = true
 		}
 	}
-	for reason := range enums {
-		if !want[reason] {
-			t.Errorf("%s declares the reason %q, which no code path emits. A contract that "+
-				"names a value the program never produces tells a consumer to wait for "+
-				"something that will not arrive.", schemaPath, reason)
-		}
-	}
+	assertReasonVocabulary(t, "store.Reasons() vs. the record reason enums (coverage.reason, terminal.reason)",
+		store.Reasons(), recordReasons)
+
+	assertReasonVocabulary(t, "report.Reasons() vs. report_reason",
+		report.Reasons(), reasonEnum(t, defs, "report_reason"))
+
+	// Every gap reason the store can write. GapForgetHost was once missing
+	// from this exact list, which is why it is spelled out rather than
+	// folded into a helper that could omit one again silently.
+	assertReasonVocabulary(t, "gap reasons vs. gap.reason",
+		[]string{store.GapForget, store.GapForgetHost, store.GapSizeCap}, reasonEnum(t, defs, "gap"))
 }
 
-// collectReasonEnums gathers enum values from properties that carry REASON
-// codes, and only those.
-//
-// Scoped deliberately: the schema is full of other closed vocabularies -- the
-// record type discriminator, schema_version, outcome, host_source, coverage
-// state -- and a bidirectional check over all of them would compare the reason
-// vocabulary against values that were never meant to be reasons.
-func collectReasonEnums(node any, key string, into map[string]bool) {
-	switch v := node.(type) {
-	case map[string]any:
-		// A property named reason/reasons, or a named definition whose name
-		// ends in _reason -- report_reason is declared once at the top level
-		// and referenced, so a walk keyed only on property names finds the
-		// record reasons and silently misses the report ones.
-		if key == "reason" || key == "reasons" || strings.HasSuffix(key, "_reason") {
-			for _, e := range toAnySlice(v["enum"]) {
-				if s, ok := e.(string); ok {
-					into[s] = true
-				}
-			}
-			// reasons is usually an array of strings with the enum on items.
-			if items, ok := v["items"].(map[string]any); ok {
-				for _, e := range toAnySlice(items["enum"]) {
-					if s, ok := e.(string); ok {
-						into[s] = true
-					}
-				}
-			}
+// reasonEnum reads the string enum values naming one reason vocabulary in
+// the schema: the `reason` property's enum for a record def (coverage,
+// terminal, gap), or the def's own enum for report_reason, which is declared
+// at the top level rather than nested under a record because no record
+// carries it. null is never a member of either shape, so it is dropped by
+// construction -- a JSON null fails the string type assertion below.
+func reasonEnum(t *testing.T, defs map[string]any, def string) map[string]bool {
+	t.Helper()
+	d, ok := defs[def].(map[string]any)
+	if !ok {
+		t.Fatalf("$defs.%s is missing", def)
+	}
+	enum := toAnySlice(d["enum"])
+	if props, ok := d["properties"].(map[string]any); ok {
+		if r, ok := props["reason"].(map[string]any); ok {
+			enum = toAnySlice(r["enum"])
 		}
-		for k, child := range v {
-			collectReasonEnums(child, k, into)
+	}
+	out := map[string]bool{}
+	for _, e := range enum {
+		if s, ok := e.(string); ok {
+			out[s] = true
 		}
-	case []any:
-		for _, child := range v {
-			collectReasonEnums(child, key, into)
+	}
+	if len(out) == 0 {
+		t.Fatalf("$defs.%s names no reason enum values; the lookup is not finding them", def)
+	}
+	return out
+}
+
+// assertReasonVocabulary checks that a code-side reason list and the schema
+// enum meant to publish it name exactly the same set. Kept as one helper
+// used three times, rather than three inline loops, so a fix to the
+// direction or the wording lands in every caller at once.
+func assertReasonVocabulary(t *testing.T, label string, code []string, schemaEnum map[string]bool) {
+	t.Helper()
+	want := map[string]bool{}
+	for _, r := range code {
+		want[r] = true
+	}
+	for r := range want {
+		if !schemaEnum[r] {
+			t.Errorf("%s: %q is in the code's list but not in the schema's enum, so a value "+
+				"the code emits fails the published contract", label, r)
+		}
+	}
+	for r := range schemaEnum {
+		if !want[r] {
+			t.Errorf("%s: %q is in the schema's enum but the code never emits it there. A "+
+				"contract that names a value the program never produces tells a consumer "+
+				"to wait for something that will not arrive.", label, r)
 		}
 	}
 }

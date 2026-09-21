@@ -478,8 +478,7 @@
             "hook_entry_absent",
             "hook_entry_unresolved",
             "probe_absent",
-            "probe_unresolved",
-            "records_unreadable"
+            "probe_unresolved"
           ]
         },
         "hook_entry": {
@@ -568,6 +567,7 @@
       "type": "string",
       "enum": [
         "run_not_closed",
+        "records_unreadable",
         "transcript_mismatch",
         "execution_mismatch",
         "gap"

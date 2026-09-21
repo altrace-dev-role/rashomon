@@ -420,12 +420,8 @@ m("the store schema drops a record's key", "docs/store-schema.json",
 m("the store schema declares a key no record carries", "docs/store-schema.json",
   '        "shape": {\n', '        "tool_response": {\n          "type": "string"\n        },\n        "shape": {\n',
   "TestStoreSchema")
-# Anchored on the LAST entry of the coverage reason enum, which is
-# records_unreadable since H-102 added it after probe_unresolved. Same hazard
-# as the tool_name anchor above: this drifts every time a reason is appended,
-# and a stale anchor reports ANCHOR MISSING rather than failing quietly.
 m("the store schema's coverage reasons are a subset of the code's", "docs/store-schema.json",
-  "            \"records_unreadable\"\n", "", "TestStoreSchema")
+  "            \"probe_unresolved\"\n", "", "TestStoreSchema")
 
 m("H-14 shell digest covers the whole tool_input again", "internal/shape/shape.go",
   "\ts.Digest = digest(key, toolName, []byte(cmd))", "\ts.Digest = digest(key, toolName, canonical(toolInput))",

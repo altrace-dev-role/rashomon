@@ -21,9 +21,14 @@ import (
 // exactly the violation README's two rules forbid: never print "nothing
 // happened" where the truth is "not watching."
 //
-// Break: revert report.go's build() to stop adding store.ReasonRecordsUnreadable
+// Break: revert report.go's build() to stop adding ReasonRecordsUnreadable
 // when SkippedRecords > 0. With that reverted, SkippedRecords is a rendered
 // number driving no reason, which was the behaviour on main.
+//
+// ReasonRecordsUnreadable lives in report.Reasons(), not store.Reasons(): it
+// is derived from run.Skipped while reading the whole run, and no coverage
+// record a hook writes ever carries it, since a hook has no way to know that
+// some OTHER line in the file failed to parse.
 func TestH102_UnrecognisedSchemaVersionBreaksVerified(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
