@@ -466,6 +466,18 @@ func build(run *store.Run) Session {
 	if !sess.Coverage.EndRecorded {
 		sess.Coverage.add(ReasonRunNotClosed)
 	}
+	// ReadRunDir counts a line it could not parse -- an unrecognised
+	// schema_version, or one that failed to unmarshal outright -- into
+	// run.Skipped rather than failing the read, so that one bad line cannot
+	// hide a whole run. That policy is only honest if the count drives a
+	// reason: SkippedRecords used to reach only the rendered number, at
+	// text.go's "skipped records" line, with nothing tying it to Coverage.
+	// A store this binary could not fully read was therefore free to render
+	// `verified`, over evidence it never saw -- the exact violation of "never
+	// render zero when we mean unknown" this package exists to prevent.
+	if sess.SkippedRecords > 0 {
+		sess.Coverage.add(store.ReasonRecordsUnreadable)
+	}
 
 	// What the records show, independent of what the run said.
 	if len(sess.Declarations.Unterminated) > 0 {

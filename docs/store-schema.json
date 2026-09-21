@@ -478,7 +478,8 @@
             "hook_entry_absent",
             "hook_entry_unresolved",
             "probe_absent",
-            "probe_unresolved"
+            "probe_unresolved",
+            "records_unreadable"
           ]
         },
         "hook_entry": {
