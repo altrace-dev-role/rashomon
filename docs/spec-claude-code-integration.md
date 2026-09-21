@@ -1,10 +1,14 @@
 # Claude Code integration: plugin install, recording state, and the post-turn digest
 
-Status: proposed, revision 4. Sign-off is per part, and Part 5 additionally
+Status: proposed, revision 5. Sign-off is per part, and Part 5 additionally
 depends on a constraints amendment this document asks for by name. Parts 1
 through 4 are one release and are useful without Part 5.
 
-Revision history. Revision 4 reinstates a review claim revision 2 rejected
+Revision history. Revision 5 adds H-101 -- a Stop hook that continues the
+turn makes Stop fire again for the same prompt, and `stop_hook_active` guards
+recursion rather than duplicate output, so the naive recap prints one
+finding twice -- plus the schema-migration owner, digest versioning, and the
+fact that the no-verdict test globs its own package only. Revision 4 reinstates a review claim revision 2 rejected
 against the wrong tree: the README did say a side-loaded install cannot
 produce a verified report by construction, until #15 deleted the paragraph
 six commits ago without changing the code. H-71 therefore reverses a designed
@@ -46,7 +50,7 @@ number this document renders is already in the store.
 
 Numbering. H-70 is the highest item on the merge target, so items here are
 provisional from H-71 and are grepped against the merge target
-(`H-\(7[1-9]\|[89][0-9]\|100\)`) before they become the contract.
+(`H-\(7[1-9]\|[89][0-9]\|10[01]\)`) before they become the contract.
 
 ## Why
 
@@ -594,8 +598,13 @@ and `run_not_closed` appears on every healthy turn.
 renders zero; a turn with no records renders unknown. Break: collapse them and
 a session with a dead recorder reads as a session with a well-behaved agent.
 
-**H-86 -- the digest writes nothing.** Snapshot the store and `baseline/`
-before and after. Break: build it on `report.Build` and `baseline/` changes.
+**H-86 -- the digest writes nothing, anywhere.** Snapshot the whole store and
+`baseline/` before and after. The assertion is not merely "the store is
+unchanged" but "no digest artifact is persisted at all": `forgetHostInRun`
+rewrites only `records.ndjson` and `spill.ndjson` (`gaps.go:479`), so any
+cached digest holding hostnames would survive `forget --host` and silently
+regress H-25. Break: persist a snapshot beside the run, then run
+`forget --host` and walk the store for the host.
 
 **H-87 -- the digest opens no store.** Run against a machine with none;
 assert none is created. Break: use `Open` and asking for a digest installs an
@@ -709,11 +718,24 @@ a malformed store; the hook exits 0 and prints nothing both times. Break:
 wrap it in `guarded()` and a corrupt store puts an error on screen after every
 turn.
 
+**H-101 -- one turn produces at most one line.** A `Stop` hook that continues
+the conversation causes `Stop` to fire **again for the same prompt**.
+`stop_hook_active` guards recursion, not duplicate output, so the naive
+implementation prints one turn's finding twice. The recap carries an
+idempotency key on `(session_id, prompt_id)` and speaks once per turn. Break:
+drop the key, force a continuation, and the same finding prints twice --
+which for a tool whose value is that you can trust its counts is worse than
+not printing at all.
+
 **H-94 -- the renderer states no verdict.** `internal/report/vocabulary_test.go`
 is extended to the recap package with the vocabulary widened from intent words
-to verdict words. Break: render "stayed on task" and the test fails. The test
-checks printed words and not semantic correctness, which is a bound on what it
-proves and is written into it.
+to verdict words. Note the mechanism: that test globs `*.go` in **its own
+package only** (`vocabulary_test.go:118`), so extending it means placing a
+copy in the recap package, not widening a path. A renderer in a package the
+test does not live in is a renderer it does not check. Break: put a forbidden
+word in the recap source and the suite must go red. The test checks printed
+words and not semantic correctness, which is a bound on what it proves and is
+written into it.
 
 ### Effort
 
@@ -813,14 +835,33 @@ reach it, and no third source hides behind it. Break: import it from
 
 Unknown until the three questions are answered. Not estimated here.
 
-## Schema
+## Schema, and who owns migration
 
 One new coverage reason, `recording_paused` (Part 2), added to the reason
 vocabulary in `internal/store/record.go` and to `docs/store-schema.json`. It is
 a reason and not a record type, so it needs no version bump.
 
-The digest is a new document and not a store record. It is versioned
-independently, starts at 1, and is not written to the store.
+The digest is a new document and not a store record. It carries a version
+from its first release -- something external will parse it -- starts at 1, and
+is never written to the store.
+
+**Two installers, one store, and migration owned by neither.** Today `watch`
+deliberately does not check the executable path (`install.go:362-365`) so that
+a moved binary is refreshed rather than stranding the user. A plugin update
+cannot do that in reverse: it drops a newer binary beside a store written by
+an older one, with no `watch` run in between to reconcile them.
+`store.SchemaVersion` is stamped into every record and into install metadata,
+and nothing today says who checks it, who migrates, or what a mixed-vintage
+store renders.
+
+Resolution: **the plugin declares a minimum store schema and refuses to enable
+below it**, naming the version it found and the one it needs. "Refuse and say
+why" is this tool's existing register -- it is what `watch` already does under
+`disableAllHooks` -- and rendering mixed vintages honestly would be a second
+honesty surface nobody asked for. The refusal is at enable time. The hook path
+does not refuse, because the hook path must never block a tool call; where a
+hook meets a store it cannot read, it records that fact and exits 0, which is
+what it already does for every other unreadable input.
 
 ## Decisions taken
 
