@@ -246,6 +246,18 @@ func (e *env) installArgs() []string {
 func (e *env) watch(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "watch") }
 func (e *env) detach(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "detach") }
 func (e *env) status(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "status") }
+
+// enableReading and disableReading are Part 5's own on/off switch -- the
+// ONLY commands that ever write or remove the model-reading entry (H-105).
+// Unlike watch, plain use of the binary never reaches either.
+func (e *env) enableReading(extraEnv ...string) result {
+	e.t.Helper()
+	return e.run("", extraEnv, "enable-reading")
+}
+func (e *env) disableReading(extraEnv ...string) result {
+	e.t.Helper()
+	return e.run("", extraEnv, "disable-reading")
+}
 func (e *env) forget(since string) result {
 	e.t.Helper()
 	return e.run("", nil, "forget", "--since", since)

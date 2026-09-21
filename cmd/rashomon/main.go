@@ -74,6 +74,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdWatch(stdout) })
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
+	case "enable-reading":
+		// Part 5, and the ONLY path that ever writes its entry (H-105). watch
+		// never calls this, Apply never calls this: a default install --
+		// watch, a session, `report` -- touches no code in this branch at
+		// all, so nothing about a default install can call a model.
+		return guarded(stderr, func() error { return cmdEnableReading(stdout) })
+	case "disable-reading":
+		return guarded(stderr, func() error { return cmdDisableReading(stdout) })
 	case "status":
 		return guarded(stderr, func() error { return cmdStatus(stdout) })
 	case "report":
@@ -712,6 +720,82 @@ func detachTarget(args []string) (installID string, all, force bool, err error) 
 	return installID, false, force, err
 }
 
+// cmdEnableReading installs Part 5's model-phrased reading: a "type":
+// "prompt" hook on Stop and StopFailure that asks a model (Haiku, Claude
+// Code's own documented default for this hook type) whether the turn's
+// final message contradicts itself. It is the one command that writes it --
+// see internal/install/reading.go's ApplyReading doc for why watch never
+// does, which is the whole of H-105.
+//
+// It deliberately does NOT check for or require a store: this entry's
+// identity is a marker in the rendered prompt text (internal/install's
+// isReadingEntry), not an install id, so it is orthogonal to whether this
+// machine has ever recorded anything. Refusing to enable it on a fresh
+// machine would tie two independent decisions together for no reason.
+//
+// What it CANNOT do is what a reader of Part 5's design might expect: check
+// the final message against this session's recorded tool calls. There is no
+// documented Claude Code channel for a "type": "prompt" hook to see this
+// program's own digest -- see internal/install/reading.go's package doc for
+// the full account of why, found while wiring this rather than assumed
+// beforehand. The entry installed here is scoped to what it can honestly
+// check: whether the message contradicts itself.
+func cmdEnableReading(stdout io.Writer) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	loc, err := settings.DefaultLocations(cwd)
+	if err != nil {
+		return err
+	}
+	decision, err := settings.HooksDisabled(loc)
+	if err != nil {
+		return err
+	}
+	if decision.Disabled {
+		return fmt.Errorf("hooks are disabled by the %s settings layer; an installed entry would never run", decision.Layer)
+	}
+
+	changed, err := editSettings(loc.User, func(doc *settings.Document) (bool, error) {
+		return install.ApplyReading(doc, true)
+	})
+	if err != nil {
+		return err
+	}
+	if changed {
+		fmt.Fprintf(stdout, "rashomon: model-phrased reading enabled via %s\n", loc.User)
+	} else {
+		fmt.Fprintf(stdout, "rashomon: model-phrased reading already enabled via %s\n", loc.User)
+	}
+	fmt.Fprintln(stdout, "rashomon: this asks a model (Haiku) whether the turn's final message "+
+		"contradicts itself; it cannot check the message against recorded tool calls -- see "+
+		"the README")
+	fmt.Fprintln(stdout, "rashomon: undo with: rashomon disable-reading")
+	return nil
+}
+
+// cmdDisableReading is enable-reading's undo, the same shape detach is to
+// watch.
+func cmdDisableReading(stdout io.Writer) error {
+	path, err := settings.UserPath()
+	if err != nil {
+		return err
+	}
+	changed, err := editSettings(path, func(doc *settings.Document) (bool, error) {
+		return install.ApplyReading(doc, false)
+	})
+	if err != nil {
+		return err
+	}
+	if changed {
+		fmt.Fprintf(stdout, "rashomon: model-phrased reading disabled via %s\n", path)
+	} else {
+		fmt.Fprintf(stdout, "rashomon: model-phrased reading was not enabled in %s\n", path)
+	}
+	return nil
+}
+
 // cmdStatus prints what is installed here and what the store holds, and writes
 // nothing at all.
 //
@@ -751,7 +835,39 @@ func cmdStatus(stdout io.Writer) error {
 	if err := statusHooks(stdout); err != nil {
 		return err
 	}
+	if err := statusReading(stdout); err != nil {
+		return err
+	}
 	return statusRecap(stdout, root)
+}
+
+// statusReading reports whether Part 5's model-phrased reading is installed
+// -- the visible half of H-105. A user must be able to SEE that nothing
+// calls a model on a default install, not merely be told so in a doc, and
+// this is the one place that answer is read back from the settings file
+// itself rather than from what this program intended to write.
+func statusReading(stdout io.Writer) error {
+	path, err := settings.UserPath()
+	if err != nil {
+		return err
+	}
+	doc, err := settings.Load(path)
+	if err != nil {
+		fmt.Fprintf(stdout, "reading: %s\n", statusUnreadable)
+		return nil
+	}
+	present, err := install.ReadingPresent(doc)
+	if err != nil {
+		fmt.Fprintf(stdout, "reading: %s\n", statusUnreadable)
+		return nil
+	}
+	if present {
+		fmt.Fprintln(stdout, "reading: enabled (a model sees last_assistant_message on Stop/StopFailure; "+
+			"disable with rashomon disable-reading)")
+	} else {
+		fmt.Fprintln(stdout, "reading: disabled (no model is called; enable with rashomon enable-reading)")
+	}
+	return nil
 }
 
 // statusRecap reports the exception line's own evaluation history: whether a
@@ -1206,6 +1322,15 @@ usage:
                                then report on the session it produced;
                                --proxy-status overrides where that is checked
   rashomon version               print the version
+
+not installed by watch, and off unless you run this yourself (Part 5):
+  rashomon enable-reading         install a "type": "prompt" hook on
+                               Stop/StopFailure that asks a model (Haiku)
+                               whether the turn's final message contradicts
+                               itself. THE ONLY command that calls a model,
+                               and the only one that writes this entry; a
+                               plain watch/session/report never does
+  rashomon disable-reading        remove it
 
 invoked by Claude Code, never by hand:
   rashomon hook [--install ID]   handle one PreToolUse invocation
