@@ -375,10 +375,24 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 
 		// Which origin is running decides which command the line can point
-		// at. An error reads as "not the plugin", which points at the CLI:
-		// the settings install's command, and the only one that exists
-		// without a plugin.
-		fromPlugin, _ := install.PluginPresent(install.EventStop)
+		// at. The invocation says so first: only a settings entry's command
+		// line carries the --install marker (install.Spec.Command appends it;
+		// the plugin's hooks.json passes plain ["recap"]), so a marked
+		// invocation is the settings origin even when the binary it names
+		// sits inside a plugin directory -- which is exactly where a settings
+		// install made with the plugin's own binary puts it, and asking only
+		// where the executable lives would send that user to a slash command
+		// no loaded plugin provides. This is the same precedence coverage's
+		// Resolve gives the settings entry over PluginPresent. Only an
+		// unmarked invocation asks where it is running from; an error there
+		// reads as "not the plugin", which points at the CLI: the settings
+		// install's command, and the only one that exists without a plugin.
+		fromPlugin := false
+		if installArg(args) == "" {
+			if present, perr := install.PluginPresent(install.EventStop); perr == nil {
+				fromPlugin = present
+			}
+		}
 		line, wantSpeak := recap.Line(d, d.SessionID, fromPlugin)
 		// Claim's own error is intentionally ignored: recap.json is
 		// bookkeeping, not evidence, and a failure to persist it must cost at
