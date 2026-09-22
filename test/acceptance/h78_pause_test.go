@@ -3,6 +3,7 @@ package acceptance
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -289,5 +290,113 @@ func TestPauseResumeWindow_RendersAsANamedUnknownGap(t *testing.T) {
 	real := e.report(testSession)
 	if real.Declarations.Recorded != 2 {
 		t.Errorf("the real session recorded %d declarations, want 2 (before pause, after resume)", real.Declarations.Recorded)
+	}
+}
+
+// TestPausedSessionProbeIsNotReportedAsRecorded: a SessionStart or SessionEnd
+// probe that found recording paused still writes a start- or end-phase
+// coverage record (reason recording_paused), because the gap has to show up in
+// that session's own report. That record is evidence the probe was SKIPPED,
+// not that it ran, so the report must not count it as the session's start or
+// end having been recorded.
+//
+// Found by review: watch, pause, probe start, resume, probe end rendered
+// "start recorded: yes" and "hook entry at start: present" on the same screen
+// as probe_absent's "no session start was recorded" -- a report contradicting
+// itself, with start_recorded=true in the JSON beside it.
+//
+// Break (to see this fail): in report.go build()'s coverage loop, let a
+// recording_paused record reach the PhaseStart/PhaseEnd cases again, e.g.
+// delete the recording_paused check in front of the switch.
+func TestPausedSessionProbeIsNotReportedAsRecorded(t *testing.T) {
+	e := newEnv(t)
+	if res := e.watch(); res.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+
+	// The start probe runs while paused; the end probe after resume.
+	const pausedStart = "session-paused-start"
+	if res := e.pause(); res.exitCode != 0 {
+		t.Fatalf("pause: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res := e.probe("start", pausedStart); res.exitCode != 0 {
+		t.Fatalf("probe start while paused: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res := e.resume(); res.exitCode != 0 {
+		t.Fatalf("resume: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res := e.probe("end", pausedStart); res.exitCode != 0 {
+		t.Fatalf("probe end: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+
+	// The mirror: the start probe runs normally, the end probe while paused.
+	const pausedEnd = "session-paused-end"
+	if res := e.probe("start", pausedEnd); res.exitCode != 0 {
+		t.Fatalf("probe start: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res := e.pause(); res.exitCode != 0 {
+		t.Fatalf("pause: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res := e.probe("end", pausedEnd); res.exitCode != 0 {
+		t.Fatalf("probe end while paused: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res := e.resume(); res.exitCode != 0 {
+		t.Fatalf("resume: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+
+	// Precondition: the paused probes did leave their coverage records, so
+	// what follows is about how the report reads them, not about their absence.
+	for _, c := range []struct{ session, phase string }{{pausedStart, "start"}, {pausedEnd, "end"}} {
+		found := false
+		for _, r := range e.coverage(c.session, c.phase) {
+			if r.str("reason") == "recording_paused" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s: no %s-phase coverage record carries recording_paused", c.session, c.phase)
+		}
+	}
+
+	s := e.report(pausedStart)
+	if s.Coverage.StartRecorded {
+		t.Errorf("%s: start_recorded is true, but the start probe was skipped by pause", pausedStart)
+	}
+	if s.Coverage.HookEntryAtStart != "unknown" {
+		t.Errorf("%s: hook_entry_at_start is %q, want unknown: no start probe resolved it", pausedStart, s.Coverage.HookEntryAtStart)
+	}
+	if !s.Coverage.EndRecorded {
+		t.Errorf("%s: end_recorded is false, but the end probe ran after resume", pausedStart)
+	}
+	for _, want := range []string{"recording_paused", "probe_absent"} {
+		if !e.hasReason(s, want) {
+			t.Errorf("%s: reasons %v lack %s", pausedStart, s.Coverage.Reasons, want)
+		}
+	}
+
+	s = e.report(pausedEnd)
+	if s.Coverage.EndRecorded {
+		t.Errorf("%s: end_recorded is true, but the end probe was skipped by pause", pausedEnd)
+	}
+	if s.Coverage.HookEntryAtEnd != "unknown" {
+		t.Errorf("%s: hook_entry_at_end is %q, want unknown: no end probe resolved it", pausedEnd, s.Coverage.HookEntryAtEnd)
+	}
+	if !s.Coverage.StartRecorded {
+		t.Errorf("%s: start_recorded is false, but the start probe ran before pause", pausedEnd)
+	}
+	for _, want := range []string{"recording_paused", "run_not_closed"} {
+		if !e.hasReason(s, want) {
+			t.Errorf("%s: reasons %v lack %s", pausedEnd, s.Coverage.Reasons, want)
+		}
+	}
+
+	// The text form a person reads: the line under the reasons must agree
+	// with them.
+	res := e.run("", nil, "report", "--session", pausedStart)
+	if res.exitCode != 0 {
+		t.Fatalf("report text: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if !strings.Contains(res.stdout, "start recorded: no") {
+		t.Errorf("text report does not say \"start recorded: no\" for a paused start:\n%s", res.stdout)
 	}
 }
