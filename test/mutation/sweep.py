@@ -161,9 +161,46 @@ m("H-10 declarations naming no transcript are not counted", "internal/report/rep
 m("H-11 end probe does not scan for unterminated entries", "internal/hook/probe.go",
   "\t\t\tif len(run.Unterminated()) > 0 {\n\t\t\t\treason = store.ReasonUnterminatedEntry\n\t\t\t}", "\t\t\t_ = run", "TestH11_")
 m("H-12 SIGTERM ignored on the close path", "internal/hook/handle.go", "\tcase sig.Delivered():\n\t\toutcome, reason = store.OutcomeSignal", "\tcase false && sig.Delivered():\n\t\toutcome, reason = store.OutcomeSignal", "TestH12_SIGTERM")
-m("H-13 program carries the whole command line", "internal/shape/shape.go", "prog := path.Base(toks[0])", "prog := cmd + path.Base(\"\")", "TestH13_")
+m("H-13 program carries the whole command line", "internal/shape/shape.go", "prog := path.Base(pshaped[i].text)", "prog := cmd + path.Base(pshaped[i].text[:0])", "TestH13_")
+m("the report counts an unknown program among the real ones", "internal/report/report.go",
+  "\t\tcase d.ToolName == \"Bash\":", "\t\tcase false:", "TestProgramsUnknownIsCountedApart|TestNonShell")
+m("the report stops counting programs at all", "internal/report/report.go",
+  "\t\t\tsess.Declarations.ByProgram[*d.Shape.Program]++", "\t\t\t_ = d.Shape.Program",
+  "TestByProgramAndVerb")
+m("H-13 a word the tokenizer cannot vouch for is read as the program", "internal/shape/shape.go",
+  "\t\tcase t.opaque, isComment(t):", "\t\tcase isComment(t):", "TestNoCorpusLineLeaksIntoProgram")
+m("H-13 the tokenizer never marks an expansion opaque", "internal/shape/tokenize.go",
+  "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\topaque = true\n\t\t\t}",
+  "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\t_ = opaque\n\t\t\t}", "TestNoCorpusLineLeaksIntoProgram")
+m("H-13 backslash-newlines are not joined before the program search", "internal/shape/shape.go",
+  "\tif !strings.Contains(s, \"\\\\\\n\") {\n\t\treturn s\n\t}", "\tif true {\n\t\treturn s\n\t}",
+  "TestNoCorpusLineLeaksIntoProgram")
+m("H-13 a paren where a redirect target belongs is read as a subshell", "internal/shape/shape.go",
+  "\tif i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == \"(\" {\n\t\t// A paren where the target belongs",
+  "\tif false && i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == \"(\" {\n\t\t// A paren where the target belongs",
+  "TestNoCorpusLineLeaksIntoProgram")
+m("H-13 a word quoted before its = is read as an assignment", "internal/shape/shape.go",
+  "\treturn t.quotedAt < 0 || t.quotedAt > eq", "\treturn true", "TestProgramIsAProgram|TestNoCorpusLineLeaksIntoProgram")
+m("H-13 a quoted command line with spaces is recorded as the program", "internal/shape/shape.go",
+  "\t\tif strings.ContainsAny(t.text, \" \\t\\n\\r\") {", "\t\tif false {", "TestProgramIsAProgram")
+m("H-13 program is whatever token came first, operator or not", "internal/shape/shape.go",
+  "\t\tt := toks[i]\n\t\tif t.meta {",
+  "\t\tt := toks[i]\n\t\tif false && t.meta {", "TestProgramIsAProgram")
+m("H-13 a split redirect operator's second half is taken for its target", "internal/shape/shape.go",
+  "toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {", "toks[i+1].meta && op == \"\"; n++ {",
+  "TestH13_CanaryNeverReachesDisk")
+m("H-13 a redirect takes the next token for its target, word or not", "internal/shape/shape.go",
+  "\tif i+1 >= len(toks) || toks[i+1].meta {", "\tif i+1 >= len(toks) {",
+  "TestProgramIsAProgram")
+m("H-13 a redirect skips every operator before its target", "internal/shape/shape.go",
+  "\tfor n := 0; n < pieces && i+1 < len(toks) && toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {\n\t\ti++\n\t}",
+  "\tfor i+1 < len(toks) && toks[i+1].meta {\n\t\ti++\n\t}\n\t_, _ = op, pieces",
+  "TestH13_CanaryNeverReachesDisk")
+m("H-14 argc counts a leading assignment prefix again", "internal/shape/shape.go",
+  "\t\tn := len(dropLeadingAssignments(toks))", "\t\tn := len(toks)",
+  "TestArgcExcludesLeadingAssignments")
 m("H-14 untokenizable command records argc 0", "internal/shape/shape.go",
-  "\tif err == nil {\n\t\tn := len(toks)\n\t\ts.Argc = &n\n\t}", "\tn := len(toks)\n\tif err != nil {\n\t\tn = 0\n\t}\n\ts.Argc = &n", "TestH14_Untokenizable")
+  "\tif err == nil {\n\t\tn := len(dropLeadingAssignments(toks))\n\t\ts.Argc = &n\n\t}", "\tn := len(dropLeadingAssignments(toks))\n\tif err != nil {\n\t\tn = 0\n\t}\n\ts.Argc = &n", "TestH14_Untokenizable")
 m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n\n\tif records != nil && removedRec > 0 {", "\tif records != nil && removedRec > 0 {", "TestH15_ForgetLeavesAGap")
 m("H-15 eviction deletes without a gap record", "internal/store/gaps.go", "\t\tif _, err := gf.Write(line); err != nil {", "\t\tif _, err := gf.Write(line[:0]); err != nil {", "TestH15_SizeCap")
 m("H-15 eviction does not count the executions it removed", "internal/store/gaps.go",
@@ -436,8 +473,8 @@ m("H-3  executable path installed unquoted", "internal/install/install.go",
 m("tokenizer does not split on metacharacters", "internal/shape/tokenize.go",
   "\t\tcase isMeta(c):\n", "\t\tcase isMeta(c) && false:\n", "TestTokenize")
 m("tokenizer emits the token an unterminated quote interrupted", "internal/shape/tokenize.go",
-  "\t\t\tif !closed {\n\t\t\t\treturn toks, meta, errUnterminated",
-  "\t\t\tif !closed {\n\t\t\t\tstarted = true\n\t\t\t\tflush()\n\t\t\t\treturn toks, meta, errUnterminated", "TestTokenize")
+  "\t\t\tif !closed {\n\t\t\t\treturn toks, errUnterminated",
+  "\t\t\tif !closed {\n\t\t\t\tstarted = true\n\t\t\t\tflush()\n\t\t\t\treturn toks, errUnterminated", "TestTokenize")
 m("settings accepts a duplicate key", "internal/settings/document.go",
   "\t\tif seen[key] {\n\t\t\treturn nil, fmt.Errorf(\"duplicate key %q\", key)\n\t\t}\n\t\tseen[key] = true", "\t\tseen[key] = true",
   "TestParseRefuses|TestHookEntriesRefusesDuplicateEventKeys")

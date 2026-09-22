@@ -122,6 +122,28 @@ type Declarations struct {
 	// Empty until schema 3 carries the field, because a label the hook path
 	// dropped is a label this count never sees.
 	ByLabel map[string]int `json:"by_label"`
+
+	// ByProgram counts Bash calls per program, and ByVerbClass counts every
+	// declaration by what it turned out to be.
+	//
+	// They exist because "by tool: Bash 23" answers nothing. Bash is not a
+	// thing anyone did; it is the door every shell command comes through, and
+	// a reader who asks what a session did and is told "Bash 23" has learned
+	// only that they used a terminal. The program and the verb class are
+	// already on every record -- shape.Derive puts them there -- and until
+	// now they were reachable from `--chain` alone, one call at a time.
+	//
+	// ProgramsUnknown counts the Bash calls whose program could not be told:
+	// a first word cut off by an unterminated quote, a line with no word in
+	// command position, one beginning with something shape does not parse
+	// (a here-document, arithmetic, an array), or an input with no command
+	// string. A line that fails to tokenize later still names its program. It is
+	// a count and not a bucket in ByProgram, because "unknown" is not a
+	// program and a reader scanning the list must not find it sitting among
+	// real ones.
+	ByProgram       map[string]int `json:"by_program"`
+	ByVerbClass     map[string]int `json:"by_verb_class"`
+	ProgramsUnknown int            `json:"programs_unknown"`
 }
 
 // Unexecuted names a declaration that no execution record answers. It is not a
@@ -429,6 +451,8 @@ func build(run *store.Run) Session {
 			WithoutExecution: []Unexecuted{},
 			ByTool:           map[string]int{},
 			ByLabel:          map[string]int{},
+			ByProgram:        map[string]int{},
+			ByVerbClass:      map[string]int{},
 		},
 		Executions:  Executions{Recorded: len(run.Executions)},
 		Transcripts: []Transcript{},
@@ -441,6 +465,18 @@ func build(run *store.Run) Session {
 	mode := map[string]string{}
 	for _, d := range run.Declarations {
 		sess.Declarations.ByTool[d.ToolName]++
+		if d.Shape.VerbClass != "" {
+			sess.Declarations.ByVerbClass[d.Shape.VerbClass]++
+		}
+		switch {
+		case d.Shape.Program != nil:
+			sess.Declarations.ByProgram[*d.Shape.Program]++
+		case d.ToolName == "Bash":
+			// Only a shell tool has a program to miss. Every other tool
+			// legitimately has none, and counting those here would report a
+			// gap where there is nothing to know.
+			sess.Declarations.ProgramsUnknown++
+		}
 		if d.FileLabel != nil {
 			sess.Declarations.ByLabel[knownLabel(*d.FileLabel)]++
 		}

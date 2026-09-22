@@ -32,6 +32,27 @@ func tokenize(s string) ([]string, error) {
 	return toks, err
 }
 
+// token is one word or operator of a command line as the tokenizer saw it.
+//
+// Each field is something the text alone cannot tell. meta: a QUOTED `;` and
+// an operator `;` are the same byte. quotedAt: `{` and '{' are the same byte
+// once the quotes are gone, and only the first is the brace keyword; FOO=bar
+// and 'FOO=bar' are the same seven, and only the first is an assignment --
+// an offset rather than a bit, because FOO="a b" is still an assignment.
+// opaque: the word holds an expansion this tokenizer does not parse -- $( ),
+// ${ }, $[ ], a backtick, or $” and $"" quoting -- so where the shell would
+// end the word is not where this tokenizer ended it. "$(cat "a b")" is one
+// shell word and three tokens here.
+type token struct {
+	text     string
+	meta     bool // emitted for an unquoted metacharacter
+	quotedAt int  // offset of the first quoted or escaped byte, or -1
+	opaque   bool
+	// nlBefore: an unquoted newline came between the previous token and this
+	// one. The shell ends a command there; this tokenizer only splits a word.
+	nlBefore bool
+}
+
 // tokenizeMarked is tokenize plus one bit per token: whether the tokenizer
 // emitted it for an unquoted metacharacter.
 //
@@ -41,19 +62,58 @@ func tokenize(s string) ([]string, error) {
 // command began, and reads ssh as a program that was never run. Only the
 // tokenizer knows which it saw, so only the tokenizer can say.
 func tokenizeMarked(s string) ([]string, []bool, error) {
+	ts, err := tokenizeShape(s)
+	toks := make([]string, len(ts))
+	meta := make([]bool, len(ts))
+	for i, t := range ts {
+		toks[i], meta[i] = t.text, t.meta
+	}
+	return toks, meta, err
+}
+
+// tokenizeShape splits a command line as tokenize does and reports, per
+// token, what the text cannot: see token.
+func tokenizeShape(s string) ([]token, error) {
 	var (
-		toks    []string
-		meta    []bool
+		toks    []token
 		cur     strings.Builder
 		started bool
+		qat     = -1
+		opaque  bool
+		sawNL   bool
 	)
 
+	// markQuoted records where quoting first touched the current token.
+	markQuoted := func() {
+		if qat < 0 {
+			qat = cur.Len()
+		}
+	}
+	// expands reports whether s[i] opens an expansion this tokenizer does
+	// not parse. inDouble: inside "", $'' and $"" are not quoting forms.
+	expands := func(i int, inDouble bool) bool {
+		if s[i] == '`' {
+			return true
+		}
+		if s[i] != '$' || i+1 >= len(s) {
+			return false
+		}
+		switch s[i+1] {
+		case '(', '{', '[':
+			return true
+		case '\'', '"':
+			return !inDouble
+		}
+		return false
+	}
 	flush := func() {
 		if started {
-			toks = append(toks, cur.String())
-			meta = append(meta, false)
+			toks = append(toks, token{text: cur.String(), quotedAt: qat, opaque: opaque, nlBefore: sawNL})
+			sawNL = false
 			cur.Reset()
 			started = false
+			qat = -1
+			opaque = false
 		}
 	}
 
@@ -63,14 +123,18 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 		switch {
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			flush()
+			if c == '\n' {
+				sawNL = true
+			}
 
 		case c == '\\':
 			if i+1 >= len(s) {
 				flush()
-				return toks, meta, errUnterminated
+				return toks, errUnterminated
 			}
 			i++
 			if s[i] != '\n' { // a backslash-newline is a line continuation
+				markQuoted()
 				cur.WriteByte(s[i])
 				started = true
 			}
@@ -78,14 +142,16 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 		case c == '\'':
 			j := strings.IndexByte(s[i+1:], '\'')
 			if j < 0 {
-				return toks, meta, errUnterminated
+				return toks, errUnterminated
 			}
+			markQuoted()
 			cur.WriteString(s[i+1 : i+1+j])
 			started = true
 			i += j + 1
 
 		case c == '"':
 			var closed bool
+			markQuoted()
 			i++
 			for ; i < len(s); i++ {
 				if s[i] == '\\' && i+1 < len(s) {
@@ -105,10 +171,13 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 					closed = true
 					break
 				}
+				if expands(i, true) {
+					opaque = true
+				}
 				cur.WriteByte(s[i])
 			}
 			if !closed {
-				return toks, meta, errUnterminated
+				return toks, errUnterminated
 			}
 			started = true
 
@@ -121,18 +190,21 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 					j++
 				}
 			}
-			toks = append(toks, s[i:j])
-			meta = append(meta, true)
+			toks = append(toks, token{text: s[i:j], meta: true, quotedAt: -1, nlBefore: sawNL})
+			sawNL = false
 			i = j - 1
 
 		default:
+			if expands(i, false) {
+				opaque = true
+			}
 			cur.WriteByte(c)
 			started = true
 		}
 	}
 
 	flush()
-	return toks, meta, nil
+	return toks, nil
 }
 
 func isMeta(c byte) bool {

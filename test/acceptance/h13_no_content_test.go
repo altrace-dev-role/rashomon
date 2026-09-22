@@ -143,44 +143,81 @@ func TestH13_RecordWidthIsIndependentOfInputSize(t *testing.T) {
 }
 
 // TestH13_CanaryNeverReachesDisk is the second line of defence, and only that.
+//
+// The canary is placed everywhere a command line carries a value that is not
+// the program. An argument is the obvious place, and was once the only one
+// here -- which left blind the place a parser that finds the program by
+// skipping what cannot be one is likeliest to go wrong: a redirect whose
+// operator the tokenizer emits as two tokens, so that skipping "the operator
+// and the word after it" skips the operator's second half and keeps the word.
+// That shipped once, and put a redirect target's filename in the program field
+// of the store and of every render.
 func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 	const canary = "CANARY-7f3a1e2b-must-not-persist"
-	e := newEnv(t)
-	e.watched(testSession)
-
-	p := defaultPayload()
-	p.ToolInput = map[string]any{
-		"command":     "echo " + canary,
-		"description": canary,
-		"nested":      map[string]any{"deep": canary},
-	}
-	res := e.hook(p.build(t))
-	if res.exitCode != 0 {
-		t.Fatalf("exit code %d, want 0", res.exitCode)
-	}
-	e.probe("end", testSession)
-	// Both forms of the report: they render the same records through different
-	// code, and a renderer is exactly where a field nobody meant to print gets
-	// printed.
-	repJSON := e.run("", nil, "report", "--json", "--session", testSession)
-	repText := e.run("", nil, "report", "--session", testSession)
-
-	for rel, f := range walkStore(t, e.home) {
-		if bytes.Contains(f.body, []byte(canary)) {
-			t.Errorf("%s contains the canary", rel)
-		}
-	}
-	// Hook stdout and stderr are written to Claude Code's debug log, which puts
-	// them on disk just as surely as the store does. And report is output.
-	for name, s := range map[string]string{
-		"hook stdout":   res.stdout,
-		"hook stderr":   res.stderr,
-		"report --json": repJSON.stdout,
-		"report text":   repText.stdout,
+	for _, tc := range []struct{ name, command string }{
+		{"argument", "echo " + canary},
+		{"redirect target after >&", ">& /tmp/" + canary + " ls"},
+		{"redirect target after >|", ">| /tmp/" + canary + " ls"},
+		{"redirect target after <>", "<> /tmp/" + canary + " ls"},
+		{"here-string", "<<< " + canary + " cat"},
+		{"process substitution", "<(cat /tmp/" + canary + ") ls"},
+		// Each of these put data in the program field once, from inside a
+		// construct the program search skipped into without parsing.
+		{"array assignment", "arr=(/tmp/" + canary + " /x) ; ls"},
+		{"heredoc body", "<<EOF\n" + canary + " line\nEOF"},
+		{"redirect then heredoc body", "> /tmp/out.txt <<'EOF'\n" + canary + "\nEOF"},
+		{"arithmetic substitution", "n=$(( " + canary + " % 97 ))"},
+		{"arithmetic command", "(( " + canary + " > 3 ))"},
+		{"zsh >>| target", ">>| /tmp/" + canary + " ls"},
+		{"zsh >&| target", ">&| /tmp/" + canary + " ls"},
+		{"backtick in assignment", "x=`cat /tmp/" + canary + "`"},
+		{"append assignment", "PATH+=:/tmp/" + canary},
+		{"quoted brace", "'{' /tmp/" + canary},
+		{"comment", "#" + canary + " comment"},
 	} {
-		if strings.Contains(s, canary) {
-			t.Errorf("%s contains the canary", name)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.watched(testSession)
+
+			p := defaultPayload()
+			p.ToolInput = map[string]any{
+				"command":     tc.command,
+				"description": canary,
+				"nested":      map[string]any{"deep": canary},
+			}
+			res := e.hook(p.build(t))
+			if res.exitCode != 0 {
+				t.Fatalf("exit code %d, want 0", res.exitCode)
+			}
+			e.probe("end", testSession)
+			// Every form of the report: they render the same records through
+			// different code, and a renderer is exactly where a field nobody
+			// meant to print gets printed. --redact is the one written to be
+			// pasted somewhere public.
+			repJSON := e.run("", nil, "report", "--json", "--session", testSession)
+			repText := e.run("", nil, "report", "--session", testSession)
+			repRedact := e.run("", nil, "report", "--redact", "--session", testSession)
+
+			for rel, f := range walkStore(t, e.home) {
+				if bytes.Contains(f.body, []byte(canary)) {
+					t.Errorf("%s contains the canary", rel)
+				}
+			}
+			// Hook stdout and stderr are written to Claude Code's debug log,
+			// which puts them on disk just as surely as the store does. And
+			// report is output.
+			for name, s := range map[string]string{
+				"hook stdout":     res.stdout,
+				"hook stderr":     res.stderr,
+				"report --json":   repJSON.stdout,
+				"report text":     repText.stdout,
+				"report --redact": repRedact.stdout,
+			} {
+				if strings.Contains(s, canary) {
+					t.Errorf("%s contains the canary", name)
+				}
+			}
+		})
 	}
 }
 
