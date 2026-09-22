@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -157,6 +158,54 @@ func TestBuild_SkippedRecordsMarksCoverageUnverified(t *testing.T) {
 	}
 	if d.SkippedRecords != 1 {
 		t.Errorf("skipped_records = %d, want 1", d.SkippedRecords)
+	}
+}
+
+// TestBuild_DuplicateDeclarationsMakeTheTurnUnverified is H-103 at the turn
+// digest. The migration window (a settings install and the plugin both live)
+// double-fires one tool call through both origins, and the digest counts with
+// the same report.CountDeclarations report does, so its totals double exactly
+// as report's do. Report names that with duplicate_declarations; before this
+// the digest did not, and rendered the doubled turn as coverage: verified,
+// reasons: none -- the state H-103 exists to prevent, on the surface the
+// Stop-hook recap is built from.
+//
+// The second half keeps the reason turn-scoped: a clean turn in the same
+// session carries no duplicate of its own and must not inherit the other
+// turn's.
+func TestBuild_DuplicateDeclarationsMakeTheTurnUnverified(t *testing.T) {
+	run := &store.Run{
+		Declarations: []store.Declaration{
+			decl(1, "t1", "Bash", "prompt-1", "/t.jsonl", 100),
+			decl(2, "t1", "Bash", "prompt-1", "/t.jsonl", 101),
+			decl(3, "t2", "Bash", "prompt-2", "/t.jsonl", 500),
+		},
+		Executions: []store.Execution{
+			{ToolUseID: "t1", Outcome: store.ExecOK},
+			{ToolUseID: "t1", Outcome: store.ExecOK},
+			{ToolUseID: "t2", Outcome: store.ExecOK},
+		},
+		Coverage: []store.Coverage{startCoverage("inst-1")},
+	}
+
+	d := build(run, nil, "prompt-1", "", time.Now())
+	if d.Declarations.Recorded != 2 {
+		t.Fatalf("premise: recorded = %d, want 2 (both copies, counted honestly)", d.Declarations.Recorded)
+	}
+	if !hasReason(d.Coverage.Reasons, report.ReasonDuplicateDeclarations) {
+		t.Errorf("reasons = %v, want duplicate_declarations: two declarations share one tool_use_id "+
+			"in this turn, so its counts are doubled", d.Coverage.Reasons)
+	}
+	if d.Coverage.State == store.StateVerified {
+		t.Errorf("state = verified for a turn whose every count is doubled by a second recorder")
+	}
+
+	clean := build(run, nil, "prompt-2", "", time.Now())
+	if hasReason(clean.Coverage.Reasons, report.ReasonDuplicateDeclarations) {
+		t.Errorf("prompt-2's reasons = %v, carry prompt-1's duplicate", clean.Coverage.Reasons)
+	}
+	if clean.Coverage.State != store.StateVerified {
+		t.Errorf("prompt-2's state = %q (%v), want verified", clean.Coverage.State, clean.Coverage.Reasons)
 	}
 }
 

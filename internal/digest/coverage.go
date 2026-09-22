@@ -16,7 +16,8 @@ func (c *TurnCoverage) add(reason string) {
 
 // buildTurnCoverage is turn coverage's three-part rule, from the spec: the
 // probe fired at start, the entry was present for the calls in this turn, and
-// no gap intersects it. It returns the report.CoverageFacts rollup too, so
+// no gap intersects it -- plus what the turn's own records show, H-103's
+// duplicate declarations among them. It returns the report.CoverageFacts rollup too, so
 // the caller can read InstallID off it without a second pass over
 // run.Coverage.
 //
@@ -65,6 +66,18 @@ func buildTurnCoverage(run *store.Run, gaps []store.Gap, w turnWindow) (TurnCove
 			tc.add(report.ReasonGap)
 			break
 		}
+	}
+
+	// Two declarations sharing one tool_use_id in this turn: a second
+	// recorder wrote into it (report.ReasonDuplicateDeclarations' doc), and
+	// every count build() takes from report.CountDeclarations is doubled by
+	// it exactly as report's are. Deliberately NOT gated on EndRecorded like
+	// the two below: an in-flight call has one declaration, not two, so a
+	// duplicate is never what an open run looks like on disk. Scoped to the
+	// turn's own declarations, so one turn's double-fire does not mark a
+	// clean turn beside it.
+	if report.HasDuplicateToolUseID(w.declarations) {
+		tc.add(report.ReasonDuplicateDeclarations)
 	}
 
 	// Unterminated and dropped only count against the VERDICT once the run

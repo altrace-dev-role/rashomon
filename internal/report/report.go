@@ -42,9 +42,10 @@ import (
 // plugin and a settings install both live, a future third origin, a
 // duplicated settings entry. No coverage record can know this at write time
 // -- each hook invocation sees exactly one call and has no visibility into
-// whether another origin also recorded it -- so it is derived here, once,
-// over the whole run's declarations, the same way ReasonGap is derived from
-// the whole run's gap records rather than carried by any single one.
+// whether another origin also recorded it -- so it is derived at read time,
+// by HasDuplicateToolUseID: here over the whole run's declarations, and by
+// the turn digest over one turn's own, the same way ReasonGap is derived from
+// gap records rather than carried by any single one.
 //
 // Deliberately never applied to executions: chains.go documents that one
 // tool_use_id legitimately carries two of those (PostToolUse and
@@ -486,9 +487,11 @@ func build(run *store.Run) Session {
 	sess.Declarations.ByLabel = byLabel
 	sess.Declarations.WithoutExecution = withoutExecution
 	// Report-only tallies, beside the shared ones rather than inside them:
-	// the turn digest counts with CountDeclarations and needs none of these,
-	// so they stay out of the rule the two share.
-	declByID := map[string]int{}
+	// the turn digest counts with CountDeclarations and renders no verb
+	// class or program, so these stay out of the rule the two share. The
+	// duplicate tool_use_id check is NOT one of them -- the digest's counts
+	// double on a double-fire exactly as these do -- so it lives in
+	// HasDuplicateToolUseID, which both call.
 	for _, d := range run.Declarations {
 		if d.Shape.VerbClass != "" {
 			sess.Declarations.ByVerbClass[d.Shape.VerbClass]++
@@ -501,13 +504,6 @@ func build(run *store.Run) Session {
 			// legitimately has none, and counting those here would report a
 			// gap where there is nothing to know.
 			sess.Declarations.ProgramsUnknown++
-		}
-		// Empty is excluded, the same way WithoutTranscript counts a missing
-		// path rather than grouping every such declaration under one key: an
-		// id this program never received is not evidence that two records
-		// share an identity, only that neither carries one.
-		if d.ToolUseID != "" {
-			declByID[d.ToolUseID]++
 		}
 	}
 
@@ -543,11 +539,8 @@ func build(run *store.Run) Session {
 	if len(sess.Declarations.Dropped) > 0 {
 		sess.Coverage.add(store.ReasonLockTimeout)
 	}
-	for _, n := range declByID {
-		if n > 1 {
-			sess.Coverage.add(ReasonDuplicateDeclarations)
-			break
-		}
+	if HasDuplicateToolUseID(run.Declarations) {
+		sess.Coverage.add(ReasonDuplicateDeclarations)
 	}
 
 	// The accounting equation, once per transcript the run's declarations
@@ -691,6 +684,32 @@ func CountDeclarations(run *store.Run) (
 		withoutExecution = append(withoutExecution, Unexecuted{ToolUseID: id, PermissionMode: mode[id]})
 	}
 	return byTool, byLabel, withoutExecution, executed
+}
+
+// HasDuplicateToolUseID reports whether any non-empty tool_use_id appears on
+// more than one of decls -- the record-level fact ReasonDuplicateDeclarations
+// names. It is the one rule report.build applies over a whole run and the
+// turn digest applies over one turn's own declarations: both count with
+// CountDeclarations, so a second recorder doubles both surfaces' totals
+// alike, and a check only one of them ran would leave the other rendering
+// doubled counts as verified.
+//
+// Empty is excluded, the same way WithoutTranscript counts a missing path
+// rather than grouping every such declaration under one key: an id this
+// program never received is not evidence that two records share an
+// identity, only that neither carries one.
+func HasDuplicateToolUseID(decls []store.Declaration) bool {
+	seen := make(map[string]bool, len(decls))
+	for _, d := range decls {
+		if d.ToolUseID == "" {
+			continue
+		}
+		if seen[d.ToolUseID] {
+			return true
+		}
+		seen[d.ToolUseID] = true
+	}
+	return false
 }
 
 // CoverageFacts is the per-invocation coverage evidence common to a
