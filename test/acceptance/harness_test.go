@@ -291,7 +291,8 @@ type reportSession struct {
 		DeniedByUser          []string `json:"denied_by_user"`
 		DeclaredWithoutResult []string `json:"declared_without_result"`
 	} `json:"transcripts"`
-	Gaps []map[string]any `json:"gaps"`
+	Gaps           []map[string]any `json:"gaps"`
+	SkippedRecords int              `json:"skipped_records"`
 	// The destinations block, as much of it as the acceptance tests assert on.
 	Destinations struct {
 		Observed              bool     `json:"observed"`

@@ -35,8 +35,19 @@ import (
 )
 
 // Coverage reasons a report can add beyond those the run recorded.
+//
+// ReasonRecordsUnreadable belongs here and not in store.Reasons(), even
+// though it is about the records: it is derived from run.Skipped while
+// reading the whole run, the way ReasonRunNotClosed is derived from the
+// absence of an end-phase coverage record. No coverage record a hook writes
+// ever carries it -- a hook has no way to know that some OTHER line in the
+// file failed to parse -- so publishing it in the coverage record's own
+// reason enum would be a schema promising a record shape this program never
+// writes, the same inverse drift TestStoreSchemaMatchesTheAllowlists exists
+// to catch on every other field.
 const (
 	ReasonRunNotClosed       = "run_not_closed"
+	ReasonRecordsUnreadable  = "records_unreadable"
 	ReasonTranscriptMismatch = "transcript_mismatch"
 	ReasonExecutionMismatch  = "execution_mismatch"
 	ReasonGap                = "gap"
@@ -67,6 +78,7 @@ func knownLabel(v string) string {
 func Reasons() []string {
 	return []string{
 		ReasonRunNotClosed,
+		ReasonRecordsUnreadable,
 		ReasonTranscriptMismatch,
 		ReasonExecutionMismatch,
 		ReasonGap,
@@ -465,6 +477,14 @@ func build(run *store.Run) Session {
 	}
 	if !sess.Coverage.EndRecorded {
 		sess.Coverage.add(ReasonRunNotClosed)
+	}
+	// SkippedRecords used to reach only the rendered number at text.go's
+	// "skipped records" line, tied to no reason. A store this binary could
+	// not fully read was therefore free to render `verified`, over evidence
+	// it never saw -- the exact violation of "never render zero when we mean
+	// unknown" this package exists to prevent.
+	if sess.SkippedRecords > 0 {
+		sess.Coverage.add(ReasonRecordsUnreadable)
 	}
 
 	// What the records show, independent of what the run said.

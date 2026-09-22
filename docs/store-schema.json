@@ -567,6 +567,7 @@
       "type": "string",
       "enum": [
         "run_not_closed",
+        "records_unreadable",
         "transcript_mismatch",
         "execution_mismatch",
         "gap"
