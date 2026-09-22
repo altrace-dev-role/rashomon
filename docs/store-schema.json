@@ -483,8 +483,10 @@
           ]
         },
         "hook_entry": {
-          "description": "Whether our entry for this phase's event was installed as watch installs it. An entry narrowed by hand is absent, because that is what it is.",
+          "description": "Whether a recorder of ours is configured to run here, and which of two origins answered: present_settings when our entry for this phase's event is installed in settings.json as watch installs it; present_plugin when this process is itself running as the rashomon plugin's own hook binary for that event. An entry narrowed by hand is absent, because that is what it is. \"present\" is a legacy value: every binary shipped before the plugin existed wrote it for what is now called present_settings, and those schema-2 records are still on disk and still valid -- a reader that meets it should treat it as \"present, origin unknown\".",
           "enum": [
+            "present_settings",
+            "present_plugin",
             "present",
             "absent",
             "unknown"
@@ -565,14 +567,15 @@
     },
     "report_reason": {
       "title": "report reason",
-      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file.",
+      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file. duplicate_declarations: more declaration records than distinct tool_use_ids in one run, meaning more than one recorder wrote into it -- a statement about records, not about why; report cannot know whether the second writer was a plugin, a settings install, or a duplicated entry, only that there were two.",
       "type": "string",
       "enum": [
         "run_not_closed",
         "records_unreadable",
         "transcript_mismatch",
         "execution_mismatch",
-        "gap"
+        "gap",
+        "duplicate_declarations"
       ]
     }
   }

@@ -27,24 +27,34 @@ type Locations struct {
 	Local   string
 }
 
+// ConfigDir resolves Claude Code's configuration directory: CLAUDE_CONFIG_DIR
+// when it is set, and ~/.claude otherwise.
+//
+// CLAUDE_CONFIG_DIR relocates the whole directory, not one file in it --
+// settings.json and plugins/ both live under it, and a reader that special-
+// cased settings.json alone would look for a plugin install in ~/.claude/plugins
+// on a machine that has moved its entire configuration elsewhere.
+func ConfigDir() (string, error) {
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		return dir, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".claude"), nil
+}
+
 // UserPath is the file watch writes: settings.json under the user's Claude
 // configuration directory. It is named here and nowhere else.
-//
-// CLAUDE_CONFIG_DIR is Claude Code's own relocation mechanism, not a guess: when
-// it is set, Claude Code reads settings from there and not from ~/.claude, so
-// an entry written to ~/.claude would never run.
 //
 // This is the only settings file this program ever writes. Project files are
 // committed to repositories; a hook entry there would ship to everyone who
 // clones the repo, pointing at a binary on one person's machine.
 func UserPath() (string, error) {
-	dir := os.Getenv("CLAUDE_CONFIG_DIR")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(home, ".claude")
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(dir, "settings.json"), nil
 }

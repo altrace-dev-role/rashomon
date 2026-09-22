@@ -1,0 +1,68 @@
+{
+  "description": "rashomon recorder -- five entries recording declarations, executions and the liveness probe. Exec form (args, no shell): the command is the executable itself and Claude Code spawns it directly, which is what lets ${CLAUDE_PLUGIN_ROOT} sit inside a path with a space or a quote and still run.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/rashomon",
+            "args": ["hook"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/rashomon",
+            "args": ["post"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/rashomon",
+            "args": ["post"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/rashomon",
+            "args": ["probe", "start"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/rashomon",
+            "args": ["probe", "end"],
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

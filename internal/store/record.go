@@ -311,10 +311,41 @@ const (
 
 // Resolved states of the installed hook entry and of the liveness probe, as
 // they were at the moment the record was written.
+//
+// EntryPresentSettings and EntryPresentPlugin are two different questions with
+// two different kinds of answer, not two spellings of one "present". A
+// settings entry is verified by a fresh read of a file Claude Code's own file
+// watcher keeps current; a plugin's is verified by this process itself running
+// as that plugin's hook binary, because there is no documented guarantee that
+// enabling a plugin reaches an already-running session before its next call.
+// Collapsing them into one value would let a coverage record claim the
+// stronger kind of evidence while holding the weaker kind -- see
+// internal/hook/coverage.go's Resolve for where each is decided.
+//
+// EntryPresent is never written by this code -- Resolve always picks one of
+// the two origin-specific values above, or Absent, or Unknown -- but it is
+// not retired, because every binary shipped before Part 1 wrote it, into
+// records that are schema version 2 and are not going anywhere. Removing it
+// from this list would make the enum describe a narrower store than the one
+// actually on disk: a real consumer validating a real store against
+// docs/store-schema.json would fail on records this program itself wrote,
+// which is the exact failure TestStoreSchemaMatchesTheAllowlists exists to
+// catch in the other direction. A reader that meets it should treat it as
+// "present, origin unknown" -- true of both origins before this document
+// existed to tell them apart -- and it costs nothing to keep meaning that:
+// report.go copies HookEntry through unexamined for display, and nothing
+// re-derives a stored record's own State from HookEntry at read time (that
+// decision was made once, by whichever binary wrote the record, and is
+// carried in State itself) -- so a legacy Present value was frozen as
+// verified the day it was written and renders that way today, unchanged.
+// TestLegacyPresentRendersVerified pins that rather than leaving it
+// incidental.
 const (
-	EntryPresent = "present"
-	EntryAbsent  = "absent"
-	EntryUnknown = "unknown"
+	EntryPresentSettings = "present_settings"
+	EntryPresentPlugin   = "present_plugin"
+	EntryPresent         = "present"
+	EntryAbsent          = "absent"
+	EntryUnknown         = "unknown"
 
 	ProbeFresh   = "fresh"
 	ProbeAbsent  = "absent"
