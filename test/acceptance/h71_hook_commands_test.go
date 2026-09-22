@@ -21,7 +21,7 @@ import (
 // against the README's "no model in any path" -- with every Go test green.
 var (
 	pluginHookKeys    = map[string]bool{"type": true, "command": true, "args": true, "timeout": true}
-	recorderSubcommds = map[string]bool{"hook": true, "post": true, "probe": true}
+	recorderSubcommds = map[string]bool{"hook": true, "post": true, "probe": true, "recap": true}
 )
 
 // TestH71_PluginHooksRunOnlyTheRecorder: every hook the plugin declares is a

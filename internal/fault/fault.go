@@ -33,4 +33,13 @@ const (
 	PointSettingsLoad         = "settings.load"
 	PointSettingsOpened       = "settings.write.opened"
 	PointSettingsBeforeRename = "settings.write.before_rename"
+	// PointRecapStart is inside cmdRecap's own guarded body, not inside a
+	// handler type -- there is no Recap struct the way Post and Handler give
+	// hook and post one, so the injection sits directly in cmd/rashomon
+	// alongside the command it exercises. What it proves is narrower than
+	// the recorder's points too: not "no panic escapes", which the same
+	// safe.Guard already guarantees here, but "a panic here still exits 0
+	// and prints nothing" -- H-93's own bar, stricter than the recorder's
+	// "never exit 2".
+	PointRecapStart = "recap.start"
 )

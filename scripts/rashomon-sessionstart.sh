@@ -67,6 +67,13 @@ fi
 # of present, absent, unreadable, unknown, and a "hooks:" line saying whether
 # an entry would run at all in this directory. The event names anchor the
 # match, so the store's own "  present: yes" line is never counted as one.
+#
+# Deliberately five, not seven: Stop and StopFailure drive the exception-only
+# recap, not recording, and status now prints a "recap:" line of its own for
+# them. This script answers one question -- is this session's activity being
+# recorded -- and widening the match here would fold a second, unrelated
+# question ("has a Stop actually run") into the same present/absent count,
+# which is the wrong axis for it.
 events='PreToolUse|PostToolUse|PostToolUseFailure|SessionStart|SessionEnd'
 count() { printf '%s\n' "$out" | grep -c -E "^  ($events): $1\$"; }
 lines=$(count '[a-z]+')

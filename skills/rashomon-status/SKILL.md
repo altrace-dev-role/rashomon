@@ -17,3 +17,11 @@ description: 'Say what rashomon has installed here: hook entries, store location
 3. If entries read `absent` and the user wanted recording, point them at
    `/rashomon`. If another install's entries share the file, relay that
    line — those entries fire here and record nothing in this store.
+
+4. The `recap:` line says whether the exception-only line (Stop/StopFailure)
+   has ever actually run: `not evaluated` means no turn has completed since
+   install, `evaluated` means one has, whether or not it had anything to say
+   — silence on a turn is never proof it was clean, only that recap had
+   nothing exception-worthy to report or was never asked. If it says a run
+   "did not complete cleanly", that failure is recap's own and not the
+   session's; point the user at `/rashomon-report` for the session itself.
