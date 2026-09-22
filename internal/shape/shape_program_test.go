@@ -48,12 +48,13 @@ func TestProgramIsAProgram(t *testing.T) {
 		// A here-document's body follows on the next lines, and the tokenizer
 		// does not keep line boundaries: the word after it may be body text.
 		{name: "heredoc names nothing", cmd: "<<EOF cat"},
-		// A `(` after `<` opens a process substitution; it is not a
-		// redirect's target and must not be consumed as one. Doing so skips
-		// `cat` as the "target" and reads the next word -- the path -- as
-		// the program. cat is the only thing on this line that runs.
-		{name: "process substitution", cmd: "<(cat /home/alice/secret.csv) ls", want: "cat",
-			why: "the path is cat's argument"},
+		// A `(` where a redirect's target belongs is a process substitution
+		// or a zsh glob ((a|b), (x).csv), and the tokenizer cannot tell
+		// which: nothing on the line is certainly in command position.
+		// Consuming the paren as the target once read the path as the
+		// program.
+		{name: "process substitution", cmd: "<(cat /home/alice/secret.csv) ls"},
+		{name: "zsh glob as a redirect target", cmd: "> (/home/alice/secret.csv) ls"},
 		// A separator where a target should be is a syntax error, and the
 		// word after it is in command position, not a target.
 		{name: "redirect then separator", cmd: "> ; ls /home/alice/secret.csv", want: "ls"},
@@ -83,7 +84,9 @@ func TestProgramIsAProgram(t *testing.T) {
 		{name: "append assignment", cmd: "PATH+=:/home/alice/SECRETDIR"},
 		{name: "append assignment, bare", cmd: "x+=SECRET"},
 		{name: "subscript assignment", cmd: "arr[0]=SECRET ls", want: "ls"},
-		{name: "quoted subscript assignment", cmd: `arr["k"]=v ls`, want: "ls"},
+		// Bash would still assign here, but a quoted byte before the `=` is
+		// what makes arr[0]"="x a command, and the two are refused alike.
+		{name: "quoted subscript assignment names nothing", cmd: `arr["k"]=v ls`},
 		{name: "quoted value is still an assignment", cmd: `FOO="a b" ls`, want: "ls"},
 		{name: "a comment", cmd: "#SECRET comment"},
 		{name: "zsh >&|", cmd: ">&| /home/alice/secret.csv ls", want: "ls"},

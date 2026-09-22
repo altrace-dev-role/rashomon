@@ -78,11 +78,20 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 		toks[i] = t.text
 	}
 
+	// The program is looked for in the line as the shell reads it: with every
+	// backslash-newline removed, which the shell does before it splits words
+	// -- so `<\<newline><EOF` is a here-document and `$\<newline>{x}` an
+	// expansion. argc is counted over the tokens above, as it always was.
+	pshaped := shaped
+	if joined := joinContinuations(cmd); joined != cmd {
+		pshaped, _ = tokenizeShape(joined)
+	}
+
 	// A carriage return is a word character to the shell and whitespace to
 	// the tokenizer, so a line holding one is split where the shell does not
 	// split it, and no word in it can be vouched for.
-	if i, ok := programToken(shaped); ok && !strings.ContainsRune(cmd, '\r') {
-		prog := path.Base(toks[i])
+	if i, ok := programToken(pshaped); ok && !strings.ContainsRune(cmd, '\r') {
+		prog := path.Base(pshaped[i].text)
 		s.Program = &prog
 		s.VerbClass = verbForProgram(prog)
 	}
@@ -200,6 +209,10 @@ func programToken(toks []token) (int, bool) {
 		t := toks[i]
 		if t.meta {
 			switch {
+			case t.text == "<" && isNumericGlob(at(i+1)) && at(i+2).meta && strings.HasPrefix(at(i+2).text, ">"):
+				// zsh's numeric glob, <1-9> or <->: one word to zsh, two
+				// redirects here.
+				return 0, false
 			case t.text == "<<" && !isOp(i+1, "<"):
 				// A here-document. Its body follows on the next lines, and the
 				// tokenizer does not keep line boundaries.
@@ -247,6 +260,14 @@ func programToken(toks []token) (int, bool) {
 			// the tokenizer may have split.
 			return 0, false
 		}
+		if eq := strings.IndexByte(t.text, '='); eq >= 0 && (t.quotedAt < 0 || t.quotedAt > eq) {
+			// An `=` the shells read differently: café=x and 1=x are
+			// assignments to zsh and commands to bash.
+			return 0, false
+		}
+		if definesFunctions(toks, i) {
+			return 0, false
+		}
 		return i, true
 	}
 	return 0, false
@@ -256,6 +277,65 @@ func programToken(toks []token) (int, bool) {
 // builtins, and a brace that is not in command-start position -- after an
 // assignment or a redirect the shell runs `{` as an ordinary command.
 var plainPunctuation = map[string]bool{"[": true, "[[": true, "{": true, "}": true}
+
+// isNumericGlob reports whether an unquoted word is the inside of a zsh
+// numeric glob: digits, a dash, digits, either side possibly empty.
+func isNumericGlob(t token) bool {
+	if t.meta || t.quotedAt >= 0 || !strings.Contains(t.text, "-") {
+		return false
+	}
+	for j := 0; j < len(t.text); j++ {
+		if c := t.text[j]; c != '-' && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return strings.Count(t.text, "-") == 1
+}
+
+// definesFunctions reports whether the words from i run into an empty `()`:
+// zsh's `f g () { ... }` defines functions f and g and runs neither.
+func definesFunctions(toks []token, i int) bool {
+	for j := i + 1; j < len(toks); j++ {
+		if toks[j].meta {
+			return toks[j].text == "(" && j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == ")"
+		}
+	}
+	return false
+}
+
+// joinContinuations removes every backslash-newline the shell removes before
+// it splits a line into words: outside quotes and inside double quotes, but
+// not inside single quotes, where a backslash is literal.
+func joinContinuations(s string) string {
+	if !strings.Contains(s, "\\\n") {
+		return s
+	}
+	var b strings.Builder
+	inSingle, inDouble := false, false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				inSingle = false
+			}
+		case c == '\\' && i+1 < len(s):
+			if s[i+1] == '\n' {
+				i++
+				continue
+			}
+			b.WriteByte(c)
+			i++
+			c = s[i]
+		case c == '\'' && !inDouble:
+			inSingle = true
+		case c == '"':
+			inDouble = !inDouble
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
 
 // isComment reports whether a word begins a comment: an unquoted `#` at its
 // start.
@@ -295,12 +375,24 @@ func isFDPrefix(t token) bool {
 // two disagree about which word after it is the command.
 func redirectEnd(toks []token, i int) (int, bool) {
 	op := toks[i].text
-	for n := 0; n < 2 && i+1 < len(toks) && toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {
+	// At most one further piece, except after > and >>, which zsh extends
+	// by two (>&| and >>&|). A second `<` after `<<` is the next
+	// redirection, not more of this one.
+	pieces := 1
+	if op == ">" || op == ">>" {
+		pieces = 2
+	}
+	for n := 0; n < pieces && i+1 < len(toks) && toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {
 		i++
 	}
+	if i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == "(" {
+		// A paren where the target belongs: a process substitution, or a
+		// zsh glob such as (a|b) or (x).csv. Either way the words inside it
+		// are not in command position for this line.
+		return 0, false
+	}
 	if i+1 >= len(toks) || toks[i+1].meta {
-		// No target word here: a `(` opening a process substitution, or a
-		// separator. The search reads on from the next token.
+		// No target word here: a separator. The search reads on.
 		return i, true
 	}
 	target := toks[i+1]
@@ -404,14 +496,13 @@ func isShellAssignment(t token) bool {
 	if eq >= len(s) || s[eq] != '=' {
 		return false
 	}
-	// The name and whatever decides this is an assignment must be unquoted.
-	// With a subscript only its opening bracket counts: a quoted subscript
-	// (arr["k"]=v) is still an assignment.
-	decides := eq
-	if b := strings.IndexByte(s, '['); b >= 0 && b < eq {
-		decides = b
-	}
-	return t.quotedAt < 0 || t.quotedAt > decides
+	// Nothing before the `=` may be quoted. Bash decides an assignment on
+	// the raw word and needs a literal `]` then `=`; a quoted or escaped
+	// byte anywhere before it -- arr[0]"="x, arr[0\]=x -- makes the word a
+	// command instead, and skipping it would read its argument as the
+	// program. A quoted subscript that bash would still accept (arr["k"]=v)
+	// is refused too: null is the cautious answer there, not a leak.
+	return t.quotedAt < 0 || t.quotedAt > eq
 }
 
 func verbForTool(name string) string {

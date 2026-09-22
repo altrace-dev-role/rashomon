@@ -46,9 +46,11 @@ func WithChain() TextOption {
 // Text renders a report for a terminal.
 //
 // No record has a field that carries a command line or a tool response, and
-// nothing is printed beyond the store's fields except what is read from the
-// transcript when the report is rendered: tool-use ids and counts for the
-// accounting, and the agent's final message, which --redact drops whole. Two things ARE taken from a command line: the program
+// nothing is printed beyond the store's fields except what is read from two
+// other places when the report is rendered: the transcript -- tool-use ids and
+// counts for the accounting, and the agent's final message, which --redact
+// drops whole -- and, where an observing proxy's database is found, the hosts
+// it recorded, which the destinations section prints and --redact digests. Two things ARE taken from a command line: the program
 // name -- the base name of the word in command position -- which `by program`
 // prints for every session, and hostnames and ssh destinations (shape.Hosts),
 // which the destinations section prints and --redact digests.
