@@ -64,6 +64,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdWatch(stdout) })
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
+	case "pause":
+		return guarded(stderr, func() error { return cmdPause(stdout) })
+	case "resume":
+		return guarded(stderr, func() error { return cmdResume(stdout) })
 	case "status":
 		return guarded(stderr, func() error { return cmdStatus(stdout) })
 	case "report":
@@ -122,6 +126,9 @@ func guarded(stderr io.Writer, fn func() error) int {
 // Nothing is written to stdout on this path. Claude Code parses hook stdout as
 // control output, so anything printed there is a second way to affect a
 // decision this program has no business affecting.
+//
+// checkPaused runs before anything else in the body, including openForHook:
+// see its own comment for why the order is load-bearing (Part 2, H-81).
 func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	// The WHOLE body, not just Capture and Close. The prologue -- signal
 	// watching, opening the store, reading the install id -- was outside the
@@ -132,6 +139,10 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	_ = safe.Guard(func() error {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
+
+		if checkPaused(args, stdin, store.PhaseCall, stderr) {
+			return nil
+		}
 
 		st := openForHook(stderr)
 		if st == nil {
@@ -160,6 +171,10 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 	_ = safe.Guard(func() error {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
+
+		if checkPaused(args, stdin, store.PhasePost, stderr) {
+			return nil
+		}
 
 		st := openForHook(stderr)
 		if st == nil {
@@ -194,6 +209,9 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 
 	// Guarded whole, for the reason given in cmdHook.
 	_ = safe.Guard(func() error {
+		if checkPaused(args, stdin, phase, stderr) {
+			return nil
+		}
 		st := openForHook(stderr)
 		if st == nil {
 			return nil
@@ -259,6 +277,50 @@ func openForHook(stderr io.Writer) *store.Store {
 		return nil
 	}
 	return st
+}
+
+// checkPaused is the recording-state gate shared by cmdHook, cmdPost and
+// cmdProbe (Part 2). It answers "is this invocation paused" by stating one
+// small file directly -- never by opening the store, which is what
+// openForHook does as a side effect of doing its job. A paused machine that
+// has never recorded must not acquire an install identity merely by being
+// asked whether it is paused; storeInstalled, a few hundred lines down, stats
+// the same kind of marker for the identical reason, and this is why the call
+// sites put it before openForHook rather than after.
+//
+// Where a store already exists it writes exactly one coverage record,
+// carrying store.ReasonRecordingPaused, so a reader of the report sees a
+// deliberate gap and not an unexplained one (H-80). Where none exists it
+// writes nothing at all (H-81): creating a store to say "not recording" would
+// be worse than saying nothing, and it is the one outcome pausing before ever
+// recording must not produce. standsDown is still honoured on the writing
+// path, so a foreign or plugin-owned entry sharing this store does not double
+// the paused coverage record the way it would double a declaration.
+//
+// It returns whether the invocation was handled. The caller's only job on
+// true is to return: there is nothing else honest left to do with a call this
+// program was told not to look at.
+func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer) bool {
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return false
+	}
+	paused, _, err := store.Paused(root)
+	if err != nil || !paused {
+		return false
+	}
+	if !storeExistsAt(root) {
+		return true
+	}
+	st, err := store.OpenExisting(root)
+	if err != nil {
+		return true
+	}
+	if standsDown(args, st, stderr) {
+		return true
+	}
+	hook.RecordPaused(stdin, phase, st, time.Now)
+	return true
 }
 
 // reportOrEmpty builds the report, or the empty one when nothing has ever been
@@ -538,6 +600,144 @@ func detachTarget(args []string) (installID string, all, force bool, err error) 
 	return installID, false, force, err
 }
 
+// cmdPause engages recording state (Part 2). See checkPaused for what a
+// paused hook invocation does, and the threat model in store.Pause's own
+// comment for why this is a file under the store root rather than an
+// environment variable or a settings edit: recording state can be changed by
+// anyone who can run as this user, including the audited agent via Bash, and
+// no mechanism at this layer can stop that. What it can do is leave every
+// change visible in the record, which is what the gap record below is for.
+//
+// The gap record is written only where a store already exists, under the
+// exact rule checkPaused itself follows: creating a store to say "not
+// recording" would be worse than saying nothing, and H-81 is the test that a
+// paused machine with no store stays that way. A machine with no store still
+// gets the marker file pause reads back -- that is what lets status answer
+// "paused, no store recorded here yet" truthfully -- but nothing that would
+// mint an install identity.
+func cmdPause(stdout io.Writer) error {
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	since, already, err := store.Pause(root, now)
+	if err != nil {
+		return err
+	}
+	if already {
+		fmt.Fprintf(stdout, "rashomon: already paused (since %s)\n", since.UTC().Format(time.RFC3339))
+		return nil
+	}
+
+	// Zero-width evidence that the window began, in case resume never
+	// follows -- a machine paused for good, or a crash, must not read
+	// identically to a machine where nothing was ever decided. Resume writes
+	// the record a reader actually wants: the whole span, closed.
+	if storeExistsAt(root) {
+		st, err := store.OpenExisting(root)
+		if err != nil {
+			return err
+		}
+		if err := st.AppendGap(store.Gap{
+			Type:          store.TypeGap,
+			SchemaVersion: store.SchemaVersion,
+			RecordedAtMS:  now.UnixMilli(),
+			SessionID:     store.PausedSessionID,
+			Reason:        store.GapPaused,
+			FromUnixMS:    since.UnixMilli(),
+			ToUnixMS:      since.UnixMilli(),
+		}); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintln(stdout, "rashomon: paused -- no tool call will be recorded until `rashomon resume`")
+	return nil
+}
+
+// cmdResume disengages recording state (Part 2). Where a store exists it
+// writes the closed gap record spanning the whole paused window -- from the
+// instant pause first took effect to now -- which is what lets a report
+// render the window as a named, bounded unknown rather than either a clean
+// count or an unexplained absence.
+func cmdResume(stdout io.Writer) error {
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	wasPaused, since, err := store.Resume(root, now)
+	if err != nil {
+		return err
+	}
+	if !wasPaused {
+		fmt.Fprintln(stdout, "rashomon: not paused")
+		return nil
+	}
+	if storeExistsAt(root) {
+		st, err := store.OpenExisting(root)
+		if err != nil {
+			return err
+		}
+		if err := st.AppendGap(store.Gap{
+			Type:          store.TypeGap,
+			SchemaVersion: store.SchemaVersion,
+			RecordedAtMS:  now.UnixMilli(),
+			SessionID:     store.PausedSessionID,
+			Reason:        store.GapPaused,
+			FromUnixMS:    since.UnixMilli(),
+			ToUnixMS:      now.UnixMilli(),
+		}); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(stdout, "rashomon: resumed -- was paused from %s to %s\n",
+		since.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339))
+	return nil
+}
+
+// Recording state words. RecordingState returns exactly one of these three,
+// and status must not invent a fourth: H-82 is the test that paused, absent
+// and unknown stay distinguishable, so "I turned it off" can never collapse
+// into "it was never installed" or the reverse. statusRecording is what
+// renders each of them.
+const (
+	RecordingActive        = "active"
+	RecordingPaused        = "paused"
+	RecordingPausedNoStore = "paused, no store recorded here yet"
+)
+
+// RecordingState reports this machine's pause state for status to render
+// (Part 2). It returns one of the three words above, the moment the pause
+// began (zero when not paused, or when the pause file holds no readable
+// instant), or an error when the pause file could not be read. statusRecording is the one place that turns these into the status
+// line, and its own code is the source of truth for the wording; this
+// function decides only which state holds. An error must render as unknown,
+// never as active: the same unresolved-vs-absent distinction statusUnreadable
+// exists for elsewhere in this file.
+//
+// It is a plain read, like storeInstalled above: os.Stat and os.ReadFile,
+// nothing that opens or creates a store. That is what lets it answer "paused"
+// truthfully on a machine that has never recorded, which is the case the
+// spec requires status be able to report.
+func RecordingState() (state string, since time.Time, err error) {
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	paused, pausedSince, err := store.Paused(root)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if !paused {
+		return RecordingActive, time.Time{}, nil
+	}
+	if !storeExistsAt(root) {
+		return RecordingPausedNoStore, pausedSince, nil
+	}
+	return RecordingPaused, pausedSince, nil
+}
+
 // cmdStatus prints what is installed here and what the store holds, and writes
 // nothing at all.
 //
@@ -552,6 +752,7 @@ func cmdStatus(stdout io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "store: %s\n", root)
+	statusRecording(stdout)
 
 	installID := ""
 	if _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {
@@ -575,6 +776,30 @@ func cmdStatus(stdout io.Writer) error {
 		return err
 	}
 	return statusHooks(stdout)
+}
+
+// statusRecording says whether hooks will record, which is the one thing pause
+// changes and the first thing a user who ran it will ask. A pause file that
+// cannot be read is reported as unknown, never as active: hooks fall back to
+// recording in that case, but status did not see the answer and does not
+// claim one.
+func statusRecording(stdout io.Writer) {
+	state, since, err := RecordingState()
+	switch {
+	case err != nil:
+		fmt.Fprintf(stdout, "  recording: %s\n", statusUnknown)
+	case state == RecordingActive:
+		fmt.Fprintf(stdout, "  recording: %s\n", RecordingActive)
+	default:
+		line := RecordingPaused
+		if !since.IsZero() {
+			line += " since " + since.UTC().Format(time.RFC3339)
+		}
+		if state == RecordingPausedNoStore {
+			line += " (no store recorded here yet)"
+		}
+		fmt.Fprintf(stdout, "  recording: %s\n", line)
+	}
 }
 
 // The words status prints for a thing it could not resolve. A status that
@@ -841,6 +1066,10 @@ usage:
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
                                marker, whatever its id
+  rashomon pause                 stop recording on this machine, reaching every
+                               installed origin; leaves a record of the change
+  rashomon resume                start recording again; closes the paused
+                               window with a record of how long it lasted
   rashomon status                say what is installed and what the store holds,
                                writing nothing and creating no store
   rashomon report [--session S] [--json] [--redact] [--chain]
@@ -1292,6 +1521,16 @@ func storeInstalled() bool {
 	if err != nil {
 		return false
 	}
-	_, err = os.Stat(filepath.Join(root, installMetaFile))
+	return storeExistsAt(root)
+}
+
+// storeExistsAt is storeInstalled's check, parameterised over a root the
+// caller already has in hand. checkPaused, cmdPause and cmdResume all need to
+// ask this about a root before -- or instead of -- ever opening a *Store, for
+// the same reason storeInstalled asks it about the default one: opening
+// CREATES a store, and none of the three may do that as a side effect of a
+// question about recording state.
+func storeExistsAt(root string) bool {
+	_, err := os.Stat(filepath.Join(root, installMetaFile))
 	return err == nil
 }

@@ -496,11 +496,20 @@ func build(run *store.Run) Session {
 		if sess.InstallID == "" {
 			sess.InstallID = c.InstallID
 		}
-		switch c.Phase {
-		case store.PhaseStart:
+		// A start or end probe that found recording paused still writes a
+		// record of that phase, so the skip shows up in this session's own
+		// report. That record says the probe did NOT run, so it must not count
+		// as the start or end having been recorded, and the hook entry it
+		// carries was never resolved by a probe. Counting it once rendered
+		// "start recorded: yes" beside probe_absent's "no session start was
+		// recorded". Its reason is still added below.
+		paused := c.Reason != nil && *c.Reason == store.ReasonRecordingPaused
+		switch {
+		case paused:
+		case c.Phase == store.PhaseStart:
 			sess.Coverage.StartRecorded = true
 			sess.Coverage.HookEntryAtStart = c.HookEntry
-		case store.PhaseEnd:
+		case c.Phase == store.PhaseEnd:
 			sess.Coverage.EndRecorded = true
 			sess.Coverage.HookEntryAtEnd = c.HookEntry
 		}

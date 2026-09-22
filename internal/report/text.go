@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // The words that stand in for a value this program does not have.
@@ -148,6 +150,15 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	} else {
 		fmt.Fprintf(b, "  gaps: %d\n", len(sess.Gaps))
 		for _, g := range sess.Gaps {
+			// A paused window removed nothing -- there was nothing to
+			// remove -- so "N records removed" would be true and misleading
+			// at once. It gets its own line: not a clean count, not an
+			// absence, but a named, bounded reason nothing was recorded.
+			if g.Reason == store.GapPaused {
+				fmt.Fprintf(b, "    %s: not recorded, deliberately, %s to %s\n",
+					g.Reason, stamp(g.FromUnixMS), stamp(g.ToUnixMS))
+				continue
+			}
 			fmt.Fprintf(b, "    %s: %d records removed, covering %s to %s\n",
 				g.Reason, g.RemovedRecords, stamp(g.FromUnixMS), stamp(g.ToUnixMS))
 		}
@@ -187,13 +198,14 @@ func set(ids []string) string {
 // report said none of it. A reader cannot act on a vocabulary they have to go
 // and look up.
 var reasonText = map[string]string{
-	"probe_absent":          "a session-start record or marker is missing: the recorder was installed mid-session, its start hook did not run or failed, or the size cap evicted the run",
+	"probe_absent":          "a session-start record or marker is missing: the recorder was installed mid-session, its start hook did not run, failed or ran while paused, or the size cap evicted the run",
 	"probe_unresolved":      "the session-start probe could not be read, so the start of this session is unaccounted for",
-	"run_not_closed":        "no session-end was recorded: the session is still open, or it ended without one",
+	"run_not_closed":        "no session-end was recorded: the session is still open, it ended without one, or its end hook ran while `rashomon pause` was in effect",
 	"records_unreadable":    "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted",
 	"transcript_mismatch":   "the transcript and this store disagree about which tool calls were made; see the two `missing from` lines below",
 	"execution_mismatch":    "the transcript holds results for calls this store recorded no execution for",
-	"gap":                   "records were removed from this store -- by `forget`, or by the store's own size cap -- and a gap record says so",
+	"gap":                   "a gap record marks a stretch this store does not hold: records removed by `forget` or the size cap, or a window `rashomon pause` left unrecorded",
+	"recording_paused":      "a hook ran while `rashomon pause` was in effect, so what it would have recorded (a tool call, its result, or the session's start or end) was deliberately not recorded",
 	"internal_error":        "a hook invocation failed inside this program, so what it should have recorded is missing",
 	"lock_timeout":          "a hook could not take the store lock in time, so its record went to the spill file or was lost",
 	"terminated_by_signal":  "a hook was killed by a signal before it finished",

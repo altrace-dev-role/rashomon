@@ -214,6 +214,8 @@ func (e *env) installArgs() []string {
 func (e *env) watch(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "watch") }
 func (e *env) detach(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "detach") }
 func (e *env) status(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "status") }
+func (e *env) pause(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "pause") }
+func (e *env) resume(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "resume") }
 func (e *env) forget(since string) result {
 	e.t.Helper()
 	return e.run("", nil, "forget", "--since", since)

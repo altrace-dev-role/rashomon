@@ -138,7 +138,7 @@ func TestStoreSchemaReasonsAreTheCodeReasons(t *testing.T) {
 	// from this exact list, which is why it is spelled out rather than
 	// folded into a helper that could omit one again silently.
 	assertReasonVocabulary(t, "gap reasons vs. gap.reason",
-		[]string{store.GapForget, store.GapForgetHost, store.GapSizeCap}, reasonEnum(t, defs, "gap"))
+		[]string{store.GapForget, store.GapForgetHost, store.GapSizeCap, store.GapPaused}, reasonEnum(t, defs, "gap"))
 }
 
 // reasonEnum reads the string enum values naming one reason vocabulary in

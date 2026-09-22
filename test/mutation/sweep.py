@@ -559,6 +559,9 @@ m("H-46 labelling recovers after the append instead of before it", "internal/hoo
   "\tdefer func() {\n\t\tif v := recover(); v != nil {\n\t\t\tlabel = shape.LabelUnknown\n\t\t}\n\t}()\n\tfault.Inject(fault.PointLabel)",
   "\tfault.Inject(fault.PointLabel)", "TestH46_NoFault")
 
+m("a paused session probe counts as the session's start or end", "internal/report/report.go",
+  "\t\tcase paused:\n", "\t\tcase paused && false:\n", "TestPausedSessionProbeIsNotReportedAsRecorded")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
