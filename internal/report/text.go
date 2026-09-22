@@ -177,18 +177,18 @@ func set(ids []string) string {
 // report said none of it. A reader cannot act on a vocabulary they have to go
 // and look up.
 var reasonText = map[string]string{
-	"probe_absent":          "no session start was recorded: the recorder was installed mid-session, or its start hook did not run or finish",
+	"probe_absent":          "a session-start record or marker is missing: the recorder was installed mid-session, its start hook did not run or failed, or the size cap evicted the run",
 	"probe_unresolved":      "the session-start probe could not be read, so the start of this session is unaccounted for",
 	"run_not_closed":        "no session-end was recorded: the session is still open, or it ended without one",
 	"records_unreadable":    "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted",
 	"transcript_mismatch":   "the transcript and this store disagree about which tool calls were made; see the two `missing from` lines below",
 	"execution_mismatch":    "the transcript holds results for calls this store recorded no execution for",
 	"gap":                   "records were removed from this store -- by `forget`, or by the store's own size cap -- and a gap record says so",
-	"internal_error":        "a hook invocation failed inside this program; the call still ran",
+	"internal_error":        "a hook invocation failed inside this program, so what it should have recorded is missing",
 	"lock_timeout":          "a hook could not take the store lock in time, so its record went to the spill file or was lost",
 	"terminated_by_signal":  "a hook was killed by a signal before it finished",
 	"unterminated_entry":    "a declaration was never closed, so the call's end was not observed",
-	"hook_entry_absent":     "the recorder's own entry was not in the settings file when the hook ran",
+	"hook_entry_absent":     "the recorder's own entry was missing from the settings file when the hook ran, or present but altered (matcher, hook or timeout)",
 	"hook_entry_unresolved": "the settings file could not be read, so whether the recorder was installed is unknown",
 }
 
@@ -204,8 +204,11 @@ func writeReasons(b *bytes.Buffer, reasons []string) {
 			fmt.Fprintf(b, "    %-22s %s\n", r, text)
 			continue
 		}
-		// A reason with no sentence still renders. A vocabulary that grows
-		// without this map must not silently drop the new value.
+		// A reason with no sentence still renders. The vocabulary cannot reach
+		// this line -- TestReasonTextCoversTheVocabulary holds the map to it --
+		// so what does is a reason read off disk exactly as stored: one written
+		// by a newer or older build, or a hand-edited store. It is printed
+		// verbatim, because build does not clamp it to the vocabulary.
 		fmt.Fprintf(b, "    %s\n", r)
 	}
 }

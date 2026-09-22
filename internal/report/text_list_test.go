@@ -8,8 +8,14 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// TestReasonTextCoversTheVocabulary: every coverage reason a report can carry
-// has a sentence, and every sentence belongs to a reason.
+// TestReasonTextCoversTheVocabulary: every reason in the vocabulary --
+// store.Reasons() and report.Reasons() -- has a sentence, and every sentence
+// belongs to one of them.
+//
+// It checks the vocabulary constants and nothing else. A coverage reason is
+// read off disk as stored, so a record from another build or a hand-edited
+// store can still carry a code outside the vocabulary; this test does not
+// cover that, and writeReasons prints such a code bare.
 //
 // writeReasons falls back to the bare code when a reason has no sentence, so
 // a vocabulary that grows without this map stays green everywhere and only a
