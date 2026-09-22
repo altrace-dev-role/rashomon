@@ -42,10 +42,12 @@ type Resolution struct {
 // failure direction -- it under-claims -- but it means a temporary or
 // side-loaded install cannot produce a verified report, by construction."
 // That predicate has not been relaxed; it has been given a second thing it
-// can honestly confirm. present_plugin still means the probe read real
-// evidence that this session's hooks include ours -- self-identification,
-// not a config file's opinion about itself -- so a plugin install that
-// merely SITS ON DISK, unconfirmed, still reads unknown, never present_plugin.
+// can honestly confirm. present_plugin means the probe read evidence from
+// where this process runs -- self-identification, not a config file's opinion
+// about itself -- that this session's hooks include ours. Evidence, not
+// proof, for the reason above: a manual run from inside the plugin reads the
+// same. A plugin install that merely SITS ON DISK, with no process running
+// from it, still never reads present_plugin.
 // The under-claim survives; what widened is what the probe is able to read.
 //
 // Every failure that lasts resolves to "unknown". That is a real answer and a

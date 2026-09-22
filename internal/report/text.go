@@ -211,7 +211,7 @@ var reasonText = map[string]string{
 	"lock_timeout":           "a hook could not take the store lock in time, so its record went to the spill file or was lost",
 	"terminated_by_signal":   "a hook was killed by a signal before it finished",
 	"unterminated_entry":     "a declaration was never closed, so the call's end was not observed",
-	"hook_entry_absent":      "neither the settings file nor the plugin declared the recorder's entry when the hook ran",
+	"hook_entry_absent":      "the settings file did not hold the recorder's entry for this event as watch installs it, and this hook was not running as a rashomon plugin that declares one",
 	"hook_entry_unresolved":  "the settings file or the plugin could not be read, so whether the recorder was installed is unknown",
 }
 

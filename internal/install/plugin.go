@@ -30,8 +30,8 @@ const pluginBinDir = "bin"
 const pluginRootVar = "${CLAUDE_PLUGIN_ROOT}"
 
 // PluginPresent reports whether THIS PROCESS is running as the rashomon
-// plugin's own hook binary for event, which is a fact about what just
-// happened and not a guess about configuration.
+// plugin's own hook binary for event: evidence from where this process runs,
+// not a reading of configuration -- and evidence, not proof.
 //
 // It answers a narrower and stronger question than "is a plugin enabled":
 // there is no documented guarantee that writing enabledPlugins reaches an
@@ -41,14 +41,18 @@ const pluginRootVar = "${CLAUDE_PLUGIN_ROOT}"
 // enabledPlugins off disk would therefore prove only "the file currently says
 // enabled", never "the hook set this session is running right now includes
 // it". Self-identification closes that gap a different way: Claude Code does
-// not execute a binary from inside a disabled plugin's directory, so a
-// process running from one just had that plugin's entry invoked, for this
-// session, a moment ago. That is not configuration; it is the invocation.
+// not execute a binary from inside a disabled plugin's directory, so when
+// Claude Code is what started a process running from one, that plugin's entry
+// was invoked for this session a moment ago. What this function sees is only
+// where the process runs, not who started it: the same binary run by hand
+// from <root>/bin gets the same answer with no entry invoked and no session
+// involved. So a true result is the strongest evidence available here, not
+// the invocation itself.
 //
 // This is why PluginPresent takes no *settings.Document and does not read
 // one: it has nothing to do with what settings.json currently says. Compare
 // FindPlugin, which exists for callers -- watch's refusal, status's report --
-// that are not themselves running as the plugin and have no such proof
+// that are not themselves running as the plugin and have no such evidence
 // available; those callers get a disk-based answer because a disk-based
 // answer, honestly labelled as one, is the best they can do.
 func PluginPresent(event string) (bool, error) {
