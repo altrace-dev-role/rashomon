@@ -268,6 +268,12 @@ func programToken(toks []token) (int, bool) {
 		if definesFunctions(toks, i) {
 			return 0, false
 		}
+		if strings.ContainsAny(t.text, " \t\n\r") {
+			// A quoted word with whitespace in it: the shell would run a
+			// command by that whole name, which is a command line, not a
+			// program. "cat /etc/passwd" quoted once named "passwd".
+			return 0, false
+		}
 		return i, true
 	}
 	return 0, false

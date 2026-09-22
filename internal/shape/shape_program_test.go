@@ -98,6 +98,12 @@ func TestProgramIsAProgram(t *testing.T) {
 		// name, so the word after either is an argument.
 		{name: "quoted brace is the command", cmd: "'{' /home/alice/SECRET.csv", want: "{"},
 		{name: "quoted assignment is the command", cmd: "'FOO=bar' SECRET", want: "FOO=bar"},
+		// A whole command line quoted into one word is still the command's
+		// name to the shell, and it is the whole line: a word with a space
+		// in it names nothing here. Main recorded "passwd" for the first.
+		{name: "quoted command line", cmd: `"cat /etc/passwd"`},
+		{name: "quoted command line with an assignment", cmd: `"MSG=Q3 is not public git commit"`},
+		{name: "quoted word with a newline", cmd: "\"X=1 <<EOF\nsecret body\nEOF\""},
 
 		// Unchanged behaviour, asserted so the fix cannot quietly move it.
 		{name: "ordinary command", cmd: "cd /tmp && go build", want: "cd"},

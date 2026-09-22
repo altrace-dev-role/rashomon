@@ -181,6 +181,8 @@ m("H-13 a paren where a redirect target belongs is read as a subshell", "interna
   "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 a word quoted before its = is read as an assignment", "internal/shape/shape.go",
   "\treturn t.quotedAt < 0 || t.quotedAt > eq", "\treturn true", "TestProgramIsAProgram|TestNoCorpusLineLeaksIntoProgram")
+m("H-13 a quoted command line with spaces is recorded as the program", "internal/shape/shape.go",
+  "\t\tif strings.ContainsAny(t.text, \" \\t\\n\\r\") {", "\t\tif false {", "TestProgramIsAProgram")
 m("H-13 program is whatever token came first, operator or not", "internal/shape/shape.go",
   "\t\tt := toks[i]\n\t\tif t.meta {",
   "\t\tt := toks[i]\n\t\tif false && t.meta {", "TestProgramIsAProgram")
