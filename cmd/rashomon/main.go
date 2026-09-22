@@ -374,7 +374,12 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return nil
 		}
 
-		line, wantSpeak := recap.Line(d, d.SessionID)
+		// Which origin is running decides which command the line can point
+		// at. An error reads as "not the plugin", which points at the CLI:
+		// the settings install's command, and the only one that exists
+		// without a plugin.
+		fromPlugin, _ := install.PluginPresent(install.EventStop)
+		line, wantSpeak := recap.Line(d, d.SessionID, fromPlugin)
 		// Claim's own error is intentionally ignored: recap.json is
 		// bookkeeping, not evidence, and a failure to persist it must cost at
 		// most a future duplicate or a stale health timestamp, never a

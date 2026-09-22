@@ -55,7 +55,13 @@ var prefix = mark + " rashomon: "
 // (digest.Digest's own doc), so whenever it is true the coverage reasons ARE
 // the explanation for the unknown count, and printing both would say the
 // same thing twice in the one place this package is required to stay short.
-func Line(d *digest.Digest, sessionID string) (string, bool) {
+//
+// fromPlugin picks the command the line points at. /rashomon:report is a
+// plugin skill and exists only where the plugin does; a settings install has
+// the rashomon binary it was installed from instead, while a plugin's binary
+// sits under the plugin's own directory rather than on PATH. Pointing either
+// user at the other's command sends them to one that is not there.
+func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	var sentences []string
 
 	switch {
@@ -84,7 +90,11 @@ func Line(d *digest.Digest, sessionID string) (string, bool) {
 	b.WriteString(strings.Join(sentences, ". "))
 	b.WriteString(".\n")
 	b.WriteString(strings.Repeat(" ", len([]rune(prefix))))
-	b.WriteString("→ /rashomon:report --session ") // → RIGHTWARDS ARROW
+	if fromPlugin {
+		b.WriteString("→ /rashomon:report --session ") // → RIGHTWARDS ARROW
+	} else {
+		b.WriteString("→ rashomon report --session ")
+	}
 	b.WriteString(sanitizeSessionID(sessionID))
 	return b.String(), true
 }

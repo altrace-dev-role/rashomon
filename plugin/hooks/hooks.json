@@ -1,5 +1,5 @@
 {
-  "description": "rashomon recorder -- five entries recording declarations, executions and the liveness probe. Exec form (args, no shell): the command is the executable itself and Claude Code spawns it directly, which is what lets ${CLAUDE_PLUGIN_ROOT} sit inside a path with a space or a quote and still run.",
+  "description": "rashomon recorder -- seven entries: declarations, executions, the liveness probe, and the turn-end recap on Stop and StopFailure (no matcher: Claude Code documents none for either). Exec form (args, no shell): the command is the executable itself and Claude Code spawns it directly, which is what lets ${CLAUDE_PLUGIN_ROOT} sit inside a path with a space or a quote and still run.",
   "hooks": {
     "PreToolUse": [
       {
@@ -60,6 +60,30 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/bin/rashomon",
             "args": ["probe", "end"],
             "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/rashomon",
+            "args": ["recap"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/rashomon",
+            "args": ["recap"],
+            "timeout": 10
           }
         ]
       }

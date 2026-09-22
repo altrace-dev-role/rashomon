@@ -30,7 +30,7 @@ func cleanDigest() *digest.Digest {
 // triggers set produces no line at all.
 func TestLineClean(t *testing.T) {
 	d := cleanDigest()
-	if line, ok := Line(d, d.SessionID); ok {
+	if line, ok := Line(d, d.SessionID, true); ok {
 		t.Errorf("clean digest produced a line: %q", line)
 	}
 }
@@ -40,7 +40,7 @@ func TestLineCoverageUnverified(t *testing.T) {
 	d.Coverage.State = store.StateUnverified
 	d.Coverage.Reasons = []string{store.ReasonProbeAbsent}
 
-	line, ok := Line(d, d.SessionID)
+	line, ok := Line(d, d.SessionID, true)
 	if !ok {
 		t.Fatal("unverified coverage produced no line")
 	}
@@ -55,7 +55,7 @@ func TestLineUnknownSuppressesTheSeparateCoverageSentence(t *testing.T) {
 	d.Coverage.Reasons = []string{store.ReasonProbeAbsent}
 	d.Unknown = true
 
-	line, ok := Line(d, d.SessionID)
+	line, ok := Line(d, d.SessionID, true)
 	if !ok {
 		t.Fatal("unknown digest produced no line")
 	}
@@ -72,7 +72,7 @@ func TestLineTruncated(t *testing.T) {
 	d := cleanDigest()
 	d.Truncated = true
 
-	line, ok := Line(d, d.SessionID)
+	line, ok := Line(d, d.SessionID, true)
 	if !ok {
 		t.Fatal("truncated digest produced no line")
 	}
@@ -92,7 +92,7 @@ func TestLineFiresOnRecordedFailureNamingTheCount(t *testing.T) {
 		{ToolUseID: "toolu_2", PermissionMode: "default"},
 	}
 
-	line, ok := Line(d, d.SessionID)
+	line, ok := Line(d, d.SessionID, true)
 	if !ok {
 		t.Fatal("expected a line")
 	}
@@ -112,7 +112,7 @@ func TestLineFiresOnRecordedFailureNamingTheCount(t *testing.T) {
 func TestLineSecondLineIndentMatchesThePrefix(t *testing.T) {
 	d := cleanDigest()
 	d.Truncated = true
-	line, ok := Line(d, "abc123")
+	line, ok := Line(d, "abc123", true)
 	if !ok {
 		t.Fatal("expected a line")
 	}
@@ -140,6 +140,34 @@ func TestSanitizeSessionID(t *testing.T) {
 	for _, c := range cases {
 		if got := sanitizeSessionID(c.in); got != c.want {
 			t.Errorf("sanitizeSessionID(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestLinePointsAtACommandTheOriginHas: the line names a command the user who
+// sees it can run. /rashomon:report is a plugin skill; a settings install has
+// no plugin, but does have the rashomon binary it was installed from. A
+// plugin's binary lives under the plugin's own directory, not on PATH, so the
+// reverse holds there.
+func TestLinePointsAtACommandTheOriginHas(t *testing.T) {
+	d := cleanDigest()
+	d.Truncated = true
+	for _, tc := range []struct {
+		fromPlugin bool
+		want, not  string
+	}{
+		{fromPlugin: false, want: "rashomon report --session abc123", not: "/rashomon:report"},
+		{fromPlugin: true, want: "/rashomon:report --session abc123"},
+	} {
+		line, ok := Line(d, "abc123", tc.fromPlugin)
+		if !ok {
+			t.Fatal("expected a line")
+		}
+		if !strings.Contains(line, tc.want) {
+			t.Errorf("fromPlugin=%v: line = %q, want it to point at %q", tc.fromPlugin, line, tc.want)
+		}
+		if tc.not != "" && strings.Contains(line, tc.not) {
+			t.Errorf("fromPlugin=%v: line = %q points at %q, which this origin does not have", tc.fromPlugin, line, tc.not)
 		}
 	}
 }
