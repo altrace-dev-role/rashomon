@@ -45,10 +45,11 @@ func WithChain() TextOption {
 
 // Text renders a report for a terminal.
 //
-// Nothing beyond the store's own fields is printed: ids, tool names, transcript
-// paths, counts and reason codes. There is no field here that could carry a
-// command line or a tool response, because there is no such field in the
-// records this reads.
+// Nothing beyond the store's own fields is printed, and no record has a field
+// that carries a command line or a tool response. The nearest is a program
+// name: the base name of the word a shell line runs, which is the one word of
+// a command line the store keeps, and which `by program` prints for every
+// session.
 func Text(w io.Writer, rep *Report, opts ...TextOption) error {
 	var cfg textOptions
 	for _, o := range opts {
@@ -325,7 +326,10 @@ func byName(counts map[string]int) string {
 	for i, name := range names {
 		out[i] = fmt.Sprintf("%s %d", name, counts[name])
 	}
-	return strings.Join(out, ", ")
+	// Through list, for its bound: a session that ran sixty programs or
+	// called forty MCP tools must not rebuild the line list was written to
+	// retire. The JSON carries every name.
+	return list(out)
 }
 
 // programs renders the per-program counts, with the shell calls whose
@@ -334,18 +338,22 @@ func byName(counts map[string]int) string {
 // Beside, not among: "unknown" is not a program, and a reader scanning the
 // list for what ran must not meet it sitting between `git` and `go` as though
 // it were one more command.
-func programs(counts map[string]int, unknown int) string {
-	if len(counts) == 0 && unknown == 0 {
+//
+// untold counts two things -- a line that would not tokenize and a line naming
+// no program -- so it is rendered as "could not be told" throughout, never as
+// "named none", which is true of only the second.
+func programs(counts map[string]int, untold int) string {
+	if len(counts) == 0 && untold == 0 {
 		return none
 	}
+	if len(counts) == 0 {
+		return fmt.Sprintf("%s (%d shell call(s) whose program could not be told)", none, untold)
+	}
 	out := byName(counts)
-	if unknown == 0 {
+	if untold == 0 {
 		return out
 	}
-	if len(counts) == 0 {
-		return fmt.Sprintf("%s (%d shell call(s) named none)", none, unknown)
-	}
-	return fmt.Sprintf("%s (and %d shell call(s) whose program could not be told)", out, unknown)
+	return fmt.Sprintf("%s (and %d shell call(s) whose program could not be told)", out, untold)
 }
 
 func yesNo(b bool) string {

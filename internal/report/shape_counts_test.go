@@ -1,6 +1,8 @@
 package report
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/shape"
@@ -81,5 +83,44 @@ func TestNonShellToolsAreNotCountedAsMissingAProgram(t *testing.T) {
 	}
 	if got := programs(sess.Declarations.ByProgram, 0); got != none {
 		t.Errorf("rendered as %q, want %q", got, none)
+	}
+}
+
+// TestProgramsAllUntoldSaysSo: when no shell call's program could be told, the
+// line says it could not be told -- not that the calls named none.
+//
+// programs_unknown counts two things: a line that would not tokenize and a
+// line naming no program. "named none" is true of only the second, and it
+// asserts a fact about a line we could not read.
+func TestProgramsAllUntoldSaysSo(t *testing.T) {
+	sess := build(&store.Run{Declarations: []store.Declaration{
+		bashCall("a", "", "execute"),
+		bashCall("b", "", "execute"),
+	}})
+	d := sess.Declarations
+	want := "none (2 shell call(s) whose program could not be told)"
+	if got := programs(d.ByProgram, d.ProgramsUnknown); got != want {
+		t.Errorf("rendered as %q, want %q", got, want)
+	}
+}
+
+// TestByProgramLineIsBounded: a session that ran many distinct programs does
+// not rebuild the unreadable line the id lists once were. The count and the
+// pointer to --json stay on the line; the JSON keeps every program.
+func TestByProgramLineIsBounded(t *testing.T) {
+	var decls []store.Declaration
+	for i := 0; i < 60; i++ {
+		decls = append(decls, bashCall(fmt.Sprintf("t%02d", i), fmt.Sprintf("program-%02d", i), "execute"))
+	}
+	sess := build(&store.Run{Declarations: decls})
+	if got := len(sess.Declarations.ByProgram); got != 60 {
+		t.Fatalf("premise broken: by_program has %d entries, want 60", got)
+	}
+	got := programs(sess.Declarations.ByProgram, 0)
+	if len(got) > listWidth+len(" and 48 more of 60 (--json lists them all)") {
+		t.Errorf("by program is %d characters, want it bounded near %d: %q", len(got), listWidth, got)
+	}
+	if !strings.Contains(got, "of 60 (--json lists them all)") {
+		t.Errorf("a shortened line must say how many there were and where the rest are: %q", got)
 	}
 }
