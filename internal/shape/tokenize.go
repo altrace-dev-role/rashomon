@@ -48,6 +48,9 @@ type token struct {
 	meta     bool // emitted for an unquoted metacharacter
 	quotedAt int  // offset of the first quoted or escaped byte, or -1
 	opaque   bool
+	// nlBefore: an unquoted newline came between the previous token and this
+	// one. The shell ends a command there; this tokenizer only splits a word.
+	nlBefore bool
 }
 
 // tokenizeMarked is tokenize plus one bit per token: whether the tokenizer
@@ -77,6 +80,7 @@ func tokenizeShape(s string) ([]token, error) {
 		started bool
 		qat     = -1
 		opaque  bool
+		sawNL   bool
 	)
 
 	// markQuoted records where quoting first touched the current token.
@@ -104,7 +108,8 @@ func tokenizeShape(s string) ([]token, error) {
 	}
 	flush := func() {
 		if started {
-			toks = append(toks, token{text: cur.String(), quotedAt: qat, opaque: opaque})
+			toks = append(toks, token{text: cur.String(), quotedAt: qat, opaque: opaque, nlBefore: sawNL})
+			sawNL = false
 			cur.Reset()
 			started = false
 			qat = -1
@@ -118,6 +123,9 @@ func tokenizeShape(s string) ([]token, error) {
 		switch {
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			flush()
+			if c == '\n' {
+				sawNL = true
+			}
 
 		case c == '\\':
 			if i+1 >= len(s) {
@@ -182,7 +190,8 @@ func tokenizeShape(s string) ([]token, error) {
 					j++
 				}
 			}
-			toks = append(toks, token{text: s[i:j], meta: true, quotedAt: -1})
+			toks = append(toks, token{text: s[i:j], meta: true, quotedAt: -1, nlBefore: sawNL})
+			sawNL = false
 			i = j - 1
 
 		default:

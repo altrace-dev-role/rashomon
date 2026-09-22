@@ -396,7 +396,11 @@ func redirectEnd(toks []token, i int) (int, bool) {
 		return i, true
 	}
 	target := toks[i+1]
-	if target.opaque || isComment(target) || target.text == "!" && target.quotedAt < 0 {
+	// A target on the next line is not a target: a redirect at the end of a
+	// line is a syntax error, and the word after the newline is the next
+	// command's -- taking it left that command's argument to be read as the
+	// program.
+	if target.opaque || isComment(target) || target.nlBefore || target.text == "!" && target.quotedAt < 0 {
 		return 0, false
 	}
 	i++

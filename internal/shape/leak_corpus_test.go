@@ -277,6 +277,24 @@ var leakCorpus = []string{
 	"arr[0\\]=x SECRET",
 	"arr[0\"]\"=x SECRET",
 	"arr['0]=x' SECRET",
+	// A fourth: a redirect at the end of a line, whose "target" was the next
+	// line's command.
+	">\nrm -rf /home/alice/secret-dir",
+	"<\ncat /home/alice/secret.csv",
+	">\nscp /home/alice/secret.csv host:",
+	"<\nsort /home/alice/customer-list.csv",
+	"<<<\nmysql -phunter2 prod",
+	">>\nssh deploy@acme-prod.internal",
+	"> \t \ncat acme-merger.txt",
+	">&\n2 SECRETWORD",
+	"( <<<\ngit push SECRETREMOTE )",
+	">\ncurl -H secret-token https://x",
+	"&& >\nrm -rf /srv/acme",
+	"A=1 B=2 >\nrm -rf /srv/acme",
+	">f >\nrm -rf /srv/acme",
+	"{ <\ncat /home/alice/secret.csv; }",
+	">\\\n\nrm -rf x",
+	">\n'rm' -rf x",
 }
 
 // commandWords are the programs these lines genuinely run, when they run one
