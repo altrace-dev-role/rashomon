@@ -613,8 +613,8 @@ m("H-103 the duplicate-declarations guard is dropped", "internal/report/report.g
   "\tfor _, n := range declByID {\n\t\tif n > 1 {\n\t\t\tsess.Coverage.add(ReasonDuplicateDeclarations)\n\t\t\tbreak\n\t\t}\n\t}\n",
   "", "TestH103_")
 m("a legacy present record is treated with suspicion and renders unverified", "internal/report/report.go",
-  "\t\tif c.State == store.StateUnverified && c.Reason != nil {\n\t\t\tsess.Coverage.add(*c.Reason)\n\t\t}\n\t}\n\tif !sess.Coverage.StartRecorded {",
-  "\t\tif c.State == store.StateUnverified && c.Reason != nil {\n\t\t\tsess.Coverage.add(*c.Reason)\n\t\t}\n\t\tif c.HookEntry == store.EntryPresent {\n\t\t\tsess.Coverage.add(ReasonRunNotClosed)\n\t\t}\n\t}\n\tif !sess.Coverage.StartRecorded {",
+  "\t\t\tf.Reasons = append(f.Reasons, *c.Reason)\n\t\t}\n\t}\n\treturn f\n}",
+  "\t\t\tf.Reasons = append(f.Reasons, *c.Reason)\n\t\t}\n\t\tif c.HookEntry == store.EntryPresent {\n\t\t\tf.Reasons = append(f.Reasons, ReasonRunNotClosed)\n\t\t}\n\t}\n\treturn f\n}",
   "TestLegacyPresentRendersVerified")
 
 # Import additions some mutants need.
