@@ -68,10 +68,10 @@ func PluginPresent(event string) (bool, error) {
 //
 // A plugin's exec-form commands are "${CLAUDE_PLUGIN_ROOT}/bin/<name>" (see
 // the manifest under plugin/hooks/hooks.json), so the executable's own
-// directory name is the tell: anything else running this binary -- a `watch`
-// install, a developer's `go run`, a manual invocation -- does not sit under
-// a directory literally named "bin" whose parent declares itself as our
-// plugin.
+// directory name is the tell: a `watch` install or a developer's `go run`
+// does not sit under a directory literally named "bin" whose parent declares
+// itself as our plugin. Running the plugin's own binary by hand does, and
+// reads as the plugin -- which is why this is evidence, not proof.
 func selfPluginRoot() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {

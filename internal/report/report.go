@@ -90,7 +90,9 @@ func knownLabel(v string) string {
 
 // Reasons lists the coverage reason codes this package derives, as
 // store.Reasons lists the ones a record carries. Together they are the whole
-// vocabulary a reader of a report can meet.
+// vocabulary this build writes or derives. A reason read off disk is printed
+// as stored, so a record from another build or a hand-edited store can still
+// show a code outside it.
 func Reasons() []string {
 	return []string{
 		ReasonRunNotClosed,
