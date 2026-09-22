@@ -18,9 +18,9 @@ func TestOverlapping(t *testing.T) {
 		why     string
 	}{
 		{name: "identical sets collapse", items: []string{"a", "b"}, printed: []string{"a", "b"},
-			want: `the same 2, listed under "above list" above`},
+			want: `the same 2 as "above list" above`},
 		{name: "subset names its size only", items: []string{"a"}, printed: []string{"a", "b"},
-			want: `1, all of them among those under "above list" above`},
+			want: `1, all of them among "above list" above`},
 		{name: "not a subset is printed in full", items: []string{"a", "z"}, printed: []string{"a", "b"},
 			want: "a, z",
 			why:  "an id the reader has not already seen has to appear"},

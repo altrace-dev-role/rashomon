@@ -177,15 +177,16 @@ func set(ids []string) string {
 // report said none of it. A reader cannot act on a vocabulary they have to go
 // and look up.
 var reasonText = map[string]string{
-	"probe_absent":          "no session-start was recorded, so the recorder was not installed when this session began",
+	"probe_absent":          "no session start was recorded: the recorder was installed mid-session, or its start hook did not run or finish",
 	"probe_unresolved":      "the session-start probe could not be read, so the start of this session is unaccounted for",
 	"run_not_closed":        "no session-end was recorded: the session is still open, or it ended without one",
-	"transcript_mismatch":   "the transcript holds tool calls this store does not",
+	"records_unreadable":    "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted",
+	"transcript_mismatch":   "the transcript and this store disagree about which tool calls were made; see the two `missing from` lines below",
 	"execution_mismatch":    "the transcript holds results for calls this store recorded no execution for",
-	"gap":                   "records were deliberately evicted by `forget`, and a gap record says so",
+	"gap":                   "records were removed from this store -- by `forget`, or by the store's own size cap -- and a gap record says so",
 	"internal_error":        "a hook invocation failed inside this program; the call still ran",
 	"lock_timeout":          "a hook could not take the store lock in time, so its record went to the spill file or was lost",
-	"terminated_by_signal":  "a hook was killed before it finished, most often a hook timeout",
+	"terminated_by_signal":  "a hook was killed by a signal before it finished",
 	"unterminated_entry":    "a declaration was never closed, so the call's end was not observed",
 	"hook_entry_absent":     "the recorder's own entry was not in the settings file when the hook ran",
 	"hook_entry_unresolved": "the settings file could not be read, so whether the recorder was installed is unknown",
@@ -218,6 +219,10 @@ func writeReasons(b *bytes.Buffer, reasons []string) {
 // characters for one fact, and a reader who has to compare two walls of
 // opaque ids to notice they are identical.
 //
+// It names the set above, never says its ids are "listed" there: that list
+// is shortened past a dozen ids, and "the same 858, listed under ... above"
+// once sat beneath a line showing twelve of them.
+//
 // It states the overlap and NOT its cause. "The recorder was installed after
 // these ran" is an inference; the reasons block above already carries
 // probe_absent with its sentence, and this line is not the place to guess at
@@ -237,9 +242,9 @@ func overlapping(items, printed []string, where string) string {
 		}
 	}
 	if len(items) == len(printed) {
-		return fmt.Sprintf("the same %d, listed under %q above", len(items), where)
+		return fmt.Sprintf("the same %d as %q above", len(items), where)
 	}
-	return fmt.Sprintf("%d, all of them among those under %q above", len(items), where)
+	return fmt.Sprintf("%d, all of them among %q above", len(items), where)
 }
 
 // listWidth is how many characters of a list a terminal line will carry
