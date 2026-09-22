@@ -72,9 +72,16 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	// whole input would move whenever the wording did and would group nothing.
 	s.Digest = digest(key, toolName, []byte(cmd))
 
-	toks, meta, quoted, err := tokenizeQuoted(cmd)
+	shaped, err := tokenizeShape(cmd)
+	toks := make([]string, len(shaped))
+	for i, t := range shaped {
+		toks[i] = t.text
+	}
 
-	if i, ok := programToken(toks, meta, quoted); ok {
+	// A carriage return is a word character to the shell and whitespace to
+	// the tokenizer, so a line holding one is split where the shell does not
+	// split it, and no word in it can be vouched for.
+	if i, ok := programToken(shaped); ok && !strings.ContainsRune(cmd, '\r') {
 		prog := path.Base(toks[i])
 		s.Program = &prog
 		s.VerbClass = verbForProgram(prog)
@@ -158,80 +165,86 @@ func canonical(raw json.RawMessage) []byte {
 //
 // It skips only what it parses completely, and names nothing -- returns false
 // -- at the first thing it does not. The skipped things: a leading assignment
-// (FOO=bar, FOO+=bar, arr[0]=bar); a separator or a subshell's `(`, after
-// which the next word is in command position; a redirection with its operator
-// and its target; and an unquoted `{`, the brace-group keyword.
+// (FOO=bar, FOO+=bar, arr[i]=bar); a separator or a subshell's `(`, after
+// which the next word is in command position; a redirection with its whole
+// operator and its target; and `{`, the brace-group keyword, where a command
+// starts.
 //
 // Measured on a real session before this existed: three of twenty-six
 // declarations recorded a "program" of `&&`, `(` or nothing -- about one in
-// eight of the single field that is supposed to say what ran. `( cd x && ls )`
-// recorded `(`, and a brace group recorded `{`.
+// eight of the single field that is supposed to say what ran.
 //
-// The first version of this skipped whatever could not be a program and took
-// the next word, and the next word was repeatedly inside something the skip
-// did not parse: an array assignment's elements (arr=(a b)), an arithmetic
-// expression's operand ($(( n % 97 )) and (( n > 3 ))), a here-document's
-// body, a zsh redirect's target (>>| file), a backtick substitution's
-// argument. Each put data in the program field, where main had recorded a
-// metacharacter: useless, but no content. So the rule is the other way round
-// now. Null already means "we could not tell" and is read that way; a word
-// from inside a construct this function did not parse is read as a fact.
-//
-// The metacharacter bits and quoting offsets come from the tokenizer rather
-// than from the token's text, because a QUOTED `;` and an operator `;` are
-// the same byte, and so are '{' and the keyword `{`, and only the tokenizer
-// knows which it saw.
-func programToken(toks []string, meta []bool, quoted []int) (int, bool) {
-	marked := func(j int) bool { return j < len(meta) && meta[j] }
+// The first two versions of this took the next word after whatever they
+// skipped, and two adversarial reviews found 190 lines where that word was
+// data: an array element, an arithmetic operand, a here-document's body, a
+// redirect target under an operator spelling it did not know (zsh's >! and
+// >>|), and above all a fragment of a word this tokenizer split where the
+// shell does not -- "$(cat "a b")" is one shell word and three tokens here, so
+// skipping "one target" left the rest of it to be read as the program. Fifty
+// of those leaked on main as well. So the rule is the other way round: any
+// word whose extent this tokenizer cannot vouch for (token.opaque), and
+// anything else not parsed completely, ends the search with null. Null already
+// means "we could not tell" and is read that way; a word from inside a
+// construct is read as a fact.
+func programToken(toks []token) (int, bool) {
+	at := func(j int) token {
+		if j < len(toks) {
+			return toks[j]
+		}
+		return token{quotedAt: -1}
+	}
+	isOp := func(j int, op string) bool { t := at(j); return t.meta && t.text == op }
+
+	start := true // command position: the line's start, after a separator, `(` or `{`
 	for i := 0; i < len(toks); i++ {
-		tok := toks[i]
-		if marked(i) {
-			next := ""
-			if marked(i + 1) {
-				next = toks[i+1]
-			}
+		t := toks[i]
+		if t.meta {
 			switch {
-			case tok == "<<" && next != "<":
+			case t.text == "<<" && !isOp(i+1, "<"):
 				// A here-document. Its body follows on the next lines, and the
-				// tokenizer does not keep line boundaries, so any word after
-				// this may be body text.
+				// tokenizer does not keep line boundaries.
 				return 0, false
-			case isRedirect(tok):
-				i = redirectEnd(toks, meta, i)
-			case tok == "(" && next == "(":
+			case isRedirect(t.text):
+				end, ok := redirectEnd(toks, i)
+				if !ok {
+					return 0, false
+				}
+				i, start = end, false
+				continue
+			case t.text == "(" && isOp(i+1, "("):
 				// `((`: arithmetic. Its operands are not commands.
 				return 0, false
-			case tok == ")":
-				// A close this function did not see open: it is inside
-				// something it did not parse.
+			case t.text == ")":
+				// A close this search did not see open.
 				return 0, false
 			}
-			// Otherwise a separator or a subshell's `(`: the next word is in
-			// command position.
+			start = true // a separator, or a subshell's `(`
 			continue
 		}
 
-		q := -1
-		if i < len(quoted) {
-			q = quoted[i]
-		}
 		switch {
-		case tok == "{" && q < 0:
+		case t.opaque, isComment(t):
+			return 0, false
+		case t.text == "{" && t.quotedAt < 0 && start:
+			// The brace keyword, which only a command's first word can be.
 			continue
-		case isShellAssignment(tok, q):
-			// A value that opens a backtick substitution, or an assignment
-			// followed by `(` -- an array's elements, or the $( and $(( the
-			// tokenizer split after the `$` -- continues into words that are
-			// data or a command this function does not parse.
-			if strings.ContainsRune(tok, '`') || marked(i+1) && toks[i+1] == "(" {
+		case isRedirect(at(i+1).text) && at(i+1).meta && isFDPrefix(t):
+			// `2>` or `{fd}>`: an fd number or variable written against its
+			// redirect -- or a command named 2 followed by a space; the
+			// tokenizer does not keep which.
+			return 0, false
+		case isShellAssignment(t):
+			if isOp(i+1, "(") {
+				// An array's elements.
 				return 0, false
 			}
+			start = false
 			continue
-		case strings.ContainsRune(tok, '`'):
-			// A backtick substitution: what runs is inside it.
-			return 0, false
-		case strings.HasPrefix(tok, "#") && q != 0:
-			// A comment.
+		}
+		if isOp(i+1, "(") || strings.ContainsAny(t.text, "[]{}()") && !plainPunctuation[t.text] {
+			// `name()` defines a function rather than running one; a bracket
+			// or brace inside a word is a subscript, a glob or an expansion
+			// the tokenizer may have split.
 			return 0, false
 		}
 		return i, true
@@ -239,31 +252,66 @@ func programToken(toks []string, meta []bool, quoted []int) (int, bool) {
 	return 0, false
 }
 
+// plainPunctuation are the command names made of brackets or braces: the test
+// builtins, and a brace that is not in command-start position -- after an
+// assignment or a redirect the shell runs `{` as an ordinary command.
+var plainPunctuation = map[string]bool{"[": true, "[[": true, "{": true, "}": true}
+
+// isComment reports whether a word begins a comment: an unquoted `#` at its
+// start.
+func isComment(t token) bool {
+	return strings.HasPrefix(t.text, "#") && t.quotedAt != 0
+}
+
+// isFDPrefix reports whether an unquoted word could be an fd number (2 in 2>)
+// or an fd variable ({fd} in {fd}>).
+func isFDPrefix(t token) bool {
+	if t.quotedAt >= 0 || t.text == "" {
+		return false
+	}
+	if strings.HasPrefix(t.text, "{") && strings.HasSuffix(t.text, "}") {
+		return true
+	}
+	for j := 0; j < len(t.text); j++ {
+		if t.text[j] < '0' || t.text[j] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // redirectEnd returns the index of the last token of the redirection whose
-// operator is at i: the operator, the rest of an operator the tokenizer
-// emitted as more than one token, and the word it redirects to.
+// operator is at i -- the operator, the rest of an operator the tokenizer
+// emitted as more than one token, and the word it redirects to -- or false
+// when where the redirection ends cannot be told.
 //
 // The tokenizer doubles a metacharacter only when the next byte is the same
 // byte, so `>&`, `>|`, `<>`, `<&` and a here-string's `<<<` arrive as two meta
-// tokens, and zsh's `>>|`, `>>&`, `>&|` and `>>&|` as two or three. Stopping
-// after the first token takes the operator's next piece for the target, and
-// leaves the real target -- a filename, or a here-string's literal text -- to
-// be read as the program. That shipped once, and put a filename in the store.
-//
-// The target is taken only if it is a word. Anything else is not a target: a
-// `(` after `<` opens a process substitution whose command is the next word,
-// and a separator ends the command, putting the word after it in command
-// position. Consuming either would read the word after THAT as the program.
-func redirectEnd(toks []string, meta []bool, i int) int {
-	marked := func(j int) bool { return j < len(meta) && meta[j] }
-	op := toks[i]
-	for n := 0; n < 2 && marked(i+1) && continuesRedirect(op, toks[i+1]); n++ {
+// tokens, and zsh's `>>|`, `>>&`, `>&|` and `>>&|` as two or three. The target
+// is taken only if it is a word, and only if that word is certainly the whole
+// target: not an expansion the tokenizer split, not a comment, not the start
+// of a glob or array (a paren glued to it), and not zsh's `!` -- `>! f` is a
+// clobber into f in zsh and a redirect into a file named ! in bash, and the
+// two disagree about which word after it is the command.
+func redirectEnd(toks []token, i int) (int, bool) {
+	op := toks[i].text
+	for n := 0; n < 2 && i+1 < len(toks) && toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {
 		i++
 	}
-	if j := i + 1; j < len(toks) && !marked(j) {
-		i = j
+	if i+1 >= len(toks) || toks[i+1].meta {
+		// No target word here: a `(` opening a process substitution, or a
+		// separator. The search reads on from the next token.
+		return i, true
 	}
-	return i
+	target := toks[i+1]
+	if target.opaque || isComment(target) || target.text == "!" && target.quotedAt < 0 {
+		return 0, false
+	}
+	i++
+	if i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == "(" {
+		return 0, false
+	}
+	return i, true
 }
 
 // continuesRedirect reports whether next is a further piece of the
@@ -307,48 +355,63 @@ func isAssignment(tok string) bool {
 	return true
 }
 
-// isShellAssignment reports whether a word the shell would read as a variable
-// assignment is one: NAME=value, NAME+=value, or NAME[subscript]=value, with
-// the name and the `=` unquoted -- quoted, 'FOO=bar' is a command by that name.
-// quoted is the tokenizer's offset of the first quoted byte, or -1.
+// isShellAssignment reports whether a word is a variable assignment the shell
+// would perform: NAME=value, NAME+=value, or NAME[subscript]=value, with the
+// name, the `[` and the `=` unquoted -- quoted, 'FOO=bar' is a command by that
+// name. A subscript may itself hold `=` (arr[i==0]=v), so the `=` looked for is
+// the one after the subscript's matching `]`.
 //
 // It is wider than isAssignment, which decides argc and is left as it was so
 // that a count stays the count it has always been. Program detection cannot
 // afford that narrowness: an assignment form it did not recognise used to be
 // returned as the program, value and all (PATH+=:/home/u/dir named "dir").
-func isShellAssignment(tok string, quoted int) bool {
-	eq := strings.IndexByte(tok, '=')
-	if eq <= 0 {
+func isShellAssignment(t token) bool {
+	s := t.text
+	j := 0
+	for j < len(s) {
+		c := s[j]
+		if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c == '_' || c >= '0' && c <= '9' && j > 0 {
+			j++
+			continue
+		}
+		break
+	}
+	if j == 0 || j >= len(s) {
 		return false
 	}
-	name := tok[:eq]
-	name = strings.TrimSuffix(name, "+")
-	sub := strings.IndexByte(name, '[')
-	if sub >= 0 {
-		if !strings.HasSuffix(name, "]") {
+	if s[j] == '[' {
+		depth := 0
+		k := j
+		for ; k < len(s); k++ {
+			if s[k] == '[' {
+				depth++
+			} else if s[k] == ']' {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+		}
+		if k >= len(s) {
 			return false
 		}
-		name = name[:sub]
-		// A quoted subscript is still an assignment; the name must not be.
-		if quoted >= 0 && quoted < sub {
-			return false
-		}
-	} else if quoted >= 0 && quoted <= eq {
+		j = k + 1
+	}
+	eq := j
+	if eq < len(s) && s[eq] == '+' {
+		eq++
+	}
+	if eq >= len(s) || s[eq] != '=' {
 		return false
 	}
-	if name == "" {
-		return false
+	// The name and whatever decides this is an assignment must be unquoted.
+	// With a subscript only its opening bracket counts: a quoted subscript
+	// (arr["k"]=v) is still an assignment.
+	decides := eq
+	if b := strings.IndexByte(s, '['); b >= 0 && b < eq {
+		decides = b
 	}
-	for j := 0; j < len(name); j++ {
-		c := name[j]
-		switch {
-		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c == '_':
-		case c >= '0' && c <= '9' && j > 0:
-		default:
-			return false
-		}
-	}
-	return true
+	return t.quotedAt < 0 || t.quotedAt > decides
 }
 
 func verbForTool(name string) string {

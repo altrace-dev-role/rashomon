@@ -135,27 +135,24 @@ func TestProgramIsAProgram(t *testing.T) {
 	}
 }
 
-// TestProgramIONumberIsAKnownGap pins, rather than fixes, one place the
-// invariant above does not hold: an fd number written against its redirect,
-// `2> out.txt ls`, records "2" as the program.
+// TestProgramIONumberNamesNothing: an fd number or fd variable written against
+// its redirect -- `2> out.txt ls`, `{fd}>out ls` -- names no program.
 //
 // The tokenizer does not keep whether a word ended at a metacharacter or at
 // whitespace, so `2> out.txt ls` (fd 2 redirected, program ls) and
 // `2 > out.txt ls` (a program named 2) reach this package as the same tokens.
-// Reading the first into both would take an argument for the program whenever
-// the second was meant. Fixing it needs that bit from the tokenizer. It is not
-// new: the first token was "2" before programToken existed too.
-//
-// This test exists so the gap is closed on purpose. The day it fails, correct
-// TestProgramIsAProgram's claim as well as this assertion.
-func TestProgramIONumberIsAKnownGap(t *testing.T) {
-	raw, err := json.Marshal(map[string]string{"command": "2> out.txt ls"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := Derive("Bash", raw, []byte("key"))
-	if got.Program == nil || *got.Program != "2" {
-		t.Errorf("program for an fd-prefixed redirect is %v; this test pins \"2\" -- if that changed on purpose, update the invariant", got.Program)
+// This used to record "2", pinned as a known gap. Reading past it as an fd
+// would take an argument for the program whenever a command named 2 was meant,
+// so the honest answer is null.
+func TestProgramIONumberNamesNothing(t *testing.T) {
+	for _, cmd := range []string{"2> out.txt ls", "{fd}>out ls", ">/dev/null 2>&1 command -v git"} {
+		raw, err := json.Marshal(map[string]string{"command": cmd})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := Derive("Bash", raw, []byte("key")); got.Program != nil {
+			t.Errorf("program for %q is %q, want null", cmd, *got.Program)
+		}
 	}
 }
 

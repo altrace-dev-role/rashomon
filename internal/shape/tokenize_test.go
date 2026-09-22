@@ -50,12 +50,16 @@ func TestTokenize(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, marks, quoted, err := tokenizeQuoted(tc.in)
+			shaped, err := tokenizeShape(tc.in)
+			got := make([]string, len(shaped))
+			for k, s := range shaped {
+				got[k] = s.text
+			}
 			if tc.drop {
 				// Through programToken, which owns this behaviour now: the
 				// assignment prefix is skipped as part of finding the
 				// program, not by a separate pass.
-				if i, ok := programToken(got, marks, quoted); ok {
+				if i, ok := programToken(shaped); ok {
 					got = got[i:]
 				} else {
 					got = nil
