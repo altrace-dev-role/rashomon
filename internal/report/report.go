@@ -69,9 +69,6 @@ const (
 	ReasonDuplicateDeclarations = "duplicate_declarations"
 )
 
-// Reasons lists the coverage reason codes this package derives, as
-// store.Reasons lists the ones a record carries. Together they are the whole
-// vocabulary a reader of a report can meet.
 // knownLabel clamps a stored file_label to the vocabulary shape.Labels()
 // defines, mapping anything else to unknown.
 //
@@ -91,6 +88,9 @@ func knownLabel(v string) string {
 	return shape.LabelUnknown
 }
 
+// Reasons lists the coverage reason codes this package derives, as
+// store.Reasons lists the ones a record carries. Together they are the whole
+// vocabulary a reader of a report can meet.
 func Reasons() []string {
 	return []string{
 		ReasonRunNotClosed,
