@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -170,51 +172,188 @@ func reasonEnum(t *testing.T, defs map[string]any, def string) map[string]bool {
 }
 
 // TestStoreSchemaHasNoUncheckedReasonVocabulary: every reason vocabulary the
-// schema declares is one TestStoreSchemaReasonsAreTheCodeReasons compares.
+// schema declares, anywhere in the document, sits at a location
+// TestStoreSchemaReasonsAreTheCodeReasons actually reads -- and every location
+// it reads is one the schema declares.
 //
-// That test looks its vocabularies up by def. The walk it replaced found them
-// by what they were called -- any reason or reasons property, any *_reason
-// def -- so a vocabulary added later was checked without anyone remembering to
-// check it. A lookup checks only what it was told about: a new record type
-// with its own reason enum would be published unchecked, in either direction.
-// This keeps the discovery, and fails on anything the comparison misses.
+// That test looks its vocabularies up at fixed places: reasonEnum reads
+// properties.reason.enum on coverage, terminal and gap, and the def's own enum
+// on report_reason, and nothing else -- not a second *_reason property beside
+// reason, not a reasons array's items.enum, not anything outside $defs. The
+// walk it replaced found vocabularies by what they were called, so one added
+// later was checked without anyone remembering to check it; a fixed lookup
+// checks only what it was told about. This test restores the discovery and
+// compares at the granularity the lookup has: it records the JSON-pointer
+// path of every key named reason or reasons or ending in _reason across the
+// whole schema, and requires that set to equal the four paths above exactly.
+// A new reason key fails here until the comparison reads it and its path is
+// added to reasonVocabularyPaths.
+//
+// Its only signal is the key's name: a vocabulary published under a key that
+// is not reason-named is invisible to it, as it was to the walk it replaced.
 func TestStoreSchemaHasNoUncheckedReasonVocabulary(t *testing.T) {
-	compared := map[string]bool{"coverage": true, "terminal": true, "gap": true, "report_reason": true}
-
-	found := map[string]bool{}
-	for name, def := range schemaDefs(t) {
-		collectReasonDefs(def, name, name, found)
+	unchecked, missing := reasonVocabularyMismatches(readSchema(t))
+	for _, p := range unchecked {
+		t.Errorf("%s declares a reason vocabulary that TestStoreSchemaReasonsAreTheCodeReasons "+
+			"does not read, so it is published without being compared against the code; "+
+			"add the comparison, then add the path to reasonVocabularyPaths", p)
 	}
-	for name := range found {
-		if !compared[name] {
-			t.Errorf("$defs.%s declares a reason vocabulary that TestStoreSchemaReasonsAreTheCodeReasons "+
-				"does not compare against the code; add the comparison, then add it here", name)
+	for _, p := range missing {
+		t.Errorf("%s is read by TestStoreSchemaReasonsAreTheCodeReasons as a reason vocabulary, "+
+			"but the schema has no reason-named key there", p)
+	}
+}
+
+// reasonVocabularyPaths is the set of JSON-pointer paths reasonEnum reads, one
+// per vocabulary TestStoreSchemaReasonsAreTheCodeReasons compares. It has to
+// change together with reasonEnum and with that test's calls to it.
+var reasonVocabularyPaths = map[string]bool{
+	"/$defs/coverage/properties/reason": true,
+	"/$defs/terminal/properties/reason": true,
+	"/$defs/gap/properties/reason":      true,
+	"/$defs/report_reason":              true,
+}
+
+// reasonVocabularyMismatches returns, sorted, the reason-named paths in schema
+// that reasonVocabularyPaths does not list (unchecked) and the listed paths
+// the schema does not have (missing). It takes the decoded schema rather than
+// reading the file so the tripwire's own test can hand it a mutated copy.
+func reasonVocabularyMismatches(schema map[string]any) (unchecked, missing []string) {
+	found := map[string]bool{}
+	collectReasonPaths(schema, "", found)
+	for p := range found {
+		if !reasonVocabularyPaths[p] {
+			unchecked = append(unchecked, p)
 		}
 	}
-	for name := range compared {
-		if !found[name] {
-			t.Errorf("$defs.%s is compared as a reason vocabulary but declares none; "+
-				"the discovery below is not finding it", name)
+	for p := range reasonVocabularyPaths {
+		if !found[p] {
+			missing = append(missing, p)
+		}
+	}
+	sort.Strings(unchecked)
+	sort.Strings(missing)
+	return unchecked, missing
+}
+
+// collectReasonPaths records the JSON-pointer path (RFC 6901) of every object
+// key under node named reason or reasons or ending in _reason, whatever its
+// value, and descends into every object and array. A string that merely
+// equals "reason" -- an entry in a required list -- is a value, not a key, and
+// is not recorded.
+func collectReasonPaths(node any, path string, into map[string]bool) {
+	switch v := node.(type) {
+	case map[string]any:
+		for k, child := range v {
+			p := path + "/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(k)
+			if k == "reason" || k == "reasons" || strings.HasSuffix(k, "_reason") {
+				into[p] = true
+			}
+			collectReasonPaths(child, p, into)
+		}
+	case []any:
+		for i, child := range v {
+			collectReasonPaths(child, path+"/"+strconv.Itoa(i), into)
 		}
 	}
 }
 
-// collectReasonDefs records def when a reason-named key occurs anywhere under
-// it: a reason or reasons property, or a def whose own name ends in _reason.
-func collectReasonDefs(node any, def, key string, into map[string]bool) {
-	switch v := node.(type) {
-	case map[string]any:
-		if key == "reason" || key == "reasons" || strings.HasSuffix(key, "_reason") {
-			into[def] = true
-		}
-		for k, child := range v {
-			collectReasonDefs(child, def, k, into)
-		}
-	case []any:
-		for _, child := range v {
-			collectReasonDefs(child, def, key, into)
+// TestReasonVocabularyTripwireCatchesWhatTheComparisonSkips mutates a copy of
+// the real schema -- never the file -- in each of the ways a reason vocabulary
+// can be added where TestStoreSchemaReasonsAreTheCodeReasons does not look, and
+// requires the tripwire to name the new location. The last case goes the other
+// way: a vocabulary the comparison reads disappears.
+func TestReasonVocabularyTripwireCatchesWhatTheComparisonSkips(t *testing.T) {
+	cases := []struct {
+		name                       string
+		mutate                     func(schema map[string]any)
+		wantUnchecked, wantMissing string
+	}{
+		{
+			name: "a second reason property on a compared record",
+			mutate: func(s map[string]any) {
+				props := schemaObject(t, s, "$defs", "coverage", "properties")
+				props["pause_reason"] = map[string]any{"type": []any{"string", "null"}, "enum": []any{nil, "never_emitted_value"}}
+			},
+			wantUnchecked: "/$defs/coverage/properties/pause_reason",
+		},
+		{
+			name: "a reasons array whose vocabulary is items.enum",
+			mutate: func(s map[string]any) {
+				props := schemaObject(t, s, "$defs", "gap", "properties")
+				props["reasons"] = map[string]any{"type": "array", "items": map[string]any{"enum": []any{"never_emitted_value"}}}
+			},
+			wantUnchecked: "/$defs/gap/properties/reasons",
+		},
+		{
+			name: "a reason vocabulary outside $defs",
+			mutate: func(s map[string]any) {
+				s["properties"] = map[string]any{"top_reason": map[string]any{"enum": []any{"never_emitted_value"}}}
+			},
+			wantUnchecked: "/properties/top_reason",
+		},
+		{
+			name: "a compared vocabulary removed",
+			mutate: func(s map[string]any) {
+				delete(schemaObject(t, s, "$defs", "terminal", "properties"), "reason")
+			},
+			wantMissing: "/$defs/terminal/properties/reason",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			schema := copySchema(t, readSchema(t))
+			c.mutate(schema)
+			unchecked, missing := reasonVocabularyMismatches(schema)
+			if !containsString(unchecked, c.wantUnchecked) || !containsString(missing, c.wantMissing) {
+				t.Errorf("the tripwire reported unchecked %q and missing %q; want %q among the unchecked and %q among the missing",
+					unchecked, missing, c.wantUnchecked, c.wantMissing)
+			}
+		})
+	}
+}
+
+// containsString reports whether want is in list; an empty want is trivially
+// present, so a case that expects nothing in one direction does not check it.
+func containsString(list []string, want string) bool {
+	if want == "" {
+		return true
+	}
+	for _, s := range list {
+		if s == want {
+			return true
 		}
 	}
+	return false
+}
+
+// copySchema deep-copies a decoded schema by round-tripping it through JSON,
+// so a mutation of the copy can never reach readSchema's next caller.
+func copySchema(t *testing.T, schema map[string]any) map[string]any {
+	t.Helper()
+	body, err := json.Marshal(schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// schemaObject walks keys down from node and returns the object there, failing
+// the test if any step is not an object.
+func schemaObject(t *testing.T, node map[string]any, keys ...string) map[string]any {
+	t.Helper()
+	for _, k := range keys {
+		next, ok := node[k].(map[string]any)
+		if !ok {
+			t.Fatalf("the schema has no object at %q", k)
+		}
+		node = next
+	}
+	return node
 }
 
 // assertReasonVocabulary checks that a code-side reason list and the schema
