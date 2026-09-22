@@ -699,8 +699,8 @@ func cmdResume(stdout io.Writer) error {
 // Recording state words. RecordingState returns exactly one of these three,
 // and status must not invent a fourth: H-82 is the test that paused, absent
 // and unknown stay distinguishable, so "I turned it off" can never collapse
-// into "it was never installed" or the reverse. See this function's own
-// comment for exactly what status should render for each.
+// into "it was never installed" or the reverse. statusRecording is what
+// renders each of them.
 const (
 	RecordingActive        = "active"
 	RecordingPaused        = "paused"
@@ -708,18 +708,13 @@ const (
 )
 
 // RecordingState reports this machine's pause state for status to render
-// (Part 2). cmdStatus is not edited here -- a concurrent change owns it -- so
-// this is the function it must call instead, and exactly what each of the
-// three words above should print is:
-//
-//   - RecordingActive: a line saying recording is not paused, e.g.
-//     "recording: active".
-//   - RecordingPaused: "recording: paused (since <since, RFC3339>)".
-//   - RecordingPausedNoStore: "recording: paused, no store recorded here
-//     yet" -- since is still meaningful here and worth printing alongside it.
-//   - a non-nil err: "recording: unknown (state unreadable)", the same
-//     unresolved-vs-absent distinction statusUnreadable exists for elsewhere
-//     in this file.
+// (Part 2). It returns one of the three words above, the moment the pause
+// began (zero when not paused, or when the pause file holds no readable
+// instant), or an error when the pause file could not be read. statusRecording is the one place that turns these into the status
+// line, and its own code is the source of truth for the wording; this
+// function decides only which state holds. An error must render as unknown,
+// never as active: the same unresolved-vs-absent distinction statusUnreadable
+// exists for elsewhere in this file.
 //
 // It is a plain read, like storeInstalled above: os.Stat and os.ReadFile,
 // nothing that opens or creates a store. That is what lets it answer "paused"
