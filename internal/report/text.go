@@ -198,20 +198,21 @@ func set(ids []string) string {
 // report said none of it. A reader cannot act on a vocabulary they have to go
 // and look up.
 var reasonText = map[string]string{
-	"probe_absent":          "a session-start record or marker is missing: the recorder was installed mid-session, its start hook did not run, failed or ran while paused, or the size cap evicted the run",
-	"probe_unresolved":      "the session-start probe could not be read, so the start of this session is unaccounted for",
-	"run_not_closed":        "no session-end was recorded: the session is still open, it ended without one, or its end hook ran while `rashomon pause` was in effect",
-	"records_unreadable":    "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted",
-	"transcript_mismatch":   "the transcript and this store disagree about which tool calls were made; see the two `missing from` lines below",
-	"execution_mismatch":    "the transcript holds results for calls this store recorded no execution for",
-	"gap":                   "a gap record marks a stretch this store does not hold: records removed by `forget` or the size cap, or a window `rashomon pause` left unrecorded",
-	"recording_paused":      "a hook ran while `rashomon pause` was in effect, so what it would have recorded (a tool call, its result, or the session's start or end) was deliberately not recorded",
-	"internal_error":        "a hook invocation failed inside this program, so what it should have recorded is missing",
-	"lock_timeout":          "a hook could not take the store lock in time, so its record went to the spill file or was lost",
-	"terminated_by_signal":  "a hook was killed by a signal before it finished",
-	"unterminated_entry":    "a declaration was never closed, so the call's end was not observed",
-	"hook_entry_absent":     "the recorder's own entry was missing from the settings file when the hook ran, or present but altered (matcher, hook or timeout)",
-	"hook_entry_unresolved": "the settings file could not be read, so whether the recorder was installed is unknown",
+	"probe_absent":           "a session-start record or marker is missing: the recorder was installed mid-session, its start hook did not run, failed or ran while paused, or the size cap evicted the run",
+	"probe_unresolved":       "the session-start probe could not be read, so the start of this session is unaccounted for",
+	"run_not_closed":         "no session-end was recorded: the session is still open, it ended without one, or its end hook ran while `rashomon pause` was in effect",
+	"records_unreadable":     "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted",
+	"transcript_mismatch":    "the transcript and this store disagree about which tool calls were made; see the two `missing from` lines below",
+	"execution_mismatch":     "the transcript holds results for calls this store recorded no execution for",
+	"gap":                    "a gap record marks a stretch this store does not hold: records removed by `forget` or the size cap, or a window `rashomon pause` left unrecorded",
+	"recording_paused":       "a hook ran while `rashomon pause` was in effect, so what it would have recorded (a tool call, its result, or the session's start or end) was deliberately not recorded",
+	"duplicate_declarations": "more declarations than distinct tool calls: more than one recorder wrote into this run, and the counts here include every copy",
+	"internal_error":         "a hook invocation failed inside this program, so what it should have recorded is missing",
+	"lock_timeout":           "a hook could not take the store lock in time, so its record went to the spill file or was lost",
+	"terminated_by_signal":   "a hook was killed by a signal before it finished",
+	"unterminated_entry":     "a declaration was never closed, so the call's end was not observed",
+	"hook_entry_absent":      "neither the settings file nor the plugin declared the recorder's entry when the hook ran",
+	"hook_entry_unresolved":  "the settings file or the plugin could not be read, so whether the recorder was installed is unknown",
 }
 
 // writeReasons renders the coverage reasons, one per line with its meaning.

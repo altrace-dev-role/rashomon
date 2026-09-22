@@ -199,6 +199,10 @@ m("H-13 a redirect skips every operator before its target", "internal/shape/shap
 m("H-14 argc counts a leading assignment prefix again", "internal/shape/shape.go",
   "\t\tn := len(dropLeadingAssignments(toks))", "\t\tn := len(toks)",
   "TestArgcExcludesLeadingAssignments")
+m("H-71 the plugin runs a model beside the recorder", "plugin/hooks/hooks.json",
+  "\"args\": [\"hook\"],\n            \"timeout\": 5\n          }",
+  "\"args\": [\"hook\"],\n            \"timeout\": 5\n          },\n          {\"type\": \"prompt\", \"prompt\": \"Is this call safe?\"}",
+  "TestH71_PluginHooksRunOnlyTheRecorder")
 m("H-14 untokenizable command records argc 0", "internal/shape/shape.go",
   "\tif err == nil {\n\t\tn := len(dropLeadingAssignments(toks))\n\t\ts.Argc = &n\n\t}", "\tn := len(dropLeadingAssignments(toks))\n\tif err != nil {\n\t\tn = 0\n\t}\n\ts.Argc = &n", "TestH14_Untokenizable")
 m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n\n\tif records != nil && removedRec > 0 {", "\tif records != nil && removedRec > 0 {", "TestH15_ForgetLeavesAGap")

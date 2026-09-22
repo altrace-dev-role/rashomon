@@ -32,7 +32,9 @@ type Resolution struct {
 // check is NOT a fresh read of enabledPlugins -- see install.PluginPresent for
 // why that would only prove "the file currently says enabled" and not "this
 // session's hook set includes it" -- it is this process asking whether it is
-// itself the plugin's own hook binary, which is proof rather than a guess.
+// itself the plugin's own hook binary. That is evidence from where this
+// process runs rather than a config file's opinion of itself -- stronger, but
+// not proof: the same binary run by hand from inside the plugin says the same.
 //
 // This used to be a narrower claim: a session started under a settings file
 // or a CLAUDE_CONFIG_DIR the probe does not read "records its declarations
