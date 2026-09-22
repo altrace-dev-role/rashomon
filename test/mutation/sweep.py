@@ -167,18 +167,23 @@ m("the report counts an unknown program among the real ones", "internal/report/r
 m("the report stops counting programs at all", "internal/report/report.go",
   "\t\t\tsess.Declarations.ByProgram[*d.Shape.Program]++", "\t\t\t_ = d.Shape.Program",
   "TestByProgramAndVerb")
+m("H-13 a word the tokenizer cannot vouch for is read as the program", "internal/shape/shape.go",
+  "\t\tcase t.opaque, isComment(t):", "\t\tcase isComment(t):", "TestNoCorpusLineLeaksIntoProgram")
+m("H-13 the tokenizer never marks an expansion opaque", "internal/shape/tokenize.go",
+  "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\topaque = true\n\t\t\t}",
+  "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\t_ = opaque\n\t\t\t}", "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 program is whatever token came first, operator or not", "internal/shape/shape.go",
-  "\t\ttok := toks[i]\n\t\tif marked(i) {",
-  "\t\ttok := toks[i]\n\t\tif false && marked(i) {", "TestProgramIsAProgram")
+  "\t\tt := toks[i]\n\t\tif t.meta {",
+  "\t\tt := toks[i]\n\t\tif false && t.meta {", "TestProgramIsAProgram")
 m("H-13 a split redirect operator's second half is taken for its target", "internal/shape/shape.go",
-  "marked(i+1) && continuesRedirect(op, toks[i+1]); n++ {", "marked(i+1) && op == \"\"; n++ {",
+  "toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {", "toks[i+1].meta && op == \"\"; n++ {",
   "TestH13_CanaryNeverReachesDisk")
 m("H-13 a redirect takes the next token for its target, word or not", "internal/shape/shape.go",
-  "\tif j := i + 1; j < len(toks) && !marked(j) {", "\tif j := i + 1; j < len(toks) {",
+  "\tif i+1 >= len(toks) || toks[i+1].meta {", "\tif i+1 >= len(toks) {",
   "TestProgramIsAProgram")
 m("H-13 a redirect skips every operator before its target", "internal/shape/shape.go",
-  "\tfor n := 0; n < 2 && marked(i+1) && continuesRedirect(op, toks[i+1]); n++ {\n\t\ti++\n\t}",
-  "\tfor marked(i + 1) {\n\t\ti++\n\t}\n\t_ = op",
+  "\tfor n := 0; n < 2 && i+1 < len(toks) && toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {\n\t\ti++\n\t}",
+  "\tfor i+1 < len(toks) && toks[i+1].meta {\n\t\ti++\n\t}\n\t_ = op",
   "TestH13_CanaryNeverReachesDisk")
 m("H-14 argc counts a leading assignment prefix again", "internal/shape/shape.go",
   "\t\tn := len(dropLeadingAssignments(toks))", "\t\tn := len(toks)",
@@ -457,8 +462,8 @@ m("H-3  executable path installed unquoted", "internal/install/install.go",
 m("tokenizer does not split on metacharacters", "internal/shape/tokenize.go",
   "\t\tcase isMeta(c):\n", "\t\tcase isMeta(c) && false:\n", "TestTokenize")
 m("tokenizer emits the token an unterminated quote interrupted", "internal/shape/tokenize.go",
-  "\t\t\tif !closed {\n\t\t\t\treturn toks, meta, quoted, errUnterminated",
-  "\t\t\tif !closed {\n\t\t\t\tstarted = true\n\t\t\t\tflush()\n\t\t\t\treturn toks, meta, quoted, errUnterminated", "TestTokenize")
+  "\t\t\tif !closed {\n\t\t\t\treturn toks, errUnterminated",
+  "\t\t\tif !closed {\n\t\t\t\tstarted = true\n\t\t\t\tflush()\n\t\t\t\treturn toks, errUnterminated", "TestTokenize")
 m("settings accepts a duplicate key", "internal/settings/document.go",
   "\t\tif seen[key] {\n\t\t\treturn nil, fmt.Errorf(\"duplicate key %q\", key)\n\t\t}\n\t\tseen[key] = true", "\t\tseen[key] = true",
   "TestParseRefuses|TestHookEntriesRefusesDuplicateEventKeys")
