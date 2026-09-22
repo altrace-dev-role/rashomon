@@ -134,7 +134,10 @@ type Declarations struct {
 	// now they were reachable from `--chain` alone, one call at a time.
 	//
 	// ProgramsUnknown counts the Bash calls whose program could not be told:
-	// a line that would not tokenize, or one naming no program at all. It is
+	// a first word cut off by an unterminated quote, a line with no word in
+	// command position, one beginning with something shape does not parse
+	// (a here-document, arithmetic, an array), or an input with no command
+	// string. A line that fails to tokenize later still names its program. It is
 	// a count and not a bucket in ByProgram, because "unknown" is not a
 	// program and a reader scanning the list must not find it sitting among
 	// real ones.

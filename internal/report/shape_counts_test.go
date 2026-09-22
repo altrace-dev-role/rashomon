@@ -89,9 +89,10 @@ func TestNonShellToolsAreNotCountedAsMissingAProgram(t *testing.T) {
 // TestProgramsAllUntoldSaysSo: when no shell call's program could be told, the
 // line says it could not be told -- not that the calls named none.
 //
-// programs_unknown counts two things: a line that would not tokenize and a
-// line naming no program. "named none" is true of only the second, and it
-// asserts a fact about a line we could not read.
+// programs_unknown counts every Bash call whose program could not be found,
+// including one whose first word an unterminated quote cut off. "named none"
+// is true of only some of those, and asserts a fact about a line we could not
+// read.
 func TestProgramsAllUntoldSaysSo(t *testing.T) {
 	sess := build(&store.Run{Declarations: []store.Declaration{
 		bashCall("a", "", "execute"),

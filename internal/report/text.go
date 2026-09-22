@@ -45,11 +45,13 @@ func WithChain() TextOption {
 
 // Text renders a report for a terminal.
 //
-// Nothing beyond the store's own fields is printed, and no record has a field
-// that carries a command line or a tool response. The nearest is a program
-// name: the base name of the word a shell line runs, which is the one word of
-// a command line the store keeps, and which `by program` prints for every
-// session.
+// No record has a field that carries a command line or a tool response, and
+// nothing is printed beyond the store's fields except one thing read when the
+// report is rendered: the agent's final message, from the transcript, which
+// --redact drops whole. Two things ARE taken from a command line: the program
+// name -- the base name of the word in command position -- which `by program`
+// prints for every session, and hostnames and ssh destinations (shape.Hosts),
+// which the destinations section prints and --redact digests.
 func Text(w io.Writer, rep *Report, opts ...TextOption) error {
 	var cfg textOptions
 	for _, o := range opts {
@@ -339,9 +341,11 @@ func byName(counts map[string]int) string {
 // list for what ran must not meet it sitting between `git` and `go` as though
 // it were one more command.
 //
-// untold counts two things -- a line that would not tokenize and a line naming
-// no program -- so it is rendered as "could not be told" throughout, never as
-// "named none", which is true of only the second.
+// untold counts the Bash calls whose program could not be found: a first word
+// cut off by an unterminated quote, a line with no word in command position,
+// one that begins with something the program search does not parse, or an
+// input with no command string. So it is rendered as "could not be told"
+// throughout, never as "named none", which is true of only some of those.
 func programs(counts map[string]int, untold int) string {
 	if len(counts) == 0 && untold == 0 {
 		return none
