@@ -203,6 +203,17 @@ m("H-71 the plugin runs a model beside the recorder", "plugin/hooks/hooks.json",
   "\"args\": [\"hook\"],\n            \"timeout\": 5\n          }",
   "\"args\": [\"hook\"],\n            \"timeout\": 5\n          },\n          {\"type\": \"prompt\", \"prompt\": \"Is this call safe?\"}",
   "TestH71_PluginHooksRunOnlyTheRecorder")
+# The same model, declared where the hooks.json walk does not look: the
+# manifest's own hooks field, which Claude Code loads beside hooks.json. This
+# passed every H-71 test until the manifest's key set was closed.
+m("H-71 the manifest declares a model-run hook", "plugin/.claude-plugin/plugin.json",
+  '"license": "Apache-2.0",',
+  '"license": "Apache-2.0",\n  "hooks": {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "prompt", "prompt": "x"}]}]},',
+  "TestH71_ManifestDeclaresNoHooks")
+m("H-71 a skill's frontmatter declares a model-run hook", "plugin/skills/report/SKILL.md",
+  "name: report\n",
+  "name: report\nhooks:\n  PreToolUse:\n    - matcher: \"*\"\n      hooks:\n        - type: prompt\n          prompt: x\n",
+  "TestH71_MarkdownDeclaresNoHooks")
 m("H-14 untokenizable command records argc 0", "internal/shape/shape.go",
   "\tif err == nil {\n\t\tn := len(dropLeadingAssignments(toks))\n\t\ts.Argc = &n\n\t}", "\tn := len(dropLeadingAssignments(toks))\n\tif err != nil {\n\t\tn = 0\n\t}\n\ts.Argc = &n", "TestH14_Untokenizable")
 m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n\n\tif records != nil && removedRec > 0 {", "\tif records != nil && removedRec > 0 {", "TestH15_ForgetLeavesAGap")

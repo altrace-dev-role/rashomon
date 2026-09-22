@@ -109,6 +109,129 @@ func TestH71_WatchInstallsOnlyCommands(t *testing.T) {
 	}
 }
 
+// The keys plugin/.claude-plugin/plugin.json may carry: exactly the ones it has
+// today.
+//
+// hooks.json is not the only place a plugin declares hooks. The manifest's own
+// `hooks` field takes inline hook configuration or paths to more hook files,
+// and Claude Code loads those alongside hooks/hooks.json -- so a prompt hook
+// added there puts a model in the path of every call while the walk above,
+// which reads hooks.json only, stays green. That was measured, not supposed: a
+// PreToolUse prompt hook in the manifest passed every H-71 test. Forbidding
+// just "hooks" would miss the next manifest field that points at runnable
+// configuration (the reference also lists paths for commands, agents, MCP
+// servers), so the set is closed, like pluginHookKeys: a key this test has not
+// seen fails until someone decides here what it does.
+var pluginManifestKeys = map[string]bool{
+	"name": true, "version": true, "description": true, "author": true,
+	"homepage": true, "repository": true, "license": true, "defaultEnabled": true,
+}
+
+// TestH71_ManifestDeclaresNoHooks: the manifest carries no key outside the set
+// above, and in particular no `hooks`.
+func TestH71_ManifestDeclaresNoHooks(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(moduleRoot, "plugin", ".claude-plugin", "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc) == 0 {
+		t.Fatal("found no keys in plugin.json; the read is not finding them")
+	}
+	for k := range doc {
+		switch {
+		case k == "hooks":
+			t.Errorf("plugin.json declares hooks; Claude Code runs them beside hooks/hooks.json, " +
+				"where the H-71 walk does not look, and a prompt or agent hook there is run by a model")
+		case !pluginManifestKeys[k]:
+			t.Errorf("plugin.json carries %q, a key this test does not know; "+
+				"it may point Claude Code at something it runs", k)
+		}
+	}
+}
+
+// TestH71_MarkdownDeclaresNoHooks: no markdown file the plugin ships declares
+// hooks in its frontmatter.
+//
+// A skill's frontmatter may carry a `hooks` key (so may an agent's), and those
+// hooks run while the skill is active -- narrower than every call, but still a
+// model-run hook the walk above cannot see. Every .md under plugin/ is read,
+// not only skills/*/SKILL.md, because commands/ and agents/ are discovered by
+// location with no manifest entry to catch. There is no YAML parser in this
+// module, so the frontmatter is read line by line and fails closed: a
+// top-level line that is not a plain `key:` (a quoted key, a flow mapping, a
+// `?` complex key -- all ways YAML can spell `hooks`) fails as unreadable
+// rather than being skipped.
+func TestH71_MarkdownDeclaresNoHooks(t *testing.T) {
+	root := filepath.Join(moduleRoot, "plugin")
+	skills := 0
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || filepath.Ext(path) != ".md" {
+			return nil
+		}
+		if filepath.Base(path) == "SKILL.md" {
+			skills++
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		for _, k := range frontmatterKeys(t, rel, string(body)) {
+			if k == "hooks" {
+				t.Errorf("%s declares hooks in its frontmatter; they run while it is active, "+
+					"where the H-71 walk does not look", rel)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skills == 0 {
+		t.Fatal("found no SKILL.md under plugin/; the walk is not finding them")
+	}
+}
+
+// frontmatterKeys returns the top-level keys of body's YAML frontmatter, or
+// none if it has no frontmatter. A top-level line it cannot read as a plain
+// key fails the test instead of being skipped.
+func frontmatterKeys(t *testing.T, name, body string) []string {
+	t.Helper()
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return nil
+	}
+	var keys []string
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "---" {
+			return keys
+		}
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, " ") ||
+			strings.HasPrefix(line, "\t") || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, _, ok := strings.Cut(line, ":")
+		if !ok || k == "" || strings.ContainsAny(k, " \t\"'{}[]?,&*!|>%@`") {
+			t.Errorf("%s: frontmatter line %q is not a plain key this test can read; "+
+				"it could spell hooks", name, line)
+			continue
+		}
+		keys = append(keys, k)
+	}
+	t.Errorf("%s: frontmatter opens with --- and never closes; this test cannot tell where it ends", name)
+	return keys
+}
+
 // pluginHookEvents walks plugin/hooks/hooks.json, calls visit on every hook
 // object, and returns the sorted events that declare at least one.
 func pluginHookEvents(t *testing.T, visit func(event string, hook map[string]any)) []string {
