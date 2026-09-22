@@ -757,6 +757,7 @@ func cmdStatus(stdout io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "store: %s\n", root)
+	statusRecording(stdout)
 
 	installID := ""
 	if _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {
@@ -780,6 +781,30 @@ func cmdStatus(stdout io.Writer) error {
 		return err
 	}
 	return statusHooks(stdout)
+}
+
+// statusRecording says whether hooks will record, which is the one thing pause
+// changes and the first thing a user who ran it will ask. A pause file that
+// cannot be read is reported as unknown, never as active: hooks fall back to
+// recording in that case, but status did not see the answer and does not
+// claim one.
+func statusRecording(stdout io.Writer) {
+	state, since, err := RecordingState()
+	switch {
+	case err != nil:
+		fmt.Fprintf(stdout, "  recording: %s\n", statusUnknown)
+	case state == RecordingActive:
+		fmt.Fprintf(stdout, "  recording: %s\n", RecordingActive)
+	default:
+		line := RecordingPaused
+		if !since.IsZero() {
+			line += " since " + since.UTC().Format(time.RFC3339)
+		}
+		if state == RecordingPausedNoStore {
+			line += " (no store recorded here yet)"
+		}
+		fmt.Fprintf(stdout, "  recording: %s\n", line)
+	}
 }
 
 // The words status prints for a thing it could not resolve. A status that

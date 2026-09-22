@@ -3,6 +3,7 @@ package acceptance
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -153,4 +154,51 @@ func withoutEvent(t *testing.T, body, event string) string {
 		t.Fatal(err)
 	}
 	return string(out) + "\n"
+}
+
+// TestStatus_SaysWhetherRecordingIsPaused: status is what a user runs to ask
+// whether anything is being recorded, so it has to say when the answer is "no,
+// on purpose". A pause that status cannot see reads, from the one place a user
+// looks, exactly like recording that works.
+func TestStatus_SaysWhetherRecordingIsPaused(t *testing.T) {
+	e := newEnv(t)
+	if res := e.watch(); res.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if got := fieldLine(t, e.status().stdout, "recording"); got != "active" {
+		t.Errorf("recording reads %q before any pause, want active", got)
+	}
+	if res := e.pause(); res.exitCode != 0 {
+		t.Fatalf("pause: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if got := fieldLine(t, e.status().stdout, "recording"); !strings.HasPrefix(got, "paused since ") {
+		t.Errorf("recording reads %q while paused, want it to say paused and since when", got)
+	}
+	if res := e.resume(); res.exitCode != 0 {
+		t.Fatalf("resume: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if got := fieldLine(t, e.status().stdout, "recording"); got != "active" {
+		t.Errorf("recording reads %q after resume, want active", got)
+	}
+}
+
+// TestStatus_AnUnreadablePauseFileIsUnknown: status must not render a pause
+// state it could not read as "active", which is the one state the user would
+// act on by doing nothing.
+func TestStatus_AnUnreadablePauseFileIsUnknown(t *testing.T) {
+	e := newEnv(t)
+	if res := e.watch(); res.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	// A directory where the file should be: present, and unreadable as one.
+	if err := os.Mkdir(filepath.Join(e.home, "pause"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	res := e.status()
+	if res.exitCode != 0 {
+		t.Fatalf("status: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if got := fieldLine(t, res.stdout, "recording"); got != "unknown" {
+		t.Errorf("recording reads %q with an unreadable pause file, want unknown", got)
+	}
 }
