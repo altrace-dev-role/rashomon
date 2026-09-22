@@ -170,8 +170,21 @@ m("the report stops counting programs at all", "internal/report/report.go",
 m("H-13 program is whatever token came first, operator or not", "internal/shape/shape.go",
   "\t\tcase isMetaTok, toks[i] == \"{\", isAssignment(toks[i]):\n\t\t\t// Skipped.",
   "\t\tcase false:\n\t\t\t// Skipped.", "TestProgramIsAProgram")
+m("H-13 a split redirect operator's second half is taken for its target", "internal/shape/shape.go",
+  "marked(j) && splitOperator(toks[i], toks[j]) {", "marked(j) && false {",
+  "TestH13_CanaryNeverReachesDisk")
+m("H-13 a redirect takes the next token for its target, word or not", "internal/shape/shape.go",
+  "\tif j := i + 1; j < len(toks) && !marked(j) {", "\tif j := i + 1; j < len(toks) {",
+  "TestProgramIsAProgram")
+m("H-13 a redirect skips every operator before its target", "internal/shape/shape.go",
+  "\tif j := i + 1; j < len(toks) && marked(j) && splitOperator(toks[i], toks[j]) {\n\t\ti = j\n\t}",
+  "\tfor i+1 < len(toks) && marked(i+1) {\n\t\ti++\n\t}",
+  "TestH13_CanaryNeverReachesDisk")
+m("H-14 argc counts a leading assignment prefix again", "internal/shape/shape.go",
+  "\t\tn := len(dropLeadingAssignments(toks))", "\t\tn := len(toks)",
+  "TestArgcExcludesLeadingAssignments")
 m("H-14 untokenizable command records argc 0", "internal/shape/shape.go",
-  "\tif err == nil {\n\t\tn := len(toks)\n\t\ts.Argc = &n\n\t}", "\tn := len(toks)\n\tif err != nil {\n\t\tn = 0\n\t}\n\ts.Argc = &n", "TestH14_Untokenizable")
+  "\tif err == nil {\n\t\tn := len(dropLeadingAssignments(toks))\n\t\ts.Argc = &n\n\t}", "\tn := len(dropLeadingAssignments(toks))\n\tif err != nil {\n\t\tn = 0\n\t}\n\ts.Argc = &n", "TestH14_Untokenizable")
 m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n\n\tif records != nil && removedRec > 0 {", "\tif records != nil && removedRec > 0 {", "TestH15_ForgetLeavesAGap")
 m("H-15 eviction deletes without a gap record", "internal/store/gaps.go", "\t\tif _, err := gf.Write(line); err != nil {", "\t\tif _, err := gf.Write(line[:0]); err != nil {", "TestH15_SizeCap")
 m("H-15 eviction does not count the executions it removed", "internal/store/gaps.go",

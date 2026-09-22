@@ -80,10 +80,24 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 		s.VerbClass = verbForProgram(prog)
 	}
 	if err == nil {
-		n := len(toks)
+		n := len(dropLeadingAssignments(toks))
 		s.Argc = &n
 	}
 	return s
+}
+
+// dropLeadingAssignments removes a `FOO=bar` prefix, which is environment
+// setting rather than the program being run. Only the token count changes; no
+// assignment value is read.
+//
+// argc has always been counted without this prefix. Finding the program no
+// longer needs it dropped, but the count still does: without it the same
+// command counts differently depending on which build recorded it.
+func dropLeadingAssignments(toks []string) []string {
+	for len(toks) > 0 && isAssignment(toks[0]) {
+		toks = toks[1:]
+	}
+	return toks
 }
 
 // commandField reports the `command` string of a tool input, which is the only
@@ -167,7 +181,7 @@ func programToken(toks []string, meta []bool) (int, bool) {
 		switch {
 		case isMetaTok && isRedirect(toks[i]):
 			// The operator and the filename after it.
-			i++
+			i = redirectEnd(toks, meta, i)
 		case isMetaTok, toks[i] == "{", isAssignment(toks[i]):
 			// Skipped.
 		default:
@@ -175,6 +189,42 @@ func programToken(toks []string, meta []bool) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// redirectEnd returns the index of the last token of the redirection whose
+// operator is at i: the operator, the second half of an operator the tokenizer
+// emitted as two tokens, and the word it redirects to.
+//
+// The tokenizer doubles a metacharacter only when the next byte is the same
+// byte, so `>&`, `>|`, `<>`, `<&` and a here-string's `<<<` each arrive as two
+// meta tokens. Taking "the operator and the next token" there takes the
+// operator's second half for the target, and leaves the real target -- a
+// filename, or for a here-string literal text -- to be read as the program.
+// That shipped once and put a redirect target's filename in the store.
+//
+// The target is taken only if it is a word. Anything else is not a target: a
+// `(` after `<` opens a process substitution whose command is the next word,
+// and a separator ends the command, putting the word after it in command
+// position. Consuming either would read the word after THAT as the program.
+func redirectEnd(toks []string, meta []bool, i int) int {
+	marked := func(j int) bool { return j < len(meta) && meta[j] }
+	if j := i + 1; j < len(toks) && marked(j) && splitOperator(toks[i], toks[j]) {
+		i = j
+	}
+	if j := i + 1; j < len(toks) && !marked(j) {
+		i = j
+	}
+	return i
+}
+
+// splitOperator reports whether op and next are the two halves of one
+// redirection operator that the tokenizer emitted as two tokens.
+func splitOperator(op, next string) bool {
+	switch op + next {
+	case ">&", ">|", "<>", "<&", "<<<":
+		return true
+	}
+	return false
 }
 
 // isRedirect reports whether a metacharacter token redirects, and so is
