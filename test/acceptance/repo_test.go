@@ -169,6 +169,54 @@ func reasonEnum(t *testing.T, defs map[string]any, def string) map[string]bool {
 	return out
 }
 
+// TestStoreSchemaHasNoUncheckedReasonVocabulary: every reason vocabulary the
+// schema declares is one TestStoreSchemaReasonsAreTheCodeReasons compares.
+//
+// That test looks its vocabularies up by def. The walk it replaced found them
+// by what they were called -- any reason or reasons property, any *_reason
+// def -- so a vocabulary added later was checked without anyone remembering to
+// check it. A lookup checks only what it was told about: a new record type
+// with its own reason enum would be published unchecked, in either direction.
+// This keeps the discovery, and fails on anything the comparison misses.
+func TestStoreSchemaHasNoUncheckedReasonVocabulary(t *testing.T) {
+	compared := map[string]bool{"coverage": true, "terminal": true, "gap": true, "report_reason": true}
+
+	found := map[string]bool{}
+	for name, def := range schemaDefs(t) {
+		collectReasonDefs(def, name, name, found)
+	}
+	for name := range found {
+		if !compared[name] {
+			t.Errorf("$defs.%s declares a reason vocabulary that TestStoreSchemaReasonsAreTheCodeReasons "+
+				"does not compare against the code; add the comparison, then add it here", name)
+		}
+	}
+	for name := range compared {
+		if !found[name] {
+			t.Errorf("$defs.%s is compared as a reason vocabulary but declares none; "+
+				"the discovery below is not finding it", name)
+		}
+	}
+}
+
+// collectReasonDefs records def when a reason-named key occurs anywhere under
+// it: a reason or reasons property, or a def whose own name ends in _reason.
+func collectReasonDefs(node any, def, key string, into map[string]bool) {
+	switch v := node.(type) {
+	case map[string]any:
+		if key == "reason" || key == "reasons" || strings.HasSuffix(key, "_reason") {
+			into[def] = true
+		}
+		for k, child := range v {
+			collectReasonDefs(child, def, k, into)
+		}
+	case []any:
+		for _, child := range v {
+			collectReasonDefs(child, def, key, into)
+		}
+	}
+}
+
 // assertReasonVocabulary checks that a code-side reason list and the schema
 // enum meant to publish it name exactly the same set. Kept as one helper
 // used three times, rather than three inline loops, so a fix to the
