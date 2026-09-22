@@ -89,59 +89,94 @@ func (s *Store) ReadRunDir(name string) (*Run, error) {
 	dir := filepath.Join(s.root, dirRuns, name)
 	run := &Run{Dir: name}
 
-	classify := func(line []byte) {
-		var head struct {
-			Type          string `json:"type"`
-			SchemaVersion int    `json:"schema_version"`
-		}
-		// Accepts, not equality against SchemaVersion: a store written before
-		// the v2 fields existed is still readable, and equality here would have
-		// silently skipped every record already on disk the moment the writer
-		// moved on.
-		if json.Unmarshal(line, &head) != nil || !Accepts(head.SchemaVersion) {
-			run.Skipped++
-			return
-		}
-		switch head.Type {
-		case TypeDeclaration:
-			var rec Declaration
-			if json.Unmarshal(line, &rec) != nil {
-				run.Skipped++
-				return
-			}
-			run.Declarations = append(run.Declarations, rec)
-		case TypeExecution:
-			var rec Execution
-			if json.Unmarshal(line, &rec) != nil {
-				run.Skipped++
-				return
-			}
-			run.Executions = append(run.Executions, rec)
-		case TypeTerminal:
-			var rec Terminal
-			if json.Unmarshal(line, &rec) != nil {
-				run.Skipped++
-				return
-			}
-			run.Terminals = append(run.Terminals, rec)
-		case TypeCoverage:
-			var rec Coverage
-			if json.Unmarshal(line, &rec) != nil {
-				run.Skipped++
-				return
-			}
-			run.Coverage = append(run.Coverage, rec)
-		default:
-			run.Skipped++
-		}
-	}
-
-	for _, name := range []string{FileRecords, FileSpill, FileCoverage} {
-		if err := eachLine(filepath.Join(dir, name), classify); err != nil {
+	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
+		if err := eachLine(filepath.Join(dir, fname), func(line []byte) { classifyRunLine(run, line) }); err != nil {
 			return nil, err
 		}
 	}
 	return run, nil
+}
+
+// ReadRunConsistent reads one session's records the same way ReadRunDir does,
+// except each file is read under a short, best-effort lock against the same
+// flock a writer takes in appendOrdered/appendLine.
+//
+// ReadRunDir takes no lock at all, which was always safe for its one caller:
+// `report` runs after the fact, once a session is effectively over, so there
+// is nothing left mid-append to race. A turn digest is read at Stop, while a
+// backgrounded tool call or a concurrent subagent can still be appending to
+// this exact run directory, and a reader with no lock can observe a line
+// while its write is in flight.
+//
+// budget is deliberately NOT lockBudget (2s): that number bounds how long a
+// WRITER may starve a hook's own record, and a reader borrowing it could stall
+// for two seconds on every call, which is the opposite of a command with a
+// 50ms ceiling. A lock this reader cannot get within budget is not fatal --
+// the read proceeds without it, exactly as ReadRunDir always has, and a line
+// actually caught mid-write still lands in Skipped rather than being counted
+// as something it is not.
+func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run, error) {
+	name := segment(sessionID)
+	dir := filepath.Join(s.root, dirRuns, name)
+	run := &Run{Dir: name}
+
+	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
+		err := eachLineLocked(filepath.Join(dir, fname), budget, func(line []byte) { classifyRunLine(run, line) })
+		if err != nil {
+			return nil, err
+		}
+	}
+	return run, nil
+}
+
+// classifyRunLine parses one NDJSON line into the run it belongs to. Shared by
+// ReadRunDir and ReadRunConsistent so the two read paths cannot drift on what
+// a record type or an unrecognised schema version means.
+func classifyRunLine(run *Run, line []byte) {
+	var head struct {
+		Type          string `json:"type"`
+		SchemaVersion int    `json:"schema_version"`
+	}
+	// Accepts, not equality against SchemaVersion: a store written before
+	// the v2 fields existed is still readable, and equality here would have
+	// silently skipped every record already on disk the moment the writer
+	// moved on.
+	if json.Unmarshal(line, &head) != nil || !Accepts(head.SchemaVersion) {
+		run.Skipped++
+		return
+	}
+	switch head.Type {
+	case TypeDeclaration:
+		var rec Declaration
+		if json.Unmarshal(line, &rec) != nil {
+			run.Skipped++
+			return
+		}
+		run.Declarations = append(run.Declarations, rec)
+	case TypeExecution:
+		var rec Execution
+		if json.Unmarshal(line, &rec) != nil {
+			run.Skipped++
+			return
+		}
+		run.Executions = append(run.Executions, rec)
+	case TypeTerminal:
+		var rec Terminal
+		if json.Unmarshal(line, &rec) != nil {
+			run.Skipped++
+			return
+		}
+		run.Terminals = append(run.Terminals, rec)
+	case TypeCoverage:
+		var rec Coverage
+		if json.Unmarshal(line, &rec) != nil {
+			run.Skipped++
+			return
+		}
+		run.Coverage = append(run.Coverage, rec)
+	default:
+		run.Skipped++
+	}
 }
 
 // ReadGaps reads every gap record in the store.
@@ -167,7 +202,36 @@ func eachLine(path string, fn func(line []byte)) error {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // read-only
+	return scanLines(f, fn)
+}
 
+// eachLineLocked is eachLine under a short, best-effort exclusive lock against
+// the same flock a writer takes -- see ReadRunConsistent's doc for why a
+// digest needs this and report never has.
+//
+// A lock this reader could not get within budget is not treated as a reason
+// to fail: the scan below then runs exactly as eachLine's always has, and a
+// line actually caught mid-write still lands in Skipped rather than being
+// silently mis-read as something it is not.
+func eachLineLocked(path string, budget time.Duration, fn func(line []byte)) error {
+	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer f.Close() //nolint:errcheck // read-only
+
+	if unlock, lerr := lockFile(f, budget); lerr == nil {
+		defer unlock()
+	}
+	return scanLines(f, fn)
+}
+
+// scanLines is the NDJSON scan itself, shared by eachLine and eachLineLocked
+// so the two differ only in whether a lock was taken first.
+func scanLines(f *os.File, fn func(line []byte)) error {
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
 	for sc.Scan() {

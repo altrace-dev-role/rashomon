@@ -360,6 +360,86 @@ func (e *env) report(sessionID string) reportSession {
 	return rep.Sessions[0]
 }
 
+// digestOutput is the digest command's output contract, as a test reads it.
+type digestOutput struct {
+	SchemaVersion int    `json:"schema_version"`
+	SessionID     string `json:"session_id"`
+	PromptID      string `json:"prompt_id"`
+	InstallID     string `json:"install_id"`
+	Coverage      struct {
+		State            string   `json:"state"`
+		Reasons          []string `json:"reasons"`
+		StartRecorded    bool     `json:"start_recorded"`
+		HookEntryAtStart string   `json:"hook_entry_at_start"`
+	} `json:"coverage"`
+	Declarations struct {
+		Recorded         int `json:"recorded"`
+		WithoutExecution []struct {
+			ToolUseID      string `json:"tool_use_id"`
+			PermissionMode string `json:"permission_mode"`
+		} `json:"without_execution"`
+		WithoutExecutionOmitted int            `json:"without_execution_omitted"`
+		Unterminated            []string       `json:"unterminated"`
+		UnterminatedOmitted     int            `json:"unterminated_omitted"`
+		Dropped                 []string       `json:"dropped"`
+		DroppedOmitted          int            `json:"dropped_omitted"`
+		ByTool                  map[string]int `json:"by_tool"`
+		ByToolOmitted           int            `json:"by_tool_omitted"`
+		ByLabel                 map[string]int `json:"by_label"`
+		ByLabelOmitted          int            `json:"by_label_omitted"`
+	} `json:"declarations"`
+	Unknown    bool `json:"unknown"`
+	Executions struct {
+		Recorded int `json:"recorded"`
+	} `json:"executions"`
+	SilentFailures struct {
+		Fires                 bool     `json:"fires"`
+		Failed                int      `json:"failed"`
+		Unobserved            int      `json:"outcome_unobserved"`
+		AbsentWords           []string `json:"absent_words"`
+		FinalMessageAvailable bool     `json:"final_message_available"`
+	} `json:"silent_failures"`
+	Subagents struct {
+		Declarations int `json:"declarations"`
+		Executions   int `json:"executions"`
+	} `json:"subagents"`
+	Gaps           []map[string]any `json:"gaps"`
+	SkippedRecords int              `json:"skipped_records"`
+	Truncated      bool             `json:"truncated"`
+}
+
+// digestRaw runs `rashomon digest` and returns the raw result, for a test
+// that wants to assert on the exit code or on stderr rather than on parsed
+// JSON.
+func (e *env) digestRaw(args ...string) result {
+	e.t.Helper()
+	return e.run("", nil, append([]string{"digest"}, args...)...)
+}
+
+// digest runs `rashomon digest` and parses its JSON, failing the test on a
+// non-zero exit or unparseable output.
+func (e *env) digest(args ...string) digestOutput {
+	e.t.Helper()
+	res := e.digestRaw(args...)
+	if res.exitCode != 0 {
+		e.t.Fatalf("digest: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	var d digestOutput
+	if err := json.Unmarshal([]byte(res.stdout), &d); err != nil {
+		e.t.Fatalf("digest output is not JSON: %v\n%s", err, res.stdout)
+	}
+	return d
+}
+
+func (e *env) hasCoverageReason(d digestOutput, reason string) bool {
+	for _, r := range d.Coverage.Reasons {
+		if r == reason {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *env) hasReason(sess reportSession, reason string) bool {
 	for _, r := range sess.Coverage.Reasons {
 		if r == reason {

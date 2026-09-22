@@ -42,9 +42,10 @@ import (
 // plugin and a settings install both live, a future third origin, a
 // duplicated settings entry. No coverage record can know this at write time
 // -- each hook invocation sees exactly one call and has no visibility into
-// whether another origin also recorded it -- so it is derived here, once,
-// over the whole run's declarations, the same way ReasonGap is derived from
-// the whole run's gap records rather than carried by any single one.
+// whether another origin also recorded it -- so it is derived at read time,
+// by HasDuplicateToolUseID: here over the whole run's declarations, and by
+// the turn digest over one turn's own, the same way ReasonGap is derived from
+// gap records rather than carried by any single one.
 //
 // Deliberately never applied to executions: chains.go documents that one
 // tool_use_id legitimately carries two of those (PostToolUse and
@@ -441,7 +442,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		sess.Chains = buildChains(run, sess.Destinations, deniedSet(sess.Transcripts), forgotten)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
-		sess.SilentFailures = buildSilentFailures(run, sess.Account)
+		sess.SilentFailures = BuildSilentFailures(run, sess.Account)
 		sess.Gaps = byDir[name]
 		if sess.Gaps == nil {
 			sess.Gaps = []store.Gap{}
@@ -481,10 +482,17 @@ func build(run *store.Run) Session {
 			HookEntryAtEnd:   store.EntryUnknown,
 		},
 	}
-	mode := map[string]string{}
-	declByID := map[string]int{}
+	byTool, byLabel, withoutExecution, executed := CountDeclarations(run)
+	sess.Declarations.ByTool = byTool
+	sess.Declarations.ByLabel = byLabel
+	sess.Declarations.WithoutExecution = withoutExecution
+	// Report-only tallies, beside the shared ones rather than inside them:
+	// the turn digest counts with CountDeclarations and renders no verb
+	// class or program, so these stay out of the rule the two share. The
+	// duplicate tool_use_id check is NOT one of them -- the digest's counts
+	// double on a double-fire exactly as these do -- so it lives in
+	// HasDuplicateToolUseID, which both call.
 	for _, d := range run.Declarations {
-		sess.Declarations.ByTool[d.ToolName]++
 		if d.Shape.VerbClass != "" {
 			sess.Declarations.ByVerbClass[d.Shape.VerbClass]++
 		}
@@ -497,52 +505,17 @@ func build(run *store.Run) Session {
 			// gap where there is nothing to know.
 			sess.Declarations.ProgramsUnknown++
 		}
-		if d.FileLabel != nil {
-			sess.Declarations.ByLabel[knownLabel(*d.FileLabel)]++
-		}
-		mode[d.ToolUseID] = d.PermissionMode
-		// Empty is excluded, the same way WithoutTranscript counts a missing
-		// path rather than grouping every such declaration under one key: an
-		// id this program never received is not evidence that two records
-		// share an identity, only that neither carries one.
-		if d.ToolUseID != "" {
-			declByID[d.ToolUseID]++
-		}
-	}
-	executed := map[string]bool{}
-	for _, x := range run.Executions {
-		executed[x.ToolUseID] = true
-	}
-	for _, id := range run.Unexecuted() {
-		sess.Declarations.WithoutExecution = append(sess.Declarations.WithoutExecution,
-			Unexecuted{ToolUseID: id, PermissionMode: mode[id]})
 	}
 
 	// What the run said about itself, phase by phase.
-	for _, c := range run.Coverage {
-		if sess.InstallID == "" {
-			sess.InstallID = c.InstallID
-		}
-		// A start or end probe that found recording paused still writes a
-		// record of that phase, so the skip shows up in this session's own
-		// report. That record says the probe did NOT run, so it must not count
-		// as the start or end having been recorded, and the hook entry it
-		// carries was never resolved by a probe. Counting it once rendered
-		// "start recorded: yes" beside probe_absent's "no session start was
-		// recorded". Its reason is still added below.
-		paused := c.Reason != nil && *c.Reason == store.ReasonRecordingPaused
-		switch {
-		case paused:
-		case c.Phase == store.PhaseStart:
-			sess.Coverage.StartRecorded = true
-			sess.Coverage.HookEntryAtStart = c.HookEntry
-		case c.Phase == store.PhaseEnd:
-			sess.Coverage.EndRecorded = true
-			sess.Coverage.HookEntryAtEnd = c.HookEntry
-		}
-		if c.State == store.StateUnverified && c.Reason != nil {
-			sess.Coverage.add(*c.Reason)
-		}
+	facts := RollupCoverage(run.Coverage)
+	sess.InstallID = facts.InstallID
+	sess.Coverage.StartRecorded = facts.StartRecorded
+	sess.Coverage.EndRecorded = facts.EndRecorded
+	sess.Coverage.HookEntryAtStart = facts.HookEntryAtStart
+	sess.Coverage.HookEntryAtEnd = facts.HookEntryAtEnd
+	for _, r := range facts.Reasons {
+		sess.Coverage.add(r)
 	}
 	if !sess.Coverage.StartRecorded {
 		sess.Coverage.add(store.ReasonProbeAbsent)
@@ -566,11 +539,8 @@ func build(run *store.Run) Session {
 	if len(sess.Declarations.Dropped) > 0 {
 		sess.Coverage.add(store.ReasonLockTimeout)
 	}
-	for _, n := range declByID {
-		if n > 1 {
-			sess.Coverage.add(ReasonDuplicateDeclarations)
-			break
-		}
+	if HasDuplicateToolUseID(run.Declarations) {
+		sess.Coverage.add(ReasonDuplicateDeclarations)
 	}
 
 	// The accounting equation, once per transcript the run's declarations
@@ -671,6 +641,134 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 	sort.Strings(t.DeniedByUser)
 	sort.Strings(t.DeclaredWithoutResult)
 	return t
+}
+
+// CountDeclarations tallies a run's declarations against its executions:
+// per-tool and per-label counts, the executed set keyed by tool_use_id, and
+// the declarations no execution answers -- via run.Unexecuted(), not a
+// second copy of that check, each carrying the permission mode it was
+// declared under.
+//
+// It takes a *store.Run, the same currency BuildSilentFailures already
+// does, so a caller scoped to less than a whole run builds one small Run
+// value -- Declarations and Executions only, as digest's turnRun does -- and
+// counts its own subset under the exact same rule report uses for a whole
+// session. A first version of this took plain slices and re-derived
+// run.Unexecuted()'s check inline instead of calling it, which left that
+// method with no production caller at all: the mutation that breaks it
+// (H-20) still found an anchor to match, because the TEXT of the check moved
+// here verbatim, but nothing on any live path ran it any more, and the
+// sweep could only report "not detected" -- indistinguishable from noise --
+// rather than "orphaned". Calling the method instead of re-deriving its
+// check is what makes that failure mode structurally impossible: report and
+// digest are back to sharing the one place this is decided.
+func CountDeclarations(run *store.Run) (
+	byTool, byLabel map[string]int, withoutExecution []Unexecuted, executed map[string]bool,
+) {
+	byTool = map[string]int{}
+	byLabel = map[string]int{}
+	mode := map[string]string{}
+	for _, d := range run.Declarations {
+		byTool[d.ToolName]++
+		if d.FileLabel != nil {
+			byLabel[knownLabel(*d.FileLabel)]++
+		}
+		mode[d.ToolUseID] = d.PermissionMode
+	}
+	executed = map[string]bool{}
+	for _, x := range run.Executions {
+		executed[x.ToolUseID] = true
+	}
+	withoutExecution = []Unexecuted{}
+	for _, id := range run.Unexecuted() {
+		withoutExecution = append(withoutExecution, Unexecuted{ToolUseID: id, PermissionMode: mode[id]})
+	}
+	return byTool, byLabel, withoutExecution, executed
+}
+
+// HasDuplicateToolUseID reports whether any non-empty tool_use_id appears on
+// more than one of decls -- the record-level fact ReasonDuplicateDeclarations
+// names. It is the one rule report.build applies over a whole run and the
+// turn digest applies over one turn's own declarations: both count with
+// CountDeclarations, so a second recorder doubles both surfaces' totals
+// alike, and a check only one of them ran would leave the other rendering
+// doubled counts as verified.
+//
+// Empty is excluded, the same way WithoutTranscript counts a missing path
+// rather than grouping every such declaration under one key: an id this
+// program never received is not evidence that two records share an
+// identity, only that neither carries one.
+func HasDuplicateToolUseID(decls []store.Declaration) bool {
+	seen := make(map[string]bool, len(decls))
+	for _, d := range decls {
+		if d.ToolUseID == "" {
+			continue
+		}
+		if seen[d.ToolUseID] {
+			return true
+		}
+		seen[d.ToolUseID] = true
+	}
+	return false
+}
+
+// CoverageFacts is the per-invocation coverage evidence common to a
+// session-wide report and a turn-scoped digest: which phases were recorded,
+// what hook entry state they carried, and which reasons the records
+// themselves declared unverified.
+//
+// It stops short of the two reasons that depend on the CALLER's own scope.
+// run_not_closed only means something against a whole run -- a turn digest
+// read mid-session must not add it, by H-84 -- and whether a missing start or
+// end phase is even meaningful depends on whether the caller is looking at
+// the whole run or a slice of it. Each caller adds those itself, against the
+// scope it actually has.
+type CoverageFacts struct {
+	InstallID        string
+	StartRecorded    bool
+	EndRecorded      bool
+	HookEntryAtStart string
+	HookEntryAtEnd   string
+	// Reasons is de-duplicated, in first-seen order, from every record whose
+	// State is Unverified.
+	Reasons []string
+}
+
+// RollupCoverage reduces a set of coverage records to CoverageFacts. covs may
+// be a whole run's records, as report uses it, or a caller-defined subset --
+// digest filters to the records that fall inside one turn's window before
+// calling this, because a coverage record carries no tool_use_id or prompt_id
+// of its own and a time window is the only join key available for one.
+func RollupCoverage(covs []store.Coverage) CoverageFacts {
+	f := CoverageFacts{HookEntryAtStart: store.EntryUnknown, HookEntryAtEnd: store.EntryUnknown}
+	seen := map[string]bool{}
+	for _, c := range covs {
+		if f.InstallID == "" {
+			f.InstallID = c.InstallID
+		}
+		// A start or end probe that found recording paused still writes a
+		// record of that phase, so the skip shows up in this session's own
+		// report. That record says the probe did NOT run, so it must not count
+		// as the start or end having been recorded, and the hook entry it
+		// carries was never resolved by a probe. Counting it once rendered
+		// "start recorded: yes" beside probe_absent's "no session start was
+		// recorded". Its reason is still added below.
+		paused := c.Reason != nil && *c.Reason == store.ReasonRecordingPaused
+		switch {
+		case paused:
+		case c.Phase == store.PhaseStart:
+			f.StartRecorded = true
+			f.HookEntryAtStart = c.HookEntry
+		case c.Phase == store.PhaseEnd:
+			f.EndRecorded = true
+			f.HookEntryAtEnd = c.HookEntry
+		}
+		if c.State == store.StateUnverified && c.Reason != nil && !seen[*c.Reason] {
+			seen[*c.Reason] = true
+			f.Reasons = append(f.Reasons, *c.Reason)
+		}
+	}
+	return f
 }
 
 func (c *Coverage) add(reason string) {

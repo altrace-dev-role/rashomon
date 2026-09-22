@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/digest"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/launch"
@@ -72,6 +73,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdStatus(stdout) })
 	case "report":
 		return guarded(stderr, func() error { return cmdReport(rest, stdout) })
+	case "digest":
+		return guarded(stderr, func() error { return cmdDigest(rest, stdin, stdout) })
 	case "forget":
 		return guarded(stderr, func() error { return cmdForget(rest, stdout) })
 	case "env":
@@ -1060,6 +1063,133 @@ func cmdReport(args []string, stdout io.Writer) error {
 	return enc.Encode(rep)
 }
 
+// cmdDigest renders one turn's projection as JSON.
+//
+// Unlike report, it can take stdin: a future Stop hook's payload carries
+// last_assistant_message there, and that text -- a model's own final reply,
+// which can run to several KB -- must never travel through argv, where any
+// process on the machine sharing this user can read it via ps. The
+// --last-assistant-message flag exists only so a person can drive this by
+// hand.
+//
+// stdin is read ONLY when --stdin is given, never by sniffing what stdin
+// happens to be. H-104 is why: a live terminal is not the only stdin that
+// never sends EOF -- an inherited pipe that stays open does the same thing,
+// and it is the more common case for a command invoked from a script or a
+// parent process, not a shell prompt. Guessing intent from the file's mode
+// narrows the failure to terminals and leaves every other never-closing
+// stdin free to wedge the caller. --stdin is a promise from the caller that
+// it will close the pipe, the same promise hook/post/probe already rely on
+// from Claude Code without any sniffing at all.
+func cmdDigest(args []string, stdin io.Reader, stdout io.Writer) error {
+	sessionID := ""
+	promptID := ""
+	lastMsg := ""
+	haveLastMsg := false
+	readStdin := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--session":
+			if i+1 >= len(args) {
+				return errors.New("--session needs a value")
+			}
+			sessionID = args[i+1]
+			i++
+		case "--prompt":
+			if i+1 >= len(args) {
+				return errors.New("--prompt needs a value")
+			}
+			promptID = args[i+1]
+			i++
+		case "--last-assistant-message":
+			if i+1 >= len(args) {
+				return errors.New("--last-assistant-message needs a value")
+			}
+			lastMsg = args[i+1]
+			haveLastMsg = true
+			i++
+		case "--stdin":
+			readStdin = true
+		default:
+			return fmt.Errorf("unknown argument %q", args[i])
+		}
+	}
+	// The flag wins when given; stdin is the fallback, not a merge, so an
+	// explicit empty value cannot be silently overruled by whatever a caller
+	// that also passed --stdin left on the pipe.
+	if !haveLastMsg && readStdin {
+		if m, ok := readStdinLastMessage(stdin); ok {
+			lastMsg = m
+		}
+	}
+
+	d, err := digestOrEmpty(sessionID, promptID, lastMsg, time.Now())
+	if err != nil {
+		return err
+	}
+	// Marshalled directly with json.Marshal, byte for byte the same call
+	// truncate.go's oversize() held the ceiling against -- an indented
+	// encoding, or json.Encoder's own trailing newline folded into that
+	// measurement, would each be a different number of bytes than the one the
+	// ceiling was actually enforced on. The document is for a script to parse
+	// (Part 4's exception line, or a slash command), not a terminal to read,
+	// so nothing is lost by staying compact.
+	b, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	_, err = stdout.Write(append(b, '\n'))
+	return err
+}
+
+// readStdinLastMessage reads a JSON payload from stdin carrying
+// last_assistant_message -- the shape a Stop hook's own stdin would carry.
+// It is only ever called when the caller passed --stdin, which is the
+// promise that made this read safe -- see cmdDigest's doc on why sniffing
+// stdin's type cannot make that promise itself.
+func readStdinLastMessage(in io.Reader) (string, bool) {
+	raw, err := io.ReadAll(io.LimitReader(in, hook.MaxPayloadBytes+1))
+	if err != nil || len(raw) == 0 || len(raw) > hook.MaxPayloadBytes {
+		return "", false
+	}
+	var p struct {
+		LastAssistantMessage string `json:"last_assistant_message"`
+	}
+	if json.Unmarshal(raw, &p) != nil {
+		return "", false
+	}
+	return p.LastAssistantMessage, p.LastAssistantMessage != ""
+}
+
+// digestOrEmpty builds the digest, or the empty one when there is nothing
+// recorded here at all -- mirroring reportOrEmpty's rule and for the same
+// reason: a command that only asks a question must not mint an install
+// identity and an HMAC key as a side effect of being asked.
+func digestOrEmpty(sessionID, promptID, lastAssistantMessage string, now time.Time) (*digest.Digest, error) {
+	st, err := openStoreForRead()
+	if errors.Is(err, store.ErrNoStore) {
+		return digest.Empty(now, sessionID, promptID), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if sessionID == "" {
+		// No session named: the newest run, under the same rule `run` reports
+		// on its child by -- this process never learns Claude Code's session
+		// id any other way. A store with no runs at all is "nothing recorded
+		// here", not an error.
+		newest, _, err := st.NewestRun()
+		if err != nil {
+			return nil, err
+		}
+		if newest == "" {
+			return digest.Empty(now, "", promptID), nil
+		}
+		sessionID = newest
+	}
+	return digest.Build(st, sessionID, promptID, lastAssistantMessage, now)
+}
+
 // cmdForget evicts records at one end of the store's timeline.
 //
 // --since is the privacy form: forget what just happened. --before is the
@@ -1169,6 +1299,18 @@ usage:
                                terminal or as JSON for a consumer; --chain
                                lists the calls under each prompt, which JSON
                                always carries
+  rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT]
+                  [--stdin]
+                               render one turn's projection as JSON: what one
+                               prompt_id recorded, read-only and never larger
+                               than 8 KiB; --session and --prompt default to
+                               the most recent session and its most recently
+                               started turn. --stdin reads a JSON payload
+                               ({"last_assistant_message": "..."}) from
+                               stdin for the final message instead of the
+                               flag; omitted by default, because reading
+                               stdin unless told to is how a caller that
+                               never closes its pipe gets hung forever.
   rashomon forget --host H       evict every call that named host H, and its
                                baseline entry
   rashomon forget --since T      evict records recorded at or after T
