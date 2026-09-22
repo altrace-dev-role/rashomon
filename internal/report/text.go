@@ -98,7 +98,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	writeNono(b, sess.Nono)
 	writeChains(b, sess.Chains, cfg.chain)
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
-	fmt.Fprintf(b, "  reasons: %s\n", list(sess.Coverage.Reasons))
+	writeReasons(b, sess.Coverage.Reasons)
 	fmt.Fprintf(b, "  start recorded: %s\n", yesNo(sess.Coverage.StartRecorded))
 	fmt.Fprintf(b, "  end recorded: %s\n", yesNo(sess.Coverage.EndRecorded))
 	fmt.Fprintf(b, "  hook entry at start: %s\n", sess.Coverage.HookEntryAtStart)
@@ -124,7 +124,8 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 		fmt.Fprintf(b, "    ids executed: %d\n", t.IDsExecuted)
 		fmt.Fprintf(b, "    missing from store: %s\n", set(t.MissingFromStore))
 		fmt.Fprintf(b, "    missing from transcript: %s\n", set(t.MissingFromTranscript))
-		fmt.Fprintf(b, "    executed but unrecorded: %s\n", set(t.ExecutedButUnrecorded))
+		fmt.Fprintf(b, "    executed but unrecorded: %s\n",
+			overlapping(t.ExecutedButUnrecorded, t.MissingFromStore, "missing from store"))
 		// Between the two lists it sits between, and named rather than folded
 		// into either: a denial is not a recording failure and not a call
 		// waiting on its result. It is the permission prompt working.
@@ -163,11 +164,136 @@ func set(ids []string) string {
 	return list(ids)
 }
 
+// reasonText explains a coverage reason in one line.
+//
+// The codes are the contract and stay on the line, because a reader who greps
+// or a consumer reading JSON needs them. The sentence beside each is for the
+// person who has never read this source.
+//
+// Reported from a real first run: a report carrying "probe_absent,
+// run_not_closed, transcript_mismatch, execution_mismatch" and eight hundred
+// tool-use ids, where all four codes had a single cause -- the recorder was
+// installed in the middle of a session that had not finished -- and the
+// report said none of it. A reader cannot act on a vocabulary they have to go
+// and look up.
+var reasonText = map[string]string{
+	"probe_absent":          "a session-start record or marker is missing: the recorder was installed mid-session, its start hook did not run or failed, or the size cap evicted the run",
+	"probe_unresolved":      "the session-start probe could not be read, so the start of this session is unaccounted for",
+	"run_not_closed":        "no session-end was recorded: the session is still open, or it ended without one",
+	"records_unreadable":    "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted",
+	"transcript_mismatch":   "the transcript and this store disagree about which tool calls were made; see the two `missing from` lines below",
+	"execution_mismatch":    "the transcript holds results for calls this store recorded no execution for",
+	"gap":                   "records were removed from this store -- by `forget`, or by the store's own size cap -- and a gap record says so",
+	"internal_error":        "a hook invocation failed inside this program, so what it should have recorded is missing",
+	"lock_timeout":          "a hook could not take the store lock in time, so its record went to the spill file or was lost",
+	"terminated_by_signal":  "a hook was killed by a signal before it finished",
+	"unterminated_entry":    "a declaration was never closed, so the call's end was not observed",
+	"hook_entry_absent":     "the recorder's own entry was missing from the settings file when the hook ran, or present but altered (matcher, hook or timeout)",
+	"hook_entry_unresolved": "the settings file could not be read, so whether the recorder was installed is unknown",
+}
+
+// writeReasons renders the coverage reasons, one per line with its meaning.
+func writeReasons(b *bytes.Buffer, reasons []string) {
+	if len(reasons) == 0 {
+		fmt.Fprintf(b, "  reasons: %s\n", none)
+		return
+	}
+	fmt.Fprintln(b, "  reasons:")
+	for _, r := range reasons {
+		if text, ok := reasonText[r]; ok {
+			fmt.Fprintf(b, "    %-22s %s\n", r, text)
+			continue
+		}
+		// A reason with no sentence still renders. The vocabulary cannot reach
+		// this line -- TestReasonTextCoversTheVocabulary holds the map to it --
+		// so what does is a reason read off disk exactly as stored: one written
+		// by a newer or older build, or a hand-edited store. It is printed
+		// verbatim, because build does not clamp it to the vocabulary.
+		fmt.Fprintf(b, "    %s\n", r)
+	}
+}
+
+// overlapping renders a list that may repeat one printed just above it.
+//
+// These two lists are the same set whenever the recorder was installed after
+// the calls ran: every id in the transcript but not in the store also has a
+// result the store recorded no execution for. In a real report that meant the
+// same eight hundred and fifty-eight ids printed twice, four hundred
+// characters for one fact, and a reader who has to compare two walls of
+// opaque ids to notice they are identical.
+//
+// It names the set above, never says its ids are "listed" there: that list
+// is shortened past a dozen ids, and "the same 858, listed under ... above"
+// once sat beneath a line showing twelve of them.
+//
+// It states the overlap and NOT its cause. "The recorder was installed after
+// these ran" is an inference; the reasons block above already carries
+// probe_absent with its sentence, and this line is not the place to guess at
+// a second explanation.
+func overlapping(items, printed []string, where string) string {
+	if len(items) == 0 || len(printed) == 0 {
+		return set(items)
+	}
+	above := make(map[string]bool, len(printed))
+	for _, id := range printed {
+		above[id] = true
+	}
+	for _, id := range items {
+		if !above[id] {
+			// Not a subset: the reader needs the list itself.
+			return set(items)
+		}
+	}
+	if len(items) == len(printed) {
+		return fmt.Sprintf("the same %d as %q above", len(items), where)
+	}
+	return fmt.Sprintf("%d, all of them among %q above", len(items), where)
+}
+
+// listWidth is how many characters of a list a terminal line will carry
+// before it summarises, and listMax how many items.
+//
+// Two bounds because this function renders two very different things: a
+// handful of short words, which should all fit, and hundreds of opaque
+// tool-use ids, which must not. Bounding only the count would still emit a
+// thousand characters of ids; bounding only the width would cut a list of
+// short words mid-thought.
+const (
+	listWidth = 200
+	listMax   = 12
+)
+
+// list renders a list for a terminal, summarising one too long to read.
+//
+// The summary names NO type. This function is called with ids, with tool
+// families and with ordinary English words, and an earlier version that said
+// "N ids" labelled all three as ids -- which was simply false for two of them.
+//
+// Nothing is dropped: the JSON carries every item and the line says so.
+// Rendering a bare count instead would lose them, which is the thing the
+// accounting equation exists to avoid.
+//
+// Reported from a real first run, where eight hundred and sixty ids joined
+// into a single line of roughly twenty-five thousand characters and buried
+// every other line in the report.
 func list(items []string) string {
 	if len(items) == 0 {
 		return none
 	}
-	return strings.Join(items, ", ")
+
+	shown, width := 0, 0
+	for _, it := range items {
+		next := width + len(it) + 2
+		if shown == listMax || (shown > 0 && next > listWidth) {
+			break
+		}
+		width, shown = next, shown+1
+	}
+	if shown == len(items) {
+		return strings.Join(items, ", ")
+	}
+	return fmt.Sprintf("%s and %d more of %d (--json lists them all)",
+		strings.Join(items[:shown], ", "), len(items)-shown, len(items))
 }
 
 func unexecuted(items []Unexecuted) string {
