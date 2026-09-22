@@ -41,19 +41,44 @@ func tokenize(s string) ([]string, error) {
 // command began, and reads ssh as a program that was never run. Only the
 // tokenizer knows which it saw, so only the tokenizer can say.
 func tokenizeMarked(s string) ([]string, []bool, error) {
+	toks, meta, _, err := tokenizeQuoted(s)
+	return toks, meta, err
+}
+
+// tokenizeQuoted is tokenizeMarked plus, per token, the byte offset within the
+// token at which quoting or a backslash escape first contributed, or -1 if
+// none did.
+//
+// Like the metacharacter bit, this cannot be recovered from the text. `{` and
+// '{' are the same byte once the quotes are gone, and only the first is the
+// brace keyword; FOO=bar and 'FOO=bar' are the same seven, and only the first
+// is an assignment -- the second is a command by that name, and the word after
+// it is an argument. An offset rather than a bit, because FOO="a b" is still
+// an assignment: what matters is whether the quoting starts after the `=`.
+func tokenizeQuoted(s string) ([]string, []bool, []int, error) {
 	var (
 		toks    []string
 		meta    []bool
+		quoted  []int
 		cur     strings.Builder
 		started bool
+		qat     = -1
 	)
 
+	// markQuoted records where quoting first touched the current token.
+	markQuoted := func() {
+		if qat < 0 {
+			qat = cur.Len()
+		}
+	}
 	flush := func() {
 		if started {
 			toks = append(toks, cur.String())
 			meta = append(meta, false)
+			quoted = append(quoted, qat)
 			cur.Reset()
 			started = false
+			qat = -1
 		}
 	}
 
@@ -67,10 +92,11 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 		case c == '\\':
 			if i+1 >= len(s) {
 				flush()
-				return toks, meta, errUnterminated
+				return toks, meta, quoted, errUnterminated
 			}
 			i++
 			if s[i] != '\n' { // a backslash-newline is a line continuation
+				markQuoted()
 				cur.WriteByte(s[i])
 				started = true
 			}
@@ -78,14 +104,16 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 		case c == '\'':
 			j := strings.IndexByte(s[i+1:], '\'')
 			if j < 0 {
-				return toks, meta, errUnterminated
+				return toks, meta, quoted, errUnterminated
 			}
+			markQuoted()
 			cur.WriteString(s[i+1 : i+1+j])
 			started = true
 			i += j + 1
 
 		case c == '"':
 			var closed bool
+			markQuoted()
 			i++
 			for ; i < len(s); i++ {
 				if s[i] == '\\' && i+1 < len(s) {
@@ -108,7 +136,7 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 				cur.WriteByte(s[i])
 			}
 			if !closed {
-				return toks, meta, errUnterminated
+				return toks, meta, quoted, errUnterminated
 			}
 			started = true
 
@@ -123,6 +151,7 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 			}
 			toks = append(toks, s[i:j])
 			meta = append(meta, true)
+			quoted = append(quoted, -1)
 			i = j - 1
 
 		default:
@@ -132,7 +161,7 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 	}
 
 	flush()
-	return toks, meta, nil
+	return toks, meta, quoted, nil
 }
 
 func isMeta(c byte) bool {

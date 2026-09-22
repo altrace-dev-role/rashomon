@@ -161,6 +161,19 @@ func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 		{"redirect target after <>", "<> /tmp/" + canary + " ls"},
 		{"here-string", "<<< " + canary + " cat"},
 		{"process substitution", "<(cat /tmp/" + canary + ") ls"},
+		// Each of these put data in the program field once, from inside a
+		// construct the program search skipped into without parsing.
+		{"array assignment", "arr=(/tmp/" + canary + " /x) ; ls"},
+		{"heredoc body", "<<EOF\n" + canary + " line\nEOF"},
+		{"redirect then heredoc body", "> /tmp/out.txt <<'EOF'\n" + canary + "\nEOF"},
+		{"arithmetic substitution", "n=$(( " + canary + " % 97 ))"},
+		{"arithmetic command", "(( " + canary + " > 3 ))"},
+		{"zsh >>| target", ">>| /tmp/" + canary + " ls"},
+		{"zsh >&| target", ">&| /tmp/" + canary + " ls"},
+		{"backtick in assignment", "x=`cat /tmp/" + canary + "`"},
+		{"append assignment", "PATH+=:/tmp/" + canary},
+		{"quoted brace", "'{' /tmp/" + canary},
+		{"comment", "#" + canary + " comment"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)

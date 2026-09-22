@@ -72,9 +72,9 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	// whole input would move whenever the wording did and would group nothing.
 	s.Digest = digest(key, toolName, []byte(cmd))
 
-	toks, meta, err := tokenizeMarked(cmd)
+	toks, meta, quoted, err := tokenizeQuoted(cmd)
 
-	if i, ok := programToken(toks, meta); ok {
+	if i, ok := programToken(toks, meta, quoted); ok {
 		prog := path.Base(toks[i])
 		s.Program = &prog
 		s.VerbClass = verbForProgram(prog)
@@ -153,54 +153,102 @@ func canonical(raw json.RawMessage) []byte {
 	return out
 }
 
-// programToken finds the index of the token naming the program, if a token
-// does.
+// programToken finds the index of the token naming the program, if one can be
+// told for certain.
 //
-// It skips what cannot be a program: a `FOO=bar` prefix, which is environment
-// setting rather than a command; the tokenizer's own metacharacter tokens; a
-// redirection's target, which follows the operator and is a filename; and the
-// `{` of a brace group, which is a shell keyword the tokenizer does not treat
-// as a metacharacter.
+// It skips only what it parses completely, and names nothing -- returns false
+// -- at the first thing it does not. The skipped things: a leading assignment
+// (FOO=bar, FOO+=bar, arr[0]=bar); a separator or a subshell's `(`, after
+// which the next word is in command position; a redirection with its operator
+// and its target; and an unquoted `{`, the brace-group keyword.
 //
 // Measured on a real session before this existed: three of twenty-six
 // declarations recorded a "program" of `&&`, `(` or nothing -- about one in
 // eight of the single field that is supposed to say what ran. `( cd x && ls )`
-// recorded `(`, and a brace group recorded `{`. A value that cannot possibly
-// be a program is worse than no value, because null already means "we could
-// not tell" and is read as such, while `&&` is read as a fact.
+// recorded `(`, and a brace group recorded `{`.
 //
-// The metacharacter bits come from the tokenizer rather than from the token's
-// text, because a QUOTED `;` and an operator `;` are the same two bytes and
-// only the tokenizer knows which it saw.
+// The first version of this skipped whatever could not be a program and took
+// the next word, and the next word was repeatedly inside something the skip
+// did not parse: an array assignment's elements (arr=(a b)), an arithmetic
+// expression's operand ($(( n % 97 )) and (( n > 3 ))), a here-document's
+// body, a zsh redirect's target (>>| file), a backtick substitution's
+// argument. Each put data in the program field, where main had recorded a
+// metacharacter: useless, but no content. So the rule is the other way round
+// now. Null already means "we could not tell" and is read that way; a word
+// from inside a construct this function did not parse is read as a fact.
 //
-// Returning false leaves Program null, which is the honest answer for a line
-// that names no program at all.
-func programToken(toks []string, meta []bool) (int, bool) {
+// The metacharacter bits and quoting offsets come from the tokenizer rather
+// than from the token's text, because a QUOTED `;` and an operator `;` are
+// the same byte, and so are '{' and the keyword `{`, and only the tokenizer
+// knows which it saw.
+func programToken(toks []string, meta []bool, quoted []int) (int, bool) {
+	marked := func(j int) bool { return j < len(meta) && meta[j] }
 	for i := 0; i < len(toks); i++ {
-		isMetaTok := i < len(meta) && meta[i]
-		switch {
-		case isMetaTok && isRedirect(toks[i]):
-			// The operator and the filename after it.
-			i = redirectEnd(toks, meta, i)
-		case isMetaTok, toks[i] == "{", isAssignment(toks[i]):
-			// Skipped.
-		default:
-			return i, true
+		tok := toks[i]
+		if marked(i) {
+			next := ""
+			if marked(i + 1) {
+				next = toks[i+1]
+			}
+			switch {
+			case tok == "<<" && next != "<":
+				// A here-document. Its body follows on the next lines, and the
+				// tokenizer does not keep line boundaries, so any word after
+				// this may be body text.
+				return 0, false
+			case isRedirect(tok):
+				i = redirectEnd(toks, meta, i)
+			case tok == "(" && next == "(":
+				// `((`: arithmetic. Its operands are not commands.
+				return 0, false
+			case tok == ")":
+				// A close this function did not see open: it is inside
+				// something it did not parse.
+				return 0, false
+			}
+			// Otherwise a separator or a subshell's `(`: the next word is in
+			// command position.
+			continue
 		}
+
+		q := -1
+		if i < len(quoted) {
+			q = quoted[i]
+		}
+		switch {
+		case tok == "{" && q < 0:
+			continue
+		case isShellAssignment(tok, q):
+			// A value that opens a backtick substitution, or an assignment
+			// followed by `(` -- an array's elements, or the $( and $(( the
+			// tokenizer split after the `$` -- continues into words that are
+			// data or a command this function does not parse.
+			if strings.ContainsRune(tok, '`') || marked(i+1) && toks[i+1] == "(" {
+				return 0, false
+			}
+			continue
+		case strings.ContainsRune(tok, '`'):
+			// A backtick substitution: what runs is inside it.
+			return 0, false
+		case strings.HasPrefix(tok, "#") && q != 0:
+			// A comment.
+			return 0, false
+		}
+		return i, true
 	}
 	return 0, false
 }
 
 // redirectEnd returns the index of the last token of the redirection whose
-// operator is at i: the operator, the second half of an operator the tokenizer
-// emitted as two tokens, and the word it redirects to.
+// operator is at i: the operator, the rest of an operator the tokenizer
+// emitted as more than one token, and the word it redirects to.
 //
 // The tokenizer doubles a metacharacter only when the next byte is the same
-// byte, so `>&`, `>|`, `<>`, `<&` and a here-string's `<<<` each arrive as two
-// meta tokens. Taking "the operator and the next token" there takes the
-// operator's second half for the target, and leaves the real target -- a
-// filename, or for a here-string literal text -- to be read as the program.
-// That shipped once and put a redirect target's filename in the store.
+// byte, so `>&`, `>|`, `<>`, `<&` and a here-string's `<<<` arrive as two meta
+// tokens, and zsh's `>>|`, `>>&`, `>&|` and `>>&|` as two or three. Stopping
+// after the first token takes the operator's next piece for the target, and
+// leaves the real target -- a filename, or a here-string's literal text -- to
+// be read as the program. That shipped once, and put a filename in the store.
 //
 // The target is taken only if it is a word. Anything else is not a target: a
 // `(` after `<` opens a process substitution whose command is the next word,
@@ -208,8 +256,9 @@ func programToken(toks []string, meta []bool) (int, bool) {
 // position. Consuming either would read the word after THAT as the program.
 func redirectEnd(toks []string, meta []bool, i int) int {
 	marked := func(j int) bool { return j < len(meta) && meta[j] }
-	if j := i + 1; j < len(toks) && marked(j) && splitOperator(toks[i], toks[j]) {
-		i = j
+	op := toks[i]
+	for n := 0; n < 2 && marked(i+1) && continuesRedirect(op, toks[i+1]); n++ {
+		i++
 	}
 	if j := i + 1; j < len(toks) && !marked(j) {
 		i = j
@@ -217,12 +266,16 @@ func redirectEnd(toks []string, meta []bool, i int) int {
 	return i
 }
 
-// splitOperator reports whether op and next are the two halves of one
-// redirection operator that the tokenizer emitted as two tokens.
-func splitOperator(op, next string) bool {
-	switch op + next {
-	case ">&", ">|", "<>", "<&", "<<<":
-		return true
+// continuesRedirect reports whether next is a further piece of the
+// redirection operator op, which the tokenizer emitted as separate tokens.
+func continuesRedirect(op, next string) bool {
+	switch op {
+	case ">", ">>":
+		return next == "&" || next == "|"
+	case "<":
+		return next == ">" || next == "&"
+	case "<<":
+		return next == "<"
 	}
 	return false
 }
@@ -244,6 +297,50 @@ func isAssignment(tok string) bool {
 	}
 	for j := 0; j < i; j++ {
 		c := tok[j]
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c == '_':
+		case c >= '0' && c <= '9' && j > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// isShellAssignment reports whether a word the shell would read as a variable
+// assignment is one: NAME=value, NAME+=value, or NAME[subscript]=value, with
+// the name and the `=` unquoted -- quoted, 'FOO=bar' is a command by that name.
+// quoted is the tokenizer's offset of the first quoted byte, or -1.
+//
+// It is wider than isAssignment, which decides argc and is left as it was so
+// that a count stays the count it has always been. Program detection cannot
+// afford that narrowness: an assignment form it did not recognise used to be
+// returned as the program, value and all (PATH+=:/home/u/dir named "dir").
+func isShellAssignment(tok string, quoted int) bool {
+	eq := strings.IndexByte(tok, '=')
+	if eq <= 0 {
+		return false
+	}
+	name := tok[:eq]
+	name = strings.TrimSuffix(name, "+")
+	sub := strings.IndexByte(name, '[')
+	if sub >= 0 {
+		if !strings.HasSuffix(name, "]") {
+			return false
+		}
+		name = name[:sub]
+		// A quoted subscript is still an assignment; the name must not be.
+		if quoted >= 0 && quoted < sub {
+			return false
+		}
+	} else if quoted >= 0 && quoted <= eq {
+		return false
+	}
+	if name == "" {
+		return false
+	}
+	for j := 0; j < len(name); j++ {
+		c := name[j]
 		switch {
 		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c == '_':
 		case c >= '0' && c <= '9' && j > 0:

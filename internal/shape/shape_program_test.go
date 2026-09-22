@@ -45,7 +45,9 @@ func TestProgramIsAProgram(t *testing.T) {
 		{name: "input fd duplication", cmd: "<&3 read x", want: "read"},
 		{name: "redirect &>", cmd: "&> /tmp/out.txt ls", want: "ls"},
 		{name: "redirect &>>", cmd: "&>> /tmp/out.txt ls", want: "ls"},
-		{name: "heredoc", cmd: "<<EOF cat", want: "cat"},
+		// A here-document's body follows on the next lines, and the tokenizer
+		// does not keep line boundaries: the word after it may be body text.
+		{name: "heredoc names nothing", cmd: "<<EOF cat"},
 		// A `(` after `<` opens a process substitution; it is not a
 		// redirect's target and must not be consumed as one. Doing so skips
 		// `cat` as the "target" and reads the next word -- the path -- as
@@ -57,7 +59,42 @@ func TestProgramIsAProgram(t *testing.T) {
 		{name: "redirect then separator", cmd: "> ; ls /home/alice/secret.csv", want: "ls"},
 		// Nor is another operator: the second redirect owns the path.
 		{name: "redirect then redirect", cmd: "> > /home/alice/secret.csv ls", want: "ls"},
-		{name: "assignment then subshell", cmd: "FOO=1 ( ls )", want: "ls"},
+		// The tokenizer cannot tell `FOO=1 ( ls )` (which bash rejects) from
+		// the array assignment `FOO=( ls )`, whose words are data, so an
+		// assignment followed by `(` names nothing.
+		{name: "assignment then paren names nothing", cmd: "FOO=1 ( ls )"},
+
+		// Every construct below leaked data as the program when the rule was
+		// "skip what cannot be a program and take the next word": the next
+		// word was inside something the skip did not parse. Main recorded a
+		// metacharacter for each -- useless, but no content. Null is the
+		// answer wherever the command position cannot be found for certain.
+		{name: "array assignment", cmd: "arr=(/home/alice/customer-list.csv /x) ; ls"},
+		{name: "array assignment, no space", cmd: "files=(SECRETWORD other); echo"},
+		{name: "heredoc body", cmd: "<<EOF\nSECRETBODY line\nEOF"},
+		{name: "redirect then heredoc body", cmd: "> /tmp/out.txt <<'EOF'\nSECRETBODY hunter2\nEOF"},
+		{name: "heredoc with dash", cmd: "<<-EOF\n\tSECRETBODY\nEOF"},
+		{name: "assignment then heredoc", cmd: "X=1 <<EOF\nSECRETBODY\nEOF"},
+		{name: "arithmetic substitution", cmd: "n=$(( 4111111111111111 % 97 ))"},
+		{name: "arithmetic command", cmd: "(( SECRETVAR > 3 ))"},
+		{name: "command substitution in assignment", cmd: "n=$(cat /home/alice/secret.csv)"},
+		{name: "backtick in assignment", cmd: "x=`cat /SECRET`"},
+		{name: "backtick in assignment, with args", cmd: "COUNT=`wc -l /home/alice/customer-list.csv`"},
+		{name: "append assignment", cmd: "PATH+=:/home/alice/SECRETDIR"},
+		{name: "append assignment, bare", cmd: "x+=SECRET"},
+		{name: "subscript assignment", cmd: "arr[0]=SECRET ls", want: "ls"},
+		{name: "quoted subscript assignment", cmd: `arr["k"]=v ls`, want: "ls"},
+		{name: "quoted value is still an assignment", cmd: `FOO="a b" ls`, want: "ls"},
+		{name: "a comment", cmd: "#SECRET comment"},
+		{name: "zsh >&|", cmd: ">&| /home/alice/secret.csv ls", want: "ls"},
+		{name: "zsh >>|", cmd: ">>| /home/alice/secret.csv ls", want: "ls"},
+		{name: "zsh >>&", cmd: ">>& /home/alice/secret.csv ls", want: "ls"},
+		{name: "zsh >>&|", cmd: ">>&| /home/alice/secret.csv ls", want: "ls"},
+		// Quoted, `{` is not the brace keyword but the command itself, and
+		// `FOO=bar` is not an assignment: the shell runs a command by that
+		// name, so the word after either is an argument.
+		{name: "quoted brace is the command", cmd: "'{' /home/alice/SECRET.csv", want: "{"},
+		{name: "quoted assignment is the command", cmd: "'FOO=bar' SECRET", want: "FOO=bar"},
 
 		// Unchanged behaviour, asserted so the fix cannot quietly move it.
 		{name: "ordinary command", cmd: "cd /tmp && go build", want: "cd"},
