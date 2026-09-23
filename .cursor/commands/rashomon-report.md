@@ -11,7 +11,7 @@ user expects this session in the output.
    read-only command.
 2. Run `rashomon report`, passing through any flags the user named:
    `--session <id>`, `--json`, `--redact` (share outside the team),
-   `--proxy-store <path>`.
+   `--chain` (each call under the prompt that produced it).
 3. Keep the report's own distinctions when summarizing: `without execution`
    is not a list of denials; `unknown` and `not read` are never `0`;
    `coverage: unverified` with `probe_absent` is expected for any session the

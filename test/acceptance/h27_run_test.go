@@ -88,12 +88,22 @@ func TestH27_LaunchesWithoutVariablesAndSaysWhy(t *testing.T) {
 		name     string
 		status   func(map[string]any)
 		absent   bool
+		raw      string // the file's exact bytes, when it is not JSON at all
 		wantWord string
 	}{
 		{name: "enforcing", status: func(m map[string]any) { m["connect_mode"] = "enforce" }, wantWord: "enforce"},
 		{name: "other product", status: func(m map[string]any) { m["product"] = "something" }, wantWord: "altrace"},
 		{name: "process gone", status: func(m map[string]any) { m["pid"] = 0x7FFFFFF0 }, wantWord: "no longer running"},
 		{name: "no status file", absent: true, wantWord: "does not appear to be running"},
+		// Loopback to isLoopback, which reads only the host; refused by the
+		// grammar, so the child never receives a proxy URL built from it.
+		{name: "junk after the port", status: func(m map[string]any) { m["listen_addr"] = "127.0.0.1:18080;echo x" },
+			wantWord: "not HOST:PORT"},
+		{name: "garbage", raw: `{"product": "altrace", "connect_mode": "obs`, wantWord: "is not valid JSON"},
+		{name: "wrong type elsewhere", status: func(m map[string]any) { m["health_addr"] = 18081 },
+			wantWord: "is not valid JSON"},
+		{name: "empty address", status: func(m map[string]any) { m["listen_addr"] = "" },
+			wantWord: "names no listen address"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
@@ -101,7 +111,13 @@ func TestH27_LaunchesWithoutVariablesAndSaysWhy(t *testing.T) {
 				t.Fatalf("watch: exit %d", res.exitCode)
 			}
 			path := filepath.Join(e.home, "absent-status.json")
-			if !tc.absent {
+			switch {
+			case tc.raw != "":
+				path = filepath.Join(e.home, "status.json")
+				if err := os.WriteFile(path, []byte(tc.raw), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			case !tc.absent:
 				m := liveStatus()
 				tc.status(m)
 				path = statusFile(t, e, m)
@@ -306,65 +322,125 @@ func TestH27_SessionTokenIsCapabilityGated(t *testing.T) {
 	})
 }
 
-// TestH27_ARefusedPostureMintsNoToken closes a gap a review predicted and a
-// mutation confirmed: the fix was made and never tested.
+// TestH27_ARefusedPostureReadsNoProxyStore: the automatic report reads a
+// proxy store only when the posture was ACCEPTED.
 //
-// posture.Read fills v.File from any parseable JSON and only THEN decides
-// Export, so an enforce-mode proxy, a dead pid, or a type error in an
-// unrelated field all yield SessionToken true with Export false. The token was
-// minted, never exported -- and still handed to the report, where it
-// reclassified every foreign run_id in the store as another session and
-// dropped those rows from the counts.
+// It used to read one either way -- the status file's causal_db, else the
+// default path -- and posture.Read fills v.File from any parseable JSON before
+// it decides Export. So a status file refused as enforcing, dead, routable or
+// malformed still chose the database the report read as the wire.
 //
-// The observable consequence is in the REPORT, not in the child's environment,
-// which is why the earlier capability test could not see it: with no export
-// there is no credential either way.
-func TestH27_ARefusedPostureMintsNoToken(t *testing.T) {
-	e := newEnv(t)
-	e.watched(testSession)
-	db := filepath.Join(e.home, "causal.db")
-	seedForeignRow(t, db)
+// What the gate delivers, and no more: a stale, crashed, enforcing, non-
+// loopback or unparseable status file cannot steer the report. It does NOT
+// stop a session choosing the database. The status file is writable by the
+// user the agent runs as, and a forged one naming a live pid -- pid 1 answers
+// EPERM, which posture counts as alive -- an observe mode and a loopback
+// address passes, causal_db and all. Refused means no store at all, from
+// either source, and the proxy block is the single not-observed line.
+//
+// The seeded row carries a foreign tag and a host nothing declared, so if ANY
+// of it is read it shows up -- as a destination, or as the join diagnostic a
+// spuriously minted token used to produce. Minting is inside the accepted
+// branch, so the refused path cannot reach it at all.
+//
+// The accepted rows are the premise, and each has to prove a READ, not merely
+// a named store: the seeded host or the join line is on the page, and no
+// not-observed reason is. One names the store in the status file; the other
+// names none and leaves the database at the default path, which is run's
+// fallback and would otherwise be the one line in this feature nothing reads.
+func TestH27_ARefusedPostureReadsNoProxyStore(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// atDefault puts the database at ~/.altrace/observe/causal.db and names
+		// none in the status file, instead of naming it there.
+		atDefault bool
+		accepted  bool
+		// refuse makes the posture refuse; nil means an enforcing proxy.
+		refuse func(map[string]any)
+	}{
+		{name: "refused, status names the store"},
+		{name: "refused, store at the default path", atDefault: true},
+		// The decoder fills every field it can before it reports the type
+		// error, so this file still names causal_db -- and SessionToken true
+		// -- while posture refuses it as not valid JSON.
+		{name: "refused by a wrong type elsewhere, status names the store",
+			refuse: func(m map[string]any) { m["health_addr"] = 18081 }},
+		{name: "accepted, status names the store", accepted: true},
+		{name: "accepted, store at the default path", atDefault: true, accepted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.watched(testSession)
 
-	fields := liveStatus()
-	fields["connect_mode"] = "enforce" // refused: Export will be false
-	fields["session_token"] = true     // and yet the capability says yes
-	fields["causal_db"] = db
-	status := statusFile(t, e, fields)
+			home := t.TempDir()
+			fields := liveStatus()
+			fields["session_token"] = true // the capability says yes either way
+			if !tc.accepted {
+				refuse := tc.refuse
+				if refuse == nil {
+					refuse = func(m map[string]any) { m["connect_mode"] = "enforce" }
+				}
+				refuse(fields) // refused: Export will be false
+			}
+			db := filepath.Join(e.home, "causal.db")
+			if tc.atDefault {
+				dir := filepath.Join(home, ".altrace", "observe")
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				db = filepath.Join(dir, "causal.db")
+				delete(fields, "causal_db")
+			} else {
+				fields["causal_db"] = db
+			}
+			seedForeignRow(t, db)
+			status := statusFile(t, e, fields)
 
-	// THE CHILD RECORDS THE SESSION, rather than the test recording one before
-	// the run. `run` now reports only a session the command itself produced
-	// (the `since` guard), so a session created beforehand renders nothing and
-	// every assertion below becomes unobservable -- which is exactly what the
-	// mutation sweep caught when that guard landed. The two changes are both
-	// right and they interact.
-	child := fmt.Sprintf("%s hook %s <<'EOF'\n%s\nEOF",
-		shQuote(rashomonBin), strings.Join(e.installArgs(), " "), defaultPayload().build(t))
-	res := e.run("", nil, "run", "--proxy-status", status, "--", "sh", "-c", child)
-	if res.exitCode != 0 {
-		t.Fatalf("run: exit %d, stderr %q", res.exitCode, res.stderr)
-	}
-	if strings.Contains(res.stderr, "no session was recorded") {
-		t.Fatalf("premise: the child recorded nothing, so nothing below can be "+
-			"observed:\n%s", res.stderr)
-	}
-	// THE OBSERVABLE CONSEQUENCE, and finding it took a second attempt worth
-	// recording. The first version of this test asserted that the foreign row
-	// was not excluded -- and passed under the mutation, because the row's tag
-	// is UNSIGNED and the verifier already refuses to exclude it. The security
-	// fix made the thing I was testing for unobservable by that route.
-	//
-	// What a spuriously minted token does change is what the report SAYS about
-	// itself: TokenRequested flips, and the join line becomes the diagnostic
-	// "a session token was in use and NO row carried it" -- on a run that
-	// exported nothing and therefore made no proxy traffic at all. A user is
-	// told to go looking for a proxy misconfiguration that does not exist.
-	if strings.Contains(res.stderr, "NO row carried it") {
-		t.Errorf("a refused posture minted a token, so the report claims a tag was in "+
-			"use on a run that exported nothing and made no proxy traffic:\n%s",
-			res.stderr)
-	}
-	if strings.Contains(res.stderr, "join: token") {
-		t.Errorf("a refused posture produced a token join:\n%s", res.stderr)
+			// THE CHILD RECORDS THE SESSION. `run` reports only a session the
+			// command itself produced (the since guard), so one recorded
+			// beforehand renders nothing and every assertion below would be
+			// unobservable.
+			child := fmt.Sprintf("%s hook %s <<'EOF'\n%s\nEOF",
+				shQuote(rashomonBin), strings.Join(e.installArgs(), " "), defaultPayload().build(t))
+			res := e.run("", []string{"HOME=" + home},
+				"run", "--proxy-status", status, "--", "sh", "-c", child)
+			if res.exitCode != 0 {
+				t.Fatalf("run: exit %d, stderr %q", res.exitCode, res.stderr)
+			}
+			if strings.Contains(res.stderr, "no session was recorded") {
+				t.Fatalf("premise: the child recorded nothing, so nothing below can be "+
+					"observed:\n%s", res.stderr)
+			}
+
+			if tc.accepted {
+				// A named store renders the full block whether or not it could be
+				// read, so the block alone proves nothing. The seeded row does:
+				// its host, or the join line its foreign tag produces, reaches the
+				// page only through a read, and a store that was named but not
+				// read renders "destinations: not observed (<reason>)".
+				if !strings.Contains(res.stderr, "other.example") && !strings.Contains(res.stderr, "join:") {
+					t.Errorf("premise broken: an accepted posture's report shows nothing of the "+
+						"seeded store, so the refused rows' absences prove nothing:\n%s", res.stderr)
+				}
+				for _, unread := range []string{"destinations: not observed (", alphaDestinations} {
+					if strings.Contains(res.stderr, unread) {
+						t.Errorf("an accepted posture's report says %q, so the store was not "+
+							"read:\n%s", unread, res.stderr)
+					}
+				}
+				return
+			}
+			if !strings.Contains(res.stderr, alphaDestinations+"\n") {
+				t.Errorf("a refused posture's report does not collapse to %q:\n%s",
+					alphaDestinations, res.stderr)
+			}
+			for _, leaked := range []string{"other.example", "join:", "NO row carried it", "proxy on path"} {
+				if strings.Contains(res.stderr, leaked) {
+					t.Errorf("a refused posture's report carries %q, so it read the store an "+
+						"unverified status file pointed at:\n%s", leaked, res.stderr)
+				}
+			}
+		})
 	}
 }
 
