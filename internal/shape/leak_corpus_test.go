@@ -295,6 +295,277 @@ var leakCorpus = []string{
 	"{ <\ncat /home/alice/secret.csv; }",
 	">\\\n\nrm -rf x",
 	">\n'rm' -rf x",
+	// Variants of programClaims (below): the same classes spelled with a
+	// different byte or operator.
+	"mysql\u00a0-phunter2\u00a0prod",
+	"X=1 git\u00a0push\u00a0acme-secret",
+	"'curl\u00a0-H\u00a0token:hunter2'",
+	"ls\u00a0-la\u00a0/Users/alice/secret-dir",
+	"cat\f/home/alice/secret.csv",
+	"cat\x1f/home/alice/secret.csv",
+	"cat\u2003/home/alice/secret.csv",
+	"cat\u3000/home/alice/secret.csv",
+	"cat\u2028/home/alice/secret.csv",
+	"cat\u0085/home/alice/secret.csv",
+	"<<\n<& secret-fd cmd",
+	// A separator inside a group ending the search for (), a syntax error
+	// read past, and words that can never name a program.
+	"deploy_acme <(x; y) () { ls; }",
+	"deploy_acme @(a|b) () { ls; }",
+	"deploy_acme $(x; y) () { ls; }",
+	"deploy_acme `x; y` () { ls; }",
+	"deploy_acme > $(echo x; true) deploy_prod () { ls; }",
+	"deploy_acme > | x deploy_prod () { ls; }",
+	"> ; /home/alice/secret.csv x",
+	"/home/alice/acme-q3/ --prod",
+	"~hunter2",
+	"/usr/bin/^SECRET",
+	"'' SECRET",
+	// A group whose depth the tokens do not show, a ${ the word does not
+	// close, and quotes the lexer cannot vouch for reading as the shell
+	// does: each hid the () after the command word.
+	"f $$'\\' () { ls; } 'x'",
+	"f $$'\\' () { ls; }'",
+	"deploy_acme $$'\\' () { ls; }",
+	"deploy_acme $(case x in a) :;; esac) () { ls; }",
+	"deploy_acme $(# )\n) () { ls; }",
+	"deploy_acme ${ x; y; } () { ls; }",
+	"deploy_acme \"$(echo '\"')\" () { ls; }",
+	"deploy_acme $(cat <<EOF\n)\nEOF\n) () { ls; }",
+	// A redirect whose target is another redirect or a comment, and paths
+	// ending in a directory, or a jobspec, in command position.
+	"> > /home/alice/secret.csv SECRETARG",
+	"> > x /home/alice/secret-thing",
+	"> #hunter2 x",
+	"/home/alice/acme-q3/.",
+	"/home/alice/acme-q3/..",
+	"%hunter2",
+}
+
+// programClaims are 183 lines for which a parse-only pass found Derive
+// recording data as the program, each upheld by three skeptics; program is
+// the value recorded. As with the corpus above, every line is only ever handed
+// to the parser.
+var programClaims = []struct{ in, program string }{
+	// A process substitution glued to the command word. Bash and zsh both read
+	// x<(...) and x>(...) as ONE word (x/dev/fd/63), so the piece before `<`
+	// is a fragment of it.
+	{"/home/alice/acme-merger<(true) --flag", "acme-merger"},
+	{"/srv/customer-acme/bin<(true) arg", "bin"},
+	{"./q3-layoffs<(echo x) run", "q3-layoffs"},
+	{"/Users/alice/hunter2dir>(cat) x", "hunter2dir"},
+	{"\"secret-name\"<(true) x", "secret-name"},
+	{"'acme-corp'>(true) x", "acme-corp"},
+	{"A=1 /home/alice/acme-merger<(true) --prod", "acme-merger"},
+	{"> out.log /home/alice/acme-merger<(true) --prod", "acme-merger"},
+	{"{ /home/alice/acme-merger<(true); }", "acme-merger"},
+	{"( /home/alice/acme-merger<(true) )", "acme-merger"},
+	{"&& /home/alice/acme-merger<(true)", "acme-merger"},
+	{"diff<(sort a)<(sort b)", "diff"},
+	{"tee>(gzip > out.gz) SECRETARG", "tee"},
+	{"x\\\n<(y) z", "x"},
+
+	// A zsh numeric glob, <n-m> or <->, glued inside the command word: to zsh it
+	// is one glob word, and the piece before `<` is a fragment of it.
+	{"/home/alice/acme-<1-3>/run.sh --prod", "acme-"},
+	{"/Users/alice/customer-acme-q<1-4>/deploy --prod", "customer-acme-q"},
+	{"./build-<1->/bin/tool arg", "build-"},
+	{"/srv/secret-<-5>/x arg", "secret-"},
+	{"\"acme\"<1-9> arg", "acme"},
+	{"A=1 /home/alice/acme-<1-3>/run.sh", "acme-"},
+	{"> f /home/alice/acme-<1-3>/run.sh", "acme-"},
+	{"{ /home/alice/acme-<1-3>/run.sh; }", "acme-"},
+	{"( /home/alice/acme-<1-3>/run.sh )", "acme-"},
+	{"x<1-9> SECRET", "x"},
+	{"cmd<-> arg", "cmd"},
+	{"x<1-9>>out SECRET", "x"},
+	{"x<1-9>|wc", "x"},
+
+	// Redirect-operator pieces with a newline or a blank between them. `>&`
+	// and `> &` are different programs: the second is a redirect with no
+	// target and then a separator -- a syntax error in both shells.
+	{">\n&2 SECRETWORD", "SECRETWORD"},
+	{">\n| SECRETCMD secretarg", "secretarg"},
+	{">\n|x hunter2", "hunter2"},
+	{">>\n& 1 secret-arg", "secret-arg"},
+	{"<\n& 0 hunter2", "hunter2"},
+	{"<\n&0 cat /home/alice/secret.csv", "cat"},
+	{"> & 2 SECRETARG", "SECRETARG"},
+	{"> | x hunter2", "hunter2"},
+	{"< & 0 hunter2", "hunter2"},
+	{">> & 1 SECRETARG", "SECRETARG"},
+	{">> | f SECRETARG", "SECRETARG"},
+	{"A=1 > & 2 SECRETARG", "SECRETARG"},
+	{"{ > & 2 SECRETARG; }", "SECRETARG"},
+	{"( > | f SECRETARG )", "SECRETARG"},
+	{"> & | f SECRETARG", "SECRETARG"},
+	{">\n&\n| f SECRETARG", "SECRETARG"},
+	{">& | f SECRETARG", "SECRETARG"},
+	{"&> | f SECRETARG", "SECRETARG"},
+	{"&>\n| f SECRETARG", "SECRETARG"},
+
+	// A computed command word. zsh applies colon modifiers to an unbraced
+	// parameter, so $x:gs/SECRET// runs $x with SECRET removed, and path.Base
+	// read the substitution's `/` delimiters as a path.
+	{"$x:gs/SECRET//", "SECRET"},
+	{"$x:s/SECRET/", "SECRET"},
+	{"$x:s/SECRET//", "SECRET"},
+	{"$x:gs/hunter2//", "hunter2"},
+	{"$x:gs/customer-acme//", "customer-acme"},
+	{"$cmd:gs/hunter2// --prod", "hunter2"},
+	{"\"$x:gs/SECRET//\"", "SECRET"},
+	{"\"$x:gs/customer-acme//\" arg", "customer-acme"},
+	{"\"$x:s/SECRET/\"", "SECRET"},
+	{"$0:s/SECRET//", "SECRET"},
+	{"$1:s/SECRET/", "SECRET"},
+	{"$x:h:s/SECRET/", "SECRET"},
+	{"$x:q:s/SECRET//", "SECRET"},
+	{"$x:l:gs/SECRET//", "SECRET"},
+	{"$~x:s/SECRET/", "SECRET"},
+	{"$^x:s/SECRET/", "SECRET"},
+	{"$x:s/SECRET b/", "SECRET"},
+	{"$x:s/SECRET/&x", "SECRET"},
+	{"$x:s/SECRET/;ls", "SECRET"},
+	{"$x:s/SECRET/|cat", "SECRET"},
+	{"$x:s/SECRET/>out", "SECRET"},
+	{"$x:s/SECRET/<in", "SECRET"},
+	{"$x:s/SECRET/&&ls", "SECRET"},
+	{"$x:s/SECRET/\nls", "SECRET"},
+	{">out $x:s/SECRET/", "SECRET"},
+	{">f <g $x:gs/SECRET//", "SECRET"},
+	{"<<< w $x:gs/SECRET//", "SECRET"},
+	{"X=1 $x:s/SECRET/ arg", "SECRET"},
+	{"A=1 B=2 $x:gs/SECRET//", "SECRET"},
+	{"( $x:s/SECRET/ )", "SECRET"},
+	{"{ $x:s/SECRET/; }", "SECRET"},
+	{"&& $x:s/SECRET/", "SECRET"},
+	{"; $x:gs/SECRET//", "SECRET"},
+	{"| $x:gs/SECRET//", "SECRET"},
+	{"$PWD:s/\\/home\\/alice\\/secret//", "secret"},
+	{"$PATH:s/:\\/opt\\/secret-bin//", "secret-bin"},
+	{"$x\\\n:s/SECRET/", "SECRET"},
+	{"$x:\\\ns/SECRET/", "SECRET"},
+	{"$\\\nx:s/SECRET/", "SECRET"},
+	{"$x:s/SECR\\\nET/", "SECRET"},
+	{"\"$x:s/SE\\\nCRET/\"", "SECRET"},
+	{"$x:s/SECRET/\\\n", "SECRET"},
+
+	// A numeric glob inside a path in command position.
+	{"/home/alice/<->/run SECRET", "alice"},
+	{"/srv/acme-prod/<1-9>/deploy", "acme-prod"},
+	{"/opt/customer-acme/<10-20>", "customer-acme"},
+	{"A=1 /home/alice/<->/run", "alice"},
+	{">f /home/alice/<->/run", "alice"},
+	{"a/<1-5>/b", "a"},
+	{"x/<->", "x"},
+	{"bin<1-3>/tool", "bin"},
+	{"dir<1->/x", "dir"},
+	{"./build-<->/SECRETDIR/<->", "build-"},
+
+	// A glob command word. Under EXTENDED_GLOB, `~` is exclusion and the word
+	// after it is the pattern excluded, not the program.
+	{"*/deploy~*/SECRET", "SECRET"},
+	{"/usr/bin/*~/usr/bin/SECRET", "SECRET"},
+	{"./bin/*~*/customer-acme", "customer-acme"},
+
+	// More operator pieces split by a blank, a tab or a newline.
+	{"> | grep hunter2 /etc/passwd", "hunter2"},
+	{"> | tee /home/alice/secret.log", "secret.log"},
+	{"> |ssh deploy@acme-prod.internal", "deploy@acme-prod.internal"},
+	{"> & curl -H secret-token https://x", "-H"},
+	{"> & rm -rf /srv/acme", "-rf"},
+	{"> &git push SECRETREMOTE main", "push"},
+	{"< & sort /home/alice/customer-list.csv", "customer-list.csv"},
+	{">> | tee /home/alice/secret.log", "secret.log"},
+	{">> & scp /home/alice/secret.csv host:", "secret.csv"},
+	{"> \t| grep hunter2 f", "hunter2"},
+	{">\t&\tgrep hunter2 f", "hunter2"},
+	{"X=1 > | grep hunter2 f", "hunter2"},
+	{"A=1 B=2 > & rm -rf /srv/acme", "-rf"},
+	{"( > | grep hunter2 f )", "hunter2"},
+	{"{ > | grep hunter2 f; }", "hunter2"},
+	{"&& > | grep hunter2 f", "hunter2"},
+	{">f > | grep hunter2 g", "hunter2"},
+	{"> \\\n| grep hunter2 f", "hunter2"},
+	{"> & | grep hunter2 f", "hunter2"},
+	{">& | grep hunter2 f", "hunter2"},
+	{">> & | grep hunter2 f", "hunter2"},
+	{"&> | grep hunter2 f", "hunter2"},
+	{"&>> | grep hunter2 f", "hunter2"},
+	{"&> & grep hunter2 f", "hunter2"},
+	{">\n|tee /home/alice/secret.log", "secret.log"},
+	{">\n| grep hunter2 f", "hunter2"},
+	{">\n&rm /srv/acme", "acme"},
+	{">\n& curl -H secret-token x", "-H"},
+	{"<\n&sort secret.csv", "secret.csv"},
+	{">>\n|tee /home/alice/secret.log", "secret.log"},
+	{"x=1 >\n|grep hunter2 f", "hunter2"},
+	{"x=1 <\n&grep hunter2 f", "hunter2"},
+
+	// A NUL, which truncates the line for every consumer that takes a C string.
+	{"\x00#hunter2 ls", "\x00#hunter2"},
+	{"X=1 \x00#hunter2 secret words", "\x00#hunter2"},
+	{"\x00\x00#hunter2", "\x00\x00#hunter2"},
+	{"; \x00#hunter2 arg", "\x00#hunter2"},
+	{"{ \x00#hunter2; }", "\x00#hunter2"},
+	{">\x00 /home/alice/secret.csv", "secret.csv"},
+	{"<\x00 /home/alice/secret.csv sort", "secret.csv"},
+	{">\x00 hunter2 cmd", "hunter2"},
+	{"x=1 >\x00 hunter2 cmd", "hunter2"},
+	{"<<<\x00 hunter2 cat", "hunter2"},
+	{"&>\x00 hunter2 cmd", "hunter2"},
+
+	// Function definitions: words followed by `()` define functions (zsh) or
+	// are a syntax error (bash); the first name is never run. Here a
+	// redirection, an expansion or a glob sits between the names, or a $'...'
+	// the tokenizer misreads hides the `()` from it.
+	{"deploy_acme >/dev/null deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme > /dev/null deploy_prod() { ls; }", "deploy_acme"},
+	{"deploy_acme 2>/dev/null deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme >/dev/null 2>&1 deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme 2>x deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme <x deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme >&2 deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme &>x deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme >|x deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme <<<x deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme >x deploy_prod deploy_dev () { ls; }", "deploy_acme"},
+	{"deploy_acme >x () { ls; }", "deploy_acme"},
+	{"X=1 deploy_acme >x deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme >x deploy_prod ()\n{ ls; }", "deploy_acme"},
+	{"deploy_acme > (x) deploy_prod () { ls; }", "deploy_acme"},
+	{"deploy_acme $(echo x) () { ls; }", "deploy_acme"},
+	{"deploy_acme $(date) () { ls; }", "deploy_acme"},
+	{"deploy_acme $((1)) () { ls; }", "deploy_acme"},
+	{"deploy_acme <(x) () { ls; }", "deploy_acme"},
+	{"deploy_acme @(a) () { ls; }", "deploy_acme"},
+	{"deploy_acme x(y) () { ls; }", "deploy_acme"},
+	{"deploy_acme $'\\' ; ' () { ls; }", "deploy_acme"},
+	{"deploy_acme $'\\' | ' () { ls; }", "deploy_acme"},
+	{"deploy_acme $'\\' > ' () { ls; }", "deploy_acme"},
+	{"deploy_acme $'\\'' () { ls; }", "deploy_acme"},
+	{"deploy_acme deploy_prod $'x\\'' () { ls; }", "deploy_acme"},
+
+	// Numeric globs and process substitutions again, in paths.
+	{"~/.nvm/versions/node/v<18->/bin/node --version", "v"},
+	{"/opt/acme-q<1-4>/bin/deploy --prod", "acme-q"},
+	{"./releases/customer-acme<1-9>/run.sh", "customer-acme"},
+	{"/opt/acme-q3-layoffs<(true) --run", "acme-q3-layoffs"},
+	{"./customer-acme-export>(cat) --all", "customer-acme-export"},
+
+	// Operator pieces again, and the here-string's `<<`+`<` split by a blank.
+	{">\n& /home/alice/secret.csv SECRETARG", "SECRETARG"},
+	{">\n| /home/alice/secret.csv SECRETARG", "SECRETARG"},
+	{"> & /home/alice/secret.csv SECRETARG", "SECRETARG"},
+	{"> | /home/alice/secret.csv SECRETARG", "SECRETARG"},
+	{"<< <& secret-fd cmd", "secret-fd"},
+
+	// Bytes the shell does not split on but a reader might: U+00A0 (the
+	// artifact stored these two as 0x20; the claims say U+00A0, and only
+	// that form reproduces the recorded value) and a vertical tab.
+	{"git\u00a0push\u00a0origin\u00a0acme-secret-branch", "git\u00a0push\u00a0origin\u00a0acme-secret-branch"},
+	{"cat\u00a0/Users/alice/customer-list.csv", "customer-list.csv"},
+	{"cat\v/home/alice/secret.csv", "secret.csv"},
 }
 
 // commandWords are the programs these lines genuinely run, when they run one
@@ -308,19 +579,29 @@ var commandWords = map[string]bool{
 
 // TestNoCorpusLineLeaksIntoProgram: for every line in the corpus the program
 // is null or a word that line runs as a command -- never a word from inside
-// something the search did not parse.
+// something the search did not parse. For every one of programClaims it is
+// null: each claim was upheld as data, and none of those lines runs a command
+// the search can find for certain -- so a value that happens to be a command
+// word elsewhere (tee, cmd, cat) cannot come back on its own line either.
 func TestNoCorpusLineLeaksIntoProgram(t *testing.T) {
-	if len(leakCorpus) < 150 {
-		t.Fatalf("premise broken: the corpus has %d lines", len(leakCorpus))
+	if len(leakCorpus) < 150 || len(programClaims) != 183 {
+		t.Fatalf("premise broken: the corpus has %d lines and %d claims", len(leakCorpus), len(programClaims))
 	}
-	for _, cmd := range leakCorpus {
+	program := func(cmd string) *string {
 		raw, err := json.Marshal(map[string]string{"command": cmd})
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := Derive("Bash", raw, []byte("key"))
-		if got.Program != nil && !commandWords[*got.Program] {
-			t.Errorf("program for %q is %q, a word from inside the line rather than its command", cmd, *got.Program)
+		return Derive("Bash", raw, []byte("key")).Program
+	}
+	for _, cmd := range leakCorpus {
+		if got := program(cmd); got != nil && !commandWords[*got] {
+			t.Errorf("program for %q is %q, a word from inside the line rather than its command", cmd, *got)
+		}
+	}
+	for _, c := range programClaims {
+		if got := program(c.in); got != nil {
+			t.Errorf("program for %q is %q, want null (%q was recorded for it)", c.in, *got, c.program)
 		}
 	}
 }

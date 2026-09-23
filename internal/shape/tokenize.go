@@ -5,11 +5,18 @@ import (
 	"strings"
 )
 
-// errUnterminated is the only error this file returns, and it is a fixed
-// sentinel. An error that quoted the offending input would put a fragment of a
-// command line into an error string, which is the shortest path from here to a
-// log file.
+// errUnterminated and errUncertain are the only errors this file returns, and
+// both are fixed sentinels. An error that quoted the offending input would put
+// a fragment of a command line into an error string, which is the shortest
+// path from here to a log file.
 var errUnterminated = errors.New("unterminated quote")
+
+// errUncertain is tokenizeProgram's stop at a point from which its reading of
+// the line may not be the shell's: a quote bash and zsh read differently, or
+// an unterminated quote after an expansion lex does not parse, which may be no
+// quote at all to the shell -- "$(echo '"')" is one word. What follows is
+// unknown rather than absent, and the tokens are those completed before it.
+var errUncertain = errors.New("uncertain reading")
 
 // tokenize splits a command line the way a POSIX shell would split it, as far
 // as quoting and metacharacters go. It does not expand anything: no variables,
@@ -51,6 +58,16 @@ type token struct {
 	// nlBefore: an unquoted newline came between the previous token and this
 	// one. The shell ends a command there; this tokenizer only splits a word.
 	nlBefore bool
+	// glued: nothing -- no blank, no newline -- came between the previous
+	// token and this one. `>|` is one operator and `> |` two; `acme-<1-3>` is
+	// one word to zsh only because nothing separates its pieces. The text of
+	// neither token says which. False for a line's first token.
+	glued bool
+	// ticks: how many backticks in the word open or close a command
+	// substitution -- unquoted or inside double quotes, and not escaped. An
+	// odd count leaves one open at the word's end. '`' and \` are in the
+	// text too, and open nothing.
+	ticks int
 }
 
 // tokenizeMarked is tokenize plus one bit per token: whether the tokenizer
@@ -74,15 +91,60 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 // tokenizeShape splits a command line as tokenize does and reports, per
 // token, what the text cannot: see token.
 func tokenizeShape(s string) ([]token, error) {
+	return lex(s, false)
+}
+
+// tokenizeProgram is tokenizeShape for the program search, which reads one
+// construct as the shell reads it rather than as argc always has: a $'...'
+// string ends at its first unescaped quote. tokenizeShape ends it at the first
+// quote of any kind, so a $'...' holding an escaped quote is an open quote to
+// it and one closed word to the shell -- and what the shell reads next, a `()`
+// that makes the line a function definition, it never saw. argc keeps the old
+// reading: a count that moved would count the same command differently
+// depending on which build recorded it.
+//
+// Where it cannot tell how the shell reads on, it stops with errUncertain
+// rather than guess: see lex.
+func tokenizeProgram(s string) ([]token, error) {
+	return lex(s, true)
+}
+
+// lex is tokenizeShape and tokenizeProgram; program selects the second's
+// reading of $'...', and its errUncertain stops:
+//
+//   - $$' -- bash reads the pair $$, the shell's pid, and then an ordinary
+//     quote; zsh reads $ and then a $'...' string. An odd run of $ is $'...'
+//     to both. The two readings can end the word in different places.
+//   - an unterminated quote on a line that already held an expansion lex
+//     does not parse, whose quoting it may have misread.
+func lex(s string, program bool) ([]token, error) {
 	var (
 		toks    []token
 		cur     strings.Builder
 		started bool
 		qat     = -1
 		opaque  bool
+		ticks   int
 		sawNL   bool
+		// gap: a blank or newline since the last token ended. glued: the
+		// word being built began with no gap before it.
+		gap, glued bool
+		// dollarAt: the index of the last unquoted, unescaped `$`, and
+		// dollars: how many of them run together up to it.
+		dollarAt = -1
+		dollars  int
+		// expanded: a token already emitted was opaque.
+		expanded bool
 	)
 
+	// begin marks the current word started, noting at its first byte
+	// whether it is glued to the token before it.
+	begin := func() {
+		if !started {
+			glued = !gap && len(toks) > 0
+			started = true
+		}
+	}
 	// markQuoted records where quoting first touched the current token.
 	markQuoted := func() {
 		if qat < 0 {
@@ -106,14 +168,24 @@ func tokenizeShape(s string) ([]token, error) {
 		}
 		return false
 	}
+	// unterminated is the error for a quote that never closes. For the
+	// program search, after an expansion it is uncertain: see lex.
+	unterminated := func() error {
+		if program && (opaque || expanded) {
+			return errUncertain
+		}
+		return errUnterminated
+	}
 	flush := func() {
 		if started {
-			toks = append(toks, token{text: cur.String(), quotedAt: qat, opaque: opaque, nlBefore: sawNL})
-			sawNL = false
+			toks = append(toks, token{text: cur.String(), quotedAt: qat, opaque: opaque, nlBefore: sawNL, glued: glued, ticks: ticks})
+			expanded = expanded || opaque
+			sawNL, gap = false, false
 			cur.Reset()
 			started = false
 			qat = -1
 			opaque = false
+			ticks = 0
 		}
 	}
 
@@ -123,6 +195,7 @@ func tokenizeShape(s string) ([]token, error) {
 		switch {
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			flush()
+			gap = true
 			if c == '\n' {
 				sawNL = true
 			}
@@ -130,27 +203,36 @@ func tokenizeShape(s string) ([]token, error) {
 		case c == '\\':
 			if i+1 >= len(s) {
 				flush()
-				return toks, errUnterminated
+				return toks, unterminated()
 			}
 			i++
 			if s[i] != '\n' { // a backslash-newline is a line continuation
+				begin()
 				markQuoted()
 				cur.WriteByte(s[i])
-				started = true
 			}
 
 		case c == '\'':
 			j := strings.IndexByte(s[i+1:], '\'')
-			if j < 0 {
-				return toks, errUnterminated
+			if program && dollarAt >= 0 && dollarAt == i-1 {
+				if dollars%2 == 0 {
+					// $$': the shells disagree. See lex.
+					return toks, errUncertain
+				}
+				// $'...', which a backslash-escaped quote does not end.
+				j = ansiCEnd(s[i+1:])
 			}
+			if j < 0 {
+				return toks, unterminated()
+			}
+			begin()
 			markQuoted()
 			cur.WriteString(s[i+1 : i+1+j])
-			started = true
 			i += j + 1
 
 		case c == '"':
 			var closed bool
+			begin()
 			markQuoted()
 			i++
 			for ; i < len(s); i++ {
@@ -174,12 +256,14 @@ func tokenizeShape(s string) ([]token, error) {
 				if expands(i, true) {
 					opaque = true
 				}
+				if s[i] == '`' {
+					ticks++
+				}
 				cur.WriteByte(s[i])
 			}
 			if !closed {
-				return toks, errUnterminated
+				return toks, unterminated()
 			}
-			started = true
 
 		case isMeta(c):
 			flush()
@@ -190,21 +274,46 @@ func tokenizeShape(s string) ([]token, error) {
 					j++
 				}
 			}
-			toks = append(toks, token{text: s[i:j], meta: true, quotedAt: -1, nlBefore: sawNL})
-			sawNL = false
+			toks = append(toks, token{text: s[i:j], meta: true, quotedAt: -1, nlBefore: sawNL, glued: !gap && len(toks) > 0})
+			sawNL, gap = false, false
 			i = j - 1
 
 		default:
 			if expands(i, false) {
 				opaque = true
 			}
+			if c == '$' {
+				if dollarAt == i-1 {
+					dollars++
+				} else {
+					dollars = 1
+				}
+				dollarAt = i
+			}
+			if c == '`' {
+				ticks++
+			}
+			begin()
 			cur.WriteByte(c)
-			started = true
 		}
 	}
 
 	flush()
 	return toks, nil
+}
+
+// ansiCEnd returns the index of the quote that closes a $'...' string whose
+// body s begins -- the first one no backslash escapes -- or -1 if none does.
+func ansiCEnd(s string) int {
+	for j := 0; j < len(s); j++ {
+		switch s[j] {
+		case '\\':
+			j++
+		case '\'':
+			return j
+		}
+	}
+	return -1
 }
 
 func isMeta(c byte) bool {

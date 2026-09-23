@@ -176,26 +176,194 @@ m("H-13 backslash-newlines are not joined before the program search", "internal/
   "\tif !strings.Contains(s, \"\\\\\\n\") {\n\t\treturn s\n\t}", "\tif true {\n\t\treturn s\n\t}",
   "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 a paren where a redirect target belongs is read as a subshell", "internal/shape/shape.go",
-  "\tif i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == \"(\" {\n\t\t// A paren where the target belongs",
-  "\tif false && i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == \"(\" {\n\t\t// A paren where the target belongs",
+  "\tif toks[i+1].meta {\n\t\t// A paren where the target belongs",
+  "\tif false && toks[i+1].meta {\n\t\t// A paren where the target belongs",
   "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 a word quoted before its = is read as an assignment", "internal/shape/shape.go",
   "\treturn t.quotedAt < 0 || t.quotedAt > eq", "\treturn true", "TestProgramIsAProgram|TestNoCorpusLineLeaksIntoProgram")
 m("H-13 a quoted command line with spaces is recorded as the program", "internal/shape/shape.go",
-  "\t\tif strings.ContainsAny(t.text, \" \\t\\n\\r\") {", "\t\tif false {", "TestProgramIsAProgram")
+  "\t\tcase c < 0x21 || c > 0x7e:", "\t\tcase c < 0x20 || c > 0x7e:", "TestProgramIsAProgram")
 m("H-13 program is whatever token came first, operator or not", "internal/shape/shape.go",
   "\t\tt := toks[i]\n\t\tif t.meta {",
   "\t\tt := toks[i]\n\t\tif false && t.meta {", "TestProgramIsAProgram")
 m("H-13 a split redirect operator's second half is taken for its target", "internal/shape/shape.go",
-  "toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {", "toks[i+1].meta && op == \"\"; n++ {",
-  "TestH13_CanaryNeverReachesDisk")
-m("H-13 a redirect takes the next token for its target, word or not", "internal/shape/shape.go",
-  "\tif i+1 >= len(toks) || toks[i+1].meta {", "\tif i+1 >= len(toks) {",
-  "TestProgramIsAProgram")
+  "toks[i+1].meta && toks[i+1].glued && continuesRedirect(op, toks[i+1].text); n++ {", "toks[i+1].meta && op == \"\"; n++ {",
+  "TestH13_CanaryNeverReachesDisk|TestProgramIsAProgram")
 m("H-13 a redirect skips every operator before its target", "internal/shape/shape.go",
-  "\tfor n := 0; n < pieces && i+1 < len(toks) && toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {\n\t\ti++\n\t}",
+  "\tfor n := 0; n < pieces && i+1 < len(toks) && toks[i+1].meta && toks[i+1].glued && continuesRedirect(op, toks[i+1].text); n++ {\n\t\ti++\n\t}",
   "\tfor i+1 < len(toks) && toks[i+1].meta {\n\t\ti++\n\t}\n\t_, _ = op, pieces",
   "TestH13_CanaryNeverReachesDisk")
+# The program search: one break per rule, each judged by the rows and corpus
+# lines that rule alone closes -- the matrix in shape_program_test.go carries a
+# row per glob character, per separator, per glue check and per case of an
+# unknowable group depth, so that no rule rides on another.
+PROG = "TestProgramIsAProgram|TestNoCorpusLineLeaksIntoProgram"
+m("H-13 a redirect's pieces are joined across a blank or a newline", "internal/shape/shape.go",
+  "toks[i+1].meta && toks[i+1].glued && continuesRedirect(op, toks[i+1].text)", "toks[i+1].meta && continuesRedirect(op, toks[i+1].text)", PROG)
+m("H-13 an operator where a redirect target belongs is read past to the next command", "internal/shape/shape.go",
+  "\treturn !procSub(toks, i+1)\n}", "\treturn false\n}", PROG)
+m("H-13 the tokenizer never marks an operator glued", "internal/shape/tokenize.go",
+  "nlBefore: sawNL, glued: !gap && len(toks) > 0})", "nlBefore: sawNL, glued: false})", "TestTokenizeGlued|TestProgramIsAProgram")
+m("H-13 the tokenizer never marks a word glued", "internal/shape/tokenize.go",
+  "\t\t\tglued = !gap && len(toks) > 0\n", "\t\t\tglued = false\n", "TestTokenizeGlued|TestProgramIsAProgram")
+m("H-13 a byte the shell does not split on is read as part of a program name", "internal/shape/shape.go",
+  "\t\tcase c < 0x21 || c > 0x7e:", "\t\tcase c == ' ' || c == '\\t' || c == '\\n' || c == '\\r':", PROG)
+m("H-13 a command word holding $ is named", "internal/shape/shape.go",
+  "\t\tcase c == '$':", "\t\tcase false && c == '$':", PROG)
+m("H-13 a glob command word is named", "internal/shape/shape.go",
+  "\t\tcase c == '*' || c == '?':", "\t\tcase false && (c == '*' || c == '?'):", PROG)
+m("H-13 zsh's ~ exclusion is read as a path", "internal/shape/shape.go",
+  "\t\tcase c == '~' && j > 0:", "\t\tcase false && c == '~' && j > 0:", PROG)
+m("H-13 an all-digit command word is named", "internal/shape/shape.go",
+  "\treturn !digits\n}", "\treturn true\n}", PROG)
+m("H-13 a word glued to <( or a numeric glob is named by its front", "internal/shape/shape.go",
+  "\treturn next.meta && next.text == \"(\" || op == \"<\" && isNumericGlob(next)",
+  "\treturn false && next.meta && op == \"\"", PROG)
+m("H-13 a directory is named by its last component", "internal/shape/shape.go",
+  "\tcase strings.HasSuffix(s, \"/\"):", "\tcase false && strings.HasSuffix(s, \"/\"):", PROG)
+m("H-13 a control byte in the line is read past", "internal/shape/shape.go",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {", "\t\tif c := cmd[i]; c == '\\r' {", PROG)
+m("H-13 the function-definition scan stops at a redirection", "internal/shape/shape.go",
+  "\t\tcase isRedirect(t.text):\n\t\t\tend := operatorEnd(toks, j)\n",
+  "\t\tcase isRedirect(t.text):\n\t\t\tif true {\n\t\t\t\treturn false\n\t\t\t}\n\t\t\tend := operatorEnd(toks, j)\n", PROG)
+m("H-13 the function-definition scan reads &> as the background separator", "internal/shape/shape.go",
+  "\t\tcase t.text == \"&\" && j+1 < len(toks)", "\t\tcase false && t.text == \"&\" && j+1 < len(toks)", PROG)
+m("H-13 the function-definition scan stops at a paren that does not close at once", "internal/shape/shape.go",
+  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn true\n\t\t\t}\n",
+  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn true\n\t\t\t}\n\t\t\treturn false\n", PROG)
+m("H-13 the function-definition scan runs on past a newline", "internal/shape/shape.go",
+  "\t\tcase t.nlBefore:\n\t\t\treturn false\n", "\t\tcase false && t.nlBefore:\n\t\t\treturn false\n", "TestProgramIsAProgram")
+SEPS = ["\";\"", "\"&&\"", "\"||\"", "\"|\"", "\"&\""]
+_seps = "\t\tcase " + " || ".join("t.text == " + x for x in SEPS) + ":\n\t\t\treturn false"
+for _drop in SEPS:
+    m("H-13 the function-definition scan reads on past " + _drop.strip('"'), "internal/shape/shape.go",
+      _seps, "\t\tcase " + " || ".join("t.text == " + x for x in SEPS if x != _drop) + ":\n\t\t\treturn false", PROG)
+m("H-13 the function-definition scan does not skip a paren group", "internal/shape/shape.go",
+  "\t\t\t}\n\t\t\topen = append(open, '(')\n", "\t\t\t}\n", PROG)
+m("H-13 the function-definition scan does not skip backticks", "internal/shape/shape.go",
+  "\t\tcase t.ticks%2 == 1:\n\t\t\topen = append(open, '`')\n", "\t\tcase false:\n\t\t\topen = append(open, '`')\n", PROG)
+m("H-13 a paren inside a group does not nest", "internal/shape/shape.go",
+  "\tcase t.text == \"(\":\n\t\treturn append(open, '(')\n", "\tcase t.text == \"(\":\n", PROG)
+m("H-13 a paren group never closes", "internal/shape/shape.go",
+  "\tcase t.text == \")\":\n\t\treturn open[:len(open)-1]\n", "\tcase t.text == \")\":\n", PROG)
+m("H-13 backticks never close", "internal/shape/shape.go",
+  "\tcase t.ticks%2 == 1 && top == '`':\n\t\treturn open[:len(open)-1]\n", "\tcase false:\n\t\treturn open[:len(open)-1]\n", PROG)
+m("H-13 a group that never closes is read as closed", "internal/shape/shape.go",
+  "\treturn len(open) > 0 || uncertain\n}", "\treturn uncertain\n}", PROG)
+m("H-13 the function-definition scan reads past where the lexer's reading stopped", "internal/shape/shape.go",
+  "\treturn len(open) > 0 || uncertain\n}", "\treturn len(open) > 0\n}", PROG)
+m("H-13 a ${ the word does not close is read past", "internal/shape/shape.go",
+  "\t\tif openBrace(t) {\n\t\t\treturn true\n\t\t}", "\t\tif false && openBrace(t) {\n\t\t\treturn true\n\t\t}", PROG)
+m("H-13 a closed ${ } is taken for an open one", "internal/shape/shape.go",
+  "strings.Count(t.text[k:], \"{\") > strings.Count(t.text[k:], \"}\")",
+  "strings.Count(t.text[k:], \"{\") >= strings.Count(t.text[k:], \"}\")", "TestProgramIsAProgram")
+m("H-13 a quoted ${ is taken for an expansion", "internal/shape/shape.go",
+  "\treturn t.opaque && k >= 0 &&", "\treturn k >= 0 &&", "TestProgramIsAProgram")
+m("H-13 a comment inside a group is read past", "internal/shape/shape.go",
+  "\tcase isComment(t):\n\t\treturn true\n", "\tcase false && isComment(t):\n\t\treturn true\n", PROG)
+m("H-13 a case statement inside a group is read past", "internal/shape/shape.go",
+  "\tcase !t.meta && t.quotedAt < 0 && t.text == \"case\":\n", "\tcase false:\n", PROG)
+m("H-13 a here-document inside a group is read past", "internal/shape/shape.go",
+  "\tcase hereDoc(toks, j):\n\t\treturn true\n", "\tcase false && hereDoc(toks, j):\n\t\treturn true\n", PROG)
+m("H-13 a newline in a group after a here-document is read past", "internal/shape/shape.go",
+  "\tcase heredoc && t.nlBefore:\n", "\tcase false:\n", PROG)
+m("H-13 a here-string is taken for a here-document", "internal/shape/shape.go",
+  "\treturn next >= len(toks) || !(toks[next].meta && toks[next].glued && toks[next].text == \"<\")",
+  "\treturn next >= 0", "TestProgramIsAProgram")
+m("H-13 a trailing backslash after an expansion is read as a real one", "internal/shape/tokenize.go",
+  "\t\t\t\tflush()\n\t\t\t\treturn toks, unterminated()", "\t\t\t\tflush()\n\t\t\t\treturn toks, errUnterminated",
+  "TestTokenizeProgramStops|" + PROG)
+m("H-13 the function-definition scan reads &> as & and then >", "internal/shape/shape.go",
+  "\t\t\tj++\n\t\t\tfallthrough", "\t\t\tfallthrough", "TestProgramIsAProgram")
+m("H-13 a word glued to any operator and a paren is named by its front", "internal/shape/shape.go",
+  "\tif op != \"<\" && op != \">\" {", "\tif false && op != \"<\" && op != \">\" {", "TestProgramIsAProgram")
+m("H-13 a word glued to > and digits is read as a numeric glob", "internal/shape/shape.go",
+  "|| op == \"<\" && isNumericGlob(next)", "|| isNumericGlob(next)", "TestProgramIsAProgram")
+m("H-13 a backtick inside a paren group opens nothing", "internal/shape/shape.go",
+  "\tcase t.ticks%2 == 1:\n\t\treturn append(open, '`')\n", "\tcase false:\n\t\treturn append(open, '`')\n", PROG)
+m("H-13 a paren inside backticks closes them", "internal/shape/shape.go",
+  "\tcase top == '`' || !t.meta:", "\tcase !t.meta:", PROG)
+m("H-13 & then > is read as &>", "internal/shape/shape.go",
+  "toks[j+1].meta && toks[j+1].glued && strings.HasPrefix(toks[j+1].text, \">\")",
+  "toks[j+1].meta && strings.HasPrefix(toks[j+1].text, \">\")", "TestProgramIsAProgram")
+m("H-13 a numeric glob spaced from the command word is read as part of it", "internal/shape/shape.go",
+  "!toks[i+1].meta || !toks[i+1].glued || !toks[i+2].glued", "!toks[i+1].meta || !toks[i+2].glued", "TestProgramIsAProgram")
+m("H-13 digits spaced from a glued < are read as a numeric glob", "internal/shape/shape.go",
+  "!toks[i+1].meta || !toks[i+1].glued || !toks[i+2].glued", "!toks[i+1].meta || !toks[i+1].glued", "TestProgramIsAProgram")
+m("H-13 a path ending in . is named", "internal/shape/shape.go",
+  "\tcase s != \".\" && (path.Base(s) == \".\" || path.Base(s) == \"..\"):",
+  "\tcase s != \".\" && path.Base(s) == \"..\":", PROG)
+m("H-13 a path ending in .. is named", "internal/shape/shape.go",
+  "\tcase s != \".\" && (path.Base(s) == \".\" || path.Base(s) == \"..\"):",
+  "\tcase s != \".\" && path.Base(s) == \".\":", PROG)
+m("H-13 the source builtin is refused as a directory", "internal/shape/shape.go",
+  "\tcase s != \".\" && (path.Base(s) == \".\" || path.Base(s) == \"..\"):",
+  "\tcase path.Base(s) == \".\" || path.Base(s) == \"..\":", "TestProgramIsAProgram")
+m("H-13 a jobspec is named", "internal/shape/shape.go",
+  "\tcase strings.HasPrefix(s, \"%\"):", "\tcase false && strings.HasPrefix(s, \"%\"):", PROG)
+m("H-13 a quoted command word split by a tab is named", "internal/shape/shape.go",
+  "\t\tcase c < 0x21 || c > 0x7e:", "\t\tcase c < 0x21 && c != '\\t' || c > 0x7e:", PROG)
+m("H-13 a quoted command word split by a newline is named", "internal/shape/shape.go",
+  "\t\tcase c < 0x21 || c > 0x7e:", "\t\tcase c < 0x21 && c != '\\n' || c > 0x7e:", PROG)
+m("H-13 a tab in the line is taken for a control byte", "internal/shape/shape.go",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\n' || c == 0x7f {", "TestProgramIsAProgram")
+m("H-13 a newline in the line is taken for a control byte", "internal/shape/shape.go",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' || c == 0x7f {", "TestProgramIsAProgram")
+m("H-13 the tokenizer never counts an unquoted backtick", "internal/shape/tokenize.go",
+  "\t\t\tif c == '`' {\n\t\t\t\tticks++\n\t\t\t}\n", "", "TestTokenizeTicks|" + PROG)
+m("H-13 the tokenizer never counts a backtick inside double quotes", "internal/shape/tokenize.go",
+  "\t\t\t\tif s[i] == '`' {\n\t\t\t\t\tticks++\n\t\t\t\t}\n", "", "TestTokenizeTicks")
+m("H-13 the function-definition scan reads past a redirect with no target", "internal/shape/shape.go",
+  "\t\t\tif noTarget(toks, end) {", "\t\t\tif false && noTarget(toks, end) {", PROG)
+m("H-13 the program search reads past a redirect with no target", "internal/shape/shape.go",
+  "\tif noTarget(toks, i) {\n\t\treturn 0, false\n\t}\n", "\tif false && noTarget(toks, i) {\n\t\treturn 0, false\n\t}\n", PROG)
+m("H-13 a redirect takes its target from the next line", "internal/shape/shape.go",
+  "\tcase next.nlBefore:\n\t\treturn true\n", "\tcase false && next.nlBefore:\n\t\treturn true\n", PROG)
+m("H-13 a redirect followed by another is read past", "internal/shape/shape.go",
+  "\treturn !procSub(toks, i+1)\n}", "\treturn !procSub(toks, i+1) && !isRedirect(next.text)\n}", PROG)
+m("H-13 a paren is refused as a redirect's missing target", "internal/shape/shape.go",
+  "\tcase !next.meta, next.text == \"(\":\n", "\tcase !next.meta:\n", "TestProgramIsAProgram")
+m("H-13 a process substitution is refused as a redirect's target", "internal/shape/shape.go",
+  "\treturn !procSub(toks, i+1)\n}", "\treturn true\n}", "TestProgramIsAProgram")
+m("H-13 a paren spaced from its < is read as a process substitution", "internal/shape/shape.go",
+  "\treturn next.meta && next.glued && next.text == \"(\"\n}", "\treturn next.meta && next.text == \"(\"\n}", PROG)
+m("H-13 a comment where a redirect target belongs is taken for the target", "internal/shape/shape.go",
+  "\tcase isComment(next):\n\t\treturn true\n", "\tcase false && isComment(next):\n\t\treturn true\n", PROG)
+m("H-13 a C0 control other than NUL and CR is read past", "internal/shape/shape.go",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {",
+  "\t\tif c := cmd[i]; c == 0 || c == '\\r' || c == 0x7f {", PROG)
+m("H-13 a DEL in the line is read past", "internal/shape/shape.go",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' {", PROG)
+m("H-13 ~user is named", "internal/shape/shape.go",
+  "\tcase strings.HasPrefix(s, \"~\") && !strings.Contains(s, \"/\"):",
+  "\tcase false && strings.HasPrefix(s, \"~\") && !strings.Contains(s, \"/\"):", PROG)
+m("H-13 zsh's ^ is read as part of a program name", "internal/shape/shape.go",
+  "\t\tcase c == '^' || c == '#':", "\t\tcase c == '#':", PROG)
+m("H-13 zsh's # is read as part of a program name", "internal/shape/shape.go",
+  "\t\tcase c == '^' || c == '#':", "\t\tcase c == '^':", PROG)
+m("H-13 an empty word is named `.`", "internal/shape/shape.go",
+  "which reads as the source builtin.\n\t\treturn false", "which reads as the source builtin.\n\t\treturn true", PROG)
+m("H-14 argc is counted over the program search's reading of $'...'", "internal/shape/shape.go",
+  "\tshaped, err := tokenizeShape(cmd)", "\tshaped, err := tokenizeProgram(cmd)", "TestArgc")
+m("H-13 the program search reads $'...' as argc does", "internal/shape/shape.go",
+  "\tpshaped, perr := tokenizeProgram(joinContinuations(cmd))", "\tpshaped, perr := tokenizeShape(joinContinuations(cmd))", PROG)
+m("H-13 any earlier $ opens a $'...' string", "internal/shape/tokenize.go",
+  "\t\t\tif program && dollarAt >= 0 && dollarAt == i-1 {", "\t\t\tif program && dollarAt >= 0 {", "TestTokenizeProgramReadsANSICQuotes")
+m("H-13 a quote at the start of the line is read as $'...'", "internal/shape/tokenize.go",
+  "program && dollarAt >= 0 && dollarAt == i-1", "program && dollarAt == i-1", "TestTokenizeProgramReadsANSICQuotes|" + PROG)
+m("H-13 bash's $$' is read as zsh's $'...'", "internal/shape/tokenize.go",
+  "\t\t\t\tif dollars%2 == 0 {", "\t\t\t\tif false {", "TestTokenizeProgramReadsANSICQuotes|" + PROG)
+m("H-13 an odd run of $ is read as bash's $$'", "internal/shape/tokenize.go",
+  "\t\t\t\tif dollars%2 == 0 {", "\t\t\t\tif dollars > 1 {", "TestTokenizeProgramReadsANSICQuotes")
+m("H-13 an unterminated quote after an expansion is read as a real one", "internal/shape/tokenize.go",
+  "\t\tif program && (opaque || expanded) {", "\t\tif false {", "TestTokenizeProgramStops|" + PROG)
+m("H-13 an expansion in an earlier word leaves a later quote certain", "internal/shape/tokenize.go",
+  "\t\tif program && (opaque || expanded) {", "\t\tif program && opaque {", "TestTokenizeProgramStops|" + PROG)
+m("H-13 the count's tokenizer stops where the program search does", "internal/shape/tokenize.go",
+  "\t\tif program && (opaque || expanded) {", "\t\tif opaque || expanded {", "TestTokenize")
 m("H-14 argc counts a leading assignment prefix again", "internal/shape/shape.go",
   "\t\tn := len(dropLeadingAssignments(toks))", "\t\tn := len(toks)",
   "TestArgcExcludesLeadingAssignments")
@@ -488,8 +656,8 @@ m("H-3  executable path installed unquoted", "internal/install/install.go",
 m("tokenizer does not split on metacharacters", "internal/shape/tokenize.go",
   "\t\tcase isMeta(c):\n", "\t\tcase isMeta(c) && false:\n", "TestTokenize")
 m("tokenizer emits the token an unterminated quote interrupted", "internal/shape/tokenize.go",
-  "\t\t\tif !closed {\n\t\t\t\treturn toks, errUnterminated",
-  "\t\t\tif !closed {\n\t\t\t\tstarted = true\n\t\t\t\tflush()\n\t\t\t\treturn toks, errUnterminated", "TestTokenize")
+  "\t\t\tif !closed {\n\t\t\t\treturn toks, unterminated()",
+  "\t\t\tif !closed {\n\t\t\t\tstarted = true\n\t\t\t\tflush()\n\t\t\t\treturn toks, unterminated()", "TestTokenize")
 m("settings accepts a duplicate key", "internal/settings/document.go",
   "\t\tif seen[key] {\n\t\t\treturn nil, fmt.Errorf(\"duplicate key %q\", key)\n\t\t}\n\t\tseen[key] = true", "\t\tseen[key] = true",
   "TestParseRefuses|TestHookEntriesRefusesDuplicateEventKeys")

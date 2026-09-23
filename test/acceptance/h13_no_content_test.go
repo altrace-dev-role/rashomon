@@ -174,6 +174,27 @@ func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 		{"append assignment", "PATH+=:/tmp/" + canary},
 		{"quoted brace", "'{' /tmp/" + canary},
 		{"comment", "#" + canary + " comment"},
+		// Each of these is a word the tokenizer split where the shell does
+		// not, or two operators it joined across a blank.
+		{"numeric glob inside the command word", "/tmp/" + canary + "-<1-3>/run.sh --prod"},
+		{"process substitution glued to the command word", "/tmp/" + canary + "<(true) --flag"},
+		{"computed command word", "$x:gs/" + canary + "//"},
+		{"blank between > and |", "> | grep " + canary + " f"},
+		{"a NUL before a comment", "\x00#" + canary + " ls"},
+		{"a line joined by U+00A0", "git\u00a0push\u00a0" + canary},
+		{"function definition with a redirect between the names", canary + " >x deploy_prod () { ls; }"},
+		// A redirect with no target, words that can never name a program, a
+		// separator inside a group, and a control byte that is not a NUL.
+		{"a redirect with ; for its target", "> ; /tmp/" + canary + " x"},
+		{"a directory in command position", "/tmp/" + canary + "/ --prod"},
+		{"a user's home directory", "~" + canary},
+		{"zsh's ^ negation", "/usr/bin/^" + canary},
+		{"a separator inside $( ) between function names", canary + " $(x; y) () { ls; }"},
+		{"a C0 control where a redirect target belongs", ">\x01 /tmp/" + canary},
+		// A redirect whose target is another redirect, and a quote bash and
+		// zsh read differently hiding a function definition's ().
+		{"a redirect then a redirect", "> > /tmp/x " + canary},
+		{"$$' read two ways", canary + " $$'\\' () { ls; }'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
