@@ -16,7 +16,8 @@ creates no store.
    - machine-readable: `--json`
    - to share outside the team: `--redact` (hostnames become keyed digests
      and the agent's prose summary is dropped)
-   - joined against an observing Altrace proxy: `--proxy-store <path>`
+   - which prompt produced which calls: `--chain` (lists each call under its
+     prompt, with the hosts the call named; JSON always carries this)
 
 3. Show the output. If it is long, show the coverage block and the
    per-transcript accounting in full and summarize the id lists; never

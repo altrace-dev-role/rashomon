@@ -545,10 +545,11 @@ func reportOrEmpty(sessionID, proxyStore, nonoTrail string, now time.Time) (*rep
 		return launch.IsOurs(t, key)
 	}))
 	// A TAG RECOVERED FROM OUR OWN ENVIRONMENT, which is what makes
-	// `eval $(rashomon env --token)` followed by `rashomon report` do what the
-	// flag's help says. Without this the only path from a tag to a join was
-	// `run`'s in-memory value, so a tagged shell produced rows the report then
-	// declined to use while telling the user no tag was in play.
+	// `eval $(rashomon env --token)` followed by `rashomon report --proxy-store
+	// PATH` do what the flag's help says. (The flag is required: report reads
+	// no proxy store it was not named.) Without this the only path from a tag
+	// to a join was `run`'s in-memory value, so a tagged shell produced rows the
+	// report then declined to use while telling the user no tag was in play.
 	//
 	// Verified before use: an ambient HTTPS_PROXY may be a real corporate proxy
 	// with real credentials, and reading somebody's password as a session tag
@@ -1231,6 +1232,13 @@ func cmdReport(args []string, stdout io.Writer) error {
 			if i+1 >= len(args) {
 				return errors.New("--proxy-store needs a value")
 			}
+			// An empty path is refused, not read as "no store": "" is exactly
+			// what not naming one means below, so `--proxy-store ""` -- an
+			// unset variable in a script -- would collapse the proxy block
+			// silently when the caller asked for it in full.
+			if args[i+1] == "" {
+				return errors.New("--proxy-store needs a non-empty path")
+			}
 			proxyStore = args[i+1]
 			i++
 		case "--json":
@@ -1249,9 +1257,15 @@ func cmdReport(args []string, stdout io.Writer) error {
 			return fmt.Errorf("unknown argument %q", args[i])
 		}
 	}
-	if proxyStore == "" {
-		proxyStore = defaultProxyStore()
-	}
+	// No fallback when --proxy-store is absent: an empty path is read as "no
+	// proxy store", and the text render states destinations as not observed in
+	// one line. This used to default to ~/.altrace/observe/causal.db, a path
+	// owned by a separate product this repository does not ship, so a report's
+	// content could change because someone else's file happened to sit at a
+	// guessed location, with nothing on the command line to say so. The flag is
+	// now the whole contract. run's automatic report (reportNewest) is the one
+	// caller that still uses the default, and only under a verified posture; see
+	// defaultProxyStore.
 
 	// Opened WITHOUT creating: a command that only asks a question must not mint
 	// an install identity and an HMAC key as a side effect of being asked. The
@@ -1271,7 +1285,11 @@ func cmdReport(args []string, stdout io.Writer) error {
 		// structure either way: that reader is a program selecting fields, not
 		// a person scrolling, and making it pass a flag to receive a section
 		// would mean a consumer could parse a report and silently miss one.
-		var opts []report.TextOption
+		//
+		// The same rule decides the proxy block: the text render is told which
+		// store was named, and with none it collapses that block to one line.
+		// The JSON is untouched either way.
+		opts := []report.TextOption{report.WithNamedProxyStore(proxyStore)}
 		if chain {
 			opts = append(opts, report.WithChain())
 		}
@@ -1495,6 +1513,14 @@ func parseInstant(flag, v string, now time.Time) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("%s %q is neither a duration nor an RFC3339 time", flag, v)
 }
 
+// usage deliberately omits env, run and report's --proxy-store, all of which
+// are still dispatched. They are the bridge to the observing proxy, which is a
+// separate product that does not ship with this alpha, so offering them here
+// would send a reader to commands that refuse (env), run without recording a
+// destination (run), or read a database the reader does not have. env and run
+// each keep their own --help text for whoever reaches them deliberately, and
+// both answer it on any machine, before any status file is read; listing them
+// again is a decision for the release that ships the proxy.
 func usage(w io.Writer) {
 	fmt.Fprint(w, `rashomon -- record what a Claude Code session asked to run
 
@@ -1514,7 +1540,7 @@ usage:
   rashomon status                say what is installed and what the store holds,
                                writing nothing and creating no store
   rashomon report [--session S] [--json] [--redact] [--chain]
-                  [--proxy-store PATH] [--nono-audit PATH]
+                  [--nono-audit PATH]
                                render declarations and coverage, as text for a
                                terminal or as JSON for a consumer; --chain
                                lists the calls under each prompt, which JSON
@@ -1531,19 +1557,10 @@ usage:
                                flag; omitted by default, because reading
                                stdin unless told to is how a caller that
                                never closes its pipe gets hung forever.
-  rashomon forget --host H       evict every call that named host H, and its
-                               baseline entry
+  rashomon forget --host H       evict every call that named host H
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T
                                either way, leaving a coverage gap behind
-  rashomon env [--port N]        print the proxy variables to export, for use
-                               with eval; HTTPS only, since plain HTTP is not
-                               observed in this release
-  rashomon run [--proxy-status PATH] -- <cmd...>
-                               run a command with the proxy variables set, if
-                               and only if an observe-mode proxy is running,
-                               then report on the session it produced;
-                               --proxy-status overrides where that is checked
   rashomon version               print the version
 
 invoked by Claude Code, never by hand:
@@ -1562,13 +1579,6 @@ another install stands down: it records nothing in this environment.
 `)
 }
 
-// observeDefaultPort is the observe profile's listener.
-//
-// 18080 rather than 8080: the enforcing profile holds 8080, both are loopback
-// installs on one host, and 8080 is the most commonly occupied port on a
-// developer machine. The proxy prints the same number in its own banner.
-const observeDefaultPort = 18080
-
 // NO_PROXY now comes from launch.NoProxyValue, the single spelling.
 //
 // This file used to carry its own copy, and launch's comment on that constant
@@ -1583,7 +1593,8 @@ const observeDefaultPort = 18080
 // deliberately NOT excluded: an agent reaching an internal service is exactly
 // the finding this tool exists to surface, so LAN egress stays on the path.
 
-// cmdEnv prints the variables that put the observe proxy on a session's path.
+// cmdEnv prints the variables that put the observe proxy on a session's path,
+// and only when a verified observe-mode proxy is there to receive them.
 //
 // It prints rather than exports, because a process cannot alter its parent's
 // environment; the operator runs `eval $(rashomon env)`. That is why nothing
@@ -1601,17 +1612,68 @@ const observeDefaultPort = 18080
 // It reads no store and creates none. This is the first command an operator
 // runs, and making it depend on having already recorded something would be
 // backwards.
+//
+// ARGUMENTS FIRST. --help, an unknown argument and a bad --port are questions
+// about this command, not about the machine, so they answer on any machine
+// before any file is read. The check below once ran first, and `env --help`
+// on a machine with no proxy answered "no proxy".
+//
+// THEN THE CHECK, and it is run's: posture.Read and its Export, deliberately
+// not a lighter one. env used to print its constants unconditionally, so on a
+// machine with no proxy `eval $(rashomon env)` pointed the shell's HTTPS at a
+// port where nothing listened, and every HTTPS request from that shell failed
+// until the variables were unset by hand -- the command advertised as the easy
+// path was the one that broke the shell. A status file that merely exists
+// also describes an enforcing proxy, which refuses the client's own API
+// tunnels, and a routable address, which sends the traffic off the machine.
+//
+// IT EXPORTS WHAT RUN EXPORTS: the listen address the verified file names. It
+// used to export 127.0.0.1:18080 whatever that file said, so a proxy verified
+// at another address had the shell pointed at a port nothing verified was
+// listening on -- the same broken shell, reached past the check. So --port can
+// only confirm the verified listener, never select another one.
+//
+// And it exports that address as posture PARSED it -- v.Listen, a known host
+// and a number, rebuilt -- never the file's own string. The file is writable
+// by the user the agent runs as, and this output goes to eval: a listen_addr
+// of "127.0.0.1:1;cmd" once passed the loopback check, which reads only the
+// host, and env printed the command into the operator's shell (CWE-78). The
+// ADDRESS can now carry nothing a shell reads as a second word or a second
+// command.
+//
+// The rest of the line is not all that tame, and the residual is stated here
+// rather than implied away: NO_PROXY ends in `*.local`, which is a glob. Under
+// the documented `eval $(rashomon env)` the substitution is unquoted, so the
+// shell expands that word against the CURRENT DIRECTORY before eval sees it: a
+// file there whose name matches the pattern replaces the word, and eval then
+// parses that file name as shell text. The quoted capture form,
+// `vars=$(rashomon env) && eval "$vars"`, does not glob. The value itself is
+// unchanged -- it is pinned byte-identical to what env has always printed --
+// and changing it is deferred, not decided here.
+//
+// A refusal writes nothing to stdout and exits 1 via guarded. The exit status
+// reaches a caller that runs `rashomon env` directly, or captures it with
+// `vars=$(rashomon env) && eval "$vars"`. The documented `eval $(rashomon env)`
+// itself returns 0 whatever env did -- eval of an empty substitution succeeds
+// -- so for that form the protection is the empty stdout, which makes the eval
+// a no-op, and stderr says why.
 func cmdEnv(args []string, stdout io.Writer) error {
-	port, err := envPort(args)
+	port, portGiven, err := envPort(args)
 	if err != nil {
 		return err
 	}
-	token, err := envToken(args)
+	v := posture.Read(posture.DefaultPath())
+	if !v.Export {
+		return fmt.Errorf("env: printing no proxy variables -- %s", v.Reason)
+	}
+	if portGiven && port != v.Listen.Port {
+		return fmt.Errorf("env: --port %d is not the verified listener %s", port, v.Listen)
+	}
+	token, err := envToken(args, v)
 	if err != nil {
 		return err
 	}
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	for _, kv := range launch.Env(addr, token) {
+	for _, kv := range launch.Env(v.Listen.String(), token) {
 		fmt.Fprintf(stdout, "export %s\n", kv)
 	}
 	return nil
@@ -1632,7 +1694,13 @@ func cmdEnv(args []string, stdout io.Writer) error {
 //
 // There is deliberately no way to SET a specific tag: one a user can choose is
 // one another user can guess.
-func envToken(args []string) (string, error) {
+//
+// v is the verdict cmdEnv's check already accepted, not a second read of the
+// file. That is run's shape -- one read, and both the export decision and the
+// capability come from it -- and it closes the gap a second read left open: a
+// status file rewritten between the two could have had the capability judged
+// against a document the check never saw.
+func envToken(args []string, v posture.Verdict) (string, error) {
 	var want bool
 	for _, a := range args {
 		if a == "--token" {
@@ -1647,49 +1715,59 @@ func envToken(args []string) (string, error) {
 		return "", errors.New("env --token: nothing is recording yet -- run `rashomon watch` first, " +
 			"so the tag can be signed with this install's key")
 	}
-	if !posture.Read(posture.DefaultPath()).File.SessionToken {
+	if !v.File.SessionToken {
 		return "", errors.New("env --token: the observe proxy does not advertise session_token, " +
 			"so a tagged proxy URL may be refused on every CONNECT; re-run without --token")
 	}
 	return launch.NewToken(st.Key()), nil
 }
 
-// envPort resolves --port, refusing anything that is not a usable port.
+// envHelp is env's own --help text.
 //
-// Refusing rather than falling back to the default is the whole point: a
-// silently ignored --port sends the operator's traffic to whatever is
-// listening on 18080, which may be another person's proxy or nothing at all,
-// and they would have no way to tell from the output that their flag was
-// dropped.
-func envPort(args []string) (int, error) {
-	port := observeDefaultPort
+// It is returned as the error, so it goes to stderr: env's stdout is for
+// assignments and nothing else, because the one way anyone runs this command
+// is through eval.
+const envHelp = "env: prints the proxy variables to export, and only when a verified " +
+	"observe-mode proxy is running; --port N refuses unless N is that proxy's port; " +
+	"--token tags this shell's traffic, and only `rashomon report --proxy-store PATH` " +
+	"joins on the tag -- plain report reads no proxy store"
+
+// envPort resolves --port, refusing anything that is not a usable port, and
+// says whether --port was given at all.
+//
+// Refusing rather than falling back is the whole point: a silently ignored
+// --port leaves the operator's traffic going somewhere they did not ask for,
+// with no way to tell from the output that their flag was dropped. It reads no
+// file, so every refusal here answers on any machine; whether the port matches
+// the verified listener is cmdEnv's question, asked after the check.
+func envPort(args []string) (port int, given bool, err error) {
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--port":
 			if i+1 >= len(args) {
-				return 0, errors.New("env: --port needs a value")
+				return 0, false, errors.New("env: --port needs a value")
 			}
 			i++
 			n, err := strconv.Atoi(args[i])
 			if err != nil {
-				return 0, fmt.Errorf("env: --port %q is not a number", args[i])
+				return 0, false, fmt.Errorf("env: --port %q is not a number", args[i])
 			}
 			if n < 1 || n > 65535 {
-				return 0, fmt.Errorf("env: --port %d is outside 1-65535", n)
+				return 0, false, fmt.Errorf("env: --port %d is outside 1-65535", n)
 			}
-			port = n
+			port, given = n, true
 		case "--token":
 			// Consumed here and read again by envToken. Two readers of one
 			// flag is worth it: envPort's job is to REFUSE what it does not
 			// understand, and a flag it silently ignored would be the same
 			// defect as the dropped --port this function exists to prevent.
 		case "--help", "-h":
-			return 0, errors.New("env: prints the proxy variables to export; --port N selects the listener (default 18080); --token tags this shell's traffic so the report can attribute it exactly")
+			return 0, false, errors.New(envHelp)
 		default:
-			return 0, fmt.Errorf("env: unknown argument %q", args[i])
+			return 0, false, fmt.Errorf("env: unknown argument %q", args[i])
 		}
 	}
-	return port, nil
+	return port, given, nil
 }
 
 // defaultProxyStore is where the observe-mode proxy writes its records.
@@ -1698,11 +1776,21 @@ func envPort(args []string) (int, error) {
 // observe-mode proxy writes causal.db under ~/.altrace/observe. Hard-coding it
 // here rather
 // than reading the proxy's config is deliberate -- this tool must not need to
-// parse the closed product's configuration to do its job, and --proxy-store
-// covers every operator who moved it.
+// parse the closed product's configuration to do its job.
 //
-// A home directory that cannot be resolved yields "", which the reader reports
-// as "not observed (no_proxy_store)" rather than guessing at a relative path.
+// Only run's automatic report uses it, and only under an ACCEPTED posture whose
+// status file named no causal_db. A refused posture reads no store at all, so
+// a stale, crashed, enforcing, non-loopback or unparseable status file cannot
+// steer the report -- to its causal_db, or to whatever sits at this path.
+// That is the whole of what the gate delivers. It does not stop a session
+// choosing the database: the status file is writable by the user the agent
+// runs as, and a forged one naming a live pid, observe mode and a loopback
+// address is accepted, causal_db and all. report does not fall back to this
+// path either; see cmdReport.
+//
+// A home directory that cannot be resolved yields "", which names no store, so
+// the report states destinations as not observed rather than guessing at a
+// relative path.
 func defaultProxyStore() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -1719,11 +1807,17 @@ func defaultProxyStore() string {
 // as "seen before" forever, with nothing left to explain why -- a deletion that
 // silently changes future reports is worse than no deletion.
 //
-// It does NOT delete from the proxy's store, and says so. That database is the
-// closed product's hash-chained audit record, opened read-only here, and
-// removing a row would break the chain it exists to provide. The gap record
-// carries the host, and the report reads it to keep the destination suppressed
-// from its view.
+// It does NOT delete from the proxy's store, and says so -- where one was ever
+// read here. That database is the closed product's hash-chained audit record,
+// opened read-only, and removing a row would break the chain it exists to
+// provide. The gap record carries the host, and the report reads it to keep
+// the destination suppressed from its view.
+//
+// A baseline/ directory is the evidence that a proxy store was read on this
+// machine, because a report writes one only then. Without it, the baseline
+// count and the sentence about the proxy's records describe state that does
+// not exist and a product the reader does not have, so the output is one line
+// saying what was removed. With it, the output is what it always was.
 func forgetHost(host string, stdout io.Writer) error {
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {
@@ -1746,29 +1840,42 @@ func forgetHost(host string, stdout io.Writer) error {
 	// the caller meant, so every project that remembers the host loses it. That
 	// is the conservative direction: a host the user asked to forget must not
 	// survive in a baseline they did not think to name.
-	cleared, err := clearBaselines(st.Root(), host)
+	cleared, hadBaselines, err := clearBaselines(st.Root(), host)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(stdout, "rashomon: forgot %d records naming %s across %d runs; "+
-		"%d gap records written; %d project baseline(s) cleared\n",
-		total, host, len(gaps), len(gaps), cleared)
+	fmt.Fprintf(stdout, "rashomon: forgot %s naming %s across %s; %s written",
+		countOf(total, "record"), host, countOf(len(gaps), "run"), countOf(len(gaps), "gap record"))
+	if !hadBaselines {
+		fmt.Fprintln(stdout)
+		return nil
+	}
+	fmt.Fprintf(stdout, "; %d project baseline(s) cleared\n", cleared)
 	fmt.Fprintln(stdout, "rashomon: the proxy's own records are not ours to delete "+
 		"(they are a hash-chained audit store, opened read-only), so the report "+
 		"suppresses this destination from its view rather than claiming the row is gone")
 	return nil
 }
 
-// clearBaselines removes a host from every project baseline in the store.
-func clearBaselines(root, host string) (int, error) {
+// countOf is n and the noun, singular for exactly one: "1 run", "2 runs".
+func countOf(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return strconv.Itoa(n) + " " + noun + "s"
+}
+
+// clearBaselines removes a host from every project baseline in the store, and
+// reports whether the store holds a baseline directory at all.
+func clearBaselines(root, host string) (int, bool, error) {
 	dir := filepath.Join(root, "baseline")
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return 0, nil
+		return 0, false, nil
 	}
 	if err != nil {
-		return 0, err
+		return 0, true, err
 	}
 	var cleared int
 	for _, e := range entries {
@@ -1777,11 +1884,11 @@ func clearBaselines(root, host string) (int, error) {
 		}
 		n, err := baseline.ForgetFile(filepath.Join(dir, e.Name()), host)
 		if err != nil {
-			return cleared, err
+			return cleared, true, err
 		}
 		cleared += n
 	}
-	return cleared, nil
+	return cleared, true, nil
 }
 
 // cmdRun runs the user's command with the proxy variables set, when it is safe
@@ -1847,31 +1954,34 @@ func cmdRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	v := posture.Read(statusPath)
 
-	// Minted only when the proxy says it understands the credential AND the
-	// posture was accepted. Both halves matter, and the second was missing:
-	// posture.Read fills v.File from any parseable JSON and only THEN decides
-	// Export, so an enforce-mode proxy, a dead pid or a status file with a type
-	// error in an unrelated field still yielded SessionToken true. The tag was
-	// minted, never exported -- and still handed to the report, where it
-	// reclassified every foreign run_id in the store.
-	//
-	// A proxy that does not understand the credential is entitled to answer 407
-	// to a CONNECT carrying one, so an unconditional tag would break every
-	// session against an older build.
-	//
-	// It is never written to disk in the clear and never logged. It is in the
-	// child's environment, which is a DISCLOSURE and not containment: the
-	// observed agent can read its own environment. That is why the tag carries
-	// a MAC -- see internal/launch, and internal/wire's joinOf for what a tag
-	// that does not verify is worth, which is nothing.
 	var token string
-	if v.Export && v.File.SessionToken {
-		token = launch.NewToken(runKey)
-	}
-
 	var env []string
 	if v.Export {
-		env = launch.Env(v.File.ListenAddr, token)
+		// The tag is minted HERE, inside the accepted branch, and only when the
+		// proxy says it understands the credential. The refused path cannot
+		// mint one by construction, and it has to be unable to: posture.Read
+		// fills v.File from any parseable JSON and only THEN decides Export,
+		// so an enforce-mode proxy, a dead pid or a status file with a type
+		// error in an unrelated field still yields SessionToken true. A tag
+		// minted there was never exported -- and was still handed to the
+		// report, where it reclassified every foreign run_id in the store.
+		//
+		// A proxy that does not understand the credential is entitled to
+		// answer 407 to a CONNECT carrying one, so an unconditional tag would
+		// break every session against an older build.
+		//
+		// It is never written to disk in the clear and never logged. It is in
+		// the child's environment, which is a DISCLOSURE and not containment:
+		// the observed agent can read its own environment. That is why the tag
+		// carries a MAC -- see internal/launch, and internal/wire's joinOf for
+		// what a tag that does not verify is worth, which is nothing.
+		if v.File.SessionToken {
+			token = launch.NewToken(runKey)
+		}
+		// The parsed address, rebuilt, and not the file's string: the same
+		// rule env follows, so the two cannot export different text for one
+		// verified proxy.
+		env = launch.Env(v.Listen.String(), token)
 		fmt.Fprintf(stderr, "rashomon: %s; destinations will be recorded\n", v.Reason)
 	} else {
 		// One line, on stderr, saying why. This is the difference between a
@@ -1935,14 +2045,29 @@ func reportNewest(w io.Writer, v posture.Verdict, since time.Time, token string)
 		return nil
 	}
 
-	opts := []report.Option{}
-	if v.File.CausalDB != "" {
+	// A proxy store is read only under an ACCEPTED posture. posture.Read
+	// fills v.File before it decides, so a refused status file still names a
+	// causal_db; without this gate a stale, crashed, enforcing, non-loopback
+	// or unparseable status file would choose the database this report reads
+	// as the wire. Refused names no store, and the proxy block renders as one
+	// line.
+	//
+	// The gate is not authentication, and nothing here should read as if it
+	// were. The status file is writable by the user the agent runs as, and a
+	// forged one that passes posture -- a live pid (pid 1 answers EPERM, which
+	// posture counts as alive), observe mode, a loopback address -- is
+	// accepted, causal_db and all. The proxy store is evidence from a second
+	// program on the same machine, not a record the agent cannot touch.
+	proxyStore := ""
+	if v.Export {
 		// The proxy told us where it writes, so the report does not have to
 		// guess at a storage layout it should not know.
-		opts = append(opts, report.WithProxyStore(v.File.CausalDB))
-	} else {
-		opts = append(opts, report.WithProxyStore(defaultProxyStore()))
+		proxyStore = v.File.CausalDB
+		if proxyStore == "" {
+			proxyStore = defaultProxyStore()
+		}
 	}
+	opts := []report.Option{report.WithProxyStore(proxyStore)}
 
 	if token != "" {
 		// Handed over in memory, never persisted. The raw token is what the
@@ -1965,7 +2090,7 @@ func reportNewest(w io.Writer, v posture.Verdict, since time.Time, token string)
 		return err
 	}
 	fmt.Fprintln(w)
-	return report.Text(w, rep)
+	return report.Text(w, rep, report.WithNamedProxyStore(proxyStore))
 }
 
 // storeInstalled reports whether watch has ever run, by the presence of the

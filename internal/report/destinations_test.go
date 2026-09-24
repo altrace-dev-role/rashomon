@@ -609,11 +609,227 @@ func TestProxyOnPath_ATrueVerdictCitesWhatWasMeasured(t *testing.T) {
 }
 
 // renderDestinations renders just the destinations section, for the two lines
-// below whose wording is the whole point of them.
+// below whose wording is the whole point of them. As a render that named a
+// proxy store, because those lines exist only there.
 func renderDestinations(d Destinations) string {
 	var b bytes.Buffer
-	writeDestinations(&b, d)
+	writeDestinations(&b, d, true)
 	return b.String()
+}
+
+// TestText_TheProxyBlockIsOneLineUnlessAStoreWasNamed is the collapse, at the
+// renderer, on the report every alpha user has: no store, so destinations and
+// families both carry their not-observed state.
+//
+// Named, the block renders exactly as before -- including for a store that
+// turned out missing, which is the named twin here: the reader asked about a
+// proxy, so every line answers them. Not named, it is the recorder's own
+// comparison and then one line, and none of the instrument detail.
+func TestText_TheProxyBlockIsOneLineUnlessAStoreWasNamed(t *testing.T) {
+	rep := collapseFixture(t)
+	render := func(opts ...TextOption) string { return renderReport(t, rep, opts...) }
+	instrument := []string{"proxy on path", "new for this project", "tool families",
+		"not observable", "destinations: not observed ("}
+
+	unnamed := render()
+	if got := strings.Count(unnamed, "destinations:"); got != 1 {
+		t.Errorf("an unnamed render has %d destinations lines, want exactly one:\n%s", got, unnamed)
+	}
+	if !strings.Contains(unnamed, "  destinations: not observed in this alpha\n") {
+		t.Errorf("an unnamed render does not state the fact in its one line:\n%s", unnamed)
+	}
+	for _, gone := range instrument {
+		if strings.Contains(unnamed, gone) {
+			t.Errorf("an unnamed render still prints %q, instrument detail about a proxy "+
+				"the reader does not have:\n%s", gone, unnamed)
+		}
+	}
+	// The recorder's own comparison is not the proxy's, and it stays.
+	for _, kept := range []string{"executed differently from declared: 1",
+		"toolu_rw  Bash (git, write): command changed"} {
+		if !strings.Contains(unnamed, kept) {
+			t.Errorf("the collapse took %q with it:\n%s", kept, unnamed)
+		}
+	}
+
+	named := render(WithNamedProxyStore("/nonexistent/causal.db"))
+	if strings.Contains(named, "not observed in this alpha") {
+		t.Errorf("a render that named a store, even a missing one, collapsed:\n%s", named)
+	}
+	for _, want := range instrument {
+		if !strings.Contains(named, want) {
+			t.Errorf("a render that named a store no longer prints %q:\n%s", want, named)
+		}
+	}
+}
+
+// collapseFixture is the report every alpha user has -- no store, so
+// destinations and families carry their not-observed state -- with a
+// rewritten call, and a chain whose links name hosts, a loopback host and an
+// ssh host, in a prompt and in the unattributed tail.
+func collapseFixture(t *testing.T) *Report {
+	t.Helper()
+	rep := &Report{Sessions: []Session{{
+		SessionID: "s1",
+		Destinations: buildDestinations(runWithDeclaredHosts("pypi.org"),
+			wire.Observation{Observed: false, Reason: wire.NotObservedNoStore}, t.TempDir(), nil),
+		Families: buildFamilies(runWithDeclaredHosts("pypi.org"), nil, false, wire.NotObservedNoStore),
+		Chains: Chains{
+			Prompts: []Chain{{TranscriptPath: "/t/s1.jsonl", PromptID: "prompt-1", Links: []Link{{
+				Seq: 1, ToolUseID: "toolu_1", ToolName: "Bash", Program: "curl", VerbClass: "network",
+				Outcome: "ok", Outcomes: []string{"ok"}, ExecutionRecords: 1,
+				Hosts:    []LinkHost{{Host: "pypi.org", State: LinkUnknown}, {Host: "localhost", State: LinkLoopback}},
+				SSHHosts: []string{"git.example.com"},
+			}}}},
+			Unattributed: []Link{{Seq: 2, ToolUseID: "toolu_2", ToolName: "WebFetch", VerbClass: "network",
+				Outcome: "ok", Outcomes: []string{"ok"}, ExecutionRecords: 1,
+				Hosts: []LinkHost{{Host: "docs.example", State: LinkUnknown}}, SSHHosts: []string{}}},
+			Dropped: []Link{},
+		},
+	}}}
+	rep.Sessions[0].Destinations.ExecutedNotAsDeclared = 1
+	rep.Sessions[0].Destinations.Rewritten = []Rewritten{{ToolUseID: "toolu_rw", ToolName: "Bash",
+		Program: "git", VerbClass: "write"}}
+	return rep
+}
+
+func renderReport(t *testing.T, rep *Report, opts ...TextOption) string {
+	t.Helper()
+	var b bytes.Buffer
+	if err := Text(&b, rep, opts...); err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}
+
+// TestText_TheCollapseReachesTheChainListing: --chain is the one place outside
+// the destinations block where the proxy speaks -- a STATE beside each host, a
+// legend explaining that state, and "(not observable)" beside an ssh host --
+// and every one of those is a statement about a proxy. With no store named a
+// link lists the hosts its call named and nothing more: `-> pypi.org`, never
+// `-> pypi.org unknown`, which reads as a verdict on a wire nobody watched.
+//
+// Unnamed and redacted is its own row, because the redacted copy is the one
+// that leaves the machine, and its reader has the least context of all.
+func TestText_TheCollapseReachesTheChainListing(t *testing.T) {
+	rep := collapseFixture(t)
+	stateful := []string{"a host's state is", "(not observable)", "pypi.org unknown",
+		"localhost loopback", "docs.example unknown"}
+
+	unnamed := renderReport(t, rep, WithChain())
+	for _, want := range []string{
+		hostsNamedLegend,
+		"      1  Bash (curl, network)  ok  -> pypi.org, localhost  ssh: git.example.com\n",
+		"      2  WebFetch (network)  ok  -> docs.example\n",
+		"  destinations: not observed in this alpha\n",
+	} {
+		if !strings.Contains(unnamed, want) {
+			t.Errorf("an unnamed --chain render does not print %q:\n%s", want, unnamed)
+		}
+	}
+	for _, gone := range stateful {
+		if strings.Contains(unnamed, gone) {
+			t.Errorf("an unnamed --chain render prints %q, a statement about a proxy the "+
+				"reader does not have:\n%s", gone, unnamed)
+		}
+	}
+	if got := strings.Count(unnamed, "destinations:"); got != 1 {
+		t.Errorf("an unnamed --chain render has %d destinations lines, want one:\n%s", got, unnamed)
+	}
+
+	named := renderReport(t, rep, WithChain(), WithNamedProxyStore("/nonexistent/causal.db"))
+	for _, want := range []string{
+		"-> pypi.org unknown, localhost loopback  ssh: git.example.com (not observable)\n",
+		"-> docs.example unknown\n",
+		"a host's state is",
+	} {
+		if !strings.Contains(named, want) {
+			t.Errorf("a named --chain render no longer prints %q:\n%s", want, named)
+		}
+	}
+	if strings.Contains(named, hostsNamedLegend) {
+		t.Errorf("a named --chain render carries the unnamed legend as well:\n%s", named)
+	}
+
+	// A listing that names no host has nothing to caution about.
+	hostless := collapseFixture(t)
+	hostless.Sessions[0].Chains.Prompts[0].Links[0].Hosts = nil
+	hostless.Sessions[0].Chains.Prompts[0].Links[0].SSHHosts = nil
+	hostless.Sessions[0].Chains.Unattributed[0].Hosts = nil
+	if out := renderReport(t, hostless, WithChain()); strings.Contains(out, hostsNamedLegend) {
+		t.Errorf("an unnamed listing that shows no host prints the host legend:\n%s", out)
+	}
+	// And one ssh host alone is a host shown.
+	sshOnly := collapseFixture(t)
+	sshOnly.Sessions[0].Chains.Prompts[0].Links[0].Hosts = nil
+	sshOnly.Sessions[0].Chains.Unattributed[0].Hosts = nil
+	if out := renderReport(t, sshOnly, WithChain()); !strings.Contains(out, hostsNamedLegend) {
+		t.Errorf("an unnamed listing showing an ssh host has no host legend:\n%s", out)
+	}
+
+	redacted := renderReport(t, Redact(rep, []byte("collapse-test-key-0123456789")), WithChain())
+	if !strings.Contains(redacted, "hostnames are redacted") {
+		t.Fatalf("premise broken: the render is not the redacted one:\n%s", redacted)
+	}
+	for _, clear := range []string{"pypi.org", "git.example.com", "docs.example"} {
+		if strings.Contains(redacted, clear) {
+			t.Errorf("an unnamed --redact --chain render names %q in clear:\n%s", clear, redacted)
+		}
+	}
+	for _, gone := range []string{"a host's state is", "(not observable)"} {
+		if strings.Contains(redacted, gone) {
+			t.Errorf("an unnamed --redact --chain render prints %q:\n%s", gone, redacted)
+		}
+	}
+	// The digests replace the names; a state after a digest would still be a
+	// verdict on a wire nobody watched.
+	for _, line := range strings.Split(redacted, "\n") {
+		if !strings.Contains(line, "->") {
+			continue
+		}
+		for _, state := range []string{" " + LinkUnknown, " " + LinkLoopback} {
+			if strings.Contains(line, state) {
+				t.Errorf("an unnamed --redact --chain link carries the state %q: %q", state, line)
+			}
+		}
+	}
+	if !strings.Contains(redacted, "  destinations: not observed in this alpha\n") {
+		t.Errorf("an unnamed --redact render lost the one destinations line:\n%s", redacted)
+	}
+	if !strings.Contains(redacted, hostsNamedLegend) {
+		t.Errorf("an unnamed --redact --chain render lost the host legend:\n%s", redacted)
+	}
+}
+
+// hostsNamedLegend is the line above an unnamed listing that shows hosts. A
+// bare `-> pypi.org` beside a call reads as "reached", and nothing observed
+// that.
+const hostsNamedLegend = "    hosts are those each call named; nothing here observed whether it reached them\n"
+
+// TestText_AnObservedStoreRendersInFullWithoutTheOption: the collapse keys on
+// the render option, which a caller has to pass in step with Build's
+// WithProxyStore. One that passed the store and forgot the option must not
+// see a store that WAS read collapsed into "not observed in this alpha" --
+// that hides an observation, the direction this report must never be wrong
+// in.
+func TestText_AnObservedStoreRendersInFullWithoutTheOption(t *testing.T) {
+	rep := collapseFixture(t)
+	rep.Sessions[0].Destinations = buildDestinations(runWithDeclaredHosts("pypi.org"),
+		observed(wire.Destination{Host: "pypi.org", Attempts: 1},
+			wire.Destination{Host: "files.pythonhosted.org", Attempts: 1}), t.TempDir(), nil)
+	if !rep.Sessions[0].Destinations.Observed {
+		t.Fatal("premise broken: the fixture's destinations are not observed")
+	}
+
+	out := renderReport(t, rep, WithChain())
+	if strings.Contains(out, "not observed in this alpha") {
+		t.Errorf("an observed store collapsed because the render option was not passed:\n%s", out)
+	}
+	for _, want := range []string{"files.pythonhosted.org", "proxy on path", "a host's state is"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("an observed store rendered without the option lost %q:\n%s", want, out)
+		}
+	}
 }
 
 // TestInherited_SaysSoWhenEveryInheritedAttemptIsClientPlane.

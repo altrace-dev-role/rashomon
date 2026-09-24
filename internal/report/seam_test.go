@@ -132,7 +132,7 @@ func TestSeam_TheJoinLineIsRenderedInARealReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	if err := Text(&b, rep); err != nil {
+	if err := Text(&b, rep, WithNamedProxyStore(db)); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), "join: token (1 request) + window (1 request)") {
@@ -192,7 +192,7 @@ func TestSeam_ATokenThatNoRowCarriedIsADiagnostic(t *testing.T) {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	if err := Text(&b, rep); err != nil {
+	if err := Text(&b, rep, WithNamedProxyStore(db)); err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()
@@ -274,7 +274,7 @@ func TestSeam_TheNonoTrailReachesTheReport(t *testing.T) {
 		t.Errorf("the sandbox line is absent from a rendered report:\n%s", b.String())
 	}
 	// Scoped to the sandbox line. An unscoped match catches "destinations: not
-	// observed (no_proxy_store)", which is a different section being honest.
+	// observed in this alpha", which is a different section being honest.
 	if strings.Contains(b.String(), "sandbox (nono): not observed") {
 		t.Errorf("a readable trail rendered as not observed:\n%s", b.String())
 	}
@@ -469,7 +469,7 @@ func TestSeam_AForgottenHostDoesNotReturnUnderTheSandboxHeading(t *testing.T) {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	if err := Text(&b, rep); err != nil {
+	if err := Text(&b, rep, WithNamedProxyStore(db)); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(b.String(), "pypi.org") {
@@ -535,7 +535,7 @@ func TestSeam_PlainHTTPMeansOnly(t *testing.T) {
 	}
 
 	var b strings.Builder
-	if err := Text(&b, rep); err != nil {
+	if err := Text(&b, rep, WithNamedProxyStore(db)); err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()

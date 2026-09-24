@@ -399,8 +399,12 @@ m("TB1 SEAM an unverifiable tag is treated as another session",
   "TestSeam|TestToken")
 m("TB1 SEAM a foreign dial failure reaches our outcome map", "internal/wire/wire.go",
   "\t\t\tif joinOf(r, w) == joinOther {\n\t\t\t\tcontinue\n\t\t\t}", "", "TestToken")
-m("TB1 a token is minted from a posture that was refused", "cmd/rashomon/main.go",
-  "\tif v.Export && v.File.SessionToken {", "\tif v.File.SessionToken {", "TestH27")
+# RETIRED: "TB1 a token is minted from a posture that was refused". Its line,
+# `if v.Export && v.File.SessionToken {`, no longer exists: the mint moved
+# inside run's `if v.Export {` branch, so the refused path cannot reach it by
+# construction and there is no conjunct left to drop. What the mutant guarded
+# -- a refused posture leaking into the report -- is now held by
+# "H-27 a refused posture's report reads the store it names" below.
 m("TB1 untokened rows are dropped from a tokened run", "internal/wire/wire.go",
   "\tif w.RunID == \"\" || r.runID == \"\" {\n\t\treturn joinWindow\n\t}",
   "\tif w.RunID == \"\" {\n\t\treturn joinWindow\n\t}\n\tif r.runID == \"\" {\n\t\treturn joinOther\n\t}",
@@ -410,8 +414,11 @@ m("TB1 another run's rows are admitted", "internal/wire/wire.go",
 m("TB1 a token-matched row outside the window is inherited", "internal/wire/wire.go",
   "\tcase joinToken:\n\t\t// The token was issued to this process and no other, so it outranks the\n\t\t// clock. A row carrying it outside the window is this run's row with a\n\t\t// bad timestamp -- which is a real case, since the proxy stamps rows\n\t\t// from its own clock and a session can outlive a skew correction.\n\t\treturn false",
   "\tcase joinToken:\n\t\tbreak", "TestToken")
+# Re-anchored from `if v.Export && v.File.SessionToken {` to the capability
+# check alone, now nested inside run's accepted branch.
 m("TB1 the token is sent to a proxy that never advertised it", "cmd/rashomon/main.go",
-  "\tif v.Export && v.File.SessionToken {", "\tif true {", "TestH27")
+  "\t\tif v.File.SessionToken {\n\t\t\ttoken = launch.NewToken(runKey)",
+  "\t\tif true {\n\t\t\ttoken = launch.NewToken(runKey)", "TestH27")
 m("TB1 the token is not carried into the child's environment", "internal/launch/launch.go",
   "\tif token != \"\" {\n\t\taddr = \"http://\" + ProxyUser + \":\" + token + \"@\" + listenAddr\n\t}", "",
   "TestEnv|TestTokenFromProxyURL")
@@ -539,6 +546,174 @@ m("H-70 the path is not split off before the user", "internal/shape/hosts.go",
 m("H-27 run reports the newest session whether or not the command produced it", "cmd/rashomon/main.go",
   "\tif newest == \"\" || writtenAt.Before(since) {", "\tif _ = writtenAt; newest == \"\" {",
   "TestH27_ReportsNothingWhenTheCommandRecordedNothing")
+# The alpha's dormant proxy path. env's guard is the live hazard: without it,
+# `eval $(rashomon env)` on a machine with no proxy points the shell's HTTPS at
+# a port where nothing listens. Three breaks, because there are three ways to
+# lose it -- dropping the check, weakening it to "a status file exists" (which
+# the no-proxy test alone cannot tell from the real thing, and which would
+# export at an enforcing proxy), and running it before the arguments, which
+# makes `env --help` answer "no proxy".
+m("H-22 env exports without checking the proxy", "cmd/rashomon/main.go",
+  "\tv := posture.Read(posture.DefaultPath())\n\tif !v.Export {",
+  "\tv := posture.Read(posture.DefaultPath())\n\tif false {",
+  "TestH22_EnvRefuses")
+m("H-22 env's check weakened to 'a status file exists'", "cmd/rashomon/main.go",
+  "\tv := posture.Read(posture.DefaultPath())\n\tif !v.Export {",
+  "\tv := posture.Read(posture.DefaultPath())\n\tif v.File.Product == \"\" {",
+  "TestH22_EnvRefusesEveryPostureRunRefuses")
+m("H-22 env consults the proxy before reading its own arguments", "cmd/rashomon/main.go",
+  "\tport, portGiven, err := envPort(args)\n\tif err != nil {\n\t\treturn err\n\t}\n"
+  "\tv := posture.Read(posture.DefaultPath())\n\tif !v.Export {\n"
+  "\t\treturn fmt.Errorf(\"env: printing no proxy variables -- %s\", v.Reason)\n\t}\n",
+  "\tv := posture.Read(posture.DefaultPath())\n\tif !v.Export {\n"
+  "\t\treturn fmt.Errorf(\"env: printing no proxy variables -- %s\", v.Reason)\n\t}\n"
+  "\tport, portGiven, err := envPort(args)\n\tif err != nil {\n\t\treturn err\n\t}\n",
+  "TestH22_EnvArgumentsAnswerWithoutAProxy|TestH22_EnvRejectsABadPort")
+# What env exports once the check passes. The verified address, never the
+# default port env used to print as a constant; --port confirms it and cannot
+# pick another; --token asks the verified file whether the proxy accepts a tag.
+# Re-anchored in loop 2: env exports posture's parsed listener, rebuilt
+# (v.Listen.String()), where it exported the file's raw v.File.ListenAddr; and
+# --port compares against the parsed port, where it called main.go's own
+# listenPort, which is gone.
+m("H-22 env exports the default address instead of the verified one", "cmd/rashomon/main.go",
+  "\tfor _, kv := range launch.Env(v.Listen.String(), token) {",
+  "\tfor _, kv := range launch.Env(\"127.0.0.1:18080\", token) {",
+  "TestH22_EnvExportsTheVerifiedAddress")
+m("H-22 env accepts a --port the verified listener does not hold", "cmd/rashomon/main.go",
+  "\tif portGiven && port != v.Listen.Port {",
+  "\tif false && portGiven && port != v.Listen.Port {",
+  "TestH22_EnvPortMustNameTheVerifiedListener")
+# NOT A MUTANT, deliberately: "env exports the file's raw listen_addr instead
+# of the rebuilt one". Under the grammar every accepted address IS its rebuilt
+# form -- an exact host literal, ':' and plain digits -- so that break changes
+# no output and would be reported as undetected when it is equivalent. The
+# rebuild is defence in depth behind the parse; the parse mutants below are
+# what hold the property, and they go red.
+#
+# The listener grammar (CWE-78). posture read only the HOST of listen_addr, so
+# "127.0.0.1:1;cmd" passed and env printed the command into the operator's
+# eval. Three ways to lose the fix: a portless address defaulted to a port, a
+# port read up to its first non-digit (strconv-prefix style), and the parse
+# not consulted at all.
+m("CWE-78 a portless listen address falls back to a default port", "internal/posture/posture.go",
+  "\tif i < 0 {\n\t\treturn Listen{}, false\n\t}",
+  "\tif i < 0 {\n\t\taddr, i = addr+\":18080\", len(addr)\n\t}",
+  "TestParseListen|TestRead_RefusesAListenAddress|TestH22_EnvRefusesAListenAddress")
+m("CWE-78 a port is read up to its first non-digit, dropping the junk after it", "internal/posture/posture.go",
+  "\t\tif c < '0' || c > '9' {\n\t\t\treturn 0, false\n\t\t}",
+  "\t\tif c < '0' || c > '9' {\n\t\t\tbreak\n\t\t}",
+  "TestParseListen|TestRead_RefusesAListenAddress|TestH22_EnvRefusesAListenAddress|TestH22_AListenAddressNeverReachesEval")
+m("CWE-78 posture never consults the listener grammar", "internal/posture/posture.go",
+  "\tlisten, ok := parseListen(v.File.ListenAddr)\n\tif !ok {",
+  "\tlisten, ok := parseListen(v.File.ListenAddr)\n\tif false && !ok {",
+  "TestRead_RefusesAListenAddress|TestH22_EnvRefusesAListenAddress|TestH22_AListenAddressNeverReachesEval|TestH27_LaunchesWithoutVariables")
+m("H-22 env --token ignores the proxy's capability", "cmd/rashomon/main.go",
+  "\tif !v.File.SessionToken {", "\tif false {",
+  "TestH22_EnvTokenIsCapabilityGated")
+# run's automatic report under a refused posture. posture.Read fills v.File
+# before it decides, so without the gate a stale, crashed, enforcing or
+# malformed status file chooses the database the report reads as the wire.
+m("H-27 a refused posture's report reads the store it names", "cmd/rashomon/main.go",
+  "\tif v.Export {\n\t\t// The proxy told us where it writes",
+  "\tif true {\n\t\t// The proxy told us where it writes",
+  "TestH27_ARefusedPostureReadsNoProxyStore")
+# And under an ACCEPTED posture that named no causal_db, run falls back to the
+# default path. Deleting the fallback left the whole suite green in loop 1:
+# the accepted row named its store, so nothing read the default.
+m("H-27 run's accepted report drops the default-store fallback", "cmd/rashomon/main.go",
+  "\t\tproxyStore = v.File.CausalDB\n\t\tif proxyStore == \"\" {\n\t\t\tproxyStore = defaultProxyStore()\n\t\t}\n",
+  "\t\tproxyStore = v.File.CausalDB\n",
+  "TestH27_ARefusedPostureReadsNoProxyStore")
+m("report falls back to the proxy's default store", "cmd/rashomon/main.go",
+  "\trep, key, err := reportOrEmpty(sessionID, proxyStore, nonoTrail, time.Now())",
+  "\tif proxyStore == \"\" {\n\t\tproxyStore = defaultProxyStore()\n\t}\n"
+  "\trep, key, err := reportOrEmpty(sessionID, proxyStore, nonoTrail, time.Now())",
+  "TestReport_ReadsAProxyStoreOnlyWhenNamed")
+# The collapse. With no store named the proxy block is one line; forcing the
+# full block back is what a reader without the proxy used to see.
+m("report text renders the whole proxy block with no store named", "internal/report/text.go",
+  "\tnamed := cfg.proxyStore != \"\"", "\tnamed := true",
+  "TestReport_ReadsAProxyStoreOnlyWhenNamed|TestText_TheProxyBlock")
+# The chain listing's share of the collapse: a state beside each host, the
+# legend explaining it, "(not observable)" beside an ssh host -- and the seam
+# that carries `named` into the listing at all.
+m("report --chain prints a host state with no store named", "internal/report/text.go",
+  "\t\tif !named {\n\t\t\tparts = append(parts, h.Host)",
+  "\t\tif false {\n\t\t\tparts = append(parts, h.Host)",
+  "TestText_TheCollapseReachesTheChainListing")
+m("report --chain prints the host-state legend with no store named", "internal/report/text.go",
+  "\tif len(c.Prompts) > 0 && named {", "\tif len(c.Prompts) > 0 {",
+  "TestText_TheCollapseReachesTheChainListing|TestH31_ChainsGroupCallsUnderTheirPrompt|TestReport_ReadsAProxyStoreOnlyWhenNamed")
+m("report --chain calls an ssh host not observable with no store named", "internal/report/text.go",
+  "\tif !named {\n\t\treturn \"  ssh: \" + strings.Join(hosts, \", \")\n\t}",
+  "",
+  "TestText_TheCollapseReachesTheChainListing|TestH31_SSHHostsAreCarriedApartEndToEnd")
+m("report --chain is never told whether a store was named", "internal/report/text.go",
+  "\twriteChains(b, sess.Chains, cfg.chain, named)", "\twriteChains(b, sess.Chains, cfg.chain, true)",
+  "TestText_TheCollapseReachesTheChainListing|TestH31_|TestReport_ReadsAProxyStoreOnlyWhenNamed")
+# forget --host prints the baseline count and the proxy sentence only where a
+# baseline directory shows a proxy store was read. Both directions.
+m("forget --host speaks of a proxy on a machine that never read one", "cmd/rashomon/main.go",
+  "\tif !hadBaselines {\n\t\tfmt.Fprintln(stdout)\n\t\treturn nil\n\t}",
+  "\tif false && !hadBaselines {\n\t\tfmt.Fprintln(stdout)\n\t\treturn nil\n\t}",
+  "TestH25_ForgetHostSaysNothingOfAProxyNeverRead")
+m("forget --host drops the proxy sentence after a store was read", "cmd/rashomon/main.go",
+  "\tif !hadBaselines {\n\t\tfmt.Fprintln(stdout)\n\t\treturn nil\n\t}",
+  "\tif true || !hadBaselines {\n\t\tfmt.Fprintln(stdout)\n\t\treturn nil\n\t}",
+  "TestH25_ForgottenHostStaysSuppressedInTheReport")
+m("forget --host says \"1 runs\"", "cmd/rashomon/main.go",
+  "\tif n == 1 {\n\t\treturn \"1 \" + noun\n\t}", "",
+  "TestH25_ForgetHostSaysNothingOfAProxyNeverRead")
+# Review of loop 2. Each of these is a way the collapse or the posture reasons
+# regress without any line above noticing.
+m("report --chain names hosts bare with no legend saying nothing observed them", "internal/report/text.go",
+  "\t} else if !named && listsAHost(c) {", "\t} else if false {",
+  "TestText_TheCollapseReachesTheChainListing|TestReport_ReadsAProxyStoreOnlyWhenNamed")
+m("report text collapses an observed store when the render option was forgotten", "internal/report/text.go",
+  "\tnamed := cfg.proxyStore != \"\" || sess.Destinations.Observed", "\tnamed := cfg.proxyStore != \"\"",
+  "TestText_AnObservedStoreRendersInFullWithoutTheOption")
+m("report takes --proxy-store \"\" as no store named", "cmd/rashomon/main.go",
+  "\t\t\tif args[i+1] == \"\" {\n\t\t\t\treturn errors.New(\"--proxy-store needs a non-empty path\")\n\t\t\t}\n", "",
+  "TestReport_RefusesAnEmptyProxyStore")
+m("CWE-117 the mode refusal repeats connect_mode raw", "internal/posture/posture.go",
+  "\"the proxy is in \" + strconv.Quote(v.File.ConnectMode) +", "\"the proxy is in \" + v.File.ConnectMode +",
+  "TestRead_AReasonNeverRepeatsAFieldRaw|TestH22_EnvRefusesEveryPostureRunRefuses")
+m("CWE-117 the non-loopback refusal repeats listen_addr raw", "internal/posture/posture.go",
+  "\t\t\tstrconv.Quote(v.File.ListenAddr) + \"); refusing", "\t\t\tv.File.ListenAddr + \"); refusing",
+  "TestRead_AReasonNeverRepeatsAFieldRaw|TestH22_EnvRefusesEveryPostureRunRefuses")
+m("the surface check matches nothing", "test/acceptance/dormant_surface_test.go",
+  "regexp.MustCompile(`(?i)\\brashomon (run|env)\\b|proxy-store`)", "regexp.MustCompile(`^$x`)",
+  "TestSurface_|TestInstall_")
+m("the README offers a dormant command", "README.md",
+  "\nrashomon watch                      # install the recorders",
+  "\nrashomon run -- claude              # record destinations too\nrashomon watch                      # install the recorders",
+  "TestSurface_OffersNoDormantProxyPath")
+# The installer places one binary. A second fetch is the loop-0 defect: the
+# closed proxy's archive downloaded because a release happened to carry it.
+m("install.sh fetches a second archive", "install.sh",
+  "say \"  installed ${INSTALL_DIR}/rashomon\"\n",
+  "say \"  installed ${INSTALL_DIR}/rashomon\"\n"
+  "fetch \"${BASE_URL}/${TAG}/altrace_${VERSION}_${OS}_${ARCH}.tar.gz\" \"$TMP/altrace.tar.gz\" || true\n",
+  "TestInstall_")
+m("install.sh drops the alpha's closing line", "install.sh",
+  "say \"Network destinations are not observed in this alpha. Declarations and\"\n",
+  "say \"Declarations and\"\n",
+  "TestInstall_")
+# The README's example is pinned to the render. Either side drifting fails it.
+m("the README excerpt drifts from the render", "README.md",
+  "        agent-a41f (Explore): 3 declarations, 3 executions, 1 Bash\n",
+  "        agent-a41f (Explore): 3 declarations, 3 executions\n",
+  "TestReadme_")
+m("the render drifts from the README excerpt", "internal/report/text.go",
+  "\tfmt.Fprintln(b, \"    (these calls do not appear in the main transcript)\")",
+  "\tfmt.Fprintln(b, \"    (these calls are not in the main transcript)\")",
+  "TestReadme_")
+m("usage advertises the dormant env command", "cmd/rashomon/main.go",
+  "  rashomon version               print the version\n",
+  "  rashomon env [--port N]        print the proxy variables to export\n"
+  "  rashomon version               print the version\n",
+  "TestUsage_AdvertisesNoDormantProxyPath")
 m("H-6 detach has no way past an entry someone edited", "cmd/rashomon/main.go",
   "\t\tcase \"--force\":", "\t\tcase \"--force-disabled\":", "TestH6_DetachForceRemovesAnEditedEntry")
 m("H-6 --force also removes hooks that are not ours", "internal/install/install.go",
