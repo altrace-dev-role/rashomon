@@ -117,11 +117,11 @@ m("B3 redaction reuses the forget-host domain separator", "internal/report/redac
 # the sentence into a denial (hiding a real execution), and dropping the prefix
 # turns every failed command into one.
 m("H-30 a denial is recognised on the prefix alone, without is_error", "internal/report/transcript.go",
-  "\treturn isError && strings.HasPrefix(text, deniedPrefix)",
-  "\treturn strings.HasPrefix(text, deniedPrefix)", "TestTranscript_|TestH30")
+  "\tif !isError {\n\t\treturn false\n\t}",
+  "", "TestTranscript_|TestH30")
 m("H-30 every failed call is treated as a denial", "internal/report/transcript.go",
-  "\treturn isError && strings.HasPrefix(text, deniedPrefix)",
-  "\treturn isError", "TestTranscript_|TestH30")
+  "\tif !isError {\n\t\treturn false\n\t}",
+  "\tif !isError {\n\t\treturn false\n\t}\n\treturn true", "TestTranscript_|TestH30")
 m("H-30 denials are counted as results again", "internal/report/transcript.go",
   "\t\t\t\tif isDenial(b.IsError, resultText(b.Content)) {\n\t\t\t\t\tdenied[b.ToolUseID] = true\n\t\t\t\t\tcontinue\n\t\t\t\t}\n",
   "\t\t\t\tif isDenial(b.IsError, resultText(b.Content)) {\n\t\t\t\t\tdenied[b.ToolUseID] = true\n\t\t\t\t}\n",
@@ -638,6 +638,27 @@ m("a legacy present record is treated with suspicion and renders unverified", "i
   "\t\t\tf.Reasons = append(f.Reasons, *c.Reason)\n\t\t}\n\t}\n\treturn f\n}",
   "\t\t\tf.Reasons = append(f.Reasons, *c.Reason)\n\t\t}\n\t\tif c.HookEntry == store.EntryPresent {\n\t\t\tf.Reasons = append(f.Reasons, ReasonRunNotClosed)\n\t\t}\n\t}\n\treturn f\n}",
   "TestLegacyPresentRendersVerified")
+# Field findings from running the plugin against real sessions. Each break is
+# the defect as it shipped, so the sweep proves the fix is still load-bearing.
+m("FF a refusal outside the permission prompt is read as an execution", "internal/report/transcript.go",
+  "\tfor _, p := range deniedPrefixes {", "\tfor _, p := range deniedPrefixes[:1] {",
+  "TestTranscript_RefusalsOutside")
+m("FF workflow subagent transcripts are not read", "internal/report/transcript.go",
+  "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok {",
+  "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok && filepath.Dir(p) == dir {",
+  "TestTranscript_WorkflowSubagent")
+m("FF a harness-completed input counts as a rewrite", "internal/report/destinations.go",
+  "\t\tif d.Shape.Digest == \"\" || inputCompletedByHarness[d.ToolName] {",
+  "\t\tif d.Shape.Digest == \"\" {", "TestRewritten_")
+m("FF the program is cd for every cd-and-command line", "internal/shape/shape.go",
+  "\t\ti, ok = pastDirectoryChange(pshaped, i)", "\t\t_ = pastDirectoryChange",
+  "TestProgramLooksPastADirectoryChange|TestProgramIsAProgram")
+m("FF a refused turn is never reported", "internal/recap/state.go",
+  "\treturn s.Checked[sessionID] != promptID", "\treturn s.Checked[sessionID] != promptID && false",
+  "TestH106_")
+m("FF the catch-up re-rules on a turn Stop checked", "internal/recap/state.go",
+  "\t\ts.Checked[sessionID] = promptID\n", "\t\t_ = promptID\n",
+  "TestH106_")
 
 # Import additions some mutants need.
 IMPORTS = {

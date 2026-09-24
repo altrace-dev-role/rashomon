@@ -42,6 +42,28 @@ occurred.
 
 ## Install
 
+**As a Claude Code plugin** (macOS and Linux):
+
+    claude plugin marketplace add altrace-dev-role/rashomon
+    claude plugin install rashomon@rashomon
+    claude plugin enable rashomon@rashomon
+
+Installing does not start recording; enabling does. Start a new Claude Code
+session after enabling. `/plugin` shows it and turns it off again, and
+`/rashomon:status` / `/rashomon:report` work inside Claude Code. The plugin
+installs the release's `rashomon-plugin.zip`, which carries a prebuilt recorder
+per platform, because a plugin cannot compile Go at install time — so it needs
+a tagged release to exist. To try the plugin from a checkout instead:
+
+    scripts/build-plugin.sh
+    claude --plugin-dir ./plugin
+
+If you already ran `watch`, run `rashomon detach` first. With both installed,
+every call is recorded twice; `rashomon status` names the overlap and the
+report marks the session `duplicate_declarations`.
+
+**As a settings install** (Windows is not usable yet; see [Status](#status)):
+
     go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
 
 This writes to `$(go env GOPATH)/bin` — make sure that is on your `PATH`. Or
@@ -75,13 +97,13 @@ claude                              # work normally
 rashomon report                     # read the sessions back
 ```
 
-`watch` adds seven entries to your Claude Code settings — `PreToolUse`,
+`watch` adds eight entries to your Claude Code settings — `PreToolUse`,
 `PostToolUse`, `PostToolUseFailure`, `SessionStart`, `SessionEnd`, `Stop`,
-`StopFailure`. The first three match `*` (every tool); `SessionStart`,
-`SessionEnd`, `Stop` and `StopFailure` carry no matcher, since Claude Code
-documents none for the session and turn-end events. All seven run a
-5-second timeout except `Stop` and `StopFailure`, which get 10: finding a
-turn's boundaries means reading a whole run, not one call.
+`StopFailure`, `UserPromptSubmit`. The first three match `*` (every tool);
+the rest carry no matcher, since Claude Code documents none for the session,
+turn-end and prompt events. All eight run a 5-second timeout except the three
+recap entries, which get 10: finding a turn's boundaries means reading a whole
+run, not one call.
 `rashomon detach` removes them again, leaving every other entry byte-for-byte
 as found.
 
@@ -92,6 +114,12 @@ that did not verify, or a truncated/unknown projection) — with a pointer to
 `rashomon report --session <id>` for the detail. A clean turn prints
 nothing at all; `rashomon status` says whether a turn has actually been
 evaluated, so silence never gets read as proof the turn was clean.
+
+Saying **No** at a permission prompt interrupts the turn, and Claude Code
+fires no `Stop` after an interrupt. `UserPromptSubmit` catches that case:
+when you send your next prompt it checks the turn that just ended, and if no
+recap reached it and it has something to show, prints the line then, marked
+`previous turn`.
 
 ### Seeing network destinations
 

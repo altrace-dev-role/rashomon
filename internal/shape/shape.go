@@ -91,9 +91,12 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	// the tokenizer, so a line holding one is split where the shell does not
 	// split it, and no word in it can be vouched for.
 	if i, ok := programToken(pshaped); ok && !strings.ContainsRune(cmd, '\r') {
-		prog := path.Base(pshaped[i].text)
-		s.Program = &prog
-		s.VerbClass = verbForProgram(prog)
+		i, ok = pastDirectoryChange(pshaped, i)
+		if ok {
+			prog := path.Base(pshaped[i].text)
+			s.Program = &prog
+			s.VerbClass = verbForProgram(prog)
+		}
 	}
 	if err == nil {
 		n := len(dropLeadingAssignments(toks))
@@ -277,6 +280,36 @@ func programToken(toks []token) (int, bool) {
 		return i, true
 	}
 	return 0, false
+}
+
+// pastDirectoryChange moves the program from a leading `cd DIR &&` or
+// `cd DIR;` to the command that follows it.
+//
+// `cd` is where a command runs, not what it runs. Measured on a real session:
+// 1,397 of 1,495 shell calls were `cd … && <command>`, so reporting the first
+// word said "cd" for nearly everything and "by program" said nothing. Only `&&`
+// and `;` are followed: a pipe, a redirect or `||` after `cd` is left as it
+// was, because what follows those is not simply the next command. If the
+// command after `cd` cannot be told, neither can the program -- the answer is
+// null, not "cd", which would be a confident wrong answer.
+func pastDirectoryChange(toks []token, i int) (int, bool) {
+	if toks[i].text != "cd" || toks[i].quotedAt >= 0 {
+		return i, true
+	}
+	for j := i + 1; j < len(toks); j++ {
+		if !toks[j].meta {
+			continue
+		}
+		if toks[j].text != "&&" && toks[j].text != ";" {
+			return i, true
+		}
+		k, ok := programToken(toks[j+1:])
+		if !ok {
+			return 0, false
+		}
+		return pastDirectoryChange(toks, j+1+k)
+	}
+	return i, true
 }
 
 // plainPunctuation are the command names made of brackets or braces: the test

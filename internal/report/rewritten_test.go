@@ -178,3 +178,30 @@ func TestRewritten_CountEqualsTheRows(t *testing.T) {
 		t.Errorf("rewritten = %+v, want the two calls whose digests differ", d.Rewritten)
 	}
 }
+
+// TestRewritten_HarnessCompletedInputIsNotARewrite: Claude Code writes the
+// user's answers into AskUserQuestion's input and the approved plan into
+// ExitPlanMode's between PreToolUse and PostToolUse. A different digest there
+// is the harness completing the call, and counting it put four false rows on a
+// real session -- every row it had. A Bash call beside them still counts.
+func TestRewritten_HarnessCompletedInputIsNotARewrite(t *testing.T) {
+	run := &store.Run{
+		Declarations: []store.Declaration{
+			declWithShape("toolu_q", "AskUserQuestion", "", "other", "asked"),
+			declWithShape("toolu_p", "ExitPlanMode", "", "other", "planned"),
+			declWithShape("toolu_b", "Bash", "curl", "network", "declared"),
+		},
+		Executions: []store.Execution{
+			{ToolUseID: "toolu_q", ExecutedDigest: "asked-with-answers"},
+			{ToolUseID: "toolu_p", ExecutedDigest: "planned-and-approved"},
+			{ToolUseID: "toolu_b", ExecutedDigest: "executed"},
+		},
+	}
+
+	rows := rewrittenCalls(run)
+
+	if len(rows) != 1 || rows[0].ToolUseID != "toolu_b" {
+		t.Fatalf("rows = %+v, want only the Bash call: a completed question or plan is "+
+			"not a rewrite", rows)
+	}
+}

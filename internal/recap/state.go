@@ -45,10 +45,17 @@ type state struct {
 	// free to speak once, which is what H-91 asks for and a blanket
 	// "evaluated" claim would have broken.
 	Spoken map[string]string `json:"spoken"`
+	// Checked maps a session id to the last prompt id a recap ran for,
+	// whether or not it printed. It is what lets the next prompt tell a turn
+	// Stop evaluated from one it never reached: saying No at a permission
+	// prompt interrupts the turn, Claude Code fires no Stop after an
+	// interrupt, and a refused call -- the case the line most exists for --
+	// was therefore the one case it could never show. Pending reads this.
+	Checked map[string]string `json:"checked"`
 }
 
 func newState() state {
-	return state{Spoken: map[string]string{}}
+	return state{Spoken: map[string]string{}, Checked: map[string]string{}}
 }
 
 func statePath(root string) string {
@@ -80,6 +87,11 @@ func readState(path string) (state, error) {
 	if s.Spoken == nil {
 		s.Spoken = map[string]string{}
 	}
+	// A file written before Checked existed has none; nil would panic on the
+	// first write into it.
+	if s.Checked == nil {
+		s.Checked = map[string]string{}
+	}
 	return s, nil
 }
 
@@ -89,15 +101,15 @@ func readState(path string) (state, error) {
 // killed mid-write must leave either the old file or the new one, never a
 // truncated third thing.
 func writeState(path string, s state) error {
-	if len(s.Spoken) > maxTrackedSessions {
-		// Go's map iteration order is randomised, which is fine here: this
-		// is a soft cap on a best-effort file, and which session ids it
-		// drops first carries no meaning worth spending a real LRU on.
-		for k := range s.Spoken {
-			if len(s.Spoken) <= maxTrackedSessions {
+	// Go's map iteration order is randomised, which is fine here: this is a
+	// soft cap on a best-effort file, and which session ids it drops first
+	// carries no meaning worth spending a real LRU on.
+	for _, m := range []map[string]string{s.Spoken, s.Checked} {
+		for k := range m {
+			if len(m) <= maxTrackedSessions {
 				break
 			}
-			delete(s.Spoken, k)
+			delete(m, k)
 		}
 	}
 	b, err := json.Marshal(s)
@@ -147,6 +159,9 @@ func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (spe
 	if speak && sessionID != "" && promptID != "" {
 		s.Spoken[sessionID] = promptID
 	}
+	if sessionID != "" && promptID != "" {
+		s.Checked[sessionID] = promptID
+	}
 	return speak, writeState(path, s)
 }
 
@@ -191,4 +206,21 @@ func Status(root string) (evaluated bool, lastAt time.Time, healthy bool, err er
 		return false, time.Time{}, false, nil
 	}
 	return true, time.UnixMilli(s.LastEvaluatedAtUnixMS), s.Healthy, nil
+}
+
+// Pending reports whether promptID is a turn in sessionID that no recap has
+// checked yet -- the turn a refused permission prompt interrupted before its
+// Stop could fire. A missing or unreadable bookkeeping file answers false:
+// with nothing to say which turns were checked, catching up could only repeat
+// a line Stop already printed, and a duplicate is the failure this file
+// exists to prevent.
+func Pending(root, sessionID, promptID string) bool {
+	if sessionID == "" || promptID == "" || !storeExists(root) {
+		return false
+	}
+	s, err := readState(statePath(root))
+	if err != nil {
+		return false
+	}
+	return s.Checked[sessionID] != promptID
 }

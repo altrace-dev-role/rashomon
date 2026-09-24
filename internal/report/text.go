@@ -141,7 +141,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 		// Between the two lists it sits between, and named rather than folded
 		// into either: a denial is not a recording failure and not a call
 		// waiting on its result. It is the permission prompt working.
-		fmt.Fprintf(b, "    denied by user: %s\n", set(t.DeniedByUser))
+		fmt.Fprintf(b, "    denied before running: %s\n", set(t.DeniedByUser))
 		fmt.Fprintf(b, "    declared without result: %s\n", set(t.DeclaredWithoutResult))
 	}
 

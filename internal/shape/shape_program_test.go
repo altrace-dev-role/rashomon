@@ -19,8 +19,8 @@ func TestProgramIsAProgram(t *testing.T) {
 		want string // "" means the program must be null
 		why  string
 	}{
-		{name: "subshell", cmd: "( cd /tmp && ls )", want: "cd",
-			why: "recorded `(` before this"},
+		{name: "subshell", cmd: "( cd /tmp && ls )", want: "ls",
+			why: "recorded `(` before the program was found, and `cd` before it looked past a directory change"},
 		{name: "brace group", cmd: "{ ls; }", want: "ls",
 			why: "`{` is a shell keyword the tokenizer does not mark as a metacharacter"},
 		{name: "leading operator", cmd: "&& go build", want: "go"},
@@ -106,7 +106,7 @@ func TestProgramIsAProgram(t *testing.T) {
 		{name: "quoted word with a newline", cmd: "\"X=1 <<EOF\nsecret body\nEOF\""},
 
 		// Unchanged behaviour, asserted so the fix cannot quietly move it.
-		{name: "ordinary command", cmd: "cd /tmp && go build", want: "cd"},
+		{name: "ordinary command", cmd: "cd /tmp && go build", want: "go"},
 		{name: "assignments skipped", cmd: "FOO=bar BAZ=qux make -j4", want: "make"},
 		{name: "assignment after the program is an argument", cmd: "env FOO=bar", want: "env"},
 		{name: "path is reduced to its base", cmd: "/usr/local/bin/go build", want: "go"},
@@ -198,6 +198,35 @@ func TestArgcExcludesLeadingAssignments(t *testing.T) {
 		}
 		if *got.Argc != tc.want {
 			t.Errorf("argc for %q is %d, want %d", tc.cmd, *got.Argc, tc.want)
+		}
+	}
+}
+
+// TestProgramLooksPastADirectoryChange: `cd` is where a command runs, not what
+// it runs. On a real session 1,397 of 1,495 shell calls opened with
+// `cd … &&`, and "by program" read "cd 1397" -- the field said nothing. Only
+// `&&` and `;` are followed; anything else after `cd` is left alone rather
+// than guessed at, and a command after `cd` that cannot be told is null.
+func TestProgramLooksPastADirectoryChange(t *testing.T) {
+	for _, tc := range []struct {
+		cmd, want string
+	}{
+		{"cd /x && go test ./...", "go"},
+		{"cd /x; make", "make"},
+		{"cd a && cd b && npm test", "npm"},
+		{"( cd x; make )", "make"},
+		{"cd /x && FOO=1 git log", "git"},
+		{"cd /x", "cd"},
+		{"cd /x | wc -l", "cd"},
+		{"cd /x || exit 1", "cd"},
+	} {
+		in, _ := json.Marshal(map[string]string{"command": tc.cmd})
+		got := Derive("Bash", in, []byte("k")).Program
+		switch {
+		case tc.want == "" && got != nil:
+			t.Errorf("%q: program = %q, want null", tc.cmd, *got)
+		case tc.want != "" && (got == nil || *got != tc.want):
+			t.Errorf("%q: program = %v, want %q", tc.cmd, got, tc.want)
 		}
 	}
 }
