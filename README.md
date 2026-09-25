@@ -8,25 +8,38 @@ source below. No other agent harness is recorded.*
 When you hand a coding agent your machine, it works for twenty or forty minutes
 and then tells you what happened — from the same context, with the same
 incentive to look successful. `rashomon` records the session independently: what
-the agent *declared* it would run, what *actually ran*, and — if you point it at
-an observing proxy — *where the machine actually connected*.
+the agent *declared* it would run and what *actually ran*.
 
-Four accounts of one session: what it declared, what ran, where it connected,
-and what it says it did — reconciled, with the disagreements shown. The name is
-the point.
+Three accounts of one session: what it declared, what ran, and what it says it
+did — reconciled, with the disagreements shown. The name is the point.
 
-## The line nothing else can produce
+## What a disagreement looks like
 
-    reached but never named: files.pythonhosted.org, pypi.org
+A session whose test run failed while a subagent looked through the code, and
+whose closing message says the tests pass. This excerpt is `rashomon report`
+exactly as it renders that session:
 
-`pip download requests` names no hostname anywhere in its command line. The
-transcript cannot tell you where it went. The hook log cannot. Neither can the
-agent — it does not know. Only the wire does.
+      the agent's account:
+        "Done. I refactored ParseConfig and all tests pass."
+      subagents: 1
+        agent-a41f (Explore): 3 declarations, 3 executions, 1 Bash
+        (these calls do not appear in the main transcript)
+      failed calls: 1
+        the final message contains none of these 43 words: fail, failed, failing, error, errors, couldn't, could not, unable, not able, didn't, did not, blocked and 31 more of 43 (--json lists them all)
 
-**This line needs an observing proxy** — a separate, closed Altrace product that
-is not distributed yet. Everything else below works without it, and a report
-without a proxy says `destinations: not observed` rather than implying none
-occurred.
+The agent's account is its own words, quoted. The `subagents` and
+`failed calls` lines come from the hooks, not from anything the agent wrote:
+the session's `go test ./...` ended with exit code 1, and the subagent's three
+calls never appear in the main transcript at all. The report says which
+acknowledgement words are *absent* from the summary; it does not say why.
+
+To see the same disagreement in your own session: run `rashomon watch`, break
+one test in a project you have open, and start `claude`. Ask it to have a
+subagent look through the code for something, then to run the test suite and
+finish with a one-line summary. Whatever that summary says, `rashomon report`
+quotes it above the `subagents` and `failed calls` lines — and if the summary
+never mentions the failure, the `failed calls` line lists the words it does not
+use.
 
 ## What a report tells you
 
@@ -35,7 +48,6 @@ occurred.
 - **Which tool calls failed**, and whether the agent's closing summary mentions
   failure at all. It reports the words that are *absent*; it never characterises
   intent.
-- **Which destinations only the wire saw** — the line above.
 - **What executed differently from what was declared** — a hook or wrapper that
   rewrote a command before it ran.
 - **What could not be seen**, on every report, including a healthy one.
@@ -121,33 +133,6 @@ when you send your next prompt it checks the turn that just ended, and if no
 recap reached it and it has something to show, prints the line then, marked
 `previous turn`.
 
-### Seeing network destinations
-
-The destinations half needs a second component: an **observing proxy** — a
-separate, closed Altrace binary that records the hostname of every CONNECT it
-sees, without decrypting anything. `rashomon` reads its database read-only.
-
-```sh
-rashomon run -- claude              # sets the proxy variables, then reports at exit
-```
-
-`run` **requires that `watch` has already been run.** With nothing recording
-there would be no session to report on, so it refuses and says so rather than
-running your command for nothing. It returns the child's exit code unchanged
-and writes the report to stderr, so the child's stdout stays pipeable.
-
-`run` exports proxy variables only when a status file names a live process that
-identifies itself as an Altrace proxy in observe mode **on a loopback address**.
-A status file naming a routable host is refused, and `run` launches your command
-without the variables and says why.
-
-That check is not cosmetic: the status file is writable by the same user the
-agent runs as, so without it an agent could name a host it controls and have the
-next session's whole HTTPS stream — API key included — sent there in cleartext.
-
-`report` looks for the proxy's database at `~/.altrace/observe/causal.db`;
-`--proxy-store PATH` points elsewhere.
-
 ## What is recorded, and what never is
 
 **Recorded** — identifiers, shapes and hostnames. `tool_use_id`, `session_id`,
@@ -161,12 +146,11 @@ Note that `cwd` and `transcript_path` are filesystem paths and carry directory
 names. [`docs/store-schema.json`](docs/store-schema.json) is the exhaustive and
 authoritative field list — every key required, `additionalProperties: false`.
 
-**Hostnames are stored in clear**, because a hostname is the join key against
-the wire and a digest cannot be joined against a proxy's rows. They are
-extracted from `WebFetch.url` and from any URL appearing in a `Bash` command
-line — *whether or not the call reached it*. Only those two tools are read, so
-traffic from any other tool has no declaration to join against and will render
-under `reached but never named`.
+**Hostnames are stored in clear**, because the report has to name them:
+`report --chain` lists the hosts each call named beside that call, and a
+digest cannot be rendered back into a name. They are extracted from
+`WebFetch.url` and from any URL appearing in a `Bash` command line — *whether
+or not the call reached it*. Only those two tools are read.
 
 **Never recorded:** prompts, responses, argument values, command strings, file
 contents, tool output. Not redacted — *structurally absent*. The payload struct
@@ -198,29 +182,25 @@ collide; **the last label is kept in clear on purpose**, so `.internal` and
 `.amazonaws.com` survive; and anyone holding this install's store can recompute
 every digest. The redacted report repeats all of this in its own header.
 
-`forget --host <h>` removes a host from this store and from every project
-baseline and suppresses it from the report. **It cannot remove it from the
-proxy's own database** — that store is hash-chained and opened read-only here,
-so deleting a row would break the chain it exists to provide.
+`forget --host <h>` removes every call that named that host from this store,
+and leaves a gap record saying something was removed — keyed by a digest of the
+host, not its name.
 
 ## What it cannot see
 
-Printed on every report, including a completely healthy one — because these are
-properties of the instrument, not of the session. A reader told only what *was*
-observed will read the rest as an absence of traffic rather than an absence of
-observation.
+**Network destinations are not observed in this alpha.** The text report says
+so in one line:
 
-| Not observable | Why |
-| --- | --- |
-| Node's built-in `fetch` | Measured on v22.19.0: makes requests with no CONNECT reaching the proxy, with and without `NODE_USE_ENV_PROXY` |
-| `ssh`, and git over ssh | Not CONNECT, so outside what a proxy sees |
-| DNS resolution | A name is resolved before any proxy is consulted |
-| Raw sockets | No proxy variable applies |
-| Plain HTTP | Not observed in this release — no `HTTP_PROXY` is exported |
+    destinations: not observed in this alpha
 
-Observation through proxy variables is **cooperative**: a program that ignores
-them is not observed, and the report says which program families it could and
-could not account for.
+It is printed for every session, including a completely healthy one, because it
+is a property of the instrument and not of the session. A reader told only what
+*was* observed will read the rest as an absence of traffic rather than an
+absence of observation. `--json` states the same fact in its own form: the
+`destinations` object carries `"observed": false` and the reason
+`no_proxy_store`, so its empty host lists read as *not watched*, not as *none*.
+`--chain` lists the hosts each call *named*; it does not say whether the call
+reached them.
 
 ## The two rules it will not break
 
@@ -247,21 +227,13 @@ in [`docs/design-notes.md`](docs/design-notes.md).
 | Command | What it does |
 | --- | --- |
 | `rashomon watch` | Install the recorders and the liveness probe. **The only command that installs anything.** |
-| `rashomon run -- <cmd>` | Run a command with proxy variables set, then report. Requires `watch` first |
-| `rashomon report [--session S] [--json] [--redact] [--chain] [--proxy-store P]` | Render **every** recorded session, or one named with `--session`. `--chain` adds the causal view: which prompt produced which calls |
+| `rashomon report [--session S] [--json] [--redact] [--chain]` | Render **every** recorded session, or one named with `--session`. `--chain` adds the causal view: which prompt produced which calls |
 | `rashomon status` | Say what is installed here. Reads only; creates nothing |
 | `rashomon detach` | Remove the recorders, leaving every other entry byte-for-byte as found |
 | `rashomon forget --since T \| --before T \| --host H` | Erase records, leaving a gap record saying so |
-| `rashomon env [--port N]` | Print the proxy variables, for `eval $(rashomon env)`. Default port 18080 |
 | `rashomon version` | Print the version |
 
 `rashomon <command> --help` for the full flag set.
-
-**`report` is not read-only.** When it can read a proxy store it writes
-`baseline/<project>.json` under the store root — the project path and the
-hostnames seen for it — which is what "new for this project" compares against,
-and which deliberately outlives run eviction and `forget --since`. Only
-`forget --host` clears it.
 
 `detach` has two recovery forms for when things are gone: `detach --install <id>`
 (printed by `watch` at install time) removes one install's entries without
@@ -294,10 +266,7 @@ loop is not recorded, and every command says so.
 **Claude Code only.** The hooks, the store and the report describe Claude Code
 sessions. No other agent harness is recorded.
 
-**`rashomon` installs no certificate and decrypts nothing.** It reads hostnames
-from a proxy's CONNECT records and never anything else; `internal/wire` opens
-that database read-only and has no field for a body. The proxy's own posture is
-documented by the proxy.
+**`rashomon` installs no certificate and decrypts nothing.**
 
 **No account. No telemetry. No phone-home. No model in any path.**
 
@@ -341,6 +310,4 @@ Apache 2.0. See [LICENSE](LICENSE).
 
 ---
 
-Built by [Altrace](https://github.com/altrace-dev-role). The observing proxy
-whose store `rashomon` can read is a separate, closed product; `rashomon` is
-useful without it and reports honestly when it is absent.
+Built by [Altrace](https://github.com/altrace-dev-role).

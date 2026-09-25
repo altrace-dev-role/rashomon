@@ -93,10 +93,20 @@ func TestH31_ChainsGroupCallsUnderTheirPrompt(t *testing.T) {
 	if !strings.Contains(out, "prompt prompt-1") {
 		t.Errorf("the render does not name the prompt:\n%s", out)
 	}
-	// The legend is load-bearing, not decoration: a host beside a call reads as
-	// though that call reached it, and the store cannot support that claim.
-	if !strings.Contains(out, "not proof this call reached it") {
-		t.Errorf("the render omits the legend that bounds what a link host means:\n%s", out)
+	// The legend explains a host's STATE, and a state comes only from a proxy
+	// store. Without one there is no state on the page, so no legend either:
+	// this alpha's reader would be told how to read a column they cannot see.
+	if strings.Contains(out, "not proof this call reached it") {
+		t.Errorf("the render explains host states although no proxy store was named:\n%s", out)
+	}
+
+	// With a store named -- even one that turns out absent -- the legend is
+	// load-bearing, not decoration: a host beside a call reads as though that
+	// call reached it, and the store cannot support that claim.
+	named := e.run("", nil, "report", "--session", testSession, "--chain",
+		"--proxy-store", filepath.Join(e.home, "absent-causal.db")).stdout
+	if !strings.Contains(named, "not proof this call reached it") {
+		t.Errorf("the render omits the legend that bounds what a link host means:\n%s", named)
 	}
 }
 
@@ -280,9 +290,17 @@ func TestH31_SSHHostsAreCarriedApartEndToEnd(t *testing.T) {
 		t.Errorf("ssh_hosts = %v, want it carried in its own field", l.SSHHosts)
 	}
 
+	// Without a proxy store nothing is observable, so "(not observable)" would
+	// single out the one host that is no different from the rest: the ssh host
+	// is named, apart, and nothing more.
 	out := e.run("", nil, "report", "--session", testSession, "--chain").stdout
-	if !strings.Contains(out, "ssh: git.example.com (not observable)") {
-		t.Errorf("the render does not carry the ssh host apart:\n%s", out)
+	if !strings.Contains(out, "ssh: git.example.com\n") {
+		t.Errorf("the render does not carry the ssh host apart, and plainly:\n%s", out)
+	}
+	named := e.run("", nil, "report", "--session", testSession, "--chain",
+		"--proxy-store", filepath.Join(e.home, "absent-causal.db")).stdout
+	if !strings.Contains(named, "ssh: git.example.com (not observable)") {
+		t.Errorf("with a store named, the render does not say the ssh host is beyond it:\n%s", named)
 	}
 }
 

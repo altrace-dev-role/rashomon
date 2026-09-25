@@ -20,6 +20,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -80,6 +81,91 @@ type Verdict struct {
 	File File
 	// Path is where it was looked for, so a reason can name it.
 	Path string
+	// Listen is the listen address parsed whole, set ONLY when Export is true.
+	// Callers export Listen.String(), rebuilt from its two parts, and never
+	// File.ListenAddr: the file is writable by the user the agent runs as, and
+	// its raw string is text a shell's eval would run.
+	Listen Listen
+}
+
+// Listen is a listen address that parsed completely as HOST:PORT.
+type Listen struct {
+	// Host is exactly "127.0.0.1", "localhost" or "[::1]" -- one of this
+	// package's own literals, never a slice of the file.
+	Host string
+	// Port is 1-65535.
+	Port int
+}
+
+// String is the address as a proxy URL carries it. At the stock address it is
+// byte-identical to what the proxy writes, "127.0.0.1:18080".
+func (l Listen) String() string {
+	return l.Host + ":" + strconv.Itoa(l.Port)
+}
+
+// parseListen accepts HOST:PORT and nothing else.
+//
+// HOST is exactly one of three spellings. isLoopback accepts more -- any case
+// of localhost, a bare ::1 -- because it answers a narrower question, whether
+// traffic would leave the machine. This one answers whether the ADDRESS is
+// safe to print into a line a shell evaluates, and the only answer that holds
+// for every shell is: only text rebuilt from known parts. PORT is ASCII
+// digits, no sign, no leading zero, 1-65535, so nothing after the port
+// survives: not a ";cmd", not a " $(x)", not a newline that `eval "$vars"`
+// would read as a second command (CWE-78).
+//
+// The address is not the whole line env prints. NO_PROXY's `*.local` is a
+// glob that an unquoted `eval $(rashomon env)` expands against the current
+// directory; that residual is the caller's to state, and cmdEnv states it.
+//
+// Written by hand, for the reason isLoopback gives: H-17 forbids `net` in this
+// module. net.SplitHostPort would not be enough anyway -- it accepts a port of
+// "1;cmd" and leaves the checking to the caller.
+func parseListen(addr string) (Listen, bool) {
+	i := strings.LastIndexByte(addr, ':')
+	if i < 0 {
+		return Listen{}, false
+	}
+	var host string
+	switch addr[:i] {
+	case "127.0.0.1":
+		host = "127.0.0.1"
+	case "localhost":
+		host = "localhost"
+	case "[::1]":
+		host = "[::1]"
+	default:
+		// Includes a bare "::1", whose last colon is inside the address: the
+		// host half is then ":", and a portless IPv6 literal is refused here
+		// rather than read as port 1.
+		return Listen{}, false
+	}
+	port, ok := parsePort(addr[i+1:])
+	if !ok {
+		return Listen{}, false
+	}
+	return Listen{Host: host, Port: port}, true
+}
+
+// parsePort reads a port in plain decimal: one to five ASCII digits, no sign,
+// no leading zero, and a value in 1-65535. strconv.Atoi is not used because it
+// takes a sign and leading zeros, both of which this refuses.
+func parsePort(s string) (int, bool) {
+	if len(s) == 0 || len(s) > 5 || s[0] == '0' {
+		return 0, false
+	}
+	n := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + int(c-'0')
+	}
+	if n > 65535 {
+		return 0, false
+	}
+	return n, true
 }
 
 // isLoopback reports whether an address's HOST half is loopback.
@@ -93,6 +179,10 @@ type Verdict struct {
 // immediately. The invariant is the point -- code that runs inside an agent's
 // tool calls must not be able to reach the network -- and a convenience import
 // is exactly how such a graph grows a capability nobody decided to add.
+//
+// It reads the HOST only, which makes it necessary and not sufficient: it
+// accepted "127.0.0.1:1;cmd", whose port is a shell command. Read therefore
+// also requires parseListen, which accepts a narrower set and reads the port.
 func isLoopback(addr string) bool {
 	host := addr
 	if strings.HasPrefix(host, "[") {
@@ -166,8 +256,14 @@ func Read(path string) Verdict {
 		v.Reason = "the status file at " + path + " does not identify an altrace proxy"
 		return v
 	}
+	// Every field of the file that a reason repeats is QUOTED. The file is
+	// writable by the user the agent runs as and the reason goes to the
+	// operator's terminal, so a raw newline in it would print a second line of
+	// the file's choosing -- "observe-mode proxy ... is running" -- under this
+	// program's name (CWE-117), and a raw escape sequence would reach the
+	// terminal itself (CWE-150).
 	if v.File.ConnectMode != ModeObserve {
-		v.Reason = "the proxy is in " + v.File.ConnectMode +
+		v.Reason = "the proxy is in " + strconv.Quote(v.File.ConnectMode) +
 			" mode, not observe -- exporting proxy variables at an enforcing proxy" +
 			" would refuse the client's own API tunnels and break the session"
 		return v
@@ -187,9 +283,21 @@ func Read(path string) Verdict {
 		// that returns Export true for a remote proxy has already made the
 		// decision; the launcher only carries it out.
 		v.Reason = "the proxy status file names a non-loopback listen address (" +
-			v.File.ListenAddr + "); refusing, because exporting proxy variables to a " +
+			strconv.Quote(v.File.ListenAddr) + "); refusing, because exporting proxy variables to a " +
 			"remote host would send this session's traffic and its session tag off " +
 			"this machine"
+		return v
+	}
+	// AFTER the loopback check, so a routable address keeps that refusal's
+	// reason, and narrower than it: loopback is necessary and not sufficient.
+	// The address is about to be printed into a line the operator hands to
+	// eval, so it must be a host and a port and nothing else. Quoted in the
+	// reason, so what the file carried is shown and never interpreted.
+	listen, ok := parseListen(v.File.ListenAddr)
+	if !ok {
+		v.Reason = "the proxy status file names listen address " + strconv.Quote(v.File.ListenAddr) +
+			", which is not HOST:PORT with HOST 127.0.0.1, localhost or [::1] and PORT 1-65535" +
+			" in plain digits; refusing, because an exported address is text a shell evaluates"
 		return v
 	}
 	if !alive(v.File.PID) {
@@ -201,7 +309,8 @@ func Read(path string) Verdict {
 	}
 
 	v.Export = true
-	v.Reason = "observe-mode proxy at " + v.File.ListenAddr + " is running"
+	v.Listen = listen
+	v.Reason = "observe-mode proxy at " + listen.String() + " is running"
 	return v
 }
 

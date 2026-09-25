@@ -16,6 +16,7 @@ package acceptance
 // each destination it observed.
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -127,8 +128,21 @@ func TestH25_ForgottenHostStaysSuppressedInTheReport(t *testing.T) {
 			forgettable, plain)
 	}
 
-	if res := e.run("", nil, "forget", "--host", forgettable); res.exitCode != 0 {
+	res := e.run("", nil, "forget", "--host", forgettable)
+	if res.exitCode != 0 {
 		t.Fatalf("forget --host: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	// A proxy store WAS read here -- the report above wrote a project baseline
+	// -- so forget's output is exactly what it always was: the baseline count,
+	// and the sentence saying the proxy's rows are not ours to delete.
+	for _, want := range []string{
+		"project baseline(s) cleared\n",
+		"rashomon: the proxy's own records are not ours to delete",
+	} {
+		if !strings.Contains(res.stdout, want) {
+			t.Errorf("forget --host after a proxy store was read does not say %q:\n%s",
+				want, res.stdout)
+		}
 	}
 
 	after := e.run("", nil, "report", "--session", testSession, "--proxy-store", db)
@@ -146,6 +160,36 @@ func TestH25_ForgottenHostStaysSuppressedInTheReport(t *testing.T) {
 	// The host that was not forgotten is still reported.
 	if !strings.Contains(after.stdout, "keep-me.example") {
 		t.Errorf("the forget removed more than it was asked to:\n%s", after.stdout)
+	}
+}
+
+// TestH25_ForgetHostSaysNothingOfAProxyNeverRead: on a machine where no proxy
+// store was ever read -- every machine in this alpha -- forget --host says
+// what it removed in one line. The baseline count and the sentence about the
+// proxy's own records explain state that exists only after a report has read
+// a proxy store, and printed here they describe a product the reader does not
+// have. The baseline directory is the evidence that one was read, because a
+// report writes it only then.
+func TestH25_ForgetHostSaysNothingOfAProxyNeverRead(t *testing.T) {
+	e := newEnv(t)
+	seedHostSession(t, e)
+
+	res := e.run("", nil, "forget", "--host", forgettable)
+	if res.exitCode != 0 {
+		t.Fatalf("forget --host: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	// The record count is the store's business (a call leaves more than its
+	// declaration behind); the shape of the line is this item's, and so is its
+	// grammar: one run is "1 run", never "1 runs".
+	want := regexp.MustCompile(`^rashomon: forgot ([1-9][0-9]*) (records?) naming ` +
+		regexp.QuoteMeta(forgettable) + ` across 1 run; 1 gap record written\n$`)
+	m := want.FindStringSubmatch(res.stdout)
+	if m == nil {
+		t.Fatalf("forget --host with no proxy store ever read printed\n%q\nwant one line "+
+			"matching\n%s", res.stdout, want)
+	}
+	if (m[1] == "1") != (m[2] == "record") {
+		t.Errorf("forget --host says %q %q: the noun does not agree with the count", m[1], m[2])
 	}
 }
 

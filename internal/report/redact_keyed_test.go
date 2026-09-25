@@ -149,11 +149,14 @@ func TestRedact_ReportCarriesTheLegend(t *testing.T) {
 	}
 }
 
-// renderText renders a whole report to text, for the assertions above.
+// renderText renders a whole report to text, for the assertions above. It
+// names a proxy store, because the hosts these assertions look for render
+// only in a report that named one; without it the absence checks would pass
+// against a section that never printed.
 func renderText(t *testing.T, rep *Report) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := Text(&b, rep); err != nil {
+	if err := Text(&b, rep, WithNamedProxyStore("causal.db")); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	return b.String()

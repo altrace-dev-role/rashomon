@@ -173,29 +173,260 @@ m("H-13 the tokenizer never marks an expansion opaque", "internal/shape/tokenize
   "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\topaque = true\n\t\t\t}",
   "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\t_ = opaque\n\t\t\t}", "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 backslash-newlines are not joined before the program search", "internal/shape/shape.go",
-  "\tif !strings.Contains(s, \"\\\\\\n\") {\n\t\treturn s\n\t}", "\tif true {\n\t\treturn s\n\t}",
-  "TestNoCorpusLineLeaksIntoProgram")
+  "\tif !strings.Contains(s, \"\\\\\\n\") {\n\t\treturn s, nil\n\t}", "\tif true {\n\t\treturn s, nil\n\t}",
+  "TestNoCorpusLineLeaksIntoProgram|TestTokenizeProgram")
 m("H-13 a paren where a redirect target belongs is read as a subshell", "internal/shape/shape.go",
-  "\tif i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == \"(\" {\n\t\t// A paren where the target belongs",
-  "\tif false && i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == \"(\" {\n\t\t// A paren where the target belongs",
+  "\tif toks[i+1].meta {\n\t\t// A paren where the target belongs",
+  "\tif false && toks[i+1].meta {\n\t\t// A paren where the target belongs",
   "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 a word quoted before its = is read as an assignment", "internal/shape/shape.go",
   "\treturn t.quotedAt < 0 || t.quotedAt > eq", "\treturn true", "TestProgramIsAProgram|TestNoCorpusLineLeaksIntoProgram")
 m("H-13 a quoted command line with spaces is recorded as the program", "internal/shape/shape.go",
-  "\t\tif strings.ContainsAny(t.text, \" \\t\\n\\r\") {", "\t\tif false {", "TestProgramIsAProgram")
+  "\t\tcase c < 0x21 || c > 0x7e:", "\t\tcase c < 0x20 || c > 0x7e:", "TestProgramIsAProgram")
 m("H-13 program is whatever token came first, operator or not", "internal/shape/shape.go",
   "\t\tt := toks[i]\n\t\tif t.meta {",
   "\t\tt := toks[i]\n\t\tif false && t.meta {", "TestProgramIsAProgram")
 m("H-13 a split redirect operator's second half is taken for its target", "internal/shape/shape.go",
-  "toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {", "toks[i+1].meta && op == \"\"; n++ {",
-  "TestH13_CanaryNeverReachesDisk")
-m("H-13 a redirect takes the next token for its target, word or not", "internal/shape/shape.go",
-  "\tif i+1 >= len(toks) || toks[i+1].meta {", "\tif i+1 >= len(toks) {",
-  "TestProgramIsAProgram")
+  "toks[i+1].meta && toks[i+1].glued && continuesRedirect(op, toks[i+1].text); n++ {", "toks[i+1].meta && op == \"\"; n++ {",
+  "TestH13_CanaryNeverReachesDisk|TestProgramIsAProgram")
 m("H-13 a redirect skips every operator before its target", "internal/shape/shape.go",
-  "\tfor n := 0; n < pieces && i+1 < len(toks) && toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {\n\t\ti++\n\t}",
+  "\tfor n := 0; n < pieces && i+1 < len(toks) && toks[i+1].meta && toks[i+1].glued && continuesRedirect(op, toks[i+1].text); n++ {\n\t\ti++\n\t}",
   "\tfor i+1 < len(toks) && toks[i+1].meta {\n\t\ti++\n\t}\n\t_, _ = op, pieces",
   "TestH13_CanaryNeverReachesDisk")
+# The program search: one break per rule, each judged by the rows and corpus
+# lines that rule alone closes -- the matrix in shape_program_test.go carries a
+# row per glob character, per separator, per glue check and per case of an
+# unknowable group depth, so that no rule rides on another.
+PROG = "TestProgramIsAProgram|TestNoCorpusLineLeaksIntoProgram"
+m("H-13 a redirect's pieces are joined across a blank or a newline", "internal/shape/shape.go",
+  "toks[i+1].meta && toks[i+1].glued && continuesRedirect(op, toks[i+1].text)", "toks[i+1].meta && continuesRedirect(op, toks[i+1].text)", PROG)
+m("H-13 an operator where a redirect target belongs is read past to the next command", "internal/shape/shape.go",
+  "\treturn !procSub(toks, i+1)\n}", "\treturn false\n}", PROG)
+m("H-13 the tokenizer never marks an operator glued", "internal/shape/tokenize.go",
+  "nlBefore: sawNL, glued: !gap && len(toks) > 0})", "nlBefore: sawNL, glued: false})", "TestTokenizeGlued|TestProgramIsAProgram")
+m("H-13 the tokenizer never marks a word glued", "internal/shape/tokenize.go",
+  "\t\t\tglued = !gap && len(toks) > 0\n", "\t\t\tglued = false\n", "TestTokenizeGlued|TestProgramIsAProgram")
+m("H-13 a byte the shell does not split on is read as part of a program name", "internal/shape/shape.go",
+  "\t\tcase c < 0x21 || c > 0x7e:", "\t\tcase c == ' ' || c == '\\t' || c == '\\n' || c == '\\r':", PROG)
+m("H-13 a command word holding $ is named", "internal/shape/shape.go",
+  "\t\tcase c == '$':", "\t\tcase false && c == '$':", PROG)
+m("H-13 a glob command word is named", "internal/shape/shape.go",
+  "\t\tcase c == '*' || c == '?':", "\t\tcase false && (c == '*' || c == '?'):", PROG)
+m("H-13 zsh's ~ exclusion is read as a path", "internal/shape/shape.go",
+  "\t\tcase c == '~' && j > 0:", "\t\tcase false && c == '~' && j > 0:", PROG)
+m("H-13 an all-digit command word is named", "internal/shape/shape.go",
+  "\treturn !digits\n}", "\treturn true\n}", PROG)
+m("H-13 a word glued to <( or a numeric glob is named by its front", "internal/shape/shape.go",
+  "\treturn next.meta && next.text == \"(\" || op == \"<\" && isNumericGlob(next)",
+  "\treturn false && next.meta && op == \"\"", PROG)
+m("H-13 a directory is named by its last component", "internal/shape/shape.go",
+  "\tcase strings.HasSuffix(s, \"/\"):", "\tcase false && strings.HasSuffix(s, \"/\"):", PROG)
+m("H-13 a control byte in the line is read past", "internal/shape/shape.go",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {", "\t\tif c := cmd[i]; c == '\\r' {", PROG)
+m("H-13 the function-definition scan stops at a redirection", "internal/shape/shape.go",
+  "\t\tcase isRedirect(t.text):\n\t\t\tend := operatorEnd(toks, j)\n",
+  "\t\tcase isRedirect(t.text):\n\t\t\tif true {\n\t\t\t\treturn false\n\t\t\t}\n\t\t\tend := operatorEnd(toks, j)\n", PROG)
+m("H-13 the function-definition scan reads &> as the background separator", "internal/shape/shape.go",
+  "\t\tcase t.text == \"&\" && j+1 < len(toks)", "\t\tcase false && t.text == \"&\" && j+1 < len(toks)", PROG)
+m("H-13 the function-definition scan stops at a paren that does not close at once", "internal/shape/shape.go",
+  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, false\n\t\t\t}\n",
+  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, false\n\t\t\t}\n\t\t\treturn -1, true\n", PROG)
+m("H-13 the function-definition scan runs on past a newline", "internal/shape/shape.go",
+  "\t\tcase t.nlBefore:\n\t\t\treturn -1, true\n", "\t\tcase false && t.nlBefore:\n\t\t\treturn -1, true\n", "TestProgramIsAProgram")
+SEPS = ["\";\"", "\"&&\"", "\"||\"", "\"|\"", "\"&\""]
+_seps = "\t\tcase " + " || ".join("t.text == " + x for x in SEPS) + ":\n\t\t\treturn j, true"
+for _drop in SEPS:
+    m("H-13 the function-definition scan reads on past " + _drop.strip('"'), "internal/shape/shape.go",
+      _seps, "\t\tcase " + " || ".join("t.text == " + x for x in SEPS if x != _drop) + ":\n\t\t\treturn j, true", PROG)
+m("H-13 the function-definition scan does not skip a paren group", "internal/shape/shape.go",
+  "\t\t\t}\n\t\t\topen = append(open, '(')\n", "\t\t\t}\n", PROG)
+m("H-13 the function-definition scan does not skip backticks", "internal/shape/shape.go",
+  "\t\tcase t.ticks%2 == 1:\n\t\t\topen = append(open, '`')\n", "\t\tcase false:\n\t\t\topen = append(open, '`')\n", PROG)
+m("H-13 a paren inside a group does not nest", "internal/shape/shape.go",
+  "\tcase t.text == \"(\":\n\t\treturn append(open, '(')\n", "\tcase t.text == \"(\":\n", PROG)
+m("H-13 a paren group never closes", "internal/shape/shape.go",
+  "\tcase t.text == \")\":\n\t\treturn open[:len(open)-1]\n", "\tcase t.text == \")\":\n", PROG)
+m("H-13 backticks never close", "internal/shape/shape.go",
+  "\tcase t.ticks%2 == 1 && top == '`':\n\t\treturn open[:len(open)-1]\n", "\tcase false:\n\t\treturn open[:len(open)-1]\n", PROG)
+m("H-13 a group that never closes is read as closed", "internal/shape/shape.go",
+  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, false\n\t}", "\tif uncertain {\n\t\treturn 0, false\n\t}", PROG)
+m("H-13 the function-definition scan reads past where the lexer's reading stopped", "internal/shape/shape.go",
+  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, false\n\t}", "\tif len(open) > 0 {\n\t\treturn 0, false\n\t}", PROG)
+m("H-13 a ${ the word does not close is read past", "internal/shape/shape.go",
+  "\t\tif openBrace(t) {\n\t\t\treturn 0, false\n\t\t}", "\t\tif false && openBrace(t) {\n\t\t\treturn 0, false\n\t\t}", PROG)
+m("H-13 a closed ${ } is taken for an open one", "internal/shape/shape.go",
+  "strings.Count(t.text[k:], \"{\") > strings.Count(t.text[k:], \"}\")",
+  "strings.Count(t.text[k:], \"{\") >= strings.Count(t.text[k:], \"}\")", "TestProgramIsAProgram")
+m("H-13 a quoted ${ is taken for an expansion", "internal/shape/shape.go",
+  "\treturn t.opaque && k >= 0 &&", "\treturn k >= 0 &&", "TestProgramIsAProgram")
+m("H-13 a comment inside a group is read past", "internal/shape/shape.go",
+  "\tcase isComment(t):\n\t\treturn true\n", "\tcase false && isComment(t):\n\t\treturn true\n", PROG)
+m("H-13 a case statement inside a group is read past", "internal/shape/shape.go",
+  "\tcase !t.meta && t.quotedAt < 0 && t.text == \"case\":\n", "\tcase false:\n", PROG)
+m("H-13 a here-document inside a group is read past", "internal/shape/shape.go",
+  "\tcase hereDoc(toks, j):\n\t\treturn true\n", "\tcase false && hereDoc(toks, j):\n\t\treturn true\n", PROG)
+m("H-13 a newline in a group after a here-document is read past", "internal/shape/shape.go",
+  "\tcase heredoc && t.nlBefore:\n", "\tcase false:\n", PROG)
+m("H-13 a here-string is taken for a here-document", "internal/shape/shape.go",
+  "\treturn next >= len(toks) || !(toks[next].meta && toks[next].glued && toks[next].text == \"<\")",
+  "\treturn next >= 0", "TestProgramIsAProgram")
+m("H-13 a trailing backslash after an expansion is read as a real one", "internal/shape/tokenize.go",
+  "\t\t\t\tflush()\n\t\t\t\treturn toks, unterminated()", "\t\t\t\tflush()\n\t\t\t\treturn toks, errUnterminated",
+  "TestTokenizeProgramStops|" + PROG)
+m("H-13 the function-definition scan reads &> as & and then >", "internal/shape/shape.go",
+  "\t\t\tj++\n\t\t\tfallthrough", "\t\t\tfallthrough", "TestProgramIsAProgram")
+m("H-13 a word glued to any operator and a paren is named by its front", "internal/shape/shape.go",
+  "\tif op != \"<\" && op != \">\" {", "\tif false && op != \"<\" && op != \">\" {", "TestProgramIsAProgram")
+m("H-13 a word glued to > and digits is read as a numeric glob", "internal/shape/shape.go",
+  "|| op == \"<\" && isNumericGlob(next)", "|| isNumericGlob(next)", "TestProgramIsAProgram")
+m("H-13 a backtick inside a paren group opens nothing", "internal/shape/shape.go",
+  "\tcase t.ticks%2 == 1:\n\t\treturn append(open, '`')\n", "\tcase false:\n\t\treturn append(open, '`')\n", PROG)
+m("H-13 a paren inside backticks closes them", "internal/shape/shape.go",
+  "\tcase top == '`' || !t.meta:", "\tcase !t.meta:", PROG)
+m("H-13 & then > is read as &>", "internal/shape/shape.go",
+  "toks[j+1].meta && toks[j+1].glued && strings.HasPrefix(toks[j+1].text, \">\")",
+  "toks[j+1].meta && strings.HasPrefix(toks[j+1].text, \">\")", "TestProgramIsAProgram")
+m("H-13 a numeric glob spaced from the command word is read as part of it", "internal/shape/shape.go",
+  "!toks[i+1].meta || !toks[i+1].glued || !toks[i+2].glued", "!toks[i+1].meta || !toks[i+2].glued", "TestProgramIsAProgram")
+m("H-13 digits spaced from a glued < are read as a numeric glob", "internal/shape/shape.go",
+  "!toks[i+1].meta || !toks[i+1].glued || !toks[i+2].glued", "!toks[i+1].meta || !toks[i+1].glued", "TestProgramIsAProgram")
+m("H-13 a path ending in . is named", "internal/shape/shape.go",
+  "\tcase s != \".\" && (path.Base(s) == \".\" || path.Base(s) == \"..\"):",
+  "\tcase s != \".\" && path.Base(s) == \"..\":", PROG)
+m("H-13 a path ending in .. is named", "internal/shape/shape.go",
+  "\tcase s != \".\" && (path.Base(s) == \".\" || path.Base(s) == \"..\"):",
+  "\tcase s != \".\" && path.Base(s) == \".\":", PROG)
+m("H-13 the source builtin is refused as a directory", "internal/shape/shape.go",
+  "\tcase s != \".\" && (path.Base(s) == \".\" || path.Base(s) == \"..\"):",
+  "\tcase path.Base(s) == \".\" || path.Base(s) == \"..\":", "TestProgramIsAProgram")
+m("H-13 a jobspec is named", "internal/shape/shape.go",
+  "\tcase strings.HasPrefix(s, \"%\"):", "\tcase false && strings.HasPrefix(s, \"%\"):", PROG)
+m("H-13 a quoted command word split by a tab is named", "internal/shape/shape.go",
+  "\t\tcase c < 0x21 || c > 0x7e:", "\t\tcase c < 0x21 && c != '\\t' || c > 0x7e:", PROG)
+m("H-13 a quoted command word split by a newline is named", "internal/shape/shape.go",
+  "\t\tcase c < 0x21 || c > 0x7e:", "\t\tcase c < 0x21 && c != '\\n' || c > 0x7e:", PROG)
+m("H-13 a tab in the line is taken for a control byte", "internal/shape/shape.go",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\n' || c == 0x7f {", "TestProgramIsAProgram")
+m("H-13 a newline in the line is taken for a control byte", "internal/shape/shape.go",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' || c == 0x7f {", "TestProgramIsAProgram")
+m("H-13 the tokenizer never counts an unquoted backtick", "internal/shape/tokenize.go",
+  "\t\t\tif c == '`' {\n\t\t\t\tticks++\n\t\t\t}\n", "", "TestTokenizeTicks|" + PROG)
+m("H-13 the tokenizer never counts a backtick inside double quotes", "internal/shape/tokenize.go",
+  "\t\t\t\tif s[i] == '`' {\n\t\t\t\t\tticks++\n\t\t\t\t}\n", "", "TestTokenizeTicks")
+# Judged by the corpus alone, where the two lines of the PR #29 review are the
+# only ones this break reopens: "$(echo "a;b")" ends at its first inner quote
+# again, and the ; inside it ends the search for the () after the command word.
+m("H-13 a $( ) inside double quotes is not a context in which quotes nest", "internal/shape/tokenize.go",
+  "\t\t\t\tif program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {",
+  "\t\t\t\tif false && program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {", "TestNoCorpusLineLeaksIntoProgram")
+# The review of that change: each guard comsubEnd and its helpers keep against
+# a reading the shell may not share. TPROG adds the tokenizer's own tests.
+TPROG = "TestTokenizeProgram|" + PROG
+C = "internal/shape/comsub.go"
+m("H-13 a paren inside $[ ] counts as a group", C,
+  "\t\tcase '(', ')', '{', '}', '\\'', '\"', '`', '\\\\', '\\n':", "\t\tcase '{', '}', '\\'', '\"', '`', '\\\\', '\\n':", TPROG)
+m("H-13 a nested [ ] ends a $[ ]", C, "\t\tcase '[':\n\t\t\tdepth++\n", "", TPROG)
+m("H-13 $[ is not read as arithmetic", C, "\t\treturn bracketEnd(r.s, i+2)", "\t\treturn i", TPROG)
+m("H-13 an even run of $ opens an expansion in a substitution", C,
+  "\t\tif dollars%2 == 0 {\n\t\t\treturn -1\n\t\t}", "\t\tif false {\n\t\t\treturn -1\n\t\t}", TPROG)
+m("H-13 \"$$(\" opens a substitution", "internal/shape/tokenize.go",
+  "\t\t\t\t\tif dq%2 == 1 {", "\t\t\t\t\tif true {", TPROG)
+m("H-13 a $' inside double quotes in a substitution is a quote", C,
+  "\t\t\t\tcontinue // no quote inside double quotes\n", "", TPROG)
+m("H-13 a nested $( ) is counted as parens", C, "\t\treturn r.substEnd(i, nest)", "\t\treturn i", TPROG)
+m("H-13 a backslash-newline the joining left is read past in a substitution", C,
+  "\t\t\tif i+1 >= len(s) || r.continuesAt(i) {", "\t\t\tif i+1 >= len(s) {", TPROG)
+m("H-13 a backslash-newline the joining left is read past in its double quotes", C,
+  "\t\t\tif r.continuesAt(i) {", "\t\t\tif false {", TPROG)
+m("H-13 the joining's offsets are not kept", "internal/shape/shape.go",
+  "\t\t\t\tjoins = append(joins, b.Len())\n", "", TPROG)
+m("H-13 a quoted span joined across a newline opens a here-document's body", C,
+  " || r.joinedIn(from, to)))", "))", TPROG)
+m("H-13 an unquoted here-document's body is read across backslash-newlines", C,
+  "\t\t\tif !d.quoted && (r.joinedIn(i-1, e)", "\t\t\tif false && (r.joinedIn(i-1, e)", TPROG)
+m("H-13 a quoted here-document's line as written may begin with its delimiter", C,
+  "\t\tif strings.HasPrefix(line(r.s[from:p]), d.delim) {", "\t\tif false {", TPROG)
+m("H-13 a quoted here-document's joined line is read as one line", C,
+  "\t\tfrom = p\n", "\t\t_ = p\n", TPROG)
+m("H-13 a quoted delimiter leaves its body unquoted", C,
+  "\t\t\td.quoted = true\n\t\t\ti += j + 1", "\t\t\ti += j + 1", TPROG)
+m("H-13 case is a keyword wherever it stands", C,
+  "\t\tcase c == 'c' && cmd.begins() && isCase(s, i, body):", "\t\tcase c == 'c' && isCase(s, i, body):", TPROG)
+m("H-13 a command's first word never names it", C, "\t\tp.named = true", "\t\tp.named = false", TPROG)
+m("H-13 a separator does not begin a command", C,
+  "\tif strings.IndexByte(\";&|()\\n\", c) >= 0 {", "\tif false {", TPROG)
+m("H-13 zsh's } and ]] do not begin a command", C, "\tcase w == \"}\" || w == \"]]\":", "\tcase false:", TPROG)
+m("H-13 time's options name the command", C, "\t\tp.prefix = true", "\t\tp.prefix = false", TPROG)
+m("H-13 then names the command", C, "\"select\": true, \"then\": true,", "\"select\": true,", TPROG)
+m("H-13 an assignment names the command", C, "commandKeywords[w], strings.IndexByte(w, '=') >= 0, ", "commandKeywords[w], ", TPROG)
+m("H-13 a redirect's target names the command", C,
+  "\t\tcase '<', '>':\n\t\t\treturn true", "\t\tcase '<', '>':\n\t\t\treturn false", TPROG)
+m("H-13 a redirect's fd names the command", C,
+  "\tif i+n < len(s) && (s[i+n] == '<' || s[i+n] == '>') {", "\tif false {", TPROG)
+m("H-13 $(( is read as a $( ) with a group", C,
+  "\tif i+2 < len(r.s) && r.s[i+2] == '(' {", "\tif false {", TPROG)
+m("H-13 $(( whose ( closes alone is read as arithmetic", C,
+  "\t\t\tif i+1 < len(s) && s[i+1] == ')' {\n\t\t\t\treturn i + 1\n\t\t\t}\n\t\t\treturn -1", "\t\t\treturn i + 1", TPROG)
+m("H-13 arithmetic holds what only a command can", C,
+  "\t\tcase '\\'', '\"', '`', '\\\\', '\\n', ';':\n\t\t\treturn -1\n", "\t\tcase '\\'', '\"', '`', '\\\\', '\\n', ';':\n", TPROG)
+m("H-13 a # after a blank in arithmetic is read past", C,
+  "\t\t\tif i == body || strings.IndexByte(wordBreak, s[i-1]) >= 0 {\n\t\t\t\treturn -1", "\t\t\tif false {\n\t\t\t\treturn -1", TPROG)
+m("H-13 case in arithmetic is read past", C, "\t\t\tif isCase(s, i, body) {", "\t\t\tif false {", TPROG)
+m("H-13 a run of $ in arithmetic is not counted", C, "\t\t\tdollars++\n\t\t\tend := r.dollarOpens(i, dollars, nest+1)", "\t\t\tdollars = 1\n\t\t\tend := r.dollarOpens(i, dollars, nest+1)", TPROG)
+m("H-13 an expansion in arithmetic is read as parens", C,
+  "\t\t\tend := r.dollarOpens(i, dollars, nest+1)\n\t\t\tif end < 0 {\n\t\t\t\treturn -1\n\t\t\t}\n\t\t\ti = end",
+  "\t\t\tend := i\n\t\t\tif end < 0 {\n\t\t\t\treturn -1\n\t\t\t}\n\t\t\ti = end", TPROG)
+m("H-13 the function-definition scan reads past a redirect with no target", "internal/shape/shape.go",
+  "\t\t\tif noTarget(toks, end) {", "\t\t\tif false && noTarget(toks, end) {", PROG)
+m("H-13 the program search reads past a redirect with no target", "internal/shape/shape.go",
+  "\tif noTarget(toks, i) {\n\t\treturn 0, false\n\t}\n", "\tif false && noTarget(toks, i) {\n\t\treturn 0, false\n\t}\n", PROG)
+m("H-13 a redirect takes its target from the next line", "internal/shape/shape.go",
+  "\tcase next.nlBefore:\n\t\treturn true\n", "\tcase false && next.nlBefore:\n\t\treturn true\n", PROG)
+m("H-13 a redirect followed by another is read past", "internal/shape/shape.go",
+  "\treturn !procSub(toks, i+1)\n}", "\treturn !procSub(toks, i+1) && !isRedirect(next.text)\n}", PROG)
+m("H-13 a paren is refused as a redirect's missing target", "internal/shape/shape.go",
+  "\tcase !next.meta, next.text == \"(\":\n", "\tcase !next.meta:\n", "TestProgramIsAProgram")
+m("H-13 a process substitution is refused as a redirect's target", "internal/shape/shape.go",
+  "\treturn !procSub(toks, i+1)\n}", "\treturn true\n}", "TestProgramIsAProgram")
+m("H-13 a paren spaced from its < is read as a process substitution", "internal/shape/shape.go",
+  "\treturn next.meta && next.glued && next.text == \"(\"\n}", "\treturn next.meta && next.text == \"(\"\n}", PROG)
+m("H-13 a comment where a redirect target belongs is taken for the target", "internal/shape/shape.go",
+  "\tcase isComment(next):\n\t\treturn true\n", "\tcase false && isComment(next):\n\t\treturn true\n", PROG)
+m("H-13 a C0 control other than NUL and CR is read past", "internal/shape/shape.go",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {",
+  "\t\tif c := cmd[i]; c == 0 || c == '\\r' || c == 0x7f {", PROG)
+m("H-13 a DEL in the line is read past", "internal/shape/shape.go",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {",
+  "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' {", PROG)
+m("H-13 ~user is named", "internal/shape/shape.go",
+  "\tcase strings.HasPrefix(s, \"~\") && !strings.Contains(s, \"/\"):",
+  "\tcase false && strings.HasPrefix(s, \"~\") && !strings.Contains(s, \"/\"):", PROG)
+m("H-13 zsh's ^ is read as part of a program name", "internal/shape/shape.go",
+  "\t\tcase c == '^' || c == '#':", "\t\tcase c == '#':", PROG)
+m("H-13 zsh's # is read as part of a program name", "internal/shape/shape.go",
+  "\t\tcase c == '^' || c == '#':", "\t\tcase c == '^':", PROG)
+m("H-13 an empty word is named `.`", "internal/shape/shape.go",
+  "which reads as the source builtin.\n\t\treturn false", "which reads as the source builtin.\n\t\treturn true", PROG)
+m("H-14 argc is counted over the program search's reading of $'...'", "internal/shape/shape.go",
+  "\tshaped, err := tokenizeShape(cmd)", "\tshaped, err := tokenizeProgram(cmd)", "TestArgc")
+m("H-13 the program search reads $'...' as argc does", "internal/shape/shape.go",
+  "\tpshaped, perr := tokenizeProgram(cmd)", "\tpshaped, perr := tokenizeShape(cmd)", PROG)
+m("H-13 any earlier $ opens a $'...' string", "internal/shape/tokenize.go",
+  "\t\t\tif program && dollarAt >= 0 && dollarAt == i-1 {", "\t\t\tif program && dollarAt >= 0 {", "TestTokenizeProgramReadsANSICQuotes")
+m("H-13 a quote at the start of the line is read as $'...'", "internal/shape/tokenize.go",
+  "program && dollarAt >= 0 && dollarAt == i-1", "program && dollarAt == i-1", "TestTokenizeProgramReadsANSICQuotes|" + PROG)
+m("H-13 bash's $$' is read as zsh's $'...'", "internal/shape/tokenize.go",
+  "\t\t\t\tif dollars%2 == 0 {", "\t\t\t\tif false {", "TestTokenizeProgramReadsANSICQuotes|" + PROG)
+m("H-13 an odd run of $ is read as bash's $$'", "internal/shape/tokenize.go",
+  "\t\t\t\tif dollars%2 == 0 {", "\t\t\t\tif dollars > 1 {", "TestTokenizeProgramReadsANSICQuotes")
+m("H-13 an unterminated quote after an expansion is read as a real one", "internal/shape/tokenize.go",
+  "\t\tif program && (opaque || expanded) {", "\t\tif false {", "TestTokenizeProgramStops|" + PROG)
+m("H-13 an expansion in an earlier word leaves a later quote certain", "internal/shape/tokenize.go",
+  "\t\tif program && (opaque || expanded) {", "\t\tif program && opaque {", "TestTokenizeProgramStops|" + PROG)
+m("H-13 the count's tokenizer stops where the program search does", "internal/shape/tokenize.go",
+  "\t\tif program && (opaque || expanded) {", "\t\tif opaque || expanded {", "TestTokenize")
 m("H-14 argc counts a leading assignment prefix again", "internal/shape/shape.go",
   "\t\tn := len(dropLeadingAssignments(toks))", "\t\tn := len(toks)",
   "TestArgcExcludesLeadingAssignments")
@@ -399,8 +630,12 @@ m("TB1 SEAM an unverifiable tag is treated as another session",
   "TestSeam|TestToken")
 m("TB1 SEAM a foreign dial failure reaches our outcome map", "internal/wire/wire.go",
   "\t\t\tif joinOf(r, w) == joinOther {\n\t\t\t\tcontinue\n\t\t\t}", "", "TestToken")
-m("TB1 a token is minted from a posture that was refused", "cmd/rashomon/main.go",
-  "\tif v.Export && v.File.SessionToken {", "\tif v.File.SessionToken {", "TestH27")
+# RETIRED: "TB1 a token is minted from a posture that was refused". Its line,
+# `if v.Export && v.File.SessionToken {`, no longer exists: the mint moved
+# inside run's `if v.Export {` branch, so the refused path cannot reach it by
+# construction and there is no conjunct left to drop. What the mutant guarded
+# -- a refused posture leaking into the report -- is now held by
+# "H-27 a refused posture's report reads the store it names" below.
 m("TB1 untokened rows are dropped from a tokened run", "internal/wire/wire.go",
   "\tif w.RunID == \"\" || r.runID == \"\" {\n\t\treturn joinWindow\n\t}",
   "\tif w.RunID == \"\" {\n\t\treturn joinWindow\n\t}\n\tif r.runID == \"\" {\n\t\treturn joinOther\n\t}",
@@ -410,8 +645,11 @@ m("TB1 another run's rows are admitted", "internal/wire/wire.go",
 m("TB1 a token-matched row outside the window is inherited", "internal/wire/wire.go",
   "\tcase joinToken:\n\t\t// The token was issued to this process and no other, so it outranks the\n\t\t// clock. A row carrying it outside the window is this run's row with a\n\t\t// bad timestamp -- which is a real case, since the proxy stamps rows\n\t\t// from its own clock and a session can outlive a skew correction.\n\t\treturn false",
   "\tcase joinToken:\n\t\tbreak", "TestToken")
+# Re-anchored from `if v.Export && v.File.SessionToken {` to the capability
+# check alone, now nested inside run's accepted branch.
 m("TB1 the token is sent to a proxy that never advertised it", "cmd/rashomon/main.go",
-  "\tif v.Export && v.File.SessionToken {", "\tif true {", "TestH27")
+  "\t\tif v.File.SessionToken {\n\t\t\ttoken = launch.NewToken(runKey)",
+  "\t\tif true {\n\t\t\ttoken = launch.NewToken(runKey)", "TestH27")
 m("TB1 the token is not carried into the child's environment", "internal/launch/launch.go",
   "\tif token != \"\" {\n\t\taddr = \"http://\" + ProxyUser + \":\" + token + \"@\" + listenAddr\n\t}", "",
   "TestEnv|TestTokenFromProxyURL")
@@ -488,8 +726,8 @@ m("H-3  executable path installed unquoted", "internal/install/install.go",
 m("tokenizer does not split on metacharacters", "internal/shape/tokenize.go",
   "\t\tcase isMeta(c):\n", "\t\tcase isMeta(c) && false:\n", "TestTokenize")
 m("tokenizer emits the token an unterminated quote interrupted", "internal/shape/tokenize.go",
-  "\t\t\tif !closed {\n\t\t\t\treturn toks, errUnterminated",
-  "\t\t\tif !closed {\n\t\t\t\tstarted = true\n\t\t\t\tflush()\n\t\t\t\treturn toks, errUnterminated", "TestTokenize")
+  "\t\t\tif !closed {\n\t\t\t\treturn toks, unterminated()",
+  "\t\t\tif !closed {\n\t\t\t\tstarted = true\n\t\t\t\tflush()\n\t\t\t\treturn toks, unterminated()", "TestTokenize")
 m("settings accepts a duplicate key", "internal/settings/document.go",
   "\t\tif seen[key] {\n\t\t\treturn nil, fmt.Errorf(\"duplicate key %q\", key)\n\t\t}\n\t\tseen[key] = true", "\t\tseen[key] = true",
   "TestParseRefuses|TestHookEntriesRefusesDuplicateEventKeys")
@@ -539,6 +777,174 @@ m("H-70 the path is not split off before the user", "internal/shape/hosts.go",
 m("H-27 run reports the newest session whether or not the command produced it", "cmd/rashomon/main.go",
   "\tif newest == \"\" || writtenAt.Before(since) {", "\tif _ = writtenAt; newest == \"\" {",
   "TestH27_ReportsNothingWhenTheCommandRecordedNothing")
+# The alpha's dormant proxy path. env's guard is the live hazard: without it,
+# `eval $(rashomon env)` on a machine with no proxy points the shell's HTTPS at
+# a port where nothing listens. Three breaks, because there are three ways to
+# lose it -- dropping the check, weakening it to "a status file exists" (which
+# the no-proxy test alone cannot tell from the real thing, and which would
+# export at an enforcing proxy), and running it before the arguments, which
+# makes `env --help` answer "no proxy".
+m("H-22 env exports without checking the proxy", "cmd/rashomon/main.go",
+  "\tv := posture.Read(posture.DefaultPath())\n\tif !v.Export {",
+  "\tv := posture.Read(posture.DefaultPath())\n\tif false {",
+  "TestH22_EnvRefuses")
+m("H-22 env's check weakened to 'a status file exists'", "cmd/rashomon/main.go",
+  "\tv := posture.Read(posture.DefaultPath())\n\tif !v.Export {",
+  "\tv := posture.Read(posture.DefaultPath())\n\tif v.File.Product == \"\" {",
+  "TestH22_EnvRefusesEveryPostureRunRefuses")
+m("H-22 env consults the proxy before reading its own arguments", "cmd/rashomon/main.go",
+  "\tport, portGiven, err := envPort(args)\n\tif err != nil {\n\t\treturn err\n\t}\n"
+  "\tv := posture.Read(posture.DefaultPath())\n\tif !v.Export {\n"
+  "\t\treturn fmt.Errorf(\"env: printing no proxy variables -- %s\", v.Reason)\n\t}\n",
+  "\tv := posture.Read(posture.DefaultPath())\n\tif !v.Export {\n"
+  "\t\treturn fmt.Errorf(\"env: printing no proxy variables -- %s\", v.Reason)\n\t}\n"
+  "\tport, portGiven, err := envPort(args)\n\tif err != nil {\n\t\treturn err\n\t}\n",
+  "TestH22_EnvArgumentsAnswerWithoutAProxy|TestH22_EnvRejectsABadPort")
+# What env exports once the check passes. The verified address, never the
+# default port env used to print as a constant; --port confirms it and cannot
+# pick another; --token asks the verified file whether the proxy accepts a tag.
+# Re-anchored in loop 2: env exports posture's parsed listener, rebuilt
+# (v.Listen.String()), where it exported the file's raw v.File.ListenAddr; and
+# --port compares against the parsed port, where it called main.go's own
+# listenPort, which is gone.
+m("H-22 env exports the default address instead of the verified one", "cmd/rashomon/main.go",
+  "\tfor _, kv := range launch.Env(v.Listen.String(), token) {",
+  "\tfor _, kv := range launch.Env(\"127.0.0.1:18080\", token) {",
+  "TestH22_EnvExportsTheVerifiedAddress")
+m("H-22 env accepts a --port the verified listener does not hold", "cmd/rashomon/main.go",
+  "\tif portGiven && port != v.Listen.Port {",
+  "\tif false && portGiven && port != v.Listen.Port {",
+  "TestH22_EnvPortMustNameTheVerifiedListener")
+# NOT A MUTANT, deliberately: "env exports the file's raw listen_addr instead
+# of the rebuilt one". Under the grammar every accepted address IS its rebuilt
+# form -- an exact host literal, ':' and plain digits -- so that break changes
+# no output and would be reported as undetected when it is equivalent. The
+# rebuild is defence in depth behind the parse; the parse mutants below are
+# what hold the property, and they go red.
+#
+# The listener grammar (CWE-78). posture read only the HOST of listen_addr, so
+# "127.0.0.1:1;cmd" passed and env printed the command into the operator's
+# eval. Three ways to lose the fix: a portless address defaulted to a port, a
+# port read up to its first non-digit (strconv-prefix style), and the parse
+# not consulted at all.
+m("CWE-78 a portless listen address falls back to a default port", "internal/posture/posture.go",
+  "\tif i < 0 {\n\t\treturn Listen{}, false\n\t}",
+  "\tif i < 0 {\n\t\taddr, i = addr+\":18080\", len(addr)\n\t}",
+  "TestParseListen|TestRead_RefusesAListenAddress|TestH22_EnvRefusesAListenAddress")
+m("CWE-78 a port is read up to its first non-digit, dropping the junk after it", "internal/posture/posture.go",
+  "\t\tif c < '0' || c > '9' {\n\t\t\treturn 0, false\n\t\t}",
+  "\t\tif c < '0' || c > '9' {\n\t\t\tbreak\n\t\t}",
+  "TestParseListen|TestRead_RefusesAListenAddress|TestH22_EnvRefusesAListenAddress|TestH22_AListenAddressNeverReachesEval")
+m("CWE-78 posture never consults the listener grammar", "internal/posture/posture.go",
+  "\tlisten, ok := parseListen(v.File.ListenAddr)\n\tif !ok {",
+  "\tlisten, ok := parseListen(v.File.ListenAddr)\n\tif false && !ok {",
+  "TestRead_RefusesAListenAddress|TestH22_EnvRefusesAListenAddress|TestH22_AListenAddressNeverReachesEval|TestH27_LaunchesWithoutVariables")
+m("H-22 env --token ignores the proxy's capability", "cmd/rashomon/main.go",
+  "\tif !v.File.SessionToken {", "\tif false {",
+  "TestH22_EnvTokenIsCapabilityGated")
+# run's automatic report under a refused posture. posture.Read fills v.File
+# before it decides, so without the gate a stale, crashed, enforcing or
+# malformed status file chooses the database the report reads as the wire.
+m("H-27 a refused posture's report reads the store it names", "cmd/rashomon/main.go",
+  "\tif v.Export {\n\t\t// The proxy told us where it writes",
+  "\tif true {\n\t\t// The proxy told us where it writes",
+  "TestH27_ARefusedPostureReadsNoProxyStore")
+# And under an ACCEPTED posture that named no causal_db, run falls back to the
+# default path. Deleting the fallback left the whole suite green in loop 1:
+# the accepted row named its store, so nothing read the default.
+m("H-27 run's accepted report drops the default-store fallback", "cmd/rashomon/main.go",
+  "\t\tproxyStore = v.File.CausalDB\n\t\tif proxyStore == \"\" {\n\t\t\tproxyStore = defaultProxyStore()\n\t\t}\n",
+  "\t\tproxyStore = v.File.CausalDB\n",
+  "TestH27_ARefusedPostureReadsNoProxyStore")
+m("report falls back to the proxy's default store", "cmd/rashomon/main.go",
+  "\trep, key, err := reportOrEmpty(sessionID, proxyStore, nonoTrail, time.Now())",
+  "\tif proxyStore == \"\" {\n\t\tproxyStore = defaultProxyStore()\n\t}\n"
+  "\trep, key, err := reportOrEmpty(sessionID, proxyStore, nonoTrail, time.Now())",
+  "TestReport_ReadsAProxyStoreOnlyWhenNamed")
+# The collapse. With no store named the proxy block is one line; forcing the
+# full block back is what a reader without the proxy used to see.
+m("report text renders the whole proxy block with no store named", "internal/report/text.go",
+  "\tnamed := cfg.proxyStore != \"\"", "\tnamed := true",
+  "TestReport_ReadsAProxyStoreOnlyWhenNamed|TestText_TheProxyBlock")
+# The chain listing's share of the collapse: a state beside each host, the
+# legend explaining it, "(not observable)" beside an ssh host -- and the seam
+# that carries `named` into the listing at all.
+m("report --chain prints a host state with no store named", "internal/report/text.go",
+  "\t\tif !named {\n\t\t\tparts = append(parts, h.Host)",
+  "\t\tif false {\n\t\t\tparts = append(parts, h.Host)",
+  "TestText_TheCollapseReachesTheChainListing")
+m("report --chain prints the host-state legend with no store named", "internal/report/text.go",
+  "\tif len(c.Prompts) > 0 && named {", "\tif len(c.Prompts) > 0 {",
+  "TestText_TheCollapseReachesTheChainListing|TestH31_ChainsGroupCallsUnderTheirPrompt|TestReport_ReadsAProxyStoreOnlyWhenNamed")
+m("report --chain calls an ssh host not observable with no store named", "internal/report/text.go",
+  "\tif !named {\n\t\treturn \"  ssh: \" + strings.Join(hosts, \", \")\n\t}",
+  "",
+  "TestText_TheCollapseReachesTheChainListing|TestH31_SSHHostsAreCarriedApartEndToEnd")
+m("report --chain is never told whether a store was named", "internal/report/text.go",
+  "\twriteChains(b, sess.Chains, cfg.chain, named)", "\twriteChains(b, sess.Chains, cfg.chain, true)",
+  "TestText_TheCollapseReachesTheChainListing|TestH31_|TestReport_ReadsAProxyStoreOnlyWhenNamed")
+# forget --host prints the baseline count and the proxy sentence only where a
+# baseline directory shows a proxy store was read. Both directions.
+m("forget --host speaks of a proxy on a machine that never read one", "cmd/rashomon/main.go",
+  "\tif !hadBaselines {\n\t\tfmt.Fprintln(stdout)\n\t\treturn nil\n\t}",
+  "\tif false && !hadBaselines {\n\t\tfmt.Fprintln(stdout)\n\t\treturn nil\n\t}",
+  "TestH25_ForgetHostSaysNothingOfAProxyNeverRead")
+m("forget --host drops the proxy sentence after a store was read", "cmd/rashomon/main.go",
+  "\tif !hadBaselines {\n\t\tfmt.Fprintln(stdout)\n\t\treturn nil\n\t}",
+  "\tif true || !hadBaselines {\n\t\tfmt.Fprintln(stdout)\n\t\treturn nil\n\t}",
+  "TestH25_ForgottenHostStaysSuppressedInTheReport")
+m("forget --host says \"1 runs\"", "cmd/rashomon/main.go",
+  "\tif n == 1 {\n\t\treturn \"1 \" + noun\n\t}", "",
+  "TestH25_ForgetHostSaysNothingOfAProxyNeverRead")
+# Review of loop 2. Each of these is a way the collapse or the posture reasons
+# regress without any line above noticing.
+m("report --chain names hosts bare with no legend saying nothing observed them", "internal/report/text.go",
+  "\t} else if !named && listsAHost(c) {", "\t} else if false {",
+  "TestText_TheCollapseReachesTheChainListing|TestReport_ReadsAProxyStoreOnlyWhenNamed")
+m("report text collapses an observed store when the render option was forgotten", "internal/report/text.go",
+  "\tnamed := cfg.proxyStore != \"\" || sess.Destinations.Observed", "\tnamed := cfg.proxyStore != \"\"",
+  "TestText_AnObservedStoreRendersInFullWithoutTheOption")
+m("report takes --proxy-store \"\" as no store named", "cmd/rashomon/main.go",
+  "\t\t\tif args[i+1] == \"\" {\n\t\t\t\treturn errors.New(\"--proxy-store needs a non-empty path\")\n\t\t\t}\n", "",
+  "TestReport_RefusesAnEmptyProxyStore")
+m("CWE-117 the mode refusal repeats connect_mode raw", "internal/posture/posture.go",
+  "\"the proxy is in \" + strconv.Quote(v.File.ConnectMode) +", "\"the proxy is in \" + v.File.ConnectMode +",
+  "TestRead_AReasonNeverRepeatsAFieldRaw|TestH22_EnvRefusesEveryPostureRunRefuses")
+m("CWE-117 the non-loopback refusal repeats listen_addr raw", "internal/posture/posture.go",
+  "\t\t\tstrconv.Quote(v.File.ListenAddr) + \"); refusing", "\t\t\tv.File.ListenAddr + \"); refusing",
+  "TestRead_AReasonNeverRepeatsAFieldRaw|TestH22_EnvRefusesEveryPostureRunRefuses")
+m("the surface check matches nothing", "test/acceptance/dormant_surface_test.go",
+  "regexp.MustCompile(`(?i)\\brashomon (run|env)\\b|proxy-store`)", "regexp.MustCompile(`^$x`)",
+  "TestSurface_|TestInstall_")
+m("the README offers a dormant command", "README.md",
+  "\nrashomon watch                      # install the recorders",
+  "\nrashomon run -- claude              # record destinations too\nrashomon watch                      # install the recorders",
+  "TestSurface_OffersNoDormantProxyPath")
+# The installer places one binary. A second fetch is the loop-0 defect: the
+# closed proxy's archive downloaded because a release happened to carry it.
+m("install.sh fetches a second archive", "install.sh",
+  "say \"  installed ${INSTALL_DIR}/rashomon\"\n",
+  "say \"  installed ${INSTALL_DIR}/rashomon\"\n"
+  "fetch \"${BASE_URL}/${TAG}/altrace_${VERSION}_${OS}_${ARCH}.tar.gz\" \"$TMP/altrace.tar.gz\" || true\n",
+  "TestInstall_")
+m("install.sh drops the alpha's closing line", "install.sh",
+  "say \"Network destinations are not observed in this alpha. Declarations and\"\n",
+  "say \"Declarations and\"\n",
+  "TestInstall_")
+# The README's example is pinned to the render. Either side drifting fails it.
+m("the README excerpt drifts from the render", "README.md",
+  "        agent-a41f (Explore): 3 declarations, 3 executions, 1 Bash\n",
+  "        agent-a41f (Explore): 3 declarations, 3 executions\n",
+  "TestReadme_")
+m("the render drifts from the README excerpt", "internal/report/text.go",
+  "\tfmt.Fprintln(b, \"    (these calls do not appear in the main transcript)\")",
+  "\tfmt.Fprintln(b, \"    (these calls are not in the main transcript)\")",
+  "TestReadme_")
+m("usage advertises the dormant env command", "cmd/rashomon/main.go",
+  "  rashomon version               print the version\n",
+  "  rashomon env [--port N]        print the proxy variables to export\n"
+  "  rashomon version               print the version\n",
+  "TestUsage_AdvertisesNoDormantProxyPath")
 m("H-6 detach has no way past an entry someone edited", "cmd/rashomon/main.go",
   "\t\tcase \"--force\":", "\t\tcase \"--force-disabled\":", "TestH6_DetachForceRemovesAnEditedEntry")
 m("H-6 --force also removes hooks that are not ours", "internal/install/install.go",
@@ -651,8 +1057,16 @@ m("FF a harness-completed input counts as a rewrite", "internal/report/destinati
   "\t\tif d.Shape.Digest == \"\" || inputCompletedByHarness[d.ToolName] {",
   "\t\tif d.Shape.Digest == \"\" {", "TestRewritten_")
 m("FF the program is cd for every cd-and-command line", "internal/shape/shape.go",
-  "\t\ti, ok = pastDirectoryChange(pshaped, i)", "\t\t_ = pastDirectoryChange",
+  "\t\tif i, ok = pastDirectoryChange(pshaped, i, uncertain); ok {", "\t\tif i, ok = i, true; ok {",
   "TestProgramLooksPastADirectoryChange|TestProgramIsAProgram")
+m("FF the separator after cd is found without the command-end scan", "internal/shape/shape.go",
+  "\tsep, ok := commandEnd(toks, i, uncertain)\n\tif !ok {\n\t\treturn 0, false\n\t}\n",
+  "\tsep := -1\n\tfor j := i + 1; j < len(toks); j++ {\n\t\tif toks[j].meta {\n\t\t\tsep = j\n\t\t\tbreak\n\t\t}\n\t}\n",
+  "TestProgramLooksPastADirectoryChange")
+m("FF a separator in a comment after cd is followed", "internal/shape/shape.go",
+  "\t\tif isComment(toks[j]) {\n\t\t\treturn i, true\n",
+  "\t\tif false && isComment(toks[j]) {\n\t\t\treturn i, true\n",
+  "TestProgramLooksPastADirectoryChange")
 m("FF a refused turn is never reported", "internal/recap/state.go",
   "\treturn s.Checked[sessionID] != promptID", "\treturn s.Checked[sessionID] != promptID && false",
   "TestH106_")

@@ -81,18 +81,14 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	// The program is looked for in the line as the shell reads it: with every
 	// backslash-newline removed, which the shell does before it splits words
 	// -- so `<\<newline><EOF` is a here-document and `$\<newline>{x}` an
-	// expansion. argc is counted over the tokens above, as it always was.
-	pshaped := shaped
-	if joined := joinContinuations(cmd); joined != cmd {
-		pshaped, _ = tokenizeShape(joined)
-	}
+	// expansion -- and with a $'...' string read to its first unescaped quote
+	// (tokenizeProgram), which does the joining. argc is counted over the
+	// tokens above, as it always was.
+	pshaped, perr := tokenizeProgram(cmd)
 
-	// A carriage return is a word character to the shell and whitespace to
-	// the tokenizer, so a line holding one is split where the shell does not
-	// split it, and no word in it can be vouched for.
-	if i, ok := programToken(pshaped); ok && !strings.ContainsRune(cmd, '\r') {
-		i, ok = pastDirectoryChange(pshaped, i)
-		if ok {
+	uncertain := perr == errUncertain
+	if i, ok := programToken(pshaped, uncertain); ok && !controlByte(cmd) {
+		if i, ok = pastDirectoryChange(pshaped, i, uncertain); ok {
 			prog := path.Base(pshaped[i].text)
 			s.Program = &prog
 			s.VerbClass = verbForProgram(prog)
@@ -103,6 +99,26 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 		s.Argc = &n
 	}
 	return s
+}
+
+// controlByte reports a line holding a control byte, in which no word can be
+// vouched for whatever the program search found.
+//
+// A carriage return is a word character to the shell and whitespace to the
+// tokenizer, so a line holding one is split where the shell does not split
+// it. A NUL ends the C string every consumer of the line receives, argv and
+// bash -c alike, so nothing after it is read -- and the tokenizer took
+// `\x00#hunter2` for a word rather than a comment, and a NUL for a redirect's
+// target so that the real target was named. The other C0 controls and DEL are
+// word bytes to the shell that nobody types into a command meaning a word.
+// Tab and newline are the shell's own separators and are read as such.
+func controlByte(cmd string) bool {
+	for i := 0; i < len(cmd); i++ {
+		if c := cmd[i]; c < 0x20 && c != '\t' && c != '\n' || c == 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 // dropLeadingAssignments removes a `FOO=bar` prefix, which is environment
@@ -173,7 +189,9 @@ func canonical(raw json.RawMessage) []byte {
 }
 
 // programToken finds the index of the token naming the program, if one can be
-// told for certain.
+// told for certain. uncertain: the tokens stop where the lexer could no longer
+// vouch for its reading (errUncertain), so a command still open there has an
+// end nobody saw.
 //
 // It skips only what it parses completely, and names nothing -- returns false
 // -- at the first thing it does not. The skipped things: a leading assignment
@@ -198,7 +216,7 @@ func canonical(raw json.RawMessage) []byte {
 // anything else not parsed completely, ends the search with null. Null already
 // means "we could not tell" and is read that way; a word from inside a
 // construct is read as a fact.
-func programToken(toks []token) (int, bool) {
+func programToken(toks []token, uncertain bool) (int, bool) {
 	at := func(j int) token {
 		if j < len(toks) {
 			return toks[j]
@@ -217,8 +235,9 @@ func programToken(toks []token) (int, bool) {
 				// redirects here.
 				return 0, false
 			case t.text == "<<" && !isOp(i+1, "<"):
-				// A here-document. Its body follows on the next lines, and the
-				// tokenizer does not keep line boundaries.
+				// A here-document. Its body follows on the next lines, up to a
+				// delimiter line this search does not look for, so a word
+				// after it may be body text.
 				return 0, false
 			case isRedirect(t.text):
 				end, ok := redirectEnd(toks, i)
@@ -246,8 +265,9 @@ func programToken(toks []token) (int, bool) {
 			continue
 		case isRedirect(at(i+1).text) && at(i+1).meta && isFDPrefix(t):
 			// `2>` or `{fd}>`: an fd number or variable written against its
-			// redirect -- or a command named 2 followed by a space; the
-			// tokenizer does not keep which.
+			// redirect, or -- with a blank before the `>` -- a command named
+			// 2. The search does not read on past either to a command after
+			// it: an fd prefix names nothing.
 			return 0, false
 		case isShellAssignment(t):
 			if isOp(i+1, "(") {
@@ -268,13 +288,10 @@ func programToken(toks []token) (int, bool) {
 			// assignments to zsh and commands to bash.
 			return 0, false
 		}
-		if definesFunctions(toks, i) {
+		if definesFunctions(toks, i, uncertain) {
 			return 0, false
 		}
-		if strings.ContainsAny(t.text, " \t\n\r") {
-			// A quoted word with whitespace in it: the shell would run a
-			// command by that whole name, which is a command line, not a
-			// program. "cat /etc/passwd" quoted once named "passwd".
+		if !plainWord(t.text) || runsOn(toks, i) {
 			return 0, false
 		}
 		return i, true
@@ -288,28 +305,126 @@ func programToken(toks []token) (int, bool) {
 // `cd` is where a command runs, not what it runs. Measured on a real session:
 // 1,397 of 1,495 shell calls were `cd … && <command>`, so reporting the first
 // word said "cd" for nearly everything and "by program" said nothing. Only `&&`
-// and `;` are followed: a pipe, a redirect or `||` after `cd` is left as it
-// was, because what follows those is not simply the next command. If the
-// command after `cd` cannot be told, neither can the program -- the answer is
-// null, not "cd", which would be a confident wrong answer.
-func pastDirectoryChange(toks []token, i int) (int, bool) {
+// and `;` are followed: a pipe, `||` or `&` after `cd` is left as it was,
+// because what follows those is not simply the next command. If the command
+// after `cd` cannot be told, neither can the program -- the answer is null,
+// not "cd", which would be a confident wrong answer.
+//
+// The separator is found by commandEnd, the scan that decides where a
+// command ends for definesFunctions, so a `;` inside `$( )` or backticks ends
+// nothing here either. The command after it is searched by programToken and
+// held to every rule the line's first command is. A comment before the
+// separator makes it comment text, and `cd` is then the whole command.
+func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
 	if toks[i].text != "cd" || toks[i].quotedAt >= 0 {
 		return i, true
 	}
-	for j := i + 1; j < len(toks); j++ {
-		if !toks[j].meta {
-			continue
-		}
-		if toks[j].text != "&&" && toks[j].text != ";" {
+	sep, ok := commandEnd(toks, i, uncertain)
+	if !ok {
+		return 0, false
+	}
+	if sep < 0 || toks[sep].text != "&&" && toks[sep].text != ";" {
+		return i, true
+	}
+	for j := i + 1; j < sep; j++ {
+		if isComment(toks[j]) {
 			return i, true
 		}
-		k, ok := programToken(toks[j+1:])
-		if !ok {
-			return 0, false
-		}
-		return pastDirectoryChange(toks, j+1+k)
 	}
-	return i, true
+	k, ok := programToken(toks[sep+1:], uncertain)
+	if !ok {
+		return 0, false
+	}
+	return pastDirectoryChange(toks, sep+1+k, uncertain)
+}
+
+// plainWord reports whether a word in command position is one the search can
+// name as it stands: the text the shell runs, not text it computes a command
+// from, and not a word the tokenizer ended where the shell does not.
+//
+// Each rule gives up a program some line really had, to be certain of the
+// rest. $EDITOR file and "$PYTHON" x.py name nothing now, which is the honest
+// answer: the command is whatever the variable holds.
+//
+// A word that can never name a program is not a command word either, and
+// path.Base would otherwise make one of it.
+func plainWord(s string) bool {
+	switch {
+	case s == "":
+		// '' or "": the shell runs nothing by that name, and path.Base
+		// named it `.`, which reads as the source builtin.
+		return false
+	case strings.HasSuffix(s, "/"):
+		// A directory, which execve refuses whatever it holds; path.Base
+		// named its last component. So is a word ending in `/` that runs
+		// into an operator, the front of a directory the shell reads on.
+		return false
+	case strings.HasPrefix(s, "~") && !strings.Contains(s, "/"):
+		// ~user, ~+ and ~- expand to a directory. ~/bin/tool and
+		// ~user/bin/tool name a file in one, and still name it.
+		return false
+	case s != "." && (path.Base(s) == "." || path.Base(s) == ".."):
+		// A path ending in . or .. is a directory too, and path.Base named
+		// the dot. A lone `.` is the source builtin, a command like any
+		// other.
+		return false
+	case strings.HasPrefix(s, "%"):
+		// A jobspec: %1 or %vim resumes that job, as fg does, and names
+		// nothing but the job.
+		return false
+	}
+	digits := true
+	for j := 0; j < len(s); j++ {
+		c := s[j]
+		switch {
+		case c < 0x21 || c > 0x7e:
+			// Outside printable ASCII. A quoted word with a blank or a
+			// newline in it is a whole command line to the shell --
+			// "cat /etc/passwd" quoted once named "passwd" -- and a byte
+			// the shell does not split on is the same thing unquoted:
+			// U+00A0 joins git push origin x into one word, arguments and
+			// all.
+			return false
+		case c == '$':
+			// An expansion. zsh applies colon modifiers to an unbraced
+			// parameter, so $x:gs/SECRET// runs $x with SECRET removed, and
+			// path.Base read the substitution's delimiters as a path.
+			return false
+		case c == '*' || c == '?':
+			// A glob: the command is whichever file matches it.
+			return false
+		case c == '~' && j > 0:
+			// zsh's glob exclusion under EXTENDED_GLOB, whose right side is
+			// the pattern excluded. Only a leading `~` is a home directory.
+			return false
+		case c == '^' || c == '#':
+			// zsh's other EXTENDED_GLOB operators: ^ negates the pattern
+			// after it and # repeats the one before. /usr/bin/^SECRET named
+			// ^SECRET.
+			return false
+		}
+		digits = digits && c >= '0' && c <= '9'
+	}
+	// All digits: an fd number the tokenizer split from its redirect, as in
+	// 2&>f, or a word after a separator that was really a redirect's target.
+	return !digits
+}
+
+// runsOn reports whether the word at i runs on, with nothing between, into
+// what the shell reads as more of the same word: a process substitution, <( )
+// or >( ), which bash and zsh both keep inside a word, or a zsh numeric glob,
+// <n-m> or <->. The word the shell runs is then acme-merger/dev/fd/63 or
+// acme-1/run.sh, and the token here only the front of it.
+func runsOn(toks []token, i int) bool {
+	if i+2 >= len(toks) || !toks[i+1].meta || !toks[i+1].glued || !toks[i+2].glued {
+		return false
+	}
+	op := toks[i+1].text
+	if op != "<" && op != ">" {
+		return false
+	}
+	next := toks[i+2]
+	return next.meta && next.text == "(" || op == "<" && isNumericGlob(next)
 }
 
 // plainPunctuation are the command names made of brackets or braces: the test
@@ -331,25 +446,156 @@ func isNumericGlob(t token) bool {
 	return strings.Count(t.text, "-") == 1
 }
 
-// definesFunctions reports whether the words from i run into an empty `()`:
-// zsh's `f g () { ... }` defines functions f and g and runs neither.
-func definesFunctions(toks []token, i int) bool {
+// definesFunctions reports whether the word at i cannot be named as the
+// command it begins: the command runs into an empty `()`, or the search for
+// one meets what it cannot read past.
+//
+// zsh's `f g () { ... }` defines functions f and g and runs neither. Nor does
+// `f >x g () { ... }` or `f $(date) () { ... }`: a redirection, an expansion
+// or a glob between the names does not end the command. A separator does,
+// and so does a newline -- but not one inside a group, which is skipped to
+// its close first: a paren that does not close at once opens one, and so
+// covers $( ), <( ), >( ) and a glob's @( ); and backticks form one.
+// `f $(x; y) () { ... }` is one command, and so a function definition.
+//
+// Nothing is certain, and nothing is named, when the scan cannot find where
+// the command ends: a group that never closes; a redirection that is a
+// syntax error; a group whose depth the tokens do not show (see
+// unknownDepth); a ${ the word does not close, which is a group of its own in
+// bash 5.3 and zsh (${ cmd; }) or hides a paren (${x#)}); and tokens that stop
+// where the lexer's reading did (uncertain) with the command still open.
+func definesFunctions(toks []token, i int, uncertain bool) bool {
+	_, ok := commandEnd(toks, i, uncertain)
+	return !ok
+}
+
+// commandEnd finds where the command whose word is at i ends, by the scan
+// definesFunctions describes. sep is the index of the separator that ends it,
+// or -1 when a newline or the end of the line does; ok is false where
+// definesFunctions names nothing.
+func commandEnd(toks []token, i int, uncertain bool) (sep int, ok bool) {
+	var (
+		open    []byte // the groups around the token, innermost last: '(' or '`'
+		heredoc bool   // a here-document was passed: its body starts at the next newline
+	)
 	for j := i + 1; j < len(toks); j++ {
-		if toks[j].meta {
-			return toks[j].text == "(" && j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == ")"
+		t := toks[j]
+		if openBrace(t) {
+			return 0, false
 		}
+		if len(open) > 0 {
+			if unknownDepth(toks, j, heredoc) {
+				return 0, false
+			}
+			open = inGroup(open, t)
+			continue
+		}
+		switch {
+		case t.nlBefore:
+			return -1, true
+		case t.ticks%2 == 1:
+			open = append(open, '`')
+		case !t.meta:
+		case t.text == "(":
+			if j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == ")" {
+				return 0, false
+			}
+			open = append(open, '(')
+		case t.text == "&" && j+1 < len(toks) && toks[j+1].meta && toks[j+1].glued && strings.HasPrefix(toks[j+1].text, ">"):
+			// &> and &>>: a redirection, not the background separator.
+			j++
+			fallthrough
+		case isRedirect(t.text):
+			end := operatorEnd(toks, j)
+			if noTarget(toks, end) {
+				// A syntax error to both shells: nothing on the line runs.
+				return 0, false
+			}
+			heredoc = heredoc || hereDoc(toks, j)
+			j = end
+		case t.text == ";" || t.text == "&&" || t.text == "||" || t.text == "|" || t.text == "&":
+			return j, true
+		}
+	}
+	if len(open) > 0 || uncertain {
+		return 0, false
+	}
+	return -1, true
+}
+
+// unknownDepth reports a token inside a group from which the group's depth
+// cannot be told, because what follows may hold a paren, a quote or a
+// backtick that counts for nothing: a comment; a case statement, whose
+// patterns end in a `)` that closes no group; a here-document, whose body is
+// text; and, once a here-document has been passed (heredoc), a newline, after
+// which its body may begin.
+func unknownDepth(toks []token, j int, heredoc bool) bool {
+	t := toks[j]
+	switch {
+	case isComment(t):
+		return true
+	case !t.meta && t.quotedAt < 0 && t.text == "case":
+		return true
+	case hereDoc(toks, j):
+		return true
+	case heredoc && t.nlBefore:
+		return true
 	}
 	return false
 }
 
+// hereDoc reports a here-document operator at j: `<<`, and not the
+// here-string `<<<`, which arrives as `<<` and a glued `<`.
+func hereDoc(toks []token, j int) bool {
+	if !toks[j].meta || toks[j].text != "<<" {
+		return false
+	}
+	next := j + 1
+	return next >= len(toks) || !(toks[next].meta && toks[next].glued && toks[next].text == "<")
+}
+
+// openBrace reports a word holding a ${ that it does not close: the tokenizer
+// split the expansion, so its end is in a later token that the shell reads as
+// part of it, or never came.
+func openBrace(t token) bool {
+	k := strings.Index(t.text, "${")
+	return t.opaque && k >= 0 && strings.Count(t.text[k:], "{") > strings.Count(t.text[k:], "}")
+}
+
+// inGroup returns the groups open after the token t, given those open before
+// it. Inside backticks only a backtick counts: the first live one closes them,
+// whatever parens came between. Elsewhere a paren opens or closes by depth,
+// and a backtick opens a group inside the paren's.
+func inGroup(open []byte, t token) []byte {
+	top := open[len(open)-1]
+	switch {
+	case t.ticks%2 == 1 && top == '`':
+		return open[:len(open)-1]
+	case t.ticks%2 == 1:
+		return append(open, '`')
+	case top == '`' || !t.meta:
+	case t.text == "(":
+		return append(open, '(')
+	case t.text == ")":
+		return open[:len(open)-1]
+	}
+	return open
+}
+
 // joinContinuations removes every backslash-newline the shell removes before
 // it splits a line into words: outside quotes and inside double quotes, but
-// not inside single quotes, where a backslash is literal.
-func joinContinuations(s string) string {
+// not inside single quotes, where a backslash is literal. It returns the
+// offsets in the result at which it removed one, ascending: the byte there is
+// the one that followed it. Its quote tracking is flat, which is right outside
+// a $( ) and may be wrong inside one; see comsubEnd.
+func joinContinuations(s string) (string, []int) {
 	if !strings.Contains(s, "\\\n") {
-		return s
+		return s, nil
 	}
-	var b strings.Builder
+	var (
+		b     strings.Builder
+		joins []int
+	)
 	inSingle, inDouble := false, false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
@@ -360,6 +606,7 @@ func joinContinuations(s string) string {
 			}
 		case c == '\\' && i+1 < len(s):
 			if s[i+1] == '\n' {
+				joins = append(joins, b.Len())
 				i++
 				continue
 			}
@@ -373,7 +620,7 @@ func joinContinuations(s string) string {
 		}
 		b.WriteByte(c)
 	}
-	return b.String()
+	return b.String(), joins
 }
 
 // isComment reports whether a word begins a comment: an unquoted `#` at its
@@ -402,17 +649,90 @@ func isFDPrefix(t token) bool {
 // redirectEnd returns the index of the last token of the redirection whose
 // operator is at i -- the operator, the rest of an operator the tokenizer
 // emitted as more than one token, and the word it redirects to -- or false
-// when where the redirection ends cannot be told.
+// when where the redirection ends cannot be told, or when it is a syntax error
+// (noTarget), which leaves nothing on the line to run.
 //
-// The tokenizer doubles a metacharacter only when the next byte is the same
-// byte, so `>&`, `>|`, `<>`, `<&` and a here-string's `<<<` arrive as two meta
-// tokens, and zsh's `>>|`, `>>&`, `>&|` and `>>&|` as two or three. The target
-// is taken only if it is a word, and only if that word is certainly the whole
-// target: not an expansion the tokenizer split, not a comment, not the start
-// of a glob or array (a paren glued to it), and not zsh's `!` -- `>! f` is a
+// The target is taken only if it is a word, and only if that word is certainly
+// the whole target: not an expansion the tokenizer split, not the start of a
+// glob or array (a paren glued to it), and not zsh's `!` -- `>! f` is a
 // clobber into f in zsh and a redirect into a file named ! in bash, and the
 // two disagree about which word after it is the command.
 func redirectEnd(toks []token, i int) (int, bool) {
+	i = operatorEnd(toks, i)
+	if noTarget(toks, i) {
+		return 0, false
+	}
+	if toks[i+1].meta {
+		// A paren where the target belongs -- a zsh glob such as (a|b) or
+		// (x).csv -- or a process substitution, <( ) or >( ), whose operator
+		// is here and its paren next. Either way the words inside it are not
+		// in command position for this line.
+		return 0, false
+	}
+	target := toks[i+1]
+	if target.opaque || target.text == "!" && target.quotedAt < 0 {
+		return 0, false
+	}
+	i++
+	if i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == "(" {
+		return 0, false
+	}
+	return i, true
+}
+
+// noTarget reports a redirection whose operator ends at i with no word where
+// its target belongs, which both shells reject, so that nothing on the line
+// runs. Read past, the word after it was taken for the program, and in
+// `> ; /home/alice/secret.csv x` that word is a path. There is no target when:
+//
+//   - the line ends there;
+//   - the next word is on the next line, where it begins the next command;
+//   - a comment begins there (`ls > #x`), which runs to the end of the line;
+//   - an operator comes first -- a separator, `> ;` or `< |`, or another
+//     redirection, `> > f`, which owns the word after it -- unless it is a
+//     paren, a glob or process substitution that the callers refuse or skip,
+//     or a process substitution's own `<` or `>`, as in `cat < <(ls)`.
+func noTarget(toks []token, i int) bool {
+	if i+1 >= len(toks) {
+		return true
+	}
+	next := toks[i+1]
+	switch {
+	case next.nlBefore:
+		return true
+	case isComment(next):
+		return true
+	case !next.meta, next.text == "(":
+		return false
+	}
+	return !procSub(toks, i+1)
+}
+
+// procSub reports a process substitution beginning at j: a `<` or `>` with a
+// paren glued to it, which bash and zsh read as a word.
+func procSub(toks []token, j int) bool {
+	op := toks[j].text
+	if op != "<" && op != ">" || j+1 >= len(toks) {
+		return false
+	}
+	next := toks[j+1]
+	return next.meta && next.glued && next.text == "("
+}
+
+// operatorEnd returns the index of the last piece of the redirection operator
+// at i.
+//
+// The tokenizer doubles a metacharacter only when the next byte is the same
+// byte, so `>&`, `>|`, `<>`, `<&` and a here-string's `<<<` arrive as two meta
+// tokens, and zsh's `>>|`, `>>&`, `>&|` and `>>&|` as two or three. A piece
+// counts only glued to the one before it: `>|` is one operator and `> |` is
+// two, and the text of the tokens does not say which. With a blank or a
+// newline before it, a piece is the next operator, standing where this one's
+// target belongs, and noTarget refuses it: `> |` and `>\n&` are a redirect
+// with no target and then a separator, and `<< <&` a here-document with no
+// delimiter. Joined, the next word read as the target and an argument as the
+// program.
+func operatorEnd(toks []token, i int) int {
 	op := toks[i].text
 	// At most one further piece, except after > and >>, which zsh extends
 	// by two (>&| and >>&|). A second `<` after `<<` is the next
@@ -421,32 +741,10 @@ func redirectEnd(toks []token, i int) (int, bool) {
 	if op == ">" || op == ">>" {
 		pieces = 2
 	}
-	for n := 0; n < pieces && i+1 < len(toks) && toks[i+1].meta && continuesRedirect(op, toks[i+1].text); n++ {
+	for n := 0; n < pieces && i+1 < len(toks) && toks[i+1].meta && toks[i+1].glued && continuesRedirect(op, toks[i+1].text); n++ {
 		i++
 	}
-	if i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == "(" {
-		// A paren where the target belongs: a process substitution, or a
-		// zsh glob such as (a|b) or (x).csv. Either way the words inside it
-		// are not in command position for this line.
-		return 0, false
-	}
-	if i+1 >= len(toks) || toks[i+1].meta {
-		// No target word here: a separator. The search reads on.
-		return i, true
-	}
-	target := toks[i+1]
-	// A target on the next line is not a target: a redirect at the end of a
-	// line is a syntax error, and the word after the newline is the next
-	// command's -- taking it left that command's argument to be read as the
-	// program.
-	if target.opaque || isComment(target) || target.nlBefore || target.text == "!" && target.quotedAt < 0 {
-		return 0, false
-	}
-	i++
-	if i+1 < len(toks) && toks[i+1].meta && toks[i+1].text == "(" {
-		return 0, false
-	}
-	return i, true
+	return i
 }
 
 // continuesRedirect reports whether next is a further piece of the

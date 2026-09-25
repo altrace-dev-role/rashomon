@@ -31,7 +31,12 @@ const (
 // opinion about the chain view keeps compiling and keeps getting the summary.
 type TextOption func(*textOptions)
 
-type textOptions struct{ chain bool }
+type textOptions struct {
+	chain bool
+	// proxyStore is the store the report was built against, "" for none. The
+	// renderer needs only whether one was NAMED; see WithNamedProxyStore.
+	proxyStore string
+}
 
 // WithChain expands the causal view from a count into the per-call listing.
 //
@@ -45,14 +50,40 @@ func WithChain() TextOption {
 	return func(o *textOptions) { o.chain = true }
 }
 
+// WithNamedProxyStore tells the renderer which proxy store the report was
+// built against, "" for none -- the same path the caller passed to Build's
+// WithProxyStore.
+//
+// With none named, the whole proxy block is ONE line, `destinations: not
+// observed in this alpha`: the proxy does not ship with this alpha, and ten
+// lines of instrument detail about a proxy the reader does not have -- proxy
+// on path, novelty, tool families, the not-observable list -- read as a broken
+// install. The fact is still stated, because printing nothing where the truth
+// is "not watching" is the error this program exists to avoid; it is stated
+// once. The --chain listing follows the same rule: with none named, a link
+// lists the hosts its call named with no state beside them and no "(not
+// observable)" beside an ssh host, under one line saying the hosts were only
+// named. With one named, including one that turns out missing or unreadable,
+// every line renders as it always has, since then the reader asked about a
+// proxy and each line answers them. A store that was OBSERVED renders in full
+// even when this option was not passed: forgetting it must not hide a read.
+//
+// A render option rather than a field on Report, because the JSON is a
+// consumer's contract and does not change: it carries the whole not-observed
+// structure whether or not a store was named.
+func WithNamedProxyStore(path string) TextOption {
+	return func(o *textOptions) { o.proxyStore = path }
+}
+
 // Text renders a report for a terminal.
 //
 // No record has a field that carries a command line or a tool response, and
 // nothing is printed beyond the store's fields except what is read from two
 // other places when the report is rendered: the transcript -- tool-use ids and
 // counts for the accounting, and the agent's final message, which --redact
-// drops whole -- and, where an observing proxy's database is found, the hosts
-// it recorded, which the destinations section prints and --redact digests. Two things ARE taken from a command line: the program
+// drops whole -- and, where an observing proxy's database was named and read,
+// the hosts it recorded, which the destinations section prints and --redact
+// digests. Two things ARE taken from a command line: the program
 // name -- the base name of the word in command position -- which `by program`
 // prints for every session, and hostnames and ssh destinations (shape.Hosts),
 // which the destinations section prints and --redact digests.
@@ -100,10 +131,22 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	writeAccount(b, sess.Account)
 	writeSubagents(b, sess.Subagents)
 	writeSilentFailures(b, sess.SilentFailures)
-	writeDestinations(b, sess.Destinations)
-	writeFamilies(b, sess.Families)
+	// Whether a proxy store was NAMED for this render, not whether it could be
+	// read: a named store that is missing still renders its reason in full,
+	// because the reader asked about a proxy. See WithNamedProxyStore.
+	//
+	// OR whether one was observed. The option has to be passed in step with
+	// Build's WithProxyStore, and a caller that passed one and forgot the other
+	// would otherwise collapse a store that WAS read into "not observed in
+	// this alpha" -- hiding an observation, which is the direction this report
+	// must never be wrong in.
+	named := cfg.proxyStore != "" || sess.Destinations.Observed
+	writeDestinations(b, sess.Destinations, named)
+	if named {
+		writeFamilies(b, sess.Families)
+	}
 	writeNono(b, sess.Nono)
-	writeChains(b, sess.Chains, cfg.chain)
+	writeChains(b, sess.Chains, cfg.chain, named)
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
 	writeReasons(b, sess.Coverage.Reasons)
 	fmt.Fprintf(b, "  start recorded: %s\n", yesNo(sess.Coverage.StartRecorded))
@@ -396,13 +439,21 @@ func stamp(ms int64) string {
 	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
 }
 
+// notObservedInAlpha is the whole proxy block of a render that named no proxy
+// store.
+const notObservedInAlpha = "not observed in this alpha"
+
 // writeDestinations renders what the wire saw beside what was declared.
 //
 // The degraded case prints a REASON and never an empty list. "destinations:
 // not observed (no_proxy_store)" and "destinations: none" are different
 // statements, and printing the second when the first is true is the single
 // failure this whole product exists to avoid: silence read as zero.
-func writeDestinations(b *bytes.Buffer, d Destinations) {
+//
+// named says whether a proxy store was named for this render. Without one the
+// section is the recorder's own comparison and then a single line stating that
+// destinations were not observed; see WithNamedProxyStore for why one line.
+func writeDestinations(b *bytes.Buffer, d Destinations, named bool) {
 	// BEFORE the not-observed return, because this count compares two records
 	// the recorder wrote itself and has nothing to do with the proxy. Printing
 	// it only when the wire was readable would hide a rewritten call precisely
@@ -414,6 +465,11 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 	// one -- the same silence-as-zero error in a different field.
 	fmt.Fprintf(b, "  executed differently from declared: %d\n", d.ExecutedNotAsDeclared)
 	writeRewritten(b, d.Rewritten)
+
+	if !named {
+		fmt.Fprintf(b, "  destinations: %s\n", notObservedInAlpha)
+		return
+	}
 
 	if !d.Observed {
 		fmt.Fprintf(b, "  destinations: not observed (%s)\n", d.Reason)
@@ -613,10 +669,12 @@ func writeNovelty(b *bytes.Buffer, n Novelty) {
 
 // writeFamilies renders which tool families were confirmed to transit.
 //
-// The not-observable list prints on EVERY report, including a completely
-// healthy one. These are properties of the instrument rather than of the
-// session, and a reader told only what was observed will read the rest as an
-// absence of traffic rather than an absence of observation.
+// The not-observable list prints on EVERY report that named a proxy store,
+// including a completely healthy one. These are properties of the instrument
+// rather than of the session, and a reader told only what was observed will
+// read the rest as an absence of traffic rather than an absence of
+// observation. A report that named none has no instrument to describe, and
+// says so in its one destinations line instead.
 func writeFamilies(b *bytes.Buffer, fc FamilyCoverage) {
 	if !fc.Available {
 		fmt.Fprintf(b, "  tool families: %s (%s)\n", unknown, fc.Reason)
@@ -648,9 +706,18 @@ func writeFamilies(b *bytes.Buffer, fc FamilyCoverage) {
 // tool_use_id, so no wire row can be attributed to an individual call. The
 // state is that host's state across the session's window, sitting next to the
 // call that named it. That is a genuinely useful join and a genuinely easy
-// misreading, and the misreading overstates what is known -- so the line saying
-// so is printed every time the section is, not once in the documentation.
-func writeChains(b *bytes.Buffer, c Chains, expand bool) {
+// misreading, and the misreading overstates what is known -- so a legend saying
+// so is printed whenever the listing is, not once in the documentation.
+//
+// named says whether a proxy store was named for this render, and it chooses
+// WHICH legend. With one, the legend bounds what a host's state means. Without
+// one there is no state: a link lists the hosts its call named and nothing
+// more, with no "(not observable)" beside an ssh host -- a state column over a
+// wire nobody watched is the proxy block this alpha collapses to one line,
+// printed again per call. But a bare `-> pypi.org` beside a call reads as
+// "reached", so whenever the listing shows any host at all, one line says the
+// hosts are only named and nothing here observed whether they were reached.
+func writeChains(b *bytes.Buffer, c Chains, expand, named bool) {
 	extra := len(c.Unattributed) + len(c.Dropped)
 	if len(c.Prompts) == 0 && extra == 0 {
 		return
@@ -667,13 +734,15 @@ func writeChains(b *bytes.Buffer, c Chains, expand bool) {
 		if len(c.Prompts) > 0 {
 			fmt.Fprintf(b, "    --chain lists the calls under each prompt\n")
 		}
-		writeChainTail(b, c, false)
+		writeChainTail(b, c, false, named)
 		return
 	}
 
-	if len(c.Prompts) > 0 {
+	if len(c.Prompts) > 0 && named {
 		fmt.Fprintf(b, "    a host's state is that host's across this session, "+
 			"not proof this call reached it\n")
+	} else if !named && listsAHost(c) {
+		fmt.Fprintln(b, "    hosts are those each call named; nothing here observed whether it reached them")
 	}
 
 	var lastPath string
@@ -684,10 +753,28 @@ func writeChains(b *bytes.Buffer, c Chains, expand bool) {
 		}
 		fmt.Fprintf(b, "    prompt %s\n", ch.PromptID)
 		for _, l := range ch.Links {
-			writeLink(b, l)
+			writeLink(b, l, named)
 		}
 	}
-	writeChainTail(b, c, true)
+	writeChainTail(b, c, true, named)
+}
+
+// listsAHost reports whether the expanded listing shows any host -- named or
+// ssh -- beside any call. Dropped links carry nothing but an id.
+func listsAHost(c Chains) bool {
+	for _, ch := range c.Prompts {
+		for _, l := range ch.Links {
+			if len(l.Hosts) > 0 || len(l.SSHHosts) > 0 {
+				return true
+			}
+		}
+	}
+	for _, l := range c.Unattributed {
+		if len(l.Hosts) > 0 || len(l.SSHHosts) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // writeChainTail renders the two groups that belong to no prompt.
@@ -696,13 +783,13 @@ func writeChains(b *bytes.Buffer, c Chains, expand bool) {
 // statements about COMPLETENESS -- how much of the session the chains above do
 // not account for -- and a reader deciding whether to trust the view needs that
 // without having to ask for more output.
-func writeChainTail(b *bytes.Buffer, c Chains, expand bool) {
+func writeChainTail(b *bytes.Buffer, c Chains, expand, named bool) {
 	if n := len(c.Unattributed); n > 0 {
 		fmt.Fprintf(b, "    %d call%s could not be placed under a prompt "+
 			"(prompt not recorded)\n", n, plural(n))
 		if expand {
 			for _, l := range c.Unattributed {
-				writeLink(b, l)
+				writeLink(b, l, named)
 			}
 		}
 	}
@@ -719,7 +806,7 @@ func writeChainTail(b *bytes.Buffer, c Chains, expand bool) {
 	}
 }
 
-func writeLink(b *bytes.Buffer, l Link) {
+func writeLink(b *bytes.Buffer, l Link, named bool) {
 	shape := l.VerbClass
 	if l.Program != "" {
 		shape = l.Program + ", " + l.VerbClass
@@ -733,16 +820,23 @@ func writeLink(b *bytes.Buffer, l Link) {
 			l.ExecutionRecords, strings.Join(l.Outcomes, ", "))
 	}
 	fmt.Fprintf(b, "      %d  %s (%s)  %s%s%s\n",
-		l.Seq, l.ToolName, shape, outcome, linkHosts(l.Hosts), linkSSH(l.SSHHosts))
+		l.Seq, l.ToolName, shape, outcome, linkHosts(l.Hosts, named), linkSSH(l.SSHHosts, named))
 }
 
 // linkSSH renders the ssh hosts a call named, kept apart from the observable
 // ones and carrying no state: the proxy cannot see ssh, so there is nothing to
 // report about them and a verdict column would be answering a question the wire
 // was never able to be asked.
-func linkSSH(hosts []string) string {
+//
+// "(not observable)" contrasts ssh with what a proxy CAN observe, so it is
+// printed only where a proxy store was named. Without one no host on the line
+// is observable, and singling out the ssh one would imply the others were.
+func linkSSH(hosts []string, named bool) string {
 	if len(hosts) == 0 {
 		return ""
+	}
+	if !named {
+		return "  ssh: " + strings.Join(hosts, ", ")
 	}
 	return "  ssh: " + strings.Join(hosts, ", ") + " (not observable)"
 }
@@ -750,12 +844,20 @@ func linkSSH(hosts []string) string {
 // linkHosts renders the hosts a call named, or nothing at all when it named
 // none -- which is most calls, and a trailing "->" on every one of them would
 // bury the ones that matter.
-func linkHosts(hosts []LinkHost) string {
+//
+// Each host carries its state only when a proxy store was named. The JSON
+// keeps the state either way; the text drops a column whose every value, with
+// no store, is a fact about the absent proxy rather than about the call.
+func linkHosts(hosts []LinkHost, named bool) string {
 	if len(hosts) == 0 {
 		return ""
 	}
 	parts := make([]string, 0, len(hosts))
 	for _, h := range hosts {
+		if !named {
+			parts = append(parts, h.Host)
+			continue
+		}
 		parts = append(parts, h.Host+" "+h.State)
 	}
 	return "  -> " + strings.Join(parts, ", ")
