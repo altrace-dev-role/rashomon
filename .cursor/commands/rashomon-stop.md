@@ -1,8 +1,9 @@
 # rashomon stop
 
 Remove the rashomon recorder's hook entries from `~/.claude/settings.json`,
-keeping the store and every completed run. This affects **Claude Code**
-sessions on this machine; Cursor sessions were never recorded.
+keeping the store and every completed run. This stops recording for **Claude
+Code** sessions on this machine, and for the Cursor calls that reached the
+recorder through those same hooks.
 
 1. Resolve the binary: `~/.local/bin/rashomon`, then `~/go/bin/rashomon`,
    then `/opt/homebrew/bin/rashomon` or `/usr/local/bin/rashomon`, then

@@ -1,8 +1,9 @@
 # rashomon report
 
 Render what the rashomon recorder captured from this machine's **Claude Code**
-sessions. Cursor sessions are not recorded and will not appear — say so if the
-user expects this session in the output.
+sessions. Cursor's own sessions are not supported yet: its calls may appear
+under a session named `unattributed`, and what was recorded for them can be
+wrong. Say so if the user expects this session in the output.
 
 1. Resolve the binary: `~/.local/bin/rashomon`, then `~/go/bin/rashomon`,
    then `/opt/homebrew/bin/rashomon` or `/usr/local/bin/rashomon`, then

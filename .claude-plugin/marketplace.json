@@ -3,11 +3,11 @@
   "owner": {
     "name": "Altrace"
   },
-  "description": "rashomon: records what a Claude Code session asks to run and what actually ran -- identifiers and shape only, never content.",
+  "description": "rashomon: records what a Claude Code session asks to run and what actually ran -- identifiers and shape only: no prompts, responses, argument values or file contents.",
   "plugins": [
     {
       "name": "rashomon",
-      "description": "Records what a Claude Code session asks to run, and what actually ran -- identifiers and shape only, never content. Ships disabled: installing it does not start recording, enabling it does.",
+      "description": "Records what a Claude Code session asks to run, and what actually ran -- identifiers and shape only: no prompts, responses, argument values or file contents. Ships disabled: installing it does not start recording, enabling it does.",
       "source": {
         "source": "archive",
         "url": "https://github.com/altrace-dev-role/rashomon/releases/latest/download/rashomon-plugin.zip"
