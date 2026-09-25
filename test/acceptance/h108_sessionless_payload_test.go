@@ -399,3 +399,49 @@ func TestH108_AClaudeCodeSessionStillRecordsItsStartAndEnd(t *testing.T) {
 			"start and end must still count", rep.Coverage.StartRecorded, rep.Coverage.EndRecorded)
 	}
 }
+
+// TestH108_ASessionlessFailureEventRecordsNoExecutionEither: the guard covers
+// PostToolUseFailure too. No documented harness is known to send this event
+// without a session id -- Cursor's documented mapping omits it -- but the
+// guard is about the ok/failed pairing, measured only on Claude Code, and
+// the failure half of it is no more measured without a session id than the
+// ok half. Pinned because the natural edit ("keep failures; a failure can
+// never be a false success") records an outcome this path has no
+// measurement for, into a run no session owns.
+//
+// Break: exempt the failure event from the guard, and a failed execution is
+// recorded in the unattributed run.
+func TestH108_ASessionlessFailureEventRecordsNoExecutionEither(t *testing.T) {
+	e := newEnv(t)
+	if res := e.watch(); res.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	b, err := json.Marshal(map[string]any{
+		"hook_event_name": "PostToolUseFailure",
+		"cwd":             "/tmp/project",
+		"tool_name":       "Bash",
+		"tool_input":      map[string]any{"command": "go test ./..."},
+		"tool_use_id":     "toolu_sessionless_failure",
+		"error":           "Exit code 1",
+		"is_interrupt":    false,
+		"duration_ms":     30,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := e.post(string(b))
+	if res.exitCode != 0 {
+		t.Fatalf("post: exit %d, want 0 -- a recorder never blocks the agent", res.exitCode)
+	}
+	if res.stdout != "" {
+		t.Errorf("post wrote to stdout, which the harness parses as control output: %q", res.stdout)
+	}
+	if got := e.executionsInEveryRun(); len(got) != 0 {
+		t.Errorf("a failure event that named no session recorded %d execution(s): %s", len(got), got[0].raw)
+	}
+	if got := len(e.coverage(unattributedRun, "post")); got != 1 {
+		t.Errorf("unattributed post-phase coverage records = %d, want 1: the invocation still "+
+			"leaves its trace", got)
+	}
+}
