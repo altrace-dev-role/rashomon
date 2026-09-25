@@ -1093,6 +1093,9 @@ m("H-107 the pointer names a session a sessionless turn does not have", "interna
 m("H-108 a post that names no session records its execution as ok", "internal/hook/post.go",
   "\tif pl.SessionID == \"\" {\n\t\treturn nil\n\t}\n", "",
   "TestH108_ACursorShaped")
+m("H-108 a failure event that names no session is exempt from the guard", "internal/hook/post.go",
+  "\tif pl.SessionID == \"\" {\n\t\treturn nil", "\tif pl.SessionID == \"\" && pl.HookEventName != FailureEvent {\n\t\treturn nil",
+  "TestH108_ASessionlessFailureEvent")
 m("H-108 the report never counts the unattributed run", "internal/report/report.go",
   "\tn := len(run.Declarations)\n\treturn &n", "\tn := 0 * len(run.Declarations)\n\treturn &n",
   "TestH108_ACursorShaped|TestCallsWithoutSessionID_")
