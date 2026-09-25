@@ -35,6 +35,9 @@ var degradedMarkers = []string{
 	"coverage: unverified", // coverage degradation
 	"outcome unobserved",   // a call whose ending was never recorded
 	"could not be read",    // any reason string built from a read failure
+	// A call whose payload named no session (H-108). Its healthy twin,
+	// "calls without a session id: none", shares no substring with this.
+	"arrived without a session id",
 }
 
 // TestH28_AHealthyRunShowsNoDegradationLine builds the healthiest session this
@@ -150,6 +153,20 @@ func TestH28_EveryDegradedLineIsReachable(t *testing.T) {
 		}
 		renders = append(renders, e.run("", nil, "report", "--session", testSession).stdout)
 	}
+
+	// R5: a tool call whose payload named no session (H-108). The count is
+	// store-wide, so it reaches a report scoped to the session beside it.
+	{
+		e := newEnv(t)
+		e.watched(testSession)
+		e.mustHook(defaultPayload().build(t))
+		sessionless := defaultPayload()
+		sessionless.SessionID = ""
+		e.mustHook(sessionless.build(t))
+		e.probe("end", testSession)
+		renders = append(renders, e.run("", nil, "report", "--session", testSession).stdout)
+	}
+
 	all := strings.Join(renders, "\n")
 
 	// A marker that no fixture here produces must at least exist as a literal in

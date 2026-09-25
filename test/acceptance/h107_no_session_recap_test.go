@@ -70,7 +70,8 @@ func (e *env) runDirs() []string {
 }
 
 // wholeReportPointer is the second row a line carries when it has no session
-// to name: the unscoped report.
+// to name: the unscoped report, which is where the count of calls that
+// arrived without a session id is printed (H-108).
 const wholeReportPointer = "→ rashomon report"
 
 func TestH107_AStopThatNamesNoSessionSaysSoAndDescribesNoOtherSession(t *testing.T) {
