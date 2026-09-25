@@ -13,9 +13,9 @@ description: 'Stop recording: remove the rashomon hook entries, keeping the stor
    Tell the user to disable the plugin instead of running `detach` in that
    case.
 
-3. Otherwise, run `$RASHOMON detach`. It removes only this install's five
-   settings entries and leaves everything else in `~/.claude/settings.json`
-   byte for byte as found. The store and its history survive — completed
+3. Otherwise, run `$RASHOMON detach`. It removes only this install's eight
+   settings entries and leaves every other entry in `~/.claude/settings.json`
+   with its value as found (indentation may change). The store and its history survive — completed
    runs still render their true coverage afterwards.
 
 4. If `detach` refuses because the store is gone or the id is unknown, use
@@ -23,7 +23,7 @@ description: 'Stop recording: remove the rashomon hook entries, keeping the stor
    - `$RASHOMON detach --install <id>` with the id printed at install time
    - `$RASHOMON detach --all` when the store (and the id with it) is gone
 
-5. Confirm with `$RASHOMON status`. After a plain `detach` the five settings
+5. Confirm with `$RASHOMON status`. After a plain `detach` the eight settings
    entries read `absent`; after `detach --all` with the store deleted they
    read `unknown` — with no install id nothing can be called ours, so
    `unknown` is the expected confirmation there, not a failure.

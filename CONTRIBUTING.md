@@ -5,9 +5,14 @@ the wire saw, and says in fixed vocabulary what it does not know. Two
 properties carry everything else, and a change that weakens either is a change
 that should not land, however much else it improves.
 
-**It never records content.** No substring of a tool call's input reaches a
-record, a file in the store, stdout or stderr. What may leave is a value from a
-closed vocabulary, a count, a keyed digest, or a canonical hostname.
+**It never records content.** No prompt, response, file content, tool output or
+argument value reaches a record or a file in the store. The exceptions are the
+hostnames a call names and the program name of a command. What may be stored is
+an identifier Claude Code assigned, a value from a closed vocabulary, a count, a
+keyed digest, a canonical hostname, a program name, or a path the payload
+carries as metadata (`cwd`, `transcript_path`). The one piece of content that
+reaches stdout is the report's quote of the agent's final message, read from
+Claude Code's transcript at render time and never stored.
 
 **It never claims what it did not measure.** A count it could not take renders
 as `unknown` or `not read`, never as `0`. An absence renders as an absence,
