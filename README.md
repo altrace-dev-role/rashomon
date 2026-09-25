@@ -6,12 +6,12 @@
 source below. No other agent harness is recorded.*
 
 When you hand a coding agent your machine, it works for twenty or forty minutes
-and then tells you what happened — from the same context, with the same
+and then tells you what happened, from the same context, with the same
 incentive to look successful. `rashomon` records the session independently: what
 the agent *declared* it would run and what *actually ran*.
 
 Three accounts of one session: what it declared, what ran, and what it says it
-did — reconciled, with the disagreements shown. The name is the point.
+did which is reconciled, with the disagreements shown. The name is the point.
 
 ## What a disagreement looks like
 
@@ -43,12 +43,12 @@ use.
 
 ## What a report tells you
 
-- **What subagents did** that the main transcript never shows — per-agent call
+- **What subagents did** that the main transcript never shows such as per-agent call
   and command counts.
 - **Which tool calls failed**, and whether the agent's closing summary mentions
   failure at all. It reports the words that are *absent*; it never characterises
   intent.
-- **What executed differently from what was declared** — a hook or wrapper that
+- **What executed differently from what was declared** such as a hook or wrapper that
   rewrote a command before it ran.
 - **What could not be seen**, on every report, including a healthy one.
 
@@ -64,7 +64,7 @@ Installing does not start recording; enabling does. Start a new Claude Code
 session after enabling. `/plugin` shows it and turns it off again, and
 `/rashomon:status` / `/rashomon:report` work inside Claude Code. The plugin
 installs the release's `rashomon-plugin.zip`, which carries a prebuilt recorder
-per platform, because a plugin cannot compile Go at install time — so it needs
+per platform, because a plugin cannot compile Go at install time, so it needs
 a tagged release to exist. To try the plugin from a checkout instead:
 
     scripts/build-plugin.sh
@@ -78,7 +78,7 @@ report marks the session `duplicate_declarations`.
 
     go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
 
-This writes to `$(go env GOPATH)/bin` — make sure that is on your `PATH`. Or
+This writes to `$(go env GOPATH)/bin` to make sure that is on your `PATH`. Or
 clone and build:
 
     git clone https://github.com/altrace-dev-role/rashomon
@@ -91,7 +91,7 @@ has nothing to resolve to.
 > binary's absolute path into your Claude Code settings, and Claude Code
 > executes that path on **every tool call**. If you built inside a clone you
 > later delete, every tool call fires a hook that cannot start. Build into a
-> directory you keep — or `go install` it — and re-run `watch` after any move.
+> directory you keep or `go install` it and re-run `watch` after any move.
 > (`watch` refuses a `go run` binary outright: that one lives in a temp
 > directory that is gone seconds later.)
 >
@@ -109,7 +109,7 @@ claude                              # work normally
 rashomon report                     # read the sessions back
 ```
 
-`watch` adds eight entries to your Claude Code settings — `PreToolUse`,
+`watch` adds eight entries to your Claude Code settings: `PreToolUse`,
 `PostToolUse`, `PostToolUseFailure`, `SessionStart`, `SessionEnd`, `Stop`,
 `StopFailure`, `UserPromptSubmit`. The first three match `*` (every tool);
 the rest carry no matcher, since Claude Code documents none for the session,
@@ -122,7 +122,7 @@ as found.
 `Stop` and `StopFailure` drive an exception-only recap: after a turn, it
 prints at most one line — and only when there is something worth looking
 at (a recorded failure, a declaration without recorded execution, coverage
-that did not verify, or a truncated/unknown projection) — with a pointer to
+that did not verify, or a truncated/unknown projection), with a pointer to
 `rashomon report --session <id>` for the detail. A clean turn prints
 nothing at all; `rashomon status` says whether a turn has actually been
 evaluated, so silence never gets read as proof the turn was clean.
@@ -144,7 +144,7 @@ into categories such as `ssh_key`, `env_file`, `cloud_config` or `certificate`.
 
 Note that `cwd` and `transcript_path` are filesystem paths and carry directory
 names. [`docs/store-schema.json`](docs/store-schema.json) is the exhaustive and
-authoritative field list — every key required, `additionalProperties: false`.
+authoritative field list with every key required, `additionalProperties: false`.
 
 **Hostnames are stored in clear**, because the report has to name them:
 `report --chain` lists the hosts each call named beside that call, and a
@@ -153,12 +153,12 @@ digest cannot be rendered back into a name. They are extracted from
 or not the call reached it*. Only those two tools are read.
 
 **Never recorded:** prompts, responses, argument values, command strings, file
-contents, tool output. Not redacted — *structurally absent*. The payload struct
+contents, tool output. Not redacted, *structurally absent*. The payload struct
 has no field for tool output, so the JSON decoder discards it and it is never a
 value in the process at all.
 
 Those rules govern the **store**. The **report** additionally reads the agent's
-final message from Claude Code's own transcript at render time — that is
+final message from Claude Code's own transcript at render time, that is
 content, it is never written to the store, never transmitted, and `--redact`
 drops it entirely rather than partially cleaning prose that may name anything.
 
@@ -171,7 +171,7 @@ attack against known commands. Store directory `0700`, files `0600`.
 `$RASHOMON_HOME`, else `$XDG_STATE_HOME/rashomon`, else
 `~/.local/state/rashomon`. It is bounded by `RASHOMON_STORE_CAP_BYTES` (default
 512 MiB); past the cap the oldest runs are evicted, each leaving a gap record so
-the deletion is visible. **`detach` removes the hooks, not the records** — to
+the deletion is visible. **`detach` removes the hooks, not the records**, to
 remove everything, delete that directory.
 
 ### Redaction, and what it does not hide
@@ -183,7 +183,7 @@ collide; **the last label is kept in clear on purpose**, so `.internal` and
 every digest. The redacted report repeats all of this in its own header.
 
 `forget --host <h>` removes every call that named that host from this store,
-and leaves a gap record saying something was removed — keyed by a digest of the
+and leaves a gap record saying something was removed. Keyed by a digest of the
 host, not its name.
 
 ## What it cannot see
