@@ -225,7 +225,7 @@ m("H-13 a control byte in the line is read past", "internal/shape/shape.go",
   "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {", "\t\tif c := cmd[i]; c == '\\r' {", PROG)
 m("H-13 the function-definition scan stops at a redirection", "internal/shape/shape.go",
   "\t\tcase isRedirect(t.text):\n\t\t\tend := operatorEnd(toks, j)\n",
-  "\t\tcase isRedirect(t.text):\n\t\t\tif true {\n\t\t\t\treturn false\n\t\t\t}\n\t\t\tend := operatorEnd(toks, j)\n", PROG)
+  "\t\tcase isRedirect(t.text):\n\t\t\tif true {\n\t\t\t\treturn -1, true\n\t\t\t}\n\t\t\tend := operatorEnd(toks, j)\n", PROG)
 m("H-13 the function-definition scan reads &> as the background separator", "internal/shape/shape.go",
   "\t\tcase t.text == \"&\" && j+1 < len(toks)", "\t\tcase false && t.text == \"&\" && j+1 < len(toks)", PROG)
 m("H-13 the function-definition scan stops at a paren that does not close at once", "internal/shape/shape.go",
