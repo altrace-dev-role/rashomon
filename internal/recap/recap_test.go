@@ -3,6 +3,7 @@ package recap
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/digest"
 	"github.com/altrace-dev-role/rashomon/internal/report"
@@ -140,6 +141,34 @@ func TestSanitizeSessionID(t *testing.T) {
 	for _, c := range cases {
 		if got := sanitizeSessionID(c.in); got != c.want {
 			t.Errorf("sanitizeSessionID(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestLineWithNoSessionNamesTheReasonAndTheWholeReport is H-107 at the unit
+// level. A turn that named no session renders digest.ReasonNoSessionID through
+// the ordinary reason path, and its pointer carries no --session: the
+// sanitiser's "unknown" would point at a session nobody has, and any real id
+// would be a guess -- the defect this replaces.
+func TestLineWithNoSessionNamesTheReasonAndTheWholeReport(t *testing.T) {
+	d := digest.Sessionless(time.Now())
+	for _, tc := range []struct {
+		fromPlugin bool
+		pointer    string
+	}{
+		{false, "→ rashomon report"},
+		{true, "→ /rashomon:report"},
+	} {
+		line, ok := Line(d, d.SessionID, tc.fromPlugin)
+		if !ok {
+			t.Fatalf("fromPlugin=%v: a sessionless turn produced no line", tc.fromPlugin)
+		}
+		if !strings.Contains(line, "digest unknown ("+digest.ReasonNoSessionID+")") {
+			t.Errorf("fromPlugin=%v: line = %q, want it to name %s", tc.fromPlugin, line, digest.ReasonNoSessionID)
+		}
+		rows := strings.SplitN(line, "\n", 2)
+		if len(rows) != 2 || strings.TrimLeft(rows[1], " ") != tc.pointer {
+			t.Errorf("fromPlugin=%v: second row = %q, want exactly %q", tc.fromPlugin, rows, tc.pointer)
 		}
 	}
 }

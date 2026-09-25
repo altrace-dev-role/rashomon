@@ -11,14 +11,14 @@
 // It renders records, never inferences. Every sentence Line produces is
 // either a bare count already sitting on the digest, or one of the store's
 // own fixed vocabulary of reason codes (store.Reasons, report.ReasonGap,
-// digest.ReasonNoStore/ReasonRecordsSkipped) -- never a word this package
-// invented and never a byte handed to it by a tool call or a transcript. The
-// one caller-supplied value it prints, the session id, is sanitised before
-// it is, on the same rule internal/report/account.go's sanitizeMessage sets
-// for a different field: control and non-graphic runes are attacker-
-// influenceable and the report renders values like this unquoted, which is a
-// standing defect this package does not repeat (spec, "Sanitise every
-// tool-derived value before rendering").
+// digest.ReasonNoStore/ReasonRecordsSkipped/ReasonNoSessionID) -- never a
+// word this package invented and never a byte handed to it by a tool call or
+// a transcript. The one caller-supplied value it prints, the session id, is
+// sanitised before it is, on the same rule internal/report/account.go's
+// sanitizeMessage sets for a different field: control and non-graphic runes
+// are attacker-influenceable and the report renders values like this
+// unquoted, which is a standing defect this package does not repeat (spec,
+// "Sanitise every tool-derived value before rendering").
 package recap
 
 import (
@@ -91,11 +91,19 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	b.WriteString(".\n")
 	b.WriteString(strings.Repeat(" ", len([]rune(prefix))))
 	if fromPlugin {
-		b.WriteString("→ /rashomon:report --session ") // → RIGHTWARDS ARROW
+		b.WriteString("→ /rashomon:report") // → RIGHTWARDS ARROW
 	} else {
-		b.WriteString("→ rashomon report --session ")
+		b.WriteString("→ rashomon report")
 	}
-	b.WriteString(sanitizeSessionID(sessionID))
+	// A turn that named no session (digest.Sessionless) has no session to
+	// point at, so the pointer is the whole report -- which is also where the
+	// calls that arrived without a session id are counted. Not the sanitiser's
+	// "unknown", which names a session nobody has, and not any real id, which
+	// would be the guess the no_session_id reason exists to refuse.
+	if sessionID != "" {
+		b.WriteString(" --session ")
+		b.WriteString(sanitizeSessionID(sessionID))
+	}
 	return b.String(), true
 }
 

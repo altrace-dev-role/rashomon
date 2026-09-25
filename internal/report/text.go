@@ -114,11 +114,36 @@ func Text(w io.Writer, rep *Report, opts ...TextOption) error {
 		_, err := w.Write(b.Bytes())
 		return err
 	}
+	writeSessionless(&b, rep.CallsWithoutSessionID)
 	for _, sess := range rep.Sessions {
 		writeSession(&b, sess, cfg)
 	}
 	_, err := w.Write(b.Bytes())
 	return err
+}
+
+// writeSessionless renders Report.CallsWithoutSessionID: once, above every
+// session, because it belongs to the store and not to any one of them.
+//
+// Three states, and none may read as another. The degraded line names where
+// the calls are recorded, because in a report scoped to one session that run
+// is not on screen. Its healthy twin states the zero rather than vanishing,
+// so "none arrived" does not read the same as "nothing counted them". And an
+// unreadable run is unknown, in a word, never none.
+//
+// Printed only when there is a session to print it above: with nothing
+// recorded at all, "no sessions recorded" is already the whole answer.
+func writeSessionless(b *bytes.Buffer, n *int) {
+	switch {
+	case n == nil:
+		fmt.Fprintf(b, "calls without a session id: %s (session %s could not be read)\n",
+			unknown, store.UnattributedSession)
+	case *n == 0:
+		fmt.Fprintf(b, "calls without a session id: %s\n", none)
+	default:
+		fmt.Fprintf(b, "%d call%s arrived without a session id (recorded under session %s)\n",
+			*n, plural(*n), store.UnattributedSession)
+	}
 }
 
 func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
@@ -130,7 +155,14 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	// they read better after the finding than before it.
 	writeAccount(b, sess.Account)
 	writeSubagents(b, sess.Subagents)
-	writeSilentFailures(b, sess.SilentFailures)
+	if sess.SessionID == store.UnattributedSession {
+		// No call that arrives without a session id records an outcome
+		// (hook.Post.Capture), so a failure count over this run is not zero:
+		// it is unknown, and "0" here would be a clean zero over nothing.
+		fmt.Fprintf(b, "  failed calls: %s (calls without a session id carry no outcome)\n", unknown)
+	} else {
+		writeSilentFailures(b, sess.SilentFailures)
+	}
 	// Whether a proxy store was NAMED for this render, not whether it could be
 	// read: a named store that is missing still renders its reason in full,
 	// because the reader asked about a proxy. See WithNamedProxyStore.
@@ -362,6 +394,11 @@ func list(items []string) string {
 		strings.Join(items[:shown], ", "), len(items)-shown, len(items))
 }
 
+// unexecuted renders the declarations no execution answers, each with the
+// permission mode it was declared in -- through list(), for its bound. Every
+// call that arrives without a session id lands here, because its execution
+// is never recorded, so this is the line that grows with another harness's
+// whole working day. The JSON carries every id.
 func unexecuted(items []Unexecuted) string {
 	if len(items) == 0 {
 		return none
@@ -370,7 +407,7 @@ func unexecuted(items []Unexecuted) string {
 	for i, u := range items {
 		out[i] = u.ToolUseID + " (" + orUnknown(u.PermissionMode) + ")"
 	}
-	return strings.Join(out, ", ")
+	return list(out)
 }
 
 func byName(counts map[string]int) string {
