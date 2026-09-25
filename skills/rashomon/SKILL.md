@@ -4,7 +4,8 @@ description: 'Start recording what this Claude Code session asks to run. Use whe
 ---
 
 Install the rashomon recorder so every tool call from now on is recorded as a
-declaration (identifiers and shape only — never content).
+declaration (identifiers and shape only: no prompts, responses, argument
+values or file contents).
 
 1. Resolve the binary, in this order. Set `$RASHOMON` to the first absolute
    path that works:

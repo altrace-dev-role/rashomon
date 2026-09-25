@@ -20,8 +20,9 @@ never as a negative finding.
     go build ./cmd/rashomon
     go test ./...
 
-Go 1.24 or later. The one non-standard dependency is a pure-Go SQLite driver,
-used read-only to read the proxy's store.
+Go 1.25 or later (`go.mod` says 1.25.0). The one non-standard dependency is a
+pure-Go SQLite driver, linked for a proxy-store reader the alpha leaves dormant
+(#28).
 
 Run the tool against a scratch store rather than your own while you work:
 

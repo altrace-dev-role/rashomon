@@ -1,23 +1,62 @@
 # rashomon
 
-**A coding agent writes its own account of what it did. `rashomon` writes a second one, from outside.**
+**Your coding agent writes its own account of what it did. `rashomon` writes a second one, independently of the agent's narration, and shows you where the two differ.**
 
-*For **Claude Code**, on macOS and Linux. Alpha: no tagged release yet — build from
-source below. No other agent harness is recorded.*
+*For Claude Code, on macOS and Linux. Alpha: v0.1.0.*
 
-When you hand a coding agent your machine, it works for twenty or forty minutes
-and then tells you what happened — from the same context, with the same
-incentive to look successful. `rashomon` records the session independently: what
-the agent *declared* it would run and what *actually ran*.
+![Claude says all tests pass; rashomon's end-of-turn line reports a recorded failure, and the report shows it](docs/images/rashomon-example.png)
 
-Three accounts of one session: what it declared, what ran, and what it says it
-did — reconciled, with the disagreements shown. The name is the point.
+## In plain words
+
+When Claude Code finishes a task, it tells you what it did: "Done, all tests
+pass." That summary comes from the agent itself.
+
+rashomon keeps its own record of every step the agent takes, like each command
+it runs and each file it edits, and whether each one worked. When the summary
+and the record disagree, it tells you: a test that failed, or work a subagent
+did that you never saw.
+
+You keep working the way you do now. rashomon stays quiet unless something is
+worth a look. The name comes from *Rashomon*, the film in which witnesses give
+different accounts of the same event.
+
+## Get started
+
+Pick **one** of these two ways. Using both records everything twice.
+
+**As a Claude Code plugin:**
+
+    claude plugin marketplace add altrace-dev-role/rashomon
+    claude plugin install rashomon@rashomon
+    claude plugin enable rashomon@rashomon
+
+Then start a new Claude Code session. Inside it, `/rashomon:report` shows what
+was recorded.
+
+**From the command line** (macOS and Linux):
+
+    curl -fsSL https://raw.githubusercontent.com/altrace-dev-role/rashomon/main/install.sh | sh
+    rashomon watch
+
+Then use `claude` as usual, and run `rashomon report` whenever you want to look.
+The installer puts `rashomon` in `~/.local/bin`; if your shell cannot find it,
+add that folder to your `PATH`.
+
+## What you'll see
+
+Most of the time, nothing: a turn with nothing worth a look prints nothing.
+When something is off, one line appears at the end of the turn:
+
+    ※ rashomon: 1 recorded failure.
+                → rashomon report --session <id>
+
+That command shows the whole story. Here is a real example.
 
 ## What a disagreement looks like
 
-A session whose test run failed while a subagent looked through the code, and
-whose closing message says the tests pass. This excerpt is `rashomon report`
-exactly as it renders that session:
+Here the tests failed while a helper agent (a subagent) looked through the
+code, yet the agent's closing message says the tests pass. This excerpt is
+`rashomon report` exactly as it renders that session:
 
       the agent's account:
         "Done. I refactored ParseConfig and all tests pass."
@@ -27,32 +66,84 @@ exactly as it renders that session:
       failed calls: 1
         the final message contains none of these 43 words: fail, failed, failing, error, errors, couldn't, could not, unable, not able, didn't, did not, blocked and 31 more of 43 (--json lists them all)
 
-The agent's account is its own words, quoted. The `subagents` and
-`failed calls` lines come from the hooks, not from anything the agent wrote:
-the session's `go test ./...` ended with exit code 1, and the subagent's three
-calls never appear in the main transcript at all. The report says which
-acknowledgement words are *absent* from the summary; it does not say why.
+The first line quotes the agent. Everything under it comes from rashomon's own
+record, not from anything the agent wrote: the test command really failed (it
+ended with exit code 1), and the subagent's three steps never show up in the
+main conversation at all. The report lists the failure words the summary does
+*not* use; it does not guess why.
 
-To see the same disagreement in your own session: run `rashomon watch`, break
-one test in a project you have open, and start `claude`. Ask it to have a
-subagent look through the code for something, then to run the test suite and
-finish with a one-line summary. Whatever that summary says, `rashomon report`
-quotes it above the `subagents` and `failed calls` lines — and if the summary
-never mentions the failure, the `failed calls` line lists the words it does not
-use.
+## Try it yourself
+
+You can reproduce that disagreement in a few minutes:
+
+1. Install rashomon (see [Get started](#get-started)).
+2. In a project you have open, break one test on purpose.
+3. Start `claude`. Ask it to have a subagent look through the code, then to run
+   the tests and finish with a one-line summary.
+4. Run `rashomon report` (or `/rashomon:report` inside Claude Code).
+
+The report quotes the summary above the `subagents` and `failed calls` lines. If
+the summary never mentions the failure, the `failed calls` line lists the words
+it does not use.
 
 ## What a report tells you
 
-- **What subagents did** that the main transcript never shows — per-agent call
-  and command counts.
-- **Which tool calls failed**, and whether the agent's closing summary mentions
-  failure at all. It reports the words that are *absent*; it never characterises
-  intent.
-- **What executed differently from what was declared** — a hook or wrapper that
-  rewrote a command before it ran.
-- **What could not be seen**, on every report, including a healthy one.
+- **What subagents did**: the helper agents Claude starts on its own, whose
+  steps the main conversation never shows.
+- **Which steps failed**, and whether the agent's closing summary mentions any
+  failure at all. It lists the failure words that are *absent*; it never
+  guesses at intent.
+- **What ran differently from what was asked**, for example a hook or wrapper
+  that rewrote a command before it ran.
+- **What rashomon could not see**, on every report, even a healthy one.
 
-## Install
+## Common questions
+
+**Does it see my code or my prompts?**
+It stores no prompts, responses, argument values or file contents. Commands are
+reduced to a program name and an argument count, by a parser that names nothing
+when it is unsure. When you run `rashomon report`, it quotes the agent's final
+message from Claude Code's own transcript; that quote is never stored.
+
+**Does it send anything anywhere?**
+It has no account, no telemetry and no network code of its own, and what it
+records is kept in a folder on your machine. The recorder that runs on each
+step is tested with the network switched off; the report and the end-of-turn
+line are not tested that way yet.
+
+**Can it break my agent?**
+No. It never stops a command, and if something inside it goes wrong, it exits
+quietly so Claude Code carries on.
+
+**Does it work with Cursor or Codex?**
+It is built for Claude Code. Cursor (by default) and Codex (after `/import`)
+read Claude Code's settings and can trigger it too, but they are not supported
+yet; see [Scope](#scope-and-threat-model).
+
+**Is it a sandbox or a security tool?**
+No. It does not stop or contain the agent, and it cannot stop a determined agent
+from changing its records. It is a second, independent account of what happened,
+to set beside the agent's own.
+
+**Can I see network activity?**
+Not in this release: network destinations are not observed in this alpha.
+Reading a sandbox's network log (such as nono's) is coming next.
+
+**How do I turn it off?**
+Plugin: open `/plugin` in Claude Code and turn it off. Command line:
+`rashomon detach`. Your records stay in `~/.local/state/rashomon` (by default)
+until you delete that folder.
+
+**Is it finished?**
+No. This is an alpha: Windows is not supported yet, and network destinations are
+not observed in this release.
+
+## The details
+
+Everything below is the precise version: what gets installed, what is stored,
+and what the report can and cannot see.
+
+## Install options, in detail
 
 **As a Claude Code plugin** (macOS and Linux):
 
@@ -64,44 +155,53 @@ Installing does not start recording; enabling does. Start a new Claude Code
 session after enabling. `/plugin` shows it and turns it off again, and
 `/rashomon:status` / `/rashomon:report` work inside Claude Code. The plugin
 installs the release's `rashomon-plugin.zip`, which carries a prebuilt recorder
-per platform, because a plugin cannot compile Go at install time — so it needs
+per platform, because a plugin cannot compile Go at install time. So it needs
 a tagged release to exist. To try the plugin from a checkout instead:
 
     scripts/build-plugin.sh
-    claude --plugin-dir ./plugin
+    claude --plugin-dir ./plugin --settings '{"enabledPlugins": {"rashomon@inline": true}}'
+
+The plugin ships disabled, and a plugin loaded with `--plugin-dir` (Claude Code
+names it `rashomon@inline`) is enabled only through settings. Without the
+`--settings` flag the session loads the plugin and records nothing.
 
 If you already ran `watch`, run `rashomon detach` first. With both installed,
 every call is recorded twice; `rashomon status` names the overlap and the
 report marks the session `duplicate_declarations`.
 
-**As a settings install** (Windows is not usable yet; see [Status](#status)):
+**As a settings install** (Windows is not usable yet; see [Status](#status)).
+From a release, on macOS or Linux:
 
-    go install github.com/altrace-dev-role/rashomon/cmd/rashomon@main
+    curl -fsSL https://raw.githubusercontent.com/altrace-dev-role/rashomon/main/install.sh | sh
 
-This writes to `$(go env GOPATH)/bin` — make sure that is on your `PATH`. Or
+It downloads the release archive for your platform, checks it against the
+release's `checksums.txt`, refuses to install on a mismatch, and puts one
+binary in `~/.local/bin` (set `RASHOMON_INSTALL_DIR` to change that). Or with
+Go:
+
+    go install github.com/altrace-dev-role/rashomon/cmd/rashomon@latest
+
+This writes to `$(go env GOPATH)/bin`; make sure that folder is on your `PATH`. Or
 clone and build:
 
     git clone https://github.com/altrace-dev-role/rashomon
     cd rashomon && go build ./cmd/rashomon
 
-`@main` rather than `@latest`: there are no tagged releases yet, so `@latest`
-has nothing to resolve to.
-
 > **Install to a location that will not move.** `watch` writes the running
 > binary's absolute path into your Claude Code settings, and Claude Code
 > executes that path on **every tool call**. If you built inside a clone you
 > later delete, every tool call fires a hook that cannot start. Build into a
-> directory you keep — or `go install` it — and re-run `watch` after any move.
+> directory you keep (or `go install` it), and re-run `watch` after any move.
 > (`watch` refuses a `go run` binary outright: that one lives in a temp
 > directory that is gone seconds later.)
 >
 > **Why a broken hook matters more than usual:** a `PreToolUse` hook that exits
 > non-zero in the wrong way can *block* the tool call, and the user sees Claude
 > Code failing rather than this program. Every failure path here is engineered
-> to exit 0 for that reason — see
+> to exit 0 for that reason; see
 > [`docs/design-notes.md`](docs/design-notes.md).
 
-## Quickstart
+## What `watch` sets up
 
 ```sh
 rashomon watch                      # install the recorders (the only command that installs anything)
@@ -109,7 +209,7 @@ claude                              # work normally
 rashomon report                     # read the sessions back
 ```
 
-`watch` adds eight entries to your Claude Code settings — `PreToolUse`,
+`watch` adds eight entries to your Claude Code settings: `PreToolUse`,
 `PostToolUse`, `PostToolUseFailure`, `SessionStart`, `SessionEnd`, `Stop`,
 `StopFailure`, `UserPromptSubmit`. The first three match `*` (every tool);
 the rest carry no matcher, since Claude Code documents none for the session,
@@ -120,9 +220,9 @@ run, not one call.
 as found.
 
 `Stop` and `StopFailure` drive an exception-only recap: after a turn, it
-prints at most one line — and only when there is something worth looking
+prints at most one line, and only when there is something worth looking
 at (a recorded failure, a declaration without recorded execution, coverage
-that did not verify, or a truncated/unknown projection) — with a pointer to
+that did not verify, or a truncated/unknown projection). The line points to
 `rashomon report --session <id>` for the detail. A clean turn prints
 nothing at all; `rashomon status` says whether a turn has actually been
 evaluated, so silence never gets read as proof the turn was clean.
@@ -135,7 +235,7 @@ recap reached it and it has something to show, prints the line then, marked
 
 ## What is recorded, and what never is
 
-**Recorded** — identifiers, shapes and hostnames. `tool_use_id`, `session_id`,
+**Recorded:** identifiers, shapes and hostnames. `tool_use_id`, `session_id`,
 `prompt_id`, `agent_id`, `agent_type`, `transcript_path`, `cwd`,
 `permission_mode`, `tool_name`; the call's `program`, `verb_class`, argument
 *count* and a keyed digest of its shape; how it ended (`outcome`, `exit_code`,
@@ -144,22 +244,24 @@ into categories such as `ssh_key`, `env_file`, `cloud_config` or `certificate`.
 
 Note that `cwd` and `transcript_path` are filesystem paths and carry directory
 names. [`docs/store-schema.json`](docs/store-schema.json) is the exhaustive and
-authoritative field list — every key required, `additionalProperties: false`.
+authoritative field list: every key required, `additionalProperties: false`.
 
 **Hostnames are stored in clear**, because the report has to name them:
 `report --chain` lists the hosts each call named beside that call, and a
 digest cannot be rendered back into a name. They are extracted from
-`WebFetch.url` and from any URL appearing in a `Bash` command line — *whether
+`WebFetch.url` and from any URL appearing in a `Bash` command line, *whether
 or not the call reached it*. Only those two tools are read.
 
-**Never recorded:** prompts, responses, argument values, command strings, file
-contents, tool output. Not redacted — *structurally absent*. The payload struct
-has no field for tool output, so the JSON decoder discards it and it is never a
-value in the process at all.
+**Never recorded:** prompts, responses, argument values, file contents, tool
+output. Not redacted: *structurally absent*. The payload struct has no field
+for tool output, so the JSON decoder discards it and it is never a value in the
+process at all. **Commands** are reduced to a program name and an argument
+count, by a parser that names nothing when it is unsure. The rare shapes it
+still misreads are [tracked in the open](https://github.com/altrace-dev-role/rashomon/pull/29).
 
 Those rules govern the **store**. The **report** additionally reads the agent's
-final message from Claude Code's own transcript at render time — that is
-content, it is never written to the store, never transmitted, and `--redact`
+final message from Claude Code's own transcript at render time. That is
+content: it is never written to the store, never transmitted, and `--redact`
 drops it entirely rather than partially cleaning prose that may name anything.
 
 The shape digest is an HMAC under a random per-install key, so the same command
@@ -171,7 +273,7 @@ attack against known commands. Store directory `0700`, files `0600`.
 `$RASHOMON_HOME`, else `$XDG_STATE_HOME/rashomon`, else
 `~/.local/state/rashomon`. It is bounded by `RASHOMON_STORE_CAP_BYTES` (default
 512 MiB); past the cap the oldest runs are evicted, each leaving a gap record so
-the deletion is visible. **`detach` removes the hooks, not the records** — to
+the deletion is visible. **`detach` removes the hooks, not the records.** To
 remove everything, delete that directory.
 
 ### Redaction, and what it does not hide
@@ -183,8 +285,8 @@ collide; **the last label is kept in clear on purpose**, so `.internal` and
 every digest. The redacted report repeats all of this in its own header.
 
 `forget --host <h>` removes every call that named that host from this store,
-and leaves a gap record saying something was removed — keyed by a digest of the
-host, not its name.
+and leaves a gap record saying something was removed. That record is keyed by
+a digest of the host, not its name.
 
 ## What it cannot see
 
@@ -216,7 +318,7 @@ One consequence worth expecting: coverage reads `verified` only for a session
 whose recorder `watch` installed in the settings file Claude Code itself
 resolves. A session started with `claude --settings <other file>`, or under a
 different `CLAUDE_CONFIG_DIR`, records perfectly well and still reports
-`hook_entry_absent` — the probe under-claims rather than confirming an entry it
+`hook_entry_absent`: the probe under-claims rather than confirming an entry it
 cannot read.
 
 The reasoning behind all of this, and the acceptance criteria that hold it, is
@@ -247,7 +349,7 @@ This repository installs nothing in your sessions. There is no committed
 `.claude/settings.json`; nothing here runs until you run `watch` yourself.
 
 Slash commands ship as **assets you copy** from a clone of this repository
-(`go install` leaves none), deliberately not under `.claude/` here — a skill in
+(`go install` leaves none), deliberately not under `.claude/` here. A skill in
 this repository would load only for someone who has *this* repository open,
 which is the one place it is least useful:
 
@@ -257,28 +359,33 @@ which is the one place it is least useful:
 `scripts/claude-rashomon` starts a recorded session in one word.
 `scripts/rashomon-sessionstart.sh` is an optional `SessionStart` hook that puts
 one line of recorder state into a session's context; its header shows the entry
-to add. `.cursor/commands/` gives Cursor commands for *operating* the tool —
-status, report, stop and arming `watch`, but not `forget`. Cursor's own agent
-loop is not recorded, and every command says so.
+to add. `.cursor/commands/` gives Cursor commands for *operating* the tool:
+status, report, stop and arming `watch`, but not `forget`. Cursor's own sessions
+are not supported yet (see [Scope](#scope-and-threat-model)), and every command
+says so.
 
 ## Scope and threat model
 
-**Claude Code only.** The hooks, the store and the report describe Claude Code
-sessions. No other agent harness is recorded.
+**Built for Claude Code.** The hooks, the store and the report describe Claude
+Code sessions. Other tools that read `~/.claude/settings.json` can trigger the
+recorder too: Cursor by default, and Codex after `/import`. They are not
+supported yet, and what gets recorded for them can be wrong. If you use Cursor
+with rashomon installed, turn off Include Third-Party Plugins, Skills, and Other
+Configs (Cursor Settings, Agents, Third-Party Imports) until support lands.
 
 **`rashomon` installs no certificate and decrypts nothing.**
 
 **No account. No telemetry. No phone-home. No model in any path.**
 
 **What it defends against, stated plainly:** this release defends against the
-agent's *narration* — a summary that omits, compresses or misremembers. It does
+agent's *narration*: a summary that omits, compresses or misremembers. It does
 not defend against an agent that *tampers*. The store, the digest key and
 `forget` are all reachable by any shell command the agent makes. Treat the
 record as an honest second account, not as tamper-proof evidence.
 
 **A declaration is not an execution.** `PreToolUse` fires before the permission
 prompt resolves, so the store holds records for calls you went on to deny. That
-is deliberate — intent is worth keeping whether or not it was granted — and
+is deliberate (intent is worth keeping whether or not it was granted), and
 every record carries the `permission_mode` it was declared in so a consumer can
 exclude what was never allowed to run.
 
@@ -289,7 +396,7 @@ exclude what was never allowed to run.
 
 ## Status
 
-Alpha. No tagged releases, no signed binaries, no Homebrew formula. macOS and
+Alpha: v0.1.0. No signed binaries, no Homebrew formula. macOS and
 Linux are the supported targets.
 
 **Windows is not usable yet.** `watch` quotes the installed command line for a
@@ -302,7 +409,7 @@ are covered by tests; the install path is a known gap, and
 Issues and pull requests are welcome. `main` is protected: changes land through
 a pull request with CI green. Security issues should go through
 [private vulnerability reporting](https://github.com/altrace-dev-role/rashomon/security/advisories/new)
-rather than a public issue — see [SECURITY.md](SECURITY.md).
+rather than a public issue; see [SECURITY.md](SECURITY.md).
 
 ## License
 

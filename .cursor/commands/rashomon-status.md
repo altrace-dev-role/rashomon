@@ -3,7 +3,7 @@
 Say what the rashomon recorder has installed on this machine.
 
 Scope first, stated to the user whenever it matters: rashomon records
-**Claude Code sessions only** — this Cursor session is not recorded, and no
+**Claude Code sessions**. Cursor's own sessions are not supported yet, and no
 command here changes that.
 
 1. Resolve the binary: `~/.local/bin/rashomon`, then `~/go/bin/rashomon`,
