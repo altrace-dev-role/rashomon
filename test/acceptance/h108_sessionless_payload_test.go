@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -34,15 +35,15 @@ import (
 // release spec reads Cursor's hook documentation: conversation_id and
 // generation_id where Claude Code sends session_id. Every other field is
 // illustrative; what the test depends on is that no session_id key exists.
-func cursorToolPayload(t *testing.T, event string) string {
+func cursorToolPayload(t *testing.T, event, toolUseID string) string {
 	t.Helper()
 	body := map[string]any{
-		"conversation_id": "c0ffee00-cursor-conversation",
+		"conversation_id": cursorConversation,
 		"generation_id":   "g-1",
 		"hook_event_name": event,
 		"tool_name":       "Bash",
 		"tool_input":      map[string]any{"command": "go test ./..."},
-		"tool_use_id":     "toolu_cursor_1",
+		"tool_use_id":     toolUseID,
 		"workspace_roots": []string{"/tmp/project"},
 	}
 	if event == "PostToolUse" {
@@ -104,7 +105,7 @@ func TestH108_ACursorShapedCallWritesNoExecutionAndIsCounted(t *testing.T) {
 		if event == "PostToolUse" {
 			run = e.post
 		}
-		res := run(cursorToolPayload(t, event))
+		res := run(cursorToolPayload(t, event, "toolu_cursor_1"))
 		if res.exitCode != 0 {
 			t.Fatalf("%s: exit %d, want 0 -- a recorder never blocks the agent", event, res.exitCode)
 		}
@@ -250,5 +251,151 @@ func TestH108_ACodexShapedCallIsRecordedOK(t *testing.T) {
 	}
 	if strings.Contains(text.stdout, "arrived without a session id") {
 		t.Errorf("the text report carries the degraded line with nothing sessionless recorded:\n%s", text.stdout)
+	}
+}
+
+// cursorConversation is the conversation every Cursor-shaped fixture here
+// belongs to.
+const cursorConversation = "c0ffee00-cursor-conversation"
+
+// cursorSessionPayload is a session start or end shaped the way Cursor's
+// hook documentation describes one: sessionStart's session_id documented as
+// "same as conversation_id", beside the conversation_id every Cursor hook
+// receives. The remaining fields are illustrative.
+func cursorSessionPayload(t *testing.T, event string) string {
+	t.Helper()
+	body := map[string]any{
+		"conversation_id":     cursorConversation,
+		"session_id":          cursorConversation,
+		"generation_id":       "g-0",
+		"hook_event_name":     event,
+		"is_background_agent": false,
+		"workspace_roots":     []string{"/tmp/project"},
+	}
+	if event == "sessionEnd" {
+		body["duration_ms"] = 1200
+	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// TestH108_ACursorConversationIsNotACleanEmptySession: a conversation whose
+// start and end name it, and whose calls do not, must not render as a clean
+// session with nothing in it.
+//
+// Per Cursor's documentation, its sessionStart and sessionEnd carry a
+// session_id -- documented as the same value as conversation_id -- while its
+// tool, stop and prompt events carry none. Recorded as a session, that start
+// and end opened and closed a run no call ever landed in, because the calls
+// went to the unattributed run: the report said "coverage: verified" and
+// "declarations recorded: 0" for a conversation that made two calls. A clean
+// zero over something this program did not watch is the one number it
+// exists never to print.
+//
+// Break: record a start or end that names a conversation, and the
+// conversation appears as a verified session with zero calls.
+func TestH108_ACursorConversationIsNotACleanEmptySession(t *testing.T) {
+	e := newEnv(t)
+	if res := e.watch(); res.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	probe := func(phase, event string) {
+		t.Helper()
+		res := e.run(cursorSessionPayload(t, event), nil, append([]string{"probe", phase}, e.installArgs()...)...)
+		if res.exitCode != 0 || res.stdout != "" {
+			t.Fatalf("probe %s: exit %d, stdout %q -- a recorder never blocks the agent", phase, res.exitCode, res.stdout)
+		}
+	}
+
+	probe("start", "sessionStart")
+	for i := 1; i <= 2; i++ {
+		id := fmt.Sprintf("toolu_cursor_%d", i)
+		e.mustHook(cursorToolPayload(t, "PreToolUse", id))
+		e.mustPost(cursorToolPayload(t, "PostToolUse", id))
+	}
+	probe("end", "sessionEnd")
+
+	for _, dir := range e.runDirs() {
+		if dir == cursorConversation {
+			t.Errorf("a run exists for conversation %s, which no call was recorded under", cursorConversation)
+		}
+	}
+
+	// The whole report holds the unattributed calls and nothing else: no
+	// session for the conversation, clean or otherwise.
+	doc := reportJSON(t, e, nil)
+	sessions, _ := doc["sessions"].([]any)
+	var names []string
+	for _, s := range sessions {
+		id, _ := s.(map[string]any)["session_id"].(string)
+		names = append(names, id)
+	}
+	if strings.Join(names, ",") != unattributedRun {
+		t.Errorf("sessions = %v, want only %q: the conversation must not render as a session "+
+			"of its own", names, unattributedRun)
+	}
+	if got := callsWithoutSessionID(t, e); got != 2 {
+		t.Errorf("calls_without_session_id = %d, want the conversation's 2", got)
+	}
+	if text := e.run("", nil, "report").stdout; strings.Contains(text, "session "+cursorConversation) {
+		t.Errorf("the text report renders the conversation as a session:\n%s", text)
+	}
+}
+
+// TestH108_AClaudeCodeSessionStillRecordsItsStartAndEnd pins the assumption
+// the rule above rests on: Claude Code sends no conversation_id today.
+//
+// The payloads are Claude Code's SessionStart and SessionEnd with the fields
+// its hooks documentation (code.claude.com/docs/en/hooks) lists for them --
+// documented, not captured -- and they must still record the start and the
+// end. This cannot notice Claude Code changing on its own; nothing here runs
+// Claude Code. What it does is make the assumption a fixture: a rule that
+// grows past conversation_id goes red here, and if Claude Code ever
+// documents a conversation_id on these events, adding it to this fixture
+// turns this red -- the moment to replace the rule with a harness marker in
+// the installed command line, the flag the Codex gap above needs too.
+func TestH108_AClaudeCodeSessionStillRecordsItsStartAndEnd(t *testing.T) {
+	e := newEnv(t)
+	if res := e.watch(); res.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	const id = "0a7b1c2d-3e4f-4a5b-8c6d-claudecode01"
+	common := func(event string) map[string]any {
+		return map[string]any{
+			"session_id":      id,
+			"transcript_path": "/tmp/transcripts/" + id + ".jsonl",
+			"cwd":             e.cwd,
+			"scratchpad_dir":  "/tmp/scratchpad",
+			"permission_mode": "default",
+			"hook_event_name": event,
+		}
+	}
+	start := common("SessionStart")
+	start["source"] = "startup"
+	start["model"] = "claude-sonnet-4-5"
+	end := common("SessionEnd")
+	end["reason"] = "prompt_input_exit"
+
+	for _, c := range []struct {
+		phase string
+		body  map[string]any
+	}{{"start", start}, {"end", end}} {
+		b, err := json.Marshal(c.body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res := e.run(string(b), nil, append([]string{"probe", c.phase}, e.installArgs()...)...); res.exitCode != 0 {
+			t.Fatalf("probe %s: exit %d", c.phase, res.exitCode)
+		}
+		if got := len(e.coverage(id, c.phase)); got != 1 {
+			t.Errorf("%s-phase coverage records for a Claude Code session = %d, want 1", c.phase, got)
+		}
+	}
+	if rep := e.report(id); !rep.Coverage.StartRecorded || !rep.Coverage.EndRecorded {
+		t.Errorf("start recorded = %v, end recorded = %v, want both: Claude Code's own session "+
+			"start and end must still count", rep.Coverage.StartRecorded, rep.Coverage.EndRecorded)
 	}
 }

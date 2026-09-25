@@ -1106,6 +1106,16 @@ m("H-108 the count's healthy twin vanishes", "internal/report/text.go",
 m("H-108 the count is built and never rendered", "internal/report/text.go",
   "\twriteSessionless(&b, rep.CallsWithoutSessionID)\n", "",
   "TestH108_ACursorShaped")
+# A session start or end that names a conversation. Both directions: the rule
+# dropped (the conversation renders as a verified session with zero calls),
+# and the rule grown past its field (Claude Code's own start and end stop
+# counting) -- the second is what the Claude Code pin exists to catch.
+m("H-108 a start that names a conversation is recorded as a session", "internal/hook/probe.go",
+  "\t\tif p.ConversationID != \"\" {\n\t\t\tforeign = true\n\t\t\treturn nil\n\t\t}\n", "",
+  "TestH108_ACursorConversation")
+m("H-108 every session start and end is treated as foreign", "internal/hook/probe.go",
+  "\t\tif p.ConversationID != \"\" {\n\t\t\tforeign = true", "\t\tif true {\n\t\t\tforeign = true",
+  "TestH108_AClaudeCodeSession")
 
 # Import additions some mutants need.
 IMPORTS = {
