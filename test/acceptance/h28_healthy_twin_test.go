@@ -43,6 +43,9 @@ var degradedMarkers = []string{
 	// A call whose payload named no session (H-108). Its healthy twin,
 	// "calls without a session id: none", shares no substring with this.
 	"arrived without a session id",
+	// The unattributed run's failure count (H-108): none of its calls records
+	// an outcome, so it is unknown there, never 0.
+	"failed calls: unknown",
 }
 
 // TestH28_AHealthyRunShowsNoDegradationLine builds the healthiest session this
@@ -204,7 +207,8 @@ func TestH28_EveryDegradedLineIsReachable(t *testing.T) {
 	}
 
 	// R5: a tool call whose payload named no session (H-108). The count is
-	// store-wide, so it reaches a report scoped to the session beside it.
+	// store-wide, so it reaches a report scoped to the session beside it; the
+	// whole report adds the unattributed block, with its unknown failure count.
 	{
 		e := newEnv(t)
 		e.watched(testSession)
@@ -213,7 +217,8 @@ func TestH28_EveryDegradedLineIsReachable(t *testing.T) {
 		sessionless.SessionID = ""
 		e.mustHook(sessionless.build(t))
 		e.probe("end", testSession)
-		renders = append(renders, e.run("", nil, "report", "--session", testSession).stdout)
+		renders = append(renders, e.run("", nil, "report", "--session", testSession).stdout,
+			e.run("", nil, "report").stdout)
 	}
 
 	all := strings.Join(renders, "\n")

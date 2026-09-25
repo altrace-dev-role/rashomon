@@ -1106,6 +1106,9 @@ m("H-108 an unreadable unattributed run is counted as zero", "internal/report/re
 m("H-108 a run with lines that did not parse is counted as if it were whole", "internal/report/report.go",
   "\tif err != nil || run.Skipped > 0 {\n\t\treturn nil", "\tif err != nil {\n\t\treturn nil",
   "TestCallsWithoutSessionID_IsUnknownOverLines")
+m("H-108 the unattributed block reports a failure count over no outcomes", "internal/report/text.go",
+  "\tif sess.SessionID == store.UnattributedSession {", "\tif false {",
+  "TestText_TheUnattributedRunHasNoFailureCount|TestH108_ACursorShaped")
 m("H-108 the without-execution line joins every id again", "internal/report/text.go",
   "\t\tout[i] = u.ToolUseID + \" (\" + orUnknown(u.PermissionMode) + \")\"\n\t}\n\treturn list(out)",
   "\t\tout[i] = u.ToolUseID + \" (\" + orUnknown(u.PermissionMode) + \")\"\n\t}\n\treturn strings.Join(out, \", \")",

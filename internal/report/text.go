@@ -155,7 +155,14 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	// they read better after the finding than before it.
 	writeAccount(b, sess.Account)
 	writeSubagents(b, sess.Subagents)
-	writeSilentFailures(b, sess.SilentFailures)
+	if sess.SessionID == store.UnattributedSession {
+		// No call that arrives without a session id records an outcome
+		// (hook.Post.Capture), so a failure count over this run is not zero:
+		// it is unknown, and "0" here would be a clean zero over nothing.
+		fmt.Fprintf(b, "  failed calls: %s (calls without a session id carry no outcome)\n", unknown)
+	} else {
+		writeSilentFailures(b, sess.SilentFailures)
+	}
 	// Whether a proxy store was NAMED for this render, not whether it could be
 	// read: a named store that is missing still renders its reason in full,
 	// because the reader asked about a proxy. See WithNamedProxyStore.

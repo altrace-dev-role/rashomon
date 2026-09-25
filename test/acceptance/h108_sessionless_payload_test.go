@@ -151,6 +151,11 @@ func TestH108_ACursorShapedCallWritesNoExecutionAndIsCounted(t *testing.T) {
 	if !strings.Contains(text.stdout, "1 call arrived without a session id") {
 		t.Errorf("the text report does not say a call arrived without a session id:\n%s", text.stdout)
 	}
+	// Its block has no failure count to give: none of its calls records an
+	// outcome, so "failed calls: 0" there would be a clean zero over nothing.
+	if !strings.Contains(text.stdout, "failed calls: unknown (calls without a session id carry no outcome)") {
+		t.Errorf("the unattributed block does not say its failure count is unknown:\n%s", text.stdout)
+	}
 
 	// The Claude Code session's own report is unaffected.
 	if rep := e.report(testSession); rep.Declarations.Recorded != 1 || rep.Executions.Recorded != 1 {

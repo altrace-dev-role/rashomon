@@ -218,6 +218,34 @@ func TestText_CallsWithoutSessionID(t *testing.T) {
 	}
 }
 
+// TestText_TheUnattributedRunHasNoFailureCount: no call that arrives without
+// a session id records an outcome (hook.Post.Capture), so the unattributed
+// block's "failed calls: 0" was a clean zero over outcomes never recorded. It
+// renders unknown there, and a real session's zero stays a zero.
+func TestText_TheUnattributedRunHasNoFailureCount(t *testing.T) {
+	one := 1
+	rep := &Report{CallsWithoutSessionID: &one, Sessions: []Session{
+		{SessionID: store.UnattributedSession, SilentFailures: SilentFailures{AbsentWords: []string{}}},
+		{SessionID: "sess-1", SilentFailures: SilentFailures{AbsentWords: []string{}}},
+	}}
+	var out bytes.Buffer
+	if err := Text(&out, rep); err != nil {
+		t.Fatal(err)
+	}
+	blocks := strings.Split(out.String(), "\nsession ")
+	if len(blocks) != 3 {
+		t.Fatalf("want a header and two session blocks, got %d:\n%s", len(blocks), out.String())
+	}
+	unattributed, sess := blocks[1], blocks[2]
+	const unknownLine = "  failed calls: unknown (calls without a session id carry no outcome)\n"
+	if !strings.Contains(unattributed, unknownLine) || strings.Contains(unattributed, "failed calls: 0") {
+		t.Errorf("the unattributed block does not say its failure count is unknown:\n%s", unattributed)
+	}
+	if !strings.Contains(sess, "  failed calls: 0\n") || strings.Contains(sess, "failed calls: unknown") {
+		t.Errorf("a real session's zero failures no longer render as 0:\n%s", sess)
+	}
+}
+
 func deref(p *int) any {
 	if p == nil {
 		return nil
