@@ -96,7 +96,8 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 		b.WriteString("→ rashomon report")
 	}
 	// A turn that named no session (digest.Sessionless) has no session to
-	// point at, so the pointer is the whole report. Not the sanitiser's
+	// point at, so the pointer is the whole report -- which is also where the
+	// calls that arrived without a session id are counted. Not the sanitiser's
 	// "unknown", which names a session nobody has, and not any real id, which
 	// would be the guess the no_session_id reason exists to refuse.
 	if sessionID != "" {

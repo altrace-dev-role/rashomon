@@ -99,10 +99,11 @@ type Post struct {
 // NewPost builds a Post. now is injectable for the same reason it is on
 // Handler: a test pins the clock and compares two records byte for byte.
 func NewPost(st *store.Store, now func() time.Time) *Post {
-	return &Post{st: st, now: now, sessionID: UnattributedSession}
+	return &Post{st: st, now: now, sessionID: store.UnattributedSession}
 }
 
-// Capture reads one payload and writes the execution record.
+// Capture reads one payload and writes the execution record -- or, for a
+// payload that names no session, none at all; see the guard below.
 //
 // stdin is bounded exactly as the declaration path bounds it. The response is
 // not read, but it does arrive: an unbounded read of a payload carrying a
@@ -128,6 +129,38 @@ func (p *Post) Capture(in io.Reader) error {
 	p.cwd = pl.CWD
 
 	fault.Inject(fault.PointPostParsed)
+
+	// A payload that names no session writes NO execution record: not ok, not
+	// anything else in its place.
+	//
+	// Outcome is decided by which event fired -- PostToolUse is ok,
+	// PostToolUseFailure is failed -- and that pairing was measured on
+	// Claude Code, which sends session_id with every hook. A payload without
+	// one came from something else, and nothing says the pairing holds there.
+	// Cursor is the documented case -- per its documentation; nobody has run
+	// Cursor against this recorder. It runs these hooks from
+	// ~/.claude/settings.json, names a conversation_id instead, and
+	// documents its postToolUse as "called after successful tool execution",
+	// beside a postToolUseFailure of its own that its Claude-format mapping
+	// omits. So a Cursor command that fails reaches this path as PostToolUse
+	// or not at all, and nobody has measured which. The guard is right
+	// either way: if a failure arrives here, ok is false; if only successes
+	// do, ok is true by a rule read in another product's documentation, not
+	// measured, and an outcome is the one thing this path records only on
+	// measurement. Recording ok -- which this path did -- is the default
+	// Execution.Outcome's own comment forbids: a call whose ending nobody
+	// observed, claimed to have worked.
+	//
+	// Nothing is written in its place, and an outcome of "failed" would be no
+	// better: the event pairing is the only evidence this path has, and it is
+	// the part that does not hold for this payload. What remains is the
+	// declaration the PreToolUse half left in the unattributed bucket -- the
+	// report counts those as calls that arrived without a session id -- and
+	// the coverage record Close writes for this invocation, so the post still
+	// leaves a trace that it ran.
+	if pl.SessionID == "" {
+		return nil
+	}
 
 	rec := store.Execution{
 		Type:          store.TypeExecution,

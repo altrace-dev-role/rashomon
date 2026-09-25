@@ -21,11 +21,6 @@ import (
 // closes it.
 const MaxPayloadBytes = 8 << 20
 
-// UnattributedSession buckets records for a payload too malformed to name its
-// own session. Losing the run is bad; silently attributing it to a session that
-// did not produce it would be worse.
-const UnattributedSession = "unattributed"
-
 var errPayloadTooLarge = errors.New("hook: payload exceeds the read limit")
 
 // Handler captures one tool call and then closes it out.
@@ -47,7 +42,7 @@ type Handler struct {
 // New builds a Handler. now is injectable so a test can pin the clock and
 // compare two records byte for byte.
 func New(st *store.Store, now func() time.Time) *Handler {
-	return &Handler{st: st, now: now, sessionID: UnattributedSession}
+	return &Handler{st: st, now: now, sessionID: store.UnattributedSession}
 }
 
 // Capture reads one payload and writes the declaration.
@@ -65,8 +60,13 @@ func (h *Handler) Capture(in io.Reader) error {
 	}
 
 	// Attribute before anything else can fail. A fault after this point is
-	// still recorded against the session that produced it; only a payload too
-	// malformed to name its session goes to the unattributed bucket.
+	// still recorded against the session that produced it; a payload too
+	// malformed to name its session, or one that names none, goes to the
+	// unattributed bucket. The second kind still gets its declaration: it is
+	// the evidence that something other than a Claude Code session is running
+	// these hooks, and the report counts it. Its post, by contrast, records
+	// no execution -- see Post.Capture for why an outcome is the one thing a
+	// sessionless payload cannot be trusted to carry.
 	if p.SessionID != "" {
 		h.sessionID = p.SessionID
 	}

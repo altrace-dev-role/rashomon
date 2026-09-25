@@ -30,7 +30,7 @@ type sessionPayload struct {
 // It never fails. A probe that cannot do its job records that it could not,
 // and returns.
 func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time) {
-	sessionID := UnattributedSession
+	sessionID := store.UnattributedSession
 	reason := ""
 	cwd := ""
 

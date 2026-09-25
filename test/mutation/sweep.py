@@ -1077,8 +1077,9 @@ m("FF the catch-up re-rules on a turn Stop checked", "internal/recap/state.go",
 # Payloads that name no session: a harness that runs Claude Code's hooks
 # without being Claude Code (per Cursor's documentation, not measured here,
 # Cursor names a conversation_id where Claude Code sends session_id).
-# The first break is the defect as it shipped; the rest are the other ways to
-# lose the fix -- the wrong code, and a pointer at a session nobody has.
+# The first break in each pair is the defect as it shipped; the rest are the
+# other ways to lose the fix -- the wrong code, a pointer at a session nobody
+# has, an unknown count read as zero, a line that stops rendering.
 m("H-107 the recap falls back to the newest run for a turn that names no session", "cmd/rashomon/main.go",
   "\t\td := digest.Sessionless(now)\n\t\tif payload.SessionID != \"\" {\n",
   "\t\td := digest.Sessionless(now)\n\t\tif newest, _, _ := st.NewestRun(); payload.SessionID == \"\" && newest != \"\" {\n\t\t\tpayload.SessionID = newest\n\t\t}\n\t\tif payload.SessionID != \"\" {\n",
@@ -1089,6 +1090,22 @@ m("H-107 a turn that names no session is reported as no_store", "internal/digest
 m("H-107 the pointer names a session a sessionless turn does not have", "internal/recap/recap.go",
   "\tif sessionID != \"\" {\n\t\tb.WriteString(\" --session \")", "\tif true {\n\t\tb.WriteString(\" --session \")",
   "TestH107_|TestLineWithNoSession")
+m("H-108 a post that names no session records its execution as ok", "internal/hook/post.go",
+  "\tif pl.SessionID == \"\" {\n\t\treturn nil\n\t}\n", "",
+  "TestH108_ACursorShaped")
+m("H-108 the report never counts the unattributed run", "internal/report/report.go",
+  "\tn := len(run.Declarations)\n\treturn &n", "\tn := 0 * len(run.Declarations)\n\treturn &n",
+  "TestH108_ACursorShaped|TestCallsWithoutSessionID_")
+m("H-108 an unreadable unattributed run is counted as zero", "internal/report/report.go",
+  "\tif err != nil {\n\t\treturn nil\n\t}\n\tn := len(run.Declarations)",
+  "\tif err != nil {\n\t\tzero := 0\n\t\treturn &zero\n\t}\n\tn := len(run.Declarations)",
+  "TestCallsWithoutSessionID_IsUnknown")
+m("H-108 the count's healthy twin vanishes", "internal/report/text.go",
+  "\tcase *n == 0:\n\t\tfmt.Fprintf(b, \"calls without a session id: %s\\n\", none)", "\tcase *n == 0:",
+  "TestH108_ACodexShaped|TestText_CallsWithoutSessionID")
+m("H-108 the count is built and never rendered", "internal/report/text.go",
+  "\twriteSessionless(&b, rep.CallsWithoutSessionID)\n", "",
+  "TestH108_ACursorShaped")
 
 # Import additions some mutants need.
 IMPORTS = {

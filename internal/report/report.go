@@ -337,6 +337,27 @@ type Report struct {
 	// names. Carried on the report itself so the renderer can print the legend
 	// and a JSON consumer does not have to infer it from the shape of a string.
 	Redacted bool `json:"redacted"`
+	// CallsWithoutSessionID counts the tool calls that arrived with no
+	// session id: the declarations under store.UnattributedSession, the one
+	// run every such payload is recorded in. It is STORE-WIDE, in a report
+	// scoped to one session as much as in the whole one, because a call that
+	// named no session is not any session's, and the reader of every session's
+	// report is the one who needs to know that something else is writing here.
+	//
+	// Counted at read time from records the store already holds -- a
+	// declaration per PreToolUse that named no session -- so it costs no new
+	// record type or field. It counts declarations, the way the bucket's own
+	// "declarations recorded" does: a call two recorders both saw counts
+	// twice there and here alike. A PostToolUse that named no session is not
+	// in this count: it records no execution (see hook.Post.Capture), and the
+	// coverage record it does leave carries no tool_use_id to count a call by.
+	//
+	// It is NOT chains.go's Chains.Unattributed. That holds a session's
+	// declarations with no PROMPT id -- a call before the first prompt, or a
+	// v1 record -- which are attributed to their session perfectly well.
+	//
+	// Null when that run could not be read: an unknown count, never zero.
+	CallsWithoutSessionID *int `json:"calls_without_session_id"`
 	// Sessions always marshals as an array, never null.
 	//
 	// null and [] are the same absence to a reader and different values to a
@@ -348,9 +369,25 @@ type Report struct {
 
 // Empty is the report for a location that has recorded nothing, built without a
 // store so that asking the question cannot create one. It is the same shape
-// Build returns for a store with no runs.
+// Build returns for a store with no runs -- including a count of zero calls
+// without a session id, which is a real zero: nothing was ever recorded at
+// this location, so no such call was either.
 func Empty(now time.Time) *Report {
-	return &Report{GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
+	none := 0
+	return &Report{GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &none, Sessions: []Session{}}
+}
+
+// callsWithoutSessionID counts the declarations in the unattributed run; see
+// Report.CallsWithoutSessionID. A run that could not be read yields nil and
+// costs only this count: failing the whole report would make a store-wide
+// aside the reason a session's own report could not be rendered.
+func callsWithoutSessionID(st *store.Store) *int {
+	run, err := st.ReadRun(store.UnattributedSession)
+	if err != nil {
+		return nil
+	}
+	n := len(run.Declarations)
+	return &n
 }
 
 // Build renders one session, or every session when sessionID is empty.
@@ -405,7 +442,11 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 
 	// Sessions starts as an empty slice rather than nil, so a store with no runs
 	// marshals the same array a store with runs does. See the field comment.
-	rep := &Report{GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
+	rep := &Report{
+		GeneratedAtUnixMS:     now.UnixMilli(),
+		CallsWithoutSessionID: callsWithoutSessionID(st),
+		Sessions:              []Session{},
+	}
 	for _, name := range names {
 		run, err := st.ReadRunDir(name)
 		if err != nil {

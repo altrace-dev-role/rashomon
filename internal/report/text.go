@@ -114,11 +114,36 @@ func Text(w io.Writer, rep *Report, opts ...TextOption) error {
 		_, err := w.Write(b.Bytes())
 		return err
 	}
+	writeSessionless(&b, rep.CallsWithoutSessionID)
 	for _, sess := range rep.Sessions {
 		writeSession(&b, sess, cfg)
 	}
 	_, err := w.Write(b.Bytes())
 	return err
+}
+
+// writeSessionless renders Report.CallsWithoutSessionID: once, above every
+// session, because it belongs to the store and not to any one of them.
+//
+// Three states, and none may read as another. The degraded line names where
+// the calls are recorded, because in a report scoped to one session that run
+// is not on screen. Its healthy twin states the zero rather than vanishing,
+// so "none arrived" does not read the same as "nothing counted them". And an
+// unreadable run is unknown, in a word, never none.
+//
+// Printed only when there is a session to print it above: with nothing
+// recorded at all, "no sessions recorded" is already the whole answer.
+func writeSessionless(b *bytes.Buffer, n *int) {
+	switch {
+	case n == nil:
+		fmt.Fprintf(b, "calls without a session id: %s (session %s could not be read)\n",
+			unknown, store.UnattributedSession)
+	case *n == 0:
+		fmt.Fprintf(b, "calls without a session id: %s\n", none)
+	default:
+		fmt.Fprintf(b, "%d call%s arrived without a session id (recorded under session %s)\n",
+			*n, plural(*n), store.UnattributedSession)
+	}
 }
 
 func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
