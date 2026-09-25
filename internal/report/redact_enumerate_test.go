@@ -176,7 +176,11 @@ func TestRedact_EveryDeclaredHostFieldIsDigested(t *testing.T) {
 		t.Errorf("a hostname survived --redact in JSON:\n%s", locate(string(body), canary))
 	}
 	var text strings.Builder
-	if err := Text(&text, red, WithChain()); err != nil {
+	// A named proxy store and the chain listing: the two options that put
+	// every host-bearing section on the page. Without the store the proxy
+	// block collapses to one line, and the canary check would pass against
+	// sections that never rendered.
+	if err := Text(&text, red, WithChain(), WithNamedProxyStore("causal.db")); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(text.String(), canary) {

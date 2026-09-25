@@ -31,11 +31,6 @@ BASE_URL="${RASHOMON_BASE_URL:-https://github.com/${REPO}/releases/download}"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 INSTALL_DIR="${RASHOMON_INSTALL_DIR:-${HOME}/.local/bin}"
 
-# The observing proxy is a separate, closed binary. It is fetched only when the
-# release actually carries it; when it does not, destination observation is
-# simply unavailable and this script says so rather than implying otherwise.
-PROXY_BINARY="altrace"
-
 say()  { printf '%s\n' "$*"; }
 warn() { printf '%s\n' "$*" >&2; }
 die()  { printf 'install: %s\n' "$*" >&2; exit 1; }
@@ -47,11 +42,9 @@ need() { command -v "$1" >/dev/null 2>&1; }
 if need curl; then
   fetch()      { curl -fsSL --proto '=https' --tlsv1.2 -o "$2" "$1"; }
   fetch_out()  { curl -fsSL --proto '=https' --tlsv1.2 "$1"; }
-  head_ok()    { curl -fsSI --proto '=https' --tlsv1.2 -o /dev/null "$1"; }
 elif need wget; then
   fetch()      { wget -qO "$2" "$1"; }
   fetch_out()  { wget -qO- "$1"; }
-  head_ok()    { wget -q --spider "$1"; }
 else
   die "needs curl or wget on PATH"
 fi
@@ -146,26 +139,10 @@ mv "$INSTALL_DIR/.rashomon.incoming" "$INSTALL_DIR/rashomon"
 
 say "  installed ${INSTALL_DIR}/rashomon"
 
-# The closed proxy binary, when the release carries one. Its absence is a normal
-# outcome, not an error: rashomon records declarations and executions without
-# it, and reports destinations as not observed rather than as none.
-PROXY_INSTALLED=no
-PROXY_ARCHIVE="${PROXY_BINARY}_${VERSION}_${OS}_${ARCH}.tar.gz"
-if head_ok "${BASE_URL}/${TAG}/${PROXY_ARCHIVE}" 2>/dev/null; then
-  fetch "${BASE_URL}/${TAG}/${PROXY_ARCHIVE}" "$TMP/$PROXY_ARCHIVE" || die "proxy download failed"
-  pwant=$(grep -E "[[:space:]]\*?${PROXY_ARCHIVE}\$" "$TMP/checksums.txt" | cut -d' ' -f1 | head -n 1) || true
-  [ -n "${pwant:-}" ] || die "checksums.txt names no entry for ${PROXY_ARCHIVE}; refusing to install it"
-  pgot=$(sha256 "$TMP/$PROXY_ARCHIVE")
-  [ "$pwant" = "$pgot" ] || die "CHECKSUM MISMATCH for ${PROXY_ARCHIVE}; nothing further was installed"
-  tar -xzf "$TMP/$PROXY_ARCHIVE" -C "$TMP"
-  if [ -f "$TMP/$PROXY_BINARY" ]; then
-    cp "$TMP/$PROXY_BINARY" "$INSTALL_DIR/.${PROXY_BINARY}.incoming"
-    chmod 0755 "$INSTALL_DIR/.${PROXY_BINARY}.incoming"
-    mv "$INSTALL_DIR/.${PROXY_BINARY}.incoming" "$INSTALL_DIR/$PROXY_BINARY"
-    say "  installed ${INSTALL_DIR}/${PROXY_BINARY} (observing proxy, sha256 verified)"
-    PROXY_INSTALLED=yes
-  fi
-fi
+# One binary, whatever else the release carries. Nothing here fetches a second
+# program: a release asset this script does not know about is not one it
+# installs, so what gets placed on this machine is decided by this file and
+# not by what happens to be attached to a tag.
 
 # ----------------------------------------------------------------- next ------
 
@@ -182,15 +159,7 @@ say "    rashomon watch          # install the recorders into your Claude Code s
 say "    claude                  # work normally"
 say "    rashomon report         # read the session back"
 say "    rashomon detach         # remove the recorders"
-
-if [ "$PROXY_INSTALLED" = yes ]; then
-  say ""
-  say "To also record network destinations:"
-  say "    rashomon run -- claude"
-else
-  say ""
-  say "Network destinations are NOT available from this install: this release"
-  say "carries no observing proxy. Declarations and executions are recorded"
-  say "normally, and every report will say destinations were not observed"
-  say "rather than implying none occurred."
-fi
+say ""
+say "Network destinations are not observed in this alpha. Declarations and"
+say "executions are recorded normally, and every report says destinations were"
+say "not observed rather than implying none occurred."

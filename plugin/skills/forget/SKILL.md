@@ -13,9 +13,9 @@ action as easy as the install.
 
 2. ASK WHICH SHAPE, and do not guess. The three forms answer different
    questions and are not interchangeable:
-   - `$RASHOMON forget --host <hostname>` — every call that NAMED that host,
-     and the host's entry in the project baseline. Use when the concern is a
-     destination: an internal service, a customer's domain.
+   - `$RASHOMON forget --host <hostname>` — every call that NAMED that host.
+     Use when the concern is a destination: an internal service, a
+     customer's domain.
    - `$RASHOMON forget --since <time>` — everything recorded at or after a
      point. Use for "I did not mean to record the last hour". Takes an
      RFC 3339 time or a duration such as `24h`, meaning that long ago.
@@ -38,11 +38,6 @@ action as easy as the install.
      emptied would be worthless as evidence, including to the user.
    - `--host` records the host as a KEYED DIGEST in that gap, not as a name,
      so the hostname does not survive in the bytes.
-   - IT DOES NOT TOUCH THE PROXY'S OWN STORE. That database belongs to a
-     different program, is opened read-only, and is hash-chained — deleting
-     a row would break the chain it exists to provide. The report suppresses
-     the destination from its view instead, which is a different thing from
-     the row being gone, and the user should hear the difference.
    - Nothing is erased from Claude Code's own transcripts. They are not this
      program's files.
 

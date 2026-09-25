@@ -1,6 +1,6 @@
 ---
 name: rashomon-status
-description: 'Say what rashomon has installed here: hook entries, store location, install ids, whether hooks are disabled. Use when the user says "rashomon status", "is rashomon running", "is the recorder on".'
+description: 'Say what rashomon has installed here: hook entries, store location, install ids, whether hooks are disabled. Use when the user says "rashomon status", "is rashomon running", "is rashomon recording", "is the recorder on".'
 ---
 
 1. Resolve the binary: `~/.local/bin/rashomon`, then `~/go/bin/rashomon`,
