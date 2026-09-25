@@ -65,6 +65,15 @@ const (
 	// store.Store.ReadRunConsistent) silently undercounting the turn that
 	// was actually affected.
 	ReasonRecordsSkipped = "records_skipped"
+	// ReasonNoSessionID: asked about a turn whose payload named no session,
+	// so there was no run to read. no_store's sibling, and like it not an
+	// error: a harness other than Claude Code can run Claude Code's hooks
+	// without sending one -- Cursor, per its documentation, names a
+	// conversation_id instead -- and the turn it just finished is one this
+	// program cannot scope. The alternative it replaced -- the newest run in
+	// the store -- is some other session's turn, and a line built from it
+	// describes that session under this one's name.
+	ReasonNoSessionID = "no_session_id"
 )
 
 // TurnCoverage is turn-scoped coverage: the probe fired at start, the entry
@@ -197,6 +206,26 @@ const readLockBudget = 5 * time.Millisecond
 // to answer "there is nothing here" without OpenExisting's caller having
 // opened anything.
 func Empty(now time.Time, sessionID, promptID string) *Digest {
+	return unread(now, sessionID, promptID, ReasonNoStore)
+}
+
+// Sessionless is the digest for a turn whose payload named no session: the
+// recap on a Stop that carried no session_id (H-107). It reads nothing --
+// there is no run to read -- and says so with ReasonNoSessionID rather than
+// ReasonNoStore, because a store does exist here and saying otherwise would
+// be false.
+//
+// It takes no store on purpose. The one thing a caller with a store and no
+// session id must not do is go looking for a session in it: the newest run is
+// whichever session wrote last, which is exactly the guess this replaces.
+func Sessionless(now time.Time) *Digest {
+	return unread(now, "", "", ReasonNoSessionID)
+}
+
+// unread is a digest of nothing, for the one reason nothing could be read.
+// Unknown, and never a clean zero: Recorded is 0 because nothing was looked
+// at, and the reason is what says so.
+func unread(now time.Time, sessionID, promptID, reason string) *Digest {
 	d := &Digest{
 		SchemaVersion:     SchemaVersion,
 		GeneratedAtUnixMS: now.UnixMilli(),
@@ -204,7 +233,7 @@ func Empty(now time.Time, sessionID, promptID string) *Digest {
 		PromptID:          promptID,
 		Coverage: TurnCoverage{
 			State:            store.StateUnverified,
-			Reasons:          []string{ReasonNoStore},
+			Reasons:          []string{reason},
 			HookEntryAtStart: store.EntryUnknown,
 		},
 		Declarations: Declarations{
