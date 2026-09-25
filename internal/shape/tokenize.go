@@ -91,7 +91,7 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 // tokenizeShape splits a command line as tokenize does and reports, per
 // token, what the text cannot: see token.
 func tokenizeShape(s string) ([]token, error) {
-	return lex(s, false)
+	return lex(s, false, nil)
 }
 
 // tokenizeProgram is tokenizeShape for the program search, which reads one
@@ -103,10 +103,19 @@ func tokenizeShape(s string) ([]token, error) {
 // reading: a count that moved would count the same command differently
 // depending on which build recorded it.
 //
+// It also reads a $( ) inside double quotes as the shell does, as a context
+// in which quotes nest (see comsubEnd): "$(echo "a;b")" is one word to the
+// shell, and to tokenizeShape a string that ends at the first inner quote.
+//
+// It is handed the line as written and removes every backslash-newline itself
+// (joinContinuations), keeping where it removed each, because a here-document
+// or a quote inside such a $( ) cannot be followed without: see comsubEnd.
+//
 // Where it cannot tell how the shell reads on, it stops with errUncertain
 // rather than guess: see lex.
 func tokenizeProgram(s string) ([]token, error) {
-	return lex(s, true)
+	j, joins := joinContinuations(s)
+	return lex(j, true, joins)
 }
 
 // lex is tokenizeShape and tokenizeProgram; program selects the second's
@@ -117,7 +126,11 @@ func tokenizeProgram(s string) ([]token, error) {
 //     to both. The two readings can end the word in different places.
 //   - an unterminated quote on a line that already held an expansion lex
 //     does not parse, whose quoting it may have misread.
-func lex(s string, program bool) ([]token, error) {
+//   - a $( ) inside double quotes whose close comsubEnd cannot find for
+//     certain, or whose $ is the second of an even run, as in "$$(": bash
+//     reads $$ and then a (, and the $( ) only a misreading. joins: the
+//     offsets at which backslash-newlines were removed from s.
+func lex(s string, program bool, joins []int) ([]token, error) {
 	var (
 		toks    []token
 		cur     strings.Builder
@@ -235,7 +248,14 @@ func lex(s string, program bool) ([]token, error) {
 			begin()
 			markQuoted()
 			i++
+			// dq: how many $ run together up to s[i] inside the quotes.
+			dq := 0
 			for ; i < len(s); i++ {
+				if s[i] == '$' {
+					dq++
+				} else {
+					dq = 0
+				}
 				if s[i] == '\\' && i+1 < len(s) {
 					switch n := s[i+1]; n {
 					case '"', '\\', '$', '`':
@@ -252,6 +272,21 @@ func lex(s string, program bool) ([]token, error) {
 				if s[i] == '"' {
 					closed = true
 					break
+				}
+				if program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {
+					// A context of its own, in which quotes nest: the
+					// string goes on after the ) that closes it.
+					end := -1
+					if dq%2 == 1 {
+						end = joined{s, joins}.substEnd(i, 0)
+					}
+					if end < 0 {
+						return toks, errUncertain
+					}
+					opaque = true
+					cur.WriteString(s[i : end+1])
+					i = end
+					continue
 				}
 				if expands(i, true) {
 					opaque = true

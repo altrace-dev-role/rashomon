@@ -173,8 +173,8 @@ m("H-13 the tokenizer never marks an expansion opaque", "internal/shape/tokenize
   "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\topaque = true\n\t\t\t}",
   "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\t_ = opaque\n\t\t\t}", "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 backslash-newlines are not joined before the program search", "internal/shape/shape.go",
-  "\tif !strings.Contains(s, \"\\\\\\n\") {\n\t\treturn s\n\t}", "\tif true {\n\t\treturn s\n\t}",
-  "TestNoCorpusLineLeaksIntoProgram")
+  "\tif !strings.Contains(s, \"\\\\\\n\") {\n\t\treturn s, nil\n\t}", "\tif true {\n\t\treturn s, nil\n\t}",
+  "TestNoCorpusLineLeaksIntoProgram|TestTokenizeProgram")
 m("H-13 a paren where a redirect target belongs is read as a subshell", "internal/shape/shape.go",
   "\tif toks[i+1].meta {\n\t\t// A paren where the target belongs",
   "\tif false && toks[i+1].meta {\n\t\t// A paren where the target belongs",
@@ -315,6 +315,69 @@ m("H-13 the tokenizer never counts an unquoted backtick", "internal/shape/tokeni
   "\t\t\tif c == '`' {\n\t\t\t\tticks++\n\t\t\t}\n", "", "TestTokenizeTicks|" + PROG)
 m("H-13 the tokenizer never counts a backtick inside double quotes", "internal/shape/tokenize.go",
   "\t\t\t\tif s[i] == '`' {\n\t\t\t\t\tticks++\n\t\t\t\t}\n", "", "TestTokenizeTicks")
+# Judged by the corpus alone, where the two lines of the PR #29 review are the
+# only ones this break reopens: "$(echo "a;b")" ends at its first inner quote
+# again, and the ; inside it ends the search for the () after the command word.
+m("H-13 a $( ) inside double quotes is not a context in which quotes nest", "internal/shape/tokenize.go",
+  "\t\t\t\tif program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {",
+  "\t\t\t\tif false && program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {", "TestNoCorpusLineLeaksIntoProgram")
+# The review of that change: each guard comsubEnd and its helpers keep against
+# a reading the shell may not share. TPROG adds the tokenizer's own tests.
+TPROG = "TestTokenizeProgram|" + PROG
+C = "internal/shape/comsub.go"
+m("H-13 a paren inside $[ ] counts as a group", C,
+  "\t\tcase '(', ')', '{', '}', '\\'', '\"', '`', '\\\\', '\\n':", "\t\tcase '{', '}', '\\'', '\"', '`', '\\\\', '\\n':", TPROG)
+m("H-13 a nested [ ] ends a $[ ]", C, "\t\tcase '[':\n\t\t\tdepth++\n", "", TPROG)
+m("H-13 $[ is not read as arithmetic", C, "\t\treturn bracketEnd(r.s, i+2)", "\t\treturn i", TPROG)
+m("H-13 an even run of $ opens an expansion in a substitution", C,
+  "\t\tif dollars%2 == 0 {\n\t\t\treturn -1\n\t\t}", "\t\tif false {\n\t\t\treturn -1\n\t\t}", TPROG)
+m("H-13 \"$$(\" opens a substitution", "internal/shape/tokenize.go",
+  "\t\t\t\t\tif dq%2 == 1 {", "\t\t\t\t\tif true {", TPROG)
+m("H-13 a $' inside double quotes in a substitution is a quote", C,
+  "\t\t\t\tcontinue // no quote inside double quotes\n", "", TPROG)
+m("H-13 a nested $( ) is counted as parens", C, "\t\treturn r.substEnd(i, nest)", "\t\treturn i", TPROG)
+m("H-13 a backslash-newline the joining left is read past in a substitution", C,
+  "\t\t\tif i+1 >= len(s) || r.continuesAt(i) {", "\t\t\tif i+1 >= len(s) {", TPROG)
+m("H-13 a backslash-newline the joining left is read past in its double quotes", C,
+  "\t\t\tif r.continuesAt(i) {", "\t\t\tif false {", TPROG)
+m("H-13 the joining's offsets are not kept", "internal/shape/shape.go",
+  "\t\t\t\tjoins = append(joins, b.Len())\n", "", TPROG)
+m("H-13 a quoted span joined across a newline opens a here-document's body", C,
+  " || r.joinedIn(from, to)))", "))", TPROG)
+m("H-13 an unquoted here-document's body is read across backslash-newlines", C,
+  "\t\t\tif !d.quoted && (r.joinedIn(i-1, e)", "\t\t\tif false && (r.joinedIn(i-1, e)", TPROG)
+m("H-13 a quoted here-document's line as written may begin with its delimiter", C,
+  "\t\tif strings.HasPrefix(line(r.s[from:p]), d.delim) {", "\t\tif false {", TPROG)
+m("H-13 a quoted here-document's joined line is read as one line", C,
+  "\t\tfrom = p\n", "\t\t_ = p\n", TPROG)
+m("H-13 a quoted delimiter leaves its body unquoted", C,
+  "\t\t\td.quoted = true\n\t\t\ti += j + 1", "\t\t\ti += j + 1", TPROG)
+m("H-13 case is a keyword wherever it stands", C,
+  "\t\tcase c == 'c' && cmd.begins() && isCase(s, i, body):", "\t\tcase c == 'c' && isCase(s, i, body):", TPROG)
+m("H-13 a command's first word never names it", C, "\t\tp.named = true", "\t\tp.named = false", TPROG)
+m("H-13 a separator does not begin a command", C,
+  "\tif strings.IndexByte(\";&|()\\n\", c) >= 0 {", "\tif false {", TPROG)
+m("H-13 zsh's } and ]] do not begin a command", C, "\tcase w == \"}\" || w == \"]]\":", "\tcase false:", TPROG)
+m("H-13 time's options name the command", C, "\t\tp.prefix = true", "\t\tp.prefix = false", TPROG)
+m("H-13 then names the command", C, "\"select\": true, \"then\": true,", "\"select\": true,", TPROG)
+m("H-13 an assignment names the command", C, "commandKeywords[w], strings.IndexByte(w, '=') >= 0, ", "commandKeywords[w], ", TPROG)
+m("H-13 a redirect's target names the command", C,
+  "\t\tcase '<', '>':\n\t\t\treturn true", "\t\tcase '<', '>':\n\t\t\treturn false", TPROG)
+m("H-13 a redirect's fd names the command", C,
+  "\tif i+n < len(s) && (s[i+n] == '<' || s[i+n] == '>') {", "\tif false {", TPROG)
+m("H-13 $(( is read as a $( ) with a group", C,
+  "\tif i+2 < len(r.s) && r.s[i+2] == '(' {", "\tif false {", TPROG)
+m("H-13 $(( whose ( closes alone is read as arithmetic", C,
+  "\t\t\tif i+1 < len(s) && s[i+1] == ')' {\n\t\t\t\treturn i + 1\n\t\t\t}\n\t\t\treturn -1", "\t\t\treturn i + 1", TPROG)
+m("H-13 arithmetic holds what only a command can", C,
+  "\t\tcase '\\'', '\"', '`', '\\\\', '\\n', ';':\n\t\t\treturn -1\n", "\t\tcase '\\'', '\"', '`', '\\\\', '\\n', ';':\n", TPROG)
+m("H-13 a # after a blank in arithmetic is read past", C,
+  "\t\t\tif i == body || strings.IndexByte(wordBreak, s[i-1]) >= 0 {\n\t\t\t\treturn -1", "\t\t\tif false {\n\t\t\t\treturn -1", TPROG)
+m("H-13 case in arithmetic is read past", C, "\t\t\tif isCase(s, i, body) {", "\t\t\tif false {", TPROG)
+m("H-13 a run of $ in arithmetic is not counted", C, "\t\t\tdollars++\n\t\t\tend := r.dollarOpens(i, dollars, nest+1)", "\t\t\tdollars = 1\n\t\t\tend := r.dollarOpens(i, dollars, nest+1)", TPROG)
+m("H-13 an expansion in arithmetic is read as parens", C,
+  "\t\t\tend := r.dollarOpens(i, dollars, nest+1)\n\t\t\tif end < 0 {\n\t\t\t\treturn -1\n\t\t\t}\n\t\t\ti = end",
+  "\t\t\tend := i\n\t\t\tif end < 0 {\n\t\t\t\treturn -1\n\t\t\t}\n\t\t\ti = end", TPROG)
 m("H-13 the function-definition scan reads past a redirect with no target", "internal/shape/shape.go",
   "\t\t\tif noTarget(toks, end) {", "\t\t\tif false && noTarget(toks, end) {", PROG)
 m("H-13 the program search reads past a redirect with no target", "internal/shape/shape.go",
@@ -349,7 +412,7 @@ m("H-13 an empty word is named `.`", "internal/shape/shape.go",
 m("H-14 argc is counted over the program search's reading of $'...'", "internal/shape/shape.go",
   "\tshaped, err := tokenizeShape(cmd)", "\tshaped, err := tokenizeProgram(cmd)", "TestArgc")
 m("H-13 the program search reads $'...' as argc does", "internal/shape/shape.go",
-  "\tpshaped, perr := tokenizeProgram(joinContinuations(cmd))", "\tpshaped, perr := tokenizeShape(joinContinuations(cmd))", PROG)
+  "\tpshaped, perr := tokenizeProgram(cmd)", "\tpshaped, perr := tokenizeShape(cmd)", PROG)
 m("H-13 any earlier $ opens a $'...' string", "internal/shape/tokenize.go",
   "\t\t\tif program && dollarAt >= 0 && dollarAt == i-1 {", "\t\t\tif program && dollarAt >= 0 {", "TestTokenizeProgramReadsANSICQuotes")
 m("H-13 a quote at the start of the line is read as $'...'", "internal/shape/tokenize.go",

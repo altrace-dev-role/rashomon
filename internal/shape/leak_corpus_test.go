@@ -332,6 +332,16 @@ var leakCorpus = []string{
 	"deploy_acme ${ x; y; } () { ls; }",
 	"deploy_acme \"$(echo '\"')\" () { ls; }",
 	"deploy_acme $(cat <<EOF\n)\nEOF\n) () { ls; }",
+	// A fifth, on PR #29: a $( ) inside double quotes whose own quotes the
+	// tokenizer took for the end of the outer string, so a ; inside them
+	// ended the search for the () after the command word.
+	"hunter2 \"$(echo \"a;b\")\" () { ls; }",
+	"hunter2 >\"$(echo \";\")\" x () { ls; }",
+	// And its adversarial review: a paren inside $[ ], a ' inside a nested
+	// "..." that stopped the joining of continuations, and "$$(".
+	"hunter2 \"$(: $[ ( ] )\" () { echo \")\"; }; x \"\"",
+	"hunter2 \"$(: \"'\"; ca\\\nse x in a) : \"x;y\";; esac)\" () { ls; }",
+	"hunter2 \"$$(x\"'\")\" ; \"'\"\" () { ls; }",
 	// A redirect whose target is another redirect or a comment, and paths
 	// ending in a directory, or a jobspec, in command position.
 	"> > /home/alice/secret.csv SECRETARG",

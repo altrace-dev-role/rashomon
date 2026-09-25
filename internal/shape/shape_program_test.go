@@ -267,6 +267,73 @@ func TestProgramIsAProgram(t *testing.T) {
 		{name: "an unterminated quote after an expansion's word", cmd: "deploy_acme \"$(echo \")'\")\" () { ls; }"},
 		{name: "a trailing backslash after an expansion", cmd: "deploy_acme \"$(echo '\"')\" () { ls; } \"$(echo '\"')\" \\"},
 
+		// A $( ) inside double quotes is one context of its own, in which
+		// quotes nest: "$(echo "a;b")" is one word, and its ; ends nothing.
+		// Read to the first inner quote, the outer string ended there and
+		// the ; looked like a separator, so the () after it went unseen.
+		{name: "a ; inside a quoted $( )'s own quotes", cmd: `hunter2 "$(echo "a;b")" () { ls; }`},
+		{name: "a ; inside a quoted $( ) in a redirect target", cmd: `hunter2 >"$(echo ";")" x () { ls; }`},
+		{name: "a ; inside backticks' own quotes", cmd: "hunter2 `echo \"a;b\"` () { ls; }"},
+		{name: "a bare function definition", cmd: "hunter2 () { ls; }"},
+		{name: "a newline inside a quoted $( )'s own quotes", cmd: "hunter2 \"$(echo \"a\nb\")\" () { ls; }"},
+		{name: "a quoted $( ) nested in a quoted $( )", cmd: `hunter2 "$(echo "$(echo "a;b")")" () { ls; }`},
+		// Where the end of the $( ) cannot be told -- a case pattern's ), a
+		// comment, a here-document whose delimiter line is not one, a ${
+		// hiding a paren -- nothing after it is certain.
+		{name: "a case statement inside a quoted $( )", cmd: `hunter2 "$(case x in a) echo "a;b";; esac)" () { ls; }`},
+		{name: "a comment inside a quoted $( )", cmd: "hunter2 \"$(echo \"a;b\" # )\n)\" () { ls; }"},
+		{name: "a here-document delimiter glued to the close", cmd: "hunter2 \"$(cat <<EOF\na;b\nEOF)\" () { ls; }"},
+		{name: "a paren inside ${ } inside a quoted $( )", cmd: `hunter2 "$(echo ${x#)} "a;b")" () { ls; }`},
+		{name: "a quoted $( ) that never closes", cmd: `hunter2 "$(echo "a;b" () { ls; }`},
+		// A backslash-newline is literal in a quoted here-document's body,
+		// and joining it made EO\<newline>F the delimiter line: the body's
+		// "a;b" was then read as code, and its ; as a separator.
+		{name: "a continuation inside a quoted $( )'s here-document", cmd: "hunter2 \"$(cat <<'EOF'\nEO\\\nF\n)\n\"a;b\"\nEOF\n)\" () { ls; }"},
+		{name: "a continuation after a quoted $( )", cmd: "cd \"$(git rev-parse --show-toplevel)\" && \\\nmake", want: "cd"},
+		// And every line that ran a command before still names it.
+		{name: "a quoted $( ) with its own quotes", cmd: `echo "$(date "+%Y")" done`, want: "echo"},
+		{name: "a separator after a quoted $( )", cmd: `echo "$(date "+%Y")"; f () { :; }`, want: "echo"},
+		{name: "the commit-message here-document", cmd: "git commit -m \"$(cat <<'EOF'\nfix(shape): it's \"done\" (mostly\n\n# a ) and a ; case in point\nEOF\n)\"", want: "git"},
+		{name: "a quoted $( ) then &&", cmd: `cd "$(git rev-parse --show-toplevel)" && make`, want: "cd"},
+		{name: "a closed ${ } inside a quoted $( )", cmd: `cd "$(dirname "${BASH_SOURCE[0]}")" && pwd`, want: "cd"},
+		// $[ ] is arithmetic, a pair of its own: a paren inside it is no
+		// group, and counting one moves the close.
+		{name: "a ( inside $[ ] inside a quoted $( )", cmd: `hunter2 "$(: $[ ( ] )" () { echo ")"; }; x ""`},
+		{name: "a ) inside $[ ] inside a quoted $( )", cmd: `hunter2 "$(: $[ ) ] "a;b")" () { ls; }`},
+		// A ' inside a nested "..." is no quote to the shell; read as one, it
+		// stopped the joining of every backslash-newline after it, and the
+		// case, << or ${ they split went unseen.
+		{name: "a split case after a nested \"'\"", cmd: "hunter2 \"$(: \"'\"; ca\\\nse x in a) : \"x;y\";; esac)\" () { ls; }"},
+		{name: "a split ${ after a nested \"'\"", cmd: "hunter2 \"$(: \"'\" $\\\n{x#)} \"a;b\")\" () { ls; }"},
+		{name: "a split << after a nested \"'\"", cmd: "hunter2 \"$(echo \"'\"; cat <\\\n<EOF\n)\"a;b\"\nEOF\n)\" () { ls; }"},
+		{name: "a continuation inside a single-quoted string in a quoted $( )", cmd: "hunter2 \"$(echo \"x\" 'a\\\nb' \"a;b\")\" () { ls; }"},
+		// Inside double quotes an even run of $ is $$ and then a byte: "$$("
+		// opens nothing in bash, and a substitution only by misreading.
+		{name: "$$( inside double quotes", cmd: `hunter2 "$$(x"'")" ; "'"" () { ls; }`},
+		{name: "$$( inside a quoted $( )", cmd: `hunter2 "$(: "$$(x")" "a;b")" () { ls; }`},
+		// Arithmetic, where << is a shift and a ( no group, is read as such
+		// only where it cannot be a subshell instead.
+		{name: "a shift inside a quoted $(( ))", cmd: `echo "$((1<<3))"`, want: "echo"},
+		{name: "a shift inside $(( )) inside a quoted $( )", cmd: `echo "$(echo $(( 1 << n )))" done`, want: "echo"},
+		{name: "a ${ } inside a quoted $(( ))", cmd: `echo "$(( ${#arr[@]} - 1 ))"`, want: "echo"},
+		{name: "a quoted $( ) inside a quoted $(( ))", cmd: `echo "$(( ( $(date -d '10:00' '+%s') - $(date '+%s') ) / 60 ))"`, want: "echo"},
+		{name: "a subshell inside a quoted $( (", cmd: `hunter2 "$((echo "a;b") )" () { ls; }`},
+		{name: "a ; inside a quoted $(( ))", cmd: `hunter2 "$((1;"a;b"))" () { ls; }`},
+		// The word case is a keyword only where a command begins.
+		{name: "case as an argument inside a quoted $( )", cmd: `echo "$(grep -i case file)"`, want: "echo"},
+		{name: "case after an arithmetic expansion", cmd: `echo "$(echo $((1))case)"`, want: "echo"},
+		{name: "case after a separator inside a quoted $( )", cmd: `hunter2 "$(grep x; case x in a) "a;b";; esac)" () { ls; }`},
+		{name: "case after a keyword inside a quoted $( )", cmd: `hunter2 "$(if :; then case x in a) "a;b";; esac; fi)" () { ls; }`},
+		{name: "case after an assignment inside a quoted $( )", cmd: `hunter2 "$(x=1 case x in a) "a;b";; esac)" () { ls; }`},
+		{name: "case after time -p inside a quoted $( )", cmd: `hunter2 "$(time -p case x in a) "a;b";; esac)" () { ls; }`},
+		{name: "case after a redirect inside a quoted $( )", cmd: `hunter2 "$(>f case x in a) "a;b";; esac)" () { ls; }`},
+		// A backslash-newline outside a here-document says nothing about its
+		// body.
+		{name: "a continuation after a quoted here-document", cmd: "git commit -m \"$(cat <<'EOF'\nfix\nEOF\n)\" && \\\ngit push", want: "git"},
+		{name: "a continuation before a quoted here-document", cmd: "git add -A && \\\ngit commit -m \"$(cat <<'EOF'\nfix\nEOF\n)\"", want: "git"},
+		{name: "a continuation on the here-document's command line", cmd: "git commit -m \"$(cat <<'EOF' | \\\ntr a b\nfix\nEOF\n)\"", want: "git"},
+		{name: "a continuation inside an unquoted here-document", cmd: "hunter2 \"$(cat <<EOF\nEO\\\nF\n)\n\"a;b\"\nEOF\n)\" () { ls; }"},
+
 		// A redirect split from a piece of its operator, or with no word
 		// where its target belongs, is a syntax error to both shells, and a
 		// line holding one runs nothing -- wherever the search meets it.

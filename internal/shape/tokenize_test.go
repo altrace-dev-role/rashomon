@@ -164,8 +164,72 @@ func TestTokenizeProgramStopsWhereItsReadingIsUncertain(t *testing.T) {
 		count     error
 		reasoning string
 	}{
-		{`f "$(echo '"')" () { ls; }`, []string{"f"}, errUncertain, errUnterminated,
-			"the quote may be inside the $( ), where the shell reads it"},
+		{"f \"$(echo '\"' ) g", []string{"f"}, errUncertain, errUnterminated,
+			"a quoted $( ) that never closes"},
+		{`f "$(case x in a) :;; esac)" g`, []string{"f"}, errUncertain, nil,
+			"a case pattern's ) inside a quoted $( ) closes nothing"},
+		{"f \"$(: # )\n)\" g", []string{"f"}, errUncertain, nil,
+			"a comment inside a quoted $( ) may hide its close"},
+		{"f \"$(cat <<EOF)\" g", []string{"f"}, errUncertain, nil,
+			"a here-document whose body never began"},
+		{"f \"$(cat <<EOF\nx\nEOF)\" g", []string{"f"}, errUncertain, nil,
+			"a delimiter line that is not only the delimiter"},
+		{`f "$(echo ${x#)})" g`, []string{"f"}, errUncertain, nil,
+			"a ${ } inside a quoted $( ) that may hide a paren"},
+		{`f "$(: "$$(")")" g`, []string{"f"}, errUncertain, errUnterminated,
+			"an even run of $ before ( inside double quotes is $$ and a (, to bash"},
+		{`f "$$(: ")")" g`, []string{"f"}, errUncertain, nil,
+			"the same in the outer string"},
+		{`f "$(: $$(x))" g`, []string{"f"}, errUncertain, nil,
+			"and inside the substitution"},
+		{`f "$(: $[ ( ] ))" g`, []string{"f"}, errUncertain, nil,
+			"a paren inside $[ ] is no group, and may not be one to every shell"},
+		{"f \"$(: \"x\"; cat <<EOF 'a\\\nb'\nEOF\n)\" g", []string{"f"}, errUncertain, nil,
+			"a backslash-newline joined inside what the shell reads as a single-quoted string"},
+		{"f \"$(: \"'\"; ca\\\nse x in a) :;; esac)\" g", []string{"f"}, errUncertain, errUnterminated,
+			"a backslash-newline the joining left, read as a single-quoted string"},
+		{"f \"$(: \"'\" \"x\\\ny\")\" g", []string{"f"}, errUncertain, errUnterminated,
+			"the same inside a nested double-quoted string"},
+		{`f "$((a) (b))" g`, []string{"f"}, errUncertain, nil,
+			"$(( whose first ) is not followed by another is a subshell, not arithmetic"},
+		{`f "$((1;2))" g`, []string{"f"}, errUncertain, nil,
+			"a ; inside $(( )) is a command, not arithmetic"},
+		{`f "$(grep x; case x in a) :;; esac)" g`, []string{"f"}, errUncertain, nil,
+			"case where a command begins"},
+		{`f "$({ grep x } case x in a) :;; esac)" g`, []string{"f"}, errUncertain, nil,
+			"case after a } that ends a group in zsh wherever it stands"},
+		{`f "$([[ -n x ]] case x in a) :;; esac)" g`, []string{"f"}, errUncertain, nil,
+			"case after the ]] of zsh's short if, where a command begins"},
+		{`f "$(2>f case x in a) :;; esac)" g`, []string{"f"}, errUncertain, nil,
+			"case after a redirect's fd and target"},
+		{`f "$(( #))" g`, []string{"f"}, errUncertain, nil,
+			"a # after a blank inside $(( )) would begin a comment in a $( ( )"},
+		{`f "$((case x in a)) :;; esac)" g`, []string{"f"}, errUncertain, nil,
+			"case inside $(( )) would begin a command in a $( ( )"},
+		{"f \"$((1\n))\" g", []string{"f"}, errUncertain, nil,
+			"a newline inside $(( ))"},
+		{`f "$(("1"))" g`, []string{"f"}, errUncertain, nil,
+			"a quote inside $(( ))"},
+		{"f \"$((`echo 1`))\" g", []string{"f"}, errUncertain, nil,
+			"a backtick inside $(( ))"},
+		{`f "$((\1))" g`, []string{"f"}, errUncertain, nil,
+			"a backslash inside $(( ))"},
+		{`f "$(( ${x#)} ))" g`, []string{"f"}, errUncertain, nil,
+			"a ${ } hiding a paren inside $(( ))"},
+		{`f "$(: $[ { ] ))" g`, []string{"f"}, errUncertain, nil,
+			"a brace inside $[ ]"},
+		{`f "$(: $[a[1] ( ] ))" g`, []string{"f"}, errUncertain, nil,
+			"a paren inside $[ ] after a nested [ ]"},
+		{`f "$(( ${x#(} ) ))" g`, []string{"f"}, errUncertain, nil,
+			"a ${ } hiding a ( inside $(( ))"},
+		{`f "$(( $$(x ")") ))" g`, []string{"f"}, errUncertain, nil,
+			"an even run of $ before ( inside $(( ))"},
+		{`f "$(: "$[ " ]")" g`, []string{"f"}, errUncertain, errUnterminated,
+			"a quote inside $[ ] inside a nested double-quoted string"},
+		{"f \"$(cat <<'EOF'\nEOF \\\nEOF\n)\" g", []string{"f"}, errUncertain, nil,
+			"a body line, as written, that begins with the delimiter and is not it"},
+		{"f \"$(cat <<EOF\na \\\nb\nEOF\n)\" g", []string{"f"}, errUncertain, nil,
+			"a backslash-newline inside an unquoted here-document's body"},
 		{`f "$(a)" 'b () { ls; }`, []string{"f", "$(a)"}, errUncertain, errUnterminated,
 			"an expansion in an earlier word"},
 		{`f "$(a)" \`, []string{"f", "$(a)"}, errUncertain, errUnterminated,
@@ -185,6 +249,87 @@ func TestTokenizeProgramStopsWhereItsReadingIsUncertain(t *testing.T) {
 		}
 		if _, err := tokenizeShape(tc.in); err != tc.count {
 			t.Errorf("%q: counting tokens: error is %v, want %v", tc.in, err, tc.count)
+		}
+	}
+}
+
+// TestTokenizeProgramNestsQuotesInsideDoubleQuotedSubstitution: for the
+// program search, a $( ) inside double quotes is a context of its own, in which
+// quotes nest and parens count by depth until the ) that closes it. So
+// "$(echo "a;b c")" is one word, as it is to the shell, and not a string that
+// ends at the first inner quote with a ; and a blank outside it. The count
+// keeps the reading it has always had.
+func TestTokenizeProgramNestsQuotesInsideDoubleQuotedSubstitution(t *testing.T) {
+	for _, tc := range []struct {
+		in    string
+		want  []string
+		count []string
+	}{
+		{`f "$(echo "a;b c")" z`,
+			[]string{"f", `$(echo "a;b c")`, "z"},
+			[]string{"f", "$(echo a", ";", "b", "c)", "z"}},
+		{`f "$(echo '"')" () { ls; }`,
+			[]string{"f", `$(echo '"')`, "(", ")", "{", "ls", ";", "}"}, nil},
+		{`f "x$(a "$(b ")")" c)y" z`,
+			[]string{"f", `x$(a "$(b ")")" c)y`, "z"}, nil},
+		{`f "$(echo $((1+(2))) ")")" z`,
+			[]string{"f", `$(echo $((1+(2))) ")")`, "z"}, nil},
+		{"f \"$(echo `echo \")\"`)\" z",
+			[]string{"f", "$(echo `echo \")\"`)", "z"}, nil},
+		{`f "$(dirname "${BASH_SOURCE[0]}")" z`,
+			[]string{"f", `$(dirname "${BASH_SOURCE[0]}")`, "z"}, nil},
+		{"f \"$(cat <<'EOF'\nit's (\" EOF\nEOF\n)\" z",
+			[]string{"f", "$(cat <<'EOF'\nit's (\" EOF\nEOF\n)", "z"}, nil},
+		{"f \"$(cat <<-EOF\n\t)\n\tEOF\n)\" z",
+			[]string{"f", "$(cat <<-EOF\n\t)\n\tEOF\n)", "z"}, nil},
+		{`f "$((1<<3))" z`,
+			[]string{"f", `$((1<<3))`, "z"}, nil},
+		{`f "$(echo $((1<<(2))) ")")" z`,
+			[]string{"f", `$(echo $((1<<(2))) ")")`, "z"}, nil},
+		{`f "$(grep -i case file)" z`,
+			[]string{"f", `$(grep -i case file)`, "z"}, nil},
+		{`f "$(for x in case; do :; done)" z`,
+			[]string{"f", `$(for x in case; do :; done)`, "z"}, nil},
+		{`f "$(: "$$'")" z`,
+			[]string{"f", `$(: "$$'")`, "z"}, nil},
+		{`f "$(( a[1] + $[b[2]] ))" z`,
+			[]string{"f", `$(( a[1] + $[b[2]] ))`, "z"}, nil},
+		{`f "$(( 2#101 ))" z`,
+			[]string{"f", `$(( 2#101 ))`, "z"}, nil},
+		{`f "$(( $(date -d 'a)' +%s) - 0 ))" z`,
+			[]string{"f", `$(( $(date -d 'a)' +%s) - 0 ))`, "z"}, nil},
+		// As written, x\ and EOF are two lines, and the second ends the
+		// quoted here-document; joined, xEOF would not have.
+		{"f \"$(cat <<'EOF'\nx\\\nEOF\n)\n\"a;b\"\nEOF\n)\" g",
+			[]string{"f", "$(cat <<'EOF'\nxEOF\n)\na", ";", "b\nEOF\n)", "g"}, nil},
+		{"f \"$(cat <<'EOF'\na \\\nb\nEOF\n)\" z",
+			[]string{"f", "$(cat <<'EOF'\na b\nEOF\n)", "z"}, nil},
+	} {
+		toks, err := tokenizeProgram(tc.in)
+		if err != nil {
+			t.Errorf("%q: program search: %v", tc.in, err)
+		}
+		got := make([]string, len(toks))
+		for i, tok := range toks {
+			got[i] = tok.text
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%q: program search reads %q, want %q", tc.in, got, tc.want)
+		}
+		if len(toks) > 1 && (!toks[1].opaque || toks[1].ticks != 0) {
+			t.Errorf("%q: the substitution's word is opaque %v with %d live backticks, want opaque and none",
+				tc.in, toks[1].opaque, toks[1].ticks)
+		}
+		if tc.count == nil {
+			continue
+		}
+		ct, _ := tokenizeShape(tc.in)
+		cgot := make([]string, len(ct))
+		for i, tok := range ct {
+			cgot[i] = tok.text
+		}
+		if !slices.Equal(cgot, tc.count) {
+			t.Errorf("%q: counting tokens reads %q, want %q as it always has", tc.in, cgot, tc.count)
 		}
 	}
 }

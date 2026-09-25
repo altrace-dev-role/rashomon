@@ -82,9 +82,9 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	// backslash-newline removed, which the shell does before it splits words
 	// -- so `<\<newline><EOF` is a here-document and `$\<newline>{x}` an
 	// expansion -- and with a $'...' string read to its first unescaped quote
-	// (tokenizeProgram). argc is counted over the tokens above, as it always
-	// was.
-	pshaped, perr := tokenizeProgram(joinContinuations(cmd))
+	// (tokenizeProgram), which does the joining. argc is counted over the
+	// tokens above, as it always was.
+	pshaped, perr := tokenizeProgram(cmd)
 
 	if i, ok := programToken(pshaped, perr == errUncertain); ok && !controlByte(cmd) {
 		prog := path.Base(pshaped[i].text)
@@ -530,12 +530,18 @@ func inGroup(open []byte, t token) []byte {
 
 // joinContinuations removes every backslash-newline the shell removes before
 // it splits a line into words: outside quotes and inside double quotes, but
-// not inside single quotes, where a backslash is literal.
-func joinContinuations(s string) string {
+// not inside single quotes, where a backslash is literal. It returns the
+// offsets in the result at which it removed one, ascending: the byte there is
+// the one that followed it. Its quote tracking is flat, which is right outside
+// a $( ) and may be wrong inside one; see comsubEnd.
+func joinContinuations(s string) (string, []int) {
 	if !strings.Contains(s, "\\\n") {
-		return s
+		return s, nil
 	}
-	var b strings.Builder
+	var (
+		b     strings.Builder
+		joins []int
+	)
 	inSingle, inDouble := false, false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
@@ -546,6 +552,7 @@ func joinContinuations(s string) string {
 			}
 		case c == '\\' && i+1 < len(s):
 			if s[i+1] == '\n' {
+				joins = append(joins, b.Len())
 				i++
 				continue
 			}
@@ -559,7 +566,7 @@ func joinContinuations(s string) string {
 		}
 		b.WriteByte(c)
 	}
-	return b.String()
+	return b.String(), joins
 }
 
 // isComment reports whether a word begins a comment: an unquoted `#` at its
