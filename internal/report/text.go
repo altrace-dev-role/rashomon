@@ -387,6 +387,11 @@ func list(items []string) string {
 		strings.Join(items[:shown], ", "), len(items)-shown, len(items))
 }
 
+// unexecuted renders the declarations no execution answers, each with the
+// permission mode it was declared in -- through list(), for its bound. Every
+// call that arrives without a session id lands here, because its execution
+// is never recorded, so this is the line that grows with another harness's
+// whole working day. The JSON carries every id.
 func unexecuted(items []Unexecuted) string {
 	if len(items) == 0 {
 		return none
@@ -395,7 +400,7 @@ func unexecuted(items []Unexecuted) string {
 	for i, u := range items {
 		out[i] = u.ToolUseID + " (" + orUnknown(u.PermissionMode) + ")"
 	}
-	return strings.Join(out, ", ")
+	return list(out)
 }
 
 func byName(counts map[string]int) string {

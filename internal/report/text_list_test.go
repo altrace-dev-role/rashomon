@@ -75,6 +75,36 @@ func TestListIsBounded(t *testing.T) {
 	}
 }
 
+// TestUnexecutedIsBounded: the without-execution line goes through list(),
+// like every other list this renderer prints. It joined every id, and since
+// a call that arrives without a session id never records an execution, every
+// one of those is on this line: three hundred of them made one line of about
+// thirteen kilobytes -- the wall of ids TestListIsBounded retired elsewhere.
+func TestUnexecutedIsBounded(t *testing.T) {
+	var items []Unexecuted
+	for _, id := range ids(300) {
+		items = append(items, Unexecuted{ToolUseID: id, PermissionMode: "default"})
+	}
+	got := unexecuted(items)
+	if !strings.HasSuffix(got, "more of 300 (--json lists them all)") {
+		t.Errorf("300 unexecuted calls rendered without the capped form (%d characters): %.120q...", len(got), got)
+	}
+	if max := listWidth + len(" and 300 more of 300 (--json lists them all)"); len(got) > max {
+		t.Errorf("300 unexecuted calls rendered as %d characters, want at most %d", len(got), max)
+	}
+	// The permission mode still stands beside every id that is shown.
+	if want := items[0].ToolUseID + " (default)"; !strings.HasPrefix(got, want) {
+		t.Errorf("the capped line does not open with %q: %.80q", want, got)
+	}
+	// A short list is not shortened, and an empty one is none.
+	if got, want := unexecuted(items[:2]), items[0].ToolUseID+" (default), "+items[1].ToolUseID+" (default)"; got != want {
+		t.Errorf("unexecuted of 2 = %q, want %q", got, want)
+	}
+	if got := unexecuted(nil); got != none {
+		t.Errorf("unexecuted of none = %q, want %q", got, none)
+	}
+}
+
 // TestOverlappingNeverClaimsAShortenedListIsListed: when the list above was
 // shortened, the line below must not say its ids are "listed" there.
 //
