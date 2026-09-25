@@ -89,3 +89,16 @@ jobs:
           # different, closed product's formulae, so this job held a credential
           # with contents:write on that product's distribution path. See the
           # note in .goreleaser.yml for what replaces it.
+
+      # The plugin cannot compile Go when a user installs it, so the archive
+      # .claude-plugin/marketplace.json installs has to carry prebuilt
+      # recorders. This runs after GoReleaser because `release --clean` empties
+      # dist/, and uploads to the release GoReleaser just created. The
+      # marketplace points at releases/latest/download/rashomon-plugin.zip, so
+      # the asset name is the contract and must not change.
+      - name: Build and attach the plugin archive
+        run: |
+          scripts/build-plugin.sh "${GITHUB_REF_NAME#v}"
+          gh release upload "$GITHUB_REF_NAME" dist/rashomon-plugin.zip --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

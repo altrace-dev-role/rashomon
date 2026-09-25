@@ -50,6 +50,14 @@ const (
 	// worth evaluating, so both are subscribed.
 	EventStop        = "Stop"
 	EventStopFailure = "StopFailure"
+	// EventUserPromptSubmit is the recap's catch-up, run when the next prompt
+	// is sent. Saying No at a permission prompt interrupts the turn, and
+	// Claude Code fires neither Stop event after an interrupt -- so the
+	// refused call, the case the line most exists for, was the one case it
+	// could never show. This entry checks the turn that just ended and speaks
+	// only if no recap reached it. It must never block: exit 2 here would
+	// erase the user's prompt, and the recap command cannot produce one.
+	EventUserPromptSubmit = "UserPromptSubmit"
 )
 
 // Events in the order they are installed.
@@ -61,6 +69,7 @@ var Events = []string{
 	EventSessionEnd,
 	EventStop,
 	EventStopFailure,
+	EventUserPromptSubmit,
 }
 
 // hasMatcher reports whether an event's entry carries a matcher. The tool
@@ -103,7 +112,7 @@ const (
 // widening Timeout itself and loosening the budget the five recorder entries
 // are held to.
 func timeoutFor(event string) int {
-	if event == EventStop || event == EventStopFailure {
+	if event == EventStop || event == EventStopFailure || event == EventUserPromptSubmit {
 		return RecapTimeout
 	}
 	return Timeout
@@ -153,6 +162,8 @@ func subcommand(event string) string {
 		// comment gives: the payloads share a shape and a second command line
 		// would be a second place for this discipline to drift.
 		return "recap"
+	case EventUserPromptSubmit:
+		return "recap pending"
 	}
 	return ""
 }

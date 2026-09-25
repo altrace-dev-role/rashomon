@@ -19,8 +19,8 @@ func TestProgramIsAProgram(t *testing.T) {
 		want string // "" means the program must be null
 		why  string
 	}{
-		{name: "subshell", cmd: "( cd /tmp && ls )", want: "cd",
-			why: "recorded `(` before this"},
+		{name: "subshell", cmd: "( cd /tmp && ls )", want: "ls",
+			why: "recorded `(` before the program was found, and `cd` before it looked past a directory change"},
 		{name: "brace group", cmd: "{ ls; }", want: "ls",
 			why: "`{` is a shell keyword the tokenizer does not mark as a metacharacter"},
 		{name: "leading operator", cmd: "&& go build", want: "go"},
@@ -205,7 +205,7 @@ func TestProgramIsAProgram(t *testing.T) {
 		// Every separator ends the search for (): each one here, alone, is
 		// all that stands between the command word and the () after it.
 		{name: "; ends the search for ()", cmd: `set -e; die() { echo "$1"; exit 1; }`, want: "set"},
-		{name: "&& ends the search for ()", cmd: "cd /repo && f() { ls; }; f", want: "cd"},
+		{name: "&& ends the search for ()", cmd: "make && f() { ls; }; f", want: "make"},
 		{name: "|| ends the search for ()", cmd: "make || f () { :; }", want: "make"},
 		{name: "| ends the search for ()", cmd: "ls | f () { :; }", want: "ls"},
 		// Except inside a group -- $( ), <( ), >( ), a glob's @( ), or
@@ -289,13 +289,13 @@ func TestProgramIsAProgram(t *testing.T) {
 		// and joining it made EO\<newline>F the delimiter line: the body's
 		// "a;b" was then read as code, and its ; as a separator.
 		{name: "a continuation inside a quoted $( )'s here-document", cmd: "hunter2 \"$(cat <<'EOF'\nEO\\\nF\n)\n\"a;b\"\nEOF\n)\" () { ls; }"},
-		{name: "a continuation after a quoted $( )", cmd: "cd \"$(git rev-parse --show-toplevel)\" && \\\nmake", want: "cd"},
+		{name: "a continuation after a quoted $( )", cmd: "cd \"$(git rev-parse --show-toplevel)\" && \\\nmake", want: "make"},
 		// And every line that ran a command before still names it.
 		{name: "a quoted $( ) with its own quotes", cmd: `echo "$(date "+%Y")" done`, want: "echo"},
 		{name: "a separator after a quoted $( )", cmd: `echo "$(date "+%Y")"; f () { :; }`, want: "echo"},
 		{name: "the commit-message here-document", cmd: "git commit -m \"$(cat <<'EOF'\nfix(shape): it's \"done\" (mostly\n\n# a ) and a ; case in point\nEOF\n)\"", want: "git"},
-		{name: "a quoted $( ) then &&", cmd: `cd "$(git rev-parse --show-toplevel)" && make`, want: "cd"},
-		{name: "a closed ${ } inside a quoted $( )", cmd: `cd "$(dirname "${BASH_SOURCE[0]}")" && pwd`, want: "cd"},
+		{name: "a quoted $( ) then &&", cmd: `cd "$(git rev-parse --show-toplevel)" && make`, want: "make"},
+		{name: "a closed ${ } inside a quoted $( )", cmd: `cd "$(dirname "${BASH_SOURCE[0]}")" && pwd`, want: "pwd"},
 		// $[ ] is arithmetic, a pair of its own: a paren inside it is no
 		// group, and counting one moves the close.
 		{name: "a ( inside $[ ] inside a quoted $( )", cmd: `hunter2 "$(: $[ ( ] )" () { echo ")"; }; x ""`},
@@ -383,7 +383,7 @@ func TestProgramIsAProgram(t *testing.T) {
 		// Ordinary lines keep their program.
 		{name: "ordinary ls", cmd: "ls -la", want: "ls"},
 		{name: "ordinary git", cmd: "git status", want: "git"},
-		{name: "ordinary cd", cmd: "cd /tmp && make", want: "cd"},
+		{name: "ordinary cd", cmd: "cd /tmp && make", want: "make"},
 		{name: "a redirect glued to the command", cmd: "ls>out", want: "ls"},
 		{name: "&> after the command", cmd: "make &>/dev/null", want: "make"},
 		{name: "&> then a separator", cmd: "npm test &> build.log && echo ok", want: "npm"},
@@ -392,7 +392,7 @@ func TestProgramIsAProgram(t *testing.T) {
 		{name: "an absolute path in command position", cmd: "/usr/local/bin/go build", want: "go"},
 
 		// Unchanged behaviour, asserted so the fix cannot quietly move it.
-		{name: "ordinary command", cmd: "cd /tmp && go build", want: "cd"},
+		{name: "ordinary command", cmd: "cd /tmp && go build", want: "go"},
 		{name: "assignments skipped", cmd: "FOO=bar BAZ=qux make -j4", want: "make"},
 		{name: "assignment after the program is an argument", cmd: "env FOO=bar", want: "env"},
 		{name: "path is reduced to its base", cmd: "/usr/local/bin/go build", want: "go"},
@@ -483,6 +483,46 @@ func TestArgcExcludesLeadingAssignments(t *testing.T) {
 		}
 		if *got.Argc != tc.want {
 			t.Errorf("argc for %q is %d, want %d", tc.cmd, *got.Argc, tc.want)
+		}
+	}
+}
+
+// TestProgramLooksPastADirectoryChange: `cd` is where a command runs, not what
+// it runs. On a real session 1,397 of 1,495 shell calls opened with
+// `cd … &&`, and "by program" read "cd 1397" -- the field said nothing. Only
+// `&&` and `;` are followed; anything else after `cd` is left alone rather
+// than guessed at, and a command after `cd` that cannot be told is null.
+func TestProgramLooksPastADirectoryChange(t *testing.T) {
+	for _, tc := range []struct {
+		cmd, want string
+	}{
+		{"cd /x && go test ./...", "go"},
+		{"cd /x; make", "make"},
+		{"cd a && cd b && npm test", "npm"},
+		{"( cd x; make )", "make"},
+		{"cd /x && FOO=1 git log", "git"},
+		{"cd /x", "cd"},
+		{"cd /x | wc -l", "cd"},
+		{"cd /x || exit 1", "cd"},
+		// The command after the separator is held to the same rules as a
+		// line's first command.
+		{"cd /x && $EDITOR f", ""},
+		{"cd /x && hunter2 () { ls; }", ""},
+		{`cd /x && hunter2 "$(echo "a;b")" () { ls; }`, ""},
+		// The separator is the one that ends cd's command: not one inside a
+		// group, and not one in a comment, which leaves cd the whole command.
+		{"cd $(echo; hunter2) && make", "make"},
+		{"cd `echo; hunter2` && make", "make"},
+		{"cd /x # && hunter2", "cd"},
+		{"cd /x 2>/dev/null && make", "make"},
+	} {
+		in, _ := json.Marshal(map[string]string{"command": tc.cmd})
+		got := Derive("Bash", in, []byte("k")).Program
+		switch {
+		case tc.want == "" && got != nil:
+			t.Errorf("%q: program = %q, want null", tc.cmd, *got)
+		case tc.want != "" && (got == nil || *got != tc.want):
+			t.Errorf("%q: program = %v, want %q", tc.cmd, got, tc.want)
 		}
 	}
 }

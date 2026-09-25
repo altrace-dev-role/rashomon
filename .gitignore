@@ -18,13 +18,15 @@ coverage.html
 .idea/
 .vscode/
 
-# plugin/bin/ is where the built binary is packaged for the Claude Code
-# plugin. It is a build artefact like any other and stays out of git for the
-# same reason the bin/ rule above exists; the directory itself is tracked (a
-# placeholder, not a binary) so `plugin/` reads as a complete tree on a fresh
-# checkout.
+# plugin/bin/ holds the plugin's launcher, plugin/bin/rashomon, which is
+# source, and the per-platform recorders scripts/build-plugin.sh writes beside
+# it, which are build artefacts at eleven megabytes each. The directory is
+# re-included so the launcher is tracked, and the recorders are excluded by
+# name -- the negation alone re-included them too, so a built recorder showed
+# up as committable.
 !/plugin/bin/
 !/plugin/bin/.gitkeep
+/plugin/bin/rashomon-*
 
 # .claude/ itself is NOT ignored: this repository tracks its own project
 # settings and skills. Only the per-machine file is ignored.

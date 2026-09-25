@@ -131,8 +131,8 @@ func TestH31_ADeniedCallRendersAsDeniedInItsChain(t *testing.T) {
 	if len(rep.Chains.Prompts) != 1 || len(rep.Chains.Prompts[0].Links) != 1 {
 		t.Fatalf("want one chain with one link, got %+v", rep.Chains.Prompts)
 	}
-	if got := rep.Chains.Prompts[0].Links[0].Outcome; got != "denied by user" {
-		t.Errorf("outcome = %q, want \"denied by user\". Without the transcript this is "+
+	if got := rep.Chains.Prompts[0].Links[0].Outcome; got != "denied before running" {
+		t.Errorf("outcome = %q, want \"denied before running\". Without the transcript this is "+
 			"indistinguishable from an unrecorded execution, and calling it one reports the "+
 			"product working as the product broken.", got)
 	}

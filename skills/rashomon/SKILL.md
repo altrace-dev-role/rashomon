@@ -25,13 +25,13 @@ declaration (identifiers and shape only — never content).
    Never install from a `go run` path — `watch` refuses temporary build
    directories because the installed hook entry records the absolute path.
 
-2. Run `$RASHOMON watch`. It writes seven hook entries (PreToolUse,
+2. Run `$RASHOMON watch`. It writes eight hook entries (PreToolUse,
    PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, Stop,
-   StopFailure) into `~/.claude/settings.json` and prints an install id plus
+   StopFailure, UserPromptSubmit) into `~/.claude/settings.json` and prints an install id plus
    the exact `detach --install <id>` line that undoes it. Quote that undo
    line back to the user verbatim.
 
-3. Run `$RASHOMON status` and show the result, so the user sees the seven
+3. Run `$RASHOMON status` and show the result, so the user sees the eight
    entries as present and where the store lives.
 
 4. Tell the user, briefly, and say the SCOPE first — it is the part they are

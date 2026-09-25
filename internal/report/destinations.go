@@ -406,6 +406,17 @@ type Rewritten struct {
 	VerbClass string `json:"verb_class"`
 }
 
+// inputCompletedByHarness names the tools whose tool_input Claude Code itself
+// completes between PreToolUse and PostToolUse: the user's answers are written
+// into AskUserQuestion's input, and the approved plan into ExitPlanMode's. A
+// different digest there is the harness doing its job, not a rewrite. Measured
+// on a real 2,353-call session: every one of its four "executed differently"
+// rows was one of these two tools, and no other tool produced one.
+var inputCompletedByHarness = map[string]bool{
+	"AskUserQuestion": true,
+	"ExitPlanMode":    true,
+}
+
 // rewrittenCalls is executedNotAsDeclared with the ids kept.
 //
 // The two walk the same pairs under the same rule, and the count is defined as
@@ -419,7 +430,7 @@ func rewrittenCalls(run *store.Run) []Rewritten {
 	}
 	declared := make(map[string]decl, len(run.Declarations))
 	for _, d := range run.Declarations {
-		if d.Shape.Digest == "" {
+		if d.Shape.Digest == "" || inputCompletedByHarness[d.ToolName] {
 			continue
 		}
 		e := decl{digest: d.Shape.Digest, tool: d.ToolName, verb: d.Shape.VerbClass}

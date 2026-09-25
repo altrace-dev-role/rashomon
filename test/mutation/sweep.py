@@ -117,11 +117,11 @@ m("B3 redaction reuses the forget-host domain separator", "internal/report/redac
 # the sentence into a denial (hiding a real execution), and dropping the prefix
 # turns every failed command into one.
 m("H-30 a denial is recognised on the prefix alone, without is_error", "internal/report/transcript.go",
-  "\treturn isError && strings.HasPrefix(text, deniedPrefix)",
-  "\treturn strings.HasPrefix(text, deniedPrefix)", "TestTranscript_|TestH30")
+  "\tif !isError {\n\t\treturn false\n\t}",
+  "", "TestTranscript_|TestH30")
 m("H-30 every failed call is treated as a denial", "internal/report/transcript.go",
-  "\treturn isError && strings.HasPrefix(text, deniedPrefix)",
-  "\treturn isError", "TestTranscript_|TestH30")
+  "\tif !isError {\n\t\treturn false\n\t}",
+  "\tif !isError {\n\t\treturn false\n\t}\n\treturn true", "TestTranscript_|TestH30")
 m("H-30 denials are counted as results again", "internal/report/transcript.go",
   "\t\t\t\tif isDenial(b.IsError, resultText(b.Content)) {\n\t\t\t\t\tdenied[b.ToolUseID] = true\n\t\t\t\t\tcontinue\n\t\t\t\t}\n",
   "\t\t\t\tif isDenial(b.IsError, resultText(b.Content)) {\n\t\t\t\t\tdenied[b.ToolUseID] = true\n\t\t\t\t}\n",
@@ -225,19 +225,19 @@ m("H-13 a control byte in the line is read past", "internal/shape/shape.go",
   "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {", "\t\tif c := cmd[i]; c == '\\r' {", PROG)
 m("H-13 the function-definition scan stops at a redirection", "internal/shape/shape.go",
   "\t\tcase isRedirect(t.text):\n\t\t\tend := operatorEnd(toks, j)\n",
-  "\t\tcase isRedirect(t.text):\n\t\t\tif true {\n\t\t\t\treturn false\n\t\t\t}\n\t\t\tend := operatorEnd(toks, j)\n", PROG)
+  "\t\tcase isRedirect(t.text):\n\t\t\tif true {\n\t\t\t\treturn -1, true\n\t\t\t}\n\t\t\tend := operatorEnd(toks, j)\n", PROG)
 m("H-13 the function-definition scan reads &> as the background separator", "internal/shape/shape.go",
   "\t\tcase t.text == \"&\" && j+1 < len(toks)", "\t\tcase false && t.text == \"&\" && j+1 < len(toks)", PROG)
 m("H-13 the function-definition scan stops at a paren that does not close at once", "internal/shape/shape.go",
-  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn true\n\t\t\t}\n",
-  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn true\n\t\t\t}\n\t\t\treturn false\n", PROG)
+  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, false\n\t\t\t}\n",
+  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, false\n\t\t\t}\n\t\t\treturn -1, true\n", PROG)
 m("H-13 the function-definition scan runs on past a newline", "internal/shape/shape.go",
-  "\t\tcase t.nlBefore:\n\t\t\treturn false\n", "\t\tcase false && t.nlBefore:\n\t\t\treturn false\n", "TestProgramIsAProgram")
+  "\t\tcase t.nlBefore:\n\t\t\treturn -1, true\n", "\t\tcase false && t.nlBefore:\n\t\t\treturn -1, true\n", "TestProgramIsAProgram")
 SEPS = ["\";\"", "\"&&\"", "\"||\"", "\"|\"", "\"&\""]
-_seps = "\t\tcase " + " || ".join("t.text == " + x for x in SEPS) + ":\n\t\t\treturn false"
+_seps = "\t\tcase " + " || ".join("t.text == " + x for x in SEPS) + ":\n\t\t\treturn j, true"
 for _drop in SEPS:
     m("H-13 the function-definition scan reads on past " + _drop.strip('"'), "internal/shape/shape.go",
-      _seps, "\t\tcase " + " || ".join("t.text == " + x for x in SEPS if x != _drop) + ":\n\t\t\treturn false", PROG)
+      _seps, "\t\tcase " + " || ".join("t.text == " + x for x in SEPS if x != _drop) + ":\n\t\t\treturn j, true", PROG)
 m("H-13 the function-definition scan does not skip a paren group", "internal/shape/shape.go",
   "\t\t\t}\n\t\t\topen = append(open, '(')\n", "\t\t\t}\n", PROG)
 m("H-13 the function-definition scan does not skip backticks", "internal/shape/shape.go",
@@ -249,11 +249,11 @@ m("H-13 a paren group never closes", "internal/shape/shape.go",
 m("H-13 backticks never close", "internal/shape/shape.go",
   "\tcase t.ticks%2 == 1 && top == '`':\n\t\treturn open[:len(open)-1]\n", "\tcase false:\n\t\treturn open[:len(open)-1]\n", PROG)
 m("H-13 a group that never closes is read as closed", "internal/shape/shape.go",
-  "\treturn len(open) > 0 || uncertain\n}", "\treturn uncertain\n}", PROG)
+  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, false\n\t}", "\tif uncertain {\n\t\treturn 0, false\n\t}", PROG)
 m("H-13 the function-definition scan reads past where the lexer's reading stopped", "internal/shape/shape.go",
-  "\treturn len(open) > 0 || uncertain\n}", "\treturn len(open) > 0\n}", PROG)
+  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, false\n\t}", "\tif len(open) > 0 {\n\t\treturn 0, false\n\t}", PROG)
 m("H-13 a ${ the word does not close is read past", "internal/shape/shape.go",
-  "\t\tif openBrace(t) {\n\t\t\treturn true\n\t\t}", "\t\tif false && openBrace(t) {\n\t\t\treturn true\n\t\t}", PROG)
+  "\t\tif openBrace(t) {\n\t\t\treturn 0, false\n\t\t}", "\t\tif false && openBrace(t) {\n\t\t\treturn 0, false\n\t\t}", PROG)
 m("H-13 a closed ${ } is taken for an open one", "internal/shape/shape.go",
   "strings.Count(t.text[k:], \"{\") > strings.Count(t.text[k:], \"}\")",
   "strings.Count(t.text[k:], \"{\") >= strings.Count(t.text[k:], \"}\")", "TestProgramIsAProgram")
@@ -1044,6 +1044,35 @@ m("a legacy present record is treated with suspicion and renders unverified", "i
   "\t\t\tf.Reasons = append(f.Reasons, *c.Reason)\n\t\t}\n\t}\n\treturn f\n}",
   "\t\t\tf.Reasons = append(f.Reasons, *c.Reason)\n\t\t}\n\t\tif c.HookEntry == store.EntryPresent {\n\t\t\tf.Reasons = append(f.Reasons, ReasonRunNotClosed)\n\t\t}\n\t}\n\treturn f\n}",
   "TestLegacyPresentRendersVerified")
+# Field findings from running the plugin against real sessions. Each break is
+# the defect as it shipped, so the sweep proves the fix is still load-bearing.
+m("FF a refusal outside the permission prompt is read as an execution", "internal/report/transcript.go",
+  "\tfor _, p := range deniedPrefixes {", "\tfor _, p := range deniedPrefixes[:1] {",
+  "TestTranscript_RefusalsOutside")
+m("FF workflow subagent transcripts are not read", "internal/report/transcript.go",
+  "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok {",
+  "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok && filepath.Dir(p) == dir {",
+  "TestTranscript_WorkflowSubagent")
+m("FF a harness-completed input counts as a rewrite", "internal/report/destinations.go",
+  "\t\tif d.Shape.Digest == \"\" || inputCompletedByHarness[d.ToolName] {",
+  "\t\tif d.Shape.Digest == \"\" {", "TestRewritten_")
+m("FF the program is cd for every cd-and-command line", "internal/shape/shape.go",
+  "\t\tif i, ok = pastDirectoryChange(pshaped, i, uncertain); ok {", "\t\tif i, ok = i, true; ok {",
+  "TestProgramLooksPastADirectoryChange|TestProgramIsAProgram")
+m("FF the separator after cd is found without the command-end scan", "internal/shape/shape.go",
+  "\tsep, ok := commandEnd(toks, i, uncertain)\n\tif !ok {\n\t\treturn 0, false\n\t}\n",
+  "\tsep := -1\n\tfor j := i + 1; j < len(toks); j++ {\n\t\tif toks[j].meta {\n\t\t\tsep = j\n\t\t\tbreak\n\t\t}\n\t}\n",
+  "TestProgramLooksPastADirectoryChange")
+m("FF a separator in a comment after cd is followed", "internal/shape/shape.go",
+  "\t\tif isComment(toks[j]) {\n\t\t\treturn i, true\n",
+  "\t\tif false && isComment(toks[j]) {\n\t\t\treturn i, true\n",
+  "TestProgramLooksPastADirectoryChange")
+m("FF a refused turn is never reported", "internal/recap/state.go",
+  "\treturn s.Checked[sessionID] != promptID", "\treturn s.Checked[sessionID] != promptID && false",
+  "TestH106_")
+m("FF the catch-up re-rules on a turn Stop checked", "internal/recap/state.go",
+  "\t\ts.Checked[sessionID] = promptID\n", "\t\t_ = promptID\n",
+  "TestH106_")
 
 # Import additions some mutants need.
 IMPORTS = {

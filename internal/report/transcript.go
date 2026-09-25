@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -60,8 +61,7 @@ func TranscriptIDs(path string) (ids, results, denied map[string]bool, files int
 	}
 	files += n
 
-	pattern := filepath.Join(strings.TrimSuffix(path, ".jsonl"), "subagents", "agent-*.jsonl")
-	matches, err := filepath.Glob(pattern)
+	matches, err := subagentTranscripts(filepath.Join(strings.TrimSuffix(path, ".jsonl"), "subagents"))
 	if err != nil {
 		return nil, nil, nil, 0, err
 	}
@@ -73,6 +73,38 @@ func TranscriptIDs(path string) (ids, results, denied map[string]bool, files int
 		files += n
 	}
 	return ids, results, denied, files, nil
+}
+
+// subagentTranscripts lists every agent-*.jsonl under dir, at any depth.
+//
+// A plain subagent writes <session>/subagents/agent-*.jsonl, but a workflow's
+// subagents write <session>/subagents/workflows/<run>/agent-*.jsonl, two levels
+// further down. A one-level glob read 35 of a real session's 407 transcripts,
+// and every call the other 372 made then read as recorded-but-not-in-the-
+// transcript -- a gap that was this function's, not the recorder's. A missing
+// directory is the common case, a session with no subagents, and not an error.
+func subagentTranscripts(dir string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) && p == dir {
+				return filepath.SkipDir
+			}
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if ok, _ := filepath.Match("agent-*.jsonl", d.Name()); ok {
+			out = append(out, p)
+		}
+		return nil
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	sort.Strings(out)
+	return out, err
 }
 
 // resultText renders a tool_result's content for classification only.
@@ -110,7 +142,38 @@ func resultText(raw json.RawMessage) string {
 // direction: the first hides denials among failures, the second hides real
 // executions among denials.
 func isDenial(isError bool, text string) bool {
-	return isError && strings.HasPrefix(text, deniedPrefix)
+	if !isError {
+		return false
+	}
+	for _, p := range deniedPrefixes {
+		if strings.HasPrefix(text, p) {
+			return true
+		}
+	}
+	// A settings deny rule names the tool and its input between two fixed
+	// phrases, so it is anchored on the opening and confirmed by the close.
+	if strings.HasPrefix(text, "Permission to use ") && strings.Contains(text, " has been denied") {
+		return true
+	}
+	// Auto mode blocks a call it cannot classify when its classifier model is
+	// unreachable. The sentence opens with that model's id, which varies, so it
+	// is anchored on the "claude-" id prefix and the fixed clause after it.
+	return strings.HasPrefix(text, "claude-") &&
+		strings.Contains(text, ", so auto mode cannot determine the safety of ")
+}
+
+// deniedPrefixes are the other openings of a call refused before it ran. The
+// interactive prompt is deniedPrefix above; these are the ones that never
+// reach a human. Matching only the first made every auto-mode or `-p` refusal
+// read as executed-but-unrecorded, and so turned a healthy session unverified
+// the moment anything was refused. Measured across 703 real transcripts: the
+// auto mode classifier's refusal, a hook or policy refusal, and the `-p`
+// approval refusal each open exactly as written here.
+var deniedPrefixes = []string{
+	deniedPrefix,
+	"Permission for this action was denied by the Claude Code auto mode classifier.",
+	"Permission for this action has been denied.",
+	"This command requires approval",
 }
 
 func collectIDs(path string, into, results, denied map[string]bool) (int, error) {

@@ -101,7 +101,7 @@ func TestH30_ADeniedCallIsNotACoverageFailure(t *testing.T) {
 	}
 
 	out := e.run("", nil, "report", "--session", testSession).stdout
-	if !strings.Contains(out, "denied by user: "+p.ToolUseID) {
+	if !strings.Contains(out, "denied before running: "+p.ToolUseID) {
 		t.Errorf("the render does not name the denial:\n%s", out)
 	}
 }

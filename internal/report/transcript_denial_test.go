@@ -215,3 +215,97 @@ func TestTranscript_IsErrorAloneIsNotEnoughAndThePrefixAloneIsNotEnough(t *testi
 		}
 	}
 }
+
+// Refusals that never reach a person, verbatim from real transcripts on this
+// machine. Recognising only the interactive prompt's wording made every one of
+// these read as executed-but-unrecorded, so a healthy `-p` or auto-mode session
+// turned unverified the moment anything was refused -- the same defect B1
+// fixed for the prompt, in the modes B1's measurement never sampled.
+var nonInteractiveRefusals = map[string]string{
+	"-p approval": "This command requires approval",
+	"auto mode classifier": "Permission for this action was denied by the Claude Code auto mode " +
+		"classifier. Reason: Blocked a production deploy the user did not ask for.",
+	"hook or policy":     "Permission for this action has been denied. Reason: terraform apply on production.",
+	"settings deny rule": "Permission to use Bash with command ls .env* has been denied.",
+	"classifier unreachable": "claude-sonnet-5[1m] is temporarily unavailable, so auto mode cannot " +
+		"determine the safety of Bash right now. Wait briefly and then try this action again.",
+}
+
+func TestTranscript_RefusalsOutsideThePromptAreDenials(t *testing.T) {
+	for name, text := range nonInteractiveRefusals {
+		path := writeTranscriptBlocks(t, []blk{
+			{Type: "tool_result", ToolUseID: "toolu_x", IsError: true, Content: text},
+		})
+		_, results, denied, _, err := TranscriptIDs(path)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !denied["toolu_x"] || results["toolu_x"] {
+			t.Errorf("%s: denied=%v result=%v, want a denial and not a result:\n  %.90s",
+				name, denied["toolu_x"], results["toolu_x"], text)
+		}
+	}
+}
+
+// TestTranscript_RefusalWordingInsideARealResultIsNotADenial holds the two
+// guards the new wordings keep: is_error must be set, and the wording must open
+// the result. A command that PRINTED one of these sentences ran.
+func TestTranscript_RefusalWordingInsideARealResultIsNotADenial(t *testing.T) {
+	for name, text := range nonInteractiveRefusals {
+		for _, c := range []struct {
+			why     string
+			isError bool
+			content string
+		}{
+			{"not an error", false, text},
+			{"quoted mid-output", true, "grep matched: " + text},
+		} {
+			path := writeTranscriptBlocks(t, []blk{
+				{Type: "tool_result", ToolUseID: "toolu_x", IsError: c.isError, Content: c.content},
+			})
+			_, _, denied, _, err := TranscriptIDs(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if denied["toolu_x"] {
+				t.Errorf("%s, %s: read as a denial, but the call ran", name, c.why)
+			}
+		}
+	}
+}
+
+// TestTranscript_WorkflowSubagentTranscriptsAreRead: a workflow's subagents
+// write <session>/subagents/workflows/<run>/agent-*.jsonl, two levels below the
+// plain subagent files. A one-level glob read 35 of a real session's 407
+// transcripts, and the 372 it skipped made every call they held read as
+// recorded-but-not-in-the-transcript.
+func TestTranscript_WorkflowSubagentTranscriptsAreRead(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "s.jsonl")
+	write := func(path, id string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		line := `{"message":{"role":"assistant","content":[{"type":"tool_use","id":"` + id + `"}]}}` + "\n"
+		if err := os.WriteFile(path, []byte(line), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(main, "toolu_main")
+	write(filepath.Join(dir, "s", "subagents", "agent-plain.jsonl"), "toolu_plain")
+	write(filepath.Join(dir, "s", "subagents", "workflows", "run1", "agent-deep.jsonl"), "toolu_deep")
+
+	ids, _, _, files, err := TranscriptIDs(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files != 3 {
+		t.Errorf("read %d transcripts, want 3: the main one, a plain subagent, a workflow subagent", files)
+	}
+	for _, id := range []string{"toolu_main", "toolu_plain", "toolu_deep"} {
+		if !ids[id] {
+			t.Errorf("%s missing from the transcript ids", id)
+		}
+	}
+}

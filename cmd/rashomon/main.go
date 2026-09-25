@@ -306,6 +306,18 @@ func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
 	}
 }
 
+// recapPending reports whether this recap invocation is the UserPromptSubmit
+// catch-up. A settings entry passes `pending --install <id>` and the plugin
+// passes `pending`, so the word is looked for, not its position.
+func recapPending(args []string) bool {
+	for _, a := range args {
+		if a == "pending" {
+			return true
+		}
+	}
+	return false
+}
+
 // cmdRecap handles one Stop or StopFailure invocation: read-only, printing
 // at most one line, and never producing a hook error.
 //
@@ -368,9 +380,25 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			sessionID = newest
 		}
 
-		d, derr := digest.Build(st, sessionID, "", payload.LastAssistantMessage, now)
+		// `recap pending` runs on UserPromptSubmit, before the new prompt has
+		// made a single call, so the newest turn in the store is the one that
+		// just ended. It speaks only when no recap reached that turn: saying
+		// No at a permission prompt interrupts the turn and Claude Code fires
+		// no Stop after an interrupt, so without this a refused call -- the
+		// case the line exists for -- could never be shown at all.
+		pending := recapPending(args)
+		lastMessage := payload.LastAssistantMessage
+		if pending {
+			// An interrupted turn has no final message, and this payload's
+			// prompt field is the NEW prompt's text, never read here.
+			lastMessage = ""
+		}
+		d, derr := digest.Build(st, sessionID, "", lastMessage, now)
 		if derr != nil {
 			recap.RecordFailure(root, now)
+			return nil
+		}
+		if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
 			return nil
 		}
 
@@ -401,6 +429,9 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		speak, _ := recap.Claim(root, d.SessionID, d.PromptID, now, wantSpeak)
 		if !speak {
 			return nil
+		}
+		if pending {
+			line = recap.PreviousTurn(line)
 		}
 
 		b, merr := json.Marshal(map[string]string{"systemMessage": line})

@@ -150,3 +150,14 @@ func sanitizeSessionID(s string) string {
 	}
 	return b.String()
 }
+
+// PreviousTurn marks a line as being about the turn before the one just
+// started. The catch-up path prints it when the next prompt is sent, one
+// turn late, and a reader who has moved on needs to know which turn it means.
+func PreviousTurn(line string) string {
+	previous := mark + " rashomon, previous turn: "
+	line = strings.Replace(line, prefix, previous, 1)
+	return strings.Replace(line,
+		"\n"+strings.Repeat(" ", len([]rune(prefix))),
+		"\n"+strings.Repeat(" ", len([]rune(previous))), 1)
+}

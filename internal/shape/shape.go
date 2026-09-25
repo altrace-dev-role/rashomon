@@ -86,10 +86,13 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	// tokens above, as it always was.
 	pshaped, perr := tokenizeProgram(cmd)
 
-	if i, ok := programToken(pshaped, perr == errUncertain); ok && !controlByte(cmd) {
-		prog := path.Base(pshaped[i].text)
-		s.Program = &prog
-		s.VerbClass = verbForProgram(prog)
+	uncertain := perr == errUncertain
+	if i, ok := programToken(pshaped, uncertain); ok && !controlByte(cmd) {
+		if i, ok = pastDirectoryChange(pshaped, i, uncertain); ok {
+			prog := path.Base(pshaped[i].text)
+			s.Program = &prog
+			s.VerbClass = verbForProgram(prog)
+		}
 	}
 	if err == nil {
 		n := len(dropLeadingAssignments(toks))
@@ -296,6 +299,45 @@ func programToken(toks []token, uncertain bool) (int, bool) {
 	return 0, false
 }
 
+// pastDirectoryChange moves the program from a leading `cd DIR &&` or
+// `cd DIR;` to the command that follows it.
+//
+// `cd` is where a command runs, not what it runs. Measured on a real session:
+// 1,397 of 1,495 shell calls were `cd … && <command>`, so reporting the first
+// word said "cd" for nearly everything and "by program" said nothing. Only `&&`
+// and `;` are followed: a pipe, `||` or `&` after `cd` is left as it was,
+// because what follows those is not simply the next command. If the command
+// after `cd` cannot be told, neither can the program -- the answer is null,
+// not "cd", which would be a confident wrong answer.
+//
+// The separator is found by commandEnd, the scan that decides where a
+// command ends for definesFunctions, so a `;` inside `$( )` or backticks ends
+// nothing here either. The command after it is searched by programToken and
+// held to every rule the line's first command is. A comment before the
+// separator makes it comment text, and `cd` is then the whole command.
+func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
+	if toks[i].text != "cd" || toks[i].quotedAt >= 0 {
+		return i, true
+	}
+	sep, ok := commandEnd(toks, i, uncertain)
+	if !ok {
+		return 0, false
+	}
+	if sep < 0 || toks[sep].text != "&&" && toks[sep].text != ";" {
+		return i, true
+	}
+	for j := i + 1; j < sep; j++ {
+		if isComment(toks[j]) {
+			return i, true
+		}
+	}
+	k, ok := programToken(toks[sep+1:], uncertain)
+	if !ok {
+		return 0, false
+	}
+	return pastDirectoryChange(toks, sep+1+k, uncertain)
+}
+
 // plainWord reports whether a word in command position is one the search can
 // name as it stands: the text the shell runs, not text it computes a command
 // from, and not a word the tokenizer ended where the shell does not.
@@ -423,6 +465,15 @@ func isNumericGlob(t token) bool {
 // bash 5.3 and zsh (${ cmd; }) or hides a paren (${x#)}); and tokens that stop
 // where the lexer's reading did (uncertain) with the command still open.
 func definesFunctions(toks []token, i int, uncertain bool) bool {
+	_, ok := commandEnd(toks, i, uncertain)
+	return !ok
+}
+
+// commandEnd finds where the command whose word is at i ends, by the scan
+// definesFunctions describes. sep is the index of the separator that ends it,
+// or -1 when a newline or the end of the line does; ok is false where
+// definesFunctions names nothing.
+func commandEnd(toks []token, i int, uncertain bool) (sep int, ok bool) {
 	var (
 		open    []byte // the groups around the token, innermost last: '(' or '`'
 		heredoc bool   // a here-document was passed: its body starts at the next newline
@@ -430,24 +481,24 @@ func definesFunctions(toks []token, i int, uncertain bool) bool {
 	for j := i + 1; j < len(toks); j++ {
 		t := toks[j]
 		if openBrace(t) {
-			return true
+			return 0, false
 		}
 		if len(open) > 0 {
 			if unknownDepth(toks, j, heredoc) {
-				return true
+				return 0, false
 			}
 			open = inGroup(open, t)
 			continue
 		}
 		switch {
 		case t.nlBefore:
-			return false
+			return -1, true
 		case t.ticks%2 == 1:
 			open = append(open, '`')
 		case !t.meta:
 		case t.text == "(":
 			if j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == ")" {
-				return true
+				return 0, false
 			}
 			open = append(open, '(')
 		case t.text == "&" && j+1 < len(toks) && toks[j+1].meta && toks[j+1].glued && strings.HasPrefix(toks[j+1].text, ">"):
@@ -458,15 +509,18 @@ func definesFunctions(toks []token, i int, uncertain bool) bool {
 			end := operatorEnd(toks, j)
 			if noTarget(toks, end) {
 				// A syntax error to both shells: nothing on the line runs.
-				return true
+				return 0, false
 			}
 			heredoc = heredoc || hereDoc(toks, j)
 			j = end
 		case t.text == ";" || t.text == "&&" || t.text == "||" || t.text == "|" || t.text == "&":
-			return false
+			return j, true
 		}
 	}
-	return len(open) > 0 || uncertain
+	if len(open) > 0 || uncertain {
+		return 0, false
+	}
+	return -1, true
 }
 
 // unknownDepth reports a token inside a group from which the group's depth

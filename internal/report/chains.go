@@ -46,9 +46,11 @@ const (
 // are the recorded outcomes; these three are the cases where there is no
 // outcome to report, kept apart because each is a different fact.
 const (
-	// LinkOutcomeDenied: the user refused the call at the permission prompt.
+	// LinkOutcomeDenied: the call was refused before it ran -- by the user at
+	// the permission prompt, by the auto mode classifier, or by a rule. The
+	// wording names what is known, that it never ran, and not who refused it.
 	// The product working, not the call failing.
-	LinkOutcomeDenied = "denied by user"
+	LinkOutcomeDenied = "denied before running"
 	// LinkOutcomeUnobserved: an execution record exists with no outcome -- a v1
 	// record read back. The call ran; how it ended was never written down.
 	LinkOutcomeUnobserved = "outcome unobserved"
