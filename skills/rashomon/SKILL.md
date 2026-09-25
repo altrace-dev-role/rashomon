@@ -4,8 +4,10 @@ description: 'Start recording what this Claude Code session asks to run. Use whe
 ---
 
 Install the rashomon recorder so every tool call from now on is recorded as a
-declaration (identifiers and shape only: no prompts, responses, argument
-values or file contents).
+declaration (identifiers; shape, including a command's program name; the
+hostnames the call names, meaning URL hosts and ssh/scp/sftp/rsync
+destinations; and the working directory and transcript path. No prompts,
+responses, file contents or other argument values).
 
 1. Resolve the binary, in this order. Set `$RASHOMON` to the first absolute
    path that works:
@@ -78,5 +80,5 @@ values or file contents).
    subcommands such as `doctor` pass through without running `watch`.
 
 Do not edit `~/.claude/settings.json` by hand and do not install the hook
-entries yourself — `watch` is the only writer, and it preserves foreign
-entries byte for byte.
+entries yourself — `watch` is the only writer, and it preserves the value of
+every foreign entry byte for byte (indentation may change).

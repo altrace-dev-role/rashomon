@@ -8,8 +8,8 @@ description: 'Stop recording: remove the rashomon hook entries, keeping the stor
    watching — say so; never build or install from here.
 
 2. Run `$RASHOMON detach`. It removes only this install's eight entries
-   (recording plus the exception-only recap) and leaves everything else in
-   `~/.claude/settings.json` byte for byte as found. The store and its
+   (recording plus the exception-only recap) and leaves every other entry in
+   `~/.claude/settings.json` with its value as found (indentation may change). The store and its
    history survive — completed runs still render their true coverage
    afterwards.
 

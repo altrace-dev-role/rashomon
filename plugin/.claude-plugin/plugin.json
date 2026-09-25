@@ -1,7 +1,7 @@
 {
   "name": "rashomon",
   "version": "0.1.0",
-  "description": "Records what a Claude Code session asks to run, and what actually ran -- identifiers and shape only: no prompts, responses, argument values or file contents. Ships disabled: installing this plugin does not start recording, enabling it does.",
+  "description": "Records what a Claude Code session asks to run, and what actually ran -- identifiers, shape (including a command's program name), the hostnames a call names (URL hosts and ssh/scp/sftp/rsync destinations), and the working directory and transcript path; no prompts, responses, file contents or other argument values. Ships disabled: installing this plugin does not start recording, enabling it does.",
   "author": {
     "name": "Altrace"
   },
