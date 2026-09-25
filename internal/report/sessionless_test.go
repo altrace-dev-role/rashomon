@@ -125,6 +125,49 @@ func TestCallsWithoutSessionID_IsUnknownWhenTheRunCannotBeRead(t *testing.T) {
 	}
 }
 
+// TestCallsWithoutSessionID_IsUnknownOverLinesItCouldNotRead: a line in the
+// unattributed run that did not parse may be one more call, so a count of the
+// lines that did is a floor, not a number -- and a floor printed as a count
+// is the zero-for-unknown this report exists to refuse. The line here says
+// it is a declaration and then fails to be one: its seq is not a number.
+func TestCallsWithoutSessionID_IsUnknownOverLinesItCouldNotRead(t *testing.T) {
+	st, now := sessionlessStore(t, 1)
+	records := filepath.Join(st.RunDir(store.UnattributedSession), store.FileRecords)
+	f, err := os.OpenFile(records, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"type":"declaration","schema_version":2,"seq":"not a number","session_id":"unattributed"}` + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := Build(st, "sess-1", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.CallsWithoutSessionID != nil {
+		t.Errorf("calls without a session id = %d over a run with an unreadable line, want unknown (nil)",
+			*rep.CallsWithoutSessionID)
+	}
+	b, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b, []byte(`"calls_without_session_id":null`)) {
+		t.Errorf("the JSON does not carry null for a count over unreadable lines:\n%s", b)
+	}
+	var out bytes.Buffer
+	if err := Text(&out, rep); err != nil {
+		t.Fatal(err)
+	}
+	if want := "calls without a session id: unknown (session unattributed could not be read)"; !strings.Contains(out.String(), want) {
+		t.Errorf("the text does not say %q:\n%s", want, out.String())
+	}
+}
+
 // TestEmpty_CountsNoCallsWithoutASessionID: the no-store report has the same
 // shape as a built one (H-29), and a location where nothing was ever recorded
 // received no sessionless call either.
