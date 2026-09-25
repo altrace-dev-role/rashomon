@@ -356,7 +356,8 @@ type Report struct {
 	// declarations with no PROMPT id -- a call before the first prompt, or a
 	// v1 record -- which are attributed to their session perfectly well.
 	//
-	// Null when that run could not be read: an unknown count, never zero.
+	// Null when that run could not be read, or held a line that did not
+	// parse: an unknown count, never zero, and never a floor printed as one.
 	CallsWithoutSessionID *int `json:"calls_without_session_id"`
 	// Sessions always marshals as an array, never null.
 	//
@@ -381,9 +382,13 @@ func Empty(now time.Time) *Report {
 // Report.CallsWithoutSessionID. A run that could not be read yields nil and
 // costs only this count: failing the whole report would make a store-wide
 // aside the reason a session's own report could not be rendered.
+//
+// So does a run that read with lines it could not parse. Any one of them may
+// be another call, so the declarations that did parse are a floor; printed
+// as the count, that floor is zero-for-unknown in a smaller size.
 func callsWithoutSessionID(st *store.Store) *int {
 	run, err := st.ReadRun(store.UnattributedSession)
-	if err != nil {
+	if err != nil || run.Skipped > 0 {
 		return nil
 	}
 	n := len(run.Declarations)

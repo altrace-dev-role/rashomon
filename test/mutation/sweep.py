@@ -1097,9 +1097,12 @@ m("H-108 the report never counts the unattributed run", "internal/report/report.
   "\tn := len(run.Declarations)\n\treturn &n", "\tn := 0 * len(run.Declarations)\n\treturn &n",
   "TestH108_ACursorShaped|TestCallsWithoutSessionID_")
 m("H-108 an unreadable unattributed run is counted as zero", "internal/report/report.go",
-  "\tif err != nil {\n\t\treturn nil\n\t}\n\tn := len(run.Declarations)",
-  "\tif err != nil {\n\t\tzero := 0\n\t\treturn &zero\n\t}\n\tn := len(run.Declarations)",
+  "\tif err != nil || run.Skipped > 0 {\n\t\treturn nil\n\t}\n\tn := len(run.Declarations)",
+  "\tif err != nil || run.Skipped > 0 {\n\t\tzero := 0\n\t\treturn &zero\n\t}\n\tn := len(run.Declarations)",
   "TestCallsWithoutSessionID_IsUnknown")
+m("H-108 a run with lines that did not parse is counted as if it were whole", "internal/report/report.go",
+  "\tif err != nil || run.Skipped > 0 {\n\t\treturn nil", "\tif err != nil {\n\t\treturn nil",
+  "TestCallsWithoutSessionID_IsUnknownOverLines")
 m("H-108 the count's healthy twin vanishes", "internal/report/text.go",
   "\tcase *n == 0:\n\t\tfmt.Fprintf(b, \"calls without a session id: %s\\n\", none)", "\tcase *n == 0:",
   "TestH108_ACodexShaped|TestText_CallsWithoutSessionID")
