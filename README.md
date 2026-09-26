@@ -2,7 +2,7 @@
 
 **Your coding agent writes its own account of what it did. `rashomon` writes a second one, independently of the agent's narration, and puts the two side by side.**
 
-*For Claude Code only, on macOS and Linux. Alpha: v0.1.0.*
+*For Claude Code only, on macOS and Linux. Alpha: v0.1.0-alpha.1.*
 
 ![Claude says all tests pass; rashomon's end-of-turn line reports a recorded failure, and an excerpt of the report shows it](docs/images/rashomon-example.png)
 
@@ -134,7 +134,7 @@ No. It never stops a command, and if something inside it goes wrong, it exits
 quietly so Claude Code carries on.
 
 **Does it work with Cursor or Codex?**
-No. v0.1.0 supports Claude Code only. Cursor (by default) and Codex (after
+No. This release supports Claude Code only. Cursor (by default) and Codex (after
 `/import`) read Claude Code's settings, so they can trigger the recorder anyway,
 and what it records for them can be wrong. If you use Cursor, see
 [Scope](#scope-and-threat-model) for the setting to turn off.
@@ -446,8 +446,8 @@ the session as not recorded.
 
 **Claude Code only.** The hooks, the store and the report describe Claude Code
 sessions. Other tools that read `~/.claude/settings.json` can trigger the
-recorder anyway: Cursor by default, and Codex after `/import`. v0.1.0 does not
-support them, and what gets recorded for them can be wrong. If you use Cursor
+recorder anyway: Cursor by default, and Codex after `/import`. This release does
+not support them, and what gets recorded for them can be wrong. If you use Cursor
 with rashomon installed, turn off Include Third-Party Plugins, Skills, and Other
 Configs (Cursor Settings, Agents, Third-Party Imports).
 
@@ -475,7 +475,7 @@ cannot by itself separate what ran from what you refused.
 
 ## Status
 
-Alpha: v0.1.0. No signed binaries, no Homebrew formula. macOS and
+Alpha: v0.1.0-alpha.1. No signed binaries, no Homebrew formula. macOS and
 Linux are the supported targets.
 
 **Windows is not usable yet.** The release publishes Windows binaries, but no
