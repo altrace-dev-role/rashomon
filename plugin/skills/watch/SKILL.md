@@ -11,16 +11,16 @@ policy) does not, by itself.
    plugin, so there is nothing to resolve and nothing to build. Set
    `$RASHOMON` to that path.
 
-2. If this skill is reachable at all, the plugin is enabled, and its five
+2. If this skill is reachable at all, the plugin is enabled, and its eight
    hook entries (PreToolUse, PostToolUse, PostToolUseFailure, SessionStart,
-   SessionEnd) are already configured — enabling the plugin is what installs
+   SessionEnd, Stop, StopFailure, UserPromptSubmit) are already configured — enabling the plugin is what installs
    them, the same way `watch` installs the settings-file form. There is
    normally nothing further to run. Confirm with `$RASHOMON status`, which
    reports this plugin's entries and a settings install separately: if both
    read live, relay the `overlap` line and its `rashomon detach` resolution.
 
 3. Do NOT run `$RASHOMON watch` from here as a matter of course: it writes
-   the settings-file form of these same five entries, and it refuses when
+   the settings-file form of these same eight entries, and it refuses when
    this plugin already provides them, naming the plugin and pointing at
    disabling it — because installing both would record every tool call
    twice, and nothing at the hook layer can undo that once both origins are

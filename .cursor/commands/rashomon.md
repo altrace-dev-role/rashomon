@@ -20,6 +20,6 @@ exactly that, and never imply more or less.
 2. Confirm with the user that they want Claude Code sessions on this machine
    recorded, then run `rashomon watch`. Quote back the printed install id and
    the exact `detach --install <id>` undo line.
-3. Confirm with `rashomon status` (all five entries `present`), and tell the
+3. Confirm with `rashomon status` (all eight entries `present`), and tell the
    user: recording starts with their next Claude Code session; `rashomon
    report` in any terminal renders what was captured.
