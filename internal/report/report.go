@@ -266,6 +266,11 @@ type Session struct {
 	// section here is a set, and a set is exactly the structure that discards
 	// the edge between a request and its consequences.
 	Chains Chains `json:"chains"`
+
+	// Timeline is every call, main agent and subagents, on one list in seq
+	// order, with each failure's follow-up. Chains answers "what did this
+	// prompt cause"; this answers "what happened, in order, across agents".
+	Timeline Timeline `json:"timeline"`
 }
 
 // Option configures Build.
@@ -439,7 +444,9 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		sess.Nono = buildNono(
 			nono.Read(cfg.nonoTrail, nono.Window{Start: w.Start, End: w.End}),
 			sess.Destinations, cfg.nonoTrail != "", forgotten)
-		sess.Chains = buildChains(run, sess.Destinations, deniedSet(sess.Transcripts), forgotten)
+		denied := deniedSet(sess.Transcripts)
+		sess.Chains = buildChains(run, sess.Destinations, denied, forgotten)
+		sess.Timeline = buildTimeline(run, denied)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
 		sess.SilentFailures = BuildSilentFailures(run, sess.Account)

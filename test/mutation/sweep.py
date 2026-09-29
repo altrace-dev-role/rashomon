@@ -1074,6 +1074,31 @@ m("FF the catch-up re-rules on a turn Stop checked", "internal/recap/state.go",
   "\t\ts.Checked[sessionID] = promptID\n", "\t\t_ = promptID\n",
   "TestH106_")
 
+m("TL the timeline is not put in seq order", "internal/report/timeline.go",
+  "\tsort.SliceStable(decls, func(i, j int) bool { return decls[i].Seq < decls[j].Seq })",
+  "\tsort.SliceStable(decls, func(i, j int) bool { return false })", "TestTimeline_")
+m("TL a subagent's call is not attributed to its agent", "internal/report/timeline.go",
+  "\t\t\tAgent:        timelineAgent(d),", "\t\t\tAgent:        nil,", "TestTimeline_")
+m("TL a denied call reads as failed", "internal/report/timeline.go",
+  "\tcase LinkOutcomeDenied:\n\t\treturn GroupNeverRan", "\tcase LinkOutcomeDenied:\n\t\treturn GroupFailed", "TestTimeline_")
+m("TL a call with no execution record reads as never ran", "internal/report/timeline.go",
+  "\tdefault:\n\t\treturn GroupUnknown\n\t}\n}", "\tdefault:\n\t\treturn GroupNeverRan\n\t}\n}", "TestTimeline_")
+m("TL an earlier success counts as a later one", "internal/report/timeline.go",
+  "\tfor j := i + 1; j < len(entries); j++ {", "\tfor j := 0; j < len(entries); j++ {", "TestTimeline_")
+m("TL the same digest under another tool is the same call", "internal/report/timeline.go",
+  "\t\tif c.Group != GroupOK || c.ToolName != failed.call.ToolName {", "\t\tif c.Group != GroupOK {", "TestTimeline_")
+m("TL the same-command tier is skipped", "internal/report/timeline.go",
+  "\t\tif failed.digest != \"\" && entries[j].digest == failed.digest {", "\t\tif false {", "TestTimeline_")
+m("TL a call that did not fail is followed up", "internal/report/timeline.go",
+  "\t\tif entries[i].call.Group == GroupFailed {", "\t\tif entries[i].call.Group != GroupOK {", "TestTimeline_")
+m("TL a failure with no later success says nothing", "internal/report/timeline_text.go",
+  "\t\treturn \"  → no later success\"", "\t\treturn \"\"", "TestTimeline_")
+m("TL the capped listing drops the rest silently", "internal/report/timeline_text.go",
+  "\t\t\tfmt.Fprintf(b, \"    %d more call%s, see --json\\n\", rest, plural(rest))\n",
+  "\t\t\t_ = rest\n", "TestTimeline_")
+m("TL --timeline never reaches the renderer", "cmd/rashomon/main.go",
+  "\t\t\topts = append(opts, report.WithTimeline())", "\t\t\t_ = report.WithTimeline", "TestTimeline_")
+
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",
   "\tdigits := strings.TrimSpace(msg[len(exitCodePrefix):])", "TestH21_")

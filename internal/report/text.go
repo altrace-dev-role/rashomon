@@ -32,7 +32,8 @@ const (
 type TextOption func(*textOptions)
 
 type textOptions struct {
-	chain bool
+	chain    bool
+	timeline bool
 	// proxyStore is the store the report was built against, "" for none. The
 	// renderer needs only whether one was NAMED; see WithNamedProxyStore.
 	proxyStore string
@@ -48,6 +49,13 @@ type textOptions struct {
 // because that reader is a program and is not scrolling.
 func WithChain() TextOption {
 	return func(o *textOptions) { o.chain = true }
+}
+
+// WithTimeline adds the timeline: every call, main agent and subagents, on
+// one list in seq order. Off by default for the reason WithChain is: it is one
+// line per call. JSON always carries it.
+func WithTimeline() TextOption {
+	return func(o *textOptions) { o.timeline = true }
 }
 
 // WithNamedProxyStore tells the renderer which proxy store the report was
@@ -147,6 +155,9 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	}
 	writeNono(b, sess.Nono)
 	writeChains(b, sess.Chains, cfg.chain, named)
+	if cfg.timeline {
+		writeTimeline(b, sess.Timeline)
+	}
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
 	writeReasons(b, sess.Coverage.Reasons)
 	fmt.Fprintf(b, "  start recorded: %s\n", yesNo(sess.Coverage.StartRecorded))
