@@ -1074,6 +1074,10 @@ m("FF the catch-up re-rules on a turn Stop checked", "internal/recap/state.go",
   "\t\ts.Checked[sessionID] = promptID\n", "\t\t_ = promptID\n",
   "TestH106_")
 
+m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
+  "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",
+  "\tdigits := strings.TrimSpace(msg[len(exitCodePrefix):])", "TestH21_")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

@@ -67,6 +67,26 @@ func TestH21_FailedCallRecordsOutcomeAndExitCode(t *testing.T) {
 	}
 }
 
+// TestH21_ExitCodeIsReadFromTheFirstLineOnly: a command that printed anything
+// fails with "Exit code N\n<its output>" (measured on Claude Code 2.1.285).
+// Break: parse the whole remainder as the number and every such failure
+// records no exit code.
+func TestH21_ExitCodeIsReadFromTheFirstLineOnly(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.mustHook(defaultPayload().build(t))
+	e.mustPost(failurePayload(t, testToolUseID,
+		"Exit code 2\nmake: *** No rule to make target 'no-such-target'.  Stop.", false, 30))
+
+	execs := e.executions(testSession)
+	if len(execs) != 1 {
+		t.Fatalf("got %d execution records, want 1", len(execs))
+	}
+	if got := execs[0].fields["exit_code"]; got != float64(2) {
+		t.Errorf("exit_code = %v, want 2", got)
+	}
+}
+
 // TestH21_SucceedingCallRecordsOK is the healthy twin. An outcome field that
 // only ever said "failed" would make every report claim total failure, and the
 // success case is the one that runs thousands of times a session.
@@ -130,6 +150,7 @@ func TestH21_UnparseableErrorLeavesExitCodeNull(t *testing.T) {
 		{name: "code not a number", errMsg: "Exit code SIGSEGV"},
 		{name: "code is zero", errMsg: "Exit code 0"},
 		{name: "words appear mid-message", errMsg: "build log said Exit code 137 somewhere"},
+		{name: "output joined to the code on its line", errMsg: "Exit code 2make: *** Stop."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
