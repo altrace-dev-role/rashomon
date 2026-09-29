@@ -222,3 +222,30 @@ func TestEmpty_IsUnknownAndWritesNoStoreReason(t *testing.T) {
 		t.Errorf("session_id = %q, want the name it was asked about", d.SessionID)
 	}
 }
+
+// TestSessionless_IsUnknownAndCarriesOnlyTheNoSessionIDReason: the digest a
+// turn gets when its payload named no session (H-107). Unknown, because
+// nothing about the turn was read; no_session_id and nothing else, because
+// no_store would be false -- a store exists, there was simply no session to
+// look for in it -- and a second reason would dilute the one that is true.
+func TestSessionless_IsUnknownAndCarriesOnlyTheNoSessionIDReason(t *testing.T) {
+	d := Sessionless(time.Now())
+	if !d.Unknown {
+		t.Error("Sessionless() is not marked unknown")
+	}
+	if d.Coverage.State != store.StateUnverified {
+		t.Errorf("state = %q, want unverified", d.Coverage.State)
+	}
+	if len(d.Coverage.Reasons) != 1 || d.Coverage.Reasons[0] != ReasonNoSessionID {
+		t.Errorf("reasons = %v, want exactly [%s]", d.Coverage.Reasons, ReasonNoSessionID)
+	}
+	if d.SessionID != "" || d.PromptID != "" {
+		t.Errorf("session_id = %q, prompt_id = %q, want both empty: nothing named them",
+			d.SessionID, d.PromptID)
+	}
+	// The same shape as every other digest, so a consumer iterating a list
+	// does not meet null where it meets [] elsewhere.
+	if d.Declarations.WithoutExecution == nil || d.Declarations.ByTool == nil || d.Gaps == nil {
+		t.Errorf("a list or map is nil: %+v", d.Declarations)
+	}
+}

@@ -365,21 +365,6 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return nil
 		}
 
-		sessionID := payload.SessionID
-		if sessionID == "" {
-			// Mirrors digestOrEmpty's own fallback: this process never learns
-			// Claude Code's session id any other way than being told it.
-			newest, _, nerr := st.NewestRun()
-			if nerr != nil {
-				recap.RecordFailure(root, now)
-				return nil
-			}
-			if newest == "" {
-				return nil
-			}
-			sessionID = newest
-		}
-
 		// `recap pending` runs on UserPromptSubmit, before the new prompt has
 		// made a single call, so the newest turn in the store is the one that
 		// just ended. It speaks only when no recap reached that turn: saying
@@ -393,10 +378,36 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			// prompt field is the NEW prompt's text, never read here.
 			lastMessage = ""
 		}
-		d, derr := digest.Build(st, sessionID, "", lastMessage, now)
-		if derr != nil {
-			recap.RecordFailure(root, now)
-			return nil
+
+		// A payload that names no session gets the digest that says so --
+		// no_session_id, beside no_store -- and never a session found some
+		// other way (H-107). This used to fall back to the newest run in the
+		// store, on the reasoning that this process learns Claude Code's
+		// session id only by being told it. That is true, and it is the
+		// argument AGAINST guessing. Per Cursor's documentation -- nobody has
+		// run Cursor against this recorder -- Cursor runs these hooks from
+		// ~/.claude/settings.json and names a conversation_id where Claude
+		// Code sends session_id, so on a machine that also runs Claude Code
+		// the newest run is whichever Claude Code session wrote last. The line
+		// described that session's turn, pointed at that session's report, and
+		// claimed that turn in recap.json, so the real Stop for it then stayed
+		// silent as a duplicate -- H-107 reproduces that with a payload of
+		// that shape, without Cursor. A payload this process could not read
+		// lands here too, for the same reason: an id it could not read is not
+		// one it can look up.
+		//
+		// The catch-up goes through the same digest and stops at
+		// recap.Pending, which answers false for a turn with no session id:
+		// it speaks only for a turn it can show no Stop reached, and without
+		// an id it can show nothing. Stating no_session_id is the Stop's job.
+		d := digest.Sessionless(now)
+		if payload.SessionID != "" {
+			built, derr := digest.Build(st, payload.SessionID, "", lastMessage, now)
+			if derr != nil {
+				recap.RecordFailure(root, now)
+				return nil
+			}
+			d = built
 		}
 		if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
 			return nil

@@ -133,6 +133,21 @@ func (s *Store) InstallID() string { return s.installID }
 // cannot be matched against a dictionary of digests built elsewhere.
 func (s *Store) Key() []byte { return s.key }
 
+// UnattributedSession is the run every record goes to when its payload names
+// no session: one too malformed to name it, and one that parsed and carried
+// no session_id at all -- which is what a harness other than Claude Code can
+// send when it runs Claude Code's hooks (Cursor, per its documentation, loads
+// them from ~/.claude/settings.json and names a conversation_id instead).
+// Losing the run is bad; silently attributing it to a session that did not
+// produce it would be worse.
+//
+// It is named here, beside the layout it is part of, rather than by the hook
+// that writes it, because the report reads it too: the declarations under it
+// are the calls that arrived without a session id, and the report counts
+// them. A reader that had to import the writer to find this run would be the
+// report depending on the capture path for a directory name.
+const UnattributedSession = "unattributed"
+
 // RunDir is the directory holding one session's records.
 func (s *Store) RunDir(sessionID string) string {
 	return filepath.Join(s.root, dirRuns, segment(sessionID))
