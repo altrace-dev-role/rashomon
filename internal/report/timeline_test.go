@@ -356,12 +356,13 @@ func TestTimeline_Text(t *testing.T) {
 	out := b.String()
 	for _, want := range []string{
 		"timeline: 3 calls (2 main agent, 1 from 1 subagent)",
-		"failed       2  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded)",
+		"failed       2  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success of the same command or program recorded)",
+		"a fix made with a different command, or a corrected Edit, is not detected",
 		"failed (exit 1)",
 		"→ same command ok at 3, recorded after",
 		"general-purpose·cafe",
 		"failed (exit 2)",
-		"→ no later success recorded",
+		"→ no later success of the same command or program recorded",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)
@@ -553,7 +554,7 @@ func TestTimeline_AnUnplacedSuccessIsNotNoSuccess(t *testing.T) {
 		}
 		var b bytes.Buffer
 		writeTimeline(&b, tl)
-		if out := b.String(); strings.Contains(out, "→ no later success") || !strings.Contains(out, "0 no later success recorded, 1 not checked") {
+		if out := b.String(); strings.Contains(out, "→ no later success") || !strings.Contains(out, "0 no later success of the same command or program recorded, 1 not checked") {
 			t.Errorf("digest %s: the text claims no later success:\n%s", digest, out)
 		}
 	}
@@ -686,7 +687,7 @@ func TestTimeline_TextSaysWhatItKnows(t *testing.T) {
 	for _, want := range []string{
 		"timeline: 2 calls (0 main agent, 2 from 1 subagent)",
 		"outcome unobserved: it ran",
-		"→ no later success recorded",
+		"→ no later success of the same command or program recorded",
 		"UTC",
 		"2023-11-14 (UTC)",
 	} {

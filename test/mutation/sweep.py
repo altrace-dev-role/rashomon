@@ -1092,7 +1092,7 @@ m("TL the same-command tier is skipped", "internal/report/timeline.go",
 m("TL a call that did not fail is followed up", "internal/report/timeline.go",
   "\t\tif e.call.Group != GroupFailed {", "\t\tif e.call.Group == GroupOK {", "TestTimeline_")
 m("TL a failure with no later success says nothing", "internal/report/timeline_text.go",
-  "\t\treturn \"  → no later success recorded\"", "\t\treturn \"\"", "TestTimeline_")
+  "\t\treturn \"  → no later success of the same command or program recorded\"", "\t\treturn \"\"", "TestTimeline_")
 m("TL the capped listing drops the rest silently", "internal/report/timeline_text.go",
   "\t\t\tfmt.Fprintf(b, \"    %d more call%s, see --json\\n\", rest, plural(rest))\n",
   "\t\t\t_ = rest\n", "TestTimeline_")
@@ -1130,7 +1130,7 @@ m("TL an unplaced same-program success is not a candidate", "internal/report/tim
 m("TL a not-checked failure counts as no later success", "internal/report/timeline.go",
   "\t\t\tcase !c.LaterChecked:\n\t\t\t\tn.NotChecked++\n", "", "TestTimeline_")
 m("TL a not-checked failure says no later success", "internal/report/timeline_text.go",
-  "\t\treturn \"  → not checked for a later success\"", "\t\treturn \"  → no later success recorded\"", "TestTimeline_")
+  "\t\treturn \"  → not checked for a later success\"", "\t\treturn \"  → no later success of the same command or program recorded\"", "TestTimeline_")
 m("TL git status follows up a failed git push", "internal/report/timeline.go",
   " && !subcommandPrograms[c.Program]\n", "\n", "TestTimeline_")
 m("TL the same-program label claims different arguments", "internal/report/timeline_text.go",
@@ -1138,7 +1138,7 @@ m("TL the same-program label claims different arguments", "internal/report/timel
 m("TL the same-command label drops recorded after", "internal/report/timeline_text.go",
   "\"  → same command ok at %d, recorded after%s\"", "\"  → same command ok at %d%s\"", "TestTimeline_")
 m("TL the counts line says no later success without recorded", "internal/report/timeline_text.go",
-  "%d no later success recorded%s)", "%d no later success%s)", "TestTimeline_")
+  "%d no later success of the same command or program recorded%s)", "%d no later success of the same command or program%s)", "TestTimeline_")
 m("TL agent_type reaches the terminal raw", "internal/report/timeline_text.go",
   "\ttyp := printable(a.Type)", "\ttyp := a.Type", "TestTimeline_")
 m("TL agent_id reaches the terminal raw", "internal/report/timeline_text.go",
@@ -1175,6 +1175,12 @@ m("TL the report builds the timeline without the denials", "internal/report/repo
   "\t\tsess.Timeline = buildTimeline(run, denied)", "\t\tsess.Timeline = buildTimeline(run, nil)", "TestTimeline_")
 m("TL the never-ran count is not printed", "internal/report/timeline_text.go",
   "\tfmt.Fprintf(b, \"    never ran    %d  (denied before running)\\n\", n.NeverRan)\n", "", "TestTimeline_")
+m("TL the marker claims no later success of any kind", "internal/report/timeline_text.go",
+  "\t\treturn \"  → no later success of the same command or program recorded\"", "\t\treturn \"  → no later success recorded\"", "TestTimeline_")
+m("TL the counts line claims no later success of any kind", "internal/report/timeline_text.go",
+  "%d no later success of the same command or program recorded%s)", "%d no later success recorded%s)", "TestTimeline_")
+m("TL the legend does not say another fix goes undetected", "internal/report/timeline_text.go",
+  "\tif n.Failed > 0 {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "\tif false {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

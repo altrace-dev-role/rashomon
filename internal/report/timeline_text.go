@@ -28,8 +28,14 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 	if n.NotChecked > 0 {
 		notChecked = fmt.Sprintf(", %d not checked", n.NotChecked)
 	}
-	fmt.Fprintf(b, "    failed       %d  (%d same command ok, recorded after; %d same program ok, recorded after; %d no later success recorded%s)\n",
+	fmt.Fprintf(b, "    failed       %d  (%d same command ok, recorded after; %d same program ok, recorded after; %d no later success of the same command or program recorded%s)\n",
 		n.Failed, n.SameCommand, n.SameProgram, n.NoLater, notChecked)
+	// What the follow-up does NOT look for, said once: a failure fixed some
+	// other way reads as having none, and a reader must not take that row as
+	// a failure nobody dealt with.
+	if n.Failed > 0 {
+		fmt.Fprintln(b, "                 (only a later run of the same command or program is looked for: a fix made with a different command, or a corrected Edit, is not detected)")
+	}
 	if n.Interrupted > 0 {
 		fmt.Fprintf(b, "    interrupted  %d\n", n.Interrupted)
 	}
@@ -157,7 +163,9 @@ func timelineResult(c TimelineCall) string {
 //
 // "No later success RECORDED": the record is all this can read, and a session
 // with a gap in its coverage or a paused stretch can hold a success it never
-// wrote down.
+// wrote down. "Of the same command or program": that is all laterSuccess looks
+// for, and a failed `go vet` followed by a passing `go test` has a later
+// success recorded -- just not one this matches.
 func laterLabel(c TimelineCall) string {
 	if c.Group != GroupFailed {
 		return ""
@@ -167,7 +175,7 @@ func laterLabel(c TimelineCall) string {
 	}
 	l := c.Later
 	if l == nil {
-		return "  → no later success recorded"
+		return "  → no later success of the same command or program recorded"
 	}
 	who := ""
 	if l.Agent != nil {
