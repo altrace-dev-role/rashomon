@@ -1095,7 +1095,7 @@ m("SP the --days window is ignored", "internal/spend/spend.go",
 m("SP an undated response is dropped without being counted", "internal/spend/scan.go",
   "\t\t\tsc.Undated++\n", "", "TestWindow_")
 m("SP a file last written before the window is still read", "internal/spend/scan.go",
-  "return err == nil && !info.ModTime().Before(modifiedSince)", "return err == nil && info != nil", "TestDiscover_Skips")
+  "ok := err == nil && !info.ModTime().Before(modifiedSince)", "ok := err == nil && info != nil", "TestDiscover_Skips")
 m("SP a file under subagents/ is main-agent spend unless its lines say sidechain", "internal/spend/scan.go",
   "Subagent:   f.Subagent || l.IsSidechain,", "Subagent:   l.IsSidechain,", "TestAgent_")
 m("SP a main-file line marked isSidechain is main-agent spend", "internal/spend/scan.go",
@@ -1234,6 +1234,21 @@ m("SP a user line's tool-result test decodes the text of its blocks", "internal/
   "TestUserBlocks_")
 m("SP a transcript's session id is printed whatever it carries", "internal/spend/spend.go",
   "\tif idShaped(id) {\n\t\treturn id", "\tif true {\n\t\treturn id", "TestSessionID_")
+m("SP the window is a Duration of days, which overflows", "internal/spend/spend.go",
+  "\treturn now.AddDate(0, 0, -days)", "\treturn now.Add(-time.Duration(days) * 24 * time.Hour)",
+  "TestWindow_AVeryLong")
+m("SP --days past the century is accepted", "cmd/rashomon/main.go",
+  "\t\t\tif n > spend.MaxDays {", "\t\t\tif false && n > spend.MaxDays {", "TestSpend_RefusesAWindow")
+m("SP a future-dated response counts as the last N days", "internal/spend/spend.go",
+  "\t\tif r.StartMS > latest && r.Tokens.Total() > 0 {", "\t\tif false && r.StartMS > latest && r.Tokens.Total() > 0 {",
+  "TestWindow_AFutureDated")
+m("SP a response written while spend runs is future-dated", "internal/spend/spend.go",
+  "\tlatest := now.Add(futureSlack).UnixMilli()", "\tlatest := now.UnixMilli()", "TestWindow_AFutureDated")
+m("SP a transcript last written before the window is not counted", "internal/spend/scan.go",
+  "\t\tif err == nil && !ok {\n\t\t\tfound.Stale++", "\t\tif err == nil && !ok {\n\t\t\t_ = found",
+  "TestWindow_OldTranscripts|TestDiscover_Skips")
+m("SP old transcripts are reported as no transcripts found", "internal/spend/text.go",
+  "\tcase s.Read.Files == 0 && s.Read.FilesBeforeWindow > 0:", "\tcase false:", "TestWindow_OldTranscripts")
 
 # Import additions some mutants need.
 IMPORTS = {

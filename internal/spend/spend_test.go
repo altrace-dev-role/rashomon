@@ -288,6 +288,71 @@ func TestWindow_DaysBoundsResponsesByTimestamp(t *testing.T) {
 	}
 }
 
+// TestWindow_AVeryLongWindowStillStartsBeforeNow: the window used to be a
+// time.Duration of days x 24h, which overflows past 106,751 days and wrapped
+// to a start AFTER now -- every response fell outside it and the answer was a
+// confident $0.00. The longest window the command accepts must still hold a
+// response from an hour ago.
+func TestWindow_AVeryLongWindowStillStartsBeforeNow(t *testing.T) {
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1000, stop: "end_turn"}.line("text"))
+	for _, days := range []int{MaxDays, 106752} {
+		s := c.summary(days)
+		if s.Responses != 1 || s.FromUnixMS >= now.UnixMilli() {
+			t.Errorf("%d days: %d responses, window from %d (now %d); want the one response and a start before now",
+				days, s.Responses, s.FromUnixMS, now.UnixMilli())
+		}
+	}
+}
+
+// TestWindow_AFutureDatedResponseIsNotTheLastNDays: a response dated after
+// the run is not in "the last N days". It is counted as future-dated and
+// said, not added to the total. One dated just after now -- a line the
+// session being read wrote while spend ran -- still counts.
+func TestWindow_AFutureDatedResponseIsNotTheLastNDays(t *testing.T) {
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "r", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1000, stop: "end_turn"}.line("text"),
+		resp{id: "live", model: "claude-opus-5-5", at: now.Add(time.Minute), in: 10, stop: "end_turn"}.line("text"),
+		resp{id: "future", model: "claude-opus-5-5", at: now.Add(48 * time.Hour), in: 1e6, stop: "end_turn"}.line("text"))
+	s := c.summary(30)
+	if s.Total.Nano != 1010*opusIn || s.Read.FutureDatedResponses != 1 {
+		t.Errorf("total = %d with %d future-dated, want %d and 1", s.Total.Nano, s.Read.FutureDatedResponses, 1010*opusIn)
+	}
+	if txt, _ := render(t, s); !strings.Contains(txt, "1 response carried a timestamp after this run") {
+		t.Errorf("the text does not say a future-dated response was left out:\n%s", txt)
+	}
+}
+
+// TestWindow_OldTranscriptsAreNotNoTranscripts: every transcript was last
+// written before the window. They were found; none was written in it. "no
+// Claude Code transcripts were found" would send a reader looking for a
+// misconfigured directory that is fine.
+func TestWindow_OldTranscriptsAreNotNoTranscripts(t *testing.T) {
+	c := newConfig(t)
+	p := c.write("proj/old.jsonl", resp{id: "a", model: "claude-opus-5-5", at: now.Add(-40 * 24 * time.Hour), in: 1}.line("text"))
+	past := time.Now().Add(-40 * 24 * time.Hour)
+	if err := os.Chtimes(p, past, past); err != nil {
+		t.Fatal(err)
+	}
+	found, err := Discover(c.dir, time.Now().Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc, err := Read(found)
+	if err != nil {
+		t.Fatal(err)
+	}
+	txt, js := render(t, Build(sc, now, 30))
+	if strings.Contains(txt, "no Claude Code transcripts were found") ||
+		!strings.Contains(txt, "no Claude Code transcript was written in the last 30 days (1 older transcript last written before that was not read)") {
+		t.Errorf("old transcripts are reported as none found:\n%s", txt)
+	}
+	if !strings.Contains(js, `"files_before_window":1`) {
+		t.Errorf("the JSON does not count the old transcript:\n%s", js)
+	}
+}
+
 // TestDiscover_SkipsFilesLastWrittenBeforeTheWindow: a file whose mtime is
 // older than the window cannot hold a response inside it.
 func TestDiscover_SkipsFilesLastWrittenBeforeTheWindow(t *testing.T) {
@@ -302,8 +367,8 @@ func TestDiscover_SkipsFilesLastWrittenBeforeTheWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 1 || filepath.Base(files[0].Path) != "new.jsonl" {
-		t.Errorf("discovered %+v, want only new.jsonl", files)
+	if len(files.Files) != 1 || filepath.Base(files.Files[0].Path) != "new.jsonl" || files.Stale != 1 {
+		t.Errorf("discovered %+v, want only new.jsonl and the old one counted as stale", files)
 	}
 }
 

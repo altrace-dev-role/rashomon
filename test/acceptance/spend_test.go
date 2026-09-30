@@ -351,6 +351,10 @@ func TestSpend_RefusesAWindowThatIsNotADayCount(t *testing.T) {
 		{"spend", "--days", "0"},
 		{"spend", "--days", "-3"},
 		{"spend", "--days", "week"},
+		// Past the century MaxDays allows: the overflow that once printed a
+		// confident $0.00 is refused before any window is computed.
+		{"spend", "--days", "106752"},
+		{"spend", "--days", "36501"},
 		{"spend", "--days"},
 		{"spend", "--bogus"},
 	} {
@@ -359,8 +363,10 @@ func TestSpend_RefusesAWindowThatIsNotADayCount(t *testing.T) {
 			t.Errorf("%v: exit %d, stdout %q; want 1 and nothing on stdout", args, res.exitCode, res.stdout)
 		}
 	}
-	if res := e.run("", nil, "spend", "--days", "7"); res.exitCode != 0 || !strings.Contains(res.stdout, "last 7 days") {
-		t.Errorf("--days 7: exit %d, stdout %q", res.exitCode, res.stdout)
+	for _, d := range []string{"7", "36500"} {
+		if res := e.run("", nil, "spend", "--days", d); res.exitCode != 0 || !strings.Contains(res.stdout, "last "+d+" days") {
+			t.Errorf("--days %s: exit %d, stdout %q", d, res.exitCode, res.stdout)
+		}
 	}
 	if res := e.run("", nil, "help"); !strings.Contains(res.stdout, "rashomon spend [--days N] [--json]") {
 		t.Errorf("usage does not list spend:\n%s", res.stdout)

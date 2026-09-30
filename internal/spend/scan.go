@@ -172,6 +172,21 @@ type Scan struct {
 	// Undated counts responses with no parseable timestamp. They cannot be
 	// placed in or out of a window, so they are excluded and counted.
 	Undated int
+	// Stale counts the transcripts Discover skipped as last written before
+	// the window (Found.Stale).
+	Stale int
+}
+
+// Found is what Discover found: the transcripts to read, and a count of what
+// it passed over, so "nothing in the window" and "nothing at all" are two
+// different answers.
+type Found struct {
+	Files []TranscriptFile
+	// Stale counts transcripts not read because they were last written
+	// before the window. Without it, a machine whose every transcript is old
+	// printed "no Claude Code transcripts were found" -- false: they were
+	// found, and none was written in the window.
+	Stale int
 }
 
 // TranscriptFile is one transcript on disk.
@@ -205,11 +220,12 @@ type TranscriptFile struct {
 // A missing projects directory is not an error: it is a machine where Claude
 // Code has recorded nothing, and the answer to "what did it spend" is then an
 // honest nothing.
-func Discover(configDir string, modifiedSince time.Time) ([]TranscriptFile, error) {
+func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
+	found := &Found{}
 	root := filepath.Join(configDir, "projects")
 	projects, err := os.ReadDir(root)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+		return found, nil
 	}
 	if err != nil {
 		return nil, err
@@ -220,7 +236,11 @@ func Discover(configDir string, modifiedSince time.Time) ([]TranscriptFile, erro
 			return true
 		}
 		info, err := os.Stat(p)
-		return err == nil && !info.ModTime().Before(modifiedSince)
+		ok := err == nil && !info.ModTime().Before(modifiedSince)
+		if err == nil && !ok {
+			found.Stale++
+		}
+		return ok
 	}
 	for _, p := range projects {
 		if !p.IsDir() {
@@ -254,7 +274,8 @@ func Discover(configDir string, modifiedSince time.Time) ([]TranscriptFile, erro
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
-	return out, nil
+	found.Files = out
+	return found, nil
 }
 
 // subagentFiles lists every agent-*.jsonl under dir, at any depth. A missing
@@ -303,10 +324,10 @@ func subagentFiles(dir string) ([]string, error) {
 //
 // A line with no message.id cannot be deduplicated against anything, so it
 // cannot be counted without risking the 2x error; it is skipped.
-func Read(files []TranscriptFile) (*Scan, error) {
-	sc := &Scan{Files: files}
+func Read(found *Found) (*Scan, error) {
+	sc := &Scan{Files: found.Files, Stale: found.Stale}
 	byID := map[string]*Response{}
-	for i, f := range files {
+	for i, f := range found.Files {
 		if err := readFile(sc, byID, i, f); err != nil {
 			sc.Unreadable++
 		}

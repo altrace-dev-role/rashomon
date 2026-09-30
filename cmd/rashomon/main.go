@@ -1487,6 +1487,12 @@ func cmdSpend(args []string, stdout io.Writer) error {
 			if err != nil || n < 1 {
 				return fmt.Errorf("--days needs a positive whole number of days, got %q", args[i+1])
 			}
+			// And at most spend.MaxDays: a window past any transcript's age
+			// is refused rather than answered (see MaxDays for the overflow
+			// that once turned such a window into a confident $0.00).
+			if n > spend.MaxDays {
+				return fmt.Errorf("--days is at most %d, got %q", spend.MaxDays, args[i+1])
+			}
 			days = n
 			i++
 		case "--json":
@@ -1501,7 +1507,7 @@ func cmdSpend(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	files, err := spend.Discover(configDir, now.Add(-time.Duration(days)*24*time.Hour))
+	files, err := spend.Discover(configDir, spend.WindowStart(now, days))
 	if err != nil {
 		return err
 	}

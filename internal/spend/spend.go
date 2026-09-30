@@ -31,6 +31,29 @@ const SchemaVersion = 1
 // DefaultDays is the window when none is asked for.
 const DefaultDays = 30
 
+// MaxDays is the longest window asked for: a century, longer than Claude
+// Code has existed. The bound is not about the data. It is that the window
+// used to be computed as a time.Duration, which overflows past 106,751 days
+// and wrapped into a start date AFTER now -- a confident "$0.00, no
+// transcripts" about a window that contained everything. WindowStart no
+// longer uses a Duration, and a day count past any transcript's age is
+// refused rather than taken on trust.
+const MaxDays = 36500
+
+// futureSlack is how far past the run's own clock a response may be dated
+// and still count. A transcript being written while spend reads it (this very
+// session's) holds lines dated after the moment `now` was taken; anything
+// later than this is a clock or a line that is wrong, and it is counted as
+// future-dated rather than as "the last N days".
+const futureSlack = 10 * time.Minute
+
+// WindowStart is the first moment of a `days`-day window ending at now,
+// computed by calendar arithmetic rather than a time.Duration, which cannot
+// hold much more than 292 years.
+func WindowStart(now time.Time, days int) time.Time {
+	return now.AddDate(0, 0, -days)
+}
+
 // Cold-cache TTLs, the API's two cache lifetimes.
 const (
 	ttl5m = 5 * time.Minute
@@ -143,6 +166,12 @@ type ReadStats struct {
 	DistinctResponses int `json:"distinct_responses"`
 	UnreadableFiles   int `json:"unreadable_files"`
 	UndatedResponses  int `json:"undated_responses"`
+	// FilesBeforeWindow counts transcripts not read because they were last
+	// written before the window (Found.Stale).
+	FilesBeforeWindow int `json:"files_before_window"`
+	// FutureDatedResponses counts responses dated more than futureSlack
+	// after this run. They are not "the last N days" and are not counted.
+	FutureDatedResponses int `json:"future_dated_responses"`
 }
 
 // AgentSplit is main-agent spend against subagent spend.
@@ -326,7 +355,8 @@ func displaySession(id string) string {
 // named "other" with zero tokens and an unknown cost would be noise that
 // looks like a finding.
 func Build(sc *Scan, now time.Time, days int) *Summary {
-	from := now.Add(-time.Duration(days) * 24 * time.Hour)
+	from := WindowStart(now, days)
+	latest := now.Add(futureSlack).UnixMilli()
 	s := &Summary{
 		SchemaVersion:     SchemaVersion,
 		GeneratedAtUnixMS: now.UnixMilli(),
@@ -350,6 +380,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			DistinctResponses: len(sc.Responses),
 			UnreadableFiles:   sc.Unreadable,
 			UndatedResponses:  sc.Undated,
+			FilesBeforeWindow: sc.Stale,
 		},
 		scan: sc,
 	}
@@ -360,6 +391,10 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 	models := map[string]*ModelSpend{}
 	sessions := map[string]*SessionSpend{}
 	for _, r := range sc.Responses {
+		if r.StartMS > latest && r.Tokens.Total() > 0 {
+			s.Read.FutureDatedResponses++
+			continue
+		}
 		if r.StartMS == 0 || r.StartMS < s.FromUnixMS || r.Tokens.Total() == 0 {
 			continue
 		}

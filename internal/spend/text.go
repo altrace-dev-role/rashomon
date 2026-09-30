@@ -20,7 +20,11 @@ func Text(w io.Writer, s *Summary) error {
 	fmt.Fprintf(&b, "SPEND  last %d days · %s · est. %s at API list prices (%s)\n",
 		s.Days, countOf(s.Sessions, "session"), headline(s.Total), s.Pricing.Snapshot)
 	fmt.Fprintf(&b, "       %s\n", s.Pricing.Note)
-	if s.Read.Files == 0 {
+	switch {
+	case s.Read.Files == 0 && s.Read.FilesBeforeWindow > 0:
+		fmt.Fprintf(&b, "       no Claude Code transcript was written in the last %d days (%s last written before that %s not read)\n",
+			s.Days, countOf(s.Read.FilesBeforeWindow, "older transcript"), wasWere(s.Read.FilesBeforeWindow))
+	case s.Read.Files == 0:
 		b.WriteString("       no Claude Code transcripts were found to read\n")
 	}
 
@@ -53,6 +57,10 @@ func Text(w io.Writer, s *Summary) error {
 	if s.Read.UnreadableFiles > 0 {
 		fmt.Fprintf(&b, "\nnote: %s could not be read to the end; what they hold past that point is not counted\n",
 			countOf(s.Read.UnreadableFiles, "transcript file"))
+	}
+	if s.Read.FutureDatedResponses > 0 {
+		fmt.Fprintf(&b, "\nnote: %s carried a timestamp after this run, which is not in the last %d days, so they are not counted\n",
+			countOf(s.Read.FutureDatedResponses, "response"), s.Days)
 	}
 	if s.Read.UndatedResponses > 0 {
 		fmt.Fprintf(&b, "\nnote: %s carried no timestamp and could not be placed in the window, so they are not counted\n",
