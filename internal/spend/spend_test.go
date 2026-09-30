@@ -743,6 +743,10 @@ func TestCacheExpiry_WriteAfterTheTTLIsCold(t *testing.T) {
 	// write. If files were merged it would read as a cold 5m write.
 	c.write("proj/sess-a/subagents/agent-a1.jsonl",
 		resp{id: "s1", model: "claude-opus-5-5", at: t0.Add(270 * oneMinute), w5: 1000, stop: "end_turn", sidechain: true}.line("text"))
+	// And a second subagent's first write, fifteen minutes after the first
+	// subagent's: another file, another cold start, never an expiry.
+	c.write("proj/sess-a/subagents/agent-a2.jsonl",
+		resp{id: "s2", model: "claude-opus-5-5", at: t0.Add(285 * oneMinute), w5: 2000, stop: "end_turn", sidechain: true}.line("text"))
 
 	s := c.summary(30)
 	if s.CacheExpiry.Responses != 2 || s.CacheExpiry.Tokens != 600 {
@@ -758,6 +762,61 @@ func TestCacheExpiry_WriteAfterTheTTLIsCold(t *testing.T) {
 	}
 	if len(s.Savings) != 1 || s.Savings[0].Kind != SavingColdCache {
 		t.Errorf("savings = %+v, want the cold-cache line resting on its figure", s.Savings)
+	}
+}
+
+// TestCacheExpiry_ThePreviousResponseIsTheSameAgents: a main transcript also
+// carries its subagents' sidechain lines. Taken as one stream, a subagent's
+// response during the main agent's pause made the main agent's next 1h write
+// look warm (20 minutes after the subagent) and the subagent's own first
+// write look like an expiry (50 minutes after the main agent): the cold
+// figure named the wrong write. By agent, the main agent's write follows its
+// own previous response by 70 minutes, and the subagent's first write
+// follows nothing.
+func TestCacheExpiry_ThePreviousResponseIsTheSameAgents(t *testing.T) {
+	c := newConfig(t)
+	t0 := now.Add(-5 * time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "m1", model: "claude-opus-5-5", at: t0, in: 1, stop: "tool_use"}.line("text"),
+		resp{id: "s1", model: "claude-opus-5-5", at: t0.Add(50 * oneMinute), w5: 1000, stop: "end_turn", sidechain: true}.line("text"),
+		resp{id: "m2", model: "claude-opus-5-5", at: t0.Add(70 * oneMinute), w1h: 300, stop: "end_turn"}.line("text"))
+	s := c.summary(30)
+	if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens1h != 300 || s.CacheExpiry.Tokens5m != 0 {
+		t.Errorf("cold = %+v; want m2's 1h write alone", s.CacheExpiry)
+	}
+}
+
+// TestCacheExpiry_NoLongerTTLAdviceForA1hWrite: every re-write here was
+// already made with the 1h TTL, after a gap of hours -- the shape of the real
+// data. Advising the 1h TTL would be advice the figure does not support; the
+// line says what happened and nothing more. A 5m re-write does support it.
+func TestCacheExpiry_NoLongerTTLAdviceForA1hWrite(t *testing.T) {
+	c := newConfig(t)
+	t0 := now.Add(-10 * time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "a", model: "claude-opus-5-5", at: t0, w1h: 100, stop: "end_turn"}.line("text"),
+		resp{id: "b", model: "claude-opus-5-5", at: t0.Add(3 * time.Hour), w1h: 50000, stop: "end_turn"}.line("text"))
+	s := c.summary(30)
+	txt, _ := render(t, s)
+	if len(s.Savings) != 1 || s.Savings[0].Hint != "" {
+		t.Errorf("savings = %+v, want the re-write with no TTL hint", s.Savings)
+	}
+	for _, bad := range []string{"1h TTL", "keep the session warm", "went cold"} {
+		if strings.Contains(txt, bad) {
+			t.Errorf("text says %q about a write that was already 1h:\n%s", bad, txt)
+		}
+	}
+	if !strings.Contains(txt, "re-written after a gap longer than its TTL") {
+		t.Errorf("text does not call it a re-write after a gap:\n%s", txt)
+	}
+
+	c.write("proj/sess-b.jsonl",
+		resp{id: "c", model: "claude-opus-5-5", at: t0, w5: 100, stop: "end_turn"}.line("text"),
+		resp{id: "d", model: "claude-opus-5-5", at: t0.Add(20 * oneMinute), w5: 50000, stop: "end_turn"}.line("text"))
+	s = c.summary(30)
+	txt, _ = render(t, s)
+	if len(s.Savings) != 1 || s.Savings[0].Hint != SavingHintLongerTTL || !strings.Contains(txt, "the 1h TTL keeps a cache") {
+		t.Errorf("a 5m re-write does not carry the 1h TTL hint: %+v\n%s", s.Savings, txt)
 	}
 }
 

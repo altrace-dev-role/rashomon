@@ -1137,10 +1137,10 @@ m("SP a 5m write is judged against the 1h TTL", "internal/spend/spend.go",
 m("SP a 1h write is judged against the 5m TTL", "internal/spend/spend.go",
   "\t\t\tif gap > ttl1h {", "\t\t\tif gap > ttl5m {", "TestCacheExpiry_")
 m("SP the previous response is taken across files", "internal/spend/spend.go",
-  "\t\tbyFile[r.file] = append(byFile[r.file], r)", "\t\tbyFile[0] = append(byFile[0], r)", "TestCacheExpiry_")
+  "\t\tk := stream{r.file, r.Subagent}", "\t\tk := stream{0, r.Subagent}", "TestCacheExpiry_")
 m("SP the window is applied before the previous response is found", "internal/spend/spend.go",
-  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
-  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS < time.Now().Add(-48*time.Hour).UnixMilli() {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
+  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tk := stream",
+  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS < time.Now().Add(-48*time.Hour).UnixMilli() {\n\t\t\tcontinue\n\t\t}\n\t\tk := stream",
   "TestCacheExpiry_ThePredecessor")
 m("SP a savings line is printed with no figure under it", "internal/spend/spend.go",
   "\tif s.CacheExpiry.Cost.Nano > 0 {", "\tif true {", "TestNoSavingsWithoutAFigure")
@@ -1219,8 +1219,8 @@ m("SP a subagent's sidechain line is read as the turn's summary", "internal/repo
   "\t\tif json.Unmarshal(raw, &head) != nil || head.IsSidechain {", "\t\tif json.Unmarshal(raw, &head) != nil {",
   "TestFinalAssistantTexts_")
 m("SP an unbilled synthetic line counts as the previous request", "internal/spend/spend.go",
-  "\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
-  "\t\tif r.StartMS == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
+  "\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tk := stream",
+  "\t\tif r.StartMS == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tk := stream",
   "TestCacheExpiry_AnUnbilled")
 m("SP an unchecked silent-failure line marshals as a checked $0", "internal/spend/join.go",
   "\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns", "\tif true {\n\t\tout.Turns",
@@ -1276,6 +1276,12 @@ m("SP an iteration's counts are not checked", "internal/spend/scan.go",
   "TestUnparsed_")
 m("SP unparsed usage lines are not said", "internal/spend/text.go",
   "\tif s.Read.UnparsedUsageLines > 0 {", "\tif false {", "TestUnparsed_")
+m("SP a main transcript's sidechain lines share the main agent's cache stream", "internal/spend/spend.go",
+  "\t\tk := stream{r.file, r.Subagent}", "\t\tk := stream{r.file, false}", "TestCacheExpiry_ThePreviousResponseIsTheSameAgents")
+m("SP the 1h TTL is advised for a re-write that was already 1h", "internal/spend/spend.go",
+  "\t\tif s.CacheExpiry.Tokens5m > 0 {\n\t\t\tsv.Hint", "\t\tif true {\n\t\t\tsv.Hint", "TestCacheExpiry_NoLongerTTLAdvice")
+m("SP a 5m re-write is given no TTL hint", "internal/spend/text.go",
+  "\t\tif sv.Hint == SavingHintLongerTTL {", "\t\tif false {", "TestCacheExpiry_NoLongerTTLAdvice")
 
 # Import additions some mutants need.
 IMPORTS = {

@@ -209,11 +209,16 @@ type CacheExpiry struct {
 	Heuristic string `json:"heuristic"`
 	Responses int    `json:"responses"`
 	Tokens    int64  `json:"tokens"`
-	Cost      Cost   `json:"cost"`
+	// Tokens5m and Tokens1h split Tokens by the TTL the write was made
+	// with. Only a 5m write could have been kept by a longer TTL, so only
+	// Tokens5m supports that advice (SavingHintLongerTTL).
+	Tokens5m int64 `json:"tokens_5m"`
+	Tokens1h int64 `json:"tokens_1h"`
+	Cost     Cost  `json:"cost"`
 }
 
 // CacheHeuristic is the rule, stated wherever its number is.
-const CacheHeuristic = "a cache write on a response whose previous response in the same transcript started more than the TTL earlier (5m, or 1h for a 1h write)"
+const CacheHeuristic = "a cache write on a response whose previous response by the same agent in the same transcript started more than the TTL earlier (5m, or 1h for a 1h write)"
 
 // Refusals is responses that ended with stop_reason "refusal".
 type Refusals struct {
@@ -257,6 +262,8 @@ type SessionSpend struct {
 type Saving struct {
 	Kind string `json:"kind"`
 	Cost Cost   `json:"cost"`
+	// Hint is a closed word for advice the figure supports, or empty.
+	Hint string `json:"hint,omitempty"`
 }
 
 // Saving kinds.
@@ -264,6 +271,13 @@ const (
 	SavingColdCache     = "cold_cache_rewrites"
 	SavingSilentFailure = "silently_failed_turns"
 )
+
+// SavingHintLongerTTL: part of the re-written cache was written with the 5m
+// TTL, which the 1h TTL would have kept across a pause under an hour. Never
+// given when every re-write was already 1h: on real data every one was, after
+// gaps of hours to days, and advising the TTL they already had was advice
+// with no figure under it.
+const SavingHintLongerTTL = "1h_ttl"
 
 // priced is a response's cost broken down by kind, or ok=false for a model
 // the table does not know.
@@ -452,6 +466,8 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		if w, ok := cold[r]; ok {
 			s.CacheExpiry.Responses++
 			s.CacheExpiry.Tokens += w.CacheWrite5m + w.CacheWrite1h
+			s.CacheExpiry.Tokens5m += w.CacheWrite5m
+			s.CacheExpiry.Tokens1h += w.CacheWrite1h
 			if key, ok := PriceKey(r.Model); ok {
 				rt, _ := RatesFor(key)
 				s.CacheExpiry.Cost.addPriced(w.CacheWrite5m*rt.CacheWrite5m() + w.CacheWrite1h*rt.CacheWrite1h())
@@ -516,7 +532,11 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 func (s *Summary) buildSavings() {
 	s.Savings = s.Savings[:0]
 	if s.CacheExpiry.Cost.Nano > 0 {
-		s.Savings = append(s.Savings, Saving{Kind: SavingColdCache, Cost: s.CacheExpiry.Cost})
+		sv := Saving{Kind: SavingColdCache, Cost: s.CacheExpiry.Cost}
+		if s.CacheExpiry.Tokens5m > 0 {
+			sv.Hint = SavingHintLongerTTL
+		}
+		s.Savings = append(s.Savings, sv)
 	}
 	if s.SilentFailureTurns.Cost.Nano > 0 {
 		s.Savings = append(s.Savings, Saving{Kind: SavingSilentFailure, Cost: s.SilentFailureTurns.Cost})
@@ -527,10 +547,17 @@ func (s *Summary) buildSavings() {
 // scan (the window is applied by the caller) and returns, per response, the
 // cache-write tokens it attributes to a cold cache.
 //
-// Per TRANSCRIPT FILE, in start order: a response's previous response is the
-// one before it in the same file, which is the same conversation's previous
-// request -- a subagent's first request follows nothing, because a new
-// context is a cold start by construction, not an expiry. The window is
+// Per AGENT PER TRANSCRIPT FILE, in start order: a response's previous
+// response is the one before it in the same file by the same kind of agent,
+// which is the same conversation's previous request -- a subagent's first
+// request follows nothing, because a new context is a cold start by
+// construction, not an expiry. Per agent because a main transcript also
+// carries its subagents' lines (isSidechain): taken as one stream, a subagent
+// working through the main agent's pause made the main agent's next write
+// look warm, and the subagent's first write look like the main cache
+// expiring -- a cold write mis-attributed on real data. Several sidechain
+// agents in one main file cannot be told apart by these fields and share one
+// stream, which can only make a gap look shorter, never invent one. The window is
 // deliberately NOT applied before ordering: the previous response of the
 // first one inside the window may lie outside it, and treating that one as
 // having no predecessor would hide the very gap being measured.
@@ -546,12 +573,17 @@ func (s *Summary) buildSavings() {
 // it as the previous request would reset the gap and hide the cold write
 // right after it.
 func coldWrites(sc *Scan) map[*Response]Tokens {
-	byFile := map[int][]*Response{}
+	type stream struct {
+		file     int
+		subagent bool
+	}
+	byFile := map[stream][]*Response{}
 	for _, r := range sc.Responses {
 		if r.StartMS == 0 || r.Tokens.Total() == 0 {
 			continue
 		}
-		byFile[r.file] = append(byFile[r.file], r)
+		k := stream{r.file, r.Subagent}
+		byFile[k] = append(byFile[k], r)
 	}
 	out := map[*Response]Tokens{}
 	for _, rs := range byFile {
