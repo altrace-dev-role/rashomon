@@ -361,10 +361,11 @@ every finding except an unacknowledged failure.
 `permission_mode`, `tool_name`; the call's `program`, `verb_class`, argument
 *count*, and a keyed digest (HMAC) of its full input: the whole command line
 for Bash, the whole tool input for other tools; for Bash, one bit
-(`may_write`) saying the line may write files whatever its program is, and a
-keyed digest of the directory the call was declared in (`cwd_digest`); how it ended (`outcome`,
-`exit_code`, `is_interrupt`, `duration_ms`, and `backgrounded`: whether a
-Bash call's result arrived while it was still running in the background); and a `file_label` classifying the
+(`may_write`) saying the line may write files whatever its program is; for
+every call, a keyed digest of the directory it was declared in
+(`cwd_digest`); how it ended (`outcome`, `exit_code`, `is_interrupt`,
+`duration_ms`, and `backgrounded`: whether a Bash call's result arrived while
+it was still running in the background); and a `file_label` classifying the
 path named by a Read, Edit, Write or NotebookEdit call into categories such as
 `ssh-key`, `env-file`, `cloud-config`, `credential-shaped`, `certificate` or
 `test-file` (paths touched from Bash are not labelled). A shell call whose

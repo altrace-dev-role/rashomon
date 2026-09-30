@@ -708,7 +708,7 @@ m("the store schema drops a record's key", "docs/store-schema.json",
 # matching when hosts/ssh_hosts were added -- reported as ANCHOR MISSING, which
 # lands in the same bucket as a real gap.
 m("the store schema declares a key no record carries", "docs/store-schema.json",
-  '        "shape": {\n', '        "tool_response": {\n          "type": "string"\n        },\n        "shape": {\n',
+  '        },\n        "shape": {\n', '        },\n        "tool_response": {\n          "type": "string"\n        },\n        "shape": {\n',
   "TestStoreSchema")
 m("the store schema's coverage reasons are a subset of the code's", "docs/store-schema.json",
   "            \"probe_unresolved\"\n", "", "TestStoreSchema")
@@ -1146,7 +1146,7 @@ m("TL agent_id reaches the terminal raw", "internal/report/timeline_text.go",
 m("TL the agent id is cut by byte", "internal/report/timeline_text.go",
   "\tid := []rune(strings.TrimPrefix(", "\tid := []byte(strings.TrimPrefix(", "TestTimeline_")
 m("TL the unknown legend names only no execution record", "internal/report/timeline_text.go",
-  "; or outcome unobserved: it ran and how it ended was not recorded)", ")", "TestTimeline_")
+  "; or outcome unobserved: it ran and how it ended was not recorded, or it was moved to the background before it ended)", ")", "TestTimeline_")
 m("TL undeclared calls go unaccounted in the legend", "internal/report/timeline_text.go",
   "\tif n.AgentUnknown > 0 {\n\t\tfmt.Fprintf(b, \"    %d call%s with no declaration", "\tif false {\n\t\tfmt.Fprintf(b, \"    %d call%s with no declaration", "TestTimeline_")
 m("TL an undeclared row does not say it has no declaration", "internal/report/timeline_text.go",
@@ -1303,11 +1303,11 @@ m("TB B is raised across an edit", "internal/report/testbending.go",
 m("TB B is raised for the same outcome twice", "internal/report/testbending.go",
   "\t\t\tcase prev.failed != failed && anyEdits == prev.anyEdits:", "\t\t\tcase anyEdits == prev.anyEdits:", "TestTestBending")
 m("TB a pair is made with the first run, not the previous one", "internal/report/testbending.go",
-  "\t\tlast[d.Shape.Digest] = mark{\n", "\t\tif _, seen := last[d.Shape.Digest]; !seen {\n\t\t\tlast[d.Shape.Digest] = mark{\n\t\t\t\tseq: d.Seq, failed: failed, testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,\n\t\t\t}\n\t\t}\n\t\t_ = mark{\n",
+  "\t\tlast[key] = mark{\n", "\t\tif _, seen := last[key]; !seen {\n\t\t\tlast[key] = mark{\n\t\t\t\tseq: d.Seq, failed: failed, testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,\n\t\t\t}\n\t\t}\n\t\t_ = mark{\n",
   "TestTestBending")
 m("TB every command is the same command", "internal/report/testbending.go",
-  "\t\tif prev, ok := last[d.Shape.Digest]; ok && isRun {",
-  "\t\tif prev, ok := last[\"\"]; ok && isRun {",
+  "\t\tif prev, ok := last[key]; ok && isRun {",
+  "\t\tif prev, ok := last[runKey{}]; ok && isRun {",
   "TestTestBending")
 m("TB an interrupted test run is counted as a run", "internal/report/testbending.go",
   "\t\tcase store.ExecOK:\n\t\t\tout.Runs++", "\t\tcase store.ExecOK, store.ExecInterrupted:\n\t\t\tout.Runs++", "TestTestRuns_")
@@ -1318,7 +1318,7 @@ m("TB the timeline drops the flaky annotation", "internal/report/timeline_text.g
   "\treturn fmt.Sprintf(\"↳ same command had the other outcome at %d, no recorded file edit between\", t.Since)",
   "\treturn \"\"", "TestTimeline_")
 m("TB the session block renders with no test run", "internal/report/text.go",
-  "\tif t.Runs == 0 {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:", "\tif false {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:",
+  "\tif t == nil || t.Runs == 0 {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:", "\tif t == nil {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:",
   "TestTestRuns_")
 m("TB the session block drops the limit", "internal/report/text.go",
   "\tif len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {\n\t\tfmt.Fprintln(b, \"    the numbers are call seqs",
@@ -1418,16 +1418,16 @@ m("TB a run is between itself and the run it pairs with", "internal/report/testb
   "TestTestBending")
 
 m("TB make check is a test run", "internal/shape/shape.go",
-  "{\"mvn\", \"test\"}, {\"gradle\", \"test\"}, {\"make\", \"test\"},\n",
-  "{\"mvn\", \"test\"}, {\"gradle\", \"test\"}, {\"make\", \"test\"}, {\"make\", \"check\"},\n",
+  "{\"gradlew\", \"test\"}, {\"make\", \"test\"},\n",
+  "{\"gradlew\", \"test\"}, {\"make\", \"test\"}, {\"make\", \"check\"},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB an argument that does not run the tests is ignored", "internal/shape/shape.go",
-  "\t\tif refusesRun(c[0], toks[:i], toks[i+len(c):]) {",
-  "\t\tif false && refusesRun(c[0], toks[:i], toks[i+len(c):]) {",
+  "\t\tif refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {",
+  "\t\tif false && refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the refusal reads only the first argument", "internal/shape/shape.go",
-  "\t\tif refusesRun(c[0], toks[:i], toks[i+len(c):]) {",
-  "\t\tif refusesRun(c[0], toks[:i], toks[i+len(c):min(i+len(c)+1, len(toks))]) {",
+  "\t\tif refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {",
+  "\t\tif refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):min(i+len(c)+1, len(toks))]) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a prefix entry is compared whole", "internal/shape/shape.go",
   "\t\t\tif strings.HasPrefix(word, p) {",
@@ -1568,8 +1568,8 @@ m("TB PYTEST_ADDOPTS on the line is not read", "internal/shape/shape.go",
   "\t\t\tif false && strings.HasPrefix(t.text, \"PYTEST_ADDOPTS=\") {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the words before the runner are not read", "internal/shape/shape.go",
-  "\t\tif refusesRun(c[0], toks[:i], toks[i+len(c):]) {",
-  "\t\tif refusesRun(c[0], toks[i:i], toks[i+len(c):]) {",
+  "\t\tif refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {",
+  "\t\tif refusesRun(refusalsOf(c), toks[i:i], toks[i+len(c):]) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 
 m("TB *Test.cs and *Tests.kt are not test files", "internal/shape/label.go",
@@ -1595,8 +1595,8 @@ m("TB the report's timeline is built without the patterns", "internal/report/rep
   "TestTestBending_|TestTimeline")
 
 m("TB the test runs drop the patterns they were given", "internal/report/testbending.go",
-  "\tout := TestRuns{TestBending: tb}\n",
-  "\tout := TestRuns{TestBending: TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []FlakyPair{}}}\n\t_ = tb\n",
+  "\tout := &TestRuns{TestBending: tb}\n",
+  "\tout := &TestRuns{TestBending: TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []FlakyPair{}}}\n\t_ = tb\n",
   "TestTestRuns_|TestTestBending_")
 
 m("TB the session block drops the timeline hint", "internal/report/text.go",

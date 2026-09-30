@@ -1381,7 +1381,7 @@ func stageSeparator(toks []token, j int) bool {
 		if j > 0 && t.glued && toks[j-1].meta && (toks[j-1].text == ">" || toks[j-1].text == ">>" || toks[j-1].text == "|") {
 			return false
 		}
-		if j+1 < len(toks) && toks[j+1].meta && toks[j+1].glued && strings.HasPrefix(toks[j+1].text, ">") {
+		if next := j + 1; next < len(toks) && toks[next].meta && toks[next].glued && strings.HasPrefix(toks[next].text, ">") {
 			return false
 		}
 		return true
