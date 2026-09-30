@@ -1671,21 +1671,21 @@ usage:
                                most 36500) of Claude Code usage would cost at
                                API list prices, from Claude Code's own
                                transcripts: by agent, model, token kind and
-                               session, cache re-written after a gap, refusals,
-                               and the spend inside turns rashomon recorded
-                               failing silently, over the transcripts its
-                               records name (the rest named as not covered);
-                               the totals read
-                               usage fields only; the silent-failure line also
-                               decodes, in memory, the text blocks of every
-                               assistant line of each recorded turn with a
-                               failed call, keeping only the last, and the
-                               content block types (never the text) of user
-                               lines with no promptId; a subagent's spend is
-                               tied to its turn by the promptId on its own
-                               transcript's user lines; a failed turn with no
-                               final message to judge is counted as not
-                               checked, never as clean; writes nothing
+                               session, cache re-written after a gap,
+                               refusals, and the spend inside turns rashomon
+                               recorded failing silently, over the transcripts
+                               its records name (the rest named as not
+                               covered); the totals read usage fields only;
+                               the silent-failure line also decodes, in
+                               memory, the text blocks of every assistant line
+                               of each recorded turn with a failed call,
+                               keeping only the last, and the content block
+                               types (never the text) of user lines with no
+                               promptId; a subagent's spend is tied to its
+                               turn by the promptId on its own transcript's
+                               user lines; a failed turn with no final message
+                               to judge is counted as not checked, never as
+                               clean; writes nothing
   rashomon forget --host H       evict every call that named host H
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T

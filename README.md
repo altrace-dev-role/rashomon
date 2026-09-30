@@ -402,7 +402,7 @@ in [`docs/design-notes.md`](docs/design-notes.md).
 | `rashomon watch` | Install the recorders, the liveness probe and the end-of-turn recap (eight entries). **The only command that installs anything.** |
 | `rashomon report [--session S] [--json] [--redact] [--chain]` | Render **every** recorded session, or one named with `--session`. `--chain` adds the causal view: which prompt produced which calls |
 | `rashomon status` | Say what is installed here. Reads only; creates nothing |
-| `rashomon spend [--days N] [--json]` | Estimate what the last N days (default 30, at most 36500) of Claude Code usage would cost at API list prices (dated snapshot), from Claude Code's own transcripts: by agent, model, token kind and session, cache re-written after a gap longer than its TTL, refusals, and the spend inside turns rashomon recorded failing silently. Needs no `watch`; writes nothing. That last line covers only the transcripts a rashomon record names (the rest are named, priced and marked not covered), prices a turn by the responses its transcripts tie to the turn's prompt -- the main transcript's, and each subagent transcript's under it, by the `promptId` on the user line before each response (the hooks record a subagent's calls against the main transcript, so the subagent file's own `promptId` is the key) -- and is a floor: a response after a user line with no `promptId` that is not a meta line or, in the main transcript, a tool result is tied to no turn and not counted. A recorded turn with a failed call whose final message cannot be tied to its prompt is counted as not checked, never folded into "none found". The totals read usage fields only; for each recorded turn that had a failed call, the silent-failure line also decodes, in memory, the text blocks (no other block) of every assistant line tied to the turn, keeps only the last to take the verdict, and never outputs it; to tell a prompt from a tool result on a user line with no `promptId` it decodes that line's content block *types* only, never their text; from a subagent transcript's user lines it decodes the type, `isMeta` and `promptId` only. Lines it cannot count (malformed or implausible usage, future-dated responses) and folders it cannot read are counted and said, never priced. A Pro/Max plan is not billed per token, so this is not what you were charged |
+| `rashomon spend [--days N] [--json]` | Estimate what the last N days of Claude Code usage would cost at API list prices, from Claude Code's own transcripts. Needs no `watch`; writes nothing. See [`rashomon spend`](#rashomon-spend) |
 | `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
 | `rashomon detach` | Remove the recorders, leaving every other entry's value as found |
 | `rashomon forget --since T \| --before T \| --host H` | Erase records, leaving a gap record saying so |
@@ -420,6 +420,58 @@ opening a store, and `detach --all` removes every entry carrying a `rashomon`
 marker, for when the store is gone and the id with it. Both refuse, naming the
 field, if an entry of ours had its matcher, hook count, hook type or timeout
 edited by hand.
+
+### `rashomon spend`
+
+`rashomon spend [--days N] [--json]` estimates what the last N days (default
+30, at most 36500) of Claude Code usage would cost at API list prices. It needs
+no `watch`, and it writes nothing.
+
+**Not a bill.** The rates are a dated snapshot compiled into the binary, and
+every rendering names the date. A Pro or Max plan is not billed per token, so
+the figure is what the same usage would cost on the API, not what you were
+charged.
+
+**What it reads.** Claude Code's own transcripts, under
+`$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`, subagent transcripts
+included. The totals come from each API response's usage fields only: its id,
+model, stop reason, token counts and speed, and the line's timestamp and
+session. Claude Code writes one response on several lines, so a response is
+counted once by its id.
+
+**What it shows.** Spend by agent, model, token kind and session; cache
+re-written after a gap longer than its TTL (a heuristic, labelled as one);
+refusals; responses the API retried, in tokens only and left out of the total;
+and the spend inside turns rashomon recorded failing silently.
+
+**The silent-failure line.** A turn counts when one of its recorded calls
+failed and its final message mentions no failure. The line covers only the
+transcripts a rashomon record names. Every other transcript is named, priced
+and marked not covered, never folded in as zero. A turn's spend is the
+responses tied to its prompt. In the main transcript, and in each subagent
+transcript under it, a response belongs to the prompt of the user line before
+it: Claude Code writes that prompt's id (`promptId`) on the line. The figure is
+a floor. A response after a user line with no prompt id belongs to no turn,
+unless that line is an injected meta line or, in the main transcript, a tool
+result. A failed turn whose final message cannot be tied to its prompt is
+counted as not checked, never as clean.
+
+**Message content.** To take that verdict, the line reads message content, in
+memory. For each recorded turn with a failed call, it decodes the text blocks
+(and no other block) of every assistant line tied to the turn, and keeps only
+the last. The text is never written or output. To tell a prompt from a tool
+result on a user line with no prompt id, it decodes the line's content block
+*types* only, never their text. From a subagent transcript's user lines it
+decodes the type, `isMeta` and `promptId` only.
+
+**Counted, said, never priced.** It says how many of each of these it found:
+lines it cannot count (malformed or implausible usage, a line with no message
+id, a future-dated response), folders and files it cannot read to the end, and
+pre-output refusals written without usage. Fast-mode responses are counted and
+priced at standard rates. Out of scope: fast mode's premium, Batch and partner
+(Bedrock, Vertex) pricing, long-context premiums, and web-search fees. The
+savings list does not compute what refusals and fallback routing cost, and it
+says so.
 
 ## Editor integration
 

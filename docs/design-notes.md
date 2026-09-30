@@ -277,6 +277,72 @@ honestly cannot confirm an entry that is not in the file it reads. That is the
 right failure direction — it under-claims — but it means a temporary or
 side-loaded install cannot produce a verified report, by construction.
 
+## `rashomon spend`
+
+`spend` answers "what did the last N days of Claude Code usage cost at API list
+prices, and where could it be saved". It cannot depend on `watch` having run, so
+its source is Claude Code's transcripts, not the store. The store is consulted
+for one line only, and read through `store.OpenExisting` (H-87's rule), so
+asking the question never mints an install identity.
+
+**The transcript read.** The usage read decodes a narrow shape: `message.id`,
+`model`, `stop_reason`, `usage`'s token counts and `speed`, and the line's
+`timestamp`, `sessionId` and `isSidechain`. For a subagent transcript's user
+lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
+`message.content`, so `encoding/json` steps over those bytes, and
+`TestContentHasNoFieldToLandIn` holds the shape: no unlisted tag, and no
+`RawMessage`, interface or map field. Three rules decide the figures:
+
+- A response is counted once by `message.id`. Claude Code writes one response
+  as a line per content block, each with the full usage, and summing lines
+  overstated a real transcript 2.1x.
+- Of a response's lines, the most complete one is kept. A streaming line comes
+  first with a partial output count.
+- Where a reader cannot place a line, it counts and names what it skipped,
+  never drops it silently: a malformed or implausible usage, a line with no
+  id, an unreadable file or folder, a future-dated response.
+
+**Departing from "never `message.content`".** The design said spend never
+reads message content. The silent-failure line needs the final message it
+judges, and the only surviving copy is the transcript. So for a recorded turn
+with a failed call, `report.FinalAssistantTexts` does three things, all in
+memory. It decodes the text blocks, and no other block, of every assistant
+line tied to the turn, and keeps only the last. On a user line with no
+`promptId`, it decodes the content block types to tell a tool result from a
+prompt. From a subagent's user lines, it reads the `promptId` key. Each of
+these is reduced to the digest's verdict and its counts. None is written or
+output. A content canary is planted in a firing turn's final words, so the
+end-to-end test does reach the read. A turn belongs to the prompt of the user
+line before it, and a line the reader cannot place drops the turn's words, so
+it takes no verdict rather than a wrong one.
+
+**The price table.** The rates are a dated snapshot compiled into the binary
+(`internal/spend/price.go`). Every rendering names the snapshot's date and says
+a plan subscription is not billed per token. Rates are integers in nanodollars
+per token, so every figure is exact. A model id matches a row exactly, or with
+one dated suffix. A looser match would price Opus 5.5 at Opus 5's rates. A
+model the table lacks is priced as unknown, never at $0. Retired models keep
+their rows, because a transcript in the window can still name one. Out of
+scope, and said to be: fast mode's premium (fast responses are counted and
+priced at standard rates), Batch and partner pricing, long-context premiums,
+and web-search fees. Extra attempts in `usage.iterations` are counted in tokens
+only and left out of the total, which the headline says. Each entry names the
+model that ran it, but the read does not decode that yet.
+
+**The savings list.** A suggestion is printed only with the figure it rests
+on. Two kinds have one:
+
+- Cache re-written after a gap longer than its TTL: a heuristic, labelled as
+  one. The 1h-TTL hint appears only when part of the re-write was a 5m write.
+- Spend inside silently failed turns: a floor, with its bound printed beside
+  it.
+
+Subagents on the top model for read-heavy work would need the tool pattern
+from `message.content`, so that suggestion is not made. Savings on refusals
+and fallback routing (classifier hits) need the refusal category and each
+attempt's model, which are not decoded. The output says those savings are
+not computed, so an empty list is not read as "nothing to save".
+
 ## Acceptance
 
 Two lists, and the split is deliberate.
