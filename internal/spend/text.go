@@ -21,6 +21,9 @@ func Text(w io.Writer, s *Summary) error {
 	fmt.Fprintf(&b, "SPEND  last %d days · %s · est. %s at API list prices (%s)\n",
 		s.Days, countOf(s.Sessions, "session"), headline(s.Total), s.Pricing.Snapshot)
 	fmt.Fprintf(&b, "       %s\n", s.Pricing.Note)
+	if s.ExtraAttempts.Responses > 0 {
+		fmt.Fprintf(&b, "       the total excludes extra attempts (%s tokens, cost unknown)\n", thousands(s.ExtraAttempts.Tokens.Total()))
+	}
 	switch {
 	case s.Read.Files == 0 && s.Read.FilesBeforeWindow > 0:
 		fmt.Fprintf(&b, "       no Claude Code transcript was written in the last %d days (%s last written before that %s not read)\n",
@@ -44,6 +47,8 @@ func Text(w io.Writer, s *Summary) error {
 			}
 			fmt.Fprintf(&b, "%-14s%s\n", label, line)
 		}
+	} else if s.Refusals.WithoutUsage > 0 {
+		fmt.Fprintf(&b, "%-14s%s\n", "refusals", refusalLine(s.Refusals))
 	}
 
 	if line := silentLine(s); line != "" {
@@ -51,14 +56,18 @@ func Text(w io.Writer, s *Summary) error {
 		b.WriteString(line)
 	}
 
-	if len(s.Savings) > 0 {
+	// Beside any refusal or extra attempt, the list says what it leaves out:
+	// no line there is not "nothing to save" on classifier hits.
+	classifier := s.Refusals.Responses+s.Refusals.WithoutUsage+s.ExtraAttempts.Responses > 0
+	if len(s.Savings) > 0 || classifier {
 		b.WriteString("\n")
-		for i, sv := range s.Savings {
-			label := ""
-			if i == 0 {
-				label = "savings"
-			}
+		label := "savings"
+		for _, sv := range s.Savings {
 			fmt.Fprintf(&b, "%-14s%s\n", label, savingLine(sv))
+			label = ""
+		}
+		if classifier {
+			fmt.Fprintf(&b, "%-14snot computed: what refusals and fallback routing (classifier hits) cost that could be saved\n", label)
 		}
 	}
 
@@ -230,10 +239,20 @@ func coldLine(c CacheExpiry) string {
 }
 
 func refusalLine(r Refusals) string {
-	if r.Responses == 0 {
+	if r.Responses == 0 && r.WithoutUsage == 0 {
 		return "none (no response ended with stop_reason refusal)"
 	}
-	return fmt.Sprintf("%s ended in a refusal, %s", countOf(r.Responses, "response"), money(r.Cost))
+	var parts []string
+	if r.Responses > 0 {
+		parts = append(parts, fmt.Sprintf("%s ended in a refusal, %s", countOf(r.Responses, "response"), money(r.Cost)))
+	}
+	switch {
+	case r.WithoutUsage == 1:
+		parts = append(parts, "1 pre-output refusal was written without usage, so its billing cannot be read")
+	case r.WithoutUsage > 1:
+		parts = append(parts, fmt.Sprintf("%d pre-output refusals were written without usage, so their billing cannot be read", r.WithoutUsage))
+	}
+	return strings.Join(parts, "; ")
 }
 
 func attemptsLine(a ExtraAttempts) string {

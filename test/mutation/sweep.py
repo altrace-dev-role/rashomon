@@ -1091,7 +1091,7 @@ m("SP the transcript line decodes message.content", "internal/spend/scan.go",
   "\tModel      string  `json:\"model\"`\n", "\tModel      string  `json:\"model\"`\n\tContent    json.RawMessage `json:\"content\"`\n",
   "TestContentHasNoFieldToLandIn")
 m("SP the --days window is ignored", "internal/spend/spend.go",
-  "r.StartMS == 0 || r.StartMS < s.FromUnixMS ||", "r.StartMS == 0 ||", "TestWindow_")
+  "r.StartMS == 0 || r.StartMS < s.FromUnixMS {", "r.StartMS == 0 {", "TestWindow_")
 m("SP an undated response is dropped without being counted", "internal/spend/scan.go",
   "\t\t\tsc.Undated++\n", "", "TestWindow_")
 m("SP a file last written before the window is still read", "internal/spend/scan.go",
@@ -1127,7 +1127,7 @@ m("SP a non-claude model id is printed verbatim", "internal/spend/spend.go",
 m("SP a claude-prefixed id is printed whatever it carries", "internal/spend/spend.go",
   "\t\tif !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {", "\t\tif c == 0 {", "TestUnknownModel_ANonClaude")
 m("SP a zero-token synthetic response is listed as a model", "internal/spend/spend.go",
-  "r.StartMS < s.FromUnixMS || r.Tokens.Total() == 0 {", "r.StartMS < s.FromUnixMS {", "TestZeroTokenResponses_")
+  "\t\tif r.Tokens.Total() == 0 {\n\t\t\tif r.StopReason == \"refusal\"", "\t\tif false {\n\t\t\tif r.StopReason == \"refusal\"", "TestZeroTokenResponses_")
 m("SP an amount under a cent renders as $0.00", "internal/spend/text.go",
   "\tif nano > 0 && nano < 1e7 {", "\tif false && nano < 1e7 {", "TestSubCentAmounts_")
 m("SP the plan-subscription sentence is not printed", "internal/spend/text.go",
@@ -1431,6 +1431,19 @@ m("SP the out-of-scope line does not name web-search fees", "internal/spend/text
   "; web-search fees ($10 per 1,000 searches)", "", "TestFastMode_")
 m("SP a decoded field under an allowed tag holds whatever it is handed", "internal/spend/scan.go",
   "\tType        string  `json:\"type\"`", "\tType        any     `json:\"type\"`", "TestContentHasNoFieldToLandIn")
+m("SP a zero-usage refusal line is not counted", "internal/spend/spend.go",
+  "\t\t\t\ts.Refusals.WithoutUsage++", "\t\t\t\t_ = s", "TestRefusals_")
+m("SP refusals without usage read as refusals none", "internal/spend/text.go",
+  "\tif r.Responses == 0 && r.WithoutUsage == 0 {", "\tif r.Responses == 0 {", "TestRefusals_")
+m("SP a refusal without usage is not said when nothing else was billed", "internal/spend/text.go",
+  "\t} else if s.Refusals.WithoutUsage > 0 {", "\t} else if false {", "TestRefusals_")
+m("SP the headline does not say the total excludes extra attempts", "internal/spend/text.go",
+  "\tif s.ExtraAttempts.Responses > 0 {\n\t\tfmt.Fprintf(&b, \"       the total excludes", "\tif false {\n\t\tfmt.Fprintf(&b, \"       the total excludes",
+  "TestRefusalsAndExtraAttempts")
+m("SP the savings output does not say refusal savings are not computed", "internal/spend/text.go",
+  "\t\tif classifier {", "\t\tif false {", "TestRefusals")
+m("SP the JSON does not say refusal savings are not computed", "internal/spend/spend.go",
+  "SavingsNotComputed: []string{SavingNotComputedRefusals},", "SavingsNotComputed: []string{},", "TestRefusalsAndExtraAttempts")
 
 # Import additions some mutants need.
 IMPORTS = {

@@ -3,6 +3,7 @@ package spend
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -1120,6 +1121,56 @@ func TestRefusalsAndExtraAttempts(t *testing.T) {
 	}
 	if !strings.Contains(js, `"cost_unknown_reason":"`+AttemptsUnpriced+`"`) {
 		t.Errorf("json does not state why the attempts are unpriced:\n%s", js)
+	}
+	// The headline's total leaves the extra attempts out, and says so: a
+	// wholly known "est. $X" beside tokens nobody priced read as complete.
+	if !strings.Contains(txt, "\n       the total excludes extra attempts (335 tokens, cost unknown)\n") {
+		t.Errorf("the headline does not say the total excludes the extra attempts:\n%s", txt)
+	}
+	// And the savings list says what it does not compute beside them.
+	if !strings.Contains(txt, "savings       not computed: what refusals and fallback routing (classifier hits) cost that could be saved") ||
+		!strings.Contains(js, `"savings_not_computed":["refusals_and_routing"]`) {
+		t.Errorf("the savings output does not say refusal and routing savings are not computed:\n%s\n%s", txt, js)
+	}
+}
+
+// TestRefusals_APreOutputRefusalWithoutUsageIsCounted: Claude Code writes a
+// pre-output classifier refusal as one zero-usage line, and Build dropped it
+// with every zero-token response -- so a transcript holding a refusal printed
+// "refusals none". It is counted, a count only, and the text says its billing
+// cannot be read. With no other response, the line is still printed.
+func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
+	at := now.Add(-time.Hour)
+	synthetic := func(id string) string {
+		return resp{id: id, model: "<synthetic>", at: at, stop: "refusal"}.line("text")
+	}
+	for _, tc := range []struct {
+		name  string
+		lines []string
+		n     int
+		want  string
+	}{
+		{"beside a billed response", []string{
+			resp{id: "r", model: "claude-opus-5-5", at: at, in: 10, stop: "end_turn"}.line("text"), synthetic("z1"), synthetic("z2")}, 2,
+			"refusals      2 pre-output refusals were written without usage, so their billing cannot be read\n"},
+		{"alone", []string{synthetic("z1")}, 1,
+			"refusals      1 pre-output refusal was written without usage, so its billing cannot be read\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			c.write("proj/sess-a.jsonl", tc.lines...)
+			s := c.summary(30)
+			txt, js := render(t, s)
+			if !strings.Contains(txt, tc.want) || strings.Contains(txt, "refusals      none") {
+				t.Errorf("text lacks %q:\n%s", tc.want, txt)
+			}
+			if !strings.Contains(js, fmt.Sprintf(`"without_usage":%d`, tc.n)) || s.Refusals.WithoutUsage != tc.n {
+				t.Errorf("without_usage = %d:\n%s", s.Refusals.WithoutUsage, js)
+			}
+			if !strings.Contains(txt, "not computed: what refusals and fallback routing") {
+				t.Errorf("the savings output does not say refusal savings are not computed:\n%s", txt)
+			}
+		})
 	}
 }
 

@@ -146,8 +146,11 @@ type Summary struct {
 
 	SilentFailureTurns SilentFailureTurns `json:"silent_failure_turns"`
 
-	Savings    []Saving       `json:"savings"`
-	PerSession []SessionSpend `json:"per_session"`
+	Savings []Saving `json:"savings"`
+	// SavingsNotComputed names the kinds of saving the list never holds
+	// (SavingNotComputedRefusals), so its absence is not a finding.
+	SavingsNotComputed []string       `json:"savings_not_computed"`
+	PerSession         []SessionSpend `json:"per_session"`
 
 	// Read is how the transcripts went, over everything read (not only the
 	// window): the dedupe measurement, and what could not be counted.
@@ -222,23 +225,36 @@ type CacheExpiry struct {
 const CacheHeuristic = "a cache write on a response whose previous response by the same agent in the same transcript started more than the TTL earlier (5m, or 1h for a 1h write)"
 
 // Refusals is responses that ended with stop_reason "refusal".
+//
+// WithoutUsage counts the refusal lines Claude Code writes with no usage at
+// all -- a pre-output classifier refusal is one zero-usage "<synthetic>" line
+// -- which Build otherwise drops with every zero-token response. A count only:
+// whether such a refusal was billed depends on its category (the API bills a
+// pre-output refusal in some categories, at the rates of the model that ran
+// it), and the line carries no usage to read that from. Dropping them printed
+// "refusals none" beside a transcript that held one.
 type Refusals struct {
-	Responses int  `json:"responses"`
-	Cost      Cost `json:"cost"`
+	Responses    int  `json:"responses"`
+	Cost         Cost `json:"cost"`
+	WithoutUsage int  `json:"without_usage"`
 }
 
 // ExtraAttempts is responses whose usage.iterations holds more than one
 // attempt.
 //
-// Tokens, never dollars. The iteration entries seen so far carry a type but
-// no model, and a declined attempt retried on a fallback model bills at the
-// FALLBACK's rates, so which rate applies to an attempt cannot be read from
-// the transcript. Until a real transcript shows that shape, the dollars are
-// unknown and the document says so rather than guessing a model.
+// Tokens, never dollars, and not in the total. The API documents every
+// iteration entry as carrying a type and the model that ran it, and each
+// attempt as billed at that model's rates -- a declined attempt at the
+// declining model's, the fallback that served at the fallback's -- so the
+// dollars CAN be read from the transcript. This read does not decode the
+// entries' type or model yet: no real transcript with more than one entry has
+// been seen to check the decode against. Until one is, the dollars are
+// unknown, the headline says the total leaves the attempts out, and the
+// document says why rather than guessing a model.
 //
-// "Extra", never "declined": an entry's type is not read here, and nothing
-// has shown what types an attempt can have, so calling every earlier attempt
-// a declined one would be a claim about each entry the read does not make.
+// "Extra", never "declined": an entry's type is not read here, so calling
+// every earlier attempt a declined one would be a claim about each entry the
+// read does not make.
 type ExtraAttempts struct {
 	Responses         int    `json:"responses"`
 	Attempts          int    `json:"attempts"`
@@ -247,7 +263,7 @@ type ExtraAttempts struct {
 }
 
 // AttemptsUnpriced is ExtraAttempts' reason, verbatim.
-const AttemptsUnpriced = "iteration entries carry no model, so the rate an extra attempt billed at cannot be read"
+const AttemptsUnpriced = "each iteration entry names the model that ran it, and an attempt bills at that model's rates, but this read does not decode the entries' model yet, so extra attempts are not priced and not in the total"
 
 // FastMode is responses that ran in fast mode (usage.speed "fast"). Fast
 // mode bills at a premium -- Opus 5.5 at $8/$40 per MTok against $4/$20 --
@@ -288,6 +304,15 @@ const (
 	SavingColdCache     = "cold_cache_rewrites"
 	SavingSilentFailure = "silently_failed_turns"
 )
+
+// SavingNotComputedRefusals names the savings the list does not compute:
+// what refusals and fallback routing (classifier hits) cost that a different
+// model or setup would not have. The design asks for them; they need the
+// iteration entries' model and the refusals' category, which this read does
+// not decode (ExtraAttempts, Refusals). Stated in savings_not_computed, and
+// in the text beside any refusal or extra attempt, so an empty list is not
+// read as "nothing to save there".
+const SavingNotComputedRefusals = "refusals_and_routing"
 
 // SavingHintLongerTTL: part of the re-written cache was written with the 5m
 // TTL, which the 1h TTL would have kept across a pause under an hour. Never
@@ -385,11 +410,13 @@ func displaySession(id string) string {
 
 // Build summarises a scan over the last `days` days before now.
 //
-// A response with no tokens at all is not counted anywhere. Claude Code
-// writes synthetic assistant lines (model "<synthetic>") for local errors
-// with an all-zero usage; nothing was billed for them, and listing a model
-// named "other" with zero tokens and an unknown cost would be noise that
-// looks like a finding.
+// A response with no tokens at all is not counted anywhere but one place.
+// Claude Code writes synthetic assistant lines (model "<synthetic>") for
+// local errors with an all-zero usage; nothing was billed for them, and
+// listing a model named "other" with zero tokens and an unknown cost would be
+// noise that looks like a finding. The one place: a zero-usage line that
+// ended in a refusal is a pre-output refusal, counted in
+// Refusals.WithoutUsage.
 func Build(sc *Scan, now time.Time, days int) *Summary {
 	from := WindowStart(now, days)
 	latest := now.Add(futureSlack).UnixMilli()
@@ -403,9 +430,10 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			Basis:    "estimated at API list prices",
 			Note:     PlanNote,
 		},
-		ByModel:    []ModelSpend{},
-		Savings:    []Saving{},
-		PerSession: []SessionSpend{},
+		ByModel:            []ModelSpend{},
+		Savings:            []Saving{},
+		SavingsNotComputed: []string{SavingNotComputedRefusals},
+		PerSession:         []SessionSpend{},
 		ExtraAttempts: ExtraAttempts{
 			CostUnknownReason: AttemptsUnpriced,
 		},
@@ -434,7 +462,13 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			s.Read.FutureDatedResponses++
 			continue
 		}
-		if r.StartMS == 0 || r.StartMS < s.FromUnixMS || r.Tokens.Total() == 0 {
+		if r.StartMS == 0 || r.StartMS < s.FromUnixMS {
+			continue
+		}
+		if r.Tokens.Total() == 0 {
+			if r.StopReason == "refusal" && r.StartMS <= latest {
+				s.Refusals.WithoutUsage++
+			}
 			continue
 		}
 		s.window = append(s.window, r)
