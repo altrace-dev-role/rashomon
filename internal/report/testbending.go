@@ -175,12 +175,28 @@ func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 // states that limit beside every pattern. Counting them as well would stop a
 // pair at every `ls` an agent runs between two test runs, which is most of
 // them.
+//
+// Nor do Claude Code's own bookkeeping tools (noWrite), whatever class they
+// are stored under: a TodoWrite or a TaskUpdate between two runs is routine
+// in the sessions that have them, and counting it would hide the episode.
+// The list is matched on the tool name and changes no stored class.
 func mayEdit(d store.Declaration) bool {
+	if noWrite[d.ToolName] {
+		return false
+	}
 	switch d.Shape.VerbClass {
 	case shape.VerbRead, shape.VerbNetwork, shape.VerbAgent:
 		return false
 	}
 	return true
+}
+
+// noWrite is Claude Code's tools that track tasks, ask the user, leave plan
+// mode or read a background shell's output: none writes a file. A fixed list
+// of names, so a tool this build does not know still counts as an edit.
+var noWrite = map[string]bool{
+	"TodoWrite": true, "TaskCreate": true, "TaskUpdate": true, "TaskList": true, "TaskGet": true,
+	"TaskOutput": true, "AskUserQuestion": true, "ExitPlanMode": true, "BashOutput": true,
 }
 
 // TestRuns is the session's test runs and the two patterns among them.

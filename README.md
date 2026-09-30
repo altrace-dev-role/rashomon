@@ -265,7 +265,9 @@ named like tests; or the same test command passing and failing with no
 recorded file edit between). A file edit there is any recorded call that may
 change files, not only an Edit or a shell `rm`: a `git checkout`, an `npm
 install`, a `sed -i`, an MCP tool, another test command (`jest -u` rewrites
-snapshots) all count, and only reads, web fetches and subagent launches do
+snapshots) all count, and only reads, web fetches, subagent launches and
+Claude Code's own bookkeeping tools (TodoWrite, TaskCreate, TaskUpdate,
+TaskList, TaskGet, TaskOutput, AskUserQuestion, ExitPlanMode, BashOutput) do
 not. That under-claims by design. It can still miss a change: a shell read or
 fetch that writes (`cat a > b`, `curl -o f`), or anything done outside the
 session's own calls.

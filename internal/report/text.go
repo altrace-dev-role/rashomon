@@ -657,7 +657,8 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 //
 // The limit is printed wherever a pattern is: "no recorded file edit between"
 // means no recorded call between the runs that may change files (mayEdit:
-// every call but a read, a network call or a subagent launch), and a shell
+// every call but a read, a network call, a subagent launch or one of Claude
+// Code's bookkeeping tools), and a shell
 // command classed read or network can still write -- `cat a > b`, `curl -o
 // f` -- where the record does not count it. Saying "nothing changed" would be
 // the claim the record cannot make. Nor does it see the directory a run was
@@ -681,7 +682,7 @@ func writeTestRuns(b *bytes.Buffer, t TestRuns) {
 			p.Seqs[0], first, p.Seqs[1], second)
 	}
 	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
-		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch or a subagent launch, even one that failed;")
+		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool, even one that failed;")
 		fmt.Fprintln(b, "    a shell read or fetch (cat, curl and the like) can still write through a redirect or a download, and is not counted;")
 		fmt.Fprintln(b, "    nor a directory change made inside another shell command, so two runs may have been in different directories;")
 		fmt.Fprintln(b, "    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run")

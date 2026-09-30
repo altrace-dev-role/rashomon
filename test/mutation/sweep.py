@@ -1454,6 +1454,11 @@ m("TB the session block drops the cd-failure limit", "internal/report/text.go",
   "",
   "TestTestRuns_")
 
+m("TB a task or todo update between two runs is an edit", "internal/report/testbending.go",
+  "\tif noWrite[d.ToolName] {\n",
+  "\tif false && noWrite[d.ToolName] {\n",
+  "TestTestBending")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
