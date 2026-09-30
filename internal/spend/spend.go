@@ -142,6 +142,7 @@ type Summary struct {
 	CacheExpiry   CacheExpiry   `json:"cache_expiry"`
 	Refusals      Refusals      `json:"refusals"`
 	ExtraAttempts ExtraAttempts `json:"extra_attempts"`
+	FastMode      FastMode      `json:"fast_mode"`
 
 	SilentFailureTurns SilentFailureTurns `json:"silent_failure_turns"`
 
@@ -247,6 +248,18 @@ type ExtraAttempts struct {
 
 // AttemptsUnpriced is ExtraAttempts' reason, verbatim.
 const AttemptsUnpriced = "iteration entries carry no model, so the rate an extra attempt billed at cannot be read"
+
+// FastMode is responses that ran in fast mode (usage.speed "fast"). Fast
+// mode bills at a premium -- Opus 5.5 at $8/$40 per MTok against $4/$20 --
+// that the table does not hold, so these are priced at standard rates and
+// the figure is low by that premium; the count says how many.
+type FastMode struct {
+	Responses int    `json:"responses"`
+	Pricing   string `json:"pricing"`
+}
+
+// FastModePricing is FastMode's pricing, verbatim.
+const FastModePricing = "priced at standard rates: fast mode's premium is not in the price table"
 
 // SessionSpend is one session's split.
 type SessionSpend struct {
@@ -397,6 +410,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			CostUnknownReason: AttemptsUnpriced,
 		},
 		CacheExpiry: CacheExpiry{Heuristic: CacheHeuristic},
+		FastMode:    FastMode{Pricing: FastModePricing},
 		Read: ReadStats{
 			Files:              len(sc.Files),
 			UsageLines:         sc.UsageLines,
@@ -483,6 +497,9 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		if r.StopReason == "refusal" {
 			s.Refusals.Responses++
 			costOf(&s.Refusals.Cost, r)
+		}
+		if r.Fast {
+			s.FastMode.Responses++
 		}
 		if r.ExtraAttempts > 0 {
 			s.ExtraAttempts.Responses++

@@ -41,10 +41,16 @@ func mtok(hundredths int64) int64 { return hundredths * 10 }
 
 // table is the snapshot, keyed by the model id as the API names it.
 //
-// Out of scope and said to be: Fast mode, the Batch API's discount, long-
-// context premiums, and partner pricing (Bedrock and Vertex). A transcript
-// carries no field saying any of those applied, so pricing a response as one
-// would be a guess; pricing it at plain list rates is at least a stated basis.
+// Out of scope and said to be: fast mode's premium, the Batch API's discount,
+// long-context premiums, partner pricing (Bedrock and Vertex), and web
+// search's per-search fee. Not every one is invisible in a transcript:
+// usage.speed identifies a fast-mode response and usage.service_tier a Batch
+// one. Fast-mode responses are counted and the output says they are priced
+// here at standard rates (FastMode); Claude Code does not send its requests
+// through the Batch API. Long-context premiums (which Sonnet 4.5 and Sonnet 4
+// carry, unlike 4.6 and later) and partner pricing have no field, and
+// usage.server_tool_use.web_search_requests is not read. Pricing at plain list
+// rates is a stated basis where the premium would be a guess or is not read.
 //
 // Retired models keep their rows: a transcript inside the window can still
 // carry one (they remain served on Bedrock and Google Cloud), and a row the

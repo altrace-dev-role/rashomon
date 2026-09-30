@@ -1422,6 +1422,13 @@ m("SP a wholly unpriced silent-failure cost reads at least unknown", "internal/s
   "\tcase !j.Cost.Wholly():\n", "\tcase false:\n", "TestJoin_AWhollyUnpricedTurn")
 m("SP an empty window reads unknown over 0 transcripts", "internal/spend/text.go",
   "\tcase j.Transcripts == 0:\n", "\tcase false:\n", "TestJoin_NoTranscriptInTheWindow")
+m("SP a fast-mode response is not counted", "internal/spend/scan.go",
+  "\t\t\tFast:       l.Message.Usage.Speed == \"fast\",", "\t\t\tFast:       l.Message.Usage.Speed == \"turbo\",",
+  "TestFastMode_")
+m("SP fast-mode responses are not said", "internal/spend/text.go",
+  "\tif s.FastMode.Responses > 0 {", "\tif false {", "TestFastMode_")
+m("SP the out-of-scope line does not name web-search fees", "internal/spend/text.go",
+  "; web-search fees ($10 per 1,000 searches)", "", "TestFastMode_")
 
 # Import additions some mutants need.
 IMPORTS = {

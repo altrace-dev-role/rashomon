@@ -33,6 +33,7 @@ type resp struct {
 	sidechain          bool
 	noTimestamp        bool
 	noSplit            bool   // write cache_creation_input_tokens without the TTL split
+	speed              string // usage.speed, when set
 	text               string // the text block's words, when not the default
 }
 
@@ -43,6 +44,9 @@ func (r resp) usage() map[string]any {
 		"cache_read_input_tokens":     r.read,
 		"cache_creation_input_tokens": r.w5 + r.w1h,
 		"service_tier":                "standard",
+	}
+	if r.speed != "" {
+		u["speed"] = r.speed
 	}
 	if !r.noSplit {
 		u["cache_creation"] = map[string]any{
@@ -1119,6 +1123,38 @@ func TestRefusalsAndExtraAttempts(t *testing.T) {
 	}
 }
 
+// TestFastMode_IsCountedAndSaidToBePricedAtStandardRates: usage.speed marks a
+// fast-mode response, which bills at a premium the table does not hold. The
+// price.go rationale said no field identifies fast mode, and such responses
+// were priced at standard rates without a word. They still are, and the
+// output now counts them and says so.
+func TestFastMode_IsCountedAndSaidToBePricedAtStandardRates(t *testing.T) {
+	c := newConfig(t)
+	at := now.Add(-time.Hour)
+	fast := resp{id: "f", model: "claude-opus-5-5", at: at, in: 1000, stop: "end_turn", speed: "fast"}
+	partial := fast
+	partial.out, partial.stop = 1, ""
+	c.write("proj/sess-a.jsonl", partial.line("thinking"), fast.line("text"),
+		resp{id: "s", model: "claude-opus-5-5", at: at, in: 1000, stop: "end_turn", speed: "standard"}.line("text"))
+	s := c.summary(30)
+	if s.FastMode.Responses != 1 {
+		t.Errorf("fast-mode responses = %d, want 1", s.FastMode.Responses)
+	}
+	if s.Total.Nano != 2000*opusIn {
+		t.Errorf("total = %d, want %d: fast mode is priced at standard rates", s.Total.Nano, 2000*opusIn)
+	}
+	txt, js := render(t, s)
+	if !strings.Contains(txt, "note: 1 response ran in fast mode, which bills at a premium; it is priced at standard rates") {
+		t.Errorf("the text does not say the fast-mode response is priced at standard rates:\n%s", txt)
+	}
+	if !strings.Contains(js, `"fast_mode":{"responses":1,"pricing":"`+FastModePricing+`"}`) {
+		t.Errorf("the JSON does not count fast mode:\n%s", js)
+	}
+	if !strings.Contains(txt, "web-search fees") {
+		t.Errorf("the out-of-scope line does not name web-search fees:\n%s", txt)
+	}
+}
+
 // TestOutput_StatesTheBasisOfEveryFigure: estimated, at list prices, as of
 // the snapshot date, and not what a plan subscriber was charged.
 func TestOutput_StatesTheBasisOfEveryFigure(t *testing.T) {
@@ -1182,7 +1218,7 @@ func TestContentHasNoFieldToLandIn(t *testing.T) {
 				"input_tokens": true, "output_tokens": true, "cache_read_input_tokens": true,
 				"cache_creation_input_tokens": true, "cache_creation": true,
 				"ephemeral_5m_input_tokens": true, "ephemeral_1h_input_tokens": true,
-				"iterations": true,
+				"iterations": true, "speed": true,
 				// A subagent user line's header: a closed word, a flag and
 				// the promptId key that ties a response to its turn.
 				"type": true, "isMeta": true, "promptId": true,

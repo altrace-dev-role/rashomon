@@ -35,7 +35,7 @@ var userMarker = []byte(`"user"`)
 // PATH -- every total, breakdown and heuristic in the document comes from it
 // -- and it is stated as narrowly as the recorder's own rules are:
 // message.id, message.model, message.stop_reason, message.usage's token
-// counts, and the line's timestamp, sessionId and isSidechain -- and, for a
+// counts and speed, and the line's timestamp, sessionId and isSidechain -- and, for a
 // subagent transcript's user lines, type, isMeta and promptId, the key that
 // ties the responses after them to a turn. There is no
 // field for message.content -- or for anything else -- so encoding/json skips
@@ -92,6 +92,9 @@ type cacheCreation struct {
 
 type usage struct {
 	tokens
+	// Speed is "fast" on a fast-mode response, which bills at a premium the
+	// table does not hold (FastMode): a closed word, counted, never printed.
+	Speed string `json:"speed"`
 	// Iterations is one entry per attempt. The API documents it as the per-
 	// attempt source of truth, with the top-level counts covering only the
 	// attempt that produced the returned message.
@@ -201,6 +204,8 @@ type Response struct {
 	// from a line the main transcript itself marks isSidechain.
 	Subagent   bool
 	StopReason string
+	// Fast is true when the response ran in fast mode (usage.speed "fast").
+	Fast bool
 	// StartMS is the earliest timestamp among the response's lines: the
 	// moment its first content block was written, which is the closest a
 	// transcript comes to when the request was made.
@@ -561,6 +566,7 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			SessionID:  l.SessionID,
 			Subagent:   f.Subagent || l.IsSidechain,
 			StopReason: stop,
+			Fast:       l.Message.Usage.Speed == "fast",
 			StartMS:    startMS,
 			Tokens:     l.Message.Usage.split(),
 			file:       idx,
@@ -603,6 +609,7 @@ func keep(prev, cand *Response) {
 	}
 	prev.Tokens = cand.Tokens
 	prev.StopReason = cand.StopReason
+	prev.Fast = cand.Fast
 	prev.complete = cand.complete
 	prev.ExtraAttempts, prev.ExtraTokens = cand.ExtraAttempts, cand.ExtraTokens
 	if prev.Model == "" {

@@ -82,7 +82,11 @@ func Text(w io.Writer, s *Summary) error {
 		fmt.Fprintf(&b, "\nnote: %s carried no timestamp and could not be placed in the window, so they are not counted\n",
 			countOf(s.Read.UndatedResponses, "response"))
 	}
-	fmt.Fprintf(&b, "\nout of scope: fast mode, Batch and partner (Bedrock, Vertex) pricing; long-context premiums\n")
+	if s.FastMode.Responses > 0 {
+		fmt.Fprintf(&b, "\nnote: %s ran in fast mode, which bills at a premium; %s %s\n",
+			countOf(s.FastMode.Responses, "response"), itThem(s.FastMode.Responses)+" "+isAre(s.FastMode.Responses), s.FastMode.Pricing)
+	}
+	fmt.Fprintf(&b, "\nout of scope: fast mode's premium, Batch and partner (Bedrock, Vertex) pricing; long-context premiums; web-search fees ($10 per 1,000 searches)\n")
 
 	_, err := w.Write(b.Bytes())
 	return err
