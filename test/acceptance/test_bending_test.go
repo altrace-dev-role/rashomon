@@ -102,7 +102,7 @@ func TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged(t *testing.T) {
 	if !ok {
 		t.Fatal("a failed test run that passed after only a test file was edited printed no line")
 	}
-	if !strings.Contains(line, "test command failed, then only test files were edited, then it passed (#") {
+	if !strings.Contains(line, "test command failed, then the only recorded edits were to files named like tests, then it passed (#") {
 		t.Errorf("line = %q, want the tests-only sentence", line)
 	}
 	if !strings.Contains(line, "→ rashomon report --session "+testSession) {
@@ -151,9 +151,9 @@ func TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged(t *testing.T) {
 	out := s.e.run("", nil, "report", "--session", testSession, "--timeline").stdout
 	for _, want := range []string{
 		"test runs: 2 (1 ok, 1 failed)",
-		"failed, then only test files were edited, then the same command passed:",
+		"failed, then the only recorded edits were to files named like tests, then the same command passed:",
 		"any other shell command between two runs could still have changed files",
-		"↳ only test files edited since",
+		"↳ only files named like tests edited since",
 		"Bash go",
 	} {
 		if !strings.Contains(out, want) {
@@ -235,7 +235,7 @@ func TestTestBending_SameCommandBothOutcomesIsFlagged(t *testing.T) {
 	if !ok {
 		t.Fatal("the same test command passed and failed with no edit between; recap printed nothing")
 	}
-	if !strings.Contains(line, "same test command passed and failed with no file edit between (#") {
+	if !strings.Contains(line, "same test command passed and failed with no recorded file edit between (#") {
 		t.Errorf("line = %q, want the flaky sentence", line)
 	}
 	if strings.Contains(line, "nothing changed") {

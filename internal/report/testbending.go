@@ -67,6 +67,15 @@ type TestBending struct {
 // a file not named like a test, and stops pattern A. Stopping is the
 // under-claim. Other shell commands are not seen as edits at all; the report
 // states that limit.
+//
+// A directory change breaks every pair open before it. Claude Code's shell
+// keeps its working directory from one call to the next, and the digest does
+// not cover it, so `go test ./...` before and after a `cd ../other` are equal
+// digests run over different code. A shell call whose program is cd, pushd or
+// popd -- which is to say the command is the directory change alone, since
+// the program search reads past a leading `cd DIR &&` -- ends both patterns
+// unless it was denied. A `cd DIR && ...` that leaves the shell in DIR is not
+// seen; the report states that limit too.
 func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 	out := TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []SeqPair{}}
 	if run == nil {
@@ -92,6 +101,10 @@ func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 
 	for _, d := range sorted {
 		outcome, _, _ := linkOutcome(d.ToolUseID, executed, denied)
+		if changesDirectory(d) && outcome != LinkOutcomeDenied {
+			clear(last)
+			continue
+		}
 		switch d.Shape.VerbClass {
 		case shape.VerbWrite:
 			if outcome == LinkOutcomeDenied {
@@ -127,6 +140,19 @@ func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 		}
 	}
 	return out
+}
+
+// changesDirectory reports a shell call that is a directory change and
+// nothing else: its recorded program is cd, pushd or popd.
+func changesDirectory(d store.Declaration) bool {
+	if d.Shape.Program == nil {
+		return false
+	}
+	switch *d.Shape.Program {
+	case "cd", "pushd", "popd":
+		return true
+	}
+	return false
 }
 
 // TestRuns is the session's test runs and the two patterns among them.

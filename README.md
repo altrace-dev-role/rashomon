@@ -261,7 +261,9 @@ at (a recorded failure that the agent's final message does not acknowledge,
 meaning it uses none of the failure words; a declaration without recorded
 execution; coverage that did not verify; a truncated/unknown projection; a
 failed test command that passed after only files named like tests were edited;
-or the same test command passing and failing with no file edit between).
+or the same test command passing and failing with no recorded file edit
+between; a `sed -i` or other shell command that changes files is not a
+recorded edit).
 One known gap: Claude Code discards what a `StopFailure` hook prints, so a turn
 that ends in an API error shows no line, and in this release the next prompt
 does not show it either. The line points to

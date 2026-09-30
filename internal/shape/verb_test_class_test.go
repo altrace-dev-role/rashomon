@@ -60,9 +60,22 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 		{"cd /repo && go test ./...", VerbTest, "cd is where a command runs, not what it runs"},
 		{"cd a; cd b && npm test", VerbTest, ""},
 		{"CGO_ENABLED=0 go test ./...", VerbTest, ""},
-		{"go test ./... 2>&1 | tail -20", VerbTest, "the pipeline's first command is the one named"},
 		{"( cd x && pytest )", VerbTest, ""},
-		{"go test ./...; echo done", VerbTest, ""},
+		{"go test ./... 2>&1", VerbTest, "a redirection is part of the runner's command"},
+		{"go test ./... > out.txt 2>&1", VerbTest, ""},
+		{"go test ./...\n", VerbTest, "a trailing newline starts no command"},
+
+		// The runner is not the whole line, so the outcome is another
+		// program's: the class stays what the program gave it.
+		{"go test ./... 2>&1 | tail -20", VerbPackage, "the status is tail's"},
+		{"go test | grep FAIL", VerbPackage, "grep inverts it: exit 1 when the tests passed"},
+		{"go test ./... || true", VerbPackage, ""},
+		{"go test ./...; echo done", VerbPackage, ""},
+		{"go test &", VerbPackage, "the status is the fork's"},
+		{"go test ./... && echo PASS", VerbPackage, "a pass there is echo's"},
+		{"go test ./...\necho done", VerbPackage, "the next line runs last"},
+		{"cd /repo && make test | tee log", VerbExecute, ""},
+		{"pytest -q; exit 0", VerbExecute, ""},
 
 		// Not a test run: a neighbouring subcommand.
 		{"go build ./...", VerbPackage, ""},
@@ -114,6 +127,28 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 		}
 		if got.VerbClass != want {
 			t.Errorf("%q: verb class %q, want %q%s", tc.cmd, got.VerbClass, want, because(tc.why))
+		}
+	}
+}
+
+// TestBackgroundLaunchIsNotATestRun: Claude Code records a Bash call with
+// run_in_background true when the shell is launched, so its outcome is the
+// launch's, and its digest -- the command line alone -- equals the foreground
+// run's. It keeps the class its program gives it; only the boolean true
+// changes that.
+func TestBackgroundLaunchIsNotATestRun(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  string
+	}{
+		{`{"command":"make test","run_in_background":true}`, VerbExecute},
+		{`{"command":"go test ./...","run_in_background":true,"description":"x"}`, VerbPackage},
+		{`{"command":"go test ./...","run_in_background":false}`, VerbTest},
+		{`{"command":"go test ./...","run_in_background":"true"}`, VerbTest},
+		{`{"command":"go test ./..."}`, VerbTest},
+	} {
+		if got := Derive("Bash", json.RawMessage(tc.input), []byte("key")); got.VerbClass != tc.want {
+			t.Errorf("%s: verb class %q, want %q", tc.input, got.VerbClass, tc.want)
 		}
 	}
 }

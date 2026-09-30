@@ -63,7 +63,7 @@ func writeTimelineCall(b *bytes.Buffer, c TimelineCall) {
 
 // bendingLabel annotates the row that completes a test-bending pair, on a line
 // of its own under it. It says what the record shows between the two runs and
-// nothing about why: "no file edit", never "nothing changed", because a shell
+// nothing about why: "no recorded file edit", never "nothing changed", because a shell
 // command between them could have changed files the record does not see.
 func bendingLabel(t *TimelineBending) string {
 	if t == nil {
@@ -71,9 +71,9 @@ func bendingLabel(t *TimelineBending) string {
 	}
 	if t.Kind == BendTestsOnlyThenGreen {
 		// ↳ DOWNWARDS ARROW WITH TIP RIGHTWARDS
-		return fmt.Sprintf("↳ only test files edited since %d, where the same command failed", t.Since)
+		return fmt.Sprintf("↳ only files named like tests edited since %d, where the same command failed", t.Since)
 	}
-	return fmt.Sprintf("↳ same command had the other outcome at %d, no file edit between", t.Since)
+	return fmt.Sprintf("↳ same command had the other outcome at %d, no recorded file edit between", t.Since)
 }
 
 // agentLabel names the agent a call ran in: "main", or the subagent's type

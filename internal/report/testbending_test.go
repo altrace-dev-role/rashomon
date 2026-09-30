@@ -23,6 +23,7 @@ type tbCall struct {
 	label   string // for an edit: its file_label
 	outcome string // ok, failed, interrupted, "" for no execution record
 	agent   string
+	prog    string // for Bash: the program, go when empty
 }
 
 func tbRun(calls ...tbCall) *store.Run {
@@ -39,6 +40,9 @@ func tbRun(calls ...tbCall) *store.Run {
 		}
 		if c.tool == "Bash" {
 			p := "go"
+			if c.prog != "" {
+				p = c.prog
+			}
 			d.Shape.Program = &p
 		}
 		if c.label != "" {
@@ -169,6 +173,21 @@ func TestTestBending(t *testing.T) {
 			run: tbRun(test(1, "d", failed),
 				tbCall{seq: 2, tool: "Bash", verb: shape.VerbTest, digest: "d", outcome: ok, agent: "agent-b2"}),
 			green: pairs(), flaky: pairs(SeqPair{1, 2})},
+		{name: "a cd between breaks the pair",
+			run:   tbRun(test(1, "d", failed), tbCall{seq: 2, tool: "Bash", verb: shape.VerbExecute, prog: "cd", digest: "cd", outcome: ok}, test(3, "d", ok)),
+			green: pairs(), flaky: pairs(),
+			why: "the shell keeps its directory between calls, and the digest does not cover it: the runs may be over different code"},
+		{name: "a cd between breaks pattern A too",
+			run: tbRun(test(1, "d", failed), edit(2, tf, ok),
+				tbCall{seq: 3, tool: "Bash", verb: shape.VerbExecute, prog: "pushd", digest: "p", outcome: ok}, test(4, "d", ok)),
+			green: pairs(), flaky: pairs()},
+		{name: "a cd before both runs does not break them",
+			run:   tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbExecute, prog: "cd", digest: "cd", outcome: ok}, test(2, "d", failed), test(3, "d", ok)),
+			green: pairs(), flaky: pairs(SeqPair{2, 3})},
+		{name: "a denied cd does not break the pair",
+			run:    tbRun(test(1, "d", failed), tbCall{seq: 2, tool: "Bash", verb: shape.VerbExecute, prog: "cd", digest: "cd"}, test(3, "d", ok)),
+			denied: map[string]bool{"tc": true},
+			green:  pairs(), flaky: pairs(SeqPair{1, 3})},
 		{name: "a command that is not a test run is never paired",
 			run: tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbPackage, digest: "d", outcome: failed},
 				tbCall{seq: 2, tool: "Bash", verb: shape.VerbPackage, digest: "d", outcome: ok}),
@@ -187,6 +206,61 @@ func TestTestBending(t *testing.T) {
 				t.Errorf("flaky = %v, want %v%s", got.Flaky, tc.flaky, whyNote(tc.why))
 			}
 		})
+	}
+}
+
+// TestTestBending_ShapesFromDerive: the calls a review found bent the
+// patterns, built through shape.Derive as the hook builds them rather than
+// with the class set by hand. A background launch records ok when the shell
+// starts and digests equal to the foreground run; a pipeline records its last
+// program's status (grep inverts it); a cd moves the next run to other code.
+// None of the three may complete either pattern.
+func TestTestBending_ShapesFromDerive(t *testing.T) {
+	key := []byte("key")
+	bash := func(seq int64, input, outcome string) (store.Declaration, *store.Execution) {
+		id := "d" + string(rune('a'+seq))
+		d := store.Declaration{Seq: seq, ToolUseID: id, ToolName: "Bash", SessionID: "s1",
+			Shape: shape.Derive("Bash", json.RawMessage(input), key)}
+		return d, &store.Execution{ToolUseID: id, ToolName: "Bash", Outcome: outcome}
+	}
+	testEdit := func(seq int64) (store.Declaration, *store.Execution) {
+		id := "d" + string(rune('a'+seq))
+		l := shape.LabelTestFile
+		d := store.Declaration{Seq: seq, ToolUseID: id, ToolName: "Edit", SessionID: "s1", FileLabel: &l,
+			Shape: shape.Derive("Edit", json.RawMessage(`{"file_path":"/r/foo_test.go"}`), key)}
+		return d, &store.Execution{ToolUseID: id, ToolName: "Edit", Outcome: store.ExecOK}
+	}
+	type call func() (store.Declaration, *store.Execution)
+	b := func(seq int64, input, outcome string) call {
+		return func() (store.Declaration, *store.Execution) { return bash(seq, input, outcome) }
+	}
+	e := func(seq int64) call { return func() (store.Declaration, *store.Execution) { return testEdit(seq) } }
+	const ok, failed = store.ExecOK, store.ExecFailed
+	for _, tc := range []struct {
+		name  string
+		calls []call
+	}{
+		{"background launch after a failure", []call{
+			b(1, `{"command":"make test"}`, failed), b(2, `{"command":"make test","run_in_background":true}`, ok)}},
+		{"background launch after a test edit", []call{
+			b(1, `{"command":"go test ./..."}`, failed), e(2), b(3, `{"command":"go test ./...","run_in_background":true}`, ok)}},
+		{"a grep pipeline inverts the outcome", []call{
+			b(1, `{"command":"go test ./... 2>&1 | grep FAIL"}`, failed), e(2), b(3, `{"command":"go test ./... 2>&1 | grep FAIL"}`, ok)}},
+		{"a tail pipeline records tail", []call{
+			b(1, `{"command":"go test ./... 2>&1 | tail -20"}`, failed), b(2, `{"command":"go test ./... 2>&1 | tail -20"}`, ok)}},
+		{"a cd between moves the run", []call{
+			b(1, `{"command":"go test ./..."}`, failed), b(2, `{"command":"cd ../other-module"}`, ok), b(3, `{"command":"go test ./..."}`, ok)}},
+	} {
+		run := &store.Run{}
+		for _, c := range tc.calls {
+			d, x := c()
+			run.Declarations = append(run.Declarations, d)
+			run.Executions = append(run.Executions, *x)
+		}
+		got := DetectTestBending(run, nil)
+		if len(got.TestsOnlyThenGreen)+len(got.Flaky) != 0 {
+			t.Errorf("%s: %+v, want neither pattern", tc.name, got)
+		}
 	}
 }
 
@@ -235,9 +309,10 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	out := b.String()
 	for _, want := range []string{
 		"test runs: 4 (2 ok, 2 failed)",
-		"failed, then only test files were edited, then the same command passed: 1 → 3",
-		"same command passed and failed with no file edit between: 4, 5",
+		"failed, then the only recorded edits were to files named like tests, then the same command passed: 1 → 3",
+		"same command passed and failed with no recorded file edit between: 4, 5",
 		"any other shell command between two runs could still have changed files",
+		"nor a directory change made inside another shell command",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)
@@ -282,8 +357,8 @@ func TestTimeline_AnnotatesTheRowThatCompletesAPattern(t *testing.T) {
 	writeTimeline(&b, tl)
 	out := b.String()
 	for _, w := range []string{
-		"↳ only test files edited since 1, where the same command failed",
-		"↳ same command had the other outcome at 4, no file edit between",
+		"↳ only files named like tests edited since 1, where the same command failed",
+		"↳ same command had the other outcome at 4, no recorded file edit between",
 	} {
 		if !strings.Contains(out, w) {
 			t.Errorf("timeline text is missing %q:\n%s", w, out)

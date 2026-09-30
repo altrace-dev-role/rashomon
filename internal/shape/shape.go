@@ -109,7 +109,7 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 			prog := path.Base(pshaped[i].text)
 			s.Program = &prog
 			s.VerbClass = verbForProgram(prog)
-			if runsTests(pshaped, i, prog, perr == nil) {
+			if runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {
 				s.VerbClass = VerbTest
 			}
 		}
@@ -935,13 +935,15 @@ var testCommands = [][]string{
 }
 
 // runsTests reports whether the command whose program is the token at i,
-// named prog, is one of testCommands.
+// named prog, is one of testCommands, and the whole line (wholeCommand), so
+// that the line's exit status is the runner's.
 //
 // The program was found under programToken's rules, so it is certain; each
 // word after it must be certain in the same way before it is compared: an
-// unquoted word of this same command, not on the next line, and not running on
-// into a process substitution the shell reads as more of the same word. An
-// operator or an expansion keeps its bytes in the token's text ($, `, ${ ),
+// unquoted word of this same command, and not running on into a process
+// substitution the shell reads as more of the same word. A word on the next
+// line is the next command's, and wholeCommand refuses any line that has one.
+// An operator or an expansion keeps its bytes in the token's text ($, `, ${ ),
 // so equality to a list word already refuses those. programToken has refused
 // a command whose end it could not find, so the words up to that end are ones
 // the lexer vouched for -- and a line the lexer could not finish at all
@@ -965,13 +967,61 @@ next:
 				continue next
 			}
 			t := toks[k]
-			if t.nlBefore || t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {
+			if t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {
 				continue next
 			}
 		}
-		return true
+		return wholeCommand(toks, i)
 	}
 	return false
+}
+
+// wholeCommand reports whether the runner whose program is the token at i is
+// the whole line: nothing follows its own words, arguments and redirections
+// but the end of the line.
+//
+// The recorded outcome is the line's exit status, and it is the runner's only
+// when the runner ran last and in the foreground. `go test ./... 2>&1 | tail`
+// ends with tail's status, `|| true` and `; echo done` with true's and echo's,
+// `&` with the fork's, and `| grep FAIL` inverts it: grep exits 1 when the
+// tests passed. `&&` is refused as well, although a failure there is the
+// runner's: its success is whatever ran after it. So any separator, and any
+// next line, leaves the class what it was before -- the under-claim. The end
+// is found by commandEnd, the scan pastDirectoryChange uses, so a `;` inside
+// `$( )` ends nothing; a newline anywhere after the runner refuses, whether
+// commandEnd reached it or stopped at it.
+func wholeCommand(toks []token, i int) bool {
+	sep, ok := commandEnd(toks, i, false)
+	if !ok || sep >= 0 {
+		return false
+	}
+	for _, t := range toks[i+1:] {
+		if t.nlBefore {
+			return false
+		}
+	}
+	return true
+}
+
+// backgrounded reports a shell call Claude Code was asked to run in the
+// background: its tool_input's run_in_background is the JSON boolean true.
+//
+// Such a call's PostToolUse fires when the shell is launched, not when the
+// command ends, so its recorded outcome is the launch's: ok, before any test
+// has run. The digest covers the command line only, so the launch digests
+// equal to the same command run in the foreground, and as a test run it would
+// pair with a real run as passing. It keeps the class the program gave it.
+// The field is read as a boolean and nothing else, like the command field is
+// read for its words and dropped.
+func backgrounded(raw json.RawMessage) bool {
+	var obj struct {
+		RunInBackground json.RawMessage `json:"run_in_background"`
+	}
+	if json.Unmarshal(raw, &obj) != nil {
+		return false
+	}
+	var b bool
+	return json.Unmarshal(obj.RunInBackground, &b) == nil && b
 }
 
 func verbForProgram(prog string) string {

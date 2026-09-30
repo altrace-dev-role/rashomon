@@ -54,9 +54,10 @@ var prefix = mark + " rashomon: "
 // see the PR description for the fuller account of this gap.
 //
 // Two triggers join them for test-bending: a failed test command that passed
-// after only test files were edited, and one test command that both passed
-// and failed with no file edit between. Each is one short sentence with the
-// first pair's seqs, and the same pointer: the report's timeline has the rows.
+// after only files named like tests were edited, and one test command that
+// both passed and failed with no recorded file edit between. Each is one short
+// sentence with the first pair's seqs, and the same pointer: the report's
+// timeline has the rows.
 //
 // Coverage-unverified and digest-unknown are rendered as ONE sentence, not
 // two: Unknown is defined as Recorded == 0 AND Coverage.State != verified
@@ -86,11 +87,11 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 			fmt.Sprintf("%d recorded failure%s", d.SilentFailures.Failed, plural(d.SilentFailures.Failed)))
 	}
 	tb := d.TestBending
-	if s, ok := pairSentence("test command failed, then only test files were edited, then it passed",
+	if s, ok := pairSentence("test command failed, then the only recorded edits were to files named like tests, then it passed",
 		tb.TestsOnlyThenGreen, tb.TestsOnlyThenGreenOmitted, " → "); ok {
 		sentences = append(sentences, s)
 	}
-	if s, ok := pairSentence("same test command passed and failed with no file edit between",
+	if s, ok := pairSentence("same test command passed and failed with no recorded file edit between",
 		tb.Flaky, tb.FlakyOmitted, ", "); ok {
 		sentences = append(sentences, s)
 	}
@@ -125,9 +126,13 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 // pair left to print, and the sentence says how many without one -- the
 // finding is still a fact, and the report still has the seqs.
 //
-// The wording is the record's, never a motive: "only test files were
-// edited", "no file edit between". Not "nothing changed", which a shell
-// command between the runs could make false where the record cannot see it.
+// The wording is the record's, never a motive: "the only recorded edits
+// were to files named like tests", "no recorded file edit between". Not
+// "only test files were edited" or "nothing changed": a `sed -i` or a `git
+// checkout` between the runs is a shell call the record does not count as an
+// edit, and the report prints that limit where this line has no room to. So
+// the line says "recorded" itself, and "named like tests", which is all the
+// label knows.
 func pairSentence(text string, pairs []report.SeqPair, omitted int, sep string) (string, bool) {
 	n := len(pairs) + omitted
 	if n == 0 {

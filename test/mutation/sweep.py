@@ -1104,19 +1104,17 @@ m("H-21 the exit code is read from the whole message again", "internal/hook/post
   "\tdigits := strings.TrimSpace(msg[len(exitCodePrefix):])", "TestH21_")
 
 m("TB a test runner is never recognised", "internal/shape/shape.go",
-  "\t\t\tif runsTests(pshaped, i, prog, perr == nil) {", "\t\t\tif false && runsTests(pshaped, i, prog, perr == nil) {",
+  "\t\t\tif runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {",
+  "\t\t\tif false && runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {",
   "TestTestRunnerIsRecognised|TestTestClassCarriesNoContent|TestTestBending_")
 m("TB a line the lexer could not finish is vouched for", "internal/shape/shape.go",
   "\tif !whole {\n\t\treturn false\n\t}", "\t_ = whole", "TestTestRunnerIsRecognised")
 m("TB a quoted argument is compared as plain", "internal/shape/shape.go",
-  "\t\t\tif t.nlBefore || t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
-  "\t\t\tif t.nlBefore || t.text != want || runsOn(toks, k) {", "TestTestRunnerIsRecognised")
-m("TB the next line's word is the argument", "internal/shape/shape.go",
-  "\t\t\tif t.nlBefore || t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
-  "\t\t\tif t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {", "TestTestRunnerIsRecognised")
+  "\t\t\tif t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
+  "\t\t\tif t.text != want || runsOn(toks, k) {", "TestTestRunnerIsRecognised")
 m("TB an argument running into a process substitution is plain", "internal/shape/shape.go",
-  "\t\t\tif t.nlBefore || t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
-  "\t\t\tif t.nlBefore || t.quotedAt >= 0 || t.text != want {", "TestTestRunnerIsRecognised")
+  "\t\t\tif t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
+  "\t\t\tif t.quotedAt >= 0 || t.text != want {", "TestTestRunnerIsRecognised")
 m("TB every word of a runner is compared against the first argument", "internal/shape/shape.go",
   "\t\t\tk := i + 1 + n\n", "\t\t\tk := i + 1 + n*0\n", "TestTestRunnerIsRecognised")
 m("TB a runner missing its argument still matches", "internal/shape/shape.go",
@@ -1183,7 +1181,7 @@ m("TB the timeline annotates the earlier row", "internal/report/timeline.go",
   "\t\tbending[p[1]] = TimelineBending{Kind: BendTestsOnlyThenGreen, Since: p[0]}",
   "\t\tbending[p[0]] = TimelineBending{Kind: BendTestsOnlyThenGreen, Since: p[0]}", "TestTimeline_|TestTestBending_")
 m("TB the timeline drops the flaky annotation", "internal/report/timeline_text.go",
-  "\treturn fmt.Sprintf(\"↳ same command had the other outcome at %d, no file edit between\", t.Since)",
+  "\treturn fmt.Sprintf(\"↳ same command had the other outcome at %d, no recorded file edit between\", t.Since)",
   "\treturn \"\"", "TestTimeline_")
 m("TB the session block renders with no test run", "internal/report/text.go",
   "\tif t.Runs == 0 {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:", "\tif false {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:",
@@ -1229,6 +1227,31 @@ m("TB the end-of-turn line forgets what truncate cut", "internal/recap/recap.go"
   "\tn := len(pairs) + omitted\n", "\tn := len(pairs) + omitted*0\n", "TestLineTestBending")
 m("TB the end-of-turn line hides the other pairs", "internal/recap/recap.go",
   "\t\ts += fmt.Sprintf(\", %d more\", n-1)", "\t\t_ = n", "TestLineTestBending")
+
+m("TB a background launch is a test run", "internal/shape/shape.go",
+  "\t\t\tif runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {",
+  "\t\t\tif runsTests(pshaped, i, prog, perr == nil) && !backgrounded(nil) {",
+  "TestBackgroundLaunchIsNotATestRun|TestTestBending_ShapesFromDerive")
+m("TB a runner piped or listed into another command is a test run", "internal/shape/shape.go",
+  "\t\treturn wholeCommand(toks, i)\n", "\t\treturn wholeCommand(toks[:i+1], i)\n",
+  "TestTestRunnerIsRecognised|TestTestBending_ShapesFromDerive")
+m("TB a command on the runner's next line is not seen", "internal/shape/shape.go",
+  "\t\tif t.nlBefore {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}",
+  "\t\tif t.nlBefore && false {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}",
+  "TestTestRunnerIsRecognised")
+m("TB a cd between two runs does not break the pair", "internal/report/testbending.go",
+  "\t\tif changesDirectory(d) && outcome != LinkOutcomeDenied {",
+  "\t\tif changesDirectory(d) && outcome == \"never\" {",
+  "TestTestBending")
+m("TB a denied cd breaks the pair", "internal/report/testbending.go",
+  "\t\tif changesDirectory(d) && outcome != LinkOutcomeDenied {",
+  "\t\tif changesDirectory(d) {",
+  "TestTestBending")
+m("TB pushd is not a directory change", "internal/report/testbending.go",
+  "\tcase \"cd\", \"pushd\", \"popd\":", "\tcase \"cd\", \"popd\":", "TestTestBending")
+m("TB the session block drops the directory limit", "internal/report/text.go",
+  "\t\tfmt.Fprintln(b, \"    nor a directory change made inside another shell command, so two runs may have been in different directories\")\n",
+  "", "TestTestRuns_")
 
 # Import additions some mutants need.
 IMPORTS = {

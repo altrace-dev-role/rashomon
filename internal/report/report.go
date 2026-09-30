@@ -275,7 +275,7 @@ type Session struct {
 	// TestRuns is the session's calls of verb class test, and the two
 	// test-bending patterns among them: a failed run that passed after only
 	// test files were edited, and one command that both passed and failed
-	// with no file edit between. The turn digest carries the same patterns
+	// with no recorded file edit between. The turn digest carries the same patterns
 	// for one turn; this is the whole session's.
 	TestRuns TestRuns `json:"test_runs"`
 }

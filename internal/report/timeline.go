@@ -67,9 +67,10 @@ type TimelineCall struct {
 	ExitCode     *int           `json:"exit_code"`
 	Later        *LaterSuccess  `json:"later"`
 	// Bending is set on the LATER call of a test-bending pair (see
-	// DetectTestBending): the run that passed after only test files were
-	// edited, or the run whose outcome differs from the same command's
-	// previous run with no file edit between. Null on every other row.
+	// DetectTestBending): the run that passed after only files named like
+	// tests were edited, or the run whose outcome differs from the same
+	// command's previous run with no recorded file edit between. Null on
+	// every other row.
 	Bending *TimelineBending `json:"test_bending"`
 }
 

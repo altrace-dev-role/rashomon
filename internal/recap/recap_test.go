@@ -174,7 +174,7 @@ func TestLinePointsAtACommandTheOriginHas(t *testing.T) {
 
 // TestLineTestBending: each test-bending pattern is one short sentence joined
 // into the line, naming the first pair by seq, with the same pointer. The
-// wording is the record's -- "no file edit between", never "nothing changed"
+// wording is the record's -- "no recorded file edit between", never "nothing changed"
 // -- and a truncated list still speaks, counted from its omitted total.
 func TestLineTestBending(t *testing.T) {
 	for _, tc := range []struct {
@@ -185,12 +185,12 @@ func TestLineTestBending(t *testing.T) {
 		{
 			name: "tests only then green",
 			tb:   digest.TestBending{TestsOnlyThenGreen: []report.SeqPair{{12, 19}}},
-			want: []string{"test command failed, then only test files were edited, then it passed (#12 → #19)."},
+			want: []string{"test command failed, then the only recorded edits were to files named like tests, then it passed (#12 → #19)."},
 		},
 		{
 			name: "flaky",
 			tb:   digest.TestBending{Flaky: []report.SeqPair{{8, 14}}},
-			want: []string{"same test command passed and failed with no file edit between (#8, #14)."},
+			want: []string{"same test command passed and failed with no recorded file edit between (#8, #14)."},
 		},
 		{
 			name: "both, and more than one",
@@ -200,7 +200,7 @@ func TestLineTestBending(t *testing.T) {
 			},
 			want: []string{
 				"then it passed (#12 → #19, 1 more). same test command",
-				"no file edit between (#8, #14, 2 more).",
+				"no recorded file edit between (#8, #14, 2 more).",
 			},
 		},
 		{
