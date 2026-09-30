@@ -124,14 +124,40 @@ func usd(nano int64) string {
 // unknown, would call the unpriced side's share 0% whatever its tokens.
 func agentLine(s *Summary) string {
 	main, sub := s.ByAgent.Main, s.ByAgent.Subagents
-	total := main.Nano + sub.Nano
-	pct := func(n int64) string {
-		if total == 0 || !main.Known() || !sub.Known() {
-			return ""
-		}
-		return fmt.Sprintf(" (%d%%)", (n*100+total/2)/total)
+	if main.Nano+sub.Nano == 0 || !main.Known() || !sub.Known() {
+		return fmt.Sprintf("main %s   subagents %s", money(main), money(sub))
 	}
-	return fmt.Sprintf("main %s%s   subagents %s%s", money(main), pct(main.Nano), money(sub), pct(sub.Nano))
+	pm, ps := shares(main.Nano, sub.Nano)
+	return fmt.Sprintf("main %s (%s)   subagents %s (%s)", money(main), pm, money(sub), ps)
+}
+
+// shares is two amounts' percentages of their sum, summing to exactly 100.
+//
+// Each share rounded on its own summed to 101% whenever both sat on a half
+// (99.5 and 0.5), so the percentages are the floors with the leftover point
+// given to the larger remainder (largest remainder; a tie goes to the first).
+// And a share that rounds to 0 while its amount is not zero is "<1%", its
+// complement ">99%": printing 0% beside a non-zero figure says it was nothing.
+func shares(a, b int64) (string, string) {
+	total := a + b
+	pa, pb := a*100/total, b*100/total
+	if pa+pb < 100 {
+		if a*100%total >= b*100%total {
+			pa++
+		} else {
+			pb++
+		}
+	}
+	label := func(p, n int64) string {
+		switch {
+		case p == 0 && n > 0:
+			return "<1%"
+		case p == 100 && n < total:
+			return ">99%"
+		}
+		return fmt.Sprintf("%d%%", p)
+	}
+	return label(pa, a), label(pb, b)
 }
 
 func modelLine(s *Summary) string {
@@ -165,7 +191,7 @@ func attemptsLine(a ExtraAttempts) string {
 	if a.Responses == 0 {
 		return "none (no response carried more than one attempt)"
 	}
-	return fmt.Sprintf("%s carried %s: %s tokens spent on declined attempts, cost unknown (%s)",
+	return fmt.Sprintf("%s carried %s: %s tokens spent on the extra attempts, cost unknown (%s)",
 		countOf(a.Responses, "response"), countOf(a.Attempts, "extra attempt"), thousands(a.Tokens.Total()), a.CostUnknownReason)
 }
 

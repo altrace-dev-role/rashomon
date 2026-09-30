@@ -234,6 +234,10 @@ type Refusals struct {
 // FALLBACK's rates, so which rate applies to an attempt cannot be read from
 // the transcript. Until a real transcript shows that shape, the dollars are
 // unknown and the document says so rather than guessing a model.
+//
+// "Extra", never "declined": an entry's type is not read here, and nothing
+// has shown what types an attempt can have, so calling every earlier attempt
+// a declined one would be a claim about each entry the read does not make.
 type ExtraAttempts struct {
 	Responses         int    `json:"responses"`
 	Attempts          int    `json:"attempts"`
@@ -242,7 +246,7 @@ type ExtraAttempts struct {
 }
 
 // AttemptsUnpriced is ExtraAttempts' reason, verbatim.
-const AttemptsUnpriced = "iteration entries carry no model, so the rate a declined attempt billed at cannot be read"
+const AttemptsUnpriced = "iteration entries carry no model, so the rate an extra attempt billed at cannot be read"
 
 // SessionSpend is one session's split.
 type SessionSpend struct {

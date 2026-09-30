@@ -1226,7 +1226,7 @@ m("SP an unchecked silent-failure line marshals as a checked $0", "internal/spen
   "\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns", "\tif true {\n\t\tout.Turns",
   "TestJoin_NoStore")
 m("SP by-agent shares are printed beside an unknown", "internal/spend/text.go",
-  "\t\tif total == 0 || !main.Known() || !sub.Known() {", "\t\tif total == 0 {",
+  "\tif main.Nano+sub.Nano == 0 || !main.Known() || !sub.Known() {", "\tif main.Nano+sub.Nano == 0 {",
   "TestAgent_NoShareBesideAnUnknown")
 m("SP a user line's tool-result test decodes the text of its blocks", "internal/report/transcript.go",
   "\t\tContent []struct {\n\t\t\tType string `json:\"type\"`\n\t\t} `json:\"content\"`",
@@ -1282,6 +1282,17 @@ m("SP the 1h TTL is advised for a re-write that was already 1h", "internal/spend
   "\t\tif s.CacheExpiry.Tokens5m > 0 {\n\t\t\tsv.Hint", "\t\tif true {\n\t\t\tsv.Hint", "TestCacheExpiry_NoLongerTTLAdvice")
 m("SP a 5m re-write is given no TTL hint", "internal/spend/text.go",
   "\t\tif sv.Hint == SavingHintLongerTTL {", "\t\tif false {", "TestCacheExpiry_NoLongerTTLAdvice")
+m("SP each agent share is rounded on its own", "internal/spend/text.go",
+  "\tif pa+pb < 100 {", "\tif false {", "TestAgent_SharesSumTo100")
+m("SP the leftover share point goes to the smaller remainder", "internal/spend/text.go",
+  "\t\tif a*100%total >= b*100%total {", "\t\tif a*100%total < b*100%total {", "TestAgent_SharesSumTo100")
+m("SP a non-zero side under 1% prints 0%", "internal/spend/text.go",
+  "\t\tcase p == 0 && n > 0:", "\t\tcase false:", "TestAgent_SharesSumTo100")
+m("SP a share of 100% is printed beside a non-zero other side", "internal/spend/text.go",
+  "\t\tcase p == 100 && n < total:", "\t\tcase false:", "TestAgent_SharesSumTo100")
+m("SP every extra attempt is called declined", "internal/spend/text.go",
+  "tokens spent on the extra attempts, cost unknown", "tokens spent on declined attempts, cost unknown",
+  "TestRefusalsAndExtraAttempts")
 
 # Import additions some mutants need.
 IMPORTS = {

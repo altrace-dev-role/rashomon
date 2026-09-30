@@ -546,6 +546,32 @@ func TestAgent_NoShareBesideAnUnknown(t *testing.T) {
 	}
 }
 
+// TestAgent_SharesSumTo100AndNeverCallANonZeroSide0: each share rounded on
+// its own printed 100% and 1% (101%) for a 99.5/0.5 split, and a side under
+// half a percent printed 0% beside its own non-zero dollars.
+func TestAgent_SharesSumTo100AndNeverCallANonZeroSide0(t *testing.T) {
+	for _, tc := range []struct {
+		main, sub int64
+		want      string
+	}{
+		{995, 5, "(>99%)   subagents <$0.01 (<1%)"},
+		{1999, 1, "(>99%)   subagents <$0.01 (<1%)"},
+		{25, 75, "(25%)   subagents <$0.01 (75%)"},
+		{1015, 985, "(51%)   subagents <$0.01 (49%)"},
+		{1, 2, "(33%)   subagents <$0.01 (67%)"},
+	} {
+		c := newConfig(t)
+		at := now.Add(-time.Hour)
+		c.write("proj/sess-a.jsonl", resp{id: "m", model: "claude-opus-5-5", at: at, in: tc.main, stop: "end_turn"}.line("text"))
+		c.write("proj/sess-a/subagents/agent-a.jsonl",
+			resp{id: "s", model: "claude-opus-5-5", at: at, in: tc.sub, stop: "end_turn", sidechain: true}.line("text"))
+		txt, _ := render(t, c.summary(30))
+		if !strings.Contains(txt, tc.want) {
+			t.Errorf("main %d, sub %d tokens: by-agent line lacks %q:\n%s", tc.main, tc.sub, tc.want, txt)
+		}
+	}
+}
+
 // TestPricing_TheTableIsTheDesignsTable prices one million tokens of each
 // kind on every model and compares with the design's own figures, written
 // here in dollars so a reader can hold them against the table.
@@ -898,7 +924,7 @@ func TestRefusalsAndExtraAttempts(t *testing.T) {
 	if !strings.Contains(txt, "1 response ended in a refusal, $0.01") {
 		t.Errorf("text does not carry the refusal line:\n%s", txt)
 	}
-	if !strings.Contains(txt, "335 tokens spent on declined attempts, cost unknown") {
+	if !strings.Contains(txt, "335 tokens spent on the extra attempts, cost unknown") || strings.Contains(txt, "declined") {
 		t.Errorf("text does not carry the extra attempts in tokens with the cost unknown:\n%s", txt)
 	}
 	if !strings.Contains(js, `"cost_unknown_reason":"`+AttemptsUnpriced+`"`) {
