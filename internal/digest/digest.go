@@ -179,8 +179,9 @@ type Digest struct {
 
 	// TestBending is report.DetectTestBending over this turn's own calls,
 	// main agent and subagents together: seq pairs, and which run of a flaky
-	// pair failed, and nothing else. See TestBending's
-	// own doc for the two patterns and why each list has an omitted count.
+	// pair failed, and nothing else. See report.TestBending's doc for the two
+	// patterns, and this package's TestBending for why each list has an
+	// omitted count.
 	TestBending TestBending `json:"test_bending"`
 
 	// Gaps intersecting this turn's window. Rendered rather than dropped, for
