@@ -105,8 +105,9 @@ type TimelineCall struct {
 	// rest. False on a failed call with no declaration (no command to match),
 	// whose failure record has no seq (no position to be later than), or
 	// where nothing placed was found but a matching success's record has no
-	// seq (it may be the later one): a nil Later there is "not checked",
-	// never "no later success".
+	// seq, or a success of the same tool has no declaration and was not
+	// recorded before it (either may be the later one): a nil Later there is
+	// "not checked", never "no later success".
 	LaterChecked bool `json:"later_checked"`
 }
 
@@ -325,7 +326,9 @@ func lastExecSeq(recs []store.Execution) *int64 {
 // record has no seq -- spilled when the append lock timed out, which is when
 // agents run at once -- cannot be placed before or after the failure, so
 // with nothing placed found the answer is "not checked", not "no later
-// success": the success is in the record and may well be the later one.
+// success": the success is in the record and may well be the later one. A
+// success of the same tool with no declaration, recorded after the failure or
+// at no known position, is the same: nothing says which command it ran.
 func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 	failed := entries[i]
 	var sameCommand, sameProgram *timelineEntry
@@ -334,6 +337,17 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 		e := &entries[j]
 		c := e.call
 		if c.Group != GroupOK || c.ToolName != failed.call.ToolName {
+			continue
+		}
+		// A success with no declaration has no program to match and no row to
+		// point at, but it may be the same command -- a declaration lost to a
+		// lock timeout or a failing PreToolUse hook leaves exactly this. Unless
+		// it was recorded before the failure, it is one more success that
+		// cannot be ruled out.
+		if c.Seq == nil {
+			if e.pos == nil || *e.pos > *failed.pos {
+				unplaced = true
+			}
 			continue
 		}
 		command := failed.digest != "" && e.digest == failed.digest

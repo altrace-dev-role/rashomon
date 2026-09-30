@@ -1165,6 +1165,10 @@ m("TL the digest reaches the JSON", "internal/report/timeline.go",
 # #36 review round 3.
 m("TL a rewritten success counts as the same command", "internal/report/timeline.go",
   "\t\treturn recs[len(recs)-1].ExecutedDigest\n", "\t\treturn declared\n", "TestTimeline_")
+m("TL an undeclared later success reads as no later success", "internal/report/timeline.go",
+  "\t\t\tif e.pos == nil || *e.pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif false {\n\t\t\t\tunplaced = true", "TestTimeline_")
+m("TL an undeclared earlier success leaves the failure unchecked", "internal/report/timeline.go",
+  "\t\t\tif e.pos == nil || *e.pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif true {\n\t\t\t\tunplaced = true", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

@@ -586,6 +586,42 @@ func TestTimeline_SameCommandIsTheCommandThatRan(t *testing.T) {
 	}
 }
 
+// #36 review round 3, fix 2: a success whose declaration was lost -- a lock
+// timeout, a paused pre hook, a failing PreToolUse hook -- has no program and
+// no row, but may be the same command. Recorded after the failure or at no
+// known position, it leaves the failure not checked; recorded before, it is
+// no later success. Break: skip it for its empty digest and the failure reads
+// "no later success" beside the success that answers it.
+func TestTimeline_AnUndeclaredSuccessIsNotNoSuccess(t *testing.T) {
+	run := func(pos *int64) *store.Run {
+		r := tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"}},
+			tlExecAt("f", store.ExecFailed, 1, 10), tlExec("orphan", store.ExecOK, 0))
+		r.Executions[1].ToolName = "Bash"
+		r.Executions[1].ExecutedDigest = "d1"
+		r.Executions[1].Seq = pos
+		return r
+	}
+	later, earlier := int64(11), int64(9)
+	for name, pos := range map[string]*int64{"later": &later, "unplaced": nil} {
+		tl := buildTimeline(run(pos), nil)
+		if c := tlByID(t, tl, "f"); c.LaterChecked || c.Later != nil {
+			t.Errorf("%s: an undeclared success is read as no later success: %+v", name, c)
+		}
+		if n := tl.Counts; n.NotChecked != 1 || n.NoLater != 0 {
+			t.Errorf("%s: counts = %+v, want the failure not checked", name, n)
+		}
+	}
+	if c := tlByID(t, buildTimeline(run(&earlier), nil), "f"); !c.LaterChecked || c.Later != nil {
+		t.Errorf("an undeclared success recorded before the failure is not a later one: %+v", c)
+	}
+	// Another tool's undeclared success is no candidate at all.
+	other := run(&later)
+	other.Executions[1].ToolName = "Edit"
+	if c := tlByID(t, buildTimeline(other, nil), "f"); !c.LaterChecked || c.Later != nil {
+		t.Errorf("an undeclared success of another tool leaves the failure unchecked: %+v", c)
+	}
+}
+
 // #36 review 4: the same-program tier makes no claim about arguments, and is
 // not offered where the program does not name what ran. Break: pair `git
 // status` with a failed `git push`, or print "different arguments" for a
