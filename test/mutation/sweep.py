@@ -1172,7 +1172,7 @@ m("TL an undeclared earlier success leaves the failure unchecked", "internal/rep
 m("TL the never-ran group is spelled unlike every other enum", "internal/report/timeline.go",
   "\tGroupNeverRan    = \"never_ran\"", "\tGroupNeverRan    = \"never ran\"", "TestTimeline_")
 m("TL the report builds the timeline without the denials", "internal/report/report.go",
-  "\t\tsess.Timeline = buildTimeline(run, denied)", "\t\tsess.Timeline = buildTimeline(run, nil)", "TestTimeline_")
+  "\t\tsess.Timeline = timelineFrom(run, executed, denied, tb)", "\t\tsess.Timeline = timelineFrom(run, executed, nil, tb)", "TestTimeline_")
 m("TL the never-ran count is not printed", "internal/report/timeline_text.go",
   "\tfmt.Fprintf(b, \"    never ran    %d  (denied before running)\\n\", n.NeverRan)\n", "", "TestTimeline_")
 m("TL the marker claims no later success of any kind", "internal/report/timeline_text.go",
