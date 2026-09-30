@@ -396,7 +396,9 @@ func byName(counts map[string]int) string {
 	sort.Strings(names)
 	out := make([]string, len(names))
 	for i, name := range names {
-		out[i] = fmt.Sprintf("%s %d", name, counts[name])
+		// A tool name is the hook payload's, so it is made printable here as
+		// on the timeline: a control byte in it would reach the terminal.
+		out[i] = fmt.Sprintf("%s %d", printable(name), counts[name])
 	}
 	// Through list, for its bound: a session that ran sixty programs or
 	// called forty MCP tools must not rebuild the line list was written to
@@ -888,7 +890,7 @@ func writeLink(b *bytes.Buffer, l Link, named bool) {
 			l.ExecutionRecords, strings.Join(l.Outcomes, ", "))
 	}
 	fmt.Fprintf(b, "      %d  %s (%s)  %s%s%s\n",
-		l.Seq, l.ToolName, shape, outcome, linkHosts(l.Hosts, named), linkSSH(l.SSHHosts, named))
+		l.Seq, printable(l.ToolName), shape, outcome, linkHosts(l.Hosts, named), linkSSH(l.SSHHosts, named))
 }
 
 // linkSSH renders the ssh hosts a call named, kept apart from the observable

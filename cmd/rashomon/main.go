@@ -1315,10 +1315,11 @@ func cmdReport(args []string, stdout io.Writer) error {
 		rep = report.Redact(rep, key)
 	}
 	if !asJSON {
-		// --chain expands the text listing only. The JSON carries the whole
-		// structure either way: that reader is a program selecting fields, not
-		// a person scrolling, and making it pass a flag to receive a section
-		// would mean a consumer could parse a report and silently miss one.
+		// --chain and --timeline expand the text listing only. The JSON
+		// carries the whole structure either way: that reader is a program
+		// selecting fields, not a person scrolling, and making it pass a flag
+		// to receive a section would mean a consumer could parse a report and
+		// silently miss one.
 		//
 		// The same rule decides the proxy block: the text render is told which
 		// store was named, and with none it collapses that block to one line.

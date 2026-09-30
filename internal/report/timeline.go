@@ -2,6 +2,7 @@ package report
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -10,11 +11,12 @@ import (
 // succeed, a call refused before it started, and a call whose ending the
 // record cannot state are three different facts, and the whole point of the
 // view is that a reader can tell them apart without opening a transcript.
+// Snake case, as later.kind and the counts' keys are.
 const (
 	GroupOK          = "ok"
 	GroupFailed      = "failed"
 	GroupInterrupted = "interrupted"
-	GroupNeverRan    = "never ran"
+	GroupNeverRan    = "never_ran"
 	// GroupUnknown holds "no execution record" and "outcome unobserved". "No
 	// execution record" is NOT never-ran: the store's own contract is that such
 	// a declaration was denied, failed, or had its execution go unrecorded, and
@@ -26,26 +28,32 @@ const (
 
 // How a failed call was followed up, strongest first.
 const (
-	// LaterSameCommand: a later call with the same tool and the same shape
+	// LaterSameCommand: a later call with the same tool and the same effective
 	// digest succeeded. The digest is an HMAC over the exact command line
-	// (Bash) or the whole input, so equal digests are an identical call.
+	// (Bash) or the whole input, so equal digests are an identical call. The
+	// effective digest is the one the call RAN with -- its outcome record's
+	// executed digest -- and the declared one only where that record carries
+	// none: a PreToolUse hook can rewrite the input, and a success that ran
+	// something other than what was declared is not a re-run of the failure.
 	LaterSameCommand = "same_command"
 	// LaterSameProgram: a later call of the same tool and program, with a
 	// different digest, succeeded. Weaker, and rendered as nothing more: a
 	// different digest is a different command LINE, which `CI=1 pytest -q`,
 	// `cd sub && pytest -q` and `pytest  -q` all are next to `pytest -q`, so it
 	// says nothing about the arguments. Never offered for a program in
-	// subcommandPrograms.
+	// subcommandPrograms, or a versioned name of one.
 	LaterSameProgram = "same_program"
 )
 
 // subcommandPrograms are programs whose next word, not the program, names what
 // ran: `git status` succeeding says nothing about a failed `git push`, nor
 // `python b.py` about `python a.py`, and the same-program tier would pair
-// them. The same-command tier is still offered, because an identical digest
-// is an identical line whatever the program. A closed list and a short one: a
-// program missing from it gets the weak tier, which the text renders as no
-// more than "same program".
+// them. Wrappers are here for the same reason: the program is the first word,
+// so `sudo ls` would otherwise follow up a failed `sudo systemctl restart`, and
+// `timeout 5 true` a failed `timeout 60 go test ./...`. The same-command tier
+// is still offered, because an identical digest is an identical line whatever
+// the program. A closed list and a short one: a program missing from it gets
+// the weak tier, which the text renders as no more than "same program".
 var subcommandPrograms = map[string]bool{
 	"git": true, "gh": true, "go": true, "cargo": true, "make": true,
 	"npm": true, "npx": true, "pnpm": true, "yarn": true, "bun": true, "deno": true,
@@ -55,6 +63,20 @@ var subcommandPrograms = map[string]bool{
 	"brew": true, "apt": true, "apt-get": true, "systemctl": true,
 	"python": true, "python3": true, "node": true, "ruby": true, "perl": true,
 	"bash": true, "sh": true, "zsh": true,
+	"sudo": true, "doas": true, "env": true, "timeout": true, "time": true, "nohup": true,
+	"nice": true, "xargs": true, "watch": true, "stdbuf": true, "exec": true, "command": true,
+}
+
+// subcommandProgram says whether a program is in subcommandPrograms, directly
+// or as a versioned name of one: python3.12, pip3.11 and node18 are the
+// interpreter they name, so the prefix before a trailing version is looked
+// up too.
+func subcommandProgram(p string) bool {
+	if subcommandPrograms[p] {
+		return true
+	}
+	base := strings.TrimRight(p, "0123456789.")
+	return base != p && subcommandPrograms[base]
 }
 
 // TimelineAgent is the subagent a call ran in. Nil on a call the main agent
@@ -72,6 +94,13 @@ type TimelineAgent struct {
 // Seq is the success's row, so a reader can find it. It says the same call,
 // or the same program, succeeded afterwards -- never that anything was fixed:
 // a re-run that passes proves only that it passed the second time.
+//
+// A known limit: a call moved to the background records the launch, not the
+// command's result, so its "ok" says only that it started. That is not only
+// `run_in_background: true` -- Claude Code also moves a command to the
+// background when it reaches its timeout (unless it starts with `sleep`),
+// and when the user presses Ctrl+B -- and nothing in the record tells such a
+// call apart.
 type LaterSuccess struct {
 	Kind  string         `json:"kind"`
 	Seq   int64          `json:"seq"`
@@ -80,8 +109,9 @@ type LaterSuccess struct {
 
 // TimelineCall is one call, main agent or subagent, in the session's order.
 type TimelineCall struct {
-	// Seq and RecordedAtMS are null on a call with no declaration: it has no
-	// position in the ordered stream and no clock.
+	// Seq and RecordedAtMS are the declaration's, and null on a call with no
+	// declaration: its execution record may have a position, but the call has
+	// no declaration position and no declaration clock.
 	Seq          *int64         `json:"seq"`
 	RecordedAtMS *int64         `json:"recorded_at_unix_ms"`
 	ToolUseID    string         `json:"tool_use_id"`
@@ -101,8 +131,9 @@ type TimelineCall struct {
 	// rest. False on a failed call with no declaration (no command to match),
 	// whose failure record has no seq (no position to be later than), or
 	// where nothing placed was found but a matching success's record has no
-	// seq (it may be the later one): a nil Later there is "not checked",
-	// never "no later success".
+	// seq, or a success of the same tool has no declaration and was not
+	// recorded before it (either may be the later one): a nil Later there is
+	// "not checked", never "no later success".
 	LaterChecked bool `json:"later_checked"`
 	// Bending is set on the LATER call of a test-bending pair (see
 	// DetectTestBending): the run that passed when the only recorded edits
@@ -147,7 +178,7 @@ type TimelineCounts struct {
 // every agent's calls. That order is when each call's hook RECORDED, which for
 // two subagents running at once interleaves them by recording, not by start;
 // the renderer says so. Calls with no declaration have no seq and come after
-// the ordered ones.
+// the ordered ones, in the order their execution records were written.
 type Timeline struct {
 	Calls  []TimelineCall `json:"calls"`
 	Counts TimelineCounts `json:"counts"`
@@ -204,7 +235,7 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 		c.Outcome, _, _ = linkOutcome(d.ToolUseID, executed, denied)
 		c.Group = timelineGroup(c.Outcome)
 		c.ExitCode = lastExitCode(recs)
-		entries = append(entries, timelineEntry{call: c, digest: d.Shape.Digest, pos: lastExecSeq(recs)})
+		entries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, recs), pos: lastExecSeq(recs)})
 	}
 
 	// Calls with no declaration: a terminal or an execution record names them
@@ -212,9 +243,15 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 	// because an execution record that says failed is a failure whether or not
 	// its declaration landed -- the report's own failed-calls count counts it,
 	// and a timeline that did not would disagree with it on the same page. The
-	// tool name is the execution's own; agent, program and position are
-	// unknown and said to be.
-	for _, id := range undeclared(run) {
+	// tool name is the execution's own; agent, program, and the declaration's
+	// position and time are unknown and said to be.
+	//
+	// The two counts agree only while each call has one execution record. The
+	// report counts every failed record; a row here takes its outcome from the
+	// highest-seq record alone, so an id with a failed record and a later ok
+	// one is a failed call there and an ok row here, and two failed records
+	// are two there and one here.
+	for _, id := range undeclared(run, executed) {
 		recs := executed[id]
 		c := TimelineCall{
 			ToolUseID:    id,
@@ -271,9 +308,13 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 }
 
 // undeclared returns the ids a terminal or an execution record names and no
-// declaration does, once each and sorted, as the chains' dropped list is.
-// Dropped() alone misses an execution record with no terminal either.
-func undeclared(run *store.Run) []string {
+// declaration does, once each. Dropped() alone misses an execution record
+// with no terminal either.
+//
+// Ordered by the seq of each one's last execution record -- the record its
+// outcome is read from -- so they read in the order their results were
+// written. Those with no positioned record come last, and ties go by id.
+func undeclared(run *store.Run, executed map[string][]store.Execution) []string {
 	seen := map[string]bool{}
 	for _, d := range run.Declarations {
 		seen[d.ToolUseID] = true
@@ -291,7 +332,24 @@ func undeclared(run *store.Run) []string {
 	for _, x := range run.Executions {
 		add(x.ToolUseID)
 	}
-	sort.Strings(ids)
+	pos := func(id string) (int64, bool) {
+		p := lastExecSeq(executed[id])
+		if p == nil {
+			return 0, false
+		}
+		return *p, true
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		pi, oki := pos(ids[i])
+		pj, okj := pos(ids[j])
+		if oki != okj {
+			return oki
+		}
+		if pi != pj {
+			return pi < pj
+		}
+		return ids[i] < ids[j]
+	})
 	return ids
 }
 
@@ -330,6 +388,17 @@ func lastExitCode(recs []store.Execution) *int {
 	return recs[len(recs)-1].ExitCode
 }
 
+// effectiveDigest is the digest the call ran with: that same record's
+// executed digest, or the declared one when the record carries none. An empty
+// executed digest is "not known", never "different" -- see
+// store.Execution.ExecutedDigest.
+func effectiveDigest(declared string, recs []store.Execution) string {
+	if len(recs) > 0 && recs[len(recs)-1].ExecutedDigest != "" {
+		return recs[len(recs)-1].ExecutedDigest
+	}
+	return declared
+}
+
 // lastExecSeq is that same record's seq, nil when it has none.
 func lastExecSeq(recs []store.Execution) *int64 {
 	if len(recs) == 0 {
@@ -351,7 +420,9 @@ func lastExecSeq(recs []store.Execution) *int64 {
 // record has no seq -- spilled when the append lock timed out, which is when
 // agents run at once -- cannot be placed before or after the failure, so
 // with nothing placed found the answer is "not checked", not "no later
-// success": the success is in the record and may well be the later one.
+// success": the success is in the record and may well be the later one. A
+// success of the same tool with no declaration, recorded after the failure or
+// at no known position, is the same: nothing says which command it ran.
 func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 	failed := entries[i]
 	var sameCommand, sameProgram *timelineEntry
@@ -362,8 +433,19 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 		if c.Group != GroupOK || c.ToolName != failed.call.ToolName {
 			continue
 		}
+		// A success with no declaration has no program to match and no row to
+		// point at, but it may be the same command -- a declaration lost to a
+		// lock timeout or a failing PreToolUse hook leaves exactly this. Unless
+		// it was recorded before the failure, it is one more success that
+		// cannot be ruled out.
+		if c.Seq == nil {
+			if e.pos == nil || *e.pos > *failed.pos {
+				unplaced = true
+			}
+			continue
+		}
 		command := failed.digest != "" && e.digest == failed.digest
-		program := !command && failed.call.Program != "" && c.Program == failed.call.Program && !subcommandPrograms[c.Program]
+		program := !command && failed.call.Program != "" && c.Program == failed.call.Program && !subcommandProgram(c.Program)
 		if !command && !program {
 			continue
 		}

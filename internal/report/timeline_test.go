@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -165,6 +166,15 @@ func TestTimeline_GroupsAreKeptApart(t *testing.T) {
 	n := tl.Counts
 	if n.OK != 1 || n.Failed != 1 || n.Interrupted != 1 || n.NeverRan != 1 || n.Unknown != 3 {
 		t.Errorf("counts = %+v, want ok 1, failed 1, interrupted 1, never ran 1, unknown 3", n)
+	}
+	// One spelling for every enum in the JSON: later.kind and the counts'
+	// keys are snake case, and so is the group.
+	body, err := json.Marshal(tlByID(t, tl, "denied"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"group":"never_ran"`) {
+		t.Errorf("a denied call's group is not never_ran:\n%s", body)
 	}
 }
 
@@ -341,18 +351,23 @@ func TestTimeline_Text(t *testing.T) {
 		{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
 		{seq: 2, id: "g", tool: "Bash", program: "make", digest: "d2", agent: "cafe0001", typ: "general-purpose"},
 		{seq: 3, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
-	}, tlExec("f", store.ExecFailed, 1), tlExec("g", store.ExecFailed, 2), tlExec("s", store.ExecOK, 0))
+		{seq: 4, id: "i", tool: "Bash", program: "sleep", digest: "d3"},
+	}, tlExec("f", store.ExecFailed, 1), tlExec("g", store.ExecFailed, 2), tlExec("s", store.ExecOK, 0),
+		tlExec("i", store.ExecInterrupted, 0))
 	var b bytes.Buffer
 	writeTimeline(&b, buildTimeline(run, nil))
 	out := b.String()
 	for _, want := range []string{
-		"timeline: 3 calls (2 main agent, 1 from 1 subagent)",
-		"failed       2  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded)",
+		"timeline: 4 calls (3 main agent, 1 from 1 subagent)",
+		"interrupted  1\n",
+		"calls from agents running at once interleave by when each was recorded, not when it started",
+		"failed       2  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success of the same command or program recorded)",
+		"a fix made with a different command, or a corrected Edit, is not detected",
 		"failed (exit 1)",
 		"→ same command ok at 3, recorded after",
 		"general-purpose·cafe",
 		"failed (exit 2)",
-		"→ no later success recorded",
+		"→ no later success of the same command or program recorded",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)
@@ -360,15 +375,28 @@ func TestTimeline_Text(t *testing.T) {
 	}
 }
 
+// Break: drop the stop after the trailer and every row is still printed
+// beneath a line saying they were not.
 func TestTimeline_TextIsCappedAndSaysSo(t *testing.T) {
 	var calls []tlCall
 	for i := int64(1); i <= timelineRows+7; i++ {
-		calls = append(calls, tlCall{seq: i, id: "c" + string(rune('a'+i%26)) + strings.Repeat("x", int(i%5)), tool: "Read"})
+		calls = append(calls, tlCall{seq: i, id: fmt.Sprintf("c%03d", i), tool: "Read"})
+	}
+	tl := buildTimeline(tlRun(calls), nil)
+	if len(tl.Calls) != timelineRows+7 {
+		t.Fatalf("calls = %d, want %d: the ids must be distinct", len(tl.Calls), timelineRows+7)
 	}
 	var b bytes.Buffer
-	writeTimeline(&b, buildTimeline(tlRun(calls), nil))
-	if !strings.Contains(b.String(), "7 more calls, see --json") {
-		t.Fatalf("a capped listing must count what it left out:\n...%s", tail(b.String(), 300))
+	writeTimeline(&b, tl)
+	out := b.String()
+	if !strings.Contains(out, "7 more calls, see --json") {
+		t.Fatalf("a capped listing must count what it left out:\n...%s", tail(out, 300))
+	}
+	if rows := strings.Count(out, " Read "); rows != timelineRows {
+		t.Errorf("rows = %d, want %d: the listing is not capped", rows, timelineRows)
+	}
+	if strings.Contains(out, fmt.Sprintf(" %d  ", timelineRows+1)) {
+		t.Errorf("row %d is printed past the cap:\n...%s", timelineRows+1, tail(out, 300))
 	}
 }
 
@@ -464,6 +492,69 @@ func TestTimeline_ADroppedCallKeepsItsExecutionAndNoAgent(t *testing.T) {
 	}
 }
 
+// #36 review round 3, smaller 5: one tool_use_id with two execution records.
+// The row's outcome, exit code and "recorded after" position all come from
+// the one record the outcome is read from -- today the highest seq, as
+// --chain's headline is -- whatever order the store holds them in. Break:
+// read the exit code or the position from the first record, and the row says
+// "failed" with no code, or measures "later" from a record it did not use.
+func TestTimeline_TwoRecordsForOneID(t *testing.T) {
+	for _, order := range []string{"ascending", "descending"} {
+		t.Run(order, func(t *testing.T) {
+			ok, failed := tlExecAt("f", store.ExecOK, 0, 10), tlExecAt("f", store.ExecFailed, 2, 12)
+			recs := []store.Execution{ok, failed}
+			if order == "descending" {
+				recs = []store.Execution{failed, ok}
+			}
+			// A same-command success recorded between the two: after the ok
+			// record, before the failed one the outcome came from.
+			recs = append(recs, tlExecAt("s", store.ExecOK, 0, 11))
+			run := tlRun([]tlCall{
+				{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+				{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
+			}, recs...)
+			c := tlByID(t, buildTimeline(run, nil), "f")
+			if c.Group != GroupFailed || c.Outcome != store.ExecFailed {
+				t.Errorf("group = %s / %s, want failed: the highest-seq record decides", c.Group, c.Outcome)
+			}
+			if c.ExitCode == nil || *c.ExitCode != 2 {
+				t.Errorf("exit code = %v, want 2, from the record the outcome came from", c.ExitCode)
+			}
+			if c.Later != nil || !c.LaterChecked {
+				t.Errorf("later = %+v: a success recorded before the failed record is not after it", c.Later)
+			}
+		})
+	}
+}
+
+// #36 review round 3, smaller 1: undeclared rows have no declaration, but
+// their execution records have positions, and they read in that order: by the
+// last record's seq, those with no position last, ties by id. Break: sort by
+// tool_use_id and they come out in an order that means nothing.
+func TestTimeline_UndeclaredCallsFollowTheirResults(t *testing.T) {
+	run := tlRun([]tlCall{{seq: 1, id: "d", tool: "Bash"}},
+		tlExecAt("zz", store.ExecOK, 0, 20),
+		tlExecAt("aa", store.ExecFailed, 1, 30),
+		tlExecAt("cc", store.ExecOK, 0, 20),
+		tlExec("bb", store.ExecOK, 0),
+	)
+	run.Executions[3].Seq = nil
+	run.Terminals = []store.Terminal{{ToolUseID: "mm"}}
+	tl := buildTimeline(run, nil)
+	var got []string
+	for _, c := range tl.Calls {
+		got = append(got, c.ToolUseID)
+	}
+	if strings.Join(got, ",") != "d,cc,zz,aa,bb,mm" {
+		t.Errorf("order = %v, want d,cc,zz,aa,bb,mm: declared first, then by the result's seq, unpositioned last, ties by id", got)
+	}
+	var b bytes.Buffer
+	writeTimeline(&b, tl)
+	if !strings.Contains(b.String(), "listed last in the order their results were recorded: agent, program, and the declaration's position and time unknown") {
+		t.Errorf("the legend does not say what an undeclared row lacks:\n%s", b.String())
+	}
+}
+
 // #36 review 2: "later" is when the result was recorded, not when the call
 // was declared. Break: compare declaration seqs and both directions go wrong.
 func TestTimeline_LaterIsByWhenTheResultWasRecorded(t *testing.T) {
@@ -544,13 +635,81 @@ func TestTimeline_AnUnplacedSuccessIsNotNoSuccess(t *testing.T) {
 		}
 		var b bytes.Buffer
 		writeTimeline(&b, tl)
-		if out := b.String(); strings.Contains(out, "→ no later success") || !strings.Contains(out, "0 no later success recorded, 1 not checked") {
+		if out := b.String(); strings.Contains(out, "→ no later success") || !strings.Contains(out, "0 no later success of the same command or program recorded, 1 not checked") {
 			t.Errorf("digest %s: the text claims no later success:\n%s", digest, out)
 		}
 	}
 	c := tlByID(t, buildTimeline(unplaced("d1", true), nil), "f")
 	if !c.LaterChecked || c.Later == nil || c.Later.Kind != LaterSameProgram || c.Later.Seq != 3 {
 		t.Errorf("a placed later success is lost beside an unplaced one: %+v", c)
+	}
+}
+
+// #36 review round 3, fix 1: the same command is the command that RAN. A
+// PreToolUse hook can rewrite a call's input, and the execution record's
+// digest is then the one that counts. Break: compare declared digests only and
+// a success that ran something else reads as a re-run of the failure -- while
+// the same page lists that call as executed differently from declared.
+func TestTimeline_SameCommandIsTheCommandThatRan(t *testing.T) {
+	run := func(executed string) *store.Run {
+		r := tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Bash", digest: "d1"},
+			{seq: 2, id: "s", tool: "Bash", digest: "d1"},
+		}, tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0))
+		r.Executions[1].ExecutedDigest = executed
+		return r
+	}
+	if c := tlByID(t, buildTimeline(run("d9"), nil), "f"); c.Later != nil || !c.LaterChecked {
+		t.Errorf("a success rewritten to run something else is the same command: %+v", c.Later)
+	}
+	if c := tlByID(t, buildTimeline(run("d1"), nil), "f"); c.Later == nil || c.Later.Kind != LaterSameCommand {
+		t.Errorf("a success that ran the declared command is lost: %+v", c.Later)
+	}
+
+	// The other way round: declared differently, but ran the failed command.
+	r := tlRun([]tlCall{
+		{seq: 1, id: "f", tool: "Bash", digest: "d1"},
+		{seq: 2, id: "s", tool: "Bash", digest: "d2"},
+	}, tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0))
+	r.Executions[1].ExecutedDigest = "d1"
+	if c := tlByID(t, buildTimeline(r, nil), "f"); c.Later == nil || c.Later.Kind != LaterSameCommand {
+		t.Errorf("a success that ran the failed command is not the same command: %+v", c.Later)
+	}
+}
+
+// #36 review round 3, fix 2: a success whose declaration was lost -- a lock
+// timeout, a paused pre hook, a failing PreToolUse hook -- has no program and
+// no row, but may be the same command. Recorded after the failure or at no
+// known position, it leaves the failure not checked; recorded before, it is
+// no later success. Break: skip it for its empty digest and the failure reads
+// "no later success" beside the success that answers it.
+func TestTimeline_AnUndeclaredSuccessIsNotNoSuccess(t *testing.T) {
+	run := func(pos *int64) *store.Run {
+		r := tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"}},
+			tlExecAt("f", store.ExecFailed, 1, 10), tlExec("orphan", store.ExecOK, 0))
+		r.Executions[1].ToolName = "Bash"
+		r.Executions[1].ExecutedDigest = "d1"
+		r.Executions[1].Seq = pos
+		return r
+	}
+	later, earlier := int64(11), int64(9)
+	for name, pos := range map[string]*int64{"later": &later, "unplaced": nil} {
+		tl := buildTimeline(run(pos), nil)
+		if c := tlByID(t, tl, "f"); c.LaterChecked || c.Later != nil {
+			t.Errorf("%s: an undeclared success is read as no later success: %+v", name, c)
+		}
+		if n := tl.Counts; n.NotChecked != 1 || n.NoLater != 0 {
+			t.Errorf("%s: counts = %+v, want the failure not checked", name, n)
+		}
+	}
+	if c := tlByID(t, buildTimeline(run(&earlier), nil), "f"); !c.LaterChecked || c.Later != nil {
+		t.Errorf("an undeclared success recorded before the failure is not a later one: %+v", c)
+	}
+	// Another tool's undeclared success is no candidate at all.
+	other := run(&later)
+	other.Executions[1].ToolName = "Edit"
+	if c := tlByID(t, buildTimeline(other, nil), "f"); !c.LaterChecked || c.Later != nil {
+		t.Errorf("an undeclared success of another tool leaves the failure unchecked: %+v", c)
 	}
 }
 
@@ -581,6 +740,34 @@ func TestTimeline_SameProgramClaimsNoMore(t *testing.T) {
 	}
 }
 
+// #36 review round 3, decision 2: a wrapper or a versioned interpreter is
+// the first word, so it is the program, and it names nothing about what ran.
+// Break: leave them out of the list and `sudo ls` follows up a failed `sudo
+// systemctl restart nginx` as "same program ok".
+func TestTimeline_AWrapperIsNotTheProgram(t *testing.T) {
+	for _, program := range []string{"sudo", "timeout", "env", "xargs", "python3.12", "pip3.11", "node18"} {
+		run := tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Bash", program: program, digest: "d1"},
+			{seq: 2, id: "s", tool: "Bash", program: program, digest: "d2"},
+			{seq: 3, id: "same", tool: "Bash", program: program, digest: "d1"},
+		}, tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0))
+		if c := tlByID(t, buildTimeline(run, nil), "f"); c.Later != nil || !c.LaterChecked {
+			t.Errorf("%s: another %s line is offered as a later success: %+v", program, program, c.Later)
+		}
+		// The same line is still the same command.
+		run.Executions = append(run.Executions, tlExecAt("same", store.ExecOK, 0, 2000))
+		if c := tlByID(t, buildTimeline(run, nil), "f"); c.Later == nil || c.Later.Kind != LaterSameCommand {
+			t.Errorf("%s: the same line run again is not the same command: %+v", program, c.Later)
+		}
+	}
+	// A name that only ends in digits is not a versioned interpreter.
+	for _, program := range []string{"pytest", "b2", "gpg2"} {
+		if subcommandProgram(program) {
+			t.Errorf("%s is treated as a subcommand program", program)
+		}
+	}
+}
+
 // #36 review 5: agent_type and agent_id come from the payload. Break: print
 // them raw and an escape sequence reaches the terminal; cut the id by byte
 // and a character is split.
@@ -591,6 +778,37 @@ func TestTimeline_AgentLabelIsPrintable(t *testing.T) {
 	}
 	if !utf8.ValidString(got) {
 		t.Errorf("label %q is not valid UTF-8: the id was cut inside a character", got)
+	}
+}
+
+// #36 review round 3, smaller 2: tool_name comes from the payload as
+// agent_type does, and is printed on every row. Break: print it raw and an
+// escape sequence or a bidi override reaches the terminal, declared row or
+// undeclared.
+func TestTimeline_ToolNameIsPrintable(t *testing.T) {
+	const raw = "Ba\x1b[2Jsh\u202e\x07"
+	run := tlRun([]tlCall{{seq: 1, id: "d", tool: raw}}, tlExec("d", store.ExecOK, 0), tlExec("u", store.ExecFailed, 1))
+	run.Executions[1].ToolName = raw
+	var b bytes.Buffer
+	writeTimeline(&b, buildTimeline(run, nil))
+	out := b.String()
+	if strings.ContainsAny(out, "\x1b\u202e\x07") {
+		t.Errorf("a control character in tool_name reaches the text:\n%q", out)
+	}
+	if strings.Count(out, "Ba[2Jsh") != 2 {
+		t.Errorf("the tool name is not shown, made printable, on both rows:\n%s", out)
+	}
+}
+
+// The same for the report's other listings of a tool name: the by-tool
+// counts and the --chain rows.
+func TestText_ToolNameIsPrintableInEveryListing(t *testing.T) {
+	const raw = "Ba\x1b[2Jsh\u202e"
+	var b bytes.Buffer
+	b.WriteString(byName(map[string]int{raw: 1}))
+	writeLink(&b, Link{Seq: 1, ToolName: raw, VerbClass: "execute"}, false)
+	if strings.ContainsAny(b.String(), "\x1b\u202e") {
+		t.Errorf("a control character in tool_name reaches the text:\n%q", b.String())
 	}
 }
 
@@ -609,7 +827,7 @@ func TestTimeline_TextSaysWhatItKnows(t *testing.T) {
 	for _, want := range []string{
 		"timeline: 2 calls (0 main agent, 2 from 1 subagent)",
 		"outcome unobserved: it ran",
-		"→ no later success recorded",
+		"→ no later success of the same command or program recorded",
 		"UTC",
 		"2023-11-14 (UTC)",
 	} {

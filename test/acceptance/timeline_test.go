@@ -11,8 +11,9 @@ import (
 //
 // The session: the main agent's `pytest -q` fails, a subagent runs the same
 // command and it passes, the main agent's `make` fails and is never re-run,
-// one more call -- naming a host -- is declared with no execution record, and
-// one failure is posted for a call that was never declared.
+// one more call -- naming a host -- is declared with no execution record, one
+// failure is posted for a call that was never declared, and one call is
+// denied at the permission prompt, which only the transcript says.
 
 const tlSubTranscript = "/tmp/transcripts/sess-1.jsonl/subagents/agent-cafe0001.jsonl"
 
@@ -64,6 +65,13 @@ func recordTimelineSession(t *testing.T, e *env) {
 	// A PostToolUseFailure with no PreToolUse before it: an execution record
 	// and nothing else. It is a call the session made, and it failed.
 	fail("toolu_t5", "pytest -q", "3")
+	// Denied: a declaration, no execution record, and a transcript whose
+	// tool_result says the user refused it. No post hook: it never ran.
+	denied := defaultPayload()
+	denied.ToolUseID = "toolu_t6"
+	denied.ToolInput = map[string]any{"command": "rm -rf build"}
+	denied.TranscriptPath = writeResultTranscript(t, e, denied.ToolUseID, deniedText, true)
+	e.mustHook(denied.build(t))
 	e.probe("end", testSession)
 }
 
@@ -76,13 +84,15 @@ func TestTimeline_RendersEveryAgentInOrder(t *testing.T) {
 
 	out := e.run("", nil, "report", "--session", testSession, "--timeline").stdout
 	for _, want := range []string{
-		"timeline: 5 calls (3 main agent, 1 from 1 subagent, 1 agent unknown)",
-		"failed       3  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded, 1 not checked)",
+		"timeline: 6 calls (4 main agent, 1 from 1 subagent, 1 agent unknown)",
+		"failed       3  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success of the same command or program recorded, 1 not checked)",
+		"never ran    1",
 		"unknown      1",
+		"denied before running",
 		"1 call with no declaration recorded",
 		"→ same command ok at",
 		"failed (exit 2)",
-		"→ no later success recorded",
+		"→ no later success of the same command or program recorded",
 		"no execution record",
 		"failed (exit 3), no declaration recorded",
 		"failed calls: 3",
@@ -90,6 +100,17 @@ func TestTimeline_RendersEveryAgentInOrder(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("--timeline is missing %q:\n%s", want, out)
 		}
+	}
+	// The follow-up names the agent that ran it: cross-agent attribution is
+	// the point of the view.
+	arrow := ""
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "→ same command ok at") {
+			arrow = line
+		}
+	}
+	if !strings.HasSuffix(arrow, ", general-purpose·cafe") {
+		t.Errorf("the follow-up arrow does not name the subagent that re-ran it: %q", arrow)
 	}
 	// Rows found by their columns, not by a substring: the agent label also
 	// appears in the arrow on the failed row it followed up, so a bare Index
@@ -129,7 +150,10 @@ func TestTimeline_JSONMatchesTheText(t *testing.T) {
 					} `json:"agent"`
 					AgentUnknown bool `json:"agent_unknown"`
 					Later        *struct {
-						Kind string `json:"kind"`
+						Kind  string `json:"kind"`
+						Agent *struct {
+							ID string `json:"id"`
+						} `json:"agent"`
 					} `json:"later"`
 				} `json:"calls"`
 			} `json:"timeline"`
@@ -146,12 +170,14 @@ func TestTimeline_JSONMatchesTheText(t *testing.T) {
 	for _, c := range calls {
 		got = append(got, c.ToolUseID+":"+c.Group)
 	}
-	want := "toolu_t1:failed,toolu_t2:ok,toolu_t3:failed,toolu_t4:unknown,toolu_t5:failed"
+	want := "toolu_t1:failed,toolu_t2:ok,toolu_t3:failed,toolu_t4:unknown,toolu_t6:never_ran,toolu_t5:failed"
 	if strings.Join(got, ",") != want {
 		t.Fatalf("timeline = %v, want %s", got, want)
 	}
 	if calls[0].Later == nil || calls[0].Later.Kind != "same_command" {
 		t.Errorf("the failed pytest is not followed up by the subagent's run: %+v", calls[0].Later)
+	} else if calls[0].Later.Agent == nil || calls[0].Later.Agent.ID != "agent-cafe0001" {
+		t.Errorf("the follow-up does not name the subagent that ran it: %+v", calls[0].Later.Agent)
 	}
 	if calls[1].Agent == nil || calls[1].Agent.ID != "agent-cafe0001" {
 		t.Errorf("the subagent's call does not name its agent: %+v", calls[1].Agent)
@@ -159,8 +185,8 @@ func TestTimeline_JSONMatchesTheText(t *testing.T) {
 	if calls[2].Later != nil {
 		t.Errorf("the failed make was never re-run, yet carries %+v", calls[2].Later)
 	}
-	if calls[4].Agent != nil || !calls[4].AgentUnknown {
-		t.Errorf("the undeclared call names an agent the record does not: %+v", calls[4])
+	if calls[5].Agent != nil || !calls[5].AgentUnknown {
+		t.Errorf("the undeclared call names an agent the record does not: %+v", calls[5])
 	}
 	if strings.Contains(res.stdout, `"digest"`) {
 		t.Error("report --json carries a shape digest; the timeline compares digests and must not print them")
@@ -173,7 +199,7 @@ func TestTimeline_SurvivesRedaction(t *testing.T) {
 	e := newEnv(t)
 	recordTimelineSession(t, e)
 	res := e.run("", nil, "report", "--session", testSession, "--timeline", "--redact")
-	if res.exitCode != 0 || !strings.Contains(res.stdout, "timeline: 5 calls") {
+	if res.exitCode != 0 || !strings.Contains(res.stdout, "timeline: 6 calls") {
 		t.Fatalf("--timeline --redact: exit %d\n%s\n%s", res.exitCode, res.stdout, res.stderr)
 	}
 	if strings.Contains(res.stdout, tlHost) {

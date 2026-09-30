@@ -1092,7 +1092,7 @@ m("TL the same-command tier is skipped", "internal/report/timeline.go",
 m("TL a call that did not fail is followed up", "internal/report/timeline.go",
   "\t\tif e.call.Group != GroupFailed {", "\t\tif e.call.Group == GroupOK {", "TestTimeline_")
 m("TL a failure with no later success says nothing", "internal/report/timeline_text.go",
-  "\t\treturn \"  → no later success recorded\"", "\t\treturn \"\"", "TestTimeline_")
+  "\t\treturn \"  → no later success of the same command or program recorded\"", "\t\treturn \"\"", "TestTimeline_")
 m("TL the capped listing drops the rest silently", "internal/report/timeline_text.go",
   "\t\t\tfmt.Fprintf(b, \"    %d more call%s, see --json\\n\", rest, plural(rest))\n",
   "\t\t\t_ = rest\n", "TestTimeline_")
@@ -1130,15 +1130,15 @@ m("TL an unplaced same-program success is not a candidate", "internal/report/tim
 m("TL a not-checked failure counts as no later success", "internal/report/timeline.go",
   "\t\t\tcase !c.LaterChecked:\n\t\t\t\tn.NotChecked++\n", "", "TestTimeline_")
 m("TL a not-checked failure says no later success", "internal/report/timeline_text.go",
-  "\t\treturn \"  → not checked for a later success\"", "\t\treturn \"  → no later success recorded\"", "TestTimeline_")
+  "\t\treturn \"  → not checked for a later success\"", "\t\treturn \"  → no later success of the same command or program recorded\"", "TestTimeline_")
 m("TL git status follows up a failed git push", "internal/report/timeline.go",
-  " && !subcommandPrograms[c.Program]\n", "\n", "TestTimeline_")
+  " && !subcommandProgram(c.Program)\n", "\n", "TestTimeline_")
 m("TL the same-program label claims different arguments", "internal/report/timeline_text.go",
   "\"  → same program ok at %d, recorded after%s\"", "\"  → same program ok at %d (different arguments%s)\"", "TestTimeline_")
 m("TL the same-command label drops recorded after", "internal/report/timeline_text.go",
   "\"  → same command ok at %d, recorded after%s\"", "\"  → same command ok at %d%s\"", "TestTimeline_")
 m("TL the counts line says no later success without recorded", "internal/report/timeline_text.go",
-  "%d no later success recorded%s)", "%d no later success%s)", "TestTimeline_")
+  "%d no later success of the same command or program recorded%s)", "%d no later success of the same command or program%s)", "TestTimeline_")
 m("TL agent_type reaches the terminal raw", "internal/report/timeline_text.go",
   "\ttyp := printable(a.Type)", "\ttyp := a.Type", "TestTimeline_")
 m("TL agent_id reaches the terminal raw", "internal/report/timeline_text.go",
@@ -1158,9 +1158,60 @@ m("TL a subagent's call counts as the main agent's", "internal/report/timeline.g
 m("TL the header names the main agent without its count", "internal/report/timeline_text.go",
   "\twho := fmt.Sprintf(\"%d main agent\", n.MainAgent)", "\twho := \"main agent\"", "TestTimeline_")
 m("TL the digest reaches the JSON", "internal/report/timeline.go",
-  "\t\tentries = append(entries, timelineEntry{call: c, digest: d.Shape.Digest, pos: lastExecSeq(recs)})",
-  "\t\tentries = append(entries, timelineEntry{call: c, digest: d.Shape.Digest, pos: lastExecSeq(recs)})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest",
+  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, recs), pos: lastExecSeq(recs)})",
+  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, recs), pos: lastExecSeq(recs)})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest",
   "TestTimeline_JSONCarriesNoDigest")
+
+# #36 review round 3.
+m("TL a rewritten success counts as the same command", "internal/report/timeline.go",
+  "\t\treturn recs[len(recs)-1].ExecutedDigest\n", "\t\treturn declared\n", "TestTimeline_")
+m("TL an undeclared later success reads as no later success", "internal/report/timeline.go",
+  "\t\t\tif e.pos == nil || *e.pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif false {\n\t\t\t\tunplaced = true", "TestTimeline_")
+m("TL an undeclared earlier success leaves the failure unchecked", "internal/report/timeline.go",
+  "\t\t\tif e.pos == nil || *e.pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif true {\n\t\t\t\tunplaced = true", "TestTimeline_")
+m("TL the never-ran group is spelled unlike every other enum", "internal/report/timeline.go",
+  "\tGroupNeverRan    = \"never_ran\"", "\tGroupNeverRan    = \"never ran\"", "TestTimeline_")
+m("TL the report builds the timeline without the denials", "internal/report/report.go",
+  "\t\tsess.Timeline = buildTimeline(run, denied)", "\t\tsess.Timeline = buildTimeline(run, nil)", "TestTimeline_")
+m("TL the never-ran count is not printed", "internal/report/timeline_text.go",
+  "\tfmt.Fprintf(b, \"    never ran    %d  (denied before running)\\n\", n.NeverRan)\n", "", "TestTimeline_")
+m("TL the marker claims no later success of any kind", "internal/report/timeline_text.go",
+  "\t\treturn \"  → no later success of the same command or program recorded\"", "\t\treturn \"  → no later success recorded\"", "TestTimeline_")
+m("TL the counts line claims no later success of any kind", "internal/report/timeline_text.go",
+  "%d no later success of the same command or program recorded%s)", "%d no later success recorded%s)", "TestTimeline_")
+m("TL the legend does not say another fix goes undetected", "internal/report/timeline_text.go",
+  "\tif n.Failed > 0 {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "\tif false {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "TestTimeline_")
+m("TL undeclared rows are ordered by id, not by their results", "internal/report/timeline.go",
+  "\t\tif pi != pj {\n\t\t\treturn pi < pj\n", "\t\tif false && pi != pj {\n\t\t\treturn pi < pj\n", "TestTimeline_")
+m("TL undeclared rows with no position come first", "internal/report/timeline.go",
+  "\t\tif oki != okj {\n\t\t\treturn oki\n", "\t\tif oki != okj {\n\t\t\treturn okj\n", "TestTimeline_")
+m("TL tool_name reaches the terminal raw on the timeline", "internal/report/timeline_text.go",
+  "\tcall := printable(c.ToolName)", "\tcall := c.ToolName", "TestTimeline_")
+m("TL tool_name reaches the terminal raw in the by-tool counts", "internal/report/text.go",
+  "fmt.Sprintf(\"%s %d\", printable(name), counts[name])", "fmt.Sprintf(\"%s %d\", name, counts[name])", "TestText_ToolNameIsPrintable")
+m("TL tool_name reaches the terminal raw in a chain row", "internal/report/text.go",
+  "\t\tl.Seq, printable(l.ToolName), shape,", "\t\tl.Seq, l.ToolName, shape,", "TestText_ToolNameIsPrintable")
+m("TL the capped listing prints every row anyway", "internal/report/timeline_text.go",
+  "plural(rest))\n\t\t\tbreak\n", "plural(rest))\n", "TestTimeline_")
+m("TL the exit code is read from the first of two records", "internal/report/timeline.go",
+  "\treturn recs[len(recs)-1].ExitCode", "\treturn recs[0].ExitCode", "TestTimeline_")
+m("TL the position is read from the first of two records", "internal/report/timeline.go",
+  "\treturn recs[len(recs)-1].Seq", "\treturn recs[0].Seq", "TestTimeline_")
+m("TL the follow-up arrow does not name the agent", "internal/report/timeline_text.go",
+  "\t\twho = \", \" + agentLabel(l.Agent)", "\t\t_ = l.Agent", "TestTimeline_")
+m("TL the follow-up's agent is left out of the JSON", "internal/report/timeline.go",
+  "\t\treturn &LaterSuccess{Kind: LaterSameCommand, Seq: *sameCommand.call.Seq, Agent: sameCommand.call.Agent}, true",
+  "\t\treturn &LaterSuccess{Kind: LaterSameCommand, Seq: *sameCommand.call.Seq}, true", "TestTimeline_JSONMatchesTheText")
+m("TL the interrupted count is not printed", "internal/report/timeline_text.go",
+  "\tif n.Interrupted > 0 {", "\tif false {", "TestTimeline_")
+m("TL the interleave caveat is not printed", "internal/report/timeline_text.go",
+  "\tif n.Subagents > 0 {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "\tif false {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "TestTimeline_")
+m("TL sudo ls follows up a failed sudo systemctl", "internal/report/timeline.go",
+  "\t\"sudo\": true, \"doas\": true, \"env\": true, \"timeout\": true, \"time\": true, \"nohup\": true,\n\t\"nice\": true, \"xargs\": true, \"watch\": true, \"stdbuf\": true, \"exec\": true, \"command\": true,\n", "", "TestTimeline_")
+m("TL a versioned interpreter is the program", "internal/report/timeline.go",
+  "\treturn base != p && subcommandPrograms[base]", "\treturn base != p && false", "TestTimeline_")
+m("TL any name ending in digits is a versioned interpreter", "internal/report/timeline.go",
+  "\treturn base != p && subcommandPrograms[base]", "\treturn base != p", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",
