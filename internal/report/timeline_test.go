@@ -166,6 +166,15 @@ func TestTimeline_GroupsAreKeptApart(t *testing.T) {
 	if n.OK != 1 || n.Failed != 1 || n.Interrupted != 1 || n.NeverRan != 1 || n.Unknown != 3 {
 		t.Errorf("counts = %+v, want ok 1, failed 1, interrupted 1, never ran 1, unknown 3", n)
 	}
+	// One spelling for every enum in the JSON: later.kind and the counts'
+	// keys are snake case, and so is the group.
+	body, err := json.Marshal(tlByID(t, tl, "denied"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"group":"never_ran"`) {
+		t.Errorf("a denied call's group is not never_ran:\n%s", body)
+	}
 }
 
 // T8: a call with no prompt id is still on the timeline, in its seq position.

@@ -1169,6 +1169,8 @@ m("TL an undeclared later success reads as no later success", "internal/report/t
   "\t\t\tif e.pos == nil || *e.pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif false {\n\t\t\t\tunplaced = true", "TestTimeline_")
 m("TL an undeclared earlier success leaves the failure unchecked", "internal/report/timeline.go",
   "\t\t\tif e.pos == nil || *e.pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif true {\n\t\t\t\tunplaced = true", "TestTimeline_")
+m("TL the never-ran group is spelled unlike every other enum", "internal/report/timeline.go",
+  "\tGroupNeverRan    = \"never_ran\"", "\tGroupNeverRan    = \"never ran\"", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

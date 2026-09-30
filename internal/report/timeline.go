@@ -10,11 +10,12 @@ import (
 // succeed, a call refused before it started, and a call whose ending the
 // record cannot state are three different facts, and the whole point of the
 // view is that a reader can tell them apart without opening a transcript.
+// Snake case, as later.kind and the counts' keys are.
 const (
 	GroupOK          = "ok"
 	GroupFailed      = "failed"
 	GroupInterrupted = "interrupted"
-	GroupNeverRan    = "never ran"
+	GroupNeverRan    = "never_ran"
 	// GroupUnknown holds "no execution record" and "outcome unobserved". "No
 	// execution record" is NOT never-ran: the store's own contract is that such
 	// a declaration was denied, failed, or had its execution go unrecorded, and
