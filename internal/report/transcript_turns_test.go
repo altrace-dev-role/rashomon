@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // turnLine is one line of a main transcript for FinalAssistantTexts.
@@ -22,9 +23,30 @@ func turnLine(t *testing.T, fields map[string]any) string {
 	return string(b)
 }
 
-func said(t *testing.T, text, at string) string {
+func said(t *testing.T, id, text, at string) string {
 	return turnLine(t, map[string]any{"type": "assistant", "timestamp": at,
-		"message": map[string]any{"role": "assistant", "content": []map[string]any{{"type": "text", "text": text}}}})
+		"message": map[string]any{"id": id, "role": "assistant", "content": []map[string]any{{"type": "text", "text": text}}}})
+}
+
+func userTurnLine(t *testing.T, prompt string, content any, meta bool) string {
+	f := map[string]any{"type": "user", "isSidechain": false,
+		"message": map[string]any{"role": "user", "content": content}}
+	if prompt != "" {
+		f["promptId"] = prompt
+	}
+	if meta {
+		f["isMeta"] = true
+	}
+	return turnLine(t, f)
+}
+
+func writeTurns(t *testing.T, lines ...string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "s.jsonl")
+	if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 // TestFinalAssistantTexts_ATurnIsItsPrompt holds the attribution rules on the
@@ -34,37 +56,22 @@ func said(t *testing.T, text, at string) string {
 // subagent's sidechain line is not the main agent's word; and a typed
 // prompt with no promptId ends the turn, so its reply is nobody's.
 func TestFinalAssistantTexts_ATurnIsItsPrompt(t *testing.T) {
-	user := func(prompt string, content any, meta bool) string {
-		f := map[string]any{"type": "user", "isSidechain": false,
-			"message": map[string]any{"role": "user", "content": content}}
-		if prompt != "" {
-			f["promptId"] = prompt
-		}
-		if meta {
-			f["isMeta"] = true
-		}
-		return turnLine(t, f)
-	}
+	user := func(prompt string, content any, meta bool) string { return userTurnLine(t, prompt, content, meta) }
 	result := []map[string]any{{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}}
 	side := turnLine(t, map[string]any{"type": "assistant", "isSidechain": true, "timestamp": "2026-09-29T10:00:05.000Z",
 		"message": map[string]any{"role": "assistant", "content": []map[string]any{{"type": "text", "text": "subagent words"}}}})
 
-	lines := []string{
+	p := writeTurns(t,
 		user("p1", "first prompt", false),
-		said(t, "working on it", "2026-09-29T10:00:01.000Z"),
+		said(t, "m1", "working on it", "2026-09-29T10:00:01.000Z"),
 		user("", result, false),
 		user("", "skill text injected mid-turn", true),
-		said(t, "p1's summary", "2026-09-29T10:00:04.000Z"),
+		said(t, "m2", "p1's summary", "2026-09-29T10:00:04.000Z"),
 		side,
 		user("p2", "second prompt", false),
-		said(t, "p2's summary", "2026-09-29T10:00:07.000Z"),
+		said(t, "m3", "p2's summary", "2026-09-29T10:00:07.000Z"),
 		user("", "a prompt from an older version", false),
-		said(t, "the unkeyed reply", "2026-09-29T10:00:09.000Z"),
-	}
-	p := filepath.Join(t.TempDir(), "s.jsonl")
-	if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+		said(t, "m4", "the unkeyed reply", "2026-09-29T10:00:09.000Z"))
 	got := FinalAssistantTexts(p, map[string]bool{"p1": true, "p2": true})
 	if got["p1"].Text != "p1's summary" {
 		t.Errorf("p1 = %q, want \"p1's summary\": a tool_result or meta line without promptId ended the turn, "+
@@ -75,6 +82,54 @@ func TestFinalAssistantTexts_ATurnIsItsPrompt(t *testing.T) {
 	}
 	if len(got) != 2 {
 		t.Errorf("got %d prompts, want only the two wanted", len(got))
+	}
+	// The final word's own line dates it, and the turn's spend is every
+	// response tied to it: m1 and m2 are p1's, m3 is p2's, the unkeyed
+	// reply's m4 is no turn's.
+	if want := time.Date(2026, 9, 29, 10, 0, 4, 0, time.UTC).UnixMilli(); got["p1"].AtMS != want {
+		t.Errorf("p1's AtMS = %d, want %d, the timestamp of the line that carried its summary", got["p1"].AtMS, want)
+	}
+	if !reflect.DeepEqual(got["p1"].Responses, map[string]bool{"m1": true, "m2": true}) ||
+		!reflect.DeepEqual(got["p2"].Responses, map[string]bool{"m3": true}) {
+		t.Errorf("responses: p1 %v, p2 %v; want p1 m1 and m2, p2 m3", got["p1"].Responses, got["p2"].Responses)
+	}
+}
+
+// TestFinalAssistantTexts_AnUnreadableLineIsNoTurnsWord: a malformed line
+// the reader cannot place must never let a turn be judged on words that may
+// not be its last, nor tie the next prompt's spend to it.
+//
+// A text line with a timestamp that does not parse was skipped, and the turn
+// was judged on earlier interim text ("On it."), so it could falsely fire. A
+// user line whose header does not decode (a numeric timestamp) kept the tie,
+// so the next prompt's reply and spend were credited to this turn -- "at
+// least $0.44" printed for a turn whose real spend was $0.04.
+func TestFinalAssistantTexts_AnUnreadableLineIsNoTurnsWord(t *testing.T) {
+	undecodable := strings.Replace(userTurnLine(t, "p2", "the next prompt", false), `"timestamp":"2026-09-29T10:00:00.000Z"`, `"timestamp":5`, 1)
+	if undecodable == userTurnLine(t, "p2", "the next prompt", false) {
+		t.Fatal("premise: the timestamp was not replaced")
+	}
+	p := writeTurns(t,
+		userTurnLine(t, "p1", "first prompt", false),
+		said(t, "m1", "On it.", "2026-09-29T10:00:01.000Z"),
+		said(t, "m2", "The command failed.", "not a time"),
+		userTurnLine(t, "p2", "second prompt", false),
+		said(t, "m3", "On it.", "2026-09-29T10:00:03.000Z"),
+		said(t, "m4", "Hmm.", "not a time"),
+		said(t, "m5", "p2's summary", "2026-09-29T10:00:05.000Z"),
+		userTurnLine(t, "p3", "third prompt", false),
+		said(t, "m6", "Working.", "2026-09-29T10:00:06.000Z"),
+		undecodable,
+		said(t, "m7", "The next prompt's reply.", "2026-09-29T10:00:08.000Z"))
+	got := FinalAssistantTexts(p, map[string]bool{"p1": true, "p2": true, "p3": true})
+	if got["p1"].Said {
+		t.Errorf("p1 = %q, want no words: its last text line could not be dated, so the earlier one is not its last", got["p1"].Text)
+	}
+	if !got["p2"].Said || got["p2"].Text != "p2's summary" {
+		t.Errorf("p2 = %q, want \"p2's summary\": a later dated line is the turn's word again", got["p2"].Text)
+	}
+	if got["p3"].Said || got["p3"].Responses["m7"] {
+		t.Errorf("p3 = %+v: the reply after a user line that did not decode was credited to it", got["p3"])
 	}
 }
 

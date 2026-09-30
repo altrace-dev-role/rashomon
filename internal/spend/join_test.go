@@ -739,3 +739,68 @@ func TestJoin_AStoreThatCoversNoTranscriptIsUnknown(t *testing.T) {
 		t.Errorf("a store that covers no transcript is not rendered as unknown:\n%s", txt)
 	}
 }
+
+// TestJoin_TheLastWordAcrossTwoMainFilesIsTheLatest: one session id can own
+// two main transcripts, and a turn whose records name both is judged on the
+// later of their final words (lastSaid). On a tie in time the file that sorts
+// later wins, so the verdict does not depend on map order.
+func TestJoin_TheLastWordAcrossTwoMainFilesIsTheLatest(t *testing.T) {
+	const silent, honest = "Ran it as requested.", "The command failed."
+	for _, tc := range []struct {
+		name         string
+		aText, bText string
+		aAt, bAt     float64
+		turns        int
+	}{
+		{"b is later and honest", silent, honest, 4, 5, 0},
+		{"a is later and silent", silent, honest, 6, 5, 1},
+		{"a tie goes to b, honest", silent, honest, 5, 5, 0},
+		{"a tie goes to b, silent", honest, silent, 5, 5, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			rec := newRecorder(t)
+			T := now.Add(-2 * time.Hour)
+			sec := func(f float64) time.Time { return T.Add(time.Duration(f * float64(time.Second))) }
+			file := func(proj, id, text string, at float64) string {
+				rec.transcript = filepath.Join(c.dir, "projects", proj, "sess-j.jsonl")
+				return c.write(proj+"/sess-j.jsonl", userLine("sess-j", "p1", sec(-1), false),
+					resp{id: id, model: "claude-opus-5-5", session: "sess-j", at: sec(at), in: 1, stop: "end_turn", text: text}.line("text"))
+			}
+			file("proj-a", "A1", tc.aText, tc.aAt)
+			rec.call("sess-j", "p1", "toolu_a", sec(0), sec(1), store.ExecFailed)
+			file("proj-b", "B1", tc.bText, tc.bAt)
+			rec.call("sess-j", "p1", "toolu_b", sec(2), sec(3), store.ExecOK)
+			s := c.summary(30)
+			if err := s.Join(rec.st); err != nil {
+				t.Fatal(err)
+			}
+			if j := s.SilentFailureTurns; j.Turns != tc.turns || j.Unjudged != 0 {
+				t.Errorf("turns %d, unjudged %d; want %d and 0: the verdict was not taken on the latest final word", j.Turns, j.Unjudged, tc.turns)
+			}
+		})
+	}
+}
+
+// TestJoin_ATranscriptCutByAnOversizedLineIsUnjudged: a main transcript that
+// cannot be read to the end may hold a later reply than any read, so none of
+// its words is a turn's final word: the turn is counted as not checked, never
+// judged on the earlier text.
+func TestJoin_ATranscriptCutByAnOversizedLineIsUnjudged(t *testing.T) {
+	c := newConfig(t)
+	rec := newRecorder(t)
+	T := now.Add(-2 * time.Hour)
+	rec.transcript = c.write("proj/sess-j.jsonl",
+		userLine("sess-j", "p1", T.Add(-time.Second), false),
+		resp{id: "R1", model: "claude-opus-5-5", session: "sess-j", at: T.Add(2 * time.Second), in: 5, stop: "end_turn",
+			text: "Ran it as requested."}.line("text"),
+		`{"type":"assistant","x":"`+strings.Repeat("x", maxLine)+`"}`)
+	rec.call("sess-j", "p1", "toolu_1", T, T.Add(time.Second), store.ExecFailed)
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	if j := s.SilentFailureTurns; j.Turns != 0 || j.Unjudged != 1 {
+		t.Errorf("turns %d, unjudged %d; want 0 and 1: a turn in a file not read to the end was judged on its earlier words", j.Turns, j.Unjudged)
+	}
+}

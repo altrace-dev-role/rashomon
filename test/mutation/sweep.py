@@ -1379,6 +1379,25 @@ m("SP a transcript that cannot be read to the end is not said", "internal/spend/
 m("SP cmdSpend reads every transcript ever written", "cmd/rashomon/main.go",
   "\tfiles, err := spend.Discover(configDir, spend.WindowStart(now, days))", "\tfiles, err := spend.Discover(configDir, time.Time{})",
   "TestSpend_OldTranscriptsAreSkippedAndSaid")
+m("SP a text line with no parseable timestamp is skipped, and the turn judged on earlier words", "internal/report/transcript.go",
+  "\t\t\tif err != nil {\n\t\t\t\tunsay()\n\t\t\t\tcontinue\n\t\t\t}", "\t\t\tif err != nil {\n\t\t\t\tcontinue\n\t\t\t}",
+  "TestFinalAssistantTexts_")
+m("SP a main-transcript user line that does not decode keeps the tie", "internal/report/transcript.go",
+  "\t\t\tif user {\n\t\t\t\tcurrent = \"\"", "\t\t\tif false && user {\n\t\t\t\tcurrent = \"\"",
+  "TestFinalAssistantTexts_")
+m("SP a line that does not decode leaves the turn's earlier words standing", "internal/report/transcript.go",
+  "\t\t\tif user || bytes.Contains(raw, []byte(`\"text\"`)) {\n\t\t\t\tunsay()", "\t\t\tif false {\n\t\t\t\tunsay()",
+  "TestFinalAssistantTexts_")
+m("SP a tie between two main files' final words goes to the first", "internal/spend/join.go",
+  "t.Said && t.AtMS >= bestMS {", "t.Said && t.AtMS > bestMS {", "TestJoin_TheLastWord")
+m("SP an earlier main file's final word beats a later one", "internal/spend/join.go",
+  "t.Said && t.AtMS >= bestMS {", "t.Said && (bestMS == math.MinInt64 || t.AtMS < bestMS) {", "TestJoin_TheLastWord")
+m("SP a transcript not read to the end still gives a turn its words", "internal/report/transcript.go",
+  "\tif sc.Err() != nil {\n\t\t// A file that cannot be read to the end may hold a later reply", "\tif false {\n\t\t// A file that cannot be read to the end may hold a later reply",
+  "TestJoin_ATranscriptCut")
+m("SP a turn's final word carries no time", "internal/report/transcript.go",
+  "\t\t\ttf.Said, tf.Text, tf.AtMS = true, text, at.UnixMilli()", "\t\t\ttf.Said, tf.Text, tf.AtMS = true, text, 0*at.UnixMilli()",
+  "TestFinalAssistantTexts_ATurnIsItsPrompt")
 
 # Import additions some mutants need.
 IMPORTS = {

@@ -391,6 +391,16 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 		tf.Responses[id] = true
 		out[current] = tf
 	}
+	// unsay drops the current turn's words: a line that may be its last text
+	// could not be read, so no earlier text is its final word.
+	unsay := func() {
+		if !want[current] {
+			return
+		}
+		tf := out[current]
+		tf.Said, tf.Text, tf.AtMS = false, "", 0
+		out[current] = tf
+	}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
@@ -406,6 +416,21 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			} `json:"message"`
 		}
 		if json.Unmarshal(raw, &head) != nil {
+			// A line whose header does not decode (a timestamp written as a
+			// number) cannot be placed. If it may be a user line, it may be
+			// the next prompt, and keeping the tie would credit that
+			// prompt's spend and words to this turn: the tie ends, as the
+			// subagent reader ends it. Either way, if it may be a user line
+			// or a text line, this turn's words so far may not be its last:
+			// they are dropped, so it takes no verdict unless a later line
+			// sets them.
+			user := bytes.Contains(raw, []byte(`"user"`))
+			if user || bytes.Contains(raw, []byte(`"text"`)) {
+				unsay()
+			}
+			if user {
+				current = ""
+			}
 			continue
 		}
 		if head.IsSidechain {
@@ -433,25 +458,30 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			if head.Message.ID != "" {
 				tie(head.Message.ID)
 			}
-			tf := out[current]
 			if !bytes.Contains(raw, []byte(`"text"`)) {
-				continue
-			}
-			// A line with no parseable timestamp cannot be ordered against a
-			// second main file of the same session, and is skipped rather than
-			// guessed into place.
-			at, err := time.Parse(time.RFC3339Nano, head.Timestamp)
-			if err != nil {
 				continue
 			}
 			var line assistantLine
 			if json.Unmarshal(raw, &line) != nil || line.Message.Role != "assistant" {
+				unsay()
 				continue
 			}
-			if text, ok := line.Message.Content.text(); ok {
-				tf.Said, tf.Text, tf.AtMS = true, text, at.UnixMilli()
-				out[current] = tf
+			text, ok := line.Message.Content.text()
+			if !ok {
+				continue
 			}
+			// A text line with no parseable timestamp cannot be ordered
+			// against a second main file of the same session -- and it may
+			// be the turn's last word, so the earlier words ("On it.") are
+			// not: the turn's words are dropped rather than judged on those.
+			at, err := time.Parse(time.RFC3339Nano, head.Timestamp)
+			if err != nil {
+				unsay()
+				continue
+			}
+			tf := out[current]
+			tf.Said, tf.Text, tf.AtMS = true, text, at.UnixMilli()
+			out[current] = tf
 		}
 	}
 	if sc.Err() != nil {
