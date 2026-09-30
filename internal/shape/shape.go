@@ -923,8 +923,14 @@ var programVerb = map[string]string{
 // `./gradlew test`, `go test` behind `timeout` -- stays what it was before:
 // execute, or package for go and cargo. That is an under-claim, and the
 // detections built on this class are worth only as much as their refusal to
-// over-claim. `make check` is not on it: on most projects it is lint and
-// tests together, and a lint failure is not a test's.
+// over-claim.
+//
+// The rule applied: a runner is on the list when its program's name, or the
+// plain words after it, say test. `make check` is not, since check does not.
+// That rule does not keep lint out: go test runs vet first, an npm `pretest`
+// script runs before `npm test`, tox's default envlist and a make `test`
+// target can each include lint, and a lint failure fixed only in a file
+// named like a test then reads as the tests-only pattern.
 var testCommands = [][]string{
 	{"pytest"}, {"jest"}, {"vitest"}, {"mocha"}, {"rspec"}, {"phpunit"},
 	{"ctest"}, {"tox"}, {"nox"},

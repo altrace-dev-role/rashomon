@@ -280,10 +280,26 @@ evaluated, so silence never gets read as proof the turn was clean.
 
 The two test-bending lines have limits of their own:
 
-- A test run is a call rashomon recognised as a test runner that ends its
-  line. A wrapped runner (`timeout 60 go test`, `time pytest`, `uv run
-  pytest`, `poetry run pytest`, `npx jest`) or a piped one (`go test ./... |
-  tail`) is not counted, since the line's exit status is not the runner's.
+- A test run is a shell call whose whole command line is one of these
+  runners, optionally after `cd DIR &&` or `NAME=value` assignments:
+  `pytest`, `python -m pytest`, `python3 -m pytest`, `jest`, `vitest`,
+  `mocha`, `rspec`, `phpunit`, `ctest`, `tox`, `nox`, `go test`, `cargo
+  test`, `npm test`, `npm run test`, `yarn test`, `pnpm test`, `bun test`,
+  `dotnet test`, `mvn test`, `gradle test`, `make test`. A runner followed by
+  anything (`| tail`, `2>&1 | grep`, `&& echo ok`, `; echo done`) is not
+  counted: a pipe's status is its last program's, and after `&&` or `;` the
+  line's success is the next command's. A wrapped or aliased runner
+  (`timeout 60 go test`, `time pytest`, `uv run pytest`, `poetry run
+  pytest`, `bundle exec rspec`, `npx jest`, `./gradlew test`, `./mvnw test`,
+  `npm t`) is not counted only because it is not on the list; for most of
+  them the exit status is the runner's. Piped and wrapped runs are most of
+  what Claude Code writes, and they are invisible to both patterns: a session
+  whose tests ran only that way shows no `test runs` block at all.
+- A runner is on the list when its name or the words after it say test, and
+  that does not keep lint out: `go test` runs vet, `npm test` runs a
+  `pretest` script, and `tox`'s default envlist or a make `test` target can
+  include lint. A lint failure fixed only in a file named like a test then
+  reads as the tests-only pattern.
 - `cd DIR && go test ./...` is a test run, so a failed `cd` counts as a
   failed test run. Leaving `cd … &&` out would lose most real runs.
 - A test edit is an Edit, Write or NotebookEdit that ran ok on a file named
