@@ -1210,6 +1210,10 @@ m("TB a denied edit counts as an edit", "internal/report/testbending.go",
   "\t\tif outcome == LinkOutcomeDenied {\n\t\t\tcontinue\n\t\t}\n",
   "\t\tif outcome == LinkOutcomeDenied && d.Shape.VerbClass != shape.VerbWrite {\n\t\t\tcontinue\n\t\t}\n",
   "TestTestBending")
+m("TB an interrupted call between two runs is not an edit", "internal/report/testbending.go",
+  "\t\tif outcome == LinkOutcomeDenied {\n\t\t\tcontinue\n\t\t}\n",
+  "\t\tif outcome == LinkOutcomeDenied || outcome == store.ExecInterrupted {\n\t\t\tcontinue\n\t\t}\n",
+  "TestTestBending")
 m("TB a test edit that did not run ok is a test edit", "internal/report/testbending.go",
   "\t\t\tcase outcome == store.ExecOK:\n\t\t\t\ttestEdits++", "\t\t\tdefault:\n\t\t\t\ttestEdits++", "TestTestBending")
 m("TB an unlabelled edit is a test edit", "internal/report/testbending.go",
