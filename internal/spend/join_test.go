@@ -650,3 +650,28 @@ func TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie(t *testing.T) {
 		}
 	}
 }
+
+// TestJoin_NoMessageTextReachesTheOutput: the path that reads message content
+// -- a firing turn's final words, decoded to take the verdict -- is actually
+// reached here (the turn fires), with the canary in those words and in every
+// other block, and neither rendering carries a byte of it. The canary test in
+// spend_test.go fills the silent-failure line by hand and never reaches that
+// read, so a leak of the words it decodes passed it.
+func TestJoin_NoMessageTextReachesTheOutput(t *testing.T) {
+	c := newConfig(t)
+	rec := newRecorder(t)
+	silentSession(t, c, rec, now.Add(-2*time.Hour), "Ran the command as requested. "+canary)
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	if s.SilentFailureTurns.Turns != 1 {
+		t.Fatalf("premise: turns = %d, want 1 -- the final words were not read, so this proves nothing", s.SilentFailureTurns.Turns)
+	}
+	txt, js := render(t, s)
+	for name, out := range map[string]string{"text": txt, "json": js} {
+		if strings.Contains(out, canary) {
+			t.Errorf("the content canary reached the %s output:\n%s", name, out)
+		}
+	}
+}

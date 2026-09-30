@@ -1353,9 +1353,18 @@ m("SP a tool_use block's input is decoded with an assistant line's text blocks",
 m("SP a block of any type is kept as an assistant line's text", "internal/report/transcript.go",
   "\t\tif blk.Type == \"text\" && strings.TrimSpace(blk.Text) != \"\" {", "\t\tif strings.TrimSpace(blk.Text) != \"\" {",
   "TestAssistantLine_")
+m("SP a firing turn's final words are printed to stderr", "internal/spend/join.go",
+  "\t\tsf := report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt)))\n",
+  "\t\tsf := report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt)))\n\t\tfmt.Fprintln(os.Stderr, lastSaid(byFile, t.prompt))\n",
+  "TestSpend_NoMessageTextReachesTheOutput")
+m("SP a firing turn's final words reach the JSON", "internal/spend/join.go",
+  "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n",
+  "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n\t\tj.Bound = lastSaid(byFile, t.prompt)\n",
+  "TestJoin_NoMessageTextReachesTheOutput|TestSpend_NoMessageTextReachesTheOutput")
 
 # Import additions some mutants need.
 IMPORTS = {
+  "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
   "H-17 handler opens a socket (no net import, so only the trace sees it)": ("internal/hook/handle.go", '\t"io"\n', '\t"io"\n\t"syscall"\n'),
   "H-19 report re-reads today's config to judge a past run": ("internal/report/report.go", '\t"github.com/altrace-dev-role/rashomon/internal/store"\n', '\t"github.com/altrace-dev-role/rashomon/internal/install"\n\t"github.com/altrace-dev-role/rashomon/internal/settings"\n\t"github.com/altrace-dev-role/rashomon/internal/store"\n'),

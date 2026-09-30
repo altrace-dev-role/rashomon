@@ -322,23 +322,43 @@ func TestSpend_ReadsWhereClaudeCodeKeepsItsTranscripts(t *testing.T) {
 }
 
 // TestSpend_NoMessageTextReachesTheOutput: the canary is in every block and
-// in cwd, and neither rendering carries it.
+// in cwd -- and in the final words of a turn that fires, so the one read of
+// message content (the verdict's) is reached end to end: the hooks record a
+// failed call whose transcript_path names a discovered transcript, and the
+// transcript's user lines carry the recorded prompt_id. Neither rendering,
+// on stdout or stderr, carries a byte of it. The earlier fixture recorded a
+// path spend never discovers, so the content read never ran and a mutant
+// that printed the final message to stderr passed.
 func TestSpend_NoMessageTextReachesTheOutput(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
-	e.mustHook(defaultPayload().build(t))
-	e.mustPost(failurePayload(t, testToolUseID, "Exit code 1", false, 30))
+	transcript := filepath.Join(e.configDir, "projects", "-work-project", testSession+".jsonl")
+	p := defaultPayload()
+	p.TranscriptPath = transcript
+	e.mustHook(p.build(t))
+	e.mustPost(failurePayload(t, p.ToolUseID, "Exit code 1", false, 30))
 	now := time.Now()
+	thinking := map[string]any{"type": "thinking", "thinking": "thinking " + spendCanary}
 	writeSessionTranscript(t, e.configDir, testSession,
+		promptLine(t, testSession, p.PromptID, now.Add(-2*time.Minute)),
+		usageLine(t, testSession, "msg_1", now.Add(-time.Minute), 10, thinking),
 		usageLine(t, testSession, "msg_1", now.Add(-time.Minute), 10, toolBlock("toolu_1")),
-		usageLine(t, testSession, "msg_2", now, 10, textBlock("All done "+spendCanary)))
+		usageLine(t, testSession, "msg_2", now.Add(-30*time.Second), 10,
+			map[string]any{"type": "tool_use", "id": "toolu_w", "name": "Write", "input": map[string]any{"text": spendCanary}}),
+		usageLine(t, testSession, "msg_3", now, 10, textBlock("All done "+spendCanary)))
+
+	_, doc := e.spend(nil)
+	if doc.Silent.Turns != 1 {
+		t.Fatalf("premise: silent_failure_turns.turns = %d, want 1 -- the turn's final words were not read, so this proves nothing",
+			doc.Silent.Turns)
+	}
 	for _, args := range [][]string{{"spend"}, {"spend", "--json"}} {
 		res := e.run("", nil, args...)
 		if res.exitCode != 0 {
 			t.Fatalf("%v: exit %d, stderr %q", args, res.exitCode, res.stderr)
 		}
-		if strings.Contains(res.stdout+res.stderr, spendCanary) {
-			t.Errorf("%v: message text reached the output:\n%s%s", args, res.stdout, res.stderr)
+		if strings.Contains(res.stdout, spendCanary) || strings.Contains(res.stderr, spendCanary) {
+			t.Errorf("%v: message text reached the output:\nstdout:\n%s\nstderr:\n%s", args, res.stdout, res.stderr)
 		}
 	}
 }
