@@ -225,7 +225,7 @@ func TestTestBending(t *testing.T) {
 			if !reflect.DeepEqual(got.TestsOnlyThenGreen, tc.green) {
 				t.Errorf("tests_only_then_green = %v, want %v%s", got.TestsOnlyThenGreen, tc.green, whyNote(tc.why))
 			}
-			if !reflect.DeepEqual(got.Flaky, tc.flaky) {
+			if !reflect.DeepEqual(seqsOf(got.Flaky), tc.flaky) {
 				t.Errorf("flaky = %v, want %v%s", got.Flaky, tc.flaky, whyNote(tc.why))
 			}
 		})
@@ -287,6 +287,40 @@ func TestTestBending_ShapesFromDerive(t *testing.T) {
 	}
 }
 
+func seqsOf(f []FlakyPair) []SeqPair {
+	out := []SeqPair{}
+	for _, p := range f {
+		out = append(out, p.Seqs)
+	}
+	return out
+}
+
+// TestTestBending_FlakyKeepsTheOrder: a flaky pair says which of its runs
+// failed, so every reader can print the order they ran in. Break: record the
+// later run's outcome, or none, and a fail-then-pass pair -- the one that
+// reads as a fix -- prints as passed then failed.
+func TestTestBending_FlakyKeepsTheOrder(t *testing.T) {
+	const ok, failed = store.ExecOK, store.ExecFailed
+	got := DetectTestBending(tbRun(test(1, "d", failed), test(2, "d", ok), test(3, "d", failed)), nil).Flaky
+	want := []FlakyPair{{Seqs: SeqPair{1, 2}, FirstFailed: true}, {Seqs: SeqPair{2, 3}, FirstFailed: false}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("flaky = %+v, want %+v", got, want)
+	}
+	if a, b := want[0].Outcomes(); a != "failed" || b != "passed" {
+		t.Errorf("first failed: outcomes %s, %s", a, b)
+	}
+	if a, b := want[1].Outcomes(); a != "passed" || b != "failed" {
+		t.Errorf("first passed: outcomes %s, %s", a, b)
+	}
+	b, err := json.Marshal(want[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != `{"seqs":[1,2],"first_failed":true}` {
+		t.Errorf("marshalled = %s", b)
+	}
+}
+
 func reversed(run *store.Run) *store.Run {
 	d := run.Declarations
 	for i, j := 0, len(d)-1; i < j; i, j = i+1, j-1 {
@@ -321,19 +355,23 @@ func TestTestBending_NilRunAndEmptyListsMarshal(t *testing.T) {
 func TestTestRuns_CountsAndText(t *testing.T) {
 	const ok, failed = store.ExecOK, store.ExecFailed
 	run := tbRun(test(1, "d", failed), edit(2, shape.LabelTestFile, ok), test(3, "d", ok),
-		test(4, "f", ok), test(5, "f", failed), test(6, "g", store.ExecInterrupted))
+		test(4, "f", ok), test(5, "f", failed), test(6, "g", store.ExecInterrupted),
+		test(7, "h", failed), test(8, "h", ok))
 	tr := buildTestRuns(run, nil)
-	if tr.Runs != 4 || tr.OK != 2 || tr.Failed != 2 {
-		t.Errorf("runs/ok/failed = %d/%d/%d, want 4/2/2: an interrupted run has no result", tr.Runs, tr.OK, tr.Failed)
+	if tr.Runs != 6 || tr.OK != 3 || tr.Failed != 3 {
+		t.Errorf("runs/ok/failed = %d/%d/%d, want 6/3/3: an interrupted run has no result", tr.Runs, tr.OK, tr.Failed)
 	}
 
 	var b bytes.Buffer
 	writeTestRuns(&b, tr)
 	out := b.String()
 	for _, want := range []string{
-		"test runs: 4 (2 ok, 2 failed)",
+		"test runs: 6 (3 ok, 3 failed)",
 		"failed, then the only recorded edits were to files named like tests, then the same command passed: 1 → 3",
-		"same command passed and failed with no recorded file edit between: 4, 5",
+		// Each pair in the order it ran: "passed and failed" for a pair
+		// that failed first was the order the record contradicts.
+		"same command had both outcomes with no recorded file edit between: 4 passed, 5 failed",
+		"same command had both outcomes with no recorded file edit between: 7 failed, 8 passed",
 		"a file edit here is any recorded call but a read, a web fetch or a subagent launch",
 		"a shell read or fetch (cat, curl and the like) can still write",
 		"nor a directory change made inside another shell command",

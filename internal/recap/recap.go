@@ -28,7 +28,6 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/digest"
-	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -87,12 +86,25 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 			fmt.Sprintf("%d recorded failure%s", d.SilentFailures.Failed, plural(d.SilentFailures.Failed)))
 	}
 	tb := d.TestBending
+	var first string
+	if len(tb.TestsOnlyThenGreen) > 0 {
+		p := tb.TestsOnlyThenGreen[0]
+		first = fmt.Sprintf("#%d → #%d", p[0], p[1])
+	}
 	if s, ok := pairSentence("test command failed, then the only recorded edits were to files named like tests, then it passed",
-		tb.TestsOnlyThenGreen, tb.TestsOnlyThenGreenOmitted, " → "); ok {
+		first, len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted); ok {
 		sentences = append(sentences, s)
 	}
-	if s, ok := pairSentence("same test command passed and failed with no recorded file edit between",
-		tb.Flaky, tb.FlakyOmitted, ", "); ok {
+	// The flaky pair names each run's outcome by its seq: the pair may have
+	// failed first, and "passed and failed" would tell that order backwards.
+	first = ""
+	if len(tb.Flaky) > 0 {
+		p := tb.Flaky[0]
+		a, b := p.Outcomes()
+		first = fmt.Sprintf("#%d %s, #%d %s", p.Seqs[0], a, p.Seqs[1], b)
+	}
+	if s, ok := pairSentence("same test command had both outcomes with no recorded file edit between",
+		first, len(tb.Flaky)+tb.FlakyOmitted); ok {
 		sentences = append(sentences, s)
 	}
 	if n := len(d.Declarations.WithoutExecution); n > 0 {
@@ -118,30 +130,30 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 }
 
 // pairSentence renders one test-bending trigger: the fixed sentence, then the
-// first pair's seqs, then how many more pairs there were. One pair, not all:
-// the line has to stay short, and the report lists every one.
+// first pair (as its caller formatted it), then how many more pairs there
+// were. One pair, not all: the line has to stay short, and the report lists
+// every one.
 //
-// The count is the list's length plus what truncate cut from it, so a pattern
+// n is the list's length plus what truncate cut from it, so a pattern
 // survives a truncated digest. When truncate cut the whole list there is no
-// pair left to print, and the sentence says how many without one -- the
-// finding is still a fact, and the report still has the seqs.
+// pair left to print (first is empty), and the sentence says how many without
+// one -- the finding is still a fact, and the report still has the seqs.
 //
 // The wording is the record's, never a motive: "the only recorded edits
 // were to files named like tests", "no recorded file edit between". Not
-// "only test files were edited" or "nothing changed": a `sed -i` or a `git
-// checkout` between the runs is a shell call the record does not count as an
-// edit, and the report prints that limit where this line has no room to. So
+// "only test files were edited" or "nothing changed": a `cat a > b` between
+// the runs is a shell read the record does not count as an edit, and the
+// report prints that limit where this line has no room to. So
 // the line says "recorded" itself, and "named like tests", which is all the
 // label knows.
-func pairSentence(text string, pairs []report.SeqPair, omitted int, sep string) (string, bool) {
-	n := len(pairs) + omitted
+func pairSentence(text, first string, n int) (string, bool) {
 	if n == 0 {
 		return "", false
 	}
-	if len(pairs) == 0 {
+	if first == "" {
 		return fmt.Sprintf("%s (%d time%s)", text, n, plural(n)), true
 	}
-	s := fmt.Sprintf("%s (#%d%s#%d", text, pairs[0][0], sep, pairs[0][1])
+	s := fmt.Sprintf("%s (%s", text, first)
 	if n > 1 {
 		s += fmt.Sprintf(", %d more", n-1)
 	}

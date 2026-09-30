@@ -147,10 +147,10 @@ type SubagentCounts struct {
 // the five in Declarations; the omitted counts are what keep a cut list's
 // finding alive, since recap counts len + omitted and not the list alone.
 type TestBending struct {
-	TestsOnlyThenGreen        []report.SeqPair `json:"tests_only_then_green"`
-	TestsOnlyThenGreenOmitted int              `json:"tests_only_then_green_omitted"`
-	Flaky                     []report.SeqPair `json:"flaky"`
-	FlakyOmitted              int              `json:"flaky_omitted"`
+	TestsOnlyThenGreen        []report.SeqPair   `json:"tests_only_then_green"`
+	TestsOnlyThenGreenOmitted int                `json:"tests_only_then_green_omitted"`
+	Flaky                     []report.FlakyPair `json:"flaky"`
+	FlakyOmitted              int                `json:"flaky_omitted"`
 }
 
 // Digest is one turn's projection.
@@ -178,7 +178,8 @@ type Digest struct {
 	Subagents      SubagentCounts        `json:"subagents"`
 
 	// TestBending is report.DetectTestBending over this turn's own calls,
-	// main agent and subagents together: seq pairs only. See TestBending's
+	// main agent and subagents together: seq pairs, and which run of a flaky
+	// pair failed, and nothing else. See TestBending's
 	// own doc for the two patterns and why each list has an omitted count.
 	TestBending TestBending `json:"test_bending"`
 
@@ -234,7 +235,7 @@ func Empty(now time.Time, sessionID, promptID string) *Digest {
 		},
 		Unknown:        true,
 		SilentFailures: report.SilentFailures{AbsentWords: []string{}},
-		TestBending:    TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.SeqPair{}},
+		TestBending:    TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.FlakyPair{}},
 		Gaps:           []store.Gap{},
 	}
 	return d

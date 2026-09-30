@@ -671,8 +671,12 @@ func writeTestRuns(b *bytes.Buffer, t TestRuns) {
 	for _, p := range t.TestsOnlyThenGreen {
 		fmt.Fprintf(b, "    failed, then the only recorded edits were to files named like tests, then the same command passed: %d → %d\n", p[0], p[1])
 	}
+	// Each pair with its runs' outcomes in the order they ran, which is not
+	// always passed then failed.
 	for _, p := range t.Flaky {
-		fmt.Fprintf(b, "    same command passed and failed with no recorded file edit between: %d, %d\n", p[0], p[1])
+		first, second := p.Outcomes()
+		fmt.Fprintf(b, "    same command had both outcomes with no recorded file edit between: %d %s, %d %s\n",
+			p.Seqs[0], first, p.Seqs[1], second)
 	}
 	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
 		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch or a subagent launch, even one that failed;")

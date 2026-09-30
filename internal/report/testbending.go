@@ -22,6 +22,23 @@ const (
 // printed.
 type SeqPair [2]int64
 
+// FlakyPair is a flaky pair and which of its two runs failed. The seqs alone
+// do not say, and a reader told "passed and failed" of a pair that failed
+// first is told the order backwards: the fail-then-pass pair is the one that
+// reads as a fix, and it matters which it was. A closed bit, like the seqs.
+type FlakyPair struct {
+	Seqs        SeqPair `json:"seqs"`
+	FirstFailed bool    `json:"first_failed"`
+}
+
+// Outcomes names the pair's two runs' outcomes, in seq order.
+func (p FlakyPair) Outcomes() (first, second string) {
+	if p.FirstFailed {
+		return "failed", "passed"
+	}
+	return "passed", "failed"
+}
+
 // TestBending is what two patterns in a list of calls look like, and nothing
 // more than that. Neither says why: a test edited to pass may have been
 // wrong, and a command that passes and fails may depend on the clock. They
@@ -36,8 +53,9 @@ type TestBending struct {
 	// edit ran.
 	TestsOnlyThenGreen []SeqPair `json:"tests_only_then_green"`
 	// Flaky pairs two consecutive runs of the SAME test command, one ok and
-	// one failed in either order, with no file edit recorded between them.
-	Flaky []SeqPair `json:"flaky"`
+	// one failed in either order, with no file edit recorded between them,
+	// and says which order it was.
+	Flaky []FlakyPair `json:"flaky"`
 }
 
 // DetectTestBending finds both patterns over run's declarations, in seq order,
@@ -81,7 +99,7 @@ type TestBending struct {
 // shell in DIR breaks them only when its class is not read, network or agent
 // -- `cd DIR && ls` is read -- and the report states that limit.
 func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
-	out := TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []SeqPair{}}
+	out := TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []FlakyPair{}}
 	if run == nil {
 		return out
 	}
@@ -120,7 +138,7 @@ func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 			case prev.failed && !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:
 				out.TestsOnlyThenGreen = append(out.TestsOnlyThenGreen, pair)
 			case prev.failed != failed && anyEdits == prev.anyEdits:
-				out.Flaky = append(out.Flaky, pair)
+				out.Flaky = append(out.Flaky, FlakyPair{Seqs: pair, FirstFailed: prev.failed})
 			}
 		}
 		if mayEdit(d) {

@@ -108,7 +108,7 @@ func TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged(t *testing.T) {
 	if !strings.Contains(line, "→ rashomon report --session "+testSession) {
 		t.Errorf("line = %q, want the report pointer", line)
 	}
-	if strings.Contains(line, "passed and failed") {
+	if strings.Contains(line, "had both outcomes") {
 		t.Errorf("line = %q also raises the flaky sentence: an edit came between", line)
 	}
 
@@ -130,7 +130,9 @@ func TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged(t *testing.T) {
 	var dg struct {
 		TestBending struct {
 			TestsOnlyThenGreen [][2]int64 `json:"tests_only_then_green"`
-			Flaky              [][2]int64 `json:"flaky"`
+			Flaky              []struct {
+				Seqs [2]int64 `json:"seqs"`
+			} `json:"flaky"`
 		} `json:"test_bending"`
 	}
 	res := s.e.digestRaw("--session", testSession)
@@ -235,7 +237,7 @@ func TestTestBending_SameCommandBothOutcomesIsFlagged(t *testing.T) {
 	if !ok {
 		t.Fatal("the same test command passed and failed with no edit between; recap printed nothing")
 	}
-	if !strings.Contains(line, "same test command passed and failed with no recorded file edit between (#") {
+	if !strings.Contains(line, "same test command had both outcomes with no recorded file edit between (#1 passed, #") {
 		t.Errorf("line = %q, want the flaky sentence", line)
 	}
 	if strings.Contains(line, "nothing changed") {

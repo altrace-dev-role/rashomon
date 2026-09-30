@@ -3,8 +3,6 @@ package digest
 import (
 	"encoding/json"
 	"sort"
-
-	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
 // truncate enforces CapBytes on the WHOLE marshalled document, not per
@@ -104,8 +102,9 @@ func trimUnexecuted(s *[]Unexecuted, omitted *int) bool {
 
 // trimPairs halves *s from the tail, returning false once it is empty. The
 // head is what survives, so the first pair -- the one recap prints -- goes
-// last.
-func trimPairs(s *[]report.SeqPair, omitted *int) bool {
+// last. Generic over the two lists' pair types, which differ only in the
+// flaky pair's order bit.
+func trimPairs[P any](s *[]P, omitted *int) bool {
 	if len(*s) == 0 {
 		return false
 	}

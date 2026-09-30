@@ -188,19 +188,24 @@ func TestLineTestBending(t *testing.T) {
 			want: []string{"test command failed, then the only recorded edits were to files named like tests, then it passed (#12 → #19)."},
 		},
 		{
-			name: "flaky",
-			tb:   digest.TestBending{Flaky: []report.SeqPair{{8, 14}}},
-			want: []string{"same test command passed and failed with no recorded file edit between (#8, #14)."},
+			name: "flaky, passed first",
+			tb:   digest.TestBending{Flaky: []report.FlakyPair{{Seqs: report.SeqPair{8, 14}}}},
+			want: []string{"same test command had both outcomes with no recorded file edit between (#8 passed, #14 failed)."},
+		},
+		{
+			name: "flaky, failed first",
+			tb:   digest.TestBending{Flaky: []report.FlakyPair{{Seqs: report.SeqPair{8, 14}, FirstFailed: true}}},
+			want: []string{"same test command had both outcomes with no recorded file edit between (#8 failed, #14 passed)."},
 		},
 		{
 			name: "both, and more than one",
 			tb: digest.TestBending{
 				TestsOnlyThenGreen: []report.SeqPair{{12, 19}, {20, 25}},
-				Flaky:              []report.SeqPair{{8, 14}}, FlakyOmitted: 2,
+				Flaky:              []report.FlakyPair{{Seqs: report.SeqPair{8, 14}}}, FlakyOmitted: 2,
 			},
 			want: []string{
 				"then it passed (#12 → #19, 1 more). same test command",
-				"no recorded file edit between (#8, #14, 2 more).",
+				"no recorded file edit between (#8 passed, #14 failed, 2 more).",
 			},
 		},
 		{
@@ -239,7 +244,7 @@ func TestLineTestBending(t *testing.T) {
 // read back from JSON speaks.
 func TestLineNoTestBendingIsSilent(t *testing.T) {
 	d := cleanDigest()
-	d.TestBending = digest.TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.SeqPair{}}
+	d.TestBending = digest.TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.FlakyPair{}}
 	if line, ok := Line(d, d.SessionID, true); ok {
 		t.Errorf("a digest with no test-bending pair produced a line: %q", line)
 	}

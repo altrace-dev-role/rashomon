@@ -54,7 +54,7 @@ func TestBuild_TestBendingIsTurnScoped(t *testing.T) {
 	}
 
 	d1 := build(run, nil, "p1", "", time.Now())
-	if want := []report.SeqPair{{1, 2}}; !reflect.DeepEqual(d1.TestBending.Flaky, want) {
+	if want := []report.FlakyPair{{Seqs: report.SeqPair{1, 2}}}; !reflect.DeepEqual(d1.TestBending.Flaky, want) {
 		t.Errorf("turn 1 flaky = %v, want %v", d1.TestBending.Flaky, want)
 	}
 	if len(d1.TestBending.TestsOnlyThenGreen) != 0 {
@@ -94,7 +94,7 @@ func TestBuild_TestBendingListsAreNeverNull(t *testing.T) {
 func TestTruncate_TestBendingIsCutLastAndCounted(t *testing.T) {
 	d := &Digest{Declarations: emptyDeclarations()}
 	for i := int64(0); i < 20; i++ {
-		d.TestBending.Flaky = append(d.TestBending.Flaky, report.SeqPair{i, i + 1})
+		d.TestBending.Flaky = append(d.TestBending.Flaky, report.FlakyPair{Seqs: report.SeqPair{i, i + 1}})
 	}
 	d.TestBending.TestsOnlyThenGreen = []report.SeqPair{{7, 9}}
 	// Over the cap with padding in Dropped, and under it once Dropped goes.
@@ -115,7 +115,7 @@ func TestTruncate_TestBendingIsCutLastAndCounted(t *testing.T) {
 	d = &Digest{Declarations: emptyDeclarations()}
 	const n = 1000
 	for i := int64(0); i < n; i++ {
-		d.TestBending.Flaky = append(d.TestBending.Flaky, report.SeqPair{1_000_000 + i, 2_000_000 + i})
+		d.TestBending.Flaky = append(d.TestBending.Flaky, report.FlakyPair{Seqs: report.SeqPair{1_000_000 + i, 2_000_000 + i}})
 		d.TestBending.TestsOnlyThenGreen = append(d.TestBending.TestsOnlyThenGreen,
 			report.SeqPair{3_000_000 + i, 4_000_000 + i})
 	}

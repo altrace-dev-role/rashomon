@@ -1268,7 +1268,8 @@ m("TB the digest never carries the patterns", "internal/digest/digest.go",
   "\td.TestBending = TestBending{TestsOnlyThenGreen: tb.TestsOnlyThenGreen, Flaky: tb.Flaky}",
   "\t_ = tb", "TestBuild_TestBending|TestTestBending_")
 m("TB an empty digest marshals null lists", "internal/digest/digest.go",
-  "\t\tTestBending:    TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.SeqPair{}},\n", "",
+  "\t\tTestBending:    TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.FlakyPair{}},\n",
+  "",
   "TestBuild_TestBendingListsAreNeverNull")
 m("TB truncate cuts a test-bending list before it is the last resort", "internal/digest/truncate.go",
   "\t\tfunc() bool { return trimStrings(&d.Declarations.Dropped, &d.Declarations.DroppedOmitted) },",
@@ -1279,20 +1280,22 @@ m("TB truncate cuts tests-only before flaky", "internal/digest/truncate.go",
   "\t\tfunc() bool {\n\t\t\treturn trimPairs(&d.TestBending.TestsOnlyThenGreen, &d.TestBending.TestsOnlyThenGreenOmitted)\n\t\t},\n\t\tfunc() bool { return trimPairs(&d.TestBending.Flaky, &d.TestBending.FlakyOmitted) },",
   "TestTruncate_TestBending")
 m("TB a cut pair is not counted as omitted", "internal/digest/truncate.go",
-  "func trimPairs(s *[]report.SeqPair, omitted *int) bool {\n\tif len(*s) == 0 {\n\t\treturn false\n\t}\n\tcut := (len(*s) + 1) / 2\n\t*omitted += cut\n",
-  "func trimPairs(s *[]report.SeqPair, omitted *int) bool {\n\tif len(*s) == 0 {\n\t\treturn false\n\t}\n\tcut := (len(*s) + 1) / 2\n",
+  "func trimPairs[P any](s *[]P, omitted *int) bool {\n\tif len(*s) == 0 {\n\t\treturn false\n\t}\n\tcut := (len(*s) + 1) / 2\n\t*omitted += cut\n",
+  "func trimPairs[P any](s *[]P, omitted *int) bool {\n\tif len(*s) == 0 {\n\t\treturn false\n\t}\n\tcut := (len(*s) + 1) / 2\n",
   "TestTruncate_TestBending")
 
 m("TB the end-of-turn line drops the tests-only sentence", "internal/recap/recap.go",
-  "\t\ttb.TestsOnlyThenGreen, tb.TestsOnlyThenGreenOmitted, \" → \"); ok {\n\t\tsentences = append(sentences, s)",
-  "\t\ttb.TestsOnlyThenGreen, tb.TestsOnlyThenGreenOmitted, \" → \"); ok {\n\t\t_ = s",
+  "\t\tfirst, len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted); ok {\n\t\tsentences = append(sentences, s)",
+  "\t\tfirst, len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted); ok {\n\t\t_ = s",
   "TestLineTestBending|TestTestBending_")
 m("TB the end-of-turn line drops the flaky sentence", "internal/recap/recap.go",
-  "\t\ttb.Flaky, tb.FlakyOmitted, \", \"); ok {\n\t\tsentences = append(sentences, s)",
-  "\t\ttb.Flaky, tb.FlakyOmitted, \", \"); ok {\n\t\t_ = s",
+  "\t\tfirst, len(tb.Flaky)+tb.FlakyOmitted); ok {\n\t\tsentences = append(sentences, s)",
+  "\t\tfirst, len(tb.Flaky)+tb.FlakyOmitted); ok {\n\t\t_ = s",
   "TestLineTestBending|TestTestBending_")
 m("TB the end-of-turn line forgets what truncate cut", "internal/recap/recap.go",
-  "\tn := len(pairs) + omitted\n", "\tn := len(pairs) + omitted*0\n", "TestLineTestBending")
+  "len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted)",
+  "len(tb.TestsOnlyThenGreen)+tb.TestsOnlyThenGreenOmitted*0)",
+  "TestLineTestBending")
 m("TB the end-of-turn line hides the other pairs", "internal/recap/recap.go",
   "\t\ts += fmt.Sprintf(\", %d more\", n-1)", "\t\t_ = n", "TestLineTestBending")
 
@@ -1401,6 +1404,27 @@ m("TB the timeline says only test files were edited, not what was recorded", "in
   "\"↳ the only recorded edits since %d were to files named like tests, where the same command failed\"",
   "\"↳ only files named like tests edited since %d, where the same command failed\"",
   "TestTimeline_AnnotatesTheRowThatCompletesAPattern|TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged")
+
+m("TB the end-of-turn line forgets what truncate cut from flaky", "internal/recap/recap.go",
+  "len(tb.Flaky)+tb.FlakyOmitted)",
+  "len(tb.Flaky)+tb.FlakyOmitted*0)",
+  "TestLineTestBending")
+m("TB a flaky pair records the later run's outcome", "internal/report/testbending.go",
+  "FlakyPair{Seqs: pair, FirstFailed: prev.failed}",
+  "FlakyPair{Seqs: pair, FirstFailed: failed}",
+  "TestTestBending_FlakyKeepsTheOrder|TestTestRuns_")
+m("TB a flaky pair is always passed then failed", "internal/report/testbending.go",
+  "\tif p.FirstFailed {\n\t\treturn \"failed\", \"passed\"\n\t}",
+  "\tif false {\n\t\treturn \"failed\", \"passed\"\n\t}",
+  "TestTestBending_FlakyKeepsTheOrder|TestTestRuns_|TestLineTestBending")
+m("TB the session block prints a flaky pair without its order", "internal/report/text.go",
+  "between: %d %s, %d %s\\n\",\n\t\t\tp.Seqs[0], first, p.Seqs[1], second)",
+  "between: %d, %d\\n\",\n\t\t\tp.Seqs[0], p.Seqs[1])\n\t\t_, _ = first, second",
+  "TestTestRuns_")
+m("TB the end-of-turn line prints a flaky pair without its order", "internal/recap/recap.go",
+  "\t\tfirst = fmt.Sprintf(\"#%d %s, #%d %s\", p.Seqs[0], a, p.Seqs[1], b)",
+  "\t\tfirst = fmt.Sprintf(\"#%d, #%d\", p.Seqs[0], p.Seqs[1])\n\t\t_, _ = a, b",
+  "TestLineTestBending|TestTestBending_SameCommandBothOutcomesIsFlagged")
 
 # Import additions some mutants need.
 IMPORTS = {

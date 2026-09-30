@@ -242,7 +242,7 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 		bending[p[1]] = TimelineBending{Kind: BendTestsOnlyThenGreen, Since: p[0]}
 	}
 	for _, p := range tb.Flaky {
-		bending[p[1]] = TimelineBending{Kind: BendFlaky, Since: p[0]}
+		bending[p.Seqs[1]] = TimelineBending{Kind: BendFlaky, Since: p.Seqs[0]}
 	}
 	for i := range entries {
 		// A row with no declaration has no seq, and no pair can name it.
