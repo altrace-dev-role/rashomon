@@ -677,8 +677,9 @@ func writeTestRuns(b *bytes.Buffer, t TestRuns) {
 	for _, p := range t.TestsOnlyThenGreen {
 		fmt.Fprintf(b, "    failed, then the only recorded edits were to files named like tests, then the same command passed: %d → %d\n", p[0], p[1])
 	}
-	// Each pair with its runs' outcomes in the order they ran, which is not
-	// always passed then failed.
+	// Each pair with its runs' outcomes in declaration (start) order, which
+	// is not always passed then failed, and is not always the order the two
+	// finished in when parallel agents overlap.
 	for _, p := range t.Flaky {
 		first, second := p.Outcomes()
 		fmt.Fprintf(b, "    same command had both outcomes with no recorded file edit between: %d %s, %d %s\n",

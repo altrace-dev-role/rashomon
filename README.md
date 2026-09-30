@@ -312,7 +312,9 @@ The two test-bending lines have limits of their own:
 
 `report --json` carries the same facts: each session's `test_runs` (`runs`,
 `ok`, `failed`, `tests_only_then_green` as `[earlier, later]` seq pairs, and
-`flaky` as `{"seqs": [earlier, later], "first_failed": true|false}`), and a
+`flaky` as `{"seqs": [earlier, later], "first_failed": true|false}`, where
+earlier and later are declaration order, the order the runs started, which
+overlapping runs in parallel agents may not have finished in), and a
 `test_bending` (`kind`, `since_seq`) on the timeline row that completes a
 pair, null on every other row.
 

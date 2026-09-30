@@ -328,9 +328,9 @@ func seqsOf(f []FlakyPair) []SeqPair {
 }
 
 // TestTestBending_FlakyKeepsTheOrder: a flaky pair says which of its runs
-// failed, so every reader can print the order they ran in. Break: record the
-// later run's outcome, or none, and a fail-then-pass pair -- the one that
-// reads as a fix -- prints as passed then failed.
+// failed, so every reader can print the two in declaration (start) order.
+// Break: record the later run's outcome, or none, and a fail-then-pass pair
+// -- the one that reads as a fix -- prints as passed then failed.
 func TestTestBending_FlakyKeepsTheOrder(t *testing.T) {
 	const ok, failed = store.ExecOK, store.ExecFailed
 	got := DetectTestBending(tbRun(test(1, "d", failed), test(2, "d", ok), test(3, "d", failed)), nil).Flaky
@@ -407,8 +407,8 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	for _, want := range []string{
 		"test runs: 6 (3 ok, 3 failed)",
 		"failed, then the only recorded edits were to files named like tests, then the same command passed: 1 → 3",
-		// Each pair in the order it ran: "passed and failed" for a pair
-		// that failed first was the order the record contradicts.
+		// Each pair in declaration (start) order: "passed and failed" for a
+		// pair that failed first was the order the record contradicts.
 		"same command had both outcomes with no recorded file edit between: 4 passed, 5 failed",
 		"same command had both outcomes with no recorded file edit between: 7 failed, 8 passed",
 		"the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows",

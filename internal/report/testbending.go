@@ -26,12 +26,18 @@ type SeqPair [2]int64
 // do not say, and a reader told "passed and failed" of a pair that failed
 // first is told the order backwards: the fail-then-pass pair is the one that
 // reads as a fix, and it matters which it was. A closed bit, like the seqs.
+//
+// First and second are in declaration order, the order the two runs STARTED
+// (seq), not the order they finished. Two identical runs overlapping in
+// parallel agents can finish the other way round, so "#10 failed, #11
+// passed" says which started first, and the timeline shows where each result
+// was recorded.
 type FlakyPair struct {
 	Seqs        SeqPair `json:"seqs"`
 	FirstFailed bool    `json:"first_failed"`
 }
 
-// Outcomes names the pair's two runs' outcomes, in seq order.
+// Outcomes names the pair's two runs' outcomes, in seq (declaration) order.
 func (p FlakyPair) Outcomes() (first, second string) {
 	if p.FirstFailed {
 		return "failed", "passed"
