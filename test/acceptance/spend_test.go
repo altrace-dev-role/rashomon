@@ -103,15 +103,16 @@ type spendDoc struct {
 		USD *float64 `json:"usd"`
 	} `json:"total"`
 	Silent struct {
-		Store              string `json:"store"`
-		Sessions           int    `json:"sessions"`
-		CoveredSessions    int    `json:"covered_sessions"`
-		NotCoveredSessions int    `json:"not_covered_sessions"`
-		NotCoveredCost     struct {
+		Store                 string `json:"store"`
+		Transcripts           int    `json:"transcripts"`
+		CoveredTranscripts    int    `json:"covered_transcripts"`
+		NotCoveredTranscripts int    `json:"not_covered_transcripts"`
+		NotCoveredCost        struct {
 			USD *float64 `json:"usd"`
 		} `json:"not_covered_cost"`
-		Turns int `json:"turns"`
-		Cost  struct {
+		NotCoveredSessions []string `json:"not_covered_sessions"`
+		Turns              int      `json:"turns"`
+		Cost               struct {
 			USD *float64 `json:"usd"`
 		} `json:"cost"`
 	} `json:"silent_failure_turns"`
@@ -135,21 +136,25 @@ func near(got *float64, want float64) bool {
 }
 
 // TestSpend_JoinsSilentlyFailedTurnsToTheHooksRecord runs the join end to
-// end: the hooks record a turn with a failed call, the transcript's final
-// reply mentions no failure, and spend prices the responses inside that
-// turn's recorded span -- and names a session the hooks never saw as not
-// covered, with its spend, rather than folding it in as zero.
+// end to end: the hooks record a turn with a failed call, the transcript's final
+// reply mentions no failure, and spend prices every response the transcript
+// ties to that turn's prompt -- and names a transcript the hooks never saw as
+// not covered, with its spend, rather than folding it in as zero. The hooks'
+// transcript_path names the transcript, which is what makes it covered.
 func TestSpend_JoinsSilentlyFailedTurnsToTheHooksRecord(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
+	transcript := filepath.Join(e.configDir, "projects", "-work-project", testSession+".jsonl")
 
 	p := defaultPayload()
+	p.TranscriptPath = transcript
 	e.mustHook(p.build(t))
 	time.Sleep(20 * time.Millisecond)
 	e.mustPost(failurePayload(t, p.ToolUseID, "Exit code 1", false, 30))
 	time.Sleep(20 * time.Millisecond)
 	p2 := defaultPayload()
 	p2.ToolUseID = "toolu_2"
+	p2.TranscriptPath = transcript
 	e.mustHook(p2.build(t))
 	time.Sleep(20 * time.Millisecond)
 	post := defaultPost()
@@ -186,12 +191,15 @@ func TestSpend_JoinsSilentlyFailedTurnsToTheHooksRecord(t *testing.T) {
 	if s.Store != "read" || s.Turns != 1 {
 		t.Fatalf("silent_failure_turns = %+v, want the store read and one turn\n%s", s, res.stdout)
 	}
-	if !near(s.Cost.USD, 250_000*opus55Input) {
-		t.Errorf("cost = %v, want $%v: msg_inside once, not msg_before or the final reply outside the span, "+
-			"and not its second line", deref(s.Cost.USD), 250_000*opus55Input)
+	if !near(s.Cost.USD, 254_000*opus55Input) {
+		t.Errorf("cost = %v, want $%v: every response tied to the turn's prompt -- msg_before, msg_inside once "+
+			"(not its second line) and the final reply", deref(s.Cost.USD), 254_000*opus55Input)
 	}
-	if s.CoveredSessions != 1 || s.NotCoveredSessions != 1 || s.Sessions != 2 {
-		t.Errorf("covered %d, not covered %d of %d; want 1, 1 of 2", s.CoveredSessions, s.NotCoveredSessions, s.Sessions)
+	if s.CoveredTranscripts != 1 || s.NotCoveredTranscripts != 1 || s.Transcripts != 2 {
+		t.Errorf("covered %d, not covered %d of %d; want 1, 1 of 2", s.CoveredTranscripts, s.NotCoveredTranscripts, s.Transcripts)
+	}
+	if !reflect.DeepEqual(s.NotCoveredSessions, []string{"sess-unrecorded"}) {
+		t.Errorf("not-covered sessions = %v, want the unrecorded one named", s.NotCoveredSessions)
 	}
 	if !near(s.NotCoveredCost.USD, 500_000*opus55Input) {
 		t.Errorf("not-covered cost = %v, want $%v", deref(s.NotCoveredCost.USD), 500_000*opus55Input)
@@ -199,8 +207,9 @@ func TestSpend_JoinsSilentlyFailedTurnsToTheHooksRecord(t *testing.T) {
 
 	txt := e.run("", nil, "spend")
 	for _, want := range []string{
-		"in turns that ended with a failure the summary never mentioned: at least $1.00 across 1 turn",
-		"1 of 2 sessions was recorded, so this covers only those; $2.00 in the other 1 is not covered",
+		"in turns that ended with a failure the summary never mentioned: at least $1.02 across 1 turn",
+		"1 of 2 transcripts was recorded, so this covers only those; $2.00 in the other 1 is not covered",
+		"(not covered: session sess-unrecorded)",
 	} {
 		if !strings.Contains(txt.stdout, want) {
 			t.Errorf("text lacks %q:\n%s", want, txt.stdout)
@@ -233,7 +242,7 @@ func TestSpend_OpensNoStore(t *testing.T) {
 	if len(entries) != 0 {
 		t.Errorf("the store root is not empty after `rashomon spend` on a machine with no store: %v", entries)
 	}
-	if doc.Silent.Store != "none" || doc.Silent.NotCoveredSessions != 1 || doc.Silent.Turns != 0 {
+	if doc.Silent.Store != "none" || doc.Silent.NotCoveredTranscripts != 1 || doc.Silent.Turns != 0 {
 		t.Errorf("silent_failure_turns = %+v, want store none and the one session not covered", doc.Silent)
 	}
 	if !strings.Contains(txt.stdout, "never mentioned: unknown") ||

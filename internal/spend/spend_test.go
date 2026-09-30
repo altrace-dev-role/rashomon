@@ -685,7 +685,7 @@ func TestContentNeverReachesTheOutput(t *testing.T) {
 	c.write("proj/sess-a/subagents/agent-1.jsonl",
 		resp{id: "msg_3", model: "claude-mystery-1", at: at, in: 7, stop: "end_turn"}.line("tool_use"))
 	s := c.summary(30)
-	s.SilentFailureTurns = SilentFailureTurns{Store: StoreNone, Sessions: s.Sessions}
+	s.SilentFailureTurns = SilentFailureTurns{Store: StoreNone, Transcripts: s.Sessions}
 	txt, js := render(t, s)
 	for name, out := range map[string]string{"text": txt, "json": js} {
 		if strings.Contains(out, canary) {

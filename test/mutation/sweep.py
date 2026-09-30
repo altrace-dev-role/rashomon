@@ -1149,20 +1149,47 @@ m("SP a refusal is not recognised", "internal/spend/spend.go",
 m("SP the returned attempt is counted again as an extra one", "internal/spend/scan.go",
   "\tfor _, it := range its[:len(its)-1] {", "\tfor _, it := range its {", "TestRefusalsAndExtraAttempts")
 m("SP a turn with failures fires whatever its summary says", "internal/spend/join.go",
-  "\t\t\tif !report.BuildSilentFailures(t.run, report.AccountFromMessage(final)).Fires {",
-  "\t\t\tif report.BuildSilentFailures(t.run, report.AccountFromMessage(final)).Failed == 0 {",
+  "\t\tif !report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt))).Fires {",
+  "\t\tif report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt))).Failed == 0 {",
   "TestJoin_AnHonestSummary")
-m("SP a firing turn's spend runs past its last record", "internal/spend/join.go",
-  "r.StartMS >= t.firstMS && r.StartMS <= t.lastMS && !counted[r]", "r.StartMS >= t.firstMS && !counted[r]",
+m("SP a firing turn's spend is every main response of its transcript, not its prompt's", "internal/spend/join.go",
+  "\t\tif f[prompt].Responses[r.ID] {", "\t\tif len(f[prompt].Responses) > 0 {",
+  "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
+m("SP the transcript does not tie the response that made a turn's first call to it", "internal/report/transcript.go",
+  "\t\t\t\ttf.Responses[head.Message.ID] = true\n", "\t\t\t\ttf.Responses[head.Message.ID] = bytes.Contains(raw, []byte(`\"text\"`))\n",
   "TestJoin_SpendInside|TestSpend_JoinsSilentlyFailedTurns")
-m("SP a firing turn's spend starts before its first record", "internal/spend/join.go",
-  "r.StartMS >= t.firstMS && r.StartMS <= t.lastMS && !counted[r]", "r.StartMS <= t.lastMS && !counted[r]",
-  "TestJoin_SpendInside|TestSpend_JoinsSilentlyFailedTurns")
+m("SP a subagent's spend is never its turn's", "internal/spend/join.go",
+  "\t\treturn ok && p == prompt", "\t\treturn false && ok && p == prompt",
+  "TestJoin_SpendInside")
+m("SP a subagent file no record names is priced into the turn", "internal/spend/join.go",
+  "\t\treturn ok && p == prompt", "\t\treturn ok || p == \"\"",
+  "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
+m("SP a subagent file two turns' records name is priced into the first", "internal/spend/join.go",
+  "\t\t\t\t} else if p != *d.PromptID {\n\t\t\t\t\tsubTurn[i] = \"\"",
+  "\t\t\t\t} else if p != *d.PromptID {\n\t\t\t\t\t_ = i",
+  "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
 m("SP a silent turn before the window is counted", "internal/spend/join.go",
   "\t\t\tif t.lastMS < s.FromUnixMS {", "\t\t\tif false {", "TestJoin_ATurnBefore")
-m("SP a session rashomon never recorded is treated as covered", "internal/spend/join.go",
-  "\t\tif !recorded[st.DirName(id)] {", "\t\tif false && !recorded[st.DirName(id)] {",
-  "TestJoin_SpendInside|TestSpend_JoinsSilentlyFailedTurns")
+m("SP a transcript counts as covered when its session id has a run directory", "internal/spend/join.go",
+  "\t\trun, err := st.ReadRun(id)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n",
+  "\t\trun, err := st.ReadRun(id)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tfor m, rs := range byTranscript {\n\t\t\tif rs[0].SessionID == id {\n\t\t\t\tcovered[m] = true\n\t\t\t}\n\t\t}\n",
+  "TestJoin_CoverageIsPerTranscript")
+m("SP a not-covered transcript's session is not named", "internal/spend/join.go",
+  "\t\t\t\tnamed[displaySession(r.SessionID)] = true\n", "",
+  "TestJoin_SpendInside|TestJoin_CoverageIsPerTranscript")
+m("SP a partly recorded session is marked recorded", "internal/spend/join.go",
+  "\t\tdefault:\n\t\t\ts.PerSession[i].Coverage = CoveragePartly", "\t\tdefault:\n\t\t\ts.PerSession[i].Coverage = CoverageRecorded",
+  "TestJoin_CoverageIsPerTranscript")
+m("SP the text does not name the not-covered sessions", "internal/spend/text.go",
+  "\tif len(n) == 0 {\n\t\treturn \"\"", "\tif true {\n\t\treturn \"\"",
+  "TestJoin_SpendInside|TestJoin_CoverageIsPerTranscript|TestSpend_JoinsSilentlyFailedTurns")
+m("SP a covered, clean record reads at least none across 0 turns", "internal/spend/text.go",
+  "\tcase j.Turns == 0:\n", "\tcase false:\n", "TestJoin_ACoveredZeroIsAZero")
+m("SP a firing turn with nothing priced reads at least none", "internal/spend/text.go",
+  "\tcase j.Cost.Priced == 0 && j.Cost.Unpriced == 0:\n", "\tcase false:\n", "TestJoin_AFiringTurnWithNoResponse")
+m("SP the floor note is printed under a none", "internal/spend/text.go",
+  "\tif j.Turns > 0 {\n\t\tfmt.Fprintf(&b, \"  (%s)\\n\", j.Bound)", "\tif true {\n\t\tfmt.Fprintf(&b, \"  (%s)\\n\", j.Bound)",
+  "TestJoin_ACoveredZeroIsAZero")
 m("SP an unrecorded session's spend is folded in as zero", "internal/spend/join.go",
   "\t\t\tcostOf(&j.NotCoveredCost, r)", "\t\t\t_ = r", "TestJoin_")
 m("SP no store renders as a store that recorded nothing here", "internal/spend/text.go",
@@ -1175,13 +1202,6 @@ m("SP spend ignores CLAUDE_CONFIG_DIR", "cmd/rashomon/main.go",
   "TestSpend_ReadsWhere")
 m("SP --days 0 is accepted", "cmd/rashomon/main.go",
   "if err != nil || n < 1 {", "if err != nil {", "TestSpend_RefusesAWindow")
-m("SP a turn's verdict ignores the transcript its records name", "internal/spend/join.go",
-  "\t\tif recorded[filepath.Clean(p)] {", "\t\tif false && recorded[filepath.Clean(p)] {", "TestJoin_OneSessionIDTwoConversations")
-m("SP another conversation under the same session id is priced into the turn", "internal/spend/join.go",
-  "\t\t\t\tif !s.inConversation(r, files) {", "\t\t\t\tif false && !s.inConversation(r, files) {",
-  "TestJoin_OneSessionIDTwoConversations")
-m("SP the subagent files under the turn's transcript are not its conversation", "internal/spend/join.go",
-  "if path == m || strings.HasPrefix(", "if path == m || false && strings.HasPrefix(", "TestJoin_SpendInside")
 
 m("SP a tool-less prompt's reply is read as the previous turn's summary", "internal/report/transcript.go",
   "\t\t\t\tcurrent = head.PromptID\n", "\t\t\t\tif want[head.PromptID] {\n\t\t\t\t\tcurrent = head.PromptID\n\t\t\t\t}\n",
@@ -1203,7 +1223,7 @@ m("SP an unbilled synthetic line counts as the previous request", "internal/spen
   "\t\tif r.StartMS == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
   "TestCacheExpiry_AnUnbilled")
 m("SP an unchecked silent-failure line marshals as a checked $0", "internal/spend/join.go",
-  "\tif j.CoveredSessions > 0 {\n\t\tout.Turns", "\tif true {\n\t\tout.Turns",
+  "\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns", "\tif true {\n\t\tout.Turns",
   "TestJoin_NoStore")
 m("SP by-agent shares are printed beside an unknown", "internal/spend/text.go",
   "\t\tif total == 0 || !main.Known() || !sub.Known() {", "\t\tif total == 0 {",

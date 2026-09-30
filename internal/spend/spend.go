@@ -210,6 +210,12 @@ type SessionSpend struct {
 	SessionID string `json:"session_id"`
 	Main      Cost   `json:"main"`
 	Subagents Cost   `json:"subagents"`
+	// Coverage says whether rashomon recorded the session's transcripts
+	// (CoverageRecorded, CoveragePartly, CoverageNotRecorded). Join sets
+	// it; it is absent when no store was consulted.
+	Coverage string `json:"coverage,omitempty"`
+
+	id string // the session id as read, which SessionID may have replaced
 }
 
 // Saving is one suggestion, with the figure it rests on. A suggestion with
@@ -364,7 +370,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 
 		sess, ok := sessions[r.SessionID]
 		if !ok {
-			sess = &SessionSpend{SessionID: displaySession(r.SessionID)}
+			sess = &SessionSpend{SessionID: displaySession(r.SessionID), id: r.SessionID}
 			sessions[r.SessionID] = sess
 		}
 		if r.Subagent {

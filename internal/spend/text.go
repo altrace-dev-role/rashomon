@@ -165,22 +165,72 @@ func silentLine(s *Summary) string {
 		return ""
 	case j.Store == StoreNone:
 		return lead + fmt.Sprintf("unknown\n  (rashomon has recorded nothing on this machine, so none of the %s is covered)\n",
-			countOf(j.Sessions, "session"))
-	case j.CoveredSessions == 0:
+			countOf(j.Transcripts, "transcript")) + notCoveredNames(j)
+	case j.CoveredTranscripts == 0:
 		return lead + fmt.Sprintf("unknown\n  (rashomon recorded none of the %s, so none is covered)\n",
-			countOf(j.Sessions, "session"))
+			countOf(j.Transcripts, "transcript")) + notCoveredNames(j)
 	}
 	var b strings.Builder
 	b.WriteString(lead)
-	fmt.Fprintf(&b, "at least %s across %s\n", money(j.Cost), countOf(j.Turns, "turn"))
+	// Three answers, each saying only what the record supports: no turn fired
+	// is a checked none, not "at least none across 0 turns"; turns that fired
+	// with no response of theirs in the window are counted without a figure,
+	// not "at least none"; and a figure is a floor (Bound), so "at least".
+	switch {
+	case j.Turns == 0:
+		b.WriteString("none found (no recorded turn with a failed call ended in a summary that left it out)\n")
+	case j.Cost.Priced == 0 && j.Cost.Unpriced == 0:
+		fmt.Fprintf(&b, "%s, with no response in the window tied to %s\n", countOf(j.Turns, "turn"), itThem(j.Turns))
+	default:
+		fmt.Fprintf(&b, "at least %s across %s\n", money(j.Cost), countOf(j.Turns, "turn"))
+	}
 	fmt.Fprintf(&b, "  (from rashomon's record; %d of %s %s recorded, so this covers only those",
-		j.CoveredSessions, countOf(j.Sessions, "session"), wasWere(j.CoveredSessions))
-	if j.NotCoveredSessions > 0 {
-		fmt.Fprintf(&b, "; %s in the other %d is not covered", money(j.NotCoveredCost), j.NotCoveredSessions)
+		j.CoveredTranscripts, countOf(j.Transcripts, "transcript"), wasWere(j.CoveredTranscripts))
+	if j.NotCoveredTranscripts > 0 {
+		fmt.Fprintf(&b, "; %s in the other %d is not covered", money(j.NotCoveredCost), j.NotCoveredTranscripts)
 	}
 	b.WriteString(")\n")
-	fmt.Fprintf(&b, "  (%s)\n", j.Bound)
+	b.WriteString(notCoveredNames(j))
+	if j.Turns > 0 {
+		fmt.Fprintf(&b, "  (%s)\n", j.Bound)
+	}
 	return b.String()
+}
+
+// maxNamed bounds how many not-covered sessions the text names; --json
+// names every one.
+const maxNamed = 5
+
+// notCoveredNames names the sessions whose transcripts are not covered, so a
+// reader can tell which conversations the line says nothing about.
+func notCoveredNames(j SilentFailureTurns) string {
+	n := j.NotCoveredSessions
+	if len(n) == 0 {
+		return ""
+	}
+	shown := n
+	if len(shown) > maxNamed {
+		shown = shown[:maxNamed]
+	}
+	more := ""
+	if len(n) > len(shown) {
+		more = fmt.Sprintf(" and %d more (--json names every one)", len(n)-len(shown))
+	}
+	return fmt.Sprintf("  (not covered: %s %s%s)\n", sessionWord(len(n)), strings.Join(shown, ", "), more)
+}
+
+func sessionWord(n int) string {
+	if n == 1 {
+		return "session"
+	}
+	return "sessions"
+}
+
+func itThem(n int) string {
+	if n == 1 {
+		return "it"
+	}
+	return "them"
 }
 
 func savingLine(sv Saving) string {

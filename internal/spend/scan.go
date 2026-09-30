@@ -183,6 +183,12 @@ type TranscriptFile struct {
 	// A line's own sessionId wins over it; this is the fallback for a line
 	// that carries none.
 	Session string
+	// Main is the main transcript this file's conversation is keyed by: the
+	// file itself for a main transcript, and projects/<project>/<session>.jsonl
+	// for a subagent's -- whether or not that file exists or was read. It is
+	// what the silent-failure line calls a transcript when it says which
+	// were recorded (Join).
+	Main string
 }
 
 // Discover lists the transcripts under a Claude Code configuration
@@ -231,7 +237,7 @@ func Discover(configDir string, modifiedSince time.Time) ([]TranscriptFile, erro
 			case !e.IsDir() && strings.HasSuffix(name, ".jsonl"):
 				path := filepath.Join(dir, name)
 				if fresh(path) {
-					out = append(out, TranscriptFile{Path: path, Session: strings.TrimSuffix(name, ".jsonl")})
+					out = append(out, TranscriptFile{Path: path, Session: strings.TrimSuffix(name, ".jsonl"), Main: path})
 				}
 			case e.IsDir():
 				subs, err := subagentFiles(filepath.Join(dir, name, "subagents"))
@@ -240,7 +246,8 @@ func Discover(configDir string, modifiedSince time.Time) ([]TranscriptFile, erro
 				}
 				for _, s := range subs {
 					if fresh(s) {
-						out = append(out, TranscriptFile{Path: s, Subagent: true, Session: name})
+						out = append(out, TranscriptFile{Path: s, Subagent: true, Session: name,
+							Main: filepath.Join(dir, name+".jsonl")})
 					}
 				}
 			}

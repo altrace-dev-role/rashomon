@@ -307,17 +307,26 @@ func assistantText(content json.RawMessage) (string, bool) {
 	return strings.Join(parts, "\n"), true
 }
 
-// TurnFinal is one turn's final assistant text and the timestamp of the line
-// that carried it.
+// TurnFinal is what one main transcript ties to one prompt: the turn's final
+// assistant text with the timestamp of the line that carried it, and the
+// message.id of every response the turn made.
 type TurnFinal struct {
+	// Said is true when the file ties any assistant text to the prompt. A
+	// turn whose every tied line was a tool call has Responses and no words.
+	Said bool
 	Text string
 	AtMS int64
+	// Responses is the message.id of every API response the file ties to the
+	// prompt, text or not: the turn's main-agent spend in this file, which
+	// spend prices by id. An id is a key, never content.
+	Responses map[string]bool
 }
 
 // FinalAssistantTexts reads a main transcript ONCE and returns, for each
 // prompt id in want, the text of the last assistant message that belongs to
-// that prompt, with the line's timestamp. A wanted prompt with no assistant
-// text in the file is absent from the result.
+// that prompt, with the line's timestamp, and the message id of every
+// response that belongs to it. A wanted prompt the file ties no assistant
+// line to is absent from the result.
 //
 // It is FinalAssistantText narrowed to turns, for `rashomon spend`'s
 // silent-failure line. A turn's silent_failures verdict is the digest's rule
@@ -341,7 +350,9 @@ type TurnFinal struct {
 // the two: such a prompt leaves nothing in the store, so its reply fell
 // inside the window and became the previous turn's final message -- firing on
 // honest summaries, and hiding silent ones behind a later reply that happened
-// to say "error".
+// to say "error". The same tie keys the turn's SPEND (Responses): a span of
+// recorded time left out the response that made the first call and the final
+// reply, and could swallow a later turn's responses.
 //
 // A user line with no promptId that is a prompt, rather than a tool result or
 // an injected meta line, ends attribution: its reply belongs to a turn this
@@ -351,9 +362,9 @@ type TurnFinal struct {
 // never a guess.
 //
 // One pass, decoding only what can matter: every line's header (type,
-// isSidechain, isMeta, promptId, timestamp); a user line's content only when
-// it carries no promptId; an assistant line's content only when its prompt is
-// wanted and the line has a text block at all. The caller hands every wanted
+// isSidechain, isMeta, promptId, timestamp, message.id); a user line's block
+// TYPES only when it carries no promptId (userBlocks); an assistant line's
+// content only when its prompt is wanted and the line has a text block at all. The caller hands every wanted
 // prompt of a session in one call, so a transcript is read once however many
 // of its turns need a verdict.
 func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal {
@@ -378,6 +389,9 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			IsMeta      bool   `json:"isMeta"`
 			PromptID    string `json:"promptId"`
 			Timestamp   string `json:"timestamp"`
+			Message     struct {
+				ID string `json:"id"`
+			} `json:"message"`
 		}
 		if json.Unmarshal(raw, &head) != nil || head.IsSidechain {
 			continue
@@ -390,7 +404,18 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 				current = ""
 			}
 		case "assistant":
-			if !want[current] || !bytes.Contains(raw, []byte(`"text"`)) {
+			if !want[current] {
+				continue
+			}
+			tf := out[current]
+			if head.Message.ID != "" {
+				if tf.Responses == nil {
+					tf.Responses = map[string]bool{}
+				}
+				tf.Responses[head.Message.ID] = true
+				out[current] = tf
+			}
+			if !bytes.Contains(raw, []byte(`"text"`)) {
 				continue
 			}
 			// A line with no parseable timestamp cannot be ordered against a
@@ -410,7 +435,8 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 				continue
 			}
 			if text, ok := assistantText(line.Message.Content); ok {
-				out[current] = TurnFinal{Text: text, AtMS: at.UnixMilli()}
+				tf.Said, tf.Text, tf.AtMS = true, text, at.UnixMilli()
+				out[current] = tf
 			}
 		}
 	}
