@@ -1206,20 +1206,23 @@ m("TB detection reads calls out of seq order", "internal/report/testbending.go",
   "\tsort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Seq < sorted[j].Seq })",
   "\tsort.SliceStable(sorted, func(i, j int) bool { return false })", "TestTestBending")
 m("TB a denied edit counts as an edit", "internal/report/testbending.go",
-  "\t\t\tif outcome == LinkOutcomeDenied {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tanyEdits++",
-  "\t\t\tif false {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tanyEdits++", "TestTestBending")
+  "\t\tif outcome == LinkOutcomeDenied {\n\t\t\tcontinue\n\t\t}\n",
+  "\t\tif outcome == LinkOutcomeDenied && d.Shape.VerbClass != shape.VerbWrite {\n\t\t\tcontinue\n\t\t}\n",
+  "TestTestBending")
 m("TB a test edit that did not run ok is a test edit", "internal/report/testbending.go",
   "\t\t\tcase outcome == store.ExecOK:\n\t\t\t\ttestEdits++", "\t\t\tdefault:\n\t\t\t\ttestEdits++", "TestTestBending")
 m("TB an unlabelled edit is a test edit", "internal/report/testbending.go",
-  "\t\t\tcase d.FileLabel == nil || *d.FileLabel != shape.LabelTestFile:",
-  "\t\t\tcase d.FileLabel != nil && *d.FileLabel != shape.LabelTestFile:", "TestTestBending")
+  "\t\t\tcase d.Shape.VerbClass != shape.VerbWrite || d.FileLabel == nil || *d.FileLabel != shape.LabelTestFile:",
+  "\t\t\tcase d.Shape.VerbClass != shape.VerbWrite || d.FileLabel != nil && *d.FileLabel != shape.LabelTestFile:",
+  "TestTestBending")
 m("TB a shell write between two runs is not an edit", "internal/report/testbending.go",
-  "\t\tswitch d.Shape.VerbClass {\n\t\tcase shape.VerbWrite:\n\t\t\tif outcome",
-  "\t\tswitch d.Shape.VerbClass {\n\t\tcase map[bool]string{true: shape.VerbWrite}[d.ToolName != \"Bash\"]:\n\t\t\tif outcome",
+  "\t\tif mayEdit(d) {\n",
+  "\t\tif mayEdit(d) && d.ToolName != \"Bash\" {\n",
   "TestTestBending")
 m("TB a run with no result is a run", "internal/report/testbending.go",
-  "\t\tif outcome != store.ExecOK && outcome != store.ExecFailed {\n\t\t\tcontinue\n\t\t}\n\t\tfailed",
-  "\t\tif false {\n\t\t\tcontinue\n\t\t}\n\t\tfailed", "TestTestBending")
+  "\t\trun := d.Shape.VerbClass == shape.VerbTest && (outcome == store.ExecOK || outcome == store.ExecFailed)\n",
+  "\t\trun := d.Shape.VerbClass == shape.VerbTest\n",
+  "TestTestBending")
 m("TB A is raised with code edited too", "internal/report/testbending.go",
   "\t\t\tcase prev.failed && !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:",
   "\t\t\tcase prev.failed && !failed && testEdits > prev.testEdits:", "TestTestBending")
@@ -1237,7 +1240,9 @@ m("TB a pair is made with the first run, not the previous one", "internal/report
   "\t\tlast[d.Shape.Digest] = mark{\n", "\t\tif _, seen := last[d.Shape.Digest]; !seen {\n\t\t\tlast[d.Shape.Digest] = mark{\n\t\t\t\tseq: d.Seq, failed: failed, testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,\n\t\t\t}\n\t\t}\n\t\t_ = mark{\n",
   "TestTestBending")
 m("TB every command is the same command", "internal/report/testbending.go",
-  "\t\tif prev, ok := last[d.Shape.Digest]; ok {", "\t\tif prev, ok := last[\"\"]; ok {", "TestTestBending")
+  "\t\tif prev, ok := last[d.Shape.Digest]; ok && run {",
+  "\t\tif prev, ok := last[\"\"]; ok && run {",
+  "TestTestBending")
 m("TB an interrupted test run is counted as a run", "internal/report/testbending.go",
   "\t\tcase store.ExecOK:\n\t\t\tout.Runs++", "\t\tcase store.ExecOK, store.ExecInterrupted:\n\t\t\tout.Runs++", "TestTestRuns_")
 m("TB the timeline annotates the earlier row", "internal/report/timeline.go",
@@ -1303,18 +1308,41 @@ m("TB a command on the runner's next line is not seen", "internal/shape/shape.go
   "\t\tif t.nlBefore && false {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}",
   "TestTestRunnerIsRecognised")
 m("TB a cd between two runs does not break the pair", "internal/report/testbending.go",
-  "\t\tif changesDirectory(d) && outcome != LinkOutcomeDenied {",
-  "\t\tif changesDirectory(d) && outcome == \"never\" {",
+  "func mayEdit(d store.Declaration) bool {\n",
+  "func mayEdit(d store.Declaration) bool {\n\tif d.Shape.Program != nil && (*d.Shape.Program == \"cd\" || *d.Shape.Program == \"pushd\") {\n\t\treturn false\n\t}\n",
   "TestTestBending")
 m("TB a denied cd breaks the pair", "internal/report/testbending.go",
-  "\t\tif changesDirectory(d) && outcome != LinkOutcomeDenied {",
-  "\t\tif changesDirectory(d) {",
+  "\t\tif outcome == LinkOutcomeDenied {\n\t\t\tcontinue\n\t\t}\n",
+  "\t\tif outcome == LinkOutcomeDenied && (d.Shape.Program == nil || *d.Shape.Program != \"cd\") {\n\t\t\tcontinue\n\t\t}\n",
   "TestTestBending")
-m("TB pushd is not a directory change", "internal/report/testbending.go",
-  "\tcase \"cd\", \"pushd\", \"popd\":", "\tcase \"cd\", \"popd\":", "TestTestBending")
 m("TB the session block drops the directory limit", "internal/report/text.go",
   "\t\tfmt.Fprintln(b, \"    nor a directory change made inside another shell command, so two runs may have been in different directories\")\n",
   "", "TestTestRuns_")
+
+m("TB only a write-class call is an edit", "internal/report/testbending.go",
+  "\tcase shape.VerbRead, shape.VerbNetwork, shape.VerbAgent:\n\t\treturn false\n\t}\n\treturn true\n",
+  "\tcase shape.VerbWrite:\n\t\treturn true\n\t}\n\treturn false\n",
+  "TestTestBending|TestTestBending_AnyCallThatCouldChangeFilesBreaksThePair")
+m("TB a read between two runs stops the pair", "internal/report/testbending.go",
+  "\tcase shape.VerbRead, shape.VerbNetwork, shape.VerbAgent:\n",
+  "\tcase shape.VerbNetwork, shape.VerbAgent:\n",
+  "TestTestBending")
+m("TB a web fetch between two runs stops the pair", "internal/report/testbending.go",
+  "\tcase shape.VerbRead, shape.VerbNetwork, shape.VerbAgent:\n",
+  "\tcase shape.VerbRead, shape.VerbAgent:\n",
+  "TestTestBending")
+m("TB a subagent launch between two runs stops the pair", "internal/report/testbending.go",
+  "\tcase shape.VerbRead, shape.VerbNetwork, shape.VerbAgent:\n",
+  "\tcase shape.VerbRead, shape.VerbNetwork:\n",
+  "TestTestBending")
+m("TB another test command between two runs is not an edit", "internal/report/testbending.go",
+  "func mayEdit(d store.Declaration) bool {\n",
+  "func mayEdit(d store.Declaration) bool {\n\tif d.Shape.VerbClass == shape.VerbTest {\n\t\treturn false\n\t}\n",
+  "TestTestBending|TestTestBending_AnyCallThatCouldChangeFilesBreaksThePair")
+m("TB a run is between itself and the run it pairs with", "internal/report/testbending.go",
+  "testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,\n",
+  "testEdits: testEdits, otherEdits: otherEdits - 1, anyEdits: anyEdits - 1,\n",
+  "TestTestBending")
 
 # Import additions some mutants need.
 IMPORTS = {

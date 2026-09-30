@@ -119,10 +119,16 @@ func TestTestBending(t *testing.T) {
 			run:    tbRun(test(1, "d", failed), edit(2, tf, ok), edit(3, none, ""), test(4, "d", ok)),
 			denied: map[string]bool{"td": true},
 			green:  pairs(SeqPair{1, 4}), flaky: pairs()},
-		{name: "A: other commands between do not stop it",
-			run: tbRun(test(1, "d", failed), tbCall{seq: 2, tool: "Bash", verb: shape.VerbExecute, digest: "ls", outcome: ok},
-				edit(3, tf, ok), tbCall{seq: 4, tool: "Read", verb: shape.VerbRead, digest: "r", outcome: ok}, test(5, "d", ok)),
-			green: pairs(SeqPair{1, 5}), flaky: pairs()},
+		{name: "A: read, network and agent calls between do not stop it",
+			run: tbRun(test(1, "d", failed), tbCall{seq: 2, tool: "Bash", verb: shape.VerbRead, prog: "ls", digest: "ls", outcome: ok},
+				edit(3, tf, ok), tbCall{seq: 4, tool: "Read", verb: shape.VerbRead, digest: "r", outcome: ok},
+				tbCall{seq: 5, tool: "WebFetch", verb: shape.VerbNetwork, digest: "w", outcome: ok},
+				tbCall{seq: 6, tool: "Agent", verb: shape.VerbAgent, digest: "a", outcome: ok}, test(7, "d", ok)),
+			green: pairs(SeqPair{1, 7}), flaky: pairs()},
+		{name: "A: a shell command of another class between stops it",
+			run:   tbRun(test(1, "d", failed), edit(2, tf, ok), tbCall{seq: 3, tool: "Bash", verb: shape.VerbVCS, prog: "git", digest: "co", outcome: ok}, test(4, "d", ok)),
+			green: pairs(), flaky: pairs(),
+			why: "a git checkout restores files: the pass may be the checkout's, not the test edit's"},
 		{name: "A: pairs with the previous run of the command, not the first failure",
 			run:   tbRun(test(1, "d", failed), edit(2, none, ok), test(3, "d", failed), edit(4, tf, ok), test(5, "d", ok)),
 			green: pairs(SeqPair{3, 5}), flaky: pairs()},
@@ -143,8 +149,20 @@ func TestTestBending(t *testing.T) {
 			run:   tbRun(test(1, "d", failed), test(2, "d", ok)),
 			green: pairs(), flaky: pairs(SeqPair{1, 2})},
 		{name: "B: ok then failed, nothing edited",
-			run:   tbRun(test(1, "d", ok), tbCall{seq: 2, tool: "Bash", verb: shape.VerbExecute, digest: "x", outcome: ok}, test(3, "d", failed)),
+			run:   tbRun(test(1, "d", ok), tbCall{seq: 2, tool: "Grep", verb: shape.VerbRead, digest: "x", outcome: ok}, test(3, "d", failed)),
 			green: pairs(), flaky: pairs(SeqPair{1, 3})},
+		{name: "B: another test command between is not raised",
+			run:   tbRun(test(1, "d", failed), test(2, "u", ok), test(3, "d", ok)),
+			green: pairs(), flaky: pairs(),
+			why: "jest -u is a test run with its own digest, and it rewrites snapshots"},
+		{name: "B: a call of any class that may write is not raised",
+			run: tbRun(test(1, "d", ok),
+				tbCall{seq: 2, tool: "Bash", verb: shape.VerbExecute, prog: "sed", digest: "x", outcome: ok}, test(3, "d", failed),
+				tbCall{seq: 4, tool: "Bash", verb: shape.VerbPackage, prog: "npm", digest: "i", outcome: ok}, test(5, "d", ok),
+				tbCall{seq: 6, tool: "mcp__fs__write", verb: shape.VerbMCP, digest: "m", outcome: ok}, test(7, "d", failed),
+				tbCall{seq: 8, tool: "Custom", verb: shape.VerbUnknown, digest: "c", outcome: failed}, test(9, "d", ok)),
+			green: pairs(), flaky: pairs(),
+			why: "sed -i, npm install, an MCP write and an unknown tool can each change files; a failed one may have too"},
 		{name: "B: an edit between is not raised",
 			run:   tbRun(test(1, "d", ok), edit(2, none, ok), test(3, "d", failed)),
 			green: pairs(), flaky: pairs()},
@@ -166,9 +184,14 @@ func TestTestBending(t *testing.T) {
 		{name: "B: an interrupted run is not a result",
 			run:   tbRun(test(1, "d", ok), test(2, "d", store.ExecInterrupted), test(3, "d", ok)),
 			green: pairs(), flaky: pairs()},
-		{name: "B: a run with no execution record is not a result",
+		{name: "B: a run with no execution record is not a result, and may have written",
 			run:   tbRun(test(1, "d", ok), test(2, "d", ""), test(3, "d", failed)),
-			green: pairs(), flaky: pairs(SeqPair{1, 3})},
+			green: pairs(), flaky: pairs(),
+			why: "it cannot finish a pair, and a run that may have gone ahead may have written a snapshot"},
+		{name: "B: a denied run between is nothing",
+			run:    tbRun(test(1, "d", ok), test(2, "u", ""), test(3, "d", failed)),
+			denied: map[string]bool{"tc": true},
+			green:  pairs(), flaky: pairs(SeqPair{1, 3})},
 		{name: "B: a subagent's run counts",
 			run: tbRun(test(1, "d", failed),
 				tbCall{seq: 2, tool: "Bash", verb: shape.VerbTest, digest: "d", outcome: ok, agent: "agent-b2"}),
@@ -311,7 +334,8 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"test runs: 4 (2 ok, 2 failed)",
 		"failed, then the only recorded edits were to files named like tests, then the same command passed: 1 → 3",
 		"same command passed and failed with no recorded file edit between: 4, 5",
-		"any other shell command between two runs could still have changed files",
+		"a file edit here is any recorded call but a read, a web fetch or a subagent launch",
+		"a shell read or fetch (cat, curl and the like) can still write",
 		"nor a directory change made inside another shell command",
 	} {
 		if !strings.Contains(out, want) {
@@ -330,7 +354,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 
 	b.Reset()
 	writeTestRuns(&b, buildTestRuns(tbRun(test(1, "d", ok), test(2, "d", ok)), nil))
-	if strings.Contains(b.String(), "could still have changed") {
+	if strings.Contains(b.String(), "a file edit here") {
 		t.Errorf("the limit printed with no pattern to qualify:\n%s", b.String())
 	}
 }

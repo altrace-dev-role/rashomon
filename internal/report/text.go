@@ -656,12 +656,13 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // record never measured.
 //
 // The limit is printed wherever a pattern is: "no recorded file edit between"
-// means no Edit, Write, NotebookEdit or MultiEdit call and no shell call of
-// verb class write, and any other shell command between the runs could have
-// changed files this record does not see. Saying "nothing changed"
-// would be the claim the record cannot make. Nor does it see the directory a
-// run was in: a lone cd between two runs breaks the pair, but a `cd DIR &&
-// ...` that leaves the shell in DIR does not, and the block says so.
+// means no recorded call between the runs that may change files (mayEdit:
+// every call but a read, a network call or a subagent launch), and a shell
+// command classed read or network can still write -- `cat a > b`, `curl -o
+// f` -- where the record does not count it. Saying "nothing changed" would be
+// the claim the record cannot make. Nor does it see the directory a run was
+// in: a lone cd between two runs breaks the pair, but a `cd DIR && ls` that
+// leaves the shell in DIR is a read and does not, and the block says so.
 func writeTestRuns(b *bytes.Buffer, t TestRuns) {
 	if t.Runs == 0 {
 		return
@@ -674,8 +675,8 @@ func writeTestRuns(b *bytes.Buffer, t TestRuns) {
 		fmt.Fprintf(b, "    same command passed and failed with no recorded file edit between: %d, %d\n", p[0], p[1])
 	}
 	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
-		fmt.Fprintln(b, "    a file edit here is an Edit, Write, MultiEdit or NotebookEdit call, or a shell rm, mv, cp or the like;")
-		fmt.Fprintln(b, "    any other shell command between two runs could still have changed files, and the record does not see that;")
+		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch or a subagent launch, even one that failed;")
+		fmt.Fprintln(b, "    a shell read or fetch (cat, curl and the like) can still write through a redirect or a download, and is not counted;")
 		fmt.Fprintln(b, "    nor a directory change made inside another shell command, so two runs may have been in different directories")
 	}
 }

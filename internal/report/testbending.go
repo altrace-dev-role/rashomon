@@ -13,7 +13,7 @@ const (
 	// tests were edited, and the same command then passed.
 	BendTestsOnlyThenGreen = "tests_only_then_green"
 	// BendFlaky: the same test command both passed and failed with no file
-	// edit recorded between the two runs.
+	// edit recorded between the two runs (see mayEdit for what one is).
 	BendFlaky = "flaky"
 )
 
@@ -32,7 +32,8 @@ type SeqPair [2]int64
 type TestBending struct {
 	// TestsOnlyThenGreen pairs a failed test run with the later run of the
 	// SAME command that passed, where every file edit recorded between the
-	// two was to a file named like a test, and at least one such edit ran.
+	// two was an edit to a file named like a test, and at least one such
+	// edit ran.
 	TestsOnlyThenGreen []SeqPair `json:"tests_only_then_green"`
 	// Flaky pairs two consecutive runs of the SAME test command, one ok and
 	// one failed in either order, with no file edit recorded between them.
@@ -52,30 +53,33 @@ type TestBending struct {
 //
 // A test run is a declaration of verb class test whose outcome is ok or
 // failed. Interrupted, denied and unknown runs are not runs with a result, so
-// they neither start nor finish a pair, and they do not separate two runs
-// either: consecutive means consecutive among the runs with a result. Two runs
-// are the same command when their shape digests are equal; the digest covers
-// the tool name, so equal digests are the same tool as well.
+// they neither start nor finish a pair. Two runs are the same command when
+// their shape digests are equal; the digest covers the tool name, so equal
+// digests are the same tool as well.
 //
-// A file edit is any call of verb class write that was not denied before
-// running: Edit, Write, MultiEdit and NotebookEdit, and a shell rm, mv, cp,
-// tee and the like. A failed or unrecorded edit counts: whether it changed a
+// A file edit is any call that may change files (mayEdit) and was not denied
+// before running. A failed or unrecorded one counts: whether it changed a
 // file is exactly what the record cannot say, and assuming it did not would
-// complete a pattern on a guess. It is a TEST edit only when it carries the
-// test-file label and ran ok; every other edit -- a shell one, which has no
-// label, and MultiEdit, which the label layer does not read -- is an edit to
-// a file not named like a test, and stops pattern A. Stopping is the
-// under-claim. Other shell commands are not seen as edits at all; the report
-// states that limit.
+// complete a pattern on a guess. It is a TEST edit only when it is of verb
+// class write, carries the test-file label and ran ok; every other edit -- a
+// shell one, which has no label, MultiEdit, which the label layer does not
+// read, and every call of another class -- is an edit to a file not named
+// like a test, and stops pattern A. Stopping is the under-claim.
 //
-// A directory change breaks every pair open before it. Claude Code's shell
-// keeps its working directory from one call to the next, and the digest does
-// not cover it, so `go test ./...` before and after a `cd ../other` are equal
-// digests run over different code. A shell call whose program is cd, pushd or
-// popd -- which is to say the command is the directory change alone, since
-// the program search reads past a leading `cd DIR &&` -- ends both patterns
-// unless it was denied. A `cd DIR && ...` that leaves the shell in DIR is not
-// seen; the report states that limit too.
+// A test run is an edit too, for every pair but its own command's: `jest -u`
+// rewrites snapshots and has its own digest, so between a failed `jest` and a
+// passing one it is the change the pass may owe itself to. An interrupted or
+// unrecorded run of the same command counts the same way; only the two runs
+// a pair is made of are not between it.
+//
+// A directory change breaks every pair open across it, and needs no rule of
+// its own for that: a lone cd, pushd or popd is a shell call of class execute,
+// so it is an edit here like any other. It has to break them. Claude Code's
+// shell keeps its working directory from one call to the next, and the digest
+// does not cover it, so `go test ./...` before and after a `cd ../other` are
+// equal digests run over different code. A `cd DIR && ...` that leaves the
+// shell in DIR breaks them only when its class is not read, network or agent
+// -- `cd DIR && ls` is read -- and the report states that limit.
 func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 	out := TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []SeqPair{}}
 	if run == nil {
@@ -101,32 +105,16 @@ func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 
 	for _, d := range sorted {
 		outcome, _, _ := linkOutcome(d.ToolUseID, executed, denied)
-		if changesDirectory(d) && outcome != LinkOutcomeDenied {
-			clear(last)
+		// A denied call never ran: it changed no file and no directory, and
+		// it is no run with a result.
+		if outcome == LinkOutcomeDenied {
 			continue
 		}
-		switch d.Shape.VerbClass {
-		case shape.VerbWrite:
-			if outcome == LinkOutcomeDenied {
-				continue
-			}
-			anyEdits++
-			switch {
-			case d.FileLabel == nil || *d.FileLabel != shape.LabelTestFile:
-				otherEdits++
-			case outcome == store.ExecOK:
-				testEdits++
-			}
-			continue
-		case shape.VerbTest:
-		default:
-			continue
-		}
-		if outcome != store.ExecOK && outcome != store.ExecFailed {
-			continue
-		}
+		run := d.Shape.VerbClass == shape.VerbTest && (outcome == store.ExecOK || outcome == store.ExecFailed)
 		failed := outcome == store.ExecFailed
-		if prev, ok := last[d.Shape.Digest]; ok {
+		// The pair is decided on the totals BEFORE this call counts as an
+		// edit: a run is not between itself and the run it pairs with.
+		if prev, ok := last[d.Shape.Digest]; ok && run {
 			pair := SeqPair{prev.seq, d.Seq}
 			switch {
 			case prev.failed && !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:
@@ -135,24 +123,46 @@ func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 				out.Flaky = append(out.Flaky, pair)
 			}
 		}
-		last[d.Shape.Digest] = mark{
-			seq: d.Seq, failed: failed, testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,
+		if mayEdit(d) {
+			anyEdits++
+			switch {
+			case d.Shape.VerbClass != shape.VerbWrite || d.FileLabel == nil || *d.FileLabel != shape.LabelTestFile:
+				otherEdits++
+			case outcome == store.ExecOK:
+				testEdits++
+			}
+		}
+		// And the mark AFTER it counts, so the next run of this command
+		// does not see this run as between.
+		if run {
+			last[d.Shape.Digest] = mark{
+				seq: d.Seq, failed: failed, testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,
+			}
 		}
 	}
 	return out
 }
 
-// changesDirectory reports a shell call that is a directory change and
-// nothing else: its recorded program is cd, pushd or popd.
-func changesDirectory(d store.Declaration) bool {
-	if d.Shape.Program == nil {
+// mayEdit reports a call that may change files: every verb class but read,
+// network and agent. Not only write: `git checkout -- f` is vcs, `npm
+// install` and `go generate` are package, `sed -i` is execute, an MCP tool is
+// mcp, a tool this build does not know is unknown, and `jest -u` is test. A
+// pair that completed across any of them would say "no recorded file edit
+// between" over a change the record holds a call for.
+//
+// The three left out are the classes whose calls are not there to write: a
+// Read, Grep or Glob, a shell cat or ls; a WebFetch or a shell curl; an
+// Agent call, whose subagent's own calls are recorded and counted each on its
+// own. Not that none can: `cat a > b` and `curl -o f` do write, and the report
+// states that limit beside every pattern. Counting them as well would stop a
+// pair at every `ls` an agent runs between two test runs, which is most of
+// them.
+func mayEdit(d store.Declaration) bool {
+	switch d.Shape.VerbClass {
+	case shape.VerbRead, shape.VerbNetwork, shape.VerbAgent:
 		return false
 	}
-	switch *d.Shape.Program {
-	case "cd", "pushd", "popd":
-		return true
-	}
-	return false
+	return true
 }
 
 // TestRuns is the session's test runs and the two patterns among them.

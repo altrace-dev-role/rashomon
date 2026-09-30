@@ -152,7 +152,7 @@ func TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged(t *testing.T) {
 	for _, want := range []string{
 		"test runs: 2 (1 ok, 1 failed)",
 		"failed, then the only recorded edits were to files named like tests, then the same command passed:",
-		"any other shell command between two runs could still have changed files",
+		"a shell read or fetch (cat, curl and the like) can still write",
 		"↳ only files named like tests edited since",
 		"Bash go",
 	} {
@@ -251,7 +251,42 @@ func TestTestBending_AnEditBetweenIsNotFlaky(t *testing.T) {
 	s.edit("/tmp/project/src/index.js")
 	s.shell("npm test", false, "")
 	line, ok := s.line()
-	if ok && strings.Contains(line, "passed and failed") {
+	if ok && strings.Contains(line, "no recorded file edit between") {
 		t.Errorf("an edit came between the two runs; recap printed %q", line)
+	}
+}
+
+// B-A6: a call between two runs that could have changed files, though it is
+// not an Edit or a shell rm, breaks the pair. `jest -u` rewrites snapshots
+// and is itself a test run with its own digest; `git checkout -- f` restores a
+// file; `npm install`, `sed -i` and an MCP tool can write anything. Each is a
+// call the record saw, so neither pattern may complete across it, and least
+// of all as "no recorded file edit between". Break: count only verb class
+// write as an edit, and `jest`, `jest -u`, `jest` reads as flaky.
+func TestTestBending_AnyCallThatCouldChangeFilesBreaksThePair(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		call func(s *tbSession)
+	}{
+		{"a snapshot rewrite", func(s *tbSession) { s.shell("jest -u", true, "") }},
+		{"a checkout", func(s *tbSession) { s.shell("git checkout -- src/index.js", true, "") }},
+		{"an install", func(s *tbSession) { s.shell("npm install", true, "") }},
+		{"an in-place sed", func(s *tbSession) { s.shell("sed -i s/a/b/ src/index.js", true, "") }},
+		{"an MCP tool", func(s *tbSession) {
+			id := s.id()
+			in := map[string]any{"path": "src/index.js", "content": "x"}
+			s.declare(id, "mcp__fs__write_file", in, "")
+			s.succeed(id, "mcp__fs__write_file", in)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTBSession(t)
+			s.shell("jest", false, "")
+			tc.call(s)
+			s.shell("jest", true, "")
+			if line, ok := s.line(); ok && strings.Contains(line, "no recorded file edit between") {
+				t.Errorf("a call that could change files came between the two runs; recap printed %q", line)
+			}
+		})
 	}
 }

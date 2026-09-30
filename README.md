@@ -260,10 +260,14 @@ prints at most one line, and only when there is something worth looking
 at (a recorded failure that the agent's final message does not acknowledge,
 meaning it uses none of the failure words; a declaration without recorded
 execution; coverage that did not verify; a truncated/unknown projection; a
-failed test command that passed after only files named like tests were edited;
-or the same test command passing and failing with no recorded file edit
-between; a `sed -i` or other shell command that changes files is not a
-recorded edit).
+failed test command that passed after the only recorded edits were to files
+named like tests; or the same test command passing and failing with no recorded file edit
+between). A file edit there is any recorded call that may change files, not
+only an Edit or a shell `rm`: a `git checkout`, an `npm install`, a `sed -i`,
+an MCP tool, another test command (`jest -u` rewrites snapshots) all count,
+and only reads, web fetches and subagent launches do not. That under-claims
+by design. It can still miss a change: a shell read or fetch that writes
+(`cat a > b`, `curl -o f`), or anything done outside the session's own calls.
 One known gap: Claude Code discards what a `StopFailure` hook prints, so a turn
 that ends in an API error shows no line, and in this release the next prompt
 does not show it either. The line points to
