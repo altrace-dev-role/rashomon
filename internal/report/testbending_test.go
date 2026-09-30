@@ -375,6 +375,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"a file edit here is any recorded call but a read, a web fetch or a subagent launch",
 		"a shell read or fetch (cat, curl and the like) can still write",
 		"nor a directory change made inside another shell command",
+		"a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)

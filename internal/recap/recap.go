@@ -53,10 +53,10 @@ var prefix = mark + " rashomon: "
 // see the PR description for the fuller account of this gap.
 //
 // Two triggers join them for test-bending: a failed test command that passed
-// after only files named like tests were edited, and one test command that
-// both passed and failed with no recorded file edit between. Each is one short
-// sentence with the first pair's seqs, and the same pointer: the report's
-// timeline has the rows.
+// when the only recorded edits between were to files named like tests, and
+// one test command that both passed and failed with no recorded file edit
+// between. Each is one short sentence with the first pair's seqs, and the
+// same pointer: the report's timeline has the rows.
 //
 // Coverage-unverified and digest-unknown are rendered as ONE sentence, not
 // two: Unknown is defined as Recorded == 0 AND Coverage.State != verified

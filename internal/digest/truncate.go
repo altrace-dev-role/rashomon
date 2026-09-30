@@ -17,17 +17,18 @@ import (
 //
 //  1. Dropped, 2. Unterminated -- the rarest on a healthy turn, and already
 //     empty on most of them; cutting them costs the least.
-//  2. WithoutExecution -- a real inventory (denied, failed, or unrecorded),
+//  3. WithoutExecution -- a real inventory (denied, failed, or unrecorded),
 //     more central than the first two but still a list of ids rather than
 //     the turn's headline counts.
-//  3. ByLabel, 5. ByTool -- the low-cardinality inventories a reader wants
+//  4. ByLabel, 5. ByTool -- the low-cardinality inventories a reader wants
 //     intact most: what this turn touched, in one word each.
-//  4. TestBending.Flaky, 7. TestBending.TestsOnlyThenGreen -- cut last of
+//  6. TestBending.Flaky, 7. TestBending.TestsOnlyThenGreen -- cut last of
 //     all, because they are the only growable fields the end-of-turn line
 //     names by seq: recap points at a list's FIRST pair, and halving from the
 //     tail keeps it until the list is empty. Even then the finding survives,
 //     since recap counts a list's length plus its omitted count. Each is two
-//     numbers a pair, so a real turn reaching them is not expected.
+//     numbers a pair (and a flaky pair's order bit), so a real turn reaching
+//     them is not expected.
 //
 // Each field is cut in HALF of what remains, repeatedly, rather than one
 // entry at a time: re-marshalling the whole document to check size is O(size)
@@ -66,7 +67,7 @@ func truncate(d *Digest) {
 	// Nothing left in it grows with the turn -- session_id, prompt_id,
 	// install_id and the fixed-shape counts and flags are all bounded by the
 	// store's own schema -- so this is believed unreachable against a real
-	// store. Accepting the residual is safer than a sixth field silently
+	// store. Accepting the residual is safer than an eighth field silently
 	// deciding it too may be cut.
 }
 

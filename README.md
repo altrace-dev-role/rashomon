@@ -261,19 +261,38 @@ at (a recorded failure that the agent's final message does not acknowledge,
 meaning it uses none of the failure words; a declaration without recorded
 execution; coverage that did not verify; a truncated/unknown projection; a
 failed test command that passed after the only recorded edits were to files
-named like tests; or the same test command passing and failing with no recorded file edit
-between). A file edit there is any recorded call that may change files, not
-only an Edit or a shell `rm`: a `git checkout`, an `npm install`, a `sed -i`,
-an MCP tool, another test command (`jest -u` rewrites snapshots) all count,
-and only reads, web fetches and subagent launches do not. That under-claims
-by design. It can still miss a change: a shell read or fetch that writes
-(`cat a > b`, `curl -o f`), or anything done outside the session's own calls.
+named like tests; or the same test command passing and failing with no
+recorded file edit between). A file edit there is any recorded call that may
+change files, not only an Edit or a shell `rm`: a `git checkout`, an `npm
+install`, a `sed -i`, an MCP tool, another test command (`jest -u` rewrites
+snapshots) all count, and only reads, web fetches and subagent launches do
+not. That under-claims by design. It can still miss a change: a shell read or
+fetch that writes (`cat a > b`, `curl -o f`), or anything done outside the
+session's own calls.
 One known gap: Claude Code discards what a `StopFailure` hook prints, so a turn
 that ends in an API error shows no line, and in this release the next prompt
 does not show it either. The line points to
 `rashomon report --session <id>` for the detail. A clean turn prints
 nothing at all; `rashomon status` says whether a turn has actually been
 evaluated, so silence never gets read as proof the turn was clean.
+
+The two test-bending lines have limits of their own:
+
+- A test run is a call rashomon recognised as a test runner that ends its
+  line. A wrapped runner (`timeout 60 go test`, `time pytest`, `uv run
+  pytest`, `poetry run pytest`, `npx jest`) or a piped one (`go test ./... |
+  tail`) is not counted, since the line's exit status is not the runner's.
+- `cd DIR && go test ./...` is a test run, so a failed `cd` counts as a
+  failed test run. Leaving `cd … &&` out would lose most real runs.
+- The end-of-turn line sees one turn and no denied set, so a pair across two
+  turns, or one completed only across a denied edit, can show in the report
+  and not in the line.
+
+`report --json` carries the same facts: each session's `test_runs` (`runs`,
+`ok`, `failed`, `tests_only_then_green` as `[earlier, later]` seq pairs, and
+`flaky` as `{"seqs": [earlier, later], "first_failed": true|false}`), and a
+`test_bending` (`kind`, `since_seq`) on the timeline row that completes a
+pair, null on every other row.
 
 Saying **No** at a permission prompt interrupts the turn, and Claude Code
 fires no `Stop` after an interrupt. `UserPromptSubmit` catches that case:

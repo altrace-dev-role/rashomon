@@ -1320,8 +1320,9 @@ m("TB a denied cd breaks the pair", "internal/report/testbending.go",
   "\t\tif outcome == LinkOutcomeDenied && (d.Shape.Program == nil || *d.Shape.Program != \"cd\") {\n\t\t\tcontinue\n\t\t}\n",
   "TestTestBending")
 m("TB the session block drops the directory limit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    nor a directory change made inside another shell command, so two runs may have been in different directories\")\n",
-  "", "TestTestRuns_")
+  "\t\tfmt.Fprintln(b, \"    nor a directory change made inside another shell command, so two runs may have been in different directories;\")\n",
+  "",
+  "TestTestRuns_")
 
 m("TB only a write-class call is an edit", "internal/report/testbending.go",
   "\tcase shape.VerbRead, shape.VerbNetwork, shape.VerbAgent:\n\t\treturn false\n\t}\n\treturn true\n",
@@ -1447,6 +1448,11 @@ m("TB *Test.php is not a test file", "internal/shape/label.go",
   ", \"Tests.cs\", \"Test.php\"}",
   ", \"Tests.cs\"}",
   "TestLabelTestFile")
+
+m("TB the session block drops the cd-failure limit", "internal/report/text.go",
+  "\t\tfmt.Fprintln(b, \"    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run\")\n",
+  "",
+  "TestTestRuns_")
 
 # Import additions some mutants need.
 IMPORTS = {

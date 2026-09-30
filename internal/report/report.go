@@ -273,10 +273,11 @@ type Session struct {
 	Timeline Timeline `json:"timeline"`
 
 	// TestRuns is the session's calls of verb class test, and the two
-	// test-bending patterns among them: a failed run that passed after only
-	// test files were edited, and one command that both passed and failed
-	// with no recorded file edit between. The turn digest carries the same patterns
-	// for one turn; this is the whole session's.
+	// test-bending patterns among them: a failed run that passed when the
+	// only recorded edits between were to files named like tests, and one
+	// command that both passed and failed with no recorded file edit between
+	// (see DetectTestBending for what an edit is). The turn digest carries
+	// the same patterns for one turn; this is the whole session's.
 	TestRuns TestRuns `json:"test_runs"`
 }
 

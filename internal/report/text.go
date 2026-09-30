@@ -652,8 +652,8 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 //
 // Absent when the session recorded no test run, unlike the sections that are
 // always present: records written before the test class existed say execute
-// for the same commands, so a "test runs: 0" there would state a count the
-// record never measured.
+// or package for the same commands, so a "test runs: 0" there would state a
+// count the record never measured.
 //
 // The limit is printed wherever a pattern is: "no recorded file edit between"
 // means no recorded call between the runs that may change files (mayEdit:
@@ -662,7 +662,9 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // f` -- where the record does not count it. Saying "nothing changed" would be
 // the claim the record cannot make. Nor does it see the directory a run was
 // in: a lone cd between two runs breaks the pair, but a `cd DIR && ls` that
-// leaves the shell in DIR is a read and does not, and the block says so.
+// leaves the shell in DIR is a read and does not, and the block says so. And
+// a `cd DIR && go test` is a test run, since leaving `cd … &&` out would lose
+// most real runs, so its outcome may be the cd's: the last line says that.
 func writeTestRuns(b *bytes.Buffer, t TestRuns) {
 	if t.Runs == 0 {
 		return
@@ -681,7 +683,8 @@ func writeTestRuns(b *bytes.Buffer, t TestRuns) {
 	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
 		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch or a subagent launch, even one that failed;")
 		fmt.Fprintln(b, "    a shell read or fetch (cat, curl and the like) can still write through a redirect or a download, and is not counted;")
-		fmt.Fprintln(b, "    nor a directory change made inside another shell command, so two runs may have been in different directories")
+		fmt.Fprintln(b, "    nor a directory change made inside another shell command, so two runs may have been in different directories;")
+		fmt.Fprintln(b, "    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run")
 	}
 }
 
