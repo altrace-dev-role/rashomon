@@ -101,6 +101,17 @@ func TestTimeline_RendersEveryAgentInOrder(t *testing.T) {
 			t.Errorf("--timeline is missing %q:\n%s", want, out)
 		}
 	}
+	// The follow-up names the agent that ran it: cross-agent attribution is
+	// the point of the view.
+	arrow := ""
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "→ same command ok at") {
+			arrow = line
+		}
+	}
+	if !strings.HasSuffix(arrow, ", general-purpose·cafe") {
+		t.Errorf("the follow-up arrow does not name the subagent that re-ran it: %q", arrow)
+	}
 	// Rows found by their columns, not by a substring: the agent label also
 	// appears in the arrow on the failed row it followed up, so a bare Index
 	// would find the arrow first and the check would pass on any order.
@@ -139,7 +150,10 @@ func TestTimeline_JSONMatchesTheText(t *testing.T) {
 					} `json:"agent"`
 					AgentUnknown bool `json:"agent_unknown"`
 					Later        *struct {
-						Kind string `json:"kind"`
+						Kind  string `json:"kind"`
+						Agent *struct {
+							ID string `json:"id"`
+						} `json:"agent"`
 					} `json:"later"`
 				} `json:"calls"`
 			} `json:"timeline"`
@@ -162,6 +176,8 @@ func TestTimeline_JSONMatchesTheText(t *testing.T) {
 	}
 	if calls[0].Later == nil || calls[0].Later.Kind != "same_command" {
 		t.Errorf("the failed pytest is not followed up by the subagent's run: %+v", calls[0].Later)
+	} else if calls[0].Later.Agent == nil || calls[0].Later.Agent.ID != "agent-cafe0001" {
+		t.Errorf("the follow-up does not name the subagent that ran it: %+v", calls[0].Later.Agent)
 	}
 	if calls[1].Agent == nil || calls[1].Agent.ID != "agent-cafe0001" {
 		t.Errorf("the subagent's call does not name its agent: %+v", calls[1].Agent)

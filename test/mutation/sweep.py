@@ -1197,6 +1197,11 @@ m("TL the exit code is read from the first of two records", "internal/report/tim
   "\treturn recs[len(recs)-1].ExitCode", "\treturn recs[0].ExitCode", "TestTimeline_")
 m("TL the position is read from the first of two records", "internal/report/timeline.go",
   "\treturn recs[len(recs)-1].Seq", "\treturn recs[0].Seq", "TestTimeline_")
+m("TL the follow-up arrow does not name the agent", "internal/report/timeline_text.go",
+  "\t\twho = \", \" + agentLabel(l.Agent)", "\t\t_ = l.Agent", "TestTimeline_")
+m("TL the follow-up's agent is left out of the JSON", "internal/report/timeline.go",
+  "\t\treturn &LaterSuccess{Kind: LaterSameCommand, Seq: *sameCommand.call.Seq, Agent: sameCommand.call.Agent}, true",
+  "\t\treturn &LaterSuccess{Kind: LaterSameCommand, Seq: *sameCommand.call.Seq}, true", "TestTimeline_JSONMatchesTheText")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",
