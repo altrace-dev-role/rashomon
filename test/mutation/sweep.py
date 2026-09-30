@@ -1418,6 +1418,10 @@ m("SP a declaration with no prompt_id is grouped as the turn \"\"", "internal/sp
 m("SP a declaration with no prompt_id is dereferenced", "internal/spend/join.go",
   "\t\tif d.PromptID == nil || *d.PromptID == \"\" {\n\t\t\tcontinue\n\t\t}", "",
   "TestJoin_ADeclarationWithNoPromptID")
+m("SP a wholly unpriced silent-failure cost reads at least unknown", "internal/spend/text.go",
+  "\tcase !j.Cost.Wholly():\n", "\tcase false:\n", "TestJoin_AWhollyUnpricedTurn")
+m("SP an empty window reads unknown over 0 transcripts", "internal/spend/text.go",
+  "\tcase j.Transcripts == 0:\n", "\tcase false:\n", "TestJoin_NoTranscriptInTheWindow")
 
 # Import additions some mutants need.
 IMPORTS = {

@@ -844,3 +844,50 @@ func TestJoin_ADeclarationWithNoPromptIDIsNoTurn(t *testing.T) {
 		t.Errorf("turns %d, unjudged %d, cost %+v; want no turn and no spend: a call with no prompt_id is no turn's", j.Turns, j.Unjudged, j.Cost)
 	}
 }
+
+// TestJoin_AWhollyUnpricedTurnSaysCostUnknown: every response of the firing
+// turn ran on a model the table does not price. The line printed "at least
+// unknown across 1 turn"; it says the cost is unknown and why.
+func TestJoin_AWhollyUnpricedTurnSaysCostUnknown(t *testing.T) {
+	c := newConfig(t)
+	rec := newRecorder(t)
+	T := now.Add(-2 * time.Hour)
+	rec.transcript = c.write("proj/sess-j.jsonl",
+		userLine("sess-j", "p1", T.Add(-time.Second), false),
+		resp{id: "R1", model: "claude-mystery-1", session: "sess-j", at: T.Add(2 * time.Second), in: 1234, stop: "end_turn",
+			text: "Ran it as requested."}.line("text"))
+	rec.call("sess-j", "p1", "toolu_1", T, T.Add(time.Second), store.ExecFailed)
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	if s.SilentFailureTurns.Turns != 1 {
+		t.Fatalf("premise: turns = %d, want 1", s.SilentFailureTurns.Turns)
+	}
+	txt, _ := render(t, s)
+	if !strings.Contains(txt, "never mentioned: cost unknown (1,234 tokens on 1 response with no known rate) across 1 turn\n") ||
+		strings.Contains(txt, "at least unknown") {
+		t.Errorf("a wholly unpriced turn is not said to be of unknown cost:\n%s", txt)
+	}
+}
+
+// TestJoin_NoTranscriptInTheWindowIsSaidPlainly: a fresh install, or a quiet
+// --days window, has nothing to cover. The line read "unknown ... none of the
+// 0 transcripts"; it says there was no transcript.
+func TestJoin_NoTranscriptInTheWindowIsSaidPlainly(t *testing.T) {
+	for _, withStore := range []bool{false, true} {
+		c := newConfig(t)
+		s := c.summary(30)
+		var st *store.Store
+		if withStore {
+			st = newRecorder(t).st
+		}
+		if err := s.Join(st); err != nil {
+			t.Fatal(err)
+		}
+		txt, _ := render(t, s)
+		if !strings.Contains(txt, "never mentioned: none: no transcript in the window\n") || strings.Contains(txt, "of the 0 transcripts") {
+			t.Errorf("store %v: an empty window is not said plainly:\n%s", withStore, txt)
+		}
+	}
+}

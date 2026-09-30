@@ -250,6 +250,10 @@ func silentLine(s *Summary) string {
 	switch {
 	case j.Store == StoreNotConsulted:
 		return ""
+	case j.Transcripts == 0:
+		// Nothing in the window to cover or not: "unknown ... none of the
+		// 0 transcripts" was true and said nothing.
+		return lead + "none: no transcript in the window\n"
 	case j.Store == StoreNone:
 		return lead + fmt.Sprintf("unknown\n  (rashomon has recorded nothing on this machine, so none of the %s is covered)\n",
 			countOf(j.Transcripts, "transcript")) + notCoveredNames(j)
@@ -273,6 +277,11 @@ func silentLine(s *Summary) string {
 		b.WriteString("none found in the turns that could be checked\n")
 	case j.Cost.Priced == 0 && j.Cost.Unpriced == 0:
 		fmt.Fprintf(&b, "%s, with no response in the window tied to %s\n", countOf(j.Turns, "turn"), itThem(j.Turns))
+	case !j.Cost.Wholly():
+		// Every response tied to the turns ran on a model the table does
+		// not price: "at least unknown" is no figure.
+		fmt.Fprintf(&b, "cost unknown (%s tokens on %s with no known rate) across %s\n",
+			thousands(j.Cost.UnpricedTokens), countOf(j.Cost.Unpriced, "response"), countOf(j.Turns, "turn"))
 	default:
 		fmt.Fprintf(&b, "at least %s across %s\n", money(j.Cost), countOf(j.Turns, "turn"))
 	}
