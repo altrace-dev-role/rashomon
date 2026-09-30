@@ -1202,6 +1202,10 @@ m("TL the follow-up arrow does not name the agent", "internal/report/timeline_te
 m("TL the follow-up's agent is left out of the JSON", "internal/report/timeline.go",
   "\t\treturn &LaterSuccess{Kind: LaterSameCommand, Seq: *sameCommand.call.Seq, Agent: sameCommand.call.Agent}, true",
   "\t\treturn &LaterSuccess{Kind: LaterSameCommand, Seq: *sameCommand.call.Seq}, true", "TestTimeline_JSONMatchesTheText")
+m("TL the interrupted count is not printed", "internal/report/timeline_text.go",
+  "\tif n.Interrupted > 0 {", "\tif false {", "TestTimeline_")
+m("TL the interleave caveat is not printed", "internal/report/timeline_text.go",
+  "\tif n.Subagents > 0 {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "\tif false {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

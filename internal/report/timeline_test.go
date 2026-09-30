@@ -351,12 +351,16 @@ func TestTimeline_Text(t *testing.T) {
 		{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
 		{seq: 2, id: "g", tool: "Bash", program: "make", digest: "d2", agent: "cafe0001", typ: "general-purpose"},
 		{seq: 3, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
-	}, tlExec("f", store.ExecFailed, 1), tlExec("g", store.ExecFailed, 2), tlExec("s", store.ExecOK, 0))
+		{seq: 4, id: "i", tool: "Bash", program: "sleep", digest: "d3"},
+	}, tlExec("f", store.ExecFailed, 1), tlExec("g", store.ExecFailed, 2), tlExec("s", store.ExecOK, 0),
+		tlExec("i", store.ExecInterrupted, 0))
 	var b bytes.Buffer
 	writeTimeline(&b, buildTimeline(run, nil))
 	out := b.String()
 	for _, want := range []string{
-		"timeline: 3 calls (2 main agent, 1 from 1 subagent)",
+		"timeline: 4 calls (3 main agent, 1 from 1 subagent)",
+		"interrupted  1\n",
+		"calls from agents running at once interleave by when each was recorded, not when it started",
 		"failed       2  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success of the same command or program recorded)",
 		"a fix made with a different command, or a corrected Edit, is not detected",
 		"failed (exit 1)",
