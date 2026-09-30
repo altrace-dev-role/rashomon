@@ -1260,8 +1260,9 @@ m("TB the session block renders with no test run", "internal/report/text.go",
   "\tif t.Runs == 0 {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:", "\tif false {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:",
   "TestTestRuns_")
 m("TB the session block drops the limit", "internal/report/text.go",
-  "\tif len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {\n\t\tfmt.Fprintln(b, \"    a file edit here",
-  "\tif false {\n\t\tfmt.Fprintln(b, \"    a file edit here", "TestTestRuns_|TestTestBending_")
+  "\tif len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {\n\t\tfmt.Fprintln(b, \"    the numbers are call seqs",
+  "\tif false {\n\t\tfmt.Fprintln(b, \"    the numbers are call seqs",
+  "TestTestRuns_|TestTestBending_")
 m("TB the session block is never rendered", "internal/report/text.go",
   "\twriteTestRuns(b, sess.TestRuns)\n", "\t_ = writeTestRuns\n", "TestTestBending_")
 m("TB the report never builds the test runs", "internal/report/report.go",
@@ -1536,6 +1537,11 @@ m("TB the test runs drop the patterns they were given", "internal/report/testben
   "\tout := TestRuns{TestBending: tb}\n",
   "\tout := TestRuns{TestBending: TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []FlakyPair{}}}\n\t_ = tb\n",
   "TestTestRuns_|TestTestBending_")
+
+m("TB the session block drops the timeline hint", "internal/report/text.go",
+  "\t\tfmt.Fprintln(b, \"    the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows;\")\n",
+  "",
+  "TestTestRuns_")
 
 # Import additions some mutants need.
 IMPORTS = {

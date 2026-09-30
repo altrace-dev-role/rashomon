@@ -666,6 +666,9 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // leaves the shell in DIR is a read and does not, and the block says so. And
 // a `cd DIR && go test` is a test run, since leaving `cd … &&` out would lose
 // most real runs, so its outcome may be the cd's: the last line says that.
+//
+// The pairs are seqs, and nothing in the default report maps a seq to its
+// call, so the block's first limit line points at --timeline, which does.
 func writeTestRuns(b *bytes.Buffer, t TestRuns) {
 	if t.Runs == 0 {
 		return
@@ -682,6 +685,7 @@ func writeTestRuns(b *bytes.Buffer, t TestRuns) {
 			p.Seqs[0], first, p.Seqs[1], second)
 	}
 	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
+		fmt.Fprintln(b, "    the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows;")
 		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool, even one that failed;")
 		fmt.Fprintln(b, "    a shell read or fetch (cat, curl and the like) can still write through a redirect or a download, and is not counted;")
 		fmt.Fprintln(b, "    nor a directory change made inside another shell command, so two runs may have been in different directories;")

@@ -56,7 +56,9 @@ var prefix = mark + " rashomon: "
 // when the only recorded edits between were to files named like tests, and
 // one test command that both passed and failed with no recorded file edit
 // between. Each is one short sentence with the first pair's seqs, and the
-// same pointer: the report's timeline has the rows.
+// same pointer as every other sentence, `rashomon report --session <id>`.
+// That report's test runs block lists every pair and says that --timeline
+// maps the seqs to their rows; the pointer itself does not add --timeline.
 //
 // Coverage-unverified and digest-unknown are rendered as ONE sentence, not
 // two: Unknown is defined as Recorded == 0 AND Coverage.State != verified

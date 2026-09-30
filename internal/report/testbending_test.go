@@ -406,6 +406,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		// that failed first was the order the record contradicts.
 		"same command had both outcomes with no recorded file edit between: 4 passed, 5 failed",
 		"same command had both outcomes with no recorded file edit between: 7 failed, 8 passed",
+		"the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows",
 		"a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool",
 		"a shell read or fetch (cat, curl and the like) can still write",
 		"nor a directory change made inside another shell command",
@@ -427,7 +428,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 
 	b.Reset()
 	writeTestRuns(&b, testRunsOf(tbRun(test(1, "d", ok), test(2, "d", ok))))
-	if strings.Contains(b.String(), "a file edit here") {
+	if strings.Contains(b.String(), "a file edit here") || strings.Contains(b.String(), "--timeline") {
 		t.Errorf("the limit printed with no pattern to qualify:\n%s", b.String())
 	}
 }
