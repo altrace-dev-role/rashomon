@@ -1205,6 +1205,8 @@ m("TL a failure behind a later ok record reads ok", "internal/report/timeline.go
   "\tif rec != nil && rec.Outcome == store.ExecFailed {\n\t\treturn store.ExecFailed\n\t}\n", "", "TestTimeline_")
 m("TL the first failed record, not the last, is the outcome record", "internal/report/timeline.go",
   "\tfor i := len(recs) - 1; i >= 0; i-- {", "\tfor i := 0; i < len(recs); i++ {", "TestTimeline_")
+m("TL the header does not say --json carries the tool_use_id", "internal/report/timeline_text.go",
+  "\tfmt.Fprintln(b, \"    rows show no tool_use_id: --json carries each call's\")\n", "", "TestTimeline_")
 m("TL the follow-up arrow does not name the agent", "internal/report/timeline_text.go",
   "\t\twho = \", \" + agentLabel(l.Agent)", "\t\t_ = l.Agent", "TestTimeline_")
 m("TL the follow-up's agent is left out of the JSON", "internal/report/timeline.go",
