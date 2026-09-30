@@ -315,9 +315,13 @@ path named by a Read, Edit, Write or NotebookEdit call into categories such as
 `ssh-key`, `env-file`, `cloud-config`, `credential-shaped`, `certificate` or
 `test-file` (paths touched from Bash are not labelled). A shell call whose
 command is a recognised test runner has `verb_class` `test`, unless an argument
-makes it do something else (compile, list, dry-run, watch, help, version, or a
-named `tox -e`/`nox -s` target); the arguments that decided it are compared
-against fixed lists and not kept.
+on that runner's fixed refusal list makes it do something else (such as
+compile, list, dry-run, skip the tests, watch, help, version, or a named `tox
+-e`/`nox -s` target), or the line sets `PYTEST_ADDOPTS` before pytest. The
+refusal lists name particular spellings and are not complete: a combined short
+flag, an option set in a config file or by an earlier call's environment, or a
+spelling not on the list is still counted as a test run. The arguments that
+decided it are compared against the lists and not kept.
 
 Note that `cwd` and `transcript_path` are filesystem paths and carry directory
 names. [`docs/store-schema.json`](docs/store-schema.json) is the field list for

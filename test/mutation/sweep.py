@@ -1358,12 +1358,12 @@ m("TB make check is a test run", "internal/shape/shape.go",
   "{\"mvn\", \"test\"}, {\"gradle\", \"test\"}, {\"make\", \"test\"}, {\"make\", \"check\"},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB an argument that does not run the tests is ignored", "internal/shape/shape.go",
-  "\t\tif refusesRun(c[0], toks[i+len(c):]) {",
-  "\t\tif false && refusesRun(c[0], toks[i+len(c):]) {",
+  "\t\tif refusesRun(c[0], toks[:i], toks[i+len(c):]) {",
+  "\t\tif false && refusesRun(c[0], toks[:i], toks[i+len(c):]) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the refusal reads only the first argument", "internal/shape/shape.go",
-  "\t\tif refusesRun(c[0], toks[i+len(c):]) {",
-  "\t\tif refusesRun(c[0], toks[i+len(c):min(i+len(c)+1, len(toks))]) {",
+  "\t\tif refusesRun(c[0], toks[:i], toks[i+len(c):]) {",
+  "\t\tif refusesRun(c[0], toks[:i], toks[i+len(c):min(i+len(c)+1, len(toks))]) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a prefix entry is compared whole", "internal/shape/shape.go",
   "\t\t\tif strings.HasPrefix(word, p) {",
@@ -1462,6 +1462,51 @@ m("TB a task or todo update between two runs is an edit", "internal/report/testb
   "\tif noWrite[d.ToolName] {\n",
   "\tif false && noWrite[d.ToolName] {\n",
   "TestTestBending")
+
+m("TB a flag's =value form is not refused", "internal/shape/shape.go",
+  "\t\t} else if hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value) {",
+  "\t\t} else if false && hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value) {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB a flag set =false is refused", "internal/shape/shape.go",
+  "\t\t} else if hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value) {",
+  "\t\t} else if hasValue && strings.HasPrefix(w, \"-\") && name == w && (!isFalse(value) || true) {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB make test -n is a test run", "internal/shape/shape.go",
+  "\"make\":    {\"-n\", \"--just-print\", \"--dry-run\", \"--recon\", \"-q\", \"--question\", ",
+  "\"make\":    {\"--recon\", ",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB make test -v is a test run", "internal/shape/shape.go",
+  "\"-t\", \"--touch\", \"-v\"},",
+  "\"-t\", \"--touch\"},",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB gradle continuous mode is a test run", "internal/shape/shape.go",
+  "\"gradle\":  {\"--dry-run\", \"-m\", \"-v\", \"-t\", \"--continuous\"},",
+  "\"gradle\":  {\"--dry-run\", \"-m\", \"-v\"},",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB mvn test -v is a test run", "internal/shape/shape.go",
+  "\"-Dmaven.test.skip*\", \"-v\"},",
+  "\"-Dmaven.test.skip*\"},",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB tox --notest is a test run", "internal/shape/shape.go",
+  "\"--help-ini\", \"--notest\",",
+  "\"--help-ini\",",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB tox devenv is a test run", "internal/shape/shape.go",
+  ", \"devenv\", \"d\"},",
+  "},",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB nox --install-only is a test run", "internal/shape/shape.go",
+  ", \"--install-only\"},",
+  "},",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB PYTEST_ADDOPTS on the line is not read", "internal/shape/shape.go",
+  "\t\t\tif strings.HasPrefix(t.text, \"PYTEST_ADDOPTS=\") {",
+  "\t\t\tif false && strings.HasPrefix(t.text, \"PYTEST_ADDOPTS=\") {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB the words before the runner are not read", "internal/shape/shape.go",
+  "\t\tif refusesRun(c[0], toks[:i], toks[i+len(c):]) {",
+  "\t\tif refusesRun(c[0], toks[i:i], toks[i+len(c):]) {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
 
 # Import additions some mutants need.
 IMPORTS = {

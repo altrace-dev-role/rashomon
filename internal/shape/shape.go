@@ -937,11 +937,20 @@ var testCommands = [][]string{
 
 // notARun is, per runner by its first word, the arguments with which it does
 // something other than run the tests: compile them (`go test -c`, `cargo test
-// --no-run`), list them (`-list`, `--collect-only`, `--listTests`), print what
-// it would do (`-n`, `--dry-run`), skip them (`-DskipTests`), watch for
-// changes, or show its help or version. Each of those ends ok or failed on
-// something no test decided, and as a test run it would complete a pattern
-// on that outcome. A word ending in * is a prefix: `-list=Foo`, `-elint`.
+// --no-run`), list them (`-list`, `--collect-only`, `--listTests`), print or
+// check what it would do (`make -n`, `make -q`, `--dry-run`), skip them
+// (`-DskipTests`, `tox --notest`, `nox --install-only`), set up an
+// environment instead (`tox devenv`), watch for changes (`gradle -t`), or
+// show its version (`-v` where that is what -v means). Each of those ends ok
+// or failed on something no test decided, and as a test run it would
+// complete a pattern on that outcome. A word ending in * is a prefix:
+// `-list=Foo`, `-elint`. A flag is matched in its `flag=value` form too
+// (`-c=true`, `--watch=true`), unless the value is false (onList).
+//
+// The lists are the spellings named here, not every spelling a runner
+// accepts: a combined short flag (`make -nk`), an option set in a config file
+// or an environment variable (other than PYTEST_ADDOPTS, below), or a
+// spelling not listed still counts as a test run.
 //
 // tox and nox are here with their targets, not their listings only: `tox -e
 // lint` and `nox -s lint` run a lint session, and a target cannot be told to
@@ -965,35 +974,54 @@ var notARun = map[string][]string{
 	"phpunit": {"--list-*", "--generate-configuration", "--migrate-configuration", "--check-version"},
 	"ctest":   {"-N", "--show-only*"},
 	"dotnet":  {"--list-tests", "-t"},
-	"mvn":     {"-DskipTests*", "-Dmaven.test.skip*"},
-	"gradle":  {"--dry-run", "-m"},
-	"tox": {"-e*", "--env*", "-m", "-f", "-l", "-a", "--listenvs*", "--showconfig", "--help-ini",
-		"list", "l", "config", "c", "depends", "de", "quickstart", "q", "exec", "e"},
-	"nox": {"-s*", "--session*", "-e*", "-k*", "--keywords*", "-t*", "--tags*", "-l", "--list*"},
+	"mvn":     {"-DskipTests*", "-Dmaven.test.skip*", "-v"},
+	"gradle":  {"--dry-run", "-m", "-v", "-t", "--continuous"},
+	"make":    {"-n", "--just-print", "--dry-run", "--recon", "-q", "--question", "-t", "--touch", "-v"},
+	"tox": {"-e*", "--env*", "-m", "-f", "-l", "-a", "--listenvs*", "--showconfig", "--help-ini", "--notest",
+		"--devenv*", "list", "l", "config", "c", "depends", "de", "quickstart", "q", "exec", "e", "devenv", "d"},
+	"nox": {"-s*", "--session*", "-e*", "-k*", "--keywords*", "-t*", "--tags*", "-l", "--list*", "--install-only"},
 }
 
 var pytestNotARun = []string{
 	"--collect-only", "--co", "-V", "--fixtures*", "--markers", "--setup-plan", "--setup-only", "--cache-show*",
 }
 
-// notARunAny is notARun for every runner: help, version, and watch mode, which
-// never ends on a result of its own and records the launch's instead.
+// notARunAny is the spellings of help, version and watch mode that are
+// checked for every runner: -h, -help, --help, --version, --watch and
+// --watchAll. Watch mode never ends on a result of its own and records the
+// launch's instead. A runner's own spelling of these (`-v`, `-V`, `-w`, `-t`,
+// `vitest watch`) is on its notARun entry or is not refused at all; the list
+// does not make every runner's help, version or watch mode refused.
 var notARunAny = []string{"-h", "-help", "--help", "--version", "--watch", "--watchAll"}
 
 // refusesRun reports an argument in args that is on runner's notARun list or
-// on notARunAny.
-func refusesRun(runner string, args []token) bool {
+// on notARunAny, or, for pytest, a word starting PYTEST_ADDOPTS= earlier on
+// the line (before), an assignment or an export's argument: its value is more
+// arguments, which may be `--co`, and they are not read, so any value
+// refuses. One exported by an earlier call is not on the line and is not
+// seen.
+func refusesRun(runner string, before, args []token) bool {
 	for _, t := range args {
 		if onList(t.text, notARun[runner]) || onList(t.text, notARunAny) {
 			return true
+		}
+	}
+	if onList(runner, []string{"pytest", "python", "python3"}) {
+		for _, t := range before {
+			if strings.HasPrefix(t.text, "PYTEST_ADDOPTS=") {
+				return true
+			}
 		}
 	}
 	return false
 }
 
 // onList reports word equal to an entry of list, or starting with the part
-// of one before its trailing *.
+// of one before its trailing *. A word `flag=value` matches the entry flag
+// unless value is a false the flag parsers read as false: `--watchAll=false`
+// runs the tests once, `--watchAll=true` watches, and `-c=true` compiles.
 func onList(word string, list []string) bool {
+	name, value, hasValue := strings.Cut(word, "=")
 	for _, w := range list {
 		if p, ok := strings.CutSuffix(w, "*"); ok {
 			if strings.HasPrefix(word, p) {
@@ -1001,7 +1029,19 @@ func onList(word string, list []string) bool {
 			}
 		} else if word == w {
 			return true
+		} else if hasValue && strings.HasPrefix(w, "-") && name == w && !isFalse(value) {
+			return true
 		}
+	}
+	return false
+}
+
+// isFalse reports the spellings of false that Go's flag package and yargs
+// accept for a boolean flag.
+func isFalse(v string) bool {
+	switch v {
+	case "false", "False", "FALSE", "f", "F", "0":
+		return true
 	}
 	return false
 }
@@ -1044,7 +1084,7 @@ next:
 				continue next
 			}
 		}
-		if refusesRun(c[0], toks[i+len(c):]) {
+		if refusesRun(c[0], toks[:i], toks[i+len(c):]) {
 			return false
 		}
 		return wholeCommand(toks, i)
