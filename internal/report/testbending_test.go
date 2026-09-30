@@ -348,6 +348,13 @@ func TestTestBending_FlakyKeepsTheOrder(t *testing.T) {
 	}
 }
 
+// testRunsOf builds the test runs as Build does, from one grouping and one
+// detection.
+func testRunsOf(run *store.Run) TestRuns {
+	executed := executionsByID(run)
+	return buildTestRuns(run, executed, nil, detectTestBending(run, executed, nil))
+}
+
 func reversed(run *store.Run) *store.Run {
 	d := run.Declarations
 	for i, j := 0, len(d)-1; i < j; i, j = i+1, j-1 {
@@ -384,7 +391,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	run := tbRun(test(1, "d", failed), edit(2, shape.LabelTestFile, ok), test(3, "d", ok),
 		test(4, "f", ok), test(5, "f", failed), test(6, "g", store.ExecInterrupted),
 		test(7, "h", failed), test(8, "h", ok))
-	tr := buildTestRuns(run, nil)
+	tr := testRunsOf(run)
 	if tr.Runs != 6 || tr.OK != 3 || tr.Failed != 3 {
 		t.Errorf("runs/ok/failed = %d/%d/%d, want 6/3/3: an interrupted run has no result", tr.Runs, tr.OK, tr.Failed)
 	}
@@ -413,13 +420,13 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	}
 
 	b.Reset()
-	writeTestRuns(&b, buildTestRuns(tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbExecute, digest: "x", outcome: ok}), nil))
+	writeTestRuns(&b, testRunsOf(tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbExecute, digest: "x", outcome: ok})))
 	if b.Len() != 0 {
 		t.Errorf("a session with no test run rendered a block: %q", b.String())
 	}
 
 	b.Reset()
-	writeTestRuns(&b, buildTestRuns(tbRun(test(1, "d", ok), test(2, "d", ok)), nil))
+	writeTestRuns(&b, testRunsOf(tbRun(test(1, "d", ok), test(2, "d", ok))))
 	if strings.Contains(b.String(), "a file edit here") {
 		t.Errorf("the limit printed with no pattern to qualify:\n%s", b.String())
 	}

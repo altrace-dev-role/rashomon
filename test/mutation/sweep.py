@@ -1225,8 +1225,8 @@ m("TB a shell write between two runs is not an edit", "internal/report/testbendi
   "\t\tif mayEdit(d) && d.ToolName != \"Bash\" {\n",
   "TestTestBending")
 m("TB a run with no result is a run", "internal/report/testbending.go",
-  "\t\trun := d.Shape.VerbClass == shape.VerbTest && (outcome == store.ExecOK || outcome == store.ExecFailed)\n",
-  "\t\trun := d.Shape.VerbClass == shape.VerbTest\n",
+  "\t\tisRun := d.Shape.VerbClass == shape.VerbTest && (outcome == store.ExecOK || outcome == store.ExecFailed)\n",
+  "\t\tisRun := d.Shape.VerbClass == shape.VerbTest\n",
   "TestTestBending")
 m("TB A is raised with code edited too", "internal/report/testbending.go",
   "\t\t\tcase prev.failed && !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:",
@@ -1245,8 +1245,8 @@ m("TB a pair is made with the first run, not the previous one", "internal/report
   "\t\tlast[d.Shape.Digest] = mark{\n", "\t\tif _, seen := last[d.Shape.Digest]; !seen {\n\t\t\tlast[d.Shape.Digest] = mark{\n\t\t\t\tseq: d.Seq, failed: failed, testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,\n\t\t\t}\n\t\t}\n\t\t_ = mark{\n",
   "TestTestBending")
 m("TB every command is the same command", "internal/report/testbending.go",
-  "\t\tif prev, ok := last[d.Shape.Digest]; ok && run {",
-  "\t\tif prev, ok := last[\"\"]; ok && run {",
+  "\t\tif prev, ok := last[d.Shape.Digest]; ok && isRun {",
+  "\t\tif prev, ok := last[\"\"]; ok && isRun {",
   "TestTestBending")
 m("TB an interrupted test run is counted as a run", "internal/report/testbending.go",
   "\t\tcase store.ExecOK:\n\t\t\tout.Runs++", "\t\tcase store.ExecOK, store.ExecInterrupted:\n\t\t\tout.Runs++", "TestTestRuns_")
@@ -1265,7 +1265,9 @@ m("TB the session block drops the limit", "internal/report/text.go",
 m("TB the session block is never rendered", "internal/report/text.go",
   "\twriteTestRuns(b, sess.TestRuns)\n", "\t_ = writeTestRuns\n", "TestTestBending_")
 m("TB the report never builds the test runs", "internal/report/report.go",
-  "\t\tsess.TestRuns = buildTestRuns(run, denied)\n", "\t\t_ = buildTestRuns\n", "TestTestBending_")
+  "\t\tsess.TestRuns = buildTestRuns(run, executed, denied, tb)\n",
+  "\t\t_ = buildTestRuns\n",
+  "TestTestBending_")
 
 m("TB the digest looks across the whole session", "internal/digest/digest.go",
   "\ttb := report.DetectTestBending(turnRun, nil)", "\ttb := report.DetectTestBending(run, nil)", "TestBuild_TestBending")
@@ -1524,6 +1526,16 @@ m("TB GoogleTest suffixes are folded", "internal/shape/label.go",
   "\t\t\t\"_spec.rb\",\n",
   "\t\t\t\"_spec.rb\", \"_test.cc\",\n",
   "TestLabelTestFile")
+
+m("TB the report's timeline is built without the patterns", "internal/report/report.go",
+  "\t\tsess.Timeline = timelineFrom(run, executed, denied, tb)\n",
+  "\t\tsess.Timeline = timelineFrom(run, executed, denied, TestBending{})\n",
+  "TestTestBending_|TestTimeline")
+
+m("TB the test runs drop the patterns they were given", "internal/report/testbending.go",
+  "\tout := TestRuns{TestBending: tb}\n",
+  "\tout := TestRuns{TestBending: TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []FlakyPair{}}}\n\t_ = tb\n",
+  "TestTestRuns_|TestTestBending_")
 
 # Import additions some mutants need.
 IMPORTS = {

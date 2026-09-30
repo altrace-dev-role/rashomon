@@ -99,11 +99,20 @@ type TestBending struct {
 // shell in DIR breaks them only when its class is not read, network or agent
 // -- `cd DIR && ls` is read -- and the report states that limit.
 func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
+	if run == nil {
+		return detectTestBending(nil, nil, denied)
+	}
+	return detectTestBending(run, executionsByID(run), denied)
+}
+
+// detectTestBending is DetectTestBending over run's executions already
+// grouped (executionsByID), so that Build groups them once for the timeline,
+// the test runs and this.
+func detectTestBending(run *store.Run, executed map[string][]store.Execution, denied map[string]bool) TestBending {
 	out := TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []FlakyPair{}}
 	if run == nil {
 		return out
 	}
-	executed := executionsByID(run)
 
 	sorted := append([]store.Declaration(nil), run.Declarations...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Seq < sorted[j].Seq })
@@ -128,11 +137,11 @@ func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 		if outcome == LinkOutcomeDenied {
 			continue
 		}
-		run := d.Shape.VerbClass == shape.VerbTest && (outcome == store.ExecOK || outcome == store.ExecFailed)
+		isRun := d.Shape.VerbClass == shape.VerbTest && (outcome == store.ExecOK || outcome == store.ExecFailed)
 		failed := outcome == store.ExecFailed
 		// The pair is decided on the totals BEFORE this call counts as an
 		// edit: a run is not between itself and the run it pairs with.
-		if prev, ok := last[d.Shape.Digest]; ok && run {
+		if prev, ok := last[d.Shape.Digest]; ok && isRun {
 			pair := SeqPair{prev.seq, d.Seq}
 			switch {
 			case prev.failed && !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:
@@ -152,7 +161,7 @@ func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 		}
 		// And the mark AFTER it counts, so the next run of this command
 		// does not see this run as between.
-		if run {
+		if isRun {
 			last[d.Shape.Digest] = mark{
 				seq: d.Seq, failed: failed, testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,
 			}
@@ -211,9 +220,12 @@ type TestRuns struct {
 	TestBending
 }
 
-func buildTestRuns(run *store.Run, denied map[string]bool) TestRuns {
-	executed := executionsByID(run)
-	out := TestRuns{TestBending: DetectTestBending(run, denied)}
+// buildTestRuns counts run's test runs by the outcomes in executed (run's
+// executionsByID) and denied, and carries tb, the patterns detectTestBending
+// found over the same three: Build computes each once and shares it with the
+// timeline.
+func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied map[string]bool, tb TestBending) TestRuns {
+	out := TestRuns{TestBending: tb}
 	for _, d := range run.Declarations {
 		if d.Shape.VerbClass != shape.VerbTest {
 			continue

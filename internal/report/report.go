@@ -454,8 +454,12 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 			sess.Destinations, cfg.nonoTrail != "", forgotten)
 		denied := deniedSet(sess.Transcripts)
 		sess.Chains = buildChains(run, sess.Destinations, denied, forgotten)
-		sess.Timeline = buildTimeline(run, denied)
-		sess.TestRuns = buildTestRuns(run, denied)
+		// One grouping of the executions and one detection, shared by the
+		// timeline's annotations and the test runs' pairs.
+		executed := executionsByID(run)
+		tb := detectTestBending(run, executed, denied)
+		sess.Timeline = timelineFrom(run, executed, denied, tb)
+		sess.TestRuns = buildTestRuns(run, executed, denied, tb)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
 		sess.SilentFailures = BuildSilentFailures(run, sess.Account)

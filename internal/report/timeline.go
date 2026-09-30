@@ -163,11 +163,21 @@ type timelineEntry struct {
 }
 
 func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
+	if run == nil {
+		return timelineFrom(nil, nil, denied, TestBending{})
+	}
+	executed := executionsByID(run)
+	return timelineFrom(run, executed, denied, detectTestBending(run, executed, denied))
+}
+
+// timelineFrom is buildTimeline over run's executions already grouped
+// (executionsByID) and the test-bending pairs already found over them: Build
+// computes both once and shares them with the test runs.
+func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied map[string]bool, tb TestBending) Timeline {
 	out := Timeline{Calls: []TimelineCall{}}
 	if run == nil {
 		return out
 	}
-	executed := executionsByID(run)
 
 	decls := append([]store.Declaration(nil), run.Declarations...)
 	sort.SliceStable(decls, func(i, j int) bool { return decls[i].Seq < decls[j].Seq })
@@ -237,7 +247,6 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 
 	// A seq is one call, so the later seq of a pair names its row.
 	bending := map[int64]TimelineBending{}
-	tb := DetectTestBending(run, denied)
 	for _, p := range tb.TestsOnlyThenGreen {
 		bending[p[1]] = TimelineBending{Kind: BendTestsOnlyThenGreen, Since: p[0]}
 	}
