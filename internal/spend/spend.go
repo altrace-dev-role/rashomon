@@ -282,7 +282,13 @@ func displayModel(model string) (string, bool) {
 }
 
 func claudeShaped(s string) bool {
-	if !strings.HasPrefix(s, "claude-") || len(s) > 64 {
+	return strings.HasPrefix(s, "claude-") && idShaped(s)
+}
+
+// idShaped is the closed shape an identifier must have to be printed:
+// lowercase letters, digits and hyphens, at most 64 of them.
+func idShaped(s string) bool {
+	if s == "" || len(s) > 64 {
 		return false
 	}
 	for _, c := range s {
@@ -291,6 +297,19 @@ func claudeShaped(s string) bool {
 		}
 	}
 	return true
+}
+
+// displaySession is how a session is named in the output: its id when the id
+// has the closed shape a Claude Code session id has (a lowercase UUID fits
+// idShaped), and "other" otherwise. The id is read from a transcript line's
+// sessionId -- or, lacking one, from the file's name -- and either can carry
+// anything: a path-like value would otherwise reach the JSON verbatim. The
+// same rule displayModel applies to a model string, for the same reason.
+func displaySession(id string) string {
+	if idShaped(id) {
+		return id
+	}
+	return "other"
 }
 
 // Build summarises a scan over the last `days` days before now.
@@ -345,7 +364,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 
 		sess, ok := sessions[r.SessionID]
 		if !ok {
-			sess = &SessionSpend{SessionID: r.SessionID}
+			sess = &SessionSpend{SessionID: displaySession(r.SessionID)}
 			sessions[r.SessionID] = sess
 		}
 		if r.Subagent {

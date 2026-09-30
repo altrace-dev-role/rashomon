@@ -490,6 +490,31 @@ func TestUnknownModel_ANonClaudeIdIsNotPrinted(t *testing.T) {
 	}
 }
 
+// TestSessionID_OnlyAClosedShapeIsPrinted: a transcript's sessionId is a
+// string a line carries, and a malformed or hostile one can be a path. It is
+// printed only in the shape a Claude Code session id has -- the rule model
+// ids follow -- and otherwise as "other".
+func TestSessionID_OnlyAClosedShapeIsPrinted(t *testing.T) {
+	c := newConfig(t)
+	leak := "../../home/someone/secret-" + canary
+	c.write("proj/sess-a.jsonl",
+		resp{id: "r1", model: "claude-opus-5-5", session: leak, at: now.Add(-time.Hour), in: 2, stop: "end_turn"}.line("text"),
+		resp{id: "r2", model: "claude-opus-5-5", session: "0b6a6a4e-8d5c-4b8e-9d52-0c1f6f2a3b4c", at: now.Add(-time.Hour), in: 3, stop: "end_turn"}.line("text"))
+	s := c.summary(30)
+	if err := s.Join(nil); err != nil {
+		t.Fatal(err)
+	}
+	txt, js := render(t, s)
+	for _, out := range []string{txt, js} {
+		if strings.Contains(out, "secret-") || strings.Contains(out, "../") {
+			t.Errorf("a path-shaped session id reached the output:\n%s", out)
+		}
+	}
+	if !strings.Contains(js, `"session_id":"other"`) || !strings.Contains(js, `"session_id":"0b6a6a4e-8d5c-4b8e-9d52-0c1f6f2a3b4c"`) {
+		t.Errorf("per_session does not name the uuid and fold the path into other:\n%s", js)
+	}
+}
+
 // TestZeroTokenResponses_AreNotCounted: Claude Code's "<synthetic>" lines
 // carry an all-zero usage; they were not billed and are not a model to list.
 func TestZeroTokenResponses_AreNotCounted(t *testing.T) {

@@ -1212,6 +1212,8 @@ m("SP a user line's tool-result test decodes the text of its blocks", "internal/
   "\t\tContent []struct {\n\t\t\tType string `json:\"type\"`\n\t\t} `json:\"content\"`",
   "\t\tContent []struct {\n\t\t\tType string `json:\"type\"`\n\t\t\tText string `json:\"text\"`\n\t\t} `json:\"content\"`",
   "TestUserBlocks_")
+m("SP a transcript's session id is printed whatever it carries", "internal/spend/spend.go",
+  "\tif idShaped(id) {\n\t\treturn id", "\tif true {\n\t\treturn id", "TestSessionID_")
 
 # Import additions some mutants need.
 IMPORTS = {
