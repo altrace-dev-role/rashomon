@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // canary is planted in every fixture's message.content -- in a text block,
@@ -350,6 +352,86 @@ func TestWindow_OldTranscriptsAreNotNoTranscripts(t *testing.T) {
 	}
 	if !strings.Contains(js, `"files_before_window":1`) {
 		t.Errorf("the JSON does not count the old transcript:\n%s", js)
+	}
+}
+
+// TestDiscover_ASymlinkedProjectFolderIsRead: a DirEntry reports a symlink as
+// neither file nor directory, and a projects folder linked in from elsewhere
+// was skipped without a word -- its spend an unflagged $0. It is read, and a
+// record naming the transcript by its real path still covers it.
+func TestDiscover_ASymlinkedProjectFolderIsRead(t *testing.T) {
+	c := newConfig(t)
+	real := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.MkdirAll(filepath.Join(real, "sess-l", "subagents"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	T := now.Add(-time.Hour)
+	realMain := filepath.Join(real, "sess-l.jsonl")
+	lines := userLine("sess-l", "p1", T, false) + "\n" +
+		resp{id: "L1", model: "claude-opus-5-5", session: "sess-l", at: T, in: 100, stop: "end_turn"}.line("text") + "\n"
+	if err := os.WriteFile(realMain, []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sub := resp{id: "L2", model: "claude-opus-5-5", session: "sess-l", at: T, in: 20, stop: "end_turn", sidechain: true}.line("text")
+	if err := os.WriteFile(filepath.Join(real, "sess-l", "subagents", "agent-1.jsonl"), []byte(sub+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(c.dir, "projects"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(c.dir, "projects", "linked")); err != nil {
+		t.Fatal(err)
+	}
+	rec := newRecorder(t)
+	rec.transcript = realMain
+	rec.call("sess-l", "p1", "toolu_l", T, T.Add(time.Second), store.ExecOK)
+
+	s := c.summary(30)
+	if s.Responses != 2 || s.Total.Nano != 120*opusIn {
+		t.Errorf("responses = %d, total = %d; want 2 and %d: the linked folder was not read", s.Responses, s.Total.Nano, 120*opusIn)
+	}
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	if j := s.SilentFailureTurns; j.CoveredTranscripts != 1 || j.NotCoveredTranscripts != 0 {
+		t.Errorf("covered %d, not covered %d; want 1, 0: a record naming the real path covers the linked transcript",
+			j.CoveredTranscripts, j.NotCoveredTranscripts)
+	}
+}
+
+// TestDiscover_AnUnreadableFolderIsCountedNotFatal: one folder that cannot be
+// read used to abort the whole command. Here two cannot -- a symlink that
+// loops and one that dangles -- and the rest is still counted, with a note
+// saying how many folders were not.
+func TestDiscover_AnUnreadableFolderIsCountedNotFatal(t *testing.T) {
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1000, stop: "end_turn"}.line("text"))
+	loop := filepath.Join(c.dir, "projects", "loop")
+	if err := os.Symlink(loop, loop); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(c.dir, "gone"), filepath.Join(c.dir, "projects", "proj", "sess-gone")); err != nil {
+		t.Fatal(err)
+	}
+	s := c.summary(30)
+	if s.Total.Nano != 1000*opusIn || s.Read.UnreadableDirs != 2 {
+		t.Errorf("total = %d, unreadable dirs = %d; want %d and 2", s.Total.Nano, s.Read.UnreadableDirs, 1000*opusIn)
+	}
+	if txt, _ := render(t, s); !strings.Contains(txt, "note: 2 folders under projects/ could not be read") {
+		t.Errorf("the text does not say folders were left out:\n%s", txt)
+	}
+
+	// And a folder the process may not list, where permissions apply.
+	if os.Geteuid() == 0 {
+		return
+	}
+	locked := filepath.Join(c.dir, "projects", "locked")
+	if err := os.Mkdir(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	if s := c.summary(30); s.Read.UnreadableDirs != 3 || s.Total.Nano != 1000*opusIn {
+		t.Errorf("with a locked folder: unreadable dirs = %d, total = %d; want 3 and %d", s.Read.UnreadableDirs, s.Total.Nano, 1000*opusIn)
 	}
 }
 

@@ -54,6 +54,10 @@ func Text(w io.Writer, s *Summary) error {
 		}
 	}
 
+	if s.Read.UnreadableDirs > 0 {
+		fmt.Fprintf(&b, "\nnote: %s under projects/ could not be read; the transcripts in %s are not counted\n",
+			countOf(s.Read.UnreadableDirs, "folder"), itThem(s.Read.UnreadableDirs))
+	}
 	if s.Read.UnreadableFiles > 0 {
 		fmt.Fprintf(&b, "\nnote: %s could not be read to the end; what they hold past that point is not counted\n",
 			countOf(s.Read.UnreadableFiles, "transcript file"))

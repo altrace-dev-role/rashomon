@@ -1249,6 +1249,19 @@ m("SP a transcript last written before the window is not counted", "internal/spe
   "TestWindow_OldTranscripts|TestDiscover_Skips")
 m("SP old transcripts are reported as no transcripts found", "internal/spend/text.go",
   "\tcase s.Read.Files == 0 && s.Read.FilesBeforeWindow > 0:", "\tcase false:", "TestWindow_OldTranscripts")
+m("SP a symlinked project folder is skipped", "internal/spend/scan.go",
+  "\tif t&fs.ModeSymlink != 0 {", "\tif false && t&fs.ModeSymlink != 0 {", "TestDiscover_ASymlinked")
+m("SP a recorded real path does not cover a transcript reached through a symlink", "internal/spend/join.go",
+  "\t\tif real, err := filepath.EvalSymlinks(f.Path); err == nil {", "\t\tif real, err := filepath.EvalSymlinks(f.Path); err == nil && false {",
+  "TestDiscover_ASymlinked")
+m("SP a project folder that cannot be read is not counted", "internal/spend/scan.go",
+  "\t\tif kind == kindUnreadable {\n\t\t\tfound.UnreadableDirs++", "\t\tif kind == kindUnreadable {\n\t\t\t_ = found",
+  "TestDiscover_AnUnreadableFolder")
+m("SP a session folder that cannot be read is not counted", "internal/spend/scan.go",
+  "\t\t\tcase kind == kindUnreadable:\n\t\t\t\tfound.UnreadableDirs++", "\t\t\tcase kind == kindUnreadable:\n\t\t\t\t_ = found",
+  "TestDiscover_AnUnreadableFolder")
+m("SP folders that could not be read are not said", "internal/spend/text.go",
+  "\tif s.Read.UnreadableDirs > 0 {", "\tif false {", "TestDiscover_AnUnreadableFolder")
 
 # Import additions some mutants need.
 IMPORTS = {

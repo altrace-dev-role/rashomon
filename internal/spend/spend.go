@@ -169,6 +169,8 @@ type ReadStats struct {
 	// FilesBeforeWindow counts transcripts not read because they were last
 	// written before the window (Found.Stale).
 	FilesBeforeWindow int `json:"files_before_window"`
+	// UnreadableDirs counts folders under projects/ that could not be listed.
+	UnreadableDirs int `json:"unreadable_dirs"`
 	// FutureDatedResponses counts responses dated more than futureSlack
 	// after this run. They are not "the last N days" and are not counted.
 	FutureDatedResponses int `json:"future_dated_responses"`
@@ -381,6 +383,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			UnreadableFiles:   sc.Unreadable,
 			UndatedResponses:  sc.Undated,
 			FilesBeforeWindow: sc.Stale,
+			UnreadableDirs:    sc.UnreadableDirs,
 		},
 		scan: sc,
 	}

@@ -175,6 +175,9 @@ type Scan struct {
 	// Stale counts the transcripts Discover skipped as last written before
 	// the window (Found.Stale).
 	Stale int
+	// UnreadableDirs counts the folders Discover could not list
+	// (Found.UnreadableDirs).
+	UnreadableDirs int
 }
 
 // Found is what Discover found: the transcripts to read, and a count of what
@@ -187,6 +190,11 @@ type Found struct {
 	// printed "no Claude Code transcripts were found" -- false: they were
 	// found, and none was written in the window.
 	Stale int
+	// UnreadableDirs counts folders under projects/ that could not be listed
+	// (a permission, a symlink that loops or dangles). One such folder used
+	// to abort the whole command; it is now passed over, counted and said,
+	// because the transcripts it holds are spend this reader did not count.
+	UnreadableDirs int
 }
 
 // TranscriptFile is one transcript on disk.
@@ -219,7 +227,12 @@ type TranscriptFile struct {
 //
 // A missing projects directory is not an error: it is a machine where Claude
 // Code has recorded nothing, and the answer to "what did it spend" is then an
-// honest nothing.
+// honest nothing. An unreadable projects directory is, since nothing at all
+// could be counted. Below it, a folder that cannot be listed is counted in
+// UnreadableDirs and passed over, and a folder reached through a symlink is
+// read like any other (entryKind): a DirEntry reports a symlink as neither a
+// file nor a directory, and a projects folder linked in from elsewhere was
+// skipped without a word -- its spend an unflagged $0.
 func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 	found := &Found{}
 	root := filepath.Join(configDir, "projects")
@@ -243,27 +256,32 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 		return ok
 	}
 	for _, p := range projects {
-		if !p.IsDir() {
+		dir := filepath.Join(root, p.Name())
+		kind := entryKind(dir, p)
+		if kind == kindUnreadable {
+			found.UnreadableDirs++
+		}
+		if kind != kindDir {
 			continue
 		}
-		dir := filepath.Join(root, p.Name())
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			return nil, err
+			found.UnreadableDirs++
+			continue
 		}
 		for _, e := range entries {
 			name := e.Name()
-			switch {
-			case !e.IsDir() && strings.HasSuffix(name, ".jsonl"):
-				path := filepath.Join(dir, name)
+			path := filepath.Join(dir, name)
+			switch kind := entryKind(path, e); {
+			case kind == kindFile && strings.HasSuffix(name, ".jsonl"):
 				if fresh(path) {
 					out = append(out, TranscriptFile{Path: path, Session: strings.TrimSuffix(name, ".jsonl"), Main: path})
 				}
-			case e.IsDir():
-				subs, err := subagentFiles(filepath.Join(dir, name, "subagents"))
-				if err != nil {
-					return nil, err
-				}
+			case kind == kindUnreadable:
+				found.UnreadableDirs++
+			case kind == kindDir:
+				subs, unreadable := subagentFiles(filepath.Join(path, "subagents"))
+				found.UnreadableDirs += unreadable
 				for _, s := range subs {
 					if fresh(s) {
 						out = append(out, TranscriptFile{Path: s, Subagent: true, Session: name,
@@ -278,16 +296,54 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 	return found, nil
 }
 
-// subagentFiles lists every agent-*.jsonl under dir, at any depth. A missing
-// directory is the common case, a session with no subagents.
-func subagentFiles(dir string) ([]string, error) {
+// Kinds of directory entry, symlinks followed.
+const (
+	kindOther = iota
+	kindFile
+	kindDir
+	kindUnreadable
+)
+
+// entryKind is what a directory entry is once a symlink is followed: a
+// regular file, a directory, something else, or -- a symlink whose target
+// cannot be reached (it loops, dangles or is not permitted) --
+// unreadable. A dangling link is unreadable too: it names something this
+// reader was meant to find and could not, which is not the same as nothing.
+func entryKind(path string, e fs.DirEntry) int {
+	t := e.Type()
+	if t&fs.ModeSymlink != 0 {
+		info, err := os.Stat(path)
+		if err != nil {
+			return kindUnreadable
+		}
+		t = info.Mode().Type()
+	}
+	switch {
+	case t.IsDir():
+		return kindDir
+	case t.IsRegular():
+		return kindFile
+	}
+	return kindOther
+}
+
+// subagentFiles lists every agent-*.jsonl under dir, at any depth, and counts
+// the folders under it that could not be read. A missing directory is the
+// common case, a session with no subagents. A folder that cannot be read is
+// skipped and counted, so the rest of the walk -- and of spend -- goes on.
+func subagentFiles(dir string) ([]string, int) {
 	var out []string
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+	unreadable := 0
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) && p == dir {
 				return filepath.SkipDir
 			}
-			return err
+			unreadable++
+			if d != nil && !d.IsDir() {
+				return nil
+			}
+			return filepath.SkipDir
 		}
 		if d.IsDir() {
 			return nil
@@ -297,10 +353,7 @@ func subagentFiles(dir string) ([]string, error) {
 		}
 		return nil
 	})
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	return out, err
+	return out, unreadable
 }
 
 // Read reads the usage of every response in files, counting each message.id
@@ -325,7 +378,7 @@ func subagentFiles(dir string) ([]string, error) {
 // A line with no message.id cannot be deduplicated against anything, so it
 // cannot be counted without risking the 2x error; it is skipped.
 func Read(found *Found) (*Scan, error) {
-	sc := &Scan{Files: found.Files, Stale: found.Stale}
+	sc := &Scan{Files: found.Files, Stale: found.Stale, UnreadableDirs: found.UnreadableDirs}
 	byID := map[string]*Response{}
 	for i, f := range found.Files {
 		if err := readFile(sc, byID, i, f); err != nil {
