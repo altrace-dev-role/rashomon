@@ -28,7 +28,24 @@ const (
 	VerbAgent   = "agent"
 	VerbMCP     = "mcp"
 	VerbUnknown = "unknown"
+
+	// VerbTest is a shell call whose command position holds a recognised
+	// test runner (testCommands). It is decided against a fixed list, and the
+	// words that decided it are compared and dropped: the record carries the
+	// word "test" and nothing else, so `go test ./secret/...` and `go test`
+	// store the same class.
+	VerbTest = "test"
 )
+
+// VerbClasses is the vocabulary, for the schema enum test to compare against,
+// for the reason Labels() exists: a closed set that is not exported through a
+// function drifts from the published schema in silence.
+func VerbClasses() []string {
+	return []string{
+		VerbRead, VerbWrite, VerbNetwork, VerbExecute, VerbVCS,
+		VerbPackage, VerbAgent, VerbMCP, VerbUnknown, VerbTest,
+	}
+}
 
 // Shape is the derived description of one tool call.
 //
@@ -92,6 +109,9 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 			prog := path.Base(pshaped[i].text)
 			s.Program = &prog
 			s.VerbClass = verbForProgram(prog)
+			if runsTests(pshaped, i, prog, perr == nil) {
+				s.VerbClass = VerbTest
+			}
 		}
 	}
 	if err == nil {
@@ -891,6 +911,67 @@ var programVerb = map[string]string{
 	"go": VerbPackage, "cargo": VerbPackage, "gem": VerbPackage,
 	"bundle": VerbPackage, "brew": VerbPackage, "apt": VerbPackage,
 	"apt-get": VerbPackage, "uv": VerbPackage, "poetry": VerbPackage,
+}
+
+// testCommands are the test runners the test verb class recognises: the
+// program, as path.Base names it, and then the plain words that must follow
+// it exactly. A runner that is its own program is a list of one.
+//
+// A fixed list, compared and discarded. Nothing from the line is kept but the
+// class; an argument is looked at only to be told equal to one of these.
+// Anything this list does not name -- `make -C dir test`, `npx jest`,
+// `./gradlew test`, `go test` behind `timeout` -- stays what it was before:
+// execute, or package for go and cargo. That is an under-claim, and the
+// detections built on this class are worth only as much as their refusal to
+// over-claim.
+var testCommands = [][]string{
+	{"pytest"}, {"jest"}, {"vitest"}, {"mocha"}, {"rspec"}, {"phpunit"},
+	{"ctest"}, {"tox"}, {"nox"},
+
+	{"go", "test"}, {"cargo", "test"}, {"npm", "test"}, {"npm", "run", "test"},
+	{"yarn", "test"}, {"pnpm", "test"}, {"bun", "test"}, {"dotnet", "test"},
+	{"mvn", "test"}, {"gradle", "test"}, {"make", "test"}, {"make", "check"},
+	{"python", "-m", "pytest"}, {"python3", "-m", "pytest"},
+}
+
+// runsTests reports whether the command whose program is the token at i,
+// named prog, is one of testCommands.
+//
+// The program was found under programToken's rules, so it is certain; each
+// word after it must be certain in the same way before it is compared: an
+// unquoted word of this same command, not on the next line, and not running on
+// into a process substitution the shell reads as more of the same word. An
+// operator or an expansion keeps its bytes in the token's text ($, `, ${ ),
+// so equality to a list word already refuses those. programToken has refused
+// a command whose end it could not find, so the words up to that end are ones
+// the lexer vouched for -- and a line the lexer could not finish at all
+// (whole) is refused outright: `go test\` ends in a backslash the tokenizer
+// dropped and the shell keeps.
+//
+// Quoted is refused although `go "test"` runs the tests: the rule is "a plain
+// word equal to the list", and a quote is where plain stops.
+func runsTests(toks []token, i int, prog string, whole bool) bool {
+	if !whole {
+		return false
+	}
+next:
+	for _, c := range testCommands {
+		if c[0] != prog {
+			continue
+		}
+		for n, want := range c[1:] {
+			k := i + 1 + n
+			if k >= len(toks) {
+				continue next
+			}
+			t := toks[k]
+			if t.nlBefore || t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {
+				continue next
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func verbForProgram(prog string) string {

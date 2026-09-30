@@ -274,3 +274,62 @@ func TestLabelEdgeCasesFromTheHunt(t *testing.T) {
 		})
 	}
 }
+
+// TestLabelTestFile: the test-file row names each framework's own convention,
+// by basename alone, and sits after every sensitive row. The negatives are the
+// point as much as the positives: a source file read as a test turns "the code
+// was fixed" into "only the tests were edited", which is the over-claim the
+// detections built on this label must never make.
+func TestLabelTestFile(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want string
+		why  string
+	}{
+		{path: "/repo/pkg/calc_test.go", want: LabelTestFile, why: "go test"},
+		{path: "/repo/tests/test_login.py", want: LabelTestFile, why: "pytest's test_*.py"},
+		{path: "/repo/app/login_test.py", want: LabelTestFile, why: "pytest's *_test.py"},
+		{path: "/repo/conftest.py", want: LabelTestFile, why: "pytest's fixture file"},
+		{path: "/web/src/App.test.tsx", want: LabelTestFile, why: "Jest"},
+		{path: "/web/src/util.spec.ts", want: LabelTestFile, why: "Jasmine, Vitest"},
+		{path: "/web/src/util.test.mjs", want: LabelTestFile},
+		{path: "/web/src/util.spec.cjs", want: LabelTestFile},
+		{path: "/rb/spec/user_spec.rb", want: LabelTestFile, why: "RSpec"},
+		{path: "/j/src/test/java/CalcTest.java", want: LabelTestFile, why: "JUnit"},
+		{path: "/j/src/test/java/CalcTests.java", want: LabelTestFile},
+		{path: "/k/CalcTest.kt", want: LabelTestFile},
+		{path: "/n/CalcTests.cs", want: LabelTestFile},
+		{path: `C:\repo\pkg\CALC_TEST.GO`, want: LabelTestFile, why: "the folded rows fold, as the table always has"},
+
+		{path: "/repo/pkg/calc.go", want: LabelNone},
+		{path: "/repo/pkg/testing.go", want: LabelNone},
+		{path: "/repo/pkg/test.go", want: LabelNone, why: "no _test suffix"},
+		{path: "/repo/test_data.json", want: LabelNone, why: "test_ is a prefix only together with .py"},
+		{path: "/repo/test.py", want: LabelNone},
+		{path: "/repo/contest.py", want: LabelNone},
+		{path: "/j/Latest.java", want: LabelNone, why: "folded, *Test.java would swallow this"},
+		{path: "/j/Contest.java", want: LabelNone},
+		{path: "/j/LATESTTEST.JAVA", want: LabelNone, why: "the JUnit suffixes are cased: a class name"},
+		{path: "/n/Contests.cs", want: LabelNone},
+		{path: "/k/Protest.kt", want: LabelNone},
+		{path: "/repo/tests/fixture.json", want: LabelNone, why: "no directory rule: a fixture in tests/ is not a test"},
+		{path: "/web/src/util.test.css", want: LabelNone},
+
+		// The sensitive rows come first.
+		{path: "/repo/.env.test.js", want: LabelEnvFile, why: "an env file named like a test is an env file"},
+		{path: "/repo/secrets.test.ts", want: LabelCredentialShaped},
+		{path: "/repo/id_rsa_test.go", want: LabelSSHKey},
+		{path: "/repo/credentials.spec.js", want: LabelCredentialShaped},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			for _, tool := range []string{"Edit", "Write", "Read"} {
+				if got := Label(tool, pathInput(t, "file_path", tc.path)); got != tc.want {
+					t.Errorf("Label(%s, %q) = %q, want %q%s", tool, tc.path, got, tc.want, because(tc.why))
+				}
+			}
+			if got := Label("NotebookEdit", pathInput(t, "notebook_path", tc.path)); got != tc.want {
+				t.Errorf("Label(NotebookEdit, %q) = %q, want %q", tc.path, got, tc.want)
+			}
+		})
+	}
+}

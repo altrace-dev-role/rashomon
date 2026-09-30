@@ -532,6 +532,32 @@ func TestStoreSchemaLabelsAreTheCodeLabels(t *testing.T) {
 	}
 }
 
+// TestStoreSchemaVerbClassesAreTheCodeVerbClasses: verb_class is the third
+// closed vocabulary on a declaration, and until the test class it had no walk
+// of its own -- the enum and the constants agreed by luck. Bidirectional for
+// the reason the label check is: a class the code emits and the schema
+// forbids is a record that fails validation, and a class the schema offers
+// that the code cannot emit is a promise nothing keeps.
+func TestStoreSchemaVerbClassesAreTheCodeVerbClasses(t *testing.T) {
+	inSchema := map[string]bool{}
+	collectNamedEnum(readSchema(t), "", "verb_class", inSchema)
+	if len(inSchema) == 0 {
+		t.Fatalf("no verb_class enum found in %s; the walk is not finding it", schemaPath)
+	}
+	inCode := map[string]bool{}
+	for _, v := range shape.VerbClasses() {
+		inCode[v] = true
+		if !inSchema[v] {
+			t.Errorf("shape.VerbClasses() carries %q, which appears in no verb_class enum in %s", v, schemaPath)
+		}
+	}
+	for v := range inSchema {
+		if !inCode[v] {
+			t.Errorf("%s offers the verb class %q, which shape.VerbClasses() cannot emit", schemaPath, v)
+		}
+	}
+}
+
 // collectNamedEnum gathers the string members of the enum on every property
 // with the given name. Null members are skipped: the nullability is carried
 // by the type, and Labels() is a list of labels rather than of states.

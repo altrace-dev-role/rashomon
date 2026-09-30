@@ -129,7 +129,8 @@
                 "package",
                 "agent",
                 "mcp",
-                "unknown"
+                "unknown",
+                "test"
               ]
             },
             "argc": {
@@ -178,6 +179,7 @@
             "cloud-config",
             "env-file",
             "certificate",
+            "test-file",
             "none",
             "unknown"
           ]
