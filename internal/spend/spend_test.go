@@ -1198,12 +1198,26 @@ func TestContentNeverReachesTheOutput(t *testing.T) {
 // in it is tagged "content", so encoding/json skips message.content without
 // ever making a value of it. A field added here for any reason turns the
 // content read on, and this names the rule it breaks.
+//
+// Tags alone are not enough: a field under an allowed tag typed as a
+// json.RawMessage, an interface or a map holds whatever bytes are there --
+// a "message" of type any would hold the whole message, content and all --
+// so those kinds fail before the struct walk.
 func TestContentHasNoFieldToLandIn(t *testing.T) {
 	var walk func(reflect.Type, string)
 	seen := map[reflect.Type]bool{}
+	raw := reflect.TypeOf(json.RawMessage{})
 	walk = func(ty reflect.Type, path string) {
 		for ty.Kind() == reflect.Pointer || ty.Kind() == reflect.Slice {
+			if ty == raw {
+				t.Errorf("%s is a json.RawMessage: it holds the bytes it spans as a value", path)
+				return
+			}
 			ty = ty.Elem()
+		}
+		if k := ty.Kind(); k == reflect.Interface || k == reflect.Map {
+			t.Errorf("%s is a %s: it holds whatever it is handed", path, k)
+			return
 		}
 		if ty.Kind() != reflect.Struct || seen[ty] {
 			return

@@ -1429,6 +1429,8 @@ m("SP fast-mode responses are not said", "internal/spend/text.go",
   "\tif s.FastMode.Responses > 0 {", "\tif false {", "TestFastMode_")
 m("SP the out-of-scope line does not name web-search fees", "internal/spend/text.go",
   "; web-search fees ($10 per 1,000 searches)", "", "TestFastMode_")
+m("SP a decoded field under an allowed tag holds whatever it is handed", "internal/spend/scan.go",
+  "\tType        string  `json:\"type\"`", "\tType        any     `json:\"type\"`", "TestContentHasNoFieldToLandIn")
 
 # Import additions some mutants need.
 IMPORTS = {
