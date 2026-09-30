@@ -1195,8 +1195,9 @@ m("TB the label is not case-folded", "internal/shape/label.go",
 m("TB the class-name suffixes are folded", "internal/shape/label.go",
   "\t\t\tif strings.HasSuffix(written, s) {", "\t\t\tif strings.HasSuffix(base, strings.ToLower(s)) {", "TestLabelTestFile")
 m("TB test_*.py matches on its suffix alone", "internal/shape/label.go",
-  "\t\t\tif strings.HasPrefix(base, ps[0]) && strings.HasSuffix(base, ps[1]) {",
-  "\t\t\tif strings.HasSuffix(base, ps[1]) {", "TestLabelTestFile")
+  "\t\t\tif strings.HasPrefix(written, ps[0]) && strings.HasSuffix(written, ps[1]) {",
+  "\t\t\tif strings.HasSuffix(written, ps[1]) {",
+  "TestLabelTestFile")
 m("TB the test-file row is read before the sensitive rows", "internal/shape/label.go",
   "\tfor _, r := range labelTable {\n\t\tfor _, e := range r.exact {",
   "\tfor _, r := range append(labelTable[len(labelTable)-1:], labelTable...) {\n\t\tfor _, e := range r.exact {",
@@ -1425,6 +1426,27 @@ m("TB the end-of-turn line prints a flaky pair without its order", "internal/rec
   "\t\tfirst = fmt.Sprintf(\"#%d %s, #%d %s\", p.Seqs[0], a, p.Seqs[1], b)",
   "\t\tfirst = fmt.Sprintf(\"#%d, #%d\", p.Seqs[0], p.Seqs[1])\n\t\t_, _ = a, b",
   "TestLineTestBending|TestTestBending_SameCommandBothOutcomesIsFlagged")
+
+m("TB go and pytest suffixes are folded", "internal/shape/label.go",
+  "\t\t\t\"_spec.rb\",\n",
+  "\t\t\t\"_spec.rb\", \"_test.go\", \"_test.py\",\n",
+  "TestLabelTestFile")
+m("TB test_*.py is folded", "internal/shape/label.go",
+  "\t\t\tif strings.HasPrefix(written, ps[0]) && strings.HasSuffix(written, ps[1]) {",
+  "\t\t\tif strings.HasPrefix(base, ps[0]) && strings.HasSuffix(base, ps[1]) {",
+  "TestLabelTestFile")
+m("TB conftest.py is folded", "internal/shape/label.go",
+  "\t\t\tif written == e {",
+  "\t\t\tif base == e {",
+  "TestLabelTestFile")
+m("TB conftest.py is not a test file", "internal/shape/label.go",
+  "casedExact:  []string{\"conftest.py\"},",
+  "casedExact:  []string{\"conftest.pyx\"},",
+  "TestLabelTestFile")
+m("TB *Test.php is not a test file", "internal/shape/label.go",
+  ", \"Tests.cs\", \"Test.php\"}",
+  ", \"Tests.cs\"}",
+  "TestLabelTestFile")
 
 # Import additions some mutants need.
 IMPORTS = {

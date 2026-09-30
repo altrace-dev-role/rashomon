@@ -299,7 +299,22 @@ func TestLabelTestFile(t *testing.T) {
 		{path: "/j/src/test/java/CalcTests.java", want: LabelTestFile},
 		{path: "/k/CalcTest.kt", want: LabelTestFile},
 		{path: "/n/CalcTests.cs", want: LabelTestFile},
-		{path: `C:\repo\pkg\CALC_TEST.GO`, want: LabelTestFile, why: "the folded rows fold, as the table always has"},
+		{path: "/php/tests/CalcTest.php", want: LabelTestFile, why: "PHPUnit, which is on the runner list"},
+		{path: `C:\web\src\APP.TEST.TSX`, want: LabelTestFile, why: "the JS infixes still fold"},
+
+		// go test and pytest match their names as written, so these are not
+		// tests to either runner, and a label that folded them would call a
+		// source file a test.
+		{path: `C:\repo\pkg\CALC_TEST.GO`, want: LabelNone, why: "go test reads _test.go as written"},
+		{path: "/repo/pkg/calc_TEST.go", want: LabelNone},
+		{path: "/repo/pkg/calc_test.Go", want: LabelNone},
+		{path: "/repo/tests/TEST_login.py", want: LabelNone, why: "pytest's test_*.py is case-sensitive"},
+		{path: "/repo/tests/Test_login.py", want: LabelNone},
+		{path: "/repo/tests/test_login.PY", want: LabelNone},
+		{path: "/repo/app/login_TEST.py", want: LabelNone},
+		{path: "/repo/CONFTEST.PY", want: LabelNone},
+		{path: "/php/Latest.php", want: LabelNone, why: "*Test.php is a class name, cased like the JUnit ones"},
+		{path: "/php/calctest.php", want: LabelNone},
 
 		{path: "/repo/pkg/calc.go", want: LabelNone},
 		{path: "/repo/pkg/testing.go", want: LabelNone},

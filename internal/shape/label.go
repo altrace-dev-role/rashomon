@@ -75,17 +75,19 @@ var pathFields = map[string]string{
 }
 
 // labelRule is one row of the table. Matching is on the case-folded basename
-// alone; exact, then prefix, then suffix, then a prefix and a suffix together
-// (both). cased is the one exception to the folding: a suffix matched against
-// the basename as written, for conventions that are case-sensitive by
-// definition -- see the test-file row.
+// alone; exact, then prefix, then suffix. The cased fields are the one
+// exception to the folding: an exact name, a suffix, and a prefix and a suffix
+// together (casedBoth), matched against the basename as written, for
+// conventions whose own tool matches them case-sensitively -- see the
+// test-file row.
 type labelRule struct {
-	label  string
-	exact  []string
-	prefix []string
-	suffix []string
-	both   [][2]string
-	cased  []string
+	label       string
+	exact       []string
+	prefix      []string
+	suffix      []string
+	casedExact  []string
+	casedSuffix []string
+	casedBoth   [][2]string
 }
 
 // labelTable is the fixed pattern list, in evaluation order. The FIRST row that
@@ -208,20 +210,29 @@ var labelTable = []labelRule{
 	// Contest.java, and *Tests.cs swallows Contests.cs -- source files the
 	// detections built on this label would then read as tests, which is the
 	// over-claim this label exists to avoid. The JUnit convention is
-	// case-sensitive by definition (a class name), so the case is part of it.
+	// case-sensitive by definition (a class name), so the case is part of it;
+	// PHPUnit's *Test.php likewise. *Test still over-matches a class whose
+	// name only ends in Test (ABTest.java, a source file for an A/B test):
+	// that is kept, and recorded, rather than guessed around.
+	//
+	// go test's and pytest's names are cased too, because those runners
+	// match them case-sensitively: go test reads calc_TEST.go as source and
+	// pytest does not collect TEST_x.py. Folded, the label would call them
+	// tests to a detection that exists to tell tests from source. The .test.
+	// and .spec. infixes and RSpec's _spec.rb stay folded.
 	//
 	// Directory rules (tests/, __tests__/) are left out: this table matches
 	// basenames by design, and a fixture in tests/ is not a test.
 	{
 		label: LabelTestFile,
-		exact: []string{"conftest.py"},
 		suffix: []string{
-			"_test.go", "_test.py", "_spec.rb",
+			"_spec.rb",
 			".test.js", ".test.jsx", ".test.ts", ".test.tsx", ".test.mjs", ".test.cjs",
 			".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx", ".spec.mjs", ".spec.cjs",
 		},
-		both:  [][2]string{{"test_", ".py"}},
-		cased: []string{"Test.java", "Tests.java", "Test.kt", "Tests.cs"},
+		casedExact:  []string{"conftest.py"},
+		casedSuffix: []string{"_test.go", "_test.py", "Test.java", "Tests.java", "Test.kt", "Tests.cs", "Test.php"},
+		casedBoth:   [][2]string{{"test_", ".py"}},
 	},
 }
 
@@ -313,13 +324,18 @@ func labelForBase(written string) string {
 				return r.label
 			}
 		}
-		for _, ps := range r.both {
-			if strings.HasPrefix(base, ps[0]) && strings.HasSuffix(base, ps[1]) {
+		for _, e := range r.casedExact {
+			if written == e {
 				return r.label
 			}
 		}
-		for _, s := range r.cased {
+		for _, s := range r.casedSuffix {
 			if strings.HasSuffix(written, s) {
+				return r.label
+			}
+		}
+		for _, ps := range r.casedBoth {
+			if strings.HasPrefix(written, ps[0]) && strings.HasSuffix(written, ps[1]) {
 				return r.label
 			}
 		}
