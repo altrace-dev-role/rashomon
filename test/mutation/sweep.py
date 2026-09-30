@@ -1171,6 +1171,10 @@ m("TL an undeclared earlier success leaves the failure unchecked", "internal/rep
   "\t\t\tif e.pos == nil || *e.pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif true {\n\t\t\t\tunplaced = true", "TestTimeline_")
 m("TL the never-ran group is spelled unlike every other enum", "internal/report/timeline.go",
   "\tGroupNeverRan    = \"never_ran\"", "\tGroupNeverRan    = \"never ran\"", "TestTimeline_")
+m("TL the report builds the timeline without the denials", "internal/report/report.go",
+  "\t\tsess.Timeline = buildTimeline(run, denied)", "\t\tsess.Timeline = buildTimeline(run, nil)", "TestTimeline_")
+m("TL the never-ran count is not printed", "internal/report/timeline_text.go",
+  "\tfmt.Fprintf(b, \"    never ran    %d  (denied before running)\\n\", n.NeverRan)\n", "", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",
