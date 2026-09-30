@@ -1173,10 +1173,11 @@ func TestRefusalsAndExtraAttempts(t *testing.T) {
 	if !strings.Contains(txt, "\n       the total leaves out 335 tokens on 2 extra attempts whose cost is unknown (see retries)\n") {
 		t.Errorf("the headline does not say the total excludes the extra attempts:\n%s", txt)
 	}
-	// And the savings list says what it does not compute beside them.
-	if !strings.Contains(txt, "savings       not computed: what refusals and fallback routing (classifier hits) cost that could be saved") ||
-		!strings.Contains(js, `"savings_not_computed":["refusals_and_routing"]`) {
-		t.Errorf("the savings output does not say refusal and routing savings are not computed:\n%s\n%s", txt, js)
+	// The priced refusal is a saving with its figure, by category and
+	// model; the interim "not computed" line is gone with nothing left out.
+	if !strings.Contains(txt, "savings       $0.01 on uncategorized refusals on claude-fable-5-1\n") ||
+		!strings.Contains(js, `"savings_not_computed":[]`) || strings.Contains(txt, "not computed") {
+		t.Errorf("the savings output does not carry the billed refusal:\n%s\n%s", txt, js)
 	}
 }
 
@@ -1414,8 +1415,10 @@ func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 			if !strings.Contains(js, fmt.Sprintf(`"without_usage":%d`, tc.n)) || s.Refusals.WithoutUsage != tc.n {
 				t.Errorf("without_usage = %d:\n%s", s.Refusals.WithoutUsage, js)
 			}
-			if !strings.Contains(txt, "not computed: what refusals and fallback routing") {
-				t.Errorf("the savings output does not say refusal savings are not computed:\n%s", txt)
+			// Uncategorized pre-output refusals are not billed: nothing to
+			// save, and nothing left uncomputed.
+			if strings.Contains(txt, "savings") || !strings.Contains(js, `"savings_not_computed":[]`) {
+				t.Errorf("the savings output names an unbilled refusal:\n%s\n%s", txt, js)
 			}
 		})
 	}
@@ -1471,6 +1474,56 @@ func TestRefusals_AreSplitByCategoryAndModel(t *testing.T) {
 	}
 	if strings.Contains(txt+js, "a_new_category") {
 		t.Errorf("a category outside the closed vocabulary was printed as read:\n%s\n%s", txt, js)
+	}
+}
+
+// TestSavings_BilledRefusalsAndDeclinedAttemptsByCategoryAndModel: the
+// savings list never read Refusals or ExtraAttempts, so a $1.00 Fable
+// refusal beside a fallback-routed response printed "savings: []". Each
+// billed refusal group and each model's priced declined attempts is now a
+// saving with its figure, and a lever is named only where a Claude Code user
+// holds one: reasoning_extraction (a request for the model's reasoning in
+// its reply) and a declined model a fallback served (/model). A refusal in a
+// category that names a policy area gets its figure and no advice. What was
+// billed with no amount in the transcript is named as not computed.
+func TestSavings_BilledRefusalsAndDeclinedAttemptsByCategoryAndModel(t *testing.T) {
+	c := newConfig(t)
+	at := now.Add(-time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "re", model: "claude-fable-5-1", at: at, in: 100000, out: 40, stop: "refusal", category: "reasoning_extraction"}.line("text"),
+		resp{id: "cy", model: "claude-opus-5-5", at: at, in: 10000, stop: "refusal", category: "cyber"}.line("text"),
+		resp{id: "bio", model: "<synthetic>", at: at, stop: "refusal", category: "bio"}.line("text"),
+		transcriptLine(t, fallbackExample, at, func(m map[string]any) {
+			iterationsOf(m)[0].(map[string]any)["output_tokens"] = 2000
+		}),
+		transcriptLine(t, fallbackExample, at, func(m map[string]any) { m["id"] = "msg_no_output" }))
+	s := c.summary(30)
+	want := []Saving{
+		{Kind: SavingBilledRefusals, Category: "cyber", Model: "claude-opus-5-5", Cost: Cost{Nano: 10000 * opusIn, Priced: 1}},
+		{Kind: SavingBilledRefusals, Category: "reasoning_extraction", Model: "claude-fable-5-1", Cost: Cost{Nano: 100000*10000 + 40*50000, Priced: 1},
+			Hint: SavingHintReasoningInReply},
+		{Kind: SavingDeclinedAttempts, Model: "claude-fable-5", Cost: Cost{Nano: 535*fable5In + 2000*fable5Out, Priced: 1}, Hint: SavingHintServedModel},
+	}
+	if !reflect.DeepEqual(s.Savings, want) {
+		t.Errorf("savings = %+v\nwant %+v", s.Savings, want)
+	}
+	if !reflect.DeepEqual(s.SavingsNotComputed, []string{SavingNotComputedRefusals, SavingNotComputedAttempts}) {
+		t.Errorf("savings not computed = %v", s.SavingsNotComputed)
+	}
+	txt, js := render(t, s)
+	for _, line := range []string{
+		"savings       $0.04 on cyber refusals on claude-opus-5-5\n",
+		"              $1.00 on reasoning_extraction refusals on claude-fable-5-1: this category is a request for the model's internal reasoning in its reply, which the model gives as thinking instead\n",
+		"              $0.11 on attempts claude-fable-5 declined before a fallback served: choosing the model that served them (/model) for such work skips the declined attempt\n",
+		"              not computed: 1 pre-output refusal in a category billed before any output, whose amount is not in the transcript\n",
+		"              not computed: 1 declined attempt with no output, billed only in some refusal categories, which the transcript does not record\n",
+	} {
+		if !strings.Contains(txt, line) {
+			t.Errorf("text lacks %q:\n%s", line, txt)
+		}
+	}
+	if !strings.Contains(js, `"savings_not_computed":["billed_refusals_without_usage","declined_attempts_without_output"]`) {
+		t.Errorf("the JSON does not name what was not computed:\n%s", js)
 	}
 }
 

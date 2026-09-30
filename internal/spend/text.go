@@ -61,19 +61,18 @@ func Text(w io.Writer, s *Summary) error {
 		b.WriteString(line)
 	}
 
-	// Beside any refusal or extra attempt, the list says what it leaves out:
-	// no line there is not "nothing to save" on classifier hits.
-	classifier := s.Refusals.Responses+s.Refusals.WithoutUsage+s.ExtraAttempts.Responses > 0
-	if len(s.Savings) > 0 || classifier {
+	// What was billed with no amount in the transcript is said beside the
+	// list, so its absence there is not read as "nothing to save".
+	if len(s.Savings) > 0 || len(s.SavingsNotComputed) > 0 {
 		b.WriteString("\n")
-		label := "savings"
+		var lines []string
 		for _, sv := range s.Savings {
-			fmt.Fprintf(&b, "%-14s%s\n", label, savingLine(sv))
-			label = ""
+			lines = append(lines, savingLine(sv))
 		}
-		if classifier {
-			fmt.Fprintf(&b, "%-14snot computed: what refusals and fallback routing (classifier hits) cost that could be saved\n", label)
+		for _, k := range s.SavingsNotComputed {
+			lines = append(lines, notComputedLine(s, k))
 		}
+		writeLines(&b, "savings", lines)
 	}
 
 	if s.Read.UnreadableDirs > 0 {
@@ -451,10 +450,45 @@ func savingLine(sv Saving) string {
 			line += ": part was written with the 5m TTL, and the 1h TTL keeps a cache across pauses up to an hour"
 		}
 		return line
+	case SavingBilledRefusals:
+		line := fmt.Sprintf("%s on %s refusals on %s", money(sv.Cost), sv.Category, sv.Model)
+		if sv.Hint == SavingHintReasoningInReply {
+			line += ": this category is a request for the model's internal reasoning in its reply, which the model gives as thinking instead"
+		}
+		return line
+	case SavingDeclinedAttempts:
+		line := fmt.Sprintf("%s on attempts %s declined before a fallback served", money(sv.Cost), sv.Model)
+		if sv.Hint == SavingHintServedModel {
+			line += ": choosing the model that served them (/model) for such work skips the declined attempt"
+		}
+		return line
 	case SavingSilentFailure:
 		return fmt.Sprintf("%s spent in turns with a failed call the summary never mentioned", money(sv.Cost))
 	}
 	return money(sv.Cost)
+}
+
+// notComputedLine says what a savings_not_computed kind leaves out.
+func notComputedLine(s *Summary, kind string) string {
+	switch kind {
+	case SavingNotComputedRefusals:
+		n := 0
+		for _, g := range s.Refusals.ByCategory {
+			if g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {
+				n += g.WithoutUsage
+			}
+		}
+		return fmt.Sprintf("not computed: %s in a category billed before any output, whose amount is not in the transcript",
+			countOf(n, "pre-output refusal"))
+	case SavingNotComputedAttempts:
+		n := 0
+		for _, d := range s.ExtraAttempts.Declined {
+			n += d.NoOutput
+		}
+		return fmt.Sprintf("not computed: %s with no output, billed only in some refusal categories, which the transcript does not record",
+			countOf(n, "declined attempt"))
+	}
+	return "not computed: " + kind
 }
 
 func countOf(n int, noun string) string {

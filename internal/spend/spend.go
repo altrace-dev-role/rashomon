@@ -147,8 +147,10 @@ type Summary struct {
 	SilentFailureTurns SilentFailureTurns `json:"silent_failure_turns"`
 
 	Savings []Saving `json:"savings"`
-	// SavingsNotComputed names the kinds of saving the list never holds
-	// (SavingNotComputedRefusals), so its absence is not a finding.
+	// SavingsNotComputed names the savings that were billed but carry no
+	// amount in the transcript (SavingNotComputedRefusals,
+	// SavingNotComputedAttempts), so their absence from Savings is not read
+	// as "nothing to save there". Empty when there are none.
 	SavingsNotComputed []string       `json:"savings_not_computed"`
 	PerSession         []SessionSpend `json:"per_session"`
 
@@ -343,8 +345,13 @@ type SessionSpend struct {
 // no figure is not made.
 type Saving struct {
 	Kind string `json:"kind"`
-	Cost Cost   `json:"cost"`
-	// Hint is a closed word for advice the figure supports, or empty.
+	// Category and Model narrow a refusal or declined-attempt saving to one
+	// refusal category (a closed word) and one model (displayModel).
+	Category string `json:"category,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Cost     Cost   `json:"cost"`
+	// Hint is a closed word for advice the figure supports, or empty. It is
+	// given only where a Claude Code user can act on it.
 	Hint string `json:"hint,omitempty"`
 }
 
@@ -352,16 +359,38 @@ type Saving struct {
 const (
 	SavingColdCache     = "cold_cache_rewrites"
 	SavingSilentFailure = "silently_failed_turns"
+	// SavingBilledRefusals is what refusals with usage cost, by category and
+	// model: the design's "classifier hits".
+	SavingBilledRefusals = "billed_refusals"
+	// SavingDeclinedAttempts is what the priced declined attempts before a
+	// fallback cost, by the model that declined.
+	SavingDeclinedAttempts = "declined_attempts"
 )
 
-// SavingNotComputedRefusals names the savings the list does not compute:
-// what refusals and fallback routing (classifier hits) cost that a different
-// model or setup would not have. The design asks for them; they need the
-// iteration entries' model and the refusals' category, which this read does
-// not decode (ExtraAttempts, Refusals). Stated in savings_not_computed, and
-// in the text beside any refusal or extra attempt, so an empty list is not
-// read as "nothing to save there".
-const SavingNotComputedRefusals = "refusals_and_routing"
+// Savings that were billed but carry no amount in the transcript, named in
+// savings_not_computed rather than left out without a word.
+const (
+	// SavingNotComputedRefusals: pre-output refusals in a category the API
+	// bills before any output, written with no usage.
+	SavingNotComputedRefusals = "billed_refusals_without_usage"
+	// SavingNotComputedAttempts: declined attempts with no output, billed
+	// only in some refusal categories, which no entry records.
+	SavingNotComputedAttempts = "declined_attempts_without_output"
+)
+
+// SavingHintReasoningInReply: the refusals were in the reasoning_extraction
+// category, which the refusals-and-fallback page describes as a request that
+// "asks the model to reproduce its internal reasoning in the response text"
+// and answers with thinking. A Claude Code user can stop asking for that.
+// The other categories name a policy area, and benign work can trigger them:
+// no lever a user holds, so no hint.
+const SavingHintReasoningInReply = "reasoning_in_reply"
+
+// SavingHintServedModel: a fallback served requests this model declined, and
+// a Claude Code user can choose that model (/model) for such work, which
+// skips the declined attempt. Given only when a route names this model as
+// the model asked: a sticky-routed turn does not say which model was asked.
+const SavingHintServedModel = "served_model"
 
 // SavingHintLongerTTL: part of the re-written cache was written with the 5m
 // TTL, which the 1h TTL would have kept across a pause under an hour. Never
@@ -506,7 +535,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		},
 		ByModel:            []ModelSpend{},
 		Savings:            []Saving{},
-		SavingsNotComputed: []string{SavingNotComputedRefusals},
+		SavingsNotComputed: []string{},
 		PerSession:         []SessionSpend{},
 		ExtraAttempts: ExtraAttempts{
 			CostUnknownReason: AttemptsUnpriced,
@@ -798,7 +827,9 @@ func sortedRoutes(m map[FallbackRoute]int) []FallbackRoute {
 
 // buildSavings lists the suggestions a number supports, and only those.
 //
-// Two of the design's three have a figure here. The third -- subagents on
+// Cold-cache re-writes, spend in silently failed turns, and -- the design's
+// classifier hits -- billed refusals and declined attempts, by category and
+// model. The design's last one -- subagents on
 // the top model where their tool pattern is read-heavy -- does not: which
 // tools a subagent called is in message.content, which this package never
 // reads, so "read-heavy" would be a claim with no number under it, and a
@@ -814,6 +845,53 @@ func (s *Summary) buildSavings() {
 	}
 	if s.SilentFailureTurns.Cost.Nano > 0 {
 		s.Savings = append(s.Savings, Saving{Kind: SavingSilentFailure, Cost: s.SilentFailureTurns.Cost})
+	}
+
+	// Refusals and declined attempts, by category and model. Only the
+	// priced part is a figure; what was billed with no amount in the
+	// transcript is named in SavingsNotComputed.
+	s.SavingsNotComputed = s.SavingsNotComputed[:0]
+	unrecorded := false
+	for _, g := range s.Refusals.ByCategory {
+		if g.WithoutUsage > 0 && g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {
+			unrecorded = true
+		}
+		if g.Cost.Nano == 0 {
+			continue
+		}
+		sv := Saving{Kind: SavingBilledRefusals, Category: g.Category, Model: g.Model, Cost: g.Cost}
+		if g.Category == CategoryReasoningExtraction {
+			sv.Hint = SavingHintReasoningInReply
+		}
+		s.Savings = append(s.Savings, sv)
+	}
+	if unrecorded {
+		s.SavingsNotComputed = append(s.SavingsNotComputed, SavingNotComputedRefusals)
+	}
+	asked := map[string]bool{}
+	for _, r := range s.ExtraAttempts.Fallback {
+		if !r.Sticky {
+			asked[r.Requested] = true
+		}
+	}
+	noOutput := false
+	for _, d := range s.ExtraAttempts.Declined {
+		if d.NoOutput > 0 {
+			noOutput = true
+		}
+		if d.Cost.Nano == 0 {
+			continue
+		}
+		// Only the priced part: the unpriced attempts are not in the figure.
+		c := Cost{Nano: d.Cost.Nano, Priced: d.Cost.Priced}
+		sv := Saving{Kind: SavingDeclinedAttempts, Model: d.Model, Cost: c}
+		if asked[d.Model] {
+			sv.Hint = SavingHintServedModel
+		}
+		s.Savings = append(s.Savings, sv)
+	}
+	if noOutput {
+		s.SavingsNotComputed = append(s.SavingsNotComputed, SavingNotComputedAttempts)
 	}
 }
 

@@ -1439,10 +1439,6 @@ m("SP refusals without usage read as refusals none", "internal/spend/text.go",
   "\tif r.Responses == 0 && r.WithoutUsage == 0 {", "\tif r.Responses == 0 {", "TestRefusals_")
 m("SP a refusal without usage is not said when nothing else was billed", "internal/spend/text.go",
   "\t} else if s.Refusals.WithoutUsage > 0 {", "\t} else if false {", "TestRefusals_")
-m("SP the savings output does not say refusal savings are not computed", "internal/spend/text.go",
-  "\t\tif classifier {", "\t\tif false {", "TestRefusals")
-m("SP the JSON does not say refusal savings are not computed", "internal/spend/spend.go",
-  "SavingsNotComputed: []string{SavingNotComputedRefusals},", "SavingsNotComputed: []string{},", "TestRefusalsAndExtraAttempts")
 m("SP the silent-failure line says the turns ended with a failure", "internal/spend/text.go",
   'const lead = "in turns with a failed call the summary never mentioned: "', 'const lead = "in turns that ended with a failure the summary never mentioned: "',
   "TestJoin_SpendInsideASilentlyFailedTurn")
@@ -1542,6 +1538,28 @@ m("SP a refusal's category reaches the output end to end", "internal/spend/scan.
   "\tswitch c := *d.Category; c {\n\tcase CategoryCyber, CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction, CategoryGeneralHarms:\n\t\treturn c\n\t}\n\treturn CategoryOther\n",
   "\treturn *d.Category\n",
   "TestSpend_NoMessageTextReachesTheOutput")
+m("SP a billed refusal is not a saving", "internal/spend/spend.go",
+  "\t\tif g.Cost.Nano == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tsv := Saving{Kind: SavingBilledRefusals", "\t\tif true {\n\t\t\tcontinue\n\t\t}\n\t\tsv := Saving{Kind: SavingBilledRefusals",
+  "TestSavings_|TestRefusalsAndExtraAttempts")
+m("SP the reasoning_extraction lever is not named", "internal/spend/spend.go",
+  "\t\t\tsv.Hint = SavingHintReasoningInReply", "\t\t\tsv.Hint = \"\"", "TestSavings_")
+m("SP a lever is named for a category no user can act on", "internal/spend/spend.go",
+  "\t\tif g.Category == CategoryReasoningExtraction {", "\t\tif true {", "TestSavings_")
+m("SP a priced declined attempt is not a saving", "internal/spend/spend.go",
+  "\t\tif d.Cost.Nano == 0 {\n\t\t\tcontinue\n\t\t}", "\t\tif true {\n\t\t\tcontinue\n\t\t}", "TestSavings_")
+m("SP the served-model lever is not named", "internal/spend/spend.go",
+  "\t\t\tsv.Hint = SavingHintServedModel", "\t\t\tsv.Hint = \"\"", "TestSavings_")
+m("SP a declined-attempt saving carries the unpriced attempts", "internal/spend/spend.go",
+  "\t\tc := Cost{Nano: d.Cost.Nano, Priced: d.Cost.Priced}", "\t\tc := d.Cost", "TestSavings_")
+m("SP a billed pre-output refusal is not named as not computed", "internal/spend/spend.go",
+  "\t\t\tunrecorded = true", "\t\t\tunrecorded = false", "TestSavings_")
+m("SP an unbilled pre-output refusal is named as not computed", "internal/spend/spend.go",
+  "\t\tif g.WithoutUsage > 0 && g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {\n\t\t\tunrecorded = true", "\t\tif g.WithoutUsage > 0 {\n\t\t\tunrecorded = true",
+  "TestRefusals_")
+m("SP a no-output declined attempt is not named as not computed", "internal/spend/spend.go",
+  "\t\t\tnoOutput = true", "\t\t\tnoOutput = false", "TestSavings_")
+m("SP what was not computed is not said in the text", "internal/spend/text.go",
+  "\t\tfor _, k := range s.SavingsNotComputed {", "\t\tfor _, k := range s.SavingsNotComputed[:0] {", "TestSavings_")
 
 # Import additions some mutants need.
 IMPORTS = {
