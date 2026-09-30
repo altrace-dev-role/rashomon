@@ -232,6 +232,10 @@ func walkStringPaths(t reflect.Type, prefix string, out map[string]bool, depth i
 				continue
 			}
 			name := strings.Split(f.Tag.Get("json"), ",")[0]
+			if flattened(f, name) {
+				walkStringPaths(f.Type, prefix, out, depth+1)
+				continue
+			}
 			if name == "" || name == "-" {
 				continue
 			}
@@ -245,6 +249,47 @@ func walkStringPaths(t reflect.Type, prefix string, out map[string]bool, depth i
 			}
 			walkStringPaths(f.Type, p, out, depth+1)
 		}
+	}
+}
+
+// flattened reports an embedded struct (or pointer to one) with no JSON name,
+// whose fields encoding/json writes at the embedding struct's own level:
+// TestRuns embeds TestBending that way. Both walks descend into it with the
+// same prefix, so a string field added there is enumerated like any other.
+func flattened(f reflect.StructField, name string) bool {
+	if !f.Anonymous || name != "" {
+		return false
+	}
+	t := f.Type
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t.Kind() == reflect.Struct
+}
+
+// TestRedact_EnumerationDescendsIntoEmbeddedStructs: a string field of an
+// untagged embedded struct is at the embedding struct's level in the JSON, and
+// both walks find it there. Break: skip the embedded field as nameless, and a
+// host-bearing field added to TestBending passes the declared-set test
+// unclassified.
+func TestRedact_EnumerationDescendsIntoEmbeddedStructs(t *testing.T) {
+	type Inner struct {
+		Host string `json:"host"`
+	}
+	type outer struct {
+		Inner
+		Other string `json:"other"`
+	}
+	paths := map[string]bool{}
+	walkStringPaths(reflect.TypeOf(outer{}), "destinations.hosts[]", paths, 0)
+	if !paths["destinations.hosts[].host"] || !paths["destinations.hosts[].other"] {
+		t.Errorf("paths = %v, want the embedded struct's host at the outer level", paths)
+	}
+	var v outer
+	n := 0
+	plantAt(reflect.ValueOf(&v).Elem(), "destinations.hosts[]", "canary.example", &n, 0)
+	if v.Host != "canary.example" || n != 1 {
+		t.Errorf("planted %d, host %q: want the embedded host planted", n, v.Host)
 	}
 }
 
@@ -281,6 +326,10 @@ func plantAt(v reflect.Value, prefix, host string, n *int, depth int) {
 				continue
 			}
 			name := strings.Split(f.Tag.Get("json"), ",")[0]
+			if flattened(f, name) {
+				plantAt(v.Field(i), prefix, host, n, depth+1)
+				continue
+			}
 			if name == "" || name == "-" {
 				continue
 			}

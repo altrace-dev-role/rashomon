@@ -1548,6 +1548,15 @@ m("TB Derive never produces the test class", "internal/shape/shape.go",
   "\t\t\tif false && runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {",
   "TestTestBending_ShapesFromDerive")
 
+m("TB the redaction walk skips an embedded struct", "internal/report/redact_enumerate_test.go",
+  "\t\t\tif flattened(f, name) {\n\t\t\t\twalkStringPaths(",
+  "\t\t\tif false && flattened(f, name) {\n\t\t\t\twalkStringPaths(",
+  "TestRedact_")
+m("TB the redaction plant skips an embedded struct", "internal/report/redact_enumerate_test.go",
+  "\t\t\tif flattened(f, name) {\n\t\t\t\tplantAt(",
+  "\t\t\tif false && flattened(f, name) {\n\t\t\t\tplantAt(",
+  "TestRedact_")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
