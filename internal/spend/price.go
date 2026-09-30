@@ -45,20 +45,34 @@ func mtok(hundredths int64) int64 { return hundredths * 10 }
 // context premiums, and partner pricing (Bedrock and Vertex). A transcript
 // carries no field saying any of those applied, so pricing a response as one
 // would be a guess; pricing it at plain list rates is at least a stated basis.
+//
+// Retired models keep their rows: a transcript inside the window can still
+// carry one (they remain served on Bedrock and Google Cloud), and a row the
+// table lacks prices a response as unknown. Keyed by the id the API returns
+// in message.model, so Opus 4 and Sonnet 4 -- whose responses name the dated
+// "claude-opus-4-20250514" -- are keyed without the "-0" of their aliases,
+// and Haiku 3.5 by its older "claude-3-5-haiku" shape.
 var table = map[string]Rates{
 	"claude-fable-5-1": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},
+	"claude-fable-5":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},
 	"claude-opus-5-5":  {Input: mtok(400), Output: mtok(2000), CacheRead: mtok(20)},
 
 	"claude-opus-5":   {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
 	"claude-opus-4-8": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
 	"claude-opus-4-7": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
 	"claude-opus-4-6": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
+	"claude-opus-4-5": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
+	"claude-opus-4-1": {Input: mtok(1500), Output: mtok(7500), CacheRead: mtok(150)},
+	"claude-opus-4":   {Input: mtok(1500), Output: mtok(7500), CacheRead: mtok(150)},
 
 	"claude-sonnet-5-5": {Input: mtok(200), Output: mtok(1000), CacheRead: mtok(20)},
 	"claude-sonnet-5":   {Input: mtok(200), Output: mtok(1000), CacheRead: mtok(20)},
 	"claude-sonnet-4-6": {Input: mtok(300), Output: mtok(1500), CacheRead: mtok(30)},
+	"claude-sonnet-4-5": {Input: mtok(300), Output: mtok(1500), CacheRead: mtok(30)},
+	"claude-sonnet-4":   {Input: mtok(300), Output: mtok(1500), CacheRead: mtok(30)},
 
 	"claude-haiku-4-5": {Input: mtok(100), Output: mtok(500), CacheRead: mtok(10)},
+	"claude-3-5-haiku": {Input: mtok(80), Output: mtok(400), CacheRead: mtok(8)},
 }
 
 // PriceKey resolves a transcript's message.model to a row of the table, and

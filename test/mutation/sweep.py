@@ -1340,6 +1340,12 @@ m("SP a partly recorded session is not marked", "internal/spend/text.go",
 m("SP a recorded transcript_path is not resolved through a symlinked ancestor", "internal/spend/join.go",
   "\t\tif r, err := filepath.EvalSymlinks(recorded); err == nil {", "\t\tif r, err := filepath.EvalSymlinks(recorded); err == nil && false {",
   "TestDiscover_ASymlinked")
+m("SP a retired model's row is priced at a current model's rates", "internal/spend/price.go",
+  "\t\"claude-opus-4-1\": {Input: mtok(1500), Output: mtok(7500), CacheRead: mtok(150)},", "\t\"claude-opus-4-1\": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},",
+  "TestPricing_TheTable")
+m("SP Haiku 3.5 has no row and prices as unknown", "internal/spend/price.go",
+  "\t\"claude-3-5-haiku\": {Input: mtok(80), Output: mtok(400), CacheRead: mtok(8)},\n", "",
+  "TestPricing_TheTable|TestPriceKey_")
 
 # Import additions some mutants need.
 IMPORTS = {

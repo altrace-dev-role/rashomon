@@ -622,6 +622,16 @@ func TestPricing_TheTableIsTheDesignsTable(t *testing.T) {
 		"claude-sonnet-5":   {2, 10, 0.20},
 		"claude-sonnet-4-6": {3, 15, 0.3},
 		"claude-haiku-4-5":  {1, 5, 0.1},
+		// Published on the same page, and priced as unknown until they had
+		// rows: three current models, and four retired except on Bedrock
+		// and Google Cloud.
+		"claude-opus-4-5":   {5, 25, 0.5},
+		"claude-sonnet-4-5": {3, 15, 0.3},
+		"claude-fable-5":    {10, 50, 1},
+		"claude-opus-4-1":   {15, 75, 1.5},
+		"claude-opus-4":     {15, 75, 1.5},
+		"claude-sonnet-4":   {3, 15, 0.3},
+		"claude-3-5-haiku":  {0.8, 4, 0.08},
 	}
 	if len(want) != len(table) {
 		t.Errorf("table has %d rows, the design has %d", len(table), len(want))
@@ -668,6 +678,9 @@ func TestPriceKey_MatchesConservatively(t *testing.T) {
 		"claude-opus-5-5":            "claude-opus-5-5",
 		"claude-opus-5":              "claude-opus-5",
 		"claude-opus-5-20260101":     "claude-opus-5",
+		"claude-opus-4-20250514":     "claude-opus-4",
+		"claude-opus-4-5-20251101":   "claude-opus-4-5",
+		"claude-3-5-haiku-20241022":  "claude-3-5-haiku",
 		"claude-opus-5-5-preview":    "",
 		"claude-opus-5-5[1m]":        "",
 		"claude-opus-5-5-2026010":    "",
