@@ -34,7 +34,7 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 		{"rspec spec/models", VerbTest, ""},
 		{"phpunit", VerbTest, ""},
 		{"ctest --output-on-failure", VerbTest, ""},
-		{"tox -e py311", VerbTest, ""},
+		{"tox", VerbTest, ""},
 		{"nox", VerbTest, ""},
 		{"./node_modules/.bin/jest", VerbTest, "the program is its base name, as it always was"},
 
@@ -51,7 +51,6 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 		{"mvn test", VerbTest, ""},
 		{"gradle test", VerbTest, ""},
 		{"make test", VerbTest, ""},
-		{"make check", VerbTest, ""},
 		{"python -m pytest -q", VerbTest, ""},
 		{"python3 -m pytest", VerbTest, ""},
 		{"/usr/local/go/bin/go test ./pkg", VerbTest, ""},
@@ -131,6 +130,73 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 	}
 }
 
+// TestTestClassRefusesWhatDoesNotRunTests: a runner on the list, whole on its
+// line, still is not a test run when an argument makes it do something else --
+// compile, list, print, watch, show its version -- or when the command names a
+// target that is not only tests: `tox -e lint`, `nox -s lint`. `make check`
+// is off the list for the same reason: it is lint and tests on most projects.
+// Each of these ends ok or failed on something other than a test's result, so
+// as a test run it would complete a pattern on an outcome no test had.
+func TestTestClassRefusesWhatDoesNotRunTests(t *testing.T) {
+	for _, tc := range []struct {
+		cmd  string
+		want string
+	}{
+		{"make check", VerbExecute},
+		{"tox -e lint", VerbExecute},
+		{"tox -elint", VerbExecute},
+		{"tox --env=lint", VerbExecute},
+		{"tox -l", VerbExecute},
+		{"nox -s lint", VerbExecute},
+		{"nox --session lint", VerbExecute},
+		{"nox -k lint", VerbExecute},
+		{"go test -c ./pkg", VerbPackage},
+		{"go test -n ./...", VerbPackage},
+		{"go test -list . ./...", VerbPackage},
+		{"go test -list=Foo ./...", VerbPackage},
+		{"go test --help", VerbPackage},
+		{"pytest --collect-only", VerbExecute},
+		{"pytest --co -q", VerbExecute},
+		{"python -m pytest --version", VerbExecute},
+		{"pytest --fixtures", VerbExecute},
+		{"pytest -h", VerbExecute},
+		{"cargo test --no-run", VerbPackage},
+		{"cargo test -- --list", VerbPackage},
+		{"jest --listTests", VerbExecute},
+		{"jest --watch", VerbExecute},
+		{"jest --watchAll", VerbExecute},
+		{"jest --showConfig", VerbExecute},
+		{"npm test -- --watch", VerbPackage},
+		{"vitest watch", VerbExecute},
+		{"vitest list", VerbExecute},
+		{"vitest --watch", VerbExecute},
+		{"mocha --watch", VerbExecute},
+		{"rspec --dry-run", VerbExecute},
+		{"phpunit --list-tests", VerbExecute},
+		{"ctest -N", VerbExecute},
+		{"ctest --show-only=json-v1", VerbExecute},
+		{"dotnet test --list-tests", VerbExecute},
+		{"mvn test -DskipTests", VerbExecute},
+
+		// The neighbours that do run the tests stay test.
+		{"go test -v -run TestX ./...", VerbTest},
+		{"go test -count=1 -json ./...", VerbTest},
+		{"pytest -n 4", VerbTest},
+		{"pytest -x tests/test_c.py", VerbTest},
+		{"jest --watchAll=false", VerbTest},
+		{"jest -u", VerbTest},
+		{"vitest run", VerbTest},
+		{"cargo test --release", VerbTest},
+		{"tox", VerbTest},
+		{"tox -p", VerbTest},
+		{"nox", VerbTest},
+	} {
+		if got := verbOf(t, tc.cmd).VerbClass; got != tc.want {
+			t.Errorf("%q: verb class %q, want %q", tc.cmd, got, tc.want)
+		}
+	}
+}
+
 // TestBackgroundLaunchIsNotATestRun: Claude Code records a Bash call with
 // run_in_background true when the shell is launched, so its outcome is the
 // launch's, and its digest -- the command line alone -- equals the foreground
@@ -166,7 +232,7 @@ func TestTestClassCarriesNoContent(t *testing.T) {
 		"cd /home/" + canary + " && go test -run " + canary,
 		"python -m pytest -k " + canary + " tests/test_" + canary + ".py",
 		"npm run test -- --grep=" + canary,
-		canary + "=1 make check",
+		canary + "=1 make test",
 	} {
 		s := verbOf(t, cmd)
 		if s.VerbClass != VerbTest {

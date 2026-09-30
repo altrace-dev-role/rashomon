@@ -923,15 +923,87 @@ var programVerb = map[string]string{
 // `./gradlew test`, `go test` behind `timeout` -- stays what it was before:
 // execute, or package for go and cargo. That is an under-claim, and the
 // detections built on this class are worth only as much as their refusal to
-// over-claim.
+// over-claim. `make check` is not on it: on most projects it is lint and
+// tests together, and a lint failure is not a test's.
 var testCommands = [][]string{
 	{"pytest"}, {"jest"}, {"vitest"}, {"mocha"}, {"rspec"}, {"phpunit"},
 	{"ctest"}, {"tox"}, {"nox"},
 
 	{"go", "test"}, {"cargo", "test"}, {"npm", "test"}, {"npm", "run", "test"},
 	{"yarn", "test"}, {"pnpm", "test"}, {"bun", "test"}, {"dotnet", "test"},
-	{"mvn", "test"}, {"gradle", "test"}, {"make", "test"}, {"make", "check"},
+	{"mvn", "test"}, {"gradle", "test"}, {"make", "test"},
 	{"python", "-m", "pytest"}, {"python3", "-m", "pytest"},
+}
+
+// notARun is, per runner by its first word, the arguments with which it does
+// something other than run the tests: compile them (`go test -c`, `cargo test
+// --no-run`), list them (`-list`, `--collect-only`, `--listTests`), print what
+// it would do (`-n`, `--dry-run`), skip them (`-DskipTests`), watch for
+// changes, or show its help or version. Each of those ends ok or failed on
+// something no test decided, and as a test run it would complete a pattern
+// on that outcome. A word ending in * is a prefix: `-list=Foo`, `-elint`.
+//
+// tox and nox are here with their targets, not their listings only: `tox -e
+// lint` and `nox -s lint` run a lint session, and a target cannot be told to
+// be tests from its name without a guess. Plain `tox` and `nox` run the
+// project's default sessions and stay test.
+//
+// Compared and dropped, like the runner's own words: a match refuses the
+// class, and the word is not kept. A word is compared whether quoted or not,
+// since the shell passes `"--watch"` as --watch; refusing on it is the
+// under-claim.
+var notARun = map[string][]string{
+	"go":      {"-c", "--c", "-n", "--n", "-list*", "--list*"},
+	"cargo":   {"--no-run", "--list", "-V"},
+	"pytest":  pytestNotARun,
+	"python":  pytestNotARun,
+	"python3": pytestNotARun,
+	"jest":    {"--listTests", "--showConfig", "--clearCache", "--init", "-v"},
+	"vitest":  {"watch", "dev", "list", "bench", "init", "-w", "-v"},
+	"mocha":   {"-w", "-V", "--dry-run", "--list-reporters", "--list-interfaces"},
+	"rspec":   {"--dry-run", "--init", "-v"},
+	"phpunit": {"--list-*", "--generate-configuration", "--migrate-configuration", "--check-version"},
+	"ctest":   {"-N", "--show-only*"},
+	"dotnet":  {"--list-tests", "-t"},
+	"mvn":     {"-DskipTests*", "-Dmaven.test.skip*"},
+	"gradle":  {"--dry-run", "-m"},
+	"tox": {"-e*", "--env*", "-m", "-f", "-l", "-a", "--listenvs*", "--showconfig", "--help-ini",
+		"list", "l", "config", "c", "depends", "de", "quickstart", "q", "exec", "e"},
+	"nox": {"-s*", "--session*", "-e*", "-k*", "--keywords*", "-t*", "--tags*", "-l", "--list*"},
+}
+
+var pytestNotARun = []string{
+	"--collect-only", "--co", "-V", "--fixtures*", "--markers", "--setup-plan", "--setup-only", "--cache-show*",
+}
+
+// notARunAny is notARun for every runner: help, version, and watch mode, which
+// never ends on a result of its own and records the launch's instead.
+var notARunAny = []string{"-h", "-help", "--help", "--version", "--watch", "--watchAll"}
+
+// refusesRun reports an argument in args that is on runner's notARun list or
+// on notARunAny.
+func refusesRun(runner string, args []token) bool {
+	for _, t := range args {
+		if onList(t.text, notARun[runner]) || onList(t.text, notARunAny) {
+			return true
+		}
+	}
+	return false
+}
+
+// onList reports word equal to an entry of list, or starting with the part
+// of one before its trailing *.
+func onList(word string, list []string) bool {
+	for _, w := range list {
+		if p, ok := strings.CutSuffix(w, "*"); ok {
+			if strings.HasPrefix(word, p) {
+				return true
+			}
+		} else if word == w {
+			return true
+		}
+	}
+	return false
 }
 
 // runsTests reports whether the command whose program is the token at i,
@@ -951,7 +1023,8 @@ var testCommands = [][]string{
 // dropped and the shell keeps.
 //
 // Quoted is refused although `go "test"` runs the tests: the rule is "a plain
-// word equal to the list", and a quote is where plain stops.
+// word equal to the list", and a quote is where plain stops. And a runner on
+// the list is still refused when an argument after its words is on notARun.
 func runsTests(toks []token, i int, prog string, whole bool) bool {
 	if !whole {
 		return false
@@ -970,6 +1043,9 @@ next:
 			if t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {
 				continue next
 			}
+		}
+		if refusesRun(c[0], toks[i+len(c):]) {
+			return false
 		}
 		return wholeCommand(toks, i)
 	}

@@ -293,8 +293,10 @@ for Bash, the whole tool input for other tools; how it ended (`outcome`,
 path named by a Read, Edit, Write or NotebookEdit call into categories such as
 `ssh-key`, `env-file`, `cloud-config`, `credential-shaped`, `certificate` or
 `test-file` (paths touched from Bash are not labelled). A shell call whose
-command is a recognised test runner has `verb_class` `test`; the arguments that
-decided it are compared against a fixed list and not kept.
+command is a recognised test runner has `verb_class` `test`, unless an argument
+makes it do something else (compile, list, dry-run, watch, help, version, or a
+named `tox -e`/`nox -s` target); the arguments that decided it are compared
+against fixed lists and not kept.
 
 Note that `cwd` and `transcript_path` are filesystem paths and carry directory
 names. [`docs/store-schema.json`](docs/store-schema.json) is the field list for

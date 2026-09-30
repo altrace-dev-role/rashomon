@@ -1344,6 +1344,59 @@ m("TB a run is between itself and the run it pairs with", "internal/report/testb
   "testEdits: testEdits, otherEdits: otherEdits - 1, anyEdits: anyEdits - 1,\n",
   "TestTestBending")
 
+m("TB make check is a test run", "internal/shape/shape.go",
+  "{\"mvn\", \"test\"}, {\"gradle\", \"test\"}, {\"make\", \"test\"},\n",
+  "{\"mvn\", \"test\"}, {\"gradle\", \"test\"}, {\"make\", \"test\"}, {\"make\", \"check\"},\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB an argument that does not run the tests is ignored", "internal/shape/shape.go",
+  "\t\tif refusesRun(c[0], toks[i+len(c):]) {",
+  "\t\tif false && refusesRun(c[0], toks[i+len(c):]) {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB the refusal reads only the first argument", "internal/shape/shape.go",
+  "\t\tif refusesRun(c[0], toks[i+len(c):]) {",
+  "\t\tif refusesRun(c[0], toks[i+len(c):min(i+len(c)+1, len(toks))]) {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB a prefix entry is compared whole", "internal/shape/shape.go",
+  "\t\t\tif strings.HasPrefix(word, p) {",
+  "\t\t\tif word == p {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB the per-runner list is not read", "internal/shape/shape.go",
+  "onList(t.text, notARun[runner]) ||",
+  "onList(t.text, nil) ||",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB help, version and watch refuse nothing", "internal/shape/shape.go",
+  "|| onList(t.text, notARunAny)",
+  "|| onList(t.text, nil)",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB tox with a target is a test run", "internal/shape/shape.go",
+  "\"tox\": {\"-e*\", ",
+  "\"tox\": {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB nox with a session is a test run", "internal/shape/shape.go",
+  "\"nox\": {\"-s*\", ",
+  "\"nox\": {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB go test -c is a test run", "internal/shape/shape.go",
+  "\"go\":      {\"-c\", ",
+  "\"go\":      {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB pytest --collect-only is a test run", "internal/shape/shape.go",
+  "\t\"--collect-only\", \"--co\", ",
+  "\t",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB cargo test --no-run is a test run", "internal/shape/shape.go",
+  "\"cargo\":   {\"--no-run\", ",
+  "\"cargo\":   {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB jest --listTests is a test run", "internal/shape/shape.go",
+  "\"jest\":    {\"--listTests\", ",
+  "\"jest\":    {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB watch mode is a test run", "internal/shape/shape.go",
+  "\"--version\", \"--watch\", \"--watchAll\"}",
+  "\"--version\"}",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
