@@ -1667,12 +1667,15 @@ usage:
                                stdin unless told to is how a caller that
                                never closes its pipe gets hung forever.
   rashomon spend [--days N] [--json]
-                               estimate what the last N days (default 30) of
-                               Claude Code usage would cost at API list prices,
-                               from Claude Code's own transcripts: by agent,
-                               model and token kind, cold-cache re-writes,
-                               refusals, and the spend inside turns rashomon
-                               recorded failing silently; the totals read
+                               estimate what the last N days (default 30, at
+                               most 36500) of Claude Code usage would cost at
+                               API list prices, from Claude Code's own
+                               transcripts: by agent, model, token kind and
+                               session, cache re-written after a gap, refusals,
+                               and the spend inside turns rashomon recorded
+                               failing silently, over the transcripts its
+                               records name (the rest named as not covered);
+                               the totals read
                                usage fields only; the silent-failure line also
                                reads, in memory, the final assistant text of
                                each recorded turn with a failed call, and the

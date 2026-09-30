@@ -340,7 +340,8 @@ func TestJoin_CoverageIsPerTranscript(t *testing.T) {
 		t.Errorf("per-session coverage = %v, want sess-j partly and sess-k not recorded", cov)
 	}
 	txt, _ := render(t, s)
-	if !strings.Contains(txt, "1 of 3 transcripts was recorded") || !strings.Contains(txt, "(not covered: sessions sess-j, sess-k)") {
+	if !strings.Contains(txt, "1 of 3 transcripts was recorded") || !strings.Contains(txt, "(not covered: sessions sess-j, sess-k)") ||
+		!strings.Contains(txt, ", partly recorded by rashomon\n") {
 		t.Errorf("text does not say which transcripts are covered:\n%s", txt)
 	}
 }

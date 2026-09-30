@@ -36,6 +36,13 @@ func Text(w io.Writer, s *Summary) error {
 		fmt.Fprintf(&b, "%-14s%s\n", "cache expiry", coldLine(s.CacheExpiry))
 		fmt.Fprintf(&b, "%-14s%s\n", "refusals", refusalLine(s.Refusals))
 		fmt.Fprintf(&b, "%-14s%s\n", "retries", attemptsLine(s.ExtraAttempts))
+		for i, line := range sessionLines(s.PerSession) {
+			label := ""
+			if i == 0 {
+				label = "by session"
+			}
+			fmt.Fprintf(&b, "%-14s%s\n", label, line)
+		}
 	}
 
 	if line := silentLine(s); line != "" {
@@ -158,6 +165,32 @@ func shares(a, b int64) (string, string) {
 		return fmt.Sprintf("%d%%", p)
 	}
 	return label(pa, a), label(pb, b)
+}
+
+// sessionLines is the costliest sessions, one per line, each with its main
+// and subagent split and -- once Join has run -- whether rashomon recorded
+// it. Per-session spend was JSON-only, and the sessions the silent-failure
+// line does not cover were counted but never named; this is where a reader
+// finds both. At most maxNamed; --json lists every session.
+func sessionLines(ps []SessionSpend) []string {
+	var out []string
+	for i, p := range ps {
+		if i == maxNamed {
+			out = append(out, fmt.Sprintf("and %d more (--json lists every session)", len(ps)-maxNamed))
+			break
+		}
+		total := p.Main
+		total.addCost(p.Subagents)
+		line := fmt.Sprintf("%s %s (main %s, subagents %s)", p.SessionID, money(total), money(p.Main), money(p.Subagents))
+		switch p.Coverage {
+		case CoverageNotRecorded:
+			line += ", not recorded by rashomon"
+		case CoveragePartly:
+			line += ", partly recorded by rashomon"
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 func modelLine(s *Summary) string {

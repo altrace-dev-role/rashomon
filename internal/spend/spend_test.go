@@ -730,6 +730,38 @@ func TestSessionID_OnlyAClosedShapeIsPrinted(t *testing.T) {
 	}
 }
 
+// TestSessions_TheTextNamesTheCostliestAndTheirCoverage: per-session spend
+// was JSON-only. The text lists the costliest sessions with their split and,
+// once the store was consulted, which ones rashomon did not record; the rest
+// are counted, and --json has every one.
+func TestSessions_TheTextNamesTheCostliestAndTheirCoverage(t *testing.T) {
+	c := newConfig(t)
+	for i := 1; i <= 7; i++ {
+		id := "sess-" + string(rune('a'+i-1))
+		c.write("proj/"+id+".jsonl", resp{id: "r" + id, model: "claude-opus-5-5", session: id,
+			at: now.Add(-time.Hour), in: int64(i) * 1_000_000, stop: "end_turn"}.line("text"))
+	}
+	c.write("proj/sess-g/subagents/agent-1.jsonl", resp{id: "sub", model: "claude-opus-5-5", session: "sess-g",
+		at: now.Add(-time.Hour), in: 500_000, stop: "end_turn", sidechain: true}.line("text"))
+	s := c.summary(30)
+	if err := s.Join(nil); err != nil {
+		t.Fatal(err)
+	}
+	txt, _ := render(t, s)
+	for _, want := range []string{
+		"by session    sess-g $30.00 (main $28.00, subagents $2.00), not recorded by rashomon\n",
+		"              sess-c $12.00 (main $12.00, subagents none), not recorded by rashomon\n",
+		"              and 2 more (--json lists every session)\n",
+	} {
+		if !strings.Contains(txt, want) {
+			t.Errorf("text lacks %q:\n%s", want, txt)
+		}
+	}
+	if strings.Contains(txt, "sess-a $") {
+		t.Errorf("the text lists more than the costliest five:\n%s", txt)
+	}
+}
+
 // TestZeroTokenResponses_AreNotCounted: Claude Code's "<synthetic>" lines
 // carry an all-zero usage; they were not billed and are not a model to list.
 func TestZeroTokenResponses_AreNotCounted(t *testing.T) {

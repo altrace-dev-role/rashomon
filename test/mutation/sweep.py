@@ -1293,6 +1293,15 @@ m("SP a share of 100% is printed beside a non-zero other side", "internal/spend/
 m("SP every extra attempt is called declined", "internal/spend/text.go",
   "tokens spent on the extra attempts, cost unknown", "tokens spent on declined attempts, cost unknown",
   "TestRefusalsAndExtraAttempts")
+m("SP per-session spend is JSON-only", "internal/spend/text.go",
+  "\t\tfor i, line := range sessionLines(s.PerSession) {", "\t\tfor i, line := range sessionLines(nil) {",
+  "TestSessions_")
+m("SP the text lists every session", "internal/spend/text.go",
+  "\t\tif i == maxNamed {", "\t\tif i == -1 {", "TestSessions_")
+m("SP a session rashomon did not record is not marked", "internal/spend/text.go",
+  "\t\tcase CoverageNotRecorded:\n\t\t\tline +=", "\t\tcase \"never\":\n\t\t\tline +=", "TestSessions_")
+m("SP a partly recorded session is not marked", "internal/spend/text.go",
+  "\t\tcase CoveragePartly:\n\t\t\tline +=", "\t\tcase \"never\":\n\t\t\tline +=", "TestJoin_CoverageIsPerTranscript")
 
 # Import additions some mutants need.
 IMPORTS = {
