@@ -11,10 +11,14 @@ import (
 //
 // The session: the main agent's `pytest -q` fails, a subagent runs the same
 // command and it passes, the main agent's `make` fails and is never re-run,
-// one more call is declared with no execution record, and one failure is
-// posted for a call that was never declared.
+// one more call -- naming a host -- is declared with no execution record, and
+// one failure is posted for a call that was never declared.
 
 const tlSubTranscript = "/tmp/transcripts/sess-1.jsonl/subagents/agent-cafe0001.jsonl"
+
+// tlHost is named by the undeclared-outcome call. The timeline never prints a
+// host, and under --redact no section may.
+const tlHost = "build.internal.example"
 
 func recordTimelineSession(t *testing.T, e *env) {
 	t.Helper()
@@ -56,7 +60,7 @@ func recordTimelineSession(t *testing.T, e *env) {
 	ok("toolu_t2", "pytest -q", tlSubTranscript)
 	call("toolu_t3", "make build", "")
 	fail("toolu_t3", "make build", "2")
-	call("toolu_t4", "ls", "")
+	call("toolu_t4", "curl -s https://"+tlHost+"/status", "")
 	// A PostToolUseFailure with no PreToolUse before it: an execution record
 	// and nothing else. It is a call the session made, and it failed.
 	fail("toolu_t5", "pytest -q", "3")
@@ -87,9 +91,21 @@ func TestTimeline_RendersEveryAgentInOrder(t *testing.T) {
 			t.Errorf("--timeline is missing %q:\n%s", want, out)
 		}
 	}
-	i1, i2, i3 := strings.Index(out, "Bash pytest"), strings.Index(out, "general-purpose·cafe"), strings.Index(out, "Bash make")
+	// Rows found by their columns, not by a substring: the agent label also
+	// appears in the arrow on the failed row it followed up, so a bare Index
+	// would find the arrow first and the check would pass on any order.
+	row := func(agent, call string) int {
+		for i, line := range strings.Split(out, "\n") {
+			f := strings.Fields(line)
+			if len(f) >= 5 && f[2] == agent && f[3]+" "+f[4] == call {
+				return i
+			}
+		}
+		return -1
+	}
+	i1, i2, i3 := row("main", "Bash pytest"), row("general-purpose·cafe", "Bash pytest"), row("main", "Bash make")
 	if i1 < 0 || i2 < 0 || i3 < 0 || !(i1 < i2 && i2 < i3) {
-		t.Errorf("rows are not in recording order (main pytest, subagent pytest, main make):\n%s", out)
+		t.Errorf("rows are not in recording order (main pytest %d, subagent pytest %d, main make %d):\n%s", i1, i2, i3, out)
 	}
 }
 
@@ -151,13 +167,17 @@ func TestTimeline_JSONMatchesTheText(t *testing.T) {
 	}
 }
 
-// A3: --timeline works under --redact.
+// A3: --timeline works under --redact, and the host a call named is printed
+// nowhere in it.
 func TestTimeline_SurvivesRedaction(t *testing.T) {
 	e := newEnv(t)
 	recordTimelineSession(t, e)
 	res := e.run("", nil, "report", "--session", testSession, "--timeline", "--redact")
 	if res.exitCode != 0 || !strings.Contains(res.stdout, "timeline: 5 calls") {
 		t.Fatalf("--timeline --redact: exit %d\n%s\n%s", res.exitCode, res.stdout, res.stderr)
+	}
+	if strings.Contains(res.stdout, tlHost) {
+		t.Errorf("--timeline --redact prints the host %q:\n%s", tlHost, res.stdout)
 	}
 }
 
