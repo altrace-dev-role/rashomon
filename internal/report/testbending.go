@@ -186,10 +186,11 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 // The three left out are the classes whose calls are not there to write: a
 // Read, Grep or Glob, a shell cat or ls; a WebFetch or a shell curl; an
 // Agent call, whose subagent's own calls are recorded and counted each on its
-// own. Not that none can: `cat a > b` and `curl -o f` do write, and the report
-// states that limit beside every pattern. Counting them as well would stop a
-// pair at every `ls` an agent runs between two test runs, which is most of
-// them.
+// own. Not that none can: `cat a > b`, `curl -o f`, `find -delete`, `find
+// -exec sed -i`, `grep | xargs sed -i` (a pipeline is its first program's
+// class) and rsync or scp into the tree do write, and the report states that
+// limit beside every pattern. Counting them as well would stop a pair at
+// every `ls` an agent runs between two test runs, which is most of them.
 //
 // Nor do Claude Code's own bookkeeping tools (noWrite), whatever class they
 // are stored under: a TodoWrite or a TaskUpdate between two runs is routine

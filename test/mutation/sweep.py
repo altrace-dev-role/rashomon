@@ -1457,7 +1457,7 @@ m("TB *Test.php is not a test file", "internal/shape/label.go",
   "TestLabelTestFile")
 
 m("TB the session block drops the cd-failure limit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run\")\n",
+  "\t\tfmt.Fprintln(b, \"    a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run,\")\n",
   "",
   "TestTestRuns_")
 
@@ -1556,6 +1556,19 @@ m("TB the redaction plant skips an embedded struct", "internal/report/redact_enu
   "\t\t\tif flattened(f, name) {\n\t\t\t\tplantAt(",
   "\t\t\tif false && flattened(f, name) {\n\t\t\t\tplantAt(",
   "TestRedact_")
+
+m("TB the session block drops the find, xargs and copy limit", "internal/report/text.go",
+  "\t\tfmt.Fprintln(b, \"    nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp;\")\n",
+  "",
+  "TestTestRuns_")
+m("TB the session block drops the repeated-cd limit", "internal/report/text.go",
+  "\t\tfmt.Fprintln(b, \"    and repeating a relative `cd DIR && runner` fails at the cd the second time;\")\n",
+  "",
+  "TestTestRuns_")
+m("TB the session block drops the backgrounded-run limit", "internal/report/text.go",
+  "\t\tfmt.Fprintln(b, \"    and a run moved to the background on its timeout or by Ctrl+B is recorded ok, as if it had passed\")\n",
+  "",
+  "TestTestRuns_")
 
 # Import additions some mutants need.
 IMPORTS = {

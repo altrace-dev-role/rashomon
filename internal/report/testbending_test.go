@@ -416,6 +416,9 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"a shell read or fetch (cat, curl and the like) can still write",
 		"nor a directory change made inside another shell command",
 		"a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run",
+		"nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp",
+		"repeating a relative `cd DIR && runner` fails at the cd the second time",
+		"a run moved to the background on its timeout or by Ctrl+B is recorded ok, as if it had passed",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)

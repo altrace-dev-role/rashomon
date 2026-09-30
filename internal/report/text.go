@@ -665,7 +665,13 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // in: a lone cd between two runs breaks the pair, but a `cd DIR && ls` that
 // leaves the shell in DIR is a read and does not, and the block says so. And
 // a `cd DIR && go test` is a test run, since leaving `cd … &&` out would lose
-// most real runs, so its outcome may be the cd's: the last line says that.
+// most real runs, so its outcome may be the cd's, and a repeated relative one
+// fails at its cd the second time. find, rsync and scp are read or network,
+// and a pipeline is its first program's class, so `find -delete`, `find
+// -exec sed -i`, `grep | xargs sed -i` and a copy into the tree are not
+// edits either. And a run Claude Code moved to the background on its
+// timeout or by Ctrl+B is recorded ok before any test finished: only a
+// declared run_in_background is read. Each is a line of the block.
 //
 // The pairs are seqs, and nothing in the default report maps a seq to its
 // call, so the block's first limit line points at --timeline, which does.
@@ -688,9 +694,12 @@ func writeTestRuns(b *bytes.Buffer, t TestRuns) {
 	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
 		fmt.Fprintln(b, "    the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows;")
 		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool, even one that failed;")
-		fmt.Fprintln(b, "    a shell read or fetch (cat, curl and the like) can still write through a redirect or a download, and is not counted;")
+		fmt.Fprintln(b, "    a shell read or fetch (cat, curl and the like) can still write through a redirect or a download, and is not counted,")
+		fmt.Fprintln(b, "    nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp;")
 		fmt.Fprintln(b, "    nor a directory change made inside another shell command, so two runs may have been in different directories;")
-		fmt.Fprintln(b, "    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run")
+		fmt.Fprintln(b, "    a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run,")
+		fmt.Fprintln(b, "    and repeating a relative `cd DIR && runner` fails at the cd the second time;")
+		fmt.Fprintln(b, "    and a run moved to the background on its timeout or by Ctrl+B is recorded ok, as if it had passed")
 	}
 }
 

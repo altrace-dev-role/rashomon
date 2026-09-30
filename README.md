@@ -268,9 +268,11 @@ install`, a `sed -i`, an MCP tool, another test command (`jest -u` rewrites
 snapshots) all count, and only reads, web fetches, subagent launches and
 Claude Code's own bookkeeping tools (TodoWrite, TaskCreate, TaskUpdate,
 TaskList, TaskGet, TaskOutput, AskUserQuestion, ExitPlanMode, BashOutput) do
-not. That under-claims by design. It can still miss a change: a shell read or
-fetch that writes (`cat a > b`, `curl -o f`), or anything done outside the
-session's own calls.
+not. That under-claims by design. It can still miss a change: a shell call
+classed as a read or a fetch that writes (`cat a > b`, `curl -o f`, `find
+-delete`, `find -exec sed -i`, `grep -rl … | xargs sed -i`, `rsync` or `scp`
+into the tree; a pipeline takes its first program's class), or anything done
+outside the session's own calls.
 One known gap: Claude Code discards what a `StopFailure` hook prints, so a turn
 that ends in an API error shows no line, and in this release the next prompt
 does not show it either. The line points to
@@ -305,7 +307,17 @@ The two test-bending lines have limits of their own:
   include lint. A lint failure fixed only in a file named like a test then
   reads as the tests-only pattern.
 - `cd DIR && go test ./...` is a test run, so a failed `cd` counts as a
-  failed test run. Leaving `cd … &&` out would lose most real runs.
+  failed test run. Leaving `cd … &&` out would lose most real runs. The
+  shell stays in DIR afterwards, so repeating a relative `cd DIR && go test
+  ./...` fails at the `cd` the second time, and a pass followed by that
+  failure reads as the same command having both outcomes.
+- Claude Code moves a command to the background when it reaches its timeout
+  (two minutes by default) or when you press Ctrl+B, and the call is then
+  recorded as ok although no test has finished. Only a call that asked for
+  `run_in_background` is recognised as a launch. So a run backgrounded
+  mid-run counts as a passing run in `test runs` and can complete either
+  pattern: a failed run, a test edit and then a backgrounded run reads as
+  "then it passed".
 - A test edit is an Edit, Write or NotebookEdit that ran ok on a file named
   like a test (`test-file`). Deleting or moving a test through the shell, or
   regenerating snapshots or golden files (`jest -u`, a `-update` flag), is a

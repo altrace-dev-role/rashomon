@@ -1135,6 +1135,11 @@ func wholeCommand(toks []token, i int) bool {
 // pair with a real run as passing. It keeps the class the program gave it.
 // The field is read as a boolean and nothing else, like the command field is
 // read for its words and dropped.
+//
+// A command Claude Code moves to the background itself, when it reaches its
+// timeout or on Ctrl+B, asked for nothing: its tool_input has no such field,
+// so it is a test run here and records ok. The report and the README state
+// that limit.
 func backgrounded(raw json.RawMessage) bool {
 	var obj struct {
 		RunInBackground json.RawMessage `json:"run_in_background"`
