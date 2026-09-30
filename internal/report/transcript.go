@@ -363,10 +363,12 @@ type TurnFinal struct {
 //
 // One pass, decoding only what can matter: every line's header (type,
 // isSidechain, isMeta, promptId, timestamp, message.id); a user line's block
-// TYPES only when it carries no promptId (userBlocks); an assistant line's
-// content only when its prompt is wanted and the line has a text block at all. The caller hands every wanted
-// prompt of a session in one call, so a transcript is read once however many
-// of its turns need a verdict.
+// TYPES only when it carries no promptId (userBlocks); and, when an assistant
+// line's prompt is wanted and the line has a text block at all, its blocks'
+// types and text (assistantLine) -- no other block's contents. Every such
+// line of the turn is decoded, in memory, and only the last one's text is
+// kept. The caller hands every wanted prompt of a session in one call, so a
+// transcript is read once however many of its turns need a verdict.
 func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal {
 	out := map[string]TurnFinal{}
 	if len(want) == 0 {
@@ -425,16 +427,11 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			if err != nil {
 				continue
 			}
-			var line struct {
-				Message struct {
-					Role    string          `json:"role"`
-					Content json.RawMessage `json:"content"`
-				} `json:"message"`
-			}
+			var line assistantLine
 			if json.Unmarshal(raw, &line) != nil || line.Message.Role != "assistant" {
 				continue
 			}
-			if text, ok := assistantText(line.Message.Content); ok {
+			if text, ok := line.Message.Content.text(); ok {
 				tf.Said, tf.Text, tf.AtMS = true, text, at.UnixMilli()
 				out[current] = tf
 			}
@@ -446,6 +443,63 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 		return map[string]TurnFinal{}
 	}
 	return out
+}
+
+// assistantLine is the whole of what FinalAssistantTexts decodes from an
+// assistant line past its header: the role, and each content block's type
+// and top-level text. A tool_use block's input, a thinking block's thinking
+// and a tool result's output have no field to land in, so encoding/json steps
+// over them. Held by TestAssistantLine_DecodesOnlyTextBlocks.
+//
+// The earlier reader decoded message.content whole into a json.RawMessage,
+// which copied every block of the line -- a tool_use input with a "text" key
+// included -- into a value, while the README said only the final assistant
+// message was read.
+type assistantLine struct {
+	Message struct {
+		Role    string     `json:"role"`
+		Content textBlocks `json:"content"`
+	} `json:"message"`
+}
+
+// textBlocks is an assistant message's content, as blocks. Content is either
+// an array of blocks or a plain string, and both shapes occur in real
+// transcripts; a plain string is one text block.
+type textBlocks []textBlock
+
+type textBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+func (b *textBlocks) UnmarshalJSON(data []byte) error {
+	var plain string
+	if json.Unmarshal(data, &plain) == nil {
+		*b = textBlocks{{Type: "text", Text: plain}}
+		return nil
+	}
+	var blocks []textBlock
+	if err := json.Unmarshal(data, &blocks); err != nil {
+		return err
+	}
+	*b = blocks
+	return nil
+}
+
+// text joins the text blocks, as assistantText does: a thinking block is not
+// the account the user was given, and a block of any type but "text" is not
+// kept.
+func (b textBlocks) text() (string, bool) {
+	var parts []string
+	for _, blk := range b {
+		if blk.Type == "text" && strings.TrimSpace(blk.Text) != "" {
+			parts = append(parts, blk.Text)
+		}
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	return strings.Join(parts, "\n"), true
 }
 
 // userBlocks is the whole of what toolResultOnly decodes from a user line:

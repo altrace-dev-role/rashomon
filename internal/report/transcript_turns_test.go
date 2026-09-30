@@ -125,3 +125,61 @@ func TestUserBlocks_DecodeOnlyBlockTypes(t *testing.T) {
 		}
 	}
 }
+
+// TestAssistantLine_DecodesOnlyTextBlocks holds the shape FinalAssistantTexts
+// decodes an assistant line into: the role, and each block's type and text.
+// The earlier reader held message.content whole in a json.RawMessage -- every
+// block of every tied line, a tool_use input with a "text" key included --
+// while the README said only the final assistant message was read. No field
+// may be a RawMessage, an interface or a map, each of which would hold bytes
+// it was never asked for, and only the text of "text" blocks is kept.
+func TestAssistantLine_DecodesOnlyTextBlocks(t *testing.T) {
+	allowed := map[string]bool{"message": true, "role": true, "content": true, "type": true, "text": true}
+	raw := reflect.TypeOf(json.RawMessage{})
+	var walk func(reflect.Type, string)
+	walk = func(ty reflect.Type, path string) {
+		for ty.Kind() == reflect.Pointer || ty.Kind() == reflect.Slice {
+			if ty == raw {
+				t.Errorf("%s is a json.RawMessage: it holds the bytes it spans as a value", path)
+				return
+			}
+			ty = ty.Elem()
+		}
+		switch ty.Kind() {
+		case reflect.Interface, reflect.Map:
+			t.Errorf("%s is a %s: it holds whatever it is handed", path, ty.Kind())
+			return
+		case reflect.Struct:
+		default:
+			return
+		}
+		for i := 0; i < ty.NumField(); i++ {
+			f := ty.Field(i)
+			tag := strings.Split(f.Tag.Get("json"), ",")[0]
+			if !allowed[tag] {
+				t.Errorf("%s.%s decodes %q: an assistant line is read for its text blocks alone", path, f.Name, tag)
+			}
+			walk(f.Type, path+"."+f.Name)
+		}
+	}
+	walk(reflect.TypeOf(assistantLine{}), "assistantLine")
+
+	// And only a text block's text is kept, from either content shape.
+	for _, tc := range []struct {
+		line, want string
+	}{
+		{`{"message":{"role":"assistant","content":[{"type":"thinking","thinking":"t"},` +
+			`{"type":"tool_use","name":"Write","input":{"text":"a file body"}},{"type":"text","text":"Done."}]}}`, "Done."},
+		{`{"message":{"role":"assistant","content":"Plain words."}}`, "Plain words."},
+		{`{"message":{"role":"assistant","content":[{"type":"tool_use","input":{"text":"a file body"}}]}}`, ""},
+		{`{"message":{"role":"assistant","content":[{"type":"other","text":"not a text block"},{"type":"text","text":"Done."}]}}`, "Done."},
+	} {
+		var l assistantLine
+		if err := json.Unmarshal([]byte(tc.line), &l); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := l.Message.Content.text(); got != tc.want {
+			t.Errorf("text(%s) = %q, want %q", tc.line, got, tc.want)
+		}
+	}
+}

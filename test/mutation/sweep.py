@@ -1346,6 +1346,13 @@ m("SP a retired model's row is priced at a current model's rates", "internal/spe
 m("SP Haiku 3.5 has no row and prices as unknown", "internal/spend/price.go",
   "\t\"claude-3-5-haiku\": {Input: mtok(80), Output: mtok(400), CacheRead: mtok(8)},\n", "",
   "TestPricing_TheTable|TestPriceKey_")
+m("SP a tool_use block's input is decoded with an assistant line's text blocks", "internal/report/transcript.go",
+  "type textBlock struct {\n\tType string `json:\"type\"`\n\tText string `json:\"text\"`\n}",
+  "type textBlock struct {\n\tType  string          `json:\"type\"`\n\tText  string          `json:\"text\"`\n\tInput json.RawMessage `json:\"input\"`\n}",
+  "TestAssistantLine_")
+m("SP a block of any type is kept as an assistant line's text", "internal/report/transcript.go",
+  "\t\tif blk.Type == \"text\" && strings.TrimSpace(blk.Text) != \"\" {", "\t\tif strings.TrimSpace(blk.Text) != \"\" {",
+  "TestAssistantLine_")
 
 # Import additions some mutants need.
 IMPORTS = {

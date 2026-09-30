@@ -1677,8 +1677,9 @@ usage:
                                records name (the rest named as not covered);
                                the totals read
                                usage fields only; the silent-failure line also
-                               reads, in memory, the final assistant text of
-                               each recorded turn with a failed call, and the
+                               decodes, in memory, the text blocks of every
+                               assistant line of each recorded turn with a
+                               failed call, keeping only the last, and the
                                content block types (never the text) of user
                                lines with no promptId; a subagent's spend is
                                tied to its turn by the promptId on its own

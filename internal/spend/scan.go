@@ -46,12 +46,13 @@ var userMarker = []byte(`"user"`)
 //
 // The one other read is the silent-failure line's, and it is not this one:
 // for a recorded turn with a failed call, Join has report.FinalAssistantTexts
-// read that turn's final assistant message, in memory, to take the digest's
-// verdict. That is message content, read under report's render-time rule --
-// reduced to the verdict, never written or output -- and it departs from the
-// design's "never message.content", which did not account for this line
-// needing the summary it is judged against. The same pass reads the message
-// ids of the turn's responses (its spend) and, on a user line with no
+// decode, in memory, the text blocks of every assistant line tied to that
+// turn -- no other block's contents -- and keep only the last, to take the
+// digest's verdict. That is message content, read under report's render-time
+// rule -- reduced to the verdict, never written or output -- and it departs
+// from the design's "never message.content", which did not account for this
+// line needing the summary it is judged against. The same pass reads the
+// message ids of the turn's responses (its spend) and, on a user line with no
 // promptId, the content block TYPES only, never their text.
 //
 // cwd, which the design lists for a project name, is deliberately not read:
