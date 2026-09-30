@@ -321,6 +321,37 @@ func TestSpend_ReadsWhereClaudeCodeKeepsItsTranscripts(t *testing.T) {
 	}
 }
 
+// TestSpend_OldTranscriptsAreSkippedAndSaid: cmdSpend hands Discover the
+// window, so a transcript last written before it is not read at all -- and is
+// counted and said, not reported as "no transcripts found". Without the
+// window, a regression reading every transcript ever written went unnoticed.
+func TestSpend_OldTranscriptsAreSkippedAndSaid(t *testing.T) {
+	e := newEnv(t)
+	old := time.Now().Add(-40 * 24 * time.Hour)
+	p := writeSessionTranscript(t, e.configDir, "sess-old",
+		usageLine(t, "sess-old", "msg_old", old, 1_000, textBlock("a")))
+	if err := os.Chtimes(p, old, old); err != nil {
+		t.Fatal(err)
+	}
+	res := e.run("", nil, "spend", "--json")
+	var doc struct {
+		Read struct {
+			Files             int `json:"files"`
+			FilesBeforeWindow int `json:"files_before_window"`
+		} `json:"read"`
+	}
+	if err := json.Unmarshal([]byte(res.stdout), &doc); err != nil {
+		t.Fatalf("spend --json: %v\n%s%s", err, res.stdout, res.stderr)
+	}
+	if doc.Read.Files != 0 || doc.Read.FilesBeforeWindow != 1 {
+		t.Errorf("read.files = %d, read.files_before_window = %d; want 0 and 1: the old transcript was read", doc.Read.Files, doc.Read.FilesBeforeWindow)
+	}
+	txt := e.run("", nil, "spend")
+	if !strings.Contains(txt.stdout, "(1 older transcript last written before that was not read)") {
+		t.Errorf("the text does not say the older transcript was skipped:\n%s", txt.stdout)
+	}
+}
+
 // TestSpend_NoMessageTextReachesTheOutput: the canary is in every block and
 // in cwd -- and in the final words of a turn that fires, so the one read of
 // message content (the verdict's) is reached end to end: the hooks record a

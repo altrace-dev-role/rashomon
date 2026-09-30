@@ -158,7 +158,10 @@ func (c *config) write(rel string, lines ...string) string {
 	return p
 }
 
-// summary reads the directory the way cmdSpend does, over `days`.
+// summary reads the directory the way cmdSpend does, over `days` -- except
+// that it hands Discover the zero time, so every file is read whatever its
+// mtime and a fixture's own timestamps alone decide the window. A test of the
+// mtime skip calls Discover itself.
 func (c *config) summary(days int) *Summary {
 	c.t.Helper()
 	files, err := Discover(c.dir, time.Time{})
@@ -462,6 +465,54 @@ func TestDiscover_AnUnreadableFolderIsCountedNotFatal(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
 	if s := c.summary(30); s.Read.UnreadableDirs != 3 || s.Total.Nano != 1000*opusIn {
 		t.Errorf("with a locked folder: unreadable dirs = %d, total = %d; want 3 and %d", s.Read.UnreadableDirs, s.Total.Nano, 1000*opusIn)
+	}
+}
+
+// TestRead_AnUnreadableTranscriptIsCountedAndSaid: a transcript that cannot
+// be read to the end is spend this reader did not count, so it is counted in
+// read.unreadable_files and said in a note, never dropped from the total
+// without a word. Two ways a file fails: it cannot be opened (skipped as
+// root, which permissions do not stop), and a line longer than maxLine, which
+// the scanner cannot step over.
+func TestRead_AnUnreadableTranscriptIsCountedAndSaid(t *testing.T) {
+	for _, how := range []string{"not permitted", "a line past maxLine"} {
+		t.Run(how, func(t *testing.T) {
+			c := newConfig(t)
+			c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1000, stop: "end_turn"}.line("text"))
+			bad := c.write("proj/sess-b.jsonl", resp{id: "b", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 7, stop: "end_turn"}.line("text"))
+			switch how {
+			case "not permitted":
+				if os.Geteuid() == 0 {
+					t.Skip("root reads a file whatever its mode")
+				}
+				if err := os.Chmod(bad, 0o000); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(bad, 0o600) })
+			default:
+				f, err := os.OpenFile(bad, os.O_APPEND|os.O_WRONLY, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := f.WriteString(`{"usage":"` + strings.Repeat("x", maxLine) + "\"}\n"); err != nil {
+					t.Fatal(err)
+				}
+				if err := f.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			s := c.summary(30)
+			if s.scan.Unreadable != 1 || s.Read.UnreadableFiles != 1 {
+				t.Errorf("unreadable = %d, read.unreadable_files = %d; want 1 and 1", s.scan.Unreadable, s.Read.UnreadableFiles)
+			}
+			txt, js := render(t, s)
+			if !strings.Contains(js, `"unreadable_files":1`) {
+				t.Errorf("the JSON does not count the unreadable transcript:\n%s", js)
+			}
+			if !strings.Contains(txt, "note: 1 transcript file could not be read to the end; what they hold past that point is not counted") {
+				t.Errorf("the text does not say a transcript could not be read to the end:\n%s", txt)
+			}
+		})
 	}
 }
 

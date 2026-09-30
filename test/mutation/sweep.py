@@ -1369,6 +1369,16 @@ m("SP a main-transcript sidechain user line moves the tie", "internal/report/tra
   "\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tcontinue\n",
   "\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tif head.Type == \"user\" && head.PromptID != \"\" {\n\t\t\t\tcurrent = head.PromptID\n\t\t\t}\n\t\t\tcontinue\n",
   "TestJoin_AMainTranscriptSidechain")
+m("SP a store that covers no transcript renders as a checked none", "internal/spend/text.go",
+  "\tcase j.CoveredTranscripts == 0:\n", "\tcase false:\n", "TestJoin_AStoreThatCoversNoTranscript")
+m("SP a transcript that cannot be read to the end is not counted", "internal/spend/scan.go",
+  "\t\tif err := readFile(sc, byID, i, f); err != nil {\n\t\t\tsc.Unreadable++", "\t\tif err := readFile(sc, byID, i, f); err != nil {\n\t\t\t_ = sc",
+  "TestRead_AnUnreadableTranscript")
+m("SP a transcript that cannot be read to the end is not said", "internal/spend/text.go",
+  "\tif s.Read.UnreadableFiles > 0 {", "\tif false {", "TestRead_AnUnreadableTranscript")
+m("SP cmdSpend reads every transcript ever written", "cmd/rashomon/main.go",
+  "\tfiles, err := spend.Discover(configDir, spend.WindowStart(now, days))", "\tfiles, err := spend.Discover(configDir, time.Time{})",
+  "TestSpend_OldTranscriptsAreSkippedAndSaid")
 
 # Import additions some mutants need.
 IMPORTS = {

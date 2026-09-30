@@ -713,3 +713,29 @@ func TestJoin_AMainTranscriptSidechainResponseIsItsTurns(t *testing.T) {
 		t.Errorf("cost = %d, want %d: the sidechain response SC1 is p1's spend", j.Cost.Nano, want)
 	}
 }
+
+// TestJoin_AStoreThatCoversNoTranscriptIsUnknown: a store exists, but none of
+// its records names a transcript in the window. Nothing was checked, so the
+// line is unknown and says why -- never "none found", a checked-clean claim
+// over zero checked transcripts.
+func TestJoin_AStoreThatCoversNoTranscriptIsUnknown(t *testing.T) {
+	c := newConfig(t)
+	rec := newRecorder(t)
+	T := now.Add(-2 * time.Hour)
+	rec.transcript = "/elsewhere/sess-a.jsonl"
+	rec.call("sess-a", "p1", "toolu_1", T, T.Add(time.Second), store.ExecOK)
+	c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", session: "sess-a", at: T, in: 5, stop: "end_turn"}.line("text"))
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	if j := s.SilentFailureTurns; j.Store != StoreRead || j.CoveredTranscripts != 0 || j.NotCoveredTranscripts != 1 {
+		t.Fatalf("premise: store %q, covered %d, not covered %d; want read, 0, 1", j.Store, j.CoveredTranscripts, j.NotCoveredTranscripts)
+	}
+	txt, _ := render(t, s)
+	if !strings.Contains(txt, "never mentioned: unknown") ||
+		!strings.Contains(txt, "rashomon recorded none of the 1 transcript, so none is covered") ||
+		strings.Contains(txt, "none found") {
+		t.Errorf("a store that covers no transcript is not rendered as unknown:\n%s", txt)
+	}
+}
