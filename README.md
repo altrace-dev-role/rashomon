@@ -306,11 +306,15 @@ The two test-bending lines have limits of their own:
   `pretest` script, and `tox`'s default envlist or a make `test` target can
   include lint. A lint failure fixed only in a file named like a test then
   reads as the tests-only pattern.
+- Runs pair only within one directory: each call's record carries a keyed
+  digest of the directory Claude Code reported it was declared in (never the
+  path), and two runs of one command line in two directories are not the
+  same run. So a subagent's `go test ./...` pairs with the main agent's only
+  when both ran it from the same directory, and a repeated relative `cd sub
+  && go test ./...`, whose second call starts in `sub`, does not pair with
+  the first.
 - `cd DIR && go test ./...` is a test run, so a failed `cd` counts as a
-  failed test run. Leaving `cd … &&` out would lose most real runs. The
-  shell stays in DIR afterwards, so repeating a relative `cd DIR && go test
-  ./...` fails at the `cd` the second time, and a pass followed by that
-  failure reads as the same command having both outcomes.
+  failed test run. Leaving `cd … &&` out would lose most real runs.
 - Claude Code moves a command to the background when it reaches its timeout
   (two minutes by default) or when you press Ctrl+B, and its `PostToolUse`
   then fires before any test has finished. The execution record says so

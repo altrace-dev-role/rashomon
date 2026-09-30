@@ -25,6 +25,7 @@ type tbCall struct {
 	agent   string
 	prog    string // for Bash: the program, go when empty
 	bg      bool   // the execution record says backgrounded
+	cwd     string // the declaration's cwd digest
 }
 
 func tbRun(calls ...tbCall) *store.Run {
@@ -38,7 +39,7 @@ func tbRun(calls ...tbCall) *store.Run {
 		d := store.Declaration{
 			SchemaVersion: store.SchemaVersion,
 			Seq:           c.seq, RecordedAtMS: 1_700_000_000_000 + c.seq*1000, ToolUseID: id, ToolName: c.tool, SessionID: "s1",
-			Shape: shape.Shape{VerbClass: verb, Digest: c.digest},
+			Shape: shape.Shape{VerbClass: verb, Digest: c.digest}, CWDDigest: c.cwd,
 		}
 		if c.tool == "Bash" {
 			p := "go"
@@ -247,6 +248,28 @@ func TestTestBending(t *testing.T) {
 			run: tbRun(test(1, "d", failed),
 				tbCall{seq: 2, tool: "Bash", verb: shape.VerbTest, digest: "d", outcome: ok, agent: "agent-b2"}),
 			green: pairs(), flaky: pairs(SeqPair{1, 2})},
+		{name: "a subagent's run in another directory does not pair",
+			run: tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbExecute, prog: "cd", digest: "cd", outcome: ok},
+				tbCall{seq: 2, tool: "Bash", verb: shape.VerbTest, digest: "d", cwd: "pkg", outcome: failed},
+				tbCall{seq: 3, tool: "Bash", verb: shape.VerbTest, digest: "d", cwd: "root", outcome: ok, agent: "agent-c3"}),
+			green: pairs(), flaky: pairs(),
+			why: "the main agent ran `cd pkg`; a subagent starts where the main agent was at its launch, so its go test ./... ran other code"},
+		{name: "a repeated relative cd and run does not pair",
+			run: tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbTest, digest: "cdsub", cwd: "root", outcome: ok},
+				tbCall{seq: 2, tool: "Bash", verb: shape.VerbTest, digest: "cdsub", cwd: "root/sub", outcome: failed}),
+			green: pairs(), flaky: pairs(),
+			why: "the first `cd sub && go test ./...` left the shell in sub, so the identical second one failed at its cd"},
+		{name: "a repeated relative cd with a read between does not complete A",
+			run: tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbTest, digest: "cdsub", cwd: "root", outcome: failed},
+				edit(2, tf, ok),
+				tbCall{seq: 3, tool: "Bash", verb: shape.VerbRead, prog: "ls", digest: "cdls", cwd: "root/sub", outcome: ok},
+				tbCall{seq: 4, tool: "Bash", verb: shape.VerbTest, digest: "cdsub", cwd: "root", outcome: ok}),
+			green: pairs(SeqPair{1, 4}), flaky: pairs(),
+			why: "`cd .. && ls` moves the shell back to root, so both runs started there and ran in sub: the same run, as the cwd digests say"},
+		{name: "a subagent's run in the same directory still pairs",
+			run: tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbTest, digest: "d", cwd: "root", outcome: failed},
+				tbCall{seq: 2, tool: "Bash", verb: shape.VerbTest, digest: "d", cwd: "root", outcome: ok, agent: "agent-c4"}),
+			green: pairs(), flaky: pairs(SeqPair{1, 2})},
 		{name: "a cd between breaks the pair",
 			run:   tbRun(test(1, "d", failed), tbCall{seq: 2, tool: "Bash", verb: shape.VerbExecute, prog: "cd", digest: "cd", outcome: ok}, test(3, "d", ok)),
 			green: pairs(), flaky: pairs(),
@@ -439,10 +462,9 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows",
 		"a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool",
 		"a shell read or fetch (cat, curl and the like) can still write",
-		"nor a directory change made inside another shell command",
+		"runs pair only when the same command line ran from the same directory",
 		"a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run",
 		"nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp",
-		"repeating a relative `cd DIR && runner` fails at the cd the second time",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)

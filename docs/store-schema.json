@@ -166,6 +166,10 @@
             "type": "string"
           }
         },
+        "cwd_digest": {
+          "description": "Schema 3. HMAC under the per-install key of the working directory the call was declared in, from the PreToolUse payload's cwd, which follows the shell from one call to the next. Two runs of one command line compare as the same run only when this is equal as well, since the same line in another directory runs other code. A digest and never the path: the declarations do not carry the directory, which the coverage records already keep as the project key. Empty string when the payload carried no cwd.",
+          "type": "string"
+        },
         "file_label": {
           "description": "Schema 3, RESERVED. What the file this call named looks like, derived at hook time from the path's basename and suffix alone; the path itself is never stored. A LABEL and not a finding: it says what the path looks like, not what the call did to it. `none` is a real answer about a real path that matched no row; `unknown` is a path that could not be read at all, absent, non-string or empty -- and the two are kept apart because the first is a measurement and the second is its absence. Null on a tool that names no file, which is a third thing again: nobody looked, because there was nothing to look at. The vocabulary is closed and lives in shape.Labels(); it is declared here so the layer that populates it adds behaviour rather than a fourth schema version.",
           "type": [
@@ -222,7 +226,8 @@
             "required": [
               "host_source",
               "rule_match",
-              "file_label"
+              "file_label",
+              "cwd_digest"
             ]
           }
         }

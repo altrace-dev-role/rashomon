@@ -34,6 +34,9 @@ var (
 		// named LOOKS LIKE, from a closed vocabulary, never the path. Null on
 		// every record this build writes.
 		"host_source", "rule_match", "file_label",
+		// v3. A keyed digest of the directory the call was declared in: 64
+		// hex characters, never the path.
+		"cwd_digest",
 	}
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",

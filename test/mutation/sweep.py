@@ -1378,7 +1378,7 @@ m("TB a denied cd breaks the pair", "internal/report/testbending.go",
   "\t\tif outcome == LinkOutcomeDenied && (d.Shape.Program == nil || *d.Shape.Program != \"cd\") {\n\t\t\tcontinue\n\t\t}\n",
   "TestTestBending")
 m("TB the session block drops the directory limit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    nor a directory change made inside another shell command, so two runs may have been in different directories;\")\n",
+  "\t\tfmt.Fprintln(b, \"    runs pair only when the same command line ran from the same directory;\")\n",
   "",
   "TestTestRuns_")
 
@@ -1508,7 +1508,7 @@ m("TB *Test.php is not a test file", "internal/shape/label.go",
   "TestLabelTestFile")
 
 m("TB the session block drops the cd-failure limit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run,\")\n",
+  "\t\tfmt.Fprintln(b, \"    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run\")\n",
   "",
   "TestTestRuns_")
 
@@ -1612,10 +1612,6 @@ m("TB the session block drops the find, xargs and copy limit", "internal/report/
   "\t\tfmt.Fprintln(b, \"    nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp;\")\n",
   "",
   "TestTestRuns_")
-m("TB the session block drops the repeated-cd limit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    and repeating a relative `cd DIR && runner` fails at the cd the second time;\")\n",
-  "",
-  "TestTestRuns_")
 
 m("TB the writer stays at schema 2", "internal/store/record.go",
   "const SchemaVersion = 3",
@@ -1646,6 +1642,19 @@ m("TL the unknown legend drops the backgrounded call", "internal/report/timeline
   ", or it was moved to the background before it ended)",
   ")",
   "TestTimeline_ABackgrounded")
+
+m("TB runs pair across directories", "internal/report/testbending.go",
+  "\t\tkey := runKey{d.Shape.Digest, d.CWDDigest}\n",
+  "\t\tkey := runKey{d.Shape.Digest, \"\"}\n",
+  "TestTestBending")
+m("TB the declaration carries no cwd digest", "internal/hook/handle.go",
+  "\t\tCWDDigest:      shape.CWDDigest(h.st.Key(), p.CWD),\n",
+  "",
+  "TestTestBending_ARepeatedRelativeCd|TestSchema3_|TestH13_")
+m("TB the cwd digest is the plain path", "internal/shape/shape.go",
+  "\treturn digest(key, \"\\x00cwd\", []byte(cwd))\n",
+  "\treturn cwd\n",
+  "TestTestBending_ARepeatedRelativeCd")
 
 # Import additions some mutants need.
 IMPORTS = {

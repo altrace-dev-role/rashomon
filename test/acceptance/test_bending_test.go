@@ -23,6 +23,7 @@ type tbSession struct {
 	t    *testing.T
 	e    *env
 	next int
+	cwd  string // the payload's cwd, the default when empty
 }
 
 func newTBSession(t *testing.T) *tbSession {
@@ -41,6 +42,9 @@ func (s *tbSession) declare(id, tool string, input map[string]any, agent string)
 	p.ToolUseID = id
 	p.ToolName = tool
 	p.ToolInput = input
+	if s.cwd != "" {
+		p.CWD = s.cwd
+	}
 	if agent != "" {
 		p.AgentID = agent
 		p.AgentType = "general-purpose"
@@ -365,6 +369,34 @@ func TestTestBending_ARunMovedToTheBackgroundFinishesNothing(t *testing.T) {
 			if strings.Contains(out, c) {
 				t.Errorf("%s contains %q", name, c)
 			}
+		}
+	}
+}
+
+// B-A8: the review's repeated relative cd. `cd sub && go test ./...` passes
+// and leaves the shell in sub, and Claude Code's next payload says so (its
+// cwd follows the shell, measured on 2.1.280); the identical line then fails
+// at its cd, since there is no sub/sub. Both lines digest equal, and the pair
+// read as the same command having both outcomes. Runs now pair only within
+// one directory, and the declarations carry the directory as a keyed digest,
+// never as the path.
+func TestTestBending_ARepeatedRelativeCdIsAnotherDirectory(t *testing.T) {
+	s := newTBSession(t)
+	s.shell("cd sub && go test ./...", true, "")
+	s.cwd = "/tmp/project/sub"
+	s.shell("cd sub && go test ./...", false, "")
+
+	if line, ok := s.line(); ok && strings.Contains(line, "had both outcomes") {
+		t.Errorf("a run in another directory paired: %q", line)
+	}
+	decls := s.e.declarations(testSession)
+	a, b := decls[0].str("cwd_digest"), decls[1].str("cwd_digest")
+	if len(a) != 64 || len(b) != 64 || a == b {
+		t.Errorf("cwd_digest = %q, %q: want two different 64-hex digests", a, b)
+	}
+	for _, d := range decls {
+		if strings.Contains(d.raw, "/tmp/project") {
+			t.Errorf("a declaration carries the directory: %s", d.raw)
 		}
 	}
 }

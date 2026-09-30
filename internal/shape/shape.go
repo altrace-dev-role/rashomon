@@ -189,6 +189,22 @@ func digest(key []byte, toolName string, body []byte) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
+// CWDDigest is the keyed digest of the working directory a call was declared
+// in: HMAC under the same per-install key as the shape digest, so two calls'
+// directories compare equal or not and a store cannot be tested against a
+// guessed path. The empty string for an empty cwd, which is "not known" and
+// digests to nothing rather than to the digest of nothing.
+//
+// The domain is a name no tool can have -- it starts with a NUL -- so a
+// directory never digests equal to a tool call whose input happens to be the
+// same bytes.
+func CWDDigest(key []byte, cwd string) string {
+	if cwd == "" {
+		return ""
+	}
+	return digest(key, "\x00cwd", []byte(cwd))
+}
+
 // canonical re-encodes JSON so that two inputs differing only in key order or
 // insignificant whitespace digest identically. Input that is not valid JSON is
 // digested as received.

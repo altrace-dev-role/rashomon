@@ -663,12 +663,13 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // Code's bookkeeping tools), and a shell
 // command classed read or network can still write -- `cat a > b`, `curl -o
 // f` -- where the record does not count it. Saying "nothing changed" would be
-// the claim the record cannot make. Nor does it see the directory a run was
-// in: a lone cd between two runs breaks the pair, but a `cd DIR && ls` that
-// leaves the shell in DIR is a read and does not, and the block says so. And
-// a `cd DIR && go test` is a test run, since leaving `cd … &&` out would lose
-// most real runs, so its outcome may be the cd's, and a repeated relative one
-// fails at its cd the second time. find, rsync and scp are read or network,
+// the claim the record cannot make. Runs pair only within one directory
+// (the declarations' cwd digests), and the block says so, since "the same
+// command" alone would read as the same line anywhere. And a `cd DIR && go
+// test` is a test run, since leaving `cd … &&` out would lose most real runs,
+// so its outcome may be the cd's. A repeated relative `cd DIR && go test`
+// needs no line: the second starts in DIR, another directory, and does not
+// pair with the first. find, rsync and scp are read or network,
 // and a pipeline is its first program's class, so `find -delete`, `find
 // -exec sed -i`, `grep | xargs sed -i` and a copy into the tree are not
 // edits either. Each is a line of the block. A run moved to the
@@ -699,9 +700,8 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns) {
 		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool, even one that failed;")
 		fmt.Fprintln(b, "    a shell read or fetch (cat, curl and the like) can still write through a redirect or a download, and is not counted,")
 		fmt.Fprintln(b, "    nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp;")
-		fmt.Fprintln(b, "    nor a directory change made inside another shell command, so two runs may have been in different directories;")
-		fmt.Fprintln(b, "    a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run,")
-		fmt.Fprintln(b, "    and repeating a relative `cd DIR && runner` fails at the cd the second time")
+		fmt.Fprintln(b, "    runs pair only when the same command line ran from the same directory;")
+		fmt.Fprintln(b, "    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run")
 	}
 }
 

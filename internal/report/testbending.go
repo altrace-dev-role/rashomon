@@ -76,10 +76,11 @@ type TestBending struct {
 // rather than completing one.
 //
 // A test run is a declaration of verb class test whose outcome is ok or
-// failed. Interrupted, denied and unknown runs are not runs with a result, so
-// they neither start nor finish a pair. Two runs are the same command when
-// their shape digests are equal; the digest covers the tool name, so equal
-// digests are the same tool as well.
+// failed. Interrupted, denied, backgrounded and unknown runs are not runs with
+// a result, so they neither start nor finish a pair. Two runs are the same
+// command when their shape digests are equal and they were declared in the
+// same directory (equal cwd digests); the digest covers the tool name, so
+// equal digests are the same tool as well.
 //
 // A file edit is any call that may change files (mayEdit) and was not denied
 // before running. A failed or unrecorded one counts: whether it changed a
@@ -96,14 +97,17 @@ type TestBending struct {
 // unrecorded run of the same command counts the same way; only the two runs
 // a pair is made of are not between it.
 //
-// A directory change breaks every pair open across it, and needs no rule of
-// its own for that: a lone cd, pushd or popd is a shell call of class execute,
-// so it is an edit here like any other. It has to break them. Claude Code's
-// shell keeps its working directory from one call to the next, and the digest
-// does not cover it, so `go test ./...` before and after a `cd ../other` are
-// equal digests run over different code. A `cd DIR && ...` that leaves the
-// shell in DIR breaks them only when its class is not read, network or agent
-// -- `cd DIR && ls` is read -- and the report states that limit.
+// Runs pair only within one directory. Claude Code's shell keeps its working
+// directory from one call to the next, and the command digest does not cover
+// it, so `go test ./...` before and after a `cd ../other` are equal digests
+// run over different code; so are a main agent's run after its `cd pkg` and
+// a subagent's, which starts in the directory the main agent had at launch;
+// and so are two calls of `cd sub && go test ./...`, the second of which
+// fails at its cd, since the first left the shell in sub. The payload's cwd
+// follows the shell, so its digest tells each of these apart, and a subagent
+// re-running the main agent's tests where they ran still pairs. A lone cd
+// between two runs is an edit here as well (class execute), which changes
+// nothing: the runs either side of it are in two directories anyway.
 func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 	if run == nil {
 		return detectTestBending(nil, nil, denied)
@@ -134,7 +138,10 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 		anyEdits   int // any edit that may have run
 	}
 	var testEdits, otherEdits, anyEdits int
-	last := map[string]mark{}
+	// The same command in the same directory: the shape digest and the cwd
+	// digest, compared together.
+	type runKey struct{ command, cwd string }
+	last := map[runKey]mark{}
 
 	for _, d := range sorted {
 		outcome, _, _ := linkOutcome(d.ToolUseID, executed, denied)
@@ -147,7 +154,8 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 		failed := outcome == store.ExecFailed
 		// The pair is decided on the totals BEFORE this call counts as an
 		// edit: a run is not between itself and the run it pairs with.
-		if prev, ok := last[d.Shape.Digest]; ok && isRun {
+		key := runKey{d.Shape.Digest, d.CWDDigest}
+		if prev, ok := last[key]; ok && isRun {
 			pair := SeqPair{prev.seq, d.Seq}
 			switch {
 			case prev.failed && !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:
@@ -168,7 +176,7 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 		// And the mark AFTER it counts, so the next run of this command
 		// does not see this run as between.
 		if isRun {
-			last[d.Shape.Digest] = mark{
+			last[key] = mark{
 				seq: d.Seq, failed: failed, testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,
 			}
 		}
