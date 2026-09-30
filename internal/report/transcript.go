@@ -422,25 +422,35 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 	return out
 }
 
+// userBlocks is the whole of what toolResultOnly decodes from a user line:
+// the TYPE of each content block, and nothing else. No field is tagged for a
+// block's text, a tool result's output or a prompt's words, so encoding/json
+// steps over those bytes without ever making a value of them -- the property
+// spend's usage read holds for its own shape, held here by
+// TestUserBlocks_DecodeOnlyBlockTypes. A prompt typed as a plain string does
+// not decode into a slice at all (a type error, reported without the string
+// being kept), and is a prompt.
+//
+// The earlier reader decoded message.content whole into a json.RawMessage --
+// a copy of every tool result's output held as a value -- to learn only the
+// block types; that was a second content read the README did not disclose.
+type userBlocks struct {
+	Message struct {
+		Content []struct {
+			Type string `json:"type"`
+		} `json:"content"`
+	} `json:"message"`
+}
+
 // toolResultOnly reports whether a user line's content is an array of
 // tool_result blocks and nothing else: a call finishing inside a turn, not a
-// new prompt.
+// new prompt. Decided from block types alone (userBlocks).
 func toolResultOnly(raw []byte) bool {
-	var line struct {
-		Message struct {
-			Content json.RawMessage `json:"content"`
-		} `json:"message"`
-	}
-	if json.Unmarshal(raw, &line) != nil {
+	var line userBlocks
+	if json.Unmarshal(raw, &line) != nil || len(line.Message.Content) == 0 {
 		return false
 	}
-	var blocks []struct {
-		Type string `json:"type"`
-	}
-	if json.Unmarshal(line.Message.Content, &blocks) != nil || len(blocks) == 0 {
-		return false
-	}
-	for _, b := range blocks {
+	for _, b := range line.Message.Content {
 		if b.Type != "tool_result" {
 			return false
 		}

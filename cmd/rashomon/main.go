@@ -1666,9 +1666,12 @@ usage:
                                from Claude Code's own transcripts: by agent,
                                model and token kind, cold-cache re-writes,
                                refusals, and the spend inside turns rashomon
-                               recorded failing silently; reads usage fields
-                               only, never message text for the totals, and
-                               writes nothing
+                               recorded failing silently; the totals read
+                               usage fields only; the silent-failure line also
+                               reads, in memory, the final assistant text of
+                               each recorded turn with a failed call, and the
+                               content block types (never the text) of user
+                               lines with no promptId; writes nothing
   rashomon forget --host H       evict every call that named host H
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T

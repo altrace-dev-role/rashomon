@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -74,5 +75,53 @@ func TestFinalAssistantTexts_ATurnIsItsPrompt(t *testing.T) {
 	}
 	if len(got) != 2 {
 		t.Errorf("got %d prompts, want only the two wanted", len(got))
+	}
+}
+
+// TestUserBlocks_DecodeOnlyBlockTypes holds the shape toolResultOnly decodes
+// a user line into: a block's type and nothing else. A user line's content is
+// a typed prompt or a tool's output, and deciding "tool result, not a prompt"
+// needs neither, so no field may give either a place to land -- not a text
+// or content tag, and not a json.RawMessage, which would copy the whole of
+// message.content into a value.
+func TestUserBlocks_DecodeOnlyBlockTypes(t *testing.T) {
+	allowed := map[string]bool{"message": true, "content": true, "type": true}
+	raw := reflect.TypeOf(json.RawMessage{})
+	var walk func(reflect.Type, string)
+	walk = func(ty reflect.Type, path string) {
+		if ty == raw {
+			t.Errorf("%s is a json.RawMessage: it holds the bytes it spans as a value", path)
+			return
+		}
+		for ty.Kind() == reflect.Pointer || ty.Kind() == reflect.Slice {
+			ty = ty.Elem()
+		}
+		if ty.Kind() != reflect.Struct {
+			return
+		}
+		for i := 0; i < ty.NumField(); i++ {
+			f := ty.Field(i)
+			tag := strings.Split(f.Tag.Get("json"), ",")[0]
+			if !allowed[tag] {
+				t.Errorf("%s.%s decodes %q: a user line is judged by its block types alone", path, f.Name, tag)
+			}
+			walk(f.Type, path+"."+f.Name)
+		}
+	}
+	walk(reflect.TypeOf(userBlocks{}), "userBlocks")
+
+	// And it still tells the two apart.
+	for _, tc := range []struct {
+		line string
+		want bool
+	}{
+		{`{"type":"user","message":{"content":[{"type":"tool_result","content":"out"}]}}`, true},
+		{`{"type":"user","message":{"content":[{"type":"tool_result"},{"type":"text","text":"and a prompt"}]}}`, false},
+		{`{"type":"user","message":{"content":"a typed prompt"}}`, false},
+		{`{"type":"user","message":{"content":[]}}`, false},
+	} {
+		if got := toolResultOnly([]byte(tc.line)); got != tc.want {
+			t.Errorf("toolResultOnly(%s) = %v, want %v", tc.line, got, tc.want)
+		}
 	}
 }

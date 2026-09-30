@@ -1208,6 +1208,10 @@ m("SP an unchecked silent-failure line marshals as a checked $0", "internal/spen
 m("SP by-agent shares are printed beside an unknown", "internal/spend/text.go",
   "\t\tif total == 0 || !main.Known() || !sub.Known() {", "\t\tif total == 0 {",
   "TestAgent_NoShareBesideAnUnknown")
+m("SP a user line's tool-result test decodes the text of its blocks", "internal/report/transcript.go",
+  "\t\tContent []struct {\n\t\t\tType string `json:\"type\"`\n\t\t} `json:\"content\"`",
+  "\t\tContent []struct {\n\t\t\tType string `json:\"type\"`\n\t\t\tText string `json:\"text\"`\n\t\t} `json:\"content\"`",
+  "TestUserBlocks_")
 
 # Import additions some mutants need.
 IMPORTS = {
