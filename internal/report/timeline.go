@@ -2,6 +2,7 @@ package report
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -40,17 +41,19 @@ const (
 	// different digest is a different command LINE, which `CI=1 pytest -q`,
 	// `cd sub && pytest -q` and `pytest  -q` all are next to `pytest -q`, so it
 	// says nothing about the arguments. Never offered for a program in
-	// subcommandPrograms.
+	// subcommandPrograms, or a versioned name of one.
 	LaterSameProgram = "same_program"
 )
 
 // subcommandPrograms are programs whose next word, not the program, names what
 // ran: `git status` succeeding says nothing about a failed `git push`, nor
 // `python b.py` about `python a.py`, and the same-program tier would pair
-// them. The same-command tier is still offered, because an identical digest
-// is an identical line whatever the program. A closed list and a short one: a
-// program missing from it gets the weak tier, which the text renders as no
-// more than "same program".
+// them. Wrappers are here for the same reason: the program is the first word,
+// so `sudo ls` would otherwise follow up a failed `sudo systemctl restart`, and
+// `timeout 5 true` a failed `timeout 60 go test ./...`. The same-command tier
+// is still offered, because an identical digest is an identical line whatever
+// the program. A closed list and a short one: a program missing from it gets
+// the weak tier, which the text renders as no more than "same program".
 var subcommandPrograms = map[string]bool{
 	"git": true, "gh": true, "go": true, "cargo": true, "make": true,
 	"npm": true, "npx": true, "pnpm": true, "yarn": true, "bun": true, "deno": true,
@@ -60,6 +63,20 @@ var subcommandPrograms = map[string]bool{
 	"brew": true, "apt": true, "apt-get": true, "systemctl": true,
 	"python": true, "python3": true, "node": true, "ruby": true, "perl": true,
 	"bash": true, "sh": true, "zsh": true,
+	"sudo": true, "doas": true, "env": true, "timeout": true, "time": true, "nohup": true,
+	"nice": true, "xargs": true, "watch": true, "stdbuf": true, "exec": true, "command": true,
+}
+
+// subcommandProgram says whether a program is in subcommandPrograms, directly
+// or as a versioned name of one: python3.12, pip3.11 and node18 are the
+// interpreter they name, so the prefix before a trailing version is looked
+// up too.
+func subcommandProgram(p string) bool {
+	if subcommandPrograms[p] {
+		return true
+	}
+	base := strings.TrimRight(p, "0123456789.")
+	return base != p && subcommandPrograms[base]
 }
 
 // TimelineAgent is the subagent a call ran in. Nil on a call the main agent
@@ -380,7 +397,7 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 			continue
 		}
 		command := failed.digest != "" && e.digest == failed.digest
-		program := !command && failed.call.Program != "" && c.Program == failed.call.Program && !subcommandPrograms[c.Program]
+		program := !command && failed.call.Program != "" && c.Program == failed.call.Program && !subcommandProgram(c.Program)
 		if !command && !program {
 			continue
 		}

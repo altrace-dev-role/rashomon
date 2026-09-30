@@ -1132,7 +1132,7 @@ m("TL a not-checked failure counts as no later success", "internal/report/timeli
 m("TL a not-checked failure says no later success", "internal/report/timeline_text.go",
   "\t\treturn \"  → not checked for a later success\"", "\t\treturn \"  → no later success of the same command or program recorded\"", "TestTimeline_")
 m("TL git status follows up a failed git push", "internal/report/timeline.go",
-  " && !subcommandPrograms[c.Program]\n", "\n", "TestTimeline_")
+  " && !subcommandProgram(c.Program)\n", "\n", "TestTimeline_")
 m("TL the same-program label claims different arguments", "internal/report/timeline_text.go",
   "\"  → same program ok at %d, recorded after%s\"", "\"  → same program ok at %d (different arguments%s)\"", "TestTimeline_")
 m("TL the same-command label drops recorded after", "internal/report/timeline_text.go",
@@ -1206,6 +1206,12 @@ m("TL the interrupted count is not printed", "internal/report/timeline_text.go",
   "\tif n.Interrupted > 0 {", "\tif false {", "TestTimeline_")
 m("TL the interleave caveat is not printed", "internal/report/timeline_text.go",
   "\tif n.Subagents > 0 {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "\tif false {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "TestTimeline_")
+m("TL sudo ls follows up a failed sudo systemctl", "internal/report/timeline.go",
+  "\t\"sudo\": true, \"doas\": true, \"env\": true, \"timeout\": true, \"time\": true, \"nohup\": true,\n\t\"nice\": true, \"xargs\": true, \"watch\": true, \"stdbuf\": true, \"exec\": true, \"command\": true,\n", "", "TestTimeline_")
+m("TL a versioned interpreter is the program", "internal/report/timeline.go",
+  "\treturn base != p && subcommandPrograms[base]", "\treturn base != p && false", "TestTimeline_")
+m("TL any name ending in digits is a versioned interpreter", "internal/report/timeline.go",
+  "\treturn base != p && subcommandPrograms[base]", "\treturn base != p", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

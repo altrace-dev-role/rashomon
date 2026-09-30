@@ -740,6 +740,34 @@ func TestTimeline_SameProgramClaimsNoMore(t *testing.T) {
 	}
 }
 
+// #36 review round 3, decision 2: a wrapper or a versioned interpreter is
+// the first word, so it is the program, and it names nothing about what ran.
+// Break: leave them out of the list and `sudo ls` follows up a failed `sudo
+// systemctl restart nginx` as "same program ok".
+func TestTimeline_AWrapperIsNotTheProgram(t *testing.T) {
+	for _, program := range []string{"sudo", "timeout", "env", "xargs", "python3.12", "pip3.11", "node18"} {
+		run := tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Bash", program: program, digest: "d1"},
+			{seq: 2, id: "s", tool: "Bash", program: program, digest: "d2"},
+			{seq: 3, id: "same", tool: "Bash", program: program, digest: "d1"},
+		}, tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0))
+		if c := tlByID(t, buildTimeline(run, nil), "f"); c.Later != nil || !c.LaterChecked {
+			t.Errorf("%s: another %s line is offered as a later success: %+v", program, program, c.Later)
+		}
+		// The same line is still the same command.
+		run.Executions = append(run.Executions, tlExecAt("same", store.ExecOK, 0, 2000))
+		if c := tlByID(t, buildTimeline(run, nil), "f"); c.Later == nil || c.Later.Kind != LaterSameCommand {
+			t.Errorf("%s: the same line run again is not the same command: %+v", program, c.Later)
+		}
+	}
+	// A name that only ends in digits is not a versioned interpreter.
+	for _, program := range []string{"pytest", "b2", "gpg2"} {
+		if subcommandProgram(program) {
+			t.Errorf("%s is treated as a subcommand program", program)
+		}
+	}
+}
+
 // #36 review 5: agent_type and agent_id come from the payload. Break: print
 // them raw and an escape sequence reaches the terminal; cut the id by byte
 // and a character is split.
