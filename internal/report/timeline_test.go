@@ -488,6 +488,41 @@ func TestTimeline_ADroppedCallKeepsItsExecutionAndNoAgent(t *testing.T) {
 	}
 }
 
+// #36 review round 3, smaller 5: one tool_use_id with two execution records.
+// The row's outcome, exit code and "recorded after" position all come from
+// the one record the outcome is read from -- today the highest seq, as
+// --chain's headline is -- whatever order the store holds them in. Break:
+// read the exit code or the position from the first record, and the row says
+// "failed" with no code, or measures "later" from a record it did not use.
+func TestTimeline_TwoRecordsForOneID(t *testing.T) {
+	for _, order := range []string{"ascending", "descending"} {
+		t.Run(order, func(t *testing.T) {
+			ok, failed := tlExecAt("f", store.ExecOK, 0, 10), tlExecAt("f", store.ExecFailed, 2, 12)
+			recs := []store.Execution{ok, failed}
+			if order == "descending" {
+				recs = []store.Execution{failed, ok}
+			}
+			// A same-command success recorded between the two: after the ok
+			// record, before the failed one the outcome came from.
+			recs = append(recs, tlExecAt("s", store.ExecOK, 0, 11))
+			run := tlRun([]tlCall{
+				{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+				{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
+			}, recs...)
+			c := tlByID(t, buildTimeline(run, nil), "f")
+			if c.Group != GroupFailed || c.Outcome != store.ExecFailed {
+				t.Errorf("group = %s / %s, want failed: the highest-seq record decides", c.Group, c.Outcome)
+			}
+			if c.ExitCode == nil || *c.ExitCode != 2 {
+				t.Errorf("exit code = %v, want 2, from the record the outcome came from", c.ExitCode)
+			}
+			if c.Later != nil || !c.LaterChecked {
+				t.Errorf("later = %+v: a success recorded before the failed record is not after it", c.Later)
+			}
+		})
+	}
+}
+
 // #36 review round 3, smaller 1: undeclared rows have no declaration, but
 // their execution records have positions, and they read in that order: by the
 // last record's seq, those with no position last, ties by id. Break: sort by

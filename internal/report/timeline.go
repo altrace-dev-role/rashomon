@@ -198,6 +198,12 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 	// and a timeline that did not would disagree with it on the same page. The
 	// tool name is the execution's own; agent, program, and the declaration's
 	// position and time are unknown and said to be.
+	//
+	// The two counts agree only while each call has one execution record. The
+	// report counts every failed record; a row here takes its outcome from the
+	// highest-seq record alone, so an id with a failed record and a later ok
+	// one is a failed call there and an ok row here, and two failed records
+	// are two there and one here.
 	for _, id := range undeclared(run, executed) {
 		recs := executed[id]
 		c := TimelineCall{
