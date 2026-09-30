@@ -1621,6 +1621,15 @@ m("TB the session block drops the backgrounded-run limit", "internal/report/text
   "",
   "TestTestRuns_")
 
+m("TB the writer stays at schema 2", "internal/store/record.go",
+  "const SchemaVersion = 3",
+  "const SchemaVersion = 2",
+  "TestSchema3_")
+m("TB test runs are counted over records that predate the test class", "internal/report/testbending.go",
+  "\tif run == nil || !measuresTests(run) {\n",
+  "\tif run == nil {\n",
+  "TestTestRuns_")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

@@ -9,7 +9,15 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // gained outcome, exit_code, is_interrupt, duration_ms and executed_digest;
 // coverage gained cwd. No v1 field changed meaning and none was removed, which
 // is what makes reading both safe.
-const SchemaVersion = 2
+//
+// v3 is additive over v2 as well: declaration gained file_label, host_source,
+// rule_match, cwd_digest and shape.may_write; execution gained rule_match and
+// backgrounded. And the test verb class, with the test-file label, is a v3
+// vocabulary: a v2 record says package or execute for `go test`, so a reader
+// that meets one knows its test runs were never measured, not that there were
+// none. rule_match is null on every record this build writes; the rule-match
+// layer adds behaviour on v3, not another version.
+const SchemaVersion = 3
 
 // Accepts reports whether a reader understands a record's schema version.
 //

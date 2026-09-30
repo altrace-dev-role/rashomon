@@ -278,7 +278,12 @@ type Session struct {
 	// command that both passed and failed with no recorded file edit between
 	// (see DetectTestBending for what an edit is). The turn digest carries
 	// the same patterns for one turn; this is the whole session's.
-	TestRuns TestRuns `json:"test_runs"`
+	//
+	// Null when no declaration in the session is schema 3: records written
+	// before the test class existed say execute or package for the same
+	// commands, so a count over them would be zeros nobody measured. Zeros
+	// here only ever mean measured, and none.
+	TestRuns *TestRuns `json:"test_runs"`
 }
 
 // Option configures Build.

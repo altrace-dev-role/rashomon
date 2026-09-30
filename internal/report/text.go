@@ -653,9 +653,9 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // patterns among them.
 //
 // Absent when the session recorded no test run, unlike the sections that are
-// always present: records written before the test class existed say execute
-// or package for the same commands, so a "test runs: 0" there would state a
-// count the record never measured.
+// always present, and when its records predate the test class (t is nil):
+// those say execute or package for the same commands, so a "test runs: 0"
+// there would state a count the record never measured.
 //
 // The limit is printed wherever a pattern is: "no recorded file edit between"
 // means no recorded call between the runs that may change files (mayEdit:
@@ -677,8 +677,8 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 //
 // The pairs are seqs, and nothing in the default report maps a seq to its
 // call, so the block's first limit line points at --timeline, which does.
-func writeTestRuns(b *bytes.Buffer, t TestRuns) {
-	if t.Runs == 0 {
+func writeTestRuns(b *bytes.Buffer, t *TestRuns) {
+	if t == nil || t.Runs == 0 {
 		return
 	}
 	fmt.Fprintf(b, "  test runs: %d (%d ok, %d failed)\n", t.Runs, t.OK, t.Failed)

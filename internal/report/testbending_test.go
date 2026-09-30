@@ -35,7 +35,8 @@ func tbRun(calls ...tbCall) *store.Run {
 			verb = shape.VerbWrite
 		}
 		d := store.Declaration{
-			Seq: c.seq, RecordedAtMS: 1_700_000_000_000 + c.seq*1000, ToolUseID: id, ToolName: c.tool, SessionID: "s1",
+			SchemaVersion: store.SchemaVersion,
+			Seq:           c.seq, RecordedAtMS: 1_700_000_000_000 + c.seq*1000, ToolUseID: id, ToolName: c.tool, SessionID: "s1",
 			Shape: shape.Shape{VerbClass: verb, Digest: c.digest},
 		}
 		if c.tool == "Bash" {
@@ -355,7 +356,7 @@ func TestTestBending_FlakyKeepsTheOrder(t *testing.T) {
 
 // testRunsOf builds the test runs as Build does, from one grouping and one
 // detection.
-func testRunsOf(run *store.Run) TestRuns {
+func testRunsOf(run *store.Run) *TestRuns {
 	executed := executionsByID(run)
 	return buildTestRuns(run, executed, nil, detectTestBending(run, executed, nil))
 }
@@ -438,6 +439,38 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	writeTestRuns(&b, testRunsOf(tbRun(test(1, "d", ok), test(2, "d", ok))))
 	if strings.Contains(b.String(), "a file edit here") || strings.Contains(b.String(), "--timeline") {
 		t.Errorf("the limit printed with no pattern to qualify:\n%s", b.String())
+	}
+}
+
+// TestTestRuns_NullBeforeSchema3: a session whose declarations all predate
+// schema 3 has no test runs at all -- null in JSON -- because its records say
+// execute or package for the same commands, and zeros there would read as
+// measured. One schema 3 declaration makes it measured, and then zeros are
+// zeros. Break: count every session, and an old one reads as "no tests ran".
+func TestTestRuns_NullBeforeSchema3(t *testing.T) {
+	old := tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbPackage, digest: "d", outcome: store.ExecOK})
+	for i := range old.Declarations {
+		old.Declarations[i].SchemaVersion = 2
+	}
+	if got := testRunsOf(old); got != nil {
+		t.Errorf("a schema 2 session has test runs %+v, want none", got)
+	}
+	b, err := json.Marshal(Session{TestRuns: testRunsOf(old)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"test_runs":null`) {
+		t.Errorf("a schema 2 session marshals test_runs as other than null: %s", b)
+	}
+	var text bytes.Buffer
+	writeTestRuns(&text, testRunsOf(old))
+	if text.Len() != 0 {
+		t.Errorf("a schema 2 session rendered a block: %q", text.String())
+	}
+
+	measured := testRunsOf(tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbExecute, digest: "x", outcome: store.ExecOK}))
+	if measured == nil || measured.Runs != 0 {
+		t.Errorf("a schema 3 session with no test run = %+v, want measured zeros", measured)
 	}
 }
 

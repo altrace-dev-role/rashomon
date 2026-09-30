@@ -217,10 +217,9 @@ var noWrite = map[string]bool{
 
 // TestRuns is the session's test runs and the two patterns among them.
 type TestRuns struct {
-	// Runs counts calls of verb class test that ended ok or failed. Records
-	// written before the class existed say execute or package for the same
-	// commands, so an old session reads 0 here: under-claimed, never
-	// over-claimed.
+	// Runs counts calls of verb class test that ended ok or failed. A
+	// session with no schema 3 declaration has no TestRuns at all
+	// (buildTestRuns), so a 0 here was measured.
 	Runs   int `json:"runs"`
 	OK     int `json:"ok"`
 	Failed int `json:"failed"`
@@ -231,8 +230,17 @@ type TestRuns struct {
 // executionsByID) and denied, and carries tb, the patterns detectTestBending
 // found over the same three: Build computes each once and shares it with the
 // timeline.
-func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied map[string]bool, tb TestBending) TestRuns {
-	out := TestRuns{TestBending: tb}
+//
+// Nil when no declaration of run is schema 3 or later: the test class is a
+// schema 3 vocabulary, and records written before it say execute or package
+// for the same commands, so counting them would state zeros nobody measured.
+// One schema 3 declaration is enough, since from it on the class was being
+// written; a session that spans an upgrade is counted from the upgrade.
+func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied map[string]bool, tb TestBending) *TestRuns {
+	if run == nil || !measuresTests(run) {
+		return nil
+	}
+	out := &TestRuns{TestBending: tb}
 	for _, d := range run.Declarations {
 		if d.Shape.VerbClass != shape.VerbTest {
 			continue
@@ -247,4 +255,15 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 		}
 	}
 	return out
+}
+
+// measuresTests reports a run holding a declaration written at schema 3 or
+// later, where the test class exists.
+func measuresTests(run *store.Run) bool {
+	for _, d := range run.Declarations {
+		if d.SchemaVersion >= 3 {
+			return true
+		}
+	}
+	return false
 }

@@ -326,8 +326,9 @@ The two test-bending lines have limits of their own:
   turns, or one completed only across a denied edit, can show in the report
   and not in the line.
 
-`report --json` carries the same facts: each session's `test_runs` (`runs`,
-`ok`, `failed`, `tests_only_then_green` as `[earlier, later]` seq pairs, and
+`report --json` carries the same facts: each session's `test_runs` (null
+for a session whose records all predate schema 3, which has no test class to
+count, so zeros there always mean measured; otherwise `runs`, `ok`, `failed`, `tests_only_then_green` as `[earlier, later]` seq pairs, and
 `flaky` as `{"seqs": [earlier, later], "first_failed": true|false}`, where
 earlier and later are declaration order, the order the runs started, which
 overlapping runs in parallel agents may not have finished in), and a

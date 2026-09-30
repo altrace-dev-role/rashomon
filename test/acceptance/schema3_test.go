@@ -198,3 +198,73 @@ func toAnySlice(v any) []any {
 	}
 	return nil
 }
+
+// TestSchema3_WrittenRecordsMeetTheVersion3Gate: this build writes schema 3,
+// and every record it writes carries each key the published v3 gate requires.
+// The version is compared against the literal, not against
+// store.SchemaVersion, which would compare the writer with itself. Break:
+// write 2 while the vocabulary is 3's (the test class, the test-file label),
+// and an older reader buckets the new words as unknown; or drop a gated key,
+// and a validator using the published schema rejects the record.
+func TestSchema3_WrittenRecordsMeetTheVersion3Gate(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.mustHook(defaultPayload().build(t))
+	e.mustPost(defaultPost().build(t))
+
+	defs := schemaDefs(t)
+	for _, c := range []struct {
+		def  string
+		recs []record
+	}{
+		{"declaration", e.declarations(testSession)},
+		{"execution", e.executions(testSession)},
+	} {
+		gated := v3Gate(defs[c.def].(map[string]any))
+		if len(gated) == 0 {
+			t.Fatalf("$defs.%s has no schema 3 gate", c.def)
+		}
+		if len(c.recs) == 0 {
+			t.Fatalf("no %s record written", c.def)
+		}
+		for _, r := range c.recs {
+			if got := r.fields["schema_version"]; got != float64(3) {
+				t.Errorf("%s written at schema_version %v, want 3", c.def, got)
+			}
+			for _, k := range gated {
+				if _, ok := nested(r, k); !ok {
+					t.Errorf("%s lacks %q, which the schema 3 gate requires", c.def, k)
+				}
+			}
+		}
+	}
+}
+
+// v3Gate lists the dotted keys a definition requires at schema_version 3:
+// its gate's `then.required`, and each `then.properties.<key>.required` as
+// `<key>.<nested>` -- how a key inside the shape object is gated, since the
+// shape carries no version of its own.
+func v3Gate(def map[string]any) []string {
+	var out []string
+	for _, entry := range toAnySlice(def["allOf"]) {
+		e, _ := entry.(map[string]any)
+		cond, _ := e["if"].(map[string]any)
+		then, _ := e["then"].(map[string]any)
+		cp, _ := cond["properties"].(map[string]any)
+		sv, _ := cp["schema_version"].(map[string]any)
+		if n, ok := sv["const"].(float64); !ok || int(n) != 3 || then == nil {
+			continue
+		}
+		for k := range toStringSet(then["required"]) {
+			out = append(out, k)
+		}
+		props, _ := then["properties"].(map[string]any)
+		for parent, raw := range props {
+			child, _ := raw.(map[string]any)
+			for k := range toStringSet(child["required"]) {
+				out = append(out, parent+"."+k)
+			}
+		}
+	}
+	return out
+}
