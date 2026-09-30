@@ -286,6 +286,10 @@ The two test-bending lines have limits of their own:
   tail`) is not counted, since the line's exit status is not the runner's.
 - `cd DIR && go test ./...` is a test run, so a failed `cd` counts as a
   failed test run. Leaving `cd … &&` out would lose most real runs.
+- A test edit is an Edit, Write or NotebookEdit that ran ok on a file named
+  like a test (`test-file`). Deleting or moving a test through the shell, or
+  regenerating snapshots or golden files (`jest -u`, a `-update` flag), is a
+  shell call with no label, so it never completes the tests-only pattern.
 - The end-of-turn line sees one turn and no denied set, so a pair across two
   turns, or one completed only across a denied edit, can show in the report
   and not in the line.

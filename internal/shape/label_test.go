@@ -300,6 +300,14 @@ func TestLabelTestFile(t *testing.T) {
 		{path: "/k/CalcTest.kt", want: LabelTestFile},
 		{path: "/n/CalcTests.cs", want: LabelTestFile},
 		{path: "/php/tests/CalcTest.php", want: LabelTestFile, why: "PHPUnit, which is on the runner list"},
+		{path: "/n/CalcTest.cs", want: LabelTestFile, why: "dotnet test"},
+		{path: "/k/CalcTests.kt", want: LabelTestFile},
+		{path: "/web/src/util.test.mts", want: LabelTestFile, why: "Vitest"},
+		{path: "/web/src/util.test.cts", want: LabelTestFile},
+		{path: "/web/src/util.spec.mts", want: LabelTestFile},
+		{path: "/web/src/util.spec.cts", want: LabelTestFile},
+		{path: "/cc/calc_test.cc", want: LabelTestFile, why: "GoogleTest, run by ctest"},
+		{path: "/cc/calc_unittest.cc", want: LabelTestFile},
 		{path: `C:\web\src\APP.TEST.TSX`, want: LabelTestFile, why: "the JS infixes still fold"},
 
 		// go test and pytest match their names as written, so these are not
@@ -327,6 +335,11 @@ func TestLabelTestFile(t *testing.T) {
 		{path: "/j/LATESTTEST.JAVA", want: LabelNone, why: "the JUnit suffixes are cased: a class name"},
 		{path: "/n/Contests.cs", want: LabelNone},
 		{path: "/k/Protest.kt", want: LabelNone},
+		{path: "/n/Contest.cs", want: LabelNone, why: "Test.cs is cased like the other class-name suffixes"},
+		{path: "/k/Protests.kt", want: LabelNone},
+		{path: "/cc/contest.cc", want: LabelNone, why: "_test.cc needs its underscore"},
+		{path: "/cc/calc_TEST.cc", want: LabelNone, why: "cased, like _test.go"},
+		{path: "/web/src/util.mts", want: LabelNone},
 		{path: "/repo/tests/fixture.json", want: LabelNone, why: "no directory rule: a fixture in tests/ is not a test"},
 		{path: "/web/src/util.test.css", want: LabelNone},
 

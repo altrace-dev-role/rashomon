@@ -1445,12 +1445,12 @@ m("TB conftest.py is folded", "internal/shape/label.go",
   "\t\t\tif base == e {",
   "TestLabelTestFile")
 m("TB conftest.py is not a test file", "internal/shape/label.go",
-  "casedExact:  []string{\"conftest.py\"},",
-  "casedExact:  []string{\"conftest.pyx\"},",
+  "casedExact: []string{\"conftest.py\"},",
+  "casedExact: []string{\"conftest.pyx\"},",
   "TestLabelTestFile")
 m("TB *Test.php is not a test file", "internal/shape/label.go",
-  ", \"Tests.cs\", \"Test.php\"}",
-  ", \"Tests.cs\"}",
+  ", \"Tests.cs\", \"Test.php\",\n",
+  ", \"Tests.cs\",\n",
   "TestLabelTestFile")
 
 m("TB the session block drops the cd-failure limit", "internal/report/text.go",
@@ -1507,6 +1507,23 @@ m("TB the words before the runner are not read", "internal/shape/shape.go",
   "\t\tif refusesRun(c[0], toks[:i], toks[i+len(c):]) {",
   "\t\tif refusesRun(c[0], toks[i:i], toks[i+len(c):]) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
+
+m("TB *Test.cs and *Tests.kt are not test files", "internal/shape/label.go",
+  "\"Test.kt\", \"Tests.kt\", \"Test.cs\", \"Tests.cs\",",
+  "\"Test.kt\", \"Tests.cs\",",
+  "TestLabelTestFile")
+m("TB GoogleTest files are not test files", "internal/shape/label.go",
+  "\"_test.py\", \"_test.cc\", \"_unittest.cc\",\n",
+  "\"_test.py\",\n",
+  "TestLabelTestFile")
+m("TB the .mts and .cts infixes are not test files", "internal/shape/label.go",
+  ", \".test.mts\", \".test.cts\",\n",
+  ",\n",
+  "TestLabelTestFile")
+m("TB GoogleTest suffixes are folded", "internal/shape/label.go",
+  "\t\t\t\"_spec.rb\",\n",
+  "\t\t\t\"_spec.rb\", \"_test.cc\",\n",
+  "TestLabelTestFile")
 
 # Import additions some mutants need.
 IMPORTS = {

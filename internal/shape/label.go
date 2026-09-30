@@ -198,8 +198,10 @@ var labelTable = []labelRule{
 
 	// Test files, by the basename each framework's runner looks for: go
 	// test's _test.go; pytest's test_*.py, *_test.py and conftest.py; the
-	// .test. and .spec. infixes Jest, Vitest and Mocha default to; RSpec's
-	// _spec.rb; and the JUnit, Kotlin and .NET class-name suffixes.
+	// .test. and .spec. infixes Jest, Vitest and Mocha default to, with the
+	// .mts and .cts extensions Vitest also reads; RSpec's _spec.rb;
+	// GoogleTest's _test.cc and _unittest.cc, the convention ctest projects
+	// follow; and the JUnit, Kotlin and .NET class-name suffixes.
 	//
 	// AFTER every sensitive row, and that order is the point: a secret kept
 	// in a test directory, or named like a fixture, is still a secret, and a
@@ -215,7 +217,8 @@ var labelTable = []labelRule{
 	// name only ends in Test (ABTest.java, a source file for an A/B test):
 	// that is kept, and recorded, rather than guessed around.
 	//
-	// go test's and pytest's names are cased too, because those runners
+	// go test's and pytest's names are cased too, and GoogleTest's with them,
+	// because those runners
 	// match them case-sensitively: go test reads calc_TEST.go as source and
 	// pytest does not collect TEST_x.py. Folded, the label would call them
 	// tests to a detection that exists to tell tests from source. The .test.
@@ -227,12 +230,15 @@ var labelTable = []labelRule{
 		label: LabelTestFile,
 		suffix: []string{
 			"_spec.rb",
-			".test.js", ".test.jsx", ".test.ts", ".test.tsx", ".test.mjs", ".test.cjs",
-			".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx", ".spec.mjs", ".spec.cjs",
+			".test.js", ".test.jsx", ".test.ts", ".test.tsx", ".test.mjs", ".test.cjs", ".test.mts", ".test.cts",
+			".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx", ".spec.mjs", ".spec.cjs", ".spec.mts", ".spec.cts",
 		},
-		casedExact:  []string{"conftest.py"},
-		casedSuffix: []string{"_test.go", "_test.py", "Test.java", "Tests.java", "Test.kt", "Tests.cs", "Test.php"},
-		casedBoth:   [][2]string{{"test_", ".py"}},
+		casedExact: []string{"conftest.py"},
+		casedSuffix: []string{
+			"_test.go", "_test.py", "_test.cc", "_unittest.cc",
+			"Test.java", "Tests.java", "Test.kt", "Tests.kt", "Test.cs", "Tests.cs", "Test.php",
+		},
+		casedBoth: [][2]string{{"test_", ".py"}},
 	},
 }
 
