@@ -1185,6 +1185,12 @@ m("TL undeclared rows are ordered by id, not by their results", "internal/report
   "\t\tif pi != pj {\n\t\t\treturn pi < pj\n", "\t\tif false && pi != pj {\n\t\t\treturn pi < pj\n", "TestTimeline_")
 m("TL undeclared rows with no position come first", "internal/report/timeline.go",
   "\t\tif oki != okj {\n\t\t\treturn oki\n", "\t\tif oki != okj {\n\t\t\treturn okj\n", "TestTimeline_")
+m("TL tool_name reaches the terminal raw on the timeline", "internal/report/timeline_text.go",
+  "\tcall := printable(c.ToolName)", "\tcall := c.ToolName", "TestTimeline_")
+m("TL tool_name reaches the terminal raw in the by-tool counts", "internal/report/text.go",
+  "fmt.Sprintf(\"%s %d\", printable(name), counts[name])", "fmt.Sprintf(\"%s %d\", name, counts[name])", "TestText_ToolNameIsPrintable")
+m("TL tool_name reaches the terminal raw in a chain row", "internal/report/text.go",
+  "\t\tl.Seq, printable(l.ToolName), shape,", "\t\tl.Seq, l.ToolName, shape,", "TestText_ToolNameIsPrintable")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

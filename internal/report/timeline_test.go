@@ -700,6 +700,37 @@ func TestTimeline_AgentLabelIsPrintable(t *testing.T) {
 	}
 }
 
+// #36 review round 3, smaller 2: tool_name comes from the payload as
+// agent_type does, and is printed on every row. Break: print it raw and an
+// escape sequence or a bidi override reaches the terminal, declared row or
+// undeclared.
+func TestTimeline_ToolNameIsPrintable(t *testing.T) {
+	const raw = "Ba\x1b[2Jsh\u202e\x07"
+	run := tlRun([]tlCall{{seq: 1, id: "d", tool: raw}}, tlExec("d", store.ExecOK, 0), tlExec("u", store.ExecFailed, 1))
+	run.Executions[1].ToolName = raw
+	var b bytes.Buffer
+	writeTimeline(&b, buildTimeline(run, nil))
+	out := b.String()
+	if strings.ContainsAny(out, "\x1b\u202e\x07") {
+		t.Errorf("a control character in tool_name reaches the text:\n%q", out)
+	}
+	if strings.Count(out, "Ba[2Jsh") != 2 {
+		t.Errorf("the tool name is not shown, made printable, on both rows:\n%s", out)
+	}
+}
+
+// The same for the report's other listings of a tool name: the by-tool
+// counts and the --chain rows.
+func TestText_ToolNameIsPrintableInEveryListing(t *testing.T) {
+	const raw = "Ba\x1b[2Jsh\u202e"
+	var b bytes.Buffer
+	b.WriteString(byName(map[string]int{raw: 1}))
+	writeLink(&b, Link{Seq: 1, ToolName: raw, VerbClass: "execute"}, false)
+	if strings.ContainsAny(b.String(), "\x1b\u202e") {
+		t.Errorf("a control character in tool_name reaches the text:\n%q", b.String())
+	}
+}
+
 // #36 review 6, 7, 9: the legend names what the unknown group holds; "no
 // later success" says it is about the record; the time column says UTC and
 // the date is shown; a main agent that made no calls is not named as a
