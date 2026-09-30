@@ -234,7 +234,7 @@ func coldLine(c CacheExpiry) string {
 	if c.Responses == 0 {
 		return fmt.Sprintf("none: no cache write followed a gap longer than its TTL (heuristic: %s)", c.Heuristic)
 	}
-	return fmt.Sprintf("%s re-written after a gap longer than its TTL, on %s (heuristic: %s)",
+	return fmt.Sprintf("%s over cache reads, on %s whose cache was re-written after a gap longer than its TTL (heuristic: %s)",
 		money(c.Cost), countOf(c.Responses, "response"), c.Heuristic)
 }
 
@@ -369,7 +369,7 @@ func itThem(n int) string {
 func savingLine(sv Saving) string {
 	switch sv.Kind {
 	case SavingColdCache:
-		line := fmt.Sprintf("%s of cache re-written after a gap longer than its TTL (heuristic)", money(sv.Cost))
+		line := fmt.Sprintf("%s over cache reads, re-writing a cache after a gap longer than its TTL (heuristic)", money(sv.Cost))
 		if sv.Hint == SavingHintLongerTTL {
 			line += ": part was written with the 5m TTL, and the 1h TTL keeps a cache across pauses up to an hour"
 		}

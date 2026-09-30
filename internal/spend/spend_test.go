@@ -971,8 +971,8 @@ func TestCacheExpiry_WriteAfterTheTTLIsCold(t *testing.T) {
 		t.Errorf("cold = %d responses, %d tokens; want 2 and 600 (r3's 5m write, r5's 1h write)",
 			s.CacheExpiry.Responses, s.CacheExpiry.Tokens)
 	}
-	if want := int64(200*opusW5 + 400*opusW1h); s.CacheExpiry.Cost.Nano != want {
-		t.Errorf("cold cost = %d, want %d", s.CacheExpiry.Cost.Nano, want)
+	if want := int64(200*(opusW5-opusRead) + 400*(opusW1h-opusRead)); s.CacheExpiry.Cost.Nano != want {
+		t.Errorf("cold cost = %d, want %d: the writes over a cache read of the same tokens", s.CacheExpiry.Cost.Nano, want)
 	}
 	txt, _ := render(t, s)
 	if !strings.Contains(txt, "heuristic") {
@@ -1062,9 +1062,36 @@ func TestCacheExpiry_AnUnbilledLineWarmsNothing(t *testing.T) {
 		resp{id: "syn", model: "<synthetic>", at: t0.Add(20 * oneMinute), stop: "end_turn"}.line("text"),
 		resp{id: "b", model: "claude-opus-5-5", at: t0.Add(20*oneMinute + time.Second), w5: 50000, stop: "end_turn"}.line("text"))
 	s := c.summary(30)
-	if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Cost.Nano != 50000*opusW5 {
+	if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Cost.Nano != 50000*(opusW5-opusRead) {
 		t.Errorf("cold = %d responses, %d nanodollars; want b's write, 1 and %d",
-			s.CacheExpiry.Responses, s.CacheExpiry.Cost.Nano, 50000*opusW5)
+			s.CacheExpiry.Responses, s.CacheExpiry.Cost.Nano, 50000*(opusW5-opusRead))
+	}
+}
+
+// TestCacheExpiry_AWriteOnAWarmCacheIsNotCold: a response that read from the
+// cache found it warm, whatever the gap before it, and its write only added
+// the tokens after the cached prefix. Counting it whole priced a 1k write on a
+// warm cache as an expiry. And a cold write is priced as the write over a
+// cache read of the same tokens -- the alternative was a read, not nothing --
+// so the full write rate overstated the figure.
+func TestCacheExpiry_AWriteOnAWarmCacheIsNotCold(t *testing.T) {
+	c := newConfig(t)
+	t0 := now.Add(-2 * time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "a", model: "claude-opus-5-5", at: t0, w5: 100, stop: "end_turn"}.line("text"),
+		resp{id: "warm", model: "claude-opus-5-5", at: t0.Add(20 * oneMinute), read: 5000, w5: 1000, stop: "end_turn"}.line("text"),
+		resp{id: "cold", model: "claude-opus-5-5", at: t0.Add(40 * oneMinute), w5: 2000, stop: "end_turn"}.line("text"))
+	s := c.summary(30)
+	if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens != 2000 {
+		t.Errorf("cold = %d responses, %d tokens; want the write that read nothing, 1 and 2000",
+			s.CacheExpiry.Responses, s.CacheExpiry.Tokens)
+	}
+	if want := int64(2000 * (opusW5 - opusRead)); s.CacheExpiry.Cost.Nano != want {
+		t.Errorf("cold cost = %d, want %d: the write rate minus the read rate", s.CacheExpiry.Cost.Nano, want)
+	}
+	txt, js := render(t, s)
+	if !strings.Contains(txt, "over cache reads") || !strings.Contains(js, "read nothing from the cache") {
+		t.Errorf("the figure does not say it is the write over a cache read of a cache that read nothing:\n%s\n%s", txt, js)
 	}
 }
 

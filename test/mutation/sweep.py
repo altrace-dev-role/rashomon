@@ -1450,6 +1450,15 @@ m("SP the silent-failure line says the turns ended with a failure", "internal/sp
 m("SP the silent-failure saving says it bought a done", "internal/spend/text.go",
   '"%s spent in turns with a failed call the summary never mentioned"', '"%s bought a \\"done\\" in turns whose recorded failures the summary never mentioned"',
   "TestJoin_SpendInsideASilentlyFailedTurn")
+m("SP a write on a response that read from the cache is counted cold", "internal/spend/spend.go",
+  "\t\t\tif rs[i].Tokens.CacheRead > 0 {\n\t\t\t\tcontinue\n\t\t\t}\n", "",
+  "TestCacheExpiry_AWriteOnAWarmCacheIsNotCold")
+m("SP a cold write is priced at the full write rate, not over a cache read", "internal/spend/spend.go",
+  "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)", "w.CacheWrite5m*rt.CacheWrite5m() + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)",
+  "TestCacheExpiry_")
+m("SP a cold 1h write is priced at the full write rate", "internal/spend/spend.go",
+  "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)", "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*rt.CacheWrite1h()",
+  "TestCacheExpiry_")
 
 # Import additions some mutants need.
 IMPORTS = {

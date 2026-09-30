@@ -209,6 +209,10 @@ type KindSplit struct {
 }
 
 // CacheExpiry is the cold-cache heuristic's result.
+//
+// Tokens are the cold writes' tokens; Cost is what writing them cost over
+// reading the same tokens from a warm cache (write rate minus read rate),
+// because the alternative to a re-write was a cache read, not nothing.
 type CacheExpiry struct {
 	Heuristic string `json:"heuristic"`
 	Responses int    `json:"responses"`
@@ -222,7 +226,7 @@ type CacheExpiry struct {
 }
 
 // CacheHeuristic is the rule, stated wherever its number is.
-const CacheHeuristic = "a cache write on a response whose previous response by the same agent in the same transcript started more than the TTL earlier (5m, or 1h for a 1h write)"
+const CacheHeuristic = "a cache write on a response that read nothing from the cache and whose previous response by the same agent in the same transcript started more than the TTL earlier (5m, or 1h for a 1h write), priced as the write over a cache read of the same tokens"
 
 // Refusals is responses that ended with stop_reason "refusal".
 //
@@ -522,7 +526,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			s.CacheExpiry.Tokens1h += w.CacheWrite1h
 			if key, ok := PriceKey(r.Model); ok {
 				rt, _ := RatesFor(key)
-				s.CacheExpiry.Cost.addPriced(w.CacheWrite5m*rt.CacheWrite5m() + w.CacheWrite1h*rt.CacheWrite1h())
+				s.CacheExpiry.Cost.addPriced(w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead))
 			} else {
 				s.CacheExpiry.Cost.addUnpriced(w.CacheWrite5m + w.CacheWrite1h)
 			}
@@ -623,6 +627,14 @@ func (s *Summary) buildSavings() {
 // so this can over-attribute near the threshold -- one reason it is labelled
 // a heuristic wherever its number appears.
 //
+// A write on a response that read anything from the cache is not cold: the
+// cache was warm, and the write only added the new tokens after the cached
+// prefix. Counting it whole priced a 1k write on a warm cache as an expiry,
+// and on real data overstated the figure by single-digit percent to about
+// 15%. So a write counts only when cache_read_input_tokens is zero, and it
+// is priced as the write rate minus the read rate (Build): what re-reading
+// those tokens would have cost is not a saving.
+//
 // Only a billed response is a predecessor. A zero-token line (Build's
 // "<synthetic>" local error) sent nothing, so it refreshed no cache; taking
 // it as the previous request would reset the gap and hide the cold write
@@ -644,6 +656,9 @@ func coldWrites(sc *Scan) map[*Response]Tokens {
 	for _, rs := range byFile {
 		sort.SliceStable(rs, func(i, j int) bool { return rs[i].StartMS < rs[j].StartMS })
 		for i := 1; i < len(rs); i++ {
+			if rs[i].Tokens.CacheRead > 0 {
+				continue
+			}
 			gap := time.Duration(rs[i].StartMS-rs[i-1].StartMS) * time.Millisecond
 			var w Tokens
 			if gap > ttl5m {
