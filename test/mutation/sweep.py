@@ -1191,6 +1191,8 @@ m("TL tool_name reaches the terminal raw in the by-tool counts", "internal/repor
   "fmt.Sprintf(\"%s %d\", printable(name), counts[name])", "fmt.Sprintf(\"%s %d\", name, counts[name])", "TestText_ToolNameIsPrintable")
 m("TL tool_name reaches the terminal raw in a chain row", "internal/report/text.go",
   "\t\tl.Seq, printable(l.ToolName), shape,", "\t\tl.Seq, l.ToolName, shape,", "TestText_ToolNameIsPrintable")
+m("TL the capped listing prints every row anyway", "internal/report/timeline_text.go",
+  "plural(rest))\n\t\t\tbreak\n", "plural(rest))\n", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

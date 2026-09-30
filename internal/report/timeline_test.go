@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -370,15 +371,28 @@ func TestTimeline_Text(t *testing.T) {
 	}
 }
 
+// Break: drop the stop after the trailer and every row is still printed
+// beneath a line saying they were not.
 func TestTimeline_TextIsCappedAndSaysSo(t *testing.T) {
 	var calls []tlCall
 	for i := int64(1); i <= timelineRows+7; i++ {
-		calls = append(calls, tlCall{seq: i, id: "c" + string(rune('a'+i%26)) + strings.Repeat("x", int(i%5)), tool: "Read"})
+		calls = append(calls, tlCall{seq: i, id: fmt.Sprintf("c%03d", i), tool: "Read"})
+	}
+	tl := buildTimeline(tlRun(calls), nil)
+	if len(tl.Calls) != timelineRows+7 {
+		t.Fatalf("calls = %d, want %d: the ids must be distinct", len(tl.Calls), timelineRows+7)
 	}
 	var b bytes.Buffer
-	writeTimeline(&b, buildTimeline(tlRun(calls), nil))
-	if !strings.Contains(b.String(), "7 more calls, see --json") {
-		t.Fatalf("a capped listing must count what it left out:\n...%s", tail(b.String(), 300))
+	writeTimeline(&b, tl)
+	out := b.String()
+	if !strings.Contains(out, "7 more calls, see --json") {
+		t.Fatalf("a capped listing must count what it left out:\n...%s", tail(out, 300))
+	}
+	if rows := strings.Count(out, " Read "); rows != timelineRows {
+		t.Errorf("rows = %d, want %d: the listing is not capped", rows, timelineRows)
+	}
+	if strings.Contains(out, fmt.Sprintf(" %d  ", timelineRows+1)) {
+		t.Errorf("row %d is printed past the cap:\n...%s", timelineRows+1, tail(out, 300))
 	}
 }
 
