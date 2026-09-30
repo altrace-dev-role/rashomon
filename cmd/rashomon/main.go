@@ -1672,8 +1672,11 @@ usage:
                                API list prices, from Claude Code's own
                                transcripts: by agent, model, token kind and
                                session, cache re-written after a gap,
-                               refusals, and the spend inside turns rashomon
-                               recorded failing silently, over the transcripts
+                               refusals by category and model, retry attempts
+                               priced at the model that ran them, fallback
+                               routes (model asked -> model served), savings,
+                               and the spend in turns with a failed call the
+                               summary never mentioned, over the transcripts
                                its records name (the rest named as not
                                covered); the totals read usage fields only;
                                the silent-failure line also decodes, in

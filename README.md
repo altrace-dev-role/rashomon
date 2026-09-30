@@ -435,19 +435,36 @@ charged.
 **What it reads.** Claude Code's own transcripts, under
 `$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`, subagent transcripts
 included. The totals come from each API response's usage fields only: its id,
-model, stop reason, token counts and speed, and the line's timestamp and
-session. Claude Code writes one response on several lines, so a response is
-counted once by its id.
+model, stop reason, a refusal's category, token counts and speed, each retry
+attempt's counts, type and model, and the line's timestamp and session. Claude
+Code writes one response on several lines, so a response is counted once by
+its id.
 
-**What it shows.** Spend by agent, model, token kind and session; cache
-re-written after a gap longer than its TTL (a heuristic, labelled as one);
-refusals; responses the API retried, in tokens only and left out of the total;
-and the spend inside turns rashomon recorded failing silently.
+**What it shows.** Spend by agent, model, token kind and session. Cache
+re-written after a gap longer than its TTL, when the response read nothing
+from the cache, priced over a cache read (a heuristic, labelled as one).
+Refusals, by category and model. Retry attempts: one that produced output is
+priced at the rates of the model that ran it and is in the total; one with no
+output is billed only in some refusal categories, so it is shown in tokens and
+left out of the total, and the header says so. Responses a fallback model
+served, as the model asked -> the model that served, sticky-routed ones
+included. And the spend in turns with a failed call the summary never
+mentioned.
+
+**Refusals.** A refusal's `stop_details.category` is read as a closed word:
+`cyber`, `bio`, `frontier_llm`, `reasoning_extraction`, `general_harms`,
+`uncategorized` (null) or `other`. Claude Code writes a refusal that came
+before any output as one line with no usage. Such lines are counted by
+category. In `bio`, `frontier_llm` and `reasoning_extraction` the API bills
+them, and the output says the amount is not in the transcript.
 
 **The silent-failure line.** A turn counts when one of its recorded calls
-failed and its final message mentions no failure. The line covers only the
-transcripts a rashomon record names. Every other transcript is named, priced
-and marked not covered, never folded in as zero. A turn's spend is the
+failed and its final message mentions no failure, whether or not a later call
+succeeded. The line covers only the transcripts a rashomon record names. Every
+other transcript is named, priced and marked not covered, never folded in as
+zero. A response that appears in several transcripts (a resumed conversation)
+is not covered when any of them is not, and its cost is counted once. A turn's
+spend is the
 responses tied to its prompt. In the main transcript, and in each subagent
 transcript under it, a response belongs to the prompt of the user line before
 it: Claude Code writes that prompt's id (`promptId`) on the line. The figure is
@@ -464,14 +481,20 @@ result on a user line with no prompt id, it decodes the line's content block
 *types* only, never their text. From a subagent transcript's user lines it
 decodes the type, `isMeta` and `promptId` only.
 
+**Savings.** Each suggestion carries its figure: cache re-writes, spend in
+turns with a failed call the summary never mentioned, billed refusals by
+category and model, and declined attempts by model. It names a lever only
+where you can act on it: `reasoning_extraction` refusals (asking for the
+model's reasoning in its reply) and a declined model a fallback served (choose
+the serving model with `/model`). What was billed with no amount in the
+transcript is listed as not computed.
+
 **Counted, said, never priced.** It says how many of each of these it found:
 lines it cannot count (malformed or implausible usage, a line with no message
-id, a future-dated response), folders and files it cannot read to the end, and
-pre-output refusals written without usage. Fast-mode responses are counted and
-priced at standard rates. Out of scope: fast mode's premium, Batch and partner
-(Bedrock, Vertex) pricing, long-context premiums, and web-search fees. The
-savings list does not compute what refusals and fallback routing cost, and it
-says so.
+id, a future-dated response), and folders and files it cannot read to the
+end. Fast-mode responses are counted and priced at standard rates. Out of
+scope: fast mode's premium, Batch and partner (Bedrock, Vertex) pricing,
+long-context premiums, and web-search fees.
 
 ## Editor integration
 

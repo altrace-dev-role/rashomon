@@ -286,8 +286,11 @@ for one line only, and read through `store.OpenExisting` (H-87's rule), so
 asking the question never mints an install identity.
 
 **The transcript read.** The usage read decodes a narrow shape: `message.id`,
-`model`, `stop_reason`, `usage`'s token counts and `speed`, and the line's
-`timestamp`, `sessionId` and `isSidechain`. For a subagent transcript's user
+`model`, `stop_reason`, `stop_details.category`, `usage`'s token counts and
+`speed`, each `usage.iterations` entry's counts, `type` and `model`, and the
+line's `timestamp`, `sessionId` and `isSidechain`. The category and an entry's
+type are closed words; a model reaches output only through the closed-shape
+rule `displayModel` applies. For a subagent transcript's user
 lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
 `message.content`, so `encoding/json` steps over those bytes, and
 `TestContentHasNoFieldToLandIn` holds the shape: no unlisted tag, and no
@@ -301,6 +304,11 @@ lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
 - Where a reader cannot place a line, it counts and names what it skipped,
   never drops it silently: a malformed or implausible usage, a line with no
   id, an unreadable file or folder, a future-dated response.
+- A response keeps every file it was seen in. Coverage reads all of them: a
+  response is not covered when any transcript holding it is not, and its cost
+  is counted once. The cold-cache heuristic judges it once, in the file it was
+  first seen in, against every response that file holds. Otherwise a resumed
+  conversation's coverage and cold writes followed the path sort order.
 
 **Departing from "never `message.content`".** The design said spend never
 reads message content. The silent-failure line needs the final message it
@@ -325,23 +333,46 @@ model the table lacks is priced as unknown, never at $0. Retired models keep
 their rows, because a transcript in the window can still name one. Out of
 scope, and said to be: fast mode's premium (fast responses are counted and
 priced at standard rates), Batch and partner pricing, long-context premiums,
-and web-search fees. Extra attempts in `usage.iterations` are counted in tokens
-only and left out of the total, which the headline says. Each entry names the
-model that ran it, but the read does not decode that yet.
+and web-search fees.
+
+**Refusals and fallback.** The refusals-and-fallback page settles the billing.
+Every `usage.iterations` entry names the model that ran it, and each attempt is
+billed at that model's rates. The last entry produced the message and is the
+top-level usage. An earlier attempt that produced output is priced at its own
+model's rates into the total, the breakdowns and its model's row. An attempt
+declined before any output is billed only when its refusal category is billed,
+and no entry records that category, so it stays tokens with the cost unknown,
+and the header says the total leaves it out. A `fallback_message` last entry
+marks a response a fallback served. It is reported as the model asked (the
+first `message` entry) -> the model that served. With no `message` entry it was
+sticky-routed, and the model asked is said to be absent. Refusals are split by
+`stop_details.category` and model. A zero-usage refusal line (Claude Code's
+pre-output refusal) is counted, never priced. In `bio`, `frontier_llm` and
+`reasoning_extraction` it was billed, and the output says the amount is not in
+the transcript. The fixture is the page's own JSON example, until a real
+fallback transcript is captured.
 
 **The savings list.** A suggestion is printed only with the figure it rests
-on. Two kinds have one:
+on:
 
-- Cache re-written after a gap longer than its TTL: a heuristic, labelled as
-  one. The 1h-TTL hint appears only when part of the re-write was a 5m write.
-- Spend inside silently failed turns: a floor, with its bound printed beside
-  it.
+- Cache re-written after a gap longer than its TTL, on a response that read
+  nothing from the cache: a heuristic, labelled as one, priced as the write
+  rate minus the read rate, since the alternative was a cache read. The
+  1h-TTL hint appears only when part of the re-write was a 5m write.
+- Spend in turns with a failed call the summary never mentioned: a floor,
+  with its bound printed beside it. The rule does not check which call came
+  last, so the label does not say the turn ended with a failure.
+- Billed refusals, by category and model, and priced declined attempts, by
+  model (the design's classifier hits). A lever is named only where a Claude
+  Code user can act on it. For `reasoning_extraction`, the user can stop asking
+  for the model's reasoning in its reply. For a declined model a fallback
+  served, the user can choose the serving model with `/model`. The
+  policy-area categories get their figure and no advice.
 
-Subagents on the top model for read-heavy work would need the tool pattern
-from `message.content`, so that suggestion is not made. Savings on refusals
-and fallback routing (classifier hits) need the refusal category and each
-attempt's model, which are not decoded. The output says those savings are
-not computed, so an empty list is not read as "nothing to save".
+What was billed but has no amount in the transcript is named in
+`savings_not_computed`: pre-output refusals in a billed category, and declined
+attempts with no output. Subagents on the top model for read-heavy work would
+need the tool pattern from `message.content`, so that suggestion is not made.
 
 ## Acceptance
 
