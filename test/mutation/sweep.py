@@ -1608,8 +1608,8 @@ m("TB the redaction plant skips an embedded struct", "internal/report/redact_enu
   "\t\t\tif false && flattened(f, name) {\n\t\t\t\tplantAt(",
   "TestRedact_")
 
-m("TB the session block drops the find, xargs and copy limit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp;\")\n",
+m("TB the session block drops the unlisted-option limit", "internal/report/text.go",
+  "\t\tfmt.Fprintln(b, \"    but one that writes through an option not on that list (find -fprint, curl -D) is not counted;\")\n",
   "",
   "TestTestRuns_")
 
@@ -1655,6 +1655,51 @@ m("TB the cwd digest is the plain path", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd\", []byte(cwd))\n",
   "\treturn cwd\n",
   "TestTestBending_ARepeatedRelativeCd")
+
+m("TB mayEdit ignores may_write", "internal/report/testbending.go",
+  "\tif d.Shape.MayWrite {\n\t\treturn true\n\t}\n",
+  "",
+  "TestTestBending_WriteCapable")
+m("TB Derive never sets may_write for a named program", "internal/shape/shape.go",
+  "\t\t\ts.MayWrite = perr != nil || mayWrite(pshaped, i)\n",
+  "\t\t\ts.MayWrite = false\n",
+  "TestMayWrite|TestTestBending_WriteCapable")
+m("TB a line whose program cannot be named may not write", "internal/shape/shape.go",
+  "\ts.MayWrite = true\n\tif i, ok := programToken",
+  "\ts.MayWrite = false\n\tif i, ok := programToken",
+  "TestMayWrite")
+m("TB find -delete and -exec do not write", "internal/shape/shape.go",
+  "\t\tcase \"-delete\", \"-exec\", \"-execdir\", \"-ok\", \"-okdir\":\n",
+  "\t\tcase \"-okdir\":\n",
+  "TestMayWrite|TestTestBending_WriteCapable")
+m("TB xargs, tee, rsync and scp do not write", "internal/shape/shape.go",
+  "\t\tcase \"xargs\", \"tee\", \"wget\", \"rsync\", \"scp\":\n",
+  "\t\tcase \"wget\":\n",
+  "TestMayWrite|TestTestBending_WriteCapable")
+m("TB curl with an output flag does not write", "internal/shape/shape.go",
+  "\tif curl && curlOut {\n",
+  "\tif false && curl && curlOut {\n",
+  "TestMayWrite|TestTestBending_WriteCapable")
+m("TB a later stage is not looked at", "internal/shape/shape.go",
+  "\t\tif !ok || verbForProgram(path.Base(toks[start+k].text)) != VerbRead {\n",
+  "\t\tif false && (!ok || verbForProgram(path.Base(toks[start+k].text)) != VerbRead) {\n",
+  "TestMayWrite")
+m("TB a descriptor duplication is a write", "internal/shape/shape.go",
+  "\tif dup && (target == \"-\" || isFDPrefix(toks[end+1])) {\n",
+  "\tif false && dup && (target == \"-\" || isFDPrefix(toks[end+1])) {\n",
+  "TestMayWrite")
+m("TB /dev/null is a file written", "internal/shape/shape.go",
+  "\tcase \"/dev/null\", \"/dev/stdout\", \"/dev/stderr\", \"/dev/tty\":\n",
+  "\tcase \"/dev/stdout\", \"/dev/stderr\", \"/dev/tty\":\n",
+  "TestMayWrite")
+m("TB the & of 2>&1 separates stages", "internal/shape/shape.go",
+  "(toks[j-1].text == \">\" || toks[j-1].text == \">>\" || toks[j-1].text == \"|\")",
+  "(toks[j-1].text == \"|\")",
+  "TestMayWrite")
+m("TB the session block drops what makes a read an edit", "internal/report/text.go",
+  "\t\tfmt.Fprintln(b, \"    a shell read or fetch counts when its line may write: a redirect to a file, a download, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read,\")\n",
+  "",
+  "TestTestRuns_")
 
 # Import additions some mutants need.
 IMPORTS = {

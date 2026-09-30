@@ -660,19 +660,18 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // The limit is printed wherever a pattern is: "no recorded file edit between"
 // means no recorded call between the runs that may change files (mayEdit:
 // every call but a read, a network call, a subagent launch or one of Claude
-// Code's bookkeeping tools), and a shell
-// command classed read or network can still write -- `cat a > b`, `curl -o
-// f` -- where the record does not count it. Saying "nothing changed" would be
-// the claim the record cannot make. Runs pair only within one directory
+// Code's bookkeeping tools). A shell command classed read or network counts
+// when its shape says it may write (`cat a > b`, `curl -o f`, `find
+// -delete`, `grep | xargs sed -i`, rsync), and the block names what sets that;
+// one that writes through an option the list does not name (`find -fprint
+// f`, `curl -D f`) is not counted, and the block says so. Saying "nothing
+// changed" would be the claim the record cannot make. Runs pair only within one directory
 // (the declarations' cwd digests), and the block says so, since "the same
 // command" alone would read as the same line anywhere. And a `cd DIR && go
 // test` is a test run, since leaving `cd … &&` out would lose most real runs,
 // so its outcome may be the cd's. A repeated relative `cd DIR && go test`
 // needs no line: the second starts in DIR, another directory, and does not
-// pair with the first. find, rsync and scp are read or network,
-// and a pipeline is its first program's class, so `find -delete`, `find
-// -exec sed -i`, `grep | xargs sed -i` and a copy into the tree are not
-// edits either. Each is a line of the block. A run moved to the
+// pair with the first. Each is a line of the block. A run moved to the
 // background, on its timeout, by Ctrl+B or by run_in_background, is not a
 // limit any more: its execution record says so, and it is no run with a
 // result (LinkOutcomeBackgrounded).
@@ -698,8 +697,8 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns) {
 	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
 		fmt.Fprintln(b, "    the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows;")
 		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool, even one that failed;")
-		fmt.Fprintln(b, "    a shell read or fetch (cat, curl and the like) can still write through a redirect or a download, and is not counted,")
-		fmt.Fprintln(b, "    nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp;")
+		fmt.Fprintln(b, "    a shell read or fetch counts when its line may write: a redirect to a file, a download, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read,")
+		fmt.Fprintln(b, "    but one that writes through an option not on that list (find -fprint, curl -D) is not counted;")
 		fmt.Fprintln(b, "    runs pair only when the same command line ran from the same directory;")
 		fmt.Fprintln(b, "    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run")
 	}

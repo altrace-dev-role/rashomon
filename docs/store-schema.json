@@ -143,6 +143,10 @@
             "digest": {
               "description": "HMAC under a per-install key, so the same command digests differently on two installs.",
               "type": "string"
+            },
+            "may_write": {
+              "description": "Schema 3. True on a shell call whose line may write files whatever its verb_class says: an output redirection to a file (not a descriptor duplication, not /dev/null), find's -delete, -exec, -execdir, -ok or -okdir, xargs, tee, wget, rsync or scp anywhere on the line, curl with an output flag, or a later pipeline or list stage whose program is not of class read or cannot be named -- and on a shell line whose program cannot be named at all. One bit: the words that set it are compared and dropped. Always false on a tool that is not a shell.",
+              "type": "boolean"
             }
           }
         },
@@ -228,7 +232,14 @@
               "rule_match",
               "file_label",
               "cwd_digest"
-            ]
+            ],
+            "properties": {
+              "shape": {
+                "required": [
+                  "may_write"
+                ]
+              }
+            }
           }
         }
       ]

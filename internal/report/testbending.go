@@ -185,20 +185,23 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 }
 
 // mayEdit reports a call that may change files: every verb class but read,
-// network and agent. Not only write: `git checkout -- f` is vcs, `npm
-// install` and `go generate` are package, `sed -i` is execute, an MCP tool is
-// mcp, a tool this build does not know is unknown, and `jest -u` is test. A
-// pair that completed across any of them would say "no recorded file edit
-// between" over a change the record holds a call for.
+// network and agent, and a shell call of any class whose shape says it may
+// write. Not only write: `git checkout -- f` is vcs, `npm install` and `go
+// generate` are package, `sed -i` is execute, an MCP tool is mcp, a tool this
+// build does not know is unknown, and `jest -u` is test. A pair that
+// completed across any of them would say "no recorded file edit between"
+// over a change the record holds a call for.
 //
 // The three left out are the classes whose calls are not there to write: a
 // Read, Grep or Glob, a shell cat or ls; a WebFetch or a shell curl; an
 // Agent call, whose subagent's own calls are recorded and counted each on its
-// own. Not that none can: `cat a > b`, `curl -o f`, `find -delete`, `find
-// -exec sed -i`, `grep | xargs sed -i` (a pipeline is its first program's
-// class) and rsync or scp into the tree do write, and the report states that
-// limit beside every pattern. Counting them as well would stop a pair at
-// every `ls` an agent runs between two test runs, which is most of them.
+// own. Counting them all would stop a pair at every `ls` an agent runs
+// between two test runs, which is most of them. The shell ones that do write
+// -- `cat a > b`, `curl -o f`, `find -delete`, `find -exec sed -i`, `grep |
+// xargs sed -i`, rsync or scp into the tree -- carry shape.may_write
+// (shape.mayWrite says what sets it), and count. What that misses, the report
+// states beside every pattern: a read or fetch that writes through an option
+// the list does not name, such as `find -fprint f` or `curl -D f`.
 //
 // Nor do Claude Code's own bookkeeping tools (noWrite), whatever class they
 // are stored under: a TodoWrite or a TaskUpdate between two runs is routine
@@ -207,6 +210,9 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 func mayEdit(d store.Declaration) bool {
 	if noWrite[d.ToolName] {
 		return false
+	}
+	if d.Shape.MayWrite {
+		return true
 	}
 	switch d.Shape.VerbClass {
 	case shape.VerbRead, shape.VerbNetwork, shape.VerbAgent:

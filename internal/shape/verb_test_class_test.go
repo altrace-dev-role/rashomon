@@ -323,3 +323,64 @@ func TestVerbClassesAreClosed(t *testing.T) {
 		}
 	}
 }
+
+// TestMayWrite: a shell line that may write files carries may_write whatever
+// class its program gives it, and one that only reads does not. Break: miss
+// one of these, and a read-class call that rewrote the tree lets a
+// test-bending pair complete across it; set it on a plain read, and every
+// `ls` between two runs stops the pair.
+func TestMayWrite(t *testing.T) {
+	for _, tc := range []struct {
+		cmd  string
+		want bool
+	}{
+		// The review's reproductions, all class read or network.
+		{"find . -name '*.snap' -delete", true},
+		{"find . -name '*.go' -exec sed -i s/a/b/ {} +", true},
+		{"find . -type f -execdir chmod -x {} ;", true},
+		{"find . -name x -ok rm {} ;", true},
+		{"grep -rl foo . | xargs sed -i s/foo/bar/", true},
+		{"rsync -a ../fixtures/ testdata/", true},
+		{"scp host:f .", true},
+		// Redirects to a file, in every spelling.
+		{"cat a > b", true},
+		{"cat a >> b", true},
+		{"ls >| b", true},
+		{"ls &> b", true},
+		{"ls 2> err.log", true},
+		{"cat <> f", true},
+		{"cat a | tee b", true},
+		// Downloads.
+		{"curl -o f https://example.com/x", true},
+		{"curl -sSLO https://example.com/x", true},
+		{"curl --output=f https://example.com/x", true},
+		{"wget https://example.com/x", true},
+		// A later stage outside the read class, or that cannot be named.
+		{"ls && rm -rf build", true},
+		{"cat a; touch b", true},
+		{"grep x f || $CMD", true},
+		{"ls\nrm f", true},
+		// A line whose program cannot be named.
+		{"$EDITOR file", true},
+		// Reads, and redirects that write no file.
+		{"ls", false},
+		{"cat a | head -5", false},
+		{"grep -rn foo . | wc -l", false},
+		{"ls 2>&1 | head", false},
+		{"cat a > /dev/null", false},
+		{"cat a 2>/dev/null", false},
+		{"ls >&2", false},
+		{"cd sub && ls", false},
+		{"curl https://example.com/x", false},
+		{"curl -sS https://example.com/x | head", false},
+		{"go test ./... 2>&1 | tail -20", false},
+	} {
+		if got := verbOf(t, tc.cmd).MayWrite; got != tc.want {
+			t.Errorf("%q: may_write %v, want %v", tc.cmd, got, tc.want)
+		}
+	}
+	// Not a shell: the class says what it does, and the bit stays false.
+	if Derive("Write", json.RawMessage(`{"file_path":"/r/a","content":"> b"}`), []byte("key")).MayWrite {
+		t.Error("a Write call carries may_write")
+	}
+}

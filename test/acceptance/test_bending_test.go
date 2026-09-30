@@ -159,7 +159,7 @@ func TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged(t *testing.T) {
 	for _, want := range []string{
 		"test runs: 2 (1 ok, 1 failed)",
 		"failed, then the only recorded edits were to files named like tests, then the same command passed:",
-		"a shell read or fetch (cat, curl and the like) can still write",
+		"a shell read or fetch counts when its line may write",
 		"↳ the only recorded edits since",
 		"Bash go",
 	} {

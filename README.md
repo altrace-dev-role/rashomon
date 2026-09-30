@@ -268,11 +268,14 @@ install`, a `sed -i`, an MCP tool, another test command (`jest -u` rewrites
 snapshots) all count, and only reads, web fetches, subagent launches and
 Claude Code's own bookkeeping tools (TodoWrite, TaskCreate, TaskUpdate,
 TaskList, TaskGet, TaskOutput, AskUserQuestion, ExitPlanMode, BashOutput) do
-not. That under-claims by design. It can still miss a change: a shell call
-classed as a read or a fetch that writes (`cat a > b`, `curl -o f`, `find
--delete`, `find -exec sed -i`, `grep -rl … | xargs sed -i`, `rsync` or `scp`
-into the tree; a pipeline takes its first program's class), or anything done
-outside the session's own calls.
+not. A shell read or fetch counts as well when its line may write, which
+the record keeps as one bit (`may_write`): an output redirect to a file, a
+download (`curl -o`/`-O`, `wget`), `find -delete`/`-exec`/`-execdir`,
+`xargs`, `tee`, `rsync` or `scp` anywhere on the line, or a later pipeline or
+list stage whose program is not a read (`grep -rl … | xargs sed -i`). That
+under-claims by design. It can still miss a change: a read or fetch that
+writes through an option not on that list (`find -fprint f`, `curl -D f`),
+or anything done outside the session's own calls.
 One known gap: Claude Code discards what a `StopFailure` hook prints, so a turn
 that ends in an API error shows no line, and in this release the next prompt
 does not show it either. The line points to
@@ -353,7 +356,9 @@ every finding except an unacknowledged failure.
 `prompt_id`, `agent_id`, `agent_type`, `transcript_path`, `cwd`,
 `permission_mode`, `tool_name`; the call's `program`, `verb_class`, argument
 *count*, and a keyed digest (HMAC) of its full input: the whole command line
-for Bash, the whole tool input for other tools; how it ended (`outcome`,
+for Bash, the whole tool input for other tools; for Bash, one bit
+(`may_write`) saying the line may write files whatever its program is, and a
+keyed digest of the directory the call was declared in (`cwd_digest`); how it ended (`outcome`,
 `exit_code`, `is_interrupt`, `duration_ms`, and `backgrounded`: whether a
 Bash call's result arrived while it was still running in the background); and a `file_label` classifying the
 path named by a Read, Edit, Write or NotebookEdit call into categories such as

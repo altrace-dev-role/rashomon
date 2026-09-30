@@ -58,6 +58,14 @@ type Shape struct {
 	VerbClass string  `json:"verb_class"`
 	Argc      *int    `json:"argc"`
 	Digest    string  `json:"digest"`
+
+	// MayWrite is set on a shell call whose line may write files whatever
+	// its class says (v3; see mayWrite): `find . -delete` is class read and
+	// deletes, `grep -rl x | xargs sed -i` is read and rewrites. One bit, and
+	// only the bit: the words that set it are compared and dropped. Always
+	// false on a tool that is not a shell, whose class already says what it
+	// does, and on a record written before v3, which could not say.
+	MayWrite bool `json:"may_write"`
 }
 
 // Derive builds the shape of a call to toolName with the given raw tool_input.
@@ -104,10 +112,14 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	pshaped, perr := tokenizeProgram(cmd)
 
 	uncertain := perr == errUncertain
+	// A line whose program cannot be named, or which the lexer could not
+	// read to its end, may write: nobody saw what it runs.
+	s.MayWrite = true
 	if i, ok := programToken(pshaped, uncertain); ok && !controlByte(cmd) {
 		if i, ok = pastDirectoryChange(pshaped, i, uncertain); ok {
 			prog := path.Base(pshaped[i].text)
 			s.Program = &prog
+			s.MayWrite = perr != nil || mayWrite(pshaped, i)
 			s.VerbClass = verbForProgram(prog)
 			if runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {
 				s.VerbClass = VerbTest
@@ -1166,6 +1178,142 @@ func backgrounded(raw json.RawMessage) bool {
 	}
 	var b bool
 	return json.Unmarshal(obj.RunInBackground, &b) == nil && b
+}
+
+// mayWrite reports a shell line whose program is the token at i and which may
+// write files whatever class that program gives it: an output redirection to
+// a file (not a descriptor duplication such as 2>&1, and not /dev/null); a
+// word that writes by itself -- find's -delete, -exec, -execdir, -ok and
+// -okdir, xargs, tee, wget, rsync or scp; curl with an output flag (-o, -O,
+// --output, --remote-name, or a combined short flag holding o or O); or a
+// later pipeline or list stage whose program is outside the read class, or
+// cannot be named.
+//
+// The words are compared wherever they stand, quoted or not, and not parsed
+// as the program would parse them: `grep -rn xargs .` sets the bit. That is
+// the direction to be wrong in. The bit makes a call count as a possible file
+// edit (the report's mayEdit), and an edit counted that did not happen stops
+// a test-bending pair, while one missed completes a pair over it.
+//
+// Stages before i are not looked at: they are the `cd DIR &&` that
+// pastDirectoryChange stepped over, and a directory change is told apart by
+// the declarations' directory digests, not as a write.
+func mayWrite(toks []token, i int) bool {
+	curl, curlOut := false, false
+	for j, t := range toks {
+		if t.meta {
+			if outputRedirect(toks, j) {
+				return true
+			}
+			continue
+		}
+		switch path.Base(t.text) {
+		case "xargs", "tee", "wget", "rsync", "scp":
+			return true
+		case "curl":
+			curl = true
+		}
+		switch t.text {
+		case "-delete", "-exec", "-execdir", "-ok", "-okdir":
+			return true
+		}
+		curlOut = curlOut || curlOutputFlag(t.text)
+	}
+	if curl && curlOut {
+		return true
+	}
+	for j := i + 1; j < len(toks); j++ {
+		start := j
+		switch {
+		case stageSeparator(toks, j):
+			start = j + 1
+		case toks[j].nlBefore:
+		default:
+			continue
+		}
+		if start >= len(toks) {
+			break
+		}
+		k, ok := programToken(toks[start:], false)
+		if !ok || verbForProgram(path.Base(toks[start+k].text)) != VerbRead {
+			return true
+		}
+	}
+	return false
+}
+
+// outputRedirect reports an output redirection whose operator starts at j and
+// whose target is a file: `>`, `>>`, `>|`, `&>`, `<>`, and `>&` onto a word
+// that is not a descriptor number or `-`. /dev/null, /dev/stdout,
+// /dev/stderr and /dev/tty are not files it writes.
+func outputRedirect(toks []token, j int) bool {
+	t := toks[j]
+	if t.text != ">" && t.text != ">>" {
+		return false
+	}
+	if j > 0 && toks[j-1].meta && toks[j-1].text == "<" && t.glued {
+		return true // <>: opened for reading and writing, and created
+	}
+	end := operatorEnd(toks, j)
+	dup := false
+	for k := j + 1; k <= end; k++ {
+		dup = dup || toks[k].text == "&"
+	}
+	if end+1 >= len(toks) || toks[end+1].meta {
+		// No target, or a process substitution: nothing on the line runs,
+		// or it writes into a command. Neither is a file this names.
+		return end+1 < len(toks)
+	}
+	target := toks[end+1].text
+	if dup && (target == "-" || isFDPrefix(toks[end+1])) {
+		return false
+	}
+	switch target {
+	case "/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty":
+		return false
+	}
+	return true
+}
+
+// stageSeparator reports a token at j that ends one pipeline or list stage:
+// `;`, `&&`, `||`, `|`, or a lone `&` -- not the `&` of `>&`, `&>` or `|&`,
+// which belongs to a redirection or a pipe.
+func stageSeparator(toks []token, j int) bool {
+	t := toks[j]
+	if !t.meta {
+		return false
+	}
+	switch t.text {
+	case ";", "&&", "||", "|":
+		return true
+	case "&":
+		if j > 0 && t.glued && toks[j-1].meta && (toks[j-1].text == ">" || toks[j-1].text == ">>" || toks[j-1].text == "|") {
+			return false
+		}
+		if j+1 < len(toks) && toks[j+1].meta && toks[j+1].glued && strings.HasPrefix(toks[j+1].text, ">") {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+// curlOutputFlag reports a curl argument that names an output file: -o, -O,
+// their long forms, or a combined short flag holding either.
+func curlOutputFlag(w string) bool {
+	switch {
+	case w == "--output", w == "--remote-name", w == "--remote-name-all", w == "--output-dir",
+		strings.HasPrefix(w, "--output="), strings.HasPrefix(w, "--output-dir="):
+		return true
+	case len(w) > 1 && w[0] == '-' && w[1] != '-':
+		for _, c := range w[1:] {
+			if c < 'A' || c > 'z' || c > 'Z' && c < 'a' {
+				return false
+			}
+		}
+		return strings.ContainsAny(w[1:], "oO")
+	}
+	return false
 }
 
 func verbForProgram(prog string) string {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -94,6 +95,7 @@ func TestSchema3IsRequiredOnlyAtVersion3(t *testing.T) {
 		{"declaration", "host_source"},
 		{"declaration", "rule_match"},
 		{"declaration", "cwd_digest"},
+		{"declaration", "shape.may_write"},
 		{"execution", "rule_match"},
 		{"execution", "backgrounded"},
 	} {
@@ -126,6 +128,15 @@ func TestSchema3IsRequiredOnlyAtVersion3(t *testing.T) {
 				}
 				if toStringSet(then["required"])[c.field] {
 					found = true
+				}
+				// A key inside the shape object is gated through
+				// then.properties.shape.required.
+				if parent, key, ok := strings.Cut(c.field, "."); ok {
+					props, _ := then["properties"].(map[string]any)
+					child, _ := props[parent].(map[string]any)
+					if toStringSet(child["required"])[key] {
+						found = true
+					}
 				}
 			}
 			if !found {

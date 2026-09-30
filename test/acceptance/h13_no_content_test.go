@@ -18,6 +18,8 @@ var (
 		"tool_use_id", "session_id", "prompt_id", "agent_id", "agent_type",
 		"transcript_path", "permission_mode", "tool_name",
 		"shape", "shape.program", "shape.verb_class", "shape.argc", "shape.digest",
+		// v3. One bit: the line may write files whatever its program's class.
+		"shape.may_write",
 		// v2. Hostnames only: the extractor returns a canonical hostname or
 		// nothing, so neither list can carry a path, a query or a credential.
 		// They are here rather than under shape because the report joins on

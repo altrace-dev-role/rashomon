@@ -461,10 +461,10 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"same command had both outcomes with no recorded file edit between: 7 failed, 8 passed",
 		"the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows",
 		"a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool",
-		"a shell read or fetch (cat, curl and the like) can still write",
+		"a shell read or fetch counts when its line may write: a redirect to a file, a download, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read",
 		"runs pair only when the same command line ran from the same directory",
 		"a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run",
-		"nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp",
+		"but one that writes through an option not on that list (find -fprint, curl -D) is not counted",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)
@@ -559,5 +559,68 @@ func TestTimeline_AnnotatesTheRowThatCompletesAPattern(t *testing.T) {
 	}
 	if strings.Count(out, "↳") != 2 {
 		t.Errorf("want exactly two annotations:\n%s", out)
+	}
+}
+
+// TestTestBending_WriteCapableShellCallsAreEdits: the review's
+// reproductions, built through shape.Derive. Each call between the runs is
+// class read or network, which is not an edit by class, and each may write:
+// its shape says so, and it breaks the pair. A plain read between them still
+// does not. Break: have mayEdit read the class alone, and a failed and a
+// passing `go test ./...` either side of `find -delete` read as flaky, or a
+// test edit and `grep -rl | xargs sed -i` on source as "only test files".
+func TestTestBending_WriteCapableShellCallsAreEdits(t *testing.T) {
+	key := []byte("key")
+	const ok, failed = store.ExecOK, store.ExecFailed
+	type call struct {
+		tool, input, outcome string
+		label                string
+	}
+	gotest := `{"command":"go test ./..."}`
+	build := func(calls []call) *store.Run {
+		run := &store.Run{}
+		for i, c := range calls {
+			seq := int64(i + 1)
+			id := "w" + string(rune('a'+seq))
+			d := store.Declaration{SchemaVersion: store.SchemaVersion, Seq: seq, ToolUseID: id, ToolName: c.tool, SessionID: "s1",
+				Shape: shape.Derive(c.tool, json.RawMessage(c.input), key)}
+			if c.label != "" {
+				l := c.label
+				d.FileLabel = &l
+			}
+			run.Declarations = append(run.Declarations, d)
+			run.Executions = append(run.Executions, store.Execution{ToolUseID: id, ToolName: c.tool, Outcome: c.outcome})
+		}
+		return run
+	}
+	testEdit := call{"Edit", `{"file_path":"/r/foo_test.go"}`, ok, shape.LabelTestFile}
+	for _, between := range []string{
+		`{"command":"find . -name '*.snap' -delete"}`,
+		`{"command":"find . -name '*.go' -exec sed -i s/a/b/ {} +"}`,
+		`{"command":"grep -rl foo . | xargs sed -i s/foo/bar/"}`,
+		`{"command":"rsync -a ../fixtures/ testdata/"}`,
+		`{"command":"cat fixture.golden > testdata/out.golden"}`,
+		`{"command":"curl -sSLo testdata/x.json https://example.com/x.json"}`,
+	} {
+		mid := call{"Bash", between, ok, ""}
+		if d := shape.Derive("Bash", json.RawMessage(between), key); d.VerbClass != shape.VerbRead && d.VerbClass != shape.VerbNetwork {
+			t.Fatalf("premise: %s is class %q, not read or network", between, d.VerbClass)
+		}
+		got := DetectTestBending(build([]call{{"Bash", gotest, failed, ""}, mid, {"Bash", gotest, ok, ""}}), nil)
+		if len(got.Flaky) != 0 {
+			t.Errorf("%s between a failed and a passing run: flaky %v, want none", between, got.Flaky)
+		}
+		got = DetectTestBending(build([]call{{"Bash", gotest, failed, ""}, testEdit, mid, {"Bash", gotest, ok, ""}}), nil)
+		if len(got.TestsOnlyThenGreen) != 0 {
+			t.Errorf("a test edit and %s: tests only %v, want none", between, got.TestsOnlyThenGreen)
+		}
+	}
+	// A plain read still does not stop either pattern.
+	read := call{"Bash", `{"command":"grep -rn foo . | head"}`, ok, ""}
+	if got := DetectTestBending(build([]call{{"Bash", gotest, failed, ""}, read, {"Bash", gotest, ok, ""}}), nil); len(got.Flaky) != 1 {
+		t.Errorf("a plain read between: flaky %v, want one pair", got.Flaky)
+	}
+	if got := DetectTestBending(build([]call{{"Bash", gotest, failed, ""}, testEdit, read, {"Bash", gotest, ok, ""}}), nil); len(got.TestsOnlyThenGreen) != 1 {
+		t.Errorf("a test edit and a plain read: tests only %v, want one pair", got.TestsOnlyThenGreen)
 	}
 }

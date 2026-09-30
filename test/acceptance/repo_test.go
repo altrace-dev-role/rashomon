@@ -74,7 +74,7 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 				t.Fatalf("$defs.%s is missing", c.def)
 			}
 			got := map[string]bool{}
-			schemaKeyPaths(t, def, "", got)
+			schemaKeyPaths(t, def, "", nil, got)
 			want := map[string]bool{}
 			for _, k := range c.allowed {
 				want[k] = true
@@ -403,7 +403,11 @@ func readSchema(t *testing.T) map[string]any {
 // schemaKeyPaths flattens a definition's properties into dotted paths, as
 // keyPaths flattens a record, and asserts on the way that every property is
 // required and that no object accepts one that is not declared.
-func schemaKeyPaths(t *testing.T, def map[string]any, prefix string, into map[string]bool) {
+//
+// gated is the keys the parent's own version gate requires of this object
+// (`then.properties.<key>.required`): a key inside the shape object is gated
+// that way, since the shape carries no version of its own.
+func schemaKeyPaths(t *testing.T, def map[string]any, prefix string, gated map[string]bool, into map[string]bool) {
 	t.Helper()
 	where := prefix
 	if where == "" {
@@ -438,6 +442,7 @@ func schemaKeyPaths(t *testing.T, def map[string]any, prefix string, into map[st
 	// key is in one list". A version-gated key is not optional: a v3 record
 	// without it is rejected. Counting it as required here is what lets the two
 	// rules coexist.
+	nestedGated := map[string]map[string]bool{}
 	for _, entry := range toAnySlice(def["allOf"]) {
 		e, ok := entry.(map[string]any)
 		if !ok {
@@ -450,6 +455,19 @@ func schemaKeyPaths(t *testing.T, def map[string]any, prefix string, into map[st
 		for key := range toStringSet(then["required"]) {
 			required[key] = true
 		}
+		thenProps, _ := then["properties"].(map[string]any)
+		for key, raw := range thenProps {
+			child, _ := raw.(map[string]any)
+			for k := range toStringSet(child["required"]) {
+				if nestedGated[key] == nil {
+					nestedGated[key] = map[string]bool{}
+				}
+				nestedGated[key][k] = true
+			}
+		}
+	}
+	for key := range gated {
+		required[key] = true
 	}
 	for key, raw := range props {
 		path := key
@@ -465,7 +483,7 @@ func schemaKeyPaths(t *testing.T, def map[string]any, prefix string, into map[st
 			continue
 		}
 		if _, nested := child["properties"]; nested {
-			schemaKeyPaths(t, child, path, into)
+			schemaKeyPaths(t, child, path, nestedGated[key], into)
 		}
 	}
 	for key := range required {
