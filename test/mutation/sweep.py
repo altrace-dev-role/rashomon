@@ -1246,6 +1246,10 @@ m("SP a tool_result without promptId ends its turn's words", "internal/report/tr
 m("SP a meta line without promptId ends its turn's words", "internal/report/transcript.go",
   "\t\t\t} else if !head.IsMeta && !toolResultOnly(raw) {", "\t\t\t} else if !toolResultOnly(raw) {",
   "TestFinalAssistantTexts_")
+m("SP the bound says every unkeyed user line ends a tie", "internal/spend/join.go",
+  "a user line with no promptId that is not a meta line or, in the main transcript, a tool result is tied to no turn",
+  "a user line with no promptId is tied to no turn",
+  "TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie")
 m("SP a subagent's sidechain line is read as the turn's summary", "internal/report/transcript.go",
   "\t\tif json.Unmarshal(raw, &head) != nil || head.IsSidechain {", "\t\tif json.Unmarshal(raw, &head) != nil {",
   "TestFinalAssistantTexts_")

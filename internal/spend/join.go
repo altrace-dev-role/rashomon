@@ -24,8 +24,13 @@ const (
 	StoreRead = "read"
 )
 
-// TurnBound states how a turn's spend is found, wherever its number is.
-const TurnBound = "a turn's spend is every response its main transcript, or a subagent transcript under it, ties to its prompt by the promptId on the user line before it; a response after a user line with no promptId is tied to no turn and not counted, so this is a floor"
+// TurnBound states how a turn's spend is found, wherever its number is. It
+// names the unkeyed user lines that keep a tie as the readers do: in the main
+// transcript a tool result or an injected meta line keeps it
+// (report.FinalAssistantTexts), in a subagent transcript only a meta line
+// does (readFile), so only a response after any other line with no promptId
+// is left out -- and the bound says no more is left out than that.
+const TurnBound = "a turn's spend is every response its main transcript, or a subagent transcript under it, ties to its prompt by the promptId on the user line before it; a response after a user line with no promptId that is not a meta line or, in the main transcript, a tool result is tied to no turn and not counted, so this is a floor"
 
 // Per-session coverage, in per_session[].coverage once Join has run.
 const (

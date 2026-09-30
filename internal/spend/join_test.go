@@ -597,3 +597,56 @@ func TestJoin_AFailedTurnWithNoWordsIsCountedUnchecked(t *testing.T) {
 		})
 	}
 }
+
+// TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie: the bound printed beside
+// the figure says which responses it leaves out, so it must name exactly the
+// user lines with no promptId that end a tie. In the main transcript a tool
+// result or an injected meta line keeps it -- R1 and R2 are p1's and priced
+// -- and only a prompt ends it (R3 is left out). In a subagent transcript a
+// meta line keeps it and any other unkeyed line ends it (S1 is left out). The
+// bound used to say every user line with no promptId ends the tie, printed
+// beside a figure that had priced R1 and R2.
+func TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie(t *testing.T) {
+	c := newConfig(t)
+	rec := newRecorder(t)
+	T := now.Add(-2 * time.Hour)
+	sec := func(f float64) time.Time { return T.Add(time.Duration(f * float64(time.Second))) }
+	rec.transcript = filepath.Join(c.dir, "projects", "proj", "sess-j.jsonl")
+	rec.call("sess-j", "p1", "toolu_1", sec(0), sec(1), store.ExecFailed)
+	m := func(id string, at time.Time, in int64, stop string) resp {
+		return resp{id: id, model: "claude-opus-5-5", session: "sess-j", at: at, in: in, stop: stop, text: "Ran it as requested."}
+	}
+	meta := strings.Replace(userLine("sess-j", "", sec(3), false), `"isSidechain":false`, `"isMeta":true,"isSidechain":false`, 1)
+	c.write("proj/sess-j.jsonl",
+		userLine("sess-j", "p1", sec(-1), false),
+		m("R0", sec(-0.5), 100, "tool_use").line("tool_use"),
+		userLine("sess-j", "", sec(1.5), true),
+		m("R1", sec(2), 7, "tool_use").line("tool_use"),
+		meta,
+		m("R2", sec(4), 3, "end_turn").line("text"),
+		userLine("sess-j", "", sec(5), false),
+		m("R3", sec(6), 1000, "end_turn").line("text"))
+	subResult := strings.Replace(userLine("sess-j", "", sec(2.3), true), `"isSidechain":false`, `"isSidechain":true`, 1)
+	sub := m("S1", sec(2.5), 50000, "tool_use")
+	sub.sidechain = true
+	c.write("proj/sess-j/subagents/agent-x.jsonl", subUserLine("sess-j", "p1", sec(2.2)), subResult, sub.line("tool_use"))
+
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	j := s.SilentFailureTurns
+	if j.Turns != 1 || j.Cost.Nano != (100+7+3)*opusIn {
+		t.Errorf("turns %d, cost %d; want 1 and %d: R0, R1 and R2 are p1's, R3 and S1 are no turn's",
+			j.Turns, j.Cost.Nano, (100+7+3)*opusIn)
+	}
+	txt, _ := render(t, s)
+	if !strings.Contains(txt, "("+TurnBound+")") {
+		t.Errorf("text does not print the bound beside the figure:\n%s", txt)
+	}
+	for _, want := range []string{"tool result", "meta line", "in the main transcript"} {
+		if !strings.Contains(TurnBound, want) {
+			t.Errorf("the bound does not name %q among the lines that keep a tie, beside a figure that priced the response after one: %q", want, TurnBound)
+		}
+	}
+}
