@@ -26,14 +26,24 @@ const maxLine = 64 << 20
 // parse is what keeps a multi-gigabyte history affordable.
 var usageMarker = []byte(`"usage"`)
 
-// The decoded shape of one transcript line. THIS IS THE WHOLE READ PATH, and
-// it is stated as narrowly as the recorder's own rules are: message.id,
-// message.model, message.stop_reason, message.usage's token counts, and the
-// line's timestamp, sessionId and isSidechain. There is no field for
-// message.content -- or for anything else -- so encoding/json skips those
-// bytes without materialising them: the text of a conversation is never a
-// value in this process, not even briefly, which is a stronger property than
-// "read and then discarded". TestContentHasNoFieldToLandIn holds this shape.
+// The decoded shape of one transcript line. THIS IS THE WHOLE USAGE READ
+// PATH -- every total, breakdown and heuristic in the document comes from it
+// -- and it is stated as narrowly as the recorder's own rules are:
+// message.id, message.model, message.stop_reason, message.usage's token
+// counts, and the line's timestamp, sessionId and isSidechain. There is no
+// field for message.content -- or for anything else -- so encoding/json skips
+// those bytes without materialising them: on this path the text of a
+// conversation is never a value in this process, not even briefly, which is a
+// stronger property than "read and then discarded".
+// TestContentHasNoFieldToLandIn holds this shape.
+//
+// The one other read is the silent-failure line's, and it is not this one:
+// for a recorded turn with a failed call, Join has report.FinalAssistantTexts
+// read that turn's final assistant message, in memory, to take the digest's
+// verdict. That is message content, read under report's render-time rule --
+// reduced to the verdict, never written or output -- and it departs from the
+// design's "never message.content", which did not account for this line
+// needing the summary it is judged against.
 //
 // cwd, which the design lists for a project name, is deliberately not read:
 // nothing here renders a project, and a directory name is a path, which the

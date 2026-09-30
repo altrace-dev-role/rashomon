@@ -54,6 +54,25 @@ func usageLine(t *testing.T, session, id string, at time.Time, inputTokens int64
 	return string(b)
 }
 
+// promptLine is the user line that opens a turn, as Claude Code 2.1.285
+// writes it: carrying the turn's promptId, which is the prompt_id the hooks
+// record, and which ties the assistant lines after it to that turn.
+func promptLine(t *testing.T, session, promptID string, at time.Time) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{
+		"type":        "user",
+		"timestamp":   at.UTC().Format(time.RFC3339Nano),
+		"sessionId":   session,
+		"isSidechain": false,
+		"promptId":    promptID,
+		"message":     map[string]any{"role": "user", "content": "a prompt " + spendCanary},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func textBlock(s string) map[string]any { return map[string]any{"type": "text", "text": s} }
 
 func toolBlock(id string) map[string]any {
@@ -154,6 +173,7 @@ func TestSpend_JoinsSilentlyFailedTurnsToTheHooksRecord(t *testing.T) {
 	at := func(ms int64) time.Time { return time.UnixMilli(ms) }
 
 	writeSessionTranscript(t, e.configDir, testSession,
+		promptLine(t, testSession, p.PromptID, at(first-1000)),
 		usageLine(t, testSession, "msg_before", at(first-500), 1_000, toolBlock("toolu_1")),
 		usageLine(t, testSession, "msg_inside", at((first+last)/2), 250_000, toolBlock("toolu_2")),
 		usageLine(t, testSession, "msg_inside", at((first+last)/2+1), 250_000, textBlock("thinking about it")),

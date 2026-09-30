@@ -1,6 +1,7 @@
 package spend
 
 import (
+	"encoding/json"
 	"math"
 	"path/filepath"
 	"sort"
@@ -45,9 +46,28 @@ type SilentFailureTurns struct {
 	Bound              string `json:"bound"`
 }
 
+// MarshalJSON writes turns and cost as null when no session is covered --
+// no store, a store that recorded none of these sessions, or a Join that
+// never ran. Nothing was checked then, and {"turns": 0, "cost": {"usd": 0}}
+// would tell a JSON consumer "checked, and clean": the "$0 for unknown" the
+// text rendering refuses by saying "unknown".
+func (j SilentFailureTurns) MarshalJSON() ([]byte, error) {
+	type plain SilentFailureTurns
+	out := struct {
+		plain
+		Turns *int  `json:"turns"`
+		Cost  *Cost `json:"cost"`
+	}{plain: plain(j)}
+	if j.CoveredSessions > 0 {
+		out.Turns, out.Cost = &j.Turns, &j.Cost
+	}
+	return json.Marshal(out)
+}
+
 // turn is one prompt_id's records: the small run BuildSilentFailures takes,
 // its span in recorded time, and the main transcript its records name.
 type turn struct {
+	prompt  string
 	run     *store.Run
 	firstMS int64
 	lastMS  int64
@@ -82,7 +102,7 @@ func turnsOf(run *store.Run) []turn {
 		}
 		t, ok := byPrompt[*d.PromptID]
 		if !ok {
-			t = &turn{run: &store.Run{}, firstMS: math.MaxInt64, lastMS: math.MinInt64, transcripts: map[string]bool{}}
+			t = &turn{prompt: *d.PromptID, run: &store.Run{}, firstMS: math.MaxInt64, lastMS: math.MinInt64, transcripts: map[string]bool{}}
 			byPrompt[*d.PromptID] = t
 		}
 		if (d.AgentID == nil || *d.AgentID == "") && d.TranscriptPath != "" {
@@ -123,9 +143,10 @@ func turnsOf(run *store.Run) []turn {
 // turn's digest applies at Stop. The rule needs the turn's final message, and
 // a turn with no recorded failure cannot fire whatever that message says, so
 // the message is looked up only for turns with at least one: it is the last
-// assistant text in the session's main transcript between this turn's first
-// record and the next turn's (report.FinalAssistantTextBetween, which says
-// why that read lives in report). Only the verdict is kept.
+// assistant text the session's main transcript attributes to the turn's
+// prompt_id (report.FinalAssistantTexts, which says why the turn is keyed by
+// its prompt and not by a span of time, and why that read lives in report).
+// Only the verdict is kept.
 //
 // A firing turn's spend is every windowed response of that session, main or
 // subagent, that started within the turn's first-to-last record span -- the
@@ -192,21 +213,26 @@ func (s *Summary) Join(st *store.Store) error {
 		if err != nil {
 			return err
 		}
-		turns := turnsOf(run)
-		counted := map[*Response]bool{}
-		for i, t := range turns {
+		// Only a turn with a recorded failure can fire, whatever its final
+		// message says; those alone need their words read, and all of the
+		// session's are read in one pass over each main file (finals).
+		var turns []turn
+		want := map[string]bool{}
+		for _, t := range turnsOf(run) {
 			if t.lastMS < s.FromUnixMS {
 				continue
 			}
 			if report.BuildSilentFailures(t.run, report.AccountFromMessage("")).Failed == 0 {
 				continue
 			}
-			end := int64(math.MaxInt64)
-			if i+1 < len(turns) {
-				end = turns[i+1].firstMS
-			}
+			turns = append(turns, t)
+			want[t.prompt] = true
+		}
+		finals := map[string]map[string]report.TurnFinal{}
+		counted := map[*Response]bool{}
+		for _, t := range turns {
 			files := scoped(mains[id], t.transcripts)
-			final := finalMessage(files, t.firstMS, end)
+			final := finalMessage(finals, files, want, t.prompt)
 			if !report.BuildSilentFailures(t.run, report.AccountFromMessage(final)).Fires {
 				continue
 			}
@@ -253,16 +279,27 @@ func (s *Summary) inConversation(r *Response, mains []string) bool {
 	return false
 }
 
-// finalMessage is the latest assistant text across a session's main
-// transcripts in [fromMS, toMS). A session id can own more than one main
-// file (a resumed or re-run session written under a second project
-// directory), so the latest across all of them is the turn's last word.
-func finalMessage(paths []string, fromMS, toMS int64) string {
+// finalMessage is a turn's last assistant text across the given main
+// transcripts, "" when none of them attributes any text to its prompt. A
+// session id can own more than one main file (a resumed or re-run session
+// written under a second project directory), so the latest across all of
+// them is the turn's last word.
+//
+// finals caches each file's per-prompt texts, read once for every wanted
+// prompt of the session: reading the file again per turn cost minutes on a
+// long session with many failed turns, where the rest of spend took under a
+// second.
+func finalMessage(finals map[string]map[string]report.TurnFinal, paths []string, want map[string]bool, prompt string) string {
 	var best string
 	var bestMS int64 = math.MinInt64
 	for _, p := range paths {
-		if text, at, ok := report.FinalAssistantTextBetween(p, fromMS, toMS); ok && at >= bestMS {
-			best, bestMS = text, at
+		byPrompt, ok := finals[p]
+		if !ok {
+			byPrompt = report.FinalAssistantTexts(p, want)
+			finals[p] = byPrompt
+		}
+		if f, ok := byPrompt[prompt]; ok && f.AtMS >= bestMS {
+			best, bestMS = f.Text, f.AtMS
 		}
 	}
 	return best

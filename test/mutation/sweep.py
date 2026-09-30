@@ -1127,7 +1127,7 @@ m("SP a non-claude model id is printed verbatim", "internal/spend/spend.go",
 m("SP a claude-prefixed id is printed whatever it carries", "internal/spend/spend.go",
   "\t\tif !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {", "\t\tif c == 0 {", "TestUnknownModel_ANonClaude")
 m("SP a zero-token synthetic response is listed as a model", "internal/spend/spend.go",
-  " || r.Tokens.Total() == 0 {", " {", "TestZeroTokenResponses_")
+  "r.StartMS < s.FromUnixMS || r.Tokens.Total() == 0 {", "r.StartMS < s.FromUnixMS {", "TestZeroTokenResponses_")
 m("SP an amount under a cent renders as $0.00", "internal/spend/text.go",
   "\tif nano > 0 && nano < 1e7 {", "\tif false && nano < 1e7 {", "TestSubCentAmounts_")
 m("SP the plan-subscription sentence is not printed", "internal/spend/text.go",
@@ -1139,7 +1139,7 @@ m("SP a 1h write is judged against the 5m TTL", "internal/spend/spend.go",
 m("SP the previous response is taken across files", "internal/spend/spend.go",
   "\t\tbyFile[r.file] = append(byFile[r.file], r)", "\t\tbyFile[0] = append(byFile[0], r)", "TestCacheExpiry_")
 m("SP the window is applied before the previous response is found", "internal/spend/spend.go",
-  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
+  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
   "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS < time.Now().Add(-48*time.Hour).UnixMilli() {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
   "TestCacheExpiry_ThePredecessor")
 m("SP a savings line is printed with no figure under it", "internal/spend/spend.go",
@@ -1158,10 +1158,6 @@ m("SP a firing turn's spend runs past its last record", "internal/spend/join.go"
 m("SP a firing turn's spend starts before its first record", "internal/spend/join.go",
   "r.StartMS >= t.firstMS && r.StartMS <= t.lastMS && !counted[r]", "r.StartMS <= t.lastMS && !counted[r]",
   "TestJoin_SpendInside|TestSpend_JoinsSilentlyFailedTurns")
-m("SP a turn's final message is looked for past the next turn's start", "internal/spend/join.go",
-  "\t\t\t\tend = turns[i+1].firstMS", "\t\t\t\t_ = turns[i+1].firstMS", "TestJoin_SpendInside")
-m("SP the turn-scoped final message ignores its window", "internal/report/transcript.go",
-  "\t\tif ms < fromMS || ms >= toMS {", "\t\tif ms < fromMS {", "TestJoin_SpendInside")
 m("SP a silent turn before the window is counted", "internal/spend/join.go",
   "\t\t\tif t.lastMS < s.FromUnixMS {", "\t\t\tif false {", "TestJoin_ATurnBefore")
 m("SP a session rashomon never recorded is treated as covered", "internal/spend/join.go",
@@ -1186,6 +1182,32 @@ m("SP another conversation under the same session id is priced into the turn", "
   "TestJoin_OneSessionIDTwoConversations")
 m("SP the subagent files under the turn's transcript are not its conversation", "internal/spend/join.go",
   "if path == m || strings.HasPrefix(", "if path == m || false && strings.HasPrefix(", "TestJoin_SpendInside")
+
+m("SP a tool-less prompt's reply is read as the previous turn's summary", "internal/report/transcript.go",
+  "\t\t\t\tcurrent = head.PromptID\n", "\t\t\t\tif want[head.PromptID] {\n\t\t\t\t\tcurrent = head.PromptID\n\t\t\t\t}\n",
+  "TestJoin_AToolLessTurnBetween")
+m("SP an unkeyed prompt's reply is credited to the turn before it", "internal/report/transcript.go",
+  "\t\t\t} else if !head.IsMeta && !toolResultOnly(raw) {", "\t\t\t} else if false {",
+  "TestJoin_AnUnkeyedPrompt|TestFinalAssistantTexts_")
+m("SP a tool_result without promptId ends its turn's words", "internal/report/transcript.go",
+  "\t\t\t} else if !head.IsMeta && !toolResultOnly(raw) {", "\t\t\t} else if !head.IsMeta {",
+  "TestFinalAssistantTexts_")
+m("SP a meta line without promptId ends its turn's words", "internal/report/transcript.go",
+  "\t\t\t} else if !head.IsMeta && !toolResultOnly(raw) {", "\t\t\t} else if !toolResultOnly(raw) {",
+  "TestFinalAssistantTexts_")
+m("SP a subagent's sidechain line is read as the turn's summary", "internal/report/transcript.go",
+  "\t\tif json.Unmarshal(raw, &head) != nil || head.IsSidechain {", "\t\tif json.Unmarshal(raw, &head) != nil {",
+  "TestFinalAssistantTexts_")
+m("SP an unbilled synthetic line counts as the previous request", "internal/spend/spend.go",
+  "\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
+  "\t\tif r.StartMS == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
+  "TestCacheExpiry_AnUnbilled")
+m("SP an unchecked silent-failure line marshals as a checked $0", "internal/spend/join.go",
+  "\tif j.CoveredSessions > 0 {\n\t\tout.Turns", "\tif true {\n\t\tout.Turns",
+  "TestJoin_NoStore")
+m("SP by-agent shares are printed beside an unknown", "internal/spend/text.go",
+  "\t\tif total == 0 || !main.Known() || !sub.Known() {", "\t\tif total == 0 {",
+  "TestAgent_NoShareBesideAnUnknown")
 
 # Import additions some mutants need.
 IMPORTS = {

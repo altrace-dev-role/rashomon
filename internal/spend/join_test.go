@@ -1,6 +1,7 @@
 package spend
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +60,11 @@ func (r *recorder) call(session, prompt, toolUseID string, declared, ended time.
 //	R1  T+1.5s  main, inside
 //	S1  T+2.5s  subagent, inside
 //	R3  T+4s    the final reply: after the span
-func silentSession(t *testing.T, c *config, rec *recorder, T time.Time, final1 string) (inside int64) {
+//
+// Every user line carries its turn's promptId, as a real transcript's do.
+// between is written after R3 and before p2's prompt (at T+9.5s): a test's
+// own lines for what happens between two recorded turns.
+func silentSession(t *testing.T, c *config, rec *recorder, T time.Time, final1 string, between ...string) (inside int64) {
 	t.Helper()
 	sec := func(f float64) time.Time { return T.Add(time.Duration(f * float64(time.Second))) }
 	rec.transcript = filepath.Join(c.dir, "projects", "proj", "sess-j.jsonl")
@@ -70,12 +75,21 @@ func silentSession(t *testing.T, c *config, rec *recorder, T time.Time, final1 s
 	m := func(id string, at time.Time, in int64, text string) resp {
 		return resp{id: id, model: "claude-opus-5-5", session: "sess-j", at: at, in: in, stop: "end_turn", text: text}
 	}
-	c.write("proj/sess-j.jsonl",
+	lines := []string{
+		userLine("sess-j", "p1", sec(-1), false),
 		m("R0", sec(-0.5), 1, "").line("tool_use"),
+		userLine("sess-j", "p1", sec(1), true),
 		m("R1", sec(1.5), 100, "").line("tool_use"),
+		userLine("sess-j", "p1", sec(3), true),
 		m("R3", sec(4), 10000, final1).line("text"),
+	}
+	lines = append(lines, between...)
+	lines = append(lines,
+		userLine("sess-j", "p2", sec(9.5), false),
 		m("R4", sec(10.5), 100000, "").line("tool_use"),
+		userLine("sess-j", "p2", sec(11), true),
 		m("R5", sec(12), 1000000, "There was an error in the earlier step.").line("text"))
+	c.write("proj/sess-j.jsonl", lines...)
 	sub := m("S1", sec(2.5), 20, "")
 	sub.sidechain = true
 	c.write("proj/sess-j/subagents/agent-x.jsonl", sub.line("tool_use"))
@@ -179,6 +193,35 @@ func TestJoin_NoStoreIsUnknownNotZero(t *testing.T) {
 	if strings.Contains(txt, "across 0 turns") {
 		t.Errorf("no store rendered as a checked zero:\n%s", txt)
 	}
+	// The JSON says the same: nothing checked is null, never {"usd": 0}.
+	_, js := render(t, s)
+	var doc struct {
+		Silent map[string]json.RawMessage `json:"silent_failure_turns"`
+	}
+	if err := json.Unmarshal([]byte(js), &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"turns", "cost"} {
+		if v, ok := doc.Silent[k]; !ok || string(v) != "null" {
+			t.Errorf("silent_failure_turns.%s = %s, want null: no session was checked, and a zero reads as clean", k, v)
+		}
+	}
+}
+
+// TestJoin_ACoveredZeroIsAZero: once a session IS covered, a turn count of
+// zero is a finding and marshals as one.
+func TestJoin_ACoveredZeroIsAZero(t *testing.T) {
+	c := newConfig(t)
+	rec := newRecorder(t)
+	silentSession(t, c, rec, now.Add(-2*time.Hour), "The first command failed; the second one worked.")
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	_, js := render(t, s)
+	if !strings.Contains(js, `"turns":0,"cost":{"usd":0,`) {
+		t.Errorf("a covered, clean record did not marshal as a checked zero:\n%s", js)
+	}
 }
 
 // TestJoin_ReadsTheStoreWithoutWritingIt: the join is a read.
@@ -231,6 +274,7 @@ func TestJoin_OneSessionIDTwoConversations(t *testing.T) {
 	T := now.Add(-2 * time.Hour)
 	inside := silentSession(t, c, rec, T, "Ran the command as requested.")
 	c.write("other-proj/sess-j.jsonl",
+		userLine("sess-j", "o1", T.Add(time.Second), false),
 		resp{id: "O1", model: "claude-opus-5-5", session: "sess-j", at: T.Add(2 * time.Second), in: 5000, stop: "tool_use"}.line("tool_use"),
 		resp{id: "O2", model: "claude-opus-5-5", session: "sess-j", at: T.Add(5 * time.Second), in: 1, stop: "end_turn",
 			text: "The build hit an error."}.line("text"))
@@ -246,5 +290,66 @@ func TestJoin_OneSessionIDTwoConversations(t *testing.T) {
 	if j.Cost.Nano != inside {
 		t.Errorf("cost = %d, want %d: the other conversation's response inside the span was priced into this turn",
 			j.Cost.Nano, inside)
+	}
+}
+
+// TestJoin_AToolLessTurnBetweenIsNotThisTurnsSummary: a prompt answered
+// without any tool call leaves nothing in the store, so it is no turn of the
+// join's -- but its reply is not the previous turn's final message either.
+// The transcript ties every user line to its prompt, and the verdict is read
+// from the words tied to THIS turn's.
+//
+// Both directions: an honest summary followed by a tool-less reply with no
+// failure word must not fire, and a silent one followed by a tool-less reply
+// that happens to say "error" must.
+func TestJoin_AToolLessTurnBetweenIsNotThisTurnsSummary(t *testing.T) {
+	for _, tc := range []struct {
+		name, final1, quiet string
+		turns               int
+	}{
+		{"honest then quiet", "The command failed with exit 1.", "Here is the summary you asked for: all done.", 0},
+		{"silent then an error word", "Ran the command as requested.", "Earlier there was an error, sorry.", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			rec := newRecorder(t)
+			T := now.Add(-2 * time.Hour)
+			quiet := []string{
+				userLine("sess-j", "p-quiet", T.Add(5*time.Second), false),
+				resp{id: "Q1", model: "claude-opus-5-5", session: "sess-j", at: T.Add(6 * time.Second), in: 1,
+					stop: "end_turn", text: tc.quiet}.line("text"),
+			}
+			silentSession(t, c, rec, T, tc.final1, quiet...)
+			s := c.summary(30)
+			if err := s.Join(rec.st); err != nil {
+				t.Fatal(err)
+			}
+			if s.SilentFailureTurns.Turns != tc.turns {
+				t.Errorf("turns = %d, want %d: the verdict was taken on the tool-less turn's reply", s.SilentFailureTurns.Turns, tc.turns)
+			}
+		})
+	}
+}
+
+// TestJoin_AnUnkeyedPromptEndsTheTurnsWords: a prompt line with no promptId
+// (an older transcript) cannot be keyed, and its reply is not credited to
+// the turn before it. That turn then has no final message and no verdict --
+// a floor, never the next prompt's words.
+func TestJoin_AnUnkeyedPromptEndsTheTurnsWords(t *testing.T) {
+	c := newConfig(t)
+	rec := newRecorder(t)
+	T := now.Add(-2 * time.Hour)
+	unkeyed := []string{
+		userLine("sess-j", "", T.Add(5*time.Second), false),
+		resp{id: "Q1", model: "claude-opus-5-5", session: "sess-j", at: T.Add(6 * time.Second), in: 1,
+			stop: "end_turn", text: "All good, nothing else to do."}.line("text"),
+	}
+	silentSession(t, c, rec, T, "The command failed with exit 1.", unkeyed...)
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	if s.SilentFailureTurns.Turns != 0 {
+		t.Errorf("turns = %d, want 0: an unkeyed prompt's reply was read as the previous turn's summary", s.SilentFailureTurns.Turns)
 	}
 }

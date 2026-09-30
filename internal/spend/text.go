@@ -103,11 +103,14 @@ func usd(nano int64) string {
 	return "$" + strconv.FormatFloat(float64(nano)/1e9, 'f', 2, 64)
 }
 
+// agentLine is main against subagent spend. The shares are printed only when
+// both sides are wholly priced: a share of the priced part alone, beside an
+// unknown, would call the unpriced side's share 0% whatever its tokens.
 func agentLine(s *Summary) string {
 	main, sub := s.ByAgent.Main, s.ByAgent.Subagents
 	total := main.Nano + sub.Nano
 	pct := func(n int64) string {
-		if total == 0 {
+		if total == 0 || !main.Known() || !sub.Known() {
 			return ""
 		}
 		return fmt.Sprintf(" (%d%%)", (n*100+total/2)/total)

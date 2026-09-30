@@ -109,6 +109,32 @@ func (r resp) line(block string) string {
 	return string(b)
 }
 
+// userLine is a user line of a main transcript, in the shape Claude Code
+// 2.1.285 writes: the typed prompt (toolResult false) or a tool_result
+// answering one of the turn's calls, each carrying the turn's promptId. An
+// empty promptID writes a line without the field, as an older version did.
+func userLine(session, promptID string, at time.Time, toolResult bool) string {
+	var content any = "a prompt " + canary
+	if toolResult {
+		content = []map[string]any{{"type": "tool_result", "tool_use_id": "toolu_x", "content": "out " + canary}}
+	}
+	obj := map[string]any{
+		"type":        "user",
+		"sessionId":   session,
+		"isSidechain": false,
+		"timestamp":   at.UTC().Format(time.RFC3339Nano),
+		"message":     map[string]any{"role": "user", "content": content},
+	}
+	if promptID != "" {
+		obj["promptId"] = promptID
+	}
+	b, err := json.Marshal(obj)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
 // config is a fake Claude Code configuration directory.
 type config struct {
 	t   *testing.T
@@ -311,6 +337,26 @@ func TestAgent_SubagentTranscriptsAreSubagentSpend(t *testing.T) {
 	}
 }
 
+// TestAgent_NoShareBesideAnUnknown: the subagents ran on a model the table
+// does not know, with fifty times the main agent's tokens. A share of the
+// priced part would print main 100% and subagents 0%; the record supports
+// neither, so no share is printed.
+func TestAgent_NoShareBesideAnUnknown(t *testing.T) {
+	c := newConfig(t)
+	at := now.Add(-time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "m1", model: "claude-opus-5-5", at: at, in: 1_000_000, stop: "end_turn"}.line("text"))
+	c.write("proj/sess-a/subagents/agent-a.jsonl",
+		resp{id: "s1", model: "claude-mystery-9", at: at, in: 50_000_000, stop: "end_turn", sidechain: true}.line("text"))
+	txt, _ := render(t, c.summary(30))
+	if !strings.Contains(txt, "main $4.00   subagents unknown\n") {
+		t.Errorf("the by-agent line claims a share beside an unknown:\n%s", txt)
+	}
+	if strings.Contains(txt, "%)") {
+		t.Errorf("a percentage was printed beside an unknown:\n%s", txt)
+	}
+}
+
 // TestPricing_TheTableIsTheDesignsTable prices one million tokens of each
 // kind on every model and compares with the design's own figures, written
 // here in dollars so a reader can hold them against the table.
@@ -510,6 +556,24 @@ func TestCacheExpiry_ThePredecessorMayLieOutsideTheWindow(t *testing.T) {
 		resp{id: "r2", model: "claude-opus-5-5", at: now.Add(-time.Hour), w5: 100, stop: "end_turn"}.line("text"))
 	if s := c.summary(1); s.CacheExpiry.Tokens != 100 {
 		t.Errorf("cold tokens = %d, want 100", s.CacheExpiry.Tokens)
+	}
+}
+
+// TestCacheExpiry_AnUnbilledLineWarmsNothing: Claude Code writes a
+// zero-usage "<synthetic>" line for a local error. Nothing was sent for it,
+// so it refreshed no cache and is not a predecessor: the write after it
+// still follows twenty minutes with no billed request.
+func TestCacheExpiry_AnUnbilledLineWarmsNothing(t *testing.T) {
+	c := newConfig(t)
+	t0 := now.Add(-time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "a", model: "claude-opus-5-5", at: t0, w5: 1000, stop: "end_turn"}.line("text"),
+		resp{id: "syn", model: "<synthetic>", at: t0.Add(20 * oneMinute), stop: "end_turn"}.line("text"),
+		resp{id: "b", model: "claude-opus-5-5", at: t0.Add(20*oneMinute + time.Second), w5: 50000, stop: "end_turn"}.line("text"))
+	s := c.summary(30)
+	if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Cost.Nano != 50000*opusW5 {
+		t.Errorf("cold = %d responses, %d nanodollars; want b's write, 1 and %d",
+			s.CacheExpiry.Responses, s.CacheExpiry.Cost.Nano, 50000*opusW5)
 	}
 }
 

@@ -2,6 +2,7 @@ package report
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -306,11 +307,19 @@ func assistantText(content json.RawMessage) (string, bool) {
 	return strings.Join(parts, "\n"), true
 }
 
-// FinalAssistantTextBetween returns the text of the last assistant message in
-// a transcript whose line timestamp falls in [fromMS, toMS), with that
-// timestamp, and whether one was found.
+// TurnFinal is one turn's final assistant text and the timestamp of the line
+// that carried it.
+type TurnFinal struct {
+	Text string
+	AtMS int64
+}
+
+// FinalAssistantTexts reads a main transcript ONCE and returns, for each
+// prompt id in want, the text of the last assistant message that belongs to
+// that prompt, with the line's timestamp. A wanted prompt with no assistant
+// text in the file is absent from the result.
 //
-// It is FinalAssistantText narrowed to one turn, for `rashomon spend`'s
+// It is FinalAssistantText narrowed to turns, for `rashomon spend`'s
 // silent-failure line. A turn's silent_failures verdict is the digest's rule
 // (BuildSilentFailures) applied to that turn's final message, and the digest
 // is handed that message by the Stop hook at the moment the turn ends. spend
@@ -322,47 +331,119 @@ func assistantText(content json.RawMessage) (string, bool) {
 // message content, and a second reader elsewhere would be a second place to
 // audit.
 //
-// A line with no parseable timestamp cannot be placed in the window and is
-// skipped rather than guessed into it.
-func FinalAssistantTextBetween(path string, fromMS, toMS int64) (string, int64, bool) {
+// A TURN IS ITS PROMPT, NOT A SPAN OF TIME. Assistant lines carry no
+// promptId, but every user line Claude Code 2.1.285 writes does -- the typed
+// prompt and each tool_result answering the turn's calls -- and it is the
+// prompt_id the hooks record. So an assistant line belongs to the prompt of
+// the user line before it, in file order. The earlier rule, "the last text
+// between this turn's first record and the next recorded turn's", took the
+// wrong words whenever a prompt answered without any tool call came between
+// the two: such a prompt leaves nothing in the store, so its reply fell
+// inside the window and became the previous turn's final message -- firing on
+// honest summaries, and hiding silent ones behind a later reply that happened
+// to say "error".
+//
+// A user line with no promptId that is a prompt, rather than a tool result or
+// an injected meta line, ends attribution: its reply belongs to a turn this
+// reader cannot key, and crediting it to the previous one would be the same
+// wrong-words bug. A turn whose words cannot be attributed is absent from the
+// result, so the caller has no final message and takes no verdict -- a floor,
+// never a guess.
+//
+// One pass, decoding only what can matter: every line's header (type,
+// isSidechain, isMeta, promptId, timestamp); a user line's content only when
+// it carries no promptId; an assistant line's content only when its prompt is
+// wanted and the line has a text block at all. The caller hands every wanted
+// prompt of a session in one call, so a transcript is read once however many
+// of its turns need a verdict.
+func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal {
+	out := map[string]TurnFinal{}
+	if len(want) == 0 {
+		return out
+	}
 	f, err := os.Open(path)
 	if err != nil {
-		return "", 0, false
+		return out
 	}
 	defer f.Close() //nolint:errcheck // read-only
 
-	var last string
-	var lastMS int64
+	var current string
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
-		var line struct {
-			Timestamp string `json:"timestamp"`
-			Message   struct {
-				Role    string          `json:"role"`
-				Content json.RawMessage `json:"content"`
-			} `json:"message"`
+		raw := sc.Bytes()
+		var head struct {
+			Type        string `json:"type"`
+			IsSidechain bool   `json:"isSidechain"`
+			IsMeta      bool   `json:"isMeta"`
+			PromptID    string `json:"promptId"`
+			Timestamp   string `json:"timestamp"`
 		}
-		if json.Unmarshal(sc.Bytes(), &line) != nil {
+		if json.Unmarshal(raw, &head) != nil || head.IsSidechain {
 			continue
 		}
-		if line.Message.Role != "assistant" || len(line.Message.Content) == 0 {
-			continue
-		}
-		at, err := time.Parse(time.RFC3339Nano, line.Timestamp)
-		if err != nil {
-			continue
-		}
-		ms := at.UnixMilli()
-		if ms < fromMS || ms >= toMS {
-			continue
-		}
-		if text, ok := assistantText(line.Message.Content); ok {
-			last, lastMS = text, ms
+		switch head.Type {
+		case "user":
+			if head.PromptID != "" {
+				current = head.PromptID
+			} else if !head.IsMeta && !toolResultOnly(raw) {
+				current = ""
+			}
+		case "assistant":
+			if !want[current] || !bytes.Contains(raw, []byte(`"text"`)) {
+				continue
+			}
+			// A line with no parseable timestamp cannot be ordered against a
+			// second main file of the same session, and is skipped rather than
+			// guessed into place.
+			at, err := time.Parse(time.RFC3339Nano, head.Timestamp)
+			if err != nil {
+				continue
+			}
+			var line struct {
+				Message struct {
+					Role    string          `json:"role"`
+					Content json.RawMessage `json:"content"`
+				} `json:"message"`
+			}
+			if json.Unmarshal(raw, &line) != nil || line.Message.Role != "assistant" {
+				continue
+			}
+			if text, ok := assistantText(line.Message.Content); ok {
+				out[current] = TurnFinal{Text: text, AtMS: at.UnixMilli()}
+			}
 		}
 	}
-	if sc.Err() != nil || last == "" {
-		return "", 0, false
+	if sc.Err() != nil {
+		// A file that cannot be read to the end may hold a later reply than
+		// any found, so nothing read from it is a turn's final word.
+		return map[string]TurnFinal{}
 	}
-	return last, lastMS, true
+	return out
+}
+
+// toolResultOnly reports whether a user line's content is an array of
+// tool_result blocks and nothing else: a call finishing inside a turn, not a
+// new prompt.
+func toolResultOnly(raw []byte) bool {
+	var line struct {
+		Message struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(raw, &line) != nil {
+		return false
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(line.Message.Content, &blocks) != nil || len(blocks) == 0 {
+		return false
+	}
+	for _, b := range blocks {
+		if b.Type != "tool_result" {
+			return false
+		}
+	}
+	return true
 }

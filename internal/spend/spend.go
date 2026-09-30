@@ -2,8 +2,9 @@
 // cost at Anthropic's API list prices, from Claude Code's own transcripts.
 //
 // ZERO SETUP. It cannot depend on `watch` having run, so its source is
-// Claude Code's transcripts (see scan.go for the exact, narrow read), not
-// rashomon's store. The store is consulted for exactly one line -- spend in
+// Claude Code's transcripts (see scan.go for the exact, narrow read of usage,
+// and for the one read of a turn's final message the silent-failure line
+// needs), not rashomon's store. The store is consulted for exactly one line -- spend in
 // turns that ended with a failure the summary never mentioned -- and only
 // read, through store.OpenExisting, so asking what was spent cannot mint an
 // install identity on a machine that never recorded anything (H-87's rule).
@@ -472,10 +473,15 @@ func (s *Summary) buildSavings() {
 // start to start, which is longer than the idle time the cache actually saw,
 // so this can over-attribute near the threshold -- one reason it is labelled
 // a heuristic wherever its number appears.
+//
+// Only a billed response is a predecessor. A zero-token line (Build's
+// "<synthetic>" local error) sent nothing, so it refreshed no cache; taking
+// it as the previous request would reset the gap and hide the cold write
+// right after it.
 func coldWrites(sc *Scan) map[*Response]Tokens {
 	byFile := map[int][]*Response{}
 	for _, r := range sc.Responses {
-		if r.StartMS == 0 {
+		if r.StartMS == 0 || r.Tokens.Total() == 0 {
 			continue
 		}
 		byFile[r.file] = append(byFile[r.file], r)
