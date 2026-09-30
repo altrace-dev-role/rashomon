@@ -899,3 +899,63 @@ func TestJoin_NoTranscriptInTheWindowIsSaidPlainly(t *testing.T) {
 		}
 	}
 }
+
+// TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs: a
+// resumed conversation carries the original's responses into its own file
+// in the same project folder. Only the resumed one was recorded. Pinned to
+// whichever file sorted first, a shared response made the unrecorded original
+// read "recorded" in one path order -- it held no response of its own -- and
+// the resumed file's first new response lost its predecessor in the other, so
+// its cold write went uncounted. Both orders now give the same answer: the
+// original is not covered, the shared responses' cost is counted once as not
+// covered, and the cold write is counted once.
+func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *testing.T) {
+	T := now.Add(-3 * time.Hour)
+	x1 := resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T, in: 1000, w5: 100, stop: "end_turn"}
+	x2 := resp{id: "X2", model: "claude-opus-5-5", session: "sess-o", at: T.Add(oneMinute), in: 2000, stop: "end_turn"}
+	y1 := resp{id: "Y1", model: "claude-opus-5-5", session: "sess-r", at: T.Add(30 * oneMinute), in: 4000, w5: 3000, stop: "end_turn"}
+	run := func(original, resumed string) (string, string, *Summary) {
+		c := newConfig(t)
+		rec := newRecorder(t)
+		c.write(original, x1.line("text"), x2.line("text"))
+		rec.transcript = c.write(resumed, x1.line("text"), x2.line("text"), y1.line("text"))
+		rec.call("sess-r", "p1", "toolu_r", T.Add(30*oneMinute), T.Add(31*oneMinute), store.ExecOK)
+		s := c.summary(30)
+		if err := s.Join(rec.st); err != nil {
+			t.Fatal(err)
+		}
+		txt, _ := render(t, s)
+		j, err := json.Marshal(struct {
+			J SilentFailureTurns
+			P []SessionSpend
+			C CacheExpiry
+		}{s.SilentFailureTurns, s.PerSession, s.CacheExpiry})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return txt, string(j), s
+	}
+	txtA, jsA, s := run("a-proj/sess-o.jsonl", "b-proj/sess-r.jsonl")
+	txtB, jsB, _ := run("b-proj/sess-o.jsonl", "a-proj/sess-r.jsonl")
+	if jsA != jsB {
+		t.Errorf("coverage and cold cache follow the path order:\n%s\n%s", jsA, jsB)
+	}
+	strip := func(s string) string { return strings.ReplaceAll(s, "a-proj", "b-proj") }
+	if strip(txtA) != strip(txtB) {
+		t.Errorf("the text follows the path order:\n%s\n%s", txtA, txtB)
+	}
+	j := s.SilentFailureTurns
+	if j.Transcripts != 2 || j.CoveredTranscripts != 1 || j.NotCoveredTranscripts != 1 {
+		t.Errorf("transcripts %d, covered %d, not covered %d; want 2, 1, 1: the unrecorded original is never recorded",
+			j.Transcripts, j.CoveredTranscripts, j.NotCoveredTranscripts)
+	}
+	if want := int64(3000*opusIn + 100*opusW5); j.NotCoveredCost.Nano != want {
+		t.Errorf("not-covered cost = %d, want %d: the shared responses, once", j.NotCoveredCost.Nano, want)
+	}
+	if strings.Join(j.NotCoveredSessions, ",") != "sess-o" {
+		t.Errorf("not-covered sessions = %v, want sess-o", j.NotCoveredSessions)
+	}
+	if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens != 3000 {
+		t.Errorf("cold = %+v, want Y1's write once", s.CacheExpiry)
+	}
+}

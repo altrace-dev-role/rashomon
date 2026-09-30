@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -218,6 +219,13 @@ type Response struct {
 	ExtraTokens   Tokens
 
 	file int // index into Scan.Files, the file this response was first seen in
+
+	// files is every file the response was seen in, first sighting first. A
+	// resumed or forked conversation carries earlier responses into a second
+	// transcript, and which of the two sorts first is only a path order: the
+	// coverage rule reads every transcript holding a response (Join), so that
+	// order cannot decide whether it was recorded.
+	files []int
 
 	// prompt is, for a response first seen in a subagents/ transcript, the
 	// promptId of the user line before it in that file: the turn it was
@@ -570,6 +578,7 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			StartMS:    startMS,
 			Tokens:     l.Message.Usage.split(),
 			file:       idx,
+			files:      []int{idx},
 			complete:   stop != "",
 		}
 		if f.Subagent {
@@ -596,9 +605,13 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 
 // keep folds a later line of an already-seen response into the one kept.
 // Identity (which file, which session, main or subagent) stays with the first
-// sighting; the counts come from the most complete line; the start time is
-// the earliest any line carries.
+// sighting; the file is added to the files it was seen in; the counts come
+// from the most complete line; the start time is the earliest any line
+// carries.
 func keep(prev, cand *Response) {
+	if !slices.Contains(prev.files, cand.file) {
+		prev.files = append(prev.files, cand.file)
+	}
 	if cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS < prev.StartMS) {
 		prev.StartMS = cand.StartMS
 	}

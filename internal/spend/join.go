@@ -172,11 +172,16 @@ func turnsOf(run *store.Run) []turn {
 // store.Open: spend is a question, and asking it must not mint an install
 // identity -- H-87's rule, which every read-only command here follows.
 //
-// COVERAGE IS PER TRANSCRIPT. A windowed response's transcript is its main
-// transcript (TranscriptFile.Main). That transcript is covered when a record
-// of one of the window's sessions carries a transcript_path naming it, or
-// naming a subagent transcript under it; every other transcript is not
-// covered, however many run directories the store holds for its session id.
+// COVERAGE IS PER TRANSCRIPT. A windowed response's transcripts are the main
+// transcripts (TranscriptFile.Main) of every file it was seen in. A
+// transcript is covered when a record of one of the window's sessions
+// carries a transcript_path naming it, or naming a subagent transcript under
+// it; every other transcript is not covered, however many run directories
+// the store holds for its session id. A response is not covered when ANY
+// transcript holding it is not, and its cost is counted there once: a
+// resumed conversation carries the original's responses into a second file,
+// and pinning each response to whichever file sorted first reported an
+// unrecorded original as recorded in one path order and not in the other.
 //
 // Per recorded turn: the turn's own small run goes through
 // report.BuildSilentFailures -- the very rule, and the very run shape, a
@@ -214,8 +219,9 @@ func (s *Summary) Join(st *store.Store) error {
 	byTranscript := map[string][]*Response{}
 	sessions := map[string]bool{}
 	for _, r := range s.window {
-		m := s.scan.Files[r.file].Main
-		byTranscript[m] = append(byTranscript[m], r)
+		for _, m := range s.mainsOf(r) {
+			byTranscript[m] = append(byTranscript[m], r)
+		}
 		sessions[r.SessionID] = true
 	}
 	j.Transcripts = len(byTranscript)
@@ -326,9 +332,6 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 		}
 		seen := map[string]bool{}
 		for _, r := range rs {
-			if !covered[m] {
-				costOf(&j.NotCoveredCost, r)
-			}
 			if seen[r.SessionID] {
 				continue
 			}
@@ -343,6 +346,16 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 			} else {
 				t.out++
 				named[displaySession(r.SessionID)] = true
+			}
+		}
+	}
+	// Once per response, however many transcripts hold it: not covered when
+	// any of them is not.
+	for _, r := range s.window {
+		for _, m := range s.mainsOf(r) {
+			if !covered[m] {
+				costOf(&j.NotCoveredCost, r)
+				break
 			}
 		}
 	}
@@ -362,6 +375,18 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 			s.PerSession[i].Coverage = CoveragePartly
 		}
 	}
+}
+
+// mainsOf is the distinct main transcripts of every file a response was seen
+// in, first sighting first.
+func (s *Summary) mainsOf(r *Response) []string {
+	var out []string
+	for _, i := range r.files {
+		if m := s.scan.Files[i].Main; !slices.Contains(out, m) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // knownPaths is the files Discover found, indexed so a recorded

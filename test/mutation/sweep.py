@@ -1137,10 +1137,12 @@ m("SP a 5m write is judged against the 1h TTL", "internal/spend/spend.go",
 m("SP a 1h write is judged against the 5m TTL", "internal/spend/spend.go",
   "\t\t\tif gap > ttl1h {", "\t\t\tif gap > ttl5m {", "TestCacheExpiry_")
 m("SP the previous response is taken across files", "internal/spend/spend.go",
-  "\t\tk := stream{r.file, r.Subagent}", "\t\tk := stream{0, r.Subagent}", "TestCacheExpiry_")
+  "\t\t\tk := stream{f, r.Subagent}\n\t\t\tbyFile[k] = append(byFile[k], r)\n\t\t}\n\t}\n\tout := map[*Response]Tokens{}\n\tfor k, rs := range byFile {\n\t\tsort.SliceStable(rs, func(i, j int) bool { return rs[i].StartMS < rs[j].StartMS })\n\t\tfor i := 1; i < len(rs); i++ {\n\t\t\tif rs[i].file != k.file {",
+  "\t\t\tk := stream{0 * f, r.Subagent}\n\t\t\tbyFile[k] = append(byFile[k], r)\n\t\t}\n\t}\n\tout := map[*Response]Tokens{}\n\tfor k, rs := range byFile {\n\t\tsort.SliceStable(rs, func(i, j int) bool { return rs[i].StartMS < rs[j].StartMS })\n\t\tfor i := 1; i < len(rs); i++ {\n\t\t\tif false && rs[i].file != k.file {",
+  "TestCacheExpiry_")
 m("SP the window is applied before the previous response is found", "internal/spend/spend.go",
-  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tk := stream",
-  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS < time.Now().Add(-48*time.Hour).UnixMilli() {\n\t\t\tcontinue\n\t\t}\n\t\tk := stream",
+  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, f := range r.files {",
+  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS < time.Now().Add(-48*time.Hour).UnixMilli() {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, f := range r.files {",
   "TestCacheExpiry_ThePredecessor")
 m("SP a savings line is printed with no figure under it", "internal/spend/spend.go",
   "\tif s.CacheExpiry.Cost.Nano > 0 {", "\tif true {", "TestNoSavingsWithoutAFigure")
@@ -1254,8 +1256,8 @@ m("SP a subagent's sidechain line is read as the turn's summary", "internal/repo
   "\t\tif head.IsSidechain {\n", "\t\tif false && head.IsSidechain {\n",
   "TestFinalAssistantTexts_")
 m("SP an unbilled synthetic line counts as the previous request", "internal/spend/spend.go",
-  "\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tk := stream",
-  "\t\tif r.StartMS == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tk := stream",
+  "\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, f := range r.files {",
+  "\t\tif r.StartMS == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, f := range r.files {",
   "TestCacheExpiry_AnUnbilled")
 m("SP an unchecked silent-failure line marshals as a checked $0", "internal/spend/join.go",
   "\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns", "\tif true {\n\t\tout.Turns",
@@ -1459,6 +1461,18 @@ m("SP a cold write is priced at the full write rate, not over a cache read", "in
 m("SP a cold 1h write is priced at the full write rate", "internal/spend/spend.go",
   "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)", "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*rt.CacheWrite1h()",
   "TestCacheExpiry_")
+m("SP a response keeps only the file it was first seen in", "internal/spend/scan.go",
+  "\tif !slices.Contains(prev.files, cand.file) {\n\t\tprev.files = append(prev.files, cand.file)\n\t}\n", "\t_ = slices.Contains[[]int]\n",
+  "TestJoin_ADuplicatedResponse")
+m("SP a shared response's coverage follows the file that sorts first", "internal/spend/join.go",
+  "\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tif !covered[m] {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)", "\t\tfor _, m := range s.mainsOf(r)[:1] {\n\t\t\tif !covered[m] {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)",
+  "TestJoin_ADuplicatedResponse")
+m("SP a transcript holding only shared responses is not a transcript", "internal/spend/join.go",
+  "\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tbyTranscript[m] = append(byTranscript[m], r)", "\t\tfor _, m := range s.mainsOf(r)[:1] {\n\t\t\tbyTranscript[m] = append(byTranscript[m], r)",
+  "TestJoin_ADuplicatedResponse")
+m("SP a cold-cache stream holds only the responses first seen in its file", "internal/spend/spend.go",
+  "\t\tfor _, f := range r.files {\n\t\t\tk := stream{f, r.Subagent}", "\t\tfor _, f := range r.files[:1] {\n\t\t\tk := stream{f, r.Subagent}",
+  "TestJoin_ADuplicatedResponse")
 
 # Import additions some mutants need.
 IMPORTS = {

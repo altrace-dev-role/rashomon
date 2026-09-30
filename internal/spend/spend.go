@@ -635,6 +635,13 @@ func (s *Summary) buildSavings() {
 // is priced as the write rate minus the read rate (Build): what re-reading
 // those tokens would have cost is not a saving.
 //
+// EVERY FILE HOLDING A RESPONSE IS A STREAM, and the response is judged once,
+// in the file it was first seen in. A resumed conversation carries the
+// original's responses into its own file: a stream of only the responses
+// first seen there left the resumed file's first new response with no
+// predecessor in one path order and a predecessor in the other, so the cold
+// figure followed the sort order.
+//
 // Only a billed response is a predecessor. A zero-token line (Build's
 // "<synthetic>" local error) sent nothing, so it refreshed no cache; taking
 // it as the previous request would reset the gap and hide the cold write
@@ -649,13 +656,18 @@ func coldWrites(sc *Scan) map[*Response]Tokens {
 		if r.StartMS == 0 || r.Tokens.Total() == 0 {
 			continue
 		}
-		k := stream{r.file, r.Subagent}
-		byFile[k] = append(byFile[k], r)
+		for _, f := range r.files {
+			k := stream{f, r.Subagent}
+			byFile[k] = append(byFile[k], r)
+		}
 	}
 	out := map[*Response]Tokens{}
-	for _, rs := range byFile {
+	for k, rs := range byFile {
 		sort.SliceStable(rs, func(i, j int) bool { return rs[i].StartMS < rs[j].StartMS })
 		for i := 1; i < len(rs); i++ {
+			if rs[i].file != k.file {
+				continue
+			}
 			if rs[i].Tokens.CacheRead > 0 {
 				continue
 			}
