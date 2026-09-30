@@ -804,3 +804,43 @@ func TestJoin_ATranscriptCutByAnOversizedLineIsUnjudged(t *testing.T) {
 		t.Errorf("turns %d, unjudged %d; want 0 and 1: a turn in a file not read to the end was judged on its earlier words", j.Turns, j.Unjudged)
 	}
 }
+
+// TestJoin_ADeclarationWithNoPromptIDIsNoTurn: the store holds declarations
+// with no prompt_id -- real records from before a session's first input. Such
+// a call belongs to no turn: grouping it under "" would make every unkeyed
+// assistant line a turn's final word and spend, and dereferencing the nil
+// would panic. Here its call failed and the transcript's reply, tied to no
+// prompt, says nothing of it: no turn is judged, nothing is priced.
+func TestJoin_ADeclarationWithNoPromptIDIsNoTurn(t *testing.T) {
+	c := newConfig(t)
+	rec := newRecorder(t)
+	T := now.Add(-2 * time.Hour)
+	transcript := c.write("proj/sess-j.jsonl",
+		resp{id: "R1", model: "claude-opus-5-5", session: "sess-j", at: T.Add(2 * time.Second), in: 5, stop: "end_turn",
+			text: "Ran it as requested."}.line("text"))
+	if err := rec.st.AppendDeclaration(store.Declaration{
+		Type: store.TypeDeclaration, SchemaVersion: store.SchemaVersion,
+		RecordedAtMS: T.UnixMilli(), ToolUseID: "toolu_1", SessionID: "sess-j",
+		ToolName: "Bash", TranscriptPath: transcript,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.st.AppendExecution(store.Execution{
+		Type: store.TypeExecution, SchemaVersion: store.SchemaVersion,
+		RecordedAtMS: T.Add(time.Second).UnixMilli(), ToolUseID: "toolu_1", SessionID: "sess-j",
+		ToolName: "Bash", Outcome: store.ExecFailed,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	j := s.SilentFailureTurns
+	if j.CoveredTranscripts != 1 {
+		t.Fatalf("premise: covered %d, want 1: the record names the transcript", j.CoveredTranscripts)
+	}
+	if j.Turns != 0 || j.Unjudged != 0 || j.Cost.Priced != 0 || j.Cost.Unpriced != 0 {
+		t.Errorf("turns %d, unjudged %d, cost %+v; want no turn and no spend: a call with no prompt_id is no turn's", j.Turns, j.Unjudged, j.Cost)
+	}
+}

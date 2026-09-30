@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math/bits"
 	"strconv"
 	"strings"
 )
@@ -66,7 +67,7 @@ func Text(w io.Writer, s *Summary) error {
 			countOf(s.Read.UnreadableDirs, "folder"), itThem(s.Read.UnreadableDirs))
 	}
 	if s.Read.UnparsedUsageLines > 0 {
-		fmt.Fprintf(&b, "\nnote: %s that may carry usage could not be read (a malformed field, or a negative or implausibly large count), so %s not counted\n",
+		fmt.Fprintf(&b, "\nnote: %s that may carry usage could not be read (a malformed field, a negative or implausibly large count, or no message id), so %s not counted\n",
 			countOf(s.Read.UnparsedUsageLines, "transcript line"), itThem(s.Read.UnparsedUsageLines)+" "+isAre(s.Read.UnparsedUsageLines))
 	}
 	if s.Read.UnreadableFiles > 0 {
@@ -145,26 +146,37 @@ func agentLine(s *Summary) string {
 // given to the larger remainder (largest remainder; a tie goes to the first).
 // And a share that rounds to 0 while its amount is not zero is "<1%", its
 // complement ">99%": printing 0% beside a non-zero figure says it was nothing.
+//
+// In 128-bit arithmetic (percent): a*100 overflowed an int64 past about 9e16
+// nanodollars, and shares(1e17, 1) printed "-84%".
 func shares(a, b int64) (string, string) {
-	total := a + b
-	pa, pb := a*100/total, b*100/total
+	total := uint64(a) + uint64(b)
+	pa, ra := percent(uint64(a), total)
+	pb, rb := percent(uint64(b), total)
 	if pa+pb < 100 {
-		if a*100%total >= b*100%total {
+		if ra >= rb {
 			pa++
 		} else {
 			pb++
 		}
 	}
-	label := func(p, n int64) string {
+	label := func(p uint64, n int64) string {
 		switch {
 		case p == 0 && n > 0:
 			return "<1%"
-		case p == 100 && n < total:
+		case p == 100 && uint64(n) < total:
 			return ">99%"
 		}
 		return fmt.Sprintf("%d%%", p)
 	}
 	return label(pa, a), label(pb, b)
+}
+
+// percent is n*100/total and its remainder, without overflow: n <= total, so
+// the high word of n*100 is below total and Div64 cannot panic.
+func percent(n, total uint64) (q, r uint64) {
+	hi, lo := bits.Mul64(n, 100)
+	return bits.Div64(hi, lo, total)
 }
 
 // sessionLines is the costliest sessions, one per line, each with its main

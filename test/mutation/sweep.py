@@ -1095,7 +1095,7 @@ m("SP the --days window is ignored", "internal/spend/spend.go",
 m("SP an undated response is dropped without being counted", "internal/spend/scan.go",
   "\t\t\tsc.Undated++\n", "", "TestWindow_")
 m("SP a file last written before the window is still read", "internal/spend/scan.go",
-  "ok := err == nil && !info.ModTime().Before(modifiedSince)", "ok := err == nil && info != nil", "TestDiscover_Skips")
+  "\t\t\tfound.Stale++\n\t\t\treturn false", "\t\t\tfound.Stale++\n\t\t\treturn true", "TestDiscover_Skips")
 m("SP a file under subagents/ is main-agent spend unless its lines say sidechain", "internal/spend/scan.go",
   "Subagent:   f.Subagent || l.IsSidechain,", "Subagent:   l.IsSidechain,", "TestAgent_")
 m("SP a main-file line marked isSidechain is main-agent spend", "internal/spend/scan.go",
@@ -1280,7 +1280,7 @@ m("SP a future-dated response counts as the last N days", "internal/spend/spend.
 m("SP a response written while spend runs is future-dated", "internal/spend/spend.go",
   "\tlatest := now.Add(futureSlack).UnixMilli()", "\tlatest := now.UnixMilli()", "TestWindow_AFutureDated")
 m("SP a transcript last written before the window is not counted", "internal/spend/scan.go",
-  "\t\tif err == nil && !ok {\n\t\t\tfound.Stale++", "\t\tif err == nil && !ok {\n\t\t\t_ = found",
+  "\t\t\tfound.Stale++\n\t\t\treturn false", "\t\t\treturn false",
   "TestWindow_OldTranscripts|TestDiscover_Skips")
 m("SP old transcripts are reported as no transcripts found", "internal/spend/text.go",
   "\tcase s.Read.Files == 0 && s.Read.FilesBeforeWindow > 0:", "\tcase false:", "TestWindow_OldTranscripts")
@@ -1320,11 +1320,11 @@ m("SP a 5m re-write is given no TTL hint", "internal/spend/text.go",
 m("SP each agent share is rounded on its own", "internal/spend/text.go",
   "\tif pa+pb < 100 {", "\tif false {", "TestAgent_SharesSumTo100")
 m("SP the leftover share point goes to the smaller remainder", "internal/spend/text.go",
-  "\t\tif a*100%total >= b*100%total {", "\t\tif a*100%total < b*100%total {", "TestAgent_SharesSumTo100")
+  "\t\tif ra >= rb {", "\t\tif ra < rb {", "TestAgent_SharesSumTo100")
 m("SP a non-zero side under 1% prints 0%", "internal/spend/text.go",
   "\t\tcase p == 0 && n > 0:", "\t\tcase false:", "TestAgent_SharesSumTo100")
 m("SP a share of 100% is printed beside a non-zero other side", "internal/spend/text.go",
-  "\t\tcase p == 100 && n < total:", "\t\tcase false:", "TestAgent_SharesSumTo100")
+  "\t\tcase p == 100 && uint64(n) < total:", "\t\tcase false:", "TestAgent_SharesSumTo100")
 m("SP every extra attempt is called declined", "internal/spend/text.go",
   "tokens spent on the extra attempts, cost unknown", "tokens spent on declined attempts, cost unknown",
   "TestRefusalsAndExtraAttempts")
@@ -1398,6 +1398,26 @@ m("SP a transcript not read to the end still gives a turn its words", "internal/
 m("SP a turn's final word carries no time", "internal/report/transcript.go",
   "\t\t\ttf.Said, tf.Text, tf.AtMS = true, text, at.UnixMilli()", "\t\t\ttf.Said, tf.Text, tf.AtMS = true, text, 0*at.UnixMilli()",
   "TestFinalAssistantTexts_ATurnIsItsPrompt")
+m("SP an id-less usage line with tokens is dropped without a count", "internal/spend/scan.go",
+  "\t\t\tif l.Message.Usage.carriesTokens() {\n\t\t\t\tsc.Unparsed++", "\t\t\tif false {\n\t\t\t\tsc.Unparsed++",
+  "TestUnparsed_")
+m("SP an id-less usage line is counted as a usage line", "internal/spend/scan.go",
+  "\t\tif l.Message.ID == \"\" {\n\t\t\t// No id to deduplicate against", "\t\tif l.Message.ID == \"\" {\n\t\t\tsc.UsageLines++\n\t\t\t// No id to deduplicate against",
+  "TestUnparsed_")
+m("SP a transcript that cannot be stat'ed is dropped without a count", "internal/spend/scan.go",
+  "\t\t\treturn !errors.Is(err, fs.ErrNotExist)", "\t\t\treturn false", "TestDiscover_AFileThatCannotBeStated")
+m("SP a transcript that vanished is still read", "internal/spend/scan.go",
+  "\t\t\treturn !errors.Is(err, fs.ErrNotExist)", "\t\t\treturn true", "TestDiscover_AFileThatCannotBeStated")
+m("SP a share's percentage overflows", "internal/spend/text.go",
+  "\thi, lo := bits.Mul64(n, 100)\n\treturn bits.Div64(hi, lo, total)", "\t_, _ = bits.Mul64(n, 100)\n\treturn n * 100 / total, n * 100 % total",
+  "TestAgent_Shares")
+m("SP a declaration with no prompt_id is grouped as the turn \"\"", "internal/spend/join.go",
+  "\t\tif d.PromptID == nil || *d.PromptID == \"\" {\n\t\t\tcontinue\n\t\t}",
+  "\t\tif d.PromptID == nil {\n\t\t\tnone := \"\"\n\t\t\td.PromptID = &none\n\t\t}",
+  "TestJoin_ADeclarationWithNoPromptID")
+m("SP a declaration with no prompt_id is dereferenced", "internal/spend/join.go",
+  "\t\tif d.PromptID == nil || *d.PromptID == \"\" {\n\t\t\tcontinue\n\t\t}", "",
+  "TestJoin_ADeclarationWithNoPromptID")
 
 # Import additions some mutants need.
 IMPORTS = {

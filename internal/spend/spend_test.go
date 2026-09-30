@@ -3,6 +3,7 @@ package spend
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -544,7 +545,11 @@ func TestUnparsed_AMalformedOrImplausibleLineIsCountedNotPriced(t *testing.T) {
 		bend("huge", func(o map[string]any) { usageOf(o)["cache_read_input_tokens"] = int64(1) << 50 }),
 		bend("iter", func(o map[string]any) {
 			usageOf(o)["iterations"] = []map[string]any{{"input_tokens": -7}, {"input_tokens": 5}}
-		}))
+		}),
+		// No message.id to deduplicate by: with tokens it is counted as a
+		// line that could not be; with none (nothing billed) it is not.
+		resp{model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 5_000_000, stop: "end_turn"}.line("text"),
+		resp{model: "<synthetic>", at: now.Add(-time.Hour), stop: "end_turn"}.line("text"))
 	// A subagent's user line with a numeric timestamp does not decode either,
 	// but it carries no usage: it is not an unparsed usage line.
 	c.write("proj/sess-a/subagents/agent-u.jsonl",
@@ -554,10 +559,13 @@ func TestUnparsed_AMalformedOrImplausibleLineIsCountedNotPriced(t *testing.T) {
 		t.Errorf("total = %d over %d responses, want %d over 1: a malformed or implausible line was priced",
 			s.Total.Nano, s.Responses, 1000*opusIn)
 	}
-	if s.Read.UnparsedUsageLines != 5 {
-		t.Errorf("unparsed usage lines = %d, want 5", s.Read.UnparsedUsageLines)
+	if s.Read.UnparsedUsageLines != 6 {
+		t.Errorf("unparsed usage lines = %d, want 6", s.Read.UnparsedUsageLines)
 	}
-	if txt, _ := render(t, s); !strings.Contains(txt, "note: 5 transcript lines that may carry usage could not be read") {
+	if s.Read.UsageLines != 4 {
+		t.Errorf("usage lines = %d, want 4: an id-less line is not one the dedupe measured", s.Read.UsageLines)
+	}
+	if txt, _ := render(t, s); !strings.Contains(txt, "note: 6 transcript lines that may carry usage could not be read") {
 		t.Errorf("the text does not say lines were left out:\n%s", txt)
 	}
 }
@@ -578,6 +586,35 @@ func TestDiscover_SkipsFilesLastWrittenBeforeTheWindow(t *testing.T) {
 	}
 	if len(files.Files) != 1 || filepath.Base(files.Files[0].Path) != "new.jsonl" || files.Stale != 1 {
 		t.Errorf("discovered %+v, want only new.jsonl and the old one counted as stale", files)
+	}
+}
+
+// TestDiscover_AFileThatCannotBeStatedIsNotDropped: in a folder that can be
+// listed but not searched, every Stat fails, and Discover dropped each
+// transcript as if it were old -- no count, no note, "no Claude Code
+// transcripts were found to read". Only a file that no longer exists is
+// dropped; any other failure keeps the file, for Read to open or count as
+// unreadable. The failure is injected: root searches any folder.
+func TestDiscover_AFileThatCannotBeStatedIsNotDropped(t *testing.T) {
+	c := newConfig(t)
+	locked := c.write("proj/locked.jsonl", resp{id: "a", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1}.line("text"))
+	gone := c.write("proj/gone.jsonl", resp{id: "b", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1}.line("text"))
+	t.Cleanup(func() { statFile = os.Stat })
+	statFile = func(p string) (os.FileInfo, error) {
+		switch p {
+		case locked:
+			return nil, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrPermission}
+		case gone:
+			return nil, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrNotExist}
+		}
+		return os.Stat(p)
+	}
+	found, err := Discover(c.dir, time.Now().Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Files) != 1 || found.Files[0].Path != locked || found.Stale != 0 {
+		t.Errorf("discovered %+v, stale %d; want only locked.jsonl, kept for Read, and nothing counted stale", found.Files, found.Stale)
 	}
 }
 
@@ -653,6 +690,26 @@ func TestAgent_SharesSumTo100AndNeverCallANonZeroSide0(t *testing.T) {
 		txt, _ := render(t, c.summary(30))
 		if !strings.Contains(txt, tc.want) {
 			t.Errorf("main %d, sub %d tokens: by-agent line lacks %q:\n%s", tc.main, tc.sub, tc.want, txt)
+		}
+	}
+}
+
+// TestAgent_SharesDoNotOverflow: a*100 overflowed an int64 once an amount
+// passed about 9e16 nanodollars, and shares(1e17, 1) printed "-84%". Only a
+// fabricated or corrupted transcript that passes the plausibility check gets
+// there, but a percentage that is negative is never an answer.
+func TestAgent_SharesDoNotOverflow(t *testing.T) {
+	for _, tc := range []struct {
+		a, b   int64
+		pa, pb string
+	}{
+		{1e17, 1, ">99%", "<1%"},
+		{4e18, 4e18, "50%", "50%"},
+		{3e18, 1e18, "75%", "25%"},
+		{1, 9e18, "<1%", ">99%"},
+	} {
+		if pa, pb := shares(tc.a, tc.b); pa != tc.pa || pb != tc.pb {
+			t.Errorf("shares(%d, %d) = %s, %s; want %s, %s", tc.a, tc.b, pa, pb, tc.pa, tc.pb)
 		}
 	}
 }

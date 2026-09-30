@@ -130,6 +130,23 @@ func (u *usage) plausible() bool {
 	return true
 }
 
+// carriesTokens reports whether any count in the usage, top level or an
+// iteration's, is non-zero -- or is not a count at all (plausible).
+func (u *usage) carriesTokens() bool {
+	if !u.plausible() {
+		return true
+	}
+	if u.split().Total() > 0 {
+		return true
+	}
+	for _, it := range u.Iterations {
+		if it.split().Total() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // Tokens is one response's token counts by kind, with the cache writes
 // split by TTL because the two TTLs are priced differently.
 type Tokens struct {
@@ -224,8 +241,9 @@ type Scan struct {
 	Undated int
 	// Unparsed counts lines that may carry usage and could not be counted:
 	// a line that does not decode into the usage shape (a token count
-	// written as a string, a timestamp as a number), or a usage whose counts
-	// are negative or implausibly large (plausible). Such a line used to be
+	// written as a string, a timestamp as a number), a usage whose counts
+	// are negative or implausibly large (plausible), or a usage with tokens
+	// on a line with no message.id to deduplicate by. Such a line used to be
 	// dropped without a word, or -- a negative count -- priced as negative
 	// dollars subtracted from the total.
 	Unparsed int
@@ -305,12 +323,20 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 		if modifiedSince.IsZero() {
 			return true
 		}
-		info, err := os.Stat(p)
-		ok := err == nil && !info.ModTime().Before(modifiedSince)
-		if err == nil && !ok {
-			found.Stale++
+		info, err := statFile(p)
+		if err != nil {
+			// A file that vanished since the folder was listed holds
+			// nothing. One that cannot be stat'ed (a folder that can be
+			// listed but not searched) is not known to be old, so it is
+			// kept: Read then counts it as unreadable. Returning false here
+			// dropped its transcripts with no count and no note.
+			return !errors.Is(err, fs.ErrNotExist)
 		}
-		return ok
+		if info.ModTime().Before(modifiedSince) {
+			found.Stale++
+			return false
+		}
+		return true
 	}
 	for _, p := range projects {
 		dir := filepath.Join(root, p.Name())
@@ -352,6 +378,11 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 	found.Files = out
 	return found, nil
 }
+
+// statFile is os.Stat, as a variable so a test can fail it the way a folder
+// that can be listed but not searched fails it -- which root, as tests often
+// run, never sees.
+var statFile = os.Stat
 
 // Kinds of directory entry, symlinks followed.
 const (
@@ -433,7 +464,9 @@ func subagentFiles(dir string) ([]string, int) {
 // -- the common case -- tie, and either is the same answer.
 //
 // A line with no message.id cannot be deduplicated against anything, so it
-// cannot be counted without risking the 2x error; it is skipped.
+// cannot be counted without risking the 2x error; it is skipped, and counted
+// in Unparsed when it carries tokens. It used to be dropped without a word:
+// an id-less line carrying $20 of input rendered "est. <$0.01" and no note.
 func Read(found *Found) (*Scan, error) {
 	sc := &Scan{Files: found.Files, Stale: found.Stale, UnreadableDirs: found.UnreadableDirs}
 	byID := map[string]*Response{}
@@ -503,12 +536,18 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 		if l.Message.Usage == nil {
 			continue
 		}
+		if l.Message.ID == "" {
+			// No id to deduplicate against, so not counted -- and, when it
+			// carries tokens, counted as a line that could not be, so the
+			// note says so rather than the total silently leaving it out.
+			if l.Message.Usage.carriesTokens() {
+				sc.Unparsed++
+			}
+			continue
+		}
 		sc.UsageLines++
 		if !l.Message.Usage.plausible() {
 			sc.Unparsed++
-			continue
-		}
-		if l.Message.ID == "" {
 			continue
 		}
 		startMS, dated := parseTimestamp(l.Timestamp)
