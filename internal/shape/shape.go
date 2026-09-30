@@ -947,11 +947,18 @@ var programVerb = map[string]string{
 //
 // A fixed list, compared and discarded. Nothing from the line is kept but the
 // class; an argument is looked at only to be told equal to one of these.
-// Anything this list does not name -- `make -C dir test`, `npx jest`,
-// `./gradlew test`, `go test` behind `timeout` -- stays what it was before:
-// execute, or package for go and cargo. That is an under-claim, and the
-// detections built on this class are worth only as much as their refusal to
-// over-claim.
+// Anything this list does not name -- `make -C dir test`, `npx --yes jest`,
+// `go test` behind `nice` -- stays what it was before: execute, or package
+// for go and cargo. That is an under-claim, and the detections built on this
+// class are worth only as much as their refusal to over-claim.
+//
+// The wrappers on the list are the ones whose exit status is the runner's:
+// a project's own gradlew and mvnw, npm's `t` alias, `npx jest` and `npx
+// vitest`, `uv run pytest`, `poetry run pytest` and `bundle exec rspec`. So
+// are the `timeout N` and `time` prefixes (runnerPrefix), except for
+// timeout's own 124, which the report reads as no result. A pipe or a list
+// after the runner is still refused (wholeCommand): without pipefail its
+// status is the last stage's.
 //
 // The rule applied: a runner is on the list when its program's name, or the
 // plain words after it, say test. `make check` is not, since check does not.
@@ -963,10 +970,29 @@ var testCommands = [][]string{
 	{"pytest"}, {"jest"}, {"vitest"}, {"mocha"}, {"rspec"}, {"phpunit"},
 	{"ctest"}, {"tox"}, {"nox"},
 
-	{"go", "test"}, {"cargo", "test"}, {"npm", "test"}, {"npm", "run", "test"},
+	{"go", "test"}, {"cargo", "test"}, {"npm", "test"}, {"npm", "t"}, {"npm", "run", "test"},
 	{"yarn", "test"}, {"pnpm", "test"}, {"bun", "test"}, {"dotnet", "test"},
-	{"mvn", "test"}, {"gradle", "test"}, {"make", "test"},
+	{"mvn", "test"}, {"mvnw", "test"}, {"gradle", "test"}, {"gradlew", "test"}, {"make", "test"},
 	{"python", "-m", "pytest"}, {"python3", "-m", "pytest"},
+
+	{"npx", "jest"}, {"npx", "vitest"}, {"uv", "run", "pytest"}, {"poetry", "run", "pytest"},
+	{"bundle", "exec", "rspec"},
+}
+
+// refusalsOf names the notARun entry a testCommands row is checked against:
+// its own program's, or for a wrapper the runner it wraps, since `npx jest
+// --listTests` lists as `jest --listTests` does. gradlew and mvnw take
+// gradle's and mvn's.
+func refusalsOf(c []string) string {
+	switch c[0] {
+	case "npx", "uv", "poetry", "bundle":
+		return c[len(c)-1]
+	case "gradlew":
+		return "gradle"
+	case "mvnw":
+		return "mvn"
+	}
+	return c[0]
 }
 
 // notARun is, per runner by its first word, the arguments with which it does
@@ -1103,6 +1129,10 @@ func runsTests(toks []token, i int, prog string, whole bool) bool {
 	if !whole {
 		return false
 	}
+	i, prog, ok := runnerPrefix(toks, i, prog)
+	if !ok {
+		return false
+	}
 next:
 	for _, c := range testCommands {
 		if c[0] != prog {
@@ -1118,12 +1148,73 @@ next:
 				continue next
 			}
 		}
-		if refusesRun(c[0], toks[:i], toks[i+len(c):]) {
+		if refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {
 			return false
 		}
 		return wholeCommand(toks, i)
 	}
 	return false
+}
+
+// runnerPrefix steps past the prefixes that pass a runner's exit status
+// through: `timeout DURATION`, then `time` (`time -p`), each at most once
+// and in that order. It returns the index and name of the word after them,
+// or i and prog unchanged when there is no prefix; ok is false when a prefix
+// is not followed by a word this search can vouch for.
+//
+// timeout is taken only as `timeout DURATION`: an option before the duration
+// (`-k 5`, `-s KILL`, `--preserve-status`) changes what status it exits
+// with, and is refused rather than read. Its own 124, when it fires, is the
+// timeout's status and not the runner's; the report reads that as no result.
+// The recorded program stays timeout or time, the first word.
+func runnerPrefix(toks []token, i int, prog string) (int, string, bool) {
+	// A plain word of this command. The duration is all digits, which
+	// plainWord refuses in command position, so it is held only to the rest.
+	plain := func(j int) bool {
+		if j >= len(toks) {
+			return false
+		}
+		t := toks[j]
+		return !t.meta && !t.nlBefore && !t.opaque && t.quotedAt < 0 && !runsOn(toks, j)
+	}
+	word := func(j int) bool { return plain(j) && plainWord(toks[j].text) }
+	if prog == "timeout" {
+		if !plain(i+1) || !isDuration(toks[i+1].text) || !word(i+2) {
+			return i, prog, false
+		}
+		i += 2
+		prog = path.Base(toks[i].text)
+	}
+	if prog == "time" {
+		next := i + 1
+		if next < len(toks) && toks[next].text == "-p" && word(next) {
+			next++
+		}
+		if !word(next) {
+			return i, prog, false
+		}
+		i = next
+		prog = path.Base(toks[i].text)
+	}
+	return i, prog, true
+}
+
+// isDuration reports a timeout(1) duration: digits, an optional fraction, and
+// an optional unit.
+func isDuration(w string) bool {
+	if n := len(w); n > 0 && strings.IndexByte("smhd", w[n-1]) >= 0 {
+		w = w[:n-1]
+	}
+	whole, frac, dot := strings.Cut(w, ".")
+	digits := func(s string) bool {
+		for i := 0; i < len(s); i++ {
+			if s[i] < '0' || s[i] > '9' {
+				return false
+			}
+		}
+		return true
+	}
+	return whole != "" && digits(whole) && digits(frac) && (!dot || frac != "")
 }
 
 // wholeCommand reports whether the runner whose program is the token at i is

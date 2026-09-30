@@ -289,16 +289,20 @@ The two test-bending lines have limits of their own:
   runners, optionally after `cd DIR &&` or `NAME=value` assignments:
   `pytest`, `python -m pytest`, `python3 -m pytest`, `jest`, `vitest`,
   `mocha`, `rspec`, `phpunit`, `ctest`, `tox`, `nox`, `go test`, `cargo
-  test`, `npm test`, `npm run test`, `yarn test`, `pnpm test`, `bun test`,
-  `dotnet test`, `mvn test`, `gradle test`, `make test`. A runner followed by
-  anything (`| tail`, `2>&1 | grep`, `&& echo ok`, `; echo done`) is not
-  counted: a pipe's status is its last program's, and after `&&` or `;` the
-  line's success is the next command's. A wrapped or aliased runner
-  (`timeout 60 go test`, `time pytest`, `uv run pytest`, `poetry run
-  pytest`, `bundle exec rspec`, `npx jest`, `./gradlew test`, `./mvnw test`,
-  `npm t`) is not counted only because it is not on the list; for most of
-  them the exit status is the runner's. Piped and wrapped runs are most of
-  what Claude Code writes, and they are invisible to both patterns: a session
+  test`, `npm test`, `npm t`, `npm run test`, `yarn test`, `pnpm test`, `bun
+  test`, `dotnet test`, `mvn test`, `mvnw test`, `gradle test`, `gradlew
+  test`, `make test`, `npx jest`, `npx vitest`, `uv run pytest`, `poetry run
+  pytest` and `bundle exec rspec` (a program is matched by its base name, so
+  `./gradlew test` and `./mvnw test` count). Each may follow `timeout N`
+  and then `time` (`timeout 120 go test ./...`, `time pytest`), which pass
+  the runner's exit status through; when the timeout fires, its own status
+  124 is read as no result, neither passed nor failed. These wrappers are
+  counted because their exit status is the runner's.
+- A runner followed by anything (`| tail`, `2>&1 | grep`, `&& echo ok`, `;
+  echo done`) is not counted: without `pipefail` a pipe's status is its last
+  program's, and after `&&` or `;` the line's success is the next command's.
+  So piped runs such as `go test ./... 2>&1 | tail -20`, which are much of
+  what Claude Code writes, are invisible to both patterns, and a session
   whose tests ran only that way shows no `test runs` block at all.
 - Two runs are the same command only when their command lines are identical
   character for character. `go test ./...` with two spaces, a trailing

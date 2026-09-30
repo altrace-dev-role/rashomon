@@ -26,6 +26,7 @@ type tbCall struct {
 	prog    string // for Bash: the program, go when empty
 	bg      bool   // the execution record says backgrounded
 	cwd     string // the declaration's cwd digest
+	exit    int    // the execution's exit code, none when 0
 }
 
 func tbRun(calls ...tbCall) *store.Run {
@@ -58,7 +59,12 @@ func tbRun(calls ...tbCall) *store.Run {
 		}
 		run.Declarations = append(run.Declarations, d)
 		if c.outcome != "" {
-			run.Executions = append(run.Executions, store.Execution{ToolUseID: id, ToolName: c.tool, Outcome: c.outcome, Backgrounded: c.bg})
+			x := store.Execution{ToolUseID: id, ToolName: c.tool, Outcome: c.outcome, Backgrounded: c.bg}
+			if c.exit != 0 {
+				code := c.exit
+				x.ExitCode = &code
+			}
+			run.Executions = append(run.Executions, x)
 		}
 	}
 	return run
@@ -73,6 +79,13 @@ func test(seq int64, digest, outcome string) tbCall {
 func bgTest(seq int64, digest string) tbCall {
 	c := test(seq, digest, store.ExecOK)
 	c.bg = true
+	return c
+}
+
+// timedTest is a test run behind `timeout N`, ending with the exit code.
+func timedTest(seq int64, digest, outcome string, exit int) tbCall {
+	c := test(seq, digest, outcome)
+	c.prog, c.exit = "timeout", exit
 	return c
 }
 
@@ -181,6 +194,19 @@ func TestTestBending(t *testing.T) {
 		{name: "B: a run moved to the background does not start one",
 			run:   tbRun(bgTest(1, "d"), test(2, "d", failed)),
 			green: pairs(), flaky: pairs()},
+		{name: "B: a timeout that fired is no result",
+			run:   tbRun(timedTest(1, "d", failed, 124), timedTest(2, "d", ok, 0), timedTest(3, "d", failed, 124)),
+			green: pairs(), flaky: pairs(),
+			why: "124 is timeout's status when the duration ran out: the tests were stopped, not failed"},
+		{name: "A: a timeout that fired does not start it",
+			run:   tbRun(timedTest(1, "d", failed, 124), edit(2, tf, ok), timedTest(3, "d", ok, 0)),
+			green: pairs(), flaky: pairs()},
+		{name: "B: behind timeout, another failure is a failure",
+			run:   tbRun(timedTest(1, "d", failed, 1), timedTest(2, "d", ok, 0)),
+			green: pairs(), flaky: pairs(SeqPair{1, 2})},
+		{name: "B: without timeout, a runner's own 124 is a failure",
+			run:   tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbTest, digest: "d", outcome: failed, exit: 124}, test(2, "d", ok)),
+			green: pairs(), flaky: pairs(SeqPair{1, 2})},
 		{name: "B: failed then ok, nothing edited",
 			run:   tbRun(test(1, "d", failed), test(2, "d", ok)),
 			green: pairs(), flaky: pairs(SeqPair{1, 2})},
@@ -475,6 +501,11 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	}
 	if strings.Contains(out, "background") {
 		t.Errorf("text states the backgrounded-run limit, which the record now closes:\n%s", out)
+	}
+
+	// A timeout that fired is neither: the tests were stopped.
+	if to := testRunsOf(tbRun(timedTest(1, "d", failed, 124), timedTest(2, "d", failed, 2))); to.Runs != 1 || to.Failed != 1 {
+		t.Errorf("with a timeout that fired: runs/failed = %d/%d, want 1/1", to.Runs, to.Failed)
 	}
 
 	// A run moved to the background is neither ok nor failed: its ok is the

@@ -1701,6 +1701,43 @@ m("TB the session block drops what makes a read an edit", "internal/report/text.
   "",
   "TestTestRuns_")
 
+m("TB a runner prefix is not stepped past", "internal/shape/shape.go",
+  "\ti, prog, ok := runnerPrefix(toks, i, prog)\n",
+  "\t_, _, ok := runnerPrefix(toks, i, prog)\n",
+  "TestTestRunnerIsRecognised")
+m("TB time is not stepped past", "internal/shape/shape.go",
+  "\tif prog == \"time\" {\n",
+  "\tif false && prog == \"time\" {\n",
+  "TestTestRunnerIsRecognised")
+m("TB timeout takes any word for its duration", "internal/shape/shape.go",
+  "\t\tif !plain(i+1) || !isDuration(toks[i+1].text) || !word(i+2) {\n",
+  "\t\tif !plain(i+1) || !word(i+2) {\n",
+  "TestTestRunnerIsRecognised")
+m("TB a wrapped runner is refused on the wrapper's list", "internal/shape/shape.go",
+  "\tswitch c[0] {\n\tcase \"npx\", \"uv\", \"poetry\", \"bundle\":\n",
+  "\tswitch \"\" {\n\tcase \"npx\", \"uv\", \"poetry\", \"bundle\":\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB the npx, uv, poetry and bundle forms are off the list", "internal/shape/shape.go",
+  "\t{\"npx\", \"jest\"}, {\"npx\", \"vitest\"}, {\"uv\", \"run\", \"pytest\"}, {\"poetry\", \"run\", \"pytest\"},\n\t{\"bundle\", \"exec\", \"rspec\"},\n",
+  "",
+  "TestTestRunnerIsRecognised")
+m("TB gradlew and mvnw are off the list", "internal/shape/shape.go",
+  "{\"mvnw\", \"test\"}, {\"gradle\", \"test\"}, {\"gradlew\", \"test\"}, ",
+  "{\"gradle\", \"test\"}, ",
+  "TestTestRunnerIsRecognised")
+m("TB npm t is off the list", "internal/shape/shape.go",
+  "{\"npm\", \"t\"}, ",
+  "",
+  "TestTestRunnerIsRecognised")
+m("TB timeout's own 124 is a failed run", "internal/report/testbending.go",
+  "c != nil && *c == timeoutFired {",
+  "false && c != nil && *c == timeoutFired {",
+  "TestTestBending|TestTestRuns_")
+m("TB a runner's own 124 is no result", "internal/report/testbending.go",
+  "\tif o != store.ExecFailed || d.Shape.Program == nil || *d.Shape.Program != \"timeout\" {\n",
+  "\tif o != store.ExecFailed {\n",
+  "TestTestBending")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

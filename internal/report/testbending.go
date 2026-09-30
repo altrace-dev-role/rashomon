@@ -76,8 +76,9 @@ type TestBending struct {
 // rather than completing one.
 //
 // A test run is a declaration of verb class test whose outcome is ok or
-// failed. Interrupted, denied, backgrounded and unknown runs are not runs with
-// a result, so they neither start nor finish a pair. Two runs are the same
+// failed (testOutcome). Interrupted, denied, backgrounded, timed-out and
+// unknown runs are not runs with a result, so they neither start nor finish a
+// pair. Two runs are the same
 // command when their shape digests are equal and they were declared in the
 // same directory (equal cwd digests); the digest covers the tool name, so
 // equal digests are the same tool as well.
@@ -144,7 +145,7 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 	last := map[runKey]mark{}
 
 	for _, d := range sorted {
-		outcome, _, _ := linkOutcome(d.ToolUseID, executed, denied)
+		outcome := testOutcome(d, executed, denied)
 		// A denied call never ran: it changed no file and no directory, and
 		// it is no run with a result.
 		if outcome == LinkOutcomeDenied {
@@ -259,7 +260,7 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 		if d.Shape.VerbClass != shape.VerbTest {
 			continue
 		}
-		switch o, _, _ := linkOutcome(d.ToolUseID, executed, denied); o {
+		switch testOutcome(d, executed, denied) {
 		case store.ExecOK:
 			out.Runs++
 			out.OK++
@@ -270,6 +271,32 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 	}
 	return out
 }
+
+// outcomeTimedOut is testOutcome's word for a run whose `timeout N` prefix
+// fired. Never rendered: it is not ok and not failed, and that is all a
+// reader of it asks.
+const outcomeTimedOut = "timed out"
+
+// testOutcome is linkOutcome for d, with one more case that is no result: a
+// call whose program is timeout, and which failed with exit code 124. That is
+// timeout's own status when the duration ran out, not the runner's -- the
+// tests were stopped, not failed -- and a runner that exits 124 itself cannot
+// be told apart from it behind timeout, so neither is read as a result. The
+// same code from a run with no timeout prefix is the runner's, and a failure.
+func testOutcome(d store.Declaration, executed map[string][]store.Execution, denied map[string]bool) string {
+	o, _, _ := linkOutcome(d.ToolUseID, executed, denied)
+	if o != store.ExecFailed || d.Shape.Program == nil || *d.Shape.Program != "timeout" {
+		return o
+	}
+	if c := lastExitCode(executed[d.ToolUseID]); c != nil && *c == timeoutFired {
+		return outcomeTimedOut
+	}
+	return o
+}
+
+// timeoutFired is the exit status timeout(1) gives when the duration ran out
+// and the command was stopped.
+const timeoutFired = 124
 
 // measuresTests reports a run holding a declaration written at schema 3 or
 // later, where the test class exists.
