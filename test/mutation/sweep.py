@@ -1314,7 +1314,7 @@ m("SP an iteration's counts are not checked", "internal/spend/scan.go",
 m("SP unparsed usage lines are not said", "internal/spend/text.go",
   "\tif s.Read.UnparsedUsageLines > 0 {", "\tif false {", "TestUnparsed_")
 m("SP a main transcript's sidechain lines share the main agent's cache stream", "internal/spend/spend.go",
-  "\t\tk := stream{r.file, r.Subagent}", "\t\tk := stream{r.file, false}", "TestCacheExpiry_ThePreviousResponseIsTheSameAgents")
+  "\t\t\tk := stream{f, r.Subagent}\n", "\t\t\tk := stream{f, false}\n", "TestCacheExpiry_ThePreviousResponseIsTheSameAgents")
 m("SP the 1h TTL is advised for a re-write that was already 1h", "internal/spend/spend.go",
   "\t\tif s.CacheExpiry.Tokens5m > 0 {\n\t\t\tsv.Hint", "\t\tif true {\n\t\t\tsv.Hint", "TestCacheExpiry_NoLongerTTLAdvice")
 m("SP a 5m re-write is given no TTL hint", "internal/spend/text.go",
