@@ -241,19 +241,7 @@ func (s *Summary) Join(st *store.Store) error {
 	}
 	sort.Strings(ids)
 
-	// A recorded transcript_path is only ever looked up here, against the
-	// files Discover found: by its cleaned spelling, and a discovered file
-	// also by its resolved one, so a projects directory reached through a
-	// symlink still matches the real path Claude Code handed the hooks.
-	known := map[string]int{}
-	for i, f := range s.scan.Files {
-		known[filepath.Clean(f.Path)] = i
-		if real, err := filepath.EvalSymlinks(f.Path); err == nil {
-			if _, ok := known[real]; !ok {
-				known[real] = i
-			}
-		}
-	}
+	known := newKnownPaths(s.scan.Files)
 
 	var turns []turn
 	want := map[string]bool{}
@@ -266,8 +254,8 @@ func (s *Summary) Join(st *store.Store) error {
 			return err
 		}
 		for _, d := range run.Declarations {
-			i, ok := known[filepath.Clean(d.TranscriptPath)]
-			if !ok || d.TranscriptPath == "" {
+			i, ok := known.lookup(d.TranscriptPath)
+			if !ok {
 				continue
 			}
 			covered[s.scan.Files[i].Main] = true
@@ -376,12 +364,74 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 	}
 }
 
+// knownPaths is the files Discover found, indexed so a recorded
+// transcript_path can be matched against them -- and ONLY against them: a
+// recorded path is looked up here and never opened.
+//
+// A path can be spelled two ways that name one file: through a symlinked
+// ancestor, or resolved. Each discovered file is indexed by its absolute
+// spelling and by its resolved one, and a recorded path is tried as written
+// and then resolved. Both sides need it. On a default macOS machine TMPDIR is
+// reached through the /var -> /private/var link, so a projects folder linked
+// in from there is discovered as <config>/projects/<link>/x.jsonl (resolving
+// to /private/var/...) while the hooks may record /var/.../x.jsonl: neither
+// spelling matched the other, and the transcript read "not covered", its
+// failed turns unjudged. Resolving the recorded path stats its components; it
+// does not open the file.
+type knownPaths struct {
+	index    map[string]int
+	resolved map[string]string // recorded path -> its resolved spelling, or "" when it does not resolve
+}
+
+func newKnownPaths(files []TranscriptFile) *knownPaths {
+	k := &knownPaths{index: map[string]int{}, resolved: map[string]string{}}
+	add := func(p string, i int) {
+		if _, ok := k.index[p]; !ok {
+			k.index[p] = i
+		}
+	}
+	for i, f := range files {
+		p := filepath.Clean(f.Path)
+		if abs, err := filepath.Abs(f.Path); err == nil {
+			p = abs
+		}
+		add(p, i)
+		if real, err := filepath.EvalSymlinks(f.Path); err == nil {
+			add(real, i)
+		}
+	}
+	return k
+}
+
+// lookup finds the discovered file a recorded transcript_path names, as
+// written or once resolved.
+func (k *knownPaths) lookup(recorded string) (int, bool) {
+	if recorded == "" {
+		return 0, false
+	}
+	if i, ok := k.index[filepath.Clean(recorded)]; ok {
+		return i, true
+	}
+	real, seen := k.resolved[recorded]
+	if !seen {
+		if r, err := filepath.EvalSymlinks(recorded); err == nil {
+			real = r
+		}
+		k.resolved[recorded] = real
+	}
+	if real == "" {
+		return 0, false
+	}
+	i, ok := k.index[real]
+	return i, ok
+}
+
 // namedMains is the discovered main transcripts among a turn's recorded
 // transcript_paths, sorted.
-func (s *Summary) namedMains(recorded map[string]bool, known map[string]int) []string {
+func (s *Summary) namedMains(recorded map[string]bool, known *knownPaths) []string {
 	var out []string
 	for p := range recorded {
-		if i, ok := known[p]; ok && !s.scan.Files[i].Subagent {
+		if i, ok := known.lookup(p); ok && !s.scan.Files[i].Subagent {
 			out = append(out, s.scan.Files[i].Path)
 		}
 	}

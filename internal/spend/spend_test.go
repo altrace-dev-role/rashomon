@@ -359,43 +359,73 @@ func TestWindow_OldTranscriptsAreNotNoTranscripts(t *testing.T) {
 // neither file nor directory, and a projects folder linked in from elsewhere
 // was skipped without a word -- its spend an unflagged $0. It is read, and a
 // record naming the transcript by its real path still covers it.
+//
+// Twice: once with every directory fully resolved, and once with the config
+// directory and the link's target both under a symlinked ancestor -- a
+// default macOS machine's TMPDIR, reached through /var -> /private/var. There
+// the recorded path is spelled through the ancestor and the discovered one
+// resolves past it, so neither spelling matched the other and the transcript
+// read "not covered": the test failed on a Mac while CI, on Linux, was green.
 func TestDiscover_ASymlinkedProjectFolderIsRead(t *testing.T) {
-	c := newConfig(t)
-	real := filepath.Join(t.TempDir(), "elsewhere")
-	if err := os.MkdirAll(filepath.Join(real, "sess-l", "subagents"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	T := now.Add(-time.Hour)
-	realMain := filepath.Join(real, "sess-l.jsonl")
-	lines := userLine("sess-l", "p1", T, false) + "\n" +
-		resp{id: "L1", model: "claude-opus-5-5", session: "sess-l", at: T, in: 100, stop: "end_turn"}.line("text") + "\n"
-	if err := os.WriteFile(realMain, []byte(lines), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	sub := resp{id: "L2", model: "claude-opus-5-5", session: "sess-l", at: T, in: 20, stop: "end_turn", sidechain: true}.line("text")
-	if err := os.WriteFile(filepath.Join(real, "sess-l", "subagents", "agent-1.jsonl"), []byte(sub+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(c.dir, "projects"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(real, filepath.Join(c.dir, "projects", "linked")); err != nil {
-		t.Fatal(err)
-	}
-	rec := newRecorder(t)
-	rec.transcript = realMain
-	rec.call("sess-l", "p1", "toolu_l", T, T.Add(time.Second), store.ExecOK)
+	for _, layout := range []string{"resolved", "under a symlinked ancestor"} {
+		t.Run(layout, func(t *testing.T) {
+			base, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := base
+			if layout != "resolved" {
+				if err := os.Mkdir(filepath.Join(base, "private"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				root = filepath.Join(base, "var")
+				if err := os.Symlink(filepath.Join(base, "private"), root); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c := &config{t: t, dir: filepath.Join(root, "cfg")}
+			real := filepath.Join(root, "elsewhere")
+			if err := os.MkdirAll(filepath.Join(real, "sess-l", "subagents"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			T := now.Add(-time.Hour)
+			realMain := filepath.Join(real, "sess-l.jsonl")
+			lines := userLine("sess-l", "p1", T, false) + "\n" +
+				resp{id: "L1", model: "claude-opus-5-5", session: "sess-l", at: T, in: 100, stop: "end_turn"}.line("text") + "\n"
+			if err := os.WriteFile(realMain, []byte(lines), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			sub := resp{id: "L2", model: "claude-opus-5-5", session: "sess-l", at: T, in: 20, stop: "end_turn", sidechain: true}.line("text")
+			if err := os.WriteFile(filepath.Join(real, "sess-l", "subagents", "agent-1.jsonl"), []byte(sub+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Join(c.dir, "projects"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(real, filepath.Join(c.dir, "projects", "linked")); err != nil {
+				t.Fatal(err)
+			}
+			rec := newRecorder(t)
+			rec.transcript = realMain
+			rec.call("sess-l", "p1", "toolu_l", T, T.Add(time.Second), store.ExecFailed)
 
-	s := c.summary(30)
-	if s.Responses != 2 || s.Total.Nano != 120*opusIn {
-		t.Errorf("responses = %d, total = %d; want 2 and %d: the linked folder was not read", s.Responses, s.Total.Nano, 120*opusIn)
-	}
-	if err := s.Join(rec.st); err != nil {
-		t.Fatal(err)
-	}
-	if j := s.SilentFailureTurns; j.CoveredTranscripts != 1 || j.NotCoveredTranscripts != 0 {
-		t.Errorf("covered %d, not covered %d; want 1, 0: a record naming the real path covers the linked transcript",
-			j.CoveredTranscripts, j.NotCoveredTranscripts)
+			s := c.summary(30)
+			if s.Responses != 2 || s.Total.Nano != 120*opusIn {
+				t.Errorf("responses = %d, total = %d; want 2 and %d: the linked folder was not read", s.Responses, s.Total.Nano, 120*opusIn)
+			}
+			if err := s.Join(rec.st); err != nil {
+				t.Fatal(err)
+			}
+			j := s.SilentFailureTurns
+			if j.CoveredTranscripts != 1 || j.NotCoveredTranscripts != 0 {
+				t.Errorf("covered %d, not covered %d; want 1, 0: a record naming the real path covers the linked transcript",
+					j.CoveredTranscripts, j.NotCoveredTranscripts)
+			}
+			if j.Turns != 1 || j.Unjudged != 0 {
+				t.Errorf("turns %d, unjudged %d; want 1 and 0: the recorded path names the linked transcript, so its failed turn is judged",
+					j.Turns, j.Unjudged)
+			}
+		})
 	}
 }
 

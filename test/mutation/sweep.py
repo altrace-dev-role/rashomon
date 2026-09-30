@@ -1337,6 +1337,9 @@ m("SP a session rashomon did not record is not marked", "internal/spend/text.go"
   "\t\tcase CoverageNotRecorded:\n\t\t\tline +=", "\t\tcase \"never\":\n\t\t\tline +=", "TestSessions_")
 m("SP a partly recorded session is not marked", "internal/spend/text.go",
   "\t\tcase CoveragePartly:\n\t\t\tline +=", "\t\tcase \"never\":\n\t\t\tline +=", "TestJoin_CoverageIsPerTranscript")
+m("SP a recorded transcript_path is not resolved through a symlinked ancestor", "internal/spend/join.go",
+  "\t\tif r, err := filepath.EvalSymlinks(recorded); err == nil {", "\t\tif r, err := filepath.EvalSymlinks(recorded); err == nil && false {",
+  "TestDiscover_ASymlinked")
 
 # Import additions some mutants need.
 IMPORTS = {
