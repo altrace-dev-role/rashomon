@@ -94,6 +94,13 @@ type TimelineAgent struct {
 // Seq is the success's row, so a reader can find it. It says the same call,
 // or the same program, succeeded afterwards -- never that anything was fixed:
 // a re-run that passes proves only that it passed the second time.
+//
+// A known limit: a call moved to the background records the launch, not the
+// command's result, so its "ok" says only that it started. That is not only
+// `run_in_background: true` -- Claude Code also moves a command to the
+// background when it reaches its timeout (unless it starts with `sleep`),
+// and when the user presses Ctrl+B -- and nothing in the record tells such a
+// call apart.
 type LaterSuccess struct {
 	Kind  string         `json:"kind"`
 	Seq   int64          `json:"seq"`
