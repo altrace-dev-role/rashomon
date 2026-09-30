@@ -1543,6 +1543,11 @@ m("TB the session block drops the timeline hint", "internal/report/text.go",
   "",
   "TestTestRuns_")
 
+m("TB Derive never produces the test class", "internal/shape/shape.go",
+  "\t\t\tif runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {",
+  "\t\t\tif false && runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {",
+  "TestTestBending_ShapesFromDerive")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

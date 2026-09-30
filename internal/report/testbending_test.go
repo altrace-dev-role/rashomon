@@ -80,13 +80,12 @@ func TestTestBending(t *testing.T) {
 	const ok, failed = store.ExecOK, store.ExecFailed
 	tf, none := shape.LabelTestFile, shape.LabelNone
 	for _, tc := range []struct {
-		name       string
-		run        *store.Run
-		green      []SeqPair
-		flaky      []SeqPair
-		why        string
-		denied     map[string]bool
-		wantDenied bool
+		name   string
+		run    *store.Run
+		green  []SeqPair
+		flaky  []SeqPair
+		why    string
+		denied map[string]bool
 	}{
 		{name: "A: failed, only test files edited, passed",
 			run:   tbRun(test(1, "d", failed), edit(2, tf, ok), edit(3, tf, ok), test(4, "d", ok)),
@@ -264,7 +263,9 @@ func TestTestBending(t *testing.T) {
 // with the class set by hand. A background launch records ok when the shell
 // starts and digests equal to the foreground run; a pipeline records its last
 // program's status (grep inverts it); a cd moves the next run to other code.
-// None of the three may complete either pattern.
+// None of the three may complete either pattern. And the plain run they are
+// the exceptions to must: without it, a Derive that never produced the test
+// class would pass every row.
 func TestTestBending_ShapesFromDerive(t *testing.T) {
 	key := []byte("key")
 	bash := func(seq int64, input, outcome string) (store.Declaration, *store.Execution) {
@@ -289,17 +290,21 @@ func TestTestBending_ShapesFromDerive(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		calls []call
+		green []SeqPair
 	}{
+		{"the plain run, failed, a test edit, passed", []call{
+			b(1, `{"command":"go test ./..."}`, failed), e(2), b(3, `{"command":"go test ./..."}`, ok)},
+			[]SeqPair{{1, 3}}},
 		{"background launch after a failure", []call{
-			b(1, `{"command":"make test"}`, failed), b(2, `{"command":"make test","run_in_background":true}`, ok)}},
+			b(1, `{"command":"make test"}`, failed), b(2, `{"command":"make test","run_in_background":true}`, ok)}, nil},
 		{"background launch after a test edit", []call{
-			b(1, `{"command":"go test ./..."}`, failed), e(2), b(3, `{"command":"go test ./...","run_in_background":true}`, ok)}},
+			b(1, `{"command":"go test ./..."}`, failed), e(2), b(3, `{"command":"go test ./...","run_in_background":true}`, ok)}, nil},
 		{"a grep pipeline inverts the outcome", []call{
-			b(1, `{"command":"go test ./... 2>&1 | grep FAIL"}`, failed), e(2), b(3, `{"command":"go test ./... 2>&1 | grep FAIL"}`, ok)}},
+			b(1, `{"command":"go test ./... 2>&1 | grep FAIL"}`, failed), e(2), b(3, `{"command":"go test ./... 2>&1 | grep FAIL"}`, ok)}, nil},
 		{"a tail pipeline records tail", []call{
-			b(1, `{"command":"go test ./... 2>&1 | tail -20"}`, failed), b(2, `{"command":"go test ./... 2>&1 | tail -20"}`, ok)}},
+			b(1, `{"command":"go test ./... 2>&1 | tail -20"}`, failed), b(2, `{"command":"go test ./... 2>&1 | tail -20"}`, ok)}, nil},
 		{"a cd between moves the run", []call{
-			b(1, `{"command":"go test ./..."}`, failed), b(2, `{"command":"cd ../other-module"}`, ok), b(3, `{"command":"go test ./..."}`, ok)}},
+			b(1, `{"command":"go test ./..."}`, failed), b(2, `{"command":"cd ../other-module"}`, ok), b(3, `{"command":"go test ./..."}`, ok)}, nil},
 	} {
 		run := &store.Run{}
 		for _, c := range tc.calls {
@@ -308,8 +313,8 @@ func TestTestBending_ShapesFromDerive(t *testing.T) {
 			run.Executions = append(run.Executions, *x)
 		}
 		got := DetectTestBending(run, nil)
-		if len(got.TestsOnlyThenGreen)+len(got.Flaky) != 0 {
-			t.Errorf("%s: %+v, want neither pattern", tc.name, got)
+		if !reflect.DeepEqual(got.TestsOnlyThenGreen, pairs(tc.green...)) || len(got.Flaky) != 0 {
+			t.Errorf("%s: %+v, want tests-only %v and no flaky pair", tc.name, got, pairs(tc.green...))
 		}
 	}
 }

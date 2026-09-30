@@ -252,8 +252,9 @@ func TestTestBending_AnEditBetweenIsNotFlaky(t *testing.T) {
 	s.shell("npm test", true, "")
 	s.edit("/tmp/project/src/index.js")
 	s.shell("npm test", false, "")
-	line, ok := s.line()
-	if ok && strings.Contains(line, "no recorded file edit between") {
+	// No line at all: the turn holds nothing else to show, so a line here
+	// is a finding the pair made up under some other wording.
+	if line, ok := s.line(); ok {
 		t.Errorf("an edit came between the two runs; recap printed %q", line)
 	}
 }
@@ -286,7 +287,7 @@ func TestTestBending_AnyCallThatCouldChangeFilesBreaksThePair(t *testing.T) {
 			s.shell("jest", false, "")
 			tc.call(s)
 			s.shell("jest", true, "")
-			if line, ok := s.line(); ok && strings.Contains(line, "no recorded file edit between") {
+			if line, ok := s.line(); ok {
 				t.Errorf("a call that could change files came between the two runs; recap printed %q", line)
 			}
 		})
