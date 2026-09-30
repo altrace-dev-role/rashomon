@@ -251,9 +251,14 @@ func silentLine(s *Summary) string {
 	// is a checked none, not "at least none across 0 turns"; turns that fired
 	// with no response of theirs in the window are counted without a figure,
 	// not "at least none"; and a figure is a floor (Bound), so "at least".
+	// A failed turn with no words to judge (Unjudged) is neither: with any,
+	// "none" holds only among the turns that were checked, never "no recorded
+	// turn ... left it out".
 	switch {
-	case j.Turns == 0:
+	case j.Turns == 0 && j.Unjudged == 0:
 		b.WriteString("none found (no recorded turn with a failed call ended in a summary that left it out)\n")
+	case j.Turns == 0:
+		b.WriteString("none found in the turns that could be checked\n")
 	case j.Cost.Priced == 0 && j.Cost.Unpriced == 0:
 		fmt.Fprintf(&b, "%s, with no response in the window tied to %s\n", countOf(j.Turns, "turn"), itThem(j.Turns))
 	default:
@@ -266,6 +271,11 @@ func silentLine(s *Summary) string {
 	}
 	b.WriteString(")\n")
 	b.WriteString(notCoveredNames(j))
+	if j.Unjudged == 1 {
+		b.WriteString("  (1 turn with a failed call could not be checked: no final message could be tied to its prompt)\n")
+	} else if j.Unjudged > 1 {
+		fmt.Fprintf(&b, "  (%d turns with a failed call could not be checked: no final message could be tied to their prompts)\n", j.Unjudged)
+	}
 	if j.Turns > 0 {
 		fmt.Fprintf(&b, "  (%s)\n", j.Bound)
 	}

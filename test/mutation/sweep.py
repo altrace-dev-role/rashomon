@@ -1149,8 +1149,7 @@ m("SP a refusal is not recognised", "internal/spend/spend.go",
 m("SP the returned attempt is counted again as an extra one", "internal/spend/scan.go",
   "\tfor _, it := range its[:len(its)-1] {", "\tfor _, it := range its {", "TestRefusalsAndExtraAttempts")
 m("SP a turn with failures fires whatever its summary says", "internal/spend/join.go",
-  "\t\tif !report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt))).Fires {",
-  "\t\tif report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt))).Failed == 0 {",
+  "\t\tif !sf.Fires {", "\t\tif sf.Failed == 0 {",
   "TestJoin_AnHonestSummary")
 m("SP a firing turn's spend is every main response of its transcript, not its prompt's", "internal/spend/join.go",
   "\t\tif f[prompt].Responses[r.ID] {", "\t\tif len(f[prompt].Responses) > 0 {",
@@ -1159,15 +1158,47 @@ m("SP the transcript does not tie the response that made a turn's first call to 
   "\t\t\t\ttf.Responses[head.Message.ID] = true\n", "\t\t\t\ttf.Responses[head.Message.ID] = bytes.Contains(raw, []byte(`\"text\"`))\n",
   "TestJoin_SpendInside|TestSpend_JoinsSilentlyFailedTurns")
 m("SP a subagent's spend is never its turn's", "internal/spend/join.go",
-  "\t\treturn ok && p == prompt", "\t\treturn false && ok && p == prompt",
+  "\t\treturn r.prompt == prompt && slices.Contains(mains, f.Main)", "\t\treturn false && r.prompt == prompt && slices.Contains(mains, f.Main)",
   "TestJoin_SpendInside")
-m("SP a subagent file no record names is priced into the turn", "internal/spend/join.go",
-  "\t\treturn ok && p == prompt", "\t\treturn ok || p == \"\"",
+m("SP a subagent response its transcript ties to another prompt is priced into the turn", "internal/spend/join.go",
+  "\t\treturn r.prompt == prompt && slices.Contains(mains, f.Main)", "\t\treturn slices.Contains(mains, f.Main)",
   "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
-m("SP a subagent file two turns' records name is priced into the first", "internal/spend/join.go",
-  "\t\t\t\t} else if p != *d.PromptID {\n\t\t\t\t\tsubTurn[i] = \"\"",
-  "\t\t\t\t} else if p != *d.PromptID {\n\t\t\t\t\t_ = i",
+m("SP a subagent response under another conversation's transcript is priced into the turn", "internal/spend/join.go",
+  "\t\treturn r.prompt == prompt && slices.Contains(mains, f.Main)", "\t\treturn r.prompt == prompt || slices.Contains(mains[:0], f.Main)",
+  "TestJoin_OneSessionIDTwoConversations")
+m("SP a subagent response's prompt is not read from its own transcript", "internal/spend/scan.go",
+  "\t\t\tcand.prompt = prompt", "\t\t\tcand.prompt = prompt[:0]", "TestJoin_SpendInside")
+m("SP a subagent transcript's user lines are skipped before their promptId is read", "internal/spend/scan.go",
+  "\t\tif !usageLine && !(f.Subagent && bytes.Contains(raw, userMarker)) {", "\t\tif !usageLine {",
+  "TestJoin_SpendInside")
+m("SP a subagent user line with no promptId does not end the tie", "internal/spend/scan.go",
+  "\t\t\t} else if !l.IsMeta {\n\t\t\t\tprompt = \"\"", "\t\t\t} else if false {\n\t\t\t\tprompt = \"\"",
   "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
+m("SP a subagent meta line ends the tie", "internal/spend/scan.go",
+  "\t\t\t} else if !l.IsMeta {\n\t\t\t\tprompt = \"\"", "\t\t\t} else {\n\t\t\t\tprompt = \"\"",
+  "TestJoin_SpendInside")
+m("SP a subagent user line that does not decode keeps the tie", "internal/spend/scan.go",
+  "\t\t\t} else {\n\t\t\t\tprompt = \"\"\n\t\t\t}\n\t\t\tcontinue", "\t\t\t}\n\t\t\tcontinue",
+  "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
+m("SP a subagent user line that does not decode is counted as unparsed usage", "internal/spend/scan.go",
+  "\t\t\tif usageLine {\n\t\t\t\tsc.Unparsed++", "\t\t\tif true {\n\t\t\t\tsc.Unparsed++",
+  "TestUnparsed_")
+m("SP a failed turn with no words to judge goes uncounted", "internal/spend/join.go",
+  "\t\tif !sf.FinalMessageAvailable {\n\t\t\tj.Unjudged++", "\t\tif !sf.FinalMessageAvailable {\n\t\t\t_ = sf",
+  "TestJoin_AFailedTurnWithNoWords")
+m("SP a failed turn whose records name no transcript goes uncounted", "internal/spend/join.go",
+  "\t\tif len(mains) == 0 {\n\t\t\tj.Unjudged++", "\t\tif len(mains) == 0 {\n\t\t\t_ = mains",
+  "TestJoin_CoverageIsPerTranscript")
+m("SP unjudged turns marshal as a checked 0 with nothing covered", "internal/spend/join.go",
+  "\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns, out.Unjudged, out.Cost = &j.Turns, &j.Unjudged, &j.Cost",
+  "\tout.Unjudged = &j.Unjudged\n\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns, out.Cost = &j.Turns, &j.Cost",
+  "TestJoin_NoStore")
+m("SP an unjudged failed turn reads as a checked none", "internal/spend/text.go",
+  "\tcase j.Turns == 0 && j.Unjudged == 0:\n", "\tcase j.Turns == 0:\n", "TestJoin_AFailedTurnWithNoWords")
+m("SP the unjudged turn is not said", "internal/spend/text.go",
+  "\tif j.Unjudged == 1 {", "\tif false {", "TestJoin_AFailedTurnWithNoWords")
+m("SP unjudged turns are not said", "internal/spend/text.go",
+  "\t} else if j.Unjudged > 1 {", "\t} else if false {", "TestJoin_AFailedTurnWithNoWords")
 m("SP a silent turn before the window is counted", "internal/spend/join.go",
   "\t\t\tif t.lastMS < s.FromUnixMS {", "\t\t\tif false {", "TestJoin_ATurnBefore")
 m("SP a transcript counts as covered when its session id has a run directory", "internal/spend/join.go",
@@ -1184,7 +1215,7 @@ m("SP the text does not name the not-covered sessions", "internal/spend/text.go"
   "\tif len(n) == 0 {\n\t\treturn \"\"", "\tif true {\n\t\treturn \"\"",
   "TestJoin_SpendInside|TestJoin_CoverageIsPerTranscript|TestSpend_JoinsSilentlyFailedTurns")
 m("SP a covered, clean record reads at least none across 0 turns", "internal/spend/text.go",
-  "\tcase j.Turns == 0:\n", "\tcase false:\n", "TestJoin_ACoveredZeroIsAZero")
+  "\tcase j.Turns == 0 && j.Unjudged == 0:\n", "\tcase false:\n", "TestJoin_ACoveredZeroIsAZero")
 m("SP a firing turn with nothing priced reads at least none", "internal/spend/text.go",
   "\tcase j.Cost.Priced == 0 && j.Cost.Unpriced == 0:\n", "\tcase false:\n", "TestJoin_AFiringTurnWithNoResponse")
 m("SP the floor note is printed under a none", "internal/spend/text.go",
@@ -1263,7 +1294,7 @@ m("SP a session folder that cannot be read is not counted", "internal/spend/scan
 m("SP folders that could not be read are not said", "internal/spend/text.go",
   "\tif s.Read.UnreadableDirs > 0 {", "\tif false {", "TestDiscover_AnUnreadableFolder")
 m("SP a usage line that does not decode is dropped without a count", "internal/spend/scan.go",
-  "\t\tif json.Unmarshal(raw, &l) != nil {\n\t\t\tsc.Unparsed++", "\t\tif json.Unmarshal(raw, &l) != nil {\n\t\t\t_ = sc",
+  "\t\t\tif usageLine {\n\t\t\t\tsc.Unparsed++", "\t\t\tif usageLine {\n\t\t\t\t_ = sc",
   "TestUnparsed_")
 m("SP an implausible usage is priced", "internal/spend/scan.go",
   "\t\tif !l.Message.Usage.plausible() {", "\t\tif false && !l.Message.Usage.plausible() {", "TestUnparsed_")

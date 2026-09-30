@@ -26,11 +26,18 @@ const maxLine = 64 << 20
 // parse is what keeps a multi-gigabyte history affordable.
 var usageMarker = []byte(`"usage"`)
 
+// userMarker is the same byte test for a subagent transcript's user lines,
+// whose promptId keys the responses after them to a turn (readFile). Every
+// user line carries `"type":"user"`, so a line without the bytes is not one.
+var userMarker = []byte(`"user"`)
+
 // The decoded shape of one transcript line. THIS IS THE WHOLE USAGE READ
 // PATH -- every total, breakdown and heuristic in the document comes from it
 // -- and it is stated as narrowly as the recorder's own rules are:
 // message.id, message.model, message.stop_reason, message.usage's token
-// counts, and the line's timestamp, sessionId and isSidechain. There is no
+// counts, and the line's timestamp, sessionId and isSidechain -- and, for a
+// subagent transcript's user lines, type, isMeta and promptId, the key that
+// ties the responses after them to a turn. There is no
 // field for message.content -- or for anything else -- so encoding/json skips
 // those bytes without materialising them: on this path the text of a
 // conversation is never a value in this process, not even briefly, which is a
@@ -51,9 +58,12 @@ var usageMarker = []byte(`"usage"`)
 // nothing here renders a project, and a directory name is a path, which the
 // privacy rule keeps out of every output this program has.
 type line struct {
+	Type        string  `json:"type"`
 	Timestamp   string  `json:"timestamp"`
 	SessionID   string  `json:"sessionId"`
 	IsSidechain bool    `json:"isSidechain"`
+	IsMeta      bool    `json:"isMeta"`
+	PromptID    string  `json:"promptId"`
 	Message     message `json:"message"`
 }
 
@@ -185,6 +195,11 @@ type Response struct {
 	ExtraTokens   Tokens
 
 	file int // index into Scan.Files, the file this response was first seen in
+
+	// prompt is, for a response first seen in a subagents/ transcript, the
+	// promptId of the user line before it in that file: the turn it was
+	// spent in (Join). "" when no keyed user line precedes it.
+	prompt string
 
 	// complete is true when the kept line carried a stop_reason; see keep.
 	complete bool
@@ -441,16 +456,47 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 	}
 	defer fh.Close() //nolint:errcheck // read-only
 
+	// A SUBAGENT'S SPEND IS KEYED BY ITS OWN TRANSCRIPT'S PROMPTID. The hooks
+	// record a subagent's calls with the parent turn's prompt_id but the MAIN
+	// transcript as transcript_path -- measured on every subagent declaration
+	// in a real store -- so no record names a subagent file, and joining one
+	// through the record never counted a subagent at all. The subagent file
+	// itself carries the key: measured on 36 real subagent transcripts, every
+	// user line (the task it was handed, each tool result, a later message
+	// sent to it) carries a promptId, and the parent turn's recorded prompt_id
+	// is among them. So a subagent response belongs to the promptId of the
+	// user line before it, as a main-agent response does in the main
+	// transcript (report.FinalAssistantTexts). A user line with none, other
+	// than an injected meta line, ends the tie: none was measured, and the
+	// response after it is left to no turn -- a floor, never a guess. Only the
+	// line's header is decoded; its content has no field to land in.
+	var prompt string
 	s := bufio.NewScanner(fh)
 	s.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for s.Scan() {
 		raw := s.Bytes()
-		if !bytes.Contains(raw, usageMarker) {
+		usageLine := bytes.Contains(raw, usageMarker)
+		if !usageLine && !(f.Subagent && bytes.Contains(raw, userMarker)) {
 			continue
 		}
 		var l line
 		if json.Unmarshal(raw, &l) != nil {
-			sc.Unparsed++
+			// A usage line that does not decode is counted. A subagent user
+			// line that does not decode is no usage to count, but it may be
+			// a prompt this reader cannot key, so it ends the tie.
+			if usageLine {
+				sc.Unparsed++
+			} else {
+				prompt = ""
+			}
+			continue
+		}
+		if f.Subagent && l.Type == "user" {
+			if l.PromptID != "" {
+				prompt = l.PromptID
+			} else if !l.IsMeta {
+				prompt = ""
+			}
 			continue
 		}
 		if l.Message.Usage == nil {
@@ -479,6 +525,9 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			Tokens:     l.Message.Usage.split(),
 			file:       idx,
 			complete:   stop != "",
+		}
+		if f.Subagent {
+			cand.prompt = prompt
 		}
 		if cand.SessionID == "" {
 			cand.SessionID = f.Session

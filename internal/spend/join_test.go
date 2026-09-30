@@ -2,6 +2,7 @@ package spend
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,8 +52,9 @@ func (r *recorder) call(session, prompt, toolUseID string, declared, ended time.
 }
 
 // agentCall records one call a subagent made: its declaration carries the
-// parent turn's prompt_id, the subagent's agent_id, and the subagent's own
-// transcript as transcript_path, the way the hooks record one.
+// parent turn's prompt_id, the subagent's agent_id, and -- measured on every
+// subagent declaration in a real store -- the MAIN transcript as
+// transcript_path, not the subagent's own file.
 func (r *recorder) agentCall(session, prompt, toolUseID, transcript string, declared, ended time.Time) {
 	r.t.Helper()
 	p, agent := prompt, "agent-x"
@@ -83,9 +85,12 @@ func (r *recorder) agentCall(session, prompt, toolUseID, transcript string, decl
 //	S1  T+2.5s  subagent, whose recorded call names its transcript
 //	R3  T+4s    the final reply: after the span
 //
-// All four are p1's: the transcript ties R0, R1 and R3 to p1's prompt line,
-// and the record ties the subagent's file to p1. Every user line carries its
-// turn's promptId, as a real transcript's do. between is written after R3 and
+// All four are p1's: the main transcript ties R0, R1 and R3 to p1's prompt
+// line, and the subagent's own transcript ties S1 to p1 the same way -- its
+// first line is the task it was handed, which carries the parent turn's
+// promptId. The subagent's recorded call names the MAIN transcript, as real
+// hooks record it. Every user line carries its turn's promptId, as a real
+// transcript's do. between is written after R3 and
 // before p2's prompt (at T+9.5s): a test's own lines for what happens between
 // two recorded turns.
 func silentSession(t *testing.T, c *config, rec *recorder, T time.Time, final1 string, between ...string) (turn int64) {
@@ -94,8 +99,7 @@ func silentSession(t *testing.T, c *config, rec *recorder, T time.Time, final1 s
 	rec.transcript = filepath.Join(c.dir, "projects", "proj", "sess-j.jsonl")
 	rec.call("sess-j", "p1", "toolu_1", sec(0), sec(1), store.ExecFailed)
 	rec.call("sess-j", "p1", "toolu_2", sec(2), sec(3), store.ExecOK)
-	rec.agentCall("sess-j", "p1", "toolu_s", filepath.Join(c.dir, "projects", "proj", "sess-j", "subagents", "agent-x.jsonl"),
-		sec(2.4), sec(2.6))
+	rec.agentCall("sess-j", "p1", "toolu_s", rec.transcript, sec(2.4), sec(2.6))
 	rec.call("sess-j", "p2", "toolu_3", sec(10), sec(11), store.ExecOK)
 
 	m := func(id string, at time.Time, in int64, text string) resp {
@@ -118,8 +122,21 @@ func silentSession(t *testing.T, c *config, rec *recorder, T time.Time, final1 s
 	c.write("proj/sess-j.jsonl", lines...)
 	sub := m("S1", sec(2.5), 20, "")
 	sub.sidechain = true
-	c.write("proj/sess-j/subagents/agent-x.jsonl", sub.line("tool_use"))
+	c.write("proj/sess-j/subagents/agent-x.jsonl", subUserLine("sess-j", "p1", sec(2.2)), subMetaLine("sess-j", sec(2.3)),
+		sub.line("tool_use"))
 	return (1 + 100 + 20 + 10000) * opusIn
+}
+
+// subUserLine is a user line of a subagent transcript: marked isSidechain,
+// with the promptId of the parent turn, as a real subagent file writes it.
+func subUserLine(session, promptID string, at time.Time) string {
+	return strings.Replace(userLine(session, promptID, at, false), `"isSidechain":false`, `"isSidechain":true`, 1)
+}
+
+// subMetaLine is an injected meta user line with no promptId. It is no
+// prompt, so it does not end the tie of the responses after it.
+func subMetaLine(session string, at time.Time) string {
+	return strings.Replace(subUserLine(session, "", at), `"isSidechain":true`, `"isMeta":true,"isSidechain":true`, 1)
 }
 
 func TestJoin_SpendInsideASilentlyFailedTurn(t *testing.T) {
@@ -140,7 +157,7 @@ func TestJoin_SpendInsideASilentlyFailedTurn(t *testing.T) {
 	}
 	if j.Cost.Nano != inside {
 		t.Errorf("cost = %d, want %d: every response the transcript ties to p1 -- R0 that made its first call, "+
-			"R1, and its final reply R3 -- and the subagent's S1 its record names; not p2's", j.Cost.Nano, inside)
+			"R1, and its final reply R3 -- and the subagent's S1, which its own transcript ties to p1; not p2's", j.Cost.Nano, inside)
 	}
 	if j.CoveredTranscripts != 1 || j.NotCoveredTranscripts != 1 || j.Transcripts != 2 {
 		t.Errorf("covered %d, not covered %d of %d; want 1, 1 of 2", j.CoveredTranscripts, j.NotCoveredTranscripts, j.Transcripts)
@@ -231,7 +248,7 @@ func TestJoin_NoStoreIsUnknownNotZero(t *testing.T) {
 	if err := json.Unmarshal([]byte(js), &doc); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"turns", "cost"} {
+	for _, k := range []string{"turns", "unjudged_turns", "cost"} {
 		if v, ok := doc.Silent[k]; !ok || string(v) != "null" {
 			t.Errorf("silent_failure_turns.%s = %s, want null: no session was checked, and a zero reads as clean", k, v)
 		}
@@ -249,12 +266,13 @@ func TestJoin_ACoveredZeroIsAZero(t *testing.T) {
 		t.Fatal(err)
 	}
 	txt, js := render(t, s)
-	if !strings.Contains(js, `"turns":0,"cost":{"usd":0,`) {
+	if !strings.Contains(js, `"turns":0,"unjudged_turns":0,"cost":{"usd":0,`) {
 		t.Errorf("a covered, clean record did not marshal as a checked zero:\n%s", js)
 	}
 	// And the text says so plainly: "at least none across 0 turns" is a
 	// floor of nothing over nothing.
-	if !strings.Contains(txt, "never mentioned: none found") || strings.Contains(txt, "at least") ||
+	if !strings.Contains(txt, "never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out)") ||
+		strings.Contains(txt, "at least") || strings.Contains(txt, "could not be checked") ||
 		strings.Contains(txt, "is a floor") {
 		t.Errorf("a covered, clean record is not rendered as a plain none:\n%s", txt)
 	}
@@ -323,8 +341,9 @@ func TestJoin_CoverageIsPerTranscript(t *testing.T) {
 		t.Errorf("transcripts %d, covered %d, not covered %d; want 3, 1, 2: only the file the records name is covered",
 			j.Transcripts, j.CoveredTranscripts, j.NotCoveredTranscripts)
 	}
-	if j.Turns != 0 {
-		t.Errorf("turns = %d, want 0: a turn whose records name no discovered transcript was judged on no words", j.Turns)
+	if j.Turns != 0 || j.Unjudged != 1 {
+		t.Errorf("turns %d, unjudged %d; want 0 and 1: a turn whose records name no discovered transcript was judged on no words, "+
+			"or went uncounted", j.Turns, j.Unjudged)
 	}
 	if j.NotCoveredCost.Nano != (3000+500)*opusIn {
 		t.Errorf("not-covered cost = %d, want %d", j.NotCoveredCost.Nano, (3000+500)*opusIn)
@@ -363,25 +382,34 @@ func TestJoin_ATurnsSpendIsKeyedByItsPrompt(t *testing.T) {
 	turn := silentSession(t, c, rec, T, "Ran the command as requested.", quiet...)
 	rec.transcript = filepath.Join(c.dir, "projects", "proj", "sess-j.jsonl")
 	rec.call("sess-j", "p1", "toolu_late", T.Add(3500*time.Millisecond), T.Add(20*time.Second), store.ExecOK)
-	// Two subagent files inside p1's span that are not p1's alone: one no
-	// record names (its subagent made no recorded call), and one the records
-	// of p1 AND p2 both name, which cannot be split between them.
+	// Subagent responses inside p1's span that are not p1's: one its own
+	// transcript ties to p2 (a subagent p2 spawned, whose call a record of
+	// p1's turn cannot claim), one after a task line with no promptId, which
+	// ties it to no turn at all, and one with no user line before it. The
+	// record names the main transcript for every subagent call, so nothing
+	// but the subagent file's own promptId can key its spend.
 	sub := func(id string, in int64) string {
 		r := resp{id: id, model: "claude-opus-5-5", session: "sess-j", at: T.Add(2 * time.Second), in: in, stop: "end_turn", sidechain: true}
 		return r.line("tool_use")
 	}
-	c.write("proj/sess-j/subagents/agent-y.jsonl", sub("Y1", 55555))
-	zPath := filepath.Join(c.dir, "projects", "proj", "sess-j", "subagents", "agent-z.jsonl")
-	c.write("proj/sess-j/subagents/agent-z.jsonl", sub("Z1", 66666))
-	rec.agentCall("sess-j", "p1", "toolu_z1", zPath, T.Add(time.Second), T.Add(2*time.Second))
-	rec.agentCall("sess-j", "p2", "toolu_z2", zPath, T.Add(10*time.Second), T.Add(11*time.Second))
+	c.write("proj/sess-j/subagents/agent-y.jsonl", subUserLine("sess-j", "p2", T.Add(time.Second)), sub("Y1", 55555))
+	c.write("proj/sess-j/subagents/agent-z.jsonl",
+		subUserLine("sess-j", "p1", T.Add(time.Second)), subUserLine("sess-j", "", T.Add(1500*time.Millisecond)), sub("Z1", 66666))
+	c.write("proj/sess-j/subagents/agent-w.jsonl", sub("W1", 44444))
+	// And one after a user line that does not decode: it may be a new prompt
+	// this reader cannot key (here p2's), so it ends p1's tie.
+	c.write("proj/sess-j/subagents/agent-v.jsonl", subUserLine("sess-j", "p1", T.Add(time.Second)),
+		strings.Replace(subUserLine("sess-j", "p2", T.Add(1500*time.Millisecond)), `"timestamp":"`, `"timestamp":5,"x":"`, 1),
+		sub("V1", 33333))
+	rec.agentCall("sess-j", "p1", "toolu_z1", rec.transcript, T.Add(time.Second), T.Add(2*time.Second))
+	rec.agentCall("sess-j", "p2", "toolu_y1", rec.transcript, T.Add(10*time.Second), T.Add(11*time.Second))
 	s := c.summary(30)
 	if err := s.Join(rec.st); err != nil {
 		t.Fatal(err)
 	}
 	if got := s.SilentFailureTurns.Cost.Nano; got != turn {
 		t.Errorf("cost = %d, want %d: a response not tied to p1 was priced into it -- the tool-less prompt's reply "+
-			"inside p1's recorded span, or a subagent file whose records do not name p1 alone", got, turn)
+			"inside p1's recorded span, or a subagent response its own transcript does not tie to p1", got, turn)
 	}
 }
 
@@ -439,6 +467,12 @@ func TestJoin_OneSessionIDTwoConversations(t *testing.T) {
 		resp{id: "O1", model: "claude-opus-5-5", session: "sess-j", at: T.Add(2 * time.Second), in: 5000, stop: "tool_use"}.line("tool_use"),
 		resp{id: "O2", model: "claude-opus-5-5", session: "sess-j", at: T.Add(5 * time.Second), in: 1, stop: "end_turn",
 			text: "The build hit an error."}.line("text"))
+	// A subagent file under the other conversation whose own line names p1:
+	// the turn is priced in the transcripts its records name, and a key read
+	// from a file outside them is not the turn's, whatever it says.
+	c.write("other-proj/sess-j/subagents/agent-o.jsonl", subUserLine("sess-j", "p1", T.Add(time.Second)),
+		resp{id: "OS1", model: "claude-opus-5-5", session: "sess-j", at: T.Add(2 * time.Second), in: 8000, stop: "end_turn",
+			sidechain: true}.line("tool_use"))
 
 	s := c.summary(30)
 	if err := s.Join(rec.st); err != nil {
@@ -449,7 +483,7 @@ func TestJoin_OneSessionIDTwoConversations(t *testing.T) {
 		t.Fatalf("turns = %d, want 1: the verdict was taken on the other conversation's reply", j.Turns)
 	}
 	if j.Cost.Nano != inside {
-		t.Errorf("cost = %d, want %d: the other conversation's response inside the span was priced into this turn",
+		t.Errorf("cost = %d, want %d: the other conversation's response inside the span, or its subagent's, was priced into this turn",
 			j.Cost.Nano, inside)
 	}
 }
@@ -512,5 +546,54 @@ func TestJoin_AnUnkeyedPromptEndsTheTurnsWords(t *testing.T) {
 	}
 	if s.SilentFailureTurns.Turns != 0 {
 		t.Errorf("turns = %d, want 0: an unkeyed prompt's reply was read as the previous turn's summary", s.SilentFailureTurns.Turns)
+	}
+}
+
+// TestJoin_AFailedTurnWithNoWordsIsCountedUnchecked: a recorded turn with a
+// failed call whose final message cannot be tied to its prompt takes no
+// verdict -- and is not a checked none either. Here the transcript's prompt
+// line carries no promptId, so nothing in it is p1's. The line used to read
+// "none found (no recorded turn with a failed call ended in a summary that
+// left it out)" and marshal turns 0 as a checked zero over a turn nobody
+// judged.
+func TestJoin_AFailedTurnWithNoWordsIsCountedUnchecked(t *testing.T) {
+	for _, tc := range []struct {
+		prompts []string
+		said    string
+	}{
+		{[]string{"p1"}, "(1 turn with a failed call could not be checked: no final message could be tied to its prompt)"},
+		{[]string{"p1", "p2"}, "(2 turns with a failed call could not be checked: no final message could be tied to their prompts)"},
+	} {
+		t.Run(strings.Join(tc.prompts, ","), func(t *testing.T) {
+			c := newConfig(t)
+			rec := newRecorder(t)
+			T := now.Add(-2 * time.Hour)
+			rec.transcript = filepath.Join(c.dir, "projects", "proj", "sess-j.jsonl")
+			for i, p := range tc.prompts {
+				rec.call("sess-j", p, "toolu_"+p, T.Add(time.Duration(i)*time.Minute), T.Add(time.Duration(i)*time.Minute+time.Second),
+					store.ExecFailed)
+			}
+			c.write("proj/sess-j.jsonl",
+				userLine("sess-j", "", T.Add(-time.Second), false),
+				resp{id: "R1", model: "claude-opus-5-5", session: "sess-j", at: T.Add(2 * time.Second), in: 5, stop: "end_turn",
+					text: "Ran it as requested."}.line("text"))
+			s := c.summary(30)
+			if err := s.Join(rec.st); err != nil {
+				t.Fatal(err)
+			}
+			j := s.SilentFailureTurns
+			if j.Turns != 0 || j.Unjudged != len(tc.prompts) {
+				t.Errorf("turns %d, unjudged %d; want 0 and %d: the failed turns had no words to judge", j.Turns, j.Unjudged, len(tc.prompts))
+			}
+			txt, js := render(t, s)
+			if strings.Contains(txt, "no recorded turn with a failed call ended in a summary that left it out") ||
+				!strings.Contains(txt, "never mentioned: none found in the turns that could be checked") ||
+				!strings.Contains(txt, tc.said) {
+				t.Errorf("an unjudged failed turn is rendered as a checked none:\n%s", txt)
+			}
+			if !strings.Contains(js, fmt.Sprintf(`"unjudged_turns":%d`, len(tc.prompts))) {
+				t.Errorf("the JSON does not count the unjudged turns:\n%s", js)
+			}
+		})
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"github.com/altrace-dev-role/rashomon/internal/report"
@@ -24,7 +25,7 @@ const (
 )
 
 // TurnBound states how a turn's spend is found, wherever its number is.
-const TurnBound = "a turn's spend is every response its main transcript ties to its prompt, and a subagent's when rashomon recorded a call the subagent made; a subagent with no recorded call is not counted, so this is a floor"
+const TurnBound = "a turn's spend is every response its main transcript, or a subagent transcript under it, ties to its prompt by the promptId on the user line before it; a response after a user line with no promptId is tied to no turn and not counted, so this is a floor"
 
 // Per-session coverage, in per_session[].coverage once Join has run.
 const (
@@ -59,11 +60,19 @@ type SilentFailureTurns struct {
 	// covered, as displaySession prints it.
 	NotCoveredSessions []string `json:"not_covered_sessions"`
 	Turns              int      `json:"turns"`
-	Cost               Cost     `json:"cost"`
-	Bound              string   `json:"bound"`
+	// Unjudged counts the recorded turns with a failed call that took no
+	// verdict: no final message could be tied to their prompt (records that
+	// name no discovered transcript, a transcript with no promptId on the
+	// turn's lines, a prompt with no promptId after it that ends attribution,
+	// a file not readable to the end). The rule cannot fire on no words, so
+	// such a turn is neither in Turns nor a checked clean one, and folding it
+	// into "none found" would claim a check that never happened.
+	Unjudged int    `json:"unjudged_turns"`
+	Cost     Cost   `json:"cost"`
+	Bound    string `json:"bound"`
 }
 
-// MarshalJSON writes turns and cost as null when no transcript is covered --
+// MarshalJSON writes turns, unjudged_turns and cost as null when no transcript is covered --
 // no store, a store that recorded none of these transcripts, or a Join that
 // never ran. Nothing was checked then, and {"turns": 0, "cost": {"usd": 0}}
 // would tell a JSON consumer "checked, and clean": the "$0 for unknown" the
@@ -72,14 +81,15 @@ func (j SilentFailureTurns) MarshalJSON() ([]byte, error) {
 	type plain SilentFailureTurns
 	out := struct {
 		plain
-		Turns *int  `json:"turns"`
-		Cost  *Cost `json:"cost"`
+		Turns    *int  `json:"turns"`
+		Unjudged *int  `json:"unjudged_turns"`
+		Cost     *Cost `json:"cost"`
 	}{plain: plain(j)}
 	if j.NotCoveredSessions == nil {
 		out.NotCoveredSessions = []string{}
 	}
 	if j.CoveredTranscripts > 0 {
-		out.Turns, out.Cost = &j.Turns, &j.Cost
+		out.Turns, out.Unjudged, out.Cost = &j.Turns, &j.Unjudged, &j.Cost
 	}
 	return json.Marshal(out)
 }
@@ -92,9 +102,8 @@ type turn struct {
 	firstMS int64
 	lastMS  int64
 	// transcripts are the transcript_path values of the turn's MAIN-agent
-	// declarations (a subagent's declaration names its own file). They are
-	// only ever compared against paths this package discovered itself;
-	// see Join.
+	// declarations. They are only ever compared against paths this package
+	// discovered itself; see Join.
 	transcripts map[string]bool
 }
 
@@ -169,18 +178,20 @@ func turnsOf(run *store.Run) []turn {
 // turn's digest applies at Stop. The rule needs the turn's final message, and
 // a turn with no recorded failure cannot fire whatever that message says, so
 // transcripts are read only for turns with at least one, and each once for
-// all of them (report.FinalAssistantTexts). Only the verdict is kept.
+// all of them (report.FinalAssistantTexts). Only the verdict is kept. A turn
+// with a failed call whose final message cannot be found takes no verdict,
+// and is counted in Unjudged rather than read as clean.
 //
 // A FIRING TURN'S SPEND IS KEYED BY ITS PROMPT, not by a span of recorded
 // time. The main transcript ties each response to the promptId of the user
 // line before it -- the prompt_id the hooks record -- so the turn's main-agent
 // spend is exactly the responses tied to its prompt, including the one that
 // made its first call and the final reply, which a record span left out. A
-// subagent transcript carries no tie of its own that has been measured, so a
-// subagent's spend joins the turn through the record: the prompt_id of the
-// declarations whose transcript_path names that subagent's file. A span of
-// time could also swallow a later turn's responses (a call whose execution
-// was recorded after the next prompt began); a prompt key cannot.
+// subagent transcript ties its responses the same way, by the promptId on its
+// own user lines (Read keeps it per response): the record cannot, since the
+// hooks name the main transcript for a subagent's calls too. A span of time
+// could also swallow a later turn's responses (a call whose execution was
+// recorded after the next prompt began); a prompt key cannot.
 //
 // ONE SESSION ID CAN NAME TWO CONVERSATIONS. Measured on this machine: a
 // headless run started with --session-id reusing an interactive session's id
@@ -239,9 +250,6 @@ func (s *Summary) Join(st *store.Store) error {
 		}
 	}
 
-	// subTurn is each recorded subagent file's prompt, "" when records of
-	// more than one prompt name it and it cannot be split between them.
-	subTurn := map[int]string{}
 	var turns []turn
 	want := map[string]bool{}
 	for _, id := range ids {
@@ -257,15 +265,7 @@ func (s *Summary) Join(st *store.Store) error {
 			if !ok || d.TranscriptPath == "" {
 				continue
 			}
-			f := s.scan.Files[i]
-			covered[f.Main] = true
-			if f.Subagent && d.PromptID != nil && *d.PromptID != "" {
-				if p, seen := subTurn[i]; !seen {
-					subTurn[i] = *d.PromptID
-				} else if p != *d.PromptID {
-					subTurn[i] = ""
-				}
-			}
+			covered[s.scan.Files[i].Main] = true
 		}
 		// Only a turn with a recorded failure can fire, whatever its final
 		// message says; those alone need their transcripts read.
@@ -286,6 +286,7 @@ func (s *Summary) Join(st *store.Store) error {
 	for _, t := range turns {
 		mains := s.namedMains(t.transcripts, known)
 		if len(mains) == 0 {
+			j.Unjudged++
 			continue
 		}
 		byFile := make([]map[string]report.TurnFinal, len(mains))
@@ -295,12 +296,17 @@ func (s *Summary) Join(st *store.Store) error {
 			}
 			byFile[k] = finals[p]
 		}
-		if !report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt))).Fires {
+		sf := report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt)))
+		if !sf.FinalMessageAvailable {
+			j.Unjudged++
+			continue
+		}
+		if !sf.Fires {
 			continue
 		}
 		j.Turns++
 		for _, r := range s.window {
-			if counted[r] || !s.inTurn(r, t.prompt, byFile, subTurn) {
+			if counted[r] || !s.inTurn(r, t.prompt, mains, byFile) {
 				continue
 			}
 			counted[r] = true
@@ -380,11 +386,10 @@ func (s *Summary) namedMains(recorded map[string]bool, known map[string]int) []s
 
 // inTurn reports whether a response is the turn's spend: a main-agent
 // response one of the turn's main transcripts ties to its prompt, or a
-// response read from a subagent file whose records name that prompt alone.
-func (s *Summary) inTurn(r *Response, prompt string, byFile []map[string]report.TurnFinal, subTurn map[int]string) bool {
-	if s.scan.Files[r.file].Subagent {
-		p, ok := subTurn[r.file]
-		return ok && p == prompt
+// response a subagent file under one of them ties to that prompt.
+func (s *Summary) inTurn(r *Response, prompt string, mains []string, byFile []map[string]report.TurnFinal) bool {
+	if f := s.scan.Files[r.file]; f.Subagent {
+		return r.prompt == prompt && slices.Contains(mains, f.Main)
 	}
 	for _, f := range byFile {
 		if f[prompt].Responses[r.ID] {

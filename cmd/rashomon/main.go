@@ -1680,7 +1680,11 @@ usage:
                                reads, in memory, the final assistant text of
                                each recorded turn with a failed call, and the
                                content block types (never the text) of user
-                               lines with no promptId; writes nothing
+                               lines with no promptId; a subagent's spend is
+                               tied to its turn by the promptId on its own
+                               transcript's user lines; a failed turn with no
+                               final message to judge is counted as not
+                               checked, never as clean; writes nothing
   rashomon forget --host H       evict every call that named host H
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T

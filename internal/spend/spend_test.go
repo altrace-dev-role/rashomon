@@ -464,6 +464,10 @@ func TestUnparsed_AMalformedOrImplausibleLineIsCountedNotPriced(t *testing.T) {
 		bend("iter", func(o map[string]any) {
 			usageOf(o)["iterations"] = []map[string]any{{"input_tokens": -7}, {"input_tokens": 5}}
 		}))
+	// A subagent's user line with a numeric timestamp does not decode either,
+	// but it carries no usage: it is not an unparsed usage line.
+	c.write("proj/sess-a/subagents/agent-u.jsonl",
+		strings.Replace(subUserLine("sess-a", "p1", now.Add(-time.Hour)), `"timestamp":"`, `"timestamp":5,"x":"`, 1))
 	s := c.summary(30)
 	if s.Total.Nano != 1000*opusIn || s.Responses != 1 {
 		t.Errorf("total = %d over %d responses, want %d over 1: a malformed or implausible line was priced",
@@ -1028,6 +1032,9 @@ func TestContentHasNoFieldToLandIn(t *testing.T) {
 				"cache_creation_input_tokens": true, "cache_creation": true,
 				"ephemeral_5m_input_tokens": true, "ephemeral_1h_input_tokens": true,
 				"iterations": true,
+				// A subagent user line's header: a closed word, a flag and
+				// the promptId key that ties a response to its turn.
+				"type": true, "isMeta": true, "promptId": true,
 			}
 			if !f.Anonymous && !allowed[tag] {
 				t.Errorf("%s.%s decodes %q, which is outside spend's read path", path, f.Name, tag)
