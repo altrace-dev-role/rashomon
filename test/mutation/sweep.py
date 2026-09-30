@@ -1309,7 +1309,7 @@ m("SP a negative token count is plausible", "internal/spend/scan.go",
 m("SP an implausibly large token count is plausible", "internal/spend/scan.go",
   "\t\t\tif v < 0 || v > maxTokens {", "\t\t\tif v < 0 {", "TestUnparsed_")
 m("SP an iteration's counts are not checked", "internal/spend/scan.go",
-  "\tfor _, it := range u.Iterations {\n\t\tif !ok(it) {", "\tfor _, it := range u.Iterations {\n\t\tif false && !ok(it) {",
+  "\tfor _, it := range u.Iterations {\n\t\tif !ok(it.tokens) {", "\tfor _, it := range u.Iterations {\n\t\tif false && !ok(it.tokens) {",
   "TestUnparsed_")
 m("SP unparsed usage lines are not said", "internal/spend/text.go",
   "\tif s.Read.UnparsedUsageLines > 0 {", "\tif false {", "TestUnparsed_")
@@ -1327,8 +1327,8 @@ m("SP a non-zero side under 1% prints 0%", "internal/spend/text.go",
   "\t\tcase p == 0 && n > 0:", "\t\tcase false:", "TestAgent_SharesSumTo100")
 m("SP a share of 100% is printed beside a non-zero other side", "internal/spend/text.go",
   "\t\tcase p == 100 && uint64(n) < total:", "\t\tcase false:", "TestAgent_SharesSumTo100")
-m("SP every extra attempt is called declined", "internal/spend/text.go",
-  "tokens spent on the extra attempts, cost unknown", "tokens spent on declined attempts, cost unknown",
+m("SP every extra attempt is called declined", "internal/spend/spend.go",
+  "\t\tif !r.Fallback || a.Type != IterMessage {", "\t\tif a.Type != IterMessage {",
   "TestRefusalsAndExtraAttempts")
 m("SP per-session spend is JSON-only", "internal/spend/text.go",
   "\t\tfor i, line := range sessionLines(s.PerSession) {", "\t\tfor i, line := range sessionLines(nil) {",
@@ -1439,9 +1439,6 @@ m("SP refusals without usage read as refusals none", "internal/spend/text.go",
   "\tif r.Responses == 0 && r.WithoutUsage == 0 {", "\tif r.Responses == 0 {", "TestRefusals_")
 m("SP a refusal without usage is not said when nothing else was billed", "internal/spend/text.go",
   "\t} else if s.Refusals.WithoutUsage > 0 {", "\t} else if false {", "TestRefusals_")
-m("SP the headline does not say the total excludes extra attempts", "internal/spend/text.go",
-  "\tif s.ExtraAttempts.Responses > 0 {\n\t\tfmt.Fprintf(&b, \"       the total excludes", "\tif false {\n\t\tfmt.Fprintf(&b, \"       the total excludes",
-  "TestRefusalsAndExtraAttempts")
 m("SP the savings output does not say refusal savings are not computed", "internal/spend/text.go",
   "\t\tif classifier {", "\t\tif false {", "TestRefusals")
 m("SP the JSON does not say refusal savings are not computed", "internal/spend/spend.go",
@@ -1473,6 +1470,46 @@ m("SP a transcript holding only shared responses is not a transcript", "internal
 m("SP a cold-cache stream holds only the responses first seen in its file", "internal/spend/spend.go",
   "\t\tfor _, f := range r.files {\n\t\t\tk := stream{f, r.Subagent}", "\t\tfor _, f := range r.files[:1] {\n\t\t\tk := stream{f, r.Subagent}",
   "TestJoin_ADuplicatedResponse")
+m("SP an iteration entry's type is decoded as counts only", "internal/spend/scan.go",
+  "\tType string `json:\"type\"`\n\t// Model is the model that ran the attempt.", "\tType string `json:\"-\"`\n\t// Model is the model that ran the attempt.",
+  "TestExtraAttempts_")
+m("SP an iteration entry's model is not decoded", "internal/spend/scan.go",
+  "\tModel string `json:\"model\"`\n}", "\tModel string `json:\"-\"`\n}",
+  "TestExtraAttempts_")
+m("SP an extra attempt that produced output is not in the total", "internal/spend/spend.go",
+  "\tcostOne(c, r)\n\tfor _, a := range r.Attempts {", "\tcostOne(c, r)\n\tfor _, a := range r.Attempts[:0] {",
+  "TestExtraAttempts_AnAttemptWithOutput")
+m("SP an extra attempt is priced at the served model's rates", "internal/spend/spend.go",
+  "\tp := priceTokens(a.Model, a.Tokens)\n\treturn p, p.ok", "\tp := priceTokens(\"claude-opus-4-8\", a.Tokens)\n\treturn p, p.ok",
+  "TestExtraAttempts_")
+m("SP a declined attempt with no output is priced as billed", "internal/spend/spend.go",
+  "\tif a.Tokens.Output == 0 {\n\t\treturn priced{}, false\n\t}\n\tp := priceTokens", "\tp := priceTokens",
+  "TestExtraAttempts_TheFallbackPagesExample")
+m("SP a priced attempt is left out of its model's row", "internal/spend/spend.go",
+  "\t\t\tam.Cost.addPriced(ap.total())\n", "",
+  "TestExtraAttempts_AnAttemptWithOutput")
+m("SP a priced attempt is left out of the kinds", "internal/spend/spend.go",
+  "\t\t\t\tif k.toks > 0 {\n\t\t\t\t\tk.c.addPriced(k.nano)", "\t\t\t\tif false {\n\t\t\t\t\tk.c.addPriced(k.nano)",
+  "TestExtraAttempts_AnAttemptWithOutput")
+m("SP a fallback-served response is not reported", "internal/spend/spend.go",
+  "\tif r.Fallback {\n\t\tk := FallbackRoute", "\tif false && r.Fallback {\n\t\tk := FallbackRoute",
+  "TestExtraAttempts_")
+m("SP a sticky-routed response is not read as fallback-served", "internal/spend/scan.go",
+  "\tif first := its[0]; len(its) > 1 && iterationType(first.Type) == IterMessage {\n\t\treturn true, first.Model\n\t}\n\treturn true, \"\"",
+  "\tif first := its[0]; len(its) > 1 && iterationType(first.Type) == IterMessage {\n\t\treturn true, first.Model\n\t}\n\treturn false, \"\"",
+  "TestExtraAttempts_AStickyRouted")
+m("SP the model asked is taken from the served entry", "internal/spend/scan.go",
+  "\t\treturn true, first.Model\n", "\t\treturn true, its[len(its)-1].Model\n",
+  "TestExtraAttempts_TheFallbackPagesExample")
+m("SP a declined attempt's model is printed as read", "internal/spend/spend.go",
+  "\t\tname := displayName(a.Model)\n", "\t\tname := a.Model\n",
+  "TestContentNeverReachesTheOutput")
+m("SP the model asked is printed as read", "internal/spend/spend.go",
+  "\t\t\tk.Requested = displayName(r.Requested)", "\t\t\tk.Requested = r.Requested",
+  "TestContentNeverReachesTheOutput")
+m("SP the headline does not say the total leaves out unpriced attempts", "internal/spend/text.go",
+  "\tif c := s.ExtraAttempts.Cost; c.Unpriced > 0 {", "\tif c := s.ExtraAttempts.Cost; false && c.Unpriced > 0 {",
+  "TestExtraAttempts_TheFallbackPagesExample|TestRefusalsAndExtraAttempts")
 
 # Import additions some mutants need.
 IMPORTS = {

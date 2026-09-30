@@ -21,8 +21,9 @@ func Text(w io.Writer, s *Summary) error {
 	fmt.Fprintf(&b, "SPEND  last %d days · %s · est. %s at API list prices (%s)\n",
 		s.Days, countOf(s.Sessions, "session"), headline(s.Total), s.Pricing.Snapshot)
 	fmt.Fprintf(&b, "       %s\n", s.Pricing.Note)
-	if s.ExtraAttempts.Responses > 0 {
-		fmt.Fprintf(&b, "       the total excludes extra attempts (%s tokens, cost unknown)\n", thousands(s.ExtraAttempts.Tokens.Total()))
+	if c := s.ExtraAttempts.Cost; c.Unpriced > 0 {
+		fmt.Fprintf(&b, "       the total leaves out %s tokens on %s whose cost is unknown (see retries)\n",
+			thousands(c.UnpricedTokens), countOf(c.Unpriced, "extra attempt"))
 	}
 	switch {
 	case s.Read.Files == 0 && s.Read.FilesBeforeWindow > 0:
@@ -40,6 +41,10 @@ func Text(w io.Writer, s *Summary) error {
 		fmt.Fprintf(&b, "%-14s%s\n", "cache expiry", coldLine(s.CacheExpiry))
 		fmt.Fprintf(&b, "%-14s%s\n", "refusals", refusalLine(s.Refusals))
 		fmt.Fprintf(&b, "%-14s%s\n", "retries", attemptsLine(s.ExtraAttempts))
+		if len(s.ExtraAttempts.Declined) > 0 {
+			fmt.Fprintf(&b, "%-14s%s\n", "declined", declinedLine(s.ExtraAttempts.Declined))
+		}
+		fmt.Fprintf(&b, "%-14s%s\n", "fallback", fallbackLine(s.ExtraAttempts.Fallback))
 		for i, line := range sessionLines(s.PerSession) {
 			label := ""
 			if i == 0 {
@@ -259,8 +264,51 @@ func attemptsLine(a ExtraAttempts) string {
 	if a.Responses == 0 {
 		return "none (no response carried more than one attempt)"
 	}
-	return fmt.Sprintf("%s carried %s: %s tokens spent on the extra attempts, cost unknown (%s)",
-		countOf(a.Responses, "response"), countOf(a.Attempts, "extra attempt"), thousands(a.Tokens.Total()), a.CostUnknownReason)
+	line := fmt.Sprintf("%s carried %s, %s tokens", countOf(a.Responses, "response"), countOf(a.Attempts, "extra attempt"), thousands(a.Tokens.Total()))
+	if a.Cost.Priced > 0 {
+		line += fmt.Sprintf(": %s at the rates of the models that ran them, in the total", usd(a.Cost.Nano))
+	}
+	if a.Cost.Unpriced > 0 {
+		line += fmt.Sprintf("; %s tokens on %s cost unknown (%s)", thousands(a.Cost.UnpricedTokens), countOf(a.Cost.Unpriced, "attempt"), a.CostUnknownReason)
+	}
+	return line
+}
+
+// declinedLine is the attempts that declined before a fallback served, by
+// the model that ran them.
+func declinedLine(ds []DeclinedAttempts) string {
+	parts := make([]string, 0, len(ds))
+	for _, d := range ds {
+		p := fmt.Sprintf("%s %s", d.Model, countOf(d.Attempts, "attempt"))
+		if d.Cost.Priced > 0 {
+			p += " " + usd(d.Cost.Nano)
+		}
+		if d.NoOutput > 0 {
+			p += fmt.Sprintf(" (%s tokens on %s with no output, billed only in some refusal categories, which the transcript does not record)",
+				thousands(d.Cost.UnpricedTokens), countOf(d.NoOutput, "attempt"))
+		} else if d.Cost.Unpriced > 0 {
+			p += fmt.Sprintf(" (%s tokens, cost unknown: not in the price table)", thousands(d.Cost.UnpricedTokens))
+		}
+		parts = append(parts, p)
+	}
+	return strings.Join(parts, "; ")
+}
+
+// fallbackLine is the responses a fallback model served, as the model asked
+// -> the model that served.
+func fallbackLine(rs []FallbackRoute) string {
+	if len(rs) == 0 {
+		return "none (no response was served by a fallback model)"
+	}
+	parts := make([]string, 0, len(rs))
+	for _, r := range rs {
+		from := r.Requested
+		if r.Sticky {
+			from = "(sticky routing: the model asked is not in the transcript)"
+		}
+		parts = append(parts, fmt.Sprintf("%s -> %s on %s", from, r.Served, countOf(r.Responses, "response")))
+	}
+	return strings.Join(parts, "; ")
 }
 
 // silentLine is the only-we-can line. Its two unknown cases say WHY they are

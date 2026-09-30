@@ -31,6 +31,7 @@ type resp struct {
 	w5, w1h            int64
 	stop               string // "" writes stop_reason null
 	iters              []resp // usage.iterations, when set
+	typ                string // an iteration entry's type; "" writes "message"
 	sidechain          bool
 	noTimestamp        bool
 	noSplit            bool   // write cache_creation_input_tokens without the TTL split
@@ -60,6 +61,12 @@ func (r resp) usage() map[string]any {
 		for _, it := range r.iters {
 			m := it.usage()
 			m["type"] = "message"
+			if it.typ != "" {
+				m["type"] = it.typ
+			}
+			if it.model != "" {
+				m["model"] = it.model
+			}
 			its = append(its, m)
 		}
 		u["iterations"] = its
@@ -1106,9 +1113,9 @@ func TestNoSavingsWithoutAFigure(t *testing.T) {
 	}
 }
 
-// TestRefusalsAndExtraAttempts: refusals are counted and priced; extra
-// attempts are counted in TOKENS, with dollars unknown, because an iteration
-// entry carries no model to price it at.
+// TestRefusalsAndExtraAttempts: refusals are counted and priced; an extra
+// attempt whose entry names no model the table knows is counted in TOKENS,
+// with the dollars unknown and the total said to leave it out.
 func TestRefusalsAndExtraAttempts(t *testing.T) {
 	c := newConfig(t)
 	at := now.Add(-time.Hour)
@@ -1143,7 +1150,7 @@ func TestRefusalsAndExtraAttempts(t *testing.T) {
 	if !strings.Contains(txt, "1 response ended in a refusal, $0.01") {
 		t.Errorf("text does not carry the refusal line:\n%s", txt)
 	}
-	if !strings.Contains(txt, "335 tokens spent on the extra attempts, cost unknown") || strings.Contains(txt, "declined") {
+	if !strings.Contains(txt, "1 response carried 2 extra attempts, 335 tokens; 335 tokens on 2 attempts cost unknown") || strings.Contains(txt, "\ndeclined ") {
 		t.Errorf("text does not carry the extra attempts in tokens with the cost unknown:\n%s", txt)
 	}
 	if !strings.Contains(js, `"cost_unknown_reason":"`+AttemptsUnpriced+`"`) {
@@ -1151,13 +1158,212 @@ func TestRefusalsAndExtraAttempts(t *testing.T) {
 	}
 	// The headline's total leaves the extra attempts out, and says so: a
 	// wholly known "est. $X" beside tokens nobody priced read as complete.
-	if !strings.Contains(txt, "\n       the total excludes extra attempts (335 tokens, cost unknown)\n") {
+	if !strings.Contains(txt, "\n       the total leaves out 335 tokens on 2 extra attempts whose cost is unknown (see retries)\n") {
 		t.Errorf("the headline does not say the total excludes the extra attempts:\n%s", txt)
 	}
 	// And the savings list says what it does not compute beside them.
 	if !strings.Contains(txt, "savings       not computed: what refusals and fallback routing (classifier hits) cost that could be saved") ||
 		!strings.Contains(js, `"savings_not_computed":["refusals_and_routing"]`) {
 		t.Errorf("the savings output does not say refusal and routing savings are not computed:\n%s\n%s", txt, js)
+	}
+}
+
+// fallbackExample is the refusals-and-fallback page's own example of a
+// response a fallback served, verbatim
+// (https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback,
+// "What the response contains"): Fable 5 declined before any output, and
+// default routing served the turn on Opus 4.8. No real transcript with a
+// fallback has been captured yet; when one is, it belongs beside this.
+const fallbackExample = `{
+  "id": "msg_01XFUDYJgAACzvnptvVoYEL",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-4-8",
+  "content": [
+    {
+      "type": "fallback",
+      "from": { "model": "claude-fable-5" },
+      "to": { "model": "claude-opus-4-8" }
+    },
+    { "type": "text", "text": "Hi! How can I help you today?" }
+  ],
+  "stop_reason": "end_turn",
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 412,
+    "output_tokens": 264,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "iterations": [
+      {
+        "type": "message",
+        "model": "claude-fable-5",
+        "input_tokens": 535,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      },
+      {
+        "type": "fallback_message",
+        "model": "claude-opus-4-8",
+        "input_tokens": 412,
+        "output_tokens": 264,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      }
+    ]
+  }
+}`
+
+// transcriptLine wraps an API message as Claude Code writes it into a
+// transcript, optionally editing it first.
+func transcriptLine(t *testing.T, msg string, at time.Time, edit func(map[string]any)) string {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal([]byte(msg), &m); err != nil {
+		t.Fatal(err)
+	}
+	if edit != nil {
+		edit(m)
+	}
+	b, err := json.Marshal(map[string]any{
+		"type": "assistant", "sessionId": "sess-a", "isSidechain": false,
+		"timestamp": at.UTC().Format(time.RFC3339Nano), "message": m,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// iterationsOf is the example's usage.iterations, to edit.
+func iterationsOf(m map[string]any) []any {
+	return m["usage"].(map[string]any)["iterations"].([]any)
+}
+
+// Opus 4.8's and Fable 5's rates in nanodollars per token, from the design's
+// table ($5 / $25 and $10 / $50 per MTok).
+const (
+	opus48In   = 5000
+	opus48Out  = 25000
+	fable5In   = 10000
+	fable5Out  = 50000
+	fable5Read = 1000
+)
+
+// TestExtraAttempts_TheFallbackPagesExample: iteration entries were decoded
+// into counts alone, so the attempt Fable 5 declined was never priced or
+// placed, the served response showed only Opus 4.8, and the routing was
+// invisible. The entries' type and model are read: the response is reported
+// as claude-fable-5 -> claude-opus-4-8, and the declined attempt -- which
+// produced no output, so was billed only if its refusal category is billed,
+// which no entry records -- is tokens with the cost unknown, left out of the
+// total, and said to be.
+func TestExtraAttempts_TheFallbackPagesExample(t *testing.T) {
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), nil))
+	s := c.summary(30)
+	if want := int64(412*opus48In + 264*opus48Out); s.Total.Nano != want || !s.Total.Known() {
+		t.Errorf("total = %+v, want %d: the served attempt, with the no-output declined one left out", s.Total, want)
+	}
+	e := s.ExtraAttempts
+	if e.Responses != 1 || e.Attempts != 1 || e.Tokens.Total() != 535 || e.Cost.Unpriced != 1 || e.Cost.UnpricedTokens != 535 || e.Cost.Priced != 0 {
+		t.Errorf("extra attempts = %+v, want the one declined attempt, 535 tokens, cost unknown", e)
+	}
+	wantD := []DeclinedAttempts{{Model: "claude-fable-5", Attempts: 1, Tokens: Tokens{Input: 535}, Cost: Cost{Unpriced: 1, UnpricedTokens: 535}, NoOutput: 1}}
+	if !reflect.DeepEqual(e.Declined, wantD) {
+		t.Errorf("declined = %+v, want %+v", e.Declined, wantD)
+	}
+	wantR := []FallbackRoute{{Requested: "claude-fable-5", Served: "claude-opus-4-8", Responses: 1}}
+	if !reflect.DeepEqual(e.Fallback, wantR) {
+		t.Errorf("fallback = %+v, want %+v", e.Fallback, wantR)
+	}
+	txt, js := render(t, s)
+	for _, want := range []string{
+		"\n       the total leaves out 535 tokens on 1 extra attempt whose cost is unknown (see retries)\n",
+		"\nfallback      claude-fable-5 -> claude-opus-4-8 on 1 response\n",
+		"\ndeclined      claude-fable-5 1 attempt (535 tokens on 1 attempt with no output, billed only in some refusal categories, which the transcript does not record)\n",
+		"\nby model      claude-opus-4-8 <$0.01\n",
+	} {
+		if !strings.Contains(txt, want) {
+			t.Errorf("text lacks %q:\n%s", want, txt)
+		}
+	}
+	if !strings.Contains(js, `"fallback_served":[{"requested":"claude-fable-5","served":"claude-opus-4-8","sticky":false,"responses":1}]`) {
+		t.Errorf("the JSON does not carry the route:\n%s", js)
+	}
+	for name, out := range map[string]string{"text": txt, "json": js} {
+		if strings.Contains(out, "How can I help") {
+			t.Errorf("the example's content reached the %s output", name)
+		}
+	}
+}
+
+// TestExtraAttempts_AnAttemptWithOutputIsPricedAtItsOwnModelsRates: the page
+// bills "every attempt that produced output, including one that declined
+// partway through its response" at the rates of the model that ran it, and a
+// non-streaming mid-output decline keeps the declined attempt's output tokens
+// in usage.iterations. The example with output on the declined Fable 5
+// attempt: priced at Fable 5's rates into the total, its by-model row, its
+// kinds and the declined figure.
+func TestExtraAttempts_AnAttemptWithOutputIsPricedAtItsOwnModelsRates(t *testing.T) {
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
+		first := iterationsOf(m)[0].(map[string]any)
+		first["output_tokens"] = 50
+		first["cache_read_input_tokens"] = 100
+	}))
+	s := c.summary(30)
+	declined := int64(535*fable5In + 50*fable5Out + 100*fable5Read)
+	served := int64(412*opus48In + 264*opus48Out)
+	if s.Total.Nano != served+declined || !s.Total.Known() {
+		t.Errorf("total = %+v, want %d: the declined attempt at Fable 5's rates, beside the served one", s.Total, served+declined)
+	}
+	if s.ExtraAttempts.Cost.Nano != declined || s.ExtraAttempts.Cost.Unpriced != 0 {
+		t.Errorf("extra-attempt cost = %+v, want %d", s.ExtraAttempts.Cost, declined)
+	}
+	if len(s.ExtraAttempts.Declined) != 1 || s.ExtraAttempts.Declined[0].Cost.Nano != declined || s.ExtraAttempts.Declined[0].NoOutput != 0 {
+		t.Errorf("declined = %+v, want Fable 5's attempt at %d", s.ExtraAttempts.Declined, declined)
+	}
+	models := map[string]int64{}
+	for _, m := range s.ByModel {
+		models[m.Model] = m.Cost.Nano
+	}
+	if models["claude-fable-5"] != declined || models["claude-opus-4-8"] != served {
+		t.Errorf("by model = %v, want each attempt under the model that ran it", models)
+	}
+	k := s.ByKind
+	if k.Input.Nano+k.Output.Nano+k.CacheRead.Nano+k.CacheWrite.Nano != s.Total.Nano || k.CacheRead.Nano != 100*fable5Read {
+		t.Errorf("by kind = %+v, want it to sum to the total with the attempt's kinds in it", k)
+	}
+	if s.ByAgent.Main.Nano != s.Total.Nano || s.PerSession[0].Main.Nano != s.Total.Nano {
+		t.Errorf("by agent = %+v, per session = %+v: the attempt is missing from the split", s.ByAgent, s.PerSession)
+	}
+	txt, _ := render(t, s)
+	if strings.Contains(txt, "the total leaves out") || !strings.Contains(txt, "1 response carried 1 extra attempt, 685 tokens: <$0.01 at the rates of the models that ran them, in the total\n") {
+		t.Errorf("the retries line does not price the attempt into the total:\n%s", txt)
+	}
+}
+
+// TestExtraAttempts_AStickyRoutedResponseIsReported: after a fallback, the
+// API sends later turns of the conversation straight to the fallback model.
+// Such a response carries only a "fallback_message" entry and no "message"
+// entry for the model asked. It was served by a fallback, and is reported as
+// one, with the model asked said to be absent rather than guessed.
+func TestExtraAttempts_AStickyRoutedResponseIsReported(t *testing.T) {
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
+		u := m["usage"].(map[string]any)
+		u["iterations"] = iterationsOf(m)[1:]
+	}))
+	s := c.summary(30)
+	wantR := []FallbackRoute{{Served: "claude-opus-4-8", Sticky: true, Responses: 1}}
+	if !reflect.DeepEqual(s.ExtraAttempts.Fallback, wantR) || s.ExtraAttempts.Responses != 0 {
+		t.Errorf("extra attempts = %+v, want no extra attempt and the sticky route %+v", s.ExtraAttempts, wantR)
+	}
+	txt, _ := render(t, s)
+	if !strings.Contains(txt, "\nfallback      (sticky routing: the model asked is not in the transcript) -> claude-opus-4-8 on 1 response\n") {
+		t.Errorf("text does not report the sticky-routed response:\n%s", txt)
 	}
 }
 
@@ -1251,12 +1457,21 @@ func TestOutput_StatesTheBasisOfEveryFigure(t *testing.T) {
 
 // TestContentNeverReachesTheOutput: the canary sits in every fixture's text,
 // thinking and tool_use blocks and in cwd, and neither rendering carries it.
+// It also sits in the decoded fields that are printed only as closed words:
+// an iteration entry's type and model, on a fallback-served response whose
+// declined attempt is printed by model.
 func TestContentNeverReachesTheOutput(t *testing.T) {
 	c := newConfig(t)
 	at := now.Add(-time.Hour)
 	r := resp{id: "msg_1", model: "claude-opus-5-5", at: at, in: 1000, out: 500, w5: 10, stop: "tool_use"}
 	c.write("proj/sess-a.jsonl", r.line("thinking"), r.line("text"), r.line("tool_use"),
-		resp{id: "msg_2", model: "claude-opus-5-5", at: at.Add(10 * oneMinute), w5: 100, stop: "refusal"}.line("text"))
+		resp{id: "msg_2", model: "claude-opus-5-5", at: at.Add(10 * oneMinute), w5: 100, stop: "refusal"}.line("text"),
+		resp{id: "msg_4", model: "claude-opus-5-5", at: at.Add(20 * oneMinute), in: 10, out: 5, stop: "end_turn", iters: []resp{
+			{model: "arn:aws:bedrock:" + canary, in: 4, out: 2},
+			{typ: canary, model: "claude-" + canary, in: 3, out: 1},
+			{typ: "fallback_message", model: "claude-opus-5-5", in: 10, out: 5}}}.line("text"),
+		resp{id: "msg_5", model: "claude-opus-5-5", at: at.Add(30 * oneMinute), in: 10, stop: "end_turn", iters: []resp{
+			{typ: "fallback_message", model: "claude-opus-5-5", in: 10}}}.line("text"))
 	c.write("proj/sess-a/subagents/agent-1.jsonl",
 		resp{id: "msg_3", model: "claude-mystery-1", at: at, in: 7, stop: "end_turn"}.line("tool_use"))
 	s := c.summary(30)

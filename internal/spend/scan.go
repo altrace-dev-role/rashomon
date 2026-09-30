@@ -36,7 +36,8 @@ var userMarker = []byte(`"user"`)
 // PATH -- every total, breakdown and heuristic in the document comes from it
 // -- and it is stated as narrowly as the recorder's own rules are:
 // message.id, message.model, message.stop_reason, message.usage's token
-// counts and speed, and the line's timestamp, sessionId and isSidechain -- and, for a
+// counts and speed, each usage.iterations entry's counts, type and model, and
+// the line's timestamp, sessionId and isSidechain -- and, for a
 // subagent transcript's user lines, type, isMeta and promptId, the key that
 // ties the responses after them to a turn. There is no
 // field for message.content -- or for anything else -- so encoding/json skips
@@ -99,7 +100,40 @@ type usage struct {
 	// Iterations is one entry per attempt. The API documents it as the per-
 	// attempt source of truth, with the top-level counts covering only the
 	// attempt that produced the returned message.
-	Iterations []tokens `json:"iterations"`
+	Iterations []iteration `json:"iterations"`
+}
+
+// iteration is one usage.iterations entry: an attempt's counts, its kind and
+// the model that ran it. The refusals-and-fallback page documents both
+// fields on every entry, and bills each attempt "at the rates of the model
+// that ran it".
+type iteration struct {
+	tokens
+	// Type is "message" for an attempt by the model asked, or by a hop that
+	// declined, and "fallback_message" for the fallback model that served.
+	// Read as a closed word (iterationType), never printed as read.
+	Type string `json:"type"`
+	// Model is the model that ran the attempt. It prices the attempt, and it
+	// is printed only through displayModel's closed-shape rule, as
+	// message.model is.
+	Model string `json:"model"`
+}
+
+// Iteration types, as iterationType reads them.
+const (
+	IterMessage  = "message"
+	IterFallback = "fallback_message"
+	IterOther    = "other"
+)
+
+// iterationType is an entry's type as a closed word: the two the API
+// documents, and "other" for anything else.
+func iterationType(s string) string {
+	switch s {
+	case IterMessage, IterFallback:
+		return s
+	}
+	return IterOther
 }
 
 // maxTokens bounds one count of one response. The largest context window a
@@ -127,7 +161,7 @@ func (u *usage) plausible() bool {
 		return false
 	}
 	for _, it := range u.Iterations {
-		if !ok(it) {
+		if !ok(it.tokens) {
 			return false
 		}
 	}
@@ -212,11 +246,18 @@ type Response struct {
 	// transcript comes to when the request was made.
 	StartMS int64
 	Tokens  Tokens
-	// ExtraAttempts counts iterations beyond the one that produced the
-	// message, and ExtraTokens is their tokens. They come from the same line
-	// the counts do; see keep.
-	ExtraAttempts int
-	ExtraTokens   Tokens
+	// Attempts are the iterations other than the one that produced the
+	// message (extraAttempts). They come from the same line the counts do;
+	// see keep.
+	Attempts []Attempt
+	// Fallback is true when a fallback model served the response: its
+	// producing entry is a "fallback_message". Requested is then the model
+	// the first entry names when that entry is a "message" -- the model asked
+	// -- and "" when there is none: a sticky-routed turn went straight to the
+	// fallback, and the transcript does not say which model was asked. As
+	// read; displayModel prints it.
+	Fallback  bool
+	Requested string
 
 	file int // index into Scan.Files, the file this response was first seen in
 
@@ -587,7 +628,8 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 		if cand.SessionID == "" {
 			cand.SessionID = f.Session
 		}
-		cand.ExtraAttempts, cand.ExtraTokens = extraAttempts(l.Message.Usage.Iterations)
+		cand.Attempts = extraAttempts(l.Message.Usage.Iterations)
+		cand.Fallback, cand.Requested = route(l.Message.Usage.Iterations)
 		if !dated {
 			cand.StartMS = 0
 		}
@@ -624,29 +666,54 @@ func keep(prev, cand *Response) {
 	prev.StopReason = cand.StopReason
 	prev.Fast = cand.Fast
 	prev.complete = cand.complete
-	prev.ExtraAttempts, prev.ExtraTokens = cand.ExtraAttempts, cand.ExtraTokens
+	prev.Attempts, prev.Fallback, prev.Requested = cand.Attempts, cand.Fallback, cand.Requested
 	if prev.Model == "" {
 		prev.Model = cand.Model
 	}
 }
 
-// extraAttempts counts the attempts in iterations[] other than the one that
-// produced the message, and sums their tokens.
+// Attempt is one iteration other than the one that produced the message.
+type Attempt struct {
+	Type   string // iterationType's closed word
+	Model  string // as read; displayModel prints it
+	Tokens Tokens
+}
+
+// extraAttempts is the attempts in iterations[] other than the one that
+// produced the message, each with its type, model and tokens.
 //
 // The producing attempt is taken to be the LAST entry: the top-level usage
-// covers "only the attempt that produced the returned message", and an attempt
-// that was declined and retried necessarily came before the retry. Its tokens
-// are already in the top-level counts, so counting it again here would be the
-// very double-count the dedupe exists to prevent.
-func extraAttempts(its []tokens) (int, Tokens) {
+// covers "only the attempt that produced the returned message", an attempt
+// that was declined and retried necessarily came before the retry, and the
+// page's example ends with the "fallback_message" entry that served. Its
+// tokens are already in the top-level counts, so counting it again here would
+// be the very double-count the dedupe exists to prevent.
+func extraAttempts(its []iteration) []Attempt {
 	if len(its) <= 1 {
-		return 0, Tokens{}
+		return nil
 	}
-	var sum Tokens
+	out := make([]Attempt, 0, len(its)-1)
 	for _, it := range its[:len(its)-1] {
-		sum.add(it.split())
+		out = append(out, Attempt{Type: iterationType(it.Type), Model: it.Model, Tokens: it.split()})
 	}
-	return len(its) - 1, sum
+	return out
+}
+
+// route reads which model served a response and which was asked. A
+// fallback served it when its producing (last) entry is a
+// "fallback_message"; the model asked is the first entry's when that entry is
+// a "message". A sticky-routed turn has no such entry -- the page: identify
+// it "by the fallback_message entry ..., the absence of a message entry for
+// the requested model, and the response's model field" -- so it is served by
+// a fallback with the model asked unknown.
+func route(its []iteration) (bool, string) {
+	if len(its) == 0 || iterationType(its[len(its)-1].Type) != IterFallback {
+		return false, ""
+	}
+	if first := its[0]; len(its) > 1 && iterationType(first.Type) == IterMessage {
+		return true, first.Model
+	}
+	return true, ""
 }
 
 // parseTimestamp reads Claude Code's RFC 3339 timestamp to Unix ms.

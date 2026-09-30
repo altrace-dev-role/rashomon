@@ -244,30 +244,60 @@ type Refusals struct {
 }
 
 // ExtraAttempts is responses whose usage.iterations holds more than one
-// attempt.
+// attempt, and the responses a fallback model served.
 //
-// Tokens, never dollars, and not in the total. The API documents every
-// iteration entry as carrying a type and the model that ran it, and each
-// attempt as billed at that model's rates -- a declined attempt at the
-// declining model's, the fallback that served at the fallback's -- so the
-// dollars CAN be read from the transcript. This read does not decode the
-// entries' type or model yet: no real transcript with more than one entry has
-// been seen to check the decode against. Until one is, the dollars are
-// unknown, the headline says the total leaves the attempts out, and the
-// document says why rather than guessing a model.
+// The refusals-and-fallback page documents every iteration entry as carrying
+// a type and the model that ran it, bills "every attempt that produced
+// output, including one that declined partway through its response" at the
+// rates of the model that ran it, and bills an attempt declined before any
+// output "only when its refusal category is billed". So an extra attempt
+// that produced output is priced at its own model's rates and is in the
+// total, the breakdowns and its model's by-model row (Cost's priced part).
+// One with no output is tokens with the dollars unknown and not in the total
+// (Cost's unpriced part, which counts attempts): its category -- which
+// decides whether it was billed -- is on no entry, and the response's own
+// stop_details describes only the attempt that produced it. So is one on a
+// model the table lacks.
 //
-// "Extra", never "declined": an entry's type is not read here, so calling
-// every earlier attempt a declined one would be a claim about each entry the
-// read does not make.
+// Declined is the attempts that declined -- the "message" entries before the
+// "fallback_message" that served -- by the model that ran them. Fallback is
+// every response a fallback served, as the model asked and the model that
+// served, sticky-routed ones included (route).
 type ExtraAttempts struct {
-	Responses         int    `json:"responses"`
-	Attempts          int    `json:"attempts"`
-	Tokens            Tokens `json:"tokens"`
-	CostUnknownReason string `json:"cost_unknown_reason"`
+	Responses         int                `json:"responses"`
+	Attempts          int                `json:"attempts"`
+	Tokens            Tokens             `json:"tokens"`
+	Cost              Cost               `json:"cost"`
+	CostUnknownReason string             `json:"cost_unknown_reason"`
+	Declined          []DeclinedAttempts `json:"declined"`
+	Fallback          []FallbackRoute    `json:"fallback_served"`
 }
 
 // AttemptsUnpriced is ExtraAttempts' reason, verbatim.
-const AttemptsUnpriced = "each iteration entry names the model that ran it, and an attempt bills at that model's rates, but this read does not decode the entries' model yet, so extra attempts are not priced and not in the total"
+const AttemptsUnpriced = "an extra attempt that produced output is priced at the rates of the model its iteration entry names and is in the total; one declined before any output is billed only in some refusal categories, which the transcript does not record for it, and one on a model the price table lacks has no known rate, so those are tokens with the cost unknown and not in the total"
+
+// DeclinedAttempts is one model's declined attempts. Cost's priced part is the
+// attempts that produced output (in the total); its unpriced part counts the
+// rest, attempts rather than responses. NoOutput counts the attempts declined
+// before any output.
+type DeclinedAttempts struct {
+	Model    string `json:"model"`
+	Attempts int    `json:"attempts"`
+	Tokens   Tokens `json:"tokens"`
+	Cost     Cost   `json:"cost"`
+	NoOutput int    `json:"no_output"`
+}
+
+// FallbackRoute is the responses a fallback served, by the model asked and
+// the model that served. Sticky is a route with no "message" entry: the
+// request went straight to the fallback, and Requested is "" because the
+// transcript does not say which model was asked.
+type FallbackRoute struct {
+	Requested string `json:"requested"`
+	Served    string `json:"served"`
+	Sticky    bool   `json:"sticky"`
+	Responses int    `json:"responses"`
+}
 
 // FastMode is responses that ran in fast mode (usage.speed "fast"). Fast
 // mode bills at a premium -- Opus 5.5 at $8/$40 per MTok against $4/$20 --
@@ -334,13 +364,14 @@ type priced struct {
 
 func (p priced) total() int64 { return p.input + p.output + p.cacheWrite + p.cacheRead }
 
-func price(r *Response) priced {
-	key, ok := PriceKey(r.Model)
+func price(r *Response) priced { return priceTokens(r.Model, r.Tokens) }
+
+func priceTokens(model string, t Tokens) priced {
+	key, ok := PriceKey(model)
 	if !ok {
 		return priced{}
 	}
 	rt, _ := RatesFor(key)
-	t := r.Tokens
 	return priced{
 		input:      t.Input * rt.Input,
 		output:     t.Output * rt.Output,
@@ -350,15 +381,39 @@ func price(r *Response) priced {
 	}
 }
 
-// costOf adds one response to c: its priced total, or an unpriced mark
-// carrying its tokens.
+// costOf adds one response to c -- its priced total, or an unpriced mark
+// carrying its tokens -- and the priced part of each of its extra attempts
+// (attemptPrice), which the API bills beside it.
 func costOf(c *Cost, r *Response) {
+	costOne(c, r)
+	for _, a := range r.Attempts {
+		if p, ok := attemptPrice(a); ok {
+			c.addPriced(p.total())
+		}
+	}
+}
+
+// costOne adds the response alone, without its extra attempts: a by-model
+// row, where each attempt is its own model's.
+func costOne(c *Cost, r *Response) {
 	p := price(r)
 	if p.ok {
 		c.addPriced(p.total())
 		return
 	}
 	c.addUnpriced(r.Tokens.Total())
+}
+
+// attemptPrice prices an extra attempt at the rates of the model that ran
+// it, when it produced output and the table knows that model. An attempt
+// with no output was billed only if its refusal category is billed, which no
+// entry records, so it is never priced here (ExtraAttempts).
+func attemptPrice(a Attempt) (priced, bool) {
+	if a.Tokens.Output == 0 {
+		return priced{}, false
+	}
+	p := priceTokens(a.Model, a.Tokens)
+	return p, p.ok
 }
 
 // displayModel is how a model is named in the output.
@@ -440,6 +495,8 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		PerSession:         []SessionSpend{},
 		ExtraAttempts: ExtraAttempts{
 			CostUnknownReason: AttemptsUnpriced,
+			Declined:          []DeclinedAttempts{},
+			Fallback:          []FallbackRoute{},
 		},
 		CacheExpiry: CacheExpiry{Heuristic: CacheHeuristic},
 		FastMode:    FastMode{Pricing: FastModePricing},
@@ -461,6 +518,8 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 
 	models := map[string]*ModelSpend{}
 	sessions := map[string]*SessionSpend{}
+	declined := map[string]*DeclinedAttempts{}
+	routes := map[FallbackRoute]int{}
 	for _, r := range sc.Responses {
 		if r.StartMS > latest && r.Tokens.Total() > 0 {
 			s.Read.FutureDatedResponses++
@@ -493,15 +552,19 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			costOf(&sess.Main, r)
 		}
 
-		name, known := displayModel(r.Model)
-		m, ok := models[name]
-		if !ok {
-			m = &ModelSpend{Model: name, Priced: known}
-			models[name] = m
+		model := func(raw string) *ModelSpend {
+			name, known := displayModel(raw)
+			m, ok := models[name]
+			if !ok {
+				m = &ModelSpend{Model: name, Priced: known}
+				models[name] = m
+			}
+			return m
 		}
+		m := model(r.Model)
 		m.Responses++
 		m.Tokens.add(r.Tokens)
-		costOf(&m.Cost, r)
+		costOne(&m.Cost, r)
 
 		p := price(r)
 		kind := func(c *Cost, nano, toks int64) {
@@ -519,6 +582,34 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		kind(&s.ByKind.CacheWrite, p.cacheWrite, r.Tokens.CacheWrite5m+r.Tokens.CacheWrite1h)
 		kind(&s.ByKind.CacheRead, p.cacheRead, r.Tokens.CacheRead)
 
+		// Each extra attempt that produced output, at the rates of the model
+		// that ran it: in the total (costOf, above), its model's row and the
+		// kinds. The rest are tokens with the cost unknown.
+		for _, a := range r.Attempts {
+			ap, ok := attemptPrice(a)
+			if !ok {
+				continue
+			}
+			s.Tokens.add(a.Tokens)
+			am := model(a.Model)
+			am.Tokens.add(a.Tokens)
+			am.Cost.addPriced(ap.total())
+			for _, k := range []struct {
+				c    *Cost
+				nano int64
+				toks int64
+			}{
+				{&s.ByKind.Input, ap.input, a.Tokens.Input},
+				{&s.ByKind.Output, ap.output, a.Tokens.Output},
+				{&s.ByKind.CacheWrite, ap.cacheWrite, a.Tokens.CacheWrite5m + a.Tokens.CacheWrite1h},
+				{&s.ByKind.CacheRead, ap.cacheRead, a.Tokens.CacheRead},
+			} {
+				if k.toks > 0 {
+					k.c.addPriced(k.nano)
+				}
+			}
+		}
+
 		if w, ok := cold[r]; ok {
 			s.CacheExpiry.Responses++
 			s.CacheExpiry.Tokens += w.CacheWrite5m + w.CacheWrite1h
@@ -534,18 +625,16 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 
 		if r.StopReason == "refusal" {
 			s.Refusals.Responses++
-			costOf(&s.Refusals.Cost, r)
+			costOne(&s.Refusals.Cost, r)
 		}
 		if r.Fast {
 			s.FastMode.Responses++
 		}
-		if r.ExtraAttempts > 0 {
-			s.ExtraAttempts.Responses++
-			s.ExtraAttempts.Attempts += r.ExtraAttempts
-			s.ExtraAttempts.Tokens.add(r.ExtraTokens)
-		}
+		s.ExtraAttempts.add(r, declined, routes)
 	}
 	s.Sessions = len(sessions)
+	s.ExtraAttempts.Declined = sortedDeclined(declined)
+	s.ExtraAttempts.Fallback = sortedRoutes(routes)
 
 	for _, m := range models {
 		s.ByModel = append(s.ByModel, *m)
@@ -579,6 +668,83 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 	})
 	s.buildSavings()
 	return s
+}
+
+// add counts one windowed response's extra attempts and its route.
+func (e *ExtraAttempts) add(r *Response, declined map[string]*DeclinedAttempts, routes map[FallbackRoute]int) {
+	if r.Fallback {
+		k := FallbackRoute{Served: displayName(r.Model), Sticky: r.Requested == ""}
+		if !k.Sticky {
+			k.Requested = displayName(r.Requested)
+		}
+		routes[k]++
+	}
+	if len(r.Attempts) == 0 {
+		return
+	}
+	e.Responses++
+	e.Attempts += len(r.Attempts)
+	for _, a := range r.Attempts {
+		e.Tokens.add(a.Tokens)
+		p, ok := attemptPrice(a)
+		if ok {
+			e.Cost.addPriced(p.total())
+		} else {
+			e.Cost.addUnpriced(a.Tokens.Total())
+		}
+		// A "message" entry before the "fallback_message" that served is a
+		// hop that declined.
+		if !r.Fallback || a.Type != IterMessage {
+			continue
+		}
+		name := displayName(a.Model)
+		d := declined[name]
+		if d == nil {
+			d = &DeclinedAttempts{Model: name}
+			declined[name] = d
+		}
+		d.Attempts++
+		d.Tokens.add(a.Tokens)
+		if ok {
+			d.Cost.addPriced(p.total())
+		} else {
+			d.Cost.addUnpriced(a.Tokens.Total())
+		}
+		if a.Tokens.Output == 0 {
+			d.NoOutput++
+		}
+	}
+}
+
+// displayName is displayModel's name alone.
+func displayName(model string) string {
+	name, _ := displayModel(model)
+	return name
+}
+
+func sortedDeclined(m map[string]*DeclinedAttempts) []DeclinedAttempts {
+	out := []DeclinedAttempts{}
+	for _, d := range m {
+		out = append(out, *d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Model < out[j].Model })
+	return out
+}
+
+func sortedRoutes(m map[FallbackRoute]int) []FallbackRoute {
+	out := []FallbackRoute{}
+	for k, n := range m {
+		k.Responses = n
+		out = append(out, k)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Requested != b.Requested {
+			return a.Requested < b.Requested
+		}
+		return a.Served < b.Served
+	})
+	return out
 }
 
 // buildSavings lists the suggestions a number supports, and only those.
