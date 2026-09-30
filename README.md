@@ -295,6 +295,10 @@ The two test-bending lines have limits of their own:
   them the exit status is the runner's. Piped and wrapped runs are most of
   what Claude Code writes, and they are invisible to both patterns: a session
   whose tests ran only that way shows no `test runs` block at all.
+- Two runs are the same command only when their command lines are identical
+  character for character. `go test ./...` with two spaces, a trailing
+  space, a `cd /repo &&` prefix or a `CGO_ENABLED=0` prefix is another
+  command, and never pairs with the plain form.
 - A runner is on the list when its name or the words after it say test, and
   that does not keep lint out: `go test` runs vet, `npm test` runs a
   `pretest` script, and `tox`'s default envlist or a make `test` target can
