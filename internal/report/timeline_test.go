@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -54,13 +55,28 @@ func tlExec(id, outcome string, exit int) store.Execution {
 	return e
 }
 
+// tlRun gives each execution without a seq one in the order it is listed,
+// after every declaration's: the order results were recorded in is the order
+// a test writes them down, unless it says otherwise.
 func tlRun(calls []tlCall, execs ...store.Execution) *store.Run {
 	run := &store.Run{}
 	for _, c := range calls {
 		run.Declarations = append(run.Declarations, tlDecl(c))
 	}
+	for i := range execs {
+		if execs[i].Seq == nil {
+			seq := int64(1000 + i)
+			execs[i].Seq = &seq
+		}
+	}
 	run.Executions = execs
 	return run
+}
+
+func tlExecAt(id, outcome string, exit int, seq int64) store.Execution {
+	e := tlExec(id, outcome, exit)
+	e.Seq = &seq
+	return e
 }
 
 func tlByID(t *testing.T, tl Timeline, id string) TimelineCall {
@@ -107,7 +123,7 @@ func TestTimeline_OneListAcrossAgentsInSeqOrder(t *testing.T) {
 	}
 }
 
-// T3-T7: four groups, never merged. Break: fold denied into failed, or a
+// T3-T7: five groups, never merged. Break: fold denied into failed, or a
 // missing execution record into never-ran, and the timeline asserts what the
 // record cannot know.
 func TestTimeline_GroupsAreKeptApart(t *testing.T) {
@@ -186,10 +202,10 @@ func TestTimeline_LaterSuccess(t *testing.T) {
 		execs: []store.Execution{tlExec("f", store.ExecFailed, 1), tlExec("x", store.ExecOK, 0), tlExec("s", store.ExecOK, 0)},
 		want:  &LaterSuccess{Kind: LaterSameCommand, Seq: 3},
 	}, {
-		name: "L2 same program, different arguments",
+		name: "L2 same program, another command line",
 		calls: []tlCall{
-			{seq: 1, id: "f", tool: "Bash", program: "go", digest: "d1"},
-			{seq: 2, id: "s", tool: "Bash", program: "go", digest: "d2"},
+			{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+			{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d2"},
 		},
 		execs: []store.Execution{tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0)},
 		want:  &LaterSuccess{Kind: LaterSameProgram, Seq: 2},
@@ -205,9 +221,9 @@ func TestTimeline_LaterSuccess(t *testing.T) {
 	}, {
 		name: "L3b a same-command success beats an earlier same-program one",
 		calls: []tlCall{
-			{seq: 1, id: "f", tool: "Bash", program: "go", digest: "d1"},
-			{seq: 2, id: "p", tool: "Bash", program: "go", digest: "d2"},
-			{seq: 3, id: "s", tool: "Bash", program: "go", digest: "d1"},
+			{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+			{seq: 2, id: "p", tool: "Bash", program: "pytest", digest: "d2"},
+			{seq: 3, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
 		},
 		execs: []store.Execution{tlExec("f", store.ExecFailed, 1), tlExec("p", store.ExecOK, 0), tlExec("s", store.ExecOK, 0)},
 		want:  &LaterSuccess{Kind: LaterSameCommand, Seq: 3},
@@ -272,10 +288,11 @@ func TestTimeline_OnlyFailedCallsAreFollowedUp(t *testing.T) {
 	run := tlRun([]tlCall{
 		{seq: 1, id: "denied", tool: "Bash", program: "rm", digest: "d1"},
 		{seq: 2, id: "norecord", tool: "Bash", program: "rm", digest: "d1"},
-		{seq: 3, id: "s", tool: "Bash", program: "rm", digest: "d1"},
-	}, tlExec("s", store.ExecOK, 0))
+		{seq: 3, id: "stopped", tool: "Bash", program: "rm", digest: "d1"},
+		{seq: 4, id: "s", tool: "Bash", program: "rm", digest: "d1"},
+	}, tlExec("stopped", store.ExecInterrupted, 0), tlExec("s", store.ExecOK, 0))
 	tl := buildTimeline(run, map[string]bool{"denied": true})
-	for _, id := range []string{"denied", "norecord", "s"} {
+	for _, id := range []string{"denied", "norecord", "stopped", "s"} {
 		if c := tlByID(t, tl, id); c.Later != nil {
 			t.Errorf("%s (group %s) carries a later marker: %+v", id, c.Group, c.Later)
 		}
@@ -286,10 +303,10 @@ func TestTimeline_OnlyFailedCallsAreFollowedUp(t *testing.T) {
 func TestTimeline_FailedCountsAddUp(t *testing.T) {
 	run := tlRun([]tlCall{
 		{seq: 1, id: "a", tool: "Bash", program: "pytest", digest: "d1"},
-		{seq: 2, id: "b", tool: "Bash", program: "go", digest: "d2"},
+		{seq: 2, id: "b", tool: "Bash", program: "eslint", digest: "d2"},
 		{seq: 3, id: "c", tool: "Bash", program: "make", digest: "d3"},
 		{seq: 4, id: "a2", tool: "Bash", program: "pytest", digest: "d1"},
-		{seq: 5, id: "b2", tool: "Bash", program: "go", digest: "d4"},
+		{seq: 5, id: "b2", tool: "Bash", program: "eslint", digest: "d4"},
 	},
 		tlExec("a", store.ExecFailed, 1), tlExec("b", store.ExecFailed, 1), tlExec("c", store.ExecFailed, 1),
 		tlExec("a2", store.ExecOK, 0), tlExec("b2", store.ExecOK, 0),
@@ -329,13 +346,13 @@ func TestTimeline_Text(t *testing.T) {
 	writeTimeline(&b, buildTimeline(run, nil))
 	out := b.String()
 	for _, want := range []string{
-		"timeline: 3 calls, main agent + 1 subagent",
-		"failed       2  (1 same command succeeded later, 0 same program succeeded later, 1 no later success)",
+		"timeline: 3 calls (2 main agent, 1 from 1 subagent)",
+		"failed       2  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded)",
 		"failed (exit 1)",
-		"→ same command ok at 3",
+		"→ same command ok at 3, recorded after",
 		"general-purpose·cafe",
 		"failed (exit 2)",
-		"→ no later success",
+		"→ no later success recorded",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)
@@ -378,5 +395,240 @@ func TestTimeline_TextIsOptIn(t *testing.T) {
 	}
 	if !strings.Contains(with.String(), "timeline: 1 call") {
 		t.Errorf("--timeline did not render it:\n%s", with.String())
+	}
+}
+
+// #36 review 1: an execution record with no declaration and no terminal is a
+// call the session made. Break: build the undeclared rows from Dropped() alone
+// and it vanishes, and the timeline says "failed 0" beside a report whose
+// failed-calls count says 1.
+func TestTimeline_AnExecutionWithNoDeclarationIsOnTheList(t *testing.T) {
+	run := tlRun([]tlCall{{seq: 1, id: "ok", tool: "Bash", program: "ls", digest: "d1"}},
+		tlExec("ok", store.ExecOK, 0), tlExec("orphan", store.ExecFailed, 2))
+	run.Executions[1].ToolName = "Bash"
+	tl := buildTimeline(run, nil)
+
+	c := tlByID(t, tl, "orphan")
+	if c.Group != GroupFailed || c.ExitCode == nil || *c.ExitCode != 2 || c.ToolName != "Bash" {
+		t.Errorf("the orphan execution lost what its record says: %+v", c)
+	}
+	if c.Seq != nil || !c.AgentUnknown || c.Agent != nil {
+		t.Errorf("an undeclared call has no position and no known agent: %+v", c)
+	}
+	if got, want := tl.Counts.Failed, BuildSilentFailures(run, Account{}).Failed; got != want || got != 1 {
+		t.Errorf("timeline failed = %d, report failed calls = %d; both must be 1", got, want)
+	}
+}
+
+// #36 review 3: a dropped declaration whose execution landed. Break: render
+// it as the main agent, or throw its execution away, and the row both names
+// an agent the record does not and hides a failure it does.
+func TestTimeline_ADroppedCallKeepsItsExecutionAndNoAgent(t *testing.T) {
+	run := tlRun(nil, tlExec("dropped", store.ExecFailed, 2))
+	run.Terminals = []store.Terminal{{ToolUseID: "dropped"}, {ToolUseID: "bare"}}
+	tl := buildTimeline(run, nil)
+
+	c := tlByID(t, tl, "dropped")
+	if c.Group != GroupFailed || c.Outcome != store.ExecFailed || c.ExitCode == nil || *c.ExitCode != 2 {
+		t.Errorf("the dropped call's execution was thrown away: %+v", c)
+	}
+	if !c.AgentUnknown {
+		t.Errorf("a dropped call's agent is unknown, not the main agent: %+v", c)
+	}
+	if c.LaterChecked || c.Later != nil {
+		t.Errorf("a call with no declaration has no command to compare, so it is not checked: %+v", c)
+	}
+	if b := tlByID(t, tl, "bare"); b.Group != GroupUnknown || b.Outcome != LinkOutcomeNoRecord {
+		t.Errorf("a dropped call with no execution: %+v, want unknown / %s", b, LinkOutcomeNoRecord)
+	}
+	n := tl.Counts
+	if n.MainAgent != 0 || n.AgentUnknown != 2 || n.Failed != 1 || n.NotChecked != 1 || n.NoLater != 0 {
+		t.Errorf("counts = %+v, want 0 main, 2 agent unknown, 1 failed not checked", n)
+	}
+
+	var b bytes.Buffer
+	writeTimeline(&b, tl)
+	out := b.String()
+	for _, row := range strings.Split(out, "\n") {
+		if strings.Contains(row, "failed (exit 2)") {
+			if strings.Contains(row, "main") || !strings.Contains(row, "unknown") {
+				t.Errorf("the dropped row names an agent: %q", row)
+			}
+			if !strings.Contains(row, "no declaration recorded") || !strings.Contains(row, "not checked") {
+				t.Errorf("the dropped row does not say what it lacks: %q", row)
+			}
+		}
+	}
+	if !strings.Contains(out, "2 calls with no declaration recorded") {
+		t.Errorf("the undeclared calls are not accounted for:\n%s", out)
+	}
+}
+
+// #36 review 2: "later" is when the result was recorded, not when the call
+// was declared. Break: compare declaration seqs and both directions go wrong.
+func TestTimeline_LaterIsByWhenTheResultWasRecorded(t *testing.T) {
+	// Declared failure first, success second; the success's result landed
+	// first. It is not a later success.
+	early := tlRun([]tlCall{
+		{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+		{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
+	}, tlExecAt("s", store.ExecOK, 0, 10), tlExecAt("f", store.ExecFailed, 1, 11))
+	if c := tlByID(t, buildTimeline(early, nil), "f"); c.Later != nil || !c.LaterChecked {
+		t.Errorf("a success recorded before the failure counts as later: %+v", c)
+	}
+
+	// Declared success first, failure second; the success's result landed
+	// after the failure's. It is one.
+	late := tlRun([]tlCall{
+		{seq: 1, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
+		{seq: 2, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+	}, tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("s", store.ExecOK, 0, 11))
+	c := tlByID(t, buildTimeline(late, nil), "f")
+	if c.Later == nil || c.Later.Kind != LaterSameCommand || c.Later.Seq != 1 {
+		t.Errorf("a success recorded after the failure is missed: %+v", c.Later)
+	}
+
+	// Of two, the FIRST recorded after wins, whatever the declaration order.
+	two := tlRun([]tlCall{
+		{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+		{seq: 2, id: "s2", tool: "Bash", program: "pytest", digest: "d1"},
+		{seq: 3, id: "s3", tool: "Bash", program: "pytest", digest: "d1"},
+	}, tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("s3", store.ExecOK, 0, 11), tlExecAt("s2", store.ExecOK, 0, 12))
+	if c := tlByID(t, buildTimeline(two, nil), "f"); c.Later == nil || c.Later.Seq != 3 {
+		t.Errorf("later = %+v, want the success recorded first after the failure (row 3)", c.Later)
+	}
+
+	// A failure record with no position cannot be followed by anything.
+	nopos := tlRun([]tlCall{
+		{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+		{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
+	}, tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0))
+	nopos.Executions[0].Seq = nil
+	tl := buildTimeline(nopos, nil)
+	if c := tlByID(t, tl, "f"); c.LaterChecked || c.Later != nil {
+		t.Errorf("a failure with no position was compared: %+v", c)
+	}
+	if n := tl.Counts; n.NotChecked != 1 || n.NoLater != 0 {
+		t.Errorf("counts = %+v, want the unpositioned failure not checked", n)
+	}
+}
+
+// #36 review round 2: a matching success whose record has no seq (spilled
+// when the append lock timed out) cannot be placed, so it may be the later
+// one; with nothing placed found the failure is not checked, never "no later
+// success recorded". A placed later success still answers. Break: skip the
+// unplaced success as a candidate and the row claims there was none; or let
+// it override a placed one and a real follow-up is thrown away.
+func TestTimeline_AnUnplacedSuccessIsNotNoSuccess(t *testing.T) {
+	unplaced := func(digest string, placed bool) *store.Run {
+		calls := []tlCall{
+			{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+			{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: digest},
+		}
+		execs := []store.Execution{tlExecAt("f", store.ExecFailed, 1, 10), tlExec("s", store.ExecOK, 0)}
+		if placed {
+			calls = append(calls, tlCall{seq: 3, id: "p", tool: "Bash", program: "pytest", digest: "d9"})
+			execs = append(execs, tlExecAt("p", store.ExecOK, 0, 11))
+		}
+		run := tlRun(calls, execs...)
+		run.Executions[1].Seq = nil
+		return run
+	}
+	for _, digest := range []string{"d1", "d2"} {
+		tl := buildTimeline(unplaced(digest, false), nil)
+		if c := tlByID(t, tl, "f"); c.LaterChecked || c.Later != nil {
+			t.Errorf("digest %s: an unplaced success is read as no later success: %+v", digest, c)
+		}
+		if n := tl.Counts; n.NotChecked != 1 || n.NoLater != 0 {
+			t.Errorf("digest %s: counts = %+v, want the failure not checked", digest, n)
+		}
+		var b bytes.Buffer
+		writeTimeline(&b, tl)
+		if out := b.String(); strings.Contains(out, "→ no later success") || !strings.Contains(out, "0 no later success recorded, 1 not checked") {
+			t.Errorf("digest %s: the text claims no later success:\n%s", digest, out)
+		}
+	}
+	c := tlByID(t, buildTimeline(unplaced("d1", true), nil), "f")
+	if !c.LaterChecked || c.Later == nil || c.Later.Kind != LaterSameProgram || c.Later.Seq != 3 {
+		t.Errorf("a placed later success is lost beside an unplaced one: %+v", c)
+	}
+}
+
+// #36 review 4: the same-program tier makes no claim about arguments, and is
+// not offered where the program does not name what ran. Break: pair `git
+// status` with a failed `git push`, or print "different arguments" for a
+// line that may differ only by a space.
+func TestTimeline_SameProgramClaimsNoMore(t *testing.T) {
+	run := tlRun([]tlCall{
+		{seq: 1, id: "push", tool: "Bash", program: "git", digest: "d1"},
+		{seq: 2, id: "status", tool: "Bash", program: "git", digest: "d2"},
+		{seq: 3, id: "f", tool: "Bash", program: "pytest", digest: "d3"},
+		{seq: 4, id: "s", tool: "Bash", program: "pytest", digest: "d4"},
+	}, tlExec("push", store.ExecFailed, 1), tlExec("status", store.ExecOK, 0),
+		tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0))
+	tl := buildTimeline(run, nil)
+	if c := tlByID(t, tl, "push"); c.Later != nil {
+		t.Errorf("git status is offered as a later success of git push: %+v", c.Later)
+	}
+	var b bytes.Buffer
+	writeTimeline(&b, tl)
+	out := b.String()
+	if !strings.Contains(out, "→ same program ok at 4, recorded after") {
+		t.Errorf("the same-program row is missing:\n%s", out)
+	}
+	if strings.Contains(out, "argument") {
+		t.Errorf("the text claims something about arguments a digest cannot show:\n%s", out)
+	}
+}
+
+// #36 review 5: agent_type and agent_id come from the payload. Break: print
+// them raw and an escape sequence reaches the terminal; cut the id by byte
+// and a character is split.
+func TestTimeline_AgentLabelIsPrintable(t *testing.T) {
+	got := agentLabel(&TimelineAgent{ID: "agent-\x07a\u00e9\u00e9\u00e9\u00e9", Type: "Expl\x1bore\u202e\n\x07"})
+	if got != "Explore·a\u00e9\u00e9\u00e9" {
+		t.Errorf("label = %q, want Explore·a\u00e9\u00e9\u00e9", got)
+	}
+	if !utf8.ValidString(got) {
+		t.Errorf("label %q is not valid UTF-8: the id was cut inside a character", got)
+	}
+}
+
+// #36 review 6, 7, 9: the legend names what the unknown group holds; "no
+// later success" says it is about the record; the time column says UTC and
+// the date is shown; a main agent that made no calls is not named as a
+// participant.
+func TestTimeline_TextSaysWhatItKnows(t *testing.T) {
+	run := tlRun([]tlCall{
+		{seq: 1, id: "v1", tool: "Bash", agent: "cafe0001", typ: "Explore"},
+		{seq: 2, id: "f", tool: "Bash", program: "make", digest: "d1", agent: "cafe0001", typ: "Explore"},
+	}, tlExec("v1", "", 0), tlExec("f", store.ExecFailed, 2))
+	var b bytes.Buffer
+	writeTimeline(&b, buildTimeline(run, nil))
+	out := b.String()
+	for _, want := range []string{
+		"timeline: 2 calls (0 main agent, 2 from 1 subagent)",
+		"outcome unobserved: it ran",
+		"→ no later success recorded",
+		"UTC",
+		"2023-11-14 (UTC)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("text is missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "main agent +") {
+		t.Errorf("the header names a main agent that made no calls:\n%s", out)
+	}
+}
+
+// A date line is printed again where the date changes.
+func TestTimeline_TextMarksEachNewDate(t *testing.T) {
+	run := tlRun([]tlCall{{seq: 1, id: "a", tool: "Read"}, {seq: 2, id: "b", tool: "Read"}})
+	run.Declarations[1].RecordedAtMS += 86_400_000
+	var b bytes.Buffer
+	writeTimeline(&b, buildTimeline(run, nil))
+	if !strings.Contains(b.String(), "2023-11-14 (UTC)") || !strings.Contains(b.String(), "2023-11-15 (UTC)") {
+		t.Errorf("a timeline across midnight must show both dates:\n%s", b.String())
 	}
 }
