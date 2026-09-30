@@ -1084,11 +1084,11 @@ m("TL a denied call reads as failed", "internal/report/timeline.go",
 m("TL a call with no execution record reads as never ran", "internal/report/timeline.go",
   "\tdefault:\n\t\treturn GroupUnknown\n\t}\n}", "\tdefault:\n\t\treturn GroupNeverRan\n\t}\n}", "TestTimeline_")
 m("TL an earlier success counts as a later one", "internal/report/timeline.go",
-  " || e.pos == nil || *e.pos <= *failed.pos {", " || e.pos == nil {", "TestTimeline_")
+  "\t\tif *e.pos <= *failed.pos {", "\t\tif false {", "TestTimeline_")
 m("TL the same digest under another tool is the same call", "internal/report/timeline.go",
-  "\t\tif c.Group != GroupOK || c.ToolName != failed.call.ToolName || e.pos", "\t\tif c.Group != GroupOK || e.pos", "TestTimeline_")
+  "\t\tif c.Group != GroupOK || c.ToolName != failed.call.ToolName {", "\t\tif c.Group != GroupOK {", "TestTimeline_")
 m("TL the same-command tier is skipped", "internal/report/timeline.go",
-  "\t\tif failed.digest != \"\" && e.digest == failed.digest {", "\t\tif false {", "TestTimeline_")
+  "\t\tcommand := failed.digest != \"\" && e.digest == failed.digest", "\t\tcommand := false", "TestTimeline_")
 m("TL a call that did not fail is followed up", "internal/report/timeline.go",
   "\t\tif e.call.Group != GroupFailed {", "\t\tif e.call.Group == GroupOK {", "TestTimeline_")
 m("TL a failure with no later success says nothing", "internal/report/timeline_text.go",
@@ -1118,15 +1118,21 @@ m("TL an undeclared failure is compared with nothing to compare", "internal/repo
 m("TL a failure with no position is compared", "internal/report/timeline.go",
   "\t\tif e.call.Seq == nil || e.pos == nil {", "\t\tif e.call.Seq == nil {", "TestTimeline_")
 m("TL later is judged by declaration order", "internal/report/timeline.go",
-  " || e.pos == nil || *e.pos <= *failed.pos {", " || e.pos == nil || *c.Seq <= *failed.call.Seq {", "TestTimeline_")
+  "\t\tif *e.pos <= *failed.pos {", "\t\tif *c.Seq <= *failed.call.Seq {", "TestTimeline_")
 m("TL the first success in row order wins over the first recorded", "internal/report/timeline.go",
   "\t\t\tif sameCommand == nil || *e.pos < *sameCommand.pos {", "\t\t\tif sameCommand == nil {", "TestTimeline_")
+m("TL an unplaced success reads as no later success", "internal/report/timeline.go",
+  "\t\t\tunplaced = true\n\t\t\tcontinue", "\t\t\tcontinue", "TestTimeline_")
+m("TL an unplaced success outranks a placed one", "internal/report/timeline.go",
+  "\tswitch {\n\tcase sameCommand != nil:", "\tswitch {\n\tcase unplaced:\n\t\treturn nil, false\n\tcase sameCommand != nil:", "TestTimeline_")
+m("TL an unplaced same-program success is not a candidate", "internal/report/timeline.go",
+  "\t\tif e.pos == nil {\n\t\t\tunplaced = true", "\t\tif e.pos == nil {\n\t\t\tunplaced = command", "TestTimeline_")
 m("TL a not-checked failure counts as no later success", "internal/report/timeline.go",
   "\t\t\tcase !c.LaterChecked:\n\t\t\t\tn.NotChecked++\n", "", "TestTimeline_")
 m("TL a not-checked failure says no later success", "internal/report/timeline_text.go",
   "\t\treturn \"  → not checked for a later success\"", "\t\treturn \"  → no later success recorded\"", "TestTimeline_")
 m("TL git status follows up a failed git push", "internal/report/timeline.go",
-  " && !subcommandPrograms[c.Program] {", " {", "TestTimeline_")
+  " && !subcommandPrograms[c.Program]\n", "\n", "TestTimeline_")
 m("TL the same-program label claims different arguments", "internal/report/timeline_text.go",
   "\"  → same program ok at %d, recorded after%s\"", "\"  → same program ok at %d (different arguments%s)\"", "TestTimeline_")
 m("TL the same-command label drops recorded after", "internal/report/timeline_text.go",

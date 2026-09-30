@@ -98,9 +98,11 @@ type TimelineCall struct {
 	ExitCode     *int          `json:"exit_code"`
 	Later        *LaterSuccess `json:"later"`
 	// LaterChecked is true on a failed call that was compared against the
-	// rest. False on a failed call with no declaration (no command to match)
-	// or whose failure record has no seq (no position to be later than): a
-	// nil Later there is "not checked", never "no later success".
+	// rest. False on a failed call with no declaration (no command to match),
+	// whose failure record has no seq (no position to be later than), or
+	// where nothing placed was found but a matching success's record has no
+	// seq (it may be the later one): a nil Later there is "not checked",
+	// never "no later success".
 	LaterChecked bool `json:"later_checked"`
 }
 
@@ -217,8 +219,7 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 		if e.call.Seq == nil || e.pos == nil {
 			continue
 		}
-		e.call.LaterChecked = true
-		e.call.Later = laterSuccess(entries, i)
+		e.call.Later, e.call.LaterChecked = laterSuccess(entries, i)
 	}
 
 	for _, e := range entries {
@@ -304,34 +305,51 @@ func lastExecSeq(recs []store.Execution) *int64 {
 // what the main agent failed is the common case, and the result names which
 // agent it was. The caller has checked the failure has a declaration and a
 // position.
-func laterSuccess(entries []timelineEntry, i int) *LaterSuccess {
+//
+// The second result is whether the answer is one. A matching success whose
+// record has no seq -- spilled when the append lock timed out, which is when
+// agents run at once -- cannot be placed before or after the failure, so
+// with nothing placed found the answer is "not checked", not "no later
+// success": the success is in the record and may well be the later one.
+func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 	failed := entries[i]
 	var sameCommand, sameProgram *timelineEntry
+	unplaced := false
 	for j := range entries {
 		e := &entries[j]
 		c := e.call
-		if c.Group != GroupOK || c.ToolName != failed.call.ToolName || e.pos == nil || *e.pos <= *failed.pos {
+		if c.Group != GroupOK || c.ToolName != failed.call.ToolName {
 			continue
 		}
-		if failed.digest != "" && e.digest == failed.digest {
+		command := failed.digest != "" && e.digest == failed.digest
+		program := !command && failed.call.Program != "" && c.Program == failed.call.Program && !subcommandPrograms[c.Program]
+		if !command && !program {
+			continue
+		}
+		if e.pos == nil {
+			unplaced = true
+			continue
+		}
+		if *e.pos <= *failed.pos {
+			continue
+		}
+		if command {
 			if sameCommand == nil || *e.pos < *sameCommand.pos {
 				sameCommand = e
 			}
 			continue
 		}
-		if failed.call.Program != "" && c.Program == failed.call.Program && !subcommandPrograms[c.Program] {
-			if sameProgram == nil || *e.pos < *sameProgram.pos {
-				sameProgram = e
-			}
+		if sameProgram == nil || *e.pos < *sameProgram.pos {
+			sameProgram = e
 		}
 	}
 	switch {
 	case sameCommand != nil:
-		return &LaterSuccess{Kind: LaterSameCommand, Seq: *sameCommand.call.Seq, Agent: sameCommand.call.Agent}
+		return &LaterSuccess{Kind: LaterSameCommand, Seq: *sameCommand.call.Seq, Agent: sameCommand.call.Agent}, true
 	case sameProgram != nil:
-		return &LaterSuccess{Kind: LaterSameProgram, Seq: *sameProgram.call.Seq, Agent: sameProgram.call.Agent}
+		return &LaterSuccess{Kind: LaterSameProgram, Seq: *sameProgram.call.Seq, Agent: sameProgram.call.Agent}, true
 	}
-	return nil
+	return nil, !unplaced
 }
 
 func countTimeline(calls []TimelineCall, subagents int) TimelineCounts {

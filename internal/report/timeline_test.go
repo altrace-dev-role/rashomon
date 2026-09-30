@@ -513,6 +513,47 @@ func TestTimeline_LaterIsByWhenTheResultWasRecorded(t *testing.T) {
 	}
 }
 
+// #36 review round 2: a matching success whose record has no seq (spilled
+// when the append lock timed out) cannot be placed, so it may be the later
+// one; with nothing placed found the failure is not checked, never "no later
+// success recorded". A placed later success still answers. Break: skip the
+// unplaced success as a candidate and the row claims there was none; or let
+// it override a placed one and a real follow-up is thrown away.
+func TestTimeline_AnUnplacedSuccessIsNotNoSuccess(t *testing.T) {
+	unplaced := func(digest string, placed bool) *store.Run {
+		calls := []tlCall{
+			{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+			{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: digest},
+		}
+		execs := []store.Execution{tlExecAt("f", store.ExecFailed, 1, 10), tlExec("s", store.ExecOK, 0)}
+		if placed {
+			calls = append(calls, tlCall{seq: 3, id: "p", tool: "Bash", program: "pytest", digest: "d9"})
+			execs = append(execs, tlExecAt("p", store.ExecOK, 0, 11))
+		}
+		run := tlRun(calls, execs...)
+		run.Executions[1].Seq = nil
+		return run
+	}
+	for _, digest := range []string{"d1", "d2"} {
+		tl := buildTimeline(unplaced(digest, false), nil)
+		if c := tlByID(t, tl, "f"); c.LaterChecked || c.Later != nil {
+			t.Errorf("digest %s: an unplaced success is read as no later success: %+v", digest, c)
+		}
+		if n := tl.Counts; n.NotChecked != 1 || n.NoLater != 0 {
+			t.Errorf("digest %s: counts = %+v, want the failure not checked", digest, n)
+		}
+		var b bytes.Buffer
+		writeTimeline(&b, tl)
+		if out := b.String(); strings.Contains(out, "→ no later success") || !strings.Contains(out, "0 no later success recorded, 1 not checked") {
+			t.Errorf("digest %s: the text claims no later success:\n%s", digest, out)
+		}
+	}
+	c := tlByID(t, buildTimeline(unplaced("d1", true), nil), "f")
+	if !c.LaterChecked || c.Later == nil || c.Later.Kind != LaterSameProgram || c.Later.Seq != 3 {
+		t.Errorf("a placed later success is lost beside an unplaced one: %+v", c)
+	}
+}
+
 // #36 review 4: the same-program tier makes no claim about arguments, and is
 // not offered where the program does not name what ran. Break: pair `git
 // status` with a failed `git push`, or print "different arguments" for a
