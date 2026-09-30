@@ -85,8 +85,9 @@ type LaterSuccess struct {
 
 // TimelineCall is one call, main agent or subagent, in the session's order.
 type TimelineCall struct {
-	// Seq and RecordedAtMS are null on a call with no declaration: it has no
-	// position in the ordered stream and no clock.
+	// Seq and RecordedAtMS are the declaration's, and null on a call with no
+	// declaration: its execution record may have a position, but the call has
+	// no declaration position and no declaration clock.
 	Seq          *int64         `json:"seq"`
 	RecordedAtMS *int64         `json:"recorded_at_unix_ms"`
 	ToolUseID    string         `json:"tool_use_id"`
@@ -140,7 +141,7 @@ type TimelineCounts struct {
 // every agent's calls. That order is when each call's hook RECORDED, which for
 // two subagents running at once interleaves them by recording, not by start;
 // the renderer says so. Calls with no declaration have no seq and come after
-// the ordered ones.
+// the ordered ones, in the order their execution records were written.
 type Timeline struct {
 	Calls  []TimelineCall `json:"calls"`
 	Counts TimelineCounts `json:"counts"`
@@ -195,9 +196,9 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 	// because an execution record that says failed is a failure whether or not
 	// its declaration landed -- the report's own failed-calls count counts it,
 	// and a timeline that did not would disagree with it on the same page. The
-	// tool name is the execution's own; agent, program and position are
-	// unknown and said to be.
-	for _, id := range undeclared(run) {
+	// tool name is the execution's own; agent, program, and the declaration's
+	// position and time are unknown and said to be.
+	for _, id := range undeclared(run, executed) {
 		recs := executed[id]
 		c := TimelineCall{
 			ToolUseID:    id,
@@ -236,9 +237,13 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 }
 
 // undeclared returns the ids a terminal or an execution record names and no
-// declaration does, once each and sorted, as the chains' dropped list is.
-// Dropped() alone misses an execution record with no terminal either.
-func undeclared(run *store.Run) []string {
+// declaration does, once each. Dropped() alone misses an execution record
+// with no terminal either.
+//
+// Ordered by the seq of each one's last execution record -- the record its
+// outcome is read from -- so they read in the order their results were
+// written. Those with no positioned record come last, and ties go by id.
+func undeclared(run *store.Run, executed map[string][]store.Execution) []string {
 	seen := map[string]bool{}
 	for _, d := range run.Declarations {
 		seen[d.ToolUseID] = true
@@ -256,7 +261,24 @@ func undeclared(run *store.Run) []string {
 	for _, x := range run.Executions {
 		add(x.ToolUseID)
 	}
-	sort.Strings(ids)
+	pos := func(id string) (int64, bool) {
+		p := lastExecSeq(executed[id])
+		if p == nil {
+			return 0, false
+		}
+		return *p, true
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		pi, oki := pos(ids[i])
+		pj, okj := pos(ids[j])
+		if oki != okj {
+			return oki
+		}
+		if pi != pj {
+			return pi < pj
+		}
+		return ids[i] < ids[j]
+	})
 	return ids
 }
 

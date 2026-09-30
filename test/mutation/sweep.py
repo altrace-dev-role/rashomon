@@ -1181,6 +1181,10 @@ m("TL the counts line claims no later success of any kind", "internal/report/tim
   "%d no later success of the same command or program recorded%s)", "%d no later success recorded%s)", "TestTimeline_")
 m("TL the legend does not say another fix goes undetected", "internal/report/timeline_text.go",
   "\tif n.Failed > 0 {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "\tif false {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "TestTimeline_")
+m("TL undeclared rows are ordered by id, not by their results", "internal/report/timeline.go",
+  "\t\tif pi != pj {\n\t\t\treturn pi < pj\n", "\t\tif false && pi != pj {\n\t\t\treturn pi < pj\n", "TestTimeline_")
+m("TL undeclared rows with no position come first", "internal/report/timeline.go",
+  "\t\tif oki != okj {\n\t\t\treturn oki\n", "\t\tif oki != okj {\n\t\t\treturn okj\n", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

@@ -44,7 +44,7 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 	// with no outcome would otherwise sit under a legend saying it has none.
 	fmt.Fprintf(b, "    unknown      %d  (no execution record: denied, failed or unrecorded, and the record cannot say which; or outcome unobserved: it ran and how it ended was not recorded)\n", n.Unknown)
 	if n.AgentUnknown > 0 {
-		fmt.Fprintf(b, "    %d call%s with no declaration recorded, listed last: agent, program and position unknown\n",
+		fmt.Fprintf(b, "    %d call%s with no declaration recorded, listed last in the order their results were recorded: agent, program, and the declaration's position and time unknown\n",
 			n.AgentUnknown, plural(n.AgentUnknown))
 	}
 	if n.Subagents > 0 {

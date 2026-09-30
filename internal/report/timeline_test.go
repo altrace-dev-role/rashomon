@@ -474,6 +474,34 @@ func TestTimeline_ADroppedCallKeepsItsExecutionAndNoAgent(t *testing.T) {
 	}
 }
 
+// #36 review round 3, smaller 1: undeclared rows have no declaration, but
+// their execution records have positions, and they read in that order: by the
+// last record's seq, those with no position last, ties by id. Break: sort by
+// tool_use_id and they come out in an order that means nothing.
+func TestTimeline_UndeclaredCallsFollowTheirResults(t *testing.T) {
+	run := tlRun([]tlCall{{seq: 1, id: "d", tool: "Bash"}},
+		tlExecAt("zz", store.ExecOK, 0, 20),
+		tlExecAt("aa", store.ExecFailed, 1, 30),
+		tlExecAt("cc", store.ExecOK, 0, 20),
+		tlExec("bb", store.ExecOK, 0),
+	)
+	run.Executions[3].Seq = nil
+	run.Terminals = []store.Terminal{{ToolUseID: "mm"}}
+	tl := buildTimeline(run, nil)
+	var got []string
+	for _, c := range tl.Calls {
+		got = append(got, c.ToolUseID)
+	}
+	if strings.Join(got, ",") != "d,cc,zz,aa,bb,mm" {
+		t.Errorf("order = %v, want d,cc,zz,aa,bb,mm: declared first, then by the result's seq, unpositioned last, ties by id", got)
+	}
+	var b bytes.Buffer
+	writeTimeline(&b, tl)
+	if !strings.Contains(b.String(), "listed last in the order their results were recorded: agent, program, and the declaration's position and time unknown") {
+		t.Errorf("the legend does not say what an undeclared row lacks:\n%s", b.String())
+	}
+}
+
 // #36 review 2: "later" is when the result was recorded, not when the call
 // was declared. Break: compare declaration seqs and both directions go wrong.
 func TestTimeline_LaterIsByWhenTheResultWasRecorded(t *testing.T) {
