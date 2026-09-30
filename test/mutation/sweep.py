@@ -1074,6 +1074,119 @@ m("FF the catch-up re-rules on a turn Stop checked", "internal/recap/state.go",
   "\t\ts.Checked[sessionID] = promptID\n", "\t\t_ = promptID\n",
   "TestH106_")
 
+# `rashomon spend`. Each rule in internal/spend -- the read path, the dedupe,
+# the window, the price table, the cold-cache heuristic, refusals and extra
+# attempts, and the join to the store -- broken once.
+m("SP a response's lines are summed, not counted once", "internal/spend/scan.go",
+  "\t\tkeep(prev, cand)\n", "\t\tsc.Responses = append(sc.Responses, cand)\n\t\t_ = prev\n", "TestDedupe_")
+m("SP the dedupe is per file, so a response carried into a second file counts twice", "internal/spend/scan.go",
+  "\tbyID := map[string]*Response{}\n\tfor i, f := range files {\n",
+  "\tfor i, f := range files {\n\t\tbyID := map[string]*Response{}\n", "TestDedupe_OneResponseInTwoFiles")
+m("SP the first line of a response is kept, not the completed one", "internal/spend/scan.go",
+  "\tif !better {\n\t\treturn\n\t}", "\tif !better || true {\n\t\treturn\n\t}", "TestDedupe_TheCompletedLine")
+m("SP a response starts at its latest line, not its earliest", "internal/spend/scan.go",
+  "\tif cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS < prev.StartMS) {",
+  "\tif cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS > prev.StartMS) {", "TestDedupe_TheCompletedLine")
+m("SP the transcript line decodes message.content", "internal/spend/scan.go",
+  "\tModel      string  `json:\"model\"`\n", "\tModel      string  `json:\"model\"`\n\tContent    json.RawMessage `json:\"content\"`\n",
+  "TestContentHasNoFieldToLandIn")
+m("SP the --days window is ignored", "internal/spend/spend.go",
+  "r.StartMS == 0 || r.StartMS < s.FromUnixMS ||", "r.StartMS == 0 ||", "TestWindow_")
+m("SP an undated response is dropped without being counted", "internal/spend/scan.go",
+  "\t\t\tsc.Undated++\n", "", "TestWindow_")
+m("SP a file last written before the window is still read", "internal/spend/scan.go",
+  "return err == nil && !info.ModTime().Before(modifiedSince)", "return err == nil && info != nil", "TestDiscover_Skips")
+m("SP a file under subagents/ is main-agent spend unless its lines say sidechain", "internal/spend/scan.go",
+  "Subagent:   f.Subagent || l.IsSidechain,", "Subagent:   l.IsSidechain,", "TestAgent_")
+m("SP a main-file line marked isSidechain is main-agent spend", "internal/spend/scan.go",
+  "Subagent:   f.Subagent || l.IsSidechain,", "Subagent:   f.Subagent,", "TestAgent_")
+m("SP a workflow's subagent transcripts two levels down are not read", "internal/spend/scan.go",
+  "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok {",
+  "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok && filepath.Dir(p) == dir {", "TestAgent_")
+m("SP any trailing hyphenated word is read as a dated suffix", "internal/spend/price.go",
+  "\tif i < 0 || !isDate(model[i+1:]) {", "\tif i < 0 {", "TestPriceKey_")
+m("SP a seven-digit suffix passes as a date", "internal/spend/price.go",
+  "\tif len(s) != 8 {", "\tif len(s) < 7 {", "TestPriceKey_")
+m("SP a 5m cache write is priced at the input rate", "internal/spend/price.go",
+  "return r.Input * 5 / 4 }", "return r.Input }", "TestPricing_")
+m("SP a 1h cache write is priced as a 5m one", "internal/spend/price.go",
+  "return r.Input * 2 }", "return r.Input * 5 / 4 }", "TestPricing_")
+m("SP Fable 5.1's cache read is 0.1x input, not the table's 0.25", "internal/spend/price.go",
+  "CacheRead: mtok(25)}", "CacheRead: mtok(100)}", "TestPricing_TheTable")
+m("SP an unsplit cache write is priced at the 1h rate", "internal/spend/scan.go",
+  "\t\tout.CacheWrite5m += rest", "\t\tout.CacheWrite1h += rest", "TestPricing_CacheWrites")
+m("SP an unknown model is priced at $0", "internal/spend/spend.go",
+  "\tc.addUnpriced(r.Tokens.Total())\n", "\tc.addPriced(0)\n", "TestUnknownModel_")
+m("SP an unpriced total marshals as usd 0 instead of null", "internal/spend/spend.go",
+  "\tif c.Wholly() {\n\t\tv := c.USD()", "\tif true {\n\t\tv := c.USD()", "TestUnknownModel_IsUnknown")
+m("SP an unpriced total is headlined as a dollar figure", "internal/spend/text.go",
+  "\tif !c.Wholly() {\n\t\treturn fmt.Sprintf(\"cost unknown (", "\tif false {\n\t\treturn fmt.Sprintf(\"cost unknown (",
+  "TestUnknownModel_IsUnknown")
+m("SP a non-claude model id is printed verbatim", "internal/spend/spend.go",
+  "\treturn \"other\", false", "\treturn model, false", "TestUnknownModel_ANonClaude")
+m("SP a claude-prefixed id is printed whatever it carries", "internal/spend/spend.go",
+  "\t\tif !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {", "\t\tif c == 0 {", "TestUnknownModel_ANonClaude")
+m("SP a zero-token synthetic response is listed as a model", "internal/spend/spend.go",
+  " || r.Tokens.Total() == 0 {", " {", "TestZeroTokenResponses_")
+m("SP an amount under a cent renders as $0.00", "internal/spend/text.go",
+  "\tif nano > 0 && nano < 1e7 {", "\tif false && nano < 1e7 {", "TestSubCentAmounts_")
+m("SP the plan-subscription sentence is not printed", "internal/spend/text.go",
+  "\tfmt.Fprintf(&b, \"       %s\\n\", s.Pricing.Note)\n", "", "TestOutput_StatesTheBasis")
+m("SP a 5m write is judged against the 1h TTL", "internal/spend/spend.go",
+  "\t\t\tif gap > ttl5m {", "\t\t\tif gap > ttl1h {", "TestCacheExpiry_")
+m("SP a 1h write is judged against the 5m TTL", "internal/spend/spend.go",
+  "\t\t\tif gap > ttl1h {", "\t\t\tif gap > ttl5m {", "TestCacheExpiry_")
+m("SP the previous response is taken across files", "internal/spend/spend.go",
+  "\t\tbyFile[r.file] = append(byFile[r.file], r)", "\t\tbyFile[0] = append(byFile[0], r)", "TestCacheExpiry_")
+m("SP the window is applied before the previous response is found", "internal/spend/spend.go",
+  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
+  "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS < time.Now().Add(-48*time.Hour).UnixMilli() {\n\t\t\tcontinue\n\t\t}\n\t\tbyFile",
+  "TestCacheExpiry_ThePredecessor")
+m("SP a savings line is printed with no figure under it", "internal/spend/spend.go",
+  "\tif s.CacheExpiry.Cost.Nano > 0 {", "\tif true {", "TestNoSavingsWithoutAFigure")
+m("SP a refusal is not recognised", "internal/spend/spend.go",
+  "r.StopReason == \"refusal\"", "r.StopReason == \"refused\"", "TestRefusalsAndExtraAttempts")
+m("SP the returned attempt is counted again as an extra one", "internal/spend/scan.go",
+  "\tfor _, it := range its[:len(its)-1] {", "\tfor _, it := range its {", "TestRefusalsAndExtraAttempts")
+m("SP a turn with failures fires whatever its summary says", "internal/spend/join.go",
+  "\t\t\tif !report.BuildSilentFailures(t.run, report.AccountFromMessage(final)).Fires {",
+  "\t\t\tif report.BuildSilentFailures(t.run, report.AccountFromMessage(final)).Failed == 0 {",
+  "TestJoin_AnHonestSummary")
+m("SP a firing turn's spend runs past its last record", "internal/spend/join.go",
+  "r.StartMS >= t.firstMS && r.StartMS <= t.lastMS && !counted[r]", "r.StartMS >= t.firstMS && !counted[r]",
+  "TestJoin_SpendInside|TestSpend_JoinsSilentlyFailedTurns")
+m("SP a firing turn's spend starts before its first record", "internal/spend/join.go",
+  "r.StartMS >= t.firstMS && r.StartMS <= t.lastMS && !counted[r]", "r.StartMS <= t.lastMS && !counted[r]",
+  "TestJoin_SpendInside|TestSpend_JoinsSilentlyFailedTurns")
+m("SP a turn's final message is looked for past the next turn's start", "internal/spend/join.go",
+  "\t\t\t\tend = turns[i+1].firstMS", "\t\t\t\t_ = turns[i+1].firstMS", "TestJoin_SpendInside")
+m("SP the turn-scoped final message ignores its window", "internal/report/transcript.go",
+  "\t\tif ms < fromMS || ms >= toMS {", "\t\tif ms < fromMS {", "TestJoin_SpendInside")
+m("SP a silent turn before the window is counted", "internal/spend/join.go",
+  "\t\t\tif t.lastMS < s.FromUnixMS {", "\t\t\tif false {", "TestJoin_ATurnBefore")
+m("SP a session rashomon never recorded is treated as covered", "internal/spend/join.go",
+  "\t\tif !recorded[st.DirName(id)] {", "\t\tif false && !recorded[st.DirName(id)] {",
+  "TestJoin_SpendInside|TestSpend_JoinsSilentlyFailedTurns")
+m("SP an unrecorded session's spend is folded in as zero", "internal/spend/join.go",
+  "\t\t\tcostOf(&j.NotCoveredCost, r)", "\t\t\t_ = r", "TestJoin_")
+m("SP no store renders as a store that recorded nothing here", "internal/spend/text.go",
+  "\tcase j.Store == StoreNone:", "\tcase j.Store == \"never\":", "TestJoin_NoStore|TestSpend_OpensNoStore")
+m("SP spend creates a store to read one", "cmd/rashomon/main.go",
+  "\tst, err := openStoreForRead()\n\tswitch {", "\tst, err := openStore()\n\tswitch {", "TestSpend_OpensNoStore")
+m("SP spend ignores CLAUDE_CONFIG_DIR", "cmd/rashomon/main.go",
+  "\tconfigDir, err := settings.ConfigDir()\n\tif err != nil {\n\t\treturn err\n\t}\n\tfiles, err := spend.Discover(configDir,",
+  "\tconfigDir, err := os.UserHomeDir()\n\tconfigDir = filepath.Join(configDir, \".claude\")\n\tif err != nil {\n\t\treturn err\n\t}\n\tfiles, err := spend.Discover(configDir,",
+  "TestSpend_ReadsWhere")
+m("SP --days 0 is accepted", "cmd/rashomon/main.go",
+  "if err != nil || n < 1 {", "if err != nil {", "TestSpend_RefusesAWindow")
+m("SP a turn's verdict ignores the transcript its records name", "internal/spend/join.go",
+  "\t\tif recorded[filepath.Clean(p)] {", "\t\tif false && recorded[filepath.Clean(p)] {", "TestJoin_OneSessionIDTwoConversations")
+m("SP another conversation under the same session id is priced into the turn", "internal/spend/join.go",
+  "\t\t\t\tif !s.inConversation(r, files) {", "\t\t\t\tif false && !s.inConversation(r, files) {",
+  "TestJoin_OneSessionIDTwoConversations")
+m("SP the subagent files under the turn's transcript are not its conversation", "internal/spend/join.go",
+  "if path == m || strings.HasPrefix(", "if path == m || false && strings.HasPrefix(", "TestJoin_SpendInside")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

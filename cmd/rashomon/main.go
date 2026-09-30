@@ -30,6 +30,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
+	"github.com/altrace-dev-role/rashomon/internal/spend"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -86,6 +87,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdDigest(rest, stdin, stdout) })
 	case "forget":
 		return guarded(stderr, func() error { return cmdForget(rest, stdout) })
+	case "spend":
+		return guarded(stderr, func() error { return cmdSpend(rest, stdout) })
 	case "env":
 		return guarded(stderr, func() error { return cmdEnv(rest, stdout) })
 	case "run":
@@ -1458,6 +1461,75 @@ func digestOrEmpty(sessionID, promptID, lastAssistantMessage string, now time.Ti
 	return digest.Build(st, sessionID, promptID, lastAssistantMessage, now)
 }
 
+// cmdSpend estimates the last N days of Claude Code spend.
+//
+// Zero setup: the source is Claude Code's own transcripts under its
+// configuration directory -- settings.ConfigDir, so CLAUDE_CONFIG_DIR
+// relocates this read exactly as it relocates settings.json and plugins/ --
+// and nothing here depends on watch having run. The store is read for one
+// line only, the spend inside silently failed turns, and opened WITHOUT
+// creating: a machine with no store answers "not covered" for that line
+// rather than being given a store by the question (H-87's rule, the one
+// report and digest follow).
+func cmdSpend(args []string, stdout io.Writer) error {
+	days := spend.DefaultDays
+	asJSON := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--days":
+			if i+1 >= len(args) {
+				return errors.New("--days needs a value")
+			}
+			// A positive whole number of days, and nothing else: zero or a
+			// negative would name an empty or inverted window, and the
+			// answer to that would be a confident $0.00 about nothing.
+			n, err := strconv.Atoi(args[i+1])
+			if err != nil || n < 1 {
+				return fmt.Errorf("--days needs a positive whole number of days, got %q", args[i+1])
+			}
+			days = n
+			i++
+		case "--json":
+			asJSON = true
+		default:
+			return fmt.Errorf("unknown argument %q", args[i])
+		}
+	}
+
+	now := time.Now()
+	configDir, err := settings.ConfigDir()
+	if err != nil {
+		return err
+	}
+	files, err := spend.Discover(configDir, now.Add(-time.Duration(days)*24*time.Hour))
+	if err != nil {
+		return err
+	}
+	scan, err := spend.Read(files)
+	if err != nil {
+		return err
+	}
+	sum := spend.Build(scan, now, days)
+
+	st, err := openStoreForRead()
+	switch {
+	case errors.Is(err, store.ErrNoStore):
+		st = nil
+	case err != nil:
+		return err
+	}
+	if err := sum.Join(st); err != nil {
+		return err
+	}
+
+	if asJSON {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(sum)
+	}
+	return spend.Text(stdout, sum)
+}
+
 // cmdForget evicts records at one end of the store's timeline.
 //
 // --since is the privacy form: forget what just happened. --before is the
@@ -1588,6 +1660,15 @@ usage:
                                flag; omitted by default, because reading
                                stdin unless told to is how a caller that
                                never closes its pipe gets hung forever.
+  rashomon spend [--days N] [--json]
+                               estimate what the last N days (default 30) of
+                               Claude Code usage would cost at API list prices,
+                               from Claude Code's own transcripts: by agent,
+                               model and token kind, cold-cache re-writes,
+                               refusals, and the spend inside turns rashomon
+                               recorded failing silently; reads usage fields
+                               only, never message text for the totals, and
+                               writes nothing
   rashomon forget --host H       evict every call that named host H
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T

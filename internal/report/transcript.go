@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // maxLine bounds one transcript line. Transcript lines carry whole messages
@@ -303,4 +304,65 @@ func assistantText(content json.RawMessage) (string, bool) {
 		return "", false
 	}
 	return strings.Join(parts, "\n"), true
+}
+
+// FinalAssistantTextBetween returns the text of the last assistant message in
+// a transcript whose line timestamp falls in [fromMS, toMS), with that
+// timestamp, and whether one was found.
+//
+// It is FinalAssistantText narrowed to one turn, for `rashomon spend`'s
+// silent-failure line. A turn's silent_failures verdict is the digest's rule
+// (BuildSilentFailures) applied to that turn's final message, and the digest
+// is handed that message by the Stop hook at the moment the turn ends. spend
+// runs long after, with no hook payload, so the only surviving copy is the
+// transcript -- read here, under the same render-time rule as
+// FinalAssistantText: never written anywhere, never rendered, reduced by the
+// caller to the verdict's booleans and counts, and discarded when the process
+// exits. It lives in this file because this file is where the product reads
+// message content, and a second reader elsewhere would be a second place to
+// audit.
+//
+// A line with no parseable timestamp cannot be placed in the window and is
+// skipped rather than guessed into it.
+func FinalAssistantTextBetween(path string, fromMS, toMS int64) (string, int64, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", 0, false
+	}
+	defer f.Close() //nolint:errcheck // read-only
+
+	var last string
+	var lastMS int64
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
+	for sc.Scan() {
+		var line struct {
+			Timestamp string `json:"timestamp"`
+			Message   struct {
+				Role    string          `json:"role"`
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(sc.Bytes(), &line) != nil {
+			continue
+		}
+		if line.Message.Role != "assistant" || len(line.Message.Content) == 0 {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339Nano, line.Timestamp)
+		if err != nil {
+			continue
+		}
+		ms := at.UnixMilli()
+		if ms < fromMS || ms >= toMS {
+			continue
+		}
+		if text, ok := assistantText(line.Message.Content); ok {
+			last, lastMS = text, ms
+		}
+	}
+	if sc.Err() != nil || last == "" {
+		return "", 0, false
+	}
+	return last, lastMS, true
 }
