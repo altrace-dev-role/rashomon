@@ -368,6 +368,9 @@ func TestTimeline_Text(t *testing.T) {
 		"general-purpose·cafe",
 		"failed (exit 2)",
 		"→ no later success of the same command or program recorded",
+		// #36 review round 3, smaller 8: seq is rashomon's own position, so
+		// the reader is told where the id that finds a call is.
+		"rows show no tool_use_id: --json carries each call's\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)
@@ -492,38 +495,65 @@ func TestTimeline_ADroppedCallKeepsItsExecutionAndNoAgent(t *testing.T) {
 	}
 }
 
-// #36 review round 3, smaller 5: one tool_use_id with two execution records.
-// The row's outcome, exit code and "recorded after" position all come from
-// the one record the outcome is read from -- today the highest seq, as
-// --chain's headline is -- whatever order the store holds them in. Break:
-// read the exit code or the position from the first record, and the row says
-// "failed" with no code, or measures "later" from a record it did not use.
+// #36 review round 3, fix 1 and smaller 5: one tool_use_id with two
+// execution records. The call is failed when ANY of its records failed, and
+// its exit code and "recorded after" position come from the failed record,
+// whatever order the store holds them in. The failed count agrees with the
+// report's per call: two failed records are one failed call here. Break:
+// take the outcome from the highest-seq record alone, and a failure followed
+// by an ok record of the same id reads ok; read the exit code or position
+// from another record, and the row carries the wrong code or measures "later"
+// from a record the outcome did not come from.
 func TestTimeline_TwoRecordsForOneID(t *testing.T) {
-	for _, order := range []string{"ascending", "descending"} {
-		t.Run(order, func(t *testing.T) {
-			ok, failed := tlExecAt("f", store.ExecOK, 0, 10), tlExecAt("f", store.ExecFailed, 2, 12)
-			recs := []store.Execution{ok, failed}
-			if order == "descending" {
-				recs = []store.Execution{failed, ok}
-			}
-			// A same-command success recorded between the two: after the ok
-			// record, before the failed one the outcome came from.
-			recs = append(recs, tlExecAt("s", store.ExecOK, 0, 11))
-			run := tlRun([]tlCall{
-				{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
-				{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
-			}, recs...)
-			c := tlByID(t, buildTimeline(run, nil), "f")
-			if c.Group != GroupFailed || c.Outcome != store.ExecFailed {
-				t.Errorf("group = %s / %s, want failed: the highest-seq record decides", c.Group, c.Outcome)
-			}
-			if c.ExitCode == nil || *c.ExitCode != 2 {
-				t.Errorf("exit code = %v, want 2, from the record the outcome came from", c.ExitCode)
-			}
-			if c.Later != nil || !c.LaterChecked {
-				t.Errorf("later = %+v: a success recorded before the failed record is not after it", c.Later)
-			}
-		})
+	cases := []struct {
+		name string
+		// The two records of "f"; "s", a same-command success, lands at 11.
+		recs  []store.Execution
+		later bool
+	}{
+		// ok, then failed: the success at 11 was recorded before the failure.
+		{"ok then failed", []store.Execution{tlExecAt("f", store.ExecOK, 0, 10), tlExecAt("f", store.ExecFailed, 2, 12)}, false},
+		// failed, then ok: the failure is still the call's, and the success
+		// at 11 was recorded after it.
+		{"failed then ok", []store.Execution{tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12)}, true},
+		// Two failures: the last one is the call's, and the success at 11 is
+		// followed by it, not after it.
+		{"failed then failed", []store.Execution{tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("f", store.ExecFailed, 2, 12)}, false},
+	}
+	for _, tc := range cases {
+		for _, order := range []string{"ascending", "descending"} {
+			t.Run(tc.name+"/"+order, func(t *testing.T) {
+				recs := []store.Execution{tc.recs[0], tc.recs[1]}
+				if order == "descending" {
+					recs = []store.Execution{tc.recs[1], tc.recs[0]}
+				}
+				recs = append(recs, tlExecAt("s", store.ExecOK, 0, 11))
+				run := tlRun([]tlCall{
+					{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+					{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
+				}, recs...)
+				tl := buildTimeline(run, nil)
+				c := tlByID(t, tl, "f")
+				if c.Group != GroupFailed || c.Outcome != store.ExecFailed {
+					t.Errorf("group = %s / %s, want failed: a call any of whose records failed is failed", c.Group, c.Outcome)
+				}
+				if tl.Counts.Failed != 1 || tl.Counts.OK != 1 {
+					t.Errorf("counts = %+v, want 1 failed and 1 ok: the count is per call", tl.Counts)
+				}
+				if c.ExitCode == nil || *c.ExitCode != 2 {
+					t.Errorf("exit code = %v, want 2, from the record the outcome came from", c.ExitCode)
+				}
+				if !c.LaterChecked {
+					t.Fatalf("not checked: %+v", c)
+				}
+				if tc.later && (c.Later == nil || c.Later.Kind != LaterSameCommand || c.Later.Seq != 2) {
+					t.Errorf("later = %+v, want same command at 2: the success was recorded after the failed record", c.Later)
+				}
+				if !tc.later && c.Later != nil {
+					t.Errorf("later = %+v: a success recorded before the failed record is not after it", c.Later)
+				}
+			})
+		}
 	}
 }
 

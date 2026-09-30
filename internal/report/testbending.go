@@ -288,7 +288,10 @@ func testOutcome(d store.Declaration, executed map[string][]store.Execution, den
 	if o != store.ExecFailed || d.Shape.Program == nil || *d.Shape.Program != "timeout" {
 		return o
 	}
-	if c := lastExitCode(executed[d.ToolUseID]); c != nil && *c == timeoutFired {
+	// The exit code of the record linkOutcome read the outcome from: the
+	// highest seq, since executionsByID sorts ascending.
+	recs := executed[d.ToolUseID]
+	if c := recs[len(recs)-1].ExitCode; c != nil && *c == timeoutFired {
 		return outcomeTimedOut
 	}
 	return o

@@ -234,11 +234,11 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 		if c.Agent != nil {
 			agents[c.Agent.ID] = true
 		}
-		recs := executed[d.ToolUseID]
-		c.Outcome, _, _ = linkOutcome(d.ToolUseID, executed, denied)
+		rec := outcomeRecord(executed[d.ToolUseID])
+		c.Outcome = timelineOutcome(d.ToolUseID, rec, executed, denied)
 		c.Group = timelineGroup(c.Outcome)
-		c.ExitCode = lastExitCode(recs)
-		entries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, recs), pos: lastExecSeq(recs)})
+		c.ExitCode = outcomeExitCode(rec)
+		entries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(rec)})
 	}
 
 	// Calls with no declaration: a terminal or an execution record names them
@@ -249,11 +249,10 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 	// tool name is the execution's own; agent, program, and the declaration's
 	// position and time are unknown and said to be.
 	//
-	// The two counts agree only while each call has one execution record. The
-	// report counts every failed record; a row here takes its outcome from the
-	// highest-seq record alone, so an id with a failed record and a later ok
-	// one is a failed call there and an ok row here, and two failed records
-	// are two there and one here.
+	// The two counts agree per call, not per record: a call any of whose
+	// execution records failed is failed here, as it is there, but the report
+	// counts every failed record, so two failed records on one call are two
+	// there and one here.
 	for _, id := range undeclared(run, executed) {
 		recs := executed[id]
 		c := TimelineCall{
@@ -265,10 +264,11 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 		if len(recs) > 0 && recs[len(recs)-1].ToolName != "" {
 			c.ToolName = recs[len(recs)-1].ToolName
 		}
-		c.Outcome, _, _ = linkOutcome(id, executed, denied)
+		rec := outcomeRecord(recs)
+		c.Outcome = timelineOutcome(id, rec, executed, denied)
 		c.Group = timelineGroup(c.Outcome)
-		c.ExitCode = lastExitCode(recs)
-		entries = append(entries, timelineEntry{call: c, pos: lastExecSeq(recs)})
+		c.ExitCode = outcomeExitCode(rec)
+		entries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec)})
 	}
 
 	for i := range entries {
@@ -314,8 +314,8 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 // declaration does, once each. Dropped() alone misses an execution record
 // with no terminal either.
 //
-// Ordered by the seq of each one's last execution record -- the record its
-// outcome is read from -- so they read in the order their results were
+// Ordered by the seq of the execution record each one's outcome is read from,
+// so they read in the order their results were
 // written. Those with no positioned record come last, and ties go by id.
 func undeclared(run *store.Run, executed map[string][]store.Execution) []string {
 	seen := map[string]bool{}
@@ -336,7 +336,7 @@ func undeclared(run *store.Run, executed map[string][]store.Execution) []string 
 		add(x.ToolUseID)
 	}
 	pos := func(id string) (int64, bool) {
-		p := lastExecSeq(executed[id])
+		p := outcomeSeq(outcomeRecord(executed[id]))
 		if p == nil {
 			return 0, false
 		}
@@ -382,32 +382,63 @@ func timelineGroup(outcome string) string {
 	}
 }
 
-// lastExitCode is the exit code of the record linkOutcome took the outcome
-// from: the highest seq, since executionsByID sorts ascending.
-func lastExitCode(recs []store.Execution) *int {
+// outcomeRecord is the execution record a call's outcome is read from, of
+// one id's records sorted by seq (executionsByID sorts them): the highest-seq
+// one that failed when any did, and otherwise the highest-seq one. Nil when
+// there is none.
+//
+// A failure is never hidden behind a later record of the same id: the
+// report's failed-calls count counts every failed record, and a row reading
+// ok would put a failure on the page that the timeline does not show. The
+// LAST failed record, because a success recorded between two failures of one
+// call was followed by a failure, not after it.
+func outcomeRecord(recs []store.Execution) *store.Execution {
+	for i := len(recs) - 1; i >= 0; i-- {
+		if recs[i].Outcome == store.ExecFailed {
+			return &recs[i]
+		}
+	}
 	if len(recs) == 0 {
 		return nil
 	}
-	return recs[len(recs)-1].ExitCode
+	return &recs[len(recs)-1]
 }
 
-// effectiveDigest is the digest the call ran with: that same record's
+// timelineOutcome is the call's outcome: linkOutcome's, which reads the
+// highest-seq record, unless the outcome record failed -- then failed.
+func timelineOutcome(id string, rec *store.Execution, executed map[string][]store.Execution, denied map[string]bool) string {
+	if rec != nil && rec.Outcome == store.ExecFailed {
+		return store.ExecFailed
+	}
+	o, _, _ := linkOutcome(id, executed, denied)
+	return o
+}
+
+// outcomeExitCode is the outcome record's exit code, nil when there is none.
+func outcomeExitCode(rec *store.Execution) *int {
+	if rec == nil {
+		return nil
+	}
+	return rec.ExitCode
+}
+
+// effectiveDigest is the digest the call ran with: the outcome record's
 // executed digest, or the declared one when the record carries none. An empty
 // executed digest is "not known", never "different" -- see
 // store.Execution.ExecutedDigest.
-func effectiveDigest(declared string, recs []store.Execution) string {
-	if len(recs) > 0 && recs[len(recs)-1].ExecutedDigest != "" {
-		return recs[len(recs)-1].ExecutedDigest
+func effectiveDigest(declared string, rec *store.Execution) string {
+	if rec != nil && rec.ExecutedDigest != "" {
+		return rec.ExecutedDigest
 	}
 	return declared
 }
 
-// lastExecSeq is that same record's seq, nil when it has none.
-func lastExecSeq(recs []store.Execution) *int64 {
-	if len(recs) == 0 {
+// outcomeSeq is the outcome record's seq, nil when there is none or it has none.
+func outcomeSeq(rec *store.Execution) *int64 {
+	if rec == nil {
 		return nil
 	}
-	return recs[len(recs)-1].Seq
+	return rec.Seq
 }
 
 // laterSuccess finds, for the failed call at i, the success of the same

@@ -51,6 +51,11 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 		fmt.Fprintln(b, "    calls from agents running at once interleave by when each was recorded, not when it started")
 	}
 
+	// Seq is rashomon's own store position, which no transcript shows; the
+	// tool_use_id is what joins a row to a transcript or to the report's
+	// "executed differently from declared" list. The row layout stays as it
+	// is, so the reader is told where the id is.
+	fmt.Fprintln(b, "    rows show no tool_use_id: --json carries each call's")
 	// The time column is UTC and carries no date, so the date is printed
 	// above the first row and again wherever it changes.
 	fmt.Fprintf(b, "    %5s  %-8s  %-22s %-22s %s\n", "seq", "UTC", "agent", "call", "result")
