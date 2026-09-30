@@ -3,16 +3,18 @@ package digest
 import (
 	"encoding/json"
 	"sort"
+
+	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
 // truncate enforces CapBytes on the WHOLE marshalled document, not per
 // field. WithoutExecution, Unterminated and Dropped grow with the turn; ByTool
-// and ByLabel grow with the number of distinct tools and labels it touched --
-// a turn wide in several of these at once could exceed the total while every
-// field stayed inside a cap of its own, which is why there is one ceiling and
-// not five.
+// and ByLabel grow with the number of distinct tools and labels it touched;
+// the two test-bending lists grow with its test runs -- a turn wide in several
+// of these at once could exceed the total while every field stayed inside a
+// cap of its own, which is why there is one ceiling and not seven.
 //
-// The five are cut in this FIXED order, each carrying how much of it was
+// The seven are cut in this FIXED order, each carrying how much of it was
 // omitted:
 //
 //  1. Dropped, 2. Unterminated -- the rarest on a healthy turn, and already
@@ -21,7 +23,13 @@ import (
 //     more central than the first two but still a list of ids rather than
 //     the turn's headline counts.
 //  3. ByLabel, 5. ByTool -- the low-cardinality inventories a reader wants
-//     intact most: what this turn touched, in one word each. Cut last.
+//     intact most: what this turn touched, in one word each.
+//  4. TestBending.Flaky, 7. TestBending.TestsOnlyThenGreen -- cut last of
+//     all, because they are the only growable fields the end-of-turn line
+//     names by seq: recap points at a list's FIRST pair, and halving from the
+//     tail keeps it until the list is empty. Even then the finding survives,
+//     since recap counts a list's length plus its omitted count. Each is two
+//     numbers a pair, so a real turn reaching them is not expected.
 //
 // Each field is cut in HALF of what remains, repeatedly, rather than one
 // entry at a time: re-marshalling the whole document to check size is O(size)
@@ -41,6 +49,10 @@ func truncate(d *Digest) {
 		},
 		func() bool { return trimIntMap(&d.Declarations.ByLabel, &d.Declarations.ByLabelOmitted) },
 		func() bool { return trimIntMap(&d.Declarations.ByTool, &d.Declarations.ByToolOmitted) },
+		func() bool { return trimPairs(&d.TestBending.Flaky, &d.TestBending.FlakyOmitted) },
+		func() bool {
+			return trimPairs(&d.TestBending.TestsOnlyThenGreen, &d.TestBending.TestsOnlyThenGreenOmitted)
+		},
 	}
 	for _, step := range steps {
 		for oversize(d) {
@@ -81,6 +93,19 @@ func trimStrings(s *[]string, omitted *int) bool {
 }
 
 func trimUnexecuted(s *[]Unexecuted, omitted *int) bool {
+	if len(*s) == 0 {
+		return false
+	}
+	cut := (len(*s) + 1) / 2
+	*omitted += cut
+	*s = (*s)[:len(*s)-cut]
+	return true
+}
+
+// trimPairs halves *s from the tail, returning false once it is empty. The
+// head is what survives, so the first pair -- the one recap prints -- goes
+// last.
+func trimPairs(s *[]report.SeqPair, omitted *int) bool {
 	if len(*s) == 0 {
 		return false
 	}

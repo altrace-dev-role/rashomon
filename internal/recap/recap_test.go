@@ -171,3 +171,76 @@ func TestLinePointsAtACommandTheOriginHas(t *testing.T) {
 		}
 	}
 }
+
+// TestLineTestBending: each test-bending pattern is one short sentence joined
+// into the line, naming the first pair by seq, with the same pointer. The
+// wording is the record's -- "no file edit between", never "nothing changed"
+// -- and a truncated list still speaks, counted from its omitted total.
+func TestLineTestBending(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		tb   digest.TestBending
+		want []string
+	}{
+		{
+			name: "tests only then green",
+			tb:   digest.TestBending{TestsOnlyThenGreen: []report.SeqPair{{12, 19}}},
+			want: []string{"test command failed, then only test files were edited, then it passed (#12 → #19)."},
+		},
+		{
+			name: "flaky",
+			tb:   digest.TestBending{Flaky: []report.SeqPair{{8, 14}}},
+			want: []string{"same test command passed and failed with no file edit between (#8, #14)."},
+		},
+		{
+			name: "both, and more than one",
+			tb: digest.TestBending{
+				TestsOnlyThenGreen: []report.SeqPair{{12, 19}, {20, 25}},
+				Flaky:              []report.SeqPair{{8, 14}}, FlakyOmitted: 2,
+			},
+			want: []string{
+				"then it passed (#12 → #19, 1 more). same test command",
+				"no file edit between (#8, #14, 2 more).",
+			},
+		},
+		{
+			name: "cut whole by truncate",
+			tb:   digest.TestBending{TestsOnlyThenGreenOmitted: 3},
+			want: []string{"then it passed (3 times)"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := cleanDigest()
+			d.TestBending = tc.tb
+			line, ok := Line(d, d.SessionID, false)
+			if !ok {
+				t.Fatal("a test-bending pattern produced no line")
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(line, w) {
+					t.Errorf("line = %q\nwant it to contain %q", line, w)
+				}
+			}
+			if strings.Contains(line, "nothing changed") {
+				t.Errorf("line = %q claims nothing changed, which the record cannot see", line)
+			}
+			if !strings.Contains(line, "→ rashomon report --session sess-1") {
+				t.Errorf("line = %q, want the same report pointer", line)
+			}
+			if n := strings.Count(line, "\n"); n != 1 {
+				t.Errorf("line has %d newlines, want the sentence line and the pointer line", n)
+			}
+		})
+	}
+}
+
+// TestLineNoTestBendingIsSilent: empty lists and zero omitted counts are not a
+// trigger. Break: test the lists for nil rather than length, and every digest
+// read back from JSON speaks.
+func TestLineNoTestBendingIsSilent(t *testing.T) {
+	d := cleanDigest()
+	d.TestBending = digest.TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.SeqPair{}}
+	if line, ok := Line(d, d.SessionID, true); ok {
+		t.Errorf("a digest with no test-bending pair produced a line: %q", line)
+	}
+}

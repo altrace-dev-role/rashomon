@@ -71,12 +71,15 @@ excerpt is `rashomon report` exactly as it renders that session:
         (these calls do not appear in the main transcript)
       failed calls: 1
         the final message contains none of these 43 words: fail, failed, failing, error, errors, couldn't, could not, unable, not able, didn't, did not, blocked and 31 more of 43 (--json lists them all)
+      test runs: 1 (0 ok, 1 failed)
 
 The first line quotes the agent. The rest comes from rashomon's own record,
 checked against those words: one call failed (its record holds exit code 1, and
 `--chain` shows which call it was), and the subagent's three calls are recorded
-under the subagent's own transcript, not the main one. The report lists the
-failure words the summary does *not* use; it does not guess why.
+under the subagent's own transcript, not the main one. The last line counts the
+calls rashomon recognised as a test runner (`go test`, `pytest`, `npm test` and
+a fixed list of others) by how they ended. The report lists the failure words
+the summary does *not* use; it does not guess why.
 
 ## Try it yourself
 
@@ -256,7 +259,9 @@ mixed indentation.
 prints at most one line, and only when there is something worth looking
 at (a recorded failure that the agent's final message does not acknowledge,
 meaning it uses none of the failure words; a declaration without recorded
-execution; coverage that did not verify; or a truncated/unknown projection).
+execution; coverage that did not verify; a truncated/unknown projection; a
+failed test command that passed after only files named like tests were edited;
+or the same test command passing and failing with no file edit between).
 One known gap: Claude Code discards what a `StopFailure` hook prints, so a turn
 that ends in an API error shows no line, and in this release the next prompt
 does not show it either. The line points to
@@ -280,8 +285,10 @@ every finding except an unacknowledged failure.
 for Bash, the whole tool input for other tools; how it ended (`outcome`,
 `exit_code`, `is_interrupt`, `duration_ms`); and a `file_label` classifying the
 path named by a Read, Edit, Write or NotebookEdit call into categories such as
-`ssh-key`, `env-file`, `cloud-config`, `credential-shaped` or `certificate`
-(paths touched from Bash are not labelled).
+`ssh-key`, `env-file`, `cloud-config`, `credential-shaped`, `certificate` or
+`test-file` (paths touched from Bash are not labelled). A shell call whose
+command is a recognised test runner has `verb_class` `test`; the arguments that
+decided it are compared against a fixed list and not kept.
 
 Note that `cwd` and `transcript_path` are filesystem paths and carry directory
 names. [`docs/store-schema.json`](docs/store-schema.json) is the field list for

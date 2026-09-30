@@ -271,6 +271,13 @@ type Session struct {
 	// order, with each failure's follow-up. Chains answers "what did this
 	// prompt cause"; this answers "what happened, in order, across agents".
 	Timeline Timeline `json:"timeline"`
+
+	// TestRuns is the session's calls of verb class test, and the two
+	// test-bending patterns among them: a failed run that passed after only
+	// test files were edited, and one command that both passed and failed
+	// with no file edit between. The turn digest carries the same patterns
+	// for one turn; this is the whole session's.
+	TestRuns TestRuns `json:"test_runs"`
 }
 
 // Option configures Build.
@@ -447,6 +454,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		denied := deniedSet(sess.Transcripts)
 		sess.Chains = buildChains(run, sess.Destinations, denied, forgotten)
 		sess.Timeline = buildTimeline(run, denied)
+		sess.TestRuns = buildTestRuns(run, denied)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
 		sess.SilentFailures = BuildSilentFailures(run, sess.Account)

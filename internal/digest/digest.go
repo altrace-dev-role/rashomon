@@ -42,7 +42,8 @@ const SchemaVersion = 1
 // CapBytes is the ceiling on the WHOLE marshalled document, not a per-field
 // cap. WithoutExecution, Unterminated and Dropped grow with the turn; ByTool
 // and ByLabel grow with the number of distinct tools and labels the turn
-// touched. truncate() trims all five, in a fixed order, before this is
+// touched; TestBending's two lists grow with the turn's test runs.
+// truncate() trims all seven, in a fixed order, before this is
 // reached, rather than capping each independently -- a turn wide in several
 // of them at once could exceed the total while every field stayed within an
 // independent cap of its own.
@@ -141,6 +142,17 @@ type SubagentCounts struct {
 	Executions   int `json:"executions"`
 }
 
+// TestBending is report.TestBending for one turn, with how much of each list
+// truncate cut. The lists grow with the turn, so they are growable fields like
+// the five in Declarations; the omitted counts are what keep a cut list's
+// finding alive, since recap counts len + omitted and not the list alone.
+type TestBending struct {
+	TestsOnlyThenGreen        []report.SeqPair `json:"tests_only_then_green"`
+	TestsOnlyThenGreenOmitted int              `json:"tests_only_then_green_omitted"`
+	Flaky                     []report.SeqPair `json:"flaky"`
+	FlakyOmitted              int              `json:"flaky_omitted"`
+}
+
 // Digest is one turn's projection.
 type Digest struct {
 	SchemaVersion     int    `json:"schema_version"`
@@ -165,6 +177,11 @@ type Digest struct {
 	SilentFailures report.SilentFailures `json:"silent_failures"`
 	Subagents      SubagentCounts        `json:"subagents"`
 
+	// TestBending is report.DetectTestBending over this turn's own calls,
+	// main agent and subagents together: seq pairs only. See TestBending's
+	// own doc for the two patterns and why each list has an omitted count.
+	TestBending TestBending `json:"test_bending"`
+
 	// Gaps intersecting this turn's window. Rendered rather than dropped, for
 	// the same reason report never drops them: a forget that vanished from
 	// view would read as undone.
@@ -177,8 +194,9 @@ type Digest struct {
 	// ReasonRecordsSkipped in Coverage.Reasons.
 	SkippedRecords int `json:"skipped_records"`
 
-	// Truncated is set when any of the five growable fields in Declarations
-	// was cut to hold the whole document under CapBytes. See truncate.go.
+	// Truncated is set when any of the seven growable fields -- five in
+	// Declarations, two in TestBending -- was cut to hold the whole document
+	// under CapBytes. See truncate.go.
 	Truncated bool `json:"truncated"`
 }
 
@@ -216,6 +234,7 @@ func Empty(now time.Time, sessionID, promptID string) *Digest {
 		},
 		Unknown:        true,
 		SilentFailures: report.SilentFailures{AbsentWords: []string{}},
+		TestBending:    TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.SeqPair{}},
 		Gaps:           []store.Gap{},
 	}
 	return d
@@ -291,6 +310,11 @@ func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage stri
 
 	d.Executions = report.Executions{Recorded: len(turnExecs)}
 	d.Subagents = subagentCounts(w, turnExecs)
+	// No denied set: a digest reads no transcript, so a denied edit reads as
+	// "no execution record", which stops a pattern rather than completing
+	// one. The under-claim is the direction this line can afford to be wrong.
+	tb := report.DetectTestBending(turnRun, nil)
+	d.TestBending = TestBending{TestsOnlyThenGreen: tb.TestsOnlyThenGreen, Flaky: tb.Flaky}
 
 	tc, global := buildTurnCoverage(run, gaps, w)
 	if run.Skipped > 0 {

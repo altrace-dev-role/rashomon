@@ -9,9 +9,11 @@
 // Claim and Status, which give status the fact silence itself cannot carry.
 //
 // It renders records, never inferences. Every sentence Line produces is
-// either a bare count already sitting on the digest, or one of the store's
+// either a bare count already sitting on the digest, one of the store's
 // own fixed vocabulary of reason codes (store.Reasons, report.ReasonGap,
-// digest.ReasonNoStore/ReasonRecordsSkipped) -- never a word this package
+// digest.ReasonNoStore/ReasonRecordsSkipped), or one of two fixed
+// test-bending sentences with the seqs of the pair the digest found (see
+// pairSentence) -- never a word this package
 // invented and never a byte handed to it by a tool call or a transcript. The
 // one caller-supplied value it prints, the session id, is sanitised before
 // it is, on the same rule internal/report/account.go's sanitizeMessage sets
@@ -26,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/digest"
+	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -49,6 +52,11 @@ var prefix = mark + " rashomon: "
 // side effects H-86/H-87 exist to rule out. There is therefore no honest way
 // for this package to know a destination is new, and it does not pretend to;
 // see the PR description for the fuller account of this gap.
+//
+// Two triggers join them for test-bending: a failed test command that passed
+// after only test files were edited, and one test command that both passed
+// and failed with no file edit between. Each is one short sentence with the
+// first pair's seqs, and the same pointer: the report's timeline has the rows.
 //
 // Coverage-unverified and digest-unknown are rendered as ONE sentence, not
 // two: Unknown is defined as Recorded == 0 AND Coverage.State != verified
@@ -77,6 +85,15 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 		sentences = append(sentences,
 			fmt.Sprintf("%d recorded failure%s", d.SilentFailures.Failed, plural(d.SilentFailures.Failed)))
 	}
+	tb := d.TestBending
+	if s, ok := pairSentence("test command failed, then only test files were edited, then it passed",
+		tb.TestsOnlyThenGreen, tb.TestsOnlyThenGreenOmitted, " → "); ok {
+		sentences = append(sentences, s)
+	}
+	if s, ok := pairSentence("same test command passed and failed with no file edit between",
+		tb.Flaky, tb.FlakyOmitted, ", "); ok {
+		sentences = append(sentences, s)
+	}
 	if n := len(d.Declarations.WithoutExecution); n > 0 {
 		sentences = append(sentences, fmt.Sprintf("%d declaration%s without recorded execution", n, plural(n)))
 	}
@@ -97,6 +114,33 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	}
 	b.WriteString(sanitizeSessionID(sessionID))
 	return b.String(), true
+}
+
+// pairSentence renders one test-bending trigger: the fixed sentence, then the
+// first pair's seqs, then how many more pairs there were. One pair, not all:
+// the line has to stay short, and the report lists every one.
+//
+// The count is the list's length plus what truncate cut from it, so a pattern
+// survives a truncated digest. When truncate cut the whole list there is no
+// pair left to print, and the sentence says how many without one -- the
+// finding is still a fact, and the report still has the seqs.
+//
+// The wording is the record's, never a motive: "only test files were
+// edited", "no file edit between". Not "nothing changed", which a shell
+// command between the runs could make false where the record cannot see it.
+func pairSentence(text string, pairs []report.SeqPair, omitted int, sep string) (string, bool) {
+	n := len(pairs) + omitted
+	if n == 0 {
+		return "", false
+	}
+	if len(pairs) == 0 {
+		return fmt.Sprintf("%s (%d time%s)", text, n, plural(n)), true
+	}
+	s := fmt.Sprintf("%s (#%d%s#%d", text, pairs[0][0], sep, pairs[0][1])
+	if n > 1 {
+		s += fmt.Sprintf(", %d more", n-1)
+	}
+	return s + ")", true
 }
 
 // reasonList joins a digest's own fixed reason vocabulary for display. There

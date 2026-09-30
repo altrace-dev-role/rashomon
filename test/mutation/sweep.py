@@ -1103,6 +1103,133 @@ m("H-21 the exit code is read from the whole message again", "internal/hook/post
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",
   "\tdigits := strings.TrimSpace(msg[len(exitCodePrefix):])", "TestH21_")
 
+m("TB a test runner is never recognised", "internal/shape/shape.go",
+  "\t\t\tif runsTests(pshaped, i, prog, perr == nil) {", "\t\t\tif false && runsTests(pshaped, i, prog, perr == nil) {",
+  "TestTestRunnerIsRecognised|TestTestClassCarriesNoContent|TestTestBending_")
+m("TB a line the lexer could not finish is vouched for", "internal/shape/shape.go",
+  "\tif !whole {\n\t\treturn false\n\t}", "\t_ = whole", "TestTestRunnerIsRecognised")
+m("TB a quoted argument is compared as plain", "internal/shape/shape.go",
+  "\t\t\tif t.nlBefore || t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
+  "\t\t\tif t.nlBefore || t.text != want || runsOn(toks, k) {", "TestTestRunnerIsRecognised")
+m("TB the next line's word is the argument", "internal/shape/shape.go",
+  "\t\t\tif t.nlBefore || t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
+  "\t\t\tif t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {", "TestTestRunnerIsRecognised")
+m("TB an argument running into a process substitution is plain", "internal/shape/shape.go",
+  "\t\t\tif t.nlBefore || t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
+  "\t\t\tif t.nlBefore || t.quotedAt >= 0 || t.text != want {", "TestTestRunnerIsRecognised")
+m("TB every word of a runner is compared against the first argument", "internal/shape/shape.go",
+  "\t\t\tk := i + 1 + n\n", "\t\t\tk := i + 1 + n*0\n", "TestTestRunnerIsRecognised")
+m("TB a runner missing its argument still matches", "internal/shape/shape.go",
+  "\t\t\tif k >= len(toks) {\n\t\t\t\tcontinue next\n", "\t\t\tif k >= len(toks) {\n\t\t\t\tbreak\n", "TestTestRunnerIsRecognised")
+m("TB go test is not on the list", "internal/shape/shape.go",
+  "{\"go\", \"test\"}, {\"cargo\", \"test\"}", "{\"go\", \"tset\"}, {\"cargo\", \"test\"}",
+  "TestTestRunnerIsRecognised|TestTestBending_OnlyTestFiles")
+m("TB the test class is missing from the vocabulary", "internal/shape/shape.go",
+  "\t\tVerbPackage, VerbAgent, VerbMCP, VerbUnknown, VerbTest,\n", "\t\tVerbPackage, VerbAgent, VerbMCP, VerbUnknown,\n",
+  "TestVerbClassesAreClosed|TestStoreSchemaVerbClasses")
+m("TB the test-file label is not in the vocabulary", "internal/shape/label.go",
+  "\t\tLabelCertificate,\n\t\tLabelTestFile,\n", "\t\tLabelCertificate,\n", "TestLabelVocabularyIsClosed|TestStoreSchemaLabels")
+m("TB the label is not case-folded", "internal/shape/label.go",
+  "\tbase := strings.ToLower(written)\n", "\tbase := written\n", "TestLabel")
+m("TB the class-name suffixes are folded", "internal/shape/label.go",
+  "\t\t\tif strings.HasSuffix(written, s) {", "\t\t\tif strings.HasSuffix(base, strings.ToLower(s)) {", "TestLabelTestFile")
+m("TB test_*.py matches on its suffix alone", "internal/shape/label.go",
+  "\t\t\tif strings.HasPrefix(base, ps[0]) && strings.HasSuffix(base, ps[1]) {",
+  "\t\t\tif strings.HasSuffix(base, ps[1]) {", "TestLabelTestFile")
+m("TB the test-file row is read before the sensitive rows", "internal/shape/label.go",
+  "\tfor _, r := range labelTable {\n\t\tfor _, e := range r.exact {",
+  "\tfor _, r := range append(labelTable[len(labelTable)-1:], labelTable...) {\n\t\tfor _, e := range r.exact {",
+  "TestLabelTestFile")
+
+m("TB detection reads calls out of seq order", "internal/report/testbending.go",
+  "\tsort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Seq < sorted[j].Seq })",
+  "\tsort.SliceStable(sorted, func(i, j int) bool { return false })", "TestTestBending")
+m("TB a denied edit counts as an edit", "internal/report/testbending.go",
+  "\t\t\tif outcome == LinkOutcomeDenied {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tanyEdits++",
+  "\t\t\tif false {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tanyEdits++", "TestTestBending")
+m("TB a test edit that did not run ok is a test edit", "internal/report/testbending.go",
+  "\t\t\tcase outcome == store.ExecOK:\n\t\t\t\ttestEdits++", "\t\t\tdefault:\n\t\t\t\ttestEdits++", "TestTestBending")
+m("TB an unlabelled edit is a test edit", "internal/report/testbending.go",
+  "\t\t\tcase d.FileLabel == nil || *d.FileLabel != shape.LabelTestFile:",
+  "\t\t\tcase d.FileLabel != nil && *d.FileLabel != shape.LabelTestFile:", "TestTestBending")
+m("TB a shell write between two runs is not an edit", "internal/report/testbending.go",
+  "\t\tswitch d.Shape.VerbClass {\n\t\tcase shape.VerbWrite:\n\t\t\tif outcome",
+  "\t\tswitch d.Shape.VerbClass {\n\t\tcase map[bool]string{true: shape.VerbWrite}[d.ToolName != \"Bash\"]:\n\t\t\tif outcome",
+  "TestTestBending")
+m("TB a run with no result is a run", "internal/report/testbending.go",
+  "\t\tif outcome != store.ExecOK && outcome != store.ExecFailed {\n\t\t\tcontinue\n\t\t}\n\t\tfailed",
+  "\t\tif false {\n\t\t\tcontinue\n\t\t}\n\t\tfailed", "TestTestBending")
+m("TB A is raised with code edited too", "internal/report/testbending.go",
+  "\t\t\tcase prev.failed && !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:",
+  "\t\t\tcase prev.failed && !failed && testEdits > prev.testEdits:", "TestTestBending")
+m("TB A is raised with no test edit", "internal/report/testbending.go",
+  "\t\t\tcase prev.failed && !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:",
+  "\t\t\tcase prev.failed && !failed && otherEdits == prev.otherEdits && testEdits >= prev.testEdits:", "TestTestBending")
+m("TB A is raised from a run that passed", "internal/report/testbending.go",
+  "\t\t\tcase prev.failed && !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:",
+  "\t\t\tcase !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:", "TestTestBending")
+m("TB B is raised across an edit", "internal/report/testbending.go",
+  "\t\t\tcase prev.failed != failed && anyEdits == prev.anyEdits:", "\t\t\tcase prev.failed != failed:", "TestTestBending")
+m("TB B is raised for the same outcome twice", "internal/report/testbending.go",
+  "\t\t\tcase prev.failed != failed && anyEdits == prev.anyEdits:", "\t\t\tcase anyEdits == prev.anyEdits:", "TestTestBending")
+m("TB a pair is made with the first run, not the previous one", "internal/report/testbending.go",
+  "\t\tlast[d.Shape.Digest] = mark{\n", "\t\tif _, seen := last[d.Shape.Digest]; !seen {\n\t\t\tlast[d.Shape.Digest] = mark{\n\t\t\t\tseq: d.Seq, failed: failed, testEdits: testEdits, otherEdits: otherEdits, anyEdits: anyEdits,\n\t\t\t}\n\t\t}\n\t\t_ = mark{\n",
+  "TestTestBending")
+m("TB every command is the same command", "internal/report/testbending.go",
+  "\t\tif prev, ok := last[d.Shape.Digest]; ok {", "\t\tif prev, ok := last[\"\"]; ok {", "TestTestBending")
+m("TB an interrupted test run is counted as a run", "internal/report/testbending.go",
+  "\t\tcase store.ExecOK:\n\t\t\tout.Runs++", "\t\tcase store.ExecOK, store.ExecInterrupted:\n\t\t\tout.Runs++", "TestTestRuns_")
+m("TB the timeline annotates the earlier row", "internal/report/timeline.go",
+  "\t\tbending[p[1]] = TimelineBending{Kind: BendTestsOnlyThenGreen, Since: p[0]}",
+  "\t\tbending[p[0]] = TimelineBending{Kind: BendTestsOnlyThenGreen, Since: p[0]}", "TestTimeline_|TestTestBending_")
+m("TB the timeline drops the flaky annotation", "internal/report/timeline_text.go",
+  "\treturn fmt.Sprintf(\"↳ same command had the other outcome at %d, no file edit between\", t.Since)",
+  "\treturn \"\"", "TestTimeline_")
+m("TB the session block renders with no test run", "internal/report/text.go",
+  "\tif t.Runs == 0 {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:", "\tif false {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:",
+  "TestTestRuns_")
+m("TB the session block drops the limit", "internal/report/text.go",
+  "\tif len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {\n\t\tfmt.Fprintln(b, \"    a file edit here",
+  "\tif false {\n\t\tfmt.Fprintln(b, \"    a file edit here", "TestTestRuns_|TestTestBending_")
+m("TB the session block is never rendered", "internal/report/text.go",
+  "\twriteTestRuns(b, sess.TestRuns)\n", "\t_ = writeTestRuns\n", "TestTestBending_")
+m("TB the report never builds the test runs", "internal/report/report.go",
+  "\t\tsess.TestRuns = buildTestRuns(run, denied)\n", "\t\t_ = buildTestRuns\n", "TestTestBending_")
+
+m("TB the digest looks across the whole session", "internal/digest/digest.go",
+  "\ttb := report.DetectTestBending(turnRun, nil)", "\ttb := report.DetectTestBending(run, nil)", "TestBuild_TestBending")
+m("TB the digest never carries the patterns", "internal/digest/digest.go",
+  "\td.TestBending = TestBending{TestsOnlyThenGreen: tb.TestsOnlyThenGreen, Flaky: tb.Flaky}",
+  "\t_ = tb", "TestBuild_TestBending|TestTestBending_")
+m("TB an empty digest marshals null lists", "internal/digest/digest.go",
+  "\t\tTestBending:    TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.SeqPair{}},\n", "",
+  "TestBuild_TestBendingListsAreNeverNull")
+m("TB truncate cuts a test-bending list before it is the last resort", "internal/digest/truncate.go",
+  "\t\tfunc() bool { return trimStrings(&d.Declarations.Dropped, &d.Declarations.DroppedOmitted) },",
+  "\t\tfunc() bool { return trimPairs(&d.TestBending.Flaky, &d.TestBending.FlakyOmitted) },\n\t\tfunc() bool { return trimStrings(&d.Declarations.Dropped, &d.Declarations.DroppedOmitted) },",
+  "TestTruncate_TestBending")
+m("TB truncate cuts tests-only before flaky", "internal/digest/truncate.go",
+  "\t\tfunc() bool { return trimPairs(&d.TestBending.Flaky, &d.TestBending.FlakyOmitted) },\n\t\tfunc() bool {\n\t\t\treturn trimPairs(&d.TestBending.TestsOnlyThenGreen, &d.TestBending.TestsOnlyThenGreenOmitted)\n\t\t},",
+  "\t\tfunc() bool {\n\t\t\treturn trimPairs(&d.TestBending.TestsOnlyThenGreen, &d.TestBending.TestsOnlyThenGreenOmitted)\n\t\t},\n\t\tfunc() bool { return trimPairs(&d.TestBending.Flaky, &d.TestBending.FlakyOmitted) },",
+  "TestTruncate_TestBending")
+m("TB a cut pair is not counted as omitted", "internal/digest/truncate.go",
+  "func trimPairs(s *[]report.SeqPair, omitted *int) bool {\n\tif len(*s) == 0 {\n\t\treturn false\n\t}\n\tcut := (len(*s) + 1) / 2\n\t*omitted += cut\n",
+  "func trimPairs(s *[]report.SeqPair, omitted *int) bool {\n\tif len(*s) == 0 {\n\t\treturn false\n\t}\n\tcut := (len(*s) + 1) / 2\n",
+  "TestTruncate_TestBending")
+
+m("TB the end-of-turn line drops the tests-only sentence", "internal/recap/recap.go",
+  "\t\ttb.TestsOnlyThenGreen, tb.TestsOnlyThenGreenOmitted, \" → \"); ok {\n\t\tsentences = append(sentences, s)",
+  "\t\ttb.TestsOnlyThenGreen, tb.TestsOnlyThenGreenOmitted, \" → \"); ok {\n\t\t_ = s",
+  "TestLineTestBending|TestTestBending_")
+m("TB the end-of-turn line drops the flaky sentence", "internal/recap/recap.go",
+  "\t\ttb.Flaky, tb.FlakyOmitted, \", \"); ok {\n\t\tsentences = append(sentences, s)",
+  "\t\ttb.Flaky, tb.FlakyOmitted, \", \"); ok {\n\t\t_ = s",
+  "TestLineTestBending|TestTestBending_")
+m("TB the end-of-turn line forgets what truncate cut", "internal/recap/recap.go",
+  "\tn := len(pairs) + omitted\n", "\tn := len(pairs) + omitted*0\n", "TestLineTestBending")
+m("TB the end-of-turn line hides the other pairs", "internal/recap/recap.go",
+  "\t\ts += fmt.Sprintf(\", %d more\", n-1)", "\t\t_ = n", "TestLineTestBending")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

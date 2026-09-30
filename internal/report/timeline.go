@@ -66,6 +66,18 @@ type TimelineCall struct {
 	Outcome      string         `json:"outcome"`
 	ExitCode     *int           `json:"exit_code"`
 	Later        *LaterSuccess  `json:"later"`
+	// Bending is set on the LATER call of a test-bending pair (see
+	// DetectTestBending): the run that passed after only test files were
+	// edited, or the run whose outcome differs from the same command's
+	// previous run with no file edit between. Null on every other row.
+	Bending *TimelineBending `json:"test_bending"`
+}
+
+// TimelineBending names the pattern a row completes and the earlier run of the
+// same command it pairs with.
+type TimelineBending struct {
+	Kind  string `json:"kind"`
+	Since int64  `json:"since_seq"`
 }
 
 // TimelineCounts is the timeline's summary, per group, with the failed calls
@@ -137,6 +149,21 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 	for i := range entries {
 		if entries[i].call.Group == GroupFailed {
 			entries[i].call.Later = laterSuccess(entries, i)
+		}
+	}
+
+	// A seq is one call, so the later seq of a pair names its row.
+	bending := map[int64]TimelineBending{}
+	tb := DetectTestBending(run, denied)
+	for _, p := range tb.TestsOnlyThenGreen {
+		bending[p[1]] = TimelineBending{Kind: BendTestsOnlyThenGreen, Since: p[0]}
+	}
+	for _, p := range tb.Flaky {
+		bending[p[1]] = TimelineBending{Kind: BendFlaky, Since: p[0]}
+	}
+	for i := range entries {
+		if b, ok := bending[*entries[i].call.Seq]; ok {
+			entries[i].call.Bending = &b
 		}
 	}
 

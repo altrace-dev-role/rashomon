@@ -84,6 +84,7 @@ var hostBearing = map[string]bool{
 	"timeline.calls[].tool_name":                       false,
 	"timeline.calls[].tool_use_id":                     false,
 	"timeline.calls[].verb_class":                      false,
+	"timeline.calls[].test_bending.kind":               false,
 	"coverage.hook_entry_at_end":                       false,
 	"coverage.hook_entry_at_start":                     false,
 	"coverage.reasons[]":                               false,

@@ -139,6 +139,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	writeAccount(b, sess.Account)
 	writeSubagents(b, sess.Subagents)
 	writeSilentFailures(b, sess.SilentFailures)
+	writeTestRuns(b, sess.TestRuns)
 	// Whether a proxy store was NAMED for this render, not whether it could be
 	// read: a named store that is missing still renders its reason in full,
 	// because the reader asked about a proxy. See WithNamedProxyStore.
@@ -644,6 +645,36 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 	}
 	fmt.Fprintf(b, "    the final message contains none of these %d words: %s\n",
 		len(sf.AbsentWords), list(sf.AbsentWords))
+}
+
+// writeTestRuns renders the session's test runs and the two test-bending
+// patterns among them.
+//
+// Absent when the session recorded no test run, unlike the sections that are
+// always present: records written before the test class existed say execute
+// for the same commands, so a "test runs: 0" there would state a count the
+// record never measured.
+//
+// The limit is printed wherever a pattern is: "no file edit between" means
+// no Edit, Write, NotebookEdit or MultiEdit call and no shell call of verb
+// class write, and any other shell command between the runs could have
+// changed files this record does not see. Saying "nothing changed"
+// would be the claim the record cannot make.
+func writeTestRuns(b *bytes.Buffer, t TestRuns) {
+	if t.Runs == 0 {
+		return
+	}
+	fmt.Fprintf(b, "  test runs: %d (%d ok, %d failed)\n", t.Runs, t.OK, t.Failed)
+	for _, p := range t.TestsOnlyThenGreen {
+		fmt.Fprintf(b, "    failed, then only test files were edited, then the same command passed: %d → %d\n", p[0], p[1])
+	}
+	for _, p := range t.Flaky {
+		fmt.Fprintf(b, "    same command passed and failed with no file edit between: %d, %d\n", p[0], p[1])
+	}
+	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
+		fmt.Fprintln(b, "    a file edit here is an Edit, Write, MultiEdit or NotebookEdit call, or a shell rm, mv, cp or the like;")
+		fmt.Fprintln(b, "    any other shell command between two runs could still have changed files, and the record does not see that")
+	}
 }
 
 // collapse turns a multi-line message into one line. The report's own
