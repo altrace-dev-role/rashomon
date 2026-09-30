@@ -58,6 +58,10 @@ func Text(w io.Writer, s *Summary) error {
 		fmt.Fprintf(&b, "\nnote: %s under projects/ could not be read; the transcripts in %s are not counted\n",
 			countOf(s.Read.UnreadableDirs, "folder"), itThem(s.Read.UnreadableDirs))
 	}
+	if s.Read.UnparsedUsageLines > 0 {
+		fmt.Fprintf(&b, "\nnote: %s that may carry usage could not be read (a malformed field, or a negative or implausibly large count), so %s not counted\n",
+			countOf(s.Read.UnparsedUsageLines, "transcript line"), itThem(s.Read.UnparsedUsageLines)+" "+isAre(s.Read.UnparsedUsageLines))
+	}
 	if s.Read.UnreadableFiles > 0 {
 		fmt.Fprintf(&b, "\nnote: %s could not be read to the end; what they hold past that point is not counted\n",
 			countOf(s.Read.UnreadableFiles, "transcript file"))
@@ -260,6 +264,13 @@ func countOf(n int, noun string) string {
 		return "1 " + noun
 	}
 	return strconv.Itoa(n) + " " + noun + "s"
+}
+
+func isAre(n int) string {
+	if n == 1 {
+		return "is"
+	}
+	return "are"
 }
 
 func wasWere(n int) string {

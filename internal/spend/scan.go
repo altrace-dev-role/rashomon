@@ -85,6 +85,38 @@ type usage struct {
 	Iterations []tokens `json:"iterations"`
 }
 
+// maxTokens bounds one count of one response. The largest context window a
+// model in the table has is a few million tokens, so a count past a hundred
+// million is not a response's; and the bound keeps every price this package
+// computes (tokens x nanodollars per token, summed) far inside an int64.
+const maxTokens = 100_000_000
+
+// plausible reports whether every count in a usage -- top level, TTL split
+// and each iteration -- is at least zero and at most maxTokens.
+func (u *usage) plausible() bool {
+	ok := func(t tokens) bool {
+		n := []int64{t.Input, t.Output, t.CacheRead, t.CacheCreation}
+		if t.CacheSplit != nil {
+			n = append(n, t.CacheSplit.Ephemeral5m, t.CacheSplit.Ephemeral1h)
+		}
+		for _, v := range n {
+			if v < 0 || v > maxTokens {
+				return false
+			}
+		}
+		return true
+	}
+	if !ok(u.tokens) {
+		return false
+	}
+	for _, it := range u.Iterations {
+		if !ok(it) {
+			return false
+		}
+	}
+	return true
+}
+
 // Tokens is one response's token counts by kind, with the cache writes
 // split by TTL because the two TTLs are priced differently.
 type Tokens struct {
@@ -172,6 +204,13 @@ type Scan struct {
 	// Undated counts responses with no parseable timestamp. They cannot be
 	// placed in or out of a window, so they are excluded and counted.
 	Undated int
+	// Unparsed counts lines that may carry usage and could not be counted:
+	// a line that does not decode into the usage shape (a token count
+	// written as a string, a timestamp as a number), or a usage whose counts
+	// are negative or implausibly large (plausible). Such a line used to be
+	// dropped without a word, or -- a negative count -- priced as negative
+	// dollars subtracted from the total.
+	Unparsed int
 	// Stale counts the transcripts Discover skipped as last written before
 	// the window (Found.Stale).
 	Stale int
@@ -408,10 +447,18 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			continue
 		}
 		var l line
-		if json.Unmarshal(raw, &l) != nil || l.Message.Usage == nil {
+		if json.Unmarshal(raw, &l) != nil {
+			sc.Unparsed++
+			continue
+		}
+		if l.Message.Usage == nil {
 			continue
 		}
 		sc.UsageLines++
+		if !l.Message.Usage.plausible() {
+			sc.Unparsed++
+			continue
+		}
 		if l.Message.ID == "" {
 			continue
 		}

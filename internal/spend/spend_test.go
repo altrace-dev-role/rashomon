@@ -435,6 +435,48 @@ func TestDiscover_AnUnreadableFolderIsCountedNotFatal(t *testing.T) {
 	}
 }
 
+// TestUnparsed_AMalformedOrImplausibleLineIsCountedNotPriced: a token count
+// written as a string or a timestamp as a number made the whole line fail to
+// decode, and it was dropped without a word; a negative count was priced as
+// negative dollars, and an absurd one as an absurd bill. Each is left out of
+// every figure and counted, and the text says so.
+func TestUnparsed_AMalformedOrImplausibleLineIsCountedNotPriced(t *testing.T) {
+	c := newConfig(t)
+	good := resp{id: "ok", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1000, stop: "end_turn"}.line("text")
+	bend := func(id string, edit func(map[string]any)) string {
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(resp{id: id, model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 5, stop: "end_turn"}.line("text")), &obj); err != nil {
+			t.Fatal(err)
+		}
+		edit(obj)
+		b, err := json.Marshal(obj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	usageOf := func(o map[string]any) map[string]any { return o["message"].(map[string]any)["usage"].(map[string]any) }
+	c.write("proj/sess-a.jsonl", good,
+		bend("str", func(o map[string]any) { usageOf(o)["input_tokens"] = "500" }),
+		bend("num", func(o map[string]any) { o["timestamp"] = 1790683200 }),
+		bend("neg", func(o map[string]any) { usageOf(o)["output_tokens"] = -2000000 }),
+		bend("huge", func(o map[string]any) { usageOf(o)["cache_read_input_tokens"] = int64(1) << 50 }),
+		bend("iter", func(o map[string]any) {
+			usageOf(o)["iterations"] = []map[string]any{{"input_tokens": -7}, {"input_tokens": 5}}
+		}))
+	s := c.summary(30)
+	if s.Total.Nano != 1000*opusIn || s.Responses != 1 {
+		t.Errorf("total = %d over %d responses, want %d over 1: a malformed or implausible line was priced",
+			s.Total.Nano, s.Responses, 1000*opusIn)
+	}
+	if s.Read.UnparsedUsageLines != 5 {
+		t.Errorf("unparsed usage lines = %d, want 5", s.Read.UnparsedUsageLines)
+	}
+	if txt, _ := render(t, s); !strings.Contains(txt, "note: 5 transcript lines that may carry usage could not be read") {
+		t.Errorf("the text does not say lines were left out:\n%s", txt)
+	}
+}
+
 // TestDiscover_SkipsFilesLastWrittenBeforeTheWindow: a file whose mtime is
 // older than the window cannot hold a response inside it.
 func TestDiscover_SkipsFilesLastWrittenBeforeTheWindow(t *testing.T) {

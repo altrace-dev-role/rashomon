@@ -1080,8 +1080,8 @@ m("FF the catch-up re-rules on a turn Stop checked", "internal/recap/state.go",
 m("SP a response's lines are summed, not counted once", "internal/spend/scan.go",
   "\t\tkeep(prev, cand)\n", "\t\tsc.Responses = append(sc.Responses, cand)\n\t\t_ = prev\n", "TestDedupe_")
 m("SP the dedupe is per file, so a response carried into a second file counts twice", "internal/spend/scan.go",
-  "\tbyID := map[string]*Response{}\n\tfor i, f := range files {\n",
-  "\tfor i, f := range files {\n\t\tbyID := map[string]*Response{}\n", "TestDedupe_OneResponseInTwoFiles")
+  "\tbyID := map[string]*Response{}\n\tfor i, f := range found.Files {\n",
+  "\tfor i, f := range found.Files {\n\t\tbyID := map[string]*Response{}\n", "TestDedupe_OneResponseInTwoFiles")
 m("SP the first line of a response is kept, not the completed one", "internal/spend/scan.go",
   "\tif !better {\n\t\treturn\n\t}", "\tif !better || true {\n\t\treturn\n\t}", "TestDedupe_TheCompletedLine")
 m("SP a response starts at its latest line, not its earliest", "internal/spend/scan.go",
@@ -1262,6 +1262,20 @@ m("SP a session folder that cannot be read is not counted", "internal/spend/scan
   "TestDiscover_AnUnreadableFolder")
 m("SP folders that could not be read are not said", "internal/spend/text.go",
   "\tif s.Read.UnreadableDirs > 0 {", "\tif false {", "TestDiscover_AnUnreadableFolder")
+m("SP a usage line that does not decode is dropped without a count", "internal/spend/scan.go",
+  "\t\tif json.Unmarshal(raw, &l) != nil {\n\t\t\tsc.Unparsed++", "\t\tif json.Unmarshal(raw, &l) != nil {\n\t\t\t_ = sc",
+  "TestUnparsed_")
+m("SP an implausible usage is priced", "internal/spend/scan.go",
+  "\t\tif !l.Message.Usage.plausible() {", "\t\tif false && !l.Message.Usage.plausible() {", "TestUnparsed_")
+m("SP a negative token count is plausible", "internal/spend/scan.go",
+  "\t\t\tif v < 0 || v > maxTokens {", "\t\t\tif v > maxTokens {", "TestUnparsed_")
+m("SP an implausibly large token count is plausible", "internal/spend/scan.go",
+  "\t\t\tif v < 0 || v > maxTokens {", "\t\t\tif v < 0 {", "TestUnparsed_")
+m("SP an iteration's counts are not checked", "internal/spend/scan.go",
+  "\tfor _, it := range u.Iterations {\n\t\tif !ok(it) {", "\tfor _, it := range u.Iterations {\n\t\tif false && !ok(it) {",
+  "TestUnparsed_")
+m("SP unparsed usage lines are not said", "internal/spend/text.go",
+  "\tif s.Read.UnparsedUsageLines > 0 {", "\tif false {", "TestUnparsed_")
 
 # Import additions some mutants need.
 IMPORTS = {
