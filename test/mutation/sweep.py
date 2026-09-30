@@ -1103,10 +1103,10 @@ m("TL --timeline never reaches the renderer", "cmd/rashomon/main.go",
 m("TL an execution with no declaration and no terminal is left off", "internal/report/timeline.go",
   "\tfor _, x := range run.Executions {\n\t\tadd(x.ToolUseID)\n\t}\n", "", "TestTimeline_")
 m("TL a dropped call's execution is thrown away", "internal/report/timeline.go",
-  "\t\tc.Outcome, _, _ = linkOutcome(id, executed, denied)", "\t\tc.Outcome = LinkUnknown", "TestTimeline_")
+  "\t\tc.Outcome = timelineOutcome(id, rec, executed, denied)", "\t\tc.Outcome = LinkUnknown", "TestTimeline_")
 m("TL an undeclared call loses its exit code", "internal/report/timeline.go",
-  "\t\tc.ExitCode = lastExitCode(recs)\n\t\tentries = append(entries, timelineEntry{call: c, pos: lastExecSeq(recs)})",
-  "\t\tentries = append(entries, timelineEntry{call: c, pos: lastExecSeq(recs)})", "TestTimeline_")
+  "\t\tc.ExitCode = outcomeExitCode(rec)\n\t\tentries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec)})",
+  "\t\tentries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec)})", "TestTimeline_")
 m("TL an undeclared call loses the tool name its execution carries", "internal/report/timeline.go",
   "\t\t\tc.ToolName = recs[len(recs)-1].ToolName", "\t\t\t_ = recs", "TestTimeline_")
 m("TL an undeclared call is attributed to the main agent", "internal/report/timeline.go",
@@ -1158,13 +1158,13 @@ m("TL a subagent's call counts as the main agent's", "internal/report/timeline.g
 m("TL the header names the main agent without its count", "internal/report/timeline_text.go",
   "\twho := fmt.Sprintf(\"%d main agent\", n.MainAgent)", "\twho := \"main agent\"", "TestTimeline_")
 m("TL the digest reaches the JSON", "internal/report/timeline.go",
-  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, recs), pos: lastExecSeq(recs)})",
-  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, recs), pos: lastExecSeq(recs)})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest",
+  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(rec)})",
+  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(rec)})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest",
   "TestTimeline_JSONCarriesNoDigest")
 
 # #36 review round 3.
 m("TL a rewritten success counts as the same command", "internal/report/timeline.go",
-  "\t\treturn recs[len(recs)-1].ExecutedDigest\n", "\t\treturn declared\n", "TestTimeline_")
+  "\t\treturn rec.ExecutedDigest\n", "\t\treturn declared\n", "TestTimeline_")
 m("TL an undeclared later success reads as no later success", "internal/report/timeline.go",
   "\t\t\tif e.pos == nil || *e.pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif false {\n\t\t\t\tunplaced = true", "TestTimeline_")
 m("TL an undeclared earlier success leaves the failure unchecked", "internal/report/timeline.go",
@@ -1193,10 +1193,18 @@ m("TL tool_name reaches the terminal raw in a chain row", "internal/report/text.
   "\t\tl.Seq, printable(l.ToolName), shape,", "\t\tl.Seq, l.ToolName, shape,", "TestText_ToolNameIsPrintable")
 m("TL the capped listing prints every row anyway", "internal/report/timeline_text.go",
   "plural(rest))\n\t\t\tbreak\n", "plural(rest))\n", "TestTimeline_")
-m("TL the exit code is read from the first of two records", "internal/report/timeline.go",
-  "\treturn recs[len(recs)-1].ExitCode", "\treturn recs[0].ExitCode", "TestTimeline_")
-m("TL the position is read from the first of two records", "internal/report/timeline.go",
-  "\treturn recs[len(recs)-1].Seq", "\treturn recs[0].Seq", "TestTimeline_")
+m("TL the exit code is read from the highest-seq record, not the outcome's", "internal/report/timeline.go",
+  "\t\tc.ExitCode = outcomeExitCode(rec)\n\t\tentries = append(entries, timelineEntry{call: c, digest:",
+  "\t\tc.ExitCode = outcomeExitCode(outcomeRecord(executed[d.ToolUseID][max(len(executed[d.ToolUseID])-1, 0):]))\n\t\tentries = append(entries, timelineEntry{call: c, digest:", "TestTimeline_")
+m("TL the position is read from the highest-seq record, not the outcome's", "internal/report/timeline.go",
+  "effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(rec)})",
+  "effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(outcomeRecord(executed[d.ToolUseID][max(len(executed[d.ToolUseID])-1, 0):]))})", "TestTimeline_")
+m("TL a failed record behind a later ok one is not the outcome record", "internal/report/timeline.go",
+  "\t\tif recs[i].Outcome == store.ExecFailed {\n\t\t\treturn &recs[i]", "\t\tif false {\n\t\t\treturn &recs[i]", "TestTimeline_")
+m("TL a failure behind a later ok record reads ok", "internal/report/timeline.go",
+  "\tif rec != nil && rec.Outcome == store.ExecFailed {\n\t\treturn store.ExecFailed\n\t}\n", "", "TestTimeline_")
+m("TL the first failed record, not the last, is the outcome record", "internal/report/timeline.go",
+  "\tfor i := len(recs) - 1; i >= 0; i-- {", "\tfor i := 0; i < len(recs); i++ {", "TestTimeline_")
 m("TL the follow-up arrow does not name the agent", "internal/report/timeline_text.go",
   "\t\twho = \", \" + agentLabel(l.Agent)", "\t\t_ = l.Agent", "TestTimeline_")
 m("TL the follow-up's agent is left out of the JSON", "internal/report/timeline.go",
