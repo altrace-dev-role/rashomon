@@ -32,6 +32,7 @@ type resp struct {
 	stop               string // "" writes stop_reason null
 	iters              []resp // usage.iterations, when set
 	typ                string // an iteration entry's type; "" writes "message"
+	category           string // a refusal's stop_details.category; "" writes null
 	sidechain          bool
 	noTimestamp        bool
 	noSplit            bool   // write cache_creation_input_tokens without the TTL split
@@ -100,18 +101,29 @@ func (r resp) line(block string) string {
 	if session == "" {
 		session = "sess-a"
 	}
+	// stop_details is null for every stop reason but a refusal, whose
+	// explanation is prose and carries the canary.
+	var details any
+	if r.stop == "refusal" {
+		var category any
+		if r.category != "" {
+			category = r.category
+		}
+		details = map[string]any{"type": "refusal", "category": category, "explanation": "declined " + canary}
+	}
 	obj := map[string]any{
 		"type":        "assistant",
 		"sessionId":   session,
 		"isSidechain": r.sidechain,
 		"cwd":         "/home/someone/secret-project-" + canary,
 		"message": map[string]any{
-			"id":          r.id,
-			"model":       r.model,
-			"role":        "assistant",
-			"stop_reason": stop,
-			"content":     content,
-			"usage":       r.usage(),
+			"id":           r.id,
+			"model":        r.model,
+			"role":         "assistant",
+			"stop_reason":  stop,
+			"stop_details": details,
+			"content":      content,
+			"usage":        r.usage(),
 		},
 	}
 	if !r.noTimestamp {
@@ -1385,9 +1397,11 @@ func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 	}{
 		{"beside a billed response", []string{
 			resp{id: "r", model: "claude-opus-5-5", at: at, in: 10, stop: "end_turn"}.line("text"), synthetic("z1"), synthetic("z2")}, 2,
-			"refusals      2 pre-output refusals were written without usage, so their billing cannot be read\n"},
+			"refusals      2 pre-output refusals were written without usage\n" +
+				"              uncategorized on other: 2 without usage, not billed (a pre-output refusal in this category is not)\n"},
 		{"alone", []string{synthetic("z1")}, 1,
-			"refusals      1 pre-output refusal was written without usage, so its billing cannot be read\n"},
+			"refusals      1 pre-output refusal was written without usage\n" +
+				"              uncategorized on other: 1 without usage, not billed (a pre-output refusal in this category is not)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newConfig(t)
@@ -1404,6 +1418,59 @@ func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 				t.Errorf("the savings output does not say refusal savings are not computed:\n%s", txt)
 			}
 		})
+	}
+}
+
+// TestRefusals_AreSplitByCategoryAndModel: stop_details.category was never
+// read, so every refusal landed in one total and one line, and nothing told
+// a classifier decline in a named category from the rest. Worse, a
+// pre-output refusal in a category the API bills before any output (bio,
+// frontier_llm, reasoning_extraction) was said to have billing that "cannot
+// be read": it was billed, and the transcript does not hold the amount. The
+// category is read as a closed word -- a null is "uncategorized", a word the
+// page does not name is "other" -- and the refusals are split by category
+// and model, each saying what the page says of its billing.
+func TestRefusals_AreSplitByCategoryAndModel(t *testing.T) {
+	c := newConfig(t)
+	at := now.Add(-time.Hour)
+	synthetic := func(id, category string) string {
+		return resp{id: id, model: "<synthetic>", at: at, stop: "refusal", category: category}.line("text")
+	}
+	c.write("proj/sess-a.jsonl",
+		resp{id: "f", model: "claude-fable-5-1", at: at, in: 1000, out: 40, stop: "refusal", category: "cyber"}.line("text"),
+		resp{id: "o", model: "claude-opus-5-5", at: at, in: 10, stop: "refusal", category: "cyber"}.line("text"),
+		synthetic("z1", "bio"), synthetic("z2", "bio"), synthetic("z3", "cyber"), synthetic("z4", ""), synthetic("z5", "a_new_category"))
+	s := c.summary(30)
+	yes, no := true, false
+	want := []RefusalGroup{
+		{Category: "bio", Model: "other", WithoutUsage: 2, BilledBeforeOutput: &yes},
+		{Category: "cyber", Model: "claude-fable-5-1", Responses: 1, Cost: Cost{Nano: 1000*10000 + 40*50000, Priced: 1}, BilledBeforeOutput: &no},
+		{Category: "cyber", Model: "claude-opus-5-5", Responses: 1, Cost: Cost{Nano: 10 * opusIn, Priced: 1}, BilledBeforeOutput: &no},
+		{Category: "cyber", Model: "other", WithoutUsage: 1, BilledBeforeOutput: &no},
+		{Category: "other", Model: "other", WithoutUsage: 1},
+		{Category: "uncategorized", Model: "other", WithoutUsage: 1, BilledBeforeOutput: &no},
+	}
+	if !reflect.DeepEqual(s.Refusals.ByCategory, want) {
+		t.Errorf("by category = %+v\nwant %+v", s.Refusals.ByCategory, want)
+	}
+	txt, js := render(t, s)
+	for _, line := range []string{
+		"refusals      2 responses ended in a refusal, $0.01; 5 pre-output refusals were written without usage\n",
+		"              bio on other: 2 without usage, billed before any output in this category; the amount is not in the transcript\n",
+		"              cyber on claude-fable-5-1: 1 response, $0.01\n",
+		"              cyber on other: 1 without usage, not billed (a pre-output refusal in this category is not)\n",
+		"              other on other: 1 without usage, billing unknown (a category this read does not know)\n",
+	} {
+		if !strings.Contains(txt, line) {
+			t.Errorf("text lacks %q:\n%s", line, txt)
+		}
+	}
+	if !strings.Contains(js, `{"category":"bio","model":"other","responses":0,"cost":{"usd":0,"unpriced_responses":0,"unpriced_tokens":0},"without_usage":2,"billed_before_output":true}`) ||
+		!strings.Contains(js, `"category":"other","model":"other","responses":0,"cost":{"usd":0,"unpriced_responses":0,"unpriced_tokens":0},"without_usage":1,"billed_before_output":null}`) {
+		t.Errorf("the JSON does not split the refusals by category:\n%s", js)
+	}
+	if strings.Contains(txt+js, "a_new_category") {
+		t.Errorf("a category outside the closed vocabulary was printed as read:\n%s\n%s", txt, js)
 	}
 }
 
@@ -1459,13 +1526,15 @@ func TestOutput_StatesTheBasisOfEveryFigure(t *testing.T) {
 // thinking and tool_use blocks and in cwd, and neither rendering carries it.
 // It also sits in the decoded fields that are printed only as closed words:
 // an iteration entry's type and model, on a fallback-served response whose
-// declined attempt is printed by model.
+// declined attempt is printed by model, and a refusal's category (and the
+// explanation beside it, which is not read).
 func TestContentNeverReachesTheOutput(t *testing.T) {
 	c := newConfig(t)
 	at := now.Add(-time.Hour)
 	r := resp{id: "msg_1", model: "claude-opus-5-5", at: at, in: 1000, out: 500, w5: 10, stop: "tool_use"}
 	c.write("proj/sess-a.jsonl", r.line("thinking"), r.line("text"), r.line("tool_use"),
-		resp{id: "msg_2", model: "claude-opus-5-5", at: at.Add(10 * oneMinute), w5: 100, stop: "refusal"}.line("text"),
+		resp{id: "msg_2", model: "claude-opus-5-5", at: at.Add(10 * oneMinute), w5: 100, stop: "refusal", category: canary}.line("text"),
+		resp{id: "msg_6", model: "arn:aws:bedrock:" + canary, at: at.Add(11 * oneMinute), stop: "refusal", category: "bio-" + canary}.line("text"),
 		resp{id: "msg_4", model: "claude-opus-5-5", at: at.Add(20 * oneMinute), in: 10, out: 5, stop: "end_turn", iters: []resp{
 			{model: "arn:aws:bedrock:" + canary, in: 4, out: 2},
 			{typ: canary, model: "claude-" + canary, in: 3, out: 1},
@@ -1526,6 +1595,9 @@ func TestContentHasNoFieldToLandIn(t *testing.T) {
 				"cache_creation_input_tokens": true, "cache_creation": true,
 				"ephemeral_5m_input_tokens": true, "ephemeral_1h_input_tokens": true,
 				"iterations": true, "speed": true,
+				// A refusal's category, read as a closed word
+				// (refusalCategory); its explanation is not read.
+				"stop_details": true, "category": true,
 				// A subagent user line's header: a closed word, a flag and
 				// the promptId key that ties a response to its turn.
 				"type": true, "isMeta": true, "promptId": true,

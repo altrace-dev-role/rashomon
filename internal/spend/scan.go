@@ -35,7 +35,8 @@ var userMarker = []byte(`"user"`)
 // The decoded shape of one transcript line. THIS IS THE WHOLE USAGE READ
 // PATH -- every total, breakdown and heuristic in the document comes from it
 // -- and it is stated as narrowly as the recorder's own rules are:
-// message.id, message.model, message.stop_reason, message.usage's token
+// message.id, message.model, message.stop_reason, message.stop_details'
+// category, message.usage's token
 // counts and speed, each usage.iterations entry's counts, type and model, and
 // the line's timestamp, sessionId and isSidechain -- and, for a
 // subagent transcript's user lines, type, isMeta and promptId, the key that
@@ -71,10 +72,59 @@ type line struct {
 }
 
 type message struct {
-	ID         string  `json:"id"`
-	Model      string  `json:"model"`
-	StopReason *string `json:"stop_reason"`
-	Usage      *usage  `json:"usage"`
+	ID          string       `json:"id"`
+	Model       string       `json:"model"`
+	StopReason  *string      `json:"stop_reason"`
+	StopDetails *stopDetails `json:"stop_details"`
+	Usage       *usage       `json:"usage"`
+}
+
+// stopDetails is a refusal's stop_details: its category alone, read as a
+// closed word (refusalCategory). The explanation beside it is prose and has
+// no field to land in.
+type stopDetails struct {
+	Category *string `json:"category"`
+}
+
+// Refusal categories, as refusalCategory reads them: the five the
+// refusals-and-fallback page names, "uncategorized" for a null (or absent)
+// category -- which the page calls "a normal, permanent value" -- and
+// "other" for anything else.
+const (
+	CategoryCyber               = "cyber"
+	CategoryBio                 = "bio"
+	CategoryFrontierLLM         = "frontier_llm"
+	CategoryReasoningExtraction = "reasoning_extraction"
+	CategoryGeneralHarms        = "general_harms"
+	CategoryUncategorized       = "uncategorized"
+	CategoryOther               = "other"
+)
+
+// refusalCategory is a refusal's category as a closed word.
+func refusalCategory(d *stopDetails) string {
+	if d == nil || d.Category == nil {
+		return CategoryUncategorized
+	}
+	switch c := *d.Category; c {
+	case CategoryCyber, CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction, CategoryGeneralHarms:
+		return c
+	}
+	return CategoryOther
+}
+
+// BilledBeforeOutput reports whether the API bills a refusal that arrives
+// before any output in a category, and whether that is known. The page: such
+// a refusal "is billed when its stop_details.category is bio, frontier_llm,
+// or reasoning_extraction", and "in any other category, or with a null
+// category, is not billed". A category this read does not know is neither.
+func BilledBeforeOutput(category string) (billed, known bool) {
+	switch category {
+	case CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction:
+		return true, true
+	case CategoryCyber, CategoryGeneralHarms, CategoryUncategorized:
+		return false, true
+	}
+	return false, false
 }
 
 // tokens is the counting part of a usage object, shared by the top level and
@@ -239,6 +289,9 @@ type Response struct {
 	// from a line the main transcript itself marks isSidechain.
 	Subagent   bool
 	StopReason string
+	// Category is a refusal's stop_details.category (refusalCategory), and
+	// "" for a response that did not end in a refusal.
+	Category string
 	// Fast is true when the response ran in fast mode (usage.speed "fast").
 	Fast bool
 	// StartMS is the earliest timestamp among the response's lines: the
@@ -628,6 +681,9 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 		if cand.SessionID == "" {
 			cand.SessionID = f.Session
 		}
+		if stop == "refusal" {
+			cand.Category = refusalCategory(l.Message.StopDetails)
+		}
 		cand.Attempts = extraAttempts(l.Message.Usage.Iterations)
 		cand.Fallback, cand.Requested = route(l.Message.Usage.Iterations)
 		if !dated {
@@ -664,6 +720,7 @@ func keep(prev, cand *Response) {
 	}
 	prev.Tokens = cand.Tokens
 	prev.StopReason = cand.StopReason
+	prev.Category = cand.Category
 	prev.Fast = cand.Fast
 	prev.complete = cand.complete
 	prev.Attempts, prev.Fallback, prev.Requested = cand.Attempts, cand.Fallback, cand.Requested

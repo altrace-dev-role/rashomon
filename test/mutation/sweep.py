@@ -1088,7 +1088,7 @@ m("SP a response starts at its latest line, not its earliest", "internal/spend/s
   "\tif cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS < prev.StartMS) {",
   "\tif cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS > prev.StartMS) {", "TestDedupe_TheCompletedLine")
 m("SP the transcript line decodes message.content", "internal/spend/scan.go",
-  "\tModel      string  `json:\"model\"`\n", "\tModel      string  `json:\"model\"`\n\tContent    json.RawMessage `json:\"content\"`\n",
+  "\tModel       string       `json:\"model\"`\n", "\tModel       string       `json:\"model\"`\n\tContent     json.RawMessage `json:\"content\"`\n",
   "TestContentHasNoFieldToLandIn")
 m("SP the --days window is ignored", "internal/spend/spend.go",
   "r.StartMS == 0 || r.StartMS < s.FromUnixMS {", "r.StartMS == 0 {", "TestWindow_")
@@ -1510,6 +1510,38 @@ m("SP the model asked is printed as read", "internal/spend/spend.go",
 m("SP the headline does not say the total leaves out unpriced attempts", "internal/spend/text.go",
   "\tif c := s.ExtraAttempts.Cost; c.Unpriced > 0 {", "\tif c := s.ExtraAttempts.Cost; false && c.Unpriced > 0 {",
   "TestExtraAttempts_TheFallbackPagesExample|TestRefusalsAndExtraAttempts")
+m("SP a refusal's category is not decoded", "internal/spend/scan.go",
+  "\tCategory *string `json:\"category\"`", "\tCategory *string `json:\"-\"`",
+  "TestRefusals_AreSplitByCategoryAndModel")
+m("SP a category outside the vocabulary is kept as read", "internal/spend/scan.go",
+  "\tswitch c := *d.Category; c {\n\tcase CategoryCyber, CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction, CategoryGeneralHarms:\n\t\treturn c\n\t}\n\treturn CategoryOther\n",
+  "\treturn *d.Category\n",
+  "TestRefusals_AreSplitByCategoryAndModel|TestContentNeverReachesTheOutput")
+m("SP a null category is read as other", "internal/spend/scan.go",
+  "\tif d == nil || d.Category == nil {\n\t\treturn CategoryUncategorized", "\tif d == nil || d.Category == nil {\n\t\treturn CategoryOther",
+  "TestRefusals_")
+m("SP a bio refusal before any output is not billed", "internal/spend/scan.go",
+  "\tcase CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction:\n\t\treturn true, true", "\tcase CategoryFrontierLLM, CategoryReasoningExtraction:\n\t\treturn true, true",
+  "TestRefusals_AreSplitByCategoryAndModel")
+m("SP a zero-usage refusal is not split by category", "internal/spend/spend.go",
+  "\t\t\t\trefusal(r).WithoutUsage++\n", "",
+  "TestRefusals_")
+m("SP refusals are not split by model", "internal/spend/spend.go",
+  "\t\tk := [2]string{r.Category, displayName(r.Model)}", "\t\tk := [2]string{r.Category, \"other\"}",
+  "TestRefusals_AreSplitByCategoryAndModel")
+m("SP a refusal's model is printed as read", "internal/spend/spend.go",
+  "\t\tk := [2]string{r.Category, displayName(r.Model)}", "\t\tk := [2]string{r.Category, r.Model}",
+  "TestContentNeverReachesTheOutput")
+m("SP a billed pre-output refusal is not said to be billed", "internal/spend/text.go",
+  "\t\t\tcase *g.BilledBeforeOutput:\n", "\t\t\tcase false:\n",
+  "TestRefusals_AreSplitByCategoryAndModel")
+m("SP the refusal categories are not printed", "internal/spend/text.go",
+  "\tfor _, g := range r.ByCategory {\n\t\tvar p []string", "\tfor _, g := range r.ByCategory[:0] {\n\t\tvar p []string",
+  "TestRefusals_")
+m("SP a refusal's category reaches the output end to end", "internal/spend/scan.go",
+  "\tswitch c := *d.Category; c {\n\tcase CategoryCyber, CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction, CategoryGeneralHarms:\n\t\treturn c\n\t}\n\treturn CategoryOther\n",
+  "\treturn *d.Category\n",
+  "TestSpend_NoMessageTextReachesTheOutput")
 
 # Import additions some mutants need.
 IMPORTS = {

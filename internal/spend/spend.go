@@ -228,19 +228,34 @@ type CacheExpiry struct {
 // CacheHeuristic is the rule, stated wherever its number is.
 const CacheHeuristic = "a cache write on a response that read nothing from the cache and whose previous response by the same agent in the same transcript started more than the TTL earlier (5m, or 1h for a 1h write), priced as the write over a cache read of the same tokens"
 
-// Refusals is responses that ended with stop_reason "refusal".
+// Refusals is responses that ended with stop_reason "refusal", in all and by
+// category and model (ByCategory).
 //
 // WithoutUsage counts the refusal lines Claude Code writes with no usage at
 // all -- a pre-output classifier refusal is one zero-usage "<synthetic>" line
-// -- which Build otherwise drops with every zero-token response. A count only:
-// whether such a refusal was billed depends on its category (the API bills a
-// pre-output refusal in some categories, at the rates of the model that ran
-// it), and the line carries no usage to read that from. Dropping them printed
-// "refusals none" beside a transcript that held one.
+// -- which Build otherwise drops with every zero-token response. A count, no
+// dollars: in a category the API bills before any output (BilledBeforeOutput)
+// such a refusal WAS billed, at the rates of the model that ran it, and the
+// amount is not in the transcript. Dropping them printed "refusals none"
+// beside a transcript that held a billed bio refusal.
 type Refusals struct {
-	Responses    int  `json:"responses"`
-	Cost         Cost `json:"cost"`
-	WithoutUsage int  `json:"without_usage"`
+	Responses    int            `json:"responses"`
+	Cost         Cost           `json:"cost"`
+	WithoutUsage int            `json:"without_usage"`
+	ByCategory   []RefusalGroup `json:"by_category"`
+}
+
+// RefusalGroup is one category's refusals on one model: a classifier decline
+// in a named category is told apart from the rest. BilledBeforeOutput is
+// whether the API bills a pre-output refusal in the category, null for a
+// category this read does not know.
+type RefusalGroup struct {
+	Category           string `json:"category"`
+	Model              string `json:"model"`
+	Responses          int    `json:"responses"`
+	Cost               Cost   `json:"cost"`
+	WithoutUsage       int    `json:"without_usage"`
+	BilledBeforeOutput *bool  `json:"billed_before_output"`
 }
 
 // ExtraAttempts is responses whose usage.iterations holds more than one
@@ -499,6 +514,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			Fallback:          []FallbackRoute{},
 		},
 		CacheExpiry: CacheExpiry{Heuristic: CacheHeuristic},
+		Refusals:    Refusals{ByCategory: []RefusalGroup{}},
 		FastMode:    FastMode{Pricing: FastModePricing},
 		Read: ReadStats{
 			Files:              len(sc.Files),
@@ -520,6 +536,19 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 	sessions := map[string]*SessionSpend{}
 	declined := map[string]*DeclinedAttempts{}
 	routes := map[FallbackRoute]int{}
+	refusals := map[[2]string]*RefusalGroup{}
+	refusal := func(r *Response) *RefusalGroup {
+		k := [2]string{r.Category, displayName(r.Model)}
+		g := refusals[k]
+		if g == nil {
+			g = &RefusalGroup{Category: k[0], Model: k[1]}
+			if billed, known := BilledBeforeOutput(k[0]); known {
+				g.BilledBeforeOutput = &billed
+			}
+			refusals[k] = g
+		}
+		return g
+	}
 	for _, r := range sc.Responses {
 		if r.StartMS > latest && r.Tokens.Total() > 0 {
 			s.Read.FutureDatedResponses++
@@ -531,6 +560,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		if r.Tokens.Total() == 0 {
 			if r.StopReason == "refusal" && r.StartMS <= latest {
 				s.Refusals.WithoutUsage++
+				refusal(r).WithoutUsage++
 			}
 			continue
 		}
@@ -626,6 +656,9 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		if r.StopReason == "refusal" {
 			s.Refusals.Responses++
 			costOne(&s.Refusals.Cost, r)
+			g := refusal(r)
+			g.Responses++
+			costOne(&g.Cost, r)
 		}
 		if r.Fast {
 			s.FastMode.Responses++
@@ -633,6 +666,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		s.ExtraAttempts.add(r, declined, routes)
 	}
 	s.Sessions = len(sessions)
+	s.Refusals.ByCategory = sortedRefusals(refusals)
 	s.ExtraAttempts.Declined = sortedDeclined(declined)
 	s.ExtraAttempts.Fallback = sortedRoutes(routes)
 
@@ -720,6 +754,21 @@ func (e *ExtraAttempts) add(r *Response, declined map[string]*DeclinedAttempts, 
 func displayName(model string) string {
 	name, _ := displayModel(model)
 	return name
+}
+
+func sortedRefusals(m map[[2]string]*RefusalGroup) []RefusalGroup {
+	out := []RefusalGroup{}
+	for _, g := range m {
+		out = append(out, *g)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Category != b.Category {
+			return a.Category < b.Category
+		}
+		return a.Model < b.Model
+	})
+	return out
 }
 
 func sortedDeclined(m map[string]*DeclinedAttempts) []DeclinedAttempts {

@@ -39,7 +39,7 @@ func Text(w io.Writer, s *Summary) error {
 		fmt.Fprintf(&b, "%-14soutput %s   input %s   cache write %s   cache read %s\n", "by kind",
 			money(s.ByKind.Output), money(s.ByKind.Input), money(s.ByKind.CacheWrite), money(s.ByKind.CacheRead))
 		fmt.Fprintf(&b, "%-14s%s\n", "cache expiry", coldLine(s.CacheExpiry))
-		fmt.Fprintf(&b, "%-14s%s\n", "refusals", refusalLine(s.Refusals))
+		writeLines(&b, "refusals", refusalLines(s.Refusals))
 		fmt.Fprintf(&b, "%-14s%s\n", "retries", attemptsLine(s.ExtraAttempts))
 		if len(s.ExtraAttempts.Declined) > 0 {
 			fmt.Fprintf(&b, "%-14s%s\n", "declined", declinedLine(s.ExtraAttempts.Declined))
@@ -53,7 +53,7 @@ func Text(w io.Writer, s *Summary) error {
 			fmt.Fprintf(&b, "%-14s%s\n", label, line)
 		}
 	} else if s.Refusals.WithoutUsage > 0 {
-		fmt.Fprintf(&b, "%-14s%s\n", "refusals", refusalLine(s.Refusals))
+		writeLines(&b, "refusals", refusalLines(s.Refusals))
 	}
 
 	if line := silentLine(s); line != "" {
@@ -243,9 +243,18 @@ func coldLine(c CacheExpiry) string {
 		money(c.Cost), countOf(c.Responses, "response"), c.Heuristic)
 }
 
-func refusalLine(r Refusals) string {
+// writeLines writes lines under one label, the first beside it.
+func writeLines(b *bytes.Buffer, label string, lines []string) {
+	for _, line := range lines {
+		fmt.Fprintf(b, "%-14s%s\n", label, line)
+		label = ""
+	}
+}
+
+// refusalLines is the refusals in all, then one line per category and model.
+func refusalLines(r Refusals) []string {
 	if r.Responses == 0 && r.WithoutUsage == 0 {
-		return "none (no response ended with stop_reason refusal)"
+		return []string{"none (no response ended with stop_reason refusal)"}
 	}
 	var parts []string
 	if r.Responses > 0 {
@@ -253,11 +262,31 @@ func refusalLine(r Refusals) string {
 	}
 	switch {
 	case r.WithoutUsage == 1:
-		parts = append(parts, "1 pre-output refusal was written without usage, so its billing cannot be read")
+		parts = append(parts, "1 pre-output refusal was written without usage")
 	case r.WithoutUsage > 1:
-		parts = append(parts, fmt.Sprintf("%d pre-output refusals were written without usage, so their billing cannot be read", r.WithoutUsage))
+		parts = append(parts, fmt.Sprintf("%d pre-output refusals were written without usage", r.WithoutUsage))
 	}
-	return strings.Join(parts, "; ")
+	out := []string{strings.Join(parts, "; ")}
+	for _, g := range r.ByCategory {
+		var p []string
+		if g.Responses > 0 {
+			p = append(p, fmt.Sprintf("%s, %s", countOf(g.Responses, "response"), money(g.Cost)))
+		}
+		if g.WithoutUsage > 0 {
+			w := fmt.Sprintf("%d without usage, ", g.WithoutUsage)
+			switch {
+			case g.BilledBeforeOutput == nil:
+				w += "billing unknown (a category this read does not know)"
+			case *g.BilledBeforeOutput:
+				w += "billed before any output in this category; the amount is not in the transcript"
+			default:
+				w += "not billed (a pre-output refusal in this category is not)"
+			}
+			p = append(p, w)
+		}
+		out = append(out, fmt.Sprintf("%s on %s: %s", g.Category, g.Model, strings.Join(p, "; ")))
+	}
+	return out
 }
 
 func attemptsLine(a ExtraAttempts) string {

@@ -352,11 +352,41 @@ func TestSpend_OldTranscriptsAreSkippedAndSaid(t *testing.T) {
 	}
 }
 
+// classifierLine is a refused response a fallback served, carrying the
+// canary in the fields spend decodes and prints only as closed words -- the
+// refusal's category and an iteration entry's type and model -- and in the
+// refusal's explanation, which it does not read.
+func classifierLine(t *testing.T, session, id string, at time.Time) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{
+		"type": "assistant", "timestamp": at.UTC().Format(time.RFC3339Nano),
+		"sessionId": session, "isSidechain": false,
+		"message": map[string]any{
+			"id": id, "model": "claude-opus-5-5", "role": "assistant", "content": []any{},
+			"stop_reason":  "refusal",
+			"stop_details": map[string]any{"type": "refusal", "category": spendCanary, "explanation": spendCanary},
+			"usage": map[string]any{
+				"input_tokens": 10, "output_tokens": 0,
+				"iterations": []map[string]any{
+					{"type": "message", "model": "arn:aws:bedrock:" + spendCanary, "input_tokens": 10, "output_tokens": 3},
+					{"type": spendCanary, "model": "claude-" + spendCanary, "input_tokens": 10, "output_tokens": 3},
+					{"type": "fallback_message", "model": "claude-opus-5-5", "input_tokens": 10, "output_tokens": 0},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 // TestSpend_NoMessageTextReachesTheOutput: the canary is in every block and
 // in cwd -- and in the final words of a turn that fires, so the one read of
 // message content (the verdict's) is reached end to end: the hooks record a
 // failed call whose transcript_path names a discovered transcript, and the
-// transcript's user lines carry the recorded prompt_id. Neither rendering,
+// transcript's user lines carry the recorded prompt_id -- and in a refusal's
+// category and a fallback's iteration entries (classifierLine). Neither rendering,
 // on stdout or stderr, carries a byte of it. The earlier fixture recorded a
 // path spend never discovers, so the content read never ran and a mutant
 // that printed the final message to stderr passed.
@@ -376,6 +406,7 @@ func TestSpend_NoMessageTextReachesTheOutput(t *testing.T) {
 		usageLine(t, testSession, "msg_1", now.Add(-time.Minute), 10, toolBlock("toolu_1")),
 		usageLine(t, testSession, "msg_2", now.Add(-30*time.Second), 10,
 			map[string]any{"type": "tool_use", "id": "toolu_w", "name": "Write", "input": map[string]any{"text": spendCanary}}),
+		classifierLine(t, testSession, "msg_r", now.Add(-20*time.Second)),
 		usageLine(t, testSession, "msg_3", now, 10, textBlock("All done "+spendCanary)))
 
 	_, doc := e.spend(nil)
