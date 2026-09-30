@@ -675,3 +675,41 @@ func TestJoin_NoMessageTextReachesTheOutput(t *testing.T) {
 		}
 	}
 }
+
+// TestJoin_AMainTranscriptSidechainResponseIsItsTurns: a subagent's lines can
+// be written into the main transcript itself (isSidechain). Its response is
+// spend of the turn it runs in and is priced into the turn's figure; its
+// words are never the main agent's final word; and its own user line, keyed
+// or not, never moves the tie. The reader skipped every sidechain line, so
+// SC1 fell out of the figure while the bound beside it said nothing past an
+// unkeyed line was left out.
+func TestJoin_AMainTranscriptSidechainResponseIsItsTurns(t *testing.T) {
+	c := newConfig(t)
+	rec := newRecorder(t)
+	T := now.Add(-2 * time.Hour)
+	sec := func(f float64) time.Time { return T.Add(time.Duration(f * float64(time.Second))) }
+	rec.transcript = filepath.Join(c.dir, "projects", "proj", "sess-j.jsonl")
+	rec.call("sess-j", "p1", "toolu_1", sec(0), sec(1), store.ExecFailed)
+	m := func(id string, at time.Time, in int64, text string, side bool) string {
+		return resp{id: id, model: "claude-opus-5-5", session: "sess-j", at: at, in: in, stop: "end_turn", text: text,
+			sidechain: side}.line("text")
+	}
+	c.write("proj/sess-j.jsonl",
+		userLine("sess-j", "p1", sec(-1), false),
+		resp{id: "R0", model: "claude-opus-5-5", session: "sess-j", at: sec(-0.5), in: 100, stop: "tool_use"}.line("tool_use"),
+		subUserLine("sess-j", "p-sub", sec(1.5)),
+		m("SC1", sec(2), 50000, "There was an error in the subagent.", true),
+		m("R3", sec(4), 3, "Ran the command as requested.", false))
+
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	j := s.SilentFailureTurns
+	if j.Turns != 1 {
+		t.Fatalf("turns = %d, want 1: the sidechain line's words were read as the turn's final word, or its user line moved the tie", j.Turns)
+	}
+	if want := int64(100+50000+3) * opusIn; j.Cost.Nano != want {
+		t.Errorf("cost = %d, want %d: the sidechain response SC1 is p1's spend", j.Cost.Nano, want)
+	}
+}

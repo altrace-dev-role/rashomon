@@ -317,8 +317,9 @@ type TurnFinal struct {
 	Text string
 	AtMS int64
 	// Responses is the message.id of every API response the file ties to the
-	// prompt, text or not: the turn's main-agent spend in this file, which
-	// spend prices by id. An id is a key, never content.
+	// prompt, text or not, a subagent's sidechain line in this file included:
+	// the turn's spend in this file, which spend prices by id. An id is a
+	// key, never content.
 	Responses map[string]bool
 }
 
@@ -381,6 +382,15 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 	defer f.Close() //nolint:errcheck // read-only
 
 	var current string
+	// tie records a response's id as the current prompt's spend.
+	tie := func(id string) {
+		tf := out[current]
+		if tf.Responses == nil {
+			tf.Responses = map[string]bool{}
+		}
+		tf.Responses[id] = true
+		out[current] = tf
+	}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
@@ -395,7 +405,18 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 				ID string `json:"id"`
 			} `json:"message"`
 		}
-		if json.Unmarshal(raw, &head) != nil || head.IsSidechain {
+		if json.Unmarshal(raw, &head) != nil {
+			continue
+		}
+		if head.IsSidechain {
+			// A subagent's line written into the main transcript. Its
+			// response is spend of the turn it runs in, so its id is tied
+			// to the current prompt; its words are never the main agent's
+			// final word, and its user lines (the subagent's task and tool
+			// results) never change which prompt is current.
+			if head.Type == "assistant" && want[current] && head.Message.ID != "" {
+				tie(head.Message.ID)
+			}
 			continue
 		}
 		switch head.Type {
@@ -409,14 +430,10 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			if !want[current] {
 				continue
 			}
-			tf := out[current]
 			if head.Message.ID != "" {
-				if tf.Responses == nil {
-					tf.Responses = map[string]bool{}
-				}
-				tf.Responses[head.Message.ID] = true
-				out[current] = tf
+				tie(head.Message.ID)
 			}
+			tf := out[current]
 			if !bytes.Contains(raw, []byte(`"text"`)) {
 				continue
 			}

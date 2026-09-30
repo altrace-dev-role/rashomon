@@ -1155,7 +1155,7 @@ m("SP a firing turn's spend is every main response of its transcript, not its pr
   "\t\tif f[prompt].Responses[r.ID] {", "\t\tif len(f[prompt].Responses) > 0 {",
   "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
 m("SP the transcript does not tie the response that made a turn's first call to it", "internal/report/transcript.go",
-  "\t\t\t\ttf.Responses[head.Message.ID] = true\n", "\t\t\t\ttf.Responses[head.Message.ID] = bytes.Contains(raw, []byte(`\"text\"`))\n",
+  "\t\t\tif head.Message.ID != \"\" {\n\t\t\t\ttie(head.Message.ID)", "\t\t\tif head.Message.ID != \"\" && bytes.Contains(raw, []byte(`\"text\"`)) {\n\t\t\t\ttie(head.Message.ID)",
   "TestJoin_SpendInside|TestSpend_JoinsSilentlyFailedTurns")
 m("SP a subagent's spend is never its turn's", "internal/spend/join.go",
   "\t\treturn r.prompt == prompt && slices.Contains(mains, f.Main)", "\t\treturn false && r.prompt == prompt && slices.Contains(mains, f.Main)",
@@ -1251,7 +1251,7 @@ m("SP the bound says every unkeyed user line ends a tie", "internal/spend/join.g
   "a user line with no promptId is tied to no turn",
   "TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie")
 m("SP a subagent's sidechain line is read as the turn's summary", "internal/report/transcript.go",
-  "\t\tif json.Unmarshal(raw, &head) != nil || head.IsSidechain {", "\t\tif json.Unmarshal(raw, &head) != nil {",
+  "\t\tif head.IsSidechain {\n", "\t\tif false && head.IsSidechain {\n",
   "TestFinalAssistantTexts_")
 m("SP an unbilled synthetic line counts as the previous request", "internal/spend/spend.go",
   "\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tk := stream",
@@ -1361,6 +1361,14 @@ m("SP a firing turn's final words reach the JSON", "internal/spend/join.go",
   "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n",
   "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n\t\tj.Bound = lastSaid(byFile, t.prompt)\n",
   "TestJoin_NoMessageTextReachesTheOutput|TestSpend_NoMessageTextReachesTheOutput")
+m("SP a main-transcript sidechain response is tied to no turn", "internal/report/transcript.go",
+  "\t\t\tif head.Type == \"assistant\" && want[current] && head.Message.ID != \"\" {\n\t\t\t\ttie(head.Message.ID)",
+  "\t\t\tif false && head.Type == \"assistant\" && want[current] && head.Message.ID != \"\" {\n\t\t\t\ttie(head.Message.ID)",
+  "TestJoin_AMainTranscriptSidechain")
+m("SP a main-transcript sidechain user line moves the tie", "internal/report/transcript.go",
+  "\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tcontinue\n",
+  "\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tif head.Type == \"user\" && head.PromptID != \"\" {\n\t\t\t\tcurrent = head.PromptID\n\t\t\t}\n\t\t\tcontinue\n",
+  "TestJoin_AMainTranscriptSidechain")
 
 # Import additions some mutants need.
 IMPORTS = {
