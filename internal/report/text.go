@@ -671,9 +671,10 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // fails at its cd the second time. find, rsync and scp are read or network,
 // and a pipeline is its first program's class, so `find -delete`, `find
 // -exec sed -i`, `grep | xargs sed -i` and a copy into the tree are not
-// edits either. And a run Claude Code moved to the background on its
-// timeout or by Ctrl+B is recorded ok before any test finished: only a
-// declared run_in_background is read. Each is a line of the block.
+// edits either. Each is a line of the block. A run moved to the
+// background, on its timeout, by Ctrl+B or by run_in_background, is not a
+// limit any more: its execution record says so, and it is no run with a
+// result (LinkOutcomeBackgrounded).
 //
 // The pairs are seqs, and nothing in the default report maps a seq to its
 // call, so the block's first limit line points at --timeline, which does.
@@ -700,8 +701,7 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns) {
 		fmt.Fprintln(b, "    nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp;")
 		fmt.Fprintln(b, "    nor a directory change made inside another shell command, so two runs may have been in different directories;")
 		fmt.Fprintln(b, "    a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run,")
-		fmt.Fprintln(b, "    and repeating a relative `cd DIR && runner` fails at the cd the second time;")
-		fmt.Fprintln(b, "    and a run moved to the background on its timeout or by Ctrl+B is recorded ok, as if it had passed")
+		fmt.Fprintln(b, "    and repeating a relative `cd DIR && runner` fails at the cd the second time")
 	}
 }
 

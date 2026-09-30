@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -291,5 +292,79 @@ func TestTestBending_AnyCallThatCouldChangeFilesBreaksThePair(t *testing.T) {
 				t.Errorf("a call that could change files came between the two runs; recap printed %q", line)
 			}
 		})
+	}
+}
+
+// B-A7: the review's reproduction of a suite run past its timeout. Claude Code
+// moves such a command to the background and fires PostToolUse at once, with
+// backgroundTaskId (and timedOutAfterMs) in tool_response, so the record said
+// ok and a failed run, a test edit and that launch read as "then it passed".
+// The record now says backgrounded, and a backgrounded run finishes no
+// pattern and is neither ok nor failed in test runs. And the one bit is all
+// that is read: a stdout canary beside the task id, and the id itself, reach
+// neither the store nor either report.
+func TestTestBending_ARunMovedToTheBackgroundFinishesNothing(t *testing.T) {
+	const canary = "CANARY-5e1f-backgrounded-stdout"
+	const taskID = "CANARY-7b2a-task-id"
+	s := newTBSession(t)
+	s.shell("go test ./...", false, "")
+	s.edit("/tmp/project/calc_test.go")
+
+	id := s.id()
+	in := map[string]any{"command": "go test ./...", "timeout": 600000}
+	s.declare(id, "Bash", in, "")
+	post := defaultPost()
+	post.ToolUseID = id
+	post.ToolInput = in
+	post.ToolResponse = map[string]any{
+		"stdout":           canary + "\nok  \texample.com/calc\n",
+		"stderr":           "",
+		"interrupted":      false,
+		"backgroundTaskId": taskID,
+		"timedOutAfterMs":  600000,
+	}
+	s.e.mustPost(post.build(t))
+
+	execs := s.e.executions(testSession)
+	if got := execs[len(execs)-1].fields["backgrounded"]; got != true {
+		t.Errorf("backgrounded = %v on the moved call, want true", got)
+	}
+	if got := execs[0].fields["backgrounded"]; got != false {
+		t.Errorf("backgrounded = %v on a foreground failure, want false", got)
+	}
+	if line, ok := s.line(); ok {
+		t.Errorf("a run moved to the background completed a pattern: %q", line)
+	}
+
+	js := s.e.run("", nil, "report", "--json", "--session", testSession).stdout
+	var rep struct {
+		Sessions []struct {
+			TestRuns *struct {
+				Runs, OK, Failed   int
+				TestsOnlyThenGreen [][2]int64 `json:"tests_only_then_green"`
+			} `json:"test_runs"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal([]byte(js), &rep); err != nil || len(rep.Sessions) != 1 || rep.Sessions[0].TestRuns == nil {
+		t.Fatalf("report --json: %v\n%s", err, js)
+	}
+	if tr := rep.Sessions[0].TestRuns; tr.Runs != 1 || tr.OK != 0 || tr.Failed != 1 || len(tr.TestsOnlyThenGreen) != 0 {
+		t.Errorf("test_runs = %+v, want one failed run and no pair", *tr)
+	}
+
+	text := s.e.run("", nil, "report", "--session", testSession, "--timeline").stdout
+	for rel, f := range walkStore(t, s.e.home) {
+		for _, c := range []string{canary, taskID} {
+			if bytes.Contains(f.body, []byte(c)) {
+				t.Errorf("%s contains %q", rel, c)
+			}
+		}
+	}
+	for name, out := range map[string]string{"report --json": js, "report text": text} {
+		for _, c := range []string{canary, taskID} {
+			if strings.Contains(out, c) {
+				t.Errorf("%s contains %q", name, c)
+			}
+		}
 	}
 }

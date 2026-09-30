@@ -1616,10 +1616,6 @@ m("TB the session block drops the repeated-cd limit", "internal/report/text.go",
   "\t\tfmt.Fprintln(b, \"    and repeating a relative `cd DIR && runner` fails at the cd the second time;\")\n",
   "",
   "TestTestRuns_")
-m("TB the session block drops the backgrounded-run limit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    and a run moved to the background on its timeout or by Ctrl+B is recorded ok, as if it had passed\")\n",
-  "",
-  "TestTestRuns_")
 
 m("TB the writer stays at schema 2", "internal/store/record.go",
   "const SchemaVersion = 3",
@@ -1629,6 +1625,27 @@ m("TB test runs are counted over records that predate the test class", "internal
   "\tif run == nil || !measuresTests(run) {\n",
   "\tif run == nil {\n",
   "TestTestRuns_")
+
+m("TB a backgrounded execution reads as its recorded ok", "internal/report/chains.go",
+  "\t\tcase e.Backgrounded:\n",
+  "\t\tcase false && e.Backgrounded:\n",
+  "TestTestBending|TestTestRuns_|TestTimeline_ABackgrounded")
+m("TB the post path never reads the background keys", "internal/hook/post.go",
+  "\t\trec.Backgrounded = backgroundedCall(raw)\n",
+  "\t\trec.Backgrounded = false && backgroundedCall(raw)\n",
+  "TestTestBending_ARunMovedToTheBackground|TestH20_Backgrounded")
+m("TB the background bit is read for every tool", "internal/hook/post.go",
+  "\tif pl.ToolName == \"Bash\" {\n\t\trec.Backgrounded",
+  "\tif true {\n\t\trec.Backgrounded",
+  "TestH20_BackgroundedIsReadForBashOnly")
+m("TB a false backgroundedByUser sets the bit", "internal/hook/post.go",
+  "v != \"null\" && v != \"false\"",
+  "v != \"null\"",
+  "TestH20_BackgroundedIsReadForBashOnly")
+m("TL the unknown legend drops the backgrounded call", "internal/report/timeline_text.go",
+  ", or it was moved to the background before it ended)",
+  ")",
+  "TestTimeline_ABackgrounded")
 
 # Import additions some mutants need.
 IMPORTS = {

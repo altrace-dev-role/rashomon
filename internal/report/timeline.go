@@ -17,7 +17,8 @@ const (
 	GroupFailed      = "failed"
 	GroupInterrupted = "interrupted"
 	GroupNeverRan    = "never_ran"
-	// GroupUnknown holds "no execution record" and "outcome unobserved". "No
+	// GroupUnknown holds "no execution record", "outcome unobserved" and a
+	// call moved to the background before it ended. "No
 	// execution record" is NOT never-ran: the store's own contract is that such
 	// a declaration was denied, failed, or had its execution go unrecorded, and
 	// nothing here knows which. A call whose declaration was dropped is not
@@ -95,12 +96,14 @@ type TimelineAgent struct {
 // or the same program, succeeded afterwards -- never that anything was fixed:
 // a re-run that passes proves only that it passed the second time.
 //
-// A known limit: a call moved to the background records the launch, not the
-// command's result, so its "ok" says only that it started. That is not only
-// `run_in_background: true` -- Claude Code also moves a command to the
-// background when it reaches its timeout (unless it starts with `sleep`),
-// and when the user presses Ctrl+B -- and nothing in the record tells such a
-// call apart.
+// A call moved to the background is never the later success. Its record is
+// written at the launch, not at the command's end, so its "ok" says only that
+// it started; that is `run_in_background: true`, and also a command Claude
+// Code moved to the background when it reached its timeout (unless it starts
+// with `sleep`) or when the user pressed Ctrl+B. From schema 3 the execution
+// record says so (store.Execution's Backgrounded), and such a call is in the
+// unknown group, which laterSuccess does not look in. A record written
+// before schema 3 cannot say, and its launch still reads as ok.
 type LaterSuccess struct {
 	Kind  string         `json:"kind"`
 	Seq   int64          `json:"seq"`

@@ -850,3 +850,31 @@ func TestTimeline_TextMarksEachNewDate(t *testing.T) {
 		t.Errorf("a timeline across midnight must show both dates:\n%s", b.String())
 	}
 }
+
+// A call whose execution record says it was moved to the background is in
+// the unknown group, never ok, so it is never a failure's later success: its
+// ok was the launch's. Break: read the recorded ok, and a suite that ran past
+// its timeout is offered as "then the same command succeeded".
+func TestTimeline_ABackgroundedCallIsNotALaterSuccess(t *testing.T) {
+	bg := tlExec("b", store.ExecOK, 0)
+	bg.Backgrounded = true
+	run := tlRun([]tlCall{
+		{seq: 1, id: "f", tool: "Bash", program: "go", digest: "d1"},
+		{seq: 2, id: "b", tool: "Bash", program: "go", digest: "d1"},
+	}, tlExec("f", store.ExecFailed, 1), bg)
+	tl := buildTimeline(run, nil)
+	if c := tlByID(t, tl, "b"); c.Group != GroupUnknown || c.Outcome != LinkOutcomeBackgrounded {
+		t.Errorf("backgrounded call: group %q outcome %q, want %q %q", c.Group, c.Outcome, GroupUnknown, LinkOutcomeBackgrounded)
+	}
+	if c := tlByID(t, tl, "f"); c.Later != nil || !c.LaterChecked {
+		t.Errorf("failed call: later %+v checked %v, want no later success, checked", c.Later, c.LaterChecked)
+	}
+	if tl.Counts.OK != 0 || tl.Counts.Unknown != 1 {
+		t.Errorf("counts: %+v", tl.Counts)
+	}
+	var b bytes.Buffer
+	writeTimeline(&b, tl)
+	if !strings.Contains(b.String(), "or it was moved to the background before it ended") {
+		t.Errorf("the unknown legend does not name a backgrounded call:\n%s", b.String())
+	}
+}

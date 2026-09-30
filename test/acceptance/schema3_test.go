@@ -56,7 +56,7 @@ func TestSchema3FieldsAreDeclaredButNotGloballyRequired(t *testing.T) {
 		fields []string
 	}{
 		{"declaration", []string{"host_source", "rule_match"}},
-		{"execution", []string{"rule_match"}},
+		{"execution", []string{"rule_match", "backgrounded"}},
 	} {
 		t.Run(c.def, func(t *testing.T) {
 			def, ok := defs[c.def].(map[string]any)
@@ -94,6 +94,7 @@ func TestSchema3IsRequiredOnlyAtVersion3(t *testing.T) {
 		{"declaration", "host_source"},
 		{"declaration", "rule_match"},
 		{"execution", "rule_match"},
+		{"execution", "backgrounded"},
 	} {
 		t.Run(c.def+"."+c.field, func(t *testing.T) {
 			def := defs[c.def].(map[string]any)

@@ -49,6 +49,9 @@ var (
 		"executed_digest",
 		// v3, RESERVED. See the note on the declaration list.
 		"rule_match",
+		// v3. One bit: whether a Bash call's tool_response names a background
+		// task. The id and the rest of the response are never decoded.
+		"backgrounded",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",

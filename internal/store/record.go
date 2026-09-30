@@ -157,8 +157,9 @@ type Declaration struct {
 //
 // It carries the join key, the clock and the tool name, and no field that could
 // hold any part of a tool response. The PostToolUse payload carries the
-// response; internal/hook does not declare a field for it, so it is never a
+// response; internal/hook declares no field for its content, so it is never a
 // value in this process, and there is nowhere here for it to be put if it were.
+// The one bit taken from it is Backgrounded: whether two keys are present.
 //
 // Seq is null when the record was written to the spill file because the
 // ordered stream's lock could not be taken. The id lands either way; what a
@@ -225,6 +226,19 @@ type Execution struct {
 	// RuleMatch is the rule-match layer's verdict for the call as it RAN (v3).
 	// Reserved and not yet populated; see the note on Declaration.RuleMatch.
 	RuleMatch map[string]any `json:"rule_match"`
+
+	// Backgrounded is true when this record was written while the command was
+	// still running in the background (v3): Claude Code moved it there at its
+	// timeout or on Ctrl+B, or it was launched with run_in_background. Its
+	// PostToolUse fires then, so Outcome is the launch's, not the command's,
+	// and a reader treats the call's ending as unobserved (see
+	// report.LinkOutcomeBackgrounded).
+	//
+	// Read from the presence of two keys of a Bash call's tool_response and
+	// nothing else of it; see internal/hook's backgroundResponse. False on
+	// every other tool, and on a record written before v3, which could not
+	// tell.
+	Backgrounded bool `json:"backgrounded"`
 }
 
 // Execution outcomes (v2).

@@ -312,12 +312,13 @@ The two test-bending lines have limits of their own:
   ./...` fails at the `cd` the second time, and a pass followed by that
   failure reads as the same command having both outcomes.
 - Claude Code moves a command to the background when it reaches its timeout
-  (two minutes by default) or when you press Ctrl+B, and the call is then
-  recorded as ok although no test has finished. Only a call that asked for
-  `run_in_background` is recognised as a launch. So a run backgrounded
-  mid-run counts as a passing run in `test runs` and can complete either
-  pattern: a failed run, a test edit and then a backgrounded run reads as
-  "then it passed".
+  (two minutes by default) or when you press Ctrl+B, and its `PostToolUse`
+  then fires before any test has finished. The execution record says so
+  (`backgrounded`), as it does for a `run_in_background` launch, and such a
+  run is read as outcome unobserved: it is neither ok nor failed in `test
+  runs`, completes no pattern, and sits under `unknown` in `--timeline`,
+  where it is never offered as a later success. Records written before
+  schema 3 cannot say, and a run backgrounded there still reads as ok.
 - A test edit is an Edit, Write or NotebookEdit that ran ok on a file named
   like a test (`test-file`). Deleting or moving a test through the shell, or
   regenerating snapshots or golden files (`jest -u`, a `-update` flag), is a
@@ -349,7 +350,8 @@ every finding except an unacknowledged failure.
 `permission_mode`, `tool_name`; the call's `program`, `verb_class`, argument
 *count*, and a keyed digest (HMAC) of its full input: the whole command line
 for Bash, the whole tool input for other tools; how it ended (`outcome`,
-`exit_code`, `is_interrupt`, `duration_ms`); and a `file_label` classifying the
+`exit_code`, `is_interrupt`, `duration_ms`, and `backgrounded`: whether a
+Bash call's result arrived while it was still running in the background); and a `file_label` classifying the
 path named by a Read, Edit, Write or NotebookEdit call into categories such as
 `ssh-key`, `env-file`, `cloud-config`, `credential-shaped`, `certificate` or
 `test-file` (paths touched from Bash are not labelled). A shell call whose
@@ -379,6 +381,9 @@ tools are read.
 hostnames), file contents, tool output. Not redacted: *structurally absent from
 the store*. The recorder's payload types declare no field for tool output, so it
 is never decoded into a value and no record has a field that could hold it. The
+one thing read from a Bash call's `tool_response` is whether its keys
+`backgroundTaskId` and `backgroundedByUser` are present, as one bit; the task id
+and every other key (`stdout`, `stderr`) are not decoded. The
 raw hook input is read into memory before decoding, and a failed call's error
 message, which can quote command output, is decoded and reduced to an exit code;
 nothing else of it is kept. **Commands** are reduced to a program name and an argument

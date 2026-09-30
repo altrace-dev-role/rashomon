@@ -43,7 +43,7 @@ const (
 )
 
 // How one link ended. store.ExecOK, store.ExecFailed and store.ExecInterrupted
-// are the recorded outcomes; these three are the cases where there is no
+// are the recorded outcomes; these four are the cases where there is no
 // outcome to report, kept apart because each is a different fact.
 const (
 	// LinkOutcomeDenied: the call was refused before it ran -- by the user at
@@ -54,6 +54,13 @@ const (
 	// LinkOutcomeUnobserved: an execution record exists with no outcome -- a v1
 	// record read back. The call ran; how it ended was never written down.
 	LinkOutcomeUnobserved = "outcome unobserved"
+	// LinkOutcomeBackgrounded: the execution record was written while the
+	// command was still running in the background (store.Execution's
+	// Backgrounded) -- moved there at its timeout or on Ctrl+B, or launched
+	// with run_in_background. Its recorded ok is the launch's; how the command
+	// itself ended was never recorded, so it reads as unobserved, never as a
+	// success.
+	LinkOutcomeBackgrounded = "moved to the background, outcome unobserved"
 	// LinkOutcomeNoRecord: no execution record at all. The store's own comment
 	// is the reason this is its own value: such a declaration was denied,
 	// failed, or had its execution go unrecorded, and nothing in the record
@@ -375,7 +382,10 @@ func linkOutcome(id string, executed map[string][]store.Execution, denied map[st
 	all := make([]string, 0, len(recs))
 	for _, e := range recs {
 		o := e.Outcome
-		if o == "" {
+		switch {
+		case e.Backgrounded:
+			o = LinkOutcomeBackgrounded
+		case o == "":
 			o = LinkOutcomeUnobserved
 		}
 		all = append(all, o)

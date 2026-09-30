@@ -313,6 +313,10 @@
           "description": "Schema 2. The shape digest of the input as it ACTUALLY RAN. Measured on Claude Code 2.1.258: PreToolUse carries tool_input as the model asked for it and PostToolUse carries it after any hook rewrote it, under the same tool_use_id, so comparing this against the declaration's shape.digest is the only way a rewriting hook is visible at all -- the transcript keeps only the pre-rewrite input. HMAC'd with the same per-install key as the declared digest, so the two are comparable to each other and to nothing else: a reader can say the executed call differed from the declared one and cannot say how. Empty string when the payload carried no tool_input; empty must NOT compare unequal to a declared digest, because an unknown digest counted as a difference would report every such call as rewritten.",
           "type": "string"
         },
+        "backgrounded": {
+          "description": "Schema 3. True when this record was written while the command was still running in the background: Claude Code moved it there at its timeout (unless it starts with sleep) or on Ctrl+B, or it was launched with run_in_background. Its PostToolUse fires then, so outcome is the launch's and not the command's, and a reader treats the call's ending as unobserved. Read from whether a Bash call's tool_response carries the key backgroundTaskId or backgroundedByUser, as one bit: the task id and every other key of the response are never decoded. False on every other tool.",
+          "type": "boolean"
+        },
         "rule_match": {
           "description": "Schema 3. The rule-match layer's verdict for this record. Its SHAPE IS DEFINED BY THAT LAYER and is deliberately left open here, so the layer can add fields without a fourth schema version; this entry reserves the key and the null. NULL MEANS NOT COMPUTED BY THIS VERSION -- not 'no rule matched', which is a result and will be expressed inside the object. A reader that cannot tell those apart will report an absence of rules as an absence of matches.",
           "type": [
@@ -336,7 +340,8 @@
           },
           "then": {
             "required": [
-              "rule_match"
+              "rule_match",
+              "backgrounded"
             ]
           }
         }

@@ -24,6 +24,7 @@ type tbCall struct {
 	outcome string // ok, failed, interrupted, "" for no execution record
 	agent   string
 	prog    string // for Bash: the program, go when empty
+	bg      bool   // the execution record says backgrounded
 }
 
 func tbRun(calls ...tbCall) *store.Run {
@@ -56,7 +57,7 @@ func tbRun(calls ...tbCall) *store.Run {
 		}
 		run.Declarations = append(run.Declarations, d)
 		if c.outcome != "" {
-			run.Executions = append(run.Executions, store.Execution{ToolUseID: id, ToolName: c.tool, Outcome: c.outcome})
+			run.Executions = append(run.Executions, store.Execution{ToolUseID: id, ToolName: c.tool, Outcome: c.outcome, Backgrounded: c.bg})
 		}
 	}
 	return run
@@ -64,6 +65,14 @@ func tbRun(calls ...tbCall) *store.Run {
 
 func test(seq int64, digest, outcome string) tbCall {
 	return tbCall{seq: seq, tool: "Bash", verb: shape.VerbTest, digest: digest, outcome: outcome}
+}
+
+// bgTest is a test run whose execution record was written while it was still
+// running in the background: recorded ok, at the launch.
+func bgTest(seq int64, digest string) tbCall {
+	c := test(seq, digest, store.ExecOK)
+	c.bg = true
+	return c
 }
 
 func edit(seq int64, label, outcome string) tbCall {
@@ -156,6 +165,21 @@ func TestTestBending(t *testing.T) {
 			run:   tbRun(test(1, "d", failed), test(2, "d", ok), edit(3, tf, ok)),
 			green: pairs(), flaky: pairs(SeqPair{1, 2})},
 
+		{name: "A: a run moved to the background does not finish it",
+			run:   tbRun(test(1, "d", failed), edit(2, tf, ok), bgTest(3, "d")),
+			green: pairs(), flaky: pairs(),
+			why: "its ok is the launch's: the suite reached its timeout and was still running, so it did not pass"},
+		{name: "A: a run moved to the background does not start it",
+			run:   tbRun(bgTest(1, "d"), edit(2, tf, ok), test(3, "d", ok)),
+			green: pairs(), flaky: pairs()},
+
+		{name: "B: a run moved to the background is not an outcome",
+			run:   tbRun(test(1, "d", failed), bgTest(2, "d")),
+			green: pairs(), flaky: pairs(),
+			why: "fail, then a launch recorded ok, is not the same command having both outcomes"},
+		{name: "B: a run moved to the background does not start one",
+			run:   tbRun(bgTest(1, "d"), test(2, "d", failed)),
+			green: pairs(), flaky: pairs()},
 		{name: "B: failed then ok, nothing edited",
 			run:   tbRun(test(1, "d", failed), test(2, "d", ok)),
 			green: pairs(), flaky: pairs(SeqPair{1, 2})},
@@ -419,7 +443,6 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run",
 		"nor is find -delete or -exec, xargs sed -i behind a read, or rsync or scp",
 		"repeating a relative `cd DIR && runner` fails at the cd the second time",
-		"a run moved to the background on its timeout or by Ctrl+B is recorded ok, as if it had passed",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)
@@ -427,6 +450,15 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	}
 	if strings.Contains(out, "nothing changed") {
 		t.Errorf("text claims nothing changed:\n%s", out)
+	}
+	if strings.Contains(out, "background") {
+		t.Errorf("text states the backgrounded-run limit, which the record now closes:\n%s", out)
+	}
+
+	// A run moved to the background is neither ok nor failed: its ok is the
+	// launch's.
+	if bg := testRunsOf(tbRun(test(1, "d", failed), bgTest(2, "d"))); bg.Runs != 1 || bg.OK != 0 || bg.Failed != 1 {
+		t.Errorf("with a backgrounded run: runs/ok/failed = %d/%d/%d, want 1/0/1", bg.Runs, bg.OK, bg.Failed)
 	}
 
 	b.Reset()

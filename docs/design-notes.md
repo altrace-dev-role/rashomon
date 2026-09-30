@@ -133,7 +133,7 @@ The `PostToolUse` payload carries the same session fields plus `tool_name`,
 `tool_use_id`, `session_id` and `tool_name` beside its own `seq`,
 `recorded_at_unix_ms` and `schema_version`, and — since schema 2 — how the call
 ENDED: `outcome`, `exit_code`, `is_interrupt`, `duration_ms`, and
-`executed_digest`.
+`executed_digest`; since schema 3, `backgrounded` as well.
 
 That last one is why the post path reads `tool_input` at all. It derives the
 same shape digest the declaration derived, under the same per-install key, so
@@ -143,7 +143,12 @@ input itself is not persisted — only the digest of it survives.
 
 `tool_response` is tool output: the file a `Read` returned, the bytes a command
 printed. The payload struct has no field for it, so `encoding/json` discards it
-and it is never a value in this process. The guarantee is structural rather
+and it is never a value in this process. Since schema 3 one bit is taken from a
+Bash call's response: whether `backgroundTaskId` or `backgroundedByUser` is
+present, which says the call's `PostToolUse` fired while the command was still
+running in the background. A second decode claims those two keys and no other,
+each into a presence bit, so the task id, `stdout` and `stderr` are skipped
+unread; the record's `backgrounded` is that bit. The guarantee is structural rather
 than a matter of remembering to redact, and the record has no field whose width
 it could move: a 20-byte response and a 20-KB one serialize to the same number
 of bytes. `tool_input` has no field there either — the post handler derives no
