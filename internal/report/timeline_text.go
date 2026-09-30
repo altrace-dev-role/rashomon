@@ -105,15 +105,18 @@ func writeTimelineCall(b *bytes.Buffer, c TimelineCall) {
 
 // bendingLabel annotates the row that completes a test-bending pair, on a line
 // of its own under it. It says what the record shows between the two runs and
-// nothing about why: "no recorded file edit", never "nothing changed", because a shell
-// command between them could have changed files the record does not see.
+// nothing about why, and both kinds say "recorded" for the same reason: "the
+// only recorded edits", never "only test files were edited", and "no recorded
+// file edit", never "nothing changed", because a shell read that redirects or
+// anything outside the session could have changed files the record does not
+// hold a call for. The recap line and the session block word it the same way.
 func bendingLabel(t *TimelineBending) string {
 	if t == nil {
 		return ""
 	}
 	if t.Kind == BendTestsOnlyThenGreen {
 		// ↳ DOWNWARDS ARROW WITH TIP RIGHTWARDS
-		return fmt.Sprintf("↳ only files named like tests edited since %d, where the same command failed", t.Since)
+		return fmt.Sprintf("↳ the only recorded edits since %d were to files named like tests, where the same command failed", t.Since)
 	}
 	return fmt.Sprintf("↳ same command had the other outcome at %d, no recorded file edit between", t.Since)
 }

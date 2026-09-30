@@ -153,7 +153,7 @@ func TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged(t *testing.T) {
 		"test runs: 2 (1 ok, 1 failed)",
 		"failed, then the only recorded edits were to files named like tests, then the same command passed:",
 		"a shell read or fetch (cat, curl and the like) can still write",
-		"↳ only files named like tests edited since",
+		"↳ the only recorded edits since",
 		"Bash go",
 	} {
 		if !strings.Contains(out, want) {

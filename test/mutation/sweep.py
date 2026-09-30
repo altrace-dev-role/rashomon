@@ -1397,6 +1397,11 @@ m("TB watch mode is a test run", "internal/shape/shape.go",
   "\"--version\"}",
   "TestTestClassRefusesWhatDoesNotRunTests")
 
+m("TB the timeline says only test files were edited, not what was recorded", "internal/report/timeline_text.go",
+  "\"↳ the only recorded edits since %d were to files named like tests, where the same command failed\"",
+  "\"↳ only files named like tests edited since %d, where the same command failed\"",
+  "TestTimeline_AnnotatesTheRowThatCompletesAPattern|TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

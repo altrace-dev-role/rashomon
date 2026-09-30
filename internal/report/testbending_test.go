@@ -381,7 +381,7 @@ func TestTimeline_AnnotatesTheRowThatCompletesAPattern(t *testing.T) {
 	writeTimeline(&b, tl)
 	out := b.String()
 	for _, w := range []string{
-		"↳ only files named like tests edited since 1, where the same command failed",
+		"↳ the only recorded edits since 1 were to files named like tests, where the same command failed",
 		"↳ same command had the other outcome at 4, no recorded file edit between",
 	} {
 		if !strings.Contains(out, w) {
