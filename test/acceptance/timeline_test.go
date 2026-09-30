@@ -11,7 +11,8 @@ import (
 //
 // The session: the main agent's `pytest -q` fails, a subagent runs the same
 // command and it passes, the main agent's `make` fails and is never re-run,
-// and one more call is declared with no execution record.
+// one more call is declared with no execution record, and one failure is
+// posted for a call that was never declared.
 
 const tlSubTranscript = "/tmp/transcripts/sess-1.jsonl/subagents/agent-cafe0001.jsonl"
 
@@ -56,24 +57,31 @@ func recordTimelineSession(t *testing.T, e *env) {
 	call("toolu_t3", "make build", "")
 	fail("toolu_t3", "make build", "2")
 	call("toolu_t4", "ls", "")
+	// A PostToolUseFailure with no PreToolUse before it: an execution record
+	// and nothing else. It is a call the session made, and it failed.
+	fail("toolu_t5", "pytest -q", "3")
 	e.probe("end", testSession)
 }
 
-// A1: both agents on one list, in order, each failure followed up.
+// A1: both agents on one list, in order, each failure followed up, and the
+// undeclared failure on the list and in the count the report's own
+// failed-calls line agrees with.
 func TestTimeline_RendersEveryAgentInOrder(t *testing.T) {
 	e := newEnv(t)
 	recordTimelineSession(t, e)
 
 	out := e.run("", nil, "report", "--session", testSession, "--timeline").stdout
 	for _, want := range []string{
-		"timeline: 4 calls, main agent + 1 subagent",
-		"failed       2  (1 same command succeeded later, 0 same program succeeded later, 1 no later success)",
+		"timeline: 5 calls (3 main agent, 1 from 1 subagent, 1 agent unknown)",
+		"failed       3  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded, 1 not checked)",
 		"unknown      1",
-		"general-purpose·cafe",
+		"1 call with no declaration recorded",
 		"→ same command ok at",
 		"failed (exit 2)",
-		"→ no later success",
+		"→ no later success recorded",
 		"no execution record",
+		"failed (exit 3), no declaration recorded",
+		"failed calls: 3",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("--timeline is missing %q:\n%s", want, out)
@@ -103,7 +111,8 @@ func TestTimeline_JSONMatchesTheText(t *testing.T) {
 					Agent     *struct {
 						ID string `json:"id"`
 					} `json:"agent"`
-					Later *struct {
+					AgentUnknown bool `json:"agent_unknown"`
+					Later        *struct {
 						Kind string `json:"kind"`
 					} `json:"later"`
 				} `json:"calls"`
@@ -121,7 +130,7 @@ func TestTimeline_JSONMatchesTheText(t *testing.T) {
 	for _, c := range calls {
 		got = append(got, c.ToolUseID+":"+c.Group)
 	}
-	want := "toolu_t1:failed,toolu_t2:ok,toolu_t3:failed,toolu_t4:unknown"
+	want := "toolu_t1:failed,toolu_t2:ok,toolu_t3:failed,toolu_t4:unknown,toolu_t5:failed"
 	if strings.Join(got, ",") != want {
 		t.Fatalf("timeline = %v, want %s", got, want)
 	}
@@ -134,6 +143,9 @@ func TestTimeline_JSONMatchesTheText(t *testing.T) {
 	if calls[2].Later != nil {
 		t.Errorf("the failed make was never re-run, yet carries %+v", calls[2].Later)
 	}
+	if calls[4].Agent != nil || !calls[4].AgentUnknown {
+		t.Errorf("the undeclared call names an agent the record does not: %+v", calls[4])
+	}
 	if strings.Contains(res.stdout, `"digest"`) {
 		t.Error("report --json carries a shape digest; the timeline compares digests and must not print them")
 	}
@@ -144,7 +156,7 @@ func TestTimeline_SurvivesRedaction(t *testing.T) {
 	e := newEnv(t)
 	recordTimelineSession(t, e)
 	res := e.run("", nil, "report", "--session", testSession, "--timeline", "--redact")
-	if res.exitCode != 0 || !strings.Contains(res.stdout, "timeline: 4 calls") {
+	if res.exitCode != 0 || !strings.Contains(res.stdout, "timeline: 5 calls") {
 		t.Fatalf("--timeline --redact: exit %d\n%s\n%s", res.exitCode, res.stdout, res.stderr)
 	}
 }

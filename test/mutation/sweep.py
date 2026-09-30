@@ -1084,20 +1084,77 @@ m("TL a denied call reads as failed", "internal/report/timeline.go",
 m("TL a call with no execution record reads as never ran", "internal/report/timeline.go",
   "\tdefault:\n\t\treturn GroupUnknown\n\t}\n}", "\tdefault:\n\t\treturn GroupNeverRan\n\t}\n}", "TestTimeline_")
 m("TL an earlier success counts as a later one", "internal/report/timeline.go",
-  "\tfor j := i + 1; j < len(entries); j++ {", "\tfor j := 0; j < len(entries); j++ {", "TestTimeline_")
+  " || e.pos == nil || *e.pos <= *failed.pos {", " || e.pos == nil {", "TestTimeline_")
 m("TL the same digest under another tool is the same call", "internal/report/timeline.go",
-  "\t\tif c.Group != GroupOK || c.ToolName != failed.call.ToolName {", "\t\tif c.Group != GroupOK {", "TestTimeline_")
+  "\t\tif c.Group != GroupOK || c.ToolName != failed.call.ToolName || e.pos", "\t\tif c.Group != GroupOK || e.pos", "TestTimeline_")
 m("TL the same-command tier is skipped", "internal/report/timeline.go",
-  "\t\tif failed.digest != \"\" && entries[j].digest == failed.digest {", "\t\tif false {", "TestTimeline_")
+  "\t\tif failed.digest != \"\" && e.digest == failed.digest {", "\t\tif false {", "TestTimeline_")
 m("TL a call that did not fail is followed up", "internal/report/timeline.go",
-  "\t\tif entries[i].call.Group == GroupFailed {", "\t\tif entries[i].call.Group != GroupOK {", "TestTimeline_")
+  "\t\tif e.call.Group != GroupFailed {", "\t\tif e.call.Group == GroupOK {", "TestTimeline_")
 m("TL a failure with no later success says nothing", "internal/report/timeline_text.go",
-  "\t\treturn \"  → no later success\"", "\t\treturn \"\"", "TestTimeline_")
+  "\t\treturn \"  → no later success recorded\"", "\t\treturn \"\"", "TestTimeline_")
 m("TL the capped listing drops the rest silently", "internal/report/timeline_text.go",
   "\t\t\tfmt.Fprintf(b, \"    %d more call%s, see --json\\n\", rest, plural(rest))\n",
   "\t\t\t_ = rest\n", "TestTimeline_")
 m("TL --timeline never reaches the renderer", "cmd/rashomon/main.go",
   "\t\t\topts = append(opts, report.WithTimeline())", "\t\t\t_ = report.WithTimeline", "TestTimeline_")
+
+# #36 review fixes: the timeline says what the record supports and no more.
+m("TL an execution with no declaration and no terminal is left off", "internal/report/timeline.go",
+  "\tfor _, x := range run.Executions {\n\t\tadd(x.ToolUseID)\n\t}\n", "", "TestTimeline_")
+m("TL a dropped call's execution is thrown away", "internal/report/timeline.go",
+  "\t\tc.Outcome, _, _ = linkOutcome(id, executed, denied)", "\t\tc.Outcome = LinkUnknown", "TestTimeline_")
+m("TL an undeclared call loses its exit code", "internal/report/timeline.go",
+  "\t\tc.ExitCode = lastExitCode(recs)\n\t\tentries = append(entries, timelineEntry{call: c, pos: lastExecSeq(recs)})",
+  "\t\tentries = append(entries, timelineEntry{call: c, pos: lastExecSeq(recs)})", "TestTimeline_")
+m("TL an undeclared call loses the tool name its execution carries", "internal/report/timeline.go",
+  "\t\t\tc.ToolName = recs[len(recs)-1].ToolName", "\t\t\t_ = recs", "TestTimeline_")
+m("TL an undeclared call is attributed to the main agent", "internal/report/timeline.go",
+  "\t\t\tAgentUnknown: true,", "\t\t\tAgentUnknown: false,", "TestTimeline_")
+m("TL an undeclared row renders as the main agent", "internal/report/timeline_text.go",
+  "\t\tagent = LinkUnknown", "\t\tagent = \"main\"", "TestTimeline_")
+m("TL an undeclared failure is compared with nothing to compare", "internal/report/timeline.go",
+  "\t\tif e.call.Seq == nil || e.pos == nil {", "\t\tif e.pos == nil {", "TestTimeline_")
+m("TL a failure with no position is compared", "internal/report/timeline.go",
+  "\t\tif e.call.Seq == nil || e.pos == nil {", "\t\tif e.call.Seq == nil {", "TestTimeline_")
+m("TL later is judged by declaration order", "internal/report/timeline.go",
+  " || e.pos == nil || *e.pos <= *failed.pos {", " || e.pos == nil || *c.Seq <= *failed.call.Seq {", "TestTimeline_")
+m("TL the first success in row order wins over the first recorded", "internal/report/timeline.go",
+  "\t\t\tif sameCommand == nil || *e.pos < *sameCommand.pos {", "\t\t\tif sameCommand == nil {", "TestTimeline_")
+m("TL a not-checked failure counts as no later success", "internal/report/timeline.go",
+  "\t\t\tcase !c.LaterChecked:\n\t\t\t\tn.NotChecked++\n", "", "TestTimeline_")
+m("TL a not-checked failure says no later success", "internal/report/timeline_text.go",
+  "\t\treturn \"  → not checked for a later success\"", "\t\treturn \"  → no later success recorded\"", "TestTimeline_")
+m("TL git status follows up a failed git push", "internal/report/timeline.go",
+  " && !subcommandPrograms[c.Program] {", " {", "TestTimeline_")
+m("TL the same-program label claims different arguments", "internal/report/timeline_text.go",
+  "\"  → same program ok at %d, recorded after%s\"", "\"  → same program ok at %d (different arguments%s)\"", "TestTimeline_")
+m("TL the same-command label drops recorded after", "internal/report/timeline_text.go",
+  "\"  → same command ok at %d, recorded after%s\"", "\"  → same command ok at %d%s\"", "TestTimeline_")
+m("TL the counts line says no later success without recorded", "internal/report/timeline_text.go",
+  "%d no later success recorded%s)", "%d no later success%s)", "TestTimeline_")
+m("TL agent_type reaches the terminal raw", "internal/report/timeline_text.go",
+  "\ttyp := printable(a.Type)", "\ttyp := a.Type", "TestTimeline_")
+m("TL agent_id reaches the terminal raw", "internal/report/timeline_text.go",
+  "[]rune(strings.TrimPrefix(printable(a.ID), \"agent-\"))", "[]rune(strings.TrimPrefix(a.ID, \"agent-\"))", "TestTimeline_")
+m("TL the agent id is cut by byte", "internal/report/timeline_text.go",
+  "\tid := []rune(strings.TrimPrefix(", "\tid := []byte(strings.TrimPrefix(", "TestTimeline_")
+m("TL the unknown legend names only no execution record", "internal/report/timeline_text.go",
+  "; or outcome unobserved: it ran and how it ended was not recorded)", ")", "TestTimeline_")
+m("TL undeclared calls go unaccounted in the legend", "internal/report/timeline_text.go",
+  "\tif n.AgentUnknown > 0 {\n\t\tfmt.Fprintf(b, \"    %d call%s with no declaration", "\tif false {\n\t\tfmt.Fprintf(b, \"    %d call%s with no declaration", "TestTimeline_")
+m("TL an undeclared row does not say it has no declaration", "internal/report/timeline_text.go",
+  "\t\tr += \", no declaration recorded\"", "\t\tr += \"\"", "TestTimeline_")
+m("TL the date is never shown", "internal/report/timeline_text.go",
+  "\t\t\t\tfmt.Fprintf(b, \"    %s (UTC)\\n\", day)", "\t\t\t\t_ = day", "TestTimeline_")
+m("TL a subagent's call counts as the main agent's", "internal/report/timeline.go",
+  "\t\tcase c.Agent == nil:\n\t\t\tn.MainAgent++", "\t\tdefault:\n\t\t\tn.MainAgent++", "TestTimeline_")
+m("TL the header names the main agent without its count", "internal/report/timeline_text.go",
+  "\twho := fmt.Sprintf(\"%d main agent\", n.MainAgent)", "\twho := \"main agent\"", "TestTimeline_")
+m("TL the digest reaches the JSON", "internal/report/timeline.go",
+  "\t\tentries = append(entries, timelineEntry{call: c, digest: d.Shape.Digest, pos: lastExecSeq(recs)})",
+  "\t\tentries = append(entries, timelineEntry{call: c, digest: d.Shape.Digest, pos: lastExecSeq(recs)})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest",
+  "TestTimeline_JSONCarriesNoDigest")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",
