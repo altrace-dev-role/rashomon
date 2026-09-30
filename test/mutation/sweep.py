@@ -1145,7 +1145,7 @@ m("SP the window is applied before the previous response is found", "internal/sp
 m("SP a savings line is printed with no figure under it", "internal/spend/spend.go",
   "\tif s.CacheExpiry.Cost.Nano > 0 {", "\tif true {", "TestNoSavingsWithoutAFigure")
 m("SP a refusal is not recognised", "internal/spend/spend.go",
-  "r.StopReason == \"refusal\"", "r.StopReason == \"refused\"", "TestRefusalsAndExtraAttempts")
+  "\t\tif r.StopReason == \"refusal\" {\n\t\t\ts.Refusals.Responses++", "\t\tif r.StopReason == \"refused\" {\n\t\t\ts.Refusals.Responses++", "TestRefusalsAndExtraAttempts")
 m("SP the returned attempt is counted again as an extra one", "internal/spend/scan.go",
   "\tfor _, it := range its[:len(its)-1] {", "\tfor _, it := range its {", "TestRefusalsAndExtraAttempts")
 m("SP a turn with failures fires whatever its summary says", "internal/spend/join.go",
