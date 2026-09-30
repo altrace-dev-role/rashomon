@@ -171,7 +171,8 @@ func TestJoin_SpendInsideASilentlyFailedTurn(t *testing.T) {
 	}
 	txt, _ := render(t, s)
 	for _, want := range []string{
-		"in turns that ended with a failure the summary never mentioned: at least $0.04 across 1 turn",
+		"in turns with a failed call the summary never mentioned: at least $0.04 across 1 turn",
+		"savings       $0.04 spent in turns with a failed call the summary never mentioned\n",
 		"1 of 2 transcripts was recorded",
 		"in the other 1 is not covered",
 		"(not covered: session sess-u)",
@@ -179,6 +180,13 @@ func TestJoin_SpendInsideASilentlyFailedTurn(t *testing.T) {
 	} {
 		if !strings.Contains(txt, want) {
 			t.Errorf("text lacks %q:\n%s", want, txt)
+		}
+	}
+	// The fixture's failed call is followed by a successful one: the turn did
+	// not end with a failure, and neither the line nor the saving may say so.
+	for _, bad := range []string{"ended with a failure", "bought a"} {
+		if strings.Contains(txt, bad) {
+			t.Errorf("text says %q of a turn whose failed call was followed by a success:\n%s", bad, txt)
 		}
 	}
 	if len(s.Savings) != 1 || s.Savings[0].Kind != SavingSilentFailure {

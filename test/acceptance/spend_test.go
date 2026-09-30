@@ -207,7 +207,7 @@ func TestSpend_JoinsSilentlyFailedTurnsToTheHooksRecord(t *testing.T) {
 
 	txt := e.run("", nil, "spend")
 	for _, want := range []string{
-		"in turns that ended with a failure the summary never mentioned: at least $1.02 across 1 turn",
+		"in turns with a failed call the summary never mentioned: at least $1.02 across 1 turn",
 		"1 of 2 transcripts was recorded, so this covers only those; $2.00 in the other 1 is not covered",
 		"(not covered: session sess-unrecorded)",
 	} {

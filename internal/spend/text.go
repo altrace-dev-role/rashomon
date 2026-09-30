@@ -269,7 +269,11 @@ func attemptsLine(a ExtraAttempts) string {
 // across 0 turns" would claim they had.
 func silentLine(s *Summary) string {
 	j := s.SilentFailureTurns
-	const lead = "in turns that ended with a failure the summary never mentioned: "
+	// What is measured, and no more: a turn with ANY failed call whose final
+	// message names no failure. The rule never checks which execution came
+	// last, so a turn whose call failed and then succeeded counts too, and
+	// "turns that ended with a failure" claimed more than the record shows.
+	const lead = "in turns with a failed call the summary never mentioned: "
 	switch {
 	case j.Store == StoreNotConsulted:
 		return ""
@@ -371,7 +375,7 @@ func savingLine(sv Saving) string {
 		}
 		return line
 	case SavingSilentFailure:
-		return fmt.Sprintf("%s bought a \"done\" in turns whose recorded failures the summary never mentioned", money(sv.Cost))
+		return fmt.Sprintf("%s spent in turns with a failed call the summary never mentioned", money(sv.Cost))
 	}
 	return money(sv.Cost)
 }

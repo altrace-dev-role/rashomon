@@ -1444,6 +1444,12 @@ m("SP the savings output does not say refusal savings are not computed", "intern
   "\t\tif classifier {", "\t\tif false {", "TestRefusals")
 m("SP the JSON does not say refusal savings are not computed", "internal/spend/spend.go",
   "SavingsNotComputed: []string{SavingNotComputedRefusals},", "SavingsNotComputed: []string{},", "TestRefusalsAndExtraAttempts")
+m("SP the silent-failure line says the turns ended with a failure", "internal/spend/text.go",
+  'const lead = "in turns with a failed call the summary never mentioned: "', 'const lead = "in turns that ended with a failure the summary never mentioned: "',
+  "TestJoin_SpendInsideASilentlyFailedTurn")
+m("SP the silent-failure saving says it bought a done", "internal/spend/text.go",
+  '"%s spent in turns with a failed call the summary never mentioned"', '"%s bought a \\"done\\" in turns whose recorded failures the summary never mentioned"',
+  "TestJoin_SpendInsideASilentlyFailedTurn")
 
 # Import additions some mutants need.
 IMPORTS = {

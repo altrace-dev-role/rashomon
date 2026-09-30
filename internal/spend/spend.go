@@ -5,7 +5,7 @@
 // Claude Code's transcripts (see scan.go for the exact, narrow read of usage,
 // and for the one read of a turn's final message the silent-failure line
 // needs), not rashomon's store. The store is consulted for exactly one line -- spend in
-// turns that ended with a failure the summary never mentioned -- and only
+// turns with a failed call the summary never mentioned -- and only
 // read, through store.OpenExisting, so asking what was spent cannot mint an
 // install identity on a machine that never recorded anything (H-87's rule).
 // Nothing is written anywhere.
