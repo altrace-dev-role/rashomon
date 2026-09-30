@@ -1158,9 +1158,13 @@ m("TL a subagent's call counts as the main agent's", "internal/report/timeline.g
 m("TL the header names the main agent without its count", "internal/report/timeline_text.go",
   "\twho := fmt.Sprintf(\"%d main agent\", n.MainAgent)", "\twho := \"main agent\"", "TestTimeline_")
 m("TL the digest reaches the JSON", "internal/report/timeline.go",
-  "\t\tentries = append(entries, timelineEntry{call: c, digest: d.Shape.Digest, pos: lastExecSeq(recs)})",
-  "\t\tentries = append(entries, timelineEntry{call: c, digest: d.Shape.Digest, pos: lastExecSeq(recs)})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest",
+  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, recs), pos: lastExecSeq(recs)})",
+  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, recs), pos: lastExecSeq(recs)})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest",
   "TestTimeline_JSONCarriesNoDigest")
+
+# #36 review round 3.
+m("TL a rewritten success counts as the same command", "internal/report/timeline.go",
+  "\t\treturn recs[len(recs)-1].ExecutedDigest\n", "\t\treturn declared\n", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

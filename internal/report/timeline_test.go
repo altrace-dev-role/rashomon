@@ -554,6 +554,38 @@ func TestTimeline_AnUnplacedSuccessIsNotNoSuccess(t *testing.T) {
 	}
 }
 
+// #36 review round 3, fix 1: the same command is the command that RAN. A
+// PreToolUse hook can rewrite a call's input, and the execution record's
+// digest is then the one that counts. Break: compare declared digests only and
+// a success that ran something else reads as a re-run of the failure -- while
+// the same page lists that call as executed differently from declared.
+func TestTimeline_SameCommandIsTheCommandThatRan(t *testing.T) {
+	run := func(executed string) *store.Run {
+		r := tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Bash", digest: "d1"},
+			{seq: 2, id: "s", tool: "Bash", digest: "d1"},
+		}, tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0))
+		r.Executions[1].ExecutedDigest = executed
+		return r
+	}
+	if c := tlByID(t, buildTimeline(run("d9"), nil), "f"); c.Later != nil || !c.LaterChecked {
+		t.Errorf("a success rewritten to run something else is the same command: %+v", c.Later)
+	}
+	if c := tlByID(t, buildTimeline(run("d1"), nil), "f"); c.Later == nil || c.Later.Kind != LaterSameCommand {
+		t.Errorf("a success that ran the declared command is lost: %+v", c.Later)
+	}
+
+	// The other way round: declared differently, but ran the failed command.
+	r := tlRun([]tlCall{
+		{seq: 1, id: "f", tool: "Bash", digest: "d1"},
+		{seq: 2, id: "s", tool: "Bash", digest: "d2"},
+	}, tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0))
+	r.Executions[1].ExecutedDigest = "d1"
+	if c := tlByID(t, buildTimeline(r, nil), "f"); c.Later == nil || c.Later.Kind != LaterSameCommand {
+		t.Errorf("a success that ran the failed command is not the same command: %+v", c.Later)
+	}
+}
+
 // #36 review 4: the same-program tier makes no claim about arguments, and is
 // not offered where the program does not name what ran. Break: pair `git
 // status` with a failed `git push`, or print "different arguments" for a

@@ -26,9 +26,13 @@ const (
 
 // How a failed call was followed up, strongest first.
 const (
-	// LaterSameCommand: a later call with the same tool and the same shape
+	// LaterSameCommand: a later call with the same tool and the same effective
 	// digest succeeded. The digest is an HMAC over the exact command line
-	// (Bash) or the whole input, so equal digests are an identical call.
+	// (Bash) or the whole input, so equal digests are an identical call. The
+	// effective digest is the one the call RAN with -- its outcome record's
+	// executed digest -- and the declared one only where that record carries
+	// none: a PreToolUse hook can rewrite the input, and a success that ran
+	// something other than what was declared is not a re-run of the failure.
 	LaterSameCommand = "same_command"
 	// LaterSameProgram: a later call of the same tool and program, with a
 	// different digest, succeeded. Weaker, and rendered as nothing more: a
@@ -181,7 +185,7 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 		c.Outcome, _, _ = linkOutcome(d.ToolUseID, executed, denied)
 		c.Group = timelineGroup(c.Outcome)
 		c.ExitCode = lastExitCode(recs)
-		entries = append(entries, timelineEntry{call: c, digest: d.Shape.Digest, pos: lastExecSeq(recs)})
+		entries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, recs), pos: lastExecSeq(recs)})
 	}
 
 	// Calls with no declaration: a terminal or an execution record names them
@@ -287,6 +291,17 @@ func lastExitCode(recs []store.Execution) *int {
 		return nil
 	}
 	return recs[len(recs)-1].ExitCode
+}
+
+// effectiveDigest is the digest the call ran with: that same record's
+// executed digest, or the declared one when the record carries none. An empty
+// executed digest is "not known", never "different" -- see
+// store.Execution.ExecutedDigest.
+func effectiveDigest(declared string, recs []store.Execution) string {
+	if len(recs) > 0 && recs[len(recs)-1].ExecutedDigest != "" {
+		return recs[len(recs)-1].ExecutedDigest
+	}
+	return declared
 }
 
 // lastExecSeq is that same record's seq, nil when it has none.
