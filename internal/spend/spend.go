@@ -100,16 +100,21 @@ func (c Cost) USD() float64 { return float64(c.Nano) / 1e9 }
 // MarshalJSON writes {"usd": <number|null>, "unpriced_responses": n,
 // "unpriced_tokens": n}.
 func (c Cost) MarshalJSON() ([]byte, error) {
-	var usd *float64
-	if c.Wholly() {
-		v := c.USD()
-		usd = &v
-	}
 	return json.Marshal(struct {
 		USD            *float64 `json:"usd"`
 		Unpriced       int      `json:"unpriced_responses"`
 		UnpricedTokens int64    `json:"unpriced_tokens"`
-	}{usd, c.Unpriced, c.UnpricedTokens})
+	}{c.usdOrNull(), c.Unpriced, c.UnpricedTokens})
+}
+
+// usdOrNull is the usd a cost marshals: its priced part, or null when it has
+// none and an unpriced part.
+func (c Cost) usdOrNull() *float64 {
+	if !c.Wholly() {
+		return nil
+	}
+	v := c.USD()
+	return &v
 }
 
 // Pricing states the basis of every dollar figure in the document.
@@ -198,8 +203,10 @@ type ModelSpend struct {
 	Model     string `json:"model"`
 	Priced    bool   `json:"priced"`
 	Responses int    `json:"responses"`
-	Tokens    Tokens `json:"tokens"`
-	Cost      Cost   `json:"cost"`
+	// Attempts counts the extra attempts (ExtraAttempts) this model ran.
+	Attempts int    `json:"attempts"`
+	Tokens   Tokens `json:"tokens"`
+	Cost     Cost   `json:"cost"`
 }
 
 // KindSplit is spend by token kind.
@@ -299,7 +306,7 @@ type ExtraAttempts struct {
 	Responses         int                `json:"responses"`
 	Attempts          int                `json:"attempts"`
 	Tokens            Tokens             `json:"tokens"`
-	Cost              Cost               `json:"cost"`
+	Cost              AttemptCost        `json:"cost"`
 	CostUnknownReason string             `json:"cost_unknown_reason"`
 	Declined          []DeclinedAttempts `json:"declined"`
 	Fallback          []FallbackRoute    `json:"fallback_served"`
@@ -310,14 +317,31 @@ const AttemptsUnpriced = "an extra attempt that produced output is priced at the
 
 // DeclinedAttempts is one model's declined attempts. Cost's priced part is the
 // attempts that produced output (in the total); its unpriced part counts the
-// rest, attempts rather than responses. NoOutput counts the attempts declined
-// before any output.
+// rest, attempts rather than responses: those with no output, and those with
+// output on a model the table lacks. NoOutput counts the attempts declined
+// before any output, and NoOutputTokens their tokens alone.
 type DeclinedAttempts struct {
-	Model    string `json:"model"`
-	Attempts int    `json:"attempts"`
-	Tokens   Tokens `json:"tokens"`
-	Cost     Cost   `json:"cost"`
-	NoOutput int    `json:"no_output"`
+	Model    string      `json:"model"`
+	Attempts int         `json:"attempts"`
+	Tokens   Tokens      `json:"tokens"`
+	Cost     AttemptCost `json:"cost"`
+	NoOutput int         `json:"no_output"`
+	// NoOutputTokens is the tokens of the NoOutput attempts alone.
+	NoOutputTokens int64 `json:"no_output_tokens"`
+}
+
+// AttemptCost is a Cost whose unpriced count is of attempts, not responses,
+// and is named so in the JSON: {"usd": <number|null>, "unpriced_attempts": n,
+// "unpriced_tokens": n}.
+type AttemptCost struct{ Cost }
+
+// MarshalJSON writes the cost with its count named unpriced_attempts.
+func (c AttemptCost) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		USD            *float64 `json:"usd"`
+		Unpriced       int      `json:"unpriced_attempts"`
+		UnpricedTokens int64    `json:"unpriced_tokens"`
+	}{c.usdOrNull(), c.Unpriced, c.UnpricedTokens})
 }
 
 // FallbackRoute is the responses a fallback served, by the model asked and
@@ -678,17 +702,21 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		kind(&s.ByKind.CacheWrite, p.cacheWrite, r.Tokens.CacheWrite5m+r.Tokens.CacheWrite1h)
 		kind(&s.ByKind.CacheRead, p.cacheRead, r.Tokens.CacheRead)
 
-		// Each extra attempt that produced output, at the rates of the model
-		// that ran it: in the total (costOf, above), its model's row and the
-		// kinds. The rest are tokens with the cost unknown.
+		// Each extra attempt's tokens are in the token total and its model's
+		// row, priced or not. One that produced output is priced at the rates
+		// of the model that ran it: in the total (costOf, above), its model's
+		// row and the kinds. The rest are tokens with the cost unknown, in
+		// its model's row too.
 		for _, a := range r.Attempts {
-			ap, ok := attemptPrice(a)
-			if !ok {
-				continue
-			}
 			s.Tokens.add(a.Tokens)
 			am := model(a.Model)
+			am.Attempts++
 			am.Tokens.add(a.Tokens)
+			ap, ok := attemptPrice(a)
+			if !ok {
+				am.Cost.addUnpriced(a.Tokens.Total())
+				continue
+			}
 			am.Cost.addPriced(ap.total())
 			for _, k := range []struct {
 				c    *Cost
@@ -817,6 +845,7 @@ func (e *ExtraAttempts) add(r *Response, declined map[string]*DeclinedAttempts, 
 		}
 		if a.Tokens.Output == 0 {
 			d.NoOutput++
+			d.NoOutputTokens += a.Tokens.Total()
 		}
 	}
 }

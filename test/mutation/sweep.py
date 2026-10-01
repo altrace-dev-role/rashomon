@@ -1118,7 +1118,7 @@ m("SP an unsplit cache write is priced at the 1h rate", "internal/spend/scan.go"
 m("SP an unknown model is priced at $0", "internal/spend/spend.go",
   "\tc.addUnpriced(r.Tokens.Total())\n", "\tc.addPriced(0)\n", "TestUnknownModel_")
 m("SP an unpriced total marshals as usd 0 instead of null", "internal/spend/spend.go",
-  "\tif c.Wholly() {\n\t\tv := c.USD()", "\tif true {\n\t\tv := c.USD()", "TestUnknownModel_IsUnknown")
+  "\tif !c.Wholly() {\n\t\treturn nil\n", "\tif false {\n\t\treturn nil\n", "TestUnknownModel_IsUnknown")
 m("SP an unpriced total is headlined as a dollar figure", "internal/spend/text.go",
   "\tif !c.Wholly() {\n\t\treturn fmt.Sprintf(\"cost unknown (", "\tif false {\n\t\treturn fmt.Sprintf(\"cost unknown (",
   "TestUnknownModel_IsUnknown")
@@ -1633,6 +1633,22 @@ m("SP the model asked is read from the first entry alone", "internal/spend/scan.
 m("SP sticky is inferred from an empty model asked", "internal/spend/spend.go",
   "\t\tk := FallbackRoute{Served: displayName(r.Model), Sticky: r.Sticky}", "\t\tk := FallbackRoute{Served: displayName(r.Model), Sticky: r.Requested == \"\"}",
   "TestExtraAttempts_StickyIsOnly")
+
+m("SP the declined line's no-output clause carries every unpriced token", "internal/spend/text.go",
+  "\t\t\t\tthousands(d.NoOutputTokens), countOf(d.NoOutput, \"attempt\")))", "\t\t\t\tthousands(d.Cost.UnpricedTokens), countOf(d.NoOutput, \"attempt\")))",
+  "TestExtraAttempts_TheDeclinedLine")
+m("SP a declined attempt with output on an unpriced model is not said", "internal/spend/text.go",
+  "\t\tif rest := d.Cost.UnpricedTokens - d.NoOutputTokens; rest > 0 {", "\t\tif rest := d.Cost.UnpricedTokens - d.NoOutputTokens; d.NoOutput == 0 && rest > 0 {",
+  "TestExtraAttempts_TheDeclinedLine")
+m("SP the unpriced attempts are marshalled as responses", "internal/spend/spend.go",
+  "\t\tUnpriced       int      `json:\"unpriced_attempts\"`", "\t\tUnpriced       int      `json:\"unpriced_responses\"`",
+  "TestExtraAttempts_TheDeclinedLine")
+m("SP an unpriced attempt's tokens are left out of the totals", "internal/spend/spend.go",
+  "\t\tfor _, a := range r.Attempts {\n\t\t\ts.Tokens.add(a.Tokens)\n\t\t\tam := model(a.Model)\n\t\t\tam.Attempts++\n\t\t\tam.Tokens.add(a.Tokens)\n\t\t\tap, ok := attemptPrice(a)\n\t\t\tif !ok {\n\t\t\t\tam.Cost.addUnpriced(a.Tokens.Total())\n\t\t\t\tcontinue\n\t\t\t}",
+  "\t\tfor _, a := range r.Attempts {\n\t\t\tap, ok := attemptPrice(a)\n\t\t\tif !ok {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\ts.Tokens.add(a.Tokens)\n\t\t\tam := model(a.Model)\n\t\t\tam.Attempts++\n\t\t\tam.Tokens.add(a.Tokens)",
+  "TestExtraAttempts_TheDeclinedLine")
+m("SP a model's row does not count its attempts", "internal/spend/spend.go",
+  "\t\t\tam.Attempts++\n", "", "TestExtraAttempts_TheDeclinedLine")
 
 # Import additions some mutants need.
 IMPORTS = {

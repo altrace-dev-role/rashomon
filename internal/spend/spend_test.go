@@ -1353,7 +1353,8 @@ func TestExtraAttempts_TheFallbackPagesExample(t *testing.T) {
 	if e.Responses != 1 || e.Attempts != 1 || e.Tokens.Total() != 535 || e.Cost.Unpriced != 1 || e.Cost.UnpricedTokens != 535 || e.Cost.Priced != 0 {
 		t.Errorf("extra attempts = %+v, want the one declined attempt, 535 tokens, cost unknown", e)
 	}
-	wantD := []DeclinedAttempts{{Model: "claude-fable-5", Attempts: 1, Tokens: Tokens{Input: 535}, Cost: Cost{Unpriced: 1, UnpricedTokens: 535}, NoOutput: 1}}
+	wantD := []DeclinedAttempts{{Model: "claude-fable-5", Attempts: 1, Tokens: Tokens{Input: 535}, Cost: AttemptCost{Cost{Unpriced: 1, UnpricedTokens: 535}},
+		NoOutput: 1, NoOutputTokens: 535}}
 	if !reflect.DeepEqual(e.Declined, wantD) {
 		t.Errorf("declined = %+v, want %+v", e.Declined, wantD)
 	}
@@ -1366,7 +1367,7 @@ func TestExtraAttempts_TheFallbackPagesExample(t *testing.T) {
 		"\n       the total leaves out 535 tokens on 1 extra attempt whose cost is unknown (see retries)\n",
 		"\nfallback      claude-fable-5 -> claude-opus-4-8 on 1 response\n",
 		"\ndeclined      claude-fable-5 1 attempt (535 tokens on 1 attempt with no output, billed only in some refusal categories, which the transcript does not record)\n",
-		"\nby model      claude-opus-4-8 <$0.01\n",
+		"\nby model      claude-opus-4-8 <$0.01   claude-fable-5 535 tokens, cost unknown\n",
 	} {
 		if !strings.Contains(txt, want) {
 			t.Errorf("text lacks %q:\n%s", want, txt)
@@ -1523,6 +1524,66 @@ func TestExtraAttempts_TheServedModelIsTheFallbackEntrys(t *testing.T) {
 	wantR := []FallbackRoute{{Requested: "claude-fable-5", Served: "claude-opus-4-8", Responses: 1}}
 	if !reflect.DeepEqual(s.ExtraAttempts.Fallback, wantR) {
 		t.Errorf("fallback = %+v, want %+v", s.ExtraAttempts.Fallback, wantR)
+	}
+}
+
+// TestExtraAttempts_TheDeclinedLineSaysWhichTokensHadNoOutput: the declined
+// line printed every unpriced token as "on N attempt with no output", so on a
+// model the table lacks, the billed tokens of an attempt that produced output
+// were called no-output tokens and the "not in the price table" reason was
+// hidden by an else-if. Each clause now carries its own tokens. The counts in
+// extra_attempts.cost and declined[].cost are attempts, and are named so; and
+// every attempt's tokens, priced or not, are in the token total and its
+// model's row, which counts its attempts.
+func TestExtraAttempts_TheDeclinedLineSaysWhichTokensHadNoOutput(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		its    []resp
+		line   string
+		tokens int64
+		js     string
+	}{
+		{"unpriced, with and without output",
+			[]resp{{model: "claude-mystery-9", in: 535}, {model: "claude-mystery-9", in: 1000, out: 70}},
+			"claude-mystery-9 2 attempts (535 tokens on 1 attempt with no output, billed only in some refusal categories, which the transcript does not record; 1,070 tokens, cost unknown: not in the price table)",
+			1605,
+			`"declined":[{"model":"claude-mystery-9","attempts":2,"tokens":{"input":1535,"output":70,"cache_read":0,"cache_write_5m":0,"cache_write_1h":0},"cost":{"usd":null,"unpriced_attempts":2,"unpriced_tokens":1605},"no_output":1,"no_output_tokens":535}]`},
+		{"unpriced, with output only",
+			[]resp{{model: "claude-mystery-9", in: 1000, out: 70}},
+			"claude-mystery-9 1 attempt (1,070 tokens, cost unknown: not in the price table)",
+			1070,
+			`"cost":{"usd":null,"unpriced_attempts":1,"unpriced_tokens":1070},"no_output":0,"no_output_tokens":0}]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			its := append(tc.its, resp{typ: "fallback_message", model: "claude-opus-4-8", in: 412, out: 264})
+			c.write("proj/sess-a.jsonl", resp{id: "fb", model: "claude-opus-4-8", at: now.Add(-time.Hour), in: 412, out: 264,
+				stop: "end_turn", iters: its}.line("text"))
+			s := c.summary(30)
+			txt, js := render(t, s)
+			if !strings.Contains(txt, "\ndeclined      "+tc.line+"\n") {
+				t.Errorf("text lacks %q:\n%s", tc.line, txt)
+			}
+			if !strings.Contains(js, tc.js) || !strings.Contains(js, `"extra_attempts":{"responses":1,"attempts":`) ||
+				strings.Contains(js, `"declined":[{"model":"claude-mystery-9","attempts":1,"tokens":{"input":1000,"output":70,"cache_read":0,"cache_write_5m":0,"cache_write_1h":0},"cost":{"usd":null,"unpriced_responses"`) {
+				t.Errorf("the JSON lacks %s:\n%s", tc.js, js)
+			}
+			if !strings.Contains(js, `"unpriced_attempts":`+fmt.Sprint(len(tc.its))+`,"unpriced_tokens":`+fmt.Sprint(tc.tokens)+`},"cost_unknown_reason"`) {
+				t.Errorf("extra_attempts.cost does not count unpriced attempts as attempts:\n%s", js)
+			}
+			if got, want := s.Tokens.Total(), 412+264+tc.tokens; got != want {
+				t.Errorf("token total = %d, want %d: every attempt's tokens", got, want)
+			}
+			var row *ModelSpend
+			for i := range s.ByModel {
+				if s.ByModel[i].Model == "claude-mystery-9" {
+					row = &s.ByModel[i]
+				}
+			}
+			if row == nil || row.Tokens.Total() != tc.tokens || row.Attempts != len(tc.its) || row.Responses != 0 {
+				t.Errorf("claude-mystery-9 row = %+v, want %d tokens over %d attempts", row, tc.tokens, len(tc.its))
+			}
+		})
 	}
 }
 

@@ -230,7 +230,7 @@ func modelLine(s *Summary) string {
 	parts := make([]string, 0, len(s.ByModel))
 	for _, m := range s.ByModel {
 		if m.Priced {
-			parts = append(parts, fmt.Sprintf("%s %s", m.Model, money(m.Cost)))
+			parts = append(parts, fmt.Sprintf("%s %s", m.Model, tokensMoney(m.Cost)))
 			continue
 		}
 		parts = append(parts, fmt.Sprintf("%s %s tokens, cost unknown (not in the price table)", m.Model, thousands(m.Tokens.Total())))
@@ -344,11 +344,19 @@ func declinedLine(ds []DeclinedAttempts) string {
 		if d.Cost.Priced > 0 {
 			p += " " + usd(d.Cost.Nano)
 		}
+		// Two clauses, each with its own tokens: the attempts with no
+		// output, and what else is unpriced -- attempts with output on a
+		// model the table lacks.
+		var why []string
 		if d.NoOutput > 0 {
-			p += fmt.Sprintf(" (%s tokens on %s with no output, billed only in some refusal categories, which the transcript does not record)",
-				thousands(d.Cost.UnpricedTokens), countOf(d.NoOutput, "attempt"))
-		} else if d.Cost.Unpriced > 0 {
-			p += fmt.Sprintf(" (%s tokens, cost unknown: not in the price table)", thousands(d.Cost.UnpricedTokens))
+			why = append(why, fmt.Sprintf("%s tokens on %s with no output, billed only in some refusal categories, which the transcript does not record",
+				thousands(d.NoOutputTokens), countOf(d.NoOutput, "attempt")))
+		}
+		if rest := d.Cost.UnpricedTokens - d.NoOutputTokens; rest > 0 {
+			why = append(why, fmt.Sprintf("%s tokens, cost unknown: not in the price table", thousands(rest)))
+		}
+		if len(why) > 0 {
+			p += " (" + strings.Join(why, "; ") + ")"
 		}
 		parts = append(parts, p)
 	}
