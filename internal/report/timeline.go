@@ -178,7 +178,8 @@ type TimelineCounts struct {
 // every agent's calls. That order is when each call's hook RECORDED, which for
 // two subagents running at once interleaves them by recording, not by start;
 // the renderer says so. Calls with no declaration have no seq and come after
-// the ordered ones, in the order their execution records were written.
+// the ordered ones, by the seq of the record each outcome is read from (the
+// last failed one, otherwise the last).
 type Timeline struct {
 	Calls  []TimelineCall `json:"calls"`
 	Counts TimelineCounts `json:"counts"`
@@ -304,8 +305,8 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 // with no terminal either.
 //
 // Ordered by the seq of the execution record each one's outcome is read from,
-// so they read in the order their results were
-// written. Those with no positioned record come last, and ties go by id.
+// so they read in the order their results were written. Those with no
+// positioned record come last, and ties go by id.
 func undeclared(run *store.Run, executed map[string][]store.Execution) []string {
 	seen := map[string]bool{}
 	for _, d := range run.Declarations {

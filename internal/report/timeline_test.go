@@ -594,14 +594,19 @@ func TestTimeline_TwoRecordsForOneID(t *testing.T) {
 
 // #36 review round 3, smaller 1: undeclared rows have no declaration, but
 // their execution records have positions, and they read in that order: by the
-// last record's seq, those with no position last, ties by id. Break: sort by
-// tool_use_id and they come out in an order that means nothing.
+// seq of the record each outcome is read from (the last failed one, otherwise
+// the last), those with no position last, ties by id. Break: sort by
+// tool_use_id and they come out in an order that means nothing; sort by the
+// last record and ee, failed at 5 and ok at 50, sits where its row's outcome
+// was not recorded.
 func TestTimeline_UndeclaredCallsFollowTheirResults(t *testing.T) {
 	run := tlRun([]tlCall{{seq: 1, id: "d", tool: "Bash"}},
 		tlExecAt("zz", store.ExecOK, 0, 20),
 		tlExecAt("aa", store.ExecFailed, 1, 30),
 		tlExecAt("cc", store.ExecOK, 0, 20),
 		tlExec("bb", store.ExecOK, 0),
+		tlExecAt("ee", store.ExecFailed, 1, 5),
+		tlExecAt("ee", store.ExecOK, 0, 50),
 	)
 	run.Executions[3].Seq = nil
 	run.Terminals = []store.Terminal{{ToolUseID: "mm"}}
@@ -610,8 +615,8 @@ func TestTimeline_UndeclaredCallsFollowTheirResults(t *testing.T) {
 	for _, c := range tl.Calls {
 		got = append(got, c.ToolUseID)
 	}
-	if strings.Join(got, ",") != "d,cc,zz,aa,bb,mm" {
-		t.Errorf("order = %v, want d,cc,zz,aa,bb,mm: declared first, then by the result's seq, unpositioned last, ties by id", got)
+	if strings.Join(got, ",") != "d,ee,cc,zz,aa,bb,mm" {
+		t.Errorf("order = %v, want d,ee,cc,zz,aa,bb,mm: declared first, then by the outcome record's seq, unpositioned last, ties by id", got)
 	}
 	var b bytes.Buffer
 	writeTimeline(&b, tl)

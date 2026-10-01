@@ -1252,6 +1252,8 @@ m("TL a dropped call's id reaches the terminal raw", "internal/report/text.go",
   "everything but the id is unknown\\n\", printable(l.ToolUseID))", "everything but the id is unknown\\n\", l.ToolUseID)", "TestText_ToolNameIsPrintable")
 m("TL the program reaches the terminal raw on the timeline", "internal/report/timeline_text.go",
   "\t\tcall += \" \" + printable(c.Program)", "\t\tcall += \" \" + c.Program", "TestText_ToolNameIsPrintable")
+m("TL undeclared rows are ordered by their last record, not their outcome's", "internal/report/timeline.go",
+  "\t\tp := outcomeSeq(outcomeRecord(executed[id]))", "\t\tp := outcomeSeq(outcomeRecord(executed[id][max(len(executed[id])-1, 0):]))", "TestTimeline_")
 m("TL the legend does not name the programs with no program tier", "internal/report/timeline_text.go",
   "\t\t\t\"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; \"+\n", "", "TestTimeline_")
 
