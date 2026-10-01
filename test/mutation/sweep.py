@@ -1321,11 +1321,11 @@ m("TB the session block renders with no test run", "internal/report/text.go",
   "\tif t == nil || t.Runs == 0 {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:", "\tif t == nil {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:",
   "TestTestRuns_")
 m("TB the session block drops the limit", "internal/report/text.go",
-  "\tif len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {\n\t\tfmt.Fprintln(b, \"    the numbers are call seqs",
-  "\tif false {\n\t\tfmt.Fprintln(b, \"    the numbers are call seqs",
+  "\tif len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {\n\t\tfmt.Fprintf(b, \"    the numbers are call seqs",
+  "\tif false {\n\t\tfmt.Fprintf(b, \"    the numbers are call seqs",
   "TestTestRuns_|TestTestBending_")
 m("TB the session block is never rendered", "internal/report/text.go",
-  "\twriteTestRuns(b, sess.TestRuns)\n", "\t_ = writeTestRuns\n", "TestTestBending_")
+  "\twriteTestRuns(b, sess.TestRuns, sess.SessionID)\n", "\t_ = writeTestRuns\n", "TestTestBending_")
 m("TB the report never builds the test runs", "internal/report/report.go",
   "\t\tsess.TestRuns = buildTestRuns(run, executed, denied, tb)\n",
   "\t\t_ = buildTestRuns\n",
