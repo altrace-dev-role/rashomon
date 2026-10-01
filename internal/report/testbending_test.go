@@ -194,6 +194,13 @@ func TestTestBending(t *testing.T) {
 		{name: "B: a run moved to the background does not start one",
 			run:   tbRun(bgTest(1, "d"), test(2, "d", failed)),
 			green: pairs(), flaky: pairs()},
+		{name: "B: a run moved to the background between is an edit",
+			run:   tbRun(test(1, "d", failed), bgTest(2, "d"), test(3, "d", ok)),
+			green: pairs(), flaky: pairs(),
+			why: "it was still running when the record was written, and a test run may write files (jest -u)"},
+		{name: "A: a run moved to the background between is an edit",
+			run:   tbRun(test(1, "d", failed), edit(2, tf, ok), bgTest(3, "d"), test(4, "d", ok)),
+			green: pairs(), flaky: pairs()},
 		{name: "B: a timeout that fired is no result",
 			run:   tbRun(timedTest(1, "d", failed, 124), timedTest(2, "d", ok, 0), timedTest(3, "d", failed, 124)),
 			green: pairs(), flaky: pairs(),
@@ -361,11 +368,15 @@ func TestTestBending(t *testing.T) {
 // class would pass every row.
 func TestTestBending_ShapesFromDerive(t *testing.T) {
 	key := []byte("key")
-	bash := func(seq int64, input, outcome string) (store.Declaration, *store.Execution) {
+	bash := func(seq int64, input, outcome string, exit int) (store.Declaration, *store.Execution) {
 		id := "d" + string(rune('a'+seq))
 		d := store.Declaration{Seq: seq, ToolUseID: id, ToolName: "Bash", SessionID: "s1",
 			Shape: shape.Derive("Bash", json.RawMessage(input), key)}
-		return d, &store.Execution{ToolUseID: id, ToolName: "Bash", Outcome: outcome}
+		x := &store.Execution{ToolUseID: id, ToolName: "Bash", Outcome: outcome}
+		if exit != 0 {
+			x.ExitCode = &exit
+		}
+		return d, x
 	}
 	testEdit := func(seq int64) (store.Declaration, *store.Execution) {
 		id := "d" + string(rune('a'+seq))
@@ -376,7 +387,11 @@ func TestTestBending_ShapesFromDerive(t *testing.T) {
 	}
 	type call func() (store.Declaration, *store.Execution)
 	b := func(seq int64, input, outcome string) call {
-		return func() (store.Declaration, *store.Execution) { return bash(seq, input, outcome) }
+		return func() (store.Declaration, *store.Execution) { return bash(seq, input, outcome, 0) }
+	}
+	// bx is b with the execution's exit code.
+	bx := func(seq int64, input, outcome string, exit int) call {
+		return func() (store.Declaration, *store.Execution) { return bash(seq, input, outcome, exit) }
 	}
 	e := func(seq int64) call { return func() (store.Declaration, *store.Execution) { return testEdit(seq) } }
 	const ok, failed = store.ExecOK, store.ExecFailed
@@ -396,6 +411,8 @@ func TestTestBending_ShapesFromDerive(t *testing.T) {
 			b(1, `{"command":"go test ./... 2>&1 | grep FAIL"}`, failed), e(2), b(3, `{"command":"go test ./... 2>&1 | grep FAIL"}`, ok)}, nil},
 		{"a tail pipeline records tail", []call{
 			b(1, `{"command":"go test ./... 2>&1 | tail -20"}`, failed), b(2, `{"command":"go test ./... 2>&1 | tail -20"}`, ok)}, nil},
+		{"a timeout that fired is no failed run", []call{
+			bx(1, `{"command":"timeout 60 go test ./..."}`, failed, 124), e(2), b(3, `{"command":"timeout 60 go test ./..."}`, ok)}, nil},
 		{"a cd between moves the run", []call{
 			b(1, `{"command":"go test ./..."}`, failed), b(2, `{"command":"cd ../other-module"}`, ok), b(3, `{"command":"go test ./..."}`, ok)}, nil},
 	} {

@@ -386,7 +386,7 @@ func TestTestBending_ARepeatedRelativeCdIsAnotherDirectory(t *testing.T) {
 	s.cwd = "/tmp/project/sub"
 	s.shell("cd sub && go test ./...", false, "")
 
-	if line, ok := s.line(); ok && strings.Contains(line, "had both outcomes") {
+	if line, ok := s.line(); ok {
 		t.Errorf("a run in another directory paired: %q", line)
 	}
 	decls := s.e.declarations(testSession)

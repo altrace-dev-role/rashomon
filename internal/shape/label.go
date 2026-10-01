@@ -218,11 +218,11 @@ var labelTable = []labelRule{
 	// that is kept, and recorded, rather than guessed around.
 	//
 	// go test's and pytest's names are cased too, and GoogleTest's with them,
-	// because those runners
-	// match them case-sensitively: go test reads calc_TEST.go as source and
-	// pytest does not collect TEST_x.py. Folded, the label would call them
-	// tests to a detection that exists to tell tests from source. The .test.
-	// and .spec. infixes and RSpec's _spec.rb stay folded.
+	// because those runners match them case-sensitively: go test reads
+	// calc_TEST.go as source and pytest does not collect TEST_x.py. Folded,
+	// the label would call them tests to a detection that exists to tell
+	// tests from source. The .test. and .spec. infixes and RSpec's _spec.rb
+	// stay folded.
 	//
 	// Directory rules (tests/, __tests__/) are left out: this table matches
 	// basenames by design, and a fixture in tests/ is not a test.

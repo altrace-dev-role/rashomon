@@ -20,6 +20,16 @@ func verbOf(t *testing.T, cmd string) Shape {
 // program is -- so `cd x && go test ./...` counts, and anything the search
 // cannot vouch for stays what it was.
 func TestTestRunnerIsRecognised(t *testing.T) {
+	// The program a prefixed run records: the prefix, not the runner behind
+	// it. The report reads exit status 124 as a timeout that fired only when
+	// the program is timeout, so a runner name here turns every fired timeout
+	// into a failed run.
+	wantProgram := map[string]string{
+		"timeout 120 go test ./...":          "timeout",
+		"cd /repo && timeout 60s cargo test": "timeout",
+		"time -p go test":                    "time",
+		"time go test ./...":                 "time",
+	}
 	for _, tc := range []struct {
 		cmd  string
 		want string
@@ -69,6 +79,7 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 		{"timeout 2.5m npx jest", VerbTest, ""},
 		{"time go test ./...", VerbTest, ""},
 		{"time -p pytest", VerbTest, ""},
+		{"time -p go test", VerbTest, ""},
 		{"timeout 600 time make test", VerbTest, ""},
 		{"cd /repo && timeout 60s cargo test", VerbTest, ""},
 
@@ -143,6 +154,9 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 		{"test -f go.mod", VerbExecute, "the test builtin is not a test runner"},
 	} {
 		got := verbOf(t, tc.cmd)
+		if prog, ok := wantProgram[tc.cmd]; ok && (got.Program == nil || *got.Program != prog) {
+			t.Errorf("%q: program %v, want %q: the report reads a fired timeout's 124 by it", tc.cmd, got.Program, prog)
+		}
 		want := tc.want
 		if want == VerbUnknown+"-null" {
 			if got.Program != nil || got.VerbClass != VerbExecute {

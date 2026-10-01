@@ -291,6 +291,23 @@ func TestRedact_EnumerationDescendsIntoEmbeddedStructs(t *testing.T) {
 	if v.Host != "canary.example" || n != 1 {
 		t.Errorf("planted %d, host %q: want the embedded host planted", n, v.Host)
 	}
+
+	// An embedded pointer flattens the same way, and plantAt allocates it.
+	type outerPtr struct {
+		*Inner
+		Other string `json:"other"`
+	}
+	paths = map[string]bool{}
+	walkStringPaths(reflect.TypeOf(outerPtr{}), "destinations.hosts[]", paths, 0)
+	if !paths["destinations.hosts[].host"] || !paths["destinations.hosts[].other"] {
+		t.Errorf("paths = %v, want the embedded pointer's host at the outer level", paths)
+	}
+	var vp outerPtr
+	n = 0
+	plantAt(reflect.ValueOf(&vp).Elem(), "destinations.hosts[]", "canary.example", &n, 0)
+	if vp.Inner == nil || vp.Host != "canary.example" || n != 1 {
+		t.Errorf("planted %d, inner %+v: want the embedded pointer allocated and its host planted", n, vp.Inner)
+	}
 }
 
 // plantAt writes host into each declared host-bearing field.

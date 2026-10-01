@@ -1771,6 +1771,15 @@ m("TB a leading cd's target is not the run's directory", "internal/hook/handle.g
   "shape.CWDDigest(h.st.Key(), p.CWD),",
   "TestTestBending_ALeadingAbsoluteCd")
 
+m("TB a backgrounded call between two runs is not an edit", "internal/report/testbending.go",
+  "\t\tif outcome == LinkOutcomeDenied {\n\t\t\tcontinue\n\t\t}\n",
+  "\t\tif outcome == LinkOutcomeDenied || outcome == LinkOutcomeBackgrounded {\n\t\t\tcontinue\n\t\t}\n",
+  "TestTestBending")
+m("TB a prefixed run records its runner as the program", "internal/shape/shape.go",
+  "\t\t\t\ts.VerbClass = VerbTest\n",
+  "\t\t\t\ts.VerbClass = VerbTest\n\t\t\t\t_, runner, _ := runnerPrefix(pshaped, i, prog)\n\t\t\t\ts.Program = &runner\n",
+  "TestTestRunnerIsRecognised|TestTestBending")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
