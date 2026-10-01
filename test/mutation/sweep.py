@@ -1105,8 +1105,8 @@ m("TL an execution with no declaration and no terminal is left off", "internal/r
 m("TL a dropped call's execution is thrown away", "internal/report/timeline.go",
   "\t\tc.Outcome = timelineOutcome(id, rec, executed, denied)", "\t\tc.Outcome = LinkUnknown", "TestTimeline_")
 m("TL an undeclared call loses its exit code", "internal/report/timeline.go",
-  "\t\tc.ExitCode = outcomeExitCode(rec)\n\t\tentries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec),",
-  "\t\tentries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec),", "TestTimeline_")
+  "\t\tc.ExitCode = outcomeExitCode(rec)\n\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(\"\", rec),",
+  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(\"\", rec),", "TestTimeline_")
 m("TL an undeclared call loses the tool name its execution carries", "internal/report/timeline.go",
   "\t\t\tc.ToolName = recs[len(recs)-1].ToolName", "\t\t\t_ = recs", "TestTimeline_")
 m("TL an undeclared call is attributed to the main agent", "internal/report/timeline.go",
@@ -1230,6 +1230,14 @@ m("TL a failed call's ok record is no success", "internal/report/timeline.go",
   "\t\tif c.Group == GroupFailed {\n\t\t\tif ok := e.ok;", "\t\tif false {\n\t\t\tif ok := e.ok;", "TestTimeline_")
 m("TL a failed call's ok record before the failure leaves it unchecked", "internal/report/timeline.go",
   "ok != nil && (ok.pos == nil || *ok.pos > *failed.pos) {", "ok != nil {", "TestTimeline_")
+m("TL an undeclared success's executed digest is thrown away", "internal/report/timeline.go",
+  "timelineEntry{call: c, digest: effectiveDigest(\"\", rec), pos:", "timelineEntry{call: c, pos:", "TestTimeline_")
+m("TL an undeclared success with no tool name is ruled out", "internal/report/timeline.go",
+  "\t\t\tif c.ToolName != failed.call.ToolName && c.ToolName != LinkUnknown {", "\t\t\tif c.ToolName != failed.call.ToolName {", "TestTimeline_")
+m("TL an undeclared success of another digest is ruled out under a program tier", "internal/report/timeline.go",
+  "\t\t\tif e.digest != \"\" && e.digest != failed.digest && !programTier {", "\t\t\tif e.digest != \"\" && e.digest != failed.digest {", "TestTimeline_")
+m("TL an undeclared success of an unknown digest is ruled out", "internal/report/timeline.go",
+  "\t\t\tif e.digest != \"\" && e.digest != failed.digest && !programTier {", "\t\t\tif e.digest != failed.digest && !programTier {", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

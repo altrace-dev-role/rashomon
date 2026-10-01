@@ -133,10 +133,13 @@ type TimelineCall struct {
 	// LaterChecked is true on a failed call that was compared against the
 	// rest. False on a failed call with no declaration (no command to match),
 	// whose failure record has no seq (no position to be later than), or
-	// where nothing placed was found but a matching success's record has no
-	// seq, or a success of the same tool has no declaration and was not
-	// recorded before it (either may be the later one): a nil Later there is
-	// "not checked", never "no later success".
+	// where nothing placed was found but a success not recorded before it
+	// cannot be ruled out: a matching success whose record has no seq, a
+	// same-program success where either call was rewritten, a matching ok
+	// record of a failed call, or a success whose declaration was lost and
+	// whose executed digest does not rule it out (any of them may be the
+	// later one). A nil Later there is "not checked", never "no later
+	// success".
 	LaterChecked bool `json:"later_checked"`
 }
 
@@ -265,7 +268,7 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 		c.Outcome = timelineOutcome(id, rec, executed, denied)
 		c.Group = timelineGroup(c.Outcome)
 		c.ExitCode = outcomeExitCode(rec)
-		entries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec), ok: failedCallOK(c, "", recs)})
+		entries = append(entries, timelineEntry{call: c, digest: effectiveDigest("", rec), pos: outcomeSeq(rec), ok: failedCallOK(c, "", recs)})
 	}
 
 	for i := range entries {
@@ -449,8 +452,9 @@ func outcomeSeq(rec *store.Execution) *int64 {
 // agents run at once -- cannot be placed before or after the failure, so
 // with nothing placed found the answer is "not checked", not "no later
 // success": the success is in the record and may well be the later one. A
-// success of the same tool with no declaration, recorded after the failure or
-// at no known position, is the same: nothing says which command it ran. So
+// success of the same tool whose declaration was lost, recorded after the
+// failure or at no known position, is the same unless its executed digest
+// rules it out: it has no program and no row. So
 // is a later success of the same program where either call was rewritten:
 // nothing says which program ran. And so is the ok record of a failed call,
 // which matches but has no ok row to point at.
@@ -462,6 +466,25 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 	for j := range entries {
 		e := &entries[j]
 		c := e.call
+		// A success whose declaration was lost -- to a lock timeout, a paused
+		// pre hook or a failing PreToolUse hook -- has no program to match and
+		// no row to point at, but its execution record says what ran, and a
+		// record with no tool name may be of the same tool. A known digest
+		// other than the failure's rules it out where no program tier is
+		// offered; anything else recorded after the failure, or at no known
+		// position, is one more success that cannot be ruled out.
+		if c.Seq == nil && c.Group == GroupOK {
+			if c.ToolName != failed.call.ToolName && c.ToolName != LinkUnknown {
+				continue
+			}
+			if e.digest != "" && e.digest != failed.digest && !programTier {
+				continue
+			}
+			if e.pos == nil || *e.pos > *failed.pos {
+				unplaced = true
+			}
+			continue
+		}
 		if c.ToolName != failed.call.ToolName {
 			continue
 		}
@@ -480,17 +503,6 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 			continue
 		}
 		if c.Group != GroupOK {
-			continue
-		}
-		// A success with no declaration has no program to match and no row to
-		// point at, but it may be the same command -- a declaration lost to a
-		// lock timeout or a failing PreToolUse hook leaves exactly this. Unless
-		// it was recorded before the failure, it is one more success that
-		// cannot be ruled out.
-		if c.Seq == nil {
-			if e.pos == nil || *e.pos > *failed.pos {
-				unplaced = true
-			}
 			continue
 		}
 		command := failed.digest != "" && e.digest == failed.digest

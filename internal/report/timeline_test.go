@@ -810,6 +810,40 @@ func TestTimeline_AnUndeclaredSuccessIsNotNoSuccess(t *testing.T) {
 	if c := tlByID(t, buildTimeline(other, nil), "f"); !c.LaterChecked || c.Later != nil {
 		t.Errorf("an undeclared success of another tool leaves the failure unchecked: %+v", c)
 	}
+
+	// #36 review round 4, fix 1: only the declaration is lost; the execution
+	// record says what ran. A known, different digest rules the success out
+	// where no program tier is offered (git, an Edit), and cannot where one is
+	// (pytest), nor where the digest is unknown. Break: append undeclared
+	// entries with no digest and every one of them leaves the failure
+	// unchecked.
+	for _, tc := range []struct {
+		program, executed string
+		checked           bool
+	}{
+		{"git", "d2", true},
+		{"", "d2", true},
+		{"pytest", "d2", false},
+		{"git", "", false},
+	} {
+		r := run(&later)
+		r.Declarations[0].Shape.Program = nil
+		if tc.program != "" {
+			r.Declarations[0].Shape.Program = &tc.program
+		}
+		r.Executions[1].ExecutedDigest = tc.executed
+		if c := tlByID(t, buildTimeline(r, nil), "f"); c.LaterChecked != tc.checked || c.Later != nil {
+			t.Errorf("program %q, undeclared success ran %q: later %+v, checked %v; want checked %v",
+				tc.program, tc.executed, c.Later, c.LaterChecked, tc.checked)
+		}
+	}
+	// A record with no tool_name may be a success of the same tool. Break:
+	// skip it for its tool name and the failure reads "no later success".
+	unknown := run(&later)
+	unknown.Executions[1].ToolName = ""
+	if c := tlByID(t, buildTimeline(unknown, nil), "f"); c.LaterChecked || c.Later != nil {
+		t.Errorf("an undeclared success with no tool name is ruled out: %+v", c)
+	}
 }
 
 // #36 review 4: the same-program tier makes no claim about arguments, and is
