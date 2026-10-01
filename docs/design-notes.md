@@ -315,8 +315,7 @@ lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
   path sort order. The cold-cache heuristic judges a response once, in the
   file it was first seen in, against every response that file holds, so the
   cold figure for a shared response whose predecessor differs between the two
-  files does depend on it (3 responses and $0.0192 in one order, 2 and
-  $0.01488 in the other).
+  files does depend on it.
 
 **Departing from "never `message.content`".** The design said spend never
 reads message content. The silent-failure line needs the final message it
@@ -375,9 +374,12 @@ fallback transcript is captured.
 **The savings list.** A suggestion is printed only with the figure it rests
 on:
 
-- Cache re-written after a gap longer than its TTL, on a response that read
-  nothing from the cache: a heuristic, labelled as one, priced as the write
-  rate minus the read rate, since the alternative was a cache read. The
+- Cache re-written after a gap longer than its TTL: a heuristic, labelled as
+  one. Only the shortfall is cold -- what the previous response read and wrote
+  to the cache, less what this one read back -- so a response that reads a
+  still-warm prefix and re-writes the expired rest is counted for the rest,
+  and a write past the previous cache is new content. It is priced as the
+  write rate minus the read rate, since the alternative was a cache read. The
   1h-TTL hint appears only when part of the re-write was a 5m write.
 - Spend in turns with a failed call the summary never mentioned: a floor,
   with its bound printed beside it. The rule does not check which call came

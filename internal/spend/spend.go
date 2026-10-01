@@ -237,7 +237,7 @@ type CacheExpiry struct {
 }
 
 // CacheHeuristic is the rule, stated wherever its number is.
-const CacheHeuristic = "a cache write on a response that read nothing from the cache and whose previous response by the same agent in the same transcript started more than the TTL earlier (5m, or 1h for a 1h write), priced as the write over a cache read of the same tokens"
+const CacheHeuristic = "a cache write on a response whose previous response by the same agent in the same transcript started more than the TTL earlier (5m, or 1h for a 1h write), counting only the shortfall -- what that previous response read and wrote to the cache, less what this one read from it -- priced as the write over a cache read of the same tokens"
 
 // Refusals is responses that ended with stop_reason "refusal", in all and by
 // category and model (ByCategory).
@@ -1051,13 +1051,23 @@ func (d DeclinedAttempts) unpricedWithOutput() int64 {
 // so this can over-attribute near the threshold -- one reason it is labelled
 // a heuristic wherever its number appears.
 //
-// A write on a response that read anything from the cache is not cold: the
-// cache was warm, and the write only added the new tokens after the cached
-// prefix. Counting it whole priced a 1k write on a warm cache as an expiry,
-// and on real data overstated the figure by single-digit percent to about
-// 15%. So a write counts only when cache_read_input_tokens is zero, and it
-// is priced as the write rate minus the read rate (Build): what re-reading
-// those tokens would have cost is not a saving.
+// ONLY THE SHORTFALL IS COLD. The previous response left read+write tokens
+// in the cache; what this response read back of them was still warm, and a
+// write past that much is new content, not an expiry. So the cold part of a
+// write is min(write, max(0, (read_prev + write_prev) - read)): the cached
+// prefix it had to write again. A response that read a still-warm prefix (a
+// 1h breakpoint, or one a parallel session kept warm) and re-wrote the
+// expired rest is counted for the rest. Counting every write whole priced a
+// 1k write on a warm cache as an expiry; the rule that replaced it -- a write
+// with any cache read is not cold -- dropped every partial expiry instead.
+// Measured on one real machine's last 30 days to 2026-10-01 ($259.77 in all):
+// every write whole $88.16, the any-read rule $4.01, the shortfall $86.36 --
+// most re-writes after a long gap had also read a still-warm prefix, and an
+// earlier window of the same data went from $33.80 to $4.01 under the
+// any-read rule. The cold part is the 5m write first and
+// then the 1h write, the cheaper first, so the figure errs low; it is priced
+// as the write rate minus the read rate (Build): what re-reading those
+// tokens would have cost is not a saving.
 //
 // EVERY FILE HOLDING A RESPONSE IS A STREAM, and the response is judged once,
 // in the file it was first seen in. A resumed conversation carries the
@@ -1092,16 +1102,15 @@ func coldWrites(sc *Scan) map[*Response]Tokens {
 			if rs[i].file != k.file {
 				continue
 			}
-			if rs[i].Tokens.CacheRead > 0 {
-				continue
-			}
+			prev, cur := rs[i-1].Tokens, rs[i].Tokens
+			short := max(0, prev.CacheRead+prev.CacheWrite5m+prev.CacheWrite1h-cur.CacheRead)
 			gap := time.Duration(rs[i].StartMS-rs[i-1].StartMS) * time.Millisecond
 			var w Tokens
 			if gap > ttl5m {
-				w.CacheWrite5m = rs[i].Tokens.CacheWrite5m
+				w.CacheWrite5m = min(cur.CacheWrite5m, short)
 			}
 			if gap > ttl1h {
-				w.CacheWrite1h = rs[i].Tokens.CacheWrite1h
+				w.CacheWrite1h = min(cur.CacheWrite1h, short-w.CacheWrite5m)
 			}
 			if w.CacheWrite5m+w.CacheWrite1h > 0 {
 				out[rs[i]] = w

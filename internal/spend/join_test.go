@@ -924,7 +924,7 @@ func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *
 	for _, copied := range []string{"sess-o", "sess-r"} {
 		t.Run("copied lines carry "+copied, func(t *testing.T) {
 			x1 := resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T, in: 1000, w5: 100, stop: "end_turn"}
-			x2 := resp{id: "X2", model: "claude-opus-5-5", session: "sess-o", at: T.Add(oneMinute), in: 2000, stop: "end_turn"}
+			x2 := resp{id: "X2", model: "claude-opus-5-5", session: "sess-o", at: T.Add(oneMinute), in: 2000, w5: 3000, stop: "end_turn"}
 			y1 := resp{id: "Y1", model: "claude-opus-5-5", session: "sess-r", at: T.Add(30 * oneMinute), in: 4000, w5: 3000, stop: "end_turn"}
 			cx1, cx2 := x1, x2
 			cx1.session, cx2.session = copied, copied
@@ -963,7 +963,7 @@ func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *
 				t.Errorf("transcripts %d, covered %d, not covered %d; want 2, 1, 1: the unrecorded original is never recorded",
 					j.Transcripts, j.CoveredTranscripts, j.NotCoveredTranscripts)
 			}
-			if want := int64(3000*opusIn + 100*opusW5); j.NotCoveredCost.Nano != want {
+			if want := int64(3000*opusIn + 3100*opusW5); j.NotCoveredCost.Nano != want {
 				t.Errorf("not-covered cost = %d, want %d: the shared responses, once", j.NotCoveredCost.Nano, want)
 			}
 			if strings.Join(j.NotCoveredSessions, ",") != "sess-o" {

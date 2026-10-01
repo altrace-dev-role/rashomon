@@ -1042,9 +1042,9 @@ func TestCacheExpiry_WriteAfterTheTTLIsCold(t *testing.T) {
 	t0 := now.Add(-5 * time.Hour)
 	c.write("proj/sess-a.jsonl",
 		resp{id: "r1", model: "claude-opus-5-5", at: t0, w5: 50, stop: "tool_use"}.line("text"),                        // first: no predecessor
-		resp{id: "r2", model: "claude-opus-5-5", at: t0.Add(4 * oneMinute), w5: 100, stop: "tool_use"}.line("text"),    // 4m: warm
+		resp{id: "r2", model: "claude-opus-5-5", at: t0.Add(4 * oneMinute), w5: 200, stop: "tool_use"}.line("text"),    // 4m: warm
 		resp{id: "r3", model: "claude-opus-5-5", at: t0.Add(10 * oneMinute), w5: 200, stop: "tool_use"}.line("text"),   // 6m: 5m write cold
-		resp{id: "r4", model: "claude-opus-5-5", at: t0.Add(30 * oneMinute), w1h: 300, stop: "tool_use"}.line("text"),  // 20m: 1h write warm
+		resp{id: "r4", model: "claude-opus-5-5", at: t0.Add(30 * oneMinute), w1h: 400, stop: "tool_use"}.line("text"),  // 20m: 1h write warm
 		resp{id: "r5", model: "claude-opus-5-5", at: t0.Add(150 * oneMinute), w1h: 400, stop: "end_turn"}.line("text")) // 2h: 1h write cold
 	// Two hours after the main transcript's last response: a subagent's first
 	// write. If files were merged it would read as a cold 5m write.
@@ -1084,7 +1084,7 @@ func TestCacheExpiry_ThePreviousResponseIsTheSameAgents(t *testing.T) {
 	c := newConfig(t)
 	t0 := now.Add(-5 * time.Hour)
 	c.write("proj/sess-a.jsonl",
-		resp{id: "m1", model: "claude-opus-5-5", at: t0, in: 1, stop: "tool_use"}.line("text"),
+		resp{id: "m1", model: "claude-opus-5-5", at: t0, w1h: 300, stop: "tool_use"}.line("text"),
 		resp{id: "s1", model: "claude-opus-5-5", at: t0.Add(50 * oneMinute), w5: 1000, stop: "end_turn", sidechain: true}.line("text"),
 		resp{id: "m2", model: "claude-opus-5-5", at: t0.Add(70 * oneMinute), w1h: 300, stop: "end_turn"}.line("text"))
 	s := c.summary(30)
@@ -1132,7 +1132,7 @@ func TestCacheExpiry_NoLongerTTLAdviceForA1hWrite(t *testing.T) {
 func TestCacheExpiry_ThePredecessorMayLieOutsideTheWindow(t *testing.T) {
 	c := newConfig(t)
 	c.write("proj/sess-a.jsonl",
-		resp{id: "r1", model: "claude-opus-5-5", at: now.Add(-3 * 24 * time.Hour), w5: 10, stop: "end_turn"}.line("text"),
+		resp{id: "r1", model: "claude-opus-5-5", at: now.Add(-3 * 24 * time.Hour), w5: 100, stop: "end_turn"}.line("text"),
 		resp{id: "r2", model: "claude-opus-5-5", at: now.Add(-time.Hour), w5: 100, stop: "end_turn"}.line("text"))
 	if s := c.summary(1); s.CacheExpiry.Tokens != 100 {
 		t.Errorf("cold tokens = %d, want 100", s.CacheExpiry.Tokens)
@@ -1147,7 +1147,7 @@ func TestCacheExpiry_AnUnbilledLineWarmsNothing(t *testing.T) {
 	c := newConfig(t)
 	t0 := now.Add(-time.Hour)
 	c.write("proj/sess-a.jsonl",
-		resp{id: "a", model: "claude-opus-5-5", at: t0, w5: 1000, stop: "end_turn"}.line("text"),
+		resp{id: "a", model: "claude-opus-5-5", at: t0, w5: 50000, stop: "end_turn"}.line("text"),
 		resp{id: "syn", model: "<synthetic>", at: t0.Add(20 * oneMinute), stop: "end_turn"}.line("text"),
 		resp{id: "b", model: "claude-opus-5-5", at: t0.Add(20*oneMinute + time.Second), w5: 50000, stop: "end_turn"}.line("text"))
 	s := c.summary(30)
@@ -1157,10 +1157,10 @@ func TestCacheExpiry_AnUnbilledLineWarmsNothing(t *testing.T) {
 	}
 }
 
-// TestCacheExpiry_AWriteOnAWarmCacheIsNotCold: a response that read from the
-// cache found it warm, whatever the gap before it, and its write only added
-// the tokens after the cached prefix. Counting it whole priced a 1k write on a
-// warm cache as an expiry. And a cold write is priced as the write over a
+// TestCacheExpiry_AWriteOnAWarmCacheIsNotCold: a response that read back
+// everything the previous one cached found it warm, whatever the gap before
+// it, and its write only added the tokens after the cached prefix. Counting
+// it whole priced a 1k write on a warm cache as an expiry. And a cold write is priced as the write over a
 // cache read of the same tokens -- the alternative was a read, not nothing --
 // so the full write rate overstated the figure.
 func TestCacheExpiry_AWriteOnAWarmCacheIsNotCold(t *testing.T) {
@@ -1179,8 +1179,31 @@ func TestCacheExpiry_AWriteOnAWarmCacheIsNotCold(t *testing.T) {
 		t.Errorf("cold cost = %d, want %d: the write rate minus the read rate", s.CacheExpiry.Cost.Nano, want)
 	}
 	txt, js := render(t, s)
-	if !strings.Contains(txt, "over cache reads") || !strings.Contains(js, "read nothing from the cache") {
-		t.Errorf("the figure does not say it is the write over a cache read of a cache that read nothing:\n%s\n%s", txt, js)
+	if !strings.Contains(txt, "over cache reads") || !strings.Contains(js, "counting only the shortfall") {
+		t.Errorf("the figure does not say it is the write over a cache read, counting only the shortfall:\n%s\n%s", txt, js)
+	}
+}
+
+// TestCacheExpiry_APartialExpiryIsCounted: a response can read a prefix that
+// is still warm -- a 1h breakpoint, or one a parallel session kept warm --
+// and re-write the expired rest of the conversation. Any cache read made a
+// write not cold, so that re-write was never counted, and it is the case the
+// 1h-TTL advice is about. Here the previous response read a 20k prefix and
+// cached 100k after it; twenty minutes later the 20k prefix is read again and
+// the expired 100k is re-written: the shortfall, 100k, is cold. A write
+// beyond the previous response's cache is new content, not an expiry.
+func TestCacheExpiry_APartialExpiryIsCounted(t *testing.T) {
+	c := newConfig(t)
+	t0 := now.Add(-2 * time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "a", model: "claude-opus-5-5", at: t0, read: 20000, w5: 100000, stop: "end_turn"}.line("text"),
+		resp{id: "b", model: "claude-opus-5-5", at: t0.Add(20 * oneMinute), read: 20000, w5: 100000 + 3000, stop: "end_turn"}.line("text"))
+	s := c.summary(30)
+	if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens5m != 100000 {
+		t.Errorf("cold = %+v; want b's re-write of the expired 100k, and not its 3k of new content", s.CacheExpiry)
+	}
+	if want := int64(100000 * (opusW5 - opusRead)); s.CacheExpiry.Cost.Nano != want {
+		t.Errorf("cold cost = %d, want %d", s.CacheExpiry.Cost.Nano, want)
 	}
 }
 

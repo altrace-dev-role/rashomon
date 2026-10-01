@@ -1459,9 +1459,15 @@ m("SP the silent-failure line says the turns ended with a failure", "internal/sp
 m("SP the silent-failure saving says it bought a done", "internal/spend/text.go",
   '"%s spent in turns with a failed call the summary never mentioned"', '"%s bought a \\"done\\" in turns whose recorded failures the summary never mentioned"',
   "TestJoin_SpendInsideASilentlyFailedTurn")
-m("SP a write on a response that read from the cache is counted cold", "internal/spend/spend.go",
-  "\t\t\tif rs[i].Tokens.CacheRead > 0 {\n\t\t\t\tcontinue\n\t\t\t}\n", "",
+m("SP a write on a response that read back the previous cache is counted cold", "internal/spend/spend.go",
+  "prev.CacheRead+prev.CacheWrite5m+prev.CacheWrite1h-cur.CacheRead)", "prev.CacheRead+prev.CacheWrite5m+prev.CacheWrite1h-0*cur.CacheRead)",
   "TestCacheExpiry_AWriteOnAWarmCacheIsNotCold")
+m("SP a cold write is counted whole, not its shortfall", "internal/spend/spend.go",
+  "\t\t\tshort := max(0, prev.CacheRead+prev.CacheWrite5m+prev.CacheWrite1h-cur.CacheRead)", "\t\t\tshort := cur.CacheWrite5m + cur.CacheWrite1h + 0*prev.CacheRead",
+  "TestCacheExpiry_APartialExpiry")
+m("SP a write with any cache read is not cold", "internal/spend/spend.go",
+  "\t\t\tprev, cur := rs[i-1].Tokens, rs[i].Tokens\n", "\t\t\tprev, cur := rs[i-1].Tokens, rs[i].Tokens\n\t\t\tif cur.CacheRead > 0 {\n\t\t\t\tcontinue\n\t\t\t}\n",
+  "TestCacheExpiry_APartialExpiry")
 m("SP a cold write is priced at the full write rate, not over a cache read", "internal/spend/spend.go",
   "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)", "w.CacheWrite5m*rt.CacheWrite5m() + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)",
   "TestCacheExpiry_")

@@ -441,8 +441,9 @@ request id. Claude Code writes one response on several lines, so a response
 is counted once by its id.
 
 **What it shows.** Spend by agent, model, token kind and session. Cache
-re-written after a gap longer than its TTL, when the response read nothing
-from the cache, priced over a cache read (a heuristic, labelled as one).
+re-written after a gap longer than its TTL: the part of a write that re-writes
+what the previous response had cached and this one did not read back, priced
+over a cache read (a heuristic, labelled as one).
 Refusals, by category and model. Retry attempts: one that produced output is
 priced at the rates of the model that ran it and is in the total; one with no
 output is billed only in some refusal categories, so it is shown in tokens and
