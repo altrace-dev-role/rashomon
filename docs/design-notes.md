@@ -351,9 +351,14 @@ model's rates into the total, the breakdowns and its model's row. An attempt
 declined before any output is billed only when its refusal category is billed,
 and no entry records that category, so it stays tokens with the cost unknown,
 and the header says the total leaves it out. A `fallback_message` last entry
-marks a response a fallback served. It is reported as the model asked (the
-first `message` entry) -> the model that served. With no `message` entry it was
-sticky-routed, and the model asked is said to be absent. Refusals are split by
+marks a fallback chain, and that entry's model ran the attempt: it prices the
+response and gets its by-model row, since a streamed line's `message.model`
+can name the model asked; `message.model` is used only when the entry names
+none. The chain served the response unless its `stop_reason` is `refusal`:
+then every model declined, nothing is reported as served, and no `/model`
+hint is given. A served response is reported as the model asked (the first
+`message` entry before the last) -> the model that served. With no `message`
+entry it was sticky-routed, and the model asked is said to be absent. Refusals are split by
 `stop_details.category` and model. Whether a refusal came before any output is
 read from `output_tokens` 0, never from the line's shape: Claude Code writes a
 zero-usage `<synthetic>` refusal line with the response's `requestId` after a

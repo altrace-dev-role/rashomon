@@ -290,9 +290,11 @@ type RefusalGroup struct {
 // model the table lacks.
 //
 // Declined is the attempts that declined -- the "message" entries before the
-// "fallback_message" that served -- by the model that ran them. Fallback is
-// every response a fallback served, as the model asked and the model that
-// served, sticky-routed ones included (route).
+// last, "fallback_message" entry -- by the model that ran them, in a chain
+// that served and in one where every model declined. Fallback is every
+// response a fallback served, as the model asked and the model that served,
+// sticky-routed ones included (route): never a chain that ended in a
+// refusal, which the page calls the last model's refusal.
 type ExtraAttempts struct {
 	Responses         int                `json:"responses"`
 	Attempts          int                `json:"attempts"`
@@ -321,7 +323,8 @@ type DeclinedAttempts struct {
 // FallbackRoute is the responses a fallback served, by the model asked and
 // the model that served. Sticky is a route with no "message" entry: the
 // request went straight to the fallback, and Requested is "" because the
-// transcript does not say which model was asked.
+// transcript does not say which model was asked. Requested is
+// ModelNotRecorded for a "message" entry that names no model.
 type FallbackRoute struct {
 	Requested string `json:"requested"`
 	Served    string `json:"served"`
@@ -391,8 +394,10 @@ const (
 	SavingNotComputedAttempts = "declined_attempts_without_output"
 )
 
-// ModelNotRecorded names the model of a refusal Claude Code wrote as a
-// "<synthetic>" line: the line does not say which model refused.
+// ModelNotRecorded names a model the transcript does not record: a refusal
+// Claude Code wrote as a "<synthetic>" line, which does not say which model
+// refused, and the model asked of a fallback chain whose "message" entry
+// names none.
 const ModelNotRecorded = "not_recorded"
 
 // SavingHintReasoningInReply: the refusals were in the reasoning_extraction
@@ -406,7 +411,8 @@ const SavingHintReasoningInReply = "reasoning_in_reply"
 // SavingHintServedModel: a fallback served requests this model declined, and
 // a Claude Code user can choose that model (/model) for such work, which
 // skips the declined attempt. Given only when a route names this model as
-// the model asked: a sticky-routed turn does not say which model was asked.
+// the model asked: a sticky-routed turn does not say which model was asked,
+// and a chain where every model declined served nothing to choose.
 const SavingHintServedModel = "served_model"
 
 // SavingHintLongerTTL: part of the re-written cache was written with the 5m
@@ -766,9 +772,14 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 
 // add counts one windowed response's extra attempts and its route.
 func (e *ExtraAttempts) add(r *Response, declined map[string]*DeclinedAttempts, routes map[FallbackRoute]int) {
-	if r.Fallback {
-		k := FallbackRoute{Served: displayName(r.Model), Sticky: r.Requested == ""}
-		if !k.Sticky {
+	// A chain that ended in a refusal served nothing: every model declined.
+	if r.Fallback && r.StopReason != "refusal" {
+		k := FallbackRoute{Served: displayName(r.Model), Sticky: r.Sticky}
+		switch {
+		case k.Sticky:
+		case r.Requested == "":
+			k.Requested = ModelNotRecorded
+		default:
 			k.Requested = displayName(r.Requested)
 		}
 		routes[k]++
@@ -786,7 +797,7 @@ func (e *ExtraAttempts) add(r *Response, declined map[string]*DeclinedAttempts, 
 		} else {
 			e.Cost.addUnpriced(a.Tokens.Total())
 		}
-		// A "message" entry before the "fallback_message" that served is a
+		// A "message" entry before the last, "fallback_message" entry is a
 		// hop that declined.
 		if !r.Fallback || a.Type != IterMessage {
 			continue

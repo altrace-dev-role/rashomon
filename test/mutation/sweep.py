@@ -1149,7 +1149,7 @@ m("SP a savings line is printed with no figure under it", "internal/spend/spend.
 m("SP a refusal is not recognised", "internal/spend/spend.go",
   "\t\tif r.StopReason == \"refusal\" {\n\t\t\ts.Refusals.Responses++", "\t\tif r.StopReason == \"refused\" {\n\t\t\ts.Refusals.Responses++", "TestRefusalsAndExtraAttempts")
 m("SP the returned attempt is counted again as an extra one", "internal/spend/scan.go",
-  "\tfor _, it := range its[:len(its)-1] {", "\tfor _, it := range its {", "TestRefusalsAndExtraAttempts")
+  "\tout := make([]Attempt, 0, len(its)-1)\n\tfor _, it := range its[:len(its)-1] {", "\tout := make([]Attempt, 0, len(its)-1)\n\tfor _, it := range its {", "TestRefusalsAndExtraAttempts")
 m("SP a turn with failures fires whatever its summary says", "internal/spend/join.go",
   "\t\tif !sf.Fires {", "\t\tif sf.Failed == 0 {",
   "TestJoin_AnHonestSummary")
@@ -1502,14 +1502,13 @@ m("SP a priced attempt is left out of the kinds", "internal/spend/spend.go",
   "\t\t\t\tif k.toks > 0 {\n\t\t\t\t\tk.c.addPriced(k.nano)", "\t\t\t\tif false {\n\t\t\t\t\tk.c.addPriced(k.nano)",
   "TestExtraAttempts_AnAttemptWithOutput")
 m("SP a fallback-served response is not reported", "internal/spend/spend.go",
-  "\tif r.Fallback {\n\t\tk := FallbackRoute", "\tif false && r.Fallback {\n\t\tk := FallbackRoute",
+  "\tif r.Fallback && r.StopReason != \"refusal\" {\n\t\tk := FallbackRoute", "\tif false && r.Fallback {\n\t\tk := FallbackRoute",
   "TestExtraAttempts_")
 m("SP a sticky-routed response is not read as fallback-served", "internal/spend/scan.go",
-  "\tif first := its[0]; len(its) > 1 && iterationType(first.Type) == IterMessage {\n\t\treturn true, first.Model\n\t}\n\treturn true, \"\"",
-  "\tif first := its[0]; len(its) > 1 && iterationType(first.Type) == IterMessage {\n\t\treturn true, first.Model\n\t}\n\treturn false, \"\"",
+  "\tr := routing{fallback: true, sticky: true, served: its[len(its)-1].Model}", "\tr := routing{fallback: len(its) > 1, sticky: true, served: its[len(its)-1].Model}",
   "TestExtraAttempts_AStickyRouted")
 m("SP the model asked is taken from the served entry", "internal/spend/scan.go",
-  "\t\treturn true, first.Model\n", "\t\treturn true, its[len(its)-1].Model\n",
+  "\t\t\tr.requested, r.sticky = it.Model, false", "\t\t\tr.requested, r.sticky = its[len(its)-1].Model, false",
   "TestExtraAttempts_TheFallbackPagesExample")
 m("SP a declined attempt's model is printed as read", "internal/spend/spend.go",
   "\t\tname := displayName(a.Model)\n", "\t\tname := a.Model\n",
@@ -1622,6 +1621,18 @@ m("SP frontier_llm is not billed before any output", "internal/spend/scan.go",
 m("SP reasoning_extraction is not billed before any output", "internal/spend/scan.go",
   "\tcase CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction:\n\t\treturn true, true", "\tcase CategoryBio, CategoryFrontierLLM:\n\t\treturn true, true",
   "TestRefusals_AreSplitByCategoryAndModel")
+
+m("SP the served model is read from message.model, not the fallback entry", "internal/spend/scan.go",
+  "\t\tif rt.served != \"\" {\n\t\t\tcand.Model = rt.served", "\t\tif false && rt.served != \"\" {\n\t\t\tcand.Model = rt.served",
+  "TestExtraAttempts_TheServedModelIsTheFallbackEntrys")
+m("SP a chain where every model declined is reported as served", "internal/spend/spend.go",
+  "\tif r.Fallback && r.StopReason != \"refusal\" {", "\tif r.Fallback {", "TestExtraAttempts_AnAllDeclinedChain")
+m("SP the model asked is read from the first entry alone", "internal/spend/scan.go",
+  "\tfor _, it := range its[:len(its)-1] {\n\t\tif iterationType(it.Type) == IterMessage {", "\tfor _, it := range its[:1] {\n\t\tif iterationType(it.Type) == IterMessage {",
+  "TestExtraAttempts_StickyIsOnly")
+m("SP sticky is inferred from an empty model asked", "internal/spend/spend.go",
+  "\t\tk := FallbackRoute{Served: displayName(r.Model), Sticky: r.Sticky}", "\t\tk := FallbackRoute{Served: displayName(r.Model), Sticky: r.Requested == \"\"}",
+  "TestExtraAttempts_StickyIsOnly")
 
 # Import additions some mutants need.
 IMPORTS = {

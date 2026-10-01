@@ -447,8 +447,10 @@ Refusals, by category and model. Retry attempts: one that produced output is
 priced at the rates of the model that ran it and is in the total; one with no
 output is billed only in some refusal categories, so it is shown in tokens and
 left out of the total, and the header says so. Responses a fallback model
-served, as the model asked -> the model that served, sticky-routed ones
-included. And the spend in turns with a failed call the summary never
+served, as the model asked (the first `message` retry entry) -> the model that
+served (the last, `fallback_message` entry), sticky-routed ones (no `message`
+entry) included; a chain that ended in a refusal served nothing, and its
+earlier attempts are counted as declined. And the spend in turns with a failed call the summary never
 mentioned.
 
 **Refusals.** A refusal's `stop_details.category` is read as a closed word:

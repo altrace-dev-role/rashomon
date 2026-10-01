@@ -322,14 +322,17 @@ type Response struct {
 	// message (extraAttempts). They come from the same line the counts do;
 	// see keep.
 	Attempts []Attempt
-	// Fallback is true when a fallback model served the response: its
-	// producing entry is a "fallback_message". Requested is then the model
-	// the first entry names when that entry is a "message" -- the model asked
-	// -- and "" when there is none: a sticky-routed turn went straight to the
-	// fallback, and the transcript does not say which model was asked. As
-	// read; displayModel prints it.
+	// Fallback is true when a fallback chain ran: the producing entry is a
+	// "fallback_message". Model is then that entry's model when it names one
+	// (route). The chain served the response unless it ended in a refusal --
+	// every model declined. Requested is the model the first "message" entry
+	// before the last names -- the model asked -- as read (displayModel
+	// prints it); Sticky is true when there is no such entry: a sticky-routed
+	// turn went straight to the fallback, and the transcript does not say
+	// which model was asked.
 	Fallback  bool
 	Requested string
+	Sticky    bool
 
 	file int // index into Scan.Files, the file this response was first seen in
 
@@ -844,7 +847,11 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			cand.Category = refusalCategory(l.Message.StopDetails)
 		}
 		cand.Attempts = extraAttempts(l.Message.Usage.Iterations)
-		cand.Fallback, cand.Requested = route(l.Message.Usage.Iterations)
+		rt := route(l.Message.Usage.Iterations)
+		cand.Fallback, cand.Requested, cand.Sticky = rt.fallback, rt.requested, rt.sticky
+		if rt.served != "" {
+			cand.Model = rt.served
+		}
 		if !dated {
 			cand.StartMS = 0
 		}
@@ -886,8 +893,8 @@ func keep(prev, cand *Response) {
 	prev.Category = cand.Category
 	prev.Fast = cand.Fast
 	prev.complete = cand.complete
-	prev.Attempts, prev.Fallback, prev.Requested = cand.Attempts, cand.Fallback, cand.Requested
-	if prev.Model == "" {
+	prev.Attempts, prev.Fallback, prev.Requested, prev.Sticky = cand.Attempts, cand.Fallback, cand.Requested, cand.Sticky
+	if prev.Model == "" || cand.Fallback {
 		prev.Model = cand.Model
 	}
 }
@@ -919,21 +926,37 @@ func extraAttempts(its []iteration) []Attempt {
 	return out
 }
 
-// route reads which model served a response and which was asked. A
-// fallback served it when its producing (last) entry is a
-// "fallback_message"; the model asked is the first entry's when that entry is
-// a "message". A sticky-routed turn has no such entry -- the page: identify
-// it "by the fallback_message entry ..., the absence of a message entry for
-// the requested model, and the response's model field" -- so it is served by
-// a fallback with the model asked unknown.
-func route(its []iteration) (bool, string) {
+// routing is what route reads from a response's iterations.
+type routing struct {
+	fallback, sticky bool
+	requested        string
+	served           string
+}
+
+// route reads which model ran a response and which was asked. A fallback
+// chain ran when the producing (last) entry is a "fallback_message", and the
+// model that ran that attempt is the entry's own: for a mid-output fallback
+// the page says message_start "already named the requested model, so read
+// the serving model from ... the fallback_message entry", so message.model
+// can name the model that declined, and is used only when the entry names
+// none (served ""). The model asked is the first "message" entry before the
+// last. With none, the turn was sticky-routed -- the page: identify it "by
+// the fallback_message entry ..., the absence of a message entry for the
+// requested model, and the response's model field" -- and the model asked is
+// unknown. A "message" entry with no model is not sticky: the model asked is
+// then not recorded.
+func route(its []iteration) routing {
 	if len(its) == 0 || iterationType(its[len(its)-1].Type) != IterFallback {
-		return false, ""
+		return routing{}
 	}
-	if first := its[0]; len(its) > 1 && iterationType(first.Type) == IterMessage {
-		return true, first.Model
+	r := routing{fallback: true, sticky: true, served: its[len(its)-1].Model}
+	for _, it := range its[:len(its)-1] {
+		if iterationType(it.Type) == IterMessage {
+			r.requested, r.sticky = it.Model, false
+			break
+		}
 	}
-	return true, ""
+	return r
 }
 
 // parseTimestamp reads Claude Code's RFC 3339 timestamp to Unix ms.

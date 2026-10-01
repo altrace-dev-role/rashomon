@@ -364,8 +364,11 @@ func fallbackLine(rs []FallbackRoute) string {
 	parts := make([]string, 0, len(rs))
 	for _, r := range rs {
 		from := r.Requested
-		if r.Sticky {
+		switch {
+		case r.Sticky:
 			from = "(sticky routing: the model asked is not in the transcript)"
+		case from == ModelNotRecorded:
+			from = "(the model asked is not recorded)"
 		}
 		parts = append(parts, fmt.Sprintf("%s -> %s on %s", from, r.Served, countOf(r.Responses, "response")))
 	}

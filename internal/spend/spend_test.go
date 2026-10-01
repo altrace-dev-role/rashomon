@@ -1493,6 +1493,110 @@ func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 	}
 }
 
+// TestExtraAttempts_TheServedModelIsTheFallbackEntrys: for a mid-output
+// fallback the page says message_start "already named the requested model,
+// so read the serving model from the fallback block's to.model and from the
+// fallback_message entry in the final message_delta's usage.iterations". A
+// streamed line whose message.model is the model asked priced the served
+// attempt at that model's rates (25,170,000 nanodollars against 16,510,000)
+// and printed "claude-fable-5 -> claude-fable-5" with no Opus 4.8 row. The
+// served model is the last entry's when it names one.
+func TestExtraAttempts_TheServedModelIsTheFallbackEntrys(t *testing.T) {
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
+		m["model"] = "claude-fable-5"
+		iterationsOf(m)[0].(map[string]any)["output_tokens"] = 50
+	}))
+	s := c.summary(30)
+	served := int64(412*opus48In + 264*opus48Out)
+	declined := int64(535*fable5In + 50*fable5Out)
+	if s.Total.Nano != served+declined || s.Total.Nano != 16_510_000 {
+		t.Errorf("total = %d, want %d: the served attempt at Opus 4.8's rates", s.Total.Nano, served+declined)
+	}
+	models := map[string]int64{}
+	for _, m := range s.ByModel {
+		models[m.Model] = m.Cost.Nano
+	}
+	if models["claude-opus-4-8"] != served || models["claude-fable-5"] != declined {
+		t.Errorf("by model = %v, want the served attempt under claude-opus-4-8", models)
+	}
+	wantR := []FallbackRoute{{Requested: "claude-fable-5", Served: "claude-opus-4-8", Responses: 1}}
+	if !reflect.DeepEqual(s.ExtraAttempts.Fallback, wantR) {
+		t.Errorf("fallback = %+v, want %+v", s.ExtraAttempts.Fallback, wantR)
+	}
+}
+
+// TestExtraAttempts_AnAllDeclinedChainIsNotServed: when every model in the
+// chain declines, the page says the response is the last model's refusal,
+// with a fallback_message entry last. It was reported as served -- "fallback
+// claude-fable-5 -> claude-opus-4-8", in fallback_served -- and the saving
+// told the reader to choose with /model a model that refused too. The
+// earlier attempts are declined ones; nothing was served, and no model is
+// suggested.
+func TestExtraAttempts_AnAllDeclinedChainIsNotServed(t *testing.T) {
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
+		m["stop_reason"] = "refusal"
+		m["stop_details"] = map[string]any{"type": "refusal", "category": "bio"}
+		iterationsOf(m)[0].(map[string]any)["output_tokens"] = 50
+	}))
+	s := c.summary(30)
+	if len(s.ExtraAttempts.Fallback) != 0 {
+		t.Errorf("fallback = %+v, want none: every model declined", s.ExtraAttempts.Fallback)
+	}
+	if len(s.ExtraAttempts.Declined) != 1 || s.ExtraAttempts.Declined[0].Model != "claude-fable-5" {
+		t.Errorf("declined = %+v, want Fable 5's attempt", s.ExtraAttempts.Declined)
+	}
+	for _, sv := range s.Savings {
+		if sv.Hint == SavingHintServedModel {
+			t.Errorf("saving %+v suggests a model that also refused", sv)
+		}
+	}
+	txt, _ := render(t, s)
+	if !strings.Contains(txt, "\nfallback      none (no response was served by a fallback model)\n") || strings.Contains(txt, "/model") {
+		t.Errorf("an all-declined chain reads as served:\n%s", txt)
+	}
+}
+
+// TestExtraAttempts_StickyIsOnlyAChainWithNoMessageEntry: the page tells a
+// sticky-routed response by "the absence of a message entry for the
+// requested model". Sticky was inferred from the first entry alone, so a
+// chain whose first entry is not a "message", or whose "message" entry names
+// no model, printed "sticky routing" beside a declined line for the same
+// response. The model asked is the first "message" entry before the last.
+func TestExtraAttempts_StickyIsOnlyAChainWithNoMessageEntry(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		edit      func([]any) []any
+		requested string
+	}{
+		{"a non-message first entry", func(its []any) []any {
+			return append([]any{map[string]any{"type": "something_new", "model": "claude-opus-5-5", "input_tokens": 7, "output_tokens": 0}}, its...)
+		}, "claude-fable-5"},
+		{"a message entry with no model", func(its []any) []any {
+			delete(its[0].(map[string]any), "model")
+			return its
+		}, ModelNotRecorded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
+				u := m["usage"].(map[string]any)
+				u["iterations"] = tc.edit(iterationsOf(m))
+			}))
+			s := c.summary(30)
+			wantR := []FallbackRoute{{Requested: tc.requested, Served: "claude-opus-4-8", Responses: 1}}
+			if !reflect.DeepEqual(s.ExtraAttempts.Fallback, wantR) {
+				t.Errorf("fallback = %+v, want %+v: not sticky", s.ExtraAttempts.Fallback, wantR)
+			}
+			txt, _ := render(t, s)
+			if strings.Contains(txt, "sticky") {
+				t.Errorf("text calls a chain with a message entry sticky:\n%s", txt)
+			}
+		})
+	}
+}
+
 // refusalMessage is the zero-usage line Claude Code writes after a refusal
 // with no fallback: model "<synthetic>", stop_reason "refusal", the
 // response's stop_details, and the same requestId as the real response. The
