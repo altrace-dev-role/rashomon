@@ -1240,6 +1240,18 @@ m("TL an undeclared success of an unknown digest is ruled out", "internal/report
   "\t\t\tif e.digest != \"\" && e.digest != failed.digest && !programTier {", "\t\t\tif e.digest != failed.digest && !programTier {", "TestTimeline_")
 m("TL the marker claims a same-program check it did not make", "internal/report/timeline_text.go",
   "\t\tif !sameProgramTier(c.Program) {\n\t\t\treturn \"  → no later success of the same command recorded\"", "\t\tif false {\n\t\t\treturn \"  → no later success of the same command recorded\"", "TestTimeline_")
+m("TL tool_name reaches the terminal raw in the rewritten list", "internal/report/text.go",
+  "\t\t\tprintable(r.ToolUseID), printable(r.ToolName), shape, what)", "\t\t\tprintable(r.ToolUseID), r.ToolName, shape, what)", "TestText_ToolNameIsPrintable")
+m("TL tool_use_id reaches the terminal raw in the rewritten list", "internal/report/text.go",
+  "\t\t\tprintable(r.ToolUseID), printable(r.ToolName), shape, what)", "\t\t\tr.ToolUseID, printable(r.ToolName), shape, what)", "TestText_ToolNameIsPrintable")
+m("TL the rewritten list blanks the tool name", "internal/report/text.go",
+  "\t\t\tprintable(r.ToolUseID), printable(r.ToolName), shape, what)", "\t\t\tprintable(r.ToolUseID), \"\", shape, what)", "TestText_ToolNameIsPrintable")
+m("TL the program reaches the terminal raw in the rewritten list", "internal/report/text.go",
+  "\t\t\tshape = printable(r.Program) + \", \" + r.VerbClass", "\t\t\tshape = r.Program + \", \" + r.VerbClass", "TestText_ToolNameIsPrintable")
+m("TL a dropped call's id reaches the terminal raw", "internal/report/text.go",
+  "everything but the id is unknown\\n\", printable(l.ToolUseID))", "everything but the id is unknown\\n\", l.ToolUseID)", "TestText_ToolNameIsPrintable")
+m("TL the program reaches the terminal raw on the timeline", "internal/report/timeline_text.go",
+  "\t\tcall += \" \" + printable(c.Program)", "\t\tcall += \" \" + c.Program", "TestText_ToolNameIsPrintable")
 m("TL the legend does not name the programs with no program tier", "internal/report/timeline_text.go",
   "\t\t\t\"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; \"+\n", "", "TestTimeline_")
 

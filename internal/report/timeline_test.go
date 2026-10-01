@@ -965,15 +965,37 @@ func TestTimeline_ToolNameIsPrintable(t *testing.T) {
 	}
 }
 
-// The same for the report's other listings of a tool name: the by-tool
-// counts and the --chain rows.
+// The same for the report's other listings of a payload's names: the by-tool
+// counts, the --chain rows, the dropped-call ids, the "executed differently
+// from declared" list on every default report, and the timeline's program.
+// Each shows the name, made printable. Break: print one raw and a control
+// character reaches the terminal; blank it and the listing names nothing.
 func TestText_ToolNameIsPrintableInEveryListing(t *testing.T) {
-	const raw = "Ba\x1b[2Jsh\u202e"
-	var b bytes.Buffer
-	b.WriteString(byName(map[string]int{raw: 1}))
-	writeLink(&b, Link{Seq: 1, ToolName: raw, VerbClass: "execute"}, false)
-	if strings.ContainsAny(b.String(), "\x1b\u202e") {
-		t.Errorf("a control character in tool_name reaches the text:\n%q", b.String())
+	const raw, clean = "Ba\x1b[2Jsh\u202e", "Ba[2Jsh"
+	for name, write := range map[string]func(*bytes.Buffer){
+		"by tool":   func(b *bytes.Buffer) { b.WriteString(byName(map[string]int{raw: 1})) },
+		"chain row": func(b *bytes.Buffer) { writeLink(b, Link{Seq: 1, ToolName: raw, VerbClass: "execute"}, false) },
+		"dropped id": func(b *bytes.Buffer) {
+			writeChainTail(b, Chains{Dropped: []Link{{ToolUseID: raw}}}, true, false)
+		},
+		"rewritten id":   func(b *bytes.Buffer) { writeRewritten(b, []Rewritten{{ToolUseID: raw, ToolName: "Edit"}}) },
+		"rewritten tool": func(b *bytes.Buffer) { writeRewritten(b, []Rewritten{{ToolUseID: "toolu_1", ToolName: raw}}) },
+		"rewritten program": func(b *bytes.Buffer) {
+			writeRewritten(b, []Rewritten{{ToolUseID: "toolu_1", ToolName: "Bash", Program: raw}})
+		},
+		"timeline program": func(b *bytes.Buffer) {
+			seq := int64(1)
+			writeTimelineCall(b, TimelineCall{Seq: &seq, ToolName: "Bash", Program: raw, Group: GroupOK, Outcome: store.ExecOK})
+		},
+	} {
+		var b bytes.Buffer
+		write(&b)
+		if strings.ContainsAny(b.String(), "\x1b\u202e") {
+			t.Errorf("%s: a control character reaches the text:\n%q", name, b.String())
+		}
+		if !strings.Contains(b.String(), clean) {
+			t.Errorf("%s: the name is not shown, made printable:\n%q", name, b.String())
+		}
 	}
 }
 

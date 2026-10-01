@@ -101,11 +101,12 @@ func writeTimelineCall(b *bytes.Buffer, c TimelineCall) {
 	if c.RecordedAtMS != nil {
 		at = time.UnixMilli(*c.RecordedAtMS).UTC().Format("15:04:05")
 	}
-	// tool_name is the payload's, as agent_type is: made printable, or an
-	// escape sequence in it reaches the reader's terminal on its row.
+	// tool_name and the program are the payload's, as agent_type is: made
+	// printable, or an escape sequence in one reaches the reader's terminal
+	// on its row.
 	call := printable(c.ToolName)
 	if c.Program != "" {
-		call += " " + c.Program
+		call += " " + printable(c.Program)
 	}
 	agent := agentLabel(c.Agent)
 	if c.AgentUnknown {
