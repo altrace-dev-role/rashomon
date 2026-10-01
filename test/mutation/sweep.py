@@ -1761,6 +1761,11 @@ m("TB backticks and a quoted $( are not a write", "internal/shape/shape.go",
   "\t\tif false {\n",
   "TestMayWrite")
 
+m("TB a backgrounded call is not counted as unobserved", "internal/report/account.go",
+  "\t\tif x.Backgrounded {\n\t\t\t// Recorded ok",
+  "\t\tif false && x.Backgrounded {\n\t\t\t// Recorded ok",
+  "TestSilentFailures_")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

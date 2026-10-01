@@ -267,6 +267,36 @@ func TestSilentFailures_UnobservedOutcomeIsCountedSeparately(t *testing.T) {
 	}
 }
 
+// A call moved to the background ran and recorded ok, but its PostToolUse
+// fired before the command ended, so how it ended is not known. The timeline
+// puts it under unknown; this count must say the same. Break: switch on the
+// outcome alone, and the report and the digest print outcome_unobserved 0
+// beside a timeline that lists the call as unobserved.
+func TestSilentFailures_ABackgroundedCallIsUnobserved(t *testing.T) {
+	path := transcript(t, "All done.")
+	run := runWithTranscript(path, store.Execution{ToolUseID: "x1", Outcome: store.ExecOK, Backgrounded: true})
+
+	sf := BuildSilentFailures(run, buildAccount(run))
+	if sf.Unobserved != 1 || sf.Failed != 0 {
+		t.Errorf("unobserved/failed = %d/%d, want 1/0: a backgrounded call's ending was not recorded", sf.Unobserved, sf.Failed)
+	}
+
+	// Parity with the timeline, on calls that each have exactly one
+	// execution record: the unknown group also holds calls with no record,
+	// which this count never sees.
+	tr := tlRun([]tlCall{
+		{seq: 1, id: "bg", tool: "Bash", program: "go", digest: "d1"},
+		{seq: 2, id: "v1", tool: "Bash", program: "ls", digest: "d2"},
+		{seq: 3, id: "ok", tool: "Bash", program: "ls", digest: "d3"},
+		{seq: 4, id: "no", tool: "Bash", program: "ls", digest: "d4"},
+	}, tlExec("bg", store.ExecOK, 0), tlExec("v1", "", 0), tlExec("ok", store.ExecOK, 0), tlExec("no", store.ExecFailed, 1))
+	tr.Executions[0].Backgrounded = true
+	tl := buildTimeline(tr, nil)
+	if got, want := tl.Counts.Unknown, BuildSilentFailures(tr, Account{}).Unobserved; got != want || got != 2 {
+		t.Errorf("timeline unknown = %d, report outcome unobserved = %d; both must be 2", got, want)
+	}
+}
+
 // TestSilentFailures_DoNotFireWithoutASummary distinguishes "the summary
 // acknowledges nothing" from "there was no summary". Firing on the second
 // would be a finding about a file that could not be read.
