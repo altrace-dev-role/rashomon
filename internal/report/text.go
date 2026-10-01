@@ -139,7 +139,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	writeAccount(b, sess.Account)
 	writeSubagents(b, sess.Subagents)
 	writeSilentFailures(b, sess.SilentFailures)
-	writeTestRuns(b, sess.TestRuns)
+	writeTestRuns(b, sess.TestRuns, sess.SessionID)
 	// Whether a proxy store was NAMED for this render, not whether it could be
 	// read: a named store that is missing still renders its reason in full,
 	// because the reader asked about a proxy. See WithNamedProxyStore.
@@ -677,8 +677,9 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // result (LinkOutcomeBackgrounded).
 //
 // The pairs are seqs, and nothing in the default report maps a seq to its
-// call, so the block's first limit line points at --timeline, which does.
-func writeTestRuns(b *bytes.Buffer, t *TestRuns) {
+// call, so the block's first limit line points at --timeline, which does,
+// with the session's id so the command can be pasted.
+func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
 	if t == nil || t.Runs == 0 {
 		return
 	}
@@ -695,7 +696,7 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns) {
 			p.Seqs[0], first, p.Seqs[1], second)
 	}
 	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
-		fmt.Fprintln(b, "    the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows;")
+		fmt.Fprintf(b, "    the numbers are call seqs, and `rashomon report --session %s --timeline` shows these rows;\n", sessionID)
 		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch, a subagent launch, or a task, todo, question, plan, background-shell, skill, search, message, cron or MCP-resource tool, even one that failed;")
 		fmt.Fprintln(b, "    a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read,")
 		fmt.Fprintln(b, "    but one that writes through an option not on that list (find -fprint, curl -D) is not counted;")

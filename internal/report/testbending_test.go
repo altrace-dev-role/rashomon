@@ -512,7 +512,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	}
 
 	var b bytes.Buffer
-	writeTestRuns(&b, tr)
+	writeTestRuns(&b, tr, "sess-7f3a")
 	out := b.String()
 	for _, want := range []string{
 		"test runs: 6 (3 ok, 3 failed)",
@@ -521,7 +521,8 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		// pair that failed first was the order the record contradicts.
 		"same command had both outcomes with no recorded file edit between: 4 passed, 5 failed",
 		"same command had both outcomes with no recorded file edit between: 7 failed, 8 passed",
-		"the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows",
+		// The session's own id, so the command can be pasted as it stands.
+		"the numbers are call seqs, and `rashomon report --session sess-7f3a --timeline` shows these rows",
 		"a file edit here is any recorded call but a read, a web fetch, a subagent launch, or a task, todo, question, plan, background-shell, skill, search, message, cron or MCP-resource tool",
 		"a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read",
 		"runs pair only when the same command line started in the same directory: the reported cwd, or the target of a leading plain cd;",
@@ -551,13 +552,13 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	}
 
 	b.Reset()
-	writeTestRuns(&b, testRunsOf(tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbExecute, digest: "x", outcome: ok})))
+	writeTestRuns(&b, testRunsOf(tbRun(tbCall{seq: 1, tool: "Bash", verb: shape.VerbExecute, digest: "x", outcome: ok})), "s1")
 	if b.Len() != 0 {
 		t.Errorf("a session with no test run rendered a block: %q", b.String())
 	}
 
 	b.Reset()
-	writeTestRuns(&b, testRunsOf(tbRun(test(1, "d", ok), test(2, "d", ok))))
+	writeTestRuns(&b, testRunsOf(tbRun(test(1, "d", ok), test(2, "d", ok))), "s1")
 	if strings.Contains(b.String(), "a file edit here") || strings.Contains(b.String(), "--timeline") {
 		t.Errorf("the limit printed with no pattern to qualify:\n%s", b.String())
 	}
@@ -584,7 +585,7 @@ func TestTestRuns_NullBeforeSchema3(t *testing.T) {
 		t.Errorf("a schema 2 session marshals test_runs as other than null: %s", b)
 	}
 	var text bytes.Buffer
-	writeTestRuns(&text, testRunsOf(old))
+	writeTestRuns(&text, testRunsOf(old), "s1")
 	if text.Len() != 0 {
 		t.Errorf("a schema 2 session rendered a block: %q", text.String())
 	}

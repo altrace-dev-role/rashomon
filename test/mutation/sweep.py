@@ -1600,7 +1600,7 @@ m("TB the test runs drop the patterns they were given", "internal/report/testben
   "TestTestRuns_|TestTestBending_")
 
 m("TB the session block drops the timeline hint", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows;\")\n",
+  "\t\tfmt.Fprintf(b, \"    the numbers are call seqs, and `rashomon report --session %s --timeline` shows these rows;\\n\", sessionID)\n",
   "",
   "TestTestRuns_")
 
