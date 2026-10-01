@@ -367,7 +367,7 @@ func TestTimeline_Text(t *testing.T) {
 		"→ same command ok at 3, recorded after",
 		"general-purpose·cafe",
 		"failed (exit 2)",
-		"→ no later success of the same command or program recorded",
+		"→ no later success of the same command recorded",
 		// #36 review round 3, smaller 8: seq is rashomon's own position, so
 		// the reader is told where the id that finds a call is.
 		"rows show no tool_use_id: --json carries each call's\n",
@@ -873,6 +873,38 @@ func TestTimeline_SameProgramClaimsNoMore(t *testing.T) {
 	}
 }
 
+// #36 review round 4, item 3: the marker names what was looked for. For a
+// program whose next word names what ran, only the same command is; for a
+// single-purpose one, the same program too. Break: print "or program" on a
+// failed `go vet` and the row says a later `go` success was looked for, beside
+// the `go test` row that passed.
+func TestTimeline_TheMarkerSaysWhatWasChecked(t *testing.T) {
+	for _, tc := range []struct{ program, want string }{
+		{"go", "  → no later success of the same command recorded"},
+		{"", "  → no later success of the same command recorded"},
+		{"pytest", "  → no later success of the same command or program recorded"},
+	} {
+		calls := []tlCall{{seq: 1, id: "f", tool: "Bash", program: tc.program, digest: "d1"}}
+		execs := []store.Execution{tlExec("f", store.ExecFailed, 1)}
+		if tc.program == "go" {
+			calls = append(calls, tlCall{seq: 2, id: "s", tool: "Bash", program: "go", digest: "d2"})
+			execs = append(execs, tlExec("s", store.ExecOK, 0))
+		}
+		c := tlByID(t, buildTimeline(tlRun(calls, execs...), nil), "f")
+		if got := laterLabel(c); got != tc.want {
+			t.Errorf("program %q: marker = %q, want %q", tc.program, got, tc.want)
+		}
+	}
+	var b bytes.Buffer
+	writeTimeline(&b, buildTimeline(tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "go", digest: "d1"}},
+		tlExec("f", store.ExecFailed, 1)), nil))
+	if !strings.Contains(b.String(), "(only a later run of the same command, or of the same program for single-purpose programs, is looked for; "+
+		"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; "+
+		"a fix made with a different command, or a corrected Edit, is not detected)\n") {
+		t.Errorf("the legend does not say which programs get only the same command:\n%s", b.String())
+	}
+}
+
 // #36 review round 3, decision 2: a wrapper or a versioned interpreter is
 // the first word, so it is the program, and it names nothing about what ran.
 // Break: leave them out of the list and `sudo ls` follows up a failed `sudo
@@ -960,7 +992,7 @@ func TestTimeline_TextSaysWhatItKnows(t *testing.T) {
 	for _, want := range []string{
 		"timeline: 2 calls (0 main agent, 2 from 1 subagent)",
 		"outcome unobserved: it ran",
-		"→ no later success of the same command or program recorded",
+		"→ no later success of the same command recorded",
 		"UTC",
 		"2023-11-14 (UTC)",
 	} {

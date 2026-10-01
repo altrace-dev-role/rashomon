@@ -1132,7 +1132,7 @@ m("TL a not-checked failure counts as no later success", "internal/report/timeli
 m("TL a not-checked failure says no later success", "internal/report/timeline_text.go",
   "\t\treturn \"  → not checked for a later success\"", "\t\treturn \"  → no later success of the same command or program recorded\"", "TestTimeline_")
 m("TL git status follows up a failed git push", "internal/report/timeline.go",
-  "\tprogramTier := failed.call.Program != \"\" && !subcommandProgram(failed.call.Program)\n", "\tprogramTier := failed.call.Program != \"\"\n", "TestTimeline_")
+  "\treturn program != \"\" && !subcommandProgram(program)\n", "\treturn program != \"\"\n", "TestTimeline_")
 m("TL the same-program label claims different arguments", "internal/report/timeline_text.go",
   "\"  → same program ok at %d, recorded after%s\"", "\"  → same program ok at %d (different arguments%s)\"", "TestTimeline_")
 m("TL the same-command label drops recorded after", "internal/report/timeline_text.go",
@@ -1238,6 +1238,10 @@ m("TL an undeclared success of another digest is ruled out under a program tier"
   "\t\t\tif e.digest != \"\" && e.digest != failed.digest && !programTier {", "\t\t\tif e.digest != \"\" && e.digest != failed.digest {", "TestTimeline_")
 m("TL an undeclared success of an unknown digest is ruled out", "internal/report/timeline.go",
   "\t\t\tif e.digest != \"\" && e.digest != failed.digest && !programTier {", "\t\t\tif e.digest != failed.digest && !programTier {", "TestTimeline_")
+m("TL the marker claims a same-program check it did not make", "internal/report/timeline_text.go",
+  "\t\tif !sameProgramTier(c.Program) {\n\t\t\treturn \"  → no later success of the same command recorded\"", "\t\tif false {\n\t\t\treturn \"  → no later success of the same command recorded\"", "TestTimeline_")
+m("TL the legend does not name the programs with no program tier", "internal/report/timeline_text.go",
+  "\t\t\t\"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; \"+\n", "", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

@@ -34,7 +34,9 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 	// other way reads as having none, and a reader must not take that row as
 	// a failure nobody dealt with.
 	if n.Failed > 0 {
-		fmt.Fprintln(b, "                 (only a later run of the same command or program is looked for: a fix made with a different command, or a corrected Edit, is not detected)")
+		fmt.Fprintln(b, "                 (only a later run of the same command, or of the same program for single-purpose programs, is looked for; "+
+			"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; "+
+			"a fix made with a different command, or a corrected Edit, is not detected)")
 	}
 	if n.Interrupted > 0 {
 		fmt.Fprintf(b, "    interrupted  %d\n", n.Interrupted)
@@ -171,8 +173,9 @@ func timelineResult(c TimelineCall) string {
 // "No later success RECORDED": the record is all this can read, and a session
 // with a gap in its coverage or a paused stretch can hold a success it never
 // wrote down. "Of the same command or program": that is all laterSuccess looks
-// for, and a failed `go vet` followed by a passing `go test` has a later
-// success recorded -- just not one this matches.
+// for, and for a program with no same-program tier -- `go`, say -- only "of the
+// same command", since a failed `go vet` followed by a passing `go test` has a
+// later success recorded, just not one this matches.
 func laterLabel(c TimelineCall) string {
 	if c.Group != GroupFailed {
 		return ""
@@ -182,6 +185,9 @@ func laterLabel(c TimelineCall) string {
 	}
 	l := c.Later
 	if l == nil {
+		if !sameProgramTier(c.Program) {
+			return "  → no later success of the same command recorded"
+		}
 		return "  → no later success of the same command or program recorded"
 	}
 	who := ""

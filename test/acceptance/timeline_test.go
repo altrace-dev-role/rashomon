@@ -92,7 +92,8 @@ func TestTimeline_RendersEveryAgentInOrder(t *testing.T) {
 		"1 call with no declaration recorded",
 		"→ same command ok at",
 		"failed (exit 2)",
-		"→ no later success of the same command or program recorded",
+		// make has no program tier: only the same command was looked for.
+		"→ no later success of the same command recorded",
 		"no execution record",
 		"failed (exit 3), no declaration recorded",
 		"failed calls: 3",

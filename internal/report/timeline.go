@@ -82,6 +82,13 @@ func subcommandProgram(p string) bool {
 	return base != p && subcommandPrograms[base]
 }
 
+// sameProgramTier says whether a failure of this program is followed up by a
+// success of the same program as well as of the same command: not when the
+// call has no program, nor for one whose next word names what ran.
+func sameProgramTier(program string) bool {
+	return program != "" && !subcommandProgram(program)
+}
+
 // TimelineAgent is the subagent a call ran in. Nil on a call the main agent
 // made, which is a fact about the payload rather than a missing value: only a
 // subagent call carries agent_id.
@@ -460,7 +467,7 @@ func outcomeSeq(rec *store.Execution) *int64 {
 // which matches but has no ok row to point at.
 func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 	failed := entries[i]
-	programTier := failed.call.Program != "" && !subcommandProgram(failed.call.Program)
+	programTier := sameProgramTier(failed.call.Program)
 	var sameCommand, sameProgram *timelineEntry
 	unplaced := false
 	for j := range entries {
