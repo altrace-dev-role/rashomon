@@ -1569,7 +1569,7 @@ m("SP a priced declined attempt is not a saving", "internal/spend/spend.go",
 m("SP the served-model lever is not named", "internal/spend/spend.go",
   "\t\t\tsv.Hint = SavingHintServedModel", "\t\t\tsv.Hint = \"\"", "TestSavings_")
 m("SP a declined-attempt saving carries the unpriced attempts", "internal/spend/spend.go",
-  "\t\tc := Cost{Nano: d.Cost.Nano, Priced: d.Cost.Priced}", "\t\tc := d.Cost", "TestSavings_")
+  "\t\tc := Cost{Nano: d.Cost.Nano, Priced: d.Cost.Priced}", "\t\tc := d.Cost.Cost", "TestSavings_")
 m("SP a billed pre-output refusal without usage is not a saving", "internal/spend/spend.go",
   "\t\t\tc.Unpriced = g.WithoutUsage", "\t\t\tc.Unpriced = 0", "TestSavings_|TestRefusals_APreOutputRefusalIsBilled")
 m("SP an unbilled pre-output refusal without usage is a saving", "internal/spend/spend.go",
