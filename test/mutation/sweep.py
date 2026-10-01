@@ -1430,7 +1430,12 @@ m("SP a fast-mode response is not counted", "internal/spend/scan.go",
 m("SP fast-mode responses are not said", "internal/spend/text.go",
   "\tif s.FastMode.Responses > 0 {", "\tif false {", "TestFastMode_")
 m("SP the out-of-scope line does not name web-search fees", "internal/spend/text.go",
-  "; web-search fees ($10 per 1,000 searches)", "", "TestFastMode_")
+  "; web-search fees (%s)\\n\", WebSearchFee)", "; %s\\n\", WebSearchFee)", "TestFastMode_")
+m("SP the web-search fee is not the dated table's", "internal/spend/price.go",
+  "const WebSearchFee = \"$10 per 1,000 searches\"", "const WebSearchFee = \"$5 per 1,000 searches\"", "TestFastMode_")
+m("SP Mythos 5 prices its cache reads at Mythos 5.1's rate", "internal/spend/price.go",
+  "\t\"claude-mythos-5\":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},", "\t\"claude-mythos-5\":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},",
+  "TestPricing_TheTable")
 m("SP a decoded field under an allowed tag holds whatever it is handed", "internal/spend/scan.go",
   "\tType        string  `json:\"type\"`", "\tType        any     `json:\"type\"`", "TestContentHasNoFieldToLandIn")
 m("SP a zero-usage refusal line is not counted", "internal/spend/spend.go",

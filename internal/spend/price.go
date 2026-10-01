@@ -7,7 +7,13 @@ import "strings"
 // because a price table compiled into a binary is right on the day it was
 // written and only on that day: a reader must be able to see how old the
 // number's premise is without reading this file.
-const PriceSnapshot = "2026-09-25"
+const PriceSnapshot = "2026-09-30"
+
+// WebSearchFee is web search's per-search fee on the same dated page. It is
+// not priced -- usage.server_tool_use.web_search_requests is not read -- and
+// the out-of-scope line names it with this figure, so the figure has the
+// table's date.
+const WebSearchFee = "$10 per 1,000 searches"
 
 // Rates are nanodollars per token, which is $/MTok x 1000.
 //
@@ -47,21 +53,30 @@ func mtok(hundredths int64) int64 { return hundredths * 10 }
 // usage.speed identifies a fast-mode response and usage.service_tier a Batch
 // one. Fast-mode responses are counted and the output says they are priced
 // here at standard rates (FastMode); Claude Code does not send its requests
-// through the Batch API. Long-context premiums (which Sonnet 4.5 and Sonnet 4
-// carry, unlike 4.6 and later) and partner pricing have no field, and
-// usage.server_tool_use.web_search_requests is not read. Pricing at plain list
-// rates is a stated basis where the premium would be a guess or is not read.
+// through the Batch API. A long-context premium is not priced, because no
+// long-context rate is on the dated page; partner pricing has no field; and
+// usage.server_tool_use.web_search_requests is not read (WebSearchFee).
+// Pricing at plain list rates is a stated basis where the premium would be a
+// guess or is not read.
 //
 // Retired models keep their rows: a transcript inside the window can still
-// carry one (they remain served on Bedrock and Google Cloud), and a row the
-// table lacks prices a response as unknown. Keyed by the id the API returns
-// in message.model, so Opus 4 and Sonnet 4 -- whose responses name the dated
-// "claude-opus-4-20250514" -- are keyed without the "-0" of their aliases,
-// and Haiku 3.5 by its older "claude-3-5-haiku" shape.
+// carry one, since they are served on Bedrock or Google Cloud (Opus 4: Google
+// Cloud only), and a row the table lacks prices a response as unknown. Keyed
+// by the id the API returns in message.model, so Opus 4 and Sonnet 4 --
+// whose responses name the dated "claude-opus-4-20250514" -- are keyed
+// without the "-0" of their aliases, and Haiku 3.5 by its older
+// "claude-3-5-haiku" shape.
 var table = map[string]Rates{
 	"claude-fable-5-1": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},
 	"claude-fable-5":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},
 	"claude-opus-5-5":  {Input: mtok(400), Output: mtok(2000), CacheRead: mtok(20)},
+
+	// The Mythos models, invite only, at their Fable twins' rates -- cache
+	// reads included, which differ between the two
+	// (https://platform.claude.com/docs/en/models/mythos-5-1/overview,
+	// https://platform.claude.com/docs/en/models/mythos-5/overview).
+	"claude-mythos-5-1": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},
+	"claude-mythos-5":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},
 
 	"claude-opus-5":   {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},
 	"claude-opus-4-8": {Input: mtok(500), Output: mtok(2500), CacheRead: mtok(50)},

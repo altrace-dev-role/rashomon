@@ -755,8 +755,8 @@ func TestPricing_TheTableIsTheDesignsTable(t *testing.T) {
 		"claude-sonnet-4-6": {3, 15, 0.3},
 		"claude-haiku-4-5":  {1, 5, 0.1},
 		// Published on the same page, and priced as unknown until they had
-		// rows: three current models, and four retired except on Bedrock
-		// and Google Cloud.
+		// rows: three current models, and four retired but still served on
+		// Bedrock or Google Cloud (Opus 4: Google Cloud only).
 		"claude-opus-4-5":   {5, 25, 0.5},
 		"claude-sonnet-4-5": {3, 15, 0.3},
 		"claude-fable-5":    {10, 50, 1},
@@ -764,6 +764,11 @@ func TestPricing_TheTableIsTheDesignsTable(t *testing.T) {
 		"claude-opus-4":     {15, 75, 1.5},
 		"claude-sonnet-4":   {3, 15, 0.3},
 		"claude-3-5-haiku":  {0.8, 4, 0.08},
+		// The two Mythos models, at their Fable twins' rates -- and so with
+		// different cache reads: one row for both would price one model's
+		// cache reads 4x off.
+		"claude-mythos-5-1": {10, 50, 0.25},
+		"claude-mythos-5":   {10, 50, 1},
 	}
 	if len(want) != len(table) {
 		t.Errorf("table has %d rows, the design has %d", len(table), len(want))
@@ -1554,8 +1559,8 @@ func TestFastMode_IsCountedAndSaidToBePricedAtStandardRates(t *testing.T) {
 	if !strings.Contains(js, `"fast_mode":{"responses":1,"pricing":"`+FastModePricing+`"}`) {
 		t.Errorf("the JSON does not count fast mode:\n%s", js)
 	}
-	if !strings.Contains(txt, "web-search fees") {
-		t.Errorf("the out-of-scope line does not name web-search fees:\n%s", txt)
+	if !strings.Contains(txt, "web-search fees ($10 per 1,000 searches)") {
+		t.Errorf("the out-of-scope line does not name web-search fees at the dated page's rate:\n%s", txt)
 	}
 }
 
@@ -1565,12 +1570,12 @@ func TestOutput_StatesTheBasisOfEveryFigure(t *testing.T) {
 	c := newConfig(t)
 	c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1e6, stop: "end_turn"}.line("text"))
 	txt, js := render(t, c.summary(30))
-	for _, want := range []string{"est. $4.00 at API list prices (2026-09-25)", "not billed per token", "not what was charged"} {
+	for _, want := range []string{"est. $4.00 at API list prices (2026-09-30)", "not billed per token", "not what was charged"} {
 		if !strings.Contains(txt, want) {
 			t.Errorf("text lacks %q:\n%s", want, txt)
 		}
 	}
-	if !strings.Contains(js, `"snapshot":"2026-09-25"`) || !strings.Contains(js, "not billed per token") {
+	if !strings.Contains(js, `"snapshot":"2026-09-30"`) || !strings.Contains(js, "not billed per token") {
 		t.Errorf("json lacks the snapshot or the plan note:\n%s", js)
 	}
 }

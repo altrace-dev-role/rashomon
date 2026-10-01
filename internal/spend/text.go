@@ -99,7 +99,7 @@ func Text(w io.Writer, s *Summary) error {
 		fmt.Fprintf(&b, "\nnote: %s ran in fast mode, which bills at a premium; %s %s\n",
 			countOf(s.FastMode.Responses, "response"), itThem(s.FastMode.Responses)+" "+isAre(s.FastMode.Responses), s.FastMode.Pricing)
 	}
-	fmt.Fprintf(&b, "\nout of scope: fast mode's premium, Batch and partner (Bedrock, Vertex) pricing; long-context premiums; web-search fees ($10 per 1,000 searches)\n")
+	fmt.Fprintf(&b, "\nout of scope: fast mode's premium, Batch and partner (Bedrock, Vertex) pricing; long-context premiums; web-search fees (%s)\n", WebSearchFee)
 
 	_, err := w.Write(b.Bytes())
 	return err
