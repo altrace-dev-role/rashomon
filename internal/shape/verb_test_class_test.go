@@ -395,6 +395,17 @@ func TestMayWrite(t *testing.T) {
 		{"curl -sSLO https://example.com/x", true},
 		{"curl --output=f https://example.com/x", true},
 		{"wget https://example.com/x", true},
+		// curl's attached -o: the rest of the word is the file it names.
+		{"curl -o./x https://example.com/x", true},
+		{"curl -sSLotestdata/x.json https://example.com/x", true},
+		{"curl -ofoo https://example.com/x", true},
+		// A write inside a command or process substitution.
+		{"ls $(rm -rf build)", true},
+		{"cat `touch x`", true},
+		{"grep foo <(rm x)", true},
+		{"cat a > >(tee b)", true},
+		// A writer word is compared wherever it stands.
+		{"grep -rn xargs .", true},
 		// A later stage outside the read class, or that cannot be named.
 		{"ls && rm -rf build", true},
 		{"cat a; touch b", true},
@@ -414,6 +425,7 @@ func TestMayWrite(t *testing.T) {
 		{"curl https://example.com/x", false},
 		{"curl -sS https://example.com/x | head", false},
 		{"go test ./... 2>&1 | tail -20", false},
+		{`echo "a > b"`, false},
 	} {
 		if got := verbOf(t, tc.cmd).MayWrite; got != tc.want {
 			t.Errorf("%q: may_write %v, want %v", tc.cmd, got, tc.want)

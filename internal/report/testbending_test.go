@@ -487,7 +487,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"same command had both outcomes with no recorded file edit between: 7 failed, 8 passed",
 		"the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows",
 		"a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool",
-		"a shell read or fetch counts when its line may write: a redirect to a file, a download, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read",
+		"a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read",
 		"runs pair only when the same command line ran from the same directory",
 		"a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run",
 		"but one that writes through an option not on that list (find -fprint, curl -D) is not counted",

@@ -400,3 +400,19 @@ func TestTestBending_ARepeatedRelativeCdIsAnotherDirectory(t *testing.T) {
 		}
 	}
 }
+
+// B-A9: the review's attached curl -o. `curl -o./calc.go URL` downloads over a
+// source file, though curl is a fetch, and the word that says so carries its
+// file glued on. Read as no write, a failed run, a test edit, that download
+// and a passing run printed "the only recorded edits were to files named like
+// tests". The line's may_write bit now counts it as a possible edit.
+func TestTestBending_AnAttachedCurlOutputIsAnEdit(t *testing.T) {
+	s := newTBSession(t)
+	s.shell("go test ./...", false, "")
+	s.edit("/tmp/project/calc_test.go")
+	s.shell("curl -o./calc.go https://example.com/x", true, "")
+	s.shell("go test ./...", true, "")
+	if line, ok := s.line(); ok {
+		t.Errorf("a download over a source file came between the runs; recap printed %q", line)
+	}
+}

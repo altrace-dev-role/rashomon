@@ -697,7 +697,7 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns) {
 	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
 		fmt.Fprintln(b, "    the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows;")
 		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool, even one that failed;")
-		fmt.Fprintln(b, "    a shell read or fetch counts when its line may write: a redirect to a file, a download, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read,")
+		fmt.Fprintln(b, "    a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read,")
 		fmt.Fprintln(b, "    but one that writes through an option not on that list (find -fprint, curl -D) is not counted;")
 		fmt.Fprintln(b, "    runs pair only when the same command line ran from the same directory;")
 		fmt.Fprintln(b, "    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run")

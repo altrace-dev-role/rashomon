@@ -145,7 +145,7 @@
               "type": "string"
             },
             "may_write": {
-              "description": "Schema 3. True on a shell call whose line may write files whatever its verb_class says: an output redirection to a file (not a descriptor duplication, not /dev/null), find's -delete, -exec, -execdir, -ok or -okdir, xargs, tee, wget, rsync or scp anywhere on the line, curl with an output flag, or a later pipeline or list stage whose program is not of class read or cannot be named -- and on a shell line whose program cannot be named at all. One bit: the words that set it are compared and dropped. Always false on a tool that is not a shell.",
+              "description": "Schema 3. True on a shell call whose line may write files whatever its verb_class says: an output redirection to a file (not a descriptor duplication, not /dev/null), find's -delete, -exec, -execdir, -ok or -okdir, xargs, tee, wget, rsync or scp anywhere on the line, curl with an output flag (-o or -O alone, combined with other short flags, or with the file attached, as in -o./x), a command or process substitution ($( ), backticks, <( ), >( ), whose command is not looked into), or a later pipeline or list stage whose program is not of class read or cannot be named -- and on a shell line whose program cannot be named at all. One bit: the words that set it are compared and dropped. Always false on a tool that is not a shell.",
               "type": "boolean"
             }
           }

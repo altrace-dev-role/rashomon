@@ -1276,9 +1276,10 @@ func backgrounded(raw json.RawMessage) bool {
 // a file (not a descriptor duplication such as 2>&1, and not /dev/null); a
 // word that writes by itself -- find's -delete, -exec, -execdir, -ok and
 // -okdir, xargs, tee, wget, rsync or scp; curl with an output flag (-o, -O,
-// --output, --remote-name, or a combined short flag holding o or O); or a
-// later pipeline or list stage whose program is outside the read class, or
-// cannot be named.
+// --output, --remote-name, or a combined short flag holding o or O, with or
+// without the file attached); a command or process substitution, whose
+// command is not looked into; or a later pipeline or list stage whose program
+// is outside the read class, or cannot be named.
 //
 // The words are compared wherever they stand, quoted or not, and not parsed
 // as the program would parse them: `grep -rn xargs .` sets the bit. That is
@@ -1286,17 +1287,24 @@ func backgrounded(raw json.RawMessage) bool {
 // edit (the report's mayEdit), and an edit counted that did not happen stops
 // a test-bending pair, while one missed completes a pair over it.
 //
-// Stages before i are not looked at: they are the `cd DIR &&` that
-// pastDirectoryChange stepped over, and a directory change is told apart by
-// the declarations' directory digests, not as a write.
+// Stages before i are scanned for writer words and redirects, but not classed
+// by program: they are the `cd DIR &&` that pastDirectoryChange stepped over,
+// and a directory change is told apart by the declarations' directory
+// digests, not as a write.
 func mayWrite(toks []token, i int) bool {
 	curl, curlOut := false, false
 	for j, t := range toks {
+		if opensSubstitution(toks, j) {
+			return true
+		}
 		if t.meta {
 			if outputRedirect(toks, j) {
 				return true
 			}
 			continue
+		}
+		if t.ticks > 0 || strings.Contains(t.text, "$(") {
+			return true
 		}
 		switch path.Base(t.text) {
 		case "xargs", "tee", "wget", "rsync", "scp":
@@ -1351,8 +1359,9 @@ func outputRedirect(toks []token, j int) bool {
 		dup = dup || toks[k].text == "&"
 	}
 	if end+1 >= len(toks) || toks[end+1].meta {
-		// No target, or a process substitution: nothing on the line runs,
-		// or it writes into a command. Neither is a file this names.
+		// No target: nothing on the line runs. A process substitution
+		// writes into a command, which may itself write a file, so it
+		// counts as a possible write.
 		return end+1 < len(toks)
 	}
 	target := toks[end+1].text
@@ -1364,6 +1373,20 @@ func outputRedirect(toks []token, j int) bool {
 		return false
 	}
 	return true
+}
+
+// opensSubstitution reports a token at j that opens a command or process
+// substitution: an unquoted `$`, `<` or `>` with a `(` glued after it. The
+// command inside is not classed.
+func opensSubstitution(toks []token, j int) bool {
+	t := toks[j]
+	if j+1 >= len(toks) || !toks[j+1].meta || !toks[j+1].glued || toks[j+1].text != "(" {
+		return false
+	}
+	if t.meta {
+		return t.text == "<" || t.text == ">"
+	}
+	return strings.HasSuffix(t.text, "$")
 }
 
 // stageSeparator reports a token at j that ends one pipeline or list stage:
@@ -1390,7 +1413,10 @@ func stageSeparator(toks []token, j int) bool {
 }
 
 // curlOutputFlag reports a curl argument that names an output file: -o, -O,
-// their long forms, or a combined short flag holding either.
+// their long forms, or a combined short flag holding either. In a short-flag
+// word the letters before o or O are flags, and whatever follows o is its
+// value, so `-o./calc.go` and `-sSLotestdata/x.json` name files; a non-letter
+// before any o or O means the word is not a run of flags.
 func curlOutputFlag(w string) bool {
 	switch {
 	case w == "--output", w == "--remote-name", w == "--remote-name-all", w == "--output-dir",
@@ -1398,11 +1424,13 @@ func curlOutputFlag(w string) bool {
 		return true
 	case len(w) > 1 && w[0] == '-' && w[1] != '-':
 		for _, c := range w[1:] {
-			if c < 'A' || c > 'z' || c > 'Z' && c < 'a' {
+			switch {
+			case c == 'o' || c == 'O':
+				return true
+			case c < 'A' || c > 'z' || c > 'Z' && c < 'a':
 				return false
 			}
 		}
-		return strings.ContainsAny(w[1:], "oO")
 	}
 	return false
 }

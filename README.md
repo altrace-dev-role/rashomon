@@ -270,9 +270,11 @@ Claude Code's own bookkeeping tools (TodoWrite, TaskCreate, TaskUpdate,
 TaskList, TaskGet, TaskOutput, AskUserQuestion, ExitPlanMode, BashOutput) do
 not. A shell read or fetch counts as well when its line may write, which
 the record keeps as one bit (`may_write`): an output redirect to a file, a
-download (`curl -o`/`-O`, `wget`), `find -delete`/`-exec`/`-execdir`,
-`xargs`, `tee`, `rsync` or `scp` anywhere on the line, or a later pipeline or
-list stage whose program is not a read (`grep -rl … | xargs sed -i`). That
+download (`curl -o`/`-O`, with the file attached or not, as in `curl
+-o./calc.go`, and `wget`), a command or process substitution (`$(…)`,
+backticks, `<(…)`, `>(…)`), `find -delete`/`-exec`/`-execdir`, `xargs`,
+`tee`, `rsync` or `scp` anywhere on the line, or a later pipeline or list
+stage whose program is not a read (`grep -rl … | xargs sed -i`). That
 under-claims by design. It can still miss a change: a read or fetch that
 writes through an option not on that list (`find -fprint f`, `curl -D f`),
 or anything done outside the session's own calls.

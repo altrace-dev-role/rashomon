@@ -1707,7 +1707,7 @@ m("TB the & of 2>&1 separates stages", "internal/shape/shape.go",
   "(toks[j-1].text == \"|\")",
   "TestMayWrite")
 m("TB the session block drops what makes a read an edit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    a shell read or fetch counts when its line may write: a redirect to a file, a download, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read,\")\n",
+  "\t\tfmt.Fprintln(b, \"    a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read,\")\n",
   "",
   "TestTestRuns_")
 
@@ -1747,6 +1747,19 @@ m("TB a runner's own 124 is no result", "internal/report/testbending.go",
   "\tif o != store.ExecFailed || d.Shape.Program == nil || *d.Shape.Program != \"timeout\" {\n",
   "\tif o != store.ExecFailed {\n",
   "TestTestBending")
+
+m("TB curl's attached output file hides the flag", "internal/shape/shape.go",
+  "\t\tfor _, c := range w[1:] {\n\t\t\tswitch {\n\t\t\tcase c == 'o' || c == 'O':\n\t\t\t\treturn true\n\t\t\tcase c < 'A' || c > 'z' || c > 'Z' && c < 'a':\n\t\t\t\treturn false\n\t\t\t}\n\t\t}\n",
+  "\t\tfor _, c := range w[1:] {\n\t\t\tif c < 'A' || c > 'z' || c > 'Z' && c < 'a' {\n\t\t\t\treturn false\n\t\t\t}\n\t\t}\n\t\treturn strings.ContainsAny(w[1:], \"oO\")\n",
+  "TestMayWrite|TestTestBending_AnAttachedCurl")
+m("TB a command or process substitution is not a write", "internal/shape/shape.go",
+  "\t\tif opensSubstitution(toks, j) {\n",
+  "\t\tif false && opensSubstitution(toks, j) {\n",
+  "TestMayWrite")
+m("TB backticks and a quoted $( are not a write", "internal/shape/shape.go",
+  "\t\tif t.ticks > 0 || strings.Contains(t.text, \"$(\") {\n",
+  "\t\tif false {\n",
+  "TestMayWrite")
 
 # Import additions some mutants need.
 IMPORTS = {

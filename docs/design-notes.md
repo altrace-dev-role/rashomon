@@ -109,7 +109,9 @@ comparison is "what did it say it would reach" against "what did the wire
 see", and a digest cannot be joined against a proxy's rows. Argument values,
 command strings, prompts and responses are not persisted.
 
-The derived shape is `program`, `verb_class`, `argc` and `digest`; the record
+The derived shape is `program`, `verb_class`, `argc`, `digest` and
+`may_write` (one bit: whether a shell line may write files whatever its class
+says); the record
 that carries it carries `schema_version`. A command that will not tokenize records `argc: null`, never
 `0` — zero is a count, and in that case we do not have one. `digest` is an HMAC
 under a per-install random key, so the same command digests differently on two
