@@ -1780,6 +1780,11 @@ m("TB a prefixed run records its runner as the program", "internal/shape/shape.g
   "\t\t\t\ts.VerbClass = VerbTest\n\t\t\t\t_, runner, _ := runnerPrefix(pshaped, i, prog)\n\t\t\t\ts.Program = &runner\n",
   "TestTestRunnerIsRecognised|TestTestBending")
 
+m("TB a prefix entry refuses its =false form", "internal/shape/shape.go",
+  "\t\t\tif v, ok := strings.CutPrefix(rest, \"=\"); isPrefix && !(ok && isFalse(v)) {\n",
+  "\t\t\tif _, _ = strings.CutPrefix(rest, \"=\"); isPrefix {\n",
+  "TestTestRunnerIsRecognised")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

@@ -1042,7 +1042,8 @@ func refusalsOf(c []string) string {
 // or failed on something no test decided, and as a test run it would
 // complete a pattern on that outcome. A word ending in * is a prefix:
 // `-list=Foo`, `-elint`. A flag is matched in its `flag=value` form too
-// (`-c=true`, `--watch=true`), unless the value is false (onList).
+// (`-c=true`, `--watch=true`), unless the value is false (onList), and a
+// prefix entry the same way: `-DskipTests=false` runs the tests.
 //
 // The lists are the spellings named here, not every spelling a runner
 // accepts: a combined short flag (`make -nk`), an option set in a config file
@@ -1116,12 +1117,15 @@ func refusesRun(runner string, before, args []token) bool {
 // onList reports word equal to an entry of list, or starting with the part
 // of one before its trailing *. A word `flag=value` matches the entry flag
 // unless value is a false the flag parsers read as false: `--watchAll=false`
-// runs the tests once, `--watchAll=true` watches, and `-c=true` compiles.
+// runs the tests once, `--watchAll=true` watches, and `-c=true` compiles. A
+// prefix entry is held to the same exception when the word is the prefix
+// and `=value`: `-DskipTests=false` forces Maven's tests to run.
 func onList(word string, list []string) bool {
 	name, value, hasValue := strings.Cut(word, "=")
 	for _, w := range list {
 		if p, ok := strings.CutSuffix(w, "*"); ok {
-			if strings.HasPrefix(word, p) {
+			rest, isPrefix := strings.CutPrefix(word, p)
+			if v, ok := strings.CutPrefix(rest, "="); isPrefix && !(ok && isFalse(v)) {
 				return true
 			}
 		} else if word == w {
@@ -1133,8 +1137,8 @@ func onList(word string, list []string) bool {
 	return false
 }
 
-// isFalse reports the spellings of false that Go's flag package and yargs
-// accept for a boolean flag.
+// isFalse reports the false spellings of Go's strconv.ParseBool; a yargs flag
+// given another non-true value is still refused.
 func isFalse(v string) bool {
 	switch v {
 	case "false", "False", "FALSE", "f", "F", "0":
