@@ -245,7 +245,9 @@ type Execution struct {
 
 	// Backgrounded is true when this record was written while the command was
 	// still running in the background (v3): Claude Code moved it there at its
-	// timeout or on Ctrl+B, or it was launched with run_in_background. Its
+	// timeout, or it was launched with run_in_background (both measured), or
+	// on Ctrl+B, recognised only if Claude Code marks it with
+	// backgroundTaskId or backgroundedByUser, which was not measured. Its
 	// PostToolUse fires then, so Outcome is the launch's, not the command's,
 	// and a reader treats the call's ending as unobserved (see
 	// report.LinkOutcomeBackgrounded).

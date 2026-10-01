@@ -331,7 +331,9 @@ The two test-bending lines have limits of their own:
 - Claude Code moves a command to the background when it reaches its timeout
   (two minutes by default) or when you press Ctrl+B, and its `PostToolUse`
   then fires before any test has finished. The execution record says so
-  (`backgrounded`), as it does for a `run_in_background` launch, and such a
+  (`backgrounded`), as it does for a `run_in_background` launch (a Ctrl+B
+  background is recognised only if Claude Code marks it with
+  `backgroundTaskId` or `backgroundedByUser`, which was not measured), and such a
   run is read as outcome unobserved: it is neither ok nor failed in `test
   runs`, completes no pattern, and sits under `unknown` in `--timeline`,
   where it is never offered as a later success. Records written before

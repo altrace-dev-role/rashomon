@@ -151,9 +151,10 @@ present, which says the call's `PostToolUse` fired while the command was still
 running in the background. A second decode claims those two keys and no other,
 each into a presence bit, so the task id, `stdout` and `stderr` are skipped
 unread; the record's `backgrounded` is that bit. The guarantee is structural rather
-than a matter of remembering to redact, and the record has no field whose width
-it could move: a 20-byte response and a 20-KB one serialize to the same number
-of bytes. `tool_input` has no field there either — the post handler derives no
+than a matter of remembering to redact. The record's width depends on the
+response only through that one bit, never on the response's size or content:
+a 20-byte response and a 20-KB one with the same keys serialize to the same
+number of bytes. `tool_input` has no field there either — the post handler derives no
 shape, and the declaration it answers already carries the one derived at
 `PreToolUse`.
 

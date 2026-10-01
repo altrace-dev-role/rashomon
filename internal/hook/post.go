@@ -1,6 +1,7 @@
 package hook
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -63,8 +64,9 @@ type PostPayload struct {
 	//
 	// Declaring it is a deliberate reversal of the original note above, and the
 	// asymmetry with tool_response is the whole reason it is safe. tool_response
-	// is tool OUTPUT and nothing here needs it, so the guarantee for it stays
-	// structural: no field claims it, so it is never a value in this process.
+	// is tool OUTPUT, and PostPayload claims no field of it: the guarantee
+	// stays structural. backgroundResponse, a second decode for Bash only,
+	// reads two presence bits from it and nothing else.
 	// tool_input is different -- it is the one field that can show a rewriting
 	// hook, and the declaration path already unmarshals and digests the same
 	// field. Only the digest survives this function; internal/shape is still
@@ -172,8 +174,9 @@ func (p *Post) Capture(in io.Reader) error {
 // 2.1.280, a command moved to the background when it reached its timeout and
 // one launched with run_in_background both fire PostToolUse, and the response
 // carries backgroundTaskId (the timeout case timedOutAfterMs as well); a
-// foreground call carries neither. backgroundedByUser, which Ctrl+B is
-// expected to set, was not measured and is read the same way.
+// foreground call carries neither. A Ctrl+B background is recognised only if
+// Claude Code marks it with backgroundTaskId or backgroundedByUser, which was
+// not measured; backgroundedByUser is read the same way as the task id.
 //
 // Each key decodes into a presence bit (present), so the task id is compared
 // with null and dropped, and no other key of the response -- stdout, stderr
@@ -186,13 +189,14 @@ type backgroundResponse struct {
 }
 
 // present is a key's presence: true when the key carries anything but null
-// or false. The value is looked at only to tell those two apart and is not
-// kept, so an id, a string or an object decodes to one bit.
+// or false. The raw bytes are compared with those two and not kept or
+// copied, so an id, a string or an object decodes to one bit and never
+// becomes a Go string.
 type present bool
 
 func (p *present) UnmarshalJSON(b []byte) error {
-	v := strings.TrimSpace(string(b))
-	*p = present(v != "null" && v != "false")
+	v := bytes.TrimSpace(b)
+	*p = present(!bytes.Equal(v, []byte("null")) && !bytes.Equal(v, []byte("false")))
 	return nil
 }
 

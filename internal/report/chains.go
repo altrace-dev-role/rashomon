@@ -56,8 +56,9 @@ const (
 	LinkOutcomeUnobserved = "outcome unobserved"
 	// LinkOutcomeBackgrounded: the execution record was written while the
 	// command was still running in the background (store.Execution's
-	// Backgrounded) -- moved there at its timeout or on Ctrl+B, or launched
-	// with run_in_background. Its recorded ok is the launch's; how the command
+	// Backgrounded) -- moved there at its timeout, or launched with
+	// run_in_background, or on Ctrl+B if Claude Code marks that the same way
+	// (not measured). Its recorded ok is the launch's; how the command
 	// itself ended was never recorded, so it reads as unobserved, never as a
 	// success.
 	LinkOutcomeBackgrounded = "moved to the background, outcome unobserved"
