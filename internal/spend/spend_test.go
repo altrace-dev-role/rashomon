@@ -394,15 +394,19 @@ func TestWindow_OldTranscriptsAreNotNoTranscripts(t *testing.T) {
 // the recorded path is spelled through the ancestor and the discovered one
 // resolves past it, so neither spelling matched the other and the transcript
 // read "not covered": the test failed on a Mac while CI, on Linux, was green.
+//
+// And a third time with a relative CLAUDE_CONFIG_DIR and a link with a
+// relative target: the discovered path is relative, and resolving it as
+// written gave a relative spelling no absolute recorded path could match.
 func TestDiscover_ASymlinkedProjectFolderIsRead(t *testing.T) {
-	for _, layout := range []string{"resolved", "under a symlinked ancestor"} {
+	for _, layout := range []string{"resolved", "under a symlinked ancestor", "relative config dir"} {
 		t.Run(layout, func(t *testing.T) {
 			base, err := filepath.EvalSymlinks(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}
 			root := base
-			if layout != "resolved" {
+			if layout == "under a symlinked ancestor" {
 				if err := os.Mkdir(filepath.Join(base, "private"), 0o700); err != nil {
 					t.Fatal(err)
 				}
@@ -412,6 +416,10 @@ func TestDiscover_ASymlinkedProjectFolderIsRead(t *testing.T) {
 				}
 			}
 			c := &config{t: t, dir: filepath.Join(root, "cfg")}
+			if layout == "relative config dir" {
+				t.Chdir(base)
+				c.dir = "cfgdir"
+			}
 			real := filepath.Join(root, "elsewhere")
 			if err := os.MkdirAll(filepath.Join(real, "sess-l", "subagents"), 0o700); err != nil {
 				t.Fatal(err)
@@ -430,7 +438,11 @@ func TestDiscover_ASymlinkedProjectFolderIsRead(t *testing.T) {
 			if err := os.MkdirAll(filepath.Join(c.dir, "projects"), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(real, filepath.Join(c.dir, "projects", "linked")); err != nil {
+			target := real
+			if layout == "relative config dir" {
+				target = filepath.Join("..", "..", "elsewhere")
+			}
+			if err := os.Symlink(target, filepath.Join(c.dir, "projects", "linked")); err != nil {
 				t.Fatal(err)
 			}
 			rec := newRecorder(t)
@@ -454,6 +466,55 @@ func TestDiscover_ASymlinkedProjectFolderIsRead(t *testing.T) {
 					j.Turns, j.Unjudged)
 			}
 		})
+	}
+}
+
+// TestDiscover_OneTranscriptUnderTwoSpellingsIsReadOnce: after a repo moves,
+// a common way to keep its history is to symlink the new project folder to
+// its sibling, the old one. Discover then listed the transcript twice, once
+// per spelling: two transcripts, one of them never named by a record, so the
+// whole cost read not covered and a recorded conversation read partly
+// recorded. A file whose resolved path was already kept is skipped, so it is
+// one transcript, covered by a record naming either spelling, in either sort
+// order of the two folder names.
+func TestDiscover_OneTranscriptUnderTwoSpellingsIsReadOnce(t *testing.T) {
+	for _, tc := range []struct{ old, link string }{
+		{"-Users-me-old", "-Users-me-new"}, // the link sorts first
+		{"-Users-me-old", "-Users-me-zzz"}, // the link sorts second
+	} {
+		for _, recordLink := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s recorded via link %v", tc.link, recordLink), func(t *testing.T) {
+				c := newConfig(t)
+				T := now.Add(-time.Hour)
+				realMain := c.write(tc.old+"/sess-l.jsonl", userLine("sess-l", "p1", T, false),
+					resp{id: "L1", model: "claude-opus-5-5", session: "sess-l", at: T, in: 100, stop: "end_turn"}.line("text"))
+				if err := os.Symlink(tc.old, filepath.Join(c.dir, "projects", tc.link)); err != nil {
+					t.Fatal(err)
+				}
+				rec := newRecorder(t)
+				rec.transcript = realMain
+				if recordLink {
+					rec.transcript = filepath.Join(c.dir, "projects", tc.link, "sess-l.jsonl")
+				}
+				rec.call("sess-l", "p1", "toolu_l", T, T.Add(time.Second), store.ExecOK)
+
+				s := c.summary(30)
+				if s.Read.Files != 1 || s.Responses != 1 {
+					t.Errorf("files %d, responses %d; want 1 and 1: one transcript was read under both spellings", s.Read.Files, s.Responses)
+				}
+				if err := s.Join(rec.st); err != nil {
+					t.Fatal(err)
+				}
+				j := s.SilentFailureTurns
+				if j.Transcripts != 1 || j.CoveredTranscripts != 1 || j.NotCoveredTranscripts != 0 || j.NotCoveredCost.Priced != 0 {
+					t.Errorf("transcripts %d, covered %d, not covered %d (%+v); want 1, 1, 0: the second spelling read as an unrecorded copy",
+						j.Transcripts, j.CoveredTranscripts, j.NotCoveredTranscripts, j.NotCoveredCost)
+				}
+				if len(s.PerSession) != 1 || s.PerSession[0].Coverage != CoverageRecorded {
+					t.Errorf("per session = %+v, want sess-l recorded", s.PerSession)
+				}
+			})
+		}
 	}
 }
 

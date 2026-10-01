@@ -1289,8 +1289,17 @@ m("SP old transcripts are reported as no transcripts found", "internal/spend/tex
 m("SP a symlinked project folder is skipped", "internal/spend/scan.go",
   "\tif t&fs.ModeSymlink != 0 {", "\tif false && t&fs.ModeSymlink != 0 {", "TestDiscover_ASymlinked")
 m("SP a recorded real path does not cover a transcript reached through a symlink", "internal/spend/join.go",
-  "\t\tif real, err := filepath.EvalSymlinks(f.Path); err == nil {", "\t\tif real, err := filepath.EvalSymlinks(f.Path); err == nil && false {",
+  "\t\tif real, err := filepath.EvalSymlinks(p); err == nil {", "\t\tif real, err := filepath.EvalSymlinks(p); err == nil && false {",
   "TestDiscover_ASymlinked")
+m("SP a discovered transcript is resolved as written, not by its absolute spelling", "internal/spend/join.go",
+  "\t\tif real, err := filepath.EvalSymlinks(p); err == nil {", "\t\tif real, err := filepath.EvalSymlinks(f.Path); err == nil {",
+  "TestDiscover_ASymlinked")
+m("SP a discovered transcript is not indexed by its absolute spelling", "internal/spend/join.go",
+  "\tif abs, err := filepath.Abs(f.Path); err == nil {\n\t\t\tp = abs", "\tif abs, err := filepath.Abs(f.Path); err == nil {\n\t\t\t_ = abs",
+  "TestDiscover_ASymlinked")
+m("SP one transcript under two spellings is read twice", "internal/spend/scan.go",
+  "\t\tif seen[real] {\n\t\t\tcontinue", "\t\tif false && seen[real] {\n\t\t\tcontinue",
+  "TestDiscover_OneTranscriptUnderTwoSpellings")
 m("SP a project folder that cannot be read is not counted", "internal/spend/scan.go",
   "\t\tif kind == kindUnreadable {\n\t\t\tfound.UnreadableDirs++", "\t\tif kind == kindUnreadable {\n\t\t\t_ = found",
   "TestDiscover_AnUnreadableFolder")

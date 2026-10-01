@@ -482,8 +482,34 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
-	found.Files = out
+	found.Files = dedupeSpellings(out)
 	return found, nil
+}
+
+// dedupeSpellings keeps the first of the files that resolve to one file.
+//
+// One transcript can be listed under two spellings: after a repo moves, a
+// common way to keep its history is to symlink the new project folder to the
+// old one beside it, and both folders are listed. Read twice, it was two
+// transcripts, one of them never named by a record, so a recorded
+// conversation read partly recorded and its whole cost not covered. files is
+// sorted, so the spelling kept does not depend on listing order. A path that
+// does not resolve is kept: Read counts it if it cannot be read.
+func dedupeSpellings(files []TranscriptFile) []TranscriptFile {
+	seen := map[string]bool{}
+	out := files[:0]
+	for _, f := range files {
+		real, err := filepath.EvalSymlinks(f.Path)
+		if err != nil {
+			real = f.Path
+		}
+		if seen[real] {
+			continue
+		}
+		seen[real] = true
+		out = append(out, f)
+	}
+	return out
 }
 
 // statFile is os.Stat, as a variable so a test can fail it the way a folder

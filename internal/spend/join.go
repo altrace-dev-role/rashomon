@@ -395,8 +395,10 @@ func (s *Summary) mainsOf(r *Response) []string {
 //
 // A path can be spelled two ways that name one file: through a symlinked
 // ancestor, or resolved. Each discovered file is indexed by its absolute
-// spelling and by its resolved one, and a recorded path is tried as written
-// and then resolved. Both sides need it. On a default macOS machine TMPDIR is
+// spelling and by the resolution of that absolute spelling -- resolving a
+// relative one (a relative CLAUDE_CONFIG_DIR) gave a relative spelling no
+// recorded path matched -- and a recorded path is tried as written and then
+// resolved. Both sides need it. On a default macOS machine TMPDIR is
 // reached through the /var -> /private/var link, so a projects folder linked
 // in from there is discovered as <config>/projects/<link>/x.jsonl (resolving
 // to /private/var/...) while the hooks may record /var/.../x.jsonl: neither
@@ -421,7 +423,7 @@ func newKnownPaths(files []TranscriptFile) *knownPaths {
 			p = abs
 		}
 		add(p, i)
-		if real, err := filepath.EvalSymlinks(f.Path); err == nil {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
 			add(real, i)
 		}
 	}
