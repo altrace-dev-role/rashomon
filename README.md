@@ -302,9 +302,10 @@ The two test-bending lines have limits of their own:
   the runner's exit status through; when the timeout fires, its own status
   124 is read as no result, neither passed nor failed. These wrappers are
   counted because their exit status is the runner's.
-- A runner followed by anything (`| tail`, `2>&1 | grep`, `&& echo ok`, `;
-  echo done`) is not counted: without `pipefail` a pipe's status is its last
-  program's, and after `&&` or `;` the line's success is the next command's.
+- A runner followed by a pipe or a list (`| tail`, `2>&1 | grep`, `&& echo
+  ok`, `; echo done`) is not counted; a redirection alone (`2>&1`, `>
+  out.txt`) is. Without `pipefail` a pipe's status is its last program's,
+  and after `&&` or `;` the line's success is the next command's.
   So piped runs such as `go test ./... 2>&1 | tail -20`, which are much of
   what Claude Code writes, are invisible to both patterns, and a session
   whose tests ran only that way shows no `test runs` block at all.
@@ -312,8 +313,10 @@ The two test-bending lines have limits of their own:
   character for character. `go test ./...` with two spaces, a trailing
   space, a `cd /repo &&` prefix or a `CGO_ENABLED=0` prefix is another
   command, and never pairs with the plain form.
-- A runner is on the list when its name or the words after it say test, and
-  that does not keep lint out: `go test` runs vet, `npm test` runs a
+- A runner is on the list when it is a known test tool, a build tool or
+  launcher given its test command (`go test`, `npm t`, `npm run test`,
+  `python -m pytest`), or a listed wrapper that passes its runner's exit
+  status through, and that does not keep lint out: `go test` runs vet, `npm test` runs a
   `pretest` script, and `tox`'s default envlist or a make `test` target can
   include lint. A lint failure fixed only in a file named like a test then
   reads as the tests-only pattern.

@@ -27,11 +27,7 @@ const SchemaVersion = 3
 // the writer moved to v2 every v1 record already on disk would have been
 // skipped -- a store that had been recording for weeks would have rendered an
 // empty report, and nothing would have said why.
-// Schema 3 is admitted BEFORE anything writes it. The rule-match layer lands
-// on another branch and will write v3 records; a reader that did not accept
-// them yet would skip every one, and skipping is silent by design -- the
-// symptom is an empty report, not an error. Accepting a version this writer
-// does not yet produce costs nothing and closes that window.
+// v3 is what this build writes; 1 and 2 are accepted so older stores read.
 func Accepts(version int) bool {
 	return version == 1 || version == 2 || version == 3
 }

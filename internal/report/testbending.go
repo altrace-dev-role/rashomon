@@ -30,8 +30,8 @@ type SeqPair [2]int64
 // First and second are in declaration order, the order the two runs STARTED
 // (seq), not the order they finished. Two identical runs overlapping in
 // parallel agents can finish the other way round, so "#10 failed, #11
-// passed" says which started first, and the timeline shows where each result
-// was recorded.
+// passed" says which started first; the failed run's timeline row says
+// whether a pass of the same command was recorded after it.
 type FlakyPair struct {
 	Seqs        SeqPair `json:"seqs"`
 	FirstFailed bool    `json:"first_failed"`
@@ -105,10 +105,12 @@ type TestBending struct {
 // a subagent's, which starts in the directory the main agent had at launch;
 // and so are two calls of `cd sub && go test ./...`, the second of which
 // fails at its cd, since the first left the shell in sub. The payload's cwd
-// follows the shell, so its digest tells each of these apart, and a subagent
-// re-running the main agent's tests where they ran still pairs. A lone cd
-// between two runs is an edit here as well (class execute), which changes
-// nothing: the runs either side of it are in two directories anyway.
+// follows the shell, and the hook digests it, or the target of a leading
+// plain cd resolved against it, so the digest tells each of these apart, and
+// a subagent re-running the main agent's tests where they ran still pairs. A
+// lone cd between two runs is an edit here as well (class execute), so a cd
+// that left the directory unchanged (one that failed, or `cd .`) still stops
+// the pair.
 func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 	if run == nil {
 		return detectTestBending(nil, nil, denied)

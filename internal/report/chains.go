@@ -156,14 +156,16 @@ func deniedSet(ts []Transcript) map[string]bool {
 // already had forgotten hosts suppressed and client-plane traffic accounted
 // for, and a second consumer reading around it is how a suppressed host comes
 // back in a different section.
-func buildChains(run *store.Run, dests Destinations, denied map[string]bool, forgotten func(string) bool) Chains {
+//
+// executed is run's executions grouped by tool_use_id (executionsByID), which
+// Build groups once for the chains, the timeline and the test runs.
+func buildChains(run *store.Run, executed map[string][]store.Execution, dests Destinations, denied map[string]bool, forgotten func(string) bool) Chains {
 	out := Chains{Prompts: []Chain{}, Unattributed: []Link{}, Dropped: []Link{}}
 	if run == nil {
 		return out
 	}
 
 	state := hostStates(dests)
-	executed := executionsByID(run)
 
 	type key struct{ transcript, prompt string }
 	byKey := map[key]*Chain{}
