@@ -950,7 +950,7 @@ func coldWrites(sc *Scan) map[*Response]Tokens {
 			continue
 		}
 		for _, f := range r.files {
-			k := stream{f, r.Subagent}
+			k := stream{f.idx, r.Subagent}
 			byFile[k] = append(byFile[k], r)
 		}
 	}

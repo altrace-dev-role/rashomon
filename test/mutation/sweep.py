@@ -492,7 +492,7 @@ m("report text renders a count it does not have as 0", "internal/report/text.go"
 m("report text renders a comparison it could not make as an empty list", "internal/report/text.go",
   "\tif ids == nil {\n\t\treturn unknown\n\t}", "\tif ids == nil {\n\t\treturn none\n\t}", "TestReport_")
 m("report --json is accepted and ignored", "cmd/rashomon/main.go",
-  "\t\tcase \"--json\":\n\t\t\tasJSON = true", "\t\tcase \"--json\":\n\t\t\tasJSON = false", "TestReport_")
+  "\t\tcase \"--json\":\n\t\t\tasJSON = true\n\t\tcase \"--redact\":", "\t\tcase \"--json\":\n\t\t\tasJSON = false\n\t\tcase \"--redact\":", "TestReport_")
 m("status opens the store, which creates one", "cmd/rashomon/main.go",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {\n\t\tst, err := openStore()",
   "\tif true {\n\t\tst, err := openStore()", "TestH18_")
@@ -1112,7 +1112,7 @@ m("SP a 5m cache write is priced at the input rate", "internal/spend/price.go",
 m("SP a 1h cache write is priced as a 5m one", "internal/spend/price.go",
   "return r.Input * 2 }", "return r.Input * 5 / 4 }", "TestPricing_")
 m("SP Fable 5.1's cache read is 0.1x input, not the table's 0.25", "internal/spend/price.go",
-  "CacheRead: mtok(25)}", "CacheRead: mtok(100)}", "TestPricing_TheTable")
+  "\t\"claude-fable-5-1\": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},", "\t\"claude-fable-5-1\": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},", "TestPricing_TheTable")
 m("SP an unsplit cache write is priced at the 1h rate", "internal/spend/scan.go",
   "\t\tout.CacheWrite5m += rest", "\t\tout.CacheWrite1h += rest", "TestPricing_CacheWrites")
 m("SP an unknown model is priced at $0", "internal/spend/spend.go",
@@ -1137,8 +1137,8 @@ m("SP a 5m write is judged against the 1h TTL", "internal/spend/spend.go",
 m("SP a 1h write is judged against the 5m TTL", "internal/spend/spend.go",
   "\t\t\tif gap > ttl1h {", "\t\t\tif gap > ttl5m {", "TestCacheExpiry_")
 m("SP the previous response is taken across files", "internal/spend/spend.go",
-  "\t\t\tk := stream{f, r.Subagent}\n\t\t\tbyFile[k] = append(byFile[k], r)\n\t\t}\n\t}\n\tout := map[*Response]Tokens{}\n\tfor k, rs := range byFile {\n\t\tsort.SliceStable(rs, func(i, j int) bool { return rs[i].StartMS < rs[j].StartMS })\n\t\tfor i := 1; i < len(rs); i++ {\n\t\t\tif rs[i].file != k.file {",
-  "\t\t\tk := stream{0 * f, r.Subagent}\n\t\t\tbyFile[k] = append(byFile[k], r)\n\t\t}\n\t}\n\tout := map[*Response]Tokens{}\n\tfor k, rs := range byFile {\n\t\tsort.SliceStable(rs, func(i, j int) bool { return rs[i].StartMS < rs[j].StartMS })\n\t\tfor i := 1; i < len(rs); i++ {\n\t\t\tif false && rs[i].file != k.file {",
+  "\t\t\tk := stream{f.idx, r.Subagent}\n\t\t\tbyFile[k] = append(byFile[k], r)\n\t\t}\n\t}\n\tout := map[*Response]Tokens{}\n\tfor k, rs := range byFile {\n\t\tsort.SliceStable(rs, func(i, j int) bool { return rs[i].StartMS < rs[j].StartMS })\n\t\tfor i := 1; i < len(rs); i++ {\n\t\t\tif rs[i].file != k.file {",
+  "\t\t\tk := stream{0 * f.idx, r.Subagent}\n\t\t\tbyFile[k] = append(byFile[k], r)\n\t\t}\n\t}\n\tout := map[*Response]Tokens{}\n\tfor k, rs := range byFile {\n\t\tsort.SliceStable(rs, func(i, j int) bool { return rs[i].StartMS < rs[j].StartMS })\n\t\tfor i := 1; i < len(rs); i++ {\n\t\t\tif false && rs[i].file != k.file {",
   "TestCacheExpiry_")
 m("SP the window is applied before the previous response is found", "internal/spend/spend.go",
   "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS == 0 || r.Tokens.Total() == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, f := range r.files {",
@@ -1208,7 +1208,7 @@ m("SP a transcript counts as covered when its session id has a run directory", "
   "\t\trun, err := st.ReadRun(id)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tfor m, rs := range byTranscript {\n\t\t\tif rs[0].SessionID == id {\n\t\t\t\tcovered[m] = true\n\t\t\t}\n\t\t}\n",
   "TestJoin_CoverageIsPerTranscript")
 m("SP a not-covered transcript's session is not named", "internal/spend/join.go",
-  "\t\t\t\tnamed[displaySession(r.SessionID)] = true\n", "",
+  "\t\t\tnamed[displaySession(id)] = true\n", "",
   "TestJoin_SpendInside|TestJoin_CoverageIsPerTranscript")
 m("SP a partly recorded session is marked recorded", "internal/spend/join.go",
   "\t\tdefault:\n\t\t\ts.PerSession[i].Coverage = CoveragePartly", "\t\tdefault:\n\t\t\ts.PerSession[i].Coverage = CoverageRecorded",
@@ -1323,7 +1323,7 @@ m("SP an iteration's counts are not checked", "internal/spend/scan.go",
 m("SP unparsed usage lines are not said", "internal/spend/text.go",
   "\tif s.Read.UnparsedUsageLines > 0 {", "\tif false {", "TestUnparsed_")
 m("SP a main transcript's sidechain lines share the main agent's cache stream", "internal/spend/spend.go",
-  "\t\t\tk := stream{f, r.Subagent}\n", "\t\t\tk := stream{f, false}\n", "TestCacheExpiry_ThePreviousResponseIsTheSameAgents")
+  "\t\t\tk := stream{f.idx, r.Subagent}\n", "\t\t\tk := stream{f.idx, false}\n", "TestCacheExpiry_ThePreviousResponseIsTheSameAgents")
 m("SP the 1h TTL is advised for a re-write that was already 1h", "internal/spend/spend.go",
   "\t\tif s.CacheExpiry.Tokens5m > 0 {\n\t\t\tsv.Hint", "\t\tif true {\n\t\t\tsv.Hint", "TestCacheExpiry_NoLongerTTLAdvice")
 m("SP a 5m re-write is given no TTL hint", "internal/spend/text.go",
@@ -1469,7 +1469,7 @@ m("SP a cold 1h write is priced at the full write rate", "internal/spend/spend.g
   "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)", "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*rt.CacheWrite1h()",
   "TestCacheExpiry_")
 m("SP a response keeps only the file it was first seen in", "internal/spend/scan.go",
-  "\tif !slices.Contains(prev.files, cand.file) {\n\t\tprev.files = append(prev.files, cand.file)\n\t}\n", "\t_ = slices.Contains[[]int]\n",
+  "\tif !slices.ContainsFunc(prev.files, func(s sighting) bool { return s.idx == cand.file }) {\n\t\tprev.files = append(prev.files, cand.files[0])\n\t}\n", "\t_ = slices.ContainsFunc[[]sighting]\n",
   "TestJoin_ADuplicatedResponse")
 m("SP a shared response's coverage follows the file that sorts first", "internal/spend/join.go",
   "\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tif !covered[m] {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)", "\t\tfor _, m := range s.mainsOf(r)[:1] {\n\t\t\tif !covered[m] {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)",
@@ -1478,7 +1478,7 @@ m("SP a transcript holding only shared responses is not a transcript", "internal
   "\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tbyTranscript[m] = append(byTranscript[m], r)", "\t\tfor _, m := range s.mainsOf(r)[:1] {\n\t\t\tbyTranscript[m] = append(byTranscript[m], r)",
   "TestJoin_ADuplicatedResponse")
 m("SP a cold-cache stream holds only the responses first seen in its file", "internal/spend/spend.go",
-  "\t\tfor _, f := range r.files {\n\t\t\tk := stream{f, r.Subagent}", "\t\tfor _, f := range r.files[:1] {\n\t\t\tk := stream{f, r.Subagent}",
+  "\t\tfor _, f := range r.files {\n\t\t\tk := stream{f.idx, r.Subagent}", "\t\tfor _, f := range r.files[:1] {\n\t\t\tk := stream{f.idx, r.Subagent}",
   "TestJoin_ADuplicatedResponse")
 m("SP an iteration entry's type is decoded as counts only", "internal/spend/scan.go",
   "\tType string `json:\"type\"`\n\t// Model is the model that ran the attempt.", "\tType string `json:\"-\"`\n\t// Model is the model that ran the attempt.",
@@ -1574,6 +1574,20 @@ m("SP a no-output declined attempt is not named as not computed", "internal/spen
   "\t\t\tnoOutput = true", "\t\t\tnoOutput = false", "TestSavings_")
 m("SP what was not computed is not said in the text", "internal/spend/text.go",
   "\t\tfor _, k := range s.SavingsNotComputed {", "\t\tfor _, k := range s.SavingsNotComputed[:0] {", "TestSavings_")
+
+m("SP a shared response's not-covered cost is counted in every unrecorded transcript", "internal/spend/join.go",
+  "\tfor _, r := range s.window {\n\t\tif counted[r] {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tif !covered[m] {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t}",
+  "\tfor m, rs := range byTranscript {\n\t\tif !covered[m] {\n\t\t\tfor _, r := range rs {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t\t}\n\t\t}\n\t}",
+  "TestJoin_ASharedResponse")
+m("SP a response a covered turn counted is also not covered", "internal/spend/join.go",
+  "\t\tif counted[r] {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, m := range s.mainsOf(r) {", "\t\tif false && counted[r] {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, m := range s.mainsOf(r) {",
+  "TestJoin_ASharedResponseIsNeverBoth")
+m("SP a shared response's session is the first sighting's", "internal/spend/scan.go",
+  "\t\tr.SessionID = sc.ownerSighting(r).session", "\t\tr.SessionID = r.files[0].session",
+  "TestJoin_ADuplicatedResponse")
+m("SP a transcript is named by the session of its first-seen response", "internal/spend/join.go",
+  "\tfor m := range byTranscript {\n\t\tid := sessionOf[m]", "\tfor m, rs := range byTranscript {\n\t\tid := rs[0].SessionID",
+  "TestJoin_ADuplicatedResponse|TestJoin_ASharedResponse")
 
 # Import additions some mutants need.
 IMPORTS = {

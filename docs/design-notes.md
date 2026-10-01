@@ -304,11 +304,18 @@ lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
 - Where a reader cannot place a line, it counts and names what it skipped,
   never drops it silently: a malformed or implausible usage, a line with no
   id, an unreadable file or folder, a future-dated response.
-- A response keeps every file it was seen in. Coverage reads all of them: a
-  response is not covered when any transcript holding it is not, and its cost
-  is counted once. The cold-cache heuristic judges it once, in the file it was
-  first seen in, against every response that file holds. Otherwise a resumed
-  conversation's coverage and cold writes followed the path sort order.
+- A response keeps every file it was seen in, with the session its line
+  carries there. Coverage reads all of them: a response is not covered when
+  any transcript holding it is not, and its cost is counted once, and not at
+  all when a covered turn already counted it. Each transcript is named by its
+  own session, and a shared response belongs to the session of the file whose
+  first line is earliest (ties by session id). So coverage, the not-covered
+  cost, the sessions, and cold writes for a copied prefix do not depend on the
+  path sort order. The cold-cache heuristic judges a response once, in the
+  file it was first seen in, against every response that file holds, so the
+  cold figure for a shared response whose predecessor differs between the two
+  files does depend on it (3 responses and $0.0192 in one order, 2 and
+  $0.01488 in the other).
 
 **Departing from "never `message.content`".** The design said spend never
 reads message content. The silent-failure line needs the final message it

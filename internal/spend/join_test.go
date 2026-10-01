@@ -901,61 +901,145 @@ func TestJoin_NoTranscriptInTheWindowIsSaidPlainly(t *testing.T) {
 }
 
 // TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs: a
-// resumed conversation carries the original's responses into its own file
-// in the same project folder. Only the resumed one was recorded. Pinned to
-// whichever file sorted first, a shared response made the unrecorded original
-// read "recorded" in one path order -- it held no response of its own -- and
-// the resumed file's first new response lost its predecessor in the other, so
-// its cold write went uncounted. Both orders now give the same answer: the
-// original is not covered, the shared responses' cost is counted once as not
-// covered, and the cold write is counted once.
+// resumed or branched conversation (/branch, --fork-session) carries the
+// original's responses into its own file in the same project folder. Only
+// the copy was recorded. Pinned to whichever file sorted first, a shared
+// response made the unrecorded original read "recorded" in one path order --
+// it held no response of its own -- and the copy's first new response lost
+// its predecessor in the other, so its cold write went uncounted. Both orders
+// now give the same answer: the original is not covered, the shared
+// responses' cost is counted once as not covered, and the cold write is
+// counted once.
+//
+// Twice: with the copied lines keeping the original's sessionId, and with
+// them carrying the copy's own. In the second, the session a shared response
+// was first seen under followed the path order too: the original first gave
+// two sessions with the original named not covered; the copy first gave one
+// session, the recorded copy named not covered and the original gone. A
+// shared response now belongs to the sighting in the file whose first line
+// is earliest (ties by session id), and each transcript is named by its own
+// session.
 func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *testing.T) {
 	T := now.Add(-3 * time.Hour)
-	x1 := resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T, in: 1000, w5: 100, stop: "end_turn"}
-	x2 := resp{id: "X2", model: "claude-opus-5-5", session: "sess-o", at: T.Add(oneMinute), in: 2000, stop: "end_turn"}
-	y1 := resp{id: "Y1", model: "claude-opus-5-5", session: "sess-r", at: T.Add(30 * oneMinute), in: 4000, w5: 3000, stop: "end_turn"}
-	run := func(original, resumed string) (string, string, *Summary) {
-		c := newConfig(t)
-		rec := newRecorder(t)
-		c.write(original, x1.line("text"), x2.line("text"))
-		rec.transcript = c.write(resumed, x1.line("text"), x2.line("text"), y1.line("text"))
-		rec.call("sess-r", "p1", "toolu_r", T.Add(30*oneMinute), T.Add(31*oneMinute), store.ExecOK)
-		s := c.summary(30)
-		if err := s.Join(rec.st); err != nil {
-			t.Fatal(err)
-		}
-		txt, _ := render(t, s)
-		j, err := json.Marshal(struct {
-			J SilentFailureTurns
-			P []SessionSpend
-			C CacheExpiry
-		}{s.SilentFailureTurns, s.PerSession, s.CacheExpiry})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return txt, string(j), s
+	for _, copied := range []string{"sess-o", "sess-r"} {
+		t.Run("copied lines carry "+copied, func(t *testing.T) {
+			x1 := resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T, in: 1000, w5: 100, stop: "end_turn"}
+			x2 := resp{id: "X2", model: "claude-opus-5-5", session: "sess-o", at: T.Add(oneMinute), in: 2000, stop: "end_turn"}
+			y1 := resp{id: "Y1", model: "claude-opus-5-5", session: "sess-r", at: T.Add(30 * oneMinute), in: 4000, w5: 3000, stop: "end_turn"}
+			cx1, cx2 := x1, x2
+			cx1.session, cx2.session = copied, copied
+			run := func(original, resumed string) (string, string, *Summary) {
+				c := newConfig(t)
+				rec := newRecorder(t)
+				c.write(original, x1.line("text"), x2.line("text"))
+				rec.transcript = c.write(resumed, cx1.line("text"), cx2.line("text"), y1.line("text"))
+				rec.call("sess-r", "p1", "toolu_r", T.Add(30*oneMinute), T.Add(31*oneMinute), store.ExecOK)
+				s := c.summary(30)
+				if err := s.Join(rec.st); err != nil {
+					t.Fatal(err)
+				}
+				txt, _ := render(t, s)
+				j, err := json.Marshal(struct {
+					J SilentFailureTurns
+					P []SessionSpend
+					C CacheExpiry
+				}{s.SilentFailureTurns, s.PerSession, s.CacheExpiry})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return txt, string(j), s
+			}
+			txtA, jsA, s := run("a-proj/sess-o.jsonl", "b-proj/sess-r.jsonl")
+			txtB, jsB, _ := run("b-proj/sess-o.jsonl", "a-proj/sess-r.jsonl")
+			if jsA != jsB {
+				t.Errorf("coverage, sessions and cold cache follow the path order:\n%s\n%s", jsA, jsB)
+			}
+			strip := func(s string) string { return strings.ReplaceAll(s, "a-proj", "b-proj") }
+			if strip(txtA) != strip(txtB) {
+				t.Errorf("the text follows the path order:\n%s\n%s", txtA, txtB)
+			}
+			j := s.SilentFailureTurns
+			if j.Transcripts != 2 || j.CoveredTranscripts != 1 || j.NotCoveredTranscripts != 1 {
+				t.Errorf("transcripts %d, covered %d, not covered %d; want 2, 1, 1: the unrecorded original is never recorded",
+					j.Transcripts, j.CoveredTranscripts, j.NotCoveredTranscripts)
+			}
+			if want := int64(3000*opusIn + 100*opusW5); j.NotCoveredCost.Nano != want {
+				t.Errorf("not-covered cost = %d, want %d: the shared responses, once", j.NotCoveredCost.Nano, want)
+			}
+			if strings.Join(j.NotCoveredSessions, ",") != "sess-o" {
+				t.Errorf("not-covered sessions = %v, want sess-o, the original's own", j.NotCoveredSessions)
+			}
+			cov := map[string]string{}
+			for _, p := range s.PerSession {
+				cov[p.SessionID] = p.Coverage
+			}
+			if cov["sess-o"] != CoverageNotRecorded || cov["sess-r"] != CoverageRecorded || s.Sessions != 2 {
+				t.Errorf("sessions %d, coverage %v; want 2, sess-o not recorded and sess-r recorded", s.Sessions, cov)
+			}
+			if !strings.Contains(txtA, "SPEND  last 30 days · 2 sessions ·") {
+				t.Errorf("the header does not count both sessions:\n%s", txtA)
+			}
+			if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens != 3000 {
+				t.Errorf("cold = %+v, want Y1's write once", s.CacheExpiry)
+			}
+		})
 	}
-	txtA, jsA, s := run("a-proj/sess-o.jsonl", "b-proj/sess-r.jsonl")
-	txtB, jsB, _ := run("b-proj/sess-o.jsonl", "a-proj/sess-r.jsonl")
-	if jsA != jsB {
-		t.Errorf("coverage and cold cache follow the path order:\n%s\n%s", jsA, jsB)
+}
+
+// TestJoin_ASharedResponseIsNeverBothCountedAndNotCovered: the original was
+// recorded and its failed turn fires; an unrecorded copy (keeping the
+// original's sessionId, under the copy's own file name) holds the same
+// response. Its dollars are the turn's figure, and they were also printed as
+// not covered -- the same response in "at least $X" and in "$X in the other
+// 1 is not covered" -- while the recorded original read partly recorded. A
+// response a covered turn counted is not also not covered, and the original
+// session reads recorded.
+func TestJoin_ASharedResponseIsNeverBothCountedAndNotCovered(t *testing.T) {
+	c := newConfig(t)
+	rec := newRecorder(t)
+	T := now.Add(-2 * time.Hour)
+	lines := []string{
+		userLine("sess-o", "p1", T.Add(-time.Second), false),
+		resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T.Add(2 * time.Second), in: 1000, stop: "end_turn",
+			text: "Ran it as requested."}.line("text"),
 	}
-	strip := func(s string) string { return strings.ReplaceAll(s, "a-proj", "b-proj") }
-	if strip(txtA) != strip(txtB) {
-		t.Errorf("the text follows the path order:\n%s\n%s", txtA, txtB)
+	rec.transcript = c.write("proj/sess-o.jsonl", lines...)
+	c.write("proj/sess-c.jsonl", lines...)
+	rec.call("sess-o", "p1", "toolu_1", T, T.Add(time.Second), store.ExecFailed)
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
 	}
 	j := s.SilentFailureTurns
-	if j.Transcripts != 2 || j.CoveredTranscripts != 1 || j.NotCoveredTranscripts != 1 {
-		t.Errorf("transcripts %d, covered %d, not covered %d; want 2, 1, 1: the unrecorded original is never recorded",
-			j.Transcripts, j.CoveredTranscripts, j.NotCoveredTranscripts)
+	if j.Turns != 1 || j.Cost.Nano != 1000*opusIn {
+		t.Fatalf("premise: turns %d, cost %d; want 1 and %d", j.Turns, j.Cost.Nano, 1000*opusIn)
 	}
-	if want := int64(3000*opusIn + 100*opusW5); j.NotCoveredCost.Nano != want {
-		t.Errorf("not-covered cost = %d, want %d: the shared responses, once", j.NotCoveredCost.Nano, want)
+	if j.NotCoveredTranscripts != 1 || j.NotCoveredCost.Priced != 0 || j.NotCoveredCost.Unpriced != 0 {
+		t.Errorf("not covered: %d transcripts, cost %+v; want the copy counted with no dollars, which the turn already counted",
+			j.NotCoveredTranscripts, j.NotCoveredCost)
 	}
-	if strings.Join(j.NotCoveredSessions, ",") != "sess-o" {
-		t.Errorf("not-covered sessions = %v, want sess-o", j.NotCoveredSessions)
+	if strings.Join(j.NotCoveredSessions, ",") != "sess-c" {
+		t.Errorf("not-covered sessions = %v, want the copy's own, sess-c", j.NotCoveredSessions)
 	}
-	if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens != 3000 {
-		t.Errorf("cold = %+v, want Y1's write once", s.CacheExpiry)
+	if len(s.PerSession) != 1 || s.PerSession[0].SessionID != "sess-o" || s.PerSession[0].Coverage != CoverageRecorded {
+		t.Errorf("per session = %+v, want sess-o recorded", s.PerSession)
+	}
+}
+
+// TestJoin_ASharedResponseInTwoUnrecordedTranscriptsIsNotCoveredOnce: neither
+// the original nor its copy was recorded. The shared response is not covered
+// in both, and its cost is in not_covered_cost once.
+func TestJoin_ASharedResponseInTwoUnrecordedTranscriptsIsNotCoveredOnce(t *testing.T) {
+	c := newConfig(t)
+	x := resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: now.Add(-time.Hour), in: 1000, stop: "end_turn"}.line("text")
+	c.write("proj/sess-o.jsonl", x)
+	c.write("proj/sess-c.jsonl", x)
+	s := c.summary(30)
+	if err := s.Join(newRecorder(t).st); err != nil {
+		t.Fatal(err)
+	}
+	j := s.SilentFailureTurns
+	if j.NotCoveredTranscripts != 2 || j.NotCoveredCost.Nano != 1000*opusIn || j.NotCoveredCost.Priced != 1 {
+		t.Errorf("not covered: %d transcripts, cost %+v; want 2, and the shared response's %d once", j.NotCoveredTranscripts, j.NotCoveredCost, 1000*opusIn)
 	}
 }

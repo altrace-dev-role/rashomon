@@ -462,8 +462,9 @@ them, and the output says the amount is not in the transcript.
 failed and its final message mentions no failure, whether or not a later call
 succeeded. The line covers only the transcripts a rashomon record names. Every
 other transcript is named, priced and marked not covered, never folded in as
-zero. A response that appears in several transcripts (a resumed conversation)
-is not covered when any of them is not, and its cost is counted once. A turn's
+zero. A response that appears in several transcripts (a resumed conversation,
+or a copy made by `/branch` or `--fork-session`) is not covered when any of
+them is not, and its cost is counted once. A turn's
 spend is the
 responses tied to its prompt. In the main transcript, and in each subagent
 transcript under it, a response belongs to the prompt of the user line before

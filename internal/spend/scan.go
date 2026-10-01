@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -314,12 +315,14 @@ type Response struct {
 
 	file int // index into Scan.Files, the file this response was first seen in
 
-	// files is every file the response was seen in, first sighting first. A
-	// resumed or forked conversation carries earlier responses into a second
-	// transcript, and which of the two sorts first is only a path order: the
-	// coverage rule reads every transcript holding a response (Join), so that
-	// order cannot decide whether it was recorded.
-	files []int
+	// files is every file the response was seen in, first sighting first,
+	// each with the session id its own line carries. A resumed or branched
+	// conversation (/branch, --fork-session) carries earlier responses into a
+	// second transcript, and which of the two sorts first is only a path
+	// order: the coverage rule reads every transcript holding a response
+	// (Join), and the session a shared response belongs to is chosen by
+	// ownerSighting, so that order decides neither.
+	files []sighting
 
 	// prompt is, for a response first seen in a subagents/ transcript, the
 	// promptId of the user line before it in that file: the turn it was
@@ -328,6 +331,13 @@ type Response struct {
 
 	// complete is true when the kept line carried a stop_reason; see keep.
 	complete bool
+}
+
+// sighting is one file a response was seen in, with the session id the
+// response's line in that file carries (or the file's own, lacking one).
+type sighting struct {
+	idx     int
+	session string
 }
 
 // Scan is everything read from the transcripts: one Response per message.id.
@@ -360,6 +370,10 @@ type Scan struct {
 	// UnreadableDirs counts the folders Discover could not list
 	// (Found.UnreadableDirs).
 	UnreadableDirs int
+
+	// firstMS is, per file, the timestamp of its first line, 0 when that
+	// line carries none (ownerSighting).
+	firstMS []int64
 }
 
 // Found is what Discover found: the transcripts to read, and a count of what
@@ -601,7 +615,8 @@ func subagentFiles(dir string) ([]string, int) {
 // in Unparsed when it carries tokens. It used to be dropped without a word:
 // an id-less line carrying $20 of input rendered "est. <$0.01" and no note.
 func Read(found *Found) (*Scan, error) {
-	sc := &Scan{Files: found.Files, Stale: found.Stale, UnreadableDirs: found.UnreadableDirs}
+	sc := &Scan{Files: found.Files, Stale: found.Stale, UnreadableDirs: found.UnreadableDirs,
+		firstMS: make([]int64, len(found.Files))}
 	byID := map[string]*Response{}
 	for i, f := range found.Files {
 		if err := readFile(sc, byID, i, f); err != nil {
@@ -612,8 +627,32 @@ func Read(found *Found) (*Scan, error) {
 		if r.StartMS == 0 {
 			sc.Undated++
 		}
+		r.SessionID = sc.ownerSighting(r).session
 	}
 	return sc, nil
+}
+
+// ownerSighting is the sighting a response's session is taken from: for a
+// response seen in one file, that file's; for one a resumed or branched
+// conversation carries into a second transcript, the sighting in the file
+// whose first line is earliest -- the conversation it was first written in --
+// with ties broken by session id, and an undated file last. Never path
+// order: taking the first sighting's session gave a branch copied under a new
+// session id two sessions in one sort order and one in the other.
+func (sc *Scan) ownerSighting(r *Response) sighting {
+	key := func(s sighting) int64 {
+		if ms := sc.firstMS[s.idx]; ms != 0 {
+			return ms
+		}
+		return math.MaxInt64
+	}
+	best := r.files[0]
+	for _, s := range r.files[1:] {
+		if k, b := key(s), key(best); k < b || k == b && s.session < best.session {
+			best = s
+		}
+	}
+	return best
 }
 
 func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) error {
@@ -640,8 +679,20 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 	var prompt string
 	s := bufio.NewScanner(fh)
 	s.Buffer(make([]byte, 0, 256*1024), maxLine)
+	first := true
 	for s.Scan() {
 		raw := s.Bytes()
+		if first {
+			// The file's first line dates it (ownerSighting): its header
+			// alone, into the same narrow shape.
+			first = false
+			var h line
+			if json.Unmarshal(raw, &h) == nil {
+				if ms, ok := parseTimestamp(h.Timestamp); ok {
+					sc.firstMS[idx] = ms
+				}
+			}
+		}
 		usageLine := bytes.Contains(raw, usageMarker)
 		if !usageLine && !(f.Subagent && bytes.Contains(raw, userMarker)) {
 			continue
@@ -698,7 +749,6 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			StartMS:    startMS,
 			Tokens:     l.Message.Usage.split(),
 			file:       idx,
-			files:      []int{idx},
 			complete:   stop != "",
 		}
 		if f.Subagent {
@@ -707,6 +757,7 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 		if cand.SessionID == "" {
 			cand.SessionID = f.Session
 		}
+		cand.files = []sighting{{idx, cand.SessionID}}
 		if stop == "refusal" {
 			cand.Category = refusalCategory(l.Message.StopDetails)
 		}
@@ -728,13 +779,14 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 }
 
 // keep folds a later line of an already-seen response into the one kept.
-// Identity (which file, which session, main or subagent) stays with the first
-// sighting; the file is added to the files it was seen in; the counts come
+// Identity (which file, main or subagent) stays with the first sighting; a
+// new file is added to the sightings, with the session its own line carries
+// (Read then picks the response's session, ownerSighting); the counts come
 // from the most complete line; the start time is the earliest any line
 // carries.
 func keep(prev, cand *Response) {
-	if !slices.Contains(prev.files, cand.file) {
-		prev.files = append(prev.files, cand.file)
+	if !slices.ContainsFunc(prev.files, func(s sighting) bool { return s.idx == cand.file }) {
+		prev.files = append(prev.files, cand.files[0])
 	}
 	if cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS < prev.StartMS) {
 		prev.StartMS = cand.StartMS

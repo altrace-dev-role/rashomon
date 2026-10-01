@@ -182,6 +182,8 @@ func turnsOf(run *store.Run) []turn {
 // resumed conversation carries the original's responses into a second file,
 // and pinning each response to whichever file sorted first reported an
 // unrecorded original as recorded in one path order and not in the other.
+// Claude Code makes such copies on /branch and --fork-session, which copy a
+// transcript under a new session id.
 //
 // Per recorded turn: the turn's own small run goes through
 // report.BuildSilentFailures -- the very rule, and the very run shape, a
@@ -222,12 +224,15 @@ func (s *Summary) Join(st *store.Store) error {
 		for _, m := range s.mainsOf(r) {
 			byTranscript[m] = append(byTranscript[m], r)
 		}
-		sessions[r.SessionID] = true
+		for _, f := range r.files {
+			sessions[f.session] = true
+		}
 	}
 	j.Transcripts = len(byTranscript)
 
 	covered := map[string]bool{}
-	defer func() { s.markCoverage(byTranscript, covered) }()
+	counted := map[*Response]bool{}
+	defer func() { s.markCoverage(byTranscript, covered, counted) }()
 	if st == nil {
 		return nil
 	}
@@ -281,7 +286,6 @@ func (s *Summary) Join(st *store.Store) error {
 	}
 
 	finals := map[string]map[string]report.TurnFinal{}
-	counted := map[*Response]bool{}
 	for _, t := range turns {
 		mains := s.namedMains(t.transcripts, known)
 		if len(mains) == 0 {
@@ -319,39 +323,46 @@ func (s *Summary) Join(st *store.Store) error {
 // the not-covered ones, and marks each per_session row with its coverage.
 // Deferred by Join so every exit, a nil store's included, fills the same
 // fields the same way.
-func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[string]bool) {
+//
+// Each transcript is tallied and named by its own session
+// (TranscriptFile.Session), never by the session of whichever response it
+// holds was seen first: a branched copy carrying the original's responses
+// named the recorded copy as not covered in one path order. A session with
+// any transcript not covered is not "recorded", so an unrecorded copy is
+// never reported as recorded.
+func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[string]bool, counted map[*Response]bool) {
 	j := &s.SilentFailureTurns
+	sessionOf := map[string]string{}
+	for _, f := range s.scan.Files {
+		sessionOf[f.Main] = f.Session
+	}
 	type tally struct{ in, out int }
 	bySession := map[string]*tally{}
 	named := map[string]bool{}
-	for m, rs := range byTranscript {
+	for m := range byTranscript {
+		id := sessionOf[m]
+		t := bySession[id]
+		if t == nil {
+			t = &tally{}
+			bySession[id] = t
+		}
 		if covered[m] {
 			j.CoveredTranscripts++
+			t.in++
 		} else {
 			j.NotCoveredTranscripts++
-		}
-		seen := map[string]bool{}
-		for _, r := range rs {
-			if seen[r.SessionID] {
-				continue
-			}
-			seen[r.SessionID] = true
-			t := bySession[r.SessionID]
-			if t == nil {
-				t = &tally{}
-				bySession[r.SessionID] = t
-			}
-			if covered[m] {
-				t.in++
-			} else {
-				t.out++
-				named[displaySession(r.SessionID)] = true
-			}
+			t.out++
+			named[displaySession(id)] = true
 		}
 	}
 	// Once per response, however many transcripts hold it: not covered when
-	// any of them is not.
+	// any of them is not -- unless a covered turn already counted it into the
+	// figure, where printing it as not covered too put the same dollars on
+	// both sides of the line.
 	for _, r := range s.window {
+		if counted[r] {
+			continue
+		}
 		for _, m := range s.mainsOf(r) {
 			if !covered[m] {
 				costOf(&j.NotCoveredCost, r)
@@ -381,8 +392,8 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 // in, first sighting first.
 func (s *Summary) mainsOf(r *Response) []string {
 	var out []string
-	for _, i := range r.files {
-		if m := s.scan.Files[i].Main; !slices.Contains(out, m) {
+	for _, f := range r.files {
+		if m := s.scan.Files[f.idx].Main; !slices.Contains(out, m) {
 			out = append(out, m)
 		}
 	}
