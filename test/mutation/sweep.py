@@ -1122,7 +1122,7 @@ m("TL later is judged by declaration order", "internal/report/timeline.go",
 m("TL the first success in row order wins over the first recorded", "internal/report/timeline.go",
   "\t\t\tif sameCommand == nil || *e.pos < *sameCommand.pos {", "\t\t\tif sameCommand == nil {", "TestTimeline_")
 m("TL an unplaced success reads as no later success", "internal/report/timeline.go",
-  "\t\t\tunplaced = true\n\t\t\tcontinue", "\t\t\tcontinue", "TestTimeline_")
+  "\t\tif e.pos == nil {\n\t\t\tunplaced = true\n\t\t\tcontinue", "\t\tif e.pos == nil {\n\t\t\tcontinue", "TestTimeline_")
 m("TL an unplaced success outranks a placed one", "internal/report/timeline.go",
   "\tswitch {\n\tcase sameCommand != nil:", "\tswitch {\n\tcase unplaced:\n\t\treturn nil, false\n\tcase sameCommand != nil:", "TestTimeline_")
 m("TL an unplaced same-program success is not a candidate", "internal/report/timeline.go",
@@ -1158,8 +1158,8 @@ m("TL a subagent's call counts as the main agent's", "internal/report/timeline.g
 m("TL the header names the main agent without its count", "internal/report/timeline_text.go",
   "\twho := fmt.Sprintf(\"%d main agent\", n.MainAgent)", "\twho := \"main agent\"", "TestTimeline_")
 m("TL the digest reaches the JSON", "internal/report/timeline.go",
-  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(rec)})",
-  "\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(rec)})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest",
+  "\t\t\trewritten: rec != nil && rec.ExecutedDigest != \"\" && rec.ExecutedDigest != d.Shape.Digest,\n\t\t})\n",
+  "\t\t\trewritten: rec != nil && rec.ExecutedDigest != \"\" && rec.ExecutedDigest != d.Shape.Digest,\n\t\t})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest\n",
   "TestTimeline_JSONCarriesNoDigest")
 
 # #36 review round 3.
@@ -1194,11 +1194,11 @@ m("TL tool_name reaches the terminal raw in a chain row", "internal/report/text.
 m("TL the capped listing prints every row anyway", "internal/report/timeline_text.go",
   "plural(rest))\n\t\t\tbreak\n", "plural(rest))\n", "TestTimeline_")
 m("TL the exit code is read from the highest-seq record, not the outcome's", "internal/report/timeline.go",
-  "\t\tc.ExitCode = outcomeExitCode(rec)\n\t\tentries = append(entries, timelineEntry{call: c, digest:",
-  "\t\tc.ExitCode = outcomeExitCode(outcomeRecord(executed[d.ToolUseID][max(len(executed[d.ToolUseID])-1, 0):]))\n\t\tentries = append(entries, timelineEntry{call: c, digest:", "TestTimeline_")
+  "\t\tc.ExitCode = outcomeExitCode(rec)\n\t\tentries = append(entries, timelineEntry{\n",
+  "\t\tc.ExitCode = outcomeExitCode(outcomeRecord(executed[d.ToolUseID][max(len(executed[d.ToolUseID])-1, 0):]))\n\t\tentries = append(entries, timelineEntry{\n", "TestTimeline_")
 m("TL the position is read from the highest-seq record, not the outcome's", "internal/report/timeline.go",
-  "effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(rec)})",
-  "effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(outcomeRecord(executed[d.ToolUseID][max(len(executed[d.ToolUseID])-1, 0):]))})", "TestTimeline_")
+  "\t\t\tpos:       outcomeSeq(rec),\n\t\t\trewritten:",
+  "\t\t\tpos:       outcomeSeq(outcomeRecord(executed[d.ToolUseID][max(len(executed[d.ToolUseID])-1, 0):])),\n\t\t\trewritten:", "TestTimeline_")
 m("TL a failed record behind a later ok one is not the outcome record", "internal/report/timeline.go",
   "\t\tif recs[i].Outcome == store.ExecFailed {\n\t\t\treturn &recs[i]", "\t\tif false {\n\t\t\treturn &recs[i]", "TestTimeline_")
 m("TL a failure behind a later ok record reads ok", "internal/report/timeline.go",
@@ -1222,6 +1222,10 @@ m("TL a versioned interpreter is the program", "internal/report/timeline.go",
   "\treturn base != p && subcommandPrograms[base]", "\treturn base != p && false", "TestTimeline_")
 m("TL any name ending in digits is a versioned interpreter", "internal/report/timeline.go",
   "\treturn base != p && subcommandPrograms[base]", "\treturn base != p", "TestTimeline_")
+
+# #36 review round 4.
+m("TL a rewritten success counts as the same program", "internal/report/timeline.go",
+  "\t\tif program && (e.rewritten || failed.rewritten) {", "\t\tif false {", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

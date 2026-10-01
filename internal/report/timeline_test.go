@@ -707,6 +707,40 @@ func TestTimeline_SameCommandIsTheCommandThatRan(t *testing.T) {
 	}
 }
 
+// #36 review round 4, item 2: the record keeps no executed program, so a call
+// a PreToolUse hook rewrote may have run another program than its declared
+// one. Either side rewritten, the same-program tier cannot be judged, and with
+// nothing else found the failure is not checked. Break: compare the declared
+// programs and a failed `pytest -q` reads as followed up by a "pytest" row
+// that ran `echo passed`.
+func TestTimeline_ARewrittenCallIsNotTheSameProgram(t *testing.T) {
+	run := func(rewritten string) *store.Run {
+		r := tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+			{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d1"},
+		}, tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("s", store.ExecOK, 0, 11))
+		for i := range r.Executions {
+			if r.Executions[i].ToolUseID == rewritten {
+				r.Executions[i].ExecutedDigest = "d9"
+			}
+		}
+		return r
+	}
+	for _, rewritten := range []string{"s", "f"} {
+		c := tlByID(t, buildTimeline(run(rewritten), nil), "f")
+		if c.Later != nil || c.LaterChecked {
+			t.Errorf("%s rewritten: later = %+v, checked = %v; want not checked", rewritten, c.Later, c.LaterChecked)
+		}
+	}
+	// A rewritten success recorded before the failure is no later one, and
+	// leaves nothing in doubt.
+	early := run("s")
+	early.Executions[1].Seq = new(int64)
+	if c := tlByID(t, buildTimeline(early, nil), "f"); c.Later != nil || !c.LaterChecked {
+		t.Errorf("an earlier rewritten success leaves the failure unchecked: %+v", c)
+	}
+}
+
 // #36 review round 3, fix 2: a success whose declaration was lost -- a lock
 // timeout, a paused pre hook, a failing PreToolUse hook -- has no program and
 // no row, but may be the same command. Recorded after the failure or at no

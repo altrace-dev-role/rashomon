@@ -41,7 +41,10 @@ const (
 	// different digest is a different command LINE, which `CI=1 pytest -q`,
 	// `cd sub && pytest -q` and `pytest  -q` all are next to `pytest -q`, so it
 	// says nothing about the arguments. Never offered for a program in
-	// subcommandPrograms, or a versioned name of one.
+	// subcommandPrograms, or a versioned name of one. Nor where either call
+	// was rewritten: the program is the declared one, the record keeps no
+	// executed program, and a rewrite can change it -- such a success leaves
+	// the failure not checked.
 	LaterSameProgram = "same_program"
 )
 
@@ -178,6 +181,10 @@ type timelineEntry struct {
 	// position a later success is measured against. Nil when there is no
 	// record, or the record landed without a position.
 	pos *int64
+	// rewritten is true when the outcome record ran another digest than the
+	// declared one: a PreToolUse hook rewrote the input, so the declared
+	// program may not be the one that ran.
+	rewritten bool
 }
 
 func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
@@ -212,7 +219,12 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 		c.Outcome = timelineOutcome(d.ToolUseID, rec, executed, denied)
 		c.Group = timelineGroup(c.Outcome)
 		c.ExitCode = outcomeExitCode(rec)
-		entries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(rec)})
+		entries = append(entries, timelineEntry{
+			call:      c,
+			digest:    effectiveDigest(d.Shape.Digest, rec),
+			pos:       outcomeSeq(rec),
+			rewritten: rec != nil && rec.ExecutedDigest != "" && rec.ExecutedDigest != d.Shape.Digest,
+		})
 	}
 
 	// Calls with no declaration: a terminal or an execution record names them
@@ -412,7 +424,9 @@ func outcomeSeq(rec *store.Execution) *int64 {
 // with nothing placed found the answer is "not checked", not "no later
 // success": the success is in the record and may well be the later one. A
 // success of the same tool with no declaration, recorded after the failure or
-// at no known position, is the same: nothing says which command it ran.
+// at no known position, is the same: nothing says which command it ran. So
+// is a later success of the same program where either call was rewritten:
+// nothing says which program ran.
 func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 	failed := entries[i]
 	var sameCommand, sameProgram *timelineEntry
@@ -444,6 +458,12 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 			continue
 		}
 		if *e.pos <= *failed.pos {
+			continue
+		}
+		// Either side rewritten, the declared programs say nothing about what
+		// ran: a success that may be the later one, never one to point at.
+		if program && (e.rewritten || failed.rewritten) {
+			unplaced = true
 			continue
 		}
 		if command {
