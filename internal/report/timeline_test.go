@@ -1032,7 +1032,10 @@ func TestTimeline_TextSaysWhatItKnows(t *testing.T) {
 	}
 }
 
-// A date line is printed again where the date changes.
+// A date line is printed again where the date changes. And the header's
+// conditional lines stay out of a run with nothing to say them about: no
+// failed call, no interrupted call, no subagent. Break: print them always and
+// a caveat sits under "failed 0".
 func TestTimeline_TextMarksEachNewDate(t *testing.T) {
 	run := tlRun([]tlCall{{seq: 1, id: "a", tool: "Read"}, {seq: 2, id: "b", tool: "Read"}})
 	run.Declarations[1].RecordedAtMS += 86_400_000
@@ -1040,5 +1043,10 @@ func TestTimeline_TextMarksEachNewDate(t *testing.T) {
 	writeTimeline(&b, buildTimeline(run, nil))
 	if !strings.Contains(b.String(), "2023-11-14 (UTC)") || !strings.Contains(b.String(), "2023-11-15 (UTC)") {
 		t.Errorf("a timeline across midnight must show both dates:\n%s", b.String())
+	}
+	for _, absent := range []string{"only a later run", "interrupted", "interleave"} {
+		if strings.Contains(b.String(), absent) {
+			t.Errorf("a run with no failed, interrupted or subagent call prints %q:\n%s", absent, b.String())
+		}
 	}
 }

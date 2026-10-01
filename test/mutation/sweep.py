@@ -1216,6 +1216,12 @@ m("TL the interrupted count is not printed", "internal/report/timeline_text.go",
   "\tif n.Interrupted > 0 {", "\tif false {", "TestTimeline_")
 m("TL the interleave caveat is not printed", "internal/report/timeline_text.go",
   "\tif n.Subagents > 0 {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "\tif false {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "TestTimeline_")
+m("TL the follow-up legend is printed under failed 0", "internal/report/timeline_text.go",
+  "\tif n.Failed > 0 {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "\tif true {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "TestTimeline_")
+m("TL the interrupted count is printed when there is none", "internal/report/timeline_text.go",
+  "\tif n.Interrupted > 0 {", "\tif true {", "TestTimeline_")
+m("TL the interleave caveat is printed with no subagent", "internal/report/timeline_text.go",
+  "\tif n.Subagents > 0 {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "\tif true {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "TestTimeline_")
 m("TL sudo ls follows up a failed sudo systemctl", "internal/report/timeline.go",
   "\t\"sudo\": true, \"doas\": true, \"env\": true, \"timeout\": true, \"time\": true, \"nohup\": true,\n\t\"nice\": true, \"xargs\": true, \"watch\": true, \"stdbuf\": true, \"exec\": true, \"command\": true,\n", "", "TestTimeline_")
 m("TL a versioned interpreter is the program", "internal/report/timeline.go",
