@@ -870,7 +870,7 @@ func writeChainTail(b *bytes.Buffer, c Chains, expand, named bool) {
 		fmt.Fprintf(b, "    %d call%s ran with no declaration recorded\n", n, plural(n))
 		if expand {
 			for _, l := range c.Dropped {
-				fmt.Fprintf(b, "      %s  everything but the id is unknown\n", l.ToolUseID)
+				fmt.Fprintf(b, "      %s  everything but the id is unknown\n", printable(l.ToolUseID))
 			}
 		}
 	}
@@ -953,10 +953,12 @@ func writeRewritten(b *bytes.Buffer, rows []Rewritten) {
 		}
 		shape := r.VerbClass
 		if r.Program != "" {
-			shape = r.Program + ", " + r.VerbClass
+			shape = printable(r.Program) + ", " + r.VerbClass
 		}
+		// Every name here is the payload's: made printable, as on the
+		// timeline, or an escape sequence in one reaches the terminal.
 		fmt.Fprintf(b, "    %s  %s (%s): %s between declaration and execution\n",
-			r.ToolUseID, r.ToolName, shape, what)
+			printable(r.ToolUseID), printable(r.ToolName), shape, what)
 	}
 }
 

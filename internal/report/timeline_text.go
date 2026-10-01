@@ -34,7 +34,9 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 	// other way reads as having none, and a reader must not take that row as
 	// a failure nobody dealt with.
 	if n.Failed > 0 {
-		fmt.Fprintln(b, "                 (only a later run of the same command or program is looked for: a fix made with a different command, or a corrected Edit, is not detected)")
+		fmt.Fprintln(b, "                 (only a later run of the same command, or of the same program for single-purpose programs, is looked for; "+
+			"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; "+
+			"a fix made with a different command, or a corrected Edit, is not detected)")
 	}
 	if n.Interrupted > 0 {
 		fmt.Fprintf(b, "    interrupted  %d\n", n.Interrupted)
@@ -55,7 +57,7 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 	// tool_use_id is what joins a row to a transcript or to the report's
 	// "executed differently from declared" list. The row layout stays as it
 	// is, so the reader is told where the id is.
-	fmt.Fprintln(b, "    rows show no tool_use_id: --json carries each call's")
+	fmt.Fprintln(b, "    rows omit tool_use_id; --json carries it for every call")
 	// The time column is UTC and carries no date, so the date is printed
 	// above the first row and again wherever it changes.
 	fmt.Fprintf(b, "    %5s  %-8s  %-22s %-22s %s\n", "seq", "UTC", "agent", "call", "result")
@@ -99,11 +101,12 @@ func writeTimelineCall(b *bytes.Buffer, c TimelineCall) {
 	if c.RecordedAtMS != nil {
 		at = time.UnixMilli(*c.RecordedAtMS).UTC().Format("15:04:05")
 	}
-	// tool_name is the payload's, as agent_type is: made printable, or an
-	// escape sequence in it reaches the reader's terminal on its row.
+	// tool_name and the program are the payload's, as agent_type is: made
+	// printable, or an escape sequence in one reaches the reader's terminal
+	// on its row.
 	call := printable(c.ToolName)
 	if c.Program != "" {
-		call += " " + c.Program
+		call += " " + printable(c.Program)
 	}
 	agent := agentLabel(c.Agent)
 	if c.AgentUnknown {
@@ -192,8 +195,9 @@ func timelineResult(c TimelineCall) string {
 // "No later success RECORDED": the record is all this can read, and a session
 // with a gap in its coverage or a paused stretch can hold a success it never
 // wrote down. "Of the same command or program": that is all laterSuccess looks
-// for, and a failed `go vet` followed by a passing `go test` has a later
-// success recorded -- just not one this matches.
+// for, and for a program with no same-program tier -- `go`, say -- only "of the
+// same command", since a failed `go vet` followed by a passing `go test` has a
+// later success recorded, just not one this matches.
 func laterLabel(c TimelineCall) string {
 	if c.Group != GroupFailed {
 		return ""
@@ -203,6 +207,9 @@ func laterLabel(c TimelineCall) string {
 	}
 	l := c.Later
 	if l == nil {
+		if !sameProgramTier(c.Program) {
+			return "  → no later success of the same command recorded"
+		}
 		return "  → no later success of the same command or program recorded"
 	}
 	who := ""

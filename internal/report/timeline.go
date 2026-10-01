@@ -42,19 +42,24 @@ const (
 	// different digest is a different command LINE, which `CI=1 pytest -q`,
 	// `cd sub && pytest -q` and `pytest  -q` all are next to `pytest -q`, so it
 	// says nothing about the arguments. Never offered for a program in
-	// subcommandPrograms, or a versioned name of one.
+	// subcommandPrograms, or a versioned name of one. Nor where either call
+	// was rewritten: the program is the declared one, the record keeps no
+	// executed program, and a rewrite can change it -- such a success leaves
+	// the failure not checked.
 	LaterSameProgram = "same_program"
 )
 
 // subcommandPrograms are programs whose next word, not the program, names what
 // ran: `git status` succeeding says nothing about a failed `git push`, nor
 // `python b.py` about `python a.py`, and the same-program tier would pair
-// them. Wrappers are here for the same reason: the program is the first word,
-// so `sudo ls` would otherwise follow up a failed `sudo systemctl restart`, and
-// `timeout 5 true` a failed `timeout 60 go test ./...`. The same-command tier
-// is still offered, because an identical digest is an identical line whatever
-// the program. A closed list and a short one: a program missing from it gets
-// the weak tier, which the text renders as no more than "same program".
+// them. Wrappers and launchers are here for the same reason: the program is
+// the first word, so `sudo ls` would otherwise follow up a failed `sudo
+// systemctl restart`, `ssh prod uptime` a failed `ssh prod systemctl restart
+// nginx`, and `timeout 5 true` a failed `timeout 60 go test ./...`. The
+// same-command tier is still offered, because an identical digest is an
+// identical line whatever the program. A closed list and a short one: a
+// program missing from it gets the weak tier, which the text renders as no
+// more than "same program".
 var subcommandPrograms = map[string]bool{
 	"git": true, "gh": true, "go": true, "cargo": true, "make": true,
 	"npm": true, "npx": true, "pnpm": true, "yarn": true, "bun": true, "deno": true,
@@ -62,22 +67,38 @@ var subcommandPrograms = map[string]bool{
 	"docker": true, "podman": true, "kubectl": true, "helm": true, "terraform": true,
 	"aws": true, "gcloud": true, "az": true, "dotnet": true, "mvn": true, "gradle": true,
 	"brew": true, "apt": true, "apt-get": true, "systemctl": true,
-	"python": true, "python3": true, "node": true, "ruby": true, "perl": true,
+	"python": true, "python3": true, "node": true, "nodejs": true, "ruby": true, "perl": true,
 	"bash": true, "sh": true, "zsh": true,
-	"sudo": true, "doas": true, "env": true, "timeout": true, "time": true, "nohup": true,
-	"nice": true, "xargs": true, "watch": true, "stdbuf": true, "exec": true, "command": true,
+	"pipx": true, "uvx": true, "bunx": true, "pnpx": true, "bundle": true, "pipenv": true,
+	"conda": true, "nix": true, "direnv": true, "mise": true,
+	"sudo": true, "doas": true, "su": true, "runuser": true, "chroot": true, "ssh": true,
+	"env": true, "timeout": true, "gtimeout": true, "time": true, "gtime": true, "nohup": true,
+	"nice": true, "ionice": true, "setsid": true, "flock": true, "strace": true, "parallel": true,
+	"xargs": true, "watch": true, "stdbuf": true, "unbuffer": true, "xvfb-run": true,
+	"exec": true, "command": true,
 }
 
 // subcommandProgram says whether a program is in subcommandPrograms, directly
-// or as a versioned name of one: python3.12, pip3.11 and node18 are the
-// interpreter they name, so the prefix before a trailing version is looked
-// up too.
+// or as a suffixed name of one: python3.12, python3.13t, pip3.11, node18,
+// python.exe and pythonw are the interpreter they name. So the name is looked
+// up with a trailing .exe dropped and cut at its first digit, and then with
+// one trailing w dropped as well.
 func subcommandProgram(p string) bool {
 	if subcommandPrograms[p] {
 		return true
 	}
-	base := strings.TrimRight(p, "0123456789.")
-	return base != p && subcommandPrograms[base]
+	base := strings.TrimSuffix(p, ".exe")
+	if i := strings.IndexAny(base, "0123456789"); i >= 0 {
+		base = base[:i]
+	}
+	return subcommandPrograms[base] || subcommandPrograms[strings.TrimSuffix(base, "w")]
+}
+
+// sameProgramTier says whether a failure of this program is followed up by a
+// success of the same program as well as of the same command: not when the
+// call has no program, nor for one whose next word names what ran.
+func sameProgramTier(program string) bool {
+	return program != "" && !subcommandProgram(program)
 }
 
 // TimelineAgent is the subagent a call ran in. Nil on a call the main agent
@@ -133,10 +154,13 @@ type TimelineCall struct {
 	// LaterChecked is true on a failed call that was compared against the
 	// rest. False on a failed call with no declaration (no command to match),
 	// whose failure record has no seq (no position to be later than), or
-	// where nothing placed was found but a matching success's record has no
-	// seq, or a success of the same tool has no declaration and was not
-	// recorded before it (either may be the later one): a nil Later there is
-	// "not checked", never "no later success".
+	// where nothing placed was found but a success not recorded before it
+	// cannot be ruled out: a matching success whose record has no seq, a
+	// same-program success where either call was rewritten, a matching ok
+	// record of a failed call, or a success whose declaration was lost and
+	// whose executed digest does not rule it out (any of them may be the
+	// later one). A nil Later there is "not checked", never "no later
+	// success".
 	LaterChecked bool `json:"later_checked"`
 	// Bending is set on the LATER call of a test-bending pair (see
 	// DetectTestBending): the run that passed when the only recorded edits
@@ -181,7 +205,8 @@ type TimelineCounts struct {
 // every agent's calls. That order is when each call's hook RECORDED, which for
 // two subagents running at once interleaves them by recording, not by start;
 // the renderer says so. Calls with no declaration have no seq and come after
-// the ordered ones, in the order their execution records were written.
+// the ordered ones, by the seq of the record each outcome is read from (the
+// last failed one, otherwise the last).
 type Timeline struct {
 	Calls  []TimelineCall `json:"calls"`
 	Counts TimelineCounts `json:"counts"`
@@ -194,6 +219,20 @@ type timelineEntry struct {
 	// position a later success is measured against. Nil when there is no
 	// record, or the record landed without a position.
 	pos *int64
+	// rewritten is true when the outcome record ran another digest than the
+	// declared one: a PreToolUse hook rewrote the input, so the declared
+	// program may not be the one that ran.
+	rewritten bool
+	// ok is a failed call's last ok record, which its row does not show: a
+	// success of the call, recorded where it was. Nil on any other call.
+	ok *timelineOK
+}
+
+// timelineOK is the success a failed call's ok record holds, as laterSuccess
+// weighs it: where it was recorded and what it ran.
+type timelineOK struct {
+	pos    *int64
+	digest string
 }
 
 func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
@@ -238,7 +277,13 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 		c.Outcome = timelineOutcome(d.ToolUseID, rec, executed, denied)
 		c.Group = timelineGroup(c.Outcome)
 		c.ExitCode = outcomeExitCode(rec)
-		entries = append(entries, timelineEntry{call: c, digest: effectiveDigest(d.Shape.Digest, rec), pos: outcomeSeq(rec)})
+		entries = append(entries, timelineEntry{
+			call:      c,
+			digest:    effectiveDigest(d.Shape.Digest, rec),
+			pos:       outcomeSeq(rec),
+			rewritten: rec != nil && rec.ExecutedDigest != "" && rec.ExecutedDigest != d.Shape.Digest,
+			ok:        failedCallOK(c, d.Shape.Digest, executed[d.ToolUseID]),
+		})
 	}
 
 	// Calls with no declaration: a terminal or an execution record names them
@@ -268,7 +313,7 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 		c.Outcome = timelineOutcome(id, rec, executed, denied)
 		c.Group = timelineGroup(c.Outcome)
 		c.ExitCode = outcomeExitCode(rec)
-		entries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec)})
+		entries = append(entries, timelineEntry{call: c, digest: effectiveDigest("", rec), pos: outcomeSeq(rec), ok: failedCallOK(c, "", recs)})
 	}
 
 	for i := range entries {
@@ -315,8 +360,8 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 // with no terminal either.
 //
 // Ordered by the seq of the execution record each one's outcome is read from,
-// so they read in the order their results were
-// written. Those with no positioned record come last, and ties go by id.
+// so they read in the order their results were written. Those with no
+// positioned record come last, and ties go by id.
 func undeclared(run *store.Run, executed map[string][]store.Execution) []string {
 	seen := map[string]bool{}
 	for _, d := range run.Declarations {
@@ -433,6 +478,21 @@ func effectiveDigest(declared string, rec *store.Execution) string {
 	return declared
 }
 
+// failedCallOK is the last ok record of a failed call, nil when the call is
+// not failed or has none. The outcome is read from a failed record whenever
+// one exists, so this success is on no row.
+func failedCallOK(c TimelineCall, declared string, recs []store.Execution) *timelineOK {
+	if c.Group != GroupFailed {
+		return nil
+	}
+	for i := len(recs) - 1; i >= 0; i-- {
+		if recs[i].Outcome == store.ExecOK {
+			return &timelineOK{pos: recs[i].Seq, digest: effectiveDigest(declared, &recs[i])}
+		}
+	}
+	return nil
+}
+
 // outcomeSeq is the outcome record's seq, nil when there is none or it has none.
 func outcomeSeq(rec *store.Execution) *int64 {
 	if rec == nil {
@@ -455,31 +515,61 @@ func outcomeSeq(rec *store.Execution) *int64 {
 // agents run at once -- cannot be placed before or after the failure, so
 // with nothing placed found the answer is "not checked", not "no later
 // success": the success is in the record and may well be the later one. A
-// success of the same tool with no declaration, recorded after the failure or
-// at no known position, is the same: nothing says which command it ran.
+// success of the same tool whose declaration was lost, recorded after the
+// failure or at no known position, is the same unless its executed digest
+// rules it out: it has no program and no row. So
+// is a later success of the same program where either call was rewritten:
+// nothing says which program ran. And so is the ok record of a failed call,
+// which matches but has no ok row to point at.
 func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 	failed := entries[i]
+	programTier := sameProgramTier(failed.call.Program)
 	var sameCommand, sameProgram *timelineEntry
 	unplaced := false
 	for j := range entries {
 		e := &entries[j]
 		c := e.call
-		if c.Group != GroupOK || c.ToolName != failed.call.ToolName {
-			continue
-		}
-		// A success with no declaration has no program to match and no row to
-		// point at, but it may be the same command -- a declaration lost to a
-		// lock timeout or a failing PreToolUse hook leaves exactly this. Unless
-		// it was recorded before the failure, it is one more success that
-		// cannot be ruled out.
-		if c.Seq == nil {
+		// A success whose declaration was lost -- to a lock timeout, a paused
+		// pre hook or a failing PreToolUse hook -- has no program to match and
+		// no row to point at, but its execution record says what ran, and a
+		// record with no tool name may be of the same tool. A known digest
+		// other than the failure's rules it out where no program tier is
+		// offered; anything else recorded after the failure, or at no known
+		// position, is one more success that cannot be ruled out.
+		if c.Seq == nil && c.Group == GroupOK {
+			if c.ToolName != failed.call.ToolName && c.ToolName != LinkUnknown {
+				continue
+			}
+			if e.digest != "" && e.digest != failed.digest && !programTier {
+				continue
+			}
 			if e.pos == nil || *e.pos > *failed.pos {
 				unplaced = true
 			}
 			continue
 		}
+		if c.ToolName != failed.call.ToolName {
+			continue
+		}
+		// A failed call's ok record, this failure's own included: the same
+		// command or program recorded after the failure, it is a success the
+		// failure may be answered by, but its row says failed and is no row to
+		// point at. It counts as one that cannot be ruled out, never as a match.
+		if c.Group == GroupFailed {
+			if ok := e.ok; ok != nil && (ok.pos == nil || *ok.pos > *failed.pos) {
+				command := failed.digest != "" && ok.digest == failed.digest
+				program := programTier && c.Program == failed.call.Program
+				if command || program {
+					unplaced = true
+				}
+			}
+			continue
+		}
+		if c.Group != GroupOK {
+			continue
+		}
 		command := failed.digest != "" && e.digest == failed.digest
-		program := !command && failed.call.Program != "" && c.Program == failed.call.Program && !subcommandProgram(c.Program)
+		program := !command && programTier && c.Program == failed.call.Program
 		if !command && !program {
 			continue
 		}
@@ -488,6 +578,12 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 			continue
 		}
 		if *e.pos <= *failed.pos {
+			continue
+		}
+		// Either side rewritten, the declared programs say nothing about what
+		// ran: a success that may be the later one, never one to point at.
+		if program && (e.rewritten || failed.rewritten) {
+			unplaced = true
 			continue
 		}
 		if command {
