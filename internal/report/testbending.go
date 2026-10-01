@@ -205,8 +205,9 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 // the list does not name, such as `find -fprint f` or `curl -D f`.
 //
 // Nor do Claude Code's own bookkeeping tools (noWrite), whatever class they
-// are stored under: a TodoWrite or a TaskUpdate between two runs is routine
-// in the sessions that have them, and counting it would hide the episode.
+// are stored under: a TodoWrite, a TaskUpdate or a ToolSearch between two
+// runs is routine, a KillShell or a TaskStop naturally follows a run moved to
+// the background, and counting any of them would hide the episode.
 // The list is matched on the tool name and changes no stored class.
 func mayEdit(d store.Declaration) bool {
 	if noWrite[d.ToolName] {
@@ -222,12 +223,18 @@ func mayEdit(d store.Declaration) bool {
 	return true
 }
 
-// noWrite is Claude Code's tools that track tasks, ask the user, leave plan
-// mode or read a background shell's output: none writes a file. A fixed list
-// of names, so a tool this build does not know still counts as an edit.
+// noWrite is Claude Code's tools that track or stop tasks, ask the user,
+// enter or leave plan mode, read or stop a background shell, load a skill,
+// search for tools, message another agent, schedule or list cron jobs, or
+// list and read MCP resources: none writes a source or test file (a durable
+// CronCreate or CronDelete writes only .claude/scheduled_tasks.json). A fixed
+// list of names, so a tool this build does not know still counts as an edit.
 var noWrite = map[string]bool{
 	"TodoWrite": true, "TaskCreate": true, "TaskUpdate": true, "TaskList": true, "TaskGet": true,
-	"TaskOutput": true, "AskUserQuestion": true, "ExitPlanMode": true, "BashOutput": true,
+	"TaskOutput": true, "TaskStop": true, "AskUserQuestion": true, "EnterPlanMode": true,
+	"ExitPlanMode": true, "BashOutput": true, "KillShell": true, "KillBash": true, "Skill": true,
+	"ToolSearch": true, "SendMessage": true, "CronCreate": true, "CronDelete": true, "CronList": true,
+	"ListMcpResourcesTool": true, "ReadMcpResourceTool": true,
 }
 
 // TestRuns is the session's test runs and the two patterns among them.

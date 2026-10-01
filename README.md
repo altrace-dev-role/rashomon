@@ -266,9 +266,11 @@ recorded file edit between). A file edit there is any recorded call that may
 change files, not only an Edit or a shell `rm`: a `git checkout`, an `npm
 install`, a `sed -i`, an MCP tool, another test command (`jest -u` rewrites
 snapshots) all count, and only reads, web fetches, subagent launches and
-Claude Code's own bookkeeping tools (TodoWrite, TaskCreate, TaskUpdate,
-TaskList, TaskGet, TaskOutput, AskUserQuestion, ExitPlanMode, BashOutput) do
-not. A shell read or fetch counts as well when its line may write, which
+Claude Code's own tools that write no source or test file (TodoWrite,
+TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, TaskStop,
+AskUserQuestion, EnterPlanMode, ExitPlanMode, BashOutput, KillShell,
+KillBash, Skill, ToolSearch, SendMessage, CronCreate, CronDelete, CronList,
+ListMcpResourcesTool, ReadMcpResourceTool) do not. A shell read or fetch counts as well when its line may write, which
 the record keeps as one bit (`may_write`): an output redirect to a file, a
 download (`curl -o`/`-O`, with the file attached or not, as in `curl
 -o./calc.go`, and `wget`), a command or process substitution (`$(…)`,

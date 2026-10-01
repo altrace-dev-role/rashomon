@@ -235,8 +235,21 @@ func TestTestBending(t *testing.T) {
 				tbCall{seq: 7, tool: "ExitPlanMode", verb: shape.VerbUnknown, digest: "ep", outcome: ok},
 				tbCall{seq: 8, tool: "TaskList", verb: shape.VerbUnknown, digest: "tl", outcome: ok},
 				tbCall{seq: 9, tool: "TaskGet", verb: shape.VerbUnknown, digest: "tg", outcome: ok},
-				tbCall{seq: 10, tool: "TaskOutput", verb: shape.VerbUnknown, digest: "to", outcome: ok}, test(11, "d", ok)),
-			green: pairs(), flaky: pairs(SeqPair{1, 11})},
+				tbCall{seq: 10, tool: "TaskOutput", verb: shape.VerbUnknown, digest: "to", outcome: ok},
+				tbCall{seq: 11, tool: "ToolSearch", verb: shape.VerbUnknown, digest: "ts", outcome: ok},
+				tbCall{seq: 12, tool: "Skill", verb: shape.VerbUnknown, digest: "sk", outcome: ok},
+				tbCall{seq: 13, tool: "TaskStop", verb: shape.VerbUnknown, digest: "tx", outcome: ok},
+				tbCall{seq: 14, tool: "KillShell", verb: shape.VerbExecute, digest: "ks", outcome: ok},
+				tbCall{seq: 15, tool: "KillBash", verb: shape.VerbUnknown, digest: "kb", outcome: ok},
+				tbCall{seq: 16, tool: "EnterPlanMode", verb: shape.VerbUnknown, digest: "en", outcome: ok},
+				tbCall{seq: 17, tool: "SendMessage", verb: shape.VerbUnknown, digest: "sm", outcome: ok},
+				tbCall{seq: 18, tool: "CronCreate", verb: shape.VerbUnknown, digest: "cc", outcome: ok},
+				tbCall{seq: 19, tool: "CronDelete", verb: shape.VerbUnknown, digest: "cd", outcome: ok},
+				tbCall{seq: 20, tool: "CronList", verb: shape.VerbUnknown, digest: "cl", outcome: ok},
+				tbCall{seq: 21, tool: "ListMcpResourcesTool", verb: shape.VerbUnknown, digest: "lm", outcome: ok},
+				tbCall{seq: 22, tool: "ReadMcpResourceTool", verb: shape.VerbUnknown, digest: "rm", outcome: ok},
+				test(23, "d", ok)),
+			green: pairs(), flaky: pairs(SeqPair{1, 23})},
 		{name: "B: an interrupted run of another test command between is not raised",
 			run:   tbRun(test(1, "d", ok), test(2, "u", store.ExecInterrupted), test(3, "d", failed)),
 			green: pairs(), flaky: pairs(),
@@ -492,7 +505,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"same command had both outcomes with no recorded file edit between: 4 passed, 5 failed",
 		"same command had both outcomes with no recorded file edit between: 7 failed, 8 passed",
 		"the numbers are call seqs, and `rashomon report --session <id> --timeline` shows these rows",
-		"a file edit here is any recorded call but a read, a web fetch, a subagent launch or a task, todo, question or plan tool",
+		"a file edit here is any recorded call but a read, a web fetch, a subagent launch, or a task, todo, question, plan, background-shell, skill, search, message, cron or MCP-resource tool",
 		"a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read",
 		"runs pair only when the same command line started in the same directory: the reported cwd, or the target of a leading plain cd;",
 		"a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run",
@@ -505,7 +518,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	if strings.Contains(out, "nothing changed") {
 		t.Errorf("text claims nothing changed:\n%s", out)
 	}
-	if strings.Contains(out, "background") {
+	if strings.Contains(out, "moved to the background") {
 		t.Errorf("text states the backgrounded-run limit, which the record now closes:\n%s", out)
 	}
 
