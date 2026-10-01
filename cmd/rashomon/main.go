@@ -1672,9 +1672,11 @@ usage:
                                API list prices, from Claude Code's own
                                transcripts: by agent, model, token kind and
                                session, cache re-written after a gap,
-                               refusals by category and model, retry attempts
-                               priced at the model that ran them, fallback
-                               routes (model asked -> model served), savings,
+                               refusals by category and model, retry
+                               attempts that produced output priced at the
+                               model that ran them (the rest shown in
+                               tokens), fallback routes (model asked -> model
+                               served), savings,
                                and the spend in turns with a failed call the
                                summary never mentioned, over the transcripts
                                its records name (the rest named as not

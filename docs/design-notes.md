@@ -295,7 +295,7 @@ rule `displayModel` applies. For a subagent transcript's user
 lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
 `message.content`, so `encoding/json` steps over those bytes, and
 `TestContentHasNoFieldToLandIn` holds the shape: no unlisted tag, and no
-`RawMessage`, interface or map field. Three rules decide the figures:
+`RawMessage`, interface or map field. Four rules decide the figures:
 
 - A response is counted once by `message.id`. Claude Code writes one response
   as a line per content block, each with the full usage, and summing lines
@@ -320,13 +320,15 @@ lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
 **Departing from "never `message.content`".** The design said spend never
 reads message content. The silent-failure line needs the final message it
 judges, and the only surviving copy is the transcript. So for a recorded turn
-with a failed call, `report.FinalAssistantTexts` does three things, all in
-memory. It decodes the text blocks, and no other block, of every assistant
-line tied to the turn, and keeps only the last. On a user line with no
-`promptId`, it decodes the content block types to tell a tool result from a
-prompt. From a subagent's user lines, it reads the `promptId` key. Each of
-these is reduced to the digest's verdict and its counts. None is written or
-output. A content canary is planted in a firing turn's final words, so the
+with a failed call, `report.FinalAssistantTexts` does two things, all in
+memory. Of every assistant line tied to the turn, it decodes each block's
+type, and a text block's text, and keeps only the last line's text. On a user
+line with no `promptId`, it decodes the content block types to tell a tool
+result from a prompt. Separately, spend's usage read (`readFile` in
+`internal/spend/scan.go`) reads a subagent transcript's user-line `type`,
+`isMeta` and `promptId`, the key that ties a subagent's responses to a turn.
+Each of these is reduced to the digest's verdict and its counts. None is
+written or output. A content canary is planted in a firing turn's final words, so the
 end-to-end test does reach the read. A turn belongs to the prompt of the user
 line before it, and a line the reader cannot place drops the turn's words, so
 it takes no verdict rather than a wrong one.

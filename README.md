@@ -436,9 +436,9 @@ charged.
 `$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`, subagent transcripts
 included. The totals come from each API response's usage fields only: its id,
 model, stop reason, a refusal's category, token counts and speed, each retry
-attempt's counts, type and model, and the line's timestamp, session and
-request id. Claude Code writes one response on several lines, so a response
-is counted once by its id.
+attempt's counts, type and model, and the line's timestamp, session,
+`isSidechain` and request id. Claude Code writes one response on several
+lines, so a response is counted once by its id.
 
 **What it shows.** Spend by agent, model, token kind and session. Cache
 re-written after a gap longer than its TTL: the part of a write that re-writes
@@ -483,16 +483,16 @@ unless that line is an injected meta line or, in the main transcript, a tool
 result. A subagent's response written into the main transcript
 (`isSidechain`) counts toward the prompt before it, and a subagent's user
 line there does not end the tie. A line that cannot be decoded ends it, so a
-response after it is not counted. A failed turn whose final message cannot be tied to its prompt is
-counted as not checked, never as clean.
+response after it is not counted. A failed turn whose final message cannot
+be tied to its prompt is counted as not checked, never as clean.
 
 **Message content.** To take that verdict, the line reads message content, in
-memory. For each recorded turn with a failed call, it decodes the text blocks
-(and no other block) of every assistant line tied to the turn, and keeps only
-the last. The text is never written or output. To tell a prompt from a tool
-result on a user line with no prompt id, it decodes the line's content block
-*types* only, never their text. From a subagent transcript's user lines it
-decodes the type, `isMeta` and `promptId` only.
+memory. For each recorded turn with a failed call, it decodes each block's
+type, and a text block's text, of every assistant line tied to the turn, and
+keeps only the last line's text. The text is never written or output. To tell
+a prompt from a tool result on a user line with no prompt id, it decodes the
+line's content block *types* only, never their text. From a subagent
+transcript's user lines it decodes the type, `isMeta` and `promptId` only.
 
 **Savings.** Each suggestion carries its figure: cache re-writes, spend in
 turns with a failed call the summary never mentioned, billed refusals by
