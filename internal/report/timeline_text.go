@@ -57,7 +57,7 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 	// tool_use_id is what joins a row to a transcript or to the report's
 	// "executed differently from declared" list. The row layout stays as it
 	// is, so the reader is told where the id is.
-	fmt.Fprintln(b, "    rows show no tool_use_id: --json carries each call's")
+	fmt.Fprintln(b, "    rows omit tool_use_id; --json carries it for every call")
 	// The time column is UTC and carries no date, so the date is printed
 	// above the first row and again wherever it changes.
 	fmt.Fprintf(b, "    %5s  %-8s  %-22s %-22s %s\n", "seq", "UTC", "agent", "call", "result")

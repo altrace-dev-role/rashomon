@@ -370,7 +370,7 @@ func TestTimeline_Text(t *testing.T) {
 		"→ no later success of the same command recorded",
 		// #36 review round 3, smaller 8: seq is rashomon's own position, so
 		// the reader is told where the id that finds a call is.
-		"rows show no tool_use_id: --json carries each call's\n",
+		"    rows omit tool_use_id; --json carries it for every call\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)
