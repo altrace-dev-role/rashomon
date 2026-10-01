@@ -185,6 +185,16 @@ type timelineEntry struct {
 	// declared one: a PreToolUse hook rewrote the input, so the declared
 	// program may not be the one that ran.
 	rewritten bool
+	// ok is a failed call's last ok record, which its row does not show: a
+	// success of the call, recorded where it was. Nil on any other call.
+	ok *timelineOK
+}
+
+// timelineOK is the success a failed call's ok record holds, as laterSuccess
+// weighs it: where it was recorded and what it ran.
+type timelineOK struct {
+	pos    *int64
+	digest string
 }
 
 func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
@@ -224,6 +234,7 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 			digest:    effectiveDigest(d.Shape.Digest, rec),
 			pos:       outcomeSeq(rec),
 			rewritten: rec != nil && rec.ExecutedDigest != "" && rec.ExecutedDigest != d.Shape.Digest,
+			ok:        failedCallOK(c, d.Shape.Digest, executed[d.ToolUseID]),
 		})
 	}
 
@@ -254,7 +265,7 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 		c.Outcome = timelineOutcome(id, rec, executed, denied)
 		c.Group = timelineGroup(c.Outcome)
 		c.ExitCode = outcomeExitCode(rec)
-		entries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec)})
+		entries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec), ok: failedCallOK(c, "", recs)})
 	}
 
 	for i := range entries {
@@ -401,6 +412,21 @@ func effectiveDigest(declared string, rec *store.Execution) string {
 	return declared
 }
 
+// failedCallOK is the last ok record of a failed call, nil when the call is
+// not failed or has none. The outcome is read from a failed record whenever
+// one exists, so this success is on no row.
+func failedCallOK(c TimelineCall, declared string, recs []store.Execution) *timelineOK {
+	if c.Group != GroupFailed {
+		return nil
+	}
+	for i := len(recs) - 1; i >= 0; i-- {
+		if recs[i].Outcome == store.ExecOK {
+			return &timelineOK{pos: recs[i].Seq, digest: effectiveDigest(declared, &recs[i])}
+		}
+	}
+	return nil
+}
+
 // outcomeSeq is the outcome record's seq, nil when there is none or it has none.
 func outcomeSeq(rec *store.Execution) *int64 {
 	if rec == nil {
@@ -426,15 +452,34 @@ func outcomeSeq(rec *store.Execution) *int64 {
 // success of the same tool with no declaration, recorded after the failure or
 // at no known position, is the same: nothing says which command it ran. So
 // is a later success of the same program where either call was rewritten:
-// nothing says which program ran.
+// nothing says which program ran. And so is the ok record of a failed call,
+// which matches but has no ok row to point at.
 func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 	failed := entries[i]
+	programTier := failed.call.Program != "" && !subcommandProgram(failed.call.Program)
 	var sameCommand, sameProgram *timelineEntry
 	unplaced := false
 	for j := range entries {
 		e := &entries[j]
 		c := e.call
-		if c.Group != GroupOK || c.ToolName != failed.call.ToolName {
+		if c.ToolName != failed.call.ToolName {
+			continue
+		}
+		// A failed call's ok record, this failure's own included: the same
+		// command or program recorded after the failure, it is a success the
+		// failure may be answered by, but its row says failed and is no row to
+		// point at. It counts as one that cannot be ruled out, never as a match.
+		if c.Group == GroupFailed {
+			if ok := e.ok; ok != nil && (ok.pos == nil || *ok.pos > *failed.pos) {
+				command := failed.digest != "" && ok.digest == failed.digest
+				program := programTier && c.Program == failed.call.Program
+				if command || program {
+					unplaced = true
+				}
+			}
+			continue
+		}
+		if c.Group != GroupOK {
 			continue
 		}
 		// A success with no declaration has no program to match and no row to
@@ -449,7 +494,7 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 			continue
 		}
 		command := failed.digest != "" && e.digest == failed.digest
-		program := !command && failed.call.Program != "" && c.Program == failed.call.Program && !subcommandProgram(c.Program)
+		program := !command && programTier && c.Program == failed.call.Program
 		if !command && !program {
 			continue
 		}

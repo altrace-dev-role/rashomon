@@ -1086,7 +1086,7 @@ m("TL a call with no execution record reads as never ran", "internal/report/time
 m("TL an earlier success counts as a later one", "internal/report/timeline.go",
   "\t\tif *e.pos <= *failed.pos {", "\t\tif false {", "TestTimeline_")
 m("TL the same digest under another tool is the same call", "internal/report/timeline.go",
-  "\t\tif c.Group != GroupOK || c.ToolName != failed.call.ToolName {", "\t\tif c.Group != GroupOK {", "TestTimeline_")
+  "\t\tif c.ToolName != failed.call.ToolName {\n\t\t\tcontinue\n\t\t}\n\t\t// A failed call's ok record", "\t\t// A failed call's ok record", "TestTimeline_")
 m("TL the same-command tier is skipped", "internal/report/timeline.go",
   "\t\tcommand := failed.digest != \"\" && e.digest == failed.digest", "\t\tcommand := false", "TestTimeline_")
 m("TL a call that did not fail is followed up", "internal/report/timeline.go",
@@ -1105,8 +1105,8 @@ m("TL an execution with no declaration and no terminal is left off", "internal/r
 m("TL a dropped call's execution is thrown away", "internal/report/timeline.go",
   "\t\tc.Outcome = timelineOutcome(id, rec, executed, denied)", "\t\tc.Outcome = LinkUnknown", "TestTimeline_")
 m("TL an undeclared call loses its exit code", "internal/report/timeline.go",
-  "\t\tc.ExitCode = outcomeExitCode(rec)\n\t\tentries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec)})",
-  "\t\tentries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec)})", "TestTimeline_")
+  "\t\tc.ExitCode = outcomeExitCode(rec)\n\t\tentries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec),",
+  "\t\tentries = append(entries, timelineEntry{call: c, pos: outcomeSeq(rec),", "TestTimeline_")
 m("TL an undeclared call loses the tool name its execution carries", "internal/report/timeline.go",
   "\t\t\tc.ToolName = recs[len(recs)-1].ToolName", "\t\t\t_ = recs", "TestTimeline_")
 m("TL an undeclared call is attributed to the main agent", "internal/report/timeline.go",
@@ -1132,7 +1132,7 @@ m("TL a not-checked failure counts as no later success", "internal/report/timeli
 m("TL a not-checked failure says no later success", "internal/report/timeline_text.go",
   "\t\treturn \"  → not checked for a later success\"", "\t\treturn \"  → no later success of the same command or program recorded\"", "TestTimeline_")
 m("TL git status follows up a failed git push", "internal/report/timeline.go",
-  " && !subcommandProgram(c.Program)\n", "\n", "TestTimeline_")
+  "\tprogramTier := failed.call.Program != \"\" && !subcommandProgram(failed.call.Program)\n", "\tprogramTier := failed.call.Program != \"\"\n", "TestTimeline_")
 m("TL the same-program label claims different arguments", "internal/report/timeline_text.go",
   "\"  → same program ok at %d, recorded after%s\"", "\"  → same program ok at %d (different arguments%s)\"", "TestTimeline_")
 m("TL the same-command label drops recorded after", "internal/report/timeline_text.go",
@@ -1158,8 +1158,8 @@ m("TL a subagent's call counts as the main agent's", "internal/report/timeline.g
 m("TL the header names the main agent without its count", "internal/report/timeline_text.go",
   "\twho := fmt.Sprintf(\"%d main agent\", n.MainAgent)", "\twho := \"main agent\"", "TestTimeline_")
 m("TL the digest reaches the JSON", "internal/report/timeline.go",
-  "\t\t\trewritten: rec != nil && rec.ExecutedDigest != \"\" && rec.ExecutedDigest != d.Shape.Digest,\n\t\t})\n",
-  "\t\t\trewritten: rec != nil && rec.ExecutedDigest != \"\" && rec.ExecutedDigest != d.Shape.Digest,\n\t\t})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest\n",
+  "\t\t\tok:        failedCallOK(c, d.Shape.Digest, executed[d.ToolUseID]),\n\t\t})\n",
+  "\t\t\tok:        failedCallOK(c, d.Shape.Digest, executed[d.ToolUseID]),\n\t\t})\n\t\tentries[len(entries)-1].call.VerbClass = d.Shape.Digest\n",
   "TestTimeline_JSONCarriesNoDigest")
 
 # #36 review round 3.
@@ -1204,7 +1204,7 @@ m("TL a failed record behind a later ok one is not the outcome record", "interna
 m("TL a failure behind a later ok record reads ok", "internal/report/timeline.go",
   "\tif rec != nil && rec.Outcome == store.ExecFailed {\n\t\treturn store.ExecFailed\n\t}\n", "", "TestTimeline_")
 m("TL the first failed record, not the last, is the outcome record", "internal/report/timeline.go",
-  "\tfor i := len(recs) - 1; i >= 0; i-- {", "\tfor i := 0; i < len(recs); i++ {", "TestTimeline_")
+  "\tfor i := len(recs) - 1; i >= 0; i-- {\n\t\tif recs[i].Outcome == store.ExecFailed {", "\tfor i := 0; i < len(recs); i++ {\n\t\tif recs[i].Outcome == store.ExecFailed {", "TestTimeline_")
 m("TL the header does not say --json carries the tool_use_id", "internal/report/timeline_text.go",
   "\tfmt.Fprintln(b, \"    rows show no tool_use_id: --json carries each call's\")\n", "", "TestTimeline_")
 m("TL the follow-up arrow does not name the agent", "internal/report/timeline_text.go",
@@ -1226,6 +1226,10 @@ m("TL any name ending in digits is a versioned interpreter", "internal/report/ti
 # #36 review round 4.
 m("TL a rewritten success counts as the same program", "internal/report/timeline.go",
   "\t\tif program && (e.rewritten || failed.rewritten) {", "\t\tif false {", "TestTimeline_")
+m("TL a failed call's ok record is no success", "internal/report/timeline.go",
+  "\t\tif c.Group == GroupFailed {\n\t\t\tif ok := e.ok;", "\t\tif false {\n\t\t\tif ok := e.ok;", "TestTimeline_")
+m("TL a failed call's ok record before the failure leaves it unchecked", "internal/report/timeline.go",
+  "ok != nil && (ok.pos == nil || *ok.pos > *failed.pos) {", "ok != nil {", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

@@ -555,6 +555,41 @@ func TestTimeline_TwoRecordsForOneID(t *testing.T) {
 			})
 		}
 	}
+
+	// #36 review round 4, item 1: a failed call's own ok record is a success
+	// of the same command, recorded where it was. It has no row of its own to
+	// point at -- the row says failed -- so recorded after a failure it
+	// matches, that failure is not checked, never "no later success". Break:
+	// look only at ok rows, and both pages below say no later success beside
+	// an ok record of the same command written after the failure.
+	for name, run := range map[string]*store.Run{
+		// One call: failed at 10, ok at 12.
+		"its own": tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"}},
+			tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12)),
+		// g failed at 5; f, the same command, failed at 10 and was ok at 11.
+		"another's": tlRun([]tlCall{
+			{seq: 1, id: "g", tool: "Bash", program: "pytest", digest: "d1"},
+			{seq: 2, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+		}, tlExecAt("g", store.ExecFailed, 1, 5), tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 11)),
+	} {
+		tl := buildTimeline(run, nil)
+		for _, c := range tl.Calls {
+			if c.Group != GroupFailed || c.LaterChecked || c.Later != nil {
+				t.Errorf("%s ok record: %s = %s, later %+v, checked %v; want failed and not checked", name, c.ToolUseID, c.Group, c.Later, c.LaterChecked)
+			}
+		}
+		var b bytes.Buffer
+		writeTimeline(&b, tl)
+		if out := b.String(); strings.Contains(out, "→ no later success") {
+			t.Errorf("%s ok record: a row reads no later success:\n%s", name, out)
+		}
+	}
+	// Recorded before the failure, the ok record is no later success.
+	before := tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"}},
+		tlExecAt("f", store.ExecOK, 0, 10), tlExecAt("f", store.ExecFailed, 2, 12))
+	if c := tlByID(t, buildTimeline(before, nil), "f"); !c.LaterChecked || c.Later != nil {
+		t.Errorf("an ok record before the failure leaves it unchecked: %+v", c)
+	}
 }
 
 // #36 review round 3, smaller 1: undeclared rows have no declaration, but
