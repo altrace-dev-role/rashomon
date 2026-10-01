@@ -912,10 +912,33 @@ func TestTimeline_TheMarkerSaysWhatWasChecked(t *testing.T) {
 
 // #36 review round 3, decision 2: a wrapper or a versioned interpreter is
 // the first word, so it is the program, and it names nothing about what ran.
-// Break: leave them out of the list and `sudo ls` follows up a failed `sudo
-// systemctl restart nginx` as "same program ok".
+// Every name in the list is walked, named here so that dropping one from the
+// list fails, and the suffixed names of one. Break: leave one out and `sudo
+// ls` follows up a failed `sudo systemctl restart nginx`, or `ssh prod uptime`
+// a failed `ssh prod systemctl restart nginx`, as "same program ok".
 func TestTimeline_AWrapperIsNotTheProgram(t *testing.T) {
-	for _, program := range []string{"sudo", "timeout", "env", "xargs", "python3.12", "pip3.11", "node18"} {
+	listed := []string{
+		"git", "gh", "go", "cargo", "make",
+		"npm", "npx", "pnpm", "yarn", "bun", "deno",
+		"pip", "pip3", "uv", "poetry",
+		"docker", "podman", "kubectl", "helm", "terraform",
+		"aws", "gcloud", "az", "dotnet", "mvn", "gradle",
+		"brew", "apt", "apt-get", "systemctl",
+		"python", "python3", "node", "nodejs", "ruby", "perl",
+		"bash", "sh", "zsh",
+		"pipx", "uvx", "bunx", "pnpx", "bundle", "pipenv",
+		"conda", "nix", "direnv", "mise",
+		"sudo", "doas", "su", "runuser", "chroot", "ssh",
+		"env", "timeout", "gtimeout", "time", "gtime", "nohup",
+		"nice", "ionice", "setsid", "flock", "strace", "parallel",
+		"xargs", "watch", "stdbuf", "unbuffer", "xvfb-run",
+		"exec", "command",
+	}
+	if len(listed) != len(subcommandPrograms) {
+		t.Errorf("the test walks %d names, the list holds %d: walk every one", len(listed), len(subcommandPrograms))
+	}
+	programs := append([]string{"python3.12", "pip3.11", "node18", "python3.13t", "python3.12d", "pythonw", "python.exe", "python3.exe"}, listed...)
+	for _, program := range programs {
 		run := tlRun([]tlCall{
 			{seq: 1, id: "f", tool: "Bash", program: program, digest: "d1"},
 			{seq: 2, id: "s", tool: "Bash", program: program, digest: "d2"},
@@ -931,7 +954,7 @@ func TestTimeline_AWrapperIsNotTheProgram(t *testing.T) {
 		}
 	}
 	// A name that only ends in digits is not a versioned interpreter.
-	for _, program := range []string{"pytest", "b2", "gpg2"} {
+	for _, program := range []string{"pytest", "b2", "gpg2", "show", "w"} {
 		if subcommandProgram(program) {
 			t.Errorf("%s is treated as a subcommand program", program)
 		}

@@ -51,12 +51,14 @@ const (
 // subcommandPrograms are programs whose next word, not the program, names what
 // ran: `git status` succeeding says nothing about a failed `git push`, nor
 // `python b.py` about `python a.py`, and the same-program tier would pair
-// them. Wrappers are here for the same reason: the program is the first word,
-// so `sudo ls` would otherwise follow up a failed `sudo systemctl restart`, and
-// `timeout 5 true` a failed `timeout 60 go test ./...`. The same-command tier
-// is still offered, because an identical digest is an identical line whatever
-// the program. A closed list and a short one: a program missing from it gets
-// the weak tier, which the text renders as no more than "same program".
+// them. Wrappers and launchers are here for the same reason: the program is
+// the first word, so `sudo ls` would otherwise follow up a failed `sudo
+// systemctl restart`, `ssh prod uptime` a failed `ssh prod systemctl restart
+// nginx`, and `timeout 5 true` a failed `timeout 60 go test ./...`. The
+// same-command tier is still offered, because an identical digest is an
+// identical line whatever the program. A closed list and a short one: a
+// program missing from it gets the weak tier, which the text renders as no
+// more than "same program".
 var subcommandPrograms = map[string]bool{
 	"git": true, "gh": true, "go": true, "cargo": true, "make": true,
 	"npm": true, "npx": true, "pnpm": true, "yarn": true, "bun": true, "deno": true,
@@ -64,22 +66,31 @@ var subcommandPrograms = map[string]bool{
 	"docker": true, "podman": true, "kubectl": true, "helm": true, "terraform": true,
 	"aws": true, "gcloud": true, "az": true, "dotnet": true, "mvn": true, "gradle": true,
 	"brew": true, "apt": true, "apt-get": true, "systemctl": true,
-	"python": true, "python3": true, "node": true, "ruby": true, "perl": true,
+	"python": true, "python3": true, "node": true, "nodejs": true, "ruby": true, "perl": true,
 	"bash": true, "sh": true, "zsh": true,
-	"sudo": true, "doas": true, "env": true, "timeout": true, "time": true, "nohup": true,
-	"nice": true, "xargs": true, "watch": true, "stdbuf": true, "exec": true, "command": true,
+	"pipx": true, "uvx": true, "bunx": true, "pnpx": true, "bundle": true, "pipenv": true,
+	"conda": true, "nix": true, "direnv": true, "mise": true,
+	"sudo": true, "doas": true, "su": true, "runuser": true, "chroot": true, "ssh": true,
+	"env": true, "timeout": true, "gtimeout": true, "time": true, "gtime": true, "nohup": true,
+	"nice": true, "ionice": true, "setsid": true, "flock": true, "strace": true, "parallel": true,
+	"xargs": true, "watch": true, "stdbuf": true, "unbuffer": true, "xvfb-run": true,
+	"exec": true, "command": true,
 }
 
 // subcommandProgram says whether a program is in subcommandPrograms, directly
-// or as a versioned name of one: python3.12, pip3.11 and node18 are the
-// interpreter they name, so the prefix before a trailing version is looked
-// up too.
+// or as a suffixed name of one: python3.12, python3.13t, pip3.11, node18,
+// python.exe and pythonw are the interpreter they name. So the name is looked
+// up with a trailing .exe dropped and cut at its first digit, and then with
+// one trailing w dropped as well.
 func subcommandProgram(p string) bool {
 	if subcommandPrograms[p] {
 		return true
 	}
-	base := strings.TrimRight(p, "0123456789.")
-	return base != p && subcommandPrograms[base]
+	base := strings.TrimSuffix(p, ".exe")
+	if i := strings.IndexAny(base, "0123456789"); i >= 0 {
+		base = base[:i]
+	}
+	return subcommandPrograms[base] || subcommandPrograms[strings.TrimSuffix(base, "w")]
 }
 
 // sameProgramTier says whether a failure of this program is followed up by a

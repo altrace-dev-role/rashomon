@@ -1216,6 +1216,14 @@ m("TL the interrupted count is not printed", "internal/report/timeline_text.go",
   "\tif n.Interrupted > 0 {", "\tif false {", "TestTimeline_")
 m("TL the interleave caveat is not printed", "internal/report/timeline_text.go",
   "\tif n.Subagents > 0 {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "\tif false {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "TestTimeline_")
+m("TL command is dropped from the wrapper list", "internal/report/timeline.go",
+  "\t\"exec\": true, \"command\": true,\n", "\t\"exec\": true,\n", "TestTimeline_")
+m("TL python.exe is the program", "internal/report/timeline.go",
+  "\tbase := strings.TrimSuffix(p, \".exe\")", "\tbase := p", "TestTimeline_")
+m("TL pythonw is the program", "internal/report/timeline.go",
+  "\treturn subcommandPrograms[base] || subcommandPrograms[strings.TrimSuffix(base, \"w\")]", "\treturn subcommandPrograms[base]", "TestTimeline_")
+m("TL any name ending in w is its base", "internal/report/timeline.go",
+  "\treturn subcommandPrograms[base] || subcommandPrograms[strings.TrimSuffix(base, \"w\")]", "\treturn subcommandPrograms[base] || subcommandPrograms[strings.TrimRight(base, \"w\")] || strings.HasSuffix(base, \"w\")", "TestTimeline_")
 m("TL the follow-up legend is printed under failed 0", "internal/report/timeline_text.go",
   "\tif n.Failed > 0 {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "\tif true {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "TestTimeline_")
 m("TL the interrupted count is printed when there is none", "internal/report/timeline_text.go",
@@ -1223,11 +1231,11 @@ m("TL the interrupted count is printed when there is none", "internal/report/tim
 m("TL the interleave caveat is printed with no subagent", "internal/report/timeline_text.go",
   "\tif n.Subagents > 0 {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "\tif true {\n\t\tfmt.Fprintln(b, \"    calls from agents running at once", "TestTimeline_")
 m("TL sudo ls follows up a failed sudo systemctl", "internal/report/timeline.go",
-  "\t\"sudo\": true, \"doas\": true, \"env\": true, \"timeout\": true, \"time\": true, \"nohup\": true,\n\t\"nice\": true, \"xargs\": true, \"watch\": true, \"stdbuf\": true, \"exec\": true, \"command\": true,\n", "", "TestTimeline_")
+  "\t\"sudo\": true, \"doas\": true, \"su\": true, \"runuser\": true, \"chroot\": true, \"ssh\": true,\n", "", "TestTimeline_")
 m("TL a versioned interpreter is the program", "internal/report/timeline.go",
-  "\treturn base != p && subcommandPrograms[base]", "\treturn base != p && false", "TestTimeline_")
-m("TL any name ending in digits is a versioned interpreter", "internal/report/timeline.go",
-  "\treturn base != p && subcommandPrograms[base]", "\treturn base != p", "TestTimeline_")
+  "\tif i := strings.IndexAny(base, \"0123456789\"); i >= 0 {\n\t\tbase = base[:i]\n\t}\n", "", "TestTimeline_")
+m("TL any name with a digit is a versioned interpreter", "internal/report/timeline.go",
+  "\treturn subcommandPrograms[base] || subcommandPrograms[strings.TrimSuffix(base, \"w\")]", "\treturn base != p", "TestTimeline_")
 
 # #36 review round 4.
 m("TL a rewritten success counts as the same program", "internal/report/timeline.go",
