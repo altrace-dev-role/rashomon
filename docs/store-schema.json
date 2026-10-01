@@ -193,7 +193,7 @@
           ]
         },
         "host_source": {
-          "description": "Schema 3. Where each entry of `hosts` came from. STRUCTURED means the host was read from a field whose value is a URL -- WebFetch's `url`, for instance -- so the call names that host by construction. LEXICAL means it was extracted from command text, where a mention and a destination are not the same thing: `curl https://example.com` and `echo see https://example.com` both yield the host. Both satisfy the destinations join and `forget --host` applies to both; the distinction is rendered so a reader can tell 'named in a tool argument' from 'mentioned in command text'. Null on records written before schema 3, which is not the same as an empty list: it means nobody looked.",
+          "description": "Schema 3. Where each entry of `hosts` came from. STRUCTURED means the host was read from a field whose value is a URL -- WebFetch's `url`, for instance -- so the call names that host by construction. LEXICAL means it was extracted from command text, where a mention and a destination are not the same thing: `curl https://example.com` and `echo see https://example.com` both yield the host. Both satisfy the destinations join and `forget --host` applies to both; the distinction is rendered so a reader can tell 'named in a tool argument' from 'mentioned in command text'. Null when not computed: on every record this build writes, and on records before schema 3.",
           "type": [
             "array",
             "null"

@@ -279,10 +279,13 @@ type Session struct {
 	// (see DetectTestBending for what an edit is). The turn digest carries
 	// the same patterns for one turn; this is the whole session's.
 	//
-	// Null when no declaration in the session is schema 3: records written
-	// before the test class existed say execute or package for the same
-	// commands, so a count over them would be zeros nobody measured. Zeros
-	// here only ever mean measured, and none.
+	// Null for a session with no schema 3 declaration (records that predate
+	// schema 3, or no tool calls at all): records written before the test
+	// class existed say execute or package for the same commands, so a count
+	// over them would be zeros nobody measured. Otherwise Runs counts test
+	// runs that ended ok or failed (interrupted, backgrounded and timed-out
+	// runs are not counted), and a session that spans the upgrade is counted
+	// from its first schema 3 call.
 	TestRuns *TestRuns `json:"test_runs"`
 }
 
