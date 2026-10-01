@@ -200,8 +200,9 @@ var labelTable = []labelRule{
 	// test's _test.go; pytest's test_*.py, *_test.py and conftest.py; the
 	// .test. and .spec. infixes Jest, Vitest and Mocha default to, with the
 	// .mts and .cts extensions Vitest also reads; RSpec's _spec.rb;
-	// GoogleTest's _test.cc and _unittest.cc, the convention ctest projects
-	// follow; and the JUnit, Kotlin and .NET class-name suffixes.
+	// GoogleTest's _test.cc, _unittest.cc, _test.cpp, _unittest.cpp and
+	// _test.cxx, the convention ctest projects follow; and the JUnit, Kotlin
+	// and .NET class-name suffixes.
 	//
 	// AFTER every sensitive row, and that order is the point: a secret kept
 	// in a test directory, or named like a fixture, is still a secret, and a
@@ -217,12 +218,13 @@ var labelTable = []labelRule{
 	// name only ends in Test (ABTest.java, a source file for an A/B test):
 	// that is kept, and recorded, rather than guessed around.
 	//
-	// go test's and pytest's names are cased too, and GoogleTest's with them,
-	// because those runners match them case-sensitively: go test reads
-	// calc_TEST.go as source and pytest does not collect TEST_x.py. Folded,
-	// the label would call them tests to a detection that exists to tell
-	// tests from source. The .test. and .spec. infixes and RSpec's _spec.rb
-	// stay folded.
+	// go test's and pytest's names are cased too, because those runners match
+	// them case-sensitively: go test reads calc_TEST.go as source and pytest
+	// does not collect TEST_x.py. Folded, the label would call them tests to
+	// a detection that exists to tell tests from source. GoogleTest's
+	// _test/_unittest names are a project naming convention, kept cased like
+	// _test.go; no runner matches them. The .test. and .spec. infixes and
+	// RSpec's _spec.rb stay folded.
 	//
 	// Directory rules (tests/, __tests__/) are left out: this table matches
 	// basenames by design, and a fixture in tests/ is not a test.
@@ -236,6 +238,7 @@ var labelTable = []labelRule{
 		casedExact: []string{"conftest.py"},
 		casedSuffix: []string{
 			"_test.go", "_test.py", "_test.cc", "_unittest.cc",
+			"_test.cpp", "_unittest.cpp", "_test.cxx",
 			"Test.java", "Tests.java", "Test.kt", "Tests.kt", "Test.cs", "Tests.cs", "Test.php",
 		},
 		casedBoth: [][2]string{{"test_", ".py"}},

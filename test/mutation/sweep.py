@@ -1785,6 +1785,11 @@ m("TB a prefix entry refuses its =false form", "internal/shape/shape.go",
   "\t\t\tif _, _ = strings.CutPrefix(rest, \"=\"); isPrefix {\n",
   "TestTestRunnerIsRecognised")
 
+m("TB the .cpp and .cxx GoogleTest spellings are not test files", "internal/shape/label.go",
+  "\t\t\t\"_test.cpp\", \"_unittest.cpp\", \"_test.cxx\",\n",
+  "",
+  "TestLabelTestFile")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

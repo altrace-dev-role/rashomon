@@ -308,6 +308,9 @@ func TestLabelTestFile(t *testing.T) {
 		{path: "/web/src/util.spec.cts", want: LabelTestFile},
 		{path: "/cc/calc_test.cc", want: LabelTestFile, why: "GoogleTest, run by ctest"},
 		{path: "/cc/calc_unittest.cc", want: LabelTestFile},
+		{path: "/cc/calc_test.cpp", want: LabelTestFile, why: "GoogleTest's names with the other C++ extensions"},
+		{path: "/cc/calc_unittest.cpp", want: LabelTestFile},
+		{path: "/cc/calc_test.cxx", want: LabelTestFile},
 		{path: `C:\web\src\APP.TEST.TSX`, want: LabelTestFile, why: "the JS infixes still fold"},
 
 		// go test and pytest match their names as written, so these are not
@@ -339,6 +342,8 @@ func TestLabelTestFile(t *testing.T) {
 		{path: "/k/Protests.kt", want: LabelNone},
 		{path: "/cc/contest.cc", want: LabelNone, why: "_test.cc needs its underscore"},
 		{path: "/cc/calc_TEST.cc", want: LabelNone, why: "cased, like _test.go"},
+		{path: "/cc/contest.cpp", want: LabelNone},
+		{path: "/cc/calc_TEST.cpp", want: LabelNone},
 		{path: "/web/src/util.mts", want: LabelNone},
 		{path: "/repo/tests/fixture.json", want: LabelNone, why: "no directory rule: a fixture in tests/ is not a test"},
 		{path: "/web/src/util.test.css", want: LabelNone},
