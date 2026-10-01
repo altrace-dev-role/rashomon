@@ -1388,7 +1388,7 @@ m("TB a denied cd breaks the pair", "internal/report/testbending.go",
   "\t\tif outcome == LinkOutcomeDenied && (d.Shape.Program == nil || *d.Shape.Program != \"cd\") {\n\t\t\tcontinue\n\t\t}\n",
   "TestTestBending")
 m("TB the session block drops the directory limit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    runs pair only when the same command line ran from the same directory;\")\n",
+  "\t\tfmt.Fprintln(b, \"    runs pair only when the same command line started in the same directory: the reported cwd, or the target of a leading plain cd;\")\n",
   "",
   "TestTestRuns_")
 
@@ -1765,6 +1765,11 @@ m("TB a backgrounded call is not counted as unobserved", "internal/report/accoun
   "\t\tif x.Backgrounded {\n\t\t\t// Recorded ok",
   "\t\tif false && x.Backgrounded {\n\t\t\t// Recorded ok",
   "TestSilentFailures_")
+
+m("TB a leading cd's target is not the run's directory", "internal/hook/handle.go",
+  "shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),",
+  "shape.CWDDigest(h.st.Key(), p.CWD),",
+  "TestTestBending_ALeadingAbsoluteCd")
 
 # Import additions some mutants need.
 IMPORTS = {

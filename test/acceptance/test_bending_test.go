@@ -416,3 +416,26 @@ func TestTestBending_AnAttachedCurlOutputIsAnEdit(t *testing.T) {
 		t.Errorf("a download over a source file came between the runs; recap printed %q", line)
 	}
 }
+
+// B-A10: the review's leading absolute cd. The payload's cwd is the shell's
+// directory before the line runs, so the first `cd /tmp/project/web && go test
+// ./...` was keyed on /tmp/project and every repeat on /tmp/project/web,
+// although all of them ran in web: a failed first run, a test edit and a
+// passing rerun never paired. The key is now the directory the runner starts
+// in, the target of a leading plain cd.
+func TestTestBending_ALeadingAbsoluteCdKeysTheRunOnItsTarget(t *testing.T) {
+	s := newTBSession(t)
+	s.shell("cd /tmp/project/web && go test ./...", false, "")
+	s.cwd = "/tmp/project/web"
+	s.edit("/tmp/project/web/calc_test.go")
+	s.shell("cd /tmp/project/web && go test ./...", true, "")
+
+	line, ok := s.line()
+	if !ok || !strings.Contains(line, "test command failed, then the only recorded edits were to files named like tests, then it passed (#") {
+		t.Errorf("both runs ran in web; line = %q (printed %v), want the tests-only sentence", line, ok)
+	}
+	decls := s.e.declarations(testSession)
+	if a, b := decls[0].str("cwd_digest"), decls[len(decls)-1].str("cwd_digest"); len(a) != 64 || a != b {
+		t.Errorf("cwd_digest = %q, %q: want one 64-hex digest for both runs", a, b)
+	}
+}

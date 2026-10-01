@@ -316,11 +316,13 @@ The two test-bending lines have limits of their own:
   include lint. A lint failure fixed only in a file named like a test then
   reads as the tests-only pattern.
 - Runs pair only within one directory: each call's record carries a keyed
-  digest of the directory Claude Code reported it was declared in (never the
-  path), and two runs of one command line in two directories are not the
-  same run. So a subagent's `go test ./...` pairs with the main agent's only
-  when both ran it from the same directory, and a repeated relative `cd sub
-  && go test ./...`, whose second call starts in `sub`, does not pair with
+  digest (never the path) of the directory the runner started in: the
+  reported cwd, or the target of a leading plain cd (`cd /repo/web && go
+  test ./...` is keyed on `/repo/web` wherever the shell was). Two runs of
+  one command line in two directories are not the same run. So a subagent's
+  `go test ./...` pairs with the main agent's only when both ran it from the
+  same directory, and a repeated relative `cd sub && go test ./...`, whose
+  second call starts in `sub` and so targets `sub/sub`, does not pair with
   the first.
 - `cd DIR && go test ./...` is a test run, so a failed `cd` counts as a
   failed test run. Leaving `cd … &&` out would lose most real runs.

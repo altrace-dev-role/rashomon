@@ -436,3 +436,46 @@ func TestMayWrite(t *testing.T) {
 		t.Error("a Write call carries may_write")
 	}
 }
+
+// The directory a runner starts in, when the line begins with a plain literal
+// `cd DIR &&`: the hook keys the run on it rather than on the payload's cwd,
+// which is the shell's directory before the cd.
+func TestLeadingDirectory(t *testing.T) {
+	for _, tc := range []struct {
+		cmd  string
+		want string // "" for none
+	}{
+		{"cd /repo/web && go test ./...", "/repo/web"},
+		{"cd sub && go test ./...", "sub"},
+		{"cd ../x && npm test", "../x"},
+		{"cd /repo/web/ && go test ./...", "/repo/web/"},
+		// Not a plain literal step: the shell computes the directory, or the
+		// runner may run without the cd having happened.
+		{"cd $HOME/x && go test ./...", ""},
+		{"cd ~/x && go test ./...", ""},
+		{"cd - && go test ./...", ""},
+		{"cd \"/repo/web\" && go test ./...", ""},
+		{"cd 'a b' && go test ./...", ""},
+		{"cd `pwd`/x && go test ./...", ""},
+		{"cd *web && go test ./...", ""},
+		{"cd /repo; go test ./...", ""},
+		{"cd /repo || go test ./...", ""},
+		{"cd /repo", ""},
+		{"cd && go test ./...", ""},
+		{"go test ./...", ""},
+		{"X=1 cd /repo && go test ./...", ""},
+	} {
+		got, ok := LeadingDirectory("Bash", json.RawMessage(`{"command":`+quoteJSON(tc.cmd)+`}`))
+		if ok != (tc.want != "") || got != tc.want {
+			t.Errorf("%q: LeadingDirectory = %q, %v; want %q", tc.cmd, got, ok, tc.want)
+		}
+	}
+	if _, ok := LeadingDirectory("mcp__x__run", json.RawMessage(`{"command":"cd /repo && make test"}`)); ok {
+		t.Error("a tool that is not a shell has no leading directory")
+	}
+}
+
+func quoteJSON(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}

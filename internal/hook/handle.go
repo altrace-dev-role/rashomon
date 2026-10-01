@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"path/filepath"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
@@ -88,7 +89,7 @@ func (h *Handler) Capture(in io.Reader) error {
 		PermissionMode: p.PermissionMode,
 		ToolName:       p.ToolName,
 		Shape:          shape.Derive(p.ToolName, p.ToolInput, h.st.Key()),
-		CWDDigest:      shape.CWDDigest(h.st.Key(), p.CWD),
+		CWDDigest:      shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),
 	}
 	// Hostnames are metadata and are stored verbatim, because they are both
 	// the join key against the proxy's record and the finding itself. Nothing
@@ -177,6 +178,26 @@ func readPayload(r io.Reader) ([]byte, error) {
 		return nil, errPayloadTooLarge
 	}
 	return b, nil
+}
+
+// startDirectory is the directory a call's command starts in: the target of
+// a leading plain `cd DIR &&` (shape.LeadingDirectory), joined to cwd when it
+// is relative, and otherwise the payload's cwd, which is the shell's directory
+// before the line runs. Without it the first `cd /repo/web && go test ./...`
+// is keyed on /repo and every repeat on /repo/web, although all of them ran
+// in web. A relative DIR with no cwd to resolve it against is not known, and
+// the cwd stays as it was.
+func startDirectory(cwd, toolName string, toolInput json.RawMessage) string {
+	dir, ok := shape.LeadingDirectory(toolName, toolInput)
+	switch {
+	case !ok:
+		return cwd
+	case filepath.IsAbs(dir):
+		return filepath.Clean(dir)
+	case cwd == "":
+		return cwd
+	}
+	return filepath.Join(cwd, dir)
 }
 
 func nilIfEmpty(s string) *string {

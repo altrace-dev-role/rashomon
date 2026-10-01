@@ -386,6 +386,43 @@ func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
 	return pastDirectoryChange(toks, sep+1+k, uncertain)
 }
 
+// LeadingDirectory reports the directory a shell call's line moves to before
+// anything else runs, when the line begins with a plain literal `cd DIR &&`:
+// DIR as written, which the caller resolves against the call's cwd. The
+// command after `&&` runs only if the cd succeeded, so it starts in DIR.
+//
+// Only a word the shell takes as it stands: nothing it expands or unquotes
+// (`$`, backticks, a glob, `~`, quotes or an escape), not `-`, which is the
+// previous directory, and not a comment. `cd DIR;` is left out, since what
+// follows a `;` runs whether the cd succeeded or not. Anything else reports
+// false, and the call keeps the directory it was declared in.
+func LeadingDirectory(toolName string, toolInput json.RawMessage) (string, bool) {
+	if verbForTool(toolName) != VerbExecute {
+		return "", false
+	}
+	cmd, ok := commandField(toolInput)
+	if !ok || controlByte(cmd) {
+		return "", false
+	}
+	toks, err := tokenizeProgram(cmd)
+	if err != nil || len(toks) < 3 {
+		return "", false
+	}
+	cd, dir, and := toks[0], toks[1], toks[2]
+	if cd.text != "cd" || cd.quotedAt >= 0 || cd.opaque {
+		return "", false
+	}
+	if dir.meta || dir.quotedAt >= 0 || dir.opaque || dir.ticks > 0 || dir.nlBefore || isComment(dir) ||
+		dir.text == "" || strings.HasPrefix(dir.text, "-") || strings.HasPrefix(dir.text, "~") ||
+		strings.ContainsAny(dir.text, "$`*?[{\\") {
+		return "", false
+	}
+	if !and.meta || and.text != "&&" || and.nlBefore {
+		return "", false
+	}
+	return dir.text, true
+}
+
 // plainWord reports whether a word in command position is one the search can
 // name as it stands: the text the shell runs, not text it computes a command
 // from, and not a word the tokenizer ended where the shell does not.

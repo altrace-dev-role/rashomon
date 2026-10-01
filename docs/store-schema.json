@@ -171,7 +171,7 @@
           }
         },
         "cwd_digest": {
-          "description": "Schema 3. HMAC under the per-install key of the working directory the call was declared in, from the PreToolUse payload's cwd, which follows the shell from one call to the next. Two runs of one command line compare as the same run only when this is equal as well, since the same line in another directory runs other code. A digest and never the path: the declarations do not carry the directory, which the coverage records already keep as the project key. Empty string when the payload carried no cwd.",
+          "description": "Schema 3. HMAC under the per-install key of the directory the call's command started in: the PreToolUse payload's cwd, which follows the shell from one call to the next, or the target of a leading plain `cd DIR &&` (no expansion, quoting, ~ or -), resolved against that cwd when relative. Two runs of one command line compare as the same run only when this is equal as well, since the same line in another directory runs other code. A digest and never the path: the declarations do not carry the directory, which the coverage records already keep as the project key. Empty string when the payload carried no cwd.",
           "type": "string"
         },
         "file_label": {
