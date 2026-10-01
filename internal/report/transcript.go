@@ -327,7 +327,7 @@ type TurnFinal struct {
 // prompt id in want, the text of the last assistant message that belongs to
 // that prompt, with the line's timestamp, and the message id of every
 // response that belongs to it. A wanted prompt the file ties no assistant
-// line to is absent from the result.
+// text to is absent, or present with Said false.
 //
 // It is FinalAssistantText narrowed to turns, for `rashomon spend`'s
 // silent-failure line. A turn's silent_failures verdict is the digest's rule
@@ -358,9 +358,11 @@ type TurnFinal struct {
 // A user line with no promptId that is a prompt, rather than a tool result or
 // an injected meta line, ends attribution: its reply belongs to a turn this
 // reader cannot key, and crediting it to the previous one would be the same
-// wrong-words bug. A turn whose words cannot be attributed is absent from the
-// result, so the caller has no final message and takes no verdict -- a floor,
-// never a guess.
+// wrong-words bug. So does a line that cannot be decoded, unless it is a
+// sidechain line. A subagent's sidechain line ties its response to the
+// current prompt and never moves the tie. A turn whose words cannot be
+// attributed has no Said words, so the caller has no final message and takes
+// no verdict -- a floor, never a guess.
 //
 // One pass, decoding only what can matter: every line's header (type,
 // isSidechain, isMeta, promptId, timestamp, message.id); a user line's block
@@ -417,18 +419,18 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 		}
 		if json.Unmarshal(raw, &head) != nil {
 			// A line whose header does not decode (a timestamp written as a
-			// number) cannot be placed. If it may be a user line, it may be
-			// the next prompt, and keeping the tie would credit that
-			// prompt's spend and words to this turn: the tie ends, as the
-			// subagent reader ends it. Either way, if it may be a user line
-			// or a text line, this turn's words so far may not be its last:
-			// they are dropped, so it takes no verdict unless a later line
-			// sets them.
-			user := bytes.Contains(raw, []byte(`"user"`))
-			if user || bytes.Contains(raw, []byte(`"text"`)) {
+			// number, a line cut short) cannot be placed. It may be the next
+			// prompt, and keeping the tie would credit that prompt's spend
+			// and words to this turn; it may be this turn's last text, so
+			// its words so far may not be its last. So the tie ends and the
+			// turn's words are dropped, as the subagent reader ends its tie
+			// -- unless the line's bytes mark it a sidechain line, which
+			// never moves the tie or speaks for the main agent. Guessing
+			// from the bytes "user" and "text" fired on a tool_use input
+			// holding the value "user" and on a sidechain user line, and
+			// missed a user line truncated before its type.
+			if !bytes.Contains(raw, []byte(`"isSidechain":true`)) {
 				unsay()
-			}
-			if user {
 				current = ""
 			}
 			continue

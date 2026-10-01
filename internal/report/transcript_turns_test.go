@@ -133,6 +133,50 @@ func TestFinalAssistantTexts_AnUnreadableLineIsNoTurnsWord(t *testing.T) {
 	}
 }
 
+// TestFinalAssistantTexts_AnUndecodableLineEndsTheTieUnlessItIsASidechain:
+// which undecodable lines ended a turn's tie was read from the bytes "user"
+// and "text". That fired on an assistant line whose tool_use input held the
+// value "user", and on a subagent's sidechain user line -- whose responses
+// after it then fell out of the turn -- while a user line truncated before
+// its type, holding neither word, kept the tie and credited the next
+// prompt's spend and words to this turn. The rule is now the one the bound
+// states: any undecodable main-transcript line ends the tie and drops the
+// turn's words, unless it is a sidechain line.
+func TestFinalAssistantTexts_AnUndecodableLineEndsTheTieUnlessItIsASidechain(t *testing.T) {
+	side := func(id, at string) string {
+		return turnLine(t, map[string]any{"type": "assistant", "isSidechain": true, "timestamp": at,
+			"message": map[string]any{"id": id, "role": "assistant", "content": []map[string]any{{"type": "text", "text": "subagent words"}}}})
+	}
+	for _, tc := range []struct {
+		name, line string
+		ends       bool
+	}{
+		{"a malformed assistant line whose tool_use input holds \"user\"",
+			`{"type":"assistant","timestamp":5,"message":{"id":"mx","role":"assistant","content":[{"type":"tool_use","input":{"role":"user"}}]}}`, true},
+		{"a user line truncated before its type", `{"parentUuid":"u-1","isSidechain":false,"promptId":"p2","mess`, true},
+		{"an undecodable sidechain user line", `{"type":"user","isSidechain":true,"timestamp":5,"message":{"role":"user","content":"task"}}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := writeTurns(t,
+				userTurnLine(t, "p1", "first prompt", false),
+				said(t, "m1", "Ran it as requested.", "2026-09-29T10:00:01.000Z"),
+				tc.line,
+				side("s1", "2026-09-29T10:00:03.000Z"),
+				side("s2", "2026-09-29T10:00:04.000Z"))
+			got := FinalAssistantTexts(p, map[string]bool{"p1": true})["p1"]
+			if tc.ends {
+				if got.Said || got.Responses["s1"] || got.Responses["s2"] {
+					t.Errorf("p1 = %+v: the line after an undecodable one was tied to the turn, or its earlier words kept", got)
+				}
+				return
+			}
+			if !got.Said || got.Text != "Ran it as requested." || !got.Responses["s1"] || !got.Responses["s2"] {
+				t.Errorf("p1 = %+v: an undecodable sidechain line ended the tie, so the subagent's responses fell out of the turn", got)
+			}
+		})
+	}
+}
+
 // TestUserBlocks_DecodeOnlyBlockTypes holds the shape toolResultOnly decodes
 // a user line into: a block's type and nothing else. A user line's content is
 // a typed prompt or a tool's output, and deciding "tool result, not a prompt"

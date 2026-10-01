@@ -24,13 +24,17 @@ const (
 	StoreRead = "read"
 )
 
-// TurnBound states how a turn's spend is found, wherever its number is. It
-// names the unkeyed user lines that keep a tie as the readers do: in the main
-// transcript a tool result or an injected meta line keeps it
+// TurnBound states how a turn's spend is found, wherever its number is, with
+// every rule the readers apply. The unkeyed user lines that keep a tie: in
+// the main transcript a tool result or an injected meta line
 // (report.FinalAssistantTexts), in a subagent transcript only a meta line
-// does (readFile), so only a response after any other line with no promptId
-// is left out -- and the bound says no more is left out than that.
-const TurnBound = "a turn's spend is every response its main transcript, or a subagent transcript under it, ties to its prompt by the promptId on the user line before it; a response after a user line with no promptId that is not a meta line or, in the main transcript, a tool result is tied to no turn and not counted, so this is a floor"
+// (readFile). A subagent's sidechain line in the main transcript ties its
+// response to the prompt before it and, a user line included, never ends the
+// tie. A line that cannot be decoded ends it (in the main transcript, unless
+// it is a sidechain line). So only a response after another unkeyed user line
+// or an undecodable line is left out -- and the bound says no more is left
+// out than that.
+const TurnBound = "a turn's spend is every response its main transcript, or a subagent transcript under it, ties to its prompt by the promptId on the user line before it; a subagent's sidechain response in the main transcript counts toward the prompt before it, and a sidechain user line does not end the tie; a response after a user line with no promptId that is not a meta line or, in the main transcript, a tool result, or after a line that cannot be decoded, is tied to no turn and not counted, so this is a floor"
 
 // Per-session coverage, in per_session[].coverage once Join has run.
 const (

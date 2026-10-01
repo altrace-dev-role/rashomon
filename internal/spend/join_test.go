@@ -652,7 +652,7 @@ func TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie(t *testing.T) {
 	if !strings.Contains(txt, "("+TurnBound+")") {
 		t.Errorf("text does not print the bound beside the figure:\n%s", txt)
 	}
-	for _, want := range []string{"tool result", "meta line", "in the main transcript"} {
+	for _, want := range []string{"tool result", "meta line", "in the main transcript", "sidechain response", "sidechain user line does not end the tie", "cannot be decoded"} {
 		if !strings.Contains(TurnBound, want) {
 			t.Errorf("the bound does not name %q among the lines that keep a tie, beside a figure that priced the response after one: %q", want, TurnBound)
 		}

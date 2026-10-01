@@ -1249,7 +1249,7 @@ m("SP a meta line without promptId ends its turn's words", "internal/report/tran
   "\t\t\t} else if !head.IsMeta && !toolResultOnly(raw) {", "\t\t\t} else if !toolResultOnly(raw) {",
   "TestFinalAssistantTexts_")
 m("SP the bound says every unkeyed user line ends a tie", "internal/spend/join.go",
-  "a user line with no promptId that is not a meta line or, in the main transcript, a tool result is tied to no turn",
+  "a user line with no promptId that is not a meta line or, in the main transcript, a tool result, or after a line that cannot be decoded, is tied to no turn",
   "a user line with no promptId is tied to no turn",
   "TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie")
 m("SP a subagent's sidechain line is read as the turn's summary", "internal/report/transcript.go",
@@ -1394,10 +1394,10 @@ m("SP a text line with no parseable timestamp is skipped, and the turn judged on
   "\t\t\tif err != nil {\n\t\t\t\tunsay()\n\t\t\t\tcontinue\n\t\t\t}", "\t\t\tif err != nil {\n\t\t\t\tcontinue\n\t\t\t}",
   "TestFinalAssistantTexts_")
 m("SP a main-transcript user line that does not decode keeps the tie", "internal/report/transcript.go",
-  "\t\t\tif user {\n\t\t\t\tcurrent = \"\"", "\t\t\tif false && user {\n\t\t\t\tcurrent = \"\"",
+  "\t\t\t\tunsay()\n\t\t\t\tcurrent = \"\"\n", "\t\t\t\tunsay()\n",
   "TestFinalAssistantTexts_")
 m("SP a line that does not decode leaves the turn's earlier words standing", "internal/report/transcript.go",
-  "\t\t\tif user || bytes.Contains(raw, []byte(`\"text\"`)) {\n\t\t\t\tunsay()", "\t\t\tif false {\n\t\t\t\tunsay()",
+  "\t\t\t\tunsay()\n\t\t\t\tcurrent = \"\"\n", "\t\t\t\tcurrent = \"\"\n",
   "TestFinalAssistantTexts_")
 m("SP a tie between two main files' final words goes to the first", "internal/spend/join.go",
   "t.Said && t.AtMS >= bestMS {", "t.Said && t.AtMS > bestMS {", "TestJoin_TheLastWord")
@@ -1665,6 +1665,15 @@ m("SP a declined attempt with output on an unpriced model is not named as not co
 m("SP an unknown-billing refusal on a priced model is named as having no known rate", "internal/spend/spend.go",
   "\t\tif g.Cost.Unpriced > 0 && !pricedName(g.Model) {\n\t\t\tunpriced = true", "\t\tif g.Cost.Unpriced > 0 {\n\t\t\tunpriced = true",
   "TestRefusals_APreOutputRefusalIsBilled")
+
+m("SP an undecodable line ends the tie only when it holds the byte string user", "internal/report/transcript.go",
+  "\t\t\tif !bytes.Contains(raw, []byte(`\"isSidechain\":true`)) {\n\t\t\t\tunsay()", "\t\t\tif bytes.Contains(raw, []byte(`\"user\"`)) {\n\t\t\t\tunsay()",
+  "TestFinalAssistantTexts_AnUndecodableLine")
+m("SP an undecodable sidechain line ends the tie", "internal/report/transcript.go",
+  "\t\t\tif !bytes.Contains(raw, []byte(`\"isSidechain\":true`)) {\n\t\t\t\tunsay()", "\t\t\tif true {\n\t\t\t\tunsay()",
+  "TestFinalAssistantTexts_AnUndecodableLine")
+m("SP the bound does not say a sidechain user line keeps the tie", "internal/spend/join.go",
+  "and a sidechain user line does not end the tie; ", "", "TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie")
 
 # Import additions some mutants need.
 IMPORTS = {

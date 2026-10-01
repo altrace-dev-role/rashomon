@@ -1686,9 +1686,13 @@ usage:
                                types (never the text) of user lines with no
                                promptId; a subagent's spend is tied to its
                                turn by the promptId on its own transcript's
-                               user lines; a failed turn with no final message
-                               to judge is counted as not checked, never as
-                               clean; writes nothing
+                               user lines, and a sidechain response in the
+                               main transcript counts toward the prompt
+                               before it (a sidechain user line does not end
+                               the tie); a response after a line that cannot
+                               be decoded is not counted; a failed turn with
+                               no final message to judge is counted as not
+                               checked, never as clean; writes nothing
   rashomon forget --host H       evict every call that named host H
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T
