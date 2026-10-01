@@ -152,10 +152,12 @@ type Summary struct {
 	SilentFailureTurns SilentFailureTurns `json:"silent_failure_turns"`
 
 	Savings []Saving `json:"savings"`
-	// SavingsNotComputed names the savings that were billed but carry no
-	// amount in the transcript (SavingNotComputedRefusals,
-	// SavingNotComputedAttempts), so their absence from Savings is not read
-	// as "nothing to save there". Empty when there are none.
+	// SavingsNotComputed names the savings that were billed but have no
+	// figure -- no amount in the transcript (SavingNotComputedAttempts), or
+	// no known rate for the model that ran them
+	// (SavingNotComputedRefusalsUnpriced, SavingNotComputedAttemptsUnpriced)
+	// -- so their absence from Savings is not read as "nothing to save
+	// there". Empty when there are none.
 	SavingsNotComputed []string       `json:"savings_not_computed"`
 	PerSession         []SessionSpend `json:"per_session"`
 
@@ -416,6 +418,12 @@ const (
 	// SavingNotComputedAttempts: declined attempts with no output, billed
 	// only in some refusal categories, which no entry records.
 	SavingNotComputedAttempts = "declined_attempts_without_output"
+	// SavingNotComputedRefusalsUnpriced: refusals billed on a model the price
+	// table lacks.
+	SavingNotComputedRefusalsUnpriced = "billed_refusals_unpriced_model"
+	// SavingNotComputedAttemptsUnpriced: declined attempts that produced
+	// output on a model the price table lacks.
+	SavingNotComputedAttemptsUnpriced = "declined_attempts_unpriced_model"
 )
 
 // ModelNotRecorded names a model the transcript does not record: a refusal
@@ -948,7 +956,11 @@ func (s *Summary) buildSavings() {
 	// lever known. What else was billed with no amount in the transcript is
 	// named in SavingsNotComputed.
 	s.SavingsNotComputed = s.SavingsNotComputed[:0]
+	unpriced := false
 	for _, g := range s.Refusals.ByCategory {
+		if g.Cost.Unpriced > 0 && !pricedName(g.Model) {
+			unpriced = true
+		}
 		c := Cost{Nano: g.Cost.Nano, Priced: g.Cost.Priced}
 		if g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {
 			c.Unpriced = g.WithoutUsage
@@ -962,16 +974,22 @@ func (s *Summary) buildSavings() {
 		}
 		s.Savings = append(s.Savings, sv)
 	}
+	if unpriced {
+		s.SavingsNotComputed = append(s.SavingsNotComputed, SavingNotComputedRefusalsUnpriced)
+	}
 	asked := map[string]bool{}
 	for _, r := range s.ExtraAttempts.Fallback {
 		if !r.Sticky {
 			asked[r.Requested] = true
 		}
 	}
-	noOutput := false
+	noOutput, unpriced := false, false
 	for _, d := range s.ExtraAttempts.Declined {
 		if d.NoOutput > 0 {
 			noOutput = true
+		}
+		if d.unpricedWithOutput() > 0 {
+			unpriced = true
 		}
 		if d.Cost.Nano == 0 {
 			continue
@@ -987,6 +1005,25 @@ func (s *Summary) buildSavings() {
 	if noOutput {
 		s.SavingsNotComputed = append(s.SavingsNotComputed, SavingNotComputedAttempts)
 	}
+	if unpriced {
+		s.SavingsNotComputed = append(s.SavingsNotComputed, SavingNotComputedAttemptsUnpriced)
+	}
+}
+
+// pricedName reports whether a model as displayModel names it is a row of
+// the price table. A refusal group on a priced model can still carry an
+// unpriced part -- a pre-output refusal in a category whose billing is
+// unknown -- which is not a missing rate.
+func pricedName(name string) bool {
+	_, ok := RatesFor(name)
+	return ok
+}
+
+// unpricedWithOutput is the tokens of the declined attempts that produced
+// output on a model the table lacks: the unpriced tokens past the no-output
+// ones.
+func (d DeclinedAttempts) unpricedWithOutput() int64 {
+	return d.Cost.UnpricedTokens - d.NoOutputTokens
 }
 
 // coldWrites applies the cache-expiry heuristic to every response in the

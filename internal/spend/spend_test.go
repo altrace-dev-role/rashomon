@@ -1757,6 +1757,9 @@ func TestRefusals_APreOutputRefusalIsBilledByItsCategory(t *testing.T) {
 		if s.Total.Priced != 0 || s.Total.Unpriced != 1 || s.Total.UnpricedTokens != 1234 {
 			t.Errorf("total = %+v, want its tokens with the cost unknown", s.Total)
 		}
+		if len(s.SavingsNotComputed) != 0 {
+			t.Errorf("savings not computed = %v, want none: its model has a rate, its billing is what is unknown", s.SavingsNotComputed)
+		}
 		txt, _ := render(t, s)
 		if !strings.Contains(txt, "other on claude-opus-5-5: 1 response, 1,234 tokens, cost unknown") {
 			t.Errorf("text does not show the tokens with the cost unknown:\n%s", txt)
@@ -1912,6 +1915,38 @@ func TestSavings_BilledRefusalsAndDeclinedAttemptsByCategoryAndModel(t *testing.
 		}
 	}
 	if !strings.Contains(js, `"savings_not_computed":["declined_attempts_without_output"]`) {
+		t.Errorf("the JSON does not name what was not computed:\n%s", js)
+	}
+}
+
+// TestSavings_BilledSpendOnAnUnpricedModelIsNamedAsNotComputed: buildSavings
+// skipped every group with no priced part, so a billed refusal, or a declined
+// attempt that produced output, on a model the table lacks was in neither
+// savings nor savings_not_computed -- the list meant to name what could not
+// be computed missed it. Each is named, with its tokens and model.
+func TestSavings_BilledSpendOnAnUnpricedModelIsNamedAsNotComputed(t *testing.T) {
+	c := newConfig(t)
+	at := now.Add(-time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "cy", model: "claude-mystery-9", at: at, in: 1000, out: 50, stop: "refusal", category: "cyber"}.line("text"),
+		resp{id: "fb", model: "claude-opus-4-8", at: at, in: 412, out: 264, stop: "end_turn", iters: []resp{
+			{model: "claude-mystery-8", in: 2000, out: 70},
+			{typ: "fallback_message", model: "claude-opus-4-8", in: 412, out: 264}}}.line("text"))
+	s := c.summary(30)
+	want := []string{SavingNotComputedRefusalsUnpriced, SavingNotComputedAttemptsUnpriced}
+	if !reflect.DeepEqual(s.SavingsNotComputed, want) {
+		t.Errorf("savings not computed = %v, want %v", s.SavingsNotComputed, want)
+	}
+	txt, js := render(t, s)
+	for _, line := range []string{
+		"savings       not computed: 1,050 tokens on claude-mystery-9 billed refusals with no known rate\n",
+		"              not computed: 2,070 tokens on claude-mystery-8 declined attempts with no known rate\n",
+	} {
+		if !strings.Contains(txt, line) {
+			t.Errorf("text lacks %q:\n%s", line, txt)
+		}
+	}
+	if !strings.Contains(js, `"savings_not_computed":["billed_refusals_unpriced_model","declined_attempts_unpriced_model"]`) {
 		t.Errorf("the JSON does not name what was not computed:\n%s", js)
 	}
 }

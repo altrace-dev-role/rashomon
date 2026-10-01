@@ -74,7 +74,7 @@ func Text(w io.Writer, s *Summary) error {
 			lines = append(lines, savingLine(sv))
 		}
 		for _, k := range s.SavingsNotComputed {
-			lines = append(lines, notComputedLine(s, k))
+			lines = append(lines, notComputedLines(s, k)...)
 		}
 		writeLines(&b, "savings", lines)
 	}
@@ -352,7 +352,7 @@ func declinedLine(ds []DeclinedAttempts) string {
 			why = append(why, fmt.Sprintf("%s tokens on %s with no output, billed only in some refusal categories, which the transcript does not record",
 				thousands(d.NoOutputTokens), countOf(d.NoOutput, "attempt")))
 		}
-		if rest := d.Cost.UnpricedTokens - d.NoOutputTokens; rest > 0 {
+		if rest := d.unpricedWithOutput(); rest > 0 {
 			why = append(why, fmt.Sprintf("%s tokens, cost unknown: not in the price table", thousands(rest)))
 		}
 		if len(why) > 0 {
@@ -524,18 +524,37 @@ func savingLine(sv Saving) string {
 	return money(sv.Cost)
 }
 
-// notComputedLine says what a savings_not_computed kind leaves out.
-func notComputedLine(s *Summary, kind string) string {
+// notComputedLines says what a savings_not_computed kind leaves out: one
+// line, or one per model for spend on a model with no known rate.
+func notComputedLines(s *Summary, kind string) []string {
+	noRate := func(tokens int64, model, what string) string {
+		return fmt.Sprintf("not computed: %s tokens on %s %s with no known rate", thousands(tokens), model, what)
+	}
+	var out []string
 	switch kind {
 	case SavingNotComputedAttempts:
 		n := 0
 		for _, d := range s.ExtraAttempts.Declined {
 			n += d.NoOutput
 		}
-		return fmt.Sprintf("not computed: %s with no output, billed only in some refusal categories, which the transcript does not record",
-			countOf(n, "declined attempt"))
+		out = append(out, fmt.Sprintf("not computed: %s with no output, billed only in some refusal categories, which the transcript does not record",
+			countOf(n, "declined attempt")))
+	case SavingNotComputedRefusalsUnpriced:
+		for _, g := range s.Refusals.ByCategory {
+			if g.Cost.Unpriced > 0 && !pricedName(g.Model) {
+				out = append(out, noRate(g.Cost.UnpricedTokens, g.Model, "billed refusals"))
+			}
+		}
+	case SavingNotComputedAttemptsUnpriced:
+		for _, d := range s.ExtraAttempts.Declined {
+			if n := d.unpricedWithOutput(); n > 0 {
+				out = append(out, noRate(n, d.Model, "declined attempts"))
+			}
+		}
+	default:
+		out = append(out, "not computed: "+kind)
 	}
-	return "not computed: " + kind
+	return out
 }
 
 func countOf(n int, noun string) string {

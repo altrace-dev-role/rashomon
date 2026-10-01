@@ -1638,7 +1638,7 @@ m("SP the declined line's no-output clause carries every unpriced token", "inter
   "\t\t\t\tthousands(d.NoOutputTokens), countOf(d.NoOutput, \"attempt\")))", "\t\t\t\tthousands(d.Cost.UnpricedTokens), countOf(d.NoOutput, \"attempt\")))",
   "TestExtraAttempts_TheDeclinedLine")
 m("SP a declined attempt with output on an unpriced model is not said", "internal/spend/text.go",
-  "\t\tif rest := d.Cost.UnpricedTokens - d.NoOutputTokens; rest > 0 {", "\t\tif rest := d.Cost.UnpricedTokens - d.NoOutputTokens; d.NoOutput == 0 && rest > 0 {",
+  "\t\tif rest := d.unpricedWithOutput(); rest > 0 {", "\t\tif rest := d.unpricedWithOutput(); d.NoOutput == 0 && rest > 0 {",
   "TestExtraAttempts_TheDeclinedLine")
 m("SP the unpriced attempts are marshalled as responses", "internal/spend/spend.go",
   "\t\tUnpriced       int      `json:\"unpriced_attempts\"`", "\t\tUnpriced       int      `json:\"unpriced_responses\"`",
@@ -1649,6 +1649,16 @@ m("SP an unpriced attempt's tokens are left out of the totals", "internal/spend/
   "TestExtraAttempts_TheDeclinedLine")
 m("SP a model's row does not count its attempts", "internal/spend/spend.go",
   "\t\t\tam.Attempts++\n", "", "TestExtraAttempts_TheDeclinedLine")
+
+m("SP a billed refusal on an unpriced model is not named as not computed", "internal/spend/spend.go",
+  "\t\tif g.Cost.Unpriced > 0 && !pricedName(g.Model) {\n\t\t\tunpriced = true", "\t\tif false {\n\t\t\tunpriced = true",
+  "TestSavings_BilledSpendOnAnUnpriced")
+m("SP a declined attempt with output on an unpriced model is not named as not computed", "internal/spend/spend.go",
+  "\t\tif d.unpricedWithOutput() > 0 {\n\t\t\tunpriced = true", "\t\tif false {\n\t\t\tunpriced = true",
+  "TestSavings_BilledSpendOnAnUnpriced")
+m("SP an unknown-billing refusal on a priced model is named as having no known rate", "internal/spend/spend.go",
+  "\t\tif g.Cost.Unpriced > 0 && !pricedName(g.Model) {\n\t\t\tunpriced = true", "\t\tif g.Cost.Unpriced > 0 {\n\t\t\tunpriced = true",
+  "TestRefusals_APreOutputRefusalIsBilled")
 
 # Import additions some mutants need.
 IMPORTS = {
