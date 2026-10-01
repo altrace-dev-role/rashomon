@@ -288,7 +288,8 @@ asking the question never mints an install identity.
 **The transcript read.** The usage read decodes a narrow shape: `message.id`,
 `model`, `stop_reason`, `stop_details.category`, `usage`'s token counts and
 `speed`, each `usage.iterations` entry's counts, `type` and `model`, and the
-line's `timestamp`, `sessionId` and `isSidechain`. The category and an entry's
+line's `timestamp`, `sessionId`, `isSidechain` and `requestId` (a closed
+shape, `req_` and letters and digits). The category and an entry's
 type are closed words; a model reaches output only through the closed-shape
 rule `displayModel` applies. For a subagent transcript's user
 lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
@@ -353,10 +354,17 @@ and the header says the total leaves it out. A `fallback_message` last entry
 marks a response a fallback served. It is reported as the model asked (the
 first `message` entry) -> the model that served. With no `message` entry it was
 sticky-routed, and the model asked is said to be absent. Refusals are split by
-`stop_details.category` and model. A zero-usage refusal line (Claude Code's
-pre-output refusal) is counted, never priced. In `bio`, `frontier_llm` and
-`reasoning_extraction` it was billed, and the output says the amount is not in
-the transcript. The fixture is the page's own JSON example, until a real
+`stop_details.category` and model. Whether a refusal came before any output is
+read from `output_tokens` 0, never from the line's shape: Claude Code writes a
+zero-usage `<synthetic>` refusal line with the response's `requestId` after a
+mid-stream refusal too, and such a line is folded into the usage-bearing
+response with that `requestId` in the same file. A pre-output refusal is
+billed only in `bio`, `frontier_llm` and `reasoning_extraction`. In `cyber`,
+`general_harms` or uncategorized it is counted as not billed and left out of
+the total; in `other` its tokens are shown with the cost unknown. A zero-usage
+refusal line with no such response is counted, never priced; in a billed
+category it is a billed-refusal saving of unknown cost, and the header says
+the total leaves it out. The fixture is the page's own JSON example, until a real
 fallback transcript is captured.
 
 **The savings list.** A suggestion is printed only with the figure it rests

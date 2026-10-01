@@ -436,9 +436,9 @@ charged.
 `$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`, subagent transcripts
 included. The totals come from each API response's usage fields only: its id,
 model, stop reason, a refusal's category, token counts and speed, each retry
-attempt's counts, type and model, and the line's timestamp and session. Claude
-Code writes one response on several lines, so a response is counted once by
-its id.
+attempt's counts, type and model, and the line's timestamp, session and
+request id. Claude Code writes one response on several lines, so a response
+is counted once by its id.
 
 **What it shows.** Spend by agent, model, token kind and session. Cache
 re-written after a gap longer than its TTL, when the response read nothing
@@ -453,10 +453,16 @@ mentioned.
 
 **Refusals.** A refusal's `stop_details.category` is read as a closed word:
 `cyber`, `bio`, `frontier_llm`, `reasoning_extraction`, `general_harms`,
-`uncategorized` (null) or `other`. Claude Code writes a refusal that came
-before any output as one line with no usage. Such lines are counted by
-category. In `bio`, `frontier_llm` and `reasoning_extraction` the API bills
-them, and the output says the amount is not in the transcript.
+`uncategorized` (null) or `other`. A refusal partway through its output is
+billed at normal rates. One before any output (`output_tokens` 0) is billed
+only in `bio`, `frontier_llm` and `reasoning_extraction`; in the other named
+categories it is counted as not billed and left out of the total, and in
+`other` its tokens are shown with the cost unknown. After a refusal, Claude
+Code also writes one line whose usage is all zeros (model `<synthetic>`)
+with the same `requestId` as the response; that line is folded into the
+response. One with no such response is counted by category, and in a billed
+category the output says it was billed and the amount is not in the
+transcript.
 
 **The silent-failure line.** A turn counts when one of its recorded calls
 failed and its final message mentions no failure, whether or not a later call

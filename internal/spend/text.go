@@ -25,6 +25,10 @@ func Text(w io.Writer, s *Summary) error {
 		fmt.Fprintf(&b, "       the total leaves out %s tokens on %s whose cost is unknown (see retries)\n",
 			thousands(c.UnpricedTokens), countOf(c.Unpriced, "extra attempt"))
 	}
+	if n := s.Refusals.BilledWithoutAmount(); n > 0 {
+		fmt.Fprintf(&b, "       the total leaves out %s that %s billed (the amount is not in the transcript)\n",
+			countOf(n, "pre-output refusal"), wasWere(n))
+	}
 	switch {
 	case s.Read.Files == 0 && s.Read.FilesBeforeWindow > 0:
 		fmt.Fprintf(&b, "       no Claude Code transcript was written in the last %d days (%s last written before that %s not read)\n",
@@ -52,7 +56,7 @@ func Text(w io.Writer, s *Summary) error {
 			}
 			fmt.Fprintf(&b, "%-14s%s\n", label, line)
 		}
-	} else if s.Refusals.WithoutUsage > 0 {
+	} else if s.Refusals.WithoutUsage > 0 || s.Refusals.NotBilled > 0 {
 		writeLines(&b, "refusals", refusalLines(s.Refusals))
 	}
 
@@ -252,12 +256,16 @@ func writeLines(b *bytes.Buffer, label string, lines []string) {
 
 // refusalLines is the refusals in all, then one line per category and model.
 func refusalLines(r Refusals) []string {
-	if r.Responses == 0 && r.WithoutUsage == 0 {
+	if r.Responses == 0 && r.WithoutUsage == 0 && r.NotBilled == 0 {
 		return []string{"none (no response ended with stop_reason refusal)"}
 	}
 	var parts []string
 	if r.Responses > 0 {
-		parts = append(parts, fmt.Sprintf("%s ended in a refusal, %s", countOf(r.Responses, "response"), money(r.Cost)))
+		parts = append(parts, fmt.Sprintf("%s ended in a refusal, %s", countOf(r.Responses, "response"), tokensMoney(r.Cost)))
+	}
+	if r.NotBilled > 0 {
+		parts = append(parts, fmt.Sprintf("%s before any output with usage %s not billed, and not in the total",
+			countOf(r.NotBilled, "refusal"), wasWere(r.NotBilled)))
 	}
 	switch {
 	case r.WithoutUsage == 1:
@@ -269,7 +277,10 @@ func refusalLines(r Refusals) []string {
 	for _, g := range r.ByCategory {
 		var p []string
 		if g.Responses > 0 {
-			p = append(p, fmt.Sprintf("%s, %s", countOf(g.Responses, "response"), money(g.Cost)))
+			p = append(p, fmt.Sprintf("%s, %s", countOf(g.Responses, "response"), tokensMoney(g.Cost)))
+		}
+		if g.NotBilled > 0 {
+			p = append(p, fmt.Sprintf("%d before any output with usage, not billed (a pre-output refusal in this category is not)", g.NotBilled))
 		}
 		if g.WithoutUsage > 0 {
 			w := fmt.Sprintf("%d without usage, ", g.WithoutUsage)
@@ -283,9 +294,31 @@ func refusalLines(r Refusals) []string {
 			}
 			p = append(p, w)
 		}
-		out = append(out, fmt.Sprintf("%s on %s: %s", g.Category, g.Model, strings.Join(p, "; ")))
+		out = append(out, fmt.Sprintf("%s %s: %s", g.Category, onModel(g.Model), strings.Join(p, "; ")))
 	}
 	return out
+}
+
+// onModel names a refusal's model after its category: "on <model>", or
+// "(model not recorded)" for Claude Code's "<synthetic>" line, which "on
+// other" read as a model named other.
+func onModel(model string) string {
+	if model == ModelNotRecorded {
+		return "(model not recorded)"
+	}
+	return "on " + model
+}
+
+// tokensMoney is money with the tokens of an unpriced part shown: a refusal
+// whose cost is unknown still says how many tokens it held.
+func tokensMoney(c Cost) string {
+	switch {
+	case !c.Wholly():
+		return fmt.Sprintf("%s tokens, cost unknown", thousands(c.UnpricedTokens))
+	case !c.Known():
+		return fmt.Sprintf("%s, plus %s tokens with the cost unknown", usd(c.Nano), thousands(c.UnpricedTokens))
+	}
+	return money(c)
 }
 
 func attemptsLine(a ExtraAttempts) string {
@@ -451,7 +484,19 @@ func savingLine(sv Saving) string {
 		}
 		return line
 	case SavingBilledRefusals:
-		line := fmt.Sprintf("%s on %s refusals on %s", money(sv.Cost), sv.Category, sv.Model)
+		// The priced part, and the pre-output refusals billed with no
+		// amount in the transcript (an unpriced count).
+		var line string
+		unknown := fmt.Sprintf("%s %s %s billed; the amount is not in the transcript",
+			countOf(sv.Cost.Unpriced, "pre-output "+sv.Category+" refusal"), onModel(sv.Model), wasWere(sv.Cost.Unpriced))
+		switch {
+		case sv.Cost.Priced == 0:
+			line = unknown
+		case sv.Cost.Unpriced == 0:
+			line = fmt.Sprintf("%s on %s refusals %s", usd(sv.Cost.Nano), sv.Category, onModel(sv.Model))
+		default:
+			line = fmt.Sprintf("%s on %s refusals %s, and %s", usd(sv.Cost.Nano), sv.Category, onModel(sv.Model), unknown)
+		}
 		if sv.Hint == SavingHintReasoningInReply {
 			line += ": this category is a request for the model's internal reasoning in its reply, which the model gives as thinking instead"
 		}
@@ -471,15 +516,6 @@ func savingLine(sv Saving) string {
 // notComputedLine says what a savings_not_computed kind leaves out.
 func notComputedLine(s *Summary, kind string) string {
 	switch kind {
-	case SavingNotComputedRefusals:
-		n := 0
-		for _, g := range s.Refusals.ByCategory {
-			if g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {
-				n += g.WithoutUsage
-			}
-		}
-		return fmt.Sprintf("not computed: %s in a category billed before any output, whose amount is not in the transcript",
-			countOf(n, "pre-output refusal"))
 	case SavingNotComputedAttempts:
 		n := 0
 		for _, d := range s.ExtraAttempts.Declined {

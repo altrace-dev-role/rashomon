@@ -233,16 +233,27 @@ const CacheHeuristic = "a cache write on a response that read nothing from the c
 // Refusals is responses that ended with stop_reason "refusal", in all and by
 // category and model (ByCategory).
 //
-// WithoutUsage counts the refusal lines Claude Code writes with no usage at
-// all -- a pre-output classifier refusal is one zero-usage "<synthetic>" line
-// -- which Build otherwise drops with every zero-token response. A count, no
-// dollars: in a category the API bills before any output (BilledBeforeOutput)
-// such a refusal WAS billed, at the rates of the model that ran it, and the
-// amount is not in the transcript. Dropping them printed "refusals none"
-// beside a transcript that held a billed bio refusal.
+// Whether a refusal came before any output is read from output_tokens == 0,
+// never from the shape of the line, and such a refusal is billed by its
+// category (BilledBeforeOutput). Responses and Cost are the refusals in the
+// total: every one that produced output -- the page bills a mid-stream
+// refusal "at normal rates", whatever its category -- every pre-output one
+// in a billed category, and a pre-output one in a category this read does
+// not know, with its tokens shown and its cost unknown. NotBilled counts the
+// pre-output refusals with usage in a category the page says is not billed
+// (cyber, general_harms, uncategorized): out of every figure.
+//
+// WithoutUsage counts the zero-usage refusal lines that report no response
+// with usage (Scan.foldRefusalMessages folds the rest into theirs), which
+// Build otherwise drops with every zero-token response. A count, no dollars:
+// in a category the API bills before any output such a refusal WAS billed, at
+// the rates of the model that ran it, and the amount is not in the
+// transcript. Dropping them printed "refusals none" beside a transcript that
+// held a billed bio refusal.
 type Refusals struct {
 	Responses    int            `json:"responses"`
 	Cost         Cost           `json:"cost"`
+	NotBilled    int            `json:"not_billed"`
 	WithoutUsage int            `json:"without_usage"`
 	ByCategory   []RefusalGroup `json:"by_category"`
 }
@@ -250,12 +261,14 @@ type Refusals struct {
 // RefusalGroup is one category's refusals on one model: a classifier decline
 // in a named category is told apart from the rest. BilledBeforeOutput is
 // whether the API bills a pre-output refusal in the category, null for a
-// category this read does not know.
+// category this read does not know. Model is ModelNotRecorded for Claude
+// Code's "<synthetic>" refusal line.
 type RefusalGroup struct {
 	Category           string `json:"category"`
 	Model              string `json:"model"`
 	Responses          int    `json:"responses"`
 	Cost               Cost   `json:"cost"`
+	NotBilled          int    `json:"not_billed"`
 	WithoutUsage       int    `json:"without_usage"`
 	BilledBeforeOutput *bool  `json:"billed_before_output"`
 }
@@ -368,15 +381,19 @@ const (
 )
 
 // Savings that were billed but carry no amount in the transcript, named in
-// savings_not_computed rather than left out without a word.
+// savings_not_computed rather than left out without a word. (A pre-output
+// refusal in a billed category written with no usage is not here: its
+// category and model are known, so it is a billed_refusals saving whose cost
+// is unknown.)
 const (
-	// SavingNotComputedRefusals: pre-output refusals in a category the API
-	// bills before any output, written with no usage.
-	SavingNotComputedRefusals = "billed_refusals_without_usage"
 	// SavingNotComputedAttempts: declined attempts with no output, billed
 	// only in some refusal categories, which no entry records.
 	SavingNotComputedAttempts = "declined_attempts_without_output"
 )
+
+// ModelNotRecorded names the model of a refusal Claude Code wrote as a
+// "<synthetic>" line: the line does not say which model refused.
+const ModelNotRecorded = "not_recorded"
 
 // SavingHintReasoningInReply: the refusals were in the reasoning_extraction
 // category, which the refusals-and-fallback page describes as a request that
@@ -408,7 +425,14 @@ type priced struct {
 
 func (p priced) total() int64 { return p.input + p.output + p.cacheWrite + p.cacheRead }
 
-func price(r *Response) priced { return priceTokens(r.Model, r.Tokens) }
+// price prices a response at its model's rates; a pre-output refusal in a
+// category whose billing is unknown is priced as unknown, whatever its model.
+func price(r *Response) priced {
+	if r.costUnknown {
+		return priced{}
+	}
+	return priceTokens(r.Model, r.Tokens)
+}
 
 func priceTokens(model string, t Tokens) priced {
 	key, ok := PriceKey(model)
@@ -518,8 +542,10 @@ func displaySession(id string) string {
 // local errors with an all-zero usage; nothing was billed for them, and
 // listing a model named "other" with zero tokens and an unknown cost would be
 // noise that looks like a finding. The one place: a zero-usage line that
-// ended in a refusal is a pre-output refusal, counted in
-// Refusals.WithoutUsage.
+// ended in a refusal and reports no response with usage is a pre-output
+// refusal, counted in Refusals.WithoutUsage. A pre-output refusal with usage
+// in a category that is not billed is likewise counted, in
+// Refusals.NotBilled, and nowhere else.
 func Build(sc *Scan, now time.Time, days int) *Summary {
 	from := WindowStart(now, days)
 	latest := now.Add(futureSlack).UnixMilli()
@@ -567,7 +593,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 	routes := map[FallbackRoute]int{}
 	refusals := map[[2]string]*RefusalGroup{}
 	refusal := func(r *Response) *RefusalGroup {
-		k := [2]string{r.Category, displayName(r.Model)}
+		k := [2]string{r.Category, refusalModel(r.Model)}
 		g := refusals[k]
 		if g == nil {
 			g = &RefusalGroup{Category: k[0], Model: k[1]}
@@ -591,6 +617,11 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 				s.Refusals.WithoutUsage++
 				refusal(r).WithoutUsage++
 			}
+			continue
+		}
+		if r.notBilled {
+			s.Refusals.NotBilled++
+			refusal(r).NotBilled++
 			continue
 		}
 		s.window = append(s.window, r)
@@ -674,7 +705,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			s.CacheExpiry.Tokens += w.CacheWrite5m + w.CacheWrite1h
 			s.CacheExpiry.Tokens5m += w.CacheWrite5m
 			s.CacheExpiry.Tokens1h += w.CacheWrite1h
-			if key, ok := PriceKey(r.Model); ok {
+			if key, ok := PriceKey(r.Model); ok && !r.costUnknown {
 				rt, _ := RatesFor(key)
 				s.CacheExpiry.Cost.addPriced(w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead))
 			} else {
@@ -779,6 +810,29 @@ func (e *ExtraAttempts) add(r *Response, declined map[string]*DeclinedAttempts, 
 	}
 }
 
+// refusalModel is how a refusal group names its model: ModelNotRecorded for
+// Claude Code's "<synthetic>" line, which names none, and displayModel's name
+// otherwise -- "other" read as a model of that name.
+func refusalModel(model string) string {
+	if model == "<synthetic>" {
+		return ModelNotRecorded
+	}
+	return displayName(model)
+}
+
+// BilledWithoutAmount is the pre-output refusals in a billed category written
+// with no usage: billed, and not in the total, since the transcript does not
+// hold the amount.
+func (r Refusals) BilledWithoutAmount() int {
+	n := 0
+	for _, g := range r.ByCategory {
+		if g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {
+			n += g.WithoutUsage
+		}
+	}
+	return n
+}
+
 // displayName is displayModel's name alone.
 func displayName(model string) string {
 	name, _ := displayModel(model)
@@ -847,26 +901,26 @@ func (s *Summary) buildSavings() {
 		s.Savings = append(s.Savings, Saving{Kind: SavingSilentFailure, Cost: s.SilentFailureTurns.Cost})
 	}
 
-	// Refusals and declined attempts, by category and model. Only the
-	// priced part is a figure; what was billed with no amount in the
-	// transcript is named in SavingsNotComputed.
+	// Refusals and declined attempts, by category and model. A billed
+	// refusal's figure is its priced part; a pre-output refusal in a billed
+	// category written with no usage was billed too, so it is in the same
+	// entry as an unpriced count -- the cost unknown, the category, model and
+	// lever known. What else was billed with no amount in the transcript is
+	// named in SavingsNotComputed.
 	s.SavingsNotComputed = s.SavingsNotComputed[:0]
-	unrecorded := false
 	for _, g := range s.Refusals.ByCategory {
-		if g.WithoutUsage > 0 && g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {
-			unrecorded = true
+		c := Cost{Nano: g.Cost.Nano, Priced: g.Cost.Priced}
+		if g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {
+			c.Unpriced = g.WithoutUsage
 		}
-		if g.Cost.Nano == 0 {
+		if c.Nano == 0 && c.Unpriced == 0 {
 			continue
 		}
-		sv := Saving{Kind: SavingBilledRefusals, Category: g.Category, Model: g.Model, Cost: g.Cost}
+		sv := Saving{Kind: SavingBilledRefusals, Category: g.Category, Model: g.Model, Cost: c}
 		if g.Category == CategoryReasoningExtraction {
 			sv.Hint = SavingHintReasoningInReply
 		}
 		s.Savings = append(s.Savings, sv)
-	}
-	if unrecorded {
-		s.SavingsNotComputed = append(s.SavingsNotComputed, SavingNotComputedRefusals)
 	}
 	asked := map[string]bool{}
 	for _, r := range s.ExtraAttempts.Fallback {

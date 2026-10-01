@@ -39,7 +39,8 @@ var userMarker = []byte(`"user"`)
 // message.id, message.model, message.stop_reason, message.stop_details'
 // category, message.usage's token
 // counts and speed, each usage.iterations entry's counts, type and model, and
-// the line's timestamp, sessionId and isSidechain -- and, for a
+// the line's timestamp, sessionId, isSidechain and requestId (a closed shape,
+// requestIDShaped) -- and, for a
 // subagent transcript's user lines, type, isMeta and promptId, the key that
 // ties the responses after them to a turn. There is no
 // field for message.content -- or for anything else -- so encoding/json skips
@@ -69,7 +70,24 @@ type line struct {
 	IsSidechain bool    `json:"isSidechain"`
 	IsMeta      bool    `json:"isMeta"`
 	PromptID    string  `json:"promptId"`
+	RequestID   string  `json:"requestId"`
 	Message     message `json:"message"`
+}
+
+// requestIDShaped reports whether a line's requestId has the closed shape an
+// API request id has: "req_" and then letters and digits, bounded. Anything
+// else is no request id, and matches nothing (foldRefusalMessages).
+func requestIDShaped(s string) bool {
+	rest, ok := strings.CutPrefix(s, "req_")
+	if !ok || rest == "" || len(rest) > 128 {
+		return false
+	}
+	for _, c := range rest {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 type message struct {
@@ -331,6 +349,16 @@ type Response struct {
 
 	// complete is true when the kept line carried a stop_reason; see keep.
 	complete bool
+
+	// requestID is the line's requestId when it has the closed shape
+	// (requestIDShaped), "" otherwise.
+	requestID string
+
+	// A refusal before any output (output_tokens 0) is billed by its
+	// category (BilledBeforeOutput), so Read marks one with usage either
+	// notBilled -- out of every figure, counted -- or, in a category this
+	// read does not know, costUnknown: its tokens shown, its cost unknown.
+	notBilled, costUnknown bool
 }
 
 // sighting is one file a response was seen in, with the session id the
@@ -623,13 +651,64 @@ func Read(found *Found) (*Scan, error) {
 			sc.Unreadable++
 		}
 	}
+	sc.foldRefusalMessages()
 	for _, r := range sc.Responses {
 		if r.StartMS == 0 {
 			sc.Undated++
 		}
 		r.SessionID = sc.ownerSighting(r).session
+		if r.StopReason == "refusal" && r.Tokens.Output == 0 && r.Tokens.Total() > 0 {
+			switch billed, known := BilledBeforeOutput(r.Category); {
+			case !known:
+				r.costUnknown = true
+			case !billed:
+				r.notBilled = true
+			}
+		}
 	}
 	return sc, nil
+}
+
+// foldRefusalMessages folds each zero-usage refusal line into the response it
+// reports, when there is one.
+//
+// After a refusal with no fallback, Claude Code writes a separate zero-usage
+// "<synthetic>" line with stop_reason "refusal", the response's
+// stop_details and the same requestId as the real response -- after a
+// mid-stream refusal too, not only before any output. Every zero-usage
+// refusal line was read as a pre-output refusal, so a mid-stream refusal was
+// counted twice: priced, and again as "written without usage". So a
+// zero-usage refusal line whose requestId names a response with usage in the
+// same file is that response's: the response is marked a refusal of its
+// category if its own lines did not say so, and the line is dropped. Only an
+// unmatched one is a refusal without usage (Refusals.WithoutUsage).
+func (sc *Scan) foldRefusalMessages() {
+	type key struct {
+		idx int
+		req string
+	}
+	billed := map[key]*Response{}
+	for _, r := range sc.Responses {
+		if r.requestID == "" || r.Tokens.Total() == 0 && len(r.Attempts) == 0 {
+			continue
+		}
+		for _, f := range r.files {
+			billed[key{f.idx, r.requestID}] = r
+		}
+	}
+	out := sc.Responses[:0]
+	for _, r := range sc.Responses {
+		if r.StopReason == "refusal" && r.requestID != "" && r.Tokens.Total() == 0 && len(r.Attempts) == 0 {
+			if into := billed[key{r.file, r.requestID}]; into != nil {
+				if into.StopReason != "refusal" {
+					into.StopReason, into.Category = "refusal", r.Category
+				}
+				continue
+			}
+		}
+		out = append(out, r)
+	}
+	sc.Responses = out
 }
 
 // ownerSighting is the sighting a response's session is taken from: for a
@@ -758,6 +837,9 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			cand.SessionID = f.Session
 		}
 		cand.files = []sighting{{idx, cand.SessionID}}
+		if requestIDShaped(l.RequestID) {
+			cand.requestID = l.RequestID
+		}
 		if stop == "refusal" {
 			cand.Category = refusalCategory(l.Message.StopDetails)
 		}
@@ -790,6 +872,9 @@ func keep(prev, cand *Response) {
 	}
 	if cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS < prev.StartMS) {
 		prev.StartMS = cand.StartMS
+	}
+	if prev.requestID == "" {
+		prev.requestID = cand.requestID
 	}
 	better := (cand.complete && !prev.complete) ||
 		(cand.complete == prev.complete && cand.Tokens.Output > prev.Tokens.Output)

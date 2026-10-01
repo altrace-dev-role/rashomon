@@ -1450,9 +1450,9 @@ m("SP a decoded field under an allowed tag holds whatever it is handed", "intern
 m("SP a zero-usage refusal line is not counted", "internal/spend/spend.go",
   "\t\t\t\ts.Refusals.WithoutUsage++", "\t\t\t\t_ = s", "TestRefusals_")
 m("SP refusals without usage read as refusals none", "internal/spend/text.go",
-  "\tif r.Responses == 0 && r.WithoutUsage == 0 {", "\tif r.Responses == 0 {", "TestRefusals_")
+  "\tif r.Responses == 0 && r.WithoutUsage == 0 && r.NotBilled == 0 {", "\tif r.Responses == 0 && r.NotBilled == 0 {", "TestRefusals_")
 m("SP a refusal without usage is not said when nothing else was billed", "internal/spend/text.go",
-  "\t} else if s.Refusals.WithoutUsage > 0 {", "\t} else if false {", "TestRefusals_")
+  "\t} else if s.Refusals.WithoutUsage > 0 || s.Refusals.NotBilled > 0 {", "\t} else if false {", "TestRefusals_")
 m("SP the silent-failure line says the turns ended with a failure", "internal/spend/text.go",
   'const lead = "in turns with a failed call the summary never mentioned: "', 'const lead = "in turns that ended with a failure the summary never mentioned: "',
   "TestJoin_SpendInsideASilentlyFailedTurn")
@@ -1537,10 +1537,10 @@ m("SP a zero-usage refusal is not split by category", "internal/spend/spend.go",
   "\t\t\t\trefusal(r).WithoutUsage++\n", "",
   "TestRefusals_")
 m("SP refusals are not split by model", "internal/spend/spend.go",
-  "\t\tk := [2]string{r.Category, displayName(r.Model)}", "\t\tk := [2]string{r.Category, \"other\"}",
+  "\t\tk := [2]string{r.Category, refusalModel(r.Model)}", "\t\tk := [2]string{r.Category, \"other\"}",
   "TestRefusals_AreSplitByCategoryAndModel")
 m("SP a refusal's model is printed as read", "internal/spend/spend.go",
-  "\t\tk := [2]string{r.Category, displayName(r.Model)}", "\t\tk := [2]string{r.Category, r.Model}",
+  "\t\tk := [2]string{r.Category, refusalModel(r.Model)}", "\t\tk := [2]string{r.Category, r.Model}",
   "TestContentNeverReachesTheOutput")
 m("SP a billed pre-output refusal is not said to be billed", "internal/spend/text.go",
   "\t\t\tcase *g.BilledBeforeOutput:\n", "\t\t\tcase false:\n",
@@ -1553,7 +1553,7 @@ m("SP a refusal's category reaches the output end to end", "internal/spend/scan.
   "\treturn *d.Category\n",
   "TestSpend_NoMessageTextReachesTheOutput")
 m("SP a billed refusal is not a saving", "internal/spend/spend.go",
-  "\t\tif g.Cost.Nano == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tsv := Saving{Kind: SavingBilledRefusals", "\t\tif true {\n\t\t\tcontinue\n\t\t}\n\t\tsv := Saving{Kind: SavingBilledRefusals",
+  "\t\tif c.Nano == 0 && c.Unpriced == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tsv := Saving{Kind: SavingBilledRefusals", "\t\tif true {\n\t\t\tcontinue\n\t\t}\n\t\tsv := Saving{Kind: SavingBilledRefusals",
   "TestSavings_|TestRefusalsAndExtraAttempts")
 m("SP the reasoning_extraction lever is not named", "internal/spend/spend.go",
   "\t\t\tsv.Hint = SavingHintReasoningInReply", "\t\t\tsv.Hint = \"\"", "TestSavings_")
@@ -1565,10 +1565,10 @@ m("SP the served-model lever is not named", "internal/spend/spend.go",
   "\t\t\tsv.Hint = SavingHintServedModel", "\t\t\tsv.Hint = \"\"", "TestSavings_")
 m("SP a declined-attempt saving carries the unpriced attempts", "internal/spend/spend.go",
   "\t\tc := Cost{Nano: d.Cost.Nano, Priced: d.Cost.Priced}", "\t\tc := d.Cost", "TestSavings_")
-m("SP a billed pre-output refusal is not named as not computed", "internal/spend/spend.go",
-  "\t\t\tunrecorded = true", "\t\t\tunrecorded = false", "TestSavings_")
-m("SP an unbilled pre-output refusal is named as not computed", "internal/spend/spend.go",
-  "\t\tif g.WithoutUsage > 0 && g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {\n\t\t\tunrecorded = true", "\t\tif g.WithoutUsage > 0 {\n\t\t\tunrecorded = true",
+m("SP a billed pre-output refusal without usage is not a saving", "internal/spend/spend.go",
+  "\t\t\tc.Unpriced = g.WithoutUsage", "\t\t\tc.Unpriced = 0", "TestSavings_|TestRefusals_APreOutputRefusalIsBilled")
+m("SP an unbilled pre-output refusal without usage is a saving", "internal/spend/spend.go",
+  "\t\tif g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {\n\t\t\tc.Unpriced = g.WithoutUsage", "\t\tif true {\n\t\t\tc.Unpriced = g.WithoutUsage",
   "TestRefusals_")
 m("SP a no-output declined attempt is not named as not computed", "internal/spend/spend.go",
   "\t\t\tnoOutput = true", "\t\t\tnoOutput = false", "TestSavings_")
@@ -1588,6 +1588,40 @@ m("SP a shared response's session is the first sighting's", "internal/spend/scan
 m("SP a transcript is named by the session of its first-seen response", "internal/spend/join.go",
   "\tfor m := range byTranscript {\n\t\tid := sessionOf[m]", "\tfor m, rs := range byTranscript {\n\t\tid := rs[0].SessionID",
   "TestJoin_ADuplicatedResponse|TestJoin_ASharedResponse")
+
+m("SP a refusal's synthetic line is counted again as a pre-output refusal", "internal/spend/scan.go",
+  "\t\t\tif into := billed[key{r.file, r.requestID}]; into != nil {", "\t\t\tif into := billed[key{r.file, r.requestID}]; false && into != nil {",
+  "TestRefusals_AMidStream")
+m("SP a synthetic line is folded into a response in another file", "internal/spend/scan.go",
+  "\t\tfor _, f := range r.files {\n\t\t\tbilled[key{f.idx, r.requestID}] = r", "\t\tfor range r.files {\n\t\t\tbilled[key{0, r.requestID}] = r",
+  "TestRefusals_AMidStream")
+m("SP a requestId is read whatever its shape", "internal/spend/scan.go",
+  "\t\tif requestIDShaped(l.RequestID) {", "\t\tif l.RequestID != \"\" {", "TestRefusals_AMidStream")
+m("SP a folded synthetic line does not make its response a refusal", "internal/spend/scan.go",
+  "\t\t\t\tif into.StopReason != \"refusal\" {\n", "\t\t\t\tif false {\n", "TestRefusals_AMidStream")
+m("SP an unbilled pre-output refusal with usage is in the total", "internal/spend/scan.go",
+  "\t\t\tcase !billed:\n\t\t\t\tr.notBilled = true", "\t\t\tcase false && !billed:\n\t\t\t\tr.notBilled = true",
+  "TestRefusals_APreOutputRefusalIsBilled|TestRefusals_AreSplit")
+m("SP a pre-output refusal of unknown billing is priced", "internal/spend/scan.go",
+  "\t\t\tcase !known:\n\t\t\t\tr.costUnknown = true", "\t\t\tcase false && !known:\n\t\t\t\tr.costUnknown = true",
+  "TestRefusals_APreOutputRefusalIsBilled")
+m("SP a response of unknown billing is priced at its model's rates", "internal/spend/spend.go",
+  "\tif r.costUnknown {\n\t\treturn priced{}", "\tif false {\n\t\treturn priced{}", "TestRefusals_APreOutputRefusalIsBilled")
+m("SP the header does not say the total leaves out billed pre-output refusals", "internal/spend/text.go",
+  "\tif n := s.Refusals.BilledWithoutAmount(); n > 0 {", "\tif n := s.Refusals.BilledWithoutAmount(); false && n > 0 {",
+  "TestRefusals_APreOutputRefusalIsBilled")
+m("SP a synthetic refusal group reads as a model named other", "internal/spend/spend.go",
+  "\tif model == \"<synthetic>\" {\n\t\treturn ModelNotRecorded", "\tif false {\n\t\treturn ModelNotRecorded",
+  "TestRefusals_")
+m("SP general_harms is billed before any output", "internal/spend/scan.go",
+  "\tcase CategoryCyber, CategoryGeneralHarms, CategoryUncategorized:\n\t\treturn false, true", "\tcase CategoryCyber, CategoryUncategorized:\n\t\treturn false, true\n\tcase CategoryGeneralHarms:\n\t\treturn true, true",
+  "TestRefusals_AreSplitByCategoryAndModel")
+m("SP frontier_llm is not billed before any output", "internal/spend/scan.go",
+  "\tcase CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction:\n\t\treturn true, true", "\tcase CategoryBio, CategoryReasoningExtraction:\n\t\treturn true, true",
+  "TestRefusals_AreSplitByCategoryAndModel")
+m("SP reasoning_extraction is not billed before any output", "internal/spend/scan.go",
+  "\tcase CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction:\n\t\treturn true, true", "\tcase CategoryBio, CategoryFrontierLLM:\n\t\treturn true, true",
+  "TestRefusals_AreSplitByCategoryAndModel")
 
 # Import additions some mutants need.
 IMPORTS = {

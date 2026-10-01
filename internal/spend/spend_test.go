@@ -38,6 +38,7 @@ type resp struct {
 	noSplit            bool   // write cache_creation_input_tokens without the TTL split
 	speed              string // usage.speed, when set
 	text               string // the text block's words, when not the default
+	requestID          string // the line's top-level requestId, when set
 }
 
 func (r resp) usage() map[string]any {
@@ -128,6 +129,9 @@ func (r resp) line(block string) string {
 	}
 	if !r.noTimestamp {
 		obj["timestamp"] = r.at.UTC().Format(time.RFC3339Nano)
+	}
+	if r.requestID != "" {
+		obj["requestId"] = r.requestID
 	}
 	b, err := json.Marshal(obj)
 	if err != nil {
@@ -1446,16 +1450,15 @@ func TestExtraAttempts_AStickyRoutedResponseIsReported(t *testing.T) {
 	}
 }
 
-// TestRefusals_APreOutputRefusalWithoutUsageIsCounted: Claude Code writes a
-// pre-output classifier refusal as one zero-usage line, and Build dropped it
-// with every zero-token response -- so a transcript holding a refusal printed
-// "refusals none". It is counted, a count only, and the text says its billing
-// cannot be read. With no other response, the line is still printed.
+// TestRefusals_APreOutputRefusalWithoutUsageIsCounted: a zero-usage refusal
+// line that reports no response with usage (refusalMessage) was dropped by
+// Build with every zero-token response -- so a transcript holding a refusal
+// printed "refusals none". It is counted, a count only, and the text says
+// what the page says of its billing. With no other response, the line is
+// still printed.
 func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 	at := now.Add(-time.Hour)
-	synthetic := func(id string) string {
-		return resp{id: id, model: "<synthetic>", at: at, stop: "refusal"}.line("text")
-	}
+	synthetic := func(id string) string { return refusalMessage(id, "", "", at) }
 	for _, tc := range []struct {
 		name  string
 		lines []string
@@ -1465,10 +1468,10 @@ func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 		{"beside a billed response", []string{
 			resp{id: "r", model: "claude-opus-5-5", at: at, in: 10, stop: "end_turn"}.line("text"), synthetic("z1"), synthetic("z2")}, 2,
 			"refusals      2 pre-output refusals were written without usage\n" +
-				"              uncategorized on other: 2 without usage, not billed (a pre-output refusal in this category is not)\n"},
+				"              uncategorized (model not recorded): 2 without usage, not billed (a pre-output refusal in this category is not)\n"},
 		{"alone", []string{synthetic("z1")}, 1,
 			"refusals      1 pre-output refusal was written without usage\n" +
-				"              uncategorized on other: 1 without usage, not billed (a pre-output refusal in this category is not)\n"},
+				"              uncategorized (model not recorded): 1 without usage, not billed (a pre-output refusal in this category is not)\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newConfig(t)
@@ -1490,6 +1493,149 @@ func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 	}
 }
 
+// refusalMessage is the zero-usage line Claude Code writes after a refusal
+// with no fallback: model "<synthetic>", stop_reason "refusal", the
+// response's stop_details, and the same requestId as the real response. The
+// shape is Claude Code's own refusal-message builder's, read from Claude Code
+// 2.1.280's compiled code (no transcript with one has been captured yet); it
+// writes this line after a mid-stream refusal too, not only before any
+// output.
+func refusalMessage(id, requestID, category string, at time.Time) string {
+	return resp{id: id, model: "<synthetic>", at: at, stop: "refusal", category: category, requestID: requestID}.line("text")
+}
+
+// TestRefusals_AMidStreamRefusalIsCountedOnce: a mid-stream refusal is the
+// response that streamed, with its usage, and then Claude Code's zero-usage
+// "<synthetic>" line for the same request. Every zero-usage refusal line was
+// counted as a pre-output refusal, so this one refusal printed twice -- once
+// priced, once "written without usage", with a not-computed line beside it
+// and a bio group "on other" saying the amount was not in the transcript. The
+// synthetic line is folded into the response with the same requestId in the
+// same file -- also when the streamed line carries no stop_reason of its own
+// -- so it is one refusal, billed at the rates of the model that ran it.
+func TestRefusals_AMidStreamRefusalIsCountedOnce(t *testing.T) {
+	at := now.Add(-time.Hour)
+	for _, stop := range []string{"refusal", ""} {
+		t.Run("response stop_reason "+stop, func(t *testing.T) {
+			c := newConfig(t)
+			c.write("proj/sess-a.jsonl",
+				resp{id: "msg_r", model: "claude-fable-5-1", at: at, in: 50000, out: 300, stop: stop, category: "bio",
+					requestID: "req_011A"}.line("text"),
+				refusalMessage("syn_1", "req_011A", "bio", at.Add(time.Second)))
+			s := c.summary(30)
+			r := s.Refusals
+			want := Cost{Nano: 50000*10000 + 300*50000, Priced: 1}
+			if r.Responses != 1 || r.WithoutUsage != 0 || r.Cost != want {
+				t.Errorf("refusals = %+v; want one refusal at %+v and none without usage", r, want)
+			}
+			if len(r.ByCategory) != 1 || r.ByCategory[0].Category != "bio" || r.ByCategory[0].Model != "claude-fable-5-1" {
+				t.Errorf("by category = %+v, want bio on claude-fable-5-1 alone", r.ByCategory)
+			}
+			txt, js := render(t, s)
+			if strings.Contains(txt, "without usage") || strings.Contains(txt, "not computed") || !strings.Contains(js, `"savings_not_computed":[]`) {
+				t.Errorf("the refusal is counted again as a pre-output one:\n%s\n%s", txt, js)
+			}
+		})
+	}
+	// A synthetic line whose requestId matches nothing in its own file, or
+	// is not a request id at all, is a pre-output refusal of its own.
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "msg_r", model: "claude-fable-5-1", at: at, in: 50000, out: 300, stop: "refusal", category: "bio", requestID: "req_011A"}.line("text"),
+		resp{id: "msg_q", model: "claude-fable-5-1", at: at, in: 50000, out: 300, stop: "refusal", category: "bio", requestID: "not/a-request-id"}.line("text"),
+		refusalMessage("syn_1", "req_011B", "bio", at.Add(time.Second)),
+		refusalMessage("syn_2", "not/a-request-id", "bio", at.Add(time.Second)))
+	c.write("other/sess-b.jsonl", refusalMessage("syn_3", "req_011A", "bio", at.Add(time.Second)))
+	if s := c.summary(30); s.Refusals.Responses != 2 || s.Refusals.WithoutUsage != 3 {
+		t.Errorf("refusals = %+v; want 2 with usage and 3 without", s.Refusals)
+	}
+}
+
+// TestRefusals_APreOutputRefusalIsBilledByItsCategory: the page bills a
+// refusal before any output only in bio, frontier_llm and
+// reasoning_extraction; in cyber, general_harms or with a null category it
+// "is not billed". Pre-output was read from the line's shape -- a zero-usage
+// line -- so a cyber refusal with usage and no output went into the total and
+// billed_refusals. It is read from output_tokens == 0: such a refusal is out
+// of the total and the savings and counted as not billed; one in a category
+// this read does not know shows its tokens with the cost unknown; and a
+// billed one with no amount (a zero-usage line) is a billed_refusals entry of
+// unknown cost, by category and model, with its lever where it has one --
+// never only a count with no category, model or lever.
+func TestRefusals_APreOutputRefusalIsBilledByItsCategory(t *testing.T) {
+	at := now.Add(-time.Hour)
+	t.Run("cyber with usage and no output", func(t *testing.T) {
+		c := newConfig(t)
+		c.write("proj/sess-a.jsonl",
+			resp{id: "r", model: "claude-opus-5-5", at: at, in: 10, stop: "end_turn"}.line("text"),
+			resp{id: "cy", model: "claude-opus-5-5", at: at, in: 10000, stop: "refusal", category: "cyber"}.line("text"))
+		s := c.summary(30)
+		if s.Total.Nano != 10*opusIn || s.Responses != 1 {
+			t.Errorf("total = %d over %d responses, want %d over 1: an unbilled refusal is in the total", s.Total.Nano, s.Responses, 10*opusIn)
+		}
+		if len(s.Savings) != 0 {
+			t.Errorf("savings = %+v, want none: the refusal was not billed", s.Savings)
+		}
+		if s.Refusals.NotBilled != 1 || s.Refusals.Responses != 0 || len(s.Refusals.ByCategory) != 1 || s.Refusals.ByCategory[0].NotBilled != 1 {
+			t.Errorf("refusals = %+v, want one not billed", s.Refusals)
+		}
+		txt, _ := render(t, s)
+		if !strings.Contains(txt, "cyber on claude-opus-5-5: 1 before any output with usage, not billed (a pre-output refusal in this category is not)\n") {
+			t.Errorf("text does not say the refusal was not billed:\n%s", txt)
+		}
+	})
+	t.Run("other with usage and no output", func(t *testing.T) {
+		c := newConfig(t)
+		c.write("proj/sess-a.jsonl",
+			resp{id: "o", model: "claude-opus-5-5", at: at, in: 1234, stop: "refusal", category: "a_new_category"}.line("text"))
+		s := c.summary(30)
+		if s.Total.Priced != 0 || s.Total.Unpriced != 1 || s.Total.UnpricedTokens != 1234 {
+			t.Errorf("total = %+v, want its tokens with the cost unknown", s.Total)
+		}
+		txt, _ := render(t, s)
+		if !strings.Contains(txt, "other on claude-opus-5-5: 1 response, 1,234 tokens, cost unknown") {
+			t.Errorf("text does not show the tokens with the cost unknown:\n%s", txt)
+		}
+	})
+	t.Run("reasoning_extraction without usage", func(t *testing.T) {
+		c := newConfig(t)
+		c.write("proj/sess-a.jsonl",
+			resp{id: "r", model: "claude-opus-5-5", at: at, in: 10, stop: "end_turn"}.line("text"),
+			refusalMessage("z1", "", "reasoning_extraction", at), refusalMessage("z2", "", "frontier_llm", at))
+		s := c.summary(30)
+		want := []Saving{
+			{Kind: SavingBilledRefusals, Category: "frontier_llm", Model: ModelNotRecorded, Cost: Cost{Unpriced: 1}},
+			{Kind: SavingBilledRefusals, Category: "reasoning_extraction", Model: ModelNotRecorded, Cost: Cost{Unpriced: 1},
+				Hint: SavingHintReasoningInReply},
+		}
+		if !reflect.DeepEqual(s.Savings, want) || len(s.SavingsNotComputed) != 0 {
+			t.Errorf("savings = %+v, not computed %v\nwant %+v", s.Savings, s.SavingsNotComputed, want)
+		}
+		txt, js := render(t, s)
+		for _, line := range []string{
+			"              reasoning_extraction (model not recorded): 1 without usage, billed before any output in this category; the amount is not in the transcript\n",
+			"savings       1 pre-output frontier_llm refusal (model not recorded) was billed; the amount is not in the transcript\n",
+			"              1 pre-output reasoning_extraction refusal (model not recorded) was billed; the amount is not in the transcript: this category is a request for the model's internal reasoning in its reply",
+		} {
+			if !strings.Contains(txt, line) {
+				t.Errorf("text lacks %q:\n%s", line, txt)
+			}
+		}
+		if strings.Contains(txt, " on other") || !strings.Contains(js, `"model":"not_recorded","cost":{"usd":null,"unpriced_responses":1`) {
+			t.Errorf("a synthetic group reads as a model named other, or its cost as known:\n%s\n%s", txt, js)
+		}
+	})
+	t.Run("only a billed pre-output refusal", func(t *testing.T) {
+		c := newConfig(t)
+		c.write("proj/sess-a.jsonl", refusalMessage("z1", "", "bio", at))
+		txt, _ := render(t, c.summary(30))
+		if !strings.Contains(txt, "est. $0.00 at API list prices") ||
+			!strings.Contains(txt, "\n       the total leaves out 1 pre-output refusal that was billed (the amount is not in the transcript)\n") {
+			t.Errorf("the header prints $0.00 beside a billed refusal with no caveat:\n%s", txt)
+		}
+	})
+}
+
 // TestRefusals_AreSplitByCategoryAndModel: stop_details.category was never
 // read, so every refusal landed in one total and one line, and nothing told
 // a classifier decline in a named category from the rest. Worse, a
@@ -1498,44 +1644,53 @@ func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 // be read": it was billed, and the transcript does not hold the amount. The
 // category is read as a closed word -- a null is "uncategorized", a word the
 // page does not name is "other" -- and the refusals are split by category
-// and model, each saying what the page says of its billing.
+// and model, each saying what the page says of its billing. Each of the five
+// named categories is held to its billing word, so a category moved to the
+// wrong side of the page's rule fails here.
 func TestRefusals_AreSplitByCategoryAndModel(t *testing.T) {
 	c := newConfig(t)
 	at := now.Add(-time.Hour)
-	synthetic := func(id, category string) string {
-		return resp{id: id, model: "<synthetic>", at: at, stop: "refusal", category: category}.line("text")
-	}
+	synthetic := func(id, category string) string { return refusalMessage(id, "", category, at) }
 	c.write("proj/sess-a.jsonl",
 		resp{id: "f", model: "claude-fable-5-1", at: at, in: 1000, out: 40, stop: "refusal", category: "cyber"}.line("text"),
 		resp{id: "o", model: "claude-opus-5-5", at: at, in: 10, stop: "refusal", category: "cyber"}.line("text"),
-		synthetic("z1", "bio"), synthetic("z2", "bio"), synthetic("z3", "cyber"), synthetic("z4", ""), synthetic("z5", "a_new_category"))
+		synthetic("z1", "bio"), synthetic("z2", "bio"), synthetic("z3", "cyber"), synthetic("z4", ""), synthetic("z5", "a_new_category"),
+		synthetic("z6", "frontier_llm"), synthetic("z7", "reasoning_extraction"), synthetic("z8", "general_harms"))
 	s := c.summary(30)
 	yes, no := true, false
+	nr := ModelNotRecorded
 	want := []RefusalGroup{
-		{Category: "bio", Model: "other", WithoutUsage: 2, BilledBeforeOutput: &yes},
+		{Category: "bio", Model: nr, WithoutUsage: 2, BilledBeforeOutput: &yes},
 		{Category: "cyber", Model: "claude-fable-5-1", Responses: 1, Cost: Cost{Nano: 1000*10000 + 40*50000, Priced: 1}, BilledBeforeOutput: &no},
-		{Category: "cyber", Model: "claude-opus-5-5", Responses: 1, Cost: Cost{Nano: 10 * opusIn, Priced: 1}, BilledBeforeOutput: &no},
-		{Category: "cyber", Model: "other", WithoutUsage: 1, BilledBeforeOutput: &no},
-		{Category: "other", Model: "other", WithoutUsage: 1},
-		{Category: "uncategorized", Model: "other", WithoutUsage: 1, BilledBeforeOutput: &no},
+		{Category: "cyber", Model: "claude-opus-5-5", NotBilled: 1, BilledBeforeOutput: &no},
+		{Category: "cyber", Model: nr, WithoutUsage: 1, BilledBeforeOutput: &no},
+		{Category: "frontier_llm", Model: nr, WithoutUsage: 1, BilledBeforeOutput: &yes},
+		{Category: "general_harms", Model: nr, WithoutUsage: 1, BilledBeforeOutput: &no},
+		{Category: "other", Model: nr, WithoutUsage: 1},
+		{Category: "reasoning_extraction", Model: nr, WithoutUsage: 1, BilledBeforeOutput: &yes},
+		{Category: "uncategorized", Model: nr, WithoutUsage: 1, BilledBeforeOutput: &no},
 	}
 	if !reflect.DeepEqual(s.Refusals.ByCategory, want) {
 		t.Errorf("by category = %+v\nwant %+v", s.Refusals.ByCategory, want)
 	}
 	txt, js := render(t, s)
 	for _, line := range []string{
-		"refusals      2 responses ended in a refusal, $0.01; 5 pre-output refusals were written without usage\n",
-		"              bio on other: 2 without usage, billed before any output in this category; the amount is not in the transcript\n",
+		"refusals      1 response ended in a refusal, $0.01; 1 refusal before any output with usage was not billed, and not in the total; 8 pre-output refusals were written without usage\n",
+		"              bio (model not recorded): 2 without usage, billed before any output in this category; the amount is not in the transcript\n",
 		"              cyber on claude-fable-5-1: 1 response, $0.01\n",
-		"              cyber on other: 1 without usage, not billed (a pre-output refusal in this category is not)\n",
-		"              other on other: 1 without usage, billing unknown (a category this read does not know)\n",
+		"              cyber on claude-opus-5-5: 1 before any output with usage, not billed (a pre-output refusal in this category is not)\n",
+		"              cyber (model not recorded): 1 without usage, not billed (a pre-output refusal in this category is not)\n",
+		"              frontier_llm (model not recorded): 1 without usage, billed before any output in this category; the amount is not in the transcript\n",
+		"              general_harms (model not recorded): 1 without usage, not billed (a pre-output refusal in this category is not)\n",
+		"              other (model not recorded): 1 without usage, billing unknown (a category this read does not know)\n",
+		"              reasoning_extraction (model not recorded): 1 without usage, billed before any output in this category; the amount is not in the transcript\n",
 	} {
 		if !strings.Contains(txt, line) {
 			t.Errorf("text lacks %q:\n%s", line, txt)
 		}
 	}
-	if !strings.Contains(js, `{"category":"bio","model":"other","responses":0,"cost":{"usd":0,"unpriced_responses":0,"unpriced_tokens":0},"without_usage":2,"billed_before_output":true}`) ||
-		!strings.Contains(js, `"category":"other","model":"other","responses":0,"cost":{"usd":0,"unpriced_responses":0,"unpriced_tokens":0},"without_usage":1,"billed_before_output":null}`) {
+	if !strings.Contains(js, `{"category":"bio","model":"not_recorded","responses":0,"cost":{"usd":0,"unpriced_responses":0,"unpriced_tokens":0},"not_billed":0,"without_usage":2,"billed_before_output":true}`) ||
+		!strings.Contains(js, `"category":"other","model":"not_recorded","responses":0,"cost":{"usd":0,"unpriced_responses":0,"unpriced_tokens":0},"not_billed":0,"without_usage":1,"billed_before_output":null}`) {
 		t.Errorf("the JSON does not split the refusals by category:\n%s", js)
 	}
 	if strings.Contains(txt+js, "a_new_category") {
@@ -1557,15 +1712,18 @@ func TestSavings_BilledRefusalsAndDeclinedAttemptsByCategoryAndModel(t *testing.
 	at := now.Add(-time.Hour)
 	c.write("proj/sess-a.jsonl",
 		resp{id: "re", model: "claude-fable-5-1", at: at, in: 100000, out: 40, stop: "refusal", category: "reasoning_extraction"}.line("text"),
-		resp{id: "cy", model: "claude-opus-5-5", at: at, in: 10000, stop: "refusal", category: "cyber"}.line("text"),
-		resp{id: "bio", model: "<synthetic>", at: at, stop: "refusal", category: "bio"}.line("text"),
+		// A cyber refusal partway through its output: billed at normal
+		// rates. Before any output it would not have been billed.
+		resp{id: "cy", model: "claude-opus-5-5", at: at, in: 10000, out: 50, stop: "refusal", category: "cyber"}.line("text"),
+		refusalMessage("bio", "", "bio", at),
 		transcriptLine(t, fallbackExample, at, func(m map[string]any) {
 			iterationsOf(m)[0].(map[string]any)["output_tokens"] = 2000
 		}),
 		transcriptLine(t, fallbackExample, at, func(m map[string]any) { m["id"] = "msg_no_output" }))
 	s := c.summary(30)
 	want := []Saving{
-		{Kind: SavingBilledRefusals, Category: "cyber", Model: "claude-opus-5-5", Cost: Cost{Nano: 10000 * opusIn, Priced: 1}},
+		{Kind: SavingBilledRefusals, Category: "bio", Model: ModelNotRecorded, Cost: Cost{Unpriced: 1}},
+		{Kind: SavingBilledRefusals, Category: "cyber", Model: "claude-opus-5-5", Cost: Cost{Nano: 10000*opusIn + 50*opusOut, Priced: 1}},
 		{Kind: SavingBilledRefusals, Category: "reasoning_extraction", Model: "claude-fable-5-1", Cost: Cost{Nano: 100000*10000 + 40*50000, Priced: 1},
 			Hint: SavingHintReasoningInReply},
 		{Kind: SavingDeclinedAttempts, Model: "claude-fable-5", Cost: Cost{Nano: 535*fable5In + 2000*fable5Out, Priced: 1}, Hint: SavingHintServedModel},
@@ -1573,22 +1731,22 @@ func TestSavings_BilledRefusalsAndDeclinedAttemptsByCategoryAndModel(t *testing.
 	if !reflect.DeepEqual(s.Savings, want) {
 		t.Errorf("savings = %+v\nwant %+v", s.Savings, want)
 	}
-	if !reflect.DeepEqual(s.SavingsNotComputed, []string{SavingNotComputedRefusals, SavingNotComputedAttempts}) {
+	if !reflect.DeepEqual(s.SavingsNotComputed, []string{SavingNotComputedAttempts}) {
 		t.Errorf("savings not computed = %v", s.SavingsNotComputed)
 	}
 	txt, js := render(t, s)
 	for _, line := range []string{
-		"savings       $0.04 on cyber refusals on claude-opus-5-5\n",
+		"savings       1 pre-output bio refusal (model not recorded) was billed; the amount is not in the transcript\n",
+		"              $0.04 on cyber refusals on claude-opus-5-5\n",
 		"              $1.00 on reasoning_extraction refusals on claude-fable-5-1: this category is a request for the model's internal reasoning in its reply, which the model gives as thinking instead\n",
 		"              $0.11 on attempts claude-fable-5 declined before a fallback served: choosing the model that served them (/model) for such work skips the declined attempt\n",
-		"              not computed: 1 pre-output refusal in a category billed before any output, whose amount is not in the transcript\n",
 		"              not computed: 1 declined attempt with no output, billed only in some refusal categories, which the transcript does not record\n",
 	} {
 		if !strings.Contains(txt, line) {
 			t.Errorf("text lacks %q:\n%s", line, txt)
 		}
 	}
-	if !strings.Contains(js, `"savings_not_computed":["billed_refusals_without_usage","declined_attempts_without_output"]`) {
+	if !strings.Contains(js, `"savings_not_computed":["declined_attempts_without_output"]`) {
 		t.Errorf("the JSON does not name what was not computed:\n%s", js)
 	}
 }
@@ -1720,6 +1878,9 @@ func TestContentHasNoFieldToLandIn(t *testing.T) {
 				// A subagent user line's header: a closed word, a flag and
 				// the promptId key that ties a response to its turn.
 				"type": true, "isMeta": true, "promptId": true,
+				// The request id a "<synthetic>" refusal line shares with
+				// the response it reports, read as a closed shape.
+				"requestId": true,
 			}
 			if !f.Anonymous && !allowed[tag] {
 				t.Errorf("%s.%s decodes %q, which is outside spend's read path", path, f.Name, tag)
