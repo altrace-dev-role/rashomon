@@ -120,8 +120,19 @@ func TestFinalAssistantTexts_AnUnreadableLineIsNoTurnsWord(t *testing.T) {
 		userTurnLine(t, "p3", "third prompt", false),
 		said(t, "m6", "Working.", "2026-09-29T10:00:06.000Z"),
 		undecodable,
-		said(t, "m7", "The next prompt's reply.", "2026-09-29T10:00:08.000Z"))
-	got := FinalAssistantTexts(p, map[string]bool{"p1": true, "p2": true, "p3": true})
+		said(t, "m7", "The next prompt's reply.", "2026-09-29T10:00:08.000Z"),
+		// A text line whose timestamp is a number: its header does not
+		// decode, so it may be the turn's last word.
+		userTurnLine(t, "p4", "fourth prompt", false),
+		said(t, "m8", "On it.", "2026-09-29T10:00:09.000Z"),
+		strings.Replace(said(t, "m9", "The command failed.", "2026-09-29T10:00:10.000Z"), `"timestamp":"2026-09-29T10:00:10.000Z"`, `"timestamp":10`, 1),
+		// An assistant line whose content is an object: its header decodes,
+		// its text does not.
+		userTurnLine(t, "p5", "fifth prompt", false),
+		said(t, "m10", "On it.", "2026-09-29T10:00:11.000Z"),
+		turnLine(t, map[string]any{"type": "assistant", "timestamp": "2026-09-29T10:00:12.000Z",
+			"message": map[string]any{"id": "m11", "role": "assistant", "content": map[string]any{"type": "text", "text": "The command failed."}}}))
+	got := FinalAssistantTexts(p, map[string]bool{"p1": true, "p2": true, "p3": true, "p4": true, "p5": true})
 	if got["p1"].Said {
 		t.Errorf("p1 = %q, want no words: its last text line could not be dated, so the earlier one is not its last", got["p1"].Text)
 	}
@@ -130,6 +141,11 @@ func TestFinalAssistantTexts_AnUnreadableLineIsNoTurnsWord(t *testing.T) {
 	}
 	if got["p3"].Said || got["p3"].Responses["m7"] {
 		t.Errorf("p3 = %+v: the reply after a user line that did not decode was credited to it", got["p3"])
+	}
+	for _, p := range []string{"p4", "p5"} {
+		if got[p].Said {
+			t.Errorf("%s = %q, want no words: its last text line could not be read, so the earlier one is not its last", p, got[p].Text)
+		}
 	}
 }
 
@@ -261,7 +277,26 @@ func TestAssistantLine_DecodesOnlyTextBlocks(t *testing.T) {
 			walk(f.Type, path+"."+f.Name)
 		}
 	}
-	walk(reflect.TypeOf(assistantLine{}), "assistantLine")
+	fn := reflect.TypeOf(decodeAssistantLine)
+	walk(fn.Out(0), "decodeAssistantLine")
+
+	// And FinalAssistantTexts decodes every text-bearing assistant line it
+	// reads through that helper, and no other way: a second decode beside
+	// it would be a shape this walk never sees.
+	decoded := 0
+	defer func(orig func([]byte) (assistantLine, error)) { decodeAssistantLine = orig }(decodeAssistantLine)
+	orig := decodeAssistantLine
+	decodeAssistantLine = func(raw []byte) (assistantLine, error) {
+		decoded++
+		return orig(raw)
+	}
+	p := writeTurns(t,
+		userTurnLine(t, "p1", "a prompt", false),
+		said(t, "m1", "On it.", "2026-09-29T10:00:01.000Z"),
+		said(t, "m2", "Done.", "2026-09-29T10:00:02.000Z"))
+	if got := FinalAssistantTexts(p, map[string]bool{"p1": true})["p1"]; got.Text != "Done." || decoded != 2 {
+		t.Errorf("p1 = %q after %d decodes through decodeAssistantLine, want \"Done.\" after 2", got.Text, decoded)
+	}
 
 	// And only a text block's text is kept, from either content shape.
 	for _, tc := range []struct {

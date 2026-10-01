@@ -665,10 +665,20 @@ func TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie(t *testing.T) {
 // other block, and neither rendering carries a byte of it. The canary test in
 // spend_test.go fills the silent-failure line by hand and never reaches that
 // read, so a leak of the words it decodes passed it.
+//
+// A second recorded failed turn's final words name the failure and carry the
+// canary: it does not fire, and its words must not reach the output either.
 func TestJoin_NoMessageTextReachesTheOutput(t *testing.T) {
 	c := newConfig(t)
 	rec := newRecorder(t)
-	silentSession(t, c, rec, now.Add(-2*time.Hour), "Ran the command as requested. "+canary)
+	T := now.Add(-2 * time.Hour)
+	honest := []string{
+		userLine("sess-j", "p-honest", T.Add(5*time.Second), false),
+		resp{id: "H1", model: "claude-opus-5-5", session: "sess-j", at: T.Add(6 * time.Second), in: 1, stop: "end_turn",
+			text: "The command failed with exit 1. " + canary}.line("text"),
+	}
+	silentSession(t, c, rec, T, "Ran the command as requested. "+canary, honest...)
+	rec.call("sess-j", "p-honest", "toolu_h", T.Add(5500*time.Millisecond), T.Add(5600*time.Millisecond), store.ExecFailed)
 	s := c.summary(30)
 	if err := s.Join(rec.st); err != nil {
 		t.Fatal(err)
@@ -702,12 +712,17 @@ func TestJoin_AMainTranscriptSidechainResponseIsItsTurns(t *testing.T) {
 		return resp{id: id, model: "claude-opus-5-5", session: "sess-j", at: at, in: in, stop: "end_turn", text: text,
 			sidechain: side}.line("text")
 	}
+	// The subagent's task line carries no promptId, and the turn's last line
+	// is a subagent's: neither ends the tie, and the subagent's "error" is
+	// not the main agent's final word.
 	c.write("proj/sess-j.jsonl",
 		userLine("sess-j", "p1", sec(-1), false),
 		resp{id: "R0", model: "claude-opus-5-5", session: "sess-j", at: sec(-0.5), in: 100, stop: "tool_use"}.line("tool_use"),
+		subUserLine("sess-j", "", sec(1.2)),
 		subUserLine("sess-j", "p-sub", sec(1.5)),
 		m("SC1", sec(2), 50000, "There was an error in the subagent.", true),
-		m("R3", sec(4), 3, "Ran the command as requested.", false))
+		m("R3", sec(4), 3, "Ran the command as requested.", false),
+		m("SC2", sec(5), 7, "The subagent hit an error.", true))
 
 	s := c.summary(30)
 	if err := s.Join(rec.st); err != nil {
@@ -715,10 +730,10 @@ func TestJoin_AMainTranscriptSidechainResponseIsItsTurns(t *testing.T) {
 	}
 	j := s.SilentFailureTurns
 	if j.Turns != 1 {
-		t.Fatalf("turns = %d, want 1: the sidechain line's words were read as the turn's final word, or its user line moved the tie", j.Turns)
+		t.Fatalf("turns = %d, want 1: a sidechain line's words were read as the turn's final word, or its user line moved the tie", j.Turns)
 	}
-	if want := int64(100+50000+3) * opusIn; j.Cost.Nano != want {
-		t.Errorf("cost = %d, want %d: the sidechain response SC1 is p1's spend", j.Cost.Nano, want)
+	if want := int64(100+50000+3+7) * opusIn; j.Cost.Nano != want {
+		t.Errorf("cost = %d, want %d: the sidechain responses SC1 and SC2 are p1's spend", j.Cost.Nano, want)
 	}
 }
 

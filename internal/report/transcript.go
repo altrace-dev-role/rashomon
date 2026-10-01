@@ -463,8 +463,8 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			if !bytes.Contains(raw, []byte(`"text"`)) {
 				continue
 			}
-			var line assistantLine
-			if json.Unmarshal(raw, &line) != nil || line.Message.Role != "assistant" {
+			line, err := decodeAssistantLine(raw)
+			if err != nil || line.Message.Role != "assistant" {
 				unsay()
 				continue
 			}
@@ -492,6 +492,18 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 		return map[string]TurnFinal{}
 	}
 	return out
+}
+
+// decodeAssistantLine is the one way FinalAssistantTexts decodes an assistant
+// line past its header, into assistantLine and nothing else.
+// TestAssistantLine_DecodesOnlyTextBlocks reflects over its result type and
+// checks FinalAssistantTexts goes through it, so a second, wider decode
+// beside it cannot pass unseen. A variable only so that test can count the
+// calls.
+var decodeAssistantLine = func(raw []byte) (assistantLine, error) {
+	var line assistantLine
+	err := json.Unmarshal(raw, &line)
+	return line, err
 }
 
 // assistantLine is the whole of what FinalAssistantTexts decodes from an

@@ -1675,9 +1675,55 @@ m("SP an undecodable sidechain line ends the tie", "internal/report/transcript.g
 m("SP the bound does not say a sidechain user line keeps the tie", "internal/spend/join.go",
   "and a sidechain user line does not end the tie; ", "", "TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie")
 
+m("SP a refusal's category is not kept from the completed line", "internal/spend/scan.go",
+  "\tprev.Category = cand.Category\n", "", "TestDedupe_TheCompletedLineWins")
+m("SP a fallback's route is not kept from the completed line", "internal/spend/scan.go",
+  "\tprev.Attempts, prev.Fallback, prev.Requested, prev.Sticky = cand.Attempts, cand.Fallback, cand.Requested, cand.Sticky\n", "",
+  "TestDedupe_TheCompletedLineWins")
+m("SP the served model is not kept from the completed line", "internal/spend/scan.go",
+  "\tif prev.Model == \"\" || cand.Fallback {", "\tif prev.Model == \"\" {", "TestDedupe_TheCompletedLineWins")
+m("SP a refusal's row prices its declined attempts too", "internal/spend/spend.go",
+  "\t\t\tcostOne(&s.Refusals.Cost, r)", "\t\t\tcostOf(&s.Refusals.Cost, r)", "TestExtraAttempts_AnAttemptWithOutput")
+m("SP a refusal group prices its declined attempts too", "internal/spend/spend.go",
+  "\t\t\tcostOne(&g.Cost, r)", "\t\t\tcostOf(&g.Cost, r)", "TestExtraAttempts_AnAttemptWithOutput")
+m("SP an attempt's tokens are left out of the token total", "internal/spend/spend.go",
+  "\t\t\ts.Tokens.add(a.Tokens)\n\t\t\tam := model(a.Model)", "\t\t\tam := model(a.Model)", "TestExtraAttempts_AnAttemptWithOutput")
+m("SP an assistant line whose content does not decode leaves the earlier words standing", "internal/report/transcript.go",
+  "\t\t\tif err != nil || line.Message.Role != \"assistant\" {\n\t\t\t\tunsay()\n", "\t\t\tif err != nil || line.Message.Role != \"assistant\" {\n",
+  "TestFinalAssistantTexts_AnUnreadableLine")
+m("SP the savings not computed are listed again on every Join", "internal/spend/spend.go",
+  "\ts.SavingsNotComputed = s.SavingsNotComputed[:0]\n", "", "TestSavings_")
+m("SP a response is judged cold in a file it was copied into", "internal/spend/spend.go",
+  "\t\t\tif rs[i].file != k.file {", "\t\t\tif false && rs[i].file != k.file {", "TestCacheExpiry_AResponseIsJudged")
+m("SP an assistant line's content is decoded whole into a RawMessage again", "internal/report/transcript.go",
+  "\t\t\tline, err := decodeAssistantLine(raw)\n\t\t\tif err != nil || line.Message.Role != \"assistant\" {\n\t\t\t\tunsay()\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\ttext, ok := line.Message.Content.text()",
+  "\t\t\tvar line struct {\n\t\t\t\tMessage struct {\n\t\t\t\t\tRole    string          `json:\"role\"`\n\t\t\t\t\tContent json.RawMessage `json:\"content\"`\n\t\t\t\t} `json:\"message\"`\n\t\t\t}\n\t\t\tif json.Unmarshal(raw, &line) != nil || line.Message.Role != \"assistant\" {\n\t\t\t\tunsay()\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\ttext, ok := assistantText(line.Message.Content)",
+  "TestAssistantLine_")
+m("SP a non-firing turn's final words are printed to stderr", "internal/spend/join.go",
+  "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n", "\t\tif !sf.Fires {\n\t\t\tfmt.Fprintln(os.Stderr, lastSaid(byFile, t.prompt))\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n",
+  "TestSpend_NoMessageTextReachesTheOutput")
+m("SP a non-firing turn's final words reach the JSON", "internal/spend/join.go",
+  "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n", "\t\tif !sf.Fires {\n\t\t\tj.Bound = lastSaid(byFile, t.prompt)\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n",
+  "TestJoin_NoMessageTextReachesTheOutput")
+m("SP cmdSpend reads a 30-day window whatever --days says", "cmd/rashomon/main.go",
+  "\tfiles, err := spend.Discover(configDir, spend.WindowStart(now, days))", "\tfiles, err := spend.Discover(configDir, spend.WindowStart(now, 30))",
+  "TestSpend_OldTranscriptsAreSkippedAndSaid")
+m("SP the decoded message hands its bytes to its own decoder", "internal/spend/scan.go",
+  "\tUsage       *usage       `json:\"usage\"`\n}\n", "\tUsage       *usage       `json:\"usage\"`\n}\n\nfunc (m *message) UnmarshalJSON(b []byte) error {\n\ttype plain message\n\treturn json.Unmarshal(b, (*plain)(m))\n}\n",
+  "TestContentHasNoFieldToLandIn")
+
+m("SP an unkeyed main-transcript sidechain user line ends the tie", "internal/report/transcript.go",
+  "\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tcontinue\n", "\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tif head.Type == \"user\" && head.PromptID == \"\" {\n\t\t\t\tcurrent = \"\"\n\t\t\t}\n\t\t\tcontinue\n",
+  "TestJoin_AMainTranscriptSidechain")
+m("SP a main-transcript sidechain line's words are the turn's final word", "internal/report/transcript.go",
+  "\t\t\tif head.Type == \"assistant\" && want[current] && head.Message.ID != \"\" {\n\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tcontinue\n",
+  "\t\t\tif head.Type == \"assistant\" && want[current] && head.Message.ID != \"\" {\n\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tif head.Type == \"assistant\" && want[current] {\n\t\t\t\tif l, err := decodeAssistantLine(raw); err == nil {\n\t\t\t\t\tif text, ok := l.Message.Content.text(); ok {\n\t\t\t\t\t\ttf := out[current]\n\t\t\t\t\t\ttf.Said, tf.Text = true, text\n\t\t\t\t\t\tout[current] = tf\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t\tcontinue\n",
+  "TestJoin_AMainTranscriptSidechain")
+
 # Import additions some mutants need.
 IMPORTS = {
   "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),
+  "SP a non-firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
   "H-17 handler opens a socket (no net import, so only the trace sees it)": ("internal/hook/handle.go", '\t"io"\n', '\t"io"\n\t"syscall"\n'),
   "H-19 report re-reads today's config to judge a past run": ("internal/report/report.go", '\t"github.com/altrace-dev-role/rashomon/internal/store"\n', '\t"github.com/altrace-dev-role/rashomon/internal/install"\n\t"github.com/altrace-dev-role/rashomon/internal/settings"\n\t"github.com/altrace-dev-role/rashomon/internal/store"\n'),

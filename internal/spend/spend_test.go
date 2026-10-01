@@ -2,6 +2,7 @@ package spend
 
 import (
 	"bytes"
+	"encoding"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -281,6 +282,42 @@ func TestDedupe_TheCompletedLineWinsOverTheStreamingPartial(t *testing.T) {
 			}
 			if got := s.window[0].StartMS; got != partial.at.UnixMilli() {
 				t.Errorf("start = %d, want the earliest line's timestamp %d", got, partial.at.UnixMilli())
+			}
+		})
+	}
+	// What the completed line carries beyond its counts is kept with them:
+	// a refusal's category (and so its lever), and a fallback's route and the
+	// model that served it, which the streamed line does not have.
+	for _, order := range []string{"partial first", "completed first"} {
+		t.Run("a refusal and a fallback, "+order, func(t *testing.T) {
+			c := newConfig(t)
+			at := now.Add(-time.Hour)
+			ref := resp{id: "msg_r", model: "claude-fable-5-1", at: at, in: 1000, out: 4}
+			refDone := ref
+			refDone.out, refDone.stop, refDone.category = 40, "refusal", "reasoning_extraction"
+			fb := resp{id: "msg_f", model: "claude-fable-5", at: at, in: 412, out: 4}
+			fbDone := fb
+			fbDone.out, fbDone.stop = 264, "end_turn"
+			fbDone.iters = []resp{{model: "claude-fable-5", in: 535, out: 50}, {typ: "fallback_message", model: "claude-opus-4-8", in: 412, out: 264}}
+			lines := []string{ref.line("thinking"), refDone.line("text"), fb.line("thinking"), fbDone.line("text")}
+			if order == "completed first" {
+				lines = []string{refDone.line("text"), ref.line("thinking"), fbDone.line("text"), fb.line("thinking")}
+			}
+			c.write("proj/sess-a.jsonl", lines...)
+			s := c.summary(30)
+			if g := s.Refusals.ByCategory; len(g) != 1 || g[0].Category != "reasoning_extraction" || g[0].Model != "claude-fable-5-1" {
+				t.Errorf("refusals by category = %+v, want reasoning_extraction on claude-fable-5-1", g)
+			}
+			hints := map[string]string{}
+			for _, sv := range s.Savings {
+				hints[sv.Kind] = sv.Hint
+			}
+			if hints[SavingBilledRefusals] != SavingHintReasoningInReply || hints[SavingDeclinedAttempts] != SavingHintServedModel {
+				t.Errorf("savings = %+v, want the reasoning_in_reply and served_model levers", s.Savings)
+			}
+			wantR := []FallbackRoute{{Requested: "claude-fable-5", Served: "claude-opus-4-8", Responses: 1}}
+			if !reflect.DeepEqual(s.ExtraAttempts.Fallback, wantR) {
+				t.Errorf("fallback = %+v, want %+v", s.ExtraAttempts.Fallback, wantR)
 			}
 		})
 	}
@@ -1207,6 +1244,24 @@ func TestCacheExpiry_APartialExpiryIsCounted(t *testing.T) {
 	}
 }
 
+// TestCacheExpiry_AResponseIsJudgedInTheFileItWasFirstSeenIn: a copied
+// transcript can hold a response without the predecessor it had where it was
+// first written. In proj1, B follows A by a minute: warm. A copy in proj2
+// holds B after only X, an hour earlier. B is judged once, in proj1, so no
+// write is cold; judged in every file, the copy's gap made it cold.
+func TestCacheExpiry_AResponseIsJudgedInTheFileItWasFirstSeenIn(t *testing.T) {
+	c := newConfig(t)
+	t0 := now.Add(-2 * time.Hour)
+	a := resp{id: "A", model: "claude-opus-5-5", at: t0, w5: 1000, stop: "end_turn"}
+	b := resp{id: "B", model: "claude-opus-5-5", at: t0.Add(oneMinute), w5: 1000, stop: "end_turn"}
+	x := resp{id: "X", model: "claude-opus-5-5", at: t0.Add(-time.Hour), w5: 1000, stop: "end_turn"}
+	c.write("proj1/sess-a.jsonl", a.line("text"), b.line("text"))
+	c.write("proj2/sess-b.jsonl", x.line("text"), b.line("text"))
+	if s := c.summary(30); s.CacheExpiry.Responses != 0 {
+		t.Errorf("cold = %+v, want none: B followed A by a minute where it was written", s.CacheExpiry)
+	}
+}
+
 // TestNoSavingsWithoutAFigure: nothing cold, nothing failed, no suggestion.
 func TestNoSavingsWithoutAFigure(t *testing.T) {
 	c := newConfig(t)
@@ -1449,6 +1504,31 @@ func TestExtraAttempts_AnAttemptWithOutputIsPricedAtItsOwnModelsRates(t *testing
 	txt, _ := render(t, s)
 	if strings.Contains(txt, "the total leaves out") || !strings.Contains(txt, "1 response carried 1 extra attempt, 685 tokens: <$0.01 at the rates of the models that ran them, in the total\n") {
 		t.Errorf("the retries line does not price the attempt into the total:\n%s", txt)
+	}
+	// The attempt's tokens, cache read included, are in the token total and
+	// its model's row.
+	if got := s.Tokens.Total(); got != 412+264+535+50+100 {
+		t.Errorf("token total = %d, want %d", got, 412+264+535+50+100)
+	}
+	for _, m := range s.ByModel {
+		if m.Model == "claude-fable-5" && m.Tokens.Total() != 685 {
+			t.Errorf("claude-fable-5 row = %d tokens, want 685", m.Tokens.Total())
+		}
+	}
+
+	// A refusal served the same way: its row in the refusals is the served
+	// response alone, at its own rates. The declined attempt is its own
+	// model's, and pricing it into the refusal row too would count it twice.
+	c = newConfig(t)
+	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
+		m["stop_reason"] = "refusal"
+		m["stop_details"] = map[string]any{"type": "refusal", "category": "cyber"}
+		iterationsOf(m)[0].(map[string]any)["output_tokens"] = 50
+	}))
+	s = c.summary(30)
+	want := Cost{Nano: served, Priced: 1}
+	if s.Refusals.Cost != want || len(s.Refusals.ByCategory) != 1 || s.Refusals.ByCategory[0].Cost != want {
+		t.Errorf("refusals = %+v, want the served response alone, %+v", s.Refusals, want)
 	}
 }
 
@@ -1912,6 +1992,11 @@ func TestSavings_BilledRefusalsAndDeclinedAttemptsByCategoryAndModel(t *testing.
 		}),
 		transcriptLine(t, fallbackExample, at, func(m map[string]any) { m["id"] = "msg_no_output" }))
 	s := c.summary(30)
+	// cmdSpend builds, then joins, and Join lists the savings again: each
+	// kind is listed once.
+	if err := s.Join(nil); err != nil {
+		t.Fatal(err)
+	}
 	want := []Saving{
 		{Kind: SavingBilledRefusals, Category: "bio", Model: ModelNotRecorded, Cost: Cost{Unpriced: 1}},
 		{Kind: SavingBilledRefusals, Category: "cyber", Model: "claude-opus-5-5", Cost: Cost{Nano: 10000*opusIn + 50*opusOut, Priced: 1}},
@@ -1956,6 +2041,11 @@ func TestSavings_BilledSpendOnAnUnpricedModelIsNamedAsNotComputed(t *testing.T) 
 			{model: "claude-mystery-8", in: 2000, out: 70},
 			{typ: "fallback_message", model: "claude-opus-4-8", in: 412, out: 264}}}.line("text"))
 	s := c.summary(30)
+	// cmdSpend builds, then joins, and Join lists the savings again: each
+	// kind is listed once.
+	if err := s.Join(nil); err != nil {
+		t.Fatal(err)
+	}
 	want := []string{SavingNotComputedRefusalsUnpriced, SavingNotComputedAttemptsUnpriced}
 	if !reflect.DeepEqual(s.SavingsNotComputed, want) {
 		t.Errorf("savings not computed = %v, want %v", s.SavingsNotComputed, want)
@@ -2069,13 +2159,21 @@ func TestContentHasNoFieldToLandIn(t *testing.T) {
 	var walk func(reflect.Type, string)
 	seen := map[reflect.Type]bool{}
 	raw := reflect.TypeOf(json.RawMessage{})
+	unmarshaler := reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+	textUnmarshaler := reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 	walk = func(ty reflect.Type, path string) {
-		for ty.Kind() == reflect.Pointer || ty.Kind() == reflect.Slice {
+		for ty.Kind() == reflect.Pointer || ty.Kind() == reflect.Slice || ty.Kind() == reflect.Array {
 			if ty == raw {
 				t.Errorf("%s is a json.RawMessage: it holds the bytes it spans as a value", path)
 				return
 			}
 			ty = ty.Elem()
+		}
+		// A type with its own decoder is handed the raw bytes, whatever its
+		// fields say.
+		if pt := reflect.PointerTo(ty); pt.Implements(unmarshaler) || pt.Implements(textUnmarshaler) {
+			t.Errorf("%s decodes itself (UnmarshalJSON or UnmarshalText): it is handed the bytes it spans", path)
+			return
 		}
 		if k := ty.Kind(); k == reflect.Interface || k == reflect.Map {
 			t.Errorf("%s is a %s: it holds whatever it is handed", path, k)

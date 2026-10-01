@@ -346,6 +346,15 @@ func TestSpend_OldTranscriptsAreSkippedAndSaid(t *testing.T) {
 	if doc.Read.Files != 0 || doc.Read.FilesBeforeWindow != 1 {
 		t.Errorf("read.files = %d, read.files_before_window = %d; want 0 and 1: the old transcript was read", doc.Read.Files, doc.Read.FilesBeforeWindow)
 	}
+	// And the window is the one asked for: over 60 days the same transcript
+	// is read.
+	res = e.run("", nil, "spend", "--days", "60", "--json")
+	if err := json.Unmarshal([]byte(res.stdout), &doc); err != nil {
+		t.Fatalf("spend --days 60 --json: %v\n%s%s", err, res.stdout, res.stderr)
+	}
+	if doc.Read.Files != 1 {
+		t.Errorf("--days 60: read.files = %d, want 1: the window passed to Discover is not the one asked for", doc.Read.Files)
+	}
 	txt := e.run("", nil, "spend")
 	if !strings.Contains(txt.stdout, "(1 older transcript last written before that was not read)") {
 		t.Errorf("the text does not say the older transcript was skipped:\n%s", txt.stdout)
@@ -389,11 +398,17 @@ func classifierLine(t *testing.T, session, id string, at time.Time) string {
 // category and a fallback's iteration entries (classifierLine). Neither rendering,
 // on stdout or stderr, carries a byte of it. The earlier fixture recorded a
 // path spend never discovers, so the content read never ran and a mutant
-// that printed the final message to stderr passed.
+// that printed the final message to stderr passed. A second recorded turn
+// with a failed call ends in words that name the failure, canary included:
+// it does not fire, and its words are read too.
 func TestSpend_NoMessageTextReachesTheOutput(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 	transcript := filepath.Join(e.configDir, "projects", "-work-project", testSession+".jsonl")
+	honest := defaultPayload()
+	honest.PromptID, honest.ToolUseID, honest.TranscriptPath = "prompt-honest", "toolu_h", transcript
+	e.mustHook(honest.build(t))
+	e.mustPost(failurePayload(t, honest.ToolUseID, "Exit code 1", false, 30))
 	p := defaultPayload()
 	p.TranscriptPath = transcript
 	e.mustHook(p.build(t))
@@ -401,6 +416,8 @@ func TestSpend_NoMessageTextReachesTheOutput(t *testing.T) {
 	now := time.Now()
 	thinking := map[string]any{"type": "thinking", "thinking": "thinking " + spendCanary}
 	writeSessionTranscript(t, e.configDir, testSession,
+		promptLine(t, testSession, honest.PromptID, now.Add(-3*time.Minute)),
+		usageLine(t, testSession, "msg_h", now.Add(-150*time.Second), 10, textBlock("The command failed with exit 1. "+spendCanary)),
 		promptLine(t, testSession, p.PromptID, now.Add(-2*time.Minute)),
 		usageLine(t, testSession, "msg_1", now.Add(-time.Minute), 10, thinking),
 		usageLine(t, testSession, "msg_1", now.Add(-time.Minute), 10, toolBlock("toolu_1")),
