@@ -269,6 +269,14 @@ func TestTimeline_LaterSuccess(t *testing.T) {
 		},
 		execs: []store.Execution{tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0)},
 		want:  &LaterSuccess{Kind: LaterSameCommand, Seq: 2, Agent: &TimelineAgent{ID: "cafe0001", Type: "general-purpose"}},
+	}, {
+		name: "L7b a subagent's same-program success is named too",
+		calls: []tlCall{
+			{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+			{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d2", agent: "cafe0001", typ: "general-purpose"},
+		},
+		execs: []store.Execution{tlExec("f", store.ExecFailed, 1), tlExec("s", store.ExecOK, 0)},
+		want:  &LaterSuccess{Kind: LaterSameProgram, Seq: 2, Agent: &TimelineAgent{ID: "cafe0001", Type: "general-purpose"}},
 	}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -584,6 +592,18 @@ func TestTimeline_TwoRecordsForOneID(t *testing.T) {
 			t.Errorf("%s ok record: a row reads no later success:\n%s", name, out)
 		}
 	}
+	// The failure's digest is its outcome record's, not its last record's:
+	// f failed at 10 running d1 and was ok at 12 running d9, and s ran d1 at
+	// 11. Break: take the digest from the record at 12 and s is not the same
+	// command, while f's own ok record is.
+	own := tlRun([]tlCall{
+		{seq: 1, id: "f", tool: "Bash", digest: "d1"},
+		{seq: 2, id: "s", tool: "Bash", digest: "d1"},
+	}, tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("s", store.ExecOK, 0, 11), tlExecAt("f", store.ExecOK, 0, 12))
+	own.Executions[2].ExecutedDigest = "d9"
+	if c := tlByID(t, buildTimeline(own, nil), "f"); c.Later == nil || c.Later.Kind != LaterSameCommand || c.Later.Seq != 2 {
+		t.Errorf("later = %+v, checked %v; want same command at 2: the digest is the outcome record's", c.Later, c.LaterChecked)
+	}
 	// Recorded before the failure, the ok record is no later success.
 	before := tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"}},
 		tlExecAt("f", store.ExecOK, 0, 10), tlExecAt("f", store.ExecFailed, 2, 12))
@@ -607,6 +627,7 @@ func TestTimeline_UndeclaredCallsFollowTheirResults(t *testing.T) {
 		tlExec("bb", store.ExecOK, 0),
 		tlExecAt("ee", store.ExecFailed, 1, 5),
 		tlExecAt("ee", store.ExecOK, 0, 50),
+		tlExecAt("aa", store.ExecFailed, 4, 25),
 	)
 	run.Executions[3].Seq = nil
 	run.Terminals = []store.Terminal{{ToolUseID: "mm"}}
@@ -617,6 +638,11 @@ func TestTimeline_UndeclaredCallsFollowTheirResults(t *testing.T) {
 	}
 	if strings.Join(got, ",") != "d,ee,cc,zz,aa,bb,mm" {
 		t.Errorf("order = %v, want d,ee,cc,zz,aa,bb,mm: declared first, then by the outcome record's seq, unpositioned last, ties by id", got)
+	}
+	// aa failed at 25 with exit 4 and at 30 with exit 1: the row's exit code
+	// is the outcome record's, the last failed one.
+	if c := tlByID(t, tl, "aa"); c.ExitCode == nil || *c.ExitCode != 1 {
+		t.Errorf("aa: exit code = %v, want 1, from the record its outcome is read from", c.ExitCode)
 	}
 	var b bytes.Buffer
 	writeTimeline(&b, tl)

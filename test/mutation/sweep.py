@@ -1224,6 +1224,14 @@ m("TL pythonw is the program", "internal/report/timeline.go",
   "\treturn subcommandPrograms[base] || subcommandPrograms[strings.TrimSuffix(base, \"w\")]", "\treturn subcommandPrograms[base]", "TestTimeline_")
 m("TL any name ending in w is its base", "internal/report/timeline.go",
   "\treturn subcommandPrograms[base] || subcommandPrograms[strings.TrimSuffix(base, \"w\")]", "\treturn subcommandPrograms[base] || subcommandPrograms[strings.TrimRight(base, \"w\")] || strings.HasSuffix(base, \"w\")", "TestTimeline_")
+m("TL the effective digest is read from the highest-seq record, not the outcome's", "internal/report/timeline.go",
+  "\t\t\tdigest:    effectiveDigest(d.Shape.Digest, rec),\n", "\t\t\tdigest:    effectiveDigest(d.Shape.Digest, outcomeRecord(executed[d.ToolUseID][max(len(executed[d.ToolUseID])-1, 0):])),\n", "TestTimeline_")
+m("TL an undeclared call's exit code is read from its first record", "internal/report/timeline.go",
+  "\t\tc.ExitCode = outcomeExitCode(rec)\n\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(\"\", rec),",
+  "\t\tc.ExitCode = outcomeExitCode(outcomeRecord(recs[:min(len(recs), 1)]))\n\t\tentries = append(entries, timelineEntry{call: c, digest: effectiveDigest(\"\", rec),", "TestTimeline_")
+m("TL the same-program follow-up's agent is left out", "internal/report/timeline.go",
+  "\t\treturn &LaterSuccess{Kind: LaterSameProgram, Seq: *sameProgram.call.Seq, Agent: sameProgram.call.Agent}, true",
+  "\t\treturn &LaterSuccess{Kind: LaterSameProgram, Seq: *sameProgram.call.Seq}, true", "TestTimeline_")
 m("TL the follow-up legend is printed under failed 0", "internal/report/timeline_text.go",
   "\tif n.Failed > 0 {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "\tif true {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "TestTimeline_")
 m("TL the interrupted count is printed when there is none", "internal/report/timeline_text.go",
