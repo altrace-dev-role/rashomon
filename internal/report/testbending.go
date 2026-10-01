@@ -69,8 +69,9 @@ type TestBending struct {
 // is one session's work, and the seq is one total order over every agent. run
 // is a whole session for the report and one turn's calls for the digest.
 //
-// Outcomes come from linkOutcome over run's executions and denied, so a
-// call's outcome here is the one the timeline and the chains show for it.
+// Outcomes are the timeline's (testOutcome): a call is failed when any of its
+// execution records failed, as its timeline row is, and otherwise linkOutcome
+// over run's executions and denied, the outcome the chains show.
 // denied may be nil -- the turn digest reads no transcript -- and a denied
 // call then reads as "no execution record", which below stops a pattern
 // rather than completing one.
@@ -286,21 +287,22 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 // reader of it asks.
 const outcomeTimedOut = "timed out"
 
-// testOutcome is linkOutcome for d, with one more case that is no result: a
-// call whose program is timeout, and which failed with exit code 124. That is
-// timeout's own status when the duration ran out, not the runner's -- the
-// tests were stopped, not failed -- and a runner that exits 124 itself cannot
-// be told apart from it behind timeout, so neither is read as a result. The
-// same code from a run with no timeout prefix is the runner's, and a failure.
+// testOutcome is the timeline's outcome for d (timelineOutcome over its
+// outcomeRecord: failed when any of its records failed), with one more case
+// that is no result: a call whose program is timeout, and which failed with
+// exit code 124. That is timeout's own status when the duration ran out, not
+// the runner's -- the tests were stopped, not failed -- and a runner that
+// exits 124 itself cannot be told apart from it behind timeout, so neither is
+// read as a result. The same code from a run with no timeout prefix is the
+// runner's, and a failure.
 func testOutcome(d store.Declaration, executed map[string][]store.Execution, denied map[string]bool) string {
-	o, _, _ := linkOutcome(d.ToolUseID, executed, denied)
+	rec := outcomeRecord(executed[d.ToolUseID])
+	o := timelineOutcome(d.ToolUseID, rec, executed, denied)
 	if o != store.ExecFailed || d.Shape.Program == nil || *d.Shape.Program != "timeout" {
 		return o
 	}
-	// The exit code of the record linkOutcome read the outcome from: the
-	// highest seq, since executionsByID sorts ascending.
-	recs := executed[d.ToolUseID]
-	if c := recs[len(recs)-1].ExitCode; c != nil && *c == timeoutFired {
+	// The exit code of the record the outcome was read from.
+	if c := rec.ExitCode; c != nil && *c == timeoutFired {
 		return outcomeTimedOut
 	}
 	return o

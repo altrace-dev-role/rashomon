@@ -1790,6 +1790,11 @@ m("TB the .cpp and .cxx GoogleTest spellings are not test files", "internal/shap
   "",
   "TestLabelTestFile")
 
+m("TB a test call's outcome is linkOutcome's, not the timeline's", "internal/report/testbending.go",
+  "\to := timelineOutcome(d.ToolUseID, rec, executed, denied)\n",
+  "\to, _, _ := linkOutcome(d.ToolUseID, executed, denied)\n",
+  "TestDetectTestBending_|TestTestBending")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

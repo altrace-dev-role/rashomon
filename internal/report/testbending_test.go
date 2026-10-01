@@ -692,3 +692,35 @@ func TestTestBending_WriteCapableShellCallsAreEdits(t *testing.T) {
 		t.Errorf("a test edit and a plain read: tests only %v, want one pair", got.TestsOnlyThenGreen)
 	}
 }
+
+// TestDetectTestBending_ACallThatFailedOnceIsAFailedRun: a test call with two
+// execution records, one failed, is failed in the test runs and the pairs as
+// it is on the timeline (outcomeRecord), whichever record has the higher seq.
+// Break: take the outcome from linkOutcome, the highest-seq record, and an ok
+// run followed by a run whose records are [failed, ok] reads `test runs: 2 (2
+// ok, 0 failed)` beside a timeline row that says failed.
+func TestDetectTestBending_ACallThatFailedOnceIsAFailedRun(t *testing.T) {
+	const ok, failed = store.ExecOK, store.ExecFailed
+	for _, order := range [][2]string{{failed, ok}, {ok, failed}} {
+		run := tbRun(test(1, "d", ok), test(2, "d", order[0]))
+		run.Executions = append(run.Executions, store.Execution{ToolUseID: run.Executions[1].ToolUseID, ToolName: "Bash", Outcome: order[1]})
+		for i := range run.Executions {
+			seq := int64(10 + i)
+			run.Executions[i].Seq = &seq
+		}
+
+		tr := testRunsOf(run)
+		if tr.Runs != 2 || tr.OK != 1 || tr.Failed != 1 {
+			t.Errorf("records %v: runs/ok/failed = %d/%d/%d, want 2/1/1", order, tr.Runs, tr.OK, tr.Failed)
+		}
+		if want := []FlakyPair{{Seqs: SeqPair{1, 2}, FirstFailed: false}}; !reflect.DeepEqual(tr.Flaky, want) {
+			t.Errorf("records %v: flaky = %+v, want %+v", order, tr.Flaky, want)
+		}
+		tl := buildTimeline(run, nil)
+		for _, c := range tl.Calls {
+			if *c.Seq == 2 && c.Group != GroupFailed {
+				t.Errorf("records %v: the timeline row is %q, want failed", order, c.Group)
+			}
+		}
+	}
+}
