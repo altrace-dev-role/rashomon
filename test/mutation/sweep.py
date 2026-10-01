@@ -1430,8 +1430,8 @@ m("TB the refusal reads only the first argument", "internal/shape/shape.go",
   "\t\tif refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):min(i+len(c)+1, len(toks))]) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a prefix entry is compared whole", "internal/shape/shape.go",
-  "\t\t\tif strings.HasPrefix(word, p) {",
-  "\t\t\tif word == p {",
+  "\t\t\trest, isPrefix := strings.CutPrefix(word, p)\n",
+  "\t\t\trest, isPrefix := \"\", word == p\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the per-runner list is not read", "internal/shape/shape.go",
   "onList(t.text, notARun[runner]) ||",
@@ -1645,8 +1645,8 @@ m("TB the background bit is read for every tool", "internal/hook/post.go",
   "\tif true {\n\t\trec.Backgrounded",
   "TestH20_BackgroundedIsReadForBashOnly")
 m("TB a false backgroundedByUser sets the bit", "internal/hook/post.go",
-  "v != \"null\" && v != \"false\"",
-  "v != \"null\"",
+  "!bytes.Equal(v, []byte(\"null\")) && !bytes.Equal(v, []byte(\"false\"))",
+  "!bytes.Equal(v, []byte(\"null\"))",
   "TestH20_BackgroundedIsReadForBashOnly")
 m("TL the unknown legend drops the backgrounded call", "internal/report/timeline_text.go",
   ", or it was moved to the background before it ended)",
@@ -1658,7 +1658,7 @@ m("TB runs pair across directories", "internal/report/testbending.go",
   "\t\tkey := runKey{d.Shape.Digest, \"\"}\n",
   "TestTestBending")
 m("TB the declaration carries no cwd digest", "internal/hook/handle.go",
-  "\t\tCWDDigest:      shape.CWDDigest(h.st.Key(), p.CWD),\n",
+  "\t\tCWDDigest:      shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),\n",
   "",
   "TestTestBending_ARepeatedRelativeCd|TestSchema3_|TestH13_")
 m("TB the cwd digest is the plain path", "internal/shape/shape.go",
