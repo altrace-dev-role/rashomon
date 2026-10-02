@@ -1805,9 +1805,17 @@ m("TB a runner's own 124 is no result", "internal/report/testbending.go",
   "TestTestBending")
 
 m("TB curl's attached output file hides the flag", "internal/shape/shape.go",
-  "\t\tfor _, c := range w[1:] {\n\t\t\tswitch {\n\t\t\tcase c == 'o' || c == 'O':\n\t\t\t\treturn true\n\t\t\tcase c < 'A' || c > 'z' || c > 'Z' && c < 'a':\n\t\t\t\treturn false\n\t\t\t}\n\t\t}\n",
-  "\t\tfor _, c := range w[1:] {\n\t\t\tif c < 'A' || c > 'z' || c > 'Z' && c < 'a' {\n\t\t\t\treturn false\n\t\t\t}\n\t\t}\n\t\treturn strings.ContainsAny(w[1:], \"oO\")\n",
+  "\t\t\tcase c == 'o' || c == 'O':\n\t\t\t\treturn true\n\t\t\tcase strings.ContainsRune(curlArgumentOptions, c):\n\t\t\t\treturn false\n\t\t\tcase 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '#', c == ':':\n\t\t\tdefault:\n\t\t\t\treturn false\n\t\t\t}\n\t\t}\n\t}\n\treturn false\n}\n",
+  "\t\t\tcase c == 'o' || c == 'O':\n\t\t\tcase strings.ContainsRune(curlArgumentOptions, c):\n\t\t\t\treturn false\n\t\t\tcase 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '#', c == ':':\n\t\t\tdefault:\n\t\t\t\treturn false\n\t\t\t}\n\t\t}\n\t\treturn strings.ContainsAny(w[1:], \"oO\")\n\t}\n\treturn false\n}\n",
   "TestMayWrite|TestTestBending_AnAttachedCurl")
+m("TB curl's digits, # and : end the short-flag walk", "internal/shape/shape.go",
+  "\t\t\tcase 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '#', c == ':':\n",
+  "\t\t\tcase 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z':\n",
+  "TestMayWrite|TestTestBending_ACurlProgressBar")
+m("TB curl's argument-taking options are read as more flags", "internal/shape/shape.go",
+  "\t\t\tcase strings.ContainsRune(curlArgumentOptions, c):\n\t\t\t\treturn false\n",
+  "",
+  "TestMayWrite")
 m("TB a command or process substitution is not a write", "internal/shape/shape.go",
   "\t\tif opensSubstitution(toks, j) {\n",
   "\t\tif false && opensSubstitution(toks, j) {\n",

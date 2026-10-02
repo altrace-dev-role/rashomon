@@ -417,6 +417,19 @@ func TestTestBending_AnAttachedCurlOutputIsAnEdit(t *testing.T) {
 	}
 }
 
+// B-A9, with curl's -# before the O: a short option that takes no argument
+// and is not a letter, which ended the walk before it reached the O.
+func TestTestBending_ACurlProgressBarOutputIsAnEdit(t *testing.T) {
+	s := newTBSession(t)
+	s.shell("go test ./...", false, "")
+	s.edit("/tmp/project/calc_test.go")
+	s.shell("curl -#O https://example.com/calc.go", true, "")
+	s.shell("go test ./...", true, "")
+	if line, ok := s.line(); ok {
+		t.Errorf("a download over a source file came between the runs; recap printed %q", line)
+	}
+}
+
 // B-A10: the review's leading absolute cd. The payload's cwd is the shell's
 // directory before the line runs, so the first `cd /tmp/project/web && go test
 // ./...` was keyed on /tmp/project and every repeat on /tmp/project/web,

@@ -1319,8 +1319,8 @@ func backgrounded(raw json.RawMessage) bool {
 // a file (not a descriptor duplication such as 2>&1, and not /dev/null); a
 // word that writes by itself -- find's -delete, -exec, -execdir, -ok and
 // -okdir, xargs, tee, wget, rsync or scp; curl with an output flag (-o, -O,
-// --output, --remote-name, or a combined short flag holding o or O, with or
-// without the file attached); a command or process substitution, whose
+// --output, --remote-name, or a run of short flags that reaches o or O, with
+// or without the file attached); a command or process substitution, whose
 // command is not looked into; or a later pipeline or list stage whose program
 // is outside the read class, or cannot be named.
 //
@@ -1456,10 +1456,12 @@ func stageSeparator(toks []token, j int) bool {
 }
 
 // curlOutputFlag reports a curl argument that names an output file: -o, -O,
-// their long forms, or a combined short flag holding either. In a short-flag
-// word the letters before o or O are flags, and whatever follows o is its
-// value, so `-o./calc.go` and `-sSLotestdata/x.json` name files; a non-letter
-// before any o or O means the word is not a run of flags.
+// their long forms, or a short-option word that reaches o or O. The word is
+// walked as curl reads it. A letter, a digit, # or : that takes no argument is
+// a flag, and the walk goes on past it; an option that takes an argument ends
+// the walk, since the rest of the word is its value (`-XPOST`, `-dfoo=bar`),
+// and so does any other character. Whatever follows o is its file, so
+// `-o./calc.go`, `-#O` and `-sSLotestdata/x.json` name files.
 func curlOutputFlag(w string) bool {
 	switch {
 	case w == "--output", w == "--remote-name", w == "--remote-name-all", w == "--output-dir",
@@ -1470,13 +1472,20 @@ func curlOutputFlag(w string) bool {
 			switch {
 			case c == 'o' || c == 'O':
 				return true
-			case c < 'A' || c > 'z' || c > 'Z' && c < 'a':
+			case strings.ContainsRune(curlArgumentOptions, c):
+				return false
+			case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '#', c == ':':
+			default:
 				return false
 			}
 		}
 	}
 	return false
 }
+
+// curlArgumentOptions are curl's short options that take an argument, per
+// `curl --help all`.
+const curlArgumentOptions = "AbcCdDeEFhHKmPQrtTuUwxXyYz"
 
 func verbForProgram(prog string) string {
 	if v, ok := programVerb[prog]; ok {

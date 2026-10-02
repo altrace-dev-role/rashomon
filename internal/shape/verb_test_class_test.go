@@ -416,6 +416,12 @@ func TestMayWrite(t *testing.T) {
 		{"curl -o./x https://example.com/x", true},
 		{"curl -sSLotestdata/x.json https://example.com/x", true},
 		{"curl -ofoo https://example.com/x", true},
+		// curl's digits, # and : take no argument, so the walk goes on past
+		// them.
+		{"curl -#O https://example.com/x", true},
+		{"curl -#o f https://example.com/x", true},
+		{"curl -4sSLO https://example.com/x", true},
+		{"curl -0o calc.go https://example.com/x", true},
 		// A write inside a command or process substitution.
 		{"ls $(rm -rf build)", true},
 		{"cat `touch x`", true},
@@ -441,6 +447,11 @@ func TestMayWrite(t *testing.T) {
 		{"cd sub && ls", false},
 		{"curl https://example.com/x", false},
 		{"curl -sS https://example.com/x | head", false},
+		// An option that takes an argument: the rest of the word is its
+		// value, not more flags.
+		{"curl -XPOST https://example.com/x", false},
+		{"curl -Hcontent-type:json https://example.com/x", false},
+		{"curl -dfoo=bar https://example.com/x", false},
 		{"go test ./... 2>&1 | tail -20", false},
 		{`echo "a > b"`, false},
 	} {
