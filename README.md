@@ -443,29 +443,26 @@ lines, so a response is counted once by its id.
 **What it shows.** Spend by agent, model, token kind and session. Cache
 re-written after a gap longer than its TTL: the part of a write that re-writes
 what the previous response had cached and this one did not read back, priced
-over a cache read (a heuristic, labelled as one).
-Refusals, by category and model. Retry attempts: one that produced output is
-priced at the rates of the model that ran it and is in the total; one with no
-output is billed only in some refusal categories, so it is shown in tokens and
-left out of the total, and the header says so. Responses a fallback model
-served, as the model asked (the first `message` retry entry) -> the model that
-served (the last, `fallback_message` entry), sticky-routed ones (no `message`
-entry) included; a chain that ended in a refusal served nothing, and its
-earlier attempts are counted as declined. And the spend in turns with a failed call the summary never
+over a cache read (a heuristic, labelled as one). Refusals, counted by
+category and model. Retry attempts: every attempt before the last (the last
+produced the message and is the top-level usage) is shown in tokens with the
+cost unknown and left out of the total, and the header says so. When the last
+attempt is a fallback model's (`fallback_message`), the response is priced at
+that model, and counted as one a fallback model served unless it ended in a
+refusal. And the spend in turns with a failed call the summary never
 mentioned.
 
 **Refusals.** A refusal's `stop_details.category` is read as a closed word:
 `cyber`, `bio`, `frontier_llm`, `reasoning_extraction`, `general_harms`,
-`uncategorized` (null) or `other`. A refusal partway through its output is
-billed at normal rates. One before any output (`output_tokens` 0) is billed
-only in `bio`, `frontier_llm` and `reasoning_extraction`; in the other named
-categories it is counted as not billed and left out of the total, and in
-`other` its tokens are shown with the cost unknown. After a refusal, Claude
-Code also writes one line whose usage is all zeros (model `<synthetic>`)
-with the same `requestId` as the response; that line is folded into the
-response. One with no such response is counted by category, and in a billed
-category the output says it was billed and the amount is not in the
-transcript.
+`uncategorized` (null) or `other`, and refusals are counted by category and
+model. A refusal partway through its output (`output_tokens` above 0) is
+billed at normal rates, and priced like any response. Whether one before any
+output (`output_tokens` 0) was billed depends on its category, so its tokens
+are shown with the cost unknown and left out of the total, and the header
+says how many there are. After a refusal, Claude Code also writes one line
+whose usage is all zeros (model `<synthetic>`) with the same `requestId` as
+the response; that line is folded into the response. One with no such
+response is counted as a pre-output refusal written without usage.
 
 **The silent-failure line.** A turn counts when one of its recorded calls
 failed and its final message mentions no failure, whether or not a later call
@@ -494,13 +491,10 @@ a prompt from a tool result on a user line with no prompt id, it decodes the
 line's content block *types* only, never their text. From a subagent
 transcript's user lines it decodes the type, `isMeta` and `promptId` only.
 
-**Savings.** Each suggestion carries its figure: cache re-writes, spend in
-turns with a failed call the summary never mentioned, billed refusals by
-category and model, and declined attempts by model. It names a lever only
-where you can act on it: `reasoning_extraction` refusals (asking for the
-model's reasoning in its reply) and a declined model a fallback served (choose
-the serving model with `/model`). What was billed with no amount in the
-transcript is listed as not computed.
+**Savings.** One saving is listed, with its figure: the spend in turns with
+a failed call the summary never mentioned. The cache re-write figure is a
+heuristic, so it is shown and not offered as a saving. Pre-output refusals
+and retry attempts are tokens with the cost unknown, so they carry no saving.
 
 **Counted, said, never priced.** It says how many of each of these it found:
 lines it cannot count (malformed or implausible usage, a line with no message

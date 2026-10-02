@@ -205,6 +205,16 @@ func (c *config) summary(days int) *Summary {
 	return Build(sc, now, days)
 }
 
+// hasModel reports whether the summary has a by-model row for name.
+func hasModel(s *Summary, name string) bool {
+	for _, m := range s.ByModel {
+		if m.Model == name {
+			return true
+		}
+	}
+	return false
+}
+
 func render(t *testing.T, s *Summary) (string, string) {
 	t.Helper()
 	var txt bytes.Buffer
@@ -286,8 +296,8 @@ func TestDedupe_TheCompletedLineWinsOverTheStreamingPartial(t *testing.T) {
 		})
 	}
 	// What the completed line carries beyond its counts is kept with them:
-	// a refusal's category (and so its lever), and a fallback's route and the
-	// model that served it, which the streamed line does not have.
+	// a refusal's category, and a fallback's extra attempt and the model that
+	// served it, which the streamed line does not have.
 	for _, order := range []string{"partial first", "completed first"} {
 		t.Run("a refusal and a fallback, "+order, func(t *testing.T) {
 			c := newConfig(t)
@@ -308,16 +318,11 @@ func TestDedupe_TheCompletedLineWinsOverTheStreamingPartial(t *testing.T) {
 			if g := s.Refusals.ByCategory; len(g) != 1 || g[0].Category != "reasoning_extraction" || g[0].Model != "claude-fable-5-1" {
 				t.Errorf("refusals by category = %+v, want reasoning_extraction on claude-fable-5-1", g)
 			}
-			hints := map[string]string{}
-			for _, sv := range s.Savings {
-				hints[sv.Kind] = sv.Hint
+			if e := s.ExtraAttempts; e.FallbackServed != 1 || e.Attempts != 1 || e.Tokens.Total() != 585 {
+				t.Errorf("extra attempts = %+v, want the fallback served and its 585-token declined attempt", e)
 			}
-			if hints[SavingBilledRefusals] != SavingHintReasoningInReply || hints[SavingDeclinedAttempts] != SavingHintServedModel {
-				t.Errorf("savings = %+v, want the reasoning_in_reply and served_model levers", s.Savings)
-			}
-			wantR := []FallbackRoute{{Requested: "claude-fable-5", Served: "claude-opus-4-8", Responses: 1}}
-			if !reflect.DeepEqual(s.ExtraAttempts.Fallback, wantR) {
-				t.Errorf("fallback = %+v, want %+v", s.ExtraAttempts.Fallback, wantR)
+			if !hasModel(s, "claude-opus-4-8") || hasModel(s, "claude-fable-5") {
+				t.Errorf("by model = %+v, want the served response under claude-opus-4-8", s.ByModel)
 			}
 		})
 	}
@@ -1104,9 +1109,6 @@ func TestCacheExpiry_WriteAfterTheTTLIsCold(t *testing.T) {
 	if !strings.Contains(txt, "heuristic") {
 		t.Errorf("the cache expiry figure is not labelled a heuristic:\n%s", txt)
 	}
-	if len(s.Savings) != 1 || s.Savings[0].Kind != SavingColdCache {
-		t.Errorf("savings = %+v, want the cold-cache line resting on its figure", s.Savings)
-	}
 }
 
 // TestCacheExpiry_ThePreviousResponseIsTheSameAgents: a main transcript also
@@ -1130,37 +1132,34 @@ func TestCacheExpiry_ThePreviousResponseIsTheSameAgents(t *testing.T) {
 	}
 }
 
-// TestCacheExpiry_NoLongerTTLAdviceForA1hWrite: every re-write here was
-// already made with the 1h TTL, after a gap of hours -- the shape of the real
-// data. Advising the 1h TTL would be advice the figure does not support; the
-// line says what happened and nothing more. A 5m re-write does support it.
-func TestCacheExpiry_NoLongerTTLAdviceForA1hWrite(t *testing.T) {
+// TestCacheExpiry_IsAFigureNotASaving: the re-write figure is a heuristic
+// that errs low, so it is shown as a figure and offered as no saving, with
+// no TTL advice: on real data the re-writes were already 1h writes after
+// gaps of hours to days, and advice no figure supports is not given.
+func TestCacheExpiry_IsAFigureNotASaving(t *testing.T) {
 	c := newConfig(t)
 	t0 := now.Add(-10 * time.Hour)
 	c.write("proj/sess-a.jsonl",
 		resp{id: "a", model: "claude-opus-5-5", at: t0, w1h: 100, stop: "end_turn"}.line("text"),
 		resp{id: "b", model: "claude-opus-5-5", at: t0.Add(3 * time.Hour), w1h: 50000, stop: "end_turn"}.line("text"))
-	s := c.summary(30)
-	txt, _ := render(t, s)
-	if len(s.Savings) != 1 || s.Savings[0].Hint != "" {
-		t.Errorf("savings = %+v, want the re-write with no TTL hint", s.Savings)
-	}
-	for _, bad := range []string{"1h TTL", "keep the session warm", "went cold"} {
-		if strings.Contains(txt, bad) {
-			t.Errorf("text says %q about a write that was already 1h:\n%s", bad, txt)
-		}
-	}
-	if !strings.Contains(txt, "re-written after a gap longer than its TTL") {
-		t.Errorf("text does not call it a re-write after a gap:\n%s", txt)
-	}
-
 	c.write("proj/sess-b.jsonl",
 		resp{id: "c", model: "claude-opus-5-5", at: t0, w5: 100, stop: "end_turn"}.line("text"),
 		resp{id: "d", model: "claude-opus-5-5", at: t0.Add(20 * oneMinute), w5: 50000, stop: "end_turn"}.line("text"))
-	s = c.summary(30)
-	txt, _ = render(t, s)
-	if len(s.Savings) != 1 || s.Savings[0].Hint != SavingHintLongerTTL || !strings.Contains(txt, "the 1h TTL keeps a cache") {
-		t.Errorf("a 5m re-write does not carry the 1h TTL hint: %+v\n%s", s.Savings, txt)
+	s := c.summary(30)
+	if s.CacheExpiry.Responses != 2 {
+		t.Fatalf("premise: cold = %+v, want b's and d's re-writes", s.CacheExpiry)
+	}
+	txt, js := render(t, s)
+	if len(s.Savings) != 0 || strings.Contains(txt, "savings") || !strings.Contains(js, `"savings":[]`) {
+		t.Errorf("the re-write figure is offered as a saving: %+v\n%s", s.Savings, txt)
+	}
+	for _, bad := range []string{"1h TTL", "keep the session warm", "went cold"} {
+		if strings.Contains(txt, bad) {
+			t.Errorf("text says %q about a heuristic re-write figure:\n%s", bad, txt)
+		}
+	}
+	if !strings.Contains(txt, "re-written after a gap longer than its TTL (heuristic: ") {
+		t.Errorf("text does not call it a heuristic re-write after a gap:\n%s", txt)
 	}
 }
 
@@ -1273,9 +1272,10 @@ func TestNoSavingsWithoutAFigure(t *testing.T) {
 	}
 }
 
-// TestRefusalsAndExtraAttempts: refusals are counted and priced; an extra
-// attempt whose entry names no model the table knows is counted in TOKENS,
-// with the dollars unknown and the total said to leave it out.
+// TestRefusalsAndExtraAttempts: a refusal that produced output is counted
+// and priced like any response; the extra attempts are counted in TOKENS,
+// with the dollars unknown, left out of the total, and said to be. Neither is
+// a saving.
 func TestRefusalsAndExtraAttempts(t *testing.T) {
 	c := newConfig(t)
 	at := now.Add(-time.Hour)
@@ -1296,36 +1296,42 @@ func TestRefusalsAndExtraAttempts(t *testing.T) {
 		t.Errorf("refusal cost = %d, want %d at Fable 5.1's rates", s.Refusals.Cost.Nano, want)
 	}
 	if s.ExtraAttempts.Responses != 1 || s.ExtraAttempts.Attempts != 2 {
-		t.Errorf("extra attempts = %+v, want 1 response with 2 declined attempts", s.ExtraAttempts)
+		t.Errorf("extra attempts = %+v, want 1 response with 2 extra attempts", s.ExtraAttempts)
 	}
 	if got := s.ExtraAttempts.Tokens.Total(); got != 100+10+200+20+5 {
-		t.Errorf("extra-attempt tokens = %d, want %d: the declined attempts only, never the final one the top level already counts",
+		t.Errorf("extra-attempt tokens = %d, want %d: the earlier attempts only, never the final one the top level already counts",
 			got, 100+10+200+20+5)
 	}
-	// The top level is still the returned attempt only.
-	if want := int64(1000*10000+40*50000) + int64(1000*opusIn+300*opusOut) + int64(1*opusIn); s.Total.Nano != want {
-		t.Errorf("total = %d, want %d", s.Total.Nano, want)
+	// The total, its tokens and every breakdown are the returned attempts
+	// only: the extra attempts' output does not make them priced.
+	if want := int64(1000*10000+40*50000) + int64(1000*opusIn+300*opusOut) + int64(1*opusIn); s.Total.Nano != want || !s.Total.Known() {
+		t.Errorf("total = %+v, want %d", s.Total, want)
+	}
+	if got := s.Tokens.Total(); got != 1040+1300+1 {
+		t.Errorf("token total = %d, want %d: the extra attempts are out of it", got, 1040+1300+1)
+	}
+	for _, m := range s.ByModel {
+		if m.Model == "claude-opus-5-5" && m.Tokens.Total() != 1301 {
+			t.Errorf("claude-opus-5-5 row = %+v, want the returned attempts' 1,301 tokens alone", m)
+		}
 	}
 	txt, js := render(t, s)
 	if !strings.Contains(txt, "1 response ended in a refusal, $0.01") {
 		t.Errorf("text does not carry the refusal line:\n%s", txt)
 	}
-	if !strings.Contains(txt, "1 response carried 2 extra attempts, 335 tokens; 335 tokens on 2 attempts cost unknown") || strings.Contains(txt, "\ndeclined ") {
+	if !strings.Contains(txt, "\nretries       1 response carried 2 extra attempts, 335 tokens with the cost unknown, not in the total\n") {
 		t.Errorf("text does not carry the extra attempts in tokens with the cost unknown:\n%s", txt)
-	}
-	if !strings.Contains(js, `"cost_unknown_reason":"`+AttemptsUnpriced+`"`) {
-		t.Errorf("json does not state why the attempts are unpriced:\n%s", js)
 	}
 	// The headline's total leaves the extra attempts out, and says so: a
 	// wholly known "est. $X" beside tokens nobody priced read as complete.
-	if !strings.Contains(txt, "\n       the total leaves out 335 tokens on 2 extra attempts whose cost is unknown (see retries)\n") {
+	if !strings.Contains(txt, "\n       the total leaves out 335 tokens on 2 extra attempts (cost unknown)\n") {
 		t.Errorf("the headline does not say the total excludes the extra attempts:\n%s", txt)
 	}
-	// The priced refusal is a saving with its figure, by category and
-	// model; the interim "not computed" line is gone with nothing left out.
-	if !strings.Contains(txt, "savings       $0.01 on uncategorized refusals on claude-fable-5-1\n") ||
-		!strings.Contains(js, `"savings_not_computed":[]`) || strings.Contains(txt, "not computed") {
-		t.Errorf("the savings output does not carry the billed refusal:\n%s\n%s", txt, js)
+	if !strings.Contains(js, `"extra_attempts":{"responses":1,"attempts":2,"tokens":{"input":300,"output":30,"cache_read":5,"cache_write_5m":0,"cache_write_1h":0},"fallback_served":0}`) {
+		t.Errorf("the JSON does not carry the extra attempts as tokens:\n%s", js)
+	}
+	if len(s.Savings) != 0 || strings.Contains(txt, "savings") {
+		t.Errorf("a refusal or an extra attempt is offered as a saving: %+v\n%s", s.Savings, txt)
 	}
 }
 
@@ -1412,131 +1418,76 @@ const (
 	fable5Read = 1000
 )
 
-// TestExtraAttempts_TheFallbackPagesExample: iteration entries were decoded
-// into counts alone, so the attempt Fable 5 declined was never priced or
-// placed, the served response showed only Opus 4.8, and the routing was
-// invisible. The entries' type and model are read: the response is reported
-// as claude-fable-5 -> claude-opus-4-8, and the declined attempt -- which
-// produced no output, so was billed only if its refusal category is billed,
-// which no entry records -- is tokens with the cost unknown, left out of the
-// total, and said to be.
+// TestExtraAttempts_TheFallbackPagesExample: the attempt Fable 5 declined is
+// tokens with the cost unknown, left out of the total, and said to be --
+// whether it produced output or not -- and the response counts as one a
+// fallback model served, priced at the model that served it.
 func TestExtraAttempts_TheFallbackPagesExample(t *testing.T) {
-	c := newConfig(t)
-	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), nil))
-	s := c.summary(30)
-	if want := int64(412*opus48In + 264*opus48Out); s.Total.Nano != want || !s.Total.Known() {
-		t.Errorf("total = %+v, want %d: the served attempt, with the no-output declined one left out", s.Total, want)
-	}
-	e := s.ExtraAttempts
-	if e.Responses != 1 || e.Attempts != 1 || e.Tokens.Total() != 535 || e.Cost.Unpriced != 1 || e.Cost.UnpricedTokens != 535 || e.Cost.Priced != 0 {
-		t.Errorf("extra attempts = %+v, want the one declined attempt, 535 tokens, cost unknown", e)
-	}
-	wantD := []DeclinedAttempts{{Model: "claude-fable-5", Attempts: 1, Tokens: Tokens{Input: 535}, Cost: AttemptCost{Cost{Unpriced: 1, UnpricedTokens: 535}},
-		NoOutput: 1, NoOutputTokens: 535}}
-	if !reflect.DeepEqual(e.Declined, wantD) {
-		t.Errorf("declined = %+v, want %+v", e.Declined, wantD)
-	}
-	wantR := []FallbackRoute{{Requested: "claude-fable-5", Served: "claude-opus-4-8", Responses: 1}}
-	if !reflect.DeepEqual(e.Fallback, wantR) {
-		t.Errorf("fallback = %+v, want %+v", e.Fallback, wantR)
-	}
-	txt, js := render(t, s)
-	for _, want := range []string{
-		"\n       the total leaves out 535 tokens on 1 extra attempt whose cost is unknown (see retries)\n",
-		"\nfallback      claude-fable-5 -> claude-opus-4-8 on 1 response\n",
-		"\ndeclined      claude-fable-5 1 attempt (535 tokens on 1 attempt with no output, billed only in some refusal categories, which the transcript does not record)\n",
-		"\nby model      claude-opus-4-8 <$0.01   claude-fable-5 535 tokens, cost unknown\n",
-	} {
-		if !strings.Contains(txt, want) {
-			t.Errorf("text lacks %q:\n%s", want, txt)
-		}
-	}
-	if !strings.Contains(js, `"fallback_served":[{"requested":"claude-fable-5","served":"claude-opus-4-8","sticky":false,"responses":1}]`) {
-		t.Errorf("the JSON does not carry the route:\n%s", js)
-	}
-	for name, out := range map[string]string{"text": txt, "json": js} {
-		if strings.Contains(out, "How can I help") {
-			t.Errorf("the example's content reached the %s output", name)
-		}
-	}
-}
-
-// TestExtraAttempts_AnAttemptWithOutputIsPricedAtItsOwnModelsRates: the page
-// bills "every attempt that produced output, including one that declined
-// partway through its response" at the rates of the model that ran it, and a
-// non-streaming mid-output decline keeps the declined attempt's output tokens
-// in usage.iterations. The example with output on the declined Fable 5
-// attempt: priced at Fable 5's rates into the total, its by-model row, its
-// kinds and the declined figure.
-func TestExtraAttempts_AnAttemptWithOutputIsPricedAtItsOwnModelsRates(t *testing.T) {
-	c := newConfig(t)
-	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
-		first := iterationsOf(m)[0].(map[string]any)
-		first["output_tokens"] = 50
-		first["cache_read_input_tokens"] = 100
-	}))
-	s := c.summary(30)
-	declined := int64(535*fable5In + 50*fable5Out + 100*fable5Read)
 	served := int64(412*opus48In + 264*opus48Out)
-	if s.Total.Nano != served+declined || !s.Total.Known() {
-		t.Errorf("total = %+v, want %d: the declined attempt at Fable 5's rates, beside the served one", s.Total, served+declined)
-	}
-	if s.ExtraAttempts.Cost.Nano != declined || s.ExtraAttempts.Cost.Unpriced != 0 {
-		t.Errorf("extra-attempt cost = %+v, want %d", s.ExtraAttempts.Cost, declined)
-	}
-	if len(s.ExtraAttempts.Declined) != 1 || s.ExtraAttempts.Declined[0].Cost.Nano != declined || s.ExtraAttempts.Declined[0].NoOutput != 0 {
-		t.Errorf("declined = %+v, want Fable 5's attempt at %d", s.ExtraAttempts.Declined, declined)
-	}
-	models := map[string]int64{}
-	for _, m := range s.ByModel {
-		models[m.Model] = m.Cost.Nano
-	}
-	if models["claude-fable-5"] != declined || models["claude-opus-4-8"] != served {
-		t.Errorf("by model = %v, want each attempt under the model that ran it", models)
-	}
-	k := s.ByKind
-	if k.Input.Nano+k.Output.Nano+k.CacheRead.Nano+k.CacheWrite.Nano != s.Total.Nano || k.CacheRead.Nano != 100*fable5Read {
-		t.Errorf("by kind = %+v, want it to sum to the total with the attempt's kinds in it", k)
-	}
-	if s.ByAgent.Main.Nano != s.Total.Nano || s.PerSession[0].Main.Nano != s.Total.Nano {
-		t.Errorf("by agent = %+v, per session = %+v: the attempt is missing from the split", s.ByAgent, s.PerSession)
-	}
-	txt, _ := render(t, s)
-	if strings.Contains(txt, "the total leaves out") || !strings.Contains(txt, "1 response carried 1 extra attempt, 685 tokens: <$0.01 at the rates of the models that ran them, in the total\n") {
-		t.Errorf("the retries line does not price the attempt into the total:\n%s", txt)
-	}
-	// The attempt's tokens, cache read included, are in the token total and
-	// its model's row.
-	if got := s.Tokens.Total(); got != 412+264+535+50+100 {
-		t.Errorf("token total = %d, want %d", got, 412+264+535+50+100)
-	}
-	for _, m := range s.ByModel {
-		if m.Model == "claude-fable-5" && m.Tokens.Total() != 685 {
-			t.Errorf("claude-fable-5 row = %d tokens, want 685", m.Tokens.Total())
-		}
+	for _, tc := range []struct {
+		name   string
+		edit   func(map[string]any)
+		tokens int64
+	}{
+		{"as the page has it", nil, 535},
+		{"the declined attempt with output", func(m map[string]any) {
+			first := iterationsOf(m)[0].(map[string]any)
+			first["output_tokens"] = 50
+			first["cache_read_input_tokens"] = 100
+		}, 685},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), tc.edit))
+			s := c.summary(30)
+			if s.Total.Nano != served || !s.Total.Known() || s.Tokens.Total() != 412+264 {
+				t.Errorf("total = %+v over %d tokens, want %d over 676: the served attempt alone", s.Total, s.Tokens.Total(), served)
+			}
+			e := s.ExtraAttempts
+			if e.Responses != 1 || e.Attempts != 1 || e.Tokens.Total() != tc.tokens || e.FallbackServed != 1 {
+				t.Errorf("extra attempts = %+v, want the one declined attempt, %d tokens, and the fallback served", e, tc.tokens)
+			}
+			if len(s.ByModel) != 1 || s.ByModel[0].Model != "claude-opus-4-8" || s.ByModel[0].Cost.Nano != served {
+				t.Errorf("by model = %+v, want claude-opus-4-8 alone at %d", s.ByModel, served)
+			}
+			txt, js := render(t, s)
+			for _, want := range []string{
+				fmt.Sprintf("\n       the total leaves out %s tokens on 1 extra attempt (cost unknown)\n", thousands(tc.tokens)),
+				fmt.Sprintf("\nretries       1 response carried 1 extra attempt, %s tokens with the cost unknown, not in the total; 1 response was served by a fallback model\n", thousands(tc.tokens)),
+				"\nby model      claude-opus-4-8 <$0.01\n",
+			} {
+				if !strings.Contains(txt, want) {
+					t.Errorf("text lacks %q:\n%s", want, txt)
+				}
+			}
+			for name, out := range map[string]string{"text": txt, "json": js} {
+				if strings.Contains(out, "How can I help") || strings.Contains(out, "claude-fable-5") {
+					t.Errorf("the example's content, or the declined attempt's model, reached the %s output:\n%s", name, out)
+				}
+			}
+		})
 	}
 
-	// A refusal served the same way: its row in the refusals is the served
-	// response alone, at its own rates. The declined attempt is its own
-	// model's, and pricing it into the refusal row too would count it twice.
-	c = newConfig(t)
+	// A refusal served the same way: it produced output, so it is priced
+	// like any response, at the model that served it, and nothing was served.
+	c := newConfig(t)
 	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
 		m["stop_reason"] = "refusal"
 		m["stop_details"] = map[string]any{"type": "refusal", "category": "cyber"}
 		iterationsOf(m)[0].(map[string]any)["output_tokens"] = 50
 	}))
-	s = c.summary(30)
+	s := c.summary(30)
 	want := Cost{Nano: served, Priced: 1}
-	if s.Refusals.Cost != want || len(s.Refusals.ByCategory) != 1 || s.Refusals.ByCategory[0].Cost != want {
-		t.Errorf("refusals = %+v, want the served response alone, %+v", s.Refusals, want)
+	if s.Refusals.Cost != want || s.Total != want || s.ExtraAttempts.FallbackServed != 0 {
+		t.Errorf("refusals = %+v, total = %+v, fallback served %d; want the served response alone, %+v, and none served",
+			s.Refusals, s.Total, s.ExtraAttempts.FallbackServed, want)
 	}
 }
 
 // TestExtraAttempts_AStickyRoutedResponseIsReported: after a fallback, the
 // API sends later turns of the conversation straight to the fallback model.
-// Such a response carries only a "fallback_message" entry and no "message"
-// entry for the model asked. It was served by a fallback, and is reported as
-// one, with the model asked said to be absent rather than guessed.
+// Such a response carries only a "fallback_message" entry. It was served by a
+// fallback, and is counted as one, with no extra attempt.
 func TestExtraAttempts_AStickyRoutedResponseIsReported(t *testing.T) {
 	c := newConfig(t)
 	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
@@ -1544,12 +1495,12 @@ func TestExtraAttempts_AStickyRoutedResponseIsReported(t *testing.T) {
 		u["iterations"] = iterationsOf(m)[1:]
 	}))
 	s := c.summary(30)
-	wantR := []FallbackRoute{{Served: "claude-opus-4-8", Sticky: true, Responses: 1}}
-	if !reflect.DeepEqual(s.ExtraAttempts.Fallback, wantR) || s.ExtraAttempts.Responses != 0 {
-		t.Errorf("extra attempts = %+v, want no extra attempt and the sticky route %+v", s.ExtraAttempts, wantR)
+	if e := s.ExtraAttempts; e.FallbackServed != 1 || e.Responses != 0 {
+		t.Errorf("extra attempts = %+v, want no extra attempt and one response a fallback served", e)
 	}
 	txt, _ := render(t, s)
-	if !strings.Contains(txt, "\nfallback      (sticky routing: the model asked is not in the transcript) -> claude-opus-4-8 on 1 response\n") {
+	if !strings.Contains(txt, "\nretries       none (no response carried more than one attempt); 1 response was served by a fallback model\n") ||
+		strings.Contains(txt, "leaves out") {
 		t.Errorf("text does not report the sticky-routed response:\n%s", txt)
 	}
 }
@@ -1557,9 +1508,9 @@ func TestExtraAttempts_AStickyRoutedResponseIsReported(t *testing.T) {
 // TestRefusals_APreOutputRefusalWithoutUsageIsCounted: a zero-usage refusal
 // line that reports no response with usage (refusalMessage) was dropped by
 // Build with every zero-token response -- so a transcript holding a refusal
-// printed "refusals none". It is counted, a count only, and the text says
-// what the page says of its billing. With no other response, the line is
-// still printed.
+// printed "refusals none". It is counted, a count only, and the header says
+// the total leaves it out. With no other response, the line is still
+// printed.
 func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 	at := now.Add(-time.Hour)
 	synthetic := func(id string) string { return refusalMessage(id, "", "", at) }
@@ -1567,31 +1518,35 @@ func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 		name  string
 		lines []string
 		n     int
-		want  string
+		want  []string
 	}{
 		{"beside a billed response", []string{
 			resp{id: "r", model: "claude-opus-5-5", at: at, in: 10, stop: "end_turn"}.line("text"), synthetic("z1"), synthetic("z2")}, 2,
-			"refusals      2 pre-output refusals were written without usage\n" +
-				"              uncategorized (model not recorded): 2 without usage, not billed (a pre-output refusal in this category is not)\n"},
+			[]string{
+				"\n       the total leaves out 2 pre-output refusals written without usage (cost unknown: whether a refusal before any output was billed depends on its category)\n",
+				"refusals      2 pre-output refusals were written without usage\n" +
+					"              uncategorized (model not recorded): 2 without usage\n"}},
 		{"alone", []string{synthetic("z1")}, 1,
-			"refusals      1 pre-output refusal was written without usage\n" +
-				"              uncategorized (model not recorded): 1 without usage, not billed (a pre-output refusal in this category is not)\n"},
+			[]string{
+				"\n       the total leaves out 1 pre-output refusal written without usage (cost unknown: whether a refusal before any output was billed depends on its category)\n",
+				"refusals      1 pre-output refusal was written without usage\n" +
+					"              uncategorized (model not recorded): 1 without usage\n"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newConfig(t)
 			c.write("proj/sess-a.jsonl", tc.lines...)
 			s := c.summary(30)
 			txt, js := render(t, s)
-			if !strings.Contains(txt, tc.want) || strings.Contains(txt, "refusals      none") {
-				t.Errorf("text lacks %q:\n%s", tc.want, txt)
+			for _, want := range tc.want {
+				if !strings.Contains(txt, want) || strings.Contains(txt, "refusals      none") {
+					t.Errorf("text lacks %q:\n%s", want, txt)
+				}
 			}
 			if !strings.Contains(js, fmt.Sprintf(`"without_usage":%d`, tc.n)) || s.Refusals.WithoutUsage != tc.n {
 				t.Errorf("without_usage = %d:\n%s", s.Refusals.WithoutUsage, js)
 			}
-			// Uncategorized pre-output refusals are not billed: nothing to
-			// save, and nothing left uncomputed.
-			if strings.Contains(txt, "savings") || !strings.Contains(js, `"savings_not_computed":[]`) {
-				t.Errorf("the savings output names an unbilled refusal:\n%s\n%s", txt, js)
+			if strings.Contains(txt, "savings") {
+				t.Errorf("the savings output names a refusal:\n%s", txt)
 			}
 		})
 	}
@@ -1602,9 +1557,8 @@ func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 // so read the serving model from the fallback block's to.model and from the
 // fallback_message entry in the final message_delta's usage.iterations". A
 // streamed line whose message.model is the model asked priced the served
-// attempt at that model's rates (25,170,000 nanodollars against 16,510,000)
-// and printed "claude-fable-5 -> claude-fable-5" with no Opus 4.8 row. The
-// served model is the last entry's when it names one.
+// attempt at that model's rates and showed no Opus 4.8 row. The served model
+// is the last entry's when it names one.
 func TestExtraAttempts_TheServedModelIsTheFallbackEntrys(t *testing.T) {
 	c := newConfig(t)
 	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
@@ -1613,90 +1567,21 @@ func TestExtraAttempts_TheServedModelIsTheFallbackEntrys(t *testing.T) {
 	}))
 	s := c.summary(30)
 	served := int64(412*opus48In + 264*opus48Out)
-	declined := int64(535*fable5In + 50*fable5Out)
-	if s.Total.Nano != served+declined || s.Total.Nano != 16_510_000 {
-		t.Errorf("total = %d, want %d: the served attempt at Opus 4.8's rates", s.Total.Nano, served+declined)
+	if s.Total.Nano != served || s.Total.Nano != 8_660_000 {
+		t.Errorf("total = %d, want %d: the served attempt at Opus 4.8's rates", s.Total.Nano, served)
 	}
-	models := map[string]int64{}
-	for _, m := range s.ByModel {
-		models[m.Model] = m.Cost.Nano
+	if len(s.ByModel) != 1 || s.ByModel[0].Model != "claude-opus-4-8" || s.ByModel[0].Cost.Nano != served {
+		t.Errorf("by model = %+v, want the served attempt under claude-opus-4-8", s.ByModel)
 	}
-	if models["claude-opus-4-8"] != served || models["claude-fable-5"] != declined {
-		t.Errorf("by model = %v, want the served attempt under claude-opus-4-8", models)
-	}
-	wantR := []FallbackRoute{{Requested: "claude-fable-5", Served: "claude-opus-4-8", Responses: 1}}
-	if !reflect.DeepEqual(s.ExtraAttempts.Fallback, wantR) {
-		t.Errorf("fallback = %+v, want %+v", s.ExtraAttempts.Fallback, wantR)
-	}
-}
-
-// TestExtraAttempts_TheDeclinedLineSaysWhichTokensHadNoOutput: the declined
-// line printed every unpriced token as "on N attempt with no output", so on a
-// model the table lacks, the billed tokens of an attempt that produced output
-// were called no-output tokens and the "not in the price table" reason was
-// hidden by an else-if. Each clause now carries its own tokens. The counts in
-// extra_attempts.cost and declined[].cost are attempts, and are named so; and
-// every attempt's tokens, priced or not, are in the token total and its
-// model's row, which counts its attempts.
-func TestExtraAttempts_TheDeclinedLineSaysWhichTokensHadNoOutput(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		its    []resp
-		line   string
-		tokens int64
-		js     string
-	}{
-		{"unpriced, with and without output",
-			[]resp{{model: "claude-mystery-9", in: 535}, {model: "claude-mystery-9", in: 1000, out: 70}},
-			"claude-mystery-9 2 attempts (535 tokens on 1 attempt with no output, billed only in some refusal categories, which the transcript does not record; 1,070 tokens, cost unknown: not in the price table)",
-			1605,
-			`"declined":[{"model":"claude-mystery-9","attempts":2,"tokens":{"input":1535,"output":70,"cache_read":0,"cache_write_5m":0,"cache_write_1h":0},"cost":{"usd":null,"unpriced_attempts":2,"unpriced_tokens":1605},"no_output":1,"no_output_tokens":535}]`},
-		{"unpriced, with output only",
-			[]resp{{model: "claude-mystery-9", in: 1000, out: 70}},
-			"claude-mystery-9 1 attempt (1,070 tokens, cost unknown: not in the price table)",
-			1070,
-			`"cost":{"usd":null,"unpriced_attempts":1,"unpriced_tokens":1070},"no_output":0,"no_output_tokens":0}]`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			c := newConfig(t)
-			its := append(tc.its, resp{typ: "fallback_message", model: "claude-opus-4-8", in: 412, out: 264})
-			c.write("proj/sess-a.jsonl", resp{id: "fb", model: "claude-opus-4-8", at: now.Add(-time.Hour), in: 412, out: 264,
-				stop: "end_turn", iters: its}.line("text"))
-			s := c.summary(30)
-			txt, js := render(t, s)
-			if !strings.Contains(txt, "\ndeclined      "+tc.line+"\n") {
-				t.Errorf("text lacks %q:\n%s", tc.line, txt)
-			}
-			if !strings.Contains(js, tc.js) || !strings.Contains(js, `"extra_attempts":{"responses":1,"attempts":`) ||
-				strings.Contains(js, `"declined":[{"model":"claude-mystery-9","attempts":1,"tokens":{"input":1000,"output":70,"cache_read":0,"cache_write_5m":0,"cache_write_1h":0},"cost":{"usd":null,"unpriced_responses"`) {
-				t.Errorf("the JSON lacks %s:\n%s", tc.js, js)
-			}
-			if !strings.Contains(js, `"unpriced_attempts":`+fmt.Sprint(len(tc.its))+`,"unpriced_tokens":`+fmt.Sprint(tc.tokens)+`},"cost_unknown_reason"`) {
-				t.Errorf("extra_attempts.cost does not count unpriced attempts as attempts:\n%s", js)
-			}
-			if got, want := s.Tokens.Total(), 412+264+tc.tokens; got != want {
-				t.Errorf("token total = %d, want %d: every attempt's tokens", got, want)
-			}
-			var row *ModelSpend
-			for i := range s.ByModel {
-				if s.ByModel[i].Model == "claude-mystery-9" {
-					row = &s.ByModel[i]
-				}
-			}
-			if row == nil || row.Tokens.Total() != tc.tokens || row.Attempts != len(tc.its) || row.Responses != 0 {
-				t.Errorf("claude-mystery-9 row = %+v, want %d tokens over %d attempts", row, tc.tokens, len(tc.its))
-			}
-		})
+	if s.ExtraAttempts.FallbackServed != 1 {
+		t.Errorf("fallback served = %d, want 1", s.ExtraAttempts.FallbackServed)
 	}
 }
 
 // TestExtraAttempts_AnAllDeclinedChainIsNotServed: when every model in the
 // chain declines, the page says the response is the last model's refusal,
-// with a fallback_message entry last. It was reported as served -- "fallback
-// claude-fable-5 -> claude-opus-4-8", in fallback_served -- and the saving
-// told the reader to choose with /model a model that refused too. The
-// earlier attempts are declined ones; nothing was served, and no model is
-// suggested.
+// with a fallback_message entry last. It was reported as served. Nothing was
+// served; the earlier attempt is an extra attempt in tokens.
 func TestExtraAttempts_AnAllDeclinedChainIsNotServed(t *testing.T) {
 	c := newConfig(t)
 	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
@@ -1705,59 +1590,13 @@ func TestExtraAttempts_AnAllDeclinedChainIsNotServed(t *testing.T) {
 		iterationsOf(m)[0].(map[string]any)["output_tokens"] = 50
 	}))
 	s := c.summary(30)
-	if len(s.ExtraAttempts.Fallback) != 0 {
-		t.Errorf("fallback = %+v, want none: every model declined", s.ExtraAttempts.Fallback)
-	}
-	if len(s.ExtraAttempts.Declined) != 1 || s.ExtraAttempts.Declined[0].Model != "claude-fable-5" {
-		t.Errorf("declined = %+v, want Fable 5's attempt", s.ExtraAttempts.Declined)
-	}
-	for _, sv := range s.Savings {
-		if sv.Hint == SavingHintServedModel {
-			t.Errorf("saving %+v suggests a model that also refused", sv)
-		}
+	if e := s.ExtraAttempts; e.FallbackServed != 0 || e.Attempts != 1 || e.Tokens.Total() != 585 {
+		t.Errorf("extra attempts = %+v, want none served and the 585-token declined attempt", e)
 	}
 	txt, _ := render(t, s)
-	if !strings.Contains(txt, "\nfallback      none (no response was served by a fallback model)\n") || strings.Contains(txt, "/model") {
+	if !strings.Contains(txt, "\nretries       1 response carried 1 extra attempt, 585 tokens with the cost unknown, not in the total\n") ||
+		strings.Contains(txt, "served by a fallback") {
 		t.Errorf("an all-declined chain reads as served:\n%s", txt)
-	}
-}
-
-// TestExtraAttempts_StickyIsOnlyAChainWithNoMessageEntry: the page tells a
-// sticky-routed response by "the absence of a message entry for the
-// requested model". Sticky was inferred from the first entry alone, so a
-// chain whose first entry is not a "message", or whose "message" entry names
-// no model, printed "sticky routing" beside a declined line for the same
-// response. The model asked is the first "message" entry before the last.
-func TestExtraAttempts_StickyIsOnlyAChainWithNoMessageEntry(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		edit      func([]any) []any
-		requested string
-	}{
-		{"a non-message first entry", func(its []any) []any {
-			return append([]any{map[string]any{"type": "something_new", "model": "claude-opus-5-5", "input_tokens": 7, "output_tokens": 0}}, its...)
-		}, "claude-fable-5"},
-		{"a message entry with no model", func(its []any) []any {
-			delete(its[0].(map[string]any), "model")
-			return its
-		}, ModelNotRecorded},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			c := newConfig(t)
-			c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
-				u := m["usage"].(map[string]any)
-				u["iterations"] = tc.edit(iterationsOf(m))
-			}))
-			s := c.summary(30)
-			wantR := []FallbackRoute{{Requested: tc.requested, Served: "claude-opus-4-8", Responses: 1}}
-			if !reflect.DeepEqual(s.ExtraAttempts.Fallback, wantR) {
-				t.Errorf("fallback = %+v, want %+v: not sticky", s.ExtraAttempts.Fallback, wantR)
-			}
-			txt, _ := render(t, s)
-			if strings.Contains(txt, "sticky") {
-				t.Errorf("text calls a chain with a message entry sticky:\n%s", txt)
-			}
-		})
 	}
 }
 
@@ -1780,7 +1619,7 @@ func refusalMessage(id, requestID, category string, at time.Time) string {
 // and a bio group "on other" saying the amount was not in the transcript. The
 // synthetic line is folded into the response with the same requestId in the
 // same file -- also when the streamed line carries no stop_reason of its own
-// -- so it is one refusal, billed at the rates of the model that ran it.
+// -- so it is one refusal, priced at the rates of the model that ran it.
 func TestRefusals_AMidStreamRefusalIsCountedOnce(t *testing.T) {
 	at := now.Add(-time.Hour)
 	for _, stop := range []string{"refusal", ""} {
@@ -1800,7 +1639,7 @@ func TestRefusals_AMidStreamRefusalIsCountedOnce(t *testing.T) {
 				t.Errorf("by category = %+v, want bio on claude-fable-5-1 alone", r.ByCategory)
 			}
 			txt, js := render(t, s)
-			if strings.Contains(txt, "without usage") || strings.Contains(txt, "not computed") || !strings.Contains(js, `"savings_not_computed":[]`) {
+			if strings.Contains(txt, "without usage") || strings.Contains(txt, "leaves out") || !strings.Contains(js, `"without_usage":0`) {
 				t.Errorf("the refusal is counted again as a pre-output one:\n%s\n%s", txt, js)
 			}
 		})
@@ -1819,105 +1658,71 @@ func TestRefusals_AMidStreamRefusalIsCountedOnce(t *testing.T) {
 	}
 }
 
-// TestRefusals_APreOutputRefusalIsBilledByItsCategory: the page bills a
-// refusal before any output only in bio, frontier_llm and
-// reasoning_extraction; in cyber, general_harms or with a null category it
-// "is not billed". Pre-output was read from the line's shape -- a zero-usage
-// line -- so a cyber refusal with usage and no output went into the total and
-// billed_refusals. It is read from output_tokens == 0: such a refusal is out
-// of the total and the savings and counted as not billed; one in a category
-// this read does not know shows its tokens with the cost unknown; and a
-// billed one with no amount (a zero-usage line) is a billed_refusals entry of
-// unknown cost, by category and model, with its lever where it has one --
-// never only a count with no category, model or lever.
-func TestRefusals_APreOutputRefusalIsBilledByItsCategory(t *testing.T) {
+// TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal: whether a refusal
+// before any output was billed depends on its category, which this read does
+// not price by. Pre-output is read from output_tokens == 0, never from the
+// line's shape, and such a refusal -- in any category, a billed one, an
+// unbilled one or one this read does not know -- shows its tokens with the
+// cost unknown and stays out of the total and every breakdown; the header
+// says how many, and why their cost is unknown. A window holding only a
+// refusal without usage still says the total leaves it out.
+func TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal(t *testing.T) {
 	at := now.Add(-time.Hour)
-	t.Run("cyber with usage and no output", func(t *testing.T) {
+	t.Run("with usage and no output", func(t *testing.T) {
 		c := newConfig(t)
 		c.write("proj/sess-a.jsonl",
 			resp{id: "r", model: "claude-opus-5-5", at: at, in: 10, stop: "end_turn"}.line("text"),
-			resp{id: "cy", model: "claude-opus-5-5", at: at, in: 10000, stop: "refusal", category: "cyber"}.line("text"))
+			resp{id: "cy", model: "claude-opus-5-5", at: at, in: 10000, stop: "refusal", category: "cyber"}.line("text"),
+			resp{id: "bi", model: "claude-opus-5-5", at: at, in: 2000, read: 34, stop: "refusal", category: "bio"}.line("text"),
+			resp{id: "o", model: "claude-opus-5-5", at: at, in: 200, stop: "refusal", category: "a_new_category"}.line("text"))
 		s := c.summary(30)
-		if s.Total.Nano != 10*opusIn || s.Responses != 1 {
-			t.Errorf("total = %d over %d responses, want %d over 1: an unbilled refusal is in the total", s.Total.Nano, s.Responses, 10*opusIn)
+		if s.Total != (Cost{Nano: 10 * opusIn, Priced: 1}) || s.Responses != 1 || s.Tokens.Total() != 10 {
+			t.Errorf("total = %+v over %d responses, want %d over 1: a pre-output refusal is in the total", s.Total, s.Responses, 10*opusIn)
+		}
+		if len(s.ByModel) != 1 || s.ByModel[0].Responses != 1 || s.ByKind.Input != (Cost{Nano: 10 * opusIn, Priced: 1}) {
+			t.Errorf("by model = %+v, by kind = %+v: a pre-output refusal is in a breakdown", s.ByModel, s.ByKind)
+		}
+		r := s.Refusals
+		if r.BeforeOutput != 3 || r.BeforeOutputTokens != 12234 || r.Responses != 0 || r.Cost != (Cost{}) {
+			t.Errorf("refusals = %+v, want three before any output, 12,234 tokens", r)
 		}
 		if len(s.Savings) != 0 {
-			t.Errorf("savings = %+v, want none: the refusal was not billed", s.Savings)
-		}
-		if s.Refusals.NotBilled != 1 || s.Refusals.Responses != 0 || len(s.Refusals.ByCategory) != 1 || s.Refusals.ByCategory[0].NotBilled != 1 {
-			t.Errorf("refusals = %+v, want one not billed", s.Refusals)
+			t.Errorf("savings = %+v, want none", s.Savings)
 		}
 		txt, _ := render(t, s)
-		if !strings.Contains(txt, "cyber on claude-opus-5-5: 1 before any output with usage, not billed (a pre-output refusal in this category is not)\n") {
-			t.Errorf("text does not say the refusal was not billed:\n%s", txt)
-		}
-	})
-	t.Run("other with usage and no output", func(t *testing.T) {
-		c := newConfig(t)
-		c.write("proj/sess-a.jsonl",
-			resp{id: "o", model: "claude-opus-5-5", at: at, in: 1234, stop: "refusal", category: "a_new_category"}.line("text"))
-		s := c.summary(30)
-		if s.Total.Priced != 0 || s.Total.Unpriced != 1 || s.Total.UnpricedTokens != 1234 {
-			t.Errorf("total = %+v, want its tokens with the cost unknown", s.Total)
-		}
-		if len(s.SavingsNotComputed) != 0 {
-			t.Errorf("savings not computed = %v, want none: its model has a rate, its billing is what is unknown", s.SavingsNotComputed)
-		}
-		txt, _ := render(t, s)
-		if !strings.Contains(txt, "other on claude-opus-5-5: 1 response, 1,234 tokens, cost unknown") {
-			t.Errorf("text does not show the tokens with the cost unknown:\n%s", txt)
-		}
-	})
-	t.Run("reasoning_extraction without usage", func(t *testing.T) {
-		c := newConfig(t)
-		c.write("proj/sess-a.jsonl",
-			resp{id: "r", model: "claude-opus-5-5", at: at, in: 10, stop: "end_turn"}.line("text"),
-			refusalMessage("z1", "", "reasoning_extraction", at), refusalMessage("z2", "", "frontier_llm", at))
-		s := c.summary(30)
-		want := []Saving{
-			{Kind: SavingBilledRefusals, Category: "frontier_llm", Model: ModelNotRecorded, Cost: Cost{Unpriced: 1}},
-			{Kind: SavingBilledRefusals, Category: "reasoning_extraction", Model: ModelNotRecorded, Cost: Cost{Unpriced: 1},
-				Hint: SavingHintReasoningInReply},
-		}
-		if !reflect.DeepEqual(s.Savings, want) || len(s.SavingsNotComputed) != 0 {
-			t.Errorf("savings = %+v, not computed %v\nwant %+v", s.Savings, s.SavingsNotComputed, want)
-		}
-		txt, js := render(t, s)
-		for _, line := range []string{
-			"              reasoning_extraction (model not recorded): 1 without usage, billed before any output in this category; the amount is not in the transcript\n",
-			"savings       1 pre-output frontier_llm refusal (model not recorded) was billed; the amount is not in the transcript\n",
-			"              1 pre-output reasoning_extraction refusal (model not recorded) was billed; the amount is not in the transcript: this category is a request for the model's internal reasoning in its reply",
+		for _, want := range []string{
+			"\n       the total leaves out 12,234 tokens on 3 pre-output refusals (cost unknown: whether a refusal before any output was billed depends on its category)\n",
+			"\nrefusals      3 refusals before any output, 12,234 tokens with the cost unknown, not in the total\n",
+			"              bio on claude-opus-5-5: 1 before any output\n",
+			"              cyber on claude-opus-5-5: 1 before any output\n",
+			"              other on claude-opus-5-5: 1 before any output\n",
 		} {
-			if !strings.Contains(txt, line) {
-				t.Errorf("text lacks %q:\n%s", line, txt)
+			if !strings.Contains(txt, want) {
+				t.Errorf("text lacks %q:\n%s", want, txt)
 			}
 		}
-		if strings.Contains(txt, " on other") || !strings.Contains(js, `"model":"not_recorded","cost":{"usd":null,"unpriced_responses":1`) {
-			t.Errorf("a synthetic group reads as a model named other, or its cost as known:\n%s\n%s", txt, js)
+		for _, bad := range []string{"not billed (", "was not billed", "billed before any output in", "billing unknown"} {
+			if strings.Contains(txt, bad) {
+				t.Errorf("text says %q about a refusal it does not price by category:\n%s", bad, txt)
+			}
 		}
 	})
-	t.Run("only a billed pre-output refusal", func(t *testing.T) {
+	t.Run("only a pre-output refusal without usage", func(t *testing.T) {
 		c := newConfig(t)
 		c.write("proj/sess-a.jsonl", refusalMessage("z1", "", "bio", at))
 		txt, _ := render(t, c.summary(30))
 		if !strings.Contains(txt, "est. $0.00 at API list prices") ||
-			!strings.Contains(txt, "\n       the total leaves out 1 pre-output refusal that was billed (the amount is not in the transcript)\n") {
-			t.Errorf("the header prints $0.00 beside a billed refusal with no caveat:\n%s", txt)
+			!strings.Contains(txt, "\n       the total leaves out 1 pre-output refusal written without usage (cost unknown: whether a refusal before any output was billed depends on its category)\n") {
+			t.Errorf("the header prints $0.00 beside a pre-output refusal with no caveat:\n%s", txt)
 		}
 	})
 }
 
 // TestRefusals_AreSplitByCategoryAndModel: stop_details.category was never
 // read, so every refusal landed in one total and one line, and nothing told
-// a classifier decline in a named category from the rest. Worse, a
-// pre-output refusal in a category the API bills before any output (bio,
-// frontier_llm, reasoning_extraction) was said to have billing that "cannot
-// be read": it was billed, and the transcript does not hold the amount. The
-// category is read as a closed word -- a null is "uncategorized", a word the
-// page does not name is "other" -- and the refusals are split by category
-// and model, each saying what the page says of its billing. Each of the five
-// named categories is held to its billing word, so a category moved to the
-// wrong side of the page's rule fails here.
+// a classifier decline in a named category from the rest. The category is
+// read as a closed word -- a null is "uncategorized", a word the page does
+// not name is "other" -- and the refusals are counted by category and model.
 func TestRefusals_AreSplitByCategoryAndModel(t *testing.T) {
 	c := newConfig(t)
 	at := now.Add(-time.Hour)
@@ -1928,139 +1733,43 @@ func TestRefusals_AreSplitByCategoryAndModel(t *testing.T) {
 		synthetic("z1", "bio"), synthetic("z2", "bio"), synthetic("z3", "cyber"), synthetic("z4", ""), synthetic("z5", "a_new_category"),
 		synthetic("z6", "frontier_llm"), synthetic("z7", "reasoning_extraction"), synthetic("z8", "general_harms"))
 	s := c.summary(30)
-	yes, no := true, false
 	nr := ModelNotRecorded
 	want := []RefusalGroup{
-		{Category: "bio", Model: nr, WithoutUsage: 2, BilledBeforeOutput: &yes},
-		{Category: "cyber", Model: "claude-fable-5-1", Responses: 1, Cost: Cost{Nano: 1000*10000 + 40*50000, Priced: 1}, BilledBeforeOutput: &no},
-		{Category: "cyber", Model: "claude-opus-5-5", NotBilled: 1, BilledBeforeOutput: &no},
-		{Category: "cyber", Model: nr, WithoutUsage: 1, BilledBeforeOutput: &no},
-		{Category: "frontier_llm", Model: nr, WithoutUsage: 1, BilledBeforeOutput: &yes},
-		{Category: "general_harms", Model: nr, WithoutUsage: 1, BilledBeforeOutput: &no},
+		{Category: "bio", Model: nr, WithoutUsage: 2},
+		{Category: "cyber", Model: "claude-fable-5-1", Responses: 1},
+		{Category: "cyber", Model: "claude-opus-5-5", BeforeOutput: 1},
+		{Category: "cyber", Model: nr, WithoutUsage: 1},
+		{Category: "frontier_llm", Model: nr, WithoutUsage: 1},
+		{Category: "general_harms", Model: nr, WithoutUsage: 1},
 		{Category: "other", Model: nr, WithoutUsage: 1},
-		{Category: "reasoning_extraction", Model: nr, WithoutUsage: 1, BilledBeforeOutput: &yes},
-		{Category: "uncategorized", Model: nr, WithoutUsage: 1, BilledBeforeOutput: &no},
+		{Category: "reasoning_extraction", Model: nr, WithoutUsage: 1},
+		{Category: "uncategorized", Model: nr, WithoutUsage: 1},
 	}
 	if !reflect.DeepEqual(s.Refusals.ByCategory, want) {
 		t.Errorf("by category = %+v\nwant %+v", s.Refusals.ByCategory, want)
 	}
 	txt, js := render(t, s)
 	for _, line := range []string{
-		"refusals      1 response ended in a refusal, $0.01; 1 refusal before any output with usage was not billed, and not in the total; 8 pre-output refusals were written without usage\n",
-		"              bio (model not recorded): 2 without usage, billed before any output in this category; the amount is not in the transcript\n",
-		"              cyber on claude-fable-5-1: 1 response, $0.01\n",
-		"              cyber on claude-opus-5-5: 1 before any output with usage, not billed (a pre-output refusal in this category is not)\n",
-		"              cyber (model not recorded): 1 without usage, not billed (a pre-output refusal in this category is not)\n",
-		"              frontier_llm (model not recorded): 1 without usage, billed before any output in this category; the amount is not in the transcript\n",
-		"              general_harms (model not recorded): 1 without usage, not billed (a pre-output refusal in this category is not)\n",
-		"              other (model not recorded): 1 without usage, billing unknown (a category this read does not know)\n",
-		"              reasoning_extraction (model not recorded): 1 without usage, billed before any output in this category; the amount is not in the transcript\n",
+		"refusals      1 response ended in a refusal, $0.01; 1 refusal before any output, 10 tokens with the cost unknown, not in the total; 8 pre-output refusals were written without usage\n",
+		"              bio (model not recorded): 2 without usage\n",
+		"              cyber on claude-fable-5-1: 1 response\n",
+		"              cyber on claude-opus-5-5: 1 before any output\n",
+		"              cyber (model not recorded): 1 without usage\n",
+		"              frontier_llm (model not recorded): 1 without usage\n",
+		"              general_harms (model not recorded): 1 without usage\n",
+		"              other (model not recorded): 1 without usage\n",
+		"              reasoning_extraction (model not recorded): 1 without usage\n",
+		"              uncategorized (model not recorded): 1 without usage\n",
 	} {
 		if !strings.Contains(txt, line) {
 			t.Errorf("text lacks %q:\n%s", line, txt)
 		}
 	}
-	if !strings.Contains(js, `{"category":"bio","model":"not_recorded","responses":0,"cost":{"usd":0,"unpriced_responses":0,"unpriced_tokens":0},"not_billed":0,"without_usage":2,"billed_before_output":true}`) ||
-		!strings.Contains(js, `"category":"other","model":"not_recorded","responses":0,"cost":{"usd":0,"unpriced_responses":0,"unpriced_tokens":0},"not_billed":0,"without_usage":1,"billed_before_output":null}`) {
-		t.Errorf("the JSON does not split the refusals by category:\n%s", js)
+	if !strings.Contains(js, `{"category":"bio","model":"not_recorded","responses":0,"before_output":0,"without_usage":2}`) {
+		t.Errorf("the JSON does not count the refusals by category:\n%s", js)
 	}
 	if strings.Contains(txt+js, "a_new_category") {
 		t.Errorf("a category outside the closed vocabulary was printed as read:\n%s\n%s", txt, js)
-	}
-}
-
-// TestSavings_BilledRefusalsAndDeclinedAttemptsByCategoryAndModel: the
-// savings list never read Refusals or ExtraAttempts, so a $1.00 Fable
-// refusal beside a fallback-routed response printed "savings: []". Each
-// billed refusal group and each model's priced declined attempts is now a
-// saving with its figure, and a lever is named only where a Claude Code user
-// holds one: reasoning_extraction (a request for the model's reasoning in
-// its reply) and a declined model a fallback served (/model). A refusal in a
-// category that names a policy area gets its figure and no advice. What was
-// billed with no amount in the transcript is named as not computed.
-func TestSavings_BilledRefusalsAndDeclinedAttemptsByCategoryAndModel(t *testing.T) {
-	c := newConfig(t)
-	at := now.Add(-time.Hour)
-	c.write("proj/sess-a.jsonl",
-		resp{id: "re", model: "claude-fable-5-1", at: at, in: 100000, out: 40, stop: "refusal", category: "reasoning_extraction"}.line("text"),
-		// A cyber refusal partway through its output: billed at normal
-		// rates. Before any output it would not have been billed.
-		resp{id: "cy", model: "claude-opus-5-5", at: at, in: 10000, out: 50, stop: "refusal", category: "cyber"}.line("text"),
-		refusalMessage("bio", "", "bio", at),
-		transcriptLine(t, fallbackExample, at, func(m map[string]any) {
-			iterationsOf(m)[0].(map[string]any)["output_tokens"] = 2000
-		}),
-		transcriptLine(t, fallbackExample, at, func(m map[string]any) { m["id"] = "msg_no_output" }))
-	s := c.summary(30)
-	// cmdSpend builds, then joins, and Join lists the savings again: each
-	// kind is listed once.
-	if err := s.Join(nil); err != nil {
-		t.Fatal(err)
-	}
-	want := []Saving{
-		{Kind: SavingBilledRefusals, Category: "bio", Model: ModelNotRecorded, Cost: Cost{Unpriced: 1}},
-		{Kind: SavingBilledRefusals, Category: "cyber", Model: "claude-opus-5-5", Cost: Cost{Nano: 10000*opusIn + 50*opusOut, Priced: 1}},
-		{Kind: SavingBilledRefusals, Category: "reasoning_extraction", Model: "claude-fable-5-1", Cost: Cost{Nano: 100000*10000 + 40*50000, Priced: 1},
-			Hint: SavingHintReasoningInReply},
-		{Kind: SavingDeclinedAttempts, Model: "claude-fable-5", Cost: Cost{Nano: 535*fable5In + 2000*fable5Out, Priced: 1}, Hint: SavingHintServedModel},
-	}
-	if !reflect.DeepEqual(s.Savings, want) {
-		t.Errorf("savings = %+v\nwant %+v", s.Savings, want)
-	}
-	if !reflect.DeepEqual(s.SavingsNotComputed, []string{SavingNotComputedAttempts}) {
-		t.Errorf("savings not computed = %v", s.SavingsNotComputed)
-	}
-	txt, js := render(t, s)
-	for _, line := range []string{
-		"savings       1 pre-output bio refusal (model not recorded) was billed; the amount is not in the transcript\n",
-		"              $0.04 on cyber refusals on claude-opus-5-5\n",
-		"              $1.00 on reasoning_extraction refusals on claude-fable-5-1: this category is a request for the model's internal reasoning in its reply, which the model gives as thinking instead\n",
-		"              $0.11 on attempts claude-fable-5 declined before a fallback served: choosing the model that served them (/model) for such work skips the declined attempt\n",
-		"              not computed: 1 declined attempt with no output, billed only in some refusal categories, which the transcript does not record\n",
-	} {
-		if !strings.Contains(txt, line) {
-			t.Errorf("text lacks %q:\n%s", line, txt)
-		}
-	}
-	if !strings.Contains(js, `"savings_not_computed":["declined_attempts_without_output"]`) {
-		t.Errorf("the JSON does not name what was not computed:\n%s", js)
-	}
-}
-
-// TestSavings_BilledSpendOnAnUnpricedModelIsNamedAsNotComputed: buildSavings
-// skipped every group with no priced part, so a billed refusal, or a declined
-// attempt that produced output, on a model the table lacks was in neither
-// savings nor savings_not_computed -- the list meant to name what could not
-// be computed missed it. Each is named, with its tokens and model.
-func TestSavings_BilledSpendOnAnUnpricedModelIsNamedAsNotComputed(t *testing.T) {
-	c := newConfig(t)
-	at := now.Add(-time.Hour)
-	c.write("proj/sess-a.jsonl",
-		resp{id: "cy", model: "claude-mystery-9", at: at, in: 1000, out: 50, stop: "refusal", category: "cyber"}.line("text"),
-		resp{id: "fb", model: "claude-opus-4-8", at: at, in: 412, out: 264, stop: "end_turn", iters: []resp{
-			{model: "claude-mystery-8", in: 2000, out: 70},
-			{typ: "fallback_message", model: "claude-opus-4-8", in: 412, out: 264}}}.line("text"))
-	s := c.summary(30)
-	// cmdSpend builds, then joins, and Join lists the savings again: each
-	// kind is listed once.
-	if err := s.Join(nil); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{SavingNotComputedRefusalsUnpriced, SavingNotComputedAttemptsUnpriced}
-	if !reflect.DeepEqual(s.SavingsNotComputed, want) {
-		t.Errorf("savings not computed = %v, want %v", s.SavingsNotComputed, want)
-	}
-	txt, js := render(t, s)
-	for _, line := range []string{
-		"savings       not computed: 1,050 tokens on claude-mystery-9 billed refusals with no known rate\n",
-		"              not computed: 2,070 tokens on claude-mystery-8 declined attempts with no known rate\n",
-	} {
-		if !strings.Contains(txt, line) {
-			t.Errorf("text lacks %q:\n%s", line, txt)
-		}
-	}
-	if !strings.Contains(js, `"savings_not_computed":["billed_refusals_unpriced_model","declined_attempts_unpriced_model"]`) {
-		t.Errorf("the JSON does not name what was not computed:\n%s", js)
 	}
 }
 
@@ -2114,10 +1823,9 @@ func TestOutput_StatesTheBasisOfEveryFigure(t *testing.T) {
 
 // TestContentNeverReachesTheOutput: the canary sits in every fixture's text,
 // thinking and tool_use blocks and in cwd, and neither rendering carries it.
-// It also sits in the decoded fields that are printed only as closed words:
-// an iteration entry's type and model, on a fallback-served response whose
-// declined attempt is printed by model, and a refusal's category (and the
-// explanation beside it, which is not read).
+// It also sits in the decoded fields that are printed only as closed words,
+// or not at all: an iteration entry's type and model, and a refusal's
+// category (and the explanation beside it, which is not read).
 func TestContentNeverReachesTheOutput(t *testing.T) {
 	c := newConfig(t)
 	at := now.Add(-time.Hour)

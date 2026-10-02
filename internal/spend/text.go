@@ -21,13 +21,12 @@ func Text(w io.Writer, s *Summary) error {
 	fmt.Fprintf(&b, "SPEND  last %d days · %s · est. %s at API list prices (%s)\n",
 		s.Days, countOf(s.Sessions, "session"), headline(s.Total), s.Pricing.Snapshot)
 	fmt.Fprintf(&b, "       %s\n", s.Pricing.Note)
-	if c := s.ExtraAttempts.Cost; c.Unpriced > 0 {
-		fmt.Fprintf(&b, "       the total leaves out %s tokens on %s whose cost is unknown (see retries)\n",
-			thousands(c.UnpricedTokens), countOf(c.Unpriced, "extra attempt"))
+	if a := s.ExtraAttempts; a.Attempts > 0 {
+		fmt.Fprintf(&b, "       the total leaves out %s tokens on %s (cost unknown)\n",
+			thousands(a.Tokens.Total()), countOf(a.Attempts, "extra attempt"))
 	}
-	if n := s.Refusals.BilledWithoutAmount(); n > 0 {
-		fmt.Fprintf(&b, "       the total leaves out %s that %s billed (the amount is not in the transcript)\n",
-			countOf(n, "pre-output refusal"), wasWere(n))
+	if line := preOutputLine(s.Refusals); line != "" {
+		fmt.Fprintf(&b, "       the total leaves out %s (cost unknown: whether a refusal before any output was billed depends on its category)\n", line)
 	}
 	switch {
 	case s.Read.Files == 0 && s.Read.FilesBeforeWindow > 0:
@@ -45,10 +44,6 @@ func Text(w io.Writer, s *Summary) error {
 		fmt.Fprintf(&b, "%-14s%s\n", "cache expiry", coldLine(s.CacheExpiry))
 		writeLines(&b, "refusals", refusalLines(s.Refusals))
 		fmt.Fprintf(&b, "%-14s%s\n", "retries", attemptsLine(s.ExtraAttempts))
-		if len(s.ExtraAttempts.Declined) > 0 {
-			fmt.Fprintf(&b, "%-14s%s\n", "declined", declinedLine(s.ExtraAttempts.Declined))
-		}
-		fmt.Fprintf(&b, "%-14s%s\n", "fallback", fallbackLine(s.ExtraAttempts.Fallback))
 		for i, line := range sessionLines(s.PerSession) {
 			label := ""
 			if i == 0 {
@@ -56,7 +51,7 @@ func Text(w io.Writer, s *Summary) error {
 			}
 			fmt.Fprintf(&b, "%-14s%s\n", label, line)
 		}
-	} else if s.Refusals.WithoutUsage > 0 || s.Refusals.NotBilled > 0 {
+	} else if s.Refusals.WithoutUsage > 0 || s.Refusals.BeforeOutput > 0 {
 		writeLines(&b, "refusals", refusalLines(s.Refusals))
 	}
 
@@ -65,16 +60,11 @@ func Text(w io.Writer, s *Summary) error {
 		b.WriteString(line)
 	}
 
-	// What was billed with no amount in the transcript is said beside the
-	// list, so its absence there is not read as "nothing to save".
-	if len(s.Savings) > 0 || len(s.SavingsNotComputed) > 0 {
+	if len(s.Savings) > 0 {
 		b.WriteString("\n")
 		var lines []string
 		for _, sv := range s.Savings {
 			lines = append(lines, savingLine(sv))
-		}
-		for _, k := range s.SavingsNotComputed {
-			lines = append(lines, notComputedLines(s, k)...)
 		}
 		writeLines(&b, "savings", lines)
 	}
@@ -256,47 +246,49 @@ func writeLines(b *bytes.Buffer, label string, lines []string) {
 
 // refusalLines is the refusals in all, then one line per category and model.
 func refusalLines(r Refusals) []string {
-	if r.Responses == 0 && r.WithoutUsage == 0 && r.NotBilled == 0 {
+	if r.Responses == 0 && r.BeforeOutput == 0 && r.WithoutUsage == 0 {
 		return []string{"none (no response ended with stop_reason refusal)"}
 	}
 	var parts []string
 	if r.Responses > 0 {
 		parts = append(parts, fmt.Sprintf("%s ended in a refusal, %s", countOf(r.Responses, "response"), tokensMoney(r.Cost)))
 	}
-	if r.NotBilled > 0 {
-		parts = append(parts, fmt.Sprintf("%s before any output with usage %s not billed, and not in the total",
-			countOf(r.NotBilled, "refusal"), wasWere(r.NotBilled)))
+	if r.BeforeOutput > 0 {
+		parts = append(parts, fmt.Sprintf("%s before any output, %s tokens with the cost unknown, not in the total",
+			countOf(r.BeforeOutput, "refusal"), thousands(r.BeforeOutputTokens)))
 	}
-	switch {
-	case r.WithoutUsage == 1:
-		parts = append(parts, "1 pre-output refusal was written without usage")
-	case r.WithoutUsage > 1:
-		parts = append(parts, fmt.Sprintf("%d pre-output refusals were written without usage", r.WithoutUsage))
+	if r.WithoutUsage > 0 {
+		parts = append(parts, fmt.Sprintf("%s %s written without usage", countOf(r.WithoutUsage, "pre-output refusal"), wasWere(r.WithoutUsage)))
 	}
 	out := []string{strings.Join(parts, "; ")}
 	for _, g := range r.ByCategory {
 		var p []string
 		if g.Responses > 0 {
-			p = append(p, fmt.Sprintf("%s, %s", countOf(g.Responses, "response"), tokensMoney(g.Cost)))
+			p = append(p, countOf(g.Responses, "response"))
 		}
-		if g.NotBilled > 0 {
-			p = append(p, fmt.Sprintf("%d before any output with usage, not billed (a pre-output refusal in this category is not)", g.NotBilled))
+		if g.BeforeOutput > 0 {
+			p = append(p, fmt.Sprintf("%d before any output", g.BeforeOutput))
 		}
 		if g.WithoutUsage > 0 {
-			w := fmt.Sprintf("%d without usage, ", g.WithoutUsage)
-			switch {
-			case g.BilledBeforeOutput == nil:
-				w += "billing unknown (a category this read does not know)"
-			case *g.BilledBeforeOutput:
-				w += "billed before any output in this category; the amount is not in the transcript"
-			default:
-				w += "not billed (a pre-output refusal in this category is not)"
-			}
-			p = append(p, w)
+			p = append(p, fmt.Sprintf("%d without usage", g.WithoutUsage))
 		}
 		out = append(out, fmt.Sprintf("%s %s: %s", g.Category, onModel(g.Model), strings.Join(p, "; ")))
 	}
 	return out
+}
+
+// preOutputLine is what the total leaves out of the pre-output refusals, or
+// "" when there are none: the tokens of those with usage, and a count of
+// those written without.
+func preOutputLine(r Refusals) string {
+	var parts []string
+	if r.BeforeOutput > 0 {
+		parts = append(parts, fmt.Sprintf("%s tokens on %s", thousands(r.BeforeOutputTokens), countOf(r.BeforeOutput, "pre-output refusal")))
+	}
+	if r.WithoutUsage > 0 {
+		parts = append(parts, countOf(r.WithoutUsage, "pre-output refusal")+" written without usage")
+	}
+	return strings.Join(parts, " and ")
 }
 
 // onModel names a refusal's model after its category: "on <model>", or
@@ -321,66 +313,18 @@ func tokensMoney(c Cost) string {
 	return money(c)
 }
 
+// attemptsLine is the extra attempts, in tokens, and the responses a
+// fallback model served.
 func attemptsLine(a ExtraAttempts) string {
-	if a.Responses == 0 {
-		return "none (no response carried more than one attempt)"
+	line := "none (no response carried more than one attempt)"
+	if a.Responses > 0 {
+		line = fmt.Sprintf("%s carried %s, %s tokens with the cost unknown, not in the total",
+			countOf(a.Responses, "response"), countOf(a.Attempts, "extra attempt"), thousands(a.Tokens.Total()))
 	}
-	line := fmt.Sprintf("%s carried %s, %s tokens", countOf(a.Responses, "response"), countOf(a.Attempts, "extra attempt"), thousands(a.Tokens.Total()))
-	if a.Cost.Priced > 0 {
-		line += fmt.Sprintf(": %s at the rates of the models that ran them, in the total", usd(a.Cost.Nano))
-	}
-	if a.Cost.Unpriced > 0 {
-		line += fmt.Sprintf("; %s tokens on %s cost unknown (%s)", thousands(a.Cost.UnpricedTokens), countOf(a.Cost.Unpriced, "attempt"), a.CostUnknownReason)
+	if a.FallbackServed > 0 {
+		line += fmt.Sprintf("; %s %s served by a fallback model", countOf(a.FallbackServed, "response"), wasWere(a.FallbackServed))
 	}
 	return line
-}
-
-// declinedLine is the attempts that declined before a fallback served, by
-// the model that ran them.
-func declinedLine(ds []DeclinedAttempts) string {
-	parts := make([]string, 0, len(ds))
-	for _, d := range ds {
-		p := fmt.Sprintf("%s %s", d.Model, countOf(d.Attempts, "attempt"))
-		if d.Cost.Priced > 0 {
-			p += " " + usd(d.Cost.Nano)
-		}
-		// Two clauses, each with its own tokens: the attempts with no
-		// output, and what else is unpriced -- attempts with output on a
-		// model the table lacks.
-		var why []string
-		if d.NoOutput > 0 {
-			why = append(why, fmt.Sprintf("%s tokens on %s with no output, billed only in some refusal categories, which the transcript does not record",
-				thousands(d.NoOutputTokens), countOf(d.NoOutput, "attempt")))
-		}
-		if rest := d.unpricedWithOutput(); rest > 0 {
-			why = append(why, fmt.Sprintf("%s tokens, cost unknown: not in the price table", thousands(rest)))
-		}
-		if len(why) > 0 {
-			p += " (" + strings.Join(why, "; ") + ")"
-		}
-		parts = append(parts, p)
-	}
-	return strings.Join(parts, "; ")
-}
-
-// fallbackLine is the responses a fallback model served, as the model asked
-// -> the model that served.
-func fallbackLine(rs []FallbackRoute) string {
-	if len(rs) == 0 {
-		return "none (no response was served by a fallback model)"
-	}
-	parts := make([]string, 0, len(rs))
-	for _, r := range rs {
-		from := r.Requested
-		switch {
-		case r.Sticky:
-			from = "(sticky routing: the model asked is not in the transcript)"
-		case from == ModelNotRecorded:
-			from = "(the model asked is not recorded)"
-		}
-		parts = append(parts, fmt.Sprintf("%s -> %s on %s", from, r.Served, countOf(r.Responses, "response")))
-	}
-	return strings.Join(parts, "; ")
 }
 
 // silentLine is the only-we-can line. Its two unknown cases say WHY they are
@@ -487,74 +431,10 @@ func itThem(n int) string {
 }
 
 func savingLine(sv Saving) string {
-	switch sv.Kind {
-	case SavingColdCache:
-		line := fmt.Sprintf("%s over cache reads, re-writing a cache after a gap longer than its TTL (heuristic)", money(sv.Cost))
-		if sv.Hint == SavingHintLongerTTL {
-			line += ": part was written with the 5m TTL, and the 1h TTL keeps a cache across pauses up to an hour"
-		}
-		return line
-	case SavingBilledRefusals:
-		// The priced part, and the pre-output refusals billed with no
-		// amount in the transcript (an unpriced count).
-		var line string
-		unknown := fmt.Sprintf("%s %s %s billed; the amount is not in the transcript",
-			countOf(sv.Cost.Unpriced, "pre-output "+sv.Category+" refusal"), onModel(sv.Model), wasWere(sv.Cost.Unpriced))
-		switch {
-		case sv.Cost.Priced == 0:
-			line = unknown
-		case sv.Cost.Unpriced == 0:
-			line = fmt.Sprintf("%s on %s refusals %s", usd(sv.Cost.Nano), sv.Category, onModel(sv.Model))
-		default:
-			line = fmt.Sprintf("%s on %s refusals %s, and %s", usd(sv.Cost.Nano), sv.Category, onModel(sv.Model), unknown)
-		}
-		if sv.Hint == SavingHintReasoningInReply {
-			line += ": this category is a request for the model's internal reasoning in its reply, which the model gives as thinking instead"
-		}
-		return line
-	case SavingDeclinedAttempts:
-		line := fmt.Sprintf("%s on attempts %s declined before a fallback served", money(sv.Cost), sv.Model)
-		if sv.Hint == SavingHintServedModel {
-			line += ": choosing the model that served them (/model) for such work skips the declined attempt"
-		}
-		return line
-	case SavingSilentFailure:
+	if sv.Kind == SavingSilentFailure {
 		return fmt.Sprintf("%s spent in turns with a failed call the summary never mentioned", money(sv.Cost))
 	}
 	return money(sv.Cost)
-}
-
-// notComputedLines says what a savings_not_computed kind leaves out: one
-// line, or one per model for spend on a model with no known rate.
-func notComputedLines(s *Summary, kind string) []string {
-	noRate := func(tokens int64, model, what string) string {
-		return fmt.Sprintf("not computed: %s tokens on %s %s with no known rate", thousands(tokens), model, what)
-	}
-	var out []string
-	switch kind {
-	case SavingNotComputedAttempts:
-		n := 0
-		for _, d := range s.ExtraAttempts.Declined {
-			n += d.NoOutput
-		}
-		out = append(out, fmt.Sprintf("not computed: %s with no output, billed only in some refusal categories, which the transcript does not record",
-			countOf(n, "declined attempt")))
-	case SavingNotComputedRefusalsUnpriced:
-		for _, g := range s.Refusals.ByCategory {
-			if g.Cost.Unpriced > 0 && !pricedName(g.Model) {
-				out = append(out, noRate(g.Cost.UnpricedTokens, g.Model, "billed refusals"))
-			}
-		}
-	case SavingNotComputedAttemptsUnpriced:
-		for _, d := range s.ExtraAttempts.Declined {
-			if n := d.unpricedWithOutput(); n > 0 {
-				out = append(out, noRate(n, d.Model, "declined attempts"))
-			}
-		}
-	default:
-		out = append(out, "not computed: "+kind)
-	}
-	return out
 }
 
 func countOf(n int, noun string) string {

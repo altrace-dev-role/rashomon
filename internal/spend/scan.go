@@ -131,21 +131,6 @@ func refusalCategory(d *stopDetails) string {
 	return CategoryOther
 }
 
-// BilledBeforeOutput reports whether the API bills a refusal that arrives
-// before any output in a category, and whether that is known. The page: such
-// a refusal "is billed when its stop_details.category is bio, frontier_llm,
-// or reasoning_extraction", and "in any other category, or with a null
-// category, is not billed". A category this read does not know is neither.
-func BilledBeforeOutput(category string) (billed, known bool) {
-	switch category {
-	case CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction:
-		return true, true
-	case CategoryCyber, CategoryGeneralHarms, CategoryUncategorized:
-		return false, true
-	}
-	return false, false
-}
-
 // tokens is the counting part of a usage object, shared by the top level and
 // by each entry of iterations[].
 type tokens struct {
@@ -174,36 +159,21 @@ type usage struct {
 
 // iteration is one usage.iterations entry: an attempt's counts, its kind and
 // the model that ran it. The refusals-and-fallback page documents both
-// fields on every entry, and bills each attempt "at the rates of the model
-// that ran it".
+// fields on every entry.
 type iteration struct {
 	tokens
 	// Type is "message" for an attempt by the model asked, or by a hop that
 	// declined, and "fallback_message" for the fallback model that served.
-	// Read as a closed word (iterationType), never printed as read.
+	// Compared with iterFallback, never printed.
 	Type string `json:"type"`
-	// Model is the model that ran the attempt. It prices the attempt, and it
-	// is printed only through displayModel's closed-shape rule, as
-	// message.model is.
+	// Model is the model that ran the attempt. Of the last entry, it prices
+	// the response (route), and it is printed only through displayModel's
+	// closed-shape rule, as message.model is.
 	Model string `json:"model"`
 }
 
-// Iteration types, as iterationType reads them.
-const (
-	IterMessage  = "message"
-	IterFallback = "fallback_message"
-	IterOther    = "other"
-)
-
-// iterationType is an entry's type as a closed word: the two the API
-// documents, and "other" for anything else.
-func iterationType(s string) string {
-	switch s {
-	case IterMessage, IterFallback:
-		return s
-	}
-	return IterOther
-}
+// iterFallback is the type of the entry a fallback model served.
+const iterFallback = "fallback_message"
 
 // maxTokens bounds one count of one response. The largest context window a
 // model in the table has is a few million tokens, so a count past a hundred
@@ -318,21 +288,15 @@ type Response struct {
 	// transcript comes to when the request was made.
 	StartMS int64
 	Tokens  Tokens
-	// Attempts are the iterations other than the one that produced the
-	// message (extraAttempts). They come from the same line the counts do;
-	// see keep.
-	Attempts []Attempt
+	// Attempts are the tokens of each iteration other than the one that
+	// produced the message (extraAttempts). They come from the same line the
+	// counts do; see keep.
+	Attempts []Tokens
 	// Fallback is true when a fallback chain ran: the producing entry is a
 	// "fallback_message". Model is then that entry's model when it names one
 	// (route). The chain served the response unless it ended in a refusal --
-	// every model declined. Requested is the model the first "message" entry
-	// before the last names -- the model asked -- as read (displayModel
-	// prints it); Sticky is true when there is no such entry: a sticky-routed
-	// turn went straight to the fallback, and the transcript does not say
-	// which model was asked.
-	Fallback  bool
-	Requested string
-	Sticky    bool
+	// every model declined.
+	Fallback bool
 
 	file int // index into Scan.Files, the file this response was first seen in
 
@@ -357,11 +321,10 @@ type Response struct {
 	// (requestIDShaped), "" otherwise.
 	requestID string
 
-	// A refusal before any output (output_tokens 0) is billed by its
-	// category (BilledBeforeOutput), so Read marks one with usage either
-	// notBilled -- out of every figure, counted -- or, in a category this
-	// read does not know, costUnknown: its tokens shown, its cost unknown.
-	notBilled, costUnknown bool
+	// costUnknown marks a refusal before any output (output_tokens 0) with
+	// usage: whether it was billed depends on its category, so Read marks
+	// it, and Build shows its tokens with the cost unknown, out of the total.
+	costUnknown bool
 }
 
 // sighting is one file a response was seen in, with the session id the
@@ -661,12 +624,7 @@ func Read(found *Found) (*Scan, error) {
 		}
 		r.SessionID = sc.ownerSighting(r).session
 		if r.StopReason == "refusal" && r.Tokens.Output == 0 && r.Tokens.Total() > 0 {
-			switch billed, known := BilledBeforeOutput(r.Category); {
-			case !known:
-				r.costUnknown = true
-			case !billed:
-				r.notBilled = true
-			}
+			r.costUnknown = true
 		}
 	}
 	return sc, nil
@@ -847,10 +805,10 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			cand.Category = refusalCategory(l.Message.StopDetails)
 		}
 		cand.Attempts = extraAttempts(l.Message.Usage.Iterations)
-		rt := route(l.Message.Usage.Iterations)
-		cand.Fallback, cand.Requested, cand.Sticky = rt.fallback, rt.requested, rt.sticky
-		if rt.served != "" {
-			cand.Model = rt.served
+		var served string
+		cand.Fallback, served = route(l.Message.Usage.Iterations)
+		if served != "" {
+			cand.Model = served
 		}
 		if !dated {
 			cand.StartMS = 0
@@ -893,21 +851,14 @@ func keep(prev, cand *Response) {
 	prev.Category = cand.Category
 	prev.Fast = cand.Fast
 	prev.complete = cand.complete
-	prev.Attempts, prev.Fallback, prev.Requested, prev.Sticky = cand.Attempts, cand.Fallback, cand.Requested, cand.Sticky
+	prev.Attempts, prev.Fallback = cand.Attempts, cand.Fallback
 	if prev.Model == "" || cand.Fallback {
 		prev.Model = cand.Model
 	}
 }
 
-// Attempt is one iteration other than the one that produced the message.
-type Attempt struct {
-	Type   string // iterationType's closed word
-	Model  string // as read; displayModel prints it
-	Tokens Tokens
-}
-
-// extraAttempts is the attempts in iterations[] other than the one that
-// produced the message, each with its type, model and tokens.
+// extraAttempts is the tokens of each attempt in iterations[] other than the
+// one that produced the message.
 //
 // The producing attempt is taken to be the LAST entry: the top-level usage
 // covers "only the attempt that produced the returned message", an attempt
@@ -915,48 +866,29 @@ type Attempt struct {
 // page's example ends with the "fallback_message" entry that served. Its
 // tokens are already in the top-level counts, so counting it again here would
 // be the very double-count the dedupe exists to prevent.
-func extraAttempts(its []iteration) []Attempt {
+func extraAttempts(its []iteration) []Tokens {
 	if len(its) <= 1 {
 		return nil
 	}
-	out := make([]Attempt, 0, len(its)-1)
+	out := make([]Tokens, 0, len(its)-1)
 	for _, it := range its[:len(its)-1] {
-		out = append(out, Attempt{Type: iterationType(it.Type), Model: it.Model, Tokens: it.split()})
+		out = append(out, it.split())
 	}
 	return out
 }
 
-// routing is what route reads from a response's iterations.
-type routing struct {
-	fallback, sticky bool
-	requested        string
-	served           string
-}
-
-// route reads which model ran a response and which was asked. A fallback
+// route reads whether a fallback chain ran, and which model served it. A
 // chain ran when the producing (last) entry is a "fallback_message", and the
 // model that ran that attempt is the entry's own: for a mid-output fallback
 // the page says message_start "already named the requested model, so read
 // the serving model from ... the fallback_message entry", so message.model
 // can name the model that declined, and is used only when the entry names
-// none (served ""). The model asked is the first "message" entry before the
-// last. With none, the turn was sticky-routed -- the page: identify it "by
-// the fallback_message entry ..., the absence of a message entry for the
-// requested model, and the response's model field" -- and the model asked is
-// unknown. A "message" entry with no model is not sticky: the model asked is
-// then not recorded.
-func route(its []iteration) routing {
-	if len(its) == 0 || iterationType(its[len(its)-1].Type) != IterFallback {
-		return routing{}
+// none (served "").
+func route(its []iteration) (fallback bool, served string) {
+	if len(its) == 0 || its[len(its)-1].Type != iterFallback {
+		return false, ""
 	}
-	r := routing{fallback: true, sticky: true, served: its[len(its)-1].Model}
-	for _, it := range its[:len(its)-1] {
-		if iterationType(it.Type) == IterMessage {
-			r.requested, r.sticky = it.Model, false
-			break
-		}
-	}
-	return r
+	return true, its[len(its)-1].Model
 }
 
 // parseTimestamp reads Claude Code's RFC 3339 timestamp to Unix ms.

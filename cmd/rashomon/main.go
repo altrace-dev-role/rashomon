@@ -1673,11 +1673,10 @@ usage:
                                transcripts: by agent, model, token kind and
                                session, cache re-written after a gap,
                                refusals by category and model, retry
-                               attempts that produced output priced at the
-                               model that ran them (the rest shown in
-                               tokens), fallback routes (model asked -> model
-                               served), savings,
-                               and the spend in turns with a failed call the
+                               attempts and pre-output refusals in tokens
+                               (out of the total, the cost unknown), the
+                               responses a fallback model served, and the
+                               spend in turns with a failed call the
                                summary never mentioned, over the transcripts
                                its records name (the rest named as not
                                covered); the totals read usage fields only;

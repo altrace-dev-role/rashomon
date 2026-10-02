@@ -1145,11 +1145,13 @@ m("SP the window is applied before the previous response is found", "internal/sp
   "\tfor _, r := range sc.Responses {\n\t\tif r.StartMS < time.Now().Add(-48*time.Hour).UnixMilli() {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, f := range r.files {",
   "TestCacheExpiry_ThePredecessor")
 m("SP a savings line is printed with no figure under it", "internal/spend/spend.go",
-  "\tif s.CacheExpiry.Cost.Nano > 0 {", "\tif true {", "TestNoSavingsWithoutAFigure")
+  "\tif s.SilentFailureTurns.Cost.Nano > 0 {", "\tif true {",
+  "TestNoSavingsWithoutAFigure")
 m("SP a refusal is not recognised", "internal/spend/spend.go",
   "\t\tif r.StopReason == \"refusal\" {\n\t\t\ts.Refusals.Responses++", "\t\tif r.StopReason == \"refused\" {\n\t\t\ts.Refusals.Responses++", "TestRefusalsAndExtraAttempts")
 m("SP the returned attempt is counted again as an extra one", "internal/spend/scan.go",
-  "\tout := make([]Attempt, 0, len(its)-1)\n\tfor _, it := range its[:len(its)-1] {", "\tout := make([]Attempt, 0, len(its)-1)\n\tfor _, it := range its {", "TestRefusalsAndExtraAttempts")
+  "\tout := make([]Tokens, 0, len(its)-1)\n\tfor _, it := range its[:len(its)-1] {", "\tout := make([]Tokens, 0, len(its)-1)\n\tfor _, it := range its {",
+  "TestRefusalsAndExtraAttempts")
 m("SP a turn with failures fires whatever its summary says", "internal/spend/join.go",
   "\t\tif !sf.Fires {", "\t\tif sf.Failed == 0 {",
   "TestJoin_AnHonestSummary")
@@ -1324,10 +1326,6 @@ m("SP unparsed usage lines are not said", "internal/spend/text.go",
   "\tif s.Read.UnparsedUsageLines > 0 {", "\tif false {", "TestUnparsed_")
 m("SP a main transcript's sidechain lines share the main agent's cache stream", "internal/spend/spend.go",
   "\t\t\tk := stream{f.idx, r.Subagent}\n", "\t\t\tk := stream{f.idx, false}\n", "TestCacheExpiry_ThePreviousResponseIsTheSameAgents")
-m("SP the 1h TTL is advised for a re-write that was already 1h", "internal/spend/spend.go",
-  "\t\tif s.CacheExpiry.Tokens5m > 0 {\n\t\t\tsv.Hint", "\t\tif true {\n\t\t\tsv.Hint", "TestCacheExpiry_NoLongerTTLAdvice")
-m("SP a 5m re-write is given no TTL hint", "internal/spend/text.go",
-  "\t\tif sv.Hint == SavingHintLongerTTL {", "\t\tif false {", "TestCacheExpiry_NoLongerTTLAdvice")
 m("SP each agent share is rounded on its own", "internal/spend/text.go",
   "\tif pa+pb < 100 {", "\tif false {", "TestAgent_SharesSumTo100")
 m("SP the leftover share point goes to the smaller remainder", "internal/spend/text.go",
@@ -1336,9 +1334,6 @@ m("SP a non-zero side under 1% prints 0%", "internal/spend/text.go",
   "\t\tcase p == 0 && n > 0:", "\t\tcase false:", "TestAgent_SharesSumTo100")
 m("SP a share of 100% is printed beside a non-zero other side", "internal/spend/text.go",
   "\t\tcase p == 100 && uint64(n) < total:", "\t\tcase false:", "TestAgent_SharesSumTo100")
-m("SP every extra attempt is called declined", "internal/spend/spend.go",
-  "\t\tif !r.Fallback || a.Type != IterMessage {", "\t\tif a.Type != IterMessage {",
-  "TestRefusalsAndExtraAttempts")
 m("SP per-session spend is JSON-only", "internal/spend/text.go",
   "\t\tfor i, line := range sessionLines(s.PerSession) {", "\t\tfor i, line := range sessionLines(nil) {",
   "TestSessions_")
@@ -1450,9 +1445,11 @@ m("SP a decoded field under an allowed tag holds whatever it is handed", "intern
 m("SP a zero-usage refusal line is not counted", "internal/spend/spend.go",
   "\t\t\t\ts.Refusals.WithoutUsage++", "\t\t\t\t_ = s", "TestRefusals_")
 m("SP refusals without usage read as refusals none", "internal/spend/text.go",
-  "\tif r.Responses == 0 && r.WithoutUsage == 0 && r.NotBilled == 0 {", "\tif r.Responses == 0 && r.NotBilled == 0 {", "TestRefusals_")
+  "\tif r.Responses == 0 && r.BeforeOutput == 0 && r.WithoutUsage == 0 {", "\tif r.Responses == 0 && r.BeforeOutput == 0 {",
+  "TestRefusals_")
 m("SP a refusal without usage is not said when nothing else was billed", "internal/spend/text.go",
-  "\t} else if s.Refusals.WithoutUsage > 0 || s.Refusals.NotBilled > 0 {", "\t} else if false {", "TestRefusals_")
+  "\t} else if s.Refusals.WithoutUsage > 0 || s.Refusals.BeforeOutput > 0 {", "\t} else if false {",
+  "TestRefusals_")
 m("SP the silent-failure line says the turns ended with a failure", "internal/spend/text.go",
   'const lead = "in turns with a failed call the summary never mentioned: "', 'const lead = "in turns that ended with a failure the summary never mentioned: "',
   "TestJoin_SpendInsideASilentlyFailedTurn")
@@ -1492,38 +1489,11 @@ m("SP an iteration entry's type is decoded as counts only", "internal/spend/scan
 m("SP an iteration entry's model is not decoded", "internal/spend/scan.go",
   "\tModel string `json:\"model\"`\n}", "\tModel string `json:\"-\"`\n}",
   "TestExtraAttempts_")
-m("SP an extra attempt that produced output is not in the total", "internal/spend/spend.go",
-  "\tcostOne(c, r)\n\tfor _, a := range r.Attempts {", "\tcostOne(c, r)\n\tfor _, a := range r.Attempts[:0] {",
-  "TestExtraAttempts_AnAttemptWithOutput")
-m("SP an extra attempt is priced at the served model's rates", "internal/spend/spend.go",
-  "\tp := priceTokens(a.Model, a.Tokens)\n\treturn p, p.ok", "\tp := priceTokens(\"claude-opus-4-8\", a.Tokens)\n\treturn p, p.ok",
+m("SP a fallback-served response is not counted", "internal/spend/spend.go",
+  "\tif r.Fallback && r.StopReason != \"refusal\" {\n\t\te.FallbackServed++", "\tif false && r.Fallback {\n\t\te.FallbackServed++",
   "TestExtraAttempts_")
-m("SP a declined attempt with no output is priced as billed", "internal/spend/spend.go",
-  "\tif a.Tokens.Output == 0 {\n\t\treturn priced{}, false\n\t}\n\tp := priceTokens", "\tp := priceTokens",
-  "TestExtraAttempts_TheFallbackPagesExample")
-m("SP a priced attempt is left out of its model's row", "internal/spend/spend.go",
-  "\t\t\tam.Cost.addPriced(ap.total())\n", "",
-  "TestExtraAttempts_AnAttemptWithOutput")
-m("SP a priced attempt is left out of the kinds", "internal/spend/spend.go",
-  "\t\t\t\tif k.toks > 0 {\n\t\t\t\t\tk.c.addPriced(k.nano)", "\t\t\t\tif false {\n\t\t\t\t\tk.c.addPriced(k.nano)",
-  "TestExtraAttempts_AnAttemptWithOutput")
-m("SP a fallback-served response is not reported", "internal/spend/spend.go",
-  "\tif r.Fallback && r.StopReason != \"refusal\" {\n\t\tk := FallbackRoute", "\tif false && r.Fallback {\n\t\tk := FallbackRoute",
-  "TestExtraAttempts_")
-m("SP a sticky-routed response is not read as fallback-served", "internal/spend/scan.go",
-  "\tr := routing{fallback: true, sticky: true, served: its[len(its)-1].Model}", "\tr := routing{fallback: len(its) > 1, sticky: true, served: its[len(its)-1].Model}",
-  "TestExtraAttempts_AStickyRouted")
-m("SP the model asked is taken from the served entry", "internal/spend/scan.go",
-  "\t\t\tr.requested, r.sticky = it.Model, false", "\t\t\tr.requested, r.sticky = its[len(its)-1].Model, false",
-  "TestExtraAttempts_TheFallbackPagesExample")
-m("SP a declined attempt's model is printed as read", "internal/spend/spend.go",
-  "\t\tname := displayName(a.Model)\n", "\t\tname := a.Model\n",
-  "TestContentNeverReachesTheOutput")
-m("SP the model asked is printed as read", "internal/spend/spend.go",
-  "\t\t\tk.Requested = displayName(r.Requested)", "\t\t\tk.Requested = r.Requested",
-  "TestContentNeverReachesTheOutput")
-m("SP the headline does not say the total leaves out unpriced attempts", "internal/spend/text.go",
-  "\tif c := s.ExtraAttempts.Cost; c.Unpriced > 0 {", "\tif c := s.ExtraAttempts.Cost; false && c.Unpriced > 0 {",
+m("SP the headline does not say the total leaves out the extra attempts", "internal/spend/text.go",
+  "\tif a := s.ExtraAttempts; a.Attempts > 0 {", "\tif a := s.ExtraAttempts; false && a.Attempts > 0 {",
   "TestExtraAttempts_TheFallbackPagesExample|TestRefusalsAndExtraAttempts")
 m("SP a refusal's category is not decoded", "internal/spend/scan.go",
   "\tCategory *string `json:\"category\"`", "\tCategory *string `json:\"-\"`",
@@ -1535,9 +1505,6 @@ m("SP a category outside the vocabulary is kept as read", "internal/spend/scan.g
 m("SP a null category is read as other", "internal/spend/scan.go",
   "\tif d == nil || d.Category == nil {\n\t\treturn CategoryUncategorized", "\tif d == nil || d.Category == nil {\n\t\treturn CategoryOther",
   "TestRefusals_")
-m("SP a bio refusal before any output is not billed", "internal/spend/scan.go",
-  "\tcase CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction:\n\t\treturn true, true", "\tcase CategoryFrontierLLM, CategoryReasoningExtraction:\n\t\treturn true, true",
-  "TestRefusals_AreSplitByCategoryAndModel")
 m("SP a zero-usage refusal is not split by category", "internal/spend/spend.go",
   "\t\t\t\trefusal(r).WithoutUsage++\n", "",
   "TestRefusals_")
@@ -1547,9 +1514,6 @@ m("SP refusals are not split by model", "internal/spend/spend.go",
 m("SP a refusal's model is printed as read", "internal/spend/spend.go",
   "\t\tk := [2]string{r.Category, refusalModel(r.Model)}", "\t\tk := [2]string{r.Category, r.Model}",
   "TestContentNeverReachesTheOutput")
-m("SP a billed pre-output refusal is not said to be billed", "internal/spend/text.go",
-  "\t\t\tcase *g.BilledBeforeOutput:\n", "\t\t\tcase false:\n",
-  "TestRefusals_AreSplitByCategoryAndModel")
 m("SP the refusal categories are not printed", "internal/spend/text.go",
   "\tfor _, g := range r.ByCategory {\n\t\tvar p []string", "\tfor _, g := range r.ByCategory[:0] {\n\t\tvar p []string",
   "TestRefusals_")
@@ -1557,29 +1521,6 @@ m("SP a refusal's category reaches the output end to end", "internal/spend/scan.
   "\tswitch c := *d.Category; c {\n\tcase CategoryCyber, CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction, CategoryGeneralHarms:\n\t\treturn c\n\t}\n\treturn CategoryOther\n",
   "\treturn *d.Category\n",
   "TestSpend_NoMessageTextReachesTheOutput")
-m("SP a billed refusal is not a saving", "internal/spend/spend.go",
-  "\t\tif c.Nano == 0 && c.Unpriced == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tsv := Saving{Kind: SavingBilledRefusals", "\t\tif true {\n\t\t\tcontinue\n\t\t}\n\t\tsv := Saving{Kind: SavingBilledRefusals",
-  "TestSavings_|TestRefusalsAndExtraAttempts")
-m("SP the reasoning_extraction lever is not named", "internal/spend/spend.go",
-  "\t\t\tsv.Hint = SavingHintReasoningInReply", "\t\t\tsv.Hint = \"\"", "TestSavings_")
-m("SP a lever is named for a category no user can act on", "internal/spend/spend.go",
-  "\t\tif g.Category == CategoryReasoningExtraction {", "\t\tif true {", "TestSavings_")
-m("SP a priced declined attempt is not a saving", "internal/spend/spend.go",
-  "\t\tif d.Cost.Nano == 0 {\n\t\t\tcontinue\n\t\t}", "\t\tif true {\n\t\t\tcontinue\n\t\t}", "TestSavings_")
-m("SP the served-model lever is not named", "internal/spend/spend.go",
-  "\t\t\tsv.Hint = SavingHintServedModel", "\t\t\tsv.Hint = \"\"", "TestSavings_")
-m("SP a declined-attempt saving carries the unpriced attempts", "internal/spend/spend.go",
-  "\t\tc := Cost{Nano: d.Cost.Nano, Priced: d.Cost.Priced}", "\t\tc := d.Cost.Cost", "TestSavings_")
-m("SP a billed pre-output refusal without usage is not a saving", "internal/spend/spend.go",
-  "\t\t\tc.Unpriced = g.WithoutUsage", "\t\t\tc.Unpriced = 0", "TestSavings_|TestRefusals_APreOutputRefusalIsBilled")
-m("SP an unbilled pre-output refusal without usage is a saving", "internal/spend/spend.go",
-  "\t\tif g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {\n\t\t\tc.Unpriced = g.WithoutUsage", "\t\tif true {\n\t\t\tc.Unpriced = g.WithoutUsage",
-  "TestRefusals_")
-m("SP a no-output declined attempt is not named as not computed", "internal/spend/spend.go",
-  "\t\t\tnoOutput = true", "\t\t\tnoOutput = false", "TestSavings_")
-m("SP what was not computed is not said in the text", "internal/spend/text.go",
-  "\t\tfor _, k := range s.SavingsNotComputed {", "\t\tfor _, k := range s.SavingsNotComputed[:0] {", "TestSavings_")
-
 m("SP a shared response's not-covered cost is counted in every unrecorded transcript", "internal/spend/join.go",
   "\tfor _, r := range s.window {\n\t\tif counted[r] {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tif !covered[m] {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t}",
   "\tfor m, rs := range byTranscript {\n\t\tif !covered[m] {\n\t\t\tfor _, r := range rs {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t\t}\n\t\t}\n\t}",
@@ -1604,68 +1545,20 @@ m("SP a requestId is read whatever its shape", "internal/spend/scan.go",
   "\t\tif requestIDShaped(l.RequestID) {", "\t\tif l.RequestID != \"\" {", "TestRefusals_AMidStream")
 m("SP a folded synthetic line does not make its response a refusal", "internal/spend/scan.go",
   "\t\t\t\tif into.StopReason != \"refusal\" {\n", "\t\t\t\tif false {\n", "TestRefusals_AMidStream")
-m("SP an unbilled pre-output refusal with usage is in the total", "internal/spend/scan.go",
-  "\t\t\tcase !billed:\n\t\t\t\tr.notBilled = true", "\t\t\tcase false && !billed:\n\t\t\t\tr.notBilled = true",
-  "TestRefusals_APreOutputRefusalIsBilled|TestRefusals_AreSplit")
-m("SP a pre-output refusal of unknown billing is priced", "internal/spend/scan.go",
-  "\t\t\tcase !known:\n\t\t\t\tr.costUnknown = true", "\t\t\tcase false && !known:\n\t\t\t\tr.costUnknown = true",
-  "TestRefusals_APreOutputRefusalIsBilled")
-m("SP a response of unknown billing is priced at its model's rates", "internal/spend/spend.go",
-  "\tif r.costUnknown {\n\t\treturn priced{}", "\tif false {\n\t\treturn priced{}", "TestRefusals_APreOutputRefusalIsBilled")
-m("SP the header does not say the total leaves out billed pre-output refusals", "internal/spend/text.go",
-  "\tif n := s.Refusals.BilledWithoutAmount(); n > 0 {", "\tif n := s.Refusals.BilledWithoutAmount(); false && n > 0 {",
-  "TestRefusals_APreOutputRefusalIsBilled")
+m("SP a pre-output refusal with usage is priced into the total", "internal/spend/scan.go",
+  "\t\tif r.StopReason == \"refusal\" && r.Tokens.Output == 0 && r.Tokens.Total() > 0 {", "\t\tif false {",
+  "TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal|TestRefusals_AreSplit")
+m("SP the header does not say the total leaves out pre-output refusals", "internal/spend/text.go",
+  "\tif line := preOutputLine(s.Refusals); line != \"\" {", "\tif line := preOutputLine(s.Refusals); false && line != \"\" {",
+  "TestRefusals_")
 m("SP a synthetic refusal group reads as a model named other", "internal/spend/spend.go",
   "\tif model == \"<synthetic>\" {\n\t\treturn ModelNotRecorded", "\tif false {\n\t\treturn ModelNotRecorded",
   "TestRefusals_")
-m("SP general_harms is billed before any output", "internal/spend/scan.go",
-  "\tcase CategoryCyber, CategoryGeneralHarms, CategoryUncategorized:\n\t\treturn false, true", "\tcase CategoryCyber, CategoryUncategorized:\n\t\treturn false, true\n\tcase CategoryGeneralHarms:\n\t\treturn true, true",
-  "TestRefusals_AreSplitByCategoryAndModel")
-m("SP frontier_llm is not billed before any output", "internal/spend/scan.go",
-  "\tcase CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction:\n\t\treturn true, true", "\tcase CategoryBio, CategoryReasoningExtraction:\n\t\treturn true, true",
-  "TestRefusals_AreSplitByCategoryAndModel")
-m("SP reasoning_extraction is not billed before any output", "internal/spend/scan.go",
-  "\tcase CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction:\n\t\treturn true, true", "\tcase CategoryBio, CategoryFrontierLLM:\n\t\treturn true, true",
-  "TestRefusals_AreSplitByCategoryAndModel")
-
 m("SP the served model is read from message.model, not the fallback entry", "internal/spend/scan.go",
-  "\t\tif rt.served != \"\" {\n\t\t\tcand.Model = rt.served", "\t\tif false && rt.served != \"\" {\n\t\t\tcand.Model = rt.served",
+  "\t\tif served != \"\" {\n\t\t\tcand.Model = served", "\t\tif false && served != \"\" {\n\t\t\tcand.Model = served",
   "TestExtraAttempts_TheServedModelIsTheFallbackEntrys")
 m("SP a chain where every model declined is reported as served", "internal/spend/spend.go",
   "\tif r.Fallback && r.StopReason != \"refusal\" {", "\tif r.Fallback {", "TestExtraAttempts_AnAllDeclinedChain")
-m("SP the model asked is read from the first entry alone", "internal/spend/scan.go",
-  "\tfor _, it := range its[:len(its)-1] {\n\t\tif iterationType(it.Type) == IterMessage {", "\tfor _, it := range its[:1] {\n\t\tif iterationType(it.Type) == IterMessage {",
-  "TestExtraAttempts_StickyIsOnly")
-m("SP sticky is inferred from an empty model asked", "internal/spend/spend.go",
-  "\t\tk := FallbackRoute{Served: displayName(r.Model), Sticky: r.Sticky}", "\t\tk := FallbackRoute{Served: displayName(r.Model), Sticky: r.Requested == \"\"}",
-  "TestExtraAttempts_StickyIsOnly")
-
-m("SP the declined line's no-output clause carries every unpriced token", "internal/spend/text.go",
-  "\t\t\t\tthousands(d.NoOutputTokens), countOf(d.NoOutput, \"attempt\")))", "\t\t\t\tthousands(d.Cost.UnpricedTokens), countOf(d.NoOutput, \"attempt\")))",
-  "TestExtraAttempts_TheDeclinedLine")
-m("SP a declined attempt with output on an unpriced model is not said", "internal/spend/text.go",
-  "\t\tif rest := d.unpricedWithOutput(); rest > 0 {", "\t\tif rest := d.unpricedWithOutput(); d.NoOutput == 0 && rest > 0 {",
-  "TestExtraAttempts_TheDeclinedLine")
-m("SP the unpriced attempts are marshalled as responses", "internal/spend/spend.go",
-  "\t\tUnpriced       int      `json:\"unpriced_attempts\"`", "\t\tUnpriced       int      `json:\"unpriced_responses\"`",
-  "TestExtraAttempts_TheDeclinedLine")
-m("SP an unpriced attempt's tokens are left out of the totals", "internal/spend/spend.go",
-  "\t\tfor _, a := range r.Attempts {\n\t\t\ts.Tokens.add(a.Tokens)\n\t\t\tam := model(a.Model)\n\t\t\tam.Attempts++\n\t\t\tam.Tokens.add(a.Tokens)\n\t\t\tap, ok := attemptPrice(a)\n\t\t\tif !ok {\n\t\t\t\tam.Cost.addUnpriced(a.Tokens.Total())\n\t\t\t\tcontinue\n\t\t\t}",
-  "\t\tfor _, a := range r.Attempts {\n\t\t\tap, ok := attemptPrice(a)\n\t\t\tif !ok {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\ts.Tokens.add(a.Tokens)\n\t\t\tam := model(a.Model)\n\t\t\tam.Attempts++\n\t\t\tam.Tokens.add(a.Tokens)",
-  "TestExtraAttempts_TheDeclinedLine")
-m("SP a model's row does not count its attempts", "internal/spend/spend.go",
-  "\t\t\tam.Attempts++\n", "", "TestExtraAttempts_TheDeclinedLine")
-
-m("SP a billed refusal on an unpriced model is not named as not computed", "internal/spend/spend.go",
-  "\t\tif g.Cost.Unpriced > 0 && !pricedName(g.Model) {\n\t\t\tunpriced = true", "\t\tif false {\n\t\t\tunpriced = true",
-  "TestSavings_BilledSpendOnAnUnpriced")
-m("SP a declined attempt with output on an unpriced model is not named as not computed", "internal/spend/spend.go",
-  "\t\tif d.unpricedWithOutput() > 0 {\n\t\t\tunpriced = true", "\t\tif false {\n\t\t\tunpriced = true",
-  "TestSavings_BilledSpendOnAnUnpriced")
-m("SP an unknown-billing refusal on a priced model is named as having no known rate", "internal/spend/spend.go",
-  "\t\tif g.Cost.Unpriced > 0 && !pricedName(g.Model) {\n\t\t\tunpriced = true", "\t\tif g.Cost.Unpriced > 0 {\n\t\t\tunpriced = true",
-  "TestRefusals_APreOutputRefusalIsBilled")
-
 m("SP an undecodable line ends the tie only when it holds the byte string user", "internal/report/transcript.go",
   "\t\t\tif !bytes.Contains(raw, []byte(`\"isSidechain\":true`)) {\n\t\t\t\tunsay()", "\t\t\tif bytes.Contains(raw, []byte(`\"user\"`)) {\n\t\t\t\tunsay()",
   "TestFinalAssistantTexts_AnUndecodableLine")
@@ -1677,22 +1570,14 @@ m("SP the bound does not say a sidechain user line keeps the tie", "internal/spe
 
 m("SP a refusal's category is not kept from the completed line", "internal/spend/scan.go",
   "\tprev.Category = cand.Category\n", "", "TestDedupe_TheCompletedLineWins")
-m("SP a fallback's route is not kept from the completed line", "internal/spend/scan.go",
-  "\tprev.Attempts, prev.Fallback, prev.Requested, prev.Sticky = cand.Attempts, cand.Fallback, cand.Requested, cand.Sticky\n", "",
+m("SP a fallback's attempts are not kept from the completed line", "internal/spend/scan.go",
+  "\tprev.Attempts, prev.Fallback = cand.Attempts, cand.Fallback\n", "",
   "TestDedupe_TheCompletedLineWins")
 m("SP the served model is not kept from the completed line", "internal/spend/scan.go",
   "\tif prev.Model == \"\" || cand.Fallback {", "\tif prev.Model == \"\" {", "TestDedupe_TheCompletedLineWins")
-m("SP a refusal's row prices its declined attempts too", "internal/spend/spend.go",
-  "\t\t\tcostOne(&s.Refusals.Cost, r)", "\t\t\tcostOf(&s.Refusals.Cost, r)", "TestExtraAttempts_AnAttemptWithOutput")
-m("SP a refusal group prices its declined attempts too", "internal/spend/spend.go",
-  "\t\t\tcostOne(&g.Cost, r)", "\t\t\tcostOf(&g.Cost, r)", "TestExtraAttempts_AnAttemptWithOutput")
-m("SP an attempt's tokens are left out of the token total", "internal/spend/spend.go",
-  "\t\t\ts.Tokens.add(a.Tokens)\n\t\t\tam := model(a.Model)", "\t\t\tam := model(a.Model)", "TestExtraAttempts_AnAttemptWithOutput")
 m("SP an assistant line whose content does not decode leaves the earlier words standing", "internal/report/transcript.go",
   "\t\t\tif err != nil || line.Message.Role != \"assistant\" {\n\t\t\t\tunsay()\n", "\t\t\tif err != nil || line.Message.Role != \"assistant\" {\n",
   "TestFinalAssistantTexts_AnUnreadableLine")
-m("SP the savings not computed are listed again on every Join", "internal/spend/spend.go",
-  "\ts.SavingsNotComputed = s.SavingsNotComputed[:0]\n", "", "TestSavings_")
 m("SP a response is judged cold in a file it was copied into", "internal/spend/spend.go",
   "\t\t\tif rs[i].file != k.file {", "\t\t\tif false && rs[i].file != k.file {", "TestCacheExpiry_AResponseIsJudged")
 m("SP an assistant line's content is decoded whole into a RawMessage again", "internal/report/transcript.go",
@@ -1720,6 +1605,15 @@ m("SP a main-transcript sidechain line's words are the turn's final word", "inte
   "\t\t\tif head.Type == \"assistant\" && want[current] && head.Message.ID != \"\" {\n\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tif head.Type == \"assistant\" && want[current] {\n\t\t\t\tif l, err := decodeAssistantLine(raw); err == nil {\n\t\t\t\t\tif text, ok := l.Message.Content.text(); ok {\n\t\t\t\t\t\ttf := out[current]\n\t\t\t\t\t\ttf.Said, tf.Text = true, text\n\t\t\t\t\t\tout[current] = tf\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t\tcontinue\n",
   "TestJoin_AMainTranscriptSidechain")
 
+m("SP an extra attempt's tokens are not counted", "internal/spend/spend.go",
+  "\t\te.Tokens.add(a)\n", "\t\t_ = a\n",
+  "TestRefusalsAndExtraAttempts|TestExtraAttempts_")
+m("SP an extra attempt's tokens are counted in the token total", "internal/spend/spend.go",
+  "\ts.ExtraAttempts.add(r)\n", "\ts.ExtraAttempts.add(r)\n\tfor _, a := range r.Attempts {\n\t\ts.Tokens.add(a)\n\t}\n",
+  "TestRefusalsAndExtraAttempts|TestExtraAttempts_")
+m("SP a pre-output refusal is counted in the breakdowns", "internal/spend/spend.go",
+  "\t\t\trefusal(r).BeforeOutput++\n\t\t\tcontinue\n", "\t\t\trefusal(r).BeforeOutput++\n",
+  "TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal")
 # Import additions some mutants need.
 IMPORTS = {
   "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),

@@ -152,15 +152,8 @@ type Summary struct {
 
 	SilentFailureTurns SilentFailureTurns `json:"silent_failure_turns"`
 
-	Savings []Saving `json:"savings"`
-	// SavingsNotComputed names the savings that were billed but have no
-	// figure -- no amount in the transcript (SavingNotComputedAttempts), or
-	// no known rate for the model that ran them
-	// (SavingNotComputedRefusalsUnpriced, SavingNotComputedAttemptsUnpriced)
-	// -- so their absence from Savings is not read as "nothing to save
-	// there". Empty when there are none.
-	SavingsNotComputed []string       `json:"savings_not_computed"`
-	PerSession         []SessionSpend `json:"per_session"`
+	Savings    []Saving       `json:"savings"`
+	PerSession []SessionSpend `json:"per_session"`
 
 	// Read is how the transcripts went, over everything read (not only the
 	// window): the dedupe measurement, and what could not be counted.
@@ -206,10 +199,8 @@ type ModelSpend struct {
 	Model     string `json:"model"`
 	Priced    bool   `json:"priced"`
 	Responses int    `json:"responses"`
-	// Attempts counts the extra attempts (ExtraAttempts) this model ran.
-	Attempts int    `json:"attempts"`
-	Tokens   Tokens `json:"tokens"`
-	Cost     Cost   `json:"cost"`
+	Tokens    Tokens `json:"tokens"`
+	Cost      Cost   `json:"cost"`
 }
 
 // KindSplit is spend by token kind.
@@ -230,8 +221,7 @@ type CacheExpiry struct {
 	Responses int    `json:"responses"`
 	Tokens    int64  `json:"tokens"`
 	// Tokens5m and Tokens1h split Tokens by the TTL the write was made
-	// with. Only a 5m write could have been kept by a longer TTL, so only
-	// Tokens5m supports that advice (SavingHintLongerTTL).
+	// with.
 	Tokens5m int64 `json:"tokens_5m"`
 	Tokens1h int64 `json:"tokens_1h"`
 	Cost     Cost  `json:"cost"`
@@ -240,123 +230,59 @@ type CacheExpiry struct {
 // CacheHeuristic is the rule, stated wherever its number is.
 const CacheHeuristic = "a cache write on a response whose previous response by the same agent in the same transcript started more than the TTL earlier (5m, or 1h for a 1h write), counting only the shortfall -- what that previous response read and wrote to the cache, less what this one read from it -- priced as the write over a cache read of the same tokens"
 
-// Refusals is responses that ended with stop_reason "refusal", in all and by
-// category and model (ByCategory).
+// Refusals is responses that ended with stop_reason "refusal", in all and
+// counted by category and model (ByCategory).
 //
-// Whether a refusal came before any output is read from output_tokens == 0,
-// never from the shape of the line, and such a refusal is billed by its
-// category (BilledBeforeOutput). Responses and Cost are the refusals in the
-// total: every one that produced output -- the page bills a mid-stream
-// refusal "at normal rates", whatever its category -- every pre-output one
-// in a billed category, and a pre-output one in a category this read does
-// not know, with its tokens shown and its cost unknown. NotBilled counts the
-// pre-output refusals with usage in a category the page says is not billed
-// (cyber, general_harms, uncategorized): out of every figure.
+// A refusal that produced output is priced like any other response: the
+// refusals-and-fallback page says "A mid-stream refusal bills the input
+// tokens and the output already streamed at normal rates". Responses and
+// Cost are those, and they are in the total.
+//
+// A refusal before any output is read from output_tokens == 0, never from
+// the shape of the line. Whether it was billed depends on its category, and
+// this read does not price by category, so BeforeOutput counts those with
+// usage and BeforeOutputTokens holds their tokens: shown with the cost
+// unknown, out of the total and every breakdown, and the header says so.
 //
 // WithoutUsage counts the zero-usage refusal lines that report no response
 // with usage (Scan.foldRefusalMessages folds the rest into theirs), which
-// Build otherwise drops with every zero-token response. A count, no dollars:
-// in a category the API bills before any output such a refusal WAS billed, at
-// the rates of the model that ran it, and the amount is not in the
-// transcript. Dropping them printed "refusals none" beside a transcript that
-// held a billed bio refusal.
+// Build otherwise drops with every zero-token response: pre-output refusals
+// whose tokens the transcript does not hold. Dropping them printed "refusals
+// none" beside a transcript that held one.
 type Refusals struct {
-	Responses    int            `json:"responses"`
-	Cost         Cost           `json:"cost"`
-	NotBilled    int            `json:"not_billed"`
-	WithoutUsage int            `json:"without_usage"`
-	ByCategory   []RefusalGroup `json:"by_category"`
+	Responses          int            `json:"responses"`
+	Cost               Cost           `json:"cost"`
+	BeforeOutput       int            `json:"before_output"`
+	BeforeOutputTokens int64          `json:"before_output_tokens"`
+	WithoutUsage       int            `json:"without_usage"`
+	ByCategory         []RefusalGroup `json:"by_category"`
 }
 
-// RefusalGroup is one category's refusals on one model: a classifier decline
-// in a named category is told apart from the rest. BilledBeforeOutput is
-// whether the API bills a pre-output refusal in the category, null for a
-// category this read does not know. Model is ModelNotRecorded for Claude
-// Code's "<synthetic>" refusal line.
+// RefusalGroup counts one category's refusals on one model: a classifier
+// decline in a named category is told apart from the rest. Model is
+// ModelNotRecorded for Claude Code's "<synthetic>" refusal line.
 type RefusalGroup struct {
-	Category           string `json:"category"`
-	Model              string `json:"model"`
-	Responses          int    `json:"responses"`
-	Cost               Cost   `json:"cost"`
-	NotBilled          int    `json:"not_billed"`
-	WithoutUsage       int    `json:"without_usage"`
-	BilledBeforeOutput *bool  `json:"billed_before_output"`
+	Category     string `json:"category"`
+	Model        string `json:"model"`
+	Responses    int    `json:"responses"`
+	BeforeOutput int    `json:"before_output"`
+	WithoutUsage int    `json:"without_usage"`
 }
 
 // ExtraAttempts is responses whose usage.iterations holds more than one
 // attempt, and the responses a fallback model served.
 //
-// The refusals-and-fallback page documents every iteration entry as carrying
-// a type and the model that ran it, bills "every attempt that produced
-// output, including one that declined partway through its response" at the
-// rates of the model that ran it, and bills an attempt declined before any
-// output "only when its refusal category is billed". So an extra attempt
-// that produced output is priced at its own model's rates and is in the
-// total, the breakdowns and its model's by-model row (Cost's priced part).
-// One with no output is tokens with the dollars unknown and not in the total
-// (Cost's unpriced part, which counts attempts): its category -- which
-// decides whether it was billed -- is on no entry, and the response's own
-// stop_details describes only the attempt that produced it. So is one on a
-// model the table lacks.
-//
-// Declined is the attempts that declined -- the "message" entries before the
-// last, "fallback_message" entry -- by the model that ran them, in a chain
-// that served and in one where every model declined. Fallback is every
-// response a fallback served, as the model asked and the model that served,
-// sticky-routed ones included (route): never a chain that ended in a
-// refusal, which the page calls the last model's refusal.
+// The extra attempts -- every entry before the last, which produced the
+// message and is the top-level usage -- are tokens only: their cost is
+// unknown, and they are out of the total and every breakdown, which the
+// header says. FallbackServed counts the responses a fallback chain served:
+// never a chain that ended in a refusal, which the page calls the last
+// model's refusal.
 type ExtraAttempts struct {
-	Responses         int                `json:"responses"`
-	Attempts          int                `json:"attempts"`
-	Tokens            Tokens             `json:"tokens"`
-	Cost              AttemptCost        `json:"cost"`
-	CostUnknownReason string             `json:"cost_unknown_reason"`
-	Declined          []DeclinedAttempts `json:"declined"`
-	Fallback          []FallbackRoute    `json:"fallback_served"`
-}
-
-// AttemptsUnpriced is ExtraAttempts' reason, verbatim.
-const AttemptsUnpriced = "an extra attempt that produced output is priced at the rates of the model its iteration entry names and is in the total; one declined before any output is billed only in some refusal categories, which the transcript does not record for it, and one on a model the price table lacks has no known rate, so those are tokens with the cost unknown and not in the total"
-
-// DeclinedAttempts is one model's declined attempts. Cost's priced part is the
-// attempts that produced output (in the total); its unpriced part counts the
-// rest, attempts rather than responses: those with no output, and those with
-// output on a model the table lacks. NoOutput counts the attempts declined
-// before any output, and NoOutputTokens their tokens alone.
-type DeclinedAttempts struct {
-	Model    string      `json:"model"`
-	Attempts int         `json:"attempts"`
-	Tokens   Tokens      `json:"tokens"`
-	Cost     AttemptCost `json:"cost"`
-	NoOutput int         `json:"no_output"`
-	// NoOutputTokens is the tokens of the NoOutput attempts alone.
-	NoOutputTokens int64 `json:"no_output_tokens"`
-}
-
-// AttemptCost is a Cost whose unpriced count is of attempts, not responses,
-// and is named so in the JSON: {"usd": <number|null>, "unpriced_attempts": n,
-// "unpriced_tokens": n}.
-type AttemptCost struct{ Cost }
-
-// MarshalJSON writes the cost with its count named unpriced_attempts.
-func (c AttemptCost) MarshalJSON() ([]byte, error) {
-	return json.Marshal(struct {
-		USD            *float64 `json:"usd"`
-		Unpriced       int      `json:"unpriced_attempts"`
-		UnpricedTokens int64    `json:"unpriced_tokens"`
-	}{c.usdOrNull(), c.Unpriced, c.UnpricedTokens})
-}
-
-// FallbackRoute is the responses a fallback served, by the model asked and
-// the model that served. Sticky is a route with no "message" entry: the
-// request went straight to the fallback, and Requested is "" because the
-// transcript does not say which model was asked. Requested is
-// ModelNotRecorded for a "message" entry that names no model.
-type FallbackRoute struct {
-	Requested string `json:"requested"`
-	Served    string `json:"served"`
-	Sticky    bool   `json:"sticky"`
-	Responses int    `json:"responses"`
+	Responses      int    `json:"responses"`
+	Attempts       int    `json:"attempts"`
+	Tokens         Tokens `json:"tokens"`
+	FallbackServed int    `json:"fallback_served"`
 }
 
 // FastMode is responses that ran in fast mode (usage.speed "fast"). Fast
@@ -388,72 +314,16 @@ type SessionSpend struct {
 // no figure is not made.
 type Saving struct {
 	Kind string `json:"kind"`
-	// Category and Model narrow a refusal or declined-attempt saving to one
-	// refusal category (a closed word) and one model (displayModel).
-	Category string `json:"category,omitempty"`
-	Model    string `json:"model,omitempty"`
-	Cost     Cost   `json:"cost"`
-	// Hint is a closed word for advice the figure supports, or empty. It is
-	// given only where a Claude Code user can act on it.
-	Hint string `json:"hint,omitempty"`
+	Cost Cost   `json:"cost"`
 }
 
-// Saving kinds.
-const (
-	SavingColdCache     = "cold_cache_rewrites"
-	SavingSilentFailure = "silently_failed_turns"
-	// SavingBilledRefusals is what refusals with usage cost, by category and
-	// model: the design's "classifier hits".
-	SavingBilledRefusals = "billed_refusals"
-	// SavingDeclinedAttempts is what the priced declined attempts before a
-	// fallback cost, by the model that declined.
-	SavingDeclinedAttempts = "declined_attempts"
-)
-
-// Savings that were billed but carry no amount in the transcript, named in
-// savings_not_computed rather than left out without a word. (A pre-output
-// refusal in a billed category written with no usage is not here: its
-// category and model are known, so it is a billed_refusals saving whose cost
-// is unknown.)
-const (
-	// SavingNotComputedAttempts: declined attempts with no output, billed
-	// only in some refusal categories, which no entry records.
-	SavingNotComputedAttempts = "declined_attempts_without_output"
-	// SavingNotComputedRefusalsUnpriced: refusals billed on a model the price
-	// table lacks.
-	SavingNotComputedRefusalsUnpriced = "billed_refusals_unpriced_model"
-	// SavingNotComputedAttemptsUnpriced: declined attempts that produced
-	// output on a model the price table lacks.
-	SavingNotComputedAttemptsUnpriced = "declined_attempts_unpriced_model"
-)
+// SavingSilentFailure is the one saving: spend in silently failed turns.
+const SavingSilentFailure = "silently_failed_turns"
 
 // ModelNotRecorded names a model the transcript does not record: a refusal
 // Claude Code wrote as a "<synthetic>" line, which does not say which model
-// refused, and the model asked of a fallback chain whose "message" entry
-// names none.
+// refused.
 const ModelNotRecorded = "not_recorded"
-
-// SavingHintReasoningInReply: the refusals were in the reasoning_extraction
-// category, which the refusals-and-fallback page describes as a request that
-// "asks the model to reproduce its internal reasoning in the response text"
-// and answers with thinking. A Claude Code user can stop asking for that.
-// The other categories name a policy area, and benign work can trigger them:
-// no lever a user holds, so no hint.
-const SavingHintReasoningInReply = "reasoning_in_reply"
-
-// SavingHintServedModel: a fallback served requests this model declined, and
-// a Claude Code user can choose that model (/model) for such work, which
-// skips the declined attempt. Given only when a route names this model as
-// the model asked: a sticky-routed turn does not say which model was asked,
-// and a chain where every model declined served nothing to choose.
-const SavingHintServedModel = "served_model"
-
-// SavingHintLongerTTL: part of the re-written cache was written with the 5m
-// TTL, which the 1h TTL would have kept across a pause under an hour. Never
-// given when every re-write was already 1h: on real data every one was, after
-// gaps of hours to days, and advising the TTL they already had was advice
-// with no figure under it.
-const SavingHintLongerTTL = "1h_ttl"
 
 // priced is a response's cost broken down by kind, or ok=false for a model
 // the table does not know.
@@ -464,21 +334,14 @@ type priced struct {
 
 func (p priced) total() int64 { return p.input + p.output + p.cacheWrite + p.cacheRead }
 
-// price prices a response at its model's rates; a pre-output refusal in a
-// category whose billing is unknown is priced as unknown, whatever its model.
+// price prices a response at its model's rates.
 func price(r *Response) priced {
-	if r.costUnknown {
-		return priced{}
-	}
-	return priceTokens(r.Model, r.Tokens)
-}
-
-func priceTokens(model string, t Tokens) priced {
-	key, ok := PriceKey(model)
+	key, ok := PriceKey(r.Model)
 	if !ok {
 		return priced{}
 	}
 	rt, _ := RatesFor(key)
+	t := r.Tokens
 	return priced{
 		input:      t.Input * rt.Input,
 		output:     t.Output * rt.Output,
@@ -488,39 +351,15 @@ func priceTokens(model string, t Tokens) priced {
 	}
 }
 
-// costOf adds one response to c -- its priced total, or an unpriced mark
-// carrying its tokens -- and the priced part of each of its extra attempts
-// (attemptPrice), which the API bills beside it.
+// costOf adds one response to c: its priced total, or an unpriced mark
+// carrying its tokens.
 func costOf(c *Cost, r *Response) {
-	costOne(c, r)
-	for _, a := range r.Attempts {
-		if p, ok := attemptPrice(a); ok {
-			c.addPriced(p.total())
-		}
-	}
-}
-
-// costOne adds the response alone, without its extra attempts: a by-model
-// row, where each attempt is its own model's.
-func costOne(c *Cost, r *Response) {
 	p := price(r)
 	if p.ok {
 		c.addPriced(p.total())
 		return
 	}
 	c.addUnpriced(r.Tokens.Total())
-}
-
-// attemptPrice prices an extra attempt at the rates of the model that ran
-// it, when it produced output and the table knows that model. An attempt
-// with no output was billed only if its refusal category is billed, which no
-// entry records, so it is never priced here (ExtraAttempts).
-func attemptPrice(a Attempt) (priced, bool) {
-	if a.Tokens.Output == 0 {
-		return priced{}, false
-	}
-	p := priceTokens(a.Model, a.Tokens)
-	return p, p.ok
 }
 
 // displayModel is how a model is named in the output.
@@ -583,8 +422,9 @@ func displaySession(id string) string {
 // noise that looks like a finding. The one place: a zero-usage line that
 // ended in a refusal and reports no response with usage is a pre-output
 // refusal, counted in Refusals.WithoutUsage. A pre-output refusal with usage
-// in a category that is not billed is likewise counted, in
-// Refusals.NotBilled, and nowhere else.
+// is likewise out of every figure but the refusals, the header's caveat, the
+// extra attempts it carried and the cache-expiry heuristic, where its write
+// is shown with the cost unknown.
 func Build(sc *Scan, now time.Time, days int) *Summary {
 	from := WindowStart(now, days)
 	latest := now.Add(futureSlack).UnixMilli()
@@ -598,15 +438,9 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			Basis:    "estimated at API list prices",
 			Note:     PlanNote,
 		},
-		ByModel:            []ModelSpend{},
-		Savings:            []Saving{},
-		SavingsNotComputed: []string{},
-		PerSession:         []SessionSpend{},
-		ExtraAttempts: ExtraAttempts{
-			CostUnknownReason: AttemptsUnpriced,
-			Declined:          []DeclinedAttempts{},
-			Fallback:          []FallbackRoute{},
-		},
+		ByModel:     []ModelSpend{},
+		Savings:     []Saving{},
+		PerSession:  []SessionSpend{},
 		CacheExpiry: CacheExpiry{Heuristic: CacheHeuristic},
 		Refusals:    Refusals{ByCategory: []RefusalGroup{}},
 		FastMode:    FastMode{Pricing: FastModePricing},
@@ -628,17 +462,12 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 
 	models := map[string]*ModelSpend{}
 	sessions := map[string]*SessionSpend{}
-	declined := map[string]*DeclinedAttempts{}
-	routes := map[FallbackRoute]int{}
 	refusals := map[[2]string]*RefusalGroup{}
 	refusal := func(r *Response) *RefusalGroup {
 		k := [2]string{r.Category, refusalModel(r.Model)}
 		g := refusals[k]
 		if g == nil {
 			g = &RefusalGroup{Category: k[0], Model: k[1]}
-			if billed, known := BilledBeforeOutput(k[0]); known {
-				g.BilledBeforeOutput = &billed
-			}
 			refusals[k] = g
 		}
 		return g
@@ -658,11 +487,27 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			}
 			continue
 		}
-		if r.notBilled {
-			s.Refusals.NotBilled++
-			refusal(r).NotBilled++
+
+		if w, ok := cold[r]; ok {
+			s.CacheExpiry.Responses++
+			s.CacheExpiry.Tokens += w.CacheWrite5m + w.CacheWrite1h
+			s.CacheExpiry.Tokens5m += w.CacheWrite5m
+			s.CacheExpiry.Tokens1h += w.CacheWrite1h
+			if key, ok := PriceKey(r.Model); ok && !r.costUnknown {
+				rt, _ := RatesFor(key)
+				s.CacheExpiry.Cost.addPriced(w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead))
+			} else {
+				s.CacheExpiry.Cost.addUnpriced(w.CacheWrite5m + w.CacheWrite1h)
+			}
+		}
+		s.ExtraAttempts.add(r)
+		if r.costUnknown {
+			s.Refusals.BeforeOutput++
+			s.Refusals.BeforeOutputTokens += r.Tokens.Total()
+			refusal(r).BeforeOutput++
 			continue
 		}
+
 		s.window = append(s.window, r)
 		s.Responses++
 		s.Tokens.add(r.Tokens)
@@ -681,19 +526,15 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			costOf(&sess.Main, r)
 		}
 
-		model := func(raw string) *ModelSpend {
-			name, known := displayModel(raw)
-			m, ok := models[name]
-			if !ok {
-				m = &ModelSpend{Model: name, Priced: known}
-				models[name] = m
-			}
-			return m
+		name, known := displayModel(r.Model)
+		m, ok := models[name]
+		if !ok {
+			m = &ModelSpend{Model: name, Priced: known}
+			models[name] = m
 		}
-		m := model(r.Model)
 		m.Responses++
 		m.Tokens.add(r.Tokens)
-		costOne(&m.Cost, r)
+		costOf(&m.Cost, r)
 
 		p := price(r)
 		kind := func(c *Cost, nano, toks int64) {
@@ -711,67 +552,17 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		kind(&s.ByKind.CacheWrite, p.cacheWrite, r.Tokens.CacheWrite5m+r.Tokens.CacheWrite1h)
 		kind(&s.ByKind.CacheRead, p.cacheRead, r.Tokens.CacheRead)
 
-		// Each extra attempt's tokens are in the token total and its model's
-		// row, priced or not. One that produced output is priced at the rates
-		// of the model that ran it: in the total (costOf, above), its model's
-		// row and the kinds. The rest are tokens with the cost unknown, in
-		// its model's row too.
-		for _, a := range r.Attempts {
-			s.Tokens.add(a.Tokens)
-			am := model(a.Model)
-			am.Attempts++
-			am.Tokens.add(a.Tokens)
-			ap, ok := attemptPrice(a)
-			if !ok {
-				am.Cost.addUnpriced(a.Tokens.Total())
-				continue
-			}
-			am.Cost.addPriced(ap.total())
-			for _, k := range []struct {
-				c    *Cost
-				nano int64
-				toks int64
-			}{
-				{&s.ByKind.Input, ap.input, a.Tokens.Input},
-				{&s.ByKind.Output, ap.output, a.Tokens.Output},
-				{&s.ByKind.CacheWrite, ap.cacheWrite, a.Tokens.CacheWrite5m + a.Tokens.CacheWrite1h},
-				{&s.ByKind.CacheRead, ap.cacheRead, a.Tokens.CacheRead},
-			} {
-				if k.toks > 0 {
-					k.c.addPriced(k.nano)
-				}
-			}
-		}
-
-		if w, ok := cold[r]; ok {
-			s.CacheExpiry.Responses++
-			s.CacheExpiry.Tokens += w.CacheWrite5m + w.CacheWrite1h
-			s.CacheExpiry.Tokens5m += w.CacheWrite5m
-			s.CacheExpiry.Tokens1h += w.CacheWrite1h
-			if key, ok := PriceKey(r.Model); ok && !r.costUnknown {
-				rt, _ := RatesFor(key)
-				s.CacheExpiry.Cost.addPriced(w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead))
-			} else {
-				s.CacheExpiry.Cost.addUnpriced(w.CacheWrite5m + w.CacheWrite1h)
-			}
-		}
-
 		if r.StopReason == "refusal" {
 			s.Refusals.Responses++
-			costOne(&s.Refusals.Cost, r)
-			g := refusal(r)
-			g.Responses++
-			costOne(&g.Cost, r)
+			costOf(&s.Refusals.Cost, r)
+			refusal(r).Responses++
 		}
 		if r.Fast {
 			s.FastMode.Responses++
 		}
-		s.ExtraAttempts.add(r, declined, routes)
 	}
 	s.Sessions = len(sessions)
 	s.Refusals.ByCategory = sortedRefusals(refusals)
-	s.ExtraAttempts.Declined = sortedDeclined(declined)
-	s.ExtraAttempts.Fallback = sortedRoutes(routes)
 
 	for _, m := range models {
 		s.ByModel = append(s.ByModel, *m)
@@ -807,19 +598,12 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 	return s
 }
 
-// add counts one windowed response's extra attempts and its route.
-func (e *ExtraAttempts) add(r *Response, declined map[string]*DeclinedAttempts, routes map[FallbackRoute]int) {
+// add counts one windowed response's extra attempts, and whether a fallback
+// served it.
+func (e *ExtraAttempts) add(r *Response) {
 	// A chain that ended in a refusal served nothing: every model declined.
 	if r.Fallback && r.StopReason != "refusal" {
-		k := FallbackRoute{Served: displayName(r.Model), Sticky: r.Sticky}
-		switch {
-		case k.Sticky:
-		case r.Requested == "":
-			k.Requested = ModelNotRecorded
-		default:
-			k.Requested = displayName(r.Requested)
-		}
-		routes[k]++
+		e.FallbackServed++
 	}
 	if len(r.Attempts) == 0 {
 		return
@@ -827,35 +611,7 @@ func (e *ExtraAttempts) add(r *Response, declined map[string]*DeclinedAttempts, 
 	e.Responses++
 	e.Attempts += len(r.Attempts)
 	for _, a := range r.Attempts {
-		e.Tokens.add(a.Tokens)
-		p, ok := attemptPrice(a)
-		if ok {
-			e.Cost.addPriced(p.total())
-		} else {
-			e.Cost.addUnpriced(a.Tokens.Total())
-		}
-		// A "message" entry before the last, "fallback_message" entry is a
-		// hop that declined.
-		if !r.Fallback || a.Type != IterMessage {
-			continue
-		}
-		name := displayName(a.Model)
-		d := declined[name]
-		if d == nil {
-			d = &DeclinedAttempts{Model: name}
-			declined[name] = d
-		}
-		d.Attempts++
-		d.Tokens.add(a.Tokens)
-		if ok {
-			d.Cost.addPriced(p.total())
-		} else {
-			d.Cost.addUnpriced(a.Tokens.Total())
-		}
-		if a.Tokens.Output == 0 {
-			d.NoOutput++
-			d.NoOutputTokens += a.Tokens.Total()
-		}
+		e.Tokens.add(a)
 	}
 }
 
@@ -866,24 +622,6 @@ func refusalModel(model string) string {
 	if model == "<synthetic>" {
 		return ModelNotRecorded
 	}
-	return displayName(model)
-}
-
-// BilledWithoutAmount is the pre-output refusals in a billed category written
-// with no usage: billed, and not in the total, since the transcript does not
-// hold the amount.
-func (r Refusals) BilledWithoutAmount() int {
-	n := 0
-	for _, g := range r.ByCategory {
-		if g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {
-			n += g.WithoutUsage
-		}
-	}
-	return n
-}
-
-// displayName is displayModel's name alone.
-func displayName(model string) string {
 	name, _ := displayModel(model)
 	return name
 }
@@ -903,128 +641,21 @@ func sortedRefusals(m map[[2]string]*RefusalGroup) []RefusalGroup {
 	return out
 }
 
-func sortedDeclined(m map[string]*DeclinedAttempts) []DeclinedAttempts {
-	out := []DeclinedAttempts{}
-	for _, d := range m {
-		out = append(out, *d)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Model < out[j].Model })
-	return out
-}
-
-func sortedRoutes(m map[FallbackRoute]int) []FallbackRoute {
-	out := []FallbackRoute{}
-	for k, n := range m {
-		k.Responses = n
-		out = append(out, k)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if a.Requested != b.Requested {
-			return a.Requested < b.Requested
-		}
-		return a.Served < b.Served
-	})
-	return out
-}
-
-// buildSavings lists the suggestions a number supports, and only those.
+// buildSavings lists the suggestions a number supports, and only those: the
+// spend in silently failed turns.
 //
-// Cold-cache re-writes, spend in silently failed turns, and -- the design's
-// classifier hits -- billed refusals and declined attempts, by category and
-// model. The design's last one -- subagents on
-// the top model where their tool pattern is read-heavy -- does not: which
-// tools a subagent called is in message.content, which this package never
-// reads, so "read-heavy" would be a claim with no number under it, and a
-// suggestion printed without its figure is exactly what this list refuses.
+// The design's others are not made. The cache re-write figure is a
+// heuristic that errs low, so it is shown as a figure and not offered as a
+// saving. Refusals and extra attempts are billed by category, which this
+// read does not price. Subagents on the top model where their tool pattern
+// is read-heavy would need which tools a subagent called, which is in
+// message.content, which this package never reads: a suggestion printed
+// without its figure is exactly what this list refuses.
 func (s *Summary) buildSavings() {
 	s.Savings = s.Savings[:0]
-	if s.CacheExpiry.Cost.Nano > 0 {
-		sv := Saving{Kind: SavingColdCache, Cost: s.CacheExpiry.Cost}
-		if s.CacheExpiry.Tokens5m > 0 {
-			sv.Hint = SavingHintLongerTTL
-		}
-		s.Savings = append(s.Savings, sv)
-	}
 	if s.SilentFailureTurns.Cost.Nano > 0 {
 		s.Savings = append(s.Savings, Saving{Kind: SavingSilentFailure, Cost: s.SilentFailureTurns.Cost})
 	}
-
-	// Refusals and declined attempts, by category and model. A billed
-	// refusal's figure is its priced part; a pre-output refusal in a billed
-	// category written with no usage was billed too, so it is in the same
-	// entry as an unpriced count -- the cost unknown, the category, model and
-	// lever known. What else was billed with no amount in the transcript is
-	// named in SavingsNotComputed.
-	s.SavingsNotComputed = s.SavingsNotComputed[:0]
-	unpriced := false
-	for _, g := range s.Refusals.ByCategory {
-		if g.Cost.Unpriced > 0 && !pricedName(g.Model) {
-			unpriced = true
-		}
-		c := Cost{Nano: g.Cost.Nano, Priced: g.Cost.Priced}
-		if g.BilledBeforeOutput != nil && *g.BilledBeforeOutput {
-			c.Unpriced = g.WithoutUsage
-		}
-		if c.Nano == 0 && c.Unpriced == 0 {
-			continue
-		}
-		sv := Saving{Kind: SavingBilledRefusals, Category: g.Category, Model: g.Model, Cost: c}
-		if g.Category == CategoryReasoningExtraction {
-			sv.Hint = SavingHintReasoningInReply
-		}
-		s.Savings = append(s.Savings, sv)
-	}
-	if unpriced {
-		s.SavingsNotComputed = append(s.SavingsNotComputed, SavingNotComputedRefusalsUnpriced)
-	}
-	asked := map[string]bool{}
-	for _, r := range s.ExtraAttempts.Fallback {
-		if !r.Sticky {
-			asked[r.Requested] = true
-		}
-	}
-	noOutput, unpriced := false, false
-	for _, d := range s.ExtraAttempts.Declined {
-		if d.NoOutput > 0 {
-			noOutput = true
-		}
-		if d.unpricedWithOutput() > 0 {
-			unpriced = true
-		}
-		if d.Cost.Nano == 0 {
-			continue
-		}
-		// Only the priced part: the unpriced attempts are not in the figure.
-		c := Cost{Nano: d.Cost.Nano, Priced: d.Cost.Priced}
-		sv := Saving{Kind: SavingDeclinedAttempts, Model: d.Model, Cost: c}
-		if asked[d.Model] {
-			sv.Hint = SavingHintServedModel
-		}
-		s.Savings = append(s.Savings, sv)
-	}
-	if noOutput {
-		s.SavingsNotComputed = append(s.SavingsNotComputed, SavingNotComputedAttempts)
-	}
-	if unpriced {
-		s.SavingsNotComputed = append(s.SavingsNotComputed, SavingNotComputedAttemptsUnpriced)
-	}
-}
-
-// pricedName reports whether a model as displayModel names it is a row of
-// the price table. A refusal group on a priced model can still carry an
-// unpriced part -- a pre-output refusal in a category whose billing is
-// unknown -- which is not a missing rate.
-func pricedName(name string) bool {
-	_, ok := RatesFor(name)
-	return ok
-}
-
-// unpricedWithOutput is the tokens of the declined attempts that produced
-// output on a model the table lacks: the unpriced tokens past the no-output
-// ones.
-func (d DeclinedAttempts) unpricedWithOutput() int64 {
-	return d.Cost.UnpricedTokens - d.NoOutputTokens
 }
 
 // coldWrites applies the cache-expiry heuristic to every response in the

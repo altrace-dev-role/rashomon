@@ -344,59 +344,45 @@ scope, and said to be: fast mode's premium (fast responses are counted and
 priced at standard rates), Batch and partner pricing, long-context premiums,
 and web-search fees.
 
-**Refusals and fallback.** The refusals-and-fallback page settles the billing.
-Every `usage.iterations` entry names the model that ran it, and each attempt is
-billed at that model's rates. The last entry produced the message and is the
-top-level usage. An earlier attempt that produced output is priced at its own
-model's rates into the total, the breakdowns and its model's row. An attempt
-declined before any output is billed only when its refusal category is billed,
-and no entry records that category, so it stays tokens with the cost unknown,
-and the header says the total leaves it out. A `fallback_message` last entry
-marks a fallback chain, and that entry's model ran the attempt: it prices the
-response and gets its by-model row, since a streamed line's `message.model`
-can name the model asked; `message.model` is used only when the entry names
-none. The chain served the response unless its `stop_reason` is `refusal`:
-then every model declined, nothing is reported as served, and no `/model`
-hint is given. A served response is reported as the model asked (the first
-`message` entry before the last) -> the model that served. With no `message`
-entry it was sticky-routed, and the model asked is said to be absent. Refusals are split by
-`stop_details.category` and model. Whether a refusal came before any output is
-read from `output_tokens` 0, never from the line's shape: Claude Code writes a
-zero-usage `<synthetic>` refusal line with the response's `requestId` after a
-mid-stream refusal too, and such a line is folded into the usage-bearing
-response with that `requestId` in the same file. A pre-output refusal is
-billed only in `bio`, `frontier_llm` and `reasoning_extraction`. In `cyber`,
-`general_harms` or uncategorized it is counted as not billed and left out of
-the total; in `other` its tokens are shown with the cost unknown. A zero-usage
-refusal line with no such response is counted, never priced; in a billed
-category it is a billed-refusal saving of unknown cost, and the header says
-the total leaves it out. The fixture is the page's own JSON example, until a real
-fallback transcript is captured.
+**Refusals and fallback.** The last `usage.iterations` entry produced the
+message and is the top-level usage. Every earlier entry is an extra attempt:
+it is shown in tokens with the cost unknown, kept out of the total and every
+breakdown, and the header says how many tokens on how many attempts the total
+leaves out. A `fallback_message` last entry marks a fallback chain, and that
+entry's model ran the attempt: it prices the response and gets its by-model
+row, since a streamed line's `message.model` can name the model asked;
+`message.model` is used only when the entry names none. The chain served the
+response unless its `stop_reason` is `refusal`, when every model declined;
+the responses a fallback served are counted. Refusals are counted by
+`stop_details.category` and model. Whether a refusal came before any output
+is read from `output_tokens` 0, never from the line's shape: Claude Code
+writes a zero-usage `<synthetic>` refusal line with the response's
+`requestId` after a mid-stream refusal too, and such a line is folded into
+the usage-bearing response with that `requestId` in the same file. A refusal
+with output is priced like any response, since the refusals-and-fallback page
+bills a mid-stream refusal "at normal rates". Whether a pre-output one was
+billed depends on its category, so its tokens are shown with the cost
+unknown and kept out of the total, and the header says how many there are. A
+zero-usage refusal line with no such response is counted as a pre-output
+refusal written without usage. The fixture is the page's own JSON example,
+until a real fallback transcript is captured.
 
 **The savings list.** A suggestion is printed only with the figure it rests
-on:
+on, and one is: the spend in turns with a failed call the summary never
+mentioned, a floor with its bound printed beside it. The rule does not check
+which call came last, so the label does not say the turn ended with a
+failure.
 
-- Cache re-written after a gap longer than its TTL: a heuristic, labelled as
-  one. Only the shortfall is cold -- what the previous response read and wrote
-  to the cache, less what this one read back -- so a response that reads a
-  still-warm prefix and re-writes the expired rest is counted for the rest,
-  and a write past the previous cache is new content. It is priced as the
-  write rate minus the read rate, since the alternative was a cache read. The
-  1h-TTL hint appears only when part of the re-write was a 5m write.
-- Spend in turns with a failed call the summary never mentioned: a floor,
-  with its bound printed beside it. The rule does not check which call came
-  last, so the label does not say the turn ended with a failure.
-- Billed refusals, by category and model, and priced declined attempts, by
-  model (the design's classifier hits). A lever is named only where a Claude
-  Code user can act on it. For `reasoning_extraction`, the user can stop asking
-  for the model's reasoning in its reply. For a declined model a fallback
-  served, the user can choose the serving model with `/model`. The
-  policy-area categories get their figure and no advice.
-
-What was billed but has no amount in the transcript is named in
-`savings_not_computed`: pre-output refusals in a billed category, and declined
-attempts with no output. Subagents on the top model for read-heavy work would
-need the tool pattern from `message.content`, so that suggestion is not made.
+The cache re-write figure is a heuristic, labelled as one. Only the shortfall
+is cold -- what the previous response read and wrote to the cache, less what
+this one read back -- so a response that reads a still-warm prefix and
+re-writes the expired rest is counted for the rest, and a write past the
+previous cache is new content. It is priced as the write rate minus the read
+rate, since the alternative was a cache read. It is shown as a figure, not
+offered as a saving. Refusals and extra attempts are billed by category,
+which this read does not price, so they carry no saving. Subagents on the top
+model for read-heavy work would need the tool pattern from
+`message.content`, so that suggestion is not made either.
 
 ## Acceptance
 
