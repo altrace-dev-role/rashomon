@@ -1964,6 +1964,11 @@ m("TB the unobserved line says backgrounded calls ended", "internal/report/text.
   "recorded no ending or ended in the background\\n",
   "TestSilentFailures_")
 
+m("TB the Cursor report command drops a flag", ".cursor/commands/rashomon-report.md",
+  "`--chain` (each call",
+  "chain (each call",
+  "TestH76_TheReportSkillCopiesListOneFlagSet")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

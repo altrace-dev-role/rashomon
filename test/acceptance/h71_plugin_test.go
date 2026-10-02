@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -408,6 +410,43 @@ func TestH76_SkillsResolveThePluginBinaryFirst(t *testing.T) {
 				t.Errorf("%s still carries the standalone three-path preamble (%q); "+
 					"bin/ is on PATH for a plugin, and a stale search can resolve the wrong binary", path, stale)
 			}
+		}
+	}
+}
+
+// TestH76_TheReportSkillCopiesListOneFlagSet: the report skill is kept by
+// hand in three places -- the standalone skill, the plugin's copy and the
+// Cursor command -- and their wording differs by style. The backticked
+// --flag names each one offers must not: a flag one copy drops or adds is a
+// command the agent behind that copy is never told about.
+func TestH76_TheReportSkillCopiesListOneFlagSet(t *testing.T) {
+	flag := regexp.MustCompile("`(--[a-z][a-z-]*)")
+	var want []string
+	var first string
+	for _, rel := range []string{
+		"skills/rashomon-report/SKILL.md",
+		"plugin/skills/report/SKILL.md",
+		".cursor/commands/rashomon-report.md",
+	} {
+		body, err := os.ReadFile(filepath.Join(moduleRoot, rel))
+		if err != nil {
+			t.Fatalf("reading %s: %v", rel, err)
+		}
+		var got []string
+		for _, m := range flag.FindAllStringSubmatch(string(body), -1) {
+			got = append(got, m[1])
+		}
+		slices.Sort(got)
+		got = slices.Compact(got)
+		if want == nil {
+			want, first = got, rel
+			if len(want) == 0 {
+				t.Fatalf("%s names no --flag", rel)
+			}
+			continue
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s lists %v, %s lists %v", rel, got, first, want)
 		}
 	}
 }
