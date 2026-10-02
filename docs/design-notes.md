@@ -291,8 +291,10 @@ asking the question never mints an install identity.
 line's `timestamp`, `sessionId`, `isSidechain` and `requestId` (a closed
 shape, `req_` and letters and digits). The category and an entry's
 type are closed words; a model reaches output only through the closed-shape
-rule `displayModel` applies. For a subagent transcript's user
-lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
+rule `displayModel` applies. Every non-blank line of a subagent transcript,
+and each main-transcript line up to the first dated one, is decoded into this
+shape, header only; a line that does not decode is walked token by token only
+for a top-level isSidechain key. No field exists for
 `message.content`, so `encoding/json` steps over those bytes, and
 `TestContentHasNoFieldToLandIn` holds the shape: no unlisted tag, and no
 `RawMessage`, interface or map field. Four rules decide the figures:
