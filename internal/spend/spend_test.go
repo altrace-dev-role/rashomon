@@ -1605,6 +1605,28 @@ func TestExtraAttempts_TheServedModelIsTheFallbackEntrys(t *testing.T) {
 	}
 }
 
+// TestExtraAttempts_AModelLessFallbackLineKeepsAKnownModel: keep took the
+// model of any fallback line it kept, so a completed line naming no model --
+// no message.model, and a fallback_message entry with none -- replaced the
+// model the streamed line before it named, and the response was priced as
+// unknown. A line that names no model never replaces one.
+func TestExtraAttempts_AModelLessFallbackLineKeepsAKnownModel(t *testing.T) {
+	c := newConfig(t)
+	at := now.Add(-time.Hour)
+	partial := resp{id: "msg_f", model: "claude-opus-4-8", at: at, in: 412, out: 4}
+	done := resp{id: "msg_f", at: at, in: 412, out: 264, stop: "end_turn",
+		iters: []resp{{model: "claude-fable-5", in: 535}, {typ: "fallback_message", in: 412, out: 264}}}
+	c.write("proj/sess-a.jsonl", partial.line("thinking"), done.line("text"))
+	s := c.summary(30)
+	if want := (Cost{Nano: 412*opus48In + 264*opus48Out, Priced: 1}); s.Total != want {
+		t.Errorf("total = %+v, want %+v: the response at the model its earlier line named", s.Total, want)
+	}
+	if !hasModel(s, "claude-opus-4-8") || s.ExtraAttempts.FallbackServed != 1 || s.Tokens.Output != 264 {
+		t.Errorf("by model = %+v, extra attempts = %+v, tokens = %+v; want claude-opus-4-8, served by a fallback, from the completed line",
+			s.ByModel, s.ExtraAttempts, s.Tokens)
+	}
+}
+
 // TestExtraAttempts_AnAllDeclinedChainIsNotServed: when every model in the
 // chain declines, the page says the response is the last model's refusal,
 // with a fallback_message entry last. It was reported as served. Nothing was

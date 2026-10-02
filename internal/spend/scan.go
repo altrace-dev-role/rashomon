@@ -865,7 +865,9 @@ func keep(prev, cand *Response) {
 	prev.Fast = cand.Fast
 	prev.complete = cand.complete
 	prev.Attempts, prev.Fallback = cand.Attempts, cand.Fallback
-	if prev.Model == "" || cand.Fallback {
+	// The served model replaces the one a streamed line named (route), but
+	// a line that names no model never replaces one.
+	if cand.Model != "" && (prev.Model == "" || cand.Fallback) {
 		prev.Model = cand.Model
 	}
 }

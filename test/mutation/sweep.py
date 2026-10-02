@@ -1575,7 +1575,8 @@ m("SP a fallback's attempts are not kept from the completed line", "internal/spe
   "\tprev.Attempts, prev.Fallback = cand.Attempts, cand.Fallback\n", "",
   "TestDedupe_TheCompletedLineWins")
 m("SP the served model is not kept from the completed line", "internal/spend/scan.go",
-  "\tif prev.Model == \"\" || cand.Fallback {", "\tif prev.Model == \"\" {", "TestDedupe_TheCompletedLineWins")
+  "\tif cand.Model != \"\" && (prev.Model == \"\" || cand.Fallback) {", "\tif cand.Model != \"\" && prev.Model == \"\" {",
+  "TestDedupe_TheCompletedLineWins")
 m("SP an assistant line whose content does not decode leaves the earlier words standing", "internal/report/transcript.go",
   "\t\t\tif err != nil || line.Message.Role != \"assistant\" {\n\t\t\t\tunsay()\n", "\t\t\tif err != nil || line.Message.Role != \"assistant\" {\n",
   "TestFinalAssistantTexts_AnUnreadableLine")
@@ -1618,6 +1619,9 @@ m("SP a pre-output refusal is counted in the breakdowns", "internal/spend/spend.
 m("SP an old transcript is counted once per spelling", "internal/spend/scan.go",
   "\t\t\tstale[resolved(p)] = true\n", "\t\t\tstale[p] = true\n",
   "TestDiscover_OneTranscriptUnderTwoSpellings")
+m("SP a model-less fallback line replaces a known model", "internal/spend/scan.go",
+  "\tif cand.Model != \"\" && (prev.Model == \"\" || cand.Fallback) {", "\tif prev.Model == \"\" || cand.Fallback {",
+  "TestExtraAttempts_AModelLessFallbackLineKeepsAKnownModel")
 # Import additions some mutants need.
 IMPORTS = {
   "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),
