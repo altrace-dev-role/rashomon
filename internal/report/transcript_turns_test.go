@@ -281,8 +281,8 @@ func TestAssistantLine_DecodesOnlyTextBlocks(t *testing.T) {
 	walk(fn.Out(0), "decodeAssistantLine")
 
 	// And FinalAssistantTexts decodes every text-bearing assistant line it
-	// reads through that helper, and no other way: a second decode beside
-	// it would be a shape this walk never sees.
+	// reads through that helper: a decode in place of it would be a shape
+	// this walk never sees, and would leave the count short.
 	decoded := 0
 	defer func(orig func([]byte) (assistantLine, error)) { decodeAssistantLine = orig }(decodeAssistantLine)
 	orig := decodeAssistantLine
