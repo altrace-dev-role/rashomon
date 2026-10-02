@@ -1264,6 +1264,9 @@ func TestJoin_ASharedResponseBelongsToTheFileFirstDated(t *testing.T) {
 	if z.Main.Nano != 1000*opusIn || b.Main.Priced != 0 || b.Main.Unpriced != 0 {
 		t.Errorf("sess-z = %+v, sess-b = %+v; want the response in sess-z's row alone", z.Main, b.Main)
 	}
+	if txt, _ := render(t, s); s.SharedResponses != 0 || strings.Contains(txt, "held by tied sessions") {
+		t.Errorf("shared responses = %d, want 0: one session owns the response\n%s", s.SharedResponses, txt)
+	}
 	if z.Coverage != CoverageNotRecorded || b.Coverage != CoverageRecorded || s.SilentFailureTurns.CoveredTranscripts != 1 {
 		t.Errorf("sess-z %s, sess-b %s, covered %d; want not recorded, recorded and 1: the copy's record was not read",
 			z.Coverage, b.Coverage, s.SilentFailureTurns.CoveredTranscripts)
@@ -1319,6 +1322,13 @@ func TestJoin_ARecordedOriginalWithAnUnrecordedCopy(t *testing.T) {
 	}
 	if s.Total.Nano != 1000*opusIn || s.SilentFailureTurns.NotCoveredCost.Nano != 1000*opusIn {
 		t.Errorf("total %d, not covered %d; want the shared response once in each", s.Total.Nano, s.SilentFailureTurns.NotCoveredCost.Nano)
+	}
+	// The response is in both rows and once in the total, and the output
+	// says so: a reader summing per_session would count it twice.
+	txt, js := render(t, s)
+	if s.SharedResponses != 1 || !strings.Contains(js, `"shared_responses":1`) ||
+		!strings.Contains(txt, "\n              1 response is held by tied sessions and appears in each of their rows, so the rows can add up to more than the total\n") {
+		t.Errorf("shared responses = %d; the output does not say the rows can add up to more than the total:\n%s\n%s", s.SharedResponses, txt, js)
 	}
 }
 

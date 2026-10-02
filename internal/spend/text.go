@@ -51,6 +51,10 @@ func Text(w io.Writer, s *Summary) error {
 			}
 			fmt.Fprintf(&b, "%-14s%s\n", label, line)
 		}
+		if n := s.SharedResponses; n > 0 {
+			fmt.Fprintf(&b, "%-14s%s %s held by tied sessions and %s in each of their rows, so the rows can add up to more than the total\n",
+				"", countOf(n, "response"), isAre(n), appearAppears(n))
+		}
 	} else if s.Refusals.WithoutUsage > 0 || s.Refusals.BeforeOutput > 0 {
 		writeLines(&b, "refusals", refusalLines(s.Refusals))
 	}
@@ -455,6 +459,13 @@ func isAre(n int) string {
 		return "is"
 	}
 	return "are"
+}
+
+func appearAppears(n int) string {
+	if n == 1 {
+		return "appears"
+	}
+	return "appear"
 }
 
 func wasWere(n int) string {

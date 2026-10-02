@@ -472,29 +472,29 @@ failed and its final message mentions no failure, whether or not a later call
 succeeded. A failed call whose declaration was lost has no prompt, so it is
 placed in no turn: the line counts it as a failed call that could not be
 checked, and with one, "none found" holds only for the turns that could be.
-The line covers only the transcripts a rashomon record names. Every
-other transcript is counted and its spend priced and marked not covered,
-never folded in as zero, and the sessions whose rows hold that spend are
-named. A session's row reads recorded only when its own transcripts were
-recorded and it holds none of that spend. A response that appears in several transcripts (a resumed conversation,
-or a copy made by `/branch` or `--fork-session`) is not covered when any of
-them is not, and its cost is counted once. In the per-session rows it belongs
-to the session whose transcript starts first; a copy that keeps the
-original's timestamps starts at the same moment, and then both sessions'
-rows hold it. A turn's
-spend is the
-responses tied to its prompt. In the main transcript, and in each subagent
-transcript under it, a response belongs to the prompt of the user line before
-it: Claude Code writes that prompt's id (`promptId`) on the line. The figure is
-a floor. A response after a user line with no prompt id belongs to no turn,
-unless that line is an injected meta line or, in the main transcript, a tool
-result. A subagent's response written into the main transcript
-(`isSidechain`) counts toward the prompt before it, and a subagent's user
-line there does not end the tie. A line that cannot be decoded ends it (any
-in a subagent transcript; in the main transcript, unless it is a sidechain
-line), so a response after it is not counted. A failed turn whose final
-message cannot be tied to its prompt is counted as not checked, never as
-clean.
+The line covers only the transcripts a rashomon record names. Every other
+transcript is counted and its spend priced and marked not covered, never
+folded in as zero, and the sessions whose rows hold that spend are named. A
+session's row reads recorded only when its own transcripts were recorded and
+it holds none of that spend. A response that appears in several transcripts (a
+resumed conversation, or a copy made by `/branch` or `--fork-session`) is not
+covered when any of them is not, and its cost is counted once. In the
+per-session rows it belongs to the session whose transcript starts first; a
+copy that keeps the original's timestamps starts at the same moment, and then
+both sessions' rows hold it; the output then says how many such responses
+there are (`shared_responses` in `--json`), since the rows can add up to more
+than the total. A turn's spend is the responses tied to its prompt. In the
+main transcript, and in each subagent transcript under it, a response belongs
+to the prompt of the user line before it: Claude Code writes that prompt's id
+(`promptId`) on the line. The figure is a floor. A response after a user line
+with no prompt id belongs to no turn, unless that line is an injected meta
+line or, in the main transcript, a tool result. A subagent's response written
+into the main transcript (`isSidechain`) counts toward the prompt before it,
+and a subagent's user line there does not end the tie. A line that cannot be
+decoded ends it (any in a subagent transcript; in the main transcript, unless
+it is a sidechain line), so a response after it is not counted. A failed turn
+whose final message cannot be tied to its prompt is counted as not checked,
+never as clean.
 
 **Message content.** To take that verdict, the line reads message content, in
 memory. For each recorded turn with a failed call, it decodes each block's

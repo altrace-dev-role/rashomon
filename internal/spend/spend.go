@@ -154,6 +154,10 @@ type Summary struct {
 
 	Savings    []Saving       `json:"savings"`
 	PerSession []SessionSpend `json:"per_session"`
+	// SharedResponses counts the windowed responses with more than one
+	// owner (a /branch tie): each is in every owner's row and once in the
+	// total, so the rows can add up to more than the total.
+	SharedResponses int `json:"shared_responses"`
 
 	// Read is how the transcripts went, over everything read (not only the
 	// window): the dedupe measurement, and what could not be counted.
@@ -559,6 +563,9 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			costOf(&s.ByAgent.Subagents, r)
 		} else {
 			costOf(&s.ByAgent.Main, r)
+		}
+		if len(r.owners) > 1 {
+			s.SharedResponses++
 		}
 		for _, id := range r.owners {
 			if sess := row(id); r.Subagent {

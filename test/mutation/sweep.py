@@ -1731,6 +1731,15 @@ m("SP the cache label says the figure errs low", "internal/spend/spend.go",
   "; it skips a model switch and any request smaller than the previous cache, so it misses some true expiries, and can still count new content in a request that grew past the previous cache\"",
   "; it errs low\"",
   "TestCacheExpiry_TheLabel")
+m("SP a response held by tied sessions is not counted as shared", "internal/spend/spend.go",
+  "\t\t\ts.SharedResponses++\n", "",
+  "TestJoin_ARecordedOriginalWithAnUnrecordedCopy")
+m("SP a response held by one session is counted as shared", "internal/spend/spend.go",
+  "\t\tif len(r.owners) > 1 {\n\t\t\ts.SharedResponses++", "\t\tif len(r.owners) > 0 {\n\t\t\ts.SharedResponses++",
+  "TestJoin_ASharedResponseBelongsToTheFileFirstDated")
+m("SP the rows' shared responses are not said", "internal/spend/text.go",
+  "\t\tif n := s.SharedResponses; n > 0 {", "\t\tif n := s.SharedResponses; n < 0 {",
+  "TestJoin_ARecordedOriginalWithAnUnrecordedCopy")
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),
