@@ -1159,9 +1159,11 @@ func refusesRun(runner string, before, args []token) bool {
 // of one before its trailing *. A word `flag=value` matches the entry flag
 // unless value is a false the flag parsers read as false (isFalse):
 // `--watchAll=false` runs the tests once, `--watchAll=true` watches, and
-// `-c=true` compiles. A prefix entry has no such exception, since the flags
-// it names take a pattern or a name: `go test -list=0` lists the tests
-// matching 0, and `tox -e=0` runs an environment named 0.
+// `-c=true` compiles. A prefix entry takes no =false exception: its flag
+// either takes a pattern or name (go -list, tox -e, nox -s/-k/-t, ctest
+// --show-only, pytest --cache-show) or is a no-value switch whose parser
+// rejects any =value (pytest --fixtures, nox --list, tox --listenvs, phpunit
+// --list-*), so the line runs no test either way.
 func onList(word string, list []string) bool {
 	name, value, hasValue := strings.Cut(word, "=")
 	for _, w := range list {
