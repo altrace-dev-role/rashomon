@@ -74,16 +74,21 @@ type SilentFailureTurns struct {
 	// verdict: no final message could be tied to their prompt (records that
 	// name no discovered transcript, a transcript with no promptId on the
 	// turn's lines, a prompt with no promptId after it that ends attribution,
-	// a file not readable to the end, or a failed call whose declaration was
-	// lost recorded before every turn, whose prompt is not known; turnsOf). The rule cannot fire on no words, so
+	// a file not readable to the end). The rule cannot fire on no words, so
 	// such a turn is neither in Turns nor a checked clean one, and folding it
 	// into "none found" would claim a check that never happened.
-	Unjudged int    `json:"unjudged_turns"`
-	Cost     Cost   `json:"cost"`
-	Bound    string `json:"bound"`
+	Unjudged int `json:"unjudged_turns"`
+	// UndeclaredFailedCalls counts the failed calls recorded in the window
+	// whose declaration was lost (turnsOf). No turn is known to hold them,
+	// so none was checked, and like Unjudged they keep "none found" from
+	// claiming every failure was checked.
+	UndeclaredFailedCalls int    `json:"undeclared_failed_calls"`
+	Cost                  Cost   `json:"cost"`
+	Bound                 string `json:"bound"`
 }
 
-// MarshalJSON writes turns, unjudged_turns and cost as null when no transcript is covered --
+// MarshalJSON writes turns, unjudged_turns, undeclared_failed_calls and cost
+// as null when no transcript is covered --
 // no store, a store that recorded none of these transcripts, or a Join that
 // never ran. Nothing was checked then, and {"turns": 0, "cost": {"usd": 0}}
 // would tell a JSON consumer "checked, and clean": the "$0 for unknown" the
@@ -92,15 +97,16 @@ func (j SilentFailureTurns) MarshalJSON() ([]byte, error) {
 	type plain SilentFailureTurns
 	out := struct {
 		plain
-		Turns    *int  `json:"turns"`
-		Unjudged *int  `json:"unjudged_turns"`
-		Cost     *Cost `json:"cost"`
+		Turns      *int  `json:"turns"`
+		Unjudged   *int  `json:"unjudged_turns"`
+		Undeclared *int  `json:"undeclared_failed_calls"`
+		Cost       *Cost `json:"cost"`
 	}{plain: plain(j)}
 	if j.NotCoveredSessions == nil {
 		out.NotCoveredSessions = []string{}
 	}
 	if j.CoveredTranscripts > 0 {
-		out.Turns, out.Unjudged, out.Cost = &j.Turns, &j.Unjudged, &j.Cost
+		out.Turns, out.Unjudged, out.Undeclared, out.Cost = &j.Turns, &j.Unjudged, &j.UndeclaredFailedCalls, &j.Cost
 	}
 	return json.Marshal(out)
 }
@@ -126,16 +132,17 @@ type turn struct {
 // A declaration with no prompt_id (a record older than the field) belongs to
 // no turn and is left out rather than guessed into one.
 //
-// A FAILED EXECUTION WHOSE DECLARATION WAS LOST still counts. A declaration
-// can be lost -- a lock timeout, a paused pre hook, a mid-session install --
-// while its execution is recorded, and the session report counts that
-// failure. Dropping it here printed "none found" for the same session. It
-// has no tool_use_id to join through, so it is placed as digest places the
-// records with no prompt_id: by recorded time, in the turn whose span holds
-// it, from the turn's first declaration to the next turn's. One recorded
-// before every turn's first declaration cannot be placed, and its recorded
-// time is returned in unplaced, for Join to count as not checked.
-func turnsOf(run *store.Run) (turns []turn, unplaced []int64) {
+// A FAILED EXECUTION WHOSE DECLARATION WAS LOST is in no turn. A
+// declaration can be lost -- a lock timeout, a paused pre hook, a
+// mid-session install -- while its execution is recorded. The execution
+// then has no declaration to join through, and so no prompt: placing it by
+// recorded time put it in whichever turn started before it, often a clean
+// one, whose spend was then printed as silent-failure spend. The session
+// report, which judges the whole run, counts such a failure; a turn's digest
+// leaves it out, as this does. It is placed nowhere, and its recorded time is
+// returned in lost, for Join to count once as a failed call that was not
+// checked.
+func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 	byPrompt := map[string]*turn{}
 	owner := map[string]*turn{}
 	declared := map[string]bool{}
@@ -164,30 +171,13 @@ func turnsOf(run *store.Run) (turns []turn, unplaced []int64) {
 		owner[d.ToolUseID] = t
 		span(t, d.RecordedAtMS)
 	}
-	// In start order, each turn starting at its first declaration: the
-	// spans a lost declaration's execution is placed by.
-	byStart := make([]*turn, 0, len(byPrompt))
-	for _, t := range byPrompt {
-		byStart = append(byStart, t)
-	}
-	sort.Slice(byStart, func(i, j int) bool { return byStart[i].firstMS < byStart[j].firstMS })
-	starts := make([]int64, len(byStart))
-	for i, t := range byStart {
-		starts[i] = t.firstMS
-	}
 	for _, x := range run.Executions {
 		t, ok := owner[x.ToolUseID]
 		if !ok {
-			if declared[x.ToolUseID] || x.Outcome != store.ExecFailed {
-				continue
+			if !declared[x.ToolUseID] && x.Outcome == store.ExecFailed {
+				lost = append(lost, x.RecordedAtMS)
 			}
-			// The last turn starting at or before the execution.
-			i := sort.Search(len(starts), func(i int) bool { return starts[i] > x.RecordedAtMS }) - 1
-			if i < 0 {
-				unplaced = append(unplaced, x.RecordedAtMS)
-				continue
-			}
-			t = byStart[i]
+			continue
 		}
 		t.run.Executions = append(t.run.Executions, x)
 		span(t, x.RecordedAtMS)
@@ -197,12 +187,12 @@ func turnsOf(run *store.Run) (turns []turn, unplaced []int64) {
 			span(t, x.RecordedAtMS)
 		}
 	}
-	turns = make([]turn, 0, len(byStart))
-	for _, t := range byStart {
+	turns = make([]turn, 0, len(byPrompt))
+	for _, t := range byPrompt {
 		turns = append(turns, *t)
 	}
 	sort.Slice(turns, func(i, j int) bool { return turns[i].firstMS < turns[j].firstMS })
-	return turns, unplaced
+	return turns, lost
 }
 
 // Join fills the silent-failure line from a store, or records that there is
@@ -232,7 +222,10 @@ func turnsOf(run *store.Run) (turns []turn, unplaced []int64) {
 // transcripts are read only for turns with at least one, and each once for
 // all of them (report.FinalAssistantTexts). Only the verdict is kept. A turn
 // with a failed call whose final message cannot be found takes no verdict,
-// and is counted in Unjudged rather than read as clean.
+// and is counted in Unjudged rather than read as clean. A failed call whose
+// declaration was lost is in no turn (turnsOf) and is never placed in one by
+// time: it is counted, once, in UndeclaredFailedCalls, and "none found" is
+// then said only of the turns that could be checked.
 //
 // A FIRING TURN'S SPEND IS KEYED BY ITS PROMPT, not by a span of recorded
 // time. The main transcript ties each response to the promptId of the user
@@ -313,11 +306,12 @@ func (s *Summary) Join(st *store.Store) error {
 		}
 		// Only a turn with a recorded failure can fire, whatever its final
 		// message says; those alone need their transcripts read. A failed
-		// call no turn can hold is a failed turn with no prompt to check.
-		recordedTurns, unplaced := turnsOf(run)
-		for _, ms := range unplaced {
+		// call whose declaration was lost is in no turn: it is counted once,
+		// as not checked.
+		recordedTurns, lost := turnsOf(run)
+		for _, ms := range lost {
 			if ms >= s.FromUnixMS {
-				j.Unjudged++
+				j.UndeclaredFailedCalls++
 			}
 		}
 		for _, t := range recordedTurns {

@@ -256,7 +256,7 @@ func TestJoin_NoStoreIsUnknownNotZero(t *testing.T) {
 	if err := json.Unmarshal([]byte(js), &doc); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"turns", "unjudged_turns", "cost"} {
+	for _, k := range []string{"turns", "unjudged_turns", "undeclared_failed_calls", "cost"} {
 		if v, ok := doc.Silent[k]; !ok || string(v) != "null" {
 			t.Errorf("silent_failure_turns.%s = %s, want null: no session was checked, and a zero reads as clean", k, v)
 		}
@@ -274,7 +274,7 @@ func TestJoin_ACoveredZeroIsAZero(t *testing.T) {
 		t.Fatal(err)
 	}
 	txt, js := render(t, s)
-	if !strings.Contains(js, `"turns":0,"unjudged_turns":0,"cost":{"usd":0,`) {
+	if !strings.Contains(js, `"turns":0,"unjudged_turns":0,"undeclared_failed_calls":0,"cost":{"usd":0,`) {
 		t.Errorf("a covered, clean record did not marshal as a checked zero:\n%s", js)
 	}
 	// And the text says so plainly: "at least none across 0 turns" is a
@@ -1093,22 +1093,35 @@ func TestJoin_ASharedResponseInTwoUnrecordedTranscriptsIsNotCoveredOnce(t *testi
 	}
 }
 
-// TestJoin_AFailedCallWhoseDeclarationWasLostIsCounted: a declaration can be
-// lost (a lock timeout, a paused pre hook, a mid-session install) while its
-// failed execution is recorded. The session report counts that failure;
-// spend's turns were built from declarations alone, so the execution was
-// dropped and the line printed "none found". It is placed, as the digest
-// places records with no prompt_id, in the turn whose recorded span holds
-// it -- from the turn's first declaration to the next turn's -- and one
-// recorded before every turn is counted as not checked.
-func TestJoin_AFailedCallWhoseDeclarationWasLostIsCounted(t *testing.T) {
+// TestJoin_AFailedCallWhoseDeclarationWasLostIsNotJudged: a declaration can
+// be lost (a lock timeout, a paused pre hook, a mid-session install) while
+// its failed execution is recorded. No tool_use_id ties the execution to a
+// prompt, so it is placed in no turn: placed by recorded time, it landed in
+// the clean turn before it, which fired and printed p1's spend as
+// silent-failure spend and as a saving. It is counted once as a failed call
+// that was not checked, so "none found" is never printed over it -- and only
+// when it is a failure recorded in the window.
+func TestJoin_AFailedCallWhoseDeclarationWasLostIsNotJudged(t *testing.T) {
+	type lost struct {
+		at      time.Duration
+		outcome string
+	}
 	for _, tc := range []struct {
-		name            string
-		at              time.Duration
-		turns, unjudged int
+		name  string
+		lost  []lost
+		third bool // p2 declares no call, and a clean p3 follows it
+		want  int
+		said  string
 	}{
-		{"inside a turn", 2 * time.Second, 1, 0},
-		{"before every turn", -5 * time.Second, 0, 1},
+		{"right after a clean turn", []lost{{9800 * time.Millisecond, store.ExecFailed}}, false, 1,
+			"  (1 failed call could not be checked: its declaration was not recorded, so no turn is known to hold it)\n"},
+		{"a turn with every declaration lost", []lost{{10800 * time.Millisecond, store.ExecFailed}}, true, 1,
+			"  (1 failed call could not be checked: its declaration was not recorded, so no turn is known to hold it)\n"},
+		{"two in one turn", []lost{{10800 * time.Millisecond, store.ExecFailed}, {10900 * time.Millisecond, store.ExecFailed}}, true, 2,
+			"  (2 failed calls could not be checked: their declarations were not recorded, so no turn is known to hold them)\n"},
+		{"before every turn", []lost{{-5 * time.Second, store.ExecFailed}}, false, 1,
+			"  (1 failed call could not be checked: its declaration was not recorded, so no turn is known to hold it)\n"},
+		{"a success, and a failure before the window", []lost{{10800 * time.Millisecond, store.ExecOK}, {-31 * 24 * time.Hour, store.ExecFailed}}, false, 0, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newConfig(t)
@@ -1118,34 +1131,60 @@ func TestJoin_AFailedCallWhoseDeclarationWasLostIsCounted(t *testing.T) {
 			m := func(id string, at time.Time, in int64, text string) resp {
 				return resp{id: id, model: "claude-opus-5-5", session: "sess-j", at: at, in: in, stop: "end_turn", text: text}
 			}
-			rec.transcript = c.write("proj/sess-j.jsonl",
+			lines := []string{
 				userLine("sess-j", "p1", sec(-1), false),
-				m("R1", sec(0.5), 100, "").line("tool_use"),
+				m("R1", sec(0.5), 100000, "").line("tool_use"),
 				userLine("sess-j", "p1", sec(1), true),
-				m("R2", sec(3), 1000, "Ran the command as requested.").line("text"),
+				m("R2", sec(3), 1000000, "Ran the command as requested.").line("text"),
 				userLine("sess-j", "p2", sec(9.5), false),
-				m("R3", sec(10.5), 10000, "").line("tool_use"),
+				m("R3", sec(10.5), 100, "").line("tool_use"),
 				userLine("sess-j", "p2", sec(11), true),
-				m("R4", sec(12), 100000, "All done.").line("text"))
+				m("R4", sec(12), 1000, "All done.").line("text"),
+			}
+			if tc.third {
+				lines = append(lines,
+					userLine("sess-j", "p3", sec(19.5), false),
+					m("R5", sec(20.5), 10, "").line("tool_use"),
+					userLine("sess-j", "p3", sec(21), true),
+					m("R6", sec(22), 10, "Finished as asked.").line("text"))
+			}
+			rec.transcript = c.write("proj/sess-j.jsonl", lines...)
 			rec.call("sess-j", "p1", "toolu_1", sec(0), sec(1), store.ExecOK)
-			rec.call("sess-j", "p2", "toolu_3", sec(10), sec(11), store.ExecOK)
-			if err := rec.st.AppendExecution(store.Execution{
-				Type: store.TypeExecution, SchemaVersion: store.SchemaVersion,
-				RecordedAtMS: T.Add(tc.at).UnixMilli(), ToolUseID: "toolu_lost", SessionID: "sess-j",
-				ToolName: "Bash", Outcome: store.ExecFailed,
-			}); err != nil {
-				t.Fatal(err)
+			if tc.third {
+				rec.call("sess-j", "p3", "toolu_5", sec(20), sec(21), store.ExecOK)
+			} else {
+				rec.call("sess-j", "p2", "toolu_3", sec(10), sec(11), store.ExecOK)
+			}
+			for i, l := range tc.lost {
+				if err := rec.st.AppendExecution(store.Execution{
+					Type: store.TypeExecution, SchemaVersion: store.SchemaVersion,
+					RecordedAtMS: T.Add(l.at).UnixMilli(), ToolUseID: fmt.Sprintf("toolu_lost%d", i), SessionID: "sess-j",
+					ToolName: "Bash", Outcome: l.outcome,
+				}); err != nil {
+					t.Fatal(err)
+				}
 			}
 			s := c.summary(30)
 			if err := s.Join(rec.st); err != nil {
 				t.Fatal(err)
 			}
 			j := s.SilentFailureTurns
-			if j.Turns != tc.turns || j.Unjudged != tc.unjudged {
-				t.Errorf("turns %d, unjudged %d; want %d and %d", j.Turns, j.Unjudged, tc.turns, tc.unjudged)
+			if j.Turns != 0 || j.Cost.Priced != 0 || len(s.Savings) != 0 || j.Unjudged != 0 || j.UndeclaredFailedCalls != tc.want {
+				t.Errorf("turns %d, cost %+v, savings %+v, unjudged %d, undeclared %d; want no turn, no figure and %d undeclared",
+					j.Turns, j.Cost, s.Savings, j.Unjudged, j.UndeclaredFailedCalls, tc.want)
 			}
-			if want := int64(tc.turns) * 1100 * opusIn; j.Cost.Nano != want {
-				t.Errorf("cost = %d, want %d: p1's responses, and none of p2's", j.Cost.Nano, want)
+			txt, js := render(t, s)
+			if !strings.Contains(js, fmt.Sprintf(`"undeclared_failed_calls":%d`, tc.want)) {
+				t.Errorf("the JSON does not count the undeclared failed calls:\n%s", js)
+			}
+			if tc.want == 0 {
+				if !strings.Contains(txt, "never mentioned: none found (no recorded turn") || strings.Contains(txt, "could not be checked") {
+					t.Errorf("a lost successful call, or a failure recorded before the window, is counted:\n%s", txt)
+				}
+				return
+			}
+			if !strings.Contains(txt, "never mentioned: none found in the turns that could be checked\n") || !strings.Contains(txt, tc.said) {
+				t.Errorf("an undeclared failed call is rendered as a checked none:\n%s", txt)
 			}
 		})
 	}

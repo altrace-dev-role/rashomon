@@ -1195,11 +1195,11 @@ m("SP a failed turn whose records name no transcript goes uncounted", "internal/
   "\t\tif len(mains) == 0 {\n\t\t\tj.Unjudged++", "\t\tif len(mains) == 0 {\n\t\t\t_ = mains",
   "TestJoin_CoverageIsPerTranscript")
 m("SP unjudged turns marshal as a checked 0 with nothing covered", "internal/spend/join.go",
-  "\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns, out.Unjudged, out.Cost = &j.Turns, &j.Unjudged, &j.Cost",
-  "\tout.Unjudged = &j.Unjudged\n\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns, out.Cost = &j.Turns, &j.Cost",
+  "\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns, out.Unjudged, out.Undeclared, out.Cost = &j.Turns, &j.Unjudged, &j.UndeclaredFailedCalls, &j.Cost",
+  "\tout.Unjudged = &j.Unjudged\n\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns, out.Undeclared, out.Cost = &j.Turns, &j.UndeclaredFailedCalls, &j.Cost",
   "TestJoin_NoStore")
 m("SP an unjudged failed turn reads as a checked none", "internal/spend/text.go",
-  "\tcase j.Turns == 0 && j.Unjudged == 0:\n", "\tcase j.Turns == 0:\n", "TestJoin_AFailedTurnWithNoWords")
+  "\tcase j.Turns == 0 && j.Unjudged == 0 && j.UndeclaredFailedCalls == 0:\n", "\tcase j.Turns == 0 && j.UndeclaredFailedCalls == 0:\n", "TestJoin_AFailedTurnWithNoWords")
 m("SP the unjudged turn is not said", "internal/spend/text.go",
   "\tif j.Unjudged == 1 {", "\tif false {", "TestJoin_AFailedTurnWithNoWords")
 m("SP unjudged turns are not said", "internal/spend/text.go",
@@ -1219,7 +1219,7 @@ m("SP the text does not name the not-covered sessions", "internal/spend/text.go"
   "\tif len(n) == 0 {\n\t\treturn \"\"", "\tif true {\n\t\treturn \"\"",
   "TestJoin_SpendInside|TestJoin_CoverageIsPerTranscript|TestSpend_JoinsSilentlyFailedTurns")
 m("SP a covered, clean record reads at least none across 0 turns", "internal/spend/text.go",
-  "\tcase j.Turns == 0 && j.Unjudged == 0:\n", "\tcase false:\n", "TestJoin_ACoveredZeroIsAZero")
+  "\tcase j.Turns == 0 && j.Unjudged == 0 && j.UndeclaredFailedCalls == 0:\n", "\tcase false:\n", "TestJoin_ACoveredZeroIsAZero")
 m("SP a firing turn with nothing priced reads at least none", "internal/spend/text.go",
   "\tcase j.Cost.Priced == 0 && j.Cost.Unpriced == 0:\n", "\tcase false:\n", "TestJoin_AFiringTurnWithNoResponse")
 m("SP the floor note is printed under a none", "internal/spend/text.go",
@@ -1624,15 +1624,6 @@ m("SP a synthetic refusal line is folded after pre-output refusals are marked", 
 m("SP a cold write is priced on a response whose cost is unknown", "internal/spend/spend.go",
   "\t\t\tif key, ok := PriceKey(r.Model); ok && !r.costUnknown {", "\t\t\tif key, ok := PriceKey(r.Model); ok {",
   "TestCacheExpiry_")
-m("SP a failed call whose declaration was lost is dropped", "internal/spend/join.go",
-  "\t\t\tif declared[x.ToolUseID] || x.Outcome != store.ExecFailed {", "\t\t\tif true {",
-  "TestJoin_AFailedCallWhoseDeclarationWasLost")
-m("SP a lost declaration's failed call is placed in the turn after it", "internal/spend/join.go",
-  "starts[i] > x.RecordedAtMS }) - 1", "starts[i] > x.RecordedAtMS })",
-  "TestJoin_AFailedCallWhoseDeclarationWasLost")
-m("SP a failed call no turn can hold is not counted as not checked", "internal/spend/join.go",
-  "\t\t\tif ms >= s.FromUnixMS {\n\t\t\t\tj.Unjudged++", "\t\t\tif ms >= s.FromUnixMS {\n\t\t\t\t_ = ms",
-  "TestJoin_AFailedCallWhoseDeclarationWasLost")
 m("SP a write on another model is judged against the previous model's cache", "internal/spend/spend.go",
   "\t\t\tif rs[i].Model != rs[i-1].Model || ", "\t\t\tif ",
   "TestCacheExpiry_")
@@ -1672,6 +1663,30 @@ m("SP a session holding a response it does not own has no row", "internal/spend/
 m("SP a row holding not-covered dollars reads recorded", "internal/spend/join.go",
   "\t\t\tif t := tallyOf(id); notCovered {\n\t\t\t\tt.out++", "\t\t\tif t := tallyOf(id); notCovered {\n\t\t\t\tt.in++",
   "TestJoin_")
+m("SP a lost declaration's failed call is placed in a turn by recorded time", "internal/spend/join.go",
+  "\t\t\tif !declared[x.ToolUseID] && x.Outcome == store.ExecFailed {\n\t\t\t\tlost = append(lost, x.RecordedAtMS)\n\t\t\t}\n\t\t\tcontinue\n",
+  "\t\t\tif declared[x.ToolUseID] || x.Outcome != store.ExecFailed {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tfor _, c := range byPrompt {\n\t\t\t\tif c.firstMS <= x.RecordedAtMS && (t == nil || c.firstMS > t.firstMS) {\n\t\t\t\t\tt = c\n\t\t\t\t}\n\t\t\t}\n\t\t\tif t == nil {\n\t\t\t\tlost = append(lost, x.RecordedAtMS)\n\t\t\t\tcontinue\n\t\t\t}\n",
+  "TestJoin_AFailedCallWhoseDeclarationWasLost")
+m("SP a failed call whose declaration was lost is not counted", "internal/spend/join.go",
+  "\t\t\t\tj.UndeclaredFailedCalls++", "\t\t\t\t_ = ms",
+  "TestJoin_AFailedCallWhoseDeclarationWasLost")
+m("SP a lost declaration's failed call before the window is counted", "internal/spend/join.go",
+  "\t\t\tif ms >= s.FromUnixMS {\n\t\t\t\tj.UndeclaredFailedCalls++", "\t\t\tif ms >= 0 {\n\t\t\t\tj.UndeclaredFailedCalls++",
+  "TestJoin_AFailedCallWhoseDeclarationWasLost")
+m("SP a lost declaration's successful call is counted", "internal/spend/join.go",
+  "\t\t\tif !declared[x.ToolUseID] && x.Outcome == store.ExecFailed {", "\t\t\tif !declared[x.ToolUseID] {",
+  "TestJoin_AFailedCallWhoseDeclarationWasLost")
+m("SP an undeclared failed call reads as a checked none", "internal/spend/text.go",
+  "\tcase j.Turns == 0 && j.Unjudged == 0 && j.UndeclaredFailedCalls == 0:\n", "\tcase j.Turns == 0 && j.Unjudged == 0:\n",
+  "TestJoin_AFailedCallWhoseDeclarationWasLost")
+m("SP the undeclared failed call is not said", "internal/spend/text.go",
+  "\tif j.UndeclaredFailedCalls == 1 {", "\tif false {", "TestJoin_AFailedCallWhoseDeclarationWasLost")
+m("SP undeclared failed calls are not said", "internal/spend/text.go",
+  "\t} else if j.UndeclaredFailedCalls > 1 {", "\t} else if false {", "TestJoin_AFailedCallWhoseDeclarationWasLost")
+m("SP undeclared failed calls marshal as a checked 0 with nothing covered", "internal/spend/join.go",
+  "\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns, out.Unjudged, out.Undeclared, out.Cost = &j.Turns, &j.Unjudged, &j.UndeclaredFailedCalls, &j.Cost",
+  "\tout.Undeclared = &j.UndeclaredFailedCalls\n\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns, out.Unjudged, out.Cost = &j.Turns, &j.Unjudged, &j.Cost",
+  "TestJoin_NoStore")
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),
