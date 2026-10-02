@@ -1286,6 +1286,20 @@ m("TL only an undeclared ok row is weighed as a lost declaration", "internal/rep
   "\t\tif c.Seq == nil {\n\t\t\tpos, digest := e.pos, e.digest", "\t\tif c.Seq == nil && c.Group == GroupOK {\n\t\t\tpos, digest := e.pos, e.digest", "TestTimeline_")
 m("TL an unnamed undeclared record is ruled out on its digest", "internal/report/timeline.go",
   "\t\t\tif c.ToolName == failed.call.ToolName && digest != \"\"", "\t\t\tif digest != \"\"", "TestTimeline_")
+m("TL a failed call's ok record never matches by command", "internal/report/timeline.go",
+  "\t\t\t\tcommand := failed.digest != \"\" && ok.digest == failed.digest", "\t\t\t\tcommand := false", "TestTimeline_")
+m("TL a failed call's ok record never matches by program", "internal/report/timeline.go",
+  "\t\t\t\tprogram := programTier && c.Program == failed.call.Program", "\t\t\t\tprogram := false", "TestTimeline_")
+m("TL a failed call's ok record matches by program with no program tier", "internal/report/timeline.go",
+  "\t\t\t\tprogram := programTier && c.Program == failed.call.Program", "\t\t\t\tprogram := c.Program == failed.call.Program", "TestTimeline_")
+m("TL a failed call's ok record with no position is ruled out", "internal/report/timeline.go",
+  "(ok.pos == nil || *ok.pos > *failed.pos)", "(ok.pos != nil && *ok.pos > *failed.pos)", "TestTimeline_")
+m("TL a failed call's first ok record is weighed, not its last", "internal/report/timeline.go",
+  "\tfor i := len(recs) - 1; i >= 0; i-- {\n\t\tif recs[i].Outcome == store.ExecOK {", "\tfor i := 0; i < len(recs); i++ {\n\t\tif recs[i].Outcome == store.ExecOK {", "TestTimeline_")
+m("TL an unknown digest matches a failed call's unknown ok digest", "internal/report/timeline.go",
+  "\t\t\t\tcommand := failed.digest != \"\" && ok.digest == failed.digest", "\t\t\t\tcommand := ok.digest == failed.digest", "TestTimeline_")
+m("TL a failed call's ok record is weighed by its declared digest", "internal/report/timeline.go",
+  "digest: effectiveDigest(declared, &recs[i])}", "digest: declared}", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

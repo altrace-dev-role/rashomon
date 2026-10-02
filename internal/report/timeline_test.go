@@ -610,6 +610,55 @@ func TestTimeline_TwoRecordsForOneID(t *testing.T) {
 	if c := tlByID(t, buildTimeline(before, nil), "f"); !c.LaterChecked || c.Later != nil {
 		t.Errorf("an ok record before the failure leaves it unchecked: %+v", c)
 	}
+
+	// #36 review round 5, fix 1: each half of the ok-record match on its own.
+	// Break any one of them and the case naming it goes the other way.
+	nilSeq := tlRun([]tlCall{{seq: 1, id: "f", tool: "Edit", digest: "d1"}},
+		tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12))
+	nilSeq.Executions[1].Seq = nil
+	ranFailed := tlRun([]tlCall{{seq: 1, id: "f", tool: "Edit", digest: "d2"}},
+		tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12))
+	ranFailed.Executions[0].ExecutedDigest = "d1"
+	ranFailed.Executions[1].ExecutedDigest = "d1"
+	for _, tc := range []struct {
+		name    string
+		run     *store.Run
+		checked bool
+	}{
+		// No program tier: the ok record matches by command alone.
+		{"same command, no program", tlRun([]tlCall{{seq: 1, id: "f", tool: "Edit", digest: "d1"}},
+			tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12)), false},
+		// Another command line of a single-purpose program matches by program.
+		{"same program", tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+			{seq: 2, id: "g", tool: "Bash", program: "pytest", digest: "d2"},
+		}, tlExecAt("g", store.ExecFailed, 1, 5), tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("g", store.ExecOK, 0, 11)), false},
+		// Not where the program has no program tier: git d2 says nothing
+		// about git d1.
+		{"same program, no tier", tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Bash", program: "git", digest: "d1"},
+			{seq: 2, id: "g", tool: "Bash", program: "git", digest: "d2"},
+		}, tlExecAt("g", store.ExecFailed, 1, 5), tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("g", store.ExecOK, 0, 11)), true},
+		// An ok record with no position may be the later one.
+		{"no position", nilSeq, false},
+		// The LAST ok record is weighed: ok at 5 is before the failure, ok
+		// at 12 after it.
+		{"ok, failed, ok", tlRun([]tlCall{{seq: 1, id: "f", tool: "Edit", digest: "d1"}},
+			tlExecAt("f", store.ExecOK, 0, 5), tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12)), false},
+		// An unknown digest matches nothing, not every other unknown one.
+		{"both digests empty", tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Edit"},
+			{seq: 2, id: "g", tool: "Edit"},
+		}, tlExecAt("g", store.ExecFailed, 1, 5), tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("g", store.ExecOK, 0, 12)), true},
+		// The ok record's digest is the one it ran, not the declared one.
+		{"ran the failed command", ranFailed, false},
+	} {
+		c := tlByID(t, buildTimeline(tc.run, nil), "f")
+		if c.Group != GroupFailed || c.Later != nil || c.LaterChecked != tc.checked {
+			t.Errorf("%s: %s, later %+v, checked %v; want failed, no later, checked %v",
+				tc.name, c.Group, c.Later, c.LaterChecked, tc.checked)
+		}
+	}
 }
 
 // #36 review round 3, smaller 1: undeclared rows have no declaration, but
