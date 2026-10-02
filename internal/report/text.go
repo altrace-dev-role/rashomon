@@ -32,7 +32,8 @@ const (
 type TextOption func(*textOptions)
 
 type textOptions struct {
-	chain bool
+	chain    bool
+	timeline bool
 	// proxyStore is the store the report was built against, "" for none. The
 	// renderer needs only whether one was NAMED; see WithNamedProxyStore.
 	proxyStore string
@@ -48,6 +49,13 @@ type textOptions struct {
 // because that reader is a program and is not scrolling.
 func WithChain() TextOption {
 	return func(o *textOptions) { o.chain = true }
+}
+
+// WithTimeline adds the timeline: every call, main agent and subagents, on
+// one list in seq order. Off by default for the reason WithChain is: it is one
+// line per call. JSON always carries it.
+func WithTimeline() TextOption {
+	return func(o *textOptions) { o.timeline = true }
 }
 
 // WithNamedProxyStore tells the renderer which proxy store the report was
@@ -147,6 +155,9 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	}
 	writeNono(b, sess.Nono)
 	writeChains(b, sess.Chains, cfg.chain, named)
+	if cfg.timeline {
+		writeTimeline(b, sess.Timeline)
+	}
 	fmt.Fprintf(b, "  coverage: %s\n", sess.Coverage.State)
 	writeReasons(b, sess.Coverage.Reasons)
 	fmt.Fprintf(b, "  start recorded: %s\n", yesNo(sess.Coverage.StartRecorded))
@@ -384,7 +395,9 @@ func byName(counts map[string]int) string {
 	sort.Strings(names)
 	out := make([]string, len(names))
 	for i, name := range names {
-		out[i] = fmt.Sprintf("%s %d", name, counts[name])
+		// A tool name is the hook payload's, so it is made printable here as
+		// on the timeline: a control byte in it would reach the terminal.
+		out[i] = fmt.Sprintf("%s %d", printable(name), counts[name])
 	}
 	// Through list, for its bound: a session that ran sixty programs or
 	// called forty MCP tools must not rebuild the line list was written to
@@ -800,7 +813,7 @@ func writeChainTail(b *bytes.Buffer, c Chains, expand, named bool) {
 		fmt.Fprintf(b, "    %d call%s ran with no declaration recorded\n", n, plural(n))
 		if expand {
 			for _, l := range c.Dropped {
-				fmt.Fprintf(b, "      %s  everything but the id is unknown\n", l.ToolUseID)
+				fmt.Fprintf(b, "      %s  everything but the id is unknown\n", printable(l.ToolUseID))
 			}
 		}
 	}
@@ -820,7 +833,7 @@ func writeLink(b *bytes.Buffer, l Link, named bool) {
 			l.ExecutionRecords, strings.Join(l.Outcomes, ", "))
 	}
 	fmt.Fprintf(b, "      %d  %s (%s)  %s%s%s\n",
-		l.Seq, l.ToolName, shape, outcome, linkHosts(l.Hosts, named), linkSSH(l.SSHHosts, named))
+		l.Seq, printable(l.ToolName), shape, outcome, linkHosts(l.Hosts, named), linkSSH(l.SSHHosts, named))
 }
 
 // linkSSH renders the ssh hosts a call named, kept apart from the observable
@@ -883,10 +896,12 @@ func writeRewritten(b *bytes.Buffer, rows []Rewritten) {
 		}
 		shape := r.VerbClass
 		if r.Program != "" {
-			shape = r.Program + ", " + r.VerbClass
+			shape = printable(r.Program) + ", " + r.VerbClass
 		}
+		// Every name here is the payload's: made printable, as on the
+		// timeline, or an escape sequence in one reaches the terminal.
 		fmt.Fprintf(b, "    %s  %s (%s): %s between declaration and execution\n",
-			r.ToolUseID, r.ToolName, shape, what)
+			printable(r.ToolUseID), printable(r.ToolName), shape, what)
 	}
 }
 
