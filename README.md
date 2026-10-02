@@ -263,23 +263,24 @@ execution; coverage that did not verify; a truncated/unknown projection; a
 failed test command that passed after the only recorded edits were to files
 named like tests; or the same test command passing and failing with no
 recorded file edit between). A file edit there is any recorded call that may
-change files, not only an Edit or a shell `rm`: a `git checkout`, an `npm
-install`, a `sed -i`, an MCP tool, another test command (`jest -u` rewrites
-snapshots) all count, and only reads, web fetches, subagent launches and
-Claude Code's own tools that write no source or test file (TodoWrite,
+change files, not only an Edit or a shell `rm`: a `git checkout`, an
+`npm install`, a `sed -i`, an MCP tool, another test command (`jest -u`
+rewrites snapshots) all count, and only reads, web fetches, subagent launches
+and Claude Code's own tools that write no source or test file (TodoWrite,
 TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, TaskStop,
-AskUserQuestion, EnterPlanMode, ExitPlanMode, BashOutput, KillShell,
-KillBash, Skill, ToolSearch, SendMessage, CronCreate, CronDelete, CronList,
-ListMcpResourcesTool, ReadMcpResourceTool) do not. A shell read or fetch counts as well when its line may write, which
-the record keeps as one bit (`may_write`): an output redirect to a file, a
-download (`curl -o`/`-O`, with the file attached or not, as in `curl
--o./calc.go`, and `wget`), a command or process substitution (`$(…)`,
-backticks, `<(…)`, `>(…)`), `find -delete`/`-exec`/`-execdir`, `xargs`,
-`tee`, `rsync` or `scp` anywhere on the line, or a later pipeline or list
-stage whose program is not a read (`grep -rl … | xargs sed -i`). That
-under-claims by design. It can still miss a change: a read or fetch that
-writes through an option not on that list (`find -fprint f`, `curl -D f`),
-or anything done outside the session's own calls.
+AskUserQuestion, EnterPlanMode, ExitPlanMode, BashOutput, KillShell, KillBash,
+Skill, ToolSearch, SendMessage, CronCreate, CronDelete, CronList,
+ListMcpResourcesTool, ReadMcpResourceTool) do not. A shell read or fetch
+counts as well when its line may write, which the record keeps as one bit
+(`may_write`): an output redirect to a file, a download (`curl -o`/`-O`, with
+the file attached or not, as in `curl -o./calc.go`, and `wget`), a command or
+process substitution (`$(…)`, backticks, `<(…)`, `>(…)`),
+`find -delete`/`-exec`/`-execdir`, `xargs`, `tee`, `rsync` or `scp` anywhere
+on the line, or a later pipeline or list stage whose program is not a read
+(`grep -rl … | xargs sed -i`). That under-claims by design. It can still miss
+a change: a read or fetch that writes through an option not on that list
+(`find -fprint f`, `curl -D f`), or anything done outside the session's own
+calls.
 One known gap: Claude Code discards what a `StopFailure` hook prints, so a turn
 that ends in an API error shows no line, and in this release the next prompt
 does not show it either. The line points to
@@ -316,10 +317,10 @@ The two test-bending lines have limits of their own:
 - A runner is on the list when it is a known test tool, a build tool or
   launcher given its test command (`go test`, `npm t`, `npm run test`,
   `python -m pytest`), or a listed wrapper that passes its runner's exit
-  status through, and that does not keep lint out: `go test` runs vet, `npm test` runs a
-  `pretest` script, and `tox`'s default envlist or a make `test` target can
-  include lint. A lint failure fixed only in a file named like a test then
-  reads as the tests-only pattern.
+  status through, and that does not keep lint out: `go test` runs vet,
+  `npm test` runs a `pretest` script, and `tox`'s default envlist or a make
+  `test` target can include lint. A lint failure fixed only in a file named
+  like a test then reads as the tests-only pattern.
 - Runs pair only within one directory: each call's record carries a keyed
   digest (never the path) of the directory its command starts in: the
   reported cwd, or where its leading plain `cd DIR &&` steps lead (`cd
@@ -337,9 +338,9 @@ The two test-bending lines have limits of their own:
   then fires before any test has finished. The execution record says so
   (`backgrounded`), as it does for a `run_in_background` launch (a Ctrl+B
   background is recognised only if Claude Code marks it with
-  `backgroundTaskId` or `backgroundedByUser`, which was not measured), and such a
-  run is read as outcome unobserved: it is neither ok nor failed in `test
-  runs`, completes no pattern, and sits under `unknown` in `--timeline`,
+  `backgroundTaskId` or `backgroundedByUser`, which was not measured), and
+  such a run is read as outcome unobserved: it is neither ok nor failed in
+  `test runs`, completes no pattern, and sits under `unknown` in `--timeline`,
   where it is never offered as a later success. Records written before
   schema 3 cannot say, and a run backgrounded there still reads as ok.
 - A test edit is an Edit, Write or NotebookEdit that ran ok on a file named
@@ -350,12 +351,11 @@ The two test-bending lines have limits of their own:
   turns, or one completed only across a denied edit, can show in the report
   and not in the line.
 
-`report --json` carries the same facts: each session's `test_runs` (null
-for a session with no schema 3 declaration: records that predate schema 3,
-or no tool calls at all; otherwise only runs that ended ok or failed are
-counted; interrupted, denied, backgrounded, timed-out and unrecorded runs are
-not, and a session that spans the upgrade is counted from its first schema 3
-call; then
+`report --json` carries the same facts: each session's `test_runs` (null for a
+session with no schema 3 declaration: records that predate schema 3, or no
+tool calls at all; otherwise only runs that ended ok or failed are counted;
+interrupted, denied, backgrounded, timed-out and unrecorded runs are not, and
+a session that spans the upgrade is counted from its first schema 3 call; then
 `ok`, `failed`, `tests_only_then_green` as `[earlier, later]` seq pairs, and
 `flaky` as `{"seqs": [earlier, later], "first_failed": true|false}`, where
 earlier and later are declaration order, the order the runs started, which

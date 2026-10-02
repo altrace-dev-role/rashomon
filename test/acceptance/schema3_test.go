@@ -12,14 +12,13 @@ import (
 
 // B2 -- schema 3 reserves fields a later layer will populate.
 //
-// The rule-match layer is being built on another branch and needs three things
-// in the record shape: which SOURCE a declared host came from, and a
-// rule-match object on declarations and executions. Reserving them here means
-// that branch adds behaviour rather than a second schema bump, and there is
-// exactly one version increment rather than two racing ones.
+// This build writes schema 3. Among its fields are three a later rule-match
+// layer will populate: which SOURCE a declared host came from, and a
+// rule-match object on declarations and executions. Reserving them now means
+// that layer adds behaviour rather than a second schema bump.
 //
-// The two hazards this guards are opposite. Reserve too little and the other
-// branch has to bump the schema again. Reserve too strictly -- put the new
+// The two hazards this guards are opposite. Reserve too little and that layer
+// has to bump the schema again. Reserve too strictly -- put the new
 // fields in the top-level `required` -- and every record already on disk
 // stops validating against its own published contract, which is worse than
 // either, because the contract is the thing consumers are told to rely on.
@@ -28,8 +27,8 @@ import (
 // reader already carries a comment about: `Accepts` used to be an equality
 // against SchemaVersion, so the moment the writer moved to v2 every v1 record
 // on disk was skipped and the report rendered empty with nothing saying why.
-// A v3 writer lands on another branch; if this reader does not admit 3 first,
-// that branch's records are silently dropped by this one.
+// This build writes v3, and Accepts must keep admitting 1, 2 and 3 so that
+// older stores still read.
 func TestAcceptsAdmitsSchema3(t *testing.T) {
 	for _, v := range []int{1, 2, 3} {
 		if !store.Accepts(v) {

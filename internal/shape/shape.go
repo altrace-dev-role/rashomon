@@ -1023,13 +1023,14 @@ var programVerb = map[string]string{
 // status is the last stage's.
 //
 // The rule applied: a runner is on the list when it is a known test tool, a
-// build tool or launcher given its test command (`go test`, `npm t`, `npm run
-// test`, `python -m pytest`), or a listed wrapper that passes its runner's
-// exit status through. `make check` is not, since check is not make's test
-// command. That rule does not keep lint out: go test runs vet first, an npm `pretest`
-// script runs before `npm test`, tox's default envlist and a make `test`
-// target can each include lint, and a lint failure fixed only in a file
-// named like a test then reads as the tests-only pattern.
+// build tool or launcher given its test command (`go test`, `npm t`,
+// `npm run test`, `python -m pytest`), or a listed wrapper that passes its
+// runner's exit status through. `make check` is not, since check is not
+// make's test command. That rule does not keep lint out: go test runs vet
+// first, an npm `pretest` script runs before `npm test`, tox's default
+// envlist and a make `test` target can each include lint, and a lint failure
+// fixed only in a file named like a test then reads as the tests-only
+// pattern.
 var testCommands = [][]string{
 	{"pytest"}, {"jest"}, {"vitest"}, {"mocha"}, {"rspec"}, {"phpunit"},
 	{"ctest"}, {"tox"}, {"nox"},

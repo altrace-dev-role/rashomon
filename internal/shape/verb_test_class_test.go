@@ -3,6 +3,7 @@ package shape
 import (
 	"encoding/json"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -31,6 +32,7 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 		"time -p go test":                    "time",
 		"time go test ./...":                 "time",
 	}
+	visited := map[string]bool{}
 	for _, tc := range []struct {
 		cmd  string
 		want string
@@ -165,13 +167,16 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 		{"test -f go.mod", VerbExecute, "the test builtin is not a test runner"},
 	} {
 		got := verbOf(t, tc.cmd)
-		if prog, ok := wantProgram[tc.cmd]; ok && (got.Program == nil || *got.Program != prog) {
-			t.Errorf("%q: program %v, want %q: the report reads a fired timeout's 124 by it", tc.cmd, got.Program, prog)
+		if prog, ok := wantProgram[tc.cmd]; ok {
+			visited[tc.cmd] = true
+			if got.Program == nil || *got.Program != prog {
+				t.Errorf("%q: program %s, want %q: the report reads a fired timeout's 124 by it", tc.cmd, programOf(got), prog)
+			}
 		}
 		want := tc.want
 		if want == VerbUnknown+"-null" {
 			if got.Program != nil || got.VerbClass != VerbExecute {
-				t.Errorf("%q: program %v, class %q; want null and execute%s", tc.cmd, got.Program, got.VerbClass, because(tc.why))
+				t.Errorf("%q: program %s, class %q; want null and execute%s", tc.cmd, programOf(got), got.VerbClass, because(tc.why))
 			}
 			continue
 		}
@@ -179,6 +184,19 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 			t.Errorf("%q: verb class %q, want %q%s", tc.cmd, got.VerbClass, want, because(tc.why))
 		}
 	}
+	for cmd := range wantProgram {
+		if !visited[cmd] {
+			t.Errorf("wantProgram names %q, which no row runs", cmd)
+		}
+	}
+}
+
+// programOf is a shape's program for a failure message: quoted, or null.
+func programOf(s Shape) string {
+	if s.Program == nil {
+		return "null"
+	}
+	return strconv.Quote(*s.Program)
 }
 
 // TestTestClassRefusesWhatDoesNotRunTests: a runner on the list, whole on its

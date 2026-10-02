@@ -539,6 +539,11 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	if strings.Contains(out, "moved to the background") {
 		t.Errorf("text states the backgrounded-run limit, which the record now closes:\n%s", out)
 	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "background") && strings.Contains(line, "recorded ok") {
+			t.Errorf("a line says a backgrounded run is recorded ok, a limit the record now closes: %q", line)
+		}
+	}
 
 	// An id the shell would split or unquote is single-quoted, so the
 	// command still pastes as it stands.
