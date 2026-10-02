@@ -1245,7 +1245,7 @@ m("TL a versioned interpreter is the program", "internal/report/timeline.go",
 m("TL any name with a digit is a versioned interpreter", "internal/report/timeline.go",
   "\treturn subcommandPrograms[base] || subcommandPrograms[strings.TrimSuffix(base, \"w\")]", "\treturn base != p", "TestTimeline_")
 
-# #36 review round 4.
+# #36 review round 2.
 m("TL a rewritten success counts as the same program", "internal/report/timeline.go",
   "\t\tif program && (e.rewritten || failed.rewritten) {", "\t\tif false {", "TestTimeline_")
 m("TL a failed call's ok record is no success", "internal/report/timeline.go",
@@ -1281,13 +1281,14 @@ m("TL the legend does not name the programs with no program tier", "internal/rep
 m("TL the legend leaves out calls with no program", "internal/report/timeline_text.go",
   "\t\tfmt.Fprintln(b, \"                 and for calls with no program such as Read or Edit, only the same command is;\")\n", "", "TestTimeline_")
 
-# #36 review round 5.
+# #36 review round 3, Still prints something false 1.
 m("TL an undeclared failed call's ok record is dropped", "internal/report/timeline.go",
   "ok: failedCallOK(c, \"\", recs)})", "ok: nil})", "TestTimeline_")
 m("TL only an undeclared ok row is weighed as a lost declaration", "internal/report/timeline.go",
   "\t\tif c.Seq == nil {\n\t\t\tpos, digest, tool :=", "\t\tif c.Seq == nil && c.Group == GroupOK {\n\t\t\tpos, digest, tool :=", "TestTimeline_")
 m("TL an unnamed undeclared record is ruled out on its digest", "internal/report/timeline.go",
   "\t\t\tif tool == failed.call.ToolName && digest != \"\"", "\t\t\tif digest != \"\"", "TestTimeline_")
+# #36 review round 3, Fix before merge 1.
 m("TL a failed call's ok record never matches by command", "internal/report/timeline.go",
   "\t\t\t\tcommand := failed.digest != \"\" && ok.digest == failed.digest", "\t\t\t\tcommand := false", "TestTimeline_")
 m("TL a failed call's ok record never matches by program", "internal/report/timeline.go",
@@ -1302,6 +1303,7 @@ m("TL an unknown digest matches a failed call's unknown ok digest", "internal/re
   "\t\t\t\tcommand := failed.digest != \"\" && ok.digest == failed.digest", "\t\t\t\tcommand := ok.digest == failed.digest", "TestTimeline_")
 m("TL a failed call's ok record is weighed by its declared digest", "internal/report/timeline.go",
   "digest: effectiveDigest(declared, &recs[i])}", "digest: declared}", "TestTimeline_")
+# #36 review round 3, Fix before merge 2.
 m("TL any executed digest reads as a rewrite", "internal/report/timeline.go",
   "rewritten: rec != nil && rec.ExecutedDigest != \"\" && rec.ExecutedDigest != d.Shape.Digest,", "rewritten: rec != nil && rec.ExecutedDigest != \"\",", "TestTimeline_")
 

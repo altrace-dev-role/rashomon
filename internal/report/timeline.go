@@ -149,16 +149,17 @@ type TimelineCall struct {
 	Outcome      string        `json:"outcome"`
 	ExitCode     *int          `json:"exit_code"`
 	Later        *LaterSuccess `json:"later"`
-	// LaterChecked is true on a failed call that was compared against the
-	// rest. False on a failed call with no declaration (no position in the
-	// declared order), whose failure record has no seq (no position to be
-	// later than), or where nothing placed was found but a success not
-	// recorded before it cannot be ruled out: a matching success whose
-	// record has no seq, a same-program success recorded after the failure
-	// where either call was rewritten, a matching ok record of a failed call,
-	// or a success whose declaration was lost and whose executed digest does
-	// not rule it out (any of them may be the later one). A nil Later there
-	// is "not checked", never "no later success".
+	// LaterChecked is true on a failed call that was compared against the rest.
+	// False on a failed call with no declaration (its record's seq, tool name
+	// and digest could be weighed, but with the declaration lost the report
+	// does not claim what the call was meant to do), whose failure record has
+	// no seq (no position to be later than), or where nothing placed was found
+	// but a success not recorded before it cannot be ruled out: a matching
+	// success whose record has no seq, a same-program success recorded after
+	// the failure where either call was rewritten, a matching ok record of a
+	// failed call, or a success whose declaration was lost and whose executed
+	// digest does not rule it out (any of them may be the later one). A nil
+	// Later there is "not checked", never "no later success".
 	LaterChecked bool `json:"later_checked"`
 }
 
@@ -299,10 +300,11 @@ func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
 		if e.call.Group != GroupFailed {
 			continue
 		}
-		// Not checked, rather than "no later success", when there is nothing
-		// to check with: an undeclared failure has no declaration and no
-		// position in the declared order, and a failure record with no
-		// position has no "after" to be.
+		// Not checked, rather than "no later success", for an undeclared
+		// failure and for a failure record with no position. The first is a
+		// choice: laterSuccess could weigh the record's seq, tool name and
+		// digest, but with the declaration lost the report does not claim
+		// what the call was meant to do. The second has no "after" to be.
 		if e.call.Seq == nil || e.pos == nil {
 			continue
 		}

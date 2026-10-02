@@ -564,12 +564,13 @@ func TestTimeline_TwoRecordsForOneID(t *testing.T) {
 		}
 	}
 
-	// #36 review round 4, item 1: a failed call's own ok record is a success
-	// of the same command, recorded where it was. It has no row of its own to
-	// point at -- the row says failed -- so recorded after a failure it
-	// matches, that failure is not checked, never "no later success". Break:
-	// look only at ok rows, and both pages below say no later success beside
-	// an ok record of the same command written after the failure.
+	// #36 review round 2, Still prints something false 1: a failed call's own
+	// ok record is a success of the same command, recorded where it was. It
+	// has no row of its own to point at -- the row says failed -- so recorded
+	// after a failure it matches, that failure is not checked, never "no
+	// later success". Break: look only at ok rows, and both pages below say
+	// no later success beside an ok record of the same command written after
+	// the failure.
 	for name, run := range map[string]*store.Run{
 		// One call: failed at 10, ok at 12.
 		"its own": tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"}},
@@ -611,8 +612,9 @@ func TestTimeline_TwoRecordsForOneID(t *testing.T) {
 		t.Errorf("an ok record before the failure leaves it unchecked: %+v", c)
 	}
 
-	// #36 review round 5, fix 1: each half of the ok-record match on its own.
-	// Break any one of them and the case naming it goes the other way.
+	// #36 review round 3, Fix before merge 1: each half of the ok-record match
+	// on its own. Break any one of them and the case naming it goes the other
+	// way.
 	nilSeq := tlRun([]tlCall{{seq: 1, id: "f", tool: "Edit", digest: "d1"}},
 		tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12))
 	nilSeq.Executions[1].Seq = nil
@@ -822,12 +824,12 @@ func TestTimeline_SameCommandIsTheCommandThatRan(t *testing.T) {
 	}
 }
 
-// #36 review round 4, item 2: the record keeps no executed program, so a call
-// a PreToolUse hook rewrote may have run another program than its declared
-// one. Either side rewritten, the same-program tier cannot be judged, and with
-// nothing else found the failure is not checked. Break: compare the declared
-// programs and a failed `pytest -q` reads as followed up by a "pytest" row
-// that ran `echo passed`.
+// #36 review round 2, Still prints something false 2: the record keeps no
+// executed program, so a call a PreToolUse hook rewrote may have run another
+// program than its declared one. Either side rewritten, the same-program tier
+// cannot be judged, and with nothing else found the failure is not checked.
+// Break: compare the declared programs and a failed `pytest -q` reads as
+// followed up by a "pytest" row that ran `echo passed`.
 func TestTimeline_ARewrittenCallIsNotTheSameProgram(t *testing.T) {
 	run := func(rewritten string) *store.Run {
 		r := tlRun([]tlCall{
@@ -904,12 +906,12 @@ func TestTimeline_AnUndeclaredSuccessIsNotNoSuccess(t *testing.T) {
 		t.Errorf("an undeclared success of another tool leaves the failure unchecked: %+v", c)
 	}
 
-	// #36 review round 4, fix 1: only the declaration is lost; the execution
-	// record says what ran. A known, different digest rules the success out
-	// where no program tier is offered (git, an Edit), and cannot where one is
-	// (pytest), nor where the digest is unknown. Break: append undeclared
-	// entries with no digest and every one of them leaves the failure
-	// unchecked.
+	// #36 review round 2, Fix before merge 1: only the declaration is lost; the
+	// execution record says what ran. A known, different digest rules the
+	// success out where no program tier is offered (git, an Edit), and cannot
+	// where one is (pytest), nor where the digest is unknown. Break: append
+	// undeclared entries with no digest and every one of them leaves the
+	// failure unchecked.
 	for _, tc := range []struct {
 		program, executed string
 		checked           bool
@@ -938,11 +940,11 @@ func TestTimeline_AnUndeclaredSuccessIsNotNoSuccess(t *testing.T) {
 		t.Errorf("an undeclared success with no tool name is ruled out: %+v", c)
 	}
 
-	// #36 review round 5, item 1: an undeclared call that failed and then
-	// succeeded is failed, but its ok record is a success whose declaration
-	// was lost all the same, and the same rule weighs it. Break: apply the
-	// rule to ok rows only, and the failure reads "no later success" beside
-	// an ok record it cannot rule out.
+	// #36 review round 3, Still prints something false 1: an undeclared call
+	// that failed and then succeeded is failed, but its ok record is a success
+	// whose declaration was lost all the same, and the same rule weighs it.
+	// Break: apply the rule to ok rows only, and the failure reads "no later
+	// success" beside an ok record it cannot rule out.
 	for _, tc := range []struct {
 		name, program, tool, executed string
 	}{
@@ -1062,11 +1064,11 @@ func TestTimeline_SameProgramClaimsNoMore(t *testing.T) {
 	}
 }
 
-// #36 review round 4, item 3: the marker names what was looked for. For a
-// program whose next word names what ran, only the same command is; for a
-// single-purpose one, the same program too. Break: print "or program" on a
-// failed `go vet` and the row says a later `go` success was looked for, beside
-// the `go test` row that passed.
+// #36 review round 2, Still prints something false 3: the marker names what
+// was looked for. For a program whose next word names what ran, only the same
+// command is; for a single-purpose one, the same program too. Break: print "or
+// program" on a failed `go vet` and the row says a later `go` success was
+// looked for, beside the `go test` row that passed.
 func TestTimeline_TheMarkerSaysWhatWasChecked(t *testing.T) {
 	for _, tc := range []struct{ program, want string }{
 		{"go", "  → no later success of the same command recorded"},
