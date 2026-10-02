@@ -854,6 +854,19 @@ func TestTimeline_ARewrittenCallIsNotTheSameProgram(t *testing.T) {
 	if c := tlByID(t, buildTimeline(early, nil), "f"); c.Later != nil || !c.LaterChecked {
 		t.Errorf("an earlier rewritten success leaves the failure unchecked: %+v", c)
 	}
+	// The hook records an executed digest on every record with a tool_input,
+	// so a call that was not rewritten carries its own declared digest there.
+	// Break: read any executed digest as a rewrite, and every same-program
+	// follow-up the real hook records is not checked.
+	asDeclared := tlRun([]tlCall{
+		{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+		{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d2"},
+	}, tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("s", store.ExecOK, 0, 11))
+	asDeclared.Executions[0].ExecutedDigest = "d1"
+	asDeclared.Executions[1].ExecutedDigest = "d2"
+	if c := tlByID(t, buildTimeline(asDeclared, nil), "f"); c.Later == nil || c.Later.Kind != LaterSameProgram || !c.LaterChecked {
+		t.Errorf("a call that ran its declared input reads as rewritten: later %+v, checked %v", c.Later, c.LaterChecked)
+	}
 }
 
 // #36 review round 3, fix 2: a success whose declaration was lost -- a lock

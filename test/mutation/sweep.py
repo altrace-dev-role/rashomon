@@ -1300,6 +1300,8 @@ m("TL an unknown digest matches a failed call's unknown ok digest", "internal/re
   "\t\t\t\tcommand := failed.digest != \"\" && ok.digest == failed.digest", "\t\t\t\tcommand := ok.digest == failed.digest", "TestTimeline_")
 m("TL a failed call's ok record is weighed by its declared digest", "internal/report/timeline.go",
   "digest: effectiveDigest(declared, &recs[i])}", "digest: declared}", "TestTimeline_")
+m("TL any executed digest reads as a rewrite", "internal/report/timeline.go",
+  "rewritten: rec != nil && rec.ExecutedDigest != \"\" && rec.ExecutedDigest != d.Shape.Digest,", "rewritten: rec != nil && rec.ExecutedDigest != \"\",", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",
