@@ -79,10 +79,9 @@ type TestBending struct {
 // A test run is a declaration of verb class test whose outcome is ok or
 // failed (testOutcome). Interrupted, denied, backgrounded, timed-out and
 // unknown runs are not runs with a result, so they neither start nor finish a
-// pair. Two runs are the same
-// command when their shape digests are equal and they were declared in the
-// same directory (equal cwd digests); the digest covers the tool name, so
-// equal digests are the same tool as well.
+// pair. Two runs are the same command when their shape digests are equal and
+// they started in the same directory (equal cwd digests); the digest covers
+// the tool name, so equal digests are the same tool as well.
 //
 // A file edit is any call that may change files (mayEdit) and was not denied
 // before running. A failed or unrecorded one counts: whether it changed a

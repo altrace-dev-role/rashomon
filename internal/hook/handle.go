@@ -180,24 +180,25 @@ func readPayload(r io.Reader) ([]byte, error) {
 	return b, nil
 }
 
-// startDirectory is the directory a call's command starts in: the target of
-// a leading plain `cd DIR &&` (shape.LeadingDirectory), joined to cwd when it
-// is relative, and otherwise the payload's cwd, which is the shell's directory
-// before the line runs. Without it the first `cd /repo/web && go test ./...`
-// is keyed on /repo and every repeat on /repo/web, although all of them ran
-// in web. A relative DIR with no cwd to resolve it against is not known, and
-// the cwd stays as it was.
+// startDirectory is the directory a call's command starts in: the payload's
+// cwd, which is the shell's directory before the line runs, with the targets
+// of the line's leading plain `cd DIR &&` steps (shape.LeadingDirectory)
+// folded onto it. An absolute target replaces the directory and a relative
+// one joins it. Without it the first `cd /repo/web && go test ./...` is keyed
+// on /repo and every repeat on /repo/web, although all of them ran in web. A
+// relative target with no directory to resolve it against is not known, and
+// the directory stays empty until an absolute target names one.
 func startDirectory(cwd, toolName string, toolInput json.RawMessage) string {
-	dir, ok := shape.LeadingDirectory(toolName, toolInput)
-	switch {
-	case !ok:
-		return cwd
-	case filepath.IsAbs(dir):
-		return filepath.Clean(dir)
-	case cwd == "":
-		return cwd
+	dirs, _ := shape.LeadingDirectory(toolName, toolInput)
+	for _, dir := range dirs {
+		switch {
+		case filepath.IsAbs(dir):
+			cwd = filepath.Clean(dir)
+		case cwd != "":
+			cwd = filepath.Join(cwd, dir)
+		}
 	}
-	return filepath.Join(cwd, dir)
+	return cwd
 }
 
 func nilIfEmpty(s string) *string {

@@ -321,10 +321,11 @@ The two test-bending lines have limits of their own:
   include lint. A lint failure fixed only in a file named like a test then
   reads as the tests-only pattern.
 - Runs pair only within one directory: each call's record carries a keyed
-  digest (never the path) of the directory the runner started in: the
-  reported cwd, or the target of a leading plain cd (`cd /repo/web && go
-  test ./...` is keyed on `/repo/web` wherever the shell was). Two runs of
-  one command line in two directories are not the same run. So a subagent's
+  digest (never the path) of the directory its command starts in: the
+  reported cwd, or where its leading plain `cd DIR &&` steps lead (`cd
+  /repo/web && go test ./...` is keyed on `/repo/web` wherever the shell
+  was). Two runs of one command line in two directories are not the same
+  run. So a subagent's
   `go test ./...` pairs with the main agent's only when both ran it from the
   same directory, and a repeated relative `cd sub && go test ./...`, whose
   second call starts in `sub` and so targets `sub/sub`, does not pair with
@@ -376,7 +377,8 @@ every finding except an unacknowledged failure.
 *count*, and a keyed digest (HMAC) of its full input: the whole command line
 for Bash, the whole tool input for other tools; for Bash, one bit
 (`may_write`) saying the line may write files whatever its program is; for
-every call, a keyed digest of the directory it was declared in
+every call, a keyed digest of the directory its command starts in: the
+reported cwd, or where its leading plain `cd DIR &&` steps lead
 (`cwd_digest`); how it ended (`outcome`, `exit_code`, `is_interrupt`,
 `duration_ms`, and `backgrounded`: whether a Bash call's result arrived while
 it was still running in the background); and a `file_label` classifying the

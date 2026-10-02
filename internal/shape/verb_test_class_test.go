@@ -2,6 +2,7 @@ package shape
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -465,36 +466,46 @@ func TestMayWrite(t *testing.T) {
 	}
 }
 
-// The directory a runner starts in, when the line begins with a plain literal
-// `cd DIR &&`: the hook keys the run on it rather than on the payload's cwd,
-// which is the shell's directory before the cd.
+// The directories a runner's line moves through before it starts, when the
+// line begins with plain literal `cd DIR &&` steps: the hook keys the run on
+// where they lead rather than on the payload's cwd, which is the shell's
+// directory before the cds.
 func TestLeadingDirectory(t *testing.T) {
 	for _, tc := range []struct {
 		cmd  string
-		want string // "" for none
+		want []string // nil for none
 	}{
-		{"cd /repo/web && go test ./...", "/repo/web"},
-		{"cd sub && go test ./...", "sub"},
-		{"cd ../x && npm test", "../x"},
-		{"cd /repo/web/ && go test ./...", "/repo/web/"},
+		{"cd /repo/web && go test ./...", []string{"/repo/web"}},
+		{"cd sub && go test ./...", []string{"sub"}},
+		{"cd ../x && npm test", []string{"../x"}},
+		{"cd /repo/web/ && go test ./...", []string{"/repo/web/"}},
+		// Every step of the leading run, in order.
+		{"cd /a && cd b && go test", []string{"/a", "b"}},
 		// Not a plain literal step: the shell computes the directory, or the
 		// runner may run without the cd having happened.
-		{"cd $HOME/x && go test ./...", ""},
-		{"cd ~/x && go test ./...", ""},
-		{"cd - && go test ./...", ""},
-		{"cd \"/repo/web\" && go test ./...", ""},
-		{"cd 'a b' && go test ./...", ""},
-		{"cd `pwd`/x && go test ./...", ""},
-		{"cd *web && go test ./...", ""},
-		{"cd /repo; go test ./...", ""},
-		{"cd /repo || go test ./...", ""},
-		{"cd /repo", ""},
-		{"cd && go test ./...", ""},
-		{"go test ./...", ""},
-		{"X=1 cd /repo && go test ./...", ""},
+		{"cd $HOME/x && go test ./...", nil},
+		{"cd ~/x && go test ./...", nil},
+		{"cd - && go test ./...", nil},
+		{"cd \"/repo/web\" && go test ./...", nil},
+		{"cd 'a b' && go test ./...", nil},
+		{"cd `pwd`/x && go test ./...", nil},
+		{"cd *web && go test ./...", nil},
+		{"cd /repo; go test ./...", nil},
+		{"cd /repo || go test ./...", nil},
+		{"cd /repo", nil},
+		{"cd && go test ./...", nil},
+		{"go test ./...", nil},
+		{"X=1 cd /repo && go test ./...", nil},
+		// A later step that cannot be resolved spoils the whole run: the
+		// first target is not where the runner starts.
+		{"cd /a && cd - && go test", nil},
+		{"cd /a && cd ~ && go test", nil},
+		{"cd /a && pushd b && go test", nil},
+		{"cd /a && popd && go test", nil},
+		{"pushd /a && go test", nil},
 	} {
 		got, ok := LeadingDirectory("Bash", json.RawMessage(`{"command":`+quoteJSON(tc.cmd)+`}`))
-		if ok != (tc.want != "") || got != tc.want {
+		if ok != (tc.want != nil) || !slices.Equal(got, tc.want) {
 			t.Errorf("%q: LeadingDirectory = %q, %v; want %q", tc.cmd, got, ok, tc.want)
 		}
 	}

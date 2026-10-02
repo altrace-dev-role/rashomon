@@ -104,20 +104,21 @@ type Declaration struct {
 	Hosts    []string `json:"hosts"`
 	SSHHosts []string `json:"ssh_hosts"`
 
-	// CWDDigest is the keyed digest of the directory the call's command
-	// started in (v3): the PreToolUse payload's cwd, or the target of a
-	// leading plain `cd DIR &&` resolved against it (shape.LeadingDirectory).
+	// CWDDigest is the keyed digest of the directory its command starts in
+	// (v3): the reported cwd, or where its leading plain `cd DIR &&` steps
+	// lead (shape.LeadingDirectory, folded onto the PreToolUse payload's cwd).
 	// shape.CWDDigest, under the per-install key, so two calls' directories
 	// compare equal or not and nothing else. Measured on Claude Code 2.1.280,
 	// the payload's cwd follows the shell: after `cd sub && pwd` the next
 	// call's reads .../sub, so the cwd is where the shell was before the line
-	// ran, and a leading cd's target is where the rest of the line ran. Two
+	// ran, and where its leading cds lead is where the rest of the line ran. Two
 	// runs of one command line in two directories are two different runs,
 	// and the test-bending pairs compare this as well as the shape digest.
 	//
 	// A digest and never the path. The coverage records carry the plain cwd
 	// already, as the novelty baseline's project key; the declarations do
-	// not gain it. Empty when the payload carried no cwd.
+	// not gain it. Empty string when that directory is not known: no payload
+	// cwd and no absolute leading cd.
 	CWDDigest string `json:"cwd_digest"`
 
 	// FileLabel is what the file this call named looks like (v3).

@@ -452,3 +452,45 @@ func TestTestBending_ALeadingAbsoluteCdKeysTheRunOnItsTarget(t *testing.T) {
 		t.Errorf("cwd_digest = %q, %q: want one 64-hex digest for both runs", a, b)
 	}
 }
+
+// B-A10, with `cd -` after the absolute cd: the runner starts in the shell's
+// previous directory, which the line does not name. Keyed on the first cd's
+// target, the line run from /tmp/a and then from /tmp/b paired as the same
+// command having both outcomes. A leading run with any step that cannot be
+// resolved now keeps the payload's cwd.
+func TestTestBending_ACdBackKeepsTheShellsDirectory(t *testing.T) {
+	s := newTBSession(t)
+	s.cwd = "/tmp/a"
+	s.shell("cd /tmp/project && cd - && go test ./...", false, "")
+	s.cwd = "/tmp/b"
+	s.shell("cd /tmp/project && cd - && go test ./...", true, "")
+
+	if line, ok := s.line(); ok && strings.Contains(line, "both outcomes") {
+		t.Errorf("runs in /tmp/a and /tmp/b paired: %q", line)
+	}
+	decls := s.e.declarations(testSession)
+	if a, b := decls[0].str("cwd_digest"), decls[1].str("cwd_digest"); len(a) != 64 || len(b) != 64 || a == b {
+		t.Errorf("cwd_digest = %q, %q: want two different 64-hex digests", a, b)
+	}
+}
+
+// B-A10, with a relative leading cd: `cd ../web && go test ./...` fails from
+// /tmp/project/api and, after a test edit, passes from /tmp/project/web. Both
+// ran in web, so they pair; keyed on the shell's directory they would not.
+func TestTestBending_ALeadingRelativeCdKeysTheRunOnItsTarget(t *testing.T) {
+	s := newTBSession(t)
+	s.cwd = "/tmp/project/api"
+	s.shell("cd ../web && go test ./...", false, "")
+	s.cwd = "/tmp/project/web"
+	s.edit("/tmp/project/web/calc_test.go")
+	s.shell("cd ../web && go test ./...", true, "")
+
+	line, ok := s.line()
+	if !ok || !strings.Contains(line, "test command failed, then the only recorded edits were to files named like tests, then it passed (#") {
+		t.Errorf("both runs ran in web; line = %q (printed %v), want the tests-only sentence", line, ok)
+	}
+	decls := s.e.declarations(testSession)
+	if a, b := decls[0].str("cwd_digest"), decls[len(decls)-1].str("cwd_digest"); len(a) != 64 || a != b {
+		t.Errorf("cwd_digest = %q, %q: want one 64-hex digest for both runs", a, b)
+	}
+}

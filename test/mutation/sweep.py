@@ -1834,6 +1834,14 @@ m("TB a leading cd's target is not the run's directory", "internal/hook/handle.g
   "shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),",
   "shape.CWDDigest(h.st.Key(), p.CWD),",
   "TestTestBending_ALeadingAbsoluteCd")
+m("TB a relative leading cd keeps the shell's directory", "internal/hook/handle.go",
+  "\t\t\tcwd = filepath.Join(cwd, dir)\n",
+  "\t\t\treturn cwd\n",
+  "TestStartDirectory|TestTestBending_ALeadingRelativeCd")
+m("TB a leading run stops at a step it cannot resolve", "internal/shape/shape.go",
+  "\t\tif !ok {\n\t\t\treturn nil, false\n\t\t}\n\t\tdirs = append(dirs, dir)\n",
+  "\t\tif !ok {\n\t\t\treturn dirs, len(dirs) > 0\n\t\t}\n\t\tdirs = append(dirs, dir)\n",
+  "TestLeadingDirectory|TestTestBending_ACdBack")
 
 m("TB a backgrounded call between two runs is not an edit", "internal/report/testbending.go",
   "\t\tif outcome == LinkOutcomeDenied {\n\t\t\tcontinue\n\t\t}\n",

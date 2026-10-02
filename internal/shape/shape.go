@@ -386,26 +386,51 @@ func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
 	return pastDirectoryChange(toks, sep+1+k, uncertain)
 }
 
-// LeadingDirectory reports the directory a shell call's line moves to before
-// anything else runs, when the line begins with a plain literal `cd DIR &&`:
-// DIR as written, which the caller resolves against the call's cwd. The
-// command after `&&` runs only if the cd succeeded, so it starts in DIR.
+// LeadingDirectory reports the directories a shell call's line moves through
+// before anything else runs, when the line begins with plain literal
+// `cd DIR &&` steps: each DIR as written, in order, which the caller folds
+// onto the call's cwd. The command after each `&&` runs only if its cd
+// succeeded, so the runner starts where the last one leads.
 //
 // Only a word the shell takes as it stands: nothing it expands or unquotes
 // (`$`, backticks, a glob, `~`, quotes or an escape), not `-`, which is the
 // previous directory, and not a comment. `cd DIR;` is left out, since what
-// follows a `;` runs whether the cd succeeded or not. Anything else reports
-// false, and the call keeps the directory it was declared in.
-func LeadingDirectory(toolName string, toolInput json.RawMessage) (string, bool) {
+// follows a `;` runs whether the cd succeeded or not. A step in the leading
+// run that starts with cd, pushd or popd and is not such a cd spoils the
+// run, since the directory it leads to is not on the line. Anything else
+// reports false, and the call keeps the payload's cwd.
+func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, bool) {
 	if verbForTool(toolName) != VerbExecute {
-		return "", false
+		return nil, false
 	}
 	cmd, ok := commandField(toolInput)
 	if !ok || controlByte(cmd) {
-		return "", false
+		return nil, false
 	}
 	toks, err := tokenizeProgram(cmd)
-	if err != nil || len(toks) < 3 {
+	if err != nil {
+		return nil, false
+	}
+	var dirs []string
+	for i := 0; i < len(toks); i += 3 {
+		switch toks[i].text {
+		case "cd", "pushd", "popd":
+		default:
+			return dirs, len(dirs) > 0
+		}
+		dir, ok := leadingCd(toks[i:])
+		if !ok {
+			return nil, false
+		}
+		dirs = append(dirs, dir)
+	}
+	return dirs, len(dirs) > 0
+}
+
+// leadingCd reports the DIR of a plain literal `cd DIR &&` at the start of
+// toks, by LeadingDirectory's rules.
+func leadingCd(toks []token) (string, bool) {
+	if len(toks) < 3 {
 		return "", false
 	}
 	cd, dir, and := toks[0], toks[1], toks[2]
