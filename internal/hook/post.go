@@ -181,8 +181,8 @@ func (p *Post) Capture(in io.Reader) error {
 // not measured; backgroundedByUser is read the same way as the task id.
 //
 // Each key decodes into a presence bit (present), so the task id is compared
-// with null and dropped, and no other key of the response -- stdout, stderr
-// -- is claimed by any field: encoding/json skips them unread.
+// with null and false and dropped, and no other key of the response --
+// stdout, stderr -- is claimed by any field: encoding/json skips them unread.
 type backgroundResponse struct {
 	ToolResponse struct {
 		BackgroundTaskID   present `json:"backgroundTaskId"`

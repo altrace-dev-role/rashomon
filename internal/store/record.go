@@ -29,8 +29,9 @@ const SchemaVersion = 3
 // empty report, and nothing would have said why.
 //
 // v3 is what this build writes; 1 and 2 are accepted so older stores read.
-// Records from a newer schema are skipped without error, so the symptom is
-// an empty report.
+// Records from a newer schema are skipped without error; the report shows
+// them only as a skipped-records count and the records_unreadable coverage
+// reason, and is empty only when every record is newer.
 func Accepts(version int) bool {
 	return version == 1 || version == 2 || version == 3
 }
