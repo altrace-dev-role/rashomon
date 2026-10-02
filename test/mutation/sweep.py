@@ -1622,6 +1622,12 @@ m("SP an old transcript is counted once per spelling", "internal/spend/scan.go",
 m("SP a model-less fallback line replaces a known model", "internal/spend/scan.go",
   "\tif cand.Model != \"\" && (prev.Model == \"\" || cand.Fallback) {", "\tif prev.Model == \"\" || cand.Fallback {",
   "TestExtraAttempts_AModelLessFallbackLineKeepsAKnownModel")
+m("SP a synthetic refusal line is folded after pre-output refusals are marked", "internal/spend/scan.go",
+  "\tsc.foldRefusalMessages()\n\tfor _, r := range sc.Responses {", "\tdefer sc.foldRefusalMessages()\n\tfor _, r := range sc.Responses {",
+  "TestRefusals_")
+m("SP a cold write is priced on a response whose cost is unknown", "internal/spend/spend.go",
+  "\t\t\tif key, ok := PriceKey(r.Model); ok && !r.costUnknown {", "\t\t\tif key, ok := PriceKey(r.Model); ok {",
+  "TestCacheExpiry_")
 # Import additions some mutants need.
 IMPORTS = {
   "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),

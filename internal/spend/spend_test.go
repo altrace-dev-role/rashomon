@@ -1270,6 +1270,25 @@ func TestCacheExpiry_APartialExpiryIsCounted(t *testing.T) {
 	}
 }
 
+// TestCacheExpiry_AWriteOfUnknownCostIsNotPriced: a refusal before any
+// output re-writes a cache that expired. Its cost is unknown -- whether it
+// was billed depends on its category -- so its cold write is counted in
+// tokens with the cost unknown, never priced at its model's rates.
+func TestCacheExpiry_AWriteOfUnknownCostIsNotPriced(t *testing.T) {
+	c := newConfig(t)
+	t0 := now.Add(-2 * time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "a", model: "claude-opus-5-5", at: t0, w5: 1000, stop: "end_turn"}.line("text"),
+		resp{id: "b", model: "claude-opus-5-5", at: t0.Add(20 * oneMinute), w5: 1000, stop: "refusal", category: "bio"}.line("text"))
+	s := c.summary(30)
+	if s.Refusals.BeforeOutput != 1 {
+		t.Fatalf("premise: refusals = %+v, want b before any output", s.Refusals)
+	}
+	if want := (Cost{Unpriced: 1, UnpricedTokens: 1000}); s.CacheExpiry.Responses != 1 || s.CacheExpiry.Cost != want {
+		t.Errorf("cold = %+v; want b's 1,000-token write with the cost unknown, %+v", s.CacheExpiry, want)
+	}
+}
+
 // TestCacheExpiry_AResponseIsJudgedInTheFileItWasFirstSeenIn: a copied
 // transcript can hold a response without the predecessor it had where it was
 // first written. In proj1, B follows A by a minute: warm. A copy in proj2
@@ -1693,6 +1712,24 @@ func TestRefusals_AMidStreamRefusalIsCountedOnce(t *testing.T) {
 			}
 		})
 	}
+	// Folded into a response with usage and no output whose own line has no
+	// stop_reason, the synthetic line makes it a pre-output refusal: its
+	// tokens shown with the cost unknown, out of the total. Folding has to
+	// come before the pre-output marking, or the response is priced.
+	t.Run("a pre-output response with no stop_reason", func(t *testing.T) {
+		c := newConfig(t)
+		c.write("proj/sess-a.jsonl",
+			resp{id: "msg_r", model: "claude-opus-5-5", at: at, in: 5000, requestID: "req_011A"}.line("text"),
+			refusalMessage("syn_1", "req_011A", "cyber", at.Add(time.Second)))
+		s := c.summary(30)
+		r := s.Refusals
+		if r.BeforeOutput != 1 || r.BeforeOutputTokens != 5000 || r.Responses != 0 || r.WithoutUsage != 0 {
+			t.Errorf("refusals = %+v; want one before any output, 5,000 tokens", r)
+		}
+		if s.Total != (Cost{}) || s.Responses != 0 {
+			t.Errorf("total = %+v over %d responses, want nothing: a pre-output refusal is out of the total", s.Total, s.Responses)
+		}
+	})
 	// A synthetic line whose requestId matches nothing in its own file, or
 	// is not a request id at all, is a pre-output refusal of its own.
 	c := newConfig(t)
