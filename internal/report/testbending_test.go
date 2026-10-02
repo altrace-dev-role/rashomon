@@ -540,6 +540,20 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		t.Errorf("text states the backgrounded-run limit, which the record now closes:\n%s", out)
 	}
 
+	// An id the shell would split or unquote is single-quoted, so the
+	// command still pastes as it stands.
+	for id, want := range map[string]string{
+		"sess 7f3a": "`rashomon report --session 'sess 7f3a' --timeline`",
+		"it's":      "`rashomon report --session 'it'\\''s' --timeline`",
+		"a.b_c-9":   "`rashomon report --session a.b_c-9 --timeline`",
+	} {
+		b.Reset()
+		writeTestRuns(&b, tr, id)
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("session id %q: hint is not %s:\n%s", id, want, b.String())
+		}
+	}
+
 	// A timeout that fired is neither: the tests were stopped.
 	if to := testRunsOf(tbRun(timedTest(1, "d", failed, 124), timedTest(2, "d", failed, 2))); to.Runs != 1 || to.Failed != 1 {
 		t.Errorf("with a timeout that fired: runs/failed = %d/%d, want 1/1", to.Runs, to.Failed)

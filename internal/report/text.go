@@ -679,7 +679,8 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 //
 // The pairs are seqs, and nothing in the default report maps a seq to its
 // call, so the block's first limit line points at --timeline, which does,
-// with the session's id so the command can be pasted.
+// with the session's id so the command can be pasted: single-quoted
+// (pasteArg) when the shell would split or unquote it.
 func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
 	if t == nil || t.Runs == 0 {
 		return
@@ -697,13 +698,30 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
 			p.Seqs[0], first, p.Seqs[1], second)
 	}
 	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
-		fmt.Fprintf(b, "    the numbers are call seqs, and `rashomon report --session %s --timeline` shows these rows;\n", sessionID)
+		fmt.Fprintf(b, "    the numbers are call seqs, and `rashomon report --session %s --timeline` shows these rows;\n", pasteArg(sessionID))
 		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch, a subagent launch, or a task, todo, question, plan, background-shell, skill, search, message, cron or MCP-resource tool, even one that failed;")
 		fmt.Fprintln(b, "    a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read,")
 		fmt.Fprintln(b, "    but one that writes through an option not on that list (find -fprint, curl -D) is not counted;")
 		fmt.Fprintln(b, "    runs pair only when the same command line started in the same directory: the reported cwd, or the target of a leading plain cd;")
 		fmt.Fprintln(b, "    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run")
 	}
+}
+
+// pasteArg is s as one shell word: bare when it is not empty and every byte
+// is in [A-Za-z0-9._-], and otherwise single-quoted, with a quote inside
+// closed, escaped and reopened, as internal/install's shellQuote does.
+func pasteArg(s string) string {
+	if s == "" {
+		return "''"
+	}
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '.', c == '_', c == '-':
+		default:
+			return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+		}
+	}
+	return s
 }
 
 // collapse turns a multi-line message into one line. The report's own

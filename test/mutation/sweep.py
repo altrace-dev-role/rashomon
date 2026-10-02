@@ -1891,6 +1891,15 @@ m("TB a test call's outcome is linkOutcome's, not the timeline's", "internal/rep
   "\to, _, _ := linkOutcome(d.ToolUseID, executed, denied)\n",
   "TestDetectTestBending_|TestTestBending")
 
+m("TB the --timeline hint names a placeholder, not the session", "internal/report/text.go",
+  "\twriteTestRuns(b, sess.TestRuns, sess.SessionID)\n",
+  "\twriteTestRuns(b, sess.TestRuns, \"<id>\")\n",
+  "TestTestBending_OnlyTestFilesEditedThenGreen")
+m("TB the --timeline hint pastes the id unquoted", "internal/report/text.go",
+  "\t\t\treturn \"'\" + strings.ReplaceAll(s, \"'\", `'\\''`) + \"'\"\n",
+  "\t\t\treturn s\n",
+  "TestTestRuns_CountsAndText")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

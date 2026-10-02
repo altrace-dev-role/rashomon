@@ -162,6 +162,7 @@ func TestTestBending_OnlyTestFilesEditedThenGreenIsFlagged(t *testing.T) {
 		"a shell read or fetch counts when its line may write",
 		"↳ the only recorded edits since",
 		"Bash go",
+		"`rashomon report --session " + testSession + " --timeline`",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("report is missing %q:\n%s", want, out)
