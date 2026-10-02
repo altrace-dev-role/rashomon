@@ -369,7 +369,7 @@ func TestTimeline_Text(t *testing.T) {
 		"timeline: 4 calls (3 main agent, 1 from 1 subagent)",
 		"interrupted  1\n",
 		"calls from agents running at once interleave by when each was recorded, not when it started",
-		"failed       2  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success of the same command or program recorded)",
+		"failed       2  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded)",
 		"a fix made with a different command, or a corrected Edit, is not detected",
 		"failed (exit 1)",
 		"→ same command ok at 3, recorded after",
@@ -610,6 +610,55 @@ func TestTimeline_TwoRecordsForOneID(t *testing.T) {
 	if c := tlByID(t, buildTimeline(before, nil), "f"); !c.LaterChecked || c.Later != nil {
 		t.Errorf("an ok record before the failure leaves it unchecked: %+v", c)
 	}
+
+	// #36 review round 5, fix 1: each half of the ok-record match on its own.
+	// Break any one of them and the case naming it goes the other way.
+	nilSeq := tlRun([]tlCall{{seq: 1, id: "f", tool: "Edit", digest: "d1"}},
+		tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12))
+	nilSeq.Executions[1].Seq = nil
+	ranFailed := tlRun([]tlCall{{seq: 1, id: "f", tool: "Edit", digest: "d2"}},
+		tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12))
+	ranFailed.Executions[0].ExecutedDigest = "d1"
+	ranFailed.Executions[1].ExecutedDigest = "d1"
+	for _, tc := range []struct {
+		name    string
+		run     *store.Run
+		checked bool
+	}{
+		// No program tier: the ok record matches by command alone.
+		{"same command, no program", tlRun([]tlCall{{seq: 1, id: "f", tool: "Edit", digest: "d1"}},
+			tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12)), false},
+		// Another command line of a single-purpose program matches by program.
+		{"same program", tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+			{seq: 2, id: "g", tool: "Bash", program: "pytest", digest: "d2"},
+		}, tlExecAt("g", store.ExecFailed, 1, 5), tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("g", store.ExecOK, 0, 11)), false},
+		// Not where the program has no program tier: git d2 says nothing
+		// about git d1.
+		{"same program, no tier", tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Bash", program: "git", digest: "d1"},
+			{seq: 2, id: "g", tool: "Bash", program: "git", digest: "d2"},
+		}, tlExecAt("g", store.ExecFailed, 1, 5), tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("g", store.ExecOK, 0, 11)), true},
+		// An ok record with no position may be the later one.
+		{"no position", nilSeq, false},
+		// The LAST ok record is weighed: ok at 5 is before the failure, ok
+		// at 12 after it.
+		{"ok, failed, ok", tlRun([]tlCall{{seq: 1, id: "f", tool: "Edit", digest: "d1"}},
+			tlExecAt("f", store.ExecOK, 0, 5), tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("f", store.ExecOK, 0, 12)), false},
+		// An unknown digest matches nothing, not every other unknown one.
+		{"both digests empty", tlRun([]tlCall{
+			{seq: 1, id: "f", tool: "Edit"},
+			{seq: 2, id: "g", tool: "Edit"},
+		}, tlExecAt("g", store.ExecFailed, 1, 5), tlExecAt("f", store.ExecFailed, 2, 10), tlExecAt("g", store.ExecOK, 0, 12)), true},
+		// The ok record's digest is the one it ran, not the declared one.
+		{"ran the failed command", ranFailed, false},
+	} {
+		c := tlByID(t, buildTimeline(tc.run, nil), "f")
+		if c.Group != GroupFailed || c.Later != nil || c.LaterChecked != tc.checked {
+			t.Errorf("%s: %s, later %+v, checked %v; want failed, no later, checked %v",
+				tc.name, c.Group, c.Later, c.LaterChecked, tc.checked)
+		}
+	}
 }
 
 // #36 review round 3, smaller 1: undeclared rows have no declaration, but
@@ -731,7 +780,7 @@ func TestTimeline_AnUnplacedSuccessIsNotNoSuccess(t *testing.T) {
 		}
 		var b bytes.Buffer
 		writeTimeline(&b, tl)
-		if out := b.String(); strings.Contains(out, "→ no later success") || !strings.Contains(out, "0 no later success of the same command or program recorded, 1 not checked") {
+		if out := b.String(); strings.Contains(out, "→ no later success") || !strings.Contains(out, "0 no later success recorded, 1 not checked") {
 			t.Errorf("digest %s: the text claims no later success:\n%s", digest, out)
 		}
 	}
@@ -805,6 +854,19 @@ func TestTimeline_ARewrittenCallIsNotTheSameProgram(t *testing.T) {
 	if c := tlByID(t, buildTimeline(early, nil), "f"); c.Later != nil || !c.LaterChecked {
 		t.Errorf("an earlier rewritten success leaves the failure unchecked: %+v", c)
 	}
+	// The hook records an executed digest on every record with a tool_input,
+	// so a call that was not rewritten carries its own declared digest there.
+	// Break: read any executed digest as a rewrite, and every same-program
+	// follow-up the real hook records is not checked.
+	asDeclared := tlRun([]tlCall{
+		{seq: 1, id: "f", tool: "Bash", program: "pytest", digest: "d1"},
+		{seq: 2, id: "s", tool: "Bash", program: "pytest", digest: "d2"},
+	}, tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("s", store.ExecOK, 0, 11))
+	asDeclared.Executions[0].ExecutedDigest = "d1"
+	asDeclared.Executions[1].ExecutedDigest = "d2"
+	if c := tlByID(t, buildTimeline(asDeclared, nil), "f"); c.Later == nil || c.Later.Kind != LaterSameProgram || !c.LaterChecked {
+		t.Errorf("a call that ran its declared input reads as rewritten: later %+v, checked %v", c.Later, c.LaterChecked)
+	}
 }
 
 // #36 review round 3, fix 2: a success whose declaration was lost -- a lock
@@ -875,6 +937,52 @@ func TestTimeline_AnUndeclaredSuccessIsNotNoSuccess(t *testing.T) {
 	if c := tlByID(t, buildTimeline(unknown, nil), "f"); c.LaterChecked || c.Later != nil {
 		t.Errorf("an undeclared success with no tool name is ruled out: %+v", c)
 	}
+
+	// #36 review round 5, item 1: an undeclared call that failed and then
+	// succeeded is failed, but its ok record is a success whose declaration
+	// was lost all the same, and the same rule weighs it. Break: apply the
+	// rule to ok rows only, and the failure reads "no later success" beside
+	// an ok record it cannot rule out.
+	for _, tc := range []struct {
+		name, program, tool, executed string
+	}{
+		{"unknown digest", "pytest", "Bash", ""},
+		{"other digest under a program tier", "pytest", "Bash", "d2"},
+		{"no tool name", "git", "", "dx"},
+	} {
+		r := tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: tc.program, digest: "d1"}},
+			tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("u", store.ExecFailed, 1, 5), tlExecAt("u", store.ExecOK, 0, 12))
+		for i := 1; i < 3; i++ {
+			r.Executions[i].ToolName = tc.tool
+		}
+		r.Executions[1].ExecutedDigest = "d1"
+		r.Executions[2].ExecutedDigest = tc.executed
+		tl := buildTimeline(r, nil)
+		if u := tlByID(t, tl, "u"); u.Group != GroupFailed {
+			t.Fatalf("%s: u = %s, want failed", tc.name, u.Group)
+		}
+		if c := tlByID(t, tl, "f"); c.LaterChecked || c.Later != nil {
+			t.Errorf("%s: an undeclared failed call's ok record is ruled out: later %+v, checked %v", tc.name, c.Later, c.LaterChecked)
+		}
+	}
+
+	// A record with no tool_name was digested under no tool name, and the
+	// digest covers the name: the same `git push` digests differently under
+	// "" than under Bash, so it rules nothing out. Break: rule an unnamed
+	// record out on its digest, and the failure reads "no later success"
+	// beside the same command run again.
+	key := []byte("timeline-test-key")
+	push := json.RawMessage(`{"command":"git push"}`)
+	named, unnamed := shape.Derive("Bash", push, key), shape.Derive("", push, key)
+	gitRun := tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "git", digest: named.Digest}},
+		tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("u", store.ExecOK, 0, 12))
+	gitRun.Executions[1].ExecutedDigest = unnamed.Digest
+	if named.Digest == unnamed.Digest {
+		t.Fatalf("the digest does not cover the tool name: %s", named.Digest)
+	}
+	if c := tlByID(t, buildTimeline(gitRun, nil), "f"); c.LaterChecked || c.Later != nil {
+		t.Errorf("an unnamed record of the same git push is ruled out: later %+v, checked %v", c.Later, c.LaterChecked)
+	}
 }
 
 // #36 review 4: the same-program tier makes no claim about arguments, and is
@@ -926,13 +1034,21 @@ func TestTimeline_TheMarkerSaysWhatWasChecked(t *testing.T) {
 			t.Errorf("program %q: marker = %q, want %q", tc.program, got, tc.want)
 		}
 	}
+	// The counts line claims no more than the row under it: the row of a
+	// failed `go` call says only "same command", so the header must not say
+	// "or program". Break: print it there and the page contradicts itself.
 	var b bytes.Buffer
 	writeTimeline(&b, buildTimeline(tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "go", digest: "d1"}},
 		tlExec("f", store.ExecFailed, 1)), nil))
-	if !strings.Contains(b.String(), "(only a later run of the same command, or of the same program for single-purpose programs, is looked for; "+
-		"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; "+
-		"a fix made with a different command, or a corrected Edit, is not detected)\n") {
-		t.Errorf("the legend does not say which programs get only the same command:\n%s", b.String())
+	out := b.String()
+	if !strings.Contains(out, "    failed       1  (0 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded)\n") {
+		t.Errorf("the counts line claims more than the row:\n%s", out)
+	}
+	legend := "                 (only a later success of the same command, or of the same program for single-purpose programs, is looked for;\n" +
+		"                 for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is;\n" +
+		"                 a fix made with a different command, or a corrected Edit, is not detected)\n"
+	if !strings.Contains(out, legend) {
+		t.Errorf("the legend does not say which calls get only the same command:\n%s", out)
 	}
 }
 
@@ -979,7 +1095,8 @@ func TestTimeline_AWrapperIsNotTheProgram(t *testing.T) {
 			t.Errorf("%s: the same line run again is not the same command: %+v", program, c.Later)
 		}
 	}
-	// A name that only ends in digits is not a versioned interpreter.
+	// Not on the list and not a suffixed name of anything on it, whether the
+	// name ends in digits (b2, gpg2), in w (show, w), or neither (pytest).
 	for _, program := range []string{"pytest", "b2", "gpg2", "show", "w"} {
 		if subcommandProgram(program) {
 			t.Errorf("%s is treated as a subcommand program", program)
@@ -1093,7 +1210,7 @@ func TestTimeline_TextMarksEachNewDate(t *testing.T) {
 	if !strings.Contains(b.String(), "2023-11-14 (UTC)") || !strings.Contains(b.String(), "2023-11-15 (UTC)") {
 		t.Errorf("a timeline across midnight must show both dates:\n%s", b.String())
 	}
-	for _, absent := range []string{"only a later run", "interrupted", "interleave"} {
+	for _, absent := range []string{"only a later success", "interrupted", "interleave"} {
 		if strings.Contains(b.String(), absent) {
 			t.Errorf("a run with no failed, interrupted or subagent call prints %q:\n%s", absent, b.String())
 		}

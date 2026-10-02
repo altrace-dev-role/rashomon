@@ -85,7 +85,7 @@ func TestTimeline_RendersEveryAgentInOrder(t *testing.T) {
 	out := e.run("", nil, "report", "--session", testSession, "--timeline").stdout
 	for _, want := range []string{
 		"timeline: 6 calls (4 main agent, 1 from 1 subagent, 1 agent unknown)",
-		"failed       3  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success of the same command or program recorded, 1 not checked)",
+		"failed       3  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded, 1 not checked)",
 		"never ran    1",
 		"unknown      1",
 		"denied before running",
