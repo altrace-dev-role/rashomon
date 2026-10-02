@@ -1302,7 +1302,7 @@ m("TL a failed call's first ok record is weighed, not its last", "internal/repor
 m("TL an unknown digest matches a failed call's unknown ok digest", "internal/report/timeline.go",
   "\t\t\t\tcommand := failed.digest != \"\" && ok.digest == failed.digest", "\t\t\t\tcommand := ok.digest == failed.digest", "TestTimeline_")
 m("TL a failed call's ok record is weighed by its declared digest", "internal/report/timeline.go",
-  "digest: effectiveDigest(declared, &recs[i])}", "digest: declared}", "TestTimeline_")
+  "digest: effectiveDigest(declared, &recs[i]), tool:", "digest: declared, tool:", "TestTimeline_")
 # #36 review round 3, Fix before merge 2.
 m("TL any executed digest reads as a rewrite", "internal/report/timeline.go",
   "rewritten: rec != nil && rec.ExecutedDigest != \"\" && rec.ExecutedDigest != d.Shape.Digest,", "rewritten: rec != nil && rec.ExecutedDigest != \"\",", "TestTimeline_")
