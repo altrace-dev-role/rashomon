@@ -983,6 +983,19 @@ func TestTimeline_AnUndeclaredSuccessIsNotNoSuccess(t *testing.T) {
 	if c := tlByID(t, buildTimeline(gitRun, nil), "f"); c.LaterChecked || c.Later != nil {
 		t.Errorf("an unnamed record of the same git push is ruled out: later %+v, checked %v", c.Later, c.LaterChecked)
 	}
+	// #36 review round 4, Fix before merge 1: the ok record is weighed under
+	// its own tool name, not the call's: u's ok record at 12 has no
+	// tool_name, and its failed record at 14 names Bash. Break: rule the ok
+	// record out under the call's tool name, and the failure reads "no later
+	// success" beside the same git push run again.
+	mixed := tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "git", digest: named.Digest}},
+		tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("u", store.ExecOK, 0, 12), tlExecAt("u", store.ExecFailed, 1, 14))
+	mixed.Executions[1].ExecutedDigest = unnamed.Digest
+	mixed.Executions[2].ToolName = "Bash"
+	mixed.Executions[2].ExecutedDigest = named.Digest
+	if c := tlByID(t, buildTimeline(mixed, nil), "f"); c.LaterChecked || c.Later != nil {
+		t.Errorf("an unnamed ok record is ruled out under its call's tool name: later %+v, checked %v", c.Later, c.LaterChecked)
+	}
 }
 
 // #36 review 4: the same-program tier makes no claim about arguments, and is

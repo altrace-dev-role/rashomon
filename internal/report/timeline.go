@@ -214,10 +214,13 @@ type timelineEntry struct {
 }
 
 // timelineOK is the success a failed call's ok record holds, as laterSuccess
-// weighs it: where it was recorded and what it ran.
+// weighs it: where it was recorded, what it ran, and the tool name it was
+// recorded under -- the record's own, which on an undeclared call need not be
+// the one its row shows.
 type timelineOK struct {
 	pos    *int64
 	digest string
+	tool   string
 }
 
 func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
@@ -445,7 +448,11 @@ func failedCallOK(c TimelineCall, declared string, recs []store.Execution) *time
 	}
 	for i := len(recs) - 1; i >= 0; i-- {
 		if recs[i].Outcome == store.ExecOK {
-			return &timelineOK{pos: recs[i].Seq, digest: effectiveDigest(declared, &recs[i])}
+			tool := recs[i].ToolName
+			if tool == "" {
+				tool = LinkUnknown
+			}
+			return &timelineOK{pos: recs[i].Seq, digest: effectiveDigest(declared, &recs[i]), tool: tool}
 		}
 	}
 	return nil
@@ -496,24 +503,26 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 		// other than the failure's rules it out where no program tier is
 		// offered, and only under the failure's own tool name: a record with
 		// no tool name was digested under none, so its digest never equals a
-		// named tool's. Anything else recorded after the failure, or at no
-		// known position, is one more success that cannot be ruled out.
+		// named tool's. The tool name is the weighed record's own: an ok
+		// record's, not the call's, which is its last record's. Anything else
+		// recorded after the failure, or at no known position, is one more
+		// success that cannot be ruled out.
 		if c.Seq == nil {
-			pos, digest := e.pos, e.digest
+			pos, digest, tool := e.pos, e.digest, c.ToolName
 			switch c.Group {
 			case GroupOK:
 			case GroupFailed:
 				if e.ok == nil {
 					continue
 				}
-				pos, digest = e.ok.pos, e.ok.digest
+				pos, digest, tool = e.ok.pos, e.ok.digest, e.ok.tool
 			default:
 				continue
 			}
-			if c.ToolName != failed.call.ToolName && c.ToolName != LinkUnknown {
+			if tool != failed.call.ToolName && tool != LinkUnknown {
 				continue
 			}
-			if c.ToolName == failed.call.ToolName && digest != "" && digest != failed.digest && !programTier {
+			if tool == failed.call.ToolName && digest != "" && digest != failed.digest && !programTier {
 				continue
 			}
 			if pos == nil || *pos > *failed.pos {
