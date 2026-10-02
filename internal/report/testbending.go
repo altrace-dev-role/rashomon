@@ -71,7 +71,8 @@ type TestBending struct {
 //
 // Outcomes are the timeline's (testOutcome): a call is failed when any of its
 // execution records failed, as its timeline row is, and otherwise linkOutcome
-// over run's executions and denied, the outcome the chains show.
+// over run's executions and denied, the outcome the chains show. The same
+// rule decides whether an edit ran ok.
 // denied may be nil -- the turn digest reads no transcript -- and a denied
 // call then reads as "no execution record", which below stops a pattern
 // rather than completing one.

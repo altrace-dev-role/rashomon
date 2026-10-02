@@ -738,3 +738,24 @@ func TestDetectTestBending_ACallThatFailedOnceIsAFailedRun(t *testing.T) {
 		}
 	}
 }
+
+// TestDetectTestBending_AnEditThatFailedOnceDidNotRunOk: testOutcome decides
+// edits as well as runs, so a test-file edit with one failed record is failed,
+// as its timeline row is, whichever record has the higher seq, and it is no
+// test edit that ran ok. Break: read an edit by linkOutcome, the highest-seq
+// record, and a failed run, an edit recorded [failed, ok] and a passing run
+// read as only test files edited, then green.
+func TestDetectTestBending_AnEditThatFailedOnceDidNotRunOk(t *testing.T) {
+	const ok, failed = store.ExecOK, store.ExecFailed
+	for _, order := range [][2]string{{failed, ok}, {ok, failed}} {
+		run := tbRun(test(1, "d", failed), edit(2, shape.LabelTestFile, order[0]), test(3, "d", ok))
+		run.Executions = append(run.Executions, store.Execution{ToolUseID: run.Executions[1].ToolUseID, ToolName: "Edit", Outcome: order[1]})
+		for i := range run.Executions {
+			seq := int64(10 + i)
+			run.Executions[i].Seq = &seq
+		}
+		if got := DetectTestBending(run, nil); len(got.TestsOnlyThenGreen) != 0 {
+			t.Errorf("edit records %v: tests only then green %v, want none", order, got.TestsOnlyThenGreen)
+		}
+	}
+}
