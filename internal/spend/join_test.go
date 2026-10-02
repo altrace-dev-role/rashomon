@@ -1395,3 +1395,28 @@ func TestJoin_ASightingSessionWithNoFileIsNotRecorded(t *testing.T) {
 		t.Errorf("rows = %+v; want sess-a recorded", s.PerSession)
 	}
 }
+
+// TestJoin_AnUndatedUsageLineDoesNotReDateItsFile: a file is dated by its
+// first dated line, and an undated usage line after it changes nothing.
+// sess-a's file starts ten minutes before sess-b's, so sess-a owns the
+// response both hold, though an undated usage line comes between its first
+// dated line and the response. Were the per-line flag to re-open dating, the
+// response's own timestamp would date sess-a's file after sess-b's, and the
+// response would move to sess-b's row.
+func TestJoin_AnUndatedUsageLineDoesNotReDateItsFile(t *testing.T) {
+	T := now.Add(-2 * time.Hour)
+	x := resp{id: "X1", model: "claude-opus-5-5", at: T, in: 1000, stop: "end_turn"}
+	s := orders(t, func(c *config, first, second string) *store.Store {
+		xa, xb := x, x
+		xa.session, xb.session = "sess-a", "sess-b"
+		c.write(first+"/sess-a.jsonl", userLine("sess-a", "p0", T.Add(-10*time.Minute), false),
+			resp{id: "U1", model: "claude-opus-5-5", session: "sess-a", in: 5, stop: "end_turn", noTimestamp: true}.line("text"),
+			xa.line("text"))
+		c.write(second+"/sess-b.jsonl", userLine("sess-b", "p1", T.Add(-5*time.Minute), false), xb.line("text"))
+		return newRecorder(t).st
+	})
+	a, b := row(s, "sess-a"), row(s, "sess-b")
+	if s.Read.UndatedResponses != 1 || a == nil || b == nil || a.Main != (Cost{Nano: 1000 * opusIn, Priced: 1}) || b.Main != (Cost{}) {
+		t.Errorf("undated %d, rows %+v; want the undated line counted and the response in sess-a's row alone", s.Read.UndatedResponses, s.PerSession)
+	}
+}

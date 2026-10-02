@@ -1634,7 +1634,7 @@ m("SP a cold 1h write ignores the 5m write already counted cold", "internal/spen
   "min(cur.CacheWrite1h, short-w.CacheWrite5m)", "min(cur.CacheWrite1h, short)",
   "TestCacheExpiry_")
 m("SP a subagent transcript's lines are prefiltered on the byte string user again", "internal/spend/scan.go",
-  "\t\tif !usageLine && !f.Subagent && dated {", "\t\tif !usageLine && (f.Subagent && !bytes.Contains(raw, []byte(`\"user\"`)) || !f.Subagent && dated) {",
+  "\t\tif !usageLine && !f.Subagent && fileDated {", "\t\tif !usageLine && (f.Subagent && !bytes.Contains(raw, []byte(`\"user\"`)) || !f.Subagent && fileDated) {",
   "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
 m("SP an undecodable line is a sidechain one by its bytes anywhere, not its top-level key", "internal/report/transcript.go",
   "\tif topLevelSidechain(raw) {", "\tif bytes.Contains(raw, []byte(`\"isSidechain\":true`)) {",
@@ -1652,7 +1652,7 @@ m("SP the store is read only for the sessions a response belongs to", "internal/
   "\t\t\tfor _, f := range r.files {\n\t\t\t\tsessions[f.session] = true\n\t\t\t}", "\t\t\tfor _, id := range r.owners {\n\t\t\t\tsessions[id] = true\n\t\t\t}",
   "TestJoin_")
 m("SP a file is dated by its literal first line", "internal/spend/scan.go",
-  "\t\tif !dated {\n\t\t\tif ms, ok := parseTimestamp(l.Timestamp); ok {\n\t\t\t\tsc.firstMS[idx], dated = ms, true", "\t\tif !dated {\n\t\t\tdated = true\n\t\t\tif ms, ok := parseTimestamp(l.Timestamp); ok {\n\t\t\t\tsc.firstMS[idx] = ms",
+  "\t\tif !fileDated {\n\t\t\tif ms, ok := parseTimestamp(l.Timestamp); ok {\n\t\t\t\tsc.firstMS[idx], fileDated = ms, true", "\t\tif !fileDated {\n\t\t\tfileDated = true\n\t\t\tif ms, ok := parseTimestamp(l.Timestamp); ok {\n\t\t\t\tsc.firstMS[idx] = ms",
   "TestJoin_")
 m("SP a tie between two first-dated files goes to the lower session id", "internal/spend/scan.go",
   "\tsort.Strings(out)\n\treturn out\n}", "\tsort.Strings(out)\n\treturn out[:1]\n}",
@@ -1746,6 +1746,9 @@ m("SP an unreadable entry is keyed as written, not resolved", "internal/spend/sc
 m("SP a path that does not resolve is keyed as written", "internal/spend/scan.go",
   "\treturn filepath.Join(resolved(dir), filepath.Base(p))", "\treturn p",
   "TestDiscover_OneTranscriptUnderTwoSpellings")
+m("SP an undated usage line re-opens its file's dating", "internal/spend/scan.go",
+  "\t\tstartMS, dated := parseTimestamp(l.Timestamp)\n", "\t\tstartMS, dated := parseTimestamp(l.Timestamp)\n\t\tfileDated = dated\n",
+  "TestJoin_AnUndatedUsageLineDoesNotReDateItsFile")
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

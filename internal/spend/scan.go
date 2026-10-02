@@ -756,11 +756,11 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 	// The file's first dated line dates it (ownerSessions): a main
 	// transcript's lines are decoded, header only, until one carries a
 	// timestamp, and then only those that may carry usage.
-	dated := false
+	fileDated := false
 	for s.Scan() {
 		raw := s.Bytes()
 		usageLine := bytes.Contains(raw, usageMarker)
-		if !usageLine && !f.Subagent && dated {
+		if !usageLine && !f.Subagent && fileDated {
 			continue
 		}
 		var l line
@@ -777,9 +777,9 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			prompt = ""
 			continue
 		}
-		if !dated {
+		if !fileDated {
 			if ms, ok := parseTimestamp(l.Timestamp); ok {
-				sc.firstMS[idx], dated = ms, true
+				sc.firstMS[idx], fileDated = ms, true
 			}
 		}
 		if !usageLine && !f.Subagent {
