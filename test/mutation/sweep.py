@@ -1959,6 +1959,11 @@ m("TB an empty session id pastes as nothing", "internal/report/text.go",
   "",
   "TestTestRuns_CountsAndText")
 
+m("TB the unobserved line says backgrounded calls ended", "internal/report/text.go",
+  "recorded no ending or were moved to the background before they ended\\n",
+  "recorded no ending or ended in the background\\n",
+  "TestSilentFailures_")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

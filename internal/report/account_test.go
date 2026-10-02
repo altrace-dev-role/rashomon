@@ -1,6 +1,7 @@
 package report
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -294,6 +295,21 @@ func TestSilentFailures_ABackgroundedCallIsUnobserved(t *testing.T) {
 	tl := buildTimeline(tr, nil)
 	if got, want := tl.Counts.Unknown, BuildSilentFailures(tr, Account{}).Unobserved; got != want || got != 2 {
 		t.Errorf("timeline unknown = %d, report outcome unobserved = %d; both must be 2", got, want)
+	}
+}
+
+// TestSilentFailures_TheUnobservedLineSaysBackgroundedCallsDidNotEnd: a call
+// moved to the background had not ended when its record was written, so the
+// line must not say it ended there.
+func TestSilentFailures_TheUnobservedLineSaysBackgroundedCallsDidNotEnd(t *testing.T) {
+	var b bytes.Buffer
+	writeSilentFailures(&b, SilentFailures{Unobserved: 1})
+	out := b.String()
+	if want := "outcome unobserved: 1 call(s) recorded no ending or were moved to the background before they ended"; !strings.Contains(out, want) {
+		t.Errorf("the unobserved line is not %q:\n%s", want, out)
+	}
+	if strings.Contains(out, "ended in the background") {
+		t.Errorf("the unobserved line says a call ended in the background:\n%s", out)
 	}
 }
 
