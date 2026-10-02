@@ -561,6 +561,33 @@ func TestDiscover_OneTranscriptUnderTwoSpellingsIsReadOnce(t *testing.T) {
 				}
 			})
 		}
+		// An old transcript under both spellings is one old transcript, not
+		// two: Discover counted it once per spelling before the dedupe.
+		t.Run(tc.link+" last written before the window", func(t *testing.T) {
+			c := newConfig(t)
+			p := c.write(tc.old+"/sess-l.jsonl",
+				resp{id: "L1", model: "claude-opus-5-5", session: "sess-l", at: now.Add(-40 * 24 * time.Hour), in: 100, stop: "end_turn"}.line("text"))
+			past := time.Now().Add(-40 * 24 * time.Hour)
+			if err := os.Chtimes(p, past, past); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(tc.old, filepath.Join(c.dir, "projects", tc.link)); err != nil {
+				t.Fatal(err)
+			}
+			found, err := Discover(c.dir, time.Now().Add(-30*24*time.Hour))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sc, err := Read(found)
+			if err != nil {
+				t.Fatal(err)
+			}
+			txt, js := render(t, Build(sc, now, 30))
+			if !strings.Contains(js, `"files_before_window":1`) ||
+				!strings.Contains(txt, "(1 older transcript last written before that was not read)") {
+				t.Errorf("one old transcript under two spellings is counted twice:\n%s\n%s", txt, js)
+			}
+		})
 	}
 }
 

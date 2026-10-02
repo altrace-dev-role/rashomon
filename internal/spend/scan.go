@@ -423,6 +423,11 @@ type TranscriptFile struct {
 // read like any other (entryKind): a DirEntry reports a symlink as neither a
 // file nor a directory, and a projects folder linked in from elsewhere was
 // skipped without a word -- its spend an unflagged $0.
+//
+// Both counts are of resolved paths, as the files are (dedupeSpellings): a
+// project folder linked in beside its target lists every old transcript and
+// unreadable folder under two spellings, and counting each spelling said one
+// old transcript was two.
 func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 	found := &Found{}
 	root := filepath.Join(configDir, "projects")
@@ -434,6 +439,7 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 		return nil, err
 	}
 	var out []TranscriptFile
+	stale, unreadable := map[string]bool{}, map[string]bool{}
 	fresh := func(p string) bool {
 		if modifiedSince.IsZero() {
 			return true
@@ -448,7 +454,7 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 			return !errors.Is(err, fs.ErrNotExist)
 		}
 		if info.ModTime().Before(modifiedSince) {
-			found.Stale++
+			stale[resolved(p)] = true
 			return false
 		}
 		return true
@@ -457,14 +463,14 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 		dir := filepath.Join(root, p.Name())
 		kind := entryKind(dir, p)
 		if kind == kindUnreadable {
-			found.UnreadableDirs++
+			unreadable[resolved(dir)] = true
 		}
 		if kind != kindDir {
 			continue
 		}
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			found.UnreadableDirs++
+			unreadable[resolved(dir)] = true
 			continue
 		}
 		for _, e := range entries {
@@ -476,10 +482,12 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 					out = append(out, TranscriptFile{Path: path, Session: strings.TrimSuffix(name, ".jsonl"), Main: path})
 				}
 			case kind == kindUnreadable:
-				found.UnreadableDirs++
+				unreadable[resolved(path)] = true
 			case kind == kindDir:
-				subs, unreadable := subagentFiles(filepath.Join(path, "subagents"))
-				found.UnreadableDirs += unreadable
+				subs, bad := subagentFiles(filepath.Join(path, "subagents"))
+				for _, b := range bad {
+					unreadable[resolved(b)] = true
+				}
 				for _, s := range subs {
 					if fresh(s) {
 						out = append(out, TranscriptFile{Path: s, Subagent: true, Session: name,
@@ -491,7 +499,17 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	found.Files = dedupeSpellings(out)
+	found.Stale, found.UnreadableDirs = len(stale), len(unreadable)
 	return found, nil
+}
+
+// resolved is a path with its symlinks resolved, or as written when it does
+// not resolve.
+func resolved(p string) string {
+	if real, err := filepath.EvalSymlinks(p); err == nil {
+		return real
+	}
+	return p
 }
 
 // dedupeSpellings keeps the first of the files that resolve to one file.
@@ -507,10 +525,7 @@ func dedupeSpellings(files []TranscriptFile) []TranscriptFile {
 	seen := map[string]bool{}
 	out := files[:0]
 	for _, f := range files {
-		real, err := filepath.EvalSymlinks(f.Path)
-		if err != nil {
-			real = f.Path
-		}
+		real := resolved(f.Path)
 		if seen[real] {
 			continue
 		}
@@ -556,19 +571,17 @@ func entryKind(path string, e fs.DirEntry) int {
 	return kindOther
 }
 
-// subagentFiles lists every agent-*.jsonl under dir, at any depth, and counts
-// the folders under it that could not be read. A missing directory is the
-// common case, a session with no subagents. A folder that cannot be read is
-// skipped and counted, so the rest of the walk -- and of spend -- goes on.
-func subagentFiles(dir string) ([]string, int) {
-	var out []string
-	unreadable := 0
+// subagentFiles lists every agent-*.jsonl under dir, at any depth, and the
+// folders under it that could not be read. A missing directory is the common
+// case, a session with no subagents. A folder that cannot be read is skipped
+// and listed, so the rest of the walk -- and of spend -- goes on.
+func subagentFiles(dir string) (out, unreadable []string) {
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) && p == dir {
 				return filepath.SkipDir
 			}
-			unreadable++
+			unreadable = append(unreadable, p)
 			if d != nil && !d.IsDir() {
 				return nil
 			}

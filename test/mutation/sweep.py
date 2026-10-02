@@ -1095,7 +1095,8 @@ m("SP the --days window is ignored", "internal/spend/spend.go",
 m("SP an undated response is dropped without being counted", "internal/spend/scan.go",
   "\t\t\tsc.Undated++\n", "", "TestWindow_")
 m("SP a file last written before the window is still read", "internal/spend/scan.go",
-  "\t\t\tfound.Stale++\n\t\t\treturn false", "\t\t\tfound.Stale++\n\t\t\treturn true", "TestDiscover_Skips")
+  "\t\t\tstale[resolved(p)] = true\n\t\t\treturn false", "\t\t\tstale[resolved(p)] = true\n\t\t\treturn true",
+  "TestDiscover_Skips")
 m("SP a file under subagents/ is main-agent spend unless its lines say sidechain", "internal/spend/scan.go",
   "Subagent:   f.Subagent || l.IsSidechain,", "Subagent:   l.IsSidechain,", "TestAgent_")
 m("SP a main-file line marked isSidechain is main-agent spend", "internal/spend/scan.go",
@@ -1284,7 +1285,7 @@ m("SP a future-dated response counts as the last N days", "internal/spend/spend.
 m("SP a response written while spend runs is future-dated", "internal/spend/spend.go",
   "\tlatest := now.Add(futureSlack).UnixMilli()", "\tlatest := now.UnixMilli()", "TestWindow_AFutureDated")
 m("SP a transcript last written before the window is not counted", "internal/spend/scan.go",
-  "\t\t\tfound.Stale++\n\t\t\treturn false", "\t\t\treturn false",
+  "\t\t\tstale[resolved(p)] = true\n\t\t\treturn false", "\t\t\treturn false",
   "TestWindow_OldTranscripts|TestDiscover_Skips")
 m("SP old transcripts are reported as no transcripts found", "internal/spend/text.go",
   "\tcase s.Read.Files == 0 && s.Read.FilesBeforeWindow > 0:", "\tcase false:", "TestWindow_OldTranscripts")
@@ -1303,10 +1304,10 @@ m("SP one transcript under two spellings is read twice", "internal/spend/scan.go
   "\t\tif seen[real] {\n\t\t\tcontinue", "\t\tif false && seen[real] {\n\t\t\tcontinue",
   "TestDiscover_OneTranscriptUnderTwoSpellings")
 m("SP a project folder that cannot be read is not counted", "internal/spend/scan.go",
-  "\t\tif kind == kindUnreadable {\n\t\t\tfound.UnreadableDirs++", "\t\tif kind == kindUnreadable {\n\t\t\t_ = found",
+  "\t\tif kind == kindUnreadable {\n\t\t\tunreadable[resolved(dir)] = true", "\t\tif kind == kindUnreadable {\n\t\t\t_ = dir",
   "TestDiscover_AnUnreadableFolder")
 m("SP a session folder that cannot be read is not counted", "internal/spend/scan.go",
-  "\t\t\tcase kind == kindUnreadable:\n\t\t\t\tfound.UnreadableDirs++", "\t\t\tcase kind == kindUnreadable:\n\t\t\t\t_ = found",
+  "\t\t\tcase kind == kindUnreadable:\n\t\t\t\tunreadable[resolved(path)] = true", "\t\t\tcase kind == kindUnreadable:\n\t\t\t\t_ = path",
   "TestDiscover_AnUnreadableFolder")
 m("SP folders that could not be read are not said", "internal/spend/text.go",
   "\tif s.Read.UnreadableDirs > 0 {", "\tif false {", "TestDiscover_AnUnreadableFolder")
@@ -1614,6 +1615,9 @@ m("SP an extra attempt's tokens are counted in the token total", "internal/spend
 m("SP a pre-output refusal is counted in the breakdowns", "internal/spend/spend.go",
   "\t\t\trefusal(r).BeforeOutput++\n\t\t\tcontinue\n", "\t\t\trefusal(r).BeforeOutput++\n",
   "TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal")
+m("SP an old transcript is counted once per spelling", "internal/spend/scan.go",
+  "\t\t\tstale[resolved(p)] = true\n", "\t\t\tstale[p] = true\n",
+  "TestDiscover_OneTranscriptUnderTwoSpellings")
 # Import additions some mutants need.
 IMPORTS = {
   "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),
