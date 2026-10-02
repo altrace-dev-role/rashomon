@@ -1727,6 +1727,10 @@ m("SP the combined pre-output header drops the refusals written without usage", 
 m("SP only pre-output refusals with usage print no refusals line", "internal/spend/text.go",
   "\t} else if s.Refusals.WithoutUsage > 0 || s.Refusals.BeforeOutput > 0 {", "\t} else if s.Refusals.WithoutUsage > 0 {",
   "TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal")
+m("SP the cache label says the figure errs low", "internal/spend/spend.go",
+  "; it skips a model switch and any request smaller than the previous cache, so it misses some true expiries, and can still count new content in a request that grew past the previous cache\"",
+  "; it errs low\"",
+  "TestCacheExpiry_TheLabel")
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

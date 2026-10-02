@@ -388,7 +388,11 @@ previous cache is new content. The shortfall assumes each prompt extends the
 previous one, which is false after compaction, a model switch, a rewind, or a
 second sidechain agent in the stream, so a response on another model, or
 whose whole prompt is smaller than what the previous response cached, is not
-counted. The figure errs low. It is priced as the write rate minus the read
+counted. A rewind or a second agent is skipped only when its request is
+smaller than the previous cache: one that grew past it is counted. So the
+heuristic skips a model switch and any request smaller than the previous
+cache, so it misses some true expiries, and can still count new content in a
+request that grew past the previous cache. It is priced as the write rate minus the read
 rate, since the alternative was a cache read. Measured on one real machine's
 last 30 days to 2026-10-02, it was $92.06 of $288.94. It is shown as a
 figure, not offered as a saving. Pre-output refusals and extra attempts are

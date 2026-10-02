@@ -1210,8 +1210,8 @@ func TestCacheExpiry_ThePreviousResponseIsTheSameAgents(t *testing.T) {
 	}
 }
 
-// TestCacheExpiry_IsAFigureNotASaving: the re-write figure is a heuristic
-// that errs low, so it is shown as a figure and offered as no saving, with
+// TestCacheExpiry_IsAFigureNotASaving: the re-write figure is a heuristic,
+// so it is shown as a figure and offered as no saving, with
 // no TTL advice: on real data the re-writes were already 1h writes after
 // gaps of hours to days, and advice no figure supports is not given.
 func TestCacheExpiry_IsAFigureNotASaving(t *testing.T) {
@@ -1342,6 +1342,41 @@ func TestCacheExpiry_AWriteOfUnknownCostIsNotPriced(t *testing.T) {
 	}
 }
 
+// TestCacheExpiry_ASecondAgentsLargerFirstRequestIsCounted: two sidechain
+// agents in one main file share a stream, so a second agent's first request
+// follows the first agent's cache, which it never held. When that request is
+// smaller than the cache it is skipped; when it is larger -- here 20,000
+// written against the first agent's 13,000 -- the shortfall is counted cold
+// though it is new content. The label says so; this pins that it is counted.
+func TestCacheExpiry_ASecondAgentsLargerFirstRequestIsCounted(t *testing.T) {
+	c := newConfig(t)
+	t0 := now.Add(-2 * time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "a", model: "claude-opus-5-5", at: t0, in: 10, w5: 13000, stop: "end_turn", sidechain: true}.line("text"),
+		resp{id: "b", model: "claude-opus-5-5", at: t0.Add(10 * oneMinute), in: 10, w5: 20000, stop: "end_turn", sidechain: true}.line("text"))
+	s := c.summary(30)
+	if want := (Cost{Nano: 13000 * (opusW5 - opusRead), Priced: 1}); s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens5m != 13000 || s.CacheExpiry.Cost != want {
+		t.Errorf("cold = %+v; want b's 13,000-token shortfall counted, %+v", s.CacheExpiry, want)
+	}
+}
+
+// TestCacheExpiry_TheLabelSaysWhatItMissesAndWhatItCanCount: the label said
+// the figure "errs low", but a request that grew past the previous cache can
+// still have new content counted cold. It says what it skips and what it can
+// still count, in every rendering.
+func TestCacheExpiry_TheLabelSaysWhatItMissesAndWhatItCanCount(t *testing.T) {
+	const want = "a cache write on a response whose previous response by the same agent in the same transcript, on the same model, started more than the TTL earlier (5m, or 1h for a 1h write), counting only the shortfall -- what that previous response read and wrote to the cache, less what this one read from it -- and nothing when this request is smaller than that cache, priced as the write over a cache read of the same tokens; it skips a model switch and any request smaller than the previous cache, so it misses some true expiries, and can still count new content in a request that grew past the previous cache"
+	if CacheHeuristic != want {
+		t.Errorf("CacheHeuristic = %q\nwant %q", CacheHeuristic, want)
+	}
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 10, stop: "end_turn"}.line("text"))
+	txt, js := render(t, c.summary(30))
+	if !strings.Contains(txt, "(heuristic: "+want+")\n") || !strings.Contains(js, `"heuristic":"`+want+`"`) {
+		t.Errorf("a rendering does not carry the label:\n%s\n%s", txt, js)
+	}
+}
+
 // TestCacheExpiry_NewContentIsNotARewrite: the shortfall rule assumes each
 // request's prompt extends the previous one, so a write up to the shortfall
 // re-writes what the previous response cached. That is false after
@@ -1350,7 +1385,7 @@ func TestCacheExpiry_AWriteOfUnknownCostIsNotPriced(t *testing.T) {
 // sidechain agent shares the main file's stream: each wrote new content, and
 // each was counted cold. A response on another model than the previous one,
 // or whose whole prompt is smaller than what the previous one cached, is not
-// judged: the figure errs low.
+// judged, so some true expiries are missed.
 func TestCacheExpiry_NewContentIsNotARewrite(t *testing.T) {
 	t0 := now.Add(-2 * time.Hour)
 	at10 := t0.Add(10 * oneMinute)
@@ -1380,7 +1415,7 @@ func TestCacheExpiry_NewContentIsNotARewrite(t *testing.T) {
 
 // TestCacheExpiry_TheCheaperTTLIsColdFirst pins the split of a cold write by
 // TTL: the shortfall goes to the 5m write first and the 1h write only after
-// it, so the figure errs low. The predecessor cached 1,000 tokens; two hours
+// it, the cheaper rate first. The predecessor cached 1,000 tokens; two hours
 // later a response reading none writes 1,000 at each TTL: the 1,000 cold
 // tokens are the 5m write's.
 func TestCacheExpiry_TheCheaperTTLIsColdFirst(t *testing.T) {

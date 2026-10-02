@@ -443,10 +443,10 @@ lines, so a response is counted once by its id.
 **What it shows.** Spend by agent, model, token kind and session. Cache
 re-written after a gap longer than its TTL: the part of a write that re-writes
 what the previous response had cached and this one did not read back, priced
-over a cache read. It is a heuristic, labelled as one, and errs low: a
-response on another model than the previous one, or whose whole prompt is
-smaller than what the previous one cached (after compaction, say), is not
-counted, since it wrote new content. Refusals, counted by
+over a cache read. It is a heuristic, labelled as one: it skips a model
+switch and any request smaller than the previous cache (after compaction,
+say), since it wrote new content, so it misses some true expiries, and can
+still count new content in a request that grew past the previous cache. Refusals, counted by
 category and model. Retry attempts: every attempt before the last (the last
 produced the message and is the top-level usage) is shown in tokens with the
 cost unknown and left out of the total, and the header says so. When the last

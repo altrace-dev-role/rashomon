@@ -231,7 +231,7 @@ type CacheExpiry struct {
 }
 
 // CacheHeuristic is the rule, stated wherever its number is.
-const CacheHeuristic = "a cache write on a response whose previous response by the same agent in the same transcript, on the same model, started more than the TTL earlier (5m, or 1h for a 1h write), counting only the shortfall -- what that previous response read and wrote to the cache, less what this one read from it -- and nothing when this request is smaller than that cache, priced as the write over a cache read of the same tokens; it errs low"
+const CacheHeuristic = "a cache write on a response whose previous response by the same agent in the same transcript, on the same model, started more than the TTL earlier (5m, or 1h for a 1h write), counting only the shortfall -- what that previous response read and wrote to the cache, less what this one read from it -- and nothing when this request is smaller than that cache, priced as the write over a cache read of the same tokens; it skips a model switch and any request smaller than the previous cache, so it misses some true expiries, and can still count new content in a request that grew past the previous cache"
 
 // Refusals is responses that ended with stop_reason "refusal", in all and
 // counted by category and model (ByCategory).
@@ -687,11 +687,13 @@ func sortedRefusals(m map[[2]string]*RefusalGroup) []RefusalGroup {
 // spend in silently failed turns.
 //
 // The design's others are not made. The cache re-write figure is a
-// heuristic that errs low, so it is shown as a figure and not offered as a
-// saving. Pre-output refusals and extra attempts are tokens with the cost
-// unknown, so they carry no saving; a refusal with output is priced like any
-// response. Subagents on the top model where their tool pattern
-// is read-heavy would need which tools a subagent called, which is in
+// heuristic: it skips a model switch and any request smaller than the
+// previous cache, so it misses some true expiries, and can still count new
+// content in a request that grew past the previous cache. So it is shown as
+// a figure and not offered as a saving. Pre-output refusals and extra
+// attempts are tokens with the cost unknown, so they carry no saving; a
+// refusal with output is priced like any response. Subagents on the top
+// model where their tool pattern is read-heavy would need which tools a subagent called, which is in
 // message.content, which this package never reads: a suggestion printed
 // without its figure is exactly what this list refuses.
 func (s *Summary) buildSavings() {
@@ -740,8 +742,9 @@ func (s *Summary) buildSavings() {
 // with any cache read is not cold -- dropped every partial expiry instead,
 // and most re-writes after a long gap had also read a still-warm prefix. The
 // cold part is the 5m write first and then the 1h write, the cheaper first,
-// so the figure errs low; it is priced as the write rate minus the read rate
-// (Build): what re-reading those tokens would have cost is not a saving.
+// so a mixed write is priced at the lower rate; it is priced as the write
+// rate minus the read rate (Build): what re-reading those tokens would have
+// cost is not a saving.
 //
 // THE SHORTFALL ASSUMES THE PROMPT EXTENDS THE PREVIOUS ONE, so a write up to
 // it re-writes what the previous response cached. That is false after
@@ -751,9 +754,13 @@ func (s *Summary) buildSavings() {
 // content, which the shortfall counted cold. So a response is not judged when
 // its model is not the previous response's, or when its whole prompt (input,
 // cache read and cache write) is smaller than what the previous response
-// cached -- it cannot be re-writing all of that. Both skip some true
-// expiries too, so the figure errs low. Measured on one real machine's last
-// 30 days to 2026-10-02: $92.06 of $288.94.
+// cached -- it cannot be re-writing all of that. So the heuristic skips a
+// model switch and any request smaller than the previous cache, so it misses
+// some true expiries, and can still count new content in a request that grew
+// past the previous cache: a rewind followed by a paste past the old cache,
+// or a second agent whose first request is larger than the first agent's
+// cache. Measured on one real machine's last 30 days to 2026-10-02: $92.06
+// of $288.94.
 //
 // EVERY FILE HOLDING A RESPONSE IS A STREAM, and the response is judged once,
 // in the file it was first seen in. A resumed conversation carries the
