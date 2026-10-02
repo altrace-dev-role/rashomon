@@ -1207,8 +1207,7 @@ m("SP unjudged turns are not said", "internal/spend/text.go",
 m("SP a silent turn before the window is counted", "internal/spend/join.go",
   "\t\t\tif t.lastMS < s.FromUnixMS {", "\t\t\tif false {", "TestJoin_ATurnBefore")
 m("SP a transcript counts as covered when its session id has a run directory", "internal/spend/join.go",
-  "\t\trun, err := st.ReadRun(id)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n",
-  "\t\trun, err := st.ReadRun(id)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tfor m, rs := range byTranscript {\n\t\t\tif rs[0].SessionID == id {\n\t\t\t\tcovered[m] = true\n\t\t\t}\n\t\t}\n",
+  "\t\trun, err := st.ReadRun(id)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n", "\t\trun, err := st.ReadRun(id)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tfor m, rs := range byTranscript {\n\t\t\tif slices.Contains(rs[0].owners, id) {\n\t\t\t\tcovered[m] = true\n\t\t\t}\n\t\t}\n",
   "TestJoin_CoverageIsPerTranscript")
 m("SP a not-covered transcript's session is not named", "internal/spend/join.go",
   "\t\t\tnamed[displaySession(id)] = true\n", "",
@@ -1644,7 +1643,7 @@ m("SP a cold 1h write ignores the 5m write already counted cold", "internal/spen
   "min(cur.CacheWrite1h, short-w.CacheWrite5m)", "min(cur.CacheWrite1h, short)",
   "TestCacheExpiry_")
 m("SP a subagent transcript's lines are prefiltered on the byte string user again", "internal/spend/scan.go",
-  "\t\tif !usageLine && !f.Subagent {", "\t\tif !usageLine && !(f.Subagent && bytes.Contains(raw, []byte(`\"user\"`))) {",
+  "\t\tif !usageLine && !f.Subagent && dated {", "\t\tif !usageLine && (f.Subagent && !bytes.Contains(raw, []byte(`\"user\"`)) || !f.Subagent && dated) {",
   "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
 m("SP an undecodable line is a sidechain one by its bytes anywhere, not its top-level key", "internal/report/transcript.go",
   "\tif topLevelSidechain(raw) {", "\tif bytes.Contains(raw, []byte(`\"isSidechain\":true`)) {",
@@ -1675,6 +1674,8 @@ m("SP a row holding not-covered dollars reads recorded", "internal/spend/join.go
   "TestJoin_")
 # Import additions some mutants need.
 IMPORTS = {
+  "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),
+  "SP the decoded message hands its bytes to its own decoder": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),
   "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),
   "SP a non-firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),
