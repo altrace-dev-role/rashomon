@@ -1096,8 +1096,11 @@ func TestTimeline_TheMarkerSaysWhatWasChecked(t *testing.T) {
 	if !strings.Contains(out, "    failed       1  (0 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded)\n") {
 		t.Errorf("the counts line claims more than the row:\n%s", out)
 	}
-	legend := "                 (only a later success of the same command, or of the same program for single-purpose programs, is looked for;\n" +
-		"                 for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is;\n" +
+	legend := "                 (only a later success of the same command,\n" +
+		"                 or of the same program for single-purpose programs, is looked for;\n" +
+		"                 for wrappers and multi-command programs\n" +
+		"                 such as git, go, make, npm, python and sudo,\n" +
+		"                 and for calls with no program such as Read or Edit, only the same command is;\n" +
 		"                 a fix made with a different command, or a corrected Edit, is not detected)\n"
 	if !strings.Contains(out, legend) {
 		t.Errorf("the legend does not say which calls get only the same command:\n%s", out)

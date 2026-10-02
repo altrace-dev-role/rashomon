@@ -1277,9 +1277,9 @@ m("TL the program reaches the terminal raw on the timeline", "internal/report/ti
 m("TL undeclared rows are ordered by their last record, not their outcome's", "internal/report/timeline.go",
   "\t\tp := outcomeSeq(outcomeRecord(executed[id]))", "\t\tp := outcomeSeq(outcomeRecord(executed[id][max(len(executed[id])-1, 0):]))", "TestTimeline_")
 m("TL the legend does not name the programs with no program tier", "internal/report/timeline_text.go",
-  "\t\tfmt.Fprintln(b, \"                 for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is;\")\n", "", "TestTimeline_")
+  "\t\tfmt.Fprintln(b, \"                 for wrappers and multi-command programs\")\n\t\tfmt.Fprintln(b, \"                 such as git, go, make, npm, python and sudo,\")\n", "", "TestTimeline_")
 m("TL the legend leaves out calls with no program", "internal/report/timeline_text.go",
-  "sudo, and for calls with no program such as Read or Edit, only", "sudo, only", "TestTimeline_")
+  "\t\tfmt.Fprintln(b, \"                 and for calls with no program such as Read or Edit, only the same command is;\")\n", "", "TestTimeline_")
 
 # #36 review round 5.
 m("TL an undeclared failed call's ok record is dropped", "internal/report/timeline.go",
