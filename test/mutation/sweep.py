@@ -1166,9 +1166,9 @@ m("TL the digest reaches the JSON", "internal/report/timeline.go",
 m("TL a rewritten success counts as the same command", "internal/report/timeline.go",
   "\t\treturn rec.ExecutedDigest\n", "\t\treturn declared\n", "TestTimeline_")
 m("TL an undeclared later success reads as no later success", "internal/report/timeline.go",
-  "\t\t\tif e.pos == nil || *e.pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif false {\n\t\t\t\tunplaced = true", "TestTimeline_")
+  "\t\t\tif pos == nil || *pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif false && (pos == nil || *pos > *failed.pos) {\n\t\t\t\tunplaced = true", "TestTimeline_")
 m("TL an undeclared earlier success leaves the failure unchecked", "internal/report/timeline.go",
-  "\t\t\tif e.pos == nil || *e.pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif true {\n\t\t\t\tunplaced = true", "TestTimeline_")
+  "\t\t\tif pos == nil || *pos > *failed.pos {\n\t\t\t\tunplaced = true", "\t\t\tif true || pos == nil || *pos > *failed.pos {\n\t\t\t\tunplaced = true", "TestTimeline_")
 m("TL the never-ran group is spelled unlike every other enum", "internal/report/timeline.go",
   "\tGroupNeverRan    = \"never_ran\"", "\tGroupNeverRan    = \"never ran\"", "TestTimeline_")
 m("TL the report builds the timeline without the denials", "internal/report/report.go",
@@ -1257,9 +1257,9 @@ m("TL an undeclared success's executed digest is thrown away", "internal/report/
 m("TL an undeclared success with no tool name is ruled out", "internal/report/timeline.go",
   "\t\t\tif c.ToolName != failed.call.ToolName && c.ToolName != LinkUnknown {", "\t\t\tif c.ToolName != failed.call.ToolName {", "TestTimeline_")
 m("TL an undeclared success of another digest is ruled out under a program tier", "internal/report/timeline.go",
-  "\t\t\tif e.digest != \"\" && e.digest != failed.digest && !programTier {", "\t\t\tif e.digest != \"\" && e.digest != failed.digest {", "TestTimeline_")
+  "digest != \"\" && digest != failed.digest && !programTier {", "digest != \"\" && digest != failed.digest {", "TestTimeline_")
 m("TL an undeclared success of an unknown digest is ruled out", "internal/report/timeline.go",
-  "\t\t\tif e.digest != \"\" && e.digest != failed.digest && !programTier {", "\t\t\tif e.digest != failed.digest && !programTier {", "TestTimeline_")
+  "digest != \"\" && digest != failed.digest && !programTier {", "digest != failed.digest && !programTier {", "TestTimeline_")
 m("TL the marker claims a same-program check it did not make", "internal/report/timeline_text.go",
   "\t\tif !sameProgramTier(c.Program) {\n\t\t\treturn \"  → no later success of the same command recorded\"", "\t\tif false {\n\t\t\treturn \"  → no later success of the same command recorded\"", "TestTimeline_")
 m("TL tool_name reaches the terminal raw in the rewritten list", "internal/report/text.go",
@@ -1278,6 +1278,14 @@ m("TL undeclared rows are ordered by their last record, not their outcome's", "i
   "\t\tp := outcomeSeq(outcomeRecord(executed[id]))", "\t\tp := outcomeSeq(outcomeRecord(executed[id][max(len(executed[id])-1, 0):]))", "TestTimeline_")
 m("TL the legend does not name the programs with no program tier", "internal/report/timeline_text.go",
   "\t\t\t\"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; \"+\n", "", "TestTimeline_")
+
+# #36 review round 5.
+m("TL an undeclared failed call's ok record is dropped", "internal/report/timeline.go",
+  "ok: failedCallOK(c, \"\", recs)})", "ok: nil})", "TestTimeline_")
+m("TL only an undeclared ok row is weighed as a lost declaration", "internal/report/timeline.go",
+  "\t\tif c.Seq == nil {\n\t\t\tpos, digest := e.pos, e.digest", "\t\tif c.Seq == nil && c.Group == GroupOK {\n\t\t\tpos, digest := e.pos, e.digest", "TestTimeline_")
+m("TL an unnamed undeclared record is ruled out on its digest", "internal/report/timeline.go",
+  "\t\t\tif c.ToolName == failed.call.ToolName && digest != \"\"", "\t\t\tif digest != \"\"", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

@@ -488,18 +488,32 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 		// A success whose declaration was lost -- to a lock timeout, a paused
 		// pre hook or a failing PreToolUse hook -- has no program to match and
 		// no row to point at, but its execution record says what ran, and a
-		// record with no tool name may be of the same tool. A known digest
+		// record with no tool name may be of the same tool. That is an ok row
+		// with no declaration, or the ok record of a failed one. A known digest
 		// other than the failure's rules it out where no program tier is
-		// offered; anything else recorded after the failure, or at no known
-		// position, is one more success that cannot be ruled out.
-		if c.Seq == nil && c.Group == GroupOK {
+		// offered, and only under the failure's own tool name: a record with
+		// no tool name was digested under none, so its digest never equals a
+		// named tool's. Anything else recorded after the failure, or at no
+		// known position, is one more success that cannot be ruled out.
+		if c.Seq == nil {
+			pos, digest := e.pos, e.digest
+			switch c.Group {
+			case GroupOK:
+			case GroupFailed:
+				if e.ok == nil {
+					continue
+				}
+				pos, digest = e.ok.pos, e.ok.digest
+			default:
+				continue
+			}
 			if c.ToolName != failed.call.ToolName && c.ToolName != LinkUnknown {
 				continue
 			}
-			if e.digest != "" && e.digest != failed.digest && !programTier {
+			if c.ToolName == failed.call.ToolName && digest != "" && digest != failed.digest && !programTier {
 				continue
 			}
-			if e.pos == nil || *e.pos > *failed.pos {
+			if pos == nil || *pos > *failed.pos {
 				unplaced = true
 			}
 			continue

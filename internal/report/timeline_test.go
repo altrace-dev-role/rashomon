@@ -875,6 +875,52 @@ func TestTimeline_AnUndeclaredSuccessIsNotNoSuccess(t *testing.T) {
 	if c := tlByID(t, buildTimeline(unknown, nil), "f"); c.LaterChecked || c.Later != nil {
 		t.Errorf("an undeclared success with no tool name is ruled out: %+v", c)
 	}
+
+	// #36 review round 5, item 1: an undeclared call that failed and then
+	// succeeded is failed, but its ok record is a success whose declaration
+	// was lost all the same, and the same rule weighs it. Break: apply the
+	// rule to ok rows only, and the failure reads "no later success" beside
+	// an ok record it cannot rule out.
+	for _, tc := range []struct {
+		name, program, tool, executed string
+	}{
+		{"unknown digest", "pytest", "Bash", ""},
+		{"other digest under a program tier", "pytest", "Bash", "d2"},
+		{"no tool name", "git", "", "dx"},
+	} {
+		r := tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: tc.program, digest: "d1"}},
+			tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("u", store.ExecFailed, 1, 5), tlExecAt("u", store.ExecOK, 0, 12))
+		for i := 1; i < 3; i++ {
+			r.Executions[i].ToolName = tc.tool
+		}
+		r.Executions[1].ExecutedDigest = "d1"
+		r.Executions[2].ExecutedDigest = tc.executed
+		tl := buildTimeline(r, nil)
+		if u := tlByID(t, tl, "u"); u.Group != GroupFailed {
+			t.Fatalf("%s: u = %s, want failed", tc.name, u.Group)
+		}
+		if c := tlByID(t, tl, "f"); c.LaterChecked || c.Later != nil {
+			t.Errorf("%s: an undeclared failed call's ok record is ruled out: later %+v, checked %v", tc.name, c.Later, c.LaterChecked)
+		}
+	}
+
+	// A record with no tool_name was digested under no tool name, and the
+	// digest covers the name: the same `git push` digests differently under
+	// "" than under Bash, so it rules nothing out. Break: rule an unnamed
+	// record out on its digest, and the failure reads "no later success"
+	// beside the same command run again.
+	key := []byte("timeline-test-key")
+	push := json.RawMessage(`{"command":"git push"}`)
+	named, unnamed := shape.Derive("Bash", push, key), shape.Derive("", push, key)
+	gitRun := tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "git", digest: named.Digest}},
+		tlExecAt("f", store.ExecFailed, 1, 10), tlExecAt("u", store.ExecOK, 0, 12))
+	gitRun.Executions[1].ExecutedDigest = unnamed.Digest
+	if named.Digest == unnamed.Digest {
+		t.Fatalf("the digest does not cover the tool name: %s", named.Digest)
+	}
+	if c := tlByID(t, buildTimeline(gitRun, nil), "f"); c.LaterChecked || c.Later != nil {
+		t.Errorf("an unnamed record of the same git push is ruled out: later %+v, checked %v", c.Later, c.LaterChecked)
+	}
 }
 
 // #36 review 4: the same-program tier makes no claim about arguments, and is
