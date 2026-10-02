@@ -436,7 +436,7 @@ func TestTestBending_ACurlProgressBarOutputIsAnEdit(t *testing.T) {
 // ./...` was keyed on /tmp/project and every repeat on /tmp/project/web,
 // although all of them ran in web: a failed first run, a test edit and a
 // passing rerun never paired. The key is now the directory the runner starts
-// in, the target of a leading plain cd.
+// in, where its leading plain cd steps lead.
 func TestTestBending_ALeadingAbsoluteCdKeysTheRunOnItsTarget(t *testing.T) {
 	s := newTBSession(t)
 	s.shell("cd /tmp/project/web && go test ./...", false, "")

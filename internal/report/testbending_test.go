@@ -525,7 +525,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"the numbers are call seqs, and `rashomon report --session sess-7f3a --timeline` shows these rows",
 		"a file edit here is any recorded call but a read, a web fetch, a subagent launch, or a task, todo, question, plan, background-shell, skill, search, message, cron or MCP-resource tool",
 		"a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read",
-		"runs pair only when the same command line started in the same directory: the reported cwd, or the target of a leading plain cd;",
+		"runs pair only when the same command line started in the same directory: the reported cwd, or where its leading plain cd steps lead;",
 		"a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run",
 		"but one that writes through an option not on that list (find -fprint, curl -D) is not counted",
 	} {

@@ -1470,7 +1470,7 @@ m("TB a denied cd breaks the pair", "internal/report/testbending.go",
   "\t\tif outcome == LinkOutcomeDenied && (d.Shape.Program == nil || *d.Shape.Program != \"cd\") {\n\t\t\tcontinue\n\t\t}\n",
   "TestTestBending")
 m("TB the session block drops the directory limit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    runs pair only when the same command line started in the same directory: the reported cwd, or the target of a leading plain cd;\")\n",
+  "\t\tfmt.Fprintln(b, \"    runs pair only when the same command line started in the same directory: the reported cwd, or where its leading plain cd steps lead;\")\n",
   "",
   "TestTestRuns_")
 
