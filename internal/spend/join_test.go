@@ -956,11 +956,12 @@ func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *
 		keepID       bool   // the copied lines keep the original's sessionId
 		undatedFirst bool   // the original starts with an undated line
 		copyCoverage string
+		named        string // the rows holding the not-covered dollars
 	}{
-		{"copied lines keep sess-o", "sess-r", true, false, CoverageRecorded},
-		{"copied lines carry sess-r", "sess-r", false, false, CoveragePartly},
-		{"copied lines carry sess-a, which sorts first", "sess-a", false, false, CoveragePartly},
-		{"copied lines carry sess-a, the original's first line undated", "sess-a", false, true, CoveragePartly},
+		{"copied lines keep sess-o", "sess-r", true, false, CoverageRecorded, "sess-o"},
+		{"copied lines carry sess-r", "sess-r", false, false, CoveragePartly, "sess-o,sess-r"},
+		{"copied lines carry sess-a, which sorts first", "sess-a", false, false, CoveragePartly, "sess-a,sess-o"},
+		{"copied lines carry sess-a, the original's first line undated", "sess-a", false, true, CoveragePartly, "sess-a,sess-o"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			x1 := resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T, in: 1000, w5: 100, stop: "end_turn"}
@@ -1012,8 +1013,8 @@ func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *
 			if want := int64(3000*opusIn + 3100*opusW5); j.NotCoveredCost.Nano != want {
 				t.Errorf("not-covered cost = %d, want %d: the shared responses, once", j.NotCoveredCost.Nano, want)
 			}
-			if strings.Join(j.NotCoveredSessions, ",") != "sess-o" {
-				t.Errorf("not-covered sessions = %v, want sess-o, the original's own", j.NotCoveredSessions)
+			if strings.Join(j.NotCoveredSessions, ",") != tc.named {
+				t.Errorf("not-covered sessions = %v, want %s, the rows holding the shared responses", j.NotCoveredSessions, tc.named)
 			}
 			cov := map[string]string{}
 			for _, p := range s.PerSession {
@@ -1042,7 +1043,8 @@ func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *
 // not covered -- the same response in "at least $X" and in "$X in the other
 // 1 is not covered" -- while the recorded original read partly recorded. A
 // response a covered turn counted is not also not covered, and the original
-// session reads recorded.
+// session reads recorded. No row holds a not-covered dollar, so none is
+// named: the copy's own session has no row.
 func TestJoin_ASharedResponseIsNeverBothCountedAndNotCovered(t *testing.T) {
 	c := newConfig(t)
 	rec := newRecorder(t)
@@ -1067,8 +1069,8 @@ func TestJoin_ASharedResponseIsNeverBothCountedAndNotCovered(t *testing.T) {
 		t.Errorf("not covered: %d transcripts, cost %+v; want the copy counted with no dollars, which the turn already counted",
 			j.NotCoveredTranscripts, j.NotCoveredCost)
 	}
-	if strings.Join(j.NotCoveredSessions, ",") != "sess-c" {
-		t.Errorf("not-covered sessions = %v, want the copy's own, sess-c", j.NotCoveredSessions)
+	if len(j.NotCoveredSessions) != 0 {
+		t.Errorf("not-covered sessions = %v, want none: no row holds a not-covered dollar", j.NotCoveredSessions)
 	}
 	if len(s.PerSession) != 1 || s.PerSession[0].SessionID != "sess-o" || s.PerSession[0].Coverage != CoverageRecorded {
 		t.Errorf("per session = %+v, want sess-o recorded", s.PerSession)
@@ -1279,6 +1281,9 @@ func TestJoin_AnAbsentOriginalsRowIsNotRecorded(t *testing.T) {
 	if o := row(s, "sess-o"); o == nil || o.Coverage != CoverageNotRecorded {
 		t.Errorf("rows = %+v, want sess-o not recorded", s.PerSession)
 	}
+	if n := s.SilentFailureTurns.NotCoveredSessions; strings.Join(n, ",") != "sess-o" {
+		t.Errorf("not-covered sessions = %v, want sess-o, the row holding the not-covered dollars", n)
+	}
 	txt, _ := render(t, s)
 	if !strings.Contains(txt, "sess-o <$0.01 (main <$0.01, subagents none), not recorded by rashomon\n") {
 		t.Errorf("the text does not mark sess-o not recorded:\n%s", txt)
@@ -1309,5 +1314,69 @@ func TestJoin_ARecordedOriginalWithAnUnrecordedCopy(t *testing.T) {
 	}
 	if s.Total.Nano != 1000*opusIn || s.SilentFailureTurns.NotCoveredCost.Nano != 1000*opusIn {
 		t.Errorf("total %d, not covered %d; want the shared response once in each", s.Total.Nano, s.SilentFailureTurns.NotCoveredCost.Nano)
+	}
+}
+
+// TestJoin_AnUnrecordedCopyOfAFiringTurnIsNotRecorded: the original was
+// recorded and its failed turn fires; an unrecorded /branch copy under its
+// own id holds the turn's responses with the same timestamps, so both
+// sessions own them. The turn counted those responses, and a counted
+// response marked every owner's row as covered, so the copy read "partly
+// recorded" though rashomon recorded nothing of it.
+func TestJoin_AnUnrecordedCopyOfAFiringTurnIsNotRecorded(t *testing.T) {
+	T := now.Add(-2 * time.Hour)
+	lines := func(id string) []string {
+		return []string{
+			userLine(id, "p1", T.Add(-time.Second), false),
+			resp{id: "X1", model: "claude-opus-5-5", session: id, at: T.Add(500 * time.Millisecond), in: 1000, stop: "tool_use"}.line("tool_use"),
+			userLine(id, "p1", T.Add(time.Second), true),
+			resp{id: "X2", model: "claude-opus-5-5", session: id, at: T.Add(3 * time.Second), in: 1000, stop: "end_turn",
+				text: "Ran the command as requested."}.line("text"),
+		}
+	}
+	s := orders(t, func(c *config, first, second string) *store.Store {
+		rec := newRecorder(t)
+		rec.transcript = c.write(first+"/sess-o.jsonl", lines("sess-o")...)
+		c.write(second+"/sess-c.jsonl", lines("sess-c")...)
+		rec.call("sess-o", "p1", "toolu_o", T, T.Add(time.Second), store.ExecFailed)
+		return rec.st
+	})
+	if j := s.SilentFailureTurns; j.Turns != 1 || j.Cost.Nano != 2000*opusIn {
+		t.Fatalf("premise: turns %d, cost %d; want the turn to fire on both responses", j.Turns, j.Cost.Nano)
+	}
+	o, c := row(s, "sess-o"), row(s, "sess-c")
+	if o == nil || c == nil || o.Coverage != CoverageRecorded || c.Coverage != CoverageNotRecorded {
+		t.Errorf("rows = %+v; want sess-o recorded and sess-c not recorded", s.PerSession)
+	}
+	txt, _ := render(t, s)
+	if strings.Contains(txt, "partly recorded") || !strings.Contains(txt, "sess-c <$0.01 (main <$0.01, subagents none), not recorded by rashomon\n") {
+		t.Errorf("the unrecorded copy is not marked not recorded:\n%s", txt)
+	}
+}
+
+// TestJoin_ASightingSessionWithNoFileIsNotRecorded: a response is owned by
+// the file first dated, sess-a's; a later file also holds it under lines
+// carrying sess-x, a session no discovered file is named for. Both files
+// were recorded, but sess-x, which has a row, has no transcript of its own,
+// so it is not recorded -- with no tally it had no label and printed like a
+// recorded row.
+func TestJoin_ASightingSessionWithNoFileIsNotRecorded(t *testing.T) {
+	T := now.Add(-2 * time.Hour)
+	s := orders(t, func(c *config, first, second string) *store.Store {
+		rec := newRecorder(t)
+		rec.transcript = c.write(first+"/sess-a.jsonl", userLine("sess-a", "p0", T.Add(-10*time.Minute), false),
+			resp{id: "X1", model: "claude-opus-5-5", session: "sess-a", at: T, in: 1000, stop: "end_turn"}.line("text"))
+		rec.call("sess-a", "p1", "toolu_a", T, T.Add(time.Second), store.ExecOK)
+		rec.transcript = c.write(second+"/sess-b.jsonl",
+			resp{id: "X1", model: "claude-opus-5-5", session: "sess-x", at: T, in: 1000, stop: "end_turn"}.line("text"))
+		rec.call("sess-x", "p2", "toolu_b", T, T.Add(time.Second), store.ExecOK)
+		return rec.st
+	})
+	x := row(s, "sess-x")
+	if x == nil || x.Main != (Cost{}) || x.Coverage != CoverageNotRecorded {
+		t.Errorf("rows = %+v; want a sess-x row with no dollars, not recorded", s.PerSession)
+	}
+	if a := row(s, "sess-a"); a == nil || a.Coverage != CoverageRecorded {
+		t.Errorf("rows = %+v; want sess-a recorded", s.PerSession)
 	}
 }

@@ -473,8 +473,10 @@ succeeded. A failed call whose declaration was lost has no prompt, so it is
 placed in no turn: the line counts it as a failed call that could not be
 checked, and with one, "none found" holds only for the turns that could be.
 The line covers only the transcripts a rashomon record names. Every
-other transcript is named, priced and marked not covered, never folded in as
-zero. A response that appears in several transcripts (a resumed conversation,
+other transcript is counted and its spend priced and marked not covered,
+never folded in as zero, and the sessions whose rows hold that spend are
+named. A session's row reads recorded only when its own transcripts were
+recorded and it holds none of that spend. A response that appears in several transcripts (a resumed conversation,
 or a copy made by `/branch` or `--fork-session`) is not covered when any of
 them is not, and its cost is counted once. In the per-session rows it belongs
 to the session whose transcript starts first; a copy that keeps the

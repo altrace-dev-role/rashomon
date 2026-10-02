@@ -1209,7 +1209,7 @@ m("SP a silent turn before the window is counted", "internal/spend/join.go",
 m("SP a transcript counts as covered when its session id has a run directory", "internal/spend/join.go",
   "\t\trun, err := st.ReadRun(id)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n", "\t\trun, err := st.ReadRun(id)\n\t\tif err != nil {\n\t\t\treturn err\n\t\t}\n\t\tfor m, rs := range byTranscript {\n\t\t\tif slices.Contains(rs[0].owners, id) {\n\t\t\t\tcovered[m] = true\n\t\t\t}\n\t\t}\n",
   "TestJoin_CoverageIsPerTranscript")
-m("SP a not-covered transcript's session is not named", "internal/spend/join.go",
+m("SP a row holding not-covered dollars is not named", "internal/spend/join.go",
   "\t\t\tnamed[displaySession(id)] = true\n", "",
   "TestJoin_SpendInside|TestJoin_CoverageIsPerTranscript")
 m("SP a partly recorded session is marked recorded", "internal/spend/join.go",
@@ -1226,7 +1226,7 @@ m("SP the floor note is printed under a none", "internal/spend/text.go",
   "\tif j.Turns > 0 {\n\t\tfmt.Fprintf(&b, \"  (%s)\\n\", j.Bound)", "\tif true {\n\t\tfmt.Fprintf(&b, \"  (%s)\\n\", j.Bound)",
   "TestJoin_ACoveredZeroIsAZero")
 m("SP an unrecorded session's spend is folded in as zero", "internal/spend/join.go",
-  "\t\t\tcostOf(&j.NotCoveredCost, r)", "\t\t\t_ = r", "TestJoin_")
+  "\t\tcostOf(&j.NotCoveredCost, r)", "\t\t_ = r", "TestJoin_")
 m("SP no store renders as a store that recorded nothing here", "internal/spend/text.go",
   "\tcase j.Store == StoreNone:", "\tcase j.Store == \"never\":", "TestJoin_NoStore|TestSpend_OpensNoStore")
 m("SP spend creates a store to read one", "cmd/rashomon/main.go",
@@ -1521,7 +1521,7 @@ m("SP a refusal's category reaches the output end to end", "internal/spend/scan.
   "\treturn *d.Category\n",
   "TestSpend_NoMessageTextReachesTheOutput")
 m("SP a shared response's not-covered cost is counted in every unrecorded transcript", "internal/spend/join.go",
-  "\t\tif notCovered {\n\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t}", "\t\tif notCovered {\n\t\t\tfor _, m := range s.mainsOf(r) {\n\t\t\t\tif !covered[m] {\n\t\t\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t\t\t}\n\t\t\t}\n\t\t}",
+  "\t\tcostOf(&j.NotCoveredCost, r)\n", "\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tif !covered[m] {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t\t}\n\t\t}\n",
   "TestJoin_ASharedResponse")
 m("SP a response a covered turn counted is also not covered", "internal/spend/join.go",
   "\t\tif !counted[r] {\n\t\t\tfor _, m := range s.mainsOf(r) {", "\t\tif true {\n\t\t\tfor _, m := range s.mainsOf(r) {",
@@ -1529,7 +1529,7 @@ m("SP a response a covered turn counted is also not covered", "internal/spend/jo
 m("SP a shared response's session is the first sighting's", "internal/spend/scan.go",
   "\t\tr.owners = sc.ownerSessions(r)", "\t\tr.owners = []string{r.files[0].session}",
   "TestJoin_ADuplicatedResponse|TestJoin_ASharedResponseBelongs|TestJoin_ARecordedOriginal")
-m("SP a transcript is named by the session of its first-seen response", "internal/spend/join.go",
+m("SP a transcript is tallied by the session of its first-seen response", "internal/spend/join.go",
   "\tfor m := range byTranscript {\n\t\tid := sessionOf[m]", "\tfor m, rs := range byTranscript {\n\t\tid := rs[0].files[0].session",
   "TestJoin_ADuplicatedResponse|TestJoin_ASharedResponse")
 m("SP a refusal's synthetic line is counted again as a pre-output refusal", "internal/spend/scan.go",
@@ -1661,7 +1661,7 @@ m("SP a session holding a response it does not own has no row", "internal/spend/
   "\t\tfor _, f := range r.files {\n\t\t\trow(f.session)\n\t\t}\n", "",
   "TestJoin_")
 m("SP a row holding not-covered dollars reads recorded", "internal/spend/join.go",
-  "\t\t\tif t := tallyOf(id); notCovered {\n\t\t\t\tt.out++", "\t\t\tif t := tallyOf(id); notCovered {\n\t\t\t\tt.in++",
+  "\t\t\ttallyOf(id).out++", "\t\t\ttallyOf(id).in++",
   "TestJoin_")
 m("SP a lost declaration's failed call is placed in a turn by recorded time", "internal/spend/join.go",
   "\t\t\tif !declared[x.ToolUseID] && x.Outcome == store.ExecFailed {\n\t\t\t\tlost = append(lost, x.RecordedAtMS)\n\t\t\t}\n\t\t\tcontinue\n",
@@ -1694,6 +1694,16 @@ m("SP a session holding only pre-output refusals has no row", "internal/spend/sp
 m("SP a pre-output refusal's transcript is not one of the window's", "internal/spend/join.go",
   "\tfor _, rs := range [][]*Response{s.window, s.refused} {", "\tfor _, rs := range [][]*Response{s.window} {",
   "TestSessions_ASessionHoldingOnlyPreOutputRefusals")
+m("SP a response a covered turn counted marks every row holding it covered", "internal/spend/join.go",
+  "\t\tif !notCovered {\n\t\t\tcontinue\n\t\t}\n",
+  "\t\tif !notCovered {\n\t\t\tfor _, id := range r.owners {\n\t\t\t\ttallyOf(id).in++\n\t\t\t}\n\t\t\tcontinue\n\t\t}\n",
+  "TestJoin_")
+m("SP a not-covered transcript names its file's own session", "internal/spend/join.go",
+  "\t\t\tj.NotCoveredTranscripts++\n\t\t\tt.out++\n", "\t\t\tj.NotCoveredTranscripts++\n\t\t\tt.out++\n\t\t\tnamed[displaySession(id)] = true\n",
+  "TestJoin_")
+m("SP a row with no tally has no coverage label", "internal/spend/join.go",
+  "\t\tcase t == nil:\n\t\t\ts.PerSession[i].Coverage = CoverageNotRecorded\n", "\t\tcase t == nil:\n",
+  "TestJoin_")
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

@@ -50,8 +50,8 @@ const (
 //
 // It covers only TRANSCRIPTS rashomon recorded -- a main transcript some
 // record's transcript_path names, with the subagent transcripts under it.
-// The rest are COUNTED, their sessions NAMED, and their spend shown as not
-// covered -- never folded in as zero, because a conversation nobody recorded
+// The rest are COUNTED, their spend shown as not covered and the sessions
+// holding it NAMED -- never folded in as zero, because a conversation nobody recorded
 // is one nobody checked, and zero would read as "checked and clean".
 //
 // Per transcript, not per session id, because a session id is not a
@@ -66,8 +66,8 @@ type SilentFailureTurns struct {
 	CoveredTranscripts    int    `json:"covered_transcripts"`
 	NotCoveredTranscripts int    `json:"not_covered_transcripts"`
 	NotCoveredCost        Cost   `json:"not_covered_cost"`
-	// NotCoveredSessions names each session with a transcript that is not
-	// covered, as displaySession prints it.
+	// NotCoveredSessions names each per-session row holding a response whose
+	// cost is in NotCoveredCost, as displaySession prints it.
 	NotCoveredSessions []string `json:"not_covered_sessions"`
 	Turns              int      `json:"turns"`
 	// Unjudged counts the recorded turns with a failed call that took no
@@ -369,16 +369,18 @@ func (s *Summary) Join(st *store.Store) error {
 // Deferred by Join so every exit, a nil store's included, fills the same
 // fields the same way.
 //
-// Each transcript is tallied and named by its own session
+// A row reads recorded only when its own transcripts were recorded and it
+// holds no not-covered dollars. Each transcript is tallied by its own session
 // (TranscriptFile.Session), never by the session of whichever response it
 // holds was seen first: a branched copy carrying the original's responses
-// named the recorded copy as not covered in one path order. A row is tallied
-// by its dollars too: each response it holds the cost of counts as covered,
-// or as not when its cost is in NotCoveredCost. So a session with any
-// transcript, or any dollar, not covered is not "recorded" -- an unrecorded
-// copy is never reported as recorded, nor is a row holding not-covered
-// dollars -- and a row whose session names no discovered file (a copy whose
-// lines keep an absent original's id) still has a label.
+// marked the recorded copy as not covered in one path order. A response
+// whose cost is in NotCoveredCost marks each row holding it as not covered,
+// and names those rows: the not-covered sessions are exactly the rows that
+// hold those dollars. A response counted elsewhere changes no label -- a
+// covered turn's count once marked an unrecorded copy holding the same
+// response partly recorded. And a row with neither (a session no discovered
+// file is named for, holding no not-covered dollar) has no transcript of its
+// own that was recorded, so it is not recorded.
 func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[string]bool, counted map[*Response]bool) {
 	j := &s.SilentFailureTurns
 	sessionOf := map[string]string{}
@@ -405,7 +407,6 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 		} else {
 			j.NotCoveredTranscripts++
 			t.out++
-			named[displaySession(id)] = true
 		}
 	}
 	// Once per response, however many transcripts hold it: not covered when
@@ -422,15 +423,13 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 				}
 			}
 		}
-		if notCovered {
-			costOf(&j.NotCoveredCost, r)
+		if !notCovered {
+			continue
 		}
+		costOf(&j.NotCoveredCost, r)
 		for _, id := range r.owners {
-			if t := tallyOf(id); notCovered {
-				t.out++
-			} else {
-				t.in++
-			}
+			tallyOf(id).out++
+			named[displaySession(id)] = true
 		}
 	}
 	for name := range named {
@@ -441,6 +440,7 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 		t := bySession[s.PerSession[i].id]
 		switch {
 		case t == nil:
+			s.PerSession[i].Coverage = CoverageNotRecorded
 		case t.out == 0:
 			s.PerSession[i].Coverage = CoverageRecorded
 		case t.in == 0:

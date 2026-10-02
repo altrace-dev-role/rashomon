@@ -308,14 +308,16 @@ lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
 - A response keeps every file it was seen in, with the session its line
   carries there. Coverage reads all of them: a response is not covered when
   any transcript holding it is not, and its cost is counted once, and not at
-  all when a covered turn already counted it. Each transcript is named by its
-  own session. A shared response belongs to the session of the file whose
+  all when a covered turn already counted it. Each transcript is tallied by
+  its own session. A shared response belongs to the session of the file whose
   first dated line is earliest, and on a tie to each tied session: `/branch`
   keeps the original timestamps on every copied line, so a copy and its
   original tie, and a tie broken by session id gave the original's responses
   to whichever random id sorted first. Every session holding a response has a
-  row, so per-session rows can sum to more than the total. A row holding
-  not-covered dollars reads not recorded or partly recorded. So coverage, the
+  row, so per-session rows can sum to more than the total. A row reads
+  recorded only when its own transcripts were recorded and it holds no
+  not-covered dollars, and the not-covered sessions named are exactly the rows
+  holding those dollars. So coverage, the
   not-covered cost, the sessions, and cold writes for a copied prefix depend
   on neither the path sort order nor the session ids. The cold-cache heuristic
   judges a response once, in the file it was first seen in, against every
