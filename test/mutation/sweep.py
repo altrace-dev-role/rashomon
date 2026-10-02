@@ -1946,6 +1946,19 @@ m("TB the --timeline hint pastes the id unquoted", "internal/report/text.go",
   "\t\t\treturn s\n",
   "TestTestRuns_CountsAndText")
 
+m("TB curl's : takes an argument", "internal/shape/shape.go",
+  "'0' <= c && c <= '9', c == '#', c == ':':\n",
+  "'0' <= c && c <= '9', c == '#':\n",
+  "TestMayWrite")
+m("TB -Dmaven.test.skip runs the tests", "internal/shape/shape.go",
+  "\tcase \"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\":\n",
+  "\tcase \"-DskipTests\", \"-Dmaven.test.skip.exec\":\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB an empty session id pastes as nothing", "internal/report/text.go",
+  "\tif s == \"\" {\n\t\treturn \"''\"\n\t}\n",
+  "",
+  "TestTestRuns_CountsAndText")
+
 # Import additions some mutants need.
 IMPORTS = {
   "H-20 the post payload declares tool_response, and it reaches the debug log": ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n'),

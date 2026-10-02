@@ -246,6 +246,8 @@ func TestTestClassRefusesWhatDoesNotRunTests(t *testing.T) {
 		{"ctest --show-only=json-v1", VerbExecute},
 		{"dotnet test --list-tests", VerbExecute},
 		{"mvn test -DskipTests", VerbExecute},
+		{"mvn test -Dmaven.test.skip=true", VerbExecute},
+		{"mvn test -Dmaven.test.skip", VerbExecute},
 		{"make test -n", VerbExecute},
 		{"make test --just-print", VerbExecute},
 		{"make test --dry-run", VerbExecute},
@@ -446,6 +448,7 @@ func TestMayWrite(t *testing.T) {
 		// them.
 		{"curl -#O https://example.com/x", true},
 		{"curl -#o f https://example.com/x", true},
+		{"curl -:O https://example.com/x", true},
 		{"curl -4sSLO https://example.com/x", true},
 		{"curl -0o calc.go https://example.com/x", true},
 		// A write inside a command or process substitution.

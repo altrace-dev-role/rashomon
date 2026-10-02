@@ -709,7 +709,9 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
 
 // pasteArg is s as one shell word: bare when it is not empty and every byte
 // is in [A-Za-z0-9._-], and otherwise single-quoted, with a quote inside
-// closed, escaped and reopened, as internal/install's shellQuote does.
+// closed, escaped and reopened, as internal/install's shellQuote does. Its
+// safe set is narrower than shellQuote's on purpose, so the pasted id is a
+// single word under any shell.
 func pasteArg(s string) string {
 	if s == "" {
 		return "''"

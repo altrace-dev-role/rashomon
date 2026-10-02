@@ -551,6 +551,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"sess 7f3a": "`rashomon report --session 'sess 7f3a' --timeline`",
 		"it's":      "`rashomon report --session 'it'\\''s' --timeline`",
 		"a.b_c-9":   "`rashomon report --session a.b_c-9 --timeline`",
+		"":          "`rashomon report --session '' --timeline`",
 	} {
 		b.Reset()
 		writeTestRuns(&b, tr, id)
@@ -746,12 +747,18 @@ func TestDetectTestBending_ACallThatFailedOnceIsAFailedRun(t *testing.T) {
 
 // TestDetectTestBending_AnEditThatFailedOnceDidNotRunOk: testOutcome decides
 // edits as well as runs, so a test-file edit with one failed record is failed,
-// as its timeline row is, whichever record has the higher seq, and it is no
-// test edit that ran ok. Break: read an edit by linkOutcome, the highest-seq
-// record, and a failed run, an edit recorded [failed, ok] and a passing run
-// read as only test files edited, then green.
+// whichever record has the higher seq, and it is no test edit that ran ok.
+// Break: read an edit by linkOutcome, the highest-seq record, and a failed
+// run, an edit recorded [failed, ok] and a passing run read as only test files
+// edited, then green.
 func TestDetectTestBending_AnEditThatFailedOnceDidNotRunOk(t *testing.T) {
 	const ok, failed = store.ExecOK, store.ExecFailed
+	// The same fixture with one ok edit record pairs, so the absence below
+	// is the failed record's doing.
+	control := tbRun(test(1, "d", failed), edit(2, shape.LabelTestFile, ok), test(3, "d", ok))
+	if got := DetectTestBending(control, nil).TestsOnlyThenGreen; !reflect.DeepEqual(got, []SeqPair{{1, 3}}) {
+		t.Fatalf("one ok edit record: tests only then green %v, want [[1 3]]", got)
+	}
 	for _, order := range [][2]string{{failed, ok}, {ok, failed}} {
 		run := tbRun(test(1, "d", failed), edit(2, shape.LabelTestFile, order[0]), test(3, "d", ok))
 		run.Executions = append(run.Executions, store.Execution{ToolUseID: run.Executions[1].ToolUseID, ToolName: "Edit", Outcome: order[1]})
