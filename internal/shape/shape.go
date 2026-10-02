@@ -1342,8 +1342,10 @@ func wholeCommand(toks []token, i int) bool {
 // A command Claude Code moves to the background itself, when it reaches its
 // timeout or on Ctrl+B, asked for nothing: its tool_input has no such field,
 // so it is a test run here. Its execution record says backgrounded instead
-// (read from the response on the post path), and the report reads such a run
-// as outcome unobserved, as it does a launch declared here.
+// (read from the response on the post path; on Ctrl+B only if Claude Code
+// marks it with backgroundTaskId or backgroundedByUser, which was not
+// measured), and the report reads such a run as outcome unobserved, as it
+// does a launch declared here.
 func backgrounded(raw json.RawMessage) bool {
 	var obj struct {
 		RunInBackground json.RawMessage `json:"run_in_background"`

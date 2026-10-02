@@ -673,8 +673,9 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // needs no line: the second starts in DIR, another directory, and does not
 // pair with the first. Each is a line of the block. A run moved to the
 // background, on its timeout, by Ctrl+B or by run_in_background, is not a
-// limit any more: its execution record says so, and it is no run with a
-// result (LinkOutcomeBackgrounded).
+// limit any more: its execution record says so (on Ctrl+B only if Claude Code
+// marks it with backgroundTaskId or backgroundedByUser, which was not
+// measured), and it is no run with a result (LinkOutcomeBackgrounded).
 //
 // The pairs are seqs, and nothing in the default report maps a seq to its
 // call, so the block's first limit line points at --timeline, which does,

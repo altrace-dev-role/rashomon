@@ -122,8 +122,10 @@ type TimelineAgent struct {
 // it started; that is `run_in_background: true`, and also a command Claude
 // Code moved to the background when it reached its timeout (unless it starts
 // with `sleep`) or when the user pressed Ctrl+B. From schema 3 the execution
-// record says so (store.Execution's Backgrounded), and such a call is in the
-// unknown group, which laterSuccess does not look in. A record written
+// record says so (store.Execution's Backgrounded; on Ctrl+B only if Claude
+// Code marks it with backgroundTaskId or backgroundedByUser, which was not
+// measured), and such a call is in the unknown group, which laterSuccess does
+// not look in. A record written
 // before schema 3 cannot say, and its launch still reads as ok.
 type LaterSuccess struct {
 	Kind  string         `json:"kind"`
