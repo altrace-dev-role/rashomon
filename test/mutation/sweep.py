@@ -1311,6 +1311,14 @@ m("TL an undeclared ok record is ruled out under its call's tool name", "interna
 m("TL an ok record with no tool name keeps an empty one", "internal/report/timeline.go",
   "\t\t\tif tool == \"\" {\n\t\t\t\ttool = LinkUnknown\n\t\t\t}\n", "", "TestTimeline_")
 
+# #36 review round 4, Fix before merge 2.
+m("TL an undeclared failed call is weighed by its failed record's digest", "internal/report/timeline.go",
+  "\t\t\t\tpos, digest, tool = e.ok.pos, e.ok.digest, e.ok.tool\n", "\t\t\t\tpos, tool = e.ok.pos, e.ok.tool\n", "TestTimeline_")
+m("TL an undeclared failed call's ok record has no position", "internal/report/timeline.go",
+  "\t\t\t\tpos, digest, tool = e.ok.pos, e.ok.digest, e.ok.tool\n", "\t\t\t\tpos, digest, tool = nil, e.ok.digest, e.ok.tool\n", "TestTimeline_")
+m("TL an undeclared interrupted or recordless call is weighed as a success", "internal/report/timeline.go",
+  "\t\t\t\tpos, digest, tool = e.ok.pos, e.ok.digest, e.ok.tool\n\t\t\tdefault:\n\t\t\t\tcontinue\n", "\t\t\t\tpos, digest, tool = e.ok.pos, e.ok.digest, e.ok.tool\n", "TestTimeline_")
+
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",
   "\tdigits := strings.TrimSpace(msg[len(exitCodePrefix):])", "TestH21_")

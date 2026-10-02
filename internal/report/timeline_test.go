@@ -996,6 +996,43 @@ func TestTimeline_AnUndeclaredSuccessIsNotNoSuccess(t *testing.T) {
 	if c := tlByID(t, buildTimeline(mixed, nil), "f"); c.LaterChecked || c.Later != nil {
 		t.Errorf("an unnamed ok record is ruled out under its call's tool name: later %+v, checked %v", c.Later, c.LaterChecked)
 	}
+
+	// #36 review round 4, Fix before merge 2: an undeclared failed call is
+	// weighed by its ok record alone -- that record's digest and position --
+	// and an undeclared call that neither succeeded nor failed is no success.
+	// Each case beside a declared git failure f at 10 running d1. Break:
+	// weigh the failed record's digest, drop the ok record's position, or let
+	// an interrupted or recordless call through, and the case naming it goes
+	// the other way.
+	besideF := func(execs ...store.Execution) *store.Run {
+		r := tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "git", digest: "d1"}},
+			append([]store.Execution{tlExecAt("f", store.ExecFailed, 1, 10)}, execs...)...)
+		for i := 1; i < len(r.Executions); i++ {
+			r.Executions[i].ToolName = "Bash"
+		}
+		return r
+	}
+	ranAs := func(e store.Execution, digest string) store.Execution {
+		e.ExecutedDigest = digest
+		return e
+	}
+	recordless := besideF()
+	recordless.Terminals = []store.Terminal{{ToolUseID: "bare"}}
+	for _, tc := range []struct {
+		name    string
+		run     *store.Run
+		checked bool
+	}{
+		{"failed at d2, then ok at d1", besideF(ranAs(tlExecAt("u", store.ExecFailed, 1, 5), "d2"), ranAs(tlExecAt("u", store.ExecOK, 0, 12), "d1")), false},
+		{"failed at d1, then ok at d2", besideF(ranAs(tlExecAt("u", store.ExecFailed, 1, 5), "d1"), ranAs(tlExecAt("u", store.ExecOK, 0, 12), "d2")), true},
+		{"ok at d1 before the failure, then failed", besideF(ranAs(tlExecAt("u", store.ExecOK, 0, 8), "d1"), tlExecAt("u", store.ExecFailed, 1, 14)), true},
+		{"interrupted at d1", besideF(ranAs(tlExecAt("u", store.ExecInterrupted, 0, 12), "d1")), true},
+		{"no record", recordless, true},
+	} {
+		if c := tlByID(t, buildTimeline(tc.run, nil), "f"); c.LaterChecked != tc.checked || c.Later != nil {
+			t.Errorf("undeclared u %s: later %+v, checked %v; want checked %v", tc.name, c.Later, c.LaterChecked, tc.checked)
+		}
+	}
 }
 
 // #36 review 4: the same-program tier makes no claim about arguments, and is
