@@ -1713,6 +1713,20 @@ m("SP the extra attempts' rule is not in the JSON", "internal/spend/spend.go",
 m("SP the pre-output refusals' rule does not say they are out of the total", "internal/spend/spend.go",
   "\"tokens only, cost unknown, out of total and tokens: whether", "\"tokens only, cost unknown: whether",
   "TestRefusalsAndExtraAttempts_")
+m("SP a blank subagent line ends its tie", "internal/spend/scan.go",
+  "\t\tcase report.LineBlank:\n\t\t\tcontinue\n\t\tcase report.LineUndecodable, report.LineUndecodableSidechain:",
+  "\t\tcase report.LineBlank, report.LineUndecodable, report.LineUndecodableSidechain:",
+  "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
+m("SP a pre-output refusal's extra attempts are left out of the header", "internal/spend/spend.go",
+  "\t\ts.ExtraAttempts.add(r)\n", "\t\tif !r.costUnknown {\n\t\t\ts.ExtraAttempts.add(r)\n\t\t}\n",
+  "TestExtraAttempts_AnAllDeclinedChainIsNotServed")
+m("SP the combined pre-output header drops the refusals written without usage", "internal/spend/text.go",
+  "\tif r.WithoutUsage > 0 {\n\t\tparts = append(parts, countOf(r.WithoutUsage, \"pre-output refusal\")+\" written without usage\")",
+  "\tif r.WithoutUsage > 0 && len(parts) == 0 {\n\t\tparts = append(parts, countOf(r.WithoutUsage, \"pre-output refusal\")+\" written without usage\")",
+  "TestRefusals_AreSplitByCategoryAndModel")
+m("SP only pre-output refusals with usage print no refusals line", "internal/spend/text.go",
+  "\t} else if s.Refusals.WithoutUsage > 0 || s.Refusals.BeforeOutput > 0 {", "\t} else if s.Refusals.WithoutUsage > 0 {",
+  "TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal")
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

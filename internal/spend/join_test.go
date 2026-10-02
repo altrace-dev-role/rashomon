@@ -418,6 +418,10 @@ func TestJoin_ATurnsSpendIsKeyedByItsPrompt(t *testing.T) {
 	c.write("proj/sess-j/subagents/agent-t.jsonl", subUserLine("sess-j", "p1", T.Add(time.Second)),
 		strings.Replace(sub("T0", 1), `"timestamp":"`, `"timestamp":5,"x":"`, 1),
 		sub("T1", 11111))
+	// A blank or whitespace-only line is no line at all: it keeps the tie,
+	// so B1 is p1's.
+	c.write("proj/sess-j/subagents/agent-b.jsonl", subUserLine("sess-j", "p1", T.Add(time.Second)), "", " \t ", sub("B1", 8888))
+	turn += 8888 * opusIn
 	rec.agentCall("sess-j", "p1", "toolu_z1", rec.transcript, T.Add(time.Second), T.Add(2*time.Second))
 	rec.agentCall("sess-j", "p2", "toolu_y1", rec.transcript, T.Add(10*time.Second), T.Add(11*time.Second))
 	s := c.summary(30)
@@ -426,7 +430,8 @@ func TestJoin_ATurnsSpendIsKeyedByItsPrompt(t *testing.T) {
 	}
 	if got := s.SilentFailureTurns.Cost.Nano; got != turn {
 		t.Errorf("cost = %d, want %d: a response not tied to p1 was priced into it -- the tool-less prompt's reply "+
-			"inside p1's recorded span, or a subagent response its own transcript does not tie to p1", got, turn)
+			"inside p1's recorded span, or a subagent response its own transcript does not tie to p1 -- or one after a "+
+			"blank line was left out", got, turn)
 	}
 }
 

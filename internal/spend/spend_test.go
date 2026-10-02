@@ -1462,6 +1462,9 @@ func TestRefusalsAndExtraAttempts(t *testing.T) {
 	if got := s.Tokens.Total(); got != 1040+1300+1 {
 		t.Errorf("token total = %d, want %d: the extra attempts are out of it", got, 1040+1300+1)
 	}
+	if !hasModel(s, "claude-opus-5-5") {
+		t.Fatalf("by model = %+v, want a claude-opus-5-5 row", s.ByModel)
+	}
 	for _, m := range s.ByModel {
 		if m.Model == "claude-opus-5-5" && m.Tokens.Total() != 1301 {
 			t.Errorf("claude-opus-5-5 row = %+v, want the returned attempts' 1,301 tokens alone", m)
@@ -1772,6 +1775,23 @@ func TestExtraAttempts_AnAllDeclinedChainIsNotServed(t *testing.T) {
 		strings.Contains(txt, "served by a fallback") {
 		t.Errorf("an all-declined chain reads as served:\n%s", txt)
 	}
+	// A chain declined before any output is a pre-output refusal, out of
+	// every figure, and its declined attempt is still one the total leaves
+	// out.
+	c = newConfig(t)
+	c.write("proj/sess-a.jsonl", transcriptLine(t, fallbackExample, now.Add(-time.Hour), func(m map[string]any) {
+		m["stop_reason"] = "refusal"
+		m["stop_details"] = map[string]any{"type": "refusal", "category": "bio"}
+		m["usage"].(map[string]any)["output_tokens"] = 0
+		iterationsOf(m)[1].(map[string]any)["output_tokens"] = 0
+	}))
+	s = c.summary(30)
+	if e := s.ExtraAttempts; s.Refusals.BeforeOutput != 1 || e.FallbackServed != 0 || e.Attempts != 1 || e.Tokens.Total() != 535 {
+		t.Errorf("refusals %+v, extra attempts %+v; want a pre-output refusal and its 535-token declined attempt", s.Refusals, e)
+	}
+	if txt, _ := render(t, s); !strings.Contains(txt, "\n       the total leaves out 535 tokens on 1 extra attempt (cost unknown)\n") {
+		t.Errorf("the header leaves out a pre-output refusal's declined attempt:\n%s", txt)
+	}
 }
 
 // refusalMessage is the zero-usage line Claude Code writes after a refusal
@@ -1899,6 +1919,19 @@ func TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal(t *testing.T) {
 			}
 		}
 	})
+	t.Run("only a pre-output refusal with usage", func(t *testing.T) {
+		c := newConfig(t)
+		c.write("proj/sess-a.jsonl", resp{id: "bi", model: "claude-opus-5-5", at: at, in: 2000, stop: "refusal", category: "bio"}.line("text"))
+		txt, _ := render(t, c.summary(30))
+		for _, want := range []string{
+			"\nrefusals      1 refusal before any output, 2,000 tokens with the cost unknown, not in the total\n",
+			"\n              bio on claude-opus-5-5: 1 before any output\n",
+		} {
+			if !strings.Contains(txt, want) {
+				t.Errorf("text lacks %q:\n%s", want, txt)
+			}
+		}
+	})
 	t.Run("only a pre-output refusal without usage", func(t *testing.T) {
 		c := newConfig(t)
 		c.write("proj/sess-a.jsonl", refusalMessage("z1", "", "bio", at))
@@ -1942,6 +1975,7 @@ func TestRefusals_AreSplitByCategoryAndModel(t *testing.T) {
 	}
 	txt, js := render(t, s)
 	for _, line := range []string{
+		"\n       the total leaves out 10 tokens on 1 pre-output refusal and 8 pre-output refusals written without usage (",
 		"refusals      1 response ended in a refusal, $0.01; 1 refusal before any output, 10 tokens with the cost unknown, not in the total; 8 pre-output refusals were written without usage\n",
 		"              bio (model not recorded): 2 without usage\n",
 		"              cyber on claude-fable-5-1: 1 response\n",
