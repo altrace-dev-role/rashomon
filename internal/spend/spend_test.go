@@ -1223,22 +1223,24 @@ func TestCacheExpiry_AnUnbilledLineWarmsNothing(t *testing.T) {
 // TestCacheExpiry_AWriteOnAWarmCacheIsNotCold: a response that read back
 // everything the previous one cached found it warm, whatever the gap before
 // it, and its write only added the tokens after the cached prefix. Counting
-// it whole priced a 1k write on a warm cache as an expiry. And a cold write is priced as the write over a
-// cache read of the same tokens -- the alternative was a read, not nothing --
-// so the full write rate overstated the figure.
+// it whole priced a 1k write on a warm cache as an expiry. And a cold write
+// is priced as the write over a cache read of the same tokens -- the
+// alternative was a read, not nothing -- so the full write rate overstated
+// the figure. The cold write re-writes all 6k the warm response cached: a
+// smaller request is not the same prompt, and is never counted.
 func TestCacheExpiry_AWriteOnAWarmCacheIsNotCold(t *testing.T) {
 	c := newConfig(t)
 	t0 := now.Add(-2 * time.Hour)
 	c.write("proj/sess-a.jsonl",
 		resp{id: "a", model: "claude-opus-5-5", at: t0, w5: 100, stop: "end_turn"}.line("text"),
 		resp{id: "warm", model: "claude-opus-5-5", at: t0.Add(20 * oneMinute), read: 5000, w5: 1000, stop: "end_turn"}.line("text"),
-		resp{id: "cold", model: "claude-opus-5-5", at: t0.Add(40 * oneMinute), w5: 2000, stop: "end_turn"}.line("text"))
+		resp{id: "cold", model: "claude-opus-5-5", at: t0.Add(40 * oneMinute), w5: 6000, stop: "end_turn"}.line("text"))
 	s := c.summary(30)
-	if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens != 2000 {
-		t.Errorf("cold = %d responses, %d tokens; want the write that read nothing, 1 and 2000",
+	if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens != 6000 {
+		t.Errorf("cold = %d responses, %d tokens; want the write that read nothing, 1 and 6000",
 			s.CacheExpiry.Responses, s.CacheExpiry.Tokens)
 	}
-	if want := int64(2000 * (opusW5 - opusRead)); s.CacheExpiry.Cost.Nano != want {
+	if want := int64(6000 * (opusW5 - opusRead)); s.CacheExpiry.Cost.Nano != want {
 		t.Errorf("cold cost = %d, want %d: the write rate minus the read rate", s.CacheExpiry.Cost.Nano, want)
 	}
 	txt, js := render(t, s)
@@ -1286,6 +1288,59 @@ func TestCacheExpiry_AWriteOfUnknownCostIsNotPriced(t *testing.T) {
 	}
 	if want := (Cost{Unpriced: 1, UnpricedTokens: 1000}); s.CacheExpiry.Responses != 1 || s.CacheExpiry.Cost != want {
 		t.Errorf("cold = %+v; want b's 1,000-token write with the cost unknown, %+v", s.CacheExpiry, want)
+	}
+}
+
+// TestCacheExpiry_NewContentIsNotARewrite: the shortfall rule assumes each
+// request's prompt extends the previous one, so a write up to the shortfall
+// re-writes what the previous response cached. That is false after
+// compaction, after a model switch (opusplan switches within a session, and
+// one model's cache never held the other's conversation), and when a second
+// sidechain agent shares the main file's stream: each wrote new content, and
+// each was counted cold. A response on another model than the previous one,
+// or whose whole prompt is smaller than what the previous one cached, is not
+// judged: the figure errs low.
+func TestCacheExpiry_NewContentIsNotARewrite(t *testing.T) {
+	t0 := now.Add(-2 * time.Hour)
+	at10 := t0.Add(10 * oneMinute)
+	for _, tc := range []struct {
+		name  string
+		lines []string
+	}{
+		{"compaction after 10m, the system prompt read", []string{
+			resp{id: "a", model: "claude-opus-5-5", at: t0, read: 50000, w5: 2000, stop: "end_turn"}.line("text"),
+			resp{id: "b", model: "claude-opus-5-5", at: at10, in: 100, read: 3000, w5: 9000, stop: "end_turn"}.line("text")}},
+		{"a model switch after 10m, the new model's system prompt warm", []string{
+			resp{id: "a", model: "claude-opus-5-5", at: t0, read: 80000, w5: 2000, stop: "end_turn"}.line("text"),
+			resp{id: "b", model: "claude-sonnet-4-6", at: at10, read: 3000, w5: 82000, stop: "end_turn"}.line("text")}},
+		{"two sidechain agents in one main file", []string{
+			resp{id: "a", model: "claude-opus-5-5", at: t0, read: 40000, w5: 1000, stop: "end_turn", sidechain: true}.line("text"),
+			resp{id: "b", model: "claude-opus-5-5", at: at10, read: 3000, w5: 5000, stop: "end_turn", sidechain: true}.line("text")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			c.write("proj/sess-a.jsonl", tc.lines...)
+			if s := c.summary(30); s.CacheExpiry.Responses != 0 || s.CacheExpiry.Tokens != 0 {
+				t.Errorf("cold = %+v, want 0 tokens: b wrote new content", s.CacheExpiry)
+			}
+		})
+	}
+}
+
+// TestCacheExpiry_TheCheaperTTLIsColdFirst pins the split of a cold write by
+// TTL: the shortfall goes to the 5m write first and the 1h write only after
+// it, so the figure errs low. The predecessor cached 1,000 tokens; two hours
+// later a response reading none writes 1,000 at each TTL: the 1,000 cold
+// tokens are the 5m write's.
+func TestCacheExpiry_TheCheaperTTLIsColdFirst(t *testing.T) {
+	c := newConfig(t)
+	t0 := now.Add(-3 * time.Hour)
+	c.write("proj/sess-a.jsonl",
+		resp{id: "a", model: "claude-opus-5-5", at: t0, w5: 1000, stop: "end_turn"}.line("text"),
+		resp{id: "b", model: "claude-opus-5-5", at: t0.Add(2 * time.Hour), w5: 1000, w1h: 1000, stop: "end_turn"}.line("text"))
+	s := c.summary(30)
+	if e := s.CacheExpiry; e.Responses != 1 || e.Tokens5m != 1000 || e.Tokens1h != 0 {
+		t.Errorf("cold = %+v; want 1,000 tokens of b's 5m write and none of its 1h write", e)
 	}
 }
 

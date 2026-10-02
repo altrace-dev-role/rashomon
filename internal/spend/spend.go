@@ -228,7 +228,7 @@ type CacheExpiry struct {
 }
 
 // CacheHeuristic is the rule, stated wherever its number is.
-const CacheHeuristic = "a cache write on a response whose previous response by the same agent in the same transcript started more than the TTL earlier (5m, or 1h for a 1h write), counting only the shortfall -- what that previous response read and wrote to the cache, less what this one read from it -- priced as the write over a cache read of the same tokens"
+const CacheHeuristic = "a cache write on a response whose previous response by the same agent in the same transcript, on the same model, started more than the TTL earlier (5m, or 1h for a 1h write), counting only the shortfall -- what that previous response read and wrote to the cache, less what this one read from it -- and nothing when this request is smaller than that cache, priced as the write over a cache read of the same tokens; it errs low"
 
 // Refusals is responses that ended with stop_reason "refusal", in all and
 // counted by category and model (ByCategory).
@@ -672,7 +672,10 @@ func (s *Summary) buildSavings() {
 // look warm, and the subagent's first write look like the main cache
 // expiring -- a cold write mis-attributed on real data. Several sidechain
 // agents in one main file cannot be told apart by these fields and share one
-// stream, which can only make a gap look shorter, never invent one. The window is
+// stream: a gap can look shorter than it was, and a second agent's first
+// write follows the first agent's cache, which it never held. The size guard
+// below skips that write whenever the second agent's request is smaller than
+// what the first had cached, and otherwise it can be counted. The window is
 // deliberately NOT applied before ordering: the previous response of the
 // first one inside the window may lie outside it, and treating that one as
 // having no predecessor would hide the very gap being measured.
@@ -691,15 +694,23 @@ func (s *Summary) buildSavings() {
 // 1h breakpoint, or one a parallel session kept warm) and re-wrote the
 // expired rest is counted for the rest. Counting every write whole priced a
 // 1k write on a warm cache as an expiry; the rule that replaced it -- a write
-// with any cache read is not cold -- dropped every partial expiry instead.
-// Measured on one real machine's last 30 days to 2026-10-01 ($259.77 in all):
-// every write whole $88.16, the any-read rule $4.01, the shortfall $86.36 --
-// most re-writes after a long gap had also read a still-warm prefix, and an
-// earlier window of the same data went from $33.80 to $4.01 under the
-// any-read rule. The cold part is the 5m write first and
-// then the 1h write, the cheaper first, so the figure errs low; it is priced
-// as the write rate minus the read rate (Build): what re-reading those
-// tokens would have cost is not a saving.
+// with any cache read is not cold -- dropped every partial expiry instead,
+// and most re-writes after a long gap had also read a still-warm prefix. The
+// cold part is the 5m write first and then the 1h write, the cheaper first,
+// so the figure errs low; it is priced as the write rate minus the read rate
+// (Build): what re-reading those tokens would have cost is not a saving.
+//
+// THE SHORTFALL ASSUMES THE PROMPT EXTENDS THE PREVIOUS ONE, so a write up to
+// it re-writes what the previous response cached. That is false after
+// compaction, after a model switch (opusplan switches models within a
+// session, and one model's cache never held the other's conversation), after
+// a rewind, and for a second sidechain agent in the stream: each writes new
+// content, which the shortfall counted cold. So a response is not judged when
+// its model is not the previous response's, or when its whole prompt (input,
+// cache read and cache write) is smaller than what the previous response
+// cached -- it cannot be re-writing all of that. Both skip some true
+// expiries too, so the figure errs low. Measured on one real machine's last
+// 30 days to 2026-10-02: $92.06 of $288.94.
 //
 // EVERY FILE HOLDING A RESPONSE IS A STREAM, and the response is judged once,
 // in the file it was first seen in. A resumed conversation carries the
@@ -735,7 +746,11 @@ func coldWrites(sc *Scan) map[*Response]Tokens {
 				continue
 			}
 			prev, cur := rs[i-1].Tokens, rs[i].Tokens
-			short := max(0, prev.CacheRead+prev.CacheWrite5m+prev.CacheWrite1h-cur.CacheRead)
+			cached := prev.CacheRead + prev.CacheWrite5m + prev.CacheWrite1h
+			if rs[i].Model != rs[i-1].Model || cur.Input+cur.CacheRead+cur.CacheWrite5m+cur.CacheWrite1h < cached {
+				continue
+			}
+			short := max(0, cached-cur.CacheRead)
 			gap := time.Duration(rs[i].StartMS-rs[i-1].StartMS) * time.Millisecond
 			var w Tokens
 			if gap > ttl5m {

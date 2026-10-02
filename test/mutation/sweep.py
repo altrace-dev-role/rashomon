@@ -1458,10 +1458,10 @@ m("SP the silent-failure saving says it bought a done", "internal/spend/text.go"
   '"%s spent in turns with a failed call the summary never mentioned"', '"%s bought a \\"done\\" in turns whose recorded failures the summary never mentioned"',
   "TestJoin_SpendInsideASilentlyFailedTurn")
 m("SP a write on a response that read back the previous cache is counted cold", "internal/spend/spend.go",
-  "prev.CacheRead+prev.CacheWrite5m+prev.CacheWrite1h-cur.CacheRead)", "prev.CacheRead+prev.CacheWrite5m+prev.CacheWrite1h-0*cur.CacheRead)",
+  "short := max(0, cached-cur.CacheRead)", "short := max(0, cached-0*cur.CacheRead)",
   "TestCacheExpiry_AWriteOnAWarmCacheIsNotCold")
 m("SP a cold write is counted whole, not its shortfall", "internal/spend/spend.go",
-  "\t\t\tshort := max(0, prev.CacheRead+prev.CacheWrite5m+prev.CacheWrite1h-cur.CacheRead)", "\t\t\tshort := cur.CacheWrite5m + cur.CacheWrite1h + 0*prev.CacheRead",
+  "\t\t\tshort := max(0, cached-cur.CacheRead)", "\t\t\tshort := cur.CacheWrite5m + cur.CacheWrite1h + 0*cached",
   "TestCacheExpiry_APartialExpiry")
 m("SP a write with any cache read is not cold", "internal/spend/spend.go",
   "\t\t\tprev, cur := rs[i-1].Tokens, rs[i].Tokens\n", "\t\t\tprev, cur := rs[i-1].Tokens, rs[i].Tokens\n\t\t\tif cur.CacheRead > 0 {\n\t\t\t\tcontinue\n\t\t\t}\n",
@@ -1637,6 +1637,15 @@ m("SP a lost declaration's failed call is placed in the turn after it", "interna
 m("SP a failed call no turn can hold is not counted as not checked", "internal/spend/join.go",
   "\t\t\tif ms >= s.FromUnixMS {\n\t\t\t\tj.Unjudged++", "\t\t\tif ms >= s.FromUnixMS {\n\t\t\t\t_ = ms",
   "TestJoin_AFailedCallWhoseDeclarationWasLost")
+m("SP a write on another model is judged against the previous model's cache", "internal/spend/spend.go",
+  "\t\t\tif rs[i].Model != rs[i-1].Model || ", "\t\t\tif ",
+  "TestCacheExpiry_")
+m("SP a smaller prompt is judged as a re-write of the previous cache", "internal/spend/spend.go",
+  " || cur.Input+cur.CacheRead+cur.CacheWrite5m+cur.CacheWrite1h < cached {", " {",
+  "TestCacheExpiry_")
+m("SP a cold 1h write ignores the 5m write already counted cold", "internal/spend/spend.go",
+  "min(cur.CacheWrite1h, short-w.CacheWrite5m)", "min(cur.CacheWrite1h, short)",
+  "TestCacheExpiry_")
 # Import additions some mutants need.
 IMPORTS = {
   "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),

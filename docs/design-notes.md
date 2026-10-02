@@ -377,9 +377,14 @@ The cache re-write figure is a heuristic, labelled as one. Only the shortfall
 is cold -- what the previous response read and wrote to the cache, less what
 this one read back -- so a response that reads a still-warm prefix and
 re-writes the expired rest is counted for the rest, and a write past the
-previous cache is new content. It is priced as the write rate minus the read
-rate, since the alternative was a cache read. It is shown as a figure, not
-offered as a saving. Refusals and extra attempts are billed by category,
+previous cache is new content. The shortfall assumes each prompt extends the
+previous one, which is false after compaction, a model switch, a rewind, or a
+second sidechain agent in the stream, so a response on another model, or
+whose whole prompt is smaller than what the previous response cached, is not
+counted. The figure errs low. It is priced as the write rate minus the read
+rate, since the alternative was a cache read. Measured on one real machine's
+last 30 days to 2026-10-02, it was $92.06 of $288.94. It is shown as a
+figure, not offered as a saving. Refusals and extra attempts are billed by category,
 which this read does not price, so they carry no saving. Subagents on the top
 model for read-heavy work would need the tool pattern from
 `message.content`, so that suggestion is not made either.
