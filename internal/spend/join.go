@@ -30,11 +30,12 @@ const (
 // (report.FinalAssistantTexts), in a subagent transcript only a meta line
 // (readFile). A subagent's sidechain line in the main transcript ties its
 // response to the prompt before it and, a user line included, never ends the
-// tie. A line that cannot be decoded ends it (in the main transcript, unless
-// it is a sidechain line). So only a response after another unkeyed user line
-// or an undecodable line is left out -- and the bound says no more is left
-// out than that.
-const TurnBound = "a turn's spend is every response its main transcript, or a subagent transcript under it, ties to its prompt by the promptId on the user line before it; a subagent's sidechain response in the main transcript counts toward the prompt before it, and a sidechain user line does not end the tie; a response after a user line with no promptId that is not a meta line or, in the main transcript, a tool result, or after a line that cannot be decoded, is tied to no turn and not counted, so this is a floor"
+// tie. A line that cannot be decoded ends it: any such line in a subagent
+// transcript (readFile), and in the main transcript, unless it is a sidechain
+// line (report.DecodeHeader); a blank line is skipped. So only a response
+// after another unkeyed user line or an undecodable line is left out -- and
+// the bound says no more is left out than that.
+const TurnBound = "a turn's spend is every response its main transcript, or a subagent transcript under it, ties to its prompt by the promptId on the user line before it; a subagent's sidechain response in the main transcript counts toward the prompt before it, and a sidechain user line does not end the tie; a response after a user line with no promptId that is not a meta line or, in the main transcript, a tool result, or after a line that cannot be decoded (any in a subagent transcript; in the main transcript, unless it is a sidechain line), is tied to no turn and not counted, so this is a floor"
 
 // Per-session coverage, in per_session[].coverage once Join has run.
 const (

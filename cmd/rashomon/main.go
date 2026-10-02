@@ -1691,9 +1691,11 @@ usage:
                                main transcript counts toward the prompt
                                before it (a sidechain user line does not end
                                the tie); a response after a line that cannot
-                               be decoded is not counted; a failed turn with
-                               no final message to judge is counted as not
-                               checked, never as clean; writes nothing
+                               be decoded (in the main transcript, unless it
+                               is a sidechain line) is not counted; a failed
+                               turn with no final message to judge is
+                               counted as not checked, never as clean;
+                               writes nothing
   rashomon forget --host H       evict every call that named host H
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T

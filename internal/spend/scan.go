@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
 // maxLine bounds one transcript line, as report's reader bounds it: lines
@@ -22,16 +24,13 @@ import (
 // than silently truncated.
 const maxLine = 64 << 20
 
-// usageMarker is a byte test run before any decoding. Only a line that carries
-// an API response's usage can contribute, and on a real transcript most lines
-// do not (attachments, tool results, bookkeeping); skipping them without a
-// parse is what keeps a multi-gigabyte history affordable.
+// usageMarker is a byte test run before any decoding of a main transcript's
+// lines. Only a line that carries an API response's usage can contribute, and
+// on a real transcript most lines do not (attachments, tool results,
+// bookkeeping); skipping them without a parse is what keeps a multi-gigabyte
+// history affordable. A subagent transcript's every line is decoded, since
+// any of them may end its tie (readFile).
 var usageMarker = []byte(`"usage"`)
-
-// userMarker is the same byte test for a subagent transcript's user lines,
-// whose promptId keys the responses after them to a turn (readFile). Every
-// user line carries `"type":"user"`, so a line without the bytes is not one.
-var userMarker = []byte(`"user"`)
 
 // The decoded shape of one transcript line. THIS IS THE WHOLE USAGE READ
 // PATH -- every total, breakdown and heuristic in the document comes from it
@@ -727,8 +726,13 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 	// user line before it, as a main-agent response does in the main
 	// transcript (report.FinalAssistantTexts). A user line with none, other
 	// than an injected meta line, ends the tie: none was measured, and the
-	// response after it is left to no turn -- a floor, never a guess. Only the
-	// line's header is decoded; its content has no field to land in.
+	// response after it is left to no turn -- a floor, never a guess. So does a
+	// line that cannot be decoded, a usage line included: it may be a prompt
+	// this reader cannot key. A byte test for "user" before decoding missed a
+	// user line cut short before its type, and an undecodable usage line kept
+	// the tie, so the next prompt's spend landed on this one. Every non-blank
+	// line of a subagent transcript is decoded (report.DecodeHeader), the
+	// header only; its content has no field to land in.
 	var prompt string
 	s := bufio.NewScanner(fh)
 	s.Buffer(make([]byte, 0, 256*1024), maxLine)
@@ -747,19 +751,21 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			}
 		}
 		usageLine := bytes.Contains(raw, usageMarker)
-		if !usageLine && !(f.Subagent && bytes.Contains(raw, userMarker)) {
+		if !usageLine && !f.Subagent {
 			continue
 		}
 		var l line
-		if json.Unmarshal(raw, &l) != nil {
-			// A usage line that does not decode is counted. A subagent user
-			// line that does not decode is no usage to count, but it may be
-			// a prompt this reader cannot key, so it ends the tie.
+		switch report.DecodeHeader(raw, &l) {
+		case report.LineBlank:
+			continue
+		case report.LineUndecodable, report.LineUndecodableSidechain:
+			// A usage line that does not decode is counted. Any line that
+			// does not decode may be a prompt this reader cannot key, so it
+			// ends a subagent transcript's tie.
 			if usageLine {
 				sc.Unparsed++
-			} else {
-				prompt = ""
 			}
+			prompt = ""
 			continue
 		}
 		if f.Subagent && l.Type == "user" {

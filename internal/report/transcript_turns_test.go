@@ -157,7 +157,8 @@ func TestFinalAssistantTexts_AnUnreadableLineIsNoTurnsWord(t *testing.T) {
 // its type, holding neither word, kept the tie and credited the next
 // prompt's spend and words to this turn. The rule is now the one the bound
 // states: any undecodable main-transcript line ends the tie and drops the
-// turn's words, unless it is a sidechain line.
+// turn's words, unless a top-level isSidechain key marks it a sidechain line.
+// A blank or whitespace-only line is skipped, as spend's reader skips it.
 func TestFinalAssistantTexts_AnUndecodableLineEndsTheTieUnlessItIsASidechain(t *testing.T) {
 	side := func(id, at string) string {
 		return turnLine(t, map[string]any{"type": "assistant", "isSidechain": true, "timestamp": at,
@@ -171,6 +172,13 @@ func TestFinalAssistantTexts_AnUndecodableLineEndsTheTieUnlessItIsASidechain(t *
 			`{"type":"assistant","timestamp":5,"message":{"id":"mx","role":"assistant","content":[{"type":"tool_use","input":{"role":"user"}}]}}`, true},
 		{"a user line truncated before its type", `{"parentUuid":"u-1","isSidechain":false,"promptId":"p2","mess`, true},
 		{"an undecodable sidechain user line", `{"type":"user","isSidechain":true,"timestamp":5,"message":{"role":"user","content":"task"}}`, false},
+		// A line is a sidechain one by its own top-level key, never by the
+		// bytes anywhere in it: a tool_use input can hold them.
+		{"an undecodable line whose tool_use input holds isSidechain true",
+			`{"type":"assistant","timestamp":5,"message":{"id":"mx","role":"assistant","content":[{"type":"tool_use","input":{"isSidechain":true}}]}}`, true},
+		// A blank line is no line, as spend's reader skips it.
+		{"a blank line", ``, false},
+		{"a whitespace-only line", " \t ", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := writeTurns(t,

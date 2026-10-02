@@ -409,6 +409,15 @@ func TestJoin_ATurnsSpendIsKeyedByItsPrompt(t *testing.T) {
 	c.write("proj/sess-j/subagents/agent-v.jsonl", subUserLine("sess-j", "p1", T.Add(time.Second)),
 		strings.Replace(subUserLine("sess-j", "p2", T.Add(1500*time.Millisecond)), `"timestamp":"`, `"timestamp":5,"x":"`, 1),
 		sub("V1", 33333))
+	// So does a user line cut short before its type, holding no "user" for a
+	// byte test to find, and an undecodable usage line, which may follow a
+	// prompt the reader never saw.
+	c.write("proj/sess-j/subagents/agent-u.jsonl", subUserLine("sess-j", "p1", T.Add(time.Second)),
+		`{"parentUuid":"u-1","isSidechain":true,"promptId":"p2","mess`,
+		sub("U1", 22222))
+	c.write("proj/sess-j/subagents/agent-t.jsonl", subUserLine("sess-j", "p1", T.Add(time.Second)),
+		strings.Replace(sub("T0", 1), `"timestamp":"`, `"timestamp":5,"x":"`, 1),
+		sub("T1", 11111))
 	rec.agentCall("sess-j", "p1", "toolu_z1", rec.transcript, T.Add(time.Second), T.Add(2*time.Second))
 	rec.agentCall("sess-j", "p2", "toolu_y1", rec.transcript, T.Add(10*time.Second), T.Add(11*time.Second))
 	s := c.summary(30)
@@ -652,7 +661,8 @@ func TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie(t *testing.T) {
 	if !strings.Contains(txt, "("+TurnBound+")") {
 		t.Errorf("text does not print the bound beside the figure:\n%s", txt)
 	}
-	for _, want := range []string{"tool result", "meta line", "in the main transcript", "sidechain response", "sidechain user line does not end the tie", "cannot be decoded"} {
+	for _, want := range []string{"tool result", "meta line", "in the main transcript", "sidechain response", "sidechain user line does not end the tie", "cannot be decoded",
+		"in the main transcript, unless it is a sidechain line"} {
 		if !strings.Contains(TurnBound, want) {
 			t.Errorf("the bound does not name %q among the lines that keep a tie, beside a figure that priced the response after one: %q", want, TurnBound)
 		}

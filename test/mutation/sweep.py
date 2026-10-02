@@ -1174,7 +1174,7 @@ m("SP a subagent response under another conversation's transcript is priced into
 m("SP a subagent response's prompt is not read from its own transcript", "internal/spend/scan.go",
   "\t\t\tcand.prompt = prompt", "\t\t\tcand.prompt = prompt[:0]", "TestJoin_SpendInside")
 m("SP a subagent transcript's user lines are skipped before their promptId is read", "internal/spend/scan.go",
-  "\t\tif !usageLine && !(f.Subagent && bytes.Contains(raw, userMarker)) {", "\t\tif !usageLine {",
+  "\t\tif !usageLine && !f.Subagent {", "\t\tif !usageLine {",
   "TestJoin_SpendInside")
 m("SP a subagent user line with no promptId does not end the tie", "internal/spend/scan.go",
   "\t\t\t} else if !l.IsMeta {\n\t\t\t\tprompt = \"\"", "\t\t\t} else if false {\n\t\t\t\tprompt = \"\"",
@@ -1182,8 +1182,8 @@ m("SP a subagent user line with no promptId does not end the tie", "internal/spe
 m("SP a subagent meta line ends the tie", "internal/spend/scan.go",
   "\t\t\t} else if !l.IsMeta {\n\t\t\t\tprompt = \"\"", "\t\t\t} else {\n\t\t\t\tprompt = \"\"",
   "TestJoin_SpendInside")
-m("SP a subagent user line that does not decode keeps the tie", "internal/spend/scan.go",
-  "\t\t\t} else {\n\t\t\t\tprompt = \"\"\n\t\t\t}\n\t\t\tcontinue", "\t\t\t}\n\t\t\tcontinue",
+m("SP a subagent line that does not decode keeps the tie", "internal/spend/scan.go",
+  "\t\t\tprompt = \"\"\n\t\t\tcontinue\n\t\t}", "\t\t\tcontinue\n\t\t}",
   "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
 m("SP a subagent user line that does not decode is counted as unparsed usage", "internal/spend/scan.go",
   "\t\t\tif usageLine {\n\t\t\t\tsc.Unparsed++", "\t\t\tif true {\n\t\t\t\tsc.Unparsed++",
@@ -1252,8 +1252,7 @@ m("SP a meta line without promptId ends its turn's words", "internal/report/tran
   "\t\t\t} else if !head.IsMeta && !toolResultOnly(raw) {", "\t\t\t} else if !toolResultOnly(raw) {",
   "TestFinalAssistantTexts_")
 m("SP the bound says every unkeyed user line ends a tie", "internal/spend/join.go",
-  "a user line with no promptId that is not a meta line or, in the main transcript, a tool result, or after a line that cannot be decoded, is tied to no turn",
-  "a user line with no promptId is tied to no turn",
+  "a user line with no promptId that is not a meta line or, in the main transcript, a tool result, or after a line that cannot be decoded (any in a subagent transcript; in the main transcript, unless it is a sidechain line), is tied to no turn", "a user line with no promptId is tied to no turn",
   "TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie")
 m("SP a subagent's sidechain line is read as the turn's summary", "internal/report/transcript.go",
   "\t\tif head.IsSidechain {\n", "\t\tif false && head.IsSidechain {\n",
@@ -1390,10 +1389,10 @@ m("SP a text line with no parseable timestamp is skipped, and the turn judged on
   "\t\t\tif err != nil {\n\t\t\t\tunsay()\n\t\t\t\tcontinue\n\t\t\t}", "\t\t\tif err != nil {\n\t\t\t\tcontinue\n\t\t\t}",
   "TestFinalAssistantTexts_")
 m("SP a main-transcript user line that does not decode keeps the tie", "internal/report/transcript.go",
-  "\t\t\t\tunsay()\n\t\t\t\tcurrent = \"\"\n", "\t\t\t\tunsay()\n",
+  "\t\t\tunsay()\n\t\t\tcurrent = \"\"\n\t\t\tcontinue\n\t\tcase LineUndecodableSidechain:", "\t\t\tunsay()\n\t\t\tcontinue\n\t\tcase LineUndecodableSidechain:",
   "TestFinalAssistantTexts_")
 m("SP a line that does not decode leaves the turn's earlier words standing", "internal/report/transcript.go",
-  "\t\t\t\tunsay()\n\t\t\t\tcurrent = \"\"\n", "\t\t\t\tcurrent = \"\"\n",
+  "\t\t\tunsay()\n\t\t\tcurrent = \"\"\n\t\t\tcontinue\n\t\tcase LineUndecodableSidechain:", "\t\t\tcurrent = \"\"\n\t\t\tcontinue\n\t\tcase LineUndecodableSidechain:",
   "TestFinalAssistantTexts_")
 m("SP a tie between two main files' final words goes to the first", "internal/spend/join.go",
   "t.Said && t.AtMS >= bestMS {", "t.Said && t.AtMS > bestMS {", "TestJoin_TheLastWord")
@@ -1561,10 +1560,10 @@ m("SP the served model is read from message.model, not the fallback entry", "int
 m("SP a chain where every model declined is reported as served", "internal/spend/spend.go",
   "\tif r.Fallback && r.StopReason != \"refusal\" {", "\tif r.Fallback {", "TestExtraAttempts_AnAllDeclinedChain")
 m("SP an undecodable line ends the tie only when it holds the byte string user", "internal/report/transcript.go",
-  "\t\t\tif !bytes.Contains(raw, []byte(`\"isSidechain\":true`)) {\n\t\t\t\tunsay()", "\t\t\tif bytes.Contains(raw, []byte(`\"user\"`)) {\n\t\t\t\tunsay()",
+  "\t\tcase LineUndecodable:\n", "\t\tcase LineUndecodable:\n\t\t\tif !bytes.Contains(raw, []byte(`\"user\"`)) {\n\t\t\t\tcontinue\n\t\t\t}\n",
   "TestFinalAssistantTexts_AnUndecodableLine")
 m("SP an undecodable sidechain line ends the tie", "internal/report/transcript.go",
-  "\t\t\tif !bytes.Contains(raw, []byte(`\"isSidechain\":true`)) {\n\t\t\t\tunsay()", "\t\t\tif true {\n\t\t\t\tunsay()",
+  "\tif topLevelSidechain(raw) {", "\tif false && topLevelSidechain(raw) {",
   "TestFinalAssistantTexts_AnUndecodableLine")
 m("SP the bound does not say a sidechain user line keeps the tie", "internal/spend/join.go",
   "and a sidechain user line does not end the tie; ", "", "TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie")
@@ -1646,6 +1645,18 @@ m("SP a smaller prompt is judged as a re-write of the previous cache", "internal
 m("SP a cold 1h write ignores the 5m write already counted cold", "internal/spend/spend.go",
   "min(cur.CacheWrite1h, short-w.CacheWrite5m)", "min(cur.CacheWrite1h, short)",
   "TestCacheExpiry_")
+m("SP a subagent transcript's lines are prefiltered on the byte string user again", "internal/spend/scan.go",
+  "\t\tif !usageLine && !f.Subagent {", "\t\tif !usageLine && !(f.Subagent && bytes.Contains(raw, []byte(`\"user\"`))) {",
+  "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
+m("SP an undecodable line is a sidechain one by its bytes anywhere, not its top-level key", "internal/report/transcript.go",
+  "\tif topLevelSidechain(raw) {", "\tif bytes.Contains(raw, []byte(`\"isSidechain\":true`)) {",
+  "TestFinalAssistantTexts_AnUndecodableLine")
+m("SP a whitespace-only line ends a main transcript's tie", "internal/report/transcript.go",
+  "\tif len(bytes.TrimSpace(raw)) == 0 {", "\tif len(raw) == 0 {",
+  "TestFinalAssistantTexts_AnUndecodableLine")
+m("SP the bound does not say an undecodable sidechain line keeps the tie", "internal/spend/join.go",
+  " (any in a subagent transcript; in the main transcript, unless it is a sidechain line), is tied", ", is tied",
+  "TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie")
 # Import additions some mutants need.
 IMPORTS = {
   "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),

@@ -484,9 +484,11 @@ a floor. A response after a user line with no prompt id belongs to no turn,
 unless that line is an injected meta line or, in the main transcript, a tool
 result. A subagent's response written into the main transcript
 (`isSidechain`) counts toward the prompt before it, and a subagent's user
-line there does not end the tie. A line that cannot be decoded ends it, so a
-response after it is not counted. A failed turn whose final message cannot
-be tied to its prompt is counted as not checked, never as clean.
+line there does not end the tie. A line that cannot be decoded ends it (any
+in a subagent transcript; in the main transcript, unless it is a sidechain
+line), so a response after it is not counted. A failed turn whose final
+message cannot be tied to its prompt is counted as not checked, never as
+clean.
 
 **Message content.** To take that verdict, the line reads message content, in
 memory. For each recorded turn with a failed call, it decodes each block's

@@ -359,8 +359,9 @@ type TurnFinal struct {
 // an injected meta line, ends attribution: its reply belongs to a turn this
 // reader cannot key, and crediting it to the previous one would be the same
 // wrong-words bug. So does a line that cannot be decoded, unless it is a
-// sidechain line. A subagent's sidechain line ties its response to the
-// current prompt and never moves the tie. A turn whose words cannot be
+// sidechain line (DecodeHeader); a blank line is skipped. A subagent's
+// sidechain line ties its response to the current prompt and never moves the
+// tie. A turn whose words cannot be
 // attributed has no Said words, so the caller has no final message and takes
 // no verdict -- a floor, never a guess.
 //
@@ -417,22 +418,25 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 				ID string `json:"id"`
 			} `json:"message"`
 		}
-		if json.Unmarshal(raw, &head) != nil {
+		switch DecodeHeader(raw, &head) {
+		case LineBlank:
+			continue
+		case LineUndecodable:
 			// A line whose header does not decode (a timestamp written as a
 			// number, a line cut short) cannot be placed. It may be the next
 			// prompt, and keeping the tie would credit that prompt's spend
 			// and words to this turn; it may be this turn's last text, so
 			// its words so far may not be its last. So the tie ends and the
-			// turn's words are dropped, as the subagent reader ends its tie
-			// -- unless the line's bytes mark it a sidechain line, which
-			// never moves the tie or speaks for the main agent. Guessing
-			// from the bytes "user" and "text" fired on a tool_use input
-			// holding the value "user" and on a sidechain user line, and
-			// missed a user line truncated before its type.
-			if !bytes.Contains(raw, []byte(`"isSidechain":true`)) {
-				unsay()
-				current = ""
-			}
+			// turn's words are dropped, as the subagent reader ends its tie.
+			// Guessing from the bytes "user" and "text" fired on a tool_use
+			// input holding the value "user" and on a sidechain user line,
+			// and missed a user line truncated before its type.
+			unsay()
+			current = ""
+			continue
+		case LineUndecodableSidechain:
+			// A sidechain line never moves the tie or speaks for the main
+			// agent, decoded or not.
 			continue
 		}
 		if head.IsSidechain {
@@ -493,6 +497,76 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 	}
 	return out
 }
+
+// LineKind is how a transcript line's header decoded (DecodeHeader).
+type LineKind int
+
+const (
+	// LineBlank is an empty or whitespace-only line: no line at all.
+	LineBlank LineKind = iota
+	// LineDecoded is a header that decoded into the reader's shape.
+	LineDecoded
+	// LineUndecodable is a header that did not decode.
+	LineUndecodable
+	// LineUndecodableSidechain is a header that did not decode, on a line a
+	// top-level isSidechain key set to true marks as a subagent's.
+	LineUndecodableSidechain
+)
+
+// DecodeHeader is how both transcript readers -- FinalAssistantTexts and
+// spend's usage read -- take a line: it skips a blank or whitespace-only
+// line, decodes the header into head (the reader's own narrow shape), and,
+// when that fails, says whether the line is a sidechain one. One helper, so
+// the two readers cannot disagree about which lines end a turn's tie: a
+// blank line ended it in one and was skipped by the other.
+//
+// A line that did not decode is a sidechain one only when a token walk
+// reads a top-level isSidechain key set to true (topLevelSidechain). The
+// bytes "isSidechain":true anywhere in the line also matched a tool_use
+// input that held them.
+func DecodeHeader(raw []byte, head any) LineKind {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return LineBlank
+	}
+	if json.Unmarshal(raw, head) == nil {
+		return LineDecoded
+	}
+	if topLevelSidechain(raw) {
+		return LineUndecodableSidechain
+	}
+	return LineUndecodable
+}
+
+// topLevelSidechain walks a line's top-level object, key by key, and reports
+// whether its isSidechain key is the boolean true. Every other value is
+// stepped over by skipValue, so no value's contents -- a message's content
+// among them -- become a value here. A line cut short ends the walk at the
+// cut, and is a sidechain one only if the key came before it.
+func topLevelSidechain(raw []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return false
+	}
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		if key == "isSidechain" {
+			var v bool
+			return dec.Decode(&v) == nil && v
+		}
+		if dec.Decode(&skipValue{}) != nil {
+			return false
+		}
+	}
+	return false
+}
+
+// skipValue steps over one JSON value and keeps nothing of it.
+type skipValue struct{}
+
+func (*skipValue) UnmarshalJSON([]byte) error { return nil }
 
 // decodeAssistantLine is the one way FinalAssistantTexts decodes an assistant
 // line past its header, into assistantLine and nothing else.
