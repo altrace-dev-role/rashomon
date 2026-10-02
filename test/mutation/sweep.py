@@ -1740,6 +1740,12 @@ m("SP a response held by one session is counted as shared", "internal/spend/spen
 m("SP the rows' shared responses are not said", "internal/spend/text.go",
   "\t\tif n := s.SharedResponses; n > 0 {", "\t\tif n := s.SharedResponses; n < 0 {",
   "TestJoin_ARecordedOriginalWithAnUnrecordedCopy")
+m("SP an unreadable entry is keyed as written, not resolved", "internal/spend/scan.go",
+  "\t\t\t\tunreadable[resolved(path)] = true", "\t\t\t\tunreadable[path] = true",
+  "TestDiscover_OneTranscriptUnderTwoSpellings")
+m("SP a path that does not resolve is keyed as written", "internal/spend/scan.go",
+  "\treturn filepath.Join(resolved(dir), filepath.Base(p))", "\treturn p",
+  "TestDiscover_OneTranscriptUnderTwoSpellings")
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

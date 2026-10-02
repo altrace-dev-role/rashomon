@@ -504,13 +504,20 @@ func Discover(configDir string, modifiedSince time.Time) (*Found, error) {
 	return found, nil
 }
 
-// resolved is a path with its symlinks resolved, or as written when it does
-// not resolve.
+// resolved is a path with its symlinks resolved. A path that does not
+// resolve -- a dangling or looping link, or an entry under a folder that
+// cannot be searched, exactly the unreadable kinds -- is its resolved parent
+// joined with its own name: keyed as written, one such entry reached under
+// two spellings was counted twice.
 func resolved(p string) string {
 	if real, err := filepath.EvalSymlinks(p); err == nil {
 		return real
 	}
-	return p
+	dir := filepath.Dir(p)
+	if dir == "/" || dir == "." {
+		return p
+	}
+	return filepath.Join(resolved(dir), filepath.Base(p))
 }
 
 // dedupeSpellings keeps the first of the files that resolve to one file.

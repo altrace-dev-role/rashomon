@@ -561,6 +561,48 @@ func TestDiscover_OneTranscriptUnderTwoSpellingsIsReadOnce(t *testing.T) {
 				}
 			})
 		}
+		// An unreadable entry under both spellings is one unreadable folder.
+		// Its own path does not resolve -- a dangling link, or an entry under
+		// a folder that cannot be searched -- so it was keyed as written,
+		// once per spelling, and one folder was counted as two.
+		for _, kind := range []string{"a dangling session link", "a locked session folder", "a locked project folder"} {
+			t.Run(tc.link+" with "+kind, func(t *testing.T) {
+				if kind != "a dangling session link" && os.Geteuid() == 0 {
+					t.Skip("permissions do not apply to root")
+				}
+				c := newConfig(t)
+				c.write(tc.old+"/sess-l.jsonl",
+					resp{id: "L1", model: "claude-opus-5-5", session: "sess-l", at: now.Add(-time.Hour), in: 100, stop: "end_turn"}.line("text"))
+				old := filepath.Join(c.dir, "projects", tc.old)
+				lock := func(p string) {
+					if err := os.Chmod(p, 0o000); err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { _ = os.Chmod(p, 0o700) })
+				}
+				switch kind {
+				case "a dangling session link":
+					if err := os.Symlink(filepath.Join(c.dir, "gone"), filepath.Join(old, "sess-gone")); err != nil {
+						t.Fatal(err)
+					}
+				case "a locked session folder":
+					if err := os.Mkdir(filepath.Join(old, "sess-x"), 0o700); err != nil {
+						t.Fatal(err)
+					}
+					lock(filepath.Join(old, "sess-x"))
+				case "a locked project folder":
+					lock(old)
+				}
+				if err := os.Symlink(tc.old, filepath.Join(c.dir, "projects", tc.link)); err != nil {
+					t.Fatal(err)
+				}
+				s := c.summary(30)
+				txt, _ := render(t, s)
+				if s.Read.UnreadableDirs != 1 || !strings.Contains(txt, "note: 1 folder under projects/ could not be read") {
+					t.Errorf("unreadable dirs = %d, want 1: one folder under two spellings\n%s", s.Read.UnreadableDirs, txt)
+				}
+			})
+		}
 		// An old transcript under both spellings is one old transcript, not
 		// two: Discover counted it once per spelling before the dedupe.
 		t.Run(tc.link+" last written before the window", func(t *testing.T) {
