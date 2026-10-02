@@ -391,8 +391,9 @@ whose whole prompt is smaller than what the previous response cached, is not
 counted. The figure errs low. It is priced as the write rate minus the read
 rate, since the alternative was a cache read. Measured on one real machine's
 last 30 days to 2026-10-02, it was $92.06 of $288.94. It is shown as a
-figure, not offered as a saving. Refusals and extra attempts are billed by category,
-which this read does not price, so they carry no saving. Subagents on the top
+figure, not offered as a saving. Pre-output refusals and extra attempts are
+tokens with the cost unknown, so they carry no saving; a refusal with output
+is priced like any response. Subagents on the top
 model for read-heavy work would need the tool pattern from
 `message.content`, so that suggestion is not made either.
 

@@ -1704,6 +1704,15 @@ m("SP a not-covered transcript names its file's own session", "internal/spend/jo
 m("SP a row with no tally has no coverage label", "internal/spend/join.go",
   "\t\tcase t == nil:\n\t\t\ts.PerSession[i].Coverage = CoverageNotRecorded\n", "\t\tcase t == nil:\n",
   "TestJoin_")
+m("SP the pre-output refusals' rule is not in the JSON", "internal/spend/spend.go",
+  "Refusals{BeforeOutputPricing: PreOutputRefusalPricing, ByCategory", "Refusals{ByCategory",
+  "TestRefusalsAndExtraAttempts_")
+m("SP the extra attempts' rule is not in the JSON", "internal/spend/spend.go",
+  "\t\tExtraAttempts: ExtraAttempts{Pricing: ExtraAttemptsPricing},\n", "",
+  "TestRefusalsAndExtraAttempts_")
+m("SP the pre-output refusals' rule does not say they are out of the total", "internal/spend/spend.go",
+  "\"tokens only, cost unknown, out of total and tokens: whether", "\"tokens only, cost unknown: whether",
+  "TestRefusalsAndExtraAttempts_")
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

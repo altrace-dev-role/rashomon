@@ -253,13 +253,19 @@ const CacheHeuristic = "a cache write on a response whose previous response by t
 // whose tokens the transcript does not hold. Dropping them printed "refusals
 // none" beside a transcript that held one.
 type Refusals struct {
-	Responses          int            `json:"responses"`
-	Cost               Cost           `json:"cost"`
-	BeforeOutput       int            `json:"before_output"`
-	BeforeOutputTokens int64          `json:"before_output_tokens"`
-	WithoutUsage       int            `json:"without_usage"`
-	ByCategory         []RefusalGroup `json:"by_category"`
+	Responses          int   `json:"responses"`
+	Cost               Cost  `json:"cost"`
+	BeforeOutput       int   `json:"before_output"`
+	BeforeOutputTokens int64 `json:"before_output_tokens"`
+	// BeforeOutputPricing is PreOutputRefusalPricing, so a JSON reader is
+	// told BeforeOutputTokens are out of total and tokens.
+	BeforeOutputPricing string         `json:"before_output_pricing"`
+	WithoutUsage        int            `json:"without_usage"`
+	ByCategory          []RefusalGroup `json:"by_category"`
 }
+
+// PreOutputRefusalPricing is Refusals.BeforeOutputPricing, verbatim.
+const PreOutputRefusalPricing = "tokens only, cost unknown, out of total and tokens: whether a refusal before any output was billed depends on its category"
 
 // RefusalGroup counts one category's refusals on one model: a classifier
 // decline in a named category is told apart from the rest. Model is
@@ -286,7 +292,13 @@ type ExtraAttempts struct {
 	Attempts       int    `json:"attempts"`
 	Tokens         Tokens `json:"tokens"`
 	FallbackServed int    `json:"fallback_served"`
+	// Pricing is ExtraAttemptsPricing, so a JSON reader is told Tokens are
+	// out of total and tokens.
+	Pricing string `json:"pricing"`
 }
+
+// ExtraAttemptsPricing is ExtraAttempts.Pricing, verbatim.
+const ExtraAttemptsPricing = "tokens only, cost unknown, out of total and tokens"
 
 // FastMode is responses that ran in fast mode (usage.speed "fast"). Fast
 // mode bills at a premium -- Opus 5.5 at $8/$40 per MTok against $4/$20 --
@@ -452,12 +464,13 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			Basis:    "estimated at API list prices",
 			Note:     PlanNote,
 		},
-		ByModel:     []ModelSpend{},
-		Savings:     []Saving{},
-		PerSession:  []SessionSpend{},
-		CacheExpiry: CacheExpiry{Heuristic: CacheHeuristic},
-		Refusals:    Refusals{ByCategory: []RefusalGroup{}},
-		FastMode:    FastMode{Pricing: FastModePricing},
+		ByModel:       []ModelSpend{},
+		Savings:       []Saving{},
+		PerSession:    []SessionSpend{},
+		CacheExpiry:   CacheExpiry{Heuristic: CacheHeuristic},
+		Refusals:      Refusals{BeforeOutputPricing: PreOutputRefusalPricing, ByCategory: []RefusalGroup{}},
+		ExtraAttempts: ExtraAttempts{Pricing: ExtraAttemptsPricing},
+		FastMode:      FastMode{Pricing: FastModePricing},
 		Read: ReadStats{
 			Files:              len(sc.Files),
 			UsageLines:         sc.UsageLines,
@@ -675,8 +688,9 @@ func sortedRefusals(m map[[2]string]*RefusalGroup) []RefusalGroup {
 //
 // The design's others are not made. The cache re-write figure is a
 // heuristic that errs low, so it is shown as a figure and not offered as a
-// saving. Refusals and extra attempts are billed by category, which this
-// read does not price. Subagents on the top model where their tool pattern
+// saving. Pre-output refusals and extra attempts are tokens with the cost
+// unknown, so they carry no saving; a refusal with output is priced like any
+// response. Subagents on the top model where their tool pattern
 // is read-heavy would need which tools a subagent called, which is in
 // message.content, which this package never reads: a suggestion printed
 // without its figure is exactly what this list refuses.

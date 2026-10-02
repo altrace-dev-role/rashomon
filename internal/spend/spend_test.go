@@ -1479,7 +1479,7 @@ func TestRefusalsAndExtraAttempts(t *testing.T) {
 	if !strings.Contains(txt, "\n       the total leaves out 335 tokens on 2 extra attempts (cost unknown)\n") {
 		t.Errorf("the headline does not say the total excludes the extra attempts:\n%s", txt)
 	}
-	if !strings.Contains(js, `"extra_attempts":{"responses":1,"attempts":2,"tokens":{"input":300,"output":30,"cache_read":5,"cache_write_5m":0,"cache_write_1h":0},"fallback_served":0}`) {
+	if !strings.Contains(js, `"extra_attempts":{"responses":1,"attempts":2,"tokens":{"input":300,"output":30,"cache_read":5,"cache_write_5m":0,"cache_write_1h":0},"fallback_served":0,"pricing":"`+ExtraAttemptsPricing+`"}`) {
 		t.Errorf("the JSON does not carry the extra attempts as tokens:\n%s", js)
 	}
 	if len(s.Savings) != 0 || strings.Contains(txt, "savings") {
@@ -1962,6 +1962,30 @@ func TestRefusals_AreSplitByCategoryAndModel(t *testing.T) {
 	}
 	if strings.Contains(txt+js, "a_new_category") {
 		t.Errorf("a category outside the closed vocabulary was printed as read:\n%s\n%s", txt, js)
+	}
+}
+
+// TestRefusalsAndExtraAttempts_TheJSONSaysWhatTheTotalLeavesOut: a --json
+// reader got refusals.before_output_tokens and extra_attempts.tokens with
+// nothing saying they are out of total and tokens, while cache_expiry and
+// fast_mode carry their rule. Each now carries its own, verbatim.
+func TestRefusalsAndExtraAttempts_TheJSONSaysWhatTheTotalLeavesOut(t *testing.T) {
+	if PreOutputRefusalPricing != "tokens only, cost unknown, out of total and tokens: whether a refusal before any output was billed depends on its category" {
+		t.Errorf("PreOutputRefusalPricing = %q", PreOutputRefusalPricing)
+	}
+	if ExtraAttemptsPricing != "tokens only, cost unknown, out of total and tokens" {
+		t.Errorf("ExtraAttemptsPricing = %q", ExtraAttemptsPricing)
+	}
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 10, stop: "end_turn"}.line("text"))
+	_, js := render(t, c.summary(30))
+	for _, want := range []string{
+		`"before_output_tokens":0,"before_output_pricing":"` + PreOutputRefusalPricing + `"`,
+		`"fallback_served":0,"pricing":"` + ExtraAttemptsPricing + `"}`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("the JSON lacks %s:\n%s", want, js)
+		}
 	}
 }
 
