@@ -435,6 +435,8 @@ func TestMayWrite(t *testing.T) {
 		{"cat `touch x`", true},
 		{"grep foo <(rm x)", true},
 		{"cat a > >(tee b)", true},
+		{`cat "$(touch x)"`, true},
+		{"ls $( (rm x) )", true},
 		// A writer word is compared wherever it stands.
 		{"grep -rn xargs .", true},
 		// A later stage outside the read class, or that cannot be named.
@@ -462,6 +464,10 @@ func TestMayWrite(t *testing.T) {
 		{"curl -dfoo=bar https://example.com/x", false},
 		{"go test ./... 2>&1 | tail -20", false},
 		{`echo "a > b"`, false},
+		// A $( that opens nothing: quoted literally, or arithmetic.
+		{"grep -rn '$(' scripts", false},
+		{"echo $((1+2))", false},
+		{"head -n $((n+1)) file", false},
 	} {
 		if got := verbOf(t, tc.cmd).MayWrite; got != tc.want {
 			t.Errorf("%q: may_write %v, want %v", tc.cmd, got, tc.want)

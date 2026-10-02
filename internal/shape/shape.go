@@ -1389,7 +1389,7 @@ func mayWrite(toks []token, i int) bool {
 			}
 			continue
 		}
-		if t.ticks > 0 || strings.Contains(t.text, "$(") {
+		if t.ticks > 0 || t.opaque && strings.Contains(t.text, "$(") {
 			return true
 		}
 		switch path.Base(t.text) {
@@ -1462,17 +1462,23 @@ func outputRedirect(toks []token, j int) bool {
 }
 
 // opensSubstitution reports a token at j that opens a command or process
-// substitution: an unquoted `$`, `<` or `>` with a `(` glued after it. The
+// substitution: an unquoted `$`, `<` or `>` with a `(` glued after it. A `$`
+// with two glued `(` opens arithmetic, `$((n+1))`, which runs nothing. The
 // command inside is not classed.
 func opensSubstitution(toks []token, j int) bool {
 	t := toks[j]
-	if j+1 >= len(toks) || !toks[j+1].meta || !toks[j+1].glued || toks[j+1].text != "(" {
+	if !gluedParen(toks, j+1) {
 		return false
 	}
 	if t.meta {
 		return t.text == "<" || t.text == ">"
 	}
-	return strings.HasSuffix(t.text, "$")
+	return strings.HasSuffix(t.text, "$") && !gluedParen(toks, j+2)
+}
+
+// gluedParen reports a meta `(` at j glued to the token before it.
+func gluedParen(toks []token, j int) bool {
+	return j < len(toks) && toks[j].meta && toks[j].glued && toks[j].text == "("
 }
 
 // stageSeparator reports a token at j that ends one pipeline or list stage:

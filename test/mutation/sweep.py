@@ -1820,9 +1820,21 @@ m("TB a command or process substitution is not a write", "internal/shape/shape.g
   "\t\tif opensSubstitution(toks, j) {\n",
   "\t\tif false && opensSubstitution(toks, j) {\n",
   "TestMayWrite")
-m("TB backticks and a quoted $( are not a write", "internal/shape/shape.go",
+m("TB backticks are not a write", "internal/shape/shape.go",
+  "\t\tif t.ticks > 0 || t.opaque && strings.Contains(t.text, \"$(\") {\n",
+  "\t\tif t.opaque && strings.Contains(t.text, \"$(\") {\n",
+  "TestMayWrite")
+m("TB a quoted $( is not a write", "internal/shape/shape.go",
+  "\t\tif t.ticks > 0 || t.opaque && strings.Contains(t.text, \"$(\") {\n",
+  "\t\tif t.ticks > 0 {\n",
+  "TestMayWrite")
+m("TB a single-quoted $( is a write", "internal/shape/shape.go",
+  "\t\tif t.ticks > 0 || t.opaque && strings.Contains(t.text, \"$(\") {\n",
   "\t\tif t.ticks > 0 || strings.Contains(t.text, \"$(\") {\n",
-  "\t\tif false {\n",
+  "TestMayWrite")
+m("TB arithmetic is a command substitution", "internal/shape/shape.go",
+  "\treturn strings.HasSuffix(t.text, \"$\") && !gluedParen(toks, j+2)\n",
+  "\treturn strings.HasSuffix(t.text, \"$\")\n",
   "TestMayWrite")
 
 m("TB a backgrounded call is not counted as unobserved", "internal/report/account.go",
