@@ -298,6 +298,12 @@ type FastMode struct {
 const FastModePricing = "priced at standard rates: fast mode's premium is not in the price table"
 
 // SessionSpend is one session's split.
+//
+// Every session holding a windowed response has a row, and a response's cost
+// is in the rows of the sessions it belongs to (Response.owners). A response
+// two transcripts start with at the same moment -- a /branch copy keeps the
+// original's timestamps -- belongs to both, so the rows can sum to more than
+// the total, which counts it once.
 type SessionSpend struct {
 	SessionID string `json:"session_id"`
 	Main      Cost   `json:"main"`
@@ -513,17 +519,30 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		s.Tokens.add(r.Tokens)
 		costOf(&s.Total, r)
 
-		sess, ok := sessions[r.SessionID]
-		if !ok {
-			sess = &SessionSpend{SessionID: displaySession(r.SessionID), id: r.SessionID}
-			sessions[r.SessionID] = sess
+		// Every session holding the response has a row; its cost is in the
+		// rows of the sessions it belongs to (ownerSessions).
+		row := func(id string) *SessionSpend {
+			sess, ok := sessions[id]
+			if !ok {
+				sess = &SessionSpend{SessionID: displaySession(id), id: id}
+				sessions[id] = sess
+			}
+			return sess
+		}
+		for _, f := range r.files {
+			row(f.session)
 		}
 		if r.Subagent {
 			costOf(&s.ByAgent.Subagents, r)
-			costOf(&sess.Subagents, r)
 		} else {
 			costOf(&s.ByAgent.Main, r)
-			costOf(&sess.Main, r)
+		}
+		for _, id := range r.owners {
+			if sess := row(id); r.Subagent {
+				costOf(&sess.Subagents, r)
+			} else {
+				costOf(&sess.Main, r)
+			}
 		}
 
 		name, known := displayModel(r.Model)

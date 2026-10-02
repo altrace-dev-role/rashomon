@@ -1475,7 +1475,7 @@ m("SP a response keeps only the file it was first seen in", "internal/spend/scan
   "\tif !slices.ContainsFunc(prev.files, func(s sighting) bool { return s.idx == cand.file }) {\n\t\tprev.files = append(prev.files, cand.files[0])\n\t}\n", "\t_ = slices.ContainsFunc[[]sighting]\n",
   "TestJoin_ADuplicatedResponse")
 m("SP a shared response's coverage follows the file that sorts first", "internal/spend/join.go",
-  "\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tif !covered[m] {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)", "\t\tfor _, m := range s.mainsOf(r)[:1] {\n\t\t\tif !covered[m] {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)",
+  "\t\t\tfor _, m := range s.mainsOf(r) {\n\t\t\t\tif !covered[m] {\n\t\t\t\t\tnotCovered = true", "\t\t\tfor _, m := range s.mainsOf(r)[:1] {\n\t\t\t\tif !covered[m] {\n\t\t\t\t\tnotCovered = true",
   "TestJoin_ADuplicatedResponse")
 m("SP a transcript holding only shared responses is not a transcript", "internal/spend/join.go",
   "\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tbyTranscript[m] = append(byTranscript[m], r)", "\t\tfor _, m := range s.mainsOf(r)[:1] {\n\t\t\tbyTranscript[m] = append(byTranscript[m], r)",
@@ -1522,19 +1522,17 @@ m("SP a refusal's category reaches the output end to end", "internal/spend/scan.
   "\treturn *d.Category\n",
   "TestSpend_NoMessageTextReachesTheOutput")
 m("SP a shared response's not-covered cost is counted in every unrecorded transcript", "internal/spend/join.go",
-  "\tfor _, r := range s.window {\n\t\tif counted[r] {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tif !covered[m] {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t\t\tbreak\n\t\t\t}\n\t\t}\n\t}",
-  "\tfor m, rs := range byTranscript {\n\t\tif !covered[m] {\n\t\t\tfor _, r := range rs {\n\t\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t\t}\n\t\t}\n\t}",
+  "\t\tif notCovered {\n\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t}", "\t\tif notCovered {\n\t\t\tfor _, m := range s.mainsOf(r) {\n\t\t\t\tif !covered[m] {\n\t\t\t\t\tcostOf(&j.NotCoveredCost, r)\n\t\t\t\t}\n\t\t\t}\n\t\t}",
   "TestJoin_ASharedResponse")
 m("SP a response a covered turn counted is also not covered", "internal/spend/join.go",
-  "\t\tif counted[r] {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, m := range s.mainsOf(r) {", "\t\tif false && counted[r] {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, m := range s.mainsOf(r) {",
+  "\t\tif !counted[r] {\n\t\t\tfor _, m := range s.mainsOf(r) {", "\t\tif true {\n\t\t\tfor _, m := range s.mainsOf(r) {",
   "TestJoin_ASharedResponseIsNeverBoth")
 m("SP a shared response's session is the first sighting's", "internal/spend/scan.go",
-  "\t\tr.SessionID = sc.ownerSighting(r).session", "\t\tr.SessionID = r.files[0].session",
-  "TestJoin_ADuplicatedResponse")
+  "\t\tr.owners = sc.ownerSessions(r)", "\t\tr.owners = []string{r.files[0].session}",
+  "TestJoin_ADuplicatedResponse|TestJoin_ASharedResponseBelongs|TestJoin_ARecordedOriginal")
 m("SP a transcript is named by the session of its first-seen response", "internal/spend/join.go",
-  "\tfor m := range byTranscript {\n\t\tid := sessionOf[m]", "\tfor m, rs := range byTranscript {\n\t\tid := rs[0].SessionID",
+  "\tfor m := range byTranscript {\n\t\tid := sessionOf[m]", "\tfor m, rs := range byTranscript {\n\t\tid := rs[0].files[0].session",
   "TestJoin_ADuplicatedResponse|TestJoin_ASharedResponse")
-
 m("SP a refusal's synthetic line is counted again as a pre-output refusal", "internal/spend/scan.go",
   "\t\t\tif into := billed[key{r.file, r.requestID}]; into != nil {", "\t\t\tif into := billed[key{r.file, r.requestID}]; false && into != nil {",
   "TestRefusals_AMidStream")
@@ -1657,6 +1655,24 @@ m("SP a whitespace-only line ends a main transcript's tie", "internal/report/tra
 m("SP the bound does not say an undecodable sidechain line keeps the tie", "internal/spend/join.go",
   " (any in a subagent transcript; in the main transcript, unless it is a sidechain line), is tied", ", is tied",
   "TestJoin_TheBoundNamesTheUnkeyedLinesThatKeepATie")
+m("SP a shared response's owner ignores its file's first dated line", "internal/spend/scan.go",
+  "\t\tif ms := sc.firstMS[s.idx]; ms != 0 {", "\t\tif ms := sc.firstMS[s.idx]; false && ms != 0 {",
+  "TestJoin_")
+m("SP the store is read only for the sessions a response belongs to", "internal/spend/join.go",
+  "\t\tfor _, f := range r.files {\n\t\t\tsessions[f.session] = true\n\t\t}", "\t\tfor _, id := range r.owners {\n\t\t\tsessions[id] = true\n\t\t}",
+  "TestJoin_")
+m("SP a file is dated by its literal first line", "internal/spend/scan.go",
+  "\t\tif !dated {\n\t\t\tif ms, ok := parseTimestamp(l.Timestamp); ok {\n\t\t\t\tsc.firstMS[idx], dated = ms, true", "\t\tif !dated {\n\t\t\tdated = true\n\t\t\tif ms, ok := parseTimestamp(l.Timestamp); ok {\n\t\t\t\tsc.firstMS[idx] = ms",
+  "TestJoin_")
+m("SP a tie between two first-dated files goes to the lower session id", "internal/spend/scan.go",
+  "\tsort.Strings(out)\n\treturn out\n}", "\tsort.Strings(out)\n\treturn out[:1]\n}",
+  "TestJoin_")
+m("SP a session holding a response it does not own has no row", "internal/spend/spend.go",
+  "\t\tfor _, f := range r.files {\n\t\t\trow(f.session)\n\t\t}\n", "",
+  "TestJoin_")
+m("SP a row holding not-covered dollars reads recorded", "internal/spend/join.go",
+  "\t\t\tif t := tallyOf(id); notCovered {\n\t\t\t\tt.out++", "\t\t\tif t := tallyOf(id); notCovered {\n\t\t\t\tt.in++",
+  "TestJoin_")
 # Import additions some mutants need.
 IMPORTS = {
   "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),

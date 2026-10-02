@@ -309,13 +309,18 @@ lines it also decodes `type`, `isMeta` and `promptId`. No field exists for
   carries there. Coverage reads all of them: a response is not covered when
   any transcript holding it is not, and its cost is counted once, and not at
   all when a covered turn already counted it. Each transcript is named by its
-  own session, and a shared response belongs to the session of the file whose
-  first line is earliest (ties by session id). So coverage, the not-covered
-  cost, the sessions, and cold writes for a copied prefix do not depend on the
-  path sort order. The cold-cache heuristic judges a response once, in the
-  file it was first seen in, against every response that file holds, so the
-  cold figure for a shared response whose predecessor differs between the two
-  files does depend on it.
+  own session. A shared response belongs to the session of the file whose
+  first dated line is earliest, and on a tie to each tied session: `/branch`
+  keeps the original timestamps on every copied line, so a copy and its
+  original tie, and a tie broken by session id gave the original's responses
+  to whichever random id sorted first. Every session holding a response has a
+  row, so per-session rows can sum to more than the total. A row holding
+  not-covered dollars reads not recorded or partly recorded. So coverage, the
+  not-covered cost, the sessions, and cold writes for a copied prefix depend
+  on neither the path sort order nor the session ids. The cold-cache heuristic
+  judges a response once, in the file it was first seen in, against every
+  response that file holds, so the cold figure for a shared response whose
+  predecessor differs between the two files does depend on the path order.
 
 **Departing from "never `message.content`".** The design said spend never
 reads message content. The silent-failure line needs the final message it

@@ -3,7 +3,6 @@ package spend
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"io/fs"
 	"math"
@@ -270,9 +269,8 @@ func (t tokens) split() Tokens {
 // Response is one API response, counted once however many lines it was
 // written on.
 type Response struct {
-	ID        string
-	Model     string
-	SessionID string
+	ID    string
+	Model string
 	// Subagent is true for a response read from a subagents/ transcript, or
 	// from a line the main transcript itself marks isSidechain.
 	Subagent   bool
@@ -304,9 +302,13 @@ type Response struct {
 	// conversation (/branch, --fork-session) carries earlier responses into a
 	// second transcript, and which of the two sorts first is only a path
 	// order: the coverage rule reads every transcript holding a response
-	// (Join), and the session a shared response belongs to is chosen by
-	// ownerSighting, so that order decides neither.
+	// (Join), and the sessions a shared response belongs to are chosen by
+	// ownerSessions, so that order decides neither.
 	files []sighting
+
+	// owners is the session or sessions the response belongs to
+	// (ownerSessions), sorted: its cost is in each one's per-session row.
+	owners []string
 
 	// prompt is, for a response first seen in a subagents/ transcript, the
 	// promptId of the user line before it in that file: the turn it was
@@ -364,8 +366,8 @@ type Scan struct {
 	// (Found.UnreadableDirs).
 	UnreadableDirs int
 
-	// firstMS is, per file, the timestamp of its first line, 0 when that
-	// line carries none (ownerSighting).
+	// firstMS is, per file, the timestamp of its first dated line, 0 when no
+	// line carries one (ownerSessions).
 	firstMS []int64
 }
 
@@ -634,7 +636,7 @@ func Read(found *Found) (*Scan, error) {
 		if r.StartMS == 0 {
 			sc.Undated++
 		}
-		r.SessionID = sc.ownerSighting(r).session
+		r.owners = sc.ownerSessions(r)
 		if r.StopReason == "refusal" && r.Tokens.Output == 0 && r.Tokens.Total() > 0 {
 			r.costUnknown = true
 		}
@@ -684,27 +686,35 @@ func (sc *Scan) foldRefusalMessages() {
 	sc.Responses = out
 }
 
-// ownerSighting is the sighting a response's session is taken from: for a
-// response seen in one file, that file's; for one a resumed or branched
-// conversation carries into a second transcript, the sighting in the file
-// whose first line is earliest -- the conversation it was first written in --
-// with ties broken by session id, and an undated file last. Never path
-// order: taking the first sighting's session gave a branch copied under a new
-// session id two sessions in one sort order and one in the other.
-func (sc *Scan) ownerSighting(r *Response) sighting {
+// ownerSessions is the session or sessions a response belongs to: for a
+// response seen in one file, that file's line's session; for one a resumed or
+// branched conversation carries into a second transcript, the session of
+// the file whose first dated line is earliest -- the conversation it was
+// first written in -- and an undated file last. Never path order, and never
+// session-id order: /branch keeps the original timestamps on every copied
+// line, so the two files start at the same moment, and breaking that tie by
+// session id gave the shared responses to the copy whenever its random id
+// sorted first, with the original's session gone from the rows. On a tie
+// the response belongs to each tied session, so either may be the original.
+func (sc *Scan) ownerSessions(r *Response) []string {
 	key := func(s sighting) int64 {
 		if ms := sc.firstMS[s.idx]; ms != 0 {
 			return ms
 		}
 		return math.MaxInt64
 	}
-	best := r.files[0]
+	first := key(r.files[0])
 	for _, s := range r.files[1:] {
-		if k, b := key(s), key(best); k < b || k == b && s.session < best.session {
-			best = s
+		first = min(first, key(s))
+	}
+	var out []string
+	for _, s := range r.files {
+		if key(s) == first && !slices.Contains(out, s.session) {
+			out = append(out, s.session)
 		}
 	}
-	return best
+	sort.Strings(out)
+	return out
 }
 
 func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) error {
@@ -736,22 +746,14 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 	var prompt string
 	s := bufio.NewScanner(fh)
 	s.Buffer(make([]byte, 0, 256*1024), maxLine)
-	first := true
+	// The file's first dated line dates it (ownerSessions): a main
+	// transcript's lines are decoded, header only, until one carries a
+	// timestamp, and then only those that may carry usage.
+	dated := false
 	for s.Scan() {
 		raw := s.Bytes()
-		if first {
-			// The file's first line dates it (ownerSighting): its header
-			// alone, into the same narrow shape.
-			first = false
-			var h line
-			if json.Unmarshal(raw, &h) == nil {
-				if ms, ok := parseTimestamp(h.Timestamp); ok {
-					sc.firstMS[idx] = ms
-				}
-			}
-		}
 		usageLine := bytes.Contains(raw, usageMarker)
-		if !usageLine && !f.Subagent {
+		if !usageLine && !f.Subagent && dated {
 			continue
 		}
 		var l line
@@ -766,6 +768,14 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 				sc.Unparsed++
 			}
 			prompt = ""
+			continue
+		}
+		if !dated {
+			if ms, ok := parseTimestamp(l.Timestamp); ok {
+				sc.firstMS[idx], dated = ms, true
+			}
+		}
+		if !usageLine && !f.Subagent {
 			continue
 		}
 		if f.Subagent && l.Type == "user" {
@@ -801,7 +811,6 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 		cand := &Response{
 			ID:         l.Message.ID,
 			Model:      l.Message.Model,
-			SessionID:  l.SessionID,
 			Subagent:   f.Subagent || l.IsSidechain,
 			StopReason: stop,
 			Fast:       l.Message.Usage.Speed == "fast",
@@ -813,10 +822,11 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 		if f.Subagent {
 			cand.prompt = prompt
 		}
-		if cand.SessionID == "" {
-			cand.SessionID = f.Session
+		session := l.SessionID
+		if session == "" {
+			session = f.Session
 		}
-		cand.files = []sighting{{idx, cand.SessionID}}
+		cand.files = []sighting{{idx, session}}
 		if requestIDShaped(l.RequestID) {
 			cand.requestID = l.RequestID
 		}
@@ -847,7 +857,7 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 // keep folds a later line of an already-seen response into the one kept.
 // Identity (which file, main or subagent) stays with the first sighting; a
 // new file is added to the sightings, with the session its own line carries
-// (Read then picks the response's session, ownerSighting); the counts come
+// (Read then picks the response's sessions, ownerSessions); the counts come
 // from the most complete line; the start time is the earliest any line
 // carries.
 func keep(prev, cand *Response) {

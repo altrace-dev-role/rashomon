@@ -936,29 +936,50 @@ func TestJoin_NoTranscriptInTheWindowIsSaidPlainly(t *testing.T) {
 // responses' cost is counted once as not covered, and the cold write is
 // counted once.
 //
-// Twice: with the copied lines keeping the original's sessionId, and with
-// them carrying the copy's own. In the second, the session a shared response
-// was first seen under followed the path order too: the original first gave
-// two sessions with the original named not covered; the copy first gave one
-// session, the recorded copy named not covered and the original gone. A
-// shared response now belongs to the sighting in the file whose first line
-// is earliest (ties by session id), and each transcript is named by its own
-// session.
+// With the copied lines keeping the original's sessionId, and with them
+// carrying the copy's own. /branch keeps the original timestamps on every
+// copied line, so the two files start at the same moment, and ties broken by
+// session id followed the ids: a copy whose id sorted first took the shared
+// responses, and the original's session left the rows and the header while
+// its dollars sat in a row that read recorded. A shared response now belongs
+// to every session whose file's first dated line is earliest -- on a tie, to
+// both -- and every session holding one has a row. So each case gives two
+// sessions, the original not recorded, and the copy partly recorded when it
+// holds the original's not-covered dollars. An undated first line on the
+// original (a file-history snapshot) changes nothing: a file is dated by its
+// first dated line.
 func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *testing.T) {
 	T := now.Add(-3 * time.Hour)
-	for _, copied := range []string{"sess-o", "sess-r"} {
-		t.Run("copied lines carry "+copied, func(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		copy         string // the copy's session id
+		keepID       bool   // the copied lines keep the original's sessionId
+		undatedFirst bool   // the original starts with an undated line
+		copyCoverage string
+	}{
+		{"copied lines keep sess-o", "sess-r", true, false, CoverageRecorded},
+		{"copied lines carry sess-r", "sess-r", false, false, CoveragePartly},
+		{"copied lines carry sess-a, which sorts first", "sess-a", false, false, CoveragePartly},
+		{"copied lines carry sess-a, the original's first line undated", "sess-a", false, true, CoveragePartly},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			x1 := resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T, in: 1000, w5: 100, stop: "end_turn"}
 			x2 := resp{id: "X2", model: "claude-opus-5-5", session: "sess-o", at: T.Add(oneMinute), in: 2000, w5: 3000, stop: "end_turn"}
-			y1 := resp{id: "Y1", model: "claude-opus-5-5", session: "sess-r", at: T.Add(30 * oneMinute), in: 4000, w5: 3000, stop: "end_turn"}
+			y1 := resp{id: "Y1", model: "claude-opus-5-5", session: tc.copy, at: T.Add(30 * oneMinute), in: 4000, w5: 3000, stop: "end_turn"}
 			cx1, cx2 := x1, x2
-			cx1.session, cx2.session = copied, copied
-			run := func(original, resumed string) (string, string, *Summary) {
+			if !tc.keepID {
+				cx1.session, cx2.session = tc.copy, tc.copy
+			}
+			original := []string{x1.line("text"), x2.line("text")}
+			if tc.undatedFirst {
+				original = append([]string{`{"type":"file-history-snapshot","messageId":"u-0","snapshot":{}}`}, original...)
+			}
+			run := func(origDir, copyDir string) (string, string, *Summary) {
 				c := newConfig(t)
 				rec := newRecorder(t)
-				c.write(original, x1.line("text"), x2.line("text"))
-				rec.transcript = c.write(resumed, cx1.line("text"), cx2.line("text"), y1.line("text"))
-				rec.call("sess-r", "p1", "toolu_r", T.Add(30*oneMinute), T.Add(31*oneMinute), store.ExecOK)
+				c.write(origDir+"/sess-o.jsonl", original...)
+				rec.transcript = c.write(copyDir+"/"+tc.copy+".jsonl", cx1.line("text"), cx2.line("text"), y1.line("text"))
+				rec.call(tc.copy, "p1", "toolu_r", T.Add(30*oneMinute), T.Add(31*oneMinute), store.ExecOK)
 				s := c.summary(30)
 				if err := s.Join(rec.st); err != nil {
 					t.Fatal(err)
@@ -974,8 +995,8 @@ func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *
 				}
 				return txt, string(j), s
 			}
-			txtA, jsA, s := run("a-proj/sess-o.jsonl", "b-proj/sess-r.jsonl")
-			txtB, jsB, _ := run("b-proj/sess-o.jsonl", "a-proj/sess-r.jsonl")
+			txtA, jsA, s := run("a-proj", "b-proj")
+			txtB, jsB, _ := run("b-proj", "a-proj")
 			if jsA != jsB {
 				t.Errorf("coverage, sessions and cold cache follow the path order:\n%s\n%s", jsA, jsB)
 			}
@@ -998,11 +1019,14 @@ func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *
 			for _, p := range s.PerSession {
 				cov[p.SessionID] = p.Coverage
 			}
-			if cov["sess-o"] != CoverageNotRecorded || cov["sess-r"] != CoverageRecorded || s.Sessions != 2 {
-				t.Errorf("sessions %d, coverage %v; want 2, sess-o not recorded and sess-r recorded", s.Sessions, cov)
+			if cov["sess-o"] != CoverageNotRecorded || cov[tc.copy] != tc.copyCoverage || s.Sessions != 2 {
+				t.Errorf("sessions %d, coverage %v; want 2, sess-o not recorded and %s %s", s.Sessions, cov, tc.copy, tc.copyCoverage)
 			}
-			if !strings.Contains(txtA, "SPEND  last 30 days · 2 sessions ·") {
-				t.Errorf("the header does not count both sessions:\n%s", txtA)
+			if !strings.Contains(txtA, "SPEND  last 30 days · 2 sessions ·") || !strings.Contains(txtA, "sess-o $0.03 (main $0.03, subagents none), not recorded by rashomon\n") {
+				t.Errorf("the header does not count both sessions, or the original's row is not its own:\n%s", txtA)
+			}
+			if want := int64(3000*opusIn + 3100*opusW5 + 4000*opusIn + 3000*opusW5); s.Total.Nano != want {
+				t.Errorf("total = %d, want %d: each response once", s.Total.Nano, want)
 			}
 			if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens != 3000 {
 				t.Errorf("cold = %+v, want Y1's write once", s.CacheExpiry)
@@ -1124,5 +1148,127 @@ func TestJoin_AFailedCallWhoseDeclarationWasLostIsCounted(t *testing.T) {
 				t.Errorf("cost = %d, want %d: p1's responses, and none of p2's", j.Cost.Nano, want)
 			}
 		})
+	}
+}
+
+// orders runs a fixture written under two project folders in both path
+// orders, and fails unless both give the same rows, labels and header.
+func orders(t *testing.T, build func(c *config, first, second string) *store.Store) *Summary {
+	t.Helper()
+	var out []*Summary
+	var rows []string
+	for _, dirs := range [][2]string{{"a-proj", "b-proj"}, {"b-proj", "a-proj"}} {
+		c := newConfig(t)
+		st := build(c, dirs[0], dirs[1])
+		s := c.summary(30)
+		if err := s.Join(st); err != nil {
+			t.Fatal(err)
+		}
+		j, err := json.Marshal(struct {
+			N int
+			P []SessionSpend
+			J SilentFailureTurns
+		}{s.Sessions, s.PerSession, s.SilentFailureTurns})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, rows = append(out, s), append(rows, string(j))
+	}
+	if rows[0] != rows[1] {
+		t.Errorf("the rows follow the path order:\n%s\n%s", rows[0], rows[1])
+	}
+	return out[0]
+}
+
+// row is a summary's per-session row for id, or nil.
+func row(s *Summary, id string) *SessionSpend {
+	for i := range s.PerSession {
+		if s.PerSession[i].SessionID == id {
+			return &s.PerSession[i]
+		}
+	}
+	return nil
+}
+
+// TestJoin_ASharedResponseBelongsToTheFileFirstDated: a shared response
+// belongs to the session whose file's first dated line is earliest, whatever
+// the session ids. sess-z's file starts with an undated line and then a
+// prompt ten minutes before the response; sess-b's copy starts at the
+// response. Dated by its literal first line, sess-z's file sorted last and
+// the copy took the response. sess-b still has its row -- it holds the
+// response -- with none of its dollars, and its recorded transcript is read
+// although it owns nothing.
+func TestJoin_ASharedResponseBelongsToTheFileFirstDated(t *testing.T) {
+	T := now.Add(-2 * time.Hour)
+	x := resp{id: "X1", model: "claude-opus-5-5", at: T, in: 1000, stop: "end_turn"}
+	s := orders(t, func(c *config, first, second string) *store.Store {
+		xz, xb := x, x
+		xz.session, xb.session = "sess-z", "sess-b"
+		c.write(first+"/sess-z.jsonl", `{"type":"file-history-snapshot","messageId":"u-0","snapshot":{}}`,
+			userLine("sess-z", "p0", T.Add(-10*time.Minute), false), xz.line("text"))
+		rec := newRecorder(t)
+		rec.transcript = c.write(second+"/sess-b.jsonl", xb.line("text"))
+		rec.call("sess-b", "p1", "toolu_b", T, T.Add(time.Second), store.ExecOK)
+		return rec.st
+	})
+	z, b := row(s, "sess-z"), row(s, "sess-b")
+	if z == nil || b == nil || s.Sessions != 2 {
+		t.Fatalf("rows = %+v, want sess-z and sess-b", s.PerSession)
+	}
+	if z.Main.Nano != 1000*opusIn || b.Main.Priced != 0 || b.Main.Unpriced != 0 {
+		t.Errorf("sess-z = %+v, sess-b = %+v; want the response in sess-z's row alone", z.Main, b.Main)
+	}
+	if z.Coverage != CoverageNotRecorded || b.Coverage != CoverageRecorded || s.SilentFailureTurns.CoveredTranscripts != 1 {
+		t.Errorf("sess-z %s, sess-b %s, covered %d; want not recorded, recorded and 1: the copy's record was not read",
+			z.Coverage, b.Coverage, s.SilentFailureTurns.CoveredTranscripts)
+	}
+}
+
+// TestJoin_AnAbsentOriginalsRowIsNotRecorded: a copy whose lines keep the
+// original's sessionId, with the original absent and the copy unrecorded.
+// Coverage was tallied by each file's own session, so the sess-o row, which
+// names no discovered file, got no label and printed like a recorded one.
+func TestJoin_AnAbsentOriginalsRowIsNotRecorded(t *testing.T) {
+	T := now.Add(-2 * time.Hour)
+	s := orders(t, func(c *config, first, second string) *store.Store {
+		c.write(first+"/sess-c.jsonl", resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T, in: 1000, stop: "end_turn"}.line("text"))
+		rec := newRecorder(t)
+		rec.transcript = c.write(second+"/sess-q.jsonl", resp{id: "Q1", model: "claude-opus-5-5", session: "sess-q", at: T, in: 10, stop: "end_turn"}.line("text"))
+		rec.call("sess-q", "p1", "toolu_q", T, T.Add(time.Second), store.ExecOK)
+		return rec.st
+	})
+	if o := row(s, "sess-o"); o == nil || o.Coverage != CoverageNotRecorded {
+		t.Errorf("rows = %+v, want sess-o not recorded", s.PerSession)
+	}
+	txt, _ := render(t, s)
+	if !strings.Contains(txt, "sess-o <$0.01 (main <$0.01, subagents none), not recorded by rashomon\n") {
+		t.Errorf("the text does not mark sess-o not recorded:\n%s", txt)
+	}
+}
+
+// TestJoin_ARecordedOriginalWithAnUnrecordedCopy: the original was recorded
+// and an unrecorded /branch copy, under its own id, holds its responses with
+// the same timestamps, and no turn fires. Both sessions hold the response,
+// so both have a row in either path order: the original partly recorded --
+// its dollars are not covered, since the copy holding them was not recorded
+// -- and the copy not recorded.
+func TestJoin_ARecordedOriginalWithAnUnrecordedCopy(t *testing.T) {
+	T := now.Add(-2 * time.Hour)
+	x := resp{id: "X1", model: "claude-opus-5-5", at: T, in: 1000, stop: "end_turn"}
+	s := orders(t, func(c *config, first, second string) *store.Store {
+		xo, xc := x, x
+		xo.session, xc.session = "sess-o", "sess-c"
+		rec := newRecorder(t)
+		rec.transcript = c.write(first+"/sess-o.jsonl", xo.line("text"))
+		c.write(second+"/sess-c.jsonl", xc.line("text"))
+		rec.call("sess-o", "p1", "toolu_o", T, T.Add(time.Second), store.ExecOK)
+		return rec.st
+	})
+	o, c := row(s, "sess-o"), row(s, "sess-c")
+	if o == nil || c == nil || o.Coverage != CoveragePartly || c.Coverage != CoverageNotRecorded || s.Sessions != 2 {
+		t.Errorf("rows = %+v; want sess-o partly recorded and sess-c not recorded", s.PerSession)
+	}
+	if s.Total.Nano != 1000*opusIn || s.SilentFailureTurns.NotCoveredCost.Nano != 1000*opusIn {
+		t.Errorf("total %d, not covered %d; want the shared response once in each", s.Total.Nano, s.SilentFailureTurns.NotCoveredCost.Nano)
 	}
 }

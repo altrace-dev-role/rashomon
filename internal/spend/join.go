@@ -374,9 +374,13 @@ func (s *Summary) Join(st *store.Store) error {
 // Each transcript is tallied and named by its own session
 // (TranscriptFile.Session), never by the session of whichever response it
 // holds was seen first: a branched copy carrying the original's responses
-// named the recorded copy as not covered in one path order. A session with
-// any transcript not covered is not "recorded", so an unrecorded copy is
-// never reported as recorded.
+// named the recorded copy as not covered in one path order. A row is tallied
+// by its dollars too: each response it holds the cost of counts as covered,
+// or as not when its cost is in NotCoveredCost. So a session with any
+// transcript, or any dollar, not covered is not "recorded" -- an unrecorded
+// copy is never reported as recorded, nor is a row holding not-covered
+// dollars -- and a row whose session names no discovered file (a copy whose
+// lines keep an absent original's id) still has a label.
 func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[string]bool, counted map[*Response]bool) {
 	j := &s.SilentFailureTurns
 	sessionOf := map[string]string{}
@@ -385,14 +389,18 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 	}
 	type tally struct{ in, out int }
 	bySession := map[string]*tally{}
-	named := map[string]bool{}
-	for m := range byTranscript {
-		id := sessionOf[m]
+	tallyOf := func(id string) *tally {
 		t := bySession[id]
 		if t == nil {
 			t = &tally{}
 			bySession[id] = t
 		}
+		return t
+	}
+	named := map[string]bool{}
+	for m := range byTranscript {
+		id := sessionOf[m]
+		t := tallyOf(id)
 		if covered[m] {
 			j.CoveredTranscripts++
 			t.in++
@@ -407,13 +415,23 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 	// figure, where printing it as not covered too put the same dollars on
 	// both sides of the line.
 	for _, r := range s.window {
-		if counted[r] {
-			continue
+		notCovered := false
+		if !counted[r] {
+			for _, m := range s.mainsOf(r) {
+				if !covered[m] {
+					notCovered = true
+					break
+				}
+			}
 		}
-		for _, m := range s.mainsOf(r) {
-			if !covered[m] {
-				costOf(&j.NotCoveredCost, r)
-				break
+		if notCovered {
+			costOf(&j.NotCoveredCost, r)
+		}
+		for _, id := range r.owners {
+			if t := tallyOf(id); notCovered {
+				t.out++
+			} else {
+				t.in++
 			}
 		}
 	}
