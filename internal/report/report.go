@@ -282,10 +282,10 @@ type Session struct {
 	// Null for a session with no schema 3 declaration (records that predate
 	// schema 3, or no tool calls at all): records written before the test
 	// class existed say execute or package for the same commands, so a count
-	// over them would be zeros nobody measured. Otherwise Runs counts test
-	// runs that ended ok or failed (interrupted, backgrounded and timed-out
-	// runs are not counted), and a session that spans the upgrade is counted
-	// from its first schema 3 call.
+	// over them would be zeros nobody measured. Otherwise only runs that
+	// ended ok or failed are counted; interrupted, denied, backgrounded,
+	// timed-out and unrecorded runs are not, and a session that spans the
+	// upgrade is counted from its first schema 3 call.
 	TestRuns *TestRuns `json:"test_runs"`
 }
 

@@ -630,7 +630,7 @@ func writeSubagents(b *bytes.Buffer, subs []SubagentSummary) {
 // package for the words that would cross that line.
 func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 	if sf.Unobserved > 0 {
-		fmt.Fprintf(b, "  outcome unobserved: %d call(s) recorded no ending or ended in the background\n", sf.Unobserved)
+		fmt.Fprintf(b, "  outcome unobserved: %d call(s) recorded no ending or were moved to the background before they ended\n", sf.Unobserved)
 	}
 	if sf.Failed == 0 {
 		fmt.Fprintln(b, "  failed calls: 0")
