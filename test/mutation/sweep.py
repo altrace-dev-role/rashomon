@@ -1628,6 +1628,15 @@ m("SP a synthetic refusal line is folded after pre-output refusals are marked", 
 m("SP a cold write is priced on a response whose cost is unknown", "internal/spend/spend.go",
   "\t\t\tif key, ok := PriceKey(r.Model); ok && !r.costUnknown {", "\t\t\tif key, ok := PriceKey(r.Model); ok {",
   "TestCacheExpiry_")
+m("SP a failed call whose declaration was lost is dropped", "internal/spend/join.go",
+  "\t\t\tif declared[x.ToolUseID] || x.Outcome != store.ExecFailed {", "\t\t\tif true {",
+  "TestJoin_AFailedCallWhoseDeclarationWasLost")
+m("SP a lost declaration's failed call is placed in the turn after it", "internal/spend/join.go",
+  "starts[i] > x.RecordedAtMS }) - 1", "starts[i] > x.RecordedAtMS })",
+  "TestJoin_AFailedCallWhoseDeclarationWasLost")
+m("SP a failed call no turn can hold is not counted as not checked", "internal/spend/join.go",
+  "\t\t\tif ms >= s.FromUnixMS {\n\t\t\t\tj.Unjudged++", "\t\t\tif ms >= s.FromUnixMS {\n\t\t\t\t_ = ms",
+  "TestJoin_AFailedCallWhoseDeclarationWasLost")
 # Import additions some mutants need.
 IMPORTS = {
   "SP a firing turn's final words are printed to stderr": ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n'),

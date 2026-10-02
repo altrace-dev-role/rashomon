@@ -73,7 +73,8 @@ type SilentFailureTurns struct {
 	// verdict: no final message could be tied to their prompt (records that
 	// name no discovered transcript, a transcript with no promptId on the
 	// turn's lines, a prompt with no promptId after it that ends attribution,
-	// a file not readable to the end). The rule cannot fire on no words, so
+	// a file not readable to the end, or a failed call whose declaration was
+	// lost recorded before every turn, whose prompt is not known; turnsOf). The rule cannot fire on no words, so
 	// such a turn is neither in Turns nor a checked clean one, and folding it
 	// into "none found" would claim a check that never happened.
 	Unjudged int    `json:"unjudged_turns"`
@@ -123,9 +124,20 @@ type turn struct {
 // declaration they answer, which is how digest builds the same small run.
 // A declaration with no prompt_id (a record older than the field) belongs to
 // no turn and is left out rather than guessed into one.
-func turnsOf(run *store.Run) []turn {
+//
+// A FAILED EXECUTION WHOSE DECLARATION WAS LOST still counts. A declaration
+// can be lost -- a lock timeout, a paused pre hook, a mid-session install --
+// while its execution is recorded, and the session report counts that
+// failure. Dropping it here printed "none found" for the same session. It
+// has no tool_use_id to join through, so it is placed as digest places the
+// records with no prompt_id: by recorded time, in the turn whose span holds
+// it, from the turn's first declaration to the next turn's. One recorded
+// before every turn's first declaration cannot be placed, and its recorded
+// time is returned in unplaced, for Join to count as not checked.
+func turnsOf(run *store.Run) (turns []turn, unplaced []int64) {
 	byPrompt := map[string]*turn{}
 	owner := map[string]*turn{}
+	declared := map[string]bool{}
 	span := func(t *turn, ms int64) {
 		if ms < t.firstMS {
 			t.firstMS = ms
@@ -135,6 +147,7 @@ func turnsOf(run *store.Run) []turn {
 		}
 	}
 	for _, d := range run.Declarations {
+		declared[d.ToolUseID] = true
 		if d.PromptID == nil || *d.PromptID == "" {
 			continue
 		}
@@ -150,23 +163,45 @@ func turnsOf(run *store.Run) []turn {
 		owner[d.ToolUseID] = t
 		span(t, d.RecordedAtMS)
 	}
+	// In start order, each turn starting at its first declaration: the
+	// spans a lost declaration's execution is placed by.
+	byStart := make([]*turn, 0, len(byPrompt))
+	for _, t := range byPrompt {
+		byStart = append(byStart, t)
+	}
+	sort.Slice(byStart, func(i, j int) bool { return byStart[i].firstMS < byStart[j].firstMS })
+	starts := make([]int64, len(byStart))
+	for i, t := range byStart {
+		starts[i] = t.firstMS
+	}
 	for _, x := range run.Executions {
-		if t, ok := owner[x.ToolUseID]; ok {
-			t.run.Executions = append(t.run.Executions, x)
-			span(t, x.RecordedAtMS)
+		t, ok := owner[x.ToolUseID]
+		if !ok {
+			if declared[x.ToolUseID] || x.Outcome != store.ExecFailed {
+				continue
+			}
+			// The last turn starting at or before the execution.
+			i := sort.Search(len(starts), func(i int) bool { return starts[i] > x.RecordedAtMS }) - 1
+			if i < 0 {
+				unplaced = append(unplaced, x.RecordedAtMS)
+				continue
+			}
+			t = byStart[i]
 		}
+		t.run.Executions = append(t.run.Executions, x)
+		span(t, x.RecordedAtMS)
 	}
 	for _, x := range run.Terminals {
 		if t, ok := owner[x.ToolUseID]; ok {
 			span(t, x.RecordedAtMS)
 		}
 	}
-	out := make([]turn, 0, len(byPrompt))
-	for _, t := range byPrompt {
-		out = append(out, *t)
+	turns = make([]turn, 0, len(byStart))
+	for _, t := range byStart {
+		turns = append(turns, *t)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].firstMS < out[j].firstMS })
-	return out
+	sort.Slice(turns, func(i, j int) bool { return turns[i].firstMS < turns[j].firstMS })
+	return turns, unplaced
 }
 
 // Join fills the silent-failure line from a store, or records that there is
@@ -276,8 +311,15 @@ func (s *Summary) Join(st *store.Store) error {
 			covered[s.scan.Files[i].Main] = true
 		}
 		// Only a turn with a recorded failure can fire, whatever its final
-		// message says; those alone need their transcripts read.
-		for _, t := range turnsOf(run) {
+		// message says; those alone need their transcripts read. A failed
+		// call no turn can hold is a failed turn with no prompt to check.
+		recordedTurns, unplaced := turnsOf(run)
+		for _, ms := range unplaced {
+			if ms >= s.FromUnixMS {
+				j.Unjudged++
+			}
+		}
+		for _, t := range recordedTurns {
 			if t.lastMS < s.FromUnixMS {
 				continue
 			}

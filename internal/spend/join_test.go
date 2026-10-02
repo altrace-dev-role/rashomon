@@ -1058,3 +1058,61 @@ func TestJoin_ASharedResponseInTwoUnrecordedTranscriptsIsNotCoveredOnce(t *testi
 		t.Errorf("not covered: %d transcripts, cost %+v; want 2, and the shared response's %d once", j.NotCoveredTranscripts, j.NotCoveredCost, 1000*opusIn)
 	}
 }
+
+// TestJoin_AFailedCallWhoseDeclarationWasLostIsCounted: a declaration can be
+// lost (a lock timeout, a paused pre hook, a mid-session install) while its
+// failed execution is recorded. The session report counts that failure;
+// spend's turns were built from declarations alone, so the execution was
+// dropped and the line printed "none found". It is placed, as the digest
+// places records with no prompt_id, in the turn whose recorded span holds
+// it -- from the turn's first declaration to the next turn's -- and one
+// recorded before every turn is counted as not checked.
+func TestJoin_AFailedCallWhoseDeclarationWasLostIsCounted(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		at              time.Duration
+		turns, unjudged int
+	}{
+		{"inside a turn", 2 * time.Second, 1, 0},
+		{"before every turn", -5 * time.Second, 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			rec := newRecorder(t)
+			T := now.Add(-2 * time.Hour)
+			sec := func(f float64) time.Time { return T.Add(time.Duration(f * float64(time.Second))) }
+			m := func(id string, at time.Time, in int64, text string) resp {
+				return resp{id: id, model: "claude-opus-5-5", session: "sess-j", at: at, in: in, stop: "end_turn", text: text}
+			}
+			rec.transcript = c.write("proj/sess-j.jsonl",
+				userLine("sess-j", "p1", sec(-1), false),
+				m("R1", sec(0.5), 100, "").line("tool_use"),
+				userLine("sess-j", "p1", sec(1), true),
+				m("R2", sec(3), 1000, "Ran the command as requested.").line("text"),
+				userLine("sess-j", "p2", sec(9.5), false),
+				m("R3", sec(10.5), 10000, "").line("tool_use"),
+				userLine("sess-j", "p2", sec(11), true),
+				m("R4", sec(12), 100000, "All done.").line("text"))
+			rec.call("sess-j", "p1", "toolu_1", sec(0), sec(1), store.ExecOK)
+			rec.call("sess-j", "p2", "toolu_3", sec(10), sec(11), store.ExecOK)
+			if err := rec.st.AppendExecution(store.Execution{
+				Type: store.TypeExecution, SchemaVersion: store.SchemaVersion,
+				RecordedAtMS: T.Add(tc.at).UnixMilli(), ToolUseID: "toolu_lost", SessionID: "sess-j",
+				ToolName: "Bash", Outcome: store.ExecFailed,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			s := c.summary(30)
+			if err := s.Join(rec.st); err != nil {
+				t.Fatal(err)
+			}
+			j := s.SilentFailureTurns
+			if j.Turns != tc.turns || j.Unjudged != tc.unjudged {
+				t.Errorf("turns %d, unjudged %d; want %d and %d", j.Turns, j.Unjudged, tc.turns, tc.unjudged)
+			}
+			if want := int64(tc.turns) * 1100 * opusIn; j.Cost.Nano != want {
+				t.Errorf("cost = %d, want %d: p1's responses, and none of p2's", j.Cost.Nano, want)
+			}
+		})
+	}
+}
