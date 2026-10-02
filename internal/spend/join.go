@@ -251,14 +251,18 @@ func (s *Summary) Join(st *store.Store) error {
 	*j = SilentFailureTurns{Store: StoreNone, Bound: TurnBound, NotCoveredSessions: []string{}}
 	defer s.buildSavings()
 
+	// A pre-output refusal is in no figure, but its transcript is one of the
+	// window's, and its session has a row to label.
 	byTranscript := map[string][]*Response{}
 	sessions := map[string]bool{}
-	for _, r := range s.window {
-		for _, m := range s.mainsOf(r) {
-			byTranscript[m] = append(byTranscript[m], r)
-		}
-		for _, f := range r.files {
-			sessions[f.session] = true
+	for _, rs := range [][]*Response{s.window, s.refused} {
+		for _, r := range rs {
+			for _, m := range s.mainsOf(r) {
+				byTranscript[m] = append(byTranscript[m], r)
+			}
+			for _, f := range r.files {
+				sessions[f.session] = true
+			}
 		}
 	}
 	j.Transcripts = len(byTranscript)

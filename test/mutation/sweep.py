@@ -1477,7 +1477,7 @@ m("SP a shared response's coverage follows the file that sorts first", "internal
   "\t\t\tfor _, m := range s.mainsOf(r) {\n\t\t\t\tif !covered[m] {\n\t\t\t\t\tnotCovered = true", "\t\t\tfor _, m := range s.mainsOf(r)[:1] {\n\t\t\t\tif !covered[m] {\n\t\t\t\t\tnotCovered = true",
   "TestJoin_ADuplicatedResponse")
 m("SP a transcript holding only shared responses is not a transcript", "internal/spend/join.go",
-  "\t\tfor _, m := range s.mainsOf(r) {\n\t\t\tbyTranscript[m] = append(byTranscript[m], r)", "\t\tfor _, m := range s.mainsOf(r)[:1] {\n\t\t\tbyTranscript[m] = append(byTranscript[m], r)",
+  "\t\t\tfor _, m := range s.mainsOf(r) {\n\t\t\t\tbyTranscript[m] = append(byTranscript[m], r)", "\t\t\tfor _, m := range s.mainsOf(r)[:1] {\n\t\t\t\tbyTranscript[m] = append(byTranscript[m], r)",
   "TestJoin_ADuplicatedResponse")
 m("SP a cold-cache stream holds only the responses first seen in its file", "internal/spend/spend.go",
   "\t\tfor _, f := range r.files {\n\t\t\tk := stream{f.idx, r.Subagent}", "\t\tfor _, f := range r.files[:1] {\n\t\t\tk := stream{f.idx, r.Subagent}",
@@ -1610,7 +1610,7 @@ m("SP an extra attempt's tokens are counted in the token total", "internal/spend
   "\ts.ExtraAttempts.add(r)\n", "\ts.ExtraAttempts.add(r)\n\tfor _, a := range r.Attempts {\n\t\ts.Tokens.add(a)\n\t}\n",
   "TestRefusalsAndExtraAttempts|TestExtraAttempts_")
 m("SP a pre-output refusal is counted in the breakdowns", "internal/spend/spend.go",
-  "\t\t\trefusal(r).BeforeOutput++\n\t\t\tcontinue\n", "\t\t\trefusal(r).BeforeOutput++\n",
+  "\t\t\ts.refused = append(s.refused, r)\n\t\t\tcontinue\n", "\t\t\ts.refused = append(s.refused, r)\n",
   "TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal")
 m("SP an old transcript is counted once per spelling", "internal/spend/scan.go",
   "\t\t\tstale[resolved(p)] = true\n", "\t\t\tstale[p] = true\n",
@@ -1649,7 +1649,7 @@ m("SP a shared response's owner ignores its file's first dated line", "internal/
   "\t\tif ms := sc.firstMS[s.idx]; ms != 0 {", "\t\tif ms := sc.firstMS[s.idx]; false && ms != 0 {",
   "TestJoin_")
 m("SP the store is read only for the sessions a response belongs to", "internal/spend/join.go",
-  "\t\tfor _, f := range r.files {\n\t\t\tsessions[f.session] = true\n\t\t}", "\t\tfor _, id := range r.owners {\n\t\t\tsessions[id] = true\n\t\t}",
+  "\t\t\tfor _, f := range r.files {\n\t\t\t\tsessions[f.session] = true\n\t\t\t}", "\t\t\tfor _, id := range r.owners {\n\t\t\t\tsessions[id] = true\n\t\t\t}",
   "TestJoin_")
 m("SP a file is dated by its literal first line", "internal/spend/scan.go",
   "\t\tif !dated {\n\t\t\tif ms, ok := parseTimestamp(l.Timestamp); ok {\n\t\t\t\tsc.firstMS[idx], dated = ms, true", "\t\tif !dated {\n\t\t\tdated = true\n\t\t\tif ms, ok := parseTimestamp(l.Timestamp); ok {\n\t\t\t\tsc.firstMS[idx] = ms",
@@ -1687,6 +1687,13 @@ m("SP undeclared failed calls marshal as a checked 0 with nothing covered", "int
   "\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns, out.Unjudged, out.Undeclared, out.Cost = &j.Turns, &j.Unjudged, &j.UndeclaredFailedCalls, &j.Cost",
   "\tout.Undeclared = &j.UndeclaredFailedCalls\n\tif j.CoveredTranscripts > 0 {\n\t\tout.Turns, out.Unjudged, out.Cost = &j.Turns, &j.Unjudged, &j.Cost",
   "TestJoin_NoStore")
+m("SP a session holding only pre-output refusals has no row", "internal/spend/spend.go",
+  "\t\tfor _, f := range r.files {\n\t\t\trow(f.session)\n\t\t}\n\t\tif r.costUnknown {\n\t\t\ts.Refusals.BeforeOutput++\n\t\t\ts.Refusals.BeforeOutputTokens += r.Tokens.Total()\n\t\t\trefusal(r).BeforeOutput++\n\t\t\ts.refused = append(s.refused, r)\n\t\t\tcontinue\n\t\t}\n",
+  "\t\tif r.costUnknown {\n\t\t\ts.Refusals.BeforeOutput++\n\t\t\ts.Refusals.BeforeOutputTokens += r.Tokens.Total()\n\t\t\trefusal(r).BeforeOutput++\n\t\t\ts.refused = append(s.refused, r)\n\t\t\tcontinue\n\t\t}\n\t\tfor _, f := range r.files {\n\t\t\trow(f.session)\n\t\t}\n",
+  "TestSessions_ASessionHoldingOnlyPreOutputRefusals")
+m("SP a pre-output refusal's transcript is not one of the window's", "internal/spend/join.go",
+  "\tfor _, rs := range [][]*Response{s.window, s.refused} {", "\tfor _, rs := range [][]*Response{s.window} {",
+  "TestSessions_ASessionHoldingOnlyPreOutputRefusals")
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

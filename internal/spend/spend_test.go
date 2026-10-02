@@ -1080,6 +1080,57 @@ func TestSessions_TheTextNamesTheCostliestAndTheirCoverage(t *testing.T) {
 	}
 }
 
+// TestSessions_ASessionHoldingOnlyPreOutputRefusalsHasARow: a pre-output
+// refusal is in no figure, but its session is a session of the window. Build
+// skipped such a response before giving its session a row, so a session
+// holding only pre-output refusals dropped out of the header's count and out
+// of per_session. Its row shows none as priced spend, and once a store is
+// read it is labelled by its own transcript.
+func TestSessions_ASessionHoldingOnlyPreOutputRefusalsHasARow(t *testing.T) {
+	at := now.Add(-time.Hour)
+	t.Run("beside a normal response", func(t *testing.T) {
+		c := newConfig(t)
+		c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", session: "sess-a", at: at, in: 10, stop: "end_turn"}.line("text"))
+		rec := newRecorder(t)
+		rec.transcript = c.write("proj/sess-b.jsonl",
+			resp{id: "bi", model: "claude-opus-5-5", session: "sess-b", at: at, in: 7000, stop: "refusal", category: "bio"}.line("text"))
+		rec.call("sess-b", "p1", "toolu_b", at, at.Add(time.Second), store.ExecOK)
+		s := c.summary(30)
+		if err := s.Join(rec.st); err != nil {
+			t.Fatal(err)
+		}
+		b := row(s, "sess-b")
+		if s.Sessions != 2 || b == nil || b.Main != (Cost{}) || b.Subagents != (Cost{}) {
+			t.Fatalf("sessions %d, rows %+v; want 2, and a sess-b row with no priced spend", s.Sessions, s.PerSession)
+		}
+		if a := row(s, "sess-a"); a == nil || a.Coverage != CoverageNotRecorded || b.Coverage != CoverageRecorded ||
+			s.SilentFailureTurns.Transcripts != 2 || s.SilentFailureTurns.CoveredTranscripts != 1 {
+			t.Errorf("rows %+v, line %+v; want sess-a not recorded, sess-b recorded, 1 of 2 transcripts covered", s.PerSession, s.SilentFailureTurns)
+		}
+		if s.Total != (Cost{Nano: 10 * opusIn, Priced: 1}) {
+			t.Errorf("total = %+v, want sess-a's response alone", s.Total)
+		}
+		txt, _ := render(t, s)
+		for _, want := range []string{" · 2 sessions · ", "              sess-b none (main none, subagents none)\n"} {
+			if !strings.Contains(txt, want) {
+				t.Errorf("text lacks %q:\n%s", want, txt)
+			}
+		}
+	})
+	t.Run("only a pre-output refusal", func(t *testing.T) {
+		c := newConfig(t)
+		c.write("proj/sess-b.jsonl",
+			resp{id: "bi", model: "claude-opus-5-5", session: "sess-b", at: at, in: 7000, stop: "refusal", category: "bio"}.line("text"))
+		s := c.summary(30)
+		if s.Sessions != 1 || len(s.PerSession) != 1 || s.PerSession[0].SessionID != "sess-b" {
+			t.Errorf("sessions %d, rows %+v; want the one session", s.Sessions, s.PerSession)
+		}
+		if txt, _ := render(t, s); !strings.Contains(txt, " · 1 session · ") {
+			t.Errorf("the header does not count the session:\n%s", txt)
+		}
+	})
+}
+
 // TestZeroTokenResponses_AreNotCounted: Claude Code's "<synthetic>" lines
 // carry an all-zero usage; they were not billed and are not a model to list.
 func TestZeroTokenResponses_AreNotCounted(t *testing.T) {

@@ -160,7 +160,10 @@ type Summary struct {
 	Read ReadStats `json:"read"`
 
 	window []*Response
-	scan   *Scan
+	// refused is the window's pre-output refusals: in no figure, but their
+	// sessions have rows and their transcripts are the window's (Join).
+	refused []*Response
+	scan    *Scan
 }
 
 // ReadStats is what the read itself found.
@@ -299,7 +302,8 @@ const FastModePricing = "priced at standard rates: fast mode's premium is not in
 
 // SessionSpend is one session's split.
 //
-// Every session holding a windowed response has a row, and a response's cost
+// Every session holding a windowed response has a row, a session holding
+// only pre-output refusals included, and a response's cost
 // is in the rows of the sessions it belongs to (Response.owners). A response
 // two transcripts start with at the same moment -- a /branch copy keeps the
 // original's timestamps -- belongs to both, so the rows can sum to more than
@@ -430,7 +434,8 @@ func displaySession(id string) string {
 // refusal, counted in Refusals.WithoutUsage. A pre-output refusal with usage
 // is likewise out of every figure but the refusals, the header's caveat, the
 // extra attempts it carried and the cache-expiry heuristic, where its write
-// is shown with the cost unknown.
+// is shown with the cost unknown; its session still counts and has a row,
+// with none as its priced spend.
 func Build(sc *Scan, now time.Time, days int) *Summary {
 	from := WindowStart(now, days)
 	latest := now.Add(futureSlack).UnixMilli()
@@ -478,6 +483,17 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		}
 		return g
 	}
+	// Every session holding a windowed response has a row, a pre-output
+	// refusal's included; its cost is in the rows of the sessions it belongs
+	// to (ownerSessions).
+	row := func(id string) *SessionSpend {
+		sess, ok := sessions[id]
+		if !ok {
+			sess = &SessionSpend{SessionID: displaySession(id), id: id}
+			sessions[id] = sess
+		}
+		return sess
+	}
 	for _, r := range sc.Responses {
 		if r.StartMS > latest && r.Tokens.Total() > 0 {
 			s.Read.FutureDatedResponses++
@@ -507,10 +523,14 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			}
 		}
 		s.ExtraAttempts.add(r)
+		for _, f := range r.files {
+			row(f.session)
+		}
 		if r.costUnknown {
 			s.Refusals.BeforeOutput++
 			s.Refusals.BeforeOutputTokens += r.Tokens.Total()
 			refusal(r).BeforeOutput++
+			s.refused = append(s.refused, r)
 			continue
 		}
 
@@ -519,19 +539,6 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		s.Tokens.add(r.Tokens)
 		costOf(&s.Total, r)
 
-		// Every session holding the response has a row; its cost is in the
-		// rows of the sessions it belongs to (ownerSessions).
-		row := func(id string) *SessionSpend {
-			sess, ok := sessions[id]
-			if !ok {
-				sess = &SessionSpend{SessionID: displaySession(id), id: id}
-				sessions[id] = sess
-			}
-			return sess
-		}
-		for _, f := range r.files {
-			row(f.session)
-		}
 		if r.Subagent {
 			costOf(&s.ByAgent.Subagents, r)
 		} else {
