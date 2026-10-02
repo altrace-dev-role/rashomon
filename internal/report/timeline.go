@@ -154,16 +154,17 @@ type TimelineCall struct {
 	Outcome      string        `json:"outcome"`
 	ExitCode     *int          `json:"exit_code"`
 	Later        *LaterSuccess `json:"later"`
-	// LaterChecked is true on a failed call that was compared against the
-	// rest. False on a failed call with no declaration (no position in the
-	// declared order), whose failure record has no seq (no position to be
-	// later than), or where nothing placed was found but a success not
-	// recorded before it cannot be ruled out: a matching success whose
-	// record has no seq, a same-program success recorded after the failure
-	// where either call was rewritten, a matching ok record of a failed call,
-	// or a success whose declaration was lost and whose executed digest does
-	// not rule it out (any of them may be the later one). A nil Later there
-	// is "not checked", never "no later success".
+	// LaterChecked is true on a failed call that was compared against the rest.
+	// False on a failed call with no declaration (its record's seq, tool name
+	// and digest could be weighed, but with the declaration lost the report
+	// does not claim what the call was meant to do), whose failure record has
+	// no seq (no position to be later than), or where nothing placed was found
+	// but a success not recorded before it cannot be ruled out: a matching
+	// success whose record has no seq, a same-program success recorded after
+	// the failure where either call was rewritten, a matching ok record of a
+	// failed call, or a success whose declaration was lost and whose executed
+	// digest does not rule it out (any of them may be the later one). A nil
+	// Later there is "not checked", never "no later success".
 	LaterChecked bool `json:"later_checked"`
 	// Bending is set on the LATER call of a test-bending pair (see
 	// DetectTestBending): the run that passed when the only recorded edits
@@ -232,10 +233,13 @@ type timelineEntry struct {
 }
 
 // timelineOK is the success a failed call's ok record holds, as laterSuccess
-// weighs it: where it was recorded and what it ran.
+// weighs it: where it was recorded, what it ran, and the tool name it was
+// recorded under -- the record's own, which on an undeclared call need not be
+// the one its row shows.
 type timelineOK struct {
 	pos    *int64
 	digest string
+	tool   string
 }
 
 func buildTimeline(run *store.Run, denied map[string]bool) Timeline {
@@ -324,10 +328,11 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 		if e.call.Group != GroupFailed {
 			continue
 		}
-		// Not checked, rather than "no later success", when there is nothing
-		// to check with: an undeclared failure has no declaration and no
-		// position in the declared order, and a failure record with no
-		// position has no "after" to be.
+		// Not checked, rather than "no later success", for an undeclared
+		// failure and for a failure record with no position. The first is a
+		// choice: laterSuccess could weigh the record's seq, tool name and
+		// digest, but with the declaration lost the report does not claim
+		// what the call was meant to do. The second has no "after" to be.
 		if e.call.Seq == nil || e.pos == nil {
 			continue
 		}
@@ -491,7 +496,11 @@ func failedCallOK(c TimelineCall, declared string, recs []store.Execution) *time
 	}
 	for i := len(recs) - 1; i >= 0; i-- {
 		if recs[i].Outcome == store.ExecOK {
-			return &timelineOK{pos: recs[i].Seq, digest: effectiveDigest(declared, &recs[i])}
+			tool := recs[i].ToolName
+			if tool == "" {
+				tool = LinkUnknown
+			}
+			return &timelineOK{pos: recs[i].Seq, digest: effectiveDigest(declared, &recs[i]), tool: tool}
 		}
 	}
 	return nil
@@ -542,24 +551,26 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 		// other than the failure's rules it out where no program tier is
 		// offered, and only under the failure's own tool name: a record with
 		// no tool name was digested under none, so its digest never equals a
-		// named tool's. Anything else recorded after the failure, or at no
-		// known position, is one more success that cannot be ruled out.
+		// named tool's. The tool name is the weighed record's own: an ok
+		// record's, not the call's, which is its last record's. Anything else
+		// recorded after the failure, or at no known position, is one more
+		// success that cannot be ruled out.
 		if c.Seq == nil {
-			pos, digest := e.pos, e.digest
+			pos, digest, tool := e.pos, e.digest, c.ToolName
 			switch c.Group {
 			case GroupOK:
 			case GroupFailed:
 				if e.ok == nil {
 					continue
 				}
-				pos, digest = e.ok.pos, e.ok.digest
+				pos, digest, tool = e.ok.pos, e.ok.digest, e.ok.tool
 			default:
 				continue
 			}
-			if c.ToolName != failed.call.ToolName && c.ToolName != LinkUnknown {
+			if tool != failed.call.ToolName && tool != LinkUnknown {
 				continue
 			}
-			if c.ToolName == failed.call.ToolName && digest != "" && digest != failed.digest && !programTier {
+			if tool == failed.call.ToolName && digest != "" && digest != failed.digest && !programTier {
 				continue
 			}
 			if pos == nil || *pos > *failed.pos {

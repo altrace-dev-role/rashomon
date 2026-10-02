@@ -1245,7 +1245,7 @@ m("TL a versioned interpreter is the program", "internal/report/timeline.go",
 m("TL any name with a digit is a versioned interpreter", "internal/report/timeline.go",
   "\treturn subcommandPrograms[base] || subcommandPrograms[strings.TrimSuffix(base, \"w\")]", "\treturn base != p", "TestTimeline_")
 
-# #36 review round 4.
+# #36 review round 2.
 m("TL a rewritten success counts as the same program", "internal/report/timeline.go",
   "\t\tif program && (e.rewritten || failed.rewritten) {", "\t\tif false {", "TestTimeline_")
 m("TL a failed call's ok record is no success", "internal/report/timeline.go",
@@ -1255,7 +1255,7 @@ m("TL a failed call's ok record before the failure leaves it unchecked", "intern
 m("TL an undeclared success's executed digest is thrown away", "internal/report/timeline.go",
   "timelineEntry{call: c, digest: effectiveDigest(\"\", rec), pos:", "timelineEntry{call: c, pos:", "TestTimeline_")
 m("TL an undeclared success with no tool name is ruled out", "internal/report/timeline.go",
-  "\t\t\tif c.ToolName != failed.call.ToolName && c.ToolName != LinkUnknown {", "\t\t\tif c.ToolName != failed.call.ToolName {", "TestTimeline_")
+  "\t\t\tif tool != failed.call.ToolName && tool != LinkUnknown {", "\t\t\tif tool != failed.call.ToolName {", "TestTimeline_")
 m("TL an undeclared success of another digest is ruled out under a program tier", "internal/report/timeline.go",
   "digest != \"\" && digest != failed.digest && !programTier {", "digest != \"\" && digest != failed.digest {", "TestTimeline_")
 m("TL an undeclared success of an unknown digest is ruled out", "internal/report/timeline.go",
@@ -1277,17 +1277,18 @@ m("TL the program reaches the terminal raw on the timeline", "internal/report/ti
 m("TL undeclared rows are ordered by their last record, not their outcome's", "internal/report/timeline.go",
   "\t\tp := outcomeSeq(outcomeRecord(executed[id]))", "\t\tp := outcomeSeq(outcomeRecord(executed[id][max(len(executed[id])-1, 0):]))", "TestTimeline_")
 m("TL the legend does not name the programs with no program tier", "internal/report/timeline_text.go",
-  "\t\tfmt.Fprintln(b, \"                 for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is;\")\n", "", "TestTimeline_")
+  "\t\tfmt.Fprintln(b, \"                 for wrappers and multi-command programs\")\n\t\tfmt.Fprintln(b, \"                 such as git, go, make, npm, python and sudo,\")\n", "", "TestTimeline_")
 m("TL the legend leaves out calls with no program", "internal/report/timeline_text.go",
-  "sudo, and for calls with no program such as Read or Edit, only", "sudo, only", "TestTimeline_")
+  "\t\tfmt.Fprintln(b, \"                 and for calls with no program such as Read or Edit, only the same command is;\")\n", "", "TestTimeline_")
 
-# #36 review round 5.
+# #36 review round 3, Still prints something false 1.
 m("TL an undeclared failed call's ok record is dropped", "internal/report/timeline.go",
   "ok: failedCallOK(c, \"\", recs)})", "ok: nil})", "TestTimeline_")
 m("TL only an undeclared ok row is weighed as a lost declaration", "internal/report/timeline.go",
-  "\t\tif c.Seq == nil {\n\t\t\tpos, digest := e.pos, e.digest", "\t\tif c.Seq == nil && c.Group == GroupOK {\n\t\t\tpos, digest := e.pos, e.digest", "TestTimeline_")
+  "\t\tif c.Seq == nil {\n\t\t\tpos, digest, tool :=", "\t\tif c.Seq == nil && c.Group == GroupOK {\n\t\t\tpos, digest, tool :=", "TestTimeline_")
 m("TL an unnamed undeclared record is ruled out on its digest", "internal/report/timeline.go",
-  "\t\t\tif c.ToolName == failed.call.ToolName && digest != \"\"", "\t\t\tif digest != \"\"", "TestTimeline_")
+  "\t\t\tif tool == failed.call.ToolName && digest != \"\"", "\t\t\tif digest != \"\"", "TestTimeline_")
+# #36 review round 3, Fix before merge 1.
 m("TL a failed call's ok record never matches by command", "internal/report/timeline.go",
   "\t\t\t\tcommand := failed.digest != \"\" && ok.digest == failed.digest", "\t\t\t\tcommand := false", "TestTimeline_")
 m("TL a failed call's ok record never matches by program", "internal/report/timeline.go",
@@ -1301,9 +1302,24 @@ m("TL a failed call's first ok record is weighed, not its last", "internal/repor
 m("TL an unknown digest matches a failed call's unknown ok digest", "internal/report/timeline.go",
   "\t\t\t\tcommand := failed.digest != \"\" && ok.digest == failed.digest", "\t\t\t\tcommand := ok.digest == failed.digest", "TestTimeline_")
 m("TL a failed call's ok record is weighed by its declared digest", "internal/report/timeline.go",
-  "digest: effectiveDigest(declared, &recs[i])}", "digest: declared}", "TestTimeline_")
+  "digest: effectiveDigest(declared, &recs[i]), tool:", "digest: declared, tool:", "TestTimeline_")
+# #36 review round 3, Fix before merge 2.
 m("TL any executed digest reads as a rewrite", "internal/report/timeline.go",
   "rewritten: rec != nil && rec.ExecutedDigest != \"\" && rec.ExecutedDigest != d.Shape.Digest,", "rewritten: rec != nil && rec.ExecutedDigest != \"\",", "TestTimeline_")
+
+# #36 review round 4, Fix before merge 1.
+m("TL an undeclared ok record is ruled out under its call's tool name", "internal/report/timeline.go",
+  "\t\t\tif tool == failed.call.ToolName && digest != \"\"", "\t\t\tif c.ToolName == failed.call.ToolName && digest != \"\"", "TestTimeline_")
+m("TL an ok record with no tool name keeps an empty one", "internal/report/timeline.go",
+  "\t\t\tif tool == \"\" {\n\t\t\t\ttool = LinkUnknown\n\t\t\t}\n", "", "TestTimeline_")
+
+# #36 review round 4, Fix before merge 2.
+m("TL an undeclared failed call is weighed by its failed record's digest", "internal/report/timeline.go",
+  "\t\t\t\tpos, digest, tool = e.ok.pos, e.ok.digest, e.ok.tool\n", "\t\t\t\tpos, tool = e.ok.pos, e.ok.tool\n", "TestTimeline_")
+m("TL an undeclared failed call's ok record has no position", "internal/report/timeline.go",
+  "\t\t\t\tpos, digest, tool = e.ok.pos, e.ok.digest, e.ok.tool\n", "\t\t\t\tpos, digest, tool = nil, e.ok.digest, e.ok.tool\n", "TestTimeline_")
+m("TL an undeclared interrupted or recordless call is weighed as a success", "internal/report/timeline.go",
+  "\t\t\t\tpos, digest, tool = e.ok.pos, e.ok.digest, e.ok.tool\n\t\t\tdefault:\n\t\t\t\tcontinue\n", "\t\t\t\tpos, digest, tool = e.ok.pos, e.ok.digest, e.ok.tool\n", "TestTimeline_")
 
 m("H-21 the exit code is read from the whole message again", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n\tdigits := strings.TrimSpace(first)",

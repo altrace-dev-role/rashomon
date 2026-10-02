@@ -34,8 +34,11 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 	// other way reads as having none, and a reader must not take that row as
 	// a failure nobody dealt with.
 	if n.Failed > 0 {
-		fmt.Fprintln(b, "                 (only a later success of the same command, or of the same program for single-purpose programs, is looked for;")
-		fmt.Fprintln(b, "                 for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is;")
+		fmt.Fprintln(b, "                 (only a later success of the same command,")
+		fmt.Fprintln(b, "                 or of the same program for single-purpose programs, is looked for;")
+		fmt.Fprintln(b, "                 for wrappers and multi-command programs")
+		fmt.Fprintln(b, "                 such as git, go, make, npm, python and sudo,")
+		fmt.Fprintln(b, "                 and for calls with no program such as Read or Edit, only the same command is;")
 		fmt.Fprintln(b, "                 a fix made with a different command, or a corrected Edit, is not detected)")
 	}
 	if n.Interrupted > 0 {
