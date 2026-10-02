@@ -1095,7 +1095,8 @@ func TestTimeline_AWrapperIsNotTheProgram(t *testing.T) {
 			t.Errorf("%s: the same line run again is not the same command: %+v", program, c.Later)
 		}
 	}
-	// A name that only ends in digits is not a versioned interpreter.
+	// Not on the list and not a suffixed name of anything on it, whether the
+	// name ends in digits (b2, gpg2), in w (show, w), or neither (pytest).
 	for _, program := range []string{"pytest", "b2", "gpg2", "show", "w"} {
 		if subcommandProgram(program) {
 			t.Errorf("%s is treated as a subcommand program", program)
