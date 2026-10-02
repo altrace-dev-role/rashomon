@@ -1138,7 +1138,7 @@ m("TL the same-program label claims different arguments", "internal/report/timel
 m("TL the same-command label drops recorded after", "internal/report/timeline_text.go",
   "\"  → same command ok at %d, recorded after%s\"", "\"  → same command ok at %d%s\"", "TestTimeline_")
 m("TL the counts line says no later success without recorded", "internal/report/timeline_text.go",
-  "%d no later success of the same command or program recorded%s)", "%d no later success of the same command or program%s)", "TestTimeline_")
+  "%d no later success recorded%s)", "%d no later success%s)", "TestTimeline_")
 m("TL agent_type reaches the terminal raw", "internal/report/timeline_text.go",
   "\ttyp := printable(a.Type)", "\ttyp := a.Type", "TestTimeline_")
 m("TL agent_id reaches the terminal raw", "internal/report/timeline_text.go",
@@ -1177,10 +1177,10 @@ m("TL the never-ran count is not printed", "internal/report/timeline_text.go",
   "\tfmt.Fprintf(b, \"    never ran    %d  (denied before running)\\n\", n.NeverRan)\n", "", "TestTimeline_")
 m("TL the marker claims no later success of any kind", "internal/report/timeline_text.go",
   "\t\treturn \"  → no later success of the same command or program recorded\"", "\t\treturn \"  → no later success recorded\"", "TestTimeline_")
-m("TL the counts line claims no later success of any kind", "internal/report/timeline_text.go",
-  "%d no later success of the same command or program recorded%s)", "%d no later success recorded%s)", "TestTimeline_")
+m("TL the counts line claims a same-program check the row does not", "internal/report/timeline_text.go",
+  "%d no later success recorded%s)", "%d no later success of the same command or program recorded%s)", "TestTimeline_")
 m("TL the legend does not say another fix goes undetected", "internal/report/timeline_text.go",
-  "\tif n.Failed > 0 {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "\tif false {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "TestTimeline_")
+  "\tif n.Failed > 0 {\n\t\tfmt.Fprintln(b, \"                 (only a later success", "\tif false {\n\t\tfmt.Fprintln(b, \"                 (only a later success", "TestTimeline_")
 m("TL undeclared rows are ordered by id, not by their results", "internal/report/timeline.go",
   "\t\tif pi != pj {\n\t\t\treturn pi < pj\n", "\t\tif false && pi != pj {\n\t\t\treturn pi < pj\n", "TestTimeline_")
 m("TL undeclared rows with no position come first", "internal/report/timeline.go",
@@ -1233,7 +1233,7 @@ m("TL the same-program follow-up's agent is left out", "internal/report/timeline
   "\t\treturn &LaterSuccess{Kind: LaterSameProgram, Seq: *sameProgram.call.Seq, Agent: sameProgram.call.Agent}, true",
   "\t\treturn &LaterSuccess{Kind: LaterSameProgram, Seq: *sameProgram.call.Seq}, true", "TestTimeline_")
 m("TL the follow-up legend is printed under failed 0", "internal/report/timeline_text.go",
-  "\tif n.Failed > 0 {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "\tif true {\n\t\tfmt.Fprintln(b, \"                 (only a later run", "TestTimeline_")
+  "\tif n.Failed > 0 {\n\t\tfmt.Fprintln(b, \"                 (only a later success", "\tif true {\n\t\tfmt.Fprintln(b, \"                 (only a later success", "TestTimeline_")
 m("TL the interrupted count is printed when there is none", "internal/report/timeline_text.go",
   "\tif n.Interrupted > 0 {", "\tif true {", "TestTimeline_")
 m("TL the interleave caveat is printed with no subagent", "internal/report/timeline_text.go",
@@ -1277,7 +1277,9 @@ m("TL the program reaches the terminal raw on the timeline", "internal/report/ti
 m("TL undeclared rows are ordered by their last record, not their outcome's", "internal/report/timeline.go",
   "\t\tp := outcomeSeq(outcomeRecord(executed[id]))", "\t\tp := outcomeSeq(outcomeRecord(executed[id][max(len(executed[id])-1, 0):]))", "TestTimeline_")
 m("TL the legend does not name the programs with no program tier", "internal/report/timeline_text.go",
-  "\t\t\t\"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; \"+\n", "", "TestTimeline_")
+  "\t\tfmt.Fprintln(b, \"                 for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is;\")\n", "", "TestTimeline_")
+m("TL the legend leaves out calls with no program", "internal/report/timeline_text.go",
+  "sudo, and for calls with no program such as Read or Edit, only", "sudo, only", "TestTimeline_")
 
 # #36 review round 5.
 m("TL an undeclared failed call's ok record is dropped", "internal/report/timeline.go",

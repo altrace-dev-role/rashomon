@@ -369,7 +369,7 @@ func TestTimeline_Text(t *testing.T) {
 		"timeline: 4 calls (3 main agent, 1 from 1 subagent)",
 		"interrupted  1\n",
 		"calls from agents running at once interleave by when each was recorded, not when it started",
-		"failed       2  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success of the same command or program recorded)",
+		"failed       2  (1 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded)",
 		"a fix made with a different command, or a corrected Edit, is not detected",
 		"failed (exit 1)",
 		"→ same command ok at 3, recorded after",
@@ -780,7 +780,7 @@ func TestTimeline_AnUnplacedSuccessIsNotNoSuccess(t *testing.T) {
 		}
 		var b bytes.Buffer
 		writeTimeline(&b, tl)
-		if out := b.String(); strings.Contains(out, "→ no later success") || !strings.Contains(out, "0 no later success of the same command or program recorded, 1 not checked") {
+		if out := b.String(); strings.Contains(out, "→ no later success") || !strings.Contains(out, "0 no later success recorded, 1 not checked") {
 			t.Errorf("digest %s: the text claims no later success:\n%s", digest, out)
 		}
 	}
@@ -1034,13 +1034,21 @@ func TestTimeline_TheMarkerSaysWhatWasChecked(t *testing.T) {
 			t.Errorf("program %q: marker = %q, want %q", tc.program, got, tc.want)
 		}
 	}
+	// The counts line claims no more than the row under it: the row of a
+	// failed `go` call says only "same command", so the header must not say
+	// "or program". Break: print it there and the page contradicts itself.
 	var b bytes.Buffer
 	writeTimeline(&b, buildTimeline(tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "go", digest: "d1"}},
 		tlExec("f", store.ExecFailed, 1)), nil))
-	if !strings.Contains(b.String(), "(only a later run of the same command, or of the same program for single-purpose programs, is looked for; "+
-		"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; "+
-		"a fix made with a different command, or a corrected Edit, is not detected)\n") {
-		t.Errorf("the legend does not say which programs get only the same command:\n%s", b.String())
+	out := b.String()
+	if !strings.Contains(out, "    failed       1  (0 same command ok, recorded after; 0 same program ok, recorded after; 1 no later success recorded)\n") {
+		t.Errorf("the counts line claims more than the row:\n%s", out)
+	}
+	legend := "                 (only a later success of the same command, or of the same program for single-purpose programs, is looked for;\n" +
+		"                 for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is;\n" +
+		"                 a fix made with a different command, or a corrected Edit, is not detected)\n"
+	if !strings.Contains(out, legend) {
+		t.Errorf("the legend does not say which calls get only the same command:\n%s", out)
 	}
 }
 
@@ -1201,7 +1209,7 @@ func TestTimeline_TextMarksEachNewDate(t *testing.T) {
 	if !strings.Contains(b.String(), "2023-11-14 (UTC)") || !strings.Contains(b.String(), "2023-11-15 (UTC)") {
 		t.Errorf("a timeline across midnight must show both dates:\n%s", b.String())
 	}
-	for _, absent := range []string{"only a later run", "interrupted", "interleave"} {
+	for _, absent := range []string{"only a later success", "interrupted", "interleave"} {
 		if strings.Contains(b.String(), absent) {
 			t.Errorf("a run with no failed, interrupted or subagent call prints %q:\n%s", absent, b.String())
 		}

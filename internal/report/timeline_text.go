@@ -28,15 +28,15 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 	if n.NotChecked > 0 {
 		notChecked = fmt.Sprintf(", %d not checked", n.NotChecked)
 	}
-	fmt.Fprintf(b, "    failed       %d  (%d same command ok, recorded after; %d same program ok, recorded after; %d no later success of the same command or program recorded%s)\n",
+	fmt.Fprintf(b, "    failed       %d  (%d same command ok, recorded after; %d same program ok, recorded after; %d no later success recorded%s)\n",
 		n.Failed, n.SameCommand, n.SameProgram, n.NoLater, notChecked)
 	// What the follow-up does NOT look for, said once: a failure fixed some
 	// other way reads as having none, and a reader must not take that row as
 	// a failure nobody dealt with.
 	if n.Failed > 0 {
-		fmt.Fprintln(b, "                 (only a later run of the same command, or of the same program for single-purpose programs, is looked for; "+
-			"for wrappers and multi-command programs such as git, go, make, npm, python and sudo only the same command is; "+
-			"a fix made with a different command, or a corrected Edit, is not detected)")
+		fmt.Fprintln(b, "                 (only a later success of the same command, or of the same program for single-purpose programs, is looked for;")
+		fmt.Fprintln(b, "                 for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is;")
+		fmt.Fprintln(b, "                 a fix made with a different command, or a corrected Edit, is not detected)")
 	}
 	if n.Interrupted > 0 {
 		fmt.Fprintf(b, "    interrupted  %d\n", n.Interrupted)
