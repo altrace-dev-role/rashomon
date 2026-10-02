@@ -1880,6 +1880,14 @@ m("TB a leading run stops at a step it cannot resolve", "internal/shape/shape.go
   "\t\tif !ok {\n\t\t\treturn nil, false\n\t\t}\n\t\tdirs = append(dirs, dir)\n",
   "\t\tif !ok {\n\t\t\treturn dirs, len(dirs) > 0\n\t\t}\n\t\tdirs = append(dirs, dir)\n",
   "TestLeadingDirectory|TestTestBending_ACdBack")
+m("TB a leading pushd or popd is not a directory change", "internal/shape/shape.go",
+  "\t\tcase \"cd\", \"pushd\", \"popd\":\n",
+  "\t\tcase \"cd\":\n",
+  "TestLeadingDirectory")
+m("TB an assignment in front of a later cd is not a directory change", "internal/shape/shape.go",
+  "\t\tfor j < len(toks) && isShellAssignment(toks[j]) {\n",
+  "\t\tfor false && j < len(toks) && isShellAssignment(toks[j]) {\n",
+  "TestLeadingDirectory|TestTestBending_AnAssignedCdBack")
 
 m("TB a backgrounded call between two runs is not an edit", "internal/report/testbending.go",
   "\t\tif outcome == LinkOutcomeDenied {\n\t\t\tcontinue\n\t\t}\n",

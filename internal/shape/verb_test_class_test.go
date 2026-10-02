@@ -534,6 +534,9 @@ func TestLeadingDirectory(t *testing.T) {
 		{"cd /a && pushd b && go test", nil},
 		{"cd /a && popd && go test", nil},
 		{"pushd /a && go test", nil},
+		// A cd behind an assignment is still a directory change.
+		{"cd /a && CDPATH= cd - && go test ./...", nil},
+		{"cd /a && X=1 cd b && go test ./...", nil},
 	} {
 		got, ok := LeadingDirectory("Bash", json.RawMessage(`{"command":`+quoteJSON(tc.cmd)+`}`))
 		if ok != (tc.want != nil) || !slices.Equal(got, tc.want) {

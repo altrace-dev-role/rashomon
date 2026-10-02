@@ -396,8 +396,11 @@ func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
 // (`$`, backticks, a glob, `~`, quotes or an escape), not `-`, which is the
 // previous directory, and not a comment. `cd DIR;` is left out, since what
 // follows a `;` runs whether the cd succeeded or not. A step in the leading
-// run that starts with cd, pushd or popd and is not such a cd spoils the
-// run, since the directory it leads to is not on the line. Anything else
+// run whose command, past any assignments in front of it, is cd, pushd or
+// popd and is not such a cd spoils the run, since the directory it leads to
+// is not on the line. So a `cd -` is refused anywhere in the leading run,
+// even when an earlier step names its target: `cd /a && cd b && cd - && go
+// test` loses a pair that way, but it never forms a false one. Anything else
 // reports false, and the call keeps the payload's cwd.
 func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, bool) {
 	if verbForTool(toolName) != VerbExecute {
@@ -413,7 +416,16 @@ func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, boo
 	}
 	var dirs []string
 	for i := 0; i < len(toks); i += 3 {
-		switch toks[i].text {
+		// Past any assignments, as the shell reads the step: `X=1 cd b`
+		// changes directory too, and leadingCd refuses it.
+		j := i
+		for j < len(toks) && isShellAssignment(toks[j]) {
+			j++
+		}
+		if j == len(toks) {
+			return dirs, len(dirs) > 0
+		}
+		switch toks[j].text {
 		case "cd", "pushd", "popd":
 		default:
 			return dirs, len(dirs) > 0

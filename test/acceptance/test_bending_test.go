@@ -475,6 +475,26 @@ func TestTestBending_ACdBackKeepsTheShellsDirectory(t *testing.T) {
 	}
 }
 
+// B-A10, with an assignment in front of the `cd -`: the step still changes
+// directory, though its first word is not cd. Keyed on the first cd's target,
+// the line run from /tmp/a and then from /tmp/b paired as the same command
+// having both outcomes.
+func TestTestBending_AnAssignedCdBackKeepsTheShellsDirectory(t *testing.T) {
+	s := newTBSession(t)
+	s.cwd = "/tmp/a"
+	s.shell("cd /tmp/project && CDPATH= cd - && go test ./...", false, "")
+	s.cwd = "/tmp/b"
+	s.shell("cd /tmp/project && CDPATH= cd - && go test ./...", true, "")
+
+	if line, ok := s.line(); ok && strings.Contains(line, "both outcomes") {
+		t.Errorf("runs in /tmp/a and /tmp/b paired: %q", line)
+	}
+	decls := s.e.declarations(testSession)
+	if a, b := decls[0].str("cwd_digest"), decls[1].str("cwd_digest"); len(a) != 64 || len(b) != 64 || a == b {
+		t.Errorf("cwd_digest = %q, %q: want two different 64-hex digests", a, b)
+	}
+}
+
 // B-A10, with a relative leading cd: `cd ../web && go test ./...` fails from
 // /tmp/project/api and, after a test edit, passes from /tmp/project/web. Both
 // ran in web, so they pair; keyed on the shell's directory they would not.

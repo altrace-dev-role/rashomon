@@ -106,12 +106,11 @@ type TestBending struct {
 // a subagent's, which starts in the directory the main agent had at launch;
 // and so are two calls of `cd sub && go test ./...`, the second of which
 // fails at its cd, since the first left the shell in sub. The payload's cwd
-// follows the shell, and the hook digests it, or the target of a leading
-// plain cd resolved against it, so the digest tells each of these apart, and
-// a subagent re-running the main agent's tests where they ran still pairs. A
-// lone cd between two runs is an edit here as well (class execute), so a cd
-// that left the directory unchanged (one that failed, or `cd .`) still stops
-// the pair.
+// follows the shell, and the hook digests it, or where its leading plain cd
+// steps lead, so the digest tells each of these apart, and a subagent
+// re-running the main agent's tests where they ran still pairs. A lone cd
+// between two runs is an edit here as well (class execute), so a cd that left
+// the directory unchanged (one that failed, or `cd .`) still stops the pair.
 func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 	if run == nil {
 		return detectTestBending(nil, nil, denied)
