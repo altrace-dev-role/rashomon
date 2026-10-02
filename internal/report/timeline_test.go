@@ -1084,9 +1084,11 @@ func TestTimeline_TheMarkerSaysWhatWasChecked(t *testing.T) {
 			t.Errorf("program %q: marker = %q, want %q", tc.program, got, tc.want)
 		}
 	}
-	// The counts line claims no more than the row under it: the row of a
-	// failed `go` call says only "same command", so the header must not say
-	// "or program". Break: print it there and the page contradicts itself.
+	// The counts line is a total: "no later success recorded" there defers
+	// to the legend printed directly under it, and to each row's marker, for
+	// what was looked for. The row of a failed `go` call says only "same
+	// command", so the header must not say "or program". Break: print it
+	// there and the page contradicts itself.
 	var b bytes.Buffer
 	writeTimeline(&b, buildTimeline(tlRun([]tlCall{{seq: 1, id: "f", tool: "Bash", program: "go", digest: "d1"}},
 		tlExec("f", store.ExecFailed, 1)), nil))
