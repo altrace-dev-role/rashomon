@@ -1486,8 +1486,8 @@ m("TB the refusal reads only the first argument", "internal/shape/shape.go",
   "\t\tif refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):min(i+len(c)+1, len(toks))]) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a prefix entry is compared whole", "internal/shape/shape.go",
-  "\t\t\trest, isPrefix := strings.CutPrefix(word, p)\n",
-  "\t\t\trest, isPrefix := \"\", word == p\n",
+  "\t\t\tif strings.HasPrefix(word, p) {\n",
+  "\t\t\tif word == p {\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the per-runner list is not read", "internal/shape/shape.go",
   "onList(t.text, notARun[runner]) ||",
@@ -1604,8 +1604,8 @@ m("TB gradle continuous mode is a test run", "internal/shape/shape.go",
   "\"gradle\":  {\"--dry-run\", \"-m\", \"-v\"},",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB mvn test -v is a test run", "internal/shape/shape.go",
-  "\"-Dmaven.test.skip*\", \"-v\"},",
-  "\"-Dmaven.test.skip*\"},",
+  "\t\"mvn\":     {\"-v\"},\n",
+  "\t\"mvn\":     {},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB tox --notest is a test run", "internal/shape/shape.go",
   "\"--help-ini\", \"--notest\",",
@@ -1852,9 +1852,21 @@ m("TB a prefixed run records its runner as the program", "internal/shape/shape.g
   "\t\t\t\ts.VerbClass = VerbTest\n\t\t\t\t_, runner, _ := runnerPrefix(pshaped, i, prog)\n\t\t\t\ts.Program = &runner\n",
   "TestTestRunnerIsRecognised|TestTestBending")
 
-m("TB a prefix entry refuses its =false form", "internal/shape/shape.go",
-  "\t\t\tif v, ok := strings.CutPrefix(rest, \"=\"); isPrefix && !(ok && isFalse(v)) {\n",
-  "\t\t\tif _, _ = strings.CutPrefix(rest, \"=\"); isPrefix {\n",
+m("TB Maven's skip properties are not refused", "internal/shape/shape.go",
+  " || runner == \"mvn\" && mavenSkip(t.text) {\n",
+  " {\n",
+  "TestTestClassRefusesWhatDoesNotRunTests|TestTestRunnerIsRecognised")
+m("TB a Maven skip property refuses its =false form", "internal/shape/shape.go",
+  "\t\treturn !hasValue || strings.EqualFold(value, \"true\")\n",
+  "\t\treturn !hasValue || len(value) >= 0\n",
+  "TestTestRunnerIsRecognised")
+m("TB a Maven skip property is read as true only in lower case", "internal/shape/shape.go",
+  "\t\treturn !hasValue || strings.EqualFold(value, \"true\")\n",
+  "\t\treturn !hasValue || value == \"true\"\n",
+  "TestTestRunnerIsRecognised")
+m("TB a prefix entry takes isFalse's exception", "internal/shape/shape.go",
+  "\t\t\tif strings.HasPrefix(word, p) {\n",
+  "\t\t\tif v, ok := strings.CutPrefix(strings.TrimPrefix(word, p), \"=\"); strings.HasPrefix(word, p) && !(ok && isFalse(v)) {\n",
   "TestTestRunnerIsRecognised")
 
 m("TB the .cpp and .cxx GoogleTest spellings are not test files", "internal/shape/label.go",

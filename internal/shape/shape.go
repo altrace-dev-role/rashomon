@@ -1068,9 +1068,10 @@ func refusalsOf(c []string) string {
 // show its version (`-v` where that is what -v means). Each of those ends ok
 // or failed on something no test decided, and as a test run it would
 // complete a pattern on that outcome. A word ending in * is a prefix:
-// `-list=Foo`, `-elint`. A flag is matched in its `flag=value` form too
-// (`-c=true`, `--watch=true`), unless the value is false (onList), and a
-// prefix entry the same way: `-DskipTests=false` runs the tests.
+// `-list=Foo`, `-elint`, matched whatever follows it. A flag is matched in
+// its `flag=value` form too (`-c=true`, `--watch=true`), unless the value is
+// false (onList). Maven's skip properties are refused by a rule of their own
+// (mavenSkip): `-DskipTests=false` runs the tests.
 //
 // The lists are the spellings named here, not every spelling a runner
 // accepts: a combined short flag (`make -nk`), an option set in a config file
@@ -1099,7 +1100,7 @@ var notARun = map[string][]string{
 	"phpunit": {"--list-*", "--generate-configuration", "--migrate-configuration", "--check-version"},
 	"ctest":   {"-N", "--show-only*"},
 	"dotnet":  {"--list-tests", "-t"},
-	"mvn":     {"-DskipTests*", "-Dmaven.test.skip*", "-v"},
+	"mvn":     {"-v"},
 	"gradle":  {"--dry-run", "-m", "-v", "-t", "--continuous"},
 	"make":    {"-n", "--just-print", "--dry-run", "--recon", "-q", "--question", "-t", "--touch", "-v"},
 	"tox": {"-e*", "--env*", "-m", "-f", "-l", "-a", "--listenvs*", "--showconfig", "--help-ini", "--notest",
@@ -1127,7 +1128,7 @@ var notARunAny = []string{"-h", "-help", "--help", "--version", "--watch", "--wa
 // seen.
 func refusesRun(runner string, before, args []token) bool {
 	for _, t := range args {
-		if onList(t.text, notARun[runner]) || onList(t.text, notARunAny) {
+		if onList(t.text, notARun[runner]) || onList(t.text, notARunAny) || runner == "mvn" && mavenSkip(t.text) {
 			return true
 		}
 	}
@@ -1143,16 +1144,16 @@ func refusesRun(runner string, before, args []token) bool {
 
 // onList reports word equal to an entry of list, or starting with the part
 // of one before its trailing *. A word `flag=value` matches the entry flag
-// unless value is a false the flag parsers read as false: `--watchAll=false`
-// runs the tests once, `--watchAll=true` watches, and `-c=true` compiles. A
-// prefix entry is held to the same exception when the word is the prefix
-// and `=value`: `-DskipTests=false` forces Maven's tests to run.
+// unless value is a false the flag parsers read as false (isFalse):
+// `--watchAll=false` runs the tests once, `--watchAll=true` watches, and
+// `-c=true` compiles. A prefix entry has no such exception, since the flags
+// it names take a pattern or a name: `go test -list=0` lists the tests
+// matching 0, and `tox -e=0` runs an environment named 0.
 func onList(word string, list []string) bool {
 	name, value, hasValue := strings.Cut(word, "=")
 	for _, w := range list {
 		if p, ok := strings.CutSuffix(w, "*"); ok {
-			rest, isPrefix := strings.CutPrefix(word, p)
-			if v, ok := strings.CutPrefix(rest, "="); isPrefix && !(ok && isFalse(v)) {
+			if strings.HasPrefix(word, p) {
 				return true
 			}
 		} else if word == w {
@@ -1164,12 +1165,27 @@ func onList(word string, list []string) bool {
 	return false
 }
 
-// isFalse reports the false spellings of Go's strconv.ParseBool; a yargs flag
-// given another non-true value is still refused.
+// isFalse reports the false spellings of Go's strconv.ParseBool, for Go's and
+// yargs's boolean flags; a yargs flag given another non-true value is still
+// refused. Maven's properties follow Java instead (mavenSkip).
 func isFalse(v string) bool {
 	switch v {
 	case "false", "False", "FALSE", "f", "F", "0":
 		return true
+	}
+	return false
+}
+
+// mavenSkip reports a Maven property that skips the tests: -DskipTests,
+// -Dmaven.test.skip or -Dmaven.test.skip.exec, with no `=value` or with a
+// value equal to true ignoring case. Maven reads them with Java's
+// Boolean.valueOf, where nothing else is true, so `-DskipTests=false`, `=1`
+// and `=no` all run the tests.
+func mavenSkip(word string) bool {
+	name, value, hasValue := strings.Cut(word, "=")
+	switch name {
+	case "-DskipTests", "-Dmaven.test.skip", "-Dmaven.test.skip.exec":
+		return !hasValue || strings.EqualFold(value, "true")
 	}
 	return false
 }
