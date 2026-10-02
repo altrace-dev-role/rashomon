@@ -254,7 +254,8 @@ type Execution struct {
 	//
 	// Read from the presence of two keys of a Bash call's tool_response and
 	// nothing else of it; see internal/hook's backgroundResponse. False on
-	// every other tool, and on a record written before v3, which could not
+	// every other tool, on a failure event, which means the command ended or
+	// its launch failed, and on a record written before v3, which could not
 	// tell.
 	Backgrounded bool `json:"backgrounded"`
 }

@@ -163,7 +163,9 @@ func (p *Post) Capture(in io.Reader) error {
 			rec.Outcome = store.ExecInterrupted
 		}
 	}
-	if pl.ToolName == "Bash" {
+	// A failure event means the command ended or its launch failed, so it was
+	// never moved to the background, whatever its payload carries.
+	if pl.ToolName == "Bash" && pl.HookEventName != FailureEvent {
 		rec.Backgrounded = backgroundedCall(raw)
 	}
 	return p.st.AppendExecution(rec)

@@ -374,6 +374,60 @@ func TestTestBending_ARunMovedToTheBackgroundFinishesNothing(t *testing.T) {
 	}
 }
 
+// B-A7, with the task id on a failure payload. A failure event means the
+// command ended or its launch failed, so it is never moved to the background.
+// Claude Code does not send tool_response on PostToolUseFailure today, but
+// were it to carry backgroundTaskId, a record saying failed and backgrounded
+// would be read four ways: unobserved in the silent-failures count, failed in
+// test runs, and moved to the background under --chain. The record now says
+// failed only, and every view agrees.
+func TestTestBending_AFailureIsNeverMovedToTheBackground(t *testing.T) {
+	s := newTBSession(t)
+	id := s.id()
+	in := map[string]any{"command": "go test ./...", "description": "run the tests"}
+	s.declare(id, "Bash", in, "")
+	var body map[string]any
+	if err := json.Unmarshal([]byte(failurePayload(t, id, "Exit code 1\nFAIL", false, 40)), &body); err != nil {
+		t.Fatal(err)
+	}
+	body["tool_input"] = in
+	body["tool_response"] = map[string]any{"stdout": "", "backgroundTaskId": "b1"}
+	b, _ := json.Marshal(body)
+	s.e.mustPost(string(b))
+
+	execs := s.e.executions(testSession)
+	if len(execs) != 1 {
+		t.Fatalf("got %d execution records, want 1", len(execs))
+	}
+	if f := execs[0].fields; f["outcome"] != "failed" || f["backgrounded"] != false {
+		t.Errorf("outcome = %v, backgrounded = %v; want failed and false", f["outcome"], f["backgrounded"])
+	}
+
+	js := s.e.run("", nil, "report", "--json", "--session", testSession).stdout
+	var rep struct {
+		Sessions []struct {
+			SilentFailures struct {
+				Failed     int
+				Unobserved int `json:"outcome_unobserved"`
+			} `json:"silent_failures"`
+			TestRuns *struct{ Runs, OK, Failed int } `json:"test_runs"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal([]byte(js), &rep); err != nil || len(rep.Sessions) != 1 || rep.Sessions[0].TestRuns == nil {
+		t.Fatalf("report --json: %v\n%s", err, js)
+	}
+	if sf := rep.Sessions[0].SilentFailures; sf.Failed != 1 || sf.Unobserved != 0 {
+		t.Errorf("silent_failures = %+v, want one failed call and none unobserved", sf)
+	}
+	if tr := rep.Sessions[0].TestRuns; tr.Runs != 1 || tr.Failed != 1 {
+		t.Errorf("test_runs = %+v, want one failed run", *tr)
+	}
+	chain := s.e.run("", nil, "report", "--session", testSession, "--chain").stdout
+	if strings.Contains(chain, "moved to the background") {
+		t.Errorf("--chain reads the failed call as moved to the background:\n%s", chain)
+	}
+}
+
 // B-A8: the review's repeated relative cd. `cd sub && go test ./...` passes
 // and leaves the shell in sub, and Claude Code's next payload says so (its
 // cwd follows the shell, measured on 2.1.280); the identical line then fails

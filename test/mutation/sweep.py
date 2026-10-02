@@ -1723,9 +1723,13 @@ m("TB the post path never reads the background keys", "internal/hook/post.go",
   "\t\trec.Backgrounded = false && backgroundedCall(raw)\n",
   "TestTestBending_ARunMovedToTheBackground|TestH20_Backgrounded")
 m("TB the background bit is read for every tool", "internal/hook/post.go",
-  "\tif pl.ToolName == \"Bash\" {\n\t\trec.Backgrounded",
-  "\tif true {\n\t\trec.Backgrounded",
+  "\tif pl.ToolName == \"Bash\" && pl.HookEventName != FailureEvent {\n\t\trec.Backgrounded",
+  "\tif pl.HookEventName != FailureEvent {\n\t\trec.Backgrounded",
   "TestH20_BackgroundedIsReadForBashOnly")
+m("TB a failure event can be moved to the background", "internal/hook/post.go",
+  "\tif pl.ToolName == \"Bash\" && pl.HookEventName != FailureEvent {\n\t\trec.Backgrounded",
+  "\tif pl.ToolName == \"Bash\" {\n\t\trec.Backgrounded",
+  "TestTestBending_AFailureIsNeverMovedToTheBackground")
 m("TB a false backgroundedByUser sets the bit", "internal/hook/post.go",
   "!bytes.Equal(v, []byte(\"null\")) && !bytes.Equal(v, []byte(\"false\"))",
   "!bytes.Equal(v, []byte(\"null\"))",

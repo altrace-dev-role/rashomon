@@ -330,7 +330,7 @@
           "type": "string"
         },
         "backgrounded": {
-          "description": "Schema 3. True when this record was written while the command was still running in the background: Claude Code moved it there at its timeout (unless it starts with sleep), or it was launched with run_in_background, or on Ctrl+B -- recognised only if Claude Code marks it with backgroundTaskId or backgroundedByUser, which was not measured. Its PostToolUse fires then, so outcome is the launch's and not the command's, and a reader treats the call's ending as unobserved. Read from whether a Bash call's tool_response carries the key backgroundTaskId or backgroundedByUser, as one bit: the task id and every other key of the response are never decoded. False on every other tool.",
+          "description": "Schema 3. True when this record was written while the command was still running in the background: Claude Code moved it there at its timeout (unless it starts with sleep), or it was launched with run_in_background, or on Ctrl+B -- recognised only if Claude Code marks it with backgroundTaskId or backgroundedByUser, which was not measured. Its PostToolUse fires then, so outcome is the launch's and not the command's, and a reader treats the call's ending as unobserved. Read from whether a Bash call's tool_response carries the key backgroundTaskId or backgroundedByUser, as one bit: the task id and every other key of the response are never decoded. False on every other tool, and on PostToolUseFailure, which means the command ended or its launch failed.",
           "type": "boolean"
         },
         "rule_match": {
