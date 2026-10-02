@@ -279,8 +279,8 @@ process substitution (`$(…)`, backticks, `<(…)`, `>(…)`),
 on the line, or a later pipeline or list stage whose program is not a read
 (`grep -rl … | xargs sed -i`). That under-claims by design. It can still miss
 a change: a read or fetch that writes through an option not on that list
-(`find -fprint f`, `curl -D f`), or anything done outside the session's own
-calls.
+(`find -fprint f`, `curl -D f`, `curl -c f`), or anything done outside the
+session's own calls.
 One known gap: Claude Code discards what a `StopFailure` hook prints, so a turn
 that ends in an API error shows no line, and in this release the next prompt
 does not show it either. The line points to
