@@ -1402,7 +1402,7 @@ func mayWrite(toks []token, i int) bool {
 			}
 			continue
 		}
-		if t.ticks > 0 || t.opaque && strings.Contains(t.text, "$(") {
+		if t.ticks > 0 || t.opaque && holdsSubstitution(t.text) {
 			return true
 		}
 		switch path.Base(t.text) {
@@ -1476,7 +1476,8 @@ func outputRedirect(toks []token, j int) bool {
 
 // opensSubstitution reports a token at j that opens a command or process
 // substitution: an unquoted `$`, `<` or `>` with a `(` glued after it. A `$`
-// with two glued `(` opens arithmetic, `$((n+1))`, which runs nothing. The
+// with two glued `(` opens arithmetic, `$((n+1))`, which runs nothing, when
+// arithmeticAt holds; otherwise it opens a substitution of a subshell. The
 // command inside is not classed.
 func opensSubstitution(toks []token, j int) bool {
 	t := toks[j]
@@ -1486,7 +1487,61 @@ func opensSubstitution(toks []token, j int) bool {
 	if t.meta {
 		return t.text == "<" || t.text == ">"
 	}
-	return strings.HasSuffix(t.text, "$") && !gluedParen(toks, j+2)
+	return strings.HasSuffix(t.text, "$") && !(gluedParen(toks, j+2) && arithmeticAt(parenText(toks[j+3:])))
+}
+
+// holdsSubstitution reports text that holds a `$(` opening a command
+// substitution: any `$(` but the `$((` of arithmetic. A `$(` nested inside
+// arithmetic is followed by a byte other than `(`, so it still counts.
+func holdsSubstitution(s string) bool {
+	for k := 0; k < len(s); k++ {
+		if !strings.HasPrefix(s[k:], "$(") {
+			continue
+		}
+		if !strings.HasPrefix(s[k+2:], "(") || !arithmeticAt(s[k+3:]) {
+			return true
+		}
+	}
+	return false
+}
+
+// arithmeticAt reports whether s, the text after a `$((`, is arithmetic: the
+// `)` that matches the second `(` is followed by a glued `)`. Bash and zsh
+// read a `$((` that does not close as `))`, such as `$((rm x) )`, as a
+// command substitution of a subshell.
+func arithmeticAt(s string) bool {
+	depth := 1
+	for k := 0; k < len(s); k++ {
+		switch s[k] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return strings.HasPrefix(s[k+1:], ")")
+			}
+		}
+	}
+	return false
+}
+
+// parenText rebuilds the line from toks as far as arithmeticAt reads it: an
+// operator as written, any other word as one placeholder byte, since an
+// unquoted ( or ) is always an operator token, and a blank where two tokens
+// were apart.
+func parenText(toks []token) string {
+	var b strings.Builder
+	for k, t := range toks {
+		if k > 0 && !t.glued {
+			b.WriteByte(' ')
+		}
+		if t.meta {
+			b.WriteString(t.text)
+		} else {
+			b.WriteByte('w')
+		}
+	}
+	return b.String()
 }
 
 // gluedParen reports a meta `(` at j glued to the token before it.

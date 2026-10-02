@@ -1859,8 +1859,16 @@ m("TB a single-quoted $( is a write", "internal/shape/shape.go",
   "\t\tif t.ticks > 0 || strings.Contains(t.text, \"$(\") {\n",
   "TestMayWrite")
 m("TB arithmetic is a command substitution", "internal/shape/shape.go",
-  "\treturn strings.HasSuffix(t.text, \"$\") && !gluedParen(toks, j+2)\n",
+  "\treturn strings.HasSuffix(t.text, \"$\") && !(gluedParen(toks, j+2) && arithmeticAt(parenText(toks[j+3:])))\n",
   "\treturn strings.HasSuffix(t.text, \"$\")\n",
+  "TestMayWrite")
+m("TB a $(( that does not close as )) is arithmetic", "internal/shape/shape.go",
+  "\t\t\t\treturn strings.HasPrefix(s[k+1:], \")\")\n",
+  "\t\t\t\treturn true\n",
+  "TestMayWrite")
+m("TB quoted arithmetic is a command substitution", "internal/shape/shape.go",
+  "\t\tif !strings.HasPrefix(s[k+2:], \"(\") || !arithmeticAt(s[k+3:]) {\n",
+  "\t\tif true {\n",
   "TestMayWrite")
 
 m("TB a backgrounded call is not counted as unobserved", "internal/report/account.go",

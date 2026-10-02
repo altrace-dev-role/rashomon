@@ -455,6 +455,11 @@ func TestMayWrite(t *testing.T) {
 		{"cat a > >(tee b)", true},
 		{`cat "$(touch x)"`, true},
 		{"ls $( (rm x) )", true},
+		// A $(( that does not close as )) is a substitution of a subshell.
+		{"ls $((rm x) )", true},
+		{"cat $((touch x) 2>&1)", true},
+		// A substitution inside arithmetic still runs.
+		{`echo "$(( $(rm x) + 1 ))"`, true},
 		// A writer word is compared wherever it stands.
 		{"grep -rn xargs .", true},
 		// A later stage outside the read class, or that cannot be named.
@@ -486,6 +491,8 @@ func TestMayWrite(t *testing.T) {
 		{"grep -rn '$(' scripts", false},
 		{"echo $((1+2))", false},
 		{"head -n $((n+1)) file", false},
+		{`echo "$((1+2))"`, false},
+		{`head -n "$((n+1))" file`, false},
 	} {
 		if got := verbOf(t, tc.cmd).MayWrite; got != tc.want {
 			t.Errorf("%q: may_write %v, want %v", tc.cmd, got, tc.want)
