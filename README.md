@@ -2,6 +2,8 @@
 
 **Your coding agent writes its own account of what it did. `rashomon` writes a second one, independently of the agent's narration, and puts the two side by side.**
 
+**[Join the Rashomon Discord](https://discord.gg/Qg3hybAHpU)**
+
 *For Claude Code only, on macOS and Linux. Alpha: v0.1.0-alpha.1.*
 
 ![Claude says all tests pass; rashomon's end-of-turn line reports a recorded failure, and an excerpt of the report shows it](docs/images/rashomon-example.png)
