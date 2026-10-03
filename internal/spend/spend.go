@@ -754,10 +754,11 @@ func (s *Summary) buildSavings() {
 // 1k write on a warm cache as an expiry; the rule that replaced it -- a write
 // with any cache read is not cold -- dropped every partial expiry instead,
 // and most re-writes after a long gap had also read a still-warm prefix. The
-// cold part is the 5m write first and then the 1h write, the cheaper first,
-// so a mixed write is priced at the lower rate; it is priced as the write
-// rate minus the read rate (Build): what re-reading those tokens would have
-// cost is not a saving.
+// cold part is the 5m write first, the cheaper: a mixed write's shortfall is
+// priced at the 5m rate as far as its 5m write goes, and only when the gap
+// is over an hour does the part past that go to its 1h write, priced at the
+// 1h rate. Each part is priced as its write rate minus the read rate
+// (Build): what re-reading those tokens would have cost is not a saving.
 //
 // THE SHORTFALL ASSUMES THE PROMPT EXTENDS THE PREVIOUS ONE, so a write up to
 // it re-writes what the previous response cached. That is false after
