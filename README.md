@@ -400,7 +400,7 @@ in [`docs/design-notes.md`](docs/design-notes.md).
 | Command | What it does |
 | --- | --- |
 | `rashomon watch` | Install the recorders, the liveness probe and the end-of-turn recap (eight entries). **The only command that installs anything.** |
-| `rashomon report [--session S] [--json] [--redact] [--chain]` | Render **every** recorded session, or one named with `--session`. `--chain` adds the causal view: which prompt produced which calls |
+| `rashomon report [--session S] [--json] [--redact] [--chain] [--timeline]` | Render **every** recorded session, or one named with `--session`. `--chain` adds the causal view: which prompt produced which calls. `--timeline` lists every call, main agent and subagents, in the order they were recorded, keeps failed calls apart from calls that never ran, and says whether a success of the same command, or of the same program for single-purpose programs, was recorded after each failure, and reads "not checked" where a success may exist but cannot be placed or matched, or where the failure itself has no declaration or recorded position; for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is looked for, and a fix made with a different command, or a corrected Edit, is not detected |
 | `rashomon status` | Say what is installed here. Reads only; creates nothing |
 | `rashomon spend [--days N] [--json]` | Estimate what the last N days of Claude Code usage would cost at API list prices, from Claude Code's own transcripts. Needs no `watch`; writes nothing. See [`rashomon spend`](#rashomon-spend) |
 | `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
@@ -592,4 +592,4 @@ Apache 2.0. See [LICENSE](LICENSE).
 
 ---
 
-Built by [Altrace](https://github.com/altrace-dev-role).
+Built by [Altrace](https://www.altrace.io/).

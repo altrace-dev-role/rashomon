@@ -173,11 +173,17 @@ const exitCodePrefix = "Exit code "
 // exit status that means success, so writing it for "no code was stated" would
 // record the opposite of what happened -- and this record's whole purpose is to
 // say that the call did not succeed.
+//
+// Only the first line is read. Measured on Claude Code 2.1.285, a command that
+// printed anything fails with "Exit code 2\n<its output>", and reading the
+// whole remainder as the number dropped the code from every such failure. The
+// output after the newline is never looked at.
 func exitCode(msg string) *int {
 	if !strings.HasPrefix(msg, exitCodePrefix) {
 		return nil
 	}
-	digits := strings.TrimSpace(msg[len(exitCodePrefix):])
+	first, _, _ := strings.Cut(msg[len(exitCodePrefix):], "\n")
+	digits := strings.TrimSpace(first)
 	if digits == "" {
 		return nil
 	}

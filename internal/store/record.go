@@ -176,7 +176,9 @@ type Execution struct {
 	Outcome string `json:"outcome"`
 
 	// ExitCode is the process exit status, parsed from the failure payload's
-	// `error: "Exit code N"` (v2).
+	// `error: "Exit code N"` (v2). Only the first line is read: a command that
+	// printed anything fails with "Exit code N\n<its output>", and the output
+	// is never looked at.
 	//
 	// Null on success and on any other error shape, and NEVER 0: zero is an
 	// exit status meaning success, so writing it for "we could not parse one"

@@ -1252,6 +1252,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 	asJSON := false
 	redact := false
 	chain := false
+	timeline := false
 	nonoTrail := ""
 	proxyStore := ""
 	for i := 0; i < len(args); i++ {
@@ -1281,6 +1282,8 @@ func cmdReport(args []string, stdout io.Writer) error {
 			redact = true
 		case "--chain":
 			chain = true
+		case "--timeline":
+			timeline = true
 		case "--nono-audit":
 			if i+1 >= len(args) {
 				return errors.New("--nono-audit needs a value")
@@ -1315,10 +1318,11 @@ func cmdReport(args []string, stdout io.Writer) error {
 		rep = report.Redact(rep, key)
 	}
 	if !asJSON {
-		// --chain expands the text listing only. The JSON carries the whole
-		// structure either way: that reader is a program selecting fields, not
-		// a person scrolling, and making it pass a flag to receive a section
-		// would mean a consumer could parse a report and silently miss one.
+		// --chain and --timeline expand the text listing only. The JSON
+		// carries the whole structure either way: that reader is a program
+		// selecting fields, not a person scrolling, and making it pass a flag
+		// to receive a section would mean a consumer could parse a report and
+		// silently miss one.
 		//
 		// The same rule decides the proxy block: the text render is told which
 		// store was named, and with none it collapses that block to one line.
@@ -1326,6 +1330,9 @@ func cmdReport(args []string, stdout io.Writer) error {
 		opts := []report.TextOption{report.WithNamedProxyStore(proxyStore)}
 		if chain {
 			opts = append(opts, report.WithChain())
+		}
+		if timeline {
+			opts = append(opts, report.WithTimeline())
 		}
 		return report.Text(stdout, rep, opts...)
 	}
@@ -1648,12 +1655,13 @@ usage:
                                window with a record of how long it lasted
   rashomon status                say what is installed and what the store holds,
                                writing nothing and creating no store
-  rashomon report [--session S] [--json] [--redact] [--chain]
+  rashomon report [--session S] [--json] [--redact] [--chain] [--timeline]
                   [--nono-audit PATH]
                                render declarations and coverage, as text for a
                                terminal or as JSON for a consumer; --chain
-                               lists the calls under each prompt, which JSON
-                               always carries
+                               lists the calls under each prompt, --timeline
+                               every call across agents in order, and JSON
+                               always carries both
   rashomon digest [--session S] [--prompt P] [--last-assistant-message TEXT]
                   [--stdin]
                                render one turn's projection as JSON: what one
