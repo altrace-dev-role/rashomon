@@ -408,8 +408,9 @@ func silentLine(s *Summary) string {
 // names every one.
 const maxNamed = 5
 
-// notCoveredNames names the sessions whose transcripts are not covered, so a
-// reader can tell which conversations the line says nothing about.
+// notCoveredNames names the per-session rows holding spend that is not
+// covered (NotCoveredSessions), so a reader can find the spend the line did
+// not check.
 func notCoveredNames(j SilentFailureTurns) string {
 	n := j.NotCoveredSessions
 	if len(n) == 0 {
@@ -423,7 +424,7 @@ func notCoveredNames(j SilentFailureTurns) string {
 	if len(n) > len(shown) {
 		more = fmt.Sprintf(" and %d more (--json names every one)", len(n)-len(shown))
 	}
-	return fmt.Sprintf("  (not covered: %s %s%s)\n", sessionWord(len(n)), strings.Join(shown, ", "), more)
+	return fmt.Sprintf("  (not-covered spend is in: %s %s%s)\n", sessionWord(len(n)), strings.Join(shown, ", "), more)
 }
 
 func sessionWord(n int) string {

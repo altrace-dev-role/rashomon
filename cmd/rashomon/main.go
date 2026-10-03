@@ -1686,24 +1686,24 @@ usage:
                                responses a fallback model served, and the
                                spend in turns with a failed call the
                                summary never mentioned, over the transcripts
-                               its records name (the rest named as not
-                               covered); the totals read usage fields only;
-                               the silent-failure line also decodes, in
-                               memory, the text blocks of every assistant line
-                               of each recorded turn with a failed call,
-                               keeping only the last, and the content block
-                               types (never the text) of user lines with no
-                               promptId; a subagent's spend is tied to its
-                               turn by the promptId on its own transcript's
-                               user lines, and a sidechain response in the
-                               main transcript counts toward the prompt
-                               before it (a sidechain user line does not end
-                               the tie); a response after a line that cannot
-                               be decoded (any in a subagent transcript; in
-                               the main transcript, unless it is a sidechain
-                               line) is not counted; a failed turn with no
-                               final message to judge is counted as not
-                               checked, never as clean;
+                               its records name (the sessions holding the
+                               not-covered spend named); the totals read usage
+                               fields only; the silent-failure line also
+                               decodes, in memory, the text blocks of every
+                               assistant line of each recorded turn with a
+                               failed call, keeping only the last, and the
+                               content block types (never the text) of user
+                               lines with no promptId; a subagent's spend is
+                               tied to its turn by the promptId on its own
+                               transcript's user lines, and a sidechain
+                               response in the main transcript counts toward
+                               the prompt before it (a sidechain user line
+                               does not end the tie); a response after a line
+                               that cannot be decoded (any in a subagent
+                               transcript; in the main transcript, unless it
+                               is a sidechain line) is not counted; a failed
+                               turn with no final message to judge is counted
+                               as not checked, never as clean;
                                writes nothing
   rashomon forget --host H       evict every call that named host H
   rashomon forget --since T      evict records recorded at or after T

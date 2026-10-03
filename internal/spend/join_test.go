@@ -175,7 +175,7 @@ func TestJoin_SpendInsideASilentlyFailedTurn(t *testing.T) {
 		"savings       $0.04 spent in turns with a failed call the summary never mentioned\n",
 		"1 of 2 transcripts was recorded",
 		"in the other 1 is not covered",
-		"(not covered: session sess-u)",
+		"(not-covered spend is in: session sess-u)",
 		"so this is a floor",
 	} {
 		if !strings.Contains(txt, want) {
@@ -367,7 +367,7 @@ func TestJoin_CoverageIsPerTranscript(t *testing.T) {
 		t.Errorf("per-session coverage = %v, want sess-j partly and sess-k not recorded", cov)
 	}
 	txt, _ := render(t, s)
-	if !strings.Contains(txt, "1 of 3 transcripts was recorded") || !strings.Contains(txt, "(not covered: sessions sess-j, sess-k)") ||
+	if !strings.Contains(txt, "1 of 3 transcripts was recorded") || !strings.Contains(txt, "(not-covered spend is in: sessions sess-j, sess-k)") ||
 		!strings.Contains(txt, ", partly recorded by rashomon\n") {
 		t.Errorf("text does not say which transcripts are covered:\n%s", txt)
 	}
