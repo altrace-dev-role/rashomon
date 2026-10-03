@@ -962,11 +962,12 @@ func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *
 		undatedFirst bool   // the original starts with an undated line
 		copyCoverage string
 		named        string // the rows holding the not-covered dollars
+		shared       int    // the responses both sessions hold
 	}{
-		{"copied lines keep sess-o", "sess-r", true, false, CoverageRecorded, "sess-o"},
-		{"copied lines carry sess-r", "sess-r", false, false, CoveragePartly, "sess-o,sess-r"},
-		{"copied lines carry sess-a, which sorts first", "sess-a", false, false, CoveragePartly, "sess-a,sess-o"},
-		{"copied lines carry sess-a, the original's first line undated", "sess-a", false, true, CoveragePartly, "sess-a,sess-o"},
+		{"copied lines keep sess-o", "sess-r", true, false, CoverageRecorded, "sess-o", 0},
+		{"copied lines carry sess-r", "sess-r", false, false, CoveragePartly, "sess-o,sess-r", 2},
+		{"copied lines carry sess-a, which sorts first", "sess-a", false, false, CoveragePartly, "sess-a,sess-o", 2},
+		{"copied lines carry sess-a, the original's first line undated", "sess-a", false, true, CoveragePartly, "sess-a,sess-o", 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			x1 := resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T, in: 1000, w5: 100, stop: "end_turn"}
@@ -1036,6 +1037,15 @@ func TestJoin_ADuplicatedResponseIsCoveredOnlyWhenEveryTranscriptHoldingItIs(t *
 			}
 			if s.CacheExpiry.Responses != 1 || s.CacheExpiry.Tokens != 3000 {
 				t.Errorf("cold = %+v, want Y1's write once", s.CacheExpiry)
+			}
+			if s.SharedResponses != tc.shared {
+				t.Errorf("shared responses = %d, want %d", s.SharedResponses, tc.shared)
+			}
+			if tc.shared == 0 && strings.Contains(txtA, "held by tied sessions") {
+				t.Errorf("the text names shared responses where one session owns each:\n%s", txtA)
+			}
+			if tc.shared > 0 && !strings.Contains(txtA, "\n              2 responses are held by tied sessions and appear in each of their rows, so the rows can add up to more than the total\n") {
+				t.Errorf("the text does not say the two shared responses are in each row:\n%s", txtA)
 			}
 		})
 	}

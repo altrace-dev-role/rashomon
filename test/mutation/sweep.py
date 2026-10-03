@@ -1755,6 +1755,12 @@ m("SP a response held by one session is counted as shared", "internal/spend/spen
 m("SP the rows' shared responses are not said", "internal/spend/text.go",
   "\t\tif n := s.SharedResponses; n > 0 {", "\t\tif n := s.SharedResponses; n < 0 {",
   "TestJoin_ARecordedOriginalWithAnUnrecordedCopy")
+m("SP every shared response after the first is not counted", "internal/spend/spend.go",
+  "\t\t\ts.SharedResponses++\n", "\t\t\ts.SharedResponses = 1\n",
+  "TestJoin_")
+m("SP several shared responses read as one that appears", "internal/spend/text.go",
+  "\treturn \"appear\"\n}", "\treturn \"appears\"\n}",
+  "TestJoin_")
 m("SP an unreadable entry is keyed as written, not resolved", "internal/spend/scan.go",
   "\t\t\t\tunreadable[resolved(path)] = true", "\t\t\t\tunreadable[path] = true",
   "TestDiscover_OneTranscriptUnderTwoSpellings")
