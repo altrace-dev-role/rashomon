@@ -79,9 +79,9 @@ type SilentFailureTurns struct {
 	// into "none found" would claim a check that never happened.
 	Unjudged int `json:"unjudged_turns"`
 	// UndeclaredFailedCalls counts the failed calls recorded in the window
-	// whose declaration was lost (turnsOf). No turn is known to hold them,
-	// so none was checked, and like Unjudged they keep "none found" from
-	// claiming every failure was checked.
+	// whose declaration was lost or carried no prompt_id (turnsOf). No turn
+	// is known to hold them, so none was checked, and like Unjudged they keep
+	// "none found" from claiming every failure was checked.
 	UndeclaredFailedCalls int    `json:"undeclared_failed_calls"`
 	Cost                  Cost   `json:"cost"`
 	Bound                 string `json:"bound"`
@@ -129,15 +129,17 @@ type turn struct {
 // prompt_id, so they belong to the turn that spawned them. Executions and
 // terminals carry no prompt_id and join through the tool_use_id of the
 // declaration they answer, which is how digest builds the same small run.
-// A declaration with no prompt_id (a record older than the field) belongs to
-// no turn and is left out rather than guessed into one.
+// A declaration with no prompt_id (a record older than the field, or one
+// from before a session's first input) belongs to no turn and is left out
+// rather than guessed into one.
 //
-// A FAILED EXECUTION WHOSE DECLARATION WAS LOST is in no turn. A
-// declaration can be lost -- a lock timeout, a paused pre hook, a
-// mid-session install -- while its execution is recorded. The execution
-// then has no declaration to join through, and so no prompt: placing it by
-// recorded time put it in whichever turn started before it, often a clean
-// one, whose spend was then printed as silent-failure spend. The session
+// A FAILED EXECUTION WHOSE DECLARATION WAS LOST OR CARRIED NO PROMPT_ID is
+// in no turn. A declaration can be lost -- a lock timeout, a paused pre
+// hook, a mid-session install -- while its execution is recorded. The
+// execution then has no declaration with a prompt to join through, and so no
+// prompt: placing it by recorded time put it in whichever turn started
+// before it, often a clean one, whose spend was then printed as
+// silent-failure spend. The session
 // report, which judges the whole run, counts such a failure; a turn's digest
 // leaves it out, as this does. It is placed nowhere, and its recorded time is
 // returned in lost, for Join to count once as a failed call that was not
@@ -145,7 +147,6 @@ type turn struct {
 func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 	byPrompt := map[string]*turn{}
 	owner := map[string]*turn{}
-	declared := map[string]bool{}
 	span := func(t *turn, ms int64) {
 		if ms < t.firstMS {
 			t.firstMS = ms
@@ -155,7 +156,6 @@ func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 		}
 	}
 	for _, d := range run.Declarations {
-		declared[d.ToolUseID] = true
 		if d.PromptID == nil || *d.PromptID == "" {
 			continue
 		}
@@ -174,7 +174,7 @@ func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 	for _, x := range run.Executions {
 		t, ok := owner[x.ToolUseID]
 		if !ok {
-			if !declared[x.ToolUseID] && x.Outcome == store.ExecFailed {
+			if x.Outcome == store.ExecFailed {
 				lost = append(lost, x.RecordedAtMS)
 			}
 			continue
@@ -223,9 +223,10 @@ func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 // all of them (report.FinalAssistantTexts). Only the verdict is kept. A turn
 // with a failed call whose final message cannot be found takes no verdict,
 // and is counted in Unjudged rather than read as clean. A failed call whose
-// declaration was lost is in no turn (turnsOf) and is never placed in one by
-// time: it is counted, once, in UndeclaredFailedCalls, and "none found" is
-// then said only of the turns that could be checked.
+// declaration was lost or carried no prompt_id is in no turn (turnsOf) and
+// is never placed in one by time: it is counted, once, in
+// UndeclaredFailedCalls, and "none found" is then said only of the turns
+// that could be checked.
 //
 // A FIRING TURN'S SPEND IS KEYED BY ITS PROMPT, not by a span of recorded
 // time. The main transcript ties each response to the promptId of the user
@@ -310,8 +311,8 @@ func (s *Summary) Join(st *store.Store) error {
 		}
 		// Only a turn with a recorded failure can fire, whatever its final
 		// message says; those alone need their transcripts read. A failed
-		// call whose declaration was lost is in no turn: it is counted once,
-		// as not checked.
+		// call whose declaration was lost or carried no prompt_id is in no
+		// turn: it is counted once, as not checked.
 		recordedTurns, lost := turnsOf(run)
 		for _, ms := range lost {
 			if ms >= s.FromUnixMS {

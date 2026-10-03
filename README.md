@@ -593,9 +593,9 @@ response is counted as a pre-output refusal written without usage.
 
 **The silent-failure line.** A turn counts when one of its recorded calls
 failed and its final message mentions no failure, whether or not a later call
-succeeded. A failed call whose declaration was lost has no prompt, so it is
-placed in no turn: the line counts it as a failed call that could not be
-checked, and with one, "none found" holds only for the turns that could be.
+succeeded. A failed call whose declaration was lost or carried no
+`prompt_id` has no prompt, so it is placed in no turn: the line counts it as
+a failed call that could not be checked, and with one, "none found" holds only for the turns that could be.
 The line covers only the transcripts a rashomon record names. Every other
 transcript is counted and its spend priced and marked not covered, never
 folded in as zero, and the sessions whose rows hold that spend are named. A

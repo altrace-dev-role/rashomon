@@ -1107,28 +1107,34 @@ func TestJoin_ASharedResponseInTwoUnrecordedTranscriptsIsNotCoveredOnce(t *testi
 // the clean turn before it, which fired and printed p1's spend as
 // silent-failure spend and as a saving. It is counted once as a failed call
 // that was not checked, so "none found" is never printed over it -- and only
-// when it is a failure recorded in the window.
+// when it is a failure recorded in the window. A declaration recorded with no
+// prompt_id (a record from before a session's first input) ties the call to
+// no turn either, and is counted the same way. A turn that fires beside such
+// a call keeps its own figure, with the note printed above the bound.
 func TestJoin_AFailedCallWhoseDeclarationWasLostIsNotJudged(t *testing.T) {
 	type lost struct {
 		at      time.Duration
 		outcome string
 	}
+	const one = "  (1 failed call could not be checked: its declaration was not recorded or carried no prompt id, so no turn is known to hold it)\n"
 	for _, tc := range []struct {
-		name  string
-		lost  []lost
-		third bool // p2 declares no call, and a clean p3 follows it
-		want  int
-		said  string
+		name       string
+		lost       []lost
+		third      bool // p2 declares no call, and a clean p3 follows it
+		promptless bool // each lost call's declaration is recorded, with no prompt_id
+		fails      bool // p1's call fails, so p1 fires
+		want       int
+		said       string
 	}{
-		{"right after a clean turn", []lost{{9800 * time.Millisecond, store.ExecFailed}}, false, 1,
-			"  (1 failed call could not be checked: its declaration was not recorded, so no turn is known to hold it)\n"},
-		{"a turn with every declaration lost", []lost{{10800 * time.Millisecond, store.ExecFailed}}, true, 1,
-			"  (1 failed call could not be checked: its declaration was not recorded, so no turn is known to hold it)\n"},
-		{"two in one turn", []lost{{10800 * time.Millisecond, store.ExecFailed}, {10900 * time.Millisecond, store.ExecFailed}}, true, 2,
-			"  (2 failed calls could not be checked: their declarations were not recorded, so no turn is known to hold them)\n"},
-		{"before every turn", []lost{{-5 * time.Second, store.ExecFailed}}, false, 1,
-			"  (1 failed call could not be checked: its declaration was not recorded, so no turn is known to hold it)\n"},
-		{"a success, and a failure before the window", []lost{{10800 * time.Millisecond, store.ExecOK}, {-31 * 24 * time.Hour, store.ExecFailed}}, false, 0, ""},
+		{"right after a clean turn", []lost{{9800 * time.Millisecond, store.ExecFailed}}, false, false, false, 1, one},
+		{"a turn with every declaration lost", []lost{{10800 * time.Millisecond, store.ExecFailed}}, true, false, false, 1, one},
+		{"two in one turn", []lost{{10800 * time.Millisecond, store.ExecFailed}, {10900 * time.Millisecond, store.ExecFailed}}, true, false, false, 2,
+			"  (2 failed calls could not be checked: their declarations were not recorded or carried no prompt id, so no turn is known to hold them)\n"},
+		{"before every turn", []lost{{-5 * time.Second, store.ExecFailed}}, false, false, false, 1, one},
+		{"a success, and a failure before the window", []lost{{10800 * time.Millisecond, store.ExecOK}, {-31 * 24 * time.Hour, store.ExecFailed}}, false, false, false, 0, ""},
+		{"a promptless failure", []lost{{10800 * time.Millisecond, store.ExecFailed}}, false, true, false, 1, one},
+		{"a promptless success", []lost{{10800 * time.Millisecond, store.ExecOK}}, false, true, false, 0, ""},
+		{"beside a turn that fires", []lost{{10800 * time.Millisecond, store.ExecFailed}}, true, false, true, 1, one},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newConfig(t)
@@ -1156,16 +1162,30 @@ func TestJoin_AFailedCallWhoseDeclarationWasLostIsNotJudged(t *testing.T) {
 					m("R6", sec(22), 10, "Finished as asked.").line("text"))
 			}
 			rec.transcript = c.write("proj/sess-j.jsonl", lines...)
-			rec.call("sess-j", "p1", "toolu_1", sec(0), sec(1), store.ExecOK)
+			p1 := store.ExecOK
+			if tc.fails {
+				p1 = store.ExecFailed
+			}
+			rec.call("sess-j", "p1", "toolu_1", sec(0), sec(1), p1)
 			if tc.third {
 				rec.call("sess-j", "p3", "toolu_5", sec(20), sec(21), store.ExecOK)
 			} else {
 				rec.call("sess-j", "p2", "toolu_3", sec(10), sec(11), store.ExecOK)
 			}
 			for i, l := range tc.lost {
+				id := fmt.Sprintf("toolu_lost%d", i)
+				if tc.promptless {
+					if err := rec.st.AppendDeclaration(store.Declaration{
+						Type: store.TypeDeclaration, SchemaVersion: store.SchemaVersion,
+						RecordedAtMS: T.Add(l.at - 100*time.Millisecond).UnixMilli(), ToolUseID: id, SessionID: "sess-j",
+						ToolName: "Bash", TranscriptPath: rec.transcript,
+					}); err != nil {
+						t.Fatal(err)
+					}
+				}
 				if err := rec.st.AppendExecution(store.Execution{
 					Type: store.TypeExecution, SchemaVersion: store.SchemaVersion,
-					RecordedAtMS: T.Add(l.at).UnixMilli(), ToolUseID: fmt.Sprintf("toolu_lost%d", i), SessionID: "sess-j",
+					RecordedAtMS: T.Add(l.at).UnixMilli(), ToolUseID: id, SessionID: "sess-j",
 					ToolName: "Bash", Outcome: l.outcome,
 				}); err != nil {
 					t.Fatal(err)
@@ -1176,13 +1196,24 @@ func TestJoin_AFailedCallWhoseDeclarationWasLostIsNotJudged(t *testing.T) {
 				t.Fatal(err)
 			}
 			j := s.SilentFailureTurns
-			if j.Turns != 0 || j.Cost.Priced != 0 || len(s.Savings) != 0 || j.Unjudged != 0 || j.UndeclaredFailedCalls != tc.want {
-				t.Errorf("turns %d, cost %+v, savings %+v, unjudged %d, undeclared %d; want no turn, no figure and %d undeclared",
-					j.Turns, j.Cost, s.Savings, j.Unjudged, j.UndeclaredFailedCalls, tc.want)
-			}
 			txt, js := render(t, s)
 			if !strings.Contains(js, fmt.Sprintf(`"undeclared_failed_calls":%d`, tc.want)) {
 				t.Errorf("the JSON does not count the undeclared failed calls:\n%s", js)
+			}
+			if tc.fails {
+				if want := int64(100000+1000000) * opusIn; j.Turns != 1 || j.Cost.Nano != want || j.Unjudged != 0 || j.UndeclaredFailedCalls != 1 {
+					t.Errorf("turns %d, cost %d, unjudged %d, undeclared %d; want p1 alone, priced at %d, and 1 undeclared",
+						j.Turns, j.Cost.Nano, j.Unjudged, j.UndeclaredFailedCalls, want)
+				}
+				note, bound := strings.Index(txt, tc.said), strings.Index(txt, "  ("+TurnBound+")\n")
+				if !strings.Contains(txt, "never mentioned: at least $4.40 across 1 turn\n") || note < 0 || bound < note {
+					t.Errorf("want p1's figure, and the note above the bound:\n%s", txt)
+				}
+				return
+			}
+			if j.Turns != 0 || j.Cost.Priced != 0 || len(s.Savings) != 0 || j.Unjudged != 0 || j.UndeclaredFailedCalls != tc.want {
+				t.Errorf("turns %d, cost %+v, savings %+v, unjudged %d, undeclared %d; want no turn, no figure and %d undeclared",
+					j.Turns, j.Cost, s.Savings, j.Unjudged, j.UndeclaredFailedCalls, tc.want)
 			}
 			if tc.want == 0 {
 				if !strings.Contains(txt, "never mentioned: none found (no recorded turn") || strings.Contains(txt, "could not be checked") {

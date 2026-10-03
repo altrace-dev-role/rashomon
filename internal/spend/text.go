@@ -363,9 +363,9 @@ func silentLine(s *Summary) string {
 	// with no response of theirs in the window are counted without a figure,
 	// not "at least none"; and a figure is a floor (Bound), so "at least".
 	// A failed turn with no words to judge (Unjudged), or a failed call whose
-	// declaration was lost (UndeclaredFailedCalls), is neither: with any,
-	// "none" holds only among the turns that were checked, never "no recorded
-	// turn ... left it out".
+	// declaration was lost or carried no prompt_id (UndeclaredFailedCalls),
+	// is neither: with any, "none" holds only among the turns that were
+	// checked, never "no recorded turn ... left it out".
 	switch {
 	case j.Turns == 0 && j.Unjudged == 0 && j.UndeclaredFailedCalls == 0:
 		b.WriteString("none found (no recorded turn with a failed call ended in a summary that left it out)\n")
@@ -394,9 +394,9 @@ func silentLine(s *Summary) string {
 		fmt.Fprintf(&b, "  (%d turns with a failed call could not be checked: no final message could be tied to their prompts)\n", j.Unjudged)
 	}
 	if j.UndeclaredFailedCalls == 1 {
-		b.WriteString("  (1 failed call could not be checked: its declaration was not recorded, so no turn is known to hold it)\n")
+		b.WriteString("  (1 failed call could not be checked: its declaration was not recorded or carried no prompt id, so no turn is known to hold it)\n")
 	} else if j.UndeclaredFailedCalls > 1 {
-		fmt.Fprintf(&b, "  (%d failed calls could not be checked: their declarations were not recorded, so no turn is known to hold them)\n", j.UndeclaredFailedCalls)
+		fmt.Fprintf(&b, "  (%d failed calls could not be checked: their declarations were not recorded or carried no prompt id, so no turn is known to hold them)\n", j.UndeclaredFailedCalls)
 	}
 	if j.Turns > 0 {
 		fmt.Fprintf(&b, "  (%s)\n", j.Bound)
