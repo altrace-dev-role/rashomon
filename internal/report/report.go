@@ -271,6 +271,24 @@ type Session struct {
 	// order, with each failure's follow-up. Chains answers "what did this
 	// prompt cause"; this answers "what happened, in order, across agents".
 	Timeline Timeline `json:"timeline"`
+
+	// TestRuns is the session's calls of verb class test, and the two
+	// test-bending patterns among them: a failed run that passed when the
+	// only recorded edits between were to files named like tests, and one
+	// command that both passed and failed with no recorded file edit between
+	// (see DetectTestBending for what an edit is). The turn digest carries
+	// the same patterns for one turn; this is the whole session's.
+	//
+	// Null for a session with no schema 3 declaration (records that predate
+	// schema 3, or no tool calls at all): records written before the test
+	// class existed say execute or package for the same commands, so a count
+	// over them would be zeros nobody measured. Otherwise only runs that
+	// ended ok or failed are counted; interrupted, denied, backgrounded,
+	// timed-out and unrecorded runs are not, and a session that spans the
+	// upgrade is counted from its first schema 3 call. A session holding a
+	// call whose declaration was lost has no pair looked for, and undeclared
+	// says how many such calls it holds.
+	TestRuns *TestRuns `json:"test_runs"`
 }
 
 // Option configures Build.
@@ -445,8 +463,14 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 			nono.Read(cfg.nonoTrail, nono.Window{Start: w.Start, End: w.End}),
 			sess.Destinations, cfg.nonoTrail != "", forgotten)
 		denied := deniedSet(sess.Transcripts)
-		sess.Chains = buildChains(run, sess.Destinations, denied, forgotten)
-		sess.Timeline = buildTimeline(run, denied)
+		// One grouping of the executions, shared by the chains, the timeline
+		// and the test runs, and one detection, shared by the timeline's
+		// annotations and the test runs' pairs.
+		executed := executionsByID(run)
+		sess.Chains = buildChains(run, executed, sess.Destinations, denied, forgotten)
+		tb := detectTestBending(run, executed, denied)
+		sess.Timeline = timelineFrom(run, executed, denied, tb)
+		sess.TestRuns = buildTestRuns(run, executed, denied, tb)
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
 		sess.SilentFailures = BuildSilentFailures(run, sess.Account)

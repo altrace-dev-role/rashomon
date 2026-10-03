@@ -139,6 +139,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	writeAccount(b, sess.Account)
 	writeSubagents(b, sess.Subagents)
 	writeSilentFailures(b, sess.SilentFailures)
+	writeTestRuns(b, sess.TestRuns, sess.SessionID)
 	// Whether a proxy store was NAMED for this render, not whether it could be
 	// read: a named store that is missing still renders its reason in full,
 	// because the reader asked about a proxy. See WithNamedProxyStore.
@@ -629,7 +630,7 @@ func writeSubagents(b *bytes.Buffer, subs []SubagentSummary) {
 // package for the words that would cross that line.
 func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 	if sf.Unobserved > 0 {
-		fmt.Fprintf(b, "  outcome unobserved: %d call(s) recorded no ending\n", sf.Unobserved)
+		fmt.Fprintf(b, "  outcome unobserved: %d call(s) recorded no ending or were moved to the background before they ended\n", sf.Unobserved)
 	}
 	if sf.Failed == 0 {
 		fmt.Fprintln(b, "  failed calls: 0")
@@ -646,6 +647,94 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 	}
 	fmt.Fprintf(b, "    the final message contains none of these %d words: %s\n",
 		len(sf.AbsentWords), list(sf.AbsentWords))
+}
+
+// writeTestRuns renders the session's test runs and the two test-bending
+// patterns among them.
+//
+// Absent when the session recorded no test run, unlike the sections that are
+// always present, and when its records predate the test class (t is nil):
+// those say execute or package for the same commands, so a "test runs: 0"
+// there would state a count the record never measured.
+//
+// The limit is printed wherever a pattern is: "no recorded file edit between"
+// means no recorded call between the runs that may change files (mayEdit:
+// every call but a read, a network call, a subagent launch or one of Claude
+// Code's bookkeeping tools). A shell command classed read or network counts
+// when its shape says it may write (`cat a > b`, `curl -o f`, `find
+// -delete`, `grep | xargs sed -i`, rsync), and the block names what sets that;
+// one that writes through an option the list does not name (`find -fprint
+// f`, `curl -D f`, `curl -c f`) is not counted, and the block says so. Saying
+// "nothing changed" would be the claim the record cannot make. Runs pair only
+// within one directory (the declarations' cwd digests), and the block says
+// so, since "the same command" alone would read as the same line anywhere.
+// And a `cd DIR && go test` is a test run, since leaving `cd … &&` out would
+// lose most real runs, so its outcome may be the cd's. A repeated relative
+// `cd DIR && go test` needs no line: the second starts in DIR, another
+// directory, and does not pair with the first. Each is a line of the block. A
+// run moved to the background, on its timeout, by Ctrl+B or by
+// run_in_background, is not a limit any more: its execution record says so
+// (on Ctrl+B only if Claude Code marks it with backgroundTaskId or
+// backgroundedByUser, which was not measured), and it is no run with a result
+// (LinkOutcomeBackgrounded).
+//
+// A session holding a call whose declaration was lost has no pair looked
+// for (detectTestBending), and the block says so on a line of its own: with
+// the limit lines printed only beside a pair, the run count alone would read
+// as "looked and found none", and a pair the end-of-turn line named earlier
+// would be gone with no word of why.
+//
+// The pairs are seqs, and nothing in the default report maps a seq to its
+// call, so the block's first limit line points at --timeline, which does,
+// with the session's id so the command can be pasted: single-quoted
+// (pasteArg) when the shell would split or unquote it.
+func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
+	if t == nil || t.Runs == 0 {
+		return
+	}
+	fmt.Fprintf(b, "  test runs: %d (%d ok, %d failed)\n", t.Runs, t.OK, t.Failed)
+	if t.Undeclared > 0 {
+		fmt.Fprintf(b, "    no pair is looked for: %d call%s ran with no declaration recorded, and may have edited a file between any two runs\n",
+			t.Undeclared, plural(t.Undeclared))
+	}
+	for _, p := range t.TestsOnlyThenGreen {
+		fmt.Fprintf(b, "    failed, then the only recorded edits were to files named like tests, then the same command passed: %d → %d\n", p[0], p[1])
+	}
+	// Each pair with its runs' outcomes in declaration (start) order, which
+	// is not always passed then failed, and is not always the order the two
+	// finished in when parallel agents overlap.
+	for _, p := range t.Flaky {
+		first, second := p.Outcomes()
+		fmt.Fprintf(b, "    same command had both outcomes with no recorded file edit between: %d %s, %d %s\n",
+			p.Seqs[0], first, p.Seqs[1], second)
+	}
+	if len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {
+		fmt.Fprintf(b, "    the numbers are call seqs, and `rashomon report --session %s --timeline` shows these rows;\n", pasteArg(sessionID))
+		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch, a subagent launch, or a task, todo, question, plan, background-shell, skill, search, message, cron or MCP-resource tool, even one that failed;")
+		fmt.Fprintln(b, "    a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read,")
+		fmt.Fprintln(b, "    but one that writes through an option not on that list (find -fprint, curl -D or -c) is not counted;")
+		fmt.Fprintln(b, "    runs pair only when the same command line started in the same directory: the reported cwd, or where its leading plain cd steps lead;")
+		fmt.Fprintln(b, "    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run")
+	}
+}
+
+// pasteArg is s as one shell word: bare when it is not empty and every byte
+// is in [A-Za-z0-9._-], and otherwise single-quoted, with a quote inside
+// closed, escaped and reopened, as internal/install's shellQuote does. Its
+// safe set is narrower than shellQuote's on purpose, so the pasted id is a
+// single word under any shell.
+func pasteArg(s string) string {
+	if s == "" {
+		return "''"
+	}
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '.', c == '_', c == '-':
+		default:
+			return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+		}
+	}
+	return s
 }
 
 // collapse turns a multi-line message into one line. The report's own

@@ -9,7 +9,15 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // gained outcome, exit_code, is_interrupt, duration_ms and executed_digest;
 // coverage gained cwd. No v1 field changed meaning and none was removed, which
 // is what makes reading both safe.
-const SchemaVersion = 2
+//
+// v3 is additive over v2 as well: declaration gained file_label, host_source,
+// rule_match, cwd_digest and shape.may_write; execution gained rule_match and
+// backgrounded. And the test verb class, with the test-file label, is a v3
+// vocabulary: a v2 record says package or execute for `go test`, so a reader
+// that meets one knows its test runs were never measured, not that there were
+// none. rule_match is null on every record this build writes; the rule-match
+// layer adds behaviour on v3, not another version.
+const SchemaVersion = 3
 
 // Accepts reports whether a reader understands a record's schema version.
 //
@@ -19,11 +27,11 @@ const SchemaVersion = 2
 // the writer moved to v2 every v1 record already on disk would have been
 // skipped -- a store that had been recording for weeks would have rendered an
 // empty report, and nothing would have said why.
-// Schema 3 is admitted BEFORE anything writes it. The rule-match layer lands
-// on another branch and will write v3 records; a reader that did not accept
-// them yet would skip every one, and skipping is silent by design -- the
-// symptom is an empty report, not an error. Accepting a version this writer
-// does not yet produce costs nothing and closes that window.
+//
+// v3 is what this build writes; 1 and 2 are accepted so older stores read.
+// Records from a newer schema are skipped without error; the report shows
+// them only as a skipped-records count and the records_unreadable coverage
+// reason, and is empty only when every record is newer.
 func Accepts(version int) bool {
 	return version == 1 || version == 2 || version == 3
 }
@@ -100,6 +108,23 @@ type Declaration struct {
 	Hosts    []string `json:"hosts"`
 	SSHHosts []string `json:"ssh_hosts"`
 
+	// CWDDigest is the keyed digest of the directory its command starts in
+	// (v3): the reported cwd, or where its leading plain `cd DIR &&` steps
+	// lead (shape.LeadingDirectory, folded onto the PreToolUse payload's cwd).
+	// shape.CWDDigest, under the per-install key, so two calls' directories
+	// compare equal or not and nothing else. Measured on Claude Code 2.1.280,
+	// the payload's cwd follows the shell: after `cd sub && pwd` the next
+	// call's reads .../sub, so the cwd is where the shell was before the line
+	// ran, and where its leading cds lead is where the rest of the line ran. Two
+	// runs of one command line in two directories are two different runs,
+	// and the test-bending pairs compare this as well as the shape digest.
+	//
+	// A digest and never the path. The coverage records carry the plain cwd
+	// already, as the novelty baseline's project key; the declarations do
+	// not gain it. Empty string when that directory is not known: no payload
+	// cwd and no absolute leading cd.
+	CWDDigest string `json:"cwd_digest"`
+
 	// FileLabel is what the file this call named looks like (v3).
 	//
 	// RESERVED AND NOT YET POPULATED, like the two below it. The label layer
@@ -149,8 +174,9 @@ type Declaration struct {
 //
 // It carries the join key, the clock and the tool name, and no field that could
 // hold any part of a tool response. The PostToolUse payload carries the
-// response; internal/hook does not declare a field for it, so it is never a
+// response; internal/hook declares no field for its content, so it is never a
 // value in this process, and there is nowhere here for it to be put if it were.
+// The one bit taken from it is Backgrounded: whether two keys are present.
 //
 // Seq is null when the record was written to the spill file because the
 // ordered stream's lock could not be taken. The id lands either way; what a
@@ -217,6 +243,22 @@ type Execution struct {
 	// RuleMatch is the rule-match layer's verdict for the call as it RAN (v3).
 	// Reserved and not yet populated; see the note on Declaration.RuleMatch.
 	RuleMatch map[string]any `json:"rule_match"`
+
+	// Backgrounded is true when this record was written while the command was
+	// still running in the background (v3): Claude Code moved it there at its
+	// timeout, or it was launched with run_in_background (both measured), or
+	// on Ctrl+B, recognised only if Claude Code marks it with
+	// backgroundTaskId or backgroundedByUser, which was not measured. Its
+	// PostToolUse fires then, so Outcome is the launch's, not the command's,
+	// and a reader treats the call's ending as unobserved (see
+	// report.LinkOutcomeBackgrounded).
+	//
+	// Read from the presence of two keys of a Bash call's tool_response and
+	// nothing else of it; see internal/hook's backgroundResponse. False on
+	// every other tool, on a failure event, which means the command ended or
+	// its launch failed, and on a record written before v3, which could not
+	// tell.
+	Backgrounded bool `json:"backgrounded"`
 }
 
 // Execution outcomes (v2).

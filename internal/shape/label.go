@@ -20,6 +20,13 @@ const (
 	LabelEnvFile          = "env-file"
 	LabelCertificate      = "certificate"
 
+	// LabelTestFile is a basename that a test framework's own naming
+	// convention reserves for tests: foo_test.go, test_foo.py, foo.spec.ts,
+	// FooTest.java. It says the path is named like a test, not that the file
+	// holds one, and it is what lets a failing test run followed by edits to
+	// test files only be told apart from one followed by a fix.
+	LabelTestFile = "test-file"
+
 	// LabelNone is a path that matched no row: the tool named a file and the
 	// table recognised nothing about it.
 	LabelNone = "none"
@@ -42,6 +49,7 @@ func Labels() []string {
 		LabelCloudConfig,
 		LabelEnvFile,
 		LabelCertificate,
+		LabelTestFile,
 		LabelNone,
 		LabelUnknown,
 	}
@@ -67,12 +75,19 @@ var pathFields = map[string]string{
 }
 
 // labelRule is one row of the table. Matching is on the case-folded basename
-// alone; exact, then prefix, then suffix.
+// alone; exact, then prefix, then suffix. The cased fields are the one
+// exception to the folding: an exact name, a suffix, and a prefix and a suffix
+// together (casedBoth), matched against the basename as written, for
+// conventions whose own tool matches them case-sensitively -- see the
+// test-file row.
 type labelRule struct {
-	label  string
-	exact  []string
-	prefix []string
-	suffix []string
+	label       string
+	exact       []string
+	prefix      []string
+	suffix      []string
+	casedExact  []string
+	casedSuffix []string
+	casedBoth   [][2]string
 }
 
 // labelTable is the fixed pattern list, in evaluation order. The FIRST row that
@@ -173,12 +188,60 @@ var labelTable = []labelRule{
 	// on a laptop. It stays, and the collision is recorded rather than hidden:
 	// server.key and tls.key are the commoner meaning on a machine running an
 	// agent, a label is not a finding, and dropping the suffix would trade a
-	// harmless mislabel for a missed private key. Last row, so any basename
-	// that names a credential outright is claimed before the extension is
-	// consulted.
+	// harmless mislabel for a missed private key. Last of the sensitive rows,
+	// so any basename that names a credential outright is claimed before the
+	// extension is consulted.
 	{
 		label:  LabelCertificate,
 		suffix: []string{".pem", ".crt", ".cer", ".der", ".p12", ".pfx", ".p7b", ".jks", ".keystore", ".key", ".csr"},
+	},
+
+	// Test files, by the basename each framework's runner looks for: go
+	// test's _test.go; pytest's test_*.py, *_test.py and conftest.py; the
+	// .test. and .spec. infixes Jest, Vitest and Mocha default to, with the
+	// .mts and .cts extensions Vitest also reads; RSpec's _spec.rb;
+	// GoogleTest's _test.cc, _unittest.cc, _test.cpp, _unittest.cpp and
+	// _test.cxx, the convention ctest projects follow; and the JUnit, Kotlin
+	// and .NET class-name suffixes.
+	//
+	// AFTER every sensitive row, and that order is the point: a secret kept
+	// in a test directory, or named like a fixture, is still a secret, and a
+	// .env.test.js is an env file first.
+	//
+	// The class-name suffixes are matched as written (cased), not folded.
+	// Folded, *Test.java is a suffix "test.java" and swallows Latest.java and
+	// Contest.java, and *Tests.cs swallows Contests.cs -- source files the
+	// detections built on this label would then read as tests, which is the
+	// over-claim this label exists to avoid. The JUnit convention is
+	// case-sensitive by definition (a class name), so the case is part of it;
+	// PHPUnit's *Test.php likewise. *Test still over-matches a class whose
+	// name only ends in Test (ABTest.java, a source file for an A/B test):
+	// that is kept, and recorded, rather than guessed around.
+	//
+	// go test's and pytest's names are cased too, because those runners match
+	// them case-sensitively: go test reads calc_TEST.go as source and pytest
+	// does not collect TEST_x.py. Folded, the label would call them tests to
+	// a detection that exists to tell tests from source. GoogleTest's
+	// _test/_unittest names are a project naming convention, kept cased like
+	// _test.go; no runner matches them. The .test. and .spec. infixes and
+	// RSpec's _spec.rb stay folded.
+	//
+	// Directory rules (tests/, __tests__/) are left out: this table matches
+	// basenames by design, and a fixture in tests/ is not a test.
+	{
+		label: LabelTestFile,
+		suffix: []string{
+			"_spec.rb",
+			".test.js", ".test.jsx", ".test.ts", ".test.tsx", ".test.mjs", ".test.cjs", ".test.mts", ".test.cts",
+			".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx", ".spec.mjs", ".spec.cjs", ".spec.mts", ".spec.cts",
+		},
+		casedExact: []string{"conftest.py"},
+		casedSuffix: []string{
+			"_test.go", "_test.py", "_test.cc", "_unittest.cc",
+			"_test.cpp", "_unittest.cpp", "_test.cxx",
+			"Test.java", "Tests.java", "Test.kt", "Tests.kt", "Test.cs", "Tests.cs", "Test.php",
+		},
+		casedBoth: [][2]string{{"test_", ".py"}},
 	},
 }
 
@@ -216,7 +279,8 @@ func Label(toolName string, toolInput json.RawMessage) string {
 	return labelForBase(basename(p))
 }
 
-// basename reduces a path to the last element, case-folded.
+// basename reduces a path to the last element, as written. labelForBase folds
+// its case, and keeps the written form only for the table's cased suffixes.
 //
 // A leading ~ is dropped rather than resolved. Expanding it would mean reading
 // the user's home directory, and it would change nothing that is examined here:
@@ -239,13 +303,14 @@ func basename(p string) string {
 	if strings.HasSuffix(p, "/") {
 		return ""
 	}
-	return strings.ToLower(path.Base(p))
+	return path.Base(p)
 }
 
 // labelForBase walks the table in order and returns the first row that matches.
 // A base that matches no row is LabelNone: the path was read and recognised as
 // nothing, which is an answer.
-func labelForBase(base string) string {
+func labelForBase(written string) string {
+	base := strings.ToLower(written)
 	// "." and ".." are directory references, not filenames, and neither
 	// describes a file. They belong with the empty basename rather than with
 	// LabelNone, which is a real answer about a real file.
@@ -265,6 +330,21 @@ func labelForBase(base string) string {
 		}
 		for _, s := range r.suffix {
 			if strings.HasSuffix(base, s) {
+				return r.label
+			}
+		}
+		for _, e := range r.casedExact {
+			if written == e {
+				return r.label
+			}
+		}
+		for _, s := range r.casedSuffix {
+			if strings.HasSuffix(written, s) {
+				return r.label
+			}
+		}
+		for _, ps := range r.casedBoth {
+			if strings.HasPrefix(written, ps[0]) && strings.HasSuffix(written, ps[1]) {
 				return r.label
 			}
 		}

@@ -421,3 +421,41 @@ func TestH20_GoroutinePanicOnThePostPathIsContained(t *testing.T) {
 		})
 	}
 }
+
+// TestH20_BackgroundedIsReadForBashOnly: the bit is set by a Bash response
+// naming a background task (backgroundTaskId, or backgroundedByUser), and by
+// nothing else -- not a foreground Bash response, not a false
+// backgroundedByUser, and not another tool's response that happens to carry
+// the key. Break: read it for every tool, or from any value, and an MCP
+// tool's output decides how a call is read.
+func TestH20_BackgroundedIsReadForBashOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		tool     string
+		response any
+		want     bool
+	}{
+		{"a background launch", "Bash", map[string]any{"stdout": "", "backgroundTaskId": "b1"}, true},
+		{"moved by the user", "Bash", map[string]any{"stdout": "", "backgroundedByUser": true}, true},
+		{"a foreground call", "Bash", map[string]any{"stdout": "backgroundTaskId", "stderr": ""}, false},
+		{"backgroundedByUser false", "Bash", map[string]any{"stdout": "", "backgroundedByUser": false}, false},
+		{"a response that is not an object", "Bash", "backgroundTaskId", false},
+		{"another tool", "mcp__x__run", map[string]any{"backgroundTaskId": "b1"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.watched(testSession)
+			p := defaultPost()
+			p.ToolName = tc.tool
+			p.ToolResponse = tc.response
+			e.mustPost(p.build(t))
+			execs := e.executions(testSession)
+			if len(execs) != 1 {
+				t.Fatalf("got %d execution records, want 1", len(execs))
+			}
+			if got := execs[0].fields["backgrounded"]; got != tc.want {
+				t.Errorf("backgrounded = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

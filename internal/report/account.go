@@ -92,8 +92,10 @@ type SilentFailures struct {
 	// failed to mention.
 	Failed int `json:"failed"`
 	// Unobserved counts executions with no outcome at all -- v1 records, or a
-	// PostToolUse invocation that never ran. They cannot be counted as
-	// successes or as failures, and saying so is the honest answer.
+	// PostToolUse invocation that never ran -- and executions moved to the
+	// background (Backgrounded), whose PostToolUse fired before the command
+	// ended. They cannot be counted as successes or as failures, and saying so
+	// is the honest answer.
 	Unobserved int `json:"outcome_unobserved"`
 	// AbsentWords is the exact list of failure words missing from the final
 	// message, which is what makes the line checkable by the reader rather
@@ -307,6 +309,12 @@ func BuildSilentFailures(run *store.Run, acct Account) SilentFailures {
 		FinalMessageAvailable: acct.Available,
 	}
 	for _, x := range run.Executions {
+		if x.Backgrounded {
+			// Recorded ok when Claude Code moved it to the background, before
+			// it ended: how it ended is not known, as the timeline says.
+			sf.Unobserved++
+			continue
+		}
 		switch x.Outcome {
 		case store.ExecFailed:
 			sf.Failed++

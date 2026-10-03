@@ -18,6 +18,10 @@ creates no store.
      and the agent's prose summary is dropped)
    - which prompt produced which calls: `--chain` (lists each call under its
      prompt, with the hosts the call named; JSON always carries this)
+   - every call in order: `--timeline` (lists every call, main agent and
+     subagents, in the order they were recorded, by seq; the `#N` seqs the
+     end-of-turn line and the `test runs` block cite are its rows; JSON
+     always carries this)
 
 3. Show the output. If it is long, show the coverage block and the
    per-transcript accounting in full and summarize the id lists; never

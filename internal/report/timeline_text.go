@@ -47,7 +47,7 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 	fmt.Fprintf(b, "    never ran    %d  (denied before running)\n", n.NeverRan)
 	// Both things the group holds, named: a row that HAS an execution record
 	// with no outcome would otherwise sit under a legend saying it has none.
-	fmt.Fprintf(b, "    unknown      %d  (no execution record: denied, failed or unrecorded, and the record cannot say which; or outcome unobserved: it ran and how it ended was not recorded)\n", n.Unknown)
+	fmt.Fprintf(b, "    unknown      %d  (no execution record: denied, failed or unrecorded, and the record cannot say which; or outcome unobserved: it ran and how it ended was not recorded, or it was moved to the background before it ended)\n", n.Unknown)
 	if n.AgentUnknown > 0 {
 		fmt.Fprintf(b, "    %d call%s with no declaration recorded, listed last in the order their results were recorded: agent, program, and the declaration's position and time unknown\n",
 			n.AgentUnknown, plural(n.AgentUnknown))
@@ -117,6 +117,27 @@ func writeTimelineCall(b *bytes.Buffer, c TimelineCall) {
 	}
 	fmt.Fprintf(b, "    %5s  %s  %-22s %-22s %s%s\n",
 		seq, at, agent, call, timelineResult(c), laterLabel(c))
+	if l := bendingLabel(c.Bending); l != "" {
+		fmt.Fprintf(b, "           %s\n", l)
+	}
+}
+
+// bendingLabel annotates the row that completes a test-bending pair, on a line
+// of its own under it. It says what the record shows between the two runs and
+// nothing about why, and both kinds say "recorded" for the same reason: "the
+// only recorded edits", never "only test files were edited", and "no recorded
+// file edit", never "nothing changed", because a shell read that redirects or
+// anything outside the session could have changed files the record does not
+// hold a call for. The recap line and the session block word it the same way.
+func bendingLabel(t *TimelineBending) string {
+	if t == nil {
+		return ""
+	}
+	if t.Kind == BendTestsOnlyThenGreen {
+		// ↳ DOWNWARDS ARROW WITH TIP RIGHTWARDS
+		return fmt.Sprintf("↳ the only recorded edits since %d were to files named like tests, where the same command failed", t.Since)
+	}
+	return fmt.Sprintf("↳ same command had the other outcome at %d, no recorded file edit between", t.Since)
 }
 
 // agentLabel names the agent a call ran in: "main", or the subagent's type
