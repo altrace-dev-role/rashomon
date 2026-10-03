@@ -461,6 +461,8 @@ func TestMayWrite(t *testing.T) {
 		// A $(( that does not close as )) is a substitution of a subshell.
 		{"ls $((rm x) )", true},
 		{"cat $((touch x) 2>&1)", true},
+		// A quoted ) inside is a word, and closes nothing.
+		{`ls $((touch ")") )`, true},
 		// A substitution inside arithmetic still runs.
 		{`echo "$(( $(rm x) + 1 ))"`, true},
 		// A writer word is compared wherever it stands.
@@ -496,6 +498,9 @@ func TestMayWrite(t *testing.T) {
 		{"head -n $((n+1)) file", false},
 		{`echo "$((1+2))"`, false},
 		{`head -n "$((n+1))" file`, false},
+		// A ( inside arithmetic opens a group, which closes before the )).
+		{"echo $(( (1+2) * 3 ))", false},
+		{`echo "$(( (n+1) * 2 ))"`, false},
 	} {
 		if got := verbOf(t, tc.cmd).MayWrite; got != tc.want {
 			t.Errorf("%q: may_write %v, want %v", tc.cmd, got, tc.want)
@@ -547,6 +552,15 @@ func TestLeadingDirectory(t *testing.T) {
 		// A cd behind an assignment is still a directory change.
 		{"cd /a && CDPATH= cd - && go test ./...", nil},
 		{"cd /a && X=1 cd b && go test ./...", nil},
+		// So is one behind a redirection, a subshell's ( or an
+		// assignment-only step.
+		{"cd /a && >/dev/null cd - && go test ./...", nil},
+		{"cd /a && (cd - && go test ./...)", nil},
+		{"cd /a && X=1 && cd - && go test ./...", nil},
+		// An assignment in front of no cd ends the run where it stands.
+		{"X=1", nil},
+		{"cd /a && X=1", []string{"/a"}},
+		{"cd /repo/web && GOFLAGS=-count=1 go test ./...", []string{"/repo/web"}},
 	} {
 		got, ok := LeadingDirectory("Bash", json.RawMessage(`{"command":`+quoteJSON(tc.cmd)+`}`))
 		if ok != (tc.want != nil) || !slices.Equal(got, tc.want) {

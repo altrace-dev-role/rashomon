@@ -664,18 +664,25 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 // when its shape says it may write (`cat a > b`, `curl -o f`, `find
 // -delete`, `grep | xargs sed -i`, rsync), and the block names what sets that;
 // one that writes through an option the list does not name (`find -fprint
-// f`, `curl -D f`) is not counted, and the block says so. Saying "nothing
-// changed" would be the claim the record cannot make. Runs pair only within one directory
-// (the declarations' cwd digests), and the block says so, since "the same
-// command" alone would read as the same line anywhere. And a `cd DIR && go
-// test` is a test run, since leaving `cd … &&` out would lose most real runs,
-// so its outcome may be the cd's. A repeated relative `cd DIR && go test`
-// needs no line: the second starts in DIR, another directory, and does not
-// pair with the first. Each is a line of the block. A run moved to the
-// background, on its timeout, by Ctrl+B or by run_in_background, is not a
-// limit any more: its execution record says so (on Ctrl+B only if Claude Code
-// marks it with backgroundTaskId or backgroundedByUser, which was not
-// measured), and it is no run with a result (LinkOutcomeBackgrounded).
+// f`, `curl -D f`, `curl -c f`) is not counted, and the block says so. Saying
+// "nothing changed" would be the claim the record cannot make. Runs pair only
+// within one directory (the declarations' cwd digests), and the block says
+// so, since "the same command" alone would read as the same line anywhere.
+// And a `cd DIR && go test` is a test run, since leaving `cd … &&` out would
+// lose most real runs, so its outcome may be the cd's. A repeated relative
+// `cd DIR && go test` needs no line: the second starts in DIR, another
+// directory, and does not pair with the first. Each is a line of the block. A
+// run moved to the background, on its timeout, by Ctrl+B or by
+// run_in_background, is not a limit any more: its execution record says so
+// (on Ctrl+B only if Claude Code marks it with backgroundTaskId or
+// backgroundedByUser, which was not measured), and it is no run with a result
+// (LinkOutcomeBackgrounded).
+//
+// A session holding a call whose declaration was lost has no pair looked
+// for (detectTestBending), and the block says so on a line of its own: with
+// the limit lines printed only beside a pair, the run count alone would read
+// as "looked and found none", and a pair the end-of-turn line named earlier
+// would be gone with no word of why.
 //
 // The pairs are seqs, and nothing in the default report maps a seq to its
 // call, so the block's first limit line points at --timeline, which does,
@@ -686,6 +693,10 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
 		return
 	}
 	fmt.Fprintf(b, "  test runs: %d (%d ok, %d failed)\n", t.Runs, t.OK, t.Failed)
+	if t.Undeclared > 0 {
+		fmt.Fprintf(b, "    no pair is looked for: %d call%s ran with no declaration recorded, and may have edited a file between any two runs\n",
+			t.Undeclared, plural(t.Undeclared))
+	}
 	for _, p := range t.TestsOnlyThenGreen {
 		fmt.Fprintf(b, "    failed, then the only recorded edits were to files named like tests, then the same command passed: %d → %d\n", p[0], p[1])
 	}
@@ -701,7 +712,7 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
 		fmt.Fprintf(b, "    the numbers are call seqs, and `rashomon report --session %s --timeline` shows these rows;\n", pasteArg(sessionID))
 		fmt.Fprintln(b, "    a file edit here is any recorded call but a read, a web fetch, a subagent launch, or a task, todo, question, plan, background-shell, skill, search, message, cron or MCP-resource tool, even one that failed;")
 		fmt.Fprintln(b, "    a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read,")
-		fmt.Fprintln(b, "    but one that writes through an option not on that list (find -fprint, curl -D) is not counted;")
+		fmt.Fprintln(b, "    but one that writes through an option not on that list (find -fprint, curl -D or -c) is not counted;")
 		fmt.Fprintln(b, "    runs pair only when the same command line started in the same directory: the reported cwd, or where its leading plain cd steps lead;")
 		fmt.Fprintln(b, "    and a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run")
 	}

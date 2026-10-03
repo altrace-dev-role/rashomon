@@ -100,6 +100,24 @@ func pairs(p ...SeqPair) []SeqPair {
 	return p
 }
 
+// lost is run with an execution record at seq for a call whose declaration
+// was lost: the store holds how the call ended, and no declaration names it.
+func lost(run *store.Run, seq int64, tool, outcome string) *store.Run {
+	s := seq
+	run.Executions = append(run.Executions,
+		store.Execution{ToolUseID: "u" + string(rune('a'+seq)), ToolName: tool, Outcome: outcome, Seq: &s})
+	return run
+}
+
+// lostTerminal is run with a terminal, and nothing else, for a call whose
+// declaration was lost: what the hook spills when the declaration could not be
+// written for want of the lock (hook.Close). It carries no seq.
+func lostTerminal(run *store.Run, id string) *store.Run {
+	r := store.ReasonLockTimeout
+	run.Terminals = append(run.Terminals, store.Terminal{ToolUseID: id, Outcome: store.OutcomeError, Reason: &r})
+	return run
+}
+
 func TestTestBending(t *testing.T) {
 	const ok, failed = store.ExecOK, store.ExecFailed
 	tf, none := shape.LabelTestFile, shape.LabelNone
@@ -290,6 +308,18 @@ func TestTestBending(t *testing.T) {
 			run:    tbRun(test(1, "d", ok), test(2, "u", ""), test(3, "d", failed)),
 			denied: map[string]bool{"tc": true},
 			green:  pairs(), flaky: pairs(SeqPair{1, 3})},
+		{name: "a call whose declaration was lost forms no pair",
+			run:   lost(tbRun(test(1, "d", failed), test(5, "d", ok)), 3, "Edit", ok),
+			green: pairs(), flaky: pairs(),
+			why: "the store holds an Edit at seq 3 that no declaration names; a pair across it would say no recorded file edit was between"},
+		{name: "A: a call whose declaration was lost between forms no pair",
+			run:   lost(tbRun(test(1, "d", failed), edit(2, tf, ok), test(5, "d", ok)), 3, "Edit", ok),
+			green: pairs(), flaky: pairs(),
+			why: "the declared edits between are test edits, but the store holds an Edit at seq 3 that no declaration names and that may have changed the code"},
+		{name: "a call whose declaration was lost, with a terminal and nothing else, forms no pair",
+			run:   lostTerminal(tbRun(test(1, "d", failed), test(5, "d", ok)), "lost-t"),
+			green: pairs(), flaky: pairs(),
+			why: "a lock timeout spills the terminal of a declaration it could not write, and an interrupted call writes no execution record; the terminal is all the store holds of a call that may have been an edit"},
 		{name: "B: a subagent's run counts",
 			run: tbRun(test(1, "d", failed),
 				tbCall{seq: 2, tool: "Bash", verb: shape.VerbTest, digest: "d", outcome: ok, agent: "agent-b2"}),
@@ -527,7 +557,7 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 		"a shell read or fetch counts when its line may write: a redirect to a file, a download (curl -o, attached or not), a command or process substitution, find -delete or -exec, xargs, tee, rsync or scp, or a later stage that is not a read",
 		"runs pair only when the same command line started in the same directory: the reported cwd, or where its leading plain cd steps lead;",
 		"a runner behind `cd DIR &&` is a test run, so a cd that failed reads as a failed run",
-		"but one that writes through an option not on that list (find -fprint, curl -D) is not counted",
+		"but one that writes through an option not on that list (find -fprint, curl -D or -c) is not counted",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text is missing %q:\n%s", want, out)
@@ -581,6 +611,46 @@ func TestTestRuns_CountsAndText(t *testing.T) {
 	writeTestRuns(&b, testRunsOf(tbRun(test(1, "d", ok), test(2, "d", ok))), "s1")
 	if strings.Contains(b.String(), "a file edit here") || strings.Contains(b.String(), "--timeline") {
 		t.Errorf("the limit printed with no pattern to qualify:\n%s", b.String())
+	}
+}
+
+// TestTestRuns_SaysWhyNoPairIsLookedFor: a session holding a call whose
+// declaration was lost looks for no pair, and the block says so, with the
+// calls counted once each, an execution record and a terminal of one id
+// together. JSON carries the count. Break: print the run count alone, and
+// "test runs: 2 (1 ok, 1 failed)" reads as looked and found none, under a
+// pair the end-of-turn line may already have named.
+func TestTestRuns_SaysWhyNoPairIsLookedFor(t *testing.T) {
+	const ok, failed = store.ExecOK, store.ExecFailed
+	run := lost(tbRun(test(1, "d", failed), test(5, "d", ok)), 3, "Edit", ok)
+	edited := run.Executions[len(run.Executions)-1].ToolUseID
+	run = lostTerminal(lostTerminal(run, edited), "lost-t")
+	tr := testRunsOf(run)
+	if tr.Undeclared != 2 || len(tr.Flaky) != 0 {
+		t.Errorf("undeclared %d, flaky %v: want 2, an execution record and a terminal of one call counted once, and no pair", tr.Undeclared, tr.Flaky)
+	}
+	var b bytes.Buffer
+	writeTestRuns(&b, tr, "s1")
+	if want := "    no pair is looked for: 2 calls ran with no declaration recorded, and may have edited a file between any two runs\n"; !strings.Contains(b.String(), want) {
+		t.Errorf("text is missing %q:\n%s", want, b.String())
+	}
+	j, err := json.Marshal(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(j), `"undeclared":2`) {
+		t.Errorf("json does not carry the count: %s", j)
+	}
+
+	// None lost: no line, and a 0 in JSON.
+	tr = testRunsOf(tbRun(test(1, "d", failed), test(5, "d", ok)))
+	b.Reset()
+	writeTestRuns(&b, tr, "s1")
+	if strings.Contains(b.String(), "no pair is looked for") {
+		t.Errorf("the line printed with no call lost:\n%s", b.String())
+	}
+	if j, err = json.Marshal(tr); err != nil || !strings.Contains(string(j), `"undeclared":0`) {
+		t.Errorf("json with no call lost: %s, %v", j, err)
 	}
 }
 
@@ -759,15 +829,21 @@ func TestDetectTestBending_AnEditThatFailedOnceDidNotRunOk(t *testing.T) {
 	if got := DetectTestBending(control, nil).TestsOnlyThenGreen; !reflect.DeepEqual(got, []SeqPair{{1, 3}}) {
 		t.Fatalf("one ok edit record: tests only then green %v, want [[1 3]]", got)
 	}
-	for _, order := range [][2]string{{failed, ok}, {ok, failed}} {
+	// And two ok records, built as the loop builds them, pair: only a failed
+	// record stops it.
+	for _, order := range [][2]string{{ok, ok}, {failed, ok}, {ok, failed}} {
 		run := tbRun(test(1, "d", failed), edit(2, shape.LabelTestFile, order[0]), test(3, "d", ok))
 		run.Executions = append(run.Executions, store.Execution{ToolUseID: run.Executions[1].ToolUseID, ToolName: "Edit", Outcome: order[1]})
 		for i := range run.Executions {
 			seq := int64(10 + i)
 			run.Executions[i].Seq = &seq
 		}
-		if got := DetectTestBending(run, nil); len(got.TestsOnlyThenGreen) != 0 {
-			t.Errorf("edit records %v: tests only then green %v, want none", order, got.TestsOnlyThenGreen)
+		want := pairs()
+		if order == [2]string{ok, ok} {
+			want = pairs(SeqPair{1, 3})
+		}
+		if got := DetectTestBending(run, nil).TestsOnlyThenGreen; !reflect.DeepEqual(got, want) {
+			t.Errorf("edit records %v: tests only then green %v, want %v", order, got, want)
 		}
 	}
 }

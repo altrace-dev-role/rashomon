@@ -285,7 +285,9 @@ type Session struct {
 	// over them would be zeros nobody measured. Otherwise only runs that
 	// ended ok or failed are counted; interrupted, denied, backgrounded,
 	// timed-out and unrecorded runs are not, and a session that spans the
-	// upgrade is counted from its first schema 3 call.
+	// upgrade is counted from its first schema 3 call. A session holding a
+	// call whose declaration was lost has no pair looked for, and undeclared
+	// says how many such calls it holds.
 	TestRuns *TestRuns `json:"test_runs"`
 }
 

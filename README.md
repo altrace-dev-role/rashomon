@@ -346,17 +346,27 @@ The two test-bending lines have limits of their own:
   like a test (`test-file`). Deleting or moving a test through the shell, or
   regenerating snapshots or golden files (`jest -u`, a `-update` flag), is a
   shell call with no label, so it never completes the tests-only pattern.
-- The end-of-turn line sees one turn and no denied set, so a pair across two
-  turns, or one completed only across a denied edit, can show in the report
-  and not in the line.
+- No pair is reported for a session holding a call whose declaration was
+  lost (the store has its execution record or terminal, and no
+  declaration): that call may have changed a file between two runs, and
+  nothing records where it fell. The `test runs` block then says no pair is
+  looked for, and how many such calls there are.
+- The end-of-turn line names only a pair whose two runs are both in its turn,
+  and reads no denied set, so a pair across two turns, or one completed only
+  across a denied edit, can show in the report and not in the line. The
+  other way round, a pair the line named is missing from a later report when
+  a call whose declaration was lost is recorded after it, in that turn or a
+  later one.
 
 `report --json` carries the same facts: each session's `test_runs` (null for a
 session with no schema 3 declaration: records that predate schema 3, or no
 tool calls at all; otherwise only runs that ended ok or failed are counted;
 interrupted, denied, backgrounded, timed-out and unrecorded runs are not, and
 a session that spans the upgrade is counted from its first schema 3 call; then
-`ok`, `failed`, `tests_only_then_green` as `[earlier, later]` seq pairs, and
-`flaky` as `{"seqs": [earlier, later], "first_failed": true|false}`, where
+`ok`, `failed`, `undeclared`, how many calls lost their declaration (when it
+is not 0, no pair was looked for), `tests_only_then_green` as
+`[earlier, later]` seq pairs, and `flaky` as
+`{"seqs": [earlier, later], "first_failed": true|false}`, where
 earlier and later are declaration order, the order the runs started, which
 overlapping runs in parallel agents may not have finished in), and a
 `test_bending` (`kind`, `since_seq`) on the timeline row that completes a

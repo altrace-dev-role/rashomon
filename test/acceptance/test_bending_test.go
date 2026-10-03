@@ -378,7 +378,7 @@ func TestTestBending_ARunMovedToTheBackgroundFinishesNothing(t *testing.T) {
 // command ended or its launch failed, so it is never moved to the background.
 // Claude Code does not send tool_response on PostToolUseFailure today, but
 // were it to carry backgroundTaskId, a record saying failed and backgrounded
-// would be read four ways: unobserved in the silent-failures count, failed in
+// would be read three ways: unobserved in the silent-failures count, failed in
 // test runs, and moved to the background under --chain. The record now says
 // failed only, and every view agrees.
 func TestTestBending_AFailureIsNeverMovedToTheBackground(t *testing.T) {

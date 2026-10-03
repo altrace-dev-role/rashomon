@@ -177,11 +177,12 @@ type Digest struct {
 	SilentFailures report.SilentFailures `json:"silent_failures"`
 	Subagents      SubagentCounts        `json:"subagents"`
 
-	// TestBending is report.DetectTestBending over this turn's own calls,
-	// main agent and subagents together: seq pairs, and which run of a flaky
-	// pair failed, and nothing else. See report.TestBending's doc for the two
-	// patterns, and this package's TestBending for why each list has an
-	// omitted count.
+	// TestBending is the pairs report.DetectTestBending finds over the whole
+	// session, cut to those whose two runs are both this turn's calls, main
+	// agent and subagents together (turnPairs): seq pairs, and which run of a
+	// flaky pair failed, and nothing else. See report.TestBending's doc for
+	// the two patterns, and this package's TestBending for why each list has
+	// an omitted count.
 	TestBending TestBending `json:"test_bending"`
 
 	// Gaps intersecting this turn's window. Rendered rather than dropped, for
@@ -315,8 +316,11 @@ func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage stri
 	// No denied set: a digest reads no transcript, so a denied edit reads as
 	// "no execution record", which stops a pattern rather than completing
 	// one. The under-claim is the direction this line can afford to be wrong.
-	tb := report.DetectTestBending(turnRun, nil)
-	d.TestBending = TestBending{TestsOnlyThenGreen: tb.TestsOnlyThenGreen, Flaky: tb.Flaky}
+	// Over the session's run, not turnRun: a call between two of this turn's
+	// runs may carry another turn's prompt_id (a background subagent launched
+	// earlier) or have lost its declaration, and either may have been an
+	// edit. Only the pairs whose two runs are both this turn's are kept.
+	d.TestBending = turnPairs(report.DetectTestBending(run, nil), w)
 
 	tc, global := buildTurnCoverage(run, gaps, w)
 	if run.Skipped > 0 {
@@ -337,4 +341,27 @@ func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage stri
 
 	d.Unknown = d.Declarations.Recorded == 0 && d.Coverage.State != store.StateVerified
 	return d
+}
+
+// turnPairs is tb, found over the session, cut to the pairs whose two runs are
+// both among w's own declarations: a pair across two turns is the report's to
+// name, and an earlier turn's pair raised again on a later one would point at
+// work this reply did not do.
+func turnPairs(tb report.TestBending, w turnWindow) TestBending {
+	seqs := make(map[int64]bool, len(w.declarations))
+	for _, d := range w.declarations {
+		seqs[d.Seq] = true
+	}
+	out := TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.FlakyPair{}}
+	for _, p := range tb.TestsOnlyThenGreen {
+		if seqs[p[0]] && seqs[p[1]] {
+			out.TestsOnlyThenGreen = append(out.TestsOnlyThenGreen, p)
+		}
+	}
+	for _, p := range tb.Flaky {
+		if seqs[p.Seqs[0]] && seqs[p.Seqs[1]] {
+			out.Flaky = append(out.Flaky, p)
+		}
+	}
+	return out
 }

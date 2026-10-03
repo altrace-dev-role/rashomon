@@ -396,12 +396,13 @@ func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
 // (`$`, backticks, a glob, `~`, quotes or an escape), not `-`, which is the
 // previous directory, and not a comment. `cd DIR;` is left out, since what
 // follows a `;` runs whether the cd succeeded or not. A step in the leading
-// run whose command, past any assignments in front of it, is cd, pushd or
-// popd and is not such a cd spoils the run, since the directory it leads to
-// is not on the line. So a `cd -` is refused anywhere in the leading run,
-// even when an earlier step names its target: `cd /a && cd b && cd - && go
-// test` loses a pair that way, but it never forms a false one. Anything else
-// reports false, and the call keeps the payload's cwd.
+// run whose command, past any assignments, redirections or an opening ( or {
+// in front of it, is cd, pushd or popd and is not such a cd spoils the run,
+// since the directory it leads to is not on the line. So a `cd -` is refused
+// anywhere in the leading run, even when an earlier step names its target:
+// `cd /a && cd b && cd - && go test` loses a pair that way, but it never
+// forms a false one. Anything else reports false, and the call keeps the
+// payload's cwd.
 func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, bool) {
 	if verbForTool(toolName) != VerbExecute {
 		return nil, false
@@ -416,16 +417,15 @@ func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, boo
 	}
 	var dirs []string
 	for i := 0; i < len(toks); i += 3 {
-		// Past any assignments, as the shell reads the step: `X=1 cd b`
-		// changes directory too, and leadingCd refuses it.
-		j := i
-		for j < len(toks) && isShellAssignment(toks[j]) {
-			j++
-		}
-		if j == len(toks) {
+		// The step's command as pastDirectoryChange finds it (programToken),
+		// past any assignments, redirections or an opening ( or {: `X=1 cd
+		// b`, `>/dev/null cd b` and `(cd b` change directory too, and
+		// leadingCd refuses them.
+		k, ok := programToken(toks[i:], false)
+		if !ok {
 			return dirs, len(dirs) > 0
 		}
-		switch toks[j].text {
+		switch toks[i+k].text {
 		case "cd", "pushd", "popd":
 		default:
 			return dirs, len(dirs) > 0
@@ -1510,7 +1510,8 @@ func holdsSubstitution(s string) bool {
 // arithmeticAt reports whether s, the text after a `$((`, is arithmetic: the
 // `)` that matches the second `(` is followed by a glued `)`. Bash and zsh
 // read a `$((` that does not close as `))`, such as `$((rm x) )`, as a
-// command substitution of a subshell.
+// command substitution of a subshell. comsub.go's arithEnd is the stricter,
+// tokenizer-side form of the same rule.
 func arithmeticAt(s string) bool {
 	depth := 1
 	for k := 0; k < len(s); k++ {

@@ -57,8 +57,11 @@ var prefix = mark + " rashomon: "
 // one test command that both passed and failed with no recorded file edit
 // between. Each is one short sentence with the first pair's seqs, and the
 // same pointer as every other sentence, `rashomon report --session <id>`.
-// That report's test runs block lists every pair and says that --timeline
-// maps the seqs to their rows; the pointer itself does not add --timeline.
+// That report's test runs block lists the session's pairs and says that
+// --timeline maps the seqs to their rows; the pointer itself does not add
+// --timeline. A pair named here can be missing there: a call whose
+// declaration was lost, recorded later in the session, stops every pair, and
+// the block then says no pair is looked for.
 //
 // Coverage-unverified and digest-unknown are rendered as ONE sentence, not
 // two: Unknown is defined as Recorded == 0 AND Coverage.State != verified

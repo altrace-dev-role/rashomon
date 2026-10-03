@@ -67,7 +67,10 @@ type TestBending struct {
 // DetectTestBending finds both patterns over run's declarations, in seq order,
 // whatever agent made each call: a subagent re-running the main agent's tests
 // is one session's work, and the seq is one total order over every agent. run
-// is a whole session for the report and one turn's calls for the digest.
+// is a whole session, for the report and for the digest alike: the digest
+// keeps only the pairs whose two runs are both its turn's calls (turnPairs in
+// internal/digest), since a call between them may carry another turn's
+// prompt_id or have lost its declaration, and either may have been an edit.
 //
 // Outcomes are the timeline's (testOutcome): a call is failed when any of its
 // execution records failed, as its timeline row is, and otherwise linkOutcome
@@ -91,7 +94,10 @@ type TestBending struct {
 // class write, carries the test-file label and ran ok; every other edit -- a
 // shell one, which has no label, MultiEdit, which the label layer does not
 // read, and every call of another class -- is an edit to a file not named
-// like a test, and stops pattern A. Stopping is the under-claim.
+// like a test, and stops pattern A. Stopping is the under-claim. And a run
+// holding a call whose declaration was lost (undeclaredCalls) forms no pair
+// at all: that call may have changed any file, and no declaration says where
+// it fell.
 //
 // A test run is an edit too, for every pair but its own command's: `jest -u`
 // rewrites snapshots and has its own digest, so between a failed `jest` and a
@@ -124,6 +130,9 @@ func DetectTestBending(run *store.Run, denied map[string]bool) TestBending {
 func detectTestBending(run *store.Run, executed map[string][]store.Execution, denied map[string]bool) TestBending {
 	out := TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []FlakyPair{}}
 	if run == nil {
+		return out
+	}
+	if undeclaredCalls(run, denied) > 0 {
 		return out
 	}
 
@@ -187,6 +196,31 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 	return out
 }
 
+// undeclaredCalls counts the calls in run whose declaration was lost, once
+// each: the tool_use_ids an execution record or a terminal names, no
+// declaration in run does, and denied does not hold. The store keeps how such
+// a call ended, not what it was, so it may have been an edit, between any two
+// runs. A terminal alone is the lock-timeout case: the declaration could not
+// be written, and the terminal carries the only trace of the id.
+func undeclaredCalls(run *store.Run, denied map[string]bool) int {
+	declared := make(map[string]bool, len(run.Declarations))
+	for _, d := range run.Declarations {
+		declared[d.ToolUseID] = true
+	}
+	lost := map[string]bool{}
+	for _, x := range run.Executions {
+		if !declared[x.ToolUseID] && !denied[x.ToolUseID] {
+			lost[x.ToolUseID] = true
+		}
+	}
+	for _, t := range run.Terminals {
+		if !declared[t.ToolUseID] && !denied[t.ToolUseID] {
+			lost[t.ToolUseID] = true
+		}
+	}
+	return len(lost)
+}
+
 // mayEdit reports a call that may change files: every verb class but read,
 // network and agent, and a shell call of any class whose shape says it may
 // write. Not only write: `git checkout -- f` is vcs, `npm install` and `go
@@ -204,7 +238,8 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 // xargs sed -i`, rsync or scp into the tree -- carry shape.may_write
 // (shape.mayWrite says what sets it), and count. What that misses, the report
 // states beside every pattern: a read or fetch that writes through an option
-// the list does not name, such as `find -fprint f` or `curl -D f`.
+// the list does not name, such as `find -fprint f`, `curl -D f` or
+// `curl -c f`.
 //
 // Nor do Claude Code's own bookkeeping tools (noWrite), whatever class they
 // are stored under: a TodoWrite, a TaskUpdate or a ToolSearch between two
@@ -247,13 +282,18 @@ type TestRuns struct {
 	Runs   int `json:"runs"`
 	OK     int `json:"ok"`
 	Failed int `json:"failed"`
+	// Undeclared counts the calls whose declaration was lost
+	// (undeclaredCalls). When it is not 0 no pair is looked for, and the two
+	// lists are empty for that reason, not because none was found.
+	Undeclared int `json:"undeclared"`
 	TestBending
 }
 
 // buildTestRuns counts run's test runs by the outcomes in executed (run's
 // executionsByID) and denied, and carries tb, the patterns detectTestBending
 // found over the same three: Build computes each once and shares it with the
-// timeline.
+// timeline. It also counts the calls whose declaration was lost: with one,
+// tb holds no pair, and an empty list does not say why.
 //
 // Nil when no declaration of run is schema 3 or later: the test class is a
 // schema 3 vocabulary, and records written before it say execute or package
@@ -264,7 +304,7 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 	if run == nil || !measuresTests(run) {
 		return nil
 	}
-	out := &TestRuns{TestBending: tb}
+	out := &TestRuns{Undeclared: undeclaredCalls(run, denied), TestBending: tb}
 	for _, d := range run.Declarations {
 		if d.Shape.VerbClass != shape.VerbTest {
 			continue

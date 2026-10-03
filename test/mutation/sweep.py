@@ -1429,11 +1429,21 @@ m("TB the report never builds the test runs", "internal/report/report.go",
   "\t\t_ = buildTestRuns\n",
   "TestTestBending_")
 
-m("TB the digest looks across the whole session", "internal/digest/digest.go",
-  "\ttb := report.DetectTestBending(turnRun, nil)", "\ttb := report.DetectTestBending(run, nil)", "TestBuild_TestBending")
+m("TB the digest keeps another turn's tests-only pair", "internal/digest/digest.go",
+  "\t\tif seqs[p[0]] && seqs[p[1]] {\n", "\t\tif true {\n", "TestBuild_TestBending")
+m("TB the digest keeps another turn's flaky pair", "internal/digest/digest.go",
+  "\t\tif seqs[p.Seqs[0]] && seqs[p.Seqs[1]] {\n", "\t\tif true {\n", "TestBuild_TestBending")
+m("TB the digest keeps a pair with one run in the turn", "internal/digest/digest.go",
+  "\t\tif seqs[p.Seqs[0]] && seqs[p.Seqs[1]] {\n", "\t\tif seqs[p.Seqs[1]] {\n", "TestBuild_TestBendingNamesNoPairAcrossTurns")
+m("TB the digest keeps a tests-only pair with one run in the turn", "internal/digest/digest.go",
+  "\t\tif seqs[p[0]] && seqs[p[1]] {\n", "\t\tif seqs[p[1]] {\n", "TestBuild_TestBendingNamesNoTestsOnlyPairAcrossTurns")
+m("TB the digest finds pairs over the turn's calls alone", "internal/digest/digest.go",
+  "\td.TestBending = turnPairs(report.DetectTestBending(run, nil), w)",
+  "\td.TestBending = turnPairs(report.DetectTestBending(turnRun, nil), w)",
+  "TestBuild_ALostDeclarationFormsNoPair|TestBuild_AnotherTurnsEditBetweenFormsNoPair")
 m("TB the digest never carries the patterns", "internal/digest/digest.go",
-  "\td.TestBending = TestBending{TestsOnlyThenGreen: tb.TestsOnlyThenGreen, Flaky: tb.Flaky}",
-  "\t_ = tb", "TestBuild_TestBending|TestTestBending_")
+  "\td.TestBending = turnPairs(report.DetectTestBending(run, nil), w)\n",
+  "", "TestBuild_TestBending|TestTestBending_")
 m("TB an empty digest marshals null lists", "internal/digest/digest.go",
   "\t\tTestBending:    TestBending{TestsOnlyThenGreen: []report.SeqPair{}, Flaky: []report.FlakyPair{}},\n",
   "",
@@ -1693,8 +1703,8 @@ m("TB the report's timeline is built without the patterns", "internal/report/rep
   "TestTestBending_|TestTimeline")
 
 m("TB the test runs drop the patterns they were given", "internal/report/testbending.go",
-  "\tout := &TestRuns{TestBending: tb}\n",
-  "\tout := &TestRuns{TestBending: TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []FlakyPair{}}}\n\t_ = tb\n",
+  "\tout := &TestRuns{Undeclared: undeclaredCalls(run, denied), TestBending: tb}\n",
+  "\tout := &TestRuns{Undeclared: undeclaredCalls(run, denied), TestBending: TestBending{TestsOnlyThenGreen: []SeqPair{}, Flaky: []FlakyPair{}}}\n\t_ = tb\n",
   "TestTestRuns_|TestTestBending_")
 
 m("TB the session block drops the timeline hint", "internal/report/text.go",
@@ -1717,7 +1727,7 @@ m("TB the redaction plant skips an embedded struct", "internal/report/redact_enu
   "TestRedact_")
 
 m("TB the session block drops the unlisted-option limit", "internal/report/text.go",
-  "\t\tfmt.Fprintln(b, \"    but one that writes through an option not on that list (find -fprint, curl -D) is not counted;\")\n",
+  "\t\tfmt.Fprintln(b, \"    but one that writes through an option not on that list (find -fprint, curl -D or -c) is not counted;\")\n",
   "",
   "TestTestRuns_")
 
@@ -1890,6 +1900,14 @@ m("TB quoted arithmetic is a command substitution", "internal/shape/shape.go",
   "\t\tif !strings.HasPrefix(s[k+2:], \"(\") || !arithmeticAt(s[k+3:]) {\n",
   "\t\tif true {\n",
   "TestMayWrite")
+m("TB a ( inside arithmetic opens no group", "internal/shape/shape.go",
+  "\t\tcase '(':\n\t\t\tdepth++\n",
+  "",
+  "TestMayWrite")
+m("TB a quoted ) inside $(( closes it", "internal/shape/shape.go",
+  "\t\t\tb.WriteByte('w')\n",
+  "\t\t\tb.WriteString(t.text)\n",
+  "TestMayWrite")
 
 m("TB a backgrounded call is not counted as unobserved", "internal/report/account.go",
   "\t\tif x.Backgrounded {\n\t\t\t// Recorded ok",
@@ -1913,8 +1931,8 @@ m("TB a leading pushd or popd is not a directory change", "internal/shape/shape.
   "\t\tcase \"cd\":\n",
   "TestLeadingDirectory")
 m("TB an assignment in front of a later cd is not a directory change", "internal/shape/shape.go",
-  "\t\tfor j < len(toks) && isShellAssignment(toks[j]) {\n",
-  "\t\tfor false && j < len(toks) && isShellAssignment(toks[j]) {\n",
+  "\t\tswitch toks[i+k].text {\n",
+  "\t\t_ = k\n\t\tswitch toks[i].text {\n",
   "TestLeadingDirectory|TestTestBending_AnAssignedCdBack")
 
 m("TB a backgrounded call between two runs is not an edit", "internal/report/testbending.go",
@@ -1984,6 +2002,27 @@ m("TB the Cursor report command drops a flag", ".cursor/commands/rashomon-report
   "`--chain` (each call",
   "chain (each call",
   "TestH76_TheReportSkillCopiesListOneFlagSet")
+
+m("TB a call whose declaration was lost does not stop a pair", "internal/report/testbending.go",
+  "\tif undeclaredCalls(run, denied) > 0 {\n\t\treturn out\n\t}\n",
+  "",
+  "TestTestBending")
+m("TB a lost call with only a terminal does not stop a pair", "internal/report/testbending.go",
+  "\tfor _, t := range run.Terminals {\n\t\tif !declared[t.ToolUseID] && !denied[t.ToolUseID] {\n\t\t\tlost[t.ToolUseID] = true\n\t\t}\n\t}\n",
+  "",
+  "TestTestBending")
+m("TB a lost call's terminal is counted apart from its execution record", "internal/report/testbending.go",
+  "\t\t\tlost[t.ToolUseID] = true\n",
+  "\t\t\tlost[\"terminal \"+t.ToolUseID] = true\n",
+  "TestTestRuns_")
+m("TB the test runs never count the lost calls", "internal/report/testbending.go",
+  "\tout := &TestRuns{Undeclared: undeclaredCalls(run, denied), TestBending: tb}\n",
+  "\tout := &TestRuns{TestBending: tb}\n",
+  "TestTestRuns_")
+m("TB the session block does not say why no pair is looked for", "internal/report/text.go",
+  "\tif t.Undeclared > 0 {\n\t\tfmt.Fprintf(b, \"    no pair is looked for",
+  "\tif false {\n\t\tfmt.Fprintf(b, \"    no pair is looked for",
+  "TestTestRuns_")
 
 # Import additions some mutants need.
 IMPORTS = {
