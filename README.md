@@ -625,8 +625,10 @@ memory. For each recorded turn with a failed call, it decodes each block's
 type, and a text block's text, of every assistant line tied to the turn, and
 keeps only the last line's text. The text is never written or output. To tell
 a prompt from a tool result on a user line with no prompt id, it decodes the
-line's content block *types* only, never their text. From a subagent
-transcript's user lines it decodes the type, `isMeta` and `promptId` only.
+line's content block *types* only, never their text. From every line of a
+subagent transcript, and from a main transcript's lines up to its first dated
+one, it decodes the fields listed under **What it reads** and the line's type,
+`isMeta` and `promptId`, never its content.
 
 **Savings.** One saving is listed, with its figure: the spend in turns with
 a failed call the summary never mentioned. The cache re-write figure is a

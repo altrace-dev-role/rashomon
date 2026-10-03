@@ -296,14 +296,14 @@ asking the question never mints an install identity.
 **The transcript read.** The usage read decodes a narrow shape: `message.id`,
 `model`, `stop_reason`, `stop_details.category`, `usage`'s token counts and
 `speed`, each `usage.iterations` entry's counts, `type` and `model`, and the
-line's `timestamp`, `sessionId`, `isSidechain` and `requestId` (a closed
-shape, `req_` and letters and digits). The category and an entry's
-type are closed words; a model reaches output only through the closed-shape
-rule `displayModel` applies. Every non-blank line of a subagent transcript,
-and each main-transcript line up to the first dated one, is decoded into this
+line's `type`, `timestamp`, `sessionId`, `isSidechain`, `isMeta`, `promptId`
+and `requestId` (a closed shape, `req_` and letters and digits). The category
+and an entry's type are closed words; a model reaches output only through the
+closed-shape rule `displayModel` applies. Every non-blank line of a subagent
+transcript, each main-transcript line up to the first dated one and, after
+it, every main-transcript line that may carry usage is decoded into this
 shape, header only; a line that does not decode is walked token by token only
-for a top-level isSidechain key. No field exists for
-`message.content`, so `encoding/json` steps over those bytes, and
+for a top-level isSidechain key. No field exists for `message.content`, so `encoding/json` steps over those bytes, and
 `TestContentHasNoFieldToLandIn` holds the shape: no unlisted tag, and no
 `RawMessage`, interface or map field. Four rules decide the figures:
 
