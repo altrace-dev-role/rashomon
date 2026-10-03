@@ -1761,6 +1761,9 @@ m("SP an unreadable entry is keyed as written, not resolved", "internal/spend/sc
 m("SP a path that does not resolve is keyed as written", "internal/spend/scan.go",
   "\treturn filepath.Join(resolved(dir), filepath.Base(p))", "\treturn p",
   "TestDiscover_OneTranscriptUnderTwoSpellings")
+m("SP a transcript that does not resolve is deduped as written", "internal/spend/scan.go",
+  "\t\treal := resolved(f.Path)\n", "\t\treal, err := filepath.EvalSymlinks(f.Path)\n\t\tif err != nil {\n\t\t\treal = f.Path\n\t\t}\n",
+  "TestDiscover_OneTranscriptUnderTwoSpellings")
 m("SP an undated usage line re-opens its file's dating", "internal/spend/scan.go",
   "\t\tstartMS, dated := parseTimestamp(l.Timestamp)\n", "\t\tstartMS, dated := parseTimestamp(l.Timestamp)\n\t\tfileDated = dated\n",
   "TestJoin_AnUndatedUsageLineDoesNotReDateItsFile")

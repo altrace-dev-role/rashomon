@@ -514,7 +514,7 @@ func resolved(p string) string {
 		return real
 	}
 	dir := filepath.Dir(p)
-	if dir == "/" || dir == "." {
+	if dir == p || dir == "." {
 		return p
 	}
 	return filepath.Join(resolved(dir), filepath.Base(p))
@@ -528,7 +528,8 @@ func resolved(p string) string {
 // transcripts, one of them never named by a record, so a recorded
 // conversation read partly recorded and its whole cost not covered. files is
 // sorted, so the spelling kept does not depend on listing order. A path that
-// does not resolve is kept: Read counts it if it cannot be read.
+// does not resolve is kept, keyed by its resolved parent plus its name: Read
+// counts it if it cannot be read.
 func dedupeSpellings(files []TranscriptFile) []TranscriptFile {
 	seen := map[string]bool{}
 	out := files[:0]

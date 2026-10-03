@@ -562,10 +562,16 @@ func TestDiscover_OneTranscriptUnderTwoSpellingsIsReadOnce(t *testing.T) {
 			})
 		}
 		// An unreadable entry under both spellings is one unreadable folder.
-		// Its own path does not resolve -- a dangling link, or an entry under
-		// a folder that cannot be searched -- so it was keyed as written,
-		// once per spelling, and one folder was counted as two.
-		for _, kind := range []string{"a dangling session link", "a locked session folder", "a locked project folder"} {
+		// A dangling link, or an entry under a folder that cannot be searched
+		// (a locked session folder's subagents/), does not resolve, so it
+		// was keyed as written, once per spelling, and one folder was counted
+		// as two. A locked project folder's own path resolves: it pins the
+		// resolved key its failed listing is counted under. A project folder
+		// that can be listed but not searched lists its transcript under
+		// both spellings, neither of which resolves: one transcript was two
+		// files and two unreadable files.
+		for _, kind := range []string{"a dangling session link", "a locked session folder", "a locked project folder",
+			"a listable but unsearchable project folder"} {
 			t.Run(tc.link+" with "+kind, func(t *testing.T) {
 				if kind != "a dangling session link" && os.Geteuid() == 0 {
 					t.Skip("permissions do not apply to root")
@@ -574,8 +580,8 @@ func TestDiscover_OneTranscriptUnderTwoSpellingsIsReadOnce(t *testing.T) {
 				c.write(tc.old+"/sess-l.jsonl",
 					resp{id: "L1", model: "claude-opus-5-5", session: "sess-l", at: now.Add(-time.Hour), in: 100, stop: "end_turn"}.line("text"))
 				old := filepath.Join(c.dir, "projects", tc.old)
-				lock := func(p string) {
-					if err := os.Chmod(p, 0o000); err != nil {
+				lock := func(p string, mode os.FileMode) {
+					if err := os.Chmod(p, mode); err != nil {
 						t.Fatal(err)
 					}
 					t.Cleanup(func() { _ = os.Chmod(p, 0o700) })
@@ -589,15 +595,24 @@ func TestDiscover_OneTranscriptUnderTwoSpellingsIsReadOnce(t *testing.T) {
 					if err := os.Mkdir(filepath.Join(old, "sess-x"), 0o700); err != nil {
 						t.Fatal(err)
 					}
-					lock(filepath.Join(old, "sess-x"))
+					lock(filepath.Join(old, "sess-x"), 0o000)
 				case "a locked project folder":
-					lock(old)
+					lock(old, 0o000)
+				case "a listable but unsearchable project folder":
+					lock(old, 0o600)
 				}
 				if err := os.Symlink(tc.old, filepath.Join(c.dir, "projects", tc.link)); err != nil {
 					t.Fatal(err)
 				}
 				s := c.summary(30)
 				txt, _ := render(t, s)
+				if kind == "a listable but unsearchable project folder" {
+					if s.Read.Files != 1 || s.Read.UnreadableFiles != 1 || !strings.Contains(txt, "note: 1 transcript file could not be read to the end") {
+						t.Errorf("files %d, unreadable files %d; want 1 and 1: one transcript under two spellings\n%s",
+							s.Read.Files, s.Read.UnreadableFiles, txt)
+					}
+					return
+				}
 				if s.Read.UnreadableDirs != 1 || !strings.Contains(txt, "note: 1 folder under projects/ could not be read") {
 					t.Errorf("unreadable dirs = %d, want 1: one folder under two spellings\n%s", s.Read.UnreadableDirs, txt)
 				}
