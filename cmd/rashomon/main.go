@@ -30,6 +30,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
+	"github.com/altrace-dev-role/rashomon/internal/spend"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -86,6 +87,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdDigest(rest, stdin, stdout) })
 	case "forget":
 		return guarded(stderr, func() error { return cmdForget(rest, stdout) })
+	case "spend":
+		return guarded(stderr, func() error { return cmdSpend(rest, stdout) })
 	case "env":
 		return guarded(stderr, func() error { return cmdEnv(rest, stdout) })
 	case "run":
@@ -1465,6 +1468,81 @@ func digestOrEmpty(sessionID, promptID, lastAssistantMessage string, now time.Ti
 	return digest.Build(st, sessionID, promptID, lastAssistantMessage, now)
 }
 
+// cmdSpend estimates the last N days of Claude Code spend.
+//
+// Zero setup: the source is Claude Code's own transcripts under its
+// configuration directory -- settings.ConfigDir, so CLAUDE_CONFIG_DIR
+// relocates this read exactly as it relocates settings.json and plugins/ --
+// and nothing here depends on watch having run. The store is read for one
+// line only, the spend inside silently failed turns, and opened WITHOUT
+// creating: a machine with no store answers "not covered" for that line
+// rather than being given a store by the question (H-87's rule, the one
+// report and digest follow).
+func cmdSpend(args []string, stdout io.Writer) error {
+	days := spend.DefaultDays
+	asJSON := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--days":
+			if i+1 >= len(args) {
+				return errors.New("--days needs a value")
+			}
+			// A positive whole number of days, and nothing else: zero or a
+			// negative would name an empty or inverted window, and the
+			// answer to that would be a confident $0.00 about nothing.
+			n, err := strconv.Atoi(args[i+1])
+			if err != nil || n < 1 {
+				return fmt.Errorf("--days needs a positive whole number of days, got %q", args[i+1])
+			}
+			// And at most spend.MaxDays: a window past any transcript's age
+			// is refused rather than answered (see MaxDays for the overflow
+			// that once turned such a window into a confident $0.00).
+			if n > spend.MaxDays {
+				return fmt.Errorf("--days is at most %d, got %q", spend.MaxDays, args[i+1])
+			}
+			days = n
+			i++
+		case "--json":
+			asJSON = true
+		default:
+			return fmt.Errorf("unknown argument %q", args[i])
+		}
+	}
+
+	now := time.Now()
+	configDir, err := settings.ConfigDir()
+	if err != nil {
+		return err
+	}
+	files, err := spend.Discover(configDir, spend.WindowStart(now, days))
+	if err != nil {
+		return err
+	}
+	scan, err := spend.Read(files)
+	if err != nil {
+		return err
+	}
+	sum := spend.Build(scan, now, days)
+
+	st, err := openStoreForRead()
+	switch {
+	case errors.Is(err, store.ErrNoStore):
+		st = nil
+	case err != nil:
+		return err
+	}
+	if err := sum.Join(st); err != nil {
+		return err
+	}
+
+	if asJSON {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(sum)
+	}
+	return spend.Text(stdout, sum)
+}
+
 // cmdForget evicts records at one end of the store's timeline.
 //
 // --since is the privacy form: forget what just happened. --before is the
@@ -1596,6 +1674,37 @@ usage:
                                flag; omitted by default, because reading
                                stdin unless told to is how a caller that
                                never closes its pipe gets hung forever.
+  rashomon spend [--days N] [--json]
+                               estimate what the last N days (default 30, at
+                               most 36500) of Claude Code usage would cost at
+                               API list prices, from Claude Code's own
+                               transcripts: by agent, model, token kind and
+                               session, cache re-written after a gap,
+                               refusals by category and model, retry
+                               attempts and pre-output refusals in tokens
+                               (out of the total, the cost unknown), the
+                               responses a fallback model served, and the
+                               spend in turns with a failed call the
+                               summary never mentioned, over the transcripts
+                               its records name (the rest named as not
+                               covered); the totals read usage fields only;
+                               the silent-failure line also decodes, in
+                               memory, the text blocks of every assistant line
+                               of each recorded turn with a failed call,
+                               keeping only the last, and the content block
+                               types (never the text) of user lines with no
+                               promptId; a subagent's spend is tied to its
+                               turn by the promptId on its own transcript's
+                               user lines, and a sidechain response in the
+                               main transcript counts toward the prompt
+                               before it (a sidechain user line does not end
+                               the tie); a response after a line that cannot
+                               be decoded (any in a subagent transcript; in
+                               the main transcript, unless it is a sidechain
+                               line) is not counted; a failed turn with no
+                               final message to judge is counted as not
+                               checked, never as clean;
+                               writes nothing
   rashomon forget --host H       evict every call that named host H
   rashomon forget --since T      evict records recorded at or after T
   rashomon forget --before T     evict records recorded before T

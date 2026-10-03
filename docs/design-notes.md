@@ -285,6 +285,132 @@ honestly cannot confirm an entry that is not in the file it reads. That is the
 right failure direction — it under-claims — but it means a temporary or
 side-loaded install cannot produce a verified report, by construction.
 
+## `rashomon spend`
+
+`spend` answers "what did the last N days of Claude Code usage cost at API list
+prices, and where could it be saved". It cannot depend on `watch` having run, so
+its source is Claude Code's transcripts, not the store. The store is consulted
+for one line only, and read through `store.OpenExisting` (H-87's rule), so
+asking the question never mints an install identity.
+
+**The transcript read.** The usage read decodes a narrow shape: `message.id`,
+`model`, `stop_reason`, `stop_details.category`, `usage`'s token counts and
+`speed`, each `usage.iterations` entry's counts, `type` and `model`, and the
+line's `timestamp`, `sessionId`, `isSidechain` and `requestId` (a closed
+shape, `req_` and letters and digits). The category and an entry's
+type are closed words; a model reaches output only through the closed-shape
+rule `displayModel` applies. Every non-blank line of a subagent transcript,
+and each main-transcript line up to the first dated one, is decoded into this
+shape, header only; a line that does not decode is walked token by token only
+for a top-level isSidechain key. No field exists for
+`message.content`, so `encoding/json` steps over those bytes, and
+`TestContentHasNoFieldToLandIn` holds the shape: no unlisted tag, and no
+`RawMessage`, interface or map field. Four rules decide the figures:
+
+- A response is counted once by `message.id`. Claude Code writes one response
+  as a line per content block, each with the full usage, and summing lines
+  overstated a real transcript 2.1x.
+- Of a response's lines, the most complete one is kept. A streaming line comes
+  first with a partial output count.
+- Where a reader cannot place a line, it counts and names what it skipped,
+  never drops it silently: a malformed or implausible usage, a line with no
+  id, an unreadable file or folder, a future-dated response.
+- A response keeps every file it was seen in, with the session its line
+  carries there. Coverage reads all of them: a response is not covered when
+  any transcript holding it is not, and its cost is counted once, and not at
+  all when a covered turn already counted it. Each transcript is tallied by
+  its own session. A shared response belongs to the session of the file whose
+  first dated line is earliest, and on a tie to each tied session: `/branch`
+  keeps the original timestamps on every copied line, so a copy and its
+  original tie, and a tie broken by session id gave the original's responses
+  to whichever random id sorted first. Every session holding a response has a
+  row, so per-session rows can sum to more than the total. A row reads
+  recorded only when its own transcripts were recorded and it holds no
+  not-covered dollars, and the not-covered sessions named are exactly the rows
+  holding those dollars. So coverage, the
+  not-covered cost, the sessions, and cold writes for a copied prefix depend
+  on neither the path sort order nor the session ids. The cold-cache heuristic
+  judges a response once, in the file it was first seen in, against every
+  response that file holds, so the cold figure for a shared response whose
+  predecessor differs between the two files does depend on the path order.
+
+**Departing from "never `message.content`".** The design said spend never
+reads message content. The silent-failure line needs the final message it
+judges, and the only surviving copy is the transcript. So for a recorded turn
+with a failed call, `report.FinalAssistantTexts` does two things, all in
+memory. Of every assistant line tied to the turn, it decodes each block's
+type, and a text block's text, and keeps only the last line's text. On a user
+line with no `promptId`, it decodes the content block types to tell a tool
+result from a prompt. Separately, spend's usage read (`readFile` in
+`internal/spend/scan.go`) reads a subagent transcript's user-line `type`,
+`isMeta` and `promptId`, the key that ties a subagent's responses to a turn.
+Each of these is reduced to the digest's verdict and its counts. None is
+written or output. A content canary is planted in a firing turn's final words, so the
+end-to-end test does reach the read. A turn belongs to the prompt of the user
+line before it, and a line the reader cannot place drops the turn's words, so
+it takes no verdict rather than a wrong one.
+
+**The price table.** The rates are a dated snapshot compiled into the binary
+(`internal/spend/price.go`). Every rendering names the snapshot's date and says
+a plan subscription is not billed per token. Rates are integers in nanodollars
+per token, so every figure is exact. A model id matches a row exactly, or with
+one dated suffix. A looser match would price Opus 5.5 at Opus 5's rates. A
+model the table lacks is priced as unknown, never at $0. Retired models keep
+their rows, because a transcript in the window can still name one. Out of
+scope, and said to be: fast mode's premium (fast responses are counted and
+priced at standard rates), Batch and partner pricing, long-context premiums,
+and web-search fees.
+
+**Refusals and fallback.** The last `usage.iterations` entry produced the
+message and is the top-level usage. Every earlier entry is an extra attempt:
+it is shown in tokens with the cost unknown, kept out of the total and every
+breakdown, and the header says how many tokens on how many attempts the total
+leaves out. A `fallback_message` last entry marks a fallback chain, and that
+entry's model ran the attempt: it prices the response and gets its by-model
+row, since a streamed line's `message.model` can name the model asked;
+`message.model` is used only when the entry names none. The chain served the
+response unless its `stop_reason` is `refusal`, when every model declined;
+the responses a fallback served are counted. Refusals are counted by
+`stop_details.category` and model. Whether a refusal came before any output
+is read from `output_tokens` 0, never from the line's shape: Claude Code
+writes a zero-usage `<synthetic>` refusal line with the response's
+`requestId` after a mid-stream refusal too, and such a line is folded into
+the usage-bearing response with that `requestId` in the same file. A refusal
+with output is priced like any response, since the refusals-and-fallback page
+bills a mid-stream refusal "at normal rates". Whether a pre-output one was
+billed depends on its category, so its tokens are shown with the cost
+unknown and kept out of the total, and the header says how many there are. A
+zero-usage refusal line with no such response is counted as a pre-output
+refusal written without usage. The fixture is the page's own JSON example,
+until a real fallback transcript is captured.
+
+**The savings list.** A suggestion is printed only with the figure it rests
+on, and one is: the spend in turns with a failed call the summary never
+mentioned, a floor with its bound printed beside it. The rule does not check
+which call came last, so the label does not say the turn ended with a
+failure.
+
+The cache re-write figure is a heuristic, labelled as one. Only the shortfall
+is cold -- what the previous response read and wrote to the cache, less what
+this one read back -- so a response that reads a still-warm prefix and
+re-writes the expired rest is counted for the rest, and a write past the
+previous cache is new content. The shortfall assumes each prompt extends the
+previous one, which is false after compaction, a model switch, a rewind, or a
+second sidechain agent in the stream, so a response on another model, or
+whose whole prompt is smaller than what the previous response cached, is not
+counted. A rewind or a second agent is skipped only when its request is
+smaller than the previous cache: one that grew past it is counted. So the
+heuristic skips a model switch and any request smaller than the previous
+cache, so it misses some true expiries, and can still count new content in a
+request that grew past the previous cache. It is priced as the write rate minus the read
+rate, since the alternative was a cache read. Measured on one real machine's
+last 30 days to 2026-10-02, it was $92.06 of $288.94. It is shown as a
+figure, not offered as a saving. Pre-output refusals and extra attempts are
+tokens with the cost unknown, so they carry no saving; a refusal with output
+is priced like any response. Subagents on the top
+model for read-heavy work would need the tool pattern from
+`message.content`, so that suggestion is not made either.
+
 ## Acceptance
 
 Two lists, and the split is deliberate.
