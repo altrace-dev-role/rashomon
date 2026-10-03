@@ -28,7 +28,24 @@ const (
 	VerbAgent   = "agent"
 	VerbMCP     = "mcp"
 	VerbUnknown = "unknown"
+
+	// VerbTest is a shell call whose command position holds a recognised
+	// test runner (testCommands). It is decided against a fixed list, and the
+	// words that decided it are compared and dropped: the record carries the
+	// word "test" and nothing else, so `go test ./secret/...` and `go test`
+	// store the same class.
+	VerbTest = "test"
 )
+
+// VerbClasses is the vocabulary, for the schema enum test to compare against,
+// for the reason Labels() exists: a closed set that is not exported through a
+// function drifts from the published schema in silence.
+func VerbClasses() []string {
+	return []string{
+		VerbRead, VerbWrite, VerbNetwork, VerbExecute, VerbVCS,
+		VerbPackage, VerbAgent, VerbMCP, VerbUnknown, VerbTest,
+	}
+}
 
 // Shape is the derived description of one tool call.
 //
@@ -41,6 +58,14 @@ type Shape struct {
 	VerbClass string  `json:"verb_class"`
 	Argc      *int    `json:"argc"`
 	Digest    string  `json:"digest"`
+
+	// MayWrite is set on a shell call whose line may write files whatever
+	// its class says (v3; see mayWrite): `find . -delete` is class read and
+	// deletes, `grep -rl x | xargs sed -i` is read and rewrites. One bit, and
+	// only the bit: the words that set it are compared and dropped. Always
+	// false on a tool that is not a shell, whose class already says what it
+	// does, and on a record written before v3, which could not say.
+	MayWrite bool `json:"may_write"`
 }
 
 // Derive builds the shape of a call to toolName with the given raw tool_input.
@@ -87,11 +112,18 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	pshaped, perr := tokenizeProgram(cmd)
 
 	uncertain := perr == errUncertain
+	// A line whose program cannot be named, or which the lexer could not
+	// read to its end, may write: nobody saw what it runs.
+	s.MayWrite = true
 	if i, ok := programToken(pshaped, uncertain); ok && !controlByte(cmd) {
 		if i, ok = pastDirectoryChange(pshaped, i, uncertain); ok {
 			prog := path.Base(pshaped[i].text)
 			s.Program = &prog
+			s.MayWrite = perr != nil || mayWrite(pshaped, i)
 			s.VerbClass = verbForProgram(prog)
+			if runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {
+				s.VerbClass = VerbTest
+			}
 		}
 	}
 	if err == nil {
@@ -167,6 +199,22 @@ func digest(key []byte, toolName string, body []byte) string {
 	m.Write([]byte{0})
 	m.Write(body)
 	return hex.EncodeToString(m.Sum(nil))
+}
+
+// CWDDigest is the keyed digest of the working directory a call was declared
+// in: HMAC under the same per-install key as the shape digest, so two calls'
+// directories compare equal or not and a store cannot be tested against a
+// guessed path. The empty string for an empty cwd, which is "not known" and
+// digests to nothing rather than to the digest of nothing.
+//
+// The domain is a name no tool can have -- it starts with a NUL -- so a
+// directory never digests equal to a tool call whose input happens to be the
+// same bytes.
+func CWDDigest(key []byte, cwd string) string {
+	if cwd == "" {
+		return ""
+	}
+	return digest(key, "\x00cwd", []byte(cwd))
 }
 
 // canonical re-encodes JSON so that two inputs differing only in key order or
@@ -336,6 +384,80 @@ func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
 		return 0, false
 	}
 	return pastDirectoryChange(toks, sep+1+k, uncertain)
+}
+
+// LeadingDirectory reports the directories a shell call's line moves through
+// before anything else runs, when the line begins with plain literal
+// `cd DIR &&` steps: each DIR as written, in order, which the caller folds
+// onto the call's cwd. The command after each `&&` runs only if its cd
+// succeeded, so the runner starts where the last one leads.
+//
+// Only a word the shell takes as it stands: nothing it expands or unquotes
+// (`$`, backticks, a glob, `~`, quotes or an escape), not `-`, which is the
+// previous directory, and not a comment. `cd DIR;` is left out, since what
+// follows a `;` runs whether the cd succeeded or not. A step in the leading
+// run whose command, past any assignments, redirections or an opening ( or {
+// in front of it, is cd, pushd or popd and is not such a cd spoils the run,
+// since the directory it leads to is not on the line. So a `cd -` is refused
+// anywhere in the leading run, even when an earlier step names its target:
+// `cd /a && cd b && cd - && go test` loses a pair that way, but it never
+// forms a false one. Anything else reports false, and the call keeps the
+// payload's cwd.
+func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, bool) {
+	if verbForTool(toolName) != VerbExecute {
+		return nil, false
+	}
+	cmd, ok := commandField(toolInput)
+	if !ok || controlByte(cmd) {
+		return nil, false
+	}
+	toks, err := tokenizeProgram(cmd)
+	if err != nil {
+		return nil, false
+	}
+	var dirs []string
+	for i := 0; i < len(toks); i += 3 {
+		// The step's command as pastDirectoryChange finds it (programToken),
+		// past any assignments, redirections or an opening ( or {: `X=1 cd
+		// b`, `>/dev/null cd b` and `(cd b` change directory too, and
+		// leadingCd refuses them.
+		k, ok := programToken(toks[i:], false)
+		if !ok {
+			return dirs, len(dirs) > 0
+		}
+		switch toks[i+k].text {
+		case "cd", "pushd", "popd":
+		default:
+			return dirs, len(dirs) > 0
+		}
+		dir, ok := leadingCd(toks[i:])
+		if !ok {
+			return nil, false
+		}
+		dirs = append(dirs, dir)
+	}
+	return dirs, len(dirs) > 0
+}
+
+// leadingCd reports the DIR of a plain literal `cd DIR &&` at the start of
+// toks, by LeadingDirectory's rules.
+func leadingCd(toks []token) (string, bool) {
+	if len(toks) < 3 {
+		return "", false
+	}
+	cd, dir, and := toks[0], toks[1], toks[2]
+	if cd.text != "cd" || cd.quotedAt >= 0 || cd.opaque {
+		return "", false
+	}
+	if dir.meta || dir.quotedAt >= 0 || dir.opaque || dir.ticks > 0 || dir.nlBefore || isComment(dir) ||
+		dir.text == "" || strings.HasPrefix(dir.text, "-") || strings.HasPrefix(dir.text, "~") ||
+		strings.ContainsAny(dir.text, "$`*?[{\\") {
+		return "", false
+	}
+	if !and.meta || and.text != "&&" || and.nlBefore {
+		return "", false
+	}
+	return dir.text, true
 }
 
 // plainWord reports whether a word in command position is one the search can
@@ -892,6 +1014,598 @@ var programVerb = map[string]string{
 	"bundle": VerbPackage, "brew": VerbPackage, "apt": VerbPackage,
 	"apt-get": VerbPackage, "uv": VerbPackage, "poetry": VerbPackage,
 }
+
+// testCommands are the test runners the test verb class recognises: the
+// program, as path.Base names it, and then the plain words that must follow
+// it exactly. A runner that is its own program is a list of one.
+//
+// A fixed list, compared and discarded. Nothing from the line is kept but the
+// class; an argument is looked at only to be told equal to one of these.
+// Anything this list does not name -- `make -C dir test`, `npx --yes jest`,
+// `go test` behind `nice` -- stays what it was before: execute, or package
+// for go and cargo. That is an under-claim, and the detections built on this
+// class are worth only as much as their refusal to over-claim.
+//
+// The wrappers on the list are the ones whose exit status is the runner's:
+// a project's own gradlew and mvnw, npm's `t` alias, `npx jest` and `npx
+// vitest`, `uv run pytest`, `poetry run pytest` and `bundle exec rspec`. So
+// are the `timeout N` and `time` prefixes (runnerPrefix), except for
+// timeout's own 124, which the report reads as no result. A pipe or a list
+// after the runner is still refused (wholeCommand): without pipefail its
+// status is the last stage's.
+//
+// The rule applied: a runner is on the list when it is a known test tool, a
+// build tool or launcher given its test command (`go test`, `npm t`,
+// `npm run test`, `python -m pytest`), or a listed wrapper that passes its
+// runner's exit status through. `make check` is not, since check is not
+// make's test command. That rule does not keep lint out: go test runs vet
+// first, an npm `pretest` script runs before `npm test`, tox's default
+// envlist and a make `test` target can each include lint, and a lint failure
+// fixed only in a file named like a test then reads as the tests-only
+// pattern.
+var testCommands = [][]string{
+	{"pytest"}, {"jest"}, {"vitest"}, {"mocha"}, {"rspec"}, {"phpunit"},
+	{"ctest"}, {"tox"}, {"nox"},
+
+	{"go", "test"}, {"cargo", "test"}, {"npm", "test"}, {"npm", "t"}, {"npm", "run", "test"},
+	{"yarn", "test"}, {"pnpm", "test"}, {"bun", "test"}, {"dotnet", "test"},
+	{"mvn", "test"}, {"mvnw", "test"}, {"gradle", "test"}, {"gradlew", "test"}, {"make", "test"},
+	{"python", "-m", "pytest"}, {"python3", "-m", "pytest"},
+
+	{"npx", "jest"}, {"npx", "vitest"}, {"uv", "run", "pytest"}, {"poetry", "run", "pytest"},
+	{"bundle", "exec", "rspec"},
+}
+
+// refusalsOf names the notARun entry a testCommands row is checked against:
+// its own program's, or for a wrapper the runner it wraps, since `npx jest
+// --listTests` lists as `jest --listTests` does. gradlew and mvnw take
+// gradle's and mvn's.
+func refusalsOf(c []string) string {
+	switch c[0] {
+	case "npx", "uv", "poetry", "bundle":
+		return c[len(c)-1]
+	case "gradlew":
+		return "gradle"
+	case "mvnw":
+		return "mvn"
+	}
+	return c[0]
+}
+
+// notARun is, per runner by its first word, the arguments with which it does
+// something other than run the tests: compile them (`go test -c`, `cargo test
+// --no-run`), list them (`-list`, `--collect-only`, `--listTests`), print or
+// check what it would do (`make -n`, `make -q`, `--dry-run`), skip them
+// (`-DskipTests`, `tox --notest`, `nox --install-only`), set up an
+// environment instead (`tox devenv`), watch for changes (`gradle -t`), or
+// show its version (`-v` where that is what -v means). Each of those ends ok
+// or failed on something no test decided, and as a test run it would
+// complete a pattern on that outcome. A word ending in * is a prefix:
+// `-list=Foo`, `-elint`, matched whatever follows it. A flag is matched in
+// its `flag=value` form too (`-c=true`, `--watch=true`), unless the value is
+// false (onList). Maven's skip properties are refused by a rule of their own
+// (mavenSkip): `-DskipTests=false` runs the tests.
+//
+// The lists are the spellings named here, not every spelling a runner
+// accepts: a combined short flag (`make -nk`), an option set in a config file
+// or an environment variable (other than PYTEST_ADDOPTS, below), or a
+// spelling not listed still counts as a test run.
+//
+// tox and nox are here with their targets, not their listings only: `tox -e
+// lint` and `nox -s lint` run a lint session, and a target cannot be told to
+// be tests from its name without a guess. Plain `tox` and `nox` run the
+// project's default sessions and stay test.
+//
+// Compared and dropped, like the runner's own words: a match refuses the
+// class, and the word is not kept. A word is compared whether quoted or not,
+// since the shell passes `"--watch"` as --watch; refusing on it is the
+// under-claim.
+var notARun = map[string][]string{
+	"go":      {"-c", "--c", "-n", "--n", "-list*", "--list*"},
+	"cargo":   {"--no-run", "--list", "-V"},
+	"pytest":  pytestNotARun,
+	"python":  pytestNotARun,
+	"python3": pytestNotARun,
+	"jest":    {"--listTests", "--showConfig", "--clearCache", "--init", "-v"},
+	"vitest":  {"watch", "dev", "list", "bench", "init", "-w", "-v"},
+	"mocha":   {"-w", "-V", "--dry-run", "--list-reporters", "--list-interfaces"},
+	"rspec":   {"--dry-run", "--init", "-v"},
+	"phpunit": {"--list-*", "--generate-configuration", "--migrate-configuration", "--check-version"},
+	"ctest":   {"-N", "--show-only*"},
+	"dotnet":  {"--list-tests", "-t"},
+	"mvn":     {"-v"},
+	"gradle":  {"--dry-run", "-m", "-v", "-t", "--continuous"},
+	"make":    {"-n", "--just-print", "--dry-run", "--recon", "-q", "--question", "-t", "--touch", "-v"},
+	"tox": {"-e*", "--env*", "-m", "-f", "-l", "-a", "--listenvs*", "--showconfig", "--help-ini", "--notest",
+		"--devenv*", "list", "l", "config", "c", "depends", "de", "quickstart", "q", "exec", "e", "devenv", "d"},
+	"nox": {"-s*", "--session*", "-e*", "-k*", "--keywords*", "-t*", "--tags*", "-l", "--list*", "--install-only"},
+}
+
+var pytestNotARun = []string{
+	"--collect-only", "--co", "-V", "--fixtures*", "--markers", "--setup-plan", "--setup-only", "--cache-show*",
+}
+
+// notARunAny is the spellings of help, version and watch mode that are
+// checked for every runner: -h, -help, --help, --version, --watch and
+// --watchAll. Watch mode never ends on a result of its own and records the
+// launch's instead. A runner's own spelling of these (`-v`, `-V`, `-w`, `-t`,
+// `vitest watch`) is on its notARun entry or is not refused at all; the list
+// does not make every runner's help, version or watch mode refused.
+var notARunAny = []string{"-h", "-help", "--help", "--version", "--watch", "--watchAll"}
+
+// refusesRun reports an argument in args that is on runner's notARun list or
+// on notARunAny, or, for pytest, a word starting PYTEST_ADDOPTS= earlier on
+// the line (before), an assignment or an export's argument: its value is more
+// arguments, which may be `--co`, and they are not read, so any value
+// refuses. One exported by an earlier call is not on the line and is not
+// seen.
+func refusesRun(runner string, before, args []token) bool {
+	for _, t := range args {
+		if onList(t.text, notARun[runner]) || onList(t.text, notARunAny) || runner == "mvn" && mavenSkip(t.text) {
+			return true
+		}
+	}
+	if onList(runner, []string{"pytest", "python", "python3"}) {
+		for _, t := range before {
+			if strings.HasPrefix(t.text, "PYTEST_ADDOPTS=") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// onList reports word equal to an entry of list, or starting with the part
+// of one before its trailing *. A word `flag=value` matches the entry flag
+// unless value is a false the flag parsers read as false (isFalse):
+// `--watchAll=false` runs the tests once, `--watchAll=true` watches, and
+// `-c=true` compiles. A prefix entry takes no =false exception: its flag
+// either takes a pattern or name (go -list, tox -e, nox -s/-k/-t, ctest
+// --show-only, pytest --cache-show) or is a no-value switch whose parser
+// rejects any =value (pytest --fixtures, nox --list, tox --listenvs, phpunit
+// --list-*), so the line runs no test either way.
+func onList(word string, list []string) bool {
+	name, value, hasValue := strings.Cut(word, "=")
+	for _, w := range list {
+		if p, ok := strings.CutSuffix(w, "*"); ok {
+			if strings.HasPrefix(word, p) {
+				return true
+			}
+		} else if word == w {
+			return true
+		} else if hasValue && strings.HasPrefix(w, "-") && name == w && !isFalse(value) {
+			return true
+		}
+	}
+	return false
+}
+
+// isFalse reports the false spellings of Go's strconv.ParseBool, for Go's and
+// yargs's boolean flags; a yargs flag given another non-true value is still
+// refused. Maven's properties follow Java instead (mavenSkip).
+func isFalse(v string) bool {
+	switch v {
+	case "false", "False", "FALSE", "f", "F", "0":
+		return true
+	}
+	return false
+}
+
+// mavenSkip reports a Maven property that skips the tests: -DskipTests,
+// -Dmaven.test.skip or -Dmaven.test.skip.exec, with no `=value` or with a
+// value equal to true ignoring case. Maven reads them with Java's
+// Boolean.valueOf, where nothing else is true, so `-DskipTests=false`, `=1`
+// and `=no` all run the tests.
+func mavenSkip(word string) bool {
+	name, value, hasValue := strings.Cut(word, "=")
+	switch name {
+	case "-DskipTests", "-Dmaven.test.skip", "-Dmaven.test.skip.exec":
+		return !hasValue || strings.EqualFold(value, "true")
+	}
+	return false
+}
+
+// runsTests reports whether the command whose program is the token at i,
+// named prog, is one of testCommands, and the whole line (wholeCommand), so
+// that the line's exit status is the runner's.
+//
+// The program was found under programToken's rules, so it is certain; each
+// word after it must be certain in the same way before it is compared: an
+// unquoted word of this same command, and not running on into a process
+// substitution the shell reads as more of the same word. A word on the next
+// line is the next command's, and wholeCommand refuses any line that has one.
+// An operator or an expansion keeps its bytes in the token's text ($, `, ${ ),
+// so equality to a list word already refuses those. programToken has refused
+// a command whose end it could not find, so the words up to that end are ones
+// the lexer vouched for -- and a line the lexer could not finish at all
+// (whole) is refused outright: `go test\` ends in a backslash the tokenizer
+// dropped and the shell keeps.
+//
+// Quoted is refused although `go "test"` runs the tests: the rule is "a plain
+// word equal to the list", and a quote is where plain stops. And a runner on
+// the list is still refused when an argument after its words is on notARun.
+func runsTests(toks []token, i int, prog string, whole bool) bool {
+	if !whole {
+		return false
+	}
+	i, prog, ok := runnerPrefix(toks, i, prog)
+	if !ok {
+		return false
+	}
+next:
+	for _, c := range testCommands {
+		if c[0] != prog {
+			continue
+		}
+		for n, want := range c[1:] {
+			k := i + 1 + n
+			if k >= len(toks) {
+				continue next
+			}
+			t := toks[k]
+			if t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {
+				continue next
+			}
+		}
+		if refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {
+			return false
+		}
+		return wholeCommand(toks, i)
+	}
+	return false
+}
+
+// runnerPrefix steps past the prefixes that pass a runner's exit status
+// through: `timeout DURATION`, then `time` (`time -p`), each at most once
+// and in that order. It returns the index and name of the word after them,
+// or i and prog unchanged when there is no prefix; ok is false when a prefix
+// is not followed by a word this search can vouch for.
+//
+// timeout is taken only as `timeout DURATION`: an option before the duration
+// (`-k 5`, `-s KILL`, `--preserve-status`) changes what status it exits
+// with, and is refused rather than read. Its own 124, when it fires, is the
+// timeout's status and not the runner's; the report reads that as no result.
+// The recorded program stays timeout or time, the first word.
+func runnerPrefix(toks []token, i int, prog string) (int, string, bool) {
+	// A plain word of this command. The duration is all digits, which
+	// plainWord refuses in command position, so it is held only to the rest.
+	plain := func(j int) bool {
+		if j >= len(toks) {
+			return false
+		}
+		t := toks[j]
+		return !t.meta && !t.nlBefore && !t.opaque && t.quotedAt < 0 && !runsOn(toks, j)
+	}
+	word := func(j int) bool { return plain(j) && plainWord(toks[j].text) }
+	if prog == "timeout" {
+		if !plain(i+1) || !isDuration(toks[i+1].text) || !word(i+2) {
+			return i, prog, false
+		}
+		i += 2
+		prog = path.Base(toks[i].text)
+	}
+	if prog == "time" {
+		next := i + 1
+		if next < len(toks) && toks[next].text == "-p" && word(next) {
+			next++
+		}
+		if !word(next) {
+			return i, prog, false
+		}
+		i = next
+		prog = path.Base(toks[i].text)
+	}
+	return i, prog, true
+}
+
+// isDuration reports a timeout(1) duration: digits, an optional fraction, and
+// an optional unit.
+func isDuration(w string) bool {
+	if n := len(w); n > 0 && strings.IndexByte("smhd", w[n-1]) >= 0 {
+		w = w[:n-1]
+	}
+	whole, frac, dot := strings.Cut(w, ".")
+	digits := func(s string) bool {
+		for i := 0; i < len(s); i++ {
+			if s[i] < '0' || s[i] > '9' {
+				return false
+			}
+		}
+		return true
+	}
+	return whole != "" && digits(whole) && digits(frac) && (!dot || frac != "")
+}
+
+// wholeCommand reports whether the runner whose program is the token at i is
+// the whole line: nothing follows its own words, arguments and redirections
+// but the end of the line.
+//
+// The recorded outcome is the line's exit status, and it is the runner's only
+// when the runner ran last and in the foreground. `go test ./... 2>&1 | tail`
+// ends with tail's status, `|| true` and `; echo done` with true's and echo's,
+// `&` with the fork's, and `| grep FAIL` inverts it: grep exits 1 when the
+// tests passed. `&&` is refused as well, although a failure there is the
+// runner's: its success is whatever ran after it. So any separator, and any
+// next line, leaves the class what it was before -- the under-claim. The end
+// is found by commandEnd, the scan pastDirectoryChange uses, so a `;` inside
+// `$( )` ends nothing; a newline anywhere after the runner refuses, whether
+// commandEnd reached it or stopped at it.
+func wholeCommand(toks []token, i int) bool {
+	sep, ok := commandEnd(toks, i, false)
+	if !ok || sep >= 0 {
+		return false
+	}
+	for _, t := range toks[i+1:] {
+		if t.nlBefore {
+			return false
+		}
+	}
+	return true
+}
+
+// backgrounded reports a shell call Claude Code was asked to run in the
+// background: its tool_input's run_in_background is the JSON boolean true.
+//
+// Such a call's PostToolUse fires when the shell is launched, not when the
+// command ends, so its recorded outcome is the launch's: ok, before any test
+// has run. The digest covers the command line only, so the launch digests
+// equal to the same command run in the foreground, and as a test run it would
+// pair with a real run as passing. It keeps the class the program gave it.
+// The field is read as a boolean and nothing else, like the command field is
+// read for its words and dropped.
+//
+// A command Claude Code moves to the background itself, when it reaches its
+// timeout or on Ctrl+B, asked for nothing: its tool_input has no such field,
+// so it is a test run here. Its execution record says backgrounded instead
+// (read from the response on the post path; on Ctrl+B only if Claude Code
+// marks it with backgroundTaskId or backgroundedByUser, which was not
+// measured), and the report reads such a run as outcome unobserved, as it
+// does a launch declared here.
+func backgrounded(raw json.RawMessage) bool {
+	var obj struct {
+		RunInBackground json.RawMessage `json:"run_in_background"`
+	}
+	if json.Unmarshal(raw, &obj) != nil {
+		return false
+	}
+	var b bool
+	return json.Unmarshal(obj.RunInBackground, &b) == nil && b
+}
+
+// mayWrite reports a shell line whose program is the token at i and which may
+// write files whatever class that program gives it: an output redirection to
+// a file (not a descriptor duplication such as 2>&1, and not /dev/null); a
+// word that writes by itself -- find's -delete, -exec, -execdir, -ok and
+// -okdir, xargs, tee, wget, rsync or scp; curl with an output flag (-o, -O,
+// --output, --remote-name, or a run of short flags that reaches o or O, with
+// or without the file attached); a command or process substitution, whose
+// command is not looked into; or a later pipeline or list stage whose program
+// is outside the read class, or cannot be named.
+//
+// The words are compared wherever they stand, quoted or not, and not parsed
+// as the program would parse them: `grep -rn xargs .` sets the bit. That is
+// the direction to be wrong in. The bit makes a call count as a possible file
+// edit (the report's mayEdit), and an edit counted that did not happen stops
+// a test-bending pair, while one missed completes a pair over it.
+//
+// Stages before i are scanned for writer words and redirects, but not classed
+// by program: they are the `cd DIR &&` that pastDirectoryChange stepped over,
+// and a directory change is told apart by the declarations' directory
+// digests, not as a write.
+func mayWrite(toks []token, i int) bool {
+	curl, curlOut := false, false
+	for j, t := range toks {
+		if opensSubstitution(toks, j) {
+			return true
+		}
+		if t.meta {
+			if outputRedirect(toks, j) {
+				return true
+			}
+			continue
+		}
+		if t.ticks > 0 || t.opaque && holdsSubstitution(t.text) {
+			return true
+		}
+		switch path.Base(t.text) {
+		case "xargs", "tee", "wget", "rsync", "scp":
+			return true
+		case "curl":
+			curl = true
+		}
+		switch t.text {
+		case "-delete", "-exec", "-execdir", "-ok", "-okdir":
+			return true
+		}
+		curlOut = curlOut || curlOutputFlag(t.text)
+	}
+	if curl && curlOut {
+		return true
+	}
+	for j := i + 1; j < len(toks); j++ {
+		start := j
+		switch {
+		case stageSeparator(toks, j):
+			start = j + 1
+		case toks[j].nlBefore:
+		default:
+			continue
+		}
+		if start >= len(toks) {
+			break
+		}
+		k, ok := programToken(toks[start:], false)
+		if !ok || verbForProgram(path.Base(toks[start+k].text)) != VerbRead {
+			return true
+		}
+	}
+	return false
+}
+
+// outputRedirect reports an output redirection whose operator starts at j and
+// whose target is a file: `>`, `>>`, `>|`, `&>`, `<>`, and `>&` onto a word
+// that is not a descriptor number or `-`. /dev/null, /dev/stdout,
+// /dev/stderr and /dev/tty are not files it writes.
+func outputRedirect(toks []token, j int) bool {
+	t := toks[j]
+	if t.text != ">" && t.text != ">>" {
+		return false
+	}
+	if j > 0 && toks[j-1].meta && toks[j-1].text == "<" && t.glued {
+		return true // <>: opened for reading and writing, and created
+	}
+	end := operatorEnd(toks, j)
+	dup := false
+	for k := j + 1; k <= end; k++ {
+		dup = dup || toks[k].text == "&"
+	}
+	if end+1 >= len(toks) || toks[end+1].meta {
+		// No target: nothing on the line runs. A process substitution
+		// writes into a command, which may itself write a file, so it
+		// counts as a possible write.
+		return end+1 < len(toks)
+	}
+	target := toks[end+1].text
+	if dup && (target == "-" || isFDPrefix(toks[end+1])) {
+		return false
+	}
+	switch target {
+	case "/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty":
+		return false
+	}
+	return true
+}
+
+// opensSubstitution reports a token at j that opens a command or process
+// substitution: an unquoted `$`, `<` or `>` with a `(` glued after it. A `$`
+// with two glued `(` opens arithmetic, `$((n+1))`, which runs nothing, when
+// arithmeticAt holds; otherwise it opens a substitution of a subshell. The
+// command inside is not classed.
+func opensSubstitution(toks []token, j int) bool {
+	t := toks[j]
+	if !gluedParen(toks, j+1) {
+		return false
+	}
+	if t.meta {
+		return t.text == "<" || t.text == ">"
+	}
+	return strings.HasSuffix(t.text, "$") && !(gluedParen(toks, j+2) && arithmeticAt(parenText(toks[j+3:])))
+}
+
+// holdsSubstitution reports text that holds a `$(` opening a command
+// substitution: any `$(` but the `$((` of arithmetic. A `$(` nested inside
+// arithmetic is followed by a byte other than `(`, so it still counts.
+func holdsSubstitution(s string) bool {
+	for k := 0; k < len(s); k++ {
+		if !strings.HasPrefix(s[k:], "$(") {
+			continue
+		}
+		if !strings.HasPrefix(s[k+2:], "(") || !arithmeticAt(s[k+3:]) {
+			return true
+		}
+	}
+	return false
+}
+
+// arithmeticAt reports whether s, the text after a `$((`, is arithmetic: the
+// `)` that matches the second `(` is followed by a glued `)`. Bash and zsh
+// read a `$((` that does not close as `))`, such as `$((rm x) )`, as a
+// command substitution of a subshell. comsub.go's arithEnd is the stricter,
+// tokenizer-side form of the same rule.
+func arithmeticAt(s string) bool {
+	depth := 1
+	for k := 0; k < len(s); k++ {
+		switch s[k] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return strings.HasPrefix(s[k+1:], ")")
+			}
+		}
+	}
+	return false
+}
+
+// parenText rebuilds the line from toks as far as arithmeticAt reads it: an
+// operator as written, any other word as one placeholder byte, since an
+// unquoted ( or ) is always an operator token, and a blank where two tokens
+// were apart.
+func parenText(toks []token) string {
+	var b strings.Builder
+	for k, t := range toks {
+		if k > 0 && !t.glued {
+			b.WriteByte(' ')
+		}
+		if t.meta {
+			b.WriteString(t.text)
+		} else {
+			b.WriteByte('w')
+		}
+	}
+	return b.String()
+}
+
+// gluedParen reports a meta `(` at j glued to the token before it.
+func gluedParen(toks []token, j int) bool {
+	return j < len(toks) && toks[j].meta && toks[j].glued && toks[j].text == "("
+}
+
+// stageSeparator reports a token at j that ends one pipeline or list stage:
+// `;`, `&&`, `||`, `|`, or a lone `&` -- not the `&` of `>&`, `&>` or `|&`,
+// which belongs to a redirection or a pipe.
+func stageSeparator(toks []token, j int) bool {
+	t := toks[j]
+	if !t.meta {
+		return false
+	}
+	switch t.text {
+	case ";", "&&", "||", "|":
+		return true
+	case "&":
+		if j > 0 && t.glued && toks[j-1].meta && (toks[j-1].text == ">" || toks[j-1].text == ">>" || toks[j-1].text == "|") {
+			return false
+		}
+		if next := j + 1; next < len(toks) && toks[next].meta && toks[next].glued && strings.HasPrefix(toks[next].text, ">") {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+// curlOutputFlag reports a curl argument that names an output file: -o, -O,
+// their long forms, or a short-option word that reaches o or O. The word is
+// walked as curl reads it. A letter, a digit, # or : that takes no argument is
+// a flag, and the walk goes on past it; an option that takes an argument ends
+// the walk, since the rest of the word is its value (`-XPOST`, `-dfoo=bar`),
+// and so does any other character. Whatever follows o is its file, so
+// `-o./calc.go`, `-#O` and `-sSLotestdata/x.json` name files.
+func curlOutputFlag(w string) bool {
+	switch {
+	case w == "--output", w == "--remote-name", w == "--remote-name-all", w == "--output-dir",
+		strings.HasPrefix(w, "--output="), strings.HasPrefix(w, "--output-dir="):
+		return true
+	case len(w) > 1 && w[0] == '-' && w[1] != '-':
+		for _, c := range w[1:] {
+			switch {
+			case c == 'o' || c == 'O':
+				return true
+			case strings.ContainsRune(curlArgumentOptions, c):
+				return false
+			case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '#', c == ':':
+			default:
+				return false
+			}
+		}
+	}
+	return false
+}
+
+// curlArgumentOptions are curl's short options that take an argument, per
+// `curl --help all`.
+const curlArgumentOptions = "AbcCdDeEFhHKmPQrtTuUwxXyYz"
 
 func verbForProgram(prog string) string {
 	if v, ok := programVerb[prog]; ok {

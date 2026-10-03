@@ -18,6 +18,8 @@ var (
 		"tool_use_id", "session_id", "prompt_id", "agent_id", "agent_type",
 		"transcript_path", "permission_mode", "tool_name",
 		"shape", "shape.program", "shape.verb_class", "shape.argc", "shape.digest",
+		// v3. One bit: the line may write files whatever its program's class.
+		"shape.may_write",
 		// v2. Hostnames only: the extractor returns a canonical hostname or
 		// nothing, so neither list can carry a path, a query or a credential.
 		// They are here rather than under shape because the report joins on
@@ -34,6 +36,9 @@ var (
 		// named LOOKS LIKE, from a closed vocabulary, never the path. Null on
 		// every record this build writes.
 		"host_source", "rule_match", "file_label",
+		// v3. A keyed digest of the directory its command starts in: 64 hex
+		// characters, never the path.
+		"cwd_digest",
 	}
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
@@ -49,6 +54,9 @@ var (
 		"executed_digest",
 		// v3, RESERVED. See the note on the declaration list.
 		"rule_match",
+		// v3. One bit: whether a Bash call's tool_response names a background
+		// task. The id and the rest of the response are never decoded.
+		"backgrounded",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",

@@ -1,6 +1,7 @@
 package hook
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -22,6 +23,11 @@ import (
 // a log line carries it to Claude Code's debug log. encoding/json discards a
 // key no field claims, so the response is never a value here at all. The
 // guarantee is structural: there is nothing to forget to redact.
+//
+// The one thing read from it is read by backgroundResponse, for Bash only:
+// whether two keys are present. That struct claims those two keys and no
+// other, and holds a bit for each, not the value -- so stdout, stderr and the
+// task id are still never a value in this process.
 //
 // tool_input IS declared, as of the executed-digest field below. It was absent
 // while post derived no shape; it is present now because the post-rewrite
@@ -58,8 +64,9 @@ type PostPayload struct {
 	//
 	// Declaring it is a deliberate reversal of the original note above, and the
 	// asymmetry with tool_response is the whole reason it is safe. tool_response
-	// is tool OUTPUT and nothing here needs it, so the guarantee for it stays
-	// structural: no field claims it, so it is never a value in this process.
+	// is tool OUTPUT, and PostPayload claims no field of it: the guarantee
+	// stays structural. backgroundResponse, a second decode for Bash only,
+	// reads two presence bits from it and nothing else.
 	// tool_input is different -- it is the one field that can show a rewriting
 	// hook, and the declaration path already unmarshals and digests the same
 	// field. Only the digest survives this function; internal/shape is still
@@ -104,10 +111,11 @@ func NewPost(st *store.Store, now func() time.Time) *Post {
 
 // Capture reads one payload and writes the execution record.
 //
-// stdin is bounded exactly as the declaration path bounds it. The response is
-// not read, but it does arrive: an unbounded read of a payload carrying a
-// hundred megabytes of tool output is a runtime fatal error, which recover
-// cannot catch and which exits 2.
+// stdin is bounded exactly as the declaration path bounds it. Of the response
+// only the presence of backgroundTaskId and backgroundedByUser is read, for a
+// Bash call (backgroundResponse), but the whole of it does arrive: an
+// unbounded read of a payload carrying a hundred megabytes of tool output is a
+// runtime fatal error, which recover cannot catch and which exits 2.
 func (p *Post) Capture(in io.Reader) error {
 	fault.Inject(fault.PointPostStart)
 
@@ -155,7 +163,55 @@ func (p *Post) Capture(in io.Reader) error {
 			rec.Outcome = store.ExecInterrupted
 		}
 	}
+	// A failure event means the command ended or its launch failed, so it was
+	// never moved to the background, whatever its payload carries.
+	if pl.ToolName == "Bash" && pl.HookEventName != FailureEvent {
+		rec.Backgrounded = backgroundedCall(raw)
+	}
 	return p.st.AppendExecution(rec)
+}
+
+// backgroundResponse is the whole of what is read from a Bash call's
+// tool_response: whether it names a background task. Measured on Claude Code
+// 2.1.280, a command moved to the background when it reached its timeout and
+// one launched with run_in_background both fire PostToolUse, and the response
+// carries backgroundTaskId (the timeout case timedOutAfterMs as well); a
+// foreground call carries neither. A Ctrl+B background is recognised only if
+// Claude Code marks it with backgroundTaskId or backgroundedByUser, which was
+// not measured; backgroundedByUser is read the same way as the task id.
+//
+// Each key decodes into a presence bit (present), so the task id is compared
+// with null and false and dropped, and no other key of the response --
+// stdout, stderr -- is claimed by any field: encoding/json skips them unread.
+type backgroundResponse struct {
+	ToolResponse struct {
+		BackgroundTaskID   present `json:"backgroundTaskId"`
+		BackgroundedByUser present `json:"backgroundedByUser"`
+	} `json:"tool_response"`
+}
+
+// present is a key's presence: true when the key carries anything but null
+// or false. The raw bytes are compared with those two and not kept or
+// copied, so an id, a string or an object decodes to one bit and never
+// becomes a Go string.
+type present bool
+
+func (p *present) UnmarshalJSON(b []byte) error {
+	v := bytes.TrimSpace(b)
+	*p = present(!bytes.Equal(v, []byte("null")) && !bytes.Equal(v, []byte("false")))
+	return nil
+}
+
+// backgroundedCall reports a Bash call whose PostToolUse fired while the
+// command was still running in the background, so that its outcome is the
+// launch's and not the command's. A response that is not an object, or fails
+// to decode, is a foreground call: the flag is set only on evidence.
+func backgroundedCall(raw []byte) bool {
+	var r backgroundResponse
+	if json.Unmarshal(raw, &r) != nil {
+		return false
+	}
+	return bool(r.ToolResponse.BackgroundTaskID || r.ToolResponse.BackgroundedByUser)
 }
 
 // exitCodePrefix is the whole of what is parsed out of a failure message.

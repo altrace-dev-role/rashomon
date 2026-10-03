@@ -71,12 +71,15 @@ excerpt is `rashomon report` exactly as it renders that session:
         (these calls do not appear in the main transcript)
       failed calls: 1
         the final message contains none of these 43 words: fail, failed, failing, error, errors, couldn't, could not, unable, not able, didn't, did not, blocked and 31 more of 43 (--json lists them all)
+      test runs: 1 (0 ok, 1 failed)
 
 The first line quotes the agent. The rest comes from rashomon's own record,
 checked against those words: one call failed (its record holds exit code 1, and
 `--chain` shows which call it was), and the subagent's three calls are recorded
-under the subagent's own transcript, not the main one. The report lists the
-failure words the summary does *not* use; it does not guess why.
+under the subagent's own transcript, not the main one. The last line counts the
+calls rashomon recognised as a test runner (`go test`, `pytest`, `npm test` and
+a fixed list of others) by how they ended. The report lists the failure words
+the summary does *not* use; it does not guess why.
 
 ## Try it yourself
 
@@ -256,13 +259,118 @@ mixed indentation.
 prints at most one line, and only when there is something worth looking
 at (a recorded failure that the agent's final message does not acknowledge,
 meaning it uses none of the failure words; a declaration without recorded
-execution; coverage that did not verify; or a truncated/unknown projection).
+execution; coverage that did not verify; a truncated/unknown projection; a
+failed test command that passed after the only recorded edits were to files
+named like tests; or the same test command passing and failing with no
+recorded file edit between). A file edit there is any recorded call that may
+change files, not only an Edit or a shell `rm`: a `git checkout`, an
+`npm install`, a `sed -i`, an MCP tool, another test command (`jest -u`
+rewrites snapshots) all count, and only reads, web fetches, subagent launches
+and Claude Code's own tools that write no source or test file (TodoWrite,
+TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, TaskStop,
+AskUserQuestion, EnterPlanMode, ExitPlanMode, BashOutput, KillShell, KillBash,
+Skill, ToolSearch, SendMessage, CronCreate, CronDelete, CronList,
+ListMcpResourcesTool, ReadMcpResourceTool) do not. A shell read or fetch
+counts as well when its line may write, which the record keeps as one bit
+(`may_write`): an output redirect to a file, a download (`curl -o`/`-O`, with
+the file attached or not, as in `curl -o./calc.go`, and `wget`), a command or
+process substitution (`$(…)`, backticks, `<(…)`, `>(…)`),
+`find -delete`/`-exec`/`-execdir`, `xargs`, `tee`, `rsync` or `scp` anywhere
+on the line, or a later pipeline or list stage whose program is not a read
+(`grep -rl … | xargs sed -i`). That under-claims by design. It can still miss
+a change: a read or fetch that writes through an option not on that list
+(`find -fprint f`, `curl -D f`, `curl -c f`), or anything done outside the
+session's own calls.
 One known gap: Claude Code discards what a `StopFailure` hook prints, so a turn
 that ends in an API error shows no line, and in this release the next prompt
 does not show it either. The line points to
 `rashomon report --session <id>` for the detail. A clean turn prints
 nothing at all; `rashomon status` says whether a turn has actually been
 evaluated, so silence never gets read as proof the turn was clean.
+
+The two test-bending lines have limits of their own:
+
+- A test run is a shell call whose whole command line is one of these
+  runners, optionally after `cd DIR &&` or `NAME=value` assignments:
+  `pytest`, `python -m pytest`, `python3 -m pytest`, `jest`, `vitest`,
+  `mocha`, `rspec`, `phpunit`, `ctest`, `tox`, `nox`, `go test`, `cargo
+  test`, `npm test`, `npm t`, `npm run test`, `yarn test`, `pnpm test`, `bun
+  test`, `dotnet test`, `mvn test`, `mvnw test`, `gradle test`, `gradlew
+  test`, `make test`, `npx jest`, `npx vitest`, `uv run pytest`, `poetry run
+  pytest` and `bundle exec rspec` (a program is matched by its base name, so
+  `./gradlew test` and `./mvnw test` count). Each may follow `timeout N`
+  and then `time` (`timeout 120 go test ./...`, `time pytest`), which pass
+  the runner's exit status through; when the timeout fires, its own status
+  124 is read as no result, neither passed nor failed. These wrappers are
+  counted because their exit status is the runner's.
+- A runner followed by a pipe or a list (`| tail`, `2>&1 | grep`, `&& echo
+  ok`, `; echo done`) is not counted; a redirection alone (`2>&1`, `>
+  out.txt`) is. Without `pipefail` a pipe's status is its last program's,
+  and after `&&` or `;` the line's success is the next command's.
+  So piped runs such as `go test ./... 2>&1 | tail -20`, which are much of
+  what Claude Code writes, are invisible to both patterns, and a session
+  whose tests ran only that way shows no `test runs` block at all.
+- Two runs are the same command only when their command lines are identical
+  character for character. `go test ./...` with two spaces, a trailing
+  space, a `cd /repo &&` prefix or a `CGO_ENABLED=0` prefix is another
+  command, and never pairs with the plain form.
+- A runner is on the list when it is a known test tool, a build tool or
+  launcher given its test command (`go test`, `npm t`, `npm run test`,
+  `python -m pytest`), or a listed wrapper that passes its runner's exit
+  status through, and that does not keep lint out: `go test` runs vet,
+  `npm test` runs a `pretest` script, and `tox`'s default envlist or a make
+  `test` target can include lint. A lint failure fixed only in a file named
+  like a test then reads as the tests-only pattern.
+- Runs pair only within one directory: each call's record carries a keyed
+  digest (never the path) of the directory its command starts in: the
+  reported cwd, or where its leading plain `cd DIR &&` steps lead
+  (`cd /repo/web && go test ./...` is keyed on `/repo/web` wherever the
+  shell was). Two runs of one command line in two directories are not the
+  same run. So a subagent's `go test ./...` pairs with the main agent's only
+  when both ran it from the same directory, and a repeated relative
+  `cd sub && go test ./...`, whose second call starts in `sub` and so
+  targets `sub/sub`, does not pair with the first.
+- `cd DIR && go test ./...` is a test run, so a failed `cd` counts as a
+  failed test run. Leaving `cd … &&` out would lose most real runs.
+- Claude Code moves a command to the background when it reaches its timeout
+  (two minutes by default) or when you press Ctrl+B, and its `PostToolUse`
+  then fires before any test has finished. The execution record says so
+  (`backgrounded`), as it does for a `run_in_background` launch (a Ctrl+B
+  background is recognised only if Claude Code marks it with
+  `backgroundTaskId` or `backgroundedByUser`, which was not measured), and
+  such a run is read as outcome unobserved: it is neither ok nor failed in
+  `test runs`, completes no pattern, and sits under `unknown` in `--timeline`,
+  where it is never offered as a later success. Records written before
+  schema 3 cannot say, and a run backgrounded there still reads as ok.
+- A test edit is an Edit, Write or NotebookEdit that ran ok on a file named
+  like a test (`test-file`). Deleting or moving a test through the shell, or
+  regenerating snapshots or golden files (`jest -u`, a `-update` flag), is a
+  shell call with no label, so it never completes the tests-only pattern.
+- No pair is reported for a session holding a call whose declaration was
+  lost (the store has its execution record or terminal, and no
+  declaration): that call may have changed a file between two runs, and
+  nothing records where it fell. The `test runs` block then says no pair is
+  looked for, and how many such calls there are.
+- The end-of-turn line names only a pair whose two runs are both in its turn,
+  and reads no denied set, so a pair across two turns, or one completed only
+  across a denied edit, can show in the report and not in the line. The
+  other way round, a pair the line named is missing from a later report when
+  a call whose declaration was lost is recorded after it, in that turn or a
+  later one.
+
+`report --json` carries the same facts: each session's `test_runs` (null for a
+session with no schema 3 declaration: records that predate schema 3, or no
+tool calls at all; otherwise only runs that ended ok or failed are counted;
+interrupted, denied, backgrounded, timed-out and unrecorded runs are not, and
+a session that spans the upgrade is counted from its first schema 3 call; then
+`ok`, `failed`, `undeclared`, how many calls lost their declaration (when it
+is not 0, no pair was looked for), `tests_only_then_green` as
+`[earlier, later]` seq pairs, and `flaky` as
+`{"seqs": [earlier, later], "first_failed": true|false}`, where
+earlier and later are declaration order, the order the runs started, which
+overlapping runs in parallel agents may not have finished in), and a
+`test_bending` (`kind`, `since_seq`) on the timeline row that completes a
+pair, null on every other row.
 
 Saying **No** at a permission prompt interrupts the turn, and Claude Code
 fires no `Stop` after an interrupt. `UserPromptSubmit` catches that case:
@@ -277,11 +385,24 @@ every finding except an unacknowledged failure.
 `prompt_id`, `agent_id`, `agent_type`, `transcript_path`, `cwd`,
 `permission_mode`, `tool_name`; the call's `program`, `verb_class`, argument
 *count*, and a keyed digest (HMAC) of its full input: the whole command line
-for Bash, the whole tool input for other tools; how it ended (`outcome`,
-`exit_code`, `is_interrupt`, `duration_ms`); and a `file_label` classifying the
+for Bash, the whole tool input for other tools; for Bash, one bit
+(`may_write`) saying the line may write files whatever its program is; for
+every call, a keyed digest of the directory its command starts in: the
+reported cwd, or where its leading plain `cd DIR &&` steps lead
+(`cwd_digest`); how it ended (`outcome`, `exit_code`, `is_interrupt`,
+`duration_ms`, and `backgrounded`: whether a Bash call's result arrived while
+it was still running in the background); and a `file_label` classifying the
 path named by a Read, Edit, Write or NotebookEdit call into categories such as
-`ssh-key`, `env-file`, `cloud-config`, `credential-shaped` or `certificate`
-(paths touched from Bash are not labelled).
+`ssh-key`, `env-file`, `cloud-config`, `credential-shaped`, `certificate` or
+`test-file` (paths touched from Bash are not labelled). A shell call whose
+command is a recognised test runner has `verb_class` `test`, unless an argument
+on that runner's fixed refusal list makes it do something else (such as
+compile, list, dry-run, skip the tests, watch, help, version, or a named `tox
+-e`/`nox -s` target), or the line sets `PYTEST_ADDOPTS` before pytest. The
+refusal lists name particular spellings and are not complete: a combined short
+flag, an option set in a config file or by an earlier call's environment, or a
+spelling not on the list is still counted as a test run. The arguments that
+decided it are compared against the lists and not kept.
 
 Note that `cwd` and `transcript_path` are filesystem paths and carry directory
 names. [`docs/store-schema.json`](docs/store-schema.json) is the field list for
@@ -300,6 +421,9 @@ tools are read.
 hostnames), file contents, tool output. Not redacted: *structurally absent from
 the store*. The recorder's payload types declare no field for tool output, so it
 is never decoded into a value and no record has a field that could hold it. The
+one thing read from a Bash call's `tool_response` is whether its keys
+`backgroundTaskId` and `backgroundedByUser` are present, as one bit; the task id
+and every other key (`stdout`, `stderr`) are not decoded. The
 raw hook input is read into memory before decoding, and a failed call's error
 message, which can quote command output, is decoded and reduced to an exit code;
 nothing else of it is kept. **Commands** are reduced to a program name and an argument

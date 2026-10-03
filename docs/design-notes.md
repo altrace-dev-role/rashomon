@@ -109,7 +109,9 @@ comparison is "what did it say it would reach" against "what did the wire
 see", and a digest cannot be joined against a proxy's rows. Argument values,
 command strings, prompts and responses are not persisted.
 
-The derived shape is `program`, `verb_class`, `argc` and `digest`; the record
+The derived shape is `program`, `verb_class`, `argc`, `digest` and
+`may_write` (one bit: whether a shell line may write files whatever its class
+says); the record
 that carries it carries `schema_version`. A command that will not tokenize records `argc: null`, never
 `0` — zero is a count, and in that case we do not have one. `digest` is an HMAC
 under a per-install random key, so the same command digests differently on two
@@ -133,7 +135,7 @@ The `PostToolUse` payload carries the same session fields plus `tool_name`,
 `tool_use_id`, `session_id` and `tool_name` beside its own `seq`,
 `recorded_at_unix_ms` and `schema_version`, and — since schema 2 — how the call
 ENDED: `outcome`, `exit_code`, `is_interrupt`, `duration_ms`, and
-`executed_digest`.
+`executed_digest`; since schema 3, `backgrounded` as well.
 
 That last one is why the post path reads `tool_input` at all. It derives the
 same shape digest the declaration derived, under the same per-install key, so
@@ -143,12 +145,18 @@ input itself is not persisted — only the digest of it survives.
 
 `tool_response` is tool output: the file a `Read` returned, the bytes a command
 printed. The payload struct has no field for it, so `encoding/json` discards it
-and it is never a value in this process. The guarantee is structural rather
-than a matter of remembering to redact, and the record has no field whose width
-it could move: a 20-byte response and a 20-KB one serialize to the same number
-of bytes. `tool_input` has no field there either — the post handler derives no
-shape, and the declaration it answers already carries the one derived at
-`PreToolUse`.
+and it is never a value in this process. Since schema 3 one bit is taken from a
+Bash call's response: whether `backgroundTaskId` or `backgroundedByUser` is
+present, which says the call's `PostToolUse` fired while the command was still
+running in the background. A second decode claims those two keys and no other,
+each into a presence bit: the task id is compared with null and false and
+dropped, and `stdout` and `stderr` are skipped unread. The record's
+`backgrounded` is that bit. The guarantee is structural rather than a matter of
+remembering to redact. The record's width depends on the response only through
+that one bit, never on the response's size or content: a 20-byte response and a
+20-KB one with the same keys serialize to the same number of bytes.
+`tool_input` has no field there either — the post handler derives no shape, and
+the declaration it answers already carries the one derived at `PreToolUse`.
 
 ## Terminal records
 

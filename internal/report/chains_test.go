@@ -50,7 +50,7 @@ func TestChains_KeyedByTranscriptAndPrompt(t *testing.T) {
 		chainDecl(2, "t2", "Bash", "p1", "/subagent.jsonl"),
 	}}
 
-	c := buildChains(run, Destinations{}, nil, nil)
+	c := buildChains(run, executionsByID(run), Destinations{}, nil, nil)
 
 	if len(c.Prompts) != 2 {
 		t.Fatalf("got %d chains, want 2. The same prompt id in two transcripts is two "+
@@ -69,7 +69,7 @@ func TestChains_OrderedBySeq(t *testing.T) {
 		chainDecl(2, "t2", "Read", "p1", "/main.jsonl"),
 	}}
 
-	c := buildChains(run, Destinations{}, nil, nil)
+	c := buildChains(run, executionsByID(run), Destinations{}, nil, nil)
 
 	if len(c.Prompts) != 1 {
 		t.Fatalf("premise: one chain expected, got %d", len(c.Prompts))
@@ -96,7 +96,7 @@ func TestChains_ChainsOrderedByFirstSeq(t *testing.T) {
 		chainDecl(11, "t11", "Bash", "p2", "/main.jsonl"),
 	}}
 
-	c := buildChains(run, Destinations{}, nil, nil)
+	c := buildChains(run, executionsByID(run), Destinations{}, nil, nil)
 
 	if len(c.Prompts) != 2 || c.Prompts[0].PromptID != "p1" {
 		t.Fatalf("chains = %+v, want p1 first: it starts earlier", c.Prompts)
@@ -117,7 +117,7 @@ func TestChains_HostStates(t *testing.T) {
 		},
 	}
 
-	c := buildChains(run, d, nil, nil)
+	c := buildChains(run, executionsByID(run), d, nil, nil)
 	states := map[string]string{}
 	for _, h := range c.Prompts[0].Links[0].Hosts {
 		states[h.Host] = h.State
@@ -148,7 +148,7 @@ func TestChains_ReachedWinsOverFailed(t *testing.T) {
 		Hosts:         []wire.Destination{{Host: "flaky.example", InWindowReached: 1, InWindowFailed: 3}},
 	}
 
-	if got := buildChains(run, d, nil, nil).Prompts[0].Links[0].Hosts[0].State; got != LinkReached {
+	if got := buildChains(run, executionsByID(run), d, nil, nil).Prompts[0].Links[0].Hosts[0].State; got != LinkReached {
 		t.Errorf("state = %q, want %q", got, LinkReached)
 	}
 }
@@ -169,7 +169,7 @@ func TestChains_WindowNotAppliedMakesEveryHostUnknown(t *testing.T) {
 		Hosts:         []wire.Destination{{Host: "reached.example", InWindowReached: 1}},
 	}
 
-	for _, h := range buildChains(run, d, nil, nil).Prompts[0].Links[0].Hosts {
+	for _, h := range buildChains(run, executionsByID(run), d, nil, nil).Prompts[0].Links[0].Hosts {
 		if h.State != LinkUnknown {
 			t.Errorf("%s = %q, want %q. Without a window nothing is attributable to this "+
 				"session, and 'not observed' is as much a claim as 'reached'.",
@@ -196,7 +196,7 @@ func TestChains_Outcomes(t *testing.T) {
 	}
 	denied := map[string]bool{"denied": true}
 
-	c := buildChains(run, Destinations{}, denied, nil)
+	c := buildChains(run, executionsByID(run), Destinations{}, denied, nil)
 	got := map[string]string{}
 	for _, l := range c.Prompts[0].Links {
 		got[l.ToolUseID] = l.Outcome
@@ -222,7 +222,7 @@ func TestChains_DeniedIsNotAFailure(t *testing.T) {
 		chainDecl(1, "d1", "Bash", "p1", "/main.jsonl"),
 	}}
 
-	got := buildChains(run, Destinations{}, map[string]bool{"d1": true}, nil).Prompts[0].Links[0].Outcome
+	got := buildChains(run, executionsByID(run), Destinations{}, map[string]bool{"d1": true}, nil).Prompts[0].Links[0].Outcome
 	if got == store.ExecFailed {
 		t.Errorf("a denied call rendered as %q; the user refusing is not the call failing", got)
 	}
@@ -247,7 +247,7 @@ func TestChains_UnattributedCallsKeepTheirIDs(t *testing.T) {
 		chainDecl(3, "t3", "Bash", "", "/main.jsonl"),
 	}}
 
-	c := buildChains(run, Destinations{}, nil, nil)
+	c := buildChains(run, executionsByID(run), Destinations{}, nil, nil)
 	if len(c.Unattributed) != 2 {
 		t.Fatalf("unattributed = %+v, want the two calls with no prompt id", c.Unattributed)
 	}
@@ -277,7 +277,7 @@ func TestChains_ForgottenHostsReadAsForgotten(t *testing.T) {
 	}}
 	forgotten := func(h string) bool { return h == "forgotten.example" }
 
-	hosts := buildChains(run, Destinations{WindowApplied: true}, nil, forgotten).Prompts[0].Links[0].Hosts
+	hosts := buildChains(run, executionsByID(run), Destinations{WindowApplied: true}, nil, forgotten).Prompts[0].Links[0].Hosts
 	if len(hosts) != 2 {
 		t.Fatalf("hosts = %+v, want both: a suppressed host is rendered as suppressed, "+
 			"not omitted", hosts)
@@ -308,7 +308,7 @@ func TestChains_LoopbackIsNotAFinding(t *testing.T) {
 		chainDecl(1, "t1", "Bash", "p1", "/main.jsonl", "localhost", "127.0.0.1"),
 	}}
 
-	for _, h := range buildChains(run, Destinations{WindowApplied: true}, nil, nil).Prompts[0].Links[0].Hosts {
+	for _, h := range buildChains(run, executionsByID(run), Destinations{WindowApplied: true}, nil, nil).Prompts[0].Links[0].Hosts {
 		if h.State != LinkLoopback {
 			t.Errorf("%s = %q, want %q: loopback is never proxied, so no row can exist and "+
 				"'not observed' accuses every session that ran a local server",
@@ -330,7 +330,7 @@ func TestChains_ClientPlaneReadsFromTheViewNotThePredicate(t *testing.T) {
 	}}
 	d := Destinations{WindowApplied: true, ClientPlane: []string{"api.anthropic.com"}}
 
-	got := buildChains(run, d, nil, nil).Prompts[0].Links[0].Hosts[0].State
+	got := buildChains(run, executionsByID(run), d, nil, nil).Prompts[0].Links[0].Hosts[0].State
 	if got != LinkClientPlane {
 		t.Errorf("state = %q, want %q", got, LinkClientPlane)
 	}
@@ -339,7 +339,7 @@ func TestChains_ClientPlaneReadsFromTheViewNotThePredicate(t *testing.T) {
 	// what an mcp-attributed session produces for the mcp proxy host. The link
 	// must follow the view.
 	d2 := Destinations{WindowApplied: true, ClientPlane: nil}
-	if got := buildChains(run, d2, nil, nil).Prompts[0].Links[0].Hosts[0].State; got == LinkClientPlane {
+	if got := buildChains(run, executionsByID(run), d2, nil, nil).Prompts[0].Links[0].Hosts[0].State; got == LinkClientPlane {
 		t.Error("the link called it client plane while the view did not. The view is the " +
 			"one that knows about mcp attribution; two sections of one report must not " +
 			"disagree about one host.")
@@ -364,7 +364,7 @@ func TestChains_StructuralStatesSurviveNoWindow(t *testing.T) {
 		"gone.example":      LinkForgotten,
 		"ordinary.example":  LinkUnknown,
 	}
-	for _, h := range buildChains(run, d, nil, forgotten).Prompts[0].Links[0].Hosts {
+	for _, h := range buildChains(run, executionsByID(run), d, nil, forgotten).Prompts[0].Links[0].Hosts {
 		if h.State != want[h.Host] {
 			t.Errorf("%s = %q, want %q", h.Host, h.State, want[h.Host])
 		}
@@ -387,7 +387,7 @@ func TestChains_TwoPostRecordsKeepBoth(t *testing.T) {
 		},
 	}
 
-	l := buildChains(run, Destinations{}, nil, nil).Prompts[0].Links[0]
+	l := buildChains(run, executionsByID(run), Destinations{}, nil, nil).Prompts[0].Links[0]
 	if l.ExecutionRecords != 2 {
 		t.Errorf("execution_records = %d, want 2", l.ExecutionRecords)
 	}
@@ -415,7 +415,7 @@ func TestChains_ARecordWithNoSeqDoesNotOutrankOne(t *testing.T) {
 		},
 	}
 
-	if got := buildChains(run, Destinations{}, nil, nil).Prompts[0].Links[0].Outcome; got != store.ExecFailed {
+	if got := buildChains(run, executionsByID(run), Destinations{}, nil, nil).Prompts[0].Links[0].Outcome; got != store.ExecFailed {
 		t.Errorf("outcome = %q, want %q: the record with a known position wins", got, store.ExecFailed)
 	}
 }
@@ -433,7 +433,7 @@ func TestChains_EveryDeclarationIsReachable(t *testing.T) {
 		Terminals: []store.Terminal{{ToolUseID: "t_dropped"}},
 	}
 
-	c := buildChains(run, Destinations{}, nil, nil)
+	c := buildChains(run, executionsByID(run), Destinations{}, nil, nil)
 	seen := map[string]bool{}
 	for _, ch := range c.Prompts {
 		for _, l := range ch.Links {
@@ -465,7 +465,7 @@ func TestChains_SSHHostsAreCarriedApart(t *testing.T) {
 	d.SSHHosts = []string{"git.example"}
 	run := &store.Run{Declarations: []store.Declaration{d}}
 
-	l := buildChains(run, Destinations{WindowApplied: true}, nil, nil).Prompts[0].Links[0]
+	l := buildChains(run, executionsByID(run), Destinations{WindowApplied: true}, nil, nil).Prompts[0].Links[0]
 	if len(l.Hosts) != 1 || l.Hosts[0].Host != "wire.example" {
 		t.Errorf("hosts = %+v, want only the wire-observable one", l.Hosts)
 	}

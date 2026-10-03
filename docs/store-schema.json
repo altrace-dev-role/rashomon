@@ -129,7 +129,8 @@
                 "package",
                 "agent",
                 "mcp",
-                "unknown"
+                "unknown",
+                "test"
               ]
             },
             "argc": {
@@ -142,6 +143,10 @@
             "digest": {
               "description": "HMAC under a per-install key, so the same command digests differently on two installs.",
               "type": "string"
+            },
+            "may_write": {
+              "description": "Schema 3. True on a shell call whose line may write files whatever its verb_class says: an output redirection to a file (not a descriptor duplication, not /dev/null), find's -delete, -exec, -execdir, -ok or -okdir, xargs, tee, wget, rsync or scp anywhere on the line, curl with an output flag (-o or -O alone, combined with other short flags, or with the file attached, as in -o./x), a command or process substitution ($( ), backticks, <( ), >( ), whose command is not looked into), or a later pipeline or list stage whose program is not of class read or cannot be named -- and on a shell line whose program cannot be named at all. One bit: the words that set it are compared and dropped. Always false on a tool that is not a shell.",
+              "type": "boolean"
             }
           }
         },
@@ -165,6 +170,10 @@
             "type": "string"
           }
         },
+        "cwd_digest": {
+          "description": "Schema 3. HMAC under the per-install key of the directory the call's command started in: the PreToolUse payload's cwd, which follows the shell from one call to the next, or where the line's leading plain `cd DIR &&` steps lead (no expansion, quoting, ~ or -; a leading pushd, popd or other cd keeps the payload's cwd): an absolute target replaces the directory and a relative one joins it. Two runs of one command line compare as the same run only when this is equal as well, since the same line in another directory runs other code. A digest and never the path: the declarations do not carry the directory, which the coverage records already keep as the project key. Empty string when that directory is not known: no payload cwd and no absolute leading cd.",
+          "type": "string"
+        },
         "file_label": {
           "description": "Schema 3, RESERVED. What the file this call named looks like, derived at hook time from the path's basename and suffix alone; the path itself is never stored. A LABEL and not a finding: it says what the path looks like, not what the call did to it. `none` is a real answer about a real path that matched no row; `unknown` is a path that could not be read at all, absent, non-string or empty -- and the two are kept apart because the first is a measurement and the second is its absence. Null on a tool that names no file, which is a third thing again: nobody looked, because there was nothing to look at. The vocabulary is closed and lives in shape.Labels(); it is declared here so the layer that populates it adds behaviour rather than a fourth schema version.",
           "type": [
@@ -178,12 +187,13 @@
             "cloud-config",
             "env-file",
             "certificate",
+            "test-file",
             "none",
             "unknown"
           ]
         },
         "host_source": {
-          "description": "Schema 3. Where each entry of `hosts` came from. STRUCTURED means the host was read from a field whose value is a URL -- WebFetch's `url`, for instance -- so the call names that host by construction. LEXICAL means it was extracted from command text, where a mention and a destination are not the same thing: `curl https://example.com` and `echo see https://example.com` both yield the host. Both satisfy the destinations join and `forget --host` applies to both; the distinction is rendered so a reader can tell 'named in a tool argument' from 'mentioned in command text'. Null on records written before schema 3, which is not the same as an empty list: it means nobody looked.",
+          "description": "Schema 3. Where each entry of `hosts` came from. STRUCTURED means the host was read from a field whose value is a URL -- WebFetch's `url`, for instance -- so the call names that host by construction. LEXICAL means it was extracted from command text, where a mention and a destination are not the same thing: `curl https://example.com` and `echo see https://example.com` both yield the host. Both satisfy the destinations join and `forget --host` applies to both; the distinction is rendered so a reader can tell 'named in a tool argument' from 'mentioned in command text'. Null when not computed: on every record this build writes, and on records before schema 3.",
           "type": [
             "array",
             "null"
@@ -220,8 +230,16 @@
             "required": [
               "host_source",
               "rule_match",
-              "file_label"
-            ]
+              "file_label",
+              "cwd_digest"
+            ],
+            "properties": {
+              "shape": {
+                "required": [
+                  "may_write"
+                ]
+              }
+            }
           }
         }
       ]
@@ -311,6 +329,10 @@
           "description": "Schema 2. The shape digest of the input as it ACTUALLY RAN. Measured on Claude Code 2.1.258: PreToolUse carries tool_input as the model asked for it and PostToolUse carries it after any hook rewrote it, under the same tool_use_id, so comparing this against the declaration's shape.digest is the only way a rewriting hook is visible at all -- the transcript keeps only the pre-rewrite input. HMAC'd with the same per-install key as the declared digest, so the two are comparable to each other and to nothing else: a reader can say the executed call differed from the declared one and cannot say how. Empty string when the payload carried no tool_input; empty must NOT compare unequal to a declared digest, because an unknown digest counted as a difference would report every such call as rewritten.",
           "type": "string"
         },
+        "backgrounded": {
+          "description": "Schema 3. True when this record was written while the command was still running in the background: Claude Code moved it there at its timeout (unless it starts with sleep), or it was launched with run_in_background, or on Ctrl+B -- recognised only if Claude Code marks it with backgroundTaskId or backgroundedByUser, which was not measured. Its PostToolUse fires then, so outcome is the launch's and not the command's, and a reader treats the call's ending as unobserved. Read from whether a Bash call's tool_response carries the key backgroundTaskId or backgroundedByUser, as one bit: the task id and every other key of the response are never decoded. False on every other tool, and on PostToolUseFailure, which means the command ended or its launch failed.",
+          "type": "boolean"
+        },
         "rule_match": {
           "description": "Schema 3. The rule-match layer's verdict for this record. Its SHAPE IS DEFINED BY THAT LAYER and is deliberately left open here, so the layer can add fields without a fourth schema version; this entry reserves the key and the null. NULL MEANS NOT COMPUTED BY THIS VERSION -- not 'no rule matched', which is a result and will be expressed inside the object. A reader that cannot tell those apart will report an absence of rules as an absence of matches.",
           "type": [
@@ -334,7 +356,8 @@
           },
           "then": {
             "required": [
-              "rule_match"
+              "rule_match",
+              "backgrounded"
             ]
           }
         }
