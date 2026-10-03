@@ -453,8 +453,9 @@ func displaySession(id string) string {
 // refusal, counted in Refusals.WithoutUsage. A pre-output refusal with usage
 // is likewise out of every figure but the refusals, the header's caveat, the
 // extra attempts it carried and the cache-expiry heuristic, where its write
-// is shown with the cost unknown; its session still counts and has a row,
-// with none as its priced spend.
+// is shown with the cost unknown. The session of a pre-output refusal of
+// either kind still counts and has a row, with none as its priced spend, and
+// its transcript is one of the window's.
 func Build(sc *Scan, now time.Time, days int) *Summary {
 	from := WindowStart(now, days)
 	latest := now.Add(futureSlack).UnixMilli()
@@ -526,6 +527,10 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			if r.StopReason == "refusal" && r.StartMS <= latest {
 				s.Refusals.WithoutUsage++
 				refusal(r).WithoutUsage++
+				for _, f := range r.files {
+					row(f.session)
+				}
+				s.refused = append(s.refused, r)
 			}
 			continue
 		}

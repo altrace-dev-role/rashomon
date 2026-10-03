@@ -1698,6 +1698,12 @@ m("SP a session holding only pre-output refusals has no row", "internal/spend/sp
 m("SP a pre-output refusal's transcript is not one of the window's", "internal/spend/join.go",
   "\tfor _, rs := range [][]*Response{s.window, s.refused} {", "\tfor _, rs := range [][]*Response{s.window} {",
   "TestSessions_ASessionHoldingOnlyPreOutputRefusals")
+m("SP a session holding only pre-output refusals without usage has no row", "internal/spend/spend.go",
+  "\t\t\t\trefusal(r).WithoutUsage++\n\t\t\t\tfor _, f := range r.files {\n\t\t\t\t\trow(f.session)\n\t\t\t\t}\n", "\t\t\t\trefusal(r).WithoutUsage++\n",
+  "TestSessions_ASessionHoldingOnlyPreOutputRefusals|TestRefusals_APreOutputRefusal")
+m("SP a pre-output refusal without usage is not one of the window's", "internal/spend/spend.go",
+  "\t\t\t\ts.refused = append(s.refused, r)\n\t\t\t}\n\t\t\tcontinue\n", "\t\t\t}\n\t\t\tcontinue\n",
+  "TestSessions_ASessionHoldingOnlyPreOutputRefusals|TestRefusals_APreOutputRefusal")
 m("SP a response a covered turn counted marks every row holding it covered", "internal/spend/join.go",
   "\t\tif !notCovered {\n\t\t\tcontinue\n\t\t}\n",
   "\t\tif !notCovered {\n\t\t\tfor _, id := range r.owners {\n\t\t\t\ttallyOf(id).in++\n\t\t\t}\n\t\t\tcontinue\n\t\t}\n",

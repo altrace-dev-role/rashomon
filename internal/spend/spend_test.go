@@ -1127,7 +1127,8 @@ func TestSessions_TheTextNamesTheCostliestAndTheirCoverage(t *testing.T) {
 // skipped such a response before giving its session a row, so a session
 // holding only pre-output refusals dropped out of the header's count and out
 // of per_session. Its row shows none as priced spend, and once a store is
-// read it is labelled by its own transcript.
+// read it is labelled by its own transcript. A refusal written without usage
+// gives its session a row and its transcript to the line the same way.
 func TestSessions_ASessionHoldingOnlyPreOutputRefusalsHasARow(t *testing.T) {
 	at := now.Add(-time.Hour)
 	t.Run("beside a normal response", func(t *testing.T) {
@@ -1169,6 +1170,24 @@ func TestSessions_ASessionHoldingOnlyPreOutputRefusalsHasARow(t *testing.T) {
 		}
 		if txt, _ := render(t, s); !strings.Contains(txt, " · 1 session · ") {
 			t.Errorf("the header does not count the session:\n%s", txt)
+		}
+	})
+	t.Run("only a pre-output refusal without usage", func(t *testing.T) {
+		c := newConfig(t)
+		rec := newRecorder(t)
+		rec.transcript = c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", session: "sess-a", at: at, in: 10, stop: "end_turn"}.line("text"))
+		rec.call("sess-a", "p1", "toolu_a", at, at.Add(time.Second), store.ExecOK)
+		c.write("proj/sess-b.jsonl", resp{id: "z1", model: "<synthetic>", session: "sess-b", at: at, stop: "refusal", category: "bio"}.line("text"))
+		s := c.summary(30)
+		if err := s.Join(rec.st); err != nil {
+			t.Fatal(err)
+		}
+		a, b := row(s, "sess-a"), row(s, "sess-b")
+		if s.Sessions != 2 || a == nil || b == nil || b.Coverage != CoverageNotRecorded || a.Coverage != CoverageRecorded {
+			t.Fatalf("sessions %d, rows %+v; want 2, sess-b not recorded and sess-a recorded", s.Sessions, s.PerSession)
+		}
+		if j := s.SilentFailureTurns; j.Transcripts != 2 || j.NotCoveredTranscripts != 1 {
+			t.Errorf("line %+v; want 2 transcripts, 1 not covered: sess-b's transcript is one of the window's", j)
 		}
 	})
 }
@@ -1742,7 +1761,7 @@ func TestExtraAttempts_AStickyRoutedResponseIsReported(t *testing.T) {
 // Build with every zero-token response -- so a transcript holding a refusal
 // printed "refusals none". It is counted, a count only, and the header says
 // the total leaves it out. With no other response, the line is still
-// printed.
+// printed, and its session is still counted and has a row.
 func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 	at := now.Add(-time.Hour)
 	synthetic := func(id string) string { return refusalMessage(id, "", "", at) }
@@ -1779,6 +1798,9 @@ func TestRefusals_APreOutputRefusalWithoutUsageIsCounted(t *testing.T) {
 			}
 			if strings.Contains(txt, "savings") {
 				t.Errorf("the savings output names a refusal:\n%s", txt)
+			}
+			if s.Sessions != 1 || len(s.PerSession) != 1 || s.PerSession[0].SessionID != "sess-a" || !strings.Contains(txt, " · 1 session · ") {
+				t.Errorf("sessions %d, rows %+v; want the one session, with its row:\n%s", s.Sessions, s.PerSession, txt)
 			}
 		})
 	}
@@ -2012,10 +2034,14 @@ func TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal(t *testing.T) {
 	t.Run("only a pre-output refusal without usage", func(t *testing.T) {
 		c := newConfig(t)
 		c.write("proj/sess-a.jsonl", refusalMessage("z1", "", "bio", at))
-		txt, _ := render(t, c.summary(30))
+		s := c.summary(30)
+		txt, _ := render(t, s)
 		if !strings.Contains(txt, "est. $0.00 at API list prices") ||
 			!strings.Contains(txt, "\n       the total leaves out 1 pre-output refusal written without usage (cost unknown: whether a refusal before any output was billed depends on its category)\n") {
 			t.Errorf("the header prints $0.00 beside a pre-output refusal with no caveat:\n%s", txt)
+		}
+		if s.Sessions != 1 || len(s.PerSession) != 1 || s.PerSession[0].SessionID != "sess-a" || !strings.Contains(txt, " · 1 session · ") {
+			t.Errorf("sessions %d, rows %+v; want the one session, with its row:\n%s", s.Sessions, s.PerSession, txt)
 		}
 	})
 }
