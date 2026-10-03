@@ -377,11 +377,14 @@ func (s *Summary) Join(st *store.Store) error {
 // marked the recorded copy as not covered in one path order. A response
 // whose cost is in NotCoveredCost marks each row holding it as not covered,
 // and names those rows: the not-covered sessions are exactly the rows that
-// hold those dollars. A response counted elsewhere changes no label -- a
-// covered turn's count once marked an unrecorded copy holding the same
-// response partly recorded. And a row with neither (a session no discovered
-// file is named for, holding no not-covered dollar) has no transcript of its
-// own that was recorded, so it is not recorded.
+// hold those dollars. A response every transcript holding which was recorded
+// marks each row holding it as recorded, so a row whose session no discovered
+// file is named for reads recorded when all of its responses sit in recorded
+// transcripts. A response a covered turn counted while a transcript holding
+// it was not recorded changes no label -- marking its rows covered once
+// marked an unrecorded copy holding the same response partly recorded. And a
+// row with no tally (a session no discovered file is named for, holding no
+// response of its own) has nothing that was recorded, so it is not recorded.
 func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[string]bool, counted map[*Response]bool) {
 	j := &s.SilentFailureTurns
 	sessionOf := map[string]string{}
@@ -425,6 +428,11 @@ func (s *Summary) markCoverage(byTranscript map[string][]*Response, covered map[
 			}
 		}
 		if !notCovered {
+			if !slices.ContainsFunc(s.mainsOf(r), func(m string) bool { return !covered[m] }) {
+				for _, id := range r.owners {
+					tallyOf(id).in++
+				}
+			}
 			continue
 		}
 		costOf(&j.NotCoveredCost, r)

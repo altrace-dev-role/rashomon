@@ -1427,6 +1427,51 @@ func TestJoin_ASightingSessionWithNoFileIsNotRecorded(t *testing.T) {
 	}
 }
 
+// TestJoin_ARowWhoseResponsesSitInACoveredCopyIsRecorded: a recorded
+// sess-c.jsonl holds responses whose lines carry sessionId sess-o, and no
+// sess-o.jsonl was discovered. The sess-o row names no file of its own, but
+// every transcript holding its responses was recorded: it read "not
+// recorded by rashomon" beside "1 of 1 transcript was recorded", and, when
+// the turn fired, a row whose whole spend is in the silent-failure figure
+// read not recorded too. It is recorded in both cases.
+func TestJoin_ARowWhoseResponsesSitInACoveredCopyIsRecorded(t *testing.T) {
+	T := now.Add(-2 * time.Hour)
+	for _, tc := range []struct {
+		name    string
+		lines   []string
+		outcome string
+	}{
+		{"no turn fires", []string{
+			resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T, in: 1000, stop: "end_turn"}.line("text")}, store.ExecOK},
+		{"the turn fires", []string{
+			userLine("sess-o", "p1", T.Add(-time.Second), false),
+			resp{id: "X1", model: "claude-opus-5-5", session: "sess-o", at: T.Add(500 * time.Millisecond), in: 1000, stop: "tool_use"}.line("tool_use"),
+			userLine("sess-o", "p1", T.Add(time.Second), true),
+			resp{id: "X2", model: "claude-opus-5-5", session: "sess-o", at: T.Add(3 * time.Second), in: 1000, stop: "end_turn",
+				text: "Ran the command as requested."}.line("text"),
+		}, store.ExecFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := orders(t, func(c *config, first, second string) *store.Store {
+				rec := newRecorder(t)
+				rec.transcript = c.write(first+"/sess-c.jsonl", tc.lines...)
+				rec.call("sess-o", "p1", "toolu_c", T, T.Add(time.Second), tc.outcome)
+				return rec.st
+			})
+			if j := s.SilentFailureTurns; j.CoveredTranscripts != 1 || j.NotCoveredTranscripts != 0 {
+				t.Fatalf("premise: line %+v; want the one transcript covered", j)
+			}
+			if o := row(s, "sess-o"); o == nil || o.Coverage != CoverageRecorded {
+				t.Errorf("rows = %+v; want sess-o recorded", s.PerSession)
+			}
+			txt, _ := render(t, s)
+			if !strings.Contains(txt, "sess-o <$0.01 (main <$0.01, subagents none)\n") {
+				t.Errorf("the text does not show sess-o as recorded:\n%s", txt)
+			}
+		})
+	}
+}
+
 // TestJoin_AnUndatedUsageLineDoesNotReDateItsFile: a file is dated by its
 // first dated line, and an undated usage line after it changes nothing.
 // sess-a's file starts ten minutes before sess-b's, so sess-a owns the

@@ -1705,8 +1705,13 @@ m("SP a pre-output refusal without usage is not one of the window's", "internal/
   "\t\t\t\ts.refused = append(s.refused, r)\n\t\t\t}\n\t\t\tcontinue\n", "\t\t\t}\n\t\t\tcontinue\n",
   "TestSessions_ASessionHoldingOnlyPreOutputRefusals|TestRefusals_APreOutputRefusal")
 m("SP a response a covered turn counted marks every row holding it covered", "internal/spend/join.go",
-  "\t\tif !notCovered {\n\t\t\tcontinue\n\t\t}\n",
-  "\t\tif !notCovered {\n\t\t\tfor _, id := range r.owners {\n\t\t\t\ttallyOf(id).in++\n\t\t\t}\n\t\t\tcontinue\n\t\t}\n",
+  "\t\t\tif !slices.ContainsFunc(s.mainsOf(r), func(m string) bool { return !covered[m] }) {", "\t\t\tif true {",
+  "TestJoin_")
+m("SP a response whose transcripts were all recorded marks no row recorded", "internal/spend/join.go",
+  "\t\t\tif !slices.ContainsFunc(s.mainsOf(r), func(m string) bool { return !covered[m] }) {", "\t\t\tif false {",
+  "TestJoin_")
+m("SP only an uncounted response marks the rows holding it recorded", "internal/spend/join.go",
+  "\t\t\tif !slices.ContainsFunc(s.mainsOf(r), func(m string) bool { return !covered[m] }) {", "\t\t\tif !counted[r] {",
   "TestJoin_")
 m("SP a not-covered transcript names its file's own session", "internal/spend/join.go",
   "\t\t\tj.NotCoveredTranscripts++\n\t\t\tt.out++\n", "\t\t\tj.NotCoveredTranscripts++\n\t\t\tt.out++\n\t\t\tnamed[displaySession(id)] = true\n",

@@ -328,12 +328,13 @@ type SessionSpend struct {
 	SessionID string `json:"session_id"`
 	Main      Cost   `json:"main"`
 	Subagents Cost   `json:"subagents"`
-	// Coverage says whether rashomon recorded the session's own transcripts
-	// and whether the row holds dollars that are not covered
-	// (CoverageRecorded, CoveragePartly, CoverageNotRecorded): recorded only
-	// when every transcript of its own was recorded and it holds no
-	// not-covered dollar, and not recorded when no transcript of its own was
-	// recorded. Join sets it; it is absent when no store was consulted.
+	// Coverage says whether rashomon recorded the session's transcripts and
+	// whether the row holds dollars that are not covered (CoverageRecorded,
+	// CoveragePartly, CoverageNotRecorded): recorded when every transcript of
+	// its own was recorded, it holds no not-covered dollar, and either a
+	// transcript of its own or every transcript holding one of its responses
+	// was recorded; not recorded when neither was. Join sets it; it is absent
+	// when no store was consulted.
 	Coverage string `json:"coverage,omitempty"`
 
 	id string // the session id as read, which SessionID may have replaced
