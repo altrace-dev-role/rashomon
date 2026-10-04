@@ -4,7 +4,7 @@
 
 **[Join the Rashomon Discord](https://discord.gg/Qg3hybAHpU)**
 
-*For Claude Code only, on macOS and Linux. Alpha: v0.1.0-alpha.1.*
+*For Claude Code only, on macOS and Linux. Alpha: v1.1.0.*
 
 ![Claude says all tests pass; rashomon's end-of-turn line reports a recorded failure, and an excerpt of the report shows it](docs/images/rashomon-example.png)
 
@@ -704,7 +704,7 @@ cannot by itself separate what ran from what you refused.
 
 ## Status
 
-Alpha: v0.1.0-alpha.1. No signed binaries, no Homebrew formula. macOS and
+Alpha: v1.1.0. No signed binaries, no Homebrew formula. macOS and
 Linux are the supported targets.
 
 **Windows is not usable yet.** The release publishes Windows binaries, but no
