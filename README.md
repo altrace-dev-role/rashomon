@@ -155,8 +155,9 @@ rashomon itself observes no network traffic in this alpha: the report says
 each command *named*. If you run Claude Code inside the
 [nono](https://github.com/nolabs-ai/nono) sandbox,
 `rashomon report --nono-audit <path to nono's audit-events.ndjson>` adds what
-nono allowed and refused in that session's window. This is experimental, and
-nono writes that file when its session ends. See
+nono allowed and refused in that session's window. If the session has no end
+record, that window runs to the end of the trail, and the report says so. This
+is experimental, and nono writes that file when its session ends. See
 [Inside a sandbox](#inside-a-sandbox) first.
 
 **How do I turn it off?**

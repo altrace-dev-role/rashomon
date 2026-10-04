@@ -69,6 +69,11 @@ type Nono struct {
 	// Inherited counts trail events outside this session's window.
 	Inherited int `json:"inherited"`
 	Sessions  int `json:"sessions"`
+
+	// WindowOpen is true when the session has no end record, so the window
+	// runs to the end of the trail and a later session's events on a shared
+	// trail count as this one's. The text says so on the sandbox line.
+	WindowOpen bool `json:"window_open"`
 }
 
 // buildNono reconciles the sandbox's trail against the wire's observation.
@@ -88,6 +93,7 @@ func buildNono(obs nono.Observation, dests Destinations, configured bool, forgot
 		PlainHTTP:             []string{},
 		ProxySawWhatItDidNot:  []string{},
 		Inherited:             obs.Inherited,
+		WindowOpen:            obs.WindowOpen,
 		Sessions:              obs.Sessions,
 		Skipped:               obs.Skipped,
 		UnparseableTargets:    obs.UnparseableTargets,

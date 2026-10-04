@@ -2856,6 +2856,21 @@ m("NONO an empty --nono-audit is read as no trail asked for", "cmd/rashomon/main
   "\t\t\tif i+1 >= len(args) {\n\t\t\t\treturn errors.New(\"--nono-audit needs a value\")",
   "TestReport_RefusesAnEmptyNonoAudit")
 
+# Finding 4: with no end record the window ran to the end of the trail, and
+# the sandbox line presented the counts as bounded.
+m("NONO the reader never says the window has no end", "internal/nono/nono.go",
+  "WindowOpen: w.End.IsZero()}", "WindowOpen: false}",
+  "TestRead_AWindowWithNoEnd")
+m("NONO an open window does not reach the report", "internal/report/nono.go",
+  "\t\tWindowOpen:            obs.WindowOpen,\n", "",
+  "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
+m("NONO the sandbox line does not say the window has no end", "internal/report/text.go",
+  "\tif n.WindowOpen {", "\tif false {",
+  "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
+m("NONO a bounded window is said to have no end", "internal/report/text.go",
+  "\tif n.WindowOpen {", "\tif true {",
+  "TestNono_AWindowWithNoEnd")
+
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

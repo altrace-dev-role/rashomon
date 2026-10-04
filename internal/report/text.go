@@ -1069,8 +1069,15 @@ func writeNono(b *bytes.Buffer, n Nono) {
 		fmt.Fprintf(b, "  sandbox (nono): not observed (%s)\n", orUnknown(n.Reason))
 		return
 	}
-	fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied in this session's window\n",
-		len(n.Allowed), len(n.Denied))
+	// An open window is said ON THIS LINE: the two counts are only as bounded
+	// as the window, and with no end record they run to the end of the trail,
+	// where a later session's traffic on a shared trail counts as this one's.
+	open := ""
+	if n.WindowOpen {
+		open = " (no end record, so events up to the end of the trail are counted)"
+	}
+	fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied in this session's window%s\n",
+		len(n.Allowed), len(n.Denied), open)
 	// SAID SEPARATELY, because it is a LIFETIME count beside two windowed ones.
 	// nono's session_started record carries an ISO string and no millisecond
 	// instant, so there is nothing to window it on -- and joining all three in

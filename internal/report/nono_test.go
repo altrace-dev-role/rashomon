@@ -2,11 +2,13 @@ package report
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/nono"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // trailWith is an observed trail holding the given events, at one instant.
@@ -60,5 +62,75 @@ func TestNono_AnUnknownModeIsCountedOnceWithAProxyStore(t *testing.T) {
 	if len(n.SawWhatTheProxyDidNot) != 1 || len(n.PlainHTTP) != 0 {
 		t.Errorf("saw_what_the_proxy_did_not = %v, plain_http = %v; want the host listed and not excused",
 			n.SawWhatTheProxyDidNot, n.PlainHTTP)
+	}
+}
+
+// openWindowCaveat is what the sandbox line says when the session has no end.
+const openWindowCaveat = " (no end record, so events up to the end of the trail are counted)"
+
+// TestNono_AWindowWithNoEndIsSaidOnTheSandboxLine: with no end record the
+// window runs to the end of the trail, so a later session's traffic on a
+// shared trail is counted as this one's. The proxy side says "window not
+// applied" in the same case; the sandbox line said nothing.
+func TestNono_AWindowWithNoEndIsSaidOnTheSandboxLine(t *testing.T) {
+	obs := trailWith(nono.Event{Host: "pypi.org", Port: 443, Decision: nono.DecisionAllow, Mode: "connect"})
+	obs.WindowOpen = true
+	n := buildNono(obs, Destinations{}, true, nil)
+	if !n.WindowOpen {
+		t.Fatal("window_open was not carried from the trail into the report")
+	}
+	want := "  sandbox (nono): 1 allowed, 0 denied in this session's window" + openWindowCaveat + "\n"
+	if out := renderNono(n); !strings.Contains(out, want) {
+		t.Errorf("the sandbox line does not say the window has no end; want %q in:\n%s", want, out)
+	}
+	raw, err := json.Marshal(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"window_open":true`) {
+		t.Errorf("the JSON does not carry window_open: %s", raw)
+	}
+
+	obs.WindowOpen = false
+	closed := buildNono(obs, Destinations{}, true, nil)
+	if out := renderNono(closed); strings.Contains(out, "no end record") {
+		t.Errorf("a window with an end carries the open-window caveat:\n%s", out)
+	}
+	raw, _ = json.Marshal(closed)
+	if !strings.Contains(string(raw), `"window_open":false`) {
+		t.Errorf("the JSON does not carry window_open:false: %s", raw)
+	}
+}
+
+// TestNono_ASessionWithNoEndRecordReportsAnOpenWindow drives Build: the
+// window comes from the run's coverage records, and a run with a start and
+// no end must reach the sandbox line as open.
+func TestNono_ASessionWithNoEndRecordReportsAnOpenWindow(t *testing.T) {
+	at := firstNonoEvent(t)
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const id = "no-end-session"
+	if err := st.AppendCoverage(store.Coverage{
+		Type: "coverage", SchemaVersion: 2, SessionID: id, Phase: store.PhaseStart,
+		RecordedAtMS: at.Add(-time.Minute).UnixMilli(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Build(st, id, at.Add(time.Hour), WithNonoTrail(nonoFixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := rep.Sessions[0].Nono
+	if !n.Observed || !n.WindowOpen {
+		t.Errorf("observed=%v window_open=%v, want true, true (%s)", n.Observed, n.WindowOpen, n.Reason)
+	}
+	var b strings.Builder
+	if err := Text(&b, rep); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), openWindowCaveat) {
+		t.Errorf("the rendered report does not say the window has no end:\n%s", b.String())
 	}
 }
