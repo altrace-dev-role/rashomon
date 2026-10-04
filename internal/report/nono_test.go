@@ -165,3 +165,27 @@ func TestNono_AnUnreadableTrailSaysHowMuchItCouldNotRead(t *testing.T) {
 		t.Errorf("an empty trail rendered\n%q\nwant\n%q", out, want)
 	}
 }
+
+// TestNono_TheUnknownDecisionLineAgreesInNumber: "1 sandbox event ... and
+// were counted" did not agree with its subject.
+func TestNono_TheUnknownDecisionLineAgreesInNumber(t *testing.T) {
+	for _, c := range []struct {
+		events int
+		want   string
+	}{
+		{1, "    1 sandbox event carried a decision this reader does not know, and was counted in neither column\n"},
+		{2, "    2 sandbox events carried a decision this reader does not know, and were counted in neither column\n"},
+	} {
+		var events []nono.Event
+		for i := 0; i < c.events; i++ {
+			events = append(events, nono.Event{Host: "x.example", Port: 443, Decision: "challenge", Mode: "connect"})
+		}
+		n := buildNono(trailWith(events...), Destinations{}, true, nil)
+		if n.UnknownDecisions != c.events {
+			t.Fatalf("premise: unknown_decisions = %d, want %d", n.UnknownDecisions, c.events)
+		}
+		if out := renderNono(n); !strings.Contains(out, c.want) {
+			t.Errorf("want %q in:\n%s", c.want, out)
+		}
+	}
+}

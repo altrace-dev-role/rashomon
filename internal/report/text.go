@@ -1130,9 +1130,13 @@ func writeNono(b *bytes.Buffer, n Nono) {
 			n.UnknownModes, plural(n.UnknownModes))
 	}
 	if n.UnknownDecisions > 0 {
+		verb := "were"
+		if n.UnknownDecisions == 1 {
+			verb = "was"
+		}
 		fmt.Fprintf(b, "    %d sandbox event%s carried a decision this reader does not "+
-			"know, and were counted in neither column\n",
-			n.UnknownDecisions, plural(n.UnknownDecisions))
+			"know, and %s counted in neither column\n",
+			n.UnknownDecisions, plural(n.UnknownDecisions), verb)
 	}
 	if n.Inherited > 0 {
 		fmt.Fprintf(b, "    %d sandbox event%s outside this session's window, excluded\n",

@@ -2880,6 +2880,14 @@ m("NONO the unreadable count on a not-observed trail ignores the singular", "int
   "\"; %d trail records could not be read\", n.Skipped)",
   "TestNono_AnUnreadableTrail")
 
+# The unknown-decision line said "1 sandbox event ... were counted".
+m("NONO the unknown-decision line says were for one event", "internal/report/text.go",
+  "\t\tif n.UnknownDecisions == 1 {\n\t\t\tverb = \"was\"", "\t\tif false {\n\t\t\tverb = \"was\"",
+  "TestNono_TheUnknownDecisionLine")
+m("NONO the unknown-decision line is never printed", "internal/report/text.go",
+  "\tif n.UnknownDecisions > 0 {", "\tif false {",
+  "TestNono_TheUnknownDecisionLine")
+
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),
