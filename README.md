@@ -4,7 +4,7 @@
 
 **[Join the Rashomon Discord](https://discord.gg/Qg3hybAHpU)**
 
-*For Claude Code only, on macOS and Linux. Alpha: v0.1.0-alpha.1.*
+*For Claude Code only, on macOS and Linux. Alpha: v1.1.0.*
 
 ![Claude says all tests pass; rashomon's end-of-turn line reports a recorded failure, and an excerpt of the report shows it](docs/images/rashomon-example.png)
 
@@ -536,9 +536,10 @@ in [`docs/design-notes.md`](docs/design-notes.md).
 
 `rashomon --help` lists the commands above and their main flags. It does not
 list `detach --force`, the override a refused `detach` names in its error
-message. The commands in the table do not take `--help` in this release:
-`rashomon watch --help` runs `watch`, and `rashomon pause --help` pauses
-recording.
+message. The commands in the table do not take `--help` in this release: each
+refuses it, like any argument it does not know, with `unknown argument` and
+exit status 1, and does nothing else, unless it comes where a flag expects
+its value.
 
 `detach` has two recovery forms for when things are gone: `detach --install <id>`
 (printed by `watch` at install time) removes one install's entries without
@@ -704,7 +705,7 @@ cannot by itself separate what ran from what you refused.
 
 ## Status
 
-Alpha: v0.1.0-alpha.1. No signed binaries, no Homebrew formula. macOS and
+Alpha: v1.1.0. No signed binaries, no Homebrew formula. macOS and
 Linux are the supported targets.
 
 **Windows is not usable yet.** The release publishes Windows binaries, but no

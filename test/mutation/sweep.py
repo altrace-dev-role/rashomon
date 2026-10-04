@@ -505,6 +505,31 @@ m("status does not name the other installs sharing the file", "cmd/rashomon/main
 m("status does not resolve the layer that disabled hooks", "cmd/rashomon/main.go",
   "\tcase decision.Disabled:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)",
   "\tcase false:\n\t\tfmt.Fprintf(stdout, \"hooks: disabled by the %s settings layer\\n\", decision.Layer)", "TestStatus_")
+# Commands that take no arguments. noArgs is the one refusal, and each call
+# site also gets its own break -- back to the line that ignored what followed
+# the command -- because dropping one site leaves the guard, and every other
+# site's test, green.
+m("a command that takes no arguments runs whatever follows it", "cmd/rashomon/main.go",
+  "\t\tif len(args) > 0 {\n\t\t\treturn fmt.Errorf(\"unknown argument %q\", args[0])\n\t\t}\n\t\treturn cmd(stdout)",
+  "\t\treturn cmd(stdout)", "TestArguments_")
+m("the no-argument refusal is worded unlike every other command's", "cmd/rashomon/main.go",
+  "\t\t\treturn fmt.Errorf(\"unknown argument %q\", args[0])",
+  "\t\t\treturn fmt.Errorf(\"takes no arguments, got %q\", args[0])", "TestArguments_EveryListedCommandRefusesHelp")
+m("watch --help installs the recorders", "cmd/rashomon/main.go",
+  "\t\treturn guarded(stderr, noArgs(rest, stdout, cmdWatch))",
+  "\t\treturn guarded(stderr, func() error { return cmdWatch(stdout) })", "TestArguments_Watch")
+m("pause --help pauses recording", "cmd/rashomon/main.go",
+  "\t\treturn guarded(stderr, noArgs(rest, stdout, cmdPause))",
+  "\t\treturn guarded(stderr, func() error { return cmdPause(stdout) })", "TestArguments_Pause")
+m("resume --help lifts the pause", "cmd/rashomon/main.go",
+  "\t\treturn guarded(stderr, noArgs(rest, stdout, cmdResume))",
+  "\t\treturn guarded(stderr, func() error { return cmdResume(stdout) })", "TestArguments_Resume")
+m("status --help prints the status", "cmd/rashomon/main.go",
+  "\t\treturn guarded(stderr, noArgs(rest, stdout, cmdStatus))",
+  "\t\treturn guarded(stderr, func() error { return cmdStatus(stdout) })", "TestArguments_Status")
+m("version --help prints the version", "cmd/rashomon/main.go",
+  "\t\treturn guarded(stderr, noArgs(rest, stdout, printVersion))",
+  "\t\treturn guarded(stderr, func() error { return printVersion(stdout) })", "TestArguments_Version")
 # B9 -- naming the rewritten calls. The wording split is the correctness half:
 # shape.Derive digests the whole input for every tool but Bash, so calling a
 # non-Bash difference a changed COMMAND is false.
