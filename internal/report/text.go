@@ -1066,7 +1066,14 @@ func writeNono(b *bytes.Buffer, n Nono) {
 		return
 	}
 	if !n.Observed {
-		fmt.Fprintf(b, "  sandbox (nono): not observed (%s)\n", orUnknown(n.Reason))
+		// The skipped count is said here too. A trail of only torn lines is
+		// "no records" by reason code, and without the count it read as "nono
+		// wrote nothing" -- the JSON carried the number and the text did not.
+		skipped := ""
+		if n.Skipped > 0 {
+			skipped = fmt.Sprintf("; %d trail record%s could not be read", n.Skipped, plural(n.Skipped))
+		}
+		fmt.Fprintf(b, "  sandbox (nono): not observed (%s%s)\n", orUnknown(n.Reason), skipped)
 		return
 	}
 	// An open window is said ON THIS LINE: the two counts are only as bounded

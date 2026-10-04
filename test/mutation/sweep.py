@@ -2871,6 +2871,15 @@ m("NONO a bounded window is said to have no end", "internal/report/text.go",
   "\tif n.WindowOpen {", "\tif true {",
   "TestNono_AWindowWithNoEnd")
 
+# Finding 5: a trail of only unreadable lines read as "nono wrote nothing".
+m("NONO a not-observed trail does not say how much it could not read", "internal/report/text.go",
+  "\t\tif n.Skipped > 0 {\n\t\t\tskipped = ", "\t\tif false {\n\t\t\tskipped = ",
+  "TestNono_AnUnreadableTrail")
+m("NONO the unreadable count on a not-observed trail ignores the singular", "internal/report/text.go",
+  "\"; %d trail record%s could not be read\", n.Skipped, plural(n.Skipped))",
+  "\"; %d trail records could not be read\", n.Skipped)",
+  "TestNono_AnUnreadableTrail")
+
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

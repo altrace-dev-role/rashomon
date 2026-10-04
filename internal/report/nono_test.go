@@ -3,6 +3,8 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +134,34 @@ func TestNono_ASessionWithNoEndRecordReportsAnOpenWindow(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), openWindowCaveat) {
 		t.Errorf("the rendered report does not say the window has no end:\n%s", b.String())
+	}
+}
+
+// TestNono_AnUnreadableTrailSaysHowMuchItCouldNotRead: a trail of only torn
+// lines printed "not observed (nono_audit_no_records)", which reads as "nono
+// wrote nothing". The JSON carried the skipped count and the text did not.
+func TestNono_AnUnreadableTrailSaysHowMuchItCouldNotRead(t *testing.T) {
+	trail := filepath.Join(t.TempDir(), "audit-events.ndjson")
+	if err := os.WriteFile(trail, []byte(`{"sequence": 0, "eve`+"\n"+`{"sequence": 1, "ev`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	obs := nono.Read(trail, nono.Window{Start: time.Unix(0, 0)})
+	n := buildNono(obs, Destinations{}, true, nil)
+	want := "  sandbox (nono): not observed (nono_audit_no_records; 2 trail records could not be read)\n"
+	if out := renderNono(n); out != want {
+		t.Errorf("an all-torn trail rendered\n%q\nwant\n%q", out, want)
+	}
+
+	one := buildNono(nono.Observation{Reason: nono.NotObservedNoRecords, Skipped: 1}, Destinations{}, true, nil)
+	want = "  sandbox (nono): not observed (nono_audit_no_records; 1 trail record could not be read)\n"
+	if out := renderNono(one); out != want {
+		t.Errorf("one unreadable record rendered\n%q\nwant\n%q", out, want)
+	}
+
+	// Nothing skipped: the line is as it was.
+	none := buildNono(nono.Observation{Reason: nono.NotObservedNoRecords}, Destinations{}, true, nil)
+	want = "  sandbox (nono): not observed (nono_audit_no_records)\n"
+	if out := renderNono(none); out != want {
+		t.Errorf("an empty trail rendered\n%q\nwant\n%q", out, want)
 	}
 }
