@@ -471,3 +471,140 @@ func TestSpend_RefusesAWindowThatIsNotADayCount(t *testing.T) {
 		t.Errorf("usage does not list spend:\n%s", res.stdout)
 	}
 }
+
+// TestSpend_AWatchedSessionWithNoCallIsRecorded drives the hooks as a session
+// with no tool call fires them -- measured on Claude Code 2.1.280 for `claude
+// -p "Reply with exactly: ok"`, a resume of it, and an interactive session
+// answered without a tool: SessionStart, then SessionEnd, nothing between,
+// and the transcript's first lines stamped a few milliseconds before the
+// start record. No record names the transcript, and spend read it "not
+// recorded by rashomon" and the silent-failure line "unknown". Such a session
+// had no call to miss, so its transcript is covered. A session still open (a
+// start and no end yet), a paused one, and one a resume without the hooks
+// made a call in between two watched runs are not -- measured live, that
+// resume read recorded under a rule that took one stretch from the first
+// start to the last end.
+func TestSpend_AWatchedSessionWithNoCallIsRecorded(t *testing.T) {
+	const id = "sess-watched"
+	// run is one Claude Code process on the session: SessionStart, a prompt
+	// and its answer, and SessionEnd when end is set.
+	run := func(t *testing.T, e *env, prompt, msg string, end bool) []string {
+		t.Helper()
+		if res := e.probe("start", id); res.exitCode != 0 {
+			t.Fatalf("probe start: exit %d, stderr %q", res.exitCode, res.stderr)
+		}
+		starts := e.coverage(id, "start")
+		startMS := int64(starts[len(starts)-1].fields["recorded_at_unix_ms"].(float64))
+		time.Sleep(20 * time.Millisecond)
+		answered := time.Now()
+		time.Sleep(20 * time.Millisecond)
+		if end {
+			if res := e.probe("end", id); res.exitCode != 0 {
+				t.Fatalf("probe end: exit %d, stderr %q", res.exitCode, res.stderr)
+			}
+		}
+		return []string{
+			promptLine(t, id, prompt, time.UnixMilli(startMS-3)),
+			usageLine(t, id, msg, answered, 100_000, textBlock("ok")),
+		}
+	}
+	for _, tc := range []struct {
+		name    string
+		session func(t *testing.T, e *env) []string
+		covered bool
+	}{
+		{"start and end", func(t *testing.T, e *env) []string {
+			return run(t, e, "p1", "msg_1", true)
+		}, true},
+		{"a session still open", func(t *testing.T, e *env) []string {
+			return run(t, e, "p1", "msg_1", false)
+		}, false},
+		{"resumed, every answer watched", func(t *testing.T, e *env) []string {
+			return append(run(t, e, "p1", "msg_1", true), run(t, e, "p2", "msg_2", true)...)
+		}, true},
+		{"a resume without the hooks made a call in between", func(t *testing.T, e *env) []string {
+			lines := run(t, e, "p1", "msg_1", true)
+			time.Sleep(20 * time.Millisecond)
+			unwatched := time.Now()
+			lines = append(lines,
+				promptLine(t, id, "p2", unwatched),
+				strings.Replace(usageLine(t, id, "msg_2", unwatched.Add(time.Millisecond), 100_000, toolBlock("toolu_gap")),
+					`"stop_reason":"end_turn"`, `"stop_reason":"tool_use"`, 1),
+				usageLine(t, id, "msg_3", unwatched.Add(2*time.Millisecond), 100_000, textBlock("gap")))
+			time.Sleep(20 * time.Millisecond)
+			return append(lines, run(t, e, "p3", "msg_4", true)...)
+		}, false},
+		{"a call made while paused", func(t *testing.T, e *env) []string {
+			if res := e.probe("start", id); res.exitCode != 0 {
+				t.Fatalf("probe start: exit %d, stderr %q", res.exitCode, res.stderr)
+			}
+			time.Sleep(20 * time.Millisecond)
+			answered := time.Now()
+			if res := e.pause(); res.exitCode != 0 {
+				t.Fatalf("pause: exit %d, stderr %q", res.exitCode, res.stderr)
+			}
+			p := defaultPayload()
+			p.SessionID = id
+			p.TranscriptPath = filepath.Join(e.configDir, "projects", "-work-project", id+".jsonl")
+			e.mustHook(p.build(t))
+			if res := e.resume(); res.exitCode != 0 {
+				t.Fatalf("resume: exit %d, stderr %q", res.exitCode, res.stderr)
+			}
+			time.Sleep(20 * time.Millisecond)
+			if res := e.probe("end", id); res.exitCode != 0 {
+				t.Fatalf("probe end: exit %d, stderr %q", res.exitCode, res.stderr)
+			}
+			return []string{usageLine(t, id, "msg_1", answered, 100_000, textBlock("ok"))}
+		}, false},
+		// forget removes a call's declaration, execution and terminal and
+		// keeps its coverage records: the run still holds a call.
+		{"a call that was forgotten", func(t *testing.T, e *env) []string {
+			if res := e.probe("start", id); res.exitCode != 0 {
+				t.Fatalf("probe start: exit %d, stderr %q", res.exitCode, res.stderr)
+			}
+			time.Sleep(20 * time.Millisecond)
+			answered := time.Now()
+			p := defaultPayload()
+			p.SessionID = id
+			p.TranscriptPath = filepath.Join(e.configDir, "projects", "-work-project", id+".jsonl")
+			e.mustHook(p.build(t))
+			post := defaultPost()
+			post.SessionID, post.TranscriptPath = id, p.TranscriptPath
+			e.mustPost(post.build(t))
+			if res := e.forget("1h"); res.exitCode != 0 || len(e.declarations(id)) != 0 {
+				t.Fatalf("forget: exit %d, stderr %q, %d declarations left", res.exitCode, res.stderr, len(e.declarations(id)))
+			}
+			time.Sleep(20 * time.Millisecond)
+			if res := e.probe("end", id); res.exitCode != 0 {
+				t.Fatalf("probe end: exit %d, stderr %q", res.exitCode, res.stderr)
+			}
+			return []string{usageLine(t, id, "msg_1", answered, 100_000, textBlock("ok"))}
+		}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			if res := e.watch(); res.exitCode != 0 {
+				t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+			}
+			writeSessionTranscript(t, e.configDir, id, tc.session(t, e)...)
+			res, doc := e.spend(nil)
+			want := 0
+			if tc.covered {
+				want = 1
+			}
+			if s := doc.Silent; s.Store != "read" || s.Transcripts != 1 || s.CoveredTranscripts != want {
+				t.Errorf("silent_failure_turns = %+v, want %d of 1 transcript covered\n%s", s, want, res.stdout)
+			}
+			txt := e.run("", nil, "spend").stdout
+			if tc.covered && (!strings.Contains(txt, "never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out)\n") ||
+				!strings.Contains(txt, "(from rashomon's record; 1 of 1 transcript was recorded, so this covers only those)\n") ||
+				strings.Contains(txt, "not recorded by rashomon")) {
+				t.Errorf("a watched session with no call is not shown recorded:\n%s", txt)
+			}
+			if !tc.covered && (!strings.Contains(txt, "never mentioned: unknown\n  (rashomon recorded none of the 1 transcript, so none is covered)\n") ||
+				!strings.Contains(txt, id+" $") || !strings.Contains(txt, ", not recorded by rashomon\n")) {
+				t.Errorf("the session is not shown not recorded:\n%s", txt)
+			}
+		})
+	}
+}

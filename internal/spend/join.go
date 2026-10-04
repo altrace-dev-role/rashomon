@@ -49,10 +49,13 @@ const (
 // failure at all.
 //
 // It covers only TRANSCRIPTS rashomon recorded -- a main transcript some
-// record's transcript_path names, with the subagent transcripts under it.
-// The rest are COUNTED, their spend shown as not covered and the sessions
-// holding it NAMED -- never folded in as zero, because a conversation nobody recorded
-// is one nobody checked, and zero would read as "checked and clean".
+// record's transcript_path names, with the subagent transcripts under it, or
+// one named for a session rashomon watched with no call made, read whole,
+// showing no call in any response read, and every response of it in the
+// window made while rashomon watched (Join). The rest are COUNTED, their
+// spend shown as not covered and the sessions holding it NAMED -- never
+// folded in as zero, because a conversation nobody recorded is one nobody
+// checked, and zero would read as "checked and clean".
 //
 // Per transcript, not per session id, because a session id is not a
 // conversation. Measured on a real machine: the store held a run directory
@@ -206,7 +209,22 @@ func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 // transcripts (TranscriptFile.Main) of every file it was seen in. A
 // transcript is covered when a record of one of the window's sessions
 // carries a transcript_path naming it, or naming a subagent transcript under
-// it; every other transcript is not covered, however many run directories
+// it -- or when it is named for a session whose run watched it with no call
+// made: the run holds no trace of a call and nothing unverified
+// (noCallStretches); the transcript was read whole and no response the scan
+// read in it -- before the window, undated or future-dated included --
+// stopped to make a call, carries no stop_reason, or is a subagent's
+// (mayHaveCalled); and every windowed response in it started inside a
+// stretch from one of the run's start records to the end record after it
+// (allWatched). Every response read, not only the window's, because a turn
+// can start before the window and end inside it: the call its first response
+// made is dated before the window, its final reply inside it reads clean,
+// and the window's responses alone read "none found" over a call nobody
+// checked. Such a session had no call to miss, yet no record names its
+// transcript: measured on Claude Code 2.1.280, a `claude -p` reply, a resume
+// of it and an interactive reply, none calling a tool, each read not
+// recorded. One still open has no end record, and is not covered until it
+// ends. Every other transcript is not covered, however many run directories
 // the store holds for its session id. A response is not covered when ANY
 // transcript holding it is not, and its cost is counted there once: a
 // resumed conversation carries the original's responses into a second file,
@@ -247,6 +265,23 @@ func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 // and nothing else. A recorded path this package did not discover itself is
 // never opened -- the read stays inside Claude Code's configuration directory
 // -- and a turn whose records name no discovered transcript takes no verdict.
+// With no call made there is no transcript_path to tell the two apart, so a
+// transcript named for the session is covered only when the run watched every
+// response of it in the window: the interactive conversation's, made before
+// the headless run started, were not. Measured too: a resume run without the
+// hooks made a call between two watched runs, and one stretch from the first
+// start to the last end vouched for it; each stretch is a start and the end
+// after it. A transcript covered this way shows no call in any response read,
+// so where the stretches are wrong, what is wrong is the word recorded, not
+// the verdict. They are wrong two ways. Coverage records name no process, so
+// an unwatched process running beside a watched one on the same id is taken
+// for watched, and so is the gap between a start whose process left no end
+// and an end whose own start never landed (rashomon detached, then watched
+// again before that process ended), which pair into one stretch. And
+// SessionStart fires on a compaction too, on the same id (Claude Code's hooks
+// documentation; not measured here), and the probe does not read its source:
+// the stretch begins again, what came before it reads unwatched, and the
+// transcript is not covered -- the fail-closed side.
 func (s *Summary) Join(st *store.Store) error {
 	j := &s.SilentFailureTurns
 	*j = SilentFailureTurns{Store: StoreNone, Bound: TurnBound, NotCoveredSessions: []string{}}
@@ -291,6 +326,7 @@ func (s *Summary) Join(st *store.Store) error {
 	sort.Strings(ids)
 
 	known := newKnownPaths(s.scan.Files)
+	mayCall := s.mayHaveCalled()
 
 	var turns []turn
 	want := map[string]bool{}
@@ -308,6 +344,17 @@ func (s *Summary) Join(st *store.Store) error {
 				continue
 			}
 			covered[s.scan.Files[i].Main] = true
+		}
+		// A session watched with no call made has no record naming a
+		// transcript. Of those named for it, one that shows a call was not
+		// such a session's, and a session id can name another conversation,
+		// so only one whose every windowed response it watched is its.
+		if stretches := noCallStretches(run); len(stretches) > 0 {
+			for _, f := range s.scan.Files {
+				if f.Session == id && !mayCall[f.Main] && allWatched(byTranscript[f.Main], stretches) {
+					covered[f.Main] = true
+				}
+			}
 		}
 		// Only a turn with a recorded failure can fire, whatever its final
 		// message says; those alone need their transcripts read. A failed
@@ -367,6 +414,8 @@ func (s *Summary) Join(st *store.Store) error {
 
 // markCoverage counts covered and not-covered transcripts, prices and names
 // the not-covered ones, and marks each per_session row with its coverage.
+// Join decides which transcripts are covered, and calls them recorded: one a
+// record names, or one a session watched with no call made.
 // Deferred by Join so every exit, a nil store's included, fills the same
 // fields the same way.
 //
@@ -578,4 +627,79 @@ func lastSaid(byFile []map[string]report.TurnFinal, prompt string) string {
 		}
 	}
 	return best
+}
+
+// noCallStretches is when a run watched its session with no call made: each
+// stretch from a start record to the end record after it, in the order they
+// were recorded. A run holding any trace of a call -- a declaration,
+// execution or terminal, a call or post coverage record (forget leaves
+// those), or a line that did not parse -- or any coverage record that is not
+// verified, has none. An end with no start before it makes no stretch, a
+// start with no end after it makes none, and a later start begins one again.
+// So a start with no end runs to the next end record, whichever process
+// wrote it: coverage records name no process (Join).
+func noCallStretches(run *store.Run) [][2]int64 {
+	if len(run.Declarations)+len(run.Executions)+len(run.Terminals) > 0 || run.Skipped > 0 {
+		return nil
+	}
+	var stretches [][2]int64
+	var from int64
+	open := false
+	for _, c := range run.Coverage {
+		if c.State != store.StateVerified {
+			return nil
+		}
+		switch c.Phase {
+		case store.PhaseStart:
+			from, open = c.RecordedAtMS, true
+		case store.PhaseEnd:
+			if open {
+				stretches = append(stretches, [2]int64{from, c.RecordedAtMS})
+			}
+			open = false
+		default:
+			return nil
+		}
+	}
+	return stretches
+}
+
+// allWatched reports whether a run with no call watched every windowed
+// response of a transcript: each started inside one of its stretches, ends
+// included. Whether a response made a call is mayHaveCalled's, over every
+// response read.
+func allWatched(rs []*Response, stretches [][2]int64) bool {
+	for _, r := range rs {
+		if !slices.ContainsFunc(stretches, func(w [2]int64) bool {
+			return w[0] <= r.StartMS && r.StartMS <= w[1]
+		}) {
+			return false
+		}
+	}
+	return true
+}
+
+// mayHaveCalled is the main transcripts that may show a call: one holding a
+// response the scan read that stopped to make a call, carries no stop_reason,
+// or is a subagent's, which only a call starts; and one with a file under it
+// not read whole (Scan.partial), whose missing response may be the call.
+// Every response read -- before the window, undated or future-dated included
+// -- because a turn can start before the window and end inside it (Join).
+// Every file is read from its first line, so a transcript holding a windowed
+// response is read with the responses before it.
+func (s *Summary) mayHaveCalled() map[string]bool {
+	out := map[string]bool{}
+	for _, r := range s.scan.Responses {
+		if r.StopReason == "tool_use" || !r.complete || r.Subagent {
+			for _, m := range s.mainsOf(r) {
+				out[m] = true
+			}
+		}
+	}
+	for i, p := range s.scan.partial {
+		if p {
+			out[s.scan.Files[i].Main] = true
+		}
+	}
+	return out
 }

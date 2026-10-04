@@ -1506,3 +1506,320 @@ func TestJoin_AnUndatedUsageLineDoesNotReDateItsFile(t *testing.T) {
 		t.Errorf("undated %d, rows %+v; want the undated line counted and the response in sess-a's row alone", s.Read.UndatedResponses, s.PerSession)
 	}
 }
+
+// coverage writes one coverage record as a hook does, at a chosen time:
+// verified, or unverified for reason.
+func (r *recorder) coverage(session, phase string, at time.Time, reason string) {
+	r.t.Helper()
+	c := store.Coverage{Type: store.TypeCoverage, SchemaVersion: store.SchemaVersion, RecordedAtMS: at.UnixMilli(),
+		SessionID: session, Phase: phase, State: store.StateVerified, HookEntry: store.EntryPresentSettings, Probe: store.ProbeFresh}
+	if reason != "" {
+		c.State, c.Reason = store.StateUnverified, &reason
+	}
+	if err := r.st.AppendCoverage(c); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
+// TestJoin_AWatchedSessionWithNoCallIsRecorded: a session rashomon watched
+// from its start to its end, in which no tool was called, leaves a start and
+// an end record and nothing else, so no record names its transcript.
+// Measured on Claude Code 2.1.280: `claude -p "Reply with exactly: ok"`, a
+// resume of it, and an interactive session answered without a tool each read
+// "not recorded by rashomon", and the silent-failure line "unknown". Such a
+// session had no call to miss: its transcript is covered, its row recorded,
+// and the line a checked none. A session no hook saw, answering inside the
+// same stretch of time, is not covered by it.
+func TestJoin_AWatchedSessionWithNoCallIsRecorded(t *testing.T) {
+	t0 := now.Add(-2 * time.Hour)
+	s := orders(t, func(c *config, first, second string) *store.Store {
+		rec := newRecorder(t)
+		rec.coverage("sess-q", store.PhaseStart, t0, "")
+		c.write(first+"/sess-q.jsonl", userLine("sess-q", "q1", t0.Add(-44*time.Millisecond), false),
+			resp{id: "Q1", model: "claude-opus-5-5", session: "sess-q", at: t0.Add(2 * time.Second), in: 200000, stop: "end_turn"}.line("text"))
+		rec.coverage("sess-q", store.PhaseEnd, t0.Add(3*time.Second), "")
+		c.write(second+"/sess-u.jsonl", userLine("sess-u", "u1", t0.Add(time.Second), false),
+			resp{id: "U1", model: "claude-opus-5-5", session: "sess-u", at: t0.Add(2 * time.Second), in: 100000, stop: "end_turn"}.line("text"))
+		return rec.st
+	})
+	j := s.SilentFailureTurns
+	if j.CoveredTranscripts != 1 || j.NotCoveredTranscripts != 1 || strings.Join(j.NotCoveredSessions, ",") != "sess-u" {
+		t.Errorf("covered %d, not covered %d, not-covered sessions %v; want 1, 1 and sess-u", j.CoveredTranscripts, j.NotCoveredTranscripts, j.NotCoveredSessions)
+	}
+	if q, u := row(s, "sess-q"), row(s, "sess-u"); q == nil || u == nil || q.Coverage != CoverageRecorded || u.Coverage != CoverageNotRecorded {
+		t.Errorf("rows = %+v; want sess-q recorded and sess-u not", s.PerSession)
+	}
+	txt, js := render(t, s)
+	for _, want := range []string{
+		"sess-q $0.80 (main $0.80, subagents none)\n",
+		"sess-u $0.40 (main $0.40, subagents none), not recorded by rashomon\n",
+		"never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out)\n",
+		"(from rashomon's record; 1 of 2 transcripts was recorded, so this covers only those; $0.40 in the other 1 is not covered)\n",
+	} {
+		if !strings.Contains(txt, want) {
+			t.Errorf("text lacks %q:\n%s", want, txt)
+		}
+	}
+	if !strings.Contains(js, `"turns":0,"unjudged_turns":0,"undeclared_failed_calls":0,"cost":{"usd":0,`) {
+		t.Errorf("the covered session did not marshal as a checked zero:\n%s", js)
+	}
+}
+
+// TestJoin_AWatchedSessionIsRecordedOnlyWhereItWasWatched: what a run with
+// no call covers, guard by guard. Its transcript is covered only when the run
+// holds no trace of a call and nothing unverified; no response the scan read
+// in the transcript -- before the window and undated included -- made a
+// call, ended without a stop_reason, or was a subagent's (a subagent is
+// started by a call); and every response in the window started inside one
+// stretch from a start record to the end record after it. A user line
+// stamped before the start record covers or uncovers nothing: measured,
+// Claude Code stamps its first attachment lines up to 44 ms before
+// SessionStart fires, and only a response's start is dated after it.
+func TestJoin_AWatchedSessionIsRecordedOnlyWhereItWasWatched(t *testing.T) {
+	t0 := now.Add(-2 * time.Hour)
+	at := func(sec float64) time.Time { return t0.Add(time.Duration(sec * float64(time.Second))) }
+	// edge is the moment the window opens, in seconds after t0.
+	edge := WindowStart(now, 30).Sub(t0).Seconds()
+	type cv struct {
+		phase  string
+		sec    float64
+		reason string
+	}
+	start, end := cv{store.PhaseStart, 0, ""}, cv{store.PhaseEnd, 10, ""}
+	resumed := []cv{start, end, {store.PhaseStart, 20, ""}, {store.PhaseEnd, 30, ""}}
+	straddle := []cv{{store.PhaseStart, edge - 10, ""}, {store.PhaseEnd, edge + 10, ""}}
+	q := func(id string, sec float64, stop string) resp {
+		return resp{id: id, model: "claude-opus-5-5", session: "sess-q", at: at(sec), in: 1000, stop: stop}
+	}
+	sub := q("S1", 6, "end_turn")
+	sub.sidechain = true
+	undated := q("Q2", 6, "tool_use")
+	undated.noTimestamp = true
+	ms := func(sec float64) int64 { return at(sec).UnixMilli() }
+	for _, tc := range []struct {
+		name     string
+		coverage []cv
+		resps    []resp
+		store    func(rec *recorder)
+		covered  bool
+	}{
+		{"a response inside", []cv{start, end}, []resp{q("Q1", 5, "end_turn")}, nil, true},
+		{"start only: the session has not ended", []cv{start}, []resp{q("Q1", 5, "end_turn")}, nil, false},
+		{"end only", []cv{end}, []resp{q("Q1", 5, "end_turn")}, nil, false},
+		{"a start that is not verified", []cv{{store.PhaseStart, 0, store.ReasonProbeUnresolved}, end}, []resp{q("Q1", 5, "end_turn")}, nil, false},
+		{"an end that is not verified", []cv{start, {store.PhaseEnd, 10, store.ReasonHookEntryAbsent}}, []resp{q("Q1", 5, "end_turn")}, nil, false},
+		{"a paused call", []cv{start, {store.PhaseCall, 4, store.ReasonRecordingPaused}, end}, []resp{q("Q1", 5, "end_turn")}, nil, false},
+		// forget removes a call's declaration, execution and terminal and
+		// keeps its coverage records.
+		{"a forgotten call", []cv{start, {store.PhaseCall, 4, ""}, {store.PhasePost, 4.5, ""}, end}, []resp{q("Q1", 5, "end_turn")}, nil, false},
+		{"a call whose record names no discovered transcript", []cv{start, end}, []resp{q("Q1", 5, "end_turn")}, func(rec *recorder) {
+			rec.transcript = "/elsewhere/sess-q.jsonl"
+			rec.call("sess-q", "q1", "toolu_q", at(4), at(4.5), store.ExecOK)
+		}, false},
+		{"a record that did not parse", []cv{start, end}, []resp{q("Q1", 5, "end_turn")}, func(rec *recorder) {
+			p := filepath.Join(rec.st.RunDir("sess-q"), store.FileRecords)
+			if err := os.WriteFile(p, []byte("{\"type\":\"declaration\",\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, false},
+		// A headless run reusing an interactive session's id (Join): the
+		// interactive conversation answered before the run was watched.
+		{"a response before the first start", []cv{start, end}, []resp{q("Q0", -5, "end_turn"), q("Q1", 5, "end_turn")}, nil, false},
+		{"a response after the last end", []cv{start, end}, []resp{q("Q1", 5, "end_turn"), q("Q2", 15, "end_turn")}, nil, false},
+		// Measured, no response started within a millisecond of either
+		// record; the stretch includes both, as a span of recorded time
+		// does.
+		{"a response at the start record's millisecond", []cv{start, end}, []resp{q("Q1", 0, "end_turn")}, nil, true},
+		{"a response at the end record's millisecond", []cv{start, end}, []resp{q("Q1", 10, "end_turn")}, nil, true},
+		{"a response that made a call", []cv{start, end}, []resp{q("Q1", 5, "tool_use"), q("Q2", 6, "end_turn")}, nil, false},
+		{"a response with no stop_reason", []cv{start, end}, []resp{q("Q1", 5, "")}, nil, false},
+		{"a subagent's response", []cv{start, end}, []resp{q("Q1", 5, "end_turn"), sub}, nil, false},
+		// --resume keeps the session id and appends to the same transcript,
+		// and each process fires its own start and end.
+		{"a resumed session, every response watched", resumed, []resp{q("Q1", 5, "end_turn"), q("Q2", 25, "end_turn")}, nil, true},
+		{"a response between two watched stretches", resumed, []resp{q("Q1", 5, "end_turn"), q("Q2", 15, "end_turn"), q("Q3", 25, "end_turn")}, nil, false},
+		// Measured: a resume run without the hooks made a Bash call between
+		// two watched runs, and the envelope from the first start to the
+		// last end read the transcript recorded.
+		{"an unwatched call between two watched stretches", resumed,
+			[]resp{q("Q1", 5, "end_turn"), q("Q2", 14, "tool_use"), q("Q3", 15, "end_turn"), q("Q4", 25, "end_turn")}, nil, false},
+		// A process that ended with no end record watched nothing after its
+		// start that a later start does not begin again.
+		{"a start with no end, then a watched stretch", []cv{start, {store.PhaseStart, 20, ""}, {store.PhaseEnd, 30, ""}},
+			[]resp{q("Q1", 5, "end_turn"), q("Q2", 25, "end_turn")}, nil, false},
+		// SessionStart fires on a compaction too, on the same id (Claude
+		// Code's hooks documentation), and the probe does not read its
+		// source: the second start begins the stretch again, and what came
+		// before it reads unwatched. Not covered, the fail-closed side.
+		{"a compaction's start in mid-session", []cv{start, {store.PhaseStart, 5, ""}, end},
+			[]resp{q("Q1", 2, "end_turn"), q("Q2", 7, "end_turn")}, nil, false},
+		// Each trace of a call alone keeps the run from vouching. A spilled
+		// terminal is the only trace of a call whose declaration lost the
+		// lock (store.Terminal); an execution alone is a PostToolUse whose
+		// PreToolUse left nothing.
+		{"a terminal alone", []cv{start, end}, []resp{q("Q1", 5, "end_turn")}, func(rec *recorder) {
+			if err := rec.st.SpillTerminal(store.Terminal{Type: store.TypeTerminal, SchemaVersion: store.SchemaVersion,
+				RecordedAtMS: ms(4), ToolUseID: "toolu_q", SessionID: "sess-q", Outcome: store.OutcomeError}); err != nil {
+				t.Fatal(err)
+			}
+		}, false},
+		{"an execution alone", []cv{start, end}, []resp{q("Q1", 5, "end_turn")}, func(rec *recorder) {
+			if err := rec.st.AppendExecution(store.Execution{Type: store.TypeExecution, SchemaVersion: store.SchemaVersion,
+				RecordedAtMS: ms(4), ToolUseID: "toolu_q", SessionID: "sess-q", ToolName: "Bash", Outcome: store.ExecOK}); err != nil {
+				t.Fatal(err)
+			}
+		}, false},
+		{"a declaration alone, naming no discovered transcript", []cv{start, end}, []resp{q("Q1", 5, "end_turn")}, func(rec *recorder) {
+			p := "q1"
+			if err := rec.st.AppendDeclaration(store.Declaration{Type: store.TypeDeclaration, SchemaVersion: store.SchemaVersion,
+				RecordedAtMS: ms(4), ToolUseID: "toolu_q", SessionID: "sess-q", PromptID: &p, ToolName: "Bash",
+				TranscriptPath: "/elsewhere/sess-q.jsonl"}); err != nil {
+				t.Fatal(err)
+			}
+		}, false},
+		// A turn can start before the window and end inside it. Here the
+		// call was made by a response dated before the window opened, and
+		// the run holds no record of it -- as a review measured with the
+		// real hooks: watch, start, detach, a call, watch, end leaves a
+		// verified start and end and nothing else. The window's responses
+		// alone would read clean.
+		{"a call made just before the window", straddle, []resp{q("W1", edge-5, "tool_use"), q("W2", edge+3, "end_turn")}, nil, false},
+		{"an undated response that made a call", []cv{start, end}, []resp{q("Q1", 5, "end_turn"), undated}, nil, false},
+		// Only the window's responses need to have started while the run
+		// watched: one before the window that made no call has nothing in
+		// the window to miss.
+		{"a response before the window, unwatched, that made no call", straddle,
+			[]resp{q("W0", edge-60, "end_turn"), q("W1", edge+3, "end_turn")}, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			rec := newRecorder(t)
+			for _, v := range tc.coverage {
+				rec.coverage("sess-q", v.phase, at(v.sec), v.reason)
+			}
+			if tc.store != nil {
+				tc.store(rec)
+			}
+			lines := []string{userLine("sess-q", "q1", at(-0.044), false)}
+			for _, r := range tc.resps {
+				lines = append(lines, r.line("text"))
+			}
+			c.write("proj/sess-q.jsonl", lines...)
+			s := c.summary(30)
+			if err := s.Join(rec.st); err != nil {
+				t.Fatal(err)
+			}
+			j := s.SilentFailureTurns
+			txt, _ := render(t, s)
+			want, label := 0, CoverageNotRecorded
+			if tc.covered {
+				want, label = 1, CoverageRecorded
+			}
+			if j.Transcripts != 1 || j.CoveredTranscripts != want || len(s.PerSession) != 1 || s.PerSession[0].Coverage != label {
+				t.Errorf("covered %d of %d, rows %+v; want %d covered and the row %s\n%s", j.CoveredTranscripts, j.Transcripts, s.PerSession, want, label, txt)
+			}
+		})
+	}
+}
+
+// TestJoin_AWatchedSessionWithACallKeepsTheRecordsRule: a run that holds a
+// call is covered by its records' transcript_path, as before, even when its
+// start and end records leave every response outside a stretch: the records
+// rule does not ask when the run watched.
+func TestJoin_AWatchedSessionWithACallKeepsTheRecordsRule(t *testing.T) {
+	t0 := now.Add(-2 * time.Hour)
+	c := newConfig(t)
+	rec := newRecorder(t)
+	rec.transcript = c.write("proj/sess-r.jsonl", userLine("sess-r", "r1", t0, false),
+		resp{id: "R1", model: "claude-opus-5-5", session: "sess-r", at: t0.Add(time.Second), in: 1000, stop: "tool_use"}.line("tool_use"),
+		userLine("sess-r", "r1", t0.Add(2*time.Second), true),
+		resp{id: "R2", model: "claude-opus-5-5", session: "sess-r", at: t0.Add(3 * time.Second), in: 1000, stop: "end_turn"}.line("text"))
+	rec.call("sess-r", "r1", "toolu_r", t0.Add(1500*time.Millisecond), t0.Add(1800*time.Millisecond), store.ExecOK)
+	rec.coverage("sess-r", store.PhaseStart, t0.Add(10*time.Second), "")
+	rec.coverage("sess-r", store.PhaseEnd, t0.Add(20*time.Second), "")
+	s := c.summary(30)
+	if err := s.Join(rec.st); err != nil {
+		t.Fatal(err)
+	}
+	if j := s.SilentFailureTurns; j.CoveredTranscripts != 1 || s.PerSession[0].Coverage != CoverageRecorded {
+		t.Errorf("covered %d, rows %+v; want the transcript the record names covered, its responses outside the run's one stretch", j.CoveredTranscripts, s.PerSession)
+	}
+}
+
+// TestJoin_AWatchedSessionNotReadWholeIsNotCovered: a run with no call
+// vouches for a transcript only when the scan read every response in it. A
+// usage line that could not be counted, or the rest of a file past a line too
+// long to read, may be the response that made the call, so the transcript is
+// not covered. Read whole, the same fixture is.
+func TestJoin_AWatchedSessionNotReadWholeIsNotCovered(t *testing.T) {
+	t0 := now.Add(-2 * time.Hour)
+	q1 := resp{id: "Q1", model: "claude-opus-5-5", session: "sess-q", at: t0.Add(2 * time.Second), in: 1000, stop: "end_turn"}.line("text")
+	q2 := resp{id: "Q2", model: "claude-opus-5-5", session: "sess-q", at: t0.Add(4 * time.Second), in: 1000, stop: "tool_use"}.line("tool_use")
+	unparsed := strings.Replace(q2, `"input_tokens":1000`, `"input_tokens":"1000"`, 1)
+	if unparsed == q2 {
+		t.Fatalf("the fixture did not write input_tokens as expected: %s", q2)
+	}
+	for _, tc := range []struct {
+		name                 string
+		tail                 []string
+		covered              bool
+		unparsed, unreadable int
+	}{
+		{"read whole", nil, true, 0, 0},
+		{"a usage line that did not parse", []string{unparsed}, false, 1, 0},
+		{"a line too long to read, and a call after it", []string{`{"type":"assistant","x":"` + strings.Repeat("x", maxLine) + `"}`, q2}, false, 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			rec := newRecorder(t)
+			rec.coverage("sess-q", store.PhaseStart, t0, "")
+			rec.coverage("sess-q", store.PhaseEnd, t0.Add(10*time.Second), "")
+			c.write("proj/sess-q.jsonl", append([]string{userLine("sess-q", "q1", t0.Add(time.Second), false), q1}, tc.tail...)...)
+			s := c.summary(30)
+			if err := s.Join(rec.st); err != nil {
+				t.Fatal(err)
+			}
+			if s.Read.UnparsedUsageLines != tc.unparsed || s.Read.UnreadableFiles != tc.unreadable {
+				t.Fatalf("unparsed usage lines %d, unreadable files %d; want %d and %d: the fixture is not the case it names",
+					s.Read.UnparsedUsageLines, s.Read.UnreadableFiles, tc.unparsed, tc.unreadable)
+			}
+			want, label := 0, CoverageNotRecorded
+			if tc.covered {
+				want, label = 1, CoverageRecorded
+			}
+			if j := s.SilentFailureTurns; j.Transcripts != 1 || j.CoveredTranscripts != want || len(s.PerSession) != 1 || s.PerSession[0].Coverage != label {
+				t.Errorf("covered %d of %d, rows %+v; want %d covered and the row %s", j.CoveredTranscripts, j.Transcripts, s.PerSession, want, label)
+			}
+		})
+	}
+}
+
+// TestJoin_AWatchedSessionIDCoversOnlyTheConversationItWatched: the
+// --session-id reuse Join describes, with no call made. A headless run
+// reusing an interactive session's id writes a second main transcript under
+// another project folder, and its hooks write start and end records under
+// that id. Every response of the interactive conversation started before the
+// headless run did: covering every transcript named for the id, as a first,
+// unguarded version of this rule did, read it recorded. Only the headless one
+// is, and the row is partly recorded, in either path order.
+func TestJoin_AWatchedSessionIDCoversOnlyTheConversationItWatched(t *testing.T) {
+	t0 := now.Add(-2 * time.Hour)
+	s := orders(t, func(c *config, first, second string) *store.Store {
+		c.write(first+"/sess-j.jsonl", userLine("sess-j", "i1", t0.Add(-time.Hour), false),
+			resp{id: "I1", model: "claude-opus-5-5", session: "sess-j", at: t0.Add(-time.Hour), in: 3000, stop: "end_turn"}.line("text"))
+		rec := newRecorder(t)
+		rec.coverage("sess-j", store.PhaseStart, t0, "")
+		c.write(second+"/sess-j.jsonl", userLine("sess-j", "h1", t0.Add(time.Second), false),
+			resp{id: "H1", model: "claude-opus-5-5", session: "sess-j", at: t0.Add(2 * time.Second), in: 1000, stop: "end_turn"}.line("text"))
+		rec.coverage("sess-j", store.PhaseEnd, t0.Add(3*time.Second), "")
+		return rec.st
+	})
+	j := s.SilentFailureTurns
+	if j.Transcripts != 2 || j.CoveredTranscripts != 1 || j.NotCoveredCost.Nano != 3000*opusIn ||
+		strings.Join(j.NotCoveredSessions, ",") != "sess-j" {
+		t.Errorf("line %+v; want 1 of 2 covered, the interactive transcript's spend not covered", j)
+	}
+	if r := row(s, "sess-j"); r == nil || r.Coverage != CoveragePartly {
+		t.Errorf("rows = %+v; want sess-j partly recorded", s.PerSession)
+	}
+}

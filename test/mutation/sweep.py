@@ -1773,6 +1773,93 @@ m("SP a transcript that does not resolve is deduped as written", "internal/spend
 m("SP an undated usage line re-opens its file's dating", "internal/spend/scan.go",
   "\t\tstartMS, dated := parseTimestamp(l.Timestamp)\n", "\t\tstartMS, dated := parseTimestamp(l.Timestamp)\n\t\tfileDated = dated\n",
   "TestJoin_AnUndatedUsageLineDoesNotReDateItsFile")
+# A session watched with no call made (Join, noCallStretches, allWatched,
+# mayHaveCalled):
+# one break per guard of the rule, and the rule itself.
+m("SP a session watched with no call made is never covered", "internal/spend/join.go",
+  "\t\tif stretches := noCallStretches(run); len(stretches) > 0 {\n", "\t\tif stretches := noCallStretches(run); false {\n",
+  "TestJoin_AWatchedSession|TestSpend_AWatchedSession")
+m("SP a run holding a call's records covers by its watched stretches", "internal/spend/join.go",
+  "\tif len(run.Declarations)+len(run.Executions)+len(run.Terminals) > 0 || run.Skipped > 0 {", "\tif run.Skipped > 0 {",
+  "TestJoin_AWatchedSession")
+m("SP a run with a record that did not parse covers by its watched stretches", "internal/spend/join.go",
+  "\tif len(run.Declarations)+len(run.Executions)+len(run.Terminals) > 0 || run.Skipped > 0 {",
+  "\tif len(run.Declarations)+len(run.Executions)+len(run.Terminals) > 0 {",
+  "TestJoin_AWatchedSession")
+m("SP a call or post coverage record does not stop a run's watched stretches", "internal/spend/join.go",
+  "\t\tdefault:\n\t\t\treturn nil\n", "",
+  "TestJoin_AWatchedSession|TestSpend_AWatchedSession")
+m("SP an unverified coverage record does not stop a run's watched stretches", "internal/spend/join.go",
+  "\t\tif c.State != store.StateVerified {\n\t\t\treturn nil\n\t\t}\n", "",
+  "TestJoin_AWatchedSession")
+m("SP an end with no start before it closes a watched stretch", "internal/spend/join.go",
+  "\topen := false\n", "\topen := true\n",
+  "TestJoin_AWatchedSession")
+m("SP a start with no end yet watches what follows it", "internal/spend/join.go",
+  "\treturn stretches\n}", "\tif open {\n\t\tstretches = append(stretches, [2]int64{from, math.MaxInt64})\n\t}\n\treturn stretches\n}",
+  "TestJoin_AWatchedSession|TestSpend_AWatchedSession")
+m("SP a later start does not begin the watched stretch again", "internal/spend/join.go",
+  "\t\t\tfrom, open = c.RecordedAtMS, true\n", "\t\t\tif !open {\n\t\t\t\tfrom = c.RecordedAtMS\n\t\t\t}\n\t\t\topen = true\n",
+  "TestJoin_AWatchedSession")
+m("SP a response before a watched stretch is watched", "internal/spend/join.go",
+  "w[0] <= r.StartMS", "true",
+  "TestJoin_AWatchedSession")
+m("SP a response after a watched stretch is watched", "internal/spend/join.go",
+  "r.StartMS <= w[1]", "true",
+  "TestJoin_AWatchedSession")
+m("SP a response at a start record's millisecond is not watched", "internal/spend/join.go",
+  "w[0] <= r.StartMS", "w[0] < r.StartMS",
+  "TestJoin_AWatchedSession")
+m("SP a response at an end record's millisecond is not watched", "internal/spend/join.go",
+  "r.StartMS <= w[1]", "r.StartMS < w[1]",
+  "TestJoin_AWatchedSession")
+m("SP a run's watched stretches are one from its first start to its last end", "internal/spend/join.go",
+  "!slices.ContainsFunc(stretches, func(w [2]int64) bool {\n\t\t\treturn w[0] <= r.StartMS && r.StartMS <= w[1]\n\t\t})",
+  "!(stretches[0][0] <= r.StartMS && r.StartMS <= stretches[len(stretches)-1][1])",
+  "TestJoin_AWatchedSession")
+m("SP a response that made a call is watched", "internal/spend/join.go",
+  "r.StopReason == \"tool_use\" || ", "",
+  "TestJoin_AWatchedSession")
+m("SP a response with no stop_reason is watched", "internal/spend/join.go",
+  "!r.complete || ", "",
+  "TestJoin_AWatchedSession")
+m("SP a subagent's response is watched", "internal/spend/join.go",
+  " || r.Subagent {", " {",
+  "TestJoin_AWatchedSession")
+m("SP a run's watched stretches cover another session's transcript", "internal/spend/join.go",
+  "f.Session == id && ", "",
+  "TestJoin_AWatchedSessionWithNoCallIsRecorded")
+# Each trace of a call alone keeps a run from vouching (noCallStretches).
+m("SP a run's declarations do not stop its watched stretches", "internal/spend/join.go",
+  "len(run.Declarations)+len(run.Executions)+len(run.Terminals) > 0", "len(run.Executions)+len(run.Terminals) > 0",
+  "TestJoin_AWatchedSession")
+m("SP a run's executions do not stop its watched stretches", "internal/spend/join.go",
+  "len(run.Declarations)+len(run.Executions)+len(run.Terminals) > 0", "len(run.Declarations)+len(run.Terminals) > 0",
+  "TestJoin_AWatchedSession")
+m("SP a run's terminals do not stop its watched stretches", "internal/spend/join.go",
+  "len(run.Declarations)+len(run.Executions)+len(run.Terminals) > 0", "len(run.Declarations)+len(run.Executions) > 0",
+  "TestJoin_AWatchedSession")
+# The call guards read every response the scan read, and every file whole
+# (mayHaveCalled, Scan.partial): a turn can start before the window and end
+# inside it, and a response missing from the scan may be the call.
+m("SP a transcript that shows a call is covered by its watched stretches", "internal/spend/join.go",
+  "\tmayCall := s.mayHaveCalled()\n", "\tmayCall := map[string]bool{}\n",
+  "TestJoin_AWatchedSession")
+m("SP a response before the window is not checked for a call", "internal/spend/join.go",
+  "\tfor _, r := range s.scan.Responses {\n", "\tfor _, r := range s.scan.Responses {\n\t\tif r.StartMS < s.FromUnixMS {\n\t\t\tcontinue\n\t\t}\n",
+  "TestJoin_AWatchedSession")
+m("SP an undated response is not checked for a call", "internal/spend/join.go",
+  "\tfor _, r := range s.scan.Responses {\n", "\tfor _, r := range s.scan.Responses {\n\t\tif r.StartMS == 0 {\n\t\t\tcontinue\n\t\t}\n",
+  "TestJoin_AWatchedSession")
+m("SP a transcript not read whole is taken for one read whole", "internal/spend/join.go",
+  "\tfor i, p := range s.scan.partial {\n\t\tif p {\n\t\t\tout[s.scan.Files[i].Main] = true\n\t\t}\n\t}\n", "",
+  "TestJoin_AWatchedSession")
+m("SP a file not read to the end is marked read whole", "internal/spend/scan.go",
+  "\t\t\tsc.Unreadable++\n\t\t\tsc.partial[i] = true\n", "\t\t\tsc.Unreadable++\n",
+  "TestJoin_AWatchedSession")
+m("SP a usage line that could not be counted leaves its file marked read whole", "internal/spend/scan.go",
+  "\t\tif sc.Unparsed > unparsed {\n", "\t\tif sc.Unparsed < unparsed {\n",
+  "TestJoin_AWatchedSession")
 
 m("TL the timeline is not put in seq order", "internal/report/timeline.go",
   "\tsort.SliceStable(decls, func(i, j int) bool { return decls[i].Seq < decls[j].Seq })",

@@ -369,6 +369,13 @@ type Scan struct {
 	// firstMS is, per file, the timestamp of its first dated line, 0 when no
 	// line carries one (ownerSessions).
 	firstMS []int64
+
+	// partial is, per file, whether some response in it may be missing from
+	// Responses: the file was not read to the end, or it holds a usage line
+	// that could not be counted (Unparsed). Either may be the response that
+	// made a call, so Join takes no such transcript for one watched with no
+	// call made (mayHaveCalled).
+	partial []bool
 }
 
 // Found is what Discover found: the transcripts to read, and a count of what
@@ -632,11 +639,16 @@ func subagentFiles(dir string) (out, unreadable []string) {
 // an id-less line carrying $20 of input rendered "est. <$0.01" and no note.
 func Read(found *Found) (*Scan, error) {
 	sc := &Scan{Files: found.Files, Stale: found.Stale, UnreadableDirs: found.UnreadableDirs,
-		firstMS: make([]int64, len(found.Files))}
+		firstMS: make([]int64, len(found.Files)), partial: make([]bool, len(found.Files))}
 	byID := map[string]*Response{}
 	for i, f := range found.Files {
+		unparsed := sc.Unparsed
 		if err := readFile(sc, byID, i, f); err != nil {
 			sc.Unreadable++
+			sc.partial[i] = true
+		}
+		if sc.Unparsed > unparsed {
+			sc.partial[i] = true
 		}
 	}
 	sc.foldRefusalMessages()
