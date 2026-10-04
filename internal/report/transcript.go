@@ -2,6 +2,7 @@ package report
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // maxLine bounds one transcript line. Transcript lines carry whole messages
@@ -303,4 +305,369 @@ func assistantText(content json.RawMessage) (string, bool) {
 		return "", false
 	}
 	return strings.Join(parts, "\n"), true
+}
+
+// TurnFinal is what one main transcript ties to one prompt: the turn's final
+// assistant text with the timestamp of the line that carried it, and the
+// message.id of every response the turn made.
+type TurnFinal struct {
+	// Said is true when the file ties any assistant text to the prompt. A
+	// turn whose every tied line was a tool call has Responses and no words.
+	Said bool
+	Text string
+	AtMS int64
+	// Responses is the message.id of every API response the file ties to the
+	// prompt, text or not, a subagent's sidechain line in this file included:
+	// the turn's spend in this file, which spend prices by id. An id is a
+	// key, never content.
+	Responses map[string]bool
+}
+
+// FinalAssistantTexts reads a main transcript ONCE and returns, for each
+// prompt id in want, the text of the last assistant message that belongs to
+// that prompt, with the line's timestamp, and the message id of every
+// response that belongs to it. A wanted prompt the file ties no assistant
+// text to is absent, or present with Said false.
+//
+// It is FinalAssistantText narrowed to turns, for `rashomon spend`'s
+// silent-failure line. A turn's silent_failures verdict is the digest's rule
+// (BuildSilentFailures) applied to that turn's final message, and the digest
+// is handed that message by the Stop hook at the moment the turn ends. spend
+// runs long after, with no hook payload, so the only surviving copy is the
+// transcript -- read here, under the same render-time rule as
+// FinalAssistantText: never written anywhere, never rendered, reduced by the
+// caller to the verdict's booleans and counts, and discarded when the process
+// exits. It lives in this file because this file is where the product reads
+// message content, and a second reader elsewhere would be a second place to
+// audit.
+//
+// A TURN IS ITS PROMPT, NOT A SPAN OF TIME. Assistant lines carry no
+// promptId, but every user line Claude Code 2.1.285 writes does -- the typed
+// prompt and each tool_result answering the turn's calls -- and it is the
+// prompt_id the hooks record. So an assistant line belongs to the prompt of
+// the user line before it, in file order. The earlier rule, "the last text
+// between this turn's first record and the next recorded turn's", took the
+// wrong words whenever a prompt answered without any tool call came between
+// the two: such a prompt leaves nothing in the store, so its reply fell
+// inside the window and became the previous turn's final message -- firing on
+// honest summaries, and hiding silent ones behind a later reply that happened
+// to say "error". The same tie keys the turn's SPEND (Responses): a span of
+// recorded time left out the response that made the first call and the final
+// reply, and could swallow a later turn's responses.
+//
+// A user line with no promptId that is a prompt, rather than a tool result or
+// an injected meta line, ends attribution: its reply belongs to a turn this
+// reader cannot key, and crediting it to the previous one would be the same
+// wrong-words bug. So does a line that cannot be decoded, unless it is a
+// sidechain line (DecodeHeader); a blank line is skipped. A subagent's
+// sidechain line ties its response to the current prompt and never moves the
+// tie. A turn whose words cannot be
+// attributed has no Said words, so the caller has no final message and takes
+// no verdict -- a floor, never a guess.
+//
+// One pass, decoding only what can matter: every line's header (type,
+// isSidechain, isMeta, promptId, timestamp, message.id); a user line's block
+// TYPES only when it carries no promptId (userBlocks); and, when an assistant
+// line's prompt is wanted and the line has a text block at all, its blocks'
+// types and text (assistantLine) -- no other block's contents. Every such
+// line of the turn is decoded, in memory, and only the last one's text is
+// kept. The caller hands every wanted prompt of a session in one call, so a
+// transcript is read once however many of its turns need a verdict.
+func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal {
+	out := map[string]TurnFinal{}
+	if len(want) == 0 {
+		return out
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return out
+	}
+	defer f.Close() //nolint:errcheck // read-only
+
+	var current string
+	// tie records a response's id as the current prompt's spend.
+	tie := func(id string) {
+		tf := out[current]
+		if tf.Responses == nil {
+			tf.Responses = map[string]bool{}
+		}
+		tf.Responses[id] = true
+		out[current] = tf
+	}
+	// unsay drops the current turn's words: a line that may be its last text
+	// could not be read, so no earlier text is its final word.
+	unsay := func() {
+		if !want[current] {
+			return
+		}
+		tf := out[current]
+		tf.Said, tf.Text, tf.AtMS = false, "", 0
+		out[current] = tf
+	}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
+	for sc.Scan() {
+		raw := sc.Bytes()
+		var head struct {
+			Type        string `json:"type"`
+			IsSidechain bool   `json:"isSidechain"`
+			IsMeta      bool   `json:"isMeta"`
+			PromptID    string `json:"promptId"`
+			Timestamp   string `json:"timestamp"`
+			Message     struct {
+				ID string `json:"id"`
+			} `json:"message"`
+		}
+		switch DecodeHeader(raw, &head) {
+		case LineBlank:
+			continue
+		case LineUndecodable:
+			// A line whose header does not decode (a timestamp written as a
+			// number, a line cut short) cannot be placed. It may be the next
+			// prompt, and keeping the tie would credit that prompt's spend
+			// and words to this turn; it may be this turn's last text, so
+			// its words so far may not be its last. So the tie ends and the
+			// turn's words are dropped, as the subagent reader ends its tie.
+			// Guessing from the bytes "user" and "text" fired on a tool_use
+			// input holding the value "user" and on a sidechain user line,
+			// and missed a user line truncated before its type.
+			unsay()
+			current = ""
+			continue
+		case LineUndecodableSidechain:
+			// A sidechain line never moves the tie or speaks for the main
+			// agent, decoded or not.
+			continue
+		}
+		if head.IsSidechain {
+			// A subagent's line written into the main transcript. Its
+			// response is spend of the turn it runs in, so its id is tied
+			// to the current prompt; its words are never the main agent's
+			// final word, and its user lines (the subagent's task and tool
+			// results) never change which prompt is current.
+			if head.Type == "assistant" && want[current] && head.Message.ID != "" {
+				tie(head.Message.ID)
+			}
+			continue
+		}
+		switch head.Type {
+		case "user":
+			if head.PromptID != "" {
+				current = head.PromptID
+			} else if !head.IsMeta && !toolResultOnly(raw) {
+				current = ""
+			}
+		case "assistant":
+			if !want[current] {
+				continue
+			}
+			if head.Message.ID != "" {
+				tie(head.Message.ID)
+			}
+			if !bytes.Contains(raw, []byte(`"text"`)) {
+				continue
+			}
+			line, err := decodeAssistantLine(raw)
+			if err != nil || line.Message.Role != "assistant" {
+				unsay()
+				continue
+			}
+			text, ok := line.Message.Content.text()
+			if !ok {
+				continue
+			}
+			// A text line with no parseable timestamp cannot be ordered
+			// against a second main file of the same session -- and it may
+			// be the turn's last word, so the earlier words ("On it.") are
+			// not: the turn's words are dropped rather than judged on those.
+			at, err := time.Parse(time.RFC3339Nano, head.Timestamp)
+			if err != nil {
+				unsay()
+				continue
+			}
+			tf := out[current]
+			tf.Said, tf.Text, tf.AtMS = true, text, at.UnixMilli()
+			out[current] = tf
+		}
+	}
+	if sc.Err() != nil {
+		// A file that cannot be read to the end may hold a later reply than
+		// any found, so nothing read from it is a turn's final word.
+		return map[string]TurnFinal{}
+	}
+	return out
+}
+
+// LineKind is how a transcript line's header decoded (DecodeHeader).
+type LineKind int
+
+const (
+	// LineBlank is an empty or whitespace-only line: no line at all.
+	LineBlank LineKind = iota
+	// LineDecoded is a header that decoded into the reader's shape.
+	LineDecoded
+	// LineUndecodable is a header that did not decode.
+	LineUndecodable
+	// LineUndecodableSidechain is a header that did not decode, on a line a
+	// top-level isSidechain key set to true marks as a subagent's.
+	LineUndecodableSidechain
+)
+
+// DecodeHeader is how both transcript readers -- FinalAssistantTexts and
+// spend's usage read -- take a line: it skips a blank or whitespace-only
+// line, decodes the header into head (the reader's own narrow shape), and,
+// when that fails, says whether the line is a sidechain one. One helper, so
+// the two readers cannot disagree about which lines end a turn's tie: a
+// blank line ended it in one and was skipped by the other.
+//
+// A line that did not decode is a sidechain one only when a token walk
+// reads a top-level isSidechain key set to true (topLevelSidechain). The
+// bytes "isSidechain":true anywhere in the line also matched a tool_use
+// input that held them.
+func DecodeHeader(raw []byte, head any) LineKind {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return LineBlank
+	}
+	if json.Unmarshal(raw, head) == nil {
+		return LineDecoded
+	}
+	if topLevelSidechain(raw) {
+		return LineUndecodableSidechain
+	}
+	return LineUndecodable
+}
+
+// topLevelSidechain walks a line's top-level object, key by key, and reports
+// whether its isSidechain key is the boolean true. Every other value is
+// stepped over by skipValue, so no value's contents -- a message's content
+// among them -- become a value here. A line cut short ends the walk at the
+// cut, and is a sidechain one only if the key came before it.
+func topLevelSidechain(raw []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return false
+	}
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		if key == "isSidechain" {
+			var v bool
+			return dec.Decode(&v) == nil && v
+		}
+		if dec.Decode(&skipValue{}) != nil {
+			return false
+		}
+	}
+	return false
+}
+
+// skipValue steps over one JSON value and keeps nothing of it.
+type skipValue struct{}
+
+func (*skipValue) UnmarshalJSON([]byte) error { return nil }
+
+// decodeAssistantLine is the one way FinalAssistantTexts decodes an assistant
+// line past its header, into assistantLine and nothing else.
+// TestAssistantLine_DecodesOnlyTextBlocks reflects over its result type and
+// checks FinalAssistantTexts goes through it, so a decode in place of it
+// cannot pass unseen. A variable only so that test can count the calls.
+var decodeAssistantLine = func(raw []byte) (assistantLine, error) {
+	var line assistantLine
+	err := json.Unmarshal(raw, &line)
+	return line, err
+}
+
+// assistantLine is the whole of what FinalAssistantTexts decodes from an
+// assistant line past its header: the role, and each content block's type
+// and top-level text. A tool_use block's input, a thinking block's thinking
+// and a tool result's output have no field to land in, so encoding/json steps
+// over them. Held by TestAssistantLine_DecodesOnlyTextBlocks.
+//
+// The earlier reader decoded message.content whole into a json.RawMessage,
+// which copied every block of the line -- a tool_use input with a "text" key
+// included -- into a value, while the README said only the final assistant
+// message was read.
+type assistantLine struct {
+	Message struct {
+		Role    string     `json:"role"`
+		Content textBlocks `json:"content"`
+	} `json:"message"`
+}
+
+// textBlocks is an assistant message's content, as blocks. Content is either
+// an array of blocks or a plain string, and both shapes occur in real
+// transcripts; a plain string is one text block.
+type textBlocks []textBlock
+
+type textBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+func (b *textBlocks) UnmarshalJSON(data []byte) error {
+	var plain string
+	if json.Unmarshal(data, &plain) == nil {
+		*b = textBlocks{{Type: "text", Text: plain}}
+		return nil
+	}
+	var blocks []textBlock
+	if err := json.Unmarshal(data, &blocks); err != nil {
+		return err
+	}
+	*b = blocks
+	return nil
+}
+
+// text joins the text blocks, as assistantText does: a thinking block is not
+// the account the user was given, and a block of any type but "text" is not
+// kept.
+func (b textBlocks) text() (string, bool) {
+	var parts []string
+	for _, blk := range b {
+		if blk.Type == "text" && strings.TrimSpace(blk.Text) != "" {
+			parts = append(parts, blk.Text)
+		}
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	return strings.Join(parts, "\n"), true
+}
+
+// userBlocks is the whole of what toolResultOnly decodes from a user line:
+// the TYPE of each content block, and nothing else. No field is tagged for a
+// block's text, a tool result's output or a prompt's words, so encoding/json
+// steps over those bytes without ever making a value of them -- the property
+// spend's usage read holds for its own shape, held here by
+// TestUserBlocks_DecodeOnlyBlockTypes. A prompt typed as a plain string does
+// not decode into a slice at all (a type error, reported without the string
+// being kept), and is a prompt.
+//
+// The earlier reader decoded message.content whole into a json.RawMessage --
+// a copy of every tool result's output held as a value -- to learn only the
+// block types; that was a second content read the README did not disclose.
+type userBlocks struct {
+	Message struct {
+		Content []struct {
+			Type string `json:"type"`
+		} `json:"content"`
+	} `json:"message"`
+}
+
+// toolResultOnly reports whether a user line's content is an array of
+// tool_result blocks and nothing else: a call finishing inside a turn, not a
+// new prompt. Decided from block types alone (userBlocks).
+func toolResultOnly(raw []byte) bool {
+	var line userBlocks
+	if json.Unmarshal(raw, &line) != nil || len(line.Message.Content) == 0 {
+		return false
+	}
+	for _, b := range line.Message.Content {
+		if b.Type != "tool_result" {
+			return false
+		}
+	}
+	return true
 }

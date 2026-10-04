@@ -526,6 +526,7 @@ in [`docs/design-notes.md`](docs/design-notes.md).
 | `rashomon watch` | Install the recorders, the liveness probe and the end-of-turn recap (eight entries). **The only command that installs anything.** |
 | `rashomon report [--session S] [--json] [--redact] [--chain] [--timeline]` | Render **every** recorded session, or one named with `--session`. `--chain` adds the causal view: which prompt produced which calls. `--timeline` lists every call, main agent and subagents, in the order they were recorded, keeps failed calls apart from calls that never ran, and says whether a success of the same command, or of the same program for single-purpose programs, was recorded after each failure, and reads "not checked" where a success may exist but cannot be placed or matched, or where the failure itself has no declaration or recorded position; for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is looked for, and a fix made with a different command, or a corrected Edit, is not detected |
 | `rashomon status` | Say what is installed here. Reads only; creates nothing |
+| `rashomon spend [--days N] [--json]` | Estimate what the last N days of Claude Code usage would cost at API list prices, from Claude Code's own transcripts. Needs no `watch`; writes nothing. See [`rashomon spend`](#rashomon-spend) |
 | `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
 | `rashomon detach` | Remove the recorders, leaving every other entry's value as found |
 | `rashomon forget --since T \| --before T \| --host H` | Erase records, leaving a gap record saying so |
@@ -543,6 +544,108 @@ opening a store, and `detach --all` removes every entry carrying a `rashomon`
 marker, for when the store is gone and the id with it. Both refuse, naming the
 field, if an entry of ours had its matcher, hook count, hook type or timeout
 edited by hand.
+
+### `rashomon spend`
+
+`rashomon spend [--days N] [--json]` estimates what the last N days (default
+30, at most 36500) of Claude Code usage would cost at API list prices. It needs
+no `watch`, and it writes nothing.
+
+**Not a bill.** The rates are a dated snapshot compiled into the binary, and
+every rendering names the date. A Pro or Max plan is not billed per token, so
+the figure is what the same usage would cost on the API, not what you were
+charged.
+
+**What it reads.** Claude Code's own transcripts, under
+`$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`, subagent transcripts
+included. The totals come from each API response's usage fields only: its id,
+model, stop reason, a refusal's category, token counts and speed, each retry
+attempt's counts, type and model, and the line's timestamp, session,
+`isSidechain` and request id. Claude Code writes one response on several
+lines, so a response is counted once by its id.
+
+**What it shows.** Spend by agent, model, token kind and session. Cache
+re-written after a gap longer than its TTL: the part of a write that re-writes
+what the previous response had cached and this one did not read back, priced
+over a cache read. It is a heuristic, labelled as one: it skips a model
+switch and any request smaller than the previous cache (after compaction,
+say), since it wrote new content, so it misses some true expiries, and can
+still count new content in a request that grew past the previous cache. Refusals, counted by
+category and model. Retry attempts: every attempt before the last (the last
+produced the message and is the top-level usage) is shown in tokens with the
+cost unknown and left out of the total, and the header says so. When the last
+attempt is a fallback model's (`fallback_message`), the response is priced at
+that model, and counted as one a fallback model served unless it ended in a
+refusal. And the spend in turns with a failed call the summary never
+mentioned.
+
+**Refusals.** A refusal's `stop_details.category` is read as a closed word:
+`cyber`, `bio`, `frontier_llm`, `reasoning_extraction`, `general_harms`,
+`uncategorized` (null) or `other`, and refusals are counted by category and
+model. A refusal partway through its output (`output_tokens` above 0) is
+billed at normal rates, and priced like any response. Whether one before any
+output (`output_tokens` 0) was billed depends on its category, so its tokens
+are shown with the cost unknown and left out of the total, and the header
+says how many there are. After a refusal, Claude Code also writes one line
+whose usage is all zeros (model `<synthetic>`) with the same `requestId` as
+the response; that line is folded into the response. One with no such
+response is counted as a pre-output refusal written without usage.
+
+**The silent-failure line.** A turn counts when one of its recorded calls
+failed and its final message mentions no failure, whether or not a later call
+succeeded. A failed call whose declaration was lost or carried no
+`prompt_id` has no prompt, so it is placed in no turn: the line counts it as
+a failed call that could not be checked, and with one, "none found" holds
+only for the turns that could be. The line covers only the transcripts a
+rashomon record names, and the transcript of a session rashomon watched with
+no tool call made, when it was read whole, no response read from it asked
+for a tool, and every response in the window came while rashomon was
+watching. A session with no tool call that is still open has no end record
+yet, and reads not covered until it ends. Every other
+transcript is counted and its spend priced and marked not covered, never
+folded in as zero, and the sessions whose rows hold that spend are named. A
+session's row reads recorded only when its own transcripts were recorded and
+it holds none of that spend. A response that appears in several transcripts (a
+resumed conversation, or a copy made by `/branch` or `--fork-session`) is not
+covered when any of them is not, and its cost is counted once. In the
+per-session rows it belongs to the session whose transcript starts first; a
+copy that keeps the original's timestamps starts at the same moment, and then
+both sessions' rows hold it; the output then says how many such responses
+there are (`shared_responses` in `--json`), since the rows can add up to more
+than the total. A turn's spend is the responses tied to its prompt. In the
+main transcript, and in each subagent transcript under it, a response belongs
+to the prompt of the user line before it: Claude Code writes that prompt's id
+(`promptId`) on the line. The figure is a floor. A response after a user line
+with no prompt id belongs to no turn, unless that line is an injected meta
+line or, in the main transcript, a tool result. A subagent's response written
+into the main transcript (`isSidechain`) counts toward the prompt before it,
+and a subagent's user line there does not end the tie. A line that cannot be
+decoded ends it (any in a subagent transcript; in the main transcript, unless
+it is a sidechain line), so a response after it is not counted. A failed turn
+whose final message cannot be tied to its prompt is counted as not checked,
+never as clean.
+
+**Message content.** To take that verdict, the line reads message content, in
+memory. For each recorded turn with a failed call, it decodes each block's
+type, and a text block's text, of every assistant line tied to the turn, and
+keeps only the last line's text. The text is never written or output. To tell
+a prompt from a tool result on a user line with no prompt id, it decodes the
+line's content block *types* only, never their text. From every line of a
+subagent transcript, and from a main transcript's lines up to its first dated
+one, it decodes the fields listed under **What it reads** and the line's type,
+`isMeta` and `promptId`, never its content.
+
+**Savings.** One saving is listed, with its figure: the spend in turns with
+a failed call the summary never mentioned. The cache re-write figure is a
+heuristic, so it is shown and not offered as a saving. Pre-output refusals
+and retry attempts are tokens with the cost unknown, so they carry no saving.
+
+**Counted, said, never priced.** It says how many of each of these it found:
+lines it cannot count (malformed or implausible usage, a line with no message
+id, a future-dated response), and folders and files it cannot read to the
+end. Fast-mode responses are counted and priced at standard rates. Out of
+scope: fast mode's premium, Batch and partner (Bedrock, Vertex) pricing,
+long-context premiums, and web-search fees.
 
 ## Editor integration
 
