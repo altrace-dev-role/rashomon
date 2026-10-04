@@ -2836,6 +2836,20 @@ m("TB the session block does not say why no pair is looked for", "internal/repor
   "\tif false {\n\t\tfmt.Fprintf(b, \"    no pair is looked for",
   "TestTestRuns_")
 
+# nono integration test run, finding 1: an unknown transport went uncounted on
+# the default path, because the counter sat below the no-proxy-store guard.
+m("NONO an unknown mode is not counted without a proxy store", "internal/report/nono.go",
+  "\t\tif e.Mode != \"reverse\" && e.Mode != \"connect\" {\n\t\t\tn.UnknownModes++\n\t\t}\n",
+  "",
+  "TestNono_AnUnknownMode")
+m("NONO an unknown mode is counted twice with a proxy store", "internal/report/nono.go",
+  "\t\t\t// from being excused as plain HTTP.\n\t\t\tobservable[e.Host] = true\n",
+  "\t\t\t// from being excused as plain HTTP.\n\t\t\tn.UnknownModes++\n\t\t\tobservable[e.Host] = true\n",
+  "TestNono_AnUnknownModeIsCountedOnce")
+m("NONO the text never reports an unknown mode", "internal/report/text.go",
+  "\tif n.UnknownModes > 0 {", "\tif false {",
+  "TestNono_AnUnknownModeIsCountedWithout")
+
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

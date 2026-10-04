@@ -50,7 +50,8 @@ type Nono struct {
 	// UnknownDecisions counts trail events whose decision was neither allow nor
 	// deny. Silence there would make the Decision field's own comment false.
 	UnknownDecisions int `json:"unknown_decisions"`
-	// UnknownModes counts events whose transport this reader has not learned.
+	// UnknownModes counts events whose transport this reader has not learned,
+	// counted with or without a proxy store, as UnknownDecisions is.
 	UnknownModes int `json:"unknown_modes"`
 	// DeniedButReached: the sandbox refused it and the wire recorded reaching
 	// it anyway. Traffic that escaped the sandbox -- the strongest finding a
@@ -111,9 +112,17 @@ func buildNono(obs nono.Observation, dests Destinations, configured bool, forgot
 	// -- no proxy store, which is most users -- an unknown decision was
 	// absorbed silently, making the Decision field's own comment false in the
 	// one configuration it mattered.
+	//
+	// Modes are counted here for the same reason, and were not: the mode
+	// counter stayed in the reconciliation loop below the guard, so an unknown
+	// transport went uncounted on the default path. Every event is counted,
+	// whatever its decision or host, as decisions are.
 	for _, e := range obs.Events {
 		if e.Decision != nono.DecisionAllow && e.Decision != nono.DecisionDeny {
 			n.UnknownDecisions++
+		}
+		if e.Mode != "reverse" && e.Mode != "connect" {
+			n.UnknownModes++
 		}
 	}
 
@@ -195,10 +204,9 @@ func buildNono(obs nono.Observation, dests Destinations, configured bool, forgot
 		case "connect":
 			observable[e.Host] = true
 		default:
-			// A transport this reader has not learned. Counted rather than
-			// defaulted silently into observable: schema drift is a measured
-			// property of this dependency.
-			n.UnknownModes++
+			// A transport this reader has not learned. Already counted above
+			// the wire guard; read as observable here, which keeps the gap
+			// from being excused as plain HTTP.
 			observable[e.Host] = true
 		}
 	}
