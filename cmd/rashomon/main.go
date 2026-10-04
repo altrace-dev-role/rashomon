@@ -72,15 +72,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdRecap(rest, stdin, stdout, stderr)
 
 	case "watch":
-		return guarded(stderr, func() error { return cmdWatch(stdout) })
+		return guarded(stderr, noArgs(rest, stdout, cmdWatch))
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
 	case "pause":
-		return guarded(stderr, func() error { return cmdPause(stdout) })
+		return guarded(stderr, noArgs(rest, stdout, cmdPause))
 	case "resume":
-		return guarded(stderr, func() error { return cmdResume(stdout) })
+		return guarded(stderr, noArgs(rest, stdout, cmdResume))
 	case "status":
-		return guarded(stderr, func() error { return cmdStatus(stdout) })
+		return guarded(stderr, noArgs(rest, stdout, cmdStatus))
 	case "report":
 		return guarded(stderr, func() error { return cmdReport(rest, stdout) })
 	case "digest":
@@ -105,9 +105,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// tries and `--help` is the first thing a person tries, and both landed
 	// in `default:` -- usage on stderr, exit 1 -- while only the bare
 	// `version` subcommand worked.
+	//
+	// version refuses anything after it, as every command in the README's
+	// table refuses an argument it does not know (see noArgs); the hook entry
+	// points are not in it, because they must always exit 0. help is the one
+	// that ignores what follows: whatever it is, the usage is the answer to it.
 	case "version", "--version", "-v":
-		fmt.Fprintln(stdout, version)
-		return exitOK
+		return guarded(stderr, noArgs(rest, stdout, printVersion))
 
 	case "help", "--help", "-h":
 		usage(stdout)
@@ -128,6 +132,33 @@ func guarded(stderr io.Writer, fn func() error) int {
 		return exitFail
 	}
 	return exitOK
+}
+
+// noArgs adapts a command that takes no arguments to guarded, refusing any it
+// is given before the command runs.
+//
+// watch, pause, resume, status and version once ignored whatever followed
+// them, so the first thing a person types to learn what one does ran it:
+// `watch --help` wrote eight hook entries and minted a store, `pause --help`
+// paused recording, `resume --help` lifted the pause. A command does not act
+// on an argument it does not understand. detach, report, digest, forget and
+// spend already refused an unknown argument, and this is the same refusal in
+// the same words, with the same exit 1. --help is not special: no command in
+// the README's table takes it in this release (env and run, which the usage
+// omits, keep their own), and `rashomon --help` is where the usage lives.
+func noArgs(args []string, stdout io.Writer, cmd func(io.Writer) error) func() error {
+	return func() error {
+		if len(args) > 0 {
+			return fmt.Errorf("unknown argument %q", args[0])
+		}
+		return cmd(stdout)
+	}
+}
+
+// printVersion is version's whole body, in the shape noArgs takes.
+func printVersion(stdout io.Writer) error {
+	fmt.Fprintln(stdout, version)
+	return nil
 }
 
 // cmdHook handles one PreToolUse invocation and always succeeds.

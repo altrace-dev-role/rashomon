@@ -536,9 +536,10 @@ in [`docs/design-notes.md`](docs/design-notes.md).
 
 `rashomon --help` lists the commands above and their main flags. It does not
 list `detach --force`, the override a refused `detach` names in its error
-message. The commands in the table do not take `--help` in this release:
-`rashomon watch --help` runs `watch`, and `rashomon pause --help` pauses
-recording.
+message. The commands in the table do not take `--help` in this release: each
+refuses it, like any argument it does not know, with `unknown argument` and
+exit status 1, and does nothing else, unless it comes where a flag expects
+its value.
 
 `detach` has two recovery forms for when things are gone: `detach --install <id>`
 (printed by `watch` at install time) removes one install's entries without
