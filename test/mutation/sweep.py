@@ -2850,6 +2850,12 @@ m("NONO the text never reports an unknown mode", "internal/report/text.go",
   "\tif n.UnknownModes > 0 {", "\tif false {",
   "TestNono_AnUnknownModeIsCountedWithout")
 
+# Finding 2: `--nono-audit ""` read as no trail asked for, printing nothing.
+m("NONO an empty --nono-audit is read as no trail asked for", "cmd/rashomon/main.go",
+  "\t\t\tif i+1 >= len(args) || args[i+1] == \"\" {\n\t\t\t\treturn errors.New(\"--nono-audit needs a value\")",
+  "\t\t\tif i+1 >= len(args) {\n\t\t\t\treturn errors.New(\"--nono-audit needs a value\")",
+  "TestReport_RefusesAnEmptyNonoAudit")
+
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),
