@@ -1,6 +1,9 @@
 # rashomon
 
-**Your coding agent writes its own account of what it did. `rashomon` writes a second one, independently of the agent's narration, and puts the two side by side.**
+**Your coding agent can tell you it finished the job. Did it actually?**
+
+`rashomon` keeps an independent record of what your agent actually did, then
+puts that record beside the agent's own account.
 
 **[Join the Rashomon Discord](https://discord.gg/Qg3hybAHpU)**
 
