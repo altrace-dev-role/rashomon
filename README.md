@@ -83,6 +83,17 @@ calls rashomon recognised as a test runner (`go test`, `pytest`, `npm test` and
 a fixed list of others) by how they ended. The report lists the failure words
 the summary does *not* use; it does not guess why.
 
+## What a report tells you
+
+- **What subagents did**: the helper agents Claude starts on its own, whose
+  steps the main conversation never shows.
+- **Which steps failed**, and whether the agent's closing summary uses any of
+  rashomon's failure words. It lists the ones that are *absent*; it never
+  guesses at intent.
+- **What ran differently from what was asked**, for example another hook that
+  rewrote a command's input before it ran.
+- **What rashomon could not see**, on every report, even a healthy one.
+
 ## Try it yourself
 
 You can produce the same kind of report in a few minutes:
@@ -98,17 +109,6 @@ Whether the failure is flagged depends on what the agent writes. If the summary
 contains none of rashomon's 43 failure words (matched as substrings, so "debug"
 counts as "bug"), the `failed calls` line lists them. Most honest summaries
 contain one, and then the report says so instead.
-
-## What a report tells you
-
-- **What subagents did**: the helper agents Claude starts on its own, whose
-  steps the main conversation never shows.
-- **Which steps failed**, and whether the agent's closing summary uses any of
-  rashomon's failure words. It lists the ones that are *absent*; it never
-  guesses at intent.
-- **What ran differently from what was asked**, for example another hook that
-  rewrote a command's input before it ran.
-- **What rashomon could not see**, on every report, even a healthy one.
 
 ## Common questions
 
@@ -490,15 +490,6 @@ absence of observation. `--json` states the same fact in its own form: the
 `--chain` lists the hosts each call *named*; it does not say whether the call
 reached them.
 
-### Inside a sandbox
-
-If Claude Code runs inside a sandbox that limits where it can write, the sandbox
-must allow rashomon's store directory, or nothing is recorded and nothing says
-so. With nono, create the directory first, then grant it:
-`mkdir -p ~/.local/state/rashomon`, and add `--allow ~/.local/state/rashomon`
-to `nono run`. Running Claude Code under nono has not been tested end to end in
-this release.
-
 ## The two rules it will not break
 
 **Never print "nothing happened" where the truth is "not watching."** Every
@@ -520,6 +511,15 @@ cannot read.
 
 The reasoning behind all of this, and the acceptance criteria that hold it, is
 in [`docs/design-notes.md`](docs/design-notes.md).
+
+### Inside a sandbox
+
+If Claude Code runs inside a sandbox that limits where it can write, the sandbox
+must allow rashomon's store directory, or nothing is recorded and nothing says
+so. With nono, create the directory first, then grant it:
+`mkdir -p ~/.local/state/rashomon`, and add `--allow ~/.local/state/rashomon`
+to `nono run`. Running Claude Code under nono has not been tested end to end in
+this release.
 
 ## Commands
 
