@@ -1,6 +1,6 @@
 # rashomon
 
-**Your coding agent's final diff does not tell the whole story. Rashomon shows what happend during execution.**
+**Your coding agent's final diff does not tell the whole story. Rashomon shows what happened during execution.**
 
 `rashomon` keeps an independent record of what your agent actually did, and flags when something important does not match the agent's account.
 
