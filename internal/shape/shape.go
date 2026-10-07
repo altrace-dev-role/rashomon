@@ -66,6 +66,27 @@ type Shape struct {
 	// false on a tool that is not a shell, whose class already says what it
 	// does, and on a record written before v3, which could not say.
 	MayWrite bool `json:"may_write"`
+
+	// StatusMasked says whether a recognised build or test runner on a shell
+	// line has an exit status the line does not return (see statusMasked):
+	// MaskedTest for `make test 2>&1 | tail -40`, MaskedBuild for `make
+	// release; ls dist`, MaskedNone for a line read to its end with no such
+	// runner. The call's own outcome is recorded as it was; this says that,
+	// for the runner, an ok outcome is not a pass. A closed word, decided
+	// against fixed lists whose words are compared and dropped.
+	//
+	// Null on a tool that is not a shell, on a line that could not be read
+	// to its end, and on a record written before this field existed, which
+	// could not say: each is "not known", never "none".
+	StatusMasked *string `json:"status_masked"`
+
+	// RunnerDigest is the keyed digest of the words of that hidden runner,
+	// or, when none is hidden and the line's last command is a recognised
+	// runner, of that one's -- redirections left out. It lets a reader tell
+	// that a later plain `make test` ran the same runner as an earlier `make
+	// test 2>&1 | tail`, whose whole lines digest apart. Null when there is
+	// no such runner or a word of it could not be vouched for.
+	RunnerDigest *string `json:"runner_digest"`
 }
 
 // Derive builds the shape of a call to toolName with the given raw tool_input.
@@ -130,6 +151,7 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 		n := len(dropLeadingAssignments(toks))
 		s.Argc = &n
 	}
+	s.StatusMasked, s.RunnerDigest = statusMasked(cmd, key)
 	return s
 }
 
@@ -596,6 +618,14 @@ func definesFunctions(toks []token, i int, uncertain bool) bool {
 // or -1 when a newline or the end of the line does; ok is false where
 // definesFunctions names nothing.
 func commandEnd(toks []token, i int, uncertain bool) (sep int, ok bool) {
+	_, sep, ok = commandBound(toks, i, uncertain)
+	return sep, ok
+}
+
+// commandBound is commandEnd that also says where the next command begins:
+// next is the index of the token after the separator, of the first token on
+// the next line, or len(toks) at the end of the line.
+func commandBound(toks []token, i int, uncertain bool) (next, sep int, ok bool) {
 	var (
 		open    []byte // the groups around the token, innermost last: '(' or '`'
 		heredoc bool   // a here-document was passed: its body starts at the next newline
@@ -603,24 +633,24 @@ func commandEnd(toks []token, i int, uncertain bool) (sep int, ok bool) {
 	for j := i + 1; j < len(toks); j++ {
 		t := toks[j]
 		if openBrace(t) {
-			return 0, false
+			return 0, 0, false
 		}
 		if len(open) > 0 {
 			if unknownDepth(toks, j, heredoc) {
-				return 0, false
+				return 0, 0, false
 			}
 			open = inGroup(open, t)
 			continue
 		}
 		switch {
 		case t.nlBefore:
-			return -1, true
+			return j, -1, true
 		case t.ticks%2 == 1:
 			open = append(open, '`')
 		case !t.meta:
 		case t.text == "(":
 			if j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == ")" {
-				return 0, false
+				return 0, 0, false
 			}
 			open = append(open, '(')
 		case t.text == "&" && j+1 < len(toks) && toks[j+1].meta && toks[j+1].glued && strings.HasPrefix(toks[j+1].text, ">"):
@@ -631,18 +661,18 @@ func commandEnd(toks []token, i int, uncertain bool) (sep int, ok bool) {
 			end := operatorEnd(toks, j)
 			if noTarget(toks, end) {
 				// A syntax error to both shells: nothing on the line runs.
-				return 0, false
+				return 0, 0, false
 			}
 			heredoc = heredoc || hereDoc(toks, j)
 			j = end
 		case t.text == ";" || t.text == "&&" || t.text == "||" || t.text == "|" || t.text == "&":
-			return j, true
+			return j + 1, j, true
 		}
 	}
 	if len(open) > 0 || uncertain {
-		return 0, false
+		return 0, 0, false
 	}
-	return -1, true
+	return len(toks), -1, true
 }
 
 // unknownDepth reports a token inside a group from which the group's depth
@@ -1233,14 +1263,24 @@ func runsTests(toks []token, i int, prog string, whole bool) bool {
 	if !ok {
 		return false
 	}
+	return runnerOn(toks, i, prog, len(toks), testCommands) && wholeCommand(toks, i)
+}
+
+// runnerOn reports whether the command whose program, past runnerPrefix, is
+// the token at i, named prog, and which ends before toks[end], is a row of
+// list -- testCommands, or buildCommands -- and is not refused by notARun:
+// the comparison runsTests makes, over one command's words rather than the
+// whole line's, so that a `-v` given to the grep after a pipe is not read as
+// make's.
+func runnerOn(toks []token, i int, prog string, end int, list [][]string) bool {
 next:
-	for _, c := range testCommands {
+	for _, c := range list {
 		if c[0] != prog {
 			continue
 		}
 		for n, want := range c[1:] {
 			k := i + 1 + n
-			if k >= len(toks) {
+			if k >= end {
 				continue next
 			}
 			t := toks[k]
@@ -1248,10 +1288,7 @@ next:
 				continue next
 			}
 		}
-		if refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {
-			return false
-		}
-		return wholeCommand(toks, i)
+		return !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])
 	}
 	return false
 }

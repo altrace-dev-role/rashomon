@@ -54,7 +54,8 @@
           "enum": [
             1,
             2,
-            3
+            3,
+            4
           ]
         },
         "seq": {
@@ -147,6 +148,26 @@
             "may_write": {
               "description": "Schema 3. True on a shell call whose line may write files whatever its verb_class says: an output redirection to a file (not a descriptor duplication, not /dev/null), find's -delete, -exec, -execdir, -ok or -okdir, xargs, tee, wget, rsync or scp anywhere on the line, curl with an output flag (-o or -O alone, combined with other short flags, or with the file attached, as in -o./x), a command or process substitution ($( ), backticks, <( ), >( ), whose command is not looked into), or a later pipeline or list stage whose program is not of class read or cannot be named -- and on a shell line whose program cannot be named at all. One bit: the words that set it are compared and dropped. Always false on a tool that is not a shell.",
               "type": "boolean"
+            },
+            "status_masked": {
+              "description": "Schema 4. A record before schema 4 does not carry it: it was not measured, which is not `none`. Whether a recognised build or test runner on a shell line has an exit status the line does not return, so that the call's ok is not the runner's pass: `test` for a test runner (the verb_class test list) and `build` for a build runner (make with any target, go build or vet, cargo build, check or clippy, npm, yarn or pnpm run, tsc, mvn, gradle, dotnet build, cmake --build, ninja, bazel build or test) when a pipe follows it without `set -o pipefail` before it on the line, when `;` or a newline follows its pipeline and the next command is not `exit` or `exit $?`, or when `||` follows it and the next command is not `exit` or `false`; `&&` passes a failure on and is read past. `none` when the line was read to its end and no runner's status is hidden, which is also the answer after `set -e`, whose rule is not followed. Null on a tool that is not a shell, on a line that could not be read to its end, and where a group or a compound command follows the runner, which may read or return its status. The call's own outcome is recorded as it was. A closed word: the words that decided it are compared and dropped.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                null,
+                "none",
+                "test",
+                "build"
+              ]
+            },
+            "runner_digest": {
+              "description": "Schema 4. HMAC under the per-install key of the words of the runner whose status is hidden, or, when none is, of the line's last command when it is a recognised runner: its program and arguments without redirections or a `timeout N` or `time` prefix, so that `make test 2>&1 | tail` and a later plain `make test` compare equal. Null when there is no such runner or a word of it could not be vouched for. A digest and never the words.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         },
@@ -241,6 +262,35 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 4
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "host_source",
+              "rule_match",
+              "file_label",
+              "cwd_digest"
+            ],
+            "properties": {
+              "shape": {
+                "required": [
+                  "may_write",
+                  "status_masked",
+                  "runner_digest"
+                ]
+              }
+            }
+          }
         }
       ]
     },
@@ -274,7 +324,8 @@
           "enum": [
             1,
             2,
-            3
+            3,
+            4
           ]
         },
         "seq": {
@@ -360,6 +411,24 @@
               "backgrounded"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 4
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "rule_match",
+              "backgrounded"
+            ]
+          }
         }
       ]
     },
@@ -389,7 +458,8 @@
           "enum": [
             1,
             2,
-            3
+            3,
+            4
           ]
         },
         "seq": {
@@ -459,7 +529,8 @@
           "enum": [
             1,
             2,
-            3
+            3,
+            4
           ]
         },
         "recorded_at_unix_ms": {
@@ -555,7 +626,8 @@
           "enum": [
             1,
             2,
-            3
+            3,
+            4
           ]
         },
         "recorded_at_unix_ms": {

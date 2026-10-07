@@ -17,7 +17,13 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // that meets one knows its test runs were never measured, not that there were
 // none. rule_match is null on every record this build writes; the rule-match
 // layer adds behaviour on v3, not another version.
-const SchemaVersion = 3
+//
+// v4 is additive over v3: the declaration's shape gained status_masked and
+// runner_digest. Whether a build or test runner's exit status was hidden by
+// the rest of its line is a v4 measurement: a v3 record of `make test |
+// tail` says nothing about it, which a reader must take as "not measured",
+// not as "not hidden". Nothing else changed, and v1 to v3 records still read.
+const SchemaVersion = 4
 
 // Accepts reports whether a reader understands a record's schema version.
 //
@@ -28,12 +34,12 @@ const SchemaVersion = 3
 // skipped -- a store that had been recording for weeks would have rendered an
 // empty report, and nothing would have said why.
 //
-// v3 is what this build writes; 1 and 2 are accepted so older stores read.
+// v4 is what this build writes; 1 to 3 are accepted so older stores read.
 // Records from a newer schema are skipped without error; the report shows
 // them only as a skipped-records count and the records_unreadable coverage
 // reason, and is empty only when every record is newer.
 func Accepts(version int) bool {
-	return version == 1 || version == 2 || version == 3
+	return version >= 1 && version <= 4
 }
 
 // Record type discriminators.

@@ -20,6 +20,10 @@ var (
 		"shape", "shape.program", "shape.verb_class", "shape.argc", "shape.digest",
 		// v3. One bit: the line may write files whatever its program's class.
 		"shape.may_write",
+		// v3, added later. A closed word -- none, test or build -- saying a
+		// recognised runner's exit status is not the line's, and a keyed
+		// digest of that runner's words: 64 hex characters, never the words.
+		"shape.status_masked", "shape.runner_digest",
 		// v2. Hostnames only: the extractor returns a canonical hostname or
 		// nothing, so neither list can carry a path, a query or a credential.
 		// They are here rather than under shape because the report joins on

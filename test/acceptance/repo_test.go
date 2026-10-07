@@ -576,6 +576,28 @@ func TestStoreSchemaVerbClassesAreTheCodeVerbClasses(t *testing.T) {
 	}
 }
 
+// TestStoreSchemaMaskedKindsAreTheCodeMaskedKinds: status_masked is a closed
+// vocabulary too, checked both ways for the reason verb_class is.
+func TestStoreSchemaMaskedKindsAreTheCodeMaskedKinds(t *testing.T) {
+	inSchema := map[string]bool{}
+	collectNamedEnum(readSchema(t), "", "status_masked", inSchema)
+	if len(inSchema) == 0 {
+		t.Fatalf("no status_masked enum found in %s; the walk is not finding it", schemaPath)
+	}
+	inCode := map[string]bool{}
+	for _, v := range shape.MaskedKinds() {
+		inCode[v] = true
+		if !inSchema[v] {
+			t.Errorf("shape.MaskedKinds() carries %q, which appears in no status_masked enum in %s", v, schemaPath)
+		}
+	}
+	for v := range inSchema {
+		if !inCode[v] {
+			t.Errorf("%s offers the status_masked kind %q, which shape.MaskedKinds() cannot emit", schemaPath, v)
+		}
+	}
+}
+
 // collectNamedEnum gathers the string members of the enum on every property
 // with the given name. Null members are skipped: the nullability is carried
 // by the type, and Labels() is a list of labels rather than of states.
