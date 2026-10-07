@@ -267,8 +267,10 @@ at (a recorded failure that the agent's final message does not acknowledge,
 meaning it uses none of the failure words; a declaration without recorded
 execution; coverage that did not verify; a truncated/unknown projection; a
 failed test command that passed after the only recorded edits were to files
-named like tests; or the same test command passing and failing with no
-recorded file edit between). A file edit there is any recorded call that may
+named like tests; the same test command passing and failing with no
+recorded file edit between; or a build or test whose exit status was masked
+by its command line, under a final message that claims a pass, described
+below). A file edit there is any recorded call that may
 change files, not only an Edit or a shell `rm`: a `git checkout`, an
 `npm install`, a `sed -i`, an MCP tool, another test command (`jest -u`
 rewrites snapshots) all count, and only reads, web fetches, subagent launches
@@ -294,11 +296,51 @@ does not show it either. The line points to
 nothing at all; `rashomon status` says whether a turn has actually been
 evaluated, so silence never gets read as proof the turn was clean.
 
+A shell call's recorded outcome is its command line's exit status, which is
+the last command's. So `make test 2>&1 | tail -40`, `go test ./... ; echo $?`
+and `npm test || true` are recorded ok whether the tests passed or failed.
+rashomon does not read the output and does not change the command, so it
+cannot tell which. It records, as `status_masked` on the declaration, that a
+recognised build or test runner's exit status was masked by the rest of the
+line, and the end-of-turn line says so in one case:
+
+    ※ rashomon: 1 build or test run's exit status masked by a pipe or a later command.
+                → rashomon report --session <id>
+
+- It is said only when the turn has such a call that recorded ok, no later
+  call in the same turn ran the same runner (the same words, without
+  redirections or a `timeout N` prefix) in the same directory with nothing
+  after it, and recorded ok or failed, and the final message contains one of
+  `pass`, `green`, `succeed`, `success` or `builds` and none of the failure
+  words. A summary that names a failure, or claims no pass, gets no line.
+  It says the record holds no pass for that claim, not that the run failed.
+- Masked means: a pipe follows the runner (`| tail`, `| grep`, `| tee log`)
+  and no `set -o pipefail` came before it on the line; `;` or a newline
+  follows it and the next command is not `exit` or `exit $?`; or `||`
+  follows it and the next command is not `exit` or `false`. `&&` masks
+  nothing, since a failure stops the line there. A runner after `set -e`, or
+  inside `bash -c '...'`, is not read as masked. A line where a group or a
+  compound command follows the runner (`; if [ $? -ne 0 ]; then exit 1;
+  fi`, `|| { echo x; exit 1; }`) is not decided, and neither is one that
+  cannot be read to its end. A here-document before the runner is skipped.
+- The test runners are the list below. The build runners are `make` with
+  any target, `go build`, `go vet`, `cargo build`, `cargo check`, `cargo
+  clippy`, `npm run`, `yarn run`, `yarn build`, `pnpm run`, `pnpm build`,
+  `tsc`, `npx tsc`, `mvn`, `mvnw`, `gradle`, `gradlew`, `dotnet build`,
+  `cmake --build`, `ninja`, `bazel build` and `bazel test`. A runner not on
+  either list is not recognised.
+- A masked call that recorded failed is a recorded failure, as before. In
+  `--timeline` a masked call that recorded ok is not an ok row: it reads
+  "ok, but a build or test exit status was masked by a pipe or a later
+  command", under `unknown`, and is never offered as a later success.
+- Records written before schema 4 do not say, and are read as before.
+
 The two test-bending lines have limits of their own:
 
 - A test run is a shell call whose whole command line is one of these
   runners, optionally after `cd DIR &&` or `NAME=value` assignments:
-  `pytest`, `python -m pytest`, `python3 -m pytest`, `jest`, `vitest`,
+  `pytest`, `python -m pytest`, `python3 -m pytest`, `python -m unittest`,
+  `python3 -m unittest`, `jest`, `vitest`,
   `mocha`, `rspec`, `phpunit`, `ctest`, `tox`, `nox`, `go test`, `cargo
   test`, `npm test`, `npm t`, `npm run test`, `yarn test`, `pnpm test`, `bun
   test`, `dotnet test`, `mvn test`, `mvnw test`, `gradle test`, `gradlew
@@ -309,20 +351,22 @@ The two test-bending lines have limits of their own:
   the runner's exit status through; when the timeout fires, its own status
   124 is read as no result, neither passed nor failed. These wrappers are
   counted because their exit status is the runner's.
-- A runner followed by a pipe or a list (`| tail`, `2>&1 | grep`, `&& echo
-  ok`, `; echo done`) is not counted; a redirection alone (`2>&1`, `>
-  out.txt`) is. Without `pipefail` a pipe's status is its last program's,
-  and after `&&` or `;` the line's success is the next command's.
-  So piped runs such as `go test ./... 2>&1 | tail -20`, which are much of
-  what Claude Code writes, are invisible to both patterns, and a session
-  whose tests ran only that way shows no `test runs` block at all.
+- A runner whose exit status its line masked (`go test ./... 2>&1 | tail
+  -20`, `make test; echo $?`, above) is counted in `test runs` as masked,
+  neither ok nor failed, whatever the line recorded: "test runs: 3 (1 ok, 0
+  failed, 2 with exit status masked by a pipe or a later command, so
+  neither)". It never starts or completes a pattern, and it counts as an
+  edit between two runs, as any test run does. A runner followed by `&&`
+  is neither a run with a result nor masked; a redirection alone (`2>&1`,
+  `> out.txt`) leaves it a plain run.
 - Two runs are the same command only when their command lines are identical
   character for character. `go test ./...` with two spaces, a trailing
   space, a `cd /repo &&` prefix or a `CGO_ENABLED=0` prefix is another
   command, and never pairs with the plain form.
 - A runner is on the list when it is a known test tool, a build tool or
   launcher given its test command (`go test`, `npm t`, `npm run test`,
-  `python -m pytest`), or a listed wrapper that passes its runner's exit
+  `python -m pytest`, `python -m unittest`), or a listed wrapper that passes
+  its runner's exit
   status through, and that does not keep lint out: `go test` runs vet,
   `npm test` runs a `pretest` script, and `tox`'s default envlist or a make
   `test` target can include lint. A lint failure fixed only in a file named
@@ -369,14 +413,19 @@ session with no schema 3 declaration: records that predate schema 3, or no
 tool calls at all; otherwise only runs that ended ok or failed are counted;
 interrupted, denied, backgrounded, timed-out and unrecorded runs are not, and
 a session that spans the upgrade is counted from its first schema 3 call; then
-`ok`, `failed`, `undeclared`, how many calls lost their declaration (when it
-is not 0, no pair was looked for), `tests_only_then_green` as
+`ok`, `failed`, `status_masked`, the masked runs counted in `runs` and in
+neither of the two before it, `undeclared`, how many calls lost their
+declaration (when it is not 0, no pair was looked for),
+`tests_only_then_green` as
 `[earlier, later]` seq pairs, and `flaky` as
 `{"seqs": [earlier, later], "first_failed": true|false}`, where
 earlier and later are declaration order, the order the runs started, which
 overlapping runs in parallel agents may not have finished in), and a
 `test_bending` (`kind`, `since_seq`) on the timeline row that completes a
-pair, null on every other row.
+pair, null on every other row. Each session, and `rashomon digest` for a
+turn, also carries `masked_runs`: `runs`, the masked build and test calls
+that recorded ok with no later plain run of the same runner in the same
+directory, `pass_claimed`, `final_message_available` and `fires`.
 
 Saying **No** at a permission prompt interrupts the turn, and Claude Code
 fires no `Stop` after an interrupt. `UserPromptSubmit` catches that case:
