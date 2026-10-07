@@ -95,7 +95,7 @@ func TestTranscript_EveryRealDenialVariantIsRecognised(t *testing.T) {
 			{Type: "tool_result", ToolUseID: id, IsError: true, Content: text},
 		})
 
-		_, results, denied, _, err := TranscriptIDs(path)
+		_, results, denied, _, _, err := TranscriptIDs(path)
 		if err != nil {
 			t.Fatalf("variant %d: %v", i, err)
 		}
@@ -118,7 +118,7 @@ func TestTranscript_ADenialInABlockListIsRecognised(t *testing.T) {
 		Content: []map[string]any{{"type": "text", "text": denialVariants[0]}},
 	}})
 
-	_, results, denied, _, err := TranscriptIDs(path)
+	_, results, denied, _, _, err := TranscriptIDs(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestTranscript_AFailureQuotingTheDenialSentenceIsNotADenial(t *testing.T) {
 				{Type: "tool_result", ToolUseID: "toolu_x", IsError: tc.isError, Content: tc.content},
 			})
 
-			_, results, denied, _, err := TranscriptIDs(path)
+			_, results, denied, _, _, err := TranscriptIDs(path)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -199,7 +199,7 @@ func TestTranscript_IsErrorAloneIsNotEnoughAndThePrefixAloneIsNotEnough(t *testi
 		{Type: "tool_result", ToolUseID: "toolu_txt", IsError: false, Content: denialVariants[0]},
 	})
 
-	_, results, denied, _, err := TranscriptIDs(path)
+	_, results, denied, _, _, err := TranscriptIDs(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,6 +229,12 @@ var nonInteractiveRefusals = map[string]string{
 	"settings deny rule": "Permission to use Bash with command ls .env* has been denied.",
 	"classifier unreachable": "claude-sonnet-5[1m] is temporarily unavailable, so auto mode cannot " +
 		"determine the safety of Bash right now. Wait briefly and then try this action again.",
+	// An Edit or Write refused by a settings deny rule on its path. Unlike the
+	// Bash rule above it is wrapped in tool_use_error tags and names neither
+	// the tool nor the path. Verbatim from Claude Code 2.1.292, all five
+	// settings-denied edits in a 100-run benchmark.
+	"settings deny rule on a path": "<tool_use_error>File is in a directory that is denied by " +
+		"your permission settings.</tool_use_error>",
 }
 
 func TestTranscript_RefusalsOutsideThePromptAreDenials(t *testing.T) {
@@ -236,13 +242,33 @@ func TestTranscript_RefusalsOutsideThePromptAreDenials(t *testing.T) {
 		path := writeTranscriptBlocks(t, []blk{
 			{Type: "tool_result", ToolUseID: "toolu_x", IsError: true, Content: text},
 		})
-		_, results, denied, _, err := TranscriptIDs(path)
+		_, results, denied, _, _, err := TranscriptIDs(path)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 		if !denied["toolu_x"] || results["toolu_x"] {
 			t.Errorf("%s: denied=%v result=%v, want a denial and not a result:\n  %.90s",
 				name, denied["toolu_x"], results["toolu_x"], text)
+		}
+	}
+}
+
+// TestTranscript_OnlyThePathRefusalIsUnhooked: a path-denied Edit is refused
+// before PreToolUse, so the report must not ask the store for it. Every other
+// refusal comes after PreToolUse and must stay out of the unhooked set, or an
+// undeclared one would hide a declaration the recorder lost.
+func TestTranscript_OnlyThePathRefusalIsUnhooked(t *testing.T) {
+	for name, text := range nonInteractiveRefusals {
+		path := writeTranscriptBlocks(t, []blk{
+			{Type: "tool_result", ToolUseID: "toolu_x", IsError: true, Content: text},
+		})
+		_, _, _, unhooked, _, err := TranscriptIDs(path)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		want := name == "settings deny rule on a path"
+		if unhooked["toolu_x"] != want {
+			t.Errorf("%s: unhooked=%v, want %v", name, unhooked["toolu_x"], want)
 		}
 	}
 }
@@ -263,7 +289,7 @@ func TestTranscript_RefusalWordingInsideARealResultIsNotADenial(t *testing.T) {
 			path := writeTranscriptBlocks(t, []blk{
 				{Type: "tool_result", ToolUseID: "toolu_x", IsError: c.isError, Content: c.content},
 			})
-			_, _, denied, _, err := TranscriptIDs(path)
+			_, _, denied, _, _, err := TranscriptIDs(path)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -296,7 +322,7 @@ func TestTranscript_WorkflowSubagentTranscriptsAreRead(t *testing.T) {
 	write(filepath.Join(dir, "s", "subagents", "agent-plain.jsonl"), "toolu_plain")
 	write(filepath.Join(dir, "s", "subagents", "workflows", "run1", "agent-deep.jsonl"), "toolu_deep")
 
-	ids, _, _, files, err := TranscriptIDs(main)
+	ids, _, _, _, files, err := TranscriptIDs(main)
 	if err != nil {
 		t.Fatal(err)
 	}

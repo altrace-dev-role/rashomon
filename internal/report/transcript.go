@@ -37,8 +37,9 @@ const deniedPrefix = "The user doesn't want to proceed with this tool use. The t
 // TranscriptIDs reads the distinct tool_use ids from a session transcript and
 // from its subagent transcripts, which live at <session>/subagents/agent-*.jsonl
 // where <session> is the transcript path without its extension, the distinct
-// ids of the tool_result blocks answering them, and which of those results are
-// the user having DENIED the call.
+// ids of the tool_result blocks answering them, which of those results are
+// the user having DENIED the call, and which of the denials came before any
+// hook fired (unhooked, a subset of denied).
 //
 // The sets are kept apart because they mean different things: a tool_use block
 // is a call the model asked for, a tool_result block is that call having
@@ -54,27 +55,27 @@ const deniedPrefix = "The user doesn't want to proceed with this tool use. The t
 // result and is never retained. A line that does not parse is skipped, not
 // fatal: the transcript is Claude Code's file and its shape is not this
 // program's to enforce.
-func TranscriptIDs(path string) (ids, results, denied map[string]bool, files int, err error) {
-	ids, results, denied = map[string]bool{}, map[string]bool{}, map[string]bool{}
+func TranscriptIDs(path string) (ids, results, denied, unhooked map[string]bool, files int, err error) {
+	ids, results, denied, unhooked = map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 
-	n, err := collectIDs(path, ids, results, denied)
+	n, err := collectIDs(path, ids, results, denied, unhooked)
 	if err != nil {
-		return nil, nil, nil, 0, err
+		return nil, nil, nil, nil, 0, err
 	}
 	files += n
 
 	matches, err := subagentTranscripts(filepath.Join(strings.TrimSuffix(path, ".jsonl"), "subagents"))
 	if err != nil {
-		return nil, nil, nil, 0, err
+		return nil, nil, nil, nil, 0, err
 	}
 	for _, m := range matches {
-		n, err := collectIDs(m, ids, results, denied)
+		n, err := collectIDs(m, ids, results, denied, unhooked)
 		if err != nil {
-			return nil, nil, nil, 0, err
+			return nil, nil, nil, nil, 0, err
 		}
 		files += n
 	}
-	return ids, results, denied, files, nil
+	return ids, results, denied, unhooked, files, nil
 }
 
 // subagentTranscripts lists every agent-*.jsonl under dir, at any depth.
@@ -176,9 +177,19 @@ var deniedPrefixes = []string{
 	"Permission for this action was denied by the Claude Code auto mode classifier.",
 	"Permission for this action has been denied.",
 	"This command requires approval",
+	pathDeniedPrefix,
 }
 
-func collectIDs(path string, into, results, denied map[string]bool) (int, error) {
+// pathDeniedPrefix opens an Edit or Write refused by a settings deny rule on
+// its path. It is the one refusal measured to come BEFORE PreToolUse: Claude
+// Code rejects the input while validating it, so neither hook fires and the
+// call is in the transcript with no declaration. Measured on 2.1.292: all five
+// such refusals in a 100-run benchmark, verbatim, and none of them declared;
+// every other refusal kind in the same runs was declared. Its id is therefore
+// also kept as unhooked, so the report does not call that absence a gap.
+const pathDeniedPrefix = "<tool_use_error>File is in a directory that is denied by your permission settings."
+
+func collectIDs(path string, into, results, denied, unhooked map[string]bool) (int, error) {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return 0, err
@@ -214,8 +225,12 @@ func collectIDs(path string, into, results, denied map[string]bool) (int, error)
 			case b.Type == "tool_use" && b.ID != "":
 				into[b.ID] = true
 			case b.Type == "tool_result" && b.ToolUseID != "":
-				if isDenial(b.IsError, resultText(b.Content)) {
+				text := resultText(b.Content)
+				if isDenial(b.IsError, text) {
 					denied[b.ToolUseID] = true
+					if strings.HasPrefix(text, pathDeniedPrefix) {
+						unhooked[b.ToolUseID] = true
+					}
 					continue
 				}
 				results[b.ToolUseID] = true

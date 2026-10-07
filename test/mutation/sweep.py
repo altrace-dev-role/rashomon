@@ -123,8 +123,8 @@ m("H-30 every failed call is treated as a denial", "internal/report/transcript.g
   "\tif !isError {\n\t\treturn false\n\t}",
   "\tif !isError {\n\t\treturn false\n\t}\n\treturn true", "TestTranscript_|TestH30")
 m("H-30 denials are counted as results again", "internal/report/transcript.go",
-  "\t\t\t\tif isDenial(b.IsError, resultText(b.Content)) {\n\t\t\t\t\tdenied[b.ToolUseID] = true\n\t\t\t\t\tcontinue\n\t\t\t\t}\n",
-  "\t\t\t\tif isDenial(b.IsError, resultText(b.Content)) {\n\t\t\t\t\tdenied[b.ToolUseID] = true\n\t\t\t\t}\n",
+  "\t\t\t\t\t\tunhooked[b.ToolUseID] = true\n\t\t\t\t\t}\n\t\t\t\t\tcontinue\n\t\t\t\t}\n",
+  "\t\t\t\t\t\tunhooked[b.ToolUseID] = true\n\t\t\t\t\t}\n\t\t\t\t}\n",
   "TestH30")
 m("H-20 a result with no execution record is not a coverage failure", "internal/report/report.go",
   "\t\tif t.Readable && len(t.ExecutedButUnrecorded) > 0 {\n\t\t\tsess.Coverage.add(ReasonExecutionMismatch)\n\t\t}\n", "",
@@ -2887,6 +2887,26 @@ m("NONO the unknown-decision line says were for one event", "internal/report/tex
 m("NONO the unknown-decision line is never printed", "internal/report/text.go",
   "\tif n.UnknownDecisions > 0 {", "\tif false {",
   "TestNono_TheUnknownDecisionLine")
+
+# SDN -- an Edit or Write refused by a settings deny rule on its path. Claude
+# Code refuses it before PreToolUse, so it was read as executed-but-unrecorded
+# AND missing-from-store, and a session that did the right thing went
+# unverified (all five such refusals in a 100-run benchmark).
+m("SDN a path-denied Edit is read as an execution", "internal/report/transcript.go",
+  "\tpathDeniedPrefix,\n}", "}",
+  "TestTranscript_RefusalsOutside|TestH30_AnEditDeniedByAPathRule")
+m("SDN a path-denied Edit is not kept as refused before any hook", "internal/report/transcript.go",
+  "\t\t\t\t\tif strings.HasPrefix(text, pathDeniedPrefix) {", "\t\t\t\t\tif false {",
+  "TestTranscript_OnlyThePathRefusalIsUnhooked|TestH30_AnEditDeniedByAPathRule")
+m("SDN every denial is kept as refused before any hook", "internal/report/transcript.go",
+  "\t\t\t\t\tif strings.HasPrefix(text, pathDeniedPrefix) {", "\t\t\t\t\tif true {",
+  "TestTranscript_OnlyThePathRefusalIsUnhooked|TestH30_AnUndeclaredPromptDenial")
+m("SDN a call refused before any hook is still missing from the store", "internal/report/report.go",
+  "\t\tif !recorded[id] && !unhooked[id] {", "\t\tif !recorded[id] && len(unhooked) >= 0 {",
+  "TestH30_AnEditDeniedByAPathRule")
+m("SDN every undeclared denial is excused from the store", "internal/report/report.go",
+  "\t\tif !recorded[id] && !unhooked[id] {", "\t\tif !recorded[id] && !denied[id] && len(unhooked) >= 0 {",
+  "TestH30_AnUndeclaredPromptDenial")
 
 # Import additions some mutants need.
 IMPORTS = {

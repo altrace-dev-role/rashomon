@@ -148,3 +148,107 @@ func TestH30_AFailureIsStillACoverageFailure(t *testing.T) {
 			"reasons: %v", rep.Coverage.Reasons)
 	}
 }
+
+// pathDeniedText is what Claude Code 2.1.292 returns when an Edit or Write is
+// refused by a settings deny rule on its path, verbatim from all five such
+// refusals in a 100-run benchmark.
+const pathDeniedText = "<tool_use_error>File is in a directory that is denied by your " +
+	"permission settings.</tool_use_error>"
+
+// writeTwoCallTranscript writes the shape the benchmark recorded: one call that
+// ran and returned, then an Edit answered by the given error text.
+func writeTwoCallTranscript(t *testing.T, e *env, ranID, editID, editText string) string {
+	t.Helper()
+	path := filepath.Join(e.home, "path-denial-transcript.jsonl")
+	use := func(id, name string) map[string]any {
+		return map[string]any{"message": map[string]any{
+			"role":    "assistant",
+			"content": []map[string]any{{"type": "tool_use", "id": id, "name": name}},
+		}}
+	}
+	result := func(id, text string, isError bool) map[string]any {
+		return map[string]any{"message": map[string]any{
+			"role": "user",
+			"content": []map[string]any{{
+				"type": "tool_result", "tool_use_id": id, "is_error": isError, "content": text,
+			}},
+		}}
+	}
+	var buf []byte
+	for _, l := range []map[string]any{
+		use(ranID, "Bash"), result(ranID, "ok", false),
+		use(editID, "Edit"), result(editID, editText, true),
+	} {
+		body, err := json.Marshal(l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		buf = append(append(buf, body...), '\n')
+	}
+	if err := os.WriteFile(path, buf, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestH30_AnEditDeniedByAPathRuleIsNotACoverageFailure is the benchmark's
+// shape, end to end. Claude Code refuses a path-denied Edit while checking its
+// input, BEFORE PreToolUse, so the call is in the transcript and in neither
+// the declarations nor the executions. In all five benchmark runs that read as
+// missing-from-store AND executed-but-unrecorded, and a session where the
+// agent did exactly the right thing was reported unverified.
+func TestH30_AnEditDeniedByAPathRuleIsNotACoverageFailure(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+
+	const editID = "toolu_path_denied"
+	p := defaultPayload()
+	p.TranscriptPath = writeTwoCallTranscript(t, e, p.ToolUseID, editID, pathDeniedText)
+	e.mustHook(p.build(t))
+	e.postIDs(p.TranscriptPath, p.ToolUseID)
+	// No hook of either kind for editID: neither fires for this refusal.
+	e.probe("end", testSession)
+
+	rep := e.report(testSession)
+	if len(rep.Transcripts) != 1 {
+		t.Fatalf("want one transcript group, got %d", len(rep.Transcripts))
+	}
+	tr := rep.Transcripts[0]
+	if len(tr.DeniedByUser) != 1 || tr.DeniedByUser[0] != editID {
+		t.Errorf("denied_by_user = %v, want [%s]", tr.DeniedByUser, editID)
+	}
+	if len(tr.ExecutedButUnrecorded) != 0 {
+		t.Errorf("executed_but_unrecorded = %v; the Edit was refused and never ran",
+			tr.ExecutedButUnrecorded)
+	}
+	if len(tr.MissingFromStore) != 0 {
+		t.Errorf("missing_from_store = %v; Claude Code fires no hook for a path-denied "+
+			"Edit, so its absence from the store is not a recorder gap", tr.MissingFromStore)
+	}
+	if rep.Coverage.State != "verified" || len(rep.Coverage.Reasons) != 0 {
+		t.Errorf("coverage = %s %v, want verified with no reasons",
+			rep.Coverage.State, rep.Coverage.Reasons)
+	}
+}
+
+// TestH30_AnUndeclaredPromptDenialIsStillMissingFromStore holds the exemption
+// to the one refusal measured to come before PreToolUse. The prompt's denial
+// comes after it, so the same undeclared shape there IS a declaration the
+// recorder lost, and stays a transcript mismatch.
+func TestH30_AnUndeclaredPromptDenialIsStillMissingFromStore(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+
+	const editID = "toolu_prompt_denied"
+	p := defaultPayload()
+	p.TranscriptPath = writeTwoCallTranscript(t, e, p.ToolUseID, editID, deniedText)
+	e.mustHook(p.build(t))
+	e.postIDs(p.TranscriptPath, p.ToolUseID)
+	e.probe("end", testSession)
+
+	tr := e.report(testSession).Transcripts[0]
+	if len(tr.MissingFromStore) != 1 || tr.MissingFromStore[0] != editID {
+		t.Errorf("missing_from_store = %v, want [%s]: PreToolUse fires before the prompt, "+
+			"so an undeclared prompt denial is a lost declaration", tr.MissingFromStore, editID)
+	}
+}

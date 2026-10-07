@@ -619,7 +619,7 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 		}
 	}
 
-	ids, results, denied, files, err := TranscriptIDs(path)
+	ids, results, denied, unhooked, files, err := TranscriptIDs(path)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			// A transcript that exists but cannot be read is still unreadable;
@@ -635,9 +635,13 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 	nResults := len(results)
 	t.ResultsInTranscript = &nResults
 
+	// A call refused before any hook fired cannot be in the store, so its
+	// absence there is not a recorder gap. Only that refusal is excused: every
+	// other denial comes after PreToolUse, and an undeclared one is a lost
+	// declaration like any other.
 	t.MissingFromStore = []string{}
 	for id := range ids {
-		if !recorded[id] {
+		if !recorded[id] && !unhooked[id] {
 			t.MissingFromStore = append(t.MissingFromStore, id)
 		}
 	}
