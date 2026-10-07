@@ -264,7 +264,8 @@ mixed indentation.
 `Stop` and `StopFailure` drive an exception-only recap: after a turn, it
 prints at most one line, and only when there is something worth looking
 at (a recorded failure that the agent's final message does not acknowledge,
-meaning it uses none of the failure words; a declaration without recorded
+meaning it uses none of the failure words, where a failed lookup does not
+count; a declaration without recorded
 execution; coverage that did not verify; a truncated/unknown projection; a
 failed test command that passed after the only recorded edits were to files
 named like tests; or the same test command passing and failing with no
@@ -287,6 +288,16 @@ on the line, or a later pipeline or list stage whose program is not a read
 a change: a read or fetch that writes through an option not on that list
 (`find -fprint f`, `curl -D f`, `curl -c f`), or anything done outside the
 session's own calls.
+A failed lookup is a failed `Read`, `Glob`, `Grep` or `NotebookRead`
+call, such as a `Read` of a directory. The record keeps only the tool name
+and the outcome, not the error, so the rule goes by tool. A lookup failure
+alone does not print the line, and the number the line prints leaves
+lookups out. The report still shows them: its `failed calls` count includes
+them, with a `lookups among them` line beneath, and `--json` has them as
+`silent_failures.failed_lookups`. Every other failed call counts, including
+an `Edit` that did not apply, a `Write`, a subagent, an MCP tool and a shell
+`cat` of a missing file. On a 100-run benchmark, 5 of 7 false alarms
+of this line rested on one failed `Read` of a directory.
 One known gap: Claude Code discards what a `StopFailure` hook prints, so a turn
 that ends in an API error shows no line, and in this release the next prompt
 does not show it either. The line points to
@@ -600,7 +611,8 @@ response is counted as a pre-output refusal written without usage.
 
 **The silent-failure line.** A turn counts when one of its recorded calls
 failed and its final message mentions no failure, whether or not a later call
-succeeded. A failed call whose declaration was lost or carried no
+succeeded. A failed lookup (`Read`, `Glob`, `Grep`, `NotebookRead`) does not
+count here either, as at the end of a turn. A failed call whose declaration was lost or carried no
 `prompt_id` has no prompt, so it is placed in no turn: the line counts it as
 a failed call that could not be checked, and with one, "none found" holds
 only for the turns that could be. The line covers only the transcripts a

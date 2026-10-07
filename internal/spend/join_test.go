@@ -1823,3 +1823,55 @@ func TestJoin_AWatchedSessionIDCoversOnlyTheConversationItWatched(t *testing.T) 
 		t.Errorf("rows = %+v; want sess-j partly recorded", s.PerSession)
 	}
 }
+
+// TestJoin_AFailedLookupIsNoTurnToJudge: a turn whose only failure is a lookup
+// (a Read of a directory) cannot fire the silent-failure line
+// (report.IsLookup), so it is not a turn to judge: a missing transcript leaves
+// it unjudged no more than a clean turn, and a lost one is no failed call that
+// could not be checked. The Bash case is the control. Break: filter turns on
+// Failed rather than Counted, or count every lost failed call, and the Read
+// case reads 1.
+func TestJoin_AFailedLookupIsNoTurnToJudge(t *testing.T) {
+	for _, tc := range []struct {
+		tool string
+		want int
+	}{{"Read", 0}, {"Bash", 1}} {
+		t.Run(tc.tool, func(t *testing.T) {
+			c := newConfig(t)
+			rec := newRecorder(t)
+			T := now.Add(-2 * time.Hour)
+			p := "k1"
+			for _, x := range []struct {
+				id     string
+				prompt *string
+			}{{"toolu_k", &p}, {"toolu_lost", nil}} {
+				if x.prompt != nil {
+					if err := rec.st.AppendDeclaration(store.Declaration{
+						Type: store.TypeDeclaration, SchemaVersion: store.SchemaVersion,
+						RecordedAtMS: T.UnixMilli(), ToolUseID: x.id, SessionID: "sess-k",
+						PromptID: x.prompt, ToolName: tc.tool, TranscriptPath: "/elsewhere/sess-k.jsonl",
+					}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := rec.st.AppendExecution(store.Execution{
+					Type: store.TypeExecution, SchemaVersion: store.SchemaVersion,
+					RecordedAtMS: T.Add(time.Second).UnixMilli(), ToolUseID: x.id, SessionID: "sess-k",
+					ToolName: tc.tool, Outcome: store.ExecFailed,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c.write("proj/sess-k.jsonl", resp{id: "K1", model: "claude-opus-5-5", session: "sess-k", at: T, in: 500, stop: "end_turn"}.line("text"))
+
+			s := c.summary(30)
+			if err := s.Join(rec.st); err != nil {
+				t.Fatal(err)
+			}
+			j := s.SilentFailureTurns
+			if j.Turns != 0 || j.Unjudged != tc.want || j.UndeclaredFailedCalls != tc.want {
+				t.Errorf("turns %d, unjudged %d, undeclared %d; want 0, %d, %d", j.Turns, j.Unjudged, j.UndeclaredFailedCalls, tc.want, tc.want)
+			}
+		})
+	}
+}

@@ -2888,6 +2888,37 @@ m("NONO the unknown-decision line is never printed", "internal/report/text.go",
   "\tif n.UnknownDecisions > 0 {", "\tif false {",
   "TestNono_TheUnknownDecisionLine")
 
+# A failed lookup (a Read of a directory) fired the silent-failure line on
+# its own: 5 of 7 Haiku false alarms on the 100-run benchmark.
+m("LK every failed lookup counts toward the line", "internal/report/account.go",
+  "\t\t\tif IsLookup(x.ToolName) {\n\t\t\t\tsf.FailedLookups++", "\t\t\tif false {\n\t\t\t\tsf.FailedLookups++",
+  "TestSilentFailures_AFailedLookupAloneDoesNotFire|TestH91_AFailedLookupAloneStaysSilent")
+m("LK a failed lookup is dropped from the failed count", "internal/report/account.go",
+  "\t\t\tsf.Failed++\n\t\t\tif IsLookup(x.ToolName) {\n\t\t\t\tsf.FailedLookups++\n\t\t\t}",
+  "\t\t\tif IsLookup(x.ToolName) {\n\t\t\t\tsf.FailedLookups++\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tsf.Failed++",
+  "TestSilentFailures_AFailedLookupAloneDoesNotFire|TestH91_AFailedLookupAloneStaysSilent")
+m("LK every tool that is not a shell is a lookup", "internal/report/account.go",
+  "return shape.ToolVerb(toolName) == shape.VerbRead }", "return shape.ToolVerb(toolName) != shape.VerbExecute }",
+  "TestSilentFailures_AFailureOfAnyOtherToolStillFires|TestIsLookup_IsTheReadClassOfToolNames")
+m("LK a failed lookup silences the failures beside it", "internal/report/account.go",
+  "\tif sf.Counted() == 0 {\n\t\t// Nothing", "\tif sf.FailedLookups > 0 || sf.Counted() == 0 {\n\t\t// Nothing",
+  "TestSilentFailures_ALookupBesideAnotherFailureIsNotCounted|TestH91_AFailedLookupBesideARealFailureIsNotCounted")
+m("LK the end-of-turn line prints lookups in its count", "internal/recap/recap.go",
+  "d.SilentFailures.Counted(), plural(d.SilentFailures.Counted())", "d.SilentFailures.Failed, plural(d.SilentFailures.Failed)",
+  "TestLineCountsOnlyTheFailuresThatFire|TestH91_AFailedLookupBesideARealFailureIsNotCounted")
+m("LK the report does not say which failed calls were lookups", "internal/report/text.go",
+  "\tif sf.FailedLookups > 0 {\n\t\tfmt.Fprintf(b, \"    lookups among them", "\tif false {\n\t\tfmt.Fprintf(b, \"    lookups among them",
+  "TestSilentFailures_TheReportNamesTheLookupsItDidNotCount|TestH91_AFailedLookupAloneStaysSilent")
+m("LK the report describes a comparison a lookup alone never had", "internal/report/text.go",
+  "\tif sf.Counted() == 0 {\n\t\treturn\n\t}\n", "",
+  "TestSilentFailures_TheReportNamesTheLookupsItDidNotCount")
+m("LK spend reads a turn whose only failure is a lookup", "internal/spend/join.go",
+  "report.AccountFromMessage(\"\")).Counted() == 0 {", "report.AccountFromMessage(\"\")).Failed == 0 {",
+  "TestJoin_AFailedLookupIsNoTurnToJudge")
+m("LK spend counts a lost failed lookup as unchecked", "internal/spend/join.go",
+  "x.Outcome == store.ExecFailed && !report.IsLookup(x.ToolName) {", "x.Outcome == store.ExecFailed {",
+  "TestJoin_AFailedLookupIsNoTurnToJudge")
+
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

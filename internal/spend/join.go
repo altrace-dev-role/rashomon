@@ -177,7 +177,7 @@ func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 	for _, x := range run.Executions {
 		t, ok := owner[x.ToolUseID]
 		if !ok {
-			if x.Outcome == store.ExecFailed {
+			if x.Outcome == store.ExecFailed && !report.IsLookup(x.ToolName) {
 				lost = append(lost, x.RecordedAtMS)
 			}
 			continue
@@ -358,8 +358,10 @@ func (s *Summary) Join(st *store.Store) error {
 		}
 		// Only a turn with a recorded failure can fire, whatever its final
 		// message says; those alone need their transcripts read. A failed
-		// call whose declaration was lost or carried no prompt_id is in no
-		// turn: it is counted once, as not checked.
+		// lookup alone cannot (report.IsLookup), so it neither makes a turn
+		// worth reading nor counts as not checked. A failed call whose
+		// declaration was lost or carried no prompt_id is in no turn: it is
+		// counted once, as not checked.
 		recordedTurns, lost := turnsOf(run)
 		for _, ms := range lost {
 			if ms >= s.FromUnixMS {
@@ -370,7 +372,7 @@ func (s *Summary) Join(st *store.Store) error {
 			if t.lastMS < s.FromUnixMS {
 				continue
 			}
-			if report.BuildSilentFailures(t.run, report.AccountFromMessage("")).Failed == 0 {
+			if report.BuildSilentFailures(t.run, report.AccountFromMessage("")).Counted() == 0 {
 				continue
 			}
 			turns = append(turns, t)

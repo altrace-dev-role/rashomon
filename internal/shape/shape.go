@@ -968,6 +968,12 @@ func isShellAssignment(t token) bool {
 	return t.quotedAt < 0 || t.quotedAt > eq
 }
 
+// ToolVerb is the verb class a tool's name alone gives, before any command
+// line is read: what Derive starts from. A shell tool is execute here
+// whatever its command runs, so this is the answer for the tool, never for
+// the call.
+func ToolVerb(name string) string { return verbForTool(name) }
+
 func verbForTool(name string) string {
 	if strings.HasPrefix(name, "mcp__") {
 		return VerbMCP

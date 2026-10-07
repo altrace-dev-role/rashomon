@@ -88,7 +88,7 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	}
 	if d.SilentFailures.Fires {
 		sentences = append(sentences,
-			fmt.Sprintf("%d recorded failure%s", d.SilentFailures.Failed, plural(d.SilentFailures.Failed)))
+			fmt.Sprintf("%d recorded failure%s", d.SilentFailures.Counted(), plural(d.SilentFailures.Counted())))
 	}
 	tb := d.TestBending
 	var first string

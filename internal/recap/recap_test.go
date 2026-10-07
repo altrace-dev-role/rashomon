@@ -249,3 +249,20 @@ func TestLineNoTestBendingIsSilent(t *testing.T) {
 		t.Errorf("a digest with no test-bending pair produced a line: %q", line)
 	}
 }
+
+// The line's count is the failures that made it fire, not the lookups beside
+// them: the report lists those, and "3 recorded failures" over one failed
+// build and two failed Reads of a directory would point at three things when
+// one is the finding. Break: print Failed and this reads 3.
+func TestLineCountsOnlyTheFailuresThatFire(t *testing.T) {
+	d := cleanDigest()
+	d.SilentFailures = report.SilentFailures{Fires: true, Failed: 3, FailedLookups: 2, FinalMessageAvailable: true, AbsentWords: []string{"fail"}}
+
+	line, ok := Line(d, d.SessionID, false)
+	if !ok {
+		t.Fatal("expected a line")
+	}
+	if !strings.Contains(line, "rashomon: 1 recorded failure.") {
+		t.Errorf("line = %q, want %q", line, "1 recorded failure.")
+	}
+}
