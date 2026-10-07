@@ -228,16 +228,20 @@ m("H-13 the function-definition scan stops at a redirection", "internal/shape/sh
   "\t\tcase isRedirect(t.text):\n\t\t\tif true {\n\t\t\t\treturn -1, true\n\t\t\t}\n\t\t\tend := operatorEnd(toks, j)\n", PROG)
 m("H-13 the function-definition scan reads &> as the background separator", "internal/shape/shape.go",
   "\t\tcase t.text == \"&\" && j+1 < len(toks)", "\t\tcase false && t.text == \"&\" && j+1 < len(toks)", PROG)
+# Re-anchored after the masked-status refactor: commandEnd became commandBound,
+# which also returns where the next command begins, so each return carries one
+# more value. The mutations are the same; this applies to the H-13 entries
+# down to the ${ one.
 m("H-13 the function-definition scan stops at a paren that does not close at once", "internal/shape/shape.go",
-  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, false\n\t\t\t}\n",
-  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, false\n\t\t\t}\n\t\t\treturn -1, true\n", PROG)
+  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, 0, false\n\t\t\t}\n",
+  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, 0, false\n\t\t\t}\n\t\t\treturn len(toks), -1, true\n", PROG)
 m("H-13 the function-definition scan runs on past a newline", "internal/shape/shape.go",
-  "\t\tcase t.nlBefore:\n\t\t\treturn -1, true\n", "\t\tcase false && t.nlBefore:\n\t\t\treturn -1, true\n", "TestProgramIsAProgram")
+  "\t\tcase t.nlBefore:\n\t\t\treturn j, -1, true\n", "\t\tcase false && t.nlBefore:\n\t\t\treturn j, -1, true\n", "TestProgramIsAProgram")
 SEPS = ["\";\"", "\"&&\"", "\"||\"", "\"|\"", "\"&\""]
-_seps = "\t\tcase " + " || ".join("t.text == " + x for x in SEPS) + ":\n\t\t\treturn j, true"
+_seps = "\t\tcase " + " || ".join("t.text == " + x for x in SEPS) + ":\n\t\t\treturn j + 1, j, true"
 for _drop in SEPS:
     m("H-13 the function-definition scan reads on past " + _drop.strip('"'), "internal/shape/shape.go",
-      _seps, "\t\tcase " + " || ".join("t.text == " + x for x in SEPS if x != _drop) + ":\n\t\t\treturn j, true", PROG)
+      _seps, "\t\tcase " + " || ".join("t.text == " + x for x in SEPS if x != _drop) + ":\n\t\t\treturn j + 1, j, true", PROG)
 m("H-13 the function-definition scan does not skip a paren group", "internal/shape/shape.go",
   "\t\t\t}\n\t\t\topen = append(open, '(')\n", "\t\t\t}\n", PROG)
 m("H-13 the function-definition scan does not skip backticks", "internal/shape/shape.go",
@@ -249,11 +253,11 @@ m("H-13 a paren group never closes", "internal/shape/shape.go",
 m("H-13 backticks never close", "internal/shape/shape.go",
   "\tcase t.ticks%2 == 1 && top == '`':\n\t\treturn open[:len(open)-1]\n", "\tcase false:\n\t\treturn open[:len(open)-1]\n", PROG)
 m("H-13 a group that never closes is read as closed", "internal/shape/shape.go",
-  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, false\n\t}", "\tif uncertain {\n\t\treturn 0, false\n\t}", PROG)
+  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, 0, false\n\t}", "\tif uncertain {\n\t\treturn 0, 0, false\n\t}", PROG)
 m("H-13 the function-definition scan reads past where the lexer's reading stopped", "internal/shape/shape.go",
-  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, false\n\t}", "\tif len(open) > 0 {\n\t\treturn 0, false\n\t}", PROG)
+  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, 0, false\n\t}", "\tif len(open) > 0 {\n\t\treturn 0, 0, false\n\t}", PROG)
 m("H-13 a ${ the word does not close is read past", "internal/shape/shape.go",
-  "\t\tif openBrace(t) {\n\t\t\treturn 0, false\n\t\t}", "\t\tif false && openBrace(t) {\n\t\t\treturn 0, false\n\t\t}", PROG)
+  "\t\tif openBrace(t) {\n\t\t\treturn 0, 0, false\n\t\t}", "\t\tif false && openBrace(t) {\n\t\t\treturn 0, 0, false\n\t\t}", PROG)
 m("H-13 a closed ${ } is taken for an open one", "internal/shape/shape.go",
   "strings.Count(t.text[k:], \"{\") > strings.Count(t.text[k:], \"}\")",
   "strings.Count(t.text[k:], \"{\") >= strings.Count(t.text[k:], \"}\")", "TestProgramIsAProgram")
@@ -311,8 +315,10 @@ m("H-13 a tab in the line is taken for a control byte", "internal/shape/shape.go
 m("H-13 a newline in the line is taken for a control byte", "internal/shape/shape.go",
   "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {",
   "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' || c == 0x7f {", "TestProgramIsAProgram")
+# Re-anchored after the masked-status refactor: the backtick case also marks the
+# line grouped for the list walk's here-document reading; only the count goes.
 m("H-13 the tokenizer never counts an unquoted backtick", "internal/shape/tokenize.go",
-  "\t\t\tif c == '`' {\n\t\t\t\tticks++\n\t\t\t}\n", "", "TestTokenizeTicks|" + PROG)
+  "\t\t\tif c == '`' {\n\t\t\t\tticks++\n\t\t\t\tgrouped = true\n\t\t\t}\n", "\t\t\tif c == '`' {\n\t\t\t\tgrouped = true\n\t\t\t}\n", "TestTokenizeTicks|" + PROG)
 m("H-13 the tokenizer never counts a backtick inside double quotes", "internal/shape/tokenize.go",
   "\t\t\t\tif s[i] == '`' {\n\t\t\t\t\tticks++\n\t\t\t\t}\n", "", "TestTokenizeTicks")
 # Judged by the corpus alone, where the two lines of the PR #29 review are the
@@ -545,9 +551,15 @@ m("B9 the count and the rows are computed separately", "internal/report/destinat
 m("B2 a schema-3 field is required at every version", "docs/store-schema.json",
   '        "tool_name",\n        "shape",\n', '        "tool_name",\n        "shape",\n        "host_source",\n',
   "TestSchema3|TestStoreSchema")
+# Re-anchored after the masked-status refactor: Accepts is a range since schema
+# 4; the mutation still drops 3 alone. The schema-4 bump adds its own twin,
+# "MS the reader stops accepting schema 4", as the schema-3 bump added this.
 m("B2 the reader stops accepting schema 3", "internal/store/record.go",
-  "\treturn version == 1 || version == 2 || version == 3",
-  "\treturn version == 1 || version == 2", "TestAcceptsAdmits")
+  "\treturn version >= 1 && version <= 4",
+  "\treturn version >= 1 && version <= 4 && version != 3", "TestAcceptsAdmits")
+m("MS the reader stops accepting schema 4", "internal/store/record.go",
+  "\treturn version >= 1 && version <= 4",
+  "\treturn version >= 1 && version <= 3", "TestAcceptsAdmits")
 
 # Part 1 -- the in-window counters. Both mutations are the two ways the
 # distinction they exist to make can be lost silently: counting traffic that is
@@ -1957,8 +1969,10 @@ m("TL agent_id reaches the terminal raw", "internal/report/timeline_text.go",
   "[]rune(strings.TrimPrefix(printable(a.ID), \"agent-\"))", "[]rune(strings.TrimPrefix(a.ID, \"agent-\"))", "TestTimeline_")
 m("TL the agent id is cut by byte", "internal/report/timeline_text.go",
   "\tid := []rune(strings.TrimPrefix(", "\tid := []byte(strings.TrimPrefix(", "TestTimeline_")
+# Re-anchored after the masked-status refactor: the legend gained a clause for a
+# masked call; dropping everything after "no execution record" is the same cut.
 m("TL the unknown legend names only no execution record", "internal/report/timeline_text.go",
-  "; or outcome unobserved: it ran and how it ended was not recorded, or it was moved to the background before it ended)", ")", "TestTimeline_")
+  "; or outcome unobserved: it ran and how it ended was not recorded, or it was moved to the background before it ended; or ok as a line where a pipe or a later command masked a build or test run's exit status)", ")", "TestTimeline_")
 m("TL undeclared calls go unaccounted in the legend", "internal/report/timeline_text.go",
   "\tif n.AgentUnknown > 0 {\n\t\tfmt.Fprintf(b, \"    %d call%s with no declaration", "\tif false {\n\t\tfmt.Fprintf(b, \"    %d call%s with no declaration", "TestTimeline_")
 m("TL an undeclared row does not say it has no declaration", "internal/report/timeline_text.go",
@@ -2151,8 +2165,10 @@ m("TB an argument running into a process substitution is plain", "internal/shape
   "\t\t\tif t.quotedAt >= 0 || t.text != want {", "TestTestRunnerIsRecognised")
 m("TB every word of a runner is compared against the first argument", "internal/shape/shape.go",
   "\t\t\tk := i + 1 + n\n", "\t\t\tk := i + 1 + n*0\n", "TestTestRunnerIsRecognised")
+# Re-anchored after the masked-status refactor: the row match moved into
+# runnerOn, which compares one command's words up to its end.
 m("TB a runner missing its argument still matches", "internal/shape/shape.go",
-  "\t\t\tif k >= len(toks) {\n\t\t\t\tcontinue next\n", "\t\t\tif k >= len(toks) {\n\t\t\t\tbreak\n", "TestTestRunnerIsRecognised")
+  "\t\t\tif k >= end {\n\t\t\t\tcontinue next\n", "\t\t\tif k >= end {\n\t\t\t\tbreak\n", "TestTestRunnerIsRecognised")
 m("TB go test is not on the list", "internal/shape/shape.go",
   "{\"go\", \"test\"}, {\"cargo\", \"test\"}", "{\"go\", \"tset\"}, {\"cargo\", \"test\"}",
   "TestTestRunnerIsRecognised|TestTestBending_OnlyTestFiles")
@@ -2195,9 +2211,11 @@ m("TB a shell write between two runs is not an edit", "internal/report/testbendi
   "\t\tif mayEdit(d) {\n",
   "\t\tif mayEdit(d) && d.ToolName != \"Bash\" {\n",
   "TestTestBending")
+# Re-anchored after the masked-status refactor: isRun also refuses a masked line;
+# the outcome condition is still what goes.
 m("TB a run with no result is a run", "internal/report/testbending.go",
-  "\t\tisRun := d.Shape.VerbClass == shape.VerbTest && (outcome == store.ExecOK || outcome == store.ExecFailed)\n",
-  "\t\tisRun := d.Shape.VerbClass == shape.VerbTest\n",
+  "\t\tisRun := d.Shape.VerbClass == shape.VerbTest && !statusMasked(d) && (outcome == store.ExecOK || outcome == store.ExecFailed)\n",
+  "\t\tisRun := d.Shape.VerbClass == shape.VerbTest && !statusMasked(d)\n",
   "TestTestBending")
 m("TB A is raised with code edited too", "internal/report/testbending.go",
   "\t\t\tcase prev.failed && !failed && otherEdits == prev.otherEdits && testEdits > prev.testEdits:",
@@ -2227,8 +2245,10 @@ m("TB the timeline annotates the earlier row", "internal/report/timeline.go",
 m("TB the timeline drops the flaky annotation", "internal/report/timeline_text.go",
   "\treturn fmt.Sprintf(\"↳ same command had the other outcome at %d, no recorded file edit between\", t.Since)",
   "\treturn \"\"", "TestTimeline_")
+# Re-anchored after the masked-status refactor: the masked count is built between
+# the guard and the line it prints.
 m("TB the session block renders with no test run", "internal/report/text.go",
-  "\tif t == nil || t.Runs == 0 {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:", "\tif t == nil {\n\t\treturn\n\t}\n\tfmt.Fprintf(b, \"  test runs:",
+  "\tif t == nil || t.Runs == 0 {\n\t\treturn\n\t}\n\tmasked := \"\"", "\tif t == nil {\n\t\treturn\n\t}\n\tmasked := \"\"",
   "TestTestRuns_")
 m("TB the session block drops the limit", "internal/report/text.go",
   "\tif len(t.TestsOnlyThenGreen)+len(t.Flaky) > 0 {\n\t\tfmt.Fprintf(b, \"    the numbers are call seqs",
@@ -2292,8 +2312,10 @@ m("TB a background launch is a test run", "internal/shape/shape.go",
   "\t\t\tif runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {",
   "\t\t\tif runsTests(pshaped, i, prog, perr == nil) && !backgrounded(nil) {",
   "TestBackgroundLaunchIsNotATestRun|TestTestBending_ShapesFromDerive")
+# Re-anchored after the masked-status refactor: runsTests now ends in one return
+# joining runnerOn and wholeCommand.
 m("TB a runner piped or listed into another command is a test run", "internal/shape/shape.go",
-  "\t\treturn wholeCommand(toks, i)\n", "\t\treturn wholeCommand(toks[:i+1], i)\n",
+  "testCommands) && wholeCommand(toks, i)\n", "testCommands) && wholeCommand(toks[:i+1], i)\n",
   "TestTestRunnerIsRecognised|TestTestBending_ShapesFromDerive")
 m("TB a command on the runner's next line is not seen", "internal/shape/shape.go",
   "\t\tif t.nlBefore {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}",
@@ -2341,13 +2363,15 @@ m("TB make check is a test run", "internal/shape/shape.go",
   "{\"gradlew\", \"test\"}, {\"make\", \"test\"},\n",
   "{\"gradlew\", \"test\"}, {\"make\", \"test\"}, {\"make\", \"check\"},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
+# Re-anchored after the masked-status refactor: the refusal moved into runnerOn,
+# over the runner's own command (toks up to end); the next two as well.
 m("TB an argument that does not run the tests is ignored", "internal/shape/shape.go",
-  "\t\tif refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {",
-  "\t\tif false && refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])",
+  "\t\treturn !(false && refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end]))",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the refusal reads only the first argument", "internal/shape/shape.go",
-  "\t\tif refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {",
-  "\t\tif refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):min(i+len(c)+1, len(toks))]) {",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):min(i+len(c)+1, end)])",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a prefix entry is compared whole", "internal/shape/shape.go",
   "\t\t\tif strings.HasPrefix(word, p) {\n",
@@ -2487,9 +2511,10 @@ m("TB PYTEST_ADDOPTS on the line is not read", "internal/shape/shape.go",
   "\t\t\tif strings.HasPrefix(t.text, \"PYTEST_ADDOPTS=\") {",
   "\t\t\tif false && strings.HasPrefix(t.text, \"PYTEST_ADDOPTS=\") {",
   "TestTestClassRefusesWhatDoesNotRunTests")
+# Re-anchored after the masked-status refactor: the refusal is in runnerOn.
 m("TB the words before the runner are not read", "internal/shape/shape.go",
-  "\t\tif refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {",
-  "\t\tif refusesRun(refusalsOf(c), toks[i:i], toks[i+len(c):]) {",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[i:i], toks[i+len(c):end])",
   "TestTestClassRefusesWhatDoesNotRunTests")
 
 m("TB *Test.cs and *Tests.kt are not test files", "internal/shape/label.go",
@@ -2543,9 +2568,11 @@ m("TB the session block drops the unlisted-option limit", "internal/report/text.
   "",
   "TestTestRuns_")
 
-m("TB the writer stays at schema 2", "internal/store/record.go",
+# Re-anchored after the masked-status refactor: the writer moved to schema 4,
+# and the mutation is still "the writer stays at the version before".
+m("TB the writer stays at schema 3", "internal/store/record.go",
+  "const SchemaVersion = 4",
   "const SchemaVersion = 3",
-  "const SchemaVersion = 2",
   "TestSchema3_")
 m("TB test runs are counted over records that predate the test class", "internal/report/testbending.go",
   "\tif run == nil || !measuresTests(run) {\n",
@@ -2572,9 +2599,11 @@ m("TB a false backgroundedByUser sets the bit", "internal/hook/post.go",
   "!bytes.Equal(v, []byte(\"null\")) && !bytes.Equal(v, []byte(\"false\"))",
   "!bytes.Equal(v, []byte(\"null\"))",
   "TestH20_BackgroundedIsReadForBashOnly")
+# Re-anchored after the masked-status refactor: the legend now goes on to the
+# masked clause after this one; the backgrounded clause alone is cut.
 m("TL the unknown legend drops the backgrounded call", "internal/report/timeline_text.go",
-  ", or it was moved to the background before it ended)",
-  ")",
+  ", or it was moved to the background before it ended;",
+  ";",
   "TestTimeline_ABackgrounded")
 
 m("TB runs pair across directories", "internal/report/testbending.go",
@@ -2590,9 +2619,11 @@ m("TB the cwd digest is the plain path", "internal/shape/shape.go",
   "\treturn cwd\n",
   "TestTestBending_ARepeatedRelativeCd")
 
+# Re-anchored after the masked-status refactor: mayEdit's check also counts a
+# masked line; only may_write is dropped.
 m("TB mayEdit ignores may_write", "internal/report/testbending.go",
-  "\tif d.Shape.MayWrite {\n\t\treturn true\n\t}\n",
-  "",
+  "\tif d.Shape.MayWrite || statusMasked(d) {\n\t\treturn true\n\t}\n",
+  "\tif statusMasked(d) {\n\t\treturn true\n\t}\n",
   "TestTestBending_WriteCapable")
 m("TB Derive never sets may_write for a named program", "internal/shape/shape.go",
   "\t\t\ts.MayWrite = perr != nil || mayWrite(pshaped, i)\n",
