@@ -1,9 +1,8 @@
 # rashomon
 
-**Your coding agent can tell you it finished the job. Did it actually?**
+**Your coding agent's final diff does not tell the whole story. Rashomon shows what happend during execution.**
 
-`rashomon` keeps an independent record of what your agent actually did, then
-puts that record beside the agent's own account.
+`rashomon` keeps an independent record of what your agent actually did, and flags when something important does not match the agent's account.
 
 **[Join the Rashomon Discord](https://discord.gg/Qg3hybAHpU)**
 
@@ -13,18 +12,13 @@ puts that record beside the agent's own account.
 
 ## In plain words
 
-When Claude Code finishes a task, it tells you what it did: "Done, all tests
-pass." That summary comes from the agent itself.
+When your coding agent finishes a task, it tells you what it did, but that summary/transcript comes from the agent itself.
 
 rashomon keeps its own record of every step the agent takes, like each command
 it runs and each file it edits, and whether each one worked. It puts that record
-beside the agent's summary: if a step failed and the closing message uses none
-of rashomon's failure words, it tells you at the end of the turn. Every report
-also lists what subagents did, which the main conversation does not show.
+beside the agent's summary, and it flags discrepancies at the end of the turn in one line. 
 
-You keep working the way you do now. rashomon stays quiet unless something is
-worth a look. The name comes from *Rashomon*, the film in which witnesses give
-different accounts of the same event.
+You can access a full report that also lists what subagents did, which the main conversation does not show.
 
 ## Get started
 
@@ -171,11 +165,6 @@ until you delete that folder.
 **Is it finished?**
 No. This is an alpha: Windows is not supported yet, and network destinations are
 not observed in this release.
-
-## The details
-
-Everything below is the precise version: what gets installed, what is stored,
-and what the report can and cannot see.
 
 ## Install options, in detail
 
