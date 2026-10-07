@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -344,4 +345,106 @@ func BuildSilentFailures(run *store.Run, acct Account) SilentFailures {
 	// be a finding about a file that could not be read.
 	sf.Fires = acct.Available && !present
 	return sf
+}
+
+// MaskedRuns is the build and test runs whose exit status their line masked
+// -- `make test 2>&1 | tail -40`, `go test ./... ; echo $?`, `npm test ||
+// true` -- set against whether the final message claims a pass.
+//
+// Like SilentFailures, a fact about TEXT and about the record, never about
+// intent: it says the record cannot back a pass, not that there was none.
+// The runner may well have passed; the line's ok is all that was recorded.
+type MaskedRuns struct {
+	// Fires is true when Runs is not 0, the final message was read, it holds
+	// a word of passVocabulary, and it holds none of failureVocabulary: a
+	// summary that names a failure has said what a masked status could have
+	// kept from the reader, and one that claims no pass rests on nothing the
+	// masked status could have changed.
+	Fires bool `json:"fires"`
+	// Runs counts calls whose shape says a build or test runner's exit
+	// status was masked by its line (status_masked test or build), that
+	// recorded ok and were not moved to the background, and that no later
+	// call followed up: one whose line ends with the same runner
+	// (runner_digest) as its status, started in the same directory (cwd
+	// digest), and recorded ok or failed, not in the background. A masked
+	// call that recorded failed is not here: it is a failed call, counted by
+	// SilentFailures.
+	Runs int `json:"runs"`
+	// PassClaimed: the final message holds a word of passVocabulary.
+	PassClaimed bool `json:"pass_claimed"`
+	// FinalMessageAvailable distinguishes "claims no pass" from "there was
+	// no summary to read".
+	FinalMessageAvailable bool `json:"final_message_available"`
+}
+
+// passVocabulary is the fixed list of words that read as a claim that a
+// build or test passed. Narrow on purpose, the other way round from
+// failureVocabulary: the line fires only when one is present, so each word
+// added makes it fire more. Matched as substrings of the lower-cased message,
+// as failure words are: "pass" covers passes, passed and passing.
+var passVocabulary = []string{"pass", "green", "succeed", "success", "builds"}
+
+// BuildMaskedRuns counts run's masked runs that no later plain run of the
+// same runner followed up (MaskedRuns.Runs), and compares the count against
+// the final message. Exported so digest can call it with a turn-scoped run,
+// as it calls BuildSilentFailures: a follow-up in a later turn is that turn's.
+//
+// The comparison reads seqs and the shapes' fields: the digest of the
+// runner's words is compared and never printed, as the shape digest is.
+func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
+	out := MaskedRuns{FinalMessageAvailable: acct.Available}
+	if run == nil {
+		return out
+	}
+	executed := executionsByID(run)
+	// ended reports a call that ran in the foreground and recorded result.
+	ended := func(d store.Declaration, result string) bool {
+		rec := outcomeRecord(executed[d.ToolUseID])
+		return rec != nil && !rec.Backgrounded && rec.Outcome == result
+	}
+	type runner struct{ digest, cwd string }
+	// last is the seq of the last call whose status was its runner's and
+	// which recorded a result, per runner and directory.
+	last := map[runner]int64{}
+	for _, d := range run.Declarations {
+		m, r := d.Shape.StatusMasked, d.Shape.RunnerDigest
+		if m == nil || *m != shape.MaskedNone || r == nil {
+			continue
+		}
+		if !ended(d, store.ExecOK) && !ended(d, store.ExecFailed) {
+			continue
+		}
+		k := runner{*r, d.CWDDigest}
+		if s, ok := last[k]; !ok || d.Seq > s {
+			last[k] = d.Seq
+		}
+	}
+	for _, d := range run.Declarations {
+		if !statusMasked(d) || !ended(d, store.ExecOK) {
+			continue
+		}
+		if r := d.Shape.RunnerDigest; r != nil {
+			if s, ok := last[runner{*r, d.CWDDigest}]; ok && s > d.Seq {
+				continue
+			}
+		}
+		out.Runs++
+	}
+	if out.Runs == 0 || !acct.Available {
+		return out
+	}
+	lower := strings.ToLower(acct.analysed())
+	for _, w := range passVocabulary {
+		if strings.Contains(lower, w) {
+			out.PassClaimed = true
+		}
+	}
+	failure := false
+	for _, w := range failureVocabulary {
+		if strings.Contains(lower, w) {
+			failure = true
+		}
+	}
+	out.Fires = out.PassClaimed && !failure
+	return out
 }

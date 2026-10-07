@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -17,8 +18,9 @@ const (
 	GroupFailed      = "failed"
 	GroupInterrupted = "interrupted"
 	GroupNeverRan    = "never_ran"
-	// GroupUnknown holds "no execution record", "outcome unobserved" and a
-	// call moved to the background before it ended. "No
+	// GroupUnknown holds "no execution record", "outcome unobserved", a
+	// call moved to the background before it ended, and an ok call whose
+	// line masked a build or test runner's exit status. "No
 	// execution record" is NOT never-ran: the store's own contract is that such
 	// a declaration was denied, failed, or had its execution go unrecorded, and
 	// nothing here knows which. A call whose declaration was dropped is not
@@ -281,7 +283,7 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 			agents[c.Agent.ID] = true
 		}
 		rec := outcomeRecord(executed[d.ToolUseID])
-		c.Outcome = timelineOutcome(d.ToolUseID, rec, executed, denied)
+		c.Outcome = maskedOutcome(d, timelineOutcome(d.ToolUseID, rec, executed, denied))
 		c.Group = timelineGroup(c.Outcome)
 		c.ExitCode = outcomeExitCode(rec)
 		entries = append(entries, timelineEntry{
@@ -466,6 +468,25 @@ func timelineOutcome(id string, rec *store.Execution, executed map[string][]stor
 	}
 	o, _, _ := linkOutcome(id, executed, denied)
 	return o
+}
+
+// maskedOutcome is outcome, unless it is ok and d's shape says a build or
+// test runner's exit status was masked on its line (statusMasked): then
+// LinkOutcomeStatusMasked. A failed one stays failed -- the call failed,
+// whichever command it was -- and every other outcome is no result already.
+func maskedOutcome(d store.Declaration, outcome string) string {
+	if outcome == store.ExecOK && statusMasked(d) {
+		return LinkOutcomeStatusMasked
+	}
+	return outcome
+}
+
+// statusMasked reports a declaration whose shape says a build or test
+// runner's exit status was masked by its line: status_masked test or build.
+// Null -- not a shell, not read, or a record before schema 4 -- is not.
+func statusMasked(d store.Declaration) bool {
+	m := d.Shape.StatusMasked
+	return m != nil && (*m == shape.MaskedTest || *m == shape.MaskedBuild)
 }
 
 // outcomeExitCode is the outcome record's exit code, nil when there is none.

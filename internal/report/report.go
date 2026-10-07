@@ -251,6 +251,9 @@ type Session struct {
 	Account        Account           `json:"account"`
 	Subagents      []SubagentSummary `json:"subagents"`
 	SilentFailures SilentFailures    `json:"silent_failures"`
+	// MaskedRuns sets the build and test calls whose exit status their line
+	// masked, and that no later plain run followed up, against that summary.
+	MaskedRuns MaskedRuns `json:"masked_runs"`
 
 	// Families is which of this session's tool families were confirmed to
 	// transit the proxy, derived from the join rather than from a probe.
@@ -474,6 +477,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		sess.Account = buildAccount(run)
 		sess.Subagents = buildSubagents(run)
 		sess.SilentFailures = BuildSilentFailures(run, sess.Account)
+		sess.MaskedRuns = BuildMaskedRuns(run, sess.Account)
 		sess.Gaps = byDir[name]
 		if sess.Gaps == nil {
 			sess.Gaps = []store.Gap{}

@@ -139,6 +139,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	writeAccount(b, sess.Account)
 	writeSubagents(b, sess.Subagents)
 	writeSilentFailures(b, sess.SilentFailures)
+	writeMaskedRuns(b, sess.MaskedRuns)
 	writeTestRuns(b, sess.TestRuns, sess.SessionID)
 	// Whether a proxy store was NAMED for this render, not whether it could be
 	// read: a named store that is missing still renders its reason in full,
@@ -649,6 +650,27 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 		len(sf.AbsentWords), list(sf.AbsentWords))
 }
 
+// writeMaskedRuns renders the build and test calls whose exit status their
+// line masked and that no later plain run followed up, beside the failed
+// calls: nothing when there were none. The count is of calls, and the line
+// says what it rests on: the line's ok, not the runner's.
+func writeMaskedRuns(b *bytes.Buffer, m MaskedRuns) {
+	if m.Runs == 0 {
+		return
+	}
+	fmt.Fprintf(b, "  masked exit status: %d build or test call(s) recorded ok while a pipe or a later command set the call's status, and no later plain run of the same command in the same directory was recorded\n", m.Runs)
+	switch {
+	case !m.FinalMessageAvailable:
+		fmt.Fprintln(b, "    the final message could not be read, so it was not compared")
+	case m.Fires:
+		fmt.Fprintln(b, "    the final message claims a pass and uses no failure word")
+	case !m.PassClaimed:
+		fmt.Fprintln(b, "    the final message claims no pass")
+	default:
+		fmt.Fprintln(b, "    the final message uses at least one failure word")
+	}
+}
+
 // writeTestRuns renders the session's test runs and the two test-bending
 // patterns among them.
 //
@@ -692,7 +714,11 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
 	if t == nil || t.Runs == 0 {
 		return
 	}
-	fmt.Fprintf(b, "  test runs: %d (%d ok, %d failed)\n", t.Runs, t.OK, t.Failed)
+	masked := ""
+	if t.Masked > 0 {
+		masked = fmt.Sprintf(", %d with exit status masked by a pipe or a later command, so neither", t.Masked)
+	}
+	fmt.Fprintf(b, "  test runs: %d (%d ok, %d failed%s)\n", t.Runs, t.OK, t.Failed, masked)
 	if t.Undeclared > 0 {
 		fmt.Fprintf(b, "    no pair is looked for: %d call%s ran with no declaration recorded, and may have edited a file between any two runs\n",
 			t.Undeclared, plural(t.Undeclared))
