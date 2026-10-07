@@ -1316,7 +1316,10 @@ func cmdReport(args []string, stdout io.Writer) error {
 		case "--timeline":
 			timeline = true
 		case "--nono-audit":
-			if i+1 >= len(args) {
+			// An empty path is refused like a missing one: "" is what not
+			// naming a trail means, so `--nono-audit "$NONO_TRAIL"` with the
+			// variable unset would print no sandbox section and no reason.
+			if i+1 >= len(args) || args[i+1] == "" {
 				return errors.New("--nono-audit needs a value")
 			}
 			nonoTrail = args[i+1]

@@ -109,6 +109,11 @@ type Observation struct {
 	// was three-quarters unreadable rendered identically to a quiet session.
 	Skipped            int `json:"skipped"`
 	UnparseableTargets int `json:"unparseable_targets"`
+	// WindowOpen is true when the window had no end, so every event after its
+	// start counted as this session's, up to the end of the trail. On a shared
+	// trail that includes a later session's traffic, and the report has to say
+	// so rather than present the count as bounded.
+	WindowOpen bool `json:"window_open"`
 }
 
 // Window is the watched interval. End zero means "up to the last event".
@@ -172,7 +177,7 @@ func Read(path string, w Window) Observation {
 	}
 	defer func() { _ = f.Close() }()
 
-	obs := Observation{Trail: path, Events: []Event{}}
+	obs := Observation{Trail: path, Events: []Event{}, WindowOpen: w.End.IsZero()}
 	// Observed is set only once a record of a type this reader KNOWS parses.
 	// Counting the parse before the type switch let a file of well-formed
 	// records of unlearned types -- log_allowed and log_denied, the exact

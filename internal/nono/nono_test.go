@@ -334,3 +334,19 @@ func TestRead_AFileOfUnlearnedTypesIsNotAQuietSession(t *testing.T) {
 		t.Errorf("skipped = %d, want 2", obs.Skipped)
 	}
 }
+
+// TestRead_AWindowWithNoEndIsSaidToBeOpen: with no end instant every later
+// event in the trail counts as this session's, so the observation has to
+// carry that fact for the report to say it.
+func TestRead_AWindowWithNoEndIsSaidToBeOpen(t *testing.T) {
+	closed := fixtureWindow(t)
+	if obs := Read(fixture, closed); !obs.Observed || obs.WindowOpen {
+		t.Errorf("a window with an end: observed=%v window_open=%v, want true, false",
+			obs.Observed, obs.WindowOpen)
+	}
+	open := Window{Start: closed.Start}
+	if obs := Read(fixture, open); !obs.Observed || !obs.WindowOpen {
+		t.Errorf("a window with no end: observed=%v window_open=%v, want true, true",
+			obs.Observed, obs.WindowOpen)
+	}
+}

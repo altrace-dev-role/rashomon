@@ -141,6 +141,24 @@ func TestDormantCommandMatchesCommandsNotWords(t *testing.T) {
 	}
 }
 
+// TestReport_RefusesAnEmptyNonoAudit: an empty --nono-audit was read as no
+// trail asked for, so `--nono-audit "$NONO_TRAIL"` with the variable unset
+// printed no sandbox section and no reason. It is refused the way a missing
+// value is, before any store is opened.
+func TestReport_RefusesAnEmptyNonoAudit(t *testing.T) {
+	t.Setenv("RASHOMON_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	if got := run([]string{"report", "--nono-audit", ""}, strings.NewReader(""), &stdout, &stderr); got != exitFail {
+		t.Errorf("report --nono-audit \"\" returned %d, want %d", got, exitFail)
+	}
+	if !strings.Contains(stderr.String(), "--nono-audit needs a value") {
+		t.Errorf("the refusal does not say the flag needs a value; stderr %q", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("report --nono-audit \"\" rendered a report:\n%s", stdout.String())
+	}
+}
+
 // TestReport_RefusesAnEmptyProxyStore: "" is what NOT naming a store means,
 // so accepting `--proxy-store ""` -- an unset variable in a script -- would
 // collapse the proxy block the caller asked for, with nothing to say so. The

@@ -2836,6 +2836,58 @@ m("TB the session block does not say why no pair is looked for", "internal/repor
   "\tif false {\n\t\tfmt.Fprintf(b, \"    no pair is looked for",
   "TestTestRuns_")
 
+# nono integration test run, finding 1: an unknown transport went uncounted on
+# the default path, because the counter sat below the no-proxy-store guard.
+m("NONO an unknown mode is not counted without a proxy store", "internal/report/nono.go",
+  "\t\tif e.Mode != \"reverse\" && e.Mode != \"connect\" {\n\t\t\tn.UnknownModes++\n\t\t}\n",
+  "",
+  "TestNono_AnUnknownMode")
+m("NONO an unknown mode is counted twice with a proxy store", "internal/report/nono.go",
+  "\t\t\t// from being excused as plain HTTP.\n\t\t\tobservable[e.Host] = true\n",
+  "\t\t\t// from being excused as plain HTTP.\n\t\t\tn.UnknownModes++\n\t\t\tobservable[e.Host] = true\n",
+  "TestNono_AnUnknownModeIsCountedOnce")
+m("NONO the text never reports an unknown mode", "internal/report/text.go",
+  "\tif n.UnknownModes > 0 {", "\tif false {",
+  "TestNono_AnUnknownModeIsCountedWithout")
+
+# Finding 2: `--nono-audit ""` read as no trail asked for, printing nothing.
+m("NONO an empty --nono-audit is read as no trail asked for", "cmd/rashomon/main.go",
+  "\t\t\tif i+1 >= len(args) || args[i+1] == \"\" {\n\t\t\t\treturn errors.New(\"--nono-audit needs a value\")",
+  "\t\t\tif i+1 >= len(args) {\n\t\t\t\treturn errors.New(\"--nono-audit needs a value\")",
+  "TestReport_RefusesAnEmptyNonoAudit")
+
+# Finding 4: with no end record the window ran to the end of the trail, and
+# the sandbox line presented the counts as bounded.
+m("NONO the reader never says the window has no end", "internal/nono/nono.go",
+  "WindowOpen: w.End.IsZero()}", "WindowOpen: false}",
+  "TestRead_AWindowWithNoEnd")
+m("NONO an open window does not reach the report", "internal/report/nono.go",
+  "\t\tWindowOpen:            obs.WindowOpen,\n", "",
+  "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
+m("NONO the sandbox line does not say the window has no end", "internal/report/text.go",
+  "\tif n.WindowOpen {", "\tif false {",
+  "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
+m("NONO a bounded window is said to have no end", "internal/report/text.go",
+  "\tif n.WindowOpen {", "\tif true {",
+  "TestNono_AWindowWithNoEnd")
+
+# Finding 5: a trail of only unreadable lines read as "nono wrote nothing".
+m("NONO a not-observed trail does not say how much it could not read", "internal/report/text.go",
+  "\t\tif n.Skipped > 0 {\n\t\t\tskipped = ", "\t\tif false {\n\t\t\tskipped = ",
+  "TestNono_AnUnreadableTrail")
+m("NONO the unreadable count on a not-observed trail ignores the singular", "internal/report/text.go",
+  "\"; %d trail record%s could not be read\", n.Skipped, plural(n.Skipped))",
+  "\"; %d trail records could not be read\", n.Skipped)",
+  "TestNono_AnUnreadableTrail")
+
+# The unknown-decision line said "1 sandbox event ... were counted".
+m("NONO the unknown-decision line says were for one event", "internal/report/text.go",
+  "\t\tif n.UnknownDecisions == 1 {\n\t\t\tverb = \"was\"", "\t\tif false {\n\t\t\tverb = \"was\"",
+  "TestNono_TheUnknownDecisionLine")
+m("NONO the unknown-decision line is never printed", "internal/report/text.go",
+  "\tif n.UnknownDecisions > 0 {", "\tif false {",
+  "TestNono_TheUnknownDecisionLine")
+
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),

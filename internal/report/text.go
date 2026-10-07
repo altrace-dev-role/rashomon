@@ -1066,11 +1066,25 @@ func writeNono(b *bytes.Buffer, n Nono) {
 		return
 	}
 	if !n.Observed {
-		fmt.Fprintf(b, "  sandbox (nono): not observed (%s)\n", orUnknown(n.Reason))
+		// The skipped count is said here too. A trail of only torn lines is
+		// "no records" by reason code, and without the count it read as "nono
+		// wrote nothing" -- the JSON carried the number and the text did not.
+		skipped := ""
+		if n.Skipped > 0 {
+			skipped = fmt.Sprintf("; %d trail record%s could not be read", n.Skipped, plural(n.Skipped))
+		}
+		fmt.Fprintf(b, "  sandbox (nono): not observed (%s%s)\n", orUnknown(n.Reason), skipped)
 		return
 	}
-	fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied in this session's window\n",
-		len(n.Allowed), len(n.Denied))
+	// An open window is said ON THIS LINE: the two counts are only as bounded
+	// as the window, and with no end record they run to the end of the trail,
+	// where a later session's traffic on a shared trail counts as this one's.
+	open := ""
+	if n.WindowOpen {
+		open = " (no end record, so events up to the end of the trail are counted)"
+	}
+	fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied in this session's window%s\n",
+		len(n.Allowed), len(n.Denied), open)
 	// SAID SEPARATELY, because it is a LIFETIME count beside two windowed ones.
 	// nono's session_started record carries an ISO string and no millisecond
 	// instant, so there is nothing to window it on -- and joining all three in
@@ -1116,9 +1130,13 @@ func writeNono(b *bytes.Buffer, n Nono) {
 			n.UnknownModes, plural(n.UnknownModes))
 	}
 	if n.UnknownDecisions > 0 {
+		verb := "were"
+		if n.UnknownDecisions == 1 {
+			verb = "was"
+		}
 		fmt.Fprintf(b, "    %d sandbox event%s carried a decision this reader does not "+
-			"know, and were counted in neither column\n",
-			n.UnknownDecisions, plural(n.UnknownDecisions))
+			"know, and %s counted in neither column\n",
+			n.UnknownDecisions, plural(n.UnknownDecisions), verb)
 	}
 	if n.Inherited > 0 {
 		fmt.Fprintf(b, "    %d sandbox event%s outside this session's window, excluded\n",
