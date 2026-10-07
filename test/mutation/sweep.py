@@ -1689,8 +1689,8 @@ m("SP a row holding not-covered dollars reads recorded", "internal/spend/join.go
   "\t\t\ttallyOf(id).out++", "\t\t\ttallyOf(id).in++",
   "TestJoin_")
 m("SP a lost declaration's failed call is placed in a turn by recorded time", "internal/spend/join.go",
-  "\t\t\tif x.Outcome == store.ExecFailed {\n\t\t\t\tlost = append(lost, x.RecordedAtMS)\n\t\t\t}\n\t\t\tcontinue\n",
-  "\t\t\tif x.Outcome != store.ExecFailed {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tfor _, c := range byPrompt {\n\t\t\t\tif c.firstMS <= x.RecordedAtMS && (t == nil || c.firstMS > t.firstMS) {\n\t\t\t\t\tt = c\n\t\t\t\t}\n\t\t\t}\n\t\t\tif t == nil {\n\t\t\t\tlost = append(lost, x.RecordedAtMS)\n\t\t\t\tcontinue\n\t\t\t}\n",
+  "\t\t\tif x.Outcome == store.ExecFailed && !report.IsLookup(x.ToolName) {\n\t\t\t\tlost = append(lost, x.RecordedAtMS)\n\t\t\t}\n\t\t\tcontinue\n",
+  "\t\t\tif x.Outcome != store.ExecFailed || report.IsLookup(x.ToolName) {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tfor _, c := range byPrompt {\n\t\t\t\tif c.firstMS <= x.RecordedAtMS && (t == nil || c.firstMS > t.firstMS) {\n\t\t\t\t\tt = c\n\t\t\t\t}\n\t\t\t}\n\t\t\tif t == nil {\n\t\t\t\tlost = append(lost, x.RecordedAtMS)\n\t\t\t\tcontinue\n\t\t\t}\n",
   "TestJoin_AFailedCallWhoseDeclarationWasLost")
 m("SP a failed call whose declaration was lost is not counted", "internal/spend/join.go",
   "\t\t\t\tj.UndeclaredFailedCalls++", "\t\t\t\t_ = ms",
@@ -1699,11 +1699,11 @@ m("SP a lost declaration's failed call before the window is counted", "internal/
   "\t\t\tif ms >= s.FromUnixMS {\n\t\t\t\tj.UndeclaredFailedCalls++", "\t\t\tif ms >= 0 {\n\t\t\t\tj.UndeclaredFailedCalls++",
   "TestJoin_AFailedCallWhoseDeclarationWasLost")
 m("SP a lost declaration's successful call is counted", "internal/spend/join.go",
-  "\t\t\tif x.Outcome == store.ExecFailed {", "\t\t\tif true {",
+  "\t\t\tif x.Outcome == store.ExecFailed && !report.IsLookup(x.ToolName) {", "\t\t\tif !report.IsLookup(x.ToolName) {",
   "TestJoin_AFailedCallWhoseDeclarationWasLost")
 m("SP a failed call whose declaration carried no prompt_id is not counted", "internal/spend/join.go",
-  "\t\t\tif x.Outcome == store.ExecFailed {",
-  "\t\t\tif !slices.ContainsFunc(run.Declarations, func(d store.Declaration) bool { return d.ToolUseID == x.ToolUseID }) && x.Outcome == store.ExecFailed {",
+  "\t\t\tif x.Outcome == store.ExecFailed && !report.IsLookup(x.ToolName) {",
+  "\t\t\tif !slices.ContainsFunc(run.Declarations, func(d store.Declaration) bool { return d.ToolUseID == x.ToolUseID }) && x.Outcome == store.ExecFailed && !report.IsLookup(x.ToolName) {",
   "TestJoin_AFailedCallWhoseDeclarationWasLost")
 m("SP an undeclared failed call reads as a checked none", "internal/spend/text.go",
   "\tcase j.Turns == 0 && j.Unjudged == 0 && j.UndeclaredFailedCalls == 0:\n", "\tcase j.Turns == 0 && j.Unjudged == 0:\n",
