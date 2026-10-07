@@ -2888,6 +2888,101 @@ m("NONO the unknown-decision line is never printed", "internal/report/text.go",
   "\tif n.UnknownDecisions > 0 {", "\tif false {",
   "TestNono_TheUnknownDecisionLine")
 
+# Masked exit status (shape.status_masked, runner_digest, the report's masked
+# outcome, test runs and masked runs, the turn digest and the end-of-turn
+# sentence). Each anchor appears once in its file.
+SH = "TestStatusMasked|TestRunnerDigest|TestMasked_"
+m("MS a pipe after the runner no longer masks it", "internal/shape/masked.go",
+  "\t\tif !pipefail {\n\t\t\treturn true, true\n\t\t}", "\t\tif false {\n\t\t\treturn true, true\n\t\t}", SH)
+m("MS set -o pipefail is not read", "internal/shape/masked.go",
+  "pipefail, errexit = pipefail || p, errexit || e", "pipefail, errexit = pipefail && p, errexit || e", SH)
+m("MS set -e is not read", "internal/shape/masked.go",
+  "pipefail, errexit = pipefail || p, errexit || e", "pipefail, errexit = pipefail || p, errexit && e", SH)
+m("MS && masks the runner before it", "internal/shape/masked.go",
+  "\t\t\tif n = pipelineEnd(cs, n+1); n < 0 {\n\t\t\t\treturn false, true\n\t\t\t}", "\t\t\treturn true, true", SH)
+m("MS ; and a newline never mask", "internal/shape/masked.go",
+  "\t\t\treturn !exitsFailed(toks, cs[n+1], false), true", "\t\t\treturn false, true", SH)
+m("MS a trailing ; masks", "internal/shape/masked.go",
+  "\t\t\tif n+1 >= len(cs) {\n\t\t\t\treturn false, true\n\t\t\t}\n\t\t\tif undecided(toks, cs[n+1]) {",
+  "\t\t\tif n+1 >= len(cs) {\n\t\t\t\treturn true, true\n\t\t\t}\n\t\t\tif undecided(toks, cs[n+1]) {", SH)
+m("MS || never masks", "internal/shape/masked.go",
+  "\t\t\tif !isFalseCommand(toks, next) {\n\t\t\t\treturn true, true\n\t\t\t}", "\t\t\tif false {\n\t\t\t\treturn true, true\n\t\t\t}", SH)
+m("MS an exit after || is not read", "internal/shape/masked.go",
+  "\t\t\tif exitsFailed(toks, next, true) {", "\t\t\tif false {", SH)
+m("MS false after || is not read", "internal/shape/masked.go",
+  "\treturn toks[c.prog].text == \"false\" && toks[c.prog].quotedAt < 0 && c.end == c.prog+1", "\treturn false", SH)
+m("MS a group after || is decided", "internal/shape/masked.go",
+  "\t\t\tif undecided(toks, next) {", "\t\t\tif false {", SH)
+m("MS a runner sent to the background with & is masked", "internal/shape/masked.go",
+  "\t\t\t// The end of the line, or `&`.\n\t\t\treturn false, true", "\t\t\treturn true, true", SH)
+m("MS make is no build runner", "internal/shape/masked.go",
+  "\t{\"make\"}, {\"gmake\"},\n", "\t{\"gmake\"},\n", SH)
+m("MS a build masked before a test wins", "internal/shape/masked.go",
+  "\t\tif hidden == \"\" || hidden == MaskedBuild && k == MaskedTest {", "\t\tif hidden == \"\" {", SH)
+m("MS the runner's arguments run to the end of the line", "internal/shape/shape.go",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])", "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):])", SH)
+m("MS here-document bodies are read as commands", "internal/shape/tokenize.go",
+  "\t\t\t\tpending = append(pending, j)\n", "\t\t\t\t_ = j\n", SH)
+m("MS a comment is read as words in the list walk", "internal/shape/tokenize.go",
+  "\t\tcase docs && c == '#' && !started:", "\t\tcase false && docs && c == '#' && !started:", SH)
+m("MS the runner digest keeps a redirection's target", "internal/shape/masked.go",
+  "\t\t\tj = operatorEnd(toks, j) + 1\n", "\t\t\tj = operatorEnd(toks, j)\n", SH)
+m("MS the runner digest runs to the end of the line", "internal/shape/masked.go",
+  "\t\t\tend = c.end\n", "\t\t\t_ = c.end\n", SH)
+m("MS the runner digest is not keyed", "internal/shape/masked.go",
+  "\td := digest(key, \"\\x00runner\",", "\td := digest(nil, \"\\x00runner\",", SH)
+m("MS a plain last runner carries no runner digest", "internal/shape/masked.go",
+  "\t\treturn &none, runnerDigest(toks, lastRunner, cs, key)", "\t\treturn &none, nil", SH)
+m("MS python -m unittest is not a test runner", "internal/shape/shape.go",
+  "\t{\"python\", \"-m\", \"unittest\"}, {\"python3\", \"-m\", \"unittest\"},\n", "", "TestUnittestIsATestRunner")
+
+RP = "TestMasked_"
+m("MS a masked call's ok is an ok row", "internal/report/timeline.go",
+  "\tif outcome == store.ExecOK && statusMasked(d) {", "\tif false {", RP)
+m("MS a masked call's failure is not a failed row", "internal/report/timeline.go",
+  "\tif outcome == store.ExecOK && statusMasked(d) {", "\tif statusMasked(d) {", RP)
+m("MS a masked build is not masked", "internal/report/timeline.go",
+  "\treturn m != nil && (*m == shape.MaskedTest || *m == shape.MaskedBuild)", "\treturn m != nil && *m == shape.MaskedTest", RP)
+m("MS the unknown legend does not name masked rows", "internal/report/timeline_text.go",
+  "; or ok as a line where a pipe or a later command masked a build or test run's exit status)", ")", RP)
+m("MS a masked test run counts as ok", "internal/report/testbending.go",
+  "\t\t\t\tout.Runs++\n\t\t\t\tout.Masked++", "\t\t\t\tout.Runs++\n\t\t\t\tout.OK++", RP)
+m("MS a masked test run is not counted", "internal/report/testbending.go",
+  "\t\tif m := d.Shape.StatusMasked; m != nil && *m == shape.MaskedTest {", "\t\tif m := d.Shape.StatusMasked; false && m != nil {", RP)
+m("MS a masked line is a run with a result", "internal/report/testbending.go",
+  "d.Shape.VerbClass == shape.VerbTest && !statusMasked(d) && (outcome", "d.Shape.VerbClass == shape.VerbTest && (outcome", RP)
+m("MS a masked line is no edit", "internal/report/testbending.go",
+  "\tif d.Shape.MayWrite || statusMasked(d) {", "\tif d.Shape.MayWrite {", RP)
+m("MS the test runs line does not say how many were masked", "internal/report/text.go",
+  "\tif t.Masked > 0 {", "\tif false {", RP)
+m("MS the session report does not print masked runs", "internal/report/text.go",
+  "\twriteMaskedRuns(b, sess.MaskedRuns)\n", "", RP)
+m("MS a plain follow-up in another directory counts", "internal/report/account.go",
+  "\t\tk := runner{*r, d.CWDDigest}", "\t\tk := runner{*r, \"\"}", RP)
+m("MS an earlier plain run counts as a follow-up", "internal/report/account.go",
+  "ok && s > d.Seq {", "ok && s >= 0 {", RP)
+m("MS a backgrounded call counts as ended", "internal/report/account.go",
+  "\t\treturn rec != nil && !rec.Backgrounded && rec.Outcome == result", "\t\treturn rec != nil && rec.Outcome == result", RP)
+m("MS a later masked run is a follow-up", "internal/report/account.go",
+  "\t\tif m == nil || *m != shape.MaskedNone || r == nil {", "\t\tif m == nil || *m != shape.MaskedNone && *m == \"\" || r == nil {", RP)
+m("MS a plain follow-up that failed is no follow-up", "internal/report/account.go",
+  "\t\tif !ended(d, store.ExecOK) && !ended(d, store.ExecFailed) {", "\t\tif !ended(d, store.ExecOK) {", RP)
+m("MS masked runs fire over a failure word", "internal/report/account.go",
+  "\tout.Fires = out.PassClaimed && !failure", "\tout.Fires = out.PassClaimed && (failure || !failure)", RP)
+m("MS masked runs fire with no pass claimed", "internal/report/account.go",
+  "\tout.Fires = out.PassClaimed && !failure", "\tout.Fires = !failure", RP)
+
+m("MS the digest builds no masked runs", "internal/digest/digest.go",
+  "\td.MaskedRuns = report.BuildMaskedRuns(turnRun, acct)\n", "", "TestBuild_MaskedRuns|TestMasked_")
+m("MS the digest counts the session's masked runs", "internal/digest/digest.go",
+  "\td.MaskedRuns = report.BuildMaskedRuns(turnRun, acct)\n", "\td.MaskedRuns = report.BuildMaskedRuns(run, acct)\n", "TestBuild_MaskedRuns|TestMasked_")
+m("MS the end-of-turn line never says masked", "internal/recap/recap.go",
+  "\tif m := d.MaskedRuns; m.Fires {", "\tif m := d.MaskedRuns; false && m.Fires {", "TestLineMaskedRuns|TestMasked_")
+m("MS the end-of-turn line says masked on the count alone", "internal/recap/recap.go",
+  "\tif m := d.MaskedRuns; m.Fires {", "\tif m := d.MaskedRuns; m.Runs > 0 {", "TestLineMaskedRuns|TestMasked_")
+m("MS the masked sentence has no singular", "internal/recap/recap.go",
+  "\tif n == 1 {\n\t\treturn \"1 build or test run's", "\tif false {\n\t\treturn \"1 build or test run's", "TestLineMaskedRuns")
+
 # Import additions some mutants need.
 IMPORTS = {
   "SP the transcript line decodes message.content": ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n'),
