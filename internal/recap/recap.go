@@ -41,6 +41,10 @@ var prefix = mark + " rashomon: "
 
 // Line decides whether d is worth a line and renders it if so.
 //
+// A masked-status trigger joins them (maskedSentence): build or test calls
+// whose exit status their line masked, never re-run plainly, under a message
+// that claims a pass and names no failure.
+//
 // The five triggers are the spec's "When it speaks" list, minus one: a
 // destination new for this project needs the proxy database and the
 // per-project baseline (internal/report/destinations.go's buildNovelty),
@@ -90,6 +94,9 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 		sentences = append(sentences,
 			fmt.Sprintf("%d recorded failure%s", d.SilentFailures.Failed, plural(d.SilentFailures.Failed)))
 	}
+	if m := d.MaskedRuns; m.Fires {
+		sentences = append(sentences, maskedSentence(m.Runs))
+	}
 	tb := d.TestBending
 	var first string
 	if len(tb.TestsOnlyThenGreen) > 0 {
@@ -132,6 +139,24 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	}
 	b.WriteString(sanitizeSessionID(sessionID))
 	return b.String(), true
+}
+
+// maskedSentence renders the masked-status trigger: the count of this turn's
+// build and test calls that recorded ok while a pipe or a later command on
+// their line set the call's exit status (`make test 2>&1 | tail -40`, `go
+// test ./... ; echo $?`, `npm test || true`), with no later plain run of the
+// same command in the same directory, beside a final message that claims a
+// pass and names no failure (report.MaskedRuns).
+//
+// It says what the record lacks, never what the runner did: the tests may
+// have passed. Not "failed", and not "unverified" either, which reads as a
+// finding about the work: the exit status was masked, so the record holds
+// no pass for the claim to rest on, and the reader is pointed at the rows.
+func maskedSentence(n int) string {
+	if n == 1 {
+		return "1 build or test run's exit status masked by a pipe or a later command"
+	}
+	return fmt.Sprintf("%d build or test runs' exit status masked by a pipe or a later command", n)
 }
 
 // pairSentence renders one test-bending trigger: the fixed sentence, then the

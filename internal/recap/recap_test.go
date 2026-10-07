@@ -249,3 +249,30 @@ func TestLineNoTestBendingIsSilent(t *testing.T) {
 		t.Errorf("a digest with no test-bending pair produced a line: %q", line)
 	}
 }
+
+// TestLineMaskedRuns: the masked-status sentence is a count and where it
+// came from, said only when the digest fires it, and in the singular for
+// one. Never a word about the runner's result, which the record does not
+// hold, and never a word about why the line was written that way.
+func TestLineMaskedRuns(t *testing.T) {
+	d := cleanDigest()
+	d.MaskedRuns = report.MaskedRuns{Runs: 2, Fires: false, PassClaimed: true, FinalMessageAvailable: true}
+	if line, ok := Line(d, d.SessionID, false); ok {
+		t.Errorf("a digest whose masked runs do not fire printed %q", line)
+	}
+	for n, want := range map[int]string{
+		1: "1 build or test run's exit status masked by a pipe or a later command",
+		3: "3 build or test runs' exit status masked by a pipe or a later command",
+	} {
+		d.MaskedRuns = report.MaskedRuns{Runs: n, Fires: true, PassClaimed: true, FinalMessageAvailable: true}
+		line, ok := Line(d, d.SessionID, false)
+		if !ok || !strings.Contains(line, want) {
+			t.Errorf("runs %d: line = %q, want %q", n, line, want)
+		}
+		for _, claim := range []string{"failed", "fail ", "passed", "untested"} {
+			if strings.Contains(line, claim) {
+				t.Errorf("line = %q claims %q, which the record does not hold", line, claim)
+			}
+		}
+	}
+}
