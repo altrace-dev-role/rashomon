@@ -955,9 +955,11 @@ m("CWE-117 the non-loopback refusal repeats listen_addr raw", "internal/posture/
 m("the surface check matches nothing", "test/acceptance/dormant_surface_test.go",
   "regexp.MustCompile(`(?i)\\brashomon (run|env)\\b|proxy-store`)", "regexp.MustCompile(`^$x`)",
   "TestSurface_|TestInstall_")
+# Re-anchored after the README was shortened: the install block lost its
+# comment column, so the dormant command is offered beside the bare `rashomon watch`.
 m("the README offers a dormant command", "README.md",
-  "\nrashomon watch                      # install the recorders",
-  "\nrashomon run -- claude              # record destinations too\nrashomon watch                      # install the recorders",
+  "\n    rashomon watch\n",
+  "\n    rashomon run -- claude\n    rashomon watch\n",
   "TestSurface_OffersNoDormantProxyPath")
 # The installer places one binary. A second fetch is the loop-0 defect: the
 # closed proxy's archive downloaded because a release happened to carry it.
