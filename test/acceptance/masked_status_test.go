@@ -207,3 +207,85 @@ func TestMasked_NoPairFromMaskedRuns(t *testing.T) {
 		t.Errorf("test_runs = %+v, want 3 masked and no pair", tr)
 	}
 }
+
+// rewritten declares one line and records the call ok as having run another:
+// what a PreToolUse hook that rewrites the command leaves behind. PostToolUse
+// carries the input as it ran.
+func (s *tbSession) rewritten(declared, ran string) {
+	id := s.id()
+	s.declare(id, "Bash", map[string]any{"command": declared, "description": "run the tests"}, "")
+	s.succeed(id, "Bash", map[string]any{"command": ran, "description": "run the tests"})
+}
+
+// M-7: masking is judged on the command that ran, not on the declaration,
+// which is the line before another hook rewrote it. Break: keep no masking on
+// the execution, or judge the declared line anywhere -- the end-of-turn line,
+// the report's masked runs, or its timeline.
+func TestMasked_JudgedOnTheCommandThatRan(t *testing.T) {
+	type js struct {
+		Sessions []struct {
+			MaskedRuns struct {
+				Runs int `json:"runs"`
+			} `json:"masked_runs"`
+			Timeline struct {
+				Calls []struct {
+					Group   string `json:"group"`
+					Outcome string `json:"outcome"`
+				} `json:"calls"`
+			} `json:"timeline"`
+		} `json:"sessions"`
+	}
+	report := func(t *testing.T, s *tbSession) js {
+		t.Helper()
+		var rep js
+		out := s.e.run("", nil, "report", "--json", "--session", testSession).stdout
+		if err := json.Unmarshal([]byte(out), &rep); err != nil || len(rep.Sessions) != 1 {
+			t.Fatalf("report --json: %v\n%s", err, out)
+		}
+		return rep
+	}
+
+	t.Run("declared plain, ran piped into head", func(t *testing.T) {
+		s := newTBSession(t)
+		s.rewritten("make test", "make test 2>&1 | head -50")
+		if line, ok := s.lineSaying(falseDone); !ok || !strings.Contains(line, "1 "+maskedSentence) {
+			t.Errorf("line = %q (printed %v), want the masked sentence", line, ok)
+		}
+		rep := report(t, s)
+		if n := rep.Sessions[0].MaskedRuns.Runs; n != 1 {
+			t.Errorf("masked_runs.runs = %d, want 1", n)
+		}
+		if c := rep.Sessions[0].Timeline.Calls; len(c) != 1 || c[0].Group != "unknown" {
+			t.Errorf("timeline = %+v, want one unknown row", c)
+		}
+		out := s.e.run("", nil, "report", "--session", testSession, "--timeline").stdout
+		if !strings.Contains(out, "ok, but the line did not return a build or test run's exit status") {
+			t.Errorf("the timeline row does not say the line did not return the status:\n%s", out)
+		}
+	})
+	t.Run("declared piped, ran under pipefail", func(t *testing.T) {
+		s := newTBSession(t)
+		s.rewritten("make test 2>&1 | tail -40", "set -o pipefail; make test 2>&1 | tail -40")
+		if line, ok := s.lineSaying(falseDone); ok && strings.Contains(line, maskedSentence) {
+			t.Errorf("line = %q says masked; the line that ran returned make's status", line)
+		}
+		rep := report(t, s)
+		if n := rep.Sessions[0].MaskedRuns.Runs; n != 0 {
+			t.Errorf("masked_runs.runs = %d, want 0", n)
+		}
+		if c := rep.Sessions[0].Timeline.Calls; len(c) != 1 || c[0].Group != "ok" {
+			t.Errorf("timeline = %+v, want one ok row", c)
+		}
+	})
+	t.Run("a masked run, then a re-run declared plain that ran piped", func(t *testing.T) {
+		s := newTBSession(t)
+		s.shell("make test 2>&1 | tail -40", true, "")
+		s.rewritten("make test", "make test 2>&1 | head -50")
+		if line, ok := s.lineSaying(falseDone); !ok || !strings.Contains(line, "2 build or test runs") {
+			t.Errorf("line = %q (printed %v), want 2 runs", line, ok)
+		}
+		if n := report(t, s).Sessions[0].MaskedRuns.Runs; n != 2 {
+			t.Errorf("masked_runs.runs = %d, want 2", n)
+		}
+	})
+}

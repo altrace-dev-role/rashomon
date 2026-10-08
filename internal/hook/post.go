@@ -152,8 +152,13 @@ func (p *Post) Capture(in io.Reader) error {
 	// absent tool_input leaves it empty rather than digesting nothing, because
 	// the digest of an empty input is a real value that would compare unequal
 	// to every declaration and report every such call as rewritten.
+	//
+	// The same Derive gives the masking of the line as it ran, which a
+	// rewriting hook may have changed from the declaration's.
 	if len(pl.ToolInput) > 0 {
-		rec.ExecutedDigest = shape.Derive(pl.ToolName, pl.ToolInput, p.st.Key()).Digest
+		s := shape.Derive(pl.ToolName, pl.ToolInput, p.st.Key())
+		rec.ExecutedDigest = s.Digest
+		rec.StatusMasked, rec.RunnerDigest = s.StatusMasked, s.RunnerDigest
 	}
 	if pl.HookEventName == FailureEvent {
 		rec.Outcome = store.ExecFailed

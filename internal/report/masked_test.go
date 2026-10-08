@@ -304,3 +304,36 @@ func TestMasked_RunsFromDerive(t *testing.T) {
 		}
 	}
 }
+
+// TestMasked_AsRan: MaskingAsRan takes status_masked and runner_digest from
+// the call's outcome record where it is at schema 4 and saw a tool_input,
+// and leaves the declaration's otherwise. Break: take them from a record that
+// could not carry them, or from one that saw no input, and a v3 record or a
+// payload without tool_input wipes a declaration's masking to null.
+func TestMasked_AsRan(t *testing.T) {
+	str := func(s string) *string { return &s }
+	decl := func(id string) store.Declaration {
+		return store.Declaration{SchemaVersion: store.SchemaVersion, ToolUseID: id, ToolName: "Bash",
+			Shape: shape.Shape{StatusMasked: str(shape.MaskedTest), RunnerDigest: str("declared")}}
+	}
+	run := &store.Run{
+		Declarations: []store.Declaration{decl("a"), decl("b"), decl("c")},
+		Executions: []store.Execution{
+			{SchemaVersion: 4, ToolUseID: "a", Outcome: store.ExecOK, ExecutedDigest: "x",
+				StatusMasked: str(shape.MaskedNone), RunnerDigest: str("ran")},
+			{SchemaVersion: 3, ToolUseID: "b", Outcome: store.ExecOK, ExecutedDigest: "x"},
+			{SchemaVersion: 4, ToolUseID: "c", Outcome: store.ExecOK},
+		},
+	}
+	MaskingAsRan(run)
+	d := run.Declarations
+	if m, r := d[0].Shape.StatusMasked, d[0].Shape.RunnerDigest; m == nil || *m != shape.MaskedNone || r == nil || *r != "ran" {
+		t.Errorf("a v4 record that saw the input: status_masked %v, runner_digest %v; want the execution's", m, r)
+	}
+	for i, why := range map[int]string{1: "a v3 record", 2: "a record that saw no tool_input"} {
+		if m, r := d[i].Shape.StatusMasked, d[i].Shape.RunnerDigest; m == nil || *m != shape.MaskedTest || r == nil || *r != "declared" {
+			t.Errorf("%s replaced the declaration's masking: %v, %v", why, m, r)
+		}
+	}
+	MaskingAsRan(nil)
+}

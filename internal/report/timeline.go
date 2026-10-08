@@ -481,6 +481,29 @@ func maskedOutcome(d store.Declaration, outcome string) string {
 	return outcome
 }
 
+// MaskingAsRan judges each call's masking on the command that ran: where the
+// call's outcome record is at schema 4 or later and saw a tool_input
+// (executed_digest is set), its status_masked and runner_digest replace the
+// declaration's. The declaration holds the line before any other PreToolUse
+// hook rewrote it -- to pipe the test output into `grep | head`, say -- and
+// the outcome is the line that ran's. A record before v4, or one that saw no
+// input, leaves the declaration's as it is. Applied once to a run as it is
+// read, before anything reads masking (report.Build, digest's build).
+func MaskingAsRan(run *store.Run) {
+	if run == nil {
+		return
+	}
+	executed := executionsByID(run)
+	for i := range run.Declarations {
+		d := &run.Declarations[i]
+		rec := outcomeRecord(executed[d.ToolUseID])
+		if rec == nil || rec.SchemaVersion < 4 || rec.ExecutedDigest == "" {
+			continue
+		}
+		d.Shape.StatusMasked, d.Shape.RunnerDigest = rec.StatusMasked, rec.RunnerDigest
+	}
+}
+
 // statusMasked reports a declaration whose shape says a build or test
 // runner's exit status was masked by its line: status_masked test or build.
 // Null -- not a shell, not read, or a record before schema 4 -- is not.

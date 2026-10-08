@@ -384,6 +384,26 @@
           "description": "Schema 3. True when this record was written while the command was still running in the background: Claude Code moved it there at its timeout (unless it starts with sleep), or it was launched with run_in_background, or on Ctrl+B -- recognised only if Claude Code marks it with backgroundTaskId or backgroundedByUser, which was not measured. Its PostToolUse fires then, so outcome is the launch's and not the command's, and a reader treats the call's ending as unobserved. Read from whether a Bash call's tool_response carries the key backgroundTaskId or backgroundedByUser, as one bit: the task id and every other key of the response are never decoded. False on every other tool, and on PostToolUseFailure, which means the command ended or its launch failed.",
           "type": "boolean"
         },
+        "status_masked": {
+          "description": "Schema 4. The shape's status_masked for the input as it ACTUALLY RAN, from the same derivation as executed_digest: whether a recognised build or test runner on the executed shell line has an exit status the line does not return. A hook that rewrote the line before it ran -- to pipe test output into `grep | head`, say -- leaves the declaration's status_masked describing a line that never ran, so a reader judges masking on this one wherever the record saw a tool_input. Null when the payload carried no tool_input, on a tool that is not a shell, and where the declaration's would be null. A record before schema 4 does not carry it.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "none",
+            "test",
+            "build"
+          ]
+        },
+        "runner_digest": {
+          "description": "Schema 4. The shape's runner_digest for the input as it ACTUALLY RAN, from the same derivation as executed_digest. A digest and never the words.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "rule_match": {
           "description": "Schema 3. The rule-match layer's verdict for this record. Its SHAPE IS DEFINED BY THAT LAYER and is deliberately left open here, so the layer can add fields without a fourth schema version; this entry reserves the key and the null. NULL MEANS NOT COMPUTED BY THIS VERSION -- not 'no rule matched', which is a result and will be expressed inside the object. A reader that cannot tell those apart will report an absence of rules as an absence of matches.",
           "type": [
@@ -426,7 +446,9 @@
           "then": {
             "required": [
               "rule_match",
-              "backgrounded"
+              "backgrounded",
+              "status_masked",
+              "runner_digest"
             ]
           }
         }

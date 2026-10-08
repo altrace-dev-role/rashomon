@@ -286,6 +286,8 @@ func Build(st *store.Store, sessionID, promptID, lastAssistantMessage string, no
 }
 
 func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage string, now time.Time) *Digest {
+	// Masking is judged on the command that ran.
+	report.MaskingAsRan(run)
 	w := selectTurn(run, promptID)
 
 	d := &Digest{

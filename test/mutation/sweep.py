@@ -3071,6 +3071,21 @@ m("MS masked runs fire over a failure word", "internal/report/account.go",
 m("MS masked runs fire with no pass claimed", "internal/report/account.go",
   "\tout.Fires = out.PassClaimed && !failure", "\tout.Fires = !failure", RP)
 
+# Masking judged on the command that ran: the execution carries it, and the
+# report and the digest take it over the declaration's (MaskingAsRan).
+m("MS the post hook keeps no masking", "internal/hook/post.go",
+  "\t\trec.StatusMasked, rec.RunnerDigest = s.StatusMasked, s.RunnerDigest\n", "", RP)
+m("MS the report judges the declared line", "internal/report/report.go",
+  "\t\tMaskingAsRan(run)\n", "", RP)
+m("MS the digest judges the declared line", "internal/digest/digest.go",
+  "\treport.MaskingAsRan(run)\n", "", RP)
+m("MS the timeline judges the declared line", "internal/report/timeline.go",
+  "\t\td.Shape.StatusMasked, d.Shape.RunnerDigest = rec.StatusMasked, rec.RunnerDigest\n", "\t\td.Shape.RunnerDigest = rec.RunnerDigest\n", RP)
+m("MS masking is taken from an execution before schema 4", "internal/report/timeline.go",
+  "\t\tif rec == nil || rec.SchemaVersion < 4 || rec.ExecutedDigest == \"\" {", "\t\tif rec == nil || rec.ExecutedDigest == \"\" {", RP)
+m("MS masking is taken from an execution that saw no input", "internal/report/timeline.go",
+  "\t\tif rec == nil || rec.SchemaVersion < 4 || rec.ExecutedDigest == \"\" {", "\t\tif rec == nil || rec.SchemaVersion < 4 {", RP)
+
 m("MS the digest builds no masked runs", "internal/digest/digest.go",
   "\td.MaskedRuns = report.BuildMaskedRuns(turnRun, acct)\n", "", "TestBuild_MaskedRuns|TestMasked_")
 m("MS the digest counts the session's masked runs", "internal/digest/digest.go",

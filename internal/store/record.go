@@ -19,7 +19,7 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // layer adds behaviour on v3, not another version.
 //
 // v4 is additive over v3: the declaration's shape gained status_masked and
-// runner_digest. Whether a build or test runner's exit status was hidden by
+// runner_digest, and the execution the same two keys, for the line as it ran. Whether a build or test runner's exit status was hidden by
 // the rest of its line is a v4 measurement: a v3 record of `make test |
 // tail` says nothing about it, which a reader must take as "not measured",
 // not as "not hidden". Nothing else changed, and v1 to v3 records still read.
@@ -282,6 +282,17 @@ type Execution struct {
 	// its launch failed, and on a record written before v3, which could not
 	// tell.
 	Backgrounded bool `json:"backgrounded"`
+
+	// StatusMasked and RunnerDigest are the shape's two fields of the same
+	// names (v4), derived from the input as it ACTUALLY RAN, by the same
+	// Derive call that gives ExecutedDigest. A hook that rewrites the line
+	// before it runs -- to pipe test output into `grep | head`, say -- makes
+	// the declaration's the wrong line to judge masking on; a reader takes
+	// these instead wherever the record saw a tool_input (report.MaskingAsRan).
+	// Null when the payload carried no tool_input, and on a tool that is not
+	// a shell.
+	StatusMasked *string `json:"status_masked"`
+	RunnerDigest *string `json:"runner_digest"`
 }
 
 // Execution outcomes (v2).

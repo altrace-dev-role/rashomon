@@ -61,6 +61,9 @@ var (
 		// v3. One bit: whether a Bash call's tool_response names a background
 		// task. The id and the rest of the response are never decoded.
 		"backgrounded",
+		// v4. The shape's status_masked and runner_digest for the line as it
+		// ran: a closed word and a keyed digest, never the words.
+		"status_masked", "runner_digest",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",

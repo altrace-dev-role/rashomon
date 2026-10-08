@@ -437,6 +437,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		if err != nil {
 			return nil, err
 		}
+		MaskingAsRan(run)
 		sess := build(run)
 		// The destinations section is built per session, from the session's own
 		// window. Reading the store once per session rather than once per
