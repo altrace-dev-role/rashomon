@@ -2926,6 +2926,21 @@ m("NONO the unknown-decision line is never printed", "internal/report/text.go",
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn
 # sentence). Each anchor appears once in its file.
+# Per-kind schema versions: the call records move to 4, coverage and gaps stay
+# at SessionSchemaVersion, and a terminal goes with its declaration.
+SV = "TestSchema4_|TestH15_SchemaVersion"
+m("MS coverage is written at the call records' version", "internal/hook/coverage.go",
+  "\t\tSchemaVersion: store.SessionSchemaVersion,\n", "\t\tSchemaVersion: store.SchemaVersion,\n", SV)
+m("MS a gap is written at the call records' version", "internal/store/gaps.go",
+  "\t\tSchemaVersion:  SessionSchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      sessionID,\n\t\tReason:         GapForget,\n",
+  "\t\tSchemaVersion:  SchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      sessionID,\n\t\tReason:         GapForget,\n", SV)
+m("MS a pause gap is written at the call records' version", "cmd/rashomon/main.go",
+  "\t\t\tSchemaVersion: store.SessionSchemaVersion,\n\t\t\tRecordedAtMS:  now.UnixMilli(),\n\t\t\tSessionID:     store.PausedSessionID,\n\t\t\tReason:        store.GapPaused,\n\t\t\tFromUnixMS:    since.UnixMilli(),\n\t\t\tToUnixMS:      now.UnixMilli(),",
+  "\t\t\tSchemaVersion: store.SchemaVersion,\n\t\t\tRecordedAtMS:  now.UnixMilli(),\n\t\t\tSessionID:     store.PausedSessionID,\n\t\t\tReason:        store.GapPaused,\n\t\t\tFromUnixMS:    since.UnixMilli(),\n\t\t\tToUnixMS:      now.UnixMilli(),", SV)
+m("MS a terminal is written at another version than its declaration", "internal/hook/handle.go",
+  "\t\t\tSchemaVersion: store.SchemaVersion,\n\t\t\tRecordedAtMS:  h.now().UnixMilli(),\n\t\t\tToolUseID:     h.toolUseID,",
+  "\t\t\tSchemaVersion: store.SessionSchemaVersion,\n\t\t\tRecordedAtMS:  h.now().UnixMilli(),\n\t\t\tToolUseID:     h.toolUseID,", SV)
+
 SH = "TestStatusMasked|TestRunnerDigest|TestMasked_"
 m("MS a pipe after the runner no longer masks it", "internal/shape/masked.go",
   "\t\tif !pipefail {\n\t\t\treturn true, true\n\t\t}", "\t\tif false {\n\t\t\treturn true, true\n\t\t}", SH)

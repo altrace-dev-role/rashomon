@@ -150,6 +150,8 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 	// its full budget once, and a second wait would push the handler past the
 	// hook timeout.
 	if h.opened || (h.toolUseID != "" && reason == store.ReasonLockTimeout) {
+		// A call record, at its declaration's version: a reader that skips
+		// the one must skip the other (store.SessionSchemaVersion).
 		term := store.Terminal{
 			Type:          store.TypeTerminal,
 			SchemaVersion: store.SchemaVersion,

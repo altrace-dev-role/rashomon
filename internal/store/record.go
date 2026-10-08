@@ -23,7 +23,24 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // the rest of its line is a v4 measurement: a v3 record of `make test |
 // tail` says nothing about it, which a reader must take as "not measured",
 // not as "not hidden". Nothing else changed, and v1 to v3 records still read.
+//
+// SchemaVersion is the version of a call's records: its declaration, the
+// terminal that closes it, and its execution. Coverage and gap records are
+// written at SessionSchemaVersion instead.
 const SchemaVersion = 4
+
+// SessionSchemaVersion is the version of the records that describe a session
+// rather than one call: coverage and gaps. Neither has changed since v3, so
+// they stay at 3 when the call records move on. A released reader accepts
+// only the versions it knows and skips the rest; a coverage record it skips
+// reads as `start recorded: no` and `probe_absent`, a gap it skips as no
+// gap at all. Stamping them with the call records' version would lose the
+// whole session to an older binary for a change that is only in the calls.
+//
+// A terminal is a call record: it goes with its declaration, whose version
+// it carries. A readable terminal beside an unreadable declaration reads as
+// a declaration that never landed, which is a lock timeout to the reader.
+const SessionSchemaVersion = 3
 
 // Accepts reports whether a reader understands a record's schema version.
 //
