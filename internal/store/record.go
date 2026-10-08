@@ -19,7 +19,8 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // layer adds behaviour on v3, not another version.
 //
 // v4 is additive over v3: the declaration's shape gained status_masked and
-// runner_digest, and the execution the same two keys, for the line as it ran. Whether a build or test runner's exit status was hidden by
+// runner_digest, and the execution the same two keys, for the line as it ran;
+// both gained rules_version, which lists decided them (shape.RulesVersion). Whether a build or test runner's exit status was hidden by
 // the rest of its line is a v4 measurement: a v3 record of `make test |
 // tail` says nothing about it, which a reader must take as "not measured",
 // not as "not hidden". Nothing else changed, and v1 to v3 records still read.
@@ -187,6 +188,14 @@ type Declaration struct {
 	// expressed inside the object. A reader that cannot tell those apart
 	// reports an absence of rules as an absence of matches.
 	RuleMatch map[string]any `json:"rule_match"`
+
+	// RulesVersion is shape.RulesVersion as the writing binary had it (v4):
+	// which runner and build lists decided this record's shape.verb_class
+	// and shape.status_masked. Records written before and after a list
+	// changed are told apart by it, and by nothing else. It names the writer's
+	// lists only: the pass words are applied when a report is read, never
+	// stored.
+	RulesVersion int `json:"rules_version"`
 }
 
 // Execution records that a declared call ran, one per PostToolUse invocation.
@@ -293,6 +302,10 @@ type Execution struct {
 	// a shell.
 	StatusMasked *string `json:"status_masked"`
 	RunnerDigest *string `json:"runner_digest"`
+
+	// RulesVersion is shape.RulesVersion as the writing binary had it (v4):
+	// which runner and build lists decided StatusMasked. See Declaration's.
+	RulesVersion int `json:"rules_version"`
 }
 
 // Execution outcomes (v2).

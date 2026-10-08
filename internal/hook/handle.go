@@ -90,6 +90,7 @@ func (h *Handler) Capture(in io.Reader) error {
 		ToolName:       p.ToolName,
 		Shape:          shape.Derive(p.ToolName, p.ToolInput, h.st.Key()),
 		CWDDigest:      shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),
+		RulesVersion:   shape.RulesVersion,
 	}
 	// Hostnames are metadata and are stored verbatim, because they are both
 	// the join key against the proxy's record and the finding itself. Nothing

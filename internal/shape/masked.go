@@ -23,6 +23,18 @@ const (
 	MaskedBuild = "build"
 )
 
+// RulesVersion names the lists this build decides a shape with: the test
+// runners (testCommands) and the build runners (buildCommands), which set
+// verb_class and status_masked, and the pass words (the report's
+// passVocabulary), which decide when the masked-runs line fires. Written on
+// every declaration and execution as rules_version, so records written before
+// and after a list changed can be told apart.
+//
+// Bump it whenever one of those lists changes, and add the new lists' pin to
+// the tests that hold one (rules_version_test.go here and in report): each
+// fails when its list changes without a bump.
+const RulesVersion = 1
+
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {
 	return []string{MaskedNone, MaskedTest, MaskedBuild}

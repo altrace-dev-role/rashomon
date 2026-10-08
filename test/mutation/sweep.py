@@ -2935,6 +2935,18 @@ m("MS a terminal is written at another version than its declaration", "internal/
   "\t\t\tSchemaVersion: store.SchemaVersion,\n\t\t\tRecordedAtMS:  h.now().UnixMilli(),\n\t\t\tToolUseID:     h.toolUseID,",
   "\t\t\tSchemaVersion: store.SessionSchemaVersion,\n\t\t\tRecordedAtMS:  h.now().UnixMilli(),\n\t\t\tToolUseID:     h.toolUseID,", SV)
 
+# rules_version: which lists decided a call record's shape, and the pins that
+# make a list change bump it.
+RV = "TestRulesVersion_|TestSchema4_"
+m("MS the declaration carries no rules version", "internal/hook/handle.go",
+  "\t\tRulesVersion:   shape.RulesVersion,\n", "", RV)
+m("MS the execution carries no rules version", "internal/hook/post.go",
+  "\t\tRulesVersion:  shape.RulesVersion,\n", "", RV)
+m("MS a runner list changes without a rules version bump", "internal/shape/masked.go",
+  "\t{\"make\"}, {\"gmake\"},\n", "\t{\"make\"}, {\"gmake\"}, {\"just\"},\n", RV)
+m("MS a pass word is added without a rules version bump", "internal/report/account.go",
+  "\t\"builds\",\n}", "\t\"builds\", \"works\",\n}", RV)
+
 SH = "TestStatusMasked|TestRunnerDigest|TestMasked_"
 # The parser runs the line twice in the abstract, the runner failing and
 # passing (statusMasked); each mutant breaks one rule of that run.

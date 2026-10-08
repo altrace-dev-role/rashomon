@@ -43,6 +43,8 @@ var (
 		// v3. A keyed digest of the directory its command starts in: 64 hex
 		// characters, never the path.
 		"cwd_digest",
+		// v4. An integer: which runner lists decided the shape.
+		"rules_version",
 	}
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
@@ -64,6 +66,8 @@ var (
 		// v4. The shape's status_masked and runner_digest for the line as it
 		// ran: a closed word and a keyed digest, never the words.
 		"status_masked", "runner_digest",
+		// v4. An integer: which runner lists decided them.
+		"rules_version",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",

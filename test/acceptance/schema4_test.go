@@ -2,6 +2,8 @@ package acceptance
 
 import (
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 )
 
 // TestSchema4_AnOlderReaderKeepsTheSession: a released reader accepts schema
@@ -78,6 +80,29 @@ func TestSchema4_AnOlderReaderKeepsTheSession(t *testing.T) {
 		if r.fields["schema_version"] != want {
 			t.Errorf("terminal %d is at schema_version %v and its declaration at %v: a reader that skips the one keeps the other",
 				i, r.fields["schema_version"], want)
+		}
+	}
+}
+
+// TestSchema4_CallRecordsCarryTheRulesVersion: every declaration and
+// execution names the lists that decided its shape, so records written
+// before and after a list changed can be told apart. Break: write either
+// without it.
+func TestSchema4_CallRecordsCarryTheRulesVersion(t *testing.T) {
+	s := newTBSession(t)
+	s.shell("make test 2>&1 | tail -40", true, "")
+	s.shell("go test ./...", false, "")
+	s.edit("/tmp/project/calc.go")
+	want := float64(shape.RulesVersion)
+	for _, kind := range []string{"declaration", "execution"} {
+		recs := recordsOfType(s.e.records(testSession), kind)
+		if len(recs) == 0 {
+			t.Fatalf("no %s record was written", kind)
+		}
+		for i, r := range recs {
+			if got, ok := r.fields["rules_version"]; !ok || got != want {
+				t.Errorf("%s %d: rules_version %v (present %v), want %v", kind, i, got, ok, want)
+			}
 		}
 	}
 }

@@ -146,6 +146,7 @@ func (p *Post) Capture(in io.Reader) error {
 		ToolName:      pl.ToolName,
 		Outcome:       store.ExecOK,
 		DurationMS:    positive(pl.DurationMS),
+		RulesVersion:  shape.RulesVersion,
 	}
 	// Derived through the same function the declaration path uses, with the
 	// same per-install key, or the two digests would never be comparable. An
