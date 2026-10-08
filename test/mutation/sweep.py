@@ -3045,7 +3045,7 @@ m("MS a masked build is not masked", "internal/report/timeline.go",
 m("MS the unknown legend does not name masked rows", "internal/report/timeline_text.go",
   "; or ok as a line that did not return a build or test run's exit status)", ")", RP)
 m("MS a masked test run counts as ok", "internal/report/testbending.go",
-  "\t\t\t\tout.Runs++\n\t\t\t\tout.Masked++", "\t\t\t\tout.Runs++\n\t\t\t\tout.OK++", RP)
+  "\t\t\t\tout.Runs++\n\t\t\t\t*out.Masked++", "\t\t\t\tout.Runs++\n\t\t\t\tout.OK++", RP)
 m("MS a masked test run is not counted", "internal/report/testbending.go",
   "\t\tif m := d.Shape.StatusMasked; m != nil && *m == shape.MaskedTest {", "\t\tif m := d.Shape.StatusMasked; false && m != nil {", RP)
 m("MS a masked line is a run with a result", "internal/report/testbending.go",
@@ -3053,9 +3053,13 @@ m("MS a masked line is a run with a result", "internal/report/testbending.go",
 m("MS a masked line is no edit", "internal/report/testbending.go",
   "\tif d.Shape.MayWrite || statusMasked(d) {", "\tif d.Shape.MayWrite {", RP)
 m("MS the test runs line does not say how many were masked", "internal/report/text.go",
-  "\tif t.Masked > 0 {", "\tif false {", RP)
+  "\tif t.Masked != nil && *t.Masked > 0 {", "\tif false {", RP)
 m("MS the session report does not print masked runs", "internal/report/text.go",
-  "\twriteMaskedRuns(b, sess.MaskedRuns)\n", "", RP)
+  "\t\twriteMaskedRuns(b, *sess.MaskedRuns)\n", "", RP)
+m("MS masking is measured before schema 4", "internal/report/testbending.go",
+  "\t\tif d.SchemaVersion >= 4 || d.Shape.StatusMasked != nil {", "\t\tif d.SchemaVersion >= 3 || d.Shape.StatusMasked != nil {", RP)
+m("MS the session's masked runs are built for a session that never measured them", "internal/report/account.go",
+  "\tif !measuresMasking(run) {\n\t\treturn nil\n\t}\n\tm := BuildMaskedRuns", "\tm := BuildMaskedRuns", RP)
 m("MS a plain follow-up in another directory counts", "internal/report/account.go",
   "\t\tk := runner{*r, d.CWDDigest}", "\t\tk := runner{*r, \"\"}", RP)
 m("MS an earlier plain run counts as a follow-up", "internal/report/account.go",

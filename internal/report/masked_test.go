@@ -42,8 +42,8 @@ func TestMasked_TestRunsCountThemAsUnobserved(t *testing.T) {
 	bg.bg = true
 	tr := testRunsOf(tbRun(maskedCall(1, shape.MaskedTest, "r", ok), maskedCall(2, shape.MaskedTest, "r", failed),
 		test(3, "d", ok), maskedCall(4, shape.MaskedBuild, "b", ok), bg))
-	if tr.Runs != 3 || tr.OK != 1 || tr.Failed != 0 || tr.Masked != 2 {
-		t.Errorf("runs/ok/failed/masked = %d/%d/%d/%d, want 3/1/0/2", tr.Runs, tr.OK, tr.Failed, tr.Masked)
+	if tr.Runs != 3 || tr.OK != 1 || tr.Failed != 0 || tr.Masked == nil || *tr.Masked != 2 {
+		t.Errorf("runs/ok/failed/masked = %d/%d/%d/%v, want 3/1/0/2", tr.Runs, tr.OK, tr.Failed, tr.Masked)
 	}
 	var b bytes.Buffer
 	writeTestRuns(&b, tr, "s1")
@@ -336,4 +336,43 @@ func TestMasked_AsRan(t *testing.T) {
 		}
 	}
 	MaskingAsRan(nil)
+}
+
+// TestMasked_NotMeasuredBeforeSchema4: a session whose declarations are all
+// from before schema 4 never measured masking, so its masked runs and its
+// test runs' masked count are null, never 0 -- the same bytes as a measured
+// zero. Break: build them for any session, or count a schema-3 session as
+// measured.
+func TestMasked_NotMeasuredBeforeSchema4(t *testing.T) {
+	const pass = "Done. All tests pass."
+	v3 := tbRun(test(1, "d", store.ExecOK), tbCall{seq: 2, tool: "Bash", verb: shape.VerbExecute, digest: "x", outcome: store.ExecOK})
+	for i := range v3.Declarations {
+		v3.Declarations[i].SchemaVersion = 3
+	}
+	j, _ := json.Marshal(Session{MaskedRuns: sessionMaskedRuns(v3, AccountFromMessage(pass))})
+	if !strings.Contains(string(j), `"masked_runs":null`) {
+		t.Errorf("a schema-3 session's masked runs: %s", j)
+	}
+	tr := testRunsOf(v3)
+	if tr == nil {
+		t.Fatal("a schema-3 session with a test run has no test runs")
+	}
+	if j, _ := json.Marshal(tr); !strings.Contains(string(j), `"status_masked":null`) {
+		t.Errorf("a schema-3 session's test runs: %s", j)
+	}
+	var b bytes.Buffer
+	writeTestRuns(&b, tr, "s1")
+	if !strings.Contains(b.String(), "test runs: 1 (1 ok, 0 failed)\n") {
+		t.Errorf("a schema-3 session's test runs line:\n%s", b.String())
+	}
+
+	// At schema 4 both are measured, and a zero is a zero.
+	v4 := tbRun(test(1, "d", store.ExecOK))
+	mr := sessionMaskedRuns(v4, AccountFromMessage(pass))
+	if mr == nil || mr.Runs != 0 {
+		t.Errorf("a schema-4 session's masked runs = %+v, want a measured 0", mr)
+	}
+	if tr := testRunsOf(v4); tr.Masked == nil || *tr.Masked != 0 {
+		t.Errorf("a schema-4 session's masked test runs = %v, want a measured 0", tr.Masked)
+	}
 }

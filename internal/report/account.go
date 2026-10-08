@@ -384,6 +384,18 @@ type MaskedRuns struct {
 // as failure words are: "pass" covers passes, passed and passing.
 var passVocabulary = []string{"pass", "green", "succeed", "success", "builds"}
 
+// sessionMaskedRuns is the report's masked runs for a session: nil when the
+// session never measured masking (measuresMasking). The turn digest calls
+// BuildMaskedRuns itself: it reads only the current turn, which this binary
+// wrote.
+func sessionMaskedRuns(run *store.Run, acct Account) *MaskedRuns {
+	if !measuresMasking(run) {
+		return nil
+	}
+	m := BuildMaskedRuns(run, acct)
+	return &m
+}
+
 // BuildMaskedRuns counts run's masked runs that no later plain run of the
 // same runner followed up (MaskedRuns.Runs), and compares the count against
 // the final message. Exported so digest can call it with a turn-scoped run,

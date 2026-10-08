@@ -139,7 +139,9 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	writeAccount(b, sess.Account)
 	writeSubagents(b, sess.Subagents)
 	writeSilentFailures(b, sess.SilentFailures)
-	writeMaskedRuns(b, sess.MaskedRuns)
+	if sess.MaskedRuns != nil {
+		writeMaskedRuns(b, *sess.MaskedRuns)
+	}
 	writeTestRuns(b, sess.TestRuns, sess.SessionID)
 	// Whether a proxy store was NAMED for this render, not whether it could be
 	// read: a named store that is missing still renders its reason in full,
@@ -715,8 +717,8 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
 		return
 	}
 	masked := ""
-	if t.Masked > 0 {
-		masked = fmt.Sprintf(", %d whose line did not return the test run's exit status, so neither", t.Masked)
+	if t.Masked != nil && *t.Masked > 0 {
+		masked = fmt.Sprintf(", %d whose line did not return the test run's exit status, so neither", *t.Masked)
 	}
 	fmt.Fprintf(b, "  test runs: %d (%d ok, %d failed%s)\n", t.Runs, t.OK, t.Failed, masked)
 	if t.Undeclared > 0 {

@@ -289,9 +289,11 @@ type TestRuns struct {
 	// Masked counts the calls whose shape says a test runner ran with its
 	// exit status masked by its line (status_masked test) and which ended
 	// ok or failed: `make test 2>&1 | tail -40`. Neither in OK nor in
-	// Failed, whatever the line recorded, and never part of a pair. A record
-	// before schema 4 could not say, and such a line is not counted at all.
-	Masked int `json:"status_masked"`
+	// Failed, whatever the line recorded, and never part of a pair. Null
+	// when the session never measured masking (measuresMasking): a record
+	// before schema 4 could not say, so 0 there would be a measured zero it
+	// never was.
+	Masked *int `json:"status_masked"`
 	// Undeclared counts the calls whose declaration was lost
 	// (undeclaredCalls). When it is not 0 no pair is looked for, and the two
 	// lists are empty for that reason, not because none was found.
@@ -315,12 +317,15 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 		return nil
 	}
 	out := &TestRuns{Undeclared: undeclaredCalls(run, denied), TestBending: tb}
+	if measuresMasking(run) {
+		out.Masked = new(int)
+	}
 	for _, d := range run.Declarations {
 		if m := d.Shape.StatusMasked; m != nil && *m == shape.MaskedTest {
 			switch testOutcome(d, executed, denied) {
 			case store.ExecOK, store.ExecFailed:
 				out.Runs++
-				out.Masked++
+				*out.Masked++
 			}
 			continue
 		}
@@ -368,6 +373,19 @@ func testOutcome(d store.Declaration, executed map[string][]store.Execution, den
 // timeoutFired is the exit status timeout(1) gives when the duration ran out
 // and the command was stopped.
 const timeoutFired = 124
+
+// measuresMasking reports a run holding a declaration written at schema 4 or
+// later, or one that carries status_masked: a run in which masking was
+// measured. A session of schema-3 declarations only has its masked counts
+// null, not 0.
+func measuresMasking(run *store.Run) bool {
+	for _, d := range run.Declarations {
+		if d.SchemaVersion >= 4 || d.Shape.StatusMasked != nil {
+			return true
+		}
+	}
+	return false
+}
 
 // measuresTests reports a run holding a declaration written at schema 3 or
 // later, where the test class exists.
