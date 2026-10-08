@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -485,9 +486,11 @@ func TestSilentFailures_TheReportNamesTheLookupsItDidNotCount(t *testing.T) {
 	}
 }
 
-// The tools the report names as lookups are the ones IsLookup counts, and
-// they are the tools shape classes read by name alone. Break: add a tool to
-// one list and not the other.
+// The four lookup tools are lookups and the report names each, and a few
+// other tools are not lookups. It checks fixed names with strings.Contains,
+// so it does not catch a tool added to the read class: that is
+// TestIsLookup_TheReportNamesExactlyTheToolsItCounts. Break: drop one of the
+// four from shape's read class, or make every tool not a shell a lookup.
 func TestIsLookup_IsTheReadClassOfToolNames(t *testing.T) {
 	for _, tool := range []string{"Read", "Glob", "Grep", "NotebookRead"} {
 		if !IsLookup(tool) {
@@ -500,6 +503,36 @@ func TestIsLookup_IsTheReadClassOfToolNames(t *testing.T) {
 	for _, tool := range []string{"Bash", "Edit", "Write", "Agent", "WebFetch", "mcp__fs__read_file", ""} {
 		if IsLookup(tool) {
 			t.Errorf("IsLookup(%q) = true", tool)
+		}
+	}
+}
+
+// The report names exactly the tools IsLookup sets aside: no fewer, or a
+// silenced tool goes unnamed, and no more. The words are read from shape's
+// read class, so a tool added there is both silenced and named; this test
+// pins that class to the four tools, so adding one -- to shape's list, or to
+// IsLookup's check alone -- fails here. Break: append "LS" to the read
+// class, let IsLookup accept "LS", or name only three tools.
+func TestIsLookup_TheReportNamesExactlyTheToolsItCounts(t *testing.T) {
+	want := []string{"Read", "Glob", "Grep", "NotebookRead"}
+	// Exact tokens: strings.Contains would find "Read" inside "NotebookRead".
+	names := strings.FieldsFunc(LookupToolNames(), func(r rune) bool { return r == ',' || r == ' ' })
+	names = slices.DeleteFunc(names, func(s string) bool { return s == "or" })
+	if !slices.Equal(names, want) {
+		t.Errorf("the report names %q, want %q", names, want)
+	}
+	for _, tool := range want {
+		if !IsLookup(tool) {
+			t.Errorf("IsLookup(%q) = false", tool)
+		}
+	}
+	for _, tool := range []string{
+		"", "LS", "TodoRead", "TodoWrite", "ReadMcpResourceTool", "ListMcpResourcesTool", "BashOutput", "KillShell",
+		"Skill", "SlashCommand", "ExitPlanMode", "Bash", "Edit", "MultiEdit", "Write", "NotebookEdit",
+		"Agent", "Task", "WebFetch", "WebSearch", "mcp__fs__read_file",
+	} {
+		if IsLookup(tool) {
+			t.Errorf("IsLookup(%q) = true: the report does not name it", tool)
 		}
 	}
 }

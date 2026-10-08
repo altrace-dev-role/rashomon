@@ -313,8 +313,21 @@ func buildSubagents(run *store.Run) []SubagentSummary {
 	return out
 }
 
-// lookupToolNames is how the report names the tools IsLookup counts.
-const lookupToolNames = "Read, Glob, Grep or NotebookRead"
+// lookupToolNames is how the report names the tools IsLookup counts, read
+// from the same list IsLookup is (shape.ReadTools), so the two cannot drift.
+var lookupToolNames = orList(shape.ReadTools())
+
+// LookupToolNames is how a reader is told which tools are lookups: "Read,
+// Glob, Grep or NotebookRead". spend prints it beside a "none found".
+func LookupToolNames() string { return lookupToolNames }
+
+// orList joins names as "A, B or C".
+func orList(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
+}
 
 // IsLookup reports whether a failed call to toolName is a lookup: one of the
 // tools shape classes read by name alone (Read, Glob, Grep, NotebookRead). A

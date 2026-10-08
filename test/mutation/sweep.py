@@ -2920,6 +2920,18 @@ m("LK spend reads a turn whose only failure is a lookup", "internal/spend/join.g
 m("LK spend counts a lost failed lookup as unchecked", "internal/spend/join.go",
   "x.Outcome == store.ExecFailed && !report.IsLookup(x.ToolName) {", "x.Outcome == store.ExecFailed {",
   "TestJoin_AFailedLookupIsNoTurnToJudge")
+# One list of lookup tools: a tool added to it, or to the check alone, is
+# silenced and must fail a test; the report must name every one.
+m("LK a tool is added to the read class", "internal/shape/shape.go",
+  "var readTools = []string{\"Read\", \"Glob\", \"Grep\", \"NotebookRead\"}",
+  "var readTools = []string{\"Read\", \"Glob\", \"Grep\", \"NotebookRead\", \"LS\"}",
+  "TestIsLookup_TheReportNamesExactlyTheToolsItCounts")
+m("LK a tool is classed read beside the list", "internal/shape/shape.go",
+  "\tif slices.Contains(readTools, name) {", "\tif slices.Contains(readTools, name) || name == \"LS\" {",
+  "TestIsLookup_TheReportNamesExactlyTheToolsItCounts")
+m("LK the report names fewer tools than it sets aside", "internal/report/account.go",
+  "var lookupToolNames = orList(shape.ReadTools())", "var lookupToolNames = orList(shape.ReadTools()[:3])",
+  "TestIsLookup_TheReportNamesExactlyTheToolsItCounts")
 
 # Import additions some mutants need.
 IMPORTS = {

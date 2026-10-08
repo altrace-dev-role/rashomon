@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -974,13 +975,23 @@ func isShellAssignment(t token) bool {
 // the call.
 func ToolVerb(name string) string { return verbForTool(name) }
 
+// readTools are the tools classed read by name alone. It is the one list:
+// report's lookups (IsLookup) and the words the report and spend name them
+// with are both read from it, through ReadTools.
+var readTools = []string{"Read", "Glob", "Grep", "NotebookRead"}
+
+// ReadTools returns the tools classed read by name alone, in a fresh slice a
+// caller may keep or change.
+func ReadTools() []string { return slices.Clone(readTools) }
+
 func verbForTool(name string) string {
 	if strings.HasPrefix(name, "mcp__") {
 		return VerbMCP
 	}
-	switch name {
-	case "Read", "Glob", "Grep", "NotebookRead":
+	if slices.Contains(readTools, name) {
 		return VerbRead
+	}
+	switch name {
 	case "Write", "Edit", "MultiEdit", "NotebookEdit":
 		return VerbWrite
 	case "WebFetch", "WebSearch":
