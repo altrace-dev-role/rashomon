@@ -322,6 +322,7 @@ type reportSession struct {
 		IDsRecorded           int      `json:"ids_recorded"`
 		MissingFromStore      []string `json:"missing_from_store"`
 		MissingFromTranscript []string `json:"missing_from_transcript"`
+		RefusedBeforeHooks    []string `json:"refused_before_hooks"`
 		IDsExecuted           int      `json:"ids_executed"`
 		ResultsInTranscript   *int     `json:"results_in_transcript"`
 		ExecutedButUnrecorded []string `json:"executed_but_unrecorded"`

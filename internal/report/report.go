@@ -198,6 +198,14 @@ type Transcript struct {
 	IDsRecorded           int      `json:"ids_recorded"`
 	MissingFromStore      []string `json:"missing_from_store"`
 	MissingFromTranscript []string `json:"missing_from_transcript"`
+	// RefusedBeforeHooks names the calls Claude Code refused while checking
+	// their input, before any hook could fire: an is_error result wrapped in
+	// <tool_use_error>, for an id no hook left any record of. The store could
+	// never hold them, so they are in neither MissingFromStore nor
+	// ExecutedButUnrecorded, and they are named here so the equation still
+	// balances: ids_in_transcript = ids_recorded + missing_from_store +
+	// refused_before_hooks - missing_from_transcript.
+	RefusedBeforeHooks []string `json:"refused_before_hooks"`
 	// The execution half of the same equation. IDsExecuted counts this store's
 	// records and is therefore always known; ResultsInTranscript is null when
 	// the transcript could not be read, under the same rule as the counts
@@ -594,8 +602,22 @@ func build(run *store.Run) Session {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
+	// Every id any hook left a record of, under any transcript path: a
+	// declaration, a terminal (which outlives a declaration lost to the lock),
+	// or an execution. Only a call outside this set can have been refused
+	// before any hook fired.
+	hooked := map[string]bool{}
+	for _, d := range run.Declarations {
+		hooked[d.ToolUseID] = true
+	}
+	for _, x := range run.Terminals {
+		hooked[x.ToolUseID] = true
+	}
+	for id := range executed {
+		hooked[id] = true
+	}
 	for _, path := range paths {
-		t := accounting(path, byPath[path], executed)
+		t := accounting(path, byPath[path], executed, hooked)
 		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0) {
 			sess.Coverage.add(ReasonTranscriptMismatch)
 		}
@@ -611,7 +633,7 @@ func build(run *store.Run) Session {
 	return sess
 }
 
-func accounting(path string, recorded, executed map[string]bool) Transcript {
+func accounting(path string, recorded, executed, hooked map[string]bool) Transcript {
 	t := Transcript{Path: path, IDsRecorded: len(recorded)}
 	for id := range recorded {
 		if executed[id] {
@@ -635,13 +657,22 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 	nResults := len(results)
 	t.ResultsInTranscript = &nResults
 
-	// A call refused before any hook fired cannot be in the store, so its
-	// absence there is not a recorder gap. Only that refusal is excused: every
-	// other denial comes after PreToolUse, and an undeclared one is a lost
-	// declaration like any other.
+	// A call Claude Code refused while checking its input reached no hook, so
+	// the store cannot hold it and neither absence is a recorder gap. The
+	// transcript gives the shape and the store confirms it: an id any hook
+	// recorded is held to the store as before, so a lost declaration is still
+	// a mismatch whatever its result says.
+	refused := map[string]bool{}
+	t.RefusedBeforeHooks = []string{}
+	for id := range ids {
+		if unhooked[id] && !hooked[id] {
+			refused[id] = true
+			t.RefusedBeforeHooks = append(t.RefusedBeforeHooks, id)
+		}
+	}
 	t.MissingFromStore = []string{}
 	for id := range ids {
-		if !recorded[id] && !unhooked[id] {
+		if !recorded[id] && !refused[id] {
 			t.MissingFromStore = append(t.MissingFromStore, id)
 		}
 	}
@@ -653,7 +684,7 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 	}
 	t.ExecutedButUnrecorded = []string{}
 	for id := range results {
-		if !executed[id] {
+		if !executed[id] && !refused[id] {
 			t.ExecutedButUnrecorded = append(t.ExecutedButUnrecorded, id)
 		}
 	}
@@ -672,6 +703,7 @@ func accounting(path string, recorded, executed map[string]bool) Transcript {
 	}
 	sort.Strings(t.MissingFromStore)
 	sort.Strings(t.MissingFromTranscript)
+	sort.Strings(t.RefusedBeforeHooks)
 	sort.Strings(t.ExecutedButUnrecorded)
 	sort.Strings(t.DeniedByUser)
 	sort.Strings(t.DeclaredWithoutResult)

@@ -38,8 +38,10 @@ const deniedPrefix = "The user doesn't want to proceed with this tool use. The t
 // from its subagent transcripts, which live at <session>/subagents/agent-*.jsonl
 // where <session> is the transcript path without its extension, the distinct
 // ids of the tool_result blocks answering them, which of those results are
-// the user having DENIED the call, and which of the denials came before any
-// hook fired (unhooked, a subset of denied).
+// the user having DENIED the call, and which have the shape of a call Claude
+// Code refused before any hook fired (unhooked; see toolUseErrorTag). A
+// transcript cannot show whether a hook fired, so unhooked only marks the
+// shape; the report confirms it against the store.
 //
 // The sets are kept apart because they mean different things: a tool_use block
 // is a call the model asked for, a tool_result block is that call having
@@ -180,14 +182,26 @@ var deniedPrefixes = []string{
 	pathDeniedPrefix,
 }
 
-// pathDeniedPrefix opens an Edit or Write refused by a settings deny rule on
-// its path. It is the one refusal measured to come BEFORE PreToolUse: Claude
-// Code rejects the input while validating it, so neither hook fires and the
-// call is in the transcript with no declaration. Measured on 2.1.292: all five
-// such refusals in a 100-run benchmark, verbatim, and none of them declared;
-// every other refusal kind in the same runs was declared. Its id is therefore
-// also kept as unhooked, so the report does not call that absence a gap.
+// pathDeniedPrefix opens a Read, Edit or Write refused by a settings deny rule
+// on its path: verbatim on 2.1.292 (all five such refusals in a 100-run
+// benchmark) and on 2.1.280. It is listed here because it is a refusal. That it
+// comes before any hook is not this sentence's doing: it is one of the input
+// check's refusals, and toolUseErrorTag covers all of them.
 const pathDeniedPrefix = "<tool_use_error>File is in a directory that is denied by your permission settings."
+
+// toolUseErrorTag opens the result Claude Code writes when it refuses a call
+// while checking its input. The check runs before PreToolUse, so no hook fires
+// and the call is in the transcript with no record in the store. On 2.1.280,
+// with no hook firing, it refused this way a Read, Edit or Write on a path a
+// settings deny rule covers, an Edit whose old_string was not in the file, and
+// an Edit or Write of a file not read first. The check has many more messages,
+// and they change between versions, so the class is matched by this wrapper
+// rather than by its sentences.
+//
+// The wrapper alone is not proof: Claude Code also wraps a few errors raised
+// after PreToolUse ("Error calling tool ..."). It marks a candidate, and the
+// report excuses the call only when no hook left any record of it (accounting).
+const toolUseErrorTag = "<tool_use_error>"
 
 func collectIDs(path string, into, results, denied, unhooked map[string]bool) (int, error) {
 	f, err := os.Open(path)
@@ -226,11 +240,11 @@ func collectIDs(path string, into, results, denied, unhooked map[string]bool) (i
 				into[b.ID] = true
 			case b.Type == "tool_result" && b.ToolUseID != "":
 				text := resultText(b.Content)
+				if b.IsError && strings.HasPrefix(text, toolUseErrorTag) {
+					unhooked[b.ToolUseID] = true
+				}
 				if isDenial(b.IsError, text) {
 					denied[b.ToolUseID] = true
-					if strings.HasPrefix(text, pathDeniedPrefix) {
-						unhooked[b.ToolUseID] = true
-					}
 					continue
 				}
 				results[b.ToolUseID] = true

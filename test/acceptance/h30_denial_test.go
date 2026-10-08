@@ -149,7 +149,7 @@ func TestH30_AFailureIsStillACoverageFailure(t *testing.T) {
 	}
 }
 
-// pathDeniedText is what Claude Code 2.1.292 returns when an Edit or Write is
+// pathDeniedText is what Claude Code 2.1.292 returns when a Read, Edit or Write is
 // refused by a settings deny rule on its path, verbatim from all five such
 // refusals in a 100-run benchmark.
 const pathDeniedText = "<tool_use_error>File is in a directory that is denied by your " +
@@ -225,6 +225,11 @@ func TestH30_AnEditDeniedByAPathRuleIsNotACoverageFailure(t *testing.T) {
 		t.Errorf("missing_from_store = %v; Claude Code fires no hook for a path-denied "+
 			"Edit, so its absence from the store is not a recorder gap", tr.MissingFromStore)
 	}
+	if len(tr.RefusedBeforeHooks) != 1 || tr.RefusedBeforeHooks[0] != editID {
+		t.Errorf("refused_before_hooks = %v, want [%s]: excused from the store, it must "+
+			"still be named, or ids_in_transcript exceeds ids_recorded with nothing saying why",
+			tr.RefusedBeforeHooks, editID)
+	}
 	if rep.Coverage.State != "verified" || len(rep.Coverage.Reasons) != 0 {
 		t.Errorf("coverage = %s %v, want verified with no reasons",
 			rep.Coverage.State, rep.Coverage.Reasons)
@@ -246,9 +251,73 @@ func TestH30_AnUndeclaredPromptDenialIsStillMissingFromStore(t *testing.T) {
 	e.postIDs(p.TranscriptPath, p.ToolUseID)
 	e.probe("end", testSession)
 
-	tr := e.report(testSession).Transcripts[0]
+	rep := e.report(testSession)
+	if len(rep.Transcripts) != 1 {
+		t.Fatalf("want one transcript group, got %d", len(rep.Transcripts))
+	}
+	tr := rep.Transcripts[0]
 	if len(tr.MissingFromStore) != 1 || tr.MissingFromStore[0] != editID {
 		t.Errorf("missing_from_store = %v, want [%s]: PreToolUse fires before the prompt, "+
 			"so an undeclared prompt denial is a lost declaration", tr.MissingFromStore, editID)
+	}
+	if len(tr.RefusedBeforeHooks) != 0 {
+		t.Errorf("refused_before_hooks = %v; a prompt denial comes after PreToolUse", tr.RefusedBeforeHooks)
+	}
+}
+
+// inputCheckTexts are Edit and Write mistakes Claude Code refuses while
+// checking the call's input, verbatim from 2.1.280. As with the path refusal,
+// no hook fires for them; unlike it, they are not denials.
+var inputCheckTexts = map[string]string{
+	"old_string not in the file": "<tool_use_error>String to replace not found in file.\n" +
+		"String: zzz</tool_use_error>",
+	"file not read first": "<tool_use_error>File has not been read yet. Read it first before " +
+		"writing to it.</tool_use_error>",
+}
+
+// TestH30_AnEditRefusedWhileItsInputWasCheckedIsNotACoverageFailure is the
+// class the path refusal belongs to. Claude Code checks an Edit's input before
+// PreToolUse, and when the check fails no hook fires. An ordinary mistake -- an
+// old_string that is not in the file, a file not read first -- then read as
+// missing-from-store AND executed-but-unrecorded, and the session went
+// unverified for a call that never ran.
+func TestH30_AnEditRefusedWhileItsInputWasCheckedIsNotACoverageFailure(t *testing.T) {
+	for name, text := range inputCheckTexts {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			e.watched(testSession)
+
+			const editID = "toolu_input_refused"
+			p := defaultPayload()
+			p.TranscriptPath = writeTwoCallTranscript(t, e, p.ToolUseID, editID, text)
+			e.mustHook(p.build(t))
+			e.postIDs(p.TranscriptPath, p.ToolUseID)
+			// No hook of either kind for editID: the input check refused it first.
+			e.probe("end", testSession)
+
+			rep := e.report(testSession)
+			if len(rep.Transcripts) != 1 {
+				t.Fatalf("want one transcript group, got %d", len(rep.Transcripts))
+			}
+			tr := rep.Transcripts[0]
+			if len(tr.RefusedBeforeHooks) != 1 || tr.RefusedBeforeHooks[0] != editID {
+				t.Errorf("refused_before_hooks = %v, want [%s]", tr.RefusedBeforeHooks, editID)
+			}
+			if len(tr.MissingFromStore) != 0 || len(tr.ExecutedButUnrecorded) != 0 {
+				t.Errorf("missing_from_store = %v, executed_but_unrecorded = %v; the Edit never "+
+					"ran and no hook could record it", tr.MissingFromStore, tr.ExecutedButUnrecorded)
+			}
+			if len(tr.DeniedByUser) != 0 {
+				t.Errorf("denied_by_user = %v; a failed input check is not a refusal", tr.DeniedByUser)
+			}
+			if rep.Coverage.State != "verified" || len(rep.Coverage.Reasons) != 0 {
+				t.Errorf("coverage = %s %v, want verified with no reasons",
+					rep.Coverage.State, rep.Coverage.Reasons)
+			}
+			out := e.run("", nil, "report", "--session", testSession).stdout
+			if !strings.Contains(out, "refused before any hook: "+editID) {
+				t.Errorf("the render does not name the refused call:\n%s", out)
+			}
+		})
 	}
 }
