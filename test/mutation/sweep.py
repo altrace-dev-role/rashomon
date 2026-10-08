@@ -2376,8 +2376,8 @@ m("TB a prefix entry is compared whole", "internal/shape/shape.go",
   "\t\t\tif word == p {\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the per-runner list is not read", "internal/shape/shape.go",
-  "onList(t.text, list) ||",
-  "onList(t.text, nil) ||",
+  "\tlist := notARun[strings.TrimSuffix(runner, \" build\")]\n",
+  "\tlist := []string(nil)\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB help, version and watch refuse nothing", "internal/shape/shape.go",
   "|| onList(t.text, notARunAny)",
