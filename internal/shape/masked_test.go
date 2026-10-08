@@ -85,14 +85,18 @@ func TestStatusMasked(t *testing.T) {
 		{"set -euo pipefail\nmake test | tail -5", MaskedNone, "a cluster that holds o names pipefail"},
 		{"set -e; make test; echo done", MaskedNone, "errexit stops the line at the failure"},
 		{"set -o errexit; make test; echo done", MaskedNone, ""},
-		{"bash -o pipefail -c 'make test | tail'", MaskedNone, "the quoted line is one argument, not looked into"},
+		{"bash -o pipefail -c 'make test | tail'", "null", "a shell's -c line is not looked into"},
 		{"make test || exit 1", MaskedNone, "exits failed"},
 		{"make test || exit", MaskedNone, "exits with the runner's status"},
+		{"make test || exit 1; echo done", MaskedNone, "the exit ends the line before echo"},
+		{"make release | tail; make test | tail", MaskedTest, "a hidden test runner is named over a hidden build"},
+		{"make test || (echo failed; exit 1); echo done", MaskedTest, "a subshell's exit ends the subshell, and echo runs"},
+		{"make test; for i in 1; do exit $?; done", "null", "a loop that holds an exit is not run"},
+		{"false && make test | tail", "null", "the runner never runs in the abstract run"},
 		{"make test; exit $?", MaskedNone, ""},
 		{"make test || false", MaskedNone, "false is a failure too"},
 		{"make test; if [ $? -ne 0 ]; then exit 1; fi", "null", "a compound command may read $?: not followed"},
-		{"make test || { echo failed; exit 1; }", "null", "a group may end in exit: not followed"},
-		{"make test &", MaskedNone, "backgrounded: its status is no one's"},
+		{"make test || { echo failed; exit 1; }", MaskedNone, "the group ends in exit 1, which it runs when make failed"},
 		{"make -n test | tail", MaskedNone, "make -n runs nothing"},
 		{"go test -c ./pkg | tail", MaskedNone, "go test -c compiles only"},
 		{"ls | tail; echo $?", MaskedNone, "no runner"},
@@ -104,6 +108,47 @@ func TestStatusMasked(t *testing.T) {
 		{"make test | tail; echo \"unterminated", "null", "a quote that never closes"},
 		{"x=$(cat <<EOF\nhi\nEOF\n); make test | tail", "null", "a here-document inside a substitution"},
 		{"make test | tail\x00 ; exit", "null", "a control byte"},
+
+		// The rows of the PR #48 review, each checked in bash 3.2.57 with the
+		// runner stubbed failing, then passing: 0 on failure, or the same
+		// status either way, is test; 1/0 is none.
+		{"set -e; make test 2>&1 | tail -40", MaskedTest, "0/0: errexit sees the pipeline's status, tail's"},
+		{"set -euo pipefail; npm test || true", MaskedTest, "0/0: errexit ignores a command before ||"},
+		{"set -e; make test && echo ok; echo done", MaskedTest, "0/0: errexit ignores a command before &&"},
+		{"set -e; set +e; make test; echo done", MaskedTest, "0/0: set +e turns it off"},
+		{"set -o pipefail; set +o pipefail; make test | tail", MaskedTest, "0/0: set +o pipefail turns it off"},
+		{"make test 2>&1 | tail -40; exit ${PIPESTATUS[0]}", MaskedNone, "1/0: PIPESTATUS keeps make's"},
+		{"make test; rc=$?; echo done; exit $rc", MaskedNone, "1/0: the status is kept and returned"},
+		{"{ make test; }", MaskedNone, "1/0: a group's status is its last command's"},
+		{"(make test || exit 1)", MaskedNone, "1/0"},
+		{"(make test; exit $?)", MaskedNone, "1/0"},
+		{"if make test; then echo ok; fi", MaskedTest, "0/0: a failed condition with no else is 0"},
+		{"! make test", MaskedTest, "0/1: inverted"},
+		{"if [ -f Makefile ]; then make test 2>&1 | tail -20; fi", MaskedTest, "0/0"},
+		{"# run the tests \\\nmake test | tail", MaskedTest, "0/0: a backslash ends no comment, and the second line runs"},
+		{"make test &", MaskedTest, "0/0: backgrounded, its status is no one's"},
+		{"make test | tail; make test", MaskedNone, "1/0: the same runner, run again last"},
+		{"make test && if true; then echo ok; fi", MaskedNone, "1/0"},
+		{"set -o pipefail; make test | while read l; do :; done", MaskedNone, "1/0: pipefail, and the loop ends 0"},
+		{"bash -c 'make test | tail'", "null", "0/0, but a shell's -c line is not looked into"},
+		{"{ make test; } | tail", MaskedTest, "0/0"},
+		{"make test | tail &", MaskedTest, "0/0"},
+		{"make test && echo ok", MaskedNone, "1/0"},
+
+		// The parser's other branches, each checked in bash. In the
+		// here-document rows the runner in the body never runs.
+		{"make test || exit 0", MaskedTest, "0/0"},
+		{"make test || exit 256", MaskedTest, "0/0: exit takes its status modulo 256"},
+		{"make test || exit 1 | cat", MaskedTest, "0/0: an exit in a pipe ends its own subshell"},
+		{"make test || false | cat", MaskedTest, "0/0: cat's status"},
+		{"make test && echo a | cat; echo b", MaskedTest, "0/0"},
+		{"cat <<< x\nmake test | tail", MaskedTest, "a here-string has no body"},
+		{"cat <<-EOF\n\tmake test | tail\n\tEOF\ngit status", MaskedNone, "<<- strips the tabs before the delimiter"},
+		{"cat <<\"EOF\"\nmake test | tail\nEOF\ngit status", MaskedNone, "a quoted delimiter"},
+		{"cat <<A <<B\nmake test | tail\nA\nmake test | tail\nB\ngit status", MaskedNone, "both bodies are skipped"},
+		{"echo ${HOME} <<EOF\nmake test | tail\nEOF\ngit status", "null", "a here-document after an expansion: its extent is not certain"},
+		{"mvn -q -DskipTests package 2>&1 | tail -30", MaskedBuild, "0/0: skipping the tests still builds"},
+		{"mvn -q package 2>&1 | tail -30", MaskedBuild, "0/0"},
 	} {
 		got, _ := maskedOf(t, tc.cmd)
 		if got != tc.want {
@@ -147,6 +192,7 @@ func TestRunnerDigest(t *testing.T) {
 		"timeout 300 make test 2>&1 | tail -30",
 		"cd /repo && make test",
 		"git status; make test 2>&1 | tail -5",
+		"(make test 2>&1) | tail -40",
 	} {
 		if got := digestOf(same); got != plain {
 			t.Errorf("%q: runner digest differs from plain `make test`'s", same)
@@ -165,9 +211,9 @@ func TestRunnerDigest(t *testing.T) {
 		t.Error("the runner digest equals the shape digest of the same line: the domains are not apart")
 	}
 
-	// The first hidden runner's, test before build.
-	if got := digestOf("make release | tail; make test | tail"); got != plain {
-		t.Error("a line hiding a build and a test carries the build runner's digest, want the test's")
+	// Two runners hidden: no one later run follows both up, so none.
+	if _, d := maskedOf(t, "make release | tail; make test | tail"); d != nil {
+		t.Error("a line hiding a build and a test carries a runner digest; a later `make test` would clear `make release` too")
 	}
 	for _, none := range []string{"ls | tail", "make test | tail; ls", "git status"} {
 		_, d := maskedOf(t, none)
@@ -181,9 +227,26 @@ func TestRunnerDigest(t *testing.T) {
 			t.Errorf("%q: runner digest %s, want null", none, *d)
 		}
 	}
-	// Not the last command, and not hidden: no runner digest.
-	if _, d := maskedOf(t, "make test && git status"); d != nil {
-		t.Error("`make test && git status` carries a runner digest; its status is git's when make passed")
+	// Not the last command, and its failure is still the line's: make's.
+	if got := digestOf("make test && git status"); got != plain {
+		t.Error("`make test && git status` does not carry make's digest; when make fails the line does")
+	}
+	// The same words, with an expansion in them, are the same runner.
+	if digestOf("go test $(go list ./...) | tail") != digestOf("go test $(go list ./...)") {
+		t.Error("`go test $(go list ./...)` piped and plain digest apart")
+	}
+	if digestOf("go test $(go list ./...)") == digestOf("go test $(go list ./cmd/...)") {
+		t.Error("two runners whose expansions differ digest equal")
+	}
+	// After a cd the start directory does not hold, where the runner ran is
+	// not known: no digest, hidden or not.
+	for _, cmd := range []string{"cd sub; make test | tail", "cd sub; make test", "cd $D && make test"} {
+		if _, d := maskedOf(t, cmd); d != nil {
+			t.Errorf("%q carries a runner digest after a cd its cwd does not hold", cmd)
+		}
+	}
+	if got := digestOf("cd /repo && make test"); got != plain {
+		t.Error("a folded leading cd loses the runner digest")
 	}
 }
 

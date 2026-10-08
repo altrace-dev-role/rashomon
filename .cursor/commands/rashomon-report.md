@@ -19,4 +19,4 @@ wrong. Say so if the user expects this session in the output.
    is not a list of denials; `unknown` and `not read` are never `0`;
    `coverage: unverified` with `probe_absent` is expected for any session the
    recorder joined mid-way; a `masked exit status` is neither a failure nor a
-   pass, since a pipe or a later command set the call's exit status.
+   pass, since the call's exit status was not the runner's.

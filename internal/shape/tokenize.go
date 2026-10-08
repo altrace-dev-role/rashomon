@@ -131,12 +131,13 @@ func tokenizeProgram(s string) ([]token, error) {
 //     after a paren, a backtick or an expansion lex does not parse, whose
 //     extent is then unknown -- it stops with errUncertain.
 //   - An unquoted # at the start of a word runs to the end of its line, as a
-//     comment does to the shell, so a quote in `# don't` opens nothing.
+//     comment does to the shell, so a quote in `# don't` opens nothing, and
+//     a backslash at its end joins no line to it (joinLines).
 //
 // The program search keeps its own reading, which stops at a here-document
 // instead: what it names is unchanged.
 func tokenizeList(s string) ([]token, error) {
-	j, joins := joinContinuations(s)
+	j, joins := joinLines(s, true)
 	return lex(j, true, true, joins)
 }
 

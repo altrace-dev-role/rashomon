@@ -70,11 +70,12 @@ const (
 	// LinkOutcomeStatusMasked: the call recorded ok, and its shape says a
 	// build or test runner on its line has an exit status the line does not
 	// return (shape.status_masked): `make test 2>&1 | tail -40`, `go test
-	// ./... ; echo $?`, `npm test || true`. The ok is the last command's.
+	// ./... ; echo $?`, `npm test || true`, `if make test; then echo ok;
+	// fi`, `make test &`. The ok is the last command's.
 	// The runner's own status was never recorded, so it reads with the
 	// unobserved outcomes and never as a success. Timeline and test runs
 	// only: the chains keep the call's own outcome.
-	LinkOutcomeStatusMasked = "ok, but a build or test exit status was masked by a pipe or a later command"
+	LinkOutcomeStatusMasked = "ok, but the line did not return a build or test run's exit status"
 )
 
 // LinkHost is one hostname a call named, with what the wire says about it.

@@ -45,7 +45,7 @@ func TestMasked_TestRunsCountThemAsUnobserved(t *testing.T) {
 	}
 	var b bytes.Buffer
 	writeTestRuns(&b, tr, "s1")
-	if want := "test runs: 3 (1 ok, 0 failed, 2 with exit status masked by a pipe or a later command, so neither)"; !strings.Contains(b.String(), want) {
+	if want := "test runs: 3 (1 ok, 0 failed, 2 whose line did not return the test run's exit status, so neither)"; !strings.Contains(b.String(), want) {
 		t.Errorf("text is missing %q:\n%s", want, b.String())
 	}
 	j, _ := json.Marshal(tr)
@@ -56,7 +56,7 @@ func TestMasked_TestRunsCountThemAsUnobserved(t *testing.T) {
 	// A session whose only test runs were masked still has the block.
 	b.Reset()
 	writeTestRuns(&b, testRunsOf(tbRun(maskedCall(1, shape.MaskedTest, "r", ok))), "s1")
-	if !strings.Contains(b.String(), "test runs: 1 (0 ok, 0 failed, 1 with exit status masked") {
+	if !strings.Contains(b.String(), "test runs: 1 (0 ok, 0 failed, 1 whose line did not return") {
 		t.Errorf("a session of masked runs only:\n%s", b.String())
 	}
 	// None masked: the line reads as it did.
@@ -144,7 +144,7 @@ func TestMasked_TimelineRow(t *testing.T) {
 	if !strings.Contains(out, LinkOutcomeStatusMasked) {
 		t.Errorf("no row says the status was masked:\n%s", out)
 	}
-	if !strings.Contains(out, "or ok as a line where a pipe or a later command masked a build or test run's exit status") {
+	if !strings.Contains(out, "or ok as a line that did not return a build or test run's exit status") {
 		t.Errorf("the unknown legend does not name masked rows:\n%s", out)
 	}
 }
@@ -209,7 +209,7 @@ func TestMasked_SessionText(t *testing.T) {
 	writeMaskedRuns(&b, MaskedRuns{Runs: 2, PassClaimed: true, FinalMessageAvailable: true, Fires: true})
 	out := b.String()
 	for _, want := range []string{
-		"masked exit status: 2 build or test call(s) recorded ok while a pipe or a later command set the call's status, and no later plain run of the same command in the same directory was recorded",
+		"masked exit status: 2 build or test call(s) recorded ok while their line did not return the runner's exit status, and no later run of the same command in the same directory returned it",
 		"the final message claims a pass and uses no failure word",
 	} {
 		if !strings.Contains(out, want) {

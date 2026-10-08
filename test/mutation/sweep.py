@@ -223,27 +223,21 @@ m("H-13 a directory is named by its last component", "internal/shape/shape.go",
   "\tcase strings.HasSuffix(s, \"/\"):", "\tcase false && strings.HasSuffix(s, \"/\"):", PROG)
 m("H-13 a control byte in the line is read past", "internal/shape/shape.go",
   "\t\tif c := cmd[i]; c < 0x20 && c != '\\t' && c != '\\n' || c == 0x7f {", "\t\tif c := cmd[i]; c == '\\r' {", PROG)
-# Re-anchored after the masked-status refactor: "runs to the end of the line"
-# is now (len(toks), -1, true) where commandEnd returned (-1, true).
 m("H-13 the function-definition scan stops at a redirection", "internal/shape/shape.go",
   "\t\tcase isRedirect(t.text):\n\t\t\tend := operatorEnd(toks, j)\n",
-  "\t\tcase isRedirect(t.text):\n\t\t\tif true {\n\t\t\t\treturn len(toks), -1, true\n\t\t\t}\n\t\t\tend := operatorEnd(toks, j)\n", PROG)
+  "\t\tcase isRedirect(t.text):\n\t\t\tif true {\n\t\t\t\treturn -1, true\n\t\t\t}\n\t\t\tend := operatorEnd(toks, j)\n", PROG)
 m("H-13 the function-definition scan reads &> as the background separator", "internal/shape/shape.go",
   "\t\tcase t.text == \"&\" && j+1 < len(toks)", "\t\tcase false && t.text == \"&\" && j+1 < len(toks)", PROG)
-# Re-anchored after the masked-status refactor: commandEnd became commandBound,
-# which also returns where the next command begins, so each return carries one
-# more value. The mutations are the same; this applies to the H-13 entries
-# down to the ${ one.
 m("H-13 the function-definition scan stops at a paren that does not close at once", "internal/shape/shape.go",
-  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, 0, false\n\t\t\t}\n",
-  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, 0, false\n\t\t\t}\n\t\t\treturn len(toks), -1, true\n", PROG)
+  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, false\n\t\t\t}\n",
+  "\t\t\tif j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == \")\" {\n\t\t\t\treturn 0, false\n\t\t\t}\n\t\t\treturn -1, true\n", PROG)
 m("H-13 the function-definition scan runs on past a newline", "internal/shape/shape.go",
-  "\t\tcase t.nlBefore:\n\t\t\treturn j, -1, true\n", "\t\tcase false && t.nlBefore:\n\t\t\treturn j, -1, true\n", "TestProgramIsAProgram")
+  "\t\tcase t.nlBefore:\n\t\t\treturn -1, true\n", "\t\tcase false && t.nlBefore:\n\t\t\treturn -1, true\n", "TestProgramIsAProgram")
 SEPS = ["\";\"", "\"&&\"", "\"||\"", "\"|\"", "\"&\""]
-_seps = "\t\tcase " + " || ".join("t.text == " + x for x in SEPS) + ":\n\t\t\treturn j + 1, j, true"
+_seps = "\t\tcase " + " || ".join("t.text == " + x for x in SEPS) + ":\n\t\t\treturn j, true"
 for _drop in SEPS:
     m("H-13 the function-definition scan reads on past " + _drop.strip('"'), "internal/shape/shape.go",
-      _seps, "\t\tcase " + " || ".join("t.text == " + x for x in SEPS if x != _drop) + ":\n\t\t\treturn j + 1, j, true", PROG)
+      _seps, "\t\tcase " + " || ".join("t.text == " + x for x in SEPS if x != _drop) + ":\n\t\t\treturn j, true", PROG)
 m("H-13 the function-definition scan does not skip a paren group", "internal/shape/shape.go",
   "\t\t\t}\n\t\t\topen = append(open, '(')\n", "\t\t\t}\n", PROG)
 m("H-13 the function-definition scan does not skip backticks", "internal/shape/shape.go",
@@ -255,11 +249,11 @@ m("H-13 a paren group never closes", "internal/shape/shape.go",
 m("H-13 backticks never close", "internal/shape/shape.go",
   "\tcase t.ticks%2 == 1 && top == '`':\n\t\treturn open[:len(open)-1]\n", "\tcase false:\n\t\treturn open[:len(open)-1]\n", PROG)
 m("H-13 a group that never closes is read as closed", "internal/shape/shape.go",
-  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, 0, false\n\t}", "\tif uncertain {\n\t\treturn 0, 0, false\n\t}", PROG)
+  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, false\n\t}", "\tif uncertain {\n\t\treturn 0, false\n\t}", PROG)
 m("H-13 the function-definition scan reads past where the lexer's reading stopped", "internal/shape/shape.go",
-  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, 0, false\n\t}", "\tif len(open) > 0 {\n\t\treturn 0, 0, false\n\t}", PROG)
+  "\tif len(open) > 0 || uncertain {\n\t\treturn 0, false\n\t}", "\tif len(open) > 0 {\n\t\treturn 0, false\n\t}", PROG)
 m("H-13 a ${ the word does not close is read past", "internal/shape/shape.go",
-  "\t\tif openBrace(t) {\n\t\t\treturn 0, 0, false\n\t\t}", "\t\tif false && openBrace(t) {\n\t\t\treturn 0, 0, false\n\t\t}", PROG)
+  "\t\tif openBrace(t) {\n\t\t\treturn 0, false\n\t\t}", "\t\tif false && openBrace(t) {\n\t\t\treturn 0, false\n\t\t}", PROG)
 m("H-13 a closed ${ } is taken for an open one", "internal/shape/shape.go",
   "strings.Count(t.text[k:], \"{\") > strings.Count(t.text[k:], \"}\")",
   "strings.Count(t.text[k:], \"{\") >= strings.Count(t.text[k:], \"}\")", "TestProgramIsAProgram")
@@ -1976,7 +1970,7 @@ m("TL the agent id is cut by byte", "internal/report/timeline_text.go",
 # Re-anchored after the masked-status refactor: the legend gained a clause for a
 # masked call; dropping everything after "no execution record" is the same cut.
 m("TL the unknown legend names only no execution record", "internal/report/timeline_text.go",
-  "; or outcome unobserved: it ran and how it ended was not recorded, or it was moved to the background before it ended; or ok as a line where a pipe or a later command masked a build or test run's exit status)", ")", "TestTimeline_")
+  "; or outcome unobserved: it ran and how it ended was not recorded, or it was moved to the background before it ended; or ok as a line that did not return a build or test run's exit status)", ")", "TestTimeline_")
 m("TL undeclared calls go unaccounted in the legend", "internal/report/timeline_text.go",
   "\tif n.AgentUnknown > 0 {\n\t\tfmt.Fprintf(b, \"    %d call%s with no declaration", "\tif false {\n\t\tfmt.Fprintf(b, \"    %d call%s with no declaration", "TestTimeline_")
 m("TL an undeclared row does not say it has no declaration", "internal/report/timeline_text.go",
@@ -2382,7 +2376,7 @@ m("TB a prefix entry is compared whole", "internal/shape/shape.go",
   "\t\t\tif word == p {\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the per-runner list is not read", "internal/shape/shape.go",
-  "onList(t.text, notARun[runner]) ||",
+  "onList(t.text, list) ||",
   "onList(t.text, nil) ||",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB help, version and watch refuse nothing", "internal/shape/shape.go",
@@ -2942,33 +2936,76 @@ m("MS a terminal is written at another version than its declaration", "internal/
   "\t\t\tSchemaVersion: store.SessionSchemaVersion,\n\t\t\tRecordedAtMS:  h.now().UnixMilli(),\n\t\t\tToolUseID:     h.toolUseID,", SV)
 
 SH = "TestStatusMasked|TestRunnerDigest|TestMasked_"
+# The parser runs the line twice in the abstract, the runner failing and
+# passing (statusMasked); each mutant breaks one rule of that run.
 m("MS a pipe after the runner no longer masks it", "internal/shape/masked.go",
-  "\t\tif !pipefail {\n\t\t\treturn true, true\n\t\t}", "\t\tif false {\n\t\t\treturn true, true\n\t\t}", SH)
+  "\t\ts := statuses[len(statuses)-1]\n", "\t\ts := statuses[0]\n", SH)
 m("MS set -o pipefail is not read", "internal/shape/masked.go",
-  "pipefail, errexit = pipefail || p, errexit || e", "pipefail, errexit = pipefail && p, errexit || e", SH)
+  "\t\t\t\tst.pipefail = o.on\n", "\t\t\t\tst.pipefail = false\n", SH)
 m("MS set -e is not read", "internal/shape/masked.go",
-  "pipefail, errexit = pipefail || p, errexit || e", "pipefail, errexit = pipefail || p, errexit && e", SH)
+  "\t\t\t\tst.errexit = o.on\n", "\t\t\t\tst.errexit = false\n", SH)
+m("MS errexit is not ignored before && or ||", "internal/shape/masked.go",
+  "\t\tignored := noErr || k < len(ao.pipes)-1 || pl.neg\n", "\t\tignored := noErr || pl.neg\n", SH)
 m("MS && masks the runner before it", "internal/shape/masked.go",
-  "\t\t\tif n = pipelineEnd(cs, n+1); n < 0 {\n\t\t\t\treturn false, true\n\t\t\t}", "\t\t\treturn true, true", SH)
+  "if ao.ops[k-1] == \"&&\" && st.status != 0 ||", "if ao.ops[k-1] == \"&&\" && false ||", SH)
 m("MS ; and a newline never mask", "internal/shape/masked.go",
-  "\t\t\treturn !exitsFailed(toks, cs[n+1], false), true", "\t\t\treturn false, true", SH)
+  "\t\tev.andOr(st, it.ao, noErr)\n", "\t\tev.andOr(st, it.ao, noErr)\n\t\tif st.status > 0 {\n\t\t\treturn\n\t\t}\n", SH)
 m("MS a trailing ; masks", "internal/shape/masked.go",
-  "\t\t\tif n+1 >= len(cs) {\n\t\t\t\treturn false, true\n\t\t\t}\n\t\t\tif undecided(toks, cs[n+1]) {",
-  "\t\t\tif n+1 >= len(cs) {\n\t\t\t\treturn true, true\n\t\t\t}\n\t\t\tif undecided(toks, cs[n+1]) {", SH)
+  "\t\tcase p.op(p.pos, \";\"):\n\t\t\tp.pos++\n", "\t\tcase p.op(p.pos, \";\"):\n\t\t\tp.pos++\n\t\t\tit.bg = p.atTerminator()\n", SH)
 m("MS || never masks", "internal/shape/masked.go",
-  "\t\t\tif !isFalseCommand(toks, next) {\n\t\t\t\treturn true, true\n\t\t\t}", "\t\t\tif false {\n\t\t\t\treturn true, true\n\t\t\t}", SH)
+  "|| ao.ops[k-1] == \"||\" && st.status == 0 {", "|| ao.ops[k-1] == \"||\" {", SH)
 m("MS an exit after || is not read", "internal/shape/masked.go",
-  "\t\t\tif exitsFailed(toks, next, true) {", "\t\t\tif false {", SH)
+  "\tcase opExit:\n\t\tswitch len(c.args) {", "\tcase -1:\n\t\tswitch len(c.args) {", SH)
+m("MS an exit does not end the line", "internal/shape/masked.go",
+  "\t\tst.exited = true\n\tcase opRunner:", "\tcase opRunner:", SH)
 m("MS false after || is not read", "internal/shape/masked.go",
-  "\treturn toks[c.prog].text == \"false\" && toks[c.prog].quotedAt < 0 && c.end == c.prog+1", "\treturn false", SH)
-m("MS a group after || is decided", "internal/shape/masked.go",
-  "\t\t\tif undecided(toks, next) {", "\t\t\tif false {", SH)
-m("MS a runner sent to the background with & is masked", "internal/shape/masked.go",
-  "\t\t\t// The end of the line, or `&`.\n\t\t\treturn false, true", "\t\t\treturn true, true", SH)
+  "\tcase opFalse:\n\t\tst.status = 1\n", "\tcase opFalse:\n\t\tst.status = 0\n", SH)
+m("MS a group is run apart from the line", "internal/shape/masked.go",
+  "\tcase *group:\n\t\tev.list(st, c.body, noErr)\n", "\tcase *group:\n\t\tev.list(st.copy(), c.body, noErr)\n", SH)
+m("MS a subshell's exit ends the line", "internal/shape/masked.go",
+  "\t\tst.status = sub.status\n\tcase *group:", "\t\tst.status, st.exited = sub.status, sub.exited\n\tcase *group:", SH)
+m("MS a failed condition with no else keeps its status", "internal/shape/masked.go",
+  "\t\t\tev.list(st, *c.els, noErr)\n\t\t\treturn\n\t\t}\n\t\tst.status = 0\n", "\t\t\tev.list(st, *c.els, noErr)\n\t\t\treturn\n\t\t}\n", SH)
+m("MS ! is not read", "internal/shape/masked.go",
+  "\tif pl.neg && st.status >= 0 {", "\tif false {", SH)
+m("MS a runner sent to the background with & is not masked", "internal/shape/masked.go",
+  "\t\t\tev.andOr(st.copy(), it.ao, true)\n\t\t\tst.status, st.pipe = 0, []int{0}\n", "\t\t\tev.andOr(st, it.ao, noErr)\n", SH)
+m("MS the same runner twice is two runners", "internal/shape/masked.go",
+  "\tg, seen := p.groups[key]\n", "\tg, seen := p.groups[key]\n\tseen = false\n", SH)
+m("MS PIPESTATUS is not kept", "internal/shape/masked.go",
+  "\t\tst.pipe = statuses\n", "\t\tst.pipe = nil\n", SH)
+m("MS a status kept in a variable is not read", "internal/shape/masked.go",
+  "\t\t\tst.vars[a.name] = ev.value(st, a.val)\n", "\t\t\tst.vars[a.name] = -1\n", SH)
+m("MS a loop that holds a runner is read as succeeding", "internal/shape/masked.go",
+  "\t\tcase opRunner, opExit, opStatusRead, opSet, opAssign, opCd:\n\t\t\tl.unsure = true\n", "", SH)
+m("MS a shell's -c line is read as a word", "internal/shape/masked.go",
+  "w[1] != '-' && strings.ContainsRune(w, 'c') {", "w[1] != '-' && strings.ContainsRune(w, 'c') && false {", SH)
+m("MS a line the run is not sure of is none", "internal/shape/masked.go",
+  "\t\t\t// Not sure: null.\n\t\t\treturn nil, nil\n", "\t\t\tcontinue\n", SH)
+m("MS a runner the run never reaches is judged", "internal/shape/masked.go",
+  "\t\tif f < 0 || pass < 0 || !ran {", "\t\tif f < 0 || pass < 0 || !ran && false {", SH)
+m("MS an exit 0 after || keeps the failure", "internal/shape/masked.go",
+  "\t\t\tst.status = ev.value(st, c.args[0])\n", "\t\t\tif v := ev.value(st, c.args[0]); v != 0 {\n\t\t\t\tst.status = v\n\t\t\t}\n", SH)
+m("MS an exit 256 after || keeps the failure", "internal/shape/masked.go",
+  "\treturn value{kind: valLiteral, n: int(((n % 256) + 256) % 256)}", "\treturn value{kind: valLiteral, n: int(n)}", SH)
+m("MS an exit in a pipe after || is the line's exit", "internal/shape/masked.go",
+  "\t\t\tstatuses[n] = sub.status\n", "\t\t\tif sub.exited {\n\t\t\t\tst.status, st.exited = sub.status, true\n\t\t\t\treturn\n\t\t\t}\n\t\t\tstatuses[n] = sub.status\n", SH)
+m("MS false | x after || keeps the failure", "internal/shape/masked.go",
+  "\t\tif st.pipefail {\n\t\t\ts = 0\n", "\t\tif true {\n\t\t\ts = 0\n", SH)
+m("MS the pipeline after && ends at its first stage", "internal/shape/masked.go",
+  "\t\tao.pipes = append(ao.pipes, pl)\n", "\t\tif len(ao.pipes) > 0 {\n\t\t\tpl.stages = pl.stages[:1]\n\t\t}\n\t\tao.pipes = append(ao.pipes, pl)\n", SH)
+m("MS a here-string is read as a here-document", "internal/shape/tokenize.go",
+  "\t\t\tif docs && c == '<' && j-i == 2 && (j >= len(s) || s[j] != '<') {", "\t\t\tif docs && c == '<' && j-i == 2 {", SH)
+m("MS a here-document after an expansion is read", "internal/shape/tokenize.go",
+  "\t\t\t\tif grouped || expanded {", "\t\t\t\tif grouped {", SH)
+m("MS only the first here-document on a line is skipped", "internal/shape/tokenize.go",
+  "\t\t\t\tpending = append(pending, j)\n", "\t\t\t\tif len(pending) == 0 {\n\t\t\t\t\tpending = append(pending, j)\n\t\t\t\t}\n", SH)
+m("MS a group's close is a word of the runner digest", "internal/shape/masked.go",
+  "\t\tcase t.text == \")\":\n\t\t\t// A subshell's close: the command ends before it.\n\t\t\treturn j, true\n", "", SH)
 m("MS make is no build runner", "internal/shape/masked.go",
   "\t{\"make\"}, {\"gmake\"},\n", "\t{\"gmake\"},\n", SH)
 m("MS a build masked before a test wins", "internal/shape/masked.go",
-  "\t\tif hidden == \"\" || hidden == MaskedBuild && k == MaskedTest {", "\t\tif hidden == \"\" {", SH)
+  "\t\t\tif p.runners[g].kind == MaskedTest {\n\t\t\t\tk = MaskedTest\n", "\t\t\tif p.runners[g].kind == MaskedTest && false {\n\t\t\t\tk = MaskedTest\n", SH)
 m("MS the runner's arguments run to the end of the line", "internal/shape/shape.go",
   "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])", "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):])", SH)
 m("MS here-document bodies are read as commands", "internal/shape/tokenize.go",
@@ -2978,11 +3015,23 @@ m("MS a comment is read as words in the list walk", "internal/shape/tokenize.go"
 m("MS the runner digest keeps a redirection's target", "internal/shape/masked.go",
   "\t\t\tj = operatorEnd(toks, j) + 1\n", "\t\t\tj = operatorEnd(toks, j)\n", SH)
 m("MS the runner digest runs to the end of the line", "internal/shape/masked.go",
-  "\t\t\tend = c.end\n", "\t\t\t_ = c.end\n", SH)
+  "\tkey := p.runnerWords(ri, e)\n", "\tkey := p.runnerWords(ri, len(toks))\n", SH)
 m("MS the runner digest is not keyed", "internal/shape/masked.go",
   "\td := digest(key, \"\\x00runner\",", "\td := digest(nil, \"\\x00runner\",", SH)
-m("MS a plain last runner carries no runner digest", "internal/shape/masked.go",
-  "\t\treturn &none, runnerDigest(toks, lastRunner, cs, key)", "\t\treturn &none, nil", SH)
+m("MS a runner whose failure reaches the line carries no runner digest", "internal/shape/masked.go",
+  "\t\treturn &none, p.runnerDigest(reach, key)", "\t\treturn &none, nil", SH)
+m("MS two hidden runners carry one's digest", "internal/shape/masked.go",
+  "\t\tif len(hidden) > 1 {\n\t\t\t// No one later run follows up two runners.\n\t\t\treturn &k, nil\n\t\t}\n", "", SH)
+m("MS a runner after a cd keeps its digest", "internal/shape/masked.go",
+  "\tif p.runners[g].displaced {\n\t\treturn nil\n\t}\n", "", SH)
+m("MS a folded leading cd displaces the runner", "internal/shape/masked.go",
+  "\t\tif s.op != opCd || s.start < 3*folded && s.start%3 == 0 {", "\t\tif s.op != opCd {", SH)
+m("MS an expansion in the runner's words loses its digest", "internal/shape/masked.go",
+  "\t\tif t.opaque {\n\t\t\tw = \"\\x02\" + w\n\t\t}\n", "\t\tif t.opaque {\n\t\t\treturn \"\"\n\t\t}\n", SH)
+m("MS a backslash at a comment's end joins the next line", "internal/shape/shape.go",
+  "\t\tcase comments && c == '#' && !inSingle && !inDouble && wordStart(b.String()):", "\t\tcase false:", SH)
+m("MS mvn's build row refuses -DskipTests", "internal/shape/shape.go",
+  "\t\tif len(c) == 1 {\n\t\t\t// The build row: a flag that skips the tests still builds.\n\t\t\treturn \"mvn build\"\n\t\t}\n", "", SH)
 m("MS python -m unittest is not a test runner", "internal/shape/shape.go",
   "\t{\"python\", \"-m\", \"unittest\"}, {\"python3\", \"-m\", \"unittest\"},\n", "", "TestUnittestIsATestRunner")
 
@@ -2994,7 +3043,7 @@ m("MS a masked call's failure is not a failed row", "internal/report/timeline.go
 m("MS a masked build is not masked", "internal/report/timeline.go",
   "\treturn m != nil && (*m == shape.MaskedTest || *m == shape.MaskedBuild)", "\treturn m != nil && *m == shape.MaskedTest", RP)
 m("MS the unknown legend does not name masked rows", "internal/report/timeline_text.go",
-  "; or ok as a line where a pipe or a later command masked a build or test run's exit status)", ")", RP)
+  "; or ok as a line that did not return a build or test run's exit status)", ")", RP)
 m("MS a masked test run counts as ok", "internal/report/testbending.go",
   "\t\t\t\tout.Runs++\n\t\t\t\tout.Masked++", "\t\t\t\tout.Runs++\n\t\t\t\tout.OK++", RP)
 m("MS a masked test run is not counted", "internal/report/testbending.go",

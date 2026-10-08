@@ -69,23 +69,28 @@ type Shape struct {
 
 	// StatusMasked says whether a recognised build or test runner on a shell
 	// line has an exit status the line does not return (see statusMasked):
-	// MaskedTest for `make test 2>&1 | tail -40`, MaskedBuild for `make
-	// release; ls dist`, MaskedNone for a line read to its end with no such
+	// the line exits 0 when the runner fails, or the same either way.
+	// MaskedTest for `make test 2>&1 | tail -40` or `make test &`,
+	// MaskedBuild for `make release; ls dist`, MaskedNone for a line read to
+	// its end on which every runner's failure is the line's, or which has no
 	// runner. The call's own outcome is recorded as it was; this says that,
 	// for the runner, an ok outcome is not a pass. A closed word, decided
 	// against fixed lists whose words are compared and dropped.
 	//
 	// Null on a tool that is not a shell, on a line that could not be read
-	// to its end, and on a record written before this field existed, which
-	// could not say: each is "not known", never "none".
+	// to its end or on which the parser is not sure the runner's status
+	// reaches the line's, and on a record written before this field existed,
+	// which could not say: each is "not known", never "none".
 	StatusMasked *string `json:"status_masked"`
 
 	// RunnerDigest is the keyed digest of the words of that hidden runner,
-	// or, when none is hidden and the line's last command is a recognised
-	// runner, of that one's -- redirections left out. It lets a reader tell
-	// that a later plain `make test` ran the same runner as an earlier `make
-	// test 2>&1 | tail`, whose whole lines digest apart. Null when there is
-	// no such runner or a word of it could not be vouched for.
+	// or, when none is hidden, of the runner whose failure the line returns
+	// (the last, if several) -- redirections left out. It lets a reader tell
+	// that a later `make test` or `make test && echo ok` ran the same runner
+	// as an earlier `make test 2>&1 | tail`, whose whole lines digest apart.
+	// Null when there is no such runner, when two runners are hidden (no one
+	// later run follows both up), and when a cd that the call's cwd digest
+	// does not hold ran before it, since where it ran is then not known.
 	RunnerDigest *string `json:"runner_digest"`
 }
 
@@ -433,6 +438,19 @@ func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, boo
 	if !ok || controlByte(cmd) {
 		return nil, false
 	}
+	return leadingDirectories(cmd)
+}
+
+// leadingSteps is how many leading `cd DIR &&` steps LeadingDirectory folds
+// onto a call's cwd for the line cmd: the cds on it that the call's cwd
+// digest already holds.
+func leadingSteps(cmd string) int {
+	dirs, _ := leadingDirectories(cmd)
+	return len(dirs)
+}
+
+// leadingDirectories is LeadingDirectory over the line cmd.
+func leadingDirectories(cmd string) ([]string, bool) {
 	toks, err := tokenizeProgram(cmd)
 	if err != nil {
 		return nil, false
@@ -618,14 +636,6 @@ func definesFunctions(toks []token, i int, uncertain bool) bool {
 // or -1 when a newline or the end of the line does; ok is false where
 // definesFunctions names nothing.
 func commandEnd(toks []token, i int, uncertain bool) (sep int, ok bool) {
-	_, sep, ok = commandBound(toks, i, uncertain)
-	return sep, ok
-}
-
-// commandBound is commandEnd that also says where the next command begins:
-// next is the index of the token after the separator, of the first token on
-// the next line, or len(toks) at the end of the line.
-func commandBound(toks []token, i int, uncertain bool) (next, sep int, ok bool) {
 	var (
 		open    []byte // the groups around the token, innermost last: '(' or '`'
 		heredoc bool   // a here-document was passed: its body starts at the next newline
@@ -633,24 +643,24 @@ func commandBound(toks []token, i int, uncertain bool) (next, sep int, ok bool) 
 	for j := i + 1; j < len(toks); j++ {
 		t := toks[j]
 		if openBrace(t) {
-			return 0, 0, false
+			return 0, false
 		}
 		if len(open) > 0 {
 			if unknownDepth(toks, j, heredoc) {
-				return 0, 0, false
+				return 0, false
 			}
 			open = inGroup(open, t)
 			continue
 		}
 		switch {
 		case t.nlBefore:
-			return j, -1, true
+			return -1, true
 		case t.ticks%2 == 1:
 			open = append(open, '`')
 		case !t.meta:
 		case t.text == "(":
 			if j+1 < len(toks) && toks[j+1].meta && toks[j+1].text == ")" {
-				return 0, 0, false
+				return 0, false
 			}
 			open = append(open, '(')
 		case t.text == "&" && j+1 < len(toks) && toks[j+1].meta && toks[j+1].glued && strings.HasPrefix(toks[j+1].text, ">"):
@@ -661,18 +671,18 @@ func commandBound(toks []token, i int, uncertain bool) (next, sep int, ok bool) 
 			end := operatorEnd(toks, j)
 			if noTarget(toks, end) {
 				// A syntax error to both shells: nothing on the line runs.
-				return 0, 0, false
+				return 0, false
 			}
 			heredoc = heredoc || hereDoc(toks, j)
 			j = end
 		case t.text == ";" || t.text == "&&" || t.text == "||" || t.text == "|" || t.text == "&":
-			return j + 1, j, true
+			return j, true
 		}
 	}
 	if len(open) > 0 || uncertain {
-		return 0, 0, false
+		return 0, false
 	}
-	return len(toks), -1, true
+	return -1, true
 }
 
 // unknownDepth reports a token inside a group from which the group's depth
@@ -741,6 +751,14 @@ func inGroup(open []byte, t token) []byte {
 // the one that followed it. Its quote tracking is flat, which is right outside
 // a $( ) and may be wrong inside one; see comsubEnd.
 func joinContinuations(s string) (string, []int) {
+	return joinLines(s, false)
+}
+
+// joinLines is joinContinuations; with comments, an unquoted # at the start
+// of a word runs to the end of its line, as a comment does to the shell, and
+// a backslash at its end continues nothing: `# run the tests \` and then
+// `make test | tail` on the next line runs make.
+func joinLines(s string, comments bool) (string, []int) {
 	if !strings.Contains(s, "\\\n") {
 		return s, nil
 	}
@@ -752,6 +770,12 @@ func joinContinuations(s string) (string, []int) {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
+		case comments && c == '#' && !inSingle && !inDouble && wordStart(b.String()):
+			for ; i < len(s) && s[i] != '\n'; i++ {
+				b.WriteByte(s[i])
+			}
+			i--
+			continue
 		case inSingle:
 			if c == '\'' {
 				inSingle = false
@@ -773,6 +797,19 @@ func joinContinuations(s string) (string, []int) {
 		b.WriteByte(c)
 	}
 	return b.String(), joins
+}
+
+// wordStart reports whether a word would begin after the text written so
+// far: at its start, or after a blank or an operator.
+func wordStart(written string) bool {
+	if written == "" {
+		return true
+	}
+	switch written[len(written)-1] {
+	case ' ', '\t', '\n', ';', '&', '|', '(', ')', '<', '>':
+		return true
+	}
+	return false
 }
 
 // isComment reports whether a word begins a comment: an unquoted `#` at its
@@ -1097,7 +1134,11 @@ func refusalsOf(c []string) string {
 		return c[len(c)-1]
 	case "gradlew":
 		return "gradle"
-	case "mvnw":
+	case "mvn", "mvnw":
+		if len(c) == 1 {
+			// The build row: a flag that skips the tests still builds.
+			return "mvn build"
+		}
 		return "mvn"
 	}
 	return c[0]
@@ -1171,8 +1212,11 @@ var notARunAny = []string{"-h", "-help", "--help", "--version", "--watch", "--wa
 // refuses. One exported by an earlier call is not on the line and is not
 // seen.
 func refusesRun(runner string, before, args []token) bool {
+	// mvn's build row is refused as mvn is, but for the test-skip
+	// properties: skipping the tests still builds (refusalsOf).
+	list := notARun[strings.TrimSuffix(runner, " build")]
 	for _, t := range args {
-		if onList(t.text, notARun[runner]) || onList(t.text, notARunAny) || runner == "mvn" && mavenSkip(t.text) {
+		if onList(t.text, list) || onList(t.text, notARunAny) || runner == "mvn" && mavenSkip(t.text) {
 			return true
 		}
 	}

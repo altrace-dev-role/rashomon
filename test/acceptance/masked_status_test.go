@@ -59,9 +59,9 @@ func TestMasked_APipedTestUnderAPassClaimIsFlagged(t *testing.T) {
 
 	out := s.e.run("", nil, "report", "--session", testSession, "--timeline").stdout
 	for _, want := range []string{
-		"test runs: 1 (0 ok, 0 failed, 1 with exit status masked by a pipe or a later command, so neither)",
-		"masked exit status: 1 build or test call(s) recorded ok while a pipe or a later command set the call's status",
-		"ok, but a build or test exit status was masked by a pipe or a later command",
+		"test runs: 1 (0 ok, 0 failed, 1 whose line did not return the test run's exit status, so neither)",
+		"masked exit status: 1 build or test call(s) recorded ok while their line did not return the runner's exit status",
+		"ok, but the line did not return a build or test run's exit status",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("report is missing %q:\n%s", want, out)

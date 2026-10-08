@@ -47,7 +47,7 @@ func writeTimeline(b *bytes.Buffer, t Timeline) {
 	fmt.Fprintf(b, "    never ran    %d  (denied before running)\n", n.NeverRan)
 	// Both things the group holds, named: a row that HAS an execution record
 	// with no outcome would otherwise sit under a legend saying it has none.
-	fmt.Fprintf(b, "    unknown      %d  (no execution record: denied, failed or unrecorded, and the record cannot say which; or outcome unobserved: it ran and how it ended was not recorded, or it was moved to the background before it ended; or ok as a line where a pipe or a later command masked a build or test run's exit status)\n", n.Unknown)
+	fmt.Fprintf(b, "    unknown      %d  (no execution record: denied, failed or unrecorded, and the record cannot say which; or outcome unobserved: it ran and how it ended was not recorded, or it was moved to the background before it ended; or ok as a line that did not return a build or test run's exit status)\n", n.Unknown)
 	if n.AgentUnknown > 0 {
 		fmt.Fprintf(b, "    %d call%s with no declaration recorded, listed last in the order their results were recorded: agent, program, and the declaration's position and time unknown\n",
 			n.AgentUnknown, plural(n.AgentUnknown))

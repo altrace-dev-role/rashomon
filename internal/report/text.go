@@ -658,7 +658,7 @@ func writeMaskedRuns(b *bytes.Buffer, m MaskedRuns) {
 	if m.Runs == 0 {
 		return
 	}
-	fmt.Fprintf(b, "  masked exit status: %d build or test call(s) recorded ok while a pipe or a later command set the call's status, and no later plain run of the same command in the same directory was recorded\n", m.Runs)
+	fmt.Fprintf(b, "  masked exit status: %d build or test call(s) recorded ok while their line did not return the runner's exit status, and no later run of the same command in the same directory returned it\n", m.Runs)
 	switch {
 	case !m.FinalMessageAvailable:
 		fmt.Fprintln(b, "    the final message could not be read, so it was not compared")
@@ -716,7 +716,7 @@ func writeTestRuns(b *bytes.Buffer, t *TestRuns, sessionID string) {
 	}
 	masked := ""
 	if t.Masked > 0 {
-		masked = fmt.Sprintf(", %d with exit status masked by a pipe or a later command, so neither", t.Masked)
+		masked = fmt.Sprintf(", %d whose line did not return the test run's exit status, so neither", t.Masked)
 	}
 	fmt.Fprintf(b, "  test runs: %d (%d ok, %d failed%s)\n", t.Runs, t.OK, t.Failed, masked)
 	if t.Undeclared > 0 {
