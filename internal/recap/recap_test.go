@@ -262,7 +262,7 @@ func TestLineCountsOnlyTheFailuresThatFire(t *testing.T) {
 	if !ok {
 		t.Fatal("expected a line")
 	}
-	if !strings.Contains(line, "rashomon: 1 recorded failure.") {
-		t.Errorf("line = %q, want %q", line, "1 recorded failure.")
+	if want := "rashomon: 1 recorded failure."; !strings.Contains(line, want) {
+		t.Errorf("line = %q, want %q", line, want)
 	}
 }
