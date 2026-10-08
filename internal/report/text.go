@@ -638,7 +638,7 @@ func writeSilentFailures(b *bytes.Buffer, sf SilentFailures) {
 	}
 	fmt.Fprintf(b, "  failed calls: %d\n", sf.Failed)
 	if sf.FailedLookups > 0 {
-		fmt.Fprintf(b, "    lookups among them: %d (%s), not set against the final message\n", sf.FailedLookups, lookupToolNames)
+		fmt.Fprintf(b, "    lookups among them: %d (%s, whatever the error: a directory, a missing file or folder, a bad pattern), not set against the final message\n", sf.FailedLookups, lookupToolNames)
 	}
 	if sf.Counted() == 0 {
 		return

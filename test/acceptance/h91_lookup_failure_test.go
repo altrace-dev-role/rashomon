@@ -56,7 +56,7 @@ func TestH91_AFailedLookupAloneStaysSilent(t *testing.T) {
 			d.SilentFailures.Failed, d.SilentFailures.FailedLookups, d.SilentFailures.Fires)
 	}
 	if out := e.run("", nil, "report", "--session", testSession).stdout; !strings.Contains(out, "failed calls: 1\n") ||
-		!strings.Contains(out, "lookups among them: 1 (Read, Glob, Grep or NotebookRead), not set against the final message") {
+		!strings.Contains(out, "    lookups among them: 1 (Read, Glob, Grep or NotebookRead, whatever the error: a directory, a missing file or folder, a bad pattern), not set against the final message\n") {
 		t.Errorf("the report does not show the failed lookup:\n%s", out)
 	}
 }

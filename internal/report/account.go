@@ -94,20 +94,26 @@ type SilentFailures struct {
 	// something the agent failed to mention.
 	Failed int `json:"failed"`
 	// FailedLookups counts the calls among Failed made by a lookup tool
-	// (IsLookup): a Read of a directory, a Glob, a Grep. They stay in Failed
-	// and in the report, and they never make the line fire by themselves, nor
-	// count in the number it prints (Counted).
+	// (IsLookup: Read, Glob, Grep, NotebookRead). They stay in Failed and in
+	// the report, and they never make the line fire by themselves, nor count
+	// in the number it prints (Counted).
 	//
-	// Measured on a 100-run benchmark: 5 of the 7 Haiku runs where the line
-	// fired on a true report rested on one failed Read of a directory
-	// (EISDIR) and nothing else, and one run it "caught" was caught by such a
-	// Read rather than by the failure it hid. A lookup that fails is how an
-	// agent finds out a path is a directory or a pattern matches nothing; the
-	// step it serves fails, or does not, in a later call the line still
-	// counts. The record holds the tool name and the outcome and nothing of
-	// the error, so the rule is by tool: an Edit whose old string was not
-	// found, a Write, a shell command, a subagent, a fetch and an MCP tool
-	// all still count, and so does a shell `cat` of a missing file.
+	// The rule is by tool name, so it covers every error of those tools: a
+	// Read of a directory or of a missing file, a Glob of a missing folder, a
+	// Grep whose pattern ripgrep rejects. A Glob or Grep that matches nothing
+	// succeeds and never reaches this count. Only EISDIR was measured: on a
+	// 100-run benchmark, 5 of the 7 Haiku runs where the line fired on a true
+	// report rested on one failed Read of a directory and nothing else, and one
+	// run it "caught" was caught by such a Read rather than by the failure it
+	// hid. The record holds the tool name and the outcome and nothing of the
+	// error, so the rule cannot be narrowed to one error; whether to keep the
+	// error is an open decision. An Edit whose old string was not found, a
+	// Write, a shell command, a subagent, a fetch and an MCP tool all still
+	// count, and so does a shell `cat` of a missing file.
+	//
+	// The cost: a turn whose only failures are lookups does not fire even when
+	// it stopped at one and reported success -- a review of a file it never
+	// read -- though the report still lists the call.
 	FailedLookups int `json:"failed_lookups"`
 	// Unobserved counts executions with no outcome at all -- v1 records, or a
 	// PostToolUse invocation that never ran -- and executions moved to the
@@ -330,10 +336,11 @@ func orList(names []string) string {
 }
 
 // IsLookup reports whether a failed call to toolName is a lookup: one of the
-// tools shape classes read by name alone (Read, Glob, Grep, NotebookRead). A
-// shell tool is not one whatever it runs, nor is an MCP tool, whatever its
-// name says: the record cannot tell what either touched. See
-// SilentFailures.FailedLookups for why a lookup alone does not fire the line.
+// tools shape classes read by name alone (Read, Glob, Grep, NotebookRead),
+// whatever the error was. A shell tool is not one whatever it runs, nor is
+// an MCP tool, whatever its name says: the record cannot tell what either
+// touched. See SilentFailures.FailedLookups for why a lookup alone does not
+// fire the line.
 func IsLookup(toolName string) bool { return shape.ToolVerb(toolName) == shape.VerbRead }
 
 // Counted is the number of failed calls the line is about: Failed less the

@@ -2920,6 +2920,11 @@ m("LK spend reads a turn whose only failure is a lookup", "internal/spend/join.g
 m("LK spend counts a lost failed lookup as unchecked", "internal/spend/join.go",
   "x.Outcome == store.ExecFailed && !report.IsLookup(x.ToolName) {", "x.Outcome == store.ExecFailed {",
   "TestJoin_AFailedLookupIsNoTurnToJudge")
+# The rule is by tool name, so the report says a lookup is set aside whatever
+# its error; only EISDIR was measured.
+m("LK the report reads as if only some lookup errors were set aside", "internal/report/text.go",
+  ", whatever the error: a directory, a missing file or folder, a bad pattern)", ")",
+  "TestSilentFailures_TheReportSaysAnyLookupErrorIsSetAside|TestH91_AFailedLookupAloneStaysSilent")
 # One list of lookup tools: a tool added to it, or to the check alone, is
 # silenced and must fail a test; the report must name every one.
 m("LK a tool is added to the read class", "internal/shape/shape.go",

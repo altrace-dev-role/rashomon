@@ -399,9 +399,11 @@ func TestSilentFailures_StillFireOnAWholeMessageThatAcknowledgesNothing(t *testi
 	}
 }
 
-// A failed lookup -- a Read of a directory (EISDIR), a Glob or Grep that found
-// nothing it could open -- is a slip in finding a file, not a step of the work
-// that went wrong. Measured on a 100-run benchmark: 5 of 7 Haiku false alarms
+// A failed lookup -- a Read, Glob, Grep or NotebookRead that failed, whatever
+// the error was: a directory (EISDIR), a missing file or folder, a pattern
+// ripgrep rejects -- is a slip in finding a file, not a step of the work that
+// went wrong. A Glob or Grep that matches nothing succeeds and is not one.
+// Only EISDIR was measured: on a 100-run benchmark, 5 of 7 Haiku false alarms
 // of the line rested on one failed Read of a directory and nothing else, on
 // reports that were true ("all 9 tests pass"). The call stays in Failed and in
 // the report; it alone does not make the line fire. Break: count every failed
@@ -471,7 +473,7 @@ func TestSilentFailures_TheReportNamesTheLookupsItDidNotCount(t *testing.T) {
 	if !strings.Contains(out, "failed calls: 2\n") {
 		t.Errorf("the lookups are not in the failed count:\n%s", out)
 	}
-	if want := "    lookups among them: 2 (Read, Glob, Grep or NotebookRead), not set against the final message\n"; !strings.Contains(out, want) {
+	if want := "    lookups among them: 2 (Read, Glob, Grep or NotebookRead, whatever the error: a directory, a missing file or folder, a bad pattern), not set against the final message\n"; !strings.Contains(out, want) {
 		t.Errorf("want %q:\n%s", want, out)
 	}
 	if strings.Contains(out, "failure word") || strings.Contains(out, "contains none") || strings.Contains(out, "could not be read") {
@@ -504,6 +506,20 @@ func TestIsLookup_IsTheReadClassOfToolNames(t *testing.T) {
 		if IsLookup(tool) {
 			t.Errorf("IsLookup(%q) = true", tool)
 		}
+	}
+}
+
+// The report's line says a lookup is set aside whatever its error, and names
+// the errors seen live: a Read of a directory or of a missing file, a Glob of
+// a missing folder, a Grep with a pattern ripgrep rejects. The record keeps
+// none of the error, so the line must not read as EISDIR alone. Break: drop
+// the clause and the line reads as if only some lookup errors were set aside.
+func TestSilentFailures_TheReportSaysAnyLookupErrorIsSetAside(t *testing.T) {
+	var b bytes.Buffer
+	writeSilentFailures(&b, SilentFailures{Fires: true, Failed: 2, FailedLookups: 1, FinalMessageAvailable: true, AbsentWords: []string{"fail"}})
+	want := "    lookups among them: 1 (Read, Glob, Grep or NotebookRead, whatever the error: a directory, a missing file or folder, a bad pattern), not set against the final message\n"
+	if out := b.String(); !strings.Contains(out, want) {
+		t.Errorf("want %q:\n%s", want, out)
 	}
 }
 
