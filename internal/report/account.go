@@ -365,9 +365,12 @@ type MaskedRuns struct {
 	// Runs counts calls whose shape says a build or test runner's exit
 	// status was masked by its line (status_masked test or build), that
 	// recorded ok and were not moved to the background, and that no later
-	// call followed up: one whose line ends with the same runner
-	// (runner_digest) as its status, started in the same directory (cwd
-	// digest), and recorded ok or failed, not in the background. A masked
+	// call followed up: one whose line returns the same runner's failure
+	// (status_masked none, the same runner_digest), started in the same
+	// directory (cwd digest), and recorded ok or failed, not in the
+	// background. A line that hid two runners, or ran its runner after a cd
+	// its cwd digest does not hold, carries no runner digest, and nothing
+	// follows it up. A masked
 	// call that recorded failed is not here: it is a failed call, counted by
 	// SilentFailures.
 	Runs int `json:"runs"`
