@@ -2906,7 +2906,7 @@ m("LK a failed lookup silences the failures beside it", "internal/report/account
   "\tif sf.Counted() == 0 {\n\t\t// Nothing", "\tif sf.FailedLookups > 0 || sf.Counted() == 0 {\n\t\t// Nothing",
   "TestSilentFailures_ALookupBesideAnotherFailureIsNotCounted|TestH91_AFailedLookupBesideARealFailureIsNotCounted")
 m("LK the end-of-turn line prints lookups in its count", "internal/recap/recap.go",
-  "d.SilentFailures.Counted(), plural(d.SilentFailures.Counted())", "d.SilentFailures.Failed, plural(d.SilentFailures.Failed)",
+  "sf.Counted(), plural(sf.Counted())", "sf.Failed, plural(sf.Failed)",
   "TestLineCountsOnlyTheFailuresThatFire|TestH91_AFailedLookupBesideARealFailureIsNotCounted")
 m("LK the report does not say which failed calls were lookups", "internal/report/text.go",
   "\tif sf.FailedLookups > 0 {\n\t\tfmt.Fprintf(b, \"    lookups among them", "\tif false {\n\t\tfmt.Fprintf(b, \"    lookups among them",
@@ -2946,6 +2946,11 @@ m("LK a tool is classed read beside the list", "internal/shape/shape.go",
 m("LK the report names fewer tools than it sets aside", "internal/report/account.go",
   "var lookupToolNames = orList(shape.ReadTools())", "var lookupToolNames = orList(shape.ReadTools()[:3])",
   "TestIsLookup_TheReportNamesExactlyTheToolsItCounts")
+# The line's number is the report's "failed calls" less the lookups; it says
+# how many it set aside so the two add up.
+m("LK the end-of-turn line does not say lookups were set aside", "internal/recap/recap.go",
+  "\t\tif sf.FailedLookups > 0 {\n\t\t\ts += ", "\t\tif false {\n\t\t\ts += ",
+  "TestLineCountsOnlyTheFailuresThatFire|TestH91_AFailedLookupBesideARealFailureIsNotCounted")
 
 # Import additions some mutants need.
 IMPORTS = {

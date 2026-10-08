@@ -79,10 +79,11 @@ type SubagentSummary struct {
 // message mentions failure at all.
 //
 // It is a fact about TEXT and never about intent. The rendered line says how
-// many calls failed and which words are absent from the summary; it does not
-// say the agent concealed anything, because this program cannot know that and
-// a tool that guesses at it would be worth less than one that does not. A test
-// greps this package for the words that would cross that line.
+// many calls failed, less the failed lookups it names beside that count, and
+// which words are absent from the summary; it does not say the agent
+// concealed anything, because this program cannot know that and a tool that
+// guesses at it would be worth less than one that does not. A test greps this
+// package for the words that would cross that line.
 type SilentFailures struct {
 	// Fires is true only when there were failures other than lookups AND
 	// none of the vocabulary appears. Both halves are required: failures with

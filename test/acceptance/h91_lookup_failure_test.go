@@ -61,20 +61,33 @@ func TestH91_AFailedLookupAloneStaysSilent(t *testing.T) {
 	}
 }
 
-// H-91, a failed lookup beside a real failure: the line fires on the real one
-// and counts it alone. Break: let the lookup mask the failed command, or
-// count it, and this reads nothing or "2 recorded failures".
+// H-91, a failed lookup beside a real failure: the line fires on the real one,
+// counts it alone, and says how many lookups it set aside, so its numbers add
+// up to the report's "failed calls: 2". With no lookup the sentence is the
+// plain one. Break: let the lookup mask the failed command, count it, or drop
+// the qualifier, and this reads nothing, "2 recorded failures" or a bare "1
+// recorded failure.".
 func TestH91_AFailedLookupBesideARealFailureIsNotCounted(t *testing.T) {
-	e := newEnv(t)
-	e.watched(testSession)
-	readOfADirectory(t, e, "toolu_read")
-	p := defaultPayload()
-	p.ToolUseID = "toolu_make"
-	e.mustHook(p.build(t))
-	e.mustPost(failurePayload(t, "toolu_make", "Exit code 2", false, 30))
+	for _, tc := range []struct {
+		lookup bool
+		want   string
+	}{
+		{true, "rashomon: 1 recorded failure, besides 1 failed lookup.\n"},
+		{false, "rashomon: 1 recorded failure.\n"},
+	} {
+		e := newEnv(t)
+		e.watched(testSession)
+		if tc.lookup {
+			readOfADirectory(t, e, "toolu_read")
+		}
+		p := defaultPayload()
+		p.ToolUseID = "toolu_make"
+		e.mustHook(p.build(t))
+		e.mustPost(failurePayload(t, "toolu_make", "Exit code 2", false, 30))
 
-	line, ok := e.recapLine(stopPayload(testSession, "All 9 tests pass.", false))
-	if !ok || !strings.Contains(line, "rashomon: 1 recorded failure.") {
-		t.Errorf("line = %q (printed %v), want it to count the failed command alone", line, ok)
+		line, ok := e.recapLine(stopPayload(testSession, "All 9 tests pass.", false))
+		if !ok || !strings.Contains(line, tc.want) {
+			t.Errorf("line = %q (printed %v), want %q", line, ok, tc.want)
+		}
 	}
 }
