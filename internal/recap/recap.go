@@ -41,10 +41,6 @@ var prefix = mark + " rashomon: "
 
 // Line decides whether d is worth a line and renders it if so.
 //
-// A masked-status trigger joins them (maskedSentence): build or test calls
-// whose exit status their line masked, never re-run plainly, under a message
-// that claims a pass and names no failure.
-//
 // The five triggers are the spec's "When it speaks" list, minus one: a
 // destination new for this project needs the proxy database and the
 // per-project baseline (internal/report/destinations.go's buildNovelty),
@@ -66,6 +62,11 @@ var prefix = mark + " rashomon: "
 // --timeline. A pair named here can be missing there: a call whose
 // declaration was lost, recorded later in the session, stops every pair, and
 // the block then says no pair is looked for.
+//
+// A masked-status trigger joins them too (maskedSentence): build or test
+// calls whose line did not return the runner's exit status, with no later
+// run of the same command that did, under a message that claims a pass and
+// names no failure.
 //
 // Coverage-unverified and digest-unknown are rendered as ONE sentence, not
 // two: Unknown is defined as Recorded == 0 AND Coverage.State != verified

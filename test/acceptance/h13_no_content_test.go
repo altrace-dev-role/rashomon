@@ -20,7 +20,7 @@ var (
 		"shape", "shape.program", "shape.verb_class", "shape.argc", "shape.digest",
 		// v3. One bit: the line may write files whatever its program's class.
 		"shape.may_write",
-		// v3, added later. A closed word -- none, test or build -- saying a
+		// v4. A closed word -- none, test or build -- saying a
 		// recognised runner's exit status is not the line's, and a keyed
 		// digest of that runner's words: 64 hex characters, never the words.
 		"shape.status_masked", "shape.runner_digest",
