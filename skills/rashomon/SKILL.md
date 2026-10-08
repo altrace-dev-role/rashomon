@@ -56,10 +56,11 @@ responses, file contents or other argument values).
    - After a turn, they may occasionally see a short line starting `※
      rashomon:` in Claude Code's own output. That is the recap: exception-only,
      so it says nothing on a clean turn and prints once when a turn has a
-     recorded failure, a declaration without recorded execution, coverage
-     that did not verify, or a truncated projection. It always points at
-     `/rashomon-report --session <id>` for the detail rather than trying to
-     say more itself.
+     recorded failure (a failed Read, Glob, Grep or NotebookRead alone does
+     not count, whatever its error), a declaration without recorded
+     execution, coverage that did not verify, or a truncated projection. It
+     always points at `/rashomon-report --session <id>` for the detail
+     rather than trying to say more itself.
 
 5. Offer the one-word launcher once, if it is not already on their PATH.
    From the rashomon repo, on macOS or Linux:

@@ -73,18 +73,20 @@ type SilentFailureTurns struct {
 	// cost is in NotCoveredCost, as displaySession prints it.
 	NotCoveredSessions []string `json:"not_covered_sessions"`
 	Turns              int      `json:"turns"`
-	// Unjudged counts the recorded turns with a failed call that took no
-	// verdict: no final message could be tied to their prompt (records that
-	// name no discovered transcript, a transcript with no promptId on the
-	// turn's lines, a prompt with no promptId after it that ends attribution,
-	// a file not readable to the end). The rule cannot fire on no words, so
-	// such a turn is neither in Turns nor a checked clean one, and folding it
-	// into "none found" would claim a check that never happened.
+	// Unjudged counts the recorded turns with a failed call other than a
+	// lookup (report.IsLookup) that took no verdict: no final message could
+	// be tied to their prompt (records that name no discovered transcript, a
+	// transcript with no promptId on the turn's lines, a prompt with no
+	// promptId after it that ends attribution, a file not readable to the
+	// end). The rule cannot fire on no words, so such a turn is neither in
+	// Turns nor a checked clean one, and folding it into "none found" would
+	// claim a check that never happened.
 	Unjudged int `json:"unjudged_turns"`
-	// UndeclaredFailedCalls counts the failed calls recorded in the window
-	// whose declaration was lost or carried no prompt_id (turnsOf). No turn
-	// is known to hold them, so none was checked, and like Unjudged they keep
-	// "none found" from claiming every failure was checked.
+	// UndeclaredFailedCalls counts the failed calls other than a lookup
+	// recorded in the window whose declaration was lost or carried no
+	// prompt_id (turnsOf). No turn is known to hold them, so none was
+	// checked, and like Unjudged they keep "none found" from claiming every
+	// failure was checked.
 	UndeclaredFailedCalls int    `json:"undeclared_failed_calls"`
 	Cost                  Cost   `json:"cost"`
 	Bound                 string `json:"bound"`

@@ -337,11 +337,11 @@ for a top-level isSidechain key. No field exists for `message.content`, so `enco
 **Departing from "never `message.content`".** The design said spend never
 reads message content. The silent-failure line needs the final message it
 judges, and the only surviving copy is the transcript. So for a recorded turn
-with a failed call, `report.FinalAssistantTexts` does two things, all in
-memory. Of every assistant line tied to the turn, it decodes each block's
-type, and a text block's text, and keeps only the last line's text. On a user
-line with no `promptId`, it decodes the content block types to tell a tool
-result from a prompt. Separately, spend's usage read (`readFile` in
+with a failed call other than a lookup, `report.FinalAssistantTexts` does two
+things, all in memory. Of every assistant line tied to the turn, it decodes
+each block's type, and a text block's text, and keeps only the last line's
+text. On a user line with no `promptId`, it decodes the content block types
+to tell a tool result from a prompt. Separately, spend's usage read (`readFile` in
 `internal/spend/scan.go`) reads a subagent transcript's user-line `type`,
 `isMeta` and `promptId`, the key that ties a subagent's responses to a turn.
 Each of these is reduced to the digest's verdict and its counts. None is
@@ -388,7 +388,9 @@ until a real fallback transcript is captured.
 on, and one is: the spend in turns with a failed call the summary never
 mentioned, a floor with its bound printed beside it. The rule does not check
 which call came last, so the label does not say the turn ended with a
-failure.
+failure. A turn whose only failed calls are lookups (a Read, Glob, Grep or
+NotebookRead, whatever the error) is neither counted nor counted as
+unchecked, and a "none found" says so.
 
 The cache re-write figure is a heuristic, labelled as one. Only the shortfall
 is cold -- what the previous response read and wrote to the cache, less what
