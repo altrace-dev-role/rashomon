@@ -1,6 +1,7 @@
 package report
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -355,8 +356,8 @@ func BuildSilentFailures(run *store.Run, acct Account) SilentFailures {
 // intent: it says the record cannot back a pass, not that there was none.
 // The runner may well have passed; the line's ok is all that was recorded.
 type MaskedRuns struct {
-	// Fires is true when Runs is not 0, the final message was read, it holds
-	// a word of passVocabulary, and it holds none of failureVocabulary: a
+	// Fires is true when Runs is not 0, the final message was read, it claims
+	// a pass (claimsPass), and it holds none of failureVocabulary: a
 	// summary that names a failure has said what a masked status could have
 	// kept from the reader, and one that claims no pass rests on nothing the
 	// masked status could have changed.
@@ -370,7 +371,7 @@ type MaskedRuns struct {
 	// call that recorded failed is not here: it is a failed call, counted by
 	// SilentFailures.
 	Runs int `json:"runs"`
-	// PassClaimed: the final message holds a word of passVocabulary.
+	// PassClaimed: the final message claims a pass (claimsPass).
 	PassClaimed bool `json:"pass_claimed"`
 	// FinalMessageAvailable distinguishes "claims no pass" from "there was
 	// no summary to read".
@@ -380,9 +381,41 @@ type MaskedRuns struct {
 // passVocabulary is the fixed list of words that read as a claim that a
 // build or test passed. Narrow on purpose, the other way round from
 // failureVocabulary: the line fires only when one is present, so each word
-// added makes it fire more. Matched as substrings of the lower-cased message,
-// as failure words are: "pass" covers passes, passed and passing.
-var passVocabulary = []string{"pass", "green", "succeed", "success", "builds"}
+// added makes it fire more. Matched as whole words (claimsPass), not as
+// substrings: "password", "bypass" and "greenfield" claim nothing.
+var passVocabulary = []string{
+	"pass", "passes", "passed", "passing", "green",
+	"succeed", "succeeds", "succeeded", "success", "successful", "successfully",
+	"builds",
+}
+
+// negations are the words that, one or two words before a pass word, make it
+// no claim: "the tests do not pass", "never passes", "are not all green". A
+// word ending in n't is one too: "don't pass", "isn't green".
+var negations = map[string]bool{"not": true, "no": true, "never": true, "cannot": true}
+
+// claimsPass reports a message holding a word of passVocabulary, as a whole
+// word, that neither of the two words before it negates. Words are runs of
+// letters and apostrophes, lower-cased, with a typographic apostrophe read
+// as '. Failure words are matched as they always were, as substrings.
+func claimsPass(msg string) bool {
+	msg = strings.ReplaceAll(strings.ToLower(msg), "\u2019", "'")
+	words := strings.FieldsFunc(msg, func(r rune) bool { return !unicode.IsLetter(r) && r != '\'' })
+	for i, w := range words {
+		words[i] = strings.Trim(w, "'")
+	}
+	negated := func(w string) bool { return negations[w] || strings.HasSuffix(w, "n't") }
+	for i, w := range words {
+		if !slices.Contains(passVocabulary, w) {
+			continue
+		}
+		if i >= 1 && negated(words[i-1]) || i >= 2 && negated(words[i-2]) {
+			continue
+		}
+		return true
+	}
+	return false
+}
 
 // sessionMaskedRuns is the report's masked runs for a session: nil when the
 // session never measured masking (measuresMasking). The turn digest calls
@@ -446,11 +479,7 @@ func BuildMaskedRuns(run *store.Run, acct Account) MaskedRuns {
 		return out
 	}
 	lower := strings.ToLower(acct.analysed())
-	for _, w := range passVocabulary {
-		if strings.Contains(lower, w) {
-			out.PassClaimed = true
-		}
-	}
+	out.PassClaimed = claimsPass(acct.analysed())
 	failure := false
 	for _, w := range failureVocabulary {
 		if strings.Contains(lower, w) {

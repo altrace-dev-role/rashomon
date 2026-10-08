@@ -376,3 +376,37 @@ func TestMasked_NotMeasuredBeforeSchema4(t *testing.T) {
 		t.Errorf("a schema-4 session's masked test runs = %v, want a measured 0", tr.Masked)
 	}
 }
+
+// TestMasked_PassWordsAreWords: a pass is claimed by a whole word of
+// passVocabulary that the two words before it do not negate. Break: match a
+// pass word inside another word, and "password", "bypass" and "greenfield"
+// claim a pass; or read a negated one as a claim, and "the tests do not
+// pass" does.
+func TestMasked_PassWordsAreWords(t *testing.T) {
+	run := tbRun(maskedCall(1, shape.MaskedTest, "r", store.ExecOK))
+	for _, tc := range []struct {
+		msg   string
+		fires bool
+	}{
+		{"I rotated the password in the config.", false},
+		{"Added a bypass for the cache.", false},
+		{"Set up the greenfield service skeleton.", false},
+		{"The tests don't pass yet.", false},
+		{"The tests do not pass.", false},
+		{"The suite never passes on this branch.", false},
+		{"The tests don\u2019t pass yet.", false},
+		{"The checks are not all green.", false},
+
+		{"All tests pass.", true},
+		{"The build is green.", true},
+		{"Tests passed successfully.", true},
+		{"It builds now.", true},
+		{"Done: \"pass\" on every package.", true},
+		{"The password field is fixed and the tests pass.", true},
+	} {
+		got := BuildMaskedRuns(run, AccountFromMessage(tc.msg))
+		if got.Fires != tc.fires || got.PassClaimed != tc.fires {
+			t.Errorf("%q: fires %v pass_claimed %v, want %v", tc.msg, got.Fires, got.PassClaimed, tc.fires)
+		}
+	}
+}

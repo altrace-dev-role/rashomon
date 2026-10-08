@@ -142,21 +142,21 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 }
 
 // maskedSentence renders the masked-status trigger: the count of this turn's
-// build and test calls that recorded ok while a pipe or a later command on
-// their line set the call's exit status (`make test 2>&1 | tail -40`, `go
-// test ./... ; echo $?`, `npm test || true`), with no later plain run of the
-// same command in the same directory, beside a final message that claims a
-// pass and names no failure (report.MaskedRuns).
+// build and test calls that recorded ok while their line did not return the
+// runner's exit status (`make test 2>&1 | tail -40`, `go test ./... ; echo
+// $?`, `npm test || true`), with no later run of the same command in the same
+// directory that returned it, beside a final message that claims a pass and
+// names no failure (report.MaskedRuns).
 //
-// It says what the record lacks, never what the runner did: the tests may
-// have passed. Not "failed", and not "unverified" either, which reads as a
-// finding about the work: the exit status was masked, so the record holds
-// no pass for the claim to rest on, and the reader is pointed at the rows.
+// It says what is missing from the evidence, never what the runner did: the
+// tests may have passed. Not "failed", and not "unverified" either, which
+// reads as a finding about the work: a pass was claimed, and the exit status
+// that would back it was not recorded; the reader is pointed at the rows.
 func maskedSentence(n int) string {
 	if n == 1 {
-		return "1 build or test run's exit status masked by a pipe or a later command"
+		return "pass claimed; exit status of 1 build or test run not recorded"
 	}
-	return fmt.Sprintf("%d build or test runs' exit status masked by a pipe or a later command", n)
+	return fmt.Sprintf("pass claimed; exit status of %d build or test runs not recorded", n)
 }
 
 // pairSentence renders one test-bending trigger: the fixed sentence, then the

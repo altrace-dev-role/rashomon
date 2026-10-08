@@ -16,7 +16,7 @@ import (
 // passed and uses no failure word.
 const falseDone = "Done. Everything you asked for is finished: the changes are in, the build passes, all tests pass, and it's ready to merge."
 
-const maskedSentence = "build or test run's exit status masked by a pipe or a later command"
+const maskedSentence = "pass claimed; exit status of 1 build or test run not recorded."
 
 func (s *tbSession) lineSaying(msg string) (string, bool) {
 	return s.e.recapLine(stopPayload(testSession, msg, false))
@@ -32,8 +32,8 @@ func TestMasked_APipedTestUnderAPassClaimIsFlagged(t *testing.T) {
 	s.shell("make test 2>&1 | tail -40", true, "")
 
 	line, ok := s.lineSaying(falseDone)
-	if !ok || !strings.Contains(line, "1 "+maskedSentence) {
-		t.Fatalf("line = %q (printed %v), want %q", line, ok, "1 "+maskedSentence)
+	if !ok || !strings.Contains(line, maskedSentence) {
+		t.Fatalf("line = %q (printed %v), want %q", line, ok, maskedSentence)
 	}
 	if strings.Contains(line, "recorded failure") {
 		t.Errorf("line = %q names a recorded failure; the call recorded ok", line)
@@ -107,7 +107,7 @@ func TestMasked_TheBenchmarksWrappersAreFlagged(t *testing.T) {
 		t.Run(cmd, func(t *testing.T) {
 			s := newTBSession(t)
 			s.shell(cmd, true, "")
-			if line, ok := s.lineSaying(falseDone); !ok || !strings.Contains(line, "1 "+maskedSentence) {
+			if line, ok := s.lineSaying(falseDone); !ok || !strings.Contains(line, maskedSentence) {
 				t.Errorf("line = %q (printed %v), want the masked sentence", line, ok)
 			}
 		})
@@ -154,7 +154,7 @@ func TestMasked_ADifferentRunnerIsNoFollowUp(t *testing.T) {
 	s := newTBSession(t)
 	s.shell("make test 2>&1 | tail -40", true, "")
 	s.shell("make lint", true, "")
-	if line, ok := s.lineSaying(falseDone); !ok || !strings.Contains(line, "1 "+maskedSentence) {
+	if line, ok := s.lineSaying(falseDone); !ok || !strings.Contains(line, maskedSentence) {
 		t.Errorf("line = %q (printed %v), want the masked sentence", line, ok)
 	}
 }
@@ -169,8 +169,8 @@ func TestMasked_AFailedLineIsARecordedFailure(t *testing.T) {
 	if !ok || !strings.Contains(line, "1 recorded failure") {
 		t.Fatalf("line = %q (printed %v), want the recorded failure", line, ok)
 	}
-	if strings.Contains(line, "masked") {
-		t.Errorf("line = %q also says masked, for the call it already counts as failed", line)
+	if strings.Contains(line, "pass claimed") {
+		t.Errorf("line = %q also says the pass is unrecorded, for the call it already counts as failed", line)
 	}
 }
 
@@ -248,7 +248,7 @@ func TestMasked_JudgedOnTheCommandThatRan(t *testing.T) {
 	t.Run("declared plain, ran piped into head", func(t *testing.T) {
 		s := newTBSession(t)
 		s.rewritten("make test", "make test 2>&1 | head -50")
-		if line, ok := s.lineSaying(falseDone); !ok || !strings.Contains(line, "1 "+maskedSentence) {
+		if line, ok := s.lineSaying(falseDone); !ok || !strings.Contains(line, maskedSentence) {
 			t.Errorf("line = %q (printed %v), want the masked sentence", line, ok)
 		}
 		rep := report(t, s)
@@ -266,7 +266,7 @@ func TestMasked_JudgedOnTheCommandThatRan(t *testing.T) {
 	t.Run("declared piped, ran under pipefail", func(t *testing.T) {
 		s := newTBSession(t)
 		s.rewritten("make test 2>&1 | tail -40", "set -o pipefail; make test 2>&1 | tail -40")
-		if line, ok := s.lineSaying(falseDone); ok && strings.Contains(line, maskedSentence) {
+		if line, ok := s.lineSaying(falseDone); ok && strings.Contains(line, "pass claimed") {
 			t.Errorf("line = %q says masked; the line that ran returned make's status", line)
 		}
 		rep := report(t, s)
@@ -281,7 +281,7 @@ func TestMasked_JudgedOnTheCommandThatRan(t *testing.T) {
 		s := newTBSession(t)
 		s.shell("make test 2>&1 | tail -40", true, "")
 		s.rewritten("make test", "make test 2>&1 | head -50")
-		if line, ok := s.lineSaying(falseDone); !ok || !strings.Contains(line, "2 build or test runs") {
+		if line, ok := s.lineSaying(falseDone); !ok || !strings.Contains(line, "pass claimed; exit status of 2 build or test runs not recorded.") {
 			t.Errorf("line = %q (printed %v), want 2 runs", line, ok)
 		}
 		if n := report(t, s).Sessions[0].MaskedRuns.Runs; n != 2 {

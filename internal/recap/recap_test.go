@@ -261,8 +261,8 @@ func TestLineMaskedRuns(t *testing.T) {
 		t.Errorf("a digest whose masked runs do not fire printed %q", line)
 	}
 	for n, want := range map[int]string{
-		1: "1 build or test run's exit status masked by a pipe or a later command",
-		3: "3 build or test runs' exit status masked by a pipe or a later command",
+		1: "pass claimed; exit status of 1 build or test run not recorded.",
+		3: "pass claimed; exit status of 3 build or test runs not recorded.",
 	} {
 		d.MaskedRuns = report.MaskedRuns{Runs: n, Fires: true, PassClaimed: true, FinalMessageAvailable: true}
 		line, ok := Line(d, d.SessionID, false)

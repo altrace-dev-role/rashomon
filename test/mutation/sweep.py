@@ -3099,7 +3099,13 @@ m("MS the end-of-turn line never says masked", "internal/recap/recap.go",
 m("MS the end-of-turn line says masked on the count alone", "internal/recap/recap.go",
   "\tif m := d.MaskedRuns; m.Fires {", "\tif m := d.MaskedRuns; m.Runs > 0 {", "TestLineMaskedRuns|TestMasked_")
 m("MS the masked sentence has no singular", "internal/recap/recap.go",
-  "\tif n == 1 {\n\t\treturn \"1 build or test run's", "\tif false {\n\t\treturn \"1 build or test run's", "TestLineMaskedRuns")
+  "\tif n == 1 {\n\t\treturn \"pass claimed; exit status of 1 build", "\tif false {\n\t\treturn \"pass claimed; exit status of 1 build", "TestLineMaskedRuns")
+m("MS a pass word is matched inside another word", "internal/report/account.go",
+  "\t\tif !slices.Contains(passVocabulary, w) {", "\t\tif !slices.ContainsFunc(passVocabulary, func(p string) bool { return strings.Contains(w, p) }) {", RP)
+m("MS a negated pass word is a claim", "internal/report/account.go",
+  "\tnegated := func(w string) bool { return negations[w] || strings.HasSuffix(w, \"n't\") }", "\tnegated := func(w string) bool { return false }", RP)
+m("MS a typographic apostrophe is not read", "internal/report/account.go",
+  "\tmsg = strings.ReplaceAll(strings.ToLower(msg), \"\\u2019\", \"'\")", "\tmsg = strings.ToLower(msg)", RP)
 
 # Import additions some mutants need.
 IMPORTS = {
