@@ -279,7 +279,7 @@ func TestJoin_ACoveredZeroIsAZero(t *testing.T) {
 	}
 	// And the text says so plainly: "at least none across 0 turns" is a
 	// floor of nothing over nothing.
-	if !strings.Contains(txt, "never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out)") ||
+	if !strings.Contains(txt, "never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out; a failed Read, Glob, Grep or NotebookRead alone is not counted)\n") ||
 		strings.Contains(txt, "at least") || strings.Contains(txt, "could not be checked") ||
 		strings.Contains(txt, "is a floor") {
 		t.Errorf("a covered, clean record is not rendered as a plain none:\n%s", txt)
@@ -1231,7 +1231,7 @@ func TestJoin_AFailedCallWhoseDeclarationWasLostIsNotJudged(t *testing.T) {
 				}
 				return
 			}
-			if !strings.Contains(txt, "never mentioned: none found in the turns that could be checked\n") || !strings.Contains(txt, tc.said) {
+			if !strings.Contains(txt, "never mentioned: none found in the turns that could be checked (a failed Read, Glob, Grep or NotebookRead alone is not counted)\n") || !strings.Contains(txt, tc.said) {
 				t.Errorf("an undeclared failed call is rendered as a checked none:\n%s", txt)
 			}
 		})
@@ -1553,7 +1553,7 @@ func TestJoin_AWatchedSessionWithNoCallIsRecorded(t *testing.T) {
 	for _, want := range []string{
 		"sess-q $0.80 (main $0.80, subagents none)\n",
 		"sess-u $0.40 (main $0.40, subagents none), not recorded by rashomon\n",
-		"never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out)\n",
+		"never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out; a failed Read, Glob, Grep or NotebookRead alone is not counted)\n",
 		"(from rashomon's record; 1 of 2 transcripts was recorded, so this covers only those; $0.40 in the other 1 is not covered)\n",
 	} {
 		if !strings.Contains(txt, want) {
@@ -1871,6 +1871,80 @@ func TestJoin_AFailedLookupIsNoTurnToJudge(t *testing.T) {
 			j := s.SilentFailureTurns
 			if j.Turns != 0 || j.Unjudged != tc.want || j.UndeclaredFailedCalls != tc.want {
 				t.Errorf("turns %d, unjudged %d, undeclared %d; want 0, %d, %d", j.Turns, j.Unjudged, j.UndeclaredFailedCalls, tc.want, tc.want)
+			}
+		})
+	}
+}
+
+// TestJoin_ANoneSaysAFailedLookupAloneIsNotCounted: a turn whose only failed
+// calls are lookups is not judged (report.IsLookup), and a lost failed lookup
+// is not counted as unchecked, so a "none found" printed over one would claim
+// a check that never ran while `rashomon report` says "failed calls: 1".
+// Each "none" says what it leaves out. A failed Read alone reads the first
+// none; a failed Grep beside a failed Bash call whose declaration was lost
+// reads the second; a failed Bash alone fires, as the control. Break: put
+// back either old sentence without the exception.
+func TestJoin_ANoneSaysAFailedLookupAloneIsNotCounted(t *testing.T) {
+	const aside = "a failed Read, Glob, Grep or NotebookRead alone is not counted"
+	for _, tc := range []struct {
+		name  string
+		calls []struct{ tool, prompt string }
+		turns int
+		want  string
+	}{
+		{"read alone", []struct{ tool, prompt string }{{"Read", "n1"}}, 0,
+			"never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out; " + aside + ")\n"},
+		{"grep beside a lost bash", []struct{ tool, prompt string }{{"Grep", "n1"}, {"Bash", ""}}, 0,
+			"never mentioned: none found in the turns that could be checked (" + aside + ")\n"},
+		{"bash alone", []struct{ tool, prompt string }{{"Bash", "n1"}}, 1, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfig(t)
+			rec := newRecorder(t)
+			T := now.Add(-2 * time.Hour)
+			tr := filepath.Join(c.dir, "projects", "proj", "sess-n.jsonl")
+			for i, x := range tc.calls {
+				id := fmt.Sprintf("toolu_n%d", i)
+				if x.prompt != "" {
+					p := x.prompt
+					if err := rec.st.AppendDeclaration(store.Declaration{
+						Type: store.TypeDeclaration, SchemaVersion: store.SchemaVersion,
+						RecordedAtMS: T.UnixMilli(), ToolUseID: id, SessionID: "sess-n",
+						PromptID: &p, ToolName: x.tool, TranscriptPath: tr,
+					}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := rec.st.AppendExecution(store.Execution{
+					Type: store.TypeExecution, SchemaVersion: store.SchemaVersion,
+					RecordedAtMS: T.Add(time.Second).UnixMilli(), ToolUseID: id, SessionID: "sess-n",
+					ToolName: x.tool, Outcome: store.ExecFailed,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c.write("proj/sess-n.jsonl",
+				userLine("sess-n", "n1", T.Add(-time.Second), false),
+				resp{id: "N0", model: "claude-opus-5-5", session: "sess-n", at: T.Add(-500 * time.Millisecond), in: 5, stop: "tool_use"}.line("tool_use"),
+				userLine("sess-n", "n1", T.Add(time.Second), true),
+				resp{id: "N1", model: "claude-opus-5-5", session: "sess-n", at: T.Add(2 * time.Second), in: 5, stop: "end_turn", text: "All done."}.line("text"))
+
+			s := c.summary(30)
+			if err := s.Join(rec.st); err != nil {
+				t.Fatal(err)
+			}
+			if j := s.SilentFailureTurns; j.Turns != tc.turns || j.Unjudged != 0 {
+				t.Errorf("turns %d, unjudged %d; want %d and 0", j.Turns, j.Unjudged, tc.turns)
+			}
+			txt, _ := render(t, s)
+			if tc.want == "" {
+				if strings.Contains(txt, "none found") {
+					t.Errorf("a failed Bash call under \"All done.\" reads as none:\n%s", txt)
+				}
+				return
+			}
+			if !strings.Contains(txt, tc.want) {
+				t.Errorf("want %q:\n%s", tc.want, txt)
 			}
 		})
 	}

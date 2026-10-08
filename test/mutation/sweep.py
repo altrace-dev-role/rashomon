@@ -2925,6 +2925,15 @@ m("LK spend counts a lost failed lookup as unchecked", "internal/spend/join.go",
 m("LK the report reads as if only some lookup errors were set aside", "internal/report/text.go",
   ", whatever the error: a directory, a missing file or folder, a bad pattern)", ")",
   "TestSilentFailures_TheReportSaysAnyLookupErrorIsSetAside|TestH91_AFailedLookupAloneStaysSilent")
+# A "none found" over a failed lookup alone claimed a check that never ran.
+m("LK spend's checked none omits that a lookup alone is not counted", "internal/spend/text.go",
+  "\t\tfmt.Fprintf(&b, \"none found (no recorded turn with a failed call ended in a summary that left it out; %s)\\n\", lookupsAside)",
+  "\t\tb.WriteString(\"none found (no recorded turn with a failed call ended in a summary that left it out)\\n\")",
+  "TestJoin_ANoneSaysAFailedLookupAloneIsNotCounted|TestJoin_ACoveredZeroIsAZero|TestJoin_AWatchedSessionWithNoCallIsRecorded|TestSpend_AWatchedSessionWithNoCallIsRecorded")
+m("LK spend's partial none omits that a lookup alone is not counted", "internal/spend/text.go",
+  "\t\tfmt.Fprintf(&b, \"none found in the turns that could be checked (%s)\\n\", lookupsAside)",
+  "\t\tb.WriteString(\"none found in the turns that could be checked\\n\")",
+  "TestJoin_ANoneSaysAFailedLookupAloneIsNotCounted|TestJoin_AFailedCallWhoseDeclarationWasLostIsNotJudged")
 # One list of lookup tools: a tool added to it, or to the check alone, is
 # silenced and must fail a test; the report must name every one.
 m("LK a tool is added to the read class", "internal/shape/shape.go",

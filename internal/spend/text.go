@@ -7,6 +7,8 @@ import (
 	"math/bits"
 	"strconv"
 	"strings"
+
+	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
 // Text renders the summary for a terminal.
@@ -331,6 +333,10 @@ func attemptsLine(a ExtraAttempts) string {
 	return line
 }
 
+// lookupsAside is the exception every "none found" carries: a turn whose only
+// failed calls are lookups is not judged, so "none" says nothing of it.
+var lookupsAside = "a failed " + report.LookupToolNames() + " alone is not counted"
+
 // silentLine is the only-we-can line. Its two unknown cases say WHY they are
 // unknown, and neither prints a figure: a machine with no store, and a store
 // that recorded none of these sessions, have checked nothing, and "$0.00
@@ -365,12 +371,15 @@ func silentLine(s *Summary) string {
 	// A failed turn with no words to judge (Unjudged), or a failed call whose
 	// declaration was lost or carried no prompt_id (UndeclaredFailedCalls),
 	// is neither: with any, "none" holds only among the turns that were
-	// checked, never "no recorded turn ... left it out".
+	// checked, never "no recorded turn ... left it out". A failed lookup
+	// alone (report.IsLookup) is never judged and never counted as not
+	// checked, so each "none" says it was left out (lookupsAside): without
+	// that, "none found" would sit over a failed Read the report counts.
 	switch {
 	case j.Turns == 0 && j.Unjudged == 0 && j.UndeclaredFailedCalls == 0:
-		b.WriteString("none found (no recorded turn with a failed call ended in a summary that left it out)\n")
+		fmt.Fprintf(&b, "none found (no recorded turn with a failed call ended in a summary that left it out; %s)\n", lookupsAside)
 	case j.Turns == 0:
-		b.WriteString("none found in the turns that could be checked\n")
+		fmt.Fprintf(&b, "none found in the turns that could be checked (%s)\n", lookupsAside)
 	case j.Cost.Priced == 0 && j.Cost.Unpriced == 0:
 		fmt.Fprintf(&b, "%s, with no response in the window tied to %s\n", countOf(j.Turns, "turn"), itThem(j.Turns))
 	case !j.Cost.Wholly():
