@@ -3,6 +3,8 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -220,5 +222,85 @@ func TestMasked_SessionText(t *testing.T) {
 	writeMaskedRuns(&b, MaskedRuns{})
 	if b.Len() != 0 {
 		t.Errorf("rendered with nothing masked: %q", b.String())
+	}
+}
+
+// derivedRun is a session of shell calls as the hooks record them: each
+// call's shape from shape.Derive, its cwd digest from the payload's cwd with
+// the line's leading `cd DIR &&` steps folded in, and its execution's outcome.
+func derivedRun(t *testing.T, calls ...[3]string) *store.Run {
+	t.Helper()
+	key := []byte("install key")
+	run := &store.Run{}
+	for n, c := range calls {
+		cmd, cwd, outcome := c[0], c[1], c[2]
+		raw, err := json.Marshal(map[string]string{"command": cmd})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dirs, _ := shape.LeadingDirectory("Bash", raw)
+		for _, d := range dirs {
+			if filepath.IsAbs(d) {
+				cwd = filepath.Clean(d)
+			} else {
+				cwd = filepath.Join(cwd, d)
+			}
+		}
+		id := fmt.Sprintf("toolu_%d", n+1)
+		seq := int64(n + 1)
+		run.Declarations = append(run.Declarations, store.Declaration{
+			SchemaVersion: store.SchemaVersion, Seq: seq, ToolUseID: id, ToolName: "Bash", SessionID: "s1",
+			Shape: shape.Derive("Bash", raw, key), CWDDigest: shape.CWDDigest(key, cwd),
+		})
+		run.Executions = append(run.Executions, store.Execution{
+			SchemaVersion: store.SchemaVersion, ToolUseID: id, ToolName: "Bash", Outcome: outcome,
+			ExecutedDigest: shape.Derive("Bash", raw, key).Digest,
+		})
+	}
+	return run
+}
+
+// TestMasked_RunsFromDerive: which later run clears a masked run, judged on
+// the shapes Derive records. The first call is masked and recorded ok, the
+// second recorded ok, the final message claims a pass. A later run clears it
+// only when its line returns the same runner's failure, from the same
+// directory. Break: carry no runner digest on `make test && echo ok`, or
+// none for words the tokenizer cannot vouch for; carry one runner's digest
+// for a line that hid two; read `make test &` as returning make's status; or
+// give a runner after an unfolded cd a digest.
+func TestMasked_RunsFromDerive(t *testing.T) {
+	const ok = store.ExecOK
+	const msg = "Done. All tests pass."
+	for _, tc := range []struct {
+		name          string
+		masked, later [3]string
+		fires         bool
+	}{
+		{"a later && whose failure is make's",
+			[3]string{"make test 2>&1 | tail -40", "/repo", ok}, [3]string{"make test && echo ok", "/repo", ok}, false},
+		{"the same words with an expansion in them",
+			[3]string{"go test $(go list ./...) | tail", "/repo", ok}, [3]string{"go test $(go list ./...)", "/repo", ok}, false},
+		{"a later line under pipefail",
+			[3]string{"go test ./... 2>&1 | tail -5", "/repo", ok}, [3]string{"set -o pipefail; go test ./... 2>&1 | tail -5", "/repo", ok}, false},
+		{"make lint never re-ran",
+			[3]string{"make lint 2>&1 | tail -20; make test 2>&1 | tail -40", "/repo", ok}, [3]string{"make test", "/repo", ok}, true},
+		{"a later launch with &",
+			[3]string{"make test | tail", "/repo", ok}, [3]string{"make test &", "/repo", ok}, true},
+		{"the later run is in another directory",
+			[3]string{"cd sub; make test | tail", "/repo", ok}, [3]string{"cd /repo && make test", "/repo/sub", ok}, true},
+		{"after an unfolded cd the runner's directory is not known",
+			[3]string{"cd sub; make test | tail", "/repo", ok}, [3]string{"make test", "/repo/sub", ok}, true},
+		{"a plain re-run",
+			[3]string{"make test 2>&1 | tail -40", "/repo", ok}, [3]string{"make test", "/repo", ok}, false},
+	} {
+		run := derivedRun(t, tc.masked, tc.later)
+		if m := run.Declarations[0].Shape.StatusMasked; m == nil || *m == shape.MaskedNone {
+			t.Errorf("%s: %q is not masked", tc.name, tc.masked[0])
+			continue
+		}
+		got := BuildMaskedRuns(run, AccountFromMessage(msg))
+		if got.Fires != tc.fires {
+			t.Errorf("%s: fires %v (runs %d), want %v", tc.name, got.Fires, got.Runs, tc.fires)
+		}
 	}
 }
