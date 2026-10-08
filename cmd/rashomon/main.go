@@ -972,11 +972,11 @@ func cmdResume(stdout io.Writer) error {
 	return nil
 }
 
-// Recording state words. RecordingState returns exactly one of these three,
-// and status must not invent a fourth: H-82 is the test that paused, absent
-// and unknown stay distinguishable, so "I turned it off" can never collapse
-// into "it was never installed" or the reverse. statusRecording is what
-// renders each of them.
+// Recording state words. RecordingState returns exactly one of these three.
+// H-82 is the test that paused, absent and unknown stay distinguishable, so
+// "I turned it off" can never collapse into "it was never installed" or the
+// reverse. statusRecording renders each state and separately says when an
+// active pause state belongs to a machine with no install at all.
 const (
 	RecordingActive        = "active"
 	RecordingPaused        = "paused"
@@ -1028,7 +1028,7 @@ func cmdStatus(stdout io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "store: %s\n", root)
-	statusRecording(stdout)
+	statusRecording(stdout, root)
 
 	installID := ""
 	if _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {
@@ -1100,15 +1100,18 @@ func statusRecap(stdout io.Writer, root string) error {
 }
 
 // statusRecording says whether hooks will record, which is the one thing pause
-// changes and the first thing a user who ran it will ask. A pause file that
-// cannot be read is reported as unknown, never as active: hooks fall back to
-// recording in that case, but status did not see the answer and does not
-// claim one.
-func statusRecording(stdout io.Writer) {
+// changes and the first thing a user who ran it will ask. "Active" is only a
+// useful answer once a store exists: on a fresh machine no hooks are installed
+// to record anything. A pause file that cannot be read is reported as unknown,
+// never as active: hooks fall back to recording in that case, but status did
+// not see the answer and does not claim one.
+func statusRecording(stdout io.Writer, root string) {
 	state, since, err := RecordingState()
 	switch {
 	case err != nil:
 		fmt.Fprintf(stdout, "  recording: %s\n", statusUnknown)
+	case state == RecordingActive && !storeExistsAt(root):
+		fmt.Fprintln(stdout, "  recording: not installed")
 	case state == RecordingActive:
 		fmt.Fprintf(stdout, "  recording: %s\n", RecordingActive)
 	default:
