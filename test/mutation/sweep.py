@@ -496,6 +496,15 @@ m("report --json is accepted and ignored", "cmd/rashomon/main.go",
 m("status opens the store, which creates one", "cmd/rashomon/main.go",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {\n\t\tst, err := openStore()",
   "\tif true {\n\t\tst, err := openStore()", "TestH18_")
+m("status calls recording active on a fresh machine", "cmd/rashomon/main.go",
+  "\tcase state == RecordingActive && !installed:",
+  "\tcase state == RecordingActive && false:", "TestStatus_OnAFreshMachineSaysSo")
+m("status calls every unpaused machine not installed", "cmd/rashomon/main.go",
+  "\tcase state == RecordingActive && !installed:",
+  "\tcase state == RecordingActive && true:", "TestStatus_SaysWhetherRecordingIsPaused")
+m("status calls an enabled plugin with no store yet not installed", "cmd/rashomon/main.go",
+  "\t\tinstalled, err = pluginEnabled()",
+  "\t\tinstalled, err = false, nil", "TestStatus_AnEnabledPluginRecordsBeforeAnyStoreExists")
 m("status reports an entry present whatever it finds", "cmd/rashomon/main.go",
   "\tcase present:\n\t\treturn \"present\"\n\tdefault:\n\t\treturn \"absent\"\n\t}",
   "\tcase present:\n\t\treturn \"present\"\n\tdefault:\n\t\treturn \"present\"\n\t}", "TestStatus_")

@@ -33,6 +33,9 @@ func TestStatus_OnAFreshMachineSaysSo(t *testing.T) {
 			t.Errorf("status does not report %q:\n%s", want, res.stdout)
 		}
 	}
+	if got := fieldLine(t, res.stdout, "recording"); got != "not installed" {
+		t.Errorf("recording reads %q on a fresh machine, want not installed", got)
+	}
 	for _, ev := range installedEvents {
 		if got := fieldLine(t, res.stdout, ev.event); got != "unknown" {
 			t.Errorf("%s reads %q on a machine with no install id; there is nothing to call ours", ev.event, got)
