@@ -400,6 +400,11 @@ func TestH15_SizeCapEvictionLeavesAGap(t *testing.T) {
 	if gaps[0].fields["removed_records"] != float64(3) {
 		t.Errorf("gap says %v records removed, want 3", gaps[0].fields["removed_records"])
 	}
+	// A gap is a session record: written at SessionSchemaVersion, so a binary
+	// that reads only up to it still reads the gap.
+	if got, want := gaps[0].fields["schema_version"], float64(store.SessionSchemaVersion); got != want {
+		t.Errorf("gap schema_version = %v, want %v", got, want)
+	}
 }
 
 // TestH15_LiveRunsAreNotEvicted: a run written to recently may still be in use.

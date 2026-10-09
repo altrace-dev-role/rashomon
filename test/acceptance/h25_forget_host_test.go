@@ -19,6 +19,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 const forgettable = "acme-secret.internal"
@@ -80,6 +82,11 @@ func TestH25_ForgetHostRemovesTheRecordsAndLeavesAGap(t *testing.T) {
 	}
 	if g.fields["removed_records"] == float64(0) {
 		t.Error("gap says 0 records removed")
+	}
+	// A gap is a session record: written at SessionSchemaVersion, so a binary
+	// that reads only up to it still reads the gap.
+	if got, want := g.fields["schema_version"], float64(store.SessionSchemaVersion); got != want {
+		t.Errorf("gap schema_version = %v, want %v", got, want)
 	}
 }
 
