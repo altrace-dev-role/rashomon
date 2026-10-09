@@ -237,9 +237,10 @@ func TestH30_AnEditDeniedByAPathRuleIsNotACoverageFailure(t *testing.T) {
 }
 
 // TestH30_AnUndeclaredPromptDenialIsStillMissingFromStore holds the exemption
-// to the one refusal measured to come before PreToolUse. The prompt's denial
-// comes after it, so the same undeclared shape there IS a declaration the
-// recorder lost, and stays a transcript mismatch.
+// to the refusals that come before PreToolUse, the ones wrapped in
+// tool_use_error. The prompt's denial comes after it, so the same undeclared
+// shape there IS a declaration the recorder lost, and stays a transcript
+// mismatch.
 func TestH30_AnUndeclaredPromptDenialIsStillMissingFromStore(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
@@ -317,6 +318,51 @@ func TestH30_AnEditRefusedWhileItsInputWasCheckedIsNotACoverageFailure(t *testin
 			out := e.run("", nil, "report", "--session", testSession).stdout
 			if !strings.Contains(out, "refused before any hook: "+editID) {
 				t.Errorf("the render does not name the refused call:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestH30_AnEditOrWriteCoveredByAReadDenyRuleIsADenial: a settings Read deny
+// rule such as Read(./.env) also refuses an Edit or Write of the file, before
+// any hook, in its own words. It is the same decision as an Edit deny rule on
+// the path, so it is named the same way: denied before running, and refused
+// before any hook.
+func TestH30_AnEditOrWriteCoveredByAReadDenyRuleIsADenial(t *testing.T) {
+	for name, text := range map[string]string{
+		"edit": "<tool_use_error>File is covered by a Read deny rule in your permission settings " +
+			"and cannot be edited.</tool_use_error>",
+		"write": "<tool_use_error>File is covered by a Read deny rule in your permission settings " +
+			"and cannot be written.</tool_use_error>",
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			e.watched(testSession)
+
+			const editID = "toolu_read_rule"
+			p := defaultPayload()
+			p.TranscriptPath = writeTwoCallTranscript(t, e, p.ToolUseID, editID, text)
+			e.mustHook(p.build(t))
+			e.postIDs(p.TranscriptPath, p.ToolUseID)
+			e.probe("end", testSession)
+
+			rep := e.report(testSession)
+			if len(rep.Transcripts) != 1 {
+				t.Fatalf("want one transcript group, got %d", len(rep.Transcripts))
+			}
+			tr := rep.Transcripts[0]
+			if len(tr.DeniedByUser) != 1 || tr.DeniedByUser[0] != editID {
+				t.Errorf("denied_by_user = %v, want [%s]: a settings deny rule refused it", tr.DeniedByUser, editID)
+			}
+			if len(tr.RefusedBeforeHooks) != 1 || tr.RefusedBeforeHooks[0] != editID {
+				t.Errorf("refused_before_hooks = %v, want [%s]", tr.RefusedBeforeHooks, editID)
+			}
+			if rep.Coverage.State != "verified" || len(rep.Coverage.Reasons) != 0 {
+				t.Errorf("coverage = %s %v, want verified with no reasons", rep.Coverage.State, rep.Coverage.Reasons)
+			}
+			out := e.run("", nil, "report", "--session", testSession).stdout
+			if !strings.Contains(out, "denied before running: "+editID) {
+				t.Errorf("the render does not name the denied call:\n%s", out)
 			}
 		})
 	}

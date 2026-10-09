@@ -2899,6 +2899,9 @@ m("NONO the unknown-decision line is never printed", "internal/report/text.go",
 m("SDN a path-denied Edit is read as an execution", "internal/report/transcript.go",
   "\tpathDeniedPrefix,\n}", "}",
   "TestTranscript_RefusalsOutside|TestH30_AnEditDeniedByAPathRule")
+m("SDN an Edit or Write under a Read deny rule is not a denial", "internal/report/transcript.go",
+  "\treadDeniedPrefix,\n\tpathDeniedPrefix,\n}", "\tpathDeniedPrefix,\n}",
+  "TestTranscript_RefusalsOutside|TestH30_AnEditOrWriteCoveredByAReadDenyRule")
 m("SDN an input-check refusal is not kept as refused before any hook", "internal/report/transcript.go",
   "\t\t\t\tif b.IsError && strings.HasPrefix(text, toolUseErrorTag) {", "\t\t\t\tif false {",
   "TestTranscript_EveryInputCheckRefusalIsUnhooked|TestH30_AnEditDeniedByAPathRule|TestH30_AnEditRefusedWhileItsInput")
@@ -2934,6 +2937,9 @@ m("SDN a terminal is not a hook record", "internal/report/report.go",
 m("SDN an execution is not a hook record", "internal/report/report.go",
   "\tfor id := range executed {\n\t\thooked[id] = true\n\t}\n", "",
   "TestAccounting_AnyHookRecordTakesTheExemptionAway")
+m("SDN a readable transcript's refused list renders as unknown", "internal/report/report.go",
+  "\trefused := map[string]bool{}\n\tt.RefusedBeforeHooks = []string{}\n", "\trefused := map[string]bool{}\n",
+  "TestAccounting_AReadableTranscriptRendersEveryEmptyListAsNone")
 m("SDN the calls refused before any hook are not named", "internal/report/report.go",
   "\t\t\trefused[id] = true\n\t\t\tt.RefusedBeforeHooks = append(t.RefusedBeforeHooks, id)\n",
   "\t\t\trefused[id] = true\n",

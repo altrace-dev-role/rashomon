@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -238,6 +239,13 @@ var nonInteractiveRefusals = map[string]string{
 	// settings-denied edits in a 100-run benchmark.
 	"settings deny rule on a path": "<tool_use_error>File is in a directory that is denied by " +
 		"your permission settings.</tool_use_error>",
+	// An Edit or Write of a file a settings READ deny rule covers, such as
+	// Read(./.env). Refused by the same input check, before any hook, but in
+	// its own words. Verbatim from Claude Code 2.1.280.
+	"read deny rule on an edited path": "<tool_use_error>File is covered by a Read deny rule in " +
+		"your permission settings and cannot be edited.</tool_use_error>",
+	"read deny rule on a written path": "<tool_use_error>File is covered by a Read deny rule in " +
+		"your permission settings and cannot be written.</tool_use_error>",
 }
 
 func TestTranscript_RefusalsOutsideThePromptAreDenials(t *testing.T) {
@@ -256,10 +264,12 @@ func TestTranscript_RefusalsOutsideThePromptAreDenials(t *testing.T) {
 	}
 }
 
-// TestTranscript_OnlyThePathRefusalIsUnhooked: a path-denied Edit is refused
-// before PreToolUse, so the report must not ask the store for it. Every other
-// refusal comes after PreToolUse and must stay out of the unhooked set, or an
-// undeclared one would hide a declaration the recorder lost.
+// TestTranscript_OnlyThePathRefusalIsUnhooked: a refusal by a deny rule on the
+// path -- the tool's own rule, or a Read rule under an Edit or Write -- comes
+// wrapped in tool_use_error before PreToolUse, so the report must not ask the
+// store for it. Every other refusal comes after PreToolUse and must stay out
+// of the unhooked set, or an undeclared one would hide a declaration the
+// recorder lost.
 func TestTranscript_OnlyThePathRefusalIsUnhooked(t *testing.T) {
 	for name, text := range nonInteractiveRefusals {
 		path := writeTranscriptBlocks(t, []blk{
@@ -269,7 +279,7 @@ func TestTranscript_OnlyThePathRefusalIsUnhooked(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		want := name == "settings deny rule on a path"
+		want := strings.HasPrefix(text, toolUseErrorTag)
 		if unhooked["toolu_x"] != want {
 			t.Errorf("%s: unhooked=%v, want %v", name, unhooked["toolu_x"], want)
 		}

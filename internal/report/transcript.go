@@ -179,11 +179,20 @@ var deniedPrefixes = []string{
 	"Permission for this action was denied by the Claude Code auto mode classifier.",
 	"Permission for this action has been denied.",
 	"This command requires approval",
+	readDeniedPrefix,
 	pathDeniedPrefix,
 }
 
-// pathDeniedPrefix opens a Read, Edit or Write refused by a settings deny rule
-// on its path: verbatim on 2.1.292 (all five such refusals in a 100-run
+// readDeniedPrefix opens an Edit or Write of a file a settings READ deny rule
+// covers, such as Read(./.env): Claude Code will not let the agent change what
+// it may not read, and says so in its own words rather than pathDeniedPrefix's.
+// The same input check refuses it, before any hook. Verbatim on 2.1.280, which
+// ends it "and cannot be edited." or "and cannot be written.".
+const readDeniedPrefix = "<tool_use_error>File is covered by a Read deny rule in your permission settings"
+
+// pathDeniedPrefix opens a Read, Edit or Write refused by a deny rule for that
+// same tool on its path (an Edit or Write under a Read rule is
+// readDeniedPrefix): verbatim on 2.1.292 (all five such refusals in a 100-run
 // benchmark) and on 2.1.280. It is listed here because it is a refusal. That it
 // comes before any hook is not this sentence's doing: it is one of the input
 // check's refusals, and toolUseErrorTag covers all of them.
