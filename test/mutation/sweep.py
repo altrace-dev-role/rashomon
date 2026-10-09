@@ -3010,6 +3010,8 @@ m("MS a line that sets errexit skips the zsh run", "internal/shape/masked.go",
   "\tif !p.errexit {\n\t\t// Without errexit the two shells run it alike.\n", "\tif true {\n\t\t// Without errexit the two shells run it alike.\n", SH)
 m("MS the line runs only as bash runs it", "internal/shape/masked.go",
   "\tev := &evaluator{p: p, target: g, fail: fail, zsh: zsh}\n", "\tev := &evaluator{p: p, target: g, fail: fail}\n", SH)
+m("MS set -opipefail is read as short options", "internal/shape/masked.go",
+  "\t\t\t\tif k < len(w)-2 {\n", "\t\t\t\tif k < 0 {\n", SH)
 m("MS the pipeline after && ends at its first stage", "internal/shape/masked.go",
   "\t\tao.pipes = append(ao.pipes, pl)\n", "\t\tif len(ao.pipes) > 0 {\n\t\t\tpl.stages = pl.stages[:1]\n\t\t}\n\t\tao.pipes = append(ao.pipes, pl)\n", SH)
 m("MS a here-string is read as a here-document", "internal/shape/tokenize.go",

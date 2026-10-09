@@ -164,6 +164,11 @@ func TestStatusMasked(t *testing.T) {
 		{"set -e; { make test && true; }; echo done", "null", "0/0 in every shell, but the abstract bash run fires errexit after the group (1/0): the two runs disagree"},
 		{"set -euo pipefail; make test 2>&1 | tail -40", MaskedNone, "1/0 in every shell: pipefail returns make's failure"},
 		{"set -e; make test || true; echo done", MaskedTest, "0/0 in every shell"},
+
+		// `set -opipefail`: bash 3.2 rejects the word (1/1), zsh reads
+		// pipefail (1/0). The shells disagree: null.
+		{"set -opipefail; make test | tail", "null", "o not last in its cluster"},
+		{"set -euopipefail; make test | tail", "null", "o not last in its cluster"},
 	} {
 		got, _ := maskedOf(t, tc.cmd)
 		if got != tc.want {

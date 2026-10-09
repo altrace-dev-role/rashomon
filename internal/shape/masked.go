@@ -816,7 +816,8 @@ func (p *lineParser) readsStatus(s, e int) bool {
 // of short options such as -euo, or `-o errexit`) and pipefail (`-o
 // pipefail`), and their `+` forms, which turn them off. A cluster holding o
 // takes the next word as the option's name. False on a word this tokenizer
-// cannot vouch for.
+// cannot vouch for, and on a cluster where o is not last, which bash and zsh
+// read differently.
 func setOptions(toks []token, args []int) ([]setOpt, bool) {
 	var out []setOpt
 	for n := 0; n < len(args); n++ {
@@ -832,11 +833,16 @@ func setOptions(toks []token, args []int) ([]setOpt, bool) {
 			continue
 		}
 		on := w[0] == '-'
-		for _, c := range w[1:] {
+		for k, c := range w[1:] {
 			switch c {
 			case 'e':
 				out = append(out, setOpt{errexit: true, on: on})
 			case 'o':
+				if k < len(w)-2 {
+					// o before the cluster's end, `-opipefail`: bash rejects
+					// the word and zsh reads the rest as the name.
+					return nil, false
+				}
 				if n+1 >= len(args) {
 					continue
 				}
