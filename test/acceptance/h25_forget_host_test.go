@@ -237,3 +237,24 @@ func TestH25_ForgetUnknownHostIsNotAnError(t *testing.T) {
 			"actually left")
 	}
 }
+
+// TestH25_AForgetThatRemovedNothingSaysTheHostStaysOut is #45 at the command
+// line. "forgot 0 records" read as "nothing happened", and before the
+// store-level record it was true: a host only the sandbox's trail held came
+// back in the next report. The command now records the forget whatever it
+// removed, and says so when it removed nothing.
+func TestH25_AForgetThatRemovedNothingSaysTheHostStaysOut(t *testing.T) {
+	e := newEnv(t)
+	seedHostSession(t, e)
+
+	res := e.run("", nil, "forget", "--host", "never-named.example")
+	if res.exitCode != 0 {
+		t.Fatalf("forget --host: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	want := "rashomon: forgot 0 records naming never-named.example across 0 runs; " +
+		"0 gap records written; later reports still leave it out wherever they find it, " +
+		"the sandbox trail included\n"
+	if res.stdout != want {
+		t.Errorf("forget --host that removed nothing printed\n%q\nwant\n%q", res.stdout, want)
+	}
+}

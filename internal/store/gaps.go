@@ -463,6 +463,21 @@ func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The store-level record lands FIRST and ALWAYS, removed records or not.
+	// First, for the reason the gaps land before their rewrites: a failure
+	// after it overstates the forget, which a reader can see, rather than
+	// leaving a host suppressed nowhere. Always, because the report reads
+	// sources this store never held -- the sandbox's trail and the proxy's
+	// store -- and a forget that wrote nothing when it removed nothing left
+	// the host listed there (#45).
+	if err := s.appendLine(filepath.Join(s.root, FileForgottenHosts), ForgottenHostRecord{
+		Type:          TypeForgottenHost,
+		SchemaVersion: SessionSchemaVersion,
+		RecordedAtMS:  now.UnixMilli(),
+		HostDigest:    s.HostDigest(host),
+	}, lockBudget, false); err != nil {
+		return nil, err
+	}
 	var gaps []Gap
 	for _, name := range names {
 		g, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)
@@ -614,7 +629,11 @@ func (s *Store) HostDigest(host string) string {
 }
 
 // ForgottenHost reports whether a host has been removed by a host-scoped
-// forget, by recomputing its keyed digest and looking for it among the gaps.
+// forget, by recomputing its keyed digest and looking for it among the gaps
+// and the store-level forget records.
+//
+// BOTH SOURCES. The store-level records cover every forget since they
+// existed; the gaps cover the forgets made before, which wrote only a gap.
 //
 // Returned as a predicate rather than a set of names because the names are not
 // recoverable: the caller asks about a host it already has, which is exactly
@@ -629,6 +648,15 @@ func (s *Store) ForgottenHost() (func(string) bool, error) {
 		if g.Reason == GapForgetHost && g.HostDigest != "" {
 			digests[g.HostDigest] = true
 		}
+	}
+	err = eachLine(filepath.Join(s.root, FileForgottenHosts), func(line []byte) {
+		var r ForgottenHostRecord
+		if json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest != "" {
+			digests[r.HostDigest] = true
+		}
+	})
+	if err != nil {
+		return nil, err
 	}
 	if len(digests) == 0 {
 		// A predicate that allocates and hashes nothing on the overwhelmingly

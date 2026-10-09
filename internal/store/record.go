@@ -67,6 +67,8 @@ const (
 	TypeTerminal    = "terminal"
 	TypeCoverage    = "coverage"
 	TypeGap         = "gap"
+	// TypeForgottenHost is a store-level forget: see ForgottenHostRecord.
+	TypeForgottenHost = "forgotten_host"
 )
 
 // Files within a run directory, and at the store root.
@@ -77,6 +79,9 @@ const (
 	FileProbe    = "probe"
 	FileSeq      = "seq"
 	FileGaps     = "gaps.ndjson"
+	// FileForgottenHosts is at the store root: one ForgottenHostRecord per
+	// `forget --host`, whatever it removed.
+	FileForgottenHosts = "forgotten-hosts.ndjson"
 )
 
 // Declaration is what the agent asked to run.
@@ -479,6 +484,26 @@ type Coverage struct {
 	//
 	// Empty on a record written by a path that had no cwd to report.
 	CWD string `json:"cwd"`
+}
+
+// ForgottenHostRecord is a host-scoped forget, kept at the store level.
+//
+// SEPARATE FROM THE GAPS ON PURPOSE. A gap says "records were removed here",
+// and `forget --host` writes one only for a run it actually removed records
+// from. That left a hole the nono adapter made visible (#45): a host that only
+// the sandbox's trail or the proxy's store held -- or one whose every naming
+// call had already left with an earlier forget of another host -- could not be
+// forgotten at all, and the next report listed it again. This record is written
+// on every `forget --host`, so the report's predicate covers every source it
+// reads, and the gaps keep meaning only what they always meant.
+//
+// It carries the same keyed digest a gap does and never the name, for the
+// reason set out on Gap.HostDigest.
+type ForgottenHostRecord struct {
+	Type          string `json:"type"`
+	SchemaVersion int    `json:"schema_version"`
+	RecordedAtMS  int64  `json:"recorded_at_unix_ms"`
+	HostDigest    string `json:"host_digest"`
 }
 
 // Gap reasons.

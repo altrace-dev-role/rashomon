@@ -195,12 +195,30 @@ var loopbackHosts = map[string]bool{
 // attempts of it as "reached but never named" -- true of the bytes, false about
 // the agent. See mcpProxyHost for the case where it belongs to the agent after
 // all.
+//
+// http-intake.logs.us5.datadoghq.com was added on a recorded measurement
+// (2026-10-09, Claude Code 2.1.285 inside nono 0.79.0 on macOS): the client
+// posted its logs there during a session whose every tool call was a curl to
+// other hosts or a WebFetch of example.com, and the sandbox, with that host
+// off its allowlist, refused it. The sandbox section then read "refused by the
+// sandbox: http-intake.logs.us5.datadoghq.com", an attempt the agent never
+// made. The exact host, as measured; another region's intake is not assumed.
 var clientPlaneHosts = map[string]bool{
-	"api.anthropic.com":       true,
-	"statsig.anthropic.com":   true,
-	"statsig.com":             true,
-	"sentry.io":               true,
-	"mcp-proxy.anthropic.com": true,
+	"api.anthropic.com":                  true,
+	"statsig.anthropic.com":              true,
+	"statsig.com":                        true,
+	"sentry.io":                          true,
+	"mcp-proxy.anthropic.com":            true,
+	"http-intake.logs.us5.datadoghq.com": true,
+}
+
+// clientPlaneHost is the one rule for whether a host is the client's own
+// traffic in a given session: on the list, except the MCP transport on a
+// session that made mcp__* calls, which is then the agent's. buildDestinations
+// applies the same rule host by host; the sandbox section, which has no wire
+// view to read it from when no proxy store was read, asks this.
+func clientPlaneHost(h string, mcpAttributed bool) bool {
+	return clientPlaneHosts[h] && !(h == mcpProxyHost && mcpAttributed)
 }
 
 // mcpProxyHost is the one client-plane host that can belong to the agent.

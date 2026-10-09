@@ -32,8 +32,18 @@ type Nono struct {
 	Reason   string `json:"reason,omitempty"`
 	// Allowed and Denied are the distinct hosts, kept apart because a denied
 	// host is one the agent TRIED to reach and did not.
+	//
+	// Neither holds the client's own traffic: see ClientPlane.
 	Allowed []string `json:"allowed"`
 	Denied  []string `json:"denied"`
+	// ClientPlane is the client's own traffic in the trail -- Claude Code's
+	// model API and telemetry -- allowed or refused, kept out of the two lists
+	// above. Measured inside nono 0.79 with no proxy store, which is the default
+	// path: api.anthropic.com was counted as an allowed host of the session, and
+	// the client's log upload was listed as "refused by the sandbox", an attempt
+	// the agent never made. Named rather than dropped, so a reader can still see
+	// the sandbox allowed and refused it.
+	ClientPlane []string `json:"client_plane"`
 	// SawWhatTheProxyDidNot is the interesting column. A host here reached the
 	// network with the sandbox watching and left no row on the proxy's wire.
 	//
@@ -82,13 +92,14 @@ type Nono struct {
 // observation, for the same reason the chain links are: that view has already
 // had forgotten hosts suppressed, and a second consumer reading around it is
 // how a suppressed host returns in a different section under a different name.
-func buildNono(obs nono.Observation, dests Destinations, configured bool, forgotten func(string) bool) Nono {
+func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttributed bool, forgotten func(string) bool) Nono {
 	n := Nono{
 		Configured:            configured,
 		Observed:              obs.Observed,
 		Reason:                obs.Reason,
 		Allowed:               []string{},
 		Denied:                []string{},
+		ClientPlane:           []string{},
 		SawWhatTheProxyDidNot: []string{},
 		PlainHTTP:             []string{},
 		ProxySawWhatItDidNot:  []string{},
@@ -111,8 +122,31 @@ func buildNono(obs nono.Observation, dests Destinations, configured bool, forgot
 	// "seen by the sandbox and not on the wire". Forgetting PROMOTED it.
 	obs = suppressTrail(obs, forgotten)
 
-	n.Allowed = obs.Hosts()
-	n.Denied = obs.Denied()
+	// THE CLIENT'S OWN TRAFFIC, set apart before anything counts it. The
+	// reconciliation below always excluded it, but only once a proxy store was
+	// read; on the default path it returned at the wire guard with the client's
+	// hosts already in Allowed and Denied. The rule is clientPlaneHost, the one
+	// the destinations view applies, so the MCP transport stays the agent's on
+	// a session that made mcp__* calls.
+	clientPlane := func(h string) bool { return clientPlaneHost(h, mcpAttributed) }
+	seenClient := map[string]bool{}
+	agentOnly := func(hosts []string) []string {
+		kept := []string{}
+		for _, h := range hosts {
+			if clientPlane(h) {
+				seenClient[h] = true
+				continue
+			}
+			kept = append(kept, h)
+		}
+		return kept
+	}
+	n.Allowed = agentOnly(obs.Hosts())
+	n.Denied = agentOnly(obs.Denied())
+	for h := range seenClient {
+		n.ClientPlane = append(n.ClientPlane, h)
+	}
+	sort.Strings(n.ClientPlane)
 
 	// COUNTED ABOVE THE WIRE GUARD. This sat below it, so on the default path
 	// -- no proxy store, which is most users -- an unknown decision was
@@ -155,15 +189,13 @@ func buildNono(obs nono.Observation, dests Destinations, configured bool, forgot
 	// was reported as traffic the proxy missed -- which on a real session fires
 	// every time, because api.anthropic.com is the client's own model traffic.
 	//
-	// The client-plane test reads the VIEW'S OWN LIST, not clientPlaneHosts. That
-	// is a rule chains.go states by name: the two differ for
-	// mcp-proxy.anthropic.com, which belongs to the agent on a session that made
-	// mcp__* calls. I wrote that rule and broke it two files later.
-	clientPlane := map[string]bool{}
-	for _, h := range dests.ClientPlane {
-		clientPlane[h] = true
-	}
-	excluded := func(h string) bool { return loopbackHosts[h] || clientPlane[h] }
+	// The client-plane test is clientPlaneHost, NOT clientPlaneHosts. That is a
+	// rule chains.go states by name: the two differ for mcp-proxy.anthropic.com,
+	// which belongs to the agent on a session that made mcp__* calls. I wrote
+	// that rule and broke it two files later. It used to read the view's own
+	// list, which says the same for every host on the wire and nothing for a
+	// client host only the trail holds.
+	excluded := func(h string) bool { return loopbackHosts[h] || clientPlane(h) }
 
 	onWire := map[string]bool{}
 	wireReached := map[string]bool{}

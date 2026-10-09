@@ -2926,6 +2926,46 @@ m("NONO the unknown-decision line is never printed", "internal/report/text.go",
   "\tif n.UnknownDecisions > 0 {", "\tif false {",
   "TestNono_TheUnknownDecisionLine")
 
+# The live nono 0.79 pass (2026-10-09). The client's own traffic was counted as
+# the session's on the default path, and a host-scoped forget that removed
+# nothing left the host in the sandbox section (#45).
+m("NONO the client's own traffic is counted as the session's", "internal/report/nono.go",
+  "\t\t\tif clientPlane(h) {\n\t\t\t\tseenClient[h] = true\n\t\t\t\tcontinue\n\t\t\t}\n", "",
+  "TestNono_TheClientsOwnTraffic|TestNono_TheMCPTransport")
+m("NONO the client's own traffic is dropped rather than named", "internal/report/nono.go",
+  "\t\tn.ClientPlane = append(n.ClientPlane, h)\n", "\t\t_ = h\n",
+  "TestNono_TheClientsOwnTraffic|TestNono_TheMCPTransport")
+m("NONO the MCP transport is the client's on an MCP session", "internal/report/destinations.go",
+  "\treturn clientPlaneHosts[h] && !(h == mcpProxyHost && mcpAttributed)", "\treturn clientPlaneHosts[h]",
+  "TestNono_TheMCPTransport")
+m("NONO the session's MCP calls never reach the sandbox section", "internal/report/report.go",
+  "cfg.nonoTrail != \"\", madeMCPCall(run), forgotten)", "cfg.nonoTrail != \"\", false, forgotten)",
+  "TestSeam_TheMCPTransportReachesTheSandboxSection")
+m("NONO the client's log intake is not on the client-plane list", "internal/report/destinations.go",
+  "\t\"http-intake.logs.us5.datadoghq.com\": true,\n", "",
+  "TestNono_TheClientsOwnTraffic")
+m("NONO the text never names the client's own traffic", "internal/report/text.go",
+  "\tif len(n.ClientPlane) > 0 {", "\tif false {",
+  "TestNono_TheClientsOwnTraffic")
+m("NONO --redact passes the client's own hosts through", "internal/report/redact.go",
+  "\tout.ClientPlane = redactList(n.ClientPlane, key)\n", "",
+  "TestRedact_")
+m("NONO a forget that removed nothing writes no store-level record", "internal/store/gaps.go",
+  "\tif err := s.appendLine(filepath.Join(s.root, FileForgottenHosts), ForgottenHostRecord{",
+  "\tif err := s.appendLine(filepath.Join(s.root, FileForgottenHosts+\".off\"), ForgottenHostRecord{",
+  "TestForgetHost_|TestSeam_AHostOnlyTheSandboxSaw")
+m("NONO the predicate does not read the store-level records", "internal/store/gaps.go",
+  "\t\tif json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest != \"\" {",
+  "\t\tif false && json.Unmarshal(line, &r) == nil {",
+  "TestForgetHost_AHost|TestSeam_AHostOnlyTheSandboxSaw")
+m("NONO the store-level record holds the hostname", "internal/store/gaps.go",
+  "\t\tHostDigest:    s.HostDigest(host),\n\t}, lockBudget, false); err != nil {",
+  "\t\tHostDigest:    s.HostDigest(host) + host,\n\t}, lockBudget, false); err != nil {",
+  "TestForgetHost_TheStoreLevelRecordHoldsNoName")
+m("NONO forget --host does not say a no-op forget still holds", "cmd/rashomon/main.go",
+  "\tif total == 0 {\n\t\tfmt.Fprint(stdout, \"; later reports", "\tif false {\n\t\tfmt.Fprint(stdout, \"; later reports",
+  "TestH25_")
+
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn
 # sentence). Each anchor appears once in its file.

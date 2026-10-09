@@ -476,7 +476,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		// heading.
 		sess.Nono = buildNono(
 			nono.Read(cfg.nonoTrail, nono.Window{Start: w.Start, End: w.End}),
-			sess.Destinations, cfg.nonoTrail != "", forgotten)
+			sess.Destinations, cfg.nonoTrail != "", madeMCPCall(run), forgotten)
 		denied := deniedSet(sess.Transcripts)
 		// One grouping of the executions, shared by the chains, the timeline
 		// and the test runs, and one detection, shared by the timeline's

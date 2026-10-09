@@ -433,10 +433,9 @@ func TestSeam_AForgottenHostDoesNotReturnUnderTheSandboxHeading(t *testing.T) {
 	// suppression is built from those gaps. Without this the forget is a
 	// silent no-op and the test passes for the wrong reason.
 	//
-	// THAT IS ALSO A PRODUCT FINDING, recorded here because the test is where
-	// it was found: a host that appears ONLY in the sandbox's trail and never
-	// in rashomon's own records cannot be forgotten at all. `forget --host`
-	// forgets what rashomon recorded; the fourth evidence source has a hole.
+	// That hole -- a host only the sandbox's trail held could not be forgotten
+	// at all -- was found here and is closed by the store-level forget record
+	// (#45); TestSeam_AHostOnlyTheSandboxSawCanBeForgotten pins it.
 	if err := st.AppendDeclaration(store.Declaration{
 		Type: "declaration", SchemaVersion: 2, SessionID: id,
 		ToolUseID: "toolu_forget", ToolName: "Bash",
@@ -480,6 +479,112 @@ func TestSeam_AForgottenHostDoesNotReturnUnderTheSandboxHeading(t *testing.T) {
 	if !strings.Contains(b.String(), "sandbox (nono):") {
 		t.Fatalf("premise: the sandbox section did not render, so this test proves "+
 			"nothing:\n%s", b.String())
+	}
+}
+
+// TestSeam_AHostOnlyTheSandboxSawCanBeForgotten is #45, in both of the shapes
+// the live nono run produced.
+//
+//	only-trail  no record of rashomon's ever named the host; only the
+//	            sandbox's trail holds it.
+//	same-call   the host WAS named, by a call an earlier forget of another
+//	            host already removed -- so this forget removes nothing either.
+//	            Measured on nono 0.79: forgetting github.com took the call that
+//	            also named example.com, and example.com could then never leave
+//	            the sandbox's allowed list.
+//
+// No proxy store, deliberately: the default path, and the trail is suppressed
+// before the wire guard, so this reaches the code without one.
+func TestSeam_AHostOnlyTheSandboxSawCanBeForgotten(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, st *store.Store, id string, at, now time.Time)
+	}{
+		{"only-trail", func(*testing.T, *store.Store, string, time.Time, time.Time) {}},
+		{"same-call", func(t *testing.T, st *store.Store, id string, at, now time.Time) {
+			if err := st.AppendDeclaration(store.Declaration{
+				Type: "declaration", SchemaVersion: 2, SessionID: id,
+				ToolUseID: "toolu_both", ToolName: "Bash",
+				RecordedAtMS: at.UnixMilli(), Hosts: []string{"github.com", "pypi.org"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.ForgetHost("github.com", now); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			at := firstNonoEvent(t)
+			st, id, now := seamSessionAt(t, at)
+			tc.setup(t, st, id, at, now)
+
+			gaps, err := st.ForgetHost("pypi.org", now)
+			if err != nil {
+				t.Fatalf("forget --host: %v", err)
+			}
+			if len(gaps) != 0 {
+				t.Fatalf("premise: this forget must remove nothing, or the gap path is "+
+					"what suppresses the host; it wrote %d gap(s)", len(gaps))
+			}
+
+			rep, err := Build(st, id, now, WithNonoTrail(nonoFixture))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var b strings.Builder
+			if err := Text(&b, rep); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(b.String(), "sandbox (nono):") {
+				t.Fatalf("premise: the sandbox section did not render:\n%s", b.String())
+			}
+			if strings.Contains(b.String(), "pypi.org") {
+				t.Errorf("a host forgotten with nothing to remove is back under the "+
+					"sandbox heading (#45):\n%s", b.String())
+			}
+			for _, s := range rep.Sessions {
+				for _, h := range append(append([]string{}, s.Nono.Allowed...), s.Nono.Denied...) {
+					if h == "pypi.org" {
+						t.Errorf("the JSON still lists the forgotten host: %v / %v",
+							s.Nono.Allowed, s.Nono.Denied)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestSeam_TheMCPTransportReachesTheSandboxSection: whether the session made
+// mcp__* calls is decided from its declarations, and that answer has to reach
+// the sandbox section through Build, or the MCP transport is filed as the
+// client's own traffic on the one kind of session where it is the agent's.
+func TestSeam_TheMCPTransportReachesTheSandboxSection(t *testing.T) {
+	at := firstNonoEvent(t)
+	st, id, now := seamSessionAt(t, at)
+	if err := st.AppendDeclaration(store.Declaration{
+		Type: "declaration", SchemaVersion: 2, SessionID: id,
+		ToolUseID: "toolu_mcp", ToolName: "mcp__docs__search",
+		RecordedAtMS: at.UnixMilli(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	trail := filepath.Join(t.TempDir(), "mcp.ndjson")
+	body := `{"sequence":0,"event":{"type":"session_started"}}` + "\n" +
+		ev(1, at.UnixMilli(), "connect", "allow", mcpProxyHost, 443)
+	if err := os.WriteFile(trail, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Build(st, id, now, WithNonoTrail(trail))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Sessions) != 1 || !rep.Sessions[0].Nono.Observed {
+		t.Fatalf("premise: the sandbox section did not observe the trail: %+v", rep.Sessions)
+	}
+	if n := rep.Sessions[0].Nono; strings.Join(n.Allowed, ",") != mcpProxyHost {
+		t.Errorf("on a session that made mcp__* calls the MCP transport is the agent's; "+
+			"allowed %v, client_plane %v", n.Allowed, n.ClientPlane)
 	}
 }
 
