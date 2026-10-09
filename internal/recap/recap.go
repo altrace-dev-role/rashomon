@@ -145,9 +145,9 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 // maskedSentence renders the masked-status trigger: the count of this turn's
 // build and test calls that recorded ok while their line did not return the
 // runner's exit status (`make test 2>&1 | tail -40`, `go test ./... ; echo
-// $?`, `npm test || true`), with no later run of the same command in the same
-// directory that returned it, beside a final message that claims a pass and
-// names no failure (report.MaskedRuns).
+// $?`, `npm test || true`), with no later run matched to the same runner in
+// the same directory that returned it, beside a final message that claims a
+// pass and names no failure (report.MaskedRuns).
 //
 // It says what is missing from the evidence, never what the runner did: the
 // tests may have passed. Not "failed", and not "unverified" either, which

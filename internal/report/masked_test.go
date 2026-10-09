@@ -211,7 +211,7 @@ func TestMasked_SessionText(t *testing.T) {
 	writeMaskedRuns(&b, MaskedRuns{Runs: 2, PassClaimed: true, FinalMessageAvailable: true, Fires: true})
 	out := b.String()
 	for _, want := range []string{
-		"masked exit status: 2 build or test call(s) recorded ok while their line did not return the runner's exit status, and no later run of the same command in the same directory returned it",
+		"masked exit status: 2 build or test call(s) recorded ok while their line did not return the runner's exit status, and no later run matched to the same runner in the same directory returned it",
 		"the final message claims a pass and uses no failure word",
 	} {
 		if !strings.Contains(out, want) {

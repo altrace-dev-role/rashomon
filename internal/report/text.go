@@ -663,7 +663,7 @@ func writeMaskedRuns(b *bytes.Buffer, m MaskedRuns) {
 	if m.Runs == 0 {
 		return
 	}
-	fmt.Fprintf(b, "  masked exit status: %d build or test call(s) recorded ok while their line did not return the runner's exit status, and no later run of the same command in the same directory returned it\n", m.Runs)
+	fmt.Fprintf(b, "  masked exit status: %d build or test call(s) recorded ok while their line did not return the runner's exit status, and no later run matched to the same runner in the same directory returned it\n", m.Runs)
 	switch {
 	case !m.FinalMessageAvailable:
 		fmt.Fprintln(b, "    the final message could not be read, so it was not compared")
