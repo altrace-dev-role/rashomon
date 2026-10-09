@@ -154,8 +154,7 @@ each command *named*. If you run Claude Code inside the
 `rashomon report --nono-audit <path to nono's audit-events.ndjson>` adds what
 nono allowed and refused in that session's window. If the session has no end
 record, that window runs to the end of the trail, and the report says so. This
-is experimental, and nono writes that file when its session ends. See
-[Inside a sandbox](#inside-a-sandbox) first.
+is experimental. See [Inside a sandbox](#inside-a-sandbox) first.
 
 **How do I turn it off?**
 Plugin: open `/plugin` in Claude Code and turn it off. Command line:
@@ -165,6 +164,45 @@ until you delete that folder.
 **Is it finished?**
 No. This is an alpha: Windows is not supported yet, and network destinations are
 not observed in this release.
+
+## Inside a sandbox
+
+If Claude Code runs inside a sandbox that limits where it can write, the sandbox
+must allow rashomon's store, or nothing is recorded and nothing says so. Claude
+Code itself keeps working.
+
+With [nono](https://github.com/nolabs-ai/nono), create the store first and
+allow it:
+
+```sh
+mkdir -p ~/.local/state/rashomon
+nono run --profile claude --allow ~/.local/state/rashomon -- claude
+```
+
+Then report the session with nono's trail for that run:
+
+```sh
+rashomon report --nono-audit ~/.local/state/nono/audit/<nono session id>/audit-events.ndjson
+```
+
+`nono audit list` shows the session ids. Each `nono run` writes its own trail
+when it ends.
+
+What was measured, on macOS with nono 0.79.0 and Claude Code 2.1.285:
+
+- With the store allowed, every tool call was recorded. Without it, or with it
+  read-only, nothing was recorded.
+- nono's `claude` profile already allows `/tmp/claude-<your uid>`. A store under
+  that path records without `--allow`.
+- The sandbox section lists Claude Code's own traffic, such as its model API and
+  its log upload, on a line of its own, and does not count it as the session's.
+- nono logs plain-HTTP requests it **refuses**, and not plain-HTTP requests it
+  allows. An allowed `http://` request appears nowhere in the report.
+- `rashomon forget --host` also keeps the host out of the sandbox section, even
+  when rashomon's own records never named it.
+
+Not yet measured: Linux (Landlock), and the comparison with the Altrace proxy's
+records.
 
 ## Commands
 
