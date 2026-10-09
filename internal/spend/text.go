@@ -343,8 +343,8 @@ var lookupsAside = "a failed " + report.LookupToolNames() + " alone is not count
 // across 0 turns" would claim they had.
 func silentLine(s *Summary) string {
 	j := s.SilentFailureTurns
-	// What is measured, and no more: a turn with ANY failed call whose final
-	// message names no failure. The rule never checks which execution came
+	// What is measured, and no more: a turn with any failed call but a lookup
+	// (lookupsAside) whose final message names no failure. The rule never checks which execution came
 	// last, so a turn whose call failed and then succeeded counts too, and
 	// "turns that ended with a failure" claimed more than the record shows.
 	const lead = "in turns with a failed call the summary never mentioned: "

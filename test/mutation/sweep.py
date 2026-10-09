@@ -2943,11 +2943,16 @@ m("LK a tool is added to the read class", "internal/shape/shape.go",
 m("LK a tool is classed read beside the list", "internal/shape/shape.go",
   "\tif slices.Contains(readTools, name) {", "\tif slices.Contains(readTools, name) || name == \"LS\" {",
   "TestIsLookup_TheReportNamesExactlyTheToolsItCounts")
+m("LK a tool is classed read in shape's switch", "internal/shape/shape.go",
+  "\tswitch name {\n\tcase \"Write\", \"Edit\", \"MultiEdit\", \"NotebookEdit\":",
+  "\tswitch name {\n\tcase \"LSP\":\n\t\treturn VerbRead\n\tcase \"Write\", \"Edit\", \"MultiEdit\", \"NotebookEdit\":",
+  "TestIsLookup_TheReportNamesExactlyTheToolsItCounts")
 m("LK the report names fewer tools than it sets aside", "internal/report/account.go",
   "var lookupToolNames = orList(shape.ReadTools())", "var lookupToolNames = orList(shape.ReadTools()[:3])",
   "TestIsLookup_TheReportNamesExactlyTheToolsItCounts")
-# The line's number is the report's "failed calls" less the lookups; it says
-# how many it set aside so the two add up.
+# The line's number is the turn's failed calls less the lookups; it says how
+# many it set aside so the two add up to the turn's count (the report counts
+# the whole session).
 m("LK the end-of-turn line does not say lookups were set aside", "internal/recap/recap.go",
   "\t\tif sf.FailedLookups > 0 {\n\t\t\ts += ", "\t\tif false {\n\t\t\ts += ",
   "TestLineCountsOnlyTheFailuresThatFire|TestH91_AFailedLookupBesideARealFailureIsNotCounted")

@@ -78,9 +78,10 @@ type SubagentSummary struct {
 // SilentFailures is the count of failed calls set against whether the final
 // message mentions failure at all.
 //
-// It is a fact about TEXT and never about intent. The rendered line says how
-// many calls failed, less the failed lookups it names beside that count, and
-// which words are absent from the summary; it does not say the agent
+// It is a fact about TEXT and never about intent. The end-of-turn line
+// prints the turn's count less the lookups, and how many it set aside; the
+// report prints "failed calls" with the lookups included and lists the absent
+// words. Neither says the agent
 // concealed anything, because this program cannot know that and a tool that
 // guesses at it would be worth less than one that does not. A test greps this
 // package for the words that would cross that line.

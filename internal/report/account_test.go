@@ -529,6 +529,11 @@ func TestSilentFailures_TheReportSaysAnyLookupErrorIsSetAside(t *testing.T) {
 // pins that class to the four tools, so adding one -- to shape's list, or to
 // IsLookup's check alone -- fails here. Break: append "LS" to the read
 // class, let IsLookup accept "LS", or name only three tools.
+// TestIsLookup_TheReportNamesExactlyTheToolsItCounts pins the report's tool
+// names to IsLookup. The not-a-lookup list below samples the tools Claude Code
+// 2.1.280 carries; a tool classed read in shape's switch but missing from it
+// would slip through, which is what the "LK a tool is classed read in shape's
+// switch" mutant checks.
 func TestIsLookup_TheReportNamesExactlyTheToolsItCounts(t *testing.T) {
 	want := []string{"Read", "Glob", "Grep", "NotebookRead"}
 	// Exact tokens: strings.Contains would find "Read" inside "NotebookRead".
@@ -546,6 +551,8 @@ func TestIsLookup_TheReportNamesExactlyTheToolsItCounts(t *testing.T) {
 		"", "LS", "TodoRead", "TodoWrite", "ReadMcpResourceTool", "ListMcpResourcesTool", "BashOutput", "KillShell",
 		"Skill", "SlashCommand", "ExitPlanMode", "Bash", "Edit", "MultiEdit", "Write", "NotebookEdit",
 		"Agent", "Task", "WebFetch", "WebSearch", "mcp__fs__read_file",
+		"LSP", "ToolSearch", "AskUserQuestion", "EnterPlanMode", "Monitor",
+		"TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskOutput", "TaskStop",
 	} {
 		if IsLookup(tool) {
 			t.Errorf("IsLookup(%q) = true: the report does not name it", tool)

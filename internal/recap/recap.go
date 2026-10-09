@@ -11,8 +11,9 @@
 // It renders records, never inferences. Every sentence Line produces is
 // either a count read off the digest (the recorded failures are
 // SilentFailures.Counted, Failed less the failed lookups, and the lookups set
-// aside are named beside them, so the two add up to the report's "failed
-// calls"), one of the store's
+// aside are named beside them, so the two add up to the turn's failed calls;
+// the report counts the whole session, so it reads higher when an earlier
+// turn also failed a call), one of the store's
 // own fixed vocabulary of reason codes (store.Reasons, report.ReasonGap,
 // digest.ReasonNoStore/ReasonRecordsSkipped), or one of two fixed
 // test-bending sentences with the seqs of the pair the digest found (see
@@ -90,9 +91,11 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 		sentences = append(sentences, "digest truncated (some fields were cut to stay under the size ceiling)")
 	}
 	if sf := d.SilentFailures; sf.Fires {
-		// The count is the failures that fired the line. The report's "failed
-		// calls" holds the lookups too, so when any were set aside the line
-		// says how many, and its numbers add up to the report's.
+		// The count is the failures that fired the line, in this turn only.
+		// When lookups were set aside the line says how many, so its numbers
+		// add up to the turn's failed calls. The report's "failed calls"
+		// counts the whole session, lookups included, so it reads higher when
+		// an earlier turn also failed a call.
 		s := fmt.Sprintf("%d recorded failure%s", sf.Counted(), plural(sf.Counted()))
 		if sf.FailedLookups > 0 {
 			s += fmt.Sprintf(", besides %d failed lookup%s", sf.FailedLookups, plural(sf.FailedLookups))

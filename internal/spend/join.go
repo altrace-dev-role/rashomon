@@ -242,8 +242,8 @@ func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 // transcripts are read only for turns with at least one, and each once for
 // all of them (report.FinalAssistantTexts). Only the verdict is kept. A turn
 // with a failed call whose final message cannot be found takes no verdict,
-// and is counted in Unjudged rather than read as clean. A failed call whose
-// declaration was lost or carried no prompt_id is in no turn (turnsOf) and
+// and is counted in Unjudged rather than read as clean. A failed call other
+// than a lookup whose declaration was lost or carried no prompt_id is in no turn (turnsOf) and
 // is never placed in one by time: it is counted, once, in
 // UndeclaredFailedCalls, and "none found" is then said only of the turns
 // that could be checked.
