@@ -81,7 +81,10 @@ type TestBending struct {
 // rather than completing one.
 //
 // A test run is a declaration of verb class test whose outcome is ok or
-// failed (testOutcome). Interrupted, denied, backgrounded, timed-out and
+// failed (testOutcome). A line that masked a test runner's exit status
+// (statusMasked) is not of class test, and is no run with a result here:
+// its ok is the last command's, and its failure may be the tail's. Such a
+// line is an edit like any test run (mayEdit), so it stops a pair too. Interrupted, denied, backgrounded, timed-out and
 // unknown runs are not runs with a result, so they neither start nor finish a
 // pair. Two runs are the same command when their shape digests are equal and
 // they started in the same directory (equal cwd digests); the digest covers
@@ -162,7 +165,7 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 		if outcome == LinkOutcomeDenied {
 			continue
 		}
-		isRun := d.Shape.VerbClass == shape.VerbTest && (outcome == store.ExecOK || outcome == store.ExecFailed)
+		isRun := d.Shape.VerbClass == shape.VerbTest && !statusMasked(d) && (outcome == store.ExecOK || outcome == store.ExecFailed)
 		failed := outcome == store.ExecFailed
 		// The pair is decided on the totals BEFORE this call counts as an
 		// edit: a run is not between itself and the run it pairs with.
@@ -250,7 +253,7 @@ func mayEdit(d store.Declaration) bool {
 	if noWrite[d.ToolName] {
 		return false
 	}
-	if d.Shape.MayWrite {
+	if d.Shape.MayWrite || statusMasked(d) {
 		return true
 	}
 	switch d.Shape.VerbClass {
@@ -276,12 +279,21 @@ var noWrite = map[string]bool{
 
 // TestRuns is the session's test runs and the two patterns among them.
 type TestRuns struct {
-	// Runs counts calls of verb class test that ended ok or failed. A
+	// Runs counts calls of verb class test that ended ok or failed, and
+	// the calls whose line masked a test runner's exit status (Masked). A
 	// session with no schema 3 declaration has no TestRuns at all
 	// (buildTestRuns), so a 0 here was measured.
 	Runs   int `json:"runs"`
 	OK     int `json:"ok"`
 	Failed int `json:"failed"`
+	// Masked counts the calls whose shape says a test runner ran with its
+	// exit status masked by its line (status_masked test) and which ended
+	// ok or failed: `make test 2>&1 | tail -40`. Neither in OK nor in
+	// Failed, whatever the line recorded, and never part of a pair. Null
+	// when the session never measured masking (measuresMasking): a record
+	// before schema 4 could not say, so 0 there would be a measured zero it
+	// never was.
+	Masked *int `json:"status_masked"`
 	// Undeclared counts the calls whose declaration was lost
 	// (undeclaredCalls). When it is not 0 no pair is looked for, and the two
 	// lists are empty for that reason, not because none was found.
@@ -305,7 +317,18 @@ func buildTestRuns(run *store.Run, executed map[string][]store.Execution, denied
 		return nil
 	}
 	out := &TestRuns{Undeclared: undeclaredCalls(run, denied), TestBending: tb}
+	if measuresMasking(run) {
+		out.Masked = new(int)
+	}
 	for _, d := range run.Declarations {
+		if m := d.Shape.StatusMasked; m != nil && *m == shape.MaskedTest {
+			switch testOutcome(d, executed, denied) {
+			case store.ExecOK, store.ExecFailed:
+				out.Runs++
+				*out.Masked++
+			}
+			continue
+		}
 		if d.Shape.VerbClass != shape.VerbTest {
 			continue
 		}
@@ -350,6 +373,19 @@ func testOutcome(d store.Declaration, executed map[string][]store.Execution, den
 // timeoutFired is the exit status timeout(1) gives when the duration ran out
 // and the command was stopped.
 const timeoutFired = 124
+
+// measuresMasking reports a run holding a declaration written at schema 4 or
+// later, or one that carries status_masked: a run in which masking was
+// measured. A session of schema-3 declarations only has its masked counts
+// null, not 0.
+func measuresMasking(run *store.Run) bool {
+	for _, d := range run.Declarations {
+		if d.SchemaVersion >= 4 || d.Shape.StatusMasked != nil {
+			return true
+		}
+	}
+	return false
+}
 
 // measuresTests reports a run holding a declaration written at schema 3 or
 // later, where the test class exists.

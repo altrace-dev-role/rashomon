@@ -581,3 +581,22 @@ func rewriteHookEntry(t *testing.T, path, phase, hookEntry string) {
 		t.Fatalf("writing %s: %v", path, err)
 	}
 }
+
+// TestStatus_AnEnabledPluginRecordsBeforeAnyStoreExists: the plugin's hooks
+// create the store on their first call, so between `/plugin enable` and the
+// next session there is no store and the next tool call is still recorded.
+// "not installed" is the answer only when neither origin can record.
+func TestStatus_AnEnabledPluginRecordsBeforeAnyStoreExists(t *testing.T) {
+	e := newEnv(t)
+	fx := newPluginFixture(t, "rashomon@test")
+	fx.installed(t, e)
+
+	fx.enable(t, e, false)
+	if got := fieldLine(t, e.status().stdout, "recording"); got != "not installed" {
+		t.Errorf("recording reads %q with the plugin disabled and no store, want not installed", got)
+	}
+	fx.enable(t, e, true)
+	if got := fieldLine(t, e.status().stdout, "recording"); got != "active" {
+		t.Errorf("recording reads %q with the plugin enabled and no store yet, want active", got)
+	}
+}

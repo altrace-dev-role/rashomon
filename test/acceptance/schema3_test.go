@@ -27,18 +27,18 @@ import (
 // reader already carries a comment about: `Accepts` used to be an equality
 // against SchemaVersion, so the moment the writer moved to v2 every v1 record
 // on disk was skipped and the report rendered empty with nothing saying why.
-// This build writes v3, and Accepts must keep admitting 1, 2 and 3 so that
+// This build writes v4, and Accepts must keep admitting 1, 2 and 3 so that
 // older stores still read.
 func TestAcceptsAdmitsSchema3(t *testing.T) {
-	for _, v := range []int{1, 2, 3} {
+	for _, v := range []int{1, 2, 3, 4} {
 		if !store.Accepts(v) {
 			t.Errorf("store.Accepts(%d) is false. Records at that version are SKIPPED, not "+
 				"reported as unreadable, so the symptom is an empty report and no reason "+
 				"for it.", v)
 		}
 	}
-	if store.Accepts(4) {
-		t.Error("store.Accepts(4) is true; a reader must not claim to understand a shape " +
+	if store.Accepts(5) {
+		t.Error("store.Accepts(5) is true; a reader must not claim to understand a shape " +
 			"that does not exist yet")
 	}
 }
@@ -168,7 +168,7 @@ func TestSchemaVersionEnumAdmits3(t *testing.T) {
 				vals[int(n)] = true
 			}
 		}
-		for _, want := range []int{1, 2, 3} {
+		for _, want := range []int{1, 2, 3, 4} {
 			if !vals[want] {
 				t.Errorf("$defs.%s.schema_version does not admit %d; a record at that version "+
 					"fails the contract even though the reader accepts it", name, want)
@@ -211,8 +211,9 @@ func toAnySlice(v any) []any {
 	return nil
 }
 
-// TestSchema3_WrittenRecordsMeetTheVersion3Gate: this build writes schema 3,
-// and every record it writes carries each key the published v3 gate requires.
+// TestSchema3_WrittenRecordsMeetTheVersion3Gate: this build writes schema 4,
+// additive over 3, and every record it writes carries each key the published
+// v3 gate requires, and the v4 gate's as well.
 // The version is compared against the literal, not against
 // store.SchemaVersion, which would compare the writer with itself. Break:
 // write 2 while the vocabulary is 3's (the test class, the test-file label),
@@ -232,31 +233,36 @@ func TestSchema3_WrittenRecordsMeetTheVersion3Gate(t *testing.T) {
 		{"declaration", e.declarations(testSession)},
 		{"execution", e.executions(testSession)},
 	} {
-		gated := v3Gate(defs[c.def].(map[string]any))
+		gated := versionGate(defs[c.def].(map[string]any), 3)
 		if len(gated) == 0 {
 			t.Fatalf("$defs.%s has no schema 3 gate", c.def)
 		}
+		v4 := versionGate(defs[c.def].(map[string]any), 4)
+		if len(v4) < len(gated) {
+			t.Fatalf("$defs.%s's schema 4 gate requires %d keys, fewer than schema 3's %d: v4 is additive", c.def, len(v4), len(gated))
+		}
+		gated = append(gated, v4...)
 		if len(c.recs) == 0 {
 			t.Fatalf("no %s record written", c.def)
 		}
 		for _, r := range c.recs {
-			if got := r.fields["schema_version"]; got != float64(3) {
-				t.Errorf("%s written at schema_version %v, want 3", c.def, got)
+			if got := r.fields["schema_version"]; got != float64(4) {
+				t.Errorf("%s written at schema_version %v, want 4", c.def, got)
 			}
 			for _, k := range gated {
 				if _, ok := nested(r, k); !ok {
-					t.Errorf("%s lacks %q, which the schema 3 gate requires", c.def, k)
+					t.Errorf("%s lacks %q, which the schema 3 or 4 gate requires", c.def, k)
 				}
 			}
 		}
 	}
 }
 
-// v3Gate lists the dotted keys a definition requires at schema_version 3:
-// its gate's `then.required`, and each `then.properties.<key>.required` as
-// `<key>.<nested>` -- how a key inside the shape object is gated, since the
-// shape carries no version of its own.
-func v3Gate(def map[string]any) []string {
+// versionGate lists the dotted keys a definition requires at schema_version
+// v: its gate's `then.required`, and each `then.properties.<key>.required`
+// as `<key>.<nested>` -- how a key inside the shape object is gated, since
+// the shape carries no version of its own.
+func versionGate(def map[string]any, v int) []string {
 	var out []string
 	for _, entry := range toAnySlice(def["allOf"]) {
 		e, _ := entry.(map[string]any)
@@ -264,7 +270,7 @@ func v3Gate(def map[string]any) []string {
 		then, _ := e["then"].(map[string]any)
 		cp, _ := cond["properties"].(map[string]any)
 		sv, _ := cp["schema_version"].(map[string]any)
-		if n, ok := sv["const"].(float64); !ok || int(n) != 3 || then == nil {
+		if n, ok := sv["const"].(float64); !ok || int(n) != v || then == nil {
 			continue
 		}
 		for k := range toStringSet(then["required"]) {

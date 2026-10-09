@@ -164,7 +164,7 @@ func BuildCoverage(st *store.Store, sessionID, phase, reason, cwd string, now ti
 	}
 	return store.Coverage{
 		Type:          store.TypeCoverage,
-		SchemaVersion: store.SchemaVersion,
+		SchemaVersion: store.SessionSchemaVersion,
 		RecordedAtMS:  now.UnixMilli(),
 		SessionID:     sessionID,
 		InstallID:     st.InstallID(),

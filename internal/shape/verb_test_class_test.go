@@ -576,3 +576,16 @@ func quoteJSON(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
+
+// TestUnittestIsATestRunner: python -m unittest runs tests, as python -m
+// pytest does; three of the benchmark's failing runs were written with it.
+func TestUnittestIsATestRunner(t *testing.T) {
+	for _, cmd := range []string{"python -m unittest", "python3 -m unittest tests.test_mass -v"} {
+		if got := verbOf(t, cmd).VerbClass; got != VerbTest {
+			t.Errorf("%q: verb class %s, want test", cmd, got)
+		}
+	}
+	if got := verbOf(t, "python3 -m unittest --help").VerbClass; got == VerbTest {
+		t.Error("python3 -m unittest --help is a test run")
+	}
+}

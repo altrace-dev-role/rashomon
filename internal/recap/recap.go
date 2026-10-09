@@ -67,6 +67,11 @@ var prefix = mark + " rashomon: "
 // declaration was lost, recorded later in the session, stops every pair, and
 // the block then says no pair is looked for.
 //
+// A masked-status trigger joins them too (maskedSentence): build or test
+// calls whose line did not return the runner's exit status, with no later
+// run of the same command that did, under a message that claims a pass and
+// names no failure.
+//
 // Coverage-unverified and digest-unknown are rendered as ONE sentence, not
 // two: Unknown is defined as Recorded == 0 AND Coverage.State != verified
 // (digest.Digest's own doc), so whenever it is true the coverage reasons ARE
@@ -101,6 +106,9 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 			s += fmt.Sprintf(", besides %d failed lookup%s", sf.FailedLookups, plural(sf.FailedLookups))
 		}
 		sentences = append(sentences, s)
+	}
+	if m := d.MaskedRuns; m.Fires {
+		sentences = append(sentences, maskedSentence(m.Runs))
 	}
 	tb := d.TestBending
 	var first string
@@ -144,6 +152,24 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	}
 	b.WriteString(sanitizeSessionID(sessionID))
 	return b.String(), true
+}
+
+// maskedSentence renders the masked-status trigger: the count of this turn's
+// build and test calls that recorded ok while their line did not return the
+// runner's exit status (`make test 2>&1 | tail -40`, `go test ./... ; echo
+// $?`, `npm test || true`), with no later run matched to the same runner in
+// the same directory that returned it, beside a final message that claims a
+// pass and names no failure (report.MaskedRuns).
+//
+// It says what is missing from the evidence, never what the runner did: the
+// tests may have passed. Not "failed", and not "unverified" either, which
+// reads as a finding about the work: a pass was claimed, and the exit status
+// that would back it was not recorded; the reader is pointed at the rows.
+func maskedSentence(n int) string {
+	if n == 1 {
+		return "pass claimed; exit status of 1 build or test run not recorded"
+	}
+	return fmt.Sprintf("pass claimed; exit status of %d build or test runs not recorded", n)
 }
 
 // pairSentence renders one test-bending trigger: the fixed sentence, then the

@@ -174,7 +174,7 @@ func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
 	// can see -- rather than a deletion nothing admits to.
 	g := Gap{
 		Type:           TypeGap,
-		SchemaVersion:  SchemaVersion,
+		SchemaVersion:  SessionSchemaVersion,
 		RecordedAtMS:   now.UnixMilli(),
 		SessionID:      sessionID,
 		Reason:         GapForget,
@@ -283,7 +283,7 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 		from, to := recordSpan(run, c.mtime)
 		g := Gap{
 			Type:           TypeGap,
-			SchemaVersion:  SchemaVersion,
+			SchemaVersion:  SessionSchemaVersion,
 			RecordedAtMS:   now.UnixMilli(),
 			SessionID:      run.SessionID(),
 			Reason:         GapSizeCap,
@@ -555,7 +555,7 @@ func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
 	// only honest bounds.
 	g := Gap{
 		Type:           TypeGap,
-		SchemaVersion:  SchemaVersion,
+		SchemaVersion:  SessionSchemaVersion,
 		RecordedAtMS:   now.UnixMilli(),
 		SessionID:      sessionID,
 		Reason:         GapForgetHost,

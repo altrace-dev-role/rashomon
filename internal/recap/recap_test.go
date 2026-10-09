@@ -250,6 +250,33 @@ func TestLineNoTestBendingIsSilent(t *testing.T) {
 	}
 }
 
+// TestLineMaskedRuns: the masked-status sentence is a count and where it
+// came from, said only when the digest fires it, and in the singular for
+// one. Never a word about the runner's result, which the record does not
+// hold, and never a word about why the line was written that way.
+func TestLineMaskedRuns(t *testing.T) {
+	d := cleanDigest()
+	d.MaskedRuns = report.MaskedRuns{Runs: 2, Fires: false, PassClaimed: true, FinalMessageAvailable: true}
+	if line, ok := Line(d, d.SessionID, false); ok {
+		t.Errorf("a digest whose masked runs do not fire printed %q", line)
+	}
+	for n, want := range map[int]string{
+		1: "pass claimed; exit status of 1 build or test run not recorded.",
+		3: "pass claimed; exit status of 3 build or test runs not recorded.",
+	} {
+		d.MaskedRuns = report.MaskedRuns{Runs: n, Fires: true, PassClaimed: true, FinalMessageAvailable: true}
+		line, ok := Line(d, d.SessionID, false)
+		if !ok || !strings.Contains(line, want) {
+			t.Errorf("runs %d: line = %q, want %q", n, line, want)
+		}
+		for _, claim := range []string{"failed", "fail ", "passed", "untested"} {
+			if strings.Contains(line, claim) {
+				t.Errorf("line = %q claims %q, which the record does not hold", line, claim)
+			}
+		}
+	}
+}
+
 // The line's count is the failures that made it fire, not the lookups beside
 // them, and when lookups were set aside it says how many: "3 recorded
 // failures" over one failed build and two failed Reads of a directory would

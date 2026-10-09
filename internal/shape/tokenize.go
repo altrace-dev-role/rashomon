@@ -91,7 +91,7 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 // tokenizeShape splits a command line as tokenize does and reports, per
 // token, what the text cannot: see token.
 func tokenizeShape(s string) ([]token, error) {
-	return lex(s, false, nil)
+	return lex(s, false, false, nil)
 }
 
 // tokenizeProgram is tokenizeShape for the program search, which reads one
@@ -115,7 +115,30 @@ func tokenizeShape(s string) ([]token, error) {
 // rather than guess: see lex.
 func tokenizeProgram(s string) ([]token, error) {
 	j, joins := joinContinuations(s)
-	return lex(j, true, joins)
+	return lex(j, true, false, joins)
+}
+
+// tokenizeList is tokenizeProgram for the walk over a line's whole list of
+// commands (statusMasked), which has to read past a here-document to the
+// commands after it: python3 - <<'E', a script, E, and then `make test |
+// tail` is how agents write a line that edits and then checks. Two things
+// differ, and only there:
+//
+//   - A here-document's body is skipped, from the newline after its operator
+//     to its delimiter line, found by the same reading comsubEnd follows one
+//     with (heredocDelim, bodiesEnd). Where that reading is not certain -- a
+//     delimiter it will not match, a body running to the end, a here-document
+//     after a paren, a backtick or an expansion lex does not parse, whose
+//     extent is then unknown -- it stops with errUncertain.
+//   - An unquoted # at the start of a word runs to the end of its line, as a
+//     comment does to the shell, so a quote in `# don't` opens nothing, and
+//     a backslash at its end joins no line to it (joinLines).
+//
+// The program search keeps its own reading, which stops at a here-document
+// instead: what it names is unchanged.
+func tokenizeList(s string) ([]token, error) {
+	j, joins := joinLines(s, true)
+	return lex(j, true, true, joins)
 }
 
 // lex is tokenizeShape and tokenizeProgram; program selects the second's
@@ -130,7 +153,9 @@ func tokenizeProgram(s string) ([]token, error) {
 //     certain, or whose $ is the second of an even run, as in "$$(": bash
 //     reads $$ and then a (, and the $( ) only a misreading. joins: the
 //     offsets at which backslash-newlines were removed from s.
-func lex(s string, program bool, joins []int) ([]token, error) {
+//
+// docs selects tokenizeList's reading of here-documents and comments.
+func lex(s string, program, docs bool, joins []int) ([]token, error) {
 	var (
 		toks    []token
 		cur     strings.Builder
@@ -148,6 +173,11 @@ func lex(s string, program bool, joins []int) ([]token, error) {
 		dollars  int
 		// expanded: a token already emitted was opaque.
 		expanded bool
+		// pending: for docs, the offsets just past each here-document
+		// operator on the current line, whose bodies begin at its end.
+		// grouped: a paren or a backtick has been seen.
+		pending []int
+		grouped bool
 	)
 
 	// begin marks the current word started, noting at its first byte
@@ -211,6 +241,29 @@ func lex(s string, program bool, joins []int) ([]token, error) {
 			gap = true
 			if c == '\n' {
 				sawNL = true
+			}
+			if c == '\n' && len(pending) > 0 {
+				bodies := make([]heredoc, 0, len(pending))
+				for _, at := range pending {
+					d, end := heredocDelim(s, at)
+					if end < 0 {
+						return toks, errUncertain
+					}
+					bodies = append(bodies, d)
+				}
+				e := joined{s, joins}.bodiesEnd(i+1, bodies)
+				if e < 0 {
+					return toks, errUncertain
+				}
+				pending = nil
+				// The loop moves past the newline that ends the last
+				// delimiter line, which the next token comes after.
+				i = e
+			}
+
+		case docs && c == '#' && !started:
+			for i+1 < len(s) && s[i+1] != '\n' {
+				i++
 			}
 
 		case c == '\\':
@@ -311,6 +364,16 @@ func lex(s string, program bool, joins []int) ([]token, error) {
 			}
 			toks = append(toks, token{text: s[i:j], meta: true, quotedAt: -1, nlBefore: sawNL, glued: !gap && len(toks) > 0})
 			sawNL, gap = false, false
+			if docs && c == '(' {
+				grouped = true
+			}
+			if docs && c == '<' && j-i == 2 && (j >= len(s) || s[j] != '<') {
+				// A here-document operator, and not a here-string's <<<.
+				if grouped || expanded {
+					return toks, errUncertain
+				}
+				pending = append(pending, j)
+			}
 			i = j - 1
 
 		default:
@@ -327,10 +390,15 @@ func lex(s string, program bool, joins []int) ([]token, error) {
 			}
 			if c == '`' {
 				ticks++
+				grouped = true
 			}
 			begin()
 			cur.WriteByte(c)
 		}
+	}
+	if len(pending) > 0 {
+		// A here-document on the last line, whose body never came.
+		return toks, errUncertain
 	}
 
 	flush()
