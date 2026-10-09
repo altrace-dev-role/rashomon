@@ -1107,10 +1107,16 @@ func statusRecap(stdout io.Writer, root string) error {
 // not see the answer and does not claim one.
 func statusRecording(stdout io.Writer, root string) {
 	state, since, err := RecordingState()
+	// An enabled plugin records from its first hook call, which is also what
+	// creates the store, so a missing store alone is not "not installed".
+	installed := storeExistsAt(root)
+	if err == nil && !installed {
+		installed, err = pluginEnabled()
+	}
 	switch {
 	case err != nil:
 		fmt.Fprintf(stdout, "  recording: %s\n", statusUnknown)
-	case state == RecordingActive && !storeExistsAt(root):
+	case state == RecordingActive && !installed:
 		fmt.Fprintln(stdout, "  recording: not installed")
 	case state == RecordingActive:
 		fmt.Fprintf(stdout, "  recording: %s\n", RecordingActive)
@@ -1124,6 +1130,24 @@ func statusRecording(stdout io.Writer, root string) {
 		}
 		fmt.Fprintf(stdout, "  recording: %s\n", line)
 	}
+}
+
+// pluginEnabled reports whether the rashomon plugin is enabled and declares
+// at least one hook entry, the same test statusPlugin applies.
+func pluginEnabled() (bool, error) {
+	path, err := settings.UserPath()
+	if err != nil {
+		return false, err
+	}
+	doc, err := settings.Load(path)
+	if err != nil {
+		return false, err
+	}
+	p, err := install.FindPlugin(doc)
+	if err != nil || p == nil {
+		return false, err
+	}
+	return p.Enabled && len(p.Events) > 0, nil
 }
 
 // The words status prints for a thing it could not resolve. A status that
