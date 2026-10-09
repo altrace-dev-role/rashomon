@@ -194,6 +194,9 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 		fmt.Fprintf(b, "    ids executed: %d\n", t.IDsExecuted)
 		fmt.Fprintf(b, "    missing from store: %s\n", set(t.MissingFromStore))
 		fmt.Fprintf(b, "    missing from transcript: %s\n", set(t.MissingFromTranscript))
+		// Not a gap, and not dropped: refused before a hook could see it, and
+		// named so the transcript's ids still add up against the store's.
+		fmt.Fprintf(b, "    refused before any hook: %s\n", set(t.RefusedBeforeHooks))
 		fmt.Fprintf(b, "    executed but unrecorded: %s\n",
 			overlapping(t.ExecutedButUnrecorded, t.MissingFromStore, "missing from store"))
 		// Between the two lists it sits between, and named rather than folded
