@@ -487,7 +487,12 @@ recorded `tool_use_id` set equals the distinct-id set parsed from
 of the form "one entry per recorded `tool_use_id`" quantifies over the ids the
 handler recorded, and is therefore passed by a handler that records one call in
 fifty. Driven by a fixture transcript and a scripted sequence of payloads; no
-live session required.
+live session required. One kind of id is exempt, and named rather than dropped: a call
+Claude Code refused while checking its input (an `is_error` result wrapped in
+`<tool_use_error>`) for which no hook left any record. The check runs before
+`PreToolUse`, so the store cannot hold it; the report lists it as
+`refused_before_hooks`, and `ids_in_transcript = ids_recorded +
+missing_from_store + refused_before_hooks - missing_from_transcript`.
 
 **H-11 — the uncontrolled path.** A `SIGKILL`ed handler leaves exactly one entry
 with no terminal record, and the run's coverage record carries
