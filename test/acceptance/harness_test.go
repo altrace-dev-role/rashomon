@@ -428,6 +428,7 @@ type digestOutput struct {
 	SilentFailures struct {
 		Fires                 bool     `json:"fires"`
 		Failed                int      `json:"failed"`
+		FailedLookups         int      `json:"failed_lookups"`
 		Unobserved            int      `json:"outcome_unobserved"`
 		AbsentWords           []string `json:"absent_words"`
 		FinalMessageAvailable bool     `json:"final_message_available"`

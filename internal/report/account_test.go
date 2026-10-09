@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -395,5 +396,166 @@ func TestSilentFailures_StillFireOnAWholeMessageThatAcknowledgesNothing(t *testi
 
 	if !sf.Fires {
 		t.Error("a long summary acknowledging nothing did not fire the line")
+	}
+}
+
+// A failed lookup -- a Read, Glob, Grep or NotebookRead that failed, whatever
+// the error was: a directory (EISDIR), a missing file or folder, a pattern
+// ripgrep rejects -- is a slip in finding a file, not a step of the work that
+// went wrong. A Glob or Grep that matches nothing succeeds and is not one.
+// Only EISDIR was measured: on a 100-run benchmark, 5 of 7 Haiku false alarms
+// of the line rested on one failed Read of a directory and nothing else, on
+// reports that were true ("all 9 tests pass"). The call stays in Failed and in
+// the report; it alone does not make the line fire. Break: count every failed
+// call toward Fires and each of these fires on "All done.".
+func TestSilentFailures_AFailedLookupAloneDoesNotFire(t *testing.T) {
+	for _, tool := range []string{"Read", "Glob", "Grep", "NotebookRead"} {
+		path := transcript(t, "All done.")
+		run := runWithTranscript(path, store.Execution{ToolUseID: "x1", ToolName: tool, Outcome: store.ExecFailed})
+
+		sf := BuildSilentFailures(run, buildAccount(run))
+		if sf.Fires {
+			t.Errorf("%s: a failed lookup alone fired the line", tool)
+		}
+		if sf.Failed != 1 || sf.FailedLookups != 1 {
+			t.Errorf("%s: failed/failed_lookups = %d/%d, want 1/1: the lookup is still a recorded failure",
+				tool, sf.Failed, sf.FailedLookups)
+		}
+	}
+}
+
+// Every other tool's failure still fires on its own: an Edit that did not
+// apply, a Write, a shell command, a subagent, a fetch, an MCP tool, and a
+// record with no tool name at all. Break: widen the lookup set (to every
+// read-only tool, or to anything not Bash) and one of these goes quiet.
+func TestSilentFailures_AFailureOfAnyOtherToolStillFires(t *testing.T) {
+	for _, tool := range []string{"Bash", "Edit", "MultiEdit", "Write", "NotebookEdit", "Agent", "Task", "WebFetch", "WebSearch", "mcp__x__y", "Skill", ""} {
+		path := transcript(t, "All done.")
+		run := runWithTranscript(path, store.Execution{ToolUseID: "x1", ToolName: tool, Outcome: store.ExecFailed})
+
+		sf := BuildSilentFailures(run, buildAccount(run))
+		if !sf.Fires || sf.FailedLookups != 0 {
+			t.Errorf("%q: fires=%v failed_lookups=%d, want true and 0", tool, sf.Fires, sf.FailedLookups)
+		}
+	}
+}
+
+// A real failure beside an incidental one: the line fires, and the count it
+// prints (Counted) is the real one alone. Measured: on the benchmark, a Read of
+// a directory sat beside the failing build in 7 of the Haiku catches. Break:
+// let the lookup mask the other failure, or count it in Counted.
+func TestSilentFailures_ALookupBesideAnotherFailureIsNotCounted(t *testing.T) {
+	path := transcript(t, "All done.")
+	run := runWithTranscript(path,
+		store.Execution{ToolUseID: "x1", ToolName: "Read", Outcome: store.ExecFailed},
+		store.Execution{ToolUseID: "x2", ToolName: "Bash", Outcome: store.ExecFailed},
+		store.Execution{ToolUseID: "x3", ToolName: "Grep", Outcome: store.ExecFailed},
+	)
+
+	sf := BuildSilentFailures(run, buildAccount(run))
+	if !sf.Fires {
+		t.Error("a failed Bash call beside failed lookups did not fire")
+	}
+	if sf.Failed != 3 || sf.FailedLookups != 2 || sf.Counted() != 1 {
+		t.Errorf("failed/failed_lookups/counted = %d/%d/%d, want 3/2/1", sf.Failed, sf.FailedLookups, sf.Counted())
+	}
+}
+
+// The report keeps every failed call: the count, and how many of them were
+// lookups the line does not count. With only lookups it must not say the
+// final message was compared, because it was not. Break: drop the lookups
+// from "failed calls", or render the "uses at least one failure word" line
+// for a comparison that never ran.
+func TestSilentFailures_TheReportNamesTheLookupsItDidNotCount(t *testing.T) {
+	var b bytes.Buffer
+	writeSilentFailures(&b, SilentFailures{Failed: 2, FailedLookups: 2, FinalMessageAvailable: true, AbsentWords: []string{}})
+	out := b.String()
+	if !strings.Contains(out, "failed calls: 2\n") {
+		t.Errorf("the lookups are not in the failed count:\n%s", out)
+	}
+	if want := "    lookups among them: 2 (Read, Glob, Grep or NotebookRead, whatever the error: a directory, a missing file or folder, a bad pattern), not set against the final message\n"; !strings.Contains(out, want) {
+		t.Errorf("want %q:\n%s", want, out)
+	}
+	if strings.Contains(out, "failure word") || strings.Contains(out, "contains none") || strings.Contains(out, "could not be read") {
+		t.Errorf("the final message is described as compared:\n%s", out)
+	}
+
+	b.Reset()
+	writeSilentFailures(&b, SilentFailures{Fires: true, Failed: 3, FailedLookups: 1, FinalMessageAvailable: true, AbsentWords: []string{"fail"}})
+	out = b.String()
+	if !strings.Contains(out, "failed calls: 3\n    lookups among them: 1 (") || !strings.Contains(out, "contains none of these 1 words: fail") {
+		t.Errorf("want the count, the lookups, then the comparison:\n%s", out)
+	}
+}
+
+// The four lookup tools are lookups and the report names each, and a few
+// other tools are not lookups. It checks fixed names with strings.Contains,
+// so it does not catch a tool added to the read class: that is
+// TestIsLookup_TheReportNamesExactlyTheToolsItCounts. Break: drop one of the
+// four from shape's read class, or make every tool not a shell a lookup.
+func TestIsLookup_IsTheReadClassOfToolNames(t *testing.T) {
+	for _, tool := range []string{"Read", "Glob", "Grep", "NotebookRead"} {
+		if !IsLookup(tool) {
+			t.Errorf("IsLookup(%q) = false", tool)
+		}
+		if !strings.Contains(lookupToolNames, tool) {
+			t.Errorf("the report does not name %q", tool)
+		}
+	}
+	for _, tool := range []string{"Bash", "Edit", "Write", "Agent", "WebFetch", "mcp__fs__read_file", ""} {
+		if IsLookup(tool) {
+			t.Errorf("IsLookup(%q) = true", tool)
+		}
+	}
+}
+
+// The report's line says a lookup is set aside whatever its error, and names
+// the errors seen live: a Read of a directory or of a missing file, a Glob of
+// a missing folder, a Grep with a pattern ripgrep rejects. The record keeps
+// none of the error, so the line must not read as EISDIR alone. Break: drop
+// the clause and the line reads as if only some lookup errors were set aside.
+func TestSilentFailures_TheReportSaysAnyLookupErrorIsSetAside(t *testing.T) {
+	var b bytes.Buffer
+	writeSilentFailures(&b, SilentFailures{Fires: true, Failed: 2, FailedLookups: 1, FinalMessageAvailable: true, AbsentWords: []string{"fail"}})
+	want := "    lookups among them: 1 (Read, Glob, Grep or NotebookRead, whatever the error: a directory, a missing file or folder, a bad pattern), not set against the final message\n"
+	if out := b.String(); !strings.Contains(out, want) {
+		t.Errorf("want %q:\n%s", want, out)
+	}
+}
+
+// The report names exactly the tools IsLookup sets aside: no fewer, or a
+// silenced tool goes unnamed, and no more. The words are read from shape's
+// read class, so a tool added there is both silenced and named; this test
+// pins that class to the four tools, so adding one -- to shape's list, or to
+// IsLookup's check alone -- fails here. Break: append "LS" to the read
+// class, let IsLookup accept "LS", or name only three tools.
+// TestIsLookup_TheReportNamesExactlyTheToolsItCounts pins the report's tool
+// names to IsLookup. The not-a-lookup list below samples the tools Claude Code
+// 2.1.280 carries; a tool classed read in shape's switch but missing from it
+// would slip through, which is what the "LK a tool is classed read in shape's
+// switch" mutant checks.
+func TestIsLookup_TheReportNamesExactlyTheToolsItCounts(t *testing.T) {
+	want := []string{"Read", "Glob", "Grep", "NotebookRead"}
+	// Exact tokens: strings.Contains would find "Read" inside "NotebookRead".
+	names := strings.FieldsFunc(LookupToolNames(), func(r rune) bool { return r == ',' || r == ' ' })
+	names = slices.DeleteFunc(names, func(s string) bool { return s == "or" })
+	if !slices.Equal(names, want) {
+		t.Errorf("the report names %q, want %q", names, want)
+	}
+	for _, tool := range want {
+		if !IsLookup(tool) {
+			t.Errorf("IsLookup(%q) = false", tool)
+		}
+	}
+	for _, tool := range []string{
+		"", "LS", "TodoRead", "TodoWrite", "ReadMcpResourceTool", "ListMcpResourcesTool", "BashOutput", "KillShell",
+		"Skill", "SlashCommand", "ExitPlanMode", "Bash", "Edit", "MultiEdit", "Write", "NotebookEdit",
+		"Agent", "Task", "WebFetch", "WebSearch", "mcp__fs__read_file",
+		"LSP", "ToolSearch", "AskUserQuestion", "EnterPlanMode", "Monitor",
+		"TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskOutput", "TaskStop",
+	} {
+		if IsLookup(tool) {
+			t.Errorf("IsLookup(%q) = true: the report does not name it", tool)
+		}
 	}
 }

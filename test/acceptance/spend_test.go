@@ -596,7 +596,7 @@ func TestSpend_AWatchedSessionWithNoCallIsRecorded(t *testing.T) {
 				t.Errorf("silent_failure_turns = %+v, want %d of 1 transcript covered\n%s", s, want, res.stdout)
 			}
 			txt := e.run("", nil, "spend").stdout
-			if tc.covered && (!strings.Contains(txt, "never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out)\n") ||
+			if tc.covered && (!strings.Contains(txt, "never mentioned: none found (no recorded turn with a failed call ended in a summary that left it out; a failed Read, Glob, Grep or NotebookRead alone is not counted)\n") ||
 				!strings.Contains(txt, "(from rashomon's record; 1 of 1 transcript was recorded, so this covers only those)\n") ||
 				strings.Contains(txt, "not recorded by rashomon")) {
 				t.Errorf("a watched session with no call is not shown recorded:\n%s", txt)

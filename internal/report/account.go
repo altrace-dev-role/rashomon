@@ -79,20 +79,45 @@ type SubagentSummary struct {
 // SilentFailures is the count of failed calls set against whether the final
 // message mentions failure at all.
 //
-// It is a fact about TEXT and never about intent. The rendered line says how
-// many calls failed and which words are absent from the summary; it does not
-// say the agent concealed anything, because this program cannot know that and
-// a tool that guesses at it would be worth less than one that does not. A test
-// greps this package for the words that would cross that line.
+// It is a fact about TEXT and never about intent. The end-of-turn line
+// prints the turn's count less the lookups, and how many it set aside; the
+// report prints "failed calls" with the lookups included and lists the absent
+// words. Neither says the agent
+// concealed anything, because this program cannot know that and a tool that
+// guesses at it would be worth less than one that does not. A test greps this
+// package for the words that would cross that line.
 type SilentFailures struct {
-	// Fires is true only when there were failures AND none of the vocabulary
-	// appears. Both halves are required: failures with an honest summary are
-	// not a finding, and an honest summary with no failures is not either.
+	// Fires is true only when there were failures other than lookups AND
+	// none of the vocabulary appears. Both halves are required: failures with
+	// an honest summary are not a finding, and an honest summary with no
+	// failures is not either.
 	Fires bool `json:"fires"`
-	// Failed counts executions whose outcome is failed. Interrupted is
-	// deliberately excluded: a user pressing escape is not something the agent
-	// failed to mention.
+	// Failed counts executions whose outcome is failed, lookups included.
+	// Interrupted is deliberately excluded: a user pressing escape is not
+	// something the agent failed to mention.
 	Failed int `json:"failed"`
+	// FailedLookups counts the calls among Failed made by a lookup tool
+	// (IsLookup: Read, Glob, Grep, NotebookRead). They stay in Failed and in
+	// the report, and they never make the line fire by themselves, nor count
+	// in the number it prints (Counted).
+	//
+	// The rule is by tool name, so it covers every error of those tools: a
+	// Read of a directory or of a missing file, a Glob of a missing folder, a
+	// Grep whose pattern ripgrep rejects. A Glob or Grep that matches nothing
+	// succeeds and never reaches this count. Only EISDIR was measured: on a
+	// 100-run benchmark, 5 of the 7 Haiku runs where the line fired on a true
+	// report rested on one failed Read of a directory and nothing else, and one
+	// run it "caught" was caught by such a Read rather than by the failure it
+	// hid. The record holds the tool name and the outcome and nothing of the
+	// error, so the rule cannot be narrowed to one error; whether to keep the
+	// error is an open decision. An Edit whose old string was not found, a
+	// Write, a shell command, a subagent, a fetch and an MCP tool all still
+	// count, and so does a shell `cat` of a missing file.
+	//
+	// The cost: a turn whose only failures are lookups does not fire even when
+	// it stopped at one and reported success -- a review of a file it never
+	// read -- though the report still lists the call.
+	FailedLookups int `json:"failed_lookups"`
 	// Unobserved counts executions with no outcome at all -- v1 records, or a
 	// PostToolUse invocation that never ran -- and executions moved to the
 	// background (Backgrounded), whose PostToolUse fired before the command
@@ -297,6 +322,34 @@ func buildSubagents(run *store.Run) []SubagentSummary {
 	return out
 }
 
+// lookupToolNames is how the report names the tools IsLookup counts, read
+// from the same list IsLookup is (shape.ReadTools), so the two cannot drift.
+var lookupToolNames = orList(shape.ReadTools())
+
+// LookupToolNames is how a reader is told which tools are lookups: "Read,
+// Glob, Grep or NotebookRead". spend prints it beside a "none found".
+func LookupToolNames() string { return lookupToolNames }
+
+// orList joins names as "A, B or C".
+func orList(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
+}
+
+// IsLookup reports whether a failed call to toolName is a lookup: one of the
+// tools shape classes read by name alone (Read, Glob, Grep, NotebookRead),
+// whatever the error was. A shell tool is not one whatever it runs, nor is
+// an MCP tool, whatever its name says: the record cannot tell what either
+// touched. See SilentFailures.FailedLookups for why a lookup alone does not
+// fire the line.
+func IsLookup(toolName string) bool { return shape.ToolVerb(toolName) == shape.VerbRead }
+
+// Counted is the number of failed calls the line is about: Failed less the
+// lookups. It is what fires the line and what the end-of-turn line prints.
+func (sf SilentFailures) Counted() int { return sf.Failed - sf.FailedLookups }
+
 // BuildSilentFailures compares the failure count against the final message.
 //
 // Exported so digest can call it with a turn-scoped run: the Failed and
@@ -320,6 +373,9 @@ func BuildSilentFailures(run *store.Run, acct Account) SilentFailures {
 		switch x.Outcome {
 		case store.ExecFailed:
 			sf.Failed++
+			if IsLookup(x.ToolName) {
+				sf.FailedLookups++
+			}
 		case "":
 			// A v1 record, or an invocation that recorded no ending. Neither a
 			// success nor a failure, and counting it as either would invent a
@@ -327,7 +383,9 @@ func BuildSilentFailures(run *store.Run, acct Account) SilentFailures {
 			sf.Unobserved++
 		}
 	}
-	if sf.Failed == 0 {
+	if sf.Counted() == 0 {
+		// Nothing the line is about failed, so the message is not compared:
+		// a failed lookup alone leaves no word to look for.
 		return sf
 	}
 

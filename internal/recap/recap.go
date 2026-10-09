@@ -9,7 +9,11 @@
 // Claim and Status, which give status the fact silence itself cannot carry.
 //
 // It renders records, never inferences. Every sentence Line produces is
-// either a bare count already sitting on the digest, one of the store's
+// either a count read off the digest (the recorded failures are
+// SilentFailures.Counted, Failed less the failed lookups, and the lookups set
+// aside are named beside them, so the two add up to the turn's failed calls;
+// the report counts the whole session, so it reads higher when an earlier
+// turn also failed a call), one of the store's
 // own fixed vocabulary of reason codes (store.Reasons, report.ReasonGap,
 // digest.ReasonNoStore/ReasonRecordsSkipped), or one of two fixed
 // test-bending sentences with the seqs of the pair the digest found (see
@@ -91,9 +95,17 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	if d.Truncated {
 		sentences = append(sentences, "digest truncated (some fields were cut to stay under the size ceiling)")
 	}
-	if d.SilentFailures.Fires {
-		sentences = append(sentences,
-			fmt.Sprintf("%d recorded failure%s", d.SilentFailures.Failed, plural(d.SilentFailures.Failed)))
+	if sf := d.SilentFailures; sf.Fires {
+		// The count is the failures that fired the line, in this turn only.
+		// When lookups were set aside the line says how many, so its numbers
+		// add up to the turn's failed calls. The report's "failed calls"
+		// counts the whole session, lookups included, so it reads higher when
+		// an earlier turn also failed a call.
+		s := fmt.Sprintf("%d recorded failure%s", sf.Counted(), plural(sf.Counted()))
+		if sf.FailedLookups > 0 {
+			s += fmt.Sprintf(", besides %d failed lookup%s", sf.FailedLookups, plural(sf.FailedLookups))
+		}
+		sentences = append(sentences, s)
 	}
 	if m := d.MaskedRuns; m.Fires {
 		sentences = append(sentences, maskedSentence(m.Runs))

@@ -276,3 +276,32 @@ func TestLineMaskedRuns(t *testing.T) {
 		}
 	}
 }
+
+// The line's count is the failures that made it fire, not the lookups beside
+// them, and when lookups were set aside it says how many: "3 recorded
+// failures" over one failed build and two failed Reads of a directory would
+// point at three things when one is the finding, and a bare "1 recorded
+// failure" would not match the report's "failed calls: 3". With no lookup
+// the sentence is the plain one. Break: print Failed and this reads 3; drop
+// the qualifier and the first case reads a bare 1.
+func TestLineCountsOnlyTheFailuresThatFire(t *testing.T) {
+	for _, tc := range []struct {
+		lookups int
+		want    string
+	}{
+		{2, "rashomon: 1 recorded failure, besides 2 failed lookups."},
+		{1, "rashomon: 1 recorded failure, besides 1 failed lookup."},
+		{0, "rashomon: 1 recorded failure."},
+	} {
+		d := cleanDigest()
+		d.SilentFailures = report.SilentFailures{Fires: true, Failed: 1 + tc.lookups, FailedLookups: tc.lookups, FinalMessageAvailable: true, AbsentWords: []string{"fail"}}
+
+		line, ok := Line(d, d.SessionID, false)
+		if !ok {
+			t.Fatal("expected a line")
+		}
+		if !strings.Contains(line, tc.want) {
+			t.Errorf("line = %q, want %q", line, tc.want)
+		}
+	}
+}
