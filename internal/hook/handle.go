@@ -90,6 +90,7 @@ func (h *Handler) Capture(in io.Reader) error {
 		ToolName:       p.ToolName,
 		Shape:          shape.Derive(p.ToolName, p.ToolInput, h.st.Key()),
 		CWDDigest:      shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),
+		RulesVersion:   shape.RulesVersion,
 	}
 	// Hostnames are metadata and are stored verbatim, because they are both
 	// the join key against the proxy's record and the finding itself. Nothing
@@ -150,6 +151,8 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 	// its full budget once, and a second wait would push the handler past the
 	// hook timeout.
 	if h.opened || (h.toolUseID != "" && reason == store.ReasonLockTimeout) {
+		// A call record, at its declaration's version: a reader that skips
+		// the one must skip the other (store.SessionSchemaVersion).
 		term := store.Terminal{
 			Type:          store.TypeTerminal,
 			SchemaVersion: store.SchemaVersion,

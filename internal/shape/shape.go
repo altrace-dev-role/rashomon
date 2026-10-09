@@ -66,6 +66,32 @@ type Shape struct {
 	// false on a tool that is not a shell, whose class already says what it
 	// does, and on a record written before v3, which could not say.
 	MayWrite bool `json:"may_write"`
+
+	// StatusMasked says whether a recognised build or test runner on a shell
+	// line has an exit status the line does not return (see statusMasked):
+	// the line exits 0 when the runner fails, or the same either way.
+	// MaskedTest for `make test 2>&1 | tail -40` or `make test &`,
+	// MaskedBuild for `make release; ls dist`, MaskedNone for a line read to
+	// its end on which every runner's failure is the line's, or which has no
+	// runner. The call's own outcome is recorded as it was; this says that,
+	// for the runner, an ok outcome is not a pass. A closed word, decided
+	// against fixed lists whose words are compared and dropped.
+	//
+	// Null on a tool that is not a shell, on a line that could not be read
+	// to its end or on which the parser is not sure the runner's status
+	// reaches the line's, and on a record written before this field existed,
+	// which could not say: each is "not known", never "none".
+	StatusMasked *string `json:"status_masked"`
+
+	// RunnerDigest is the keyed digest of the words of that hidden runner,
+	// or, when none is hidden, of the runner whose failure the line returns
+	// (the last, if several) -- redirections left out. It lets a reader tell
+	// that a later `make test` or `make test && echo ok` ran the same runner
+	// as an earlier `make test 2>&1 | tail`, whose whole lines digest apart.
+	// Null when there is no such runner, when two runners are hidden (no one
+	// later run follows both up), and when a cd that the call's cwd digest
+	// does not hold ran before it, since where it ran is then not known.
+	RunnerDigest *string `json:"runner_digest"`
 }
 
 // Derive builds the shape of a call to toolName with the given raw tool_input.
@@ -130,6 +156,7 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 		n := len(dropLeadingAssignments(toks))
 		s.Argc = &n
 	}
+	s.StatusMasked, s.RunnerDigest = statusMasked(cmd, key)
 	return s
 }
 
@@ -411,6 +438,19 @@ func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, boo
 	if !ok || controlByte(cmd) {
 		return nil, false
 	}
+	return leadingDirectories(cmd)
+}
+
+// leadingSteps is how many leading `cd DIR &&` steps LeadingDirectory folds
+// onto a call's cwd for the line cmd: the cds on it that the call's cwd
+// digest already holds.
+func leadingSteps(cmd string) int {
+	dirs, _ := leadingDirectories(cmd)
+	return len(dirs)
+}
+
+// leadingDirectories is LeadingDirectory over the line cmd.
+func leadingDirectories(cmd string) ([]string, bool) {
 	toks, err := tokenizeProgram(cmd)
 	if err != nil {
 		return nil, false
@@ -711,6 +751,14 @@ func inGroup(open []byte, t token) []byte {
 // the one that followed it. Its quote tracking is flat, which is right outside
 // a $( ) and may be wrong inside one; see comsubEnd.
 func joinContinuations(s string) (string, []int) {
+	return joinLines(s, false)
+}
+
+// joinLines is joinContinuations; with comments, an unquoted # at the start
+// of a word runs to the end of its line, as a comment does to the shell, and
+// a backslash at its end continues nothing: `# run the tests \` and then
+// `make test | tail` on the next line runs make.
+func joinLines(s string, comments bool) (string, []int) {
 	if !strings.Contains(s, "\\\n") {
 		return s, nil
 	}
@@ -722,6 +770,12 @@ func joinContinuations(s string) (string, []int) {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
+		case comments && c == '#' && !inSingle && !inDouble && wordStart(b.String()):
+			for ; i < len(s) && s[i] != '\n'; i++ {
+				b.WriteByte(s[i])
+			}
+			i--
+			continue
 		case inSingle:
 			if c == '\'' {
 				inSingle = false
@@ -743,6 +797,19 @@ func joinContinuations(s string) (string, []int) {
 		b.WriteByte(c)
 	}
 	return b.String(), joins
+}
+
+// wordStart reports whether a word would begin after the text written so
+// far: at its start, or after a blank or an operator.
+func wordStart(written string) bool {
+	if written == "" {
+		return true
+	}
+	switch written[len(written)-1] {
+	case ' ', '\t', '\n', ';', '&', '|', '(', ')', '<', '>':
+		return true
+	}
+	return false
 }
 
 // isComment reports whether a word begins a comment: an unquoted `#` at its
@@ -1036,13 +1103,13 @@ var programVerb = map[string]string{
 //
 // The rule applied: a runner is on the list when it is a known test tool, a
 // build tool or launcher given its test command (`go test`, `npm t`,
-// `npm run test`, `python -m pytest`), or a listed wrapper that passes its
-// runner's exit status through. `make check` is not, since check is not
-// make's test command. That rule does not keep lint out: go test runs vet
-// first, an npm `pretest` script runs before `npm test`, tox's default
-// envlist and a make `test` target can each include lint, and a lint failure
-// fixed only in a file named like a test then reads as the tests-only
-// pattern.
+// `npm run test`, `python -m pytest`, `python -m unittest`), or a listed
+// wrapper that passes its runner's exit status through. `make check` is not,
+// since check is not make's test command. That rule does not keep lint out:
+// go test runs vet first, an npm `pretest` script runs before `npm test`,
+// tox's default envlist and a make `test` target can each include lint, and
+// a lint failure fixed only in a file named like a test then reads as the
+// tests-only pattern.
 var testCommands = [][]string{
 	{"pytest"}, {"jest"}, {"vitest"}, {"mocha"}, {"rspec"}, {"phpunit"},
 	{"ctest"}, {"tox"}, {"nox"},
@@ -1051,6 +1118,7 @@ var testCommands = [][]string{
 	{"yarn", "test"}, {"pnpm", "test"}, {"bun", "test"}, {"dotnet", "test"},
 	{"mvn", "test"}, {"mvnw", "test"}, {"gradle", "test"}, {"gradlew", "test"}, {"make", "test"},
 	{"python", "-m", "pytest"}, {"python3", "-m", "pytest"},
+	{"python", "-m", "unittest"}, {"python3", "-m", "unittest"},
 
 	{"npx", "jest"}, {"npx", "vitest"}, {"uv", "run", "pytest"}, {"poetry", "run", "pytest"},
 	{"bundle", "exec", "rspec"},
@@ -1066,7 +1134,11 @@ func refusalsOf(c []string) string {
 		return c[len(c)-1]
 	case "gradlew":
 		return "gradle"
-	case "mvnw":
+	case "mvn", "mvnw":
+		if len(c) == 1 {
+			// The build row: a flag that skips the tests still builds.
+			return "mvn build"
+		}
 		return "mvn"
 	}
 	return c[0]
@@ -1140,8 +1212,11 @@ var notARunAny = []string{"-h", "-help", "--help", "--version", "--watch", "--wa
 // refuses. One exported by an earlier call is not on the line and is not
 // seen.
 func refusesRun(runner string, before, args []token) bool {
+	// mvn's build row is refused as mvn is, but for the test-skip
+	// properties: skipping the tests still builds (refusalsOf).
+	list := notARun[strings.TrimSuffix(runner, " build")]
 	for _, t := range args {
-		if onList(t.text, notARun[runner]) || onList(t.text, notARunAny) || runner == "mvn" && mavenSkip(t.text) {
+		if onList(t.text, list) || onList(t.text, notARunAny) || runner == "mvn" && mavenSkip(t.text) {
 			return true
 		}
 	}
@@ -1232,14 +1307,24 @@ func runsTests(toks []token, i int, prog string, whole bool) bool {
 	if !ok {
 		return false
 	}
+	return runnerOn(toks, i, prog, len(toks), testCommands) && wholeCommand(toks, i)
+}
+
+// runnerOn reports whether the command whose program, past runnerPrefix, is
+// the token at i, named prog, and which ends before toks[end], is a row of
+// list -- testCommands, or buildCommands -- and is not refused by notARun:
+// the comparison runsTests makes, over one command's words rather than the
+// whole line's, so that a `-v` given to the grep after a pipe is not read as
+// make's.
+func runnerOn(toks []token, i int, prog string, end int, list [][]string) bool {
 next:
-	for _, c := range testCommands {
+	for _, c := range list {
 		if c[0] != prog {
 			continue
 		}
 		for n, want := range c[1:] {
 			k := i + 1 + n
-			if k >= len(toks) {
+			if k >= end {
 				continue next
 			}
 			t := toks[k]
@@ -1247,10 +1332,7 @@ next:
 				continue next
 			}
 		}
-		if refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):]) {
-			return false
-		}
-		return wholeCommand(toks, i)
+		return !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])
 	}
 	return false
 }

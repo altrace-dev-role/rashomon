@@ -17,7 +17,31 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // that meets one knows its test runs were never measured, not that there were
 // none. rule_match is null on every record this build writes; the rule-match
 // layer adds behaviour on v3, not another version.
-const SchemaVersion = 3
+//
+// v4 is additive over v3: the declaration's shape gained status_masked and
+// runner_digest, and the execution the same two keys, for the line as it ran;
+// both gained rules_version, which lists decided them (shape.RulesVersion). Whether a build or test runner's exit status was hidden by
+// the rest of its line is a v4 measurement: a v3 record of `make test |
+// tail` says nothing about it, which a reader must take as "not measured",
+// not as "not hidden". Nothing else changed, and v1 to v3 records still read.
+//
+// SchemaVersion is the version of a call's records: its declaration, the
+// terminal that closes it, and its execution. Coverage and gap records are
+// written at SessionSchemaVersion instead.
+const SchemaVersion = 4
+
+// SessionSchemaVersion is the version of the records that describe a session
+// rather than one call: coverage and gaps. Neither has changed since v3, so
+// they stay at 3 when the call records move on. A released reader accepts
+// only the versions it knows and skips the rest; a coverage record it skips
+// reads as `start recorded: no` and `probe_absent`, a gap it skips as no
+// gap at all. Stamping them with the call records' version would lose the
+// whole session to an older binary for a change that is only in the calls.
+//
+// A terminal is a call record: it goes with its declaration, whose version
+// it carries. A readable terminal beside an unreadable declaration reads as
+// a declaration that never landed, which is a lock timeout to the reader.
+const SessionSchemaVersion = 3
 
 // Accepts reports whether a reader understands a record's schema version.
 //
@@ -28,12 +52,12 @@ const SchemaVersion = 3
 // skipped -- a store that had been recording for weeks would have rendered an
 // empty report, and nothing would have said why.
 //
-// v3 is what this build writes; 1 and 2 are accepted so older stores read.
+// v4 is what this build writes; 1 to 3 are accepted so older stores read.
 // Records from a newer schema are skipped without error; the report shows
 // them only as a skipped-records count and the records_unreadable coverage
 // reason, and is empty only when every record is newer.
 func Accepts(version int) bool {
-	return version == 1 || version == 2 || version == 3
+	return version >= 1 && version <= 4
 }
 
 // Record type discriminators.
@@ -164,6 +188,14 @@ type Declaration struct {
 	// expressed inside the object. A reader that cannot tell those apart
 	// reports an absence of rules as an absence of matches.
 	RuleMatch map[string]any `json:"rule_match"`
+
+	// RulesVersion is shape.RulesVersion as the writing binary had it (v4):
+	// which runner and build lists decided this record's shape.verb_class
+	// and shape.status_masked. Records written before and after a list
+	// changed are told apart by it, and by nothing else. It names the writer's
+	// lists only: the pass words are applied when a report is read, never
+	// stored.
+	RulesVersion int `json:"rules_version"`
 }
 
 // Execution records that a declared call ran, one per PostToolUse invocation.
@@ -259,6 +291,21 @@ type Execution struct {
 	// its launch failed, and on a record written before v3, which could not
 	// tell.
 	Backgrounded bool `json:"backgrounded"`
+
+	// StatusMasked and RunnerDigest are the shape's two fields of the same
+	// names (v4), derived from the input as it ACTUALLY RAN, by the same
+	// Derive call that gives ExecutedDigest. A hook that rewrites the line
+	// before it runs -- to pipe test output into `grep | head`, say -- makes
+	// the declaration's the wrong line to judge masking on; a reader takes
+	// these instead wherever the record saw a tool_input (report.MaskingAsRan).
+	// Null when the payload carried no tool_input, and on a tool that is not
+	// a shell.
+	StatusMasked *string `json:"status_masked"`
+	RunnerDigest *string `json:"runner_digest"`
+
+	// RulesVersion is shape.RulesVersion as the writing binary had it (v4):
+	// which runner and build lists decided StatusMasked. See Declaration's.
+	RulesVersion int `json:"rules_version"`
 }
 
 // Execution outcomes (v2).

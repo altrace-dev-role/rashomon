@@ -175,7 +175,12 @@ type Digest struct {
 
 	Executions     report.Executions     `json:"executions"`
 	SilentFailures report.SilentFailures `json:"silent_failures"`
-	Subagents      SubagentCounts        `json:"subagents"`
+	// MaskedRuns is this turn's build and test calls whose exit status their
+	// line masked and that no later plain run in this turn followed up, set
+	// against this turn's final message (report.BuildMaskedRuns over the
+	// same turn-scoped run SilentFailures reads).
+	MaskedRuns report.MaskedRuns `json:"masked_runs"`
+	Subagents  SubagentCounts    `json:"subagents"`
 
 	// TestBending is the pairs report.DetectTestBending finds over the whole
 	// session, cut to those whose two runs are both this turn's calls, main
@@ -281,6 +286,8 @@ func Build(st *store.Store, sessionID, promptID, lastAssistantMessage string, no
 }
 
 func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage string, now time.Time) *Digest {
+	// Masking is judged on the command that ran.
+	report.MaskingAsRan(run)
 	w := selectTurn(run, promptID)
 
 	d := &Digest{
@@ -333,6 +340,7 @@ func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage stri
 
 	acct := report.AccountFromMessage(lastAssistantMessage)
 	d.SilentFailures = report.BuildSilentFailures(turnRun, acct)
+	d.MaskedRuns = report.BuildMaskedRuns(turnRun, acct)
 
 	d.Gaps = gapsInWindow(gaps, w)
 	if d.Gaps == nil {

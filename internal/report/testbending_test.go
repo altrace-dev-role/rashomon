@@ -27,6 +27,8 @@ type tbCall struct {
 	bg      bool   // the execution record says backgrounded
 	cwd     string // the declaration's cwd digest
 	exit    int    // the execution's exit code, none when 0
+	masked  string // the shape's status_masked, null when empty
+	runner  string // the shape's runner_digest, null when empty
 }
 
 func tbRun(calls ...tbCall) *store.Run {
@@ -52,6 +54,14 @@ func tbRun(calls ...tbCall) *store.Run {
 		if c.label != "" {
 			l := c.label
 			d.FileLabel = &l
+		}
+		if c.masked != "" {
+			m := c.masked
+			d.Shape.StatusMasked = &m
+		}
+		if c.runner != "" {
+			r := c.runner
+			d.Shape.RunnerDigest = &r
 		}
 		if c.agent != "" {
 			a, ty := c.agent, "general-purpose"

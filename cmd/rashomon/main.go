@@ -917,7 +917,7 @@ func cmdPause(stdout io.Writer) error {
 		}
 		if err := st.AppendGap(store.Gap{
 			Type:          store.TypeGap,
-			SchemaVersion: store.SchemaVersion,
+			SchemaVersion: store.SessionSchemaVersion,
 			RecordedAtMS:  now.UnixMilli(),
 			SessionID:     store.PausedSessionID,
 			Reason:        store.GapPaused,
@@ -957,7 +957,7 @@ func cmdResume(stdout io.Writer) error {
 		}
 		if err := st.AppendGap(store.Gap{
 			Type:          store.TypeGap,
-			SchemaVersion: store.SchemaVersion,
+			SchemaVersion: store.SessionSchemaVersion,
 			RecordedAtMS:  now.UnixMilli(),
 			SessionID:     store.PausedSessionID,
 			Reason:        store.GapPaused,

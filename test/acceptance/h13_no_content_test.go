@@ -20,6 +20,10 @@ var (
 		"shape", "shape.program", "shape.verb_class", "shape.argc", "shape.digest",
 		// v3. One bit: the line may write files whatever its program's class.
 		"shape.may_write",
+		// v4. A closed word -- none, test or build -- saying a
+		// recognised runner's exit status is not the line's, and a keyed
+		// digest of that runner's words: 64 hex characters, never the words.
+		"shape.status_masked", "shape.runner_digest",
 		// v2. Hostnames only: the extractor returns a canonical hostname or
 		// nothing, so neither list can carry a path, a query or a credential.
 		// They are here rather than under shape because the report joins on
@@ -39,6 +43,8 @@ var (
 		// v3. A keyed digest of the directory its command starts in: 64 hex
 		// characters, never the path.
 		"cwd_digest",
+		// v4. An integer: which runner lists decided the shape.
+		"rules_version",
 	}
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
@@ -57,6 +63,11 @@ var (
 		// v3. One bit: whether a Bash call's tool_response names a background
 		// task. The id and the rest of the response are never decoded.
 		"backgrounded",
+		// v4. The shape's status_masked and runner_digest for the line as it
+		// ran: a closed word and a keyed digest, never the words.
+		"status_masked", "runner_digest",
+		// v4. An integer: which runner lists decided them.
+		"rules_version",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
