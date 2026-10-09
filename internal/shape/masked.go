@@ -71,8 +71,15 @@ var buildCommands = [][]string{
 // one runner, failing or passing at both places. Followed: `set -e` and `set
 // -o pipefail` and their `+` forms, which errexit ignores (a command before
 // && or ||, a condition, a negated pipeline), `exit` with no argument, a
-// number, `$?`, `${PIPESTATUS[N]}` or a variable assigned one of those on the
-// line, and a pipeline's stages as subshells, as bash runs them.
+// number, `$?` or a variable assigned one of those on the line, and a
+// pipeline's stages as subshells, as bash runs them.
+//
+// Claude Code runs a line in the user's shell, which on a stock macOS is zsh,
+// as `zsh -c "... && eval '<line>' < /dev/null && ..."`, where errexit never
+// fires and PIPESTATUS is empty, and the record does not say which shell ran
+// it. So a line where a set turns errexit on is run again with errexit never
+// firing, and is null where the two runs disagree (runShells); PIPESTATUS is
+// not read, and a line whose status depends on it is null.
 //
 //   - The line exits 0 when the runner fails, or with the same status either
 //     way: the runner's status is hidden, and the kind is reported --
@@ -81,16 +88,16 @@ var buildCommands = [][]string{
 //     &`, whose status is no one's.
 //   - The line exits non-zero when the runner fails and 0 when it passes:
 //     MaskedNone -- `make test && echo ok`, `make test || exit 1`, `set -o
-//     pipefail; make test | tail`, `make test | tail; exit
-//     ${PIPESTATUS[0]}`.
+//     pipefail; make test | tail`, `set -euo pipefail; make test | tail`.
 //
 // Where it is not sure the runner's status reaches the line's -- a word it
 // cannot read, a status the abstract run cannot tell (a test of $?, `wait`
-// with an argument), a loop that holds a runner, an exit or a status read, a
-// runner the abstract run never reaches, `case`, a function, `eval`, `trap`,
-// `exec`, or a shell's `-c`, whose line is not looked into -- it says
-// nothing: null, never a kind and never "none". So does a line that cannot be
-// read to its end (tokenizeList, parseLine).
+// with an argument, PIPESTATUS), a loop that holds a runner, an exit or a
+// status read, a runner the abstract run never reaches, a line bash and zsh
+// return differently (`set -e; make test; echo done`), `case`, a function,
+// `eval`, `trap`, `exec`, or a shell's `-c`, whose line is not looked into --
+// it says nothing: null, never a kind and never "none". So does a line that
+// cannot be read to its end (tokenizeList, parseLine).
 func statusMasked(cmd string, key []byte) (kind, runner *string) {
 	if controlByte(cmd) {
 		return nil, nil
@@ -111,8 +118,7 @@ func statusMasked(cmd string, key []byte) (kind, runner *string) {
 		reach  = -1
 	)
 	for g := range p.runners {
-		f, ran := p.run(body, g, true)
-		pass, _ := p.run(body, g, false)
+		f, pass, ran := p.runShells(body, g)
 		if f < 0 || pass < 0 || !ran {
 			// Not sure: null.
 			return nil, nil
@@ -209,8 +215,8 @@ type assignment struct {
 	val  value
 }
 
-// value is a word whose number the abstract run can tell: a literal, $?, an
-// element of PIPESTATUS or a variable. Anything else is unknown.
+// value is a word whose number the abstract run can tell: a literal, $? or a
+// variable. Anything else, PIPESTATUS among it, is unknown.
 type value struct {
 	kind valueKind
 	n    int
@@ -223,7 +229,6 @@ const (
 	valUnknown valueKind = iota
 	valLiteral
 	valStatus
-	valPipe
 	valVar
 )
 
@@ -244,6 +249,7 @@ type lineParser struct {
 	runners  []runnerGroup
 	groups   map[string]int
 	assigned map[string]bool // names an assignment on the line set
+	errexit  bool            // a set on the line turns errexit on
 }
 
 // parseLine parses the whole line. False where any part of it is not read:
@@ -647,6 +653,11 @@ func (p *lineParser) parseSimple() (command, bool) {
 				return nil, false
 			}
 			c.op, c.opts = opSet, opts
+			for _, o := range opts {
+				if o.errexit && o.on {
+					p.errexit = true
+				}
+			}
 			return c, true
 		case "exit":
 			c.op = opExit
@@ -756,8 +767,9 @@ func isName(s string) bool {
 	return true
 }
 
-// valueOf reads a word as a value: digits (or a sign and digits), $?,
-// ${PIPESTATUS[N]}, $PIPESTATUS, or a variable, $NAME or ${NAME}.
+// valueOf reads a word as a value: digits (or a sign and digits), $?, or a
+// variable, $NAME or ${NAME}. PIPESTATUS is not read: zsh has none, so its
+// value is unknown.
 func (p *lineParser) valueOf(t token) value {
 	w := t.text
 	if t.meta {
@@ -766,14 +778,6 @@ func (p *lineParser) valueOf(t token) value {
 	switch {
 	case w == "$?":
 		return value{kind: valStatus}
-	case w == "$PIPESTATUS" || w == "${PIPESTATUS}":
-		return value{kind: valPipe}
-	case strings.HasPrefix(w, "${PIPESTATUS[") && strings.HasSuffix(w, "]}"):
-		n, err := strconv.Atoi(w[len("${PIPESTATUS[") : len(w)-2])
-		if err != nil || n < 0 {
-			return value{}
-		}
-		return value{kind: valPipe, n: n}
 	case strings.HasPrefix(w, "${") && strings.HasSuffix(w, "}") && isName(w[2:len(w)-1]):
 		return value{kind: valVar, name: w[2 : len(w)-1]}
 	case strings.HasPrefix(w, "$") && isName(w[1:]):
@@ -905,10 +909,9 @@ func (p *lineParser) displace(folded int) {
 }
 
 // evalState is the abstract run's state: the last status (-1 not known),
-// PIPESTATUS, the variables an assignment set, and the two options.
+// the variables an assignment set, and the two options.
 type evalState struct {
 	status            int
-	pipe              []int
 	vars              map[string]int
 	errexit, pipefail bool
 	// exited: an exit, or errexit, ended the line (or its subshell). lost:
@@ -930,15 +933,39 @@ type evaluator struct {
 	p      *lineParser
 	target int
 	fail   bool
+	zsh    bool // errexit never fires, as in zsh under Claude Code's wrapper
 	ran    bool
 }
 
+// runShells runs the line with runner group g failing and then passing, as
+// bash runs it and, where a set on the line turns errexit on, again as zsh
+// runs it inside Claude Code's `eval '<line>' && ...` wrapper, where errexit
+// never fires. It returns the two exit statuses and whether the runner ran;
+// -1 for both where either run cannot tell, or where the two shells disagree
+// on whether the runner's status reaches the line's: the record does not say
+// which shell ran it.
+func (p *lineParser) runShells(l list, g int) (f, pass int, ran bool) {
+	f, ran = p.run(l, g, true, false)
+	pass, _ = p.run(l, g, false, false)
+	if !p.errexit {
+		// Without errexit the two shells run it alike.
+		return f, pass, ran
+	}
+	zf, zran := p.run(l, g, true, true)
+	zpass, _ := p.run(l, g, false, true)
+	if zf < 0 || zpass < 0 || (f == 0 || f == pass) != (zf == 0 || zf == zpass) {
+		return -1, -1, ran && zran
+	}
+	return f, pass, ran && zran
+}
+
 // run runs the line with runner group g failing (fail) or passing, every
-// other recognised runner passing, and returns its exit status, -1 when it
-// cannot tell, and whether the runner ran.
-func (p *lineParser) run(l list, g int, fail bool) (int, bool) {
-	ev := &evaluator{p: p, target: g, fail: fail}
-	st := &evalState{vars: map[string]int{}, pipe: []int{0}}
+// other recognised runner passing, errexit never firing where zsh, and
+// returns its exit status, -1 when it cannot tell, and whether the runner
+// ran.
+func (p *lineParser) run(l list, g int, fail, zsh bool) (int, bool) {
+	ev := &evaluator{p: p, target: g, fail: fail, zsh: zsh}
+	st := &evalState{vars: map[string]int{}}
 	ev.list(st, l, false)
 	if st.lost {
 		return -1, ev.ran
@@ -955,7 +982,7 @@ func (ev *evaluator) list(st *evalState, l list, noErr bool) {
 		if it.bg {
 			// Its status is no one's: the line goes on with 0.
 			ev.andOr(st.copy(), it.ao, true)
-			st.status, st.pipe = 0, []int{0}
+			st.status = 0
 			continue
 		}
 		ev.andOr(st, it.ao, noErr)
@@ -980,7 +1007,7 @@ func (ev *evaluator) andOr(st *evalState, ao andOr, noErr bool) {
 		if st.exited || st.lost {
 			return
 		}
-		if st.errexit && !ignored && st.status != 0 {
+		if st.errexit && !ignored && !ev.zsh && st.status != 0 {
 			if st.status < 0 {
 				st.lost = true
 				return
@@ -997,7 +1024,6 @@ func (ev *evaluator) pipeline(st *evalState, pl pipeline, noErr bool) {
 		if st.exited || st.lost {
 			return
 		}
-		st.pipe = []int{st.status}
 	} else {
 		// Each stage is a subshell; the status is the last stage's, or under
 		// pipefail the last that failed.
@@ -1011,7 +1037,6 @@ func (ev *evaluator) pipeline(st *evalState, pl pipeline, noErr bool) {
 			}
 			statuses[n] = sub.status
 		}
-		st.pipe = statuses
 		s := statuses[len(statuses)-1]
 		if st.pipefail {
 			s = 0
@@ -1131,10 +1156,6 @@ func (ev *evaluator) value(st *evalState, v value) int {
 		return v.n
 	case valStatus:
 		return st.status
-	case valPipe:
-		if v.n < len(st.pipe) {
-			return st.pipe[v.n]
-		}
 	case valVar:
 		if n, ok := st.vars[v.name]; ok {
 			return n

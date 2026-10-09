@@ -2981,11 +2981,9 @@ m("MS a failed condition with no else keeps its status", "internal/shape/masked.
 m("MS ! is not read", "internal/shape/masked.go",
   "\tif pl.neg && st.status >= 0 {", "\tif false {", SH)
 m("MS a runner sent to the background with & is not masked", "internal/shape/masked.go",
-  "\t\t\tev.andOr(st.copy(), it.ao, true)\n\t\t\tst.status, st.pipe = 0, []int{0}\n", "\t\t\tev.andOr(st, it.ao, noErr)\n", SH)
+  "\t\t\tev.andOr(st.copy(), it.ao, true)\n\t\t\tst.status = 0\n", "\t\t\tev.andOr(st, it.ao, noErr)\n", SH)
 m("MS the same runner twice is two runners", "internal/shape/masked.go",
   "\tg, seen := p.groups[key]\n", "\tg, seen := p.groups[key]\n\tseen = false\n", SH)
-m("MS PIPESTATUS is not kept", "internal/shape/masked.go",
-  "\t\tst.pipe = statuses\n", "\t\tst.pipe = nil\n", SH)
 m("MS a status kept in a variable is not read", "internal/shape/masked.go",
   "\t\t\tst.vars[a.name] = ev.value(st, a.val)\n", "\t\t\tst.vars[a.name] = -1\n", SH)
 m("MS a loop that holds a runner is read as succeeding", "internal/shape/masked.go",
@@ -3004,6 +3002,14 @@ m("MS an exit in a pipe after || is the line's exit", "internal/shape/masked.go"
   "\t\t\tstatuses[n] = sub.status\n", "\t\t\tif sub.exited {\n\t\t\t\tst.status, st.exited = sub.status, true\n\t\t\t\treturn\n\t\t\t}\n\t\t\tstatuses[n] = sub.status\n", SH)
 m("MS false | x after || keeps the failure", "internal/shape/masked.go",
   "\t\tif st.pipefail {\n\t\t\ts = 0\n", "\t\tif true {\n\t\t\ts = 0\n", SH)
+m("MS errexit fires in the zsh run", "internal/shape/masked.go",
+  "if st.errexit && !ignored && !ev.zsh && st.status != 0 {", "if st.errexit && !ignored && st.status != 0 {", SH)
+m("MS bash and zsh disagreeing is not null", "internal/shape/masked.go",
+  "\tif zf < 0 || zpass < 0 || (f == 0 || f == pass) != (zf == 0 || zf == zpass) {", "\tif zf < 0 || zpass < 0 {", SH)
+m("MS a line that sets errexit skips the zsh run", "internal/shape/masked.go",
+  "\tif !p.errexit {\n\t\t// Without errexit the two shells run it alike.\n", "\tif true {\n\t\t// Without errexit the two shells run it alike.\n", SH)
+m("MS the line runs only as bash runs it", "internal/shape/masked.go",
+  "\tev := &evaluator{p: p, target: g, fail: fail, zsh: zsh}\n", "\tev := &evaluator{p: p, target: g, fail: fail}\n", SH)
 m("MS the pipeline after && ends at its first stage", "internal/shape/masked.go",
   "\t\tao.pipes = append(ao.pipes, pl)\n", "\t\tif len(ao.pipes) > 0 {\n\t\t\tpl.stages = pl.stages[:1]\n\t\t}\n\t\tao.pipes = append(ao.pipes, pl)\n", SH)
 m("MS a here-string is read as a here-document", "internal/shape/tokenize.go",

@@ -83,8 +83,8 @@ func TestStatusMasked(t *testing.T) {
 		{"echo start | make test", MaskedNone, "the runner is the last stage"},
 		{"set -o pipefail; make test 2>&1 | tail -40", MaskedNone, "pipefail returns the runner's failure"},
 		{"set -euo pipefail\nmake test | tail -5", MaskedNone, "a cluster that holds o names pipefail"},
-		{"set -e; make test; echo done", MaskedNone, "errexit stops the line at the failure"},
-		{"set -o errexit; make test; echo done", MaskedNone, ""},
+		{"set -e; make test; echo done", "null", "bash 1/0, but zsh under Claude Code's wrapper 0/0: errexit never fires there"},
+		{"set -o errexit; make test; echo done", "null", "as set -e"},
 		{"bash -o pipefail -c 'make test | tail'", "null", "a shell's -c line is not looked into"},
 		{"make test || exit 1", MaskedNone, "exits failed"},
 		{"make test || exit", MaskedNone, "exits with the runner's status"},
@@ -117,7 +117,7 @@ func TestStatusMasked(t *testing.T) {
 		{"set -e; make test && echo ok; echo done", MaskedTest, "0/0: errexit ignores a command before &&"},
 		{"set -e; set +e; make test; echo done", MaskedTest, "0/0: set +e turns it off"},
 		{"set -o pipefail; set +o pipefail; make test | tail", MaskedTest, "0/0: set +o pipefail turns it off"},
-		{"make test 2>&1 | tail -40; exit ${PIPESTATUS[0]}", MaskedNone, "1/0: PIPESTATUS keeps make's"},
+		{"make test 2>&1 | tail -40; exit ${PIPESTATUS[0]}", "null", "bash 1/0, zsh 0/0: zsh has no PIPESTATUS"},
 		{"make test; rc=$?; echo done; exit $rc", MaskedNone, "1/0: the status is kept and returned"},
 		{"{ make test; }", MaskedNone, "1/0: a group's status is its last command's"},
 		{"(make test || exit 1)", MaskedNone, "1/0"},
@@ -149,6 +149,21 @@ func TestStatusMasked(t *testing.T) {
 		{"echo ${HOME} <<EOF\nmake test | tail\nEOF\ngit status", "null", "a here-document after an expansion: its extent is not certain"},
 		{"mvn -q -DskipTests package 2>&1 | tail -30", MaskedBuild, "0/0: skipping the tests still builds"},
 		{"mvn -q package 2>&1 | tail -30", MaskedBuild, "0/0"},
+
+		// The shell Claude Code runs a line in on macOS is zsh, inside
+		// `zsh -c "... && eval '<line>' < /dev/null && ..."`, where errexit
+		// never fires and PIPESTATUS is empty. The record does not say which
+		// shell ran the line, so where bash and that shell disagree it is null.
+		{"set -euo pipefail; make test 2>&1 | tail -40; echo \"exit=$?\"", "null", "bash 1/0, zsh in the wrapper 0/0"},
+		{"set -eo pipefail; go test ./... 2>&1 | tail -20; echo finished", "null", "bash 1/0, zsh in the wrapper 0/0"},
+		{"set -e\nmake test\necho done", "null", "bash 1/0, zsh in the wrapper 0/0"},
+		{"set -e; make test | tail; exit ${PIPESTATUS[0]}", "null", "PIPESTATUS is not read"},
+		{"make test | tail; rc=${PIPESTATUS[0]}; exit $rc", "null", "PIPESTATUS is not read"},
+		{"go test ./... 2>&1 | tee out.log; exit ${PIPESTATUS[0]}", "null", "PIPESTATUS is not read"},
+		{"{ make test | tail; }; exit ${PIPESTATUS[0]}", "null", "PIPESTATUS is not read"},
+		{"set -e; { make test && true; }; echo done", "null", "0/0 in every shell, but the abstract bash run fires errexit after the group (1/0): the two runs disagree"},
+		{"set -euo pipefail; make test 2>&1 | tail -40", MaskedNone, "1/0 in every shell: pipefail returns make's failure"},
+		{"set -e; make test || true; echo done", MaskedTest, "0/0 in every shell"},
 	} {
 		got, _ := maskedOf(t, tc.cmd)
 		if got != tc.want {

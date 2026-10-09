@@ -266,8 +266,10 @@ func derivedRun(t *testing.T, calls ...[3]string) *store.Run {
 // only when its line returns the same runner's failure, from the same
 // directory. Break: carry no runner digest on `make test && echo ok`, or
 // none for words the tokenizer cannot vouch for; carry one runner's digest
-// for a line that hid two; read `make test &` as returning make's status; or
-// give a runner after an unfolded cd a digest.
+// for a line that hid two; read `make test &` as returning make's status;
+// give a runner after an unfolded cd a digest; or read as none a line that
+// returns make's failure only in a shell where errexit fires or PIPESTATUS
+// is set.
 func TestMasked_RunsFromDerive(t *testing.T) {
 	const ok = store.ExecOK
 	const msg = "Done. All tests pass."
@@ -292,6 +294,12 @@ func TestMasked_RunsFromDerive(t *testing.T) {
 			[3]string{"cd sub; make test | tail", "/repo", ok}, [3]string{"make test", "/repo/sub", ok}, true},
 		{"a plain re-run",
 			[3]string{"make test 2>&1 | tail -40", "/repo", ok}, [3]string{"make test", "/repo", ok}, false},
+		{"a later exit with PIPESTATUS, which zsh does not have",
+			[3]string{"make test 2>&1 | tail -40", "/repo", ok}, [3]string{"make test 2>&1 | tail -40; exit ${PIPESTATUS[0]}", "/repo", ok}, true},
+		{"a later set -e line whose errexit zsh in the wrapper never fires",
+			[3]string{"make test 2>&1 | tail -40", "/repo", ok}, [3]string{"set -euo pipefail; make test 2>&1 | tail -40; echo \"exit=$?\"", "/repo", ok}, true},
+		{"a later set -euo pipefail line that returns make's failure in every shell",
+			[3]string{"make test 2>&1 | tail -40", "/repo", ok}, [3]string{"set -euo pipefail; make test 2>&1 | tail -40", "/repo", ok}, false},
 	} {
 		run := derivedRun(t, tc.masked, tc.later)
 		if m := run.Declarations[0].Shape.StatusMasked; m == nil || *m == shape.MaskedNone {
