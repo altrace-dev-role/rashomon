@@ -386,10 +386,13 @@ func TestMasked_NotMeasuredBeforeSchema4(t *testing.T) {
 }
 
 // TestMasked_PassWordsAreWords: a pass is claimed by a whole word of
-// passVocabulary that the two words before it do not negate. Break: match a
-// pass word inside another word, and "password", "bypass" and "greenfield"
-// claim a pass; or read a negated one as a claim, and "the tests do not
-// pass" does.
+// passVocabulary that no negation before it in its clause negates, where
+// "and" and "but" end a negation. Break: match a pass word inside another
+// word, and "password", "bypass" and "greenfield" claim a pass; read a
+// negated one as a claim, and "the tests do not pass" does; let a negation
+// reach across a clause, or past "and" or "but", and "No regressions, all
+// tests pass." claims none; or drop none, nothing, neither, nor and without,
+// and "None of the tests pass yet." claims one.
 func TestMasked_PassWordsAreWords(t *testing.T) {
 	run := tbRun(maskedCall(1, shape.MaskedTest, "r", store.ExecOK))
 	for _, tc := range []struct {
@@ -404,6 +407,13 @@ func TestMasked_PassWordsAreWords(t *testing.T) {
 		{"The suite never passes on this branch.", false},
 		{"The tests don\u2019t pass yet.", false},
 		{"The checks are not all green.", false},
+		{"Not all tests pass yet.", false},
+		{"None of the tests pass yet.", false},
+		{"I'm not sure the tests pass.", false},
+		{"Nothing passes yet.", false},
+		{"Neither suite passes.", false},
+		{"Not every test passes.", false},
+		{"Not a single test passes.", false},
 
 		{"All tests pass.", true},
 		{"The build is green.", true},
@@ -411,6 +421,11 @@ func TestMasked_PassWordsAreWords(t *testing.T) {
 		{"It builds now.", true},
 		{"Done: \"pass\" on every package.", true},
 		{"The password field is fixed and the tests pass.", true},
+		{"No regressions, all tests pass.", true},
+		{"No API changes and all tests pass.", true},
+		{"Not all of it is done, but the build is green.", true},
+		{"Nothing else changed; all tests pass.", true},
+		{"If the tests pass, merge it.", true},
 	} {
 		got := BuildMaskedRuns(run, AccountFromMessage(tc.msg))
 		if got.Fires != tc.fires || got.PassClaimed != tc.fires {

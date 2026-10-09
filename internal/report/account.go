@@ -392,30 +392,40 @@ var passVocabulary = []string{
 	"builds",
 }
 
-// negations are the words that, one or two words before a pass word, make it
-// no claim: "the tests do not pass", "never passes", "are not all green". A
-// word ending in n't is one too: "don't pass", "isn't green".
-var negations = map[string]bool{"not": true, "no": true, "never": true, "cannot": true}
+// negations are the words that make a pass word after them, to the end of
+// its clause, no claim: "the tests do not pass", "not all tests pass yet",
+// "none of the tests pass", "I'm not sure the tests pass". A word ending in
+// n't is one too: "don't pass", "isn't green".
+var negations = map[string]bool{
+	"not": true, "no": true, "never": true, "cannot": true,
+	"none": true, "nothing": true, "neither": true, "nor": true, "without": true,
+}
+
+// clauseBreaks are the characters that end a clause, and with it a
+// negation: "No regressions, all tests pass." claims a pass.
+const clauseBreaks = ".,;:!?()\n"
 
 // claimsPass reports a message holding a word of passVocabulary, as a whole
-// word, that neither of the two words before it negates. Words are runs of
-// letters and apostrophes, lower-cased, with a typographic apostrophe read
-// as '. Failure words are matched as they always were, as substrings.
+// word, that no negation before it in its clause negates. "and" and "but"
+// end a negation too: "No API changes and all tests pass." claims a pass.
+// Clauses split at clauseBreaks; words are runs of letters and apostrophes,
+// lower-cased, with a typographic apostrophe read as '. A conditional ("If
+// the tests pass, merge it.") still counts as a claim. Failure words are
+// matched as they always were, as substrings.
 func claimsPass(msg string) bool {
 	msg = strings.ReplaceAll(strings.ToLower(msg), "\u2019", "'")
-	words := strings.FieldsFunc(msg, func(r rune) bool { return !unicode.IsLetter(r) && r != '\'' })
-	for i, w := range words {
-		words[i] = strings.Trim(w, "'")
-	}
-	negated := func(w string) bool { return negations[w] || strings.HasSuffix(w, "n't") }
-	for i, w := range words {
-		if !slices.Contains(passVocabulary, w) {
-			continue
+	for _, clause := range strings.FieldsFunc(msg, func(r rune) bool { return strings.ContainsRune(clauseBreaks, r) }) {
+		negated := false
+		for _, w := range strings.FieldsFunc(clause, func(r rune) bool { return !unicode.IsLetter(r) && r != '\'' }) {
+			switch w = strings.Trim(w, "'"); {
+			case w == "and" || w == "but":
+				negated = false
+			case negations[w] || strings.HasSuffix(w, "n't"):
+				negated = true
+			case !negated && slices.Contains(passVocabulary, w):
+				return true
+			}
 		}
-		if i >= 1 && negated(words[i-1]) || i >= 2 && negated(words[i-2]) {
-			continue
-		}
-		return true
 	}
 	return false
 }

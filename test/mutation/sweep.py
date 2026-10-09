@@ -3121,9 +3121,16 @@ m("MS the end-of-turn line says masked on the count alone", "internal/recap/reca
 m("MS the masked sentence has no singular", "internal/recap/recap.go",
   "\tif n == 1 {\n\t\treturn \"pass claimed; exit status of 1 build", "\tif false {\n\t\treturn \"pass claimed; exit status of 1 build", "TestLineMaskedRuns")
 m("MS a pass word is matched inside another word", "internal/report/account.go",
-  "\t\tif !slices.Contains(passVocabulary, w) {", "\t\tif !slices.ContainsFunc(passVocabulary, func(p string) bool { return strings.Contains(w, p) }) {", RP)
+  "\t\t\tcase !negated && slices.Contains(passVocabulary, w):", "\t\t\tcase !negated && slices.ContainsFunc(passVocabulary, func(p string) bool { return strings.Contains(w, p) }):", RP)
 m("MS a negated pass word is a claim", "internal/report/account.go",
-  "\tnegated := func(w string) bool { return negations[w] || strings.HasSuffix(w, \"n't\") }", "\tnegated := func(w string) bool { return false }", RP)
+  "\t\t\tcase negations[w] || strings.HasSuffix(w, \"n't\"):\n\t\t\t\tnegated = true\n", "\t\t\tcase negations[w] || strings.HasSuffix(w, \"n't\"):\n\t\t\t\tnegated = false\n", RP)
+m("MS a negation reaches across a clause", "internal/report/account.go",
+  "\tfor _, clause := range strings.FieldsFunc(msg, func(r rune) bool { return strings.ContainsRune(clauseBreaks, r) }) {\n\t\tnegated := false\n",
+  "\tnegated := false\n\tfor _, clause := range strings.FieldsFunc(msg, func(r rune) bool { return strings.ContainsRune(clauseBreaks, r) }) {\n", RP)
+m("MS and and but do not end a negation", "internal/report/account.go",
+  "\t\t\tcase w == \"and\" || w == \"but\":\n\t\t\t\tnegated = false\n", "", RP)
+m("MS none, nothing, neither, nor and without negate nothing", "internal/report/account.go",
+  "\t\"none\": true, \"nothing\": true, \"neither\": true, \"nor\": true, \"without\": true,\n", "", RP)
 m("MS a typographic apostrophe is not read", "internal/report/account.go",
   "\tmsg = strings.ReplaceAll(strings.ToLower(msg), \"\\u2019\", \"'\")", "\tmsg = strings.ToLower(msg)", RP)
 
