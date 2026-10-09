@@ -27,6 +27,7 @@ var nullTranscriptFields = map[string]string{
 	"results in transcript":   "not read",
 	"missing from store":      "unknown",
 	"missing from transcript": "unknown",
+	"refused before any hook": "unknown",
 	"executed but unrecorded": "unknown",
 	"declared without result": "unknown",
 }
