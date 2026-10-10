@@ -4,8 +4,9 @@
 # repository root: rashomon ships as its own repository, and go.mod sits
 # beside this file's .github directory.
 #
-# Stages: gofmt -> vet (both build tags) -> race tests -> H-17 skip gate ->
-# mutation sweep, with a cross-build matrix alongside.
+# Stages: gofmt -> vet (both build tags) -> race tests -> H-17 skip gate,
+# with a cross-build matrix alongside. The mutation sweep runs only when the
+# workflow is started by hand (Actions > CI > Run workflow); see its step.
 name: CI
 
 on:
@@ -15,6 +16,9 @@ on:
   # another feature branch schedules none of these jobs and merges on a green
   # rollup that proves only that it links.
   pull_request:
+  # Started by hand to run the mutation sweep, which push and pull_request
+  # runs skip.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -146,7 +150,14 @@ jobs:
       # The other half of the acceptance contract: break the implementation one
       # item at a time and confirm each item's tests go red. Exits non-zero if
       # any break goes undetected.
+      #
+      # ON DEMAND ONLY. The sweep took 45 to 77 minutes per run, so push and
+      # pull_request runs skip it and the race tests above are the merge gate.
+      # Run it by hand (Actions > CI > Run workflow) before cutting a release,
+      # since a tag does not run CI, and locally with
+      # `python3 test/mutation/sweep.py` when a change adds or moves mutants.
       - name: Mutation sweep
+        if: github.event_name == 'workflow_dispatch'
         run: python3 test/mutation/sweep.py
 
       # .goreleaser.yml advertises this command in its own header, and until
