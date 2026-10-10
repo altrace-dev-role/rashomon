@@ -41,6 +41,7 @@ var hostBearing = map[string]bool{
 	"chains.dropped[].ssh_hosts[]":          true,
 	"nono.allowed[]":                        true,
 	"nono.denied[]":                         true,
+	"nono.client_plane[]":                   true,
 	"nono.saw_what_the_proxy_did_not[]":     true,
 	"nono.plain_http[]":                     true,
 	"nono.denied_but_reached[]":             true,

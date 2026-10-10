@@ -252,6 +252,7 @@ func redactNono(n Nono, key []byte) Nono {
 	out := n
 	out.Allowed = redactList(n.Allowed, key)
 	out.Denied = redactList(n.Denied, key)
+	out.ClientPlane = redactList(n.ClientPlane, key)
 	out.SawWhatTheProxyDidNot = redactList(n.SawWhatTheProxyDidNot, key)
 	out.PlainHTTP = redactList(n.PlainHTTP, key)
 	out.DeniedButReached = redactList(n.DeniedButReached, key)

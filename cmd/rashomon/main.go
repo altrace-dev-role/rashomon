@@ -2056,6 +2056,14 @@ func forgetHost(host string, stdout io.Writer) error {
 
 	fmt.Fprintf(stdout, "rashomon: forgot %s naming %s across %s; %s written",
 		countOf(total, "record"), host, countOf(len(gaps), "run"), countOf(len(gaps), "gap record"))
+	// Said when nothing was removed, because that is when "forgot 0 records"
+	// reads as "nothing happened" -- and before #45 it was true: the host came
+	// back under the sandbox heading of the next report. The store-level
+	// record ForgetHost now writes keeps it out, and the line says so.
+	if total == 0 {
+		fmt.Fprint(stdout, "; later reports still leave it out wherever they find it, "+
+			"the sandbox trail included")
+	}
 	if !hadBaselines {
 		fmt.Fprintln(stdout)
 		return nil

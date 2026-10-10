@@ -1122,6 +1122,12 @@ func writeNono(b *bytes.Buffer, n Nono) {
 	}
 	fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied in this session's window%s\n",
 		len(n.Allowed), len(n.Denied), open)
+	if len(n.ClientPlane) > 0 {
+		// Named, not dropped: the sandbox did allow or refuse these, and a
+		// reader comparing against nono's own log should find every host. Not
+		// counted above, because the agent did not make these attempts.
+		fmt.Fprintf(b, "    the client's own traffic, not counted above: %s\n", list(n.ClientPlane))
+	}
 	// SAID SEPARATELY, because it is a LIFETIME count beside two windowed ones.
 	// nono's session_started record carries an ISO string and no millisecond
 	// instant, so there is nothing to window it on -- and joining all three in
