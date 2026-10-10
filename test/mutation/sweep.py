@@ -635,13 +635,16 @@ m("NONO the plain-HTTP list is never populated", "internal/report/nono.go",
 m("NONO a denied host is reported as missing from the trail",
   "internal/report/nono.go", "\t\tif denied[h] {", "\t\tif false {",
   "TestSeam_TheReconciliation")
+# Re-anchored after the live nono 0.79 pass: the reconciliation's client-plane
+# test is the clientPlane predicate (clientPlaneHost), not a set built from the
+# wire view's list. Each mutation still drops one half of the exclusion.
 m("NONO loopback is reported as traffic the sandbox missed",
   "internal/report/nono.go",
-  "return loopbackHosts[h] || clientPlane[h]", "return clientPlane[h]",
+  "return loopbackHosts[h] || clientPlane(h) }", "return clientPlane(h) }",
   "TestSeam_TheReconciliation")
 m("NONO the client plane is reported as traffic the sandbox missed",
   "internal/report/nono.go",
-  "\tfor _, h := range dests.ClientPlane {\n\t\tclientPlane[h] = true\n\t}", "",
+  "return loopbackHosts[h] || clientPlane(h) }", "return loopbackHosts[h] }",
   "TestSeam_TheReconciliation")
 m("NONO redaction skips the sandbox section", "internal/report/redact.go",
   "\t\ts.Nono = redactNono(sess.Nono, key)", "", "TestRedact_EveryDeclared")
