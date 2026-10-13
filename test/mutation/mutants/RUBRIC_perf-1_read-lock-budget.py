@@ -9,8 +9,8 @@ m("perf-1 the reader gives up inside a loaded hold", "internal/digest/digest.go"
   "const readLockBudget = 30 * time.Millisecond\n", "const readLockBudget = 10 * time.Millisecond\n",
   "TestRubricPERF1_DigestWaitsOutALoadedHold")
 m("perf-1 the consistent read takes no lock", "internal/store/read.go",
-  "\tif unlock, lerr := lockCounted(f, budget); lerr == nil {\n\t\tdefer unlock()\n\t}\n\treturn scanLines(f, fn)\n",
-  "\treturn scanLines(f, fn)\n", "TestRubricPERF1_DigestWaitsOutAHookHold")
+  "\tunlock, lerr := lockCounted(f, budget)\n\tif lerr == nil {\n\t\tdefer unlock()\n\t}\n",
+  "\tlerr := errors.New(\"no lock taken\")\n", "TestRubricPERF1_DigestWaitsOutAHookHold")
 m("perf-1 each file of the read waits a budget of its own", "internal/store/read.go",
   "\t\tleft := max(0, time.Until(deadline))\n", "\t\tleft := max(budget, time.Until(deadline))\n",
   "TestRubricPERF1_TheBudgetCoversTheWholeRead")

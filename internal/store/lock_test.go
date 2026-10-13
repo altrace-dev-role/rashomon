@@ -4,8 +4,10 @@
 // unix and LockFileEx on Windows (lock_windows.go), which CI's lock-windows
 // job runs. Windows' locks are mandatory, not advisory: while one handle
 // holds the range, a read through any other handle is refused. So a test
-// that holds a lock releases it before it reads back what was written, and
-// the one test whose subject is a read past a held lock is unix-only.
+// that holds a lock releases it before it reads back what was written; the
+// test whose subject is a read past a held lock is unix-only, and its
+// Windows half, a read the held lock refuses, is in
+// lock_refused_windows_test.go.
 
 package store
 
