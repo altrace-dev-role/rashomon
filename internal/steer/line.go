@@ -45,7 +45,12 @@ type Line struct {
 	ID        string `json:"id"`
 	AtUnixMS  int64  `json:"at_unix_ms"`
 	SessionID string `json:"session_id"`
-	PromptID  string `json:"prompt_id"`
+	// PromptID is null on a line with no prompt: a SessionStart or
+	// SubagentStart briefing, keyed (session_id, "session_start", source,
+	// n), and any other finding with a null prompt_id, which is flag-only
+	// (tech 4.2.5). A pointer, as AgentID is, so "no prompt" never reads as
+	// an empty id.
+	PromptID *string `json:"prompt_id"`
 	// AgentID is null for the main agent, matching Finding.AgentID's ""
 	// meaning the same thing one layer up.
 	AgentID        *string    `json:"agent_id"`
