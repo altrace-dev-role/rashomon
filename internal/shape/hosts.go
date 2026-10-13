@@ -59,11 +59,13 @@ func Hosts(toolName string, toolInput json.RawMessage) (wire []string, ssh []str
 	if text == "" {
 		return nil, nil
 	}
-	ssh = collect(text, sshSchemes)
+	// One lowered copy serves both readings of the text: see collect.
+	lower := strings.ToLower(text)
+	ssh = collect(lower, sshSchemes)
 	if verbForTool(toolName) == VerbExecute {
 		ssh = mergeHosts(ssh, sshCommandHosts(text))
 	}
-	return collect(text, wireSchemes), ssh
+	return collect(lower, wireSchemes), ssh
 }
 
 // mergeHosts unions two host lists, sorted and de-duplicated, preserving the
@@ -149,6 +151,12 @@ func takesValue(prog string, flag byte) bool {
 // A tokenizer error is not fatal here. tokenize returns the tokens it
 // completed along with the error, and a destination that appeared before an
 // unterminated quote is still a destination the command named.
+//
+// The lines are read to the token bound (RES-9) between them, each line
+// costing at least one: tokenized one by one, each line was within the bound
+// and the line as a whole was not, and 8 MiB of `ssh a` lines allocated
+// 452 MiB. A host named past the bound is not read, as the program search
+// reads no word past it.
 func sshCommandHosts(text string) []string {
 	var out []string
 	// A newline separates two commands, and the tokenizer treats it as
@@ -156,13 +164,18 @@ func sshCommandHosts(text string) []string {
 	// whole line and that count is its own contract. Splitting here rather
 	// than changing the tokenizer keeps `ssh a` and `ssh b` on two lines from
 	// collapsing into one invocation whose second host is never seen.
-	for _, line := range strings.Split(text, "\n") {
-		out = append(out, sshLineHosts(line)...)
+	for rest, budget := text, maxTokens; rest != "" && budget > 0; {
+		var line string
+		line, rest, _ = strings.Cut(rest, "\n")
+		hosts, read := sshLineHosts(line)
+		out = append(out, hosts...)
+		budget -= max(read, 1)
 	}
 	return out
 }
 
-func sshLineHosts(line string) []string {
+// sshLineHosts is sshCommandHosts over one line, and how many tokens it read.
+func sshLineHosts(line string) ([]string, int) {
 	// On a line it cannot finish, lex still returns the tokens it read before
 	// the fault, and a host among them was named all the same.
 	toks, meta, _ := tokenizeMarked(line)
@@ -198,7 +211,7 @@ func sshLineHosts(line string) []string {
 		out = append(out, destinations(prog, toks[i+1:end])...)
 		i = end - 1
 	}
-	return out
+	return out, len(toks)
 }
 
 // destinations returns the hosts named by one ssh-family invocation's
@@ -375,7 +388,8 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 	return host.Canonical(hostPart)
 }
 
-// collect finds every hostname in text introduced by one of the given prefixes.
+// collect finds every hostname introduced by one of the given prefixes in
+// lower, a command line Hosts lowered once for both of its calls.
 //
 // The scan and the slice both read `lower`, and they have to be the same
 // string. strings.ToLower is NOT length-preserving in UTF-8 -- U+212A KELVIN
@@ -396,9 +410,8 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 // where a host ends: `=` and `!` are neither, so `https://api.example.com=
 // ghp_...!x/` came back as the host "api.example.com=ghp_...!x", a token
 // recorded in the field that holds the hostnames a call named.
-func collect(text string, prefixes []string) []string {
+func collect(lower string, prefixes []string) []string {
 	seen := map[string]struct{}{}
-	lower := strings.ToLower(text)
 
 	for _, p := range prefixes {
 		from := 0

@@ -13,10 +13,10 @@ import (
 // digest is null rather than one that pairs with a run somewhere else.
 func TestRES10_RunnerPastTheFoldIsNotPaired(t *testing.T) {
 	line := func(n int) string { return strings.Repeat("cd a && ", n) + "make test" }
-	if got := leadingSteps(line(MaxLeadingCd)); got != MaxLeadingCd {
+	if got := leadingSteps(dirsOf(line(MaxLeadingCd))); got != MaxLeadingCd {
 		t.Errorf("%d steps: leadingSteps %d", MaxLeadingCd, got)
 	}
-	if got := leadingSteps(line(MaxLeadingCd + 1)); got != 0 {
+	if got := leadingSteps(dirsOf(line(MaxLeadingCd + 1))); got != 0 {
 		t.Errorf("%d steps: leadingSteps %d, want 0: past the bound no step is held", MaxLeadingCd+1, got)
 	}
 	if s := Derive("Bash", bashInput(t, line(MaxLeadingCd)), benchKey); s.RunnerDigest == nil {
@@ -50,11 +50,17 @@ func TestRES10_LeadingStepsPastTheTokenBound(t *testing.T) {
 	if _, err := tokenizeProgram(heredoc); err != errTokenBound {
 		t.Fatalf("the here-document line reads with %v, want errTokenBound", err)
 	}
-	if got := leadingSteps(heredoc); got != 1 {
+	if got := leadingSteps(dirsOf(heredoc)); got != 1 {
 		t.Errorf("one cd before a long here-document: leadingSteps %d, want 1", got)
 	}
 	dirs, ok := leadingDirectories(strings.Repeat("cd a && ", 100) + long)
 	if !ok || len(dirs) != MaxLeadingCd+1 {
 		t.Errorf("100 cds before 50,000 words: %d directories, %v; want %d, true", len(dirs), ok, MaxLeadingCd+1)
 	}
+}
+
+// dirsOf is a line's leading directories, as Derive reads them.
+func dirsOf(line string) []string {
+	dirs, _ := leadingDirectories(line)
+	return dirs
 }

@@ -27,12 +27,14 @@ func stringValue(raw json.RawMessage, s jsonscan.Span) (string, bool) {
 	case jsonscan.Null:
 		return "", true
 	case jsonscan.String:
-		// An invalid byte decodes to three, so 3*Len bounds the decoded size.
-		out, _, err := jsonscan.Head(raw, s, 3*int(s.Len), nil)
+		// Decoded once into one buffer of the encoded size (DecodeString):
+		// a hook's readers of a command each decode it, and an 8 MiB one
+		// cost about five times itself each, grown from nothing and copied.
+		out, err := jsonscan.DecodeString(raw, s)
 		if err != nil {
 			return "", false
 		}
-		return string(out), true
+		return out, true
 	}
 	return "", false
 }

@@ -10,7 +10,7 @@ m("H-13 the tokenizer never marks an expansion opaque", "internal/shape/tokenize
   "\tif l.expands(i, false) {\n\t\tl.w.opaque = true\n\t}",
   "\tif l.expands(i, false) {\n\t\t_ = l.w.opaque\n\t}", "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 backslash-newlines are not joined before the program search", "internal/shape/shape.go",
-  "\tif !strings.Contains(s, \"\\\\\\n\") {\n\t\treturn s, nil\n\t}", "\tif true {\n\t\treturn s, nil\n\t}",
+  "\tif n == 0 {\n\t\treturn joined{s: s}\n\t}", "\tif true {\n\t\treturn joined{s: s}\n\t}",
   "TestNoCorpusLineLeaksIntoProgram|TestTokenizeProgram")
 m("H-13 a paren where a redirect target belongs is read as a subshell", "internal/shape/shape.go",
   "\tif toks[i+1].meta {\n\t\t// A paren where the target belongs",
@@ -180,7 +180,7 @@ m("H-13 a backslash-newline the joining left is read past in a substitution", C,
 m("H-13 a backslash-newline the joining left is read past in its double quotes", C,
   "\t\t\tif r.continuesAt(i) {", "\t\t\tif false {", TPROG)
 m("H-13 the joining's offsets are not kept", "internal/shape/shape.go",
-  "\t\t\t\tjoins = append(joins, b.Len())\n", "", TPROG)
+  "\t\t\t\t\tjoins = append(joins, b.Len())\n", "", TPROG)
 m("H-13 a quoted span joined across a newline opens a here-document's body", C,
   " || r.joinedIn(from, to)))", "))", TPROG)
 m("H-13 an unquoted here-document's body is read across backslash-newlines", C,

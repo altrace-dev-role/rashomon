@@ -5,8 +5,8 @@
 # Scanning again in either reader, or searching from the wrong edge, is the
 # regression.
 m("RUBRIC lld-6 joinedIn scans every offset", "internal/shape/comsub.go",
-  "\tk := r.after(from)\n\treturn k < len(r.joins) && r.joins[k] <= to\n",
-  "\tfor _, p := range r.joins {\n\t\tif p > from && p <= to {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n",
+  "\tk := r.after(from)\n\treturn k < len(r.joins) && r.joins[k] <= to || r.unkept(to)\n",
+  "\tfor _, p := range r.joins {\n\t\tif p > from && p <= to {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn r.unkept(to)\n",
   "TestRubricLLD6_")
 m("RUBRIC lld-6 delimLine scans every offset", "internal/shape/comsub.go",
   "\tfor _, p := range r.joins[r.after(i-1):] {\n\t\tif p > e {\n\t\t\tbreak\n\t\t}\n",

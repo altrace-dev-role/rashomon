@@ -114,8 +114,14 @@ type token struct {
 // The bytes between words -- whether a blank or a newline came before the next
 // one -- are not a word's, and stay with the lexer.
 type word struct {
-	text    strings.Builder
-	started bool
+	// The word's text is the slice s[from:to] of the line while every byte
+	// of it is the line's own and they lie together -- a plain word, which
+	// most are -- and is copied to text only once quote removal or an
+	// escape leaves a gap (add). copied says which.
+	text     strings.Builder
+	from, to int
+	copied   bool
+	started  bool
 	// glued: the word began with no blank or newline before it (token.glued).
 	glued    bool
 	quotedAt int // token.quotedAt: -1 until quoting touches the word
@@ -128,6 +134,46 @@ func newWord() word { return word{quotedAt: -1} }
 
 // reset makes w the state before the next word's first byte.
 func (w *word) reset() { *w = newWord() }
+
+// add appends s[from:to], bytes of the line s as they are written, to the
+// word's text. Where they follow the slice the word already is, the slice
+// grows and nothing is copied: 8 MiB of $a is one word, copied byte by byte
+// it allocated five times its length in each of three readings of the line.
+// A copy grows by doubling (strings.Builder.Grow), where append's growth of
+// a large buffer is a quarter at a time.
+func (w *word) add(s string, from, to int) {
+	switch {
+	case w.copied:
+	case w.from == w.to:
+		w.from, w.to = from, to
+		return
+	case w.to == from:
+		w.to = to
+		return
+	default:
+		w.copied = true
+		w.text.Grow(w.to - w.from + to - from)
+		w.text.WriteString(s[w.from:w.to])
+	}
+	w.text.Grow(to - from)
+	w.text.WriteString(s[from:to])
+}
+
+// length is how many bytes of text the word has.
+func (w *word) length() int {
+	if w.copied {
+		return w.text.Len()
+	}
+	return w.to - w.from
+}
+
+// string is the word's text, over the line s.
+func (w *word) string(s string) string {
+	if w.copied {
+		return w.text.String()
+	}
+	return s[w.from:w.to]
+}
 
 // tokenizeMarked is tokenize plus one bit per token: whether the tokenizer
 // emitted it for an unquoted metacharacter.
@@ -150,7 +196,7 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 // tokenizeShape splits a command line as tokenize does and reports, per
 // token, what the text cannot: see token.
 func tokenizeShape(s string) ([]token, error) {
-	return bounded(lex(s, false, false, nil))
+	return bounded(lex(joined{s: s}, false, false))
 }
 
 // tokenizeProgram is tokenizeShape for the program search, which reads one
@@ -173,8 +219,7 @@ func tokenizeShape(s string) ([]token, error) {
 // Where it cannot tell how the shell reads on, it stops with errUncertain
 // rather than guess: see lex.
 func tokenizeProgram(s string) ([]token, error) {
-	j, joins := joinContinuations(s)
-	return bounded(lex(j, true, false, joins))
+	return bounded(lex(joinContinuations(s), true, false))
 }
 
 // tokenizeList is tokenizeProgram for the walk over a line's whole list of
@@ -196,8 +241,7 @@ func tokenizeProgram(s string) ([]token, error) {
 // The program search keeps its own reading, which stops at a here-document
 // instead: what it names is unchanged.
 func tokenizeList(s string) ([]token, error) {
-	j, joins := joinLines(s, true)
-	return bounded(lex(j, true, true, joins))
+	return bounded(lex(joinLines(s, true), true, true))
 }
 
 // lex is tokenizeShape and tokenizeProgram; program selects the second's
@@ -210,12 +254,15 @@ func tokenizeList(s string) ([]token, error) {
 //     does not parse, whose quoting it may have misread.
 //   - a $( ) inside double quotes whose close comsubEnd cannot find for
 //     certain, or whose $ is the second of an even run, as in "$$(": bash
-//     reads $$ and then a (, and the $( ) only a misreading. joins: the
-//     offsets at which backslash-newlines were removed from s.
+//     reads $$ and then a (, and the $( ) only a misreading.
 //
-// docs selects tokenizeList's reading of here-documents and comments.
-func lex(s string, program, docs bool, joins []int) ([]token, error) {
-	l := &lexer{s: s, program: program, docs: docs, joins: joins, w: newWord(), dollarAt: -1}
+// r is the line, with the offsets at which backslash-newlines were removed
+// from it (joinContinuations); none for tokenizeShape, which reads each as
+// a continuation where it stands. docs selects tokenizeList's reading of
+// here-documents and comments.
+func lex(r joined, program, docs bool) ([]token, error) {
+	s := r.s
+	l := &lexer{s: s, r: r, program: program, docs: docs, w: newWord(), dollarAt: -1}
 	l.toks = make([]token, 0, tokenEstimate(s))
 	for i := 0; i < len(s); i++ {
 		if len(l.toks) > maxTokens {
@@ -259,7 +306,7 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 type lexer struct {
 	s             string
 	program, docs bool
-	joins         []int
+	r             joined
 	toks          []token
 	w             word
 	sawNL         bool
@@ -290,7 +337,7 @@ func (l *lexer) begin() {
 // markQuoted records where quoting first touched the current token.
 func (l *lexer) markQuoted() {
 	if w := &l.w; w.quotedAt < 0 {
-		w.quotedAt = w.text.Len()
+		w.quotedAt = w.length()
 	}
 }
 
@@ -326,7 +373,7 @@ func (l *lexer) unterminated() error {
 // flush emits the current word, if one was started.
 func (l *lexer) flush() {
 	if w := &l.w; w.started {
-		l.toks = append(l.toks, token{text: w.text.String(), quotedAt: w.quotedAt, opaque: w.opaque, nlBefore: l.sawNL, glued: w.glued, ticks: w.ticks})
+		l.toks = append(l.toks, token{text: w.string(l.s), quotedAt: w.quotedAt, opaque: w.opaque, nlBefore: l.sawNL, glued: w.glued, ticks: w.ticks})
 		l.expanded = l.expanded || w.opaque
 		l.sawNL, l.gap = false, false
 		w.reset()
@@ -354,7 +401,7 @@ func (l *lexer) blank(i int) (int, error) {
 		}
 		bodies = append(bodies, d)
 	}
-	e := joined{l.s, l.joins}.bodiesEnd(i+1, bodies)
+	e := l.r.bodiesEnd(i+1, bodies)
 	if e < 0 {
 		return i, errUncertain
 	}
@@ -382,7 +429,7 @@ func (l *lexer) backslash(i int) (int, error) {
 	if l.s[i] != '\n' { // a backslash-newline is a line continuation
 		l.begin()
 		l.markQuoted()
-		l.w.text.WriteByte(l.s[i])
+		l.w.add(l.s, i, i+1)
 	}
 	return i, nil
 }
@@ -405,7 +452,7 @@ func (l *lexer) single(i int) (int, error) {
 	}
 	l.begin()
 	l.markQuoted()
-	l.w.text.WriteString(s[i+1 : i+1+j])
+	l.w.add(s, i+1, i+1+j)
 	return i + j + 1, nil
 }
 
@@ -428,14 +475,14 @@ func (l *lexer) double(i int) (int, error) {
 		if s[i] == '\\' && i+1 < len(s) {
 			switch n := s[i+1]; n {
 			case '"', '\\', '$', '`':
-				w.text.WriteByte(n)
+				w.add(s, i+1, i+2)
 				i++
 				continue
 			case '\n':
 				i++
 				continue
 			}
-			w.text.WriteByte('\\')
+			w.add(s, i, i+1)
 			continue
 		}
 		if s[i] == '"' {
@@ -447,13 +494,13 @@ func (l *lexer) double(i int) (int, error) {
 			// string goes on after the ) that closes it.
 			end := -1
 			if dq%2 == 1 {
-				end = joined{s, l.joins}.substEnd(i, 0)
+				end = l.r.substEnd(i, 0)
 			}
 			if end < 0 {
 				return i, errUncertain
 			}
 			w.opaque = true
-			w.text.WriteString(s[i : end+1])
+			w.add(s, i, end+1)
 			i = end
 			continue
 		}
@@ -463,7 +510,7 @@ func (l *lexer) double(i int) (int, error) {
 		if s[i] == '`' {
 			w.ticks++
 		}
-		w.text.WriteByte(s[i])
+		w.add(s, i, i+1)
 	}
 	if !closed {
 		return i, l.unterminated()
@@ -517,7 +564,7 @@ func (l *lexer) plain(i int) {
 		l.grouped = true
 	}
 	l.begin()
-	l.w.text.WriteByte(c)
+	l.w.add(l.s, i, i+1)
 }
 
 // tokenEstimate is how many tokens lex will emit from s, for the common line

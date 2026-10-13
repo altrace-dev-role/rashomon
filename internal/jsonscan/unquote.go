@@ -2,6 +2,7 @@ package jsonscan
 
 import (
 	"bytes"
+	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
 )
@@ -158,6 +159,28 @@ func Head(buf []byte, s Span, max int, dst []byte) (out []byte, truncated bool, 
 	}
 	out, truncated = unescapeHead(b, dst[:0], max)
 	return out, truncated, nil
+}
+
+// DecodeString decodes a whole string span. It allocates once, a buffer of the
+// span's encoded length, which no valid string's decoding exceeds, and hands
+// that buffer back as the string: Head into a buffer grown from nothing and
+// then string() copied a command twice after growing the first copy a
+// quarter at a time, and a hook decodes its command once per reader of it.
+// Only invalid UTF-8, each byte of which decodes to three, grows the buffer.
+func DecodeString(buf []byte, s Span) (string, error) {
+	b, err := body(buf, s)
+	if err != nil {
+		return "", err
+	}
+	var out strings.Builder
+	out.Grow(len(b))
+	var tmp [utf8.UTFMax]byte
+	for r := 0; r < len(b); {
+		seg, next := segment(b, r, &tmp)
+		out.Write(seg)
+		r = next
+	}
+	return out.String(), nil
 }
 
 // Tail keeps the last max decoded bytes of a string span through a ring
