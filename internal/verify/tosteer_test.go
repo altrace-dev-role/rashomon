@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -135,7 +136,15 @@ func TestVER54g_ToSteerRefusesWhatCannotBeValid(t *testing.T) {
 	stop, post := string(steer.EventStop), string(steer.EventPostToolUse)
 	gate := &GateFact{GateID: "learned:go-test", State: Red, LastRunSeq: seqp(52)}
 	claim := func(v Verdict) *ClaimFact { return &ClaimFact{Class: ClaimTestsPass, Strict: true, Verdict: v} }
-	rule := func(k spec.RuleKind) *RuleFact { return &RuleFact{RuleID: "r1", Kind: k, Trust: spec.Trusted, Seq: 50} }
+	// A code or path rule names its file, so each case below fails for the
+	// reason it names, not for a missing path (ruleShapeFits).
+	rule := func(k spec.RuleKind) *RuleFact {
+		r := &RuleFact{RuleID: "r1", Kind: k, Trust: spec.Trusted, Seq: 50}
+		if k == spec.ForbidCode || k == spec.ProtectPath {
+			r.Path = pathp("a.py")
+		}
+		return r
+	}
 	for _, c := range []struct {
 		name string
 		f    Finding
@@ -171,6 +180,10 @@ func TestVER54g_ToSteerRefusesWhatCannotBeValid(t *testing.T) {
 		{"gate id outside its charset", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: &GateFact{GateID: "Go Test", State: Red}}, at(PointStop)},
 		{"path outside its charset", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "r1", Kind: spec.ForbidCode, Trust: spec.Trusted, Seq: 50, Path: pathp("../x")}}, at(PointStop)},
 		{"task ref outside its charset", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: gate}, Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("a b")}},
+		// Only the TaskUpdate form has a deny (40.4.1: "Stop: PreToolUse(TaskUpdate)
+		// permissionDecision: deny"); a TodoWrite completion names no task.
+		{"todo completion denied at PreToolUse", Finding{Pattern: pattern.SubtaskGate, Event: string(steer.EventPreToolUse), Gate: gate}, at(PointSubtask)},
+		{"teammate close naming no task", Finding{Pattern: pattern.SubtaskGate, Event: "TaskCompleted", Gate: gate}, at(PointSubtask)},
 	} {
 		var me *MappingError
 		if got, err := ToSteer(c.f, c.pt, ""); !errors.As(err, &me) {
@@ -223,3 +236,79 @@ func TestVER54i_KeyIsTheCardsUnit(t *testing.T) {
 		t.Errorf("one rule on two files: keys %q and %q (%v, %v)", x.Key, y.Key, errX, errY)
 	}
 }
+
+// TestVER54k_ToSteerChecksEveryFactID: every id, path, program and digest a
+// fact carries is checked against its charset before a candidate exists,
+// not only the ones a key is built from, and a rule fact carries only the
+// fields its kind has (RuleFact's comment: a path for forbid_code and
+// protect_path, never for forbid_command or order), so a command rule's key
+// is the rule alone (P07N-13).
+func TestVER54k_ToSteerChecksEveryFactID(t *testing.T) {
+	stop, post := string(steer.EventStop), string(steer.EventPostToolUse)
+	gate := func(mod func(*GateFact)) *GateFact {
+		g := &GateFact{GateID: "learned:go-test", Program: "go", State: Red, LastRunSeq: seqp(52)}
+		mod(g)
+		return g
+	}
+	claim := func(mod func(*ClaimFact)) *ClaimFact {
+		c := &ClaimFact{Class: ClaimTestsPass, Strict: true, Verdict: Verdict(Red), Gates: []SlotID{"learned:go-test"}}
+		mod(c)
+		return c
+	}
+	rule := func(k spec.RuleKind, mod func(*RuleFact)) *RuleFact {
+		r := &RuleFact{RuleID: "r1", Kind: k, Trust: spec.Trusted, Seq: 50}
+		mod(r)
+		return r
+	}
+	prog, badProg, badGate := Program("git"), Program("rm -rf /"), SlotID("Bad Gate")
+	six := []PathSlot{"a", "b", "c", "d", "e", "f"}
+	for _, c := range []struct {
+		name string
+		f    Finding
+	}{
+		{"gate path outside its charset", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(func(g *GateFact) { g.Paths = []PathSlot{"../etc/passwd"} })}},
+		{"gate program outside its charset", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(func(g *GateFact) { g.Program = "Go Test" })}},
+		{"more gate paths than MaxPaths", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(func(g *GateFact) { g.Paths = six })}},
+		{"a negative omitted count", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(func(g *GateFact) { g.PathsOmitted = -1 })}},
+		{"claim gate outside its charset", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.Gates = []SlotID{"Bad Gate"} })}},
+		{"claim quote digest not hex", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.QuoteHMAC = "the claim sentence" })}},
+		{"integrity path outside its charset", Finding{Pattern: pattern.Integrity, Event: post, Integrity: &IntegrityFact{Kind: SkipAdded, Count: 1, Seq: 40, Paths: []PathSlot{"../x"}}}},
+		{"rule program outside its charset", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.ForbidCommand, func(r *RuleFact) { r.Program = &badProg })}},
+		{"order gate outside its charset", Finding{Pattern: pattern.OrderingRule, Event: post, Rule: rule(spec.Order, func(r *RuleFact) { r.Gate = &badGate })}},
+		{"a command rule with a path", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.ForbidCommand, func(r *RuleFact) { r.Path = pathp("a.py") })}},
+		{"a code rule with no path", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.ForbidCode, func(*RuleFact) {})}},
+		{"a code rule with a program", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.ForbidCode, func(r *RuleFact) { r.Path = pathp("a.py"); r.Program = &prog })}},
+		{"a frozen path with no path", Finding{Pattern: pattern.Integrity, Event: post, Rule: rule(spec.ProtectPath, func(*RuleFact) {})}},
+		{"an order rule with a path", Finding{Pattern: pattern.OrderingRule, Event: post, Rule: rule(spec.Order, func(r *RuleFact) { r.Path = pathp("a.py") })}},
+	} {
+		pt := perCall
+		if c.f.Pattern == pattern.ClaimVsRecord {
+			pt = at(PointStop)
+		}
+		var me *MappingError
+		if got, err := ToSteer(c.f, pt, ""); !errors.As(err, &me) {
+			t.Errorf("%s: (%+v, %v), want a MappingError", c.name, got, err)
+		}
+	}
+	// The valid neighbours still map: every fact id in its charset.
+	for _, f := range []Finding{
+		{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(func(g *GateFact) { g.Paths = six[:MaxPaths]; g.PathsOmitted = 1 })},
+		{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.QuoteHMAC = Digest(strings.Repeat("ab", 32)) })},
+		{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.ForbidCommand, func(r *RuleFact) { r.Program = &prog })},
+		{Pattern: pattern.OrderingRule, Event: post, Rule: rule(spec.Order, func(r *RuleFact) { r.Program = &prog; r.Gate = pslot("learned:go-test") })},
+	} {
+		pt := perCall
+		if f.Pattern == pattern.ClaimVsRecord {
+			pt = at(PointStop)
+		}
+		got, err := ToSteer(f, pt, "")
+		if err != nil {
+			t.Errorf("%s: %v", f.Pattern, err)
+		}
+		if f.Pattern == pattern.PlatformRule && got.Key != "r1" {
+			t.Errorf("a command rule keys %q, want the rule alone", got.Key)
+		}
+	}
+}
+
+func pslot(s string) *SlotID { id := SlotID(s); return &id }
