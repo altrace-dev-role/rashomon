@@ -7,8 +7,8 @@ m("the report stops counting programs at all", "internal/report/report.go",
 m("H-13 a word the tokenizer cannot vouch for is read as the program", "internal/shape/shape.go",
   "\t\tcase t.opaque, isComment(t):", "\t\tcase isComment(t):", "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 the tokenizer never marks an expansion opaque", "internal/shape/tokenize.go",
-  "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\topaque = true\n\t\t\t}",
-  "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\t_ = opaque\n\t\t\t}", "TestNoCorpusLineLeaksIntoProgram")
+  "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\tw.opaque = true\n\t\t\t}",
+  "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\t_ = w.opaque\n\t\t\t}", "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 backslash-newlines are not joined before the program search", "internal/shape/shape.go",
   "\tif !strings.Contains(s, \"\\\\\\n\") {\n\t\treturn s, nil\n\t}", "\tif true {\n\t\treturn s, nil\n\t}",
   "TestNoCorpusLineLeaksIntoProgram|TestTokenizeProgram")
@@ -42,7 +42,7 @@ m("H-13 an operator where a redirect target belongs is read past to the next com
 m("H-13 the tokenizer never marks an operator glued", "internal/shape/tokenize.go",
   "nlBefore: sawNL, glued: !gap && len(toks) > 0})", "nlBefore: sawNL, glued: false})", "TestTokenizeGlued|TestProgramIsAProgram")
 m("H-13 the tokenizer never marks a word glued", "internal/shape/tokenize.go",
-  "\t\t\tglued = !gap && len(toks) > 0\n", "\t\t\tglued = false\n", "TestTokenizeGlued|TestProgramIsAProgram")
+  "\t\t\tw.glued = !gap && len(toks) > 0\n", "\t\t\tw.glued = false\n", "TestTokenizeGlued|TestProgramIsAProgram")
 m("H-13 a byte the shell does not split on is read as part of a program name", "internal/shape/shape.go",
   "\t\tcase c < 0x21 || c > 0x7e:", "\t\tcase c == ' ' || c == '\\t' || c == '\\n' || c == '\\r':", PROG)
 m("H-13 a command word holding $ is named", "internal/shape/shape.go",
@@ -151,9 +151,9 @@ m("H-13 a newline in the line is taken for a control byte", "internal/shape/shap
 # Re-anchored after the masked-status refactor: the backtick case also marks the
 # line grouped for the list walk's here-document reading; only the count goes.
 m("H-13 the tokenizer never counts an unquoted backtick", "internal/shape/tokenize.go",
-  "\t\t\tif c == '`' {\n\t\t\t\tticks++\n\t\t\t\tgrouped = true\n\t\t\t}\n", "\t\t\tif c == '`' {\n\t\t\t\tgrouped = true\n\t\t\t}\n", "TestTokenizeTicks|" + PROG)
+  "\t\t\tif c == '`' {\n\t\t\t\tw.ticks++\n\t\t\t\tgrouped = true\n\t\t\t}\n", "\t\t\tif c == '`' {\n\t\t\t\tgrouped = true\n\t\t\t}\n", "TestTokenizeTicks|" + PROG)
 m("H-13 the tokenizer never counts a backtick inside double quotes", "internal/shape/tokenize.go",
-  "\t\t\t\tif s[i] == '`' {\n\t\t\t\t\tticks++\n\t\t\t\t}\n", "", "TestTokenizeTicks")
+  "\t\t\t\tif s[i] == '`' {\n\t\t\t\t\tw.ticks++\n\t\t\t\t}\n", "", "TestTokenizeTicks")
 # Judged by the corpus alone, where the two lines of the PR #29 review are the
 # only ones this break reopens: "$(echo "a;b")" ends at its first inner quote
 # again, and the ; inside it ends the search for the () after the command word.
@@ -260,8 +260,8 @@ m("H-13 bash's $$' is read as zsh's $'...'", "internal/shape/tokenize.go",
 m("H-13 an odd run of $ is read as bash's $$'", "internal/shape/tokenize.go",
   "\t\t\t\tif dollars%2 == 0 {", "\t\t\t\tif dollars > 1 {", "TestTokenizeProgramReadsANSICQuotes")
 m("H-13 an unterminated quote after an expansion is read as a real one", "internal/shape/tokenize.go",
-  "\t\tif program && (opaque || expanded) {", "\t\tif false {", "TestTokenizeProgramStops|" + PROG)
+  "\t\tif program && (w.opaque || expanded) {", "\t\tif false {", "TestTokenizeProgramStops|" + PROG)
 m("H-13 an expansion in an earlier word leaves a later quote certain", "internal/shape/tokenize.go",
-  "\t\tif program && (opaque || expanded) {", "\t\tif program && opaque {", "TestTokenizeProgramStops|" + PROG)
+  "\t\tif program && (w.opaque || expanded) {", "\t\tif program && w.opaque {", "TestTokenizeProgramStops|" + PROG)
 m("H-13 the count's tokenizer stops where the program search does", "internal/shape/tokenize.go",
-  "\t\tif program && (opaque || expanded) {", "\t\tif opaque || expanded {", "TestTokenize")
+  "\t\tif program && (w.opaque || expanded) {", "\t\tif w.opaque || expanded {", "TestTokenize")

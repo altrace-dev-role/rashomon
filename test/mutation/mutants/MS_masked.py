@@ -124,7 +124,7 @@ m("MS the runner's arguments run to the end of the line", "internal/shape/shape.
 m("MS here-document bodies are read as commands", "internal/shape/tokenize.go",
   "\t\t\t\tpending = append(pending, j)\n", "\t\t\t\t_ = j\n", SH)
 m("MS a comment is read as words in the list walk", "internal/shape/tokenize.go",
-  "\t\tcase docs && c == '#' && !started:", "\t\tcase false && docs && c == '#' && !started:", SH)
+  "\t\tcase docs && c == '#' && !w.started:", "\t\tcase false && docs && c == '#' && !w.started:", SH)
 m("MS the runner digest keeps a redirection's target", "internal/shape/masked.go",
   "\t\t\tj = operatorEnd(toks, j) + 1\n", "\t\t\tj = operatorEnd(toks, j)\n", SH)
 m("MS the runner digest runs to the end of the line", "internal/shape/masked.go",

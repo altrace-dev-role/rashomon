@@ -70,6 +70,27 @@ type token struct {
 	ticks int
 }
 
+// word is the lexer's state for the word being built: everything a token
+// carries that is a property of that word alone. Emitting the word resets
+// all of it at once (reset), so a field added here is cleared with the rest.
+// The bytes between words -- whether a blank or a newline came before the next
+// one -- are not a word's, and stay with lex.
+type word struct {
+	text    strings.Builder
+	started bool
+	// glued: the word began with no blank or newline before it (token.glued).
+	glued    bool
+	quotedAt int // token.quotedAt: -1 until quoting touches the word
+	opaque   bool
+	ticks    int
+}
+
+// newWord is the state before a word's first byte.
+func newWord() word { return word{quotedAt: -1} }
+
+// reset makes w the state before the next word's first byte.
+func (w *word) reset() { *w = newWord() }
+
 // tokenizeMarked is tokenize plus one bit per token: whether the tokenizer
 // emitted it for an unquoted metacharacter.
 //
@@ -157,16 +178,11 @@ func tokenizeList(s string) ([]token, error) {
 // docs selects tokenizeList's reading of here-documents and comments.
 func lex(s string, program, docs bool, joins []int) ([]token, error) {
 	var (
-		toks    []token
-		cur     strings.Builder
-		started bool
-		qat     = -1
-		opaque  bool
-		ticks   int
-		sawNL   bool
-		// gap: a blank or newline since the last token ended. glued: the
-		// word being built began with no gap before it.
-		gap, glued bool
+		toks  []token
+		w     = newWord()
+		sawNL bool
+		// gap: a blank or newline since the last token ended.
+		gap bool
 		// dollarAt: the index of the last unquoted, unescaped `$`, and
 		// dollars: how many of them run together up to it.
 		dollarAt = -1
@@ -183,15 +199,15 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 	// begin marks the current word started, noting at its first byte
 	// whether it is glued to the token before it.
 	begin := func() {
-		if !started {
-			glued = !gap && len(toks) > 0
-			started = true
+		if !w.started {
+			w.glued = !gap && len(toks) > 0
+			w.started = true
 		}
 	}
 	// markQuoted records where quoting first touched the current token.
 	markQuoted := func() {
-		if qat < 0 {
-			qat = cur.Len()
+		if w.quotedAt < 0 {
+			w.quotedAt = w.text.Len()
 		}
 	}
 	// expands reports whether s[i] opens an expansion this tokenizer does
@@ -214,21 +230,17 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 	// unterminated is the error for a quote that never closes. For the
 	// program search, after an expansion it is uncertain: see lex.
 	unterminated := func() error {
-		if program && (opaque || expanded) {
+		if program && (w.opaque || expanded) {
 			return errUncertain
 		}
 		return errUnterminated
 	}
 	flush := func() {
-		if started {
-			toks = append(toks, token{text: cur.String(), quotedAt: qat, opaque: opaque, nlBefore: sawNL, glued: glued, ticks: ticks})
-			expanded = expanded || opaque
+		if w.started {
+			toks = append(toks, token{text: w.text.String(), quotedAt: w.quotedAt, opaque: w.opaque, nlBefore: sawNL, glued: w.glued, ticks: w.ticks})
+			expanded = expanded || w.opaque
 			sawNL, gap = false, false
-			cur.Reset()
-			started = false
-			qat = -1
-			opaque = false
-			ticks = 0
+			w.reset()
 		}
 	}
 
@@ -261,7 +273,7 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 				i = e
 			}
 
-		case docs && c == '#' && !started:
+		case docs && c == '#' && !w.started:
 			for i+1 < len(s) && s[i+1] != '\n' {
 				i++
 			}
@@ -275,7 +287,7 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 			if s[i] != '\n' { // a backslash-newline is a line continuation
 				begin()
 				markQuoted()
-				cur.WriteByte(s[i])
+				w.text.WriteByte(s[i])
 			}
 
 		case c == '\'':
@@ -293,7 +305,7 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 			}
 			begin()
 			markQuoted()
-			cur.WriteString(s[i+1 : i+1+j])
+			w.text.WriteString(s[i+1 : i+1+j])
 			i += j + 1
 
 		case c == '"':
@@ -312,14 +324,14 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 				if s[i] == '\\' && i+1 < len(s) {
 					switch n := s[i+1]; n {
 					case '"', '\\', '$', '`':
-						cur.WriteByte(n)
+						w.text.WriteByte(n)
 						i++
 						continue
 					case '\n':
 						i++
 						continue
 					}
-					cur.WriteByte('\\')
+					w.text.WriteByte('\\')
 					continue
 				}
 				if s[i] == '"' {
@@ -336,18 +348,18 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 					if end < 0 {
 						return toks, errUncertain
 					}
-					opaque = true
-					cur.WriteString(s[i : end+1])
+					w.opaque = true
+					w.text.WriteString(s[i : end+1])
 					i = end
 					continue
 				}
 				if expands(i, true) {
-					opaque = true
+					w.opaque = true
 				}
 				if s[i] == '`' {
-					ticks++
+					w.ticks++
 				}
-				cur.WriteByte(s[i])
+				w.text.WriteByte(s[i])
 			}
 			if !closed {
 				return toks, unterminated()
@@ -378,7 +390,7 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 
 		default:
 			if expands(i, false) {
-				opaque = true
+				w.opaque = true
 			}
 			if c == '$' {
 				if dollarAt == i-1 {
@@ -389,11 +401,11 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 				dollarAt = i
 			}
 			if c == '`' {
-				ticks++
+				w.ticks++
 				grouped = true
 			}
 			begin()
-			cur.WriteByte(c)
+			w.text.WriteByte(c)
 		}
 	}
 	if len(pending) > 0 {
