@@ -200,6 +200,9 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		// it is also before stdout.
 		st.DeferDurability()
 		captureErr := safe.Guard(func() error { return h.Capture(stdin) })
+		// Close returns nothing; Guard is here for its panic, and Flush still
+		// runs after one. What Close did not write reads as its absence: an
+		// unterminated declaration, a call with no coverage (H-10).
 		_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })
 		fault.Inject(fault.PointHookBeforeFlush)
 		if err := safe.Guard(h.Flush); err != nil {
@@ -239,6 +242,8 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		// Group commit, as in cmdHook.
 		st.DeferDurability()
 		captureErr := safe.Guard(func() error { return p.Capture(stdin) })
+		// As in cmdHook: Guard is for Close's panic, and a coverage record
+		// Close did not write reads as its absence (H-10).
 		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
 		if err := safe.Guard(p.Flush); err != nil {
 			fmt.Fprintln(stderr, flushLostLine)
@@ -383,6 +388,9 @@ func recapPending(args []string) bool {
 // used here: it exits 1 and writes to stderr, which is right for a command a
 // person typed and wrong for this one.
 func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	// The body's error and panic are dropped on purpose: this entry prints
+	// nothing on any internal failure (H-93), and recap writes no record whose
+	// loss a reader would have to see.
 	_ = safe.Guard(func() error {
 		hook.IgnoreBrokenPipe()
 		fault.Inject(fault.PointRecapStart)

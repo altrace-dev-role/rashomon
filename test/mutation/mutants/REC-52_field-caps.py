@@ -19,7 +19,7 @@ m("REC-52 a host list over its cap is shortened, not withheld", "internal/store/
   "\tif len(list) > MaxHosts {\n\t\tw.withheld = true\n\t\treturn nil\n", "\tif len(list) > MaxHosts {\n\t\tw.withheld = true\n\t\treturn list[:MaxHosts]\n",
   "TestREC52_")
 m("REC-52 the hook skips the tool_use_id cap on its terminal", "internal/hook/handle.go",
-  "\th.toolUseID, _ = store.CapID(p.ToolUseID)\n", "\th.toolUseID = p.ToolUseID\n", "TestREC52_")
+  "\th.toolUseID = store.CapID(p.ToolUseID)\n", "\th.toolUseID = p.ToolUseID\n", "TestREC52_")
 m("REC-52 a withheld field leaves the call verified", "internal/hook/handle.go",
   "\tif reason == \"\" && h.withheld {\n", "\tif false {\n", "TestREC52_")
 m("REC-52 the execution is not capped", "internal/hook/post.go",
@@ -27,6 +27,8 @@ m("REC-52 the execution is not capped", "internal/hook/post.go",
 m("REC-52 a withheld execution field leaves the call verified", "internal/hook/post.go",
   "\tif reason == \"\" && p.withheld {\n", "\tif false {\n", "TestREC52_")
 m("REC-52 an over-long session id is kept", "internal/hook/payload.go",
-  "\tcase len(id) > store.MaxIDBytes:\n", "\tcase false:\n", "TestREC52_")
+  "\tif id == \"\" || len(id) > store.MaxIDBytes {\n", "\tif id == \"\" {\n", "TestREC52_")
+m("REC-52 an over-long session id leaves the call verified", "internal/hook/handle.go",
+  "\th.withheld = len(p.SessionID) > store.MaxIDBytes\n", "", "TestREC52_")
 m("REC-52 no cap on the coverage record's cwd", "internal/hook/coverage.go",
   "\tif len(cwd) > store.MaxPathBytes {\n", "\tif false {\n", "TestREC52_")

@@ -61,12 +61,14 @@ func worstCaseRecordBytes() int {
 	return jsonEscapeFactor*capped + fixedRecordBytes
 }
 
-// CapID is s, or "" with withheld set when s is over MaxIDBytes.
-func CapID(s string) (capped string, withheld bool) {
+// CapID is s, or "" when s is over MaxIDBytes: an id as CapDeclaration and
+// CapExecution leave it, for a caller that has to name the call before its
+// record is built.
+func CapID(s string) string {
 	if len(s) > MaxIDBytes {
-		return "", true
+		return ""
 	}
-	return s, false
+	return s
 }
 
 // CapDeclaration withholds every field of d over its cap, and reports

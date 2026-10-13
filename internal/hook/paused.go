@@ -30,11 +30,14 @@ func RecordPaused(in io.Reader, phase string, st *store.Store, now func() time.T
 	if err == nil {
 		var p sessionPayload
 		if p.from(payload) == nil && p.SessionID != "" {
-			sessionID, _ = attribute(p.SessionID)
+			sessionID = attribute(p.SessionID)
 			cwd = p.CWD
 		}
 	} else if s, c, ok := refusedSession(err); ok {
 		sessionID, cwd = s, c
 	}
+	// Nothing else can hold this record's loss: the invocation that would
+	// have recorded the call is the one that cannot. Its absence reads as a
+	// call with no coverage, unverified, which is what a paused call is too.
 	_ = st.AppendCoverage(BuildCoverage(st, sessionID, phase, store.ReasonRecordingPaused, cwd, now()))
 }
