@@ -279,7 +279,10 @@ func collectIDs(path string, into, results, denied, unhooked map[string]bool) (i
 //
 // Only text blocks of the last assistant message are taken. A thinking block is
 // not the account the user was given, and tool_use blocks are already recorded
-// far more precisely on the declaration side.
+// far more precisely on the declaration side. A sidechain line -- a
+// subagent's, written into the main transcript -- is skipped: its words are
+// the subagent's, and FinalAssistantTexts skips it by the same rule
+// (TestRubricNAMING1_BothReadersSkipAFinalSidechainLine).
 func FinalAssistantText(path string) (string, bool) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -292,7 +295,8 @@ func FinalAssistantText(path string) (string, bool) {
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
 		var line struct {
-			Message struct {
+			IsSidechain bool `json:"isSidechain"`
+			Message     struct {
 				Role    string          `json:"role"`
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
@@ -300,7 +304,9 @@ func FinalAssistantText(path string) (string, bool) {
 		if json.Unmarshal(sc.Bytes(), &line) != nil {
 			continue
 		}
-		if line.Message.Role != "assistant" || len(line.Message.Content) == 0 {
+		// A subagent's line written into the main transcript is never the
+		// main agent's word, here as in FinalAssistantTexts.
+		if line.IsSidechain || line.Message.Role != "assistant" || len(line.Message.Content) == 0 {
 			continue
 		}
 		if text, ok := assistantText(line.Message.Content); ok {
@@ -367,7 +373,8 @@ type TurnFinal struct {
 // response that belongs to it. A wanted prompt the file ties no assistant
 // text to is absent, or present with Said false.
 //
-// It is FinalAssistantText narrowed to turns, for `rashomon spend`'s
+// It applies FinalAssistantText's rule -- the last text of the main agent,
+// sidechain lines skipped -- to each wanted turn, for `rashomon spend`'s
 // silent-failure line. A turn's silent_failures verdict is the digest's rule
 // (BuildSilentFailures) applied to that turn's final message, and the digest
 // is handed that message by the Stop hook at the moment the turn ends. spend
