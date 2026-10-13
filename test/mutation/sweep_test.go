@@ -411,73 +411,86 @@ func TestCheckValidatesJudgingTestExists(t *testing.T) {
 	}
 }
 
+// workflows is every workflow file, and there must be some.
+func workflows(t *testing.T, root string) []string {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.y*ml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no workflow files under .github/workflows")
+	}
+	return files
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 // DEL-17. Every job in every workflow carries timeout-minutes. One run in
 // October 2026 lasted 1,212 minutes; a job without a bound holds a runner for
 // as long as GitHub's six-hour default allows, and the sweep job in particular
 // has nothing else to stop it.
 func TestDEL17_EveryJobHasATimeout(t *testing.T) {
-	root := moduleRoot(t)
-	workflows, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.y*ml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(workflows) == 0 {
-		t.Fatal("no workflow files under .github/workflows")
-	}
-	for _, wf := range workflows {
-		data, err := os.ReadFile(wf)
-		if err != nil {
-			t.Fatal(err)
-		}
-		jobs, missing := jobsAndMissingTimeouts(string(data))
+	for _, wf := range workflows(t, moduleRoot(t)) {
+		name := filepath.Base(wf)
+		jobs, missing, problems := jobsAndMissingTimeouts(readFile(t, wf))
 		if len(jobs) == 0 {
-			t.Errorf("%s: no jobs found", filepath.Base(wf))
+			t.Errorf("%s: no jobs found", name)
 		}
 		for _, j := range missing {
-			t.Errorf("%s: job %q has no timeout-minutes", filepath.Base(wf), j)
+			t.Errorf("%s: job %q has no timeout-minutes", name, j)
+		}
+		for _, p := range problems {
+			t.Errorf("%s: %s", name, p)
 		}
 	}
 }
 
-// DEL-17, second half. A job key is still a job key with a trailing comment,
-// and a job whose bound is written as 0 has no bound at all. Separately, a
-// `jobs:` line with its own trailing comment is not matched either, so the
-// whole block is missed and the caller sees zero jobs -- which is why
-// TestDEL17_ treats "no jobs found" as its own failure, not a silent pass.
+// DEL-17, the parser. A line parser that skips what it does not recognise
+// turns "unrecognised" into "fine": a job key with a trailing comment was not
+// a job, and its timeout was credited to the job above. The real-tree test
+// cannot go red on a well-formed tree, so these fixtures are the only red
+// the parser ever shows. A job whose bound is written as 0 has no bound at
+// all. Separately, a `jobs:` line with its own trailing comment is not
+// matched either, so the whole block is missed and the caller sees zero jobs
+// -- which is why TestDEL17_ treats "no jobs found" as its own failure, not a
+// silent pass.
 func TestDEL17b_TimeoutParserFailsClosed(t *testing.T) {
 	cases := []struct {
-		name    string
-		doc     string
-		jobs    []string
-		missing []string
+		name, doc             string
+		wantJobs, wantMissing []string
+		wantProblem           bool
 	}{
-		{
-			name:    "commented job key is still a job",
-			doc:     "jobs:\n  test:\n    timeout-minutes: 30\n  sweep:  # on demand\n    runs-on: x\n",
-			jobs:    []string{"test", "sweep"},
-			missing: []string{"sweep"},
-		},
-		{
-			name:    "a zero bound is no bound",
-			doc:     "jobs:\n  foo:\n    timeout-minutes: 0\n",
-			jobs:    []string{"foo"},
-			missing: []string{"foo"},
-		},
-		{
-			name:    "a commented jobs line is not recognised at all",
-			doc:     "jobs:  # c\n  foo:\n    timeout-minutes: 30\n",
-			jobs:    nil,
-			missing: nil,
-		},
+		{"both bounded", "jobs:\n  a:\n    timeout-minutes: 30\n  b:\n    timeout-minutes: 15\n", []string{"a", "b"}, nil, false},
+		{"one unbounded", "jobs:\n  a:\n    runs-on: x\n  b:\n    timeout-minutes: 15\n", []string{"a", "b"}, []string{"a"}, false},
+		{"commented key is a job", "jobs:\n  a:\n    runs-on: x\n  b:  # slow one\n    timeout-minutes: 30\n", []string{"a", "b"}, []string{"a"}, false},
+		{"commented job key is still a job", "jobs:\n  test:\n    timeout-minutes: 30\n  sweep:  # on demand\n    runs-on: x\n", []string{"test", "sweep"}, []string{"sweep"}, false},
+		{"comment line is not a job", "jobs:\n  # the jobs\n  a:\n    timeout-minutes: 30\n", []string{"a"}, nil, false},
+		{"unrecognised line fails closed", "jobs:\n  a:\n    timeout-minutes: 30\n  b: {timeout-minutes: 30}\n", []string{"a"}, nil, true},
+		{"zero is no bound", "jobs:\n  a:\n    timeout-minutes: 0\n", []string{"a"}, []string{"a"}, false},
+		{"a zero bound is no bound", "jobs:\n  foo:\n    timeout-minutes: 0\n", []string{"foo"}, []string{"foo"}, false},
+		{"bound with a comment", "jobs:\n  a:\n    timeout-minutes: 30  # minutes\n", []string{"a"}, nil, false},
+		{"next top-level key ends the jobs", "jobs:\n  a:\n    timeout-minutes: 30\nenv:\n  b: 1\n", []string{"a"}, nil, false},
+		{"a commented jobs line is not recognised at all", "jobs:  # c\n  foo:\n    timeout-minutes: 30\n", nil, nil, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			jobs, missing := jobsAndMissingTimeouts(tc.doc)
-			if !slicesEqual(jobs, tc.jobs) {
-				t.Errorf("jobs = %v, want %v", jobs, tc.jobs)
+			jobs, missing, problems := jobsAndMissingTimeouts(tc.doc)
+			if !slicesEqual(jobs, tc.wantJobs) {
+				t.Errorf("jobs = %v, want %v", jobs, tc.wantJobs)
 			}
-			if !slicesEqual(missing, tc.missing) {
-				t.Errorf("missing = %v, want %v", missing, tc.missing)
+			if !slicesEqual(missing, tc.wantMissing) {
+				t.Errorf("missing = %v, want %v", missing, tc.wantMissing)
+			}
+			if (len(problems) > 0) != tc.wantProblem {
+				t.Errorf("problems = %v, want a problem: %v", problems, tc.wantProblem)
 			}
 		})
 	}
@@ -639,18 +652,20 @@ func TestSweepJobCancelsAnOlderRunOnRedispatch(t *testing.T) {
 	}
 }
 
-// jobsAndMissingTimeouts reads a workflow by its lines: a job is a key at two
-// spaces of indent under `jobs:`, and its timeout is a `timeout-minutes:` line
-// at four spaces with a positive integer. No YAML parser, deliberately: the
-// module takes no dependency for a test, and the files are written by hand in
-// exactly this shape.
-func jobsAndMissingTimeouts(doc string) (jobs, missing []string) {
+// jobsAndMissingTimeouts reads a workflow by its lines: under `jobs:`, a key
+// at two spaces of indent is a job, a comment is a comment, and anything else
+// at that indent is a problem rather than something to step over. A job's
+// bound is a `timeout-minutes:` line at four spaces with a positive integer.
+// No YAML parser, deliberately: the module takes no dependency for a test,
+// and the files are written by hand in exactly this shape.
+func jobsAndMissingTimeouts(doc string) (jobs, missing, problems []string) {
 	jobLine := regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*(#.*)?$`)
 	timeoutLine := regexp.MustCompile(`^    timeout-minutes:\s*([0-9]+)\s*(#.*)?$`)
+	twoSpaces := regexp.MustCompile(`^  [^ ]`)
 	inJobs := false
 	current := ""
 	timed := map[string]bool{}
-	for _, ln := range strings.Split(doc, "\n") {
+	for i, ln := range strings.Split(doc, "\n") {
 		if ln == "jobs:" {
 			inJobs = true
 			continue
@@ -658,13 +673,21 @@ func jobsAndMissingTimeouts(doc string) (jobs, missing []string) {
 		if !inJobs {
 			continue
 		}
-		if strings.TrimSpace(ln) != "" && !strings.HasPrefix(ln, " ") && !strings.HasPrefix(ln, "#") {
+		trimmed := strings.TrimSpace(ln)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if !strings.HasPrefix(ln, " ") {
 			inJobs = false // another top-level key ends the jobs block
 			continue
 		}
 		if m := jobLine.FindStringSubmatch(ln); m != nil {
 			current = m[1]
 			jobs = append(jobs, current)
+			continue
+		}
+		if twoSpaces.MatchString(ln) {
+			problems = append(problems, fmt.Sprintf("line %d: unrecognised line under jobs: %q", i+1, trimmed))
 			continue
 		}
 		if m := timeoutLine.FindStringSubmatch(ln); m != nil && current != "" {
@@ -678,5 +701,101 @@ func jobsAndMissingTimeouts(doc string) (jobs, missing []string) {
 			missing = append(missing, j)
 		}
 	}
-	return jobs, missing
+	return jobs, missing, problems
+}
+
+// DEL-21. Every setup-go step carries a quoted go-version, and every pin across
+// the workflows is the same version: the build toolchain is pinned by hand in
+// each job, so a bump that misses one job leaves that job building with a
+// toolchain nobody chose. Found when a job added on one branch kept the old
+// pin while another branch bumped the rest.
+func TestDEL21_GoVersionPinsAgree(t *testing.T) {
+	var pins []string // "file: version"
+	for _, wf := range workflows(t, moduleRoot(t)) {
+		name := filepath.Base(wf)
+		found, problems := goVersionPins(readFile(t, wf))
+		for _, p := range problems {
+			t.Errorf("%s: %s", name, p)
+		}
+		for _, v := range found {
+			pins = append(pins, name+": "+v)
+		}
+	}
+	if len(pins) < 2 {
+		t.Fatalf("expected go-version pins in more than one place, found %v", pins)
+	}
+	version := func(pin string) string { return strings.SplitN(pin, ": ", 2)[1] }
+	for _, p := range pins[1:] {
+		if version(p) != version(pins[0]) {
+			t.Errorf("go-version pins disagree: %s vs %s", pins[0], p)
+		}
+	}
+}
+
+// DEL-21, the parser. The first version opened a step only on
+// `- uses: actions/setup-go@` and never saw the name-first form, so a step
+// written as `- name:` then `uses:` could carry an old pin unseen. Counting
+// steps and pins in any form, and refusing the forms a pin must not take,
+// is what these fixtures hold.
+func TestDEL21b_PinParserFailsClosed(t *testing.T) {
+	const sha = "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+	cases := []struct {
+		name, doc   string
+		wantPins    []string
+		wantProblem bool
+	}{
+		{"uses first", "      - uses: " + sha + "\n        with:\n          go-version: \"1.27.2\"\n", []string{"1.27.2"}, false},
+		{"name first", "      - name: Set up Go\n        uses: " + sha + "\n        with:\n          go-version: \"1.27.2\"\n", []string{"1.27.2"}, false},
+		{"pin with a comment", "      - uses: " + sha + "\n        with:\n          go-version: \"1.27.2\"  # see the note\n", []string{"1.27.2"}, false},
+		{"name first, no pin", "      - name: Set up Go\n        uses: " + sha + "\n        with:\n          cache: true\n", nil, true},
+		{"two steps, one pin", "      - uses: " + sha + "\n        with:\n          go-version: \"1.27.2\"\n      - uses: " + sha + "\n        with:\n          cache: true\n", []string{"1.27.2"}, true},
+		{"unquoted", "      - uses: " + sha + "\n        with:\n          go-version: 1.27.2\n", nil, true},
+		{"from a file", "      - uses: " + sha + "\n        with:\n          go-version-file: go.mod\n", nil, true},
+		{"pin with no step", "          go-version: \"1.27.2\"\n", []string{"1.27.2"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pins, problems := goVersionPins(tc.doc)
+			if strings.Join(pins, ",") != strings.Join(tc.wantPins, ",") {
+				t.Errorf("pins = %v, want %v", pins, tc.wantPins)
+			}
+			if (len(problems) > 0) != tc.wantProblem {
+				t.Errorf("problems = %v, want a problem: %v", problems, tc.wantProblem)
+			}
+		})
+	}
+}
+
+// goVersionPins counts the setup-go steps and the quoted go-version pins in a
+// workflow, in any step form, and the two counts must agree: a step without a
+// pin, a pin outside a step, an unquoted pin and a go-version-file are each a
+// problem, because each is a toolchain nobody chose here.
+func goVersionPins(doc string) (pins []string, problems []string) {
+	setupGo := regexp.MustCompile(`^\s*(- )?uses:\s*actions/setup-go@`)
+	pin := regexp.MustCompile(`^\s*go-version:\s*(.*?)\s*(#.*)?$`)
+	fromFile := regexp.MustCompile(`^\s*go-version-file:`)
+	steps := 0
+	for i, ln := range strings.Split(doc, "\n") {
+		switch {
+		case setupGo.MatchString(ln):
+			steps++
+		case fromFile.MatchString(ln):
+			problems = append(problems, fmt.Sprintf("line %d: go-version-file reads the pin from a file; the pin is written here", i+1))
+		default:
+			m := pin.FindStringSubmatch(ln)
+			if m == nil {
+				continue
+			}
+			v := m[1]
+			if len(v) < 2 || v[0] != '"' || v[len(v)-1] != '"' {
+				problems = append(problems, fmt.Sprintf("line %d: go-version %s is not a quoted string", i+1, v))
+				continue
+			}
+			pins = append(pins, v[1:len(v)-1])
+		}
+	}
+	if steps != len(pins) {
+		problems = append(problems, fmt.Sprintf("%d setup-go steps, %d quoted go-version pins", steps, len(pins)))
+	}
+	return pins, problems
 }

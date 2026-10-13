@@ -44,7 +44,7 @@ jobs:
         with:
           # BUILD TOOLCHAIN, pinned here and NOT read from go.mod.
           #
-          # go.mod's `go 1.24.0` is the LANGUAGE MINIMUM -- the oldest Go a
+          # go.mod's `go 1.25.0` is the LANGUAGE MINIMUM -- the oldest Go a
           # consumer needs to build this module. It is not a statement about
           # what the release should be built WITH, and reading the build
           # version from it conflated the two: setup-go treats that string as
@@ -57,9 +57,18 @@ jobs:
           # go1.25.8, and both clear at that version. A released artifact is
           # the wrong place to ship the oldest toolchain that compiles.
           #
-          # Bump this when a stdlib advisory lands; go.mod moves only when the
-          # module actually needs newer language features.
-          go-version: "1.25.8"
+          # The pin follows the newest stable release of a SUPPORTED major,
+          # not the newest patch of the major go.mod names. Go fixes
+          # security issues in the two most recent majors only; with 1.27
+          # out, 1.25 gets no fix at all, and a 1.25.x pin would carry every
+          # stdlib advisory from here on. Measured with govulncheck v1.9.0 on
+          # the 2026-10-08 database: under go1.25.8 the dependency graph
+          # carries 39 standard-library advisories (none reachable from this
+          # module's code); the newest 1.25 patch, 1.25.14, still carries 13,
+          # every one fixed only in 1.26.9 or later; go1.27.2 carries none.
+          # go.mod moves only when the module actually needs newer language
+          # features.
+          go-version: "1.27.2"
           cache: true
           # go.sum, not go.mod. This module declared no requirements when these
           # workflows were written and now depends on modernc.org/sqlite plus
@@ -216,7 +225,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.25.8"  # See the note in the test job.
+          go-version: "1.27.2"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -252,7 +261,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.25.8"  # See the note in the test job.
+          go-version: "1.27.2"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
