@@ -39,15 +39,33 @@ func realLines(t testing.TB) []string {
 // subagent, so none of its lines is one.
 const sidechainSeed = `{"parentUuid":null,"isSidechain":true,"type":"assistant","message":{"role":"assistant","content":7}}`
 
+// maxFuzzBytes bounds what FuzzTranscriptLines checks. Each line of an input
+// costs a file and two reads, so an exec here is slow, and the larger the
+// input the slower. That is why CI bounds minimization (ci.yaml): at its
+// one-minute default the fuzzer spends its window reducing one input, 5,584
+// execs in 20 s and then 0/s (2026-10-13, an M-series Mac), and 1,330 with
+// maxFuzzBytes alone. With both, the same 20 s ran 216,016 execs and kept 79 new
+// inputs. The whole transcript is still checked, once, by
+// TestRubricTest1_TranscriptSeeds; the fuzzer gets its lines singly and in
+// runs of three, which keep the across-line cases at a few KB.
+const maxFuzzBytes = 16 << 10
+
 func FuzzTranscriptLines(f *testing.F) {
 	lines := realLines(f)
-	for _, l := range lines {
+	for i, l := range lines {
 		f.Add([]byte(l))
+		if i+3 <= len(lines) {
+			f.Add([]byte(strings.Join(lines[i:i+3], "\n")))
+		}
 	}
-	f.Add([]byte(strings.Join(lines, "\n")))
 	f.Add([]byte(lines[len(lines)/2] + "\n{\"message\":\n" + lines[len(lines)/2+1]))
 	f.Add([]byte(sidechainSeed))
-	f.Fuzz(func(t *testing.T, data []byte) { checkTranscriptLines(t, data) })
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > maxFuzzBytes {
+			return
+		}
+		checkTranscriptLines(t, data)
+	})
 }
 
 // maxFuzzLines bounds the per-line comparison, which writes one file a line.
