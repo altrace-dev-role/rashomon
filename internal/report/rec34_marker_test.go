@@ -1,6 +1,8 @@
 package report
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -29,5 +31,36 @@ func TestREC34i_AMarkerNamingNoCallIsNoLostCall(t *testing.T) {
 	run.Terminals = append(run.Terminals, marker("toolu_b"))
 	if got := undeclaredCalls(run, nil); got != 1 {
 		t.Errorf("undeclaredCalls with a marker for an undeclared call = %d, want 1", got)
+	}
+}
+
+// TestREC34k_TheReportNamesEachCallNotDurable: the report renders a call a
+// flush_failed marker names as possibly not durable, by its id, in the JSON
+// and in the text, beside the session-level coverage reason, and a session
+// with no marker lists none (REC-34 (c): "the report renders such a
+// declaration as possibly not durable, never as fine"; P09-F11).
+func TestREC34k_TheReportNamesEachCallNotDurable(t *testing.T) {
+	reason := store.ReasonFlushFailed
+	run := &store.Run{
+		Declarations: []store.Declaration{{ToolUseID: "toolu_kept"}, {ToolUseID: "toolu_lost"}},
+		Terminals: []store.Terminal{
+			{ToolUseID: "toolu_kept", Outcome: store.OutcomeOK},
+			{ToolUseID: "toolu_lost", Outcome: store.OutcomeError, Reason: &reason},
+		},
+	}
+	sess := build(run)
+	if got := sess.Declarations.NotDurable; len(got) != 1 || got[0] != "toolu_lost" {
+		t.Errorf("declarations.not_durable = %q, want [toolu_lost]", got)
+	}
+	var text bytes.Buffer
+	if err := Text(&text, &Report{Sessions: []Session{sess}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text.String(), "  possibly not durable: toolu_lost\n") {
+		t.Errorf("the text report does not name the call possibly not durable:\n%s", text.String())
+	}
+	clean := build(&store.Run{Declarations: []store.Declaration{{ToolUseID: "toolu_kept"}}})
+	if clean.Declarations.NotDurable == nil || len(clean.Declarations.NotDurable) != 0 {
+		t.Errorf("a session with no marker: not_durable = %#v, want an empty list, never null", clean.Declarations.NotDurable)
 	}
 }

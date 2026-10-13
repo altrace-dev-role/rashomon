@@ -82,6 +82,7 @@ var hostBearing = map[string]bool{
 	"coverage.reasons[]":                               false,
 	"coverage.state":                                   false,
 	"declarations.dropped[]":                           false,
+	"declarations.not_durable[]":                       false,
 	"declarations.unterminated[]":                      false,
 	"declarations.without_execution[].permission_mode": false,
 	"declarations.without_execution[].tool_use_id":     false,

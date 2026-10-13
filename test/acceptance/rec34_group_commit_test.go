@@ -243,12 +243,15 @@ func TestREC34_FailedFlushIsMarkedAndNeverRetried(t *testing.T) {
 			if sess.Coverage.State != "unverified" || !e.hasReason(sess, "flush_failed") {
 				t.Errorf("report coverage %s %v; want unverified with flush_failed", sess.Coverage.State, sess.Coverage.Reasons)
 			}
+			if got := sess.Declarations.NotDurable; len(got) != 1 || got[0] != testToolUseID {
+				t.Errorf("declarations.not_durable = %q; want the marked call, %s", got, testToolUseID)
+			}
 			if len(sess.Declarations.Unterminated) != 0 || len(sess.Declarations.Dropped) != 0 {
 				t.Errorf("the marker changed the call's ending: unterminated %v, dropped %v",
 					sess.Declarations.Unterminated, sess.Declarations.Dropped)
 			}
 			text := e.run("", nil, "report", "--session", testSession)
-			if text.exitCode != 0 || !strings.Contains(text.stdout, "flush_failed") || !strings.Contains(text.stdout, "possibly not durable") {
+			if text.exitCode != 0 || !strings.Contains(text.stdout, "flush_failed") || !strings.Contains(text.stdout, "possibly not durable: "+testToolUseID) {
 				t.Errorf("the text report does not say the records are possibly not durable:\n%s", text.stdout)
 			}
 		})
@@ -355,8 +358,12 @@ func TestREC34_FailedBarrierIsMarkedNotRetried(t *testing.T) {
 			if res := e.probe("end", testSession); res.exitCode != 0 {
 				t.Fatalf("probe end: exit %d", res.exitCode)
 			}
-			if sess := e.report(testSession); !e.hasReason(sess, "flush_failed") {
+			sess := e.report(testSession)
+			if !e.hasReason(sess, "flush_failed") {
 				t.Errorf("report coverage %s %v; want flush_failed", sess.Coverage.State, sess.Coverage.Reasons)
+			}
+			if got := sess.Declarations.NotDurable; len(got) != 1 || got[0] != testToolUseID {
+				t.Errorf("declarations.not_durable = %q; want the marked call, %s", got, testToolUseID)
 			}
 		})
 	}

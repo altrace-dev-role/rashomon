@@ -296,6 +296,7 @@ type reportSession struct {
 		WithoutTranscript int      `json:"without_transcript"`
 		Unterminated      []string `json:"unterminated"`
 		Dropped           []string `json:"dropped"`
+		NotDurable        []string `json:"not_durable"`
 		WithoutExecution  []struct {
 			ToolUseID      string `json:"tool_use_id"`
 			PermissionMode string `json:"permission_mode"`

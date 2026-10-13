@@ -300,6 +300,22 @@ func (r *Run) Dropped() []string {
 	return ids
 }
 
+// NotDurable returns the tool_use_ids flush_failed markers name, each once,
+// in the order the markers were read: calls whose records a hook or post
+// appended and then could not make durable (REC-34 (c)). A marker naming no
+// call names nothing here; the report still marks its session.
+func (r *Run) NotDurable() []string {
+	seen := map[string]bool{}
+	var ids []string
+	for _, t := range r.Terminals {
+		if t.FlushFailed() && t.ToolUseID != "" && !seen[t.ToolUseID] {
+			seen[t.ToolUseID] = true
+			ids = append(ids, t.ToolUseID)
+		}
+	}
+	return ids
+}
+
 // NewestRun returns the run directory most recently written to, or "" when the
 // store holds none.
 //

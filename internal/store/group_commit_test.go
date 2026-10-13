@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -238,5 +239,32 @@ func TestREC34l_ABarrierThatIsAFullSyncLeavesNothingToFlush(t *testing.T) {
 				t.Errorf("Flush = %v; want it to sync (and fail on the removed file) = %v", err, c.wantFlushFail)
 			}
 		})
+	}
+}
+
+// TestREC34k_NotDurableNamesEveryMarkedCall: a flush_failed marker names the
+// call whose records may not be durable, and the run reads that back per
+// call, each once, so the report can say which declaration is possibly not
+// durable rather than only that the session is (REC-34 (c), P09-F11). A
+// marker naming no call names nothing here; it still marks the session.
+func TestREC34k_NotDurableNamesEveryMarkedCall(t *testing.T) {
+	reason := ReasonFlushFailed
+	marker := func(id string) Terminal {
+		return Terminal{Type: TypeTerminal, SchemaVersion: SchemaVersion, ToolUseID: id, Outcome: OutcomeError, Reason: &reason}
+	}
+	run := &Run{
+		Declarations: []Declaration{{ToolUseID: "toolu_a"}, {ToolUseID: "toolu_b"}, {ToolUseID: "toolu_c"}},
+		Terminals: []Terminal{
+			{ToolUseID: "toolu_a", Outcome: OutcomeOK},
+			marker("toolu_b"), marker("toolu_a"), marker("toolu_b"), marker(""),
+			{ToolUseID: "toolu_c", Outcome: OutcomeOK},
+		},
+	}
+	got := run.NotDurable()
+	if want := []string{"toolu_b", "toolu_a"}; !slices.Equal(got, want) {
+		t.Errorf("NotDurable() = %q, want %q: every marked call once, in the order marked, and no empty id", got, want)
+	}
+	if got := (&Run{Terminals: []Terminal{{ToolUseID: "toolu_a", Outcome: OutcomeOK}}}).NotDurable(); len(got) != 0 {
+		t.Errorf("NotDurable() with no marker = %q, want none", got)
 	}
 }
