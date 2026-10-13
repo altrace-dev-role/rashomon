@@ -11,10 +11,10 @@ m("SP the first line of a response is kept, not the completed one", "internal/sp
 m("SP a response starts at its latest line, not its earliest", "internal/spend/scan.go",
   "\tif cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS < prev.StartMS) {",
   "\tif cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS > prev.StartMS) {", "TestDedupe_TheCompletedLine")
-m("SP the transcript line decodes message.content", "internal/spend/scan.go",
+m("SP the transcript line decodes message.content", "internal/spend/line.go",
   "\tModel       string       `json:\"model\"`\n", "\tModel       string       `json:\"model\"`\n\tContent     json.RawMessage `json:\"content\"`\n",
   "TestContentHasNoFieldToLandIn")
-IMPORTS["SP the transcript line decodes message.content"] = ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n')
+IMPORTS["SP the transcript line decodes message.content"] = ("internal/spend/line.go", 'import "strings"\n', 'import (\n\t"encoding/json"\n\t"strings"\n)\n')
 m("SP the --days window is ignored", "internal/spend/spend.go",
   "r.StartMS == 0 || r.StartMS < s.FromUnixMS {", "r.StartMS == 0 {", "TestWindow_")
 m("SP an undated response is dropped without being counted", "internal/spend/scan.go",
@@ -39,7 +39,7 @@ m("SP a 1h cache write is priced as a 5m one", "internal/spend/price.go",
   "return r.Input * 2 }", "return r.Input * 5 / 4 }", "TestPricing_")
 m("SP Fable 5.1's cache read is 0.1x input, not the table's 0.25", "internal/spend/price.go",
   "\t\"claude-fable-5-1\": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},", "\t\"claude-fable-5-1\": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},", "TestPricing_TheTable")
-m("SP an unsplit cache write is priced at the 1h rate", "internal/spend/scan.go",
+m("SP an unsplit cache write is priced at the 1h rate", "internal/spend/line.go",
   "\t\tout.CacheWrite5m += rest", "\t\tout.CacheWrite1h += rest", "TestPricing_CacheWrites")
 m("SP an unknown model is priced at $0", "internal/spend/amounts.go",
   "\tc.addUnpriced(p.tokens())\n", "\tc.addPriced(0)\n", "TestUnknownModel_")
@@ -239,11 +239,11 @@ m("SP a usage line that does not decode is dropped without a count", "internal/s
   "TestUnparsed_")
 m("SP an implausible usage is priced", "internal/spend/scan.go",
   "\t\tif !l.Message.Usage.plausible() {", "\t\tif false && !l.Message.Usage.plausible() {", "TestUnparsed_")
-m("SP a negative token count is plausible", "internal/spend/scan.go",
+m("SP a negative token count is plausible", "internal/spend/line.go",
   "\t\t\tif v < 0 || v > maxTokens {", "\t\t\tif v > maxTokens {", "TestUnparsed_")
-m("SP an implausibly large token count is plausible", "internal/spend/scan.go",
+m("SP an implausibly large token count is plausible", "internal/spend/line.go",
   "\t\t\tif v < 0 || v > maxTokens {", "\t\t\tif v < 0 {", "TestUnparsed_")
-m("SP an iteration's counts are not checked", "internal/spend/scan.go",
+m("SP an iteration's counts are not checked", "internal/spend/line.go",
   "\tfor _, it := range u.Iterations {\n\t\tif !ok(it.tokens) {", "\tfor _, it := range u.Iterations {\n\t\tif false && !ok(it.tokens) {",
   "TestUnparsed_")
 m("SP unparsed usage lines are not said", "internal/spend/text.go",
@@ -365,7 +365,7 @@ m("SP the web-search fee is not the dated table's", "internal/spend/price.go",
 m("SP Mythos 5 prices its cache reads at Mythos 5.1's rate", "internal/spend/price.go",
   "\t\"claude-mythos-5\":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},", "\t\"claude-mythos-5\":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},",
   "TestPricing_TheTable")
-m("SP a decoded field under an allowed tag holds whatever it is handed", "internal/spend/scan.go",
+m("SP a decoded field under an allowed tag holds whatever it is handed", "internal/spend/line.go",
   "\tType        string  `json:\"type\"`", "\tType        any     `json:\"type\"`", "TestContentHasNoFieldToLandIn")
 m("SP a zero-usage refusal line is not counted", "internal/spend/spend.go",
   "\t\t\t\ts.Refusals.WithoutUsage++", "\t\t\t\t_ = s", "TestRefusals_")
@@ -408,10 +408,10 @@ m("SP a transcript holding only shared responses is not a transcript", "internal
 m("SP a cold-cache stream holds only the responses first seen in its file", "internal/spend/spend.go",
   "\t\tfor _, f := range r.files {\n\t\t\tk := stream{f.idx, r.Subagent}", "\t\tfor _, f := range r.files[:1] {\n\t\t\tk := stream{f.idx, r.Subagent}",
   "TestJoin_ADuplicatedResponse")
-m("SP an iteration entry's type is decoded as counts only", "internal/spend/scan.go",
+m("SP an iteration entry's type is decoded as counts only", "internal/spend/line.go",
   "\tType string `json:\"type\"`\n\t// Model is the model that ran the attempt.", "\tType string `json:\"-\"`\n\t// Model is the model that ran the attempt.",
   "TestExtraAttempts_")
-m("SP an iteration entry's model is not decoded", "internal/spend/scan.go",
+m("SP an iteration entry's model is not decoded", "internal/spend/line.go",
   "\tModel string `json:\"model\"`\n}", "\tModel string `json:\"-\"`\n}",
   "TestExtraAttempts_")
 m("SP a fallback-served response is not counted", "internal/spend/spend.go",
@@ -420,14 +420,14 @@ m("SP a fallback-served response is not counted", "internal/spend/spend.go",
 m("SP the headline does not say the total leaves out the extra attempts", "internal/spend/text.go",
   "\tif a := s.ExtraAttempts; a.Attempts > 0 {", "\tif a := s.ExtraAttempts; false && a.Attempts > 0 {",
   "TestExtraAttempts_TheFallbackPagesExample|TestRefusalsAndExtraAttempts")
-m("SP a refusal's category is not decoded", "internal/spend/scan.go",
+m("SP a refusal's category is not decoded", "internal/spend/line.go",
   "\tCategory *string `json:\"category\"`", "\tCategory *string `json:\"-\"`",
   "TestRefusals_AreSplitByCategoryAndModel")
-m("SP a category outside the vocabulary is kept as read", "internal/spend/scan.go",
+m("SP a category outside the vocabulary is kept as read", "internal/spend/line.go",
   "\tswitch c := *d.Category; c {\n\tcase CategoryCyber, CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction, CategoryGeneralHarms:\n\t\treturn c\n\t}\n\treturn CategoryOther\n",
   "\treturn *d.Category\n",
   "TestRefusals_AreSplitByCategoryAndModel|TestContentNeverReachesTheOutput")
-m("SP a null category is read as other", "internal/spend/scan.go",
+m("SP a null category is read as other", "internal/spend/line.go",
   "\tif d == nil || d.Category == nil {\n\t\treturn CategoryUncategorized", "\tif d == nil || d.Category == nil {\n\t\treturn CategoryOther",
   "TestRefusals_")
 m("SP a zero-usage refusal is not split by category", "internal/spend/spend.go",
@@ -442,7 +442,7 @@ m("SP a refusal's model is printed as read", "internal/spend/spend.go",
 m("SP the refusal categories are not printed", "internal/spend/text.go",
   "\tfor _, g := range r.ByCategory {\n\t\tvar p []string", "\tfor _, g := range r.ByCategory[:0] {\n\t\tvar p []string",
   "TestRefusals_")
-m("SP a refusal's category reaches the output end to end", "internal/spend/scan.go",
+m("SP a refusal's category reaches the output end to end", "internal/spend/line.go",
   "\tswitch c := *d.Category; c {\n\tcase CategoryCyber, CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction, CategoryGeneralHarms:\n\t\treturn c\n\t}\n\treturn CategoryOther\n",
   "\treturn *d.Category\n",
   "TestSpend_NoMessageTextReachesTheOutput")
@@ -518,10 +518,10 @@ m("SP a non-firing turn's final words reach the JSON", "internal/spend/join.go",
 m("SP cmdSpend reads a 30-day window whatever --days says", "cmd/rashomon/main.go",
   "\tfiles, err := spend.Discover(configDir, spend.WindowStart(now, days))", "\tfiles, err := spend.Discover(configDir, spend.WindowStart(now, 30))",
   "TestSpend_OldTranscriptsAreSkippedAndSaid")
-m("SP the decoded message hands its bytes to its own decoder", "internal/spend/scan.go",
+m("SP the decoded message hands its bytes to its own decoder", "internal/spend/line.go",
   "\tUsage       *usage       `json:\"usage\"`\n}\n", "\tUsage       *usage       `json:\"usage\"`\n}\n\nfunc (m *message) UnmarshalJSON(b []byte) error {\n\ttype plain message\n\treturn json.Unmarshal(b, (*plain)(m))\n}\n",
   "TestContentHasNoFieldToLandIn")
-IMPORTS["SP the decoded message hands its bytes to its own decoder"] = ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n')
+IMPORTS["SP the decoded message hands its bytes to its own decoder"] = ("internal/spend/line.go", 'import "strings"\n', 'import (\n\t"encoding/json"\n\t"strings"\n)\n')
 
 m("SP an unkeyed main-transcript sidechain user line ends the tie", "internal/report/transcript.go",
   "\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tcontinue\n", "\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tif head.Type == \"user\" && head.PromptID == \"\" {\n\t\t\t\tcurrent = \"\"\n\t\t\t}\n\t\t\tcontinue\n",

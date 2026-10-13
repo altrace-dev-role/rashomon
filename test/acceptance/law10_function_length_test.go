@@ -11,9 +11,13 @@ import (
 	"testing"
 )
 
-// functionLimit is the engineering constitution's Law 10 ceiling on one
-// function: a hundred lines of code, blank lines and comment lines not counted.
-const functionLimit = 100
+// functionLimit and fileLimit are the engineering constitution's Law 10
+// ceilings: a hundred lines of code in one function and five hundred in one
+// file, blank lines and comment lines not counted.
+const (
+	functionLimit = 100
+	fileLimit     = 500
+)
 
 // overLimit are the functions that were already past the limit when this test
 // was written, each at the size it had then. It is a ratchet, not a pardon: an
@@ -25,6 +29,14 @@ var overLimit = map[string]int{
 	"internal/spend/spend.go:Build":                   177,
 	"internal/shape/masked.go:lineParser.parseSimple": 116,
 	"internal/spend/join.go:Summary.Join":             111,
+}
+
+// filesOverLimit is overLimit's ratchet for whole files.
+var filesOverLimit = map[string]int{
+	"cmd/rashomon/main.go":     1233,
+	"internal/shape/shape.go":  1018,
+	"internal/shape/masked.go": 940,
+	"internal/report/text.go":  544,
 }
 
 // codeLines counts the lines of a function body strictly between its braces
@@ -41,10 +53,11 @@ func codeLines(src []string, lbrace, rbrace int) int {
 }
 
 // functionSizes measures every function with a body in the module's non-test
-// Go files under cmd/ and internal/, keyed file:Recv.Name.
-func functionSizes(t *testing.T) map[string]int {
+// Go files under cmd/ and internal/, keyed file:Recv.Name, and every such
+// file, keyed by its path.
+func functionSizes(t *testing.T) (funcs, files map[string]int) {
 	t.Helper()
-	out := map[string]int{}
+	out, files := map[string]int{}, map[string]int{}
 	fset := token.NewFileSet()
 	for _, top := range []string{"cmd", "internal"} {
 		err := filepath.WalkDir(filepath.Join(moduleRoot, top), func(p string, d fs.DirEntry, err error) error {
@@ -64,6 +77,7 @@ func functionSizes(t *testing.T) map[string]int {
 				return err
 			}
 			src := strings.Split(string(body), "\n")
+			files[filepath.ToSlash(rel)] = codeLines(src, 0, len(src)+1)
 			for _, decl := range f.Decls {
 				fn, ok := decl.(*ast.FuncDecl)
 				if !ok || fn.Body == nil {
@@ -78,7 +92,7 @@ func functionSizes(t *testing.T) map[string]int {
 			t.Fatal(err)
 		}
 	}
-	return out
+	return out, files
 }
 
 // funcName is Name for a function and Recv.Name for a method.
@@ -104,25 +118,44 @@ func funcName(fn *ast.FuncDecl) string {
 // past the limit, grew by one more line in a change that was otherwise right:
 // nothing measured the function, so nothing said it had moved the wrong way.
 func TestRubricLAW10_NoFunctionGrowsPastAHundredCodeLines(t *testing.T) {
-	sizes := functionSizes(t)
+	sizes, _ := functionSizes(t)
 	if len(sizes) < 500 {
 		t.Fatalf("premise: measured only %d functions; the walk did not reach the module's code", len(sizes))
 	}
+	ratchet(t, sizes, overLimit, functionLimit)
+}
+
+// ratchet holds each size in sizes to limit, or, for a key listed in ceilings,
+// to the size it had when it was listed.
+func ratchet(t *testing.T, sizes, ceilings map[string]int, limit int) {
+	t.Helper()
 	for key, n := range sizes {
-		ceiling, listed := overLimit[key]
+		ceiling, listed := ceilings[key]
 		switch {
-		case !listed && n > functionLimit:
-			t.Errorf("%s is %d code lines; Law 10 allows %d", key, n, functionLimit)
+		case !listed && n > limit:
+			t.Errorf("%s is %d code lines; Law 10 allows %d", key, n, limit)
 		case listed && n > ceiling:
 			t.Errorf("%s grew to %d code lines; it was %d and may only shrink", key, n, ceiling)
 		case listed && n < ceiling:
-			t.Errorf("%s shrank to %d code lines; lower its entry in overLimit from %d (remove it at %d or fewer)",
-				key, n, ceiling, functionLimit)
+			t.Errorf("%s shrank to %d code lines; lower its entry from %d (remove it at %d or fewer)",
+				key, n, ceiling, limit)
 		}
 	}
-	for key := range overLimit {
+	for key := range ceilings {
 		if _, ok := sizes[key]; !ok {
-			t.Errorf("overLimit names %s, which no longer exists; remove the entry", key)
+			t.Errorf("the ratchet names %s, which no longer exists; remove the entry", key)
 		}
 	}
+}
+
+// TestRubricLAW10_NoFileGrowsPastFiveHundredCodeLines is the same ratchet
+// over whole files. spend's scan.go was past the limit before this branch and
+// grew by four lines with readFile's split; moving the decoded line's shape
+// into line.go brought it back under, and this keeps it there.
+func TestRubricLAW10_NoFileGrowsPastFiveHundredCodeLines(t *testing.T) {
+	_, files := functionSizes(t)
+	if len(files) < 50 {
+		t.Fatalf("premise: measured only %d files; the walk did not reach the module's code", len(files))
+	}
+	ratchet(t, files, filesOverLimit, fileLimit)
 }
