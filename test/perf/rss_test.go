@@ -314,8 +314,8 @@ func TestRES28b_EveryEntryStaysWithinItsRow(t *testing.T) {
 			budgetP50 := e.MaxRSSMiBP50
 			if o, ok := overrides[e.ID]; ok {
 				budgetP50 = o.P50
-			} else {
-				t.Logf("%s: no %s override; gating against the reference row", e.ID, platform())
+			} else if platform() != "darwin/arm64" {
+				t.Logf("%s: %s has no figure of its own yet; gated against the reference row (darwin/arm64, Apple M3)", e.ID, platform())
 			}
 			sd, err := SeedFor(e)
 			if err != nil {
