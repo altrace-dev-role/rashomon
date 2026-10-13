@@ -4,7 +4,7 @@ m("H-46 Bash is labelled from its first path-like token", "internal/shape/label.
   "TestH46_|TestLabel")
 
 m("H-46 labelling recovers after the append instead of before it", "internal/hook/handle.go",
-  "\tdefer func() {\n\t\tif v := recover(); v != nil {\n\t\t\tlabel = shape.LabelUnknown\n\t\t}\n\t}()\n\tfault.Inject(fault.PointLabel)",
+  "\tdefer func() {\n\t\tif v := recover(); v != nil {\n\t\t\tlabel, recovered = shape.LabelUnknown, true\n\t\t}\n\t}()\n\tfault.Inject(fault.PointLabel)",
   "\tfault.Inject(fault.PointLabel)", "TestH46_NoFault")
 
 m("a paused session probe counts as the session's start or end", "internal/report/report.go",

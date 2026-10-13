@@ -104,7 +104,9 @@ func TestH1_NoFaultBlocksTheToolCall(t *testing.T) {
 				} else if len(decls) != 0 {
 					t.Errorf("declaration was written despite a fault at %s", point)
 				}
-				assertCallCoverage(t, e, session, "unverified", "internal_error")
+				// recovered_panic, not internal_error: every fault here is a
+				// panic the barrier recovered, and the record says which.
+				assertCallCoverage(t, e, session, "unverified", "recovered_panic")
 			})
 		}
 	}

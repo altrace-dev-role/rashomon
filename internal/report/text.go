@@ -236,6 +236,7 @@ var reasonText = map[string]string{
 	"recording_paused":       "a hook ran while `rashomon pause` was in effect, so what it would have recorded (a tool call, its result, or the session's start or end) was deliberately not recorded",
 	"duplicate_declarations": "more declarations than distinct tool calls: more than one recorder wrote into this run, and the counts here include every copy",
 	"internal_error":         "a hook invocation failed inside this program, so what it should have recorded is missing",
+	"recovered_panic":        "a hook invocation hit a bug in this program and recovered from it, so what it should have recorded is missing, or a file label reads unknown",
 	"lock_timeout":           "a hook could not take the store lock in time, so its record went to the spill file or was lost",
 	"payload_too_large":      "a hook was handed a payload over the 8 MiB intake limit and refused it without parsing, so that call was not recorded",
 	"flush_failed":           "a hook could not flush its records to stable storage before it exited, so they are possibly not durable: a power loss or a crash of the machine could still remove them",
