@@ -31,7 +31,10 @@ func parsePkgs(t *testing.T, fset *token.FileSet, srcs map[string]map[string]str
 // or init calls (in another file, transitively, as a method), and through a
 // function of another scanned package; and it does not count a compile
 // inside a function sync.OnceFunc, OnceValue or OnceValues defers to first
-// use, nor one in a function initialisation never calls.
+// use, nor one in a function initialisation never calls. A deferred function
+// that initialisation does call counts: through a package var holding the
+// Once result (in this package or another), through the Once result called
+// inline, and through a package var holding a function or a literal.
 func TestRES2c_InitScanFollowsEveryPathToACompile(t *testing.T) {
 	one := func(src string) map[string]map[string]string {
 		return map[string]map[string]string{"m/a": {"a.go": "package a\n" + src}}
@@ -71,6 +74,25 @@ func (T) compile() *regexp.Regexp { return regexp.MustCompile("a") }`), 1},
 		{"aliased sync.OnceFunc defers it", one(`import ("regexp"; s "sync"); var f = s.OnceFunc(func() { regexp.MustCompile("a") })`), 0},
 		{"sync.OnceValues defers a helper", one(`import ("regexp"; "sync"); var r = sync.OnceValues(build)
 func build() (*regexp.Regexp, error) { return regexp.Compile("a") }`), 0},
+		{"OnceValue getter called at init", one(`import ("regexp"; "sync"); var wordRE = sync.OnceValue(func() *regexp.Regexp { return regexp.MustCompile("a") })
+var eager = wordRE()`), 1},
+		{"OnceValue getter called by init", one(`import ("regexp"; "sync"); var get = sync.OnceValue(build); var r *regexp.Regexp
+func init() { r = get() }
+func build() *regexp.Regexp { return regexp.MustCompile("a") }`), 1},
+		{"OnceValue invoked inline", one(`import ("regexp"; "sync"); var r = sync.OnceValue(func() *regexp.Regexp { return regexp.MustCompile("a") })()`), 1},
+		{"OnceFunc helper invoked inline", one(`import ("regexp"; "sync"); var _ = func() int { sync.OnceFunc(build)(); return 0 }()
+func build() { regexp.MustCompile("a") }`), 1},
+		{"getter of another scanned package", map[string]map[string]string{
+			"m/a": {"a.go": "package a\nimport mb \"m/b\"\nvar rules = mb.Rules()\n"},
+			"m/b": {"b.go": "package b\nimport (\"regexp\"; \"sync\")\nvar Rules = sync.OnceValue(func() *regexp.Regexp { return regexp.MustCompile(\"a\") })\n"},
+		}, 1},
+		{"var holding a function, called", one(`import "regexp"; var f = compileRules; var r = f()
+func compileRules() *regexp.Regexp { return regexp.MustCompile("a") }`), 1},
+		{"var holding a literal, called", one(`import "regexp"; var f = func() *regexp.Regexp { return regexp.MustCompile("a") }; var r = f()`), 1},
+		{"OnceValue getter never called at init", one(`import ("regexp"; "sync"); var wordRE = sync.OnceValue(func() *regexp.Regexp { return regexp.MustCompile("a") })
+func match(s string) bool { return wordRE().MatchString(s) }`), 0},
+		{"var holding a function, never called", one(`import "regexp"; var f = compileRules
+func compileRules() *regexp.Regexp { return regexp.MustCompile("a") }`), 0},
 		{"compiled on use only", one(`import "regexp"; func match(s string) bool { return regexp.MustCompile("a").MatchString(s) }`), 0},
 		{"recursion terminates", one(`var n = f(3)
 func f(i int) int { if i == 0 { return 0 }; return f(i - 1) }`), 0},
