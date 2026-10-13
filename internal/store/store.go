@@ -331,7 +331,7 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockAppend(f, lockBudget)
+	unlock, err := lockCounted(f, lockBudget)
 	if err != nil {
 		return err
 	}
@@ -351,10 +351,12 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	return s.syncAppend(f)
 }
 
-// lockAppend takes f's append lock. The fault build counts it as held until
-// it is released, so the sync recorder can say whether a sync ran inside a
-// lock (REC-34); a released build compiles the count away.
-func lockAppend(f *os.File, budget time.Duration) (func(), error) {
+// lockCounted takes f's lock, and every lock the store takes goes through
+// it: the appends', forget's and eviction's, and the readers'. The fault
+// build counts each as held until it is released, so the sync recorder can
+// say whether a sync ran inside any lock at all (REC-34); a released build
+// compiles the count away.
+func lockCounted(f *os.File, budget time.Duration) (func(), error) {
 	unlock, err := LockFile(f, budget)
 	if err != nil {
 		return nil, err
@@ -423,7 +425,7 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockAppend(f, budget)
+	unlock, err := lockCounted(f, budget)
 	switch {
 	case err == nil:
 		defer unlock()

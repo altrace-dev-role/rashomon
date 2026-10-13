@@ -223,7 +223,7 @@ func eachLineLocked(path string, budget time.Duration, fn func(line []byte)) err
 	}
 	defer f.Close() //nolint:errcheck // read-only
 
-	if unlock, lerr := LockFile(f, budget); lerr == nil {
+	if unlock, lerr := lockCounted(f, budget); lerr == nil {
 		defer unlock()
 	}
 	return scanLines(f, fn)

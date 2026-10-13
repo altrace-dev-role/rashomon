@@ -15,7 +15,7 @@ m("REC-34 the hook flushes before its last append", "cmd/rashomon/main.go",
   "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n",
   "TestREC34_")
 m("REC-34 the ordered append syncs in full inside the lock", "internal/store/store.go",
-  "\treturn s.syncAppend(f)\n}\n\n// lockAppend takes", "\treturn syncFull(f)\n}\n\n// lockAppend takes", "TestREC34_")
+  "\treturn s.syncAppend(f)\n}\n\n// lockCounted takes", "\treturn syncFull(f)\n}\n\n// lockCounted takes", "TestREC34_")
 m("REC-34 the seq counter syncs in full inside the lock", "internal/store/store.go",
   "\tseq, err := nextSeq(dir, s.syncAppend)", "\tseq, err := nextSeq(dir, syncFull)", "TestREC34_")
 m("REC-34 group commit off: a deferred store syncs every append in full", "internal/store/store.go",
@@ -61,3 +61,15 @@ IMPORTS["REC-34 an accepted barrier falls back to a full sync"] = ("internal/sto
   "import (\n\t\"os\"\n\t\"syscall\"\n)")
 m("REC-34 group commit off inside barrierSync", "internal/store/sync_darwin.go",
   "func barrierSync(f *os.File) error {\n\tfor {\n", "func barrierSync(f *os.File) error {\n\treturn syncFull(f)\n\tfor {\n", "TestREC34_")
+# Every lock counted and every sync seen (P09-F8): the recorder's locked= flag
+# is only as good as the locks it is told about.
+m("REC-34 forget's rewrite syncs where the recorder cannot see it", "internal/store/gaps.go",
+  "\treturn syncFull(f)\n}\n\n// rewriteAt", "\treturn f.Sync()\n}\n\n// rewriteAt", "TestREC34h_")
+m("REC-34 forget's rewrite sync unseen, judged end to end", "internal/store/gaps.go",
+  "\tfor _, line := range lines {\n\t\tif _, err := f.Write(append(line, '\\n')); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn syncFull(f)\n",
+  "\tfor _, line := range lines {\n\t\tif _, err := f.Write(append(line, '\\n')); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn f.Sync()\n",
+  "TestREC34_Forget")
+m("REC-34 eviction takes a lock the recorder does not count", "internal/store/gaps.go",
+  "\tunlock, err := lockCounted(gf, lockBudget)", "\tunlock, err := LockFile(gf, lockBudget)", "TestREC34h_")
+m("REC-34 the counted lock counts nothing", "internal/store/store.go",
+  "\tfault.LockTaken()\n", "", "TestREC34_")
