@@ -438,7 +438,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 	// marshals the same array a store with runs does. See the field comment.
 	rep := &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
 	for _, name := range names {
-		run, err := st.ReadRunDir(name)
+		run, err := st.ReadRunDirForReport(name)
 		if err != nil {
 			return nil, err
 		}

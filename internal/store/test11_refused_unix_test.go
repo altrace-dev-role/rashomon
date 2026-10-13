@@ -155,3 +155,14 @@ func TestRubricTEST11_TheGapsReadCountsARefusalAtItsCallSite(t *testing.T) {
 		t.Errorf("got %d gaps and %d skipped, want none read and one skipped", len(gaps), skipped)
 	}
 }
+
+// refuseRecordsRead makes path's read refused, as a held records lock does
+// on Windows: path becomes a directory and st counts EISDIR as a refusal.
+func refuseRecordsRead(t *testing.T, st *Store, path string) func() {
+	t.Helper()
+	if err := os.Mkdir(path, dirMode); err != nil {
+		t.Fatal(err)
+	}
+	st.readRefusal = refusesAsEISDIR
+	return func() {}
+}

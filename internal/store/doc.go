@@ -40,19 +40,22 @@
 // invocation's waits share one deadline (LimitLockWaits), so the waits of
 // its three appends cannot add up past the hook timeout.
 //
-// Reads take no lock, except one. ReadRunDir and ReadRun read a run's three
+// Reads take no lock, except two. ReadRunDir and ReadRun read a run's three
 // files unlocked; their callers read after the fact or accept a line caught
-// mid-write as one counted in Run.Skipped: report and spend, which read
-// finished sessions; the end probe, which reads its own session as it ends;
-// and eviction, which reads only runs nobody has written to for an hour.
-// ReadGaps, Runs and NewestRun read unlocked too. ReadRunConsistent, digest's
-// read of a session that may still be running, tries each file's lock inside
-// one short budget for the whole read and reads anyway when it cannot get it
-// (eachLineTryLock); a writer's own read of the records it is about to
-// append to (maxSeq) is under the lock that writer holds. Where locks are
-// mandatory (Windows), a held lock refuses an unlocked read; ReadRunConsistent
-// and ReadGaps count the refusal as one line they could not read, so the
-// session reads unverified, and ForgottenHost fails instead (test-11).
+// mid-write as one counted in Run.Skipped: spend, which reads finished
+// sessions; the end probe, which reads its own session as it ends; and
+// eviction, which reads only runs nobody has written to for an hour. report
+// reads the same way through ReadRunDirForReport. ReadGaps, Runs and
+// NewestRun read unlocked too. ReadRunConsistent, digest's read of a session
+// that may still be running, tries each file's lock inside one short budget
+// for the whole read and reads anyway when it cannot get it
+// (eachLineTryLock); ForgottenHost, report's read of the forgotten hosts,
+// does the same with lockBudget; a writer's own read of the records it is
+// about to append to (maxSeq) is under the lock that writer holds. Where
+// locks are mandatory (Windows), a held lock refuses an unlocked read;
+// ReadRunConsistent, ReadRunDirForReport and ReadGaps count the refusal as
+// one line they could not read, so the session reads unverified, and
+// ForgottenHost, which waited for the lock first, fails instead (test-11).
 //
 // Eviction takes no run's records lock: it removes only runs that nothing
 // has written to for evictGrace, an hour, and never the session that ran it.

@@ -79,13 +79,31 @@ func (s *Store) ReadRun(sessionID string) (*Run, error) {
 	return s.ReadRunDir(segment(sessionID))
 }
 
-// ReadRunDir reads one session's records by run directory name.
+// ReadRunDir reads one session's records by run directory name. Any read
+// error fails it: the end probe and eviction count what it returns, and a
+// file they could not read must not count as one that held nothing.
 func (s *Store) ReadRunDir(name string) (*Run, error) {
+	return s.readRunDir(name, neverRefused)
+}
+
+// ReadRunDirForReport is ReadRunDir for report, which reads every run while
+// hooks may be appending to it. Where locks are mandatory (Windows), a hook
+// holding a run's records lock refuses the read, and that refusal failed the
+// whole report; here it counts as one line that could not be read, so the
+// session reads unverified instead (test-11), as a digest's read does.
+func (s *Store) ReadRunDirForReport(name string) (*Run, error) {
+	return s.readRunDir(name, s.refusal())
+}
+
+// readRunDir reads one run's three files unlocked; refused says which read
+// errors count as one skipped line rather than failing the read.
+func (s *Store) readRunDir(name string, refused func(error) bool) (*Run, error) {
 	dir := filepath.Join(s.root, dirRuns, name)
 	run := &Run{Dir: name}
+	fn := func(line []byte) { classifyRunLine(run, line) }
 
 	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
-		if err := eachLine(filepath.Join(dir, fname), func(line []byte) { classifyRunLine(run, line) }); err != nil {
+		if err := refusedAsSkipped(eachLine(filepath.Join(dir, fname), fn), refused, fn); err != nil {
 			return nil, err
 		}
 	}
@@ -216,16 +234,22 @@ func neverRefused(error) bool { return false }
 // another handle holds the file's lock; a read failing that way reaches the
 // line callback as one nil line, which counts as skipped.
 func readGapsAt(path string, refused func(error) bool) (gaps []Gap, skipped int, err error) {
-	fn := func(line []byte) {
-		var g Gap
-		if json.Unmarshal(line, &g) != nil || g.Type != TypeGap {
-			skipped++
-			return
-		}
-		gaps = append(gaps, g)
-	}
+	fn := gapLines(&gaps, &skipped)
 	err = refusedAsSkipped(eachLine(path, fn), refused, fn)
 	return gaps, skipped, err
+}
+
+// gapLines is the line callback of a gaps read: a gap record joins gaps, and
+// any other line, a nil one included, counts in skipped.
+func gapLines(gaps *[]Gap, skipped *int) func(line []byte) {
+	return func(line []byte) {
+		var g Gap
+		if json.Unmarshal(line, &g) != nil || g.Type != TypeGap {
+			*skipped++
+			return
+		}
+		*gaps = append(*gaps, g)
+	}
 }
 
 // eachLine calls fn for every non-empty line of an NDJSON file. A missing file
@@ -244,7 +268,8 @@ func eachLine(path string, fn func(line []byte)) error {
 
 // eachLineTryLock is eachLine under a short, best-effort exclusive lock against
 // the same flock a writer takes -- see ReadRunConsistent's doc for why a
-// digest needs this and report never has.
+// digest needs this, and ForgottenHost's for why report's read of the
+// forgotten hosts does. report's reads of the runs themselves never have.
 //
 // It takes the lock itself, and tries rather than requires it: the name says
 // so, because by the Go convention a name ending in Locked is a function

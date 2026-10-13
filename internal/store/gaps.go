@@ -692,11 +692,17 @@ func (s *Store) ForgottenHostBefore() (func(host string, declaredAtMS int64) boo
 // It reads the gaps itself rather than through ReadGaps, because a gaps file
 // it cannot read must fail the caller: ReadGaps counts a read refused by a
 // held lock as a skipped line, and here that would read as "nothing was
-// forgotten" and show a host the user removed. A damaged line is discarded
-// with the count: ReadGaps, which every report reads first, has already
-// marked every session unverified for it (REC-33).
+// forgotten" and show a host the user removed. So it waits for the gaps
+// lock first, up to lockBudget, and reads under it: a forget or an eviction
+// holding the lock costs the report a wait rather than, where locks are
+// mandatory (Windows), the report itself (test-11). A hold longer than that
+// is read past where it can be (unix) and fails the report where it cannot.
+// A damaged line is discarded with the count: ReadGaps, which every report
+// reads first, has already marked every session unverified for it (REC-33).
 func (s *Store) forgottenDigestTimes() (map[string]int64, error) {
-	gaps, _, err := readGapsAt(filepath.Join(s.root, FileGaps), neverRefused)
+	var gaps []Gap
+	var skipped int
+	err := eachLineTryLock(filepath.Join(s.root, FileGaps), lockBudget, neverRefused, gapLines(&gaps, &skipped))
 	if err != nil {
 		return nil, err
 	}

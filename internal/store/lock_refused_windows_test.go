@@ -55,7 +55,8 @@ func TestRubricTEST11_AReadRefusedByAHeldLockCountsAsSkipped(t *testing.T) {
 // that file unlocked, so on Windows the read is refused and digest.Build
 // failed with it. The refusal now counts as one gap line that could not be
 // read, which reads every session unverified (REC-33). ForgottenHost still
-// fails: a gaps file it cannot read must not read as "nothing forgotten".
+// fails, after waiting lockBudget for a hold that here never ends: a gaps
+// file it cannot read must not read as "nothing forgotten".
 //
 // It runs only on Windows, in CI's lock-windows job.
 func TestRubricTEST11_AGapsReadRefusedByAHeldLockCountsAsSkipped(t *testing.T) {
@@ -82,6 +83,20 @@ func TestRubricTEST11_AGapsReadRefusedByAHeldLockCountsAsSkipped(t *testing.T) {
 		t.Errorf("got %d gaps and %d skipped, want none read and one skipped", len(gaps), skipped)
 	}
 	if _, err := st.ForgottenHost(); err == nil {
-		t.Error("ForgottenHost under a held mandatory lock returned no error, want the refused read to fail it")
+		t.Error("ForgottenHost under a mandatory lock held past its wait returned no error, want the refused read to fail it")
 	}
+}
+
+// refuseRecordsRead makes path's read refused the way Windows refuses it: a
+// handle of its own holds the records lock until the returned release.
+func refuseRecordsRead(t *testing.T, _ *Store, path string) func() {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(`{"type":"declaration","schema_version":2,"seq":1}`+"\n"), fileMode); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lockFile(openForAppend(t, path), lockBudget)
+	if err != nil {
+		t.Fatalf("taking the records lock: %v", err)
+	}
+	return unlock
 }
