@@ -22,7 +22,8 @@ import (
 //     protect_path is integrity/frozen-path (tech 58); a claim's verdict is
 //     its kind (masked_inconclusive is masked, 2.2.11), a done claim over
 //     stale or absent is done-unverified, and unrecovered failures are
-//     silent-failure; subtask-gate takes commit, push or pr from the point.
+//     silent-failure unless the verdict is masked, which stays masked
+//     (ED-3); subtask-gate takes commit, push or pr from the point.
 //   - MaxLevel and StopForm: per card at the finding's event (archive
 //     40.3.4: "the highest level this pattern can use at this event"). See
 //     ceilingFor.
@@ -39,8 +40,10 @@ import (
 // the wrong facts for the pattern, a rule fact carrying a field its kind
 // does not have, a claim with no contradiction, a rule of another pattern's
 // kind, an event the card does not raise it at, a query point, a seq
-// outside 1..at.Seq, more than MaxPaths paths or a negative count, or any
-// id, path, program or digest a fact carries outside its charset (agentID
+// outside 1..at.Seq, more than MaxPaths paths or a negative count, any id,
+// path, program or digest a fact carries outside its charset, or a trust,
+// claim class, claim source, verdict, gate reason or gate state outside its
+// vocabulary or contradicting nothing for the pattern (vocabValid; agentID
 // is the target agent, "" for the main one). The rendered Message is not
 // built here: VERIFY hands facts, STEER renders (2.2.9).
 func ToSteer(f Finding, at Point, agentID string) (steer.Finding, error) {
@@ -127,7 +130,10 @@ func checkInput(f Finding, at Point, agentID string) string {
 			return "a fact seq outside 1..point seq"
 		}
 	}
-	return idsValid(f)
+	if reason := idsValid(f); reason != "" {
+		return reason
+	}
+	return vocabValid(f)
 }
 
 // factsFit reports the fact set each pattern carries (Finding's comment).
@@ -276,7 +282,10 @@ func kindFor(f Finding, at Point) (steer.Kind, string) {
 		switch {
 		case f.Pattern == pattern.ClaimVsRecord && at.Kind != PointStop:
 			return "", "claim-vs-record away from a stop point"
-		case f.Pattern == pattern.ClaimVsRecord && f.Claim.UnrecoveredFailures > 0:
+		case f.Pattern == pattern.ClaimVsRecord && f.Claim.UnrecoveredFailures > 0 && k != "masked":
+			// A masked verdict stays masked beside unrecovered failures, so
+			// the masked state never reaches the model under another kind
+			// (ED-3).
 			return "silent-failure", ""
 		case !ok:
 			return "", "a claim verdict that contradicts nothing"

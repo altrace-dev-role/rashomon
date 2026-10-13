@@ -74,7 +74,7 @@ func TestVER54c_FindingCarriesTheSpecsFields(t *testing.T) {
 	if got, want := fields(ClaimFact{}), "Class,Source,Strict,Verdict,Gates,GatesOmitted,QuoteHMAC,UnrecoveredFailures"; got != want {
 		t.Errorf("ClaimFact fields %s, want %s", got, want)
 	}
-	if got, want := fields(RuleFact{}), "RuleID,Kind,Trust,Seq,Program,Path,Gate,Added,Pragma"; got != want {
+	if got, want := fields(RuleFact{}), "RuleID,Kind,Trust,Seq,Program,Path,Gate,Added,Pragma,Rewritten"; got != want {
 		t.Errorf("RuleFact fields %s, want %s", got, want)
 	}
 	if got, want := fields(IntegrityFact{}), "Kind,Count,Paths,PathsOmitted,Seq,Marker"; got != want {
