@@ -64,6 +64,22 @@ func closeReason(err error) string {
 		return store.ReasonLockTimeout
 	case errors.Is(err, hookio.ErrTooLarge):
 		return store.ReasonPayloadTooLarge
+	case errors.Is(err, store.ErrRecordOversize):
+		return store.ReasonRecordOversize
 	}
 	return store.ReasonInternalError
+}
+
+// attribute is the session a payload's id names: UnattributedSession for a
+// payload that names none, and for an id over store.MaxIDBytes, which a
+// record cannot carry and which must not be cut into another session's id
+// (REC-52). The second result says the id was over its cap.
+func attribute(id string) (string, bool) {
+	switch {
+	case id == "":
+		return UnattributedSession, false
+	case len(id) > store.MaxIDBytes:
+		return UnattributedSession, true
+	}
+	return id, false
 }

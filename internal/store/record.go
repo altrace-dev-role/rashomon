@@ -394,6 +394,11 @@ const (
 	// second field just for this would let a reader check State and miss it.
 	// checkPaused in cmd/rashomon/main.go is the only writer.
 	ReasonRecordingPaused = "recording_paused"
+	// ReasonRecordOversize marks a call whose record was over a size limit:
+	// a field over its cap was withheld from it, or the whole record was
+	// over MaxRecordBytes and refused (REC-31, REC-52). Nothing broke, which
+	// is why it is not internal_error; what the record holds is incomplete.
+	ReasonRecordOversize = "record_oversize"
 )
 
 // Reasons lists every coverage reason code a record can carry. It exists so
@@ -412,6 +417,7 @@ func Reasons() []string {
 		ReasonProbeAbsent,
 		ReasonProbeUnresolved,
 		ReasonRecordingPaused,
+		ReasonRecordOversize,
 	}
 }
 

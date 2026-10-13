@@ -41,6 +41,10 @@ type Handler struct {
 	toolUseID string
 	cwd       string
 	opened    bool
+	// withheld is set when a payload value was over its cap and left out of
+	// the declaration (store.CapDeclaration); the call's coverage record
+	// then carries record_oversize.
+	withheld bool
 }
 
 // New builds a Handler. now is injectable so a test can pin the clock and
@@ -65,10 +69,8 @@ func (h *Handler) Capture(in io.Reader) error {
 	// Attribute before anything else can fail. A fault after this point is
 	// still recorded against the session that produced it; only a payload too
 	// malformed to name its session goes to the unattributed bucket.
-	if p.SessionID != "" {
-		h.sessionID = p.SessionID
-	}
-	h.toolUseID = p.ToolUseID
+	h.sessionID, h.withheld = attribute(p.SessionID)
+	h.toolUseID, _ = store.CapID(p.ToolUseID)
 	h.cwd = p.CWD
 
 	fault.Inject(fault.PointHookParsed)
@@ -109,6 +111,13 @@ func (h *Handler) Capture(in io.Reader) error {
 	// decides whether it is null or a label.
 	if label := fileLabel(p.ToolName, p.ToolInput); label != "" {
 		decl.FileLabel = &label
+	}
+	// The caps, after every field is filled: a value over its cap is left
+	// out of the record rather than cut, and said so on the coverage record
+	// (REC-52), so no payload inside the intake limit can make a record the
+	// store would refuse.
+	if store.CapDeclaration(&decl) {
+		h.withheld = true
 	}
 
 	fault.Inject(fault.PointStoreWrite)
@@ -164,6 +173,9 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 		}
 	}
 
+	if reason == "" && h.withheld {
+		reason = store.ReasonRecordOversize
+	}
 	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.cwd, h.now()))
 }
 
