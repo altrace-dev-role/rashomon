@@ -67,14 +67,28 @@ type DeclarationV5 struct {
 	// 10.2.17: "withheld fields carry `..._withheld: "switched_off"`, so
 	// 'not recorded by choice' never reads as 'nothing happened'"). Null
 	// when the field is present or simply not applicable. P-07 proposal
-	// (owner K, RECORD): one key per capped or switchable field, spelled as
-	// 1.2.11 spells it, beside the command_withheld 1.2.3 already lists.
+	// (owner K, RECORD), spelled as 1.2.11 spells it, beside the
+	// command_withheld 1.2.3 already lists: one key per field a cap or a
+	// switch can null, on every v5 type, as TestDEL22g lists them; a whole
+	// kind switched off writes no record, and the session's
+	// scopes.switches says so. The v4 call record's nullable capped fields
+	// (prompt_id, agent_id, agent_type, hosts, ssh_hosts) take their keys
+	// here, since P-11 embeds this struct beside them. Deferred, with the
+	// reason in TestDEL22g: the v4 call record's non-nullable capped fields
+	// (tool_use_id, transcript_path, permission_mode, tool_name,
+	// shape.program), whose null half needs P-11 to retype the v4 structs,
+	// and outcome_join's tool_use_id, BREADTH's join key.
 	WrittenPathsWithheld    *string `json:"written_paths_withheld"`     // oversize | switched_off (paths)
 	FilePathWithheld        *string `json:"file_path_withheld"`         // oversize | switched_off (paths)
 	CWDWithheld             *string `json:"cwd_withheld"`               // oversize | switched_off (paths)
 	ProjectWithheld         *string `json:"project_withheld"`           // oversize
 	TargetWithheld          *string `json:"target_withheld"`            // switched_off (targets)
 	EditMarksBeforeWithheld *string `json:"edit_marks_before_withheld"` // switched_off (edit_marks)
+	PromptIDWithheld        *string `json:"prompt_id_withheld"`         // oversize
+	AgentIDWithheld         *string `json:"agent_id_withheld"`          // oversize
+	AgentTypeWithheld       *string `json:"agent_type_withheld"`        // oversize
+	HostsWithheld           *string `json:"hosts_withheld"`             // oversize (over 32 entries)
+	SSHHostsWithheld        *string `json:"ssh_hosts_withheld"`         // oversize (over 32 entries)
 
 	// BREADTH's call-record keys, "Additive, in the schema 5 bump" (tech
 	// 6.2.1): which harness declared the call, the harness's own tool name
@@ -210,6 +224,9 @@ type GitState struct {
 	Branch   *string `json:"branch"` // null when detached
 	Detached bool    `json:"detached"`
 	State    string  `json:"state"` // ok | no_repo | unborn | unreadable
+	// RootWithheld: oversize (4,096 B, 1.2.11) | switched_off (paths).
+	// A whole git state switched off is its parent's git_withheld.
+	RootWithheld *string `json:"root_withheld"`
 }
 
 // EventHeader is what every record kind introduced at 1.2.0 starts with.
@@ -249,6 +266,12 @@ type TurnEnd struct {
 	// StoodDown lists the budget reasons of the phases that stood down in
 	// this recap (2.2.4 fallback; 8.2.3). P-07 proposal: the key's name.
 	StoodDown []string `json:"stood_down"`
+
+	// The *_withheld keys, as DeclarationV5's (P-07 proposal, owner K).
+	PromptIDWithheld       *string `json:"prompt_id_withheld"`       // oversize
+	PermissionModeWithheld *string `json:"permission_mode_withheld"` // oversize
+	GitWithheld            *string `json:"git_withheld"`             // switched_off (git)
+	CostWithheld           *string `json:"cost_withheld"`            // switched_off (cost)
 }
 
 // BackgroundTasks is the Stop payload's background registry as recorded
@@ -262,13 +285,16 @@ type BackgroundTasks struct {
 
 // BackgroundTask is one registry entry in its closed shape: Claude Code's id,
 // type and status, whether the shape read it as a runner, and its command,
-// masked and at most 1,000 characters as Claude Code caps it.
+// masked and at most 1,000 characters as Claude Code caps it (1.2.11);
+// CommandWithheld says why the command is null, as DeclarationV5's does
+// (P-07 proposal, owner K).
 type BackgroundTask struct {
-	ID      string  `json:"id"`
-	Type    string  `json:"type"`
-	Status  string  `json:"status"`
-	Runner  bool    `json:"runner"`
-	Command *string `json:"command"`
+	ID              string  `json:"id"`
+	Type            string  `json:"type"`
+	Status          string  `json:"status"`
+	Runner          bool    `json:"runner"`
+	Command         *string `json:"command"`
+	CommandWithheld *string `json:"command_withheld"` // oversize | switched_off (commands) | masker_error
 }
 
 // TurnCalls counts the turn's calls.
@@ -302,8 +328,9 @@ type TurnCostBody struct {
 // so one reader serves both records.
 type TurnCost struct {
 	EventHeader
-	PromptID *string      `json:"prompt_id"`
-	Cost     TurnCostBody `json:"cost"`
+	PromptID         *string      `json:"prompt_id"`
+	Cost             TurnCostBody `json:"cost"`
+	PromptIDWithheld *string      `json:"prompt_id_withheld"` // oversize
 }
 
 // Prompt is written at UserPromptSubmit (1.2.8; archive 10.2.11); it carries
@@ -318,6 +345,15 @@ type Prompt struct {
 	PreviousTurnState string    `json:"previous_turn_state"` // ended | ended_api_error | no_stop | none
 	Git               *GitState `json:"git"`
 	PermissionMode    *string   `json:"permission_mode"`
+
+	// The *_withheld keys, as DeclarationV5's (P-07 proposal, owner K).
+	// prompt_class is off by default until D-REC-3 (1.2.12), so on a
+	// fresh install prompt_class_withheld reads switched_off.
+	PromptIDWithheld         *string `json:"prompt_id_withheld"`          // oversize
+	PreviousPromptIDWithheld *string `json:"previous_prompt_id_withheld"` // oversize
+	PromptClassWithheld      *string `json:"prompt_class_withheld"`       // switched_off (prompt_class)
+	GitWithheld              *string `json:"git_withheld"`                // switched_off (git)
+	PermissionModeWithheld   *string `json:"permission_mode_withheld"`    // oversize
 }
 
 // Human is a human's intervention in the session (1.2.8; archive 10.2.11);
@@ -333,6 +369,13 @@ type Human struct {
 	JoinedBy  string   `json:"joined_by"` // tool_use_id | digest | none | ambiguous
 	Reason    *string  `json:"reason"`    // masked, 128 B
 	Evidence  []string `json:"evidence"`
+
+	// The *_withheld keys, all oversize (1.2.11), as DeclarationV5's
+	// (P-07 proposal, owner K).
+	PromptIDWithheld  *string `json:"prompt_id_withheld"`
+	AgentIDWithheld   *string `json:"agent_id_withheld"`
+	ToolNameWithheld  *string `json:"tool_name_withheld"`
+	ToolUseIDWithheld *string `json:"tool_use_id_withheld"`
 }
 
 // RecordScopes is the consent scope and the switches in force when the
@@ -375,6 +418,11 @@ type Session struct {
 	ClaudeCodeVersionSource string            `json:"claude_code_version_source"` // transcript | unknown
 	CouldNotSee             []string          `json:"could_not_see"`
 	Resume                  *ResumeFields     `json:"resume"`
+
+	// The *_withheld keys, as DeclarationV5's (P-07 proposal, owner K).
+	AgentTypeWithheld *string `json:"agent_type_withheld"` // oversize
+	ProjectWithheld   *string `json:"project_withheld"`    // oversize
+	GitWithheld       *string `json:"git_withheld"`        // switched_off (git)
 }
 
 // Subagent is written at SubagentStart and SubagentStop (1.2.10; archive
@@ -391,6 +439,12 @@ type Subagent struct {
 	ClaimClass        *string `json:"claim_class"`
 	StopHookActive    *bool   `json:"stop_hook_active"`
 	BackgroundPresent *bool   `json:"background_present"`
+
+	// The *_withheld keys, all oversize (1.2.11), as DeclarationV5's
+	// (P-07 proposal, owner K).
+	PromptIDWithheld  *string `json:"prompt_id_withheld"`
+	AgentIDWithheld   *string `json:"agent_id_withheld"`
+	AgentTypeWithheld *string `json:"agent_type_withheld"`
 }
 
 // Batch is written at PostToolBatch (1.2.10): the calls of one model step.
@@ -399,6 +453,8 @@ type Batch struct {
 	PromptID   *string  `json:"prompt_id"`
 	ToolUseIDs []string `json:"tool_use_ids"`
 	Size       int      `json:"size"`
+	// PromptIDWithheld: oversize (P-07 proposal, owner K).
+	PromptIDWithheld *string `json:"prompt_id_withheld"`
 }
 
 // Task is written at TaskCreated and TaskCompleted (1.2.10; archive 10.2.14).
@@ -410,6 +466,11 @@ type Task struct {
 	Subject      *string `json:"subject"` // null when task_subjects is off
 	AgentID      *string `json:"agent_id"`
 	TeammateName *string `json:"teammate_name"`
+
+	// The *_withheld keys, as DeclarationV5's (P-07 proposal, owner K).
+	PromptIDWithheld *string `json:"prompt_id_withheld"` // oversize
+	SubjectWithheld  *string `json:"subject_withheld"`   // switched_off (task_subjects) | masker_error
+	AgentIDWithheld  *string `json:"agent_id_withheld"`  // oversize
 }
 
 // Compact is written at PostCompact (1.2.10): the summary's class, never
@@ -420,20 +481,28 @@ type Compact struct {
 	Trigger           string  `json:"trigger"`
 	SummaryClaimClass string  `json:"summary_claim_class"`
 	SummaryBytes      int     `json:"summary_bytes"`
+	PromptIDWithheld  *string `json:"prompt_id_withheld"` // oversize (P-07 proposal, owner K)
 }
 
 // Instructions is written at InstructionsLoaded (1.2.10; archive 10.2.14;
-// LEARN reads file_sha256 over the first 1 MiB).
+// LEARN reads file_sha256 over the first 1 MiB). FilePath is nullable so
+// that a path over 1.2.11's 4,096 B cap can be withheld.
 type Instructions struct {
 	EventHeader
 	PromptID        *string `json:"prompt_id"`
 	AgentID         *string `json:"agent_id"`
-	FilePath        string  `json:"file_path"`
+	FilePath        *string `json:"file_path"`
 	MemoryType      string  `json:"memory_type"`
 	LoadReason      string  `json:"load_reason"`
 	TriggerFilePath *string `json:"trigger_file_path"`
 	GlobsCount      *int    `json:"globs_count"`
 	FileSHA256      *string `json:"file_sha256"`
+
+	// The *_withheld keys, as DeclarationV5's (P-07 proposal, owner K).
+	PromptIDWithheld        *string `json:"prompt_id_withheld"`         // oversize
+	AgentIDWithheld         *string `json:"agent_id_withheld"`          // oversize
+	FilePathWithheld        *string `json:"file_path_withheld"`         // oversize | switched_off (paths)
+	TriggerFilePathWithheld *string `json:"trigger_file_path_withheld"` // oversize | switched_off (paths)
 }
 
 // Model is written at PostModelSwitch (1.2.10).
@@ -444,6 +513,8 @@ type Model struct {
 	To        string  `json:"to"`
 	Requested *string `json:"requested"`
 	Source    string  `json:"source"`
+	// PromptIDWithheld: oversize (P-07 proposal, owner K).
+	PromptIDWithheld *string `json:"prompt_id_withheld"`
 }
 
 // OutcomeJoin is BREADTH's append-only join of a call's outcome learned

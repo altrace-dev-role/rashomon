@@ -5,6 +5,7 @@ import (
 	"encoding"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -68,6 +69,7 @@ var v5Lists = []struct {
 		"written_paths_complete *bool", "target *store.Target", "edit_marks_before map[string]int",
 		"written_paths_withheld *string", "file_path_withheld *string", "cwd_withheld *string", "project_withheld *string",
 		"target_withheld *string", "edit_marks_before_withheld *string",
+		"prompt_id_withheld *string", "agent_id_withheld *string", "agent_type_withheld *string", "hosts_withheld *string", "ssh_hosts_withheld *string",
 		"harness_id *string", "harness_tool_name *string", "declared_via *string",
 	}},
 	{reflect.TypeOf(ExecutionV5{}), []string{
@@ -90,29 +92,32 @@ var v5Lists = []struct {
 	{reflect.TypeOf(OutputEvidence{}), []string{"family string", "success_line bool", "fail_line bool", "scanned_bytes int", "version int"}},
 	{reflect.TypeOf(EditMarks{}), []string{"added map[string]int", "removed map[string]int", "basis string", "version int"}},
 	{reflect.TypeOf(GateOutput{}), []string{"kind string", "parser string", "reason *string"}},
-	{reflect.TypeOf(GitState{}), []string{"root *string", "head *string", "branch *string", "detached bool", "state string"}},
+	{reflect.TypeOf(GitState{}), []string{"root *string", "head *string", "branch *string", "detached bool", "state string", "root_withheld *string"}},
 	{reflect.TypeOf(EventHeader{}), header},
 	{reflect.TypeOf(TurnEnd{}), withHeader(
 		"prompt_id *string", "event string", "stop_hook_active *bool", "api_error *string", "model *string",
 		"model_source string", "claude_code_version *string", "effort *string", "permission_mode *string",
 		"git *store.GitState", "background_tasks store.BackgroundTasks", "calls store.TurnCalls", "claim_class string",
 		"claim_words []string", "gate_state *string", "gate_version *int", "cost *store.TurnCostBody",
-		"recap_spoke bool", "stood_down []string")},
+		"recap_spoke bool", "stood_down []string",
+		"prompt_id_withheld *string", "permission_mode_withheld *string", "git_withheld *string", "cost_withheld *string")},
 	{reflect.TypeOf(BackgroundTasks{}), []string{"present bool", "tasks []store.BackgroundTask", "crons *int"}},
-	{reflect.TypeOf(BackgroundTask{}), []string{"id string", "type string", "status string", "runner bool", "command *string"}},
+	{reflect.TypeOf(BackgroundTask{}), []string{"id string", "type string", "status string", "runner bool", "command *string", "command_withheld *string"}},
 	{reflect.TypeOf(TurnCalls{}), []string{"declared int", "executed int", "failed int", "interrupted int", "main int", "subagent int"}},
 	{reflect.TypeOf(TurnCostBody{}), []string{
 		"state string", "model_turns_main int", "model_turns_subagents int", "input_tokens int64", "output_tokens int64",
 		"cache_read_tokens int64", "cache_write_tokens int64", "usd_nano int64", "unpriced_responses int",
 		"price_table string", "models []string",
 	}},
-	{reflect.TypeOf(TurnCost{}), withHeader("prompt_id *string", "cost store.TurnCostBody")},
+	{reflect.TypeOf(TurnCost{}), withHeader("prompt_id *string", "cost store.TurnCostBody", "prompt_id_withheld *string")},
 	{reflect.TypeOf(Prompt{}), withHeader(
 		"prompt_id *string", "prompt_source string", "prompt_class *string", "prompt_bytes int",
-		"previous_prompt_id *string", "previous_turn_state string", "git *store.GitState", "permission_mode *string")},
+		"previous_prompt_id *string", "previous_turn_state string", "git *store.GitState", "permission_mode *string",
+		"prompt_id_withheld *string", "previous_prompt_id_withheld *string", "prompt_class_withheld *string", "git_withheld *string", "permission_mode_withheld *string")},
 	{reflect.TypeOf(Human{}), withHeader(
 		"prompt_id *string", "agent_id *string", "kind string", "source string", "tool_name *string",
-		"tool_use_id *string", "joined_by string", "reason *string", "evidence []string")},
+		"tool_use_id *string", "joined_by string", "reason *string", "evidence []string",
+		"prompt_id_withheld *string", "agent_id_withheld *string", "tool_name_withheld *string", "tool_use_id_withheld *string")},
 	{reflect.TypeOf(RecordScopes{}), []string{"record_scope string", "switches map[string]bool"}},
 	{reflect.TypeOf(ResumeFields{}), []string{"seconds_since_last_response *int64", "context_tokens *int64"}},
 	{reflect.TypeOf(Session{}), withHeader(
@@ -120,17 +125,20 @@ var v5Lists = []struct {
 		"writer string", "rules_version int", "class_table_version int", "masker_version int", "project *string",
 		"git *store.GitState", "scopes store.RecordScopes", "entries map[string]string", "steer_state string",
 		"claude_code_version *string", "claude_code_version_source string", "could_not_see []string",
-		"resume *store.ResumeFields")},
+		"resume *store.ResumeFields", "agent_type_withheld *string", "project_withheld *string", "git_withheld *string")},
 	{reflect.TypeOf(Subagent{}), withHeader(
 		"prompt_id *string", "agent_id *string", "agent_type *string", "phase string", "internal bool",
-		"claim_class *string", "stop_hook_active *bool", "background_present *bool")},
-	{reflect.TypeOf(Batch{}), withHeader("prompt_id *string", "tool_use_ids []string", "size int")},
-	{reflect.TypeOf(Task{}), withHeader("prompt_id *string", "event string", "task_id string", "subject *string", "agent_id *string", "teammate_name *string")},
-	{reflect.TypeOf(Compact{}), withHeader("prompt_id *string", "trigger string", "summary_claim_class string", "summary_bytes int")},
+		"claim_class *string", "stop_hook_active *bool", "background_present *bool",
+		"prompt_id_withheld *string", "agent_id_withheld *string", "agent_type_withheld *string")},
+	{reflect.TypeOf(Batch{}), withHeader("prompt_id *string", "tool_use_ids []string", "size int", "prompt_id_withheld *string")},
+	{reflect.TypeOf(Task{}), withHeader("prompt_id *string", "event string", "task_id string", "subject *string", "agent_id *string", "teammate_name *string",
+		"prompt_id_withheld *string", "subject_withheld *string", "agent_id_withheld *string")},
+	{reflect.TypeOf(Compact{}), withHeader("prompt_id *string", "trigger string", "summary_claim_class string", "summary_bytes int", "prompt_id_withheld *string")},
 	{reflect.TypeOf(Instructions{}), withHeader(
-		"prompt_id *string", "agent_id *string", "file_path string", "memory_type string", "load_reason string",
-		"trigger_file_path *string", "globs_count *int", "file_sha256 *string")},
-	{reflect.TypeOf(Model{}), withHeader("prompt_id *string", "from *string", "to string", "requested *string", "source string")},
+		"prompt_id *string", "agent_id *string", "file_path *string", "memory_type string", "load_reason string",
+		"trigger_file_path *string", "globs_count *int", "file_sha256 *string",
+		"prompt_id_withheld *string", "agent_id_withheld *string", "file_path_withheld *string", "trigger_file_path_withheld *string")},
+	{reflect.TypeOf(Model{}), withHeader("prompt_id *string", "from *string", "to string", "requested *string", "source string", "prompt_id_withheld *string")},
 	{reflect.TypeOf(OutcomeJoin{}), withHeader("tool_use_id string", "outcome string", "exit_code *int", "outcome_source string", "parser_version int")},
 	{reflect.TypeOf(WriteObserved{}), withHeader("path string", "edit_count int")},
 }
@@ -209,6 +217,100 @@ func TestDEL22b_SchemaFiveKeyListsAreFrozen(t *testing.T) {
 			t.Errorf("kind %s does not start with the schema-5 header: %v", kind, got)
 		}
 	}
+}
+
+// cappedKeys are the keys 1.2.11's cap table names (archive 10.2.15), the
+// id spellings a v5 kind repeats them under (previous_prompt_id,
+// trigger_file_path) and git.root; session_id is not one, since it buckets
+// under unattributed instead (1.2.11).
+var cappedKeys = []string{
+	"tool_use_id", "prompt_id", "previous_prompt_id", "agent_id", "agent_type", "permission_mode", "tool_name",
+	"file_path", "trigger_file_path", "cwd", "project", "transcript_path", "root",
+}
+
+// withheldKeys is every field 1.2.11's caps or a record.* switch (1.2.12;
+// archive 10.2.17) can null, by the v5 type that carries its
+// <field>_withheld key: a capped key wherever a v5 kind has it, the v4 call
+// record's nullable capped fields (prompt_id, agent_id, agent_type, hosts,
+// ssh_hosts) on DeclarationV5, the switched fields (commands, paths,
+// targets, edit_marks, failure_classes, output_evidence, git, cost,
+// prompt_class, task_subjects), and background_tasks' commands.
+var withheldKeys = map[reflect.Type][]string{
+	reflect.TypeOf(DeclarationV5{}):  {"command", "cwd", "project", "file_path", "written_paths", "target", "edit_marks_before", "prompt_id", "agent_id", "agent_type", "hosts", "ssh_hosts"},
+	reflect.TypeOf(ExecutionV5{}):    {"executed_command", "failure", "output_evidence", "edit_marks", "head_after"},
+	reflect.TypeOf(GitState{}):       {"root"},
+	reflect.TypeOf(BackgroundTask{}): {"command"},
+	reflect.TypeOf(TurnEnd{}):        {"prompt_id", "permission_mode", "git", "cost"},
+	reflect.TypeOf(TurnCost{}):       {"prompt_id"},
+	reflect.TypeOf(Prompt{}):         {"prompt_id", "previous_prompt_id", "prompt_class", "git", "permission_mode"},
+	reflect.TypeOf(Human{}):          {"prompt_id", "agent_id", "tool_name", "tool_use_id"},
+	reflect.TypeOf(Session{}):        {"agent_type", "project", "git"},
+	reflect.TypeOf(Subagent{}):       {"prompt_id", "agent_id", "agent_type"},
+	reflect.TypeOf(Batch{}):          {"prompt_id"},
+	reflect.TypeOf(Task{}):           {"prompt_id", "subject", "agent_id"},
+	reflect.TypeOf(Compact{}):        {"prompt_id"},
+	reflect.TypeOf(Instructions{}):   {"prompt_id", "agent_id", "file_path", "trigger_file_path"},
+	reflect.TypeOf(Model{}):          {"prompt_id"},
+}
+
+// deferredWithheld are capped fields with no withheld key yet, each for a
+// stated reason, so the rule below cannot pass by forgetting them:
+// OutcomeJoin's tool_use_id is BREADTH's join key, and a join whose key is
+// withheld joins nothing, so whether it is written at all is BREADTH's
+// call (archive 60). The v4 call record's non-nullable capped fields
+// (tool_use_id, transcript_path, permission_mode, tool_name, shape.program)
+// are P-11's: their null half needs the v4 structs retyped when P-11
+// embeds DeclarationV5 and ExecutionV5.
+var deferredWithheld = map[reflect.Type][]string{
+	reflect.TypeOf(OutcomeJoin{}): {"tool_use_id"},
+}
+
+// TestDEL22g_WithheldKeyBesideEveryCappedOrSwitchableField: every field
+// the cap table or a switch can null has a <field>_withheld *string key in
+// the same v5 type (1.2.11: "null plus `<field>_withheld: "oversize"`";
+// archive 10.2.17: "withheld fields carry `..._withheld: "switched_off"`, so
+// 'not recorded by choice' never reads as 'nothing happened'"), and a field
+// the v5 type owns is nullable so it can be withheld; every capped key a
+// v5 kind carries is listed or deferred, and no _withheld key stands for a
+// field the lists do not name (STORE-9).
+func TestDEL22g_WithheldKeyBesideEveryCappedOrSwitchableField(t *testing.T) {
+	for _, c := range v5Lists {
+		types := map[string]reflect.Type{}
+		for _, f := range tagCheckedFields(t, c.typ) {
+			types[f.Tag.Get("json")] = f.Type
+		}
+		listed := withheldKeys[c.typ]
+		for _, k := range listed {
+			if wt, ok := types[k+"_withheld"]; !ok || wt.String() != "*string" {
+				t.Errorf("%s: %s can be withheld and has no %s_withheld *string key", c.typ.Name(), k, k)
+			}
+			if ft, own := types[k]; own && !nullable(ft) {
+				t.Errorf("%s.%s is %s, which cannot be null when withheld", c.typ.Name(), k, ft)
+			}
+		}
+		for k := range types {
+			if base, ok := strings.CutSuffix(k, "_withheld"); ok && !slices.Contains(listed, base) {
+				t.Errorf("%s: %s names no field the cap table or a switch can null", c.typ.Name(), k)
+			}
+			if slices.Contains(cappedKeys, k) && !slices.Contains(listed, k) && !slices.Contains(deferredWithheld[c.typ], k) {
+				t.Errorf("%s: the capped key %s is neither given a _withheld key nor deferred", c.typ.Name(), k)
+			}
+		}
+		for _, k := range deferredWithheld[c.typ] {
+			if _, ok := types[k+"_withheld"]; ok {
+				t.Errorf("%s: %s_withheld exists; take it off the deferred list", c.typ.Name(), k)
+			}
+		}
+	}
+}
+
+// nullable reports a Go type encoding/json writes as null at its zero.
+func nullable(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Map:
+		return true
+	}
+	return false
 }
 
 // headerKeys is header's keys without their types.
