@@ -160,11 +160,24 @@ func (s *Store) RunDir(sessionID string) string {
 // It is for a process that appends a few records and exits: hook and post.
 // Durability moves from "when each append returns" to "when the process has
 // flushed", and PreToolUse flushes before it exits, so a declaration is still
-// on stable storage before the tool runs. One case weakens: a process killed
-// between its barriers and Flush leaves records ordered on the device but
-// not flushed from its cache, which only a power failure inside that window
-// loses. probe, recap and the paused path never call this, and keep a full
-// sync per append.
+// on stable storage before the tool runs -- when the flush succeeds; when it
+// fails the tool runs anyway and the call is marked flush_failed instead.
+//
+// One case weakens, on darwin only, where a barrier is cheaper than a full
+// sync: a process killed between its barriers and Flush leaves records
+// ordered on the device but not flushed from its cache. SIGTERM and SIGINT
+// are caught and still reach Flush, so only SIGKILL gets there, and what it
+// leaves exposed stays exposed after the process is gone: until the device
+// next empties its cache, at the next full sync on that volume by any
+// process (usually the next hook's Flush) or the drive's own write-back, a
+// power failure can lose it. Under 1.1.0 such a declaration was durable when
+// its append returned. Linux and Windows have no such window, because there
+// every barrier is a full sync.
+//
+// The one full sync is the only one a hook issues once its store is open; a
+// first-ever hook, which creates the store, syncs the install files in full
+// before that. probe, recap and the paused path never call this, and keep a
+// full sync per append.
 //
 // After this call the Store is not for concurrent use.
 func (s *Store) DeferDurability() { s.deferred = true }
