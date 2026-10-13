@@ -48,6 +48,11 @@ const (
 	// failing disk (REC-34): a deferred hook's first full sync is its Flush,
 	// and after a failed one its second is the flush_failed marker's.
 	PointStoreFullSync = "store.full_sync"
+	// PointStoreBarrier is inside every barrier a deferred store issues,
+	// after the barrier itself has run. "fail=1" there fails the barrier on
+	// the seq counter of a hook's first ordered append, which is how REC-34
+	// reaches a failed barrier without a failing disk.
+	PointStoreBarrier = "store.barrier"
 )
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders
