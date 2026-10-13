@@ -817,43 +817,12 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 			continue
 		}
 		startMS, dated := parseTimestamp(l.Timestamp)
-		stop := ""
-		if l.Message.StopReason != nil {
-			stop = *l.Message.StopReason
+		if !dated {
+			startMS = 0
 		}
-		cand := &Response{
-			ID:         l.Message.ID,
-			Model:      l.Message.Model,
-			Subagent:   f.Subagent || l.IsSidechain,
-			StopReason: stop,
-			Fast:       l.Message.Usage.Speed == "fast",
-			StartMS:    startMS,
-			Tokens:     l.Message.Usage.split(),
-			file:       idx,
-			complete:   stop != "",
-		}
+		cand := newResponse(&l, f, idx, startMS)
 		if f.Subagent {
 			cand.prompt = prompt
-		}
-		session := l.SessionID
-		if session == "" {
-			session = f.Session
-		}
-		cand.files = []sighting{{idx, session}}
-		if requestIDShaped(l.RequestID) {
-			cand.requestID = l.RequestID
-		}
-		if stop == "refusal" {
-			cand.Category = refusalCategory(l.Message.StopDetails)
-		}
-		cand.Attempts = extraAttempts(l.Message.Usage.Iterations)
-		var served string
-		cand.Fallback, served = route(l.Message.Usage.Iterations)
-		if served != "" {
-			cand.Model = served
-		}
-		if !dated {
-			cand.StartMS = 0
 		}
 
 		prev, seen := byID[cand.ID]
@@ -865,6 +834,47 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 		keep(prev, cand)
 	}
 	return s.Err()
+}
+
+// newResponse is one usage line's response, as readFile keys and keeps it:
+// its id, model, tokens and stop, the file and session it was seen in, its
+// request id when that has the closed shape of one, its refusal category,
+// its extra attempts, and the model that served it when a fallback did.
+// startMS is the line's own instant, zero when it carries none.
+func newResponse(l *line, f TranscriptFile, idx int, startMS int64) *Response {
+	stop := ""
+	if l.Message.StopReason != nil {
+		stop = *l.Message.StopReason
+	}
+	cand := &Response{
+		ID:         l.Message.ID,
+		Model:      l.Message.Model,
+		Subagent:   f.Subagent || l.IsSidechain,
+		StopReason: stop,
+		Fast:       l.Message.Usage.Speed == "fast",
+		StartMS:    startMS,
+		Tokens:     l.Message.Usage.split(),
+		file:       idx,
+		complete:   stop != "",
+	}
+	session := l.SessionID
+	if session == "" {
+		session = f.Session
+	}
+	cand.files = []sighting{{idx, session}}
+	if requestIDShaped(l.RequestID) {
+		cand.requestID = l.RequestID
+	}
+	if stop == "refusal" {
+		cand.Category = refusalCategory(l.Message.StopDetails)
+	}
+	cand.Attempts = extraAttempts(l.Message.Usage.Iterations)
+	var served string
+	cand.Fallback, served = route(l.Message.Usage.Iterations)
+	if served != "" {
+		cand.Model = served
+	}
+	return cand
 }
 
 // keep folds a later line of an already-seen response into the one kept.

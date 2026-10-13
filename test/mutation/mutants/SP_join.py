@@ -354,7 +354,7 @@ m("SP a wholly unpriced silent-failure cost reads at least unknown", "internal/s
 m("SP an empty window reads unknown over 0 transcripts", "internal/spend/text.go",
   "\tcase j.Transcripts == 0:\n", "\tcase false:\n", "TestJoin_NoTranscriptInTheWindow")
 m("SP a fast-mode response is not counted", "internal/spend/scan.go",
-  "\t\t\tFast:       l.Message.Usage.Speed == \"fast\",", "\t\t\tFast:       l.Message.Usage.Speed == \"turbo\",",
+  "\t\tFast:       l.Message.Usage.Speed == \"fast\",", "\t\tFast:       l.Message.Usage.Speed == \"turbo\",",
   "TestFastMode_")
 m("SP fast-mode responses are not said", "internal/spend/text.go",
   "\tif s.FastMode.Responses > 0 {", "\tif false {", "TestFastMode_")
@@ -465,7 +465,7 @@ m("SP a synthetic line is folded into a response in another file", "internal/spe
   "\t\tfor _, f := range r.files {\n\t\t\tbilled[key{f.idx, r.requestID}] = r", "\t\tfor range r.files {\n\t\t\tbilled[key{0, r.requestID}] = r",
   "TestRefusals_AMidStream")
 m("SP a requestId is read whatever its shape", "internal/spend/scan.go",
-  "\t\tif requestIDShaped(l.RequestID) {", "\t\tif l.RequestID != \"\" {", "TestRefusals_AMidStream")
+  "\tif requestIDShaped(l.RequestID) {", "\tif l.RequestID != \"\" {", "TestRefusals_AMidStream")
 m("SP a folded synthetic line does not make its response a refusal", "internal/spend/scan.go",
   "\t\t\t\tif into.StopReason != \"refusal\" {\n", "\t\t\t\tif false {\n", "TestRefusals_AMidStream")
 m("SP a pre-output refusal with usage is priced into the total", "internal/spend/scan.go",
@@ -478,7 +478,7 @@ m("SP a synthetic refusal group reads as a model named other", "internal/spend/s
   "\tif model == \"<synthetic>\" {\n\t\treturn ModelNotRecorded", "\tif false {\n\t\treturn ModelNotRecorded",
   "TestRefusals_")
 m("SP the served model is read from message.model, not the fallback entry", "internal/spend/scan.go",
-  "\t\tif served != \"\" {\n\t\t\tcand.Model = served", "\t\tif false && served != \"\" {\n\t\t\tcand.Model = served",
+  "\tif served != \"\" {\n\t\tcand.Model = served", "\tif false && served != \"\" {\n\t\tcand.Model = served",
   "TestExtraAttempts_TheServedModelIsTheFallbackEntrys")
 m("SP a chain where every model declined is reported as served", "internal/spend/spend.go",
   "\tif r.Fallback && r.StopReason != \"refusal\" {", "\tif r.Fallback {", "TestExtraAttempts_AnAllDeclinedChain")
