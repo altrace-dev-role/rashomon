@@ -377,7 +377,6 @@ func (s *Store) syncAppend(f *os.File) error {
 		return syncFull(f)
 	}
 	s.dirty = f.Name()
-	fault.RecordSync(fault.SyncBarrier, f.Name())
 	err := barrierSync(f)
 	if err == nil {
 		err = fault.Fail(fault.PointStoreBarrier)
@@ -389,8 +388,8 @@ func (s *Store) syncAppend(f *os.File) error {
 }
 
 // syncFull is a full sync: F_FULLFSYNC on darwin, fsync elsewhere. Every full
-// sync the store issues goes through it, so the fault build's recorder sees
-// each one.
+// sync the store issues goes through it, the darwin barrier's fallback
+// included, so the fault build's recorder sees each one.
 func syncFull(f *os.File) error {
 	fault.RecordSync(fault.SyncFull, f.Name())
 	if err := f.Sync(); err != nil {
