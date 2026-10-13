@@ -8,4 +8,4 @@ m("REC-33 the report ignores unreadable gap lines", "internal/report/report.go",
   "\t\tif gapsSkipped < 0 {\n\t\t\tsess.Coverage.add(ReasonRecordsUnreadable)\n", "TestREC33_")
 m("REC-33 the digest ignores unreadable gap lines", "internal/digest/digest.go",
   "\tif gapsSkipped > 0 {\n\t\td.Coverage.add(ReasonRecordsSkipped)\n",
-  "\tif false {\n\t\td.Coverage.add(ReasonRecordsSkipped)\n", "TestREC33_")
+  "\tif gapsSkipped < 0 {\n\t\td.Coverage.add(ReasonRecordsSkipped)\n", "TestREC33_")
