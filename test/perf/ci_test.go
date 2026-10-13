@@ -84,7 +84,7 @@ func TestRES36h_PerfJobsRunPinnedAndFailClosed(t *testing.T) {
 			}
 			if strings.Contains(s, "-tags perf") {
 				rss++
-				if !strings.Contains(s, `RASHOMON_PERF_REQUIRE_ALL: "1"`) {
+				if !strings.Contains(s, RequireAllEnv+`: "1"`) {
 					t.Errorf("%s: the RSS step does not require every gate to run:\n%s", job, s)
 				}
 			}
