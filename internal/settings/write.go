@@ -95,8 +95,8 @@ func Write(path string, original, data []byte) error {
 	// Make the rename itself durable. Best effort: some filesystems refuse to
 	// sync a directory, and the rename has already happened.
 	if d, err := os.Open(dir); err == nil {
-		_ = d.Sync()
-		_ = d.Close()
+		_ = d.Sync()  // best effort, as above: the rename already happened
+		_ = d.Close() // a directory opened only to sync it holds nothing to lose
 	}
 	return nil
 }

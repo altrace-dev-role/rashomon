@@ -292,6 +292,7 @@ func writeObject(members []member, depth int) []byte {
 	b.WriteString("{\n")
 	for i, m := range members {
 		b.WriteString(indent(depth + 1))
+		// Marshalling a string cannot fail: invalid UTF-8 is replaced, not refused.
 		key, _ := json.Marshal(m.key)
 		b.Write(key)
 		b.WriteString(": ")

@@ -373,6 +373,7 @@ func price(r *Response) priced {
 	if !ok {
 		return priced{}
 	}
+	// PriceKey only returns a key the table holds, so the row is there.
 	rt, _ := RatesFor(key)
 	t := r.Tokens
 	return priced{
@@ -545,6 +546,7 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			s.CacheExpiry.Tokens5m += w.CacheWrite5m
 			s.CacheExpiry.Tokens1h += w.CacheWrite1h
 			if key, ok := PriceKey(r.Model); ok && !r.costUnknown {
+				// PriceKey only returns a key the table holds, so the row is there.
 				rt, _ := RatesFor(key)
 				s.CacheExpiry.Cost.addPriced(w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead))
 			} else {
@@ -680,6 +682,7 @@ func refusalModel(model string) string {
 	if model == "<synthetic>" {
 		return ModelNotRecorded
 	}
+	// Priced or not, a refusal is grouped under the name displayModel gives.
 	name, _ := displayModel(model)
 	return name
 }

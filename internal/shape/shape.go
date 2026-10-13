@@ -459,6 +459,7 @@ func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, boo
 // onto a call's cwd for the line cmd: the cds on it that the call's cwd
 // digest already holds.
 func leadingSteps(cmd string) int {
+	// Where the line cannot be read, dirs is empty and no step is folded.
 	dirs, _ := leadingDirectories(cmd)
 	return len(dirs)
 }

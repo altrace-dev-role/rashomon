@@ -323,6 +323,7 @@ func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage stri
 	// else -- built once and shared by CountDeclarations and
 	// BuildSilentFailures below, the same currency both already take.
 	turnRun := &store.Run{Declarations: w.declarations, Executions: turnExecs}
+	// The digest counts declarations; it has no use for the executed set.
 	byTool, byLabel, withoutExec, _ := report.CountDeclarations(turnRun)
 	d.Declarations = Declarations{
 		Recorded:         len(w.declarations),
