@@ -20,7 +20,8 @@ import (
 // carry whole messages and can be large, and the bound is against a corrupted
 // file, not a real one. A line longer than this ends that file's read (the
 // scanner cannot step over it) and the file is counted as unreadable rather
-// than silently truncated.
+// than silently truncated. It counts the line's newline, which the scanner
+// needs room to find: the longest line read is maxLine-1 bytes.
 const maxLine = 64 << 20
 
 // usageMarker is a byte test run before any decoding of a main transcript's
