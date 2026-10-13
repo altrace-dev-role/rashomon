@@ -153,12 +153,14 @@ const tokenSeparators = ".:@-_+/="
 // tested as one run, the separators removed. A
 // UUID (8-4-4-4-12) has no two such parts in a row and is kept, so a
 // UUID-shaped key still passes; refusing those is the owner's call (P-13,
-// tech 1.2.4), since a UUID is more often an identifier.
+// tech 1.2.4), since a UUID is more often an identifier. A joined run that
+// reads as camelCase words (identifierShaped: "OAuth2Client" joined to
+// "refreshTokenExpiry") is a name, not a token, and is kept.
 func joinedRunHighEntropy(s string) bool {
 	var joined []byte
 	parts := 0
 	flush := func() bool {
-		hit := parts >= 2 && runHighEntropy(string(joined))
+		hit := parts >= 2 && runHighEntropy(string(joined)) && !identifierShaped(string(joined))
 		joined, parts = joined[:0], 0
 		return hit
 	}
@@ -187,11 +189,15 @@ const maxTokenPrefix = 8
 // and so is each part without a leading run of up to maxTokenPrefix
 // letters when that leaves a smaller alphabet ("SK" before 32 hex digits).
 // A part under 20 characters is not tested here, as 1.2.4 has it;
-// joinedRunHighEntropy tests consecutive long parts joined.
+// joinedRunHighEntropy tests consecutive long parts joined. A part that
+// reads as camelCase words ("UserServiceImpl2Test") is kept, as 1.2.4 keeps
+// it inside its whole run. A stripped rest needs no such exemption: its
+// alphabet is smaller than its part's, so it holds one letter case and is
+// never identifierShaped.
 func tokenInRun(run string) bool {
 	parts := strings.FieldsFunc(run, func(r rune) bool { return strings.ContainsRune("-_+/=", r) })
 	for _, part := range parts {
-		if part != run && runHighEntropy(part) {
+		if part != run && runHighEntropy(part) && !identifierShaped(part) {
 			return true
 		}
 		k := alphabetIndex(part)
@@ -272,4 +278,37 @@ func isHex(s string) bool {
 		}
 	}
 	return true
+}
+
+// identifierShaped reports a run that reads as camelCase words, the shape
+// of a name in a test file ("OAuth2Client", "refreshTokenExpiry",
+// "UserServiceImpl2Test"): only letters and digits, an upper-case letter,
+// at least three fifths lower-case letters, and every run of lower-case
+// letters at least two long and begun at the start or straight after an
+// upper-case letter. A random base62 run rarely is (0.27% at 20
+// characters, the shortest either addition tests; TestSTR13h bounds it
+// under 0.5%), and a run with one letter case, as every hex, base36 and
+// lower-case token has, never is. The names measured read 0.60
+// (HTTP2ServerPushTests) to 0.89 lower-case.
+func identifierShaped(s string) bool {
+	upper, lower := false, 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !isAlnum(c) {
+			return false
+		}
+		if c < 'a' || c > 'z' {
+			upper = upper || c >= 'A' && c <= 'Z'
+			continue
+		}
+		lower++
+		if i > 0 && s[i-1] >= 'a' && s[i-1] <= 'z' {
+			continue
+		}
+		startsWord := i == 0 || s[i-1] >= 'A' && s[i-1] <= 'Z'
+		if !startsWord || i+1 == len(s) || s[i+1] < 'a' || s[i+1] > 'z' {
+			return false
+		}
+	}
+	return upper && 5*lower >= 3*len(s)
 }

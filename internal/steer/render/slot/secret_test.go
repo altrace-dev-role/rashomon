@@ -412,3 +412,52 @@ func TestSTR13g_EachVendorRuleMatchesOnItsOwn(t *testing.T) {
 		}
 	}
 }
+
+// identifierPaths are ordinary test-file names that 1.2.4's runs keep and
+// that the slot layer's two additions refused when they were added: a part
+// split at '_' tested alone (tokenInRun) and two camelCase parts tested
+// joined (joinedRunHighEntropy), each part reading as words. Names 1.2.4
+// itself refuses in their whole run (S3BucketPolicyValidator_EdgeCases) are
+// the shared definition's cost, P-13's, and are not listed.
+var identifierPaths = []Path{
+	"tests/test_OAuth2Client_refreshTokenExpiry.py",
+	"src/test/java/com/acme/UserServiceImpl2Test_IntegrationSuite.java",
+	"tests/unit/test_JsonWebToken_ExpiredSignature.py",
+}
+
+// TestSTR13h_IdentifierPartsAreKept: a part or joined run that reads as
+// camelCase words is not secret-shaped under the slot layer's additions
+// (P07N-7's measured cost), and the exemption is narrow: under 0.5% of
+// random base62 runs of 20 characters, the shortest run either addition
+// tests and so the likeliest to read as words, pass for a name, so the
+// random tokens of TestSTR13d and TestSTR13f stay refused; and a run with
+// one letter case, which every hex, base36 and lower-case token has, or
+// with under three fifths lower-case letters, never does.
+func TestSTR13h_IdentifierPartsAreKept(t *testing.T) {
+	for _, p := range identifierPaths {
+		if err := p.Validate(); err != nil {
+			t.Errorf("Path(%q) = %v, want nil", p, err)
+		}
+	}
+	for _, s := range []string{"OAuth2Client", "UserServiceImpl2Test", "JsonWebTokenExpiredSignature", "HTTP2ServerPushTests"} {
+		if !identifierShaped(s) {
+			t.Errorf("%q does not read as words", s)
+		}
+	}
+	const base62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	r := rand.New(rand.NewPCG(47, 53))
+	words, n := 0, 20000
+	for i := 0; i < n; i++ {
+		if identifierShaped(randomString(r, base62, entropyMinRun)) {
+			words++
+		}
+	}
+	if rate := float64(words) / float64(n); rate >= 0.005 {
+		t.Errorf("%.4f of random base62 runs of %d read as words; want under 0.005", rate, entropyMinRun)
+	}
+	for _, s := range []string{"0123456789abcdef0123", "ABCDEFGHIJKLMNOPQRST0123", "refreshtokenexpiry", "OAUTH2CLIENTSUITE", "AbCdEfGhIjKlMnOpQrSt", "HTTPSERVERPushTests"} {
+		if identifierShaped(s) {
+			t.Errorf("%q reads as words; a run with one letter case, or under three fifths lower-case, never does", s)
+		}
+	}
+}
