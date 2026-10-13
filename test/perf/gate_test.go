@@ -88,4 +88,9 @@ func TestRES2b_ParseInitTraceSumsAndFailsClosed(t *testing.T) {
 	if _, err := ParseInitTrace("init runtime @0.017 ms\n"); err == nil {
 		t.Error("a truncated init line parsed as a small init")
 	}
+	// Ten fields with "bytes," in place: the allocs word is missing, and the
+	// parser must refuse the line rather than index past it.
+	if _, err := ParseInitTrace("init errors @0.11 ms, 0.003 ms clock, 160 bytes, 2\n"); err == nil {
+		t.Error("an init line without its allocs word parsed")
+	}
 }
