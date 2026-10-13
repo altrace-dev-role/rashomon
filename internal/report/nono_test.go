@@ -39,7 +39,7 @@ func TestNono_AnUnknownModeIsCountedWithoutAProxyStore(t *testing.T) {
 		nono.Event{Host: "pypi.org", Port: 443, Decision: nono.DecisionAllow, Mode: "connect"},
 		nono.Event{Host: "tunnel.example", Port: 443, Decision: nono.DecisionAllow, Mode: "tunnel2"},
 	)
-	n := buildNono(obs, Destinations{}, true, false, nil)
+	n := buildNono(obs, Destinations{}, true, false, nil, nil)
 	if n.UnknownModes != 1 {
 		t.Errorf("no proxy store: unknown_modes = %d, want 1", n.UnknownModes)
 	}
@@ -55,7 +55,7 @@ func TestNono_AnUnknownModeIsCountedOnceWithAProxyStore(t *testing.T) {
 		nono.Event{Host: "tunnel.example", Port: 443, Decision: nono.DecisionAllow, Mode: "tunnel2"},
 	)
 	dests := Destinations{Observed: true, WindowApplied: true}
-	n := buildNono(obs, dests, true, false, nil)
+	n := buildNono(obs, dests, true, false, nil, nil)
 	if n.UnknownModes != 1 {
 		t.Errorf("with a proxy store: unknown_modes = %d, want 1", n.UnknownModes)
 	}
@@ -77,7 +77,7 @@ const openWindowCaveat = " (no end record, so events up to the end of the trail 
 func TestNono_AWindowWithNoEndIsSaidOnTheSandboxLine(t *testing.T) {
 	obs := trailWith(nono.Event{Host: "pypi.org", Port: 443, Decision: nono.DecisionAllow, Mode: "connect"})
 	obs.WindowOpen = true
-	n := buildNono(obs, Destinations{}, true, false, nil)
+	n := buildNono(obs, Destinations{}, true, false, nil, nil)
 	if !n.WindowOpen {
 		t.Fatal("window_open was not carried from the trail into the report")
 	}
@@ -94,7 +94,7 @@ func TestNono_AWindowWithNoEndIsSaidOnTheSandboxLine(t *testing.T) {
 	}
 
 	obs.WindowOpen = false
-	closed := buildNono(obs, Destinations{}, true, false, nil)
+	closed := buildNono(obs, Destinations{}, true, false, nil, nil)
 	if out := renderNono(closed); strings.Contains(out, "no end record") {
 		t.Errorf("a window with an end carries the open-window caveat:\n%s", out)
 	}
@@ -146,20 +146,20 @@ func TestNono_AnUnreadableTrailSaysHowMuchItCouldNotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	obs := nono.Read(trail, nono.Window{Start: time.Unix(0, 0)})
-	n := buildNono(obs, Destinations{}, true, false, nil)
+	n := buildNono(obs, Destinations{}, true, false, nil, nil)
 	want := "  sandbox (nono): not observed (nono_audit_no_records; 2 trail records could not be read)\n"
 	if out := renderNono(n); out != want {
 		t.Errorf("an all-torn trail rendered\n%q\nwant\n%q", out, want)
 	}
 
-	one := buildNono(nono.Observation{Reason: nono.NotObservedNoRecords, Skipped: 1}, Destinations{}, true, false, nil)
+	one := buildNono(nono.Observation{Reason: nono.NotObservedNoRecords, Skipped: 1}, Destinations{}, true, false, nil, nil)
 	want = "  sandbox (nono): not observed (nono_audit_no_records; 1 trail record could not be read)\n"
 	if out := renderNono(one); out != want {
 		t.Errorf("one unreadable record rendered\n%q\nwant\n%q", out, want)
 	}
 
 	// Nothing skipped: the line is as it was.
-	none := buildNono(nono.Observation{Reason: nono.NotObservedNoRecords}, Destinations{}, true, false, nil)
+	none := buildNono(nono.Observation{Reason: nono.NotObservedNoRecords}, Destinations{}, true, false, nil, nil)
 	want = "  sandbox (nono): not observed (nono_audit_no_records)\n"
 	if out := renderNono(none); out != want {
 		t.Errorf("an empty trail rendered\n%q\nwant\n%q", out, want)
@@ -180,7 +180,7 @@ func TestNono_TheUnknownDecisionLineAgreesInNumber(t *testing.T) {
 		for i := 0; i < c.events; i++ {
 			events = append(events, nono.Event{Host: "x.example", Port: 443, Decision: "challenge", Mode: "connect"})
 		}
-		n := buildNono(trailWith(events...), Destinations{}, true, false, nil)
+		n := buildNono(trailWith(events...), Destinations{}, true, false, nil, nil)
 		if n.UnknownDecisions != c.events {
 			t.Fatalf("premise: unknown_decisions = %d, want %d", n.UnknownDecisions, c.events)
 		}
@@ -203,7 +203,7 @@ func TestNono_TheClientsOwnTrafficIsNotTheSessions(t *testing.T) {
 		nono.Event{Host: "github.com", Port: 443, Decision: nono.DecisionDeny, Mode: "connect"},
 		nono.Event{Host: intake, Port: 443, Decision: nono.DecisionDeny, Mode: "connect"},
 	)
-	n := buildNono(obs, Destinations{}, true, false, nil)
+	n := buildNono(obs, Destinations{}, true, false, nil, nil)
 	if got, want := strings.Join(n.Allowed, ","), "pypi.org"; got != want {
 		t.Errorf("allowed = %q, want %q: the client's model traffic counted as the agent's", got, want)
 	}
@@ -230,10 +230,10 @@ func TestNono_TheClientsOwnTrafficIsNotTheSessions(t *testing.T) {
 // made mcp__* calls, as it does in the destinations view.
 func TestNono_TheMCPTransportIsTheAgentsOnAnMCPSession(t *testing.T) {
 	obs := trailWith(nono.Event{Host: mcpProxyHost, Port: 443, Decision: nono.DecisionAllow, Mode: "connect"})
-	if n := buildNono(obs, Destinations{}, true, true, nil); strings.Join(n.Allowed, ",") != mcpProxyHost || len(n.ClientPlane) != 0 {
+	if n := buildNono(obs, Destinations{}, true, true, nil, nil); strings.Join(n.Allowed, ",") != mcpProxyHost || len(n.ClientPlane) != 0 {
 		t.Errorf("mcp session: allowed %v, client_plane %v; want the transport as the agent's", n.Allowed, n.ClientPlane)
 	}
-	if n := buildNono(obs, Destinations{}, true, false, nil); len(n.Allowed) != 0 || strings.Join(n.ClientPlane, ",") != mcpProxyHost {
+	if n := buildNono(obs, Destinations{}, true, false, nil, nil); len(n.Allowed) != 0 || strings.Join(n.ClientPlane, ",") != mcpProxyHost {
 		t.Errorf("no mcp calls: allowed %v, client_plane %v; want the transport as the client's", n.Allowed, n.ClientPlane)
 	}
 }

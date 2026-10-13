@@ -1119,7 +1119,9 @@ func writeNono(b *bytes.Buffer, n Nono) {
 	if len(n.ClientPlane) > 0 {
 		// Named, not dropped: the sandbox did allow or refuse these, and a
 		// reader comparing against nono's own log should find every host. Not
-		// counted above, because the agent did not make these attempts.
+		// counted above, because these are hosts the client contacts on its
+		// own and no tool call of the session named them; one that a call
+		// named is counted above, as the agent's.
 		fmt.Fprintf(b, "    the client's own traffic, not counted above: %s\n", list(n.ClientPlane))
 	}
 	// SAID SEPARATELY, because it is a LIFETIME count beside two windowed ones.

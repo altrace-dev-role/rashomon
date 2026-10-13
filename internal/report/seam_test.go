@@ -704,3 +704,66 @@ func TestSeam_AnySpellingOfAForgottenHostLeavesTheSandboxSection(t *testing.T) {
 		})
 	}
 }
+
+// trailOf writes a nono trail holding one connect event per host and
+// decision, all at one instant, and returns its path.
+func trailOf(t *testing.T, at time.Time, events ...[2]string) string {
+	t.Helper()
+	body := `{"sequence":0,"event":{"type":"session_started"}}` + "\n"
+	for i, e := range events {
+		body += ev(i+1, at.UnixMilli(), "connect", e[1], e[0], 443)
+	}
+	path := filepath.Join(t.TempDir(), "trail.ndjson")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestSeam_AClientPlaneHostAToolCallNamedIsTheAgents: the client-plane list
+// says which hosts the CLIENT contacts on its own, and a tool call naming one
+// is the agent's attempt, not the client's. With the list applied to the
+// sandbox section alone, a refused `curl` to the Datadog log intake -- a
+// shared endpoint that takes posts under any account's key, the kind of place
+// data leaves through -- vanished from "refused by the sandbox" and was named
+// as the client's own traffic, the agent's attempt relabelled as not its own.
+func TestSeam_AClientPlaneHostAToolCallNamedIsTheAgents(t *testing.T) {
+	for _, h := range []string{"http-intake.logs.us5.datadoghq.com", "sentry.io", "api.anthropic.com"} {
+		for _, decision := range []string{"deny", "allow"} {
+			t.Run(h+"/"+decision, func(t *testing.T) {
+				at := firstNonoEvent(t)
+				st, id, now := seamSessionAt(t, at)
+				if err := st.AppendDeclaration(store.Declaration{
+					Type: "declaration", SchemaVersion: 2, SessionID: id,
+					ToolUseID: "toolu_curl", ToolName: "Bash",
+					RecordedAtMS: at.UnixMilli(), Hosts: []string{h},
+				}); err != nil {
+					t.Fatal(err)
+				}
+				rep, err := Build(st, id, now, WithNonoTrail(trailOf(t, at, [2]string{h, decision})))
+				if err != nil {
+					t.Fatal(err)
+				}
+				n := rep.Sessions[0].Nono
+				column, want := n.Allowed, "sandbox (nono): 1 allowed, 0 denied"
+				if decision == "deny" {
+					column, want = n.Denied, "    refused by the sandbox: "+h+"\n"
+				}
+				if strings.Join(column, ",") != h {
+					t.Errorf("the sandbox's %s of %s, a host a tool call named, is not in the "+
+						"agent's column: allowed %v, denied %v", decision, h, n.Allowed, n.Denied)
+				}
+				var b strings.Builder
+				if err := Text(&b, rep); err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(b.String(), want) {
+					t.Errorf("want %q in:\n%s", want, b.String())
+				}
+				if strings.Contains(b.String(), "the client's own traffic") {
+					t.Errorf("the agent's own attempt is named as the client's traffic:\n%s", b.String())
+				}
+			})
+		}
+	}
+}

@@ -2933,7 +2933,8 @@ m("NONO the unknown-decision line is never printed", "internal/report/text.go",
 # the session's on the default path, and a host-scoped forget that removed
 # nothing left the host in the sandbox section (#45).
 m("NONO the client's own traffic is counted as the session's", "internal/report/nono.go",
-  "\t\t\tif clientPlane(h) {\n\t\t\t\tseenClient[h] = true\n\t\t\t\tcontinue\n\t\t\t}\n", "",
+  "\t\t\tif clientsOwn(h) {\n\t\t\t\tseenClient[h] = true\n\t\t\t\tcontinue\n\t\t\t}\n",
+  "\t\t\tif false && clientsOwn(h) {\n\t\t\t\tseenClient[h] = true\n\t\t\t\tcontinue\n\t\t\t}\n",
   "TestNono_TheClientsOwnTraffic|TestNono_TheMCPTransport")
 m("NONO the client's own traffic is dropped rather than named", "internal/report/nono.go",
   "\t\tn.ClientPlane = append(n.ClientPlane, h)\n", "\t\t_ = h\n",
@@ -2942,7 +2943,7 @@ m("NONO the MCP transport is the client's on an MCP session", "internal/report/d
   "\treturn clientPlaneHosts[h] && !(h == mcpProxyHost && mcpAttributed)", "\treturn clientPlaneHosts[h]",
   "TestNono_TheMCPTransport")
 m("NONO the session's MCP calls never reach the sandbox section", "internal/report/report.go",
-  "cfg.nonoTrail != \"\", madeMCPCall(run), forgotten)", "cfg.nonoTrail != \"\", false, forgotten)",
+  "cfg.nonoTrail != \"\", madeMCPCall(run), declaredHosts(run), forgotten)", "cfg.nonoTrail != \"\", false, declaredHosts(run), forgotten)",
   "TestSeam_TheMCPTransportReachesTheSandboxSection")
 m("NONO the client's log intake is not on the client-plane list", "internal/report/destinations.go",
   "\t\"http-intake.logs.us5.datadoghq.com\": true,\n", "",
@@ -2985,6 +2986,15 @@ m("NONO forget --host passes the value on as typed", "cmd/rashomon/main.go",
 m("NONO forget --host accepts what is not a hostname", "cmd/rashomon/main.go",
   "\t\t\th, ok := host.Canonical(args[i+1])\n\t\t\tif !ok {", "\t\t\th, ok := host.Canonical(args[i+1])\n\t\t\tif false && !ok {",
   "TestH25_ForgetHostRefusesWhatIs")
+# A client-plane host one of the session's own tool calls named is the
+# agent's attempt (review of #53): filed as the client's, a refused curl to the
+# Datadog log intake left "refused by the sandbox".
+m("NONO a client-plane host a tool call named is filed as the client's", "internal/report/nono.go",
+  "return clientPlane(h) && !declared[h] }", "return clientPlane(h) }",
+  "TestSeam_AClientPlaneHostAToolCallNamed")
+m("NONO the session's named hosts never reach the sandbox section", "internal/report/report.go",
+  "madeMCPCall(run), declaredHosts(run), forgotten)", "madeMCPCall(run), nil, forgotten)",
+  "TestSeam_AClientPlaneHostAToolCallNamed")
 
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn

@@ -92,7 +92,7 @@ type Nono struct {
 // observation, for the same reason the chain links are: that view has already
 // had forgotten hosts suppressed, and a second consumer reading around it is
 // how a suppressed host returns in a different section under a different name.
-func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttributed bool, forgotten func(string) bool) Nono {
+func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttributed bool, declared map[string]bool, forgotten func(string) bool) Nono {
 	n := Nono{
 		Configured:            configured,
 		Observed:              obs.Observed,
@@ -128,12 +128,21 @@ func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttribut
 	// hosts already in Allowed and Denied. The rule is clientPlaneHost, the one
 	// the destinations view applies, so the MCP transport stays the agent's on
 	// a session that made mcp__* calls.
+	//
+	// EXCEPT A HOST A TOOL CALL NAMED. The list says which hosts the client
+	// contacts on its own; it cannot say a session's attempt on one is the
+	// client's. A trail event carries no caller, so when the session's own
+	// call named the host the attempt stays in the agent's columns. Filed as
+	// the client's, a refused `curl` to the Datadog log intake -- a shared
+	// endpoint that takes posts under any account's key -- left "refused by
+	// the sandbox" and was named as traffic the agent did not make.
 	clientPlane := func(h string) bool { return clientPlaneHost(h, mcpAttributed) }
+	clientsOwn := func(h string) bool { return clientPlane(h) && !declared[h] }
 	seenClient := map[string]bool{}
 	agentOnly := func(hosts []string) []string {
 		kept := []string{}
 		for _, h := range hosts {
-			if clientPlane(h) {
+			if clientsOwn(h) {
 				seenClient[h] = true
 				continue
 			}
