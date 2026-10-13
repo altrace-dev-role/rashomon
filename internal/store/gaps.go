@@ -221,16 +221,9 @@ func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
 	// The gap lands before anything is removed. A failure between the two
 	// leaves a gap for records that still exist -- an overstatement a reader
 	// can see -- rather than a deletion nothing admits to.
-	g := Gap{
-		Type:           TypeGap,
-		SchemaVersion:  SessionSchemaVersion,
-		RecordedAtMS:   now.UnixMilli(),
-		SessionID:      sessionID,
-		Reason:         GapForget,
-		FromUnixMS:     from,
-		ToUnixMS:       to,
-		RemovedRecords: removedRec + removedSpill,
-	}
+	g := NewGap(GapForget, sessionID, now)
+	g.FromUnixMS, g.ToUnixMS = from, to
+	g.RemovedRecords = removedRec + removedSpill
 	if err := s.AppendGap(g); err != nil {
 		return nil, err
 	}
@@ -529,17 +522,10 @@ func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
 	// The gap spans what was actually removed rather than all of time: a
 	// host-scoped forget names no window, so the records themselves are the
 	// only honest bounds.
-	g := Gap{
-		Type:           TypeGap,
-		SchemaVersion:  SessionSchemaVersion,
-		RecordedAtMS:   now.UnixMilli(),
-		SessionID:      sessionID,
-		Reason:         GapForgetHost,
-		FromUnixMS:     earliest,
-		ToUnixMS:       latest,
-		RemovedRecords: removedRec + removedSpill,
-		HostDigest:     s.HostDigest(host),
-	}
+	g := NewGap(GapForgetHost, sessionID, now)
+	g.FromUnixMS, g.ToUnixMS = earliest, latest
+	g.RemovedRecords = removedRec + removedSpill
+	g.HostDigest = s.HostDigest(host)
 	// The gap lands first, as it does for a window forget: a failure between
 	// the two leaves a gap for records that still exist, an overstatement a
 	// reader can see, rather than a deletion nothing admits to.

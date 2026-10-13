@@ -369,9 +369,24 @@ func (s *Store) AppendCoverage(rec Coverage) error {
 	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, lockBudget, false)
 }
 
-// AppendGap records that records left the store.
+// NewGap is a gap record of reason for a session, recorded at now: the one
+// constructor every gap is built with, so each carries its type and version
+// (naming-10). The caller sets the span, the count and the host digest.
+func NewGap(reason, sessionID string, now time.Time) Gap {
+	return stampGap(Gap{RecordedAtMS: now.UnixMilli(), SessionID: sessionID, Reason: reason})
+}
+
+// stampGap sets what every gap carries whoever built it: its type, and the
+// version of the session records, which a gap is.
+func stampGap(g Gap) Gap {
+	g.Type, g.SchemaVersion = TypeGap, SessionSchemaVersion
+	return g
+}
+
+// AppendGap records that records left the store. It stamps the gap's type
+// and version itself, so a caller cannot write a gap a reader skips.
 func (s *Store) AppendGap(rec Gap) error {
-	return s.appendLine(filepath.Join(s.root, FileGaps), rec, lockBudget, false)
+	return s.appendLine(filepath.Join(s.root, FileGaps), stampGap(rec), lockBudget, false)
 }
 
 // DirName is the run directory name a session id maps to.

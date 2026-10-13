@@ -930,15 +930,9 @@ func cmdPause(stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err := st.AppendGap(store.Gap{
-			Type:          store.TypeGap,
-			SchemaVersion: store.SessionSchemaVersion,
-			RecordedAtMS:  now.UnixMilli(),
-			SessionID:     store.PausedSessionID,
-			Reason:        store.GapPaused,
-			FromUnixMS:    since.UnixMilli(),
-			ToUnixMS:      since.UnixMilli(),
-		}); err != nil {
+		g := store.NewGap(store.GapPaused, store.PausedSessionID, now)
+		g.FromUnixMS, g.ToUnixMS = since.UnixMilli(), since.UnixMilli()
+		if err := st.AppendGap(g); err != nil {
 			return err
 		}
 	}
@@ -970,15 +964,9 @@ func cmdResume(stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err := st.AppendGap(store.Gap{
-			Type:          store.TypeGap,
-			SchemaVersion: store.SessionSchemaVersion,
-			RecordedAtMS:  now.UnixMilli(),
-			SessionID:     store.PausedSessionID,
-			Reason:        store.GapPaused,
-			FromUnixMS:    since.UnixMilli(),
-			ToUnixMS:      now.UnixMilli(),
-		}); err != nil {
+		g := store.NewGap(store.GapPaused, store.PausedSessionID, now)
+		g.FromUnixMS, g.ToUnixMS = since.UnixMilli(), now.UnixMilli()
+		if err := st.AppendGap(g); err != nil {
 			return err
 		}
 	}

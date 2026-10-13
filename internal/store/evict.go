@@ -174,16 +174,9 @@ func (s *Store) evictionGap(c evictCandidate, now time.Time) (Gap, error) {
 		run = &Run{Dir: c.name}
 	}
 	from, to := recordSpan(run, c.mtime)
-	g := Gap{
-		Type:           TypeGap,
-		SchemaVersion:  SessionSchemaVersion,
-		RecordedAtMS:   now.UnixMilli(),
-		SessionID:      run.SessionID(),
-		Reason:         GapSizeCap,
-		FromUnixMS:     from,
-		ToUnixMS:       to,
-		RemovedRecords: len(run.Declarations) + len(run.Executions) + len(run.Terminals),
-	}
+	g := NewGap(GapSizeCap, run.SessionID(), now)
+	g.FromUnixMS, g.ToUnixMS = from, to
+	g.RemovedRecords = len(run.Declarations) + len(run.Executions) + len(run.Terminals)
 	if err != nil || run.Skipped > 0 {
 		g.RemovedRecords = RemovedUnknown
 	}
