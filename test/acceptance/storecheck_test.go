@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // The store's invariants, checked at the end of every test that made an env,
@@ -140,7 +142,7 @@ func recordProblems(where string, fields map[string]any, spec storeFile) []strin
 		return []string{fmt.Sprintf("%s: a %q record in a file that holds none", where, typ)}
 	}
 	var out []string
-	if v, ok := fields["schema_version"].(float64); !ok || v < 1 || v > 4 {
+	if v, ok := fields["schema_version"].(float64); !ok || float64(int(v)) != v || !readable(typ, int(v)) {
 		out = append(out, fmt.Sprintf("%s: schema_version %v, which this build does not read", where, fields["schema_version"]))
 	}
 	allow := map[string]bool{}
@@ -153,6 +155,17 @@ func recordProblems(where string, fields map[string]any, spec storeFile) []strin
 		}
 	}
 	return out
+}
+
+// readable is whether this build reads a record of this kind at this
+// version, asked of the store rather than written out here so the check moves
+// with the reader. Both terms hold today: store.Accepts is what the reader
+// applies to every record (classifyRunLine), and store.AcceptsKind is the
+// per-kind contract, under which coverage and gaps stop at
+// SessionSchemaVersion. When P-11 switches the reader to AcceptsKind and
+// retires Accepts, the first term goes with it.
+func readable(kind string, version int) bool {
+	return store.Accepts(version) && store.AcceptsKind(kind, version)
 }
 
 // TestRubricTest13_TheStoreCheckCatchesEachBreak is the checker's own test: a
@@ -219,6 +232,28 @@ func TestRubricTest13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 				t.Errorf("the check did not name %q; it said %v", tc.want, p)
 			}
 		})
+	}
+
+	// Versions are held per kind, in step with the store's reader: coverage
+	// and gaps stop at SessionSchemaVersion, and a call record at 5 is one
+	// today's reader skips, whatever the 1.2.0 contract will allow.
+	for _, tc := range []struct{ file, line, want string }{
+		{"coverage.ndjson", `{"type":"coverage","schema_version":4}`, "schema_version 4"},
+		{"gaps.ndjson", `{"type":"gap","schema_version":4}`, "schema_version 4"},
+		{"spill.ndjson", `{"type":"declaration","schema_version":5}`, "schema_version 5"},
+		{"spill.ndjson", `{"type":"declaration","schema_version":2.5}`, "schema_version 2.5"},
+	} {
+		home := t.TempDir()
+		dst := filepath.Join(home, "runs", testSession, tc.file)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dst, []byte(tc.line+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if p := storeProblems(home); !strings.Contains(strings.Join(p, "\n"), tc.want) {
+			t.Errorf("%s holding %s: the check did not name %q; it said %v", tc.file, tc.line, tc.want, p)
+		}
 	}
 
 	// A spilled record carries no seq, by design, and is not a break.
