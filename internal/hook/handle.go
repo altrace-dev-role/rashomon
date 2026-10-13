@@ -24,9 +24,15 @@ import (
 // The limit bounds the bytes read, not the work done on them, and alone it
 // does not close that path: 8 MiB of one-letter words is four million shell
 // words, and lexed whole the shape of that one line allocated 4.5 GB and
-// drove a hook to about 1.07 GB of RSS. The work is bounded where it is done:
-// the shape package stops lexing at its token bound (RES-9), and the
-// leading-cd fold below stops at maxLeadingCd (RES-10).
+// drove a hook to about 1.07 GB of RSS. Each reader of the line bounds its
+// own work: the shape package stops lexing at its token bound (RES-9), keeps
+// no more continuation offsets than that and reads ssh lines to the same
+// bound, takes a plain word as a slice of the line, and decodes the command
+// once per reader into a buffer of its size (RES-29); the leading-cd fold
+// below stops at maxLeadingCd (RES-10). That is measured, not proved: on the
+// sixteen 8 MiB line shapes TestRES29_ShapeOfEveryPathologicalLineIsBounded
+// reads, no reader allocates more than five times the payload, and the hook
+// peaked under 58 MiB of RSS on each shape tried.
 const MaxPayloadBytes = hookio.MaxPayloadBytes
 
 // maxLeadingCd bounds the leading-cd fold in startDirectory: see
