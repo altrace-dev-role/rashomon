@@ -4,7 +4,7 @@ m("VER-54 a gate fact carries its id as free text", "internal/verify/finding.go"
   "\tGateID       SlotID\n", "\tGateID       string\n", "TestVER54b_")
 # ToSteer, the verify-to-steer mapping (P07N-1 to -5, -13; verify F11, F12).
 m("VER-54 the masked claim reaches the model at stop", "internal/verify/tosteer_card.go",
-  '\t\tif kind == "masked" {\n\t\t\treturn flag, true\n', '\t\tif kind == "masked-never" {\n\t\t\treturn flag, true\n', "TestVER54e_")
+  '\t\tcase "masked":\n\t\t\treturn flag, true\n', '\t\tcase "masked-never":\n\t\t\treturn flag, true\n', "TestVER54e_")
 m("VER-54 VERIFY's integrity check name crosses as the kind", "internal/verify/tosteer.go",
   '\tSkipAdded:          "skip-added",\n', '\tSkipAdded:          "skip_added",\n', "TestVER54e_")
 m("VER-54 the spec rule kind crosses as the platform-rule kind", "internal/verify/tosteer.go",
@@ -29,11 +29,12 @@ m("VER-54 a claim is raised at any event", "internal/verify/tosteer_card.go",
 m("VER-54 a claim is judged away from its stop point", "internal/verify/tosteer.go",
   "\t\tcase f.Pattern == pattern.ClaimVsRecord && at.Kind != PointStop:\n", "\t\tcase false:\n", "TestVER54g_")
 m("VER-54 unrecovered failures never become silent-failure", "internal/verify/tosteer.go",
-  "\t\tcase f.Pattern == pattern.ClaimVsRecord && f.Claim.UnrecoveredFailures > 0:\n", "\t\tcase false:\n", "TestVER54e_")
+  "\t\tcase f.Pattern == pattern.ClaimVsRecord && f.Claim.UnrecoveredFailures > 0 && k != \"masked\":\n", "\t\tcase false:\n", "TestVER54e_")
 m("VER-54 a done claim over absent is not done-unverified", "internal/verify/tosteer.go",
   '\t\tcase f.Claim.Class == ClaimDone && (k == "stale" || k == "absent"):\n', "\t\tcase false:\n", "TestVER54e_")
 m("VER-54 an untrusted rule is not capped at flag", "internal/verify/tosteer_card.go",
-  "\tuntrusted := f.Rule != nil && f.Rule.Trust == spec.Untrusted\n", "\tuntrusted := f.Rule != nil && f.Rule.Trust == spec.Managed\n", "TestVER54e_")
+  "\tcapped := f.Rule != nil && ((f.Rule.Trust != spec.Trusted && f.Rule.Trust != spec.Managed) || f.Rule.Rewritten)\n",
+  "\tcapped := f.Rule != nil && ((f.Rule.Trust == spec.Managed) || f.Rule.Rewritten)\n", "TestVER54e_")
 m("VER-54 a proposed fact field loses its mark", "internal/verify/finding.go",
   "\t// Added is how many matches the edit added (P-07 proposal: archive\n", "\t// Added is how many matches the edit added (archive\n", "TestVER54j_")
 # Only the TaskUpdate form has the deny and the teammate flag names its task
@@ -59,3 +60,42 @@ m("VER-54 a command rule may carry a path", "internal/verify/tosteer.go",
   "\t\treturn r.Path == nil && r.Gate == nil\n", "\t\treturn r.Gate == nil\n", "TestVER54k_")
 m("VER-54 a code rule may name no file", "internal/verify/tosteer.go",
   "\t\treturn r.Path != nil && r.Program == nil && r.Gate == nil\n", "\t\treturn r.Program == nil && r.Gate == nil\n", "TestVER54k_")
+# Round 2 (P07N-13 partial; P07N-1/-3 readings): the closed vocabularies
+# that decide visibility, kind and key are refused outside their lists; the
+# absence kinds of claim-vs-record never continue the turn (tech 2.2.9); a
+# masked verdict never crosses as silent-failure (ED-3); a rewritten input
+# caps a rule at flag (40.4.6, 40.4.10).
+m("VER-54 a rule's unknown trust maps as trusted", "internal/verify/tosteer_vocab.go",
+  "\tif r := f.Rule; r != nil && !slices.Contains(spec.Trusts, r.Trust) {\n",
+  "\tif r := f.Rule; r != nil && !slices.Contains(append(spec.Trusts, r.Trust), r.Trust) {\n", "TestVER54l_")
+m("VER-54 a claim class outside the lexicon becomes the key", "internal/verify/tosteer_vocab.go",
+  "\t\tcase !slices.Contains(ClaimClasses, c.Class):\n", "\t\tcase false:\n", "TestVER54l_")
+m("VER-54 a claim source goes unchecked", "internal/verify/tosteer_vocab.go",
+  "\t\tcase !sourceFits(f.Pattern, c.Source):\n", "\t\tcase false:\n", "TestVER54l_")
+m("VER-54 a subagent's account passes as the final message", "internal/verify/tosteer_vocab.go",
+  "\t\treturn s == SourceFinalMessage\n", "\t\treturn s != \"\"\n", "TestVER54l_")
+m("VER-54 an unknown verdict beside failures is silent-failure", "internal/verify/tosteer_vocab.go",
+  "\t\tcase c.Verdict != NoGateKnown && !slices.Contains(States, State(c.Verdict)):\n", "\t\tcase false:\n", "TestVER54l_")
+m("VER-54 a gate reason goes unchecked", "internal/verify/tosteer_vocab.go",
+  "\t\tif g.Reason != \"\" && !slices.Contains(Reasons, g.Reason) {\n", "\t\tif false {\n", "TestVER54l_")
+m("VER-54 subtask-gate denies over a green gate", "internal/verify/tosteer_vocab.go",
+  "var subtaskStates = []State{Red, MaskedInconclusive, Stale, Absent}\n",
+  "var subtaskStates = []State{Red, MaskedInconclusive, Stale, Absent, Green}\n", "TestVER54l_")
+m("VER-54 subtask-gate fires over a backgrounded gate", "internal/verify/tosteer_vocab.go",
+  "var subtaskStates = []State{Red, MaskedInconclusive, Stale, Absent}\n",
+  "var subtaskStates = []State{Red, MaskedInconclusive, Stale, Absent, Backgrounded}\n", "TestVER54l_")
+m("VER-54 regression-location fires over any state", "internal/verify/tosteer_vocab.go",
+  "\t\treturn g.State == Red && g.LastGreenSeq != nil &&", "\t\treturn g.State != Green && g.LastGreenSeq != nil &&", "TestVER54l_")
+m("VER-54 regression-location fires with no earlier green", "internal/verify/tosteer_vocab.go",
+  " && g.LastGreenSeq != nil && (g.LastRunSeq == nil || *g.LastGreenSeq < *g.LastRunSeq)\n", "\n", "TestVER54l_")
+m("VER-54 regression-location's green may follow its red", "internal/verify/tosteer_vocab.go",
+  "(g.LastRunSeq == nil || *g.LastGreenSeq < *g.LastRunSeq)", "(g.LastRunSeq == nil || *g.LastGreenSeq <= *g.LastRunSeq+1)", "TestVER54l_")
+m("VER-54 the gate beside a claim may be in any state", "internal/verify/tosteer_vocab.go",
+  "\treturn f.Claim != nil && g.State == State(f.Claim.Verdict)\n", "\treturn f.Claim != nil\n", "TestVER54l_")
+m("VER-54 a masked verdict crosses as silent-failure", "internal/verify/tosteer.go",
+  " && f.Claim.UnrecoveredFailures > 0 && k != \"masked\":\n", " && f.Claim.UnrecoveredFailures > 0:\n", "TestVER54e_")
+m("VER-54 the absence kinds continue the turn", "internal/verify/tosteer_card.go",
+  "\t\tcase \"red\", \"backgrounded\", \"silent-failure\":\n",
+  "\t\tcase \"red\", \"backgrounded\", \"silent-failure\", \"stale\", \"absent\", \"done-unverified\":\n", "TestVER54e_")
+m("VER-54 a rewritten input is not capped at flag", "internal/verify/tosteer_card.go",
+  " || f.Rule.Rewritten)\n", " || false)\n", "TestVER54e_")

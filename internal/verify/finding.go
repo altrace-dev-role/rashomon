@@ -214,6 +214,14 @@ type RuleFact struct {
 	// comment, the platform-rule/pragma kind (P-07 proposal: archive 40.4.6
 	// `pragma` trigger).
 	Pragma bool
+	// Rewritten is true when the call ran other than the model asked,
+	// another hook having rewritten its input (the executed digest differs
+	// from the declared one), or a known rewriting hook affects the rule; it
+	// caps the finding at a user flag (P-07 proposal: tech 2.2.7's
+	// forbid_command row, "marked `rewritten` when the executed digest
+	// differs"; archive 40.4.6 "flag when another hook rewrote the input",
+	// 40.4.10 "capped at flag"; STR-57).
+	Rewritten bool
 }
 
 // IntegrityFact is the record fact behind an integrity finding from one of

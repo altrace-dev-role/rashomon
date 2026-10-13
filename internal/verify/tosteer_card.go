@@ -32,9 +32,16 @@ var (
 // the gap row's "`StopForm` per card"):
 //
 //   - claim-vs-record, raised at Stop: a flag there and a note on the next
-//     prompt, and at a project `stop` level one continuation with the same
-//     text (archive 40.4.14; tech 4.2.13), so stop with stop_continue; the
-//     masked kind stays in the user's Stop line (ED-3), so flag.
+//     prompt; red, backgrounded and silent-failure also continue the turn
+//     once at a project `stop` level (tech 2.2.9: "continuation only at a
+//     project `stop` level"), so stop with stop_continue; stale, absent and
+//     done-unverified are a flag at Stop and the fact on the next prompt
+//     with no continuation (tech 2.2.9; archive 20.2.10, "(no extra turn)"
+//     and "Why absence findings at Stop are deferred"), so nudge; the
+//     masked kind stays in the user's Stop line (ED-3), so flag. Archive
+//     40.4.14's Level row reads as if every next-prompt kind may continue at
+//     a project stop; where the two conflict, the tech table, the narrower
+//     ceiling, applies (ED-2's open question on absence continuations).
 //   - subtask-gate: a candidate nudge at PostToolUse of the completion or
 //     boundary call; deny on PreToolUse of the TaskUpdate (40.4.1: "Stop:
 //     PreToolUse(TaskUpdate) `permissionDecision: deny`"), so only a
@@ -49,17 +56,19 @@ var (
 //     call (40.4.10; STR-68).
 //   - integrity and subagent-claim: user flags at release (2.2.9's table).
 //
-// A loose claim, an untrusted rule and a finding VERIFY marks UserOnly are
-// user flags whatever the card allows (2.2.5 step 8; 2.2.9). ok is false
-// for an event the card does not raise the finding at.
+// A loose claim, a rule neither trusted nor managed, a rule whose input
+// another hook rewrote, and a finding VERIFY marks UserOnly are user flags
+// whatever the card allows (2.2.5 step 8; 2.2.9; 40.4.6 "flag when another
+// hook rewrote the input"; 40.4.10 "capped at flag"). ok is false for an
+// event the card does not raise the finding at.
 func ceilingFor(f Finding, kind steer.Kind, at Point) (steer.Level, steer.StopForm, bool) {
 	c, ok := cardCeiling(f.Pattern, kind, f.Event, at.TaskRef != nil)
 	if !ok {
 		return 0, "", false
 	}
 	loose := f.Claim != nil && !f.Claim.Strict
-	untrusted := f.Rule != nil && f.Rule.Trust == spec.Untrusted
-	if f.UserOnly || loose || untrusted {
+	capped := f.Rule != nil && ((f.Rule.Trust != spec.Trusted && f.Rule.Trust != spec.Managed) || f.Rule.Rewritten)
+	if f.UserOnly || loose || capped {
 		c = flag
 	}
 	return c.level, c.form, true
@@ -71,10 +80,13 @@ func cardCeiling(id pattern.ID, kind steer.Kind, event string, task bool) (ceili
 	pre, post := string(steer.EventPreToolUse), string(steer.EventPostToolUse)
 	switch {
 	case id == pattern.ClaimVsRecord && event == string(steer.EventStop):
-		if kind == "masked" {
+		switch kind {
+		case "masked":
 			return flag, true
+		case "red", "backgrounded", "silent-failure":
+			return ceiling{steer.LevelStop, steer.StopFormStopContinue}, true
 		}
-		return ceiling{steer.LevelStop, steer.StopFormStopContinue}, true
+		return nudge, true
 	case id == pattern.SubtaskGate && event == post:
 		return nudge, true
 	case id == pattern.SubtaskGate && kind == "" && task && event == pre:
