@@ -1,3 +1,8 @@
+// Peak RSS is read from the child's Unix rusage (Maxrss), which Windows'
+// syscall.Rusage does not have; GOOS=windows go vet ./... failed here.
+
+//go:build !windows
+
 package main
 
 import (
