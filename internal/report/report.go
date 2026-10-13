@@ -131,6 +131,7 @@ type Declarations struct {
 	WithoutTranscript int            `json:"without_transcript"`
 	Unterminated      []string       `json:"unterminated"`
 	Dropped           []string       `json:"dropped"`
+	NotDurable        []string       `json:"not_durable"`
 	WithoutExecution  []Unexecuted   `json:"without_execution"`
 	ByTool            map[string]int `json:"by_tool"`
 
@@ -482,6 +483,7 @@ func build(run *store.Run) Session {
 			Recorded:         len(run.Declarations),
 			Unterminated:     nonNil(run.Unterminated()),
 			Dropped:          nonNil(run.Dropped()),
+			NotDurable:       nonNil(run.NotDurable()),
 			WithoutExecution: []Unexecuted{},
 			ByTool:           map[string]int{},
 			ByLabel:          map[string]int{},
@@ -555,7 +557,9 @@ func build(run *store.Run) Session {
 	}
 	// A hook whose one full sync failed marked its call on the spill file
 	// (REC-34). Its records read back, so nothing above notices them; this is
-	// what keeps the session from rendering as fine.
+	// what keeps the session from rendering as fine, and
+	// Declarations.NotDurable names each call. A marker that names no call
+	// marks the session alone.
 	for _, t := range run.Terminals {
 		if t.FlushFailed() {
 			sess.Coverage.add(store.ReasonFlushFailed)
