@@ -139,21 +139,34 @@ func pluginDefaultEnabled(root string) (bool, error) {
 }
 
 // pluginHooksDoc is hooks/hooks.json's own wrapper shape -- the plugin format,
-// not the settings format Document/matcherGroup read.
+// not the settings format Document/matcherGroup read. Each event's groups stay
+// raw so that every one can be put through intact(), the check a settings
+// entry is held to, before anything in it is believed.
 type pluginHooksDoc struct {
-	Hooks map[string][]struct {
-		Hooks []struct {
-			Type    string   `json:"type"`
-			Command string   `json:"command"`
-			Args    []string `json:"args"`
-		} `json:"hooks"`
+	Hooks map[string][]json.RawMessage `json:"hooks"`
+}
+
+// pluginGroup is the part of one plugin matcher group pluginDeclaresEvent
+// reads once intact() has accepted the group's matcher, hook count, type and
+// timeout: the exec-form command and its argument vector.
+type pluginGroup struct {
+	Hooks []struct {
+		Type    string   `json:"type"`
+		Command string   `json:"command"`
+		Args    []string `json:"args"`
 	} `json:"hooks"`
 }
 
 // pluginDeclaresEvent reports whether the plugin rooted at root declares, for
 // event, an exec-form command hook whose argument vector matches our own
 // subcommand contract and whose command resolves, under root, to a file that
-// exists.
+// exists -- in a group that is intact: the matcher and the timeout watch
+// installs, one hook, of type command.
+//
+// The intact check is what makes present_plugin mean what present_settings
+// means. Without it a hooks.json narrowed to "Bash" read as declaring
+// PreToolUse, Edit, Write and every MCP call went unrecorded, and the run
+// rendered verified over them; a timeout of 600 passed the same way.
 //
 // The resolution check is not redundant with the caller having found root in
 // the first place: root can come from self-identification (which only proves
@@ -175,7 +188,16 @@ func pluginDeclaresEvent(root, event string) (bool, error) {
 	}
 
 	want := strings.Fields(subcommand(event))
-	for _, group := range doc.Hooks[event] {
+	for _, raw := range doc.Hooks[event] {
+		if intact(raw, event) != "" {
+			// Narrowed, slowed, or carrying a second hook: not the entry
+			// watch installs, so not evidence that this event is recorded.
+			continue
+		}
+		var group pluginGroup
+		if err := json.Unmarshal(raw, &group); err != nil {
+			continue
+		}
 		for _, h := range group.Hooks {
 			if h.Type != "command" || !equalStrings(h.Args, want) {
 				continue
@@ -222,7 +244,9 @@ type Plugin struct {
 	// the manifest's defaultEnabled when settings names no override.
 	Enabled bool
 	// Events lists which of install.Events this installation structurally
-	// declares with a command that resolves to a file under its own bin/.
+	// declares with a command that resolves to a file under its own bin/, in
+	// a group intact() accepts -- the same test PluginPresent applies, so a
+	// narrowed event is absent here as it is in the coverage record.
 	Events []string
 }
 
