@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -301,9 +300,6 @@ func benchToolCalls(b *testing.B, entry func([]string, io.Reader, io.Writer) int
 	in := newBenchInput(b, body)
 	args := []string{install.Marker, installID}
 	var stderr benchSink
-	// hook and post leave the runtime on one P (oneProc), as a production
-	// process ends; the benchmarks after this one get back what it started with.
-	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(0))
 	b.ReportAllocs()
 	b.SetBytes(int64(len(body)))
 	b.ResetTimer()
