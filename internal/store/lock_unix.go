@@ -50,10 +50,14 @@ func LockFile(f *os.File, budget time.Duration) (func(), error) {
 		if !errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, err
 		}
-		if !time.Now().Before(deadline) {
+		left := time.Until(deadline)
+		if left <= 0 {
 			return nil, ErrLockTimeout
 		}
-		time.Sleep(backoff)
+		// The last sleep is cut to the time left, so the final try lands at
+		// the deadline and a give-up never runs a whole sleep past the
+		// budget (perf-1).
+		time.Sleep(min(backoff, left))
 		if backoff < 10*time.Millisecond {
 			backoff *= 2
 		}
