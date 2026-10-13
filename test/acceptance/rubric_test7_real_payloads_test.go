@@ -238,3 +238,54 @@ func (e *env) reportAccount(sessionID string) string {
 	}
 	return rep.Sessions[0].Account.Text
 }
+
+// TestRubricTest7_RealSessionDigests drives digest from the captured session:
+// the store the replay left, and the Stop payload Claude Code sent, piped in
+// whole as a Stop hook would pipe it. The turn's declarations and executions
+// are the payloads', the refused rm is the one declaration without an
+// execution, the failing cat is the one failure, and the final message is
+// read from the real payload's own shape.
+//
+// Whether silent_failures fires is not pinned. On this session it does not,
+// and for a reason worth knowing: the final message never mentions the cat
+// that failed, but it says the rm was "denied", which is in the failure
+// vocabulary, and the vocabulary is matched across the whole message.
+func TestRubricTest7_RealSessionDigests(t *testing.T) {
+	e := newEnv(t)
+	payloads := e.replayReal(t)
+	var stopRaw, denied string
+	executed := map[string]bool{}
+	for _, p := range payloads {
+		switch p.event {
+		case "Stop":
+			stopRaw = p.raw
+		case "PostToolUse", "PostToolUseFailure":
+			executed[p.toolUseID] = true
+		}
+	}
+	for _, p := range payloads {
+		if p.event == "PreToolUse" && !executed[p.toolUseID] {
+			denied = p.toolUseID
+		}
+	}
+	if stopRaw == "" || denied == "" {
+		t.Fatal("premise: the capture holds a Stop payload and one refused call")
+	}
+	res := e.run(stopRaw+"\n", nil, "digest", "--session", realSession, "--stdin")
+	if res.exitCode != 0 {
+		t.Fatalf("digest --stdin: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	var d digestOutput
+	if err := json.Unmarshal([]byte(res.stdout), &d); err != nil {
+		t.Fatalf("digest output is not JSON: %v\n%s", err, res.stdout)
+	}
+	if d.SessionID != realSession || d.Declarations.Recorded != 11 || d.Executions.Recorded != 10 {
+		t.Errorf("digest of %s: %d declarations, %d executions; want 11 and 10", d.SessionID, d.Declarations.Recorded, d.Executions.Recorded)
+	}
+	if w := d.Declarations.WithoutExecution; len(w) != 1 || w[0].ToolUseID != denied {
+		t.Errorf("without_execution %+v, want the refused rm %s", w, denied)
+	}
+	if !d.SilentFailures.FinalMessageAvailable || d.SilentFailures.Failed != 1 {
+		t.Errorf("silent_failures %+v: want the Stop payload's final message read and the one failing cat", d.SilentFailures)
+	}
+}

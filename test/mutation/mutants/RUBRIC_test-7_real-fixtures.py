@@ -9,3 +9,5 @@ m("test-7  every line of a response is priced again", "internal/spend/scan.go",
 m("test-7  the exit code is read past the first line", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n",
   "\tfirst := msg[len(exitCodePrefix):]\n", "TestRubricTest7_")
+m("test-7  digest --stdin drops the Stop payload's final message", "cmd/rashomon/main.go",
+  "\treturn fm.Message, ok && fm.Message != \"\"\n", "\treturn fm.Message, false\n", "TestRubricTest7_")
