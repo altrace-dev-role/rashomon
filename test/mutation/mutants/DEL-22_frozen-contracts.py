@@ -29,3 +29,23 @@ m("DEL-22 evidence may repeat or follow after_seq", "internal/steer/finding.go",
   "\t\tif seq > f.AfterSeq || i > 0 && seq <= f.Evidence[i-1] {\n", "\t\tif i > 0 && seq < f.Evidence[i-1] {\n", "TestDEL22e_")
 m("DEL-22 a stop form rides below the stop level", "internal/steer/finding.go",
   "\tcase f.StopForm != StopFormNone && f.MaxLevel != LevelStop:\n", "\tcase false:\n", "TestDEL22e_")
+# The schema-5 key list against every route around it (P07N-6), BREADTH's
+# call-record keys (cross F4) and the withheld keys (STORE-9).
+m("DEL-22 omitzero drops a v5 key when it is null", "internal/store/record_v5.go",
+  "`json:\"written_paths_complete\"`", "`json:\"written_paths_complete,omitzero\"`", "TestDEL22b_")
+m("DEL-22 a tag option changes a v5 key's wire type", "internal/store/record_v5.go",
+  "\tSize       int      `json:\"size\"`\n", "\tSize       int      `json:\"size,string\"`\n", "TestDEL22b_")
+m("DEL-22 a pointer-receiver MarshalJSON rewrites the session record", "internal/store/record_v5.go",
+  "type Session struct {\n", "func (s *Session) MarshalJSON() ([]byte, error) { return []byte(`{\"x\":1}`), nil }\n\ntype Session struct {\n", "TestDEL22b_")
+m("DEL-22 a MarshalJSON promoted from the header rewrites every record", "internal/store/record_v5.go",
+  "type EventHeader struct {\n", "func (h *EventHeader) MarshalJSON() ([]byte, error) { return []byte(`{\"only\":\"header\"}`), nil }\n\ntype EventHeader struct {\n", "TestDEL22b_")
+m("DEL-22 a named embed nests the header", "internal/store/record_v5.go",
+  "type Prompt struct {\n\tEventHeader\n", "type Prompt struct {\n\tEventHeader `json:\"header\"`\n", "TestDEL22b_")
+m("DEL-22 a MarshalText writes the git state as one string", "internal/store/record_v5.go",
+  "type GitState struct {\n", "func (g GitState) MarshalText() ([]byte, error) { return []byte(\"opaque\"), nil }\n\ntype GitState struct {\n", "TestDEL22b_")
+m("DEL-22 a list key becomes a scalar", "internal/store/record_v5.go",
+  "\tToolUseIDs []string `json:\"tool_use_ids\"`\n", "\tToolUseIDs string   `json:\"tool_use_ids\"`\n", "TestDEL22b_")
+m("DEL-22 written_paths withheld as oversize has no key", "internal/store/record_v5.go",
+  "\tWrittenPathsWithheld    *string `json:\"written_paths_withheld\"`", "\tWrittenPathsWithheld    *string `json:\"-\"`", "TestDEL22b_")
+m("DEL-22 BREADTH's mcp_server_source key is absent", "internal/store/record_v5.go",
+  "\tMCPServerSource *string `json:\"mcp_server_source\"`\n", "", "TestDEL22b_")
