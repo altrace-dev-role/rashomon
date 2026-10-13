@@ -512,26 +512,7 @@ func build(run *store.Run) Session {
 	sess.Declarations.ByTool = byTool
 	sess.Declarations.ByLabel = byLabel
 	sess.Declarations.WithoutExecution = withoutExecution
-	// Report-only tallies, beside the shared ones rather than inside them:
-	// the turn digest counts with CountDeclarations and renders no verb
-	// class or program, so these stay out of the rule the two share. The
-	// duplicate tool_use_id check is NOT one of them -- the digest's counts
-	// double on a double-fire exactly as these do -- so it lives in
-	// HasDuplicateToolUseID, which both call.
-	for _, d := range run.Declarations {
-		if d.Shape.VerbClass != "" {
-			sess.Declarations.ByVerbClass[d.Shape.VerbClass]++
-		}
-		switch {
-		case d.Shape.Program != nil:
-			sess.Declarations.ByProgram[*d.Shape.Program]++
-		case d.ToolName == "Bash":
-			// Only a shell tool has a program to miss. Every other tool
-			// legitimately has none, and counting those here would report a
-			// gap where there is nothing to know.
-			sess.Declarations.ProgramsUnknown++
-		}
-	}
+	sess.tally(run)
 
 	// What the run said about itself, phase by phase.
 	facts := RollupCoverage(run.Coverage)
@@ -580,6 +561,39 @@ func build(run *store.Run) Session {
 		sess.Coverage.add(ReasonDuplicateDeclarations)
 	}
 
+	sess.accountTranscripts(run, executed)
+	return sess
+}
+
+// tally adds the counts only the report renders -- verb class and program --
+// to sess's declaration tallies.
+func (sess *Session) tally(run *store.Run) {
+	// Report-only tallies, beside the shared ones rather than inside them:
+	// the turn digest counts with CountDeclarations and renders no verb
+	// class or program, so these stay out of the rule the two share. The
+	// duplicate tool_use_id check is NOT one of them -- the digest's counts
+	// double on a double-fire exactly as these do -- so it lives in
+	// HasDuplicateToolUseID, which both call.
+	for _, d := range run.Declarations {
+		if d.Shape.VerbClass != "" {
+			sess.Declarations.ByVerbClass[d.Shape.VerbClass]++
+		}
+		switch {
+		case d.Shape.Program != nil:
+			sess.Declarations.ByProgram[*d.Shape.Program]++
+		case d.ToolName == "Bash":
+			// Only a shell tool has a program to miss. Every other tool
+			// legitimately has none, and counting those here would report a
+			// gap where there is nothing to know.
+			sess.Declarations.ProgramsUnknown++
+		}
+	}
+}
+
+// accountTranscripts runs the accounting equation against every transcript
+// the run's declarations named, adding each transcript's result to sess and
+// each mismatch or unreadable transcript to its coverage reasons.
+func (sess *Session) accountTranscripts(run *store.Run, executed map[string]bool) {
 	// The accounting equation, once per transcript the run's declarations
 	// named. A declaration naming none is counted rather than grouped.
 	byPath := map[string]map[string]bool{}
@@ -631,7 +645,6 @@ func build(run *store.Run) Session {
 		}
 		sess.Transcripts = append(sess.Transcripts, t)
 	}
-	return sess
 }
 
 func accounting(path string, recorded, executed, hooked map[string]bool) Transcript {
