@@ -12,7 +12,9 @@ import (
 
 // evictGrace keeps a run that was written to recently out of eviction. The
 // current session is protected by name; this protects any other session that
-// is still live, so that eviction never races an append.
+// is still live. Eviction takes no run's records lock, so it can race an
+// append to a run idle for longer than this; the package doc states that as
+// an accepted risk.
 const evictGrace = time.Hour
 
 // Evict removes whole runs, oldest first, until the store fits under capBytes.

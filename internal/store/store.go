@@ -1,8 +1,3 @@
-// Package store is the on-disk record of declarations.
-//
-// records.ndjson is append-only and totally ordered by seq. Nothing rewrites a
-// line in it except forget, and forget leaves a gap record behind, because a
-// record that can be quietly corrected is worth nothing as evidence.
 package store
 
 import (

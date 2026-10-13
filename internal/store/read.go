@@ -96,9 +96,9 @@ func (s *Store) ReadRunDir(name string) (*Run, error) {
 // except each file is read under a short, best-effort lock against the same
 // flock a writer takes in appendOrdered/appendLine.
 //
-// ReadRunDir takes no lock at all, which was always safe for its one caller:
-// `report` runs after the fact, once a session is effectively over, so there
-// is nothing left mid-append to race. A turn digest is read at Stop, while a
+// ReadRunDir takes no lock at all, which suits its callers (the package doc
+// names them): each reads a run after the fact, or accepts a line caught
+// mid-write as one counted in Skipped. A turn digest is read at Stop, while a
 // backgrounded tool call or a concurrent subagent can still be appending to
 // this exact run directory, and a reader with no lock can observe a line
 // while its write is in flight.
