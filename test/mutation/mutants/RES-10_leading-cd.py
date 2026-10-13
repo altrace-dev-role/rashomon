@@ -13,3 +13,9 @@ m("RES-10 a runner past the fold is paired as though its directory were known", 
 m("RES-10 a line cut at the token bound gives up its leading cds", "internal/shape/leading.go",
   "\tif err != nil && err != errTokenBound {\n\t\treturn nil, false\n\t}\n",
   "\tif err != nil {\n\t\treturn nil, false\n\t}\n", "TestRES10_")
+
+# Past the fold the start directory is unknown, and the shape says the line
+# was cut there; not saying so is the regression.
+m("RES-10 a line past the leading-cd fold is not reported as cut", "internal/shape/shape.go",
+  "\tcut := err == errTokenBound || perr == errTokenBound || len(dirs) > MaxLeadingCd\n",
+  "\tcut := err == errTokenBound || perr == errTokenBound\n", "TestRES10_DeriveSaysTheCdFoldWasCut")

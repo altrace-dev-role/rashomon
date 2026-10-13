@@ -101,6 +101,21 @@ type Shape struct {
 // different digests for identical input, so a store cannot be used as a lookup
 // table against a dictionary of known commands.
 func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
+	// A record below schema 5 has no field for the cut, and the hook writes
+	// those: see DeriveCut, which is what a writer that can carry it calls.
+	s, _ := DeriveCut(toolName, toolInput, key)
+	return s
+}
+
+// DeriveCut is Derive, and whether the shape was derived from a shell line
+// read only in part: to the token bound (RES-9) or past the leading-cd fold
+// (RES-10), where the hook records the start directory as unknown. What
+// follows the cut is unknown rather than absent, so a path or a host the
+// line names there is not in what was derived, and a reader must not take a
+// short list for a complete one. It is schema 5's shape.truncated (Archive
+// 85.3.10, "Token or cd bound"), which P-11 serialises; a v4 record does not
+// carry it. Always false for a tool that is not a shell.
+func DeriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool) {
 	s := Shape{VerbClass: verbForTool(toolName)}
 
 	// Only a shell tool's input carries a command line. An MCP tool or a
@@ -116,7 +131,7 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	}
 	if !isShell {
 		s.Digest = canonicalDigest(key, toolName, toolInput)
-		return s
+		return s, false
 	}
 
 	// A shell tool digests its command line and nothing else. Claude Code
@@ -161,7 +176,8 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	}
 	dirs, _ := leadingRun(pshaped, perr)
 	s.StatusMasked, s.RunnerDigest = statusMasked(cmd, key, leadingSteps(dirs))
-	return s
+	cut := err == errTokenBound || perr == errTokenBound || len(dirs) > MaxLeadingCd
+	return s, cut
 }
 
 // controlByte reports a line holding a control byte, in which no word can be
