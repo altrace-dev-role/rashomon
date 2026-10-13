@@ -442,3 +442,33 @@ func TestRubricERRORS6_UnreadablePauseMarkerPausesRecording(t *testing.T) {
 		t.Error("no call coverage record carries recording_paused for the call under an unreadable marker")
 	}
 }
+
+// pausedLine is what `rashomon pause` prints on engaging the pause. It says
+// that a paused call still leaves a coverage note, because it does
+// (TestH80_PausedSessionWithAStoreWritesRecordingPaused): the line used to
+// say no tool call would be recorded, and each one still wrote a record.
+const pausedLine = "rashomon: paused -- tool calls are not recorded until `rashomon resume`; " +
+	"each one still adds a one-line coverage note (session id, working directory) so the gap shows in the report\n"
+
+// TestRubricDOCS2_PauseSaysCoverageNotesAreStillWritten pins the printed line
+// next to the H-80 test that proves what it says.
+func TestRubricDOCS2_PauseSaysCoverageNotesAreStillWritten(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	res := e.pause()
+	if res.exitCode != 0 {
+		t.Fatalf("pause: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res.stdout != pausedLine {
+		t.Errorf("pause printed %q, want %q", res.stdout, pausedLine)
+	}
+
+	// With no store, a paused call writes nothing (H-81), and the line does
+	// not claim a note it will not leave.
+	bare := newEnv(t)
+	res = bare.pause()
+	const noStoreLine = "rashomon: paused -- tool calls are not recorded until `rashomon resume`\n"
+	if res.exitCode != 0 || res.stdout != noStoreLine {
+		t.Errorf("pause with no store: exit %d, printed %q, want %q", res.exitCode, res.stdout, noStoreLine)
+	}
+}

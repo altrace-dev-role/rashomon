@@ -887,6 +887,11 @@ func detachTarget(args []string) (installID string, all, force bool, err error) 
 // gets the marker file pause reads back -- that is what lets status answer
 // "paused, no store recorded here yet" truthfully -- but nothing that would
 // mint an install identity.
+// pausedCoverageNote completes pause's line where a store exists: what each
+// paused call still writes, and why.
+const pausedCoverageNote = "; each one still adds a one-line coverage note " +
+	"(session id, working directory) so the gap shows in the report"
+
 func cmdPause(stdout io.Writer) error {
 	root, err := store.DefaultRoot()
 	if err != nil {
@@ -906,7 +911,15 @@ func cmdPause(stdout io.Writer) error {
 	// follows -- a machine paused for good, or a crash, must not read
 	// identically to a machine where nothing was ever decided. Resume writes
 	// the record a reader actually wants: the whole span, closed.
+	//
+	// The printed line says what a paused call leaves behind. Where a store
+	// exists, each one still writes a recording_paused coverage record (H-80)
+	// so the gap shows in its session's report; the line once said no tool
+	// call would be recorded, and something was. Where none exists nothing is
+	// written at all (H-81), and the line says only that.
+	note := ""
 	if storeExistsAt(root) {
+		note = pausedCoverageNote
 		st, err := store.OpenExisting(root)
 		if err != nil {
 			return err
@@ -923,7 +936,7 @@ func cmdPause(stdout io.Writer) error {
 			return err
 		}
 	}
-	fmt.Fprintln(stdout, "rashomon: paused -- no tool call will be recorded until `rashomon resume`")
+	fmt.Fprintln(stdout, "rashomon: paused -- tool calls are not recorded until `rashomon resume`"+note)
 	return nil
 }
 
