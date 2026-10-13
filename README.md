@@ -199,7 +199,9 @@ What was measured, on macOS with nono 0.79.0 and Claude Code 2.1.285:
   which it refused, and does not count it as the session's, unless one of the
   session's tool calls named the host.
 - nono logs plain-HTTP requests it **refuses**, and not plain-HTTP requests it
-  allows. An allowed `http://` request appears nowhere in the report.
+  allows. An allowed `http://` request leaves nothing in the sandbox section.
+  `--chain` still lists its host under the call if the command named it: a
+  host the call named, not one the sandbox saw it reach.
 - `rashomon forget --host` also keeps the host out of the sandbox section, even
   when rashomon's own records never named it.
 

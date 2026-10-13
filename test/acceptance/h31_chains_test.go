@@ -1,10 +1,13 @@
 package acceptance
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // H-31 -- the chain view, end to end.
@@ -342,4 +345,61 @@ func TestH31_NonoTrailReachesTheCLI(t *testing.T) {
 	if strings.Contains(plain, "sandbox (nono)") {
 		t.Errorf("a session with no trail configured rendered a sandbox line:\n%s", plain)
 	}
+}
+
+// TestH31_ASilentTrailLeavesTheNamedHostInTheChain pins what the README's
+// "Inside a sandbox" says about a trail with nothing in it. nono writes no
+// event for a plain-HTTP request it allows, and none at all when it does not
+// filter the network (measured with 0.78.0 and the claude profile), so the
+// sandbox section counts nothing. The README said such a request "appears
+// nowhere in the report"; the call that named the URL still does, and --chain
+// lists the host under it. The trail here is that capture's shape: the
+// session's start and end and no network event.
+func TestH31_ASilentTrailLeavesTheNamedHostInTheChain(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	p := defaultPayload()
+	p.ToolInput = map[string]any{"command": "curl -sS -o /dev/null http://example.com/"}
+	e.mustHook(p.build(t))
+	e.probe("end", testSession)
+
+	now := time.Now()
+	trail := filepath.Join(e.home, "audit-events.ndjson")
+	body := fmt.Sprintf(`{"sequence":0,"event":{"type":"session_started","started":%q}}`+"\n"+
+		`{"sequence":1,"event":{"type":"session_ended","ended":%q,"exit_code":0}}`+"\n",
+		now.Add(-time.Minute).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+	if err := os.WriteFile(trail, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := e.run("", nil, "report", "--session", testSession, "--nono-audit", trail, "--chain").stdout
+	if !strings.Contains(out, "sandbox (nono): 0 allowed, 0 denied in this session's window") {
+		t.Errorf("premise: a trail with no network event should count nothing:\n%s", out)
+	}
+	if !regexp.MustCompile(`(?m)^\s+1\s+Bash .*-> example\.com$`).MatchString(out) {
+		t.Errorf("the call that named http://example.com/ does not list the host in its chain:\n%s", out)
+	}
+
+	// The README says what this render shows, and nothing it contradicts.
+	readme, err := os.ReadFile(filepath.Join(moduleRoot, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := strings.Join(strings.Fields(string(readme)), " ")
+	for _, claim := range readmeSilentTrailClaims {
+		if !strings.Contains(flat, claim) {
+			t.Errorf("README.md \"Inside a sandbox\" no longer says %q, which this render backs", claim)
+		}
+	}
+	if strings.Contains(flat, "appears nowhere in the report") {
+		t.Errorf("README.md says an allowed http:// request \"appears nowhere in the report\"; "+
+			"--chain lists the host the call named:\n%s", out)
+	}
+}
+
+// readmeSilentTrailClaims are the README's sentences that the render in
+// TestH31_ASilentTrailLeavesTheNamedHostInTheChain backs, whitespace-folded.
+var readmeSilentTrailClaims = []string{
+	"An allowed `http://` request leaves nothing in the sandbox section.",
+	"`--chain` still lists its host under the call if the command named it",
 }
