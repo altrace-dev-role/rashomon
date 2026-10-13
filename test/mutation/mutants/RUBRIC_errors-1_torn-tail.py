@@ -12,7 +12,7 @@ m("errors-1 no append looks at the last byte", "internal/store/tail.go",
   "\t\tif last[0] != '\\n' {\n", "\t\tif false {\n", "TestRubricERRORS1_TornTails")
 m("errors-1 a failed append is left on disk", "internal/store/tail.go",
   "\tif n == 0 {\n\t\treturn nil\n\t}\n", "\tif n >= 0 {\n\t\treturn nil\n\t}\n", "TestRubricERRORS1_AFailedAppend")
-m("errors-1 every lone terminal is blamed on the lock", "internal/report/report.go",
+m("errors-1 every lone terminal is blamed on the lock", "internal/report/dropped.go",
   "\t\tif t.Reason != nil && *t.Reason == store.ReasonLockTimeout {\n", "\t\tif true {\n",
   "TestRubricERRORS1_OnlyALockTimeout")
 m("errors-1 the digest blames every lone terminal on the lock", "internal/digest/coverage.go",

@@ -54,7 +54,7 @@ m("P1 ssh hosts are joined into the observable list", "internal/report/chains.go
 m("P1 redaction leaves ssh hosts in clear", "internal/report/redact.go",
   "\t\tfor _, h := range link.SSHHosts {\n\t\t\tl.SSHHosts = append(l.SSHHosts, redactHost(h, key))\n\t\t}",
   "\t\tl.SSHHosts = append(l.SSHHosts, link.SSHHosts...)", "TestRedact|TestH31")
-m("P1 the chain count hides behind the flag too", "internal/report/text.go",
+m("P1 the chain count hides behind the flag too", "internal/report/text_chains.go",
   '\tfmt.Fprintf(b, "  chains: %d\\n", len(c.Prompts))', "", "TestH31|TestChains")
 m("P1 the chain flag is inverted", "cmd/rashomon/main.go",
   "\t\tif chain {\n\t\t\topts = append(opts, report.WithChain())",
