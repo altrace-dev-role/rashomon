@@ -1,8 +1,8 @@
-m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\t}\n\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n\n\tif records != nil && removedRec > 0 {", "\t}\n\tif records != nil && removedRec > 0 {", "TestH15_ForgetLeavesAGap")
+m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\tg.RemovedRecords = removedRec + removedSpill\n\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n", "\tg.RemovedRecords = removedRec + removedSpill\n", "TestH15_ForgetLeavesAGap")
 m("H-15 eviction deletes without a gap record", "internal/store/evict.go", "\t\tif err := appendHealed(gf, line); err != nil {", "\t\tif err := appendHealed(gf, line[:0]); err != nil {", "TestH15_SizeCap")
 m("H-15 eviction does not count the executions it removed", "internal/store/evict.go",
-  "RemovedRecords: len(run.Declarations) + len(run.Executions) + len(run.Terminals),",
-  "RemovedRecords: len(run.Declarations) + len(run.Terminals),", "TestH15_SizeCap")
+  "g.RemovedRecords = len(run.Declarations) + len(run.Executions) + len(run.Terminals)\n",
+  "g.RemovedRecords = len(run.Declarations) + len(run.Terminals)\n", "TestH15_SizeCap")
 m("H-15 forget --before behaves like --since", "cmd/rashomon/main.go",
   "\t\t\tif flag == \"--since\" {\n\t\t\t\tfrom = &t\n\t\t\t} else {\n\t\t\t\tto = &t\n\t\t\t}", "\t\t\tfrom = &t",
   "TestH15_Forget")
@@ -15,8 +15,8 @@ m("H-15 executions are not part of forget's doomed plan", "internal/store/gaps.g
   "TestH15_ForgetTakesTheExecutionWithThePair")
 IMPORTS["H-15 executions are not part of forget's doomed plan"] = ("internal/store/gaps.go", '\t"crypto/hmac"\n', '\t"bytes"\n\t"crypto/hmac"\n')
 m("H-15 forget --before writes no gap record", "internal/store/gaps.go",
-  "\t}\n\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}",
-  "\t}\n\tif !w.openBelow() {\n\t\tif err := s.AppendGap(g); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}",
+  "\tg.RemovedRecords = removedRec + removedSpill\n\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}",
+  "\tg.RemovedRecords = removedRec + removedSpill\n\tif !w.openBelow() {\n\t\tif err := s.AppendGap(g); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}",
   "TestH15_Forget")
 m("H-15 the gap's open end is closed by the bound nobody named", "internal/store/gaps.go",
   "\tif w.openBelow() {\n\t\tfrom = earliest\n\t}", "", "TestH15_ForgetBeforeLeavesAGap")
