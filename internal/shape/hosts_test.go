@@ -514,3 +514,44 @@ func TestSSHHostsAreSortedAndDeduped(t *testing.T) {
 		}
 	}
 }
+
+// TestRubricLLD2_URLHostsAreHostnameShaped: a URL's host is cut out of a
+// command line at the line's punctuation, and what is cut has to be a host
+// before it is recorded as one. `=` and `!` end neither a URL nor a host, so
+// without the shape check `curl https://api.example.com=ghp_...!x/` recorded
+// the host "api.example.com=ghp_q4br7xyzsecrettok3n!x", and an authority of
+// 300,000 bytes was recorded whole. A name of 253 bytes is a host; 254 is not.
+func TestRubricLLD2_URLHostsAreHostnameShaped(t *testing.T) {
+	label := strings.Repeat("a", 63)
+	long := func(n int) string {
+		var b strings.Builder
+		for b.Len() < n {
+			if b.Len() > 0 {
+				b.WriteByte('.')
+			}
+			b.WriteString(label[:min(63, n-b.Len())])
+		}
+		return b.String()
+	}
+	for _, tc := range []struct {
+		cmd  string
+		want []string
+	}{
+		{"curl https://api.example.com=ghp_q4br7xyzsecrettok3n!x/", nil},
+		{"curl https://h.example.com!x/path", nil},
+		{"curl https://ok.example.com/a https://bad.example.com=x/", []string{"ok.example.com"}},
+		{"curl https://" + strings.Repeat("x", 300_000) + "/", nil},
+		{"curl https://" + long(253) + "/", []string{long(253)}},
+		{"curl https://" + long(254) + "/", nil},
+		{"curl https://bücher.example/", []string{"bücher.example"}},
+		{"curl 'https://[2606:4700:0:0:0:0:0:1111]:443/'", []string{"[2606:4700::1111]"}},
+		{"curl https://167838211/", []string{"10.1.2.3"}},
+	} {
+		if got, _ := Hosts("Bash", bashInput(t, tc.cmd)); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("hosts of %.80q = %.80q, want %q", tc.cmd, got, tc.want)
+		}
+	}
+	if got, _ := Hosts("WebFetch", json.RawMessage(`{"url":"https://api.example.com=tok!x/"}`)); got != nil {
+		t.Errorf("WebFetch hosts = %q, want none", got)
+	}
+}

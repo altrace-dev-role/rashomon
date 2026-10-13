@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/host"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -92,13 +93,6 @@ type Novelty struct {
 	Hosts []string `json:"hosts"`
 }
 
-// loopbackHosts are listed among the declared hosts and never counted as
-// novel: a local server is not a new place the project's traffic goes, first
-// baseline entry or not.
-var loopbackHosts = map[string]bool{
-	"localhost": true, "127.0.0.1": true, "0.0.0.0": true, "[::1]": true, "::1": true,
-}
-
 // clientPlaneHosts are the hosts the client contacts on its own behalf,
 // regardless of the agent's tool calls.
 //
@@ -173,14 +167,18 @@ func buildDestinations(run *store.Run, storeRoot string, forgotten func(host str
 
 // novelHostCandidates are the hosts a novelty baseline should consider: what
 // this session named, whether over https or ssh, minus loopback and minus
-// the client's own plane. Folding the client plane into a baseline would make
+// the client's own plane. Loopback is listed among the declared hosts and
+// never counted as novel: a local server is not a new place the project's
+// traffic goes, first baseline entry or not. It is decided on the parsed
+// address (host.Loopback), so [0:0:0:0:0:0:0:1], 127.0.0.2 and api.localhost
+// are loopback as [::1] is. Folding the client plane into a baseline would make
 // api.anthropic.com a "new destination for this project" on the first session
 // of every project, which is the novelty line's most obvious way to make
 // itself worthless.
 func novelHostCandidates(hosts []string, mcpAttributed bool) []string {
 	var out []string
 	for _, h := range hosts {
-		if loopbackHosts[h] || clientPlaneHost(h, mcpAttributed) {
+		if host.Loopback(h) || clientPlaneHost(h, mcpAttributed) {
 			continue
 		}
 		out = append(out, h)

@@ -31,8 +31,8 @@ func TestCanonical(t *testing.T) {
 		{name: "ipv6 brackets kept via authority", in: "[::1]:443", want: "[::1]", ok: true},
 		{name: "ipv6 brackets restored via url", in: "https://[2606:4700::1111]/x", want: "[2606:4700::1111]", ok: true,
 			why: "url.Hostname strips the brackets and every consumer here expects them"},
-		{name: "bare ipv6 without port keeps its colons", in: "2606:4700::1111", want: "2606:4700::1111", ok: true,
-			why: "more than one colon cannot be a port separator"},
+		{name: "bare ipv6 without port is bracketed", in: "2606:4700::1111", want: "[2606:4700::1111]", ok: true,
+			why: "more than one colon cannot be a port separator, and the bracketed form is the one spelling"},
 		{name: "wss scheme", in: "wss://gateway.example.com/socket", want: "gateway.example.com", ok: true},
 
 		// Refusals.

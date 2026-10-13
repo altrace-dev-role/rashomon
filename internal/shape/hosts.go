@@ -360,7 +360,11 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 	if remoteByColon && !hadUser && len(hostPart) < 2 {
 		return "", false
 	}
-	if !hostnameShaped(hostPart) {
+	// The token IS the destination here, so the question is not where the
+	// host ends but whether it is a host at all, and only a whitelist
+	// answers that: `ssh HOST=bad` recorded "host=bad" and `ssh
+	// h.example.com!x` recorded itself before it (host.Shaped).
+	if !host.Shaped(hostPart) {
 		return "", false
 	}
 	// An ssh-config alias has no dots and resolves to something this function
@@ -369,45 +373,6 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 	// is not allowed to open, and guessing would put a name in the store that
 	// the user never typed.
 	return host.Canonical(hostPart)
-}
-
-// hostnameShaped reports whether every byte of s could appear in a hostname.
-//
-// A whitelist, not a terminator set, and that is the point. authority() stops
-// at the punctuation a URL is surrounded by in a command line, which is right
-// where a host is embedded in text; it does not stop at '=' or '!', so
-// `ssh HOST=bad` recorded "host=bad" and `ssh h.example.com!x` recorded itself
-// -- raw command text passing as a canonical hostname. Here the token IS the
-// destination, so the question is not "where does the host end" but "is this a
-// host at all", and only a whitelist answers that one.
-//
-// The length bound is the longest a hostname can be. Without it a
-// several-hundred byte fragment of a command line can be persisted as one.
-func hostnameShaped(s string) bool {
-	if s == "" || len(s) > 253 {
-		return false
-	}
-	if s[0] == '-' || s[0] == '.' || s[len(s)-1] == '-' {
-		return false
-	}
-	// An empty label is not a hostname. One TRAILING dot is: "pypi.org." is
-	// the fully-qualified spelling of the same name, and host.Canonical drops
-	// it. Two in a row are never right.
-	if strings.Contains(s, "..") {
-		return false
-	}
-	alnum := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-			alnum = true
-		case c == '-' || c == '.' || c == '_':
-		default:
-			return false
-		}
-	}
-	return alnum
 }
 
 // collect finds every hostname in text introduced by one of the given prefixes.
@@ -425,6 +390,12 @@ func hostnameShaped(s string) bool {
 //
 // Reading the lowered copy costs nothing: host.Canonical lower-cases what it
 // returns, and DNS is case-insensitive, so the original case was never wanted.
+//
+// What authority cuts is a host only if host.Shaped says so. authority stops
+// at the punctuation a URL is surrounded by in a command line, which is not
+// where a host ends: `=` and `!` are neither, so `https://api.example.com=
+// ghp_...!x/` came back as the host "api.example.com=ghp_...!x", a token
+// recorded in the field that holds the hostnames a call named.
 func collect(text string, prefixes []string) []string {
 	seen := map[string]struct{}{}
 	lower := strings.ToLower(text)
@@ -438,7 +409,7 @@ func collect(text string, prefixes []string) []string {
 			}
 			at := from + i + len(p)
 			from = at
-			if h, ok := host.Canonical(authority(lower[at:])); ok {
+			if h, ok := host.Canonical(authority(lower[at:])); ok && host.Shaped(h) {
 				seen[h] = struct{}{}
 			}
 		}
