@@ -77,7 +77,7 @@ m("VER-54 a subagent's account passes as the final message", "internal/verify/to
 m("VER-54 an unknown verdict beside failures is silent-failure", "internal/verify/tosteer_vocab.go",
   "\t\tcase c.Verdict != NoGateKnown && !slices.Contains(States, State(c.Verdict)):\n", "\t\tcase false:\n", "TestVER54l_")
 m("VER-54 a gate reason goes unchecked", "internal/verify/tosteer_vocab.go",
-  "\t\tif g.Reason != \"\" && !slices.Contains(Reasons, g.Reason) {\n", "\t\tif false {\n", "TestVER54l_")
+  "\t\tif g.Reason != \"\" && !slices.Contains(Reasons, g.Reason) {\n", "\t\tif false {\n", "TestVER54m_")
 m("VER-54 subtask-gate denies over a green gate", "internal/verify/tosteer_vocab.go",
   "var subtaskStates = []State{Red, MaskedInconclusive, Stale, Absent}\n",
   "var subtaskStates = []State{Red, MaskedInconclusive, Stale, Absent, Green}\n", "TestVER54l_")
@@ -87,9 +87,10 @@ m("VER-54 subtask-gate fires over a backgrounded gate", "internal/verify/tosteer
 m("VER-54 regression-location fires over any state", "internal/verify/tosteer_vocab.go",
   "\t\treturn g.State == Red && g.LastGreenSeq != nil &&", "\t\treturn g.State != Green && g.LastGreenSeq != nil &&", "TestVER54l_")
 m("VER-54 regression-location fires with no earlier green", "internal/verify/tosteer_vocab.go",
-  " && g.LastGreenSeq != nil && (g.LastRunSeq == nil || *g.LastGreenSeq < *g.LastRunSeq)\n", "\n", "TestVER54l_")
+  " && g.LastGreenSeq != nil && g.LastRunSeq != nil && *g.LastGreenSeq < *g.LastRunSeq\n",
+  " && (g.LastGreenSeq == nil || g.LastRunSeq != nil && *g.LastGreenSeq < *g.LastRunSeq)\n", "TestVER54l_")
 m("VER-54 regression-location's green may follow its red", "internal/verify/tosteer_vocab.go",
-  "(g.LastRunSeq == nil || *g.LastGreenSeq < *g.LastRunSeq)", "(g.LastRunSeq == nil || *g.LastGreenSeq <= *g.LastRunSeq+1)", "TestVER54l_")
+  "*g.LastGreenSeq < *g.LastRunSeq\n", "*g.LastGreenSeq <= *g.LastRunSeq+1\n", "TestVER54l_")
 m("VER-54 the gate beside a claim may be in any state", "internal/verify/tosteer_vocab.go",
   "\treturn f.Claim != nil && g.State == State(f.Claim.Verdict)\n", "\treturn f.Claim != nil\n", "TestVER54l_")
 m("VER-54 a masked verdict crosses as silent-failure", "internal/verify/tosteer.go",
@@ -99,3 +100,20 @@ m("VER-54 the absence kinds continue the turn", "internal/verify/tosteer_card.go
   "\t\tcase \"red\", \"backgrounded\", \"silent-failure\", \"stale\", \"absent\", \"done-unverified\":\n", "TestVER54e_")
 m("VER-54 a rewritten input is not capped at flag", "internal/verify/tosteer_card.go",
   " || f.Rule.Rewritten)\n", " || false)\n", "TestVER54e_")
+# Round 3 (P07N-13 partial): regression-location needs the red run it cites
+# (40.4.2 "this red"), not only a green; and a gate's reason explains its
+# state (2.2.4, archive 20.2.4), so a red gate explained as ok or a red
+# subtask gate carrying a stale reason is refused.
+m("VER-54 regression-location fires with no red run", "internal/verify/tosteer_vocab.go",
+  " && g.LastRunSeq != nil && *g.LastGreenSeq < *g.LastRunSeq\n",
+  " && (g.LastRunSeq == nil || *g.LastGreenSeq < *g.LastRunSeq)\n", "TestVER54l_")
+m("VER-54 a gate reason may explain another state", "internal/verify/tosteer_vocab.go",
+  "\t\tif g.Reason != \"\" && reasonState[g.Reason] != g.State {\n", "\t\tif false {\n", "TestVER54l_")
+m("VER-54 writes_after_green explains a red gate", "internal/verify/tosteer_vocab.go",
+  "\tWritesAfterGreen:      Stale,\n", "\tWritesAfterGreen:      Red,\n", "TestVER54m_")
+m("VER-54 ok explains a red gate", "internal/verify/tosteer_vocab.go",
+  "\tOK:                    Green,\n", "\tOK:                    Red,\n", "TestVER54l_")
+m("VER-54 a masked pass explains a red gate", "internal/verify/tosteer_vocab.go",
+  "\tMaskedWithSuccessLine: Green,\n", "\tMaskedWithSuccessLine: Red,\n", "TestVER54m_")
+m("VER-54 a closed reason has no state", "internal/verify/tosteer_vocab.go",
+  "\tBudget:                Unknown,\n", "", "TestVER54m_")

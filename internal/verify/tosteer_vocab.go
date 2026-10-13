@@ -13,7 +13,8 @@ import (
 // whether the fact contradicts anything at all (a gate's state), so an
 // unknown value is refused rather than read as any member: an unknown trust
 // mapped as trusted would reach the model (2.2.7: "untrusted (default):
-// user flags only").
+// user flags only"). A gate's reason must explain its state (reasonState),
+// so a fact never says red for a reason that means green or stale.
 func vocabValid(f Finding) string {
 	if r := f.Rule; r != nil && !slices.Contains(spec.Trusts, r.Trust) {
 		return "rule trust outside its vocabulary"
@@ -31,6 +32,9 @@ func vocabValid(f Finding) string {
 	if g := f.Gate; g != nil {
 		if g.Reason != "" && !slices.Contains(Reasons, g.Reason) {
 			return "gate reason outside its vocabulary"
+		}
+		if g.Reason != "" && reasonState[g.Reason] != g.State {
+			return "a gate reason that explains another state"
 		}
 		if !gateFits(f) {
 			return "a gate state that contradicts nothing for the pattern"
@@ -58,9 +62,11 @@ var subtaskStates = []State{Red, MaskedInconclusive, Stale, Absent}
 
 // gateFits reports a gate state that contradicts something for the
 // finding's pattern: subtaskStates for subtask-gate; for
-// regression-location a red run with an earlier green before it (40.4.2: "a
-// gate run of family F ... is red ... F had an earlier green run"; a masked
-// run with a failure line is red, 2.2.4 step 5); beside a claim, the gate
+// regression-location a recorded red run with an earlier green before it
+// (40.4.2: "a gate run of family F ... is red ... F had an earlier green
+// run"; a masked run with a failure line is red, 2.2.4 step 5); the card
+// cites "this red" run, so a red state with no run seq is refused rather
+// than cited by its green alone; beside a claim, the gate
 // whose state set the verdict (Finding's comment). factsFit has already
 // paired the gate with one of these patterns.
 func gateFits(f Finding) bool {
@@ -69,7 +75,34 @@ func gateFits(f Finding) bool {
 	case pattern.SubtaskGate:
 		return slices.Contains(subtaskStates, g.State)
 	case pattern.RegressionLocation:
-		return g.State == Red && g.LastGreenSeq != nil && (g.LastRunSeq == nil || *g.LastGreenSeq < *g.LastRunSeq)
+		return g.State == Red && g.LastGreenSeq != nil && g.LastRunSeq != nil && *g.LastGreenSeq < *g.LastRunSeq
 	}
 	return f.Claim != nil && g.State == State(f.Claim.Verdict)
+}
+
+// reasonState is the one state each closed reason explains (tech 2.2.4;
+// archive 20.2.4, per gate g at point s): the algorithm names a reason only
+// beside its state, so a fact pairing a reason with another state
+// contradicts itself and is refused (P07N-13). Neither spec names the state
+// of `budget` as a gate reason; VER-22's stand-down issues no verdict, so it
+// is read as unknown, the state that asserts nothing. `ok` is green's.
+var reasonState = map[Reason]State{
+	FailedExit:            Red,
+	FailedOutput:          Red,
+	MaskedWithSuccessLine: Green,
+	MaskedNoSuccessLine:   MaskedInconclusive,
+	MaskedUnattributable:  MaskedInconclusive,
+	EmptyRun:              Absent,
+	PartialAfterRed:       Red,
+	PartialOnly:           Absent,
+	RedThenWrites:         Stale,
+	WritesAfterGreen:      Stale,
+	WriteDuringRun:        Stale,
+	NeverRunAfterWrite:    Absent,
+	BackgroundLaunch:      Backgrounded,
+	OrderUnknown:          Unknown,
+	OutcomeUnknown:        Unknown,
+	RecordingIncomplete:   Unknown,
+	Budget:                Unknown,
+	OK:                    Green,
 }
