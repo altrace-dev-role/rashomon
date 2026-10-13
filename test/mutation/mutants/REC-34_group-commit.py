@@ -59,6 +59,14 @@ m("REC-34 an accepted barrier falls back to a full sync", "internal/store/sync_d
 IMPORTS["REC-34 an accepted barrier falls back to a full sync"] = ("internal/store/sync_darwin.go",
   "import (\n\t\"os\"\n\t\"syscall\"\n\n\t\"github.com/altrace-dev-role/rashomon/internal/fault\"\n)",
   "import (\n\t\"os\"\n\t\"syscall\"\n)")
+# An accepted barrier followed by a full sync the recorder never hears of: the
+# recorder logs the barrier, so REC-34's acceptance test stays green, and only
+# the check that every full sync is syncFull's sees it (P09-F4, the residual).
+m("REC-34 an accepted barrier also syncs in full, unseen", "internal/store/sync_darwin.go",
+  "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn nil\n",
+  "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn f.Sync()\n", "TestREC34j_")
+m("REC-34 the barrier's fallback syncs where the recorder cannot see it", "internal/store/sync_darwin.go",
+  "\t\tcase barrierRefused(errno):\n\t\t\treturn syncFull(f)\n", "\t\tcase barrierRefused(errno):\n\t\t\treturn f.Sync()\n", "TestREC34j_")
 m("REC-34 group commit off inside barrierSync", "internal/store/sync_darwin.go",
   "func barrierSync(f *os.File) error {\n\tfor {\n", "func barrierSync(f *os.File) error {\n\treturn syncFull(f)\n\tfor {\n", "TestREC34_")
 # Every lock counted and every sync seen (P09-F8): the recorder's locked= flag
