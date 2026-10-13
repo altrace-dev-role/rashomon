@@ -101,16 +101,25 @@ type Entry struct {
 }
 
 // RSSCase is one RES-28 case: an entry on a payload of PayloadBytes, budgeted
-// at 6.5 MiB + 2.2 MiB per MiB of payload. GatesFrom names the PR that
-// switches the case on: the 1, 4 and 8 MiB cases gate from P-10, which builds
-// the read bound they measure (archive 85.1.2), and the harness skips them
-// until then, stating the reason.
+// at 6.5 MiB plus SlopeMiBPerMiB MiB per MiB of payload, RES-28's 2.2 when
+// absent. A case on another slope says why in Basis: the hook cases carry
+// canonical's decoded copy until RES-48 (archive 85.3.3). GatesFrom names the
+// PR that switched the case on: the 1, 4 and 8 MiB cases gate from P-10,
+// which builds the read bound they measure (archive 85.1.2).
+// MeasuredMiB is the median of nine measured on the reference machine when
+// the line was set, kept beside the line so the headroom is visible. A line
+// holds there with no tolerance: the platform tolerance is for other
+// machines and run-to-run noise, and a case that holds only through it is
+// restated from its measurement, never padded.
 type RSSCase struct {
-	ID           string  `json:"id"`
-	Entry        string  `json:"entry"`
-	PayloadBytes int     `json:"payload_bytes"`
-	BudgetMiB    float64 `json:"budget_mib"`
-	GatesFrom    string  `json:"gates_from"`
+	ID             string  `json:"id"`
+	Entry          string  `json:"entry"`
+	PayloadBytes   int     `json:"payload_bytes"`
+	BudgetMiB      float64 `json:"budget_mib"`
+	MeasuredMiB    float64 `json:"measured_mib,omitempty"`
+	GatesFrom      string  `json:"gates_from"`
+	SlopeMiBPerMiB float64 `json:"slope_mib_per_mib,omitempty"`
+	Basis          string  `json:"basis,omitempty"`
 }
 
 // PerToolCall bounds the hooks of one tool call together (RES-46).
@@ -190,7 +199,14 @@ func (b Budgets) CheckPlatform(running string) error {
 	return nil
 }
 
-// RES28BudgetMiB is RES-28's line: 6.5 MiB plus 2.2 MiB per MiB of payload.
-func RES28BudgetMiB(payloadBytes int) float64 {
-	return 6.5 + 2.2*float64(payloadBytes)/(1<<20)
+// RES28Slope is RES-28's slope: 2.2 MiB of peak RSS per MiB of payload.
+const RES28Slope = 2.2
+
+// RES28BudgetMiB is a case's line: 6.5 MiB plus slope MiB per MiB of payload.
+// A slope of zero, a case that names none, is RES28Slope.
+func RES28BudgetMiB(payloadBytes int, slope float64) float64 {
+	if slope == 0 {
+		slope = RES28Slope
+	}
+	return 6.5 + slope*float64(payloadBytes)/(1<<20)
 }

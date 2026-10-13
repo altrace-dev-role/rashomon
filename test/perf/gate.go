@@ -358,3 +358,18 @@ func ParseFootprint(report string) (bytes int64, ok bool) {
 	}
 	return 0, false
 }
+
+// LineHolds reports an RSS case whose recorded measurement is missing or
+// sits over its line. A line holds on the reference machine with no
+// tolerance (RES-28): the platform tolerance is for other machines and
+// run-to-run noise, so a case that holds only through it is restated from
+// the measurement, never padded.
+func LineHolds(id string, measuredMiB, lineMiB float64) error {
+	if measuredMiB <= 0 {
+		return fmt.Errorf("rss case %s: no measured figure beside its line", id)
+	}
+	if measuredMiB > lineMiB {
+		return fmt.Errorf("rss case %s: measured %.2f MiB is over its line %.2f MiB; restate the slope from the measurement", id, measuredMiB, lineMiB)
+	}
+	return nil
+}
