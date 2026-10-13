@@ -19,11 +19,11 @@ func TestRubricNAMING1_BothReadersSkipAFinalSidechainLine(t *testing.T) {
 		sidechain,
 	)
 
-	single, ok := FinalAssistantText(path)
+	single, ok := FinalAssistantText(openT(t, path))
 	if !ok || single != "Fixed the build; tests pass." {
 		t.Errorf("FinalAssistantText = %q, %v; want the main agent's last words", single, ok)
 	}
-	turns := FinalAssistantTexts(path, map[string]bool{"p1": true})
+	turns := FinalAssistantTexts(openT(t, path), map[string]bool{"p1": true})
 	if got := turns["p1"]; !got.Said || got.Text != single {
 		t.Errorf("FinalAssistantTexts[p1] = %+v; want the same words FinalAssistantText returned (%q)", got, single)
 	}

@@ -3,7 +3,7 @@
 m("FF a refusal outside the permission prompt is read as an execution", "internal/report/transcript.go",
   "\tfor _, p := range deniedPrefixes {", "\tfor _, p := range deniedPrefixes[:1] {",
   "TestTranscript_RefusalsOutside")
-m("FF workflow subagent transcripts are not read", "internal/report/transcript.go",
+m("FF workflow subagent transcripts are not read", "internal/report/transcript_files.go",
   "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok {",
   "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok && filepath.Dir(p) == dir {",
   "TestTranscript_WorkflowSubagent")

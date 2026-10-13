@@ -12,7 +12,7 @@ func assistantWith(t *testing.T, content string) string {
 	t.Helper()
 	line := `{"type":"assistant","timestamp":"2026-09-29T10:00:02.000Z","message":{"id":"msg_1","role":"assistant","content":` +
 		content + `}}`
-	return writeTurns(t, userTurnLine(t, "p1", "do it", false), line)
+	return userTurnLine(t, "p1", "do it", false) + "\n" + line + "\n"
 }
 
 // checkTextPrefilter is FuzzTextPrefilter's property for one content value:
@@ -28,12 +28,12 @@ func checkTextPrefilter(t *testing.T, content []byte) {
 		return
 	}
 	want, found := decoded.Message.Content.text()
-	path := assistantWith(t, string(content))
-	got := FinalAssistantTexts(path, map[string]bool{"p1": true})["p1"]
+	transcript := assistantWith(t, string(content))
+	got := FinalAssistantTexts(strings.NewReader(transcript), map[string]bool{"p1": true})["p1"]
 	if found && (!got.Said || got.Text != want) {
 		t.Errorf("content %s: the decode finds text %q, FinalAssistantTexts reports %+v", content, want, got)
 	}
-	single, ok := FinalAssistantText(path)
+	single, ok := FinalAssistantText(strings.NewReader(transcript))
 	if ok != got.Said || single != got.Text {
 		t.Errorf("content %s: FinalAssistantText = %q, %v; FinalAssistantTexts = %q, %v", content, single, ok, got.Text, got.Said)
 	}
@@ -57,8 +57,8 @@ var textPrefilterSeeds = []string{
 // bytes "text" skipped such a line before decoding it: the turn had no final
 // words, and the two final-message readers disagreed on one file.
 func TestRubricPERF3_APlainStringReplyIsTheTurnsFinalWord(t *testing.T) {
-	path := assistantWith(t, `"Done; the build passes."`)
-	got := FinalAssistantTexts(path, map[string]bool{"p1": true})["p1"]
+	transcript := assistantWith(t, `"Done; the build passes."`)
+	got := FinalAssistantTexts(strings.NewReader(transcript), map[string]bool{"p1": true})["p1"]
 	if !got.Said || got.Text != "Done; the build passes." {
 		t.Errorf("FinalAssistantTexts[p1] = %+v; want the plain-string reply", got)
 	}

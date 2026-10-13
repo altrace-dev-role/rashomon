@@ -4,11 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"sort"
+	"io"
 	"strings"
 	"time"
 )
@@ -33,84 +29,6 @@ const maxLine = 64 << 20
 // that established this prefix printed it, and its own output came back as a
 // tool_result in the same session.
 const deniedPrefix = "The user doesn't want to proceed with this tool use. The tool use was rejected"
-
-// TranscriptIDs reads the distinct tool_use ids from a session transcript and
-// from its subagent transcripts, which live at <session>/subagents/agent-*.jsonl
-// where <session> is the transcript path without its extension, the distinct
-// ids of the tool_result blocks answering them, which of those results are
-// the user having DENIED the call, and which have the shape of a call Claude
-// Code refused before any hook fired (unhooked; see toolUseErrorTag). A
-// transcript cannot show whether a hook fired, so unhooked only marks the
-// shape; the report confirms it against the store.
-//
-// The sets are kept apart because they mean different things: a tool_use block
-// is a call the model asked for, a tool_result block is that call having
-// finished, and a denial is neither -- the call never ran, and the user is why.
-//
-// DENIALS ARE NOT RESULTS. A denial does produce a tool_result block, so
-// counting it as one put every denied call into executed-but-unrecorded, a list
-// that exists to surface the recorder having failed to fire. The user
-// exercising the permission prompt then read as the tool being broken.
-//
-// It reads five fields from each content block -- type, id, tool_use_id,
-// is_error and content -- and nothing else. Content is read to classify the
-// result and is never retained. A line that does not parse is skipped, not
-// fatal: the transcript is Claude Code's file and its shape is not this
-// program's to enforce.
-func TranscriptIDs(path string) (ids, results, denied, unhooked map[string]bool, files int, err error) {
-	ids, results, denied, unhooked = map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
-
-	n, err := collectIDs(path, ids, results, denied, unhooked)
-	if err != nil {
-		return nil, nil, nil, nil, 0, err
-	}
-	files += n
-
-	matches, err := subagentTranscripts(filepath.Join(strings.TrimSuffix(path, ".jsonl"), "subagents"))
-	if err != nil {
-		return nil, nil, nil, nil, 0, err
-	}
-	for _, m := range matches {
-		n, err := collectIDs(m, ids, results, denied, unhooked)
-		if err != nil {
-			return nil, nil, nil, nil, 0, err
-		}
-		files += n
-	}
-	return ids, results, denied, unhooked, files, nil
-}
-
-// subagentTranscripts lists every agent-*.jsonl under dir, at any depth.
-//
-// A plain subagent writes <session>/subagents/agent-*.jsonl, but a workflow's
-// subagents write <session>/subagents/workflows/<run>/agent-*.jsonl, two levels
-// further down. A one-level glob read 35 of a real session's 407 transcripts,
-// and every call the other 372 made then read as recorded-but-not-in-the-
-// transcript -- a gap that was this function's, not the recorder's. A missing
-// directory is the common case, a session with no subagents, and not an error.
-func subagentTranscripts(dir string) ([]string, error) {
-	var out []string
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) && p == dir {
-				return filepath.SkipDir
-			}
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if ok, _ := filepath.Match("agent-*.jsonl", d.Name()); ok {
-			out = append(out, p)
-		}
-		return nil
-	})
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	sort.Strings(out)
-	return out, err
-}
 
 // resultText renders a tool_result's content for classification only.
 //
@@ -212,17 +130,10 @@ const pathDeniedPrefix = "<tool_use_error>File is in a directory that is denied 
 // report excuses the call only when no hook left any record of it (accounting).
 const toolUseErrorTag = "<tool_use_error>"
 
-func collectIDs(path string, into, results, denied, unhooked map[string]bool) (int, error) {
-	f, err := os.Open(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return 0, err
-	}
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close() //nolint:errcheck // read-only
-
-	sc := bufio.NewScanner(f)
+// collectIDs reads one transcript's lines from r into the four sets
+// TranscriptIDs returns. It reads and opens nothing else.
+func collectIDs(r io.Reader, into, results, denied, unhooked map[string]bool) error {
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
 		var line struct {
@@ -260,7 +171,7 @@ func collectIDs(path string, into, results, denied, unhooked map[string]bool) (i
 			}
 		}
 	}
-	return 1, sc.Err()
+	return sc.Err()
 }
 
 // FinalAssistantText returns the text of the LAST assistant message in a
@@ -283,15 +194,12 @@ func collectIDs(path string, into, results, denied, unhooked map[string]bool) (i
 // subagent's, written into the main transcript -- is skipped: its words are
 // the subagent's, and FinalAssistantTexts skips it by the same rule
 // (TestRubricNAMING1_BothReadersSkipAFinalSidechainLine).
-func FinalAssistantText(path string) (string, bool) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", false
-	}
-	defer f.Close() //nolint:errcheck // read-only
-
+//
+// It reads r and nothing else; which file r is, and opening it, is the
+// caller's (finalAssistantTextOfFile for the report).
+func FinalAssistantText(r io.Reader) (string, bool) {
 	var last string
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
 		var line struct {
@@ -419,17 +327,11 @@ type TurnFinal struct {
 // line of the turn is decoded, in memory, and only the last one's text is
 // kept. The caller hands every wanted prompt of a session in one call, so a
 // transcript is read once however many of its turns need a verdict.
-func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal {
+func FinalAssistantTexts(r io.Reader, want map[string]bool) map[string]TurnFinal {
 	out := map[string]TurnFinal{}
 	if len(want) == 0 {
 		return out
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		return out
-	}
-	defer f.Close() //nolint:errcheck // read-only
-
 	var current string
 	// tie records a response's id as the current prompt's spend.
 	tie := func(id string) {
@@ -450,7 +352,7 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 		tf.Said, tf.Text, tf.AtMS = false, "", 0
 		out[current] = tf
 	}
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
 		raw := sc.Bytes()

@@ -176,7 +176,7 @@ func buildAccount(run *store.Run) Account {
 		if d.TranscriptPath == "" {
 			continue
 		}
-		text, ok := FinalAssistantText(d.TranscriptPath)
+		text, ok := finalAssistantTextOfFile(d.TranscriptPath)
 		if !ok {
 			continue
 		}
