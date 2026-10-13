@@ -14,5 +14,5 @@ m("RUBRIC perf-3 the usage prefilter folds ASCII case only", "internal/spend/pre
   "\tfor _, n := range [1]int{len(\"usage\")} {",
   "TestRubricPERF3_")
 m("RUBRIC perf-3 the usage prefilter's skip drops the widened test", "internal/spend/scan.go",
-  "\t\tmayCarry := mayCarryUsage(raw)\n", "\t\tmayCarry := usageLine\n",
+  "\t\tmayCarry := mayCarryUsage(raw)\n", "\t\tmayCarry := bytes.Contains(raw, usageMarker)\n",
   "TestRubricPERF3_AUsageLineTheDecodeAcceptsIsCounted")

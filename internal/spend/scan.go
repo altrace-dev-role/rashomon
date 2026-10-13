@@ -529,7 +529,6 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 	fileDated := false
 	for s.Scan() {
 		raw := s.Bytes()
-		usageLine := bytes.Contains(raw, usageMarker)
 		mayCarry := mayCarryUsage(raw)
 		if !mayCarry && !f.Subagent && fileDated {
 			continue
@@ -539,10 +538,12 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 		case report.LineBlank:
 			continue
 		case report.LineUndecodable, report.LineUndecodableSidechain:
-			// A usage line that does not decode is counted. Any line that
-			// does not decode may be a prompt this reader cannot key, so it
-			// ends a subagent transcript's tie.
-			if usageLine {
+			// A usage line that does not decode is counted, by the exact
+			// marker, searched for only here: mayCarryUsage is wider on
+			// purpose, and a line that decodes needs no search at all. Any
+			// line that does not decode may be a prompt this reader cannot
+			// key, so it ends a subagent transcript's tie.
+			if bytes.Contains(raw, usageMarker) {
 				sc.Unparsed++
 			}
 			prompt = ""

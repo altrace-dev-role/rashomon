@@ -111,7 +111,7 @@ m("SP a subagent line that does not decode keeps the tie", "internal/spend/scan.
   "\t\t\tprompt = \"\"\n\t\t\tcontinue\n\t\t}", "\t\t\tcontinue\n\t\t}",
   "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
 m("SP a subagent user line that does not decode is counted as unparsed usage", "internal/spend/scan.go",
-  "\t\t\tif usageLine {\n\t\t\t\tsc.Unparsed++", "\t\t\tif true {\n\t\t\t\tsc.Unparsed++",
+  "\t\t\tif bytes.Contains(raw, usageMarker) {\n\t\t\t\tsc.Unparsed++", "\t\t\tif bytes.Contains(raw, usageMarker) || true {\n\t\t\t\tsc.Unparsed++",
   "TestUnparsed_")
 m("SP a failed turn with no words to judge goes uncounted", "internal/spend/join.go",
   "\t\tif !sf.FinalMessageAvailable {\n\t\t\tj.Unjudged++", "\t\tif !sf.FinalMessageAvailable {\n\t\t\t_ = sf",
@@ -235,7 +235,7 @@ m("SP a session folder that cannot be read is not counted", "internal/spend/scan
 m("SP folders that could not be read are not said", "internal/spend/text.go",
   "\tif s.Read.UnreadableDirs > 0 {", "\tif false {", "TestDiscover_AnUnreadableFolder")
 m("SP a usage line that does not decode is dropped without a count", "internal/spend/scan.go",
-  "\t\t\tif usageLine {\n\t\t\t\tsc.Unparsed++", "\t\t\tif usageLine {\n\t\t\t\t_ = sc",
+  "\t\t\tif bytes.Contains(raw, usageMarker) {\n\t\t\t\tsc.Unparsed++", "\t\t\tif bytes.Contains(raw, usageMarker) {\n\t\t\t\t_ = sc",
   "TestUnparsed_")
 m("SP an implausible usage is priced", "internal/spend/scan.go",
   "\t\tif !l.Message.Usage.plausible() {", "\t\tif false && !l.Message.Usage.plausible() {", "TestUnparsed_")
