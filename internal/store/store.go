@@ -48,15 +48,17 @@ var ErrLockTimeout = errors.New("store: timed out waiting for the append lock")
 // serialised by an advisory lock on each file they write, taken through a
 // descriptor of the append's own, which is also what orders appends from
 // goroutines sharing one Store. A Store is safe for concurrent use until
-// DeferDurability (TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines, run under
-// -race centrally). That call gives it mutable state -- the file its one
-// full sync has to cover, and whether that sync failed -- which only one
-// goroutine touches today: a deferred Store belongs to the one hook
-// invocation that opened it. mu guards that state anyway. Nothing in this
-// program holds it across a second goroutine yet, but a field three places
-// read and write as one unit, left unguarded, is a race waiting for whichever
-// future caller reaches it from two; the lock makes that caller's bug a
-// serialised wait instead of an undefined one (REC-34, Go memory model).
+// DeferDurability or LimitLockWaits (TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines,
+// run under -race centrally). Either call gives it mutable state --
+// DeferDurability the file its one full sync has to cover and whether that
+// sync failed, LimitLockWaits the deadline its lock waits share -- which only
+// one goroutine may touch: a Store after either belongs to the one hook
+// invocation that opened it. mu guards DeferDurability's state anyway.
+// Nothing in this program holds it across a second goroutine yet, but a
+// field three places read and write as one unit, left unguarded, is a race
+// waiting for whichever future caller reaches it from two; the lock makes
+// that caller's bug a serialised wait instead of an undefined one (REC-34,
+// Go memory model).
 type Store struct {
 	root      string
 	installID string
