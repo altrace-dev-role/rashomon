@@ -42,15 +42,26 @@ var ErrLockTimeout = errors.New("store: timed out waiting for the append lock")
 
 // Store is an opened store rooted at a directory.
 //
-// A Store is safe for concurrent use until DeferDurability. That call gives
-// it mutable state -- the file its one full sync has to cover, and whether
-// that sync failed -- which only one goroutine touches today: a deferred
-// Store belongs to the one hook invocation that opened it. mu guards that
-// state anyway. Nothing in this program holds it across a second goroutine
-// yet, but a field three places read and write as one unit, left unguarded,
-// is a race waiting for whichever future caller reaches it from two; the
-// lock makes that caller's bug a serialised wait instead of an undefined one
-// (REC-34, Go memory model).
+// A Store comes from Open, which creates the store on first use, or from
+// OpenExisting, which never does; its root, install id and key are set there
+// and never changed. Every path it writes is joined onto that root, so the
+// zero Store has none: it would write under the process's working directory
+// and digest under an empty key, and every writer refuses it with
+// errUnopenedStore instead.
+//
+// Appends from separate processes -- every hook invocation is one -- are
+// serialised by an advisory lock on each file they write, taken through a
+// descriptor of the append's own, which is also what orders appends from
+// goroutines sharing one Store. A Store is safe for concurrent use until
+// DeferDurability (TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines, run under
+// -race centrally). That call gives it mutable state -- the file its one
+// full sync has to cover, and whether that sync failed -- which only one
+// goroutine touches today: a deferred Store belongs to the one hook
+// invocation that opened it. mu guards that state anyway. Nothing in this
+// program holds it across a second goroutine yet, but a field three places
+// read and write as one unit, left unguarded, is a race waiting for whichever
+// future caller reaches it from two; the lock makes that caller's bug a
+// serialised wait instead of an undefined one (REC-34, Go memory model).
 type Store struct {
 	root      string
 	installID string
@@ -154,7 +165,24 @@ func (s *Store) InstallID() string { return s.installID }
 // Key is the per-install HMAC key used to digest tool input. Two installs hold
 // different keys, so the same command digests differently in each, and a store
 // cannot be matched against a dictionary of digests built elsewhere.
-func (s *Store) Key() []byte { return s.key }
+//
+// It returns a copy: a caller that wrote into the Store's own slice would
+// change every digest the Store made after it (lld-8).
+func (s *Store) Key() []byte { return bytes.Clone(s.key) }
+
+// errUnopenedStore is a write to a Store that did not come from Open or
+// OpenExisting. It is not ErrNoStore, which a read command shows the user as
+// "nothing recorded here": this is a bug in the caller, never a state of the
+// disk.
+var errUnopenedStore = errors.New("store: write to a Store that was never opened")
+
+// opened refuses the zero Store before it writes anything (see Store).
+func (s *Store) opened() error {
+	if s.root == "" {
+		return errUnopenedStore
+	}
+	return nil
+}
 
 // RunDir is the directory holding one session's records.
 func (s *Store) RunDir(sessionID string) string {
@@ -353,6 +381,9 @@ func (s *Store) DirName(sessionID string) string { return segment(sessionID) }
 // rather than a record so that a handler can check it with one stat instead of
 // reading a coverage file that grows with every call.
 func (s *Store) MarkProbe(sessionID string, now time.Time) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
 	dir := s.RunDir(sessionID)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return err
@@ -382,6 +413,9 @@ const appendFlags = os.O_CREATE | os.O_RDWR | os.O_APPEND
 // appendOrdered appends one record to records.ndjson under the run's lock,
 // allocating its seq inside the same critical section.
 func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
 	dir := s.RunDir(sessionID)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return err
@@ -508,6 +542,9 @@ const spillBudget = 50 * time.Millisecond
 // record is appended anyway, relying on a single O_APPEND write, which the
 // kernel does not interleave for a regular file.
 func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffort bool) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
 	line, err := marshalLine(rec)
 	if err != nil {
 		return err

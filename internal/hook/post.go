@@ -115,7 +115,8 @@ const FailureEvent = "PostToolUseFailure"
 //
 // It is split in two for the same reason Handler is: Close runs on paths where
 // Capture did not return normally, and a single function cannot promise that
-// about its own panic.
+// about its own panic. Like a Handler, it is for one invocation, used by one
+// goroutine.
 type Post struct {
 	st  *store.Store
 	now func() time.Time

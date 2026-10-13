@@ -19,6 +19,9 @@ const evictGrace = time.Hour
 // The named session and any run written to within evictGrace are never
 // candidates. Every removed run leaves a gap record.
 func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, error) {
+	if err := s.opened(); err != nil {
+		return nil, err
+	}
 	if capBytes <= 0 {
 		return nil, nil
 	}

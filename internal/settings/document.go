@@ -67,10 +67,12 @@ func Parse(data []byte) (*Document, error) {
 	return &Document{members: members}, nil
 }
 
-// Get returns a top-level value's raw bytes.
+// Get returns a copy of a top-level value's raw bytes. A copy, because the
+// document renders those bytes again in Bytes, and a caller that wrote into
+// them would change a file it never asked to edit (lld-8).
 func (d *Document) Get(key string) (json.RawMessage, bool) {
 	if m := d.find(key); m != nil {
-		return m.raw, true
+		return bytes.Clone(m.raw), true
 	}
 	return nil, false
 }

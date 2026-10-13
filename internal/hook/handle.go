@@ -33,6 +33,9 @@ const UnattributedSession = "unattributed"
 // Capture did not return normally. Once a declaration is on disk it must be
 // followed by a terminal record on every exit this process controls, and a
 // single function cannot promise that about its own panic.
+//
+// A Handler is for one invocation, used by one goroutine: Capture fills the
+// fields Close reads, and its Store is deferred (Store.DeferDurability).
 type Handler struct {
 	st  *store.Store
 	now func() time.Time
