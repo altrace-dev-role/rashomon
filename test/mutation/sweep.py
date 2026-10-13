@@ -2995,6 +2995,18 @@ m("NONO a client-plane host a tool call named is filed as the client's", "intern
 m("NONO the session's named hosts never reach the sandbox section", "internal/report/report.go",
   "madeMCPCall(run), declaredHosts(run), forgotten)", "madeMCPCall(run), nil, forgotten)",
   "TestSeam_AClientPlaneHostAToolCallNamed")
+# The escape line reads every refused host, the client's plane included
+# (review of #53): listing the Datadog intake as the client's had silenced
+# "REFUSED BY THE SANDBOX AND REACHED ANYWAY" for it.
+m("NONO a refused client-plane host reached on the wire is no escape", "internal/report/nono.go",
+  "\t\tif wireReached[h] && !trailAllowed[h] {", "\t\tif wireReached[h] && !trailAllowed[h] && !excluded(h) {",
+  "TestSeam_ARefusedClientHost")
+m("NONO a host the sandbox also allowed is called an escape", "internal/report/nono.go",
+  "\t\tif wireReached[h] && !trailAllowed[h] {", "\t\tif wireReached[h] {",
+  "TestSeam_ARefusedClientHost")
+m("NONO a refused loopback host reached on the wire is an escape", "internal/report/nono.go",
+  "\t\tif !h.Unreached && !loopbackHosts[h.Host] {", "\t\tif !h.Unreached {",
+  "TestSeam_ARefusedClientHost")
 
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn

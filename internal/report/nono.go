@@ -209,14 +209,20 @@ func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttribut
 	onWire := map[string]bool{}
 	wireReached := map[string]bool{}
 	for _, h := range dests.Hosts {
-		if h.Inherited || excluded(h.Host) {
+		if h.Inherited {
+			continue
+		}
+		// Whether the WIRE saw a connection, as against a refused attempt.
+		// Kept for the client's plane too, which the columns below leave out:
+		// the escape check reads it, and an escape is one whoever sent it.
+		// Loopback is a finding on neither side, this one included.
+		if !h.Unreached && !loopbackHosts[h.Host] {
+			wireReached[h.Host] = true
+		}
+		if excluded(h.Host) {
 			continue
 		}
 		onWire[h.Host] = true
-		// Whether the WIRE saw a connection, as against a refused attempt.
-		if !h.Unreached {
-			wireReached[h.Host] = true
-		}
 	}
 
 	// Two transports per host, tracked apart. The first version ORed
@@ -229,6 +235,7 @@ func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttribut
 	observable := map[string]bool{}
 	inTrail := map[string]bool{}
 	denied := map[string]bool{}
+	trailAllowed := map[string]bool{}
 	for _, e := range obs.Events {
 		if e.Decision == nono.DecisionDeny {
 			denied[e.Host] = true
@@ -239,6 +246,9 @@ func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttribut
 			// number does not double when a proxy store is present.
 			continue
 		}
+		// Every host the sandbox allowed, the excluded ones included: the
+		// escape check below asks it of the client's plane as well.
+		trailAllowed[e.Host] = true
 		if excluded(e.Host) {
 			// The same filter as the wire side. Counted as nothing: loopback and
 			// the client's own plane are findings on neither.
@@ -278,16 +288,26 @@ func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttribut
 			continue
 		}
 		if denied[h] {
-			// THE STRONGEST FINDING A FOURTH SOURCE CAN PRODUCE, and the first
-			// version cancelled it. A denial agrees with the wire only when the
-			// wire also shows the host was never reached; if the proxy recorded a
-			// connection, the traffic ESCAPED the sandbox.
-			if wireReached[h] {
-				n.DeniedButReached = append(n.DeniedButReached, h)
-			}
+			// Not missing from the trail: refused in it. Whether it then
+			// escaped is the check below.
 			continue
 		}
 		n.ProxySawWhatItDidNot = append(n.ProxySawWhatItDidNot, h)
+	}
+	// THE STRONGEST FINDING A FOURTH SOURCE CAN PRODUCE, and the first version
+	// cancelled it. A denial agrees with the wire only when the wire also shows
+	// the host was never reached; if the proxy recorded a connection and the
+	// sandbox allowed the host nowhere, the traffic ESCAPED the sandbox.
+	//
+	// Read over every refused host, the CLIENT'S PLANE INCLUDED. It used to run
+	// over the reconciliation's own hosts, which leave the client's plane out,
+	// so each host added to that list -- the Datadog log intake was -- silently
+	// lost this line. Who sent the traffic does not change what the two
+	// sources say together: the sandbox refused it and it went out anyway.
+	for h := range denied {
+		if wireReached[h] && !trailAllowed[h] {
+			n.DeniedButReached = append(n.DeniedButReached, h)
+		}
 	}
 	sort.Strings(n.PlainHTTP)
 	sort.Strings(n.DeniedButReached)

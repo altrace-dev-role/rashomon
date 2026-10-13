@@ -767,3 +767,46 @@ func TestSeam_AClientPlaneHostAToolCallNamedIsTheAgents(t *testing.T) {
 		}
 	}
 }
+
+// TestSeam_ARefusedClientHostReachedOnTheWireIsAnEscape: "refused by the
+// sandbox and reached anyway" says the sandbox leaked, and who sent the
+// traffic does not change that. The escape check read only hosts the
+// reconciliation kept, which drops the client's plane, so adding the Datadog
+// intake to that list silenced the loudest line in the section for it. The
+// rule for any host is kept: an escape needs the sandbox to have refused the
+// host and allowed it nowhere, and the wire to have reached it.
+func TestSeam_ARefusedClientHostReachedOnTheWireIsAnEscape(t *testing.T) {
+	const intake = "http-intake.logs.us5.datadoghq.com"
+	for _, c := range []struct {
+		name   string
+		events [][2]string
+		want   string
+	}{
+		{"refused only", [][2]string{{intake, "deny"}, {"pypi.org", "allow"}}, intake},
+		{"also allowed", [][2]string{{intake, "deny"}, {intake, "allow"}, {"pypi.org", "allow"}}, ""},
+		// Loopback is a finding on neither side, an escape included.
+		{"loopback", [][2]string{{"localhost", "deny"}, {"pypi.org", "allow"}}, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			at := firstNonoEvent(t)
+			st, id, now := seamSessionAt(t, at)
+			db := seamStore(t, [][4]string{{"r1", "", intake, ""}, {"r2", "", "pypi.org", ""}, {"r3", "", "localhost", ""}}, at)
+			rep, err := Build(st, id, now, WithNonoTrail(trailOf(t, at, c.events...)), WithProxyStore(db))
+			if err != nil {
+				t.Fatal(err)
+			}
+			n := rep.Sessions[0].Nono
+			if got := strings.Join(n.DeniedButReached, ","); got != c.want {
+				t.Errorf("denied_but_reached = %q, want %q", got, c.want)
+			}
+			var b strings.Builder
+			if err := Text(&b, rep); err != nil {
+				t.Fatal(err)
+			}
+			escaped := strings.Contains(b.String(), "REFUSED BY THE SANDBOX AND REACHED ANYWAY: "+intake)
+			if escaped != (c.want != "") {
+				t.Errorf("escape line shown = %v, want %v:\n%s", escaped, c.want != "", b.String())
+			}
+		})
+	}
+}

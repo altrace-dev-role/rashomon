@@ -203,6 +203,10 @@ var loopbackHosts = map[string]bool{
 // off its allowlist, refused it. The sandbox section then read "refused by the
 // sandbox: http-intake.logs.us5.datadoghq.com", an attempt the agent never
 // made. The exact host, as measured; another region's intake is not assumed.
+//
+// What a listing does NOT do is mute the sandbox's escape line: buildNono reads
+// every host the sandbox refused for "refused by the sandbox and reached
+// anyway", this list included, because an escape is one whoever sent it.
 var clientPlaneHosts = map[string]bool{
 	"api.anthropic.com":                  true,
 	"statsig.anthropic.com":              true,
