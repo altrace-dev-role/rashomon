@@ -273,11 +273,14 @@ func FindPlugin(doc *settings.Document) (*Plugin, error) {
 	enabled := map[string]bool{}
 	if doc != nil {
 		if raw, ok := doc.Get("enabledPlugins"); ok {
+			// A malformed enabledPlugins keeps whatever entries did decode, and a
+			// plugin with none falls back to its own default, as if unlisted.
 			_ = json.Unmarshal(raw, &enabled)
 		}
 	}
 
 	for key, records := range installed.Plugins {
+		// A key with no marketplace part is all name.
 		name, _, _ := strings.Cut(key, "@")
 		if name != PluginName {
 			continue

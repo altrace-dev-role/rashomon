@@ -592,6 +592,8 @@ func entryKind(path string, e fs.DirEntry) int {
 // case, a session with no subagents. A folder that cannot be read is skipped
 // and listed, so the rest of the walk -- and of spend -- goes on.
 func subagentFiles(dir string) (out, unreadable []string) {
+	// The walk function returns only nil or SkipDir, so WalkDir has no error to
+	// return: every folder it could not read is in unreadable instead.
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) && p == dir {
@@ -606,6 +608,7 @@ func subagentFiles(dir string) (out, unreadable []string) {
 		if d.IsDir() {
 			return nil
 		}
+		// Match fails only on a malformed pattern, and this one is a constant.
 		if ok, _ := filepath.Match("agent-*.jsonl", d.Name()); ok {
 			out = append(out, p)
 		}

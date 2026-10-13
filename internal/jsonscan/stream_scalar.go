@@ -50,6 +50,7 @@ func (s *streamer) number(t uint64) error {
 	if t != 0 {
 		s.startValue(t, false)
 	}
+	// At the end of input c is 0, not '-'; the peek below reports the end.
 	if c, _ := s.peek(); c == '-' {
 		s.pos++
 	}

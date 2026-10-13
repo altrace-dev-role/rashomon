@@ -952,12 +952,15 @@ type evaluator struct {
 // which shell ran it.
 func (p *lineParser) runShells(l list, g int) (f, pass int, ran bool) {
 	f, ran = p.run(l, g, true, false)
+	// Whether the runner is reached depends only on what runs before it, the
+	// same in both runs, so ran comes from the first.
 	pass, _ = p.run(l, g, false, false)
 	if !p.errexit {
 		// Without errexit the two shells run it alike.
 		return f, pass, ran
 	}
 	zf, zran := p.run(l, g, true, true)
+	// As above: zran comes from the first of the two zsh runs.
 	zpass, _ := p.run(l, g, false, true)
 	if zf < 0 || zpass < 0 || (f == 0 || f == pass) != (zf == 0 || zf == zpass) {
 		return -1, -1, ran && zran
