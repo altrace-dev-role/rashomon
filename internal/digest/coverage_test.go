@@ -1,6 +1,7 @@
 package digest
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/report"
@@ -219,5 +220,38 @@ func TestREC34n_FlushFailedMarkerDoesNotStretchADroppedTerminalsRecordedTime(t *
 	if got := turnDropped(run, w); len(got) != 1 || got[0] != "toolu_dropped" {
 		t.Errorf("turnDropped(prompt-1) = %v, want [toolu_dropped]: the flush_failed marker's later "+
 			"time pushed the dropped terminal's own out of the turn it was actually recorded in", got)
+	}
+}
+
+// TestRubricERRORS5_TurnCoverageFailsClosedOnACoverageRecordItCannotRead is
+// report's ERRORS5 table through the turn digest, which shares
+// report.RollupCoverage: a call-phase coverage record that is unverified with
+// no reason, or carries a state this build does not write, makes the turn
+// unverified with records_unreadable.
+func TestRubricERRORS5_TurnCoverageFailsClosedOnACoverageRecordItCannotRead(t *testing.T) {
+	internalError := store.ReasonInternalError
+	for _, c := range []struct {
+		name   string
+		state  string
+		reason *string
+	}{
+		{"unverified with a null reason", store.StateUnverified, nil},
+		{"an unknown state", "degraded", nil},
+		{"an unknown state with a reason", "degraded", &internalError},
+		{"an empty state", "", nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			run := &store.Run{
+				Declarations: []store.Declaration{decl(1, "a1", "Bash", "prompt-1", "/t.jsonl", 1000)},
+				Coverage: []store.Coverage{
+					startCoverage("inst-1"),
+					{Phase: store.PhaseCall, State: c.state, Reason: c.reason, RecordedAtMS: 1000},
+				},
+			}
+			tc, _ := buildTurnCoverage(run, nil, selectTurn(run, "prompt-1"))
+			if tc.State != store.StateUnverified || !slices.Contains(tc.Reasons, report.ReasonRecordsUnreadable) {
+				t.Errorf("turn coverage = %s %v, want unverified with %s", tc.State, tc.Reasons, report.ReasonRecordsUnreadable)
+			}
+		})
 	}
 }
