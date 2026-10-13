@@ -688,8 +688,15 @@ func (s *Store) ForgottenHostBefore() (func(host string, declaredAtMS int64) boo
 // because a host forgotten more than once must compare against the most
 // recent attempt: a declaration from between two forgets of the same host is
 // still stale against the second one.
+//
+// It reads the gaps itself rather than through ReadGaps, because a gaps file
+// it cannot read must fail the caller: ReadGaps counts a read refused by a
+// held lock as a skipped line, and here that would read as "nothing was
+// forgotten" and show a host the user removed. A damaged line is discarded
+// with the count: ReadGaps, which every report reads first, has already
+// marked every session unverified for it (REC-33).
 func (s *Store) forgottenDigestTimes() (map[string]int64, error) {
-	gaps, _, err := s.ReadGaps()
+	gaps, _, err := readGapsAt(filepath.Join(s.root, FileGaps), neverRefused)
 	if err != nil {
 		return nil, err
 	}

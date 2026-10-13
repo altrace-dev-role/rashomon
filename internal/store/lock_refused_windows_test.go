@@ -48,3 +48,40 @@ func TestRubricTEST11_AReadRefusedByAHeldLockCountsAsSkipped(t *testing.T) {
 			run.Skipped, len(run.Declarations))
 	}
 }
+
+// TestRubricTEST11_AGapsReadRefusedByAHeldLockCountsAsSkipped is the Windows
+// half of TestRubricTEST11_ARefusedGapsReadCountsAsSkipped. A forget or an
+// eviction holds the gaps file's lock while it writes, and ReadGaps reads
+// that file unlocked, so on Windows the read is refused and digest.Build
+// failed with it. The refusal now counts as one gap line that could not be
+// read, which reads every session unverified (REC-33). ForgottenHost still
+// fails: a gaps file it cannot read must not read as "nothing forgotten".
+//
+// It runs only on Windows, in CI's lock-windows job.
+func TestRubricTEST11_AGapsReadRefusedByAHeldLockCountsAsSkipped(t *testing.T) {
+	root := t.TempDir()
+	st, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	gapsPath := filepath.Join(root, FileGaps)
+	if err := os.WriteFile(gapsPath, []byte(`{"type":"gap","schema_version":2,"session_id":"sess-gap"}`+"\n"), fileMode); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lockFile(openForAppend(t, gapsPath), lockBudget)
+	if err != nil {
+		t.Fatalf("taking the gaps lock: %v", err)
+	}
+	defer unlock()
+
+	gaps, skipped, err := st.ReadGaps()
+	if err != nil {
+		t.Fatalf("ReadGaps under a held mandatory lock: %v, want the refused read counted as skipped", err)
+	}
+	if skipped != 1 || len(gaps) != 0 {
+		t.Errorf("got %d gaps and %d skipped, want none read and one skipped", len(gaps), skipped)
+	}
+	if _, err := st.ForgottenHost(); err == nil {
+		t.Error("ForgottenHost under a held mandatory lock returned no error, want the refused read to fail it")
+	}
+}
