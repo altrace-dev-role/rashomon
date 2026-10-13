@@ -16,13 +16,16 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
-// maxLine bounds one transcript line, as report's reader bounds it: lines
-// carry whole messages and can be large, and the bound is against a corrupted
-// file, not a real one. A line longer than this ends that file's read (the
-// scanner cannot step over it) and the file is counted as unreadable rather
-// than silently truncated. It counts the line's newline, which the scanner
-// needs room to find: the longest line read is maxLine-1 bytes.
-const maxLine = 64 << 20
+// maxLine and initialScanBuffer are report's transcript scanner sizes, whose
+// doc gives their measurements: lines carry whole messages and can be large,
+// and a real one can pass maxLine. A line longer than this ends that file's
+// read (the scanner cannot step over it) and the file is counted as unreadable
+// rather than silently truncated. It counts the line's newline, which the
+// scanner needs room to find: the longest line read is maxLine-1 bytes.
+const (
+	maxLine           = 64 << 20
+	initialScanBuffer = 256 << 10
+)
 
 // usageMarker is a byte test run before any decoding of a main transcript's
 // lines. Only a line that carries an API response's usage can contribute, and
@@ -769,7 +772,7 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 	// header only; its content has no field to land in.
 	var prompt string
 	s := bufio.NewScanner(fh)
-	s.Buffer(make([]byte, 0, 256*1024), maxLine)
+	s.Buffer(make([]byte, 0, initialScanBuffer), maxLine)
 	// The file's first dated line dates it (ownerSessions): a main
 	// transcript's lines are decoded, header only, until one carries a
 	// timestamp, and then only those that may carry usage.
