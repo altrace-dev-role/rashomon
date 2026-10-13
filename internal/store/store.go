@@ -585,6 +585,7 @@ func nextSeq(dir string, sync func(*os.File) error) (int64, error) {
 	if err := writeSmall(path, []byte(strconv.FormatInt(next, 10)+"\n"), sync); err != nil {
 		return 0, err
 	}
+	fault.Inject(fault.PointStoreSeqAdvanced)
 	return next, nil
 }
 

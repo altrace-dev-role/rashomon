@@ -65,6 +65,22 @@ const (
 	// a full disk: the line is whole on disk when the failure arrives, so a
 	// missing cut-back leaves a record the writer was told did not land.
 	PointStoreAppendWrite = "store.append.write"
+	// The durability boundaries a crash can land between (test-5). Each is
+	// reached with a panic, which stands in for the crash: everything the
+	// process wrote before the point is on disk, nothing after it is.
+	//
+	// PointStoreSeqAdvanced is after a run's seq counter is advanced and
+	// before the record that takes the number is written.
+	PointStoreSeqAdvanced = "store.seq.advanced"
+	// PointStoreRewritePartial is inside forget's in-place rewrite, after
+	// each kept line is written and before the file is cut to its new
+	// length.
+	PointStoreRewritePartial = "store.rewrite.partial"
+	// PointBaselineBeforeRename and PointRecapBeforeRename are after a
+	// project baseline, or recap's state, is written to its temporary name
+	// and before it is renamed over the old one.
+	PointBaselineBeforeRename = "baseline.before_rename"
+	PointRecapBeforeRename    = "recap.before_rename"
 )
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders

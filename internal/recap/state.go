@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 )
 
 // stateFileName is recap's own bookkeeping, a plain file under the store
@@ -120,6 +122,7 @@ func writeState(path string, s state) error {
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
+	fault.Inject(fault.PointRecapBeforeRename)
 	return os.Rename(tmp, path)
 }
 
