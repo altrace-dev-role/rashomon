@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -209,5 +210,50 @@ func TestCheckPaused_H80WritesRecordingPausedWithAStore(t *testing.T) {
 	}
 	if !bytes.Contains(body, []byte(`"state":"unverified"`)) {
 		t.Errorf("coverage.ndjson does not carry state unverified:\n%s", body)
+	}
+}
+
+// TestRubricERRORS6_UnreadablePauseMarkerPausesTheHook: a pause marker that
+// exists and cannot be read (chmod 000) is a pause, the way a marker that
+// does not parse already is. Before, checkPaused read any error from
+// store.Paused as "not paused", so the hook recorded the call while status
+// said "recording: unknown".
+func TestRubricERRORS6_UnreadablePauseMarkerPausesTheHook(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 000 does not stop this user reading the file")
+	}
+	root := t.TempDir()
+	t.Setenv("RASHOMON_HOME", root)
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	if _, err := store.Open(root); err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	if _, _, err := store.Pause(root, time.Now()); err != nil {
+		t.Fatalf("store.Pause: %v", err)
+	}
+	marker := filepath.Join(root, "pause")
+	if err := os.Chmod(marker, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(marker, 0o644) }) //nolint:errcheck // TempDir removal follows
+	if _, _, err := store.Paused(root); err == nil {
+		t.Fatal("premise: store.Paused read a chmod-000 marker without error")
+	}
+
+	payload := `{"session_id":"sess-unreadable","hook_event_name":"PreToolUse","transcript_path":"/tmp/t.jsonl","cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"echo hi"},"tool_use_id":"toolu_unreadable"}`
+	var stdout, stderr bytes.Buffer
+	if res := run([]string{"hook"}, strings.NewReader(payload), &stdout, &stderr); res != exitOK {
+		t.Fatalf("hook: exit %d, stderr %s", res, stderr.String())
+	}
+	runDir := filepath.Join(root, "runs", "sess-unreadable")
+	if b, err := os.ReadFile(filepath.Join(runDir, "records.ndjson")); err == nil && len(bytes.TrimSpace(b)) != 0 {
+		t.Errorf("a declaration was written under an unreadable pause marker:\n%s", b)
+	}
+	body, err := os.ReadFile(filepath.Join(runDir, "coverage.ndjson"))
+	if err != nil {
+		t.Fatalf("reading coverage.ndjson: %v", err)
+	}
+	if !bytes.Contains(body, []byte(`"reason":"recording_paused"`)) {
+		t.Errorf("coverage.ndjson does not carry recording_paused:\n%s", body)
 	}
 }
