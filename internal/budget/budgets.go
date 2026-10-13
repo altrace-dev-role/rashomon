@@ -122,10 +122,14 @@ type PerToolCall struct {
 
 // Parallel bounds a burst (RES-30): Ways hook-and-post pairs on one session
 // at once, whose peak footprints sum to at most SummedPeakMiBMax, 64 x (6.5 +
-// 4.5) MiB = 704 at 64-way (archive 85.4.4).
+// 4.5) MiB = 704 at 64-way (archive 85.4.4). Basis states the per-process
+// rule test/perf's gate holds every pair to and the measurements it was
+// restated from (ruling 2026-10-13), which TestRES30_BudgetsRowStatesTheGate
+// keeps in step with the gate's constants.
 type Parallel struct {
 	Ways             int     `json:"ways"`
 	SummedPeakMiBMax float64 `json:"summed_peak_mib_max"`
+	Basis            string  `json:"basis"`
 }
 
 // Benchmark is one benchmark's allocation budget (RES-36): the measured best
