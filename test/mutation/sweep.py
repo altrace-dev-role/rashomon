@@ -2969,6 +2969,23 @@ m("NONO forget --host does not say a no-op forget still holds", "cmd/rashomon/ma
   "\tif total == 0 {\n\t\tfmt.Fprint(stdout, \"; later reports", "\tif false {\n\t\tfmt.Fprint(stdout, \"; later reports",
   "TestH25_")
 
+# forget --host canonicalises its argument (review of #53): every host rashomon
+# holds went through host.Canonical, so a value taken as typed -- GitHub.com,
+# github.com:443, https://github.com/ -- forgot nothing while the line said
+# later reports would leave it out.
+m("NONO the store forgets the host as typed", "internal/store/gaps.go",
+  "\thost, ok := canonicalHost(host)\n", "\tok := host != \"\"\n",
+  "TestForgetHost_AnySpelling|TestSeam_AnySpelling")
+m("NONO the store forgets a value that is not a hostname", "internal/store/gaps.go",
+  "\tif !ok {\n\t\treturn nil, ErrNotAHostname\n\t}\n", "\tif !ok && false {\n\t\treturn nil, ErrNotAHostname\n\t}\n",
+  "TestForgetHost_WhatIsNot")
+m("NONO forget --host passes the value on as typed", "cmd/rashomon/main.go",
+  "\t\t\ttarget = h\n", "\t\t\ttarget, _ = args[i+1], h\n",
+  "TestH25_ForgetHostTakesAnySpelling")
+m("NONO forget --host accepts what is not a hostname", "cmd/rashomon/main.go",
+  "\t\t\th, ok := host.Canonical(args[i+1])\n\t\t\tif !ok {", "\t\t\th, ok := host.Canonical(args[i+1])\n\t\t\tif false && !ok {",
+  "TestH25_ForgetHostRefusesWhatIs")
+
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn
 # sentence). Each anchor appears once in its file.

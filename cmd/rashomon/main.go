@@ -23,6 +23,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/digest"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/hook"
+	"github.com/altrace-dev-role/rashomon/internal/host"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/launch"
 	"github.com/altrace-dev-role/rashomon/internal/posture"
@@ -1612,14 +1613,28 @@ func cmdSpend(args []string, stdout io.Writer) error {
 // naming both is refused rather than resolved.
 func cmdForget(args []string, stdout io.Writer) error {
 	var from, to *time.Time
-	host := ""
+	target := ""
 	for i := 0; i < len(args); i++ {
 		switch flag := args[i]; flag {
 		case "--host":
 			if i+1 >= len(args) {
 				return errors.New("--host needs a value")
 			}
-			host = args[i+1]
+			// Canonicalised HERE, before anything is opened, and the canonical
+			// name is what every step after it sees: the record match, the
+			// digest, the baselines and the line that says what was forgotten.
+			// Every host rashomon holds went through host.Canonical, so taken
+			// as typed, "GitHub.com" or "github.com:443" forgot nothing while
+			// the line said later reports would leave it out. The value is not
+			// echoed in the refusal: it may carry a credential, and stderr
+			// lands wherever the caller's output does, a transcript included.
+			h, ok := host.Canonical(args[i+1])
+			if !ok {
+				return errors.New("--host is not a hostname: give the destination's name, " +
+					"such as github.com (a scheme and a port are dropped; a path, " +
+					"credentials or spaces are refused)")
+			}
+			target = h
 			i++
 		case "--since", "--before":
 			if i+1 >= len(args) {
@@ -1640,10 +1655,10 @@ func cmdForget(args []string, stdout io.Writer) error {
 		}
 	}
 	switch {
-	case host != "" && (from != nil || to != nil):
+	case target != "" && (from != nil || to != nil):
 		return errors.New("--host removes by destination and --since/--before remove by time; pass one kind or the other")
-	case host != "":
-		return forgetHost(host, stdout)
+	case target != "":
+		return forgetHost(target, stdout)
 	case from != nil && to != nil:
 		return errors.New("--since and --before name opposite ends of the store's timeline; pass one or the other")
 	case from == nil && to == nil:

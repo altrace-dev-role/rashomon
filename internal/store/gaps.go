@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/host"
 )
 
 // evictGrace keeps a run that was written to recently out of eviction. The
@@ -425,6 +427,15 @@ func rewriteAt(path string, lines [][]byte) error {
 	return rewrite(f, lines)
 }
 
+// canonicalHost is host.Canonical, under a name ForgetHost's parameter does
+// not shadow.
+func canonicalHost(raw string) (string, bool) { return host.Canonical(raw) }
+
+// ErrNotAHostname is ForgetHost's refusal of a value that names no host: a
+// path, a credential, whitespace inside, or nothing left once a scheme and a
+// port are removed. It does not carry the value, which may hold a credential.
+var ErrNotAHostname = errors.New("store: forget --host: the value is not a hostname")
+
 // declHead is what a host-scoped forget needs from a record: the join key and
 // the hostnames a declaration named.
 type declHead struct {
@@ -455,9 +466,22 @@ type declHead struct {
 // deleting from it would break the chain it exists to provide. The gap record
 // carries the host so the report keeps the destination suppressed from its
 // view instead, and says so rather than implying the row is gone.
+//
+// THE NAME IS CANONICALISED FIRST, by host.Canonical, the function every host
+// this store and the report hold has been through: the declarations' lists,
+// the proxy's rows and the sandbox's trail. Matched and digested as typed,
+// "GitHub.com", "github.com:443" and "https://github.com/" each named a host
+// nothing held, so the forget removed nothing and suppressed nothing while
+// the command said later reports would leave it out. A value Canonical
+// refuses names no destination at all and is refused here, before anything is
+// written.
 func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
 	if host == "" {
 		return nil, errors.New("store: forget --host needs a host")
+	}
+	host, ok := canonicalHost(host)
+	if !ok {
+		return nil, ErrNotAHostname
 	}
 	names, err := s.Runs()
 	if err != nil {

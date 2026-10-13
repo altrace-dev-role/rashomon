@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -659,4 +660,47 @@ func ev(seq int, ms int64, mode, decision, target string, port int) string {
 		`{"sequence":%d,"event":{"type":"network","event":{"timestamp_unix_ms":%d,`+
 			`"mode":%q,"decision":%q,"target":%q,"port":%d}}}`+"\n",
 		seq, ms, mode, decision, target, port)
+}
+
+// TestSeam_AnySpellingOfAForgottenHostLeavesTheSandboxSection: the trail's
+// hosts are canonical, so a forget has to digest the canonical spelling of
+// whatever the user typed. github.com is the fixture's refused host, which
+// the text names, so the text assertion can fail; pypi.org is an allowed
+// host, which the text only counts, so it is checked in the JSON.
+func TestSeam_AnySpellingOfAForgottenHostLeavesTheSandboxSection(t *testing.T) {
+	for _, c := range []struct{ spelled, canonical string }{
+		{"GitHub.com", "github.com"},
+		{"github.com.", "github.com"},
+		{"https://github.com/", "github.com"},
+		{"github.com:443", "github.com"},
+		{"PyPI.org", "pypi.org"},
+		{"pypi.org:443", "pypi.org"},
+	} {
+		t.Run(c.spelled, func(t *testing.T) {
+			at := firstNonoEvent(t)
+			st, id, now := seamSessionAt(t, at)
+			if _, err := st.ForgetHost(c.spelled, now); err != nil {
+				t.Fatalf("forget --host %q: %v", c.spelled, err)
+			}
+			rep, err := Build(st, id, now, WithNonoTrail(nonoFixture))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var b strings.Builder
+			if err := Text(&b, rep); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(b.String(), "sandbox (nono):") {
+				t.Fatalf("premise: the sandbox section did not render:\n%s", b.String())
+			}
+			if strings.Contains(b.String(), c.canonical) {
+				t.Errorf("forget --host %q left %s in the report:\n%s", c.spelled, c.canonical, b.String())
+			}
+			n := rep.Sessions[0].Nono
+			if slices.Contains(n.Allowed, c.canonical) || slices.Contains(n.Denied, c.canonical) {
+				t.Errorf("forget --host %q: the sandbox still lists %s: allowed %v, denied %v",
+					c.spelled, c.canonical, n.Allowed, n.Denied)
+			}
+		})
+	}
 }

@@ -58,3 +58,61 @@ func TestForgetHost_TheStoreLevelRecordHoldsNoName(t *testing.T) {
 		t.Errorf("the store-level forget record does not hold the host's digest:\n%s", raw)
 	}
 }
+
+// TestForgetHost_AnySpellingOfTheHostIsForgotten: every host the report holds
+// has been through host.Canonical, and so has every host a declaration names.
+// A forget that hashed the argument as typed matched none of them for any
+// other spelling -- `forget --host GitHub.com` removed nothing, suppressed
+// nothing, and the CLI said later reports would leave the host out.
+func TestForgetHost_AnySpellingOfTheHostIsForgotten(t *testing.T) {
+	for _, spelled := range []string{"PyPI.org", "pypi.org.", "https://pypi.org/", "pypi.org:443", " pypi.org "} {
+		t.Run(spelled, func(t *testing.T) {
+			st, err := Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.AppendDeclaration(Declaration{
+				Type: TypeDeclaration, SchemaVersion: SchemaVersion, SessionID: "s1",
+				ToolUseID: "toolu_pypi", ToolName: "Bash", RecordedAtMS: 1_700_000_000_000,
+				Hosts: []string{"pypi.org"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			gaps, err := st.ForgetHost(spelled, time.Unix(1_700_000_100, 0))
+			if err != nil {
+				t.Fatalf("ForgetHost(%q): %v", spelled, err)
+			}
+			if len(gaps) != 1 || gaps[0].RemovedRecords != 1 {
+				t.Errorf("ForgetHost(%q) left the declaration naming pypi.org: gaps %+v", spelled, gaps)
+			}
+			forgotten, err := st.ForgottenHost()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !forgotten("pypi.org") {
+				t.Errorf("ForgetHost(%q) does not suppress pypi.org, the spelling every report holds", spelled)
+			}
+		})
+	}
+}
+
+// TestForgetHost_WhatIsNotAHostnameIsRefused: a value host.Canonical rejects
+// -- a path, a credential, whitespace inside -- names no destination, so a
+// forget of it can only be a no-op that reads as a success. Refused, and
+// nothing is written.
+func TestForgetHost_WhatIsNotAHostnameIsRefused(t *testing.T) {
+	for _, bad := range []string{"pypi.org/simple", "user:pw@pypi.org", "py pi.org", "   "} {
+		t.Run(bad, func(t *testing.T) {
+			st, err := Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.ForgetHost(bad, time.Unix(1_700_000_000, 0)); err == nil {
+				t.Errorf("ForgetHost(%q) succeeded on a value that is not a hostname", bad)
+			}
+			if _, err := os.Stat(filepath.Join(st.Root(), FileForgottenHosts)); err == nil {
+				t.Errorf("ForgetHost(%q) wrote a store-level record for a value that names no host", bad)
+			}
+		})
+	}
+}
