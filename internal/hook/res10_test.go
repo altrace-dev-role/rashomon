@@ -32,7 +32,15 @@ func fastest(f func()) time.Duration {
 // re-cleaned the whole growing path, so the fold was quadratic: a 480 KB
 // payload took 10.9 s against the hook's 5 s timeout. A 1 MB `cd a&&`
 // payload, and the longest fold the shape's token bound lets through, each
-// finish inside 50 ms.
+// finish inside 50 ms, and with more than 64 steps each start in a directory
+// that is not known.
+//
+// A line that runs on past the shape's token bound (RES-9) still has its
+// leading steps read: they come first, and 65 of them are 195 tokens, far
+// inside the bound. So a cd in front of a long script still moves the start
+// directory, and more than 64 in front of one still make it unknown, rather
+// than either keeping the payload's cwd, a directory the line moved away
+// from.
 func TestRES10_LeadingCdFoldIsBounded(t *testing.T) {
 	in := func(cmd string) json.RawMessage {
 		raw, err := json.Marshal(map[string]string{"command": cmd})
@@ -61,8 +69,24 @@ func TestRES10_LeadingCdFoldIsBounded(t *testing.T) {
 		if took > 50*time.Millisecond {
 			t.Errorf("%s: the fold took %v, want at most 50ms", tc.name, took)
 		}
-		if strings.Count(got, "/a") > 64 {
-			t.Errorf("%s: %d steps folded, want at most 64", tc.name, strings.Count(got, "/a"))
+		if got != "" {
+			t.Errorf("%s: start directory %q, want unknown", tc.name, got)
+		}
+	}
+
+	// Past the token bound: a long line after the leading steps.
+	long := " " + strings.TrimSpace(strings.Repeat("word ", 50_000))
+	for _, tc := range []struct {
+		name, cmd, want string
+	}{
+		{"one cd, then 50,000 words", "cd /elsewhere && go test" + long, "/elsewhere"},
+		{"one cd, then a 50,000-word here-document",
+			"cd sub && python3 - <<'EOF'\n" + long + "\nEOF\nmake test", "/repo/sub"},
+		{"64 steps, then 50,000 words", cdLine(64, " && ") + long, "/repo" + strings.Repeat("/a", 64)},
+		{"100 steps, then 50,000 words", cdLine(100, " && ") + long, ""},
+	} {
+		if got := startDirectory("/repo", "Bash", in(tc.cmd)); got != tc.want {
+			t.Errorf("%s: start directory %q, want %q", tc.name, got, tc.want)
 		}
 	}
 }
