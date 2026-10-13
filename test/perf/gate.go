@@ -190,7 +190,7 @@ func caseBudget(plat string, c budget.RSSCase, overrides map[string]float64) (bu
 // up on a lock; each pair's peak footprint in MiB, the larger of its hook's
 // and its post's, which run one after the other; and OneWayPeakMiB, the same
 // figure for one pair run alone, the median of OneWaySamples runs, which is
-// what the per-process rule compares the burst's median pair peak against.
+// the 1-way figure the per-process rule holds every pair in the burst to.
 type Burst struct {
 	Ways                                int
 	Declarations, Terminals, Executions int
@@ -201,29 +201,41 @@ type Burst struct {
 	OneWayPeakMiB                       float64
 }
 
-// PerProcessPeakRatio is RES-30's per-process rule (archive 85.4.4, 85.6):
-// the per-process peak at 64-way is at most 1.1 times the 1-way figure.
+// PerProcessPeakRatio is RES-30's per-process rule as the spec states it
+// (archive 85.4.4, 85.6, the RES-30 row): the per-process peak at 64-way is
+// at most 1.1 times the 1-way figure. It is judged on every process, so the
+// largest of the burst decides, against the median of the solo runs, the
+// p50 the per-process budgets are written in.
 //
-// It is judged median against median. The 1-way figure is a p50, as the
-// per-process budgets it comes from are, and the rule is what lets the summed
-// budget be 64 times that p50: it says the typical process does not grow when
-// sixty-four contend. The burst's largest process is a different statistic,
-// the maximum of 128, and is reported beside the verdict, not gated: measured
-// on an Apple M3 (2026-10-13), solo pair peaks ran 3.50 to 3.74 MiB with a
-// median of 3.69, the 64-way median was about 3.70, and the top four or five
-// of 128 processes reached 4.03 to 4.17 MiB, about 1.13 times the 1-way
-// median, which a max-against-median rule would fail on every run.
+// The rule holds with little room, and that is measured, not assumed. On an
+// Apple M3 under load about 4 to 5 (2026-10-13), with the Go runtime's
+// default of one P per core, solo pairs had a median peak of 3.58 to 3.63 MiB
+// and the largest of 128 burst processes reached 4.02 to 4.11 MiB, 1.11 to
+// 1.14 times it, in each of five runs (an earlier run reached 4.33 MiB, 1.21
+// times), while the burst's median stayed within 1.04 to 1.06 times: the tail, not the typical process, grew with
+// contention, and a median-against-median reading hid it. hook and post now
+// run on one P (cmd/rashomon, oneProc): solo pairs 3.42 to 3.53 MiB, the
+// burst median within 0.05 MiB of them, and the largest 1.03 to 1.09 times
+// in fourteen runs of fourteen with OneWaySamples at 25. That is as little as
+// 0.6 percent of room. A run over the ratio is a real red, never a flake to
+// retry: K5 reverts the PR, and the ratio does not move without the spec
+// owner.
 //
 // Both sides are measured on the same machine in the same run, so the runner
 // tolerance, which covers one machine against another, does not apply.
 const PerProcessPeakRatio = 1.1
 
 // OneWaySamples is how many solo pairs the 1-way figure is the median of.
-const OneWaySamples = 9
+// With nine, the median itself moved 3.47 to 3.59 MiB from run to run, as
+// much as the room the rule leaves, and the one red in fourteen runs measured
+// on one P came from a low median rather than a high tail. More samples
+// measure the same p50 more closely; they do not move the rule. Each pair
+// costs about 20 ms.
+const OneWaySamples = 25
 
 // LargestMiB is the largest per-process peak in the burst: the largest pair
 // peak, each already the larger of its hook's and its post's. Zero with none.
-// It is reported beside the per-process verdict, which judges the median.
+// It is what the per-process rule judges.
 func (b Burst) LargestMiB() float64 {
 	largest := 0.0
 	for _, m := range b.PairPeakMiB {
@@ -272,8 +284,9 @@ func (b Burst) Problems(budgetMiB, tolerance float64) []string {
 }
 
 // footprintProblems is the memory half of RES-30: a pair left unmeasured, a
-// summed footprint over budget, a 1-way figure that was never measured, and a
-// median pair peak under the burst over PerProcessPeakRatio times it. The sum
+// summed footprint over budget, a 1-way figure that was never measured, and
+// any pair whose peak under the burst is over PerProcessPeakRatio times it,
+// the largest standing for them all. The sum
 // alone is loose (archive 85.4.4 budgets a supervisor parent that does not
 // exist before P-23), so footprint that grows with contention is what the
 // ratio is there to catch; footprint that grows everywhere is RES-28's.
@@ -293,13 +306,14 @@ func (b Burst) footprintProblems(budgetMiB, tolerance float64) []string {
 	if OverBudget(sum, budgetMiB, tolerance) {
 		out = append(out, fmt.Sprintf("summed peak footprint %.1f MiB over budget %.1f MiB (+%.0f%%)", sum, budgetMiB, tolerance*100))
 	}
-	median, _ := Median(b.PairPeakMiB)
+	largest := b.LargestMiB()
 	switch {
 	case b.OneWayPeakMiB <= 0:
 		out = append(out, "the 1-way per-process peak was not measured, so the per-process rule cannot be judged")
-	case median > PerProcessPeakRatio*b.OneWayPeakMiB:
-		out = append(out, fmt.Sprintf("median per-process peak %.2f MiB is over %.1fx the 1-way figure, %.2f MiB (largest %.2f MiB)",
-			median, PerProcessPeakRatio, b.OneWayPeakMiB, b.LargestMiB()))
+	case largest > PerProcessPeakRatio*b.OneWayPeakMiB:
+		median, _ := Median(b.PairPeakMiB)
+		out = append(out, fmt.Sprintf("largest per-process peak %.2f MiB is %.3fx the 1-way figure, %.2f MiB, over %.1fx (burst median %.2f MiB)",
+			largest, largest/b.OneWayPeakMiB, b.OneWayPeakMiB, PerProcessPeakRatio, median))
 	}
 	return out
 }

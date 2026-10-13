@@ -178,6 +178,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		// Before anything can write: a write nobody reads must not kill the
 		// process (H-111).
 		hook.IgnoreBrokenPipe()
+		oneProc()
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
@@ -219,6 +220,7 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook.
 	_ = safe.Guard(func() error {
 		hook.IgnoreBrokenPipe()
+		oneProc()
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 

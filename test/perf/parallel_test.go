@@ -25,9 +25,10 @@ import (
 // TestRES30_ParallelHooksStayInBudget: Ways hook-and-post pairs on one
 // session, all released at once, each a hook and then its post as Claude Code
 // runs them, land every record in the ordered stream with no spill and no
-// lock timeout, the pairs' peak footprints sum to within budget, and the
-// median pair peak is at most PerProcessPeakRatio times the 1-way figure,
-// measured first, in a store of its own (RES-30; H-16 at the same width
+// lock timeout, the pairs' peak footprints sum to within budget, and every
+// pair's peak, the largest standing for them all, is at most
+// PerProcessPeakRatio times the 1-way figure, measured first, in a store of
+// its own (RES-30; H-16 at the same width
 // covers the hook alone). What a pair costs at any instant is one process, so
 // a pair's peak is the larger of its two.
 //
@@ -85,10 +86,10 @@ func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 	}
 	median, _ := Median(burst.PairPeakMiB)
 	t.Logf("%d-way on %s: summed pair peak %.1f MiB against %.0f (+%.0f%%); all %d processes %.1f MiB; "+
-		"median pair peak %.2f MiB against %.1fx the 1-way %.2f MiB, largest %.2f MiB (reported); "+
+		"largest pair peak %.2f MiB (%.3fx) against %.1fx the 1-way %.2f MiB, median %.2f MiB (reported); "+
 		"%d declarations, %d executions, %d spilled, %d lock timeouts; burst %v (reported, not gated)",
 		ways, platform(), sum, b.Parallel.SummedPeakMiBMax, tol*100, 2*ways, all,
-		median, PerProcessPeakRatio, oneWay, burst.LargestMiB(),
+		burst.LargestMiB(), burst.LargestMiB()/oneWay, PerProcessPeakRatio, oneWay, median,
 		burst.Declarations, burst.Executions, burst.Spilled, burst.LockTimeouts, took.Round(time.Millisecond))
 }
 
