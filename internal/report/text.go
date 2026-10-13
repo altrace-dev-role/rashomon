@@ -138,7 +138,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	fmt.Fprintf(b, "  by program: %s\n", programs(d.ByProgram, d.ProgramsUnknown))
 	fmt.Fprintf(b, "  by label: %s\n", byName(d.ByLabel))
 	fmt.Fprintf(b, "  unterminated: %s\n", list(d.Unterminated))
-	fmt.Fprintf(b, "  dropped: %s\n", list(d.Dropped))
+	fmt.Fprintf(b, "  dropped: %s\n  possibly not durable: %s\n", list(d.Dropped), list(d.NotDurable))
 	fmt.Fprintf(b, "  without execution: %s\n", unexecuted(d.WithoutExecution))
 	fmt.Fprintf(b, "  executions recorded: %d\n", sess.Executions.Recorded)
 

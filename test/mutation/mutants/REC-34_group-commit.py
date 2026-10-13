@@ -107,3 +107,19 @@ m("REC-34 the barrier's fcntl command is a bare number", "internal/store/sync_da
   "f.Fd(), fBarrierFsync, 0)", "f.Fd(), 51, 0)", "TestREC34h_")
 m("REC-34 the barrier constant is F_FULLFSYNC's number, judged on every platform", "internal/store/sync_darwin.go",
   "const fBarrierFsync = 85", "const fBarrierFsync = 51", "TestREC34h_")
+# The report names each call a flush_failed marker covers (REC-34 (c): "the
+# report renders such a declaration as possibly not durable"; P09-F11), beside
+# the session-level reason it already carried.
+m("REC-34 the run names no call not durable", "internal/store/read.go",
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && !seen[t.ToolUseID] {",
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && !seen[t.ToolUseID] && false {", "TestREC34k_")
+m("REC-34 a marker naming no call names an empty one", "internal/store/read.go",
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && !seen[t.ToolUseID] {",
+  "\t\tif t.FlushFailed() && !seen[t.ToolUseID] {", "TestREC34k_")
+m("REC-34 a call marked twice is named twice", "internal/store/read.go",
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && !seen[t.ToolUseID] {",
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" {", "TestREC34k_")
+m("REC-34 the report lists no call not durable", "internal/report/report.go",
+  "\t\t\tNotDurable:       nonNil(run.NotDurable()),", "\t\t\tNotDurable:       []string{},", "TestREC34k_")
+m("REC-34 the text never says which call", "internal/report/text.go",
+  "list(d.Dropped), list(d.NotDurable))", "list(d.Dropped), list(nil))", "TestREC34k_")
