@@ -6,13 +6,15 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/test/perf/pathological"
 )
 
 // pathologicalLines is the tool input of a Bash call whose line is one of
-// each shape that has driven the shape of a call past its memory: one unit
-// repeated, behind echo where the unit is not a command of its own, as many
-// times as an 8 MiB hook payload holds. The input is encoded as Claude Code
-// encodes it, without escaping &, < and > as \u0026 and the like.
+// each shape that has driven the shape of a call past its memory
+// (pathological.Lines), as many units of it as an 8 MiB hook payload holds.
+// The input is encoded as Claude Code encodes it, without escaping &, < and >
+// as \u0026 and the like.
 func pathologicalLines(t testing.TB) []struct {
 	name string
 	in   json.RawMessage
@@ -26,32 +28,19 @@ func pathologicalLines(t testing.TB) []struct {
 		}
 		return bytes.TrimSuffix(b.Bytes(), []byte("\n"))
 	}
-	fill := func(prefix, unit, suffix string) json.RawMessage {
-		per := len(encode(unit)) - len(encode(""))
-		n := (8<<20 - len(encode(prefix+suffix))) / per
-		return encode(prefix + strings.Repeat(unit, n) + suffix)
-	}
-	return []struct {
+	var out []struct {
 		name string
 		in   json.RawMessage
-	}{
-		{"short words", fill("echo", " a", "")},
-		{"backslash-newlines", fill("echo ", "a\\\n", "")},
-		{"one word of $a", fill("echo ", "$a", "")},
-		{"escaped blanks", fill("echo ", "\\ ", "")},
-		{"quoted blanks", fill("echo ", "'' ", "")},
-		{"double-quoted blanks", fill("echo ", `"" `, "")},
-		{"one double-quoted word", fill("echo \"", "a", "\"")},
-		{"redirections", fill("", "<", "")},
-		{"cd a&&", fill("", "cd a&&", "")},
-		{"a here-document", fill("python3 - <<'E'\n", "w1 w2 w3 w4 w5 w6 w7 w8 w9 w0\n", "E\n")},
-		{"substitutions", fill("echo ", "$(a) ", "")},
-		{"assignments", fill("", "X_TOKEN=abc ", "")},
-		{"empty lines", fill("echo", "\n", "")},
-		{"short lines", fill("echo", "\na", "")},
-		{"ssh lines", fill("", "ssh a\n", "")},
-		{"urls", fill("curl", " https://a.b/", "")},
 	}
+	for _, l := range pathological.Lines() {
+		per := len(encode(l.Unit)) - len(encode(""))
+		n := (8<<20 - len(encode(l.Prefix+l.Suffix))) / per
+		out = append(out, struct {
+			name string
+			in   json.RawMessage
+		}{l.Name, encode(l.Prefix + strings.Repeat(l.Unit, n) + l.Suffix)})
+	}
+	return out
 }
 
 // allocated is how many bytes f allocates.
@@ -77,7 +66,8 @@ func allocated(f func()) uint64 {
 // after https:// cost a parse error. And each reader decoded the command
 // into a buffer grown from nothing and copied it again. With the hook's own
 // intake those drove a hook to 87, 84 and 178 MiB of RSS against RES-29's
-// 64; every shape here now peaks at 58 or less.
+// 64; cmd/rashomon's TestRES29_PathologicalInputsStayBounded now runs the
+// hook on every shape here and pins it within 64.
 func TestRES29_ShapeOfEveryPathologicalLineIsBounded(t *testing.T) {
 	for _, tc := range pathologicalLines(t) {
 		if len(tc.in) > 8<<20 {
