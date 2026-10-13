@@ -84,9 +84,14 @@ func Canonical(raw string) (string, bool) {
 
 	h = strings.ToLower(strings.TrimSpace(h))
 	// Exactly one trailing dot, and only when something precedes it: "." alone
-	// is not a hostname and must not reduce to the empty string quietly.
+	// is not a hostname and must not reduce to the empty string quietly. A
+	// second is an empty label, which no hostname has, and accepting what is
+	// left would return a name that a second pass changes again.
 	if len(h) > 1 && strings.HasSuffix(h, ".") {
 		h = h[:len(h)-1]
+		if strings.HasSuffix(h, ".") {
+			return "", false
+		}
 	}
 
 	if !plausible(h) {
