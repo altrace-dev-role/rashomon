@@ -6,4 +6,4 @@ m("H-16 the lock is shared, not exclusive", "internal/store/lock_unix.go",
 m("H-16 the lock ignores the caller's budget", "internal/store/lock_unix.go",
   "deadline := time.Now().Add(budget)", "deadline := time.Now().Add(lockBudget)", "TestLockFileIsExclusiveAndBounded")
 m("H-16 the lock gives up without waiting out the budget", "internal/store/lock_unix.go",
-  "\t\tif time.Now().After(deadline) {", "\t\tif !time.Now().After(deadline) {", "TestLockFileIsExclusiveAndBounded")
+  "\t\tif left <= 0 {", "\t\tif left > 0 {", "TestLockFileIsExclusiveAndBounded")

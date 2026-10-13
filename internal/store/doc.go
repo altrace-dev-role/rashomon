@@ -46,10 +46,10 @@
 // finished sessions; the end probe, which reads its own session as it ends;
 // and eviction, which reads only runs nobody has written to for an hour.
 // ReadGaps, Runs and NewestRun read unlocked too. ReadRunConsistent, digest's
-// read of a session that may still be running, tries each file's lock for a
-// short budget and reads anyway when it cannot get it (eachLineTryLock); a
-// writer's own read of the records it is about to append to (maxSeq) is
-// under the lock that writer holds.
+// read of a session that may still be running, tries each file's lock inside
+// one short budget for the whole read and reads anyway when it cannot get it
+// (eachLineTryLock); a writer's own read of the records it is about to
+// append to (maxSeq) is under the lock that writer holds.
 //
 // Eviction takes no run's records lock: it removes only runs that nothing
 // has written to for evictGrace, an hour, and never the session that ran it.
