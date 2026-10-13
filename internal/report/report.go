@@ -61,9 +61,13 @@ import (
 // writes, the same inverse drift TestStoreSchemaMatchesTheAllowlists exists
 // to catch on every other field.
 const (
-	ReasonRunNotClosed          = "run_not_closed"
-	ReasonRecordsUnreadable     = "records_unreadable"
-	ReasonTranscriptMismatch    = "transcript_mismatch"
+	ReasonRunNotClosed       = "run_not_closed"
+	ReasonRecordsUnreadable  = "records_unreadable"
+	ReasonTranscriptMismatch = "transcript_mismatch"
+	// ReasonTranscriptUnreadable: a transcript a declaration named exists
+	// and could not be read, so the H-10 accounting check did not run for
+	// it. A transcript that does not exist adds no reason (see accounting).
+	ReasonTranscriptUnreadable  = "transcript_unreadable"
 	ReasonExecutionMismatch     = "execution_mismatch"
 	ReasonGap                   = "gap"
 	ReasonDuplicateDeclarations = "duplicate_declarations"
@@ -104,6 +108,7 @@ func Reasons() []string {
 		ReasonRunNotClosed,
 		ReasonRecordsUnreadable,
 		ReasonTranscriptMismatch,
+		ReasonTranscriptUnreadable,
 		ReasonExecutionMismatch,
 		ReasonGap,
 		ReasonDuplicateDeclarations,
@@ -237,6 +242,11 @@ type Transcript struct {
 	ExecutedButUnrecorded []string `json:"executed_but_unrecorded"`
 	DeniedByUser          []string `json:"denied_by_user"`
 	DeclaredWithoutResult []string `json:"declared_without_result"`
+
+	// unreadable is set when the transcript exists and could not be read,
+	// as opposed to not existing; build turns it into a coverage reason.
+	// Unexported, so the JSON shape is unchanged.
+	unreadable bool
 }
 
 // Session is one run's report. Transcripts holds one accounting group per
@@ -618,6 +628,9 @@ func build(run *store.Run) Session {
 	}
 	for _, path := range paths {
 		t := accounting(path, byPath[path], executed, hooked)
+		if t.unreadable {
+			sess.Coverage.add(ReasonTranscriptUnreadable)
+		}
 		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0) {
 			sess.Coverage.add(ReasonTranscriptMismatch)
 		}
@@ -643,11 +656,16 @@ func accounting(path string, recorded, executed, hooked map[string]bool) Transcr
 
 	ids, results, denied, unhooked, files, err := TranscriptIDs(path)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			// A transcript that exists but cannot be read is still unreadable;
-			// the distinction is not one the accounting can act on.
-			t.Readable = false
-		}
+		// Either way the transcript is unreadable and its counts are null.
+		// Only one of the two is a coverage reason. A transcript that exists
+		// and cannot be read (permissions, an over-long line, a subagent
+		// directory that will not list) took the H-10 check away from a run
+		// whose calls named it, and the run says so. A transcript that does
+		// not exist is the ordinary state of every run older than Claude
+		// Code's transcript cleanup period, and a reason for it would turn
+		// each of those runs unverified after the fact; verified then means
+		// the H-10 check was not available, which the README states.
+		t.unreadable = !errors.Is(err, fs.ErrNotExist)
 		return t
 	}
 	t.Readable = true
