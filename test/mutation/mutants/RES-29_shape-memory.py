@@ -11,9 +11,9 @@ m("RES-29 every word is copied", "internal/shape/tokenize.go",
 m("RES-29 a copied word grows a quarter at a time", "internal/shape/tokenize.go",
   "\tw.text.Grow(to - from)\n\tw.text.WriteString(s[from:to])\n",
   "\tw.text.WriteString(s[from:to])\n", "TestRES29_")
-m("RES-29 every removed backslash-newline is kept", "internal/shape/shape.go",
+m("RES-29 every removed backslash-newline is kept", "internal/shape/join.go",
   "\t\t\t\tif len(joins) < maxJoins {\n", "\t\t\t\tif true {\n", "TestRES29_")
-m("RES-29 dropped offsets are forgotten", "internal/shape/shape.go",
+m("RES-29 dropped offsets are forgotten", "internal/shape/join.go",
   "\t\t\t\t} else {\n\t\t\t\t\tlost = true\n\t\t\t\t}\n", "\t\t\t\t}\n", "TestRES29_")
 m("RES-29 a span past the kept offsets is read as certain", "internal/shape/comsub.go",
   "\treturn r.lost && to >= r.joins[len(r.joins)-1]\n", "\treturn false\n", "TestRES29_")

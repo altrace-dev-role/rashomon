@@ -6,10 +6,10 @@
 # token bound's arithmetic the package does not compile, by design.
 m("RES-10 the hook folds every leading cd", "internal/hook/handle.go",
   "const maxLeadingCd = shape.MaxLeadingCd\n", "const maxLeadingCd = 1 << 30\n", "TestRES10_")
-m("RES-10 the shared leading-cd bound is lifted", "internal/shape/shape.go",
+m("RES-10 the shared leading-cd bound is lifted", "internal/shape/leading.go",
   "const MaxLeadingCd = 64\n", "const MaxLeadingCd = 128\n", "TestRES10_")
-m("RES-10 a runner past the fold is paired as though its directory were known", "internal/shape/shape.go",
+m("RES-10 a runner past the fold is paired as though its directory were known", "internal/shape/leading.go",
   "\tif len(dirs) > MaxLeadingCd {\n\t\treturn 0\n\t}\n", "", "TestRES10_RunnerPastTheFoldIsNotPaired")
-m("RES-10 a line cut at the token bound gives up its leading cds", "internal/shape/shape.go",
+m("RES-10 a line cut at the token bound gives up its leading cds", "internal/shape/leading.go",
   "\tif err != nil && err != errTokenBound {\n\t\treturn nil, false\n\t}\n",
   "\tif err != nil {\n\t\treturn nil, false\n\t}\n", "TestRES10_")

@@ -2,21 +2,21 @@ m("TB a test runner is never recognised", "internal/shape/shape.go",
   "\t\t\tif runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {",
   "\t\t\tif false && runsTests(pshaped, i, prog, perr == nil) && !backgrounded(toolInput) {",
   "TestTestRunnerIsRecognised|TestTestClassCarriesNoContent|TestTestBending_")
-m("TB a line the lexer could not finish is vouched for", "internal/shape/shape.go",
+m("TB a line the lexer could not finish is vouched for", "internal/shape/verb.go",
   "\tif !whole {\n\t\treturn false\n\t}", "\t_ = whole", "TestTestRunnerIsRecognised")
-m("TB a quoted argument is compared as plain", "internal/shape/shape.go",
+m("TB a quoted argument is compared as plain", "internal/shape/verb.go",
   "\t\t\tif t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
   "\t\t\tif t.text != want || runsOn(toks, k) {", "TestTestRunnerIsRecognised")
-m("TB an argument running into a process substitution is plain", "internal/shape/shape.go",
+m("TB an argument running into a process substitution is plain", "internal/shape/verb.go",
   "\t\t\tif t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {",
   "\t\t\tif t.quotedAt >= 0 || t.text != want {", "TestTestRunnerIsRecognised")
-m("TB every word of a runner is compared against the first argument", "internal/shape/shape.go",
+m("TB every word of a runner is compared against the first argument", "internal/shape/verb.go",
   "\t\t\tk := i + 1 + n\n", "\t\t\tk := i + 1 + n*0\n", "TestTestRunnerIsRecognised")
 # Re-anchored after the masked-status refactor: the row match moved into
 # runnerOn, which compares one command's words up to its end.
-m("TB a runner missing its argument still matches", "internal/shape/shape.go",
+m("TB a runner missing its argument still matches", "internal/shape/verb.go",
   "\t\t\tif k >= end {\n\t\t\t\tcontinue next\n", "\t\t\tif k >= end {\n\t\t\t\tbreak\n", "TestTestRunnerIsRecognised")
-m("TB go test is not on the list", "internal/shape/shape.go",
+m("TB go test is not on the list", "internal/shape/verb.go",
   "{\"go\", \"test\"}, {\"cargo\", \"test\"}", "{\"go\", \"tset\"}, {\"cargo\", \"test\"}",
   "TestTestRunnerIsRecognised|TestTestBending_OnlyTestFiles")
 m("TB the test class is missing from the vocabulary", "internal/shape/shape.go",
@@ -161,10 +161,10 @@ m("TB a background launch is a test run", "internal/shape/shape.go",
   "TestBackgroundLaunchIsNotATestRun|TestTestBending_ShapesFromDerive")
 # Re-anchored after the masked-status refactor: runsTests now ends in one return
 # joining runnerOn and wholeCommand.
-m("TB a runner piped or listed into another command is a test run", "internal/shape/shape.go",
+m("TB a runner piped or listed into another command is a test run", "internal/shape/verb.go",
   "testCommands) && wholeCommand(toks, i)\n", "testCommands) && wholeCommand(toks[:i+1], i)\n",
   "TestTestRunnerIsRecognised|TestTestBending_ShapesFromDerive")
-m("TB a command on the runner's next line is not seen", "internal/shape/shape.go",
+m("TB a command on the runner's next line is not seen", "internal/shape/verb.go",
   "\t\tif t.nlBefore {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}",
   "\t\tif t.nlBefore && false {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn true\n}",
   "TestTestRunnerIsRecognised")
@@ -206,57 +206,57 @@ m("TB a run is between itself and the run it pairs with", "internal/report/testb
   "testEdits: testEdits, otherEdits: otherEdits - 1, anyEdits: anyEdits - 1,\n",
   "TestTestBending")
 
-m("TB make check is a test run", "internal/shape/shape.go",
+m("TB make check is a test run", "internal/shape/verb.go",
   "{\"gradlew\", \"test\"}, {\"make\", \"test\"},\n",
   "{\"gradlew\", \"test\"}, {\"make\", \"test\"}, {\"make\", \"check\"},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 # Re-anchored after the masked-status refactor: the refusal moved into runnerOn,
 # over the runner's own command (toks up to end); the next two as well.
-m("TB an argument that does not run the tests is ignored", "internal/shape/shape.go",
+m("TB an argument that does not run the tests is ignored", "internal/shape/verb.go",
   "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])",
   "\t\treturn !(false && refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end]))",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB the refusal reads only the first argument", "internal/shape/shape.go",
+m("TB the refusal reads only the first argument", "internal/shape/verb.go",
   "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])",
   "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):min(i+len(c)+1, end)])",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB a prefix entry is compared whole", "internal/shape/shape.go",
+m("TB a prefix entry is compared whole", "internal/shape/verb.go",
   "\t\t\tif strings.HasPrefix(word, p) {\n",
   "\t\t\tif word == p {\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB the per-runner list is not read", "internal/shape/shape.go",
+m("TB the per-runner list is not read", "internal/shape/verb.go",
   "\tlist := notARun[strings.TrimSuffix(runner, \" build\")]\n",
   "\tlist := []string(nil)\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB help, version and watch refuse nothing", "internal/shape/shape.go",
+m("TB help, version and watch refuse nothing", "internal/shape/verb.go",
   "|| onList(t.text, notARunAny)",
   "|| onList(t.text, nil)",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB tox with a target is a test run", "internal/shape/shape.go",
+m("TB tox with a target is a test run", "internal/shape/verb.go",
   "\"tox\": {\"-e*\", ",
   "\"tox\": {",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB nox with a session is a test run", "internal/shape/shape.go",
+m("TB nox with a session is a test run", "internal/shape/verb.go",
   "\"nox\": {\"-s*\", ",
   "\"nox\": {",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB go test -c is a test run", "internal/shape/shape.go",
+m("TB go test -c is a test run", "internal/shape/verb.go",
   "\"go\":      {\"-c\", ",
   "\"go\":      {",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB pytest --collect-only is a test run", "internal/shape/shape.go",
+m("TB pytest --collect-only is a test run", "internal/shape/verb.go",
   "\t\"--collect-only\", \"--co\", ",
   "\t",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB cargo test --no-run is a test run", "internal/shape/shape.go",
+m("TB cargo test --no-run is a test run", "internal/shape/verb.go",
   "\"cargo\":   {\"--no-run\", ",
   "\"cargo\":   {",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB jest --listTests is a test run", "internal/shape/shape.go",
+m("TB jest --listTests is a test run", "internal/shape/verb.go",
   "\"jest\":    {\"--listTests\", ",
   "\"jest\":    {",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB watch mode is a test run", "internal/shape/shape.go",
+m("TB watch mode is a test run", "internal/shape/verb.go",
   "\"--version\", \"--watch\", \"--watchAll\"}",
   "\"--version\"}",
   "TestTestClassRefusesWhatDoesNotRunTests")
@@ -318,48 +318,48 @@ m("TB a task or todo update between two runs is an edit", "internal/report/testb
   "\tif false && noWrite[d.ToolName] {\n",
   "TestTestBending")
 
-m("TB a flag's =value form is not refused", "internal/shape/shape.go",
+m("TB a flag's =value form is not refused", "internal/shape/verb.go",
   "\t\t} else if hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value) {",
   "\t\t} else if false && hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB a flag set =false is refused", "internal/shape/shape.go",
+m("TB a flag set =false is refused", "internal/shape/verb.go",
   "\t\t} else if hasValue && strings.HasPrefix(w, \"-\") && name == w && !isFalse(value) {",
   "\t\t} else if hasValue && strings.HasPrefix(w, \"-\") && name == w && (!isFalse(value) || true) {",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB make test -n is a test run", "internal/shape/shape.go",
+m("TB make test -n is a test run", "internal/shape/verb.go",
   "\"make\":    {\"-n\", \"--just-print\", \"--dry-run\", \"--recon\", \"-q\", \"--question\", ",
   "\"make\":    {\"--recon\", ",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB make test -v is a test run", "internal/shape/shape.go",
+m("TB make test -v is a test run", "internal/shape/verb.go",
   "\"-t\", \"--touch\", \"-v\"},",
   "\"-t\", \"--touch\"},",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB gradle continuous mode is a test run", "internal/shape/shape.go",
+m("TB gradle continuous mode is a test run", "internal/shape/verb.go",
   "\"gradle\":  {\"--dry-run\", \"-m\", \"-v\", \"-t\", \"--continuous\"},",
   "\"gradle\":  {\"--dry-run\", \"-m\", \"-v\"},",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB mvn test -v is a test run", "internal/shape/shape.go",
+m("TB mvn test -v is a test run", "internal/shape/verb.go",
   "\t\"mvn\":     {\"-v\"},\n",
   "\t\"mvn\":     {},\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB tox --notest is a test run", "internal/shape/shape.go",
+m("TB tox --notest is a test run", "internal/shape/verb.go",
   "\"--help-ini\", \"--notest\",",
   "\"--help-ini\",",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB tox devenv is a test run", "internal/shape/shape.go",
+m("TB tox devenv is a test run", "internal/shape/verb.go",
   ", \"devenv\", \"d\"},",
   "},",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB nox --install-only is a test run", "internal/shape/shape.go",
+m("TB nox --install-only is a test run", "internal/shape/verb.go",
   ", \"--install-only\"},",
   "},",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB PYTEST_ADDOPTS on the line is not read", "internal/shape/shape.go",
+m("TB PYTEST_ADDOPTS on the line is not read", "internal/shape/verb.go",
   "\t\t\tif strings.HasPrefix(t.text, \"PYTEST_ADDOPTS=\") {",
   "\t\t\tif false && strings.HasPrefix(t.text, \"PYTEST_ADDOPTS=\") {",
   "TestTestClassRefusesWhatDoesNotRunTests")
 # Re-anchored after the masked-status refactor: the refusal is in runnerOn.
-m("TB the words before the runner are not read", "internal/shape/shape.go",
+m("TB the words before the runner are not read", "internal/shape/verb.go",
   "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])",
   "\t\treturn !refusesRun(refusalsOf(c), toks[i:i], toks[i+len(c):end])",
   "TestTestClassRefusesWhatDoesNotRunTests")
@@ -474,31 +474,31 @@ m("TB a line whose program cannot be named may not write", "internal/shape/shape
   "\ts.MayWrite = true\n\tif i, ok := programToken",
   "\ts.MayWrite = false\n\tif i, ok := programToken",
   "TestMayWrite")
-m("TB find -delete and -exec do not write", "internal/shape/shape.go",
+m("TB find -delete and -exec do not write", "internal/shape/verb.go",
   "\t\tcase \"-delete\", \"-exec\", \"-execdir\", \"-ok\", \"-okdir\":\n",
   "\t\tcase \"-okdir\":\n",
   "TestMayWrite|TestTestBending_WriteCapable")
-m("TB xargs, tee, rsync and scp do not write", "internal/shape/shape.go",
+m("TB xargs, tee, rsync and scp do not write", "internal/shape/verb.go",
   "\t\tcase \"xargs\", \"tee\", \"wget\", \"rsync\", \"scp\":\n",
   "\t\tcase \"wget\":\n",
   "TestMayWrite|TestTestBending_WriteCapable")
-m("TB curl with an output flag does not write", "internal/shape/shape.go",
+m("TB curl with an output flag does not write", "internal/shape/verb.go",
   "\tif curl && curlOut {\n",
   "\tif false && curl && curlOut {\n",
   "TestMayWrite|TestTestBending_WriteCapable")
-m("TB a later stage is not looked at", "internal/shape/shape.go",
+m("TB a later stage is not looked at", "internal/shape/verb.go",
   "\t\tif !ok || verbForProgram(path.Base(toks[start+k].text)) != VerbRead {\n",
   "\t\tif false && (!ok || verbForProgram(path.Base(toks[start+k].text)) != VerbRead) {\n",
   "TestMayWrite")
-m("TB a descriptor duplication is a write", "internal/shape/shape.go",
+m("TB a descriptor duplication is a write", "internal/shape/verb.go",
   "\tif dup && (target == \"-\" || isFDPrefix(toks[end+1])) {\n",
   "\tif false && dup && (target == \"-\" || isFDPrefix(toks[end+1])) {\n",
   "TestMayWrite")
-m("TB /dev/null is a file written", "internal/shape/shape.go",
+m("TB /dev/null is a file written", "internal/shape/verb.go",
   "\tcase \"/dev/null\", \"/dev/stdout\", \"/dev/stderr\", \"/dev/tty\":\n",
   "\tcase \"/dev/stdout\", \"/dev/stderr\", \"/dev/tty\":\n",
   "TestMayWrite")
-m("TB the & of 2>&1 separates stages", "internal/shape/shape.go",
+m("TB the & of 2>&1 separates stages", "internal/shape/verb.go",
   "(toks[j-1].text == \">\" || toks[j-1].text == \">>\" || toks[j-1].text == \"|\")",
   "(toks[j-1].text == \"|\")",
   "TestMayWrite")
@@ -507,31 +507,31 @@ m("TB the session block drops what makes a read an edit", "internal/report/text.
   "",
   "TestTestRuns_")
 
-m("TB a runner prefix is not stepped past", "internal/shape/shape.go",
+m("TB a runner prefix is not stepped past", "internal/shape/verb.go",
   "\ti, prog, ok := runnerPrefix(toks, i, prog)\n",
   "\t_, _, ok := runnerPrefix(toks, i, prog)\n",
   "TestTestRunnerIsRecognised")
-m("TB time is not stepped past", "internal/shape/shape.go",
+m("TB time is not stepped past", "internal/shape/verb.go",
   "\tif prog == \"time\" {\n",
   "\tif false && prog == \"time\" {\n",
   "TestTestRunnerIsRecognised")
-m("TB timeout takes any word for its duration", "internal/shape/shape.go",
+m("TB timeout takes any word for its duration", "internal/shape/verb.go",
   "\t\tif !plain(i+1) || !isDuration(toks[i+1].text) || !word(i+2) {\n",
   "\t\tif !plain(i+1) || !word(i+2) {\n",
   "TestTestRunnerIsRecognised")
-m("TB a wrapped runner is refused on the wrapper's list", "internal/shape/shape.go",
+m("TB a wrapped runner is refused on the wrapper's list", "internal/shape/verb.go",
   "\tswitch c[0] {\n\tcase \"npx\", \"uv\", \"poetry\", \"bundle\":\n",
   "\tswitch \"\" {\n\tcase \"npx\", \"uv\", \"poetry\", \"bundle\":\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
-m("TB the npx, uv, poetry and bundle forms are off the list", "internal/shape/shape.go",
+m("TB the npx, uv, poetry and bundle forms are off the list", "internal/shape/verb.go",
   "\t{\"npx\", \"jest\"}, {\"npx\", \"vitest\"}, {\"uv\", \"run\", \"pytest\"}, {\"poetry\", \"run\", \"pytest\"},\n\t{\"bundle\", \"exec\", \"rspec\"},\n",
   "",
   "TestTestRunnerIsRecognised")
-m("TB gradlew and mvnw are off the list", "internal/shape/shape.go",
+m("TB gradlew and mvnw are off the list", "internal/shape/verb.go",
   "{\"mvnw\", \"test\"}, {\"gradle\", \"test\"}, {\"gradlew\", \"test\"}, ",
   "{\"gradle\", \"test\"}, ",
   "TestTestRunnerIsRecognised")
-m("TB npm t is off the list", "internal/shape/shape.go",
+m("TB npm t is off the list", "internal/shape/verb.go",
   "{\"npm\", \"t\"}, ",
   "",
   "TestTestRunnerIsRecognised")
@@ -544,51 +544,51 @@ m("TB a runner's own 124 is no result", "internal/report/testbending.go",
   "\tif o != store.ExecFailed {\n",
   "TestTestBending")
 
-m("TB curl's attached output file hides the flag", "internal/shape/shape.go",
+m("TB curl's attached output file hides the flag", "internal/shape/verb.go",
   "\t\t\tcase c == 'o' || c == 'O':\n\t\t\t\treturn true\n\t\t\tcase strings.ContainsRune(curlArgumentOptions, c):\n\t\t\t\treturn false\n\t\t\tcase 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '#', c == ':':\n\t\t\tdefault:\n\t\t\t\treturn false\n\t\t\t}\n\t\t}\n\t}\n\treturn false\n}\n",
   "\t\t\tcase c == 'o' || c == 'O':\n\t\t\tcase strings.ContainsRune(curlArgumentOptions, c):\n\t\t\t\treturn false\n\t\t\tcase 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '#', c == ':':\n\t\t\tdefault:\n\t\t\t\treturn false\n\t\t\t}\n\t\t}\n\t\treturn strings.ContainsAny(w[1:], \"oO\")\n\t}\n\treturn false\n}\n",
   "TestMayWrite|TestTestBending_AnAttachedCurl")
-m("TB curl's digits, # and : end the short-flag walk", "internal/shape/shape.go",
+m("TB curl's digits, # and : end the short-flag walk", "internal/shape/verb.go",
   "\t\t\tcase 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '#', c == ':':\n",
   "\t\t\tcase 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z':\n",
   "TestMayWrite|TestTestBending_ACurlProgressBar")
-m("TB curl's argument-taking options are read as more flags", "internal/shape/shape.go",
+m("TB curl's argument-taking options are read as more flags", "internal/shape/verb.go",
   "\t\t\tcase strings.ContainsRune(curlArgumentOptions, c):\n\t\t\t\treturn false\n",
   "",
   "TestMayWrite")
-m("TB a command or process substitution is not a write", "internal/shape/shape.go",
+m("TB a command or process substitution is not a write", "internal/shape/verb.go",
   "\t\tif opensSubstitution(toks, j) {\n",
   "\t\tif false && opensSubstitution(toks, j) {\n",
   "TestMayWrite")
-m("TB backticks are not a write", "internal/shape/shape.go",
+m("TB backticks are not a write", "internal/shape/verb.go",
   "\t\tif t.ticks > 0 || t.opaque && holdsSubstitution(t.text) {\n",
   "\t\tif t.opaque && holdsSubstitution(t.text) {\n",
   "TestMayWrite")
-m("TB a quoted $( is not a write", "internal/shape/shape.go",
+m("TB a quoted $( is not a write", "internal/shape/verb.go",
   "\t\tif t.ticks > 0 || t.opaque && holdsSubstitution(t.text) {\n",
   "\t\tif t.ticks > 0 {\n",
   "TestMayWrite")
-m("TB a single-quoted $( is a write", "internal/shape/shape.go",
+m("TB a single-quoted $( is a write", "internal/shape/verb.go",
   "\t\tif t.ticks > 0 || t.opaque && holdsSubstitution(t.text) {\n",
   "\t\tif t.ticks > 0 || holdsSubstitution(t.text) {\n",
   "TestMayWrite")
-m("TB arithmetic is a command substitution", "internal/shape/shape.go",
+m("TB arithmetic is a command substitution", "internal/shape/verb.go",
   "\treturn strings.HasSuffix(t.text, \"$\") && !(gluedParen(toks, j+2) && arithmeticAt(parenText(toks[j+3:])))\n",
   "\treturn strings.HasSuffix(t.text, \"$\")\n",
   "TestMayWrite")
-m("TB a $(( that does not close as )) is arithmetic", "internal/shape/shape.go",
+m("TB a $(( that does not close as )) is arithmetic", "internal/shape/verb.go",
   "\t\t\t\treturn strings.HasPrefix(s[k+1:], \")\")\n",
   "\t\t\t\treturn true\n",
   "TestMayWrite")
-m("TB quoted arithmetic is a command substitution", "internal/shape/shape.go",
+m("TB quoted arithmetic is a command substitution", "internal/shape/verb.go",
   "\t\tif !strings.HasPrefix(s[k+2:], \"(\") || !arithmeticAt(s[k+3:]) {\n",
   "\t\tif true {\n",
   "TestMayWrite")
-m("TB a ( inside arithmetic opens no group", "internal/shape/shape.go",
+m("TB a ( inside arithmetic opens no group", "internal/shape/verb.go",
   "\t\tcase '(':\n\t\t\tdepth++\n",
   "",
   "TestMayWrite")
-m("TB a quoted ) inside $(( closes it", "internal/shape/shape.go",
+m("TB a quoted ) inside $(( closes it", "internal/shape/verb.go",
   "\t\t\tb.WriteByte('w')\n",
   "\t\t\tb.WriteString(t.text)\n",
   "TestMayWrite")
@@ -606,15 +606,15 @@ m("TB a relative leading cd keeps the shell's directory", "internal/hook/handle.
   "\t\t\tcwd = filepath.Join(cwd, dir)\n",
   "\t\t\treturn cwd\n",
   "TestStartDirectory|TestTestBending_ALeadingRelativeCd")
-m("TB a leading run stops at a step it cannot resolve", "internal/shape/shape.go",
+m("TB a leading run stops at a step it cannot resolve", "internal/shape/leading.go",
   "\t\tif !ok {\n\t\t\treturn nil, false\n\t\t}\n\t\tdirs = append(dirs, dir)\n",
   "\t\tif !ok {\n\t\t\treturn dirs, len(dirs) > 0\n\t\t}\n\t\tdirs = append(dirs, dir)\n",
   "TestLeadingDirectory|TestTestBending_ACdBack")
-m("TB a leading pushd or popd is not a directory change", "internal/shape/shape.go",
+m("TB a leading pushd or popd is not a directory change", "internal/shape/leading.go",
   "\t\tcase \"cd\", \"pushd\", \"popd\":\n",
   "\t\tcase \"cd\":\n",
   "TestLeadingDirectory")
-m("TB an assignment in front of a later cd is not a directory change", "internal/shape/shape.go",
+m("TB an assignment in front of a later cd is not a directory change", "internal/shape/leading.go",
   "\t\tswitch toks[i+k].text {\n",
   "\t\t_ = k\n\t\tswitch toks[i].text {\n",
   "TestLeadingDirectory|TestTestBending_AnAssignedCdBack")
@@ -628,19 +628,19 @@ m("TB a prefixed run records its runner as the program", "internal/shape/shape.g
   "\t\t\t\ts.VerbClass = VerbTest\n\t\t\t\t_, runner, _ := runnerPrefix(pshaped, i, prog)\n\t\t\t\ts.Program = &runner\n",
   "TestTestRunnerIsRecognised|TestTestBending")
 
-m("TB Maven's skip properties are not refused", "internal/shape/shape.go",
+m("TB Maven's skip properties are not refused", "internal/shape/verb.go",
   " || runner == \"mvn\" && mavenSkip(t.text) {\n",
   " {\n",
   "TestTestClassRefusesWhatDoesNotRunTests|TestTestRunnerIsRecognised")
-m("TB a Maven skip property refuses its =false form", "internal/shape/shape.go",
+m("TB a Maven skip property refuses its =false form", "internal/shape/verb.go",
   "\t\treturn !hasValue || strings.EqualFold(value, \"true\")\n",
   "\t\treturn !hasValue || len(value) >= 0\n",
   "TestTestRunnerIsRecognised")
-m("TB a Maven skip property is read as true only in lower case", "internal/shape/shape.go",
+m("TB a Maven skip property is read as true only in lower case", "internal/shape/verb.go",
   "\t\treturn !hasValue || strings.EqualFold(value, \"true\")\n",
   "\t\treturn !hasValue || value == \"true\"\n",
   "TestTestRunnerIsRecognised")
-m("TB a prefix entry takes isFalse's exception", "internal/shape/shape.go",
+m("TB a prefix entry takes isFalse's exception", "internal/shape/verb.go",
   "\t\t\tif strings.HasPrefix(word, p) {\n",
   "\t\t\tif v, ok := strings.CutPrefix(strings.TrimPrefix(word, p), \"=\"); strings.HasPrefix(word, p) && !(ok && isFalse(v)) {\n",
   "TestTestRunnerIsRecognised")
@@ -664,11 +664,11 @@ m("TB the --timeline hint pastes the id unquoted", "internal/report/text.go",
   "\t\t\treturn s\n",
   "TestTestRuns_CountsAndText")
 
-m("TB curl's : takes an argument", "internal/shape/shape.go",
+m("TB curl's : takes an argument", "internal/shape/verb.go",
   "'0' <= c && c <= '9', c == '#', c == ':':\n",
   "'0' <= c && c <= '9', c == '#':\n",
   "TestMayWrite")
-m("TB -Dmaven.test.skip runs the tests", "internal/shape/shape.go",
+m("TB -Dmaven.test.skip runs the tests", "internal/shape/verb.go",
   "\tcase \"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\":\n",
   "\tcase \"-DskipTests\", \"-Dmaven.test.skip.exec\":\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
