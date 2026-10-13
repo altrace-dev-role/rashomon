@@ -35,10 +35,10 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	}
 	// Guard the premise: an empty Events slice would make the loop above
 	// accept nothing and pass anyway on a settings file with no entries.
-	// Seven, not five: Part 4 adds Stop and StopFailure for the recap
-	// alongside the five recorder entries this test already knew about.
-	if len(allowed) < 7 {
-		t.Fatalf("install.Events() lists %d events; watch installs seven", len(allowed))
+	// Eight: the five recorder entries, Stop and StopFailure for the recap
+	// (Part 4), and UserPromptSubmit for its catch-up.
+	if len(allowed) < 8 {
+		t.Fatalf("install.Events() lists %d events; watch installs eight", len(allowed))
 	}
 	groups := ours(sf.Hooks["PreToolUse"])
 	if len(groups) != 1 {
