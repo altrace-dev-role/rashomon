@@ -49,7 +49,9 @@ type Store struct {
 	installID string
 	key       []byte
 
-	// Group commit (REC-34); see DeferDurability and Flush.
+	// Group commit (REC-34); see DeferDurability and Flush. barrier is
+	// barrierSync; a test stands another platform's in for it.
+	barrier  func(*os.File) (durable bool, err error)
 	deferred bool
 	dirty    string
 	flushErr error
@@ -103,7 +105,7 @@ func Open(root string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{root: root, installID: meta.InstallID, key: key}, nil
+	return &Store{root: root, installID: meta.InstallID, key: key, barrier: barrierSync}, nil
 }
 
 // ErrNoStore reports that no store has been created at a location. It is a
@@ -171,9 +173,11 @@ func (s *Store) RunDir(sessionID string) string {
 // process (usually the next hook's Flush) or the drive's own write-back, a
 // power failure can lose it. Under 1.1.0 such a declaration was durable when
 // its append returned. Linux and Windows have no such window, because there
-// every barrier is a full sync.
+// every barrier is a full sync: each append is durable when it returns, as
+// under 1.1.0, and Flush has nothing left to sync.
 //
-// The one full sync is the only one a hook issues once its store is open; a
+// On darwin the one full sync is the only one a hook issues once its store
+// is open, and off darwin a hook issues none beyond its barriers; a
 // first-ever hook, which creates the store, syncs the install files in full
 // before that. probe, recap and the paused path never call this, and keep a
 // full sync per append.
@@ -184,9 +188,11 @@ func (s *Store) DeferDurability() { s.deferred = true }
 // Flush is the group commit's one full sync: it makes every append since
 // DeferDurability durable. It syncs the last file appended to, and that one
 // sync covers the others: on darwin F_FULLFSYNC empties the device's whole
-// cache, persisting everything a barrier already pushed to it (fcntl(2)),
-// and elsewhere every append was itself a full sync. With nothing appended
-// it does nothing. It takes no lock.
+// cache, persisting everything a barrier already pushed to it (fcntl(2)).
+// With nothing left to sync it does nothing: nothing appended, or every
+// append's barrier itself a full sync, as it always is off darwin and is on
+// darwin when the filesystem refuses the barrier (syncAppend). It takes no
+// lock.
 //
 // A failure is final, whether it was this sync's or a barrier's before it
 // (syncFailed): this Store never reports durability again, and a later Flush
@@ -382,21 +388,29 @@ func lockCounted(f *os.File, budget time.Duration) (func(), error) {
 
 // syncAppend is the durability step of every append, taken inside its lock:
 // a full sync, or on a deferred Store a barrier, which leaves the full sync
-// to Flush. A barrier that fails is a sync that failed, and is final the way
-// a failed Flush is (syncFailed): Flush must not full-sync the same file and
-// report it durable, which on Linux, where the barrier is fsync, would be the
-// very retry it refuses.
+// to Flush. A barrier that was itself a full sync -- every barrier off
+// darwin, and darwin's fallback -- leaves nothing to Flush: the full sync
+// that made this append durable made every earlier one on the device durable
+// too, so a deferred hook issues no sync an undeferred one would not.
+//
+// A barrier that fails is a sync that failed, and is final the way a failed
+// Flush is (syncFailed): Flush must not full-sync the same file and report it
+// durable, which on Linux, where the barrier is fsync, would be the very
+// retry it refuses.
 func (s *Store) syncAppend(f *os.File) error {
 	if !s.deferred {
 		return syncFull(f)
 	}
 	s.dirty = f.Name()
-	err := barrierSync(f)
+	durable, err := s.barrier(f)
 	if err == nil {
 		err = fault.Fail(fault.PointStoreBarrier)
 	}
 	if err != nil {
 		return s.syncFailed(err)
+	}
+	if durable {
+		s.dirty = ""
 	}
 	return nil
 }

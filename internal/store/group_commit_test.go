@@ -7,10 +7,18 @@ import (
 	"testing"
 )
 
-// TestREC34b_DeferredAppendsLeaveOneFlushBehind: a deferred Store records
-// which file the group commit's one full sync has to cover, and Flush clears
-// it; a Store that never deferred leaves nothing for Flush, because each of
-// its appends was already synced in full (REC-34).
+// orderingBarrier stands in darwin's accepted barrier on every platform: it
+// reports the write ordered and not yet durable, which leaves it to Flush. The
+// tests of Flush's own bookkeeping use it so that they judge the same thing
+// off darwin, where the real barrier is a full sync and leaves Flush nothing
+// (TestREC34l_).
+func orderingBarrier(*os.File) (bool, error) { return false, nil }
+
+// TestREC34b_DeferredAppendsLeaveOneFlushBehind: a deferred Store whose
+// barriers only order records which file the group commit's one full sync
+// has to cover, and Flush clears it; a Store that never deferred leaves
+// nothing for Flush, because each of its appends was already synced in full
+// (REC-34).
 func TestREC34b_DeferredAppendsLeaveOneFlushBehind(t *testing.T) {
 	const session = "sess-deferred"
 	t.Run("deferred", func(t *testing.T) {
@@ -18,6 +26,7 @@ func TestREC34b_DeferredAppendsLeaveOneFlushBehind(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		st.barrier = orderingBarrier
 		st.DeferDurability()
 		if err := st.Flush(); err != nil {
 			t.Fatalf("Flush with nothing appended: %v", err)
@@ -69,6 +78,7 @@ func TestREC34c_AFailedFlushIsNeverRetried(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	st.barrier = orderingBarrier
 	st.DeferDurability()
 	cov := Coverage{Type: TypeCoverage, SchemaVersion: SessionSchemaVersion, SessionID: session}
 	if err := st.AppendCoverage(cov); err != nil {
@@ -174,5 +184,59 @@ func TestREC34e_AFailedBarrierIsNeverRetriedByFlush(t *testing.T) {
 	}
 	if err := st.Flush(); !errors.Is(err, barrierErr) {
 		t.Errorf("a second Flush = %v, want %v", err, barrierErr)
+	}
+}
+
+// TestREC34l_ABarrierThatIsAFullSyncLeavesNothingToFlush: where the barrier
+// is itself a full sync -- off darwin, and on darwin when the filesystem
+// refuses the barrier and it falls back -- the append it covered is already
+// durable, so the group commit's Flush has nothing left and syncs nothing: a
+// deferred hook issues no more syncs than an undeferred one. A barrier that
+// only orders the write leaves it for Flush. Flush's sync is observed through
+// the files it would cover, which are removed first: a Flush that still
+// syncs fails on them (P09-F9).
+func TestREC34l_ABarrierThatIsAFullSyncLeavesNothingToFlush(t *testing.T) {
+	const session = "sess-full-barrier"
+	for _, c := range []struct {
+		name          string
+		durable       bool
+		flushSyncs    bool
+		wantFlushFail bool
+	}{
+		{"a barrier that is a full sync", true, false, false},
+		{"a barrier that only orders", false, true, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st, err := Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			st.DeferDurability()
+			barriers := 0
+			st.barrier = func(*os.File) (bool, error) {
+				barriers++
+				return c.durable, nil
+			}
+			if err := st.AppendDeclaration(Declaration{Type: TypeDeclaration, SchemaVersion: SchemaVersion, ToolUseID: "toolu_1", SessionID: session}); err != nil {
+				t.Fatal(err)
+			}
+			if err := st.AppendCoverage(Coverage{Type: TypeCoverage, SchemaVersion: SessionSchemaVersion, SessionID: session}); err != nil {
+				t.Fatal(err)
+			}
+			if barriers != 3 {
+				t.Fatalf("%d barriers, want 3: the seq counter, the record and the coverage line", barriers)
+			}
+			if left := st.dirty != ""; left != c.flushSyncs {
+				t.Errorf("after the appends Flush would sync %q; want a file left = %v", st.dirty, c.flushSyncs)
+			}
+			for _, name := range []string{FileRecords, FileCoverage} {
+				if err := os.Remove(filepath.Join(st.RunDir(session), name)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := st.Flush(); (err != nil) != c.wantFlushFail {
+				t.Errorf("Flush = %v; want it to sync (and fail on the removed file) = %v", err, c.wantFlushFail)
+			}
+		})
 	}
 }

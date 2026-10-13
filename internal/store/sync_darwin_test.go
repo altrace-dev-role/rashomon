@@ -37,8 +37,15 @@ func TestREC34f_BarrierFallsBackOnlyOnRefusal(t *testing.T) {
 	if _, err := f.Write([]byte("{}\n")); err != nil {
 		t.Fatal(err)
 	}
-	if err := barrierSync(f); err != nil {
+	durable, err := barrierSync(f)
+	if err != nil {
 		t.Fatalf("barrierSync on a regular file: %v", err)
+	}
+	// An accepted barrier orders the write and leaves it in the device's
+	// cache: it is the group commit's Flush that makes it durable, so the
+	// barrier must not say it already is (P09-F9).
+	if durable {
+		t.Error("an accepted barrier reported its write durable: Flush would skip the one full sync that makes it so")
 	}
 }
 
@@ -55,7 +62,7 @@ func TestREC34f_BarrierIsTheKernelsBarrier(t *testing.T) {
 	}
 	// Far above any descriptor limit, so never open.
 	notOpen := os.NewFile(1<<20, "not-open")
-	err := barrierSync(notOpen)
+	_, err := barrierSync(notOpen)
 	if !errors.Is(err, syscall.EBADF) {
 		t.Errorf("barrierSync on a descriptor that is not open = %v, want EBADF from the kernel", err)
 	}
