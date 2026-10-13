@@ -264,7 +264,8 @@ Linux are the supported targets.
 **Windows is not usable yet.** The release publishes Windows binaries, but no
 install path has been shown to work there. `watch` quotes the installed command
 line for a POSIX shell, and `scripts/claude-rashomon.ps1` runs the same `watch`.
-CI cross-builds and vets the Windows code; no test runs on Windows.
+CI cross-builds and vets the Windows code, and runs the store's lock tests
+on Windows; no other test runs there.
 
 ## Contributing
 
