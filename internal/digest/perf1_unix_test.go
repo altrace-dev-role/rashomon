@@ -3,6 +3,7 @@
 package digest
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -25,6 +26,13 @@ const hookHold = 9 * time.Millisecond
 // gave up mid-hold and read past the writer, where a line caught mid-write
 // reads as skipped and the turn as unverified. It now waits out a hold of
 // that length and reads under the lock.
+//
+// The hold is a real one: the holder writes the first half of a declaration,
+// waits hookHold, writes the rest, and unlocks, as an append caught mid-write
+// would. Waiting is not enough on its own -- a reader that slept and then read
+// without the lock would wait as long -- so the test also asks that the read
+// saw the whole record and no torn line, which only a read made after the
+// writer let go can.
 func TestRubricPERF1_DigestWaitsOutAHookHold(t *testing.T) {
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -40,18 +48,32 @@ func TestRubricPERF1_DigestWaitsOutAHookHold(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
+	line, err := json.Marshal(store.Declaration{Type: store.TypeDeclaration, SchemaVersion: store.SchemaVersion,
+		Seq: 1, SessionID: session, ToolUseID: "toolu_held", ToolName: "Bash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line = append(line, '\n')
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	half := len(line) / 2
+	if _, err := f.Write(line[:half]); err != nil {
 		t.Fatal(err)
 	}
 	start := time.Now()
 	released := safe.Go(func() {
 		time.Sleep(hookHold)
+		if _, err := f.Write(line[half:]); err != nil {
+			t.Error(err)
+		}
 		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN); err != nil {
 			t.Error(err)
 		}
 	}, func(err error) { t.Error(err) })
 
-	if _, err := st.ReadRunConsistent(session, readLockBudget); err != nil {
+	run, err := st.ReadRunConsistent(session, readLockBudget)
+	if err != nil {
 		t.Fatal(err)
 	}
 	waited := time.Since(start)
@@ -59,5 +81,9 @@ func TestRubricPERF1_DigestWaitsOutAHookHold(t *testing.T) {
 	if waited < hookHold {
 		t.Errorf("digest's read gave up on the lock after %v, inside a %v hook hold: readLockBudget %v is shorter than the hold it has to wait out",
 			waited, hookHold, readLockBudget)
+	}
+	if len(run.Declarations) != 1 || run.Skipped != 0 {
+		t.Errorf("the read saw %d declarations and %d skipped lines, want the held record whole: it read before the writer let go",
+			len(run.Declarations), run.Skipped)
 	}
 }
