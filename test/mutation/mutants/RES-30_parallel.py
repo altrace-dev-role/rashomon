@@ -20,8 +20,27 @@ m("RES-30 the footprint sum gets ten times its budget", "test/perf/gate.go",
 m("RES-30 the footprint is read off the RSS line", "test/perf/gate.go",
   'const footprintLine = "peak memory footprint"', 'const footprintLine = "maximum resident set size"', "TestRES30_")
 m("RES-30 the per-process rule allows ten times the 1-way figure", "test/perf/gate.go",
-  "\tcase median > PerProcessPeakRatio*b.OneWayPeakMiB:", "\tcase median > 10*PerProcessPeakRatio*b.OneWayPeakMiB:", "TestRES30_")
+  "\tcase largest > PerProcessPeakRatio*b.OneWayPeakMiB:", "\tcase largest > 10*PerProcessPeakRatio*b.OneWayPeakMiB:", "TestRES30_")
 m("RES-30 the per-process ratio loosened to 1.5", "test/perf/gate.go",
   "const PerProcessPeakRatio = 1.1", "const PerProcessPeakRatio = 1.5", "TestRES30_")
-m("RES-30 the per-process rule judges the smallest process", "test/perf/gate.go",
-  "\tmedian, _ := Median(b.PairPeakMiB)\n", "\tmedian := 0.0\n", "TestRES30_")
+m("RES-30 the per-process rule judges no process", "test/perf/gate.go",
+  "\tlargest := b.LargestMiB()\n", "\tlargest := 0.0\n", "TestRES30_")
+# The rule is on every process (the RES-30 row: "per-process peak at 64-way is
+# <= 1.1x the 1-way figure"). Judging the median instead is the reading that let
+# a burst whose largest process was 1.13x the 1-way figure pass (P09-F3).
+m("RES-30 the per-process rule judges the median process", "test/perf/gate.go",
+  "\tlargest := b.LargestMiB()\n", "\tlargest, _ := Median(b.PairPeakMiB)\n", "TestRES30_")
+m("RES-30 the largest process is the first one", "test/perf/gate.go",
+  "\t\tlargest = max(largest, m)\n", "\t\tlargest = m\n\t\tbreak\n", "TestRES30_")
+# hook and post run on one P (cmd/rashomon/procs.go). With a P per core the
+# largest process of a 64-way burst measured 1.11 to 1.21 times the 1-way
+# figure, which the rule above fails; the perf harness cannot run in the sweep,
+# so the unit test that sees the setting is what goes red.
+m("RES-30 the hook runs on every core", "cmd/rashomon/main.go",
+  "\t\toneProc()\n\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tif checkPaused(args, stdin, store.PhaseCall, stderr) {",
+  "\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tif checkPaused(args, stdin, store.PhaseCall, stderr) {", "TestRES30_")
+m("RES-30 post runs on every core", "cmd/rashomon/main.go",
+  "\t\toneProc()\n\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tif checkPaused(args, stdin, store.PhasePost, stderr) {",
+  "\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tif checkPaused(args, stdin, store.PhasePost, stderr) {", "TestRES30_")
+m("RES-30 oneProc keeps every P", "cmd/rashomon/procs.go",
+  "func oneProc() { runtime.GOMAXPROCS(1) }", "func oneProc() { runtime.GOMAXPROCS(0) }", "TestRES30_")
