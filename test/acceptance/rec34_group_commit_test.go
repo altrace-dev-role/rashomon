@@ -329,3 +329,31 @@ func TestREC34_FailedBarrierIsMarkedNotRetried(t *testing.T) {
 		})
 	}
 }
+
+// TestREC34_ForgetSyncsInsideItsCountedLocks: the recorder's locked= flag
+// counts every lock the store takes, not only the append locks, and sees
+// every sync. forget rewrites the ordered stream under its lock, so the
+// rewrite's full sync on records.ndjson is logged, and logged as inside a
+// lock, as is every other sync forget issues (REC-34, P09-F8).
+func TestREC34_ForgetSyncsInsideItsCountedLocks(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.mustHook(defaultPayload().build(t))
+	log := filepath.Join(t.TempDir(), "sync.log")
+	if res := e.run("", []string{syncLogEnv + "=" + log}, "forget", "--since", "1h"); res.exitCode != 0 {
+		t.Fatalf("forget: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	events := readSyncLog(t, log)
+	rewrote := false
+	for i, ev := range events {
+		if !ev.locked {
+			t.Errorf("event %d: forget's %s sync on %s ran outside every lock the recorder counted: %v", i, ev.kind, ev.file, events)
+		}
+		if ev.kind == "full" && ev.file == "records.ndjson" {
+			rewrote = true
+		}
+	}
+	if !rewrote {
+		t.Errorf("no full sync of records.ndjson in %v: forget's rewrite is invisible to the recorder", events)
+	}
+}
