@@ -74,16 +74,18 @@ func TestRES10_LeadingCdFoldIsBounded(t *testing.T) {
 		}
 	}
 
-	// Past the token bound: a long line after the leading steps.
-	long := " " + strings.TrimSpace(strings.Repeat("word ", 50_000))
+	// Past the token bound: a long line after the leading steps, of 200,000
+	// words, three times the bound (shape's TestRES10_LeadingStepsPastTheTokenBound
+	// pins the line it reads past).
+	long := " " + strings.TrimSpace(strings.Repeat("word ", 200_000))
 	for _, tc := range []struct {
 		name, cmd, want string
 	}{
-		{"one cd, then 50,000 words", "cd /elsewhere && go test" + long, "/elsewhere"},
-		{"one cd, then a 50,000-word here-document",
+		{"one cd, then 200,000 words", "cd /elsewhere && go test" + long, "/elsewhere"},
+		{"one cd, then a 200,000-word here-document",
 			"cd sub && python3 - <<'EOF'\n" + long + "\nEOF\nmake test", "/repo/sub"},
-		{"64 steps, then 50,000 words", cdLine(64, " && ") + long, "/repo" + strings.Repeat("/a", 64)},
-		{"100 steps, then 50,000 words", cdLine(100, " && ") + long, ""},
+		{"64 steps, then 200,000 words", cdLine(64, " && ") + long, "/repo" + strings.Repeat("/a", 64)},
+		{"100 steps, then 200,000 words", cdLine(100, " && ") + long, ""},
 	} {
 		if got := startDirectory("/repo", "Bash", in(tc.cmd)); got != tc.want {
 			t.Errorf("%s: start directory %q, want %q", tc.name, got, tc.want)

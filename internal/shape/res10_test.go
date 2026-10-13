@@ -42,10 +42,11 @@ func TestRES10_ProgramPastManyDirectoryChanges(t *testing.T) {
 // token bound (RES-9) still has its leading steps read, since they come first
 // and the longest run read, MaxLeadingCd+1 steps of three tokens, lies far
 // inside the bound. The masked-status walk counts the same steps the hook
-// folds into the cwd digest: one cd in front of a 50,000-word here-document
-// is one step held, and 100 in front of 50,000 words are past the fold.
+// folds into the cwd digest: one cd in front of a here-document longer than
+// the bound is one step held, and 100 in front of as many words are past the
+// fold.
 func TestRES10_LeadingStepsPastTheTokenBound(t *testing.T) {
-	long := strings.TrimSpace(strings.Repeat("word ", 50_000))
+	long := strings.TrimSpace(strings.Repeat("word ", maxTokens+10_000))
 	heredoc := "cd sub && python3 - <<'EOF'\n" + long + "\nEOF\nmake test"
 	if _, err := tokenizeProgram(heredoc); err != errTokenBound {
 		t.Fatalf("the here-document line reads with %v, want errTokenBound", err)
@@ -55,7 +56,7 @@ func TestRES10_LeadingStepsPastTheTokenBound(t *testing.T) {
 	}
 	dirs, ok := leadingDirectories(strings.Repeat("cd a && ", 100) + long)
 	if !ok || len(dirs) != MaxLeadingCd+1 {
-		t.Errorf("100 cds before 50,000 words: %d directories, %v; want %d, true", len(dirs), ok, MaxLeadingCd+1)
+		t.Errorf("100 cds before the bound's worth of words: %d directories, %v; want %d, true", len(dirs), ok, MaxLeadingCd+1)
 	}
 }
 
