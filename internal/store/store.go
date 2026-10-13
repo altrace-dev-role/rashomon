@@ -531,12 +531,6 @@ func syncAs(f *os.File, kind string) error {
 	return fault.Fail(fault.PointStoreFullSync)
 }
 
-// spillBudget is how long a spill write waits for the spill file's lock. It is
-// short because the spill path exists for a handler that has already waited
-// once; the lock is taken so that forget, which rewrites the spill file under
-// it, is not raced, and given up so that no handler ever blocks on it.
-const spillBudget = 50 * time.Millisecond
-
 // appendLine appends one record to a file that carries no seq, waiting up to
 // budget for its lock. With bestEffort set, a lock timeout is not an error: the
 // record is appended anyway, relying on a single O_APPEND write, which the
@@ -676,8 +670,16 @@ func segment(id string) string {
 	return "x-" + hex.EncodeToString(sum[:16])
 }
 
+// maxPlainSegment is the longest session id used verbatim as a run directory
+// name; a longer one is digested like any other unsafe id. A Claude Code
+// session id is a 36-character UUID, so a real one is never digested. 128
+// keeps the name at half of NAME_MAX (255 on Linux and darwin), and keeps a
+// run's longest path -- the root, \runs\, the name and \records.ndjson --
+// inside Windows' 260-character MAX_PATH for any root up to 110 characters.
+const maxPlainSegment = 128
+
 func isPlainSegment(id string) bool {
-	if id == "" || id == "." || id == ".." || len(id) > 128 {
+	if id == "" || id == "." || id == ".." || len(id) > maxPlainSegment {
 		return false
 	}
 	return strings.IndexFunc(id, func(r rune) bool {

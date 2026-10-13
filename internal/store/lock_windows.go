@@ -10,8 +10,6 @@ import (
 	"unsafe"
 )
 
-const lockBudget = 2 * time.Second
-
 var (
 	kernel32         = syscall.NewLazyDLL("kernel32.dll")
 	procLockFileEx   = kernel32.NewProc("LockFileEx")
