@@ -116,3 +116,43 @@ func TestForgetHost_WhatIsNotAHostnameIsRefused(t *testing.T) {
 		})
 	}
 }
+
+// TestForgetHost_ASecondForgetOfTheSameHostAddsNoLine: the file is outside
+// every size cap, so a forget that says nothing new must not grow it. A
+// different host still gets its own record.
+func TestForgetHost_ASecondForgetOfTheSameHostAddsNoLine(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_700_000_000, 0)
+	lines := func() int {
+		t.Helper()
+		raw, err := os.ReadFile(filepath.Join(st.Root(), FileForgottenHosts))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return bytes.Count(raw, []byte("\n"))
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := st.ForgetHost("acme-secret.internal", now.Add(time.Duration(i)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := lines(); got != 1 {
+		t.Errorf("three forgets of one host left %d records, want 1", got)
+	}
+	if _, err := st.ForgetHost("github.com", now); err != nil {
+		t.Fatal(err)
+	}
+	if got := lines(); got != 2 {
+		t.Errorf("a forget of a second host left %d records, want 2", got)
+	}
+	forgotten, err := st.ForgottenHost()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !forgotten("acme-secret.internal") || !forgotten("github.com") {
+		t.Error("a host forgotten more than once, or after another, is no longer forgotten")
+	}
+}

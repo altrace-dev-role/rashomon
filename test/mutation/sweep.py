@@ -2958,16 +2958,16 @@ m("NONO --redact passes the client's own refused hosts through", "internal/repor
   "\tout.ClientPlaneDenied = redactList(n.ClientPlaneDenied, key)\n", "",
   "TestRedact_")
 m("NONO a forget that removed nothing writes no store-level record", "internal/store/gaps.go",
-  "\tif err := s.appendLine(filepath.Join(s.root, FileForgottenHosts), ForgottenHostRecord{",
-  "\tif err := s.appendLine(filepath.Join(s.root, FileForgottenHosts+\".off\"), ForgottenHostRecord{",
+  "\tf, err := os.OpenFile(filepath.Join(s.root, FileForgottenHosts), appendFlags, fileMode)",
+  "\tf, err := os.OpenFile(filepath.Join(s.root, FileForgottenHosts+\".off\"), appendFlags, fileMode)",
   "TestForgetHost_|TestSeam_AHostOnlyTheSandboxSaw")
 m("NONO the predicate does not read the store-level records", "internal/store/gaps.go",
   "\t\tif json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest != \"\" {",
   "\t\tif false && json.Unmarshal(line, &r) == nil {",
   "TestForgetHost_AHost|TestSeam_AHostOnlyTheSandboxSaw")
 m("NONO the store-level record holds the hostname", "internal/store/gaps.go",
-  "\t\tHostDigest:    s.HostDigest(host),\n\t}, lockBudget, false); err != nil {",
-  "\t\tHostDigest:    s.HostDigest(host) + host,\n\t}, lockBudget, false); err != nil {",
+  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {",
+  "\tif err := s.recordForgottenHost(s.HostDigest(host)+host, now); err != nil {",
   "TestForgetHost_TheStoreLevelRecordHoldsNoName")
 m("NONO forget --host does not say a no-op forget still holds", "cmd/rashomon/main.go",
   "\tif total == 0 {\n\t\tfmt.Fprint(stdout, \"; later reports", "\tif false {\n\t\tfmt.Fprint(stdout, \"; later reports",
@@ -3031,6 +3031,13 @@ m("NONO the trail's host lists come out unsorted", "internal/nono/nono.go",
 m("NONO the store-level forget record carries a field beyond its digest", "internal/store/record.go",
   "\tHostDigest    string `json:\"host_digest\"`\n}", "\tHostDigest    string `json:\"host_digest\"`\n\tName          string `json:\"name\"`\n}",
   "TestH25_TheStoreLevelForgetRecordIsClosed")
+
+# A repeat forget of one host adds no line to a file no size cap covers
+# (review of #53).
+m("NONO a repeat forget appends a second store-level record", "internal/store/gaps.go",
+  "\t\tif json.Unmarshal(l, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest == digest {",
+  "\t\tif false && json.Unmarshal(l, &r) == nil {",
+  "TestForgetHost_ASecondForget")
 
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn

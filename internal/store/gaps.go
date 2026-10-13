@@ -494,12 +494,7 @@ func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
 	// sources this store never held -- the sandbox's trail and the proxy's
 	// store -- and a forget that wrote nothing when it removed nothing left
 	// the host listed there (#45).
-	if err := s.appendLine(filepath.Join(s.root, FileForgottenHosts), ForgottenHostRecord{
-		Type:          TypeForgottenHost,
-		SchemaVersion: SessionSchemaVersion,
-		RecordedAtMS:  now.UnixMilli(),
-		HostDigest:    s.HostDigest(host),
-	}, lockBudget, false); err != nil {
+	if err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {
 		return nil, err
 	}
 	var gaps []Gap
@@ -513,6 +508,52 @@ func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
 		}
 	}
 	return gaps, nil
+}
+
+// recordForgottenHost appends the store-level forget record for a digest,
+// unless the file already holds one for it.
+//
+// ONCE, checked under the file's lock: every forget --host used to append a
+// line, so forgetting the same host again wrote a second record that says
+// nothing the first did not, to a file no size cap covers (Evict counts runs/
+// only, and a window forget never touches it). The check reads the file it
+// is about to append to, under the lock a concurrent forget would take, so
+// two forgets of one host cannot both find it absent.
+func (s *Store) recordForgottenHost(digest string, now time.Time) error {
+	line, err := marshalLine(ForgottenHostRecord{
+		Type:          TypeForgottenHost,
+		SchemaVersion: SessionSchemaVersion,
+		RecordedAtMS:  now.UnixMilli(),
+		HostDigest:    digest,
+	})
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(s.root, FileForgottenHosts), appendFlags, fileMode)
+	if err != nil {
+		return err
+	}
+	defer f.Close() //nolint:errcheck // Sync below reports the write failure
+	unlock, err := lockFile(f, lockBudget)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	held, err := readLines(f)
+	if err != nil {
+		return err
+	}
+	for _, l := range held {
+		var r ForgottenHostRecord
+		if json.Unmarshal(l, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest == digest {
+			return nil
+		}
+	}
+	if _, err := f.Write(line); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
