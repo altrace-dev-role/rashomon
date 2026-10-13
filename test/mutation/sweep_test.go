@@ -492,6 +492,45 @@ func readFile(t *testing.T, path string) string {
 	return string(data)
 }
 
+// DEL-23. The rubric fix list is a named mutant group, constrained like a
+// row by its entry id: a file named RUBRIC_<area>-<n>_<slug>.py claims that
+// entry, every TestRubric<AREA><n>_ test its mutants name must be that
+// entry's, and each of its mutants must name at least one, so a mutant
+// cannot be pinned by another entry's test or by none of its own. A suffix
+// letter (TestRubricLLD3b_) pins its parent. Other test names claim nothing,
+// as they do in a row's file. A RUBRIC_ file whose name carries no entry id
+// is refused rather than read as claiming nothing.
+func TestDEL23_RubricMutantsNameTheirOwnEntry(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	cases := []struct {
+		file, test string
+		wantOK     bool
+	}{
+		{"RUBRIC_lld-3_fixture.py", "TestRubricLLD3_OverLongLine", true},
+		{"RUBRIC_lld-3_fixture.py", "TestRubricLLD3b_|TestRubricLLD3_Other", true},
+		{"RUBRIC_lld-3_fixture.py", "TestRubricLLD3_A|TestH15_B", true},
+		{"RUBRIC_lld-3_fixture.py", "TestRubricLLD7_AnOverCapFile", false},
+		{"RUBRIC_lld-3_fixture.py", "TestRubricLLD3_A|TestRubricLLD7_B", false},
+		{"RUBRIC_lld-3_fixture.py", "TestH15_ZeroCap", false},
+		{"RUBRIC_lld-3_fixture.py", "TestREC31_", false},
+		{"RUBRIC_errors-11_fixture.py", "TestRubricERRORS1_", false},
+		{"RUBRIC_errors-1_fixture.py", "TestRubricERRORS11_", false},
+		{"RUBRIC_errors-1_fixture.py", "TestRubricERRORS1_", true},
+		{"RUBRIC_lld3_fixture.py", "TestRubricLLD3_", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.file+" "+tc.test, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), tc.file)
+			write(t, file, mutant("fixture "+tc.file+" "+tc.test, "target.go", "return 1", "return 2", tc.test))
+			_, code := sweep(t, dir, "--check", "--files", file)
+			if (code == 0) != tc.wantOK {
+				t.Errorf("--check exited %d for %s naming %s", code, tc.file, tc.test)
+			}
+		})
+	}
+}
+
 // DEL-18. A mutant whose target file is excluded from the build on this
 // GOOS -- a //go:build tag naming a different platform -- is reported NOT
 // JUDGED (platform), never as undetected: the file is not compiled here, so
