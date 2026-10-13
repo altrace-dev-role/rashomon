@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -150,8 +149,8 @@ const mcpProxyHost = "mcp-proxy.anthropic.com"
 const mcpTool = "mcp__"
 
 // buildDestinations reads the declarations. Every field but novelty is a
-// property of the record the recorder wrote itself; novelty consults the
-// project baseline beside the store.
+// property of the record the recorder wrote itself; novelty is the project
+// baseline's answer, which the read step asked (NoveltyQueryOf).
 //
 // forgotten excludes a host from the two lists only for a declaration whose
 // own recorded_at_unix_ms is at or before the latest forget --host of that
@@ -159,16 +158,14 @@ const mcpTool = "mcp__"
 // after the forget is this session's own fresh use of the name and is kept,
 // so a project can still name a host it once forgot. See
 // store.Store.ForgottenHostBefore.
-func buildDestinations(run *store.Run, storeRoot string, forgotten func(host string, declaredAtMS int64) bool) Destinations {
-	d := Destinations{
+func buildDestinations(run *store.Run, novelty Novelty, forgotten func(host string, declaredAtMS int64) bool) Destinations {
+	return Destinations{
 		DeclaredHosts:         declaredHostsFiltered(run, forgotten),
 		SSHHosts:              sshDeclaredFiltered(run, forgotten),
 		ExecutedNotAsDeclared: executedNotAsDeclared(run),
 		Rewritten:             rewrittenCalls(run),
+		Novelty:               novelty,
 	}
-	d.Novelty = buildNovelty(run, storeRoot,
-		novelHostCandidates(append(append([]string{}, d.DeclaredHosts...), d.SSHHosts...), madeMCPCall(run)))
-	return d
 }
 
 // novelHostCandidates are the hosts a novelty baseline should consider: what
@@ -188,22 +185,38 @@ func novelHostCandidates(hosts []string, mcpAttributed bool) []string {
 	return out
 }
 
-// buildNovelty consults the project baseline.
+// NoveltyQuery is what the read step asks the project baseline for one run:
+// the baseline is keyed by the run's working directory, owned per session id
+// from the session's start, and told the hosts the session named.
+type NoveltyQuery struct {
+	CWD       string
+	SessionID string
+	Start     time.Time
+	Hosts     []string
+}
+
+// NoveltyQueryOf is the run's question for the project baseline under
+// storeRoot, or, when it cannot be asked, the Novelty that says why.
 //
 // The project key comes from the cwd the RUN recorded, never from the process
 // rendering the report: a report run from a different directory must not key a
 // past session to the reader's project. A session with no recorded cwd has no
 // project, and novelty is unavailable rather than guessed.
-func buildNovelty(run *store.Run, storeRoot string, hosts []string) Novelty {
+//
+// The hosts asked about are the ones the destinations lists show:
+// buildDestinations' own forgotten predicate applies to them, so a host a
+// failed forget left in a declaration is not fed back into the baseline the
+// forget cleared, and the ssh hosts are candidates as the https ones are.
+func NoveltyQueryOf(run *store.Run, storeRoot string, forgotten func(host string, declaredAtMS int64) bool) (NoveltyQuery, *Novelty) {
 	n := Novelty{Hosts: []string{}}
 	cwd := runCWD(run)
 	if cwd == "" {
 		n.Reason = "the run recorded no working directory, so its project is unknown"
-		return n
+		return NoveltyQuery{}, &n
 	}
 	if storeRoot == "" {
 		n.Reason = "no store root, so the baseline could not be located"
-		return n
+		return NoveltyQuery{}, &n
 	}
 	// Ownership is recorded per session id, so an empty one makes every
 	// comparison vacuous: two unidentified runs would each appear to own the
@@ -212,22 +225,32 @@ func buildNovelty(run *store.Run, storeRoot string, hosts []string) Novelty {
 	// session would arrive.
 	if run.SessionID() == "" {
 		n.Reason = "the run has no session id, so baseline ownership cannot be attributed"
-		return n
+		return NoveltyQuery{}, &n
 	}
+	return NoveltyQuery{
+		CWD:       cwd,
+		SessionID: run.SessionID(),
+		Start:     time.UnixMilli(runStartMS(run)),
+		Hosts:     novelHostCandidates(append(declaredHostsFiltered(run, forgotten), sshDeclaredFiltered(run, forgotten)...), madeMCPCall(run)),
+	}, nil
+}
 
-	res := baseline.Update(storeRoot, baseline.Key(cwd), run.SessionID(),
-		time.UnixMilli(runStartMS(run)), hosts)
-	if res.Err != nil {
+// AnsweredNovelty is the section from the baseline's answer to a NoveltyQuery:
+// whether this render established the baseline, its size after the session,
+// the hosts that were new, and the error that stopped it.
+func AnsweredNovelty(established bool, known int, novel []string, err error) Novelty {
+	n := Novelty{Hosts: []string{}}
+	if err != nil {
 		// Deliberately not the error text: it carries the baseline path, and a
 		// path carries someone's directory names.
 		n.Reason = "the project baseline could not be read or written"
 		return n
 	}
 	n.Available = true
-	n.Established = res.Established
-	n.KnownHosts = res.Known
-	if res.Novel != nil {
-		n.Hosts = res.Novel
+	n.Established = established
+	n.KnownHosts = known
+	if novel != nil {
+		n.Hosts = novel
 	}
 	return n
 }

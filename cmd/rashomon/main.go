@@ -27,6 +27,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/report"
+	"github.com/altrace-dev-role/rashomon/internal/report/gather"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spend"
@@ -621,10 +622,10 @@ func reportOrEmpty(sessionID, nonoTrail string, now time.Time) (*report.Report, 
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := []report.Option{report.WithNonoTrail(nonoTrail)}
+	opts := []gather.Option{gather.WithNonoTrail(nonoTrail)}
 	key := st.Key()
 
-	rep, err := report.Build(st, sessionID, now, opts...)
+	rep, err := gather.Build(st, sessionID, now, opts...)
 	if err != nil {
 		return nil, nil, err
 	}

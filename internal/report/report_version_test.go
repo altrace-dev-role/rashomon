@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // TestReportVersion_IsCarriedOnEveryReport: the destinations, families and
@@ -21,16 +19,9 @@ func TestReportVersion_IsCarriedOnEveryReport(t *testing.T) {
 		t.Errorf("Empty's report_version = %d, want %d", Empty(time.UnixMilli(0)).ReportVersion, CurrentReportVersion)
 	}
 
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	rep, err := Build(st, "", time.UnixMilli(0))
-	if err != nil {
-		t.Fatal(err)
-	}
+	rep := Assemble(Input{}, time.UnixMilli(0))
 	if rep.ReportVersion != CurrentReportVersion {
-		t.Errorf("Build's report_version = %d, want %d", rep.ReportVersion, CurrentReportVersion)
+		t.Errorf("Assemble's report_version = %d, want %d", rep.ReportVersion, CurrentReportVersion)
 	}
 
 	raw, err := json.Marshal(rep)
@@ -53,15 +44,7 @@ func TestReportVersion_IsCarriedOnEveryReport(t *testing.T) {
 // number moves only as CurrentReportVersion's bump rule says.
 func TestRubricNAMING3_TheReportCarriesItsReportVersion(t *testing.T) {
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	built, err := Build(st, "", now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, rep := range map[string]*Report{"Empty": Empty(now), "Build": built} {
+	for name, rep := range map[string]*Report{"Empty": Empty(now), "Assemble": Assemble(Input{}, now)} {
 		b, err := json.MarshalIndent(rep, "", "  ")
 		if err != nil {
 			t.Fatal(err)

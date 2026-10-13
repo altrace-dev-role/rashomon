@@ -99,7 +99,7 @@ func TestTranscript_EveryRealDenialVariantIsRecognised(t *testing.T) {
 			{Type: "tool_result", ToolUseID: id, IsError: true, Content: text},
 		})
 
-		_, results, denied, _, _, err := TranscriptIDs(path)
+		_, results, denied, _, _, err := transcriptIDsAt(path)
 		if err != nil {
 			t.Fatalf("variant %d: %v", i, err)
 		}
@@ -122,7 +122,7 @@ func TestTranscript_ADenialInABlockListIsRecognised(t *testing.T) {
 		Content: []map[string]any{{"type": "text", "text": denialVariants[0]}},
 	}})
 
-	_, results, denied, _, _, err := TranscriptIDs(path)
+	_, results, denied, _, _, err := transcriptIDsAt(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestTranscript_AFailureQuotingTheDenialSentenceIsNotADenial(t *testing.T) {
 				{Type: "tool_result", ToolUseID: "toolu_x", IsError: tc.isError, Content: tc.content},
 			})
 
-			_, results, denied, _, _, err := TranscriptIDs(path)
+			_, results, denied, _, _, err := transcriptIDsAt(path)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -203,7 +203,7 @@ func TestTranscript_IsErrorAloneIsNotEnoughAndThePrefixAloneIsNotEnough(t *testi
 		{Type: "tool_result", ToolUseID: "toolu_txt", IsError: false, Content: denialVariants[0]},
 	})
 
-	_, results, denied, _, _, err := TranscriptIDs(path)
+	_, results, denied, _, _, err := transcriptIDsAt(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestTranscript_RefusalsOutsideThePromptAreDenials(t *testing.T) {
 		path := writeTranscriptBlocks(t, []blk{
 			{Type: "tool_result", ToolUseID: "toolu_x", IsError: true, Content: text},
 		})
-		_, results, denied, _, _, err := TranscriptIDs(path)
+		_, results, denied, _, _, err := transcriptIDsAt(path)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -275,7 +275,7 @@ func TestTranscript_OnlyThePathRefusalIsUnhooked(t *testing.T) {
 		path := writeTranscriptBlocks(t, []blk{
 			{Type: "tool_result", ToolUseID: "toolu_x", IsError: true, Content: text},
 		})
-		_, _, _, unhooked, _, err := TranscriptIDs(path)
+		_, _, _, unhooked, _, err := transcriptIDsAt(path)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -309,7 +309,7 @@ func TestTranscript_EveryInputCheckRefusalIsUnhooked(t *testing.T) {
 		path := writeTranscriptBlocks(t, []blk{
 			{Type: "tool_result", ToolUseID: "toolu_x", IsError: true, Content: text},
 		})
-		_, _, _, unhooked, _, err := TranscriptIDs(path)
+		_, _, _, unhooked, _, err := transcriptIDsAt(path)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -335,7 +335,7 @@ func TestTranscript_TheToolUseErrorTagMustOpenAnErrorResult(t *testing.T) {
 			path := writeTranscriptBlocks(t, []blk{
 				{Type: "tool_result", ToolUseID: "toolu_x", IsError: c.isError, Content: c.content},
 			})
-			_, _, _, unhooked, _, err := TranscriptIDs(path)
+			_, _, _, unhooked, _, err := transcriptIDsAt(path)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -370,7 +370,7 @@ func TestAccounting_ARefusalNoHookSawIsNamedAndTheCountAddsUp(t *testing.T) {
 		{Type: "tool_result", ToolUseID: "toolu_mistake", IsError: true,
 			Content: inputCheckRefusals["old_string not in the file"]},
 	})
-	sess := build(&store.Run{
+	sess := buildFromDisk(&store.Run{
 		Declarations: []store.Declaration{
 			{ToolUseID: "toolu_ran", ToolName: "Bash", SessionID: "s", TranscriptPath: path},
 		},
@@ -414,7 +414,7 @@ func TestAccounting_AnyHookRecordTakesTheExemptionAway(t *testing.T) {
 		{Type: "tool_result", ToolUseID: "toolu_terminal", IsError: true, Content: text},
 		{Type: "tool_result", ToolUseID: "toolu_executed", IsError: true, Content: text},
 	})
-	sess := build(&store.Run{
+	sess := buildFromDisk(&store.Run{
 		Declarations: []store.Declaration{
 			{ToolUseID: "toolu_declared", ToolName: "Edit", SessionID: "s", TranscriptPath: path},
 			{ToolUseID: "toolu_elsewhere", ToolName: "Edit", SessionID: "s", TranscriptPath: path + ".other"},
@@ -451,49 +451,13 @@ func TestTranscript_RefusalWordingInsideARealResultIsNotADenial(t *testing.T) {
 			path := writeTranscriptBlocks(t, []blk{
 				{Type: "tool_result", ToolUseID: "toolu_x", IsError: c.isError, Content: c.content},
 			})
-			_, _, denied, _, _, err := TranscriptIDs(path)
+			_, _, denied, _, _, err := transcriptIDsAt(path)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if denied["toolu_x"] {
 				t.Errorf("%s, %s: read as a denial, but the call ran", name, c.why)
 			}
-		}
-	}
-}
-
-// TestTranscript_WorkflowSubagentTranscriptsAreRead: a workflow's subagents
-// write <session>/subagents/workflows/<run>/agent-*.jsonl, two levels below the
-// plain subagent files. A one-level glob read 35 of a real session's 407
-// transcripts, and the 372 it skipped made every call they held read as
-// recorded-but-not-in-the-transcript.
-func TestTranscript_WorkflowSubagentTranscriptsAreRead(t *testing.T) {
-	dir := t.TempDir()
-	main := filepath.Join(dir, "s.jsonl")
-	write := func(path, id string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		line := `{"message":{"role":"assistant","content":[{"type":"tool_use","id":"` + id + `"}]}}` + "\n"
-		if err := os.WriteFile(path, []byte(line), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write(main, "toolu_main")
-	write(filepath.Join(dir, "s", "subagents", "agent-plain.jsonl"), "toolu_plain")
-	write(filepath.Join(dir, "s", "subagents", "workflows", "run1", "agent-deep.jsonl"), "toolu_deep")
-
-	ids, _, _, _, files, err := TranscriptIDs(main)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if files != 3 {
-		t.Errorf("read %d transcripts, want 3: the main one, a plain subagent, a workflow subagent", files)
-	}
-	for _, id := range []string{"toolu_main", "toolu_plain", "toolu_deep"} {
-		if !ids[id] {
-			t.Errorf("%s missing from the transcript ids", id)
 		}
 	}
 }

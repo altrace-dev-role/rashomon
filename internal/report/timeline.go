@@ -488,7 +488,7 @@ func maskedOutcome(d store.Declaration, outcome string) string {
 // hook rewrote it -- to pipe the test output into `grep | head`, say -- and
 // the outcome is the line that ran's. A record before v4, or one that saw no
 // input, leaves the declaration's as it is. Applied once to a run as it is
-// read, before anything reads masking (report.Build, digest's build).
+// read, before anything reads masking (Assemble, digest's build).
 func MaskingAsRan(run *store.Run) {
 	if run == nil {
 		return

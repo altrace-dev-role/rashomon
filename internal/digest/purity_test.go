@@ -39,35 +39,20 @@ func sourceFiles(t *testing.T, dir string) map[string]*ast.File {
 	return out
 }
 
-// reportAdapters are report's exported functions that reach the filesystem:
-// every exported function transcript_files.go declares, and Build, which
-// reads the store, the transcripts and the sandbox trail.
-func reportAdapters(t *testing.T) map[string]bool {
-	t.Helper()
-	out := map[string]bool{"Build": true}
-	f, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "report", "transcript_files.go"), nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, d := range f.Decls {
-		if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.IsExported() {
-			out[fn.Name.Name] = true
-		}
-	}
-	if !out["TranscriptIDs"] {
-		t.Fatalf("premise: transcript_files.go declares no TranscriptIDs; adapters found %v", out)
-	}
-	return out
+// readStepImports are the packages that open what a report reads beside the
+// store: report's read step, and the project baseline it writes.
+var readStepImports = map[string]bool{
+	"github.com/altrace-dev-role/rashomon/internal/report/gather": true,
+	"github.com/altrace-dev-role/rashomon/internal/baseline":      true,
 }
 
-// TestRubricHLD4_TheDigestOpensNoFileOfItsOwn is the H-17-style dependency
-// check for the turn digest's promise that it never opens the session's
-// transcript (package doc): digest, and the pure packages beside it -- shape
-// and host -- import nothing that opens a file, and digest calls none of
-// report's filesystem adapters. Before this the promise held by convention
-// only: digest links report, and report opens transcripts.
+// TestRubricHLD4_TheDigestOpensNoFileOfItsOwn is the direct-import half of
+// the turn digest's promise that it never opens the session's transcript
+// (package doc): digest, and the pure packages beside it -- shape and host --
+// import nothing that opens a file, and digest imports neither report's read
+// step nor the baseline. The transitive half, that nothing digest links can
+// reach them either, is TestRubricHLD4_TheVerdictPackagesLinkNoReadStep.
 func TestRubricHLD4_TheDigestOpensNoFileOfItsOwn(t *testing.T) {
-	adapters := reportAdapters(t)
 	for _, dir := range []string{".", filepath.Join("..", "shape"), filepath.Join("..", "host")} {
 		for name, f := range sourceFiles(t, dir) {
 			for _, imp := range f.Imports {
@@ -75,23 +60,10 @@ func TestRubricHLD4_TheDigestOpensNoFileOfItsOwn(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if noFileAccess[path] {
+				if noFileAccess[path] || readStepImports[path] {
 					t.Errorf("%s imports %s", name, path)
 				}
 			}
-			if dir != "." {
-				continue
-			}
-			ast.Inspect(f, func(n ast.Node) bool {
-				sel, ok := n.(*ast.SelectorExpr)
-				if !ok {
-					return true
-				}
-				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "report" && adapters[sel.Sel.Name] {
-					t.Errorf("%s calls report.%s, which reaches the filesystem", name, sel.Sel.Name)
-				}
-				return true
-			})
 		}
 	}
 }

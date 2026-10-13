@@ -13,7 +13,7 @@
 // prompt_id ALONE, and counts subagent calls separately rather than folding
 // them in unmarked -- see Subagents.
 //
-// It is read-only in a way report.Build is not: it opens the store with
+// It is read-only in a way gather.Build is not: it opens the store with
 // store.OpenExisting, never store.Open, so asking for a digest cannot mint an
 // install identity on a machine that has recorded nothing; it never globs a
 // subagent's transcript file, and never writes baseline/. It also never opens
@@ -21,7 +21,10 @@
 // BuildSilentFailures read that for the final assistant message, and that read
 // is both session-wide (wrong scope for a turn) and racy at Stop (the file may
 // not hold the final line yet). A digest's final message, when it has one, is
-// handed in by its caller -- see report.AccountFromMessage.
+// handed in by its caller -- see report.AccountFromMessage. That holds by
+// construction, not by convention: opening a transcript is the read step's
+// (internal/report/gather), and nothing this package links reaches it
+// (TestRubricHLD4_TheVerdictPackagesLinkNoReadStep).
 //
 // It carries no new content. Every field here is a projection of something
 // the recorder already wrote; see the spec's Non-goals.

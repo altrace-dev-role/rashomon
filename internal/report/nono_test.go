@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/nono"
-	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // trailWith is an observed trail holding the given events, at one instant.
@@ -84,39 +83,6 @@ func TestNono_AWindowWithNoEndIsSaidOnTheSandboxLine(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `"window_open":false`) {
 		t.Errorf("the JSON does not carry window_open:false: %s", raw)
-	}
-}
-
-// TestNono_ASessionWithNoEndRecordReportsAnOpenWindow drives Build: the
-// window comes from the run's coverage records, and a run with a start and
-// no end must reach the sandbox line as open.
-func TestNono_ASessionWithNoEndRecordReportsAnOpenWindow(t *testing.T) {
-	at := firstNonoEvent(t)
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	const id = "no-end-session"
-	if err := st.AppendCoverage(store.Coverage{
-		Type: "coverage", SchemaVersion: 2, SessionID: id, Phase: store.PhaseStart,
-		RecordedAtMS: at.Add(-time.Minute).UnixMilli(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	rep, err := Build(st, id, at.Add(time.Hour), WithNonoTrail(nonoFixture))
-	if err != nil {
-		t.Fatal(err)
-	}
-	n := rep.Sessions[0].Nono
-	if !n.Observed || !n.WindowOpen {
-		t.Errorf("observed=%v window_open=%v, want true, true (%s)", n.Observed, n.WindowOpen, n.Reason)
-	}
-	var b strings.Builder
-	if err := Text(&b, rep); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(b.String(), openWindowCaveat) {
-		t.Errorf("the rendered report does not say the window has no end:\n%s", b.String())
 	}
 }
 

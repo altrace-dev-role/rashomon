@@ -4,6 +4,6 @@
 # all, and nothing here still observes anything, so there is no reason left
 # to leave it out.
 m("destinations feeds only https hosts to the novelty baseline", "internal/report/destinations.go",
-  "novelHostCandidates(append(append([]string{}, d.DeclaredHosts...), d.SSHHosts...), madeMCPCall(run)))",
-  "novelHostCandidates(d.DeclaredHosts, madeMCPCall(run)))",
+  "novelHostCandidates(append(declaredHostsFiltered(run, forgotten), sshDeclaredFiltered(run, forgotten)...), madeMCPCall(run)),",
+  "novelHostCandidates(declaredHostsFiltered(run, forgotten), madeMCPCall(run)),",
   "TestNovelty_SSHHostsAreCandidatesToo")

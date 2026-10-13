@@ -165,22 +165,24 @@ var failureVocabulary = []string{
 	"returned 1", "did not succeed", "unsuccessful", "aborted", "rejected",
 }
 
-// buildAccount reads the agent's summary for a run.
+// buildAccount is the agent's summary for a run: the final assistant message
+// the read step read from the first transcript, in declaration order, that
+// had one.
 //
 // The transcript path comes from the run's own declarations, not from a flag or
 // from configuration: the path a session recorded is the path that session
 // wrote, and asking anywhere else would risk rendering one session's summary
 // against another's records.
-func buildAccount(run *store.Run) Account {
+func buildAccount(run *store.Run, reads map[string]TranscriptRead) Account {
 	for _, d := range run.Declarations {
 		if d.TranscriptPath == "" {
 			continue
 		}
-		text, ok := finalAssistantTextOfFile(d.TranscriptPath)
-		if !ok {
+		read := reads[d.TranscriptPath]
+		if !read.FinalRead {
 			continue
 		}
-		return finishAccount(text)
+		return finishAccount(read.Final)
 	}
 	return Account{}
 }

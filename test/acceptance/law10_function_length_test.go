@@ -24,7 +24,6 @@ var overLimit = map[string]int{
 	"internal/shape/tokenize.go:lex":                  213,
 	"internal/spend/spend.go:Build":                   177,
 	"internal/shape/masked.go:lineParser.parseSimple": 116,
-	"internal/report/report.go:build":                 108,
 	"internal/spend/join.go:Summary.Join":             111,
 }
 

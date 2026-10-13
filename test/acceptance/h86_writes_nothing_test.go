@@ -8,12 +8,12 @@ import (
 // H-86 -- the digest writes nothing.
 //
 // Snapshots the store dir AND baseline/ before and after. Break: build it on
-// report.Build and baseline/ changes -- report.Build writes
-// baseline/<project>.json (internal/report/destinations.go), which is why
+// gather.Build and baseline/ changes -- gather.Build writes
+// baseline/<project>.json (internal/report/gather), which is why
 // digest cannot simply call it.
 //
 // The fixture names a host in a tool call, exactly as H-28's healthy fixture
-// does: report.Build writes baseline/ for any session with a recorded cwd and
+// does: gather.Build writes baseline/ for any session with a recorded cwd and
 // session id, host or not, but naming one gives the file content, so a
 // premature baseline/ this test would otherwise miss has something in it to
 // diff.

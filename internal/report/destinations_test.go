@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -36,7 +37,7 @@ func TestExecutedNotAsDeclared_IsCountedWithoutAProxyStore(t *testing.T) {
 		Executions: []store.Execution{{ToolUseID: "t1", ExecutedDigest: "bbbb"}},
 	}
 
-	d := buildDestinations(run, "", nil)
+	d := buildDestinations(run, Novelty{}, nil)
 
 	if d.ExecutedNotAsDeclared != 1 {
 		t.Errorf("executed_not_as_declared = %d, want 1: the comparison is between two "+
@@ -73,7 +74,7 @@ func TestExecutedNotAsDeclared_UnknownDigestIsNotADifference(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			d := buildDestinations(tc.run, "", nil)
+			d := buildDestinations(tc.run, Novelty{}, nil)
 			if d.ExecutedNotAsDeclared != 0 {
 				t.Errorf("executed_not_as_declared = %d, want 0: an incomparable pair is "+
 					"not a difference", d.ExecutedNotAsDeclared)
@@ -96,119 +97,92 @@ const t0ms = int64(1789000000000)
 // unknown rather than render "none" — which would read as "this session
 // reached nothing new" on a session where nothing was checked.
 func TestNovelty_UnavailableWithoutARecordedProject(t *testing.T) {
-	d := buildDestinations(runWithDeclaredHosts("pypi.org"), t.TempDir(), nil)
-
-	if d.Novelty.Available {
+	_, n := NoveltyQueryOf(runWithDeclaredHosts("pypi.org"), t.TempDir(), nil)
+	if n == nil {
+		t.Fatal("a run with no recorded cwd produced a baseline query; the project is unknown")
+	}
+	if n.Available {
 		t.Error("novelty available with no recorded cwd; the project is unknown")
 	}
-	if d.Novelty.Reason == "" {
+	if n.Reason == "" {
 		t.Error("no reason given for unavailable novelty")
 	}
-	if len(d.Novelty.Hosts) != 0 {
-		t.Errorf("novelty hosts = %v, want empty", d.Novelty.Hosts)
+	if n.Hosts == nil || len(n.Hosts) != 0 {
+		t.Errorf("novelty hosts = %#v, want empty", n.Hosts)
 	}
 }
 
-// TestNovelty_UsesTheRunsOwnCWDNotTheReadersCWD. A report run from a different
-// directory must not key a past session to the reader's project — that would
-// make novelty depend on where somebody happened to stand when they read it.
-func TestNovelty_UsesTheRunsOwnCWDNotTheReadersCWD(t *testing.T) {
-	project := t.TempDir()
-	root := t.TempDir()
+// TestNovelty_TheQueryIsTheRunsOwnProjectAndHosts is the pure half of the
+// two baseline tests in internal/report/gather: the question asked of the
+// baseline is keyed by the cwd the RUN recorded, owned by its session from its
+// start, and names its hosts less loopback and the client's own plane.
+func TestNovelty_TheQueryIsTheRunsOwnProjectAndHosts(t *testing.T) {
 	run := &store.Run{
 		Declarations: []store.Declaration{{
-			ToolUseID: "t1", ToolName: "Bash", SessionID: "sess-1", Hosts: []string{"a.example"},
+			ToolUseID: "t", ToolName: "Bash", SessionID: "sess-1",
+			Hosts: []string{"a.example", "api.anthropic.com", "127.0.0.1"},
 		}},
-		Coverage: []store.Coverage{{
-			Phase: store.PhaseStart, RecordedAtMS: t0ms, CWD: project, SessionID: "sess-1",
-		}},
+		Coverage: []store.Coverage{
+			{Phase: store.PhaseEnd, RecordedAtMS: t0ms + 5, CWD: "/elsewhere", SessionID: "sess-1"},
+			{Phase: store.PhaseStart, RecordedAtMS: t0ms, CWD: "/project", SessionID: "sess-1"},
+		},
 	}
-
-	first := buildDestinations(run, root, nil)
-	if !first.Novelty.Available {
-		t.Fatalf("novelty unavailable: %s", first.Novelty.Reason)
+	q, n := NoveltyQueryOf(run, "/root", nil)
+	if n != nil {
+		t.Fatalf("no query: %s", n.Reason)
 	}
-	if !first.Novelty.Established {
-		t.Error("the first session in a project should establish the baseline")
+	if q.CWD != "/project" || q.SessionID != "sess-1" || q.Start.UnixMilli() != t0ms {
+		t.Errorf("query = %+v, want the start record's cwd and instant and the run's session", q)
 	}
-
-	// A different session in the SAME project, later, naming a new host.
-	run2 := &store.Run{
-		Declarations: []store.Declaration{{
-			ToolUseID: "t2", ToolName: "Bash", SessionID: "sess-2",
-			Hosts: []string{"a.example", "b.example"},
-		}},
-		Coverage: []store.Coverage{{
-			Phase: store.PhaseStart, RecordedAtMS: t0ms + 3600000, CWD: project, SessionID: "sess-2",
-		}},
-	}
-	second := buildDestinations(run2, root, nil)
-
-	if second.Novelty.Established {
-		t.Error("the second session established the baseline again")
-	}
-	if len(second.Novelty.Hosts) != 1 || second.Novelty.Hosts[0] != "b.example" {
-		t.Errorf("novelty hosts = %v, want [b.example]", second.Novelty.Hosts)
+	if strings.Join(q.Hosts, ",") != "a.example" {
+		t.Errorf("query hosts = %v, want [a.example]: loopback and the client plane are not asked about", q.Hosts)
 	}
 }
 
-// TestNovelty_ClientPlaneIsNeverNovel. Folding the client's own control plane
-// into a project baseline would report api.anthropic.com as a new destination
-// on the first session of every project — the novelty line's most obvious way
-// to make itself worthless.
-func TestNovelty_ClientPlaneIsNeverNovel(t *testing.T) {
-	project := t.TempDir()
-	root := t.TempDir()
-	mk := func(id string, at int64, hosts ...string) *store.Run {
-		return &store.Run{
-			Declarations: []store.Declaration{{
-				ToolUseID: "t", ToolName: "Bash", SessionID: id, Hosts: hosts,
-			}},
-			Coverage: []store.Coverage{{
-				Phase: store.PhaseStart, RecordedAtMS: at, CWD: project, SessionID: id,
-			}},
-		}
+// TestNovelty_AnUnreadableBaselineIsUnknownWithAReason: an error from the
+// baseline is unavailable novelty with a reason that names no path, and a
+// clean answer is available with its hosts never null.
+func TestNovelty_AnUnreadableBaselineIsUnknownWithAReason(t *testing.T) {
+	n := AnsweredNovelty(true, 3, []string{"x.example"}, errors.New("open /home/someone/baseline: denied"))
+	if n.Available || n.Reason == "" || strings.Contains(n.Reason, "/home") || n.Hosts == nil {
+		t.Errorf("novelty = %+v, want unavailable, a reason without the path, and empty hosts", n)
 	}
-	// Establish, then a later session whose only new host is client plane.
-	buildDestinations(mk("sess-1", t0ms, "a.example"), root, nil)
-	d := buildDestinations(mk("sess-2", t0ms+3600000, "a.example", "api.anthropic.com", "127.0.0.1"), root, nil)
-
-	if len(d.Novelty.Hosts) != 0 {
-		t.Errorf("novelty hosts = %v, want empty: the client plane and loopback are not "+
-			"new destinations for a project", d.Novelty.Hosts)
+	n = AnsweredNovelty(false, 4, nil, nil)
+	if !n.Available || n.Established || n.KnownHosts != 4 || n.Hosts == nil || len(n.Hosts) != 0 {
+		t.Errorf("novelty = %+v, want available, not established, 4 known and empty hosts", n)
 	}
 }
 
 // TestNovelty_TheMCPTransportIsTheAgentsOnAnMCPSession: the MCP transport is
 // the one client-plane host that can be the agent's, and clientPlaneHost
-// decides it from the session's own mcp__* declarations. buildDestinations has
-// to hand that answer to the novelty candidates, or a session that made MCP
-// calls and named the transport is told nothing about it, while the sandbox
-// section of the same session counts it as the agent's.
+// decides it from the session's own mcp__* declarations. NoveltyQueryOf has
+// to hand that answer to the novelty candidates it asks the baseline about,
+// or a session that made MCP calls and named the transport is told nothing
+// about it, while the sandbox section of the same session counts it as the
+// agent's.
 func TestNovelty_TheMCPTransportIsTheAgentsOnAnMCPSession(t *testing.T) {
 	for _, mcp := range []bool{false, true} {
-		project, root := t.TempDir(), t.TempDir()
-		mk := func(id string, at int64, hosts ...string) *store.Run {
-			run := &store.Run{
-				Declarations: []store.Declaration{{
-					ToolUseID: "t", ToolName: "Bash", SessionID: id, Hosts: hosts,
-				}},
-				Coverage: []store.Coverage{{
-					Phase: store.PhaseStart, RecordedAtMS: at, CWD: project, SessionID: id,
-				}},
-			}
-			if mcp {
-				run.Declarations = append(run.Declarations, store.Declaration{
-					ToolUseID: "m", ToolName: "mcp__docs__search", SessionID: id,
-				})
-			}
-			return run
+		run := &store.Run{
+			Declarations: []store.Declaration{{
+				ToolUseID: "t", ToolName: "Bash", SessionID: "sess-1",
+				Hosts: []string{"a.example", mcpProxyHost},
+			}},
+			Coverage: []store.Coverage{{
+				Phase: store.PhaseStart, RecordedAtMS: t0ms, CWD: "/project", SessionID: "sess-1",
+			}},
 		}
-		buildDestinations(mk("sess-1", t0ms, "a.example"), root, nil)
-		d := buildDestinations(mk("sess-2", t0ms+3600000, "a.example", mcpProxyHost), root, nil)
-		if got := slices.Contains(d.Novelty.Hosts, mcpProxyHost); got != mcp {
-			t.Errorf("mcp session %v: %s novel = %v, want %v (novelty hosts %v)",
-				mcp, mcpProxyHost, got, mcp, d.Novelty.Hosts)
+		if mcp {
+			run.Declarations = append(run.Declarations, store.Declaration{
+				ToolUseID: "m", ToolName: "mcp__docs__search", SessionID: "sess-1",
+			})
+		}
+		q, unavailable := NoveltyQueryOf(run, "/root", nil)
+		if unavailable != nil {
+			t.Fatalf("mcp session %v: no query: %s", mcp, unavailable.Reason)
+		}
+		if got := slices.Contains(q.Hosts, mcpProxyHost); got != mcp {
+			t.Errorf("mcp session %v: %s asked of the baseline = %v, want %v (query hosts %v)",
+				mcp, mcpProxyHost, got, mcp, q.Hosts)
 		}
 	}
 }
@@ -234,13 +208,13 @@ func TestNovelty_EstablishedLineSaysTheClientPlaneIsExcluded(t *testing.T) {
 
 // TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing.
 //
-// buildNovelty returns early -- Available false, a Reason, Hosts the empty
+// NoveltyQueryOf returns early -- Available false, a Reason, Hosts the empty
 // slice -- for any of several reasons a baseline cannot be consulted, and the
 // text form must print the line in every one of them: a section that
 // vanishes when it has nothing to say cannot be told apart from one that was
 // never built. This fixture reaches it through an empty store root (no
 // baseline directory to read or write), which is distinct from the
-// no-recorded-cwd case above and exercises buildNovelty's other guard.
+// no-recorded-cwd case above and exercises NoveltyQueryOf's other guard.
 func TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing(t *testing.T) {
 	run := &store.Run{
 		Declarations: []store.Declaration{{
@@ -250,7 +224,11 @@ func TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing(t *testing.T) {
 			Phase: store.PhaseStart, RecordedAtMS: t0ms, CWD: t.TempDir(), SessionID: "sess-1",
 		}},
 	}
-	d := buildDestinations(run, "", nil)
+	_, n := NoveltyQueryOf(run, "", nil)
+	if n == nil {
+		t.Fatal("a query was produced with no store root to locate a baseline in")
+	}
+	d := buildDestinations(run, *n, nil)
 
 	if d.Novelty.Available {
 		t.Error("novelty reports itself available with no store root to locate a baseline in")
@@ -304,23 +282,24 @@ func TestClientPlane_EveryViewAppliesTheOneRule(t *testing.T) {
 // way an HTTPS one would be. The proxy-era exclusion of ssh from novelty
 // existed because the proxy could not see ssh at all; nothing here still
 // observes anything, so there is no longer a reason to leave ssh out.
+// NoveltyQueryOf chooses the candidates, so an ssh host must be among the
+// hosts it asks the baseline about.
 func TestNovelty_SSHHostsAreCandidatesToo(t *testing.T) {
-	project, root := t.TempDir(), t.TempDir()
-	mk := func(id string, at int64, sshHosts ...string) *store.Run {
-		return &store.Run{
-			Declarations: []store.Declaration{{
-				ToolUseID: "t", ToolName: "Bash", SessionID: id, SSHHosts: sshHosts,
-			}},
-			Coverage: []store.Coverage{{
-				Phase: store.PhaseStart, RecordedAtMS: at, CWD: project, SessionID: id,
-			}},
-		}
+	run := &store.Run{
+		Declarations: []store.Declaration{{
+			ToolUseID: "t", ToolName: "Bash", SessionID: "sess-1",
+			SSHHosts: []string{"github.com", "deploy.example"},
+		}},
+		Coverage: []store.Coverage{{
+			Phase: store.PhaseStart, RecordedAtMS: t0ms, CWD: "/project", SessionID: "sess-1",
+		}},
 	}
-	buildDestinations(mk("sess-1", t0ms, "github.com"), root, nil) // ubiquitous; establishes
-	d := buildDestinations(mk("sess-2", t0ms+3600000, "github.com", "deploy.example"), root, nil)
-
-	if !slices.Contains(d.Novelty.Hosts, "deploy.example") {
-		t.Errorf("novelty hosts = %v, want deploy.example: an ssh host named for the "+
-			"first time in this project must count as a novelty candidate", d.Novelty.Hosts)
+	q, unavailable := NoveltyQueryOf(run, "/root", nil)
+	if unavailable != nil {
+		t.Fatalf("no query: %s", unavailable.Reason)
+	}
+	if !slices.Contains(q.Hosts, "deploy.example") {
+		t.Errorf("query hosts = %v, want deploy.example: an ssh host named in this "+
+			"project must be asked of the baseline as a novelty candidate", q.Hosts)
 	}
 }

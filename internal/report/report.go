@@ -307,28 +307,6 @@ type Session struct {
 	TestRuns *TestRuns `json:"test_runs"`
 }
 
-// Option configures Build.
-//
-// Variadic options rather than a wider signature, so a caller that does not
-// know about the nono trail keeps compiling and keeps getting an honest
-// "not configured" rather than being forced to pass a path it has no opinion
-// about.
-type Option func(*options)
-
-type options struct {
-	nonoTrail string
-}
-
-// WithNonoTrail names the nono audit-events.ndjson the sandbox section is read
-// from.
-//
-// An empty path means none was configured, which the report states as a
-// coverage line rather than omitting -- a section that vanishes when it has
-// nothing to say cannot be told apart from one that was never built.
-func WithNonoTrail(path string) Option {
-	return func(o *options) { o.nonoTrail = path }
-}
-
 // CurrentReportVersion is ReportVersion's value on every report this binary
 // renders: report --json's own version, independent of the store's. Starts
 // at 2: v1.1.0 shipped the destinations, families and chains keys this
@@ -347,9 +325,9 @@ const CurrentReportVersion = 2
 
 // Report is the rendered output.
 type Report struct {
-	// ReportVersion is CurrentReportVersion, set by Build and Empty. It names
-	// the shape of the whole document, not only the four sections TRU-57
-	// allowlists. A typed decoder gets a zero value for a key that was
+	// ReportVersion is CurrentReportVersion, set by Assemble and Empty. It
+	// names the shape of the whole document, not only the four sections
+	// TRU-57 allowlists. A typed decoder gets a zero value for a key that was
 	// removed or renamed, not an error, so this is the field a consumer
 	// checks before trusting that an old integration still reads the current
 	// shape.
@@ -370,124 +348,14 @@ type Report struct {
 
 // Empty is the report for a location that has recorded nothing, built without a
 // store so that asking the question cannot create one. It is the same shape
-// Build returns for a store with no runs.
+// Assemble returns for a store with no runs.
 func Empty(now time.Time) *Report {
 	return &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
 }
 
-// Build renders one session, or every session when sessionID is empty.
-func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*Report, error) {
-	var cfg options
-	for _, o := range opts {
-		o(&cfg)
-	}
-	gaps, err := st.ReadGaps()
-	if err != nil {
-		return nil, err
-	}
-	// Gaps are keyed by run directory, the one name a session has whether or
-	// not its records still exist and whatever characters its id contains.
-	byDir := map[string][]store.Gap{}
-	for _, g := range gaps {
-		dir := st.DirName(g.SessionID)
-		byDir[dir] = append(byDir[dir], g)
-	}
-
-	var names []string
-	if sessionID != "" {
-		names = []string{st.DirName(sessionID)}
-	} else {
-		names, err = st.Runs()
-		if err != nil {
-			return nil, err
-		}
-		// A run that eviction removed has no directory but still has a gap,
-		// and a report that could not show it would be hiding a deletion.
-		seen := map[string]bool{}
-		for _, n := range names {
-			seen[n] = true
-		}
-		var evicted []string
-		for dir := range byDir {
-			if !seen[dir] {
-				evicted = append(evicted, dir)
-			}
-		}
-		sort.Strings(evicted)
-		names = append(names, evicted...)
-	}
-
-	// Read once for the whole report: the forgotten set is a property of the
-	// store, not of a session, and re-reading the gaps per session would be the
-	// same answer at more cost.
-	//
-	// Two predicates, because the two readers need different questions
-	// answered. The sandbox's trail is nono's file, not this store's: every
-	// one of its events stays exactly as readable as the day it was written,
-	// so buildNono asks only "is this host forgotten" and never returns one,
-	// at any time, under any session. A declaration is this store's own
-	// record, and forget --host only ever meant to remove the ones that
-	// predate it; buildDestinations, buildFamilies and buildChains ask
-	// "forgotten before THIS declaration was recorded", so a later, genuine
-	// re-use of a once-forgotten name still shows up as what it is.
-	forgotten, err := st.ForgottenHost()
-	if err != nil {
-		return nil, err
-	}
-	forgottenBefore, err := st.ForgottenHostBefore()
-	if err != nil {
-		return nil, err
-	}
-
-	// Sessions starts as an empty slice rather than nil, so a store with no runs
-	// marshals the same array a store with runs does. See the field comment.
-	rep := &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
-	for _, name := range names {
-		run, err := st.ReadRunDir(name)
-		if err != nil {
-			return nil, err
-		}
-		MaskingAsRan(run)
-		sess := build(run)
-		sess.Destinations = buildDestinations(run, st.Root(), forgottenBefore)
-		sess.Families = buildFamilies(run, forgottenBefore)
-		// The sandbox section is built per session, from the session's own
-		// window: a window is a property of the run, and sharing one
-		// observation across sessions would attribute each session's sandbox
-		// events to all of them.
-		sess.Nono = buildNono(nono.Read(cfg.nonoTrail, sessionWindow(run)),
-			cfg.nonoTrail != "", madeMCPCall(run), declaredHosts(run), forgotten)
-		denied := deniedSet(sess.Transcripts)
-		// One grouping of the executions, shared by the chains, the timeline
-		// and the test runs, and one detection, shared by the timeline's
-		// annotations and the test runs' pairs.
-		executed := executionsByID(run)
-		sess.Chains = buildChains(run, executed, denied, forgottenBefore)
-		tb := detectTestBending(run, executed, denied)
-		sess.Timeline = timelineFrom(run, executed, denied, tb)
-		sess.TestRuns = buildTestRuns(run, executed, denied, tb)
-		sess.Account = buildAccount(run)
-		sess.Subagents = buildSubagents(run)
-		sess.SilentFailures = BuildSilentFailures(run, sess.Account)
-		sess.MaskedRuns = sessionMaskedRuns(run, sess.Account)
-		sess.Gaps = byDir[name]
-		if sess.Gaps == nil {
-			sess.Gaps = []store.Gap{}
-		}
-		if len(sess.Gaps) > 0 {
-			sess.Coverage.add(ReasonGap)
-			if sess.SessionID == name && len(run.Declarations)+len(run.Terminals)+len(run.Coverage) == 0 {
-				// Nothing left but the gap; it carries the real session id.
-				sess.SessionID = sess.Gaps[0].SessionID
-			}
-		}
-		sess.Coverage.finish()
-		rep.Sessions = append(rep.Sessions, sess)
-	}
-	return rep, nil
-}
-
-func build(run *store.Run) Session {
+// build is one session's report from its run and what the read step read of
+// the transcripts its declarations name, keyed by path. It opens nothing.
+func build(run *store.Run, reads map[string]TranscriptRead) Session {
 	sess := Session{
 		SessionID:      run.SessionID(),
 		SkippedRecords: run.Skipped,
@@ -582,8 +450,14 @@ func build(run *store.Run) Session {
 		sess.Coverage.add(ReasonDuplicateDeclarations)
 	}
 
-	// The accounting equation, once per transcript the run's declarations
-	// named. A declaration naming none is counted rather than grouped.
+	sess.addTranscripts(run, executed, reads)
+	return sess
+}
+
+// addTranscripts adds the accounting equation, once per transcript the run's
+// declarations named, from what the read step read of each. A declaration
+// naming none is counted rather than grouped.
+func (sess *Session) addTranscripts(run *store.Run, executed map[string]bool, reads map[string]TranscriptRead) {
 	byPath := map[string]map[string]bool{}
 	for _, d := range run.Declarations {
 		if d.TranscriptPath == "" {
@@ -597,11 +471,6 @@ func build(run *store.Run) Session {
 		}
 		ids[d.ToolUseID] = true
 	}
-	paths := make([]string, 0, len(byPath))
-	for path := range byPath {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
 	// Every id any hook left a record of, under any transcript path: a
 	// declaration, a terminal (which outlives a declaration lost to the lock),
 	// or an execution. Only a call outside this set can have been refused
@@ -616,8 +485,8 @@ func build(run *store.Run) Session {
 	for id := range executed {
 		hooked[id] = true
 	}
-	for _, path := range paths {
-		t := accounting(path, byPath[path], executed, hooked)
+	for _, path := range TranscriptPaths(run) {
+		t := accounting(path, reads[path], byPath[path], executed, hooked)
 		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0) {
 			sess.Coverage.add(ReasonTranscriptMismatch)
 		}
@@ -630,10 +499,28 @@ func build(run *store.Run) Session {
 		}
 		sess.Transcripts = append(sess.Transcripts, t)
 	}
-	return sess
 }
 
-func accounting(path string, recorded, executed, hooked map[string]bool) Transcript {
+// TranscriptPaths are the distinct transcript paths a run's declarations name,
+// sorted: the files the read step reads for the run, and the groups its
+// accounting equation is computed over.
+func TranscriptPaths(run *store.Run) []string {
+	seen := map[string]bool{}
+	var paths []string
+	for _, d := range run.Declarations {
+		if d.TranscriptPath != "" && !seen[d.TranscriptPath] {
+			seen[d.TranscriptPath] = true
+			paths = append(paths, d.TranscriptPath)
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// accounting is one transcript group's equation: the ids the run recorded
+// against path, set against what the read step read there. A read with no set
+// -- the file absent, unreadable, or never reached -- leaves every count null.
+func accounting(path string, read TranscriptRead, recorded, executed, hooked map[string]bool) Transcript {
 	t := Transcript{Path: path, IDsRecorded: len(recorded)}
 	for id := range recorded {
 		if executed[id] {
@@ -641,15 +528,16 @@ func accounting(path string, recorded, executed, hooked map[string]bool) Transcr
 		}
 	}
 
-	ids, results, denied, unhooked, files, err := TranscriptIDs(path)
-	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
+	if read.Err != nil || read.Set == nil {
+		if !errors.Is(read.Err, fs.ErrNotExist) {
 			// A transcript that exists but cannot be read is still unreadable;
 			// the distinction is not one the accounting can act on.
 			t.Readable = false
 		}
 		return t
 	}
+	ids, results, denied, unhooked := read.Set.IDs, read.Set.Results, read.Set.Denied, read.Set.Unhooked
+	files := read.Set.Files
 	t.Readable = true
 	t.Files = &files
 	n := len(ids)
@@ -861,7 +749,7 @@ func nonNil(s []string) []string {
 	return s
 }
 
-// sessionWindow derives the watched interval from the run's own coverage
+// SessionWindow derives the watched interval from the run's own coverage
 // records.
 //
 // The run's account of itself is the only honest source: report must never
@@ -869,7 +757,7 @@ func nonNil(s []string) []string {
 // later detach retroactively invalidate every session already captured. An
 // absent end record leaves the window open at that end, which the sandbox
 // section says on its own line.
-func sessionWindow(run *store.Run) nono.Window {
+func SessionWindow(run *store.Run) nono.Window {
 	var w nono.Window
 	for _, c := range run.Coverage {
 		at := time.UnixMilli(c.RecordedAtMS)

@@ -130,8 +130,53 @@ const pathDeniedPrefix = "<tool_use_error>File is in a directory that is denied 
 // report excuses the call only when no hook left any record of it (accounting).
 const toolUseErrorTag = "<tool_use_error>"
 
-// collectIDs reads one transcript's lines from r into the four sets
-// TranscriptIDs returns. It reads and opens nothing else.
+// TranscriptSet is what TranscriptIDs gathers from one session's transcript
+// files: the distinct tool_use ids, the distinct ids of the tool_result blocks
+// answering them, which of those results are the user having DENIED the call,
+// which have the shape of a call Claude Code refused before any hook fired
+// (unhooked; see toolUseErrorTag), and how many files were read into it.
+//
+// The sets are kept apart because they mean different things: a tool_use block
+// is a call the model asked for, a tool_result block is that call having
+// finished, and a denial is neither -- the call never ran, and the user is why.
+//
+// DENIALS ARE NOT RESULTS. A denial does produce a tool_result block, so
+// counting it as one put every denied call into executed-but-unrecorded, a list
+// that exists to surface the recorder having failed to fire. The user
+// exercising the permission prompt then read as the tool being broken.
+//
+// A transcript cannot show whether a hook fired, so Unhooked only marks the
+// shape; the report confirms it against the store.
+type TranscriptSet struct {
+	IDs, Results, Denied, Unhooked map[string]bool
+	Files                          int
+}
+
+// NewTranscriptSet is an empty set for TranscriptIDs to read into.
+func NewTranscriptSet() *TranscriptSet {
+	return &TranscriptSet{IDs: map[string]bool{}, Results: map[string]bool{}, Denied: map[string]bool{}, Unhooked: map[string]bool{}}
+}
+
+// TranscriptIDs reads one transcript file from r into set and counts it. A
+// session's transcript and each of its subagent transcripts are read into one
+// set, one call each; which files those are, and opening them, is the read
+// step's (internal/report/gather).
+//
+// It reads five fields from each content block -- type, id, tool_use_id,
+// is_error and content -- and nothing else. Content is read to classify the
+// result and is never retained. A line that does not parse is skipped, not
+// fatal: the transcript is Claude Code's file and its shape is not this
+// program's to enforce. An error is r's, and the file is then not counted.
+func TranscriptIDs(r io.Reader, set *TranscriptSet) error {
+	if err := collectIDs(r, set.IDs, set.Results, set.Denied, set.Unhooked); err != nil {
+		return err
+	}
+	set.Files++
+	return nil
+}
+
+// collectIDs reads one transcript's lines from r into the four sets of a
+// TranscriptSet. It reads and opens nothing else.
 func collectIDs(r io.Reader, into, results, denied, unhooked map[string]bool) error {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)

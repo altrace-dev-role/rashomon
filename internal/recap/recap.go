@@ -47,14 +47,14 @@ var prefix = mark + " rashomon: "
 //
 // The five triggers are the spec's "When it speaks" list, minus one: a
 // destination new for this project needs the per-project baseline
-// (internal/report/destinations.go's buildNovelty), and the digest this
-// package reads deliberately does not open it -- Part 3's whole reason for
-// existing separately from report.Build is that report writes baseline/ on
-// every call, which this path cannot afford to do once per turn without
-// reintroducing exactly the side effects H-86/H-87 exist to rule out. There
-// is therefore no honest way for this package to know a destination is new,
-// and it does not pretend to; see the PR description for the fuller account
-// of this gap.
+// (internal/report/gather's novelty), and the digest this package reads
+// deliberately does not open it -- Part 3's whole reason for existing
+// separately from gather.Build is that the report writes baseline/ on every
+// call, which this path cannot afford to do once per turn without
+// reintroducing exactly the side effects H-86/H-87 exist to rule out. There is
+// therefore no honest way for this package to know a destination is new, and
+// it does not pretend to; see the PR description for the fuller account of
+// this gap.
 //
 // Two triggers join them for test-bending: a failed test command that passed
 // when the only recorded edits between were to files named like tests, and

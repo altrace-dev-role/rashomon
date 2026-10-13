@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/report"
+	"github.com/altrace-dev-role/rashomon/internal/report/gather"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -88,7 +89,7 @@ func bothReasons(t *testing.T, st *store.Store, now time.Time) (digestReasons, r
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err := report.Build(st, diffSession, now)
+	rep, err := gather.Build(st, diffSession, now)
 	if err != nil {
 		t.Fatal(err)
 	}
