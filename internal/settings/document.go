@@ -26,11 +26,22 @@ import (
 type member struct {
 	key string
 	raw json.RawMessage
+	// at is where raw starts in the document's source, for an error about
+	// it; nowhere for a value this package wrote (set).
+	at pos
 }
+
+// set replaces a member's value. The new bytes are not in the source, so the
+// member no longer has a place there.
+func (m *member) set(raw json.RawMessage) { m.raw, m.at = raw, 0 }
 
 // Document is a settings file as ordered raw members.
 type Document struct {
 	members []member
+	// path and src are what an error names: the file, and the bytes a line
+	// and column are counted in.
+	path string
+	src  []byte
 }
 
 // Load reads a settings file. An absent file and an empty one are both an
@@ -66,19 +77,28 @@ func Load(path string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Parse(data)
+	return ParseNamed(path, data)
 }
 
-// Parse builds a Document from bytes.
+// Parse builds a Document from bytes that have no file name. Its errors say
+// "settings" where a named document's say the path.
 func Parse(data []byte) (*Document, error) {
+	return ParseNamed("", data)
+}
+
+// ParseNamed builds a Document from the bytes of the file at path. Every error
+// the document raises, now or from a later edit, is an *Error naming path.
+func ParseNamed(path string, data []byte) (*Document, error) {
+	d := &Document{path: path, src: data}
 	if len(bytes.TrimSpace(data)) == 0 {
-		return &Document{}, nil
+		return d, nil
 	}
 	members, err := parseObject(data, true)
 	if err != nil {
-		return nil, err
+		return nil, d.fail(posAt(0), err)
 	}
-	return &Document{members: members}, nil
+	d.members = members
+	return d, nil
 }
 
 // Get returns a copy of a top-level value's raw bytes. A copy, because the
@@ -106,7 +126,11 @@ func (d *Document) HookEntries(event string) ([]json.RawMessage, error) {
 	}
 	for _, e := range events {
 		if e.key == event {
-			return parseArray(e.raw)
+			entries, err := parseArray(event, e.raw)
+			if err != nil {
+				return nil, d.fail(e.at, err)
+			}
+			return entries, nil
 		}
 	}
 	return nil, nil
@@ -114,6 +138,10 @@ func (d *Document) HookEntries(event string) ([]json.RawMessage, error) {
 
 // SetHookEntries replaces hooks.<event> with entries. Every other event under
 // hooks, and every other top-level key, is carried over byte for byte.
+//
+// event is a name Claude Code defines, and must be valid UTF-8: JSON cannot
+// carry any other key, so one that is not would be written as U+FFFD and read
+// back as a different event. A key read from a file always is.
 func (d *Document) SetHookEntries(event string, entries []json.RawMessage) error {
 	events, err := d.hookEvents()
 	if err != nil {
@@ -135,7 +163,7 @@ func (d *Document) SetHookEntries(event string, entries []json.RawMessage) error
 
 	obj := writeObject(events, 1)
 	if h := d.find(hooksKey); h != nil {
-		h.raw = obj
+		h.set(obj)
 	} else {
 		d.members = append(d.members, member{key: hooksKey, raw: obj})
 	}
@@ -181,7 +209,7 @@ func (d *Document) RemoveHookEvent(event string) error {
 		d.removeMember(hooksKey)
 		return nil
 	}
-	h.raw = writeObject(kept, 1)
+	h.set(writeObject(kept, 1))
 	return nil
 }
 
@@ -201,7 +229,10 @@ func (d *Document) hookEvents() ([]member, error) {
 	}
 	events, err := parseObject(h.raw, false)
 	if err != nil {
-		return nil, fmt.Errorf("settings: hooks is not an object: %w", err)
+		return nil, d.fail(h.at, fmt.Errorf("hooks: %w", err))
+	}
+	for i := range events {
+		events[i].at = events[i].at.in(h.at)
 	}
 	return events, nil
 }
@@ -223,8 +254,17 @@ func isNull(raw json.RawMessage) bool {
 // whole set, anything after the closing brace is an error. Duplicate keys are
 // refused: an encoder would silently keep one of them, and editing a document
 // whose meaning depends on which is not editing, it is guessing.
-func parseObject(data []byte, whole bool) ([]member, error) {
+//
+// Every error comes back as an offsetError holding where in data the decoder
+// stopped, and every member holds where in data its value starts.
+func parseObject(data []byte, whole bool) (_ []member, err error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	closed := false
+	defer func() {
+		if err != nil {
+			err = refusal(data, dec.InputOffset(), closed, err)
+		}
+	}()
 
 	tok, err := dec.Token()
 	if err != nil {
@@ -254,11 +294,13 @@ func parseObject(data []byte, whole bool) ([]member, error) {
 		if err := dec.Decode(&raw); err != nil {
 			return nil, err
 		}
-		members = append(members, member{key: key, raw: raw})
+		// The decoder stands at the end of the value it just returned.
+		members = append(members, member{key: key, raw: raw, at: posAt(int(dec.InputOffset()) - len(raw))})
 	}
 	if _, err := dec.Token(); err != nil {
 		return nil, err
 	}
+	closed = true
 	if whole {
 		if _, err := dec.Token(); err != io.EOF {
 			return nil, errors.New("trailing data after the top-level object")
@@ -267,7 +309,8 @@ func parseObject(data []byte, whole bool) ([]member, error) {
 	return members, nil
 }
 
-func parseArray(data []byte) ([]json.RawMessage, error) {
+// parseArray splits the value of hooks.<event> into its entries.
+func parseArray(event string, data []byte) ([]json.RawMessage, error) {
 	if isNull(data) {
 		return nil, nil
 	}
@@ -278,7 +321,7 @@ func parseArray(data []byte) ([]json.RawMessage, error) {
 		return nil, err
 	}
 	if delim, ok := tok.(json.Delim); !ok || delim != '[' {
-		return nil, errors.New("settings: hook event is not an array")
+		return nil, fmt.Errorf("hook event %q is not an array", event)
 	}
 
 	var items []json.RawMessage

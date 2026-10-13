@@ -5,7 +5,7 @@
 # longer executes the line being mutated. The test filter is widened to the
 # install paths that still reach it.
 m("H-7  edit drops every other top-level key", "internal/settings/document.go",
-  "\tif h := d.find(hooksKey); h != nil {\n\t\th.raw = obj\n\t} else {\n\t\td.members = append(d.members, member{key: hooksKey, raw: obj})\n\t}\n\treturn nil",
+  "\tif h := d.find(hooksKey); h != nil {\n\t\th.set(obj)\n\t} else {\n\t\td.members = append(d.members, member{key: hooksKey, raw: obj})\n\t}\n\treturn nil",
   "\td.members = []member{{key: hooksKey, raw: obj}}\n\treturn nil", "TestH3_|TestH7_|TestH06_")
 m("H-7  removing a hook event drops every other top-level key", "internal/settings/document.go",
   "\tif len(kept) == 0 {\n\t\td.removeMember(hooksKey)\n\t\treturn nil\n\t}",
