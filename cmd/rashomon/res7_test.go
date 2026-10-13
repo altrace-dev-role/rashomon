@@ -1,3 +1,9 @@
+//go:build unix
+
+// Unix-only: recapMaxRSS reads the child's peak RSS from syscall.Rusage,
+// which Windows does not have, and without this line the Windows vet in CI's
+// cross-build job does not compile the package's tests.
+
 package main
 
 import (
