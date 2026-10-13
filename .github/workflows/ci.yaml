@@ -122,6 +122,19 @@ jobs:
       - name: Mutation sweep static checks
         run: python3 test/mutation/sweep.py --check
 
+      # Dead code fails the build (rubric docs-7): an unused function keeps a
+      # contract nobody runs -- a doc comment two releases stale described
+      # one that had no caller left. staticcheck's U1000 check alone, pinned
+      # to v0.7.0, the newest release whose go directive (1.25.0) this job's
+      # toolchain satisfies; once per build tag, because code the fault tag
+      # compiles is invisible without it. An intentional exception carries a
+      # //lint:ignore U1000 line saying why.
+      - name: Unused code
+        run: |
+          go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 -checks U1000 ./...
+          go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 -checks U1000 -tags rashomonfault ./...
+          go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 -checks U1000 -tags perf ./...
+
       - name: Test with race detector
         run: go test ./... -count=1 -race
 

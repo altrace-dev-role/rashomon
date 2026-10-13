@@ -630,15 +630,6 @@ func reportOrEmpty(sessionID, nonoTrail string, now time.Time) (*report.Report, 
 	return rep, key, nil
 }
 
-// storeKey is the install key, or nil when there is no store to read it from.
-func storeKey() []byte {
-	st, err := openStoreForRead()
-	if err != nil {
-		return nil
-	}
-	return st.Key()
-}
-
 // openStoreForRead opens the store without creating one, and reports
 // ErrNoStore when there is nothing here.
 //

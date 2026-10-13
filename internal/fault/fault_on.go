@@ -55,6 +55,8 @@ func Enabled() bool { return true }
 
 // sink defeats the dead-store elimination that would otherwise let the compiler
 // drop a nil dereference whose result is never read.
+//
+//lint:ignore U1000 written and never read, by design: see above.
 var sink byte
 
 // Inject fires the configured fault if this is the selected point.

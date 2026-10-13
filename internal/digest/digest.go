@@ -16,12 +16,12 @@
 // It is read-only in a way report.Build is not: it opens the store with
 // store.OpenExisting, never store.Open, so asking for a digest cannot mint an
 // install identity on a machine that has recorded nothing; it never globs a
-// subagent's transcript file, and never writes baseline/. It also never opens the SESSION's own transcript file --
-// report's Account and buildSilentFailures read that for the final assistant
-// message, and that read is both session-wide (wrong scope for a turn) and
-// racy at Stop (the file may not hold the final line yet). A digest's final
-// message, when it has one, is handed in by its caller -- see
-// report.AccountFromMessage.
+// subagent's transcript file, and never writes baseline/. It also never opens
+// the SESSION's own transcript file -- report's Account and
+// BuildSilentFailures read that for the final assistant message, and that read
+// is both session-wide (wrong scope for a turn) and racy at Stop (the file may
+// not hold the final line yet). A digest's final message, when it has one, is
+// handed in by its caller -- see report.AccountFromMessage.
 //
 // It carries no new content. Every field here is a projection of something
 // the recorder already wrote; see the spec's Non-goals.

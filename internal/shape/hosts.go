@@ -146,7 +146,7 @@ func takesValue(prog string, flag byte) bool {
 // on which flags came before it. A regular expression over the whole line
 // cannot know that `key` in `ssh -i key host` is not a host.
 //
-// A tokenizer error is not fatal here. tokenize returns the tokens it
+// A tokenizer error is not fatal here. tokenizeMarked returns the tokens it
 // completed along with the error, and a destination that appeared before an
 // unterminated quote is still a destination the command named.
 func sshCommandHosts(text string) []string {
