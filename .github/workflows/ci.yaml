@@ -304,6 +304,30 @@ jobs:
           GOOS: windows
         run: go vet ./...
 
+  # The lock contract on the platform whose lockFile is LockFileEx
+  # (internal/store/lock_windows.go). Cross-build and vet prove it compiles;
+  # this is the only job that runs it (test-11). The tests are
+  # internal/store/lock_test.go's; the one about reading past a held lock
+  # skips here, with its reason, because Windows' mandatory locks refuse that
+  # read.
+  lock-windows:
+    name: Lock contract (windows)
+    runs-on: windows-latest
+    # Three store tests; the bound is DEL-17's.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.25.8"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      - name: Lock contract tests
+        shell: bash
+        run: go test ./internal/store -run '^(TestLockFileIsExclusiveAndBounded|TestAppendExecutionSpillsWhenTheLockIsHeld|TestReadRunConsistent_RespectsAHeldLock)$' -count=1 -v
+
   perf-linux:
     name: Perf gates (linux)
     runs-on: ubuntu-latest

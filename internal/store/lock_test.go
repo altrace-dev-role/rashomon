@@ -1,4 +1,11 @@
-//go:build unix
+//go:build unix || windows
+
+// The lock contract runs on both platforms that ship a lockFile: flock on
+// unix and LockFileEx on Windows (lock_windows.go), which CI's lock-windows
+// job runs. Windows' locks are mandatory, not advisory: while one handle
+// holds the range, a read through any other handle is refused. So a test
+// that holds a lock releases it before it reads back what was written, and
+// the one test whose subject is a read past a held lock is unix-only.
 
 package store
 
@@ -6,6 +13,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -74,7 +82,6 @@ func TestAppendExecutionSpillsWhenTheLockIsHeld(t *testing.T) {
 	if err != nil {
 		t.Fatalf("taking the records lock: %v", err)
 	}
-	defer unlock()
 
 	rec := Execution{
 		Type:          TypeExecution,
@@ -87,6 +94,8 @@ func TestAppendExecutionSpillsWhenTheLockIsHeld(t *testing.T) {
 	if err := st.AppendExecution(rec); err != nil {
 		t.Fatalf("AppendExecution while the lock is held: %v", err)
 	}
+	// Released before the read: on Windows the held lock refuses it.
+	unlock()
 
 	run, err := st.ReadRun(session)
 	if err != nil {
@@ -110,7 +119,13 @@ func TestAppendExecutionSpillsWhenTheLockIsHeld(t *testing.T) {
 // holds the file; one that does spends close to its own budget retrying
 // before it gives up and falls back to reading anyway (see
 // store.eachLineTryLock's doc on why giving up is not treated as fatal).
+//
+// It is unix-only. The read it falls back to is a read past a held lock,
+// which Windows' mandatory locks refuse: there the fallback cannot happen.
 func TestReadRunConsistent_RespectsAHeldLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("LockFileEx locks are mandatory: the read past a held lock this test is about is refused on Windows")
+	}
 	st, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatalf("Open: %v", err)
