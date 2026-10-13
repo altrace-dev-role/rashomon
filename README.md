@@ -136,6 +136,15 @@ the end-of-turn line have no such runtime test yet.
 No. It never stops a command, and if something inside it goes wrong, it exits
 quietly so Claude Code carries on.
 
+**What does `verified` mean once a transcript is gone?**
+The report checks every call in Claude Code's transcript against rashomon's own
+record. Claude Code deletes transcripts after a while (30 days by default, its
+`cleanupPeriodDays` setting), so for an older session there is nothing to check
+against: the report shows `readable: no` beside that transcript, and `verified`
+then means rashomon's own records are complete, without that cross-check. A
+transcript that is still there but cannot be read is different: the run reads
+`unverified`, with the reason `transcript_unreadable`.
+
 **Does it work with Cursor or Codex?**
 No. This release supports Claude Code only. Cursor (by default) and Codex (after
 `/import`) read Claude Code's settings, so they can trigger the recorder anyway,

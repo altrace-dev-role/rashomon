@@ -230,6 +230,7 @@ var reasonText = map[string]string{
 	"run_not_closed":         "no session-end was recorded: the session is still open, it ended without one, or its end hook ran while `rashomon pause` was in effect",
 	"records_unreadable":     "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted, or a coverage record was unverified with no reason or carried a state this build does not know",
 	"transcript_mismatch":    "the transcript and this store disagree about which tool calls were made; see the two `missing from` lines below",
+	"transcript_unreadable":  "a transcript this run's calls named exists but could not be read, so the check that every call in it was recorded did not run",
 	"execution_mismatch":     "the transcript holds results for calls this store recorded no execution for",
 	"gap":                    "a gap record marks a stretch this store does not hold: records removed by `forget` or the size cap, or a window `rashomon pause` left unrecorded",
 	"recording_paused":       "a hook ran while `rashomon pause` was in effect, so what it would have recorded (a tool call, its result, or the session's start or end) was deliberately not recorded",
