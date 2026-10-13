@@ -553,6 +553,15 @@ func build(run *store.Run) Session {
 	if len(sess.Declarations.Dropped) > 0 {
 		sess.Coverage.add(store.ReasonLockTimeout)
 	}
+	// A hook whose one full sync failed marked its call on the spill file
+	// (REC-34). Its records read back, so nothing above notices them; this is
+	// what keeps the session from rendering as fine.
+	for _, t := range run.Terminals {
+		if t.FlushFailed() {
+			sess.Coverage.add(store.ReasonFlushFailed)
+			break
+		}
+	}
 	if HasDuplicateToolUseID(run.Declarations) {
 		sess.Coverage.add(ReasonDuplicateDeclarations)
 	}

@@ -166,3 +166,27 @@ func hasReason(reasons []string, want string) bool {
 	}
 	return false
 }
+
+// TestREC34g_FlushFailedMarkerLeavesAnUnterminatedTurnUnterminated: a post
+// whose flush failed marks the call with a flush_failed terminal (REC-34).
+// That marker is not the hook's ending, so a declaration whose hook was killed
+// before its own terminal still reads as unterminated once the run has ended.
+func TestREC34g_FlushFailedMarkerLeavesAnUnterminatedTurnUnterminated(t *testing.T) {
+	reason := store.ReasonFlushFailed
+	run := &store.Run{
+		Declarations: []store.Declaration{decl(1, "a1", "Bash", "prompt-1", "/t.jsonl", 100)},
+		Terminals:    []store.Terminal{{ToolUseID: "a1", Outcome: store.OutcomeError, Reason: &reason, RecordedAtMS: 150}},
+		Coverage: []store.Coverage{
+			startCoverage("inst-1"),
+			{Phase: store.PhaseEnd, State: store.StateVerified, InstallID: "inst-1"},
+		},
+	}
+	w := selectTurn(run, "prompt-1")
+	if got := turnUnterminated(w, run.Terminals); len(got) != 1 || got[0] != "a1" {
+		t.Errorf("turnUnterminated = %v, want [a1]: the flush_failed marker closed the declaration", got)
+	}
+	tc, _ := buildTurnCoverage(run, nil, w)
+	if !hasReason(tc.Reasons, store.ReasonUnterminatedEntry) {
+		t.Errorf("reasons = %v, want unterminated_entry", tc.Reasons)
+	}
+}

@@ -236,3 +236,64 @@ func TestRES28r_CaseBudgetGatesOnlyWithAReadingOfItsOwn(t *testing.T) {
 		t.Errorf("baseline exists but not for this case: gated=%v reportOnly=%v why=%q, want a hard failure naming the baseline", gated, reportOnly, why)
 	}
 }
+
+// healthyBurst is a RES-30 run in which every pair landed every record.
+func healthyBurst(ways int) Burst {
+	b := Burst{Ways: ways, Declarations: ways, Terminals: ways, Executions: ways, CallCoverage: ways, PostCoverage: ways}
+	for i := 1; i <= 3*ways; i++ {
+		b.Seqs = append(b.Seqs, int64(i))
+	}
+	for i := 0; i < ways; i++ {
+		b.PairPeakMiB = append(b.PairPeakMiB, 5)
+	}
+	return b
+}
+
+// TestRES30_BurstVerdictCountsEveryLoss: the verdict the 64-way test reaches
+// fails on every kind of loss and on the footprint sum, and passes only the
+// burst in which nothing was lost (RES-30).
+func TestRES30_BurstVerdictCountsEveryLoss(t *testing.T) {
+	const ways, budget, tol = 4, 30.0, 0.10 // a healthy burst sums 20 MiB
+	for _, c := range []struct {
+		name  string
+		spoil func(*Burst)
+		fails bool
+	}{
+		{"healthy", func(*Burst) {}, false},
+		{"a declaration lost", func(b *Burst) { b.Declarations-- }, true},
+		{"a terminal lost", func(b *Burst) { b.Terminals-- }, true},
+		{"an execution lost", func(b *Burst) { b.Executions-- }, true},
+		{"a call coverage record lost", func(b *Burst) { b.CallCoverage-- }, true},
+		{"a post coverage record lost", func(b *Burst) { b.PostCoverage-- }, true},
+		{"a record spilled", func(b *Burst) { b.Spilled = 1 }, true},
+		{"a lock timeout", func(b *Burst) { b.LockTimeouts = 1 }, true},
+		{"a seq skipped", func(b *Burst) { b.Seqs[len(b.Seqs)-1]++ }, true},
+		{"a seq repeated", func(b *Burst) { b.Seqs[1] = b.Seqs[0] }, true},
+		{"a record without a seq", func(b *Burst) { b.Seqs = b.Seqs[:len(b.Seqs)-1] }, true},
+		{"a pair unmeasured", func(b *Burst) { b.PairPeakMiB = b.PairPeakMiB[1:] }, true},
+		{"a pair measured as nothing", func(b *Burst) { b.PairPeakMiB[0] = 0 }, true},
+		{"the sum at budget plus tolerance", func(b *Burst) { b.PairPeakMiB[0] += budget*(1+tol) - 20 }, false},
+		{"the sum over it", func(b *Burst) { b.PairPeakMiB[0] += budget*(1+tol) - 20 + 0.01 }, true},
+		{"no pairs at all", func(b *Burst) { *b = Burst{} }, true},
+	} {
+		b := healthyBurst(ways)
+		c.spoil(&b)
+		if got := len(b.Problems(budget, tol)) > 0; got != c.fails {
+			t.Errorf("%s: fails = %v, want %v (%q)", c.name, got, c.fails, b.Problems(budget, tol))
+		}
+	}
+}
+
+// TestRES30_ParseFootprintReadsTimeL: the darwin footprint comes from
+// /usr/bin/time -l's report; a report without the line is not a zero.
+func TestRES30_ParseFootprintReadsTimeL(t *testing.T) {
+	report := "        0.01 real         0.00 user         0.00 sys\n" +
+		"             6029312  maximum resident set size\n" +
+		"             2622016  peak memory footprint\n"
+	if got, ok := ParseFootprint(report); !ok || got != 2622016 {
+		t.Errorf("ParseFootprint = %d, %v; want 2622016, true", got, ok)
+	}
+	if _, ok := ParseFootprint("             6029312  maximum resident set size\n"); ok {
+		t.Error("a report with no footprint line parsed as one")
+	}
+}

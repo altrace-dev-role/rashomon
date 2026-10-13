@@ -42,4 +42,20 @@ const (
 	// and prints nothing" -- H-93's own bar, stricter than the recorder's
 	// "never exit 2".
 	PointRecapStart = "recap.start"
+	// PointStoreFullSync is inside every full sync the store issues, after
+	// the sync itself has run. "fail=N" there turns the first N into
+	// failures, which is the only way to reach a failed flush without a
+	// failing disk (REC-34): a deferred hook's first full sync is its Flush,
+	// and after a failed one its second is the flush_failed marker's.
+	PointStoreFullSync = "store.full_sync"
+)
+
+// Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders
+// a write on the device ahead of everything written after it: fcntl
+// F_BARRIERFSYNC on darwin, and a plain fsync elsewhere, where nothing
+// cheaper exists. A full sync makes everything written before it durable:
+// F_FULLFSYNC on darwin, fsync elsewhere.
+const (
+	SyncBarrier = "barrier"
+	SyncFull    = "full"
 )

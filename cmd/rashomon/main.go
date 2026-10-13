@@ -194,8 +194,16 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 
 		h := hook.New(st, time.Now)
+		// Group commit (REC-34): the appends below are ordered with barriers
+		// inside their locks, and Flush is the one full sync, after the last
+		// of them and outside every lock. Nothing is printed on this path, so
+		// it is also before stdout.
+		st.DeferDurability()
 		captureErr := safe.Guard(func() error { return h.Capture(stdin) })
 		_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })
+		if err := safe.Guard(h.Flush); err != nil {
+			fmt.Fprintln(stderr, flushLostLine)
+		}
 		return nil
 	})
 	return exitOK
@@ -227,8 +235,13 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 
 		p := hook.NewPost(st, time.Now)
+		// Group commit, as in cmdHook.
+		st.DeferDurability()
 		captureErr := safe.Guard(func() error { return p.Capture(stdin) })
 		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
+		if err := safe.Guard(p.Flush); err != nil {
+			fmt.Fprintln(stderr, flushLostLine)
+		}
 		return nil
 	})
 	return exitOK
@@ -489,6 +502,13 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // invocation goes into it -- not the id that was passed, not the one that was
 // expected.
 const standDownLine = "rashomon: entry belongs to another install; standing down"
+
+// flushLostLine is what hook and post say when their records could not be
+// flushed and the flush_failed marker could not be written either (REC-34).
+// A failed flush whose marker lands prints nothing; this is the case with no
+// record left to hold the failure, and like standDownLine it is fixed text,
+// because hook stderr reaches Claude Code's debug log.
+const flushLostLine = "rashomon: records may not be durable"
 
 // standsDown reports whether this invocation was installed by another install,
 // in which case it must write nothing at all.

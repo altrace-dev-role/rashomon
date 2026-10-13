@@ -27,6 +27,7 @@
     {"id": "post.8MiB", "entry": "post", "payload_bytes": 8388608, "budget_mib": 24.1, "gates_from": "P-10"}
   ],
   "per_tool_call": {"memory_time_mib_ms_max": 379, "summed_peak_mib_max": 32, "process_creations_max": {"settings": 6, "plugin": 6}},
+  "parallel": {"ways": 64, "summed_peak_mib_max": 704},
   "benchmarks": [
     {"name": "BenchmarkDerive/bash_short", "measured_bytes_per_op": 5122, "measured_allocs_per_op": 77, "bytes_per_op_max": 5122, "allocs_per_op_max": 77},
     {"name": "BenchmarkDerive/bash_long_4k", "measured_bytes_per_op": 428860, "measured_allocs_per_op": 2333, "bytes_per_op_max": 428860, "allocs_per_op_max": 2333},

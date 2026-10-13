@@ -353,6 +353,14 @@ type Terminal struct {
 	Reason        *string `json:"reason"`
 }
 
+// FlushFailed reports a terminal that marks its call's records as possibly
+// not durable (ReasonFlushFailed) rather than closing the call. It is not an
+// ending: a reader must not let it close a declaration whose own terminal
+// never landed, or count it as a declaration the lock dropped.
+func (t Terminal) FlushFailed() bool {
+	return t.Reason != nil && *t.Reason == ReasonFlushFailed
+}
+
 // Coverage states.
 const (
 	StateVerified   = "verified"
@@ -361,8 +369,14 @@ const (
 
 // Coverage reasons. Fixed codes, never free text, and never derived from input.
 const (
-	ReasonInternalError       = "internal_error"
-	ReasonLockTimeout         = "lock_timeout"
+	ReasonInternalError = "internal_error"
+	ReasonLockTimeout   = "lock_timeout"
+	// ReasonFlushFailed marks records a hook appended and then could not
+	// flush to stable storage (REC-34): they read back, and a power loss or
+	// a crash of the machine could still remove them. It rides a spill
+	// terminal for the call, the one record a process can append without
+	// waiting on a lock, because coverage appends take theirs.
+	ReasonFlushFailed         = "flush_failed"
 	ReasonTerminatedBySignal  = "terminated_by_signal"
 	ReasonUnterminatedEntry   = "unterminated_entry"
 	ReasonHookEntryAbsent     = "hook_entry_absent"
@@ -384,6 +398,7 @@ func Reasons() []string {
 	return []string{
 		ReasonInternalError,
 		ReasonLockTimeout,
+		ReasonFlushFailed,
 		ReasonTerminatedBySignal,
 		ReasonUnterminatedEntry,
 		ReasonHookEntryAbsent,
