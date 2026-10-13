@@ -49,7 +49,10 @@
 // read of a session that may still be running, tries each file's lock inside
 // one short budget for the whole read and reads anyway when it cannot get it
 // (eachLineTryLock); a writer's own read of the records it is about to
-// append to (maxSeq) is under the lock that writer holds.
+// append to (maxSeq) is under the lock that writer holds. Where locks are
+// mandatory (Windows), a held lock refuses an unlocked read; ReadRunConsistent
+// and ReadGaps count the refusal as one line they could not read, so the
+// session reads unverified, and ForgottenHost fails instead (test-11).
 //
 // Eviction takes no run's records lock: it removes only runs that nothing
 // has written to for evictGrace, an hour, and never the session that ran it.

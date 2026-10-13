@@ -123,7 +123,7 @@ func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run,
 
 	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
 		left := max(0, time.Until(deadline))
-		err := eachLineTryLock(filepath.Join(dir, fname), left, func(line []byte) { classifyRunLine(run, line) })
+		err := eachLineTryLock(filepath.Join(dir, fname), left, readRefused, func(line []byte) { classifyRunLine(run, line) })
 		if err != nil {
 			return nil, err
 		}
@@ -190,15 +190,32 @@ func classifyRunLine(run *Run, line []byte) {
 // unverified when it is not zero (REC-33). Dropping the line silently, as
 // this did, let the one record saying "records were removed here" vanish,
 // and the session it described read verified.
+//
+// The file is read unlocked. Where locks are mandatory (Windows), a forget
+// or an eviction holding the gaps lock refuses that read, and the refusal
+// counts as one line that could not be read, so every session reads
+// unverified rather than digest.Build failing outright (test-11).
 func (s *Store) ReadGaps() (gaps []Gap, skipped int, err error) {
-	err = eachLine(filepath.Join(s.root, FileGaps), func(line []byte) {
+	return readGapsAt(filepath.Join(s.root, FileGaps), readRefused)
+}
+
+// neverRefused is the refusal predicate of a read that must fail rather than
+// count a refused read as a skipped line (ForgottenHost).
+func neverRefused(error) bool { return false }
+
+// readGapsAt is ReadGaps on one path. refused says which read errors mean
+// another handle holds the file's lock; a read failing that way reaches the
+// line callback as one nil line, which counts as skipped.
+func readGapsAt(path string, refused func(error) bool) (gaps []Gap, skipped int, err error) {
+	fn := func(line []byte) {
 		var g Gap
 		if json.Unmarshal(line, &g) != nil || g.Type != TypeGap {
 			skipped++
 			return
 		}
 		gaps = append(gaps, g)
-	})
+	}
+	err = refusedAsSkipped(eachLine(path, fn), refused, fn)
 	return gaps, skipped, err
 }
 
@@ -231,8 +248,9 @@ func eachLine(path string, fn func(line []byte)) error {
 // mandatory (Windows), that unlocked scan is itself refused; the refusal
 // reaches fn as one nil line, which every caller counts as a line it could
 // not read, so the run reads as incomplete rather than the read failing
-// (test-11).
-func eachLineTryLock(path string, budget time.Duration, fn func(line []byte)) error {
+// (test-11). A read error after the lock was taken is not a refusal by it,
+// and is returned.
+func eachLineTryLock(path string, budget time.Duration, refused func(error) bool, fn func(line []byte)) error {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -247,7 +265,19 @@ func eachLineTryLock(path string, budget time.Duration, fn func(line []byte)) er
 		defer unlock()
 	}
 	err = scanLines(f, fn)
-	if lerr != nil && readRefused(err) {
+	if lerr != nil {
+		return refusedAsSkipped(err, refused, fn)
+	}
+	return err
+}
+
+// refusedAsSkipped turns a read that another handle's lock refused into one
+// nil line passed to fn, which every caller counts as a line it could not
+// read, and returns any other error as it is. refused is readRefused in
+// production; a parameter so the handling can be driven on a platform whose
+// locks never refuse a read.
+func refusedAsSkipped(err error, refused func(error) bool, fn func(line []byte)) error {
+	if err != nil && refused(err) {
 		fn(nil)
 		return nil
 	}

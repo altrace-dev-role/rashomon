@@ -274,7 +274,7 @@ jobs:
   lock-windows:
     name: Lock contract (windows)
     runs-on: windows-latest
-    # Four store tests; the bound is DEL-17's.
+    # Five store tests; the bound is DEL-17's.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -287,7 +287,7 @@ jobs:
 
       - name: Lock contract tests
         shell: bash
-        run: go test ./internal/store -run '^(TestLockFileIsExclusiveAndBounded|TestAppendExecutionSpillsWhenTheLockIsHeld|TestReadRunConsistent_RespectsAHeldLock|TestRubricTEST11_AReadRefusedByAHeldLockCountsAsSkipped)$' -count=1 -v
+        run: go test ./internal/store -run '^(TestLockFileIsExclusiveAndBounded|TestAppendExecutionSpillsWhenTheLockIsHeld|TestReadRunConsistent_RespectsAHeldLock|TestRubricTEST11_AReadRefusedByAHeldLockCountsAsSkipped|TestRubricTEST11_AGapsReadRefusedByAHeldLockCountsAsSkipped)$' -count=1 -v
 
   perf-linux:
     name: Perf gates (linux)
