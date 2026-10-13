@@ -1,6 +1,9 @@
 package shape
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // A $( ) inside double quotes is a context of its own to the shell: quotes
 // inside it nest, parens count by depth, and the string around it goes on
@@ -44,12 +47,16 @@ type joined struct {
 // joinedIn reports a backslash-newline removed between s[from] and s[to]:
 // just before a byte after from and no later than to.
 func (r joined) joinedIn(from, to int) bool {
-	for _, p := range r.joins {
-		if p > from && p <= to {
-			return true
-		}
-	}
-	return false
+	k := r.after(from)
+	return k < len(r.joins) && r.joins[k] <= to
+}
+
+// after is the index in joins of the first offset past from. The offsets
+// ascend, so it is searched for: a here-document's body is asked about line
+// by line, and a scan of every offset for each line made a line of
+// continuations and a body of short lines take time in their product.
+func (r joined) after(from int) int {
+	return sort.SearchInts(r.joins, from+1)
 }
 
 // continuesAt reports a backslash-newline left at s[i] -- a continuation the
@@ -545,9 +552,9 @@ func (r joined) delimLine(i, e int, d heredoc) (found, ok bool) {
 		return l
 	}
 	from := i
-	for _, p := range r.joins {
-		if p < i || p > e {
-			continue
+	for _, p := range r.joins[r.after(i-1):] {
+		if p > e {
+			break
 		}
 		if strings.HasPrefix(line(r.s[from:p]), d.delim) {
 			return false, false
