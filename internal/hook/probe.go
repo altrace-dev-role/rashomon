@@ -17,9 +17,11 @@ import (
 // mid-flight is written into the run's own coverage while the run is still
 // live, rather than inferred later by a report that has to guess.
 //
-// It never fails. A probe that cannot do its job records that it could not,
-// and returns.
-func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time) {
+// It never fails the hook. A probe that cannot do its job records that it
+// could not, and returns. The one failure no record can hold is eviction's,
+// which is about the store rather than this session: it is returned, for the
+// caller to say so on stderr.
+func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time) error {
 	sessionID := UnattributedSession
 	reason := ""
 	cwd := ""
@@ -63,13 +65,17 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 		reason = closeReason(err)
 	}
 
+	// A start or end coverage record that cannot be written is read as its
+	// absence: probe_absent at start, run_not_closed at end (report.build).
 	_ = safe.Guard(func() error {
 		return st.AppendCoverage(BuildCoverage(st, sessionID, phase, reason, cwd, now()))
 	})
 
 	// Eviction runs at session boundaries, off the per-call path. The session
-	// that is starting or ending is never a candidate.
-	_ = safe.Guard(func() error {
+	// that is starting or ending is never a candidate. Its error is not this
+	// session's, so it goes to no coverage record; Evict writes each gap
+	// before removing its run, so whatever it did remove is accounted for.
+	return safe.Guard(func() error {
 		_, err := st.Evict(store.CapBytes(), sessionID, now())
 		return err
 	})

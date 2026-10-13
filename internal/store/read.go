@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -10,10 +9,6 @@ import (
 	"sort"
 	"time"
 )
-
-// maxLine bounds a single record on read. Records are small by construction;
-// the bound is what stops a corrupted file from being read as one giant line.
-const maxLine = 16 << 20
 
 // Run is everything recorded for one session.
 type Run struct {
@@ -179,16 +174,25 @@ func classifyRunLine(run *Run, line []byte) {
 	}
 }
 
-// ReadGaps reads every gap record in the store.
-func (s *Store) ReadGaps() ([]Gap, error) {
-	var gaps []Gap
-	err := eachLine(filepath.Join(s.root, FileGaps), func(line []byte) {
+// ReadGaps reads every gap record in the store, and counts the lines it
+// could not read as one: damaged, too long, or not a gap.
+//
+// The count is the gaps' Run.Skipped, and a reader must not drop it. A gap
+// line that does not parse cannot be attributed to a session -- its session
+// id is part of what failed to read -- so a reader marks every session
+// unverified when it is not zero (REC-33). Dropping the line silently, as
+// this did, let the one record saying "records were removed here" vanish,
+// and the session it described read verified.
+func (s *Store) ReadGaps() (gaps []Gap, skipped int, err error) {
+	err = eachLine(filepath.Join(s.root, FileGaps), func(line []byte) {
 		var g Gap
-		if json.Unmarshal(line, &g) == nil && g.Type == TypeGap {
-			gaps = append(gaps, g)
+		if json.Unmarshal(line, &g) != nil || g.Type != TypeGap {
+			skipped++
+			return
 		}
+		gaps = append(gaps, g)
 	})
-	return gaps, err
+	return gaps, skipped, err
 }
 
 // eachLine calls fn for every non-empty line of an NDJSON file. A missing file
@@ -230,19 +234,11 @@ func eachLineLocked(path string, budget time.Duration, fn func(line []byte)) err
 }
 
 // scanLines is the NDJSON scan itself, shared by eachLine and eachLineLocked
-// so the two differ only in whether a lock was taken first.
+// so the two differ only in whether a lock was taken first. A line too long
+// to read reaches fn as nil (forEachLine), which every caller counts as a
+// line that does not parse.
 func scanLines(f *os.File, fn func(line []byte)) error {
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
-	for sc.Scan() {
-		line := sc.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		// The scanner reuses its buffer; hand fn a copy it may keep.
-		fn(append([]byte(nil), line...))
-	}
-	return sc.Err()
+	return forEachLine(f, fn)
 }
 
 // Unterminated returns the tool_use_ids of declarations that no terminal

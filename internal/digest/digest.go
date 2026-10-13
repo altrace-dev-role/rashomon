@@ -264,7 +264,7 @@ func Build(st *store.Store, sessionID, promptID, lastAssistantMessage string, no
 		return nil, err
 	}
 
-	allGaps, err := st.ReadGaps()
+	allGaps, gapsSkipped, err := st.ReadGaps()
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +277,13 @@ func Build(st *store.Store, sessionID, promptID, lastAssistantMessage string, no
 	}
 
 	d := build(run, gaps, promptID, lastAssistantMessage, now)
+	// A gap line that could not be read may have been this session's, and
+	// nothing can say it was not (store.ReadGaps): the same reason as a
+	// record line of the run that could not be read.
+	if gapsSkipped > 0 {
+		d.Coverage.add(ReasonRecordsSkipped)
+		d.Coverage.State = store.StateUnverified
+	}
 	if d.SessionID == "" {
 		d.SessionID = sessionID
 	}

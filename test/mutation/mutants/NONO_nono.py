@@ -185,8 +185,8 @@ m("NONO a repeat forget appends a second store-level record", "internal/store/ga
 # error paths is swallowed (review of #53): each of these survived every
 # related test.
 m("NONO the store-level forget record lands after the runs", "internal/store/gaps.go",
-  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\tvar gaps []Gap\n\tfor _, name := range names {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\treturn gaps, nil",
-  "\tvar gaps []Gap\n\tfor _, name := range names {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\treturn gaps, nil",
+  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\treturn s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, host, now) })",
+  "\tgaps, err := s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, host, now) })\n\tif err != nil {\n\t\treturn gaps, err\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\treturn gaps, nil",
   "TestForgetHost_AForgetThatFails")
 m("NONO an unreadable store-level forget file reads as nothing forgotten", "internal/store/gaps.go",
   "\ttimes, err := s.forgottenDigestTimes()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(times) == 0 {\n\t\t// A predicate",

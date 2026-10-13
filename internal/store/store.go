@@ -407,7 +407,7 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(line); err != nil {
+	if err := appendHealed(f, line); err != nil {
 		return err
 	}
 	return s.syncAppend(f)
@@ -526,12 +526,16 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	switch {
 	case err == nil:
 		defer unlock()
+		err = appendHealed(f, line)
 	case bestEffort && errors.Is(err, ErrLockTimeout):
+		// Without the lock the last byte could change under the read, and
+		// a cut-back could take another writer's record with it, so this
+		// append neither heals a torn tail nor cuts itself back.
+		_, err = f.Write(line)
 	default:
 		return err
 	}
-
-	if _, err := f.Write(line); err != nil {
+	if err != nil {
 		return err
 	}
 	return s.syncAppend(f)

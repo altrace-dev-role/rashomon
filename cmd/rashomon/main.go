@@ -278,11 +278,19 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		if standsDown(args, st, stderr) {
 			return nil
 		}
-		hook.RunProbe(sig, phase, stdin, st, time.Now)
+		if err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {
+			fmt.Fprintln(stderr, evictionLine)
+		}
 		return nil
 	})
 	return exitOK
 }
+
+// evictionLine is what probe says when eviction could not finish (REC-32): a
+// store that cannot evict grows past its cap, and no session's coverage can
+// say so. Fixed text, like flushLostLine, because hook stderr reaches Claude
+// Code's debug log; `rashomon report` shows the gaps eviction did write.
+const evictionLine = "rashomon: store eviction incomplete"
 
 // recapStdinTimeout bounds how long cmdRecap waits for the Stop/StopFailure
 // payload on stdin before giving up and proceeding as though none arrived.
@@ -1634,10 +1642,9 @@ func cmdForget(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	gaps, err := st.ForgetWindow(from, to, time.Now())
-	if err != nil {
-		return err
-	}
+	// A run forget could not rewrite is in the error, and every other run was
+	// still forgotten (store.forgetEach): say what was done, then fail.
+	gaps, forgetErr := st.ForgetWindow(from, to, time.Now())
 	total := 0
 	for _, g := range gaps {
 		total += g.RemovedRecords
@@ -1651,7 +1658,7 @@ func cmdForget(args []string, stdout io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "rashomon: forgot %d records across %d runs %s; %d gap records written\n",
 		total, len(gaps), bound, len(gaps))
-	return nil
+	return forgetErr
 }
 
 // parseInstant accepts a duration ("24h", meaning that long ago) or an RFC3339
@@ -1777,7 +1784,16 @@ func forgetHost(host string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// As in cmdForget: what was forgotten is printed, and baselines cleared,
+	// before a run that could not be rewritten fails the command.
 	gaps, forgetErr := st.ForgetHost(host, time.Now())
+	if forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {
+		// Failed before any run was forgotten, and perhaps before the
+		// store-level record landed: the line below would claim later
+		// reports leave the host out. No baseline is cleared either, so the
+		// command changed nothing it does not say.
+		return forgetErr
+	}
 	total := 0
 	for _, g := range gaps {
 		total += g.RemovedRecords
@@ -1788,11 +1804,11 @@ func forgetHost(host string, stdout io.Writer) error {
 	// is the conservative direction: a host the user asked to forget must not
 	// survive in a baseline they did not think to name.
 	//
-	// Run whether or not ForgetHost above succeeded, and the summary below is
-	// printed from whatever either one managed before either error is
-	// returned. A forget that clears some runs or some baselines and then
-	// fails must still say so: a caller who sees only the error cannot tell
-	// that part of it already happened.
+	// Run after a partial forget too (store.ErrForgetIncomplete), and the
+	// summary below is printed from whatever either step managed before
+	// either error is returned. A forget that clears some runs or some
+	// baselines and then fails must still say so: a caller who sees only the
+	// error cannot tell that part of it already happened.
 	cleared, hadBaselines, clearErr := clearBaselines(st.Root(), host)
 
 	fmt.Fprintf(stdout, "rashomon: forgot %s naming %s across %s; %s written",
@@ -1800,7 +1816,10 @@ func forgetHost(host string, stdout io.Writer) error {
 	// Said when nothing was removed, because that is when "forgot 0 records"
 	// reads as "nothing happened" -- and before #45 it was true: the host came
 	// back under the sandbox heading of the next report. The store-level
-	// record ForgetHost now writes keeps it out, and the line says so.
+	// record ForgetHost now writes keeps it out, and the line says so. It is
+	// true after a partial forget as well: ForgetHost returns
+	// ErrForgetIncomplete only from its pass over the runs, which starts
+	// after that record landed, and every other error returned above.
 	if total == 0 {
 		fmt.Fprint(stdout, "; later reports still leave it out wherever they find it, "+
 			"the sandbox trail included")

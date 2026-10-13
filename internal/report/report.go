@@ -67,7 +67,49 @@ const (
 	ReasonExecutionMismatch     = "execution_mismatch"
 	ReasonGap                   = "gap"
 	ReasonDuplicateDeclarations = "duplicate_declarations"
+	// ReasonDeclarationMissing: a terminal closes a declaration this read
+	// does not hold, and the terminal does not say the lock refused it. The
+	// declaration was lost some other way -- a line that could not be read,
+	// a write that failed -- and blaming the lock would name a wait that
+	// never happened (errors-1). See DroppedReasons.
+	ReasonDeclarationMissing = "declaration_missing"
 )
+
+// DroppedReasons is the coverage reason for each kind of lone terminal among
+// ids (store.Run.Dropped, or a turn's share of it): lock_timeout for one
+// whose own reason is lock_timeout, which is the terminal a hook writes to
+// the spill file when the lock refused its declaration, and
+// declaration_missing for any other. The report and the turn digest both
+// take their reasons from here, so the two cannot disagree on what a lone
+// terminal means.
+func DroppedReasons(run *store.Run, ids []string) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	lone := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		lone[id] = true
+	}
+	locked, missing := false, false
+	for _, t := range run.Terminals {
+		if !lone[t.ToolUseID] || t.FlushFailed() {
+			continue
+		}
+		if t.Reason != nil && *t.Reason == store.ReasonLockTimeout {
+			locked = true
+		} else {
+			missing = true
+		}
+	}
+	var reasons []string
+	if locked {
+		reasons = append(reasons, store.ReasonLockTimeout)
+	}
+	if missing {
+		reasons = append(reasons, ReasonDeclarationMissing)
+	}
+	return reasons
+}
 
 // knownLabel clamps a stored file_label to the vocabulary shape.Labels()
 // defines, mapping anything else to unknown.
@@ -101,6 +143,7 @@ func Reasons() []string {
 		ReasonExecutionMismatch,
 		ReasonGap,
 		ReasonDuplicateDeclarations,
+		ReasonDeclarationMissing,
 	}
 }
 
@@ -369,7 +412,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 	for _, o := range opts {
 		o(&cfg)
 	}
-	gaps, err := st.ReadGaps()
+	gaps, gapsSkipped, err := st.ReadGaps()
 	if err != nil {
 		return nil, err
 	}
@@ -462,6 +505,11 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		if sess.Gaps == nil {
 			sess.Gaps = []store.Gap{}
 		}
+		// A gap line that could not be read may have been this session's,
+		// and nothing can say it was not (store.ReadGaps).
+		if gapsSkipped > 0 {
+			sess.Coverage.add(ReasonRecordsUnreadable)
+		}
 		if len(sess.Gaps) > 0 {
 			sess.Coverage.add(ReasonGap)
 			if sess.SessionID == name && len(run.Declarations)+len(run.Terminals)+len(run.Coverage) == 0 {
@@ -552,8 +600,8 @@ func build(run *store.Run) Session {
 	if len(sess.Declarations.Unterminated) > 0 {
 		sess.Coverage.add(store.ReasonUnterminatedEntry)
 	}
-	if len(sess.Declarations.Dropped) > 0 {
-		sess.Coverage.add(store.ReasonLockTimeout)
+	for _, r := range DroppedReasons(run, sess.Declarations.Dropped) {
+		sess.Coverage.add(r)
 	}
 	// A hook whose one full sync failed marked its call on the spill file
 	// (REC-34). Its records read back, so nothing above notices them; this is

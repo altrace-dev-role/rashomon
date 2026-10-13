@@ -13,9 +13,9 @@ m("MS coverage is written at the call records' version", "internal/hook/coverage
 m("MS a gap is written at the call records' version", "internal/store/gaps.go",
   "\t\tSchemaVersion:  SessionSchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      sessionID,\n\t\tReason:         GapForget,\n",
   "\t\tSchemaVersion:  SchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      sessionID,\n\t\tReason:         GapForget,\n", SV)
-m("MS a size-cap gap is written at the call records' version", "internal/store/gaps.go",
-  "\t\t\tSchemaVersion:  SessionSchemaVersion,\n\t\t\tRecordedAtMS:   now.UnixMilli(),\n\t\t\tSessionID:      run.SessionID(),\n\t\t\tReason:         GapSizeCap,\n",
-  "\t\t\tSchemaVersion:  SchemaVersion,\n\t\t\tRecordedAtMS:   now.UnixMilli(),\n\t\t\tSessionID:      run.SessionID(),\n\t\t\tReason:         GapSizeCap,\n",
+m("MS a size-cap gap is written at the call records' version", "internal/store/evict.go",
+  "\t\tSchemaVersion:  SessionSchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      run.SessionID(),\n\t\tReason:         GapSizeCap,\n",
+  "\t\tSchemaVersion:  SchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      run.SessionID(),\n\t\tReason:         GapSizeCap,\n",
   "TestH15_SizeCapEvictionLeavesAGap")
 m("MS a forget --host gap is written at the call records' version", "internal/store/gaps.go",
   "\t\tSchemaVersion:  SessionSchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      sessionID,\n\t\tReason:         GapForgetHost,\n",

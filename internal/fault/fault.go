@@ -59,6 +59,12 @@ const (
 	// one that is not ends the process with those records on disk but
 	// nothing yet fully synced.
 	PointHookBeforeFlush = "hook.before_flush"
+	// PointStoreAppendWrite is inside every append made under its file's
+	// lock, after the write has gone out. "fail=N" turns the first N into
+	// failures, which is how a failed append's cut-back is reached without
+	// a full disk: the line is whole on disk when the failure arrives, so a
+	// missing cut-back leaves a record the writer was told did not land.
+	PointStoreAppendWrite = "store.append.write"
 )
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders
