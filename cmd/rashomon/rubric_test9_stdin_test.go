@@ -61,12 +61,16 @@ func sizedStop(t *testing.T, n int) []byte {
 func TestRubricTest9_RecapReaderGivesUpOnAWriterThatNeverCloses(t *testing.T) {
 	pr, pw := io.Pipe()
 	t.Cleanup(func() {
+		// The reader goroutine is parked in Read on the open pipe. Seeing it
+		// in the dump first proves the name matches a real frame, so the
+		// absence check below cannot pass by looking for the wrong name.
+		requireGoroutine(t, recapReaderFrame)
 		// Closing the writer is what lets the abandoned goroutine's Read
 		// return; it then sends into a buffered channel and exits.
 		if err := pw.Close(); err != nil {
 			t.Errorf("closing the pipe: %v", err)
 		}
-		waitForNoGoroutine(t, "main.readRecapPayload.func")
+		waitForNoGoroutine(t, recapReaderFrame)
 	})
 
 	done := make(chan recapPayload, 1)
@@ -82,6 +86,21 @@ func TestRubricTest9_RecapReaderGivesUpOnAWriterThatNeverCloses(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("readRecapPayload is still waiting on a pipe nobody writes to after 2s; its timeout did not fire")
+	}
+}
+
+// recapReaderFrame is the frame of the goroutine readRecapPayload starts. In
+// a test binary package main is named by its import path, not "main", so the
+// frame reads ".../cmd/rashomon.readRecapPayload.func1".
+const recapReaderFrame = "cmd/rashomon.readRecapPayload.func"
+
+// requireGoroutine fails the test unless some goroutine's stack names fn.
+func requireGoroutine(t *testing.T, fn string) {
+	t.Helper()
+	buf := make([]byte, 1<<20)
+	n := runtime.Stack(buf, true)
+	if !bytes.Contains(buf[:n], []byte(fn)) {
+		t.Errorf("no goroutine names %s, so its exit cannot be observed:\n%s", fn, buf[:n])
 	}
 }
 
