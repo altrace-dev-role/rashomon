@@ -178,6 +178,13 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 					g.Reason, stamp(g.FromUnixMS), stamp(g.ToUnixMS))
 				continue
 			}
+			// Eviction removes a run it could not read by size, and then
+			// does not know how many records went (store.RemovedUnknown).
+			if g.RemovedRecords < 0 {
+				fmt.Fprintf(b, "    %s: an unknown number of records removed, covering %s to %s\n",
+					g.Reason, stamp(g.FromUnixMS), stamp(g.ToUnixMS))
+				continue
+			}
 			fmt.Fprintf(b, "    %s: %d records removed, covering %s to %s\n",
 				g.Reason, g.RemovedRecords, stamp(g.FromUnixMS), stamp(g.ToUnixMS))
 		}
@@ -234,6 +241,7 @@ var reasonText = map[string]string{
 	"gap":                    "a gap record marks a stretch this store does not hold: records removed by `forget` or the size cap, or a window `rashomon pause` left unrecorded",
 	"recording_paused":       "a hook ran while `rashomon pause` was in effect, so what it would have recorded (a tool call, its result, or the session's start or end) was deliberately not recorded",
 	"duplicate_declarations": "more declarations than distinct tool calls: more than one recorder wrote into this run, and the counts here include every copy",
+	"declaration_missing":    "a call's terminal record is here and its declaration is not, and the lock did not refuse it: the declaration was lost to a damaged line or a failed write",
 	"internal_error":         "a hook invocation failed inside this program, so what it should have recorded is missing",
 	"lock_timeout":           "a hook could not take the store lock in time, so its record went to the spill file or was lost",
 	"payload_too_large":      "a hook was handed a payload over the 8 MiB intake limit and refused it without parsing, so that call was not recorded",

@@ -21,7 +21,8 @@ m("REC-34 the seq counter syncs in full inside the lock", "internal/store/store.
 m("REC-34 group commit off: a deferred store syncs every append in full", "internal/store/store.go",
   "\tif !s.deferred {\n\t\treturn syncFull(f)\n\t}\n", "\tif true {\n\t\treturn syncFull(f)\n\t}\n", "TestREC34_")
 m("REC-34 probe defers durability and never flushes", "cmd/rashomon/main.go",
-  "\t\thook.RunProbe(sig, phase, stdin, st, time.Now)", "\t\tst.DeferDurability()\n\t\thook.RunProbe(sig, phase, stdin, st, time.Now)",
+  "\t\tif err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {",
+  "\t\tst.DeferDurability()\n\t\tif err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {",
   "TestREC34_")
 m("REC-34 a failed flush leaves no marker", "internal/hook/flush.go",
   "\treturn st.SpillTerminal(store.Terminal{", "\treturn nil\n\treturn st.SpillTerminal(store.Terminal{", "TestREC34_")
@@ -80,7 +81,7 @@ m("REC-34 forget's rewrite sync unseen, judged end to end", "internal/store/gaps
   "\tfor _, line := range lines {\n\t\tif _, err := f.Write(append(line, '\\n')); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn syncFull(f)\n",
   "\tfor _, line := range lines {\n\t\tif _, err := f.Write(append(line, '\\n')); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn f.Sync()\n",
   "TestREC34_Forget")
-m("REC-34 eviction takes a lock the recorder does not count", "internal/store/gaps.go",
+m("REC-34 eviction takes a lock the recorder does not count", "internal/store/evict.go",
   "\tunlock, err := lockCounted(gf, lockBudget)", "\tunlock, err := lockFile(gf, lockBudget)", "TestREC34h_")
 # The store-level forget record (#53) landed beside group commit and took its
 # lock and sync directly; both go through the recorder's sites too.

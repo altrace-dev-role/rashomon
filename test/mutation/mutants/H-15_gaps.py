@@ -1,6 +1,6 @@
 m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\t}\n\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n\n\tif records != nil && removedRec > 0 {", "\t}\n\tif records != nil && removedRec > 0 {", "TestH15_ForgetLeavesAGap")
-m("H-15 eviction deletes without a gap record", "internal/store/gaps.go", "\t\tif _, err := gf.Write(line); err != nil {", "\t\tif _, err := gf.Write(line[:0]); err != nil {", "TestH15_SizeCap")
-m("H-15 eviction does not count the executions it removed", "internal/store/gaps.go",
+m("H-15 eviction deletes without a gap record", "internal/store/evict.go", "\t\tif err := appendHealed(gf, line); err != nil {", "\t\tif err := appendHealed(gf, line[:0]); err != nil {", "TestH15_SizeCap")
+m("H-15 eviction does not count the executions it removed", "internal/store/evict.go",
   "RemovedRecords: len(run.Declarations) + len(run.Executions) + len(run.Terminals),",
   "RemovedRecords: len(run.Declarations) + len(run.Terminals),", "TestH15_SizeCap")
 m("H-15 forget --before behaves like --since", "cmd/rashomon/main.go",
@@ -13,7 +13,7 @@ m("H-15 executions are not part of forget's doomed plan", "internal/store/gaps.g
   "\t\tvar h lineHead\n\t\tif json.Unmarshal(line, &h) != nil {\n\t\t\tcontinue\n\t\t}",
   "\t\tvar h lineHead\n\t\tif json.Unmarshal(line, &h) != nil || bytes.Contains(line, []byte(`\"type\":\"execution\"`)) {\n\t\t\tcontinue\n\t\t}",
   "TestH15_ForgetTakesTheExecutionWithThePair")
-IMPORTS["H-15 executions are not part of forget's doomed plan"] = ("internal/store/gaps.go", '\t"bufio"\n', '\t"bufio"\n\t"bytes"\n')
+IMPORTS["H-15 executions are not part of forget's doomed plan"] = ("internal/store/gaps.go", '\t"crypto/hmac"\n', '\t"bytes"\n\t"crypto/hmac"\n')
 m("H-15 forget --before writes no gap record", "internal/store/gaps.go",
   "\t}\n\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}",
   "\t}\n\tif !w.openBelow() {\n\t\tif err := s.AppendGap(g); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}",
