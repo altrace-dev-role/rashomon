@@ -49,3 +49,8 @@ m("DEL-22 written_paths withheld as oversize has no key", "internal/store/record
   "\tWrittenPathsWithheld    *string `json:\"written_paths_withheld\"`", "\tWrittenPathsWithheld    *string `json:\"-\"`", "TestDEL22b_")
 m("DEL-22 BREADTH's mcp_server_source key is absent", "internal/store/record_v5.go",
   "\tMCPServerSource *string `json:\"mcp_server_source\"`\n", "", "TestDEL22b_")
+# Route admits only findings that pass Check (P07N-14).
+m("DEL-22 Route routes findings that skipped Check", "internal/steer/route.go",
+  "\treturn route(ctx, admit(findings))\n", "\treturn route(ctx, findings)\n", "TestDEL22f_")
+m("DEL-22 admit keeps a finding that fails Check", "internal/steer/route.go",
+  "\t\tif f.Check() == nil {\n", "\t\tif f.Check() == nil || true {\n", "TestDEL22f_")
