@@ -102,6 +102,47 @@ func TestRubricHLD1_NarrowedPluginEntryIsNotDeclared(t *testing.T) {
 	}
 }
 
+// TestRubricHLD1_HandEditedPluginEntryStillDeclares: an edited group is not
+// the entry watch installs, but Claude Code still runs it, so it still counts
+// as declaring the event. That second answer is the one watch's refusal and
+// status's overlap need: a narrowed or slowed plugin entry records every call
+// it fires on, twice beside a settings install.
+func TestRubricHLD1_HandEditedPluginEntryStillDeclares(t *testing.T) {
+	cases := []struct {
+		name  string
+		event string
+		field string
+		value any
+	}{
+		{"PreToolUse matcher Bash", EventPreToolUse, "matcher", "Bash"},
+		{"PreToolUse timeout 30", EventPreToolUse, "timeout", 30},
+		{"Stop timeout 600", EventStop, "timeout", 600},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := pluginRoot(t, editShipped(t, c.event, c.field, c.value))
+			declared, whole, err := pluginDeclaration(root, c.event)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !declared || whole {
+				t.Errorf("%s with %s=%v: declared=%v intact=%v, want declared=true intact=false",
+					c.event, c.field, c.value, declared, whole)
+			}
+		})
+	}
+	// A group whose command does not resolve under the plugin's own bin/ is
+	// not ours, edited or not.
+	t.Run("command outside the plugin", func(t *testing.T) {
+		body := strings.ReplaceAll(string(readShippedHooks(t)), pluginRootVar+"/bin/", "/nonexistent/bin/")
+		root := pluginRoot(t, []byte(body))
+		declared, whole, err := pluginDeclaration(root, EventPreToolUse)
+		if err != nil || declared || whole {
+			t.Errorf("declared=%v intact=%v err=%v, want false false nil", declared, whole, err)
+		}
+	})
+}
+
 // editShipped returns the shipped hooks.json with one field of one event's
 // group changed. A nil value removes the field. timeout lives on the hook,
 // matcher on the group, as in the file itself.

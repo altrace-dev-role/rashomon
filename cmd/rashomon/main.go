@@ -781,10 +781,10 @@ func cmdWatch(stdout io.Writer) error {
 	}
 	if p, err := install.FindPlugin(userDoc); err != nil {
 		return err
-	} else if p != nil && p.Enabled && len(p.Events) > 0 {
+	} else if p != nil && p.Live() {
 		return fmt.Errorf("the %s plugin is enabled and already provides these hook entries (%s); "+
 			"installing here would record every tool call twice -- run `/plugin disable %s` first, "+
-			"or skip watch and keep using the plugin", p.Key, strings.Join(p.Events, ", "), p.Key)
+			"or skip watch and keep using the plugin", p.Key, strings.Join(p.Declared, ", "), p.Key)
 	}
 
 	exe, err := install.Executable()
@@ -1184,7 +1184,7 @@ func pluginEnabled() (bool, error) {
 	if err != nil || p == nil {
 		return false, err
 	}
-	return p.Enabled && len(p.Events) > 0, nil
+	return p.Live(), nil
 }
 
 // The words status prints for a thing it could not resolve. A status that
@@ -1294,7 +1294,7 @@ func statusPlugin(stdout io.Writer) (bool, error) {
 		}
 		fmt.Fprintf(stdout, "  plugin %s: %s\n", event, state)
 	}
-	return p.Enabled && len(p.Events) > 0, nil
+	return p.Live(), nil
 }
 
 // entryState is the word for our entry under one event: present as watch
