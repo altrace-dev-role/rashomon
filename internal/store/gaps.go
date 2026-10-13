@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/host"
 )
 
@@ -98,6 +99,51 @@ func (s *Store) forgetEach(forget func(dir string) (*Gap, error)) ([]Gap, error)
 // nothing may be reported as forgotten.
 var ErrForgetIncomplete = errors.New("store: forget left runs it could not rewrite")
 
+// runLines is one run's records and spill files as forget reads them: the
+// records file open, and locked until close, and the lines of both.
+type runLines struct {
+	records   *os.File // nil when the run has no records file
+	unlock    func()
+	spillPath string
+	rec       [][]byte
+	spill     [][]byte
+}
+
+// openRunLines opens a run for forget. The ordered stream's lock is held
+// until close, so that no handler appends between the plan and the rewrite.
+func openRunLines(dir string) (*runLines, error) {
+	rl := &runLines{spillPath: filepath.Join(dir, FileSpill)}
+	f, err := os.OpenFile(filepath.Join(dir, FileRecords), os.O_RDWR, fileMode)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	if err == nil {
+		unlock, err := lockCounted(f, lockBudget)
+		if err != nil {
+			f.Close() //nolint:errcheck // the lock error is what matters
+			return nil, err
+		}
+		rl.records, rl.unlock = f, unlock
+	}
+	if rl.rec, err = readLines(rl.records); err == nil {
+		rl.spill, err = readLinesAt(rl.spillPath)
+	}
+	if err != nil {
+		rl.close()
+		return nil, err
+	}
+	return rl, nil
+}
+
+// close releases the records file's lock and closes it.
+func (rl *runLines) close() {
+	if rl.records == nil {
+		return
+	}
+	rl.unlock()
+	rl.records.Close() //nolint:errcheck // the rewrite's Sync reports a write failure
+}
+
 // lineHead is what forget needs to know about a record to decide its fate.
 type lineHead struct {
 	RecordedAtMS int64  `json:"recorded_at_unix_ms"`
@@ -106,32 +152,12 @@ type lineHead struct {
 }
 
 func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
-	recordsPath := filepath.Join(dir, FileRecords)
-	spillPath := filepath.Join(dir, FileSpill)
-
-	// The ordered stream's lock is held for the whole operation so that no
-	// handler appends between the plan and the rewrite.
-	records, err := os.OpenFile(recordsPath, os.O_RDWR, fileMode)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
-	}
-	if records != nil {
-		defer records.Close() //nolint:errcheck // Sync reports the write failure
-		unlock, err := lockCounted(records, lockBudget)
-		if err != nil {
-			return nil, err
-		}
-		defer unlock()
-	}
-
-	recLines, err := readLines(records)
+	rl, err := openRunLines(dir)
 	if err != nil {
 		return nil, err
 	}
-	spillLines, err := readLinesAt(spillPath)
-	if err != nil {
-		return nil, err
-	}
+	defer rl.close()
+	records, spillPath, recLines, spillLines := rl.records, rl.spillPath, rl.rec, rl.spill
 
 	// Plan: every tool_use_id with any record in the window, from either file.
 	doomed := map[string]bool{}
@@ -271,23 +297,35 @@ func readLinesAt(path string) ([][]byte, error) {
 	return readLines(f)
 }
 
-// rewrite replaces an open file's content in place.
+// rewrite replaces an open file's content in place with lines, which are the
+// file's own lines with some left out, in their order.
 //
 // In place rather than temp-and-rename on purpose. The append lock is taken on
 // the file's inode; a handler blocked on that lock holds a descriptor to this
 // inode and will append to it once the lock is released. A rename would leave
 // that handler appending to an orphan.
+//
+// It compacts: each kept line is written from the start of the file, at or
+// before where it already was, and the file is cut to its new length last.
+// A line is only ever written over bytes of itself or of lines before it, so
+// a crash at any point leaves every kept line readable, in its new place or
+// its old one; what it can add is a duplicate of a kept line or one damaged
+// line where the two meet, and readers surface both (duplicate_declarations,
+// records_unreadable). Truncating first, as this used to, lost every kept
+// line to a crash before the writes, while the gap said only the forgotten
+// ones had gone (test-5).
 func rewrite(f *os.File, lines [][]byte) error {
-	if err := f.Truncate(0); err != nil {
-		return err
-	}
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
+	var off int64
 	for _, line := range lines {
-		if _, err := f.Write(append(line, '\n')); err != nil {
+		buf := append(line[:len(line):len(line)], '\n')
+		if _, err := f.WriteAt(buf, off); err != nil {
 			return err
 		}
+		off += int64(len(buf))
+		fault.Inject(fault.PointStoreRewritePartial)
+	}
+	if err := f.Truncate(off); err != nil {
+		return err
 	}
 	return syncFull(f)
 }
@@ -430,30 +468,12 @@ func (s *Store) recordForgottenHost(digest string, now time.Time) error {
 }
 
 func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
-	recordsPath := filepath.Join(dir, FileRecords)
-	spillPath := filepath.Join(dir, FileSpill)
-
-	records, err := os.OpenFile(recordsPath, os.O_RDWR, fileMode)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
-	}
-	if records != nil {
-		defer records.Close() //nolint:errcheck // Sync reports the write failure
-		unlock, err := lockCounted(records, lockBudget)
-		if err != nil {
-			return nil, err
-		}
-		defer unlock()
-	}
-
-	recLines, err := readLines(records)
+	rl, err := openRunLines(dir)
 	if err != nil {
 		return nil, err
 	}
-	spillLines, err := readLinesAt(spillPath)
-	if err != nil {
-		return nil, err
-	}
+	defer rl.close()
+	records, spillPath, recLines, spillLines := rl.records, rl.spillPath, rl.rec, rl.spill
 
 	// Plan: every tool_use_id whose DECLARATION named the host. Only a
 	// declaration carries hostnames, so only a declaration can nominate a call

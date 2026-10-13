@@ -78,8 +78,8 @@ m("REC-34 group commit off inside barrierSync", "internal/store/sync_darwin.go",
 m("REC-34 forget's rewrite syncs where the recorder cannot see it", "internal/store/gaps.go",
   "\treturn syncFull(f)\n}\n\n// rewriteAt", "\treturn f.Sync()\n}\n\n// rewriteAt", "TestREC34h_")
 m("REC-34 forget's rewrite sync unseen, judged end to end", "internal/store/gaps.go",
-  "\tfor _, line := range lines {\n\t\tif _, err := f.Write(append(line, '\\n')); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn syncFull(f)\n",
-  "\tfor _, line := range lines {\n\t\tif _, err := f.Write(append(line, '\\n')); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn f.Sync()\n",
+  "\tif err := f.Truncate(off); err != nil {\n\t\treturn err\n\t}\n\treturn syncFull(f)\n",
+  "\tif err := f.Truncate(off); err != nil {\n\t\treturn err\n\t}\n\treturn f.Sync()\n",
   "TestREC34_Forget")
 m("REC-34 eviction takes a lock the recorder does not count", "internal/store/evict.go",
   "\tunlock, err := lockCounted(gf, lockBudget)", "\tunlock, err := lockFile(gf, lockBudget)", "TestREC34h_")

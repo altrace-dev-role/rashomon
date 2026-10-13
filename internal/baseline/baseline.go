@@ -28,6 +28,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 )
 
 // Version is carried by the file so a later reader can refuse a shape it does
@@ -370,6 +372,7 @@ func save(dir, path string, f File) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
+	fault.Inject(fault.PointBaselineBeforeRename)
 	return os.Rename(name, path)
 }
 
