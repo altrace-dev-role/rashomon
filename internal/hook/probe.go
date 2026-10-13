@@ -17,11 +17,20 @@ import (
 // mid-flight is written into the run's own coverage while the run is still
 // live, rather than inferred later by a report that has to guess.
 //
+// Its lock waits share one deadline, LockWaitTotal, as a hook's do.
+//
 // It never fails the hook. A probe that cannot do its job records that it
 // could not, and returns. The one failure no record can hold is eviction's,
 // which is about the store rather than this session: it is returned, for the
 // caller to say so on stderr.
 func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time) error {
+	return runProbe(sig, phase, in, st, now, LockWaitTotal)
+}
+
+// runProbe is RunProbe with its lock waits bounded by waits, which a test
+// shortens.
+func runProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time, waits time.Duration) error {
+	st.LimitLockWaits(waits)
 	sessionID := UnattributedSession
 	reason := ""
 	cwd := ""

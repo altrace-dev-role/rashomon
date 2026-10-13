@@ -82,7 +82,7 @@ m("REC-34 forget's rewrite sync unseen, judged end to end", "internal/store/gaps
   "\tif err := f.Truncate(off); err != nil {\n\t\treturn err\n\t}\n\treturn f.Sync()\n",
   "TestREC34_Forget")
 m("REC-34 eviction takes a lock the recorder does not count", "internal/store/evict.go",
-  "\tunlock, err := lockCounted(gf, lockBudget)", "\tunlock, err := LockFile(gf, lockBudget)", "TestREC34h_")
+  "\tunlock, err := lockCounted(gf, s.lockWait(lockBudget))", "\tunlock, err := LockFile(gf, s.lockWait(lockBudget))", "TestREC34h_")
 # The store-level forget record (#53) landed beside group commit and took its
 # lock and sync directly; both go through the recorder's sites too.
 m("REC-34 the forgotten-host record takes a lock the recorder does not count", "internal/store/gaps.go",

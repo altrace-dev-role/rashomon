@@ -27,6 +27,17 @@ const MaxPayloadBytes = hookio.MaxPayloadBytes
 // did not produce it would be worse.
 const UnattributedSession = "unattributed"
 
+// LockWaitTotal is how long one invocation may wait for store locks, all of
+// its appends together (store.Store.LimitLockWaits). The hook timeout is five
+// seconds (install.Timeout), and three of them leave two for starting, the
+// payload, the flush and exiting, which measure in milliseconds. It is at
+// least one append's own two-second budget, so a declaration still waits its
+// whole budget, and the terminal and coverage record after it share what is
+// left rather than each waiting two more seconds, which could add up to six
+// (perf-2). install.Timeout itself stays: an install written with any other
+// value reads as edited by hand.
+const LockWaitTotal = 3 * time.Second
+
 // Handler captures one tool call and then closes it out.
 //
 // Capture and Close are separate because Close has to run on paths where
@@ -39,6 +50,9 @@ const UnattributedSession = "unattributed"
 type Handler struct {
 	st  *store.Store
 	now func() time.Time
+
+	// lockWaits is LockWaitTotal, which a test shortens.
+	lockWaits time.Duration
 
 	sessionID string
 	toolUseID string
@@ -53,11 +67,13 @@ type Handler struct {
 // New builds a Handler. now is injectable so a test can pin the clock and
 // compare two records byte for byte.
 func New(st *store.Store, now func() time.Time) *Handler {
-	return &Handler{st: st, now: now, sessionID: UnattributedSession}
+	return &Handler{st: st, now: now, lockWaits: LockWaitTotal, sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the declaration.
 func (h *Handler) Capture(in io.Reader) error {
+	// First, so that Close's appends share the deadline too.
+	h.st.LimitLockWaits(h.lockWaits)
 	fault.Inject(fault.PointHookStart)
 
 	payload, err := hookio.Intake(in)
