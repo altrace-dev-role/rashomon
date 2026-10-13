@@ -176,8 +176,9 @@ func (s *Store) DeferDurability() { s.deferred = true }
 // and elsewhere every append was itself a full sync. With nothing appended
 // it does nothing. It takes no lock.
 //
-// A failure is final: this Store never reports durability again, and a later
-// Flush returns the same error without syncing. A retried fsync can succeed
+// A failure is final, whether it was this sync's or a barrier's before it
+// (syncFailed): this Store never reports durability again, and a later Flush
+// returns the same error without syncing. A retried fsync can succeed
 // for pages the kernel dropped when the first one failed, which would turn
 // "possibly lost" into "fine". The caller marks the records instead, with
 // ReasonFlushFailed. A failure also ends the deferral: no later Flush can
@@ -191,12 +192,23 @@ func (s *Store) Flush() error {
 		return nil
 	}
 	if err := flushFile(s.dirty); err != nil {
-		s.flushErr = err
-		s.deferred = false
-		return err
+		return s.syncFailed(err)
 	}
 	s.dirty = ""
 	return nil
+}
+
+// syncFailed makes a failed sync of a deferred append final, and is the one
+// place a failure is recorded, whether Flush's full sync failed or a barrier
+// inside an append did. The error is sticky: every later Flush returns it and
+// syncs nothing, because a retried sync can succeed for pages the kernel
+// dropped when the first one failed. And the deferral ends, because no later
+// Flush can cover a barrier-ordered append: every append after this one -- the
+// flush_failed marker first -- is synced in full inside its own lock.
+func (s *Store) syncFailed(err error) error {
+	s.flushErr = err
+	s.deferred = false
+	return err
 }
 
 // flushFile syncs path in full. It opens the file for writing as well as
@@ -356,15 +368,24 @@ func lockAppend(f *os.File, budget time.Duration) (func(), error) {
 
 // syncAppend is the durability step of every append, taken inside its lock:
 // a full sync, or on a deferred Store a barrier, which leaves the full sync
-// to Flush. The file is noted before the barrier is tried, so a barrier that
-// fails still leaves it for Flush to cover.
+// to Flush. A barrier that fails is a sync that failed, and is final the way
+// a failed Flush is (syncFailed): Flush must not full-sync the same file and
+// report it durable, which on Linux, where the barrier is fsync, would be the
+// very retry it refuses.
 func (s *Store) syncAppend(f *os.File) error {
 	if !s.deferred {
 		return syncFull(f)
 	}
 	s.dirty = f.Name()
 	fault.RecordSync(fault.SyncBarrier, f.Name())
-	return barrierSync(f)
+	err := barrierSync(f)
+	if err == nil {
+		err = fault.Fail(fault.PointStoreBarrier)
+	}
+	if err != nil {
+		return s.syncFailed(err)
+	}
+	return nil
 }
 
 // syncFull is a full sync: F_FULLFSYNC on darwin, fsync elsewhere. Every full

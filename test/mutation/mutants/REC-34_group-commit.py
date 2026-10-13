@@ -28,7 +28,9 @@ m("REC-34 a failed flush leaves no marker", "internal/hook/flush.go",
 m("REC-34 the marker names the wrong reason", "internal/hook/flush.go",
   "\treason := store.ReasonFlushFailed\n", "\treason := store.ReasonInternalError\n", "TestREC34_")
 m("REC-34 the flush_failed marker is written behind a barrier", "internal/store/store.go",
-  "\t\ts.flushErr = err\n\t\ts.deferred = false\n\t\treturn err\n", "\t\ts.flushErr = err\n\t\treturn err\n", "TestREC34_")
+  "\ts.flushErr = err\n\ts.deferred = false\n\treturn err\n", "\ts.flushErr = err\n\treturn err\n", "TestREC34_")
+m("REC-34 a failed barrier is left for Flush to retry", "internal/store/store.go",
+  "\tif err != nil {\n\t\treturn s.syncFailed(err)\n\t}\n\treturn nil\n}\n", "\treturn err\n}\n", "TestREC34e_")
 m("REC-34 a failed flush is forgotten and retried", "internal/store/store.go",
   "\tif s.flushErr != nil {\n\t\treturn s.flushErr\n\t}\n", "", "TestREC34c_")
 m("REC-34 the report renders a flush_failed marker as fine", "internal/report/report.go",

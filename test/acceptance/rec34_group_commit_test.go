@@ -8,12 +8,14 @@ import (
 	"testing"
 )
 
-// Mirrors internal/fault: the sync recorder's variable and the full-sync
-// point, whose first failure is a deferred hook's flush and whose second is
-// the flush_failed marker's own sync.
+// Mirrors internal/fault: the sync recorder's variable; the full-sync point,
+// whose first failure is a deferred hook's flush and whose second is the
+// flush_failed marker's own sync; and the barrier point, whose first failure
+// is the barrier on the seq counter of the entry's first ordered append.
 const (
 	syncLogEnv         = "RASHOMON_SYNC_LOG"
 	pointStoreFullSync = "store.full_sync"
+	pointStoreBarrier  = "store.barrier"
 )
 
 // syncEvent is one line of the sync recorder's log: a barrier or a full sync,
@@ -268,4 +270,62 @@ func TestREC34_UnmarkableFlushFailureSaysSoOnStderr(t *testing.T) {
 			t.Errorf("full syncs %v; want the flush and then the marker's, on spill.ndjson", fulls)
 		}
 	})
+}
+
+// TestREC34_FailedBarrierIsMarkedNotRetried: a barrier that fails is a sync
+// that failed, and is final the way a failed flush is. The entry exits 0 and
+// prints nothing; its one Flush reports the barrier's failure instead of
+// full-syncing the same files and calling them durable (on Linux the barrier
+// is fsync, so that would be the retried fsync REC-34 rules out); every sync
+// after the failure is a full one, the deferral having ended; and the call is
+// marked flush_failed by a spill terminal synced in full (REC-34).
+func TestREC34_FailedBarrierIsMarkedNotRetried(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		entry   func(*env) func(string, ...string) result
+		payload func(*testing.T) string
+	}{
+		{"hook", func(e *env) func(string, ...string) result { return e.hook }, func(t *testing.T) string { return defaultPayload().build(t) }},
+		{"post", func(e *env) func(string, ...string) result { return e.post }, func(t *testing.T) string { return defaultPost().build(t) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.watched(testSession)
+			log := filepath.Join(t.TempDir(), "sync.log")
+			res := c.entry(e)(c.payload(t), syncLogEnv+"="+log, "RASHOMON_FAULT="+pointStoreBarrier+":fail=1")
+			if res.exitCode != 0 || res.stdout != "" || res.stderr != "" {
+				t.Fatalf("a failed barrier: exit %d, stdout %q, stderr %q; want 0 and nothing printed", res.exitCode, res.stdout, res.stderr)
+			}
+
+			spill := e.read(testSession, "spill.ndjson")
+			if len(spill) != 1 || spill[0].typ() != "terminal" || spill[0].str("reason") != "flush_failed" ||
+				spill[0].str("tool_use_id") != testToolUseID {
+				t.Fatalf("spill holds %d lines (%v); want the one flush_failed terminal for %s", len(spill), spill, testToolUseID)
+			}
+
+			// The failed barrier, then nothing but full syncs, each inside
+			// its own append lock, the marker's last: no barrier relies on a
+			// flush that can no longer succeed, and no flush ran at all.
+			events := readSyncLog(t, log)
+			if len(events) < 2 || events[0].kind != "barrier" {
+				t.Fatalf("sync log %v; want the failed barrier first", events)
+			}
+			for i, ev := range events[1:] {
+				if ev.kind != "full" || !ev.locked {
+					t.Errorf("event %d after the failed barrier is a %s on %s, locked=%v; want only full syncs inside their append locks: %v",
+						i+1, ev.kind, ev.file, ev.locked, events)
+				}
+			}
+			if last := events[len(events)-1]; last.file != "spill.ndjson" {
+				t.Errorf("the last sync is on %s; want the marker's, on spill.ndjson: %v", last.file, events)
+			}
+
+			if res := e.probe("end", testSession); res.exitCode != 0 {
+				t.Fatalf("probe end: exit %d", res.exitCode)
+			}
+			if sess := e.report(testSession); !e.hasReason(sess, "flush_failed") {
+				t.Errorf("report coverage %s %v; want flush_failed", sess.Coverage.State, sess.Coverage.Reasons)
+			}
+		})
+	}
 }
