@@ -462,7 +462,7 @@ m("TB the declaration carries no cwd digest", "internal/hook/handle.go",
   "",
   "TestTestBending_ARepeatedRelativeCd|TestSchema3_|TestH13_")
 m("TB the cwd digest is the plain path", "internal/shape/shape.go",
-  "\treturn digest(key, \"\\x00cwd\", []byte(cwd))\n",
+  "\treturn digest(key, \"\\x00cwd\", cwd)\n",
   "\treturn cwd\n",
   "TestTestBending_ARepeatedRelativeCd")
 

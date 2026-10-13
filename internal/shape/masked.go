@@ -892,7 +892,7 @@ func (p *lineParser) runnerDigest(g int, key []byte) *string {
 	if p.runners[g].displaced {
 		return nil
 	}
-	d := digest(key, "\x00runner", []byte(p.runners[g].key))
+	d := digest(key, "\x00runner", p.runners[g].key)
 	return &d
 }
 
