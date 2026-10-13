@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -171,5 +175,65 @@ func TestForgetHost_PrintsTheSummaryEvenWhenForgetHostFails(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "forgot 1 record") {
 		t.Errorf("forgetHost discarded the gap st.ForgetHost already made in s1 before failing on s2:\n%s", buf.String())
+	}
+}
+
+// TestRubricLLD4_ForgetCommandAsksInTheRecordedSpelling: `curl
+// https://167838211/x` records the host 10.1.2.3, and `forget --host
+// 167838211` must forget it, from the records and from every baseline, and
+// say which host it forgot. It compared the raw argument, matched nothing and
+// printed "forgot 0 records", a forget that read as done while the host
+// stayed on disk. An argument that names no host is refused before anything
+// is opened, and the refusal does not echo it: it may carry a credential.
+func TestRubricLLD4_ForgetCommandAsksInTheRecordedSpelling(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("RASHOMON_HOME", root)
+	// Refused before a store exists, where an accepted value would print
+	// "nothing has been recorded here" and exit 0.
+	for _, bad := range []string{"deploy:hunter2@10.1.2.3", "[10.1.2.3]"} {
+		var out, errOut bytes.Buffer
+		if code := run([]string{"forget", "--host", bad}, nil, &out, &errOut); code == exitOK {
+			t.Errorf("forget --host %q exited 0: %s", bad, out.String())
+		}
+		if strings.Contains(errOut.String()+out.String(), "hunter2") {
+			t.Errorf("forget --host echoed the credential: %s%s", out.String(), errOut.String())
+		}
+	}
+
+	input, err := json.Marshal(map[string]string{"command": "curl https://167838211/x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hosts, _ := shape.Hosts("Bash", input)
+	if !reflect.DeepEqual(hosts, []string{"10.1.2.3"}) {
+		t.Fatalf("premise: the call records %q, want [10.1.2.3]", hosts)
+	}
+	st, err := store.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendDeclaration(store.Declaration{
+		Type: store.TypeDeclaration, SchemaVersion: store.SchemaVersion, SessionID: "s-lld4",
+		ToolUseID: "toolu_lld4", ToolName: "Bash", RecordedAtMS: 1_000, Hosts: hosts,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if res := baseline.Update(root, "/a-project", "s-lld4", time.UnixMilli(1_000), hosts); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+
+	var out, errOut bytes.Buffer
+	if code := run([]string{"forget", "--host", "167838211"}, nil, &out, &errOut); code != exitOK {
+		t.Fatalf("forget --host 167838211 exited %d: %s", code, errOut.String())
+	}
+	if want := "rashomon: forgot 1 record naming 10.1.2.3 across 1 run; 1 gap record written; 1 project baseline(s) cleared\n"; out.String() != want {
+		t.Errorf("forget --host 167838211 printed %q, want %q", out.String(), want)
+	}
+	left, err := st.ReadRun("s-lld4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left.Declarations) != 0 {
+		t.Errorf("the declaration naming 10.1.2.3 survived the forget: %+v", left.Declarations)
 	}
 }

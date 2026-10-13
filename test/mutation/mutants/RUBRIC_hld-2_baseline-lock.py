@@ -6,7 +6,7 @@ m("RUBRIC hld-2 a render saves without the lock", "internal/baseline/baseline.go
   "\trelease, err := store.LockPath(filepath.Join(dir, lockName))\n\tif err != nil {\n\t\treturn Result{}, err\n\t}\n\tdefer release()\n",
   "", "TestRubricHLD2_ConcurrentRendersLoseNoHost")
 m("RUBRIC hld-2 a forget rewrites after releasing the lock", "internal/baseline/baseline.go",
-  "\tdefer release()\n\treturn forgetLocked(path, host)\n", "\trelease()\n\treturn forgetLocked(path, host)\n",
+  "\tdefer release()\n\treturn forgetLocked(path, raw, name)\n", "\trelease()\n\treturn forgetLocked(path, raw, name)\n",
   "TestRubricHLD2_ForgetAndRenderLoseNoChange")
 m("RUBRIC hld-2 the fold edits the file it was handed", "internal/baseline/fold.go",
   "\tout.Hosts = maps.Clone(f.Hosts)\n", "\tout.Hosts = f.Hosts\n", "TestRubricHLD2_FoldIsPure")
