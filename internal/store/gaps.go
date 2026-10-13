@@ -69,6 +69,9 @@ func (s *Store) ForgetWindow(from, to *time.Time, now time.Time) ([]Gap, error) 
 // as it was, or with its gap written and its rewrite unfinished -- the
 // overstatement forgetRun's own comment accepts.
 func (s *Store) forgetEach(forget func(dir string) (*Gap, error)) ([]Gap, error) {
+	if err := s.opened(); err != nil {
+		return nil, err
+	}
 	names, err := s.Runs()
 	if err != nil {
 		return nil, err
@@ -576,11 +579,14 @@ func namesHost(h declHead, host string) bool {
 // report has to recognise the host again while the store must not hold its
 // name. Two installs produce different digests for the same host, so a store
 // cannot be tested against a dictionary of hostnames.
+//
+// It is "" for a Store without a key of the install's length: the zero Store
+// would otherwise digest under an empty key, which anyone can recompute.
 func (s *Store) HostDigest(host string) string {
-	if host == "" {
+	if host == "" || len(s.key) != keyLen {
 		return ""
 	}
-	m := hmac.New(sha256.New, s.Key())
+	m := hmac.New(sha256.New, s.key)
 	m.Write([]byte("forget-host\x00"))
 	m.Write([]byte(host))
 	return hex.EncodeToString(m.Sum(nil))
