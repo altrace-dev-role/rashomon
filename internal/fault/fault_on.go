@@ -176,15 +176,16 @@ func truncate(b []byte, n int) []byte { return b[:n] }
 // It is REC-34's instrument. Durability cannot be observed without a power
 // loss, so its test observes the next best thing: which sync ran, on which
 // file, and whether a store lock was held while it ran. "locked" is counted
-// from LockTaken and LockReleased, around every append lock the store takes,
-// rather than claimed by the code that syncs, so a full sync moved back
-// inside the lock is recorded as exactly that.
+// from LockTaken and LockReleased, around every lock the store takes, append
+// or not, rather than claimed by the code that syncs, so a full sync moved
+// back inside a lock is recorded as exactly that. The count is per process,
+// so with several goroutines it can only err towards "locked".
 const SyncLogEnvVar = "RASHOMON_SYNC_LOG"
 
-// locksHeld counts the store append locks this process holds.
+// locksHeld counts the store locks this process holds.
 var locksHeld atomic.Int32
 
-// LockTaken and LockReleased bracket every store append lock.
+// LockTaken and LockReleased bracket every store lock.
 func LockTaken() { locksHeld.Add(1) }
 
 func LockReleased() { locksHeld.Add(-1) }
