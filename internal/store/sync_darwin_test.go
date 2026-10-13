@@ -69,3 +69,67 @@ func TestREC34f_BarrierIsTheKernelsBarrier(t *testing.T) {
 		t.Errorf("barrierSync on a descriptor that is not open = %v, want EBADF from the kernel", err)
 	}
 }
+
+// TestREC34f_ARefusedBarrierSyncsInFull: a filesystem that refuses the
+// barrier (APFS is the only one that does barriers, so HFS+ or an exFAT
+// external disk) gets the full sync in its place, and the fallback says the
+// write is durable, since that sync left Flush nothing to do. If it said so
+// without syncing, Store.syncAppend would clear the dirty file and Flush
+// would issue no F_FULLFSYNC at all: a deferred append on such a volume would
+// never be synced and would be reported durable (P09-F9). A sync on a closed
+// file fails, which is how this test sees the fallback sync issued: the
+// refusal returns that failure, durable false. An I/O error is the sync
+// failing and is returned as it is, with no fallback sync behind it; an
+// interrupted call is issued again.
+func TestREC34f_ARefusedBarrierSyncsInFull(t *testing.T) {
+	refuse := func(errno syscall.Errno) func(uintptr) syscall.Errno {
+		return func(uintptr) syscall.Errno { return errno }
+	}
+	open := func(t *testing.T) *os.File {
+		t.Helper()
+		f, err := os.OpenFile(filepath.Join(t.TempDir(), FileRecords), appendFlags, fileMode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { f.Close() })
+		if _, err := f.Write([]byte("{}\n")); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	closed := func(t *testing.T) *os.File {
+		t.Helper()
+		f := open(t)
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	for _, errno := range []syscall.Errno{syscall.ENOTSUP, syscall.EINVAL, syscall.ENOTTY, syscall.ENOSYS} {
+		durable, err := barrierWith(open(t), refuse(errno))
+		if err != nil || !durable {
+			t.Errorf("a barrier refused with %v = (durable %v, %v); want (true, nil): the full sync in its place is durable", errno, durable, err)
+		}
+		durable, err = barrierWith(closed(t), refuse(errno))
+		if !errors.Is(err, os.ErrClosed) || durable {
+			t.Errorf("a barrier refused with %v on a closed file = (durable %v, %v); want (false, %v): the fallback must issue the full sync and return its failure", errno, durable, err, os.ErrClosed)
+		}
+	}
+
+	durable, err := barrierWith(closed(t), refuse(syscall.EIO))
+	if !errors.Is(err, syscall.EIO) || durable {
+		t.Errorf("a barrier failing with EIO = (durable %v, %v); want (false, EIO), with no full sync retried behind it", durable, err)
+	}
+
+	calls := 0
+	interrupted := func(uintptr) syscall.Errno {
+		if calls++; calls == 1 {
+			return syscall.EINTR
+		}
+		return 0
+	}
+	durable, err = barrierWith(open(t), interrupted)
+	if err != nil || durable || calls != 2 {
+		t.Errorf("a barrier interrupted once = (durable %v, %v) after %d calls; want (false, nil) after 2", durable, err, calls)
+	}
+}

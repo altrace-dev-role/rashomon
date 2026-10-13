@@ -19,11 +19,11 @@ import (
 // taking no argument, as os.File's is, or syscall.Fsync -- is issued only by
 // syncFull, which tells the recorder first, and by the stand-in barrier off
 // darwin, which the recorder logs as the barrier it replaces. The darwin
-// barrier's fcntl is issued only by barrierSync.
+// barrier's fcntl is issued only by fcntlBarrier.
 var watchedCalls = map[string][]string{
 	"lockFile":  {"store.go:lockCounted"},
 	"full sync": {"store.go:syncFull", "sync_other.go:barrierSync"},
-	"fcntl":     {"sync_darwin.go:barrierSync"},
+	"fcntl":     {"sync_darwin.go:fcntlBarrier"},
 }
 
 // TestREC34h_EveryStoreLockAndSyncIsRecorded: the sync recorder REC-34 reads
