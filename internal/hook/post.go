@@ -152,8 +152,9 @@ func (p *Post) Capture(in io.Reader) error {
 	}
 
 	// Attribute before anything else can fail, as the declaration path does.
-	p.sessionID, p.withheld = attribute(pl.SessionID)
-	p.toolUseID, _ = store.CapID(pl.ToolUseID)
+	p.sessionID = attribute(pl.SessionID)
+	p.withheld = len(pl.SessionID) > store.MaxIDBytes
+	p.toolUseID = store.CapID(pl.ToolUseID)
 	p.cwd = pl.CWD
 
 	fault.Inject(fault.PointPostParsed)
@@ -249,6 +250,8 @@ func exitCode(msg string) *int {
 	if !strings.HasPrefix(msg, exitCodePrefix) {
 		return nil
 	}
+	// Only the first line is read; whether a newline was found does not
+	// matter, since a message with none is all first line.
 	first, _, _ := strings.Cut(msg[len(exitCodePrefix):], "\n")
 	digits := strings.TrimSpace(first)
 	if digits == "" {
@@ -283,5 +286,7 @@ func (p *Post) Close(sig *Signals, captureErr error) {
 		reason = store.ReasonRecordOversize
 	}
 
+	// A post-phase coverage record that cannot be written is read as its
+	// absence, as on the call phase (H-10).
 	_ = p.st.AppendCoverage(BuildCoverage(p.st, p.sessionID, store.PhasePost, reason, p.cwd, p.now()))
 }

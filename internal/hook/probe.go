@@ -35,7 +35,7 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 		if err := p.from(payload); err != nil {
 			return err
 		}
-		sessionID, _ = attribute(p.SessionID)
+		sessionID = attribute(p.SessionID)
 		cwd = p.CWD
 
 		switch phase {

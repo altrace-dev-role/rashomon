@@ -53,6 +53,8 @@ func lockFile(f *os.File, budget time.Duration) (func(), error) {
 		if r1 != 0 {
 			return func() {
 				var overlapped syscall.Overlapped
+				// An unlock that fails leaves nothing to undo: closing the
+				// handle, which every caller does next, releases the lock.
 				_, _, _ = procUnlockFileEx.Call(uintptr(h), 0,
 					lockBytesLow, lockBytesHigh, uintptr(unsafe.Pointer(&overlapped)))
 			}, nil
