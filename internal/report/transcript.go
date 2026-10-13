@@ -545,12 +545,15 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 	return out
 }
 
-// LineKind is how a transcript line's header decoded (DecodeHeader).
+// LineKind is how a transcript line's header decoded (DecodeHeader). Its zero
+// value is no kind at all, never one DecodeHeader returns, so a kind a reader
+// forgot to take cannot read as a blank line to skip.
 type LineKind int
 
 const (
+	_ LineKind = iota // the zero value: no kind
 	// LineBlank is an empty or whitespace-only line: no line at all.
-	LineBlank LineKind = iota
+	LineBlank
 	// LineDecoded is a header that decoded into the reader's shape.
 	LineDecoded
 	// LineUndecodable is a header that did not decode.
