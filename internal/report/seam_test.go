@@ -541,6 +541,15 @@ func TestSeam_AHostOnlyTheSandboxSawCanBeForgotten(t *testing.T) {
 			if !strings.Contains(b.String(), "sandbox (nono):") {
 				t.Fatalf("premise: the sandbox section did not render:\n%s", b.String())
 			}
+			// THE COUNT, NOT THE NAME. With no proxy store the text names only
+			// refused hosts, and pypi.org is an allowed one, so a search for
+			// its name passed whether or not the forget worked. The fixture
+			// allows example.com and pypi.org; with pypi.org forgotten the
+			// count is 1.
+			if !strings.Contains(b.String(), "sandbox (nono): 1 allowed,") {
+				t.Errorf("a host forgotten with nothing to remove is still counted under the "+
+					"sandbox heading (#45):\n%s", b.String())
+			}
 			if strings.Contains(b.String(), "pypi.org") {
 				t.Errorf("a host forgotten with nothing to remove is back under the "+
 					"sandbox heading (#45):\n%s", b.String())
