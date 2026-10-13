@@ -187,10 +187,12 @@ func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (spe
 // RecordFailure marks this evaluation as unhealthy, for the one path where
 // cmdRecap gave up before it could even build a decision: a digest read that
 // itself errored. It is best-effort in the same sense Claim is -- see its
-// doc -- and is a no-op where no store exists yet, for the same reason.
-func RecordFailure(root string, now time.Time) {
+// doc -- and is a no-op where no store exists yet, for the same reason. A
+// write that fails is returned, not dropped here: what happens to it is the
+// caller's rule (H-93 for cmdRecap), stated once where it applies.
+func RecordFailure(root string, now time.Time) error {
 	if !storeExists(root) {
-		return
+		return nil
 	}
 	path := statePath(root)
 	s, err := readState(path)
@@ -199,7 +201,7 @@ func RecordFailure(root string, now time.Time) {
 	}
 	s.LastEvaluatedAtUnixMS = now.UnixMilli()
 	s.Healthy = false
-	_ = writeState(path, s, "")
+	return writeState(path, s, "")
 }
 
 // Status reports recap's own evaluation history for `status` to render

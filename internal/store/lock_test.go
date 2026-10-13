@@ -1,6 +1,6 @@
 //go:build unix || windows
 
-// The lock contract runs on both platforms that ship a lockFile: flock on
+// The lock contract runs on both platforms that ship a LockFile: flock on
 // unix and LockFileEx on Windows (lock_windows.go), which CI's lock-windows
 // job runs. Windows' locks are mandatory, not advisory: while one handle
 // holds the range, a read through any other handle is refused. So a test

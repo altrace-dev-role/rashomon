@@ -9,7 +9,7 @@
 // Every hook invocation is a process of its own, and so is every command, so
 // the store is shared between processes that know nothing of each other. What
 // keeps them apart is one exclusive file lock per file a writer appends to
-// (lockFile: flock on unix, which is advisory, and LockFileEx on Windows,
+// (LockFile: flock on unix, which is advisory, and LockFileEx on Windows,
 // which is mandatory and also refuses a read through another handle). A
 // Store's own appends take the same locks, which is what orders goroutines
 // sharing a Store.
