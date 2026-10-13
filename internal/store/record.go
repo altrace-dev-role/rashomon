@@ -82,6 +82,10 @@ const (
 	// FileForgottenHosts is at the store root: one ForgottenHostRecord per
 	// `forget --host`, whatever it removed.
 	FileForgottenHosts = "forgotten-hosts.ndjson"
+	// FileLockWait holds, as decimal milliseconds, the longest any one hook
+	// invocation of the run waited for store locks (perf-7). It is a note
+	// about the store, like probe and seq, and not a record.
+	FileLockWait = "lockwait"
 )
 
 // Declaration is what the agent asked to run.

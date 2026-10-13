@@ -42,7 +42,7 @@ func TestRubricTEST11_ARefusedReadUnderAHeldLockCountsAsSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer holder.Close() //nolint:errcheck // read-only
-	unlock, err := lockFile(holder, lockBudget)
+	unlock, _, err := lockFile(holder, lockBudget)
 	if err != nil {
 		t.Fatalf("taking the lock: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestRubricTEST11_TheConsistentReadCountsARefusalAtItsCallSite(t *testing.T)
 		t.Fatal(err)
 	}
 	defer holder.Close() //nolint:errcheck // read-only
-	unlock, err := lockFile(holder, lockBudget)
+	unlock, _, err := lockFile(holder, lockBudget)
 	if err != nil {
 		t.Fatalf("taking the records lock: %v", err)
 	}

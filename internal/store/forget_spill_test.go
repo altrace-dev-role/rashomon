@@ -118,7 +118,7 @@ func TestRubricCONC1_ForgetKeepsASpillAppendedAfterItsPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer gf.Close()
-	unlock, err := lockFile(gf, lockBudget)
+	unlock, _, err := lockFile(gf, lockBudget)
 	if err != nil {
 		t.Fatal(err)
 	}

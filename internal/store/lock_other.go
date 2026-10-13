@@ -12,8 +12,8 @@ import (
 // appends of records larger than a pipe buffer interleave, and a store that
 // silently corrupts itself under concurrency is worse than one that will not
 // open at all.
-func lockFile(*os.File, time.Duration) (func(), error) {
-	return nil, errors.New("store: file locking is not implemented on this platform")
+func lockFile(*os.File, time.Duration) (func(), time.Duration, error) {
+	return nil, 0, errors.New("store: file locking is not implemented on this platform")
 }
 
 // readRefused reports whether a read failed because another handle holds

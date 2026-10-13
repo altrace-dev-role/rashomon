@@ -38,10 +38,16 @@ const (
 //
 // These locks are mandatory rather than advisory: while one is held, every
 // other process is denied read as well as write access to the range.
-func lockFile(f *os.File, budget time.Duration) (func(), error) {
+//
+// It returns how long it waited, as lock_unix.go's does (perf-7).
+func lockFile(f *os.File, budget time.Duration) (func(), time.Duration, error) {
 	h := syscall.Handle(f.Fd())
-	deadline := time.Now().Add(budget)
+	start := time.Now()
+	deadline := start.Add(budget)
 	backoff := 200 * time.Microsecond
+	// waited is how long this call has spent on the lock, which it reports
+	// (perf-7): nothing when the first try takes it.
+	var waited time.Duration
 
 	for {
 		var overlapped syscall.Overlapped
@@ -55,19 +61,20 @@ func lockFile(f *os.File, budget time.Duration) (func(), error) {
 				// handle, which every caller does next, releases the lock.
 				_, _, _ = procUnlockFileEx.Call(uintptr(h), 0,
 					lockBytesLow, lockBytesHigh, uintptr(unsafe.Pointer(&overlapped)))
-			}, nil
+			}, waited, nil
 		}
 		if !errors.Is(err, errorLockViolation) && !errors.Is(err, syscall.ERROR_IO_PENDING) {
-			return nil, err
+			return nil, waited, err
 		}
 		left := time.Until(deadline)
 		if left <= 0 {
-			return nil, ErrLockTimeout
+			return nil, waited, ErrLockTimeout
 		}
 		// The last sleep is cut to the time left, so the final try lands at
 		// the deadline and a give-up never runs a whole sleep past the
 		// budget (perf-1).
 		time.Sleep(min(backoff, left))
+		waited = time.Since(start)
 		if backoff < 10*time.Millisecond {
 			backoff *= 2
 		}

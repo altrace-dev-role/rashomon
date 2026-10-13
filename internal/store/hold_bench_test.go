@@ -24,7 +24,7 @@ func heldAppend(st *Store, d Declaration) (time.Duration, error) {
 		return 0, err
 	}
 	defer f.Close()
-	unlock, err := lockCounted(f, lockBudget)
+	unlock, err := st.lockAppend(f, lockBudget)
 	if err != nil {
 		return 0, err
 	}

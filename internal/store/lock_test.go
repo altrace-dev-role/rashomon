@@ -31,14 +31,14 @@ func TestLockFileIsExclusiveAndBounded(t *testing.T) {
 	held := openForAppend(t, path)
 	contender := openForAppend(t, path)
 
-	unlock, err := lockFile(held, lockBudget)
+	unlock, _, err := lockFile(held, lockBudget)
 	if err != nil {
 		t.Fatalf("lockFile on an uncontended file: %v", err)
 	}
 
 	const budget = 50 * time.Millisecond
 	start := time.Now()
-	release, err := lockFile(contender, budget)
+	release, _, err := lockFile(contender, budget)
 	waited := time.Since(start)
 	if err == nil {
 		release()
@@ -58,7 +58,7 @@ func TestLockFileIsExclusiveAndBounded(t *testing.T) {
 
 	unlock()
 
-	release, err = lockFile(contender, budget)
+	release, _, err = lockFile(contender, budget)
 	if err != nil {
 		t.Fatalf("lockFile after the holder released: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestAppendExecutionSpillsWhenTheLockIsHeld(t *testing.T) {
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		t.Fatal(err)
 	}
-	unlock, err := lockFile(openForAppend(t, filepath.Join(dir, FileRecords)), lockBudget)
+	unlock, _, err := lockFile(openForAppend(t, filepath.Join(dir, FileRecords)), lockBudget)
 	if err != nil {
 		t.Fatalf("taking the records lock: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestReadRunConsistent_RespectsAHeldLock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	unlock, err := lockFile(openForAppend(t, recordsPath), lockBudget)
+	unlock, _, err := lockFile(openForAppend(t, recordsPath), lockBudget)
 	if err != nil {
 		t.Fatalf("taking the records lock: %v", err)
 	}

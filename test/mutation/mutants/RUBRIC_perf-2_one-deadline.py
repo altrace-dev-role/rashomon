@@ -5,11 +5,11 @@ P2 = "TestRubricPERF2_"
 m("perf-2 every lock wait ignores the deadline", "internal/store/deadline.go",
   "\tif s.waitUntil.IsZero() {\n", "\tif true {\n", P2)
 m("perf-2 an ordered append waits its whole budget", "internal/store/store.go",
-  "\tunlock, err := lockCounted(f, s.lockWait(lockBudget))\n", "\tunlock, err := lockCounted(f, lockBudget)\n", P2)
+  "\tunlock, err := s.lockAppend(f, s.lockWait(lockBudget))\n", "\tunlock, err := s.lockAppend(f, lockBudget)\n", P2)
 m("perf-2 a coverage or spill append waits its whole budget", "internal/store/store.go",
-  "\tunlock, err := lockCounted(f, s.lockWait(budget))\n", "\tunlock, err := lockCounted(f, budget)\n", P2)
+  "\tunlock, err := s.lockAppend(f, s.lockWait(budget))\n", "\tunlock, err := s.lockAppend(f, budget)\n", P2)
 m("perf-2 eviction waits its whole budget for the gaps lock", "internal/store/evict.go",
-  "\tunlock, err := lockCounted(gf, s.lockWait(lockBudget))\n", "\tunlock, err := lockCounted(gf, lockBudget)\n", P2)
+  "\tunlock, _, err := lockCounted(gf, s.lockWait(lockBudget))\n", "\tunlock, _, err := lockCounted(gf, lockBudget)\n", P2)
 m("perf-2 a hook sets no deadline", "internal/hook/handle.go",
   "\th.st.LimitLockWaits(h.lockWaits)\n", "", P2)
 m("perf-2 a post sets no deadline", "internal/hook/post.go",

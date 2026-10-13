@@ -124,7 +124,9 @@ func openRunLines(dir string) (*runLines, error) {
 		return nil, err
 	}
 	if err == nil {
-		unlock, err := lockCounted(f, lockBudget)
+		// forget's waits are its own command's, which prints its result;
+		// the tally noted per run is of hook invocations' (perf-7).
+		unlock, _, err := lockCounted(f, lockBudget)
 		if err != nil {
 			f.Close() //nolint:errcheck // the lock error is what matters
 			return nil, err
@@ -355,7 +357,8 @@ func rewriteSpill(path string, snapshot, kept [][]byte) error {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // Sync reports the write failure
-	unlock, err := lockCounted(f, lockBudget)
+	// forget's own wait, discarded as in openRunLines.
+	unlock, _, err := lockCounted(f, lockBudget)
 	if err != nil {
 		return err
 	}
@@ -481,7 +484,8 @@ func (s *Store) recordForgottenHost(digest string, now time.Time) error {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
-	unlock, err := lockCounted(f, lockBudget)
+	// forget's own wait, discarded as in openRunLines.
+	unlock, _, err := lockCounted(f, lockBudget)
 	if err != nil {
 		return err
 	}

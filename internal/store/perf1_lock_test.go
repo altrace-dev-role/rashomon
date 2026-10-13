@@ -20,7 +20,7 @@ import (
 // deadline.
 func TestRubricPERF1_AGiveUpLandsAtItsBudget(t *testing.T) {
 	path := filepath.Join(t.TempDir(), FileRecords)
-	unlock, err := lockFile(openForAppend(t, path), lockBudget)
+	unlock, _, err := lockFile(openForAppend(t, path), lockBudget)
 	if err != nil {
 		t.Fatalf("lockFile on an uncontended file: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestRubricPERF1_AGiveUpLandsAtItsBudget(t *testing.T) {
 	const budget = 17 * time.Millisecond
 	const slack = 6 * time.Millisecond
 	start := time.Now()
-	release, err := lockFile(openForAppend(t, path), budget)
+	release, _, err := lockFile(openForAppend(t, path), budget)
 	waited := time.Since(start)
 	if err == nil {
 		release()
