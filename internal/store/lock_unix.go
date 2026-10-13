@@ -63,3 +63,7 @@ func LockFile(f *os.File, budget time.Duration) (func(), error) {
 		}
 	}
 }
+
+// readRefused reports whether a read failed because another handle holds
+// the file's lock. flock is advisory, so a held lock never refuses a read.
+func readRefused(error) bool { return false }

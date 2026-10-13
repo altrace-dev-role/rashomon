@@ -73,3 +73,8 @@ func LockFile(f *os.File, budget time.Duration) (func(), error) {
 		}
 	}
 }
+
+// readRefused reports whether a read failed because another handle holds
+// the file's lock. LockFileEx locks are mandatory: ReadFile on a range
+// another handle has locked fails with ERROR_LOCK_VIOLATION.
+func readRefused(err error) bool { return errors.Is(err, errorLockViolation) }

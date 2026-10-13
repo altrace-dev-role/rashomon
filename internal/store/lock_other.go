@@ -15,3 +15,7 @@ import (
 func LockFile(*os.File, time.Duration) (func(), error) {
 	return nil, errors.New("store: file locking is not implemented on this platform")
 }
+
+// readRefused reports whether a read failed because another handle holds
+// the file's lock. With no lock on this platform, none ever does.
+func readRefused(error) bool { return false }

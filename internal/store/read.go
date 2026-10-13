@@ -227,7 +227,11 @@ func eachLine(path string, fn func(line []byte)) error {
 // A lock this reader could not get within budget is not treated as a reason
 // to fail: the scan below then runs exactly as eachLine's always has, and a
 // line actually caught mid-write still lands in Skipped rather than being
-// silently mis-read as something it is not.
+// silently mis-read as something it is not. Where the writer's lock is
+// mandatory (Windows), that unlocked scan is itself refused; the refusal
+// reaches fn as one nil line, which every caller counts as a line it could
+// not read, so the run reads as incomplete rather than the read failing
+// (test-11).
 func eachLineTryLock(path string, budget time.Duration, fn func(line []byte)) error {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -238,10 +242,16 @@ func eachLineTryLock(path string, budget time.Duration, fn func(line []byte)) er
 	}
 	defer f.Close() //nolint:errcheck // read-only
 
-	if unlock, lerr := lockCounted(f, budget); lerr == nil {
+	unlock, lerr := lockCounted(f, budget)
+	if lerr == nil {
 		defer unlock()
 	}
-	return scanLines(f, fn)
+	err = scanLines(f, fn)
+	if lerr != nil && readRefused(err) {
+		fn(nil)
+		return nil
+	}
+	return err
 }
 
 // scanLines is the NDJSON scan itself, shared by eachLine and eachLineTryLock
