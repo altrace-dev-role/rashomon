@@ -27,7 +27,7 @@
     {"id": "post.8MiB", "entry": "post", "payload_bytes": 8388608, "budget_mib": 24.1, "gates_from": "P-10"}
   ],
   "per_tool_call": {"memory_time_mib_ms_max": 379, "summed_peak_mib_max": 32, "process_creations_max": {"settings": 6, "plugin": 6}},
-  "parallel": {"ways": 64, "summed_peak_mib_max": 704},
+  "parallel": {"ways": 64, "summed_peak_mib_max": 704, "basis": "per-process rule (RES-30, ruling 2026-10-13): largest pair peak at most 1.25x the median of 25 solo pairs, both measured in the same run. Restated from measurement on the reference machine with GOMAXPROCS unchanged: largest 1.08x to 1.21x over six runs with nine solo pairs, 1.10x to 1.19x over eleven runs with 25 (4.02 to 4.31 MiB against solo medians of 3.61 to 3.69 MiB), burst median 1.02x to 1.05x; GOMAXPROCS(1) in hook and post measured 1.03x to 1.09x over twenty runs and was rejected. No tolerance on the reference machine; macos-latest unmeasured, so a CI runner gets the platform tolerance on the ratio until it is measured"},
   "benchmarks": [
     {"name": "BenchmarkDerive/bash_short", "measured_bytes_per_op": 5122, "measured_allocs_per_op": 77, "bytes_per_op_max": 5122, "allocs_per_op_max": 77},
     {"name": "BenchmarkDerive/bash_long_4k", "measured_bytes_per_op": 428860, "measured_allocs_per_op": 2333, "bytes_per_op_max": 428860, "allocs_per_op_max": 2333},
