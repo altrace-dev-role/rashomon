@@ -91,11 +91,21 @@ type env struct {
 	home      string
 	configDir string
 	cwd       string
+	// damaged is why this test leaves a store that breaks its invariants on
+	// purpose (expectDamagedStore); empty, the end-of-test check runs.
+	damaged string
+	// checked records that the end-of-test check ran.
+	checked bool
 }
 
+// newEnv makes one machine, and checks its store's invariants when the test
+// ends (storecheck_test.go). The check is registered after the directories,
+// so it runs before they are removed.
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	return &env{t: t, home: t.TempDir(), configDir: t.TempDir(), cwd: t.TempDir()}
+	e := &env{t: t, home: t.TempDir(), configDir: t.TempDir(), cwd: t.TempDir()}
+	t.Cleanup(e.checkStore)
+	return e
 }
 
 func (e *env) settingsPath() string { return filepath.Join(e.configDir, "settings.json") }

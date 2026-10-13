@@ -37,6 +37,7 @@ import (
 // records_skipped.
 func TestH100_ATornTailIsSurfacedNotSilentlyAbsorbed(t *testing.T) {
 	e := newEnv(t)
+	e.expectDamagedStore("leaves a torn last line, which the reader must surface")
 	e.watched(testSession)
 
 	p := defaultPayload()
