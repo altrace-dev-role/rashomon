@@ -99,7 +99,7 @@ m("SP a subagent response under another conversation's transcript is priced into
 m("SP a subagent response's prompt is not read from its own transcript", "internal/spend/scan.go",
   "\t\t\tcand.prompt = prompt", "\t\t\tcand.prompt = prompt[:0]", "TestJoin_SpendInside")
 m("SP a subagent transcript's user lines are skipped before their promptId is read", "internal/spend/scan.go",
-  "\t\tif !usageLine && !f.Subagent {", "\t\tif !usageLine {",
+  "\t\tif !mayCarry && !f.Subagent {", "\t\tif !mayCarry {",
   "TestJoin_SpendInside")
 m("SP a subagent user line with no promptId does not end the tie", "internal/spend/scan.go",
   "\t\t\t} else if !l.IsMeta {\n\t\t\t\tprompt = \"\"", "\t\t\t} else if false {\n\t\t\t\tprompt = \"\"",
@@ -562,7 +562,7 @@ m("SP a cold 1h write ignores the 5m write already counted cold", "internal/spen
   "min(cur.CacheWrite1h, short-w.CacheWrite5m)", "min(cur.CacheWrite1h, short)",
   "TestCacheExpiry_")
 m("SP a subagent transcript's lines are prefiltered on the byte string user again", "internal/spend/scan.go",
-  "\t\tif !usageLine && !f.Subagent && fileDated {", "\t\tif !usageLine && (f.Subagent && !bytes.Contains(raw, []byte(`\"user\"`)) || !f.Subagent && fileDated) {",
+  "\t\tif !mayCarry && !f.Subagent && fileDated {", "\t\tif !mayCarry && (f.Subagent && !bytes.Contains(raw, []byte(`\"user\"`)) || !f.Subagent && fileDated) {",
   "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
 m("SP an undecodable line is a sidechain one by its bytes anywhere, not its top-level key", "internal/report/transcript.go",
   "\tif topLevelSidechain(raw) {", "\tif bytes.Contains(raw, []byte(`\"isSidechain\":true`)) {",

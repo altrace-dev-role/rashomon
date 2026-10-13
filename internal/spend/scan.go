@@ -31,6 +31,49 @@ const maxLine = 64 << 20
 // any of them may end its tie (readFile).
 var usageMarker = []byte(`"usage"`)
 
+// mayCarryUsage is the prefilter's question -- may the decode read a usage
+// object from this line? -- answered without decoding, and never "no" for a
+// line the decode would read one from (FuzzUsagePrefilter). usageMarker is the
+// common case. encoding/json also accepts the key in any case under Unicode
+// folding ("Usage", and "uſage", whose U+017F folds to s) and with escapes
+// ("us\u0061ge"), so a line passes as well when it holds a backslash-u
+// escape anywhere, or a quoted five- or six-byte word that folds to "usage"
+// (the folded s is the one two-byte letter that can stand in it). Not every
+// backslash: nearly every real line has an escaped newline or quote, and
+// keeping those would undo the prefilter.
+//
+// Unparsed stays tied to usageMarker alone (readFile): a line this widening
+// keeps and the decode then rejects was never shown to carry usage.
+func mayCarryUsage(raw []byte) bool {
+	if bytes.Contains(raw, usageMarker) || bytes.Contains(raw, escapeMarker) {
+		return true
+	}
+	for i := 0; ; {
+		q := bytes.IndexByte(raw[i:], '"')
+		if q < 0 {
+			return false
+		}
+		i += q + 1
+		if i < len(raw) && raw[i]|0x20 == 'u' && foldsToUsageKey(raw[i:]) {
+			return true
+		}
+	}
+}
+
+// escapeMarker opens a \uXXXX escape, the only escape that can spell a letter.
+var escapeMarker = []byte(`\u`)
+
+// foldsToUsageKey reports whether b opens with a word that folds to "usage"
+// and then a closing quote.
+func foldsToUsageKey(b []byte) bool {
+	for _, n := range [2]int{len("usage"), len("usage") + 1} {
+		if len(b) > n && b[n] == '"' && bytes.EqualFold(b[:n], []byte("usage")) {
+			return true
+		}
+	}
+	return false
+}
+
 // The decoded shape of one transcript line. THIS IS THE WHOLE USAGE READ
 // PATH -- every total, breakdown and heuristic in the document comes from it
 // -- and it is stated as narrowly as the recorder's own rules are:
@@ -773,7 +816,8 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 	for s.Scan() {
 		raw := s.Bytes()
 		usageLine := bytes.Contains(raw, usageMarker)
-		if !usageLine && !f.Subagent && fileDated {
+		mayCarry := mayCarryUsage(raw)
+		if !mayCarry && !f.Subagent && fileDated {
 			continue
 		}
 		var l line
@@ -795,7 +839,7 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 				sc.firstMS[idx], fileDated = ms, true
 			}
 		}
-		if !usageLine && !f.Subagent {
+		if !mayCarry && !f.Subagent {
 			continue
 		}
 		if f.Subagent && l.Type == "user" {
