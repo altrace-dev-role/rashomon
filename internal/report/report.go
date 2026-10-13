@@ -818,12 +818,31 @@ func RollupCoverage(covs []store.Coverage) CoverageFacts {
 			f.EndRecorded = true
 			f.HookEntryAtEnd = c.HookEntry
 		}
+		// A record this build cannot take at its word -- unverified with no
+		// reason to say why, or a state it never writes -- is an unreadable
+		// record, not a clean one. The branch below collects only reasons a
+		// record names, and on its own it let both of these read verified.
+		if unreadableCoverage(c) && !seen[ReasonRecordsUnreadable] {
+			seen[ReasonRecordsUnreadable] = true
+			f.Reasons = append(f.Reasons, ReasonRecordsUnreadable)
+		}
 		if c.State == store.StateUnverified && c.Reason != nil && !seen[*c.Reason] {
 			seen[*c.Reason] = true
 			f.Reasons = append(f.Reasons, *c.Reason)
 		}
 	}
 	return f
+}
+
+// unreadableCoverage reports whether a coverage record's state cannot be
+// taken at its word: anything other than verified, unless it is unverified
+// and names its reason. store-schema.json allowed a null reason beside
+// unverified, and a newer build or a hand edit can write any state at all.
+func unreadableCoverage(c store.Coverage) bool {
+	if c.State == store.StateVerified {
+		return false
+	}
+	return c.State != store.StateUnverified || c.Reason == nil
 }
 
 func (c *Coverage) add(reason string) {
