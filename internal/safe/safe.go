@@ -9,6 +9,8 @@
 // A panic raised in a goroutine cannot be recovered by the goroutine that
 // started it: the runtime terminates the process. Guard therefore protects only
 // its own call stack, and Go is the only sanctioned way to start a goroutine.
+// TestRubricCONC5_OnlySafeStartsGoroutines enforces that: a go statement in any
+// non-test source file outside this package fails it.
 //
 // Two classes of failure are outside what recover() can reach, and no amount of
 // guarding changes that: runtime fatal errors (concurrent map access, stack
@@ -23,10 +25,12 @@ import "fmt"
 //
 // It carries the panic value's dynamic type and deliberately nothing else. A
 // panic value is frequently a string the program was holding at the time, which
-// here means a command line or a prompt, and this error is exactly the value a
-// caller is most tempted to write to a log. Naming only the type keeps the
-// no-content guarantee true on the failure path, which is where it is hardest
-// to hold and easiest to lose.
+// here means a command line or a prompt, and either can hold a credential. This
+// error is exactly the value a caller is most tempted to print: guarded() in
+// cmd/rashomon writes it to stderr for every CLI command, and that output gets
+// pasted into issues. Naming only the type keeps secrets out of error text
+// (CWE-209) on the failure path, which is where that is hardest to hold and
+// easiest to lose. TestRubricDOCS5_ pins it for Guard and for Go's onPanic.
 type PanicError struct {
 	// TypeName is the result of %T on the recovered value.
 	TypeName string
