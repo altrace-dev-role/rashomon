@@ -4,7 +4,6 @@ package perf
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -54,19 +53,17 @@ func TestMain(m *testing.M) {
 }
 
 // buildAndRun refuses a toolchain other than the one the rows were measured
-// under before it builds anything (exit 2), then runs the tests and, when the
-// run is required to be whole, fails it for every owed gate that did not run.
+// under before it builds anything (Preflight, exit 2), then runs the tests
+// and settles the code: a run required to be whole fails for every owed gate
+// that did not run. harness_test.go pins these calls by reading this file.
 func buildAndRun(m *testing.M) (int, error) {
 	var err error
 	root, err = filepath.Abs("../..")
 	if err != nil {
 		return 0, err
 	}
-	b, err := readBudgets(filepath.Join(root, "test", "perf", "budgets.json"))
+	b, err := Preflight(filepath.Join(root, "test", "perf", "budgets.json"), runtime.Version())
 	if err != nil {
-		return 2, err
-	}
-	if err := b.CheckToolchain(runtime.Version()); err != nil {
 		return 2, err
 	}
 	dir, err := os.MkdirTemp("", "rashomon-perf-")
@@ -81,22 +78,7 @@ func buildAndRun(m *testing.M) (int, error) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return 0, fmt.Errorf("building the release binary: %v\n%s", err, out)
 	}
-	code := m.Run()
-	if os.Getenv("RASHOMON_PERF_REQUIRE_ALL") == "1" && code == 0 {
-		if missing := Ungated(b, ran); len(missing) > 0 {
-			return 1, fmt.Errorf("RASHOMON_PERF_REQUIRE_ALL: %d owed gates did not run: %s", len(missing), strings.Join(missing, ", "))
-		}
-	}
-	return code, nil
-}
-
-func readBudgets(path string) (budget.Budgets, error) {
-	var b budget.Budgets
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return b, err
-	}
-	return b, json.Unmarshal(raw, &b)
+	return Settle(m.Run(), os.Getenv(RequireAllEnv) == "1", b, ran)
 }
 
 // platform is this runner's budgets platform key.

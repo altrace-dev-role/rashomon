@@ -9,3 +9,11 @@ m("RES-28 a silent recap counts", "test/perf/runs.go",
   '\t\tif err := json.Unmarshal(a.Stdout, &out); err != nil {\n\t\t\treturn nil\n\t\t}\n', "TestRES28l_")
 m("RES-28 an entry with no check counts", "test/perf/runs.go",
   '\treturn fmt.Errorf("no work-done check for entry %q", strings.Join(command, " "))\n', "\treturn nil\n", "TestRES28l_")
+# The harness itself must refuse a run WorkDone refuses (rss_test.go is
+# perf-tagged, so this is pinned by reading its source).
+m("RES-28 the harness keeps a run that did no work", "test/perf/rss_test.go",
+  '\t\t\tt.Fatalf("run %d of %s did not do its work: %v", i, strings.Join(command, " "), err)\n',
+  '\t\t\tt.Logf("run %d of %s did not do its work: %v", i, strings.Join(command, " "), err)\n', "TestRES28o_")
+m("RES-28 a seeded probe start that did no work is kept", "test/perf/rss_test.go",
+  '\t\tif err := WorkDone(start, payload.Session, a); err != nil {\n',
+  '\t\tif err := WorkDone(start, payload.Session, a); err != nil && false {\n', "TestRES28o_")

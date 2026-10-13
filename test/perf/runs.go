@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -140,4 +141,43 @@ func Ungated(b budget.Budgets, ran map[string]bool) []string {
 	}
 	sort.Strings(missing)
 	return missing
+}
+
+// Preflight reads the budgets file at path and refuses it unless its rows
+// were measured under running, the toolchain this run is under: go1.25.8
+// makes three times go1.27.2's allocations on BenchmarkBuild/188, so a
+// comparison across toolchains is noise (the CI failure on #59). The harness
+// calls it with runtime.Version() before it builds anything; a file that
+// cannot be read or parsed fails rather than yielding empty rows that gate
+// nothing.
+func Preflight(path, running string) (budget.Budgets, error) {
+	var b budget.Budgets
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return b, err
+	}
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return b, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := b.CheckToolchain(running); err != nil {
+		return b, err
+	}
+	return b, nil
+}
+
+// RequireAllEnv names the variable that makes a perf run whole: at "1", as
+// CI sets it, a run that passed fails for every owed gate it did not run.
+const RequireAllEnv = "RASHOMON_PERF_REQUIRE_ALL"
+
+// Settle is a perf run's exit code. A run that failed keeps its code; a
+// required run that passed fails, naming every owed gate Ungated finds
+// missing, because `go test` passes a run in which everything skipped.
+func Settle(code int, requireAll bool, b budget.Budgets, ran map[string]bool) (int, error) {
+	if !requireAll || code != 0 {
+		return code, nil
+	}
+	if missing := Ungated(b, ran); len(missing) > 0 {
+		return 1, fmt.Errorf("%s: %d owed gates did not run: %s", RequireAllEnv, len(missing), strings.Join(missing, ", "))
+	}
+	return 0, nil
 }
