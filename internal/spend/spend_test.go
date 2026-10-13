@@ -972,7 +972,7 @@ func TestPricing_TheTableIsTheDesignsTable(t *testing.T) {
 			t.Errorf("%s is not priced", model)
 			continue
 		}
-		dollars := func(n int64) float64 { return float64(n) / 1e9 }
+		dollars := func(k kindCost) float64 { return float64(k.nano) / 1e9 }
 		if dollars(p.input) != w.in || dollars(p.output) != w.out || dollars(p.cacheRead) != w.read {
 			t.Errorf("%s: in/out/read = %v/%v/%v per MTok, want %v/%v/%v",
 				model, dollars(p.input), dollars(p.output), dollars(p.cacheRead), w.in, w.out, w.read)

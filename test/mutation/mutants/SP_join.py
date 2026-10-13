@@ -42,7 +42,7 @@ m("SP Fable 5.1's cache read is 0.1x input, not the table's 0.25", "internal/spe
 m("SP an unsplit cache write is priced at the 1h rate", "internal/spend/scan.go",
   "\t\tout.CacheWrite5m += rest", "\t\tout.CacheWrite1h += rest", "TestPricing_CacheWrites")
 m("SP an unknown model is priced at $0", "internal/spend/spend.go",
-  "\tc.addUnpriced(r.Tokens.Total())\n", "\tc.addPriced(0)\n", "TestUnknownModel_")
+  "\tc.addUnpriced(p.tokens())\n", "\tc.addPriced(0)\n", "TestUnknownModel_")
 m("SP an unpriced total marshals as usd 0 instead of null", "internal/spend/spend.go",
   "\tif c.WhollyUnpriced() {\n\t\treturn nil\n", "\tif false {\n\t\treturn nil\n", "TestUnknownModel_IsUnknown")
 m("SP an unpriced total is headlined as a dollar figure", "internal/spend/text.go",
@@ -550,7 +550,7 @@ m("SP a synthetic refusal line is folded after pre-output refusals are marked", 
   "\tsc.foldRefusalMessages()\n\tfor _, r := range sc.Responses {", "\tdefer sc.foldRefusalMessages()\n\tfor _, r := range sc.Responses {",
   "TestRefusals_")
 m("SP a cold write is priced on a response whose cost is unknown", "internal/spend/spend.go",
-  "\t\t\tif key, ok := PriceKey(r.Model); ok && !r.costUnknown {", "\t\t\tif key, ok := PriceKey(r.Model); ok {",
+  "\tif !ok || r.costUnknown {\n\t\treturn 0, tokens, false", "\tif !ok {\n\t\treturn 0, tokens, false",
   "TestCacheExpiry_")
 m("SP a write on another model is judged against the previous model's cache", "internal/spend/spend.go",
   "\t\t\tif rs[i].Model != rs[i-1].Model || ", "\t\t\tif ",

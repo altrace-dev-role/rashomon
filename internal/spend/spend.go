@@ -84,10 +84,13 @@ func (c Cost) Known() bool { return c.Unpriced == 0 }
 // known zero -- a fact, and shown as one.
 func (c Cost) WhollyUnpriced() bool { return c.Priced == 0 && c.Unpriced > 0 }
 
-func (c *Cost) addPriced(nano int64) { c.Nano += nano; c.Priced++ }
-func (c *Cost) addUnpriced(tokens int64) {
+// addPriced and addUnpriced take the typed amounts price makes, so neither
+// can be handed the other's (nanoUSD); the exported fields stay int64, the
+// JSON's own representation.
+func (c *Cost) addPriced(nano nanoUSD) { c.Nano += int64(nano); c.Priced++ }
+func (c *Cost) addUnpriced(tokens tokenCount) {
 	c.Unpriced++
-	c.UnpricedTokens += tokens
+	c.UnpricedTokens += int64(tokens)
 }
 
 func (c *Cost) addCost(o Cost) {
@@ -360,30 +363,73 @@ const SavingSilentFailure = "silently_failed_turns"
 // refused.
 const ModelNotRecorded = "not_recorded"
 
-// priced is a response's cost broken down by kind, or ok=false for a model
-// the table does not know.
+// nanoUSD is an amount in nanodollars and tokenCount a number of tokens.
+// Both used to be bare int64, and they meet in one place -- a kind of
+// token's price beside its count -- where a call that passed the count as the
+// price compiled, passed and printed tokens as dollars. As two types, and
+// made together by price alone, they cannot be taken for each other.
+type (
+	nanoUSD    int64
+	tokenCount int64
+)
+
+// kindCost is one kind of token in a response: its count, and its price when
+// the model is priced (zero when it is not).
+type kindCost struct {
+	nano   nanoUSD
+	tokens tokenCount
+}
+
+// priced is a response's tokens and cost broken down by kind, with ok=false
+// for a model the table does not know.
 type priced struct {
-	input, output, cacheWrite, cacheRead int64
+	input, output, cacheWrite, cacheRead kindCost
 	ok                                   bool
 }
 
-func (p priced) total() int64 { return p.input + p.output + p.cacheWrite + p.cacheRead }
+func (p priced) total() nanoUSD {
+	return p.input.nano + p.output.nano + p.cacheWrite.nano + p.cacheRead.nano
+}
 
-// price prices a response at its model's rates.
+func (p priced) tokens() tokenCount {
+	return p.input.tokens + p.output.tokens + p.cacheWrite.tokens + p.cacheRead.tokens
+}
+
+// price prices a response at its model's rates. It is the one place a token
+// count becomes a tokenCount and a rate times a count becomes a nanoUSD.
 func price(r *Response) priced {
+	t := r.Tokens
+	p := priced{
+		input:      kindCost{tokens: tokenCount(t.Input)},
+		output:     kindCost{tokens: tokenCount(t.Output)},
+		cacheWrite: kindCost{tokens: tokenCount(t.CacheWrite5m + t.CacheWrite1h)},
+		cacheRead:  kindCost{tokens: tokenCount(t.CacheRead)},
+	}
 	key, ok := PriceKey(r.Model)
 	if !ok {
-		return priced{}
+		return p
 	}
 	rt, _ := RatesFor(key)
-	t := r.Tokens
-	return priced{
-		input:      t.Input * rt.Input,
-		output:     t.Output * rt.Output,
-		cacheWrite: t.CacheWrite5m*rt.CacheWrite5m() + t.CacheWrite1h*rt.CacheWrite1h(),
-		cacheRead:  t.CacheRead * rt.CacheRead,
-		ok:         true,
+	p.input.nano = nanoUSD(t.Input * rt.Input)
+	p.output.nano = nanoUSD(t.Output * rt.Output)
+	p.cacheWrite.nano = nanoUSD(t.CacheWrite5m*rt.CacheWrite5m() + t.CacheWrite1h*rt.CacheWrite1h())
+	p.cacheRead.nano = nanoUSD(t.CacheRead * rt.CacheRead)
+	p.ok = true
+	return p
+}
+
+// priceColdWrites prices what a response's cold cache writes cost over the
+// cache reads they replaced (CacheExpiry), the second place a count becomes
+// money, and the only other. ok is false for a model the table does not
+// know, or a response whose cost is unknown.
+func priceColdWrites(r *Response, w Tokens) (nanoUSD, tokenCount, bool) {
+	tokens := tokenCount(w.CacheWrite5m + w.CacheWrite1h)
+	key, ok := PriceKey(r.Model)
+	if !ok || r.costUnknown {
+		return 0, tokens, false
 	}
+	rt, _ := RatesFor(key)
+	return nanoUSD(w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)), tokens, true
 }
 
 // costOf adds one response to c: its priced total, or an unpriced mark
@@ -394,7 +440,7 @@ func costOf(c *Cost, r *Response) {
 		c.addPriced(p.total())
 		return
 	}
-	c.addUnpriced(r.Tokens.Total())
+	c.addUnpriced(p.tokens())
 }
 
 // displayModel is how a model is named in the output.
@@ -546,11 +592,10 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			s.CacheExpiry.Tokens += w.CacheWrite5m + w.CacheWrite1h
 			s.CacheExpiry.Tokens5m += w.CacheWrite5m
 			s.CacheExpiry.Tokens1h += w.CacheWrite1h
-			if key, ok := PriceKey(r.Model); ok && !r.costUnknown {
-				rt, _ := RatesFor(key)
-				s.CacheExpiry.Cost.addPriced(w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead))
+			if nano, toks, ok := priceColdWrites(r, w); ok {
+				s.CacheExpiry.Cost.addPriced(nano)
 			} else {
-				s.CacheExpiry.Cost.addUnpriced(w.CacheWrite5m + w.CacheWrite1h)
+				s.CacheExpiry.Cost.addUnpriced(toks)
 			}
 		}
 		s.ExtraAttempts.add(r)
@@ -597,20 +642,20 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		costOf(&m.Cost, r)
 
 		p := price(r)
-		kind := func(c *Cost, nano, toks int64) {
-			if toks == 0 {
+		kind := func(c *Cost, k kindCost) {
+			if k.tokens == 0 {
 				return
 			}
 			if p.ok {
-				c.addPriced(nano)
+				c.addPriced(k.nano)
 			} else {
-				c.addUnpriced(toks)
+				c.addUnpriced(k.tokens)
 			}
 		}
-		kind(&s.ByKind.Input, p.input, r.Tokens.Input)
-		kind(&s.ByKind.Output, p.output, r.Tokens.Output)
-		kind(&s.ByKind.CacheWrite, p.cacheWrite, r.Tokens.CacheWrite5m+r.Tokens.CacheWrite1h)
-		kind(&s.ByKind.CacheRead, p.cacheRead, r.Tokens.CacheRead)
+		kind(&s.ByKind.Input, p.input)
+		kind(&s.ByKind.Output, p.output)
+		kind(&s.ByKind.CacheWrite, p.cacheWrite)
+		kind(&s.ByKind.CacheRead, p.cacheRead)
 
 		if r.StopReason == "refusal" {
 			s.Refusals.Responses++
