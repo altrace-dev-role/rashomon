@@ -289,8 +289,9 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 // TIME budget is the only option that is both always-correct on the healthy
 // path and incapable of wedging the turn on a broken one. Three seconds
 // leaves a wide margin inside the entry's own 10-second timeout
-// (install.RecapTimeout) even after the ~120ms this command's own work can
-// cost at several thousand records (the spec's Measurements taken).
+// (install.RecapTimeout) even after this command's own work, which
+// digest.BenchmarkBuild measures at about 50 ms for a 3,500-call session and
+// 300 ms for a 20,000-call one (Apple M3, measured 2026-10-13).
 const recapStdinTimeout = 3 * time.Second
 
 // recapPayload is the slice of the Stop/StopFailure hook payload this command

@@ -209,11 +209,11 @@ type Digest struct {
 
 // readLockBudget bounds how long ReadRunConsistent may wait for a writer's
 // lock, per file. It is NOT store.lockBudget (2s): that number is what a
-// WRITER may cost another writer, and a reader borrowing it could spend
-// three-quarters of the whole 50ms budget this command owes waiting on a lock
-// for a single file. lock_unix.go's own comment measures a real append at
-// sub-millisecond; 5ms is generous headroom above that, not a real expected
-// wait.
+// WRITER may cost another writer, and a reader borrowing it could wait longer
+// on one file's lock than Build takes to read a whole 20,000-call session
+// (about 300 ms, BenchmarkBuild on an Apple M3). lock_unix.go's own
+// comment measures a real append at sub-millisecond; 5ms is generous headroom
+// above that, not a real expected wait.
 const readLockBudget = 5 * time.Millisecond
 
 // Empty is the digest for a location that has recorded nothing, built
