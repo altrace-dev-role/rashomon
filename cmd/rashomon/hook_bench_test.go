@@ -201,7 +201,7 @@ func (s *benchSink) lastWrite() []byte { return s.last[:s.n] }
 
 // benchSetenv points the store and Claude Code's configuration at scratch
 // directories, so nothing here reads or writes the real ones.
-func benchSetenv(b *testing.B, root, cfg string) {
+func benchSetenv(b testing.TB, root, cfg string) {
 	b.Setenv("RASHOMON_HOME", root)
 	b.Setenv("CLAUDE_CONFIG_DIR", cfg)
 	b.Setenv("RASHOMON_MANAGED_SETTINGS_PATH", filepath.Join(cfg, "absent"))
@@ -211,7 +211,7 @@ func benchSetenv(b *testing.B, root, cfg string) {
 // settings entries watch writes, so coverage resolves the entry as present:
 // the healthy path. watch itself cannot run here, because install.Executable
 // refuses a go-build binary.
-func benchInstall(b *testing.B, root, cfg string) string {
+func benchInstall(b testing.TB, root, cfg string) string {
 	b.Helper()
 	if err := payload.Pin(root); err != nil {
 		b.Fatal(err)
@@ -235,7 +235,7 @@ func benchInstall(b *testing.B, root, cfg string) string {
 }
 
 // benchStarted is a store with the session started as SessionStart starts it.
-func benchStarted(b *testing.B) (root, installID string) {
+func benchStarted(b testing.TB) (root, installID string) {
 	b.Helper()
 	root, cfg := b.TempDir(), b.TempDir()
 	benchSetenv(b, root, cfg)
