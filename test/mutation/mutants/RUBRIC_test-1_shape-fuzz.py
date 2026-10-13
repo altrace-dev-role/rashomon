@@ -21,3 +21,9 @@ m("test-1  argc counts one fewer word than the line has", "internal/shape/shape.
 m("test-1  the shape digest is written in upper case", "internal/shape/shape.go",
   "\tm.Write(body)\n\treturn hex.EncodeToString(m.Sum(nil))\n",
   "\tm.Write(body)\n\treturn strings.ToUpper(hex.EncodeToString(m.Sum(nil)))\n", "TestRubricTest1_")
+# Round 3: the FuzzHosts property holds the hostname whitelist to the hosts a
+# command argument names, which is where hosts.go applies it; the seed
+# `ssh h.example.com!x` is what a reader without the whitelist records.
+m("test-1  a command argument host skips the hostname whitelist", "internal/shape/hosts.go",
+  "\tif !hostnameShaped(hostPart) {\n\t\treturn \"\", false\n\t}\n",
+  "\tif false {\n\t\treturn \"\", false\n\t}\n", "TestRubricTest1_")

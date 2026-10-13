@@ -41,6 +41,11 @@ func shapeSeeds() []string {
 		"",
 		"\x00#hunter2",
 		"a\\\nb && c",
+		// Inputs the CI fuzz command found for FuzzHosts: a git@ text match
+		// whose host carries a byte no hostname has, and a host with two
+		// trailing dots, which host.Canonical once reduced to one. Beside
+		// them, the command-argument form of a host with '!' in it.
+		"&git@pusmaiECRET\x9b", " git@\xa0", " cuhttps://cret-token..", "ssh h.example.com!x",
 	)
 }
 
@@ -95,9 +100,16 @@ func FuzzHosts(f *testing.F) {
 }
 
 // checkHosts reads text both as a Bash command line and as a WebFetch url.
-// Every wire host is already canonical (host.Canonical is a fixed point on
-// it), every ssh host is hostname-shaped, and both lists are sorted and
-// de-duplicated, as the record's determinism needs.
+// Every wire and ssh host is already canonical (host.Canonical is a fixed
+// point on it), every host a command ARGUMENT names is hostname-shaped and in
+// the ssh list, and both lists are sorted and de-duplicated, as the record's
+// determinism needs.
+//
+// Hostname-shaped is the argument reader's contract, not the whole list's.
+// The ssh:// and git@ forms are matched in the text, like the wire schemes,
+// and admit what host.Canonical admits, a byte >= 0x80 among it: the first
+// version of this property held them to the argument reader's whitelist, and
+// the CI fuzz command found `git@` before such a byte in under 13 s.
 func checkHosts(t *testing.T, text string) {
 	t.Helper()
 	url, err := json.Marshal(map[string]string{"url": text})
@@ -109,14 +121,16 @@ func checkHosts(t *testing.T, text string) {
 		raw  json.RawMessage
 	}{{"Bash", bashInput(t, text)}, {"WebFetch", url}} {
 		wire, ssh := Hosts(call.tool, call.raw)
-		for _, h := range wire {
+		for _, h := range slices.Concat(wire, ssh) {
 			if c, ok := host.Canonical(h); !ok || c != h {
-				t.Fatalf("%s %q: wire host %q is not canonical (%q, %v)", call.tool, text, h, c, ok)
+				t.Fatalf("%s %q: host %q is not canonical (%q, %v)", call.tool, text, h, c, ok)
 			}
 		}
-		for _, h := range ssh {
-			if !hostnameShaped(h) {
-				t.Fatalf("%s %q: ssh host %q is not hostname-shaped", call.tool, text, h)
+		if cmd, ok := commandField(call.raw); ok && call.tool == "Bash" {
+			for _, h := range sshCommandHosts(cmd) {
+				if !hostnameShaped(h) || !slices.Contains(ssh, h) {
+					t.Fatalf("%s %q: argument host %q is not hostname-shaped or not in %q", call.tool, text, h, ssh)
+				}
 			}
 		}
 		for _, list := range [][]string{wire, ssh} {
