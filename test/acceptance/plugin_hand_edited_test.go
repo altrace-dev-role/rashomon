@@ -1,0 +1,108 @@
+package acceptance
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// The tests below cover a plugin whose every hooks.json group has been hand
+// edited -- each hook's timeout changed. No group is the entry watch installs,
+// so coverage reads hook_entry absent for it (TestRubricHLD1_NarrowedPlugin
+// HooksReadAbsent). The plugin still fires on every one of those events, so
+// the questions "would a settings install record twice beside it" and "will
+// anything record a tool call" are about whether it declares our commands at
+// all, not whether it declares them intact.
+
+// TestRubricHLD1_WatchRefusesUnderAHandEditedPlugin: watch refuses beside an
+// enabled plugin whose groups are all hand edited, as it does beside an
+// untouched one. Under the intact-only list the refusal saw no events and
+// installed settings entries next to a plugin that still records every call.
+func TestRubricHLD1_WatchRefusesUnderAHandEditedPlugin(t *testing.T) {
+	e := newEnv(t)
+	fx := newPluginFixture(t, "rashomon@test")
+	fx.installed(t, e)
+	fx.enable(t, e, true)
+	retimeEveryPluginHook(t, filepath.Join(fx.root, "hooks", "hooks.json"), 30)
+	before := e.settingsBytes()
+
+	res := e.watch()
+	if res.exitCode == 0 {
+		t.Fatalf("watch installed beside the enabled %s plugin whose hand-edited entries still fire", fx.key)
+	}
+	if !strings.Contains(res.stderr, fx.key) || !strings.Contains(res.stderr, "PreToolUse") {
+		t.Errorf("refusal does not name the plugin and the events it fires on: %q", res.stderr)
+	}
+	if !bytes.Equal(before, e.settingsBytes()) {
+		t.Errorf("a refusing watch still wrote the settings file")
+	}
+}
+
+// TestRubricHLD1_StatusNamesTheOverlapUnderAHandEditedPlugin: a settings
+// install beside an enabled, hand-edited plugin records every call twice, and
+// status says so, while the plugin's per-event lines still read absent.
+func TestRubricHLD1_StatusNamesTheOverlapUnderAHandEditedPlugin(t *testing.T) {
+	e := newEnv(t)
+	if res := e.watch(); res.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	fx := newPluginFixture(t, "rashomon@test")
+	fx.installed(t, e)
+	fx.enable(t, e, true)
+	retimeEveryPluginHook(t, filepath.Join(fx.root, "hooks", "hooks.json"), 30)
+
+	res := e.status()
+	if res.exitCode != 0 {
+		t.Fatalf("status: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if got := fieldLine(t, res.stdout, "plugin PreToolUse"); got != "absent" {
+		t.Errorf("plugin PreToolUse reads %q for a hand-edited entry, want absent", got)
+	}
+	if !strings.Contains(res.stdout, "overlap:") {
+		t.Errorf("status does not name the overlap with a hand-edited plugin that still fires:\n%s", res.stdout)
+	}
+}
+
+// TestRubricHLD1_AHandEditedPluginStillRecords: with no store yet, an enabled
+// plugin whose groups are hand edited still records the next tool call, so
+// recording reads active, not "not installed".
+func TestRubricHLD1_AHandEditedPluginStillRecords(t *testing.T) {
+	e := newEnv(t)
+	fx := newPluginFixture(t, "rashomon@test")
+	fx.installed(t, e)
+	fx.enable(t, e, true)
+	retimeEveryPluginHook(t, filepath.Join(fx.root, "hooks", "hooks.json"), 30)
+
+	if got := fieldLine(t, e.status().stdout, "recording"); got != "active" {
+		t.Errorf("recording reads %q with a hand-edited plugin enabled and no store yet, want active", got)
+	}
+}
+
+// retimeEveryPluginHook sets the timeout of every hook in every group of a
+// plugin's hooks.json, so that intact() accepts none of them.
+func retimeEveryPluginHook(t *testing.T, path string, timeout int) {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, groups := range doc["hooks"].(map[string]any) {
+		for _, g := range groups.([]any) {
+			for _, h := range g.(map[string]any)["hooks"].([]any) {
+				h.(map[string]any)["timeout"] = timeout
+			}
+		}
+	}
+	out, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeJSONFile(t, path, string(out))
+}
