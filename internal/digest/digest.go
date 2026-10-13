@@ -211,10 +211,25 @@ type Digest struct {
 // lock, per file. It is NOT store.lockBudget (2s): that number is what a
 // WRITER may cost another writer, and a reader borrowing it could spend
 // three-quarters of the whole 50ms budget this command owes waiting on a lock
-// for a single file. lock_unix.go's own comment measures a real append at
-// sub-millisecond; 5ms is generous headroom above that, not a real expected
-// wait.
-const readLockBudget = 5 * time.Millisecond
+// for a single file.
+//
+// It is derived from what a writer holds the lock for, measured by
+// store.BenchmarkOrderedAppendHold on the reference machine (Apple M3, three
+// runs at -benchtime 20x; store/lockbudget.go has the figures). The appends
+// a digest races with are a turn's hooks, which on darwin hold the records
+// lock for 5.8 to 9.4 ms at p99 in a 64-way burst on a quiet machine, and
+// for tens of milliseconds at p99 when other processes load the disk. 10 ms
+// waits out the quiet hold, and the p90 of an append that syncs in full inside the lock, 8.9 ms.
+// A give-up lands at the end of a polling sleep, 12.6 ms in for this budget
+// (lock_unix.go's backoff), so three contended files wait at most about 38
+// ms, inside the 50. A full-sync hold's p99, 11 to 14 ms on darwin and what every
+// append holds on Linux and Windows, is not waited out: this read gives up
+// and reads unlocked, where a line caught mid-write is counted as skipped
+// and the turn unverified, never misread (perf-1). The 5 ms this used to be
+// assumed an append was sub-millisecond, which the reference machine does
+// not measure on either path; Linux is measured by the same benchmark in
+// CI's perf-linux job.
+const readLockBudget = 10 * time.Millisecond
 
 // Empty is the digest for a location that has recorded nothing, built
 // without a store so that asking the question cannot create one -- the same

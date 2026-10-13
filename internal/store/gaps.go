@@ -464,6 +464,9 @@ func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
 // is about to append to, under the lock a concurrent forget would take, so
 // two forgets of one host cannot both find it absent.
 func (s *Store) recordForgottenHost(digest string, now time.Time) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
 	line, err := marshalLine(ForgottenHostRecord{
 		Type:          TypeForgottenHost,
 		SchemaVersion: SessionSchemaVersion,
