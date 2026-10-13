@@ -123,6 +123,8 @@ type Post struct {
 	sessionID string
 	toolUseID string
 	cwd       string
+	// withheld is Handler.withheld for the execution record.
+	withheld bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
@@ -154,10 +156,8 @@ func (p *Post) Capture(in io.Reader) error {
 	}
 
 	// Attribute before anything else can fail, as the declaration path does.
-	if pl.SessionID != "" {
-		p.sessionID = pl.SessionID
-	}
-	p.toolUseID = pl.ToolUseID
+	p.sessionID, p.withheld = attribute(pl.SessionID)
+	p.toolUseID, _ = store.CapID(pl.ToolUseID)
 	p.cwd = pl.CWD
 
 	fault.Inject(fault.PointPostParsed)
@@ -198,6 +198,10 @@ func (p *Post) Capture(in io.Reader) error {
 	// never moved to the background, whatever its payload carries.
 	if pl.ToolName == "Bash" && pl.HookEventName != FailureEvent {
 		rec.Backgrounded = backgroundedCall(payload)
+	}
+	// The caps, as on the declaration path (REC-52).
+	if store.CapExecution(&rec) {
+		p.withheld = true
 	}
 	return p.st.AppendExecution(rec)
 }
@@ -281,6 +285,9 @@ func (p *Post) Close(sig *Signals, captureErr error) {
 	reason := closeReason(captureErr)
 	if sig.Delivered() {
 		reason = store.ReasonTerminatedBySignal
+	}
+	if reason == "" && p.withheld {
+		reason = store.ReasonRecordOversize
 	}
 
 	_ = p.st.AppendCoverage(BuildCoverage(p.st, p.sessionID, store.PhasePost, reason, p.cwd, p.now()))

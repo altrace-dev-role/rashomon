@@ -245,6 +245,7 @@ var reasonText = map[string]string{
 	"internal_error":         "a hook invocation failed inside this program, so what it should have recorded is missing",
 	"lock_timeout":           "a hook could not take the store lock in time, so its record went to the spill file or was lost",
 	"payload_too_large":      "a hook was handed a payload over the 8 MiB intake limit and refused it without parsing, so that call was not recorded",
+	"record_oversize":        "a value in a hook's payload was over its size limit and was left out of the record, or the whole record was over the record limit and was not written, so what was recorded for that call is incomplete",
 	"flush_failed":           "a hook could not flush its records to stable storage before it exited, so they are possibly not durable: a power loss or a crash of the machine could still remove them",
 	"terminated_by_signal":   "a hook was killed by a signal before it finished",
 	"unterminated_entry":     "a declaration was never closed, so the call's end was not observed",

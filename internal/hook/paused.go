@@ -30,7 +30,7 @@ func RecordPaused(in io.Reader, phase string, st *store.Store, now func() time.T
 	if err == nil {
 		var p sessionPayload
 		if p.from(payload) == nil && p.SessionID != "" {
-			sessionID = p.SessionID
+			sessionID, _ = attribute(p.SessionID)
 			cwd = p.CWD
 		}
 	} else if s, c, ok := refusedSession(err); ok {

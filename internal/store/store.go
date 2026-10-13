@@ -541,10 +541,15 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	return s.syncAppend(f)
 }
 
+// marshalLine is rec as one NDJSON line, or ErrRecordOversize when that line
+// would be over MaxRecordBytes (limits.go).
 func marshalLine(rec any) ([]byte, error) {
 	line, err := json.Marshal(rec)
 	if err != nil {
 		return nil, err
+	}
+	if len(line)+1 > MaxRecordBytes {
+		return nil, ErrRecordOversize
 	}
 	// encoding/json escapes control characters, so a newline cannot appear
 	// inside a marshalled record and NDJSON framing cannot be broken by input.
