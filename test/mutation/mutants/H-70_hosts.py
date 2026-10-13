@@ -23,7 +23,7 @@ m("H-70 the host list is not sorted", "internal/shape/hosts.go",
   "\tsort.Strings(out)\n\treturn out\n}\n\n// sshDestPrograms", "\treturn out\n}\n\n// sshDestPrograms",
   "TestSSHHostsAreSortedAndDeduped")
 m("H-70 the destination is not required to be hostname shaped", "internal/shape/hosts.go",
-  "\tif !hostnameShaped(hostPart) {\n\t\treturn \"\", false\n\t}",
+  "\tif !host.Shaped(hostPart) {\n\t\treturn \"\", false\n\t}",
   "\tif hostPart == \"\" {\n\t\treturn \"\", false\n\t}",
   "TestH70_CommandText|TestSSHDestinationIsHostnameShaped|TestSSHDestinationRefusesWhatIsNotAHost")
 m("H-70 one flag table for all four programs", "internal/shape/hosts.go",

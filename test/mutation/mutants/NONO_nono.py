@@ -200,9 +200,10 @@ m("NONO a forget whose store-level record failed reports success", "internal/sto
 # The client-plane rule has one spelling, clientPlaneHost, and every view
 # that asks it of this session calls it (review of #53): the novelty
 # candidates used to restate it. Re-anchored when the proxy era left: the
-# candidates are the declared hosts, a list of names.
+# candidates are the declared hosts, a list of names. Re-anchored again when
+# loopback came to be decided on the parsed address (host.Loopback).
 m("NONO the novelty candidates drop the MCP transport on an MCP session", "internal/report/destinations.go",
-  "\t\tif loopbackHosts[h] || clientPlaneHost(h, mcpAttributed) {", "\t\tif loopbackHosts[h] || clientPlaneHosts[h] {",
+  "\t\tif host.Loopback(h) || clientPlaneHost(h, mcpAttributed) {", "\t\tif host.Loopback(h) || clientPlaneHosts[h] {",
   "TestClientPlane_EveryView")
 m("NONO the session's MCP calls never reach the novelty candidates", "internal/report/destinations.go",
   "madeMCPCall(run)))", "false))",
