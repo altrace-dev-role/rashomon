@@ -51,8 +51,8 @@ m("REC-34 the digest lets a flush_failed marker close a declaration", "internal/
 m("REC-34 the barrier issues F_FULLFSYNC", "internal/store/sync_darwin.go",
   "const fBarrierFsync = 85", "const fBarrierFsync = 51", "TestREC34f_")
 m("REC-34 the barrier never reaches the kernel", "internal/store/sync_darwin.go",
-  "\t\t_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), fBarrierFsync, 0)",
-  "\t\terrno := syscall.Errno(0)", "TestREC34f_")
+  "\t_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, fd, fBarrierFsync, 0)",
+  "\terrno := syscall.Errno(0)", "TestREC34f_")
 m("REC-34 an accepted barrier falls back to a full sync", "internal/store/sync_darwin.go",
   "\t\tcase errno == 0:\n\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, nil\n",
   "\t\tcase errno == 0:\n\t\t\treturn false, syncFull(f)\n", "TestREC34_")
@@ -70,8 +70,8 @@ m("REC-34 the barrier's fallback syncs where the recorder cannot see it", "inter
   "\t\tcase barrierRefused(errno):\n\t\t\tif err := syncFull(f); err != nil {\n",
   "\t\tcase barrierRefused(errno):\n\t\t\tif err := f.Sync(); err != nil {\n", "TestREC34h_")
 m("REC-34 group commit off inside barrierSync", "internal/store/sync_darwin.go",
-  "func barrierSync(f *os.File) (durable bool, err error) {\n\tfor {\n",
-  "func barrierSync(f *os.File) (durable bool, err error) {\n\treturn true, syncFull(f)\n\tfor {\n", "TestREC34_")
+  "func barrierSync(f *os.File) (durable bool, err error) {\n\treturn barrierWith(f, fcntlBarrier)\n",
+  "func barrierSync(f *os.File) (durable bool, err error) {\n\treturn true, syncFull(f)\n", "TestREC34_")
 # Every lock counted and every sync seen (P09-F8): the recorder's locked= flag
 # is only as good as the locks it is told about.
 m("REC-34 forget's rewrite syncs where the recorder cannot see it", "internal/store/gaps.go",
@@ -97,14 +97,31 @@ m("REC-34 a full-sync barrier still leaves its file to Flush", "internal/store/s
 m("REC-34 an accepted darwin barrier reports its write durable", "internal/store/sync_darwin.go",
   "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, nil\n",
   "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn true, nil\n", "TestREC34f_")
+# The refused barrier's fallback (P09-F9, round 2). It reports durable, so
+# syncAppend clears the dirty file and Flush issues no full sync: the fallback's
+# own syncFull is the only sync a deferred append gets on a volume that refuses
+# barriers (HFS+, exFAT). APFS never refuses, so TestREC34f_ARefusedBarrierSyncsInFull
+# stands a refusing kernel in through barrierWith's fcntl seam.
+m("REC-34 a refused barrier reports durable without syncing", "internal/store/sync_darwin.go",
+  "\t\t\tif err := syncFull(f); err != nil {\n\t\t\t\treturn false, err\n\t\t\t}\n\t\t\treturn true, nil\n",
+  "\t\t\treturn true, nil\n", "TestREC34f_")
+m("REC-34 a refused barrier's full sync reports the write not durable", "internal/store/sync_darwin.go",
+  "\t\t\t\treturn false, err\n\t\t\t}\n\t\t\treturn true, nil\n",
+  "\t\t\t\treturn false, err\n\t\t\t}\n\t\t\treturn false, nil\n", "TestREC34f_")
+m("REC-34 an I/O error on the barrier is retried as a full sync", "internal/store/sync_darwin.go",
+  "\t\tdefault:\n\t\t\treturn false, errno\n",
+  "\t\tdefault:\n\t\t\treturn false, syncFull(f)\n", "TestREC34f_")
+m("REC-34 an interrupted barrier is not issued again", "internal/store/sync_darwin.go",
+  "\t\tcase errno == syscall.EINTR:\n\t\t\tcontinue\n",
+  "\t\tcase errno == syscall.EINTR:\n\t\t\treturn false, errno\n", "TestREC34f_")
 # The barrier's fcntl command (P09-F4, round 2): F_FULLFSYNC in its place is a
 # call the kernel accepts, so the recorder logs a barrier, the acceptance test
 # sees barriers inside the lock and one full sync outside, and the device flush
 # is back inside every append lock. Only the source check sees the command.
 m("REC-34 the barrier's fcntl is F_FULLFSYNC", "internal/store/sync_darwin.go",
-  "f.Fd(), fBarrierFsync, 0)", "f.Fd(), syscall.F_FULLFSYNC, 0)", "TestREC34h_")
+  "fd, fBarrierFsync, 0)", "fd, syscall.F_FULLFSYNC, 0)", "TestREC34h_")
 m("REC-34 the barrier's fcntl command is a bare number", "internal/store/sync_darwin.go",
-  "f.Fd(), fBarrierFsync, 0)", "f.Fd(), 51, 0)", "TestREC34h_")
+  "fd, fBarrierFsync, 0)", "fd, 51, 0)", "TestREC34h_")
 m("REC-34 the barrier constant is F_FULLFSYNC's number, judged on every platform", "internal/store/sync_darwin.go",
   "const fBarrierFsync = 85", "const fBarrierFsync = 51", "TestREC34h_")
 # The report names each call a flush_failed marker covers (REC-34 (c): "the
