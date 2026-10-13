@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
@@ -102,17 +104,12 @@ func readState(path string) (state, error) {
 // a concurrent recap) must never observe a half-written file, and a process
 // killed mid-write must leave either the old file or the new one, never a
 // truncated third thing.
-func writeState(path string, s state) error {
-	// Go's map iteration order is randomised, which is fine here: this is a
-	// soft cap on a best-effort file, and which session ids it drops first
-	// carries no meaning worth spending a real LRU on.
+//
+// current is the session this write claims for, "" for none; the cap never
+// drops it (capSessions).
+func writeState(path string, s state, current string) error {
 	for _, m := range []map[string]string{s.Spoken, s.Checked} {
-		for k := range m {
-			if len(m) <= maxTrackedSessions {
-				break
-			}
-			delete(m, k)
-		}
+		capSessions(m, current)
 	}
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -124,6 +121,25 @@ func writeState(path string, s state) error {
 	}
 	fault.Inject(fault.PointRecapBeforeRename)
 	return os.Rename(tmp, path)
+}
+
+// capSessions drops sessions from m until it holds maxTrackedSessions, in
+// the order of their ids: which ones go carries no meaning worth a real LRU,
+// and a fixed order makes the cap the same on every run. It never drops
+// current. That is the claim just made, and dropping it let a replayed Stop
+// for the same turn find no claim and print its line twice (lld-7).
+func capSessions(m map[string]string, current string) {
+	if len(m) <= maxTrackedSessions {
+		return
+	}
+	for _, id := range slices.Sorted(maps.Keys(m)) {
+		if len(m) <= maxTrackedSessions {
+			return
+		}
+		if id != current {
+			delete(m, id)
+		}
+	}
 }
 
 // Claim is recap's one piece of persistent bookkeeping.
@@ -165,7 +181,7 @@ func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (spe
 	if sessionID != "" && promptID != "" {
 		s.Checked[sessionID] = promptID
 	}
-	return speak, writeState(path, s)
+	return speak, writeState(path, s, sessionID)
 }
 
 // RecordFailure marks this evaluation as unhealthy, for the one path where
@@ -183,7 +199,7 @@ func RecordFailure(root string, now time.Time) {
 	}
 	s.LastEvaluatedAtUnixMS = now.UnixMilli()
 	s.Healthy = false
-	_ = writeState(path, s)
+	_ = writeState(path, s, "")
 }
 
 // Status reports recap's own evaluation history for `status` to render
