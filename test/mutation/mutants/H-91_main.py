@@ -5,8 +5,8 @@
 # install made from the plugin's binary was sent to /rashomon:report), or
 # replace the decision with either constant.
 m("H-91 the recap pointer ignores the --install marker", "cmd/rashomon/main.go",
-  "\t\tif installArg(args) == \"\" {\n\t\t\tif present, perr := install.PluginPresent(install.EventStop); perr == nil {",
-  "\t\tif true {\n\t\t\tif present, perr := install.PluginPresent(install.EventStop); perr == nil {",
+  "\t\tif installArg(args) == \"\" {\n\t\t\tif present, perr := install.PluginFires(install.EventStop); perr == nil {",
+  "\t\tif true {\n\t\t\tif present, perr := install.PluginFires(install.EventStop); perr == nil {",
   "TestH91_TheReportPointer")
 m("H-91 the recap pointer is always the CLI command", "cmd/rashomon/main.go",
   "\t\t\t\tfromPlugin = present\n", "\t\t\t\t_ = present\n", "TestH91_TheReportPointer")

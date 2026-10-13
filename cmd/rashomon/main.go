@@ -453,12 +453,15 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// where the executable lives would send that user to a slash command
 		// no loaded plugin provides. This is the same precedence coverage's
 		// Resolve gives the settings entry over PluginPresent. Only an
-		// unmarked invocation asks where it is running from; an error there
-		// reads as "not the plugin", which points at the CLI: the settings
-		// install's command, and the only one that exists without a plugin.
+		// unmarked invocation asks where it is running from, and it asks
+		// PluginFires, not PluginPresent: a plugin whose Stop entry was hand
+		// edited reads absent in coverage, but it is loaded and ran this, so
+		// its slash command exists. An error there reads as "not the
+		// plugin", which points at the CLI: the settings install's command,
+		// and the only one that exists without a plugin.
 		fromPlugin := false
 		if installArg(args) == "" {
-			if present, perr := install.PluginPresent(install.EventStop); perr == nil {
+			if present, perr := install.PluginFires(install.EventStop); perr == nil {
 				fromPlugin = present
 			}
 		}
