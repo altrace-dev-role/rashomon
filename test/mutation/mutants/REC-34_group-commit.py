@@ -30,7 +30,7 @@ m("REC-34 the marker names the wrong reason", "internal/hook/flush.go",
 m("REC-34 the flush_failed marker is written behind a barrier", "internal/store/store.go",
   "\ts.flushErr = err\n\ts.deferred = false\n\treturn err\n", "\ts.flushErr = err\n\treturn err\n", "TestREC34_")
 m("REC-34 a failed barrier is left for Flush to retry", "internal/store/store.go",
-  "\tif err != nil {\n\t\treturn s.syncFailed(err)\n\t}\n\treturn nil\n}\n", "\treturn err\n}\n", "TestREC34e_")
+  "\tif err != nil {\n\t\treturn s.syncFailed(err)\n\t}\n\tif durable {", "\tif err != nil {\n\t\treturn err\n\t}\n\tif durable {", "TestREC34e_")
 m("REC-34 a failed flush is forgotten and retried", "internal/store/store.go",
   "\tif s.flushErr != nil {\n\t\treturn s.flushErr\n\t}\n", "", "TestREC34c_")
 m("REC-34 the report renders a flush_failed marker as fine", "internal/report/report.go",
@@ -54,8 +54,8 @@ m("REC-34 the barrier never reaches the kernel", "internal/store/sync_darwin.go"
   "\t\t_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), fBarrierFsync, 0)",
   "\t\terrno := syscall.Errno(0)", "TestREC34f_")
 m("REC-34 an accepted barrier falls back to a full sync", "internal/store/sync_darwin.go",
-  "\t\tcase errno == 0:\n\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn nil\n",
-  "\t\tcase errno == 0:\n\t\t\treturn syncFull(f)\n", "TestREC34_")
+  "\t\tcase errno == 0:\n\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, nil\n",
+  "\t\tcase errno == 0:\n\t\t\treturn false, syncFull(f)\n", "TestREC34_")
 IMPORTS["REC-34 an accepted barrier falls back to a full sync"] = ("internal/store/sync_darwin.go",
   "import (\n\t\"os\"\n\t\"syscall\"\n\n\t\"github.com/altrace-dev-role/rashomon/internal/fault\"\n)",
   "import (\n\t\"os\"\n\t\"syscall\"\n)")
@@ -63,12 +63,14 @@ IMPORTS["REC-34 an accepted barrier falls back to a full sync"] = ("internal/sto
 # recorder logs the barrier, so REC-34's acceptance test stays green, and only
 # the check that every full sync is syncFull's sees it (P09-F4, the residual).
 m("REC-34 an accepted barrier also syncs in full, unseen", "internal/store/sync_darwin.go",
-  "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn nil\n",
-  "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn f.Sync()\n", "TestREC34j_")
+  "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, nil\n",
+  "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, f.Sync()\n", "TestREC34j_")
 m("REC-34 the barrier's fallback syncs where the recorder cannot see it", "internal/store/sync_darwin.go",
-  "\t\tcase barrierRefused(errno):\n\t\t\treturn syncFull(f)\n", "\t\tcase barrierRefused(errno):\n\t\t\treturn f.Sync()\n", "TestREC34j_")
+  "\t\tcase barrierRefused(errno):\n\t\t\tif err := syncFull(f); err != nil {\n",
+  "\t\tcase barrierRefused(errno):\n\t\t\tif err := f.Sync(); err != nil {\n", "TestREC34j_")
 m("REC-34 group commit off inside barrierSync", "internal/store/sync_darwin.go",
-  "func barrierSync(f *os.File) error {\n\tfor {\n", "func barrierSync(f *os.File) error {\n\treturn syncFull(f)\n\tfor {\n", "TestREC34_")
+  "func barrierSync(f *os.File) (durable bool, err error) {\n\tfor {\n",
+  "func barrierSync(f *os.File) (durable bool, err error) {\n\treturn true, syncFull(f)\n\tfor {\n", "TestREC34_")
 # Every lock counted and every sync seen (P09-F8): the recorder's locked= flag
 # is only as good as the locks it is told about.
 m("REC-34 forget's rewrite syncs where the recorder cannot see it", "internal/store/gaps.go",
@@ -83,3 +85,14 @@ m("REC-34 the counted lock counts nothing", "internal/store/store.go",
   "\tfault.LockTaken()\n", "", "TestREC34_")
 m("REC-34 a marker naming no call reads as a lost call", "internal/report/testbending.go",
   "\t\tif t.FlushFailed() && t.ToolUseID == \"\" {\n\t\t\tcontinue\n\t\t}\n", "", "TestREC34i_")
+# A barrier that was itself a full sync leaves Flush nothing (P09-F9): off
+# darwin every barrier is one, and a Flush after it would be a second fsync per
+# hook that an undeferred store never issued. The stand-in barrier's own half
+# (sync_other.go) is judged by TestREC34l_TheStandInBarrierIsDurable and by
+# TestREC34_GroupCommitFlushesBeforeExit off darwin, where this sweep does not
+# run, so it has no mutant here.
+m("REC-34 a full-sync barrier still leaves its file to Flush", "internal/store/store.go",
+  "\tif durable {\n\t\ts.dirty = \"\"\n\t}\n", "\tif durable && false {\n\t\ts.dirty = \"\"\n\t}\n", "TestREC34l_")
+m("REC-34 an accepted darwin barrier reports its write durable", "internal/store/sync_darwin.go",
+  "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, nil\n",
+  "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn true, nil\n", "TestREC34f_")

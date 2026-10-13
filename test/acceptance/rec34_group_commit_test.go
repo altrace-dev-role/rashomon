@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -61,9 +62,11 @@ func (e *env) runFiles(sessionID string) (records, coverage, spill int) {
 // TestREC34_GroupCommitFlushesBeforeExit: hook and post order every append
 // with a barrier inside its lock and then issue exactly one full sync, after
 // the last append, outside every lock, with nothing on stdout, which is what
-// "durable before exit" is when nothing printed comes first. probe and the
-// paused path are the contrast: they never defer, and keep a full sync per
-// append. Observed through the rashomonfault sync recorder (REC-34).
+// "durable before exit" is when nothing printed comes first. Off darwin every
+// barrier is itself a full sync, so the append is durable when it returns and
+// there is no flush left to issue: no full sync at all (P09-F9). probe and
+// the paused path are the contrast: they never defer, and keep a full sync
+// per append. Observed through the rashomonfault sync recorder (REC-34).
 //
 // "Before stdout" holds vacuously on this base: neither hook nor post writes
 // to stdout at all (cmdHook and cmdPost are not even handed it), so the
@@ -118,8 +121,8 @@ func TestREC34_GroupCommitFlushesBeforeExit(t *testing.T) {
 					}
 				}
 			}
-			if fulls != 1 {
-				t.Errorf("%d full syncs, want exactly one: %v", fulls, events)
+			if fulls != flushesPerProcess() {
+				t.Errorf("%d full syncs, want exactly %d: %v", fulls, flushesPerProcess(), events)
 			}
 			if barriers != wantBarriers {
 				t.Errorf("%d barriers, want %d, one per sync of every append: %v", barriers, wantBarriers, events)
@@ -157,6 +160,27 @@ func TestREC34_GroupCommitFlushesBeforeExit(t *testing.T) {
 	})
 }
 
+// flushesPerProcess is how many full syncs a deferred hook or post issues
+// after its appends: the one flush on darwin, where a barrier only orders;
+// none elsewhere, where every barrier was a full sync and left the flush
+// nothing (P09-F9).
+func flushesPerProcess() int {
+	if runtime.GOOS == "darwin" {
+		return 1
+	}
+	return 0
+}
+
+// skipWithoutAFlush skips a test of the flush's own failure off darwin, where
+// a deferred hook issues no flush to fail. The failure that remains there is
+// the barrier's, which TestREC34_FailedBarrierIsMarkedNotRetried covers.
+func skipWithoutAFlush(t *testing.T) {
+	t.Helper()
+	if flushesPerProcess() == 0 {
+		t.Skip("off darwin every barrier is a full sync and a deferred hook issues no flush (P09-F9); the barrier's failure is TestREC34_FailedBarrierIsMarkedNotRetried")
+	}
+}
+
 // TestREC34_FailedFlushIsMarkedAndNeverRetried: when the one full sync fails,
 // the entry still exits 0 and prints nothing, never retries the flush, and
 // leaves a spill terminal for the call carrying flush_failed, synced in full:
@@ -164,6 +188,7 @@ func TestREC34_GroupCommitFlushesBeforeExit(t *testing.T) {
 // for. The report then renders the session as possibly not durable rather
 // than as fine (REC-34).
 func TestREC34_FailedFlushIsMarkedAndNeverRetried(t *testing.T) {
+	skipWithoutAFlush(t)
 	for _, c := range []struct {
 		name    string
 		entry   func(*env) func(string, ...string) result
@@ -245,13 +270,20 @@ func TestREC34_UnmarkableFlushFailureSaysSoOnStderr(t *testing.T) {
 		if err := os.Mkdir(filepath.Join(e.home, "runs", testSession, "spill.ndjson"), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		res := e.hook(defaultPayload().build(t), "RASHOMON_FAULT="+pointStoreFullSync+":fail=1")
+		// The flush fails where there is one, and the barrier, which is
+		// as final, where there is not: either way the marker is owed.
+		point := pointStoreFullSync
+		if flushesPerProcess() == 0 {
+			point = pointStoreBarrier
+		}
+		res := e.hook(defaultPayload().build(t), "RASHOMON_FAULT="+point+":fail=1")
 		if res.exitCode != 0 || res.stdout != "" || res.stderr != flushLost {
 			t.Fatalf("exit %d, stdout %q, stderr %q; want 0, nothing on stdout, and the fixed line on stderr",
 				res.exitCode, res.stdout, res.stderr)
 		}
 	})
 	t.Run("the marker's full sync fails", func(t *testing.T) {
+		skipWithoutAFlush(t)
 		e := newEnv(t)
 		e.watched(testSession)
 		log := filepath.Join(t.TempDir(), "sync.log")
