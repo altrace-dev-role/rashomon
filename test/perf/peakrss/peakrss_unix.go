@@ -113,10 +113,6 @@ func fail(report io.Writer, err error) int {
 	return 125
 }
 
-// MiB returns the peak RSS, in MiB, of the process ps describes. ps must be
-// a finished process's state.
-func MiB(ps *os.ProcessState) (float64, error) { return fromState(ps) }
-
 // fromState returns the peak RSS, in MiB, of the process ps describes. ps
 // must be a finished process's state.
 func fromState(ps *os.ProcessState) (float64, error) {

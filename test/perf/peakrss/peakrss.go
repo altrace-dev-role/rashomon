@@ -7,14 +7,15 @@
 // exists for Linux. There, wait4's ru_maxrss for a child its parent vforked is
 // at least the parent's own peak, because exec records the shared address
 // space's high-water mark into the child before replacing it (fs/exec.c,
-// exec_mmap), and Go starts every child with CLONE_VFORK|CLONE_VM. Read that
-// way, every child of the perf test binary reads as at least the test
-// binary's own peak. The reaper holds nothing and peaks at about 2 MiB on
-// linux/arm64, so the child's reading is its own, and a reading that does not
+// exec_mmap), and Go starts every child with CLONE_VFORK|CLONE_VM. A test
+// parent holding a 7 MB payload read every child as that payload and more;
+// even a test binary at rest (3.6 MiB on linux/arm64) sits above the release
+// binary's smallest entries (3.25 MiB). The reaper holds nothing and peaks at
+// about 2 MiB, so the child's reading is its own, and a reading that does not
 // exceed the reaper's own peak is refused rather than taken.
 //
-// Windows has no ru_maxrss, so there NewReaper and MiB return ErrUnavailable
-// and the caller skips by name rather than failing to build; that is what keeps
+// Windows has no ru_maxrss, so there NewReaper returns ErrUnavailable and the
+// caller skips by name rather than failing to build; that is what keeps
 // `GOOS=windows go vet ./...` clean.
 package peakrss
 
@@ -28,8 +29,8 @@ import (
 	"strings"
 )
 
-// ErrUnavailable is NewReaper's and MiB's error on a platform whose process
-// state carries no ru_maxrss.
+// ErrUnavailable is NewReaper's error on a platform whose process state
+// carries no ru_maxrss.
 var ErrUnavailable = errors.New("peak RSS is not reported on this platform")
 
 // Reaper is a built reaper binary; Run measures a child through it.
