@@ -3031,6 +3031,15 @@ m("NONO the trail's host lists come out unsorted", "internal/nono/nono.go",
 m("NONO the store-level forget record carries a field beyond its digest", "internal/store/record.go",
   "\tHostDigest    string `json:\"host_digest\"`\n}", "\tHostDigest    string `json:\"host_digest\"`\n\tName          string `json:\"name\"`\n}",
   "TestH25_TheStoreLevelForgetRecordIsClosed")
+# The published store contract knows the record (review of #53): without a
+# definition every line of forgotten-hosts.ndjson failed the schema.
+m("the store schema has no forgotten_host definition", "docs/store-schema.json",
+  '    "forgotten_host": {\n      "title": "forgotten_host",', '    "forgotten_host_REMOVED": {\n      "title": "forgotten_host",',
+  "TestStoreSchema")
+m("the store schema's forgotten_host declares a key no record carries", "docs/store-schema.json",
+  '        "host_digest": {\n          "description": "An HMAC under the per-install key of the canonical host name',
+  '        "name": {\n          "type": "string"\n        },\n        "host_digest": {\n          "description": "An HMAC under the per-install key of the canonical host name',
+  "TestStoreSchema")
 
 # A repeat forget of one host adds no line to a file no size cap covers
 # (review of #53).

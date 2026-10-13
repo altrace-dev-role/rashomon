@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/altrace-dev-role/rashomon/docs/store-schema.json",
   "title": "rashomon store records",
-  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. No field here carries content: no prompt, no response, no argument value, no command string. Identifiers are not content and are stored verbatim.",
+  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. forgotten-hosts.ndjson at the store root holds forgotten_host records, one per host a forget --host was given. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. No field here carries content: no prompt, no response, no argument value, no command string. Identifiers are not content and are stored verbatim.",
   "oneOf": [
     {
       "$ref": "#/$defs/declaration"
@@ -18,6 +18,9 @@
     },
     {
       "$ref": "#/$defs/gap"
+    },
+    {
+      "$ref": "#/$defs/forgotten_host"
     }
   ],
   "$defs": {
@@ -691,6 +694,40 @@
         },
         "removed_records": {
           "type": "integer"
+        }
+      }
+    },
+    "forgotten_host": {
+      "title": "forgotten_host",
+      "description": "A host-scoped forget, kept at the store root. Written by forget --host whatever it removed, at most once per host, so the report can keep suppressing a host that only the sandbox's trail or the proxy's store held, where no run had a record to remove and so no gap was written. Carries the keyed digest and never the name, for the reason given on gap.host_digest.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "recorded_at_unix_ms",
+        "host_digest"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "forgotten_host"
+          ]
+        },
+        "schema_version": {
+          "description": "Stamped at the session-level version, as coverage and gap records are. The record first exists at 3.",
+          "type": "integer",
+          "enum": [
+            3
+          ]
+        },
+        "recorded_at_unix_ms": {
+          "type": "integer"
+        },
+        "host_digest": {
+          "description": "An HMAC under the per-install key of the canonical host name, the same digest a forget_host gap carries. Never empty.",
+          "type": "string",
+          "minLength": 1
         }
       }
     },

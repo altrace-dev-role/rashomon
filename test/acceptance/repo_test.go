@@ -67,6 +67,7 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 		{"terminal", terminalKeys},
 		{"coverage", coverageKeys},
 		{"gap", gapKeys},
+		{"forgotten_host", forgottenHostKeys},
 	} {
 		t.Run(c.def, func(t *testing.T) {
 			def, ok := defs[c.def].(map[string]any)
