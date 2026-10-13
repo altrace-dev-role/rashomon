@@ -127,3 +127,29 @@ func TestRES29_ContinuationsPastTheKeptOffsets(t *testing.T) {
 		t.Errorf("one past maxJoins: program %v, want echo", show(s.Program))
 	}
 }
+
+// TestRES29_DeriveReadsTheLineThreeTimes: Derive lexes a shell line three
+// times -- for argc, the program and the masked status -- and counts the
+// leading cds from the program search's tokens rather than lexing a fourth
+// time (P-12's fold). Past the decoding of the command, it allocates at most
+// three and a half times one reading of the line, on two lines where each
+// reading costs megabytes: one word of 2.8 million escaped blanks, copied by
+// each reading, and 2.8 million backslash-newlines, joined by two of them.
+// A fourth reading puts it at four.
+func TestRES29_DeriveReadsTheLineThreeTimes(t *testing.T) {
+	for _, tc := range pathologicalLines(t) {
+		if tc.name != "escaped blanks" && tc.name != "backslash-newlines" {
+			continue
+		}
+		cmd, ok := commandField(tc.in)
+		if !ok {
+			t.Fatalf("%s: no command", tc.name)
+		}
+		decode := allocated(func() { commandField(tc.in) })
+		reading := allocated(func() { tokenizeProgram(cmd) })
+		derive := allocated(func() { Derive("Bash", tc.in, benchKey) })
+		if ratio := float64(derive-decode) / float64(reading); ratio > 3.5 {
+			t.Errorf("%s: Derive allocated %.2f readings' worth past the decoding, want at most 3.5", tc.name, ratio)
+		}
+	}
+}
