@@ -114,6 +114,9 @@ type runLines struct {
 
 // openRunLines opens a run for forget. The ordered stream's lock is held
 // until close, so that no handler appends between the plan and the rewrite.
+// The spill file is read without its lock, because spill writers do not wait
+// for it; rewriteSpill reads it again under the lock and removes only what
+// the plan counted.
 func openRunLines(dir string) (*runLines, error) {
 	rl := &runLines{spillPath: filepath.Join(dir, FileSpill)}
 	f, err := os.OpenFile(filepath.Join(dir, FileRecords), os.O_RDWR, fileMode)
@@ -234,7 +237,7 @@ func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
 		}
 	}
 	if removedSpill > 0 {
-		if err := rewriteAt(spillPath, keptSpill); err != nil {
+		if err := rewriteSpill(spillPath, spillLines, keptSpill); err != nil {
 			return &g, err
 		}
 	}
@@ -326,12 +329,27 @@ func rewrite(f *os.File, lines [][]byte) error {
 	return syncFull(f)
 }
 
-// rewriteAt rewrites the spill file under its lock. Spill writers wait only
-// briefly for that lock and then append regardless, so a rewrite that takes
-// longer than their patience can race one; the rewrite is a few microseconds,
-// their patience is fifty milliseconds, and the loss on the far side of that
-// is one terminal, which reads as unverified rather than as anything false.
-func rewriteAt(path string, lines [][]byte) error {
+// rewriteSpill removes from the spill file the lines forget counted, and
+// only those. snapshot is the file as forget's plan read it, without the
+// spill lock, and kept is what the plan keeps of it; the lines in one and
+// not the other, counted as a multiset, are what the gap already says left.
+//
+// The file is read again under its lock and every line the plan did not
+// count is written back, so a spill that landed after the plan -- a
+// lock_timeout terminal, the only trace of a declaration that could not
+// land -- survives (conc-1). A counted line is dropped once per count, so a
+// duplicate the plan did not count stays. It does not re-decide by
+// tool_use_id under the lock: that could remove a line the gap never
+// counted.
+//
+// Spill writers wait spillBudget for this lock and then append regardless.
+// The hold is one read, one write and one full sync, which is milliseconds:
+// a full sync inside a lock held an ordered append for 6.9 ms at p50 and
+// 11.6 ms at p99 on darwin (lockbudget.go). A writer that gives up during a
+// longer hold can lose its line to the rewrite; that is the accepted risk,
+// and the line it loses reads as unverified rather than as anything false.
+func rewriteSpill(path string, snapshot, kept [][]byte) error {
+	counted := countedLines(snapshot, kept)
 	f, err := os.OpenFile(path, os.O_RDWR, fileMode)
 	if err != nil {
 		return err
@@ -342,7 +360,33 @@ func rewriteAt(path string, lines [][]byte) error {
 		return err
 	}
 	defer unlock()
-	return rewrite(f, lines)
+	lines, err := readLines(f)
+	if err != nil {
+		return err
+	}
+	out := lines[:0]
+	for _, line := range lines {
+		if counted[string(line)] > 0 {
+			counted[string(line)]--
+			continue
+		}
+		out = append(out, line)
+	}
+	return rewrite(f, out)
+}
+
+// countedLines is the multiset of lines in snapshot and not in kept, which
+// partition took from snapshot in order. It holds at most len(snapshot)
+// keys.
+func countedLines(snapshot, kept [][]byte) map[string]int {
+	counted := make(map[string]int, len(snapshot)-len(kept))
+	for _, line := range snapshot {
+		counted[string(line)]++
+	}
+	for _, line := range kept {
+		counted[string(line)]--
+	}
+	return counted
 }
 
 // canonicalHost is host.Canonical, under a name ForgetHost's parameter does
@@ -539,7 +583,7 @@ func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
 		}
 	}
 	if removedSpill > 0 {
-		if err := rewriteAt(spillPath, keptSpill); err != nil {
+		if err := rewriteSpill(spillPath, spillLines, keptSpill); err != nil {
 			return &g, err
 		}
 	}

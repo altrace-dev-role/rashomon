@@ -76,7 +76,7 @@ m("REC-34 group commit off inside barrierSync", "internal/store/sync_darwin.go",
 # Every lock counted and every sync seen (P09-F8): the recorder's locked= flag
 # is only as good as the locks it is told about.
 m("REC-34 forget's rewrite syncs where the recorder cannot see it", "internal/store/gaps.go",
-  "\treturn syncFull(f)\n}\n\n// rewriteAt", "\treturn f.Sync()\n}\n\n// rewriteAt", "TestREC34h_")
+  "\treturn syncFull(f)\n}\n\n// rewriteSpill", "\treturn f.Sync()\n}\n\n// rewriteSpill", "TestREC34h_")
 m("REC-34 forget's rewrite sync unseen, judged end to end", "internal/store/gaps.go",
   "\tif err := f.Truncate(off); err != nil {\n\t\treturn err\n\t}\n\treturn syncFull(f)\n",
   "\tif err := f.Truncate(off); err != nil {\n\t\treturn err\n\t}\n\treturn f.Sync()\n",
