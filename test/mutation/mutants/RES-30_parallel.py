@@ -43,3 +43,16 @@ m("RES-30 the ratio takes the sum's tolerance on the reference machine", "test/p
 m("RES-30 the ratio ignores the runner tolerance", "test/perf/gate.go",
   "\tcase OverBudget(largest, PerProcessPeakRatio*b.OneWayPeakMiB, ratioTolerance):",
   "\tcase OverBudget(largest, PerProcessPeakRatio*b.OneWayPeakMiB, 0):", "TestRES30_")
+# Where the ratio's tolerance applies (P09-F3, round 2): none on the reference
+# machine, where 1.25x was measured, and the platform's runner tolerance only on
+# GitHub Actions. The selector reads the environment through an injected getenv
+# so this untagged sweep judges it; always granting the runner tolerance loosens
+# the reference gate to about 1.44x, the reading that hides a regression.
+m("RES-30 the ratio always gets the runner tolerance", "test/perf/gate.go",
+  "\tif getenv(\"GITHUB_ACTIONS\") == \"true\" {\n\t\treturn platformTolerance\n\t}\n\treturn 0\n",
+  "\treturn platformTolerance\n", "TestRES30_")
+m("RES-30 the ratio never gets the runner tolerance", "test/perf/gate.go",
+  "\tif getenv(\"GITHUB_ACTIONS\") == \"true\" {\n\t\treturn platformTolerance\n\t}\n\treturn 0\n",
+  "\treturn 0\n", "TestRES30_")
+m("RES-30 any GITHUB_ACTIONS value is a runner", "test/perf/gate.go",
+  "\tif getenv(\"GITHUB_ACTIONS\") == \"true\" {", "\tif getenv(\"GITHUB_ACTIONS\") != \"\" {", "TestRES30_")
