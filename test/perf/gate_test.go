@@ -195,7 +195,15 @@ func healthyBurst(ways int) Burst {
 	for i := 0; i < ways; i++ {
 		b.PairPeakMiB = append(b.PairPeakMiB, 5)
 	}
+	b.OneWayPeakMiB = 5
 	return b
+}
+
+// setPairs gives every pair the same peak.
+func (b *Burst) setPairs(mib float64) {
+	for i := range b.PairPeakMiB {
+		b.PairPeakMiB[i] = mib
+	}
 }
 
 // TestRES30_BurstVerdictCountsEveryLoss: the verdict the 64-way test reaches
@@ -221,15 +229,45 @@ func TestRES30_BurstVerdictCountsEveryLoss(t *testing.T) {
 		{"a record without a seq", func(b *Burst) { b.Seqs = b.Seqs[:len(b.Seqs)-1] }, true},
 		{"a pair unmeasured", func(b *Burst) { b.PairPeakMiB = b.PairPeakMiB[1:] }, true},
 		{"a pair measured as nothing", func(b *Burst) { b.PairPeakMiB[0] = 0 }, true},
-		{"the sum at budget plus tolerance", func(b *Burst) { b.PairPeakMiB[0] += budget*(1+tol) - 20 }, false},
-		{"the sum over it", func(b *Burst) { b.PairPeakMiB[0] += budget*(1+tol) - 20 + 0.01 }, true},
+		// The sum cases raise the 1-way figure with the pair, so that only
+		// the sum is judged.
+		{"the sum at budget plus tolerance", func(b *Burst) {
+			b.PairPeakMiB[0] += budget*(1+tol) - 20
+			b.OneWayPeakMiB = b.PairPeakMiB[0]
+		}, false},
+		{"the sum over it", func(b *Burst) {
+			b.PairPeakMiB[0] += budget*(1+tol) - 20 + 0.01
+			b.OneWayPeakMiB = b.PairPeakMiB[0]
+		}, true},
 		{"no pairs at all", func(b *Burst) { *b = Burst{} }, true},
+		// The per-process rule: under contention the typical process does
+		// not grow past 1.1x what one costs alone (archive 85.4.4), judged
+		// median against median, so one process in the tail is reported and
+		// not gated.
+		{"the median process at the 1-way ratio", func(b *Burst) { b.setPairs(PerProcessPeakRatio * b.OneWayPeakMiB) }, false},
+		{"the median process over it", func(b *Burst) { b.setPairs(PerProcessPeakRatio*b.OneWayPeakMiB + 0.01) }, true},
+		{"the median process at 1.11x, the spec's 1.1 written out", func(b *Burst) { b.setPairs(1.11 * b.OneWayPeakMiB) }, true},
+		{"one process over it, the median within", func(b *Burst) { b.PairPeakMiB[2] = 2 * b.OneWayPeakMiB }, false},
+		{"the 1-way figure unmeasured", func(b *Burst) { b.OneWayPeakMiB = 0 }, true},
 	} {
 		b := healthyBurst(ways)
 		c.spoil(&b)
 		if got := len(b.Problems(budget, tol)) > 0; got != c.fails {
 			t.Errorf("%s: fails = %v, want %v (%q)", c.name, got, c.fails, b.Problems(budget, tol))
 		}
+	}
+}
+
+// TestRES30_LargestIsTheLargestPairPeak: the largest process the burst
+// reports beside the gated median is the largest pair peak, each the larger
+// of a pair's hook and post, so the largest of every process (RES-30).
+func TestRES30_LargestIsTheLargestPairPeak(t *testing.T) {
+	b := Burst{PairPeakMiB: []float64{4.1, 4.3, 3.9}}
+	if got := b.LargestMiB(); got != 4.3 {
+		t.Errorf("LargestMiB() = %v, want 4.3", got)
+	}
+	if got := (Burst{}).LargestMiB(); got != 0 {
+		t.Errorf("LargestMiB() of no pairs = %v, want 0", got)
 	}
 }
 

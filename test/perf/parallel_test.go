@@ -25,9 +25,11 @@ import (
 // TestRES30_ParallelHooksStayInBudget: Ways hook-and-post pairs on one
 // session, all released at once, each a hook and then its post as Claude Code
 // runs them, land every record in the ordered stream with no spill and no
-// lock timeout, and the pairs' peak footprints sum to within budget (RES-30;
-// H-16 at the same width covers the hook alone). What a pair costs at any
-// instant is one process, so a pair's peak is the larger of its two.
+// lock timeout, the pairs' peak footprints sum to within budget, and the
+// median pair peak is at most PerProcessPeakRatio times the 1-way figure,
+// measured first, in a store of its own (RES-30; H-16 at the same width
+// covers the hook alone). What a pair costs at any instant is one process, so
+// a pair's peak is the larger of its two.
 //
 // Steer candidates per call and lock_timeout suppressions on steer.ndjson,
 // which RES-30's row also names, are STEER's and arrive with it.
@@ -35,6 +37,7 @@ func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 	b := loadBudgets(t)
 	tol := tolerance(t, b)
 	ways := b.Parallel.Ways
+	oneWay := oneWayPeakMiB(t)
 	home, env := scratch(t)
 	// The session starts as SessionStart starts it, so the burst measures
 	// recording rather than first use creating the store over and over.
@@ -64,14 +67,14 @@ func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 	took := time.Since(began)
 
 	burst := readBurst(t, filepath.Join(home, "runs", payload.Session), ways)
-	all, largest := 0.0, 0.0
+	burst.OneWayPeakMiB = oneWay
+	all := 0.0
 	for _, p := range pairs {
 		if p.err != nil {
 			t.Fatal(p.err)
 		}
 		burst.PairPeakMiB = append(burst.PairPeakMiB, max(p.hook, p.post))
 		all += p.hook + p.post
-		largest = max(largest, p.hook, p.post)
 	}
 	for _, problem := range burst.Problems(b.Parallel.SummedPeakMiBMax, tol) {
 		t.Error(problem)
@@ -80,10 +83,41 @@ func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 	for _, m := range burst.PairPeakMiB {
 		sum += m
 	}
-	t.Logf("%d-way on %s: summed pair peak %.1f MiB against %.0f (+%.0f%%); all %d processes %.1f MiB; largest %.2f MiB; "+
+	median, _ := Median(burst.PairPeakMiB)
+	t.Logf("%d-way on %s: summed pair peak %.1f MiB against %.0f (+%.0f%%); all %d processes %.1f MiB; "+
+		"median pair peak %.2f MiB against %.1fx the 1-way %.2f MiB, largest %.2f MiB (reported); "+
 		"%d declarations, %d executions, %d spilled, %d lock timeouts; burst %v (reported, not gated)",
-		ways, platform(), sum, b.Parallel.SummedPeakMiBMax, tol*100, 2*ways, all, largest,
+		ways, platform(), sum, b.Parallel.SummedPeakMiBMax, tol*100, 2*ways, all,
+		median, PerProcessPeakRatio, oneWay, burst.LargestMiB(),
 		burst.Declarations, burst.Executions, burst.Spilled, burst.LockTimeouts, took.Round(time.Millisecond))
+}
+
+// oneWayPeakMiB is the 1-way figure RES-30's per-process rule compares the
+// burst against: OneWaySamples hook-and-post pairs run one at a time on a
+// started session in a store of their own, each pair's peak the larger of its
+// two processes, as in the burst, and the median of those peaks.
+func oneWayPeakMiB(t *testing.T) float64 {
+	t.Helper()
+	_, env := scratch(t)
+	maxRSSMiB(t, payload.SessionStart(), env, "probe", "start")
+	peaks := make([]float64, 0, OneWaySamples)
+	for i := 0; i < OneWaySamples; i++ {
+		id := fmt.Sprintf("toolu_solo_%03d", i)
+		hook, err := peakMiB(payload.BashPre("git status --short", id), env, "hook")
+		if err != nil {
+			t.Fatal(err)
+		}
+		post, err := peakMiB(payload.BashPost("git status --short", id, " M README.md\n"), env, "post")
+		if err != nil {
+			t.Fatal(err)
+		}
+		peaks = append(peaks, max(hook, post))
+	}
+	median, ok := Median(peaks)
+	if !ok {
+		t.Fatal("no 1-way sample")
+	}
+	return median
 }
 
 // peakMiB runs the release binary once on stdin and returns its peak memory
