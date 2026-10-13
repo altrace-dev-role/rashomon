@@ -339,3 +339,16 @@ jobs:
       # mutation sweep, which stays on ubuntu-latest in its own job.
       - name: REC-34 group commit (darwin)
         run: go test -race -count=1 -run 'TestREC34' ./internal/store ./test/acceptance
+
+      # darwin is where an append's sync is F_FULLFSYNC, and the store's lock
+      # budgets are derived from its holds (internal/store/lockbudget.go,
+      # BenchmarkOrderedAppendHold), so the 64-way burst runs here and not
+      # only on ubuntu (perf-1). Both tests gate on what a burst must not
+      # lose -- every declaration lands in the ordered stream, with no spill
+      # and no lock_timeout, and the seq is contiguous -- and neither on
+      # wall time, which process spawn dominates. H-16 is 64 hooks, run here;
+      # RES-30 is 64 hook-and-post pairs, and also gates their summed peak
+      # memory, so it runs in the RSS step above (TestRES30_), where every
+      # owed gate is required.
+      - name: 64-way hooks lose nothing to the lock (H-16)
+        run: go test ./test/acceptance -run '^TestH16_' -count=1 -v

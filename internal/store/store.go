@@ -410,7 +410,14 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 		return err
 	}
 	defer unlock()
+	return s.writeOrderedLocked(f, dir, build)
+}
 
+// writeOrderedLocked is an ordered append's critical section: it allocates
+// the seq, writes the record and syncs it, with the caller holding f's lock.
+// It is all the lock is held for, and BenchmarkOrderedAppendHold times
+// exactly this function.
+func (s *Store) writeOrderedLocked(f *os.File, dir string, build func(seq int64) any) error {
 	seq, err := nextSeq(dir, s.syncAppend)
 	if err != nil {
 		return err

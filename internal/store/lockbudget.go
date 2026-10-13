@@ -11,21 +11,32 @@ import "time"
 // There is a real tension here: returning promptly under contention pulls
 // against landing every record. This is the choice, stated plainly -- wait up
 // to two seconds. An ordered append holds the lock for its seq counter and its
-// record, each put behind a barrier rather than synced in full, because the
-// full sync is the hook's one Flush, taken after the lock is released
-// (REC-34). Measured on an Apple M3 under load, that hold is 0.72 ms at p50,
-// 1.3 ms at p90 and 3.6 ms at p99, so the 192 ordered appends of sixty-four
-// hook-and-post pairs hold the lock for about 140 ms in all at the median
-// and under 0.7 s if every one took the p99. That counts the holds alone:
-// the polling backoff in lockFile leaves the lock idle between holders, and a
-// barrier waits behind another process's full sync, which drains the
-// device's queue. The whole burst, measured (RES-30, 2026-10-13), takes 0.49
-// to 0.59 s with no lock timeout, so reaching this budget means something is
-// wrong rather than merely busy. With the full sync inside the lock the same
-// hold was 6.9, 7.9 and 11.6 ms, and the holds alone came to 1.3 s at the
-// median and 2.2 s at p99, which is how H-16 failed under load. Linux and
-// Windows have no barrier (sync_other.go), so there the hold still includes a
-// full sync.
+// record (writeOrderedLocked), each put behind a barrier rather than synced
+// in full on darwin, because the full sync is the hook's one Flush, taken
+// after the lock is released (REC-34).
+//
+// The holds are measured by BenchmarkOrderedAppendHold on the reference
+// machine (Apple M3, go1.27.2, three runs at -benchtime 20x, 2026-10-13,
+// with other builds sharing the machine). A hook's append on darwin holds
+// the lock 1.4 to 1.7 ms at p50 alone, and in a 64-way burst 1.6 to 2.0 ms at
+// p50, 2.5 to 2.8 ms at p90 and 5.8 to 9.4 ms at p99. The 192 ordered appends
+// of sixty-four hook-and-post pairs then serialise in about 0.4 s at the
+// median, and in 1.8 s if every one took the worst p99: inside this budget,
+// with little room, which is why one invocation's waits share a deadline
+// (LimitLockWaits) and CI's macOS job fails on any lock_timeout at 64-way.
+// RES-30 timed the whole burst end to end (2026-10-13): 0.49 to 0.59 s,
+// with no lock timeout.
+// With the full sync inside the lock -- every append on Linux and Windows,
+// which have no barrier (sync_other.go), and an undeferred Store's on
+// darwin -- the 64-way hold was 6.7 to 6.8 ms at p50, 7.9 to 8.3 ms at p90
+// and 11.1 to 14.1 ms at p99: 1.3 s for that burst at the median, and past
+// this budget at p99. Three more runs while other processes loaded the disk
+// moved the medians little and the p99s to 7.7 to 41 ms for a hook's append
+// and up to 51 ms alone, and 5 of 1,280 appends in 64-way bursts lost to
+// this budget: the tail is set by whatever else is using the disk. Linux's
+// own holds are reported by the same benchmark in CI's perf-linux job, and
+// H-16's 64 hooks land there. The 0.72, 1.3 and 3.6 ms this comment used to
+// quote are not what the benchmark measures.
 // On give-up the caller writes a terminal record to the spill file, whose
 // writers wait only briefly for its lock and then append regardless
 // (spillBudget), so the dropped declaration is visible under its own
