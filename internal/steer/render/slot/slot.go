@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -135,7 +134,10 @@ func (g Gate) Validate() error {
 	return nil
 }
 
-func (g Gate) Text() string         { return string(g) }
+// Text quotes the gate: its first word is a program, which a repository can
+// name (tech 4.2.7), so it renders only inside a quote, after a word that
+// names it ("gate 'go test'"), like Program (P07N-11).
+func (g Gate) Text() string         { return quoted(string(g)) }
 func (g Gate) bind() (Value, error) { return checked(g, g.Validate()) }
 
 // factRE is the charset FactValue and Mechanism share (archive 40.3.8:
@@ -176,6 +178,13 @@ var urlSchemeRE = &lazyRegexp{pattern: `[A-Za-z][A-Za-z0-9+.-]*://|(?i:(?:^|[^A-
 // approvedBanned are the words Approved refuses (archive 40.3.8).
 var approvedBanned = []string{"ignore", "instruction", "system", "rashomon"}
 
+// Validate runs the slot table's checks (charset, no URL scheme, the four
+// banned words), refuses a quote that is not an apostrophe between two
+// letters or digits, because Approved renders inside a quote that its own
+// quote would close or shift (P07N-9), and runs the secret deny list and
+// the entropy test over each word, the check VERIFY applies to the same
+// `alternative` field (archive 20.2.8, TestVER47), so a token never renders
+// into model text before P-13's masker exists (P07N-10; FD-2).
 func (a Approved) Validate() error {
 	s := string(a)
 	if err := charset("approved text", s, approvedRE); err != nil {
@@ -186,6 +195,19 @@ func (a Approved) Validate() error {
 	}
 	if w, ok := firstWordOf(s, approvedBanned); ok {
 		return fmt.Errorf("slot: approved text holds the banned word %q", w)
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\'' && (i == 0 || i == len(s)-1 || !isAlnum(s[i-1]) || !isAlnum(s[i+1])) {
+			return errors.New("slot: approved text holds a quote that is not an apostrophe")
+		}
+	}
+	if err := denied("approved text", s); err != nil {
+		return err
+	}
+	for _, w := range strings.FieldsFunc(s, func(r rune) bool { return strings.ContainsRune(" ,;()", r) }) {
+		if highEntropy(w) {
+			return fmt.Errorf("%w: approved text holds a word that fails the entropy test", ErrSecretShaped)
+		}
 	}
 	return nil
 }
@@ -288,38 +310,6 @@ var modelRE = &lazyRegexp{pattern: `^[A-Za-z0-9._\[\]-]{1,64}$`}
 func (m Model) Validate() error      { return charset("model", string(m), modelRE) }
 func (m Model) Text() string         { return string(m) }
 func (m Model) bind() (Value, error) { return checked(m, m.Validate()) }
-
-// Enum is one value of a per-pattern closed table -- failure class labels,
-// verb labels, mechanism kinds, gate kinds (archive 40.3.8). The table
-// travels with the value, so a value is valid only as a member of the table
-// it was built with, and the zero Enum is in no table.
-type Enum struct {
-	value string
-	table []string
-}
-
-// NewEnum returns value as a member of table; Validate checks it.
-func NewEnum(value string, table ...string) Enum {
-	return Enum{value: value, table: slices.Clone(table)}
-}
-
-// enumRE keeps quotes, angle brackets and control characters out of a table
-// value; the gate-kinds value the subtask-gate card names, "test, build or
-// lint" (archive 40.4.1), passes.
-var enumRE = &lazyRegexp{pattern: `^[A-Za-z0-9 ,./_-]{1,64}$`}
-
-func (e Enum) Validate() error {
-	if err := charset("enum value", e.value, enumRE); err != nil {
-		return err
-	}
-	if !slices.Contains(e.table, e.value) {
-		return errors.New("slot: enum value is not in its table")
-	}
-	return nil
-}
-
-func (e Enum) Text() string         { return e.value }
-func (e Enum) bind() (Value, error) { return checked(e, e.Validate()) }
 
 // USD is a dollar amount, rendered with two decimals (archive 40.3.8: "`%.2f`
 // of 0..10,000"); the template supplies the "$". NaN, an infinity and a

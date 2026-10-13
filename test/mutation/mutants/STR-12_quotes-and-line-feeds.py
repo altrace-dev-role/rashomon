@@ -20,3 +20,8 @@ m("STR-12 a path renders outside a quote", "internal/steer/render/slot/path.go",
 m("STR-12 an agent type renders outside a quote", "internal/steer/render/slot/slot.go",
   "func (a AgentType) Text() string         { return quoted(string(a)) }\n",
   "func (a AgentType) Text() string         { return string(a) }\n", "TestSTR12b_")
+m("STR-12 a gate renders outside a quote", "internal/steer/render/slot/slot.go",
+  "func (g Gate) Text() string         { return quoted(string(g)) }\n",
+  "func (g Gate) Text() string         { return string(g) }\n", "TestSTR12b_")
+m("STR-12 Approved may hold a quote that shifts quote parity", "internal/steer/render/slot/slot.go",
+  "\t\tif s[i] == '\\'' && (i == 0 ||", "\t\tif false && (i == 0 ||", "TestSTR12c_")

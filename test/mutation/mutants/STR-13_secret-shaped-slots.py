@@ -30,3 +30,18 @@ m("STR-13 a package index host may carry a path", "internal/steer/render/slot/fa
   "\tcase FactPackageIndexHost:\n\t\treturn nil\n", "TestSTR13_")
 m("STR-13 the compiled entropy table drifts from the exact moments", "internal/steer/render/slot/entropy_table.go",
   "4.0329854008", "4.5329854008", "TestSTR13_")
+m("STR-13 Approved skips the deny list", "internal/steer/render/slot/slot.go",
+  "\tif err := denied(\"approved text\", s); err != nil {\n", "\tif err := denied(\"approved text\", \"\"); err != nil {\n", "TestSTR13e_")
+m("STR-13 Approved skips the entropy test", "internal/steer/render/slot/slot.go",
+  "\t\tif highEntropy(w) {\n", "\t\tif highEntropy(w[:0]) {\n", "TestSTR13e_")
+m("STR-13 the separated runs of a token go untested", "internal/steer/render/slot/secret.go",
+  "\t\t\tif runHighEntropy(s[start:i]) || tokenInRun(s[start:i]) {\n", "\t\t\tif runHighEntropy(s[start:i]) {\n", "TestSTR13d_")
+m("STR-13 a token's letter prefix is never stripped", "internal/steer/render/slot/secret.go",
+  "\t\t\tif len(rest) >= entropyMinRun && alphabetIndex(rest) < k && runHighEntropy(rest) {\n", "\t\t\tif len(rest) >= entropyMinRun && alphabetIndex(rest) < k && runHighEntropy(rest[:0]) {\n", "TestSTR13d_")
+m("STR-13 the Twilio key rule is dropped", "internal/steer/render/slot/secret.go",
+  "|SK[0-9a-fA-F]{32}|", "|", "TestSTR13_")
+m("STR-13 hf_, SG. and dapi match any word again", "internal/steer/render/slot/secret.go",
+  r"(?:hf_[A-Za-z]{34}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|dapi[a-f0-9]{32})",
+  r"(?:hf_|SG\.|dapi)[A-Za-z0-9_.=-]{16,}", "TestSTR13c_")
+m("STR-13 a bearer token needs no separator again", "internal/steer/render/slot/secret.go",
+  r"(?i:bearer)[\s:=]+[A-Za-z0-9._~+/=-]{20,}", r"(?i:bearer)[\s:=_+-]*[A-Za-z0-9._~+/=-]{20,}", "TestSTR13c_")

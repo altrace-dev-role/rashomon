@@ -25,8 +25,11 @@ m("STR-11 Gate admits a flag-shaped word", "internal/steer/render/slot/slot.go",
   "\t\tif false {\n", "TestSTR11b_")
 m("STR-11 Approved sees a URL scheme only before //", "internal/steer/render/slot/slot.go",
   "*://|(?i:(?:^|", "*://|(?i:x\\bx(?:^|", "TestSTR11b_")
-m("STR-11 Enum ignores its table", "internal/steer/render/slot/slot.go",
-  "\tif !slices.Contains(e.table, e.value) {\n", "\tif false {\n", "TestSTR11b_")
+m("STR-11 Enum ignores its table", "internal/steer/render/slot/enum.go",
+  "\tif !slices.Contains(enumTables[e.table], e.value) {\n", "\tif !slices.Contains(append(enumTables[e.table], e.value), e.value) {\n", "TestSTR11b_")
+m("STR-11 an Enum value brings its own table", "internal/steer/render/slot/enum.go",
+  "func NewEnum(table EnumTable, value string) Enum {\n",
+  "func NewEnum(table EnumTable, value string) Enum {\n\tenumTables[table] = append(enumTables[table], value)\n", "TestSTR11c_")
 m("STR-11 Path admits a '.' segment", "internal/steer/render/slot/path.go",
   "\t\tif seg == \".\" || seg == \"..\" {\n", "\t\tif seg == \"..\" {\n", "TestSTR11b_")
 m("STR-11 the list counts {k} from its own paths, not the record", "internal/steer/render/slot/path.go",
