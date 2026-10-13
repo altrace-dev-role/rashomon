@@ -313,7 +313,12 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.25.8"  # See the note in the test job.
+          # The rows in test/perf/budgets.json were measured under go1.27.2
+          # (its go_version), and allocation figures are the toolchain's:
+          # BenchmarkBuild/188 makes 21,660 allocations per op under 1.25.8
+          # and 6,832 under 1.27.2. benchgate and the harness refuse any other
+          # toolchain, so this pin moves only with a remeasurement.
+          go-version: "1.27.2"
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -321,14 +326,25 @@ jobs:
       # which is why they gate on every PR and wall time never does (RES-36).
       # The best of three runs is compared against test/perf/budgets.json at
       # ten percent over.
+      # shell: bash runs with -o pipefail; without it the step's status is
+      # benchgate's alone, and a go test that failed to build or crashed
+      # midway would pass on whatever partial output reached the gate.
       - name: Benchmark allocations against the budgets
-        run: go test -run '^$' -bench . -benchtime 20x -count 3 ./... | tee bench.txt | go run ./scripts/benchgate
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -run '^$' -bench . -benchtime 20x -count 3 ./... | tee bench.txt | go run ./scripts/benchgate
 
       # Peak RSS of the release binary per entry and per RES-28 case, the
       # median of nine runs, and the init budget from the runtime's own trace
       # (RES-2). Linux figures are gated against the reference rows until the
-      # platform's own baseline is recorded in budgets.json.
+      # platform's own baseline is recorded in budgets.json. `go test` passes
+      # a run in which every gate skipped; RASHOMON_PERF_REQUIRE_ALL fails it
+      # unless every entry row, every case gating in this tree and the init
+      # budget were compared.
       - name: Peak RSS and init budget
+        env:
+          RASHOMON_PERF_REQUIRE_ALL: "1"
         run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
 
   perf-macos:
@@ -343,9 +359,11 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.25.8"  # See the note in the test job.
+          go-version: "1.27.2"  # Measured under it; see the perf-linux job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
       - name: Peak RSS and init budget
+        env:
+          RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.
         run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
