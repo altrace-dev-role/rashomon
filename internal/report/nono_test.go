@@ -210,14 +210,17 @@ func TestNono_TheClientsOwnTrafficIsNotTheSessions(t *testing.T) {
 	if got, want := strings.Join(n.Denied, ","), "github.com"; got != want {
 		t.Errorf("denied = %q, want %q: the client's telemetry read as an attempt the agent made", got, want)
 	}
-	if got, want := strings.Join(n.ClientPlane, ","), "api.anthropic.com,"+intake; got != want {
-		t.Errorf("client_plane = %q, want %q: named apart, not dropped", got, want)
+	if got, want := strings.Join(n.ClientPlaneAllowed, ","), "api.anthropic.com"; got != want {
+		t.Errorf("client_plane_allowed = %q, want %q: named apart, not dropped", got, want)
+	}
+	if got, want := strings.Join(n.ClientPlaneDenied, ","), intake; got != want {
+		t.Errorf("client_plane_denied = %q, want %q: named apart, not dropped", got, want)
 	}
 	out := renderNono(n)
 	for _, want := range []string{
 		"sandbox (nono): 1 allowed, 1 denied in this session's window\n",
 		"    refused by the sandbox: github.com\n",
-		"    the client's own traffic, not counted above: api.anthropic.com, " + intake + "\n",
+		"    the client's own traffic, not counted above: allowed api.anthropic.com; refused " + intake + "\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("want %q in:\n%s", want, out)
@@ -230,10 +233,10 @@ func TestNono_TheClientsOwnTrafficIsNotTheSessions(t *testing.T) {
 // made mcp__* calls, as it does in the destinations view.
 func TestNono_TheMCPTransportIsTheAgentsOnAnMCPSession(t *testing.T) {
 	obs := trailWith(nono.Event{Host: mcpProxyHost, Port: 443, Decision: nono.DecisionAllow, Mode: "connect"})
-	if n := buildNono(obs, Destinations{}, true, true, nil, nil); strings.Join(n.Allowed, ",") != mcpProxyHost || len(n.ClientPlane) != 0 {
-		t.Errorf("mcp session: allowed %v, client_plane %v; want the transport as the agent's", n.Allowed, n.ClientPlane)
+	if n := buildNono(obs, Destinations{}, true, true, nil, nil); strings.Join(n.Allowed, ",") != mcpProxyHost || len(n.ClientPlaneAllowed) != 0 {
+		t.Errorf("mcp session: allowed %v, client_plane_allowed %v; want the transport as the agent's", n.Allowed, n.ClientPlaneAllowed)
 	}
-	if n := buildNono(obs, Destinations{}, true, false, nil, nil); len(n.Allowed) != 0 || strings.Join(n.ClientPlane, ",") != mcpProxyHost {
-		t.Errorf("no mcp calls: allowed %v, client_plane %v; want the transport as the client's", n.Allowed, n.ClientPlane)
+	if n := buildNono(obs, Destinations{}, true, false, nil, nil); len(n.Allowed) != 0 || strings.Join(n.ClientPlaneAllowed, ",") != mcpProxyHost {
+		t.Errorf("no mcp calls: allowed %v, client_plane_allowed %v; want the transport as the client's", n.Allowed, n.ClientPlaneAllowed)
 	}
 }

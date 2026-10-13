@@ -2933,11 +2933,11 @@ m("NONO the unknown-decision line is never printed", "internal/report/text.go",
 # the session's on the default path, and a host-scoped forget that removed
 # nothing left the host in the sandbox section (#45).
 m("NONO the client's own traffic is counted as the session's", "internal/report/nono.go",
-  "\t\t\tif clientsOwn(h) {\n\t\t\t\tseenClient[h] = true\n\t\t\t\tcontinue\n\t\t\t}\n",
-  "\t\t\tif false && clientsOwn(h) {\n\t\t\t\tseenClient[h] = true\n\t\t\t\tcontinue\n\t\t\t}\n",
+  "\t\t\tif clientsOwn(h) {\n\t\t\t\tclient = append(client, h)\n\t\t\t\tcontinue\n\t\t\t}\n",
+  "\t\t\tif false && clientsOwn(h) {\n\t\t\t\tclient = append(client, h)\n\t\t\t\tcontinue\n\t\t\t}\n",
   "TestNono_TheClientsOwnTraffic|TestNono_TheMCPTransport")
 m("NONO the client's own traffic is dropped rather than named", "internal/report/nono.go",
-  "\t\tn.ClientPlane = append(n.ClientPlane, h)\n", "\t\t_ = h\n",
+  "\t\t\t\tclient = append(client, h)\n", "",
   "TestNono_TheClientsOwnTraffic|TestNono_TheMCPTransport")
 m("NONO the MCP transport is the client's on an MCP session", "internal/report/destinations.go",
   "\treturn clientPlaneHosts[h] && !(h == mcpProxyHost && mcpAttributed)", "\treturn clientPlaneHosts[h]",
@@ -2949,10 +2949,13 @@ m("NONO the client's log intake is not on the client-plane list", "internal/repo
   "\t\"http-intake.logs.us5.datadoghq.com\": true,\n", "",
   "TestNono_TheClientsOwnTraffic")
 m("NONO the text never names the client's own traffic", "internal/report/text.go",
-  "\tif len(n.ClientPlane) > 0 {", "\tif false {",
+  "\tif len(n.ClientPlaneAllowed)+len(n.ClientPlaneDenied) > 0 {", "\tif false {",
   "TestNono_TheClientsOwnTraffic")
-m("NONO --redact passes the client's own hosts through", "internal/report/redact.go",
-  "\tout.ClientPlane = redactList(n.ClientPlane, key)\n", "",
+m("NONO --redact passes the client's own allowed hosts through", "internal/report/redact.go",
+  "\tout.ClientPlaneAllowed = redactList(n.ClientPlaneAllowed, key)\n", "",
+  "TestRedact_")
+m("NONO --redact passes the client's own refused hosts through", "internal/report/redact.go",
+  "\tout.ClientPlaneDenied = redactList(n.ClientPlaneDenied, key)\n", "",
   "TestRedact_")
 m("NONO a forget that removed nothing writes no store-level record", "internal/store/gaps.go",
   "\tif err := s.appendLine(filepath.Join(s.root, FileForgottenHosts), ForgottenHostRecord{",
@@ -3007,6 +3010,20 @@ m("NONO a host the sandbox also allowed is called an escape", "internal/report/n
 m("NONO a refused loopback host reached on the wire is an escape", "internal/report/nono.go",
   "\t\tif !h.Unreached && !loopbackHosts[h.Host] {", "\t\tif !h.Unreached {",
   "TestSeam_ARefusedClientHost")
+# The client-traffic line says which hosts the sandbox allowed and which it
+# refused (review of #53): one list of both hid the refused log upload.
+m("NONO the client-traffic line does not say what the sandbox refused", "internal/report/text.go",
+  "\t\tif len(n.ClientPlaneDenied) > 0 {\n\t\t\tsaid = append(said, \"refused \"", "\t\tif false {\n\t\t\tsaid = append(said, \"refused \"",
+  "TestSeam_TheClientsOwnTrafficSaysWhat|TestNono_TheClientsOwn")
+m("NONO the client's refused hosts are listed as allowed", "internal/report/nono.go",
+  "\tn.Denied, n.ClientPlaneDenied = split(obs.Denied())\n", "\tn.Denied, _ = split(obs.Denied())\n\t_, n.ClientPlaneAllowed = split(append(obs.Hosts(), obs.Denied()...))\n",
+  "TestSeam_TheClientsOwnTrafficSaysWhat|TestNono_TheClientsOwn")
+# The client's hosts keep the trail reader's order, with no map between: the
+# list used to come out of one, and only a sort a two-host test rarely caught
+# made it deterministic. The order now has one source, and this pins it.
+m("NONO the trail's host lists come out unsorted", "internal/nono/nono.go",
+  "\t\tout = append(out, e.Host)\n\t}\n\tsort.Strings(out)\n\treturn out\n}", "\t\tout = append(out, e.Host)\n\t}\n\treturn out\n}",
+  "TestSeam_TheClientsOwnTrafficIsListedInOrder")
 
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn

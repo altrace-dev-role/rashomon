@@ -2,6 +2,7 @@ package report
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -585,7 +586,7 @@ func TestSeam_TheMCPTransportReachesTheSandboxSection(t *testing.T) {
 	}
 	if n := rep.Sessions[0].Nono; strings.Join(n.Allowed, ",") != mcpProxyHost {
 		t.Errorf("on a session that made mcp__* calls the MCP transport is the agent's; "+
-			"allowed %v, client_plane %v", n.Allowed, n.ClientPlane)
+			"allowed %v, client_plane_allowed %v", n.Allowed, n.ClientPlaneAllowed)
 	}
 }
 
@@ -809,4 +810,92 @@ func TestSeam_ARefusedClientHostReachedOnTheWireIsAnEscape(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSeam_TheClientsOwnTrafficSaysWhatTheSandboxDid: the client-traffic line
+// is there so a reader comparing against nono's own log finds every host, and
+// a host without its decision is half of that. One list fed from both the
+// allowed and the refused hosts rendered a refused log upload -- the very
+// case the line was added for -- under "1 allowed, 0 denied" with nothing to
+// say it was refused. The JSON is split the same way.
+func TestSeam_TheClientsOwnTrafficSaysWhatTheSandboxDid(t *testing.T) {
+	const intake = "http-intake.logs.us5.datadoghq.com"
+	at := firstNonoEvent(t)
+	st, id, now := seamSessionAt(t, at)
+	rep, err := Build(st, id, now, WithNonoTrail(trailOf(t, at,
+		[2]string{"api.anthropic.com", "allow"}, [2]string{intake, "deny"},
+		[2]string{"pypi.org", "allow"})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := Text(&b, rep); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"sandbox (nono): 1 allowed, 0 denied in this session's window\n",
+		"    the client's own traffic, not counted above: allowed api.anthropic.com; refused " + intake + "\n",
+	} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("want %q in:\n%s", want, b.String())
+		}
+	}
+	got := nonoJSON(t, rep)
+	if a, d := got["client_plane_allowed"], got["client_plane_denied"]; fmt.Sprint(a) != "[api.anthropic.com]" || fmt.Sprint(d) != "["+intake+"]" {
+		t.Errorf("client_plane_allowed = %v, client_plane_denied = %v; want each decision in its own list", a, d)
+	}
+	if _, merged := got["client_plane"]; merged {
+		t.Errorf("the JSON still carries one client_plane list with no decision: %v", got["client_plane"])
+	}
+}
+
+// TestSeam_TheClientsOwnTrafficIsListedInOrder: every client host, met in
+// reverse order in the trail, comes out sorted, run after run. The list used
+// to be collected from a map, and only a sort made it deterministic; a test
+// with two hosts caught that sort's removal by luck. Each event is a
+// millisecond later than the one before, so the trail reader's own ordering
+// (by time, then host) keeps them reversed, and only the sort can put them
+// back.
+func TestSeam_TheClientsOwnTrafficIsListedInOrder(t *testing.T) {
+	var hosts []string
+	for h := range clientPlaneHosts {
+		hosts = append(hosts, h)
+	}
+	slices.Sort(hosts)
+	want := fmt.Sprint(hosts)
+	slices.Reverse(hosts)
+	at := firstNonoEvent(t)
+	st, id, now := seamSessionAt(t, at)
+	body := `{"sequence":0,"event":{"type":"session_started"}}` + "\n"
+	for i, h := range hosts {
+		body += ev(i+1, at.UnixMilli()+int64(i), "connect", "allow", h, 443)
+	}
+	trail := filepath.Join(t.TempDir(), "trail.ndjson")
+	if err := os.WriteFile(trail, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		rep, err := Build(st, id, now, WithNonoTrail(trail))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fmt.Sprint(nonoJSON(t, rep)["client_plane_allowed"]); got != want {
+			t.Fatalf("run %d: client_plane_allowed = %s, want %s", i, got, want)
+		}
+	}
+}
+
+// nonoJSON is the sandbox section of the first session as its JSON reader
+// sees it.
+func nonoJSON(t *testing.T, rep *Report) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(rep.Sessions[0].Nono)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
 }

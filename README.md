@@ -195,8 +195,9 @@ What was measured, on macOS with nono 0.79.0 and Claude Code 2.1.285:
 - nono's `claude` profile already allows `/tmp/claude-<your uid>`. A store under
   that path records without `--allow`.
 - The sandbox section lists Claude Code's own traffic, such as its model API and
-  its log upload, on a line of its own, and does not count it as the session's,
-  unless one of the session's tool calls named the host.
+  its log upload, on a line of its own that says which hosts it allowed and
+  which it refused, and does not count it as the session's, unless one of the
+  session's tool calls named the host.
 - nono logs plain-HTTP requests it **refuses**, and not plain-HTTP requests it
   allows. An allowed `http://` request appears nowhere in the report.
 - `rashomon forget --host` also keeps the host out of the sandbox section, even

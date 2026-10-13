@@ -33,17 +33,20 @@ type Nono struct {
 	// Allowed and Denied are the distinct hosts, kept apart because a denied
 	// host is one the agent TRIED to reach and did not.
 	//
-	// Neither holds the client's own traffic: see ClientPlane.
+	// Neither holds the client's own traffic: see ClientPlaneAllowed.
 	Allowed []string `json:"allowed"`
 	Denied  []string `json:"denied"`
-	// ClientPlane is the client's own traffic in the trail -- Claude Code's
-	// model API and telemetry -- allowed or refused, kept out of the two lists
-	// above. Measured inside nono 0.79 with no proxy store, which is the default
-	// path: api.anthropic.com was counted as an allowed host of the session, and
-	// the client's log upload was listed as "refused by the sandbox", an attempt
-	// the agent never made. Named rather than dropped, so a reader can still see
-	// the sandbox allowed and refused it.
-	ClientPlane []string `json:"client_plane"`
+	// ClientPlaneAllowed and ClientPlaneDenied are the client's own traffic in
+	// the trail -- Claude Code's model API and telemetry -- kept out of the two
+	// lists above. Measured inside nono 0.79 with no proxy store, which is the
+	// default path: api.anthropic.com was counted as an allowed host of the
+	// session, and the client's log upload was listed as "refused by the
+	// sandbox", an attempt the agent never made. Named rather than dropped, so a
+	// reader can still see what the sandbox did with them -- and split by
+	// decision for that reason: one list of both said a host was there and not
+	// whether the sandbox let it through.
+	ClientPlaneAllowed []string `json:"client_plane_allowed"`
+	ClientPlaneDenied  []string `json:"client_plane_denied"`
 	// SawWhatTheProxyDidNot is the interesting column. A host here reached the
 	// network with the sandbox watching and left no row on the proxy's wire.
 	//
@@ -99,7 +102,8 @@ func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttribut
 		Reason:                obs.Reason,
 		Allowed:               []string{},
 		Denied:                []string{},
-		ClientPlane:           []string{},
+		ClientPlaneAllowed:    []string{},
+		ClientPlaneDenied:     []string{},
 		SawWhatTheProxyDidNot: []string{},
 		PlainHTTP:             []string{},
 		ProxySawWhatItDidNot:  []string{},
@@ -138,24 +142,21 @@ func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttribut
 	// the sandbox" and was named as traffic the agent did not make.
 	clientPlane := func(h string) bool { return clientPlaneHost(h, mcpAttributed) }
 	clientsOwn := func(h string) bool { return clientPlane(h) && !declared[h] }
-	seenClient := map[string]bool{}
-	agentOnly := func(hosts []string) []string {
-		kept := []string{}
+	// Split per decision, from lists the trail already sorted, so both halves
+	// keep that order without a map between them.
+	split := func(hosts []string) (agent, client []string) {
+		agent, client = []string{}, []string{}
 		for _, h := range hosts {
 			if clientsOwn(h) {
-				seenClient[h] = true
+				client = append(client, h)
 				continue
 			}
-			kept = append(kept, h)
+			agent = append(agent, h)
 		}
-		return kept
+		return agent, client
 	}
-	n.Allowed = agentOnly(obs.Hosts())
-	n.Denied = agentOnly(obs.Denied())
-	for h := range seenClient {
-		n.ClientPlane = append(n.ClientPlane, h)
-	}
-	sort.Strings(n.ClientPlane)
+	n.Allowed, n.ClientPlaneAllowed = split(obs.Hosts())
+	n.Denied, n.ClientPlaneDenied = split(obs.Denied())
 
 	// COUNTED ABOVE THE WIRE GUARD. This sat below it, so on the default path
 	// -- no proxy store, which is most users -- an unknown decision was
