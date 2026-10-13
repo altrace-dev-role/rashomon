@@ -260,6 +260,38 @@ func TestH25_AForgetThatRemovedNothingSaysTheHostStaysOut(t *testing.T) {
 	}
 }
 
+// TestH25_TheStoreLevelForgetRecordIsClosed: forgotten-hosts.ndjson is a
+// record file like the others, so it gets what they get -- a closed key set
+// (H-13) and the store's file mode (H-15). The only check it had was that the
+// hostname's bytes were absent, and a field carrying the name in any encoding,
+// base64 included, passed it.
+func TestH25_TheStoreLevelForgetRecordIsClosed(t *testing.T) {
+	e := newEnv(t)
+	seedHostSession(t, e)
+
+	if res := e.run("", nil, "forget", "--host", forgettable); res.exitCode != 0 {
+		t.Fatalf("forget --host: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	f, ok := walkStore(t, e.home)[store.FileForgottenHosts]
+	if !ok {
+		t.Fatalf("forget --host wrote no %s", store.FileForgottenHosts)
+	}
+	if f.mode.Perm() != 0o600 {
+		t.Errorf("%s has mode %v, want 0600", store.FileForgottenHosts, f.mode.Perm())
+	}
+	recs := readNDJSON(t, filepath.Join(e.home, store.FileForgottenHosts))
+	if len(recs) != 1 {
+		t.Fatalf("%s holds %d records after one forget, want 1", store.FileForgottenHosts, len(recs))
+	}
+	assertKeySet(t, recs[0], forgottenHostKeys)
+	if recs[0].typ() != store.TypeForgottenHost || recs[0].fields["schema_version"] != float64(store.SessionSchemaVersion) {
+		t.Errorf("the record is %v, want type %s at schema_version %d", recs[0].fields, store.TypeForgottenHost, store.SessionSchemaVersion)
+	}
+	if d, _ := recs[0].fields["host_digest"].(string); !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(d) {
+		t.Errorf("host_digest = %q, want 64 hex characters", d)
+	}
+}
+
 // TestH25_ForgetHostTakesAnySpellingOfTheHost: every host rashomon holds -- in
 // its records, its baselines, the proxy's rows and the sandbox's trail -- has
 // been through host.Canonical. `forget --host` digested and matched the value

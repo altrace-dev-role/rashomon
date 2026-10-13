@@ -91,6 +91,12 @@ var (
 		// `forget --host` must make the name leave the store's bytes.
 		"host_digest",
 	}
+	// forgotten-hosts.ndjson at the store root: one record per forget --host,
+	// whatever it removed. The keyed digest and nothing else -- the name it
+	// was given must leave the store, as it does for a gap.
+	forgottenHostKeys = []string{
+		"type", "schema_version", "recorded_at_unix_ms", "host_digest",
+	}
 )
 
 func TestH13_RecordKeySetsAreClosed(t *testing.T) {

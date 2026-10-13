@@ -499,6 +499,11 @@ type Coverage struct {
 //
 // It carries the same keyed digest a gap does and never the name, for the
 // reason set out on Gap.HostDigest.
+//
+// STAMPED AT SessionSchemaVersion, decided rather than inherited. It is a
+// store-level record, like a gap, and no released reader opens this file: a
+// version of its own would version a record no older binary can meet. Its
+// key set is closed by forgottenHostKeys in the acceptance tests.
 type ForgottenHostRecord struct {
 	Type          string `json:"type"`
 	SchemaVersion int    `json:"schema_version"`

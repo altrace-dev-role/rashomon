@@ -3025,6 +3025,13 @@ m("NONO the trail's host lists come out unsorted", "internal/nono/nono.go",
   "\t\tout = append(out, e.Host)\n\t}\n\tsort.Strings(out)\n\treturn out\n}", "\t\tout = append(out, e.Host)\n\t}\n\treturn out\n}",
   "TestSeam_TheClientsOwnTrafficIsListedInOrder")
 
+# The store-level forget record is a record file like the others: closed key
+# set and the store's mode (review of #53). A field beside the digest, which
+# could carry the name in any encoding, passed the canary search it had.
+m("NONO the store-level forget record carries a field beyond its digest", "internal/store/record.go",
+  "\tHostDigest    string `json:\"host_digest\"`\n}", "\tHostDigest    string `json:\"host_digest\"`\n\tName          string `json:\"name\"`\n}",
+  "TestH25_TheStoreLevelForgetRecordIsClosed")
+
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn
 # sentence). Each anchor appears once in its file.
