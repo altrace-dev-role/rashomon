@@ -4,11 +4,17 @@
 // keeps the two equal (tech spec 8.2.6; archive 85.3.13).
 package budget
 
+import (
+	"errors"
+	"fmt"
+)
+
 //go:generate go run ../../scripts/budgetsgen
 
 // Budgets is the shape of test/perf/budgets.json.
 type Budgets struct {
 	Version       int                 `json:"budgets_version"`
+	GoVersion     string              `json:"go_version"`
 	BenchmarkRows string              `json:"benchmark_rows"`
 	Platforms     map[string]Platform `json:"platforms"`
 	Entries       []Entry             `json:"entries"`
@@ -102,6 +108,23 @@ type Growth struct {
 // Disk bounds the bytes one call writes (RES-31).
 type Disk struct {
 	BytesPerCallMax int `json:"bytes_per_call_max"`
+}
+
+// CheckToolchain refuses to compare under any toolchain but the one the rows
+// were measured under: allocation figures belong to a toolchain, not to the
+// code alone (BenchmarkBuild/188 allocates 21,660 times per op under go1.25.8
+// and 6,832 under go1.27.2, on the same machine), so a gate reading one
+// toolchain's run against another's rows judges the toolchain. running is
+// runtime.Version() of the process doing the comparison; the match is exact,
+// and a file naming no toolchain fails the same way.
+func (b Budgets) CheckToolchain(running string) error {
+	if b.GoVersion == "" {
+		return errors.New("budgets.json names no go_version, so its rows cannot be compared with any run")
+	}
+	if running != b.GoVersion {
+		return fmt.Errorf("budgets.json was measured under %s and this run is %s: nothing compared (run under %s, or remeasure every row under %s)", b.GoVersion, running, b.GoVersion, running)
+	}
+	return nil
 }
 
 // RES28BudgetMiB is RES-28's line: 6.5 MiB plus 2.2 MiB per MiB of payload.

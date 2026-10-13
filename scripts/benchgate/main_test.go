@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -35,27 +38,90 @@ func TestRES36b_ParseKeepsTheBestRun(t *testing.T) {
 	}
 }
 
+// TestRES36c_CompareFailsClosed: over budget, budgeted but absent, a row with
+// no figures, and a benchmark that ran with no row are each a problem, judged
+// at the gate's own tolerance.
 func TestRES36c_CompareFailsClosed(t *testing.T) {
-	results := map[string]Result{"BenchmarkA": {1000, 10}, "BenchmarkB": {2000, 20}}
+	results := map[string]Result{"BenchmarkA": {1000, 10}, "BenchmarkB": {2000, 20}, "BenchmarkD": {5, 1}}
 	budgets := []budget.Benchmark{
 		{Name: "BenchmarkA", BytesPerOpMax: 1000, AllocsPerOpMax: 10},
 		{Name: "BenchmarkB", BytesPerOpMax: 1500, AllocsPerOpMax: 20},
 		{Name: "BenchmarkC", BytesPerOpMax: 1, AllocsPerOpMax: 1},
 		{Name: "BenchmarkA", BytesPerOpMax: 0, AllocsPerOpMax: 0},
 	}
-	problems := Compare(results, budgets, 0.10)
+	problems := Compare(results, budgets, tolerance)
 	want := []string{
 		"BenchmarkB: 2000 B/op over budget 1500",
 		"BenchmarkC: budgeted but did not run",
 		"BenchmarkA: budget row has no figures",
+		"BenchmarkD: ran without a budget row",
 	}
 	if strings.Join(problems, "|") != strings.Join(want, "|") {
 		t.Errorf("problems %q\nwant %q", problems, want)
 	}
-	if p := Compare(map[string]Result{"BenchmarkA": {1100, 11}}, budgets[:1], 0.10); len(p) != 0 {
+	if p := Compare(map[string]Result{"BenchmarkA": {1100, 11}}, budgets[:1], tolerance); len(p) != 0 {
 		t.Errorf("ten percent over must pass: %q", p)
 	}
-	if p := Compare(map[string]Result{"BenchmarkA": {1101, 10}}, budgets[:1], 0.10); len(p) != 1 {
+	if p := Compare(map[string]Result{"BenchmarkA": {1101, 10}}, budgets[:1], tolerance); len(p) != 1 {
 		t.Errorf("more than ten percent over must fail: %q", p)
+	}
+	if p := Compare(map[string]Result{"BenchmarkA": {1000, 12}}, budgets[:1], tolerance); len(p) != 1 {
+		t.Errorf("allocs more than ten percent over must fail: %q", p)
+	}
+}
+
+// TestRES36e_GateToleranceIsTenPercent: RES-36's "fail at > 10% over" is the
+// gate's one margin, so the constant is pinned to it, not merely used.
+func TestRES36e_GateToleranceIsTenPercent(t *testing.T) {
+	if tolerance != 0.10 {
+		t.Errorf("benchgate tolerance %v, RES-36 says 0.10", tolerance)
+	}
+}
+
+// fixture writes a budgets file naming goVersion and one benchmark row.
+func fixture(t *testing.T, goVersion string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "budgets.json")
+	doc := `{"budgets_version": 1, "go_version": "` + goVersion + `", "benchmarks": [` +
+		`{"name": "BenchmarkLexTokens", "measured_bytes_per_op": 128544, "measured_allocs_per_op": 750, "bytes_per_op_max": 128544, "allocs_per_op_max": 750}]}`
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+const lexLine = "BenchmarkLexTokens-8   20   37465 ns/op   128544 B/op   750 allocs/op\n"
+
+// TestRES36g_ToolchainMismatchFailsClosed: rows measured under one toolchain
+// are not compared with another's figures (go1.25.8 allocates three times
+// what go1.27.2 does on BenchmarkBuild/188); the gate exits 2 naming both
+// versions before it reads a single result, and a file naming no toolchain
+// fails the same way.
+func TestRES36g_ToolchainMismatchFailsClosed(t *testing.T) {
+	for _, c := range []struct {
+		name, file, running string
+		want                int
+		says                []string
+	}{
+		{"match", "go1.27.2", "go1.27.2", 0, []string{"1 benchmarks within budget"}},
+		{"mismatch", "go1.27.2", "go1.25.8", 2, []string{"go1.27.2", "go1.25.8"}},
+		{"unnamed", "", "go1.27.2", 2, []string{"go_version"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := run(fixture(t, c.file), strings.NewReader(lexLine), &stdout, &stderr, c.running)
+			if code != c.want {
+				t.Fatalf("exit %d, want %d\nstdout %s\nstderr %s", code, c.want, stdout.String(), stderr.String())
+			}
+			out := stdout.String() + stderr.String()
+			for _, s := range c.says {
+				if !strings.Contains(out, s) {
+					t.Errorf("output does not name %q:\n%s", s, out)
+				}
+			}
+			if c.want == 2 && strings.Contains(stdout.String(), "B/op") {
+				t.Errorf("results printed before the toolchain check:\n%s", stdout.String())
+			}
+		})
 	}
 }

@@ -1,5 +1,6 @@
 {
   "budgets_version": 1,
+  "go_version": "go1.27.2",
   "benchmark_rows": "the measured best of three on the reference machine (darwin/arm64, go1.27.2, -benchtime 20x); a row's max equals its measurement, and the gate's ten percent (scripts/benchgate) is the only margin",
   "platforms": {"darwin/arm64": {"reference": "Apple M3, 8 GB, go1.27.2, release flags (CGO_ENABLED=0 -trimpath -ldflags \"-s -w\")", "set_from": "measured 2026-10-13 on the P-06 tree (archive 85.1.2)", "tolerance": 0.15, "tolerance_until": "2026-11-06", "tolerance_after": 0.1, "entries": {}}, "linux/amd64": {"reference": "ubuntu-latest", "set_from": "the D6 baseline run plus the derived phase deltas of archive 85.4.2; empty until that run", "tolerance": 0.1, "tolerance_until": "", "tolerance_after": 0.1, "entries": {}}},
   "entries": [
