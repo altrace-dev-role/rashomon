@@ -100,6 +100,7 @@ type Post struct {
 	now func() time.Time
 
 	sessionID string
+	toolUseID string
 	cwd       string
 }
 
@@ -133,6 +134,7 @@ func (p *Post) Capture(in io.Reader) error {
 	if pl.SessionID != "" {
 		p.sessionID = pl.SessionID
 	}
+	p.toolUseID = pl.ToolUseID
 	p.cwd = pl.CWD
 
 	fault.Inject(fault.PointPostParsed)
