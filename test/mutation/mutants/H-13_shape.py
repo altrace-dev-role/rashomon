@@ -7,8 +7,8 @@ m("the report stops counting programs at all", "internal/report/report.go",
 m("H-13 a word the tokenizer cannot vouch for is read as the program", "internal/shape/shape.go",
   "\t\tcase t.opaque, isComment(t):", "\t\tcase isComment(t):", "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 the tokenizer never marks an expansion opaque", "internal/shape/tokenize.go",
-  "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\tw.opaque = true\n\t\t\t}",
-  "\t\tdefault:\n\t\t\tif expands(i, false) {\n\t\t\t\t_ = w.opaque\n\t\t\t}", "TestNoCorpusLineLeaksIntoProgram")
+  "\tif l.expands(i, false) {\n\t\tl.w.opaque = true\n\t}",
+  "\tif l.expands(i, false) {\n\t\t_ = l.w.opaque\n\t}", "TestNoCorpusLineLeaksIntoProgram")
 m("H-13 backslash-newlines are not joined before the program search", "internal/shape/shape.go",
   "\tif !strings.Contains(s, \"\\\\\\n\") {\n\t\treturn s, nil\n\t}", "\tif true {\n\t\treturn s, nil\n\t}",
   "TestNoCorpusLineLeaksIntoProgram|TestTokenizeProgram")
@@ -40,9 +40,9 @@ m("H-13 a redirect's pieces are joined across a blank or a newline", "internal/s
 m("H-13 an operator where a redirect target belongs is read past to the next command", "internal/shape/shape.go",
   "\treturn !procSub(toks, i+1)\n}", "\treturn false\n}", PROG)
 m("H-13 the tokenizer never marks an operator glued", "internal/shape/tokenize.go",
-  "nlBefore: sawNL, glued: !gap && len(toks) > 0})", "nlBefore: sawNL, glued: false})", "TestTokenizeGlued|TestProgramIsAProgram")
+  "nlBefore: l.sawNL, glued: !l.gap && len(l.toks) > 0})", "nlBefore: l.sawNL, glued: false})", "TestTokenizeGlued|TestProgramIsAProgram")
 m("H-13 the tokenizer never marks a word glued", "internal/shape/tokenize.go",
-  "\t\t\tw.glued = !gap && len(toks) > 0\n", "\t\t\tw.glued = false\n", "TestTokenizeGlued|TestProgramIsAProgram")
+  "\t\tw.glued = !l.gap && len(l.toks) > 0\n", "\t\tw.glued = false\n", "TestTokenizeGlued|TestProgramIsAProgram")
 m("H-13 a byte the shell does not split on is read as part of a program name", "internal/shape/shape.go",
   "\t\tcase c < 0x21 || c > 0x7e:", "\t\tcase c == ' ' || c == '\\t' || c == '\\n' || c == '\\r':", PROG)
 m("H-13 a command word holding $ is named", "internal/shape/shape.go",
@@ -108,7 +108,7 @@ m("H-13 a here-string is taken for a here-document", "internal/shape/shape.go",
   "\treturn next >= len(toks) || !(toks[next].meta && toks[next].glued && toks[next].text == \"<\")",
   "\treturn next >= 0", "TestProgramIsAProgram")
 m("H-13 a trailing backslash after an expansion is read as a real one", "internal/shape/tokenize.go",
-  "\t\t\t\tflush()\n\t\t\t\treturn toks, unterminated()", "\t\t\t\tflush()\n\t\t\t\treturn toks, errUnterminated",
+  "\t\tl.flush()\n\t\treturn i, l.unterminated()", "\t\tl.flush()\n\t\treturn i, errUnterminated",
   "TestTokenizeProgramStops|" + PROG)
 m("H-13 the function-definition scan reads &> as & and then >", "internal/shape/shape.go",
   "\t\t\tj++\n\t\t\tfallthrough", "\t\t\tfallthrough", "TestProgramIsAProgram")
@@ -151,15 +151,15 @@ m("H-13 a newline in the line is taken for a control byte", "internal/shape/shap
 # Re-anchored after the masked-status refactor: the backtick case also marks the
 # line grouped for the list walk's here-document reading; only the count goes.
 m("H-13 the tokenizer never counts an unquoted backtick", "internal/shape/tokenize.go",
-  "\t\t\tif c == '`' {\n\t\t\t\tw.ticks++\n\t\t\t\tgrouped = true\n\t\t\t}\n", "\t\t\tif c == '`' {\n\t\t\t\tgrouped = true\n\t\t\t}\n", "TestTokenizeTicks|" + PROG)
+  "\tif c == '`' {\n\t\tl.w.ticks++\n\t\tl.grouped = true\n\t}\n", "\tif c == '`' {\n\t\tl.grouped = true\n\t}\n", "TestTokenizeTicks|" + PROG)
 m("H-13 the tokenizer never counts a backtick inside double quotes", "internal/shape/tokenize.go",
-  "\t\t\t\tif s[i] == '`' {\n\t\t\t\t\tw.ticks++\n\t\t\t\t}\n", "", "TestTokenizeTicks")
+  "\t\tif s[i] == '`' {\n\t\t\tw.ticks++\n\t\t}\n", "", "TestTokenizeTicks")
 # Judged by the corpus alone, where the two lines of the PR #29 review are the
 # only ones this break reopens: "$(echo "a;b")" ends at its first inner quote
 # again, and the ; inside it ends the search for the () after the command word.
 m("H-13 a $( ) inside double quotes is not a context in which quotes nest", "internal/shape/tokenize.go",
-  "\t\t\t\tif program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {",
-  "\t\t\t\tif false && program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {", "TestNoCorpusLineLeaksIntoProgram")
+  "\t\tif l.program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {",
+  "\t\tif false && l.program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {", "TestNoCorpusLineLeaksIntoProgram")
 # The review of that change: each guard comsubEnd and its helpers keep against
 # a reading the shell may not share. TPROG adds the tokenizer's own tests.
 TPROG = "TestTokenizeProgram|" + PROG
@@ -171,7 +171,7 @@ m("H-13 $[ is not read as arithmetic", C, "\t\treturn bracketEnd(r.s, i+2)", "\t
 m("H-13 an even run of $ opens an expansion in a substitution", C,
   "\t\tif dollars%2 == 0 {\n\t\t\treturn -1\n\t\t}", "\t\tif false {\n\t\t\treturn -1\n\t\t}", TPROG)
 m("H-13 \"$$(\" opens a substitution", "internal/shape/tokenize.go",
-  "\t\t\t\t\tif dq%2 == 1 {", "\t\t\t\t\tif true {", TPROG)
+  "\t\t\tif dq%2 == 1 {", "\t\t\tif true {", TPROG)
 m("H-13 a $' inside double quotes in a substitution is a quote", C,
   "\t\t\t\tcontinue // no quote inside double quotes\n", "", TPROG)
 m("H-13 a nested $( ) is counted as parens", C, "\t\treturn r.substEnd(i, nest)", "\t\treturn i", TPROG)
@@ -252,16 +252,16 @@ m("H-13 an empty word is named `.`", "internal/shape/shape.go",
 m("H-13 the program search reads $'...' as argc does", "internal/shape/shape.go",
   "\tpshaped, perr := tokenizeProgram(cmd)", "\tpshaped, perr := tokenizeShape(cmd)", PROG)
 m("H-13 any earlier $ opens a $'...' string", "internal/shape/tokenize.go",
-  "\t\t\tif program && dollarAt >= 0 && dollarAt == i-1 {", "\t\t\tif program && dollarAt >= 0 {", "TestTokenizeProgramReadsANSICQuotes")
+  "\tif l.program && l.dollarAt >= 0 && l.dollarAt == i-1 {", "\tif l.program && l.dollarAt >= 0 {", "TestTokenizeProgramReadsANSICQuotes")
 m("H-13 a quote at the start of the line is read as $'...'", "internal/shape/tokenize.go",
-  "program && dollarAt >= 0 && dollarAt == i-1", "program && dollarAt == i-1", "TestTokenizeProgramReadsANSICQuotes|" + PROG)
+  "l.program && l.dollarAt >= 0 && l.dollarAt == i-1", "l.program && l.dollarAt == i-1", "TestTokenizeProgramReadsANSICQuotes|" + PROG)
 m("H-13 bash's $$' is read as zsh's $'...'", "internal/shape/tokenize.go",
-  "\t\t\t\tif dollars%2 == 0 {", "\t\t\t\tif false {", "TestTokenizeProgramReadsANSICQuotes|" + PROG)
+  "\t\tif l.dollars%2 == 0 {", "\t\tif false {", "TestTokenizeProgramReadsANSICQuotes|" + PROG)
 m("H-13 an odd run of $ is read as bash's $$'", "internal/shape/tokenize.go",
-  "\t\t\t\tif dollars%2 == 0 {", "\t\t\t\tif dollars > 1 {", "TestTokenizeProgramReadsANSICQuotes")
+  "\t\tif l.dollars%2 == 0 {", "\t\tif l.dollars > 1 {", "TestTokenizeProgramReadsANSICQuotes")
 m("H-13 an unterminated quote after an expansion is read as a real one", "internal/shape/tokenize.go",
-  "\t\tif program && (w.opaque || expanded) {", "\t\tif false {", "TestTokenizeProgramStops|" + PROG)
+  "\tif l.program && (l.w.opaque || l.expanded) {", "\t\tif false {", "TestTokenizeProgramStops|" + PROG)
 m("H-13 an expansion in an earlier word leaves a later quote certain", "internal/shape/tokenize.go",
-  "\t\tif program && (w.opaque || expanded) {", "\t\tif program && w.opaque {", "TestTokenizeProgramStops|" + PROG)
+  "\tif l.program && (l.w.opaque || l.expanded) {", "\tif l.program && l.w.opaque {", "TestTokenizeProgramStops|" + PROG)
 m("H-13 the count's tokenizer stops where the program search does", "internal/shape/tokenize.go",
-  "\t\tif program && (w.opaque || expanded) {", "\t\tif w.opaque || expanded {", "TestTokenize")
+  "\tif l.program && (l.w.opaque || l.expanded) {", "\tif l.w.opaque || l.expanded {", "TestTokenize")
