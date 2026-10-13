@@ -165,13 +165,16 @@ func (s *Store) RunDir(sessionID string) string {
 // fails the tool runs anyway and the call is marked flush_failed instead.
 //
 // One case weakens, on darwin only, where a barrier is cheaper than a full
-// sync: a process killed between its barriers and Flush leaves records
-// ordered on the device but not flushed from its cache. SIGTERM and SIGINT
-// are caught and still reach Flush, so only SIGKILL gets there, and what it
-// leaves exposed stays exposed after the process is gone: until the device
-// next empties its cache, at the next full sync on that volume by any
-// process (usually the next hook's Flush) or the drive's own write-back, a
-// power failure can lose it. Under 1.1.0 such a declaration was durable when
+// sync: a process that ends between its barriers and Flush leaves records
+// ordered on the device but not flushed from its cache. Only SIGINT and
+// SIGTERM are caught (hook.WatchSignals) and still reach Flush. Anything else
+// that ends the process first opens the window: SIGKILL; any other signal
+// whose default action terminates, such as SIGHUP when the terminal closes,
+// SIGQUIT, or SIGPIPE on a write to a closed stderr; and a Go runtime fatal
+// error, which no recover catches. What it leaves exposed stays exposed after
+// the process is gone: until the device next empties its cache, at the next
+// full sync on that volume by any process (usually the next hook's Flush) or
+// the drive's own write-back, a power failure can lose it. Under 1.1.0 such a declaration was durable when
 // its append returned. Linux and Windows have no such window, because there
 // every barrier is a full sync: each append is durable when it returns, as
 // under 1.1.0, and Flush has nothing left to sync.
