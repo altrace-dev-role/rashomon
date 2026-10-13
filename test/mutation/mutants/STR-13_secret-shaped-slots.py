@@ -59,3 +59,18 @@ m("STR-13 the joined-run check joins a UUID's groups", "internal/steer/render/sl
   "const minJoinPart = 12\n", "const minJoinPart = 4\n", "TestSTR13c_")
 m("STR-13 the joined-run check joins lower-case words", "internal/steer/render/slot/secret.go",
   "\treturn upper && lower\n}\n", "\treturn true\n}\n", "TestSTR13c_")
+# A part or joined run that reads as camelCase words is a name the slot
+# layer's additions keep, and the exemption stays narrow (P07N-7's cost).
+m("STR-13 a camelCase part refused by the separated-run check", "internal/steer/render/slot/secret.go",
+  "\t\tif part != run && runHighEntropy(part) && !identifierShaped(part) {\n",
+  "\t\tif part != run && runHighEntropy(part) {\n", "TestSTR13h_")
+m("STR-13 camelCase parts refused once joined", "internal/steer/render/slot/secret.go",
+  "\t\thit := parts >= 2 && runHighEntropy(string(joined)) && !identifierShaped(string(joined))\n",
+  "\t\thit := parts >= 2 && runHighEntropy(string(joined))\n", "TestSTR13h_")
+m("STR-13 a run with few lower-case letters reads as words", "internal/steer/render/slot/secret.go",
+  "\treturn upper && 5*lower >= 3*len(s)\n", "\treturn upper && lower > 0\n", "TestSTR13h_")
+m("STR-13 a lower-case run after a digit reads as a word", "internal/steer/render/slot/secret.go",
+  "\t\tif !startsWord || i+1 == len(s) || s[i+1] < 'a' || s[i+1] > 'z' {\n",
+  "\t\tif !startsWord && false || i+1 == len(s) || s[i+1] < 'a' || s[i+1] > 'z' {\n", "TestSTR13h_")
+m("STR-13 a one-case run reads as words", "internal/steer/render/slot/secret.go",
+  "\treturn upper && 5*lower >= 3*len(s)\n", "\treturn 5*lower >= 3*len(s)\n", "TestSTR13h_")
