@@ -45,6 +45,20 @@ var sshSchemes = []string{"ssh://", "git+ssh://", "git@"}
 // some MCP server's unrelated schema ends up recorded as a destination this
 // session reached.
 func Hosts(toolName string, toolInput json.RawMessage) (wire []string, ssh []string) {
+	// A record below schema 5 has no field for the cut, and the hook writes
+	// those: see HostsCut, which is what a writer that can carry it calls.
+	wire, ssh, _ = HostsCut(toolName, toolInput)
+	return wire, ssh
+}
+
+// HostsCut is Hosts, and whether the ssh list is short because the command
+// was read only to the token bound (RES-9): an ssh, scp, sftp or rsync
+// destination named past it is not read, so the list holds what came before
+// the cut and nothing says the rest is absent. The wire list is never cut --
+// the URL scan reads the whole text -- and neither list is for WebFetch. It
+// is the hosts half of schema 5's shape.truncated (Archive 85.3.10), which
+// P-11 serialises; a v4 record does not carry it.
+func HostsCut(toolName string, toolInput json.RawMessage) (wire, ssh []string, cut bool) {
 	var text string
 	switch {
 	case toolName == "WebFetch":
@@ -57,15 +71,17 @@ func Hosts(toolName string, toolInput json.RawMessage) (wire []string, ssh []str
 		}
 	}
 	if text == "" {
-		return nil, nil
+		return nil, nil, false
 	}
 	// One lowered copy serves both readings of the text: see collect.
 	lower := strings.ToLower(text)
 	ssh = collect(lower, sshSchemes)
 	if verbForTool(toolName) == VerbExecute {
-		ssh = mergeHosts(ssh, sshCommandHosts(text))
+		var named []string
+		named, cut = sshCommandHosts(text)
+		ssh = mergeHosts(ssh, named)
 	}
-	return collect(lower, wireSchemes), ssh
+	return collect(lower, wireSchemes), ssh, cut
 }
 
 // mergeHosts unions two host lists, sorted and de-duplicated, preserving the
@@ -156,9 +172,9 @@ func takesValue(prog string, flag byte) bool {
 // costing at least one: tokenized one by one, each line was within the bound
 // and the line as a whole was not, and 8 MiB of `ssh a` lines allocated
 // 452 MiB. A host named past the bound is not read, as the program search
-// reads no word past it.
-func sshCommandHosts(text string) []string {
-	var out []string
+// reads no word past it, and cut says so: a line read only to the bound, or
+// lines left when the budget ran out.
+func sshCommandHosts(text string) (out []string, cut bool) {
 	// A newline separates two commands, and the tokenizer treats it as
 	// whitespace -- deliberately, because Derive counts arguments over the
 	// whole line and that count is its own contract. Splitting here rather
@@ -167,18 +183,23 @@ func sshCommandHosts(text string) []string {
 	for rest, budget := text, maxTokens; rest != "" && budget > 0; {
 		var line string
 		line, rest, _ = strings.Cut(rest, "\n")
-		hosts, read := sshLineHosts(line)
+		hosts, read, lineCut := sshLineHosts(line)
 		out = append(out, hosts...)
 		budget -= max(read, 1)
+		if lineCut || budget <= 0 && rest != "" {
+			cut = true
+		}
 	}
-	return out
+	return out, cut
 }
 
-// sshLineHosts is sshCommandHosts over one line, and how many tokens it read.
-func sshLineHosts(line string) ([]string, int) {
+// sshLineHosts is sshCommandHosts over one line, how many tokens it read, and
+// whether it read the line only to the token bound. Any other tokenizer error
+// is not a cut: the tokens it completed are the line's.
+func sshLineHosts(line string) ([]string, int, bool) {
 	// On a line it cannot finish, lex still returns the tokens it read before
 	// the fault, and a host among them was named all the same.
-	toks, meta, _ := tokenizeMarked(line)
+	toks, meta, err := tokenizeMarked(line)
 
 	var out []string
 	atCommand := true
@@ -211,7 +232,7 @@ func sshLineHosts(line string) ([]string, int) {
 		out = append(out, destinations(prog, toks[i+1:end])...)
 		i = end - 1
 	}
-	return out, len(toks)
+	return out, len(toks), err == errTokenBound
 }
 
 // destinations returns the hosts named by one ssh-family invocation's

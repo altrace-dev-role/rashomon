@@ -31,7 +31,7 @@ m("H-70 one flag table for all four programs", "internal/shape/hosts.go",
   "var valueFlags = map[string]string{\n\t\"ssh\":   \"pPioljJFe\",\n\t\"scp\":   \"pPioljJFe\",\n\t\"sftp\":  \"pPioljJFe\",\n\t\"rsync\": \"pPioljJFe\",\n}",
   "TestH70_Forwarding|TestSSHFlagTables")
 m("H-70 ssh hosts come from URL schemes only", "internal/shape/hosts.go",
-  "\t\tssh = mergeHosts(ssh, sshCommandHosts(text))", "\t\t_ = sshCommandHosts", "TestH70_SSH|TestSSHDestinations")
+  "\t\tssh = mergeHosts(ssh, named)", "\t\t_ = named", "TestH70_SSH|TestSSHDestinations")
 m("H-70 every non-flag argument is recorded as a host", "internal/shape/hosts.go",
   "\t\tif prog == \"ssh\" || prog == \"sftp\" {\n\t\t\tif h, ok := destinationHost(a, false); ok {\n\t\t\t\tout = append(out, h)\n\t\t\t}\n\t\t\treturn out\n\t\t}\n\t\tif h, ok := destinationHost(a, true); ok {\n\t\t\tout = append(out, h)\n\t\t}",
   "\t\tif h, ok := destinationHost(a, false); ok {\n\t\t\tout = append(out, h)\n\t\t}", "TestH70_Local|TestSSHDestinations")
