@@ -54,3 +54,14 @@ m("DEL-22 Route routes findings that skipped Check", "internal/steer/route.go",
   "\treturn route(ctx, admit(findings))\n", "\treturn route(ctx, findings)\n", "TestDEL22f_")
 m("DEL-22 admit keeps a finding that fails Check", "internal/steer/route.go",
   "\t\tif f.Check() == nil {\n", "\t\tif f.Check() == nil || true {\n", "TestDEL22f_")
+# A withheld key beside every field a cap or a switch can null (STORE-9).
+m("DEL-22 a switched-off task subject reads as not applicable", "internal/store/record_v5.go",
+  "\tSubjectWithheld  *string `json:\"subject_withheld\"`   // switched_off (task_subjects) | masker_error\n", "", "TestDEL22g_")
+m("DEL-22 prompt_class, off by default, has no withheld key", "internal/store/record_v5.go",
+  "`json:\"prompt_class_withheld\"`", "`json:\"-\"`", "TestDEL22g_")
+m("DEL-22 the session's git switched off has no key", "internal/store/record_v5.go",
+  "\tGitWithheld       *string `json:\"git_withheld\"`        // switched_off (git)\n", "", "TestDEL22g_")
+m("DEL-22 an oversize instructions path cannot be null", "internal/store/record_v5.go",
+  "\tFilePath        *string `json:\"file_path\"`\n", "\tFilePath        string  `json:\"file_path\"`\n", "TestDEL22g_")
+m("DEL-22 an oversize git root has no key", "internal/store/record_v5.go",
+  "\tRootWithheld *string `json:\"root_withheld\"`\n", "", "TestDEL22g_")
