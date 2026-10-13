@@ -315,6 +315,7 @@ func rewrittenCalls(run *store.Run) []Rewritten {
 			continue
 		}
 		d, ok := declared[x.ToolUseID]
+		// Not secret: a digest is an equality key between records, so == is right (shape.digest, S1).
 		if !ok || x.ExecutedDigest == d.digest {
 			continue
 		}
