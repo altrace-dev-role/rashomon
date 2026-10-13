@@ -45,3 +45,17 @@ m("STR-13 hf_, SG. and dapi match any word again", "internal/steer/render/slot/s
   r"(?:hf_|SG\.|dapi)[A-Za-z0-9_.=-]{16,}", "TestSTR13c_")
 m("STR-13 a bearer token needs no separator again", "internal/steer/render/slot/secret.go",
   r"(?i:bearer)[\s:=]+[A-Za-z0-9._~+/=-]{20,}", r"(?i:bearer)[\s:=_+-]*[A-Za-z0-9._~+/=-]{20,}", "TestSTR13c_")
+# Each vendor rule matched by the deny list alone, and the joined-run check
+# for a token cut into parts under 20 characters (P07N-7).
+m("STR-13 the Mailgun key rule is dropped", "internal/steer/render/slot/secret.go",
+  "(?:key-[0-9a-z]{32}|SK", "(?:SK", "TestSTR13g_")
+m("STR-13 the Postman key rule is dropped", "internal/steer/render/slot/secret.go",
+  "|PMAK-[a-f0-9]{24}-[a-f0-9]{34})", ")", "TestSTR13g_")
+m("STR-13 the private-key header rule is dropped", "internal/steer/render/slot/secret.go",
+  "\t`-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY`,\n", "", "TestSTR13g_")
+m("STR-13 a token cut into short runs goes untested", "internal/steer/render/slot/secret.go",
+  "\treturn joinedRunHighEntropy(s)\n", "\treturn false\n", "TestSTR13f_")
+m("STR-13 the joined-run check joins a UUID's groups", "internal/steer/render/slot/secret.go",
+  "const minJoinPart = 12\n", "const minJoinPart = 4\n", "TestSTR13c_")
+m("STR-13 the joined-run check joins lower-case words", "internal/steer/render/slot/secret.go",
+  "\treturn upper && lower\n}\n", "\treturn true\n}\n", "TestSTR13c_")
