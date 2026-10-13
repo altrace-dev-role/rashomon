@@ -327,72 +327,58 @@ func structFieldLiteral(elem ast.Expr, field string) (string, bool) {
 }
 
 // TestRES2_NoPackageLevelRegexpCompile: no package linked into the binary
-// compiles a regexp at package scope, in a var initialiser or an init
-// function (RES-2); a regexp is compiled on first use or not at all.
+// compiles a regexp while the process initialises: not in a var initialiser
+// or an init function, and not in anything they call (RES-2); a regexp is
+// compiled on first use or not at all. The scan is RegexpCompilesAtInit's,
+// over every non-test file of every module package `go list -deps` names,
+// other platforms' files included.
 func TestRES2_NoPackageLevelRegexpCompile(t *testing.T) {
 	root := moduleRoot(t)
-	cmd := exec.Command("go", "list", "-deps", "-f", "{{if not .Standard}}{{.Dir}}{{end}}", "./cmd/rashomon")
+	cmd := exec.Command("go", "list", "-deps", "-f", "{{if not .Standard}}{{.ImportPath}} {{.Dir}}{{end}}", "./cmd/rashomon")
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("go list: %v", err)
 	}
-	dirs := strings.Fields(string(out))
-	if len(dirs) < 5 {
-		t.Fatalf("go list named %d module packages; the binary links more than that", len(dirs))
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) < 5 {
+		t.Fatalf("go list named %d module packages; the binary links more than that", len(lines))
 	}
 	fset := token.NewFileSet()
-	for _, dir := range dirs {
-		pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
-		if err != nil {
-			t.Fatalf("%s: %v", dir, err)
+	var pkgs []SrcPackage
+	for _, ln := range lines {
+		importPath, dir, ok := strings.Cut(ln, " ")
+		if !ok {
+			t.Fatalf("go list line %q", ln)
 		}
-		for _, pkg := range pkgs {
-			for path, f := range pkg.Files {
-				for _, pos := range packageScopeRegexpCompiles(f) {
-					t.Errorf("%s: regexp compiled at package scope at %s", path, fset.Position(pos))
-				}
-			}
-		}
+		pkgs = append(pkgs, SrcPackage{Path: importPath, Files: parseNonTest(t, fset, dir)})
+	}
+	for _, c := range RegexpCompilesAtInit(pkgs) {
+		t.Errorf("regexp compiled at init at %s (%s)", fset.Position(c.Pos), c.Via)
 	}
 }
 
-// packageScopeRegexpCompiles finds regexp.Compile, MustCompile and their
-// POSIX forms in package-level var initialisers and in init bodies.
-func packageScopeRegexpCompiles(f *ast.File) []token.Pos {
-	var found []token.Pos
-	visit := func(n ast.Node) {
-		ast.Inspect(n, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			id, ok := sel.X.(*ast.Ident)
-			if ok && id.Name == "regexp" && strings.Contains(sel.Sel.Name, "Compile") {
-				found = append(found, call.Pos())
-			}
-			return true
-		})
+// parseNonTest parses every non-test Go file in dir.
+func parseNonTest(t *testing.T, fset *token.FileSet, dir string) []*ast.File {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, decl := range f.Decls {
-		switch d := decl.(type) {
-		case *ast.GenDecl:
-			if d.Tok == token.VAR {
-				for _, spec := range d.Specs {
-					for _, v := range spec.(*ast.ValueSpec).Values {
-						visit(v)
-					}
-				}
-			}
-		case *ast.FuncDecl:
-			if d.Recv == nil && d.Name.Name == "init" && d.Body != nil {
-				visit(d.Body)
-			}
+	var files []*ast.File
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
 		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		files = append(files, f)
 	}
-	return found
+	if len(files) == 0 {
+		t.Fatalf("%s: no Go files", dir)
+	}
+	return files
 }

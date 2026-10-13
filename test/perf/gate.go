@@ -100,9 +100,11 @@ func ParseInitTrace(stderr string) (InitTrace, error) {
 		case strings.HasPrefix(ln, "gc "):
 			t.GCLines++
 		case strings.HasPrefix(ln, "init "):
-			// init <pkg> @<t> ms, <d> ms clock, <b> bytes, <n> allocs
+			// init <pkg> @<t> ms, <d> ms clock, <b> bytes, <n> allocs: eleven
+			// fields, the last at index 10, so fewer than eleven is refused
+			// before any is read.
 			f := strings.Fields(ln)
-			if len(f) < 10 || f[8] != "bytes," || f[10] != "allocs" {
+			if len(f) < 11 || f[8] != "bytes," || f[10] != "allocs" {
 				return t, fmt.Errorf("unrecognised init line: %q", ln)
 			}
 			b, err := strconv.ParseInt(f[7], 10, 64)
