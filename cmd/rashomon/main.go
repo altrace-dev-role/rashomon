@@ -175,7 +175,6 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	// comment says "not for a panic", and three of the four entry points took
 	// it on faith for the first few statements.
 	_ = safe.Guard(func() error {
-		oneProc()
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
@@ -216,7 +215,6 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook.
 	_ = safe.Guard(func() error {
-		oneProc()
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
