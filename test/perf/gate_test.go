@@ -338,6 +338,36 @@ func TestRES30_RatioToleranceIsTheRunnersOnly(t *testing.T) {
 	}
 }
 
+// TestRES30_RatioToleranceOnlyOnARunner: the harness picks the ratio's
+// tolerance by where it runs. On GitHub Actions, where macos-latest's ratio
+// has not been measured, it is the platform's runner tolerance; anywhere else,
+// the reference machine included, it is none, so the 1.25x rule holds as
+// measured and a regression to 1.44x (1.25 x 1.15) cannot hide in it (RES-30,
+// ruling 2026-10-13). Only "true", which is what Actions sets, is a runner.
+func TestRES30_RatioToleranceOnlyOnARunner(t *testing.T) {
+	const platform = 0.15
+	env := func(v string, set bool) func(string) string {
+		return func(k string) string {
+			if k == "GITHUB_ACTIONS" && set {
+				return v
+			}
+			return ""
+		}
+	}
+	for _, c := range []struct {
+		value string
+		set   bool
+		want  float64
+	}{
+		{"true", true, platform},
+		{"", false, 0}, {"", true, 0}, {"false", true, 0}, {"1", true, 0}, {"TRUE", true, 0},
+	} {
+		if got := RatioTolerance(platform, env(c.value, c.set)); got != c.want {
+			t.Errorf("RatioTolerance with GITHUB_ACTIONS=%q (set %v) = %v, want %v", c.value, c.set, got, c.want)
+		}
+	}
+}
+
 // TestRES30_BudgetsRowStatesTheGate: budgets.json's parallel row carries the
 // per-process rule's basis, the measured figures it was restated from, and
 // it names the same bound and sample count the gate uses, so the two cannot

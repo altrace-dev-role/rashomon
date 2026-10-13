@@ -24,6 +24,20 @@ func OverBudget(measured, budget, tolerance float64) bool {
 	return measured > budget*(1+tolerance)
 }
 
+// RatioTolerance is the tolerance RES-30's per-process ratio gets where the
+// harness runs, read through getenv: the platform's runner tolerance on GitHub
+// Actions, which sets GITHUB_ACTIONS to "true" and where macos-latest's ratio
+// has not been measured yet, and none anywhere else, because the ratio was
+// measured on the reference machine and holds there as stated (ruling
+// 2026-10-13). A machine that is neither is held to the ratio as stated,
+// which fails closed.
+func RatioTolerance(platformTolerance float64, getenv func(string) string) float64 {
+	if getenv("GITHUB_ACTIONS") == "true" {
+		return platformTolerance
+	}
+	return 0
+}
+
 // Tolerance is the fraction over budget a platform's runner is allowed at
 // now: its tolerance until the date it names, its tolerance_after from then.
 // An unparseable date fails closed to the tighter of the two.
@@ -222,7 +236,7 @@ type Burst struct {
 // On the reference machine both sides are measured in the same run, so the
 // ratio holds as stated, with no tolerance. macos-latest is a different
 // machine whose ratio has not been measured; until it is, a CI runner gets
-// its platform's tolerance on the ratio (parallel_test.go, ratioTolerance).
+// its platform's tolerance on the ratio (RatioTolerance).
 // test/perf/budgets.json's parallel row records the same figures.
 const PerProcessPeakRatio = 1.25
 

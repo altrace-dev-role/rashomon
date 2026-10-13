@@ -28,7 +28,7 @@ import (
 // lock timeout, the pairs' peak footprints sum to within budget, and every
 // pair's peak, the largest standing for them all, is at most
 // PerProcessPeakRatio times the 1-way figure, measured first, in a store of
-// its own, with the runner tolerance only on a CI runner (ratioTolerance;
+// its own, with the runner tolerance only on a CI runner (RatioTolerance;
 // RES-30; H-16 at the same width
 // covers the hook alone). What a pair costs at any instant is one process, so
 // a pair's peak is the larger of its two.
@@ -38,7 +38,7 @@ import (
 func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 	b := loadBudgets(t)
 	tol := tolerance(t, b)
-	ratioTol := ratioTolerance(tol)
+	ratioTol := RatioTolerance(tol, os.Getenv)
 	ways := b.Parallel.Ways
 	oneWay := oneWayPeakMiB(t)
 	home, env := scratch(t)
@@ -93,19 +93,6 @@ func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 		ways, platform(), sum, b.Parallel.SummedPeakMiBMax, tol*100, 2*ways, all,
 		burst.LargestMiB(), burst.LargestMiB()/oneWay, PerProcessPeakRatio, ratioTol*100, oneWay, median, median/oneWay,
 		burst.Declarations, burst.Executions, burst.Spilled, burst.LockTimeouts, took.Round(time.Millisecond))
-}
-
-// ratioTolerance is the tolerance the per-process ratio gets on this machine:
-// none off a CI runner, because the ratio was measured on the reference
-// machine and holds there as stated, and the platform's runner tolerance on
-// GitHub Actions, where macos-latest's ratio has not been measured yet (RES-30,
-// ruling 2026-10-13). A machine that is neither is held to the ratio as
-// stated, which fails closed.
-func ratioTolerance(platformTolerance float64) float64 {
-	if os.Getenv("GITHUB_ACTIONS") == "true" {
-		return platformTolerance
-	}
-	return 0
 }
 
 // oneWayPeakMiB is the 1-way figure RES-30's per-process rule compares the
