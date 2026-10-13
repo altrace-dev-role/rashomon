@@ -437,8 +437,8 @@ m("TB a backgrounded execution reads as its recorded ok", "internal/report/chain
   "\t\tcase false && e.Backgrounded:\n",
   "TestTestBending|TestTestRuns_|TestTimeline_ABackgrounded")
 m("TB the post path never reads the background keys", "internal/hook/post.go",
-  "\t\trec.Backgrounded = backgroundedCall(raw)\n",
-  "\t\trec.Backgrounded = false && backgroundedCall(raw)\n",
+  "\t\trec.Backgrounded = backgroundedCall(payload)\n",
+  "\t\trec.Backgrounded = false && backgroundedCall(payload)\n",
   "TestTestBending_ARunMovedToTheBackground|TestH20_Backgrounded")
 m("TB the background bit is read for every tool", "internal/hook/post.go",
   "\tif pl.ToolName == \"Bash\" && pl.HookEventName != FailureEvent {\n\t\trec.Backgrounded",
@@ -449,8 +449,8 @@ m("TB a failure event can be moved to the background", "internal/hook/post.go",
   "\tif pl.ToolName == \"Bash\" {\n\t\trec.Backgrounded",
   "TestTestBending_AFailureIsNeverMovedToTheBackground")
 m("TB a false backgroundedByUser sets the bit", "internal/hook/post.go",
-  "!bytes.Equal(v, []byte(\"null\")) && !bytes.Equal(v, []byte(\"false\"))",
-  "!bytes.Equal(v, []byte(\"null\"))",
+  "\treturn bits[0].Set() || bits[1].Set()\n",
+  "\treturn bits[0].Set() || bits[1].Present()\n",
   "TestH20_BackgroundedIsReadForBashOnly")
 
 m("TB runs pair across directories", "internal/report/testbending.go",

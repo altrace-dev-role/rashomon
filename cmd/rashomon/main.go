@@ -310,8 +310,11 @@ const recapStdinTimeout = 3 * time.Second
 // that function is only ever safe to call behind --stdin's promise, and
 // this entry has no equivalent flag to gate on -- see recapStdinTimeout.
 type recapPayload struct {
-	SessionID            string `json:"session_id"`
-	LastAssistantMessage string `json:"last_assistant_message"`
+	SessionID            string
+	LastAssistantMessage string
+	// LastMessageTail is the message's last 64 KiB when it was longer than
+	// the head (readFinalMessage), kept for the comparator (RES-17, P-40).
+	LastMessageTail string
 }
 
 // readRecapPayload reads and parses stdin within a fixed budget, whatever
@@ -332,17 +335,12 @@ func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
 	}
 	ch := make(chan parsed, 1)
 	safe.Go(func() {
-		raw, err := io.ReadAll(io.LimitReader(in, hook.MaxPayloadBytes+1))
-		if err != nil || len(raw) == 0 || len(raw) > hook.MaxPayloadBytes {
+		fm, ok := readFinalMessage(in, true)
+		if !ok {
 			ch <- parsed{}
 			return
 		}
-		var p recapPayload
-		if json.Unmarshal(raw, &p) != nil {
-			ch <- parsed{}
-			return
-		}
-		ch <- parsed{payload: p, ok: true}
+		ch <- parsed{payload: recapPayload{SessionID: fm.SessionID, LastAssistantMessage: fm.Message, LastMessageTail: fm.Tail}, ok: true}
 	}, nil)
 
 	select {
@@ -1460,17 +1458,8 @@ func cmdDigest(args []string, stdin io.Reader, stdout io.Writer) error {
 // promise that made this read safe -- see cmdDigest's doc on why sniffing
 // stdin's type cannot make that promise itself.
 func readStdinLastMessage(in io.Reader) (string, bool) {
-	raw, err := io.ReadAll(io.LimitReader(in, hook.MaxPayloadBytes+1))
-	if err != nil || len(raw) == 0 || len(raw) > hook.MaxPayloadBytes {
-		return "", false
-	}
-	var p struct {
-		LastAssistantMessage string `json:"last_assistant_message"`
-	}
-	if json.Unmarshal(raw, &p) != nil {
-		return "", false
-	}
-	return p.LastAssistantMessage, p.LastAssistantMessage != ""
+	fm, ok := readFinalMessage(in, false)
+	return fm.Message, ok && fm.Message != ""
 }
 
 // digestOrEmpty builds the digest, or the empty one when there is nothing

@@ -12,3 +12,8 @@ m("RES-28 a payload one byte short passes as exact", "test/perf/payload/payload.
 m("RES-28 a red on the tolerance switch date reads as a plain regression", "test/perf/gate.go",
   '\t\treturn "tolerance tightened per budgets.json tolerance_until " + until + " (" + percent(tolerance) + " to " + percent(after) + ")"\n',
   '\t\treturn ""\n', "TestRES28g_")
+
+m("RES-28 a line is padded with the tolerance before the measurement is compared", "test/perf/gate.go",
+  "\tif measuredMiB > lineMiB {\n", "\tif measuredMiB > lineMiB*1.1 {\n", "TestRES28h_")
+m("RES-28 a case with no measured figure beside its line passes", "test/perf/gate.go",
+  "\tif measuredMiB <= 0 {\n", "\tif measuredMiB < 0 {\n", "TestRES28h_")

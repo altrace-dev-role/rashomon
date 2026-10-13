@@ -428,6 +428,11 @@ const (
 const (
 	ReasonInternalError = "internal_error"
 	ReasonLockTimeout   = "lock_timeout"
+	// ReasonPayloadTooLarge marks an invocation whose payload was over the
+	// 8 MiB intake cap (hookio.MaxPayloadBytes) and was refused after a
+	// bounded read. Nothing broke inside this program, which is why it is
+	// not internal_error; the call itself went unrecorded.
+	ReasonPayloadTooLarge = "payload_too_large"
 	// ReasonFlushFailed marks records a hook appended and then could not
 	// flush to stable storage (REC-34): they read back, and a power loss or
 	// a crash of the machine could still remove them. It rides a spill
@@ -455,6 +460,7 @@ func Reasons() []string {
 	return []string{
 		ReasonInternalError,
 		ReasonLockTimeout,
+		ReasonPayloadTooLarge,
 		ReasonFlushFailed,
 		ReasonTerminatedBySignal,
 		ReasonUnterminatedEntry,

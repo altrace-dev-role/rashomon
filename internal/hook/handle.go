@@ -2,12 +2,12 @@ package hook
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"path/filepath"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -17,17 +17,15 @@ import (
 // This is a panic-barrier concern, not a tidiness one. Go's response to
 // exhausting memory is a runtime fatal error, which recover cannot catch and
 // which exits 2 -- and exit 2 from a PreToolUse hook blocks the user's tool
-// call. An unbounded ReadAll over an attacker-influenced tool_input is
-// therefore a way to turn this recorder into an enforcer, and the limit is what
-// closes it.
-const MaxPayloadBytes = 8 << 20
+// call. An unbounded read over an attacker-influenced tool_input is therefore
+// a way to turn this recorder into an enforcer, and the limit is what closes
+// it. hookio.Read enforces it; a refusal is recorded as payload_too_large.
+const MaxPayloadBytes = hookio.MaxPayloadBytes
 
 // UnattributedSession buckets records for a payload too malformed to name its
 // own session. Losing the run is bad; silently attributing it to a session that
 // did not produce it would be worse.
 const UnattributedSession = "unattributed"
-
-var errPayloadTooLarge = errors.New("hook: payload exceeds the read limit")
 
 // Handler captures one tool call and then closes it out.
 //
@@ -55,13 +53,12 @@ func New(st *store.Store, now func() time.Time) *Handler {
 func (h *Handler) Capture(in io.Reader) error {
 	fault.Inject(fault.PointHookStart)
 
-	raw, err := readPayload(in)
+	payload, err := hookio.Intake(in)
 	if err != nil {
 		return err
 	}
-
 	var p Payload
-	if err := json.Unmarshal(raw, &p); err != nil {
+	if err := p.from(payload); err != nil {
 		return err
 	}
 
@@ -138,10 +135,8 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 	switch {
 	case sig.Delivered():
 		outcome, reason = store.OutcomeSignal, store.ReasonTerminatedBySignal
-	case errors.Is(captureErr, store.ErrLockTimeout):
-		outcome, reason = store.OutcomeError, store.ReasonLockTimeout
 	case captureErr != nil:
-		outcome, reason = store.OutcomeError, store.ReasonInternalError
+		outcome, reason = store.OutcomeError, closeReason(captureErr)
 	}
 
 	// A terminal closes a declaration that landed, whatever its id. It is also
@@ -170,17 +165,6 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 	}
 
 	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.cwd, h.now()))
-}
-
-func readPayload(r io.Reader) ([]byte, error) {
-	b, err := io.ReadAll(io.LimitReader(r, MaxPayloadBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(b) > MaxPayloadBytes {
-		return nil, errPayloadTooLarge
-	}
-	return b, nil
 }
 
 // startDirectory is the directory a call's command starts in: the payload's
