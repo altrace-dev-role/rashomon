@@ -1,5 +1,6 @@
 // Package peakrss measures a child process's peak resident set size, the
-// figure /usr/bin/time prints, for the tests that gate on it (RES-28).
+// figure /usr/bin/time prints, for the tests that gate on it (RES-7, RES-28,
+// RES-30).
 //
 // A Reaper runs each child: a small binary built from ./reaper that starts
 // the child, waits for it, and reports the child's ru_maxrss on a pipe. It
@@ -12,8 +13,8 @@
 // linux/arm64, so the child's reading is its own, and a reading that does not
 // exceed the reaper's own peak is refused rather than taken.
 //
-// Windows has no ru_maxrss, so there NewReaper returns ErrUnavailable and the
-// caller skips by name rather than failing to build; that is what keeps
+// Windows has no ru_maxrss, so there NewReaper and MiB return ErrUnavailable
+// and the caller skips by name rather than failing to build; that is what keeps
 // `GOOS=windows go vet ./...` clean.
 package peakrss
 
@@ -27,8 +28,8 @@ import (
 	"strings"
 )
 
-// ErrUnavailable is NewReaper's error on a platform whose process state
-// carries no ru_maxrss.
+// ErrUnavailable is NewReaper's and MiB's error on a platform whose process
+// state carries no ru_maxrss.
 var ErrUnavailable = errors.New("peak RSS is not reported on this platform")
 
 // Reaper is a built reaper binary; Run measures a child through it.
