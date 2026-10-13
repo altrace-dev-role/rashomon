@@ -73,3 +73,5 @@ m("REC-34 eviction takes a lock the recorder does not count", "internal/store/ga
   "\tunlock, err := lockCounted(gf, lockBudget)", "\tunlock, err := LockFile(gf, lockBudget)", "TestREC34h_")
 m("REC-34 the counted lock counts nothing", "internal/store/store.go",
   "\tfault.LockTaken()\n", "", "TestREC34_")
+m("REC-34 a marker naming no call reads as a lost call", "internal/report/testbending.go",
+  "\t\tif t.FlushFailed() && t.ToolUseID == \"\" {\n\t\t\tcontinue\n\t\t}\n", "", "TestREC34i_")

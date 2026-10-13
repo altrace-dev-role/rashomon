@@ -692,7 +692,7 @@ m("TB a call whose declaration was lost does not stop a pair", "internal/report/
   "",
   "TestTestBending")
 m("TB a lost call with only a terminal does not stop a pair", "internal/report/testbending.go",
-  "\tfor _, t := range run.Terminals {\n\t\tif !declared[t.ToolUseID] && !denied[t.ToolUseID] {\n\t\t\tlost[t.ToolUseID] = true\n\t\t}\n\t}\n",
+  "\tfor _, t := range run.Terminals {\n\t\tif t.FlushFailed() && t.ToolUseID == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tif !declared[t.ToolUseID] && !denied[t.ToolUseID] {\n\t\t\tlost[t.ToolUseID] = true\n\t\t}\n\t}\n",
   "",
   "TestTestBending")
 m("TB a lost call's terminal is counted apart from its execution record", "internal/report/testbending.go",
