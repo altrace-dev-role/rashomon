@@ -40,14 +40,9 @@ func deps(t *testing.T, pattern string) []string {
 }
 
 // TestH17_NoNetworkInTheRecordersDependencyGraph is the structural half of
-// H-17, and it is scoped to the RECORDER rather than to the whole binary.
-//
-// It used to cover ./cmd/rashomon, and that assertion cannot survive the
-// destinations reader: the report needs to read the proxy's SQLite store, the
-// only pure-Go driver transitively imports net and os/exec through
-// modernc.org/libc, and no arrangement of this program makes both true. So the
-// claim is narrowed to the one that matters and the narrowing is made explicit
-// rather than left as a deleted test.
+// H-17, scoped to the RECORDER. TRU-40 makes the same claim of the whole
+// binary now that nothing in it links a networking package; this one stays
+// because it is the claim that matters even if the binary's ever changes.
 //
 // internal/hook is the right root. Every hook entry point lives in it --
 // PreToolUse, PostToolUse, PostToolUseFailure and both probe phases -- so its
@@ -56,10 +51,7 @@ func deps(t *testing.T, pattern string) []string {
 // recorder runs in the agent's own lifecycle, thousands of times a session,
 // and must be unable to phone anywhere.
 //
-// The honest public sentence is now: "the recorder's import graph contains no
-// networking package, checked on every build; the operator-invoked report
-// links a SQLite driver whose dependency graph contains net, and opens no
-// socket." The runtime halves below are stronger evidence still, but they are
+// The runtime halves below are stronger evidence still, but they are
 // Linux-only and SKIP on macOS, so they cannot carry the claim.
 func TestH17_NoNetworkInTheRecordersDependencyGraph(t *testing.T) {
 	pkgs := deps(t, "./internal/hook")
@@ -83,60 +75,6 @@ func TestH17_NoNetworkInTheRecordersDependencyGraph(t *testing.T) {
 		t.Fatalf("the recorder's graph contains only %d of this module's packages; "+
 			"internal/hook no longer reaches the store, shape, settings, safe, fault "+
 			"and host packages, so this test is guarding less than it claims", recorderPkgs)
-	}
-}
-
-// TestH17_NetworkEntersOnlyThroughTheSQLiteDriver bounds the exception the test
-// above carves out.
-//
-// Without this, "the recorder is clean" would be compatible with anything at
-// all being added to the report path. It asserts the opposite direction: net
-// and os/exec ARE in the binary, they are expected, and the only reason they
-// are there is the SQLite driver's subtree. If they ever enter from somewhere
-// else -- an HTTP health check, a telemetry client, a shell-out -- the driver
-// stops being the explanation and this fails.
-//
-// It is deliberately a two-sided assertion. A test that only checked "no new
-// forbidden imports" would pass if the driver were removed and something worse
-// added in its place.
-func TestH17_NetworkEntersOnlyThroughTheSQLiteDriver(t *testing.T) {
-	binary := deps(t, "./cmd/rashomon")
-
-	inBinary := map[string]bool{}
-	for _, pkg := range binary {
-		inBinary[pkg] = true
-	}
-
-	// While the driver is NOT linked into the binary, the original and stronger
-	// assertion still holds and is the one to make: no forbidden import
-	// anywhere in the program. This is not a fallback for convenience -- it
-	// means the test ratchets. The exception only opens when the driver is
-	// actually there, and closes again by itself if it is ever dropped.
-	if !inBinary["modernc.org/libc"] {
-		for pkg, why := range forbiddenImports {
-			if inBinary[pkg] {
-				t.Errorf("the binary depends on %s, which %s, and the SQLite driver is "+
-					"not linked, so nothing sanctions it", pkg, why)
-			}
-		}
-		return
-	}
-
-	// Everything the driver's subtree brings in, by itself.
-	driver := map[string]bool{}
-	for _, pkg := range deps(t, "modernc.org/sqlite") {
-		driver[pkg] = true
-	}
-
-	for pkg, why := range forbiddenImports {
-		if !inBinary[pkg] {
-			continue
-		}
-		if !driver[pkg] {
-			t.Errorf("the binary depends on %s (which %s) and the SQLite driver does "+
-				"NOT, so something else introduced it. The driver is the only "+
-				"sanctioned source of a networking import in this program.", pkg, why)
-		}
 	}
 }
 
@@ -234,30 +172,24 @@ func TestH17_HandlerOpensNoSockets(t *testing.T) {
 // packages allowed to import it DIRECTLY.
 //
 // Direct imports, not transitive ones, and that distinction is the whole
-// difference between a bound and a formality. The membership test above asks
-// whether the forbidden package is in the SQLite driver's dependency set -- and
-// the driver's set contains net AND os/exec, so its predicate is satisfied
-// whoever actually reached for them. Transitive provenance is no better: every
-// package that touches the store inherits the driver's whole subtree, so
-// internal/report and internal/wire "have an explanation" for os/exec without
-// anybody having written a subprocess.
-//
-// What a reviewer actually wants to know is whether anyone in this module
-// reached for one of these, and that is a question about import statements. It
-// is also the question that would catch the temptation internal/baseline
-// documents resisting, where walking up for .git replaced shelling out to
+// difference between a bound and a formality: transitive provenance excuses
+// everything downstream of an import, whoever actually reached for it. What a
+// reviewer wants to know is whether anyone in this module reached for one of
+// these, and that is a question about import statements. It is also the
+// question that would catch the temptation internal/baseline documents
+// resisting, where walking up for .git replaced shelling out to
 // `git rev-parse`.
-var sanctionedSource = map[string]string{
-	"os/exec": "github.com/altrace-dev-role/rashomon/internal/launch",
-}
+//
+// Empty since the launcher went with the proxy era: nothing in this module may
+// import any of them. The supervisor and the notifier the specification plans
+// will each take an entry here when they land, and nothing else will.
+var sanctionedSource = map[string]string{}
 
 // TestH17_NoPackageOfOursReachesForANetworkImport is the provenance assertion
 // the prose has been making all along.
 //
 // Every forbidden package is either imported by nobody here, or by exactly the
-// one package sanctioned to. Nothing is said about the driver's own subtree:
-// that code is not ours, it is the reason the exception exists, and the test
-// above is what keeps the exception tied to the driver actually being present.
+// one package sanctioned to.
 func TestH17_NoPackageOfOursReachesForANetworkImport(t *testing.T) {
 	const modulePrefix = "github.com/altrace-dev-role/rashomon"
 
@@ -310,9 +242,12 @@ func TestH17_NoPackageOfOursReachesForANetworkImport(t *testing.T) {
 }
 
 // TestH17_TheSanctionedSourcesAreNotVacuous guards the map above against the
-// way it would go quiet: an entry naming a package that no longer imports the
-// thing it is excused for excuses nothing, and the next reader would read it as
-// a live bound.
+// two ways it would go quiet: an entry naming a package that no longer imports
+// the thing it is excused for excuses nothing, and the next reader would read
+// it as a live bound; and an empty map, which is the bound at its strongest
+// and must then hold of the whole binary on every release target, not only
+// of this module's own import statements, or a dependency could bring a
+// forbidden package in with nobody here having written the import.
 func TestH17_TheSanctionedSourcesAreNotVacuous(t *testing.T) {
 	for forbidden, source := range sanctionedSource {
 		imports := directImports(t, source)
@@ -320,6 +255,18 @@ func TestH17_TheSanctionedSourcesAreNotVacuous(t *testing.T) {
 			t.Errorf("%s is sanctioned to import %s and no longer does. Remove the entry "+
 				"and let the whole-module ban cover it, rather than leaving an exception "+
 				"that reads as though something still needs excusing.", source, forbidden)
+		}
+	}
+	if len(sanctionedSource) > 0 {
+		return
+	}
+	binary := map[string]bool{}
+	for _, pkg := range releaseDeps(t) {
+		binary[pkg] = true
+	}
+	for pkg, why := range forbiddenImports {
+		if binary[pkg] {
+			t.Errorf("the binary depends on %s, which %s, and nothing sanctions it", pkg, why)
 		}
 	}
 }

@@ -26,41 +26,32 @@ import (
 // a legend asserting they were digested. A legend is what a user checks
 // INSTEAD of the hostnames, so that is worse than no redaction at all.
 var hostBearing = map[string]bool{
-	"destinations.hosts[].host":             true,
-	"destinations.wire_only[]":              true,
-	"destinations.client_plane[]":           true,
-	"destinations.declared_not_observed[]":  true,
-	"destinations.not_observable[]":         true,
-	"destinations.novelty.hosts[]":          true,
-	"chains.prompts[].transcript_path":      true,
-	"chains.prompts[].links[].hosts[].host": true,
-	"chains.prompts[].links[].ssh_hosts[]":  true,
-	"chains.unattributed[].hosts[].host":    true,
-	"chains.unattributed[].ssh_hosts[]":     true,
-	"chains.dropped[].hosts[].host":         true,
-	"chains.dropped[].ssh_hosts[]":          true,
-	"nono.allowed[]":                        true,
-	"nono.denied[]":                         true,
-	"nono.client_plane_allowed[]":           true,
-	"nono.client_plane_denied[]":            true,
-	"nono.saw_what_the_proxy_did_not[]":     true,
-	"nono.plain_http[]":                     true,
-	"nono.denied_but_reached[]":             true,
-	"nono.proxy_saw_what_it_did_not[]":      true,
-	"transcripts[].path":                    true,
+	"destinations.declared_hosts[]":             true,
+	"destinations.ssh_hosts[]":                  true,
+	"destinations.novelty.hosts[]":              true,
+	"chains.prompts[].transcript_path":          true,
+	"chains.prompts[].links[].declared_hosts[]": true,
+	"chains.prompts[].links[].ssh_hosts[]":      true,
+	"chains.unattributed[].declared_hosts[]":    true,
+	"chains.unattributed[].ssh_hosts[]":         true,
+	"chains.dropped[].declared_hosts[]":         true,
+	"chains.dropped[].ssh_hosts[]":              true,
+	"nono.allowed[]":                            true,
+	"nono.denied[]":                             true,
+	"nono.client_plane_allowed[]":               true,
+	"nono.client_plane_denied[]":                true,
+	"transcripts[].path":                        true,
 
 	// NOT host-bearing, each decided rather than defaulted. Ids, reason codes,
 	// tool names, counts-as-strings and enum values. If one of these ever starts
 	// carrying a hostname, the entry moves to true and Redact gains a line.
 	"account.text":                                     false,
-	"chains.dropped[].hosts[].state":                   false,
 	"chains.dropped[].outcome":                         false,
 	"chains.dropped[].outcomes[]":                      false,
 	"chains.dropped[].program":                         false,
 	"chains.dropped[].tool_name":                       false,
 	"chains.dropped[].tool_use_id":                     false,
 	"chains.dropped[].verb_class":                      false,
-	"chains.prompts[].links[].hosts[].state":           false,
 	"chains.prompts[].links[].outcome":                 false,
 	"chains.prompts[].links[].outcomes[]":              false,
 	"chains.prompts[].links[].program":                 false,
@@ -68,7 +59,6 @@ var hostBearing = map[string]bool{
 	"chains.prompts[].links[].tool_use_id":             false,
 	"chains.prompts[].links[].verb_class":              false,
 	"chains.prompts[].prompt_id":                       false,
-	"chains.unattributed[].hosts[].state":              false,
 	"chains.unattributed[].outcome":                    false,
 	"chains.unattributed[].outcomes[]":                 false,
 	"chains.unattributed[].program":                    false,
@@ -95,24 +85,14 @@ var hostBearing = map[string]bool{
 	"declarations.unterminated[]":                      false,
 	"declarations.without_execution[].permission_mode": false,
 	"declarations.without_execution[].tool_use_id":     false,
-	"destinations.hosts[].actions[]":                   false,
-	"destinations.hosts[].first_seen":                  false,
-	"destinations.hosts[].last_seen":                   false,
-	"destinations.hosts[].reasons[]":                   false,
 	"destinations.novelty.reason":                      false,
-	"destinations.proxy_note":                          false,
-	"destinations.proxy_on_path":                       false,
-	"destinations.reason":                              false,
 	"destinations.rewritten[].program":                 false,
 	"destinations.rewritten[].tool_name":               false,
 	"destinations.rewritten[].tool_use_id":             false,
 	"destinations.rewritten[].verb_class":              false,
 	"families.families[].name":                         false,
 	"families.families[].programs[]":                   false,
-	"families.families[].status":                       false,
 	"families.not_exercised[]":                         false,
-	"families.not_observable[]":                        false,
-	"families.reason":                                  false,
 	"gaps[].host_digest":                               false,
 	"gaps[].reason":                                    false,
 	"gaps[].session_id":                                false,
@@ -191,11 +171,12 @@ func TestRedact_EveryDeclaredHostFieldIsDigested(t *testing.T) {
 		t.Errorf("a hostname survived --redact in JSON:\n%s", locate(string(body), canary))
 	}
 	var text strings.Builder
-	// A named proxy store and the chain listing: the two options that put
-	// every host-bearing section on the page. Without the store the proxy
-	// block collapses to one line, and the canary check would pass against
-	// sections that never rendered.
-	if err := Text(&text, red, WithChain(), WithNamedProxyStore("causal.db")); err != nil {
+	// The chain listing is the one option that puts every host-bearing section
+	// on the page in TEXT form: destinations, families and nono always render
+	// in full, but the chain view only prints each link's hosts under --chain.
+	// Without it the canary check below would pass against a section that
+	// never printed them.
+	if err := Text(&text, red, WithChain()); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(text.String(), canary) {
@@ -276,23 +257,28 @@ func flattened(f reflect.StructField, name string) bool {
 // host-bearing field added to TestBending passes the declared-set test
 // unclassified.
 func TestRedact_EnumerationDescendsIntoEmbeddedStructs(t *testing.T) {
+	// transcripts[].path is a real host-bearing leaf (unlike the old
+	// destinations.hosts[].host fixture this test used before the proxy-era
+	// per-host struct was removed): every host-bearing field in the current
+	// schema is a flat string or []string, so this is the only kind of
+	// leaf left to build a realistic embedding fixture around.
 	type Inner struct {
-		Host string `json:"host"`
+		Path string `json:"path"`
 	}
 	type outer struct {
 		Inner
 		Other string `json:"other"`
 	}
 	paths := map[string]bool{}
-	walkStringPaths(reflect.TypeOf(outer{}), "destinations.hosts[]", paths, 0)
-	if !paths["destinations.hosts[].host"] || !paths["destinations.hosts[].other"] {
-		t.Errorf("paths = %v, want the embedded struct's host at the outer level", paths)
+	walkStringPaths(reflect.TypeOf(outer{}), "transcripts[]", paths, 0)
+	if !paths["transcripts[].path"] || !paths["transcripts[].other"] {
+		t.Errorf("paths = %v, want the embedded struct's path at the outer level", paths)
 	}
 	var v outer
 	n := 0
-	plantAt(reflect.ValueOf(&v).Elem(), "destinations.hosts[]", "canary.example", &n, 0)
-	if v.Host != "canary.example" || n != 1 {
-		t.Errorf("planted %d, host %q: want the embedded host planted", n, v.Host)
+	plantAt(reflect.ValueOf(&v).Elem(), "transcripts[]", "canary.example", &n, 0)
+	if v.Path != "canary.example" || n != 1 {
+		t.Errorf("planted %d, path %q: want the embedded path planted", n, v.Path)
 	}
 
 	// An embedded pointer flattens the same way, and plantAt allocates it.
@@ -301,15 +287,15 @@ func TestRedact_EnumerationDescendsIntoEmbeddedStructs(t *testing.T) {
 		Other string `json:"other"`
 	}
 	paths = map[string]bool{}
-	walkStringPaths(reflect.TypeOf(outerPtr{}), "destinations.hosts[]", paths, 0)
-	if !paths["destinations.hosts[].host"] || !paths["destinations.hosts[].other"] {
-		t.Errorf("paths = %v, want the embedded pointer's host at the outer level", paths)
+	walkStringPaths(reflect.TypeOf(outerPtr{}), "transcripts[]", paths, 0)
+	if !paths["transcripts[].path"] || !paths["transcripts[].other"] {
+		t.Errorf("paths = %v, want the embedded pointer's path at the outer level", paths)
 	}
 	var vp outerPtr
 	n = 0
-	plantAt(reflect.ValueOf(&vp).Elem(), "destinations.hosts[]", "canary.example", &n, 0)
-	if vp.Inner == nil || vp.Host != "canary.example" || n != 1 {
-		t.Errorf("planted %d, inner %+v: want the embedded pointer allocated and its host planted", n, vp.Inner)
+	plantAt(reflect.ValueOf(&vp).Elem(), "transcripts[]", "canary.example", &n, 0)
+	if vp.Inner == nil || vp.Path != "canary.example" || n != 1 {
+		t.Errorf("planted %d, inner %+v: want the embedded pointer allocated and its path planted", n, vp.Inner)
 	}
 }
 

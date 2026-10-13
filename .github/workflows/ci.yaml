@@ -175,14 +175,6 @@ jobs:
       #     message in the log right above it;
       #   - each dynamic test must positively `--- PASS`, so renaming or
       #     deleting one cannot slip past a grep that only hunts skips.
-      #
-      # What this job still does NOT cover: TestRead_AgainstARealProxyStore
-      # (internal/wire/real_store_check_test.go) stays opt-in behind
-      # RASHOMON_REAL_STORE=/path/to/causal.db and has never run, here or
-      # anywhere. It is the one test that would catch the Altrace proxy
-      # drifting causal.db's schema out from under internal/wire's reader,
-      # and it needs a store the real proxy wrote, which the proxy team has
-      # yet to provide. When such a fixture lands, wire it into this job.
       - name: H-17 dynamic tests (a SKIP is a failure)
         shell: bash
         run: |

@@ -5,24 +5,6 @@
 m("NONO suppressTrail is removed, so forget --host is bypassed",
   "internal/report/nono.go", "\tobs = suppressTrail(obs, forgotten)", "\t_ = forgotten",
   "TestSeam_AForgotten")
-m("NONO plain HTTP stops meaning ONLY plain HTTP", "internal/report/nono.go",
-  "plainOnly[h] && !observable[h]", "plainOnly[h]", "TestSeam_PlainHTTP")
-m("NONO the plain-HTTP list is never populated", "internal/report/nono.go",
-  "n.PlainHTTP = append(n.PlainHTTP, h)", "_ = h", "TestSeam_PlainHTTP")
-m("NONO a denied host is reported as missing from the trail",
-  "internal/report/nono.go", "\t\tif denied[h] {", "\t\tif false {",
-  "TestSeam_TheReconciliation")
-# Re-anchored after the live nono 0.79 pass: the reconciliation's client-plane
-# test is the clientPlane predicate (clientPlaneHost), not a set built from the
-# wire view's list. Each mutation still drops one half of the exclusion.
-m("NONO loopback is reported as traffic the sandbox missed",
-  "internal/report/nono.go",
-  "return loopbackHosts[h] || clientPlane(h) }", "return clientPlane(h) }",
-  "TestSeam_TheReconciliation")
-m("NONO the client plane is reported as traffic the sandbox missed",
-  "internal/report/nono.go",
-  "return loopbackHosts[h] || clientPlane(h) }", "return loopbackHosts[h] }",
-  "TestSeam_TheReconciliation")
 m("NONO redaction skips the sandbox section", "internal/report/redact.go",
   "\t\ts.Nono = redactNono(sess.Nono, key)", "", "TestRedact_EveryDeclared")
 # Simulates the defect the vocabulary exists for: somebody adds a host-bearing
@@ -48,10 +30,6 @@ m("NONO an unknown mode is not counted without a proxy store", "internal/report/
   "\t\tif e.Mode != \"reverse\" && e.Mode != \"connect\" {\n\t\t\tn.UnknownModes++\n\t\t}\n",
   "",
   "TestNono_AnUnknownMode")
-m("NONO an unknown mode is counted twice with a proxy store", "internal/report/nono.go",
-  "\t\t\t// from being excused as plain HTTP.\n\t\t\tobservable[e.Host] = true\n",
-  "\t\t\t// from being excused as plain HTTP.\n\t\t\tn.UnknownModes++\n\t\t\tobservable[e.Host] = true\n",
-  "TestNono_AnUnknownModeIsCountedOnce")
 m("NONO the text never reports an unknown mode", "internal/report/text.go",
   "\tif n.UnknownModes > 0 {", "\tif false {",
   "TestNono_AnUnknownModeIsCountedWithout")
@@ -67,15 +45,17 @@ m("NONO an empty --nono-audit is read as no trail asked for", "cmd/rashomon/main
 m("NONO the reader never says the window has no end", "internal/nono/nono.go",
   "WindowOpen: w.End.IsZero()}", "WindowOpen: false}",
   "TestRead_AWindowWithNoEnd")
-m("NONO an open window does not reach the report", "internal/report/nono.go",
-  "\t\tWindowOpen:            obs.WindowOpen,\n", "",
-  "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
 m("NONO the sandbox line does not say the window has no end", "internal/report/text.go",
   "\tif n.WindowOpen {", "\tif false {",
   "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
 m("NONO a bounded window is said to have no end", "internal/report/text.go",
   "\tif n.WindowOpen {", "\tif true {",
   "TestNono_AWindowWithNoEnd")
+# Re-anchored: the proxy-era fields left the literal and gofmt realigned it,
+# so the old anchor matched nothing and the mutant went with them.
+m("NONO an open window does not reach the report", "internal/report/nono.go",
+  "\t\tWindowOpen:         obs.WindowOpen,\n", "",
+  "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
 
 # Finding 5: a trail of only unreadable lines read as "nono wrote nothing".
 m("NONO a not-observed trail does not say how much it could not read", "internal/report/text.go",
@@ -163,18 +143,6 @@ m("NONO a client-plane host a tool call named is filed as the client's", "intern
 m("NONO the session's named hosts never reach the sandbox section", "internal/report/report.go",
   "madeMCPCall(run), declaredHosts(run), forgotten)", "madeMCPCall(run), nil, forgotten)",
   "TestSeam_AClientPlaneHostAToolCallNamed")
-# The escape line reads every refused host, the client's plane included
-# (review of #53): listing the Datadog intake as the client's had silenced
-# "REFUSED BY THE SANDBOX AND REACHED ANYWAY" for it.
-m("NONO a refused client-plane host reached on the wire is no escape", "internal/report/nono.go",
-  "\t\tif wireReached[h] && !trailAllowed[h] {", "\t\tif wireReached[h] && !trailAllowed[h] && !excluded(h) {",
-  "TestSeam_ARefusedClientHost")
-m("NONO a host the sandbox also allowed is called an escape", "internal/report/nono.go",
-  "\t\tif wireReached[h] && !trailAllowed[h] {", "\t\tif wireReached[h] {",
-  "TestSeam_ARefusedClientHost")
-m("NONO a refused loopback host reached on the wire is an escape", "internal/report/nono.go",
-  "\t\tif !h.Unreached && !loopbackHosts[h.Host] {", "\t\tif !h.Unreached {",
-  "TestSeam_ARefusedClientHost")
 # The client-traffic line says which hosts the sandbox allowed and which it
 # refused (review of #53): one list of both hid the refused log upload.
 m("NONO the client-traffic line does not say what the sandbox refused", "internal/report/text.go",
@@ -228,19 +196,13 @@ m("NONO a forget whose store-level record failed reports success", "internal/sto
   "\t_ = s.recordForgottenHost(s.HostDigest(host), now)\n",
   "TestForgetHost_AnUn")
 
-# The reconciliation's exclusion keeps the MCP qualifier (review of #53):
-# reverting it to the bare list survived every test, on main as well.
-m("NONO the reconciliation files the MCP transport as the client's on an MCP session", "internal/report/nono.go",
-  "\texcluded := func(h string) bool { return loopbackHosts[h] || clientPlane(h) }",
-  "\texcluded := func(h string) bool { return loopbackHosts[h] || clientPlaneHosts[h] }",
-  "TestNono_TheMCPTransportIsReconciled")
-
 # The client-plane rule has one spelling, clientPlaneHost, and every view
-# that asks it of this session calls it (review of #53): the destinations
-# view and the novelty candidates used to restate it.
-m("NONO the destinations view files the MCP transport as the client's on an MCP session", "internal/report/destinations.go",
-  "\t\tcase clientPlaneHost(h.Host, mcpAttributed):\n\t\t\td.ClientPlane", "\t\tcase clientPlaneHosts[h.Host]:\n\t\t\td.ClientPlane",
-  "TestClientPlane_EveryView")
+# that asks it of this session calls it (review of #53): the novelty
+# candidates used to restate it. Re-anchored when the proxy era left: the
+# candidates are the declared hosts, a list of names.
 m("NONO the novelty candidates drop the MCP transport on an MCP session", "internal/report/destinations.go",
-  "\t\tif clientPlaneHost(h.Host, mcpAttributed) {\n\t\t\tcontinue", "\t\tif clientPlaneHosts[h.Host] {\n\t\t\tcontinue",
+  "\t\tif loopbackHosts[h] || clientPlaneHost(h, mcpAttributed) {", "\t\tif loopbackHosts[h] || clientPlaneHosts[h] {",
   "TestClientPlane_EveryView")
+m("NONO the session's MCP calls never reach the novelty candidates", "internal/report/destinations.go",
+  "novelHostCandidates(d.DeclaredHosts, madeMCPCall(run))", "novelHostCandidates(d.DeclaredHosts, false)",
+  "TestNovelty_TheMCPTransport")

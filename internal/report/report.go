@@ -31,7 +31,6 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/nono"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
-	"github.com/altrace-dev-role/rashomon/internal/wire"
 )
 
 // Coverage reasons a report can add beyond those the run recorded.
@@ -243,10 +242,10 @@ type Session struct {
 	Transcripts    []Transcript `json:"transcripts"`
 	Gaps           []store.Gap  `json:"gaps"`
 	SkippedRecords int          `json:"skipped_records"`
-	// Destinations is what the proxy observed, reconciled against what this
-	// session declared. Always present: when no proxy store was configured it
-	// carries Observed false with a reason, because a report that simply
-	// omitted the section would read as "nothing was reached".
+	// Destinations is what this session's tool calls named, and the calls that
+	// ran with an input other than the one they were declared with. Always
+	// present, with empty lists rather than an absent section: a report that
+	// simply omitted it would read as "nothing was named".
 	Destinations Destinations `json:"destinations"`
 
 	// Account is the agent's own summary, read from the transcript at render
@@ -266,8 +265,9 @@ type Session struct {
 	// the same bytes as a measured zero.
 	MaskedRuns *MaskedRuns `json:"masked_runs"`
 
-	// Families is which of this session's tool families were confirmed to
-	// transit the proxy, derived from the join rather than from a probe.
+	// Families is which of this session's network-capable tool families ran
+	// and how many hosts each named, derived from the record rather than from
+	// a probe.
 	Families FamilyCoverage `json:"families"`
 
 	// Nono is what a sandbox saw, when one was supervising. A fourth evidence
@@ -308,23 +308,13 @@ type Session struct {
 // Option configures Build.
 //
 // Variadic options rather than a wider signature, so a caller that does not
-// know about the proxy store keeps compiling and keeps getting an honest
-// "not observed" rather than being forced to pass a path it has no opinion
+// know about the nono trail keeps compiling and keeps getting an honest
+// "not configured" rather than being forced to pass a path it has no opinion
 // about.
 type Option func(*options)
 
 type options struct {
-	proxyStore string
-	nonoTrail  string
-	runToken   string
-	// tokenRequested records that a tag WAS in play, separately from whether
-	// any row carried one. Without it the renderer inferred "no token was in
-	// use" from a zero match count, which is a statement about the reporting
-	// process printed as a statement about the session -- and it was false in
-	// the two most interesting cases: a re-render, and a tokened run whose
-	// clients all stripped the credential.
-	tokenRequested bool
-	isOurs         func(string) bool
+	nonoTrail string
 }
 
 // WithNonoTrail names a nono audit-events.ndjson to reconcile against.
@@ -334,37 +324,6 @@ type options struct {
 // nothing to say cannot be told apart from one that was never built.
 func WithNonoTrail(path string) Option {
 	return func(o *options) { o.nonoTrail = path }
-}
-
-// WithRunToken supplies the session tag this run handed to the proxy.
-//
-// IN MEMORY ONLY, and deliberately not read from disk. The join needs the RAW
-// token -- a digest cannot be compared against the proxy's run_id column -- so
-// retaining it anywhere would mean storing a value that identifies a session's
-// traffic. It is available exactly while the process that minted it is alive,
-// which is when `run` renders its automatic report; a later `rashomon report`
-// has no token and falls back to the window, and says which it used.
-func WithRunToken(token string) Option {
-	return func(o *options) {
-		o.runToken = token
-		o.tokenRequested = token != ""
-	}
-}
-
-// WithTokenVerifier supplies the test for whether a FOREIGN run_id is a tag
-// this install issued.
-//
-// Only a tag that verifies may be treated as another session's and excluded.
-// Anything else is not evidence about anybody and falls back to the clock --
-// see internal/wire's joinOf for the two ways the alternative failed.
-func WithTokenVerifier(isOurs func(string) bool) Option {
-	return func(o *options) { o.isOurs = isOurs }
-}
-
-// WithProxyStore names the proxy's causal store. An empty path means no store
-// was configured, which the destinations section reports as not observed.
-func WithProxyStore(path string) Option {
-	return func(o *options) { o.proxyStore = path }
 }
 
 // Report is the rendered output.
@@ -450,39 +409,20 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		}
 		MaskingAsRan(run)
 		sess := build(run)
-		// The destinations section is built per session, from the session's own
-		// window. Reading the store once per session rather than once per
-		// report is the cost of that: a window is a property of the run, and
-		// sharing one observation across sessions would attribute each
-		// session's destinations to all of them.
-		w := window(run)
-		w.RunID = cfg.runToken
-		w.IsOurs = cfg.isOurs
-		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, w), st.Root(), forgotten)
-		// Set here rather than threaded through buildDestinations: it is a fact
-		// about THIS RENDER, not about the observation, and widening that
-		// function's signature would have touched every existing caller to say
-		// "false" -- churn that hides the one call site that matters.
-		sess.Destinations.TokenRequested = cfg.tokenRequested
-		sess.Families = buildFamilies(run, observedHostSet(sess.Destinations),
-			sess.Destinations.Observed, sess.Destinations.Reason)
-		// After Destinations, and reading it rather than the observation: the
-		// chain's host states must be the ones the destinations section already
-		// suppressed and accounted for, or a forgotten host returns in a
-		// different section under a different name for the same row.
-		// After Destinations, and reading it rather than the raw observation:
-		// the comparison must use the view that has already suppressed
-		// forgotten hosts, or a forgotten host returns here under a different
-		// heading.
-		sess.Nono = buildNono(
-			nono.Read(cfg.nonoTrail, nono.Window{Start: w.Start, End: w.End}),
-			sess.Destinations, cfg.nonoTrail != "", madeMCPCall(run), declaredHosts(run), forgotten)
+		sess.Destinations = buildDestinations(run, st.Root())
+		sess.Families = buildFamilies(run)
+		// The sandbox section is built per session, from the session's own
+		// window: a window is a property of the run, and sharing one
+		// observation across sessions would attribute each session's sandbox
+		// events to all of them.
+		sess.Nono = buildNono(nono.Read(cfg.nonoTrail, sessionWindow(run)),
+			cfg.nonoTrail != "", madeMCPCall(run), declaredHosts(run), forgotten)
 		denied := deniedSet(sess.Transcripts)
 		// One grouping of the executions, shared by the chains, the timeline
 		// and the test runs, and one detection, shared by the timeline's
 		// annotations and the test runs' pairs.
 		executed := executionsByID(run)
-		sess.Chains = buildChains(run, executed, sess.Destinations, denied, forgotten)
+		sess.Chains = buildChains(run, executed, denied)
 		tb := detectTestBending(run, executed, denied)
 		sess.Timeline = timelineFrom(run, executed, denied, tb)
 		sess.TestRuns = buildTestRuns(run, executed, denied, tb)
@@ -867,4 +807,41 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// sessionWindow derives the watched interval from the run's own coverage
+// records.
+//
+// The run's account of itself is the only honest source: report must never
+// re-read today's configuration to judge a past run, because that would let a
+// later detach retroactively invalidate every session already captured. An
+// absent end record leaves the window open at that end, which the sandbox
+// section says on its own line.
+func sessionWindow(run *store.Run) nono.Window {
+	var w nono.Window
+	for _, c := range run.Coverage {
+		at := time.UnixMilli(c.RecordedAtMS)
+		switch c.Phase {
+		case store.PhaseStart:
+			if w.Start.IsZero() || at.Before(w.Start) {
+				w.Start = at
+			}
+		case store.PhaseEnd:
+			if at.After(w.End) {
+				w.End = at
+			}
+		}
+	}
+	// A session with no start record still has records; anchor on the earliest
+	// one rather than leaving the window unbounded, which would pull in every
+	// event the trail has ever held.
+	if w.Start.IsZero() {
+		for _, c := range run.Coverage {
+			at := time.UnixMilli(c.RecordedAtMS)
+			if w.Start.IsZero() || at.Before(w.Start) {
+				w.Start = at
+			}
+		}
+	}
+	return w
 }
