@@ -3,6 +3,7 @@ package settings
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -37,10 +38,13 @@ func Write(path string, original, data []byte) error {
 	// its stale contents, and detach could not put the link back because by
 	// then there was no link to restore.
 	//
-	// Resolution failure is not fatal: a path that does not exist yet cannot
-	// be resolved and is the ordinary first-install case.
-	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		path = resolved
+	// Only a path with nothing at it is the ordinary first install. A link
+	// that does not resolve is refused: treating its failed resolution as
+	// "does not exist yet" renamed over the link and caused the very bug this
+	// comment describes.
+	path, err := writeTarget(path)
+	if err != nil {
+		return err
 	}
 
 	dir := filepath.Dir(path)
@@ -101,9 +105,48 @@ func Write(path string, original, data []byte) error {
 	return nil
 }
 
+// writeTarget is the file Write replaces for path: path itself when nothing
+// is there yet, or what path resolves to through any symlinks. A symlink that
+// does not resolve is an error naming the link and its target, because
+// writing anything -- over the link, or at a target outside the directory
+// that holds it -- would decide for the user which of the two they meant.
+func writeTarget(path string) (string, error) {
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return path, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved, nil
+	}
+	if info.Mode()&fs.ModeSymlink == 0 {
+		return "", err
+	}
+	return "", danglingLink(path, err)
+}
+
+// danglingLink describes a settings symlink that does not resolve.
+func danglingLink(path string, cause error) error {
+	target, err := os.Readlink(path)
+	if err != nil {
+		return fmt.Errorf("settings: %s is a symlink that does not resolve (%v); not writing it", path, cause)
+	}
+	return fmt.Errorf("settings: %s is a symlink to %s, which does not resolve (%v); "+
+		"not writing it -- restore the target, or replace the link with a file", path, target, cause)
+}
+
 // ReadOriginal reads the file's current bytes for a later Write. An absent
-// file reads as nil, which Write treats as "still absent".
+// file reads as nil, which Write treats as "still absent". A symlink that
+// does not resolve is an error, not an absent file: reading it as empty
+// would let detach report "nothing to detach" for a file it never saw, and
+// let watch go on to write.
 func ReadOriginal(path string) ([]byte, error) {
+	if _, err := writeTarget(path); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
