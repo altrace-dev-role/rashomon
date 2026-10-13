@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -123,5 +124,55 @@ func TestREC34d_FlushFailedTerminalClosesNothingAndDropsNothing(t *testing.T) {
 	}
 	if !marker("x").FlushFailed() || (Terminal{Outcome: OutcomeOK}).FlushFailed() {
 		t.Error("FlushFailed does not tell the marker from an ordinary terminal")
+	}
+}
+
+// TestREC34e_AFailedBarrierIsNeverRetriedByFlush: a barrier is a sync, and
+// a failed one is as final as a failed Flush. The store reports it from every
+// later Flush, without a full sync of the file the barrier failed on, and
+// ends its deferral, so what is appended after it -- the flush_failed marker
+// first -- is synced in full. A Flush that full-synced the same file and
+// succeeded would turn "possibly lost" into "durable": on Linux the barrier
+// is fsync, so that is the retried fsync REC-34 rules out (fsyncgate).
+func TestREC34e_AFailedBarrierIsNeverRetriedByFlush(t *testing.T) {
+	const session = "sess-barrier-fails"
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.DeferDurability()
+	dir := st.RunDir(session)
+	if err := os.MkdirAll(dir, dirMode); err != nil {
+		t.Fatal(err)
+	}
+	// A descriptor already closed: the barrier on it fails, while the file
+	// it names exists, so a full sync of that file would succeed.
+	f, err := os.OpenFile(filepath.Join(dir, FileRecords), appendFlags, fileMode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	barrierErr := st.syncAppend(f)
+	if barrierErr == nil {
+		t.Fatal("a barrier on a closed descriptor reported success")
+	}
+	if st.deferred {
+		t.Error("a failed barrier left the store deferring: an append after it would be covered by no flush")
+	}
+	if err := st.Flush(); !errors.Is(err, barrierErr) {
+		t.Fatalf("Flush after a failed barrier = %v, want the barrier's own error %v: the failure was retried", err, barrierErr)
+	}
+	// An append after the failure is synced in full, and still no Flush
+	// reports durability.
+	if err := st.AppendCoverage(Coverage{Type: TypeCoverage, SchemaVersion: SessionSchemaVersion, SessionID: session}); err != nil {
+		t.Fatal(err)
+	}
+	if st.dirty != filepath.Join(dir, FileRecords) {
+		t.Errorf("an append after the failed barrier was left to a flush (%q)", st.dirty)
+	}
+	if err := st.Flush(); !errors.Is(err, barrierErr) {
+		t.Errorf("a second Flush = %v, want %v", err, barrierErr)
 	}
 }
