@@ -61,13 +61,14 @@ IMPORTS["REC-34 an accepted barrier falls back to a full sync"] = ("internal/sto
   "import (\n\t\"os\"\n\t\"syscall\"\n)")
 # An accepted barrier followed by a full sync the recorder never hears of: the
 # recorder logs the barrier, so REC-34's acceptance test stays green, and only
-# the check that every full sync is syncFull's sees it (P09-F4, the residual).
+# the source check that every full sync is syncFull's sees it (P09-F4, the
+# residual).
 m("REC-34 an accepted barrier also syncs in full, unseen", "internal/store/sync_darwin.go",
   "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, nil\n",
-  "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, f.Sync()\n", "TestREC34j_")
+  "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, f.Sync()\n", "TestREC34h_")
 m("REC-34 the barrier's fallback syncs where the recorder cannot see it", "internal/store/sync_darwin.go",
   "\t\tcase barrierRefused(errno):\n\t\t\tif err := syncFull(f); err != nil {\n",
-  "\t\tcase barrierRefused(errno):\n\t\t\tif err := f.Sync(); err != nil {\n", "TestREC34j_")
+  "\t\tcase barrierRefused(errno):\n\t\t\tif err := f.Sync(); err != nil {\n", "TestREC34h_")
 m("REC-34 group commit off inside barrierSync", "internal/store/sync_darwin.go",
   "func barrierSync(f *os.File) (durable bool, err error) {\n\tfor {\n",
   "func barrierSync(f *os.File) (durable bool, err error) {\n\treturn true, syncFull(f)\n\tfor {\n", "TestREC34_")
@@ -96,3 +97,13 @@ m("REC-34 a full-sync barrier still leaves its file to Flush", "internal/store/s
 m("REC-34 an accepted darwin barrier reports its write durable", "internal/store/sync_darwin.go",
   "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, nil\n",
   "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn true, nil\n", "TestREC34f_")
+# The barrier's fcntl command (P09-F4, round 2): F_FULLFSYNC in its place is a
+# call the kernel accepts, so the recorder logs a barrier, the acceptance test
+# sees barriers inside the lock and one full sync outside, and the device flush
+# is back inside every append lock. Only the source check sees the command.
+m("REC-34 the barrier's fcntl is F_FULLFSYNC", "internal/store/sync_darwin.go",
+  "f.Fd(), fBarrierFsync, 0)", "f.Fd(), syscall.F_FULLFSYNC, 0)", "TestREC34h_")
+m("REC-34 the barrier's fcntl command is a bare number", "internal/store/sync_darwin.go",
+  "f.Fd(), fBarrierFsync, 0)", "f.Fd(), 51, 0)", "TestREC34h_")
+m("REC-34 the barrier constant is F_FULLFSYNC's number, judged on every platform", "internal/store/sync_darwin.go",
+  "const fBarrierFsync = 85", "const fBarrierFsync = 51", "TestREC34h_")

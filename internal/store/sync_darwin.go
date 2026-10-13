@@ -33,7 +33,9 @@ const fBarrierFsync = 85
 // a barrier once the kernel has accepted one, and the fallback as the full
 // sync it is, through syncFull. So REC-34's test, which wants barriers inside
 // the lock and one full sync outside it, fails if the barrier falls back on
-// the store's own volume or never reaches the kernel.
+// the store's own volume or never reaches the kernel. A wrong command the
+// kernel accepts, F_FULLFSYNC above all, would be logged as a barrier, so
+// TestREC34h_ reads the command from the source.
 //
 // syscall.Syscall on darwin traps straight into the kernel rather than going
 // through libc as os.File.Sync does. Apple does not promise that interface;
