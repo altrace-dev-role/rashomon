@@ -1669,8 +1669,9 @@ func usage(w io.Writer) {
 usage:
   rashomon watch                 install the PreToolUse, PostToolUse and
                                PostToolUseFailure recorders, the
-                               SessionStart/SessionEnd liveness probe, and the
-                               Stop/StopFailure exception-only recap
+                               SessionStart/SessionEnd liveness probe, the
+                               Stop/StopFailure exception-only recap, and its
+                               UserPromptSubmit catch-up
   rashomon detach                remove them, leaving everything else as found
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
@@ -1740,13 +1741,20 @@ usage:
 invoked by Claude Code, never by hand:
   rashomon hook [--install ID]   handle one PreToolUse invocation
   rashomon post [--install ID]   handle one PostToolUse invocation
-  rashomon probe start|end [--install ID]
-                               handle SessionStart / SessionEnd
+  rashomon probe start [--install ID]
+                               handle SessionStart
+  rashomon probe end [--install ID]
+                               handle SessionEnd
   rashomon recap [--install ID]  handle Stop / StopFailure: print an
                                exception-only line on stdout as a
                                systemMessage when a turn has something worth
                                looking at, and nothing otherwise; never
                                exits non-zero
+  rashomon recap pending [--install ID]
+                               handle UserPromptSubmit: print that line for
+                               the turn that just ended if no recap reached
+                               it, as when a refused permission prompt
+                               interrupted it; never exits non-zero
 
 --install names the install whose entry is running. An entry belonging to
 another install stands down: it records nothing in this environment.
