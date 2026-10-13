@@ -231,6 +231,15 @@ func TestREC32_EvictContinuesPastUnreadableRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	appendRaw(t, filepath.Join(st.RunDir("sess-skipped"), FileRecords), []byte("not a record\n"))
+	// A run whose directory cannot even be listed: its size and age are
+	// unknown, so it is left alone, and the runs after it are still evicted.
+	if err := st.AppendDeclaration(testDecl("sess-unlistable", "toolu_unlistable")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(st.RunDir("sess-unlistable"), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(st.RunDir("sess-unlistable"), dirMode) })
 	old := time.Now().Add(-48 * time.Hour)
 	for i, s := range []string{"sess-unreadable", "sess-skipped", "sess-fine"} {
 		if err := chtimesTree(st.RunDir(s), old.Add(time.Duration(i)*time.Minute)); err != nil {
@@ -239,8 +248,11 @@ func TestREC32_EvictContinuesPastUnreadableRun(t *testing.T) {
 	}
 
 	gaps, err := st.Evict(1, "", time.Now())
-	if err == nil || !strings.Contains(err.Error(), "sess-unreadable") {
-		t.Errorf("Evict returned %v, want the read error of the run it could not read", err)
+	if err == nil || !strings.Contains(err.Error(), "sess-unreadable") || !strings.Contains(err.Error(), "sess-unlistable") {
+		t.Errorf("Evict returned %v, want the errors of the runs it could not read or list", err)
+	}
+	if _, err := os.Lstat(st.RunDir("sess-unlistable")); err != nil {
+		t.Errorf("a run eviction could not list was removed: %v", err)
 	}
 	removed := map[string]int{}
 	for _, g := range gaps {
