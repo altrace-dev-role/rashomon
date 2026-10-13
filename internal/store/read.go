@@ -116,7 +116,7 @@ func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run,
 	run := &Run{Dir: name}
 
 	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
-		err := eachLineLocked(filepath.Join(dir, fname), budget, func(line []byte) { classifyRunLine(run, line) })
+		err := eachLineTryLock(filepath.Join(dir, fname), budget, func(line []byte) { classifyRunLine(run, line) })
 		if err != nil {
 			return nil, err
 		}
@@ -209,15 +209,19 @@ func eachLine(path string, fn func(line []byte)) error {
 	return scanLines(f, fn)
 }
 
-// eachLineLocked is eachLine under a short, best-effort exclusive lock against
+// eachLineTryLock is eachLine under a short, best-effort exclusive lock against
 // the same flock a writer takes -- see ReadRunConsistent's doc for why a
 // digest needs this and report never has.
+//
+// It takes the lock itself, and tries rather than requires it: the name says
+// so, because by the Go convention a name ending in Locked is a function
+// that expects its caller to hold the lock already (naming-8).
 //
 // A lock this reader could not get within budget is not treated as a reason
 // to fail: the scan below then runs exactly as eachLine's always has, and a
 // line actually caught mid-write still lands in Skipped rather than being
 // silently mis-read as something it is not.
-func eachLineLocked(path string, budget time.Duration, fn func(line []byte)) error {
+func eachLineTryLock(path string, budget time.Duration, fn func(line []byte)) error {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -233,7 +237,7 @@ func eachLineLocked(path string, budget time.Duration, fn func(line []byte)) err
 	return scanLines(f, fn)
 }
 
-// scanLines is the NDJSON scan itself, shared by eachLine and eachLineLocked
+// scanLines is the NDJSON scan itself, shared by eachLine and eachLineTryLock
 // so the two differ only in whether a lock was taken first. A line too long
 // to read reaches fn as nil (forEachLine), which every caller counts as a
 // line that does not parse.

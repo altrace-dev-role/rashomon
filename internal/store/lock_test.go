@@ -109,7 +109,7 @@ func TestAppendExecutionSpillsWhenTheLockIsHeld(t *testing.T) {
 // that never tried to lock at all returns near-instantly regardless of who
 // holds the file; one that does spends close to its own budget retrying
 // before it gives up and falls back to reading anyway (see
-// store.eachLineLocked's doc on why giving up is not treated as fatal).
+// store.eachLineTryLock's doc on why giving up is not treated as fatal).
 func TestReadRunConsistent_RespectsAHeldLock(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -146,7 +146,7 @@ func TestReadRunConsistent_RespectsAHeldLock(t *testing.T) {
 	}
 	if waited < budget {
 		t.Fatalf("ReadRunConsistent returned after %v, before its own %v budget -- it did not "+
-			"attempt the lock at all. Break: read unlocked (eachLine instead of eachLineLocked) "+
+			"attempt the lock at all. Break: read unlocked (eachLine instead of eachLineTryLock) "+
 			"and this returns near-instantly regardless of who holds the file.", waited, budget)
 	}
 	if waited > time.Second {
