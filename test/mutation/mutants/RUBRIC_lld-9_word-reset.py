@@ -8,4 +8,4 @@ m("RUBRIC lld-9 the word is reset field by field and forgets its backticks", "in
 m("RUBRIC lld-9 a fresh word is not quoted at -1", "internal/shape/tokenize.go",
   "func newWord() word { return word{quotedAt: -1} }",
   "func newWord() word { return word{} }",
-  "TestRubricLLD9_|TestTokenize")
+  "TestRubricLLD9_")
