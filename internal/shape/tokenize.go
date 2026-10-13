@@ -30,20 +30,22 @@ var errTokenBound = errors.New("token bound")
 // drove a hook to about 1.07 GB of RSS. Lexing stops at maxTokens, derived
 // from a memory budget for the shape of one call, shapeBudget, over the cost
 // of one token. That cost is the whole Derive's, not the lexer's: Derive reads
-// a line three times (tokenizeShape for argc, tokenizeProgram for the
-// program, tokenizeList for the masked status), its leading-cd count a fourth
-// and the hook's LeadingDirectory a fifth, so a token costs about 395 bytes
-// where one reading of it costs about 106 (BenchmarkLexTokens).
-// bytesPerToken is BenchmarkDerive/bash_long_4k's 421,153 B/op over that
-// line's 1,068 tokens (test/perf/budgets.json, measured 2026-10-13 under
-// go1.27.2), 394.3, rounded up; TestRES9_BoundMatchesItsArithmetic holds the
-// constant to that row, so a change that moves Derive's cost per token
-// restates the bound with the row. The bound is 42,473 tokens: a script
-// handed to an interpreter as a here-document, which the program search
-// reads word by word, runs to a few thousand.
+// a line three times (tokenizeShape for argc, tokenizeProgram for the program
+// and the leading-cd count, tokenizeList for the masked status), so a token
+// costs about 268 bytes where one reading of it costs about 101
+// (BenchmarkLexTokens). The hook's LeadingDirectory reads the line once more,
+// outside Derive. bytesPerToken is BenchmarkDerive/bash_long_4k's 285,328
+// B/op over that line's 1,068 tokens (test/perf/budgets.json, measured
+// 2026-10-13 under go1.27.2), 267.2, rounded up; it was 395 while a word's
+// text was copied byte by byte and the leading-cd count read the line a
+// fourth time. TestRES9_BoundMatchesItsArithmetic holds the constant to that
+// row, so a change that moves Derive's cost per token restates the bound
+// with the row. The bound is 62,601 tokens: a script handed to an
+// interpreter as a here-document, which the program search reads word by
+// word, runs to a few thousand.
 const (
 	shapeBudget   = 16 << 20
-	bytesPerToken = 395
+	bytesPerToken = 268
 	maxTokens     = shapeBudget / bytesPerToken
 )
 
@@ -573,11 +575,17 @@ func (l *lexer) plain(i int) {
 // the token slice is allocated once rather than grown. Grown, append's copies
 // of a slice this size cost about four times the slice it leaves, and at the
 // token bound that was most of what one reading of a line allocated. Where it
-// is short, as on a line of quoted blanks, lex grows the slice as before.
+// is short, as on a line of quoted blanks, lex grows the slice as before. An
+// escaped blank ends no word: 8 MiB of `\ ` is one word, and counted as
+// millions the line was given a slice for the bound's worth of tokens in
+// each of its readings.
 func tokenEstimate(s string) int {
 	n, inWord := 1, false
 	for i := 0; i < len(s) && n <= maxTokens; i++ {
 		switch c := s[i]; {
+		case c == '\\': // the byte it escapes is the word's, a blank included
+			i++
+			inWord = true
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			if inWord {
 				n++

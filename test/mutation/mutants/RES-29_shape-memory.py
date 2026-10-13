@@ -30,3 +30,6 @@ m("RES-29 the line is lowered for each scheme list", "internal/shape/hosts.go",
   "\tssh = collect(lower, sshSchemes)\n", "\tssh = collect(strings.ToLower(text), sshSchemes)\n", "TestRES29_")
 m("RES-29 the command is decoded into a buffer grown from nothing", "internal/jsonscan/unquote.go",
   "\tvar out strings.Builder\n\tout.Grow(len(b))\n", "\tvar out strings.Builder\n", "TestRES29_")
+m("RES-29 an escaped blank ends a word in the token estimate", "internal/shape/tokenize.go",
+  "\t\tcase c == '\\\\': // the byte it escapes is the word's, a blank included\n\t\t\ti++\n\t\t\tinWord = true\n",
+  "", "TestRES29_")
