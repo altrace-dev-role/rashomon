@@ -22,7 +22,8 @@ func TestCanonical(t *testing.T) {
 		{name: "scheme with port", in: "https://pypi.org:443/simple", want: "pypi.org", ok: true},
 		{name: "trailing dot dropped", in: "pypi.org.", want: "pypi.org", ok: true,
 			why: "the fully-qualified spelling is the same name"},
-		{name: "only one trailing dot dropped", in: "pypi.org..", want: "pypi.org.", ok: true},
+		{name: "two trailing dots refused", in: "pypi.org..", ok: false,
+			why: "an empty final label is not a hostname, and dropping one dot left a name a second pass changed"},
 		{name: "query dropped", in: "https://api.github.com/user?tok=1", want: "api.github.com", ok: true,
 			why: "a query string is the likeliest place for a credential to ride along"},
 		{name: "loopback kept", in: "127.0.0.1:18080", want: "127.0.0.1", ok: true,
@@ -143,6 +144,23 @@ func TestCanonical_IsIdempotent(t *testing.T) {
 		twice, ok := Canonical(once)
 		if !ok || twice != once {
 			t.Errorf("Canonical(Canonical(%q)) = %q,%v, want %q,true", in, twice, ok, once)
+		}
+	}
+}
+
+// TestRubricTest1_CanonicalIsAFixedPoint: a host Canonical accepts is one it
+// returns unchanged. With two trailing dots it dropped one and accepted the
+// rest, so "a.." recorded "a." and a second pass made it "a": the wire side
+// and the declaration side disagreed on the one host both had seen, and
+// FuzzHosts found it from `https://x..` under the CI fuzz command.
+func TestRubricTest1_CanonicalIsAFixedPoint(t *testing.T) {
+	for _, in := range []string{"pypi.org..", "https://pypi.org../x", "pypi.org..:443", "..", "a...", "pypi.org.", "PyPI.org"} {
+		got, ok := Canonical(in)
+		if !ok {
+			continue
+		}
+		if again, ok := Canonical(got); !ok || again != got {
+			t.Errorf("Canonical(%q) = %q, and Canonical(%q) = %q, %v", in, got, got, again, ok)
 		}
 	}
 }
