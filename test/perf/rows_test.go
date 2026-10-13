@@ -42,8 +42,8 @@ func TestRES28i_ToleranceScheduleIsTheSpecs(t *testing.T) {
 // TestRES28j_TheCaseSetIsTheSpecs: RES-28's cases, exactly: hook at 400 B
 // and post at 540 B (a PostToolUse envelope's fixed part is 467 bytes), both
 // at 40 KB, 1, 4 and 8 MiB; the small and 40 KB cases gate from P-08 and the
-// rest from P-10. Dropping a case or moving one to a later PR is a change to
-// what is gated.
+// rest from P-10, and this tree carries both, so every case gates. Dropping a
+// case or moving one to a later PR is a change to what is gated.
 func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 	type c struct {
 		entry string
@@ -68,8 +68,8 @@ func TestRES28j_TheCaseSetIsTheSpecs(t *testing.T) {
 		if got := (c{rc.Entry, rc.PayloadBytes, rc.GatesFrom}); got != w {
 			t.Errorf("case %s: %+v, want %+v", rc.ID, got, w)
 		}
-		if CaseGates(rc) != (w.from == "P-08") {
-			t.Errorf("case %s: CaseGates %v on a case gating from %s", rc.ID, CaseGates(rc), w.from)
+		if !CaseGates(rc) {
+			t.Errorf("case %s gating from %s does not gate on a tree that carries it", rc.ID, w.from)
 		}
 	}
 	for id := range want {

@@ -264,16 +264,18 @@ func (r rig) medianRSS(t *testing.T, command []string, mk func(i int) []byte) fl
 }
 
 // TestRES28_MaxRSSFollowsThePayloadBudget: hook and post peak RSS stay within
-// 6.5 MiB + 2.2 MiB per MiB of payload on every case that gates in this tree
-// (CaseGates); the cases that gate from P-10 are skipped by name with the
-// reason, never silently (RES-28).
+// each case's line in budgets.json (6.5 MiB plus the case's slope per MiB of
+// payload; RES-28's 2.2 unless a basis says otherwise) on every case whose PR
+// has landed (CaseGates): the small cases from P-08, the 1, 4 and 8 MiB cases
+// from P-10's bounded intake. A case from a PR not yet landed is skipped by
+// name, never silently (RES-28).
 func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 	b := loadBudgets(t)
 	for _, c := range b.RSSCases {
 		c := c
 		t.Run(c.ID, func(t *testing.T) {
 			if !CaseGates(c) {
-				t.Skipf("gates from %s: intake copies the payload about eight times until RES-4's read bound lands (archive 85.1.2)", c.GatesFrom)
+				t.Skipf("gates from %s, which has not landed", c.GatesFrom)
 			}
 			r := newRig(t)
 			mk := func(i int) []byte {
