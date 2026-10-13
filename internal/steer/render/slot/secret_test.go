@@ -271,6 +271,16 @@ var ordinaryPaths = []Path{
 	"docs/architecture_decision_records_index.md",
 	"web/components/navigation-bar-dropdown-menu.tsx",
 	"3f2504e0-4f89-11d3-9a0c-0305e82c3301/config.json",
+	// Long words joined by a separator, which the joined-run check reads
+	// as one run (P07N-7).
+	"internal/authentication_configuration_loader.go",
+	"src/integration-environment-provisioning.ts",
+	"i18n/internationalization.localization_settings.json",
+	"config/springframework.autoconfigure.properties",
+	"src/FactoryBeanHandler.SingletonProxy.java",
+	"migrations/20261013105232_add_subscription_tables.sql",
+	"snapshots/TestRenderTemplates_NudgeWithPaths.golden",
+	"releases/v1.27.2-rc.1+build.20261013/notes.md",
 }
 
 // TestSTR13c_OrdinaryFileNamesAreKept: none of ordinaryPaths is refused.
@@ -336,6 +346,69 @@ func TestSTR13e_ApprovedRefusesSecretShapedText(t *testing.T) {
 	for _, v := range []Approved{"DB_PASSWORD=hunter2", "use q8Zr4LmP0xT7vK2nW9yB3cHdQ1sE as the key"} {
 		if err := v.Validate(); !errors.Is(err, ErrSecretShaped) {
 			t.Errorf("Approved(%q) = %v, want ErrSecretShaped", v, err)
+		}
+	}
+}
+
+// TestSTR13f_JoinedShortRunsRefused: a random token cut by a separator
+// into runs each shorter than 20 characters, so that neither 1.2.4's runs
+// nor the separated-run check test any of them, is refused at least 99% of
+// the time as a fact value and as a path segment: consecutive parts of 12
+// characters or more are tested joined (P07N-7). A UUID, whose groups are
+// 8, 4, 4, 4 and 12 characters, is not joined and stays kept
+// (TestSTR13c's ordinaryPaths).
+func TestSTR13f_JoinedShortRunsRefused(t *testing.T) {
+	const hex = "0123456789abcdef"
+	const base62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	r := rand.New(rand.NewPCG(41, 43))
+	for _, c := range []struct {
+		name string
+		gen  func() string
+	}{
+		{"hex16-hex16", func() string { return randomString(r, hex, 16) + "-" + randomString(r, hex, 16) }},
+		{"hex16.hex16", func() string { return randomString(r, hex, 16) + "." + randomString(r, hex, 16) }},
+		{"hex16:hex16", func() string { return randomString(r, hex, 16) + ":" + randomString(r, hex, 16) }},
+		{"hex12_hex12_hex12", func() string {
+			return randomString(r, hex, 12) + "_" + randomString(r, hex, 12) + "_" + randomString(r, hex, 12)
+		}},
+		{"base62 19.19", func() string { return randomString(r, base62, 19) + "." + randomString(r, base62, 19) }},
+		{"base62 19:19", func() string { return randomString(r, base62, 19) + ":" + randomString(r, base62, 19) }},
+	} {
+		fact, path := 0, 0
+		const n = 2000
+		for i := 0; i < n; i++ {
+			v := c.gen()
+			if (FactValue{Kind: FactAWSProfile, Value: v}).Validate() != nil {
+				fact++
+			}
+			if Path("cfg/"+v).Validate() != nil {
+				path++
+			}
+		}
+		if fs, ps := float64(fact)/n, float64(path)/n; fs < 0.99 || ps < 0.99 {
+			t.Errorf("%s: %.4f refused as a fact value, %.4f as a path; want at least 0.99", c.name, fs, ps)
+		}
+	}
+}
+
+// TestSTR13g_EachVendorRuleMatchesOnItsOwn: the deny list alone, with no
+// entropy test behind it, refuses each gitleaks rule's own example, so a
+// rule dropped from denyRE is visible even where the entropy test would
+// still catch a random key (P07N-7: Mailgun, Twilio, Postman and the
+// private-key header).
+func TestSTR13g_EachVendorRuleMatchesOnItsOwn(t *testing.T) {
+	for _, s := range []string{
+		"key-" + "0000000000000000000000000000000a",
+		"SK" + "00000000000000000000000000000000",
+		"PMAK-" + "000000000000000000000000-0000000000000000000000000000000000",
+		"-----BEGIN OPENSSH PRIVATE" + " KEY-----",
+		"-----BEGIN PRIVATE" + " KEY-----",
+	} {
+		if err := denied("probe", s); !errors.Is(err, ErrSecretShaped) {
+			t.Errorf("denied(%q) = %v, want ErrSecretShaped", s, err)
+		}
+		if highEntropy(s) {
+			t.Errorf("%q is high-entropy, so it does not test the deny rule alone", s)
 		}
 	}
 }

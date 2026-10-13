@@ -113,7 +113,66 @@ func highEntropy(s string) bool {
 			start = i + 1
 		}
 	}
-	return false
+	return joinedRunHighEntropy(s)
+}
+
+// minJoinPart is the shortest part joinedRunHighEntropy joins: longer than
+// every group of a UUID but its last, so a UUID is never joined.
+const minJoinPart = 12
+
+// joinable reports a part joinedRunHighEntropy may join: at least
+// minJoinPart characters holding a digit or both letter cases, so a random
+// part almost always qualifies and a lower-case word never does (1.2.4's
+// threshold already refuses some single English words of 20 letters or
+// more; joining "springframework" to "autoconfigure" would refuse more).
+func joinable(part string) bool {
+	if len(part) < minJoinPart {
+		return false
+	}
+	var upper, lower bool
+	for i := 0; i < len(part); i++ {
+		c := part[i]
+		if c >= '0' && c <= '9' {
+			return true
+		}
+		upper = upper || c >= 'A' && c <= 'Z'
+		lower = lower || c >= 'a' && c <= 'z'
+	}
+	return upper && lower
+}
+
+// tokenSeparators are the bytes the entropy checks split a value at:
+// 1.2.4's '.', ':' and '@', and tokenInRun's '-', '_', '+', '/' and '='.
+const tokenSeparators = ".:@-_+/="
+
+// joinedRunHighEntropy is the slot layer's second addition to tech 1.2.4,
+// a P-07 proposal for P-13 beside tokenInRun (P07N-7): a token cut by
+// separators into runs each under 20 characters (hex16-hex16, two base62
+// halves joined by '.') is never tested by 1.2.4 or by tokenInRun. So
+// every maximal sequence of two or more consecutive joinable parts is
+// tested as one run, the separators removed. A
+// UUID (8-4-4-4-12) has no two such parts in a row and is kept, so a
+// UUID-shaped key still passes; refusing those is the owner's call (P-13,
+// tech 1.2.4), since a UUID is more often an identifier.
+func joinedRunHighEntropy(s string) bool {
+	var joined []byte
+	parts := 0
+	flush := func() bool {
+		hit := parts >= 2 && runHighEntropy(string(joined))
+		joined, parts = joined[:0], 0
+		return hit
+	}
+	for _, part := range strings.FieldsFunc(s, func(r rune) bool { return strings.ContainsRune(tokenSeparators, r) }) {
+		if !joinable(part) {
+			if flush() {
+				return true
+			}
+			continue
+		}
+		joined = append(joined, part...)
+		parts++
+	}
+	return flush()
 }
 
 // maxTokenPrefix is the longest letter prefix tokenInRun strips.
@@ -127,8 +186,8 @@ const maxTokenPrefix = 8
 // part of the run between '-', '_', '+', '/' and '=' is tested on its own,
 // and so is each part without a leading run of up to maxTokenPrefix
 // letters when that leaves a smaller alphabet ("SK" before 32 hex digits).
-// Runs under 20 characters stay untested, as 1.2.4 has them, so a UUID or
-// a short-run split is kept.
+// A part under 20 characters is not tested here, as 1.2.4 has it;
+// joinedRunHighEntropy tests consecutive long parts joined.
 func tokenInRun(run string) bool {
 	parts := strings.FieldsFunc(run, func(r rune) bool { return strings.ContainsRune("-_+/=", r) })
 	for _, part := range parts {
