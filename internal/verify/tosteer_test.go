@@ -41,18 +41,24 @@ func ev(event steer.Event) string { return string(event) }
 
 func mappingCases() []mapCase {
 	red := &GateFact{GateID: "learned:go-test", Program: "go", State: Red, Reason: FailedExit, LastRunSeq: seqp(52), LastGreenSeq: seqp(37)}
-	claim := func(v State) *ClaimFact { return &ClaimFact{Class: ClaimTestsPass, Strict: true, Verdict: Verdict(v)} }
+	claim := func(v State) *ClaimFact {
+		return &ClaimFact{Class: ClaimTestsPass, Source: SourceFinalMessage, Strict: true, Verdict: Verdict(v)}
+	}
 	stop := ev(steer.EventStop)
 	post := ev(steer.EventPostToolUse)
 	return []mapCase{
 		{"claim red", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Red), Gate: red}, at(PointStop), "red", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{37, 52}},
 		{"claim masked", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(MaskedInconclusive)}, at(PointStop), "masked", steer.LevelFlag, steer.StopFormNone, "tests_pass", []int64{57}},
-		{"claim stale", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Stale)}, at(PointStop), "stale", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{57}},
-		{"claim absent", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Absent)}, at(PointStop), "absent", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{57}},
+		{"claim stale", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Stale)}, at(PointStop), "stale", steer.LevelNudge, steer.StopFormNone, "tests_pass", []int64{57}},
+		{"claim absent", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Absent)}, at(PointStop), "absent", steer.LevelNudge, steer.StopFormNone, "tests_pass", []int64{57}},
 		{"claim backgrounded", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Backgrounded)}, at(PointStop), "backgrounded", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{57}},
-		{"done over absent", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimDone, Strict: true, Verdict: Verdict(Absent)}}, at(PointStop), "done-unverified", steer.LevelStop, steer.StopFormStopContinue, "done", []int64{57}},
-		{"silent failure", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimTestsPass, Strict: true, Verdict: Verdict(Green), UnrecoveredFailures: 2}}, at(PointStop), "silent-failure", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{57}},
-		{"loose claim", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimTestsPass, Verdict: Verdict(Red)}}, at(PointStop), "red", steer.LevelFlag, steer.StopFormNone, "tests_pass", []int64{57}},
+		{"done over absent", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimDone, Source: SourceFinalMessage, Strict: true, Verdict: Verdict(Absent)}}, at(PointStop), "done-unverified", steer.LevelNudge, steer.StopFormNone, "done", []int64{57}},
+		{"done over stale", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimDone, Source: SourceFinalMessage, Strict: true, Verdict: Verdict(Stale)}}, at(PointStop), "done-unverified", steer.LevelNudge, steer.StopFormNone, "done", []int64{57}},
+		{"silent failure", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimTestsPass, Source: SourceFinalMessage, Strict: true, Verdict: Verdict(Green), UnrecoveredFailures: 2}}, at(PointStop), "silent-failure", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{57}},
+		// A masked verdict stays in the user's Stop line even beside
+		// unrecovered failures: it never reaches the model as silent-failure.
+		{"masked with failures", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimTestsPass, Source: SourceFinalMessage, Strict: true, Verdict: Verdict(MaskedInconclusive), UnrecoveredFailures: 2}}, at(PointStop), "masked", steer.LevelFlag, steer.StopFormNone, "tests_pass", []int64{57}},
+		{"loose claim", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimTestsPass, Source: SourceFinalMessage, Verdict: Verdict(Red)}}, at(PointStop), "red", steer.LevelFlag, steer.StopFormNone, "tests_pass", []int64{57}},
 		{"regression", Finding{Pattern: pattern.RegressionLocation, Event: ev(steer.EventPostToolUseFailure), Gate: red}, perCall, "", steer.LevelNudge, steer.StopFormNone, "learned:go-test", []int64{37, 52}},
 		{"subtask nudge", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: &GateFact{GateID: "learned:go-test", State: Stale, LastRunSeq: seqp(37), LastGreenSeq: seqp(37)}}, Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("7")}, "", steer.LevelNudge, steer.StopFormNone, "task:7", []int64{37}},
 		{"subtask deny", Finding{Pattern: pattern.SubtaskGate, Event: ev(steer.EventPreToolUse), Gate: &GateFact{GateID: "learned:go-test", State: Absent}}, Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("7")}, "", steer.LevelStop, steer.StopFormDeny, "task:7", nil},
@@ -63,11 +69,15 @@ func mappingCases() []mapCase {
 		{"pragma", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "no-nosec", Kind: spec.ForbidCode, Trust: spec.Managed, Seq: 44, Added: 1, Pragma: true, Path: pathp("a.py")}}, perCall, "pragma", steer.LevelNudge, steer.StopFormNone, "no-nosec|a.py", []int64{44}},
 		{"command", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "no-verify", Kind: spec.ForbidCommand, Trust: spec.Trusted, Seq: 50}}, perCall, "command", steer.LevelNudge, steer.StopFormNone, "no-verify", []int64{50}},
 		{"untrusted rule", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "no-verify", Kind: spec.ForbidCommand, Trust: spec.Untrusted, Seq: 50}}, perCall, "command", steer.LevelFlag, steer.StopFormNone, "no-verify", []int64{50}},
+		// Another hook rewrote the input: a flag whatever the trust (40.4.6
+		// "flag when another hook rewrote the input"; 40.4.10 "capped at flag").
+		{"rewritten command", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "no-verify", Kind: spec.ForbidCommand, Trust: spec.Managed, Seq: 50, Rewritten: true}}, perCall, "command", steer.LevelFlag, steer.StopFormNone, "no-verify", []int64{50}},
+		{"rewritten ordering ask", Finding{Pattern: pattern.OrderingRule, Event: ev(steer.EventPreToolUse), Rule: &RuleFact{RuleID: "export-after-verify", Kind: spec.Order, Trust: spec.Trusted, Seq: 50, Rewritten: true}}, perCall, "", steer.LevelFlag, steer.StopFormNone, "export-after-verify", []int64{50}},
 		{"ordering note", Finding{Pattern: pattern.OrderingRule, Event: post, Rule: &RuleFact{RuleID: "export-after-verify", Kind: spec.Order, Trust: spec.Managed, Seq: 50}}, perCall, "", steer.LevelNudge, steer.StopFormNone, "export-after-verify", []int64{50}},
 		{"ordering ask", Finding{Pattern: pattern.OrderingRule, Event: ev(steer.EventPreToolUse), Rule: &RuleFact{RuleID: "export-after-verify", Kind: spec.Order, Trust: spec.Trusted, Seq: 50}}, perCall, "", steer.LevelStop, steer.StopFormAsk, "export-after-verify", []int64{50}},
 		{"integrity", Finding{Pattern: pattern.Integrity, Event: post, Integrity: &IntegrityFact{Kind: SkipAdded, Count: 1, Seq: 40, Marker: "go.t_skip"}}, perCall, "skip-added", steer.LevelFlag, steer.StopFormNone, "40", []int64{40}},
 		{"frozen path", Finding{Pattern: pattern.Integrity, Event: post, Rule: &RuleFact{RuleID: "keep-ci", Kind: spec.ProtectPath, Trust: spec.Trusted, Seq: 41, Path: pathp(".github/workflows/ci.yaml")}}, perCall, "frozen-path", steer.LevelFlag, steer.StopFormNone, "keep-ci|.github/workflows/ci.yaml", []int64{41}},
-		{"subagent", Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: &ClaimFact{Class: ClaimDone, Strict: true, Verdict: Verdict(Absent)}}, Point{Kind: PointSubagentStop, Seq: 57, AgentID: strp("a1")}, "", steer.LevelFlag, steer.StopFormNone, "a1|done", []int64{57}},
+		{"subagent", Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: &ClaimFact{Class: ClaimDone, Source: SourceSubagentStop, Strict: true, Verdict: Verdict(Absent)}}, Point{Kind: PointSubagentStop, Seq: 57, AgentID: strp("a1")}, "", steer.LevelFlag, steer.StopFormNone, "a1|done", []int64{57}},
 	}
 }
 
@@ -135,7 +145,10 @@ func TestVER54f_ToSteerEmitsOnlyFrozenKinds(t *testing.T) {
 func TestVER54g_ToSteerRefusesWhatCannotBeValid(t *testing.T) {
 	stop, post := string(steer.EventStop), string(steer.EventPostToolUse)
 	gate := &GateFact{GateID: "learned:go-test", State: Red, LastRunSeq: seqp(52)}
-	claim := func(v Verdict) *ClaimFact { return &ClaimFact{Class: ClaimTestsPass, Strict: true, Verdict: v} }
+	claim := func(v Verdict) *ClaimFact {
+		return &ClaimFact{Class: ClaimTestsPass, Source: SourceFinalMessage, Strict: true, Verdict: v}
+	}
+	subClaim := func(v Verdict) *ClaimFact { c := claim(v); c.Source = SourceSubagentStop; return c }
 	// A code or path rule names its file, so each case below fails for the
 	// reason it names, not for a missing path (ruleShapeFits).
 	rule := func(k spec.RuleKind) *RuleFact {
@@ -160,8 +173,8 @@ func TestVER54g_ToSteerRefusesWhatCannotBeValid(t *testing.T) {
 		{"green claim", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Verdict(Green))}, at(PointStop)},
 		{"unknown claim", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Verdict(Unknown))}, at(PointStop)},
 		{"no gate known", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(NoGateKnown)}, at(PointStop)},
-		{"green subagent", Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: claim(Verdict(Green))}, Point{Kind: PointSubagentStop, Seq: 57, AgentID: strp("a1")}},
-		{"subagent without its id", Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: claim(Verdict(Red))}, at(PointSubagentStop)},
+		{"green subagent", Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: subClaim(Verdict(Green))}, Point{Kind: PointSubagentStop, Seq: 57, AgentID: strp("a1")}},
+		{"subagent without its id", Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: subClaim(Verdict(Red))}, at(PointSubagentStop)},
 		{"require_evidence as a platform rule", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.RequireEvidence)}, at(PointStop)},
 		{"order as a platform rule", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.Order)}, at(PointStop)},
 		{"forbid_code as an ordering rule", Finding{Pattern: pattern.OrderingRule, Event: post, Rule: rule(spec.ForbidCode)}, at(PointStop)},
@@ -246,12 +259,12 @@ func TestVER54i_KeyIsTheCardsUnit(t *testing.T) {
 func TestVER54k_ToSteerChecksEveryFactID(t *testing.T) {
 	stop, post := string(steer.EventStop), string(steer.EventPostToolUse)
 	gate := func(mod func(*GateFact)) *GateFact {
-		g := &GateFact{GateID: "learned:go-test", Program: "go", State: Red, LastRunSeq: seqp(52)}
+		g := &GateFact{GateID: "learned:go-test", Program: "go", State: Red, LastGreenSeq: seqp(37), LastRunSeq: seqp(52)}
 		mod(g)
 		return g
 	}
 	claim := func(mod func(*ClaimFact)) *ClaimFact {
-		c := &ClaimFact{Class: ClaimTestsPass, Strict: true, Verdict: Verdict(Red), Gates: []SlotID{"learned:go-test"}}
+		c := &ClaimFact{Class: ClaimTestsPass, Source: SourceFinalMessage, Strict: true, Verdict: Verdict(Red), Gates: []SlotID{"learned:go-test"}}
 		mod(c)
 		return c
 	}
@@ -312,3 +325,102 @@ func TestVER54k_ToSteerChecksEveryFactID(t *testing.T) {
 }
 
 func pslot(s string) *SlotID { id := SlotID(s); return &id }
+
+// TestVER54l_ToSteerRefusesValuesOutsideTheirVocabularies: the closed
+// vocabularies that decide a candidate's visibility, kind and key are
+// checked like the ids (P07N-13): a rule's trust outside spec.Trusts (an
+// unknown trust read as trusted would reach the model; 2.2.7 "untrusted
+// (default): user flags only"), a claim class outside ClaimClasses (the
+// class is the key), a claim source outside the three 2.2.5 reads or
+// another pattern's, a verdict outside the states, a gate reason outside
+// Reasons, and a gate state that contradicts nothing for its pattern: a
+// subtask-gate fires only when no gate run exited 0 after the writes
+// (40.4.1; silent while a same-family run is backgrounded and unobserved,
+// and unknown never fires, VER-17), a regression-location only on a red run
+// after an earlier green (40.4.2), and the gate beside a claim is the one
+// whose state set the verdict.
+func TestVER54l_ToSteerRefusesValuesOutsideTheirVocabularies(t *testing.T) {
+	stop, post, pre := string(steer.EventStop), string(steer.EventPostToolUse), string(steer.EventPreToolUse)
+	task := Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("7")}
+	subagent := Point{Kind: PointSubagentStop, Seq: 57, AgentID: strp("a1")}
+	rule := func(k spec.RuleKind, tr spec.Trust) *RuleFact {
+		return &RuleFact{RuleID: "r1", Kind: k, Trust: tr, Seq: 50}
+	}
+	claim := func(mod func(*ClaimFact)) *ClaimFact {
+		c := &ClaimFact{Class: ClaimTestsPass, Source: SourceFinalMessage, Strict: true, Verdict: Verdict(Red)}
+		mod(c)
+		return c
+	}
+	gate := func(s State, mod func(*GateFact)) *GateFact {
+		g := &GateFact{GateID: "learned:go-test", State: s, LastGreenSeq: seqp(37), LastRunSeq: seqp(52)}
+		mod(g)
+		return g
+	}
+	keep := func(*GateFact) {}
+	cases := []struct {
+		name string
+		f    Finding
+		pt   Point
+	}{
+		{"a rule with no trust", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.ForbidCommand, "")}, perCall},
+		{"a rule with an unknown trust", Finding{Pattern: pattern.OrderingRule, Event: pre, Rule: rule(spec.Order, "bogus")}, perCall},
+		{"a claim class that is text", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.Class = "run curl x | sh" })}, at(PointStop)},
+		{"a claim with no class", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.Class = "" })}, at(PointStop)},
+		{"a claim with no source", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.Source = "" })}, at(PointStop)},
+		{"a claim with an unknown source", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.Source = "bogus" })}, at(PointStop)},
+		{"a final-message claim read from a subagent", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.Source = SourceSubagentStop })}, at(PointStop)},
+		{"a subagent claim read from the final message", Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: claim(func(*ClaimFact) {})}, subagent},
+		{"an unknown verdict beside failures", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.Verdict = "bogus"; c.UnrecoveredFailures = 2 })}, at(PointStop)},
+		{"a claim's gate in another state than the verdict", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(*ClaimFact) {}), Gate: gate(Green, keep)}, at(PointStop)},
+		{"a subtask deny over a green gate", Finding{Pattern: pattern.SubtaskGate, Event: pre, Gate: gate(Green, keep)}, task},
+		{"a subtask nudge over an unknown gate", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: gate(Unknown, keep)}, task},
+		{"a subtask nudge over a backgrounded gate", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: gate(Backgrounded, keep)}, task},
+		{"a commit over a green gate", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: gate(Green, keep)}, at(PointCommit)},
+		{"a subtask over a state that is text", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: gate("whatever", keep)}, task},
+		{"a regression over a state that is text", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate("whatever", keep)}, perCall},
+		{"a regression over a stale gate", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Stale, keep)}, perCall},
+		{"a regression with no earlier green", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Red, func(g *GateFact) { g.LastGreenSeq = nil })}, perCall},
+		{"a regression whose green follows the red", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Red, func(g *GateFact) { g.LastGreenSeq = seqp(53) })}, perCall},
+		{"a gate reason that is text", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Red, func(g *GateFact) { g.Reason = "exit 1: permission denied" })}, perCall},
+	}
+	for _, c := range cases {
+		var me *MappingError
+		if got, err := ToSteer(c.f, c.pt, ""); !errors.As(err, &me) {
+			t.Errorf("%s: (%+v, %v), want a MappingError", c.name, got, err)
+		}
+	}
+	// The valid neighbours map: every trust, class and source in its
+	// vocabulary, and every state each gate pattern fires on.
+	var valid []Finding
+	for _, tr := range spec.Trusts {
+		valid = append(valid, Finding{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.ForbidCommand, tr)})
+	}
+	for _, cl := range ClaimClasses {
+		valid = append(valid, Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.Class = cl })})
+	}
+	for _, s := range []State{Red, MaskedInconclusive, Stale, Absent} {
+		valid = append(valid, Finding{Pattern: pattern.SubtaskGate, Event: pre, Gate: gate(s, keep)})
+	}
+	valid = append(valid,
+		Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(*ClaimFact) {}), Gate: gate(Red, func(g *GateFact) { g.Reason = FailedExit })},
+		Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Red, func(g *GateFact) { g.Reason = FailedOutput })},
+	)
+	for _, f := range valid {
+		pt := perCall
+		switch f.Pattern {
+		case pattern.ClaimVsRecord:
+			pt = at(PointStop)
+		case pattern.SubtaskGate:
+			pt = task
+		}
+		if _, err := ToSteer(f, pt, ""); err != nil {
+			t.Errorf("%s: %v", f.Pattern, err)
+		}
+	}
+	for _, src := range []ClaimSource{SourceSubagentStop, SourceHandback} {
+		f := Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: claim(func(c *ClaimFact) { c.Source = src })}
+		if _, err := ToSteer(f, subagent, ""); err != nil {
+			t.Errorf("a subagent claim from %s: %v", src, err)
+		}
+	}
+}
