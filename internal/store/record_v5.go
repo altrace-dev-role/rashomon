@@ -48,9 +48,10 @@ type DeclarationV5 struct {
 	Project  *string `json:"project"`
 	FilePath *string `json:"file_path"`
 	// WrittenPaths are the lexical write targets of a Bash call that may
-	// write, at most 64 entries and 16 KiB, withheld whole as oversize over
-	// either bound; WrittenPathsComplete is true only when every
-	// write-capable segment yielded a target.
+	// write, at most 64 entries and 16 KiB, withheld whole over either bound
+	// (null, with WrittenPathsWithheld "oversize"); WrittenPathsComplete is
+	// true only when every write-capable segment yielded a target, and false
+	// when the list is withheld (1.2.3; 1.2.11).
 	WrittenPaths         []string `json:"written_paths"`
 	WrittenPathsComplete *bool    `json:"written_paths_complete"`
 	Target               *Target  `json:"target"`
@@ -58,6 +59,31 @@ type DeclarationV5 struct {
 	// overwrites, taken at PreToolUse from the one pre-read (1.2.5, Wave B;
 	// RES-37); null for every other tool.
 	EditMarksBefore map[string]int `json:"edit_marks_before"`
+
+	// The *_withheld keys say why their field is null when it is null by
+	// rule rather than by "not applicable": "oversize" over a cap of 1.2.11
+	// ("Over cap: null plus `<field>_withheld: "oversize"`"), or
+	// "switched_off" under a record.* switch of config.json (archive
+	// 10.2.17: "withheld fields carry `..._withheld: "switched_off"`, so
+	// 'not recorded by choice' never reads as 'nothing happened'"). Null
+	// when the field is present or simply not applicable. P-07 proposal
+	// (owner K, RECORD): one key per capped or switchable field, spelled as
+	// 1.2.11 spells it, beside the command_withheld 1.2.3 already lists.
+	WrittenPathsWithheld    *string `json:"written_paths_withheld"`     // oversize | switched_off (paths)
+	FilePathWithheld        *string `json:"file_path_withheld"`         // oversize | switched_off (paths)
+	CWDWithheld             *string `json:"cwd_withheld"`               // oversize | switched_off (paths)
+	ProjectWithheld         *string `json:"project_withheld"`           // oversize
+	TargetWithheld          *string `json:"target_withheld"`            // switched_off (targets)
+	EditMarksBeforeWithheld *string `json:"edit_marks_before_withheld"` // switched_off (edit_marks)
+
+	// BREADTH's call-record keys, "Additive, in the schema 5 bump" (tech
+	// 6.2.1): which harness declared the call, the harness's own tool name
+	// when it differs from the canonical one (^[A-Za-z0-9_:.\-]{1,128}$,
+	// else null), and whether the declaration came from a pre or a post
+	// hook (pre | post).
+	HarnessID       *string `json:"harness_id"`
+	HarnessToolName *string `json:"harness_tool_name"`
+	DeclaredVia     *string `json:"declared_via"`
 }
 
 // ExecutionV5 are the keys a v5 execution carries beyond v4 (archive 10.2.2).
@@ -85,6 +111,31 @@ type ExecutionV5 struct {
 	// its closed values and how it is filled land with P-14. P-07 proposal:
 	// it sits on every execution rather than under failure.
 	CredMech *string `json:"credmech"`
+
+	// The *_withheld keys, as DeclarationV5's (P-07 proposal, owner K):
+	// ExecutedCommandWithheld takes command_withheld's values (no_consent |
+	// switched_off | masker_error | oversize | forgotten), the rest
+	// switched_off under failure_classes, output_evidence, edit_marks and
+	// git.
+	ExecutedCommandWithheld *string `json:"executed_command_withheld"`
+	FailureWithheld         *string `json:"failure_withheld"`
+	OutputEvidenceWithheld  *string `json:"output_evidence_withheld"`
+	EditMarksWithheld       *string `json:"edit_marks_withheld"`
+	HeadAfterWithheld       *string `json:"head_after_withheld"`
+
+	// BREADTH's call-record keys (tech 6.2.1), as on DeclarationV5, and
+	// the execution's own: where the outcome came from (claude_post |
+	// claude_failure | cursor_tool_output | cursor_failure |
+	// codex_mcp_is_error | codex_rollout_join | none), the failure type
+	// (error | timeout | permission_denied, else null) and an MCP call's
+	// server source (plugin | sdk | user | project | local | managed |
+	// claudeai | other, else null).
+	HarnessID       *string `json:"harness_id"`
+	HarnessToolName *string `json:"harness_tool_name"`
+	DeclaredVia     *string `json:"declared_via"`
+	OutcomeSource   *string `json:"outcome_source"`
+	FailureType     *string `json:"failure_type"`
+	MCPServerSource *string `json:"mcp_server_source"`
 }
 
 // TerminalV5 are the keys a v5 terminal carries beyond v4: only the writer
