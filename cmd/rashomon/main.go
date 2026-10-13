@@ -315,12 +315,20 @@ type recapPayload struct {
 //
 // safe.Go, not a bare `go`: a panic on this goroutine cannot be recovered by
 // its caller (internal/safe's own doc), and this command's entire contract
-// is that it never produces a non-zero exit -- see cmdRecap. The result
-// travels over a buffered channel rather than a variable the goroutine
-// writes into directly, so there is nothing left to race once the timeout
-// fires, this function has returned, and the abandoned goroutine is still
-// blocked in Read: it can only ever send into a channel nothing is
-// receiving from any more, once, and then it is done.
+// is that it never produces a non-zero exit -- see cmdRecap.
+//
+// THE READER CAN OUTLIVE THIS CALL, AND IS ONLY BOUNDED BY THE PROCESS. When
+// the timeout fires first, the goroutine is still blocked in Read, and
+// nothing here can unblock it: a Read on a blocking pipe takes no deadline
+// and cannot be cancelled. It lives until stdin delivers or closes, which for
+// a pipe Claude Code never closes is until this process exits -- moments
+// later, since cmdRecap is the whole of a short-lived hook process and calls
+// this once. So call it only from such a process, once: a long-lived caller
+// would keep one goroutine and its read buffer per stalled call. The result
+// travels over a channel with room for it, never a variable the goroutine
+// writes into, so once Read returns the goroutine sends without a receiver
+// and ends (TestRubricCONC7_AbandonedStdinReadEndsWhenTheReadReturns); an
+// unbuffered channel would hold it on that send for good.
 func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
 	type parsed struct {
 		payload recapPayload

@@ -63,6 +63,12 @@ func Guard(fn func() error) (err error) {
 // waiting on it, a process can exit before the goroutine is scheduled, and a
 // test asserting "this did not crash" would pass without ever running the code
 // it claims to cover.
+//
+// Go bounds a panic, not a lifetime: fn runs until it returns, and nothing
+// here can stop it. A caller that does not wait on the channel -- a read
+// abandoned at a timeout, blocked in a call that takes no deadline -- owns the
+// fact that fn may live until the process exits, and says so where it starts
+// it (readRecapPayload in cmd/rashomon is the one such caller).
 func Go(fn func(), onPanic func(error)) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
