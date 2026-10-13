@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
@@ -49,7 +50,11 @@ type Finding struct {
 	// Kind is Pattern's sub-category, or empty if Pattern has none.
 	Kind Kind
 	// Key dedupes Finding instances within one prompt: two findings with
-	// the same Pattern, Kind and Key are the same claim seen twice.
+	// the same Pattern, Kind and Key are the same claim seen twice. It is
+	// the card's unit of limit (archive 40.3.4: "fact id, gate family
+	// digest, task id"), so the budget's one per key and two deny/ask per
+	// key (tech 4.2.5) count per task, per family or per rule and file as
+	// the card says.
 	Key string
 	// Priority is this Finding's step 8 ordering value (Technical spec
 	// 4.2.4), normally pattern.Priority(Pattern)'s result at construction
@@ -66,11 +71,63 @@ type Finding struct {
 	Message render.Message
 	// Evidence is the record seqs this Finding cites.
 	Evidence []int64
-	// AfterSeq is the record seq this Finding was raised after.
+	// AfterSeq is the last record seq the decision saw (archive 40.3.4):
+	// the point the finding was evaluated at, never an older fact's seq,
+	// so a record below it that arrives later is "recorded late" (tech
+	// 4.2.13) and every evidence seq is at or below it.
 	AfterSeq int64
 	// AgentID is the subagent that produced this Finding, or empty for
 	// the main agent.
 	AgentID string
+}
+
+// ErrFinding is the error of every check Finding.Check fails; the message
+// names the rule, never a value beyond the pattern and kind.
+var ErrFinding = errors.New("steer: finding outside the contract")
+
+// Check reports why f may not reach Route, or nil. It holds the contract a
+// producer can get wrong without a type error: Kind is one of Pattern's
+// frozen kinds (pattern.KindValid; tech 72, "only frozen kinds cross");
+// claim-vs-record/masked is never model-visible (ED-3: it stays in the
+// user's Stop line, so it caps at flag with no stop form); MaxLevel is a
+// level and StopForm a stop form, and a stop form other than none only at
+// LevelStop (tech 4.2.4 step 5: stop needs a stop form); Evidence ascends
+// strictly and no evidence seq is after AfterSeq, the last record seq the
+// decision saw; and a rendered Message belongs to the Finding's own
+// pattern, so a briefing's multi-line text cannot ride another pattern's
+// single-line channel (output rule G4, tech 7.2.5, is the backstop).
+func (f Finding) Check() error {
+	switch {
+	case !pattern.KindValid(f.Pattern, string(f.Kind)):
+		return fmt.Errorf("%w: %q is not a frozen kind of %q", ErrFinding, f.Kind, f.Pattern)
+	case userOnly(f) && (f.MaxLevel > LevelFlag || f.StopForm != StopFormNone):
+		return fmt.Errorf("%w: %s/%s is user-only, never model-visible", ErrFinding, f.Pattern, f.Kind)
+	case f.MaxLevel > LevelStop || !slices.Contains(AllStopForms(), f.StopForm):
+		return fmt.Errorf("%w: level %d or stop form %q is outside its vocabulary", ErrFinding, f.MaxLevel, f.StopForm)
+	case f.StopForm != StopFormNone && f.MaxLevel != LevelStop:
+		return fmt.Errorf("%w: stop form %q below the stop level", ErrFinding, f.StopForm)
+	case f.Message.Text() != "" && f.Message.Pattern() != f.Pattern:
+		return fmt.Errorf("%w: a %q message on a %q finding", ErrFinding, f.Message.Pattern(), f.Pattern)
+	}
+	for i, seq := range f.Evidence {
+		if seq > f.AfterSeq || i > 0 && seq <= f.Evidence[i-1] {
+			return fmt.Errorf("%w: evidence seqs must ascend and end at or before after_seq", ErrFinding)
+		}
+	}
+	return nil
+}
+
+// userOnly reports a finding whose card keeps it out of the model's
+// context at every level: claim-vs-record/masked (ED-3, the user's Stop
+// line only), and the user-flag patterns integrity ("user flag only"; tech
+// 4.2.4 step 5: "`integrity` set to `nudge` stays a flag"), sequence-risk
+// (flag-only, Wave B) and model-switch ("user flag, fixed"; tech 4.2.13).
+func userOnly(f Finding) bool {
+	switch f.Pattern {
+	case pattern.Integrity, pattern.SequenceRisk, pattern.ModelSwitch:
+		return true
+	}
+	return f.Pattern == pattern.ClaimVsRecord && f.Kind == "masked"
 }
 
 // Output is the only value Route (tech 4.2.4) marshals to stdout (tech

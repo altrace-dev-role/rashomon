@@ -93,6 +93,40 @@ func Kinds(id ID) []string {
 	return slices.Clone(kinds[id])
 }
 
+// KindValid reports whether kind may stand under id on a Finding: one of the
+// closed list for an id that has one, a non-empty class for declared-fact
+// (the open `declared-fact/<class>`), and empty for every other id. The bare
+// subtask-gate, a task completion (tech 2.2.9's row "subtask-gate,
+// /commit, /push, /pr"), is the one id with a closed list whose kind may
+// also be empty. Only frozen kinds cross into STEER (tech, Contracts and
+// names: the verify-to-steer gap row).
+func KindValid(id ID, kind string) bool {
+	switch {
+	case !Valid(id):
+		return false
+	case id == DeclaredFact:
+		return classForm(kind)
+	case kind == "":
+		return kinds[id] == nil || id == SubtaskGate
+	}
+	return slices.Contains(kinds[id], kind)
+}
+
+// classForm reports a declared-fact class: ^[a-z0-9][a-z0-9._-]{0,63}$.
+func classForm(s string) bool {
+	if len(s) == 0 || len(s) > 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		lowerAlnum := c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
+		if !lowerAlnum && (i == 0 || c != '.' && c != '_' && c != '-') {
+			return false
+		}
+	}
+	return true
+}
+
 // Valid reports whether id is one of the sixteen frozen patterns.
 func Valid(id ID) bool {
 	for _, known := range All() {

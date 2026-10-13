@@ -79,7 +79,7 @@ func TestLine_NullableFieldsMarshalNull(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	for _, key := range []string{"agent_id", "suppressed_by", "label_rule", "delivery", "outcome", "mirror_failure"} {
+	for _, key := range []string{"prompt_id", "agent_id", "suppressed_by", "label_rule", "delivery", "outcome", "mirror_failure"} {
 		v, ok := got[key]
 		if !ok {
 			t.Errorf("zero Line is missing key %q", key)
@@ -93,6 +93,7 @@ func TestLine_NullableFieldsMarshalNull(t *testing.T) {
 
 func TestLine_PopulatedRoundTrip(t *testing.T) {
 	agent := "sub-1"
+	prompt := "prompt-1"
 	sb := SuppressedByDeadline
 	rule := LabelRuleGateRed
 	delivery := DeliveryDelivered
@@ -102,7 +103,7 @@ func TestLine_PopulatedRoundTrip(t *testing.T) {
 		V:            LineVersion,
 		ID:           "0123456789abcdef0123456789abcdef",
 		SessionID:    "sess-1",
-		PromptID:     "prompt-1",
+		PromptID:     &prompt,
 		AgentID:      &agent,
 		Project:      "/abs/root",
 		Pattern:      "regression-location",
