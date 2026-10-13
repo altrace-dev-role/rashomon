@@ -301,3 +301,51 @@ jobs:
         env:
           GOOS: windows
         run: go vet ./...
+
+  perf-linux:
+    name: Perf gates (linux)
+    runs-on: ubuntu-latest
+    # Benchmarks run 3x20 iterations, the RSS harness runs the release binary
+    # some three hundred times; the bound is DEL-17's.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.25.8"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      # Allocations and allocation counts do not depend on the runner's load,
+      # which is why they gate on every PR and wall time never does (RES-36).
+      # The best of three runs is compared against test/perf/budgets.json at
+      # ten percent over.
+      - name: Benchmark allocations against the budgets
+        run: go test -run '^$' -bench . -benchtime 20x -count 3 ./... | tee bench.txt | go run ./scripts/benchgate
+
+      # Peak RSS of the release binary per entry and per RES-28 case, the
+      # median of nine runs, and the init budget from the runtime's own trace
+      # (RES-2). Linux figures are gated against the reference rows until the
+      # platform's own baseline is recorded in budgets.json.
+      - name: Peak RSS and init budget
+        run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
+
+  perf-macos:
+    name: Perf gates (macos)
+    runs-on: macos-latest
+    # The macOS runner is a 3-core M1 with 7 GB, not the M3 reference; its
+    # tolerance is 15% until 2026-11-06 while its variance is learned, then
+    # 10% (test/perf/budgets.json, platforms.darwin/arm64).
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.25.8"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      - name: Peak RSS and init budget
+        run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
