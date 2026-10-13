@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -154,5 +155,96 @@ func TestForgetHost_ASecondForgetOfTheSameHostAddsNoLine(t *testing.T) {
 	}
 	if !forgotten("acme-secret.internal") || !forgotten("github.com") {
 		t.Error("a host forgotten more than once, or after another, is no longer forgotten")
+	}
+}
+
+// permissionsBite skips a test whose fault is a file mode: root reads and
+// writes through it, and Windows has no such mode.
+func permissionsBite(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("a file mode does not stop this process here")
+	}
+}
+
+// TestForgetHost_AForgetThatFailsPartWayStillSuppresses pins the order the
+// code argues for: the store-level record lands BEFORE any run is touched. A
+// forget that fails on its first run then overstates itself, which a reader
+// can see, rather than leaving the host suppressed nowhere -- the #45
+// symptom. Moved after the loop, the record was never written and every test
+// stayed green.
+func TestForgetHost_AForgetThatFailsPartWayStillSuppresses(t *testing.T) {
+	permissionsBite(t)
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendDeclaration(Declaration{
+		Type: TypeDeclaration, SchemaVersion: SchemaVersion, SessionID: "s1",
+		ToolUseID: "toolu_pypi", ToolName: "Bash", RecordedAtMS: 1_700_000_000_000,
+		Hosts: []string{"pypi.org"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := st.Runs()
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("premise: one run, got %v (%v)", runs, err)
+	}
+	records := filepath.Join(st.Root(), dirRuns, runs[0], FileRecords)
+	if err := os.Chmod(records, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(records, fileMode) })
+
+	if _, err := st.ForgetHost("pypi.org", time.Unix(1_700_000_100, 0)); err == nil {
+		t.Fatal("premise: a forget whose run cannot be opened reported success")
+	}
+	forgotten, err := st.ForgottenHost()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !forgotten("pypi.org") {
+		t.Error("a forget that failed part-way left the host suppressed nowhere")
+	}
+}
+
+// TestForgetHost_AnUnreadableForgetFileIsAnError: a predicate built while the
+// file could not be read would say "nothing forgotten", and every host
+// forgotten only through it would be back in the report. Fail-open on a
+// privacy feature, so it has to be an error.
+func TestForgetHost_AnUnreadableForgetFileIsAnError(t *testing.T) {
+	permissionsBite(t)
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ForgetHost("pypi.org", time.Unix(1_700_000_000, 0)); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(st.Root(), FileForgottenHosts)
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, fileMode) })
+
+	if forgotten, err := st.ForgottenHost(); err == nil {
+		t.Errorf("an unreadable %s read as a predicate (pypi.org forgotten: %v)", FileForgottenHosts, forgotten("pypi.org"))
+	}
+}
+
+// TestForgetHost_AnUnwritableForgetFileFailsTheForget: when the record cannot
+// be written the forget has not happened, and the CLI's "later reports still
+// leave it out" would be false. A directory where the file belongs makes the
+// write fail on every platform.
+func TestForgetHost_AnUnwritableForgetFileFailsTheForget(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(st.Root(), FileForgottenHosts), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ForgetHost("pypi.org", time.Unix(1_700_000_000, 0)); err == nil {
+		t.Error("forget --host reported success with no store-level record written")
 	}
 }

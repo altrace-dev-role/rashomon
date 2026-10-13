@@ -3039,6 +3039,21 @@ m("NONO a repeat forget appends a second store-level record", "internal/store/ga
   "\t\tif false && json.Unmarshal(l, &r) == nil {",
   "TestForgetHost_ASecondForget")
 
+# The store-level record lands before any run is touched, and neither of its
+# error paths is swallowed (review of #53): each of these survived every
+# related test.
+m("NONO the store-level forget record lands after the runs", "internal/store/gaps.go",
+  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\tvar gaps []Gap\n\tfor _, name := range names {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\treturn gaps, nil",
+  "\tvar gaps []Gap\n\tfor _, name := range names {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\treturn gaps, nil",
+  "TestForgetHost_AForgetThatFails")
+m("NONO an unreadable store-level forget file reads as nothing forgotten", "internal/store/gaps.go",
+  "\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(digests) == 0 {", "\t_ = err\n\tif len(digests) == 0 {",
+  "TestForgetHost_AnUn")
+m("NONO a forget whose store-level record failed reports success", "internal/store/gaps.go",
+  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n",
+  "\t_ = s.recordForgottenHost(s.HostDigest(host), now)\n",
+  "TestForgetHost_AnUn")
+
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn
 # sentence). Each anchor appears once in its file.
