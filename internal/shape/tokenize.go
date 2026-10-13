@@ -112,7 +112,7 @@ type token struct {
 // carries that is a property of that word alone. Emitting the word resets
 // all of it at once (reset), so a field added here is cleared with the rest.
 // The bytes between words -- whether a blank or a newline came before the next
-// one -- are not a word's, and stay with lex.
+// one -- are not a word's, and stay with the lexer.
 type word struct {
 	text    strings.Builder
 	started bool
@@ -215,248 +215,309 @@ func tokenizeList(s string) ([]token, error) {
 //
 // docs selects tokenizeList's reading of here-documents and comments.
 func lex(s string, program, docs bool, joins []int) ([]token, error) {
-	var (
-		toks  = make([]token, 0, tokenEstimate(s))
-		w     = newWord()
-		sawNL bool
-		// gap: a blank or newline since the last token ended.
-		gap bool
-		// dollarAt: the index of the last unquoted, unescaped `$`, and
-		// dollars: how many of them run together up to it.
-		dollarAt = -1
-		dollars  int
-		// expanded: a token already emitted was opaque.
-		expanded bool
-		// pending: for docs, the offsets just past each here-document
-		// operator on the current line, whose bodies begin at its end.
-		// grouped: a paren or a backtick has been seen.
-		pending []int
-		grouped bool
-	)
+	l := &lexer{s: s, program: program, docs: docs, joins: joins, w: newWord(), dollarAt: -1}
+	l.toks = make([]token, 0, tokenEstimate(s))
+	for i := 0; i < len(s); i++ {
+		if len(l.toks) > maxTokens {
+			// Past the token bound: see bounded.
+			return l.toks, errTokenBound
+		}
+		var err error
+		switch c := s[i]; {
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			i, err = l.blank(i)
+		case docs && c == '#' && !l.w.started:
+			i = l.comment(i)
+		case c == '\\':
+			i, err = l.backslash(i)
+		case c == '\'':
+			i, err = l.single(i)
+		case c == '"':
+			i, err = l.double(i)
+		case isMeta(c):
+			i, err = l.operator(i)
+		default:
+			l.plain(i)
+		}
+		if err != nil {
+			return l.toks, err
+		}
+	}
+	if len(l.pending) > 0 {
+		// A here-document on the last line, whose body never came.
+		return l.toks, errUncertain
+	}
 
-	// begin marks the current word started, noting at its first byte
-	// whether it is glued to the token before it.
-	begin := func() {
-		if !w.started {
-			w.glued = !gap && len(toks) > 0
-			w.started = true
-		}
+	l.flush()
+	return l.toks, nil
+}
+
+// lexer is lex's state over the line s: the word being built, w, and the
+// state between words and of the line so far. Each method reads the
+// construct that begins at s[i] and returns the index of its last byte, from
+// which lex moves on; an error stops lex with the tokens emitted so far.
+type lexer struct {
+	s             string
+	program, docs bool
+	joins         []int
+	toks          []token
+	w             word
+	sawNL         bool
+	// gap: a blank or newline since the last token ended.
+	gap bool
+	// dollarAt: the index of the last unquoted, unescaped `$`, and
+	// dollars: how many of them run together up to it.
+	dollarAt int
+	dollars  int
+	// expanded: a token already emitted was opaque.
+	expanded bool
+	// pending: for docs, the offsets just past each here-document
+	// operator on the current line, whose bodies begin at its end.
+	// grouped: a paren or a backtick has been seen.
+	pending []int
+	grouped bool
+}
+
+// begin marks the current word started, noting at its first byte whether it
+// is glued to the token before it.
+func (l *lexer) begin() {
+	if w := &l.w; !w.started {
+		w.glued = !l.gap && len(l.toks) > 0
+		w.started = true
 	}
-	// markQuoted records where quoting first touched the current token.
-	markQuoted := func() {
-		if w.quotedAt < 0 {
-			w.quotedAt = w.text.Len()
-		}
+}
+
+// markQuoted records where quoting first touched the current token.
+func (l *lexer) markQuoted() {
+	if w := &l.w; w.quotedAt < 0 {
+		w.quotedAt = w.text.Len()
 	}
-	// expands reports whether s[i] opens an expansion this tokenizer does
-	// not parse. inDouble: inside "", $'' and $"" are not quoting forms.
-	expands := func(i int, inDouble bool) bool {
-		if s[i] == '`' {
-			return true
-		}
-		if s[i] != '$' || i+1 >= len(s) {
-			return false
-		}
-		switch s[i+1] {
-		case '(', '{', '[':
-			return true
-		case '\'', '"':
-			return !inDouble
-		}
+}
+
+// expands reports whether s[i] opens an expansion this tokenizer does not
+// parse. inDouble: inside double quotes, $'...' and $"..." are not quoting
+// forms.
+func (l *lexer) expands(i int, inDouble bool) bool {
+	s := l.s
+	if s[i] == '`' {
+		return true
+	}
+	if s[i] != '$' || i+1 >= len(s) {
 		return false
 	}
-	// unterminated is the error for a quote that never closes. For the
-	// program search, after an expansion it is uncertain: see lex.
-	unterminated := func() error {
-		if program && (w.opaque || expanded) {
-			return errUncertain
-		}
-		return errUnterminated
+	switch s[i+1] {
+	case '(', '{', '[':
+		return true
+	case '\'', '"':
+		return !inDouble
 	}
-	flush := func() {
-		if w.started {
-			toks = append(toks, token{text: w.text.String(), quotedAt: w.quotedAt, opaque: w.opaque, nlBefore: sawNL, glued: w.glued, ticks: w.ticks})
-			expanded = expanded || w.opaque
-			sawNL, gap = false, false
-			w.reset()
-		}
+	return false
+}
+
+// unterminated is the error for a quote that never closes. For the program
+// search, after an expansion it is uncertain: see lex.
+func (l *lexer) unterminated() error {
+	if l.program && (l.w.opaque || l.expanded) {
+		return errUncertain
 	}
+	return errUnterminated
+}
 
-	for i := 0; i < len(s); i++ {
-		if len(toks) > maxTokens {
-			// Past the token bound: see bounded.
-			return toks, errTokenBound
+// flush emits the current word, if one was started.
+func (l *lexer) flush() {
+	if w := &l.w; w.started {
+		l.toks = append(l.toks, token{text: w.text.String(), quotedAt: w.quotedAt, opaque: w.opaque, nlBefore: l.sawNL, glued: w.glued, ticks: w.ticks})
+		l.expanded = l.expanded || w.opaque
+		l.sawNL, l.gap = false, false
+		w.reset()
+	}
+}
+
+// blank ends the word at the blank or newline s[i]. For docs, a newline after
+// a here-document operator skips the bodies that begin after it, to the
+// newline that ends the last delimiter line, which the next token comes after.
+func (l *lexer) blank(i int) (int, error) {
+	l.flush()
+	l.gap = true
+	if l.s[i] != '\n' {
+		return i, nil
+	}
+	l.sawNL = true
+	if len(l.pending) == 0 {
+		return i, nil
+	}
+	bodies := make([]heredoc, 0, len(l.pending))
+	for _, at := range l.pending {
+		d, end := heredocDelim(l.s, at)
+		if end < 0 {
+			return i, errUncertain
 		}
-		c := s[i]
+		bodies = append(bodies, d)
+	}
+	e := joined{l.s, l.joins}.bodiesEnd(i+1, bodies)
+	if e < 0 {
+		return i, errUncertain
+	}
+	l.pending = nil
+	return e, nil
+}
 
-		switch {
-		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
-			flush()
-			gap = true
-			if c == '\n' {
-				sawNL = true
-			}
-			if c == '\n' && len(pending) > 0 {
-				bodies := make([]heredoc, 0, len(pending))
-				for _, at := range pending {
-					d, end := heredocDelim(s, at)
-					if end < 0 {
-						return toks, errUncertain
-					}
-					bodies = append(bodies, d)
-				}
-				e := joined{s, joins}.bodiesEnd(i+1, bodies)
-				if e < 0 {
-					return toks, errUncertain
-				}
-				pending = nil
-				// The loop moves past the newline that ends the last
-				// delimiter line, which the next token comes after.
-				i = e
-			}
+// comment reads, for docs, an unquoted # at the start of a word to the end of
+// its line.
+func (l *lexer) comment(i int) int {
+	for i+1 < len(l.s) && l.s[i+1] != '\n' {
+		i++
+	}
+	return i
+}
 
-		case docs && c == '#' && !w.started:
-			for i+1 < len(s) && s[i+1] != '\n' {
+// backslash reads the escape at s[i]: the byte after it, taken as quoted, or
+// a newline, which the backslash joins to the line.
+func (l *lexer) backslash(i int) (int, error) {
+	if i+1 >= len(l.s) {
+		l.flush()
+		return i, l.unterminated()
+	}
+	i++
+	if l.s[i] != '\n' { // a backslash-newline is a line continuation
+		l.begin()
+		l.markQuoted()
+		l.w.text.WriteByte(l.s[i])
+	}
+	return i, nil
+}
+
+// single reads the single-quoted string that opens at s[i]: to the next
+// quote, or for the program search a $'...' string to its first unescaped one.
+func (l *lexer) single(i int) (int, error) {
+	s := l.s
+	j := strings.IndexByte(s[i+1:], '\'')
+	if l.program && l.dollarAt >= 0 && l.dollarAt == i-1 {
+		if l.dollars%2 == 0 {
+			// $$': the shells disagree. See lex.
+			return i, errUncertain
+		}
+		// $'...', which a backslash-escaped quote does not end.
+		j = ansiCEnd(s[i+1:])
+	}
+	if j < 0 {
+		return i, l.unterminated()
+	}
+	l.begin()
+	l.markQuoted()
+	l.w.text.WriteString(s[i+1 : i+1+j])
+	return i + j + 1, nil
+}
+
+// double reads the double-quoted string that opens at s[i] to its closing
+// quote.
+func (l *lexer) double(i int) (int, error) {
+	s, w := l.s, &l.w
+	var closed bool
+	l.begin()
+	l.markQuoted()
+	i++
+	// dq: how many $ run together up to s[i] inside the quotes.
+	dq := 0
+	for ; i < len(s); i++ {
+		if s[i] == '$' {
+			dq++
+		} else {
+			dq = 0
+		}
+		if s[i] == '\\' && i+1 < len(s) {
+			switch n := s[i+1]; n {
+			case '"', '\\', '$', '`':
+				w.text.WriteByte(n)
 				i++
+				continue
+			case '\n':
+				i++
+				continue
 			}
+			w.text.WriteByte('\\')
+			continue
+		}
+		if s[i] == '"' {
+			closed = true
+			break
+		}
+		if l.program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {
+			// A context of its own, in which quotes nest: the
+			// string goes on after the ) that closes it.
+			end := -1
+			if dq%2 == 1 {
+				end = joined{s, l.joins}.substEnd(i, 0)
+			}
+			if end < 0 {
+				return i, errUncertain
+			}
+			w.opaque = true
+			w.text.WriteString(s[i : end+1])
+			i = end
+			continue
+		}
+		if l.expands(i, true) {
+			w.opaque = true
+		}
+		if s[i] == '`' {
+			w.ticks++
+		}
+		w.text.WriteByte(s[i])
+	}
+	if !closed {
+		return i, l.unterminated()
+	}
+	return i, nil
+}
 
-		case c == '\\':
-			if i+1 >= len(s) {
-				flush()
-				return toks, unterminated()
-			}
-			i++
-			if s[i] != '\n' { // a backslash-newline is a line continuation
-				begin()
-				markQuoted()
-				w.text.WriteByte(s[i])
-			}
-
-		case c == '\'':
-			j := strings.IndexByte(s[i+1:], '\'')
-			if program && dollarAt >= 0 && dollarAt == i-1 {
-				if dollars%2 == 0 {
-					// $$': the shells disagree. See lex.
-					return toks, errUncertain
-				}
-				// $'...', which a backslash-escaped quote does not end.
-				j = ansiCEnd(s[i+1:])
-			}
-			if j < 0 {
-				return toks, unterminated()
-			}
-			begin()
-			markQuoted()
-			w.text.WriteString(s[i+1 : i+1+j])
-			i += j + 1
-
-		case c == '"':
-			var closed bool
-			begin()
-			markQuoted()
-			i++
-			// dq: how many $ run together up to s[i] inside the quotes.
-			dq := 0
-			for ; i < len(s); i++ {
-				if s[i] == '$' {
-					dq++
-				} else {
-					dq = 0
-				}
-				if s[i] == '\\' && i+1 < len(s) {
-					switch n := s[i+1]; n {
-					case '"', '\\', '$', '`':
-						w.text.WriteByte(n)
-						i++
-						continue
-					case '\n':
-						i++
-						continue
-					}
-					w.text.WriteByte('\\')
-					continue
-				}
-				if s[i] == '"' {
-					closed = true
-					break
-				}
-				if program && s[i] == '$' && i+1 < len(s) && s[i+1] == '(' {
-					// A context of its own, in which quotes nest: the
-					// string goes on after the ) that closes it.
-					end := -1
-					if dq%2 == 1 {
-						end = joined{s, joins}.substEnd(i, 0)
-					}
-					if end < 0 {
-						return toks, errUncertain
-					}
-					w.opaque = true
-					w.text.WriteString(s[i : end+1])
-					i = end
-					continue
-				}
-				if expands(i, true) {
-					w.opaque = true
-				}
-				if s[i] == '`' {
-					w.ticks++
-				}
-				w.text.WriteByte(s[i])
-			}
-			if !closed {
-				return toks, unterminated()
-			}
-
-		case isMeta(c):
-			flush()
-			j := i + 1
-			if j < len(s) && s[j] == c {
-				switch c {
-				case '|', '&', '>', '<':
-					j++
-				}
-			}
-			toks = append(toks, token{text: s[i:j], meta: true, quotedAt: -1, nlBefore: sawNL, glued: !gap && len(toks) > 0})
-			sawNL, gap = false, false
-			if docs && c == '(' {
-				grouped = true
-			}
-			if docs && c == '<' && j-i == 2 && (j >= len(s) || s[j] != '<') {
-				// A here-document operator, and not a here-string's <<<.
-				if grouped || expanded {
-					return toks, errUncertain
-				}
-				pending = append(pending, j)
-			}
-			i = j - 1
-
-		default:
-			if expands(i, false) {
-				w.opaque = true
-			}
-			if c == '$' {
-				if dollarAt == i-1 {
-					dollars++
-				} else {
-					dollars = 1
-				}
-				dollarAt = i
-			}
-			if c == '`' {
-				w.ticks++
-				grouped = true
-			}
-			begin()
-			w.text.WriteByte(c)
+// operator emits the operator at s[i], of one byte or a doubled two, and for
+// docs notes a here-document operator, whose body begins at the line's end.
+func (l *lexer) operator(i int) (int, error) {
+	s, c := l.s, l.s[i]
+	l.flush()
+	j := i + 1
+	if j < len(s) && s[j] == c {
+		switch c {
+		case '|', '&', '>', '<':
+			j++
 		}
 	}
-	if len(pending) > 0 {
-		// A here-document on the last line, whose body never came.
-		return toks, errUncertain
+	l.toks = append(l.toks, token{text: s[i:j], meta: true, quotedAt: -1, nlBefore: l.sawNL, glued: !l.gap && len(l.toks) > 0})
+	l.sawNL, l.gap = false, false
+	if l.docs && c == '(' {
+		l.grouped = true
 	}
+	if l.docs && c == '<' && j-i == 2 && (j >= len(s) || s[j] != '<') {
+		// A here-document operator, and not a here-string's <<<.
+		if l.grouped || l.expanded {
+			return i, errUncertain
+		}
+		l.pending = append(l.pending, j)
+	}
+	return j - 1, nil
+}
 
-	flush()
-	return toks, nil
+// plain adds the unquoted byte s[i] to the word.
+func (l *lexer) plain(i int) {
+	c := l.s[i]
+	if l.expands(i, false) {
+		l.w.opaque = true
+	}
+	if c == '$' {
+		if l.dollarAt == i-1 {
+			l.dollars++
+		} else {
+			l.dollars = 1
+		}
+		l.dollarAt = i
+	}
+	if c == '`' {
+		l.w.ticks++
+		l.grouped = true
+	}
+	l.begin()
+	l.w.text.WriteByte(c)
 }
 
 // tokenEstimate is how many tokens lex will emit from s, for the common line

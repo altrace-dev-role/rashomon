@@ -108,11 +108,11 @@ m("MS set -opipefail is read as short options", "internal/shape/masked.go",
 m("MS the pipeline after && ends at its first stage", "internal/shape/masked.go",
   "\t\tao.pipes = append(ao.pipes, pl)\n", "\t\tif len(ao.pipes) > 0 {\n\t\t\tpl.stages = pl.stages[:1]\n\t\t}\n\t\tao.pipes = append(ao.pipes, pl)\n", SH)
 m("MS a here-string is read as a here-document", "internal/shape/tokenize.go",
-  "\t\t\tif docs && c == '<' && j-i == 2 && (j >= len(s) || s[j] != '<') {", "\t\t\tif docs && c == '<' && j-i == 2 {", SH)
+  "\tif l.docs && c == '<' && j-i == 2 && (j >= len(s) || s[j] != '<') {", "\tif l.docs && c == '<' && j-i == 2 {", SH)
 m("MS a here-document after an expansion is read", "internal/shape/tokenize.go",
-  "\t\t\t\tif grouped || expanded {", "\t\t\t\tif grouped {", SH)
+  "\t\tif l.grouped || l.expanded {", "\t\tif l.grouped {", SH)
 m("MS only the first here-document on a line is skipped", "internal/shape/tokenize.go",
-  "\t\t\t\tpending = append(pending, j)\n", "\t\t\t\tif len(pending) == 0 {\n\t\t\t\t\tpending = append(pending, j)\n\t\t\t\t}\n", SH)
+  "\t\tl.pending = append(l.pending, j)\n", "\t\tif len(l.pending) == 0 {\n\t\t\tl.pending = append(l.pending, j)\n\t\t}\n", SH)
 m("MS a group's close is a word of the runner digest", "internal/shape/masked.go",
   "\t\tcase t.text == \")\":\n\t\t\t// A subshell's close: the command ends before it.\n\t\t\treturn j, true\n", "", SH)
 m("MS make is no build runner", "internal/shape/masked.go",
@@ -122,9 +122,9 @@ m("MS a build masked before a test wins", "internal/shape/masked.go",
 m("MS the runner's arguments run to the end of the line", "internal/shape/shape.go",
   "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])", "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):])", SH)
 m("MS here-document bodies are read as commands", "internal/shape/tokenize.go",
-  "\t\t\t\tpending = append(pending, j)\n", "\t\t\t\t_ = j\n", SH)
+  "\t\tl.pending = append(l.pending, j)\n", "\t\t_ = j\n", SH)
 m("MS a comment is read as words in the list walk", "internal/shape/tokenize.go",
-  "\t\tcase docs && c == '#' && !w.started:", "\t\tcase false && docs && c == '#' && !w.started:", SH)
+  "\t\tcase docs && c == '#' && !l.w.started:", "\t\tcase false && docs && c == '#' && !l.w.started:", SH)
 m("MS the runner digest keeps a redirection's target", "internal/shape/masked.go",
   "\t\t\tj = operatorEnd(toks, j) + 1\n", "\t\t\tj = operatorEnd(toks, j)\n", SH)
 m("MS the runner digest runs to the end of the line", "internal/shape/masked.go",
