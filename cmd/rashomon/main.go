@@ -805,6 +805,7 @@ func cmdWatch(stdout io.Writer) error {
 		fmt.Fprintf(stdout, "rashomon: entries from other installs are present (%s); they will fire in this environment and record nothing\n",
 			strings.Join(foreign, ", "))
 	}
+	capProblem(stdout, "rashomon: ")
 	// Printed in full, on its own line, because it is the line that still works
 	// once this binary or the store is gone: the id cannot be read back from a
 	// store that is not there, and there is nowhere else it is written down.
@@ -1047,9 +1048,11 @@ func cmdStatus(stdout io.Writer) error {
 		} else {
 			fmt.Fprintf(stdout, "  runs: %d\n", len(runs))
 		}
+		statusSize(stdout, st)
 	} else {
 		fmt.Fprintln(stdout, "  present: no")
 	}
+	capProblem(stdout, "  cap: ")
 
 	settingsLive, err := statusSettings(stdout, installID)
 	if err != nil {
