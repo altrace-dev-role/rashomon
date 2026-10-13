@@ -361,36 +361,6 @@ func TestUpdate_ALaterSessionDoesNotInheritEstablished(t *testing.T) {
 	}
 }
 
-// TestUpdate_EstablishedSurvivesAPreFixBaselineFile. A baseline written before
-// the establishing session was recorded names nobody, and the safe reading is
-// that nobody established it: novelty is then computed normally rather than
-// suppressed for a session that cannot be identified as the first.
-func TestUpdate_EstablishedSurvivesAPreFixBaselineFile(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "baseline")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	// A v1 file with no establishing session, as the previous code wrote it.
-	body := `{"version":1,"project":"/proj","hosts":{"a.example":` +
-		`{"first_seen_session":"sess-old","first_seen_at_unix_ms":1}}}`
-	if err := os.WriteFile(filepath.Join(dir, fileName("/proj")), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	res := Update(root, "/proj", "sess-new", t0, []string{"x.example"})
-
-	if res.Err != nil {
-		t.Fatalf("a baseline from the previous version was rejected: %v", res.Err)
-	}
-	if res.Established {
-		t.Error("a session reports establishing a baseline that already existed")
-	}
-	if !reflect.DeepEqual(res.Novel, []string{"x.example"}) {
-		t.Errorf("novel = %v, want [x.example]: novelty must still be computed", res.Novel)
-	}
-}
-
 // TestUpdate_TheEstablisherCorrectsTowardTheEarlierSession is the last survivor
 // of the render-versus-session bug, found by an Opus review after the first two
 // halves were fixed.

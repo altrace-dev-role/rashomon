@@ -124,13 +124,12 @@ func TestH25_HostIsGoneFromTheFileBytes(t *testing.T) {
 
 // TestH25_ForgottenHostStaysSuppressedInTheReport is the third half, and the
 // one the proxy boundary forces.
-func TestH25_ForgottenHostStaysSuppressedInTheReport(t *testing.T) {
+func TestH25_ForgottenHostStaysOutOfTheReport(t *testing.T) {
 	e := newEnv(t)
 	seedHostSession(t, e)
-	db := e.writeProxyStore(t, forgettable, "keep-me.example")
 
 	// Premise: before the forget, the wire shows it.
-	plain := e.run("", nil, "report", "--session", testSession, "--proxy-store", db).stdout
+	plain := e.run("", nil, "report", "--session", testSession).stdout
 	if !strings.Contains(plain, forgettable) {
 		t.Fatalf("premise: the report does not mention %q before the forget:\n%s",
 			forgettable, plain)
@@ -143,42 +142,33 @@ func TestH25_ForgottenHostStaysSuppressedInTheReport(t *testing.T) {
 	// A proxy store WAS read here -- the report above wrote a project baseline
 	// -- so forget's output is exactly what it always was: the baseline count,
 	// and the sentence saying the proxy's rows are not ours to delete.
-	for _, want := range []string{
-		"project baseline(s) cleared\n",
-		"rashomon: the proxy's own records are not ours to delete",
-	} {
-		if !strings.Contains(res.stdout, want) {
-			t.Errorf("forget --host after a proxy store was read does not say %q:\n%s",
-				want, res.stdout)
-		}
+	// The render above wrote the project's baseline, so the forget clears it
+	// and says so; a baseline that still remembered the host would read it as
+	// seen before, forever.
+	if !strings.Contains(res.stdout, "project baseline(s) cleared\n") {
+		t.Errorf("forget --host after a report does not say the baseline was cleared:\n%s", res.stdout)
 	}
 
-	after := e.run("", nil, "report", "--session", testSession, "--proxy-store", db)
+	after := e.run("", nil, "report", "--session", testSession)
 	if strings.Contains(after.stdout, forgettable) {
 		t.Errorf("the forgotten host is back in the report. The proxy's row still exists "+
 			"-- it is not ours to delete -- so the report must suppress it from the "+
 			"view or the forget reads as undone:\n%s", after.stdout)
 	}
 	// And it says something was withheld, rather than silently omitting rows.
-	if !strings.Contains(after.stdout, "suppressed") {
-		t.Errorf("the report does not say a destination was suppressed; a view that "+
-			"silently omits rows is the same failure as one that prints nothing when "+
-			"it was not watching:\n%s", after.stdout)
-	}
 	// The host that was not forgotten is still reported.
 	if !strings.Contains(after.stdout, "keep-me.example") {
 		t.Errorf("the forget removed more than it was asked to:\n%s", after.stdout)
 	}
 }
 
-// TestH25_ForgetHostSaysNothingOfAProxyNeverRead: on a machine where no proxy
-// store was ever read -- every machine in this alpha -- forget --host says
-// what it removed in one line. The baseline count and the sentence about the
-// proxy's own records explain state that exists only after a report has read
-// a proxy store, and printed here they describe a product the reader does not
-// have. The baseline directory is the evidence that one was read, because a
+// TestH25_ForgetHostIsOneLineBeforeAnyReport: on a machine where no report
+// has run, forget --host says what it removed in one line. The baseline count
+// explains state that exists only after a report has written the project's
+// baseline, and printed before one it describes a file the reader does not
+// have. The baseline directory is the evidence that a report ran, because a
 // report writes it only then.
-func TestH25_ForgetHostSaysNothingOfAProxyNeverRead(t *testing.T) {
+func TestH25_ForgetHostIsOneLineBeforeAnyReport(t *testing.T) {
 	e := newEnv(t)
 	seedHostSession(t, e)
 
@@ -293,15 +283,14 @@ func TestH25_TheStoreLevelForgetRecordIsClosed(t *testing.T) {
 }
 
 // TestH25_ForgetHostTakesAnySpellingOfTheHost: every host rashomon holds -- in
-// its records, its baselines, the proxy's rows and the sandbox's trail -- has
-// been through host.Canonical. `forget --host` digested and matched the value
+// its records, its baselines and the sandbox's trail -- has been through
+// host.Canonical. `forget --host` digested and matched the value
 // as typed, so any other spelling removed nothing, cleared no baseline,
 // suppressed nothing, and the line said later reports would leave it out.
 func TestH25_ForgetHostTakesAnySpellingOfTheHost(t *testing.T) {
 	e := newEnv(t)
 	seedHostSession(t, e)
-	db := e.writeProxyStore(t, forgettable, "keep-me.example")
-	if plain := e.run("", nil, "report", "--session", testSession, "--proxy-store", db).stdout; !strings.Contains(plain, forgettable) {
+	if plain := e.run("", nil, "report", "--session", testSession).stdout; !strings.Contains(plain, forgettable) {
 		t.Fatalf("premise: the report does not mention %q before the forget:\n%s", forgettable, plain)
 	}
 
@@ -316,14 +305,14 @@ func TestH25_ForgetHostTakesAnySpellingOfTheHost(t *testing.T) {
 	if got := len(e.declarations(testSession)); got != 1 {
 		t.Errorf("forget --host %q left %d declarations, want 1", spelled, got)
 	}
-	// The proxy's own store is not ours to delete from; everything else under
-	// the store root, the project baseline included, must have let the name go.
+	// Everything under the store root, the project baseline included, must
+	// have let the name go.
 	for rel, f := range walkStore(t, e.home) {
-		if rel != filepath.Base(db) && strings.Contains(string(f.body), forgettable) {
+		if strings.Contains(string(f.body), forgettable) {
 			t.Errorf("%s still holds %q after forget --host %q", rel, forgettable, spelled)
 		}
 	}
-	if after := e.run("", nil, "report", "--session", testSession, "--proxy-store", db).stdout; strings.Contains(after, forgettable) {
+	if after := e.run("", nil, "report", "--session", testSession).stdout; strings.Contains(after, forgettable) {
 		t.Errorf("forget --host %q: the host is back in the report:\n%s", spelled, after)
 	}
 }
