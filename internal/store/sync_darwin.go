@@ -22,10 +22,12 @@ const fBarrierFsync = 85
 // F_FULLFSYNC on any file of the same device persists everything a barrier
 // ordered before it (fcntl(2)), which is what Store.Flush relies on.
 //
+// It reports durable false: the write is ordered, not yet on stable storage.
 // A filesystem that does not do barriers (the man page names APFS as the only
 // one that does) gets the full sync instead, so the fallback is never weaker
-// than the call it replaces. Any other error is the sync failing, and is
-// returned rather than retried as a full sync.
+// than the call it replaces, and reports durable true, since that sync left
+// Flush nothing to do. Any other error is the sync failing, and is returned
+// rather than retried as a full sync.
 //
 // The fault build's sync recorder logs what was issued, not what was meant:
 // a barrier once the kernel has accepted one, and the fallback as the full
@@ -37,19 +39,22 @@ const fBarrierFsync = 85
 // through libc as os.File.Sync does. Apple does not promise that interface;
 // fcntl's number in it has not moved, and an error it did return would fail
 // the append, never pass it silently.
-func barrierSync(f *os.File) error {
+func barrierSync(f *os.File) (durable bool, err error) {
 	for {
 		_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), fBarrierFsync, 0)
 		switch {
 		case errno == 0:
 			fault.RecordSync(fault.SyncBarrier, f.Name())
-			return nil
+			return false, nil
 		case errno == syscall.EINTR:
 			continue
 		case barrierRefused(errno):
-			return syncFull(f)
+			if err := syncFull(f); err != nil {
+				return false, err
+			}
+			return true, nil
 		default:
-			return errno
+			return false, errno
 		}
 	}
 }
