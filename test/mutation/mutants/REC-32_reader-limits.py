@@ -12,10 +12,10 @@ m("REC-32 forget rewrites a file it could not read whole", "internal/store/gaps.
   "\tif err == nil && tooLong {\n", "\tif err == nil && tooLong && false {\n", "TestREC32b_")
 m("REC-32 forget stops at the first run it cannot read", "internal/store/gaps.go",
   "\t\tif err != nil {\n\t\t\terrs = append(errs, fmt.Errorf(\"run %s: %w\", name, err))\n\t\t}\n",
-  "\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n", "TestREC32b_")
+  "\t\tif err != nil {\n\t\t\treturn gaps, fmt.Errorf(\"run %s: %w\", name, err)\n\t\t}\n", "TestREC32b_")
 m("REC-32 eviction stops at the run it cannot read", "internal/store/evict.go",
   "\t\tif err != nil {\n\t\t\terrs = append(errs, fmt.Errorf(\"run %s: %w\", c.name, err))\n\t\t}\n",
-  "\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n", "TestREC32_EvictContinuesPastUnreadableRun")
+  "\t\tif err != nil {\n\t\t\treturn gaps, fmt.Errorf(\"run %s: %w\", c.name, err)\n\t\t}\n", "TestREC32_EvictContinuesPastUnreadableRun")
 m("REC-32 eviction counts a run with a skipped line", "internal/store/evict.go",
   "\tif err != nil || run.Skipped > 0 {\n\t\tg.RemovedRecords = RemovedUnknown\n", "\tif err != nil {\n\t\tg.RemovedRecords = RemovedUnknown\n",
   "TestREC32_EvictContinuesPastUnreadableRun")
@@ -58,3 +58,9 @@ m("REC-32 forget --host records the host only after every run was rewritten", "i
   "\tgaps, err := s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, host, now) })\n"
   "\tif err != nil {\n\t\treturn gaps, err\n\t}\n\treturn gaps, s.recordForgottenHost(s.HostDigest(host), now)\n",
   "TestForgetHost_APartialForgetSaysLaterReportsLeaveItOutOnlyWithItsRecord")
+m("REC-32 eviction stops at a run it cannot list", "internal/store/evict.go",
+  "\t\t\tplan.unlisted = append(plan.unlisted, fmt.Errorf(\"run %s: %w\", e.Name(), err))\n\t\t\tcontinue\n",
+  "\t\t\treturn plan, err\n", "TestREC32_EvictContinuesPastUnreadableRun")
+m("REC-32 eviction drops the error of a run it cannot list", "internal/store/evict.go",
+  "\ttotal, errs := plan.total, plan.unlisted\n", "\ttotal, errs := plan.total, []error(nil)\n",
+  "TestREC32_EvictContinuesPastUnreadableRun")

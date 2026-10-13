@@ -41,17 +41,18 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 	defer unlock()
 
 	runsDir := filepath.Join(s.root, dirRuns)
-	cands, total, err := evictCandidates(runsDir)
-	if err != nil || total <= capBytes {
+	plan, err := evictCandidates(runsDir)
+	if err != nil {
 		return nil, err
+	}
+	total, errs := plan.total, plan.unlisted
+	if total <= capBytes {
+		return nil, errors.Join(errs...)
 	}
 
 	protectDir := segment(protect)
-	var (
-		gaps []Gap
-		errs []error
-	)
-	for _, c := range cands {
+	var gaps []Gap
+	for _, c := range plan.cands {
 		if total <= capBytes {
 			break
 		}
@@ -102,44 +103,65 @@ type evictCandidate struct {
 	mtime time.Time
 }
 
-// evictCandidates lists every run with its size, oldest first, and the
-// store's total. A store with no runs directory has none.
-func evictCandidates(runsDir string) ([]evictCandidate, int64, error) {
+// evictPlan is every run eviction may remove, oldest first, with the store's
+// total size and the error of each run it could not list.
+type evictPlan struct {
+	cands    []evictCandidate
+	total    int64
+	unlisted []error
+}
+
+// evictCandidates plans an eviction. A store with no runs directory has no
+// candidates.
+//
+// A run whose directory cannot be listed is left out, with its error in
+// unlisted: its size and its age are both unknown, so removing it could take
+// a session still being written, and stopping at it, as this used to, would
+// keep every run after it in the store too.
+func evictCandidates(runsDir string) (evictPlan, error) {
+	var plan evictPlan
 	entries, err := os.ReadDir(runsDir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, 0, nil
+		return plan, nil
 	}
 	if err != nil {
-		return nil, 0, err
+		return plan, err
 	}
-	var (
-		cands []evictCandidate
-		total int64
-	)
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
-		c := evictCandidate{name: e.Name()}
-		files, err := os.ReadDir(filepath.Join(runsDir, e.Name()))
+		c, err := sizeRun(filepath.Join(runsDir, e.Name()))
 		if err != nil {
-			return nil, 0, err
+			plan.unlisted = append(plan.unlisted, fmt.Errorf("run %s: %w", e.Name(), err))
+			continue
 		}
-		for _, f := range files {
-			info, err := f.Info()
-			if err != nil {
-				return nil, 0, err
-			}
-			c.size += info.Size()
-			if info.ModTime().After(c.mtime) {
-				c.mtime = info.ModTime()
-			}
-		}
-		cands = append(cands, c)
-		total += c.size
+		c.name = e.Name()
+		plan.cands = append(plan.cands, c)
+		plan.total += c.size
 	}
-	sort.Slice(cands, func(i, j int) bool { return cands[i].mtime.Before(cands[j].mtime) })
-	return cands, total, nil
+	sort.Slice(plan.cands, func(i, j int) bool { return plan.cands[i].mtime.Before(plan.cands[j].mtime) })
+	return plan, nil
+}
+
+// sizeRun is a run directory's size and newest modification time.
+func sizeRun(dir string) (evictCandidate, error) {
+	var c evictCandidate
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return c, err
+	}
+	for _, f := range files {
+		info, err := f.Info()
+		if err != nil {
+			return c, err
+		}
+		c.size += info.Size()
+		if info.ModTime().After(c.mtime) {
+			c.mtime = info.ModTime()
+		}
+	}
+	return c, nil
 }
 
 // evictionGap is the gap record for evicting one run, with the error that
