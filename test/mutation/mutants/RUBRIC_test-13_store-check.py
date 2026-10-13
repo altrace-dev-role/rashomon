@@ -13,4 +13,12 @@ m("test-13  keys are not held to the allowlist", "test/acceptance/storecheck_tes
 m("test-13  spilled records are held to the seq rule", "test/acceptance/storecheck_test.go",
   "\t\t\"spill.ndjson\":    {types: call},\n", "\t\t\"spill.ndjson\":    {types: call, ordered: true},\n", "TestRubricTest13_")
 m("test-13  a schema version this build does not read passes", "test/acceptance/storecheck_test.go",
-  "!ok || v < 1 || v > 4 {", "!ok || v < 1 {", "TestRubricTest13_")
+  "!ok || float64(int(v)) != v || !readable(typ, int(v)) {", "!ok && v == 0 {", "TestRubricTest13_")
+m("test-13  a fractional schema version passes", "test/acceptance/storecheck_test.go",
+  "!ok || float64(int(v)) != v || !readable(", "!ok || !readable(", "TestRubricTest13_")
+m("test-13  coverage and gaps are not held to their own versions", "test/acceptance/storecheck_test.go",
+  "\treturn store.Accepts(version) && store.AcceptsKind(kind, version)\n",
+  "\treturn store.Accepts(version)\n", "TestRubricTest13_")
+m("test-13  call records pass at a version today's reader skips", "test/acceptance/storecheck_test.go",
+  "\treturn store.Accepts(version) && store.AcceptsKind(kind, version)\n",
+  "\treturn store.AcceptsKind(kind, version)\n", "TestRubricTest13_")
