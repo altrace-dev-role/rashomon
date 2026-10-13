@@ -15,3 +15,6 @@ m("test-9  a failed hook read returns what it read so far", "internal/hookio/rea
 m("test-9  a short last chunk reads as a failed hook read", "internal/hookio/read.go",
   "\t\tif err == io.EOF || err == io.ErrUnexpectedEOF {\n",
   "\t\tif err == io.EOF {\n", "TestRubricTest9_")
+m("test-9  the abandoned recap reader blocks forever on an unbuffered send", "cmd/rashomon/main.go",
+  "\tch := make(chan parsed, 1)\n",
+  "\tch := make(chan parsed)\n", "TestRubricTest9_RecapReaderGivesUp")
