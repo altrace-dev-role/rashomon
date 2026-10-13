@@ -25,9 +25,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // Version is carried by the file so a later reader can refuse a shape it does
@@ -67,10 +68,15 @@ var ubiquitous = map[string]bool{
 // report can say so rather than silently dropping the host.
 func Ubiquitous(host string) bool { return ubiquitous[host] }
 
-// entry is when a host was first named in this project, and by which session.
+// entry is when a host was first named in this project, and by which session,
+// and when it was last named: the start of the latest session that named it,
+// which decides which host goes first at the cap (evict). Zero on an entry
+// written before the field existed, which is then read as last seen when it
+// was first seen.
 type entry struct {
 	FirstSeenSession  string `json:"first_seen_session"`
 	FirstSeenAtUnixMS int64  `json:"first_seen_at_unix_ms"`
+	LastSeenAtUnixMS  int64  `json:"last_seen_at_unix_ms,omitempty"`
 }
 
 // File is one project's baseline.
@@ -127,6 +133,9 @@ type Result struct {
 	// ("N known"). It grows as other sessions run; what does not change is which
 	// hosts this session owns.
 	Known int
+	// Evicted is how many hosts this fold dropped at the cap, least recently
+	// seen first (maxBaselineHosts).
+	Evicted int
 	// Path is the file consulted, for the report to name when it could not be
 	// read.
 	Path string
@@ -204,78 +213,47 @@ func fileName(key string) string {
 // root is the store root; the baseline lives in a sibling directory of runs/ so
 // that eviction of runs cannot touch it. sessionStart is the session's own
 // start instant, which is what decides ownership.
+//
+// The load, the fold and the save happen under one lock (lockName), which
+// `forget --host` takes too. Without it two renders each loaded the file,
+// folded and renamed their own copy into place, and the second threw away the
+// first's hosts -- in 200 of 200 rounds of a probe -- so a later session was
+// told a host was new that an earlier one had named; and a forget and a
+// render could each undo the other. A render that learns nothing writes
+// nothing.
 func Update(root, key, sessionID string, sessionStart time.Time, hosts []string) Result {
-	res := Result{}
 	if root == "" || key == "" {
-		res.Err = errors.New("baseline: no store root or project key")
-		return res
+		return Result{Err: errors.New("baseline: no store root or project key")}
 	}
 	dir := filepath.Join(root, "baseline")
-	res.Path = filepath.Join(dir, fileName(key))
-
-	f, existed, err := load(res.Path, key)
+	path := filepath.Join(dir, fileName(key))
+	res, err := update(dir, path, key, sessionID, sessionStart, hosts)
+	res.Path = path
 	if err != nil {
-		res.Err = err
-		return res
-	}
-	stamp := sessionStart.UTC().UnixMilli()
-	switch {
-	case !existed:
-		f.EstablishedBySession = sessionID
-		f.EstablishedAtUnixMS = stamp
-	case f.EstablishedBySession != "" && stamp > 0 &&
-		(f.EstablishedAtUnixMS == 0 || stamp < f.EstablishedAtUnixMS):
-		// An earlier session than the recorded establisher. It was the project's
-		// first, so it takes the slot -- the same earliest-wins correction the
-		// per-host entries make, for the same reason: the answer must be a
-		// property of the sessions and not of the order someone read them in.
-		// Monotone, so it converges rather than oscillating.
-		//
-		// Guarded on a recorded establisher EXISTING. A file written before this
-		// field names nobody, and "nobody established it" must not become "the
-		// next session to render claims it" -- that would hand the slot, and the
-		// suppression of every novelty finding that comes with it, to whoever
-		// happened to run report first on an upgraded install.
-		f.EstablishedBySession = sessionID
-		f.EstablishedAtUnixMS = stamp
-	}
-	res.Established = f.EstablishedBySession != "" && f.EstablishedBySession == sessionID
-
-	for _, h := range hosts {
-		if h == "" {
-			continue
-		}
-		prev, seen := f.Hosts[h]
-		switch {
-		case !seen:
-			f.Hosts[h] = entry{FirstSeenSession: sessionID, FirstSeenAtUnixMS: stamp}
-		case stamp > 0 && (prev.FirstSeenAtUnixMS == 0 || stamp < prev.FirstSeenAtUnixMS):
-			// An earlier session is being rendered after a later one. The
-			// earlier one owns the host; correcting toward it is what keeps a
-			// session's novel set a property of the session rather than of the
-			// order somebody read the reports in.
-			f.Hosts[h] = entry{FirstSeenSession: sessionID, FirstSeenAtUnixMS: stamp}
-		}
-	}
-	res.Known = len(f.Hosts)
-
-	// Novel is computed from the file AFTER folding, so it is exactly "the
-	// hosts this session owns" -- stable across renders by construction.
-	for _, h := range hosts {
-		if ubiquitous[h] {
-			continue
-		}
-		if e, ok := f.Hosts[h]; ok && e.FirstSeenSession == sessionID && !res.Established {
-			res.Novel = append(res.Novel, h)
-		}
-	}
-	sort.Strings(res.Novel)
-	res.Novel = dedupe(res.Novel)
-
-	if err := save(dir, res.Path, f); err != nil {
 		res.Err = err
 	}
 	return res
+}
+
+// update is Update's locked load-fold-save.
+func update(dir, path, key, sessionID string, sessionStart time.Time, hosts []string) (Result, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return Result{}, err
+	}
+	release, err := store.LockPath(filepath.Join(dir, lockName))
+	if err != nil {
+		return Result{}, err
+	}
+	defer release()
+	f, existed, err := load(path, key)
+	if err != nil {
+		return Result{}, err
+	}
+	next, res, changed := Fold(f, existed, sessionID, sessionStart, hosts)
+	if res.Err != nil || !changed {
+		return res, nil
+	}
+	return res, save(dir, path, next)
 }
 
 // load reads a project's baseline. existed is false for a file that is not
@@ -308,11 +286,21 @@ func load(path, key string) (File, bool, error) {
 
 // parse reads one baseline file as written, whatever its basis says.
 func parse(path string) (File, error) {
-	body, err := os.ReadFile(path)
+	body, err := readFile(path)
 	if err != nil {
 		return File{}, err
 	}
 	return decode(body)
+}
+
+// readFile reads a baseline file whole, refusing one over maxBaselineBytes.
+func readFile(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close() //nolint:errcheck // read-only
+	return readBounded(f)
 }
 
 // decode reads a baseline's bytes, refusing a version this build does not
@@ -344,6 +332,9 @@ func save(dir, path string, f File) error {
 		return err
 	}
 	body = append(body, '\n')
+	if len(body) > maxBaselineBytes {
+		return errTooLarge
+	}
 
 	tmp, err := os.CreateTemp(dir, ".baseline-*")
 	if err != nil {
@@ -382,19 +373,6 @@ func digest(key string) string {
 	return hex.EncodeToString(sum[:])[:12]
 }
 
-func dedupe(xs []string) []string {
-	if len(xs) < 2 {
-		return xs
-	}
-	out := xs[:1]
-	for _, x := range xs[1:] {
-		if x != out[len(out)-1] {
-			out = append(out, x)
-		}
-	}
-	return out
-}
-
 // ForgetFile removes a host from one baseline file by path, returning 1 when
 // the file held it and 0 when it did not. A file this build will not rewrite
 // -- one without the basis marker, or one it cannot parse whose bytes hold
@@ -404,11 +382,28 @@ func dedupe(xs []string) []string {
 // project the caller meant and must clear the host from every baseline that
 // remembers it. That is the conservative direction: a host the user asked to
 // forget must not survive in a project they did not think to name.
+//
+// It takes the lock Update takes, so a forget and a render cannot each save a
+// copy loaded before the other's change.
 func ForgetFile(path, host string) (int, error) {
 	if path == "" || host == "" {
 		return 0, nil
 	}
-	body, err := os.ReadFile(path)
+	release, err := store.LockPath(filepath.Join(filepath.Dir(path), lockName))
+	if errors.Is(err, fs.ErrNotExist) {
+		// No baseline directory: nothing to clear.
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	defer release()
+	return forgetLocked(path, host)
+}
+
+// forgetLocked is ForgetFile under the lock.
+func forgetLocked(path, host string) (int, error) {
+	body, err := readFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		// Listed, then gone before it was read: nothing left to clear.
 		return 0, nil

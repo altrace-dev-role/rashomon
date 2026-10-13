@@ -352,8 +352,15 @@ func baselineFile(t *testing.T, e *env) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 {
-		t.Fatalf("premise: %d files under baseline/, want the one project's", len(entries))
+	// The project files, not the lock file beside them.
+	var files []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".json") {
+			files = append(files, e.Name())
+		}
 	}
-	return filepath.Join(dir, entries[0].Name())
+	if len(files) != 1 {
+		t.Fatalf("premise: %d project files under baseline/, want the one project's", len(files))
+	}
+	return filepath.Join(dir, files[0])
 }
