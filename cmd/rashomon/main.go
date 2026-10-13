@@ -396,7 +396,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			// install.key or install.json -- is exactly H-93's second case.
 			// Unlike ErrNoStore, root DOES already hold a store here, so the
 			// failure is recorded where status can show it.
-			recap.RecordFailure(root, now)
+			recap.RecordFailure(root, now) //nolint:errcheck // bookkeeping, never a hook error (recap.Claim)
 			return nil
 		}
 		if standsDown(args, st, stderr) {
@@ -409,7 +409,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			// Claude Code's session id any other way than being told it.
 			newest, _, nerr := st.NewestRun()
 			if nerr != nil {
-				recap.RecordFailure(root, now)
+				recap.RecordFailure(root, now) //nolint:errcheck // bookkeeping, never a hook error (recap.Claim)
 				return nil
 			}
 			if newest == "" {
@@ -433,7 +433,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		d, derr := digest.Build(st, sessionID, "", lastMessage, now)
 		if derr != nil {
-			recap.RecordFailure(root, now)
+			recap.RecordFailure(root, now) //nolint:errcheck // bookkeeping, never a hook error (recap.Claim)
 			return nil
 		}
 		if pending && !recap.Pending(root, d.SessionID, d.PromptID) {

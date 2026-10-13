@@ -95,11 +95,21 @@ func readState(path string) (state, error) {
 	return s, nil
 }
 
-// writeState replaces the file atomically. temp+rename, the same shape
-// internal/settings/write.go uses for the same reason: a reader (status, or
-// a concurrent recap) must never observe a half-written file, and a process
-// killed mid-write must leave either the old file or the new one, never a
-// truncated third thing.
+// writeState replaces the file atomically, the shape internal/settings/
+// write.go uses for the same reason: a temporary file of its own in the same
+// directory, written, synced and closed, then renamed over the path. A reader
+// (status, or a concurrent recap) must never observe a half-written file, and
+// a process killed mid-write must leave either the old file or the new one,
+// never a truncated third thing.
+//
+// The temporary name is unique per write (os.CreateTemp), never path+".tmp".
+// Two recap processes overlap -- a Stop still running when the next prompt's
+// catch-up starts -- and with one shared temp path the second writer opened
+// and truncated the inode the first had just renamed into place, so recap.json
+// read as part of one state and status said "unknown (state unreadable)".
+// Last rename wins between overlapping writers: each state is whole, and a
+// lost update costs at most one duplicate line or a stale timestamp, which is
+// this file's documented worst case (Claim).
 func writeState(path string, s state) error {
 	// Go's map iteration order is randomised, which is fine here: this is a
 	// soft cap on a best-effort file, and which session ids it drops first
@@ -116,11 +126,24 @@ func writeState(path string, s state) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+stateFileName+".tmp-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	// A no-op after a successful rename; cleanup after any failure before it.
+	defer os.Remove(tmp.Name()) //nolint:errcheck // best effort
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close() //nolint:errcheck // the write error is what matters
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close() //nolint:errcheck // the sync error is what matters
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // Claim is recap's one piece of persistent bookkeeping.
@@ -168,10 +191,12 @@ func Claim(root, sessionID, promptID string, now time.Time, wantSpeak bool) (spe
 // RecordFailure marks this evaluation as unhealthy, for the one path where
 // cmdRecap gave up before it could even build a decision: a digest read that
 // itself errored. It is best-effort in the same sense Claim is -- see its
-// doc -- and is a no-op where no store exists yet, for the same reason.
-func RecordFailure(root string, now time.Time) {
+// doc -- and is a no-op where no store exists yet, for the same reason. The
+// write's error is returned, as Claim returns it, so the one caller that
+// decides to drop it does so at its call site and says why.
+func RecordFailure(root string, now time.Time) error {
 	if !storeExists(root) {
-		return
+		return nil
 	}
 	path := statePath(root)
 	s, err := readState(path)
@@ -180,7 +205,7 @@ func RecordFailure(root string, now time.Time) {
 	}
 	s.LastEvaluatedAtUnixMS = now.UnixMilli()
 	s.Healthy = false
-	_ = writeState(path, s)
+	return writeState(path, s)
 }
 
 // Status reports recap's own evaluation history for `status` to render
