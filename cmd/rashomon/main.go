@@ -1170,7 +1170,7 @@ func statusSettings(stdout io.Writer, installID string) (bool, error) {
 
 	doc, err := settings.Load(path)
 	if err != nil {
-		for _, event := range install.Events {
+		for _, event := range install.Events() {
 			fmt.Fprintf(stdout, "  %s: %s\n", event, statusUnreadable)
 		}
 		fmt.Fprintf(stdout, "  %s: %s\n", label, statusUnreadable)
@@ -1181,7 +1181,7 @@ func statusSettings(stdout io.Writer, installID string) (bool, error) {
 		fmt.Fprintln(stdout, "  no store here, so no install id is ours and no entry can be called ours")
 	}
 	live := false
-	for _, event := range install.Events {
+	for _, event := range install.Events() {
 		state := entryState(doc, installID, event)
 		if state == "present" {
 			live = true
@@ -1241,7 +1241,7 @@ func statusPlugin(stdout io.Writer) (bool, error) {
 	for _, event := range p.Events {
 		declares[event] = true
 	}
-	for _, event := range install.Events {
+	for _, event := range install.Events() {
 		state := "absent"
 		if declares[event] {
 			state = "present"
