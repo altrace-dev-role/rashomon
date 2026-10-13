@@ -188,6 +188,12 @@ rashomon report --nono-audit ~/.local/state/nono/audit/<nono session id>/audit-e
 `nono audit list` shows the session ids. Each `nono run` writes its own trail
 when it ends.
 
+The sandbox section has something to count only when nono filters the
+network. With nono 0.78.0 and the `claude` profile, which leaves the network
+unfiltered, the trail holds no network event at all, and the section reads
+`0 allowed, 0 denied` however many hosts the session reached. Naming the
+allowed hosts with `--allow-domain` turns the filtering on.
+
 What was measured, on macOS with nono 0.79.0 and Claude Code 2.1.285:
 
 - With the store allowed, every tool call was recorded. Without it, or with it

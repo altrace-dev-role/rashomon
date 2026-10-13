@@ -400,6 +400,8 @@ func TestH31_ASilentTrailLeavesTheNamedHostInTheChain(t *testing.T) {
 // readmeSilentTrailClaims are the README's sentences that the render in
 // TestH31_ASilentTrailLeavesTheNamedHostInTheChain backs, whitespace-folded.
 var readmeSilentTrailClaims = []string{
+	"The sandbox section has something to count only when nono filters the network.",
+	"the section reads `0 allowed, 0 denied` however many hosts the session reached.",
 	"An allowed `http://` request leaves nothing in the sandbox section.",
 	"`--chain` still lists its host under the call if the command named it",
 }
