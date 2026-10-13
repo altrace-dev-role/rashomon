@@ -123,7 +123,7 @@ func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run,
 
 	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
 		left := max(0, time.Until(deadline))
-		err := eachLineTryLock(filepath.Join(dir, fname), left, readRefused, func(line []byte) { classifyRunLine(run, line) })
+		err := eachLineTryLock(filepath.Join(dir, fname), left, s.refusal(), func(line []byte) { classifyRunLine(run, line) })
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +196,16 @@ func classifyRunLine(run *Run, line []byte) {
 // counts as one line that could not be read, so every session reads
 // unverified rather than digest.Build failing outright (test-11).
 func (s *Store) ReadGaps() (gaps []Gap, skipped int, err error) {
-	return readGapsAt(filepath.Join(s.root, FileGaps), readRefused)
+	return readGapsAt(filepath.Join(s.root, FileGaps), s.refusal())
+}
+
+// refusal is the predicate this store's readers count a refused read by:
+// readRefused, unless a test set Store.readRefusal.
+func (s *Store) refusal() func(error) bool {
+	if s.readRefusal != nil {
+		return s.readRefusal
+	}
+	return readRefused
 }
 
 // neverRefused is the refusal predicate of a read that must fail rather than
@@ -273,9 +282,10 @@ func eachLineTryLock(path string, budget time.Duration, refused func(error) bool
 
 // refusedAsSkipped turns a read that another handle's lock refused into one
 // nil line passed to fn, which every caller counts as a line it could not
-// read, and returns any other error as it is. refused is readRefused in
-// production; a parameter so the handling can be driven on a platform whose
-// locks never refuse a read.
+// read, and returns any other error as it is. refused is the store's
+// refusal predicate (Store.refusal), readRefused in production; a parameter
+// so the handling can be driven on a platform whose locks never refuse a
+// read.
 func refusedAsSkipped(err error, refused func(error) bool, fn func(line []byte)) error {
 	if err != nil && refused(err) {
 		fn(nil)

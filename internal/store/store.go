@@ -76,6 +76,12 @@ type Store struct {
 	// waitUntil is the deadline every lock wait shares, zero for none
 	// (LimitLockWaits).
 	waitUntil time.Time
+
+	// readRefusal says which read errors mean another handle's lock refused
+	// the read; nil is readRefused, the platform's own answer. On unix a held
+	// flock never refuses a read, so this is how a unix test drives the
+	// refusal handling through the readers production calls (test-11).
+	readRefusal func(error) bool
 }
 
 type installMeta struct {

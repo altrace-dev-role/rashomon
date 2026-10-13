@@ -95,3 +95,63 @@ func TestRubricTEST11_ARefusedGapsReadCountsAsSkipped(t *testing.T) {
 		t.Errorf("readGapsAt with no refusal predicate: err %v, want the read error itself", err)
 	}
 }
+
+// TestRubricTEST11_TheConsistentReadCountsARefusalAtItsCallSite drives the
+// refusal through ReadRunConsistent itself rather than eachLineTryLock: a
+// held records lock, a read the store's own refusal predicate calls refused,
+// and the run reads with that file counted as one skipped line. A
+// ReadRunConsistent that passed a predicate of its own instead of the
+// store's would fail the read here, as it would on Windows.
+func TestRubricTEST11_TheConsistentReadCountsARefusalAtItsCallSite(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	st.readRefusal = refusesAsEISDIR
+	const session = "sess-refused"
+	recordsPath := filepath.Join(st.RunDir(session), FileRecords)
+	if err := os.MkdirAll(recordsPath, dirMode); err != nil {
+		t.Fatal(err)
+	}
+	holder, err := os.Open(recordsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close() //nolint:errcheck // read-only
+	unlock, err := lockFile(holder, lockBudget)
+	if err != nil {
+		t.Fatalf("taking the records lock: %v", err)
+	}
+	defer unlock()
+
+	run, err := st.ReadRunConsistent(session, time.Millisecond)
+	if err != nil {
+		t.Fatalf("ReadRunConsistent with its records read refused: %v, want the refusal counted", err)
+	}
+	if run.Skipped != 1 {
+		t.Errorf("run has %d skipped lines, want the refused records file counted as one", run.Skipped)
+	}
+}
+
+// TestRubricTEST11_TheGapsReadCountsARefusalAtItsCallSite is the same for
+// ReadGaps: a gaps read the store's refusal predicate calls refused is one
+// gap line that could not be read, not a failed read.
+func TestRubricTEST11_TheGapsReadCountsARefusalAtItsCallSite(t *testing.T) {
+	root := t.TempDir()
+	st, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	st.readRefusal = refusesAsEISDIR
+	if err := os.Mkdir(filepath.Join(root, FileGaps), dirMode); err != nil {
+		t.Fatal(err)
+	}
+
+	gaps, skipped, err := st.ReadGaps()
+	if err != nil {
+		t.Fatalf("ReadGaps with its read refused: %v, want the refusal counted", err)
+	}
+	if skipped != 1 || len(gaps) != 0 {
+		t.Errorf("got %d gaps and %d skipped, want none read and one skipped", len(gaps), skipped)
+	}
+}
