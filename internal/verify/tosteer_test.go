@@ -3,6 +3,7 @@ package verify
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/spec"
@@ -10,66 +11,215 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/steer/pattern"
 )
 
-// TestVER54e_ToSteerMapsEveryVerifyPattern: every pattern VERIFY raises maps
-// to a candidate with the pattern's priority, the proposed level and stop
-// form, the fact's seq as AfterSeq, and the dedupe key unchanged; a pattern
-// without a priority, a finding without a fact, and an unknown id are
-// errors, never a zero-valued candidate.
-func TestVER54e_ToSteerMapsEveryVerifyPattern(t *testing.T) {
-	seq := int64(48)
-	green := int64(37)
-	cases := []struct {
-		name  string
-		f     Finding
-		level steer.Level
-		form  steer.StopForm
-		after int64
-		kind  steer.Kind
-	}{
-		{"claim", Finding{Pattern: pattern.ClaimVsRecord, Class: FalseClaim, DedupeKey: "claim-vs-record|learned:go-test|p1", Claim: &ClaimFact{Class: ClaimTestsPass, Strict: true, Verdict: Verdict(Red)}}, steer.LevelStop, steer.StopFormStopContinue, 212, "red"},
-		{"gate", Finding{Pattern: pattern.RegressionLocation, Class: Literal, DedupeKey: "regression-location|learned:go-test|p1", Gate: &GateFact{GateID: "learned:go-test", State: Red, Reason: FailedExit, LastRunSeq: &seq, LastGreenSeq: &green}}, steer.LevelNudge, steer.StopFormNone, 48, ""},
-		{"subtask", Finding{Pattern: pattern.SubtaskGate, Class: Absence, DedupeKey: "subtask-gate|learned:go-test|p1", Gate: &GateFact{GateID: "learned:go-test", State: Absent, LastRunSeq: &seq}}, steer.LevelStop, steer.StopFormDeny, 48, ""},
-		{"rule", Finding{Pattern: pattern.PlatformRule, Class: Literal, DedupeKey: "platform-rule|no-shell-true|p1", Rule: &RuleFact{RuleID: "no-shell-true", Kind: spec.ForbidCode, Trust: spec.Trusted, Seq: 44}}, steer.LevelStop, steer.StopFormDeny, 44, "forbid_code"},
-		{"ordering", Finding{Pattern: pattern.OrderingRule, Class: Literal, DedupeKey: "ordering-rule|export-after-verify|p1", Rule: &RuleFact{RuleID: "export-after-verify", Kind: spec.Order, Trust: spec.Managed, Seq: 50}}, steer.LevelStop, steer.StopFormDeny, 50, ""},
-		{"integrity", Finding{Pattern: pattern.Integrity, Class: Literal, DedupeKey: "integrity|skip_added|p1", Integrity: &IntegrityFact{Kind: SkipAdded, Count: 1, Seq: 40}}, steer.LevelFlag, steer.StopFormNone, 40, "skip_added"},
-		{"subagent", Finding{Pattern: pattern.SubagentClaim, Class: FalseClaim, DedupeKey: "subagent-claim|a1|p1", Claim: &ClaimFact{Class: ClaimDone, Verdict: Verdict(Stale)}}, steer.LevelFlag, steer.StopFormNone, 212, ""},
+func seqp(n int64) *int64   { return &n }
+func strp(s string) *string { return &s }
+
+// at is the point a test finding was evaluated at: the last record seq the
+// decision saw is 57 (the spec's example line, tech 4.2.3). A per-call
+// finding is judged at no boundary point, so its kind is empty.
+func at(kind string) Point { return Point{Kind: kind, Seq: 57, SessionID: "s1", PromptID: strp("p1")} }
+
+// perCall is the point of a finding raised on one call (regression,
+// platform-rule, ordering-rule, integrity).
+var perCall = at("")
+
+// mapCase is one finding, the point it was judged at, and the candidate the
+// cards give it.
+type mapCase struct {
+	name     string
+	f        Finding
+	pt       Point
+	kind     steer.Kind
+	level    steer.Level
+	form     steer.StopForm
+	key      string
+	evidence []int64
+}
+
+func ev(event steer.Event) string { return string(event) }
+
+func mappingCases() []mapCase {
+	red := &GateFact{GateID: "learned:go-test", Program: "go", State: Red, Reason: FailedExit, LastRunSeq: seqp(52), LastGreenSeq: seqp(37)}
+	claim := func(v State) *ClaimFact { return &ClaimFact{Class: ClaimTestsPass, Strict: true, Verdict: Verdict(v)} }
+	stop := ev(steer.EventStop)
+	post := ev(steer.EventPostToolUse)
+	return []mapCase{
+		{"claim red", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Red), Gate: red}, at(PointStop), "red", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{37, 52}},
+		{"claim masked", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(MaskedInconclusive)}, at(PointStop), "masked", steer.LevelFlag, steer.StopFormNone, "tests_pass", []int64{57}},
+		{"claim stale", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Stale)}, at(PointStop), "stale", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{57}},
+		{"claim absent", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Absent)}, at(PointStop), "absent", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{57}},
+		{"claim backgrounded", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Backgrounded)}, at(PointStop), "backgrounded", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{57}},
+		{"done over absent", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimDone, Strict: true, Verdict: Verdict(Absent)}}, at(PointStop), "done-unverified", steer.LevelStop, steer.StopFormStopContinue, "done", []int64{57}},
+		{"silent failure", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimTestsPass, Strict: true, Verdict: Verdict(Green), UnrecoveredFailures: 2}}, at(PointStop), "silent-failure", steer.LevelStop, steer.StopFormStopContinue, "tests_pass", []int64{57}},
+		{"loose claim", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: &ClaimFact{Class: ClaimTestsPass, Verdict: Verdict(Red)}}, at(PointStop), "red", steer.LevelFlag, steer.StopFormNone, "tests_pass", []int64{57}},
+		{"regression", Finding{Pattern: pattern.RegressionLocation, Event: ev(steer.EventPostToolUseFailure), Gate: red}, perCall, "", steer.LevelNudge, steer.StopFormNone, "learned:go-test", []int64{37, 52}},
+		{"subtask nudge", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: &GateFact{GateID: "learned:go-test", State: Stale, LastRunSeq: seqp(37), LastGreenSeq: seqp(37)}}, Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("7")}, "", steer.LevelNudge, steer.StopFormNone, "task:7", []int64{37}},
+		{"subtask deny", Finding{Pattern: pattern.SubtaskGate, Event: ev(steer.EventPreToolUse), Gate: &GateFact{GateID: "learned:go-test", State: Absent}}, Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("7")}, "", steer.LevelStop, steer.StopFormDeny, "task:7", nil},
+		{"todo nudge", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: &GateFact{GateID: "learned:go-test", State: Absent}}, at(PointSubtask), "", steer.LevelNudge, steer.StopFormNone, "todo", nil},
+		{"teammate", Finding{Pattern: pattern.SubtaskGate, Event: "TaskCompleted", Gate: &GateFact{GateID: "learned:go-test", State: Absent}}, Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("t-2")}, "", steer.LevelFlag, steer.StopFormNone, "task:t-2", nil},
+		{"commit", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: &GateFact{GateID: "learned:go-test", State: Stale, LastRunSeq: seqp(37)}}, at(PointCommit), "commit", steer.LevelNudge, steer.StopFormNone, "learned:go-test", []int64{37}},
+		{"edit", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "no-shell-true", Kind: spec.ForbidCode, Trust: spec.Trusted, Seq: 44, Added: 1, Path: pathp("tools/x.py")}}, perCall, "edit", steer.LevelNudge, steer.StopFormNone, "no-shell-true|tools/x.py", []int64{44}},
+		{"pragma", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "no-nosec", Kind: spec.ForbidCode, Trust: spec.Managed, Seq: 44, Added: 1, Pragma: true, Path: pathp("a.py")}}, perCall, "pragma", steer.LevelNudge, steer.StopFormNone, "no-nosec|a.py", []int64{44}},
+		{"command", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "no-verify", Kind: spec.ForbidCommand, Trust: spec.Trusted, Seq: 50}}, perCall, "command", steer.LevelNudge, steer.StopFormNone, "no-verify", []int64{50}},
+		{"untrusted rule", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "no-verify", Kind: spec.ForbidCommand, Trust: spec.Untrusted, Seq: 50}}, perCall, "command", steer.LevelFlag, steer.StopFormNone, "no-verify", []int64{50}},
+		{"ordering note", Finding{Pattern: pattern.OrderingRule, Event: post, Rule: &RuleFact{RuleID: "export-after-verify", Kind: spec.Order, Trust: spec.Managed, Seq: 50}}, perCall, "", steer.LevelNudge, steer.StopFormNone, "export-after-verify", []int64{50}},
+		{"ordering ask", Finding{Pattern: pattern.OrderingRule, Event: ev(steer.EventPreToolUse), Rule: &RuleFact{RuleID: "export-after-verify", Kind: spec.Order, Trust: spec.Trusted, Seq: 50}}, perCall, "", steer.LevelStop, steer.StopFormAsk, "export-after-verify", []int64{50}},
+		{"integrity", Finding{Pattern: pattern.Integrity, Event: post, Integrity: &IntegrityFact{Kind: SkipAdded, Count: 1, Seq: 40, Marker: "go.t_skip"}}, perCall, "skip-added", steer.LevelFlag, steer.StopFormNone, "40", []int64{40}},
+		{"frozen path", Finding{Pattern: pattern.Integrity, Event: post, Rule: &RuleFact{RuleID: "keep-ci", Kind: spec.ProtectPath, Trust: spec.Trusted, Seq: 41, Path: pathp(".github/workflows/ci.yaml")}}, perCall, "frozen-path", steer.LevelFlag, steer.StopFormNone, "keep-ci|.github/workflows/ci.yaml", []int64{41}},
+		{"subagent", Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: &ClaimFact{Class: ClaimDone, Strict: true, Verdict: Verdict(Absent)}}, Point{Kind: PointSubagentStop, Seq: 57, AgentID: strp("a1")}, "", steer.LevelFlag, steer.StopFormNone, "a1|done", []int64{57}},
 	}
-	for _, c := range cases {
-		got, err := ToSteer(c.f, 212, "a1")
+}
+
+func pathp(s string) *PathSlot { p := PathSlot(s); return &p }
+
+// TestVER54e_ToSteerMapsEveryVerifyPattern: every pattern VERIFY raises maps
+// to a candidate with the pattern's priority, the level and stop form its
+// card gives at the finding's event, a frozen kind, the card's dedupe key,
+// the point seq as AfterSeq, and the fact seqs ascending as Evidence; no
+// message is rendered by VERIFY, and every candidate passes steer's own
+// Check.
+func TestVER54e_ToSteerMapsEveryVerifyPattern(t *testing.T) {
+	for _, c := range mappingCases() {
+		got, err := ToSteer(c.f, c.pt, "")
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
 		}
 		wantPriority, _ := pattern.Priority(c.f.Pattern)
-		if got.Pattern != c.f.Pattern || got.Key != c.f.DedupeKey || got.Priority != wantPriority || got.AgentID != "a1" {
+		if got.Pattern != c.f.Pattern || got.Priority != wantPriority || got.AgentID != "" {
 			t.Errorf("%s: identity lost: %+v", c.name, got)
 		}
-		if got.MaxLevel != c.level || got.StopForm != c.form || got.AfterSeq != c.after || got.Kind != c.kind {
-			t.Errorf("%s: level %v form %q after %d kind %q; want %v %q %d %q", c.name, got.MaxLevel, got.StopForm, got.AfterSeq, got.Kind, c.level, c.form, c.after, c.kind)
+		if got.Kind != c.kind || got.MaxLevel != c.level || got.StopForm != c.form || got.Key != c.key {
+			t.Errorf("%s: kind %q level %v form %q key %q; want %q %v %q %q", c.name, got.Kind, got.MaxLevel, got.StopForm, got.Key, c.kind, c.level, c.form, c.key)
 		}
-		if len(got.Evidence) == 0 {
-			t.Errorf("%s: no evidence seq", c.name)
+		if got.AfterSeq != c.pt.Seq || !slices.Equal(got.Evidence, c.evidence) {
+			t.Errorf("%s: after %d evidence %v; want %d %v", c.name, got.AfterSeq, got.Evidence, c.pt.Seq, c.evidence)
 		}
 		if !reflect.ValueOf(got.Message).IsZero() {
 			t.Errorf("%s: a message was rendered by VERIFY", c.name)
 		}
+		if err := got.Check(); err != nil {
+			t.Errorf("%s: the candidate fails steer's check: %v", c.name, err)
+		}
 	}
-	userOnly := cases[0].f
-	userOnly.UserOnly = true
-	if got, err := ToSteer(userOnly, 212, ""); err != nil || got.MaxLevel != steer.LevelFlag || got.StopForm != steer.StopFormNone {
-		t.Errorf("a user-only finding must cap at flag: %+v, %v", got, err)
+}
+
+// TestVER54f_ToSteerEmitsOnlyFrozenKinds: every value VERIFY's vocabularies
+// can put on a fact crosses as a frozen kind (tech 2.2.6's integrity order;
+// forbid_code and forbid_command as edit and command; masked_inconclusive as
+// masked), and nothing outside pattern.Kinds reaches STEER.
+func TestVER54f_ToSteerEmitsOnlyFrozenKinds(t *testing.T) {
+	want := []steer.Kind{"test-deleted", "skip-added", "assert-drop", "suppression-added", "generated-edited", "tests-only-green", "gate-weakened", "gate-config-edited"}
+	for i, k := range IntegrityKinds {
+		f := Finding{Pattern: pattern.Integrity, Event: string(steer.EventPostToolUse), Integrity: &IntegrityFact{Kind: k, Count: 1, Seq: 40}}
+		got, err := ToSteer(f, at(PointStop), "")
+		if err != nil || got.Kind != want[i] {
+			t.Errorf("integrity %s -> %q, %v; want %q", k, got.Kind, err, want[i])
+		}
+	}
+	for _, c := range mappingCases() {
+		got, err := ToSteer(c.f, c.pt, "")
+		if err == nil && !pattern.KindValid(got.Pattern, string(got.Kind)) {
+			t.Errorf("%s: %s/%q is not a frozen kind", c.name, got.Pattern, got.Kind)
+		}
+	}
+}
+
+// TestVER54g_ToSteerRefusesWhatCannotBeValid: a finding outside the cards
+// is an error, never a candidate: a pattern VERIFY does not raise, a fact
+// set that does not fit the pattern or more than one, a claim with no
+// contradiction (green, unknown, no_gate_known), a rule of another
+// pattern's kind, an event the card does not raise it at, a query point, an
+// evidence seq after the point, and an id outside its charset.
+func TestVER54g_ToSteerRefusesWhatCannotBeValid(t *testing.T) {
+	stop, post := string(steer.EventStop), string(steer.EventPostToolUse)
+	gate := &GateFact{GateID: "learned:go-test", State: Red, LastRunSeq: seqp(52)}
+	claim := func(v Verdict) *ClaimFact { return &ClaimFact{Class: ClaimTestsPass, Strict: true, Verdict: v} }
+	rule := func(k spec.RuleKind) *RuleFact { return &RuleFact{RuleID: "r1", Kind: k, Trust: spec.Trusted, Seq: 50} }
+	for _, c := range []struct {
+		name string
+		f    Finding
+		pt   Point
+	}{
+		{"unknown pattern", Finding{Pattern: "purple", Event: stop, Claim: claim(Verdict(Red))}, at(PointStop)},
+		{"no priority", Finding{Pattern: pattern.ContinuityBriefing, Event: stop, Claim: claim(Verdict(Red))}, at(PointStop)},
+		{"not raised by verify", Finding{Pattern: pattern.CredSpray, Event: post, Claim: claim(Verdict(Red))}, at(PointStop)},
+		{"no fact", Finding{Pattern: pattern.ClaimVsRecord, Event: stop}, at(PointStop)},
+		{"claim pattern with a gate only", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Gate: gate}, at(PointStop)},
+		{"two facts", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate, Rule: rule(spec.ForbidCode)}, at(PointStop)},
+		{"claim and rule", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Verdict(Red)), Rule: rule(spec.ForbidCode)}, at(PointStop)},
+		{"green claim", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Verdict(Green))}, at(PointStop)},
+		{"unknown claim", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Verdict(Unknown))}, at(PointStop)},
+		{"no gate known", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(NoGateKnown)}, at(PointStop)},
+		{"green subagent", Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: claim(Verdict(Green))}, Point{Kind: PointSubagentStop, Seq: 57, AgentID: strp("a1")}},
+		{"subagent without its id", Finding{Pattern: pattern.SubagentClaim, Event: "SubagentStop", Claim: claim(Verdict(Red))}, at(PointSubagentStop)},
+		{"require_evidence as a platform rule", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.RequireEvidence)}, at(PointStop)},
+		{"order as a platform rule", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.Order)}, at(PointStop)},
+		{"forbid_code as an ordering rule", Finding{Pattern: pattern.OrderingRule, Event: post, Rule: rule(spec.ForbidCode)}, at(PointStop)},
+		{"forbid_code as integrity", Finding{Pattern: pattern.Integrity, Event: post, Rule: rule(spec.ForbidCode)}, at(PointStop)},
+		{"pragma on a command rule", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "r1", Kind: spec.ForbidCommand, Trust: spec.Trusted, Seq: 50, Pragma: true}}, at(PointStop)},
+		{"claim at PostToolUse", Finding{Pattern: pattern.ClaimVsRecord, Event: post, Claim: claim(Verdict(Red))}, at(PointStop)},
+		{"claim at a commit point", Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Verdict(Red))}, at(PointCommit)},
+		{"platform rule at PreToolUse", Finding{Pattern: pattern.PlatformRule, Event: string(steer.EventPreToolUse), Rule: rule(spec.ForbidCode)}, at(PointStop)},
+		{"commit kind at PreToolUse", Finding{Pattern: pattern.SubtaskGate, Event: string(steer.EventPreToolUse), Gate: gate}, at(PointCommit)},
+		{"subtask-gate at a stop point", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: gate}, at(PointStop)},
+		{"no event", Finding{Pattern: pattern.RegressionLocation, Gate: gate}, at(PointStop)},
+		{"query point", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate}, at(PointQuery)},
+		{"no point seq", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate}, Point{Kind: PointStop}},
+		{"evidence after the point", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: &GateFact{GateID: "g", State: Red, LastRunSeq: seqp(58)}}, at(PointStop)},
+		{"evidence seq zero", Finding{Pattern: pattern.Integrity, Event: post, Integrity: &IntegrityFact{Kind: SkipAdded, Count: 1}}, at(PointStop)},
+		{"gate id outside its charset", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: &GateFact{GateID: "Go Test", State: Red}}, at(PointStop)},
+		{"path outside its charset", Finding{Pattern: pattern.PlatformRule, Event: post, Rule: &RuleFact{RuleID: "r1", Kind: spec.ForbidCode, Trust: spec.Trusted, Seq: 50, Path: pathp("../x")}}, at(PointStop)},
+		{"task ref outside its charset", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: gate}, Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("a b")}},
+	} {
+		var me *MappingError
+		if got, err := ToSteer(c.f, c.pt, ""); !errors.As(err, &me) {
+			t.Errorf("%s: (%+v, %v), want a MappingError", c.name, got, err)
+		}
 	}
 	var me *MappingError
-	if _, err := ToSteer(Finding{Pattern: pattern.ClaimVsRecord, DedupeKey: "x"}, 1, ""); !errors.As(err, &me) || me.Reason != "no fact" {
-		t.Errorf("a finding without a fact: %v", err)
+	if _, err := ToSteer(Finding{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(Verdict(Red))}, at(PointStop), "not an id"); !errors.As(err, &me) {
+		t.Errorf("an agent id outside its charset: %v", err)
 	}
-	if _, err := ToSteer(Finding{Pattern: pattern.ID("purple"), Claim: &ClaimFact{}}, 1, ""); !errors.As(err, &me) {
-		t.Errorf("an unknown pattern: %v", err)
+}
+
+// TestVER54h_AfterSeqIsThePointNotTheFact: AfterSeq is the last record seq
+// the decision saw, so a green that arrives later with a seq between the
+// last run and the point is below after_seq and refutes the firing as
+// recorded late (archive 40.4.1); the fact's own seqs go to Evidence only.
+func TestVER54h_AfterSeqIsThePointNotTheFact(t *testing.T) {
+	f := Finding{Pattern: pattern.SubtaskGate, Event: string(steer.EventPostToolUse), Gate: &GateFact{GateID: "learned:go-test", State: Stale, LastRunSeq: seqp(37), LastGreenSeq: seqp(37)}}
+	got, err := ToSteer(f, Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("7")}, "")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := ToSteer(Finding{Pattern: pattern.ContinuityBriefing, Claim: &ClaimFact{}}, 1, ""); !errors.As(err, &me) || me.Reason != "no candidate priority" {
-		t.Errorf("a pattern with no priority: %v", err)
+	if got.AfterSeq != 57 || !slices.Equal(got.Evidence, []int64{37}) {
+		t.Errorf("after %d evidence %v, want 57 [37]", got.AfterSeq, got.Evidence)
 	}
-	if _, err := ToSteer(Finding{Pattern: pattern.CredSpray, Claim: &ClaimFact{}}, 1, ""); !errors.As(err, &me) || me.Reason != "no level for a VERIFY pattern" {
-		t.Errorf("a pattern VERIFY does not raise: %v", err)
+	if late := int64(45); !(late < got.AfterSeq) {
+		t.Errorf("a green at %d is not below after_seq %d, so it can never refute as recorded late", late, got.AfterSeq)
+	}
+}
+
+// TestVER54i_KeyIsTheCardsUnit: two tasks closed against one gate in one
+// prompt are two keys, so the second is neither deduped nor sharing the
+// first one's two denials (archive 40.4.1: "At most 2 denials per task per
+// prompt"); one rule on two files is two keys ("Once per rule per file per
+// prompt", 40.4.6); VERIFY's DedupeKey is not the key.
+func TestVER54i_KeyIsTheCardsUnit(t *testing.T) {
+	gate := &GateFact{GateID: "learned:go-test", State: Absent}
+	f := Finding{Pattern: pattern.SubtaskGate, Event: string(steer.EventPreToolUse), DedupeKey: "subtask-gate|learned:go-test|p1", Gate: gate}
+	a, errA := ToSteer(f, Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("1")}, "")
+	b, errB := ToSteer(f, Point{Kind: PointSubtask, Seq: 60, TaskRef: strp("2")}, "")
+	if errA != nil || errB != nil || a.Key == b.Key || a.Key == f.DedupeKey {
+		t.Errorf("two tasks against one gate: keys %q and %q (%v, %v)", a.Key, b.Key, errA, errB)
+	}
+	rule := func(p string) Finding {
+		return Finding{Pattern: pattern.PlatformRule, Event: string(steer.EventPostToolUse), DedupeKey: "platform-rule|r1|p1", Rule: &RuleFact{RuleID: "r1", Kind: spec.ForbidCode, Trust: spec.Trusted, Seq: 50, Path: pathp(p)}}
+	}
+	x, errX := ToSteer(rule("a.py"), at(PointStop), "")
+	y, errY := ToSteer(rule("b.py"), at(PointStop), "")
+	if errX != nil || errY != nil || x.Key == y.Key {
+		t.Errorf("one rule on two files: keys %q and %q (%v, %v)", x.Key, y.Key, errX, errY)
 	}
 }

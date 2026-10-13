@@ -1,6 +1,9 @@
 package verify
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,7 +18,7 @@ import (
 var closedFactTypeNames = []string{
 	"verify.SlotID", "verify.PathSlot", "verify.Program", "verify.Digest",
 	"verify.State", "verify.Reason", "verify.Verdict", "verify.ClaimClass",
-	"verify.ClaimSource", "verify.IntegrityKind", "spec.RuleKind", "spec.Trust",
+	"verify.ClaimSource", "verify.IntegrityKind", "verify.MarkerID", "spec.RuleKind", "spec.Trust",
 }
 
 // TestVER54b_FactFieldsCarryNoFreeText walks the four fact structs: every
@@ -68,13 +71,13 @@ func TestVER54c_FindingCarriesTheSpecsFields(t *testing.T) {
 	if got, want := fields(GateFact{}), "GateID,Program,State,Reason,LastGreenSeq,LastRunSeq,ExitCode,WritesSince,Paths,PathsOmitted,OtherAgents,PartialRuns"; got != want {
 		t.Errorf("GateFact fields %s, want %s", got, want)
 	}
-	if got, want := fields(ClaimFact{}), "Class,Source,Strict,Verdict,Gates,GatesOmitted,QuoteHMAC"; got != want {
+	if got, want := fields(ClaimFact{}), "Class,Source,Strict,Verdict,Gates,GatesOmitted,QuoteHMAC,UnrecoveredFailures"; got != want {
 		t.Errorf("ClaimFact fields %s, want %s", got, want)
 	}
-	if got, want := fields(RuleFact{}), "RuleID,Kind,Trust,Seq,Program,Path,Gate"; got != want {
+	if got, want := fields(RuleFact{}), "RuleID,Kind,Trust,Seq,Program,Path,Gate,Added,Pragma"; got != want {
 		t.Errorf("RuleFact fields %s, want %s", got, want)
 	}
-	if got, want := fields(IntegrityFact{}), "Kind,Count,Paths,PathsOmitted,Seq"; got != want {
+	if got, want := fields(IntegrityFact{}), "Kind,Count,Paths,PathsOmitted,Seq,Marker"; got != want {
 		t.Errorf("IntegrityFact fields %s, want %s", got, want)
 	}
 	f := Finding{Pattern: pattern.ClaimVsRecord, Class: FalseClaim, Claim: &ClaimFact{Class: ClaimTestsPass, Verdict: Verdict(Red)}}
@@ -140,4 +143,49 @@ func TestVER54d_SlotsHoldTheSpecsCharsets(t *testing.T) {
 			t.Errorf("Digest(%q).Valid() = %v, want %v", c.d, got, c.want)
 		}
 	}
+}
+
+// TestVER54j_ProposedFactFieldsCarryTheMark: neither spec defines ClaimFact,
+// RuleFact or IntegrityFact, so the gap row asks for "a doc comment per
+// field citing its section" until L signs them. Every field of the three
+// carries "P-07 proposal" and a section number in its own doc comment, so a
+// later author can tell the proposal from spec text (verify F12).
+func TestVER54j_ProposedFactFieldsCarryTheMark(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "finding.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"ClaimFact": true, "RuleFact": true, "IntegrityFact": true}
+	seen := 0
+	ast.Inspect(file, func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if !ok || !want[ts.Name.Name] {
+			return true
+		}
+		seen++
+		for _, field := range ts.Type.(*ast.StructType).Fields.List {
+			doc := ""
+			if field.Doc != nil {
+				doc = strings.Join(strings.Fields(field.Doc.Text()), " ")
+			}
+			if !strings.Contains(doc, "P-07 proposal") || !sectionRef(doc) {
+				t.Errorf("%s.%s has no \"P-07 proposal\" mark with a section", ts.Name.Name, field.Names[0].Name)
+			}
+		}
+		return false
+	})
+	if seen != len(want) {
+		t.Errorf("found %d of the %d proposed fact structs", seen, len(want))
+	}
+}
+
+// sectionRef reports a section number such as 2.2.5 or 40.4.6 in s.
+func sectionRef(s string) bool {
+	for i := 0; i+2 < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' && s[i+1] == '.' && s[i+2] >= '0' && s[i+2] <= '9' {
+			return true
+		}
+	}
+	return false
 }
