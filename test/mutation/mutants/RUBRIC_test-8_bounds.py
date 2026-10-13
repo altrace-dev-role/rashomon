@@ -1,0 +1,22 @@
+# rubric test-8 (fix list 17): every input bound is tested at N and N+1.
+# Moving a bound's value, or reading past it or short of it where it is
+# applied, is the regression. (The payload cap is RES-4's; maxNest, the
+# token bound and the leading-cd bound have rows of their own.)
+m("RUBRIC test-8 the store reads a line one byte past maxLine", "internal/store/read.go",
+  "\tsc.Buffer(make([]byte, 0, 64*1024), maxLine)\n", "\tsc.Buffer(make([]byte, 0, 64*1024), maxLine+1)\n", "TestRubricTEST8_")
+m("RUBRIC test-8 the store's maxLine moves", "internal/store/read.go",
+  "const maxLine = 16 << 20\n", "const maxLine = 16<<20 - 1\n", "TestRubricTEST8_")
+m("RUBRIC test-8 recap keeps one session fewer", "internal/recap/state.go",
+  "\t\t\tif len(m) <= maxTrackedSessions {\n", "\t\t\tif len(m) < maxTrackedSessions {\n", "TestRubricTEST8_")
+m("RUBRIC test-8 a count of exactly maxTokens is implausible", "internal/spend/scan.go",
+  "\t\t\tif v < 0 || v > maxTokens {\n", "\t\t\tif v < 0 || v >= maxTokens {\n", "TestRubricTEST8_")
+m("RUBRIC test-8 spend reads one byte short of maxLine", "internal/spend/scan.go",
+  "\ts.Buffer(make([]byte, 0, 256*1024), maxLine)\n", "\ts.Buffer(make([]byte, 0, 256*1024), maxLine-1)\n", "TestRubricTEST8_")
+m("RUBRIC test-8 a final message is cut one rune short", "internal/report/account.go",
+  "\t\trunes = runes[:messageCap]\n", "\t\trunes = runes[:messageCap-1]\n", "TestRubricTEST8_")
+m("RUBRIC test-8 the transcript's maxLine moves", "internal/report/transcript.go",
+  "const maxLine = 64 << 20\n", "const maxLine = 64<<20 + 1\n", "TestRubricTEST8_")
+m("RUBRIC test-8 the transcript reader takes a line past maxLine", "internal/report/transcript.go",
+  "\tdefer f.Close() //nolint:errcheck // read-only\n\n\tsc := bufio.NewScanner(f)\n\tsc.Buffer(make([]byte, 0, 256*1024), maxLine)\n\tfor sc.Scan() {\n\t\tvar line struct {\n\t\t\tMessage struct {\n\t\t\t\tContent json.RawMessage `json:\"content\"`\n",
+  "\tdefer f.Close() //nolint:errcheck // read-only\n\n\tsc := bufio.NewScanner(f)\n\tsc.Buffer(make([]byte, 0, 256*1024), maxLine+1)\n\tfor sc.Scan() {\n\t\tvar line struct {\n\t\t\tMessage struct {\n\t\t\t\tContent json.RawMessage `json:\"content\"`\n",
+  "TestRubricTEST8_")
