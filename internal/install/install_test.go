@@ -65,10 +65,10 @@ func TestRemoveIfAnyInstallID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RemoveIf: %v", err)
 	}
-	if want := 2 * len(Events); n != want {
+	if want := 2 * len(Events()); n != want {
 		t.Errorf("removed %d entries, want %d", n, want)
 	}
-	for _, event := range Events {
+	for _, event := range Events() {
 		remaining := entriesOf(t, doc, event)
 		if len(remaining) != 1 {
 			t.Errorf("under %s, %d entries remain, want 1 (the foreign one)", event, len(remaining))
@@ -93,10 +93,10 @@ func TestRemoveNamedInstallLeavesTheOther(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	if n != len(Events) {
-		t.Errorf("removed %d entries, want %d", n, len(Events))
+	if n != len(Events()) {
+		t.Errorf("removed %d entries, want %d", n, len(Events()))
 	}
-	for _, event := range Events {
+	for _, event := range Events() {
 		remaining := entriesOf(t, doc, event)
 		if len(remaining) != 2 {
 			t.Errorf("under %s, %d entries remain, want 2 (the foreign one and the other install's)", event, len(remaining))
@@ -144,7 +144,7 @@ func seedDocument(t *testing.T) *settings.Document {
 	t.Helper()
 	var b strings.Builder
 	b.WriteString(`{"hooks":{`)
-	for i, event := range Events {
+	for i, event := range Events() {
 		if i > 0 {
 			b.WriteString(",")
 		}

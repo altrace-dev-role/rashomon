@@ -56,7 +56,7 @@ func TestDEL7_EveryEntryHasABudgetRow(t *testing.T) {
 			covered[ev] = e.ID
 		}
 	}
-	for _, ev := range install.Events {
+	for _, ev := range install.Events() {
 		if covered[ev] == "" {
 			t.Errorf("install event %s has no budget row", ev)
 		}
@@ -73,7 +73,7 @@ func TestDEL7_EveryEntryHasABudgetRow(t *testing.T) {
 		}
 	}
 	known := map[string]bool{}
-	for _, ev := range install.Events {
+	for _, ev := range install.Events() {
 		known[ev] = true
 	}
 	for ev, id := range covered {

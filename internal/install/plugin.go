@@ -243,7 +243,7 @@ type Plugin struct {
 	// Enabled is the resolved enabledPlugins value for Key, falling back to
 	// the manifest's defaultEnabled when settings names no override.
 	Enabled bool
-	// Events lists which of install.Events this installation structurally
+	// Events lists which of install.Events() this installation structurally
 	// declares with a command that resolves to a file under its own bin/, in
 	// a group intact() accepts -- the same test PluginPresent applies, so a
 	// narrowed event is absent here as it is in the coverage record.
@@ -319,7 +319,7 @@ func FindPlugin(doc *settings.Document) (*Plugin, error) {
 			} else if def, err := pluginDefaultEnabled(rec.InstallPath); err == nil {
 				p.Enabled = def
 			}
-			for _, event := range Events {
+			for _, event := range Events() {
 				if ok, err := pluginDeclaresEvent(rec.InstallPath, event); err == nil && ok {
 					p.Events = append(p.Events, event)
 				}

@@ -60,16 +60,22 @@ const (
 	EventUserPromptSubmit = "UserPromptSubmit"
 )
 
-// Events in the order they are installed.
-var Events = []string{
-	EventPreToolUse,
-	EventPostToolUse,
-	EventPostToolUseFailure,
-	EventSessionStart,
-	EventSessionEnd,
-	EventStop,
-	EventStopFailure,
-	EventUserPromptSubmit,
+// Events returns the events we install into, in the order they are
+// installed. It decides what watch writes and what detach removes, so it is a
+// function and not a package variable: each call builds a fresh slice, and a
+// caller that edits the one it was handed cannot change what watch, detach,
+// status or the plugin check see next.
+func Events() []string {
+	return []string{
+		EventPreToolUse,
+		EventPostToolUse,
+		EventPostToolUseFailure,
+		EventSessionStart,
+		EventSessionEnd,
+		EventStop,
+		EventStopFailure,
+		EventUserPromptSubmit,
+	}
 }
 
 // hasMatcher reports whether an event's entry carries a matcher. The tool
@@ -245,7 +251,7 @@ func Owner(raw json.RawMessage, event string) string {
 // not overwritten.
 func Apply(doc *settings.Document, spec Spec) (bool, error) {
 	changed := false
-	for _, event := range Events {
+	for _, event := range Events() {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
 			return false, err
@@ -335,7 +341,7 @@ func Remove(doc *settings.Document, spec Spec, force bool) (int, []Modified, err
 func RemoveIf(doc *settings.Document, match func(installID string) bool, force bool) (int, []Modified, error) {
 	total := 0
 	var left []Modified
-	for _, event := range Events {
+	for _, event := range Events() {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
 			return 0, nil, err
@@ -417,7 +423,7 @@ func Present(doc *settings.Document, installID, event string) (bool, error) {
 func ForeignOwners(doc *settings.Document, installID string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
-	for _, event := range Events {
+	for _, event := range Events() {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
 			return nil, err

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -47,7 +48,7 @@ func readShippedHooks(t *testing.T) []byte {
 // fails here, not in a user's report.
 func TestRubricHLD1_ShippedHooksDeclareEveryEvent(t *testing.T) {
 	root := pluginRoot(t, readShippedHooks(t))
-	for _, event := range Events {
+	for _, event := range Events() {
 		ok, err := pluginDeclaresEvent(root, event)
 		if err != nil {
 			t.Fatalf("%s: %v", event, err)
@@ -89,7 +90,7 @@ func TestRubricHLD1_NarrowedPluginEntryIsNotDeclared(t *testing.T) {
 			}
 			// Every other event is untouched and must still read declared:
 			// the check is per group, not a verdict on the whole file.
-			for _, other := range Events {
+			for _, other := range Events() {
 				if other == c.event {
 					continue
 				}
@@ -125,4 +126,19 @@ func editShipped(t *testing.T, event, field string, value any) []byte {
 		t.Fatal(err)
 	}
 	return out
+}
+
+// TestRubricNAMING11_EventsCannotBeChangedByACaller: the event list decides
+// what watch writes and what detach removes, so a caller that edits the slice
+// it was handed must not change what the next caller gets.
+func TestRubricNAMING11_EventsCannotBeChangedByACaller(t *testing.T) {
+	got := Events()
+	want := append([]string(nil), got...)
+	got[0] = "Narrowed"
+	if extended := append(got[:1], "Extra"); len(extended) != 2 {
+		t.Fatalf("append produced %d events, want 2", len(extended))
+	}
+	if again := Events(); strings.Join(again, ",") != strings.Join(want, ",") {
+		t.Errorf("Events() after a caller edited its copy = %v, want %v", again, want)
+	}
 }
