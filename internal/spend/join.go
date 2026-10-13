@@ -73,18 +73,20 @@ type SilentFailureTurns struct {
 	// cost is in NotCoveredCost, as displaySession prints it.
 	NotCoveredSessions []string `json:"not_covered_sessions"`
 	Turns              int      `json:"turns"`
-	// Unjudged counts the recorded turns with a failed call that took no
-	// verdict: no final message could be tied to their prompt (records that
-	// name no discovered transcript, a transcript with no promptId on the
-	// turn's lines, a prompt with no promptId after it that ends attribution,
-	// a file not readable to the end). The rule cannot fire on no words, so
-	// such a turn is neither in Turns nor a checked clean one, and folding it
-	// into "none found" would claim a check that never happened.
+	// Unjudged counts the recorded turns with a failed call other than a
+	// lookup (report.IsLookup) that took no verdict: no final message could
+	// be tied to their prompt (records that name no discovered transcript, a
+	// transcript with no promptId on the turn's lines, a prompt with no
+	// promptId after it that ends attribution, a file not readable to the
+	// end). The rule cannot fire on no words, so such a turn is neither in
+	// Turns nor a checked clean one, and folding it into "none found" would
+	// claim a check that never happened.
 	Unjudged int `json:"unjudged_turns"`
-	// UndeclaredFailedCalls counts the failed calls recorded in the window
-	// whose declaration was lost or carried no prompt_id (turnsOf). No turn
-	// is known to hold them, so none was checked, and like Unjudged they keep
-	// "none found" from claiming every failure was checked.
+	// UndeclaredFailedCalls counts the failed calls other than a lookup
+	// recorded in the window whose declaration was lost or carried no
+	// prompt_id (turnsOf). No turn is known to hold them, so none was
+	// checked, and like Unjudged they keep "none found" from claiming every
+	// failure was checked.
 	UndeclaredFailedCalls int    `json:"undeclared_failed_calls"`
 	Cost                  Cost   `json:"cost"`
 	Bound                 string `json:"bound"`
@@ -177,7 +179,7 @@ func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 	for _, x := range run.Executions {
 		t, ok := owner[x.ToolUseID]
 		if !ok {
-			if x.Outcome == store.ExecFailed {
+			if x.Outcome == store.ExecFailed && !report.IsLookup(x.ToolName) {
 				lost = append(lost, x.RecordedAtMS)
 			}
 			continue
@@ -240,8 +242,8 @@ func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 // transcripts are read only for turns with at least one, and each once for
 // all of them (report.FinalAssistantTexts). Only the verdict is kept. A turn
 // with a failed call whose final message cannot be found takes no verdict,
-// and is counted in Unjudged rather than read as clean. A failed call whose
-// declaration was lost or carried no prompt_id is in no turn (turnsOf) and
+// and is counted in Unjudged rather than read as clean. A failed call other
+// than a lookup whose declaration was lost or carried no prompt_id is in no turn (turnsOf) and
 // is never placed in one by time: it is counted, once, in
 // UndeclaredFailedCalls, and "none found" is then said only of the turns
 // that could be checked.
@@ -358,8 +360,10 @@ func (s *Summary) Join(st *store.Store) error {
 		}
 		// Only a turn with a recorded failure can fire, whatever its final
 		// message says; those alone need their transcripts read. A failed
-		// call whose declaration was lost or carried no prompt_id is in no
-		// turn: it is counted once, as not checked.
+		// lookup alone cannot (report.IsLookup), so it neither makes a turn
+		// worth reading nor counts as not checked. A failed call whose
+		// declaration was lost or carried no prompt_id is in no turn: it is
+		// counted once, as not checked.
 		recordedTurns, lost := turnsOf(run)
 		for _, ms := range lost {
 			if ms >= s.FromUnixMS {
@@ -370,7 +374,7 @@ func (s *Summary) Join(st *store.Store) error {
 			if t.lastMS < s.FromUnixMS {
 				continue
 			}
-			if report.BuildSilentFailures(t.run, report.AccountFromMessage("")).Failed == 0 {
+			if report.BuildSilentFailures(t.run, report.AccountFromMessage("")).Counted() == 0 {
 				continue
 			}
 			turns = append(turns, t)
