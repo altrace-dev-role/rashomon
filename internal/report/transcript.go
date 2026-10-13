@@ -13,9 +13,21 @@ import (
 	"time"
 )
 
-// maxLine bounds one transcript line. Transcript lines carry whole messages
-// and can be large; the bound is against a corrupted file, not a real one.
-const maxLine = 64 << 20
+// Transcript scanner sizes.
+//
+// maxLine bounds one transcript line. Lines carry whole messages, images
+// included, and a real one can pass it: a user prompt carrying several hundred
+// pasted images measured 178 MiB (2026-10-13, one line among 112,587 in 218
+// transcripts). A longer line ends the file's read, and the file is counted
+// as unreadable rather than silently truncated.
+//
+// initialScanBuffer is where a scan starts; it grows by doubling for a longer
+// line. 256 KiB holds all but 0.4% of the lines in that sample without
+// growing (p99 41 KiB, p99.9 1.0 MiB).
+const (
+	maxLine           = 64 << 20
+	initialScanBuffer = 256 << 10
+)
 
 // deniedPrefix is the text Claude Code writes when the USER refuses a tool
 // call, and the only thing that separates a denial from an ordinary failure.
@@ -223,7 +235,7 @@ func collectIDs(path string, into, results, denied, unhooked map[string]bool) (i
 	defer f.Close() //nolint:errcheck // read-only
 
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
+	sc.Buffer(make([]byte, 0, initialScanBuffer), maxLine)
 	for sc.Scan() {
 		var line struct {
 			Message struct {
@@ -289,7 +301,7 @@ func FinalAssistantText(path string) (string, bool) {
 
 	var last string
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
+	sc.Buffer(make([]byte, 0, initialScanBuffer), maxLine)
 	for sc.Scan() {
 		var line struct {
 			Message struct {
@@ -443,7 +455,7 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 		out[current] = tf
 	}
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
+	sc.Buffer(make([]byte, 0, initialScanBuffer), maxLine)
 	for sc.Scan() {
 		raw := sc.Bytes()
 		var head struct {

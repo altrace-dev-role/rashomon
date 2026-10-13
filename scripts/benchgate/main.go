@@ -89,6 +89,13 @@ type Result struct {
 // not at package scope (RES-2's rule, kept here too).
 const benchLinePattern = `^(Benchmark\S+?)(?:-\d+)?\s+\d+\s+[\d.]+ ns/op(?:\s+[\d.]+ [A-Za-z0-9/_-]+)*?\s+(\d+) B/op\s+(\d+) allocs/op`
 
+// maxOutputLine bounds one line of `go test -bench` output. A result line is
+// under 200 bytes; the bound is for what a test logs between them, which must
+// not end the parse. A line over 1 MiB does, with bufio.ErrTooLong, and the
+// gate fails closed. The scan starts at bufio's default 64 KiB and grows only
+// for such a line.
+const maxOutputLine = 1 << 20
+
 // Parse reads benchmark output and keeps the best (lowest) B/op and
 // allocs/op per benchmark across repeated runs. A line that starts with
 // "Benchmark" and carries ns/op but no B/op is an error: a benchmark without
@@ -97,7 +104,7 @@ func Parse(r io.Reader) (map[string]Result, error) {
 	benchLine := regexp.MustCompile(benchLinePattern)
 	out := map[string]Result{}
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	sc.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), maxOutputLine)
 	for sc.Scan() {
 		ln := sc.Text()
 		if !strings.HasPrefix(ln, "Benchmark") || !strings.Contains(ln, "ns/op") {
