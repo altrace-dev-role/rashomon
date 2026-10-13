@@ -78,9 +78,11 @@ type Cost struct {
 // Known reports whether every response behind this cost was priced.
 func (c Cost) Known() bool { return c.Unpriced == 0 }
 
-// Wholly reports whether there is a priced part to show at all. A cost with
-// no responses behind it is a known zero, which is a fact and shown as one.
-func (c Cost) Wholly() bool { return c.Priced > 0 || c.Unpriced == 0 }
+// WhollyUnpriced reports whether responses stand behind this cost and none of
+// them was priced: there is no priced part to show at all. A partly priced
+// cost is not, and neither is a cost with no responses behind it, which is a
+// known zero -- a fact, and shown as one.
+func (c Cost) WhollyUnpriced() bool { return c.Priced == 0 && c.Unpriced > 0 }
 
 func (c *Cost) addPriced(nano int64) { c.Nano += nano; c.Priced++ }
 func (c *Cost) addUnpriced(tokens int64) {
@@ -111,7 +113,7 @@ func (c Cost) MarshalJSON() ([]byte, error) {
 // usdOrNull is the usd a cost marshals: its priced part, or null when it has
 // none and an unpriced part.
 func (c Cost) usdOrNull() *float64 {
-	if !c.Wholly() {
+	if c.WhollyUnpriced() {
 		return nil
 	}
 	v := c.USD()

@@ -108,7 +108,7 @@ func Text(w io.Writer, s *Summary) error {
 // headline is the total as the header states it. A wholly unpriced total is
 // "cost unknown", never "$0.00".
 func headline(c Cost) string {
-	if !c.Wholly() {
+	if c.WhollyUnpriced() {
 		return fmt.Sprintf("cost unknown (%s tokens on %s no rate is known for)", thousands(c.UnpricedTokens), countOf(c.Unpriced, "response"))
 	}
 	if c.Known() {
@@ -126,7 +126,7 @@ func money(c Cost) string {
 	if c.Priced == 0 && c.Unpriced == 0 {
 		return "none"
 	}
-	if !c.Wholly() {
+	if c.WhollyUnpriced() {
 		return "unknown"
 	}
 	if c.Known() {
@@ -311,7 +311,7 @@ func onModel(model string) string {
 // whose cost is unknown still says how many tokens it held.
 func tokensMoney(c Cost) string {
 	switch {
-	case !c.Wholly():
+	case c.WhollyUnpriced():
 		return fmt.Sprintf("%s tokens, cost unknown", thousands(c.UnpricedTokens))
 	case !c.Known():
 		return fmt.Sprintf("%s, plus %s tokens with the cost unknown", usd(c.Nano), thousands(c.UnpricedTokens))
@@ -382,7 +382,7 @@ func silentLine(s *Summary) string {
 		fmt.Fprintf(&b, "none found in the turns that could be checked (%s)\n", lookupsAside)
 	case j.Cost.Priced == 0 && j.Cost.Unpriced == 0:
 		fmt.Fprintf(&b, "%s, with no response in the window tied to %s\n", countOf(j.Turns, "turn"), itThem(j.Turns))
-	case !j.Cost.Wholly():
+	case j.Cost.WhollyUnpriced():
 		// Every response tied to the turns ran on a model the table does
 		// not price: "at least unknown" is no figure.
 		fmt.Fprintf(&b, "cost unknown (%s tokens on %s with no known rate) across %s\n",

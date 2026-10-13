@@ -44,9 +44,9 @@ m("SP an unsplit cache write is priced at the 1h rate", "internal/spend/scan.go"
 m("SP an unknown model is priced at $0", "internal/spend/spend.go",
   "\tc.addUnpriced(r.Tokens.Total())\n", "\tc.addPriced(0)\n", "TestUnknownModel_")
 m("SP an unpriced total marshals as usd 0 instead of null", "internal/spend/spend.go",
-  "\tif !c.Wholly() {\n\t\treturn nil\n", "\tif false {\n\t\treturn nil\n", "TestUnknownModel_IsUnknown")
+  "\tif c.WhollyUnpriced() {\n\t\treturn nil\n", "\tif false {\n\t\treturn nil\n", "TestUnknownModel_IsUnknown")
 m("SP an unpriced total is headlined as a dollar figure", "internal/spend/text.go",
-  "\tif !c.Wholly() {\n\t\treturn fmt.Sprintf(\"cost unknown (", "\tif false {\n\t\treturn fmt.Sprintf(\"cost unknown (",
+  "\tif c.WhollyUnpriced() {\n\t\treturn fmt.Sprintf(\"cost unknown (", "\tif false {\n\t\treturn fmt.Sprintf(\"cost unknown (",
   "TestUnknownModel_IsUnknown")
 m("SP a non-claude model id is printed verbatim", "internal/spend/spend.go",
   "\treturn \"other\", false", "\treturn model, false", "TestUnknownModel_ANonClaude")
@@ -350,7 +350,7 @@ m("SP a declaration with no prompt_id is dereferenced", "internal/spend/join.go"
   "\t\tif d.PromptID == nil || *d.PromptID == \"\" {\n\t\t\tcontinue\n\t\t}", "",
   "TestJoin_ADeclarationWithNoPromptID")
 m("SP a wholly unpriced silent-failure cost reads at least unknown", "internal/spend/text.go",
-  "\tcase !j.Cost.Wholly():\n", "\tcase false:\n", "TestJoin_AWhollyUnpricedTurn")
+  "\tcase j.Cost.WhollyUnpriced():\n", "\tcase false:\n", "TestJoin_AWhollyUnpricedTurn")
 m("SP an empty window reads unknown over 0 transcripts", "internal/spend/text.go",
   "\tcase j.Transcripts == 0:\n", "\tcase false:\n", "TestJoin_NoTranscriptInTheWindow")
 m("SP a fast-mode response is not counted", "internal/spend/scan.go",

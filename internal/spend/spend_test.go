@@ -1032,7 +1032,7 @@ func TestUnknownModel_IsUnknownNeverZero(t *testing.T) {
 	c.write("proj/sess-a.jsonl",
 		resp{id: "u1", model: "claude-mystery-9", at: now.Add(-time.Hour), in: 1234, out: 5678, stop: "end_turn"}.line("text"))
 	s := c.summary(30)
-	if s.Total.Known() || s.Total.Wholly() {
+	if s.Total.Known() || !s.Total.WhollyUnpriced() {
 		t.Errorf("total = %+v: an unpriced model must leave the total unknown", s.Total)
 	}
 	if len(s.ByModel) != 1 || s.ByModel[0].Priced || s.ByModel[0].Tokens.Total() != 1234+5678 {
