@@ -163,6 +163,14 @@ Plugin: open `/plugin` in Claude Code and turn it off. Command line:
 `rashomon detach`. Your records stay in `~/.local/state/rashomon` (by default)
 until you delete that folder.
 
+**How much disk does it use?**
+Runs are kept under a 512 MiB cap by default. At each session start and end,
+the oldest runs not written to in the last hour are removed until the store
+fits, each leaving a gap record. Set `RASHOMON_STORE_CAP_BYTES` to a plain number of bytes to change
+the cap, or to `0` to keep everything. Any other value, such as `2GB` or `-1`,
+is not taken: the default applies, and `rashomon status` and `rashomon watch`
+say so. `rashomon status` shows the store's size against the cap.
+
 **Is it finished?**
 No. This is an alpha: Windows is not supported yet, and rashomon observes no
 network traffic; the report lists the hosts commands named.
@@ -221,7 +229,7 @@ Not yet measured: Linux (Landlock).
 | --- | --- |
 | `rashomon watch` | Install the recorders, the liveness probe and the end-of-turn recap (eight entries). **The only command that installs anything.** |
 | `rashomon report [--session S] [--json] [--redact] [--chain] [--timeline]` | Render **every** recorded session, or one named with `--session`. `--chain` adds the causal view: which prompt produced which calls. `--timeline` lists every call, main agent and subagents, in the order they were recorded, keeps failed calls apart from calls that never ran, and says whether a success of the same command, or of the same program for single-purpose programs, was recorded after each failure, and reads "not checked" where a success may exist but cannot be placed or matched, or where the failure itself has no declaration or recorded position; for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is looked for, and a fix made with a different command, or a corrected Edit, is not detected |
-| `rashomon status` | Say what is installed here. Reads only; creates nothing |
+| `rashomon status` | Say what is installed here, and how big the store is against its cap. Reads only; creates nothing |
 | `rashomon spend [--days N] [--json]` | Estimate what the last N days of Claude Code usage would cost at API list prices, from Claude Code's own transcripts. Needs no `watch`; writes nothing. See [`rashomon spend`](#rashomon-spend) |
 | `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
 | `rashomon detach` | Remove the recorders, leaving every other entry's value as found |

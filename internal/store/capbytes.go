@@ -1,0 +1,104 @@
+package store
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+)
+
+// DefaultCapBytes bounds the store before eviction starts removing the oldest
+// runs. EnvCapBytes overrides it.
+const DefaultCapBytes = 512 << 20
+
+// EnvCapBytes names the variable that sets the store's size cap: a plain
+// decimal count of bytes, where 0 turns eviction off.
+const EnvCapBytes = "RASHOMON_STORE_CAP_BYTES"
+
+// CapSetting is the store's size cap as EnvCapBytes resolves it.
+type CapSetting struct {
+	// Bytes is the cap in force: the variable's value, 0 when that value
+	// turns eviction off, or DefaultCapBytes when it is unset or invalid.
+	Bytes int64
+	// Raw is the variable's value as it was read, "" when unset.
+	Raw string
+	// Invalid is set when Raw is not a byte count, and DefaultCapBytes
+	// applies in its place.
+	Invalid bool
+}
+
+// ResolveCap reads EnvCapBytes.
+func ResolveCap() CapSetting { return parseCap(os.Getenv(EnvCapBytes)) }
+
+// CapBytes is the cap Evict is given.
+//
+// Two values are not a cap. Zero turns eviction off: the store then keeps
+// every run, which is what a user who set it asked for. A value that is not
+// a plain decimal byte count -- "2GB", "1e9", "-1" -- is invalid, and the
+// default applies; it is read inside a hook, which cannot print, so status
+// and watch are where it is reported (CapSetting.Problem). A negative value
+// used to turn eviction off as zero does, and anything else unparseable fell
+// back to the default without a word (hld-7).
+func CapBytes() int64 { return ResolveCap().Bytes }
+
+// parseCap resolves one value of EnvCapBytes. ParseUint takes no sign, no
+// spaces, no underscores and no exponent, and its 63 bits are an int64's.
+func parseCap(raw string) CapSetting {
+	c := CapSetting{Bytes: DefaultCapBytes, Raw: raw}
+	if raw == "" {
+		return c
+	}
+	n, err := strconv.ParseUint(raw, 10, 63)
+	if err != nil {
+		c.Invalid = true
+		return c
+	}
+	c.Bytes = int64(n)
+	return c
+}
+
+// Off reports whether eviction is off.
+func (c CapSetting) Off() bool { return c.Bytes == 0 }
+
+// Problem says why the variable's value was not taken, or is "" when it was
+// taken or unset.
+func (c CapSetting) Problem() string {
+	if !c.Invalid {
+		return ""
+	}
+	return fmt.Sprintf("%s=%q is not a byte count (a plain decimal number; 0 turns eviction off), so the default cap of %s applies",
+		EnvCapBytes, c.Raw, FormatBytes(DefaultCapBytes))
+}
+
+// RunsBytes is the size of every run, which is what Evict holds under the
+// cap. A run it cannot list is left out of the sum and named in the error,
+// as Evict leaves it out of its plan.
+func (s *Store) RunsBytes() (int64, error) {
+	plan, err := evictCandidates(filepath.Join(s.root, dirRuns))
+	if err != nil {
+		return 0, err
+	}
+	return plan.total, errors.Join(plan.unlisted...)
+}
+
+// FormatBytes is n in the largest binary unit it reaches, to one decimal
+// place, with a whole number printed without one: "512 MiB", "1.5 KiB".
+func FormatBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return strconv.FormatInt(n, 10) + " B"
+	}
+	v, suffix := float64(n), "B"
+	for _, s := range []string{"KiB", "MiB", "GiB", "TiB", "PiB", "EiB"} {
+		if v < unit {
+			break
+		}
+		v, suffix = v/unit, s
+	}
+	text := strconv.FormatFloat(v, 'f', 1, 64)
+	if len(text) > 2 && text[len(text)-2:] == ".0" {
+		text = text[:len(text)-2]
+	}
+	return text + " " + suffix
+}

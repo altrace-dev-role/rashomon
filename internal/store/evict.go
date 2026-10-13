@@ -17,7 +17,9 @@ const evictGrace = time.Hour
 
 // Evict removes whole runs, oldest first, until the store fits under capBytes.
 // The named session and any run written to within evictGrace are never
-// candidates. Every removed run leaves a gap record.
+// candidates. Every removed run leaves a gap record. A cap of zero turns
+// eviction off (CapBytes), and so does a negative one, which CapBytes never
+// returns.
 func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, error) {
 	if err := s.opened(); err != nil {
 		return nil, err

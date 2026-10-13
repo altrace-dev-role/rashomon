@@ -776,17 +776,3 @@ func createExclusive(path string, content []byte) error {
 	}
 	return syncFull(f)
 }
-
-// DefaultCapBytes bounds the store before eviction starts removing the oldest
-// runs. RASHOMON_STORE_CAP_BYTES overrides it; zero disables eviction.
-const DefaultCapBytes = 512 << 20
-
-// CapBytes resolves the store size cap.
-func CapBytes() int64 {
-	if v := os.Getenv("RASHOMON_STORE_CAP_BYTES"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-			return n
-		}
-	}
-	return DefaultCapBytes
-}
