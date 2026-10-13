@@ -36,9 +36,11 @@ var (
 //     text (archive 40.4.14; tech 4.2.13), so stop with stop_continue; the
 //     masked kind stays in the user's Stop line (ED-3), so flag.
 //   - subtask-gate: a candidate nudge at PostToolUse of the completion or
-//     boundary call; deny on PreToolUse of the TaskUpdate (40.4.1), which
-//     only the task-completion form has; a teammate's TaskCompleted is a
-//     flag.
+//     boundary call; deny on PreToolUse of the TaskUpdate (40.4.1: "Stop:
+//     PreToolUse(TaskUpdate) `permissionDecision: deny`"), so only a
+//     completion that names its task, never a TodoWrite one (TaskRef nil,
+//     the nudge form only); a teammate's TaskCompleted, which always names
+//     its task ("teammate task {task_id}"), is a flag.
 //   - regression-location: nudge at PostToolUseFailure, or PostToolUse for
 //     a masked run with a failure line (40.4.2); no stop form.
 //   - platform-rule: nudge at PostToolUse, no stop form (40.4.6;
@@ -50,8 +52,8 @@ var (
 // A loose claim, an untrusted rule and a finding VERIFY marks UserOnly are
 // user flags whatever the card allows (2.2.5 step 8; 2.2.9). ok is false
 // for an event the card does not raise the finding at.
-func ceilingFor(f Finding, kind steer.Kind) (steer.Level, steer.StopForm, bool) {
-	c, ok := cardCeiling(f.Pattern, kind, f.Event)
+func ceilingFor(f Finding, kind steer.Kind, at Point) (steer.Level, steer.StopForm, bool) {
+	c, ok := cardCeiling(f.Pattern, kind, f.Event, at.TaskRef != nil)
 	if !ok {
 		return 0, "", false
 	}
@@ -63,8 +65,9 @@ func ceilingFor(f Finding, kind steer.Kind) (steer.Level, steer.StopForm, bool) 
 	return c.level, c.form, true
 }
 
-// cardCeiling is the card row for (pattern, kind, event).
-func cardCeiling(id pattern.ID, kind steer.Kind, event string) (ceiling, bool) {
+// cardCeiling is the card row for (pattern, kind, event); task is true when
+// the point names the task a subtask completion closed.
+func cardCeiling(id pattern.ID, kind steer.Kind, event string, task bool) (ceiling, bool) {
 	pre, post := string(steer.EventPreToolUse), string(steer.EventPostToolUse)
 	switch {
 	case id == pattern.ClaimVsRecord && event == string(steer.EventStop):
@@ -74,9 +77,9 @@ func cardCeiling(id pattern.ID, kind steer.Kind, event string) (ceiling, bool) {
 		return ceiling{steer.LevelStop, steer.StopFormStopContinue}, true
 	case id == pattern.SubtaskGate && event == post:
 		return nudge, true
-	case id == pattern.SubtaskGate && kind == "" && event == pre:
+	case id == pattern.SubtaskGate && kind == "" && task && event == pre:
 		return ceiling{steer.LevelStop, steer.StopFormDeny}, true
-	case id == pattern.SubtaskGate && kind == "" && event == eventTaskCompleted:
+	case id == pattern.SubtaskGate && kind == "" && task && event == eventTaskCompleted:
 		return flag, true
 	case id == pattern.RegressionLocation && (event == string(steer.EventPostToolUseFailure) || event == post):
 		return nudge, true
@@ -103,8 +106,10 @@ func cardCeiling(id pattern.ID, kind steer.Kind, event string) (ceiling, bool) {
 //     prompt"); a TodoWrite completion names no task and keys "todo".
 //   - subtask-gate at a commit, push or pr, and regression-location: the
 //     gate id, the family (40.4.2: "Once per F per prompt").
-//   - platform-rule and integrity/frozen-path: "<rule>|<path>", the rule
-//     alone for a command (40.4.6: "Once per rule per file per prompt").
+//   - platform-rule and integrity/frozen-path: "<rule>|<path>" for a
+//     forbid_code or protect_path rule, which always names its file, and
+//     the rule alone for a forbid_command rule, which never does
+//     (ruleShapeFits; 40.4.6: "Once per rule per file per prompt").
 //   - ordering-rule: the rule.
 //   - integrity from a check: the seq of the edit that moved it, the fact.
 //   - claim-vs-record: the claim class, one per class per prompt; the one
@@ -129,7 +134,7 @@ func keyFor(f Finding, kind steer.Kind, at Point) (string, string) {
 		if f.Rule == nil {
 			return strconv.FormatInt(f.Integrity.Seq, 10), ""
 		}
-		if f.Rule.Path != nil && f.Pattern != pattern.OrderingRule {
+		if f.Rule.Kind == spec.ForbidCode || f.Rule.Kind == spec.ProtectPath {
 			return string(f.Rule.RuleID) + "|" + string(*f.Rule.Path), ""
 		}
 		return string(f.Rule.RuleID), ""
