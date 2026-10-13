@@ -42,8 +42,23 @@ const fBarrierFsync = 85
 // fcntl's number in it has not moved, and an error it did return would fail
 // the append, never pass it silently.
 func barrierSync(f *os.File) (durable bool, err error) {
+	return barrierWith(f, fcntlBarrier)
+}
+
+// fcntlBarrier issues fcntl(fd, F_BARRIERFSYNC) and returns the kernel's
+// answer. It is the only fcntl in the store, which TestREC34h_ checks.
+func fcntlBarrier(fd uintptr) syscall.Errno {
+	_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, fd, fBarrierFsync, 0)
+	return errno
+}
+
+// barrierWith is barrierSync with the kernel call passed in, so that a test
+// can stand in a filesystem that refuses the barrier: the store's own volume
+// is APFS, where the fallback is never reached, and the fallback is the one
+// path on which barrierSync says durable and Flush skips its full sync.
+func barrierWith(f *os.File, fcntl func(fd uintptr) syscall.Errno) (durable bool, err error) {
 	for {
-		_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), fBarrierFsync, 0)
+		errno := fcntl(f.Fd())
 		switch {
 		case errno == 0:
 			fault.RecordSync(fault.SyncBarrier, f.Name())
