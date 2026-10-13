@@ -125,9 +125,10 @@ transcript; that quote is never stored.
 
 **Does it send anything anywhere?**
 It has no account, no telemetry and no network code of its own, and what it
-records is kept in a folder on your machine. No rashomon package imports a
-networking package, and CI checks that on every pull request, every push to
-main and every release tag. On Linux, CI also runs the
+records is kept in a folder on your machine. No package in the rashomon
+binary, its own or a dependency's, imports crypto/tls, net, net/http,
+net/http/httptrace or os/exec, and CI checks that on every pull request, every
+push to main and every release tag. On Linux, CI also runs the
 declaration hook with the network switched off; the other hooks, the report and
 the end-of-turn line have no such runtime test yet.
 
@@ -147,9 +148,10 @@ from changing its records. It is a second, independent account of what happened,
 to set beside the agent's own.
 
 **Can I see network activity?**
-rashomon itself observes no network traffic in this alpha: the report says
-`destinations: not observed in this alpha`, and `--chain` lists only the hosts
-each command *named*. If you run Claude Code inside the
+rashomon itself observes no network traffic: the report lists the hosts each
+command *named* (`hosts named by tool calls`), and `--chain` shows them beside
+the call that named them; nothing in it observed whether a host was reached.
+If you run Claude Code inside the
 [nono](https://github.com/nolabs-ai/nono) sandbox,
 `rashomon report --nono-audit <path to nono's audit-events.ndjson>` adds what
 nono allowed and refused in that session's window. If the session has no end
@@ -162,8 +164,8 @@ Plugin: open `/plugin` in Claude Code and turn it off. Command line:
 until you delete that folder.
 
 **Is it finished?**
-No. This is an alpha: Windows is not supported yet, and network destinations are
-not observed in this release.
+No. This is an alpha: Windows is not supported yet, and rashomon observes no
+network traffic; the report lists the hosts commands named.
 
 ## Inside a sandbox
 
@@ -211,8 +213,7 @@ What was measured, on macOS with nono 0.79.0 and Claude Code 2.1.285:
 - `rashomon forget --host` also keeps the host out of the sandbox section, even
   when rashomon's own records never named it.
 
-Not yet measured: Linux (Landlock), and the comparison with the Altrace proxy's
-records.
+Not yet measured: Linux (Landlock).
 
 ## Commands
 

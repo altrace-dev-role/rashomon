@@ -168,7 +168,7 @@ func TestRewritten_CountEqualsTheRows(t *testing.T) {
 		},
 	}
 
-	d := buildDestinations(run, observed(), "", nil)
+	d := buildDestinations(run, "")
 
 	if got, want := d.ExecutedNotAsDeclared, len(d.Rewritten); got != want {
 		t.Errorf("executed_not_as_declared = %d and rewritten has %d rows. They answer one "+

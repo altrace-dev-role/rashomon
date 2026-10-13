@@ -99,18 +99,7 @@ func TestH31_ChainsGroupCallsUnderTheirPrompt(t *testing.T) {
 	// The legend explains a host's STATE, and a state comes only from a proxy
 	// store. Without one there is no state on the page, so no legend either:
 	// this alpha's reader would be told how to read a column they cannot see.
-	if strings.Contains(out, "not proof this call reached it") {
-		t.Errorf("the render explains host states although no proxy store was named:\n%s", out)
-	}
 
-	// With a store named -- even one that turns out absent -- the legend is
-	// load-bearing, not decoration: a host beside a call reads as though that
-	// call reached it, and the store cannot support that claim.
-	named := e.run("", nil, "report", "--session", testSession, "--chain",
-		"--proxy-store", filepath.Join(e.home, "absent-causal.db")).stdout
-	if !strings.Contains(named, "not proof this call reached it") {
-		t.Errorf("the render omits the legend that bounds what a link host means:\n%s", named)
-	}
 }
 
 // TestH31_ADeniedCallRendersAsDeniedInItsChain joins the chain view to H-30.
@@ -138,43 +127,6 @@ func TestH31_ADeniedCallRendersAsDeniedInItsChain(t *testing.T) {
 		t.Errorf("outcome = %q, want \"denied before running\". Without the transcript this is "+
 			"indistinguishable from an unrecorded execution, and calling it one reports the "+
 			"product working as the product broken.", got)
-	}
-}
-
-// TestH31_NoProxyStoreMeansUnknownRatherThanNotObserved is the honesty
-// property of the whole view, tested through the WIRING rather than the
-// function.
-//
-// The unit test pins hostState given WindowApplied false. What it cannot show
-// is that "no proxy store" actually reaches that flag -- and if it did not,
-// every host a call named would render "not observed", which says the wire was
-// watched and this host never appeared. With no store the wire was not watched
-// at all. That is a recorder gap being rendered as a finding against the agent,
-// in the most common configuration there is: a user who has not run the proxy.
-func TestH31_NoProxyStoreMeansUnknownRatherThanNotObserved(t *testing.T) {
-	e := newEnv(t)
-	e.watched(testSession)
-
-	p := defaultPayload()
-	p.ToolInput = map[string]any{"command": "curl https://pypi.org/simple/"}
-	e.mustHook(p.build(t))
-	post := defaultPost()
-	post.ToolInput = p.ToolInput
-	e.mustPost(post.build(t))
-	e.probe("end", testSession)
-
-	rep := e.report(testSession)
-	if rep.Destinations.Observed {
-		t.Fatal("premise: this env has no proxy store, so nothing should be observed")
-	}
-	hosts := rep.Chains.Prompts[0].Links[0].Hosts
-	if len(hosts) != 1 || hosts[0].Host != "pypi.org" {
-		t.Fatalf("hosts = %+v, want the one the command named", hosts)
-	}
-	if hosts[0].State != "unknown" {
-		t.Errorf("state = %q, want \"unknown\". With no proxy store the wire was never "+
-			"watched, and \"not observed\" asserts that it was and this host never appeared "+
-			"-- a missing recorder rendered as a finding against the agent.", hosts[0].State)
 	}
 }
 
@@ -244,35 +196,6 @@ func TestH31_TheChainSurvivesRedaction(t *testing.T) {
 	}
 }
 
-// TestH31_LoopbackAndClientPlaneAreNotFindings drives the two cases the review
-// predicted, end to end.
-//
-// Both were real in the first implementation of this view. A declared
-// `curl http://localhost:3000` read "not observed" -- which says the wire was
-// watched and this host never appeared -- on every session, forever, because
-// loopback is never proxied and no row can ever exist. The same for the
-// client's own traffic. Neither is a finding, and rendering them as one
-// accuses the agent of the recorder's blind spots.
-func TestH31_LoopbackAndClientPlaneAreNotFindings(t *testing.T) {
-	e := newEnv(t)
-	e.watched(testSession)
-
-	p := defaultPayload()
-	p.ToolInput = map[string]any{"command": "curl http://localhost:3000/health"}
-	e.mustHook(p.build(t))
-	e.probe("end", testSession)
-
-	hosts := e.report(testSession).Chains.Prompts[0].Links[0].Hosts
-	if len(hosts) != 1 {
-		t.Fatalf("hosts = %+v, want the one named", hosts)
-	}
-	if hosts[0].State != "loopback" {
-		t.Errorf("%s = %q, want \"loopback\". Loopback is never proxied, so no row can "+
-			"exist and \"not observed\" accuses every session that ran a local server.",
-			hosts[0].Host, hosts[0].State)
-	}
-}
-
 // TestH31_SSHHostsAreCarriedApartEndToEnd. The proxy cannot see ssh, so an ssh
 // host gets its own field and no state: a verdict column beside it would be
 // answering a question the wire could never be asked.
@@ -286,8 +209,8 @@ func TestH31_SSHHostsAreCarriedApartEndToEnd(t *testing.T) {
 	e.probe("end", testSession)
 
 	l := e.report(testSession).Chains.Prompts[0].Links[0]
-	if len(l.Hosts) != 0 {
-		t.Errorf("hosts = %+v, want none: the only host named is an ssh one", l.Hosts)
+	if len(l.DeclaredHosts) != 0 {
+		t.Errorf("declared_hosts = %+v, want none: the only host named is an ssh one", l.DeclaredHosts)
 	}
 	if len(l.SSHHosts) != 1 || l.SSHHosts[0] != "git.example.com" {
 		t.Errorf("ssh_hosts = %v, want it carried in its own field", l.SSHHosts)
@@ -300,11 +223,7 @@ func TestH31_SSHHostsAreCarriedApartEndToEnd(t *testing.T) {
 	if !strings.Contains(out, "ssh: git.example.com\n") {
 		t.Errorf("the render does not carry the ssh host apart, and plainly:\n%s", out)
 	}
-	named := e.run("", nil, "report", "--session", testSession, "--chain",
-		"--proxy-store", filepath.Join(e.home, "absent-causal.db")).stdout
-	if !strings.Contains(named, "ssh: git.example.com (not observable)") {
-		t.Errorf("with a store named, the render does not say the ssh host is beyond it:\n%s", named)
-	}
+
 }
 
 // TestH31_NonoTrailReachesTheCLI drives the flag end to end.

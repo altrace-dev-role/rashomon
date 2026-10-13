@@ -1,18 +1,12 @@
 package report
 
 import (
-	"sort"
-
 	"github.com/altrace-dev-role/rashomon/internal/nono"
 )
 
-// Nono is what the sandbox saw, beside what the proxy saw and what the agent
-// declared.
-//
-// A FOURTH EVIDENCE SOURCE, and the reason to carry it is that it DISAGREES.
-// Three sources that always agree add confidence and nothing else; a fourth
-// that sees a different slice of the same session is the one that can show
-// what the others structurally cannot.
+// Nono is what the sandbox saw: the hosts it allowed and refused inside this
+// session's window, and the reader's own drop counts, so that they reach a
+// human rather than stopping one layer down.
 type Nono struct {
 	// Configured says a trail was ASKED FOR. It is separate from Observed, and
 	// the separation is the whole of what H-28 caught: most sessions run no
@@ -38,47 +32,25 @@ type Nono struct {
 	Denied  []string `json:"denied"`
 	// ClientPlaneAllowed and ClientPlaneDenied are the client's own traffic in
 	// the trail -- Claude Code's model API and telemetry -- kept out of the two
-	// lists above. Measured inside nono 0.79 with no proxy store, which is the
-	// default path: api.anthropic.com was counted as an allowed host of the
-	// session, and the client's log upload was listed as "refused by the
-	// sandbox", an attempt the agent never made. Named rather than dropped, so a
-	// reader can still see what the sandbox did with them -- and split by
-	// decision for that reason: one list of both said a host was there and not
-	// whether the sandbox let it through.
+	// lists above. Measured inside nono 0.79: api.anthropic.com was counted as
+	// an allowed host of the session, and the client's log upload was listed
+	// as "refused by the sandbox", an attempt the agent never made. Named
+	// rather than dropped, so a reader can still see what the sandbox did with
+	// them -- and split by decision for that reason: one list of both said a
+	// host was there and not whether the sandbox let it through.
 	ClientPlaneAllowed []string `json:"client_plane_allowed"`
 	ClientPlaneDenied  []string `json:"client_plane_denied"`
-	// SawWhatTheProxyDidNot is the interesting column. A host here reached the
-	// network with the sandbox watching and left no row on the proxy's wire.
-	//
-	// It is NOT automatically a recording failure, and the report must not
-	// present it as one: rashomon exports no HTTP_PROXY, so plain HTTP is
-	// outside what its proxy can see, while nono's reverse-proxy path sees it.
-	// PlainHTTP names the subset explained by exactly that.
-	SawWhatTheProxyDidNot []string `json:"saw_what_the_proxy_did_not"`
-	// PlainHTTP NAMES the subset explained by plain HTTP rather than counting
-	// it. A count beside a list lets a reader conclude the whole list is benign
-	// when the numbers happen to match, and gives no way to identify the
-	// unexplained host -- the only one that mattered.
-	PlainHTTP []string `json:"plain_http"`
 	// UnknownDecisions counts trail events whose decision was neither allow nor
 	// deny. Silence there would make the Decision field's own comment false.
 	UnknownDecisions int `json:"unknown_decisions"`
 	// UnknownModes counts events whose transport this reader has not learned,
-	// counted with or without a proxy store, as UnknownDecisions is.
+	// as UnknownDecisions is.
 	UnknownModes int `json:"unknown_modes"`
-	// DeniedButReached: the sandbox refused it and the wire recorded reaching
-	// it anyway. Traffic that escaped the sandbox -- the strongest finding a
-	// fourth evidence source can produce, and the first version cancelled it.
-	DeniedButReached []string `json:"denied_but_reached"`
 	// Skipped and UnparseableTargets are the reader's own drop counts, carried
 	// through so they reach a human. They existed one layer down and stopped
 	// there, which made the fix they represent invisible where anybody reads.
 	Skipped            int `json:"skipped"`
 	UnparseableTargets int `json:"unparseable_targets"`
-	// ProxySawWhatItDidNot is the other direction: on the wire, absent from
-	// the sandbox's trail. Expected when the two cover different windows, or
-	// when traffic left a process the sandbox was not supervising.
-	ProxySawWhatItDidNot []string `json:"proxy_saw_what_it_did_not"`
 	// Inherited counts trail events outside this session's window.
 	Inherited int `json:"inherited"`
 	Sessions  int `json:"sessions"`
@@ -89,49 +61,39 @@ type Nono struct {
 	WindowOpen bool `json:"window_open"`
 }
 
-// buildNono reconciles the sandbox's trail against the wire's observation.
-//
-// The proxy side is read from the DESTINATIONS VIEW rather than the raw
-// observation, for the same reason the chain links are: that view has already
-// had forgotten hosts suppressed, and a second consumer reading around it is
-// how a suppressed host returns in a different section under a different name.
-func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttributed bool, declared map[string]bool, forgotten func(string) bool) Nono {
+// buildNono reads the sandbox's trail for this session's window. mcpAttributed
+// and named are the session's own: whether it made an mcp__* call, and the
+// hosts its tool calls named. They decide which of the trail's hosts are the
+// client's own traffic.
+func buildNono(obs nono.Observation, configured, mcpAttributed bool, named []string, forgotten func(string) bool) Nono {
 	n := Nono{
-		Configured:            configured,
-		Observed:              obs.Observed,
-		Reason:                obs.Reason,
-		Allowed:               []string{},
-		Denied:                []string{},
-		ClientPlaneAllowed:    []string{},
-		ClientPlaneDenied:     []string{},
-		SawWhatTheProxyDidNot: []string{},
-		PlainHTTP:             []string{},
-		ProxySawWhatItDidNot:  []string{},
-		Inherited:             obs.Inherited,
-		WindowOpen:            obs.WindowOpen,
-		Sessions:              obs.Sessions,
-		Skipped:               obs.Skipped,
-		UnparseableTargets:    obs.UnparseableTargets,
-		DeniedButReached:      []string{},
+		Configured:         configured,
+		Observed:           obs.Observed,
+		Reason:             obs.Reason,
+		Allowed:            []string{},
+		Denied:             []string{},
+		ClientPlaneAllowed: []string{},
+		ClientPlaneDenied:  []string{},
+		Inherited:          obs.Inherited,
+		WindowOpen:         obs.WindowOpen,
+		Sessions:           obs.Sessions,
+		Skipped:            obs.Skipped,
+		UnparseableTargets: obs.UnparseableTargets,
 	}
 	if !obs.Observed {
 		return n
 	}
-	// SUPPRESSED ON THE TRAIL SIDE TOO. The comment above claimed reading the
-	// Destinations view was enough to keep a forgotten host from returning
-	// "under a different heading" -- true of the wire side only. The trail is
-	// a second place the name lives, and leaving it unfiltered did something
-	// worse than republish: because suppression removes the host from the wire
-	// side, the forgotten host became the one thing the section calls out, as
-	// "seen by the sandbox and not on the wire". Forgetting PROMOTED it.
+	// Forgotten hosts are dropped from the trail before anything reads it. The
+	// trail is not ours to delete from, so without this a host whose records
+	// were forgotten reappears in the next report as something the sandbox
+	// saw -- the forget reading as though it had been undone.
 	obs = suppressTrail(obs, forgotten)
 
-	// THE CLIENT'S OWN TRAFFIC, set apart before anything counts it. The
-	// reconciliation below always excluded it, but only once a proxy store was
-	// read; on the default path it returned at the wire guard with the client's
-	// hosts already in Allowed and Denied. The rule is clientPlaneHost, the one
-	// the destinations view applies, so the MCP transport stays the agent's on
-	// a session that made mcp__* calls.
+	// THE CLIENT'S OWN TRAFFIC, set apart before anything counts it. Without
+	// this, api.anthropic.com was an allowed host of every session and the
+	// client's log upload was "refused by the sandbox". The rule is
+	// clientPlaneHost, the one the novelty candidates apply, so the MCP
+	// transport stays the agent's on a session that made mcp__* calls.
 	//
 	// EXCEPT A HOST A TOOL CALL NAMED. The list says which hosts the client
 	// contacts on its own; it cannot say a session's attempt on one is the
@@ -140,6 +102,10 @@ func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttribut
 	// the client's, a refused `curl` to the Datadog log intake -- a shared
 	// endpoint that takes posts under any account's key -- left "refused by
 	// the sandbox" and was named as traffic the agent did not make.
+	declared := make(map[string]bool, len(named))
+	for _, h := range named {
+		declared[h] = true
+	}
 	clientPlane := func(h string) bool { return clientPlaneHost(h, mcpAttributed) }
 	clientsOwn := func(h string) bool { return clientPlane(h) && !declared[h] }
 	// Split per decision, from lists the trail already sorted, so both halves
@@ -158,15 +124,9 @@ func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttribut
 	n.Allowed, n.ClientPlaneAllowed = split(obs.Hosts())
 	n.Denied, n.ClientPlaneDenied = split(obs.Denied())
 
-	// COUNTED ABOVE THE WIRE GUARD. This sat below it, so on the default path
-	// -- no proxy store, which is most users -- an unknown decision was
-	// absorbed silently, making the Decision field's own comment false in the
-	// one configuration it mattered.
-	//
-	// Modes are counted here for the same reason, and were not: the mode
-	// counter stayed in the reconciliation loop below the guard, so an unknown
-	// transport went uncounted on the default path. Every event is counted,
-	// whatever its decision or host, as decisions are.
+	// Every event is counted, whatever its decision or host: an unknown
+	// decision or transport absorbed silently would make the Decision field's
+	// own comment false.
 	for _, e := range obs.Events {
 		if e.Decision != nono.DecisionAllow && e.Decision != nono.DecisionDeny {
 			n.UnknownDecisions++
@@ -176,152 +136,11 @@ func buildNono(obs nono.Observation, dests Destinations, configured, mcpAttribut
 		}
 	}
 
-	// The comparison is only meaningful when BOTH sides observed something.
-	// Against an unread proxy store every sandbox host would read as "the
-	// proxy missed it", which blames the wire for not being there.
-	if !dests.Observed || !dests.WindowApplied {
-		// WINDOW APPLIED TOO, not just observed. With unparseable proxy
-		// timestamps the destinations section prints "rows from other sessions
-		// may be included" -- and this section then listed every historical
-		// wire host as traffic the sandbox missed, with no caveat. chains.go
-		// gates hostState on this same flag for this same reason.
-		return n
-	}
-
-	// The wire side, filtered the way the rest of this package filters it.
-	// Unfiltered, this column reported loopback, the client's own plane and
-	// another session's inherited rows as traffic the sandbox missed -- three
-	// categories the codebase argues at length must never read as findings,
-	// and on a real session mostly Claude Code's own model traffic.
-	// ONE PREDICATE, BOTH SIDES. Filtering the wire and not the trail moved the
-	// false finding from the quiet column into the loud one: a loopback or
-	// client-plane host present on BOTH sides satisfied inTrail && !onWire and
-	// was reported as traffic the proxy missed -- which on a real session fires
-	// every time, because api.anthropic.com is the client's own model traffic.
-	//
-	// The client-plane test is clientPlaneHost, NOT clientPlaneHosts. That is a
-	// rule chains.go states by name: the two differ for mcp-proxy.anthropic.com,
-	// which belongs to the agent on a session that made mcp__* calls. I wrote
-	// that rule and broke it two files later. It used to read the view's own
-	// list, which says the same for every host on the wire and nothing for a
-	// client host only the trail holds.
-	excluded := func(h string) bool { return loopbackHosts[h] || clientPlane(h) }
-
-	onWire := map[string]bool{}
-	wireReached := map[string]bool{}
-	for _, h := range dests.Hosts {
-		if h.Inherited {
-			continue
-		}
-		// Whether the WIRE saw a connection, as against a refused attempt.
-		// Kept for the client's plane too, which the columns below leave out:
-		// the escape check reads it, and an escape is one whoever sent it.
-		// Loopback is a finding on neither side, this one included.
-		if !h.Unreached && !loopbackHosts[h.Host] {
-			wireReached[h.Host] = true
-		}
-		if excluded(h.Host) {
-			continue
-		}
-		onWire[h.Host] = true
-	}
-
-	// Two transports per host, tracked apart. The first version ORed
-	// mode=="reverse" with port==80 and set a single flag, which was wrong
-	// twice: a CONNECT tunnel to port 80 IS visible to the proxy, and a host
-	// with one plain-HTTP leg had its missing HTTPS leg excused along with it.
-	// The rendered line states the excuse as fact, so both errors produced
-	// false comfort about a real gap.
-	plainOnly := map[string]bool{}
-	observable := map[string]bool{}
-	inTrail := map[string]bool{}
-	denied := map[string]bool{}
-	trailAllowed := map[string]bool{}
-	for _, e := range obs.Events {
-		if e.Decision == nono.DecisionDeny {
-			denied[e.Host] = true
-			continue
-		}
-		if e.Decision != nono.DecisionAllow {
-			// Already counted above the wire guard; skipped here so the
-			// number does not double when a proxy store is present.
-			continue
-		}
-		// Every host the sandbox allowed, the excluded ones included: the
-		// escape check below asks it of the client's plane as well.
-		trailAllowed[e.Host] = true
-		if excluded(e.Host) {
-			// The same filter as the wire side. Counted as nothing: loopback and
-			// the client's own plane are findings on neither.
-			continue
-		}
-		inTrail[e.Host] = true
-		switch e.Mode {
-		case "reverse":
-			plainOnly[e.Host] = true
-		case "connect":
-			observable[e.Host] = true
-		default:
-			// A transport this reader has not learned. Already counted above
-			// the wire guard; read as observable here, which keeps the gap
-			// from being excused as plain HTTP.
-			observable[e.Host] = true
-		}
-	}
-
-	for h := range inTrail {
-		if !onWire[h] {
-			n.SawWhatTheProxyDidNot = append(n.SawWhatTheProxyDidNot, h)
-			// "Only" means only. A host with any proxy-observable leg has a
-			// real gap whatever else it did.
-			if plainOnly[h] && !observable[h] {
-				n.PlainHTTP = append(n.PlainHTTP, h)
-			}
-		}
-	}
-	for h := range onWire {
-		// A host the sandbox REFUSED is not one it failed to see. The proxy
-		// records the attempt regardless of nono's verdict, so without this the
-		// same section said both "refused by the sandbox: github.com" and "on
-		// the wire and not in the sandbox's trail: github.com" -- from the
-		// fixture's own data.
-		if inTrail[h] {
-			continue
-		}
-		if denied[h] {
-			// Not missing from the trail: refused in it. Whether it then
-			// escaped is the check below.
-			continue
-		}
-		n.ProxySawWhatItDidNot = append(n.ProxySawWhatItDidNot, h)
-	}
-	// THE STRONGEST FINDING A FOURTH SOURCE CAN PRODUCE, and the first version
-	// cancelled it. A denial agrees with the wire only when the wire also shows
-	// the host was never reached; if the proxy recorded a connection and the
-	// sandbox allowed the host nowhere, the traffic ESCAPED the sandbox.
-	//
-	// Read over every refused host, the CLIENT'S PLANE INCLUDED. It used to run
-	// over the reconciliation's own hosts, which leave the client's plane out,
-	// so each host added to that list -- the Datadog log intake was -- silently
-	// lost this line. Who sent the traffic does not change what the two
-	// sources say together: the sandbox refused it and it went out anyway.
-	for h := range denied {
-		if wireReached[h] && !trailAllowed[h] {
-			n.DeniedButReached = append(n.DeniedButReached, h)
-		}
-	}
-	sort.Strings(n.PlainHTTP)
-	sort.Strings(n.DeniedButReached)
-	sort.Strings(n.SawWhatTheProxyDidNot)
-	sort.Strings(n.ProxySawWhatItDidNot)
 	return n
 }
 
-// suppressTrail drops forgotten hosts from the sandbox's events.
-//
-// Applied before anything reads them, which is the same ordering
-// buildDestinations uses for the wire: "Forgotten destinations are dropped
-// from the whole view before anything else looks at them."
+// suppressTrail drops forgotten hosts from the sandbox's events, before
+// anything reads them.
 func suppressTrail(obs nono.Observation, forgotten func(string) bool) nono.Observation {
 	if forgotten == nil || len(obs.Events) == 0 {
 		return obs
