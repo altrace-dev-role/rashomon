@@ -46,11 +46,12 @@ var ErrLockTimeout = errors.New("store: timed out waiting for the append lock")
 // serialised by an advisory lock on each file they write, taken through a
 // descriptor of the append's own, which is also what orders appends from
 // goroutines sharing one Store. A Store is safe for concurrent use until
-// DeferDurability (TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines, run under
-// -race centrally). That call gives it mutable state -- the file its one
-// full sync has to cover, and whether that sync failed -- which only one
-// goroutine may touch: a deferred Store belongs to the one hook invocation
-// that opened it.
+// DeferDurability or LimitLockWaits (TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines,
+// run under -race centrally). Either call gives it mutable state --
+// DeferDurability the file its one full sync has to cover and whether that
+// sync failed, LimitLockWaits the deadline its lock waits share -- which only
+// one goroutine may touch: a Store after either belongs to the one hook
+// invocation that opened it.
 type Store struct {
 	root      string
 	installID string
