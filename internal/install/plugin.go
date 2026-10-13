@@ -63,6 +63,22 @@ func PluginPresent(event string) (bool, error) {
 	return pluginDeclaresEvent(root, event)
 }
 
+// PluginFires reports whether THIS PROCESS is running as the rashomon
+// plugin's own hook binary, as PluginPresent does, and that plugin runs our
+// command for event at all -- intact or hand edited. It is the question the
+// recap pointer asks: a plugin whose Stop entry has a changed timeout is not
+// the entry watch installs, so PluginPresent and coverage call it absent, but
+// Claude Code still loaded it to run this binary, and its /rashomon:report is
+// there to point at. Plugin.Live reads Declared for the same reason.
+func PluginFires(event string) (bool, error) {
+	root, err := selfPluginRoot()
+	if err != nil || root == "" {
+		return false, err
+	}
+	declared, _, err := pluginDeclaration(root, event)
+	return declared, err
+}
+
 // selfPluginRoot returns the root of the rashomon plugin running this
 // process, or "" if this process is not running from inside one.
 //

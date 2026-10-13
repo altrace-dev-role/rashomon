@@ -106,3 +106,42 @@ func retimeEveryPluginHook(t *testing.T, path string, timeout int) {
 	}
 	writeJSONFile(t, path, string(out))
 }
+
+// TestRubricHLD1_AHandEditedPluginsRecapPointsAtItsOwnCommand: the recap line
+// a hand-edited plugin's own Stop entry prints points at /rashomon:report.
+// The plugin is loaded -- Claude Code just ran its binary -- so its slash
+// command exists, whatever the entry's timeout says. Under the intact-only
+// answer the unmarked invocation read as "not the plugin" and pointed at the
+// CLI command instead, the mismatch TestH91_TheReportPointerNamesACommand
+// TheOriginHas protects against for an untouched plugin.
+func TestRubricHLD1_AHandEditedPluginsRecapPointsAtItsOwnCommand(t *testing.T) {
+	e := newEnv(t)
+	fx := newPluginFixture(t, "rashomon@test")
+	fx.installed(t, e)
+	fx.enable(t, e, true)
+	retimeEveryPluginHook(t, filepath.Join(fx.root, "hooks", "hooks.json"), 30)
+
+	run := func(payload string, args ...string) result {
+		t.Helper()
+		res := e.runBin(fx.bin, payload, args...) // the plugin's entries carry no marker
+		if res.exitCode != 0 {
+			t.Fatalf("%v: exit %d, stderr %q", args, res.exitCode, res.stderr)
+		}
+		return res
+	}
+	run(e.sessionPayload("start", testSession), "probe", "start")
+	run(defaultPayload().build(t), "hook")
+	run(failurePayload(t, testToolUseID, "Exit code 1", false, 30), "post")
+	res := run(stopPayload(testSession, "Ran the command as requested.", false), "recap")
+	if res.stdout == "" {
+		t.Fatal("a turn with a recorded failure and a silent summary printed nothing")
+	}
+	var out recapOutput
+	if err := json.Unmarshal([]byte(res.stdout), &out); err != nil {
+		t.Fatalf("recap stdout is not JSON: %v\n%s", err, res.stdout)
+	}
+	if want := "→ /rashomon:report --session " + testSession; !strings.Contains(out.SystemMessage, want) {
+		t.Errorf("line = %q, want it to point at %q: the hand-edited plugin's own Stop entry ran this, "+
+			"and its slash command is loaded", out.SystemMessage, want)
+	}
+}

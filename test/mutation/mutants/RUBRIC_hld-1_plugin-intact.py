@@ -54,3 +54,14 @@ m("hld-1 an edited plugin reads as not installed", "cmd/rashomon/main.go",
   "\tif err != nil || p == nil {\n\t\treturn false, err\n\t}\n\treturn p.Live(), nil\n",
   "\tif err != nil || p == nil {\n\t\treturn false, err\n\t}\n\treturn p.Enabled && len(p.Events) > 0, nil\n",
   "TestRubricHLD1_AHandEditedPluginStillRecords")
+# The recap pointer asks whether the plugin running this binary fires on Stop
+# at all: a hand-edited Stop entry is loaded, so /rashomon:report exists. Each
+# break sends that entry's line to the CLI command instead.
+m("hld-1 the recap pointer asks the intact-only answer", "cmd/rashomon/main.go",
+  "install.PluginFires(install.EventStop); perr == nil {",
+  "install.PluginPresent(install.EventStop); perr == nil {",
+  "TestRubricHLD1_AHandEditedPluginsRecapPointsAtItsOwnCommand")
+m("hld-1 PluginFires reads only an intact group", "internal/install/plugin.go",
+  "\tdeclared, _, err := pluginDeclaration(root, event)\n\treturn declared, err\n",
+  "\t_, declared, err := pluginDeclaration(root, event)\n\treturn declared, err\n",
+  "TestRubricHLD1_AHandEditedPluginsRecapPointsAtItsOwnCommand")
