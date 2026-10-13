@@ -85,9 +85,10 @@ type Finding struct {
 // names the rule, never a value beyond the pattern and kind.
 var ErrFinding = errors.New("steer: finding outside the contract")
 
-// Check reports why f may not reach Route, or nil. It holds the contract a
-// producer can get wrong without a type error: Kind is one of Pattern's
-// frozen kinds (pattern.KindValid; tech 72, "only frozen kinds cross");
+// Check reports why f may not reach the router, or nil. Route calls it on
+// every finding before routing (admit; TestDEL22f pins Route's body), so a
+// producer cannot skip it. It holds the contract a producer can get wrong
+// without a type error: Kind is one of Pattern's frozen kinds (pattern.KindValid; tech 72, "only frozen kinds cross");
 // claim-vs-record/masked is never model-visible (ED-3: it stays in the
 // user's Stop line, so it caps at flag with no stop form); MaxLevel is a
 // level and StopForm a stop form, and a stop form other than none only at
