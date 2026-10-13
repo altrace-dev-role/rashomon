@@ -1,8 +1,11 @@
 package perf
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/budget"
 )
 
 func TestRES28c_OverBudgetHoldsTheLine(t *testing.T) {
@@ -92,5 +95,93 @@ func TestRES2b_ParseInitTraceSumsAndFailsClosed(t *testing.T) {
 	// parser must refuse the line rather than index past it.
 	if _, err := ParseInitTrace("init errors @0.11 ms, 0.003 ms clock, 160 bytes, 2\n"); err == nil {
 		t.Error("an init line without its allocs word parsed")
+	}
+}
+
+// TestRES28l_SeedAndWorkDone: a row is measured on the store its budget
+// names (a recap row on the session its own benchmark reads, probe end on a
+// started session), and a run counts only when it left the evidence of its
+// work: a record for hook and post, one clean coverage record of its own
+// phase for probe, and the line naming the session for recap. A row the
+// harness has no check for fails rather than passing unchecked.
+func TestRES28l_SeedAndWorkDone(t *testing.T) {
+	entry := func(bench string, command ...string) budget.Entry {
+		return budget.Entry{ID: strings.Join(command, "."), Command: command, Benchmark: bench}
+	}
+	for _, c := range []struct {
+		e    budget.Entry
+		want Seed
+		bad  bool
+	}{
+		{entry("BenchmarkRecap/100", "recap"), Seed{Calls: 100}, false},
+		{entry("BenchmarkRecapPending/10", "recap", "pending"), Seed{Calls: 10}, false},
+		{entry("", "probe", "end"), Seed{ProbeStart: true}, false},
+		{entry("", "probe", "start"), Seed{}, false},
+		{entry("BenchmarkRunHook/bash_short", "hook"), Seed{}, false},
+		{entry("", "recap"), Seed{}, true},
+		{entry("BenchmarkRecap/many", "recap"), Seed{}, true},
+		{entry(""), Seed{}, true},
+	} {
+		got, err := SeedFor(c.e)
+		if (err != nil) != c.bad || got != c.want {
+			t.Errorf("SeedFor(%v %q) = %+v, %v; want %+v, error %v", c.e.Command, c.e.Benchmark, got, err, c.want, c.bad)
+		}
+	}
+
+	const session = "s-1"
+	cov := func(phase, reason string) []byte {
+		r := "null"
+		if reason != "" {
+			r = `"` + reason + `"`
+		}
+		return []byte(`{"type":"coverage","session_id":"` + session + `","phase":"` + phase + `","reason":` + r + `}`)
+	}
+	line := []byte(`{"systemMessage":"※ rashomon: 2 recorded failures\n  → rashomon report --session ` + session + `"}` + "\n")
+	for _, c := range []struct {
+		name    string
+		command []string
+		added   Added
+		ok      bool
+	}{
+		{"hook recorded", []string{"hook"}, Added{Records: 1}, true},
+		{"hook wrote nothing", []string{"hook"}, Added{}, false},
+		{"post recorded", []string{"post"}, Added{Records: 2}, true},
+		{"probe end clean", []string{"probe", "end"}, Added{Coverage: [][]byte{cov("end", "")}}, true},
+		{"probe on the absent-entry path", []string{"probe", "end"}, Added{Coverage: [][]byte{cov("end", "hook_entry_absent")}}, false},
+		{"probe wrote the other phase", []string{"probe", "start"}, Added{Coverage: [][]byte{cov("end", "")}}, false},
+		{"probe wrote nothing", []string{"probe", "start"}, Added{}, false},
+		{"probe wrote two", []string{"probe", "start"}, Added{Coverage: [][]byte{cov("start", ""), cov("start", "")}}, false},
+		{"probe wrote garbage", []string{"probe", "start"}, Added{Coverage: [][]byte{[]byte("{")}}, false},
+		{"recap spoke", []string{"recap"}, Added{Stdout: line}, true},
+		{"recap silent", []string{"recap", "pending"}, Added{}, false},
+		{"recap about another session", []string{"recap"}, Added{Stdout: []byte(`{"systemMessage":"rashomon report --session other"}`)}, false},
+		{"no check for the entry", []string{"event"}, Added{Records: 1}, false},
+		{"no command", nil, Added{Records: 1}, false},
+	} {
+		if err := WorkDone(c.command, session, c.added); (err == nil) != c.ok {
+			t.Errorf("%s: WorkDone = %v, want ok %v", c.name, err, c.ok)
+		}
+	}
+}
+
+// TestRES28m_UngatedNamesEveryGateThatDidNotRun: a perf run that skipped a
+// gate it owed, or ran none (a mistyped -run, a platform missing from the
+// file), is a failure when the run is required to be whole; cases gating
+// from a later PR are not owed.
+func TestRES28m_UngatedNamesEveryGateThatDidNotRun(t *testing.T) {
+	b := budget.Budgets{
+		Entries:  []budget.Entry{{ID: "hook.a"}, {ID: "post.b"}},
+		RSSCases: []budget.RSSCase{{ID: "hook.400B", GatesFrom: "P-08"}, {ID: "hook.1MiB", GatesFrom: "P-10"}},
+	}
+	all := map[string]bool{EntryGate("hook.a"): true, EntryGate("post.b"): true, CaseGate("hook.400B"): true, InitGate: true}
+	if got := Ungated(b, all); len(got) != 0 {
+		t.Errorf("every owed gate ran, Ungated = %q", got)
+	}
+	if got := Ungated(b, nil); strings.Join(got, "|") != "case hook.400B|entry hook.a|entry post.b|init" {
+		t.Errorf("nothing ran: Ungated = %q", got)
+	}
+	delete(all, EntryGate("post.b"))
+	if got := Ungated(b, all); strings.Join(got, "|") != "entry post.b" {
+		t.Errorf("one entry skipped: Ungated = %q", got)
 	}
 }
