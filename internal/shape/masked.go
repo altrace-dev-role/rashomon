@@ -98,7 +98,11 @@ var buildCommands = [][]string{
 // `eval`, `trap`, `exec`, or a shell's `-c`, whose line is not looked into --
 // it says nothing: null, never a kind and never "none". So does a line that
 // cannot be read to its end (tokenizeList, parseLine).
-func statusMasked(cmd string, key []byte) (kind, runner *string) {
+//
+// held is how many of the line's leading cd steps the call's cwd digest
+// holds (leadingSteps), which Derive counts from the program search's
+// reading of the line rather than this function reading it again.
+func statusMasked(cmd string, key []byte, held int) (kind, runner *string) {
 	if controlByte(cmd) {
 		return nil, nil
 	}
@@ -111,7 +115,7 @@ func statusMasked(cmd string, key []byte) (kind, runner *string) {
 	if !ok {
 		return nil, nil
 	}
-	p.displace(leadingSteps(cmd))
+	p.displace(held)
 
 	var (
 		hidden []int

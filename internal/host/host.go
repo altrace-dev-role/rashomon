@@ -151,7 +151,10 @@ func spell(a netip.Addr) string {
 // 10.1.2.3 and so is 167838211. Anything else is not an address and stays a
 // name -- 1.2.3.4.5, 256.1.1.1 and 08.1.2.3 are resolved, not parsed.
 func inetAton(h string) (netip.Addr, bool) {
-	parts := strings.Split(h, ".")
+	if !atonShaped(h) {
+		return netip.Addr{}, false
+	}
+	parts := strings.SplitN(h, ".", 5)
 	if len(parts) > 4 {
 		return netip.Addr{}, false
 	}
@@ -173,6 +176,24 @@ func inetAton(h string) (netip.Addr, bool) {
 		v = v<<width | n
 	}
 	return netip.AddrFrom4([4]byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}), true
+}
+
+// atonShaped reports whether h could be an inet_aton address at all: a digit
+// first, and nothing but hex digits, x and dots. A name is turned away here
+// without being split or parsed: each part strconv refused cost an error
+// value, and an 8 MiB line of `https://a.b/` allocated 50 MiB of them.
+func atonShaped(h string) bool {
+	if h == "" || h[0] < '0' || h[0] > '9' {
+		return false
+	}
+	for i := 0; i < len(h); i++ {
+		switch c := h[i]; {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'f', c >= 'A' && c <= 'F', c == 'x', c == 'X', c == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // atonPart reads one part of an inet_aton address: hex after 0x, octal after

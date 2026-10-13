@@ -42,13 +42,23 @@ const maxNest = 32
 type joined struct {
 	s     string
 	joins []int
+	// lost: more were removed than joins keeps (maxJoins), at or past its
+	// last offset, so from there on where one was is not known.
+	lost bool
 }
 
 // joinedIn reports a backslash-newline removed between s[from] and s[to]:
 // just before a byte after from and no later than to.
 func (r joined) joinedIn(from, to int) bool {
 	k := r.after(from)
-	return k < len(r.joins) && r.joins[k] <= to
+	return k < len(r.joins) && r.joins[k] <= to || r.unkept(to)
+}
+
+// unkept reports a span ending at to that may hold a removed backslash-newline
+// joins did not keep: past maxJoins of them, every span that reaches the last
+// kept offset may, and its readers give up.
+func (r joined) unkept(to int) bool {
+	return r.lost && to >= r.joins[len(r.joins)-1]
 }
 
 // after is the index in joins of the first offset past from. The offsets
@@ -550,6 +560,9 @@ func (r joined) delimLine(i, e int, d heredoc) (found, ok bool) {
 			return strings.TrimLeft(l, "\t")
 		}
 		return l
+	}
+	if r.unkept(e) {
+		return false, false
 	}
 	from := i
 	for _, p := range r.joins[r.after(i-1):] {

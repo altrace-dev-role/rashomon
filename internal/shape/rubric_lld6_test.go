@@ -14,15 +14,20 @@ import (
 // against the hook's 5 s timeout. The offsets are kept in order and are
 // searched. The answers are unchanged: the line's runner is still found after
 // the body, and a continuation inside the body still gives up the reading.
+// The line holds fewer continuations than maxJoins, so every offset is kept
+// and the body is read.
 func TestRubricLLD6_JoinsAreSearchedNotScanned(t *testing.T) {
-	n := 160_000
-	line := "echo " + strings.Repeat("a\\\n", n) + "; cat <<E\n" + strings.Repeat("x\n", n) + "E\nmake test 2>&1 | tail"
+	joins, lines := 40_000, 400_000
+	if joins >= maxJoins {
+		t.Fatalf("%d continuations: past maxJoins, %d, the body would not be read", joins, maxJoins)
+	}
+	line := "echo " + strings.Repeat("a\\\n", joins) + "; cat <<E\n" + strings.Repeat("x\n", lines) + "E\nmake test 2>&1 | tail"
 	in := bashInput(t, line)
 	var s Shape
 	start := time.Now()
 	s = Derive("Bash", in, benchKey)
 	if took := time.Since(start); took > 2*time.Second {
-		t.Errorf("an 800 KB line of continuations and a here-document took %v, want at most 2s", took)
+		t.Errorf("a 920 KB line of continuations and a here-document took %v, want at most 2s", took)
 	}
 	if s.StatusMasked == nil || *s.StatusMasked != MaskedTest {
 		t.Errorf("status_masked %v, want %q: the runner after the body is read", show(s.StatusMasked), MaskedTest)

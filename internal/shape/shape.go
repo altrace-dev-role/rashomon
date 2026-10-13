@@ -162,7 +162,8 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 		n := len(dropLeadingAssignments(toks))
 		s.Argc = &n
 	}
-	s.StatusMasked, s.RunnerDigest = statusMasked(cmd, key)
+	dirs, _ := leadingRun(pshaped, perr)
+	s.StatusMasked, s.RunnerDigest = statusMasked(cmd, key, leadingSteps(dirs))
 	return s
 }
 
@@ -479,11 +480,11 @@ const MaxLeadingCd = 64
 const _ = uint(maxTokens - 3*(MaxLeadingCd+1))
 
 // leadingSteps is how many leading `cd DIR &&` steps LeadingDirectory folds
-// onto a call's cwd for the line cmd: the cds on it that the call's cwd
-// digest already holds. None past MaxLeadingCd, where the hook records the
-// directory as unknown and the digest holds none of them.
-func leadingSteps(cmd string) int {
-	dirs, _ := leadingDirectories(cmd)
+// onto a call's cwd for a line whose leading directories are dirs: the cds
+// on it that the call's cwd digest already holds. None past MaxLeadingCd,
+// where the hook records the directory as unknown and the digest holds none
+// of them.
+func leadingSteps(dirs []string) int {
 	if len(dirs) > MaxLeadingCd {
 		return 0
 	}
@@ -500,7 +501,12 @@ func leadingSteps(cmd string) int {
 // away from. Any other error is an uncertain reading, which may begin inside
 // the run, and reports false.
 func leadingDirectories(cmd string) ([]string, bool) {
-	toks, err := tokenizeProgram(cmd)
+	return leadingRun(tokenizeProgram(cmd))
+}
+
+// leadingRun is leadingDirectories over the program search's reading of the
+// line, toks and err, which Derive has already made.
+func leadingRun(toks []token, err error) ([]string, bool) {
 	if err != nil && err != errTokenBound {
 		return nil, false
 	}
@@ -801,25 +807,41 @@ func inGroup(open []byte, t token) []byte {
 // joinContinuations removes every backslash-newline the shell removes before
 // it splits a line into words: outside quotes and inside double quotes, but
 // not inside single quotes, where a backslash is literal. It returns the
-// offsets in the result at which it removed one, ascending: the byte there is
-// the one that followed it. Its quote tracking is flat, which is right outside
-// a $( ) and may be wrong inside one; see comsubEnd.
-func joinContinuations(s string) (string, []int) {
+// line with them removed and the offsets in it at which it removed one,
+// ascending: the byte there is the one that followed it. Its quote tracking
+// is flat, which is right outside a $( ) and may be wrong inside one; see
+// comsubEnd.
+//
+// It keeps the first maxJoins offsets and no more (joined.lost): one per
+// continuation, 8 MiB of `a\<newline>` kept 2.8 million of them, 22 MiB,
+// in each reading of the line. The line itself is joined whole.
+func joinContinuations(s string) joined {
 	return joinLines(s, false)
 }
+
+// maxJoins is how many offsets joinContinuations keeps: as many as the
+// token bound lets a line have tokens (RES-9), 340 KB of them. Past them the
+// readers that ask where a backslash-newline was removed, a here-document's
+// body and a $( ) inside double quotes, give up rather than guess.
+const maxJoins = maxTokens
 
 // joinLines is joinContinuations; with comments, an unquoted # at the start
 // of a word runs to the end of its line, as a comment does to the shell, and
 // a backslash at its end continues nothing: `# run the tests \` and then
 // `make test | tail` on the next line runs make.
-func joinLines(s string, comments bool) (string, []int) {
-	if !strings.Contains(s, "\\\n") {
-		return s, nil
+func joinLines(s string, comments bool) joined {
+	n := strings.Count(s, "\\\n")
+	if n == 0 {
+		return joined{s: s}
 	}
 	var (
 		b     strings.Builder
-		joins []int
+		joins = make([]int, 0, min(n, maxJoins))
+		lost  bool
 	)
+	// The line loses bytes, except where a comment or a single quote keeps
+	// a backslash-newline, so it is grown once to the line's length.
+	b.Grow(len(s))
 	inSingle, inDouble := false, false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
@@ -836,7 +858,11 @@ func joinLines(s string, comments bool) (string, []int) {
 			}
 		case c == '\\' && i+1 < len(s):
 			if s[i+1] == '\n' {
-				joins = append(joins, b.Len())
+				if len(joins) < maxJoins {
+					joins = append(joins, b.Len())
+				} else {
+					lost = true
+				}
 				i++
 				continue
 			}
@@ -850,7 +876,7 @@ func joinLines(s string, comments bool) (string, []int) {
 		}
 		b.WriteByte(c)
 	}
-	return b.String(), joins
+	return joined{s: b.String(), joins: joins, lost: lost}
 }
 
 // wordStart reports whether a word would begin after the text written so
