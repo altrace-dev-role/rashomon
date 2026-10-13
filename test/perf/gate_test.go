@@ -1,6 +1,7 @@
 package perf
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -240,27 +241,77 @@ func TestRES30_BurstVerdictCountsEveryLoss(t *testing.T) {
 			b.OneWayPeakMiB = b.PairPeakMiB[0]
 		}, true},
 		{"no pairs at all", func(b *Burst) { *b = Burst{} }, true},
-		// The per-process rule: under contention the typical process does
-		// not grow past 1.1x what one costs alone (archive 85.4.4), judged
-		// median against median, so one process in the tail is reported and
-		// not gated.
-		{"the median process at the 1-way ratio", func(b *Burst) { b.setPairs(PerProcessPeakRatio * b.OneWayPeakMiB) }, false},
-		{"the median process over it", func(b *Burst) { b.setPairs(PerProcessPeakRatio*b.OneWayPeakMiB + 0.01) }, true},
-		{"the median process at 1.11x, the spec's 1.1 written out", func(b *Burst) { b.setPairs(1.11 * b.OneWayPeakMiB) }, true},
-		{"one process over it, the median within", func(b *Burst) { b.PairPeakMiB[2] = 2 * b.OneWayPeakMiB }, false},
+		// The per-process rule, restated from measurement (RES-30, ruling
+		// 2026-10-13): the largest pair peak under the burst, which stands for
+		// every process, is at most PerProcessPeakRatio (1.25) times the
+		// median solo pair. One process in the tail over it fails the burst
+		// however typical the rest; the median is not what is judged.
+		{"every process at the ratio", func(b *Burst) { b.setPairs(PerProcessPeakRatio * b.OneWayPeakMiB) }, false},
+		{"every process over it", func(b *Burst) { b.setPairs(PerProcessPeakRatio*b.OneWayPeakMiB + 0.01) }, true},
+		{"one process at 1.21x, the largest the default measured", func(b *Burst) { b.PairPeakMiB[2] = 1.21 * b.OneWayPeakMiB }, false},
+		{"one process at the ratio, the rest within", func(b *Burst) { b.PairPeakMiB[2] = PerProcessPeakRatio * b.OneWayPeakMiB }, false},
+		{"one process over it, the median within", func(b *Burst) { b.PairPeakMiB[2] = PerProcessPeakRatio*b.OneWayPeakMiB + 0.01 }, true},
+		{"the last process over it", func(b *Burst) { b.PairPeakMiB[len(b.PairPeakMiB)-1] = 2 * b.OneWayPeakMiB }, true},
 		{"the 1-way figure unmeasured", func(b *Burst) { b.OneWayPeakMiB = 0 }, true},
 	} {
 		b := healthyBurst(ways)
 		c.spoil(&b)
-		if got := len(b.Problems(budget, tol)) > 0; got != c.fails {
-			t.Errorf("%s: fails = %v, want %v (%q)", c.name, got, c.fails, b.Problems(budget, tol))
+		if got := len(b.Problems(budget, tol, 0)) > 0; got != c.fails {
+			t.Errorf("%s: fails = %v, want %v (%q)", c.name, got, c.fails, b.Problems(budget, tol, 0))
 		}
 	}
 }
 
-// TestRES30_LargestIsTheLargestPairPeak: the largest process the burst
-// reports beside the gated median is the largest pair peak, each the larger
-// of a pair's hook and post, so the largest of every process (RES-30).
+// TestRES30_RatioToleranceIsTheRunnersOnly: the per-process ratio takes the
+// tolerance it is handed and no other. The harness hands it none on the
+// reference machine, where the ratio was measured, and the platform's runner
+// tolerance on a CI runner, where it has not been (macos-latest, ruling
+// 2026-10-13); the summed footprint's tolerance never loosens it.
+func TestRES30_RatioToleranceIsTheRunnersOnly(t *testing.T) {
+	const ways, budget, tol = 4, 30.0, 0.10
+	over := func(ratioTol float64) []string {
+		b := healthyBurst(ways)
+		b.PairPeakMiB[1] = PerProcessPeakRatio*b.OneWayPeakMiB + 0.01
+		return b.Problems(budget, tol, ratioTol)
+	}
+	if got := over(0); len(got) == 0 {
+		t.Error("a process over the ratio passed with no ratio tolerance: the sum's tolerance loosened it")
+	}
+	if got := over(0.15); len(got) != 0 {
+		t.Errorf("a process 0.01 MiB over the ratio failed under a 15%% runner tolerance: %q", got)
+	}
+	b := healthyBurst(ways)
+	b.PairPeakMiB[1] = PerProcessPeakRatio * 1.15 * b.OneWayPeakMiB * 1.001
+	if got := b.Problems(budget, tol, 0.15); len(got) == 0 {
+		t.Error("a process over the ratio plus the runner tolerance passed")
+	}
+}
+
+// TestRES30_BudgetsRowStatesTheGate: budgets.json's parallel row carries the
+// per-process rule's basis, the measured figures it was restated from, and
+// it names the same bound and sample count the gate uses, so the two cannot
+// drift apart unseen (RES-30, ruling 2026-10-13).
+func TestRES30_BudgetsRowStatesTheGate(t *testing.T) {
+	table, err := budget.Table()
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := table.Parallel
+	for _, want := range []string{
+		fmt.Sprintf("largest pair peak at most %.2fx", PerProcessPeakRatio),
+		fmt.Sprintf("median of %d solo pairs", OneWaySamples),
+		"GOMAXPROCS unchanged",
+		"macos-latest unmeasured",
+	} {
+		if !strings.Contains(row.Basis, want) {
+			t.Errorf("budgets.json parallel.basis does not say %q:\n%s", want, row.Basis)
+		}
+	}
+}
+
+// TestRES30_LargestIsTheLargestPairPeak: the largest process, which the
+// per-process rule judges, is the largest pair peak, each the larger of a
+// pair's hook and post, so the largest of every process (RES-30).
 func TestRES30_LargestIsTheLargestPairPeak(t *testing.T) {
 	b := Burst{PairPeakMiB: []float64{4.1, 4.3, 3.9}}
 	if got := b.LargestMiB(); got != 4.3 {
