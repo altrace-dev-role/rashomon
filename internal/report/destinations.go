@@ -218,9 +218,12 @@ var clientPlaneHosts = map[string]bool{
 
 // clientPlaneHost is the one rule for whether a host is the client's own
 // traffic in a given session: on the list, except the MCP transport on a
-// session that made mcp__* calls, which is then the agent's. buildDestinations
-// applies the same rule host by host; the sandbox section, which has no wire
-// view to read it from when no proxy store was read, asks this.
+// session that made mcp__* calls, which is then the agent's. Every reader that
+// asks it of this session calls it -- buildDestinations, novelHostCandidates
+// and the sandbox section -- rather than restating it, so the views cannot
+// drift apart; TestClientPlane_EveryViewAppliesTheOneRule holds them together.
+// inheritedIsAllClientPlane reads the list itself, because inherited attempts
+// are another session's and this session's mcp__* calls cannot claim them.
 func clientPlaneHost(h string, mcpAttributed bool) bool {
 	return clientPlaneHosts[h] && !(h == mcpProxyHost && mcpAttributed)
 }
@@ -320,13 +323,7 @@ func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, f
 		switch {
 		case loopbackHosts[h.Host]:
 			continue
-		case h.Host == mcpProxyHost && mcpAttributed:
-			// Accounted for by the mcp__* declarations, so neither a finding
-			// nor client-plane traffic. It stays in the per-host list; only
-			// the section it is filed under changes.
-			matched++
-			continue
-		case clientPlaneHosts[h.Host]:
+		case clientPlaneHost(h.Host, mcpAttributed):
 			d.ClientPlane = append(d.ClientPlane, h.Host)
 			// A client-plane host that WAS declared still counts as evidence
 			// the proxy was on the path: the agent named it and the wire saw
@@ -334,6 +331,15 @@ func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, f
 			if declared[h.Host] {
 				matched++
 			}
+			continue
+		case clientPlaneHosts[h.Host]:
+			// On the list and not the client's in this session: the MCP
+			// transport on a session that made mcp__* calls, which
+			// clientPlaneHost hands back to the agent. Accounted for by those
+			// declarations, so neither a finding nor client-plane traffic. It
+			// stays in the per-host list; only the section it is filed under
+			// changes.
+			matched++
 			continue
 		}
 		if declared[h.Host] {
@@ -627,7 +633,7 @@ func novelHostCandidates(hosts []wire.Destination, mcpAttributed bool) []string 
 		if h.Inherited || h.Attempts == 0 || loopbackHosts[h.Host] {
 			continue
 		}
-		if clientPlaneHosts[h.Host] && !(h.Host == mcpProxyHost && mcpAttributed) {
+		if clientPlaneHost(h.Host, mcpAttributed) {
 			continue
 		}
 		out = append(out, h.Host)

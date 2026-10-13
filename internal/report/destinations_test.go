@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/nono"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/internal/wire"
@@ -998,5 +999,39 @@ func TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing(t *testing.T) {
 		t.Errorf("the novelty line does not appear at all when the store could not be "+
 			"read, so a reader cannot tell it from a section that was never built:\n%s",
 			out)
+	}
+}
+
+// TestClientPlane_EveryViewAppliesTheOneRule: whether a host is the client's
+// own traffic is asked by three readers -- the destinations view, the novelty
+// candidates and the sandbox section -- and two of them used to restate the
+// rule instead of calling it. They agreed, but a change to clientPlaneHost
+// reached the sandbox section alone, and nothing compared the views. Every
+// listed host and one that is not, on a session with mcp__* calls and one
+// without, must be filed the same way by all three.
+func TestClientPlane_EveryViewAppliesTheOneRule(t *testing.T) {
+	hosts := []string{"pypi.org"}
+	for h := range clientPlaneHosts {
+		hosts = append(hosts, h)
+	}
+	for _, mcp := range []bool{false, true} {
+		run := &store.Run{}
+		if mcp {
+			run.Declarations = []store.Declaration{{ToolUseID: "t1", ToolName: "mcp__deploy__status"}}
+		}
+		for _, h := range hosts {
+			want := clientPlaneHost(h, mcp)
+			d := buildDestinations(run, observed(wire.Destination{Host: h, Attempts: 1}), "", nil)
+			if got := has(d.ClientPlane, h); got != want {
+				t.Errorf("mcp session %v, %s: destinations client_plane %v, the rule says %v", mcp, h, got, want)
+			}
+			if got := !has(novelHostCandidates(d.Hosts, mcp), h); got != want {
+				t.Errorf("mcp session %v, %s: left out of the novelty candidates %v, the rule says %v", mcp, h, got, want)
+			}
+			trail := trailWith(nono.Event{Host: h, Port: 443, Decision: nono.DecisionAllow, Mode: "connect"})
+			if got := has(buildNono(trail, Destinations{}, true, mcp, nil, nil).ClientPlaneAllowed, h); got != want {
+				t.Errorf("mcp session %v, %s: sandbox client_plane_allowed %v, the rule says %v", mcp, h, got, want)
+			}
+		}
 	}
 }

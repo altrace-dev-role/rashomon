@@ -2941,7 +2941,7 @@ m("NONO the client's own traffic is dropped rather than named", "internal/report
   "TestNono_TheClientsOwnTraffic|TestNono_TheMCPTransport")
 m("NONO the MCP transport is the client's on an MCP session", "internal/report/destinations.go",
   "\treturn clientPlaneHosts[h] && !(h == mcpProxyHost && mcpAttributed)", "\treturn clientPlaneHosts[h]",
-  "TestNono_TheMCPTransport")
+  "TestNono_TheMCPTransport|TestClientPlane_")
 m("NONO the session's MCP calls never reach the sandbox section", "internal/report/report.go",
   "cfg.nonoTrail != \"\", madeMCPCall(run), declaredHosts(run), forgotten)", "cfg.nonoTrail != \"\", false, declaredHosts(run), forgotten)",
   "TestSeam_TheMCPTransportReachesTheSandboxSection")
@@ -3060,6 +3060,16 @@ m("NONO the reconciliation files the MCP transport as the client's on an MCP ses
   "\texcluded := func(h string) bool { return loopbackHosts[h] || clientPlane(h) }",
   "\texcluded := func(h string) bool { return loopbackHosts[h] || clientPlaneHosts[h] }",
   "TestNono_TheMCPTransportIsReconciled")
+
+# The client-plane rule has one spelling, clientPlaneHost, and every view
+# that asks it of this session calls it (review of #53): the destinations
+# view and the novelty candidates used to restate it.
+m("NONO the destinations view files the MCP transport as the client's on an MCP session", "internal/report/destinations.go",
+  "\t\tcase clientPlaneHost(h.Host, mcpAttributed):\n\t\t\td.ClientPlane", "\t\tcase clientPlaneHosts[h.Host]:\n\t\t\td.ClientPlane",
+  "TestClientPlane_EveryView")
+m("NONO the novelty candidates drop the MCP transport on an MCP session", "internal/report/destinations.go",
+  "\t\tif clientPlaneHost(h.Host, mcpAttributed) {\n\t\t\tcontinue", "\t\tif clientPlaneHosts[h.Host] {\n\t\t\tcontinue",
+  "TestClientPlane_EveryView")
 
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn
