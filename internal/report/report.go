@@ -270,10 +270,11 @@ type Session struct {
 	// a probe.
 	Families FamilyCoverage `json:"families"`
 
-	// Nono is what a sandbox saw, when one was supervising. A fourth evidence
-	// source, carried because it DISAGREES with the other three in ways that
-	// are informative rather than alarming: it sees plain HTTP, which this
-	// proxy structurally cannot.
+	// Nono is what a sandbox saw, when one was supervising: the hosts nono's
+	// trail allowed and refused in this session's window. It is the one
+	// section that speaks about traffic rather than about what the calls
+	// named, and it is not a complete view of that traffic: nono logs the
+	// plain-HTTP requests it refuses and not the ones it allows.
 	Nono Nono `json:"nono"`
 
 	// Chains is the causal view: which prompt produced which calls. Every other
@@ -317,7 +318,8 @@ type options struct {
 	nonoTrail string
 }
 
-// WithNonoTrail names a nono audit-events.ndjson to reconcile against.
+// WithNonoTrail names the nono audit-events.ndjson the sandbox section is read
+// from.
 //
 // An empty path means none was configured, which the report states as a
 // coverage line rather than omitting -- a section that vanishes when it has
