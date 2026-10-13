@@ -480,6 +480,11 @@ func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, boo
 // a millisecond.
 const MaxLeadingCd = 64
 
+// The longest leading run leadingDirectories reads, MaxLeadingCd+1 steps of
+// three tokens, lies inside the token bound: this fails to compile otherwise,
+// since a run the bound cut short is not where the line ran.
+const _ = uint(maxTokens - 3*(MaxLeadingCd+1))
+
 // leadingSteps is how many leading `cd DIR &&` steps LeadingDirectory folds
 // onto a call's cwd for the line cmd: the cds on it that the call's cwd
 // digest already holds. None past MaxLeadingCd, where the hook records the
@@ -494,9 +499,17 @@ func leadingSteps(cmd string) int {
 }
 
 // leadingDirectories is LeadingDirectory over the line cmd.
+//
+// A line cut at the token bound (errTokenBound) is read to the bound, since
+// its leading steps come first: the most this reads is MaxLeadingCd+1 steps
+// of three tokens, far inside the bound (see the constant below), so the cut
+// never falls in the run. Giving up there instead kept the payload's cwd for
+// `cd sub && python3 - <<EOF` and a long script, a directory the line moved
+// away from. Any other error is an uncertain reading, which may begin inside
+// the run, and reports false.
 func leadingDirectories(cmd string) ([]string, bool) {
 	toks, err := tokenizeProgram(cmd)
-	if err != nil {
+	if err != nil && err != errTokenBound {
 		return nil, false
 	}
 	var dirs []string
