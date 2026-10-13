@@ -31,6 +31,7 @@ import (
 // some OTHER line in the file failed to parse.
 func TestH102_UnrecognisedSchemaVersionBreaksVerified(t *testing.T) {
 	e := newEnv(t)
+	e.expectDamagedStore("writes a record of a schema version from the future, which the reader must skip and name")
 	e.watched(testSession)
 
 	// A good record, through the real hook path, so this run would render
@@ -70,6 +71,7 @@ func TestH102_UnrecognisedSchemaVersionBreaksVerified(t *testing.T) {
 // look fine.
 func TestH102_UnmarshalFailureReachesTheSameReason(t *testing.T) {
 	e := newEnv(t)
+	e.expectDamagedStore("writes a line that is not JSON, which the reader must skip and name")
 	e.watched(testSession)
 
 	e.mustHook(defaultPayload().build(t))
