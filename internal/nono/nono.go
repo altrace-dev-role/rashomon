@@ -149,12 +149,15 @@ type networkEvent struct {
 
 // Trail scanner sizes.
 //
-// nonoMaxLine is the longest trail line read: 8 MiB = 4 x 2 MiB. 2 MiB is the
-// longest command line Linux's execve takes by default (ARG_MAX, a quarter of
-// the 8 MiB stack limit; macOS's is 1 MiB), and session_started holds it in
-// event_json, a JSON string holding JSON, where one quote or backslash is
-// written as four bytes. A longer line ends the read, and the trail reads as
-// unreadable rather than as a session that went quiet.
+// nonoMaxLine is the longest trail line read, 8 MiB. Its provenance, not a
+// worst case: 2 MiB is the longest command line Linux's execve takes by
+// default (ARG_MAX, a quarter of the 8 MiB stack limit; macOS's is 1 MiB), and
+// session_started holds it in event_json, a JSON string holding JSON, where
+// one quote or backslash is written as four bytes; four times ARG_MAX leaves
+// room for that. It does not cover every command: a control byte is written
+// as seven (\\u00XX), so a command line dense in control bytes can need more.
+// A longer line ends the read, and the trail reads as unreadable rather than
+// as a session that went quiet.
 //
 // initialScanBuffer is 64 KiB, bufio's default line limit
 // (bufio.MaxScanTokenSize): a trail whose lines the default scanner would

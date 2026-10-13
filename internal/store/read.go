@@ -11,11 +11,16 @@ import (
 	"time"
 )
 
-// maxLine bounds a single record on read. Records are small by construction;
-// the bound is what stops a corrupted file from being read as one giant line.
+// maxLine bounds a single record on read. It is a ceiling against a corrupt
+// file being read as one giant line, not a size every record is known to fit:
+// nothing bounds a record when it is written. A declaration lists every
+// distinct host its command names, and a command may be as long as a hook
+// payload (hookio.MaxPayloadBytes, 8 MiB), so one record can run to
+// megabytes. A line longer than maxLine fails the read with bufio.ErrTooLong.
 //
 // initialScanBuffer is 64 KiB, bufio's default line limit
-// (bufio.MaxScanTokenSize), which every record this store writes fits.
+// (bufio.MaxScanTokenSize). Records are typically far smaller; a longer one
+// grows the buffer by doubling, up to maxLine.
 const (
 	maxLine           = 16 << 20
 	initialScanBuffer = bufio.MaxScanTokenSize
