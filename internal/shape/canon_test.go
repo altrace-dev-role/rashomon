@@ -76,7 +76,7 @@ func TestCanonicalDigestIsUnchanged(t *testing.T) {
 	if got, want := canonicalDigest(key, "Edit", in), hex.EncodeToString(m.Sum(nil)); got != want {
 		t.Fatalf("digest moved: %s, was %s", got, want)
 	}
-	if got, want := canonicalDigest(key, "Edit", json.RawMessage(`{bad`)), digest(key, "Edit", []byte(`{bad`)); got != want {
+	if got, want := canonicalDigest(key, "Edit", json.RawMessage(`{bad`)), digest(key, "Edit", `{bad`); got != want {
 		t.Fatalf("invalid input digest %s, want %s", got, want)
 	}
 }

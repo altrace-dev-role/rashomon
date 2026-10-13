@@ -18,6 +18,44 @@ var errUnterminated = errors.New("unterminated quote")
 // unknown rather than absent, and the tokens are those completed before it.
 var errUncertain = errors.New("uncertain reading")
 
+// errTokenBound is lex's stop at maxTokens: the line goes on past what this
+// package will read, and what follows is unknown rather than absent. The
+// tokens are the first maxTokens, so a program named before the bound is
+// still named.
+var errTokenBound = errors.New("token bound")
+
+// The token bound (RES-9). A hook payload is read up to 8 MiB, which bounds
+// the bytes and not the work: 8 MiB of one-letter words is four million
+// tokens, and lexed whole the shape of that one line allocated 4.5 GB and
+// drove a hook to about 1.07 GB of RSS. Lexing stops at maxTokens, derived
+// from a memory budget for the shape of one call, shapeBudget, over the cost
+// of one token. That cost is the whole Derive's, not the lexer's: Derive reads
+// a line three times (tokenizeShape for argc, tokenizeProgram for the
+// program, tokenizeList for the masked status), its leading-cd count a fourth
+// and the hook's LeadingDirectory a fifth, so a token costs about 395 bytes
+// where one reading of it costs about 106 (BenchmarkLexTokens).
+// bytesPerToken is BenchmarkDerive/bash_long_4k's 421,153 B/op over that
+// line's 1,068 tokens (test/perf/budgets.json, measured 2026-10-13 under
+// go1.27.2), 394.3, rounded up; TestRES9_BoundMatchesItsArithmetic holds the
+// constant to that row, so a change that moves Derive's cost per token
+// restates the bound with the row. The bound is 42,473 tokens: a script
+// handed to an interpreter as a here-document, which the program search
+// reads word by word, runs to a few thousand.
+const (
+	shapeBudget   = 16 << 20
+	bytesPerToken = 395
+	maxTokens     = shapeBudget / bytesPerToken
+)
+
+// bounded is a lex result held to maxTokens: see errTokenBound. lex stops
+// at most one token past the bound, and this takes that one back.
+func bounded(toks []token, err error) ([]token, error) {
+	if len(toks) > maxTokens {
+		return toks[:maxTokens], errTokenBound
+	}
+	return toks, err
+}
+
 // tokenize splits a command line the way a POSIX shell would split it, as far
 // as quoting and metacharacters go. It does not expand anything: no variables,
 // no globs, no command substitution. Expansion would mean evaluating the input,
@@ -112,7 +150,7 @@ func tokenizeMarked(s string) ([]string, []bool, error) {
 // tokenizeShape splits a command line as tokenize does and reports, per
 // token, what the text cannot: see token.
 func tokenizeShape(s string) ([]token, error) {
-	return lex(s, false, false, nil)
+	return bounded(lex(s, false, false, nil))
 }
 
 // tokenizeProgram is tokenizeShape for the program search, which reads one
@@ -136,7 +174,7 @@ func tokenizeShape(s string) ([]token, error) {
 // rather than guess: see lex.
 func tokenizeProgram(s string) ([]token, error) {
 	j, joins := joinContinuations(s)
-	return lex(j, true, false, joins)
+	return bounded(lex(j, true, false, joins))
 }
 
 // tokenizeList is tokenizeProgram for the walk over a line's whole list of
@@ -159,7 +197,7 @@ func tokenizeProgram(s string) ([]token, error) {
 // instead: what it names is unchanged.
 func tokenizeList(s string) ([]token, error) {
 	j, joins := joinLines(s, true)
-	return lex(j, true, true, joins)
+	return bounded(lex(j, true, true, joins))
 }
 
 // lex is tokenizeShape and tokenizeProgram; program selects the second's
@@ -178,7 +216,7 @@ func tokenizeList(s string) ([]token, error) {
 // docs selects tokenizeList's reading of here-documents and comments.
 func lex(s string, program, docs bool, joins []int) ([]token, error) {
 	var (
-		toks  []token
+		toks  = make([]token, 0, tokenEstimate(s))
 		w     = newWord()
 		sawNL bool
 		// gap: a blank or newline since the last token ended.
@@ -245,6 +283,10 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 	}
 
 	for i := 0; i < len(s); i++ {
+		if len(toks) > maxTokens {
+			// Past the token bound: see bounded.
+			return toks, errTokenBound
+		}
 		c := s[i]
 
 		switch {
@@ -415,6 +457,32 @@ func lex(s string, program, docs bool, joins []int) ([]token, error) {
 
 	flush()
 	return toks, nil
+}
+
+// tokenEstimate is how many tokens lex will emit from s, for the common line
+// an upper bound -- one per word, counted at the blank or metacharacter after
+// it, one per metacharacter, and one more -- held to one past maxTokens, so
+// the token slice is allocated once rather than grown. Grown, append's copies
+// of a slice this size cost about four times the slice it leaves, and at the
+// token bound that was most of what one reading of a line allocated. Where it
+// is short, as on a line of quoted blanks, lex grows the slice as before.
+func tokenEstimate(s string) int {
+	n, inWord := 1, false
+	for i := 0; i < len(s) && n <= maxTokens; i++ {
+		switch c := s[i]; {
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			if inWord {
+				n++
+			}
+			inWord = false
+		case isMeta(c): // a token of its own, and the end of a word
+			n++
+			inWord = false
+		default:
+			inWord = true
+		}
+	}
+	return min(n, maxTokens+1)
 }
 
 // ansiCEnd returns the index of the quote that closes a $'...' string whose

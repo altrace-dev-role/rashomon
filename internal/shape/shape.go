@@ -125,7 +125,7 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	// A shell tool digests its command line and nothing else. Claude Code
 	// attaches a free-text description to a Bash call, so a digest over the
 	// whole input would move whenever the wording did and would group nothing.
-	s.Digest = digest(key, toolName, []byte(cmd))
+	s.Digest = digest(key, toolName, cmd)
 
 	shaped, err := tokenizeShape(cmd)
 	toks := make([]string, len(shaped))
@@ -141,7 +141,9 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 	// tokens above, as it always was.
 	pshaped, perr := tokenizeProgram(cmd)
 
-	uncertain := perr == errUncertain
+	// A line read only to the token bound is as uncertain as one the lexer
+	// stopped in: what follows is unknown, not absent.
+	uncertain := perr == errUncertain || perr == errTokenBound
 	// A line whose program cannot be named, or which the lexer could not
 	// read to its end, may write: nobody saw what it runs.
 	s.MayWrite = true
@@ -213,11 +215,21 @@ func commandField(raw json.RawMessage) (string, bool) {
 // is fixed at 64 characters regardless of how large the body was, which is what
 // lets a record's serialized length be independent of the size of what it
 // describes.
-func digest(key []byte, toolName string, body []byte) string {
+//
+// body is written through a buffer of at most 4 KiB rather than converted
+// whole: []byte(body) would copy the whole command line, 8 MiB at the payload
+// cap, to hash it once (RES-9's memory test counts that copy). A body that
+// fits is copied once, as the conversion did.
+func digest(key []byte, toolName, body string) string {
 	m := hmac.New(sha256.New, key)
 	m.Write([]byte(toolName))
 	m.Write([]byte{0})
-	m.Write(body)
+	buf := make([]byte, min(len(body), 4<<10))
+	for len(body) > 0 {
+		n := copy(buf, body)
+		m.Write(buf[:n])
+		body = body[n:]
+	}
 	return hex.EncodeToString(m.Sum(nil))
 }
 
@@ -234,7 +246,7 @@ func CWDDigest(key []byte, cwd string) string {
 	if cwd == "" {
 		return ""
 	}
-	return digest(key, "\x00cwd", []byte(cwd))
+	return digest(key, "\x00cwd", cwd)
 }
 
 // canonical re-encodes JSON so that two inputs differing only in key order or
