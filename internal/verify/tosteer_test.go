@@ -336,9 +336,10 @@ func pslot(s string) *SlotID { id := SlotID(s); return &id }
 // Reasons, and a gate state that contradicts nothing for its pattern: a
 // subtask-gate fires only when no gate run exited 0 after the writes
 // (40.4.1; silent while a same-family run is backgrounded and unobserved,
-// and unknown never fires, VER-17), a regression-location only on a red run
-// after an earlier green (40.4.2), and the gate beside a claim is the one
-// whose state set the verdict.
+// and unknown never fires, VER-17), a regression-location only on a
+// recorded red run after an earlier green (40.4.2: the card cites "this
+// red" run, so a red state with no red run seq cites nothing), and the
+// gate beside a claim is the one whose state set the verdict.
 func TestVER54l_ToSteerRefusesValuesOutsideTheirVocabularies(t *testing.T) {
 	stop, post, pre := string(steer.EventStop), string(steer.EventPostToolUse), string(steer.EventPreToolUse)
 	task := Point{Kind: PointSubtask, Seq: 57, TaskRef: strp("7")}
@@ -380,8 +381,11 @@ func TestVER54l_ToSteerRefusesValuesOutsideTheirVocabularies(t *testing.T) {
 		{"a regression over a state that is text", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate("whatever", keep)}, perCall},
 		{"a regression over a stale gate", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Stale, keep)}, perCall},
 		{"a regression with no earlier green", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Red, func(g *GateFact) { g.LastGreenSeq = nil })}, perCall},
+		{"a regression with no red run", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Red, func(g *GateFact) { g.LastRunSeq = nil })}, perCall},
 		{"a regression whose green follows the red", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Red, func(g *GateFact) { g.LastGreenSeq = seqp(53) })}, perCall},
 		{"a gate reason that is text", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Red, func(g *GateFact) { g.Reason = "exit 1: permission denied" })}, perCall},
+		{"a red regression explained as ok", Finding{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(Red, func(g *GateFact) { g.Reason = OK })}, perCall},
+		{"a red subtask gate with a stale reason", Finding{Pattern: pattern.SubtaskGate, Event: post, Gate: gate(Red, func(g *GateFact) { g.Reason = WritesAfterGreen })}, task},
 	}
 	for _, c := range cases {
 		var me *MappingError
@@ -422,5 +426,58 @@ func TestVER54l_ToSteerRefusesValuesOutsideTheirVocabularies(t *testing.T) {
 		if _, err := ToSteer(f, subagent, ""); err != nil {
 			t.Errorf("a subagent claim from %s: %v", src, err)
 		}
+	}
+}
+
+// TestVER54m_EveryGateReasonExplainsOneState: a gate's reason explains its
+// state (2.2.4; archive 20.2.4 algorithm, which names the one state each
+// closed reason comes with), so a fact whose reason explains another state
+// contradicts itself and is refused like a value outside its vocabulary
+// (P07N-13). Every reason in Reasons has exactly one state; each is
+// accepted beside that state and refused beside every other, and a reason
+// outside the list is refused as such, not as a state mismatch.
+func TestVER54m_EveryGateReasonExplainsOneState(t *testing.T) {
+	// Frozen from archive 20.2.4 steps 1 to 6 and tech 2.2.4, not read
+	// from reasonState, so a wrong entry there cannot move the expectation.
+	frozen := map[Reason]State{
+		FailedExit: Red, FailedOutput: Red, PartialAfterRed: Red,
+		MaskedWithSuccessLine: Green, OK: Green,
+		MaskedNoSuccessLine: MaskedInconclusive, MaskedUnattributable: MaskedInconclusive,
+		EmptyRun: Absent, PartialOnly: Absent, NeverRunAfterWrite: Absent,
+		RedThenWrites: Stale, WritesAfterGreen: Stale, WriteDuringRun: Stale,
+		BackgroundLaunch: Backgrounded,
+		OrderUnknown:     Unknown, OutcomeUnknown: Unknown, RecordingIncomplete: Unknown, Budget: Unknown,
+	}
+	if len(frozen) != len(Reasons) || len(reasonState) != len(Reasons) {
+		t.Fatalf("frozen %d, reasonState %d, Reasons %d: a reason has no state", len(frozen), len(reasonState), len(Reasons))
+	}
+	beside := func(r Reason, s State) Finding {
+		return Finding{
+			Pattern: pattern.ClaimVsRecord, Event: string(steer.EventStop),
+			Claim: &ClaimFact{Class: ClaimTestsPass, Source: SourceFinalMessage, Strict: true, Verdict: Verdict(s)},
+			Gate:  &GateFact{GateID: "learned:go-test", State: s, Reason: r, LastGreenSeq: seqp(37), LastRunSeq: seqp(52)},
+		}
+	}
+	for _, r := range Reasons {
+		want, ok := frozen[r]
+		if !ok {
+			t.Errorf("reason %q has no frozen state", r)
+			continue
+		}
+		for _, s := range States {
+			got := vocabValid(beside(r, s))
+			switch {
+			case s == want && got != "":
+				t.Errorf("reason %q beside its own state %q refused: %s", r, s, got)
+			case s != want && got != "a gate reason that explains another state":
+				t.Errorf("reason %q beside %q: %q, want the mismatch refused", r, s, got)
+			}
+		}
+	}
+	if got := vocabValid(beside("exit 1: permission denied", Red)); got != "gate reason outside its vocabulary" {
+		t.Errorf("a reason that is text: %q, want it refused as outside the vocabulary", got)
+	}
+	if got := vocabValid(beside("", Red)); got != "" {
+		t.Errorf("a gate with no reason: %q, want it accepted", got)
 	}
 }
