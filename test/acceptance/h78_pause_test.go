@@ -3,6 +3,7 @@ package acceptance
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -398,5 +399,46 @@ func TestPausedSessionProbeIsNotReportedAsRecorded(t *testing.T) {
 	}
 	if !strings.Contains(res.stdout, "start recorded: no") {
 		t.Errorf("text report does not say \"start recorded: no\" for a paused start:\n%s", res.stdout)
+	}
+}
+
+// TestRubricERRORS6_UnreadablePauseMarkerPausesRecording: with the pause
+// marker present but unreadable (chmod 000), a hook call is not recorded and
+// leaves recording_paused, as under a readable marker. It used to record: a
+// read error counted as "not paused", so declarations went from one to two.
+func TestRubricERRORS6_UnreadablePauseMarkerPausesRecording(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 000 does not stop this user reading the file")
+	}
+	e := newEnv(t)
+	e.watched(testSession)
+	before := defaultPayload()
+	before.ToolUseID = "toolu_before"
+	e.mustHook(before.build(t))
+	if res := e.pause(); res.exitCode != 0 {
+		t.Fatalf("pause: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	marker := filepath.Join(e.home, "pause")
+	if err := os.Chmod(marker, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(marker, 0o644) }) //nolint:errcheck // TempDir removal follows
+
+	during := defaultPayload()
+	during.ToolUseID = "toolu_during"
+	if res := e.hook(during.build(t)); res.exitCode != 0 {
+		t.Fatalf("hook under an unreadable marker: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if got := len(e.declarations(testSession)); got != 1 {
+		t.Errorf("got %d declarations, want 1: the call made under an unreadable pause marker was recorded", got)
+	}
+	found := false
+	for _, c := range e.coverage(testSession, "call") {
+		if c.str("reason") == "recording_paused" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("no call coverage record carries recording_paused for the call under an unreadable marker")
 	}
 }

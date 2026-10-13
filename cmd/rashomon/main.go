@@ -606,8 +606,13 @@ func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer)
 	if err != nil {
 		return false
 	}
-	paused, _, err := store.Paused(root)
-	if err != nil || !paused {
+	// A marker that exists and cannot be read is a pause, the way a marker
+	// that does not parse already is (store.Paused): someone asked for
+	// recording to stop, and an unreadable answer is not a "no". Reading the
+	// error as "not paused" recorded the call while status said "recording:
+	// unknown" for the same file. store.Paused returns no error for a marker
+	// that does not exist, so a machine that never paused is unaffected.
+	if paused, _, err := store.Paused(root); err == nil && !paused {
 		return false
 	}
 	if !storeExistsAt(root) {
