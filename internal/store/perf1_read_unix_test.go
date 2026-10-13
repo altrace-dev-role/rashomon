@@ -34,7 +34,7 @@ func TestRubricPERF1_TheBudgetCoversTheWholeRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{FileRecords, FileSpill, FileCoverage} {
-		unlock, err := LockFile(openForAppend(t, filepath.Join(dir, name)), lockBudget)
+		unlock, _, err := lockFileWait(openForAppend(t, filepath.Join(dir, name)), lockBudget)
 		if err != nil {
 			t.Fatalf("taking the %s lock: %v", name, err)
 		}

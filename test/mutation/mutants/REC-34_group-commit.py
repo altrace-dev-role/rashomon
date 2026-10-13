@@ -15,7 +15,7 @@ m("REC-34 the hook flushes before its last append", "cmd/rashomon/main.go",
   "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n",
   "TestREC34_")
 m("REC-34 the ordered append syncs in full inside the lock", "internal/store/store.go",
-  "\treturn s.syncAppend(f)\n}\n\n// lockCounted takes", "\treturn syncFull(f)\n}\n\n// lockCounted takes", "TestREC34_")
+  "\treturn s.syncAppend(f)\n}\n\n// lockAppend takes", "\treturn syncFull(f)\n}\n\n// lockAppend takes", "TestREC34_")
 m("REC-34 the seq counter syncs in full inside the lock", "internal/store/store.go",
   "\tseq, err := nextSeq(dir, s.syncAppend)", "\tseq, err := nextSeq(dir, syncFull)", "TestREC34_")
 m("REC-34 group commit off: a deferred store syncs every append in full", "internal/store/store.go",
@@ -82,12 +82,16 @@ m("REC-34 forget's rewrite sync unseen, judged end to end", "internal/store/gaps
   "\tif err := f.Truncate(off); err != nil {\n\t\treturn err\n\t}\n\treturn f.Sync()\n",
   "TestREC34_Forget")
 m("REC-34 eviction takes a lock the recorder does not count", "internal/store/evict.go",
-  "\tunlock, err := lockCounted(gf, s.lockWait(lockBudget))", "\tunlock, err := LockFile(gf, s.lockWait(lockBudget))", "TestREC34h_")
+  "\tunlock, _, err := lockCounted(gf, s.lockWait(lockBudget))", "\tunlock, _, err := lockFileWait(gf, s.lockWait(lockBudget))", "TestREC34h_")
+# LockFile is lockFileWait's exported wrapper for packages outside the store;
+# the store's own lock taken through it would skip lockCounted all the same.
+m("REC-34 eviction locks through the exported LockFile, which the recorder does not count", "internal/store/evict.go",
+  "\tunlock, _, err := lockCounted(gf, s.lockWait(lockBudget))", "\tunlock, err := LockFile(gf, s.lockWait(lockBudget))", "TestREC34h_")
 # The store-level forget record (#53) landed beside group commit and took its
 # lock and sync directly; both go through the recorder's sites too.
 m("REC-34 the forgotten-host record takes a lock the recorder does not count", "internal/store/gaps.go",
-  "\tdefer f.Close() //nolint:errcheck // Sync below reports the write failure\n\tunlock, err := lockCounted(f, lockBudget)",
-  "\tdefer f.Close() //nolint:errcheck // Sync below reports the write failure\n\tunlock, err := LockFile(f, lockBudget)", "TestREC34h_")
+  "\tdefer f.Close() //nolint:errcheck // Sync below reports the write failure\n\t// forget's own wait, discarded as in openRunLines.\n\tunlock, _, err := lockCounted(f, lockBudget)",
+  "\tdefer f.Close() //nolint:errcheck // Sync below reports the write failure\n\t// forget's own wait, discarded as in openRunLines.\n\tunlock, _, err := lockFileWait(f, lockBudget)", "TestREC34h_")
 m("REC-34 the forgotten-host record syncs where the recorder cannot see it", "internal/store/gaps.go",
   "\treturn syncFull(f)\n}\n\nfunc (s *Store) forgetHostInRun", "\treturn f.Sync()\n}\n\nfunc (s *Store) forgetHostInRun", "TestREC34h_")
 m("REC-34 the counted lock counts nothing", "internal/store/store.go",

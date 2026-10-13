@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
@@ -82,6 +83,12 @@ type Store struct {
 	// flock never refuses a read, so this is how a unix test drives the
 	// refusal handling through the readers production calls (test-11).
 	readRefusal func(error) bool
+
+	// lockWaited is how long this Store's appends have waited for their
+	// locks, in all, in nanoseconds (perf-7). Atomic, because it is the one
+	// thing every append writes, and a Store before DeferDurability or
+	// LimitLockWaits is shared between goroutines.
+	lockWaited atomic.Int64
 }
 
 type installMeta struct {
@@ -372,8 +379,14 @@ func (s *Store) SpillTerminal(rec Terminal) error {
 }
 
 // AppendCoverage records the configuration state as resolved during this run.
+//
+// A hook invocation writes one coverage record, after its other appends, so
+// this is also where the invocation's lock waits are noted (noteLockWait):
+// how long its appends, this one included, waited for their locks.
 func (s *Store) AppendCoverage(rec Coverage) error {
-	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, lockBudget, false)
+	err := s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, lockBudget, false)
+	s.noteLockWait(rec.SessionID)
+	return err
 }
 
 // NewGap is a gap record of reason for a session, recorded at now: the one
@@ -449,7 +462,7 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockCounted(f, s.lockWait(lockBudget))
+	unlock, err := s.lockAppend(f, s.lockWait(lockBudget))
 	if err != nil {
 		return err
 	}
@@ -476,21 +489,30 @@ func (s *Store) writeOrderedLocked(f *os.File, dir string, build func(seq int64)
 	return s.syncAppend(f)
 }
 
+// lockAppend takes f's append lock through lockCounted, and adds how long it
+// waited for it to the Store's tally, a wait that gave up included (perf-7).
+func (s *Store) lockAppend(f *os.File, budget time.Duration) (func(), error) {
+	unlock, waited, err := lockCounted(f, budget)
+	s.lockWaited.Add(int64(waited))
+	return unlock, err
+}
+
 // lockCounted takes f's lock, and every lock the store takes goes through
-// it: the appends', forget's and eviction's, and the readers'. The fault
-// build counts each as held until it is released, so the sync recorder can
-// say whether a sync ran inside any lock at all (REC-34); a released build
-// compiles the count away.
-func lockCounted(f *os.File, budget time.Duration) (func(), error) {
-	unlock, err := LockFile(f, budget)
+// it: the appends', forget's and eviction's, the readers', and the lock-wait
+// note's. The fault build counts each as held until it is released, so the
+// sync recorder can say whether a sync ran inside any lock at all (REC-34); a
+// released build compiles the count away. It returns how long lockFileWait
+// waited, which only an append adds to its Store's tally (lockAppend).
+func lockCounted(f *os.File, budget time.Duration) (func(), time.Duration, error) {
+	unlock, waited, err := lockFileWait(f, budget)
 	if err != nil {
-		return nil, err
+		return nil, waited, err
 	}
 	fault.LockTaken()
 	return func() {
 		unlock()
 		fault.LockReleased()
-	}, nil
+	}, waited, nil
 }
 
 // syncAppend is the durability step of every append, taken inside its lock:
@@ -582,7 +604,7 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockCounted(f, s.lockWait(budget))
+	unlock, err := s.lockAppend(f, s.lockWait(budget))
 	switch {
 	case err == nil:
 		defer unlock()

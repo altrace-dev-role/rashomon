@@ -24,7 +24,7 @@ func TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldGapsLock(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 	holder := openForAppend(t, filepath.Join(root, FileGaps))
-	unlock, err := lockFile(holder, lockBudget)
+	unlock, _, err := lockFileWait(holder, lockBudget)
 	if err != nil {
 		t.Fatalf("taking the gaps lock: %v", err)
 	}

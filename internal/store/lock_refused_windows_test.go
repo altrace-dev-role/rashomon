@@ -33,7 +33,7 @@ func TestRubricTEST11_AReadRefusedByAHeldLockCountsAsSkipped(t *testing.T) {
 	if err := os.WriteFile(recordsPath, []byte(line), fileMode); err != nil {
 		t.Fatal(err)
 	}
-	unlock, err := lockFile(openForAppend(t, recordsPath), lockBudget)
+	unlock, _, err := lockFileWait(openForAppend(t, recordsPath), lockBudget)
 	if err != nil {
 		t.Fatalf("taking the records lock: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestRubricTEST11_AGapsReadRefusedByAHeldLockCountsAsSkipped(t *testing.T) {
 	if err := os.WriteFile(gapsPath, []byte(`{"type":"gap","schema_version":2,"session_id":"sess-gap"}`+"\n"), fileMode); err != nil {
 		t.Fatal(err)
 	}
-	unlock, err := lockFile(openForAppend(t, gapsPath), lockBudget)
+	unlock, _, err := lockFileWait(openForAppend(t, gapsPath), lockBudget)
 	if err != nil {
 		t.Fatalf("taking the gaps lock: %v", err)
 	}
@@ -94,7 +94,7 @@ func refuseRecordsRead(t *testing.T, _ *Store, path string) func() {
 	if err := os.WriteFile(path, []byte(`{"type":"declaration","schema_version":2,"seq":1}`+"\n"), fileMode); err != nil {
 		t.Fatal(err)
 	}
-	unlock, err := lockFile(openForAppend(t, path), lockBudget)
+	unlock, _, err := lockFileWait(openForAppend(t, path), lockBudget)
 	if err != nil {
 		t.Fatalf("taking the records lock: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -22,6 +23,23 @@ func statusSize(stdout io.Writer, st *store.Store) {
 		return
 	}
 	fmt.Fprintf(stdout, "  size: %s of a %s cap\n", size, store.FormatBytes(c.Bytes))
+}
+
+// statusLockWait prints the longest any one hook invocation has waited for
+// the store's locks, and the run it was in (perf-7). Contention used to be
+// invisible until a wait ran out and its record spilled with lock_timeout;
+// a wait creeping toward the limit is the warning that comes first.
+func statusLockWait(stdout io.Writer, st *store.Store) {
+	longest, run, err := st.LongestLockWait()
+	switch {
+	case err != nil:
+		fmt.Fprintf(stdout, "  lock wait: %s\n", statusUnknown)
+	case run == "":
+		fmt.Fprintln(stdout, "  lock wait: none recorded")
+	default:
+		fmt.Fprintf(stdout, "  lock wait: longest %d ms, in run %s (a hook may wait %s in all)\n",
+			longest.Milliseconds(), run, hook.LockWaitTotal)
+	}
 }
 
 // capProblem prints, after prefix, why the cap variable's value was not

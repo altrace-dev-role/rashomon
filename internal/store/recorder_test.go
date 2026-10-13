@@ -25,9 +25,10 @@ import (
 // lock, which SyncFull's name would misrepresent. The darwin barrier's fcntl
 // is issued only by fcntlBarrier.
 var watchedCalls = map[string][]string{
-	"LockFile":  {"store.go:lockCounted"},
-	"full sync": {"store.go:syncAs"},
-	"fcntl":     {"sync_darwin.go:fcntlBarrier"},
+	"lockFileWait": {"store.go:lockCounted", "lock.go:LockFile"},
+	"LockFile":     {},
+	"full sync":    {"store.go:syncAs"},
+	"fcntl":        {"sync_darwin.go:fcntlBarrier"},
 }
 
 // TestREC34h_EveryStoreLockAndSyncIsRecorded: the sync recorder REC-34 reads
@@ -151,14 +152,14 @@ func (f *sourceFacts) note(fset *token.FileSet, n ast.Node) {
 	}
 }
 
-// watchedKind classifies a call: "LockFile"; "full sync", a Sync method
+// watchedKind classifies a call: "LockFile" or "lockFileWait"; "full sync", a Sync method
 // taking no argument or syscall.Fsync; "fcntl", a raw syscall whose number is
 // syscall.SYS_FCNTL, with the command it passes; or "" for anything else.
 func watchedKind(call *ast.CallExpr) (kind, arg string) {
 	switch fun := call.Fun.(type) {
 	case *ast.Ident:
-		if fun.Name == "LockFile" {
-			return "LockFile", ""
+		if fun.Name == "LockFile" || fun.Name == "lockFileWait" {
+			return fun.Name, ""
 		}
 	case *ast.SelectorExpr:
 		pkg, _ := fun.X.(*ast.Ident)

@@ -294,7 +294,9 @@ func eachLineTryLock(path string, budget time.Duration, refused func(error) bool
 	}
 	defer f.Close() //nolint:errcheck // read-only
 
-	unlock, lerr := lockCounted(f, budget)
+	// A read's wait is bounded by its own budget and costs only its own
+	// command; the tally noted per run is of hook invocations' (perf-7).
+	unlock, _, lerr := lockCounted(f, budget)
 	if lerr == nil {
 		defer unlock()
 	}

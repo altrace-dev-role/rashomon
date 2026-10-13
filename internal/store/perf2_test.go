@@ -24,7 +24,7 @@ func TestRubricPERF2_OneDeadlineBoundsEveryLockWait(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{FileRecords, FileCoverage} {
-		unlock, err := LockFile(openForAppend(t, filepath.Join(dir, name)), lockBudget)
+		unlock, _, err := lockFileWait(openForAppend(t, filepath.Join(dir, name)), lockBudget)
 		if err != nil {
 			t.Fatal(err)
 		}

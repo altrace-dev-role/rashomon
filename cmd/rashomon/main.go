@@ -1057,6 +1057,7 @@ func cmdStatus(stdout io.Writer) error {
 			fmt.Fprintf(stdout, "  runs: %d\n", len(runs))
 		}
 		statusSize(stdout, st)
+		statusLockWait(stdout, st)
 	} else {
 		fmt.Fprintln(stdout, "  present: no")
 	}
