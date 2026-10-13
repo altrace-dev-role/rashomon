@@ -407,11 +407,11 @@ func TestH15_SizeCapEvictionLeavesAGap(t *testing.T) {
 	}
 }
 
-// TestH15_ZeroCapDisablesEviction: a cap of zero turns eviction off. It is
+// TestRubricDOCS3_ZeroCapDisablesEviction: a cap of zero turns eviction off. It is
 // the value a user sets to keep everything, so a regression here deletes
 // every run older than an hour for exactly the user who asked for none to go
 // (docs-3).
-func TestH15_ZeroCapDisablesEviction(t *testing.T) {
+func TestRubricDOCS3_ZeroCapDisablesEviction(t *testing.T) {
 	e := newEnv(t)
 	e.watched("old-session")
 	p := defaultPayload()
