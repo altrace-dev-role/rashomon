@@ -98,9 +98,21 @@ func (d Digest) Valid() bool {
 	return true
 }
 
-// Finding is what VERIFY hands STEER (2.2.9). Exactly one of Gate, Claim,
-// Rule and Integrity is set, by the pattern; the mapping to steer.Finding is
-// the gap row "verify.Finding to steer.Finding" and lands with it.
+// MarkerID is a closed integrity-marker id as a fact carries it (archive
+// 20.2.6: `go.t_skip`, `py.pytest_skip`, `js.only`): ^[a-z0-9][a-z0-9._]{0,63}$.
+type MarkerID string
+
+// Valid reports whether the marker id is within its charset.
+func (m MarkerID) Valid() bool { return idForm(string(m), "._") }
+
+// Finding is what VERIFY hands STEER (2.2.9). The pattern decides the facts:
+// Gate alone for regression-location and subtask-gate; Rule alone for
+// platform-rule and ordering-rule; Integrity, or a protect_path Rule
+// (integrity/frozen-path), for integrity; Claim for claim-vs-record and
+// subagent-claim, with Gate beside it when one gate's state set the verdict
+// (P-07 proposal, owner L: the archive's claim-vs-record/red statement,
+// 20.2.10, names that gate's program, exit code and run seq, which ClaimFact
+// cannot carry). ToSteer refuses any other combination.
 type Finding struct {
 	Pattern   pattern.ID
 	Class     LabelClass
@@ -131,39 +143,100 @@ type GateFact struct {
 	PartialRuns  int
 }
 
-// ClaimFact is the record fact behind a claim finding: the claim's class and
-// verdict, the gates it mapped to, and an HMAC of its sentence under the
-// install key, never the sentence (2.2.5 step 8).
+// ClaimFact is the record fact behind a claim finding (claim-vs-record,
+// subagent-claim). Neither spec defines its fields; every one is a P-07
+// proposal for L to sign or amend in P-07's review (gap row "`ClaimFact`,
+// `RuleFact`, `IntegrityFact`"), each citing the section it is read from.
 type ClaimFact struct {
-	Class        ClaimClass
-	Source       ClaimSource
-	Strict       bool
-	Verdict      Verdict
-	Gates        []SlotID
+	// Class is the closed lexicon the claim matched (P-07 proposal: 2.2.5
+	// step 4).
+	Class ClaimClass
+	// Source is the message the claim was read from (P-07 proposal: 2.2.5
+	// input; archive 20.2.14).
+	Source ClaimSource
+	// Strict is false when a disclosure word or a window cut loosened the
+	// claim; only strict claims reach the model (P-07 proposal: 2.2.5 step
+	// 8).
+	Strict bool
+	// Verdict is the worst state of the claim's gates by Order, or
+	// no_gate_known (P-07 proposal: 2.2.5 step 7).
+	Verdict Verdict
+	// Gates are the gates the claim mapped to (P-07 proposal: 2.2.5 steps
+	// 6 and 8, "the checkpoint keeps each claim's ... gates").
+	Gates []SlotID
+	// GatesOmitted counts the gates left out of Gates (P-07 proposal: the
+	// checkpoint's cut rule, 2.2.10).
 	GatesOmitted int
-	QuoteHMAC    Digest
+	// QuoteHMAC is the HMAC-SHA256 of the claim's sentence under the
+	// install key, never the sentence (P-07 proposal: 2.2.5 step 8).
+	QuoteHMAC Digest
+	// UnrecoveredFailures counts the turn's failed calls with no later
+	// passing run of the same run key, lookups and answer exits excluded:
+	// above zero, the finding is claim-vs-record/silent-failure (P-07
+	// proposal: 2.2.5 Silence, "`silent-failure` counts only unrecovered
+	// failures"; archive 20.2.10's silent-failure row and its "2 recorded
+	// calls failed" statement).
+	UnrecoveredFailures int
 }
 
-// RuleFact is the record fact behind a platform-rule or ordering-rule
-// finding: the rule, its kind and trust, the call that executed the
-// violation, and the program, path or gate the rule named.
+// RuleFact is the record fact behind a platform-rule, ordering-rule or
+// integrity/frozen-path finding. Every field is a P-07 proposal (gap row
+// "`ClaimFact`, `RuleFact`, `IntegrityFact`"), each citing its section.
 type RuleFact struct {
-	RuleID  SlotID
-	Kind    spec.RuleKind
-	Trust   spec.Trust
-	Seq     int64
+	// RuleID is the rule's id in the loaded spec (P-07 proposal: 2.2.7;
+	// archive 40.3.8 slot.RuleID).
+	RuleID SlotID
+	// Kind is the rule kind of 2.2.7's table; it decides the pattern and
+	// the frozen kind (P-07 proposal: tech 58, `platform-rule` =
+	// `verify.spec.forbid_code/forbid_command`, `integrity` includes
+	// `verify.spec.protect_path`, `ordering-rule` = `verify.spec.order`).
+	Kind spec.RuleKind
+	// Trust is this rule's own trust; an untrusted rule gives a user flag
+	// only (P-07 proposal: 2.2.7 Trust; 2.2.9 "user flag when untrusted";
+	// per-rule trust on RuleFact decided 2026-10-13, archive 20.2.4).
+	Trust spec.Trust
+	// Seq is the call that executed the violation (P-07 proposal: 2.2.7,
+	// "executed violation"; archive 20.2.14 violation seqs).
+	Seq int64
+	// Program is the program a forbid_command or order rule matched (P-07
+	// proposal: archive 40.4.6 `command` form, 40.4.10 `{verb_label}`).
 	Program *Program
-	Path    *PathSlot
-	Gate    *SlotID
+	// Path is the file a forbid_code or protect_path rule matched (P-07
+	// proposal: archive 40.4.6 `edit` form, "Once per rule per file").
+	Path *PathSlot
+	// Gate is the evidence gate an order rule names (P-07 proposal: 2.2.7
+	// `order`; archive 40.4.10 `{evidence}`).
+	Gate *SlotID
+	// Added is how many matches the edit added (P-07 proposal: archive
+	// 40.4.6 "added {k} match(es)"; 20.2.10 "added 1 match").
+	Added int
+	// Pragma is true when the forbid_code violation is an added suppression
+	// comment, the platform-rule/pragma kind (P-07 proposal: archive 40.4.6
+	// `pragma` trigger).
+	Pragma bool
 }
 
-// IntegrityFact is the record fact behind an integrity finding: the check,
-// the window's net adverse count, the paths it moved on and the edit that
-// moved it.
+// IntegrityFact is the record fact behind an integrity finding from one of
+// VERIFY's eight checks. Every field is a P-07 proposal (gap row
+// "`ClaimFact`, `RuleFact`, `IntegrityFact`"), each citing its section.
 type IntegrityFact struct {
-	Kind         IntegrityKind
-	Count        int
-	Paths        []PathSlot // at most MaxPaths
+	// Kind is the check (P-07 proposal: 2.2.6, mapped to STEER's kind ids
+	// in the same order).
+	Kind IntegrityKind
+	// Count is the window's net adverse count (P-07 proposal: 2.2.6,
+	// "unresolved while the window's net delta stays adverse").
+	Count int
+	// Paths are the files the check moved on, at most MaxPaths (P-07
+	// proposal: archive 40.4.7 user line `{path}`).
+	Paths []PathSlot
+	// PathsOmitted counts the paths left out (P-07 proposal: 2.2.10's cut
+	// rule).
 	PathsOmitted int
-	Seq          int64
+	// Seq is the edit that moved the check (P-07 proposal: archive 20.2.14
+	// integrity.unresolved[].seq).
+	Seq int64
+	// Marker is the closed marker id that moved, empty when the check has
+	// none (P-07 proposal: archive 20.2.14 `"marker": "go.t_skip"`; 20.2.10
+	// "(t.Skip)").
+	Marker MarkerID
 }
