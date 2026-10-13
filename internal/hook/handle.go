@@ -32,7 +32,7 @@ import (
 // below stops at maxLeadingCd (RES-10). That is measured, not proved: on the
 // sixteen 8 MiB line shapes TestRES29_ShapeOfEveryPathologicalLineIsBounded
 // reads, no reader allocates more than five times the payload, and the hook
-// peaked under 58 MiB of RSS on each shape tried.
+// peaked at 58 MiB of RSS or less on each shape tried.
 const MaxPayloadBytes = hookio.MaxPayloadBytes
 
 // maxLeadingCd bounds the leading-cd fold in startDirectory: see

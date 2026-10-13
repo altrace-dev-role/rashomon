@@ -77,7 +77,7 @@ func allocated(f func()) uint64 {
 // after https:// cost a parse error. And each reader decoded the command
 // into a buffer grown from nothing and copied it again. With the hook's own
 // intake those drove a hook to 87, 84 and 178 MiB of RSS against RES-29's
-// 64; every shape here now peaks under 58.
+// 64; every shape here now peaks at 58 or less.
 func TestRES29_ShapeOfEveryPathologicalLineIsBounded(t *testing.T) {
 	for _, tc := range pathologicalLines(t) {
 		if len(tc.in) > 8<<20 {
