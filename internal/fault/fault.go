@@ -57,9 +57,11 @@ const (
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders
 // a write on the device ahead of everything written after it: fcntl
-// F_BARRIERFSYNC on darwin, and a plain fsync elsewhere, where nothing
-// cheaper exists. A full sync makes everything written before it durable:
-// F_FULLFSYNC on darwin, fsync elsewhere.
+// F_BARRIERFSYNC on darwin, logged once the kernel has accepted it, and a
+// plain fsync elsewhere, where nothing cheaper exists. A full sync makes
+// everything written before it durable: F_FULLFSYNC on darwin, fsync
+// elsewhere; a darwin barrier the filesystem refuses falls back to one and
+// is logged as one.
 const (
 	SyncBarrier = "barrier"
 	SyncFull    = "full"

@@ -5,6 +5,8 @@ package store
 import (
 	"os"
 	"syscall"
+
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 )
 
 // fBarrierFsync is fcntl's F_BARRIERFSYNC on darwin (<sys/fcntl.h>: 85). The
@@ -25,6 +27,12 @@ const fBarrierFsync = 85
 // than the call it replaces. Any other error is the sync failing, and is
 // returned rather than retried as a full sync.
 //
+// The fault build's sync recorder logs what was issued, not what was meant:
+// a barrier once the kernel has accepted one, and the fallback as the full
+// sync it is, through syncFull. So REC-34's test, which wants barriers inside
+// the lock and one full sync outside it, fails if the barrier falls back on
+// the store's own volume or never reaches the kernel.
+//
 // syscall.Syscall on darwin traps straight into the kernel rather than going
 // through libc as os.File.Sync does. Apple does not promise that interface;
 // fcntl's number in it has not moved, and an error it did return would fail
@@ -34,11 +42,12 @@ func barrierSync(f *os.File) error {
 		_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), fBarrierFsync, 0)
 		switch {
 		case errno == 0:
+			fault.RecordSync(fault.SyncBarrier, f.Name())
 			return nil
 		case errno == syscall.EINTR:
 			continue
 		case barrierRefused(errno):
-			return f.Sync()
+			return syncFull(f)
 		default:
 			return errno
 		}

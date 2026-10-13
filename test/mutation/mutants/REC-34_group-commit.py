@@ -45,3 +45,19 @@ m("REC-34 a flush_failed marker reads as a dropped declaration", "internal/store
   "\t\tif !declared[t.ToolUseID] && !t.FlushFailed() {", "\t\tif !declared[t.ToolUseID] {", "TestREC34d_")
 m("REC-34 the digest lets a flush_failed marker close a declaration", "internal/digest/declarations.go",
   "\t\tif ids[t.ToolUseID] && !t.FlushFailed() {", "\t\tif ids[t.ToolUseID] {", "TestREC34g_")
+# The darwin barrier itself (P09-F4). The recorder logs a barrier only once the
+# kernel accepted one and the fallback as the full sync it is, so a barrier that
+# became a full sync shows up as one inside the lock.
+m("REC-34 the barrier issues F_FULLFSYNC", "internal/store/sync_darwin.go",
+  "const fBarrierFsync = 85", "const fBarrierFsync = 51", "TestREC34f_")
+m("REC-34 the barrier never reaches the kernel", "internal/store/sync_darwin.go",
+  "\t\t_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), fBarrierFsync, 0)",
+  "\t\terrno := syscall.Errno(0)", "TestREC34f_")
+m("REC-34 an accepted barrier falls back to a full sync", "internal/store/sync_darwin.go",
+  "\t\tcase errno == 0:\n\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn nil\n",
+  "\t\tcase errno == 0:\n\t\t\treturn syncFull(f)\n", "TestREC34_")
+IMPORTS["REC-34 an accepted barrier falls back to a full sync"] = ("internal/store/sync_darwin.go",
+  "import (\n\t\"os\"\n\t\"syscall\"\n\n\t\"github.com/altrace-dev-role/rashomon/internal/fault\"\n)",
+  "import (\n\t\"os\"\n\t\"syscall\"\n)")
+m("REC-34 group commit off inside barrierSync", "internal/store/sync_darwin.go",
+  "func barrierSync(f *os.File) error {\n\tfor {\n", "func barrierSync(f *os.File) error {\n\treturn syncFull(f)\n\tfor {\n", "TestREC34_")
