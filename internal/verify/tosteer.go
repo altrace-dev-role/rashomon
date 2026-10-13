@@ -145,7 +145,9 @@ func factsFit(f Finding) bool {
 // idsValid checks every id a key or a slot is built from against its
 // charset, returning the reason or "".
 func idsValid(f Finding) string {
-	if f.Gate != nil && !f.Gate.GateID.Valid() {
+	// The conversion keeps this compiling should a fact field be retyped,
+	// so TestVER54b, not the build, reports that regression.
+	if f.Gate != nil && !SlotID(f.Gate.GateID).Valid() {
 		return "gate id outside its charset"
 	}
 	if f.Rule != nil && (!f.Rule.RuleID.Valid() || f.Rule.Path != nil && !f.Rule.Path.Valid()) {
