@@ -17,8 +17,17 @@ import (
 // import of a scanned package), a function of another scanned package (under
 // whatever name the file imports it as), and any method of that name declared
 // in a scanned package, which over-approximates and so errs towards a finding.
+// A function literal is walked wherever initialisation meets it, called or not,
+// for the same reason.
+//
 // A function handed to sync.OnceFunc, OnceValue or OnceValues runs on first
-// use, not at init, and is not followed.
+// use, not at init, so it is followed only where initialisation calls the Once
+// result. A call through a function value is followed in exactly these cases:
+// the Once result called inline (`sync.OnceValue(f)()`), and a call whose
+// target names a package-level var (of this package, a dot import, or an
+// imported scanned package) initialised with a Once call, a function name or a
+// function literal. Any other function value (a local var, a field, a
+// parameter, a var assigned in init) is not followed.
 
 // SrcPackage is one scanned package: its import path and its parsed files.
 type SrcPackage struct {
@@ -48,9 +57,18 @@ type scanFunc struct {
 	pkg  *scanPkg
 }
 
+// scanVar is a package-level var and the value it is initialised with.
+type scanVar struct {
+	name  *ast.Ident
+	value ast.Expr
+	file  *fileScope
+	pkg   *scanPkg
+}
+
 type scanPkg struct {
 	funcs   map[string][]*scanFunc
 	methods map[string][]*scanFunc
+	vars    map[string][]*scanVar
 	files   []*fileScope
 }
 
@@ -63,14 +81,15 @@ type fileScope struct {
 
 type initScan struct {
 	byPath map[string]*scanPkg
-	seen   map[*ast.FuncDecl]bool
+	seen   map[ast.Node]bool
+	at     map[token.Pos]bool
 	found  []InitCompile
 }
 
 // RegexpCompilesAtInit finds every regexp compile that initialising pkgs
 // reaches, sorted by position.
 func RegexpCompilesAtInit(pkgs []SrcPackage) []InitCompile {
-	s := &initScan{byPath: map[string]*scanPkg{}, seen: map[*ast.FuncDecl]bool{}}
+	s := &initScan{byPath: map[string]*scanPkg{}, seen: map[ast.Node]bool{}, at: map[token.Pos]bool{}}
 	names := map[string]string{}
 	for _, p := range pkgs {
 		if len(p.Files) > 0 {
@@ -90,7 +109,7 @@ func RegexpCompilesAtInit(pkgs []SrcPackage) []InitCompile {
 }
 
 func (s *initScan) index(p SrcPackage, names map[string]string) *scanPkg {
-	sp := &scanPkg{funcs: map[string][]*scanFunc{}, methods: map[string][]*scanFunc{}}
+	sp := &scanPkg{funcs: map[string][]*scanFunc{}, methods: map[string][]*scanFunc{}, vars: map[string][]*scanVar{}}
 	for _, f := range p.Files {
 		fs := &fileScope{file: f, imports: map[string]string{}}
 		for _, is := range f.Imports {
@@ -110,19 +129,36 @@ func (s *initScan) index(p SrcPackage, names map[string]string) *scanPkg {
 		}
 		sp.files = append(sp.files, fs)
 		for _, d := range f.Decls {
-			fd, ok := d.(*ast.FuncDecl)
-			if !ok {
-				continue
-			}
-			fn := &scanFunc{decl: fd, file: fs, pkg: sp}
-			if fd.Recv == nil {
-				sp.funcs[fd.Name.Name] = append(sp.funcs[fd.Name.Name], fn)
-			} else {
-				sp.methods[fd.Name.Name] = append(sp.methods[fd.Name.Name], fn)
-			}
+			sp.add(d, fs)
 		}
 	}
 	return sp
+}
+
+// add records a file's function, method or package-level var declaration.
+func (sp *scanPkg) add(d ast.Decl, fs *fileScope) {
+	switch d := d.(type) {
+	case *ast.FuncDecl:
+		fn := &scanFunc{decl: d, file: fs, pkg: sp}
+		if d.Recv == nil {
+			sp.funcs[d.Name.Name] = append(sp.funcs[d.Name.Name], fn)
+		} else {
+			sp.methods[d.Name.Name] = append(sp.methods[d.Name.Name], fn)
+		}
+	case *ast.GenDecl:
+		if d.Tok != token.VAR {
+			return
+		}
+		for _, spec := range d.Specs {
+			vs := spec.(*ast.ValueSpec)
+			if len(vs.Values) != len(vs.Names) {
+				continue
+			}
+			for i, n := range vs.Names {
+				sp.vars[n.Name] = append(sp.vars[n.Name], &scanVar{name: n, value: vs.Values[i], file: fs, pkg: sp})
+			}
+		}
+	}
 }
 
 // roots walks a file's package-level var initialisers and init functions.
@@ -166,18 +202,50 @@ func (s *initScan) walk(n ast.Node, fs *fileScope, pkg *scanPkg, via string) {
 			return false
 		}
 		if fs.calls(call.Fun, "regexp", regexpCompiles) {
-			s.found = append(s.found, InitCompile{Pos: call.Pos(), Via: via})
+			if !s.at[call.Pos()] {
+				s.at[call.Pos()] = true
+				s.found = append(s.found, InitCompile{Pos: call.Pos(), Via: via})
+			}
 			return true
 		}
-		for _, fn := range s.resolve(call.Fun, fs, pkg) {
-			if s.seen[fn.decl] || fn.decl.Body == nil {
-				continue
-			}
-			s.seen[fn.decl] = true
-			s.walk(fn.decl.Body, fn.file, fn.pkg, via+" -> "+fn.decl.Name.Name)
-		}
+		s.invoke(call.Fun, fs, pkg, via)
 		return true
 	})
+}
+
+// invoke walks what calling fun runs: a function literal's body, a function
+// a sync.Once* call defers (the Once result is being called), the functions
+// and methods fun names, and the value of a package var fun names.
+func (s *initScan) invoke(fun ast.Expr, fs *fileScope, pkg *scanPkg, via string) {
+	switch f := unwrap(fun).(type) {
+	case *ast.FuncLit:
+		if !s.seen[f] {
+			s.seen[f] = true
+			s.walk(f.Body, fs, pkg, via+" -> func literal")
+		}
+		return
+	case *ast.CallExpr:
+		if fs.calls(f.Fun, "sync", syncDefers) {
+			for _, a := range f.Args {
+				s.invoke(a, fs, pkg, via)
+			}
+		}
+		return
+	}
+	fns, vars := s.resolve(fun, fs, pkg)
+	for _, fn := range fns {
+		if s.seen[fn.decl] || fn.decl.Body == nil {
+			continue
+		}
+		s.seen[fn.decl] = true
+		s.walk(fn.decl.Body, fn.file, fn.pkg, via+" -> "+fn.decl.Name.Name)
+	}
+	for _, v := range vars {
+		if !s.seen[v.name] {
+			s.seen[v.name] = true
+			s.invoke(v.value, v.file, v.pkg, via+" -> "+v.name.Name)
+		}
+	}
 }
 
 // calls reports whether fun names one of names from the package at path,
@@ -200,33 +268,33 @@ func (fs *fileScope) calls(fun ast.Expr, pkgPath string, names map[string]bool) 
 	return false
 }
 
-// resolve lists the scanned functions a call may run.
-func (s *initScan) resolve(fun ast.Expr, fs *fileScope, pkg *scanPkg) []*scanFunc {
+// resolve lists what a call's target may name: the scanned functions and
+// methods it may run, and the package-level vars whose value it may call.
+func (s *initScan) resolve(fun ast.Expr, fs *fileScope, pkg *scanPkg) (fns []*scanFunc, vars []*scanVar) {
 	switch f := unwrap(fun).(type) {
 	case *ast.Ident:
-		out := append([]*scanFunc(nil), pkg.funcs[f.Name]...)
+		fns = append(fns, pkg.funcs[f.Name]...)
+		vars = append(vars, pkg.vars[f.Name]...)
 		for _, d := range fs.dots {
 			if p := s.byPath[d]; p != nil {
-				out = append(out, p.funcs[f.Name]...)
+				fns = append(fns, p.funcs[f.Name]...)
+				vars = append(vars, p.vars[f.Name]...)
 			}
 		}
-		return out
 	case *ast.SelectorExpr:
 		if id, ok := f.X.(*ast.Ident); ok {
 			if ip, imported := fs.imports[id.Name]; imported {
 				if p := s.byPath[ip]; p != nil {
-					return p.funcs[f.Sel.Name]
+					return p.funcs[f.Sel.Name], p.vars[f.Sel.Name]
 				}
-				return nil
+				return nil, nil
 			}
 		}
-		var out []*scanFunc
 		for _, p := range s.byPath {
-			out = append(out, p.methods[f.Sel.Name]...)
+			fns = append(fns, p.methods[f.Sel.Name]...)
 		}
-		return out
 	}
-	return nil
+	return fns, vars
 }
 
 // unwrap strips parentheses and generic instantiation from a call's target.
