@@ -60,7 +60,7 @@ func Parse(data []byte) (*Document, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return &Document{}, nil
 	}
-	members, err := parseObject(data, true)
+	members, err := parseObject(data, wholeDocument)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (d *Document) hookEvents() ([]member, error) {
 	if h == nil || isNull(h.raw) {
 		return nil, nil
 	}
-	events, err := parseObject(h.raw, false)
+	events, err := parseObject(h.raw, valueOnly)
 	if err != nil {
 		return nil, fmt.Errorf("settings: hooks is not an object: %w", err)
 	}
@@ -203,11 +203,20 @@ func isNull(raw json.RawMessage) bool {
 	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 }
 
-// parseObject splits an object into ordered members with raw values. With
-// whole set, anything after the closing brace is an error. Duplicate keys are
-// refused: an encoder would silently keep one of them, and editing a document
-// whose meaning depends on which is not editing, it is guessing.
-func parseObject(data []byte, whole bool) ([]member, error) {
+// objectExtent says whether parseObject's input is a whole document, where
+// anything after the closing brace is an error, or one value inside one.
+type objectExtent bool
+
+const (
+	wholeDocument objectExtent = true
+	valueOnly     objectExtent = false
+)
+
+// parseObject splits an object into ordered members with raw values. For a
+// wholeDocument, anything after the closing brace is an error. Duplicate keys
+// are refused: an encoder would silently keep one of them, and editing a
+// document whose meaning depends on which is not editing, it is guessing.
+func parseObject(data []byte, extent objectExtent) ([]member, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 
 	tok, err := dec.Token()
@@ -243,7 +252,7 @@ func parseObject(data []byte, whole bool) ([]member, error) {
 	if _, err := dec.Token(); err != nil {
 		return nil, err
 	}
-	if whole {
+	if extent == wholeDocument {
 		if _, err := dec.Token(); err != io.EOF {
 			return nil, errors.New("trailing data after the top-level object")
 		}

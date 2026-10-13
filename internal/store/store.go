@@ -269,7 +269,7 @@ func (s *Store) AppendExecution(rec Execution) error {
 // ordered stream, under the same rule as SpillTerminal.
 func (s *Store) SpillExecution(rec Execution) error {
 	rec.Seq = nil
-	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileSpill), rec, spillBudget, true)
+	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileSpill), rec, spillBudget, appendWithoutLock)
 }
 
 // AppendTerminal closes a declaration. If the ordered stream's lock cannot be
@@ -291,17 +291,17 @@ func (s *Store) AppendTerminal(rec Terminal) error {
 // failing to write the declaration and must not spend it again.
 func (s *Store) SpillTerminal(rec Terminal) error {
 	rec.Seq = nil
-	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileSpill), rec, spillBudget, true)
+	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileSpill), rec, spillBudget, appendWithoutLock)
 }
 
 // AppendCoverage records the configuration state as resolved during this run.
 func (s *Store) AppendCoverage(rec Coverage) error {
-	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, lockBudget, false)
+	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, lockBudget, lockOrFail)
 }
 
 // AppendGap records that records left the store.
 func (s *Store) AppendGap(rec Gap) error {
-	return s.appendLine(filepath.Join(s.root, FileGaps), rec, lockBudget, false)
+	return s.appendLine(filepath.Join(s.root, FileGaps), rec, lockBudget, lockOrFail)
 }
 
 // DirName is the run directory name a session id maps to.
@@ -434,11 +434,20 @@ func syncFull(f *os.File) error {
 // it, is not raced, and given up so that no handler ever blocks on it.
 const spillBudget = 50 * time.Millisecond
 
+// onLockTimeout is what appendLine does when its lock wait runs out.
+type onLockTimeout bool
+
+const (
+	// lockOrFail makes a lock timeout the write's error.
+	lockOrFail onLockTimeout = false
+	// appendWithoutLock appends the record anyway, relying on a single
+	// O_APPEND write, which the kernel does not interleave for a regular file.
+	appendWithoutLock onLockTimeout = true
+)
+
 // appendLine appends one record to a file that carries no seq, waiting up to
-// budget for its lock. With bestEffort set, a lock timeout is not an error: the
-// record is appended anyway, relying on a single O_APPEND write, which the
-// kernel does not interleave for a regular file.
-func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffort bool) error {
+// budget for its lock, and on a timeout does what onTimeout says.
+func (s *Store) appendLine(path string, rec any, budget time.Duration, onTimeout onLockTimeout) error {
 	line, err := marshalLine(rec)
 	if err != nil {
 		return err
@@ -457,7 +466,7 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	switch {
 	case err == nil:
 		defer unlock()
-	case bestEffort && errors.Is(err, ErrLockTimeout):
+	case onTimeout == appendWithoutLock && errors.Is(err, ErrLockTimeout):
 	default:
 		return err
 	}
