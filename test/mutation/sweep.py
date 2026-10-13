@@ -3054,6 +3054,13 @@ m("NONO a forget whose store-level record failed reports success", "internal/sto
   "\t_ = s.recordForgottenHost(s.HostDigest(host), now)\n",
   "TestForgetHost_AnUn")
 
+# The reconciliation's exclusion keeps the MCP qualifier (review of #53):
+# reverting it to the bare list survived every test, on main as well.
+m("NONO the reconciliation files the MCP transport as the client's on an MCP session", "internal/report/nono.go",
+  "\texcluded := func(h string) bool { return loopbackHosts[h] || clientPlane(h) }",
+  "\texcluded := func(h string) bool { return loopbackHosts[h] || clientPlaneHosts[h] }",
+  "TestNono_TheMCPTransportIsReconciled")
+
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn
 # sentence). Each anchor appears once in its file.

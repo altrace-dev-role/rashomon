@@ -240,3 +240,22 @@ func TestNono_TheMCPTransportIsTheAgentsOnAnMCPSession(t *testing.T) {
 		t.Errorf("no mcp calls: allowed %v, client_plane_allowed %v; want the transport as the client's", n.Allowed, n.ClientPlaneAllowed)
 	}
 }
+
+// TestNono_TheMCPTransportIsReconciledOnAnMCPSession: the reconciliation
+// excludes the client's plane with clientPlaneHost, NOT the bare list, and
+// the comment on that line says why -- on a session that made mcp__* calls
+// the MCP transport is the agent's. Nothing ran the reconciliation on such a
+// session, so reverting the line to the list dropped a transport the sandbox
+// saw and the wire did not, and every test stayed green.
+func TestNono_TheMCPTransportIsReconciledOnAnMCPSession(t *testing.T) {
+	obs := trailWith(nono.Event{Host: mcpProxyHost, Port: 443, Decision: nono.DecisionAllow, Mode: "connect"})
+	dests := Destinations{Observed: true, WindowApplied: true}
+	if n := buildNono(obs, dests, true, true, nil, nil); strings.Join(n.SawWhatTheProxyDidNot, ",") != mcpProxyHost {
+		t.Errorf("mcp session: saw_what_the_proxy_did_not = %v, want [%s]: the agent's transport, missing from the wire",
+			n.SawWhatTheProxyDidNot, mcpProxyHost)
+	}
+	if n := buildNono(obs, dests, true, false, nil, nil); len(n.SawWhatTheProxyDidNot) != 0 {
+		t.Errorf("no mcp calls: saw_what_the_proxy_did_not = %v, want none: the client's own transport is not a finding",
+			n.SawWhatTheProxyDidNot)
+	}
+}
