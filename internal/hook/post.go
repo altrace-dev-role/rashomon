@@ -119,6 +119,8 @@ const FailureEvent = "PostToolUseFailure"
 type Post struct {
 	st  *store.Store
 	now func() time.Time
+	// lockWaits is Handler.lockWaits.
+	lockWaits time.Duration
 
 	sessionID string
 	toolUseID string
@@ -130,7 +132,7 @@ type Post struct {
 // NewPost builds a Post. now is injectable for the same reason it is on
 // Handler: a test pins the clock and compares two records byte for byte.
 func NewPost(st *store.Store, now func() time.Time) *Post {
-	return &Post{st: st, now: now, sessionID: UnattributedSession}
+	return &Post{st: st, now: now, lockWaits: LockWaitTotal, sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the execution record.
@@ -141,6 +143,8 @@ func NewPost(st *store.Store, now func() time.Time) *Post {
 // unbounded read of a payload carrying a hundred megabytes of tool output is a
 // runtime fatal error, which recover cannot catch and which exits 2.
 func (p *Post) Capture(in io.Reader) error {
+	// First, as in Handler.Capture.
+	p.st.LimitLockWaits(p.lockWaits)
 	fault.Inject(fault.PointPostStart)
 
 	payload, err := hookio.Intake(in)

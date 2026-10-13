@@ -67,6 +67,10 @@ type Store struct {
 	deferred bool
 	dirty    string
 	flushErr error
+
+	// waitUntil is the deadline every lock wait shares, zero for none
+	// (LimitLockWaits).
+	waitUntil time.Time
 }
 
 type installMeta struct {
@@ -401,7 +405,7 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockCounted(f, lockBudget)
+	unlock, err := lockCounted(f, s.lockWait(lockBudget))
 	if err != nil {
 		return err
 	}
@@ -500,7 +504,7 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockCounted(f, budget)
+	unlock, err := lockCounted(f, s.lockWait(budget))
 	switch {
 	case err == nil:
 		defer unlock()

@@ -36,7 +36,7 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 		return nil, err
 	}
 	defer gf.Close() //nolint:errcheck // Sync per record reports write failures
-	unlock, err := lockCounted(gf, lockBudget)
+	unlock, err := lockCounted(gf, s.lockWait(lockBudget))
 	if err != nil {
 		return nil, err
 	}
