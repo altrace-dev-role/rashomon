@@ -257,6 +257,20 @@ func Shaped(s string) bool {
 	return alnum
 }
 
+// Same reports whether a stored host and a canonical one name the same
+// destination: equal as stored, or equal once the stored one is
+// canonicalised. A stored host is canonical when this build wrote it, but a
+// record or a baseline written before an IP literal had one spelling holds it
+// as the call wrote it -- 167838211, [2606:4700:0:0:0:0:0:1111] -- and a
+// forget that compared it as stored would leave it on disk.
+func Same(stored, canonical string) bool {
+	if stored == canonical {
+		return true
+	}
+	c, ok := Canonical(stored)
+	return ok && c == canonical
+}
+
 // Loopback reports whether h names this machine: localhost or a name under
 // .localhost (RFC 6761 6.3), an address in 127.0.0.0/8 or ::1, or the
 // unspecified address, a connection to which reaches this machine. It is

@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/host"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -385,10 +386,20 @@ func digest(key string) string {
 // remembers it. That is the conservative direction: a host the user asked to
 // forget must not survive in a project they did not think to name.
 //
+// The host is matched in any spelling: raw is canonicalised (host.Canonical)
+// and compared with each held host as host.Same compares them, because a
+// baseline holds hosts as its sessions' records named them, and a file
+// written before IP literals had one spelling holds 167838211 where today's
+// holds 10.1.2.3. A raw value that names no host is store.ErrNotAHostname.
+//
 // It takes the lock Update takes, so a forget and a render cannot each save a
 // copy loaded before the other's change.
-func ForgetFile(path, host string) (int, error) {
-	if path == "" || host == "" {
+func ForgetFile(path, raw string) (int, error) {
+	name, ok := host.Canonical(raw)
+	if !ok {
+		return 0, store.ErrNotAHostname
+	}
+	if path == "" {
 		return 0, nil
 	}
 	release, err := store.LockPath(filepath.Join(filepath.Dir(path), lockName))
@@ -400,11 +411,12 @@ func ForgetFile(path, host string) (int, error) {
 		return 0, err
 	}
 	defer release()
-	return forgetLocked(path, host)
+	return forgetLocked(path, raw, name)
 }
 
-// forgetLocked is ForgetFile under the lock.
-func forgetLocked(path, host string) (int, error) {
+// forgetLocked is ForgetFile under the lock, for the host raw whose canonical
+// spelling is name.
+func forgetLocked(path, raw, name string) (int, error) {
 	body, err := readFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		// Listed, then gone before it was read: nothing left to clear.
@@ -423,18 +435,24 @@ func forgetLocked(path, host string) (int, error) {
 		// whole and the project establishes its baseline again, which is the
 		// conservative direction: refusing would leave the forgotten host
 		// sitting in a file this forget cannot touch any other way. Not
-		// holding it, the file is no business of this forget.
-		if !namesHost(body, host) {
+		// holding it, the file is no business of this forget. Unparsed, its
+		// hosts cannot be canonicalised, so both spellings are looked for.
+		if !namesHost(body, name) && !namesHost(body, raw) {
 			return 0, nil
 		}
 		return removeWhole(path)
 	}
-	_, held := f.Hosts[host]
+	held := false
+	for h := range f.Hosts {
+		if host.Same(h, name) {
+			delete(f.Hosts, h)
+			held = true
+		}
+	}
 	if f.Basis == Basis {
 		if !held {
 			return 0, nil
 		}
-		delete(f.Hosts, host)
 		if err := save(filepath.Dir(path), path, f); err != nil {
 			return 0, err
 		}

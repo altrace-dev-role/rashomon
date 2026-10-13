@@ -24,3 +24,28 @@ m("RUBRIC lld-4 the report filters loopback by its old spellings", "internal/rep
   "TestRubricLLD4_")
 IMPORTS["RUBRIC lld-4 the report filters loopback by its old spellings"] = ("internal/report/destinations.go",
   "\t\"github.com/altrace-dev-role/rashomon/internal/host\"\n", "")
+# forget --host asks in the recorded spelling (fix list 30, the forget half):
+# `curl https://167838211/x` records 10.1.2.3, and a forget that compared the
+# typed value, or a recorded one as stored, left the host on disk while
+# reading as done; a value that names no host must be refused, not forgotten
+# as nothing.
+m("RUBRIC lld-4 forget --host compares the typed value", "internal/store/gaps.go",
+  "\tname, ok := host.Canonical(raw)\n\tif !ok {\n\t\treturn nil, ErrNotAHostname\n\t}\n",
+  "\tname, ok := raw, raw != \"\"\n\tif !ok {\n\t\treturn nil, ErrNotAHostname\n\t}\n", "TestRubricLLD4_")
+m("RUBRIC lld-4 a value naming no host is forgotten as nothing", "internal/store/gaps.go",
+  "\t\treturn nil, ErrNotAHostname\n", "", "TestRubricLLD4_")
+m("RUBRIC lld-4 a stored host is compared only as stored", "internal/host/host.go",
+  "\tc, ok := Canonical(stored)\n\treturn ok && c == canonical\n", "\treturn false\n", "TestRubricLLD4_")
+m("RUBRIC lld-4 a baseline is asked in the typed spelling", "internal/baseline/baseline.go",
+  "\tname, ok := host.Canonical(raw)\n\tif !ok {\n\t\treturn 0, store.ErrNotAHostname\n\t}\n",
+  "\tname, ok := raw, raw != \"\"\n\tif !ok {\n\t\treturn 0, store.ErrNotAHostname\n\t}\n", "TestRubricLLD4_")
+m("RUBRIC lld-4 a baseline forget of no host reads as done", "internal/baseline/baseline.go",
+  "\t\treturn 0, store.ErrNotAHostname\n", "\t\treturn 0, nil\n", "TestRubricLLD4_")
+m("RUBRIC lld-4 an unparsed baseline is searched for the typed spelling only", "internal/baseline/baseline.go",
+  "\t\tif !namesHost(body, name) && !namesHost(body, raw) {\n", "\t\tif !namesHost(body, raw) {\n", "TestRubricLLD4_")
+m("RUBRIC lld-4 the forget summary names the typed value", "cmd/rashomon/main.go",
+  "\tname, ok := host.Canonical(raw)\n\tif !ok {\n\t\treturn errors.New(\"--host is not a hostname",
+  "\t_, ok := host.Canonical(raw)\n\tname := raw\n\tif !ok {\n\t\treturn errors.New(\"--host is not a hostname", "TestRubricLLD4_")
+m("RUBRIC lld-4 the command opens the store before asking whether the value is a host", "cmd/rashomon/main.go",
+  "\tname, ok := host.Canonical(raw)\n\tif !ok {\n\t\treturn errors.New(\"--host is not a hostname",
+  "\tname, ok := host.Canonical(raw)\n\tif st, err := openStoreForRead(); errors.Is(err, store.ErrNoStore) && st == nil {\n\t\tfmt.Fprintln(stdout, nothingRecordedHere)\n\t\treturn nil\n\t}\n\tif !ok {\n\t\treturn errors.New(\"--host is not a hostname", "TestRubricLLD4_")

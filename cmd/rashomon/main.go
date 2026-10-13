@@ -1711,28 +1711,18 @@ func cmdSpend(args []string, stdout io.Writer) error {
 // naming both is refused rather than resolved.
 func cmdForget(args []string, stdout io.Writer) error {
 	var from, to *time.Time
-	target := ""
+	hostArg := ""
 	for i := 0; i < len(args); i++ {
 		switch flag := args[i]; flag {
 		case "--host":
 			if i+1 >= len(args) {
 				return errors.New("--host needs a value")
 			}
-			// Canonicalised HERE, before anything is opened, and the canonical
-			// name is what every step after it sees: the record match, the
-			// digest, the baselines and the line that says what was forgotten.
-			// Every host rashomon holds went through host.Canonical, so taken
-			// as typed, "GitHub.com" or "github.com:443" forgot nothing while
-			// the line said later reports would leave it out. The value is not
-			// echoed in the refusal: it may carry a credential, and stderr
-			// lands wherever the caller's output does, a transcript included.
-			h, ok := host.Canonical(args[i+1])
-			if !ok {
-				return errors.New("--host is not a hostname: give the destination's name, " +
-					"such as github.com (a scheme and a port are dropped; a path, " +
-					"credentials or spaces are refused)")
-			}
-			target = h
+			// Taken as typed here and canonicalised by forgetHost, before
+			// anything is opened: the store and the baselines are asked about
+			// the canonical name, and an unparsed baseline is searched for the
+			// typed one as well.
+			hostArg = args[i+1]
 			i++
 		case "--since", "--before":
 			if i+1 >= len(args) {
@@ -1753,10 +1743,10 @@ func cmdForget(args []string, stdout io.Writer) error {
 		}
 	}
 	switch {
-	case target != "" && (from != nil || to != nil):
+	case hostArg != "" && (from != nil || to != nil):
 		return errors.New("--host removes by destination and --since/--before remove by time; pass one kind or the other")
-	case target != "":
-		return forgetHost(target, stdout)
+	case hostArg != "":
+		return forgetHost(hostArg, stdout)
 	case from != nil && to != nil:
 		return errors.New("--since and --before name opposite ends of the store's timeline; pass one or the other")
 	case from == nil && to == nil:
@@ -1918,7 +1908,21 @@ another install stands down: it records nothing in this environment.
 // A baseline/ directory exists only where a report has run on this machine,
 // because a report writes one only then. Without it the output is one line
 // saying what was removed; with it, the baseline count follows.
-func forgetHost(host string, stdout io.Writer) error {
+//
+// The value is asked about in the one spelling hosts are recorded in
+// (host.Canonical), which is also the spelling the summary names: `--host
+// 167838211` forgets the records of 10.1.2.3 and says so. A value that names
+// no host is refused before anything is opened, and the refusal does not echo
+// it: a value carrying user@ is refused because it may carry a credential,
+// and stderr lands wherever the caller's output does, a transcript included.
+func forgetHost(raw string, stdout io.Writer) error {
+	name, ok := host.Canonical(raw)
+	if !ok {
+		return errors.New("--host is not a hostname: give the destination's name or address, " +
+			"such as pypi.org or 10.1.2.3, or a URL such as https://pypi.org/simple " +
+			"(a scheme, a port and a URL's path are dropped; a value with user@ in it, " +
+			"spaces inside or a path with no scheme is refused, not stripped)")
+	}
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {
 		fmt.Fprintln(stdout, nothingRecordedHere)
@@ -1929,7 +1933,7 @@ func forgetHost(host string, stdout io.Writer) error {
 	}
 	// As in cmdForget: what was forgotten is printed, and baselines cleared,
 	// before a run that could not be rewritten fails the command.
-	gaps, forgetErr := st.ForgetHost(host, time.Now())
+	gaps, forgetErr := st.ForgetHost(raw, time.Now())
 	if forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {
 		// Failed before any run was forgotten, and perhaps before the
 		// store-level record landed: the line below would claim later
@@ -1952,10 +1956,10 @@ func forgetHost(host string, stdout io.Writer) error {
 	// either error is returned. A forget that clears some runs or some
 	// baselines and then fails must still say so: a caller who sees only the
 	// error cannot tell that part of it already happened.
-	cleared, hadBaselines, clearErr := clearBaselines(st.Root(), host)
+	cleared, hadBaselines, clearErr := clearBaselines(st.Root(), raw)
 
 	fmt.Fprintf(stdout, "rashomon: forgot %s naming %s across %s; %s written",
-		countOf(total, "record"), host, countOf(len(gaps), "run"), countOf(len(gaps), "gap record"))
+		countOf(total, "record"), name, countOf(len(gaps), "run"), countOf(len(gaps), "gap record"))
 	// Said when nothing was removed, because that is when "forgot 0 records"
 	// reads as "nothing happened" -- and before #45 it was true: the host came
 	// back under the sandbox heading of the next report. The store-level
@@ -1987,7 +1991,7 @@ func countOf(n int, noun string) string {
 //
 // A file it cannot clear does not stop it: the host still leaves every other
 // project's baseline, and the failures are returned together.
-func clearBaselines(root, host string) (int, bool, error) {
+func clearBaselines(root, raw string) (int, bool, error) {
 	dir := filepath.Join(root, "baseline")
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -2002,7 +2006,7 @@ func clearBaselines(root, host string) (int, bool, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		n, err := baseline.ForgetFile(filepath.Join(dir, e.Name()), host)
+		n, err := baseline.ForgetFile(filepath.Join(dir, e.Name()), raw)
 		if err != nil {
 			failed = append(failed, err)
 			continue

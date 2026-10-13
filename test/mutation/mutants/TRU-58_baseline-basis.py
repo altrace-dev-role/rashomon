@@ -18,9 +18,9 @@ m("TRU-58 forget leaves a baseline without the basis marker on disk", "internal/
 # naming it again would never be told it is new. Judged by TRU-58b alone: its
 # third session names the host after the forget.
 m("TRU-58 forget keeps the host in a current baseline", "internal/baseline/baseline.go",
-  "\t\tdelete(f.Hosts, host)\n", "", "TestTRU58b_")
+  "\t\t\tdelete(f.Hosts, h)\n", "", "TestTRU58b_")
 m("TRU-58 forget clears no baseline at all", "internal/baseline/baseline.go",
-  "\tif path == \"\" || host == \"\" {\n\t\treturn 0, nil\n\t}\n", "\tif true {\n\t\treturn 0, nil\n\t}\n",
+  "\tif path == \"\" {\n\t\treturn 0, nil\n\t}\n", "\tif true {\n\t\treturn 0, nil\n\t}\n",
   "TestTRU58b_")
 # TRU-58c: a baseline this build cannot parse, or of a version it does not
 # know, cannot be rewritten without the host. Holding the host, it is deleted
@@ -28,7 +28,7 @@ m("TRU-58 forget clears no baseline at all", "internal/baseline/baseline.go",
 m("TRU-58 forget leaves an unparseable baseline that holds the host", "internal/baseline/baseline.go",
   "\t\treturn removeWhole(path)\n", "\t\treturn 0, nil\n", "TestTRU58c_")
 m("TRU-58 forget deletes an unparseable baseline that does not hold the host", "internal/baseline/baseline.go",
-  "\t\tif !namesHost(body, host) {\n", "\t\tif false && !namesHost(body, host) {\n", "TestTRU58_")
+  "\t\tif !namesHost(body, name) && !namesHost(body, raw) {\n", "\t\tif false {\n", "TestTRU58_")
 # Round two. An unreadable baseline may hold the host, so it is an error and
 # not a zero; one file the forget cannot clear must not stop it clearing the
 # others; and the byte search matches the whole quoted host, not any run of

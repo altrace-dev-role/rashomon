@@ -30,8 +30,8 @@ m("REC-32 probe is silent when eviction fails", "cmd/rashomon/main.go",
 m("REC-32 the report prints an unknown count as -1", "internal/report/text.go",
   "\t\t\tif g.RemovedRecords < 0 {\n", "\t\t\tif false {\n", "TestREC32c_")
 m("REC-32 forget --host prints nothing when one run fails", "cmd/rashomon/main.go",
-  "\tgaps, forgetErr := st.ForgetHost(host, time.Now())\n",
-  "\tgaps, forgetErr := st.ForgetHost(host, time.Now())\n\tif forgetErr != nil {\n\t\treturn forgetErr\n\t}\n", "TestREC32e_")
+  "\tgaps, forgetErr := st.ForgetHost(raw, time.Now())\n",
+  "\tgaps, forgetErr := st.ForgetHost(raw, time.Now())\n\tif forgetErr != nil {\n\t\treturn forgetErr\n\t}\n", "TestREC32e_")
 m("REC-32 forget --host succeeds while a run still holds the host", "cmd/rashomon/main.go",
   "\tfmt.Fprintln(stdout)\n\treturn errors.Join(forgetErr, clearErr)\n", "\tfmt.Fprintln(stdout)\n\treturn clearErr\n", "TestREC32e_")
 m("REC-32 the ordered append goes on after a torn tail", "internal/store/store.go",
@@ -40,23 +40,23 @@ m("REC-32 the ordered append goes on after a torn tail", "internal/store/store.g
 # A forget --host that failed before touching a run, its store-level record
 # included, prints no line: "later reports still leave it out" would be false.
 m("REC-32 forget --host reports a forget that failed before any run", "cmd/rashomon/main.go",
-  "\tgaps, forgetErr := st.ForgetHost(host, time.Now())\n\tif forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {",
-  "\tgaps, forgetErr := st.ForgetHost(host, time.Now())\n\tif false && forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {",
+  "\tgaps, forgetErr := st.ForgetHost(raw, time.Now())\n\tif forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {",
+  "\tgaps, forgetErr := st.ForgetHost(raw, time.Now())\n\tif false && forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {",
   "TestREC32f_")
 # Nor does it clear a baseline: the error would be the only thing said, and the
 # command would have changed what the next report calls new.
 m("REC-32 forget --host clears baselines after a forget that failed before any run", "cmd/rashomon/main.go",
   "\t\t// command changed nothing it does not say.\n\t\treturn forgetErr\n",
-  "\t\t// command changed nothing it does not say.\n\t\t_, _, _ = clearBaselines(st.Root(), host)\n\t\treturn forgetErr\n",
+  "\t\t// command changed nothing it does not say.\n\t\t_, _, _ = clearBaselines(st.Root(), raw)\n\t\treturn forgetErr\n",
   "TestForgetHost_AnEarlyFailureClearsNoBaselineAndPrintsNothing")
 # A partial forget prints "later reports still leave it out", which the
 # store-level record makes true: it must land before the pass over the runs
 # that can end in ErrForgetIncomplete, not only after a pass that finished.
 m("REC-32 forget --host records the host only after every run was rewritten", "internal/store/gaps.go",
-  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n"
-  "\treturn s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, host, now) })\n",
-  "\tgaps, err := s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, host, now) })\n"
-  "\tif err != nil {\n\t\treturn gaps, err\n\t}\n\treturn gaps, s.recordForgottenHost(s.HostDigest(host), now)\n",
+  "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n"
+  "\treturn s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })\n",
+  "\tgaps, err := s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })\n"
+  "\tif err != nil {\n\t\treturn gaps, err\n\t}\n\treturn gaps, s.recordForgottenHost(s.HostDigest(name), now)\n",
   "TestForgetHost_APartialForgetSaysLaterReportsLeaveItOutOnlyWithItsRecord")
 m("REC-32 eviction stops at a run it cannot list", "internal/store/evict.go",
   "\t\t\tplan.unlisted = append(plan.unlisted, fmt.Errorf(\"run %s: %w\", e.Name(), err))\n\t\t\tcontinue\n",
