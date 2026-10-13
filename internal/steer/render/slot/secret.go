@@ -16,9 +16,15 @@ var ErrSecretShaped = errors.New("slot: secret-shaped value")
 // `PGPASSWORD=`"): the masker's token formats R12-R20 (archive 10.2.4), the
 // formats R20 names by prefix only widened to a prefix and a long token,
 // URL user-info (R5), a bearer token (R7), and a secret-named key followed by
-// a value (R1, R21). The 40-character key is hasKeyRun's, as RE2 has no
+// a value (R1, R21); and gitleaks' Mailgun, Twilio, Postman and private-key
+// rules (P07N-7). The 40-character key is hasKeyRun's, as RE2 has no
 // lookaround to bound a run. Over-matching costs a note or a listed path;
-// under-matching would print a secret, so each rule errs wide.
+// under-matching would print a secret, so each rule errs wide, but the
+// prefixed formats start at a word's start, as the masker's R20 does with
+// \b, and the three whose prefix is also a common word part (hf_, SG.,
+// dapi) take gitleaks' token body, so an ordinary file name such as
+// rapidapi_client.py or MSG.handler.go is kept; and a bearer token needs a
+// separator, so BearerTokenAuthenticationFilterTests.java is too (P07N-12).
 var denyRE = &lazyRegexp{pattern: strings.Join([]string{
 	`(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}`,
 	`gh[pousr]_[A-Za-z0-9]{36,}`,
@@ -33,9 +39,12 @@ var denyRE = &lazyRegexp{pattern: strings.Join([]string{
 	`npm_[A-Za-z0-9]{36}`,
 	`pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}`,
 	`hvs\.[A-Za-z0-9_-]{24,}`,
-	`(?:hf_|SG\.|dop_v1_|shp(?:at|ca|pa|ss)_|dapi|ATATT|xapp-|dp\.st\.)[A-Za-z0-9_.=-]{16,}`,
+	`(?:^|[^A-Za-z0-9])(?:dop_v1_|shp(?:at|ca|pa|ss)_|ATATT|xapp-|dp\.st\.)[A-Za-z0-9_.=-]{16,}`,
+	`(?:^|[^A-Za-z0-9])(?:hf_[A-Za-z]{34}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|dapi[a-f0-9]{32})`,
+	`(?:^|[^A-Za-z0-9])(?:key-[0-9a-z]{32}|SK[0-9a-fA-F]{32}|PMAK-[a-f0-9]{24}-[a-f0-9]{34})`,
+	`-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY`,
 	`[A-Za-z0-9._~%+-]+:[^@/\s]+@`,
-	`(?i:bearer)[\s:=_+-]*[A-Za-z0-9._~+/=-]{20,}`,
+	`(?:^|[^A-Za-z0-9])(?i:bearer)[\s:=]+[A-Za-z0-9._~+/=-]{20,}`,
 	`(?i:(?:pgpassword|mysql_pwd|database_url|connection_string|client_secret|aws_secret_access_key|aws_session_token|_authtoken|[a-z0-9_]*(?:password|passwd|_pass|_pwd|secret|token|api_key|apikey|access_key|secret_key|private_key|credentials?|_auth|session_key|cookie|_pat|_dsn|_key|passphrase|accountkey))\s*[:=])`,
 }, "|")}
 
@@ -98,7 +107,7 @@ func highEntropy(s string) bool {
 	start := 0
 	for i := 0; i <= len(s); i++ {
 		if i == len(s) || s[i] == '.' || s[i] == ':' || s[i] == '@' {
-			if runHighEntropy(s[start:i]) {
+			if runHighEntropy(s[start:i]) || tokenInRun(s[start:i]) {
 				return true
 			}
 			start = i + 1
@@ -106,6 +115,38 @@ func highEntropy(s string) bool {
 	}
 	return false
 }
+
+// maxTokenPrefix is the longest letter prefix tokenInRun strips.
+const maxTokenPrefix = 8
+
+// tokenInRun is the slot layer's addition to tech 1.2.4's entropy test, a
+// P-07 proposal for the owner of mask.HighEntropy (P-13), which shares the
+// definition (P07N-7): 1.2.4 picks k from every character of the run, so
+// one '-', '_' or capital letter beside a hex token moves it to the 62 or 64
+// column, whose threshold a 16-symbol random string cannot reach. So each
+// part of the run between '-', '_', '+', '/' and '=' is tested on its own,
+// and so is each part without a leading run of up to maxTokenPrefix
+// letters when that leaves a smaller alphabet ("SK" before 32 hex digits).
+// Runs under 20 characters stay untested, as 1.2.4 has them, so a UUID or
+// a short-run split is kept.
+func tokenInRun(run string) bool {
+	parts := strings.FieldsFunc(run, func(r rune) bool { return strings.ContainsRune("-_+/=", r) })
+	for _, part := range parts {
+		if part != run && runHighEntropy(part) {
+			return true
+		}
+		k := alphabetIndex(part)
+		for p := 1; p <= maxTokenPrefix && p < len(part) && isLetter(part[p-1]); p++ {
+			rest := part[p:]
+			if len(rest) >= entropyMinRun && alphabetIndex(rest) < k && runHighEntropy(rest) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
 
 func runHighEntropy(run string) bool {
 	n := len(run)

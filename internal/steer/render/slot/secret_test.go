@@ -23,7 +23,10 @@ var secretShaped = []string{
 	"AIzaSyA1234567890abcdefghijklmnopqrstuv",
 	"npm_abcdefghijklmnopqrstuvwxyz0123456789",
 	"hvs.abcdefghijklmnopqrstuvwxyz",
-	"hf_abcdefghijklmnopqrstuvwx",
+	"hf_" + "abcdefghijklmnopqrstuvwxyzABCDEFGH",
+	"key-" + "0123456789abcdef0123456789abcdef",
+	"SK" + "0123456789abcdef0123456789ABCDEF",
+	"PMAK-" + "0123456789abcdef01234567-0123456789abcdef0123456789abcdef01",
 	"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
 	"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
 	"user:token@host",
@@ -249,4 +252,90 @@ func exactEntropyMoments(k, n int) (float64, float64) {
 	kf := float64(k)
 	mu := kf * e1
 	return mu, math.Sqrt(kf*e2 + kf*(kf-1)*e12 - mu*mu)
+}
+
+// ordinaryPaths are real-world file names the deny list and the entropy
+// test must keep (P07N-12): a Spring class and a Go test named for bearer
+// tokens, file names that contain SG., dapi and hf_ inside or at the start
+// of a word, and long snake and kebab names whose words the separated-run
+// check reads one by one.
+var ordinaryPaths = []Path{
+	"src/main/java/BearerTokenAuthenticationFilterTests.java",
+	"internal/auth/bearer_token_authentication_test.go",
+	"pkg/MSG.handler_registration_test.go",
+	"clients/rapidapi_client_generated_models.py",
+	"ml/hf_transformers_pipeline_utils.py",
+	"internal/report/silent_failure_line_test.go",
+	"config/configuration-management-service.yaml",
+	"src/internationalization_helpers_test.ts",
+	"docs/architecture_decision_records_index.md",
+	"web/components/navigation-bar-dropdown-menu.tsx",
+	"3f2504e0-4f89-11d3-9a0c-0305e82c3301/config.json",
+}
+
+// TestSTR13c_OrdinaryFileNamesAreKept: none of ordinaryPaths is refused.
+func TestSTR13c_OrdinaryFileNamesAreKept(t *testing.T) {
+	for _, p := range ordinaryPaths {
+		if err := p.Validate(); err != nil {
+			t.Errorf("Path(%q) = %v, want nil", p, err)
+		}
+	}
+}
+
+// TestSTR13d_PrefixedAndSeparatedTokensRefused: a random token behind a
+// vendor prefix or split by '-' or '_' into runs of 20 or more is refused
+// at least 99% of the time as a fact value and as a path segment (P07N-7):
+// the gitleaks rules for Mailgun, Twilio and Postman keys, and the entropy
+// test over each separated run and over a run without its letter prefix.
+func TestSTR13d_PrefixedAndSeparatedTokensRefused(t *testing.T) {
+	const hex, upper36 = "0123456789abcdef", "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	r := rand.New(rand.NewPCG(31, 37))
+	for _, c := range []struct {
+		name string
+		gen  func() string
+	}{
+		{"mailgun key-hex32", func() string { return "key-" + randomString(r, hex, 32) }},
+		{"twilio SK+hex32", func() string { return "SK" + randomString(r, hex, 32) }},
+		{"postman PMAK", func() string { return "PMAK-" + randomString(r, hex, 24) + "-" + randomString(r, hex, 34) }},
+		{"hex64 split by underscore", func() string { return randomString(r, hex, 32) + "_" + randomString(r, hex, 32) }},
+		{"newrelic NRAK-b36", func() string { return "NRAK-" + randomString(r, upper36, 27) }},
+		{"tok_ hex24", func() string { return "tok_" + randomString(r, hex, 24) }},
+		{"Tok hex24", func() string { return "Tok" + randomString(r, hex, 24) }},
+	} {
+		fact, path := 0, 0
+		const n = 2000
+		for i := 0; i < n; i++ {
+			v := c.gen()
+			if (FactValue{Kind: FactAWSProfile, Value: v}).Validate() != nil {
+				fact++
+			}
+			if Path("cfg/"+v).Validate() != nil {
+				path++
+			}
+		}
+		if fs, ps := float64(fact)/n, float64(path)/n; fs < 0.99 || ps < 0.99 {
+			t.Errorf("%s: %.4f refused as a fact value, %.4f as a path; want at least 0.99", c.name, fs, ps)
+		}
+	}
+}
+
+// TestSTR13e_ApprovedRefusesSecretShapedText: Approved runs the deny list
+// and the entropy test, word by word, as VERIFY's own check on the same
+// `alternative` field does (archive 20.2.8, TestVER47), so a token, a key
+// header or a password assignment never renders into model text (P07N-10).
+func TestSTR13e_ApprovedRefusesSecretShapedText(t *testing.T) {
+	checkSlot(t,
+		[]Approved{"pass an argument list; for AWS calls use boto3", "use the staging profile", "region: us-east-1 (the default)", "the internationalization helpers"},
+		[]Approved{
+			"token ghp_abcdefghijklmnopqrstuvwxyz0123456789 is the one",
+			"-----BEGIN RSA PRIVATE" + " KEY-----",
+			"DB_PASSWORD=hunter2",
+			"use q8Zr4LmP0xT7vK2nW9yB3cHdQ1sE as the key",
+			"AKIAIOSFODNN7EXAMPLE",
+		})
+	for _, v := range []Approved{"DB_PASSWORD=hunter2", "use q8Zr4LmP0xT7vK2nW9yB3cHdQ1sE as the key"} {
+		if err := v.Validate(); !errors.Is(err, ErrSecretShaped) {
+			t.Errorf("Approved(%q) = %v, want ErrSecretShaped", v, err)
+		}
+	}
 }

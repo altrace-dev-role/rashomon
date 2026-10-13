@@ -26,6 +26,14 @@ type briefingBinding struct {
 	Exit slot.Exit `slot:"exit"`
 }
 
+// approvedBinding is P07N-9's probe shape: an Approved slot followed by a
+// bare template word, a quoted gate and a quoted path.
+type approvedBinding struct {
+	Approved slot.Approved `slot:"approved"`
+	Gate     slot.Gate     `slot:"gate"`
+	Path     slot.Path     `slot:"path"`
+}
+
 type extraBinding struct {
 	Gate  slot.Gate  `slot:"gate"`
 	Extra slot.Count `slot:"extra"`
@@ -54,19 +62,20 @@ type (
 	}
 )
 
-const exampleFormat = "rashomon record: {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. Files written between the two runs: {paths}."
+const exampleFormat = "rashomon record: gate {gate} exited 0 earlier in this session ({minutes} min ago) and exited {exit} on this run. Files written between the two runs: {paths}."
 
 var testTable = map[templateKey]template{
 	{pattern.RegressionLocation, reflect.TypeOf(exampleBinding{})}: {id: "test/regression-location", format: exampleFormat},
 	{pattern.ContinuityBriefing, reflect.TypeOf(briefingBinding{})}: {
 		id:     "test/continuity-briefing",
-		format: "rashomon record: state of this session before the compaction:\n- {gate}: last run exited {exit}.",
+		format: "rashomon record: state of this session before the compaction:\n- gate {gate}: last run exited {exit}.",
 	},
 	{pattern.RegressionLocation, reflect.TypeOf(briefingBinding{})}: {
 		id:     "test/line-feed-outside-a-briefing",
 		format: "rashomon record: {gate}\nexited {exit}.",
 	},
 	{pattern.SubtaskGate, reflect.TypeOf(briefingBinding{})}:    {id: "test/unused-slot", format: "rashomon record: {gate} only."},
+	{pattern.DeclaredFact, reflect.TypeOf(approvedBinding{})}:   {id: "test/approved-parity", format: "rashomon record: the spec states {approved}; gate {gate} exited 1 on file {path}, and the agent must stop."},
 	{pattern.MaskedStatus, reflect.TypeOf(briefingBinding{})}:   {id: "test/unknown-placeholder", format: "rashomon record: {gate} {exit} {nope}."},
 	{pattern.IdenticalRetry, reflect.TypeOf(briefingBinding{})}: {id: "test/unclosed", format: "rashomon record: {gate {exit}."},
 	{pattern.OrderingRule, reflect.TypeOf(briefingBinding{})}:   {id: "test/stray-brace", format: "rashomon record: {gate} } {exit}."},
@@ -99,7 +108,7 @@ func TestNew_FillsTheTemplateAndReturnsTheClosedMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newMessage: %v", err)
 	}
-	want := "rashomon record: go test exited 0 earlier in this session (6 min ago) and exited 1 on this run. " +
+	want := "rashomon record: gate 'go test' exited 0 earlier in this session (6 min ago) and exited 1 on this run. " +
 		"Files written between the two runs: 'internal/a.go', 'internal/b.go' and 1 more."
 	if m.Text() != want {
 		t.Errorf("Text() = %q, want %q", m.Text(), want)
@@ -204,7 +213,7 @@ func TestSTR12b_NewRunsTheWholeStringCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("briefing: %v", err)
 	}
-	if want := "rashomon record: state of this session before the compaction:\n- go test: last run exited 1."; m.Text() != want {
+	if want := "rashomon record: state of this session before the compaction:\n- gate 'go test': last run exited 1."; m.Text() != want {
 		t.Errorf("briefing Text() = %q, want %q", m.Text(), want)
 	}
 }
@@ -403,5 +412,21 @@ func TestLUI11b_RenderedStringsAreStatementsNotOrders(t *testing.T) {
 		if (err == nil) != c.want {
 			t.Errorf("Validate(%q) = %v, want ok=%v", c.s, err, c.want)
 		}
+	}
+}
+
+// TestSTR12c_ApprovedCannotShiftQuoteParity: an Approved value ending in a
+// quote would close its own quote early and open one that hides the
+// template's later words from the whole-string check (P07N-9). The value is
+// refused, and the same template with a plain value is checked to its end,
+// where its own banned word is refused.
+func TestSTR12c_ApprovedCannotShiftQuoteParity(t *testing.T) {
+	b := approvedBinding{Approved: "abc '", Gate: "go test", Path: "a.go"}
+	if m, err := newMessage(testTable, pattern.DeclaredFact, b); err == nil {
+		t.Errorf("an Approved value ending in a quote rendered: %q", m.Text())
+	}
+	b.Approved = "abc"
+	if _, err := newMessage(testTable, pattern.DeclaredFact, b); err == nil || !strings.Contains(err.Error(), "must") {
+		t.Errorf("the template's own banned word after the slots: %v, want it refused", err)
 	}
 }
