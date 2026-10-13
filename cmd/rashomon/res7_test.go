@@ -2,13 +2,14 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
-	"syscall"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/test/perf/peakrss"
 )
 
 const res7Child = "RASHOMON_RES7_CHILD"
@@ -26,7 +27,7 @@ func stopPayload(n int) []byte {
 }
 
 // recapMaxRSS runs recap in a child process on payload and returns its peak
-// RSS in MiB.
+// RSS in MiB. A platform with no ru_maxrss (windows) skips by name.
 func recapMaxRSS(t *testing.T, payload []byte) float64 {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestRES7_HugeFinalMessageIsConstant$")
@@ -37,15 +38,14 @@ func recapMaxRSS(t *testing.T, payload []byte) float64 {
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("recap child: %v\n%s", err, out.String())
 	}
-	ru, ok := cmd.ProcessState.SysUsage().(*syscall.Rusage)
-	if !ok {
-		t.Fatal("no rusage for the child")
+	rss, err := peakrss.MiB(cmd.ProcessState)
+	if errors.Is(err, peakrss.ErrUnavailable) {
+		t.Skip(err)
 	}
-	rss := float64(ru.Maxrss)
-	if runtime.GOOS == "linux" {
-		rss *= 1024
+	if err != nil {
+		t.Fatal(err)
 	}
-	return rss / (1 << 20)
+	return rss
 }
 
 // TestRES7_HugeFinalMessageIsConstant: recap streams a Stop payload, so a

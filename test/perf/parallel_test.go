@@ -15,11 +15,11 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/test/perf/payload"
+	"github.com/altrace-dev-role/rashomon/test/perf/peakrss"
 )
 
 // TestRES30_ParallelHooksStayInBudget: Ways hook-and-post pairs on one
@@ -152,15 +152,7 @@ func peakMiB(stdin []byte, env []string, args ...string) (float64, error) {
 		}
 		return float64(n) / (1 << 20), nil
 	}
-	ru, ok := cmd.ProcessState.SysUsage().(*syscall.Rusage)
-	if !ok {
-		return 0, errors.New("no rusage for the child")
-	}
-	rss := float64(ru.Maxrss)
-	if runtime.GOOS == "linux" {
-		rss *= 1024
-	}
-	return rss / (1 << 20), nil
+	return peakrss.MiB(cmd.ProcessState)
 }
 
 // readBurst counts what the burst left in one run directory: the ordered
