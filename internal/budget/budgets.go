@@ -20,6 +20,7 @@ type Budgets struct {
 	Entries       []Entry             `json:"entries"`
 	RSSCases      []RSSCase           `json:"rss_cases"`
 	PerToolCall   PerToolCall         `json:"per_tool_call"`
+	Parallel      Parallel            `json:"parallel"`
 	Benchmarks    []Benchmark         `json:"benchmarks"`
 	Growth        []Growth            `json:"growth"`
 	Disk          Disk                `json:"disk"`
@@ -89,6 +90,14 @@ type PerToolCall struct {
 	MemoryTimeMiBMsMax  float64        `json:"memory_time_mib_ms_max"`
 	SummedPeakMiBMax    float64        `json:"summed_peak_mib_max"`
 	ProcessCreationsMax map[string]int `json:"process_creations_max"`
+}
+
+// Parallel bounds a burst (RES-30): Ways hook-and-post pairs on one session
+// at once, whose peak footprints sum to at most SummedPeakMiBMax, 64 x (6.5 +
+// 4.5) MiB = 704 at 64-way (archive 85.4.4).
+type Parallel struct {
+	Ways             int     `json:"ways"`
+	SummedPeakMiBMax float64 `json:"summed_peak_mib_max"`
 }
 
 // Benchmark is one benchmark's allocation budget (RES-36): the measured best

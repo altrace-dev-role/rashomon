@@ -1,0 +1,271 @@
+package acceptance
+
+import (
+	"bufio"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// Mirrors internal/fault: the sync recorder's variable and the full-sync
+// point, whose first failure is a deferred hook's flush and whose second is
+// the flush_failed marker's own sync.
+const (
+	syncLogEnv         = "RASHOMON_SYNC_LOG"
+	pointStoreFullSync = "store.full_sync"
+)
+
+// syncEvent is one line of the sync recorder's log: a barrier or a full sync,
+// the file it ran on, and whether this process held a store lock at the time.
+type syncEvent struct {
+	kind   string
+	file   string
+	locked bool
+}
+
+// readSyncLog parses the recorder's log. A missing log is no syncs at all.
+func readSyncLog(t *testing.T, path string) []syncEvent {
+	t.Helper()
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var out []syncEvent
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		parts := strings.Fields(sc.Text())
+		if len(parts) != 3 || (parts[0] != "barrier" && parts[0] != "full") || !strings.HasPrefix(parts[2], "locked=") {
+			t.Fatalf("sync log line %q is not <kind> <file> locked=<bool>", sc.Text())
+		}
+		out = append(out, syncEvent{kind: parts[0], file: parts[1], locked: parts[2] == "locked=true"})
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// runFiles counts the lines of the three files a hook appends to.
+func (e *env) runFiles(sessionID string) (records, coverage, spill int) {
+	e.t.Helper()
+	return len(e.read(sessionID, "records.ndjson")), len(e.read(sessionID, "coverage.ndjson")), len(e.read(sessionID, "spill.ndjson"))
+}
+
+// TestREC34_GroupCommitFlushesBeforeExit: hook and post order every append
+// with a barrier inside its lock and then issue exactly one full sync, after
+// the last append, outside every lock, with nothing on stdout, which is what
+// "durable before exit" is when nothing printed comes first. probe and the
+// paused path are the contrast: they never defer, and keep a full sync per
+// append. Observed through the rashomonfault sync recorder (REC-34).
+//
+// "Before stdout" holds vacuously on this base: neither hook nor post writes
+// to stdout at all (cmdHook and cmdPost are not even handed it), so the
+// assertion here is that stdout stays empty. The STEER output PR, which makes
+// post print, has to prove the order again against a process that prints.
+func TestREC34_GroupCommitFlushesBeforeExit(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+
+	for _, c := range []struct {
+		name     string
+		entry    func(string, ...string) result
+		payload  string
+		records  int
+		coverage int
+	}{
+		{"hook", e.hook, defaultPayload().build(t), 2, 1},
+		{"post", e.post, defaultPost().build(t), 1, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			log := filepath.Join(t.TempDir(), "sync.log")
+			r0, c0, s0 := e.runFiles(testSession)
+			res := c.entry(c.payload, syncLogEnv+"="+log)
+			if res.exitCode != 0 || res.stdout != "" || res.stderr != "" {
+				t.Fatalf("%s: exit %d, stdout %q, stderr %q", c.name, res.exitCode, res.stdout, res.stderr)
+			}
+			r1, c1, s1 := e.runFiles(testSession)
+			if r1-r0 != c.records || c1-c0 != c.coverage || s1 != s0 {
+				t.Fatalf("%s appended %d records, %d coverage and %d spill lines; want %d, %d and 0",
+					c.name, r1-r0, c1-c0, s1-s0, c.records, c.coverage)
+			}
+
+			events := readSyncLog(t, log)
+			// Each ordered append syncs its seq counter and its record; each
+			// line append syncs its line.
+			wantBarriers := 2*c.records + c.coverage
+			var barriers, fulls int
+			for i, ev := range events {
+				switch ev.kind {
+				case "barrier":
+					barriers++
+					if !ev.locked {
+						t.Errorf("event %d: a barrier on %s outside its append lock", i, ev.file)
+					}
+				case "full":
+					fulls++
+					if ev.locked {
+						t.Errorf("event %d: the full sync on %s ran inside a store lock", i, ev.file)
+					}
+					if i != len(events)-1 {
+						t.Errorf("event %d of %d: the full sync is not after the last append", i, len(events))
+					}
+				}
+			}
+			if fulls != 1 {
+				t.Errorf("%d full syncs, want exactly one: %v", fulls, events)
+			}
+			if barriers != wantBarriers {
+				t.Errorf("%d barriers, want %d, one per sync of every append: %v", barriers, wantBarriers, events)
+			}
+		})
+	}
+
+	// The contrast: probe and the paused path never defer durability.
+	keepsAFullSyncPerAppend := func(t *testing.T, what string, res result, log string) {
+		t.Helper()
+		if res.exitCode != 0 || res.stdout != "" {
+			t.Fatalf("%s: exit %d, stdout %q", what, res.exitCode, res.stdout)
+		}
+		events := readSyncLog(t, log)
+		if len(events) == 0 {
+			t.Fatalf("%s synced nothing: the recorder or the append did not run", what)
+		}
+		for i, ev := range events {
+			if ev.kind != "full" {
+				t.Errorf("%s: event %d is a %s on %s; this path keeps a full sync per append", what, i, ev.kind, ev.file)
+			}
+		}
+	}
+	t.Run("probe end", func(t *testing.T) {
+		log := filepath.Join(t.TempDir(), "sync.log")
+		keepsAFullSyncPerAppend(t, "probe end", e.probe("end", testSession, syncLogEnv+"="+log), log)
+	})
+	t.Run("paused hook", func(t *testing.T) {
+		if res := e.pause(); res.exitCode != 0 {
+			t.Fatalf("pause: exit %d, stderr %q", res.exitCode, res.stderr)
+		}
+		defer e.resume()
+		log := filepath.Join(t.TempDir(), "sync.log")
+		keepsAFullSyncPerAppend(t, "paused hook", e.hook(defaultPayload().build(t), syncLogEnv+"="+log), log)
+	})
+}
+
+// TestREC34_FailedFlushIsMarkedAndNeverRetried: when the one full sync fails,
+// the entry still exits 0 and prints nothing, never retries the flush, and
+// leaves a spill terminal for the call carrying flush_failed, synced in full:
+// behind a barrier alone the marker could be lost with the records it speaks
+// for. The report then renders the session as possibly not durable rather
+// than as fine (REC-34).
+func TestREC34_FailedFlushIsMarkedAndNeverRetried(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		entry   func(*env) func(string, ...string) result
+		payload func(*testing.T) string
+	}{
+		{"hook", func(e *env) func(string, ...string) result { return e.hook }, func(t *testing.T) string { return defaultPayload().build(t) }},
+		{"post", func(e *env) func(string, ...string) result { return e.post }, func(t *testing.T) string { return defaultPost().build(t) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.watched(testSession)
+			log := filepath.Join(t.TempDir(), "sync.log")
+			res := c.entry(e)(c.payload(t), syncLogEnv+"="+log, "RASHOMON_FAULT="+pointStoreFullSync+":fail=1")
+			if res.exitCode != 0 || res.stdout != "" || res.stderr != "" {
+				t.Fatalf("a failed flush: exit %d, stdout %q, stderr %q; want 0 and nothing printed", res.exitCode, res.stdout, res.stderr)
+			}
+
+			spill := e.read(testSession, "spill.ndjson")
+			if len(spill) != 1 {
+				t.Fatalf("spill holds %d lines, want the one flush_failed terminal", len(spill))
+			}
+			m := spill[0]
+			if m.typ() != "terminal" || m.str("reason") != "flush_failed" || m.str("outcome") != "error" ||
+				m.str("tool_use_id") != testToolUseID || m.fields["seq"] != nil {
+				t.Errorf("the marker is %s; want a terminal for %s, outcome error, reason flush_failed, seq null", m.raw, testToolUseID)
+			}
+
+			// The flush, which failed, and after it nothing but the marker's
+			// own append, synced in full: nothing retried the flush, and the
+			// marker is durable by the time the entry exits. Its sync runs
+			// inside the spill lock, as an undeferred append's does; the spill
+			// lock's other takers are best-effort with a 50 ms budget.
+			events := readSyncLog(t, log)
+			flush := -1
+			for i, ev := range events {
+				if ev.kind == "full" {
+					flush = i
+					break
+				}
+			}
+			if flush < 0 || events[flush].locked || events[flush].file == "spill.ndjson" {
+				t.Fatalf("no flush outside the locks before the marker: %v", events)
+			}
+			if after := events[flush+1:]; len(after) != 1 || after[0].kind != "full" || after[0].file != "spill.ndjson" {
+				t.Errorf("after the failed flush: %v; want only the marker's full sync on spill.ndjson", after)
+			}
+
+			if res := e.probe("end", testSession); res.exitCode != 0 {
+				t.Fatalf("probe end: exit %d", res.exitCode)
+			}
+			sess := e.report(testSession)
+			if sess.Coverage.State != "unverified" || !e.hasReason(sess, "flush_failed") {
+				t.Errorf("report coverage %s %v; want unverified with flush_failed", sess.Coverage.State, sess.Coverage.Reasons)
+			}
+			if len(sess.Declarations.Unterminated) != 0 || len(sess.Declarations.Dropped) != 0 {
+				t.Errorf("the marker changed the call's ending: unterminated %v, dropped %v",
+					sess.Declarations.Unterminated, sess.Declarations.Dropped)
+			}
+			text := e.run("", nil, "report", "--session", testSession)
+			if text.exitCode != 0 || !strings.Contains(text.stdout, "flush_failed") || !strings.Contains(text.stdout, "possibly not durable") {
+				t.Errorf("the text report does not say the records are possibly not durable:\n%s", text.stdout)
+			}
+		})
+	}
+}
+
+// TestREC34_UnmarkableFlushFailureSaysSoOnStderr: when the flush fails and
+// the marker cannot be made durable either -- not written, or written and its
+// full sync failed -- no record is left to hold the failure. The entry then
+// says so on stderr, in fixed words like the line for a store it cannot
+// open, and still exits 0 with nothing on stdout (REC-34, REC-28). A marker
+// whose sync failed is unmarked, whatever its line says when read back now.
+func TestREC34_UnmarkableFlushFailureSaysSoOnStderr(t *testing.T) {
+	const flushLost = "rashomon: records may not be durable\n"
+	t.Run("the marker cannot be written", func(t *testing.T) {
+		e := newEnv(t)
+		e.watched(testSession)
+		// A directory where the spill file goes: the marker's append cannot open it.
+		if err := os.Mkdir(filepath.Join(e.home, "runs", testSession, "spill.ndjson"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		res := e.hook(defaultPayload().build(t), "RASHOMON_FAULT="+pointStoreFullSync+":fail=1")
+		if res.exitCode != 0 || res.stdout != "" || res.stderr != flushLost {
+			t.Fatalf("exit %d, stdout %q, stderr %q; want 0, nothing on stdout, and the fixed line on stderr",
+				res.exitCode, res.stdout, res.stderr)
+		}
+	})
+	t.Run("the marker's full sync fails", func(t *testing.T) {
+		e := newEnv(t)
+		e.watched(testSession)
+		log := filepath.Join(t.TempDir(), "sync.log")
+		res := e.hook(defaultPayload().build(t), syncLogEnv+"="+log, "RASHOMON_FAULT="+pointStoreFullSync+":fail=2")
+		if res.exitCode != 0 || res.stdout != "" || res.stderr != flushLost {
+			t.Errorf("exit %d, stdout %q, stderr %q; want 0, nothing on stdout, and the fixed line on stderr",
+				res.exitCode, res.stdout, res.stderr)
+		}
+		var fulls []syncEvent
+		for _, ev := range readSyncLog(t, log) {
+			if ev.kind == "full" {
+				fulls = append(fulls, ev)
+			}
+		}
+		if len(fulls) != 2 || fulls[1].file != "spill.ndjson" {
+			t.Errorf("full syncs %v; want the flush and then the marker's, on spill.ndjson", fulls)
+		}
+	})
+}

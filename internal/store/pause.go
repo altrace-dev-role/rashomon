@@ -100,7 +100,7 @@ func Pause(root string, now time.Time) (since time.Time, alreadyPaused bool, err
 		return time.Time{}, false, err
 	}
 	content := []byte(strconv.FormatInt(now.UnixMilli(), 10) + "\n")
-	if err := writeSmall(filepath.Join(root, fileRecordingPaused), content); err != nil {
+	if err := writeSmall(filepath.Join(root, fileRecordingPaused), content, syncFull); err != nil {
 		return time.Time{}, false, err
 	}
 	return now, false, nil
