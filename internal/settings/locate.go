@@ -2,6 +2,7 @@ package settings
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -122,6 +123,11 @@ func HooksDisabled(loc Locations) (Decision, error) {
 			continue
 		}
 		doc, err := Load(l.path)
+		var located *Error
+		if errors.As(err, &located) {
+			// It names the file, and the line and column, already.
+			return Decision{}, fmt.Errorf("%s settings: %w", l.name, err)
+		}
 		if err != nil {
 			return Decision{}, fmt.Errorf("%s settings at %s: %w", l.name, l.path, err)
 		}
