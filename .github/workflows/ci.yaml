@@ -287,6 +287,12 @@ jobs:
 
   # Every fuzz target in the tree, 30 seconds each. The Test job runs their
   # seed corpora as plain tests; this is the part that looks for new inputs.
+  # Minimization is bounded to ten runs per input: at its one-minute default,
+  # reducing one input took FuzzTranscriptLines' whole window (5,584 execs in
+  # 20 s, then 0/s; with the bound, 216,016 execs and 79 new inputs). A
+  # failing input is then printed less reduced, which is still the input that
+  # failed. TestRubricTest1_FuzzJobFloorIsTheTreeCount keeps the floor below
+  # at the number of targets the tree holds.
   # Targets are found by `func Fuzz` rather than listed, so a new one runs
   # without an edit here, and the count check below fails if the search ever
   # finds fewer than the tree holds today. A failing input is written under
@@ -295,7 +301,7 @@ jobs:
   fuzz:
     name: Fuzz
     runs-on: ubuntu-latest
-    # Ten targets at 30 s each, plus their builds; the bound is DEL-17's.
+    # Thirteen targets at 30 s each, plus their builds; the bound is DEL-17's.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -317,7 +323,7 @@ jobs:
             pkg="./${dir}"
             name=$(sed -n "${line}p" "$file" | sed -E 's/^func (Fuzz[A-Za-z0-9_]+)\(.*/\1/')
             echo "::group::${pkg} ${name}"
-            if ! go test "$pkg" -run '^$' -fuzz "^${name}\$" -fuzztime 30s; then
+            if ! go test "$pkg" -run '^$' -fuzz "^${name}\$" -fuzztime 30s -fuzzminimizetime 10x; then
               echo "::endgroup::"
               echo "::error::${name} in ${pkg} found a failing input"
               find "${dir}/testdata/fuzz/${name}" -type f -newer go.mod \
@@ -328,7 +334,7 @@ jobs:
             found=$((found + 1))
           done < <(grep -rn --include='*_test.go' '^func Fuzz' . | cut -d: -f1,2)
           echo "fuzzed ${found} targets"
-          test "$found" -ge 10
+          test "$found" -ge 13
 
   cross-build:
     name: Cross build (${{ matrix.goos }}/${{ matrix.goarch }})
