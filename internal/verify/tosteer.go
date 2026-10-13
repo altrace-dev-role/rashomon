@@ -36,11 +36,13 @@ import (
 //     each at or below AfterSeq.
 //
 // A finding the cards cannot place is a MappingError, never a candidate:
-// the wrong facts for the pattern, a claim with no contradiction, a rule of
-// another pattern's kind, an event the card does not raise it at, a query
-// point, a seq outside 1..at.Seq, or an id outside its charset (agentID is
-// the target agent, "" for the main one). The rendered Message is not built
-// here: VERIFY hands facts, STEER renders (2.2.9).
+// the wrong facts for the pattern, a rule fact carrying a field its kind
+// does not have, a claim with no contradiction, a rule of another pattern's
+// kind, an event the card does not raise it at, a query point, a seq
+// outside 1..at.Seq, more than MaxPaths paths or a negative count, or any
+// id, path, program or digest a fact carries outside its charset (agentID
+// is the target agent, "" for the main one). The rendered Message is not
+// built here: VERIFY hands facts, STEER renders (2.2.9).
 func ToSteer(f Finding, at Point, agentID string) (steer.Finding, error) {
 	fail := func(reason string) (steer.Finding, error) {
 		return steer.Finding{}, &MappingError{Pattern: f.Pattern, Reason: reason}
@@ -62,7 +64,7 @@ func ToSteer(f Finding, at Point, agentID string) (steer.Finding, error) {
 	if reason != "" {
 		return fail(reason)
 	}
-	level, form, ok := ceilingFor(f, kind)
+	level, form, ok := ceilingFor(f, kind, at)
 	if !ok {
 		return fail("the card does not raise it at event " + strconv.Quote(f.Event))
 	}
@@ -117,6 +119,8 @@ func checkInput(f Finding, at Point, agentID string) string {
 		return "agent id outside its charset"
 	case !factsFit(f):
 		return "facts do not fit the pattern"
+	case f.Rule != nil && !ruleShapeFits(f.Rule):
+		return "a rule fact carries a field its kind does not have"
 	}
 	for _, seq := range factSeqs(f) {
 		if seq < 1 || seq > at.Seq {
@@ -142,21 +146,73 @@ func factsFit(f Finding) bool {
 	return false
 }
 
-// idsValid checks every id a key or a slot is built from against its
-// charset, returning the reason or "".
+// ruleShapeFits reports a rule fact carrying only its kind's fields
+// (RuleFact's comment): a forbid_code or protect_path rule names the file it
+// matched and no program or gate; a forbid_command rule names no file and
+// no gate; an order rule names no file. Other kinds are kindFor's to refuse.
+func ruleShapeFits(r *RuleFact) bool {
+	switch r.Kind {
+	case spec.ForbidCode, spec.ProtectPath:
+		return r.Path != nil && r.Program == nil && r.Gate == nil
+	case spec.ForbidCommand:
+		return r.Path == nil && r.Gate == nil
+	case spec.Order:
+		return r.Path == nil
+	}
+	return true
+}
+
+// idsValid checks every id, path, program and digest a fact carries against
+// its charset, and every list and count against its bounds, returning the
+// reason or "": a fact field is a slot, so none reaches STEER unchecked.
 func idsValid(f Finding) string {
-	// The conversion keeps this compiling should a fact field be retyped,
-	// so TestVER54b, not the build, reports that regression.
-	if f.Gate != nil && !SlotID(f.Gate.GateID).Valid() {
-		return "gate id outside its charset"
+	if g := f.Gate; g != nil {
+		// The conversion keeps this compiling should a fact field be
+		// retyped, so TestVER54b, not the build, reports that regression.
+		if !SlotID(g.GateID).Valid() || g.Program != "" && !g.Program.Valid() {
+			return "gate id or program outside its charset"
+		}
+		if !pathsValid(g.Paths, g.PathsOmitted) || g.WritesSince < 0 || g.OtherAgents < 0 || g.PartialRuns < 0 {
+			return "gate paths or counts outside their bounds"
+		}
 	}
-	if f.Rule != nil && (!f.Rule.RuleID.Valid() || f.Rule.Path != nil && !f.Rule.Path.Valid()) {
-		return "rule id or path outside its charset"
+	if c := f.Claim; c != nil {
+		if len(c.Gates) > MaxPaths || c.GatesOmitted < 0 || c.UnrecoveredFailures < 0 || c.QuoteHMAC != "" && !c.QuoteHMAC.Valid() {
+			return "claim gates, counts or quote digest outside their bounds"
+		}
+		for _, id := range c.Gates {
+			if !id.Valid() {
+				return "claim gate outside its charset"
+			}
+		}
 	}
-	if f.Integrity != nil && f.Integrity.Marker != "" && !f.Integrity.Marker.Valid() {
-		return "marker id outside its charset"
+	if r := f.Rule; r != nil {
+		bad := !r.RuleID.Valid() || r.Path != nil && !r.Path.Valid() || r.Program != nil && !r.Program.Valid() ||
+			r.Gate != nil && !r.Gate.Valid() || r.Added < 0
+		if bad {
+			return "rule id, path, program, gate or count outside its charset"
+		}
+	}
+	if i := f.Integrity; i != nil {
+		if i.Marker != "" && !i.Marker.Valid() || i.Count < 0 || !pathsValid(i.Paths, i.PathsOmitted) {
+			return "marker id, paths or count outside their bounds"
+		}
 	}
 	return ""
+}
+
+// pathsValid reports at most MaxPaths paths, each in its charset, and a
+// non-negative omitted count.
+func pathsValid(paths []PathSlot, omitted int) bool {
+	if len(paths) > MaxPaths || omitted < 0 {
+		return false
+	}
+	for _, p := range paths {
+		if !p.Valid() {
+			return false
+		}
+	}
+	return true
 }
 
 // factSeqs lists the record seqs the facts name, in no order.
