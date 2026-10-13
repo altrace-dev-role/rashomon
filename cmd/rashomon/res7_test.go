@@ -26,24 +26,18 @@ func stopPayload(n int) []byte {
 	return b.Bytes()
 }
 
-// recapMaxRSS runs recap in a child process on payload and returns its peak
-// RSS in MiB. A platform with no ru_maxrss (windows) skips by name.
-func recapMaxRSS(t *testing.T, payload []byte) float64 {
+// recapMaxRSS runs recap in a child process on payload, through reaper, and
+// returns its peak RSS in MiB.
+func recapMaxRSS(t *testing.T, reaper *peakrss.Reaper, payload []byte) float64 {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestRES7_HugeFinalMessageIsConstant$")
 	cmd.Env = append(os.Environ(), res7Child+"=1", "RASHOMON_HOME="+t.TempDir())
 	cmd.Stdin = bytes.NewReader(payload)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("recap child: %v\n%s", err, out.String())
-	}
-	rss, err := peakrss.MiB(cmd.ProcessState)
-	if errors.Is(err, peakrss.ErrUnavailable) {
-		t.Skip(err)
-	}
+	rss, err := reaper.Run(cmd)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("recap child: %v\n%s", err, out.String())
 	}
 	return rss
 }
@@ -60,9 +54,24 @@ func TestRES7_HugeFinalMessageIsConstant(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs recap in child processes")
 	}
-	small := recapMaxRSS(t, stopPayload(2<<10))
-	big := recapMaxRSS(t, stopPayload(7_000_000))
+	// The reaper keeps this process's own peak out of the child's reading:
+	// on Linux the child's ru_maxrss is otherwise at least this test's peak,
+	// which holds the 7 MB payload (test/perf/peakrss). A platform with no
+	// ru_maxrss (windows) skips by name.
+	reaper, err := peakrss.NewReaper(t.TempDir())
+	if errors.Is(err, peakrss.ErrUnavailable) {
+		t.Skip(err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	small := recapMaxRSS(t, reaper, stopPayload(2<<10))
+	big := recapMaxRSS(t, reaper, stopPayload(7_000_000))
 	t.Logf("recap peak RSS: %.2f MiB at a 2 KiB message, %.2f MiB at 7 MB", small, big)
+	// An instrumented child's floor is over the 12 MiB bound before recap
+	// does anything (measured 2026-10-13 through the reaper, linux/arm64,
+	// go1.25.8 -race: 20.0 MiB at 2 KiB, 22.9 MiB at 7 MB; 4.4 and 5.5 MiB
+	// without -race), so under -race only the growth bound applies.
 	switch {
 	case raceEnabled:
 		t.Logf("race detector on: the 12 MiB bound is not applied to an instrumented child; the growth bound is")
