@@ -244,6 +244,7 @@ var reasonText = map[string]string{
 	"duplicate_declarations": "more declarations than distinct tool calls: more than one recorder wrote into this run, and the counts here include every copy",
 	"declaration_missing":    "a call's terminal record is here and its declaration is not, and the lock did not refuse it: the declaration was lost to a damaged line or a failed write",
 	"internal_error":         "a hook invocation failed inside this program, so what it should have recorded is missing",
+	"recovered_panic":        "a hook invocation hit a bug in this program and recovered from it, so what it should have recorded is missing, or a file label reads unknown",
 	"lock_timeout":           "a hook could not take the store lock in time, so its record went to the spill file or was lost",
 	"payload_too_large":      "a hook was handed a payload over the 8 MiB intake limit and refused it without parsing, so that call was not recorded",
 	"record_oversize":        "a value in a hook's payload was over its size limit and was left out of the record, or the whole record was over the record limit and was not written, so what was recorded for that call is incomplete",

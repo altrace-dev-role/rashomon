@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
+	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -82,6 +83,10 @@ func closeReason(err error) string {
 		return store.ReasonPayloadTooLarge
 	case errors.Is(err, store.ErrRecordOversize):
 		return store.ReasonRecordOversize
+	case errors.As(err, new(*safe.PanicError)):
+		// A bug in this program, recovered by the barrier: named apart from
+		// an ordinary failure so a reader can tell the two apart.
+		return store.ReasonRecoveredPanic
 	}
 	return store.ReasonInternalError
 }

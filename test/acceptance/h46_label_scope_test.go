@@ -103,6 +103,30 @@ func TestH46_NoFaultInLabellingCostsTheDeclaration(t *testing.T) {
 					t.Errorf("file_label = %q after a recovered fault, want %q", got, "unknown")
 				}
 			}
+			// The unknown label is not the only trace: the call's coverage
+			// record names the recovered panic, so it cannot be mistaken for
+			// a path field that was simply empty.
+			assertCallCoverage(t, e, testSession, "unverified", "recovered_panic")
 		})
 	}
+}
+
+// TestRubricERRORS8_LabelPanicIsNamedInCoverage: a panic recovered inside
+// the label derivation leaves the declaration and an ok terminal, and the
+// call's coverage record carries recovered_panic. Before, the label read
+// unknown and the coverage record read verified, so the panic left no trace
+// a reader could tell from an empty path field.
+func TestRubricERRORS8_LabelPanicIsNamedInCoverage(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	p := defaultPayload()
+	p.ToolName = "Read"
+	p.ToolInput = map[string]any{"file_path": "/home/u/notes.txt"}
+	if res := e.hook(p.build(t), "RASHOMON_FAULT="+pointLabel+":plain_panic"); res.exitCode != 0 {
+		t.Fatalf("exit code %d, want 0", res.exitCode)
+	}
+	if terms := e.terminals(testSession); len(terms) != 1 || terms[0].str("outcome") != "ok" {
+		t.Errorf("terminals %v, want one with outcome ok: the call itself was captured", terms)
+	}
+	assertCallCoverage(t, e, testSession, "unverified", "recovered_panic")
 }

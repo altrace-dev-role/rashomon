@@ -436,7 +436,15 @@ const (
 // Coverage reasons. Fixed codes, never free text, and never derived from input.
 const (
 	ReasonInternalError = "internal_error"
-	ReasonLockTimeout   = "lock_timeout"
+	// ReasonRecoveredPanic marks an invocation in which the panic barrier
+	// recovered a panic: a bug in this program, as distinct from
+	// internal_error's ordinary failure (a write the disk refused, a payload
+	// that did not parse). It rides the coverage record and, when the panic
+	// cost the call's capture, its terminal. A panic recovered inside the
+	// file-label derivation costs only the label, which reads unknown, and
+	// is named here so the report can tell that unknown from an ordinary one.
+	ReasonRecoveredPanic = "recovered_panic"
+	ReasonLockTimeout    = "lock_timeout"
 	// ReasonPayloadTooLarge marks an invocation whose payload was over the
 	// 8 MiB intake cap (hookio.MaxPayloadBytes) and was refused after a
 	// bounded read. Nothing broke inside this program, which is why it is
@@ -473,6 +481,7 @@ const (
 func Reasons() []string {
 	return []string{
 		ReasonInternalError,
+		ReasonRecoveredPanic,
 		ReasonLockTimeout,
 		ReasonPayloadTooLarge,
 		ReasonFlushFailed,

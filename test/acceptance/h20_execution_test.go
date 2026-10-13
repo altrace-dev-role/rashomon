@@ -393,7 +393,7 @@ func TestH20_NoFaultOnThePostPathReachesTheAgent(t *testing.T) {
 				if got := e.executions(session); len(got) != 0 {
 					t.Errorf("an execution record was written despite a fault at %s", point)
 				}
-				assertPhaseCoverage(t, e, session, "post", "unverified", "internal_error")
+				assertPhaseCoverage(t, e, session, "post", "unverified", "recovered_panic")
 			})
 		}
 	}
