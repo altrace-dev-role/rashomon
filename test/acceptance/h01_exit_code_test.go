@@ -18,6 +18,7 @@ const (
 	pointSettingsOpened       = "settings.write.opened"
 	pointSettingsBeforeRename = "settings.write.before_rename"
 	pointHookBeforeFlush      = "hook.before_flush"
+	pointProbeStart           = "probe.start"
 )
 
 // Faults that panic rather than return an error. A fault that returns an error
@@ -179,5 +180,32 @@ func assertPhaseCoverage(t *testing.T, e *env, session, phase, wantState, wantRe
 	}
 	if got, _ := reason.(string); got != wantReason {
 		t.Errorf("%s coverage reason is %v, want %q", phase, reason, wantReason)
+	}
+}
+
+// TestRubricDOCS10_ProbePrologueIsInsideTheBarrier: a panic at the very top
+// of the probe -- where signal watching and the phase check run -- exits 0
+// with no traceback, for both phases. cmdProbe used to run that prologue
+// before its safe.Guard, under a comment saying it was guarded whole, so a
+// panic there exited 2. The fault must also have fired: a probe that
+// recorded its phase never reached the injection point.
+func TestRubricDOCS10_ProbePrologueIsInsideTheBarrier(t *testing.T) {
+	for _, fault := range panickingFaults {
+		for _, phase := range []string{"start", "end"} {
+			t.Run(fault+"@"+phase, func(t *testing.T) {
+				e := newEnv(t)
+				if res := e.watch(); res.exitCode != 0 {
+					t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+				}
+				res := e.probe(phase, testSession, "RASHOMON_FAULT="+pointProbeStart+":"+fault)
+				if res.exitCode != 0 {
+					t.Fatalf("probe %s exited %d, want 0", phase, res.exitCode)
+				}
+				assertNoTraceback(t, res)
+				if got := e.coverage(testSession, phase); len(got) != 0 {
+					t.Errorf("probe %s wrote %d coverage records; the fault at %s never fired", phase, len(got), pointProbeStart)
+				}
+			})
+		}
 	}
 }

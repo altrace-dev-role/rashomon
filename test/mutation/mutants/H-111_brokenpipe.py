@@ -18,8 +18,8 @@ m("H-111 post does not ignore SIGPIPE", "cmd/rashomon/main.go",
   "\t\tsig := hook.WatchSignals()\n\t\tdefer sig.Stop()\n\n\t\tif checkPaused(args, stdin, store.PhasePost, stderr) {",
   "TestH111_AnEntryWhoseReaderIsGoneStillExitsZero/^post$")
 m("H-111 probe does not ignore SIGPIPE", "cmd/rashomon/main.go",
-  "\t// stderr before the guarded body starts.\n\thook.IgnoreBrokenPipe()\n",
-  "\t// stderr before the guarded body starts.\n",
+  "\t\thook.IgnoreBrokenPipe()\n\t\tfault.Inject(fault.PointProbeStart)\n",
+  "\t\tfault.Inject(fault.PointProbeStart)\n",
   "TestH111_AnEntryWhoseReaderIsGoneStillExitsZero/^probe$")
 m("H-111 recap does not ignore SIGPIPE", "cmd/rashomon/main.go",
   "\thook.IgnoreBrokenPipe()\n\tfault.Inject(fault.PointRecapStart)\n",

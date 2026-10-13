@@ -256,23 +256,26 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 // cmdProbe handles SessionStart and SessionEnd, under the same rule as hook:
 // it is invoked by Claude Code and it always succeeds.
 func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
-	// Outside the barrier, as WatchSignals is: the phase check below writes to
-	// stderr before the guarded body starts.
-	hook.IgnoreBrokenPipe()
-	sig := hook.WatchSignals()
-	defer sig.Stop()
-
-	phase := ""
-	if len(args) > 0 {
-		phase = args[0]
-	}
-	if phase != store.PhaseStart && phase != store.PhaseEnd {
-		fmt.Fprintln(stderr, "rashomon: probe expects start or end")
-		return exitOK
-	}
-
-	// Guarded whole, for the reason given in cmdHook.
+	// Guarded whole, for the reason given in cmdHook: signal watching and the
+	// phase check included. They ran ahead of the barrier, under this same
+	// comment, and a panic in either exited 2.
 	_ = safe.Guard(func() error {
+		// Before anything can write, the phase check's line on stderr
+		// included (H-111).
+		hook.IgnoreBrokenPipe()
+		fault.Inject(fault.PointProbeStart)
+		sig := hook.WatchSignals()
+		defer sig.Stop()
+
+		phase := ""
+		if len(args) > 0 {
+			phase = args[0]
+		}
+		if phase != store.PhaseStart && phase != store.PhaseEnd {
+			fmt.Fprintln(stderr, "rashomon: probe expects start or end")
+			return nil
+		}
+
 		if checkPaused(args, stdin, phase, stderr) {
 			return nil
 		}
