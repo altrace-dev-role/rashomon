@@ -41,7 +41,7 @@ m("SP Fable 5.1's cache read is 0.1x input, not the table's 0.25", "internal/spe
   "\t\"claude-fable-5-1\": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},", "\t\"claude-fable-5-1\": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},", "TestPricing_TheTable")
 m("SP an unsplit cache write is priced at the 1h rate", "internal/spend/scan.go",
   "\t\tout.CacheWrite5m += rest", "\t\tout.CacheWrite1h += rest", "TestPricing_CacheWrites")
-m("SP an unknown model is priced at $0", "internal/spend/spend.go",
+m("SP an unknown model is priced at $0", "internal/spend/amounts.go",
   "\tc.addUnpriced(p.tokens())\n", "\tc.addPriced(0)\n", "TestUnknownModel_")
 m("SP an unpriced total marshals as usd 0 instead of null", "internal/spend/spend.go",
   "\tif c.WhollyUnpriced() {\n\t\treturn nil\n", "\tif false {\n\t\treturn nil\n", "TestUnknownModel_IsUnknown")
@@ -390,10 +390,10 @@ m("SP a cold write is counted whole, not its shortfall", "internal/spend/spend.g
 m("SP a write with any cache read is not cold", "internal/spend/spend.go",
   "\t\t\tprev, cur := rs[i-1].Tokens, rs[i].Tokens\n", "\t\t\tprev, cur := rs[i-1].Tokens, rs[i].Tokens\n\t\t\tif cur.CacheRead > 0 {\n\t\t\t\tcontinue\n\t\t\t}\n",
   "TestCacheExpiry_APartialExpiry")
-m("SP a cold write is priced at the full write rate, not over a cache read", "internal/spend/spend.go",
+m("SP a cold write is priced at the full write rate, not over a cache read", "internal/spend/amounts.go",
   "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)", "w.CacheWrite5m*rt.CacheWrite5m() + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)",
   "TestCacheExpiry_")
-m("SP a cold 1h write is priced at the full write rate", "internal/spend/spend.go",
+m("SP a cold 1h write is priced at the full write rate", "internal/spend/amounts.go",
   "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)", "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*rt.CacheWrite1h()",
   "TestCacheExpiry_")
 m("SP a response keeps only the file it was first seen in", "internal/spend/scan.go",
@@ -549,7 +549,7 @@ m("SP a model-less fallback line replaces a known model", "internal/spend/scan.g
 m("SP a synthetic refusal line is folded after pre-output refusals are marked", "internal/spend/scan.go",
   "\tsc.foldRefusalMessages()\n\tfor _, r := range sc.Responses {", "\tdefer sc.foldRefusalMessages()\n\tfor _, r := range sc.Responses {",
   "TestRefusals_")
-m("SP a cold write is priced on a response whose cost is unknown", "internal/spend/spend.go",
+m("SP a cold write is priced on a response whose cost is unknown", "internal/spend/amounts.go",
   "\tif !ok || r.costUnknown {\n\t\treturn 0, tokens, false", "\tif !ok {\n\t\treturn 0, tokens, false",
   "TestCacheExpiry_")
 m("SP a write on another model is judged against the previous model's cache", "internal/spend/spend.go",
