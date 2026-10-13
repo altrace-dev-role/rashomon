@@ -15,8 +15,13 @@ import (
 // declarations and all 64 terminals must land, with distinct ids and a
 // contiguous seq -- the invariant the lock exists to protect, and the one that
 // breaks when the lock is removed.
+//
+// The padding is the transcript path, which REC-52 caps at 4096 bytes
+// (store.MaxPathBytes): a path over the cap is withheld, and the record would
+// then be short. 4000 bytes of it put the declaration past 4 KiB and leave
+// the path under its cap.
 func TestH16_ConcurrentHandlersAllLand(t *testing.T) {
-	for _, pad := range []int{0, 5000} {
+	for _, pad := range []int{0, 4000} {
 		t.Run(fmt.Sprintf("padding=%d", pad), func(t *testing.T) {
 			e := newEnv(t)
 			e.watched(testSession)
@@ -67,6 +72,9 @@ func TestH16_ConcurrentHandlersAllLand(t *testing.T) {
 				got[d.str("tool_use_id")] = true
 				if pad > 0 && len(d.str("transcript_path")) != pad+len("/tmp/.jsonl") {
 					t.Errorf("padding did not reach the record: transcript_path is %d bytes", len(d.str("transcript_path")))
+				}
+				if pad > 0 && len(d.raw) <= 4096 {
+					t.Errorf("a padded declaration is %d bytes, not past the 4 KiB a buffered writer flushes at", len(d.raw))
 				}
 			}
 			for id := range want {
