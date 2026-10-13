@@ -416,27 +416,31 @@ func programToken(toks []token, uncertain bool) (int, bool) {
 // nothing here either. The command after it is searched by programToken and
 // held to every rule the line's first command is. A comment before the
 // separator makes it comment text, and `cd` is then the whole command.
+//
+// It is a loop, one step per cd, rather than a call per cd: a line of tens
+// of thousands of them is within the token bound, and its depth is the
+// input's to choose (RES-10, CWE-674).
 func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
-	if toks[i].text != "cd" || toks[i].quotedAt >= 0 {
-		return i, true
-	}
-	sep, ok := commandEnd(toks, i, uncertain)
-	if !ok {
-		return 0, false
-	}
-	if sep < 0 || toks[sep].text != "&&" && toks[sep].text != ";" {
-		return i, true
-	}
-	for j := i + 1; j < sep; j++ {
-		if isComment(toks[j]) {
+	for toks[i].text == "cd" && toks[i].quotedAt < 0 {
+		sep, ok := commandEnd(toks, i, uncertain)
+		if !ok {
+			return 0, false
+		}
+		if sep < 0 || toks[sep].text != "&&" && toks[sep].text != ";" {
 			return i, true
 		}
+		for j := i + 1; j < sep; j++ {
+			if isComment(toks[j]) {
+				return i, true
+			}
+		}
+		k, ok := programToken(toks[sep+1:], uncertain)
+		if !ok {
+			return 0, false
+		}
+		i = sep + 1 + k
 	}
-	k, ok := programToken(toks[sep+1:], uncertain)
-	if !ok {
-		return 0, false
-	}
-	return pastDirectoryChange(toks, sep+1+k, uncertain)
+	return i, true
 }
 
 // LeadingDirectory reports the directories a shell call's line moves through
@@ -467,12 +471,25 @@ func LeadingDirectory(toolName string, toolInput json.RawMessage) ([]string, boo
 	return leadingDirectories(cmd)
 }
 
+// MaxLeadingCd is how many leading `cd DIR &&` steps a call's start
+// directory is folded from (RES-10). The hook folds no more and records the
+// directory as unknown past them: each step joins and cleans the whole path
+// so far, so the fold is quadratic in the steps, and a 480 KB payload of
+// them took 10.9 s against the hook's 5 s timeout. 64 is far past any line
+// an agent writes -- one or two steps is the norm -- and folds in well under
+// a millisecond.
+const MaxLeadingCd = 64
+
 // leadingSteps is how many leading `cd DIR &&` steps LeadingDirectory folds
 // onto a call's cwd for the line cmd: the cds on it that the call's cwd
-// digest already holds.
+// digest already holds. None past MaxLeadingCd, where the hook records the
+// directory as unknown and the digest holds none of them.
 func leadingSteps(cmd string) int {
 	// Where the line cannot be read, dirs is empty and no step is folded.
 	dirs, _ := leadingDirectories(cmd)
+	if len(dirs) > MaxLeadingCd {
+		return 0
+	}
 	return len(dirs)
 }
 
@@ -502,6 +519,11 @@ func leadingDirectories(cmd string) ([]string, bool) {
 			return nil, false
 		}
 		dirs = append(dirs, dir)
+		if len(dirs) > MaxLeadingCd {
+			// One past the bound says the line is past it; the
+			// rest would be read for nothing.
+			break
+		}
 	}
 	return dirs, len(dirs) > 0
 }
