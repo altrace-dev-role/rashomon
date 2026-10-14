@@ -41,10 +41,13 @@ func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 	ratioTol := RatioTolerance(tol, os.Getenv)
 	ways := b.Parallel.Ways
 	oneWay := oneWayPeakMiB(t)
-	home, env := scratch(t)
+	// The burst runs on the rig every entry row is measured on (rss_test.go):
+	// a pinned store, the entries installed in a config directory of its own,
+	// and each command run as an installed entry runs it.
+	r := newRig(t)
 	// The session starts as SessionStart starts it, so the burst measures
 	// recording rather than first use creating the store over and over.
-	maxRSSMiB(t, payload.SessionStart(), env, "probe", "start")
+	maxRSSMiB(t, payload.SessionStart(), r.env, r.args([]string{"probe", "start"})...)
 
 	type pair struct {
 		hook, post float64
@@ -58,10 +61,10 @@ func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 		go func(p *pair, id string) {
 			defer wg.Done()
 			<-release
-			if p.hook, p.err = peakMiB(payload.BashPre("git status --short", id), env, "hook"); p.err != nil {
+			if p.hook, p.err = peakMiB(payload.BashPre("git status --short", id), r.env, r.args([]string{"hook"})...); p.err != nil {
 				return
 			}
-			p.post, p.err = peakMiB(payload.BashPost("git status --short", id, " M README.md\n"), env, "post")
+			p.post, p.err = peakMiB(payload.BashPost("git status --short", id, " M README.md\n"), r.env, r.args([]string{"post"})...)
 		}(&pairs[i], fmt.Sprintf("toolu_par_%03d", i))
 	}
 	began := time.Now()
@@ -69,7 +72,7 @@ func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 	wg.Wait()
 	took := time.Since(began)
 
-	burst := readBurst(t, filepath.Join(home, "runs", payload.Session), ways)
+	burst := readBurst(t, filepath.Join(r.home, "runs", payload.Session), ways)
 	burst.OneWayPeakMiB = oneWay
 	all := 0.0
 	for _, p := range pairs {
@@ -97,20 +100,20 @@ func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 
 // oneWayPeakMiB is the 1-way figure RES-30's per-process rule compares the
 // burst against: OneWaySamples hook-and-post pairs run one at a time on a
-// started session in a store of their own, each pair's peak the larger of its
+// started session on a rig of their own, each pair's peak the larger of its
 // two processes, as in the burst, and the median of those peaks.
 func oneWayPeakMiB(t *testing.T) float64 {
 	t.Helper()
-	_, env := scratch(t)
-	maxRSSMiB(t, payload.SessionStart(), env, "probe", "start")
+	r := newRig(t)
+	maxRSSMiB(t, payload.SessionStart(), r.env, r.args([]string{"probe", "start"})...)
 	peaks := make([]float64, 0, OneWaySamples)
 	for i := 0; i < OneWaySamples; i++ {
 		id := fmt.Sprintf("toolu_solo_%03d", i)
-		hook, err := peakMiB(payload.BashPre("git status --short", id), env, "hook")
+		hook, err := peakMiB(payload.BashPre("git status --short", id), r.env, r.args([]string{"hook"})...)
 		if err != nil {
 			t.Fatal(err)
 		}
-		post, err := peakMiB(payload.BashPost("git status --short", id, " M README.md\n"), env, "post")
+		post, err := peakMiB(payload.BashPost("git status --short", id, " M README.md\n"), r.env, r.args([]string{"post"})...)
 		if err != nil {
 			t.Fatal(err)
 		}
