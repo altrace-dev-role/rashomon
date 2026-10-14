@@ -87,15 +87,28 @@ func TestRES5_TopDefersToJSONValid(t *testing.T) {
 	}
 }
 
+// TestTopAllocatesNothingPerValue measures the walk, not Top as a whole: Top
+// validates with encoding/json's Valid before walking, and Valid's scanner
+// comes from a package-level sync.Pool (encoding/json/scanner.go). Under
+// -race that pool's Put drops its argument on about 1 in 4 calls on purpose
+// ("Randomly drop x on floor", sync/pool.go) so the race detector can catch
+// Pool misuse, and under testing.AllocsPerRun's forced GOMAXPROCS(1) plus
+// real CPU contention (a shared CI runner) that was measured driving 48-68
+// of 50 Top calls to a fresh allocation - not jsonscan's doing, since
+// measuring the walk alone over the same payload, under the same contended
+// -race build, held at 0 of 50. Field walks the same code Top does
+// (walkObject) once a buffer is already known valid, so it isolates that
+// part without going through Valid a second time.
 func TestTopAllocatesNothingPerValue(t *testing.T) {
 	p := []byte(`{"session_id":"s","tool_input":{"command":"` + strings.Repeat("x\\n", 4096) + `"},"a":[1,2,{"b":"c"}],"z":true}`)
+	whole := Span{Off: 0, Len: int32(len(p)), Kind: Object}
 	out := make([]Span, testKeys.Len())
 	if n := testing.AllocsPerRun(50, func() {
-		if err := Top(p, testKeys, out); err != nil {
+		if err := Field(p, whole, testKeys, out); err != nil {
 			t.Fatal(err)
 		}
 	}); n != 0 {
-		t.Fatalf("Top allocated %.1f times per run, want 0", n)
+		t.Fatalf("the walk allocated %.1f times per run, want 0", n)
 	}
 }
 
