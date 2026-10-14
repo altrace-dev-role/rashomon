@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -433,7 +434,7 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 // It is all the lock is held for, and BenchmarkOrderedAppendHold times
 // exactly this function.
 func (s *Store) writeOrderedLocked(f *os.File, dir string, build func(seq int64) any) error {
-	seq, err := nextSeq(dir, s.syncAppend)
+	seq, err := nextSeq(f, dir, s.syncAppend)
 	if err != nil {
 		return err
 	}
@@ -574,21 +575,27 @@ func marshalLine(rec any) ([]byte, error) {
 	return append(line, '\n'), nil
 }
 
-// nextSeq allocates the next sequence number for a run. It must be called with
-// the run's records lock held, and sync is that append's own sync.
+// nextSeq allocates the next sequence number for a run. It must be called
+// with f, the run's already-open records handle, and with that handle's lock
+// held; sync is that append's own sync.
 //
 // The counter is advanced and ordered before the record that uses it is
 // written: synced in full, or, on a deferred Store, put behind a barrier, so
 // it reaches stable storage no later than the record does. A crash between
 // the two skips a number, which is visible and harmless; the other order
 // could hand the same number to two records, which is neither.
-func nextSeq(dir string, sync func(*os.File) error) (int64, error) {
+func nextSeq(f *os.File, dir string, sync func(*os.File) error) (int64, error) {
 	path := filepath.Join(dir, FileSeq)
 
 	last, err := readSeq(path)
 	if err != nil {
 		// Missing or unreadable: the records themselves are the authority.
-		last, err = maxSeq(filepath.Join(dir, FileRecords))
+		// That read is through f, the handle whose lock this call already
+		// holds, not a second os.Open of the same path: on Windows a
+		// LockFileEx lock refuses a read through any other handle, including
+		// one opened by the lock's own holder (doc.go's "under the lock that
+		// writer holds" names f, not the path).
+		last, err = maxSeq(f)
 		if err != nil {
 			return 0, err
 		}
@@ -610,9 +617,19 @@ func readSeq(path string) (int64, error) {
 	return strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
 }
 
-func maxSeq(recordsPath string) (int64, error) {
+// maxSeq reads the highest seq already in f, seeking to its start first. f is
+// the caller's own locked records handle (nextSeq): reading through it, with
+// no seek back afterwards, is safe on both platforms a writer runs on. Every
+// write that follows goes through appendHealed's f.Write, and f was opened
+// with appendFlags (O_APPEND), so unix's kernel and Windows's
+// FILE_APPEND_DATA-only access both place that write at the file's true end
+// regardless of the seek this leaves behind, not wherever this read stopped.
+func maxSeq(f *os.File) (int64, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return 0, err
+	}
 	var max int64
-	err := eachLine(recordsPath, func(line []byte) {
+	err := scanLines(f, func(line []byte) {
 		var probe struct {
 			Seq int64 `json:"seq"`
 		}

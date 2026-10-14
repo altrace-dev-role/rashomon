@@ -3,7 +3,7 @@
 # recovery and order, forget's in-place rewrite, and the baseline and recap
 # renames.
 m("test-5 a lost or garbled seq counter restarts at 1", "internal/store/store.go",
-  "\t\tlast, err = maxSeq(filepath.Join(dir, FileRecords))\n\t\tif err != nil {\n\t\t\treturn 0, err\n\t\t}\n",
+  "\t\tlast, err = maxSeq(f)\n\t\tif err != nil {\n\t\t\treturn 0, err\n\t\t}\n",
   "\t\tlast, err = 0, nil\n", "TestRubricTEST5_ALostOrGarbledSeqFileNeverRepeatsASeq")
 m("test-5 the seq counter is written after the point a crash can land", "internal/store/store.go",
   "\tif err := writeSmall(path, []byte(strconv.FormatInt(next, 10)+\"\\n\"), sync); err != nil {\n\t\treturn 0, err\n\t}\n\tfault.Inject(fault.PointStoreSeqAdvanced)\n",
