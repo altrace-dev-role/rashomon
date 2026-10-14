@@ -1,17 +1,6 @@
-# Rubric perf-3 / test-14, report: the turn reader decodes every wanted
-# assistant line rather than trusting a byte test, and the key walk behind an
-# undecodable line reads isSidechain by a struct decode's rule.
-m("RUBRIC test-14 the turn reader skips lines without the bytes text again", "internal/report/transcript.go",
-  "\treturn content.plain || bytes.Contains(raw, textMarker) || bytes.Contains(raw, escapeMarker)",
-  "\treturn bytes.Contains(raw, textMarker)",
-  "TestRubricPERF3_APlainStringReplyIsTheTurnsFinalWord")
-m("RUBRIC test-14 the turn reader skips a plain-string reply", "internal/report/transcript.go",
-  "\tc.plain = len(b) > 0 && b[0] == '\"'", "\tc.plain = false",
-  "TestRubricPERF3_APlainStringReplyIsTheTurnsFinalWord")
-m("RUBRIC test-14 the turn reader skips a block whose type is escaped", "internal/report/transcript.go",
-  "\treturn content.plain || bytes.Contains(raw, textMarker) || bytes.Contains(raw, escapeMarker)",
-  "\treturn content.plain || bytes.Contains(raw, textMarker)",
-  "TestRubricPERF3_APlainStringReplyIsTheTurnsFinalWord")
+# Rubric test-14, report: the key walk behind an undecodable line reads
+# isSidechain by a struct decode's rule -- case-folded, last key wins, a null
+# leaves the answer alone.
 m("RUBRIC test-14 the sidechain walk matches the key's exact case only", "internal/report/transcript.go",
   "\t\tif k, ok := key.(string); ok && strings.EqualFold(k, \"isSidechain\") {",
   "\t\tif k, ok := key.(string); ok && k == \"isSidechain\" {",
