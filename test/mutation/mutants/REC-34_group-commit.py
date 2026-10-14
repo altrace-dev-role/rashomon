@@ -82,6 +82,13 @@ m("REC-34 forget's rewrite sync unseen, judged end to end", "internal/store/gaps
   "TestREC34_Forget")
 m("REC-34 eviction takes a lock the recorder does not count", "internal/store/gaps.go",
   "\tunlock, err := lockCounted(gf, lockBudget)", "\tunlock, err := lockFile(gf, lockBudget)", "TestREC34h_")
+# The store-level forget record (#53) landed beside group commit and took its
+# lock and sync directly; both go through the recorder's sites too.
+m("REC-34 the forgotten-host record takes a lock the recorder does not count", "internal/store/gaps.go",
+  "\tdefer f.Close() //nolint:errcheck // Sync below reports the write failure\n\tunlock, err := lockCounted(f, lockBudget)",
+  "\tdefer f.Close() //nolint:errcheck // Sync below reports the write failure\n\tunlock, err := lockFile(f, lockBudget)", "TestREC34h_")
+m("REC-34 the forgotten-host record syncs where the recorder cannot see it", "internal/store/gaps.go",
+  "\treturn syncFull(f)\n}\n\nfunc (s *Store) forgetHostInRun", "\treturn f.Sync()\n}\n\nfunc (s *Store) forgetHostInRun", "TestREC34h_")
 m("REC-34 the counted lock counts nothing", "internal/store/store.go",
   "\tfault.LockTaken()\n", "", "TestREC34_")
 m("REC-34 a marker naming no call reads as a lost call", "internal/report/testbending.go",
