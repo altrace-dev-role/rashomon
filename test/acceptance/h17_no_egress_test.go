@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -185,36 +186,95 @@ func TestH17_HandlerOpensNoSockets(t *testing.T) {
 // will each take an entry here when they land, and nothing else will.
 var sanctionedSource = map[string]string{}
 
-// TestH17_NoPackageOfOursReachesForANetworkImport is the provenance assertion
-// the prose has been making all along.
-//
-// Every forbidden package is either imported by nobody here, or by exactly the
-// one package sanctioned to.
-func TestH17_NoPackageOfOursReachesForANetworkImport(t *testing.T) {
-	const modulePrefix = "github.com/altrace-dev-role/rashomon"
+// rashomonModule is this module's import path.
+const rashomonModule = "github.com/altrace-dev-role/rashomon"
 
+// moduleImports lists every package of this module with its own import
+// statements: the non-test imports, which are what a binary can link.
+func moduleImports(t *testing.T) map[string][]string {
+	t.Helper()
 	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}} {{join .Imports \",\"}}", "./...")
 	cmd.Dir = moduleRoot
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("listing direct imports: %v", err)
 	}
-
-	packages := 0
+	listing := map[string][]string{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) == 0 {
+		if len(fields) == 0 || !strings.HasPrefix(fields[0], rashomonModule) {
 			continue
 		}
-		pkg := fields[0]
-		if !strings.HasPrefix(pkg, modulePrefix) {
+		var imports []string
+		if len(fields) > 1 {
+			imports = strings.Split(fields[1], ",")
+		}
+		listing[fields[0]] = imports
+	}
+	return listing
+}
+
+// isTestTree reports a package under the module's test/ tree.
+func isTestTree(pkg string) bool {
+	return strings.HasPrefix(pkg, rashomonModule+"/test/")
+}
+
+// shippedScope is the set of packages a shipped binary can link, the scope
+// H-17 and TRU-40 hold (spec run 72): every package outside test/, plus any
+// test/ package that a package outside test/ imports. A test/ package
+// imported only from _test.go files is measurement code that no binary links,
+// and TestH17_TestPackagesStayTestOnly keeps it that way.
+func shippedScope(listing map[string][]string) map[string]bool {
+	scope := map[string]bool{}
+	for pkg, imports := range listing {
+		if isTestTree(pkg) {
+			continue
+		}
+		scope[pkg] = true
+		for _, imp := range imports {
+			if isTestTree(imp) {
+				scope[imp] = true
+			}
+		}
+	}
+	return scope
+}
+
+// testOnlyViolations lists every import of a test/ package by a package
+// outside test/, sorted: each one widens what a binary can link into code
+// written as test-only.
+func testOnlyViolations(listing map[string][]string) []string {
+	var out []string
+	for pkg, imports := range listing {
+		if isTestTree(pkg) {
+			continue
+		}
+		for _, imp := range imports {
+			if isTestTree(imp) {
+				out = append(out, pkg+" imports "+imp)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// TestH17_NoPackageOfOursReachesForANetworkImport is the provenance assertion
+// the prose has been making all along, over the packages a shipped binary can
+// link (shippedScope).
+//
+// Every forbidden package is either imported by nobody in that scope, or by
+// exactly the one package sanctioned to.
+func TestH17_NoPackageOfOursReachesForANetworkImport(t *testing.T) {
+	listing := moduleImports(t)
+	scope := shippedScope(listing)
+	packages := 0
+	for pkg, imports := range listing {
+		if !scope[pkg] {
 			continue
 		}
 		packages++
-		if len(fields) < 2 {
-			continue
-		}
-		for _, imp := range strings.Split(fields[1], ",") {
+		for _, imp := range imports {
 			why, forbidden := forbiddenImports[imp]
 			if !forbidden {
 				continue
