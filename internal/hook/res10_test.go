@@ -2,6 +2,7 @@ package hook
 
 import (
 	"encoding/json"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -32,8 +33,19 @@ func fastest(f func()) time.Duration {
 // re-cleaned the whole growing path, so the fold was quadratic: a 480 KB
 // payload took 10.9 s against the hook's 5 s timeout. A 1 MB `cd a&&`
 // payload, and the longest fold the shape's token bound lets through, each
-// finish inside 50 ms, and with more than 64 steps each start in a directory
-// that is not known.
+// allocate a few MiB and no more, and with more than 64 steps each start in
+// a directory that is not known.
+//
+// The bound below is TotalAlloc, not wall time: this project's gates are
+// allocated bytes and bounded work, never wall clock (RES-9's own rule).
+// Wall time is logged only. Measured 2026-10-14, darwin/arm64, go1.27.2: the
+// 1 MB case allocates 5,810,288 B whether or not the race detector is
+// instrumenting the binary (it also took 6.6 ms plain and 93.0 ms under
+// -race -- an unrelated CPU-time inflation from the detector's
+// instrumentation, not from this fold doing more work, which a wall-clock
+// gate here could not tell apart from a real regression). A quadratic
+// re-break would show up as allocation growing with the payload, which this
+// catches regardless of how fast or slow the machine running it is.
 //
 // A line that runs on past the shape's token bound (RES-9) still has its
 // leading steps read: they come first, and 65 of them are 195 tokens, far
@@ -57,17 +69,23 @@ func TestRES10_LeadingCdFoldIsBounded(t *testing.T) {
 		t.Errorf("65 steps: start directory %q, want unknown", got)
 	}
 	for _, tc := range []struct {
-		name string
-		cmd  string
+		name  string
+		cmd   string
+		bound uint64 // TotalAlloc bytes over the 3 runs fastest makes; measured well under this
 	}{
-		{"1 MB of cd a&&", strings.Repeat("cd a&&", (1<<20)/len("cd a&&"))},
-		{"14,000 steps, under the token bound", cdLine(14_000, "&&")},
+		{"1 MB of cd a&&", strings.Repeat("cd a&&", (1<<20)/len("cd a&&")), 36 << 20},
+		{"14,000 steps, under the token bound", cdLine(14_000, "&&"), 12 << 20},
 	} {
 		raw := in(tc.cmd)
 		var got string
+		var m0, m1 runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&m0)
 		took := fastest(func() { got = startDirectory("/repo", "Bash", raw) })
-		if took > 50*time.Millisecond {
-			t.Errorf("%s: the fold took %v, want at most 50ms", tc.name, took)
+		runtime.ReadMemStats(&m1)
+		t.Logf("%s: the fold took %v", tc.name, took)
+		if alloc := m1.TotalAlloc - m0.TotalAlloc; alloc > tc.bound {
+			t.Errorf("%s: the fold allocated %d KiB over 3 runs, want at most %d KiB: a quadratic re-break grows allocation, not just wall time", tc.name, alloc>>10, tc.bound>>10)
 		}
 		if got != "" {
 			t.Errorf("%s: start directory %q, want unknown", tc.name, got)

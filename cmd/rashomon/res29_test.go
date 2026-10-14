@@ -62,7 +62,15 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 		t.Skip("runs the hook in child processes on 8 MiB payloads")
 	}
 	const (
-		deadline = 4 * time.Second // the hook's hard stop (85.3.10)
+		// deadline is the test's own ceiling on an uninstrumented build, not
+		// a hard stop this binary enforces: 85.3.10 budgets a supervisor
+		// that kills the child at this mark, but it is not built before
+		// P-23 (test/perf/gate.go:246), and cmdHook has no timer of its
+		// own. 4 s is the installed PreToolUse entry's 5 s Claude Code
+		// timeout minus the 1 s margin 85.3.10 gives every 5 s entry
+		// (plugin/hooks/hooks.json), so a hook this slow would miss that
+		// external timeout too, not just this test.
+		deadline = 4 * time.Second
 		rssMiB   = 64
 	)
 	type row struct {
@@ -114,7 +122,22 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 			if err != nil || out.Len() != 0 {
 				t.Fatalf("hook: %v, output %q; want exit 0 and nothing printed", err, out.String())
 			}
-			if took > deadline {
+			// Wall time, like peak RSS below, is not a bound an instrumented
+			// child can be held to: the race detector's instrumentation
+			// inflates CPU time the same way its shadow memory inflates
+			// RSS. Measured 2026-10-14, darwin/arm64, go1.27.2, this
+			// machine under load: the backslash-newlines row took 290 ms
+			// plain and 4.25-7.49 s under -race across repeated runs (an
+			// observed 15-26x), while every row's non-race time stayed
+			// under 400 ms. That is detector overhead on work the token
+			// and masker bounds (RES-9) already cap, not this fold doing
+			// more of it, which the race-aware peak-RSS case two lines
+			// down establishes is the right way to read an instrumented
+			// child's numbers here.
+			switch {
+			case raceEnabled:
+				t.Logf("race detector on: hook took %v, the %v hard stop is not applied to an instrumented child", took, deadline)
+			case took > deadline:
 				t.Errorf("hook took %v, past its %v hard stop", took, deadline)
 			}
 			switch {
