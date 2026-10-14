@@ -5,6 +5,7 @@ package acceptance
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -25,12 +26,11 @@ func holdLock(t *testing.T, path string) func() {
 		f.Close()
 		t.Fatalf("taking the lock on %s: %v", path, err)
 	}
-	released := false
+	// Once, because a test may release from a timer goroutine while
+	// t.Cleanup releases on the test's own: a plain flag is a data race.
+	var once sync.Once
 	release := func() {
-		if !released {
-			released = true
-			f.Close() // closing the descriptor releases the lock
-		}
+		once.Do(func() { f.Close() }) // closing the descriptor releases the lock
 	}
 	t.Cleanup(release)
 	return release

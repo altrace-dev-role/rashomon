@@ -14,5 +14,5 @@ m("RES-36 the macOS RSS step passes when every gate skipped", ".github/workflows
 m("RES-36 budgets.json names a toolchain the perf jobs do not run", "test/perf/budgets.json",
   '"go_version": "go1.27.3"', '"go_version": "go1.25.8"', "TestRES36h_")
 m("RES-36 the macOS RSS step runs only when the benchmark gate passed", ".github/workflows/ci.yaml",
-  '      - name: Peak RSS and init budget\n        if: success() || failure()\n        env:\n          RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.\n',
-  '      - name: Peak RSS and init budget\n        env:\n          RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.\n', "TestRES36h_")
+  '      - name: Peak RSS, init budget and the 64-way per-process peak (RES-30)\n        if: success() || failure()\n        env:\n          RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.\n',
+  '      - name: Peak RSS, init budget and the 64-way per-process peak (RES-30)\n        env:\n          RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.\n', "TestRES36h_")

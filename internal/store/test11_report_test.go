@@ -72,7 +72,7 @@ func TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldForgetLock(t *testing.T) 
 		t.Fatalf("Open: %v", err)
 	}
 	holder := openForAppend(t, filepath.Join(root, FileForgottenHosts))
-	unlock, _, err := lockFile(holder, lockBudget)
+	unlock, _, err := lockFileWait(holder, lockBudget)
 	if err != nil {
 		t.Fatalf("taking the forgotten-hosts lock: %v", err)
 	}
