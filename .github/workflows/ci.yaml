@@ -371,7 +371,7 @@ jobs:
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
-      - name: Peak RSS and init budget
+      - name: Peak RSS, init budget and the 64-way per-process peak (RES-30)
         env:
           RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.
         run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28|TestRES30_' -count=1 -v
@@ -388,12 +388,12 @@ jobs:
       # darwin is where an append's sync is F_FULLFSYNC, and the store's lock
       # budgets are derived from its holds (internal/store/lockbudget.go,
       # BenchmarkOrderedAppendHold), so the 64-way burst runs here and not
-      # only on ubuntu (perf-1). Both tests gate on what a burst must not
-      # lose -- every declaration lands in the ordered stream, with no spill
-      # and no lock_timeout, and the seq is contiguous -- and neither on
-      # wall time, which process spawn dominates. H-16 is 64 hooks, run here;
-      # RES-30 is 64 hook-and-post pairs, and also gates their summed peak
-      # memory, so it runs in the RSS step above (TestRES30_), where every
-      # owed gate is required.
+      # only on ubuntu (perf-1). H-16 here and RES-30 in the RSS step above both
+      # gate on what a burst must not lose -- every declaration lands in the
+      # ordered stream, with no spill and no lock_timeout, and the seq is
+      # contiguous -- and neither on wall time, which process spawn
+      # dominates. H-16 is 64 hooks. RES-30, 64 hook-and-post pairs that also
+      # gate their summed and per-process peak memory, runs in the RSS step above
+      # so that it, like every perf-tagged test, runs with every gate owed.
       - name: 64-way hooks lose nothing to the lock (H-16)
         run: go test ./test/acceptance -run '^TestH16_' -count=1 -v
