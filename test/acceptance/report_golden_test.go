@@ -41,7 +41,14 @@ func TestRubricNAMING3_ReportJSONIsTheGolden(t *testing.T) {
 	transcript := writeTranscript(t, t.TempDir(), testSession, ids, ids[:1], nil)
 	e.hookIDs(transcript, ids...)
 	e.postIDs(transcript, ids[0])
-	e.mustHook(defaultPayload().build(t)) // a second, unreadable transcript group
+	// A second, unreadable transcript group. The report lists transcripts in
+	// raw path order, so this path lives in the readable transcript's own
+	// directory under a name that sorts after it. The fixed /tmp path the
+	// default payload names sorted before macOS's /var/folders temp dirs and
+	// after Linux's /tmp/Test... ones, so the golden held on one platform only.
+	unreadable := defaultPayload()
+	unreadable.TranscriptPath = filepath.Join(filepath.Dir(transcript), "zz-unreadable", "sess-1.jsonl")
+	e.mustHook(unreadable.build(t))
 	e.probe("end", testSession)
 
 	res := e.run("", nil, "report", "--json", "--session", testSession)

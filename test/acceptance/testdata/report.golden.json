@@ -47,21 +47,6 @@
       },
       "transcripts": [
         {
-          "path": "/tmp/transcripts/sess-1.jsonl",
-          "readable": false,
-          "files": null,
-          "ids_in_transcript": null,
-          "ids_recorded": 1,
-          "missing_from_store": null,
-          "missing_from_transcript": null,
-          "refused_before_hooks": null,
-          "ids_executed": 0,
-          "results_in_transcript": null,
-          "executed_but_unrecorded": null,
-          "denied_by_user": null,
-          "declared_without_result": null
-        },
-        {
           "path": "<tmp>/sess-1.jsonl",
           "readable": true,
           "files": 1,
@@ -77,6 +62,21 @@
           "declared_without_result": [
             "toolu_b"
           ]
+        },
+        {
+          "path": "<tmp>/zz-unreadable/sess-1.jsonl",
+          "readable": false,
+          "files": null,
+          "ids_in_transcript": null,
+          "ids_recorded": 1,
+          "missing_from_store": null,
+          "missing_from_transcript": null,
+          "refused_before_hooks": null,
+          "ids_executed": 0,
+          "results_in_transcript": null,
+          "executed_but_unrecorded": null,
+          "denied_by_user": null,
+          "declared_without_result": null
         }
       ],
       "gaps": [],
@@ -187,7 +187,7 @@
             ]
           },
           {
-            "transcript_path": "/tmp/transcripts/sess-1.jsonl",
+            "transcript_path": "<tmp>/zz-unreadable/sess-1.jsonl",
             "prompt_id": "prompt-1",
             "links": [
               {
