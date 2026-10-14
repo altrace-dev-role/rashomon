@@ -110,6 +110,19 @@ func TestTopAllocatesNothingPerValue(t *testing.T) {
 	}); n != 0 {
 		t.Fatalf("the walk allocated %.1f times per run, want 0", n)
 	}
+	// Top adds json.Valid to the walk. Valid borrows a scanner from a
+	// sync.Pool, which keeps it warm without -race, so Top as a whole
+	// allocates nothing there; under -race the pool drops values at random.
+	if raceEnabled {
+		return
+	}
+	if n := testing.AllocsPerRun(50, func() {
+		if err := Top(p, testKeys, out); err != nil {
+			t.Fatal(err)
+		}
+	}); n != 0 {
+		t.Fatalf("Top allocated %.1f times per run, want 0", n)
+	}
 }
 
 func TestFieldReadsInsideAnObjectSpan(t *testing.T) {
