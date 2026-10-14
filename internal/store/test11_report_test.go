@@ -61,6 +61,55 @@ func TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldGapsLock(t *testing.T) {
 	}
 }
 
+// TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldForgetLock is the same
+// wait for the store-level forget records (#53), which forget --host checks
+// and appends under that file's lock: a report read unlocked beside it
+// would fail on Windows, and on unix would miss the record being written.
+func TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldForgetLock(t *testing.T) {
+	root := t.TempDir()
+	st, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	holder := openForAppend(t, filepath.Join(root, FileForgottenHosts))
+	unlock, _, err := lockFile(holder, lockBudget)
+	if err != nil {
+		t.Fatalf("taking the forgotten-hosts lock: %v", err)
+	}
+
+	type result struct {
+		forgotten func(string) bool
+		err       error
+	}
+	done := make(chan result, 1)
+	go func() {
+		f, err := st.ForgottenHost()
+		done <- result{f, err}
+	}()
+
+	const host = "forgotten.example"
+	time.Sleep(20 * time.Millisecond)
+	line, err := marshalLine(ForgottenHostRecord{
+		Type: TypeForgottenHost, SchemaVersion: SessionSchemaVersion,
+		RecordedAtMS: time.Now().UnixMilli(), HostDigest: st.HostDigest(host),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := holder.Write(line); err != nil {
+		t.Fatal(err)
+	}
+	unlock()
+
+	r := <-done
+	if r.err != nil {
+		t.Fatalf("ForgottenHost after a forget hold that ended inside its budget: %v", r.err)
+	}
+	if !r.forgotten(host) {
+		t.Errorf("ForgottenHost did not see the host recorded under the lock it waited for: it read past the hold")
+	}
+}
+
 // TestRubricTEST11_TheReportReadCountsARefusalAsSkipped: report reads every
 // run unlocked, and on Windows a hook holding a run's records lock refused
 // that read, which failed the report. The report's read counts a refusal as

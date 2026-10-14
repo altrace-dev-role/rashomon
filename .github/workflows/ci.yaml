@@ -274,7 +274,7 @@ jobs:
   lock-windows:
     name: Lock contract (windows)
     runs-on: windows-latest
-    # Nine store tests; the bound is DEL-17's.
+    # Ten store tests; the bound is DEL-17's.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -302,6 +302,7 @@ jobs:
             TestRubricTEST11_AReadRefusedByAHeldLockCountsAsSkipped
             TestRubricTEST11_AGapsReadRefusedByAHeldLockCountsAsSkipped
             TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldGapsLock
+            TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldForgetLock
             TestRubricTEST11_TheReportReadCountsARefusalAsSkipped
         run: |
           go test ./internal/store -run "^($(echo $TESTS | tr ' ' '|'))\$" -count=1 -v | tee lock-windows.txt

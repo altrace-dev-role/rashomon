@@ -703,6 +703,8 @@ func (s *Store) ForgottenHostBefore() (func(host string, declaredAtMS int64) boo
 // is read past where it can be (unix) and fails the report where it cannot.
 // A damaged line is discarded with the count: ReadGaps, which every report
 // reads first, has already marked every session unverified for it (REC-33).
+// The store-level forget records are read the same way, under their own
+// file's lock, which forget --host holds while it checks and appends.
 func (s *Store) forgottenDigestTimes() (map[string]int64, error) {
 	var gaps []Gap
 	var skipped int
@@ -724,7 +726,7 @@ func (s *Store) forgottenDigestTimes() (map[string]int64, error) {
 			bump(g.HostDigest, g.RecordedAtMS)
 		}
 	}
-	err = eachLine(filepath.Join(s.root, FileForgottenHosts), func(line []byte) {
+	err = eachLineTryLock(filepath.Join(s.root, FileForgottenHosts), lockBudget, neverRefused, func(line []byte) {
 		var r ForgottenHostRecord
 		if json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost {
 			bump(r.HostDigest, r.RecordedAtMS)
