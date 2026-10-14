@@ -17,3 +17,9 @@ m("RES-28 a line is padded with the tolerance before the measurement is compared
   "\tif measuredMiB > lineMiB {\n", "\tif measuredMiB > lineMiB*1.1 {\n", "TestRES28h_")
 m("RES-28 a case with no measured figure beside its line passes", "test/perf/gate.go",
   "\tif measuredMiB <= 0 {\n", "\tif measuredMiB < 0 {\n", "TestRES28h_")
+# RES-28: every entry row's p50 is a median of nine measured on the reference
+# machine; a row that goes back to a figure carried from the archive is the
+# regression.
+m("RES-28 an entry row's p50 goes back to the archive's derivation", "test/perf/budgets.json",
+  '"basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (5.95 / 6.05 / 5.98 MiB); closing a started session; expected per archive 85.4.1: one record, 6 / 6.5 MiB"',
+  '"basis": "derived from archive 85.4.1: one record"', "TestRES28b_")
