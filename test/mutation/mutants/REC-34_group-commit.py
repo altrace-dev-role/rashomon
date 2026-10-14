@@ -17,7 +17,7 @@ m("REC-34 the hook flushes before its last append", "cmd/rashomon/main.go",
 m("REC-34 the ordered append syncs in full inside the lock", "internal/store/store.go",
   "\treturn s.syncAppend(f)\n}\n\n// lockAppend takes", "\treturn syncFull(f)\n}\n\n// lockAppend takes", "TestREC34_")
 m("REC-34 the seq counter syncs in full inside the lock", "internal/store/store.go",
-  "\tseq, err := nextSeq(dir, s.syncAppend)", "\tseq, err := nextSeq(dir, syncFull)", "TestREC34_")
+  "\tseq, err := nextSeq(f, dir, s.syncAppend)", "\tseq, err := nextSeq(f, dir, syncFull)", "TestREC34_")
 m("REC-34 group commit off: a deferred store syncs every append in full", "internal/store/store.go",
   "\tif !deferred {\n\t\treturn syncFull(f)\n\t}\n", "\tif true {\n\t\treturn syncFull(f)\n\t}\n", "TestREC34_")
 m("REC-34 probe defers durability and never flushes", "cmd/rashomon/main.go",
