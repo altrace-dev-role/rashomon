@@ -287,7 +287,7 @@ m("SP a firing turn's final words are printed to stderr", "internal/spend/join.g
   "\t\tsf := report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt)))\n",
   "\t\tsf := report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt)))\n\t\tfmt.Fprintln(os.Stderr, lastSaid(byFile, t.prompt))\n",
   "TestSpend_NoMessageTextReachesTheOutput")
-IMPORTS["SP a firing turn's final words are printed to stderr"] = ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n')
+IMPORTS["SP a firing turn's final words are printed to stderr"] = ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n')
 m("SP a firing turn's final words reach the JSON", "internal/spend/join.go",
   "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n",
   "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n\t\tj.Bound = lastSaid(byFile, t.prompt)\n",
@@ -511,7 +511,7 @@ m("SP an assistant line's content is decoded whole into a RawMessage again", "in
 m("SP a non-firing turn's final words are printed to stderr", "internal/spend/join.go",
   "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n", "\t\tif !sf.Fires {\n\t\t\tfmt.Fprintln(os.Stderr, lastSaid(byFile, t.prompt))\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n",
   "TestSpend_NoMessageTextReachesTheOutput")
-IMPORTS["SP a non-firing turn's final words are printed to stderr"] = ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n')
+IMPORTS["SP a non-firing turn's final words are printed to stderr"] = ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n')
 m("SP a non-firing turn's final words reach the JSON", "internal/spend/join.go",
   "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n", "\t\tif !sf.Fires {\n\t\t\tj.Bound = lastSaid(byFile, t.prompt)\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n",
   "TestJoin_NoMessageTextReachesTheOutput")
