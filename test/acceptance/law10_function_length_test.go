@@ -31,12 +31,17 @@ var overLimit = map[string]int{
 	"internal/spend/join.go:Summary.Join":             111,
 }
 
-// filesOverLimit is overLimit's ratchet for whole files.
+// filesOverLimit is overLimit's ratchet for whole files. main.go, text.go and
+// gaps.go are at their sizes after #53, which landed on main before this
+// ratchet did: it grew main.go by 5 code lines, text.go by 10, and took
+// gaps.go from 490 to 572 with the store-level forgotten-host record and
+// ForgottenHostBefore.
 var filesOverLimit = map[string]int{
-	"cmd/rashomon/main.go":     1233,
+	"cmd/rashomon/main.go":     1238,
 	"internal/shape/shape.go":  1018,
 	"internal/shape/masked.go": 940,
-	"internal/report/text.go":  544,
+	"internal/report/text.go":  554,
+	"internal/store/gaps.go":   572,
 }
 
 // codeLines counts the lines of a function body strictly between its braces
