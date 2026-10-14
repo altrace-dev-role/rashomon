@@ -637,6 +637,7 @@
             null,
             "internal_error",
             "lock_timeout",
+            "payload_too_large",
             "terminated_by_signal",
             "unterminated_entry",
             "hook_entry_absent",
