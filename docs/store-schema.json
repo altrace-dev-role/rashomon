@@ -175,7 +175,7 @@
           }
         },
         "hosts": {
-          "description": "Schema 2. Hostnames this call NAMED, behind http(s):// or ws(s)://, canonicalised: lower-cased, port stripped, one trailing dot dropped, userinfo refused outright rather than stripped (CWE-522). A declaration and not an observation -- the host is here because the agent wrote it down, whether or not the call ran and whether or not the wire ever saw it, which is what makes the report's \"reached but never named\" line meaningful. Sorted and de-duplicated, so two runs of one command produce byte-identical records. Null when the call named none, never an empty array: \"we looked and found none\" must stay distinguishable from a schema 1 record that was never looked at.",
+          "description": "Schema 2. Hostnames this call NAMED, behind http(s):// or ws(s)://, canonicalised: lower-cased, port stripped, one trailing dot dropped, userinfo refused outright rather than stripped (CWE-522), and an IP literal written in its one spelling (IPv6 compressed and bracketed, an IPv4-mapped address as its IPv4 address, every inet_aton form of an IPv4 address as a dotted quad). Only a host-shaped value is recorded: a bracketed IPv6 address or a name of at most 253 bytes of letters, digits, -, _ and ., so text a URL's authority swallowed (api.example.com=...!x) is not. A Unicode name is kept as written, not converted to its xn-- form. A declaration and not an observation -- the host is here because the agent wrote it down, whether or not the call ran and whether or not the wire ever saw it, which is what makes the report's \"reached but never named\" line meaningful. Sorted and de-duplicated, so two runs of one command produce byte-identical records. Null when the call named none, never an empty array: \"we looked and found none\" must stay distinguishable from a schema 1 record that was never looked at.",
           "type": [
             "array",
             "null"
@@ -185,7 +185,7 @@
           }
         },
         "ssh_hosts": {
-          "description": "Schema 2. Hostnames named behind ssh://, git+ssh:// or git@, canonicalised identically. Kept apart from hosts because family coverage counts ssh and HTTPS destinations separately, by scheme; novelty does not make that distinction and takes its candidates from this field and hosts combined.",
+          "description": "Schema 2. Hostnames named behind ssh://, git+ssh:// or git@, or as the destination argument of ssh, scp, sftp or rsync on the command line, canonicalised identically. The command line is read for those arguments line by line up to the shape token bound (62,601 tokens, each line counting at least one), so a destination named past it is not recorded; nothing marks such a list incomplete until schema 5. Kept apart from hosts because family coverage counts ssh and HTTPS destinations separately, by scheme; novelty does not make that distinction and takes its candidates from this field and hosts combined.",
           "type": [
             "array",
             "null"
@@ -195,7 +195,7 @@
           }
         },
         "cwd_digest": {
-          "description": "Schema 3. HMAC under the per-install key of the directory the call's command started in: the PreToolUse payload's cwd, which follows the shell from one call to the next, or where the line's leading plain `cd DIR &&` steps lead (no expansion, quoting, ~ or -; a leading pushd, popd or other cd keeps the payload's cwd): an absolute target replaces the directory and a relative one joins it. Two runs of one command line compare as the same run only when this is equal as well, since the same line in another directory runs other code. A digest and never the path: the declarations do not carry the directory, which the coverage records already keep as the project key. Empty string when that directory is not known: no payload cwd and no absolute leading cd.",
+          "description": "Schema 3. HMAC under the per-install key of the directory the call's command started in: the PreToolUse payload's cwd, which follows the shell from one call to the next, or where the line's leading plain `cd DIR &&` steps lead (no expansion, quoting, ~ or -; a leading pushd, popd or other cd keeps the payload's cwd): an absolute target replaces the directory and a relative one joins it. Two runs of one command line compare as the same run only when this is equal as well, since the same line in another directory runs other code. A digest and never the path: the declarations do not carry the directory, which the coverage records already keep as the project key. Empty string when that directory is not known: no payload cwd and no absolute leading cd, or more than 64 leading cd steps, past which the fold stops.",
           "type": "string"
         },
         "file_label": {
@@ -543,7 +543,7 @@
           ]
         },
         "reason": {
-          "description": "Null when the outcome is ok. recovered_panic: the panic barrier recovered a panic that cost this call's capture -- a bug in this program, as distinct from internal_error's ordinary failure.",
+          "description": "Null when the outcome is ok. recovered_panic: the panic barrier recovered a panic that cost this call's capture -- a bug in this program, as distinct from internal_error's ordinary failure. flush_failed: carried by a spill terminal, it marks records this call appended and could not flush to stable storage -- they read back, and a power loss or a crash of the machine could still remove them.",
           "type": [
             "string",
             "null"
@@ -629,7 +629,7 @@
           ]
         },
         "reason": {
-          "description": "Null when the state is verified, and never null when it is unverified: a reader meets an unverified record with no reason, or a state outside the enum, as records_unreadable. Fixed codes, never free text and never derived from input. recovered_panic: the panic barrier recovered a panic in this invocation -- one that cost the call's capture, or one inside the file-label derivation, whose label then reads unknown.",
+          "description": "Null when the state is verified, and never null when it is unverified: a reader meets an unverified record with no reason, or a state outside the enum, as records_unreadable. Fixed codes, never free text and never derived from input. recovered_panic: the panic barrier recovered a panic in this invocation -- one that cost the call's capture, or one inside the file-label derivation, whose label then reads unknown. payload_too_large: the invocation's payload was over the 8 MiB intake cap and was refused after a bounded read, so the call went unrecorded; nothing broke inside this program, which is why it is not internal_error.",
           "type": [
             "string",
             "null"
@@ -755,7 +755,7 @@
           "type": "integer"
         },
         "host_digest": {
-          "description": "Schema 2. An HMAC under the per-install key identifying the destination a host-scoped forget removed; empty string for a window forget, which removes by time and names no host. A DIGEST and not the hostname, resolving a conflict the field had to settle: the report needs to keep suppressing the host, because nono's own trail is not this tool's to delete from and the host would otherwise reappear in the next report under the sandbox heading, yet forget --host also has to make the hostname leave this store's bytes. Writing the name would satisfy the first requirement by breaking the second. Keyed with the same per-install key the shape digests use, so the report can recompute it from an observed host while a reader of the store cannot turn it back into a name or test a guess.",
+          "description": "Schema 2. An HMAC under the per-install key identifying the destination a host-scoped forget removed; empty string for a window forget, which removes by time and names no host. A DIGEST and not the hostname, resolving a conflict the field had to settle: the report needs to keep suppressing the host, because nono's own trail is not this tool's to delete from and the host would otherwise reappear in the next report under the sandbox heading, yet forget --host also has to make the hostname leave this store's bytes. Writing the name would satisfy the first requirement by breaking the second. Keyed with the same per-install key the shape digests use, so the report can recompute it from an observed host while a reader of the store cannot turn it back into a name or test a guess. Computed over the host's one canonical spelling (lower case, no port or root dot, an IP literal as it is recorded), whatever the user typed: forget --host 167838211 removes the records naming 10.1.2.3 and digests 10.1.2.3, the spelling the sandbox trail carries. A gap written before that digests the value as typed.",
           "type": "string"
         },
         "removed_records": {
