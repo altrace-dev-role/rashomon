@@ -491,11 +491,11 @@ type Coverage struct {
 // SEPARATE FROM THE GAPS ON PURPOSE. A gap says "records were removed here",
 // and `forget --host` writes one only for a run it actually removed records
 // from. That left a hole the nono adapter made visible (#45): a host that only
-// the sandbox's trail or the proxy's store held -- or one whose every naming
-// call had already left with an earlier forget of another host -- could not be
-// forgotten at all, and the next report listed it again. This record is written
-// on every `forget --host`, so the report's predicate covers every source it
-// reads, and the gaps keep meaning only what they always meant.
+// the sandbox's trail held -- or one whose every naming call had already left
+// with an earlier forget of another host -- could not be forgotten at all, and
+// the next report listed it again. This record is written on every
+// `forget --host`, so the report's predicate covers every source it reads, and
+// the gaps keep meaning only what they always meant.
 //
 // It carries the same keyed digest a gap does and never the name, for the
 // reason set out on Gap.HostDigest.
