@@ -72,13 +72,37 @@ func TestRES7_HugeFinalMessageIsConstant(t *testing.T) {
 	// does anything (measured 2026-10-13 through the reaper, linux/arm64,
 	// go1.25.8 -race: 20.0 MiB at 2 KiB, 22.9 MiB at 7 MB; 4.4 and 5.5 MiB
 	// without -race), so under -race only the growth bound applies.
+	//
+	// The growth bound itself is wider under -race than without, because the
+	// race detector's own bookkeeping scales with how much the run touches,
+	// not just with recap's steady-state footprint. Non-race growth has no
+	// headroom problem (the 4.4/5.5 MiB floor figures above put it under 1.5
+	// MiB) and keeps the original 4 MiB bound. Under -race, growth measured
+	// here with go1.25.8: linux/amd64 (docker, --platform linux/amd64 on an
+	// arm64 host) 2.74-3.00 MiB across 11 trials, clean and under added CPU
+	// contention; linux/arm64 2.9 MiB (2026-10-13 note above); darwin/arm64
+	// 3.06 MiB; darwin/amd64 under Rosetta 3.15 MiB. CI's own linux/amd64
+	// runner -- the environment that actually failed, a shared GitHub-hosted
+	// box -- produced 4.32, 4.04 and 4.15 MiB over three runs on 2026-10-14
+	// (pr62/pr64/pr66 Test.log), higher than every figure measured directly
+	// above. 6 MiB clears that observed 4.32 MiB high-water mark by about
+	// 39% for the runner noise this bound exists to absorb, while staying
+	// two orders of magnitude under the 86.22 MiB measured here for a recap
+	// that holds the whole payload (readFinalMessage's countingReader wrapped
+	// in an io.TeeReader into a buffer kept live across the read -- the
+	// defect this test exists to catch), so that defect still fails it by a
+	// wide margin.
+	growthBound := 4.0
+	if raceEnabled {
+		growthBound = 6.0
+	}
 	switch {
 	case raceEnabled:
-		t.Logf("race detector on: the 12 MiB bound is not applied to an instrumented child; the growth bound is")
+		t.Logf("race detector on: the 12 MiB bound is not applied to an instrumented child; the growth bound is %.0f MiB", growthBound)
 	case big > 12:
 		t.Errorf("recap at a 7 MB final message peaked at %.2f MiB, over 12 MiB", big)
 	}
-	if big-small > 4 {
+	if big-small > growthBound {
 		t.Errorf("a 7 MB message cost %.2f MiB more than a 2 KiB one: the payload is held", big-small)
 	}
 }
