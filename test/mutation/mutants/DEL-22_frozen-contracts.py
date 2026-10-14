@@ -6,9 +6,10 @@ m("DEL-22 the frozen pattern set loses masked-status", "internal/steer/pattern/p
   "\t\tClaimVsRecord, SequenceRisk,\n", "TestDEL22_")
 m("DEL-22 a gate reason is dropped from the vocabulary", "internal/verify/state.go",
   "\tBudget, OK,\n}", "\tOK,\n}", "TestDEL22_")
-m("DEL-22 two gate reasons share a string", "internal/verify/state.go",
-  'MaskedNoSuccessLine   Reason = "masked_no_success_line"',
-  'MaskedNoSuccessLine   Reason = "masked_with_success_line"', "TestDEL22_")
+# Two gate reasons sharing a string is no longer a mutant: reasonState in
+# internal/verify/state.go is a map literal keyed by every Reason, so a
+# collision is a duplicate key and the package does not compile. The
+# compiler now refuses the regression this mutant named.
 m("DEL-22 the session record's resume key is respelled", "internal/store/record_v5.go",
   "`json:\"resume\"`", "`json:\"resumed\"`", "TestDEL22b_")
 m("DEL-22 the target's dropped keys become a count again", "internal/store/record_v5.go",
