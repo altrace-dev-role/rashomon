@@ -93,6 +93,20 @@ func TestDEL7_EveryEntryHasABudgetRow(t *testing.T) {
 	}
 }
 
+// TestRES28b_EveryEntryRowIsMeasured: every entry row's peak-RSS p50 is a
+// median of nine measured on the reference machine (TestRES28b_ under the
+// perf tag), never a figure carried over from the archive; a row whose p50
+// was derived says so in its basis and fails here. The archive's derivation
+// stays in the basis after the measurement, as the record of where p95 came
+// from.
+func TestRES28b_EveryEntryRowIsMeasured(t *testing.T) {
+	for _, e := range loadBudgets(t).Entries {
+		if !strings.HasPrefix(e.Basis, "measured ") {
+			t.Errorf("entry %s: basis %q: its p50 is not a measurement", e.ID, e.Basis)
+		}
+	}
+}
+
 func round4(x float64) float64 { return float64(int64(x*10000+0.5)) / 10000 }
 
 // TestRES36d_RowsCarryNoHiddenMargin: every benchmark row's max equals its
