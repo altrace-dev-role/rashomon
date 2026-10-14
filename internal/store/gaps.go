@@ -530,7 +530,7 @@ func (s *Store) recordForgottenHost(digest string, now time.Time) error {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
-	unlock, err := LockFile(f, lockBudget)
+	unlock, err := lockCounted(f, lockBudget)
 	if err != nil {
 		return err
 	}
@@ -549,7 +549,7 @@ func (s *Store) recordForgottenHost(digest string, now time.Time) error {
 	if _, err := f.Write(line); err != nil {
 		return err
 	}
-	return f.Sync()
+	return syncFull(f)
 }
 
 func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
