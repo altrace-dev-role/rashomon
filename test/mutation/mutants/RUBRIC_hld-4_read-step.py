@@ -36,11 +36,11 @@ m("RUBRIC hld-4 the read step does not ask the project baseline", "internal/repo
   "TestRubricHLD4_BuildReadsTheTranscriptsTheRunNames")
 m("RUBRIC hld-4 the read step does not read the sandbox trail", "internal/report/gather/gather.go",
   "\t\t\tNono:        nono.Read(cfg.nonoTrail, report.SessionWindow(run)),\n", "\t\t\tNono:        nono.Observation{},\n",
-  "TestSeam_TheNonoTrailReachesTheReport")
+  "TestRubricHLD4_TheReadStepReadsTheSandboxTrail")
 m("RUBRIC hld-4 the baseline's error text reaches the report", "internal/report/destinations.go",
   "\t\tn.Reason = \"the project baseline could not be read or written\"\n", "\t\tn.Reason = err.Error()\n",
-  "TestNovelty_AnUnreadableBaselineIsUnknownWithAReason")
+  "TestRubricHLD4_TheBaselinesAnswerCarriesNoErrorText")
 m("RUBRIC hld-4 the baseline is asked about the client plane", "internal/report/destinations.go",
   "\t\tHosts:     novelHostCandidates(append(declaredHostsFiltered(run, forgotten), sshDeclaredFiltered(run, forgotten)...), madeMCPCall(run)),\n",
   "\t\tHosts:     append(declaredHostsFiltered(run, forgotten), sshDeclaredFiltered(run, forgotten)...),\n",
-  "TestNovelty_TheQueryIsTheRunsOwnProjectAndHosts|TestNovelty_ClientPlaneIsNeverNovel")
+  "TestRubricHLD4_TheBaselineQuestionLeavesOutTheClientPlane")

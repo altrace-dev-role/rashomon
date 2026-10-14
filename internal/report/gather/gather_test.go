@@ -130,6 +130,27 @@ func TestRubricHLD4_AnUnreadableSubagentCostsTheCountNotTheAccount(t *testing.T)
 	}
 }
 
+// TestRubricHLD4_TheReadStepReadsTheSandboxTrail: the sandbox trail is one
+// of the files only the read step opens, so Read itself -- not Build, whose
+// Assemble half could not supply it -- must hand back what the trail held for
+// the session's window. A read step that stopped reading it would leave an
+// Observation that says nothing was observed.
+func TestRubricHLD4_TheReadStepReadsTheSandboxTrail(t *testing.T) {
+	at := firstNonoEvent(t)
+	st, id, _ := seamSessionAt(t, at)
+
+	in, err := Read(st, id, WithNonoTrail(nonoFixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !in.NonoConfigured || len(in.Sessions) != 1 {
+		t.Fatalf("input = %+v; want the trail configured and one session", in)
+	}
+	if n := in.Sessions[0].Nono; !n.Observed || len(n.Events) == 0 {
+		t.Errorf("nono = %+v; the read step did not read the trail it was given", n)
+	}
+}
+
 // TestNono_ASessionWithNoEndRecordReportsAnOpenWindow drives Build: the
 // window comes from the run's coverage records, and a run with a start and
 // no end must reach the sandbox line as open.

@@ -1,6 +1,7 @@
 package report
 
 import (
+	"errors"
 	"io/fs"
 	"strings"
 	"testing"
@@ -118,5 +119,37 @@ func TestRubricHLD4_TranscriptPathsAreTheDistinctNamedPathsSorted(t *testing.T) 
 	got := TranscriptPaths(run)
 	if strings.Join(got, ",") != "/a.jsonl,/b.jsonl" {
 		t.Errorf("TranscriptPaths = %v, want [/a.jsonl /b.jsonl]", got)
+	}
+}
+
+// TestRubricHLD4_TheBaselineQuestionLeavesOutTheClientPlane: the read step
+// asks the project baseline the question NoveltyQueryOf decides, so the rule
+// that the client's own plane is never a project's new destination has to
+// live in that question, not in the read step that carries it.
+func TestRubricHLD4_TheBaselineQuestionLeavesOutTheClientPlane(t *testing.T) {
+	run := &store.Run{
+		Declarations: []store.Declaration{{
+			ToolUseID: "toolu_1", ToolName: "Bash", SessionID: "hld4",
+			Hosts: []string{"a.example", "api.anthropic.com"},
+		}},
+		Coverage: []store.Coverage{{Phase: store.PhaseStart, RecordedAtMS: 1, CWD: "/project", SessionID: "hld4"}},
+	}
+	q, unavailable := NoveltyQueryOf(run, "/root", nil)
+	if unavailable != nil {
+		t.Fatalf("no query: %s", unavailable.Reason)
+	}
+	if strings.Join(q.Hosts, ",") != "a.example" {
+		t.Errorf("query hosts = %v, want [a.example]: the client plane is not asked about", q.Hosts)
+	}
+}
+
+// TestRubricHLD4_TheBaselinesAnswerCarriesNoErrorText: the read step hands
+// Assemble the baseline's error as it came, path and all; the pure half
+// decides what a reader sees, and that is a reason, never the error's text.
+func TestRubricHLD4_TheBaselinesAnswerCarriesNoErrorText(t *testing.T) {
+	const text = "open /home/someone/baseline.json: permission denied"
+	n := AnsweredNovelty(false, 0, nil, errors.New(text))
+	if n.Available || n.Reason == "" || strings.Contains(n.Reason, "someone") || strings.Contains(n.Reason, "denied") {
+		t.Errorf("novelty = %+v, want unavailable with a reason that is not %q", n, text)
 	}
 }
