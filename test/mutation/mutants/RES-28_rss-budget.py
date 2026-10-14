@@ -23,3 +23,9 @@ m("RES-28 a case with no measured figure beside its line passes", "test/perf/gat
 m("RES-28 an entry row's p50 goes back to the archive's derivation", "test/perf/budgets.json",
   '"basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (5.95 / 6.05 / 5.98 MiB); closing a started session; expected per archive 85.4.1: one record, 6 / 6.5 MiB"',
   '"basis": "derived from archive 85.4.1: one record"', "TestRES28b_")
+# RES-28: a basis that still waits on a PR this tree carries contradicts the
+# measured figure beside it.
+m("RES-28 post.edit_314k's basis goes back to waiting on P-10", "test/perf/budgets.json",
+  '"basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.73 / 6.67 / 6.73 MiB); p95 is RES-28\'s line at 314 KB (7.16 MiB), which the archive applies from P-10 in place of 8 / 10 MiB; 60 runs gave p95 6.92, max 6.95"',
+  '"basis": "measured 2026-10-13 on the reference machine (go1.27.2, release flags; TestRES28b_ on a pinned, installed store; remeasured on the P-10 tree, bounded intake over group commit): median of nine, the middle of three runs (6.73 / 6.67 / 6.73 MiB); expected per archive 85.4.1: 8 / 10 MiB until P-10, then per RES-28 (7.16 MiB at 314 KB)"',
+  "TestRES28b_")
