@@ -107,6 +107,28 @@ func TestRES28b_EveryEntryRowIsMeasured(t *testing.T) {
 	}
 }
 
+// TestRES28b_NoBasisWaitsOnALandedPR: a basis that still reads "until P-10"
+// on the tree that carries P-10 contradicts the measured figure beside it, as
+// post.edit_314k's did ("8 / 10 MiB until P-10" beside a measured 6.80).
+// Break: restore that basis, and this fails.
+func TestRES28b_NoBasisWaitsOnALandedPR(t *testing.T) {
+	b := loadBudgets(t)
+	bases := map[string]string{}
+	for _, e := range b.Entries {
+		bases["entry "+e.ID] = e.Basis
+	}
+	for _, c := range b.RSSCases {
+		bases["rss case "+c.ID] = c.Basis
+	}
+	for id, basis := range bases {
+		for pr := range landed {
+			if strings.Contains(basis, "until "+pr) {
+				t.Errorf("%s: basis %q waits on %s, which this tree carries", id, basis, pr)
+			}
+		}
+	}
+}
+
 func round4(x float64) float64 { return float64(int64(x*10000+0.5)) / 10000 }
 
 // TestRES36d_RowsCarryNoHiddenMargin: every benchmark row's max equals its
