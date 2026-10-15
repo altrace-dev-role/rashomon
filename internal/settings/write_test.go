@@ -60,6 +60,24 @@ func TestRubricERRORS4_DanglingSymlinkIsRefused(t *testing.T) {
 	}
 }
 
+// TestRubricERRORS4_LoadRefusesADanglingSymlink: Load on a settings.json
+// that is a symlink to nothing reads as unreadable, the same answer
+// ReadOriginal and Write already give it, not as an absent file. Before,
+// Load's own os.ReadFile saw the same ENOENT an absent file gives and
+// returned an empty Document, so status and watch read "not installed"
+// over a settings file that was actually unreadable, a dotfiles repo gone
+// missing rather than a fresh machine.
+func TestRubricERRORS4_LoadRefusesADanglingSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "dotfiles", "settings.json")
+	link := filepath.Join(dir, "settings.json")
+	symlinkTo(t, target, link)
+
+	if _, err := Load(link); err == nil || !strings.Contains(err.Error(), target) {
+		t.Errorf("Load on a dangling link = %v, want an error naming its target %s", err, target)
+	}
+}
+
 // TestRubricERRORS4_WorkingSymlinkIsWrittenThrough is the control: a link
 // that resolves is followed, the target gets the new bytes, and the link
 // stays a link.

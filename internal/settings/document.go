@@ -45,6 +45,17 @@ func Load(path string) (*Document, error) {
 		return nil, err
 	}
 
+	// A dangling symlink's open fails with the same ErrNotExist a path with
+	// nothing at it gives, and the two are not the same fact: one has
+	// nothing to read, the other names a target that is not there to read.
+	// writeTarget already draws the line Write and ReadOriginal hold to; Load
+	// asking it first means a settings file that is a broken link reads as
+	// unreadable, not as an absent one watch would then install straight
+	// over, and status would then report as "not installed" rather than the
+	// link it could not resolve.
+	if _, err := writeTarget(path); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return &Document{}, nil

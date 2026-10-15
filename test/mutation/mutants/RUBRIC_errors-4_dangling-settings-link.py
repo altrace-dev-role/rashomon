@@ -9,3 +9,7 @@ m("errors-4 reading a dangling link returns an empty file", "internal/settings/w
   "\tif _, err := writeTarget(path); err != nil {\n\t\treturn nil, err\n\t}\n\tdata, err := os.ReadFile(path)",
   "\tdata, err := os.ReadFile(path)",
   "TestRubricERRORS4_")
+m("errors-4 Load reads a dangling link as an absent file", "internal/settings/document.go",
+  "\tif _, err := writeTarget(path); err != nil {\n\t\treturn nil, err\n\t}\n\tdata, err := os.ReadFile(path)",
+  "\tdata, err := os.ReadFile(path)",
+  "TestRubricERRORS4_")
