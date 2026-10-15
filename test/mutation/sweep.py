@@ -100,15 +100,26 @@ def load(patterns):
             M.append((name, f, old, new, test))
 
         declared = {}  # this file's import edits, merged below
+        ns = {"m": m, "IMPORTS": declared}
         try:
-            exec(compile(pathlib.Path(path).read_text(), path, "exec"), {"m": m, "IMPORTS": declared})
+            exec(compile(pathlib.Path(path).read_text(), path, "exec"), ns)
         except Exception as e:  # a mutant file that does not run is a defect, not a crash
             problems.append(f"{rel(path)}: {type(e).__name__}: {e}")
         if len(M) == before:
             problems.append(f"{rel(path)}: declares no mutant")
+        # A file that writes `IMPORTS = {...}` rebinds the name in its own
+        # namespace instead of updating the dict passed in, so `declared`
+        # never sees the edit -- silently, since nothing else notices. Reading
+        # the namespace back and comparing identity catches it.
+        if ns.get("IMPORTS") is not declared:
+            problems.append(f"{rel(path)}: IMPORTS was reassigned instead of updated with IMPORTS[name] = (...)")
+            continue
         # An import edit belongs to the file that declares its mutant. Merging
         # any other would let one file overwrite another's edit in silence.
         for name, entry in declared.items():
+            if not (isinstance(entry, tuple) and len(entry) == 3 and all(isinstance(x, str) for x in entry)):
+                problems.append(f"{rel(path)}: IMPORTS[{name!r}] is {entry!r}, not a 3-tuple of strings")
+                continue
             if ORIGIN.get(name) != path:
                 where = f"declared in {rel(ORIGIN[name])}" if name in ORIGIN else "not declared"
                 problems.append(f"{rel(path)}: IMPORTS[{name!r}]: its mutant is {where}, not in this file")

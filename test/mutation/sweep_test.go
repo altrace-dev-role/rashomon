@@ -57,6 +57,14 @@ func sweep(t *testing.T, dir string, args ...string) (string, int) {
 	if ctx.Err() != nil {
 		t.Fatalf("sweep.py %s did not finish within 30s; stderr:\n%s", strings.Join(args, " "), stderr.String())
 	}
+	// A bad mutant file is a reported problem, never an unhandled Python
+	// exception: a traceback here means a malformed input reached code that
+	// assumed it was well-formed, which is the defect itself, not evidence
+	// that the input was rejected.
+	if strings.Contains(stderr.String(), "Traceback (most recent call last)") {
+		t.Fatalf("sweep.py %s crashed with an unhandled exception instead of reporting a problem:\n%s",
+			strings.Join(args, " "), stderr.String())
+	}
 	if err != nil {
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) {
@@ -173,6 +181,12 @@ func TestDEL1b_ImportEntryDeclaredBesideItsMutant(t *testing.T) {
 		{"beside its mutant", map[string]string{"a.py": declaring + entry}, true},
 		{"in another file", map[string]string{"a.py": declaring, "b.py": other + entry}, false},
 		{"for a mutant no file declares", map[string]string{"b.py": other + entry}, false},
+		{"IMPORTS rebound instead of updated in place", map[string]string{
+			"a.py": declaring + fmt.Sprintf("IMPORTS = {%q: (%q, %q, %q)}\n", name, "target.go", "\t\"fmt\"\n", "\t\"fmt\"\n\t\"os\"\n"),
+		}, false},
+		{"IMPORTS entry is not a 3-tuple", map[string]string{
+			"a.py": declaring + fmt.Sprintf("IMPORTS[%q] = (%q, %q)\n", name, "target.go", "\t\"fmt\"\n"),
+		}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
