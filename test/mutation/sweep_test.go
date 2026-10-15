@@ -193,6 +193,21 @@ func TestDEL1b_ImportEntryDeclaredBesideItsMutant(t *testing.T) {
 	}
 }
 
+// --files is documented as relative to test/mutation, which is where a path
+// typed by hand usually is -- but the sweep is run from the module root, and
+// a path tab-completed from there carries the test/mutation/ prefix. That
+// shape must resolve too.
+func TestFilesPatternResolvesAgainstCurrentDirectoryFirst(t *testing.T) {
+	root := moduleRoot(t)
+	out, code := sweep(t, root, "--list", "--files", "test/mutation/mutants/DEL-1_per-change-files.py")
+	if code != 0 {
+		t.Fatalf("--files with a module-root-relative path exited %d", code)
+	}
+	if len(nonEmptyLines(out)) == 0 {
+		t.Fatal("--files with a module-root-relative path listed no mutant")
+	}
+}
+
 // DEL-2. --check refuses an anchor that occurs other than exactly once in its
 // target, and an import edit's anchor likewise: the sweep applies each by
 // replacing its first occurrence, so a repeated anchor mutates whichever site

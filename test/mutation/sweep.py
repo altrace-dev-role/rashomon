@@ -65,16 +65,27 @@ def rel(path):
         return str(path)
 
 
+def _resolve(pattern):
+    """A relative --files pattern first against the current directory, where a
+    tab-completed path is written from, then against this directory, which is
+    where it is documented as relative to.
+    """
+    if os.path.isabs(pattern):
+        return glob.glob(pattern)
+    hits = glob.glob(pattern)
+    return hits if hits else glob.glob(str(HERE / pattern))
+
+
 def load(patterns):
     """Exec every mutant file the patterns name, in sorted order.
 
     Returns the problems found: a name declared twice, a file that declares
-    nothing, a file that does not run. Patterns are relative to this directory
-    unless absolute.
+    nothing, a file that does not run. A relative pattern is tried against the
+    current directory first, then against this directory.
     """
     files = set()
     for p in patterns:
-        files.update(glob.glob(p if os.path.isabs(p) else str(HERE / p)))
+        files.update(_resolve(p))
     problems = []
     if not files:
         problems.append("no mutant file matches " + ", ".join(patterns))
@@ -339,7 +350,8 @@ def main(argv):
     ap.add_argument("--list", action="store_true", help="print every mutant name in load order and exit")
     ap.add_argument("--check", action="store_true", help="run the static checks and exit")
     ap.add_argument("--files", action="append", default=[], metavar="GLOB",
-                    help="load only the mutant files matching GLOB, relative to test/mutation unless absolute; repeatable")
+                    help="load only the mutant files matching GLOB, tried against the current "
+                         "directory first and then against test/mutation, unless absolute; repeatable")
     args = ap.parse_args(argv)
     problems = load(args.files or [MUTANT_GLOB])
     if args.list:
