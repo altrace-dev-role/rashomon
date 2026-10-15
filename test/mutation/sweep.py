@@ -82,6 +82,132 @@ def _resolve(pattern):
     return hits if hits else glob.glob(str(HERE / pattern))
 
 
+# GOOS names go/build recognizes, plus the "unix" meta-tag a //go:build line
+# may use in their place. Not every GOOS Go supports is here, only the ones a
+# build constraint in this tree is likely to name; a name outside this set
+# is treated as a non-GOOS tag (see _goos_excludes) rather than guessed at.
+_KNOWN_GOOS = {
+    "aix", "android", "darwin", "dragonfly", "freebsd", "hurd", "illumos",
+    "ios", "js", "linux", "netbsd", "openbsd", "plan9", "solaris", "wasip1",
+    "windows",
+}
+_UNIX_GOOS = {
+    "aix", "android", "darwin", "dragonfly", "freebsd", "hurd", "illumos",
+    "ios", "linux", "netbsd", "openbsd", "solaris",
+}
+_GOOS_FROM_PLATFORM = {"darwin": "darwin", "linux": "linux", "win32": "windows", "cygwin": "windows"}
+
+
+def host_goos():
+    """The GOOS the sweep is judging mutants for: GOOS itself when the
+    caller set it, sys.platform otherwise. The sweep's own CI jobs run `go
+    test` for the host they run on, never a cross-compiled one, so this is
+    always what the mutated binary would actually build for."""
+    return os.environ.get("GOOS") or _GOOS_FROM_PLATFORM.get(sys.platform, sys.platform)
+
+
+def _build_constraint_line(path):
+    """The expression on path's //go:build line, or None if it has none. That
+    line must come before the package clause, after only blank lines and
+    other comments (go help buildconstraint), so reading a handful of lines
+    is enough."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for _ in range(10):
+                line = fh.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if line.startswith("//go:build"):
+                    return line[len("//go:build"):].strip()
+                if line.startswith("package "):
+                    break
+    except OSError:
+        pass
+    return None
+
+
+class _ConstraintError(Exception):
+    """A term in a //go:build expression is not a GOOS name or 'unix': this
+    function knows GOOS constraints and nothing else, so an expression it
+    cannot fully resolve is not guessed at."""
+
+
+def _eval_goos_constraint(expr, goos):
+    """Evaluate a //go:build boolean expression (&&, ||, !, parens, bare
+    identifiers) against goos. Raises _ConstraintError if any identifier is
+    not a GOOS name or the 'unix' meta-tag -- a custom tag such as perf or
+    rashomonfault -- since this function exists to catch a GOOS mismatch, not
+    to model every build tag a mutant's target might carry."""
+    tokens = re.findall(r"&&|\|\||[!()]|[A-Za-z0-9_]+", expr)
+    pos = 0
+
+    def peek():
+        return tokens[pos] if pos < len(tokens) else None
+
+    def take():
+        nonlocal pos
+        t = tokens[pos]
+        pos += 1
+        return t
+
+    def parse_or():
+        v = parse_and()
+        while peek() == "||":
+            take()
+            v = v or parse_and()
+        return v
+
+    def parse_and():
+        v = parse_unary()
+        while peek() == "&&":
+            take()
+            v = v and parse_unary()
+        return v
+
+    def parse_unary():
+        if peek() == "!":
+            take()
+            return not parse_unary()
+        if peek() == "(":
+            take()
+            v = parse_or()
+            if peek() != ")":
+                raise _ConstraintError(f"unbalanced parens in {expr!r}")
+            take()
+            return v
+        if peek() is None:
+            raise _ConstraintError(f"expected a term in {expr!r}")
+        t = take()
+        if t == "unix":
+            return goos in _UNIX_GOOS
+        if t in _KNOWN_GOOS:
+            return t == goos
+        raise _ConstraintError(f"{t!r} in {expr!r} is not a GOOS name or 'unix'")
+
+    v = parse_or()
+    if pos != len(tokens):
+        raise _ConstraintError(f"trailing tokens in {expr!r}")
+    return v
+
+
+def _goos_excludes(path, goos):
+    """True if path declares a //go:build line that is false for goos, so a
+    text mutation to it can never be observed: the file is not part of the
+    build goos compiles, and no test run under goos can see a change to it.
+    A file with no go:build line, or one whose expression this function
+    cannot fully evaluate (a mix of GOOS/unix terms and something else), is
+    never reported excluded -- that would turn an unrelated custom tag into a
+    false NOT JUDGED and hide a mutant the sweep could otherwise detect."""
+    expr = _build_constraint_line(path)
+    if expr is None:
+        return False
+    try:
+        return not _eval_goos_constraint(expr, goos)
+    except _ConstraintError:
+        return False
+
+
 def load(patterns):
     """Exec every mutant file the patterns name, in sorted order.
 
@@ -369,9 +495,18 @@ def run_sweep(strict=False):
     print("baseline: green\n")
 
     undetected = []
-    skipped = []
+    skipped = []  # the judging test skipped here; --strict fails on these
+    platform = []  # the target is not built for this GOOS; never a failure
+    goos = host_goos()
     try:
         for name, f, old, new, test in M:
+            if _goos_excludes(f, goos):
+                # Mutating f would change nothing a build for this GOOS
+                # compiles, so neither backup nor the judging test runs: a
+                # darwin-only target on a Linux runner, for instance.
+                print(f"  NOT JUDGED (platform) <- {name}   ({rel(f)} is not built for GOOS={goos})")
+                platform.append(name)
+                continue
             backup(f)
             s = pathlib.Path(f).read_text()
             if old not in s:
@@ -419,18 +554,23 @@ def run_sweep(strict=False):
 
     print()
     print("undetected:", undetected if undetected else "none")
-    if skipped:
-        print("not judged here:", skipped)
-        print("  These were not checked because the judging test skipped in this")
-        print("  environment. They are not passes. Run the sweep where those tests")
-        print("  run -- CI installs strace on ubuntu-latest for exactly this reason.")
-        if strict:
-            print("  --strict is set: treating them as failures.")
+    if skipped or platform:
+        print("not judged here:", skipped + platform)
+        print("  These were not checked: either the judging test skipped in this")
+        print("  environment, or the mutant's target is not built under this GOOS at")
+        print("  all. They are not passes. Run the sweep where that coverage runs --")
+        print("  CI installs strace on ubuntu-latest for H-17's sockets, and runs a")
+        print("  darwin-only target's own job on macos-latest.")
+        if strict and skipped:
+            print("  --strict is set: treating the skipped ones as failures.")
     # Without --strict, a NOT JUDGED mutant exits 0: that is correct for a
     # laptop that cannot run the socket half of H-17, where skipping is
     # expected. In CI, where the tooling that lets them run is installed on
     # purpose, the same skip means that tooling broke, and --strict is what
     # turns a green sweep back into the red one that silence would hide.
+    # A target this GOOS does not build is never counted, strict or not: no
+    # tooling installed here can make it build, so it is a fact about the
+    # platform, not a broken environment (DEL-18).
     return 1 if undetected or (strict and skipped) else 0
 
 
@@ -442,7 +582,8 @@ def main(argv):
                     help="load only the mutant files matching GLOB, tried against the current "
                          "directory first and then against test/mutation, unless absolute; repeatable")
     ap.add_argument("--strict", action="store_true",
-                    help="exit non-zero if any mutant was not judged here, not only if undetected")
+                    help="exit non-zero if any mutant's judging test skipped here, not only if undetected; "
+                         "a target not built for this GOOS is reported but never fails")
     args = ap.parse_args(argv)
     problems = load(args.files or [MUTANT_GLOB])
     if args.list:

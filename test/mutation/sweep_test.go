@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -408,6 +409,51 @@ func TestCheckValidatesJudgingTestExists(t *testing.T) {
 				t.Errorf("--check exited %d for test regex %q", code, tc.test)
 			}
 		})
+	}
+}
+
+// DEL-18. A mutant whose target file is excluded from the build on this
+// GOOS -- a //go:build tag naming a different platform -- is reported NOT
+// JUDGED (platform), never as undetected: the file is not compiled here, so
+// mutating its text changes nothing a test on this host could ever see, and
+// that is a fact about the platform, not about the test's thoroughness.
+func TestDEL18_PlatformExcludedMutantIsNotJudged(t *testing.T) {
+	foreign := "linux"
+	if runtime.GOOS == "linux" {
+		foreign = "darwin"
+	}
+
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "go.mod"), "module fixturemod\n\ngo 1.21\n")
+	write(t, filepath.Join(dir, "value_host.go"),
+		fmt.Sprintf("//go:build !%s\n\npackage fixture\n\nfunc Value() int { return 1 }\n", foreign))
+	write(t, filepath.Join(dir, "value_foreign.go"),
+		fmt.Sprintf("//go:build %s\n\npackage fixture\n\nfunc Value() int { return 1 }\n", foreign))
+	write(t, filepath.Join(dir, "value_test.go"),
+		"package fixture\n\nimport \"testing\"\n\nfunc TestFixtureX_Value(t *testing.T) {\n\tif Value() != 1 {\n\t\tt.Fatalf(\"Value() = %d, want 1\", Value())\n\t}\n}\n")
+
+	const name = "fixture value on the foreign platform"
+	mutantFile := filepath.Join(t.TempDir(), "fixture.py")
+	write(t, mutantFile, mutant(name, "value_foreign.go", "return 1", "return 2", "TestFixtureX_"))
+
+	out, code := sweep(t, dir, "--files", mutantFile)
+	if code != 0 {
+		t.Fatalf("sweep exited %d; a mutant whose target is not built for GOOS=%s must not fail the sweep on %s:\n%s",
+			code, foreign, runtime.GOOS, out)
+	}
+	if !strings.Contains(out, "NOT JUDGED (platform)") {
+		t.Errorf("sweep output does not report the foreign-platform mutant as NOT JUDGED (platform):\n%s", out)
+	}
+	if strings.Contains(out, "undetected: ["+name) {
+		t.Errorf("the foreign-platform mutant was counted undetected, not merely unjudged:\n%s", out)
+	}
+	// --strict fails on a judging test that SKIPPED, because in CI that means
+	// the tooling broke. A target this GOOS does not build is not that: no
+	// tooling makes it build, so it must not fail the strict sweep either.
+	out, code = sweep(t, dir, "--strict", "--files", mutantFile)
+	if code != 0 {
+		t.Errorf("--strict exited %d; a mutant whose target is not built for GOOS=%s must not fail the strict sweep on %s:\n%s",
+			code, foreign, runtime.GOOS, out)
 	}
 }
 
