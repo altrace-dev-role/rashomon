@@ -36,8 +36,8 @@ const (
 	SubagentClaim      ID = "subagent-claim"
 	ModelSwitch        ID = "model-switch"
 	// ClaimVsRecord's masked kind is never model-visible (the frozen-set
-	// paragraph) -- a router/renderer concern, not something this package's
-	// table can express, so it is noted here rather than silently dropped.
+	// paragraph). This package's table cannot express that; steer.Finding.Check
+	// enforces it, through userOnly, at the finding's Check rather than here.
 	ClaimVsRecord ID = "claim-vs-record"
 	MaskedStatus  ID = "masked-status"
 	SequenceRisk  ID = "sequence-risk"
