@@ -282,6 +282,7 @@ func load(path, key string) (File, bool, error) {
 	if f.Hosts == nil {
 		f.Hosts = map[string]entry{}
 	}
+	f.Hosts = canonicalizeHosts(f.Hosts)
 	return f, true, nil
 }
 
