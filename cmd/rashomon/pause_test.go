@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"path/filepath"
@@ -350,5 +353,50 @@ func TestCheckPaused_FaultOnStoreRootIsNotAPause(t *testing.T) {
 	if paused := checkPaused(nil, strings.NewReader(""), store.PhaseCall, io.Discard); paused {
 		t.Error("checkPaused reported paused for a store root it could not search, " +
 			"not for a pause marker it could not read")
+	}
+}
+
+// TestCmdPause_DocCommentIsItsOwn: cmdPause's doc comment must attach to
+// cmdPause, not to pausedCoverageNote. Before, the const and its own short
+// comment sat between cmdPause's comment and cmdPause itself with no blank
+// line below the const's comment, so godoc attached the whole merged block
+// -- cmdPause's explanation of the threat model included -- to the const,
+// and cmdPause carried no doc comment at all.
+func TestCmdPause_DocCommentIsItsOwn(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "main.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cmdPauseDoc, constDoc *ast.CommentGroup
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch d := n.(type) {
+		case *ast.FuncDecl:
+			if d.Name.Name == "cmdPause" {
+				cmdPauseDoc = d.Doc
+			}
+		case *ast.GenDecl:
+			for _, spec := range d.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for _, name := range vs.Names {
+					if name.Name == "pausedCoverageNote" {
+						constDoc = d.Doc
+					}
+				}
+			}
+		}
+		return true
+	})
+	if cmdPauseDoc == nil {
+		t.Fatal("cmdPause has no doc comment; it was absorbed by a neighbouring declaration")
+	}
+	if !strings.Contains(cmdPauseDoc.Text(), "engages recording state") {
+		t.Errorf("cmdPause's doc comment reads %q, want it to describe cmdPause", cmdPauseDoc.Text())
+	}
+	if constDoc == nil || strings.Contains(constDoc.Text(), "engages recording state") {
+		t.Errorf("pausedCoverageNote's doc comment reads %q, want it to describe the const alone", constDoc.Text())
 	}
 }

@@ -450,7 +450,7 @@ func TestRubricERRORS6_UnreadablePauseMarkerPausesRecording(t *testing.T) {
 // (TestH80_PausedSessionWithAStoreWritesRecordingPaused): the line used to
 // say no tool call would be recorded, and each one still wrote a record.
 const pausedLine = "rashomon: paused -- tool calls are not recorded until `rashomon resume`; " +
-	"each one still adds a one-line coverage note (session id, working directory) so the gap shows in the report\n"
+	"each one still writes a coverage record so the gap shows in the report\n"
 
 // TestRubricDOCS2_PauseSaysCoverageNotesAreStillWritten pins the printed line
 // next to the H-80 test that proves what it says.

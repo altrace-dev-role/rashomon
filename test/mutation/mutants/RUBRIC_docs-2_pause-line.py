@@ -9,3 +9,7 @@ m("docs-2 pause claims a coverage note with no store", "cmd/rashomon/main.go",
   "\tnote := \"\"\n",
   "\tnote := pausedCoverageNote\n",
   "TestRubricDOCS2_")
+m("docs-2 pause note drops the reason it still shows in the report", "cmd/rashomon/main.go",
+  "const pausedCoverageNote = \"; each one still writes a coverage record \" +\n\t\"so the gap shows in the report\"\n",
+  "const pausedCoverageNote = \"; each one still writes a coverage record\"\n",
+  "TestRubricDOCS2_")
