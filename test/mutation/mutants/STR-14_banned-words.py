@@ -20,3 +20,5 @@ m("STR-14 the imperative phrase list loses make sure", "internal/steer/render/te
   'var imperativePhrases = []string{"please", "do not", "don\'t", "you must", "you should"}', "TestSTR14_")
 m("STR-14 a sentence may open with a bare imperative", "internal/steer/render/templates.go",
   '\t\tfirst := strings.Trim(words[0], "()\\"")\n', '\t\tfirst := strings.Trim(words[0], "()\\"") + "x"\n', "TestSTR14_")
+m("STR-14 a template's quote may hold more than one placeholder", "internal/steer/render/templates.go",
+  "\tif err := templateQuotesHoldOnlyPlaceholders(format); err != nil {\n\t\treturn err\n\t}\n", "", "TestSTR14_")

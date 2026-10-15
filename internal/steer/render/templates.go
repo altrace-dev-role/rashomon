@@ -111,13 +111,55 @@ func containsWord(text, phrase string) bool {
 func isWordByte(c byte) bool { return isAlnum(c) || c == '\'' || c == '-' }
 
 // CheckTemplate runs the statement check over a template's text, with its
-// {name} placeholders standing as words.
+// {name} placeholders standing as words. A quote in the template's own text
+// is not yet the agent's or the spec's words -- that only happens once a
+// slot fills it, and a slot's value earns the quote's exemption by passing
+// its own checks (deny list, entropy, Approved's rules) at render time. So
+// a template's quote may wrap only a single {placeholder}; any other
+// quoted span fails here rather than reaching the renderer's exemption.
 func CheckTemplate(format string) error {
+	if err := templateQuotesHoldOnlyPlaceholders(format); err != nil {
+		return err
+	}
 	unquoted, err := outsideQuotes(format)
 	if err != nil {
 		return err
 	}
 	return statementOfFact(unquoted)
+}
+
+// templateQuotesHoldOnlyPlaceholders walks format with outsideQuotes' own
+// quote rule and refuses any quoted span that is not exactly one
+// {placeholder}.
+func templateQuotesHoldOnlyPlaceholders(format string) error {
+	inQuote := false
+	start := 0
+	for i := 0; i < len(format); i++ {
+		if format[i] != '\'' {
+			continue
+		}
+		prev := i > 0 && isAlnum(format[i-1])
+		next := i+1 < len(format) && isAlnum(format[i+1])
+		switch {
+		case !inQuote && !prev:
+			inQuote = true
+			start = i + 1
+		case inQuote && !next:
+			inQuote = false
+			if q := format[start:i]; !isPlaceholderOnly(q) {
+				return fmt.Errorf("%w: a template quote holds %q, not one placeholder", ErrNotAStatement, q)
+			}
+		}
+	}
+	if inQuote {
+		return errors.New("render: message holds a quote that is never closed")
+	}
+	return nil
+}
+
+// isPlaceholderOnly reports whether q is exactly one {name} placeholder.
+func isPlaceholderOnly(q string) bool {
+	return len(q) >= 3 && q[0] == '{' && q[len(q)-1] == '}' && validSlotName(q[1:len(q)-1])
 }
 
 // checkTable runs CheckTemplate over every row of a template table.
