@@ -3,10 +3,12 @@ package acceptance
 import (
 	"go/ast"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -44,22 +46,90 @@ var filesOverLimit = map[string]int{
 	"internal/store/gaps.go":   572,
 }
 
-// codeLines counts the lines of a function body strictly between its braces
-// that hold code: neither blank nor wholly a // comment.
+// codeLines counts the lines strictly between lbrace and rbrace (1-indexed,
+// as go/token reports them) that hold at least one token that is not a
+// comment: a line wholly inside a /* */ block comment is not code, however
+// many lines that block spans, the same as a line that is wholly a //
+// comment; a line that holds both code and a trailing comment still counts,
+// on its code token alone.
+//
+// Tokenised rather than matched against "//": a scanner run with comments
+// off (the default scanner.Mode) never emits a token for one, block or
+// line, so a line with no token at all is a line with no code on it,
+// whatever a textual prefix check would have had to special-case.
 func codeLines(src []string, lbrace, rbrace int) int {
-	n := 0
-	for _, l := range src[lbrace:max(lbrace, rbrace-1)] {
-		s := strings.TrimSpace(l)
-		if s != "" && !strings.HasPrefix(s, "//") {
-			n++
+	seg := src[lbrace:max(lbrace, rbrace-1)]
+	body := []byte(strings.Join(seg, "\n"))
+	fset := token.NewFileSet()
+	file := fset.AddFile("", fset.Base(), len(body))
+	var sc scanner.Scanner
+	sc.Init(file, body, nil, 0)
+	lines := map[int]bool{}
+	for {
+		pos, tok, lit := sc.Scan()
+		if tok == token.EOF {
+			break
+		}
+		start := fset.Position(pos).Line
+		end := start
+		if tok == token.STRING {
+			// The one multi-line token left once comments are skipped: a
+			// backtick string spanning several lines is code on every one
+			// of them, counted the same way the line-prefix check it
+			// replaced counted them -- except a BLANK line inside one,
+			// which that check never counted either (it tested the line's
+			// text, not what token holds it), and the usage string's own
+			// blank lines must not grow its function's count.
+			// (token.SEMICOLON's own lit is "\n" for one go/scanner
+			// auto-inserts, which is not a second line's worth of code and
+			// must not be read as one -- hence STRING alone, here.)
+			end += strings.Count(lit, "\n")
+		}
+		for l := start; l <= end; l++ {
+			if l-1 < len(seg) && strings.TrimSpace(seg[l-1]) == "" {
+				continue
+			}
+			lines[l] = true
 		}
 	}
-	return n
+	return len(lines)
+}
+
+// measureFile parses one Go source file's bytes and returns the code-line
+// count of every function it declares, and the file's own code-line count.
+//
+// A function's key is relPath:funcName the first time that name is seen in
+// the file, and relPath:funcName#2, #3, ... for each one after: Go allows
+// more than one init() per file, and the bare name alone -- every function
+// shares it, since init has no receiver to tell two apart by -- silently
+// dropped every one but the last seen.
+func measureFile(fset *token.FileSet, relPath string, body []byte) (funcs map[string]int, fileLines int, err error) {
+	f, err := parser.ParseFile(fset, relPath, body, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, 0, err
+	}
+	src := strings.Split(string(body), "\n")
+	funcs = map[string]int{}
+	seen := map[string]int{}
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		name := funcName(fn)
+		seen[name]++
+		key := relPath + ":" + name
+		if n := seen[name]; n > 1 {
+			key += "#" + strconv.Itoa(n)
+		}
+		funcs[key] = codeLines(src, fset.Position(fn.Body.Lbrace).Line, fset.Position(fn.Body.Rbrace).Line)
+	}
+	return funcs, codeLines(src, 0, len(src)+1), nil
 }
 
 // functionSizes measures every function with a body in the module's non-test
-// Go files under cmd/ and internal/, keyed file:Recv.Name, and every such
-// file, keyed by its path.
+// Go files under cmd/ and internal/, keyed file:Recv.Name (measureFile), and
+// every such file, keyed by its path.
 func functionSizes(t *testing.T) (funcs, files map[string]int) {
 	t.Helper()
 	out, files := map[string]int{}, map[string]int{}
@@ -73,23 +143,18 @@ func functionSizes(t *testing.T) (funcs, files map[string]int) {
 			if err != nil {
 				return err
 			}
-			f, err := parser.ParseFile(fset, p, body, parser.SkipObjectResolution)
-			if err != nil {
-				return err
-			}
 			rel, err := filepath.Rel(moduleRoot, p)
 			if err != nil {
 				return err
 			}
-			src := strings.Split(string(body), "\n")
-			files[filepath.ToSlash(rel)] = codeLines(src, 0, len(src)+1)
-			for _, decl := range f.Decls {
-				fn, ok := decl.(*ast.FuncDecl)
-				if !ok || fn.Body == nil {
-					continue
-				}
-				out[filepath.ToSlash(rel)+":"+funcName(fn)] = codeLines(src,
-					fset.Position(fn.Body.Lbrace).Line, fset.Position(fn.Body.Rbrace).Line)
+			rel = filepath.ToSlash(rel)
+			fileFuncs, fileLines, err := measureFile(fset, rel, body)
+			if err != nil {
+				return err
+			}
+			files[rel] = fileLines
+			for key, n := range fileFuncs {
+				out[key] = n
 			}
 			return nil
 		})
@@ -100,7 +165,11 @@ func functionSizes(t *testing.T) (funcs, files map[string]int) {
 	return out, files
 }
 
-// funcName is Name for a function and Recv.Name for a method.
+// funcName is Name for a function and Recv.Name for a method. A receiver
+// with one type parameter parses as *ast.IndexExpr; two or more parse as
+// *ast.IndexListExpr, a distinct node type unwrapped the same way, so a
+// method on a two-type-parameter receiver keys on its own type rather than
+// colliding with a same-named method on an unrelated one-parameter type.
 func funcName(fn *ast.FuncDecl) string {
 	if fn.Recv == nil || len(fn.Recv.List) == 0 {
 		return fn.Name.Name
@@ -109,7 +178,10 @@ func funcName(fn *ast.FuncDecl) string {
 	if star, ok := typ.(*ast.StarExpr); ok {
 		typ = star.X
 	}
-	if idx, ok := typ.(*ast.IndexExpr); ok {
+	switch idx := typ.(type) {
+	case *ast.IndexExpr:
+		typ = idx.X
+	case *ast.IndexListExpr:
 		typ = idx.X
 	}
 	if id, ok := typ.(*ast.Ident); ok {
