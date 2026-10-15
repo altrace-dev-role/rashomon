@@ -25,8 +25,14 @@ var secondPerson = []string{"you", "your", "yours"}
 // imperativePhrases may not appear outside a quote (LUI-11's list).
 var imperativePhrases = []string{"please", "make sure", "do not", "don't", "you must", "you should"}
 
-// imperativeOpenings may not open a sentence or a clause (LUI-11's list).
-var imperativeOpenings = []string{"run", "re-run", "use", "try", "fix", "check", "stop"}
+// imperativeOpenings may not open a sentence or a clause (LUI-11's list,
+// widened to the edit and git verbs a template can equally issue as
+// orders: "revert the change", "push before the gate").
+var imperativeOpenings = []string{
+	"run", "re-run", "use", "try", "fix", "check", "stop",
+	"revert", "rerun", "delete", "remove", "install", "add", "update",
+	"restore", "undo", "skip", "commit", "push", "write", "edit", "open", "avoid",
+}
 
 // connectives are skipped at a clause start: an imperative after one is
 // still an imperative ("then run curl").

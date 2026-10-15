@@ -393,6 +393,24 @@ func TestSTR14_TemplatesAreStatementsOfFact(t *testing.T) {
 	}
 }
 
+// TestSTR14c_ImperativeOpeningsCoverTheEditAndGitVerbs: imperativeOpenings
+// held only seven verbs, so a template opening a clause with any other edit
+// or git verb passed unrefused. Every verb added here is checked, and the
+// real template table is confirmed not to trip on any of them.
+func TestSTR14c_ImperativeOpeningsCoverTheEditAndGitVerbs(t *testing.T) {
+	for _, v := range []string{
+		"revert", "rerun", "delete", "remove", "install", "add", "update",
+		"restore", "undo", "skip", "commit", "push", "write", "edit", "open", "avoid",
+	} {
+		if err := CheckTemplate("rashomon record: " + v + " the change."); err == nil {
+			t.Errorf("CheckTemplate opening with %q passed", v)
+		}
+	}
+	if err := checkTable(templates); err != nil {
+		t.Errorf("the template table trips on the wider verb list: %v", err)
+	}
+}
+
 // TestLUI11b_RenderedStringsAreStatementsNotOrders: the same check runs at
 // render time on every string (LUI-11): an order is refused, a statement
 // with the same words as nouns is not.
