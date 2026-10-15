@@ -307,13 +307,69 @@ func TestDEL17_EveryJobHasATimeout(t *testing.T) {
 	}
 }
 
+// DEL-17, second half. A job key is still a job key with a trailing comment,
+// and a job whose bound is written as 0 has no bound at all. Separately, a
+// `jobs:` line with its own trailing comment is not matched either, so the
+// whole block is missed and the caller sees zero jobs -- which is why
+// TestDEL17_ treats "no jobs found" as its own failure, not a silent pass.
+func TestDEL17b_TimeoutParserFailsClosed(t *testing.T) {
+	cases := []struct {
+		name    string
+		doc     string
+		jobs    []string
+		missing []string
+	}{
+		{
+			name:    "commented job key is still a job",
+			doc:     "jobs:\n  test:\n    timeout-minutes: 30\n  sweep:  # on demand\n    runs-on: x\n",
+			jobs:    []string{"test", "sweep"},
+			missing: []string{"sweep"},
+		},
+		{
+			name:    "a zero bound is no bound",
+			doc:     "jobs:\n  foo:\n    timeout-minutes: 0\n",
+			jobs:    []string{"foo"},
+			missing: []string{"foo"},
+		},
+		{
+			name:    "a commented jobs line is not recognised at all",
+			doc:     "jobs:  # c\n  foo:\n    timeout-minutes: 30\n",
+			jobs:    nil,
+			missing: nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			jobs, missing := jobsAndMissingTimeouts(tc.doc)
+			if !slicesEqual(jobs, tc.jobs) {
+				t.Errorf("jobs = %v, want %v", jobs, tc.jobs)
+			}
+			if !slicesEqual(missing, tc.missing) {
+				t.Errorf("missing = %v, want %v", missing, tc.missing)
+			}
+		})
+	}
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // jobsAndMissingTimeouts reads a workflow by its lines: a job is a key at two
 // spaces of indent under `jobs:`, and its timeout is a `timeout-minutes:` line
 // at four spaces with a positive integer. No YAML parser, deliberately: the
 // module takes no dependency for a test, and the files are written by hand in
 // exactly this shape.
 func jobsAndMissingTimeouts(doc string) (jobs, missing []string) {
-	jobLine := regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*$`)
+	jobLine := regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*(#.*)?$`)
 	timeoutLine := regexp.MustCompile(`^    timeout-minutes:\s*([0-9]+)\s*(#.*)?$`)
 	inJobs := false
 	current := ""
