@@ -74,3 +74,6 @@ m("DEL-22 an evidence seq of zero or less is accepted", "internal/steer/finding.
 m("DEL-22 a finding's priority is never checked against its pattern", "internal/steer/finding.go",
   "\tif p, ok := pattern.Priority(f.Pattern); !ok || f.Priority != p {\n\t\treturn fmt.Errorf(\"%w: %s does not carry its own-channel or table priority\", ErrFinding, f.Pattern)\n\t}\n",
   "", "TestDEL22e_")
+m("DEL-22 write_observed's path cannot be withheld", "internal/store/record_v5.go",
+  "\tPath         *string `json:\"path\"`\n\tEditCount    int     `json:\"edit_count\"`\n\tPathWithheld *string `json:\"path_withheld\"` // oversize\n",
+  "\tPath         string `json:\"path\"`\n\tEditCount    int    `json:\"edit_count\"`\n", "TestDEL22g_")
