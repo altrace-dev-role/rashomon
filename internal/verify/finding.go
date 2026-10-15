@@ -54,7 +54,8 @@ func (s SlotID) Valid() bool { return idForm(string(s), "._:-") }
 type PathSlot string
 
 // Valid reports whether the path is within the slot charset and relative: no
-// leading slash and no empty, `.` or `..` element, so a fact never names a
+// leading slash and no empty, `.`, `..` or leading-'-' element (the last so
+// a path segment cannot be read as a command flag), so a fact never names a
 // file outside the project.
 func (p PathSlot) Valid() bool {
 	s := string(p)
@@ -67,7 +68,7 @@ func (p PathSlot) Valid() bool {
 		}
 	}
 	for _, el := range strings.Split(s, "/") {
-		if el == "" || el == "." || el == ".." {
+		if el == "" || el == "." || el == ".." || el[0] == '-' {
 			return false
 		}
 	}

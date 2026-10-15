@@ -116,6 +116,7 @@ func TestVER54d_SlotsHoldTheSpecsCharsets(t *testing.T) {
 		{"internal/verify/state.go", true}, {"a@b+c", true}, {".github/workflows/ci.yaml", true}, {PathSlot(longPath), true},
 		{"", false}, {"/etc/passwd", false}, {"../x", false}, {"a/../b", false}, {"a/./b", false}, {"a//b", false},
 		{"a b", false}, {"a\x00b", false}, {PathSlot(longPath + "p"), false},
+		{"-x", false}, {"src/-rf", false},
 	} {
 		if got := c.p.Valid(); got != c.want {
 			t.Errorf("PathSlot(%q).Valid() = %v, want %v", c.p, got, c.want)
