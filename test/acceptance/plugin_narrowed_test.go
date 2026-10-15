@@ -7,42 +7,56 @@ import (
 	"testing"
 )
 
-// TestRubricHLD1_NarrowedPluginHooksReadAbsent: a plugin whose hooks.json
-// has been narrowed -- PreToolUse matched to "Bash" only, or given a timeout
-// of 600 -- is not the entry watch installs, and the coverage record says so.
-// Before the plugin check put each group through intact(), both read
-// present_plugin, and a session under a "Bash" matcher rendered verified
-// while every Edit, Write and MCP call went unrecorded.
-func TestRubricHLD1_NarrowedPluginHooksReadAbsent(t *testing.T) {
-	cases := []struct {
-		name  string
-		field string
-		value any
-	}{
-		{"matcher Bash", "matcher", "Bash"},
-		{"timeout 600", "timeout", 600},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			e := newEnv(t)
-			fx := newPluginFixture(t, "rashomon@test")
-			fx.installed(t, e)
-			fx.enable(t, e, true)
-			narrowPluginPreToolUse(t, filepath.Join(fx.root, "hooks", "hooks.json"), c.field, c.value)
+// TestRubricHLD1_NarrowedMatcherPluginHooksReadAbsent: a plugin whose
+// PreToolUse matcher has been narrowed to "Bash" is not the entry watch
+// installs, and the coverage record says so. Before the plugin check put
+// each group through coverageIntact, this read present_plugin, and a
+// session under a "Bash" matcher rendered verified while every Edit, Write
+// and MCP call went unrecorded.
+func TestRubricHLD1_NarrowedMatcherPluginHooksReadAbsent(t *testing.T) {
+	e := newEnv(t)
+	fx := newPluginFixture(t, "rashomon@test")
+	fx.installed(t, e)
+	fx.enable(t, e, true)
+	narrowPluginPreToolUse(t, filepath.Join(fx.root, "hooks", "hooks.json"), "matcher", "Bash")
 
-			if res := e.runBin(fx.bin, e.sessionPayload("start", testSession), "probe", "start"); res.exitCode != 0 {
-				t.Fatalf("probe start via the plugin binary: exit %d, stderr %q", res.exitCode, res.stderr)
-			}
-			if res := e.runBin(fx.bin, defaultPayload().build(t), "hook"); res.exitCode != 0 {
-				t.Fatalf("hook via the plugin binary: exit %d, stderr %q", res.exitCode, res.stderr)
-			}
-			assertCallCoverage(t, e, testSession, "unverified", "hook_entry_absent")
-			recs := e.coverage(testSession, "call")
-			if got := recs[len(recs)-1].str("hook_entry"); got != "absent" {
-				t.Errorf("call coverage hook_entry is %q under a plugin with PreToolUse %s=%v, want absent",
-					got, c.field, c.value)
-			}
-		})
+	if res := e.runBin(fx.bin, e.sessionPayload("start", testSession), "probe", "start"); res.exitCode != 0 {
+		t.Fatalf("probe start via the plugin binary: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res := e.runBin(fx.bin, defaultPayload().build(t), "hook"); res.exitCode != 0 {
+		t.Fatalf("hook via the plugin binary: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	assertCallCoverage(t, e, testSession, "unverified", "hook_entry_absent")
+	recs := e.coverage(testSession, "call")
+	if got := recs[len(recs)-1].str("hook_entry"); got != "absent" {
+		t.Errorf("call coverage hook_entry is %q under a plugin with PreToolUse matcher=Bash, want absent", got)
+	}
+}
+
+// TestRubricHLD1_RetimedPluginHookStillCoversEveryCall: a plugin whose
+// PreToolUse timeout has been changed to 600 still fires our command on
+// every call, and the coverage record reads present_plugin, not absent. A
+// different timeout changes how long Claude Code waits for the hook, not
+// whether it runs, so it must not cost coverage the way a narrowed matcher
+// does; before coverageIntact existed, this read absent beside a session
+// that had in fact recorded cleanly.
+func TestRubricHLD1_RetimedPluginHookStillCoversEveryCall(t *testing.T) {
+	e := newEnv(t)
+	fx := newPluginFixture(t, "rashomon@test")
+	fx.installed(t, e)
+	fx.enable(t, e, true)
+	narrowPluginPreToolUse(t, filepath.Join(fx.root, "hooks", "hooks.json"), "timeout", 600)
+
+	if res := e.runBin(fx.bin, e.sessionPayload("start", testSession), "probe", "start"); res.exitCode != 0 {
+		t.Fatalf("probe start via the plugin binary: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res := e.runBin(fx.bin, defaultPayload().build(t), "hook"); res.exitCode != 0 {
+		t.Fatalf("hook via the plugin binary: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	assertCallCoverage(t, e, testSession, "verified", "")
+	recs := e.coverage(testSession, "call")
+	if got := recs[len(recs)-1].str("hook_entry"); got != "present_plugin" {
+		t.Errorf("call coverage hook_entry is %q under a plugin with PreToolUse timeout=600, want present_plugin", got)
 	}
 }
 
