@@ -205,6 +205,10 @@ func TestRubricDOCS10_ProbePrologueIsInsideTheBarrier(t *testing.T) {
 				if got := e.coverage(testSession, phase); len(got) != 0 {
 					t.Errorf("probe %s wrote %d coverage records; the fault at %s never fired", phase, len(got), pointProbeStart)
 				}
+				if !strings.Contains(res.stderr, "recovered panic") {
+					t.Errorf("probe %s stderr = %q, want it to name the recovered panic: "+
+						"before, the prologue's Guard error was discarded and this path left nothing on stderr", phase, res.stderr)
+				}
 			})
 		}
 	}
