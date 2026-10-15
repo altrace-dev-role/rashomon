@@ -70,7 +70,16 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 		// how many records went is unknown, and the read error is returned
 		// with whatever else the pass did. Stopping here, as it used to, kept
 		// the oldest run -- and so every run -- in the store for good.
+		//
+		// A refused read (Windows's mandatory lock, s.refusal()) is not that
+		// kind of error: it means a hook holds this run's lock right now,
+		// which is a live session idle past evictGrace rather than a run
+		// this pass can safely characterize. It is left for the next pass,
+		// the same way an unlistable run already was.
 		g, err := s.evictionGap(c, now)
+		if err != nil && s.refusal()(err) {
+			continue
+		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("run %s: %w", c.name, err))
 		}
