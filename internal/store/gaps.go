@@ -315,6 +315,11 @@ func readLinesAt(path string) ([][]byte, error) {
 // records_unreadable). Truncating first, as this used to, lost every kept
 // line to a crash before the writes, while the gap said only the forgotten
 // ones had gone (test-5).
+//
+// A crash before the Truncate can also leave a forgotten line whole past
+// off, since nothing has overwritten or cut it yet, while the gap for it was
+// already synced before rewrite ran. A later forget that reads the same run
+// finds that line again and writes a second gap counting it a second time.
 func rewrite(f *os.File, lines [][]byte) error {
 	var off int64
 	for _, line := range lines {
