@@ -373,17 +373,6 @@ func save(dir, path string, f File) error {
 	return os.Rename(name, path)
 }
 
-// Forget removes a host from one project's baseline, found by its key. It is
-// ForgetFile on that project's file, so the two cannot disagree about what a
-// forget leaves on disk.
-func Forget(root, key, host string) error {
-	if root == "" || key == "" || host == "" {
-		return nil
-	}
-	_, err := ForgetFile(filepath.Join(root, "baseline", fileName(key)), host)
-	return err
-}
-
 // digest is a short SHA-256 of the project key, appended to the sanitised
 // filename so two projects whose names sanitise identically still get two
 // files. It is not a secret and not keyed: the key it hashes is a path already
