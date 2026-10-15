@@ -38,11 +38,17 @@ func TestTRU8b_ScopeVersionIsPinned(t *testing.T) {
 	if ScopeVersion != 3 {
 		t.Errorf("ScopeVersion = %d; a bump re-asks consent and must be deliberate", ScopeVersion)
 	}
+}
+
+// A caller that ignores the error must not see a scope version attached to
+// an otherwise-empty inventory: that reads as consent recorded for a build
+// that has nothing in it.
+func TestDefaultIsTheZeroInventoryUntilFilled(t *testing.T) {
 	inv, err := Default()
 	if err == nil {
 		t.Error("Default() is a stub in this build and must say so")
 	}
-	if inv.ScopeVersion != ScopeVersion {
-		t.Errorf("Default().ScopeVersion = %d, want %d", inv.ScopeVersion, ScopeVersion)
+	if !reflect.DeepEqual(inv, Inventory{}) {
+		t.Errorf("Default() = %+v, want the zero Inventory", inv)
 	}
 }
