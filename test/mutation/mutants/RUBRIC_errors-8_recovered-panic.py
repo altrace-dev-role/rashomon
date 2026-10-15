@@ -7,10 +7,14 @@ m("errors-8 a recovered panic is recorded as an internal error", "internal/hook/
   "\tcase false && errors.As(err, new(*safe.PanicError)):\n",
   "TestRubricERRORS8_")
 m("errors-8 a recovered label panic is not named in coverage", "internal/hook/handle.go",
-  "\tif covReason == \"\" && h.labelRecovered {\n",
-  "\tif false && covReason == \"\" && h.labelRecovered {\n",
+  "\tif cov.Reason == nil && h.labelRecovered {\n",
+  "\tif false && cov.Reason == nil && h.labelRecovered {\n",
   "TestRubricERRORS8_")
 m("errors-8 the label's recover is never reported to the handler", "internal/hook/handle.go",
   "\th.labelRecovered = recovered\n",
   "\th.labelRecovered = recovered && false\n",
+  "TestRubricERRORS8_")
+m("errors-8 a recovered label panic overrides a reason that cost more", "internal/hook/handle.go",
+  "\tif cov.Reason == nil && h.labelRecovered {\n",
+  "\tif true && h.labelRecovered {\n",
   "TestRubricERRORS8_")
