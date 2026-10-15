@@ -26,7 +26,7 @@ m("TRU-58 forget clears no baseline at all", "internal/baseline/baseline.go",
 # know, cannot be rewritten without the host. Holding the host, it is deleted
 # and counted; not holding it, it is left as it was.
 m("TRU-58 forget leaves an unparseable baseline that holds the host", "internal/baseline/baseline.go",
-  "\t\treturn removeWhole(path, true)\n", "\t\treturn 0, nil\n", "TestTRU58c_")
+  "\t\treturn removeWhole(path)\n", "\t\treturn 0, nil\n", "TestTRU58c_")
 m("TRU-58 forget deletes an unparseable baseline that does not hold the host", "internal/baseline/baseline.go",
   "\t\tif !namesHost(body, host) {\n", "\t\tif false && !namesHost(body, host) {\n", "TestTRU58_")
 # Round two. An unreadable baseline may hold the host, so it is an error and
