@@ -95,10 +95,12 @@ m("REC-34 a marker naming no call reads as a lost call", "internal/report/testbe
   "\t\tif t.FlushFailed() && t.ToolUseID == \"\" {\n\t\t\tcontinue\n\t\t}\n", "", "TestREC34i_")
 # A barrier that was itself a full sync leaves Flush nothing (P09-F9): off
 # darwin every barrier is one, and a Flush after it would be a second fsync per
-# hook that an undeferred store never issued. The stand-in barrier's own half
-# (sync_other.go) is judged by TestREC34l_TheStandInBarrierIsDurable and by
-# TestREC34_GroupCommitFlushesBeforeExit off darwin, where this sweep does not
-# run, so it has no mutant here.
+# hook that an undeferred store never issued. sync_other.go itself has no
+# mutant in this file: it is judged by TestREC34l_TheStandInBarrierIsDurable
+# and by TestREC34_GroupCommitFlushesBeforeExit off darwin. sync_darwin.go is
+# the opposite case, not this one: it carries its own 14 mutants below,
+# judged by TestREC34f_ on darwin and reported NOT JUDGED (platform) by the
+# sweep everywhere else, because the file does not build there.
 m("REC-34 a full-sync barrier still leaves its file to Flush", "internal/store/store.go",
   "\tif durable {\n\t\ts.dirty = \"\"\n\t}\n", "\tif durable && false {\n\t\ts.dirty = \"\"\n\t}\n", "TestREC34l_")
 m("REC-34 an accepted darwin barrier reports its write durable", "internal/store/sync_darwin.go",
