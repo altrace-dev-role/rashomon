@@ -7,7 +7,8 @@ import (
 )
 
 // Signals watches for the termination signals a hook can receive. SIGTERM is
-// what a hook timeout cancellation delivers, and it is catchable; SIGKILL is
+// what a hook timeout cancellation delivers, and it is catchable; so are
+// SIGHUP (sent when the controlling terminal closes) and SIGQUIT. SIGKILL is
 // not, and nothing here or anywhere else runs when it arrives.
 type Signals struct {
 	ch   chan os.Signal
@@ -18,7 +19,7 @@ type Signals struct {
 // delivers straight into the channel.
 func WatchSignals() *Signals {
 	s := &Signals{ch: make(chan os.Signal, 1)}
-	signal.Notify(s.ch, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(s.ch, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
 	return s
 }
 
