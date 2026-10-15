@@ -438,7 +438,7 @@ func ForgetFile(path, host string) (int, error) {
 		if !namesHost(body, host) {
 			return 0, nil
 		}
-		return removeWhole(path, true)
+		return removeWhole(path)
 	}
 	_, held := f.Hosts[host]
 	if f.Basis == Basis {
@@ -453,8 +453,13 @@ func ForgetFile(path, host string) (int, error) {
 	}
 	// A file without the basis marker is not this baseline. load reads it as
 	// absent, so removing it changes no report, and saving it would stamp the
-	// marker onto hosts it held under the old basis. It goes whole.
-	return removeWhole(path, held)
+	// marker onto hosts it held under the old basis -- but only when it holds
+	// the host this forget was asked for. One that does not is no business of
+	// this forget, and must not be deleted just for sharing the directory.
+	if !held {
+		return 0, nil
+	}
+	return removeWhole(path)
 }
 
 // namesHost reports whether a baseline's bytes hold the host as JSON writes
@@ -470,15 +475,13 @@ func namesHost(body []byte, host string) bool {
 	return bytes.Contains(body, quoted) || bytes.HasSuffix(body, quoted[:len(quoted)-1])
 }
 
-// removeWhole deletes a baseline file this build will not rewrite, counting
-// it as cleared when it held the host. A file that could not be removed is an
-// error, never a quiet zero: the host is still in it.
-func removeWhole(path string, held bool) (int, error) {
+// removeWhole deletes a baseline file this build will not rewrite. Called
+// only once the caller has confirmed the file holds the host being forgotten,
+// so a successful removal always counts as clearing it. A file that could not
+// be removed is an error, never a quiet zero: the host is still in it.
+func removeWhole(path string) (int, error) {
 	if err := os.Remove(path); err != nil {
 		return 0, err
-	}
-	if !held {
-		return 0, nil
 	}
 	return 1, nil
 }

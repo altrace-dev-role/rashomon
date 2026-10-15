@@ -49,18 +49,20 @@ func TestTRU58_PreDeclaredBaselineIsReestablishedNotCompared(t *testing.T) {
 
 // TRU-58, forget's half. A file without the basis marker is read as absent,
 // and it can still hold a forgotten host in plaintext. forget --host must not
-// skip it as absent: the file goes whole, and counts as cleared when it held
-// the host. Rewriting it instead would stamp the marker onto hosts it held
-// under the old basis.
+// skip it as absent: when it holds the host, the file goes whole rather than
+// being rewritten, because rewriting it would stamp the marker onto hosts it
+// held under the old basis. When it does not hold the host, this forget has
+// no business with it and leaves it untouched.
 func TestTRU58_ForgetRemovesAPreDeclaredBaselineWhole(t *testing.T) {
 	const forgotten = "acme-secret.internal"
 	for _, tc := range []struct {
 		name    string
 		hosts   []string
 		cleared int
+		removed bool
 	}{
-		{"holding the host", []string{forgotten, "pypi.org"}, 1},
-		{"not holding it", []string{"pypi.org"}, 0},
+		{"holding the host", []string{forgotten, "pypi.org"}, 1, true},
+		{"not holding it", []string{"pypi.org"}, 0, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -73,9 +75,13 @@ func TestTRU58_ForgetRemovesAPreDeclaredBaselineWhole(t *testing.T) {
 			if n != tc.cleared {
 				t.Errorf("ForgetFile cleared %d, want %d", n, tc.cleared)
 			}
-			if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
-				t.Errorf("the pre-declared baseline is still on disk (stat: %v); it is "+
-					"read as absent, so it goes whole", err)
+			_, statErr := os.Stat(path)
+			if tc.removed && !errors.Is(statErr, fs.ErrNotExist) {
+				t.Errorf("the pre-declared baseline is still on disk (stat: %v); it holds "+
+					"the host, so it goes whole", statErr)
+			}
+			if !tc.removed && statErr != nil {
+				t.Errorf("a pre-declared baseline that never held the host was removed (stat: %v)", statErr)
 			}
 			assertNoFileNames(t, filepath.Join(root, "baseline"), forgotten)
 		})
