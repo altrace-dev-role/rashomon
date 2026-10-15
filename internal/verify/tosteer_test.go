@@ -306,7 +306,7 @@ func TestVER54k_ToSteerChecksEveryFactID(t *testing.T) {
 	// The valid neighbours still map: every fact id in its charset.
 	for _, f := range []Finding{
 		{Pattern: pattern.RegressionLocation, Event: post, Gate: gate(func(g *GateFact) { g.Paths = six[:MaxPaths]; g.PathsOmitted = 1 })},
-		{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.QuoteHMAC = Digest(strings.Repeat("ab", 32)) })},
+		{Pattern: pattern.ClaimVsRecord, Event: stop, Claim: claim(func(c *ClaimFact) { c.QuoteHMAC = QuoteHMAC(QuoteHMACPrefix + strings.Repeat("ab", 32)) })},
 		{Pattern: pattern.PlatformRule, Event: post, Rule: rule(spec.ForbidCommand, func(r *RuleFact) { r.Program = &prog })},
 		{Pattern: pattern.OrderingRule, Event: post, Rule: rule(spec.Order, func(r *RuleFact) { r.Program = &prog; r.Gate = pslot("learned:go-test") })},
 	} {

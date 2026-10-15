@@ -148,7 +148,7 @@ type ClaimVerdict struct {
 	Strict    bool        `json:"strict"`
 	Verdict   Verdict     `json:"verdict"`
 	Gates     []SlotID    `json:"gates"`
-	QuoteHMAC string      `json:"quote_hmac"` // QuoteHMACPrefix + hex
+	QuoteHMAC QuoteHMAC   `json:"quote_hmac"` // QuoteHMACPrefix + hex
 }
 
 // RuleVerdictValue is a rule's verdict: a window verdict (2.2.7) or a
