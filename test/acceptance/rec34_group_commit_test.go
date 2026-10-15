@@ -3,9 +3,11 @@ package acceptance
 import (
 	"bufio"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -367,6 +369,100 @@ func TestREC34_FailedBarrierIsMarkedNotRetried(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestREC34_SignalBeforeFlushReachesTheSyncLog: Close has already appended
+// the terminal and coverage records by the time hook.before_flush fires, so
+// what a signal arriving there changes is only whether Flush itself still
+// runs. SIGTERM is caught (hook.WatchSignals): the hang returns and Flush
+// proceeds, landing the one full sync store.go promises, last and outside
+// every lock. SIGKILL ends the process first: every append's barrier is
+// already on disk, but no full sync runs and nothing writes a flush_failed
+// marker, because nothing observed a failure to mark (REC-34).
+func TestREC34_SignalBeforeFlushReachesTheSyncLog(t *testing.T) {
+	skipWithoutAFlush(t)
+
+	hangingHook := func(t *testing.T, e *env, log string) *exec.Cmd {
+		t.Helper()
+		cmd := e.command(defaultPayload().build(t), []string{
+			"RASHOMON_FAULT=" + pointHookBeforeFlush + ":hang",
+			syncLogEnv + "=" + log,
+		}, "hook")
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		waitFor(t, 5e9, "the entry to close before flush", func() bool {
+			return len(e.coverage(testSession, "call")) == 1
+		})
+		return cmd
+	}
+
+	t.Run("SIGTERM lets Flush run", func(t *testing.T) {
+		e := newEnv(t)
+		e.watched(testSession)
+		log := filepath.Join(t.TempDir(), "sync.log")
+		cmd := hangingHook(t, e, log)
+		// The process is already exiting by the time this runs in the common
+		// case, so a failure here just means Kill found nothing to kill.
+		t.Cleanup(func() { _ = cmd.Process.Kill() })
+		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			t.Fatal(err)
+		}
+		// Wait's error is expected whenever the exit code is non-zero; the
+		// exit code is read from ProcessState below, which is what matters.
+		_ = cmd.Wait()
+		if code := cmd.ProcessState.ExitCode(); code != 0 {
+			t.Fatalf("exit %d after SIGTERM before flush, want 0: Flush still had to run", code)
+		}
+
+		events := readSyncLog(t, log)
+		if len(events) == 0 {
+			t.Fatal("no syncs recorded")
+		}
+		var fulls int
+		for i, ev := range events {
+			if ev.kind != "full" {
+				continue
+			}
+			fulls++
+			if ev.locked {
+				t.Errorf("event %d: the full sync on %s ran inside a store lock", i, ev.file)
+			}
+			if i != len(events)-1 {
+				t.Errorf("event %d of %d: the full sync is not last", i, len(events))
+			}
+		}
+		if fulls != flushesPerProcess() {
+			t.Errorf("%d full syncs after SIGTERM before flush, want %d: %v", fulls, flushesPerProcess(), events)
+		}
+	})
+
+	t.Run("SIGKILL ends it before Flush runs", func(t *testing.T) {
+		e := newEnv(t)
+		e.watched(testSession)
+		log := filepath.Join(t.TempDir(), "sync.log")
+		r0, c0, _ := e.runFiles(testSession)
+		cmd := hangingHook(t, e, log)
+		if err := cmd.Process.Kill(); err != nil {
+			t.Fatal(err)
+		}
+		// Wait's error is expected: SIGKILL makes this exit by signal, and
+		// nothing below reads the exit code.
+		_ = cmd.Wait()
+
+		r1, c1, s1 := e.runFiles(testSession)
+		if r1-r0 != 2 || c1-c0 != 1 {
+			t.Fatalf("SIGKILL before flush: %d records, %d coverage appended; want 2 and 1, since Close had already written them", r1-r0, c1-c0)
+		}
+		if s1 != 0 {
+			t.Errorf("SIGKILL before flush left %d spill line(s); want 0, nothing ran to mark a failure", s1)
+		}
+		for i, ev := range readSyncLog(t, log) {
+			if ev.kind == "full" {
+				t.Errorf("event %d: a full sync was recorded even though SIGKILL arrived before Flush ran: %v", i, ev)
+			}
+		}
+	})
 }
 
 // TestREC34_ForgetSyncsInsideItsCountedLocks: the recorder's locked= flag

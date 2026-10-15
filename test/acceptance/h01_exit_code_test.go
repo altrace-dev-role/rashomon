@@ -17,6 +17,7 @@ const (
 	pointPostParsed           = "post.parsed"
 	pointSettingsOpened       = "settings.write.opened"
 	pointSettingsBeforeRename = "settings.write.before_rename"
+	pointHookBeforeFlush      = "hook.before_flush"
 )
 
 // Faults that panic rather than return an error. A fault that returns an error

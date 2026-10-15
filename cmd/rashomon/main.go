@@ -198,6 +198,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		st.DeferDurability()
 		captureErr := safe.Guard(func() error { return h.Capture(stdin) })
 		_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })
+		fault.Inject(fault.PointHookBeforeFlush)
 		if err := safe.Guard(h.Flush); err != nil {
 			fmt.Fprintln(stderr, flushLostLine)
 		}
