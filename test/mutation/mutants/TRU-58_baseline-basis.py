@@ -46,6 +46,6 @@ m("TRU-58 forget matches the host inside another name", "internal/baseline/basel
 # leaves no gap when forgotten, so forgotten-hosts.ndjson is the only thing
 # that keeps it out of the report. Judged end to end, through the CLI.
 m("TRU-58 the report ignores the store-level forget record", "internal/store/gaps.go",
-  "\t\tif json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest != \"\" {",
+  "\t\tif json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost {",
   "\t\tif false && json.Unmarshal(line, &r) == nil {",
   "TestTRU58b_AHostOnlyTheSandboxHeld")

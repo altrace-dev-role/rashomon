@@ -61,10 +61,19 @@ type FamilyCoverage struct {
 
 // buildFamilies groups the session's declarations by program family and counts
 // each family's calls and declared hosts.
-func buildFamilies(run *store.Run) FamilyCoverage {
+//
+// forgotten excludes a host from a family's count for the declaration that
+// named it at or before the latest forget --host of that name -- the same
+// per-declaration rule buildDestinations applies, and for the same reason: a
+// later declaration of a name a project once forgot is real, current usage
+// and must still count.
+func buildFamilies(run *store.Run, forgotten func(host string, declaredAtMS int64) bool) FamilyCoverage {
 	fc := FamilyCoverage{
 		Families:     []Family{},
 		NotExercised: []string{},
+	}
+	if forgotten == nil {
+		forgotten = func(string, int64) bool { return false }
 	}
 
 	type acc struct {
@@ -89,9 +98,15 @@ func buildFamilies(run *store.Run) FamilyCoverage {
 		a.calls++
 		a.programs[*d.Shape.Program] = true
 		for _, h := range d.Hosts {
+			if forgotten(h, d.RecordedAtMS) {
+				continue
+			}
 			a.hosts[h] = true
 		}
 		for _, h := range d.SSHHosts {
+			if forgotten(h, d.RecordedAtMS) {
+				continue
+			}
 			a.hosts[h] = true
 		}
 	}

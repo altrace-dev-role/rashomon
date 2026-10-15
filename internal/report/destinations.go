@@ -143,10 +143,17 @@ const mcpTool = "mcp__"
 // buildDestinations reads the declarations. Every field but novelty is a
 // property of the record the recorder wrote itself; novelty consults the
 // project baseline beside the store.
-func buildDestinations(run *store.Run, storeRoot string) Destinations {
+//
+// forgotten excludes a host from the two lists only for a declaration whose
+// own recorded_at_unix_ms is at or before the latest forget --host of that
+// name: stale evidence a failed removal left behind. A declaration from
+// after the forget is this session's own fresh use of the name and is kept,
+// so a project can still name a host it once forgot. See
+// store.Store.ForgottenHostBefore.
+func buildDestinations(run *store.Run, storeRoot string, forgotten func(host string, declaredAtMS int64) bool) Destinations {
 	d := Destinations{
-		DeclaredHosts:         declaredHosts(run),
-		SSHHosts:              sshDeclared(run),
+		DeclaredHosts:         declaredHostsFiltered(run, forgotten),
+		SSHHosts:              sshDeclaredFiltered(run, forgotten),
 		ExecutedNotAsDeclared: executedNotAsDeclared(run),
 		Rewritten:             rewrittenCalls(run),
 	}
@@ -341,12 +348,61 @@ func sshDeclared(run *store.Run) []string {
 	return out
 }
 
+// sshDeclaredFiltered is sshDeclared with forgotten applied per declaration,
+// before the hosts are merged into one set: a host is dropped only for the
+// declaration(s) that named it at or before the latest forget of that name,
+// never for a later declaration that happens to share it. forgotten == nil
+// passes every host through, matching the report's nil-means-no-filter
+// convention (see suppressTrail).
+func sshDeclaredFiltered(run *store.Run, forgotten func(host string, declaredAtMS int64) bool) []string {
+	set := map[string]bool{}
+	for _, d := range run.Declarations {
+		for _, h := range d.SSHHosts {
+			if forgotten != nil && forgotten(h, d.RecordedAtMS) {
+				continue
+			}
+			set[h] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // declaredHosts is the sorted, de-duplicated set of hostnames the session's
 // tool calls named. Never nil, for the same reason as sshDeclared.
+//
+// Unfiltered: buildNono's own caller needs the full named set regardless of
+// what has been forgotten, to decide which trail hosts are the client's own.
+// See declaredHostsFiltered for the view that applies forgotten.
 func declaredHosts(run *store.Run) []string {
 	set := map[string]bool{}
 	for _, d := range run.Declarations {
 		for _, h := range d.Hosts {
+			set[h] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// declaredHostsFiltered is declaredHosts with forgotten applied per
+// declaration; see sshDeclaredFiltered for why that is per declaration and
+// not over the merged set.
+func declaredHostsFiltered(run *store.Run, forgotten func(host string, declaredAtMS int64) bool) []string {
+	set := map[string]bool{}
+	for _, d := range run.Declarations {
+		for _, h := range d.Hosts {
+			if forgotten != nil && forgotten(h, d.RecordedAtMS) {
+				continue
+			}
 			set[h] = true
 		}
 	}

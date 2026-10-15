@@ -396,7 +396,21 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 	// Read once for the whole report: the forgotten set is a property of the
 	// store, not of a session, and re-reading the gaps per session would be the
 	// same answer at more cost.
+	//
+	// Two predicates, because the two readers need different questions
+	// answered. The sandbox's trail is nono's file, not this store's: every
+	// one of its events stays exactly as readable as the day it was written,
+	// so buildNono asks only "is this host forgotten" and never returns one,
+	// at any time, under any session. A declaration is this store's own
+	// record, and forget --host only ever meant to remove the ones that
+	// predate it; buildDestinations, buildFamilies and buildChains ask
+	// "forgotten before THIS declaration was recorded", so a later, genuine
+	// re-use of a once-forgotten name still shows up as what it is.
 	forgotten, err := st.ForgottenHost()
+	if err != nil {
+		return nil, err
+	}
+	forgottenBefore, err := st.ForgottenHostBefore()
 	if err != nil {
 		return nil, err
 	}
@@ -411,8 +425,8 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		}
 		MaskingAsRan(run)
 		sess := build(run)
-		sess.Destinations = buildDestinations(run, st.Root())
-		sess.Families = buildFamilies(run)
+		sess.Destinations = buildDestinations(run, st.Root(), forgottenBefore)
+		sess.Families = buildFamilies(run, forgottenBefore)
 		// The sandbox section is built per session, from the session's own
 		// window: a window is a property of the run, and sharing one
 		// observation across sessions would attribute each session's sandbox
@@ -424,7 +438,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		// and the test runs, and one detection, shared by the timeline's
 		// annotations and the test runs' pairs.
 		executed := executionsByID(run)
-		sess.Chains = buildChains(run, executed, denied)
+		sess.Chains = buildChains(run, executed, denied, forgottenBefore)
 		tb := detectTestBending(run, executed, denied)
 		sess.Timeline = timelineFrom(run, executed, denied, tb)
 		sess.TestRuns = buildTestRuns(run, executed, denied, tb)

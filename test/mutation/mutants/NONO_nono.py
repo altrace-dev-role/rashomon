@@ -107,7 +107,7 @@ m("NONO a forget that removed nothing writes no store-level record", "internal/s
   "\tf, err := os.OpenFile(filepath.Join(s.root, FileForgottenHosts+\".off\"), appendFlags, fileMode)",
   "TestForgetHost_|TestSeam_AHostOnlyTheSandboxSaw")
 m("NONO the predicate does not read the store-level records", "internal/store/gaps.go",
-  "\t\tif json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest != \"\" {",
+  "\t\tif json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost {",
   "\t\tif false && json.Unmarshal(line, &r) == nil {",
   "TestForgetHost_AHost|TestSeam_AHostOnlyTheSandboxSaw")
 m("NONO the store-level record holds the hostname", "internal/store/gaps.go",
@@ -189,7 +189,8 @@ m("NONO the store-level forget record lands after the runs", "internal/store/gap
   "\tvar gaps []Gap\n\tfor _, name := range names {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\treturn gaps, nil",
   "TestForgetHost_AForgetThatFails")
 m("NONO an unreadable store-level forget file reads as nothing forgotten", "internal/store/gaps.go",
-  "\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(digests) == 0 {", "\t_ = err\n\tif len(digests) == 0 {",
+  "\ttimes, err := s.forgottenDigestTimes()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(times) == 0 {\n\t\t// A predicate",
+  "\ttimes, err := s.forgottenDigestTimes()\n\t_ = err\n\tif len(times) == 0 {\n\t\t// A predicate",
   "TestForgetHost_AnUn")
 m("NONO a forget whose store-level record failed reports success", "internal/store/gaps.go",
   "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n",
