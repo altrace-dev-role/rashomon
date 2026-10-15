@@ -110,6 +110,9 @@ func (f Finding) Check() error {
 	case f.Message.Text() != "" && f.Message.Pattern() != f.Pattern:
 		return fmt.Errorf("%w: a %q message on a %q finding", ErrFinding, f.Message.Pattern(), f.Pattern)
 	}
+	if p, ok := pattern.Priority(f.Pattern); !ok || f.Priority != p {
+		return fmt.Errorf("%w: %s does not carry its own-channel or table priority", ErrFinding, f.Pattern)
+	}
 	if f.AfterSeq < 1 {
 		return fmt.Errorf("%w: after_seq must be at least 1", ErrFinding)
 	}

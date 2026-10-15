@@ -69,14 +69,14 @@ func TestDEL22d_SteerLinePromptIDIsNullable(t *testing.T) {
 // after AfterSeq.
 func TestDEL22e_FindingCheckHoldsTheFrozenKinds(t *testing.T) {
 	ok := []Finding{
-		{Pattern: pattern.ClaimVsRecord, Kind: "red", MaxLevel: LevelStop, StopForm: StopFormStopContinue, Evidence: []int64{37, 48}, AfterSeq: 57},
-		{Pattern: pattern.ClaimVsRecord, Kind: "masked", MaxLevel: LevelFlag, StopForm: StopFormNone, AfterSeq: 5},
-		{Pattern: pattern.SubtaskGate, Kind: "", MaxLevel: LevelStop, StopForm: StopFormDeny, AfterSeq: 5},
-		{Pattern: pattern.SubtaskGate, Kind: "commit", MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 5},
-		{Pattern: pattern.PlatformRule, Kind: "edit", MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 5},
-		{Pattern: pattern.Integrity, Kind: "test-deleted", MaxLevel: LevelFlag, StopForm: StopFormNone, AfterSeq: 5},
-		{Pattern: pattern.OrderingRule, MaxLevel: LevelStop, StopForm: StopFormAsk, AfterSeq: 5},
-		{Pattern: pattern.DeclaredFact, Kind: "auth.expired", MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 5},
+		{Pattern: pattern.ClaimVsRecord, Kind: "red", Priority: 85, MaxLevel: LevelStop, StopForm: StopFormStopContinue, Evidence: []int64{37, 48}, AfterSeq: 57},
+		{Pattern: pattern.ClaimVsRecord, Kind: "masked", Priority: 85, MaxLevel: LevelFlag, StopForm: StopFormNone, AfterSeq: 5},
+		{Pattern: pattern.SubtaskGate, Kind: "", Priority: 90, MaxLevel: LevelStop, StopForm: StopFormDeny, AfterSeq: 5},
+		{Pattern: pattern.SubtaskGate, Kind: "commit", Priority: 90, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 5},
+		{Pattern: pattern.PlatformRule, Kind: "edit", Priority: 60, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 5},
+		{Pattern: pattern.Integrity, Kind: "test-deleted", Priority: 95, MaxLevel: LevelFlag, StopForm: StopFormNone, AfterSeq: 5},
+		{Pattern: pattern.OrderingRule, Priority: 30, MaxLevel: LevelStop, StopForm: StopFormAsk, AfterSeq: 5},
+		{Pattern: pattern.DeclaredFact, Kind: "auth.expired", Priority: 75, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 5},
 	}
 	for _, f := range ok {
 		if err := f.Check(); err != nil {
@@ -106,6 +106,9 @@ func TestDEL22e_FindingCheckHoldsTheFrozenKinds(t *testing.T) {
 		{Pattern: pattern.SubtaskGate, MaxLevel: LevelNudge, StopForm: StopFormNone, Evidence: []int64{-5, 0}, AfterSeq: 10},
 		{Pattern: pattern.SubtaskGate, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 0},
 		{Pattern: pattern.SubtaskGate, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: -1},
+		{Pattern: pattern.SubtaskGate, Priority: 999, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 5},
+		{Pattern: pattern.ContinuityBriefing, MaxLevel: LevelFlag, StopForm: StopFormNone, AfterSeq: 5},
+		{Pattern: pattern.ModelSwitch, MaxLevel: LevelFlag, StopForm: StopFormNone, AfterSeq: 5},
 	}
 	for _, f := range bad {
 		if err := f.Check(); err == nil {

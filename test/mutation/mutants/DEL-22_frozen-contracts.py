@@ -71,3 +71,6 @@ m("DEL-22 a finding may name an after_seq below 1", "internal/steer/finding.go",
   "", "TestDEL22e_")
 m("DEL-22 an evidence seq of zero or less is accepted", "internal/steer/finding.go",
   "\t\tif seq < 1 || seq > f.AfterSeq ", "\t\tif seq > f.AfterSeq ", "TestDEL22e_")
+m("DEL-22 a finding's priority is never checked against its pattern", "internal/steer/finding.go",
+  "\tif p, ok := pattern.Priority(f.Pattern); !ok || f.Priority != p {\n\t\treturn fmt.Errorf(\"%w: %s does not carry its own-channel or table priority\", ErrFinding, f.Pattern)\n\t}\n",
+  "", "TestDEL22e_")

@@ -47,7 +47,7 @@ func TestRoute_StubIgnoresNilInputs(t *testing.T) {
 // pattern's finding, a kind outside the frozen list or evidence after
 // after_seq never reaches the router.
 func TestDEL22f_RouteAdmitsOnlyCheckedFindings(t *testing.T) {
-	good := Finding{Pattern: pattern.SubtaskGate, MaxLevel: LevelStop, StopForm: StopFormDeny, Evidence: []int64{3}, AfterSeq: 5}
+	good := Finding{Pattern: pattern.SubtaskGate, Priority: 90, MaxLevel: LevelStop, StopForm: StopFormDeny, Evidence: []int64{3}, AfterSeq: 5}
 	bad := []Finding{
 		{Pattern: pattern.SubtaskGate, Kind: "not-a-kind", AfterSeq: 5},
 		{Pattern: pattern.SubtaskGate, Evidence: []int64{9}, AfterSeq: 5},
