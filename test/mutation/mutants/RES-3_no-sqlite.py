@@ -14,6 +14,12 @@ m("RES-3 the notices checker reads every dependency list as empty", "test/accept
 # entry (measured), so the mutant compiles and the test alone has to catch it.
 m("RES-3 go.mod requires the SQLite driver again", "go.mod",
   "go 1.25.0\n", "go 1.25.0\n\nrequire modernc.org/sqlite v1.60.1\n", "TestRES3_")
+# The old assertion named only modernc.org, so a different module landing in
+# its place would have passed. The reader now refuses any require line, and
+# the dependency scan refuses any import whose first path element is not
+# stdlib shaped, whichever module it is.
+m("RES-3 go.mod requires a module that is not the SQLite driver", "go.mod",
+  "go 1.25.0\n", "go 1.25.0\n\nrequire golang.org/x/sync v0.9.0\n", "TestRES3_BinaryLinksNoSQLite")
 # The notices file is checked against a reader and a checker, and both have to
 # be shown to bite in a tree that links nothing. The reader: dropping every
 # module it is handed reads exactly like a correct reader of this tree. The

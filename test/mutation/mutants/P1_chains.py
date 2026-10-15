@@ -30,8 +30,8 @@ m("P1 redaction writes through to the unredacted report", "internal/report/redac
 # when the SQLite driver left; it is caught now because every line of a
 # listing names the target it was listed for.
 m("the notices union collapses to one platform", "test/acceptance/release_targets_test.go",
-  '\t\tcmd.Env = append(append(os.Environ(), m.env...), "GOOS="+target.goos, "GOARCH="+target.goarch)',
-  '\t\tcmd.Env = append(append(os.Environ(), m.env...), "GOOS=windows", "GOARCH="+target.goarch)',
+  "\t\tcmd.Env = releaseListEnv(target, m.env)",
+  '\t\tcmd.Env = releaseListEnv(releaseTarget{goos: "windows", goarch: target.goarch}, m.env)',
   "TestThirdPartyNotices")
 # The matrix is read from .goreleaser.yml now rather than kept beside it, so a
 # shipped platform is dropped by the reader, not by a hand-written list.
