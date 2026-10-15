@@ -27,16 +27,18 @@ import (
 // the user name in the `ls -la` output; it dropped ten attachment lines that
 // carry the account's context rather than the session's (session_context,
 // prompt_snapshot, skill_listing, agent_listing_delta, deferred_tools_delta,
-// mcp_instructions_delta, remote_session_change). Two kinds of value were
+// mcp_instructions_delta, remote_session_change). Four kinds of value were
 // then replaced with stable fakes, because they name the account's requests
 // to Anthropic and nothing here reads them for what they are: every requestId
 // (req_fixture01 to req_fixture12, distinct where the originals were, which
-// is all spend asks of them) and every thinking block's opaque signature
-// (fixture-signature-01 to -12); the thinking text itself was empty.
+// is all spend asks of them), every message id and tool-use id (msg_fixtureNN
+// and toolu_fixtureNN, same rule -- every reader here matches one of these
+// against another in the same pair of files, never against its own text),
+// and every thinking block's opaque signature (fixture-signature-01 to -12);
+// the thinking text itself was empty.
 // TestRubricTest7_FixtureHoldsNoLiveRequestIDsOrSignatures holds both files
-// to those forms. Nothing else was changed: session, prompt, message and
-// tool-use ids, timestamps, usage and example.com are as Claude Code wrote
-// them.
+// to those forms. Nothing else was changed: session and prompt ids,
+// timestamps, usage and example.com are as Claude Code wrote them.
 const (
 	realFixtureDir     = "../fixtures/claude-code/2.1.280"
 	realSession        = "3cb822fe-8dcf-48d0-b9ca-725c8eed47f9"

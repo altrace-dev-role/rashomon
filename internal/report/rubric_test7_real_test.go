@@ -93,17 +93,21 @@ func sameSet(a, b map[string]bool) bool {
 }
 
 // TestRubricTest7_FixtureHoldsNoLiveRequestIDsOrSignatures: the fixture is
-// in a public repository, and the API request ids and thinking signatures a
-// live session carries name that account's requests to Anthropic. Nothing
-// here reads either for what it is: spend matches requestIds only to each
-// other, and no reader looks at a signature. Each is replaced by a stable fake
-// of the same kind -- req_fixture and a two-digit number, distinct where the
-// originals were, and fixture-signature and the same -- and this test holds
-// every value in both files, at any depth, to that form.
+// in a public repository, and the API request ids, message ids, tool-use
+// ids and thinking signatures a live session carries name that account's
+// requests to Anthropic. Nothing here reads any of them for what they are:
+// spend matches requestIds only to each other, every reader here matches an
+// id against another id in the same pair of files, and no reader looks at a
+// signature. Each is replaced by a stable fake of its own kind --
+// req_fixture, msg_fixture and toolu_fixture each with a two-digit number,
+// distinct where the originals were, and fixture-signature the same -- and
+// this test holds every value in both files, at any depth, to that form.
 func TestRubricTest7_FixtureHoldsNoLiveRequestIDsOrSignatures(t *testing.T) {
 	want := map[string]*regexp.Regexp{
-		"requestId": regexp.MustCompile(`^req_fixture[0-9]{2}$`),
-		"signature": regexp.MustCompile(`^fixture-signature-[0-9]{2}$`),
+		"requestId":   regexp.MustCompile(`^req_fixture[0-9]{2}$`),
+		"signature":   regexp.MustCompile(`^fixture-signature-[0-9]{2}$`),
+		"id":          regexp.MustCompile(`^(msg|toolu)_fixture[0-9]{2}$`),
+		"tool_use_id": regexp.MustCompile(`^toolu_fixture[0-9]{2}$`),
 	}
 	seen := map[string]int{}
 	var walk func(key string, v any)

@@ -140,7 +140,7 @@ func checkSidechain(t *testing.T, line []byte) {
 }
 
 func FuzzTranscriptBlocks(f *testing.F) {
-	f.Add("toolu_01KgEVYeUf5FnoU2F1ZryZiw", "All 12 tests pass.", false)
+	f.Add("toolu_z", "All 12 tests pass.", false)
 	f.Add("toolu_x", "Permission to use Bash with command rm -f out.txt has been denied.", true)
 	f.Add("toolu_y", "<tool_use_error>File has not been read yet.", true)
 	f.Add("", "  ", true)
@@ -210,7 +210,7 @@ func TestRubricTest1_TranscriptSeeds(t *testing.T) {
 	for _, l := range append(lines, sidechainSeed) {
 		checkSidechain(t, []byte(l))
 	}
-	checkTranscriptBlocks(t, "toolu_01KgEVYeUf5FnoU2F1ZryZiw", "All 12 tests pass.", false)
+	checkTranscriptBlocks(t, "toolu_z", "All 12 tests pass.", false)
 	checkTranscriptBlocks(t, "toolu_x", "Permission to use Bash with command rm -f out.txt has been denied.", true)
 	checkTranscriptBlocks(t, "toolu_y", "<tool_use_error>File has not been read yet.", true)
 }
