@@ -83,3 +83,48 @@ func TestRubricPERF3_UsagePrefilterAgreesWithTheDecode(t *testing.T) {
 		checkUsagePrefilter(t, []byte(strings.Replace(`{"message":{"K":{}}}`, "K", key, 1)))
 	}
 }
+
+// toolResultLine is a tool_result line of the shape a Bash call with
+// colourised output leaves in a real transcript: n repeats of a short ANSI
+// escape sequence, written the way Claude Code's own JSON encoder writes
+// control characters -- \u001b, never a literal ESC byte -- inside a
+// tool_result block. It carries no usage key.
+func toolResultLine(n int) []byte {
+	var b strings.Builder
+	b.WriteString(`{"type":"user","timestamp":"2026-09-29T10:00:01.000Z","message":{"role":"user","content":[` +
+		`{"type":"tool_result","tool_use_id":"toolu_1","content":"`)
+	for i := 0; i < n; i++ {
+		b.WriteString(`\u001b[32mPASS\u001b[0m `)
+	}
+	b.WriteString(`"}]}}`)
+	return []byte(b.String())
+}
+
+// BenchmarkMayCarryUsage covers the adversarial read raised against this
+// prefilter: a tool-result-heavy line, carrying no usage key, whose \u001b
+// escapes are real transcript content rather than the widening they were
+// first suspected of costing. Isolated from other load on this machine,
+// the escape-heavy case ran several times slower than its same-length
+// escape-free comparison, and the gap tracked to bytes.Contains(raw,
+// usageMarker) -- the check mayCarryUsage runs FIRST, matching neither
+// line -- not to the escape-marker check after it, which matches in a few
+// nanoseconds on its own. Under load from other work this benchmark's own
+// numbers are noisier than that isolated reading; run it alone to see the
+// gap cleanly. Reordering or replacing the usage-marker check is a change
+// this benchmark exists to measure, not one this change makes.
+func BenchmarkMayCarryUsage(b *testing.B) {
+	heavy := toolResultLine(400) // ~8 KB, a realistic single tool_result
+	plain := []byte(strings.Repeat("x", len(heavy)))
+	b.Run("tool_result_with_ansi_escapes", func(b *testing.B) {
+		b.SetBytes(int64(len(heavy)))
+		for i := 0; i < b.N; i++ {
+			mayCarryUsage(heavy)
+		}
+	})
+	b.Run("same_length_no_escapes", func(b *testing.B) {
+		b.SetBytes(int64(len(plain)))
+		for i := 0; i < b.N; i++ {
+			mayCarryUsage(plain)
+		}
+	})
+}
