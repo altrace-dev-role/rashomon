@@ -1652,8 +1652,14 @@ func cmdForget(args []string, stdout io.Writer) error {
 		return err
 	}
 	// A run forget could not rewrite is in the error, and every other run was
-	// still forgotten (store.forgetEach): say what was done, then fail.
+	// still forgotten (store.forgetEach): say what was done, then fail. A
+	// failure before any run was touched -- store.ErrForgetIncomplete is not
+	// how that one is marked -- must not be followed by a line claiming
+	// otherwise, the same as forgetHost already does.
 	gaps, forgetErr := st.ForgetWindow(from, to, time.Now())
+	if forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {
+		return forgetErr
+	}
 	total := 0
 	for _, g := range gaps {
 		total += g.RemovedRecords
