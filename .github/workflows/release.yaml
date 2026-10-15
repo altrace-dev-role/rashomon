@@ -52,13 +52,13 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # The module gained a dependency graph when it started reading the
-      # proxy's SQLite store. Publishing a binary with a known-vulnerable
-      # module in it is the failure this catches, and a release is the last
-      # moment it is cheap to catch. ci.yaml runs the same line (-scan
-      # module, and why, is explained there), and TestDEL21c holds the two
-      # to one version. Under go1.27.2, v1.1.4 panics when it analyses
-      # linux/amd64 and passes on darwin.
+      # go.mod names no module, so this checks the standard library and the
+      # toolchain itself rather than a dependency graph. Publishing a binary
+      # built with a known-vulnerable stdlib version is the failure this
+      # catches, and a release is the last moment it is cheap to catch.
+      # ci.yaml runs the same line (-scan module, and why, is explained
+      # there), and TestDEL21c holds the two to one version. Under go1.27.2,
+      # v1.1.4 panics when it analyses linux/amd64 and passes on darwin.
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -scan module -C cmd/rashomon
 

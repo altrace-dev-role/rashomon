@@ -91,12 +91,10 @@ var dormantCommand = regexp.MustCompile(`\brashomon (run|env)\b`)
 // TestUsage_AdvertisesNoDormantProxyPath keeps the help text to what this
 // alpha can serve.
 //
-// env, run and --proxy-store stay in the binary as the bridge to the observing
-// proxy, but the proxy does not ship, so a usage screen that offered them
-// would send a reader to commands that either refuse (env), run without
-// recording destinations (run), or read a database they do not have
-// (--proxy-store). The dormant commands keep their own --help text; only the
-// top-level screen is trimmed.
+// run, env and --proxy-store are removed commands, not dormant ones: the
+// packages behind them are gone from the binary along with the proxy they
+// bridged to. A usage screen that still named them would send a reader to
+// paths that no longer exist at all.
 //
 // The positive half is not decoration: a usage that printed nothing would
 // pass every absence check below.
@@ -122,9 +120,11 @@ func TestUsage_AdvertisesNoDormantProxyPath(t *testing.T) {
 	}
 }
 
-// TestDormantCommandMatchesCommandsNotWords holds the matcher to its reason.
-// Without the negative rows a regex that matched nothing would make the
-// usage test above pass vacuously.
+// TestDormantCommandMatchesCommandsNotWords holds dormantCommand to its
+// reason -- named for when run and env were dispatched but hidden from
+// --help; both are gone now, and the regex stays as the usage test's own
+// proof that it is not passing vacuously. Without the negative rows a regex
+// that matched nothing would make the usage test above pass vacuously.
 func TestDormantCommandMatchesCommandsNotWords(t *testing.T) {
 	for line, want := range map[string]bool{
 		"  rashomon run -- claude":          true,
@@ -156,24 +156,6 @@ func TestReport_RefusesAnEmptyNonoAudit(t *testing.T) {
 	}
 	if stdout.Len() != 0 {
 		t.Errorf("report --nono-audit \"\" rendered a report:\n%s", stdout.String())
-	}
-}
-
-// TestReport_RefusesAnEmptyProxyStore: "" is what NOT naming a store means,
-// so accepting `--proxy-store ""` -- an unset variable in a script -- would
-// collapse the proxy block the caller asked for, with nothing to say so. The
-// refusal names the flag, and it comes before any store is opened.
-func TestReport_RefusesAnEmptyProxyStore(t *testing.T) {
-	t.Setenv("RASHOMON_HOME", t.TempDir())
-	var stdout, stderr bytes.Buffer
-	if got := run([]string{"report", "--proxy-store", ""}, strings.NewReader(""), &stdout, &stderr); got != exitFail {
-		t.Errorf("report --proxy-store \"\" returned %d, want %d", got, exitFail)
-	}
-	if !strings.Contains(stderr.String(), "--proxy-store") {
-		t.Errorf("the refusal does not name the flag; stderr %q", stderr.String())
-	}
-	if stdout.Len() != 0 {
-		t.Errorf("report --proxy-store \"\" rendered a report:\n%s", stdout.String())
 	}
 }
 
