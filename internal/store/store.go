@@ -739,6 +739,16 @@ func segment(id string) string {
 	if isPlainSegment(id) {
 		return id
 	}
+	return digestID(id)
+}
+
+// digestID is a stable substitute for a value this program must not use
+// verbatim: "x-" and the first 16 bytes of its SHA-256, hex-encoded. segment
+// uses it for an id unsafe as a path element; CapID uses it for a
+// tool_use_id over MaxIDBytes, so an over-cap call still pairs its
+// declaration, execution and terminal on one key instead of colliding
+// every over-cap call through "".
+func digestID(id string) string {
 	sum := sha256.Sum256([]byte(id))
 	return "x-" + hex.EncodeToString(sum[:16])
 }

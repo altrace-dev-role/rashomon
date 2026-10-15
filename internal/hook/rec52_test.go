@@ -85,7 +85,6 @@ func TestREC52_FieldCapsAtNAndNPlusOne(t *testing.T) {
 		cap    int
 		stored func(*store.Declaration) bool
 	}{
-		{"tool_use_id", func(n int) any { return id(n) }, store.MaxIDBytes, func(d *store.Declaration) bool { return d.ToolUseID != "" }},
 		{"prompt_id", func(n int) any { return id(n) }, store.MaxIDBytes, func(d *store.Declaration) bool { return d.PromptID != nil }},
 		{"agent_id", func(n int) any { return id(n) }, store.MaxIDBytes, func(d *store.Declaration) bool { return d.AgentID != nil }},
 		{"agent_type", func(n int) any { return id(n) }, store.MaxIDBytes, func(d *store.Declaration) bool { return d.AgentType != nil }},
@@ -112,17 +111,39 @@ func TestREC52_FieldCapsAtNAndNPlusOne(t *testing.T) {
 		}
 	}
 
+	t.Run("tool_use_id", func(t *testing.T) {
+		for _, n := range []int{store.MaxIDBytes, store.MaxIDBytes + 1} {
+			raw := id(n)
+			decl, reason, _ := captured(t, capPayload(t, "tool_use_id", raw))
+			if decl == nil {
+				t.Fatalf("tool_use_id at %d: no declaration landed", n)
+			}
+			over := n > store.MaxIDBytes
+			switch {
+			case !over && decl.ToolUseID != raw:
+				t.Errorf("tool_use_id at %d: stored %q, want it unchanged", n, decl.ToolUseID)
+			case over && (decl.ToolUseID == "" || decl.ToolUseID == raw || !strings.HasPrefix(decl.ToolUseID, "x-")):
+				t.Errorf("tool_use_id at %d: stored %q, want a digest distinct from the raw id and from \"\"", n, decl.ToolUseID)
+			}
+			if got := reason == store.ReasonRecordOversize; got != over {
+				t.Errorf("tool_use_id at %d: coverage reason %q", n, reason)
+			}
+		}
+	})
+
 	t.Run("session_id", func(t *testing.T) {
 		for _, n := range []int{store.MaxIDBytes, store.MaxIDBytes + 1} {
-			decl, reason, session := captured(t, capPayload(t, "session_id", id(n)))
-			want := id(n)
-			if n > store.MaxIDBytes {
-				want = UnattributedSession
-			}
-			if decl == nil || decl.SessionID != want || session != want {
+			raw := id(n)
+			decl, reason, session := captured(t, capPayload(t, "session_id", raw))
+			over := n > store.MaxIDBytes
+			want := raw
+			switch {
+			case !over && (decl == nil || decl.SessionID != want || session != want):
 				t.Errorf("session_id at %d: recorded under %q, want %q", n, session, want)
+			case over && (decl == nil || session == "" || session == raw || session == UnattributedSession || decl.SessionID != session):
+				t.Errorf("session_id at %d: recorded under %q, want its own digest bucket", n, session)
 			}
-			if got := reason == store.ReasonRecordOversize; got != (n > store.MaxIDBytes) {
+			if got := reason == store.ReasonRecordOversize; got != over {
 				t.Errorf("session_id at %d: coverage reason %q", n, reason)
 			}
 		}
@@ -153,8 +174,15 @@ func TestREC52_FieldCapsAtNAndNPlusOne(t *testing.T) {
 				t.Fatalf("execution at %d: %v, %+v", n, err, run)
 			}
 			x, over := run.Executions[0], n > store.MaxIDBytes
-			if (x.ToolUseID == "") != over || (x.ToolName == "") != over {
-				t.Errorf("execution at %d: tool_use_id %d bytes, tool_name %d bytes", n, len(x.ToolUseID), len(x.ToolName))
+			raw := id(n)
+			switch {
+			case !over && x.ToolUseID != raw:
+				t.Errorf("execution at %d: tool_use_id stored as %q, want it unchanged", n, x.ToolUseID)
+			case over && (x.ToolUseID == "" || x.ToolUseID == raw || !strings.HasPrefix(x.ToolUseID, "x-")):
+				t.Errorf("execution at %d: tool_use_id stored as %q, want a digest", n, x.ToolUseID)
+			}
+			if (x.ToolName == "") != over {
+				t.Errorf("execution at %d: tool_name %d bytes", n, len(x.ToolName))
 			}
 			r := run.Coverage[0].Reason
 			if (r != nil && *r == store.ReasonRecordOversize) != over {

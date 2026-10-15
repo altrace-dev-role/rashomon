@@ -61,22 +61,26 @@ func worstCaseRecordBytes() int {
 	return jsonEscapeFactor*capped + fixedRecordBytes
 }
 
-// CapID is s, or "" when s is over MaxIDBytes: an id as CapDeclaration and
-// CapExecution leave it, for a caller that has to name the call before its
-// record is built.
+// CapID is s, or a digest of s when it is over MaxIDBytes: an id as
+// CapDeclaration and CapExecution leave it, for a caller that has to name
+// the call before its record is built. The digest, not "", is what keeps a
+// declaration, its execution and its terminal paired on the same key
+// instead of every over-cap tool_use_id colliding through one empty one.
 func CapID(s string) string {
 	if len(s) > MaxIDBytes {
-		return ""
+		return digestID(s)
 	}
 	return s
 }
 
 // CapDeclaration withholds every field of d over its cap, and reports
 // whether it withheld any. d.SessionID is the hook's to bucket and is left
-// as it is.
+// as it is. d.ToolUseID is capped by CapID rather than emptied like the rest
+// (withholder.id): it is the key an execution and a terminal join to it by,
+// and emptying it over the cap paired every over-cap call through "".
 func CapDeclaration(d *Declaration) bool {
 	var w withholder
-	d.ToolUseID = w.str(d.ToolUseID, MaxIDBytes)
+	d.ToolUseID = w.id(d.ToolUseID, MaxIDBytes)
 	d.PromptID = w.ptr(d.PromptID, MaxIDBytes)
 	d.AgentID = w.ptr(d.AgentID, MaxIDBytes)
 	d.AgentType = w.ptr(d.AgentType, MaxIDBytes)
@@ -92,7 +96,7 @@ func CapDeclaration(d *Declaration) bool {
 // CapExecution is CapDeclaration for an execution record.
 func CapExecution(x *Execution) bool {
 	var w withholder
-	x.ToolUseID = w.str(x.ToolUseID, MaxIDBytes)
+	x.ToolUseID = w.id(x.ToolUseID, MaxIDBytes)
 	x.ToolName = w.str(x.ToolName, MaxIDBytes)
 	return w.withheld
 }
@@ -104,6 +108,17 @@ func (w *withholder) str(s string, limit int) string {
 	if len(s) > limit {
 		w.withheld = true
 		return ""
+	}
+	return s
+}
+
+// id is str for a value a reader joins records by: over limit, it becomes a
+// digest of itself rather than "", so every over-cap value does not read as
+// the same one.
+func (w *withholder) id(s string, limit int) string {
+	if len(s) > limit {
+		w.withheld = true
+		return digestID(s)
 	}
 	return s
 }
