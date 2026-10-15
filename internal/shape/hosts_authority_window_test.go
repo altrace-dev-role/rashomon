@@ -24,7 +24,7 @@ import (
 func TestAuthorityWindowBoundsTheScan(t *testing.T) {
 	const bound = time.Second
 	for _, tc := range []struct{ name, line string }{
-		{"git@ repeated", strings.Repeat("git@", 50_000)},                  // 200 KB
+		{"git@ repeated", strings.Repeat("git@", 50_000)},                          // 200 KB
 		{"https://[ repeated, never closed", strings.Repeat("https://[", 200_000)}, // 1.8 MB
 	} {
 		t.Run(tc.name, func(t *testing.T) {
