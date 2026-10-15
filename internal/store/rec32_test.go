@@ -214,6 +214,7 @@ func TestREC32b_ForgetLeavesARunItCannotReadWhole(t *testing.T) {
 // line it skipped is counted as unknown too: what that line held is not
 // known.
 func TestREC32_EvictContinuesPastUnreadableRun(t *testing.T) {
+	permissionsBite(t)
 	st, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
