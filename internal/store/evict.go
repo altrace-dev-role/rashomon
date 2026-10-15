@@ -62,6 +62,16 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 		if total <= capBytes {
 			break
 		}
+		// A probe's deadline is shared across every lock wait it makes
+		// (LimitLockWaits); eviction runs inside that same hook invocation.
+		// A deep backlog must not make one pass run past it looking for
+		// more to remove, where the hook's own timeout could cut a removal
+		// short mid-delete. Checked between runs, never inside one, so a
+		// run this pass starts removing always finishes. What is left
+		// waits for the next probe.
+		if !s.waitUntil.IsZero() && time.Now().After(s.waitUntil) {
+			break
+		}
 		if c.name == protectDir || now.Sub(c.mtime) < evictGrace {
 			continue
 		}
