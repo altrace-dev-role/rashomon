@@ -3,8 +3,11 @@ package acceptance
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
 // report has two forms and one set of facts. --json is the consumer's form and
@@ -113,7 +116,7 @@ func TestReport_JSONFormIsUnchanged(t *testing.T) {
 	}
 	// The encoding itself, not just what it decodes to: two-space indentation,
 	// and a null where the fact is missing rather than a rendering of it.
-	if !strings.HasPrefix(res.stdout, "{\n  \"generated_at_unix_ms\":") {
+	if !strings.HasPrefix(res.stdout, "{\n  \"report_version\": "+strconv.Itoa(report.CurrentReportVersion)+",\n  \"generated_at_unix_ms\":") {
 		t.Errorf("report --json is not the indented object it was:\n%s", res.stdout)
 	}
 	if !strings.Contains(res.stdout, `"ids_in_transcript": null`) {
