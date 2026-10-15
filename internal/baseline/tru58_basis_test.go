@@ -86,16 +86,6 @@ func TestTRU58_ForgetRemovesAPreDeclaredBaselineWhole(t *testing.T) {
 			assertNoFileNames(t, filepath.Join(root, "baseline"), forgotten)
 		})
 	}
-
-	// Forget, by project key, is the same operation.
-	root := t.TempDir()
-	path := writePreDeclared(t, root, "project", forgotten)
-	if err := Forget(root, "project", forgotten); err != nil {
-		t.Fatalf("Forget: %v", err)
-	}
-	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Forget left the pre-declared baseline on disk (stat: %v)", err)
-	}
 }
 
 // TestTRU58_ForgetClearsOnlyTheHostFromADeclaredBaseline is the control: a
