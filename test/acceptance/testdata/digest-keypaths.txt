@@ -1,51 +1,51 @@
-coverage
-coverage.hook_entry_at_start
-coverage.reasons
-coverage.start_recorded
-coverage.state
-declarations
-declarations.by_label
-declarations.by_label_omitted
-declarations.by_tool
-declarations.by_tool.Bash
-declarations.by_tool_omitted
-declarations.dropped
-declarations.dropped_omitted
-declarations.recorded
-declarations.unterminated
-declarations.unterminated_omitted
-declarations.without_execution
-declarations.without_execution[].permission_mode
-declarations.without_execution[].tool_use_id
-declarations.without_execution_omitted
-executions
-executions.recorded
-gaps
-generated_at_unix_ms
-install_id
-masked_runs
-masked_runs.final_message_available
-masked_runs.fires
-masked_runs.pass_claimed
-masked_runs.runs
-prompt_id
-schema_version
-session_id
-silent_failures
-silent_failures.absent_words
-silent_failures.failed
-silent_failures.failed_lookups
-silent_failures.final_message_available
-silent_failures.fires
-silent_failures.outcome_unobserved
-skipped_records
-subagents
-subagents.declarations
-subagents.executions
-test_bending
-test_bending.flaky
-test_bending.flaky_omitted
-test_bending.tests_only_then_green
-test_bending.tests_only_then_green_omitted
-truncated
-unknown
+coverage.hook_entry_at_start: string
+coverage.reasons[]: string
+coverage.start_recorded: bool
+coverage.state: string
+declarations.by_label.{}: int
+declarations.by_label_omitted: int
+declarations.by_tool.{}: int
+declarations.by_tool_omitted: int
+declarations.dropped[]: string
+declarations.dropped_omitted: int
+declarations.recorded: int
+declarations.unterminated[]: string
+declarations.unterminated_omitted: int
+declarations.without_execution[].permission_mode: string
+declarations.without_execution[].tool_use_id: string
+declarations.without_execution_omitted: int
+executions.recorded: int
+gaps[].from_unix_ms: int64
+gaps[].host_digest: string
+gaps[].reason: string
+gaps[].recorded_at_unix_ms: int64
+gaps[].removed_records: int
+gaps[].schema_version: int
+gaps[].session_id: string
+gaps[].to_unix_ms: int64
+gaps[].type: string
+generated_at_unix_ms: int64
+install_id: string
+masked_runs.final_message_available: bool
+masked_runs.fires: bool
+masked_runs.pass_claimed: bool
+masked_runs.runs: int
+prompt_id: string
+schema_version: int
+session_id: string
+silent_failures.absent_words[]: string
+silent_failures.failed: int
+silent_failures.failed_lookups: int
+silent_failures.final_message_available: bool
+silent_failures.fires: bool
+silent_failures.outcome_unobserved: int
+skipped_records: int
+subagents.declarations: int
+subagents.executions: int
+test_bending.flaky[].first_failed: bool
+test_bending.flaky[].seqs[]: int64
+test_bending.flaky_omitted: int
+test_bending.tests_only_then_green[][]: int64
+test_bending.tests_only_then_green_omitted: int
+truncated: bool
+unknown: bool

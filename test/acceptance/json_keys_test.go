@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/digest"
+	"github.com/altrace-dev-role/rashomon/internal/spend"
 )
 
 // docKeyPaths lists every key path in a JSON document, an array's elements
@@ -49,17 +53,26 @@ func docKeyPaths(t *testing.T, raw []byte) []byte {
 	return []byte(strings.Join(paths, "\n") + "\n")
 }
 
-// checkKeySnapshot compares a document's key paths with a committed
-// snapshot, rewriting it under -update.
+// checkKeySnapshot compares a document TYPE's key paths -- typeKeyPaths,
+// walked from docType itself, every leaf's kind included -- with a
+// committed snapshot, rewriting it under -update.
+//
+// The type, not a run's instance: an instance only ever shows the branches
+// that one run filled in, so a map's value type went unchecked wherever the
+// fixture's map was empty, and a slice's element type wherever the fixture
+// left it nil -- gaps a renamed or re-typed field could sit in unnoticed.
+// raw is still the live document this run produced, read only for its
+// schema_version (versionOf), since that is a runtime value no type
+// alone carries.
 //
 // The snapshot holds paths, not values, so it carries no copy of the
 // document's own schema_version to compare against: a sibling
 // .schema_version file holds the number the committed snapshot was taken at,
 // and -update refuses to drop a key path while that number is unchanged, for
 // the same reason report_golden_test's guard does with report_version.
-func checkKeySnapshot(t *testing.T, name string, raw []byte) {
+func checkKeySnapshot(t *testing.T, name string, docType reflect.Type, raw []byte) {
 	t.Helper()
-	got := docKeyPaths(t, raw)
+	got := typeKeyPaths(docType)
 	path := filepath.Join("testdata", name)
 	versionPath := path + ".schema_version"
 	newVersion := versionOf(raw, "schema_version")
@@ -111,7 +124,7 @@ func TestRubricNAMING3_DigestJSONKeysAreTheSnapshot(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("digest: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	checkKeySnapshot(t, "digest-keypaths.txt", []byte(res.stdout))
+	checkKeySnapshot(t, "digest-keypaths.txt", reflect.TypeOf(digest.Digest{}), []byte(res.stdout))
 }
 
 // TestRubricNAMING3_SpendJSONKeysAreTheSnapshot pins spend --json's key
@@ -136,5 +149,5 @@ func TestRubricNAMING3_SpendJSONKeysAreTheSnapshot(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("spend --json: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	checkKeySnapshot(t, "spend-keypaths.txt", []byte(res.stdout))
+	checkKeySnapshot(t, "spend-keypaths.txt", reflect.TypeOf(spend.Summary{}), []byte(res.stdout))
 }

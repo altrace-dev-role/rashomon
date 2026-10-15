@@ -27,3 +27,18 @@ m("RUBRIC naming-3 an unparseable version reads as unchanged",
   "\tif json.Unmarshal(raw, &doc) != nil || json.Unmarshal(doc[key], &v) != nil || v == nil {\n\t\treturn -1\n\t}\n",
   "\tif false {\n\t\treturn -1\n\t}\n\tjson.Unmarshal(raw, &doc)\n\tjson.Unmarshal(doc[key], &v)\n",
   "TestVersionOf_UnknownNeverReadsAsUnchanged")
+m("RUBRIC naming-3 a map's key paths pin a run's own data as schema",
+  "test/acceptance/type_key_paths_test.go",
+  "\tcase reflect.Map:\n\t\tkey := prefix + \".{}\"\n\t\tif prefix == \"\" {\n\t\t\tkey = \"{}\"\n\t\t}\n\t\twalkType(key, t.Elem(), seen)\n",
+  "\tcase reflect.Map:\n\t\twalkType(prefix+\".k\", t.Elem(), seen)\n",
+  "TestTypeKeyPaths_WalksTheTypeNotAnInstance")
+m("RUBRIC naming-3 a type with its own MarshalJSON is read by its field names",
+  "test/acceptance/type_key_paths_test.go",
+  "\tif t.Implements(marshalerType) || reflect.PointerTo(t).Implements(marshalerType) {\n\t\twalkMarshaler(prefix, t, seen)\n\t\treturn\n\t}\n",
+  "",
+  "TestRubricNAMING3_SpendJSONKeysAreTheSnapshot")
+m("RUBRIC naming-3 an unexported field is read as if marshalled",
+  "test/acceptance/type_key_paths_test.go",
+  "\t\t\tif f.PkgPath != \"\" && !f.Anonymous {\n\t\t\t\tcontinue // unexported, never marshalled\n\t\t\t}\n",
+  "",
+  "TestTypeKeyPaths_WalksTheTypeNotAnInstance")

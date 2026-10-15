@@ -1,141 +1,112 @@
-by_agent
-by_agent.main
-by_agent.main.unpriced_responses
-by_agent.main.unpriced_tokens
-by_agent.main.usd
-by_agent.subagents
-by_agent.subagents.unpriced_responses
-by_agent.subagents.unpriced_tokens
-by_agent.subagents.usd
-by_kind
-by_kind.cache_read
-by_kind.cache_read.unpriced_responses
-by_kind.cache_read.unpriced_tokens
-by_kind.cache_read.usd
-by_kind.cache_write
-by_kind.cache_write.unpriced_responses
-by_kind.cache_write.unpriced_tokens
-by_kind.cache_write.usd
-by_kind.input
-by_kind.input.unpriced_responses
-by_kind.input.unpriced_tokens
-by_kind.input.usd
-by_kind.output
-by_kind.output.unpriced_responses
-by_kind.output.unpriced_tokens
-by_kind.output.usd
-by_model
-by_model[].cost
-by_model[].cost.unpriced_responses
-by_model[].cost.unpriced_tokens
-by_model[].cost.usd
-by_model[].model
-by_model[].priced
-by_model[].responses
-by_model[].tokens
-by_model[].tokens.cache_read
-by_model[].tokens.cache_write_1h
-by_model[].tokens.cache_write_5m
-by_model[].tokens.input
-by_model[].tokens.output
-cache_expiry
-cache_expiry.cost
-cache_expiry.cost.unpriced_responses
-cache_expiry.cost.unpriced_tokens
-cache_expiry.cost.usd
-cache_expiry.heuristic
-cache_expiry.responses
-cache_expiry.tokens
-cache_expiry.tokens_1h
-cache_expiry.tokens_5m
-days
-extra_attempts
-extra_attempts.attempts
-extra_attempts.fallback_served
-extra_attempts.pricing
-extra_attempts.responses
-extra_attempts.tokens
-extra_attempts.tokens.cache_read
-extra_attempts.tokens.cache_write_1h
-extra_attempts.tokens.cache_write_5m
-extra_attempts.tokens.input
-extra_attempts.tokens.output
-fast_mode
-fast_mode.pricing
-fast_mode.responses
-from_unix_ms
-generated_at_unix_ms
-per_session
-per_session[].coverage
-per_session[].main
-per_session[].main.unpriced_responses
-per_session[].main.unpriced_tokens
-per_session[].main.usd
-per_session[].session_id
-per_session[].subagents
-per_session[].subagents.unpriced_responses
-per_session[].subagents.unpriced_tokens
-per_session[].subagents.usd
-pricing
-pricing.basis
-pricing.note
-pricing.snapshot
-read
-read.distinct_responses
-read.files
-read.files_before_window
-read.future_dated_responses
-read.undated_responses
-read.unparsed_usage_lines
-read.unreadable_dirs
-read.unreadable_files
-read.usage_lines
-refusals
-refusals.before_output
-refusals.before_output_pricing
-refusals.before_output_tokens
-refusals.by_category
-refusals.cost
-refusals.cost.unpriced_responses
-refusals.cost.unpriced_tokens
-refusals.cost.usd
-refusals.responses
-refusals.without_usage
-responses
-savings
-savings[].cost
-savings[].cost.unpriced_responses
-savings[].cost.unpriced_tokens
-savings[].cost.usd
-savings[].kind
-schema_version
-sessions
-shared_responses
-silent_failure_turns
-silent_failure_turns.bound
-silent_failure_turns.cost
-silent_failure_turns.cost.unpriced_responses
-silent_failure_turns.cost.unpriced_tokens
-silent_failure_turns.cost.usd
-silent_failure_turns.covered_transcripts
-silent_failure_turns.not_covered_cost
-silent_failure_turns.not_covered_cost.unpriced_responses
-silent_failure_turns.not_covered_cost.unpriced_tokens
-silent_failure_turns.not_covered_cost.usd
-silent_failure_turns.not_covered_sessions
-silent_failure_turns.not_covered_transcripts
-silent_failure_turns.store
-silent_failure_turns.transcripts
-silent_failure_turns.turns
-silent_failure_turns.undeclared_failed_calls
-silent_failure_turns.unjudged_turns
-tokens
-tokens.cache_read
-tokens.cache_write_1h
-tokens.cache_write_5m
-tokens.input
-tokens.output
-total
-total.unpriced_responses
-total.unpriced_tokens
-total.usd
+by_agent.main.unpriced_responses: number
+by_agent.main.unpriced_tokens: number
+by_agent.main.usd: number
+by_agent.subagents.unpriced_responses: number
+by_agent.subagents.unpriced_tokens: number
+by_agent.subagents.usd: number
+by_kind.cache_read.unpriced_responses: number
+by_kind.cache_read.unpriced_tokens: number
+by_kind.cache_read.usd: number
+by_kind.cache_write.unpriced_responses: number
+by_kind.cache_write.unpriced_tokens: number
+by_kind.cache_write.usd: number
+by_kind.input.unpriced_responses: number
+by_kind.input.unpriced_tokens: number
+by_kind.input.usd: number
+by_kind.output.unpriced_responses: number
+by_kind.output.unpriced_tokens: number
+by_kind.output.usd: number
+by_model[].cost.unpriced_responses: number
+by_model[].cost.unpriced_tokens: number
+by_model[].cost.usd: number
+by_model[].model: string
+by_model[].priced: bool
+by_model[].responses: int
+by_model[].tokens.cache_read: int64
+by_model[].tokens.cache_write_1h: int64
+by_model[].tokens.cache_write_5m: int64
+by_model[].tokens.input: int64
+by_model[].tokens.output: int64
+cache_expiry.cost.unpriced_responses: number
+cache_expiry.cost.unpriced_tokens: number
+cache_expiry.cost.usd: number
+cache_expiry.heuristic: string
+cache_expiry.responses: int
+cache_expiry.tokens: int64
+cache_expiry.tokens_1h: int64
+cache_expiry.tokens_5m: int64
+days: int
+extra_attempts.attempts: int
+extra_attempts.fallback_served: int
+extra_attempts.pricing: string
+extra_attempts.responses: int
+extra_attempts.tokens.cache_read: int64
+extra_attempts.tokens.cache_write_1h: int64
+extra_attempts.tokens.cache_write_5m: int64
+extra_attempts.tokens.input: int64
+extra_attempts.tokens.output: int64
+fast_mode.pricing: string
+fast_mode.responses: int
+from_unix_ms: int64
+generated_at_unix_ms: int64
+per_session[].coverage: string
+per_session[].main.unpriced_responses: number
+per_session[].main.unpriced_tokens: number
+per_session[].main.usd: number
+per_session[].session_id: string
+per_session[].subagents.unpriced_responses: number
+per_session[].subagents.unpriced_tokens: number
+per_session[].subagents.usd: number
+pricing.basis: string
+pricing.note: string
+pricing.snapshot: string
+read.distinct_responses: int
+read.files: int
+read.files_before_window: int
+read.future_dated_responses: int
+read.undated_responses: int
+read.unparsed_usage_lines: int
+read.unreadable_dirs: int
+read.unreadable_files: int
+read.usage_lines: int
+refusals.before_output: int
+refusals.before_output_pricing: string
+refusals.before_output_tokens: int64
+refusals.by_category[].before_output: int
+refusals.by_category[].category: string
+refusals.by_category[].model: string
+refusals.by_category[].responses: int
+refusals.by_category[].without_usage: int
+refusals.cost.unpriced_responses: number
+refusals.cost.unpriced_tokens: number
+refusals.cost.usd: number
+refusals.responses: int
+refusals.without_usage: int
+responses: int
+savings[].cost.unpriced_responses: number
+savings[].cost.unpriced_tokens: number
+savings[].cost.usd: number
+savings[].kind: string
+schema_version: int
+sessions: int
+shared_responses: int
+silent_failure_turns.bound: string
+silent_failure_turns.cost: null
+silent_failure_turns.covered_transcripts: number
+silent_failure_turns.not_covered_cost.unpriced_responses: number
+silent_failure_turns.not_covered_cost.unpriced_tokens: number
+silent_failure_turns.not_covered_cost.usd: number
+silent_failure_turns.not_covered_transcripts: number
+silent_failure_turns.store: string
+silent_failure_turns.transcripts: number
+silent_failure_turns.turns: null
+silent_failure_turns.undeclared_failed_calls: null
+silent_failure_turns.unjudged_turns: null
+tokens.cache_read: int64
+tokens.cache_write_1h: int64
+tokens.cache_write_5m: int64
+tokens.input: int64
+tokens.output: int64
+total.unpriced_responses: number
+total.unpriced_tokens: number
+total.usd: number
