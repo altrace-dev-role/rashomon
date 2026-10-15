@@ -16,4 +16,4 @@ m("DEL-1 a failing test that prints build failed reads as a broken build", "test
 # Red needs evidence that a test ran and failed; a non-zero exit from a tool
 # that ran nothing is not detection.
 m("DEL-1 a non-zero exit with no test failure on record reads as red", "test/mutation/sweep.py",
-  "            elif not test_failed(r):\n", "            elif False:\n", "TestDEL1d_")
+  "            elif test_failed(r):\n", "            elif True:\n", "TestDEL1d_")

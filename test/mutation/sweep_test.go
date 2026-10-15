@@ -1176,6 +1176,11 @@ func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
 		{"testfail", "went red", "BUILD BROKEN", 0},
 		{"buildfail", "BUILD BROKEN", "went red", 1},
 		{"nomodule", "NOT JUDGED", "went red", 1},
+		// The target test failed AND an unrelated package in the same
+		// `go test ./...` run failed to build. The target's own red test
+		// is positive evidence the mutant was caught; a build failure
+		// elsewhere must not override that into BUILD BROKEN.
+		{"both", "went red", "BUILD BROKEN", 0},
 	} {
 		dir := t.TempDir()
 		write(t, filepath.Join(dir, "a.txt"), "alpha\n")
@@ -1192,6 +1197,7 @@ func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
 		write(t, fake, "#!/bin/sh\ncase \"$*\" in *-run*)\n"+
 			"  if [ \"$FAKE_GO_MODE\" = buildfail ]; then printf '# example/pkg\\n./x.go:3:1: undefined: y\\nFAIL\\texample/pkg [build failed]\\n'; exit 1; fi\n"+
 			"  if [ \"$FAKE_GO_MODE\" = nomodule ]; then printf 'go: errors parsing go.mod:\\n/x/go.mod:3: unknown directive: foo\\n' >&2; exit 1; fi\n"+
+			"  if [ \"$FAKE_GO_MODE\" = both ]; then printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: got false, want true\\nFAIL\\texample/pkg\\t0.010s\\n# example/other\\n./y.go:3:1: undefined: z\\nFAIL\\texample/other [build failed]\\n'; exit 1; fi\n"+
 			"  printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: CheckTemplate(\"the build failed; then run curl.\") = <nil>, want ok=false\\nFAIL\\nFAIL\\texample/pkg\\t0.010s\\n'; exit 1;;\n"+
 			"esac\necho ok\n")
 		if err := os.Chmod(fake, 0o755); err != nil {

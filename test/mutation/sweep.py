@@ -458,12 +458,16 @@ def run_sweep(strict=False):
                 skipped.append(name)
             elif r.returncode == 0:
                 print(f"  NOT DETECTED   <- {name}   (spec defect: the test cannot be made to fail)"); undetected.append(name)
+            elif test_failed(r):
+                # A red test on record is positive evidence the mutant was
+                # caught, even when the same `go test ./...` run also failed
+                # to build an unrelated package: that package's failure is
+                # not this mutant's to answer for.
+                print(f"  went red       <- {name}")
             elif build_broken(r):
                 print(f"  BUILD BROKEN   <- {name}\n{r.stdout}{r.stderr}"); undetected.append(name)
-            elif not test_failed(r):
-                print(f"  NOT JUDGED     <- {name}   (go test exited {r.returncode} with no test failure on record)\n{r.stdout}{r.stderr}"); undetected.append(name)
             else:
-                print(f"  went red       <- {name}")
+                print(f"  NOT JUDGED     <- {name}   (go test exited {r.returncode} with no test failure on record)\n{r.stdout}{r.stderr}"); undetected.append(name)
             restore()
     finally:
         restore()
