@@ -2,6 +2,7 @@ package safe
 
 import (
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -61,7 +62,7 @@ func assertTypeOnly(t *testing.T, err error, typeName string) {
 // exempt: they run under go test, not under Claude Code.
 func TestRubricCONC5_OnlySafeStartsGoroutines(t *testing.T) {
 	root := moduleRoot(t)
-	files := 0
+	walked := map[string]bool{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -83,19 +84,100 @@ func TestRubricCONC5_OnlySafeStartsGoroutines(t *testing.T) {
 		if filepath.ToSlash(filepath.Dir(rel)) == "internal/safe" {
 			return nil
 		}
-		files++
+		walked[filepath.ToSlash(rel)] = true
 		return checkNoGoStmt(t, path, rel)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files < 50 {
-		t.Fatalf("walked %d source files under %s; the walk is not finding the module", files, root)
+	// A count floor only fails once enough files drop out of the walk to
+	// cross it, so a filter that excluded one real package, or a module root
+	// resolved one level too high or too low, could still read as healthy
+	// beside everything else the walk kept finding. Naming specific files
+	// fails the moment any one of them stops being walked, whatever else
+	// changed around it.
+	for _, want := range mustWalk {
+		if !walked[want] {
+			t.Fatalf("%s was not walked under %s; the walk is not finding the module", want, root)
+		}
 	}
 }
 
+// mustWalk names source files TestRubricCONC5_OnlySafeStartsGoroutines must
+// visit: one from cmd, one from a leaf internal package, so a module root
+// resolved wrong or a filter that stopped descending into either tree is
+// caught here.
+var mustWalk = []string{
+	"cmd/rashomon/main.go",
+	"internal/hook/handle.go",
+}
+
+// TestUnsafeGoroutineStarts_DetectsAfterFuncAndGoStatements: the detector
+// behind TestRubricCONC5_OnlySafeStartsGoroutines must also catch
+// time.AfterFunc and context.AfterFunc, not just a go statement. Both run
+// their function in a new goroutine with no recover of its own, exactly
+// the hazard a go statement is -- before, the detector looked for *ast.GoStmt
+// alone, so either call escaped it with no error and no test failure, in
+// this package or anywhere else a contributor reached for one instead of
+// safe.Go.
+func TestUnsafeGoroutineStarts_DetectsAfterFuncAndGoStatements(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+		want int
+	}{
+		{"a go statement", "package x\n\nfunc f() { go func() {}() }\n", 1},
+		{"time.AfterFunc", "package x\n\nimport \"time\"\n\nfunc f() { time.AfterFunc(0, func() {}) }\n", 1},
+		{"context.AfterFunc", "package x\n\nimport \"context\"\n\nfunc f(ctx context.Context) { context.AfterFunc(ctx, func() {}) }\n", 1},
+		{"an unrelated call also named AfterFunc", "package x\n\nfunc f() { x.AfterFunc() }\n", 0},
+		{"no goroutine at all", "package x\n\nfunc f() {}\n", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, "x.go", tc.src, parser.SkipObjectResolution)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := unsafeGoroutineStarts(fset, f, "x.go"); len(got) != tc.want {
+				t.Errorf("unsafeGoroutineStarts = %v, want %d report(s)", got, tc.want)
+			}
+		})
+	}
+}
+
+// unsafeGoroutineStarts reports every way f starts a goroutine with no
+// recover of its own: a go statement, or a call to time.AfterFunc or
+// context.AfterFunc, which both run their function argument in a new
+// goroutine outside whatever Guard is on the caller's stack. Each report
+// names rel and the line.
+func unsafeGoroutineStarts(fset *token.FileSet, f *ast.File, rel string) []string {
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.GoStmt:
+			out = append(out, fmt.Sprintf("%s:%d starts a goroutine with a go statement; use safe.Go, the only sanctioned way",
+				rel, fset.Position(x.Pos()).Line))
+		case *ast.CallExpr:
+			sel, ok := x.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "AfterFunc" {
+				return true
+			}
+			id, ok := sel.X.(*ast.Ident)
+			if !ok || (id.Name != "time" && id.Name != "context") {
+				return true
+			}
+			out = append(out, fmt.Sprintf(
+				"%s:%d starts a goroutine with %s.AfterFunc, which carries no recover of its own; use safe.Go",
+				rel, fset.Position(x.Pos()).Line, id.Name))
+		}
+		return true
+	})
+	return out
+}
+
 // checkNoGoStmt parses one file, ignoring build tags so that every
-// platform's and every tag's files are read, and reports each go statement.
+// platform's and every tag's files are read, and reports each unsafe
+// goroutine start.
 func checkNoGoStmt(t *testing.T, path, rel string) error {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -103,13 +185,9 @@ func checkNoGoStmt(t *testing.T, path, rel string) error {
 	if err != nil {
 		return err
 	}
-	ast.Inspect(f, func(n ast.Node) bool {
-		if g, ok := n.(*ast.GoStmt); ok {
-			t.Errorf("%s:%d starts a goroutine with a go statement; use safe.Go, the only sanctioned way",
-				rel, fset.Position(g.Pos()).Line)
-		}
-		return true
-	})
+	for _, msg := range unsafeGoroutineStarts(fset, f, rel) {
+		t.Error(msg)
+	}
 	return nil
 }
 
