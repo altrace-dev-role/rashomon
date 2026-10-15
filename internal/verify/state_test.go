@@ -141,8 +141,19 @@ func TestVER65c_TurnSummaryRowsFollowTheTable(t *testing.T) {
 		{"only a defective gate: unknown, not no_gate", Snapshot{Recording: Complete, Gates: []GateState{{Gate: "b", Required: true, State: State("purple")}}}, TurnCounts{Writes: 1}, RowUnknown},
 	}
 	for _, c := range cases {
-		if got := TurnSummary(c.snap, c.turn).Row; got != c.want {
-			t.Errorf("%s: row %q, want %q", c.name, got, c.want)
+		got := TurnSummary(c.snap, c.turn)
+		if got.Row != c.want {
+			t.Errorf("%s: row %q, want %q", c.name, got.Row, c.want)
+		}
+		// P-45 adds the sentences; until then, every row this table picks
+		// carries none, recording-incomplete's sentenceRecordingIncomplete
+		// (checked separately below) excepted.
+		wantSentence := ""
+		if c.name == "recording incomplete" {
+			wantSentence = sentenceRecordingIncomplete
+		}
+		if got.Sentence != wantSentence {
+			t.Errorf("%s: sentence %q, want %q", c.name, got.Sentence, wantSentence)
 		}
 	}
 	if s := TurnSummary(Snapshot{Recording: Incomplete}, TurnCounts{Writes: 1}); s.Sentence != sentenceRecordingIncomplete {
