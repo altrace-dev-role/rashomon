@@ -33,7 +33,7 @@ func familyByName(fc FamilyCoverage, name string) (Family, bool) {
 func TestFamilies_UnexercisedFamiliesAreListedNotOmitted(t *testing.T) {
 	run := &store.Run{Declarations: []store.Declaration{decl("curl", "pypi.org")}}
 
-	fc := buildFamilies(run)
+	fc := buildFamilies(run, nil)
 
 	if len(fc.NotExercised) == 0 {
 		t.Fatal("no families listed as unexercised, although only curl ran")
@@ -62,7 +62,7 @@ func TestFamilies_GroupedByTool(t *testing.T) {
 		decl("python3", "files.pythonhosted.org"),
 	}}
 
-	fc := buildFamilies(run)
+	fc := buildFamilies(run, nil)
 
 	f, ok := familyByName(fc, "python")
 	if !ok {
@@ -87,7 +87,7 @@ func TestFamilies_UnknownProgramIsNotAFamily(t *testing.T) {
 		decl("some-internal-tool", "internal.example"),
 	}}
 
-	fc := buildFamilies(run)
+	fc := buildFamilies(run, nil)
 
 	for _, f := range fc.Families {
 		if f.Name == "some-internal-tool" {
@@ -118,7 +118,7 @@ func TestFamilies_SSHHostsCountToo(t *testing.T) {
 		declSSH("git", "github.com"),
 	}}
 
-	fc := buildFamilies(run)
+	fc := buildFamilies(run, nil)
 
 	f, ok := familyByName(fc, "git")
 	if !ok {

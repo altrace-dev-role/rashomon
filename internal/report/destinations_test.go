@@ -36,7 +36,7 @@ func TestExecutedNotAsDeclared_IsCountedWithoutAProxyStore(t *testing.T) {
 		Executions: []store.Execution{{ToolUseID: "t1", ExecutedDigest: "bbbb"}},
 	}
 
-	d := buildDestinations(run, "")
+	d := buildDestinations(run, "", nil)
 
 	if d.ExecutedNotAsDeclared != 1 {
 		t.Errorf("executed_not_as_declared = %d, want 1: the comparison is between two "+
@@ -73,7 +73,7 @@ func TestExecutedNotAsDeclared_UnknownDigestIsNotADifference(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			d := buildDestinations(tc.run, "")
+			d := buildDestinations(tc.run, "", nil)
 			if d.ExecutedNotAsDeclared != 0 {
 				t.Errorf("executed_not_as_declared = %d, want 0: an incomparable pair is "+
 					"not a difference", d.ExecutedNotAsDeclared)
@@ -96,7 +96,7 @@ const t0ms = int64(1789000000000)
 // unknown rather than render "none" — which would read as "this session
 // reached nothing new" on a session where nothing was checked.
 func TestNovelty_UnavailableWithoutARecordedProject(t *testing.T) {
-	d := buildDestinations(runWithDeclaredHosts("pypi.org"), t.TempDir())
+	d := buildDestinations(runWithDeclaredHosts("pypi.org"), t.TempDir(), nil)
 
 	if d.Novelty.Available {
 		t.Error("novelty available with no recorded cwd; the project is unknown")
@@ -124,7 +124,7 @@ func TestNovelty_UsesTheRunsOwnCWDNotTheReadersCWD(t *testing.T) {
 		}},
 	}
 
-	first := buildDestinations(run, root)
+	first := buildDestinations(run, root, nil)
 	if !first.Novelty.Available {
 		t.Fatalf("novelty unavailable: %s", first.Novelty.Reason)
 	}
@@ -142,7 +142,7 @@ func TestNovelty_UsesTheRunsOwnCWDNotTheReadersCWD(t *testing.T) {
 			Phase: store.PhaseStart, RecordedAtMS: t0ms + 3600000, CWD: project, SessionID: "sess-2",
 		}},
 	}
-	second := buildDestinations(run2, root)
+	second := buildDestinations(run2, root, nil)
 
 	if second.Novelty.Established {
 		t.Error("the second session established the baseline again")
@@ -170,8 +170,8 @@ func TestNovelty_ClientPlaneIsNeverNovel(t *testing.T) {
 		}
 	}
 	// Establish, then a later session whose only new host is client plane.
-	buildDestinations(mk("sess-1", t0ms, "a.example"), root)
-	d := buildDestinations(mk("sess-2", t0ms+3600000, "a.example", "api.anthropic.com", "127.0.0.1"), root)
+	buildDestinations(mk("sess-1", t0ms, "a.example"), root, nil)
+	d := buildDestinations(mk("sess-2", t0ms+3600000, "a.example", "api.anthropic.com", "127.0.0.1"), root, nil)
 
 	if len(d.Novelty.Hosts) != 0 {
 		t.Errorf("novelty hosts = %v, want empty: the client plane and loopback are not "+
@@ -204,8 +204,8 @@ func TestNovelty_TheMCPTransportIsTheAgentsOnAnMCPSession(t *testing.T) {
 			}
 			return run
 		}
-		buildDestinations(mk("sess-1", t0ms, "a.example"), root)
-		d := buildDestinations(mk("sess-2", t0ms+3600000, "a.example", mcpProxyHost), root)
+		buildDestinations(mk("sess-1", t0ms, "a.example"), root, nil)
+		d := buildDestinations(mk("sess-2", t0ms+3600000, "a.example", mcpProxyHost), root, nil)
 		if got := slices.Contains(d.Novelty.Hosts, mcpProxyHost); got != mcp {
 			t.Errorf("mcp session %v: %s novel = %v, want %v (novelty hosts %v)",
 				mcp, mcpProxyHost, got, mcp, d.Novelty.Hosts)
@@ -250,7 +250,7 @@ func TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing(t *testing.T) {
 			Phase: store.PhaseStart, RecordedAtMS: t0ms, CWD: t.TempDir(), SessionID: "sess-1",
 		}},
 	}
-	d := buildDestinations(run, "")
+	d := buildDestinations(run, "", nil)
 
 	if d.Novelty.Available {
 		t.Error("novelty reports itself available with no store root to locate a baseline in")
@@ -316,8 +316,8 @@ func TestNovelty_SSHHostsAreCandidatesToo(t *testing.T) {
 			}},
 		}
 	}
-	buildDestinations(mk("sess-1", t0ms, "github.com"), root) // ubiquitous; establishes
-	d := buildDestinations(mk("sess-2", t0ms+3600000, "github.com", "deploy.example"), root)
+	buildDestinations(mk("sess-1", t0ms, "github.com"), root, nil) // ubiquitous; establishes
+	d := buildDestinations(mk("sess-2", t0ms+3600000, "github.com", "deploy.example"), root, nil)
 
 	if !slices.Contains(d.Novelty.Hosts, "deploy.example") {
 		t.Errorf("novelty hosts = %v, want deploy.example: an ssh host named for the "+

@@ -124,8 +124,10 @@ func deniedSet(ts []Transcript) map[string]bool {
 // buildChains assembles the prompt-to-call spine.
 //
 // executed is run's executions grouped by tool_use_id (executionsByID), which
-// Build groups once for the chains, the timeline and the test runs.
-func buildChains(run *store.Run, executed map[string][]store.Execution, denied map[string]bool) Chains {
+// Build groups once for the chains, the timeline and the test runs. forgotten
+// is applied to each link's own host lists against that link's own
+// declaration time, the same per-declaration rule buildDestinations applies.
+func buildChains(run *store.Run, executed map[string][]store.Execution, denied map[string]bool, forgotten func(host string, declaredAtMS int64) bool) Chains {
 	out := Chains{Prompts: []Chain{}, Unattributed: []Link{}, Dropped: []Link{}}
 	if run == nil {
 		return out
@@ -139,7 +141,7 @@ func buildChains(run *store.Run, executed map[string][]store.Execution, denied m
 	for _, d := range run.Declarations {
 		if d.PromptID == nil || *d.PromptID == "" {
 			out.Unattributed = append(out.Unattributed,
-				buildLink(d, executed, denied))
+				buildLink(d, executed, denied, forgotten))
 			continue
 		}
 		k := key{transcript: d.TranscriptPath, prompt: *d.PromptID}
@@ -153,7 +155,7 @@ func buildChains(run *store.Run, executed map[string][]store.Execution, denied m
 		if d.Seq < first[k] {
 			first[k] = d.Seq
 		}
-		c.Links = append(c.Links, buildLink(d, executed, denied))
+		c.Links = append(c.Links, buildLink(d, executed, denied, forgotten))
 	}
 
 	// Terminals whose declaration never landed. The id is all there is, and
@@ -223,7 +225,7 @@ func execSeq(e store.Execution) int64 {
 	return *e.Seq
 }
 
-func buildLink(d store.Declaration, executed map[string][]store.Execution, denied map[string]bool) Link {
+func buildLink(d store.Declaration, executed map[string][]store.Execution, denied map[string]bool, forgotten func(host string, declaredAtMS int64) bool) Link {
 	l := Link{
 		Seq:           d.Seq,
 		ToolUseID:     d.ToolUseID,
@@ -239,10 +241,23 @@ func buildLink(d store.Declaration, executed map[string][]store.Execution, denie
 
 	// Carried as named. Nothing in the record observed whether a call reached
 	// a host, and a column that read as a verdict would be answering a
-	// question nothing was asked.
-	l.DeclaredHosts = append(l.DeclaredHosts, d.Hosts...)
+	// question nothing was asked. forgotten drops a host this declaration
+	// named at or before the latest forget --host of it -- stale evidence a
+	// failed removal left behind -- and keeps one named after, which is this
+	// call's own current information.
+	for _, h := range d.Hosts {
+		if forgotten != nil && forgotten(h, d.RecordedAtMS) {
+			continue
+		}
+		l.DeclaredHosts = append(l.DeclaredHosts, h)
+	}
 	sort.Strings(l.DeclaredHosts)
-	l.SSHHosts = append(l.SSHHosts, d.SSHHosts...)
+	for _, h := range d.SSHHosts {
+		if forgotten != nil && forgotten(h, d.RecordedAtMS) {
+			continue
+		}
+		l.SSHHosts = append(l.SSHHosts, h)
+	}
 	sort.Strings(l.SSHHosts)
 	return l
 }
