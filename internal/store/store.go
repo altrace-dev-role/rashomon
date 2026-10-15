@@ -167,11 +167,10 @@ func (s *Store) RunDir(sessionID string) string {
 //
 // One case weakens, on darwin only, where a barrier is cheaper than a full
 // sync: a process that ends between its barriers and Flush leaves records
-// ordered on the device but not flushed from its cache. Only SIGINT and
-// SIGTERM are caught (hook.WatchSignals) and still reach Flush. Anything else
-// that ends the process first opens the window: SIGKILL; any other signal
-// whose default action terminates, such as SIGHUP when the terminal closes,
-// SIGQUIT, or SIGPIPE on a write to a closed stderr; and a Go runtime fatal
+// ordered on the device but not flushed from its cache. SIGINT, SIGTERM,
+// SIGHUP and SIGQUIT are all caught (hook.WatchSignals) and still reach
+// Flush. Anything else that ends the process first opens the window:
+// SIGKILL; SIGPIPE on a write to a closed stderr; and a Go runtime fatal
 // error, which no recover catches. What it leaves exposed stays exposed after
 // the process is gone: until the device next empties its cache, at the next
 // full sync on that volume by any process (usually the next hook's Flush) or
