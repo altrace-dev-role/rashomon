@@ -508,7 +508,7 @@ func (s *Store) recordForgottenHost(digest string, now time.Time) error {
 	if err != nil || held {
 		return err
 	}
-	if err := appendHealed(f, line); err != nil {
+	if err := appendHealed(f, line, true); err != nil {
 		return err
 	}
 	return syncFull(f)

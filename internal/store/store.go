@@ -442,7 +442,7 @@ func (s *Store) writeOrderedLocked(f *os.File, dir string, build func(seq int64)
 	if err != nil {
 		return err
 	}
-	if err := appendHealed(f, line); err != nil {
+	if err := appendHealed(f, line, true); err != nil {
 		return err
 	}
 	return s.syncAppend(f)
@@ -540,12 +540,17 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	switch {
 	case err == nil:
 		defer unlock()
-		err = appendHealed(f, line)
+		// cut is false wherever bestEffort is true: the spill file is the
+		// only one with a lockless writer, and a cut-back there can erase
+		// a record that writer just put down (store.go's bestEffort branch
+		// below, tail.go's appendHealed doc).
+		err = appendHealed(f, line, !bestEffort)
 	case bestEffort && errors.Is(err, ErrLockTimeout):
-		// Without the lock the last byte could change under the read, and
-		// a cut-back could take another writer's record with it, so this
-		// append neither heals a torn tail nor cuts itself back.
-		_, err = f.Write(line)
+		// Without the lock the last byte could change under the read, so
+		// this append does not heal a torn tail by checking it -- but it
+		// still guards against gluing onto one unconditionally, the same
+		// single O_APPEND write a healed append would have made.
+		_, err = f.Write(append([]byte{'\n'}, line...))
 	default:
 		return err
 	}

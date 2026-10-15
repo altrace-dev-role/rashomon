@@ -1,5 +1,5 @@
 m("H-15 forget deletes without a gap record", "internal/store/gaps.go", "\tg.RemovedRecords = removedRec + removedSpill\n\tif err := s.AppendGap(g); err != nil {\n\t\treturn nil, err\n\t}\n", "\tg.RemovedRecords = removedRec + removedSpill\n", "TestH15_ForgetLeavesAGap")
-m("H-15 eviction deletes without a gap record", "internal/store/evict.go", "\t\tif err := appendHealed(gf, line); err != nil {", "\t\tif err := appendHealed(gf, line[:0]); err != nil {", "TestH15_SizeCap")
+m("H-15 eviction deletes without a gap record", "internal/store/evict.go", "\t\tif err := appendHealed(gf, line, true); err != nil {", "\t\tif err := appendHealed(gf, line[:0], true); err != nil {", "TestH15_SizeCap")
 m("H-15 eviction does not count the executions it removed", "internal/store/evict.go",
   "g.RemovedRecords = len(run.Declarations) + len(run.Executions) + len(run.Terminals)\n",
   "g.RemovedRecords = len(run.Declarations) + len(run.Terminals)\n", "TestH15_SizeCap")

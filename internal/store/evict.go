@@ -80,7 +80,7 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 		if err != nil {
 			return gaps, errors.Join(append(errs, err)...)
 		}
-		if err := appendHealed(gf, line); err != nil {
+		if err := appendHealed(gf, line, true); err != nil {
 			return gaps, errors.Join(append(errs, err)...)
 		}
 		if err := syncFull(gf); err != nil {
