@@ -149,3 +149,40 @@ func TestRubricHLD1_AHandEditedPluginsRecapPointsAtItsOwnCommand(t *testing.T) {
 			"and its slash command is loaded", out.SystemMessage, want)
 	}
 }
+
+// TestRubricHLD1_UnreadablePluginHooksReadAsUnreadable: a plugin whose
+// hooks.json does not parse reads as "plugin: unreadable" in status, not as
+// no plugin installed at all. Before, FindPlugin's inner loop swallowed
+// pluginDeclaration's error per event and still returned the plugin, so a
+// hooks.json that could not be read or parsed was read as a plugin that
+// declares nothing -- the same shape as no plugin at all -- and watch would
+// have installed settings entries beside a plugin whose actual state it
+// never saw.
+func TestRubricHLD1_UnreadablePluginHooksReadAsUnreadable(t *testing.T) {
+	e := newEnv(t)
+	fx := newPluginFixture(t, "rashomon@test")
+	fx.installed(t, e)
+	fx.enable(t, e, true)
+	if err := os.WriteFile(filepath.Join(fx.root, "hooks", "hooks.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res := e.status()
+	if res.exitCode != 0 {
+		t.Fatalf("status: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if !strings.Contains(res.stdout, "plugin: unreadable") {
+		t.Errorf("status = %q, want it to say the plugin is unreadable", res.stdout)
+	}
+	if strings.Contains(res.stdout, "plugin: none installed") {
+		t.Errorf("status read an unparseable plugin as no plugin at all:\n%s", res.stdout)
+	}
+
+	before := e.settingsBytes()
+	if res := e.watch(); res.exitCode == 0 {
+		t.Errorf("watch installed beside a plugin whose hooks.json it could not read")
+	}
+	if !bytes.Equal(before, e.settingsBytes()) {
+		t.Errorf("a refusing watch still wrote the settings file")
+	}
+}
