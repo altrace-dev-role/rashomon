@@ -44,6 +44,13 @@ func TestRubricErrors10_SyntaxErrorsNameLineAndColumn(t *testing.T) {
 		{"an array at the top level", "\n[1]", 2, 1, "not a JSON object"},
 		// The duplicate is the key on line 3; its closing quote is byte 9.
 		{"a duplicate key", "{\n  \"hooks\": {},\n  \"hooks\": {}\n}", 3, 9, `duplicate key "hooks"`},
+		// Column counts bytes, not characters: "中" is 3 bytes, so 'x' is the
+		// 11th byte of the line even though an editor would show it as the
+		// 9th character.
+		{"a multibyte key", "{\"中\": 1 x}", 1, 11, "invalid character 'x'"},
+		// \r\n is still one line break; the column after it starts over at 1
+		// exactly as it does after \n alone.
+		{"a CRLF line ending", "{\r\n\"a\": 1 x}", 2, 8, "invalid character 'x'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := ParseNamed("/home/u/.claude/settings.json", []byte(tc.in))
