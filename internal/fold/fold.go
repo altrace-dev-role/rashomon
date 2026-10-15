@@ -30,8 +30,12 @@ const Version = 1
 type File struct {
 	V      int    `json:"v"`
 	Writer string `json:"writer"`
-	// Dev and Inode identify records.ndjson. A change means the file was
-	// rewritten and every offset below is void.
+	// Dev and Inode identify records.ndjson across a restore from a copy
+	// or an eviction that replaces the file by rename: either changes the
+	// inode, voiding every offset below. They are an extra signal, not
+	// the only one a reader can rely on: store's own forget rewrites
+	// records.ndjson in place on purpose (same file, same inode), so a
+	// cursor also needs its own Generation (see Cursor) to catch that.
 	Dev   uint64 `json:"dev"`
 	Inode uint64 `json:"inode"`
 	// Records, Spill and Coverage are how far each file has been folded.
@@ -49,12 +53,26 @@ type File struct {
 }
 
 // Cursor is a position in one record file: the byte offset folded to, the
-// last seq folded, and the file size seen at that point, so that a file that
-// became shorter is detected before an offset past its end is trusted.
+// last seq folded, the file size seen at that point (so a file that became
+// shorter is detected before an offset past its end is trusted), and the
+// rewrite generation seen at that point.
+//
+// Generation exists because a file's size and a File's Dev/Inode are not
+// enough on their own: store.rewrite replaces a file's content in place
+// rather than by rename, so neither changes when a rewrite voids every
+// offset folded before it, including on a file a same-size rewrite leaves
+// at the same length. A writer bumps the generation on every in-place
+// rewrite; a cursor whose Generation is behind the file's current one is
+// stale regardless of what its Offset and SizeSeen say. Records, Spill
+// and Coverage read different files, each with its own generation -- this
+// is also the only identity check Spill and Coverage get, since File's
+// Dev/Inode names records.ndjson alone. Wiring the counter itself is the
+// store PR's; this package only names where a cursor keeps its copy.
 type Cursor struct {
-	Offset   int64 `json:"offset"`
-	Seq      int64 `json:"seq"`
-	SizeSeen int64 `json:"size_seen"`
+	Offset     int64 `json:"offset"`
+	Seq        int64 `json:"seq"`
+	SizeSeen   int64 `json:"size_seen"`
+	Generation int64 `json:"generation"`
 }
 
 // Mark is one prompt's extent in the record.
