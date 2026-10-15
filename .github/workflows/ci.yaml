@@ -224,7 +224,7 @@ jobs:
           sudo setcap cap_sys_admin+ep "$(command -v unshare)"
 
       - name: Mutation sweep
-        run: python3 test/mutation/sweep.py
+        run: python3 test/mutation/sweep.py --strict
 
   cross-build:
     name: Cross build (${{ matrix.goos }}/${{ matrix.goarch }})

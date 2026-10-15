@@ -2,9 +2,10 @@
 
 // The mutation sweep's own tests: the acceptance tests of DEL-1, DEL-2 and
 // DEL-17. sweep.py rewrites tracked source files in place and restores them
-// afterwards, so nothing here runs the sweep. These tests drive its read-only
-// modes (--list, --check) against the real tree and against fixtures, and read
-// the workflow files directly.
+// afterwards, so these tests drive its read-only modes (--list, --check)
+// against the real tree and against fixtures, and read the workflow files
+// directly. TestStrict_ is the one exception: it runs the full sweep, but
+// only against a throwaway module of its own under a TempDir, never this tree.
 package mutation
 
 import (
@@ -451,6 +452,36 @@ func slicesEqual(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// --strict. Without it, a mutant whose judging test SKIPPED here exits 0:
+// correct on a laptop missing the tooling H-17's socket half needs. With it,
+// the same skip fails the run, which is what the CI sweep job needs so a
+// runner image that stops granting that tooling goes red instead of green.
+// This is the one test that runs the real sweep, against a throwaway module
+// of its own, never this tree.
+func TestStrict_NotJudgedFailsOnlyWithTheFlag(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "go.mod"), "module fixture\n\ngo 1.21\n")
+	write(t, filepath.Join(root, "target.go"), "package fixture\n\nfunc A() int { return 1 }\n")
+	write(t, filepath.Join(root, "fixture_test.go"),
+		"package fixture\n\nimport \"testing\"\n\nfunc TestFixtureA_(t *testing.T) { t.Skip(\"not available here\") }\n")
+	if err := os.MkdirAll(filepath.Join(root, "mutants"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(root, "mutants", "a.py"),
+		mutant("mutant whose judging test always skips", "target.go", "return 1", "return 2", "TestFixtureA_"))
+
+	if out, code := sweep(t, root); code != 0 {
+		t.Errorf("without --strict, a NOT JUDGED mutant exited %d:\n%s", code, out)
+	}
+	out, code := sweep(t, root, "--strict")
+	if code == 0 {
+		t.Errorf("--strict exited 0 with a NOT JUDGED mutant:\n%s", out)
+	}
+	if !strings.Contains(out, "not judged here") {
+		t.Errorf("--strict output does not mention the skipped mutant:\n%s", out)
+	}
 }
 
 // jobsAndMissingTimeouts reads a workflow by its lines: a job is a key at two

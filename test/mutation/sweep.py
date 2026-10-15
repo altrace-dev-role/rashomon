@@ -287,7 +287,7 @@ def _dirty_targets():
     return [ln[3:] for ln in r.stdout.splitlines() if ln.strip()]
 
 
-def run_sweep():
+def run_sweep(strict=False):
     for _sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGPIPE):
         signal.signal(_sig, _restore_and_reraise)
 
@@ -391,7 +391,14 @@ def run_sweep():
         print("  These were not checked because the judging test skipped in this")
         print("  environment. They are not passes. Run the sweep where those tests")
         print("  run -- CI installs strace on ubuntu-latest for exactly this reason.")
-    return 1 if undetected else 0
+        if strict:
+            print("  --strict is set: treating them as failures.")
+    # Without --strict, a NOT JUDGED mutant exits 0: that is correct for a
+    # laptop that cannot run the socket half of H-17, where skipping is
+    # expected. In CI, where the tooling that lets them run is installed on
+    # purpose, the same skip means that tooling broke, and --strict is what
+    # turns a green sweep back into the red one that silence would hide.
+    return 1 if undetected or (strict and skipped) else 0
 
 
 def main(argv):
@@ -401,6 +408,8 @@ def main(argv):
     ap.add_argument("--files", action="append", default=[], metavar="GLOB",
                     help="load only the mutant files matching GLOB, tried against the current "
                          "directory first and then against test/mutation, unless absolute; repeatable")
+    ap.add_argument("--strict", action="store_true",
+                    help="exit non-zero if any mutant was not judged here, not only if undetected")
     args = ap.parse_args(argv)
     problems = load(args.files or [MUTANT_GLOB])
     if args.list:
@@ -415,7 +424,7 @@ def main(argv):
     if problems:
         print("refusing to sweep: the static checks fail", file=sys.stderr)
         return report(problems)
-    return run_sweep()
+    return run_sweep(strict=args.strict)
 
 
 if __name__ == "__main__":
