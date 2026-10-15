@@ -386,18 +386,7 @@ func sshDeclaredFiltered(run *store.Run, forgotten func(host string, declaredAtM
 // what has been forgotten, to decide which trail hosts are the client's own.
 // See declaredHostsFiltered for the view that applies forgotten.
 func declaredHosts(run *store.Run) []string {
-	set := map[string]bool{}
-	for _, d := range run.Declarations {
-		for _, h := range d.Hosts {
-			set[h] = true
-		}
-	}
-	out := make([]string, 0, len(set))
-	for h := range set {
-		out = append(out, h)
-	}
-	sort.Strings(out)
-	return out
+	return declaredHostsFiltered(run, nil)
 }
 
 // declaredHostsFiltered is declaredHosts with forgotten applied per
@@ -410,7 +399,20 @@ func declaredHostsFiltered(run *store.Run, forgotten func(host string, declaredA
 			if forgotten != nil && forgotten(h, d.RecordedAtMS) {
 				continue
 			}
-			set[h] = true
+			// A run stored before host.Canonical folded an IP literal to
+			// its one spelling holds the raw string -- "167838211" where a
+			// current build now writes "10.1.2.3". Re-canonicalising here
+			// is a no-op for every run shape.Hosts already wrote the
+			// canonical form into, and is what lets an old run compare
+			// equal to a new one in the baseline novelty walks this feeds
+			// (buildNovelty). A host that no longer canonicalises, or that
+			// host.Shaped now refuses, is dropped rather than carried
+			// forward under whatever it used to be.
+			canon, ok := host.Canonical(h)
+			if !ok || !host.Shaped(canon) {
+				continue
+			}
+			set[canon] = true
 		}
 	}
 	out := make([]string, 0, len(set))

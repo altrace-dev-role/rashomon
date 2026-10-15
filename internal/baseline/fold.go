@@ -6,6 +6,8 @@ import (
 	"maps"
 	"sort"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/host"
 )
 
 // lockName is the lock file beside the baselines, taken around every
@@ -175,6 +177,52 @@ func lastSeen(e entry) int64 {
 		return e.LastSeenAtUnixMS
 	}
 	return e.FirstSeenAtUnixMS
+}
+
+// canonicalizeHosts re-keys a loaded baseline through host.Canonical and
+// host.Shaped, merging what collapses together and dropping what is
+// refused.
+//
+// A file written before host.Canonical folded an IP literal to its one
+// spelling holds the uncanonicalised string -- "167838211" where a session
+// now names "10.1.2.3" -- and compared as stored, a host the baseline
+// already knew read as novel again. A key host.Canonical cannot read, or
+// that host.Shaped refuses once canonicalised, is dropped: it was never a
+// host, only something authority() stopped scanning at before this
+// package's own shape check existed downstream of it.
+//
+// Collision keeps the earliest FirstSeenSession and the later of the two
+// LastSeenAtUnixMS (lastSeen), the same ownership rule Fold applies when two
+// sessions name one host. Keys are walked in sorted order so that a tie --
+// both entries predate the LastSeenAtUnixMS field, or name the same instant
+// -- resolves the same way on every render rather than on map iteration
+// order.
+func canonicalizeHosts(hosts map[string]entry) map[string]entry {
+	keys := make([]string, 0, len(hosts))
+	for h := range hosts {
+		keys = append(keys, h)
+	}
+	sort.Strings(keys)
+	out := make(map[string]entry, len(hosts))
+	for _, h := range keys {
+		e := hosts[h]
+		canon, ok := host.Canonical(h)
+		if !ok || !host.Shaped(canon) {
+			continue
+		}
+		prev, seen := out[canon]
+		if !seen {
+			out[canon] = e
+			continue
+		}
+		next := prev
+		if e.FirstSeenAtUnixMS > 0 && (prev.FirstSeenAtUnixMS == 0 || e.FirstSeenAtUnixMS < prev.FirstSeenAtUnixMS) {
+			next.FirstSeenSession, next.FirstSeenAtUnixMS = e.FirstSeenSession, e.FirstSeenAtUnixMS
+		}
+		next.LastSeenAtUnixMS = max(lastSeen(prev), lastSeen(e))
+		out[canon] = next
+	}
+	return out
 }
 
 // readBounded reads a baseline file, refusing one over maxBaselineBytes.
