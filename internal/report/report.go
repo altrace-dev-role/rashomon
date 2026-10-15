@@ -328,8 +328,19 @@ func WithNonoTrail(path string) Option {
 	return func(o *options) { o.nonoTrail = path }
 }
 
+// CurrentReportVersion is ReportVersion's value on every report this binary
+// renders. Starts at 2: v1.1.0 shipped the destinations, families and chains
+// keys this version renamed and removed with no version field at all, so 1
+// is reserved for that shape and never written by this binary.
+const CurrentReportVersion = 2
+
 // Report is the rendered output.
 type Report struct {
+	// ReportVersion names the shape of the four sections TRU-57 allowlists.
+	// A typed decoder gets a zero value for a key one of them removed or
+	// renamed, not an error, so this is the field a consumer checks before
+	// trusting that an old integration still reads the current shape.
+	ReportVersion     int   `json:"report_version"`
 	GeneratedAtUnixMS int64 `json:"generated_at_unix_ms"`
 	// Redacted says the hostnames in this report are keyed digests rather than
 	// names. Carried on the report itself so the renderer can print the legend
@@ -348,7 +359,7 @@ type Report struct {
 // store so that asking the question cannot create one. It is the same shape
 // Build returns for a store with no runs.
 func Empty(now time.Time) *Report {
-	return &Report{GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
+	return &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
 }
 
 // Build renders one session, or every session when sessionID is empty.
@@ -417,7 +428,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 
 	// Sessions starts as an empty slice rather than nil, so a store with no runs
 	// marshals the same array a store with runs does. See the field comment.
-	rep := &Report{GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
+	rep := &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
 	for _, name := range names {
 		run, err := st.ReadRunDir(name)
 		if err != nil {
