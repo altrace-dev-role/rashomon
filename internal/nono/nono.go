@@ -1,10 +1,10 @@
 // Package nono reads the audit trail another sandbox wrote.
 //
-// It is a FOURTH EVIDENCE SOURCE, beside the hook's declarations, the
-// transcript, and the proxy's wire rows. Like the wire reader it is read-only
-// over a file another program owns, and an absent or unreadable trail is a
-// coverage statement rather than an error: a report that failed when nono was
-// not running is a report nobody can use to learn that nono was not running.
+// It is a THIRD EVIDENCE SOURCE, beside the hook's declarations and the
+// transcript, and is read-only over a file another program owns: an absent or
+// unreadable trail is a coverage statement rather than an error. A report
+// that failed when nono was not running is a report nobody can use to learn
+// that nono was not running.
 //
 // WHAT IT TAKES, AND NOTHING ELSE: a decision, a transport mode, a host, a
 // port, a denial category and an instant. The shapes below were MEASURED
@@ -62,13 +62,10 @@ type Event struct {
 	// one is ever added.
 	Decision string `json:"decision"`
 	// Mode is nono's transport: "connect" for a tunnel, "reverse" for a
-	// request that went through its reverse proxy.
-	//
-	// It is kept because it is the one field that explains a DISAGREEMENT with
-	// the wire. rashomon exports no HTTP_PROXY, so plain HTTP is outside what
-	// its proxy can see -- and a reverse-mode event is exactly that traffic.
-	// Without this field, "nono saw a host we did not" reads as a recording
-	// failure instead of as a known boundary.
+	// request that went through its reverse proxy. Kept because it is nono's
+	// own vocabulary for how it saw the traffic, and this package reduces an
+	// event to what a join needs without deciding which fields a reader will
+	// want.
 	Mode string `json:"mode"`
 	// Category is nono's denial_category, empty on an allow. Measured values
 	// include "host_denied" for both an allowlist miss and a deny-list hit;
@@ -85,10 +82,9 @@ type Observation struct {
 	Trail    string `json:"trail,omitempty"`
 	// Events inside the window. Always an array, never null.
 	Events []Event `json:"events"`
-	// Inherited counts events outside it, reported rather than dropped for the
-	// same reason the wire reader reports them: "the sandbox saw traffic that
-	// was not this session's" is a fact, and discarding it makes a shared
-	// audit directory look quiet.
+	// Inherited counts events outside it, reported rather than dropped: "the
+	// sandbox saw traffic that was not this session's" is a fact, and
+	// discarding it makes a shared audit directory look quiet.
 	Inherited int `json:"inherited"`
 	// Sessions counts session_started records seen, so a reader can tell one
 	// sandbox session from several sharing a trail.

@@ -46,15 +46,15 @@ var prefix = mark + " rashomon: "
 // Line decides whether d is worth a line and renders it if so.
 //
 // The five triggers are the spec's "When it speaks" list, minus one: a
-// destination new for this project needs the proxy database and the
-// per-project baseline (internal/report/destinations.go's buildNovelty),
-// and the digest this package reads deliberately opens neither -- Part 3's
-// whole reason for existing separately from report.Build is that report
-// reads the proxy store and writes baseline/ on every call, which this
-// path cannot afford to do once per turn without reintroducing exactly the
-// side effects H-86/H-87 exist to rule out. There is therefore no honest way
-// for this package to know a destination is new, and it does not pretend to;
-// see the PR description for the fuller account of this gap.
+// destination new for this project needs the per-project baseline
+// (internal/report/destinations.go's buildNovelty), and the digest this
+// package reads deliberately does not open it -- Part 3's whole reason for
+// existing separately from report.Build is that report writes baseline/ on
+// every call, which this path cannot afford to do once per turn without
+// reintroducing exactly the side effects H-86/H-87 exist to rule out. There
+// is therefore no honest way for this package to know a destination is new,
+// and it does not pretend to; see the PR description for the fuller account
+// of this gap.
 //
 // Two triggers join them for test-bending: a failed test command that passed
 // when the only recorded edits between were to files named like tests, and
