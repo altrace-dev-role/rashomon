@@ -214,15 +214,19 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 	}
 	// A panic recovered inside the label derivation cost the label and not
 	// the call, so the terminal above stays ok; the coverage record is where
-	// it is named, unless something that cost more already is.
-	covReason := reason
-	if covReason == "" && h.labelRecovered {
-		covReason = store.ReasonRecoveredPanic
+	// it is named, unless something that cost more already is. BuildCoverage
+	// is given reason, not a pre-substituted one, so it gets the chance to
+	// resolve hook_entry_absent and the rest first; recovered_panic only
+	// takes the record's empty slot, never one BuildCoverage already filled.
+	cov := BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.cwd, h.now())
+	if cov.Reason == nil && h.labelRecovered {
+		cov.Reason = nilIfEmpty(store.ReasonRecoveredPanic)
+		cov.State = store.StateUnverified
 	}
 	// A call-phase coverage record that cannot be written is read as its
 	// absence: the report counts calls against their coverage (H-10), and a
 	// call with none never reads as covered.
-	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.sessionID, store.PhaseCall, covReason, h.cwd, h.now()))
+	_ = h.st.AppendCoverage(cov)
 }
 
 // startDirectory is the directory a call's command starts in: the payload's
