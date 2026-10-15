@@ -38,7 +38,7 @@ func TestNextSeqRecoversThroughTheLockedHandleNotTheRecordsPath(t *testing.T) {
 	for _, seq := range []int64{1, 2} {
 		line := []byte(`{"type":"declaration","schema_version":2,"seq":` +
 			strconv.FormatInt(seq, 10) + `,"tool_use_id":"toolu_x","session_id":"sess"}` + "\n")
-		if err := appendHealed(f, line); err != nil {
+		if err := appendHealed(f, line, true); err != nil {
 			t.Fatalf("seeding seq %d: %v", seq, err)
 		}
 	}

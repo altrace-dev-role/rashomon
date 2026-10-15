@@ -35,7 +35,7 @@ m("REC-32 forget --host prints nothing when one run fails", "cmd/rashomon/main.g
 m("REC-32 forget --host succeeds while a run still holds the host", "cmd/rashomon/main.go",
   "\tfmt.Fprintln(stdout)\n\treturn errors.Join(forgetErr, clearErr)\n", "\tfmt.Fprintln(stdout)\n\treturn clearErr\n", "TestREC32e_")
 m("REC-32 the ordered append goes on after a torn tail", "internal/store/store.go",
-  "\tif err := appendHealed(f, line); err != nil {\n", "\tif _, err := f.Write(line); err != nil {\n",
+  "\tif err := appendHealed(f, line, true); err != nil {\n", "\tif _, err := f.Write(line); err != nil {\n",
   "TestREC32_TornTailNeverSwallowsTheNextRecord")
 # A forget --host that failed before touching a run, its store-level record
 # included, prints no line: "later reports still leave it out" would be false.
