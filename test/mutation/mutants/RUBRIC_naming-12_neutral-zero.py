@@ -11,3 +11,13 @@ m("RUBRIC naming-12 the zero CaptureMode copies the head again", "internal/jsons
   "\t_ CaptureMode = iota // the zero value: no mode, refused\n\t// CaptureHead keeps the first Max bytes.\n\tCaptureHead\n",
   "\t// CaptureHead keeps the first Max bytes.\n\tCaptureHead CaptureMode = iota\n",
   "TestRubricNAMING12_AnUnsetCaptureModeIsRefused")
+m("RUBRIC naming-12 an unset or unknown CaptureMode gets ErrPaths' own message",
+  "internal/jsonscan/capture.go",
+  "\tdefault:\n\t\treturn fmt.Errorf(\"%w: capture mode %d is not set or not a mode Stream knows\", ErrPaths, p.Mode)\n",
+  "\tdefault:\n\t\treturn ErrPaths\n",
+  "TestRubricNAMING12_AnUnsetCaptureModeIsRefused")
+m("RUBRIC naming-12 a CaptureLines Max too small gets ErrPaths' own message",
+  "internal/jsonscan/capture.go",
+  "\t\tif p.Max < utf8.UTFMax {\n\t\t\treturn fmt.Errorf(\"%w: a CaptureLines path's Max (%d) must be at least %d, to hold one rune\", ErrPaths, p.Max, utf8.UTFMax)\n\t\t}\n",
+  "\t\tif p.Max < utf8.UTFMax {\n\t\t\treturn ErrPaths\n\t\t}\n",
+  "TestRubricNAMING12_ACaptureLinesBelowOneRuneIsRefused")
