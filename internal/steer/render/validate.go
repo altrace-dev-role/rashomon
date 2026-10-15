@@ -14,9 +14,10 @@ const MessagePrefix = "rashomon record: "
 // MirrorPrefix and MirrorSuffix wrap a rendered model_text into the
 // user-facing mirror, byte for byte (tech 4.2.7: "Mirror: `※ rashomon told
 // the agent: "<model text>"`, byte for byte"). The mirror form itself is
-// not ASCII -- it opens with U+203B, a reference mark -- so Mirror does not
-// run the wrapped string back through Validate, whose ASCII rule governs
+// not ASCII -- it opens with U+203B, a reference mark -- so Mirror never
+// runs the WRAPPED string back through Validate, whose ASCII rule governs
 // only the model-facing text the mirror quotes, not the wrapper around it.
+// Mirror does run Validate over modelText itself, before wrapping it.
 const (
 	MirrorPrefix = "※ rashomon told the agent: \""
 	MirrorSuffix = "\""
@@ -34,12 +35,16 @@ const MaxBriefingMessageBytes = 1600
 // 40.4.3: "then at most 5 lines").
 const maxBriefingLines = 6
 
-// Mirror wraps modelText for user-facing display. It performs no
-// validation of its own: callers are expected to have already run
-// modelText through Validate, and Mirror's only job is the fixed wrap,
-// byte for byte.
-func Mirror(modelText string) string {
-	return MirrorPrefix + modelText + MirrorSuffix
+// Mirror validates modelText and wraps it for user-facing display, byte
+// for byte, or returns the error that kept it from wrapping unchecked
+// text: Validate already refuses a double quote in modelText (checkLine),
+// so the wrap's own closing quote can never be shifted early by the text
+// it quotes.
+func Mirror(modelText string) (string, error) {
+	if err := Validate(modelText); err != nil {
+		return "", err
+	}
+	return MirrorPrefix + modelText + MirrorSuffix, nil
 }
 
 // forbiddenSubstring is refused in any case (tech 4.2.7; archive 40.3.8:
@@ -105,7 +110,7 @@ func checkLine(line string) error {
 		switch c := line[i]; {
 		case c > unicode.MaxASCII:
 			return errors.New("render: message holds a non-ASCII byte")
-		case c == '<' || c == '>' || c == '`':
+		case c == '<' || c == '>' || c == '`' || c == '"':
 			return fmt.Errorf("render: message holds the forbidden character %q", c)
 		case c < 0x20 || c == 0x7f:
 			return errors.New("render: message holds a control character")

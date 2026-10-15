@@ -232,10 +232,27 @@ func TestMessage_ZeroValueCarriesNothing(t *testing.T) {
 }
 
 func TestMirror_WrapsByteForByte(t *testing.T) {
-	got := Mirror(MessagePrefix + "frozen path touched")
+	got, err := Mirror(MessagePrefix + "frozen path touched")
+	if err != nil {
+		t.Fatalf("Mirror() error = %v", err)
+	}
 	want := "※ rashomon told the agent: \"" + MessagePrefix + "frozen path touched\""
 	if got != want {
 		t.Errorf("Mirror() = %q, want %q", got, want)
+	}
+}
+
+// TestMirror_RunsValidateAndRefusesADoubleQuote: a double quote in
+// modelText would close the mirror's own wrapping quote early and let the
+// rest of modelText read as if it were outside the quote. Mirror now runs
+// Validate first, and Validate refuses a double quote in any line, so the
+// call never wraps unchecked text.
+func TestMirror_RunsValidateAndRefusesADoubleQuote(t *testing.T) {
+	if _, err := Mirror(MessagePrefix + `a "b`); err == nil {
+		t.Error("Mirror accepted a double quote in modelText")
+	}
+	if _, err := Mirror("not a rendered message"); err == nil {
+		t.Error("Mirror accepted text that fails Validate")
 	}
 }
 
