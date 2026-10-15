@@ -241,7 +241,7 @@ func collectIDs(r io.Reader, into, results, denied, unhooked map[string]bool) er
 // (TestRubricNAMING1_BothReadersSkipAFinalSidechainLine).
 //
 // It reads r and nothing else; which file r is, and opening it, is the
-// caller's (finalAssistantTextOfFile for the report).
+// caller's (gather.finalText for the report).
 func FinalAssistantText(r io.Reader) (string, bool) {
 	var last string
 	sc := bufio.NewScanner(r)
