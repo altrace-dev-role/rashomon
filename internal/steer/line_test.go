@@ -203,3 +203,21 @@ func TestLabelRule_IsMeasuresTable(t *testing.T) {
 		}
 	}
 }
+
+// TestNewLine_EvidenceSeqsAndSlotsAreEmptyNotNull: a Line built through
+// NewLine marshals evidence_seqs and slots as [] and {}, never null,
+// matching the spec's example line, which never writes either key as
+// null.
+func TestNewLine_EvidenceSeqsAndSlotsAreEmptyNotNull(t *testing.T) {
+	b, err := json.Marshal(NewLine())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	s := string(b)
+	if !strings.Contains(s, `"evidence_seqs":[]`) {
+		t.Errorf("evidence_seqs did not marshal as []: %s", s)
+	}
+	if !strings.Contains(s, `"slots":{}`) {
+		t.Errorf("slots did not marshal as {}: %s", s)
+	}
+}
