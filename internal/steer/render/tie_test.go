@@ -22,7 +22,12 @@ func TestDEL22e_MessageRidesOnlyItsOwnPattern(t *testing.T) {
 	if err := f.Check(); err != nil {
 		t.Fatalf("the message's own pattern: %v", err)
 	}
+	// Priority moves with Pattern: SubtaskGate's own table priority, not
+	// RegressionLocation's, so the priority check (which runs before the
+	// message check) does not fail this case for an unrelated reason and
+	// mask whether the message-pattern check still runs at all.
 	f.Pattern = pattern.SubtaskGate
+	f.Priority = 90
 	if err := f.Check(); !errors.Is(err, steer.ErrFinding) {
 		t.Errorf("a regression-location message on a subtask-gate finding: %v, want ErrFinding", err)
 	}
