@@ -47,6 +47,11 @@ SHARED_TESTS = HERE / "shared-tests.txt"
 ROW_PREFIXES = ("REC", "VER", "FUN", "LRN", "STR", "MSR", "BRD", "TRU", "RES", "LUI", "DEL")
 ROW_FILE = re.compile(r"^(" + "|".join(ROW_PREFIXES) + r")-(\d+)_")
 ROW_TEST = re.compile(r"Test(" + "|".join(ROW_PREFIXES) + r")(\d+)[a-z]?_")
+# Finds the start of every Test<PREFIX> token, matched or not. check() anchors
+# ROW_TEST at each start it finds here, so a token that only LOOKS like a row
+# test -- a regex metacharacter, a missing trailing underscore, a literal
+# anchor -- is reported instead of silently matching nothing.
+ROW_TOKEN = re.compile(r"Test(" + "|".join(ROW_PREFIXES) + r")")
 
 M = []  # (name, file, old, new, test regex)
 IMPORTS = {}  # name -> (file, import block as it is, import block with the extra line)
@@ -156,7 +161,12 @@ def check(complete):
         row = ROW_FILE.match(os.path.basename(ORIGIN[name]))
         if row:
             claimed = f"{row.group(1)}-{row.group(2)}"
-            for t in ROW_TEST.finditer(test):
+            for tok in ROW_TOKEN.finditer(test):
+                t = ROW_TEST.match(test, tok.start())
+                if t is None:
+                    problems.append(f"{name!r} in {rel(ORIGIN[name])}: {test!r} has a Test{tok.group(1)} token "
+                                    f"at {tok.start()} that is not Test<PREFIX><n>[a-z]?_")
+                    continue
                 pinned = f"{t.group(1)}-{t.group(2)}"
                 if pinned != claimed and (claimed, t.group(0)) not in shared:
                     problems.append(f"{name!r} in {rel(ORIGIN[name])}: names {t.group(0)}, which pins {pinned}, "
