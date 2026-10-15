@@ -484,6 +484,30 @@ func TestStrict_NotJudgedFailsOnlyWithTheFlag(t *testing.T) {
 	}
 }
 
+// The sweep job runs only on a manual dispatch, so two dispatches share no
+// state; cancelling an older one when a newer dispatch starts costs nothing
+// and saves a runner's minutes.
+func TestSweepJobCancelsAnOlderRunOnRedispatch(t *testing.T) {
+	root := moduleRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+	i := strings.Index(doc, "\n  sweep:\n")
+	if i < 0 {
+		t.Fatal("ci.yaml: no sweep: job found")
+	}
+	next := strings.Index(doc[i+1:], "\n  cross-build:\n")
+	if next < 0 {
+		t.Fatal("ci.yaml: no cross-build: job found after sweep:")
+	}
+	job := doc[i : i+1+next]
+	if !strings.Contains(job, "concurrency:") {
+		t.Error("the sweep job carries no concurrency group")
+	}
+}
+
 // jobsAndMissingTimeouts reads a workflow by its lines: a job is a key at two
 // spaces of indent under `jobs:`, and its timeout is a `timeout-minutes:` line
 // at four spaces with a positive integer. No YAML parser, deliberately: the

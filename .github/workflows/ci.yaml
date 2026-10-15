@@ -205,6 +205,12 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    # Two manual dispatches share no state and would only waste a second
+    # runner's minutes side by side; cancelling the older one when a newer
+    # dispatch starts is strictly better than letting both run to the end.
+    concurrency:
+      group: sweep-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
