@@ -53,6 +53,12 @@ const (
 	// the seq counter of a hook's first ordered append, which is how REC-34
 	// reaches a failed barrier without a failing disk.
 	PointStoreBarrier = "store.barrier"
+	// PointHookBeforeFlush is after Close has appended the terminal and
+	// coverage records and before Flush issues its one full sync (REC-34):
+	// a signal caught there (hook.WatchSignals) still reaches Flush, and
+	// one that is not ends the process with those records on disk but
+	// nothing yet fully synced.
+	PointHookBeforeFlush = "hook.before_flush"
 )
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders
