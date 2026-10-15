@@ -129,8 +129,10 @@ func (p *Payload) Int(k int) (*int64, error) {
 	return &n, nil
 }
 
-// Strs decodes the string fields ks into dst, in order, failing on the first
-// wrong type before any is used: one bad field fails the whole intake, as it
+// Strs decodes the string fields ks into dst, in order, and returns on the
+// first one of the wrong type. Fields before it may already be written to
+// dst, which is safe because every caller discards dst on error (handle.go,
+// post.go, probe.go, paused.go): one bad field fails the whole intake, as it
 // failed the struct decode.
 func (p *Payload) Strs(dst []*string, ks ...int) error {
 	for i, k := range ks {
