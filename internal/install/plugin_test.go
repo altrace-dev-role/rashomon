@@ -42,10 +42,9 @@ func readShippedHooks(t *testing.T) []byte {
 }
 
 // TestRubricHLD1_ShippedHooksDeclareEveryEvent: the hooks.json the plugin
-// ships declares every event watch installs, as watch installs it -- the
-// same matcher and the same timeout, under the same intact() check a
-// settings entry is held to. A shipped timeout of 600 or a matcher of "Bash"
-// fails here, not in a user's report.
+// ships fires our command on every call, under the same coverageIntact
+// check a settings entry is held to for coverage. A shipped matcher of
+// "Bash" fails here, not in a user's report.
 func TestRubricHLD1_ShippedHooksDeclareEveryEvent(t *testing.T) {
 	root := pluginRoot(t, readShippedHooks(t))
 	for _, event := range Events() {
@@ -59,11 +58,12 @@ func TestRubricHLD1_ShippedHooksDeclareEveryEvent(t *testing.T) {
 	}
 }
 
-// TestRubricHLD1_NarrowedPluginEntryIsNotDeclared: a plugin entry edited the
-// way a settings entry would be refused for -- a matcher narrowed to "Bash",
-// a timeout of 600 -- does not count as declaring the event. A narrowed
-// PreToolUse matcher means Edit, Write and every MCP call go unrecorded, and
-// reading that as present_plugin would let the run render verified over them.
+// TestRubricHLD1_NarrowedPluginEntryIsNotDeclared: a plugin entry whose
+// matcher narrows which calls it fires on -- "Bash" on a tool event, any
+// value at all on an event with no matcher to narrow -- does not count as
+// declaring the event whole. A narrowed PreToolUse matcher means Edit,
+// Write and every MCP call go unrecorded, and reading that as
+// present_plugin would let the run render verified over them.
 func TestRubricHLD1_NarrowedPluginEntryIsNotDeclared(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -73,10 +73,7 @@ func TestRubricHLD1_NarrowedPluginEntryIsNotDeclared(t *testing.T) {
 	}{
 		{"PreToolUse matcher Bash", EventPreToolUse, "matcher", "Bash"},
 		{"PostToolUseFailure matcher Bash", EventPostToolUseFailure, "matcher", "Bash"},
-		{"PreToolUse matcher removed", EventPreToolUse, "matcher", nil},
 		{"SessionStart given a matcher", EventSessionStart, "matcher", "startup"},
-		{"PreToolUse timeout 600", EventPreToolUse, "timeout", 600},
-		{"Stop timeout 600", EventStop, "timeout", 600},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -102,11 +99,70 @@ func TestRubricHLD1_NarrowedPluginEntryIsNotDeclared(t *testing.T) {
 	}
 }
 
-// TestRubricHLD1_HandEditedPluginEntryStillDeclares: an edited group is not
-// the entry watch installs, but Claude Code still runs it, so it still counts
-// as declaring the event. That second answer is the one watch's refusal and
-// status's overlap need: a narrowed or slowed plugin entry records every call
-// it fires on, twice beside a settings install.
+// TestRubricHLD1_TimeoutMatcherEquivalenceAndExtraHooksDoNotCostCoverage:
+// a timeout different from the one watch installs, a matcher spelled nil
+// or "" rather than the literal "*", and a second hook added alongside
+// ours all still read declared AND whole for coverage, because none of
+// them changes whether our command fires on every call -- a different
+// timeout changes how long Claude Code waits for it, an equivalent matcher
+// spelling is still match-all, and the other hook is something else
+// running beside ours. Before coverageIntact existed, all three read
+// absent beside a session that had in fact recorded cleanly.
+func TestRubricHLD1_TimeoutMatcherEquivalenceAndExtraHooksDoNotCostCoverage(t *testing.T) {
+	cases := []struct {
+		name  string
+		event string
+		field string
+		value any
+	}{
+		{"PreToolUse timeout 600", EventPreToolUse, "timeout", 600},
+		{"Stop timeout 600", EventStop, "timeout", 600},
+		{"PreToolUse matcher removed", EventPreToolUse, "matcher", nil},
+		{"PreToolUse matcher empty", EventPreToolUse, "matcher", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := pluginRoot(t, editShipped(t, c.event, c.field, c.value))
+			declared, whole, err := pluginDeclaration(root, c.event)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !declared || !whole {
+				t.Errorf("%s with %s=%v: declared=%v whole=%v, want both true", c.event, c.field, c.value, declared, whole)
+			}
+		})
+	}
+
+	t.Run("an extra hook in the group", func(t *testing.T) {
+		var doc map[string]any
+		if err := json.Unmarshal(readShippedHooks(t), &doc); err != nil {
+			t.Fatal(err)
+		}
+		group := doc["hooks"].(map[string]any)[EventPreToolUse].([]any)[0].(map[string]any)
+		group["hooks"] = append(group["hooks"].([]any), map[string]any{
+			"type": "command", "command": "a-linter", "timeout": 5,
+		})
+		out, err := json.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := pluginRoot(t, out)
+		declared, whole, err := pluginDeclaration(root, EventPreToolUse)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !declared || !whole {
+			t.Errorf("PreToolUse with an extra hook in the group: declared=%v whole=%v, want both true", declared, whole)
+		}
+	})
+}
+
+// TestRubricHLD1_HandEditedPluginEntryStillDeclares: a group whose matcher
+// narrows it is not the entry watch installs, but Claude Code still runs it
+// on the calls that matcher does match, so it still counts as declaring
+// the event. That second answer is the one watch's refusal and status's
+// overlap need: a narrowed plugin entry records every call it fires on,
+// twice beside a settings install.
 func TestRubricHLD1_HandEditedPluginEntryStillDeclares(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -115,8 +171,6 @@ func TestRubricHLD1_HandEditedPluginEntryStillDeclares(t *testing.T) {
 		value any
 	}{
 		{"PreToolUse matcher Bash", EventPreToolUse, "matcher", "Bash"},
-		{"PreToolUse timeout 30", EventPreToolUse, "timeout", 30},
-		{"Stop timeout 600", EventStop, "timeout", 600},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

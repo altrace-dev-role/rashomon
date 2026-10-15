@@ -7,15 +7,20 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/install"
 )
 
 // The tests below cover a plugin whose every hooks.json group has been hand
-// edited -- each hook's timeout changed. No group is the entry watch installs,
+// edited -- each group given a matcher that narrows it, "Bash" on the three
+// tool events and a stray value on the rest, which have none to narrow and
+// so treat any value as a deviation (plugin_test.go's "SessionStart given a
+// matcher" case pins the same rule). No group is the entry watch installs,
 // so coverage reads hook_entry absent for it (TestRubricHLD1_NarrowedPlugin
-// HooksReadAbsent). The plugin still fires on every one of those events, so
-// the questions "would a settings install record twice beside it" and "will
-// anything record a tool call" are about whether it declares our commands at
-// all, not whether it declares them intact.
+// HooksReadAbsent). The plugin still runs our command for every one of
+// those events, so the questions "would a settings install record twice
+// beside it" and "will anything record a tool call" are about whether it
+// declares our command at all, not whether it declares it on every call.
 
 // TestRubricHLD1_WatchRefusesUnderAHandEditedPlugin: watch refuses beside an
 // enabled plugin whose groups are all hand edited, as it does beside an
@@ -26,7 +31,7 @@ func TestRubricHLD1_WatchRefusesUnderAHandEditedPlugin(t *testing.T) {
 	fx := newPluginFixture(t, "rashomon@test")
 	fx.installed(t, e)
 	fx.enable(t, e, true)
-	retimeEveryPluginHook(t, filepath.Join(fx.root, "hooks", "hooks.json"), 30)
+	narrowEveryPluginGroup(t, filepath.Join(fx.root, "hooks", "hooks.json"))
 	before := e.settingsBytes()
 
 	res := e.watch()
@@ -55,7 +60,7 @@ func TestRubricHLD1_StatusNamesTheOverlapUnderAHandEditedPlugin(t *testing.T) {
 	fx := newPluginFixture(t, "rashomon@test")
 	fx.installed(t, e)
 	fx.enable(t, e, true)
-	retimeEveryPluginHook(t, filepath.Join(fx.root, "hooks", "hooks.json"), 30)
+	narrowEveryPluginGroup(t, filepath.Join(fx.root, "hooks", "hooks.json"))
 
 	res := e.status()
 	if res.exitCode != 0 {
@@ -78,43 +83,17 @@ func TestRubricHLD1_AHandEditedPluginStillRecords(t *testing.T) {
 	fx := newPluginFixture(t, "rashomon@test")
 	fx.installed(t, e)
 	fx.enable(t, e, true)
-	retimeEveryPluginHook(t, filepath.Join(fx.root, "hooks", "hooks.json"), 30)
+	narrowEveryPluginGroup(t, filepath.Join(fx.root, "hooks", "hooks.json"))
 
 	if got := fieldLine(t, e.status().stdout, "recording"); got != "active" {
 		t.Errorf("recording reads %q with a hand-edited plugin enabled and no store yet, want active", got)
 	}
 }
 
-// retimeEveryPluginHook sets the timeout of every hook in every group of a
-// plugin's hooks.json, so that intact() accepts none of them.
-func retimeEveryPluginHook(t *testing.T, path string, timeout int) {
-	t.Helper()
-	body, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(body, &doc); err != nil {
-		t.Fatal(err)
-	}
-	for _, groups := range doc["hooks"].(map[string]any) {
-		for _, g := range groups.([]any) {
-			for _, h := range g.(map[string]any)["hooks"].([]any) {
-				h.(map[string]any)["timeout"] = timeout
-			}
-		}
-	}
-	out, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeJSONFile(t, path, string(out))
-}
-
 // TestRubricHLD1_AHandEditedPluginsRecapPointsAtItsOwnCommand: the recap line
 // a hand-edited plugin's own Stop entry prints points at /rashomon:report.
 // The plugin is loaded -- Claude Code just ran its binary -- so its slash
-// command exists, whatever the entry's timeout says. Under the intact-only
+// command exists, whatever the entry's matcher says. Under the intact-only
 // answer the unmarked invocation read as "not the plugin" and pointed at the
 // CLI command instead, the mismatch TestH91_TheReportPointerNamesACommand
 // TheOriginHas protects against for an untouched plugin.
@@ -123,7 +102,7 @@ func TestRubricHLD1_AHandEditedPluginsRecapPointsAtItsOwnCommand(t *testing.T) {
 	fx := newPluginFixture(t, "rashomon@test")
 	fx.installed(t, e)
 	fx.enable(t, e, true)
-	retimeEveryPluginHook(t, filepath.Join(fx.root, "hooks", "hooks.json"), 30)
+	narrowEveryPluginGroup(t, filepath.Join(fx.root, "hooks", "hooks.json"))
 
 	run := func(payload string, args ...string) result {
 		t.Helper()
@@ -185,4 +164,38 @@ func TestRubricHLD1_UnreadablePluginHooksReadAsUnreadable(t *testing.T) {
 	if !bytes.Equal(before, e.settingsBytes()) {
 		t.Errorf("a refusing watch still wrote the settings file")
 	}
+}
+
+// narrowEveryPluginGroup gives every event's group in a plugin's hooks.json
+// a matcher that coverageIntact refuses: "Bash" on the three tool events
+// hasMatcher recognises, under which our command still runs on Bash calls,
+// and a stray value on the rest, which have no matcher to narrow and so
+// treat any value there as a deviation from the entry watch installs.
+// runsOurCommand never reads a group's matcher, so our command is still
+// found and every event stays declared.
+func narrowEveryPluginGroup(t *testing.T, path string) {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatal(err)
+	}
+	hooks := doc["hooks"].(map[string]any)
+	for _, event := range install.Events() {
+		matcher := "narrowed"
+		switch event {
+		case install.EventPreToolUse, install.EventPostToolUse, install.EventPostToolUseFailure:
+			matcher = "Bash"
+		}
+		group := hooks[event].([]any)[0].(map[string]any)
+		group["matcher"] = matcher
+	}
+	out, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeJSONFile(t, path, string(out))
 }

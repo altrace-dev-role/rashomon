@@ -396,16 +396,20 @@ func RemoveIf(doc *settings.Document, match func(installID string) bool, force b
 	return total, left, nil
 }
 
-// Present reports whether our entry for an event is installed as watch
-// installs it. This is what the coverage record's hook_entry field means: not
-// "some entry exists" but "our entry, with our matcher and our timeout".
+// Present reports whether our entry for an event fires on every call this
+// event raises. This is what the coverage record's hook_entry field means:
+// not "some entry exists" but "our command, under a matcher that does not
+// narrow it" -- coverageIntact's question, not intact's. A timeout
+// different from the one watch installs, or another hook added to our
+// group, changes how fast or how often something ELSE there runs, not
+// whether ours does, so neither costs this.
 func Present(doc *settings.Document, installID, event string) (bool, error) {
 	entries, err := doc.HookEntries(event)
 	if err != nil {
 		return false, err
 	}
 	for _, e := range entries {
-		if Owner(e, event) == installID && intact(e, event) == "" {
+		if Owner(e, event) == installID && coverageIntact(e, event) == "" {
 			return true, nil
 		}
 	}
@@ -472,6 +476,58 @@ func intact(raw json.RawMessage, event string) string {
 		return fmt.Sprintf("timeout is %d, expected %d", h.Timeout, want)
 	}
 	return ""
+}
+
+// matcherFires reports whether m, a matcher group's own matcher field,
+// leaves the group matching every call event raises. On an event that
+// supports a matcher at all, nil, empty and the literal Matcher ("*") are
+// the three spellings Claude Code itself treats as match-all (the hooks
+// documentation lists all three), so intact's stricter requirement -- the
+// literal string only -- is not this question's answer. On an event with no
+// matcher support, any matcher at all narrows it; omitting intact's other
+// rule here, Owner's inverse (empty matches present AND absent), would be
+// wrong for the same reason hasMatcher exists.
+func matcherFires(event string, m *string) bool {
+	if m == nil || *m == "" {
+		return true
+	}
+	return hasMatcher(event) && *m == Matcher
+}
+
+// coverageIntact reports why a matcher group containing one of our command
+// hooks, as the caller has already established, would not fire that
+// command on every call event raises, or "" if it does. Present asks this
+// for a settings entry, pluginDeclaration for a plugin's; it is what the
+// coverage record's hook_entry field means, which is a narrower question
+// than intact's.
+//
+// Unlike intact, it does not ask about hook count or timeout: a second hook
+// alongside ours in the group, or a timeout different from the one watch
+// installs, changes how often or how fast something ELSE in the group
+// runs, not whether our command does. Before this distinction existed, an
+// entry carrying either read hook_entry absent even though every call was
+// recorded, because both questions were intact's alone. intact itself is
+// unchanged and is still what Apply and RemoveIf ask, because overwriting
+// or removing either kind of edit without consent is wrong regardless of
+// whether it costs coverage.
+func coverageIntact(raw json.RawMessage, event string) string {
+	var g matcherGroup
+	if err := json.Unmarshal(raw, &g); err != nil {
+		return "entry does not parse as a matcher group"
+	}
+	if !matcherFires(event, g.Matcher) {
+		got := "absent"
+		if g.Matcher != nil {
+			got = fmt.Sprintf("%q", *g.Matcher)
+		}
+		return fmt.Sprintf("matcher is %s, which narrows which calls fire", got)
+	}
+	for _, h := range g.Hooks {
+		if h.Type == "command" {
+			return ""
+		}
+	}
+	return "no hook in the group is type \"command\""
 }
 
 func sameJSON(a, b json.RawMessage) bool {

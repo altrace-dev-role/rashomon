@@ -199,8 +199,10 @@ func pluginDeclaresEvent(root, event string) (bool, error) {
 // questions. declared: some group runs our command for event, so Claude Code
 // fires the plugin on it, whatever its matcher or timeout -- the question
 // watch's refusal and status's overlap ask, because a plugin entry edited by
-// hand still records every call it fires on. whole: some such group is also
-// intact, the entry watch installs -- the question coverage asks.
+// hand still records every call it fires on. whole: some such group also
+// fires on every call, coverageIntact's question -- not necessarily the
+// exact entry watch installs, since a different timeout or an extra hook in
+// the group changes neither answer.
 func pluginDeclaration(root, event string) (declared, whole bool, err error) {
 	data, err := os.ReadFile(filepath.Join(root, "hooks", "hooks.json"))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -220,12 +222,12 @@ func pluginDeclaration(root, event string) (declared, whole bool, err error) {
 			continue
 		}
 		declared = true
-		if intact(raw, event) == "" {
+		if coverageIntact(raw, event) == "" {
 			return true, true, nil
 		}
-		// Narrowed, slowed, or carrying a second hook: it still fires, but it
-		// is not the entry watch installs, so not evidence that this event is
-		// recorded for every call.
+		// Narrowed to a matcher that does not fire on every call: it still
+		// fires on SOME calls, but not evidence that this event is recorded
+		// for every one.
 	}
 	return declared, false, nil
 }
