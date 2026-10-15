@@ -3,9 +3,34 @@ package main
 import (
 	"io"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
+
+// goroutinesIn counts the running goroutines whose stack trace names frame,
+// rather than every goroutine in the process: the process-wide count
+// (runtime.NumGoroutine) is flaky under -race and under t.Parallel, where an
+// unrelated test's own goroutines can start or end inside the window this
+// test measures.
+func goroutinesIn(frame string) int {
+	buf := make([]byte, 64<<10)
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			buf = buf[:n]
+			break
+		}
+		buf = make([]byte, 2*len(buf))
+	}
+	n := 0
+	for _, stack := range strings.Split(string(buf), "\n\n") {
+		if strings.Contains(stack, frame) {
+			n++
+		}
+	}
+	return n
+}
 
 // gatedReader blocks every Read until release closes, then reports EOF: a
 // Stop payload pipe that stays open past recap's budget and closes later.
@@ -25,7 +50,11 @@ func (g gatedReader) Read([]byte) (int, error) {
 // forever on the send instead, one goroutine per call for the life of any
 // longer-lived caller.
 func TestRubricCONC7_AbandonedStdinReadEndsWhenTheReadReturns(t *testing.T) {
-	before := runtime.NumGoroutine()
+	// readRecapPayload's own goroutine, by its stack trace alone: the
+	// process-wide count an earlier version of this test compared read as
+	// flaky under -race and under t.Parallel, where an unrelated test's own
+	// goroutine can start or end inside this window.
+	const frame = "readRecapPayload"
 	in := gatedReader{release: make(chan struct{})}
 
 	start := time.Now()
@@ -36,16 +65,15 @@ func TestRubricCONC7_AbandonedStdinReadEndsWhenTheReadReturns(t *testing.T) {
 	if waited := time.Since(start); waited > 2*time.Second {
 		t.Fatalf("readRecapPayload waited %v on a pipe that never closed; its budget was 20ms", waited)
 	}
-	if n := runtime.NumGoroutine(); n <= before {
-		t.Fatalf("goroutines: %d before, %d after the budget ran out; the reader should still be blocked in Read", before, n)
+	if n := goroutinesIn(frame); n == 0 {
+		t.Fatal("no goroutine in readRecapPayload after the budget ran out; the reader should still be blocked in Read")
 	}
 
 	close(in.release)
 	deadline := time.Now().Add(5 * time.Second)
-	for runtime.NumGoroutine() > before {
+	for goroutinesIn(frame) > 0 {
 		if time.Now().After(deadline) {
-			t.Fatalf("goroutines: %d before, %d five seconds after its Read returned; the abandoned reader never ended",
-				before, runtime.NumGoroutine())
+			t.Fatalf("a goroutine in readRecapPayload was still running five seconds after its Read returned")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
