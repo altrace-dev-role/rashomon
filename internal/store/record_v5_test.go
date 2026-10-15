@@ -140,7 +140,7 @@ var v5Lists = []struct {
 		"prompt_id_withheld *string", "agent_id_withheld *string", "file_path_withheld *string", "trigger_file_path_withheld *string")},
 	{reflect.TypeOf(Model{}), withHeader("prompt_id *string", "from *string", "to string", "requested *string", "source string", "prompt_id_withheld *string")},
 	{reflect.TypeOf(OutcomeJoin{}), withHeader("tool_use_id string", "outcome string", "exit_code *int", "outcome_source string", "parser_version int")},
-	{reflect.TypeOf(WriteObserved{}), withHeader("path string", "edit_count int")},
+	{reflect.TypeOf(WriteObserved{}), withHeader("path *string", "edit_count int", "path_withheld *string")},
 }
 
 // TestDEL22b_SchemaFiveKeyListsAreFrozen pins the schema-5 field list in
@@ -225,7 +225,7 @@ func TestDEL22b_SchemaFiveKeyListsAreFrozen(t *testing.T) {
 // under unattributed instead (1.2.11).
 var cappedKeys = []string{
 	"tool_use_id", "prompt_id", "previous_prompt_id", "agent_id", "agent_type", "permission_mode", "tool_name",
-	"file_path", "trigger_file_path", "cwd", "project", "transcript_path", "root",
+	"file_path", "trigger_file_path", "cwd", "project", "transcript_path", "root", "path",
 }
 
 // withheldKeys is every field 1.2.11's caps or a record.* switch (1.2.12;
@@ -251,6 +251,7 @@ var withheldKeys = map[reflect.Type][]string{
 	reflect.TypeOf(Compact{}):        {"prompt_id"},
 	reflect.TypeOf(Instructions{}):   {"prompt_id", "agent_id", "file_path", "trigger_file_path"},
 	reflect.TypeOf(Model{}):          {"prompt_id"},
+	reflect.TypeOf(WriteObserved{}):  {"path"},
 }
 
 // deferredWithheld are capped fields with no withheld key yet, each for a
