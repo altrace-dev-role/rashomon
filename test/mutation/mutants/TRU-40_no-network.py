@@ -8,11 +8,11 @@ m("TRU-40 the report imports os/exec with nothing sanctioning it", "internal/rep
 # build the release does not ship, where a _windows.go file or one built
 # only without cgo can import net and pass.
 m("TRU-40 the listing runs as the test machine's build", "test/acceptance/release_targets_test.go",
-  '\t\tcmd.Env = append(append(os.Environ(), m.env...), "GOOS="+target.goos, "GOARCH="+target.goarch)',
+  "\t\tcmd.Env = releaseListEnv(target, m.env)",
   "\t\tcmd.Env = os.Environ()", "TestTRU40_")
 m("TRU-40 the listing builds with cgo on", "test/acceptance/release_targets_test.go",
-  '\t\tcmd.Env = append(append(os.Environ(), m.env...), "GOOS="+target.goos, "GOARCH="+target.goarch)',
-  '\t\tcmd.Env = append(append(os.Environ(), "CGO_ENABLED=1"), "GOOS="+target.goos, "GOARCH="+target.goarch)',
+  "\t\tcmd.Env = releaseListEnv(target, m.env)",
+  '\t\tcmd.Env = append(releaseListEnv(target, m.env), "CGO_ENABLED=1")',
   "TestTRU40_")
 m("TRU-40 the matrix reader takes cgo off on trust", "test/acceptance/release_targets_test.go",
   '\treturn errors.New("the build\'s env does not say CGO_ENABLED=0")', "\treturn nil",
