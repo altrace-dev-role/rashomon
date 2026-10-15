@@ -133,6 +133,11 @@ const (
 	// invocation of the run waited for store locks (perf-7). It is a note
 	// about the store, like probe and seq, and not a record.
 	FileLockWait = "lockwait"
+	// FileResolvedCap is at the store root: the size cap the last hook
+	// invocation resolved, written so status can show the value eviction
+	// actually runs with instead of reading EnvCapBytes in its own,
+	// possibly different, environment (hld-7).
+	FileResolvedCap = "resolved-cap"
 )
 
 // Declaration is what the agent asked to run.

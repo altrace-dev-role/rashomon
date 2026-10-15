@@ -82,8 +82,15 @@ func runProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 	// that is starting or ending is never a candidate. Its error is not this
 	// session's, so it goes to no coverage record; Evict writes each gap
 	// before removing its run, so whatever it did remove is accounted for.
+	//
+	// The cap is resolved here, inside the hook's own environment, and
+	// recorded before Evict runs with it: status reads the record rather
+	// than EnvCapBytes in whatever shell happens to run it, which can
+	// disagree with what Claude Code hands the hooks (hld-7).
+	capSetting := store.ResolveCap()
+	_ = st.RecordResolvedCap(capSetting)
 	return safe.Guard(func() error {
-		_, err := st.Evict(store.CapBytes(), sessionID, now())
+		_, err := st.Evict(capSetting.Bytes, sessionID, now())
 		return err
 	})
 }

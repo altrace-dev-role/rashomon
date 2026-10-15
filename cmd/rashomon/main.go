@@ -1043,8 +1043,9 @@ func cmdStatus(stdout io.Writer) error {
 	statusRecording(stdout, root)
 
 	installID := ""
+	var st *store.Store
 	if _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {
-		st, err := openStore()
+		st, err = openStore()
 		if err != nil {
 			return err
 		}
@@ -1061,7 +1062,7 @@ func cmdStatus(stdout io.Writer) error {
 	} else {
 		fmt.Fprintln(stdout, "  present: no")
 	}
-	capProblem(stdout, "  cap: ")
+	statusCapProblem(stdout, "  cap: ", st)
 
 	settingsLive, err := statusSettings(stdout, installID)
 	if err != nil {

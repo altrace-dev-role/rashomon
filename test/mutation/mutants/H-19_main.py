@@ -9,8 +9,8 @@ m("report text renders a comparison it could not make as an empty list", "intern
 m("report --json is accepted and ignored", "cmd/rashomon/main.go",
   "\t\tcase \"--json\":\n\t\t\tasJSON = true\n\t\tcase \"--redact\":", "\t\tcase \"--json\":\n\t\t\tasJSON = false\n\t\tcase \"--redact\":", "TestReport_")
 m("status opens the store, which creates one", "cmd/rashomon/main.go",
-  "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {\n\t\tst, err := openStore()",
-  "\tif true {\n\t\tst, err := openStore()", "TestH18_")
+  "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {\n\t\tst, err = openStore()",
+  "\tif true {\n\t\tst, err = openStore()", "TestH18_")
 m("status calls recording active on a fresh machine", "cmd/rashomon/main.go",
   "\tcase state == RecordingActive && !installed:",
   "\tcase state == RecordingActive && false:", "TestStatus_OnAFreshMachineSaysSo")

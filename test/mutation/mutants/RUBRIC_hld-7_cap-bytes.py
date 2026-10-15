@@ -7,6 +7,6 @@ m("hld-7 a signed value is taken as a cap", "internal/store/capbytes.go",
 m("hld-7 an invalid cap falls back without saying so", "internal/store/capbytes.go",
   "\t\tc.Invalid = true\n", "", "TestRubricHLD7_")
 m("hld-7 status does not report an invalid cap", "cmd/rashomon/main.go",
-  "\tcapProblem(stdout, \"  cap: \")\n", "", "TestRubricHLD7_StatusAndWatchSayACapIsNotAByteCount")
+  "\tstatusCapProblem(stdout, \"  cap: \", st)\n", "", "TestRubricHLD7_StatusAndWatchSayACapIsNotAByteCount")
 m("hld-7 watch does not report an invalid cap", "cmd/rashomon/main.go",
   "\tcapProblem(stdout, \"rashomon: \")\n", "", "TestRubricHLD7_StatusAndWatchSayACapIsNotAByteCount")
