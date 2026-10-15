@@ -150,13 +150,14 @@ func buildDestinations(run *store.Run, storeRoot string) Destinations {
 		ExecutedNotAsDeclared: executedNotAsDeclared(run),
 		Rewritten:             rewrittenCalls(run),
 	}
-	d.Novelty = buildNovelty(run, storeRoot, novelHostCandidates(d.DeclaredHosts, madeMCPCall(run)))
+	d.Novelty = buildNovelty(run, storeRoot,
+		novelHostCandidates(append(append([]string{}, d.DeclaredHosts...), d.SSHHosts...), madeMCPCall(run)))
 	return d
 }
 
-// novelHostCandidates are the declared hosts a novelty baseline should
-// consider: what this session named, minus loopback and minus the client's
-// own plane. Folding the client plane into a baseline would make
+// novelHostCandidates are the hosts a novelty baseline should consider: what
+// this session named, whether over https or ssh, minus loopback and minus
+// the client's own plane. Folding the client plane into a baseline would make
 // api.anthropic.com a "new destination for this project" on the first session
 // of every project, which is the novelty line's most obvious way to make
 // itself worthless.
