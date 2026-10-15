@@ -275,15 +275,19 @@ func TestUpdate_CorruptBaselineReportsAnErrorRatherThanTreatingAllAsNovel(t *tes
 	}
 }
 
-// TestForget_RemovesTheHostFromTheBaseline is what keeps `forget --host` whole:
-// evicting the wire rows while the baseline still remembers the host would
-// leave it suppressed as "seen before" forever, with nothing left to show why.
+// TestForget_RemovesTheHostFromTheBaseline is what keeps `forget --host`
+// whole: erasing a session's records while the baseline still remembers the
+// host it named would leave it reading as "seen before" forever, with
+// nothing left to show why.
 func TestForget_RemovesTheHostFromTheBaseline(t *testing.T) {
 	root := t.TempDir()
-	Update(root, "/proj", "sess-1", t0, []string{"a.example", "gone.example"})
+	first := Update(root, "/proj", "sess-1", t0, []string{"a.example", "gone.example"})
 
-	if err := Forget(root, "/proj", "gone.example"); err != nil {
-		t.Fatalf("Forget: %v", err)
+	// forget --host clears a host from a baseline by path, found by walking
+	// the baseline directory; it does not go through a project key, since it
+	// is not told which project the caller meant.
+	if _, err := ForgetFile(first.Path, "gone.example"); err != nil {
+		t.Fatalf("ForgetFile: %v", err)
 	}
 
 	// A later session reaching it again finds it novel, because the baseline no
