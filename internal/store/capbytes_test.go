@@ -48,6 +48,36 @@ func TestRubricHLD7_CapBytesReadsTheEnvironment(t *testing.T) {
 	}
 }
 
+// TestHLD7_ResolvedCapRoundTripsWhatAHookRecorded: ResolvedCap is status's
+// half of the fix -- eviction resolves the cap inside a hook's own process,
+// and a later status call, in a different shell, must read that value back
+// rather than its own environment (hld-7's second half).
+func TestHLD7_ResolvedCapRoundTripsWhatAHookRecorded(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := st.ResolvedCap(); err != nil || ok {
+		t.Fatalf("ResolvedCap on a store no hook has touched: ok=%v, err=%v, want ok=false", ok, err)
+	}
+
+	if err := st.RecordResolvedCap(parseCap("1048576")); err != nil {
+		t.Fatal(err)
+	}
+	rc, ok, err := st.ResolvedCap()
+	if err != nil || !ok || rc.Bytes != 1<<20 || rc.Problem != "" {
+		t.Fatalf("ResolvedCap() = %+v, ok=%v, err=%v, want 1048576 bytes, no problem", rc, ok, err)
+	}
+
+	if err := st.RecordResolvedCap(parseCap("2GB")); err != nil {
+		t.Fatal(err)
+	}
+	rc, ok, err = st.ResolvedCap()
+	if err != nil || !ok || rc.Bytes != DefaultCapBytes || rc.Problem == "" {
+		t.Fatalf("ResolvedCap() after a malformed value = %+v, ok=%v, err=%v, want the default and a problem", rc, ok, err)
+	}
+}
+
 // TestRubricPERF7_RunsBytesIsWhatTheCapCounts: status prints the store's
 // size against its cap, and the size is the one eviction compares.
 func TestRubricPERF7_RunsBytesIsWhatTheCapCounts(t *testing.T) {

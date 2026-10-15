@@ -23,8 +23,8 @@ m("REC-32 eviction claims a count for a run it could not read", "internal/store/
   "\tif err != nil || run.Skipped > 0 {\n\t\tg.RemovedRecords = RemovedUnknown\n", "\tif run.Skipped > 0 {\n\t\tg.RemovedRecords = RemovedUnknown\n",
   "TestREC32_EvictContinuesPastUnreadableRun")
 m("REC-32 the probe swallows eviction's error", "internal/hook/probe.go",
-  "\t\t_, err := st.Evict(store.CapBytes(), sessionID, now())\n\t\treturn err\n",
-  "\t\t_, err := st.Evict(store.CapBytes(), sessionID, now())\n\t\t_ = err\n\t\treturn nil\n", "TestREC32d_")
+  "\t\t_, err := st.Evict(capSetting.Bytes, sessionID, now())\n\t\treturn err\n",
+  "\t\t_, err := st.Evict(capSetting.Bytes, sessionID, now())\n\t\t_ = err\n\t\treturn nil\n", "TestREC32d_")
 m("REC-32 probe is silent when eviction fails", "cmd/rashomon/main.go",
   "\t\t\tfmt.Fprintln(stderr, evictionLine)\n", "", "TestREC32d_")
 m("REC-32 the report prints an unknown count as -1", "internal/report/text.go",

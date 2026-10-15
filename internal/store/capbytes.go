@@ -3,9 +3,11 @@ package store
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // DefaultCapBytes bounds the store before eviction starts removing the oldest
@@ -69,6 +71,48 @@ func (c CapSetting) Problem() string {
 	}
 	return fmt.Sprintf("%s=%q is not a byte count (a plain decimal number; 0 turns eviction off), so the default cap of %s applies",
 		EnvCapBytes, c.Raw, FormatBytes(DefaultCapBytes))
+}
+
+// RecordedCap is the cap a hook resolved and wrote with RecordResolvedCap:
+// the environment eviction actually ran in, as opposed to whatever shell
+// a later status call happens to run in (hld-7).
+type RecordedCap struct {
+	Bytes   int64
+	Problem string
+}
+
+// RecordResolvedCap writes c, as resolved inside a hook invocation, to the
+// store root. It is a note, like the lock-wait one: best-effort, not synced,
+// and a write that fails or loses a race with another invocation leaves the
+// previous note standing rather than a torn one -- the file is replaced
+// whole, by writeSmall, so the race is between two complete versions, never
+// half of one and half of the other.
+func (s *Store) RecordResolvedCap(c CapSetting) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
+	content := []byte(strconv.FormatInt(c.Bytes, 10) + "\n" + c.Problem() + "\n")
+	return writeSmall(filepath.Join(s.root, FileResolvedCap), content, syncFull)
+}
+
+// ResolvedCap reads the cap the last hook invocation recorded. ok is false
+// when no hook has recorded one yet (a store from before this field existed,
+// or one no hook invocation has touched), or the note does not parse, which
+// reads as none rather than as a wrong value.
+func (s *Store) ResolvedCap() (c RecordedCap, ok bool, err error) {
+	b, rerr := os.ReadFile(filepath.Join(s.root, FileResolvedCap))
+	if errors.Is(rerr, fs.ErrNotExist) {
+		return RecordedCap{}, false, nil
+	}
+	if rerr != nil {
+		return RecordedCap{}, false, rerr
+	}
+	line, rest, _ := strings.Cut(string(b), "\n")
+	n, perr := strconv.ParseInt(strings.TrimSpace(line), 10, 64)
+	if perr != nil {
+		return RecordedCap{}, false, nil
+	}
+	return RecordedCap{Bytes: n, Problem: strings.TrimSpace(rest)}, true, nil
 }
 
 // RunsBytes is the size of every run, which is what Evict holds under the
