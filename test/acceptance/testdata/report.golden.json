@@ -94,8 +94,8 @@
         }
       },
       "account": {
-        "available": true,
-        "text": "Running it.",
+        "available": false,
+        "text": "",
         "truncated": false
       },
       "subagents": [],
@@ -105,13 +105,13 @@
         "failed_lookups": 0,
         "outcome_unobserved": 0,
         "absent_words": [],
-        "final_message_available": true
+        "final_message_available": false
       },
       "masked_runs": {
         "fires": false,
         "runs": 0,
         "pass_claimed": false,
-        "final_message_available": true
+        "final_message_available": false
       },
       "families": {
         "families": [
