@@ -119,16 +119,6 @@ type Paragraph struct {
 	Cite  string `json:"cite"`
 }
 
-// row is one rendered line of `rashomon disclose`: the section it sits in,
-// its key, its value and the inventory row or file it was read from, so that
-// a reader can check any line against its source.
-type row struct {
-	Section string `json:"section"`
-	Key     string `json:"key"`
-	Value   string `json:"value"`
-	Source  string `json:"source"`
-}
-
 // Sections of `rashomon disclose`, in print order (7.2.8).
 const (
 	SectionInstalled    = "INSTALLED"
