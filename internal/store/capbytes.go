@@ -116,14 +116,18 @@ func (s *Store) ResolvedCap() (c RecordedCap, ok bool, err error) {
 }
 
 // RunsBytes is the size of every run, which is what Evict holds under the
-// cap. A run it cannot list is left out of the sum and named in the error,
-// as Evict leaves it out of its plan.
-func (s *Store) RunsBytes() (int64, error) {
+// cap, and how many runs it had to leave out of that total because their
+// directory could not be listed, as Evict leaves them out of its plan. The
+// total is of the runs it could list even when unlisted is over zero: a
+// caller that wants the figure anyway, with a word about what it is missing,
+// does not have to throw away a correct partial sum because one run's size
+// could not be read.
+func (s *Store) RunsBytes() (bytes int64, unlisted int, err error) {
 	plan, err := evictCandidates(filepath.Join(s.root, dirRuns))
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return plan.total, errors.Join(plan.unlisted...)
+	return plan.total, len(plan.unlisted), errors.Join(plan.unlisted...)
 }
 
 // FormatBytes is n in the largest binary unit it reaches, to one decimal

@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 // TestRubricHLD7_CapIsADecimalByteCount: RASHOMON_STORE_CAP_BYTES decides
 // when runs are deleted, and was never checked. "1GiB" and "1e9" fell back
@@ -85,8 +88,8 @@ func TestRubricPERF7_RunsBytesIsWhatTheCapCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, err := st.RunsBytes(); err != nil || n != 0 {
-		t.Fatalf("RunsBytes on an empty store: %d, %v", n, err)
+	if n, unlisted, err := st.RunsBytes(); err != nil || n != 0 || unlisted != 0 {
+		t.Fatalf("RunsBytes on an empty store: %d, %d, %v", n, unlisted, err)
 	}
 	if err := st.AppendDeclaration(testDecl("s", "toolu_1")); err != nil {
 		t.Fatal(err)
@@ -95,7 +98,51 @@ func TestRubricPERF7_RunsBytesIsWhatTheCapCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, err := st.RunsBytes(); err != nil || n != plan.total || n == 0 {
-		t.Errorf("RunsBytes = %d, %v; eviction counts %d", n, err, plan.total)
+	if n, unlisted, err := st.RunsBytes(); err != nil || n != plan.total || n == 0 || unlisted != 0 {
+		t.Errorf("RunsBytes = %d, %d, %v; eviction counts %d", n, unlisted, err, plan.total)
+	}
+}
+
+// TestRunsBytes_CountsWhatItCouldNotList: a run eviction cannot list is left
+// out of the sum and named in the error, same as Evict's own plan. The
+// total of what could be listed is still useful on its own, so it comes
+// back together with how many runs were left out, rather than forcing a
+// caller to throw away a correct partial total because one run's size is
+// unknown.
+func TestRunsBytes_CountsWhatItCouldNotList(t *testing.T) {
+	permissionsBite(t)
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []string{"sess-fine", "sess-unlistable"} {
+		if err := st.AppendDeclaration(testDecl(s, "toolu_"+s)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fine, err := evictCandidates(st.Root() + "/" + dirRuns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fineSize int64
+	for _, c := range fine.cands {
+		if c.name == segment("sess-fine") {
+			fineSize = c.size
+		}
+	}
+	if err := os.Chmod(st.RunDir("sess-unlistable"), 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(st.RunDir("sess-unlistable"), dirMode) //nolint:errcheck // best-effort cleanup
+
+	n, unlisted, err := st.RunsBytes()
+	if err == nil {
+		t.Fatalf("RunsBytes with an unlistable run: no error, want one naming it")
+	}
+	if unlisted != 1 {
+		t.Errorf("RunsBytes with one unlistable run reports unlisted=%d, want 1", unlisted)
+	}
+	if n != fineSize {
+		t.Errorf("RunsBytes with one unlistable run = %d, want the listable runs' total %d", n, fineSize)
 	}
 }
