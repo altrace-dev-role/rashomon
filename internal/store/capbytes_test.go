@@ -146,3 +146,24 @@ func TestRunsBytes_CountsWhatItCouldNotList(t *testing.T) {
 		t.Errorf("RunsBytes with one unlistable run = %d, want the listable runs' total %d", n, fineSize)
 	}
 }
+
+// TestFormatBytes_RoundingNeverCrossesAUnitWithoutMovingTheSuffix:
+// FormatBytes picks its unit before rounding to one decimal place, so a
+// value just under a unit's boundary could round up to look like a whole
+// unit of the next one while keeping the smaller suffix: 1048575 B is one
+// byte under 1 MiB, but printed "1024 KiB" instead of advancing to MiB.
+func TestFormatBytes_RoundingNeverCrossesAUnitWithoutMovingTheSuffix(t *testing.T) {
+	for _, tc := range []struct {
+		n    int64
+		want string
+	}{
+		{1048575, "1 MiB"}, // one byte under 1 MiB; rounds to 1024.0 KiB unfixed
+		{1048576, "1 MiB"},
+		{1023, "1023 B"},
+		{1024, "1 KiB"},
+	} {
+		if got := FormatBytes(tc.n); got != tc.want {
+			t.Errorf("FormatBytes(%d) = %q, want %q", tc.n, got, tc.want)
+		}
+	}
+}

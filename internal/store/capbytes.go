@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -132,17 +133,26 @@ func (s *Store) RunsBytes() (bytes int64, unlisted int, err error) {
 
 // FormatBytes is n in the largest binary unit it reaches, to one decimal
 // place, with a whole number printed without one: "512 MiB", "1.5 KiB".
+//
+// The unit is picked before rounding, so a value just under a boundary --
+// 1048575 B, one byte short of 1 MiB -- used to round to "1024.0" and print
+// with the smaller unit's suffix still attached ("1024 KiB"). Rounding is
+// checked against the unit after formatting, and bumped up once more when
+// it reaches it and a larger unit exists.
 func FormatBytes(n int64) string {
 	const unit = 1024
 	if n < unit {
 		return strconv.FormatInt(n, 10) + " B"
 	}
+	units := []string{"KiB", "MiB", "GiB", "TiB", "PiB", "EiB"}
 	v, suffix := float64(n), "B"
-	for _, s := range []string{"KiB", "MiB", "GiB", "TiB", "PiB", "EiB"} {
-		if v < unit {
-			break
-		}
-		v, suffix = v/unit, s
+	i := 0
+	for i < len(units) && v >= unit {
+		v, suffix = v/unit, units[i]
+		i++
+	}
+	if rounded := math.Round(v*10) / 10; rounded >= unit && i < len(units) {
+		v, suffix = v/unit, units[i]
 	}
 	text := strconv.FormatFloat(v, 'f', 1, 64)
 	if len(text) > 2 && text[len(text)-2:] == ".0" {
