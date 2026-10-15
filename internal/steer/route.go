@@ -1,5 +1,7 @@
 package steer
 
+import "sync/atomic"
+
 // Context is Route's second argument (tech 4.2.4). P-07 does not freeze
 // it: the technical spec's gaps table (Contracts and names) closes
 // `steer.Context` "before P-30 opens (D6)". This is an empty placeholder so
@@ -18,15 +20,28 @@ func Route(ctx *Context, findings []Finding) Output {
 	return route(ctx, admit(findings))
 }
 
+// dropped counts findings admit has refused since process start. Route's
+// body is pinned to admit then route with nothing else in it
+// (TestDEL22f), so a dropped finding is counted here rather than by
+// changing what Route returns.
+var dropped atomic.Int64
+
+// DroppedFindings is the number of findings admit has refused since
+// process start: a producer sending a finding outside the contract. P-30
+// wires this into the router's own telemetry.
+func DroppedFindings() int64 { return dropped.Load() }
+
 // admit keeps the findings that pass Check, in order, and drops the rest:
 // a finding outside the contract says nothing rather than reach a hook's
-// stdout (fail closed). Counting and logging a dropped finding, a
-// producer's bug, is P-30's, with the router's own telemetry.
+// stdout (fail closed). Logging a dropped finding is P-30's, with the
+// router's own telemetry; DroppedFindings is the count it reads from.
 func admit(findings []Finding) []Finding {
 	kept := make([]Finding, 0, len(findings))
 	for _, f := range findings {
 		if f.Check() == nil {
 			kept = append(kept, f)
+		} else {
+			dropped.Add(1)
 		}
 	}
 	return kept

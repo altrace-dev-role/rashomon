@@ -78,6 +78,23 @@ func TestDEL22f_RouteAdmitsOnlyCheckedFindings(t *testing.T) {
 	}
 }
 
+// TestAdmitCountsWhatItDrops: admit says nothing to the router about a
+// finding it refuses, but a producer's bug should not be invisible either
+// (P07N-14's own comment defers it to P-30's telemetry). DroppedFindings
+// lets P-30 wire that in without touching Route's pinned body.
+func TestAdmitCountsWhatItDrops(t *testing.T) {
+	good := Finding{Pattern: pattern.SubtaskGate, Priority: 90, MaxLevel: LevelStop, StopForm: StopFormDeny, Evidence: []int64{3}, AfterSeq: 5}
+	bad := Finding{Pattern: pattern.SubtaskGate, Kind: "not-a-kind", AfterSeq: 5}
+
+	before := DroppedFindings()
+	if got := admit([]Finding{good, bad, bad}); len(got) != 1 {
+		t.Fatalf("admit kept %d findings, want 1", len(got))
+	}
+	if got := DroppedFindings() - before; got != 2 {
+		t.Errorf("DroppedFindings() increased by %d, want 2", got)
+	}
+}
+
 // source prints a statement as gofmt would.
 func source(t *testing.T, fset *token.FileSet, n ast.Node) string {
 	t.Helper()
