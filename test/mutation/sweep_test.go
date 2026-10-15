@@ -117,6 +117,43 @@ func nonEmptyLines(s string) []string {
 	return out
 }
 
+// pyStyleGlob matches filepath.Glob, except it drops any result whose base
+// name starts with ".". Python's glob module does that by default and
+// sweep.py relies on it; Go's does not, so a dotfile sitting in mutants/ --
+// an editor lock, a stray ".DS_Store" -- is a file this test would expect
+// the sweep to load and the sweep would never attempt to.
+func pyStyleGlob(pattern string) ([]string, error) {
+	all, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, f := range all {
+		if !strings.HasPrefix(filepath.Base(f), ".") {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+// Python's glob skips a dotfile by default; filepath.Glob does not. A
+// leftover editor lock or ".DS_Store" dropped into mutants/ would then be a
+// file this suite expects the sweep to load, and one the sweep never does.
+func TestPyStyleGlobDropsDotfiles(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "a.py"), "")
+	write(t, filepath.Join(dir, ".#a.py"), "")
+	write(t, filepath.Join(dir, ".DS_Store"), "")
+	got, err := pyStyleGlob(filepath.Join(dir, "*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{filepath.Join(dir, "a.py")}
+	if !slicesEqual(got, want) {
+		t.Errorf("pyStyleGlob = %v, want %v", got, want)
+	}
+}
+
 // DEL-1. --list is the concatenation, in sorted file order, of what each file
 // under mutants/ declares, and no name repeats. Names are counted rather than
 // m( calls, deliberately: one call may declare several mutants from a loop, so
@@ -139,7 +176,7 @@ func TestDEL1_SweepLoadsEveryMutantFileOnce(t *testing.T) {
 		seen[name] = i
 	}
 
-	files, err := filepath.Glob("mutants/*.py")
+	files, err := pyStyleGlob("mutants/*.py")
 	if err != nil {
 		t.Fatal(err)
 	}
