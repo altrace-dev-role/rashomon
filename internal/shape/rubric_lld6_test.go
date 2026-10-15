@@ -16,6 +16,14 @@ import (
 // the body, and a continuation inside the body still gives up the reading.
 // The line holds fewer continuations than maxJoins, so every offset is kept
 // and the body is read.
+//
+// The scan this guards against costs no more heap than the search it
+// replaced -- both walk a slice already in memory -- so TotalAlloc cannot
+// tell them apart; the gate is wall time, held only in a build the race
+// detector is not instrumenting, the same way cmd/rashomon's RES-29 holds
+// its hook deadline. Measured 2026-10-14, darwin/arm64, go1.27.2: the line
+// below takes 26-29 ms plain. The bound is a fraction of the 13.8 s the
+// doc comment above measures for the regression at a larger size.
 func TestRubricLLD6_JoinsAreSearchedNotScanned(t *testing.T) {
 	joins, lines := 40_000, 400_000
 	if joins >= maxJoins {
@@ -23,11 +31,15 @@ func TestRubricLLD6_JoinsAreSearchedNotScanned(t *testing.T) {
 	}
 	line := "echo " + strings.Repeat("a\\\n", joins) + "; cat <<E\n" + strings.Repeat("x\n", lines) + "E\nmake test 2>&1 | tail"
 	in := bashInput(t, line)
+	const bound = time.Second
 	var s Shape
 	start := time.Now()
 	s = Derive("Bash", in, benchKey)
-	if took := time.Since(start); took > 2*time.Second {
-		t.Errorf("a 920 KB line of continuations and a here-document took %v, want at most 2s", took)
+	switch took := time.Since(start); {
+	case raceEnabled:
+		t.Logf("race detector on: a 920 KB line of continuations and a here-document took %v, the %v bound is not applied to an instrumented build", took, bound)
+	case took > bound:
+		t.Errorf("a 920 KB line of continuations and a here-document took %v, want at most %v: scanning every kept offset per body line would make this the product of the two, not their sum", took, bound)
 	}
 	if s.StatusMasked == nil || *s.StatusMasked != MaskedTest {
 		t.Errorf("status_masked %v, want %q: the runner after the body is read", show(s.StatusMasked), MaskedTest)

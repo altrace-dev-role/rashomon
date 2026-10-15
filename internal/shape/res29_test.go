@@ -18,6 +18,10 @@ import (
 // A "$(echo " pair costs two levels, the substitution and the quoted string
 // inside it, so the flip is between 16 and 17 pairs; a bare $( ) or a $(( ))
 // inside another costs one, so it is between 33 and 34.
+//
+// The gate below is TotalAlloc, not wall time, as this package's gates
+// always are (RES-9's own rule): wall time is logged only. Measured
+// 2026-10-14, darwin/arm64, go1.27.2: each case allocates about 11 KiB.
 func TestRES29_NestingAtAndPastMaxNest(t *testing.T) {
 	quoted := func(n int) string {
 		return `cd "` + strings.Repeat(`$(echo "`, n) + "x" + strings.Repeat(`")`, n) + `" && ls`
@@ -43,10 +47,17 @@ func TestRES29_NestingAtAndPastMaxNest(t *testing.T) {
 		}
 		for _, n := range []int{tc.deepest, tc.deepest + 1} {
 			in := bashInput(t, tc.line(n))
+			const bound = 1 << 20
 			var s Shape
-			took := fastest(func() { s = Derive("Bash", in, benchKey) })
-			if took > 50*time.Millisecond {
-				t.Errorf("%s, %d levels: %v, want at most 50ms", tc.name, n, took)
+			var took time.Duration
+			alloc := allocated(func() {
+				start := time.Now()
+				s = Derive("Bash", in, benchKey)
+				took = time.Since(start)
+			})
+			t.Logf("%s, %d levels: %v, allocated %d KiB", tc.name, n, took, alloc>>10)
+			if alloc > bound {
+				t.Errorf("%s, %d levels: allocated %d KiB, want at most %d", tc.name, n, alloc>>10, bound>>10)
 			}
 			accepted := n == tc.deepest
 			switch {
@@ -57,16 +68,4 @@ func TestRES29_NestingAtAndPastMaxNest(t *testing.T) {
 			}
 		}
 	}
-}
-
-// fastest is the least time any of three runs of f took, so a busy machine's
-// pauses stay out of a deadline comparison.
-func fastest(f func()) time.Duration {
-	best := time.Duration(1 << 62)
-	for i := 0; i < 3; i++ {
-		start := time.Now()
-		f()
-		best = min(best, time.Since(start))
-	}
-	return best
 }
