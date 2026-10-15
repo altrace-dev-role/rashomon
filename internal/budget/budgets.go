@@ -44,12 +44,17 @@ type RSS struct {
 	P95 float64 `json:"p95"`
 }
 
-// Entry is one hook entry on one payload class (archive 85.4.1). The budget
-// is AllocBytesMax, the bytes one call allocates (runtime.MemStats.TotalAlloc,
-// the benchmark's measured B/op, no margin): a hook process runs no GC cycle at these sizes, so
-// its peak RSS is the floor plus what it allocated, and the allocation figure
-// is deterministic and the same on every platform. Peak RSS is the end-to-end
-// cross-check (archive 85.1.2). Wall time is quoted and never gated.
+// Entry is one hook entry on one payload class (archive 85.4.1). Two of its
+// figures are gated. MaxRSSMiBP50 is the median peak RSS of nine runs on the
+// reference machine, and TestRES28b_ fails a platform whose median is more
+// than the platform's tolerance over it, or over the platform's own figure
+// where it has one. AllocBytesMax, the bytes one call allocates
+// (runtime.MemStats.TotalAlloc), is held equal to the measured B/op of the
+// benchmark row it names (TestRES36f_), and benchgate gates that row: a hook
+// process runs no GC cycle at these sizes, so its peak RSS is the floor plus
+// what it allocated, and the allocation figure is the same on every platform.
+// MaxRSSMiBP95, ParentMaxRSSMiBP50 and the wall-time figures are information
+// only; no gate compares a measurement with them.
 type Entry struct {
 	ID                 string   `json:"id"`
 	Events             []string `json:"events"`
