@@ -3,7 +3,8 @@
 // Read takes one payload with bounded growth, Intake validates and scans it
 // once into the spans of the keys any consumer reads, and IntakeStream walks a
 // payload that is never held. No consumer decodes the raw payload: they read
-// spans, and large fields through jsonscan's Head, Tail and Lines.
+// spans, and large fields through jsonscan's Head today. Tail and Lines are
+// staged for later PRs in this stack; nothing here calls them yet.
 package hookio
 
 import (
