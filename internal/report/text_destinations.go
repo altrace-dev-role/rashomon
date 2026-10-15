@@ -39,25 +39,29 @@ func writeDestinations(b *bytes.Buffer, d Destinations) {
 // observed that, so wherever the text lists a host this line goes with it.
 const namedNotReached = "hosts are those each call named; nothing here observed whether it reached them"
 
-// writeNovelty renders the per-project first-seen line. It says "named",
-// never "reached": nothing in the record observed whether a host was
-// reached, and a novelty line that read as a destination would overstate
-// what is known. A section that vanishes when it has nothing to say cannot
-// be told apart from one that was never built, so every case prints a line.
+// writeNovelty renders which of this session's declared hosts are not yet in
+// the project's baseline. It says "named", never "reached": nothing in the
+// record observed whether a host was reached, and a novelty line that read
+// as a destination would overstate what is known. It also never says
+// "first": the baseline is seeded from whichever session happens to render
+// first, not from the project's actual earliest one, so a host absent from
+// the baseline is only that -- absent -- and not provably new to the
+// project. A section that vanishes when it has nothing to say cannot be told
+// apart from one that was never built, so every case prints a line.
 func writeNovelty(b *bytes.Buffer, n Novelty) {
 	switch {
 	case !n.Available:
-		fmt.Fprintf(b, "  named for the first time in this project: %s (%s)\n", unknown, n.Reason)
+		fmt.Fprintf(b, "  not yet in this project's baseline: %s (%s)\n", unknown, n.Reason)
 	case n.Established:
 		// The count says which hosts it counted: loopback and the client's
 		// own plane are excluded from novelty on purpose, so a bare count
 		// reads as disagreeing with the list above.
-		fmt.Fprintf(b, "  named for the first time in this project: baseline established "+
+		fmt.Fprintf(b, "  not yet in this project's baseline: baseline established "+
 			"(%d host%s, loopback and client plane excluded)\n", n.KnownHosts, plural(n.KnownHosts))
 	case len(n.Hosts) == 0:
-		fmt.Fprintf(b, "  named for the first time in this project: none (%d known)\n", n.KnownHosts)
+		fmt.Fprintf(b, "  not yet in this project's baseline: none (%d known)\n", n.KnownHosts)
 	default:
-		fmt.Fprintf(b, "  named for the first time in this project: %s\n", list(n.Hosts))
-		fmt.Fprintf(b, "    (first named in this project by this session; %d hosts known)\n", n.KnownHosts)
+		fmt.Fprintf(b, "  not yet in this project's baseline: %s\n", list(n.Hosts))
+		fmt.Fprintf(b, "    (added to this project's baseline by this session; %d hosts known)\n", n.KnownHosts)
 	}
 }
