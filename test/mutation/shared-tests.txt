@@ -2,5 +2,5 @@
 # A mutant in a row's file may name only that row's tests, or a pair listed
 # here. sweep.py --check reads this.
 #
-# Empty for now: no mutant file on any branch names a pair yet. Add an entry
-# here in the same change that adds the mutant using it.
+# Add an entry here in the same change that adds the mutant using it.
+VER-54 TestVER11_

@@ -3,6 +3,7 @@ package verify
 import (
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/spec"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // Versions stamped on every snapshot and checkpoint (2.2.10; archive 20.2.7
@@ -44,14 +45,14 @@ const MaxWriters = 8
 
 // RunRef is a gate run as a gate's state cites it (archive 20.2.4).
 type RunRef struct {
-	Seq        int64   `json:"seq"`
-	ToolUseID  string  `json:"tool_use_id"`
-	AgentID    *string `json:"agent_id"`
-	Outcome    string  `json:"outcome"` // ok | failed
-	ExitCode   *int    `json:"exit_code"`
-	Masked     *string `json:"status_masked"`
-	GateOutput string  `json:"gate_output"`
-	Scope      string  `json:"scope"` // full | partial | unknown
+	Seq        int64             `json:"seq"`
+	ToolUseID  string            `json:"tool_use_id"`
+	AgentID    *string           `json:"agent_id"`
+	Outcome    string            `json:"outcome"` // ok | failed
+	ExitCode   *int              `json:"exit_code"`
+	Masked     *string           `json:"status_masked"`
+	GateOutput *store.GateOutput `json:"gate_output"`
+	Scope      string            `json:"scope"` // full | partial | unknown
 }
 
 // WriteRef is a relevant write as a gate's state cites it (archive 20.2.4).
