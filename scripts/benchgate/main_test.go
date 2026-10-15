@@ -125,3 +125,32 @@ func TestRES36g_ToolchainMismatchFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+// TestRES36k_NoBenchmarkRowsComparesNothing: a budgets file with no benchmark
+// rows gates nothing, so the gate exits 2 saying so, whatever ran; with rows,
+// output in which no benchmark ran fails on every row as "did not run".
+func TestRES36k_NoBenchmarkRowsComparesNothing(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct {
+		name, benchmarks, input string
+		want                    int
+		says                    string
+	}{
+		{"no key, nothing ran", ``, "", 2, "no benchmark rows"},
+		{"no key, one ran", ``, lexLine, 2, "no benchmark rows"},
+		{"empty list, nothing ran", `, "benchmarks": []`, "", 2, "no benchmark rows"},
+		{"rows, nothing ran", `, "benchmarks": [{"name": "BenchmarkLexTokens", "bytes_per_op_max": 1, "allocs_per_op_max": 1}]`, "", 1, "BenchmarkLexTokens: budgeted but did not run"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(dir, strings.ReplaceAll(c.name, " ", "_")+".json")
+			if err := os.WriteFile(path, []byte(`{"budgets_version": 1, "go_version": "go1.27.2"`+c.benchmarks+`}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var stdout, stderr bytes.Buffer
+			code := run(path, strings.NewReader(c.input), &stdout, &stderr, "go1.27.2")
+			if code != c.want || !strings.Contains(stderr.String(), c.says) {
+				t.Errorf("exit %d, want %d naming %q\nstdout %s\nstderr %s", code, c.want, c.says, stdout.String(), stderr.String())
+			}
+		})
+	}
+}
