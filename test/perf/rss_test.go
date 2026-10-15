@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -22,18 +21,21 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/test/perf/payload"
+	"github.com/altrace-dev-role/rashomon/test/perf/peakrss"
 )
 
 // The harness runs the release-flag binary and reads each child's peak RSS
-// from wait4's rusage, the figure /usr/bin/time prints (bytes on darwin,
-// KiB on Linux), and takes the median of nine runs (archive 85.3.13). It is
-// behind the perf tag because it builds a binary and runs it some hundred
-// times; the pure comparisons it decides with are in gate.go and runs.go and
-// run with every test.
+// from wait4's rusage, the figure /usr/bin/time prints, through
+// test/perf/peakrss, which reads it in each platform's unit and keeps this
+// test binary's own peak out of it on Linux; it takes the median of nine runs
+// (archive 85.3.13). It is behind the perf tag because it builds a binary and
+// runs it some hundred times; the pure comparisons it decides with are in
+// gate.go and runs.go and run with every test.
 
 var (
 	rashomonBin string
 	root        string
+	reaper      *peakrss.Reaper
 	// ran holds every gate a comparison was made for (runs.go's names);
 	// RASHOMON_PERF_REQUIRE_ALL=1 fails a run that skipped one it owed.
 	ran = map[string]bool{}
@@ -78,6 +80,9 @@ func buildAndRun(m *testing.M) (int, error) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return 0, fmt.Errorf("building the release binary: %v\n%s", err, out)
 	}
+	if reaper, err = peakrss.NewReaper(dir); err != nil && !errors.Is(err, peakrss.ErrUnavailable) {
+		return 0, err
+	}
 	return Settle(m.Run(), os.Getenv(RequireAllEnv) == "1", b, ran)
 }
 
@@ -112,6 +117,23 @@ func overBudget(t *testing.T, b budget.Budgets, gate, id string, measured, budge
 	t.Errorf("%s: median peak RSS %.2f MiB over budget %.2f MiB (+%.0f%%)%s", id, measured, budgetMiB, tol*100, note)
 }
 
+// TestRES28p_AReadingLeavesOutTheHarnesssOwnPeak: the harness's reading of
+// `rashomon version` stays under 48 MiB while the harness itself holds 96 MiB.
+// On Linux a child's ru_maxrss is at least its vforking parent's peak, so a
+// harness that read the child's rusage itself would read its own size.
+func TestRES28p_AReadingLeavesOutTheHarnesssOwnPeak(t *testing.T) {
+	ballast := make([]byte, 96<<20)
+	for i := 0; i < len(ballast); i += os.Getpagesize() {
+		ballast[i] = 1
+	}
+	got, _ := maxRSSMiB(t, nil, newRig(t).env, "version")
+	runtime.KeepAlive(ballast)
+	if got >= 48 {
+		t.Errorf("rashomon version read %.2f MiB beside a harness holding 96 MiB: the harness's peak is in the reading", got)
+	}
+	t.Logf("rashomon version: %.2f MiB beside a 96 MiB harness", got)
+}
+
 // maxRSSMiB runs the binary once with stdin and env, requires exit 0, and
 // returns its peak RSS in MiB and what it printed.
 func maxRSSMiB(t *testing.T, stdin []byte, env []string, args ...string) (float64, []byte) {
@@ -121,18 +143,14 @@ func maxRSSMiB(t *testing.T, stdin []byte, env []string, args ...string) (float6
 	cmd.Env = env
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
+	rss, err := reaper.Run(cmd)
+	if errors.Is(err, peakrss.ErrUnavailable) {
+		t.Skip(err)
+	}
+	if err != nil {
 		t.Fatalf("rashomon %s: %v\n%s", strings.Join(args, " "), err, stderr.String())
 	}
-	ru, ok := cmd.ProcessState.SysUsage().(*syscall.Rusage)
-	if !ok {
-		t.Fatal("no rusage for the child")
-	}
-	rss := float64(ru.Maxrss)
-	if runtime.GOOS == "linux" {
-		rss *= 1024
-	}
-	return rss / (1 << 20), stdout.Bytes()
+	return rss, stdout.Bytes()
 }
 
 // rig is one measurement's isolated world: a store pinned to payload's
