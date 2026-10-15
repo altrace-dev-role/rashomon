@@ -25,6 +25,7 @@ package report
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"sort"
 	"time"
 
@@ -71,6 +72,18 @@ const (
 	ReasonExecutionMismatch     = "execution_mismatch"
 	ReasonGap                   = "gap"
 	ReasonDuplicateDeclarations = "duplicate_declarations"
+)
+
+// Transcript status words: what a reader meets at one transcript group's
+// own Status field. TranscriptRead and TranscriptMissing both have Readable
+// false in the ordinary case TranscriptRead does not -- the distinction
+// Readable alone cannot carry, and the reason this field exists -- a
+// consumer with several groups otherwise cannot tell which one cost the
+// H-10 check and which was simply never written.
+const (
+	TranscriptRead       = "read"
+	TranscriptMissing    = "missing"
+	TranscriptUnreadable = "unreadable"
 )
 
 // knownLabel clamps a stored file_label to the vocabulary shape.Labels()
@@ -196,8 +209,16 @@ type Executions struct {
 // a count. That holds per group: one unreadable transcript renders null beside
 // another's counts.
 type Transcript struct {
-	Path                  string   `json:"path"`
-	Readable              bool     `json:"readable"`
+	Path     string `json:"path"`
+	Readable bool   `json:"readable"`
+	// Status is one of TranscriptRead, TranscriptMissing or
+	// TranscriptUnreadable: the fact Readable alone cannot carry, because
+	// TranscriptMissing and TranscriptUnreadable both leave it false. A
+	// consumer holding several groups needs this to tell which one cost the
+	// H-10 check against this run's own records and which was simply never
+	// written -- the ordinary state of a run past Claude Code's transcript
+	// cleanup period.
+	Status                string   `json:"status"`
 	Files                 *int     `json:"files"`
 	IDsInTranscript       *int     `json:"ids_in_transcript"`
 	IDsRecorded           int      `json:"ids_recorded"`
@@ -235,11 +256,6 @@ type Transcript struct {
 	ExecutedButUnrecorded []string `json:"executed_but_unrecorded"`
 	DeniedByUser          []string `json:"denied_by_user"`
 	DeclaredWithoutResult []string `json:"declared_without_result"`
-
-	// unreadable is set when the transcript exists and could not be read,
-	// as opposed to not existing; build turns it into a coverage reason.
-	// Unexported, so the JSON shape is unchanged.
-	unreadable bool
 }
 
 // Session is one run's report. Transcripts holds one accounting group per
@@ -630,7 +646,7 @@ func (sess *Session) accountTranscripts(run *store.Run, executed map[string]bool
 	}
 	for _, path := range paths {
 		t := accounting(path, byPath[path], executed, hooked)
-		if t.unreadable {
+		if t.Status == TranscriptUnreadable {
 			sess.Coverage.add(ReasonTranscriptUnreadable)
 		}
 		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0) {
@@ -666,9 +682,27 @@ func accounting(path string, recorded, executed, hooked map[string]bool) Transcr
 		// Code's transcript cleanup period, and a reason for it would turn
 		// each of those runs unverified after the fact; verified then means
 		// the H-10 check was not available, which the README states.
-		t.unreadable = !errors.Is(err, fs.ErrNotExist)
+		//
+		// TranscriptIDs returns the first error it meets walking the main
+		// file and every subagent file beneath it, so an ErrNotExist here
+		// can come from a subagent file that vanished mid-walk even though
+		// the main transcript this group is named for is right there. The
+		// classification has to ask the main path's own Stat, not reuse
+		// whichever file's error happened to come back: a readable main
+		// transcript with an absent subagent is unreadable, not missing.
+		missing := errors.Is(err, fs.ErrNotExist)
+		if missing {
+			if _, statErr := os.Stat(path); statErr == nil {
+				missing = false
+			}
+		}
+		t.Status = TranscriptMissing
+		if !missing {
+			t.Status = TranscriptUnreadable
+		}
 		return t
 	}
+	t.Status = TranscriptRead
 	t.Readable = true
 	t.Files = &files
 	n := len(ids)
