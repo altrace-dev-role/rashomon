@@ -130,6 +130,18 @@ type Line struct {
 	Outcome *Outcome `json:"outcome"`
 }
 
+// NewLine returns a Line with EvidenceSeqs and Slots set to empty, not
+// nil: encoding/json marshals a nil slice or map as null, and the spec's
+// example line never writes either key as null -- only the pointer
+// fields above are null for "we don't know." A later writer fills in
+// every other field without having to remember this.
+func NewLine() Line {
+	return Line{
+		EvidenceSeqs: []int64{},
+		Slots:        map[string]json.RawMessage{},
+	}
+}
+
 // LabelRule names one row of MEASURE's labelling table (tech 5.2.4 B):
 // which later evidence confirms or refutes a firing. The ids are the
 // table's; which pattern declares which is MSR 2's (tech 4.5).
