@@ -52,6 +52,12 @@ var buildCommands = [][]string{
 	{"dotnet", "build"}, {"cmake", "--build"}, {"ninja"}, {"bazel", "build"}, {"bazel", "test"},
 }
 
+// maxRunnerGroups bounds how many distinctly-worded runners statusMasked
+// will re-run the line for. See the check inside statusMasked for why: past
+// it, the kind is null, the same answer a line this function gives up
+// reading already returns.
+const maxRunnerGroups = 64
+
 // statusMasked reports, for a shell line, whether a recognised build or test
 // runner on it has an exit status the line does not return, and the keyed
 // digest of that runner's own words -- or, when none does, of a runner whose
@@ -107,6 +113,17 @@ func statusMasked(cmd string, key []byte, held int) (kind, runner *string) {
 	p := &lineParser{toks: toks, groups: map[string]int{}, assigned: map[string]bool{}}
 	body, ok := p.parseLine()
 	if !ok {
+		return nil, nil
+	}
+	if len(p.runners) > maxRunnerGroups {
+		// Not sure: null. runShells below re-runs the whole parsed line for
+		// every group (twice, or four times where the line turns errexit
+		// on), so the cost is runners times line size -- a line of
+		// thousands of distinctly-named runners, each its own group because
+		// runnerWords keys a group by its exact words, made that the
+		// square of the payload: 16,000 `make tN;` groups took 4.5s and
+		// 4,000 `make tN|tail;` ones allocated 4.4 GB. A line this shaped is
+		// already past what a build or test script looks like.
 		return nil, nil
 	}
 	p.displace(held)
