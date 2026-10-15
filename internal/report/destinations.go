@@ -51,20 +51,29 @@ type Destinations struct {
 	// empty session from an unbuilt field.
 	Rewritten []Rewritten `json:"rewritten"`
 
-	// Novelty says which of this session's declared hosts are named for the
-	// first time in this project. See internal/baseline for why ownership is
+	// Novelty says which of this session's declared hosts are not yet in
+	// this project's baseline. See internal/baseline for why ownership is
 	// earliest-session-wins and why the file lives outside the evictable run
 	// store.
 	Novelty Novelty `json:"novelty"`
 }
 
-// Novelty is the per-project first-seen line.
+// Novelty is the per-project baseline-membership line.
 //
 // Its value depends entirely on not crying wolf. A novelty line that fires on
 // a quarter of sessions is read once and ignored afterwards, which is why the
 // ubiquitous list exists, why the first session in a project establishes rather
 // than reports, and why an unreadable baseline renders unknown instead of
 // treating every host as new.
+//
+// NOT a claim that a host is new to the project, whatever Hosts is named:
+// the baseline is seeded from whichever session happens to be rendered
+// first, which Runs() orders by directory mtime and --session can pin to any
+// one session at all, not from the project's actual earliest session in
+// start-time order. A host a genuinely earlier, not-yet-rendered session
+// already named can still show up here as absent from the baseline. "Absent
+// from the baseline" is the fact this type can back; "named for the first
+// time" is a claim about history this type cannot make.
 type Novelty struct {
 	// Available is false when the baseline could not be read or written.
 	// Novelty then renders as unknown: "no new hosts" and "we could not tell"
@@ -78,14 +87,14 @@ type Novelty struct {
 	Established bool `json:"established"`
 	// KnownHosts is the size of the baseline after this session.
 	KnownHosts int `json:"known_hosts"`
-	// Hosts are the hosts this session named for the first time in this
-	// project, sorted, excluding the ubiquitous list.
+	// Hosts are this session's declared hosts that were not yet in the
+	// project's baseline, sorted, excluding the ubiquitous list.
 	Hosts []string `json:"hosts"`
 }
 
 // loopbackHosts are listed among the declared hosts and never counted as
-// novel: a local server named for the first time is not a new place the
-// project's traffic goes.
+// novel: a local server is not a new place the project's traffic goes, first
+// baseline entry or not.
 var loopbackHosts = map[string]bool{
 	"localhost": true, "127.0.0.1": true, "0.0.0.0": true, "[::1]": true, "::1": true,
 }

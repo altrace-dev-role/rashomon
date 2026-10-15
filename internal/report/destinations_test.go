@@ -266,7 +266,7 @@ func TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing(t *testing.T) {
 
 	// And the line must actually print.
 	out := renderDestinations(d)
-	if !strings.Contains(out, "named for the first time in this project") {
+	if !strings.Contains(out, "not yet in this project's baseline") {
 		t.Errorf("the novelty line does not appear at all when the baseline cannot be "+
 			"located, so a reader cannot tell it from a section that was never built:\n%s",
 			out)
