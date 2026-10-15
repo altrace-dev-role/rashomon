@@ -134,6 +134,13 @@ func TurnSummary(snap Snapshot, turn TurnCounts) Summary {
 			defect = true
 			continue
 		}
+		// Green with no LastGreen is a snapshot Evaluate never builds: a
+		// green run that never happened. Reading it as a pass is the
+		// defect, not the fix (VER 11).
+		if g.State == Green && g.LastGreen == nil {
+			defect = true
+			continue
+		}
 		states = append(states, g.State)
 		var green int64
 		if g.LastGreen != nil {

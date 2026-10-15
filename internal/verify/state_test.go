@@ -90,7 +90,14 @@ func TestVER65b_OneOrderForComparatorAndTurnSummary(t *testing.T) {
 		t.Helper()
 		var gates []GateState
 		for i, s := range states {
-			gates = append(gates, GateState{Gate: string(rune('a' + i)), Required: true, State: s})
+			g := GateState{Gate: string(rune('a' + i)), Required: true, State: s}
+			if s == Green {
+				// A real green carries the run it came from; this loop is
+				// about state ranking, not the no-LastGreen defect VER65d
+				// covers on its own.
+				g.LastGreen = &RunRef{Seq: 1}
+			}
+			gates = append(gates, g)
 		}
 		got := TurnSummary(Snapshot{Recording: Complete, Gates: gates}, TurnCounts{Writes: 1}).Row
 		verdict := VerdictOf(states)
@@ -116,7 +123,8 @@ func TestVER65c_TurnSummaryRowsFollowTheTable(t *testing.T) {
 	green := func(name string, lastGreen int64) GateState {
 		return GateState{Gate: name, Required: true, State: Green, LastGreen: &RunRef{Seq: lastGreen}}
 	}
-	neverGreen := GateState{Gate: "never", Required: true, State: Green}
+	// neverGreen is Green with no LastGreen: a run that never happened,
+	// which VER65d pins as a defect on its own, not as "counts as seq 0."
 	cases := []struct {
 		name string
 		snap Snapshot
@@ -133,7 +141,7 @@ func TestVER65c_TurnSummaryRowsFollowTheTable(t *testing.T) {
 		{"two gates green at 5 and 20, unnamed write at 10: after the earliest", Snapshot{Recording: Complete, Gates: []GateState{green("a", 5), green("b", 20)}, RecordGreen: true}, TurnCounts{Writes: 1, UnnamedWriteSeq: 10}, RowUnnamedWrite},
 		{"two gates green at 20 and 5, unnamed write at 10: order of gates is irrelevant", Snapshot{Recording: Complete, Gates: []GateState{green("b", 20), green("a", 5)}, RecordGreen: true}, TurnCounts{Writes: 1, UnnamedWriteSeq: 10}, RowUnnamedWrite},
 		{"two gates green at 5 and 20, unnamed write at 3: before both", Snapshot{Recording: Complete, Gates: []GateState{green("a", 5), green("b", 20)}, RecordGreen: true}, TurnCounts{Writes: 1, UnnamedWriteSeq: 3}, RowVerified},
-		{"a green gate with no green ref counts as never: any unnamed write is after it", Snapshot{Recording: Complete, Gates: []GateState{green("a", 20), neverGreen}, RecordGreen: true}, TurnCounts{Writes: 1, UnnamedWriteSeq: 1}, RowUnnamedWrite},
+		{"a green gate with no green ref is a defect, not a pass, beside a real green", Snapshot{Recording: Complete, Gates: []GateState{green("a", 20), {Gate: "never", Required: true, State: Green}}, RecordGreen: true}, TurnCounts{Writes: 1, UnnamedWriteSeq: 1}, RowUnknown},
 		{"record-green point", Snapshot{Recording: Complete, Gates: []GateState{green("a", 9)}, RecordGreen: true}, TurnCounts{Writes: 1}, RowVerified},
 		{"all green, no record-green point", Snapshot{Recording: Complete, Gates: []GateState{green("a", 9)}}, TurnCounts{Writes: 1}, RowFindings},
 		{"a state outside the vocabulary beside green is unknown, never a pass", Snapshot{Recording: Complete, Gates: []GateState{green("a", 9), {Gate: "b", Required: true, State: State("purple")}}, RecordGreen: true}, TurnCounts{Writes: 1}, RowUnknown},
@@ -161,5 +169,20 @@ func TestVER65c_TurnSummaryRowsFollowTheTable(t *testing.T) {
 	}
 	if VerdictOf([]State{Green, State("purple")}) != Verdict("purple") {
 		t.Error("the comparator must surface a state outside the vocabulary, never sink it to green")
+	}
+}
+
+// TestVER65d_GreenWithNoLastGreenIsADefect: a gate reporting Green with no
+// LastGreen is an inconsistent snapshot -- Evaluate itself never builds
+// one -- and TurnSummary must not read it as a pass. Probed directly
+// (bypassing Evaluate) because that is the only way to produce the shape.
+func TestVER65d_GreenWithNoLastGreenIsADefect(t *testing.T) {
+	snap := Snapshot{
+		Recording:   Complete,
+		RecordGreen: true,
+		Gates:       []GateState{{Gate: "a", Required: true, State: Green}},
+	}
+	if got := TurnSummary(snap, TurnCounts{Writes: 1}); got.Row != RowUnknown {
+		t.Errorf("green gate with no last_green: row %q, want %q", got.Row, RowUnknown)
 	}
 }
