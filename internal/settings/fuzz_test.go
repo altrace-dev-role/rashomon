@@ -102,10 +102,47 @@ func checkRefusal(t *testing.T, data []byte, err error) {
 	if lines := bytes.Count(data, []byte{'\n'}) + 1; e.Line < 1 || e.Line > lines || e.Column < 1 {
 		t.Fatalf("Parse(%q) error %v is at %d:%d, outside %d lines", data, err, e.Line, e.Column, lines)
 	}
+	// Where settings' own error wraps a json.SyntaxError -- never true for
+	// its semantic refusals ("not a JSON object" and the like, which wrap
+	// no encoding/json error at all -- a fresh run of encoding/json's own
+	// scanner over the WHOLE input is a second, independent place for it.
+	// That fresh run, not the wrapped SyntaxError itself, is the oracle:
+	// the wrapped one can be one encoding/json ran over a narrower slice (a
+	// broken "hooks" value, parsed on its own bytes) with an Offset
+	// settings re-bases before this test ever sees it, where the scanner
+	// run over the whole document lands on the same absolute byte either
+	// way. Its Offset is the first byte after the one the scanner stopped
+	// on, which is refusal's own Offset-1. Computed without calling
+	// lineColumn, so this is a check ON that function, not one that passes
+	// however it adds as long as it adds consistently with itself.
+	var wrapped *json.SyntaxError
+	var fresh *json.SyntaxError
+	if errors.As(err, &wrapped) && errors.As(json.Unmarshal(data, new(json.RawMessage)), &fresh) {
+		wantLine, wantCol := independentLineColumn(data, max(int(fresh.Offset)-1, 0))
+		if e.Line != wantLine || e.Column != wantCol {
+			t.Fatalf("Parse(%q) error %v is at %d:%d, want %d:%d from encoding/json's own offset %d",
+				data, err, e.Line, e.Column, wantLine, wantCol, fresh.Offset)
+		}
+	}
 	trimmed := bytes.TrimSpace(data)
 	if json.Valid(data) && trimmed[0] == '{' && !strings.Contains(err.Error(), "duplicate key") {
 		t.Fatalf("Parse refused the valid object %q: %v", data, err)
 	}
+}
+
+// independentLineColumn is lineColumn's contract (1-based line and byte
+// column of offset off in src), computed by a byte-by-byte walk rather than
+// lineColumn's own bytes.Count and bytes.LastIndexByte, so checkRefusal has
+// an oracle that does not call the function it is checking.
+func independentLineColumn(src []byte, off int) (line, column int) {
+	line, lastNL := 1, -1
+	for i := 0; i < off && i < len(src); i++ {
+		if src[i] == '\n' {
+			line++
+			lastNL = i
+		}
+	}
+	return line, off - lastNL
 }
 
 // checkEdit replaces one hook event, checks what moved, then removes it again.
