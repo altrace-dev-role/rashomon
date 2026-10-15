@@ -66,13 +66,17 @@ func Assemble(in Input, now time.Time) *Report {
 	// marshals the same array a store with runs does. See the field comment.
 	rep := &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: make([]Session, 0, len(in.Sessions))}
 	for _, si := range in.Sessions {
-		rep.Sessions = append(rep.Sessions, assembleSession(si, in.NonoConfigured, in.Forgotten, in.ForgottenBefore))
+		rep.Sessions = append(rep.Sessions, AssembleSession(si, in.NonoConfigured, in.Forgotten, in.ForgottenBefore))
 	}
 	return rep
 }
 
-// assembleSession is one session's report.
-func assembleSession(in SessionInput, nonoConfigured bool, forgotten func(string) bool, forgottenBefore func(string, int64) bool) Session {
+// AssembleSession is one session's report, built from what the read step
+// gathered for it alone. A caller that reads one SessionInput at a time --
+// gather.Build does, so that a run's transcript and id sets are garbage
+// before the next run is read -- renders the same report this way as calling
+// Assemble with every SessionInput collected first.
+func AssembleSession(in SessionInput, nonoConfigured bool, forgotten func(string) bool, forgottenBefore func(string, int64) bool) Session {
 	run := in.Run
 	if run == nil {
 		run = &store.Run{}
@@ -99,6 +103,9 @@ func assembleSession(in SessionInput, nonoConfigured bool, forgotten func(string
 	sess.Subagents = buildSubagents(run)
 	sess.SilentFailures = BuildSilentFailures(run, sess.Account)
 	sess.MaskedRuns = sessionMaskedRuns(run, sess.Account)
+	// Both of full's readers have now run; a report holding many sessions
+	// must not hold every one's whole final message past this point.
+	sess.Account = sess.Account.dropFull()
 	sess.Gaps = in.Gaps
 	if sess.Gaps == nil {
 		sess.Gaps = []store.Gap{}

@@ -46,8 +46,10 @@ type Account struct {
 	//
 	// It stays unexported and out of the JSON on purpose. The account is prose
 	// that may name anything -- which is why --redact drops it entirely -- so
-	// widening what is ANALYSED must not widen what is written down. This field
-	// lives for the duration of one render.
+	// widening what is ANALYSED must not widen what is written down. AssembleSession
+	// clears it once its two readers (BuildSilentFailures, BuildMaskedRuns) have
+	// run, so a report over many sessions does not hold every session's whole
+	// final message for the rest of the render.
 	full string
 }
 
@@ -59,6 +61,16 @@ func (a Account) analysed() string {
 		return a.full
 	}
 	return a.Text
+}
+
+// dropFull releases the whole final message once both of full's readers have
+// run, leaving the capped Text a session's own report still renders. Without
+// this, a multi-session report holds every session's whole final message,
+// not just the 300-rune Text each one renders, for as long as the report
+// itself is held.
+func (a Account) dropFull() Account {
+	a.full = ""
+	return a
 }
 
 // SubagentSummary is what one subagent did that the main transcript never

@@ -47,42 +47,75 @@ func WithNonoTrail(path string) Option {
 	return func(o *options) { o.nonoTrail = path }
 }
 
-// Build renders one session, or every session when sessionID is empty: Read,
-// then report.Assemble.
+// Build renders one session, or every session when sessionID is empty: it
+// reads and assembles one session at a time, through report.AssembleSession,
+// so each run's transcript, id sets and final text are garbage before the
+// next session is read. A report over a long-lived store costs what
+// rendering its biggest single session costs, not what holding every
+// session's records at once would.
 //
 // It is not read-only. Asking the project baseline which hosts are new
 // records this session's hosts in it (baseline.Update), which is what makes
 // the next session's answer possible.
 func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*report.Report, error) {
-	in, err := Read(st, sessionID, opts...)
+	cfg, names, byDir, forgotten, forgottenBefore, err := plan(st, sessionID, opts)
 	if err != nil {
 		return nil, err
 	}
-	return report.Assemble(in, now), nil
+	nonoConfigured := cfg.nonoTrail != ""
+	rep := &report.Report{ReportVersion: report.CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: make([]report.Session, 0, len(names))}
+	for _, name := range names {
+		si, err := readSession(st, name, byDir, cfg, forgottenBefore)
+		if err != nil {
+			return nil, err
+		}
+		rep.Sessions = append(rep.Sessions, report.AssembleSession(si, nonoConfigured, forgotten, forgottenBefore))
+	}
+	return rep, nil
 }
 
 // Read gathers what report.Assemble renders for one session, or for every
 // session when sessionID is empty -- every run directory, and every run that
-// eviction removed but a gap still names.
+// eviction removed but a gap still names -- all held at once. Build does not
+// use this: it is for a caller, such as a test, that wants the whole Input
+// rather than a rendered Report.
 func Read(st *store.Store, sessionID string, opts ...Option) (report.Input, error) {
-	var cfg options
+	cfg, names, byDir, forgotten, forgottenBefore, err := plan(st, sessionID, opts)
+	if err != nil {
+		return report.Input{}, err
+	}
+	in := report.Input{NonoConfigured: cfg.nonoTrail != "", Forgotten: forgotten, ForgottenBefore: forgottenBefore}
+	for _, name := range names {
+		si, err := readSession(st, name, byDir, cfg, forgottenBefore)
+		if err != nil {
+			return report.Input{}, err
+		}
+		in.Sessions = append(in.Sessions, si)
+	}
+	return in, nil
+}
+
+// plan is what Build and Read share before either reads a session: which run
+// directories to render, the gaps each one carries, and the store-wide
+// forgotten-host answers.
+func plan(st *store.Store, sessionID string, opts []Option) (cfg options, names []string, byDir map[string][]store.Gap, forgotten func(string) bool, forgottenBefore func(string, int64) bool, err error) {
 	for _, o := range opts {
 		o(&cfg)
 	}
 	gaps, err := st.ReadGaps()
 	if err != nil {
-		return report.Input{}, err
+		return options{}, nil, nil, nil, nil, err
 	}
 	// Gaps are keyed by run directory, the one name a session has whether or
 	// not its records still exist and whatever characters its id contains.
-	byDir := map[string][]store.Gap{}
+	byDir = map[string][]store.Gap{}
 	for _, g := range gaps {
 		dir := st.DirName(g.SessionID)
 		byDir[dir] = append(byDir[dir], g)
 	}
-	names, err := runNames(st, sessionID, byDir)
+	names, err = runNames(st, sessionID, byDir)
 	if err != nil {
-		return report.Input{}, err
+		return options{}, nil, nil, nil, nil, err
 	}
 	// Read once for the whole report: the forgotten set is a property of the
 	// store, not of a session, and re-reading the gaps per session would be the
@@ -97,30 +130,35 @@ func Read(st *store.Store, sessionID string, opts ...Option) (report.Input, erro
 	// predate it; buildDestinations, buildFamilies and buildChains ask
 	// "forgotten before THIS declaration was recorded", so a later, genuine
 	// re-use of a once-forgotten name still shows up as what it is.
-	forgotten, err := st.ForgottenHost()
+	forgotten, err = st.ForgottenHost()
 	if err != nil {
-		return report.Input{}, err
+		return options{}, nil, nil, nil, nil, err
 	}
-	forgottenBefore, err := st.ForgottenHostBefore()
+	forgottenBefore, err = st.ForgottenHostBefore()
 	if err != nil {
-		return report.Input{}, err
+		return options{}, nil, nil, nil, nil, err
 	}
-	in := report.Input{NonoConfigured: cfg.nonoTrail != "", Forgotten: forgotten, ForgottenBefore: forgottenBefore}
-	for _, name := range names {
-		run, err := st.ReadRunDir(name)
-		if err != nil {
-			return report.Input{}, err
-		}
-		in.Sessions = append(in.Sessions, report.SessionInput{
-			Dir:         name,
-			Run:         run,
-			Gaps:        byDir[name],
-			Transcripts: readTranscripts(run),
-			Novelty:     novelty(run, st.Root(), forgottenBefore),
-			Nono:        nono.Read(cfg.nonoTrail, report.SessionWindow(run)),
-		})
+	return cfg, names, byDir, forgotten, forgottenBefore, nil
+}
+
+// readSession reads one run directory and what report.AssembleSession needs
+// beside it. Nothing it returns is kept beyond the one Report.Session or
+// Input.Sessions entry built from it, so a caller that reads one session at a
+// time (Build) never holds a second session's records while it holds this
+// one's.
+func readSession(st *store.Store, name string, byDir map[string][]store.Gap, cfg options, forgottenBefore func(string, int64) bool) (report.SessionInput, error) {
+	run, err := st.ReadRunDir(name)
+	if err != nil {
+		return report.SessionInput{}, err
 	}
-	return in, nil
+	return report.SessionInput{
+		Dir:         name,
+		Run:         run,
+		Gaps:        byDir[name],
+		Transcripts: readTranscripts(run),
+		Novelty:     novelty(run, st.Root(), forgottenBefore),
+		Nono:        nono.Read(cfg.nonoTrail, report.SessionWindow(run)),
+	}, nil
 }
 
 // runNames are the run directories to render: the one sessionID names, or
@@ -161,14 +199,45 @@ func novelty(run *store.Run, storeRoot string, forgotten func(host string, decla
 	return report.AnsweredNovelty(res.Established, res.Known, res.Novel, res.Err)
 }
 
-// readTranscripts reads every transcript path the run's declarations name.
+// readTranscripts reads every transcript path the run's declarations name:
+// the ids of each one, and the final assistant message of the first declared
+// path, in declaration order, that has a readable one -- the only path
+// buildAccount (internal/report/account.go) ever uses. Reading every path's
+// final text, as readTranscript does for one path on its own, would cost a
+// full extra scan of each transcript a session's own account does not use.
 func readTranscripts(run *store.Run) map[string]report.TranscriptRead {
 	paths := report.TranscriptPaths(run)
 	out := make(map[string]report.TranscriptRead, len(paths))
 	for _, p := range paths {
-		out[p] = readTranscript(p)
+		var read report.TranscriptRead
+		read.Set, read.Err = readIDSet(p)
+		out[p] = read
 	}
+	readFinal(run, out)
 	return out
+}
+
+// readFinal fills the final assistant message of the first declared
+// transcript, in declaration order, that has a readable one, mirroring
+// buildAccount's own selection rule so the two agree about which path's
+// account the report renders. It stops at the first success, so no path
+// after it in declaration order is opened for its final text.
+func readFinal(run *store.Run, out map[string]report.TranscriptRead) {
+	tried := map[string]bool{}
+	for _, d := range run.Declarations {
+		if d.TranscriptPath == "" || tried[d.TranscriptPath] {
+			continue
+		}
+		tried[d.TranscriptPath] = true
+		text, ok := finalText(d.TranscriptPath)
+		if !ok {
+			continue
+		}
+		read := out[d.TranscriptPath]
+		read.Final, read.FinalRead = text, true
+		out[d.TranscriptPath] = read
+		return
+	}
 }
 
 // readTranscript reads one session transcript: the ids of it and of its

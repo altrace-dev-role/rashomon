@@ -32,10 +32,10 @@ m("RUBRIC hld-4 a subagent that cannot be read leaves a partial count", "interna
   "\t\tif err := readIDs(s, set); err != nil {\n\t\t\tcontinue\n\t\t}\n",
   "TestRubricHLD4_AnUnreadableSubagentCostsTheCountNotTheAccount")
 m("RUBRIC hld-4 the read step does not ask the project baseline", "internal/report/gather/gather.go",
-  "\t\t\tNovelty:     novelty(run, st.Root(), forgottenBefore),\n", "\t\t\tNovelty:     report.Novelty{},\n",
+  "\t\tNovelty:     novelty(run, st.Root(), forgottenBefore),\n", "\t\tNovelty:     report.Novelty{},\n",
   "TestRubricHLD4_BuildReadsTheTranscriptsTheRunNames")
 m("RUBRIC hld-4 the read step does not read the sandbox trail", "internal/report/gather/gather.go",
-  "\t\t\tNono:        nono.Read(cfg.nonoTrail, report.SessionWindow(run)),\n", "\t\t\tNono:        nono.Observation{},\n",
+  "\t\tNono:        nono.Read(cfg.nonoTrail, report.SessionWindow(run)),\n", "\t\tNono:        nono.Observation{},\n",
   "TestRubricHLD4_TheReadStepReadsTheSandboxTrail")
 m("RUBRIC hld-4 the baseline's error text reaches the report", "internal/report/destinations.go",
   "\t\tn.Reason = \"the project baseline could not be read or written\"\n", "\t\tn.Reason = err.Error()\n",
