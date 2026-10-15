@@ -647,6 +647,7 @@
             "hook_entry_unresolved",
             "probe_absent",
             "recording_paused",
+            "pause_state_unreadable",
             "probe_unresolved"
           ]
         },

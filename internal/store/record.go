@@ -473,6 +473,14 @@ const (
 	// over MaxRecordBytes and refused (REC-31, REC-52). Nothing broke, which
 	// is why it is not internal_error; what the record holds is incomplete.
 	ReasonRecordOversize = "record_oversize"
+	// ReasonPauseStateUnreadable marks an invocation that found the pause
+	// marker present and could not read it: EACCES on the file itself, or
+	// any other error that is not the file simply not being there. It is
+	// recorded instead of ReasonRecordingPaused because the call really was
+	// paused, but not on purpose the way an ordinary `rashomon pause` is --
+	// a reader needs the two distinguishable rather than folded into one.
+	// checkPaused is the only writer.
+	ReasonPauseStateUnreadable = "pause_state_unreadable"
 )
 
 // Reasons lists every coverage reason code a record can carry. It exists so
@@ -493,6 +501,7 @@ func Reasons() []string {
 		ReasonProbeUnresolved,
 		ReasonRecordingPaused,
 		ReasonRecordOversize,
+		ReasonPauseStateUnreadable,
 	}
 }
 

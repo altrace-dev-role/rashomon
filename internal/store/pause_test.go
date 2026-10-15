@@ -3,6 +3,8 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -131,5 +133,111 @@ func TestResume_ClosesTheWindowAndIsIdempotentWhenNotPaused(t *testing.T) {
 	}
 	if wasPaused || !since.IsZero() {
 		t.Errorf("second Resume reports wasPaused=%v since=%v, want false/zero", wasPaused, since)
+	}
+}
+
+// TestMarkerUnreadable_TrueOnlyWhenTheMarkerIsAPlainFile: MarkerUnreadable
+// must say yes only when the marker itself is a plain file that is there,
+// and no for every other shape -- no marker at all, or a directory where
+// one would be. It does not itself check that reading fails, since callers
+// only ask once Paused's own read already has; checkPaused and
+// RecordingState rely on this to fail closed on the marker only when the
+// marker is the actual problem, never on an unrelated filesystem fault.
+func TestMarkerUnreadable_TrueOnlyWhenTheMarkerIsAPlainFile(t *testing.T) {
+	t.Run("no marker", func(t *testing.T) {
+		root := t.TempDir()
+		if MarkerUnreadable(root) {
+			t.Error("MarkerUnreadable is true with no marker at all")
+		}
+	})
+
+	t.Run("a directory where the marker would be", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, fileRecordingPaused), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if MarkerUnreadable(root) {
+			t.Error("MarkerUnreadable is true for a directory, which Paused fails on for a different reason entirely")
+		}
+	})
+
+	t.Run("an unreadable plain marker", func(t *testing.T) {
+		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+			t.Skip("chmod 000 does not stop this user reading the file")
+		}
+		root := t.TempDir()
+		if _, _, err := Pause(root, time.Now()); err != nil {
+			t.Fatalf("Pause: %v", err)
+		}
+		marker := filepath.Join(root, fileRecordingPaused)
+		if err := os.Chmod(marker, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(marker, 0o644) }) //nolint:errcheck // TempDir removal follows
+		if !MarkerUnreadable(root) {
+			t.Error("MarkerUnreadable is false for a plain marker this test just made unreadable")
+		}
+	})
+}
+
+// TestResume_RemovesAnUnreadableMarker: a pause marker that exists and
+// cannot be read is exactly the state checkPaused fails closed on, which
+// makes it sticky -- Resume used to return Paused's raw read error before
+// ever reaching the file, leaving the caller unable to clear the one state
+// checkPaused treats as a pause.
+func TestResume_RemovesAnUnreadableMarker(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 000 does not stop this user reading the file")
+	}
+	root := t.TempDir()
+	since, _, err := Pause(root, time.Now())
+	if err != nil {
+		t.Fatalf("Pause: %v", err)
+	}
+	marker := filepath.Join(root, fileRecordingPaused)
+	if err := os.Chmod(marker, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(marker, 0o644) }) //nolint:errcheck // TempDir removal follows
+
+	wasPaused, closedSince, err := Resume(root, since.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("Resume: %v, want it to remove the unreadable marker instead", err)
+	}
+	if !wasPaused {
+		t.Error("wasPaused is false, want true: the marker was there")
+	}
+	if closedSince.IsZero() {
+		t.Error("closedSince is zero, want now: the true start was unreadable")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Errorf("marker still exists after Resume: %v", err)
+	}
+	if paused, _, err := Paused(root); err != nil || paused {
+		t.Errorf("Paused after Resume = (%v, %v), want (false, nil)", paused, err)
+	}
+}
+
+// TestResume_NamesTheMarkerOnAnUnrelatedFault: a Paused error that is not an
+// unreadable plain marker -- here, a directory sitting where the marker
+// would be -- must come back from Resume as is, naming the path, rather
+// than being guessed at by removing something Resume did not cause and may
+// not understand.
+func TestResume_NamesTheMarkerOnAnUnrelatedFault(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, fileRecordingPaused)
+	if err := os.MkdirAll(marker, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := Resume(root, time.Now())
+	if err == nil {
+		t.Fatal("Resume returned no error for a marker that is a directory")
+	}
+	if !strings.Contains(err.Error(), marker) {
+		t.Errorf("Resume's error %q does not name the path %q", err, marker)
+	}
+	if _, statErr := os.Stat(marker); statErr != nil {
+		t.Errorf("Resume removed %s on a fault it neither caused nor understood: %v", marker, statErr)
 	}
 }
