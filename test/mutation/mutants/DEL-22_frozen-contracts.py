@@ -27,7 +27,7 @@ m("DEL-22 the masked claim may be model-visible", "internal/steer/finding.go",
 m("DEL-22 a message rides another pattern's finding", "internal/steer/finding.go",
   "\tcase f.Message.Text() != \"\" && f.Message.Pattern() != f.Pattern:\n", "\tcase false:\n", "TestDEL22e_")
 m("DEL-22 evidence may repeat or follow after_seq", "internal/steer/finding.go",
-  "\t\tif seq > f.AfterSeq || i > 0 && seq <= f.Evidence[i-1] {\n", "\t\tif i > 0 && seq < f.Evidence[i-1] {\n", "TestDEL22e_")
+  "\t\tif seq < 1 || seq > f.AfterSeq || i > 0 && seq <= f.Evidence[i-1] {\n", "\t\tif seq < 1 || i > 0 && seq < f.Evidence[i-1] {\n", "TestDEL22e_")
 m("DEL-22 a stop form rides below the stop level", "internal/steer/finding.go",
   "\tcase f.StopForm != StopFormNone && f.MaxLevel != LevelStop:\n", "\tcase false:\n", "TestDEL22e_")
 # The schema-5 key list against every route around it (P07N-6), BREADTH's
@@ -66,3 +66,8 @@ m("DEL-22 an oversize instructions path cannot be null", "internal/store/record_
   "\tFilePath        *string `json:\"file_path\"`\n", "\tFilePath        string  `json:\"file_path\"`\n", "TestDEL22g_")
 m("DEL-22 an oversize git root has no key", "internal/store/record_v5.go",
   "\tRootWithheld *string `json:\"root_withheld\"`\n", "", "TestDEL22g_")
+m("DEL-22 a finding may name an after_seq below 1", "internal/steer/finding.go",
+  "\tif f.AfterSeq < 1 {\n\t\treturn fmt.Errorf(\"%w: after_seq must be at least 1\", ErrFinding)\n\t}\n",
+  "", "TestDEL22e_")
+m("DEL-22 an evidence seq of zero or less is accepted", "internal/steer/finding.go",
+  "\t\tif seq < 1 || seq > f.AfterSeq ", "\t\tif seq > f.AfterSeq ", "TestDEL22e_")
