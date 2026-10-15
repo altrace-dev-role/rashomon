@@ -271,6 +271,98 @@ func TestH17_TheSanctionedSourcesAreNotVacuous(t *testing.T) {
 	}
 }
 
+// rawSyscalls are the calls that reach a socket or start a process WITHOUT
+// going through one of forbiddenImports' packages, so the import-based scan
+// above cannot see them at all: syscall and os are themselves legitimately
+// imported here (internal/store's file locks, internal/hook's signal
+// handling), and banning either import would ban code this module needs.
+// This is a scan for the specific calls, not the packages.
+var rawSyscalls = []string{
+	"syscall.Socket(", "syscall.Connect(", "syscall.ForkExec(", "syscall.Exec(",
+	"os.StartProcess(",
+}
+
+// TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport backs the
+// README's "no network code of its own" over the one path the import scan
+// cannot cover. Every *.go file in this module, not only the recorder's: the
+// README's claim is about the whole binary, and TestH17_HandlerOpensNoSockets
+// above already covers one process at runtime, which is narrower.
+func TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport(t *testing.T) {
+	var files int
+	err := filepath.WalkDir(moduleRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		files++
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(moduleRoot, path)
+		if err != nil {
+			rel = path
+		}
+		for _, call := range rawSyscalls {
+			if strings.Contains(string(body), call) {
+				t.Errorf("%s calls %s, which reaches a socket or starts a process "+
+					"without going through an import the scan above would catch", rel, call)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The failure mode of every source-scanning check is to scan nothing.
+	if files < 50 {
+		t.Fatalf("scanned only %d non-test .go files; this test is not looking at the "+
+			"module any more", files)
+	}
+}
+
+// TestRawSyscalls_CatchesEachListedCall pins rawSyscalls to its own list,
+// independent of whatever this tree's source happens to contain today: a
+// call dropped from the list, or a pattern narrowed so a real call site no
+// longer matches it, is caught here even on a tree with no such call
+// anywhere in it.
+func TestRawSyscalls_CatchesEachListedCall(t *testing.T) {
+	fixtures := []string{
+		"	syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)",
+		"	syscall.Connect(fd, addr)",
+		"	syscall.ForkExec(path, args, attr)",
+		"	syscall.Exec(path, args, env)",
+		"	os.StartProcess(path, args, attr)",
+	}
+	for _, src := range fixtures {
+		var caught bool
+		for _, call := range rawSyscalls {
+			if strings.Contains(src, call) {
+				caught = true
+			}
+		}
+		if !caught {
+			t.Errorf("rawSyscalls catches none of its own list against %q", src)
+		}
+	}
+	// A benign, legitimate use of both packages -- exactly what store's file
+	// locks and hook's signal handling do -- must not match any entry.
+	safe := "	syscall.Flock(fd, syscall.LOCK_EX)\n\tos.Getpid()"
+	for _, call := range rawSyscalls {
+		if strings.Contains(safe, call) {
+			t.Errorf("rawSyscalls entry %q matches legitimate syscall/os usage", call)
+		}
+	}
+}
+
 // directImports returns one package's own import statements.
 func directImports(t *testing.T, pattern string) map[string]bool {
 	t.Helper()
