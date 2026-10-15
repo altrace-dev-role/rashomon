@@ -37,7 +37,7 @@ func (s *Store) noteLockWait(sessionID string) {
 		return
 	}
 	defer f.Close() //nolint:errcheck // an unwritten note leaves the old one standing
-	unlock, _, err := lockCounted(f, spillBudget)
+	unlock, _, err := lockCounted(f, s.lockWait(spillBudget))
 	if err != nil {
 		return
 	}
