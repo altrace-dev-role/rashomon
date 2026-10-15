@@ -371,7 +371,15 @@ func FindPlugin(doc *settings.Document) (*Plugin, error) {
 			for _, event := range Events() {
 				declared, whole, err := pluginDeclaration(rec.InstallPath, event)
 				if err != nil {
-					continue
+					// Skipping this event and returning the plugin anyway
+					// made an unreadable or unparseable hooks.json read the
+					// same as a plugin that simply declares nothing for it --
+					// indistinguishable from no plugin at all to Live(),
+					// which only ever sees what did get appended below.
+					// Failing the whole lookup lets watch refuse and status
+					// say "unreadable" instead of installing, or reporting,
+					// over a plugin whose actual state was never read.
+					return nil, err
 				}
 				if declared {
 					p.Declared = append(p.Declared, event)

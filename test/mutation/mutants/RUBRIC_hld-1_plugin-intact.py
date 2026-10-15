@@ -65,3 +65,7 @@ m("hld-1 PluginFires reads only an intact group", "internal/install/plugin.go",
   "\tdeclared, _, err := pluginDeclaration(root, event)\n\treturn declared, err\n",
   "\t_, declared, err := pluginDeclaration(root, event)\n\treturn declared, err\n",
   "TestRubricHLD1_AHandEditedPluginsRecapPointsAtItsOwnCommand")
+m("hld-1 FindPlugin swallows a per-event read or parse error", "internal/install/plugin.go",
+  "\t\t\t\t\treturn nil, err\n",
+  "\t\t\t\t\tcontinue\n",
+  "TestRubricHLD1_UnreadablePluginHooksReadAsUnreadable")
