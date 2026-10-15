@@ -234,6 +234,7 @@ var reasonText = map[string]string{
 	"execution_mismatch":     "the transcript holds results for calls this store recorded no execution for",
 	"gap":                    "a gap record marks a stretch this store does not hold: records removed by `forget` or the size cap, or a window `rashomon pause` left unrecorded",
 	"recording_paused":       "a hook ran while `rashomon pause` was in effect, so what it would have recorded (a tool call, its result, or the session's start or end) was deliberately not recorded",
+	"pause_state_unreadable": "a hook found the pause marker present but could not read it, so it did not record, but the gap is a filesystem fault rather than a deliberate `rashomon pause`",
 	"duplicate_declarations": "more declarations than distinct tool calls: more than one recorder wrote into this run, and the counts here include every copy",
 	"internal_error":         "a hook invocation failed inside this program, so what it should have recorded is missing",
 	"recovered_panic":        "a hook invocation hit a bug in this program and recovered from it, so what it should have recorded is missing, or a file label reads unknown",

@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -71,6 +72,20 @@ func Paused(root string) (paused bool, since time.Time, err error) {
 	return true, time.UnixMilli(ms), nil
 }
 
+// MarkerUnreadable reports whether root's pause marker exists as a plain
+// file, which is the one shape Paused failing to read it means the marker
+// itself is the problem rather than something else entirely: a missing or
+// inaccessible store root, the marker being a directory, or any fault that
+// has nothing to do with the marker. It does not itself attempt the read --
+// callers already know that failed, from Paused's own error, and ask this
+// only to learn why. checkPaused and RecordingState use it to decide whether
+// to fail closed on the marker or let the underlying error surface on its
+// own, and Resume uses it to decide whether removing the marker is safe.
+func MarkerUnreadable(root string) bool {
+	fi, err := os.Lstat(filepath.Join(root, fileRecordingPaused))
+	return err == nil && fi.Mode().IsRegular()
+}
+
 // Pause engages root's paused state, creating root if this machine has never
 // recorded before -- the marker has to live somewhere, and "under the store
 // root" is that somewhere even before anything else is. It does NOT mint an
@@ -111,10 +126,27 @@ func Pause(root string, now time.Time) (since time.Time, alreadyPaused bool, err
 // since, when the machine was not paused -- resume is idempotent in the same
 // sense detach is, and calling it on a machine that is not paused is a
 // satisfied request, not an error.
+//
+// A marker that exists and cannot be read is the state checkPaused fails
+// closed on, so recording stays off until the marker is gone; resume is the
+// one command that undoes a pause, and a read error must not be the one
+// state it cannot undo. It removes such a marker and closes the window at
+// now, the same answer a marker that exists but does not parse already gets
+// below. Any other read failure -- the store root missing or inaccessible,
+// the marker being something other than a plain file -- is returned as is,
+// naming the path, because removing it would be guessing at a fault resume
+// did not cause and may not understand.
 func Resume(root string, now time.Time) (wasPaused bool, since time.Time, err error) {
 	paused, existingSince, err := Paused(root)
 	if err != nil {
-		return false, time.Time{}, err
+		marker := filepath.Join(root, fileRecordingPaused)
+		if !MarkerUnreadable(root) {
+			return false, time.Time{}, err
+		}
+		if rerr := os.Remove(marker); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+			return false, time.Time{}, fmt.Errorf("resume: %s could not be read and could not be removed: %w", marker, rerr)
+		}
+		return true, now, nil
 	}
 	if !paused {
 		return false, time.Time{}, nil

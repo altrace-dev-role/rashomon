@@ -404,8 +404,10 @@ func TestPausedSessionProbeIsNotReportedAsRecorded(t *testing.T) {
 
 // TestRubricERRORS6_UnreadablePauseMarkerPausesRecording: with the pause
 // marker present but unreadable (chmod 000), a hook call is not recorded and
-// leaves recording_paused, as under a readable marker. It used to record: a
-// read error counted as "not paused", so declarations went from one to two.
+// leaves pause_state_unreadable, the reason a pause from an unreadable
+// marker carries rather than the ordinary recording_paused. It used to
+// record: a read error counted as "not paused", so declarations went from
+// one to two.
 func TestRubricERRORS6_UnreadablePauseMarkerPausesRecording(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("chmod 000 does not stop this user reading the file")
@@ -434,12 +436,12 @@ func TestRubricERRORS6_UnreadablePauseMarkerPausesRecording(t *testing.T) {
 	}
 	found := false
 	for _, c := range e.coverage(testSession, "call") {
-		if c.str("reason") == "recording_paused" {
+		if c.str("reason") == "pause_state_unreadable" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("no call coverage record carries recording_paused for the call under an unreadable marker")
+		t.Error("no call coverage record carries pause_state_unreadable for the call under an unreadable marker")
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -111,6 +112,68 @@ func TestH82_RecordingStateDistinguishesPausedAbsentAndUnknown(t *testing.T) {
 			t.Errorf("since is %v, want zero for an unparseable marker", since)
 		}
 	})
+
+	t.Run("paused (marker unreadable): the marker exists but cannot be read", func(t *testing.T) {
+		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+			t.Skip("chmod 000 does not stop this user reading the file")
+		}
+		root := t.TempDir()
+		t.Setenv("RASHOMON_HOME", root)
+		if _, _, err := store.Pause(root, time.Now()); err != nil {
+			t.Fatalf("store.Pause: %v", err)
+		}
+		marker := filepath.Join(root, "pause")
+		if err := os.Chmod(marker, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(marker, 0o644) }) //nolint:errcheck // TempDir removal follows
+
+		// This is RecordingPausedUnreadable's whole reason to exist: checkPaused
+		// treats this marker as a pause, so RecordingState must not render an
+		// error here -- that would read as "unknown" at the status line, over
+		// an answer the program already has.
+		state, since, err := RecordingState()
+		if err != nil {
+			t.Fatalf("RecordingState: %v, want no error for an unreadable marker", err)
+		}
+		if state != RecordingPausedUnreadable {
+			t.Errorf("state is %q, want %q", state, RecordingPausedUnreadable)
+		}
+		if !since.IsZero() {
+			t.Errorf("since is %v, want zero: the marker could not be read", since)
+		}
+	})
+}
+
+// TestStatusRecording_UnreadableMarkerPrintsMarkerUnreadable pins the status
+// line itself, not just the state RecordingState resolves to: an unreadable
+// pause marker must render as "paused (marker unreadable)", never as
+// statusUnknown, because checkPaused is already treating the call as paused
+// and status has an answer rather than nothing to report.
+func TestStatusRecording_UnreadableMarkerPrintsMarkerUnreadable(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 000 does not stop this user reading the file")
+	}
+	root := t.TempDir()
+	t.Setenv("RASHOMON_HOME", root)
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	if _, _, err := store.Pause(root, time.Now()); err != nil {
+		t.Fatalf("store.Pause: %v", err)
+	}
+	marker := filepath.Join(root, "pause")
+	if err := os.Chmod(marker, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(marker, 0o644) }) //nolint:errcheck // TempDir removal follows
+
+	var stdout bytes.Buffer
+	statusRecording(&stdout, root)
+	if !strings.Contains(stdout.String(), "recording: paused (marker unreadable)") {
+		t.Errorf("status = %q, want it to contain %q", stdout.String(), "recording: paused (marker unreadable)")
+	}
+	if strings.Contains(stdout.String(), statusUnknown) {
+		t.Errorf("status = %q, an unreadable marker is a known state, not %q", stdout.String(), statusUnknown)
+	}
 }
 
 // TestH78_CheckPausedReReadsOnEveryCallInOneProcess is H-78 at the level its
@@ -217,7 +280,9 @@ func TestCheckPaused_H80WritesRecordingPausedWithAStore(t *testing.T) {
 // exists and cannot be read (chmod 000) is a pause, the way a marker that
 // does not parse already is. Before, checkPaused read any error from
 // store.Paused as "not paused", so the hook recorded the call while status
-// said "recording: unknown".
+// said "recording: unknown". The coverage reason is pause_state_unreadable,
+// not recording_paused: the call really was paused, but not by an ordinary
+// `rashomon pause`, and a reader needs the two distinguishable.
 func TestRubricERRORS6_UnreadablePauseMarkerPausesTheHook(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("chmod 000 does not stop this user reading the file")
@@ -253,7 +318,37 @@ func TestRubricERRORS6_UnreadablePauseMarkerPausesTheHook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading coverage.ndjson: %v", err)
 	}
-	if !bytes.Contains(body, []byte(`"reason":"recording_paused"`)) {
-		t.Errorf("coverage.ndjson does not carry recording_paused:\n%s", body)
+	if !bytes.Contains(body, []byte(`"reason":"pause_state_unreadable"`)) {
+		t.Errorf("coverage.ndjson does not carry pause_state_unreadable:\n%s", body)
+	}
+}
+
+// TestCheckPaused_FaultOnStoreRootIsNotAPause: when store.Paused fails for a
+// reason that has nothing to do with the pause marker -- here, a store root
+// this process cannot search -- checkPaused must not treat the call as
+// paused. Before, any error from store.Paused read as a pause, so an EACCES
+// or ENOTDIR fault on the store root silently stopped recording with no
+// coverage record and nothing on stderr.
+func TestCheckPaused_FaultOnStoreRootIsNotAPause(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("root bypasses a directory's permission bits")
+	}
+	root := t.TempDir()
+	t.Setenv("RASHOMON_HOME", root)
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	if err := os.Chmod(root, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(root, 0o700) }) //nolint:errcheck // TempDir removal follows
+	if _, _, err := store.Paused(root); err == nil {
+		t.Fatal("premise: store.Paused read an unsearchable root without error")
+	}
+	if store.MarkerUnreadable(root) {
+		t.Fatal("premise: MarkerUnreadable reported true for a root fault, not a marker fault")
+	}
+
+	if paused := checkPaused(nil, strings.NewReader(""), store.PhaseCall, io.Discard); paused {
+		t.Error("checkPaused reported paused for a store root it could not search, " +
+			"not for a pause marker it could not read")
 	}
 }

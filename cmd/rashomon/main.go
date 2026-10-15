@@ -564,8 +564,10 @@ func openForHook(stderr io.Writer) *store.Store {
 // sites put it before openForHook rather than after.
 //
 // Where a store already exists it writes exactly one coverage record,
-// carrying store.ReasonRecordingPaused, so a reader of the report sees a
-// deliberate gap and not an unexplained one (H-80). Where none exists it
+// carrying store.ReasonRecordingPaused for an ordinary pause or
+// store.ReasonPauseStateUnreadable for a marker it could not read, so a
+// reader of the report sees a deliberate gap and not an unexplained one
+// (H-80). Where none exists it
 // writes nothing at all (H-81): creating a store to say "not recording" would
 // be worse than saying nothing, and it is the one outcome pausing before ever
 // recording must not produce. standsDown is still honoured on the writing
@@ -582,12 +584,27 @@ func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer)
 	}
 	// A marker that exists and cannot be read is a pause, the way a marker
 	// that does not parse already is (store.Paused): someone asked for
-	// recording to stop, and an unreadable answer is not a "no". Reading the
-	// error as "not paused" recorded the call while status said "recording:
-	// unknown" for the same file. store.Paused returns no error for a marker
-	// that does not exist, so a machine that never paused is unaffected.
-	if paused, _, err := store.Paused(root); err == nil && !paused {
+	// recording to stop, and an unreadable answer is not a "no". store.Paused
+	// returns no error for a marker that does not exist, so a machine that
+	// never paused is unaffected.
+	//
+	// Only a read error on the marker itself earns that answer, though.
+	// store.Paused also fails on a store root that is missing, inaccessible
+	// or not a directory, and on a `pause` that is itself a directory, none
+	// of which says anyone asked for recording to stop. Reading those as a
+	// pause recorded nothing and said nothing on stderr, which is a
+	// filesystem fault turning off recording in silence. store.MarkerUnreadable
+	// tells the two apart; everything else falls through so the real error
+	// surfaces through the normal, unpaused path below.
+	paused, _, pausedErr := store.Paused(root)
+	reason := store.ReasonRecordingPaused
+	switch {
+	case pausedErr == nil && !paused:
 		return false
+	case pausedErr != nil && !store.MarkerUnreadable(root):
+		return false
+	case pausedErr != nil:
+		reason = store.ReasonPauseStateUnreadable
 	}
 	if !storeExistsAt(root) {
 		return true
@@ -599,7 +616,7 @@ func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer)
 	if standsDown(args, st, stderr) {
 		return true
 	}
-	hook.RecordPaused(stdin, phase, st, time.Now)
+	hook.RecordPaused(stdin, phase, reason, st, time.Now)
 	return true
 }
 
@@ -987,25 +1004,35 @@ func cmdResume(stdout io.Writer) error {
 	return nil
 }
 
-// Recording state words. RecordingState returns exactly one of these three.
+// Recording state words. RecordingState returns exactly one of these four.
 // H-82 is the test that paused, absent and unknown stay distinguishable, so
 // "I turned it off" can never collapse into "it was never installed" or the
 // reverse. statusRecording renders each state and separately says when an
 // active pause state belongs to a machine with no install at all.
 const (
-	RecordingActive        = "active"
-	RecordingPaused        = "paused"
-	RecordingPausedNoStore = "paused, no store recorded here yet"
+	RecordingActive           = "active"
+	RecordingPaused           = "paused"
+	RecordingPausedNoStore    = "paused, no store recorded here yet"
+	RecordingPausedUnreadable = "paused (marker unreadable)"
 )
 
 // RecordingState reports this machine's pause state for status to render
-// (Part 2). It returns one of the three words above, the moment the pause
+// (Part 2). It returns one of the four words above, the moment the pause
 // began (zero when not paused, or when the pause file holds no readable
-// instant), or an error when the pause file could not be read. statusRecording is the one place that turns these into the status
-// line, and its own code is the source of truth for the wording; this
-// function decides only which state holds. An error must render as unknown,
-// never as active: the same unresolved-vs-absent distinction statusUnreadable
-// exists for elsewhere in this file.
+// instant, or when the state is RecordingPausedUnreadable), or an error for
+// any other failure. statusRecording is the one place that turns these into
+// the status line, and its own code is the source of truth for the wording;
+// this function decides only which state holds.
+//
+// A pause marker that exists and cannot be read is RecordingPausedUnreadable,
+// not an error: checkPaused treats that same state as a pause (hooks do not
+// fall back to recording), so status must say so rather than render
+// "unknown" over an answer it already has. An error here is reserved for
+// everything else store.Paused can fail on -- a missing or inaccessible
+// store root, the marker being something other than a plain file -- which is
+// a fault unrelated to the pause marker and must render as unknown, never as
+// active: the same unresolved-vs-absent distinction statusUnreadable exists
+// for elsewhere in this file.
 //
 // It is a plain read, like storeExistsAt below: os.Stat and os.ReadFile,
 // nothing that opens or creates a store. That is what lets it answer "paused"
@@ -1018,6 +1045,9 @@ func RecordingState() (state string, since time.Time, err error) {
 	}
 	paused, pausedSince, err := store.Paused(root)
 	if err != nil {
+		if store.MarkerUnreadable(root) {
+			return RecordingPausedUnreadable, time.Time{}, nil
+		}
 		return "", time.Time{}, err
 	}
 	if !paused {
@@ -1117,9 +1147,11 @@ func statusRecap(stdout io.Writer, root string) error {
 // statusRecording says whether hooks will record, which is the one thing pause
 // changes and the first thing a user who ran it will ask. "Active" is only a
 // useful answer once a store exists: on a fresh machine no hooks are installed
-// to record anything. A pause file that cannot be read is reported as unknown,
-// never as active: hooks fall back to recording in that case, but status did
-// not see the answer and does not claim one.
+// to record anything. A pause marker that exists and cannot be read is
+// reported as RecordingPausedUnreadable, not as unknown: since checkPaused
+// treats that marker as a pause, hooks do not record, and status has an
+// answer rather than nothing to report. "unknown" is reserved for a
+// RecordingState error, which means a fault unrelated to the marker itself.
 func statusRecording(stdout io.Writer, root string) {
 	state, since, err := RecordingState()
 	// An enabled plugin records from its first hook call, which is also what
@@ -1135,6 +1167,8 @@ func statusRecording(stdout io.Writer, root string) {
 		fmt.Fprintln(stdout, "  recording: not installed")
 	case state == RecordingActive:
 		fmt.Fprintf(stdout, "  recording: %s\n", RecordingActive)
+	case state == RecordingPausedUnreadable:
+		fmt.Fprintf(stdout, "  recording: %s\n", RecordingPausedUnreadable)
 	default:
 		line := RecordingPaused
 		if !since.IsZero() {
