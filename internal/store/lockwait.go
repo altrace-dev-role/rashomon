@@ -66,13 +66,17 @@ func readLockWait(r io.Reader) (int64, error) {
 // locks, across every run in the store, and the run directory it was noted
 // in; zero and "" when no invocation has waited, or none since the runs were
 // written by a build that noted waits (perf-7). A note that does not parse
-// is skipped, as a run with none; a run whose note cannot be read at all is
-// an error, because the longest wait could be the one not read.
+// is skipped, as a run with none. A refused read (s.refusal(), Windows's
+// mandatory lock held by a concurrent noteLockWait or probe) is skipped the
+// same way: it says nothing about the note's content, only that something
+// else holds it right now. Any other read error is returned, because the
+// longest wait could be the one not read.
 func (s *Store) LongestLockWait() (time.Duration, string, error) {
 	runs, err := s.Runs()
 	if err != nil {
 		return 0, "", err
 	}
+	refused := s.refusal()
 	var longest int64
 	var in string
 	for _, name := range runs {
@@ -81,13 +85,16 @@ func (s *Store) LongestLockWait() (time.Duration, string, error) {
 			continue
 		}
 		if err != nil {
+			if refused(err) {
+				continue
+			}
 			return 0, "", err
 		}
 		ms, perr := readLockWait(f)
 		cerr := f.Close()
 		if perr != nil {
 			var num *strconv.NumError
-			if errors.As(perr, &num) {
+			if errors.As(perr, &num) || refused(perr) {
 				continue
 			}
 			return 0, "", perr
