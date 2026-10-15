@@ -135,5 +135,5 @@ const (
 // inventory is empty discloses nothing and so may install nothing, which is
 // the right failure.
 func Default() (Inventory, error) {
-	return Inventory{ScopeVersion: ScopeVersion}, ErrNotImplemented
+	return Inventory{}, ErrNotImplemented
 }
