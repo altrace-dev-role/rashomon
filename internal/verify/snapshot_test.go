@@ -64,6 +64,12 @@ func TestVER11b_GateStateKeysAndTypes(t *testing.T) {
 			t.Errorf("GateState.%s is %s, want %s", name, f.Type, want)
 		}
 	}
+	// RunRef.GateOutput and ExecutionV5.GateOutput are the same key on two
+	// records of the same call; one shape, not a string on one side and a
+	// *store.GateOutput on the other.
+	if f, _ := reflect.TypeOf(RunRef{}).FieldByName("GateOutput"); f.Type != reflect.TypeOf((*store.GateOutput)(nil)) {
+		t.Errorf("RunRef.GateOutput is %s, want *store.GateOutput", f.Type)
+	}
 	if MaxWriters != 8 {
 		t.Errorf("MaxWriters = %d, want 8", MaxWriters)
 	}
