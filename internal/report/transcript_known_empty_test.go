@@ -28,6 +28,9 @@ func TestAccounting_AReadableTranscriptRendersEveryEmptyListAsNone(t *testing.T)
 	if !tr.Readable {
 		t.Fatal("premise: the transcript was not read")
 	}
+	if tr.Status != TranscriptRead {
+		t.Errorf("transcript status = %q, want %q", tr.Status, TranscriptRead)
+	}
 	lists := map[string][]string{
 		"missing from store":      tr.MissingFromStore,
 		"missing from transcript": tr.MissingFromTranscript,
@@ -47,5 +50,8 @@ func TestAccounting_AReadableTranscriptRendersEveryEmptyListAsNone(t *testing.T)
 		if line := "    " + label + ": " + none + "\n"; !strings.Contains(b.String(), line) {
 			t.Errorf("the render does not carry %q:\n%s", strings.TrimSpace(line), b.String())
 		}
+	}
+	if line := "    status: " + TranscriptRead + "\n"; !strings.Contains(b.String(), line) {
+		t.Errorf("the render does not carry %q:\n%s", strings.TrimSpace(line), b.String())
 	}
 }

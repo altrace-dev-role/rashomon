@@ -49,6 +49,44 @@ func TestRubricERRORS3_UnreadableTranscriptIsAReason(t *testing.T) {
 	if len(sess.Transcripts) != 1 || sess.Transcripts[0].Readable {
 		t.Errorf("transcripts = %+v, want one, unreadable", sess.Transcripts)
 	}
+	if got := sess.Transcripts[0].Status; got != TranscriptUnreadable {
+		t.Errorf("transcript status = %q, want %q", got, TranscriptUnreadable)
+	}
+}
+
+// TestRubricERRORS3_MainTranscriptReadableButASubagentIsNot: the main
+// transcript exists and reads fine; one of its subagent files is a dangling
+// symlink. TranscriptIDs returns ErrNotExist -- the subagent file's error,
+// not the main file's -- and before, accounting classified on that error
+// alone, so the whole group read as missing and the H-10 check it names was
+// silently skipped. It must classify on the main transcript's own Stat: the
+// main file is there, so any later error, this one included, is
+// transcript_unreadable.
+func TestRubricERRORS3_MainTranscriptReadableButASubagentIsNot(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sess.jsonl")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	subagents := filepath.Join(dir, "sess", "subagents")
+	if err := os.MkdirAll(subagents, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dangling := filepath.Join(subagents, "agent-1.jsonl")
+	if err := os.Symlink(filepath.Join(subagents, "nonexistent-target"), dangling); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+
+	sess := sessionNaming(path)
+	if !slices.Contains(sess.Coverage.Reasons, ReasonTranscriptUnreadable) || sess.Coverage.State != store.StateUnverified {
+		t.Errorf("coverage = %s %v, want unverified with %s", sess.Coverage.State, sess.Coverage.Reasons, ReasonTranscriptUnreadable)
+	}
+	if len(sess.Transcripts) != 1 || sess.Transcripts[0].Readable {
+		t.Errorf("transcripts = %+v, want one, unreadable", sess.Transcripts)
+	}
+	if got := sess.Transcripts[0].Status; got != TranscriptUnreadable {
+		t.Errorf("transcript status = %q, want %q", got, TranscriptUnreadable)
+	}
 }
 
 // TestRubricERRORS3_MissingTranscriptIsNotAReason pins the written decision
@@ -63,5 +101,9 @@ func TestRubricERRORS3_MissingTranscriptIsNotAReason(t *testing.T) {
 	}
 	if len(sess.Transcripts) != 1 || sess.Transcripts[0].Readable {
 		t.Errorf("transcripts = %+v, want one, unreadable", sess.Transcripts)
+	}
+	if got := sess.Transcripts[0].Status; got != TranscriptMissing {
+		t.Errorf("transcript status = %q, want %q: missing and unreadable both leave Readable false, "+
+			"and Status is the field that is supposed to tell them apart", got, TranscriptMissing)
 	}
 }
