@@ -123,3 +123,6 @@ m("VER-54 a closed reason has no state", "internal/verify/tosteer_vocab.go",
 m("VER-54 a quote HMAC is valid without its prefix", "internal/verify/finding.go",
   "\tif !strings.HasPrefix(s, QuoteHMACPrefix) {\n\t\treturn false\n\t}\n\treturn Digest(s[len(QuoteHMACPrefix):]).Valid()\n",
   "\treturn Digest(s).Valid()\n", "TestVER54d_")
+m("VER-54 a gate run's output classification is a free string again", "internal/verify/snapshot.go",
+  "\tGateOutput *store.GateOutput `json:\"gate_output\"`\n", "\tGateOutput string            `json:\"gate_output\"`\n", "TestVER11b_")
+IMPORTS["VER-54 a gate run's output classification is a free string again"] = ("internal/verify/snapshot.go", '\t"github.com/altrace-dev-role/rashomon/internal/store"\n', '')
