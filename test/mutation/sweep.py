@@ -221,14 +221,21 @@ def check(complete):
     if complete:
         for name in sorted(legacy - names):
             problems.append(f"{LEGACY_LIST.name}: {name!r} is not a declared mutant")
+    mutation_of = {name: (f, old, new) for name, f, old, new, _test in M}
     for name, (f, io_, in_) in IMPORTS.items():
         s = text(f)
         if s is None:
             problems.append(f"IMPORTS[{name!r}]: target {f} cannot be read")
             continue
+        # The sweep applies the import edit AFTER the main mutation, to the
+        # same file when the two target the same one, so this must count the
+        # anchor in the bytes the sweep actually sees, not the pristine file.
+        mf, old, new = mutation_of.get(name, (None, None, None))
+        if mf == f:
+            s = s.replace(old, new, 1)
         count = s.count(io_)
         if count != 1:
-            problems.append(f"IMPORTS[{name!r}]: import anchor occurs {count} times in {f}, not exactly once")
+            problems.append(f"IMPORTS[{name!r}]: import anchor occurs {count} times in {f} after the mutation, not exactly once")
     return problems
 
 
@@ -340,7 +347,13 @@ def run_sweep():
             pathlib.Path(f).write_text(s)
             if name in IMPORTS:
                 fi, io_, in_ = IMPORTS[name]; backup(fi)
-                t = pathlib.Path(fi).read_text(); assert io_ in t; pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
+                t = pathlib.Path(fi).read_text()
+                if io_ not in t:
+                    # Not an assertion: one missing import anchor must not end
+                    # the sweep for every mutant after it. Recorded the same
+                    # way a missing anchor on the main mutation is.
+                    print(f"  IMPORT ANCHOR MISSING <- {name}"); undetected.append(name); restore(); continue
+                pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
             r = subprocess.run(["go", "test", "./...", "-run", test, "-count=1", "-v"], capture_output=True, text=True)
             judged = r.stdout + r.stderr
             # "--- SKIP" ONLY, never "no tests to run". The suite is invoked as

@@ -228,15 +228,20 @@ func TestFilesPatternResolvesAgainstCurrentDirectoryFirst(t *testing.T) {
 // comes first and the verdict is about a break nobody wrote.
 func TestDEL2_NewAnchorsAreUnique(t *testing.T) {
 	dir := t.TempDir()
-	write(t, filepath.Join(dir, "target.go"), "package x\n\nimport (\n\t\"fmt\"\n)\n\nfunc a() int { return 1 }\n\nfunc b() int { return 1 }\n")
-	const unique = "func b() int { return 1 }"
+	// The duplicate anchor used for the import-anchor cases, "return 1", is
+	// kept out of the function the main mutation targets: check() now counts
+	// an import anchor against the text AFTER the main mutation is applied,
+	// so an anchor that only duplicated inside the mutated span would read as
+	// unique once that span is gone, which is not what these cases test.
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nimport (\n\t\"fmt\"\n)\n\nfunc a() int { return 1 }\n\nfunc b() int { return 1 }\n\nfunc c() int { return 9 }\n")
+	const unique = "func c() int { return 9 }"
 	cases := []struct {
 		name, old, importAnchor string
 		wantOK                  bool
 	}{
 		{"anchor occurs twice", "return 1", "", false},
 		{"anchor occurs once", unique, "", true},
-		{"anchor occurs never", "return 9", "", false},
+		{"anchor occurs never", "return 42", "", false},
 		{"import anchor occurs once", unique, "\t\"fmt\"\n", true},
 		{"import anchor occurs twice", unique, "return 1", false},
 		{"import anchor occurs never", unique, "\t\"nope\"\n", false},
@@ -255,6 +260,30 @@ func TestDEL2_NewAnchorsAreUnique(t *testing.T) {
 				t.Errorf("--check exited %d when the %s", code, tc.name)
 			}
 		})
+	}
+}
+
+// check() must count an import anchor in the text the sweep actually sees,
+// which is AFTER the main mutation is applied to that file -- not in the
+// pristine file, which is what check() reads by default. Here the anchor is
+// duplicated in the pristine file, once inside the span the main mutation
+// replaces, so the mutated file carries exactly one copy and the import edit
+// is well-formed even though a pristine-only count would call it a duplicate.
+func TestDEL2d_ImportAnchorCountedAfterMutation(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"),
+		"package x\n\nimport (\n\t\"fmt\"\n)\n\n"+
+			"func a() int { fmt.Println(\"x\"); return 1 }\n\n"+
+			"func b() int { fmt.Println(\"x\"); return 2 }\n")
+	name := "fixture import anchor duplicated only inside the mutated span"
+	text := mutant(name, "target.go",
+		"func a() int { fmt.Println(\"x\"); return 1 }", "func a() int { return 1 }", "TestFixture_")
+	text += importEntry(name, "target.go", "fmt.Println(\"x\")", "fmt.Println(\"x again\")")
+	file := filepath.Join(t.TempDir(), "fixture.py")
+	write(t, file, text)
+	_, code := sweep(t, dir, "--check", "--files", file)
+	if code != 0 {
+		t.Errorf("--check exited %d for an import anchor duplicated only inside the mutated span", code)
 	}
 }
 
