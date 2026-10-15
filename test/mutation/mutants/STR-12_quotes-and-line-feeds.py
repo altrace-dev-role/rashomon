@@ -25,3 +25,9 @@ m("STR-12 a gate renders outside a quote", "internal/steer/render/slot/slot.go",
   "func (g Gate) Text() string         { return string(g) }\n", "TestSTR12b_")
 m("STR-12 Approved may hold a quote that shifts quote parity", "internal/steer/render/slot/slot.go",
   "\t\tif s[i] == '\\'' && (i == 0 ||", "\t\tif false && (i == 0 ||", "TestSTR12c_")
+m("STR-12 a double quote is not a forbidden character", "internal/steer/render/validate.go",
+  "\t\tcase c == '<' || c == '>' || c == '`' || c == '\"':\n",
+  "\t\tcase c == '<' || c == '>' || c == '`':\n", "TestMirror_")
+m("STR-12 Mirror wraps unchecked text", "internal/steer/render/validate.go",
+  "\tif err := Validate(modelText); err != nil {\n\t\treturn \"\", err\n\t}\n\treturn MirrorPrefix + modelText + MirrorSuffix, nil\n",
+  "\treturn MirrorPrefix + modelText + MirrorSuffix, nil\n", "TestMirror_")
