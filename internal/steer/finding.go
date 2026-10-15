@@ -110,9 +110,12 @@ func (f Finding) Check() error {
 	case f.Message.Text() != "" && f.Message.Pattern() != f.Pattern:
 		return fmt.Errorf("%w: a %q message on a %q finding", ErrFinding, f.Message.Pattern(), f.Pattern)
 	}
+	if f.AfterSeq < 1 {
+		return fmt.Errorf("%w: after_seq must be at least 1", ErrFinding)
+	}
 	for i, seq := range f.Evidence {
-		if seq > f.AfterSeq || i > 0 && seq <= f.Evidence[i-1] {
-			return fmt.Errorf("%w: evidence seqs must ascend and end at or before after_seq", ErrFinding)
+		if seq < 1 || seq > f.AfterSeq || i > 0 && seq <= f.Evidence[i-1] {
+			return fmt.Errorf("%w: evidence seqs must ascend, start at 1 or later, and end at or before after_seq", ErrFinding)
 		}
 	}
 	return nil
