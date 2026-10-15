@@ -483,7 +483,8 @@ m("SP the served model is read from message.model, not the fallback entry", "int
 m("SP a chain where every model declined is reported as served", "internal/spend/spend.go",
   "\tif r.Fallback && r.StopReason != \"refusal\" {", "\tif r.Fallback {", "TestExtraAttempts_AnAllDeclinedChain")
 m("SP an undecodable line ends the tie only when it holds the byte string user", "internal/report/transcript.go",
-  "\t\tcase LineUndecodable:\n", "\t\tcase LineUndecodable:\n\t\t\tif !bytes.Contains(raw, []byte(`\"user\"`)) {\n\t\t\t\tcontinue\n\t\t\t}\n",
+  "\t\tcase LineUndecodable:\n\t\t\t// A line whose header does not decode",
+  "\t\tcase LineUndecodable:\n\t\t\tif !bytes.Contains(raw, []byte(`\"user\"`)) {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\t// A line whose header does not decode",
   "TestFinalAssistantTexts_AnUndecodableLine")
 m("SP an undecodable sidechain line ends the tie", "internal/report/transcript.go",
   "\tif topLevelSidechain(raw) {", "\tif false && topLevelSidechain(raw) {",

@@ -254,7 +254,17 @@ func FinalAssistantText(r io.Reader) (string, bool) {
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
 		}
-		if json.Unmarshal(sc.Bytes(), &line) != nil {
+		switch DecodeHeader(sc.Bytes(), &line) {
+		case LineBlank, LineUndecodableSidechain:
+			// A sidechain line is never the main agent's word, decoded or
+			// not, here as in FinalAssistantTexts.
+			continue
+		case LineUndecodable:
+			// This line could not be placed, so it may be the real final
+			// message; an earlier line's words are then not the last word
+			// either. FinalAssistantTexts ends its tie the same way
+			// (unsay) on the same line.
+			last = ""
 			continue
 		}
 		// A subagent's line written into the main transcript is never the
