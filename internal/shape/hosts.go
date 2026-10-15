@@ -18,19 +18,17 @@ import (
 // What crosses the boundary out of here is a list of hostnames and nothing
 // else. Not the URL, not the path, not the query, not the surrounding command.
 
-// Scheme prefixes that introduce a network host we can observe on the wire.
+// Scheme prefixes that introduce a network host.
 //
-// Plain http:// is included in the SEARCH even though v0.1 does not observe
-// plain HTTP through the proxy. A host the agent named is a declaration
-// whatever scheme it named it under, and the report's "declared but not
-// observed" line is the honest place for it -- dropping it here would instead
-// make that host silently absent from both sides.
+// A host the agent named is a declaration whatever scheme it named it under,
+// so plain http:// is included in the search alongside https:// -- dropping
+// it here would make that host silently absent from the record.
 var wireSchemes = []string{"https://", "http://", "wss://", "ws://"}
 
-// Scheme prefixes that introduce a host reached over ssh, which the proxy
-// cannot see. These render under coverage as "not observable", never as a
-// finding, so they are collected separately rather than mixed in and then
-// filtered by guesswork downstream.
+// Scheme prefixes that introduce a host reached over ssh, which is a
+// different kind of destination from an HTTPS one (internal/report's family
+// and novelty views treat it so). Collected separately rather than mixed in
+// and then filtered by guesswork downstream.
 var sshSchemes = []string{"ssh://", "git+ssh://", "git@"}
 
 // Hosts returns the wire-observable and ssh hostnames named by a tool call.
