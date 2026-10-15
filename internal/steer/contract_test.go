@@ -102,6 +102,10 @@ func TestDEL22e_FindingCheckHoldsTheFrozenKinds(t *testing.T) {
 		{Pattern: pattern.SubtaskGate, MaxLevel: LevelNudge, StopForm: StopFormNone, Evidence: []int64{52, 37}, AfterSeq: 57},
 		{Pattern: pattern.SubtaskGate, MaxLevel: LevelNudge, StopForm: StopFormNone, Evidence: []int64{37, 37}, AfterSeq: 57},
 		{Pattern: pattern.SubtaskGate, MaxLevel: LevelNudge, StopForm: StopFormNone, Evidence: []int64{37, 58}, AfterSeq: 57},
+		{Pattern: pattern.SubtaskGate, MaxLevel: LevelNudge, StopForm: StopFormNone, Evidence: []int64{0}, AfterSeq: 5},
+		{Pattern: pattern.SubtaskGate, MaxLevel: LevelNudge, StopForm: StopFormNone, Evidence: []int64{-5, 0}, AfterSeq: 10},
+		{Pattern: pattern.SubtaskGate, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: 0},
+		{Pattern: pattern.SubtaskGate, MaxLevel: LevelNudge, StopForm: StopFormNone, AfterSeq: -1},
 	}
 	for _, f := range bad {
 		if err := f.Check(); err == nil {
