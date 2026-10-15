@@ -122,6 +122,7 @@ func writeState(path string, s state) error {
 			delete(m, k)
 		}
 	}
+	removeStaleTemps(filepath.Dir(path))
 	b, err := json.Marshal(s)
 	if err != nil {
 		return err
@@ -144,6 +145,34 @@ func writeState(path string, s state) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+// staleTempAge is how old a .recap.json.tmp-* file must be before
+// removeStaleTemps clears it unexamined. A write holds its own temp file for
+// a few syscalls, not a minute, so a file this old was orphaned by a process
+// killed between CreateTemp and the rename -- the one case the temp file's
+// own deferred Remove never runs for -- and a minute leaves no realistic
+// window to mistake a concurrent writer's live file for one.
+const staleTempAge = time.Minute
+
+// removeStaleTemps clears recap's own orphaned temp files from a past killed
+// write, riding this write's own call rather than a goroutine of its own:
+// nothing here is worth a process that runs between writes, and every write
+// is itself best-effort (Claim's doc). Errors are ignored for the same
+// reason the write's own cleanup ignores them.
+func removeStaleTemps(dir string) {
+	matches, err := filepath.Glob(filepath.Join(dir, "."+stateFileName+".tmp-*"))
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for _, m := range matches {
+		info, err := os.Stat(m)
+		if err != nil || now.Sub(info.ModTime()) < staleTempAge {
+			continue
+		}
+		os.Remove(m) //nolint:errcheck // best effort
+	}
 }
 
 // Claim is recap's one piece of persistent bookkeeping.

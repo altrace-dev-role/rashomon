@@ -1,12 +1,15 @@
 package recap
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // TestRubricCONC2_ConcurrentWritersNeverCorruptTheState runs two writers of
@@ -75,5 +78,44 @@ func TestRubricCONC2_ConcurrentWritersNeverCorruptTheState(t *testing.T) {
 		if e.Name() != "install.json" && e.Name() != stateFileName {
 			t.Errorf("%s left behind after every write returned", e.Name())
 		}
+	}
+}
+
+// TestRubricCONC2_AKilledWritesTempFileIsClearedByTheNext holds writeState
+// to the rest of its own doc comment: a process killed between CreateTemp
+// and the rename leaves its temp file behind, since the deferred Remove
+// that cleans up a normal return never runs on SIGKILL. The next write must
+// clear a temp file old enough to have been orphaned that way, and must
+// leave alone one too young to have been -- a second writer's own temp
+// file, still in flight.
+func TestRubricCONC2_AKilledWritesTempFileIsClearedByTheNext(t *testing.T) {
+	root := t.TempDir()
+	markInstalled(t, root)
+	path := statePath(root)
+	dir := filepath.Dir(path)
+
+	stale := filepath.Join(dir, "."+stateFileName+".tmp-orphan")
+	if err := os.WriteFile(stale, []byte("half-written"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	staleAt := time.Now().Add(-2 * time.Minute)
+	if err := os.Chtimes(stale, staleAt, staleAt); err != nil {
+		t.Fatal(err)
+	}
+
+	live := filepath.Join(dir, "."+stateFileName+".tmp-live")
+	if err := os.WriteFile(live, []byte("still being written"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeState(path, newState()); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(stale); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a temp file orphaned by a killed write survived the next one; stat err = %v", err)
+	}
+	if _, err := os.Stat(live); err != nil {
+		t.Errorf("a concurrent writer's own live temp file was removed: %v", err)
 	}
 }
