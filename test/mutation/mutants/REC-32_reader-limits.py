@@ -40,8 +40,8 @@ m("REC-32 the ordered append goes on after a torn tail", "internal/store/store.g
 # A forget --host that failed before touching a run, its store-level record
 # included, prints no line: "later reports still leave it out" would be false.
 m("REC-32 forget --host reports a forget that failed before any run", "cmd/rashomon/main.go",
-  "\tif forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {",
-  "\tif false && forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {",
+  "\tgaps, forgetErr := st.ForgetHost(host, time.Now())\n\tif forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {",
+  "\tgaps, forgetErr := st.ForgetHost(host, time.Now())\n\tif false && forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {",
   "TestREC32f_")
 # Nor does it clear a baseline: the error would be the only thing said, and the
 # command would have changed what the next report calls new.

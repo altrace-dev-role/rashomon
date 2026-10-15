@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -304,5 +305,42 @@ func TestForgetHost_APartialForgetSaysLaterReportsLeaveItOutOnlyWithItsRecord(t 
 	}
 	if !forgotten(host) {
 		t.Errorf("forget --host printed %q with no store-level record holding the host", buf.String())
+	}
+}
+
+// TestCmdForget_SaysNothingWasForgottenWhenTheListingFailed: forgetHost
+// already returns before printing anything when ForgetHost fails outright
+// (anything but store.ErrForgetIncomplete). cmdForget must do the same for
+// ForgetWindow: a failure before any run was touched -- the runs directory
+// itself cannot be listed -- must not be followed by a line claiming
+// records were forgotten across runs that were never read.
+func TestCmdForget_SaysNothingWasForgottenWhenTheListingFailed(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("chmod 0 does not block a root process")
+	}
+	root := t.TempDir()
+	t.Setenv("RASHOMON_HOME", root)
+
+	st, err := store.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendDeclaration(store.Declaration{Type: store.TypeDeclaration, SchemaVersion: store.SchemaVersion,
+		ToolUseID: "toolu_1", SessionID: "sess-1"}); err != nil {
+		t.Fatal(err)
+	}
+	runsDir := filepath.Dir(st.RunDir("sess-1"))
+	if err := os.Chmod(runsDir, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(runsDir, 0o700) //nolint:errcheck // best-effort cleanup
+
+	var buf bytes.Buffer
+	err = cmdForget([]string{"--since", "1s"}, &buf)
+	if err == nil {
+		t.Fatalf("cmdForget with the runs directory unlistable: no error, want the listing failure")
+	}
+	if got := buf.String(); strings.Contains(got, "forgot") {
+		t.Errorf("cmdForget with the runs directory unlistable printed %q, want nothing claiming records were forgotten", got)
 	}
 }
