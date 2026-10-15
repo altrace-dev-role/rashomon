@@ -47,6 +47,7 @@ SHARED_TESTS = HERE / "shared-tests.txt"
 ROW_PREFIXES = ("REC", "VER", "FUN", "LRN", "STR", "MSR", "BRD", "TRU", "RES", "LUI", "DEL")
 ROW_FILE = re.compile(r"^(" + "|".join(ROW_PREFIXES) + r")-(\d+)_")
 ROW_TEST = re.compile(r"Test(" + "|".join(ROW_PREFIXES) + r")(\d+)[a-z]?_")
+ROW_NAME = re.compile(r"^(" + "|".join(ROW_PREFIXES) + r")-(\d+)$")
 # Finds the start of every Test<PREFIX> token, matched or not. check() anchors
 # ROW_TEST at each start it finds here, so a token that only LOOKS like a row
 # test -- a regex metacharacter, a missing trailing underscore, a literal
@@ -167,8 +168,8 @@ def check(complete):
     shared = set()
     for ln in read_list(SHARED_TESTS):
         parts = ln.split()
-        if len(parts) != 2:
-            problems.append(f"{SHARED_TESTS.name}: expected '<ROW> <TestName_>', got {ln!r}")
+        if len(parts) != 2 or not ROW_NAME.match(parts[0]) or not ROW_TEST.fullmatch(parts[1]):
+            problems.append(f"{SHARED_TESTS.name}: expected '<PREFIX>-<n> Test<PREFIX><n>[a-z]?_', got {ln!r}")
             continue
         shared.add((parts[0], parts[1]))
     texts = {}
@@ -215,7 +216,11 @@ def check(complete):
                                     f"at {tok.start()} that is not Test<PREFIX><n>[a-z]?_")
                     continue
                 pinned = f"{t.group(1)}-{t.group(2)}"
-                if pinned != claimed and (claimed, t.group(0)) not in shared:
+                # A suffixed test, TestREC56b_, pins its parent row -- so the
+                # shared-pair lookup is keyed on the parent's own name,
+                # TestREC56_, not the literal (possibly suffixed) token.
+                parent_test = f"Test{t.group(1)}{t.group(2)}_"
+                if pinned != claimed and (claimed, parent_test) not in shared:
                     problems.append(f"{name!r} in {rel(ORIGIN[name])}: names {t.group(0)}, which pins {pinned}, "
                                     f"not {claimed}; declare the pair in {SHARED_TESTS.name} if it is shared on purpose")
     if complete:

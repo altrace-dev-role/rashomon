@@ -3,8 +3,8 @@
 m("DEL-2 --check accepts an anchor that occurs more than once", "test/mutation/sweep.py",
   "        elif count != 1:\n", "        elif count < 1:\n", "TestDEL2_")
 m("DEL-2 --check accepts a mutant that pins another row's test", "test/mutation/sweep.py",
-  "                if pinned != claimed and (claimed, t.group(0)) not in shared:\n",
-  "                if False and (claimed, t.group(0)) not in shared:\n", "TestDEL2b_")
+  "                if pinned != claimed and (claimed, parent_test) not in shared:\n",
+  "                if False and (claimed, parent_test) not in shared:\n", "TestDEL2b_")
 m("DEL-2 --check accepts an import anchor that occurs more than once", "test/mutation/sweep.py",
   "        count = s.count(io_)\n        if count != 1:\n", "        count = s.count(io_)\n        if count < 1:\n", "TestDEL2_")
 # The legacy list may only shrink, and it is empty; one entry is the whole regression.

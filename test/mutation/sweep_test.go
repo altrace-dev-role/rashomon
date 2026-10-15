@@ -4,8 +4,11 @@
 // DEL-17. sweep.py rewrites tracked source files in place and restores them
 // afterwards, so these tests drive its read-only modes (--list, --check)
 // against the real tree and against fixtures, and read the workflow files
-// directly. TestStrict_ is the one exception: it runs the full sweep, but
-// only against a throwaway module of its own under a TempDir, never this tree.
+// directly. TestStrict_ is one exception: it runs the full sweep, but only
+// against a throwaway module of its own under a TempDir, never this tree.
+// TestSharedTestsEntryShape is the other: shared-tests.txt is a fixed path
+// sweep.py cannot be pointed away from, so it edits that one real file and
+// restores it in a Cleanup.
 package mutation
 
 import (
@@ -323,6 +326,7 @@ func TestDEL2b_TestNameMatchesItsRow(t *testing.T) {
 		{"REC-56_fixture.py", "^TestREC49b$", false},
 		{"REC-56_fixture.py", "TestREC49b", false},
 		{"STR-19_fixture.py", "TestSTR82_", true},
+		{"STR-19_fixture.py", "TestSTR82b_", true},
 		{"STR-19_fixture.py", "TestSTR81_", false},
 		{"H-15_fixture.py", "TestREC49b_", true},
 	}
@@ -452,6 +456,36 @@ func slicesEqual(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// shared-tests.txt's entries must themselves be shaped like what they
+// declare: a <PREFIX>-<n> row paired with a Test<PREFIX><n>[a-z]?_ test, not
+// merely two whitespace-separated fields. This edits the real file briefly
+// and restores it exactly, because SHARED_TESTS is a fixed path sweep.py
+// resolves beside itself and cannot be pointed at a fixture.
+func TestSharedTestsEntryShape(t *testing.T) {
+	root := moduleRoot(t)
+	path := filepath.Join(root, "test", "mutation", "shared-tests.txt")
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.WriteFile(path, original, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err := os.WriteFile(path, append(append([]byte{}, original...), []byte("STR19 TestSTR82\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Scoped to one unrelated file: shared-tests.txt is validated
+	// unconditionally, regardless of --files, and scoping avoids loading
+	// this test's own mutant file, whose anchor is the validation line
+	// itself and would otherwise report its own, unrelated problem.
+	out, code := sweep(t, root, "--check", "--files", "mutants/DEL-17_job-timeouts.py")
+	if code == 0 {
+		t.Errorf("--check exited 0 with a malformed shared-tests.txt entry:\n%s", out)
+	}
 }
 
 // --strict. Without it, a mutant whose judging test SKIPPED here exits 0:
