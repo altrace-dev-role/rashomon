@@ -26,20 +26,28 @@ func capForStatus(st *store.Store) (bytes int64, problem, label string) {
 }
 
 // statusSize prints the store's size against the cap in force, or says that
-// eviction is off. The size is the one eviction compares against the cap,
-// so a store close to its cap is visible before a run is evicted rather
-// than after (perf-7).
+// eviction is off. The size is the runs' own total, which is what eviction
+// compares against the cap, so a store close to its cap is visible before a
+// run is evicted rather than after (perf-7). A run whose directory could
+// not be listed leaves the total short by whatever it holds; that is said
+// next to the figure rather than hidden by printing unknown for a number
+// that is otherwise right.
 func statusSize(stdout io.Writer, st *store.Store) {
 	bytes, _, label := capForStatus(st)
-	size := statusUnknown
-	if n, err := st.RunsBytes(); err == nil {
+	size, note := statusUnknown, ""
+	switch n, unlisted, err := st.RunsBytes(); {
+	case err == nil:
 		size = store.FormatBytes(n)
+	case unlisted == 1:
+		size, note = store.FormatBytes(n), " (1 run not listed)"
+	case unlisted > 1:
+		size, note = store.FormatBytes(n), fmt.Sprintf(" (%d runs not listed)", unlisted)
 	}
 	if bytes == 0 {
-		fmt.Fprintf(stdout, "  size: %s (eviction off: %s=0%s)\n", size, store.EnvCapBytes, label)
+		fmt.Fprintf(stdout, "  size: %s%s (eviction off: %s=0%s)\n", size, note, store.EnvCapBytes, label)
 		return
 	}
-	fmt.Fprintf(stdout, "  size: %s of a %s cap%s\n", size, store.FormatBytes(bytes), label)
+	fmt.Fprintf(stdout, "  size: %s%s of a %s cap%s\n", size, note, store.FormatBytes(bytes), label)
 }
 
 // statusLockWait prints the longest any one hook invocation has waited for
