@@ -13,7 +13,10 @@
 // themselves are wired by the PRs that own each phase.
 package budget
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // Clock is one hook's soft deadline, started when the process did.
 //
@@ -25,9 +28,27 @@ type Clock struct {
 	soft  time.Duration
 }
 
-// NewClock starts the deadline at start with the given soft budget.
-func NewClock(start time.Time, soft time.Duration) Clock {
-	return Clock{start: start, soft: soft}
+// errZeroStart and errNonPositiveBudget are refused by NewClock: a wiring
+// bug that leaves the start unset, or passes a budget of zero or less,
+// must fail where it is made rather than read as every phase timing out
+// (RES-26).
+var (
+	errZeroStart         = errors.New("budget: clock start is the zero time")
+	errNonPositiveBudget = errors.New("budget: soft budget is zero or negative")
+)
+
+// NewClock starts the deadline at start with the given soft budget. It
+// refuses a zero start or a non-positive budget, since either reads every
+// subsequent Expired call as true -- a wiring bug surfacing as a
+// stand-down.
+func NewClock(start time.Time, soft time.Duration) (Clock, error) {
+	if start.IsZero() {
+		return Clock{}, errZeroStart
+	}
+	if soft <= 0 {
+		return Clock{}, errNonPositiveBudget
+	}
+	return Clock{start: start, soft: soft}, nil
 }
 
 // Expired reports whether the soft deadline has passed at now.
