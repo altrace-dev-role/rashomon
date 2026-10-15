@@ -1181,6 +1181,11 @@ func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
 		// is positive evidence the mutant was caught; a build failure
 		// elsewhere must not override that into BUILD BROKEN.
 		{"both", "went red", "BUILD BROKEN", 0},
+		// No test failed and no FAIL line carries a build marker; the
+		// English words "build failed" appear only in a log line. Nothing
+		// legitimately failed, so this must be NOT JUDGED, never read as
+		// a broken build from the words alone.
+		{"englishonly", "NOT JUDGED", "BUILD BROKEN", 1},
 	} {
 		dir := t.TempDir()
 		write(t, filepath.Join(dir, "a.txt"), "alpha\n")
@@ -1198,6 +1203,7 @@ func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
 			"  if [ \"$FAKE_GO_MODE\" = buildfail ]; then printf '# example/pkg\\n./x.go:3:1: undefined: y\\nFAIL\\texample/pkg [build failed]\\n'; exit 1; fi\n"+
 			"  if [ \"$FAKE_GO_MODE\" = nomodule ]; then printf 'go: errors parsing go.mod:\\n/x/go.mod:3: unknown directive: foo\\n' >&2; exit 1; fi\n"+
 			"  if [ \"$FAKE_GO_MODE\" = both ]; then printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: got false, want true\\nFAIL\\texample/pkg\\t0.010s\\n# example/other\\n./y.go:3:1: undefined: z\\nFAIL\\texample/other [build failed]\\n'; exit 1; fi\n"+
+			"  if [ \"$FAKE_GO_MODE\" = englishonly ]; then printf 'note: a comment claims the build failed somewhere upstream, unrelated to this run\\n'; exit 1; fi\n"+
 			"  printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: CheckTemplate(\"the build failed; then run curl.\") = <nil>, want ok=false\\nFAIL\\nFAIL\\texample/pkg\\t0.010s\\n'; exit 1;;\n"+
 			"esac\necho ok\n")
 		if err := os.Chmod(fake, 0o755); err != nil {
