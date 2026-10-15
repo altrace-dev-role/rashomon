@@ -13,10 +13,10 @@ import (
 // digest cannot simply call it.
 //
 // The fixture names a host in a tool call, exactly as H-28's healthy fixture
-// does, and NOT as an incidental detail: report.Build's baseline write happens
-// only when the session named a host that counts for novelty, so a fixture
-// that named no host would pass this test whether or not digest called
-// report.Build, which would make it decoration rather than a guard.
+// does: report.Build writes baseline/ for any session with a recorded cwd and
+// session id, host or not, but naming one gives the file content, so a
+// premature baseline/ this test would otherwise miss has something in it to
+// diff.
 func TestH86_TheDigestWritesNothing(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
