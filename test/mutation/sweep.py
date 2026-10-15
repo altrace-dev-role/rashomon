@@ -53,6 +53,11 @@ ROW_TEST = re.compile(r"Test(" + "|".join(ROW_PREFIXES) + r")(\d+)[a-z]?_")
 # anchor -- is reported instead of silently matching nothing.
 ROW_TOKEN = re.compile(r"Test(" + "|".join(ROW_PREFIXES) + r")")
 
+# A top-level Go test function, for checking that a mutant's judging test
+# names something real -- a typo only showed up as NOT DETECTED in the next
+# manual sweep, and push/pull_request no longer run one.
+GO_TEST_FUNC = re.compile(r"(?m)^func (Test\w+)\(")
+
 M = []  # (name, file, old, new, test regex)
 IMPORTS = {}  # name -> (file, import block as it is, import block with the extra line)
 ORIGIN = {}  # name -> the mutant file that declared it
@@ -135,6 +140,17 @@ def read_list(path):
     return [ln.strip() for ln in path.read_text().splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
 
 
+def go_test_names():
+    """Every top-level func Test name under the current directory."""
+    names = set()
+    for gofile in pathlib.Path(".").rglob("*_test.go"):
+        try:
+            names.update(GO_TEST_FUNC.findall(gofile.read_text()))
+        except OSError:
+            pass
+    return names
+
+
 def check(complete):
     """The static checks. Returns the problems found.
 
@@ -165,9 +181,18 @@ def check(complete):
                 texts[f] = None
         return texts[f]
 
+    go_tests = go_test_names() if complete else None
     names = set()
     for name, f, old, new, test in M:
         names.add(name)
+        top = test.split("/", 1)[0]
+        try:
+            rx = re.compile(top)
+        except re.error as e:
+            problems.append(f"{name!r}: test regex {test!r} does not compile: {e}")
+        else:
+            if go_tests is not None and not any(rx.search(n) for n in go_tests):
+                problems.append(f"{name!r}: test regex {test!r} matches no func Test under the current directory")
         s = text(f)
         if s is None:
             problems.append(f"{name!r}: target {f} cannot be read")

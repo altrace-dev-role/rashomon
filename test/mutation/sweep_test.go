@@ -308,6 +308,38 @@ func TestDEL2b_TestNameMatchesItsRow(t *testing.T) {
 	}
 }
 
+// check() only validates a mutant's judging test when the whole set was
+// loaded (no --files), the same signal DEL-2's legacy-entry check uses,
+// because a --files fixture directory carries no real *_test.go and every
+// mutant's test name would otherwise fail to match anything that exists.
+func TestCheckValidatesJudgingTestExists(t *testing.T) {
+	cases := []struct {
+		name, test string
+		wantOK     bool
+	}{
+		{"names a real test", "TestReal_Something", true},
+		{"does not compile", "Test(", false},
+		{"compiles but matches nothing real", "TestNoSuchThing_", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+			write(t, filepath.Join(dir, "real_test.go"),
+				"package x\n\nimport \"testing\"\n\nfunc TestReal_Something(t *testing.T) {}\n")
+			mdir := filepath.Join(dir, "mutants")
+			if err := os.MkdirAll(mdir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			write(t, filepath.Join(mdir, "x.py"), mutant("fixture "+tc.name, "target.go", "return 1", "return 2", tc.test))
+			_, code := sweep(t, dir, "--check")
+			if (code == 0) != tc.wantOK {
+				t.Errorf("--check exited %d for test regex %q", code, tc.test)
+			}
+		})
+	}
+}
+
 // DEL-17. Every job in every workflow carries timeout-minutes. One run in
 // October 2026 lasted 1,212 minutes; a job without a bound holds a runner for
 // as long as GitHub's six-hour default allows, and the sweep job in particular
