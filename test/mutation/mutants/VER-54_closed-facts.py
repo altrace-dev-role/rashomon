@@ -126,3 +126,6 @@ m("VER-54 a quote HMAC is valid without its prefix", "internal/verify/finding.go
 m("VER-54 a gate run's output classification is a free string again", "internal/verify/snapshot.go",
   "\tGateOutput *store.GateOutput `json:\"gate_output\"`\n", "\tGateOutput string            `json:\"gate_output\"`\n", "TestVER11b_")
 IMPORTS["VER-54 a gate run's output classification is a free string again"] = ("internal/verify/snapshot.go", '\t"github.com/altrace-dev-role/rashomon/internal/store"\n', '')
+m("VER-54 a path segment with a leading '-' is valid", "internal/verify/finding.go",
+  '\t\tif el == "" || el == "." || el == ".." || el[0] == \'-\' {\n',
+  '\t\tif el == "" || el == "." || el == ".." {\n', "TestVER54d_")
