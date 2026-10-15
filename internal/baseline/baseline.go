@@ -421,9 +421,12 @@ func ForgetFile(path, host string) (int, error) {
 	f, err := decode(body)
 	if err != nil {
 		// Bytes that do not parse, or a version this build does not know,
-		// cannot be rewritten without the host. Holding it, the file goes
-		// whole and the project establishes its baseline again; not holding
-		// it, the file is no business of this forget.
+		// cannot be rewritten without the host -- there is no shape here to
+		// delete one entry from and write back. Holding it, the file goes
+		// whole and the project establishes its baseline again, which is the
+		// conservative direction: refusing would leave the forgotten host
+		// sitting in a file this forget cannot touch any other way. Not
+		// holding it, the file is no business of this forget.
 		if !namesHost(body, host) {
 			return 0, nil
 		}
@@ -453,15 +456,27 @@ func ForgetFile(path, host string) (int, error) {
 
 // namesHost reports whether a baseline's bytes hold the host as JSON writes
 // it, between quotes, so a short host does not match inside another name or
-// a key: --host io is not in "version". A file cut off just after the name is
-// matched too. A recorded host is letters, digits, dots, hyphens and
-// underscores, which JSON never escapes, so the quoted form is exact. A host
-// spelled like one of the file's own keys, such as hosts, still matches that
-// key; the file is unreadable either way, and deleting it re-establishes the
-// project.
+// a key: --host io is not in "version". A recorded host is letters, digits,
+// dots, hyphens, underscores, and -- for IPv6 -- brackets and colons, none of
+// which JSON ever escapes, so the quoted form is exact. A host spelled like
+// one of the file's own keys, such as hosts, still matches that key; the file
+// is unreadable either way, and deleting it re-establishes the project.
+//
+// A file cut off mid-write ends inside the last string it was writing, with
+// no closing quote -- whole or truncated partway through. What survived is
+// matched too: if it is a non-empty prefix of the host, between quotes or
+// not yet closed, the write was cut out of naming this host.
 func namesHost(body []byte, host string) bool {
 	quoted := []byte(`"` + host + `"`)
-	return bytes.Contains(body, quoted) || bytes.HasSuffix(body, quoted[:len(quoted)-1])
+	if bytes.Contains(body, quoted) {
+		return true
+	}
+	i := bytes.LastIndexByte(body, '"')
+	if i < 0 {
+		return false
+	}
+	frag := string(body[i+1:])
+	return frag != "" && len(frag) <= len(host) && strings.HasPrefix(host, frag)
 }
 
 // removeWhole deletes a baseline file this build will not rewrite. Called
