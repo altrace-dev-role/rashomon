@@ -11,8 +11,8 @@ m("REC-34 post never flushes", "cmd/rashomon/main.go",
   "\t\tif err := safe.Guard(p.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
   "", "TestREC34_")
 m("REC-34 the hook flushes before its last append", "cmd/rashomon/main.go",
-  "\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
-  "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n",
+  "\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
+  "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n",
   "TestREC34_")
 m("REC-34 the ordered append syncs in full inside the lock", "internal/store/store.go",
   "\treturn s.syncAppend(f)\n}\n\n// lockCounted takes", "\treturn syncFull(f)\n}\n\n// lockCounted takes", "TestREC34_")
@@ -147,3 +147,9 @@ m("REC-34 the report lists no call not durable", "internal/report/report.go",
   "\t\t\tNotDurable:       nonNil(run.NotDurable()),", "\t\t\tNotDurable:       []string{},", "TestREC34k_")
 m("REC-34 the text never says which call", "internal/report/text.go",
   "list(d.Dropped), list(d.NotDurable))", "list(d.Dropped), list(nil))", "TestREC34k_")
+# The signal window between Close and Flush (P09-F12): removing the
+# injection point does not change ordinary runs, only whether a fault at
+# hook.before_flush exists at all to hang on.
+m("REC-34 the hook never signals before flush", "cmd/rashomon/main.go",
+  "\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n",
+  "\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n", "TestREC34_")
