@@ -122,6 +122,14 @@ jobs:
       - name: Vet (rashomonfault build tag)
         run: go vet -tags rashomonfault ./...
 
+      # The same line the release job runs, at the same version. govulncheck
+      # is compiled and run with the pinned toolchain, so a toolchain bump can
+      # break it: under go1.27.2, v1.1.4 panics in go/ssa when it analyses
+      # linux/amd64 and passes on darwin. Running it here makes a pull request
+      # find that, not a tag. TestDEL21c holds the two copies to one version.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
       # The sweep's static half runs on every push and pull request even though
       # the sweep itself runs on demand (its step below): every anchor occurs
       # exactly once in its target, and a mutant in a requirement row's file

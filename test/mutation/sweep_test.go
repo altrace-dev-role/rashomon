@@ -799,3 +799,46 @@ func goVersionPins(doc string) (pins []string, problems []string) {
 	}
 	return pins, problems
 }
+
+// DEL-21, the scanner. govulncheck is a tool built with the pinned toolchain,
+// so a toolchain bump can break it: v1.1.4 panics in go/ssa under go1.27.2
+// when it analyses linux/amd64, and only a tag would have run it. The test
+// job runs the same line as the release job, so a pull request runs it first,
+// and the two versions must agree.
+func TestDEL21c_GovulncheckRunsInCIAtTheReleaseVersion(t *testing.T) {
+	found := map[string][]string{}
+	for _, wf := range workflows(t, moduleRoot(t)) {
+		found[filepath.Base(wf)] = govulncheckVersions(readFile(t, wf))
+	}
+	for _, name := range []string{"ci.yaml", "release.yaml"} {
+		if len(found[name]) != 1 {
+			t.Errorf("%s: %d govulncheck steps, want 1: %v", name, len(found[name]), found[name])
+		}
+	}
+	var first string
+	for name, versions := range found {
+		for _, v := range versions {
+			if first == "" {
+				first = v
+			} else if v != first {
+				t.Errorf("govulncheck versions disagree: %s runs %s, another workflow runs %s", name, v, first)
+			}
+		}
+	}
+}
+
+// govulncheckVersions is the version of every govulncheck run in a workflow,
+// read from `govulncheck@<version>` on lines that are not comments.
+func govulncheckVersions(doc string) []string {
+	re := regexp.MustCompile(`govulncheck@(\S+)`)
+	var versions []string
+	for _, ln := range strings.Split(doc, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(ln), "#") {
+			continue
+		}
+		if m := re.FindStringSubmatch(ln); m != nil {
+			versions = append(versions, m[1])
+		}
+	}
+	return versions
+}
