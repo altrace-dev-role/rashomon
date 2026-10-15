@@ -98,6 +98,21 @@ func (d Digest) Valid() bool {
 	return true
 }
 
+// QuoteHMAC is a claim's quote digest as the snapshot and a fact both carry
+// it (archive 20.2.14): QuoteHMACPrefix followed by a 64-hex digest, never
+// the sentence it was taken over.
+type QuoteHMAC string
+
+// Valid reports whether the value is QuoteHMACPrefix followed by a valid
+// Digest.
+func (q QuoteHMAC) Valid() bool {
+	s := string(q)
+	if !strings.HasPrefix(s, QuoteHMACPrefix) {
+		return false
+	}
+	return Digest(s[len(QuoteHMACPrefix):]).Valid()
+}
+
 // MarkerID is a closed integrity-marker id as a fact carries it (archive
 // 20.2.6: `go.t_skip`, `py.pytest_skip`, `js.only`): ^[a-z0-9][a-z0-9._]{0,63}$.
 type MarkerID string
@@ -169,7 +184,7 @@ type ClaimFact struct {
 	GatesOmitted int
 	// QuoteHMAC is the HMAC-SHA256 of the claim's sentence under the
 	// install key, never the sentence (P-07 proposal: 2.2.5 step 8).
-	QuoteHMAC Digest
+	QuoteHMAC QuoteHMAC
 	// UnrecoveredFailures counts the turn's failed calls with no later
 	// passing run of the same run key, lookups and answer exits excluded:
 	// above zero, the finding is claim-vs-record/silent-failure (P-07
