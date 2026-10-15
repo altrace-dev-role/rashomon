@@ -35,7 +35,10 @@ func TestPhaseReasonsAreTheFrozenList(t *testing.T) {
 
 func TestClockExpiresAtTheSoftDeadline(t *testing.T) {
 	start := time.Unix(1_700_000_000, 0)
-	c := NewClock(start, 100*time.Millisecond)
+	c, err := NewClock(start, 100*time.Millisecond)
+	if err != nil {
+		t.Fatalf("NewClock: %v", err)
+	}
 	if c.Expired(start.Add(99 * time.Millisecond)) {
 		t.Error("expired before the deadline")
 	}
@@ -47,5 +50,30 @@ func TestClockExpiresAtTheSoftDeadline(t *testing.T) {
 	}
 	if got := c.Left(start.Add(time.Second)); got != 0 {
 		t.Errorf("Left past the deadline = %v, want 0", got)
+	}
+}
+
+// TestNewClockRefusesAZeroStartOrANonPositiveBudget: a wiring bug that
+// leaves start unset or passes a soft budget of zero or less must not
+// read as every phase timing out immediately; it must fail where it is
+// made instead.
+func TestNewClockRefusesAZeroStartOrANonPositiveBudget(t *testing.T) {
+	start := time.Unix(1_700_000_000, 0)
+	cases := []struct {
+		name  string
+		start time.Time
+		soft  time.Duration
+	}{
+		{"zero start", time.Time{}, 100 * time.Millisecond},
+		{"zero budget", start, 0},
+		{"negative budget", start, -time.Second},
+	}
+	for _, c := range cases {
+		if _, err := NewClock(c.start, c.soft); err == nil {
+			t.Errorf("%s: NewClock did not refuse it", c.name)
+		}
+	}
+	if _, err := NewClock(start, time.Millisecond); err != nil {
+		t.Errorf("a valid start and a positive budget must be accepted: %v", err)
 	}
 }
