@@ -1,12 +1,12 @@
 // Package host canonicalises a hostname to the one spelling every side of the
 // product compares on.
 //
-// It exists because a hostname arrives here from two unrelated places and has
-// to be the same string in both: the declaration side reads it out of a tool
-// call the agent wrote, and the wire side reads it out of the proxy's CONNECT
-// record. "PyPI.org", "pypi.org:443" and "pypi.org." are one destination, and a
-// report that treats them as three answers its own central question wrongly --
-// "reached but never named" fires on a host that WAS named, in different case.
+// It exists because a hostname arrives here from more than one place and has
+// to be the same string in all of them: the declaration side reads it out of
+// a tool call the agent wrote, and the sandbox side reads it out of nono's
+// audit trail. "PyPI.org", "pypi.org:443" and "pypi.org." are one destination,
+// and a report that treated them as three would count traffic the sandbox saw
+// as unrelated to a host the agent, in different case, had already named.
 //
 // A hostname is the most sensitive field this product stores. It can carry a
 // tenant, a bucket, or an internal topology. That is why this package returns a
@@ -28,27 +28,27 @@ import (
 //   - lower-cased, because DNS is case-insensitive and both sides spell it
 //     however their source did;
 //   - port stripped, because pypi.org:443 and pypi.org are one destination and
-//     the proxy records the port while a tool call usually does not;
+//     the sandbox's trail records the port while a tool call usually does
+//     not;
 //   - userinfo REJECTED outright rather than stripped (see below);
 //   - IPv6 brackets kept, because "::1" without them is ambiguous against a
 //     host:port split and every consumer here expects the bracketed form;
 //   - one trailing dot dropped, because "pypi.org." is the fully-qualified
 //     spelling of the same name and only one of the two sides ever emits it;
 //   - loopback KEPT. Filtering it is the report's decision, not this
-//     function's: the wire side needs to see loopback rows in order to exclude
-//     them knowingly, and a canonicaliser that silently dropped them would make
-//     "no loopback traffic" and "loopback traffic we discarded" the same
-//     answer.
+//     function's: the sandbox section needs to see loopback rows in order to
+//     exclude them knowingly, and a canonicaliser that silently dropped them
+//     would make "no loopback traffic" and "loopback traffic we discarded" the
+//     same answer.
 //
 // Userinfo is rejected, not stripped, and that is a security decision
 // (CWE-522). A string like "user:password@internal.example" carries a
 // credential, and stripping it would leave this function returning a clean
 // hostname for an input we then have to trust every caller never logged. There
-// is no legitimate source of userinfo in either of this product's two inputs:
-// the proxy's CONNECT target is a bare authority, and a URL with embedded
-// credentials in a tool call is a thing we specifically do not want to record
-// the existence of. Refusing it means a credential cannot be carried even one
-// function deeper.
+// is no legitimate source of userinfo in this product's inputs: nono's trail
+// carries a bare authority, and a URL with embedded credentials in a tool call
+// is a thing we specifically do not want to record the existence of. Refusing
+// it means a credential cannot be carried even one function deeper.
 func Canonical(raw string) (string, bool) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
