@@ -77,9 +77,11 @@ jobs:
       # The module gained a dependency graph when it started reading the
       # proxy's SQLite store. Publishing a binary with a known-vulnerable
       # module in it is the failure this catches, and a release is the last
-      # moment it is cheap to catch.
+      # moment it is cheap to catch. ci.yaml runs the same line, and
+      # TestDEL21c holds the two to one version. Under go1.27.2, v1.1.4
+      # panics when it analyses linux/amd64 and passes on darwin.
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7.2.3
