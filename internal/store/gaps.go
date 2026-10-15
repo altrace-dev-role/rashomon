@@ -133,14 +133,28 @@ func openRunLines(dir string) (*runLines, error) {
 		}
 		rl.records, rl.unlock = f, unlock
 	}
-	if rl.rec, err = readLines(rl.records); err == nil {
-		rl.spill, err = readLinesAt(rl.spillPath)
-	}
-	if err != nil {
+	if rl.rec, err = readLines(rl.records); err != nil {
 		rl.close()
-		return nil, err
+		return nil, tooLongHint(FileRecords, err)
+	}
+	if rl.spill, err = readLinesAt(rl.spillPath); err != nil {
+		rl.close()
+		return nil, tooLongHint(FileSpill, err)
 	}
 	return rl, nil
+}
+
+// tooLongHint adds which file and what to do to a read that failed because
+// one of its lines is over the reader's limit (errLineTooLong). forget
+// cannot rewrite a line it never held in order to leave it unchanged, but
+// Evict removes a whole run by size without reading any of its lines, so
+// the run is not stuck unforgettable forever. Any other error passes
+// through as it was.
+func tooLongHint(file string, err error) error {
+	if !errors.Is(err, errLineTooLong) {
+		return err
+	}
+	return fmt.Errorf("%s: %w; Evict still removes the whole run without reading it", file, err)
 }
 
 // close releases the records file's lock and closes it.
