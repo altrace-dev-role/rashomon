@@ -18,7 +18,7 @@ func TestDEL22e_MessageRidesOnlyItsOwnPattern(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := steer.Finding{Pattern: pattern.RegressionLocation, MaxLevel: steer.LevelNudge, StopForm: steer.StopFormNone, Message: m, Evidence: []int64{37, 52}, AfterSeq: 57}
+	f := steer.Finding{Pattern: pattern.RegressionLocation, Priority: 80, MaxLevel: steer.LevelNudge, StopForm: steer.StopFormNone, Message: m, Evidence: []int64{37, 52}, AfterSeq: 57}
 	if err := f.Check(); err != nil {
 		t.Fatalf("the message's own pattern: %v", err)
 	}
