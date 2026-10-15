@@ -17,6 +17,9 @@ import (
 // coverage internal_error. (The end probe would also have found the
 // declaration unterminated, but only if the session ever ended.)
 func TestRubricDOCS6_AFailedTerminalNeverReadsVerified(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permissions do not stop root")
+	}
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	st := mustOpen(t)
 	h := New(st, time.Now)
