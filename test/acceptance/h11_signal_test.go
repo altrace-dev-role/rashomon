@@ -97,3 +97,40 @@ func TestH12_SIGTERMIsAControlledExit(t *testing.T) {
 		t.Errorf("coverage is %s/%v, want unverified/terminated_by_signal", cov[0].str("state"), cov[0].fields["reason"])
 	}
 }
+
+// TestH12b_SIGHUPAndSIGQUITAreControlledExits: WatchSignals also catches
+// SIGHUP (sent when the controlling terminal closes) and SIGQUIT, not only
+// SIGINT and SIGTERM. Both reach the same controlled-exit path TestH12_
+// checks for SIGTERM: the handler closes its declaration, exits 0, and
+// records terminated_by_signal rather than leaving the entry unterminated.
+func TestH12b_SIGHUPAndSIGQUITAreControlledExits(t *testing.T) {
+	for _, sig := range []syscall.Signal{syscall.SIGHUP, syscall.SIGQUIT} {
+		t.Run(sig.String(), func(t *testing.T) {
+			e := newEnv(t)
+			e.watched(testSession)
+
+			signal, wait := e.process(defaultPayload().build(t))
+			signal(sig)
+			if code := wait(); code != 0 {
+				t.Fatalf("exit code %d after %s, want 0", code, sig)
+			}
+
+			terms := e.terminals(testSession)
+			if len(terms) != 1 {
+				t.Fatalf("got %d terminal records, want 1: %s is a controlled exit", len(terms), sig)
+			}
+			if terms[0].str("outcome") != "signal" || terms[0].str("reason") != "terminated_by_signal" {
+				t.Errorf("terminal is %s/%v, want signal/terminated_by_signal", terms[0].str("outcome"), terms[0].fields["reason"])
+			}
+
+			cov := e.coverage(testSession, "call")
+			if len(cov) != 1 {
+				t.Fatalf("got %d call coverage records, want 1", len(cov))
+			}
+			assertKeySet(t, cov[0], coverageKeys)
+			if cov[0].str("state") != "unverified" || cov[0].str("reason") != "terminated_by_signal" {
+				t.Errorf("coverage is %s/%v, want unverified/terminated_by_signal", cov[0].str("state"), cov[0].fields["reason"])
+			}
+		})
+	}
+}
