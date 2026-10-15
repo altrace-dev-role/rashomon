@@ -95,3 +95,36 @@ func TestFamilies_UnknownProgramIsNotAFamily(t *testing.T) {
 		}
 	}
 }
+
+// declSSH builds a declaration with a program and the ssh hosts it named.
+func declSSH(program string, sshHosts ...string) store.Declaration {
+	p := program
+	return store.Declaration{
+		ToolUseID: "t-" + program,
+		ToolName:  "Bash",
+		SessionID: "sess-1",
+		Shape:     shape.Shape{Program: &p},
+		SSHHosts:  sshHosts,
+	}
+}
+
+// TestFamilies_SSHHostsCountToo: `git clone git@github.com:a/b` names an ssh
+// host and no https one. The proxy-era exclusion of ssh hosts from the family
+// count existed because the proxy could not see ssh traffic; nothing here
+// still observes anything, so a family whose only calls named ssh hosts must
+// not read as having declared none.
+func TestFamilies_SSHHostsCountToo(t *testing.T) {
+	run := &store.Run{Declarations: []store.Declaration{
+		declSSH("git", "github.com"),
+	}}
+
+	fc := buildFamilies(run)
+
+	f, ok := familyByName(fc, "git")
+	if !ok {
+		t.Fatal("no git family, although git ran")
+	}
+	if f.HostsDeclared != 1 {
+		t.Errorf("hosts_declared = %d, want 1: the ssh host git named", f.HostsDeclared)
+	}
+}

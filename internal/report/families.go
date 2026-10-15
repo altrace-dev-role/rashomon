@@ -91,6 +91,9 @@ func buildFamilies(run *store.Run) FamilyCoverage {
 		for _, h := range d.Hosts {
 			a.hosts[h] = true
 		}
+		for _, h := range d.SSHHosts {
+			a.hosts[h] = true
+		}
 	}
 
 	// Every family name in the table, so "not exercised" is a complete list
