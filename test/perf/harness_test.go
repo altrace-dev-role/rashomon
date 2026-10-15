@@ -240,3 +240,36 @@ func TestRES28o_HarnessChecksEveryRunItMeasures(t *testing.T) {
 		t.Error(`buildAndRun does not return Settle(m.Run(), os.Getenv(RequireAllEnv) == "1", b, ran)`)
 	}
 }
+
+// TestRES28p_HarnessMeasuresThroughTheReaper: every peak the harness gates is
+// read by peakrss's reaper, never from the child's rusage in this process:
+// buildAndRun builds the reaper before it runs a test, maxRSSMiB measures
+// through reaper.Run, nothing in the harness reads SysUsage, and the perf run
+// holds the live check that a reading leaves out the harness's own peak.
+func TestRES28p_HarnessMeasuresThroughTheReaper(t *testing.T) {
+	f := harnessSource(t)
+	body := harnessFunc(t, f, "buildAndRun").Body.List
+	built, run := firstStmt(body, "peakrss.NewReaper(dir)"), firstStmt(body, "m.Run()")
+	if built < 0 || run <= built {
+		t.Errorf("buildAndRun does not build the reaper (statement %d) before it runs the tests (statement %d)", built, run)
+	}
+	via := false
+	for _, c := range callsIn(harnessFunc(t, f, "maxRSSMiB")) {
+		via = via || c == "reaper.Run(cmd)"
+	}
+	if !via {
+		t.Error("maxRSSMiB does not measure through reaper.Run(cmd)")
+	}
+	for _, c := range callsIn(f) {
+		if strings.Contains(c, "SysUsage") {
+			t.Errorf("the harness reads a child's rusage itself: %s", c)
+		}
+	}
+	live := false
+	for _, c := range callsIn(harnessFunc(t, f, "TestRES28p_AReadingLeavesOutTheHarnesssOwnPeak")) {
+		live = live || strings.HasPrefix(c, "maxRSSMiB(")
+	}
+	if !live {
+		t.Error("the perf run has no check that maxRSSMiB leaves out the harness's own peak")
+	}
+}
