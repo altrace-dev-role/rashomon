@@ -204,5 +204,5 @@ m("NONO the novelty candidates drop the MCP transport on an MCP session", "inter
   "\t\tif loopbackHosts[h] || clientPlaneHost(h, mcpAttributed) {", "\t\tif loopbackHosts[h] || clientPlaneHosts[h] {",
   "TestClientPlane_EveryView")
 m("NONO the session's MCP calls never reach the novelty candidates", "internal/report/destinations.go",
-  "novelHostCandidates(d.DeclaredHosts, madeMCPCall(run))", "novelHostCandidates(d.DeclaredHosts, false)",
+  "madeMCPCall(run)))", "false))",
   "TestNovelty_TheMCPTransport")

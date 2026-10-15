@@ -298,3 +298,29 @@ func TestClientPlane_EveryViewAppliesTheOneRule(t *testing.T) {
 		}
 	}
 }
+
+// TestNovelty_SSHHostsAreCandidatesToo: a session that only reaches a new
+// host over ssh -- a git deploy target, say -- must be told about it the same
+// way an HTTPS one would be. The proxy-era exclusion of ssh from novelty
+// existed because the proxy could not see ssh at all; nothing here still
+// observes anything, so there is no longer a reason to leave ssh out.
+func TestNovelty_SSHHostsAreCandidatesToo(t *testing.T) {
+	project, root := t.TempDir(), t.TempDir()
+	mk := func(id string, at int64, sshHosts ...string) *store.Run {
+		return &store.Run{
+			Declarations: []store.Declaration{{
+				ToolUseID: "t", ToolName: "Bash", SessionID: id, SSHHosts: sshHosts,
+			}},
+			Coverage: []store.Coverage{{
+				Phase: store.PhaseStart, RecordedAtMS: at, CWD: project, SessionID: id,
+			}},
+		}
+	}
+	buildDestinations(mk("sess-1", t0ms, "github.com"), root) // ubiquitous; establishes
+	d := buildDestinations(mk("sess-2", t0ms+3600000, "github.com", "deploy.example"), root)
+
+	if !slices.Contains(d.Novelty.Hosts, "deploy.example") {
+		t.Errorf("novelty hosts = %v, want deploy.example: an ssh host named for the "+
+			"first time in this project must count as a novelty candidate", d.Novelty.Hosts)
+	}
+}
