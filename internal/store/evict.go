@@ -169,7 +169,12 @@ func evictCandidates(runsDir string) (evictPlan, error) {
 	return plan, nil
 }
 
-// sizeRun is a run directory's size and newest modification time.
+// sizeRun is a run directory's size and newest modification time. A run
+// with no files yet falls back to the directory entry's own mtime: without
+// that, a run MkdirAll creates an instant before its first file is opened
+// (appendLine) would report the zero time, which sorts before every real
+// run and reads as far older than evictGrace allows, so a session that has
+// only just started could be evicted as the store's oldest run.
 func sizeRun(dir string) (evictCandidate, error) {
 	var c evictCandidate
 	files, err := os.ReadDir(dir)
@@ -185,6 +190,13 @@ func sizeRun(dir string) (evictCandidate, error) {
 		if info.ModTime().After(c.mtime) {
 			c.mtime = info.ModTime()
 		}
+	}
+	if len(files) == 0 {
+		info, err := os.Stat(dir)
+		if err != nil {
+			return c, err
+		}
+		c.mtime = info.ModTime()
 	}
 	return c, nil
 }
