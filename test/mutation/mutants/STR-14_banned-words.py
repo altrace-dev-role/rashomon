@@ -22,3 +22,6 @@ m("STR-14 a sentence may open with a bare imperative", "internal/steer/render/te
   '\t\tfirst := strings.Trim(words[0], "()\\"")\n', '\t\tfirst := strings.Trim(words[0], "()\\"") + "x"\n', "TestSTR14_")
 m("STR-14 a template's quote may hold more than one placeholder", "internal/steer/render/templates.go",
   "\tif err := templateQuotesHoldOnlyPlaceholders(format); err != nil {\n\t\treturn err\n\t}\n", "", "TestSTR14_")
+m("STR-14 the imperative opening list loses the edit and git verbs", "internal/steer/render/templates.go",
+  '\t"restore", "undo", "skip", "commit", "push", "write", "edit", "open", "avoid",\n',
+  "", "TestSTR14c_")
