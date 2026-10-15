@@ -895,6 +895,12 @@ func detachTarget(args []string) (installID string, all, force bool, err error) 
 	return installID, false, force, err
 }
 
+// pausedCoverageNote completes pause's line where a store exists: that a
+// paused call still leaves a coverage record, so the window it falls in
+// shows in the report rather than reading as silence.
+const pausedCoverageNote = "; each one still writes a coverage record " +
+	"so the gap shows in the report"
+
 // cmdPause engages recording state (Part 2). See checkPaused for what a
 // paused hook invocation does, and the threat model in store.Pause's own
 // comment for why this is a file under the store root rather than an
@@ -910,11 +916,6 @@ func detachTarget(args []string) (installID string, all, force bool, err error) 
 // gets the marker file pause reads back -- that is what lets status answer
 // "paused, no store recorded here yet" truthfully -- but nothing that would
 // mint an install identity.
-// pausedCoverageNote completes pause's line where a store exists: what each
-// paused call still writes, and why.
-const pausedCoverageNote = "; each one still adds a one-line coverage note " +
-	"(session id, working directory) so the gap shows in the report"
-
 func cmdPause(stdout io.Writer) error {
 	root, err := store.DefaultRoot()
 	if err != nil {
@@ -1295,14 +1296,26 @@ func statusPlugin(stdout io.Writer) (bool, error) {
 	}
 	fmt.Fprintf(stdout, "plugin: %s (%s) at %s\n", p.Key, enabled, p.Root)
 
-	declares := map[string]bool{}
+	intact := map[string]bool{}
 	for _, event := range p.Events {
-		declares[event] = true
+		intact[event] = true
+	}
+	declared := map[string]bool{}
+	for _, event := range p.Declared {
+		declared[event] = true
 	}
 	for _, event := range install.Events() {
 		state := "absent"
-		if declares[event] {
+		switch {
+		case intact[event]:
 			state = "present"
+		case declared[event]:
+			// p.Declared is a superset of p.Events (see Plugin's doc comment):
+			// this event fires on every call, same as an intact one, but
+			// through a group a hand edit narrowed, so it is not counted for
+			// coverage. "absent" here would also contradict the overlap line
+			// below, which reads Live() -- Declared, not Events.
+			state = "present (hand edited, not counted for coverage)"
 		}
 		fmt.Fprintf(stdout, "  plugin %s: %s\n", event, state)
 	}
