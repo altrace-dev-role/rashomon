@@ -126,6 +126,22 @@ func guarded(stderr io.Writer, fn func() error) int {
 	return exitOK
 }
 
+// guardedHook runs fn under the same whole-body barrier cmdHook, cmdPost and
+// cmdProbe each wrap their entry point in, and reports a recovered panic on
+// stderr -- by type only, never its value, the same rule PanicError's own
+// comment states -- before returning exitOK regardless of what fn did.
+// Unlike guarded, above, it never returns exitFail: these three are invoked
+// by Claude Code as a hook, and any exit but 0 blocks the tool call, which is
+// the one outcome the barrier exists to rule out. Before, the Guard error was
+// simply discarded, and a panic in the prologue -- ahead of any record the
+// store could hold -- left no trace on stderr at all.
+func guardedHook(stderr io.Writer, fn func() error) int {
+	if err := safe.Guard(fn); err != nil {
+		fmt.Fprintln(stderr, "rashomon:", err)
+	}
+	return exitOK
+}
+
 // noArgs adapts a command that takes no arguments to guarded, refusing any it
 // is given before the command runs.
 //
@@ -174,7 +190,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	// the single outcome this program is built to make impossible. Its own file
 	// comment says "not for a panic", and three of the four entry points took
 	// it on faith for the first few statements.
-	_ = safe.Guard(func() error {
+	return guardedHook(stderr, func() error {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
@@ -204,7 +220,6 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 		return nil
 	})
-	return exitOK
 }
 
 // cmdPost handles one PostToolUse invocation, under the same rule as hook: it
@@ -215,7 +230,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 // the agent asked for went on to run.
 func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook.
-	_ = safe.Guard(func() error {
+	return guardedHook(stderr, func() error {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
@@ -241,7 +256,6 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 		return nil
 	})
-	return exitOK
 }
 
 // cmdProbe handles SessionStart and SessionEnd, under the same rule as hook:
@@ -250,7 +264,7 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook: signal watching and the
 	// phase check included. They ran ahead of the barrier, under this same
 	// comment, and a panic in either exited 2.
-	_ = safe.Guard(func() error {
+	return guardedHook(stderr, func() error {
 		fault.Inject(fault.PointProbeStart)
 		sig := hook.WatchSignals()
 		defer sig.Stop()
@@ -277,7 +291,6 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		hook.RunProbe(sig, phase, stdin, st, time.Now)
 		return nil
 	})
-	return exitOK
 }
 
 // recapStdinTimeout bounds how long cmdRecap waits for the Stop/StopFailure
