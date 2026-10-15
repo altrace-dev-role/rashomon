@@ -11,7 +11,7 @@ m("P1 a denial reads as a missing execution record", "internal/report/chains.go"
   "TestChains|TestH31")
 # Re-anchored on buildLink's new signature, which took the anchor with it.
 m("P1 unattributed calls lose their ids", "internal/report/chains.go",
-  "\t\t\tout.Unattributed = append(out.Unattributed,\n\t\t\t\tbuildLink(d, executed, denied))\n\t\t\tcontinue",
+  "\t\t\tout.Unattributed = append(out.Unattributed,\n\t\t\t\tbuildLink(d, executed, denied, forgotten))\n\t\t\tcontinue",
   "\t\t\tcontinue", "TestChains|TestH31")
 # The aliasing one. It is the reason redactChains rebuilds three slices rather
 # than copying the struct, and a shallow copy compiles and renders correctly --
@@ -48,7 +48,9 @@ m("P1 the second execution record is not reported", "internal/report/chains.go",
 m("P1 dropped declarations vanish", "internal/report/chains.go",
   "\tfor _, id := range run.Dropped() {", "\tfor _, id := range []string{} {", "TestChains")
 m("P1 ssh hosts are joined into the observable list", "internal/report/chains.go",
-  "\tl.SSHHosts = append(l.SSHHosts, d.SSHHosts...)", "", "TestChains|TestH31")
+  "\tfor _, h := range d.SSHHosts {\n\t\tif forgotten != nil && forgotten(h, d.RecordedAtMS) {\n\t\t\tcontinue\n\t\t}\n\t\tl.SSHHosts = append(l.SSHHosts, h)\n\t}",
+  "",
+  "TestChains|TestH31")
 m("P1 redaction leaves ssh hosts in clear", "internal/report/redact.go",
   "\t\tfor _, h := range link.SSHHosts {\n\t\t\tl.SSHHosts = append(l.SSHHosts, redactHost(h, key))\n\t\t}",
   "\t\tl.SSHHosts = append(l.SSHHosts, link.SSHHosts...)", "TestRedact|TestH31")

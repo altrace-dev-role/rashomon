@@ -49,7 +49,7 @@ func TestChains_KeyedByTranscriptAndPrompt(t *testing.T) {
 		chainDecl(2, "t2", "Bash", "p1", "/subagent.jsonl"),
 	}}
 
-	c := buildChains(run, executionsByID(run), nil)
+	c := buildChains(run, executionsByID(run), nil, nil)
 
 	if len(c.Prompts) != 2 {
 		t.Fatalf("got %d chains, want 2. The same prompt id in two transcripts is two "+
@@ -68,7 +68,7 @@ func TestChains_OrderedBySeq(t *testing.T) {
 		chainDecl(2, "t2", "Read", "p1", "/main.jsonl"),
 	}}
 
-	c := buildChains(run, executionsByID(run), nil)
+	c := buildChains(run, executionsByID(run), nil, nil)
 
 	if len(c.Prompts) != 1 {
 		t.Fatalf("premise: one chain expected, got %d", len(c.Prompts))
@@ -95,7 +95,7 @@ func TestChains_ChainsOrderedByFirstSeq(t *testing.T) {
 		chainDecl(11, "t11", "Bash", "p2", "/main.jsonl"),
 	}}
 
-	c := buildChains(run, executionsByID(run), nil)
+	c := buildChains(run, executionsByID(run), nil, nil)
 
 	if len(c.Prompts) != 2 || c.Prompts[0].PromptID != "p1" {
 		t.Fatalf("chains = %+v, want p1 first: it starts earlier", c.Prompts)
@@ -120,7 +120,7 @@ func TestChains_Outcomes(t *testing.T) {
 	}
 	denied := map[string]bool{"denied": true}
 
-	c := buildChains(run, executionsByID(run), denied)
+	c := buildChains(run, executionsByID(run), denied, nil)
 	got := map[string]string{}
 	for _, l := range c.Prompts[0].Links {
 		got[l.ToolUseID] = l.Outcome
@@ -146,7 +146,7 @@ func TestChains_DeniedIsNotAFailure(t *testing.T) {
 		chainDecl(1, "d1", "Bash", "p1", "/main.jsonl"),
 	}}
 
-	got := buildChains(run, executionsByID(run), map[string]bool{"d1": true}).Prompts[0].Links[0].Outcome
+	got := buildChains(run, executionsByID(run), map[string]bool{"d1": true}, nil).Prompts[0].Links[0].Outcome
 	if got == store.ExecFailed {
 		t.Errorf("a denied call rendered as %q; the user refusing is not the call failing", got)
 	}
@@ -171,7 +171,7 @@ func TestChains_UnattributedCallsKeepTheirIDs(t *testing.T) {
 		chainDecl(3, "t3", "Bash", "", "/main.jsonl"),
 	}}
 
-	c := buildChains(run, executionsByID(run), nil)
+	c := buildChains(run, executionsByID(run), nil, nil)
 	if len(c.Unattributed) != 2 {
 		t.Fatalf("unattributed = %+v, want the two calls with no prompt id", c.Unattributed)
 	}
@@ -199,7 +199,7 @@ func TestChains_TwoPostRecordsKeepBoth(t *testing.T) {
 		},
 	}
 
-	l := buildChains(run, executionsByID(run), nil).Prompts[0].Links[0]
+	l := buildChains(run, executionsByID(run), nil, nil).Prompts[0].Links[0]
 	if l.ExecutionRecords != 2 {
 		t.Errorf("execution_records = %d, want 2", l.ExecutionRecords)
 	}
@@ -227,7 +227,7 @@ func TestChains_ARecordWithNoSeqDoesNotOutrankOne(t *testing.T) {
 		},
 	}
 
-	if got := buildChains(run, executionsByID(run), nil).Prompts[0].Links[0].Outcome; got != store.ExecFailed {
+	if got := buildChains(run, executionsByID(run), nil, nil).Prompts[0].Links[0].Outcome; got != store.ExecFailed {
 		t.Errorf("outcome = %q, want %q: the record with a known position wins", got, store.ExecFailed)
 	}
 }
@@ -245,7 +245,7 @@ func TestChains_EveryDeclarationIsReachable(t *testing.T) {
 		Terminals: []store.Terminal{{ToolUseID: "t_dropped"}},
 	}
 
-	c := buildChains(run, executionsByID(run), nil)
+	c := buildChains(run, executionsByID(run), nil, nil)
 	seen := map[string]bool{}
 	for _, ch := range c.Prompts {
 		for _, l := range ch.Links {
@@ -276,7 +276,7 @@ func TestChains_SSHHostsAreCarriedApart(t *testing.T) {
 	d.SSHHosts = []string{"git.example"}
 	run := &store.Run{Declarations: []store.Declaration{d}}
 
-	l := buildChains(run, executionsByID(run), nil).Prompts[0].Links[0]
+	l := buildChains(run, executionsByID(run), nil, nil).Prompts[0].Links[0]
 	if len(l.DeclaredHosts) != 1 || l.DeclaredHosts[0] != "wire.example" {
 		t.Errorf("declared_hosts = %+v, want only the one named outside ssh_hosts", l.DeclaredHosts)
 	}
@@ -292,7 +292,7 @@ func TestChains_HostsRenderAsSortedNames(t *testing.T) {
 	d := chainDecl(1, "t1", "Bash", "p1", "/main.jsonl", "zeta.example", "alpha.example")
 	run := &store.Run{Declarations: []store.Declaration{d}}
 
-	l := buildChains(run, executionsByID(run), nil).Prompts[0].Links[0]
+	l := buildChains(run, executionsByID(run), nil, nil).Prompts[0].Links[0]
 	if len(l.DeclaredHosts) != 2 || l.DeclaredHosts[0] != "alpha.example" || l.DeclaredHosts[1] != "zeta.example" {
 		t.Errorf("declared_hosts = %v, want the two names sorted", l.DeclaredHosts)
 	}

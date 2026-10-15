@@ -6,12 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/nono"
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -558,6 +560,144 @@ func TestSeam_TheClientsOwnTrafficIsListedInOrder(t *testing.T) {
 		if got := fmt.Sprint(nonoJSON(t, rep)["client_plane_allowed"]); got != want {
 			t.Fatalf("run %d: client_plane_allowed = %s, want %s", i, got, want)
 		}
+	}
+}
+
+// TestSeam_APartlyFailedForgetStillSuppressesInDestinationsFamiliesAndChains:
+// buildNono takes a forgotten predicate and applies it; buildDestinations,
+// buildFamilies and buildChains did not. recordForgottenHost writes the
+// store-level record FIRST and ALWAYS, before any run is touched, exactly so
+// that a forget that then fails to edit a run's own records still suppresses
+// the host everywhere else -- the #45 property. A run whose records file
+// cannot be opened keeps the host in run.Declarations, forgotten() for it is
+// still true, and a view that reads the declarations without applying
+// forgotten republishes a host the command already reported forgotten.
+func TestSeam_APartlyFailedForgetStillSuppressesInDestinationsFamiliesAndChains(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("a file mode does not stop this process here")
+	}
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const id = "seam-views"
+	promptID := "p1"
+	curl := "curl"
+	now := time.UnixMilli(1_700_000_000_000)
+	if err := st.AppendDeclaration(store.Declaration{
+		Type: "declaration", SchemaVersion: 4, SessionID: id,
+		ToolUseID: "toolu_forget", ToolName: "Bash", PromptID: &promptID,
+		RecordedAtMS: now.UnixMilli(), Hosts: []string{"forget.example"},
+		Shape: shape.Shape{Program: &curl},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendDeclaration(store.Declaration{
+		Type: "declaration", SchemaVersion: 4, SessionID: id,
+		ToolUseID: "toolu_keep", ToolName: "Bash", PromptID: &promptID,
+		RecordedAtMS: now.UnixMilli() + 1, Hosts: []string{"keep.example"},
+		Shape: shape.Shape{Program: &curl},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// PREMISE: both hosts are really there before the forget.
+	before, err := Build(st, id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(before.Sessions[0].Destinations.DeclaredHosts, "forget.example") {
+		t.Fatalf("premise: forget.example is not among the declared hosts before the "+
+			"forget, so its absence after one proves nothing: %v",
+			before.Sessions[0].Destinations.DeclaredHosts)
+	}
+	curlFamily, ok := familyByName(before.Sessions[0].Families, "curl")
+	if !ok || curlFamily.HostsDeclared != 2 {
+		t.Fatalf("premise: curl's hosts_declared is not 2 before the forget: %+v", curlFamily)
+	}
+
+	runs, err := st.Runs()
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("premise: one run, got %v (%v)", runs, err)
+	}
+	records := filepath.Join(st.Root(), "runs", runs[0], "records.ndjson")
+	if err := os.Chmod(records, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, forgetErr := st.ForgetHost("forget.example", now)
+	// Restored before anything reads the run again: the mode exists only to
+	// fail forgetHostInRun's own open, not every later read of the file,
+	// including the report build below.
+	if err := os.Chmod(records, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if forgetErr == nil {
+		t.Fatal("premise: a forget whose run cannot be opened reported success")
+	}
+	forgotten, err := st.ForgottenHost()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !forgotten("forget.example") {
+		t.Fatal("premise: the store-level forget record was not written, so nothing " +
+			"downstream has anything to suppress")
+	}
+
+	rep, err := Build(st, id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := rep.Sessions[0]
+
+	// PREMISE: the run's own declaration still names it -- forgetHostInRun
+	// never got to remove it. Without this the test would pass because the
+	// record was actually gone, which is the case the existing seam test
+	// already covers.
+	var stillDeclared bool
+	raw, err := st.ReadRun(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range raw.Declarations {
+		if slices.Contains(d.Hosts, "forget.example") {
+			stillDeclared = true
+		}
+	}
+	if !stillDeclared {
+		t.Fatal("premise: the failed forget actually removed the declaration, so this " +
+			"test exercises nothing beyond the already-covered success path")
+	}
+
+	if slices.Contains(sess.Destinations.DeclaredHosts, "forget.example") {
+		t.Errorf("destinations.declared_hosts still carries a host the forget already "+
+			"reported forgotten: %v", sess.Destinations.DeclaredHosts)
+	}
+	if !slices.Contains(sess.Destinations.DeclaredHosts, "keep.example") {
+		t.Errorf("destinations.declared_hosts lost the unrelated host too: %v",
+			sess.Destinations.DeclaredHosts)
+	}
+	for _, h := range sess.Destinations.Novelty.Hosts {
+		if h == "forget.example" {
+			t.Error("novelty.hosts still names the forgotten host as new")
+		}
+	}
+	curlFamily, ok = familyByName(sess.Families, "curl")
+	if !ok || curlFamily.HostsDeclared != 1 {
+		t.Errorf("curl's hosts_declared = %+v, want 1 (only keep.example)", curlFamily)
+	}
+	for _, chain := range sess.Chains.Prompts {
+		for _, l := range chain.Links {
+			if slices.Contains(l.DeclaredHosts, "forget.example") {
+				t.Errorf("link %s still carries the forgotten host: %v", l.ToolUseID, l.DeclaredHosts)
+			}
+		}
+	}
+	body, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "forget.example") {
+		t.Errorf("a forgotten host is in the report's JSON:\n%s", locate(string(body), "forget.example"))
 	}
 }
 
