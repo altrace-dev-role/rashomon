@@ -267,3 +267,50 @@ func TestTRU58_ForgetMatchesTheWholeHostInAnUnparseableBaseline(t *testing.T) {
 		t.Errorf("ForgetFile(data.io) = %d, %v; want 1: the file holds it", n, err)
 	}
 }
+
+// TestTRU58_ForgetMatchesATruncatedHostname: a crash or external truncation
+// can cut a baseline off mid-write, inside the last string it was writing,
+// with no closing quote. What survived is a PREFIX of whatever host was
+// being written, and a forget for that host must still find it -- the file
+// holds no less of the host than it managed to write.
+func TestTRU58_ForgetMatchesATruncatedHostname(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "baseline")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, fileName("project"))
+	// Cut off inside "secret.example", after only "secret.exam".
+	body := `{"version": 2, "basis": "declared", "project": "project", "hosts": {"keep.example": {}, "secret.exam`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := ForgetFile(path, "secret.example")
+	if err != nil {
+		t.Fatalf("ForgetFile: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("ForgetFile = %d, want 1: the truncated write is a prefix of the forgotten host", n)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the truncated baseline is still on disk (stat: %v)", err)
+	}
+
+	// A host that is not a prefix match for what survived must not match.
+	root2 := t.TempDir()
+	dir2 := filepath.Join(root2, "baseline")
+	if err := os.MkdirAll(dir2, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path2 := filepath.Join(dir2, fileName("other"))
+	if err := os.WriteFile(path2, []byte(`{"version": 2, "hosts": {"secret.exam`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := ForgetFile(path2, "unrelated.example"); err != nil || n != 0 {
+		t.Errorf("ForgetFile(unrelated.example) = %d, %v; want 0: the truncated fragment is not its prefix", n, err)
+	}
+	if _, err := os.Stat(path2); err != nil {
+		t.Errorf("a truncated baseline unrelated to the forgotten host was removed (stat: %v)", err)
+	}
+}
