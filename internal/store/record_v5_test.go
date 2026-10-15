@@ -203,7 +203,7 @@ func TestDEL22b_SchemaFiveKeyListsAreFrozen(t *testing.T) {
 		TypeInstructions: reflect.TypeOf(Instructions{}), TypeModel: reflect.TypeOf(Model{}),
 		TypeOutcomeJoin: reflect.TypeOf(OutcomeJoin{}), TypeWriteObserved: reflect.TypeOf(WriteObserved{}),
 	}
-	for kind := range KindVersion {
+	for kind := range kindVersion {
 		switch kind {
 		case TypeDeclaration, TypeExecution, TypeTerminal, TypeCoverage, TypeGap, TypeVerify:
 			continue // call records extend the v4 structs; the verify checkpoint lives in internal/verify

@@ -36,10 +36,12 @@ const (
 	TypeWriteObserved = "write_observed"
 )
 
-// KindVersion is the version each writer stamps on its kind once 1.2.0's
+// kindVersion is the version each writer stamps on its kind once 1.2.0's
 // writers are in (REC-1): call kinds at 5, coverage and gaps unchanged at 3,
-// every new kind at 5.
-var KindVersion = map[string]int{
+// every new kind at 5. It is unexported so that only KindVersion can read
+// it: an importer that could write into an exported map could change what
+// AcceptsKind accepts.
+var kindVersion = map[string]int{
 	TypeDeclaration:   CallSchemaVersion,
 	TypeExecution:     CallSchemaVersion,
 	TypeTerminal:      CallSchemaVersion,
@@ -61,6 +63,13 @@ var KindVersion = map[string]int{
 	TypeWriteObserved: EventSchemaVersion,
 }
 
+// KindVersion returns the version a writer stamps on kind, and whether kind
+// is in the table at all.
+func KindVersion(kind string) (int, bool) {
+	v, ok := kindVersion[kind]
+	return v, ok
+}
+
 // AcceptsKind reports whether a 1.2.0 reader parses a record of this kind at
 // this version. It replaces Accepts, which knew only the call records'
 // versions, once the reader is switched to it in P-11.
@@ -79,6 +88,6 @@ func AcceptsKind(kind string, version int) bool {
 	case TypeCoverage, TypeGap:
 		return version >= 1 && version <= SessionSchemaVersion
 	}
-	v, known := KindVersion[kind]
+	v, known := kindVersion[kind]
 	return known && version == v
 }

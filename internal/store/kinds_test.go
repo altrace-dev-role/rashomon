@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 // Every kind the 1.2.0 record carries, a literal copy of the Contracts and
 // names list in the technical spec. A kind added without a version, or a
@@ -14,16 +17,29 @@ var frozenKindVersions = map[string]int{
 }
 
 func TestKindVersionsAreTheFrozenTable(t *testing.T) {
-	if len(KindVersion) != len(frozenKindVersions) {
-		t.Fatalf("%d kinds, want %d", len(KindVersion), len(frozenKindVersions))
+	if len(kindVersion) != len(frozenKindVersions) {
+		t.Fatalf("%d kinds, want %d", len(kindVersion), len(frozenKindVersions))
 	}
 	for kind, want := range frozenKindVersions {
-		if got, ok := KindVersion[kind]; !ok || got != want {
-			t.Errorf("KindVersion[%q] = %d (present %v), want %d", kind, got, ok, want)
+		if got, ok := KindVersion(kind); !ok || got != want {
+			t.Errorf("KindVersion(%q) = %d (present %v), want %d", kind, got, ok, want)
 		}
 	}
-	if _, steer := KindVersion["steer"]; steer {
+	if _, steer := KindVersion("steer"); steer {
 		t.Error("a steer kind is in the table; ED-1 keeps steer lines out of the record")
+	}
+}
+
+// TestKindVersionIsReadOnly: the table behind KindVersion is a function,
+// not an exported map, so no importer can change what a kind accepts by
+// writing into it (adversarial 8).
+func TestKindVersionIsReadOnly(t *testing.T) {
+	typ := reflect.TypeOf(KindVersion)
+	if typ.Kind() != reflect.Func {
+		t.Fatalf("KindVersion is a %s, want a func", typ.Kind())
+	}
+	if typ.String() != "func(string) (int, bool)" {
+		t.Errorf("KindVersion is %s, want func(string) (int, bool)", typ)
 	}
 }
 
