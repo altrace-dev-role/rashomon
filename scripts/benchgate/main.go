@@ -3,8 +3,8 @@
 // budget on B/op or allocs/op by more than the tolerance, when a budgeted
 // benchmark did not run, or when a benchmark ran without a row (tech spec
 // 8.2.6; RES-36). It exits 2, comparing nothing, when it runs under a
-// toolchain other than the one budgets.json's go_version names, or when the
-// file or the output cannot be read. It reads the benchmark output from
+// toolchain other than the one budgets.json's go_version names, when the file
+// has no benchmark rows, or when the file or the output cannot be read. It reads the benchmark output from
 // stdin, takes the best of repeated runs, and never looks at wall time.
 //
 //	go test -run '^$' -bench . -benchtime 20x -count 3 ./... | go run ./scripts/benchgate
@@ -50,6 +50,9 @@ func run(budgetsPath string, in io.Reader, stdout, stderr io.Writer, goVersion s
 	}
 	if err := b.CheckToolchain(goVersion); err != nil {
 		return fail(err)
+	}
+	if len(b.Benchmarks) == 0 {
+		return fail(fmt.Errorf("%s has no benchmark rows, so there is nothing to compare", budgetsPath))
 	}
 	results, err := Parse(in)
 	if err != nil {
