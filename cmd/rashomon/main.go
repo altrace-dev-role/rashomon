@@ -1759,10 +1759,7 @@ func forgetHost(host string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	gaps, err := st.ForgetHost(host, time.Now())
-	if err != nil {
-		return err
-	}
+	gaps, forgetErr := st.ForgetHost(host, time.Now())
 	total := 0
 	for _, g := range gaps {
 		total += g.RemovedRecords
@@ -1772,10 +1769,13 @@ func forgetHost(host string, stdout io.Writer) error {
 	// the caller meant, so every project that remembers the host loses it. That
 	// is the conservative direction: a host the user asked to forget must not
 	// survive in a baseline they did not think to name.
-	cleared, hadBaselines, err := clearBaselines(st.Root(), host)
-	if err != nil {
-		return err
-	}
+	//
+	// Run whether or not ForgetHost above succeeded, and the summary below is
+	// printed from whatever either one managed before either error is
+	// returned. A forget that clears some runs or some baselines and then
+	// fails must still say so: a caller who sees only the error cannot tell
+	// that part of it already happened.
+	cleared, hadBaselines, clearErr := clearBaselines(st.Root(), host)
 
 	fmt.Fprintf(stdout, "rashomon: forgot %s naming %s across %s; %s written",
 		countOf(total, "record"), host, countOf(len(gaps), "run"), countOf(len(gaps), "gap record"))
@@ -1787,12 +1787,11 @@ func forgetHost(host string, stdout io.Writer) error {
 		fmt.Fprint(stdout, "; later reports still leave it out wherever they find it, "+
 			"the sandbox trail included")
 	}
-	if !hadBaselines {
-		fmt.Fprintln(stdout)
-		return nil
+	if hadBaselines {
+		fmt.Fprintf(stdout, "; %d project baseline(s) cleared", cleared)
 	}
-	fmt.Fprintf(stdout, "; %d project baseline(s) cleared\n", cleared)
-	return nil
+	fmt.Fprintln(stdout)
+	return errors.Join(forgetErr, clearErr)
 }
 
 // countOf is n and the noun, singular for exactly one: "1 run", "2 runs".
