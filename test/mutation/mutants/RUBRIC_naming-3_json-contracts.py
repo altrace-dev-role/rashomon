@@ -17,3 +17,13 @@ m("RUBRIC naming-3 digest's skipped_records key is renamed", "internal/digest/di
 m("RUBRIC naming-3 spend's by_kind key is renamed", "internal/spend/spend.go",
   "\tByKind  KindSplit    `json:\"by_kind\"`", "\tByKind  KindSplit    `json:\"by_kinds\"`",
   "TestRubricNAMING3_SpendJSONKeysAreTheSnapshot")
+m("RUBRIC naming-3 the version guard lets any removal through",
+  "test/acceptance/schema_guard_test.go",
+  "\treturn removed, len(removed) > 0 && oldVersion == newVersion\n",
+  "\treturn removed, false\n",
+  "TestGuardDropsAKey_BlocksARemovedKeyWithNoVersionBump")
+m("RUBRIC naming-3 an unparseable version reads as unchanged",
+  "test/acceptance/schema_guard_test.go",
+  "\tif json.Unmarshal(raw, &doc) != nil || json.Unmarshal(doc[key], &v) != nil || v == nil {\n\t\treturn -1\n\t}\n",
+  "\tif false {\n\t\treturn -1\n\t}\n\tjson.Unmarshal(raw, &doc)\n\tjson.Unmarshal(doc[key], &v)\n",
+  "TestVersionOf_UnknownNeverReadsAsUnchanged")

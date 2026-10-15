@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -50,13 +51,37 @@ func docKeyPaths(t *testing.T, raw []byte) []byte {
 
 // checkKeySnapshot compares a document's key paths with a committed
 // snapshot, rewriting it under -update.
+//
+// The snapshot holds paths, not values, so it carries no copy of the
+// document's own schema_version to compare against: a sibling
+// .schema_version file holds the number the committed snapshot was taken at,
+// and -update refuses to drop a key path while that number is unchanged, for
+// the same reason report_golden_test's guard does with report_version.
 func checkKeySnapshot(t *testing.T, name string, raw []byte) {
 	t.Helper()
 	got := docKeyPaths(t, raw)
 	path := filepath.Join("testdata", name)
+	versionPath := path + ".schema_version"
+	newVersion := versionOf(raw, "schema_version")
 	if *updateGoldens {
+		if before, err := os.ReadFile(path); err == nil {
+			oldVersion := -1
+			if v, err := os.ReadFile(versionPath); err == nil {
+				if n, err := strconv.Atoi(strings.TrimSpace(string(v))); err == nil {
+					oldVersion = n
+				}
+			}
+			if removed, blocked := guardDropsAKey(before, got, oldVersion, newVersion); blocked {
+				t.Fatalf("-update would drop %v from %s with schema_version still %d; bump it first", removed, path, newVersion)
+			}
+		}
 		if err := os.WriteFile(path, got, 0o644); err != nil {
 			t.Fatal(err)
+		}
+		if newVersion >= 0 {
+			if err := os.WriteFile(versionPath, []byte(strconv.Itoa(newVersion)+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	want, err := os.ReadFile(path)

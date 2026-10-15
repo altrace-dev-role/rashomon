@@ -57,6 +57,15 @@ func TestRubricNAMING3_ReportJSONIsTheGolden(t *testing.T) {
 	}
 	got := normalizeReport([]byte(res.stdout), e.home, e.configDir, e.cwd, filepath.Dir(transcript))
 	if *updateGoldens {
+		// A removed key with no version bump would otherwise just become
+		// the new committed truth, with nothing left to diff it against.
+		if before, err := os.ReadFile(reportGolden); err == nil {
+			if removed, blocked := guardDropsAKey(docKeyPaths(t, before), docKeyPaths(t, got),
+				versionOf(before, "report_version"), versionOf(got, "report_version")); blocked {
+				t.Fatalf("-update would drop %v from %s with report_version still %d; bump report.CurrentReportVersion first",
+					removed, reportGolden, versionOf(got, "report_version"))
+			}
+		}
 		if err := os.MkdirAll("testdata", 0o755); err != nil {
 			t.Fatal(err)
 		}
