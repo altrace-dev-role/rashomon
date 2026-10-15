@@ -358,7 +358,7 @@ func TestSTR14_TemplatesAreStatementsOfFact(t *testing.T) {
 	}{
 		{"rashomon record: go test exited 1 at call {seq}; no later run is recorded.", true},
 		{"rashomon record: This project's spec, trusted on {date}, states: '{approved}'.", true},
-		{"rashomon record: the agent said 'run the tests again' at call {seq}.", true},
+		{"rashomon record: the agent said 'run the tests again' at call {seq}.", false}, // a template quote may hold only a placeholder
 		{"rashomon record: a check ran at call {seq}; the runner stopped.", true},
 		{"rashomon record: {gate} passed after the last edit.", true},
 		{"rashomon record: no test or build run after the last edit.", true},
@@ -380,7 +380,8 @@ func TestSTR14_TemplatesAreStatementsOfFact(t *testing.T) {
 		{"rashomon record: the lockfile changed; Make Sure the build passes.", false},
 		{"rashomon record: do not push before the gate.", false},
 		{"rashomon record: don't edit the lockfile.", false},
-		{"rashomon record: the agent said 'make sure' and then 'you must' at call {seq}.", true},
+		{"rashomon record: the agent said 'make sure' and then 'you must' at call {seq}.", false}, // same: neither quote is a placeholder
+		{"rashomon record: 'you must run the tests now, then push' at call {seq}.", false},
 	} {
 		err := CheckTemplate(c.text)
 		if (err == nil) != c.want {
