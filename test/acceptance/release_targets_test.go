@@ -295,6 +295,23 @@ var listed struct {
 	err      error
 }
 
+// releaseListEnv is the environment `go list` runs the release listing
+// under, for one target.
+//
+// GOFLAGS and GOEXPERIMENT are forced to the empty string right after the
+// ambient environment, so a developer's shell export or `go env -w` cannot
+// change which packages a target reports as linked -- a `-tags=withnet`
+// GOFLAGS would silently relax TRU-40's own premise. They are forced before
+// m.env and the target's own GOOS/GOARCH, not after: Cmd.Env keeps the LAST
+// value for a duplicate key, so a build matrix line that genuinely needs to
+// set either (none does today) still wins over this default. GOWORK is left
+// alone: the matrix reader's own test needs it to see a repo-root go.work.
+func releaseListEnv(target releaseTarget, extra []string) []string {
+	env := append(os.Environ(), "GOFLAGS=", "GOEXPERIMENT=")
+	env = append(env, extra...)
+	return append(env, "GOOS="+target.goos, "GOARCH="+target.goarch)
+}
+
 func listReleases() (map[releaseTarget][]listedPackage, error) {
 	body, err := os.ReadFile(filepath.Join(moduleRoot, ".goreleaser.yml"))
 	if err != nil {
@@ -312,7 +329,7 @@ func listReleases() (map[releaseTarget][]listedPackage, error) {
 	for _, target := range m.targets {
 		cmd := exec.Command("go", "list", "-deps", "-f", listFormat, "./cmd/rashomon")
 		cmd.Dir = moduleRoot
-		cmd.Env = append(append(os.Environ(), m.env...), "GOOS="+target.goos, "GOARCH="+target.goarch)
+		cmd.Env = releaseListEnv(target, m.env)
 		listing, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("listing %s: %w", target, err)
