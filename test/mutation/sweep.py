@@ -141,6 +141,23 @@ def read_list(path):
     return [ln.strip() for ln in path.read_text().splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
 
 
+def outside_cwd(path):
+    """True if path is absolute, or resolves outside the current directory.
+
+    A mutant's target is otherwise unconstrained, and _dirty_targets() runs
+    `git status -- <targets>`: git exits non-zero for a path outside the
+    repository, which silently drops the already-modified note for every
+    target in that run, not just the offending one.
+    """
+    if os.path.isabs(path):
+        return True
+    try:
+        pathlib.Path(path).resolve().relative_to(pathlib.Path(".").resolve())
+    except ValueError:
+        return True
+    return False
+
+
 def go_test_names():
     """Every top-level func Test name under the current directory."""
     names = set()
@@ -194,6 +211,9 @@ def check(complete):
         else:
             if go_tests is not None and not any(rx.search(n) for n in go_tests):
                 problems.append(f"{name!r}: test regex {test!r} matches no func Test under the current directory")
+        if outside_cwd(f):
+            problems.append(f"{name!r}: target {f} is outside the current directory")
+            continue
         s = text(f)
         if s is None:
             problems.append(f"{name!r}: target {f} cannot be read")
@@ -228,6 +248,9 @@ def check(complete):
             problems.append(f"{LEGACY_LIST.name}: {name!r} is not a declared mutant")
     mutation_of = {name: (f, old, new) for name, f, old, new, _test in M}
     for name, (f, io_, in_) in IMPORTS.items():
+        if outside_cwd(f):
+            problems.append(f"IMPORTS[{name!r}]: target {f} is outside the current directory")
+            continue
         s = text(f)
         if s is None:
             problems.append(f"IMPORTS[{name!r}]: target {f} cannot be read")

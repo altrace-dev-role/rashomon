@@ -458,6 +458,41 @@ func slicesEqual(a, b []string) bool {
 	return true
 }
 
+// A mutant's target is otherwise unconstrained, and _dirty_targets() runs
+// `git status -- <targets>`, which exits non-zero for a path outside the
+// repository and silently drops the already-modified note for every target
+// in that run -- not just the offending one.
+func TestCheckRejectsATargetOutsideTheCurrentDirectory(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	outside := filepath.Join(t.TempDir(), "elsewhere.go")
+	write(t, outside, "package x\n\nfunc a() int { return 1 }\n")
+	// Escapes dir by one level, to a file that genuinely exists there --
+	// otherwise the old code would reject this for an unrelated reason (the
+	// file cannot be read) rather than the one under test (it is outside).
+	escaped := filepath.Join(filepath.Dir(dir), "escaped-elsewhere.go")
+	write(t, escaped, "package x\n\nfunc a() int { return 1 }\n")
+	t.Cleanup(func() { os.Remove(escaped) })
+	cases := []struct {
+		name, target string
+		wantOK       bool
+	}{
+		{"inside the current directory", "target.go", true},
+		{"an absolute path", outside, false},
+		{"a relative path that escapes the current directory", "../escaped-elsewhere.go", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "fixture.py")
+			write(t, file, mutant("fixture "+tc.name, tc.target, "return 1", "return 2", "TestFixture_"))
+			_, code := sweep(t, dir, "--check", "--files", file)
+			if (code == 0) != tc.wantOK {
+				t.Errorf("--check exited %d for target %s", code, tc.name)
+			}
+		})
+	}
+}
+
 // shared-tests.txt's entries must themselves be shaped like what they
 // declare: a <PREFIX>-<n> row paired with a Test<PREFIX><n>[a-z]?_ test, not
 // merely two whitespace-separated fields. This edits the real file briefly
