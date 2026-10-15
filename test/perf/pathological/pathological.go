@@ -36,5 +36,7 @@ func Lines() []Line {
 		{"short lines", "echo", "\na", ""},
 		{"ssh lines", "", "ssh a\n", ""},
 		{"urls", "curl", " https://a.b/", ""},
+		{"git@ scheme runs", "", "git@", ""},
+		{"unterminated bracket hosts", "", "https://[", ""},
 	}
 }

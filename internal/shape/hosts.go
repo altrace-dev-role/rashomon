@@ -475,26 +475,51 @@ func collect(lower string, prefixes []string) []string {
 // authority instead lets Canonical see the '@' and refuse the input outright
 // (CWE-522). Port stripping is Canonical's job, and it does it after that
 // check, which is the only order in which both answers are right.
+//
+// The scan is bounded to authorityWindow bytes, not the rest of the command
+// line. Neither '@' nor, inside a bracket, ']' is in the terminator set
+// above, so a line of nothing but one scheme repeated -- "git@git@git@...",
+// "https://[https://[..." -- gave this function no terminator before the
+// line's own end, and collect calls it once per match: a line of N matches
+// scanned the whole remaining line N times. Past the window, no terminator
+// has been found by the point a real host:port would already have ended, so
+// the candidate is refused (""), not truncated at the window -- truncating
+// would hand Canonical a prefix that may have lost the '@' or ']' the scan
+// was widened to find, which is the property the comment above describes.
 func authority(s string) string {
-	if strings.HasPrefix(s, "[") {
-		if end := strings.Index(s, "]"); end >= 0 {
+	limit, cut := s, false
+	if len(limit) > authorityWindow {
+		limit, cut = limit[:authorityWindow], true
+	}
+	if strings.HasPrefix(limit, "[") {
+		if end := strings.Index(limit, "]"); end >= 0 {
 			// Keep any :port after the bracket; Canonical strips it.
-			return s[:end+1] + portSuffix(s[end+1:])
+			return limit[:end+1] + portSuffix(limit[end+1:])
 		}
 		return ""
 	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
+	for i := 0; i < len(limit); i++ {
+		c := limit[i]
 		if c <= ' ' || c == 0x7f {
-			return s[:i]
+			return limit[:i]
 		}
 		switch c {
 		case '/', '?', '#', '\\', '"', '\'', '`', '$', '|', '&', ';', '(', ')', '{', '}', '<', '>', ',', '*':
-			return s[:i]
+			return limit[:i]
 		}
 	}
-	return s
+	if cut {
+		return ""
+	}
+	return limit
 }
+
+// authorityWindow is how far authority looks for its terminator: host.maxName
+// (253, unexported there) plus 8 bytes of margin for a ":" and a port, which
+// is more room than the 5 digits a real port needs. A host:port this product
+// will ever accept ends inside it; TestRubricLLD2_URLHostsAreHostnameShaped's
+// 253- and 254-byte cases pin the boundary against host.Canonical directly.
+const authorityWindow = 253 + 8
 
 // portSuffix returns a leading ":digits" run, and nothing else. It exists so a
 // bracketed IPv6 authority keeps its port for Canonical to strip, without
