@@ -16,7 +16,7 @@ import (
 // list is written out rather than read off the structs under test, so
 // retyping a field to string fails here instead of widening the allowlist.
 var closedFactTypeNames = []string{
-	"verify.SlotID", "verify.PathSlot", "verify.Program", "verify.Digest",
+	"verify.SlotID", "verify.PathSlot", "verify.Program", "verify.QuoteHMAC",
 	"verify.State", "verify.Reason", "verify.Verdict", "verify.ClaimClass",
 	"verify.ClaimSource", "verify.IntegrityKind", "verify.MarkerID", "spec.RuleKind", "spec.Trust",
 }
@@ -141,6 +141,20 @@ func TestVER54d_SlotsHoldTheSpecsCharsets(t *testing.T) {
 	} {
 		if got := c.d.Valid(); got != c.want {
 			t.Errorf("Digest(%q).Valid() = %v, want %v", c.d, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		q    QuoteHMAC
+		want bool
+	}{
+		{QuoteHMAC(QuoteHMACPrefix + hex), true},
+		{QuoteHMAC(hex), false}, // no prefix
+		{QuoteHMAC(QuoteHMACPrefix + strings.ToUpper(hex)), false},
+		{QuoteHMAC(QuoteHMACPrefix + hex[:63]), false},
+		{"", false},
+	} {
+		if got := c.q.Valid(); got != c.want {
+			t.Errorf("QuoteHMAC(%q).Valid() = %v, want %v", c.q, got, c.want)
 		}
 	}
 }

@@ -117,3 +117,9 @@ m("VER-54 a masked pass explains a red gate", "internal/verify/tosteer_vocab.go"
   "\tMaskedWithSuccessLine: Green,\n", "\tMaskedWithSuccessLine: Red,\n", "TestVER54m_")
 m("VER-54 a closed reason has no state", "internal/verify/tosteer_vocab.go",
   "\tBudget:                Unknown,\n", "", "TestVER54m_")
+# Round 4: ClaimVerdict and ClaimFact now share one QuoteHMAC type (archive
+# 20.2.14) so the checkpoint's prefixed value and the fact's never disagree
+# on shape; a Valid() that drops the prefix check accepts a bare digest.
+m("VER-54 a quote HMAC is valid without its prefix", "internal/verify/finding.go",
+  "\tif !strings.HasPrefix(s, QuoteHMACPrefix) {\n\t\treturn false\n\t}\n\treturn Digest(s[len(QuoteHMACPrefix):]).Valid()\n",
+  "\treturn Digest(s).Valid()\n", "TestVER54d_")
