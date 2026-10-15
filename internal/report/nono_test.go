@@ -94,7 +94,12 @@ func TestNono_AnUnreadableTrailSaysHowMuchItCouldNotRead(t *testing.T) {
 	if err := os.WriteFile(trail, []byte(`{"sequence": 0, "eve`+"\n"+`{"sequence": 1, "ev`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	obs := nono.Read(trail, nono.Window{Start: time.Unix(0, 0)})
+	f, err := os.Open(trail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	obs := nono.Observe(f, trail, nono.Window{Start: time.Unix(0, 0)})
 	n := buildNono(obs, true, false, nil, nil)
 	want := "  sandbox (nono): not observed (nono_audit_no_records; 2 trail records could not be read)\n"
 	if out := renderNono(n); out != want {

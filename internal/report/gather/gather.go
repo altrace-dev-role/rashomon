@@ -157,8 +157,30 @@ func readSession(st *store.Store, name string, byDir map[string][]store.Gap, cfg
 		Gaps:        byDir[name],
 		Transcripts: readTranscripts(run),
 		Novelty:     novelty(run, st.Root(), forgottenBefore),
-		Nono:        nono.Read(cfg.nonoTrail, report.SessionWindow(run)),
+		Nono:        readNono(cfg.nonoTrail, report.SessionWindow(run)),
 	}, nil
+}
+
+// readNono opens the sandbox trail path names, if one was, and parses it
+// over w. This is the only place that opens a nono trail: nono.Observe
+// takes an already-open reader, so a package that links internal/nono only
+// for its types -- report does, for Observation; digest does not link it at
+// all -- has no path from that import to a trail's bytes
+// (TestRubricHLD4_TheVerdictPackagesLinkNoReadStep).
+func readNono(path string, w nono.Window) nono.Observation {
+	if path == "" {
+		return nono.Observation{Reason: nono.NotObservedNoTrail, Events: []nono.Event{}}
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		reason := nono.NotObservedUnreadable
+		if errors.Is(err, fs.ErrNotExist) {
+			reason = nono.NotObservedNoTrail
+		}
+		return nono.Observation{Reason: reason, Trail: path, Events: []nono.Event{}}
+	}
+	defer f.Close() //nolint:errcheck // read-only
+	return nono.Observe(f, path, w)
 }
 
 // runNames are the run directories to render: the one sessionID names, or

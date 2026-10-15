@@ -139,7 +139,7 @@ const nonoFixture = "../../../test/fixtures/nono/audit-events.ndjson"
 // built around data rather than around the clock.
 func firstNonoEvent(t *testing.T) time.Time {
 	t.Helper()
-	obs := nono.Read(nonoFixture, nono.Window{Start: time.Unix(0, 0)})
+	obs := readNono(nonoFixture, nono.Window{Start: time.Unix(0, 0)})
 	if !obs.Observed || len(obs.Events) == 0 {
 		t.Fatalf("premise: the nono fixture yields no events (%s)", obs.Reason)
 	}

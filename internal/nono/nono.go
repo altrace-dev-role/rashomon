@@ -25,6 +25,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"sort"
@@ -147,21 +148,21 @@ type networkEvent struct {
 	Port            int    `json:"port"`
 }
 
-// Read returns the network decisions nono recorded inside the window.
+// read returns the network decisions nono recorded inside the window,
+// opening path itself. It exists for this package's own tests, which have a
+// fixture file to point at; nothing outside the package can reach it, since
+// an exported opener was exactly what let a caller that links this package
+// only for its types reach a sandbox trail's bytes. The read step
+// (internal/report/gather) is the only other opener, and it is its own:
+// Observe below is what it calls.
 //
 // path is one audit-events.ndjson. A directory of sessions is the caller's to
 // choose from: this reader does not walk a tree, because deciding WHICH
 // sandbox session belongs to a rashomon session is a join, and a reader that
 // silently merged several would answer a question nobody asked.
-func Read(path string, w Window) Observation {
+func read(path string, w Window) Observation {
 	if path == "" {
 		return Observation{Reason: NotObservedNoTrail, Events: []Event{}}
-	}
-	if w.Start.IsZero() {
-		// No interval to read against, so nothing here can be attributed. The
-		// wire reader learned this the hard way: with no window every row
-		// counted as this session's.
-		return Observation{Reason: NotObservedNoWindow, Trail: path, Events: []Event{}}
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -172,6 +173,20 @@ func Read(path string, w Window) Observation {
 		return Observation{Reason: reason, Trail: path, Events: []Event{}}
 	}
 	defer func() { _ = f.Close() }()
+	return Observe(f, path, w)
+}
+
+// Observe parses an already-open sandbox trail over window w. It opens
+// nothing itself -- see read's doc for why that split exists -- so a path
+// naming the trail is for Observation.Trail alone, not for anything this
+// function reads from disk.
+func Observe(r io.Reader, path string, w Window) Observation {
+	if w.Start.IsZero() {
+		// No interval to read against, so nothing here can be attributed. The
+		// wire reader learned this the hard way: with no window every row
+		// counted as this session's.
+		return Observation{Reason: NotObservedNoWindow, Trail: path, Events: []Event{}}
+	}
 
 	obs := Observation{Trail: path, Events: []Event{}, WindowOpen: w.End.IsZero()}
 	// Observed is set only once a record of a type this reader KNOWS parses.
@@ -188,7 +203,7 @@ func Read(path string, w Window) Observation {
 	// produced it: a zero-byte file, blank lines, and valid JSON of the wrong
 	// shape.
 	var parsed int
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	// A generous line cap: nono's session_started carries a whole command line,
 	// and a scanner that stopped at the default 64KB would silently truncate
 	// the trail at the first long one -- reading as "the sandbox saw nothing
