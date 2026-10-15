@@ -74,3 +74,62 @@ func TestRES4_CapAtNAndNPlusOne(t *testing.T) {
 		t.Fatalf("refusal recorded with reason %v, want %s", last.Reason, store.ReasonPayloadTooLarge)
 	}
 }
+
+// TestRES4_PostRefusesAnOverCapPayload: Post shares hookio.Read's cap and
+// closeReason's mapping with Handler, so an over-cap payload here is refused
+// and recorded the same way TestRES4_CapAtNAndNPlusOne proves it is for a
+// declaration.
+func TestRES4_PostRefusesAnOverCapPayload(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	st, err := store.Open(home + "/store")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := func() time.Time { return time.UnixMilli(1_760_000_000_000) }
+	sig := &Signals{ch: make(chan os.Signal, 1)}
+
+	over := writePayload(MaxPayloadBytes+1, "s-post-over-cap")
+	p := NewPost(st, now)
+	err = p.Capture(bytes.NewReader(over))
+	p.Close(sig, err)
+	if !errors.Is(err, hookio.ErrTooLarge) {
+		t.Fatalf("%d bytes: %v, want ErrTooLarge", len(over), err)
+	}
+	run, err := st.ReadRun(UnattributedSession)
+	if err != nil || len(run.Coverage) == 0 {
+		t.Fatalf("no coverage in the unattributed run: %v", err)
+	}
+	last := run.Coverage[len(run.Coverage)-1]
+	if last.Reason == nil || *last.Reason != store.ReasonPayloadTooLarge {
+		t.Fatalf("refusal recorded with reason %v, want %s", last.Reason, store.ReasonPayloadTooLarge)
+	}
+}
+
+// TestRES4_ProbeRefusesAnOverCapPayload: RunProbe shares the same cap and
+// closeReason mapping, and records the refusal in the unattributed run
+// exactly as Handler and Post do.
+func TestRES4_ProbeRefusesAnOverCapPayload(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	st, err := store.Open(home + "/store")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := func() time.Time { return time.UnixMilli(1_760_000_000_000) }
+	sig := &Signals{ch: make(chan os.Signal, 1)}
+
+	over := writePayload(MaxPayloadBytes+1, "s-probe-over-cap")
+	RunProbe(sig, store.PhaseStart, bytes.NewReader(over), st, now)
+
+	run, err := st.ReadRun(UnattributedSession)
+	if err != nil || len(run.Coverage) == 0 {
+		t.Fatalf("no coverage in the unattributed run: %v", err)
+	}
+	last := run.Coverage[len(run.Coverage)-1]
+	if last.Reason == nil || *last.Reason != store.ReasonPayloadTooLarge {
+		t.Fatalf("refusal recorded with reason %v, want %s", last.Reason, store.ReasonPayloadTooLarge)
+	}
+}

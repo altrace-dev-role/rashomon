@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/test/perf/peakrss"
 )
 
@@ -122,5 +123,31 @@ func TestReadFinalMessageKeepsTodaysAccountWindow(t *testing.T) {
 		if _, ok := readFinalMessage(strings.NewReader(bad), true); ok {
 			t.Errorf("%q read as a payload", bad)
 		}
+	}
+}
+
+// TestReadFinalMessageCapIsExact: the cap readFinalMessage applies to the
+// whole payload (intake.go's countingReader, cr.n) is separate from
+// hookio.Read's own -- recap streams through hookio.IntakeStream, which
+// never calls Read -- so it needs its own boundary proof: exactly
+// hookio.MaxPayloadBytes is read, one byte more is refused.
+func TestReadFinalMessageCapIsExact(t *testing.T) {
+	build := func(n int) string {
+		const prefix = `{"session_id":"s","last_assistant_message":"`
+		const suffix = `"}`
+		return prefix + strings.Repeat("a", n-len(prefix)-len(suffix)) + suffix
+	}
+
+	at := build(hookio.MaxPayloadBytes)
+	if len(at) != hookio.MaxPayloadBytes {
+		t.Fatalf("payload %d bytes, want exactly the %d-byte cap", len(at), hookio.MaxPayloadBytes)
+	}
+	if _, ok := readFinalMessage(strings.NewReader(at), true); !ok {
+		t.Fatalf("exactly %d bytes refused, want accepted", hookio.MaxPayloadBytes)
+	}
+
+	over := build(hookio.MaxPayloadBytes + 1)
+	if _, ok := readFinalMessage(strings.NewReader(over), true); ok {
+		t.Fatalf("%d bytes read as a payload, want refused one byte over the cap", len(over))
 	}
 }

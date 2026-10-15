@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"runtime"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 )
@@ -151,6 +153,30 @@ func TestRES6_LargeFieldScanIsConstantMemory(t *testing.T) {
 	t.Logf("4 MiB stdout, %d lines: %d B allocated", lines, delta)
 	if delta > 256<<10 {
 		t.Fatalf("scanning a 4 MiB field allocated %d B, over 256 KiB", delta)
+	}
+}
+
+// TestReadToleratesOneByteReads: Read's growth loop reads through
+// io.ReadFull, which retries on a short read, so a reader that never returns
+// more than one byte at a time -- the extreme a chunked body or a slow pipe
+// can present -- still yields the same payload Read gets from one that
+// returns it whole.
+func TestReadToleratesOneByteReads(t *testing.T) {
+	p := payloadOf(40_000)
+	got, err := Read(iotest.OneByteReader(bytes.NewReader(p)))
+	if err != nil || !bytes.Equal(got, p) {
+		t.Fatalf("got %d bytes, err %v; want the same %d-byte payload", len(got), err, len(p))
+	}
+}
+
+// TestReadReturnsAMidStreamError: a read error partway through the payload,
+// after some of it has already arrived, is returned as-is rather than
+// folded into io.EOF or swallowed by the chunk loop.
+func TestReadReturnsAMidStreamError(t *testing.T) {
+	boom := errors.New("boom")
+	_, err := Read(io.MultiReader(strings.NewReader(`{"session_id":`), iotest.ErrReader(boom)))
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want %v", err, boom)
 	}
 }
 
