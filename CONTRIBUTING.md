@@ -53,10 +53,14 @@ defect, not a test that needs adjusting.
 
 **Run the whole sweep, not the entries you added.** It anchors each break on an
 exact snippet of source, so moving a line or changing a signature elsewhere can
-orphan an anchor that has nothing to do with your change. An orphaned anchor is
-reported as `ANCHOR MISSING` and scores its item undetected — the sweep says
-so, but only if you ran it. This has caught real regressions and has also been
-missed by running a filtered subset.
+orphan an anchor that has nothing to do with your change. `--check` finds an
+orphaned anchor statically — every anchor must occur exactly once in its
+target, and CI runs that check on every push — but only the sweep shows that
+the break is still detected. This has caught real regressions and has also
+been missed by running a filtered subset.
+
+    python3 test/mutation/sweep.py --check                    the static checks
+    python3 test/mutation/sweep.py --files 'mutants/H-15_*'   one file's breaks
 
 ## Adding behaviour
 
@@ -65,8 +69,12 @@ one file per item, with a comment at the top saying what the item is for and
 what risk it holds down. An item is not finished until:
 
 1. it fails under a named break, and you have seen it fail;
-2. that break is registered in `test/mutation/sweep.py`;
-3. the sweep reports it detected.
+2. that break is registered in a file of its own under `test/mutation/mutants/`
+   — one file per change, each line calling `m(name, file, old, new, test)`;
+   a file named for a requirement row, `REC-12_slug.py`, may name only that
+   row's tests;
+3. `python3 test/mutation/sweep.py --check` passes, and the sweep reports the
+   break detected.
 
 Negative items need positive twins. "No path reached the store" passes
 trivially against a function that computes nothing, so something in the same
