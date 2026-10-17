@@ -73,6 +73,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, noArgs(rest, stdout, cmdWatch))
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
+	case "purge":
+		return guarded(stderr, func() error { return cmdPurge(rest, stdout) })
 	case "pause":
 		return guarded(stderr, noArgs(rest, stdout, cmdPause))
 	case "resume":
@@ -200,7 +202,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 
-		st := openForHook(stderr)
+		st := openForHook(args, stderr)
 		if st == nil {
 			return nil
 		}
@@ -244,7 +246,7 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 
-		st := openForHook(stderr)
+		st := openForHook(args, stderr)
 		if st == nil {
 			return nil
 		}
@@ -292,7 +294,7 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		if checkPaused(args, stdin, phase, stderr) {
 			return nil
 		}
-		st := openForHook(stderr)
+		st := openForHook(args, stderr)
 		if st == nil {
 			return nil
 		}
@@ -584,10 +586,21 @@ func installArg(args []string) string {
 // openForHook opens the store for a hook-invoked path. It prints a fixed
 // string and returns nil on failure: there is nowhere to record that recording
 // failed, and the absence of any record for the session is the signal.
-func openForHook(stderr io.Writer) *store.Store {
+//
+// An entry that names an install (--install, as watch writes every one) and
+// finds no install.json returns nil and prints nothing: that store was
+// purged, and a live session still runs the entries it started with. Opening
+// one here would create the root, a key and a new install id -- the store
+// purge had just removed, back on the machine (Technical spec 7.2.9, TRU-28).
+// An entry that names none is from before --install existed, and is opened
+// as it always was.
+func openForHook(args []string, stderr io.Writer) *store.Store {
 	root, err := store.DefaultRoot()
 	if err != nil {
 		fmt.Fprintln(stderr, "rashomon: store location unresolved")
+		return nil
+	}
+	if installArg(args) != "" && !storeExistsAt(root) {
 		return nil
 	}
 	st, err := store.Open(root)
@@ -1864,6 +1877,11 @@ usage:
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
                                marker, whatever its id
+  rashomon purge [--yes] [--binary]
+                               detach, then remove the store and the
+                               directories watch created; prints every path
+                               first and asks on the terminal unless --yes;
+                               --binary also removes this binary
   rashomon pause                 stop recording on this machine, reaching every
                                installed origin; leaves a record of the change
   rashomon resume                start recording again; closes the paused

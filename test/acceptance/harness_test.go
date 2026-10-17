@@ -100,6 +100,12 @@ type env struct {
 	// storeFailf, when set, takes the end-of-test check's reports in place
 	// of the test's Errorf, so the check's own test can feed it a break.
 	storeFailf func(format string, args ...any)
+	// fakeHome, when set, is the HOME (and on Windows the USERPROFILE) every
+	// invocation sees. Most tests leave it empty: they name the store and
+	// the configuration directory outright and nothing they run reads HOME.
+	// purge does, to refuse a root that is HOME or encloses it, so its tests
+	// set this and never let the binary see the real one.
+	fakeHome string
 }
 
 // newEnv makes one machine, and checks its store's invariants when the test
@@ -136,6 +142,9 @@ func (e *env) environ(extra ...string) []string {
 		"CLAUDE_CONFIG_DIR="+e.configDir,
 		"RASHOMON_MANAGED_SETTINGS_PATH="+e.managedPath(),
 	)
+	if e.fakeHome != "" {
+		base = append(base, "HOME="+e.fakeHome, "USERPROFILE="+e.fakeHome)
+	}
 	return append(base, extra...)
 }
 

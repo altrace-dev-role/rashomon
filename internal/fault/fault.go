@@ -85,6 +85,14 @@ const (
 	// and before it is renamed over the old one.
 	PointBaselineBeforeRename = "baseline.before_rename"
 	PointRecapBeforeRename    = "recap.before_rename"
+	// PointPurgeAfterDetach is in purge after its detach and before it has
+	// removed any file. A panic there is an interrupted purge, which TRU-28
+	// runs again to completion.
+	PointPurgeAfterDetach = "purge.after_detach"
+	// PointPurgeBeforeAnchors is in purge once every file but install.json
+	// and install.key is gone: the latest an interrupted purge can stop and
+	// still be run again.
+	PointPurgeBeforeAnchors = "purge.before_anchors"
 )
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders
