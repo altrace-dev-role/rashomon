@@ -72,6 +72,19 @@ func refusedSession(err error) (sessionID, cwd string, ok bool) {
 	return attribute(tl.SessionID), tl.CWD, true
 }
 
+// landed is err from a call record's append, with a degraded record taken
+// as written: the store withheld its capped fields to fit it under the
+// record limit (store.ErrRecordDegraded), so the record is on disk and holds
+// less than the call did. withheld is set for it, so the call's coverage
+// record says record_oversize; every other error is returned as it is.
+func landed(err error, withheld *bool) error {
+	if errors.Is(err, store.ErrRecordDegraded) {
+		*withheld = true
+		return nil
+	}
+	return err
+}
+
 // closeReason maps a capture error to its coverage reason.
 func closeReason(err error) string {
 	switch {

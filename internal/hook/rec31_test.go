@@ -2,6 +2,7 @@ package hook
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -12,15 +13,15 @@ import (
 // MaxRecordBytes degrades, and only a record that is over it after that is
 // refused.
 //
-// At schema 4 the degrade step is the capture caps (REC-52), not a second
-// marshal in marshalLine: the spec's <field>_withheld keys are schema 5, and
-// a v4 record says a value was cut with record_oversize on the call's
-// coverage. So a payload whose values alone are past the record limit still
-// lands a declaration, with those values withheld, closed by its terminal and
-// covered as record_oversize. The refusal is the store's: a declaration that
-// skipped the caps is refused whole with ErrRecordOversize, nothing is
-// written, and the hook names the loss record_oversize too. With the caps in
-// place no payload reaches the refusal (TestREC31_WorstCaseRecordFits).
+// The first degrade step is the capture caps (REC-52): a payload whose values
+// alone are past the record limit still lands a declaration, with those
+// values withheld, closed by its terminal and covered as record_oversize.
+// The store's own degrade (TestREC31c_) withholds the capped fields of a
+// record that skipped the caps; one still over the limit after that -- here
+// an over-long tool_name, which neither step drops -- is refused whole with
+// ErrRecordOversize, nothing is written, and the hook names the loss
+// record_oversize too. With the caps in place no payload reaches the refusal
+// (TestREC31_WorstCaseRecordFits).
 func TestREC31_OversizeDegrades(t *testing.T) {
 	big := strings.Repeat("p", store.MaxRecordBytes)
 	payload := capPayload(t, "transcript_path", "/"+big)
@@ -55,5 +56,28 @@ func TestREC31_OversizeDegrades(t *testing.T) {
 	}
 	if got := closeReason(err); got != store.ReasonRecordOversize {
 		t.Errorf("the refusal reads as %q, want %q", got, store.ReasonRecordOversize)
+	}
+}
+
+// TestREC31d_ADegradedRecordLandsWithheld: an append the store reports as
+// degraded wrote the record, with its capped fields withheld, so the hook
+// treats it as written -- the declaration is open and gets its terminal --
+// and marks the call withheld, which its coverage record turns into
+// record_oversize. Any other error is still the append's failure.
+func TestREC31d_ADegradedRecordLandsWithheld(t *testing.T) {
+	other := errors.New("disk full")
+	for _, c := range []struct {
+		in, out  error
+		withheld bool
+	}{
+		{nil, nil, false},
+		{fmt.Errorf("append: %w", store.ErrRecordDegraded), nil, true},
+		{other, other, false},
+		{store.ErrRecordOversize, store.ErrRecordOversize, false},
+	} {
+		withheld := false
+		if got := landed(c.in, &withheld); !errors.Is(got, c.out) || (got == nil) != (c.out == nil) || withheld != c.withheld {
+			t.Errorf("landed(%v) = %v with withheld %v; want %v and %v", c.in, got, withheld, c.out, c.withheld)
+		}
 	}
 }

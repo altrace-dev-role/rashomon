@@ -182,7 +182,7 @@ func (h *Handler) Capture(in io.Reader) error {
 
 	fault.Inject(fault.PointStoreWrite)
 
-	if err := h.st.AppendDeclaration(decl); err != nil {
+	if err := landed(h.st.AppendDeclaration(decl), &h.withheld); err != nil {
 		return err
 	}
 	h.opened = true

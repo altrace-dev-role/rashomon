@@ -210,7 +210,7 @@ func (p *Post) Capture(in io.Reader) error {
 	if store.CapExecution(&rec) {
 		p.withheld = true
 	}
-	return p.st.AppendExecution(rec)
+	return landed(p.st.AppendExecution(rec), &p.withheld)
 }
 
 // backgroundedCall reports a Bash call whose PostToolUse fired while the

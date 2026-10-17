@@ -15,7 +15,8 @@ m("REC-34 the hook flushes before its last append", "cmd/rashomon/main.go",
   "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n",
   "TestREC34_")
 m("REC-34 the ordered append syncs in full inside the lock", "internal/store/store.go",
-  "\treturn s.syncAppend(f)\n}\n\n// lockAppend takes", "\treturn syncFull(f)\n}\n\n// lockAppend takes", "TestREC34_")
+  "\tif err := s.syncAppend(f); err != nil {\n\t\treturn err\n\t}\n\treturn degraded\n}\n\n// lockAppend takes",
+  "\tif err := syncFull(f); err != nil {\n\t\treturn err\n\t}\n\treturn degraded\n}\n\n// lockAppend takes", "TestREC34_")
 m("REC-34 the seq counter syncs in full inside the lock", "internal/store/store.go",
   "\tseq, err := nextSeq(f, dir, s.syncAppend)", "\tseq, err := nextSeq(f, dir, syncFull)", "TestREC34_")
 m("REC-34 group commit off: a deferred store syncs every append in full", "internal/store/store.go",
