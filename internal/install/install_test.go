@@ -45,6 +45,58 @@ func TestOwner(t *testing.T) {
 				`{"type":"command","command":"` + spec(oneID).Command(EventSessionStart) + `","timeout":5}]}`,
 			oneID,
 		},
+		// The four cases below exercise afterFirstWord's single-quoted
+		// branch, the one shellQuote sends every path through that is not
+		// made of bare-safe characters: a backslash (so every Windows
+		// install), an embedded single quote, or a space. Without these,
+		// the branch that every Windows install and any POSIX install
+		// under a path with a space or a quote actually runs had no
+		// coverage at all -- a break in it would have shown as "every
+		// watch adds a duplicate, every detach removes nothing" with no
+		// test going red first.
+		{
+			"quoted executable with an embedded single quote",
+			EventPreToolUse,
+			string(mustEntry(t, Spec{Executable: "/home/o'brien/bin/rashomon", InstallID: oneID}, EventPreToolUse)),
+			oneID,
+		},
+		{
+			"quoted executable with a space",
+			EventPreToolUse,
+			string(mustEntry(t, Spec{Executable: "/a b/rashomon", InstallID: oneID}, EventPreToolUse)),
+			oneID,
+		},
+		{
+			"quoted executable with Windows backslashes",
+			EventPreToolUse,
+			string(mustEntry(t, Spec{Executable: `C:\x\rashomon.exe`, InstallID: oneID}, EventPreToolUse)),
+			oneID,
+		},
+		{
+			// shellQuote never writes this shape -- it always closes the
+			// quote it opens -- but afterFirstWord has to resolve any
+			// command a settings file might actually hold, including one
+			// hand-edited into an invalid state. An unclosed quote has no
+			// "end of the first word" to split at, so Owner must read it
+			// as nobody's rather than guess.
+			"unterminated quote never resolves to an owner",
+			EventPreToolUse,
+			`{"hooks":[{"type":"command","command":"'/no/closing/quote post --install ` + oneID + `"}]}`,
+			"",
+		},
+		{
+			// LUI-2026-10-17: the narrowing to a whole-remainder match (see
+			// TestLUI3_) also means a hand-wrapped command -- a env-prefix
+			// here -- is no longer recognised as ours, even though the
+			// wrapped tail is otherwise byte-identical to an owned entry.
+			// Pinned here so the choice stays visible: a future change that
+			// restores suffix matching to recover this case would have to
+			// change this test, not just add one.
+			"a command wrapped in an env prefix is not ours",
+			EventPostToolUse,
+			`{"hooks":[{"type":"command","command":"env FOO=1 ` + spec(oneID).Command(EventPostToolUse) + `"}]}`,
+			"",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
