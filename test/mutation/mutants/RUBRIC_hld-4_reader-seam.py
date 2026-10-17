@@ -17,8 +17,10 @@ IMPORTS["RUBRIC hld-4 the digest links the report's read step"] = (
   "\t\"github.com/altrace-dev-role/rashomon/internal/report\"\n\t\"github.com/altrace-dev-role/rashomon/internal/report/gather\"\n")
 m("RUBRIC hld-4 report reads the sandbox trail itself", "internal/report/assemble.go",
   "\tsess.Nono = buildNono(in.Nono, nonoConfigured, madeMCPCall(run), declaredHosts(run), forgotten)\n",
-  "\tsess.Nono = buildNono(nono.Read(\"\", SessionWindow(run)), nonoConfigured, madeMCPCall(run), declaredHosts(run), forgotten)\n",
+  "\tf, _ := os.Open(\"\")\n\tsess.Nono = buildNono(nono.Observe(f, \"\", SessionWindow(run)), nonoConfigured, madeMCPCall(run), declaredHosts(run), forgotten)\n",
   "TestRubricHLD4_NoReportFileReachesTheFilesystem")
+IMPORTS["RUBRIC hld-4 report reads the sandbox trail itself"] = (
+  "internal/report/assemble.go", "\t\"time\"\n", "\t\"os\"\n\t\"time\"\n")
 m("RUBRIC hld-4 report writes the project baseline itself", "internal/report/destinations.go",
   "func AnsweredNovelty(established bool, known int, novel []string, err error) Novelty {\n",
   "func AnsweredNovelty(established bool, known int, novel []string, err error) Novelty {\n\t_ = baseline.Key\n",
