@@ -330,17 +330,29 @@ func WithNonoTrail(path string) Option {
 }
 
 // CurrentReportVersion is ReportVersion's value on every report this binary
-// renders. Starts at 2: v1.1.0 shipped the destinations, families and chains
-// keys this version renamed and removed with no version field at all, so 1
-// is reserved for that shape and never written by this binary.
+// renders: report --json's own version, independent of the store's. Starts
+// at 2: v1.1.0 shipped the destinations, families and chains keys this
+// version renamed and removed with no version field at all, so 1 is reserved
+// for that shape and never written by this binary.
+//
+// The bump rule covers the whole report --json document, not only those
+// sections: a consumer of version N must be able to read every document
+// stamped N. So it goes up by one when a key anywhere in the document is
+// removed or renamed, when a value changes type or meaning, or when a closed
+// vocabulary loses a member; adding a key, or a member to a vocabulary a
+// consumer is told to treat as open, leaves it alone. Every change to the
+// document shows as a diff to test/acceptance/testdata/report.golden.json,
+// and that diff is where the rule is applied.
 const CurrentReportVersion = 2
 
 // Report is the rendered output.
 type Report struct {
-	// ReportVersion names the shape of the four sections TRU-57 allowlists.
-	// A typed decoder gets a zero value for a key one of them removed or
-	// renamed, not an error, so this is the field a consumer checks before
-	// trusting that an old integration still reads the current shape.
+	// ReportVersion is CurrentReportVersion, set by Build and Empty. It names
+	// the shape of the whole document, not only the four sections TRU-57
+	// allowlists. A typed decoder gets a zero value for a key that was
+	// removed or renamed, not an error, so this is the field a consumer
+	// checks before trusting that an old integration still reads the current
+	// shape.
 	ReportVersion     int   `json:"report_version"`
 	GeneratedAtUnixMS int64 `json:"generated_at_unix_ms"`
 	// Redacted says the hostnames in this report are keyed digests rather than

@@ -2,6 +2,8 @@ package report
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,5 +43,35 @@ func TestReportVersion_IsCarriedOnEveryReport(t *testing.T) {
 	}
 	if got, ok := decoded["report_version"].(float64); !ok || int(got) != CurrentReportVersion {
 		t.Errorf("marshalled report_version = %v, want %d", decoded["report_version"], CurrentReportVersion)
+	}
+}
+
+// TestRubricNAMING3_TheReportCarriesItsReportVersion: report --json is a
+// consumer's contract, as the digest and spend documents are, and like them
+// it says which version of itself it is. Both of its constructors open the
+// document with report_version, ahead of generated_at_unix_ms, and the
+// number moves only as CurrentReportVersion's bump rule says.
+func TestRubricNAMING3_TheReportCarriesItsReportVersion(t *testing.T) {
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	built, err := Build(st, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, rep := range map[string]*Report{"Empty": Empty(now), "Build": built} {
+		b, err := json.MarshalIndent(rep, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := fmt.Sprintf("{\n  \"report_version\": 2,\n  \"generated_at_unix_ms\": %d,\n", now.UnixMilli())
+		if !strings.HasPrefix(string(b), want) {
+			t.Errorf("%s: the report opens\n%s\nwant it to open\n%s", name, b, want)
+		}
+	}
+	if CurrentReportVersion != 2 {
+		t.Errorf("CurrentReportVersion = %d; a bump is a deliberate change to this test and the golden", CurrentReportVersion)
 	}
 }

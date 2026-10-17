@@ -1,0 +1,289 @@
+{
+  "report_version": 2,
+  "generated_at_unix_ms": 0,
+  "redacted": false,
+  "sessions": [
+    {
+      "session_id": "sess-1",
+      "install_id": "<install>",
+      "coverage": {
+        "state": "verified",
+        "reasons": [],
+        "start_recorded": true,
+        "end_recorded": true,
+        "hook_entry_at_start": "present_settings",
+        "hook_entry_at_end": "present_settings"
+      },
+      "declarations": {
+        "recorded": 3,
+        "without_transcript": 0,
+        "unterminated": [],
+        "dropped": [],
+        "not_durable": [],
+        "without_execution": [
+          {
+            "tool_use_id": "toolu_b",
+            "permission_mode": "default"
+          },
+          {
+            "tool_use_id": "toolu_1",
+            "permission_mode": "default"
+          }
+        ],
+        "by_tool": {
+          "Bash": 3
+        },
+        "by_label": {},
+        "by_program": {
+          "git": 3
+        },
+        "by_verb_class": {
+          "vcs": 3
+        },
+        "programs_unknown": 0
+      },
+      "executions": {
+        "recorded": 1
+      },
+      "transcripts": [
+        {
+          "path": "/tmp/transcripts/sess-1.jsonl",
+          "readable": false,
+          "files": null,
+          "ids_in_transcript": null,
+          "ids_recorded": 1,
+          "missing_from_store": null,
+          "missing_from_transcript": null,
+          "refused_before_hooks": null,
+          "ids_executed": 0,
+          "results_in_transcript": null,
+          "executed_but_unrecorded": null,
+          "denied_by_user": null,
+          "declared_without_result": null
+        },
+        {
+          "path": "<tmp>/sess-1.jsonl",
+          "readable": true,
+          "files": 1,
+          "ids_in_transcript": 2,
+          "ids_recorded": 2,
+          "missing_from_store": [],
+          "missing_from_transcript": [],
+          "refused_before_hooks": [],
+          "ids_executed": 1,
+          "results_in_transcript": 1,
+          "executed_but_unrecorded": [],
+          "denied_by_user": [],
+          "declared_without_result": [
+            "toolu_b"
+          ]
+        }
+      ],
+      "gaps": [],
+      "skipped_records": 0,
+      "destinations": {
+        "declared_hosts": [],
+        "ssh_hosts": [],
+        "executed_not_as_declared": 0,
+        "rewritten": [],
+        "novelty": {
+          "available": true,
+          "established": true,
+          "known_hosts": 0,
+          "hosts": []
+        }
+      },
+      "account": {
+        "available": true,
+        "text": "Running it.",
+        "truncated": false
+      },
+      "subagents": [],
+      "silent_failures": {
+        "fires": false,
+        "failed": 0,
+        "failed_lookups": 0,
+        "outcome_unobserved": 0,
+        "absent_words": [],
+        "final_message_available": true
+      },
+      "masked_runs": {
+        "fires": false,
+        "runs": 0,
+        "pass_claimed": false,
+        "final_message_available": true
+      },
+      "families": {
+        "families": [
+          {
+            "name": "git",
+            "programs": [
+              "git"
+            ],
+            "calls": 3,
+            "hosts_declared": 0
+          }
+        ],
+        "not_exercised": [
+          "aws",
+          "brew",
+          "curl",
+          "gh",
+          "go",
+          "helm",
+          "kubectl",
+          "node",
+          "python"
+        ]
+      },
+      "nono": {
+        "configured": false,
+        "observed": false,
+        "reason": "no_nono_audit",
+        "allowed": [],
+        "denied": [],
+        "client_plane_allowed": [],
+        "client_plane_denied": [],
+        "unknown_decisions": 0,
+        "unknown_modes": 0,
+        "skipped": 0,
+        "unparseable_targets": 0,
+        "inherited": 0,
+        "sessions": 0,
+        "window_open": false
+      },
+      "chains": {
+        "prompts": [
+          {
+            "transcript_path": "<tmp>/sess-1.jsonl",
+            "prompt_id": "prompt-1",
+            "links": [
+              {
+                "seq": 1,
+                "tool_use_id": "toolu_a",
+                "tool_name": "Bash",
+                "program": "git",
+                "verb_class": "vcs",
+                "outcome": "ok",
+                "outcomes": [
+                  "ok"
+                ],
+                "execution_records": 1,
+                "declared_hosts": [],
+                "ssh_hosts": []
+              },
+              {
+                "seq": 3,
+                "tool_use_id": "toolu_b",
+                "tool_name": "Bash",
+                "program": "git",
+                "verb_class": "vcs",
+                "outcome": "no execution record",
+                "outcomes": [],
+                "execution_records": 0,
+                "declared_hosts": [],
+                "ssh_hosts": []
+              }
+            ]
+          },
+          {
+            "transcript_path": "/tmp/transcripts/sess-1.jsonl",
+            "prompt_id": "prompt-1",
+            "links": [
+              {
+                "seq": 6,
+                "tool_use_id": "toolu_1",
+                "tool_name": "Bash",
+                "program": "git",
+                "verb_class": "vcs",
+                "outcome": "no execution record",
+                "outcomes": [],
+                "execution_records": 0,
+                "declared_hosts": [],
+                "ssh_hosts": []
+              }
+            ]
+          }
+        ],
+        "unattributed": [],
+        "dropped": []
+      },
+      "timeline": {
+        "calls": [
+          {
+            "seq": 1,
+            "recorded_at_unix_ms": 0,
+            "tool_use_id": "toolu_a",
+            "agent": null,
+            "agent_unknown": false,
+            "tool_name": "Bash",
+            "program": "git",
+            "verb_class": "vcs",
+            "group": "ok",
+            "outcome": "ok",
+            "exit_code": null,
+            "later": null,
+            "later_checked": false,
+            "test_bending": null
+          },
+          {
+            "seq": 3,
+            "recorded_at_unix_ms": 0,
+            "tool_use_id": "toolu_b",
+            "agent": null,
+            "agent_unknown": false,
+            "tool_name": "Bash",
+            "program": "git",
+            "verb_class": "vcs",
+            "group": "unknown",
+            "outcome": "no execution record",
+            "exit_code": null,
+            "later": null,
+            "later_checked": false,
+            "test_bending": null
+          },
+          {
+            "seq": 6,
+            "recorded_at_unix_ms": 0,
+            "tool_use_id": "toolu_1",
+            "agent": null,
+            "agent_unknown": false,
+            "tool_name": "Bash",
+            "program": "git",
+            "verb_class": "vcs",
+            "group": "unknown",
+            "outcome": "no execution record",
+            "exit_code": null,
+            "later": null,
+            "later_checked": false,
+            "test_bending": null
+          }
+        ],
+        "counts": {
+          "calls": 3,
+          "main_agent_calls": 3,
+          "subagents": 0,
+          "agent_unknown_calls": 0,
+          "ok": 1,
+          "failed": 0,
+          "failed_later_same_command": 0,
+          "failed_later_same_program": 0,
+          "failed_no_later_success": 0,
+          "failed_not_checked": 0,
+          "interrupted": 0,
+          "never_ran": 0,
+          "unknown": 2
+        }
+      },
+      "test_runs": {
+        "runs": 0,
+        "ok": 0,
+        "failed": 0,
+        "status_masked": 0,
+        "undeclared": 0,
+        "tests_only_then_green": [],
+        "flaky": []
+      }
+    }
+  ]
+}
