@@ -22,10 +22,10 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	sf := e.settings()
 
 	// Under hooks.PreToolUse: not a sibling event, not a typo. The set is
-	// install.Events rather than a literal list, so adding an event has to be a
+	// install.Events() rather than a literal list, so adding an event has to be a
 	// deliberate change to the installer and not something a test tolerated.
 	allowed := map[string]bool{}
-	for _, ev := range install.Events {
+	for _, ev := range install.Events() {
 		allowed[ev] = true
 	}
 	for event := range sf.Hooks {
@@ -35,10 +35,10 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	}
 	// Guard the premise: an empty Events slice would make the loop above
 	// accept nothing and pass anyway on a settings file with no entries.
-	// Seven, not five: Part 4 adds Stop and StopFailure for the recap
-	// alongside the five recorder entries this test already knew about.
-	if len(allowed) < 7 {
-		t.Fatalf("install.Events lists %d events; watch installs seven", len(allowed))
+	// Eight: the five recorder entries, Stop and StopFailure for the recap
+	// (Part 4), and UserPromptSubmit for its catch-up.
+	if len(allowed) < 8 {
+		t.Fatalf("install.Events() lists %d events; watch installs eight", len(allowed))
 	}
 	groups := ours(sf.Hooks["PreToolUse"])
 	if len(groups) != 1 {

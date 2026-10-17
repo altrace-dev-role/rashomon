@@ -110,6 +110,7 @@ var hostBearing = map[string]bool{
 	"transcripts[].missing_from_store[]":               false,
 	"transcripts[].missing_from_transcript[]":          false,
 	"transcripts[].refused_before_hooks[]":             false,
+	"transcripts[].status":                             false,
 }
 
 // TestRedact_TheHostBearingSetIsDeclared fails when the Session type grows or

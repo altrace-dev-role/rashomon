@@ -62,7 +62,7 @@ func TestH71_PluginHooksRunOnlyTheRecorder(t *testing.T) {
 // in either report says so.
 func TestH71_BothOriginsDeclareTheSameEvents(t *testing.T) {
 	plugin := pluginHookEvents(t, func(string, map[string]any) {})
-	watch := append([]string(nil), install.Events...)
+	watch := append([]string(nil), install.Events()...)
 	sort.Strings(watch)
 	if strings.Join(plugin, ",") != strings.Join(watch, ",") {
 		t.Errorf("the plugin declares %v and watch installs %v", plugin, watch)
@@ -104,8 +104,8 @@ func TestH71_WatchInstallsOnlyCommands(t *testing.T) {
 			}
 		}
 	}
-	if ours != len(install.Events) {
-		t.Fatalf("found %d of our entries after watch, want %d; the walk is not finding them", ours, len(install.Events))
+	if ours != len(install.Events()) {
+		t.Fatalf("found %d of our entries after watch, want %d; the walk is not finding them", ours, len(install.Events()))
 	}
 }
 

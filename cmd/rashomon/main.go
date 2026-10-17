@@ -126,6 +126,22 @@ func guarded(stderr io.Writer, fn func() error) int {
 	return exitOK
 }
 
+// guardedHook runs fn under the same whole-body barrier cmdHook, cmdPost and
+// cmdProbe each wrap their entry point in, and reports a recovered panic on
+// stderr -- by type only, never its value, the same rule PanicError's own
+// comment states -- before returning exitOK regardless of what fn did.
+// Unlike guarded, above, it never returns exitFail: these three are invoked
+// by Claude Code as a hook, and any exit but 0 blocks the tool call, which is
+// the one outcome the barrier exists to rule out. Before, the Guard error was
+// simply discarded, and a panic in the prologue -- ahead of any record the
+// store could hold -- left no trace on stderr at all.
+func guardedHook(stderr io.Writer, fn func() error) int {
+	if err := safe.Guard(fn); err != nil {
+		fmt.Fprintln(stderr, "rashomon:", err)
+	}
+	return exitOK
+}
+
 // noArgs adapts a command that takes no arguments to guarded, refusing any it
 // is given before the command runs.
 //
@@ -174,7 +190,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	// the single outcome this program is built to make impossible. Its own file
 	// comment says "not for a panic", and three of the four entry points took
 	// it on faith for the first few statements.
-	_ = safe.Guard(func() error {
+	return guardedHook(stderr, func() error {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
@@ -204,7 +220,6 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 		return nil
 	})
-	return exitOK
 }
 
 // cmdPost handles one PostToolUse invocation, under the same rule as hook: it
@@ -215,7 +230,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 // the agent asked for went on to run.
 func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook.
-	_ = safe.Guard(func() error {
+	return guardedHook(stderr, func() error {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
@@ -241,26 +256,28 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 		return nil
 	})
-	return exitOK
 }
 
 // cmdProbe handles SessionStart and SessionEnd, under the same rule as hook:
 // it is invoked by Claude Code and it always succeeds.
 func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
-	sig := hook.WatchSignals()
-	defer sig.Stop()
+	// Guarded whole, for the reason given in cmdHook: signal watching and the
+	// phase check included. They ran ahead of the barrier, under this same
+	// comment, and a panic in either exited 2.
+	return guardedHook(stderr, func() error {
+		fault.Inject(fault.PointProbeStart)
+		sig := hook.WatchSignals()
+		defer sig.Stop()
 
-	phase := ""
-	if len(args) > 0 {
-		phase = args[0]
-	}
-	if phase != store.PhaseStart && phase != store.PhaseEnd {
-		fmt.Fprintln(stderr, "rashomon: probe expects start or end")
-		return exitOK
-	}
+		phase := ""
+		if len(args) > 0 {
+			phase = args[0]
+		}
+		if phase != store.PhaseStart && phase != store.PhaseEnd {
+			fmt.Fprintln(stderr, "rashomon: probe expects start or end")
+			return nil
+		}
 
-	// Guarded whole, for the reason given in cmdHook.
-	_ = safe.Guard(func() error {
 		if checkPaused(args, stdin, phase, stderr) {
 			return nil
 		}
@@ -274,7 +291,6 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		hook.RunProbe(sig, phase, stdin, st, time.Now)
 		return nil
 	})
-	return exitOK
 }
 
 // recapStdinTimeout bounds how long cmdRecap waits for the Stop/StopFailure
@@ -450,12 +466,15 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// where the executable lives would send that user to a slash command
 		// no loaded plugin provides. This is the same precedence coverage's
 		// Resolve gives the settings entry over PluginPresent. Only an
-		// unmarked invocation asks where it is running from; an error there
-		// reads as "not the plugin", which points at the CLI: the settings
-		// install's command, and the only one that exists without a plugin.
+		// unmarked invocation asks where it is running from, and it asks
+		// PluginFires, not PluginPresent: a plugin whose Stop entry was hand
+		// edited reads absent in coverage, but it is loaded and ran this, so
+		// its slash command exists. An error there reads as "not the
+		// plugin", which points at the CLI: the settings install's command,
+		// and the only one that exists without a plugin.
 		fromPlugin := false
 		if installArg(args) == "" {
-			if present, perr := install.PluginPresent(install.EventStop); perr == nil {
+			if present, perr := install.PluginFires(install.EventStop); perr == nil {
 				fromPlugin = present
 			}
 		}
@@ -558,8 +577,10 @@ func openForHook(stderr io.Writer) *store.Store {
 // sites put it before openForHook rather than after.
 //
 // Where a store already exists it writes exactly one coverage record,
-// carrying store.ReasonRecordingPaused, so a reader of the report sees a
-// deliberate gap and not an unexplained one (H-80). Where none exists it
+// carrying store.ReasonRecordingPaused for an ordinary pause or
+// store.ReasonPauseStateUnreadable for a marker it could not read, so a
+// reader of the report sees a deliberate gap and not an unexplained one
+// (H-80). Where none exists it
 // writes nothing at all (H-81): creating a store to say "not recording" would
 // be worse than saying nothing, and it is the one outcome pausing before ever
 // recording must not produce. standsDown is still honoured on the writing
@@ -574,9 +595,29 @@ func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer)
 	if err != nil {
 		return false
 	}
-	paused, _, err := store.Paused(root)
-	if err != nil || !paused {
+	// A marker that exists and cannot be read is a pause, the way a marker
+	// that does not parse already is (store.Paused): someone asked for
+	// recording to stop, and an unreadable answer is not a "no". store.Paused
+	// returns no error for a marker that does not exist, so a machine that
+	// never paused is unaffected.
+	//
+	// Only a read error on the marker itself earns that answer, though.
+	// store.Paused also fails on a store root that is missing, inaccessible
+	// or not a directory, and on a `pause` that is itself a directory, none
+	// of which says anyone asked for recording to stop. Reading those as a
+	// pause recorded nothing and said nothing on stderr, which is a
+	// filesystem fault turning off recording in silence. store.MarkerUnreadable
+	// tells the two apart; everything else falls through so the real error
+	// surfaces through the normal, unpaused path below.
+	paused, _, pausedErr := store.Paused(root)
+	reason := store.ReasonRecordingPaused
+	switch {
+	case pausedErr == nil && !paused:
 		return false
+	case pausedErr != nil && !store.MarkerUnreadable(root):
+		return false
+	case pausedErr != nil:
+		reason = store.ReasonPauseStateUnreadable
 	}
 	if !storeExistsAt(root) {
 		return true
@@ -588,7 +629,7 @@ func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer)
 	if standsDown(args, st, stderr) {
 		return true
 	}
-	hook.RecordPaused(stdin, phase, st, time.Now)
+	hook.RecordPaused(stdin, phase, reason, st, time.Now)
 	return true
 }
 
@@ -741,10 +782,10 @@ func cmdWatch(stdout io.Writer) error {
 	}
 	if p, err := install.FindPlugin(userDoc); err != nil {
 		return err
-	} else if p != nil && p.Enabled && len(p.Events) > 0 {
+	} else if p != nil && p.Live() {
 		return fmt.Errorf("the %s plugin is enabled and already provides these hook entries (%s); "+
 			"installing here would record every tool call twice -- run `/plugin disable %s` first, "+
-			"or skip watch and keep using the plugin", p.Key, strings.Join(p.Events, ", "), p.Key)
+			"or skip watch and keep using the plugin", p.Key, strings.Join(p.Declared, ", "), p.Key)
 	}
 
 	exe, err := install.Executable()
@@ -867,6 +908,12 @@ func detachTarget(args []string) (installID string, all, force bool, err error) 
 	return installID, false, force, err
 }
 
+// pausedCoverageNote completes pause's line where a store exists: that a
+// paused call still leaves a coverage record, so the window it falls in
+// shows in the report rather than reading as silence.
+const pausedCoverageNote = "; each one still writes a coverage record " +
+	"so the gap shows in the report"
+
 // cmdPause engages recording state (Part 2). See checkPaused for what a
 // paused hook invocation does, and the threat model in store.Pause's own
 // comment for why this is a file under the store root rather than an
@@ -901,7 +948,15 @@ func cmdPause(stdout io.Writer) error {
 	// follows -- a machine paused for good, or a crash, must not read
 	// identically to a machine where nothing was ever decided. Resume writes
 	// the record a reader actually wants: the whole span, closed.
+	//
+	// The printed line says what a paused call leaves behind. Where a store
+	// exists, each one still writes a recording_paused coverage record (H-80)
+	// so the gap shows in its session's report; the line once said no tool
+	// call would be recorded, and something was. Where none exists nothing is
+	// written at all (H-81), and the line says only that.
+	note := ""
 	if storeExistsAt(root) {
+		note = pausedCoverageNote
 		st, err := store.OpenExisting(root)
 		if err != nil {
 			return err
@@ -918,7 +973,7 @@ func cmdPause(stdout io.Writer) error {
 			return err
 		}
 	}
-	fmt.Fprintln(stdout, "rashomon: paused -- no tool call will be recorded until `rashomon resume`")
+	fmt.Fprintln(stdout, "rashomon: paused -- tool calls are not recorded until `rashomon resume`"+note)
 	return nil
 }
 
@@ -963,25 +1018,35 @@ func cmdResume(stdout io.Writer) error {
 	return nil
 }
 
-// Recording state words. RecordingState returns exactly one of these three.
+// Recording state words. RecordingState returns exactly one of these four.
 // H-82 is the test that paused, absent and unknown stay distinguishable, so
 // "I turned it off" can never collapse into "it was never installed" or the
 // reverse. statusRecording renders each state and separately says when an
 // active pause state belongs to a machine with no install at all.
 const (
-	RecordingActive        = "active"
-	RecordingPaused        = "paused"
-	RecordingPausedNoStore = "paused, no store recorded here yet"
+	RecordingActive           = "active"
+	RecordingPaused           = "paused"
+	RecordingPausedNoStore    = "paused, no store recorded here yet"
+	RecordingPausedUnreadable = "paused (marker unreadable)"
 )
 
 // RecordingState reports this machine's pause state for status to render
-// (Part 2). It returns one of the three words above, the moment the pause
+// (Part 2). It returns one of the four words above, the moment the pause
 // began (zero when not paused, or when the pause file holds no readable
-// instant), or an error when the pause file could not be read. statusRecording is the one place that turns these into the status
-// line, and its own code is the source of truth for the wording; this
-// function decides only which state holds. An error must render as unknown,
-// never as active: the same unresolved-vs-absent distinction statusUnreadable
-// exists for elsewhere in this file.
+// instant, or when the state is RecordingPausedUnreadable), or an error for
+// any other failure. statusRecording is the one place that turns these into
+// the status line, and its own code is the source of truth for the wording;
+// this function decides only which state holds.
+//
+// A pause marker that exists and cannot be read is RecordingPausedUnreadable,
+// not an error: checkPaused treats that same state as a pause (hooks do not
+// fall back to recording), so status must say so rather than render
+// "unknown" over an answer it already has. An error here is reserved for
+// everything else store.Paused can fail on -- a missing or inaccessible
+// store root, the marker being something other than a plain file -- which is
+// a fault unrelated to the pause marker and must render as unknown, never as
+// active: the same unresolved-vs-absent distinction statusUnreadable exists
+// for elsewhere in this file.
 //
 // It is a plain read, like storeExistsAt below: os.Stat and os.ReadFile,
 // nothing that opens or creates a store. That is what lets it answer "paused"
@@ -994,6 +1059,9 @@ func RecordingState() (state string, since time.Time, err error) {
 	}
 	paused, pausedSince, err := store.Paused(root)
 	if err != nil {
+		if store.MarkerUnreadable(root) {
+			return RecordingPausedUnreadable, time.Time{}, nil
+		}
 		return "", time.Time{}, err
 	}
 	if !paused {
@@ -1093,9 +1161,11 @@ func statusRecap(stdout io.Writer, root string) error {
 // statusRecording says whether hooks will record, which is the one thing pause
 // changes and the first thing a user who ran it will ask. "Active" is only a
 // useful answer once a store exists: on a fresh machine no hooks are installed
-// to record anything. A pause file that cannot be read is reported as unknown,
-// never as active: hooks fall back to recording in that case, but status did
-// not see the answer and does not claim one.
+// to record anything. A pause marker that exists and cannot be read is
+// reported as RecordingPausedUnreadable, not as unknown: since checkPaused
+// treats that marker as a pause, hooks do not record, and status has an
+// answer rather than nothing to report. "unknown" is reserved for a
+// RecordingState error, which means a fault unrelated to the marker itself.
 func statusRecording(stdout io.Writer, root string) {
 	state, since, err := RecordingState()
 	// An enabled plugin records from its first hook call, which is also what
@@ -1111,6 +1181,8 @@ func statusRecording(stdout io.Writer, root string) {
 		fmt.Fprintln(stdout, "  recording: not installed")
 	case state == RecordingActive:
 		fmt.Fprintf(stdout, "  recording: %s\n", RecordingActive)
+	case state == RecordingPausedUnreadable:
+		fmt.Fprintf(stdout, "  recording: %s\n", RecordingPausedUnreadable)
 	default:
 		line := RecordingPaused
 		if !since.IsZero() {
@@ -1138,7 +1210,7 @@ func pluginEnabled() (bool, error) {
 	if err != nil || p == nil {
 		return false, err
 	}
-	return p.Enabled && len(p.Events) > 0, nil
+	return p.Live(), nil
 }
 
 // The words status prints for a thing it could not resolve. A status that
@@ -1170,7 +1242,7 @@ func statusSettings(stdout io.Writer, installID string) (bool, error) {
 
 	doc, err := settings.Load(path)
 	if err != nil {
-		for _, event := range install.Events {
+		for _, event := range install.Events() {
 			fmt.Fprintf(stdout, "  %s: %s\n", event, statusUnreadable)
 		}
 		fmt.Fprintf(stdout, "  %s: %s\n", label, statusUnreadable)
@@ -1181,7 +1253,7 @@ func statusSettings(stdout io.Writer, installID string) (bool, error) {
 		fmt.Fprintln(stdout, "  no store here, so no install id is ours and no entry can be called ours")
 	}
 	live := false
-	for _, event := range install.Events {
+	for _, event := range install.Events() {
 		state := entryState(doc, installID, event)
 		if state == "present" {
 			live = true
@@ -1237,18 +1309,30 @@ func statusPlugin(stdout io.Writer) (bool, error) {
 	}
 	fmt.Fprintf(stdout, "plugin: %s (%s) at %s\n", p.Key, enabled, p.Root)
 
-	declares := map[string]bool{}
+	intact := map[string]bool{}
 	for _, event := range p.Events {
-		declares[event] = true
+		intact[event] = true
 	}
-	for _, event := range install.Events {
+	declared := map[string]bool{}
+	for _, event := range p.Declared {
+		declared[event] = true
+	}
+	for _, event := range install.Events() {
 		state := "absent"
-		if declares[event] {
+		switch {
+		case intact[event]:
 			state = "present"
+		case declared[event]:
+			// p.Declared is a superset of p.Events (see Plugin's doc comment):
+			// this event fires on every call, same as an intact one, but
+			// through a group a hand edit narrowed, so it is not counted for
+			// coverage. "absent" here would also contradict the overlap line
+			// below, which reads Live() -- Declared, not Events.
+			state = "present (hand edited, not counted for coverage)"
 		}
 		fmt.Fprintf(stdout, "  plugin %s: %s\n", event, state)
 	}
-	return p.Enabled && len(p.Events) > 0, nil
+	return p.Live(), nil
 }
 
 // entryState is the word for our entry under one event: present as watch
@@ -1664,8 +1748,9 @@ func usage(w io.Writer) {
 usage:
   rashomon watch                 install the PreToolUse, PostToolUse and
                                PostToolUseFailure recorders, the
-                               SessionStart/SessionEnd liveness probe, and the
-                               Stop/StopFailure exception-only recap
+                               SessionStart/SessionEnd liveness probe, the
+                               Stop/StopFailure exception-only recap, and its
+                               UserPromptSubmit catch-up
   rashomon detach                remove them, leaving everything else as found
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
@@ -1735,13 +1820,20 @@ usage:
 invoked by Claude Code, never by hand:
   rashomon hook [--install ID]   handle one PreToolUse invocation
   rashomon post [--install ID]   handle one PostToolUse invocation
-  rashomon probe start|end [--install ID]
-                               handle SessionStart / SessionEnd
+  rashomon probe start [--install ID]
+                               handle SessionStart
+  rashomon probe end [--install ID]
+                               handle SessionEnd
   rashomon recap [--install ID]  handle Stop / StopFailure: print an
                                exception-only line on stdout as a
                                systemMessage when a turn has something worth
                                looking at, and nothing otherwise; never
                                exits non-zero
+  rashomon recap pending [--install ID]
+                               handle UserPromptSubmit: print that line for
+                               the turn that just ended if no recap reached
+                               it, as when a refused permission prompt
+                               interrupted it; never exits non-zero
 
 --install names the install whose entry is running. An entry belonging to
 another install stands down: it records nothing in this environment.

@@ -223,6 +223,9 @@ func reasonVocabularyMismatches(schema map[string]any) (unchecked, missing []str
 	found := map[string]bool{}
 	collectReasonPaths(schema, "", found)
 	for p := range found {
+		if reasonConstraintPaths[p] && typeOnly(pointerNode(schema, p)) {
+			continue
+		}
 		if !reasonVocabularyPaths[p] {
 			unchecked = append(unchecked, p)
 		}
@@ -292,6 +295,17 @@ func TestReasonVocabularyTripwireCatchesWhatTheComparisonSkips(t *testing.T) {
 				s["properties"] = map[string]any{"top_reason": map[string]any{"enum": []any{"never_emitted_value"}}}
 			},
 			wantUnchecked: "/properties/top_reason",
+		},
+		{
+			name: "the coverage constraint path declares values",
+			mutate: func(s map[string]any) {
+				schemaObject(t, s, "$defs", "coverage")["allOf"] = []any{map[string]any{
+					"then": map[string]any{"properties": map[string]any{
+						"reason": map[string]any{"type": "string", "enum": []any{"never_emitted_value"}},
+					}},
+				}}
+			},
+			wantUnchecked: "/$defs/coverage/allOf/0/then/properties/reason",
 		},
 		{
 			name: "a compared vocabulary removed",

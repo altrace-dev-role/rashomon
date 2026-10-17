@@ -42,6 +42,10 @@ const (
 	// and prints nothing" -- H-93's own bar, stricter than the recorder's
 	// "never exit 2".
 	PointRecapStart = "recap.start"
+	// PointProbeStart is the first statement of cmdProbe's guarded body,
+	// ahead of signal watching and the phase check. Those once ran before
+	// the barrier, and a fault here is what shows they no longer do.
+	PointProbeStart = "probe.start"
 	// PointStoreFullSync is inside every full sync the store issues, after
 	// the sync itself has run. "fail=N" there turns the first N into
 	// failures, which is the only way to reach a failed flush without a

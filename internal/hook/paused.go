@@ -12,8 +12,10 @@ import (
 // recording paused. It is the paused counterpart of Handler.Close, Post.Close
 // and RunProbe's own coverage write, and it writes nothing else: no
 // declaration, no execution, no terminal, because the whole point of pausing
-// is that none of those happen here on purpose. The reason is fixed --
-// store.ReasonRecordingPaused -- and BuildCoverage's own rule that an
+// is that none of those happen here on purpose. The caller passes the reason
+// -- store.ReasonRecordingPaused for an ordinary `rashomon pause`, or
+// store.ReasonPauseStateUnreadable when the marker that produced this call
+// could not itself be read -- and BuildCoverage's own rule that an
 // invocation's own reason outranks anything resolved from configuration is
 // what keeps it from being overwritten by whatever hook_entry or probe
 // happen to resolve to.
@@ -23,7 +25,7 @@ import (
 // report, not as a fact about some unrelated one. A payload that cannot be
 // parsed falls back to UnattributedSession, exactly as the declaration and
 // probe paths do.
-func RecordPaused(in io.Reader, phase string, st *store.Store, now func() time.Time) {
+func RecordPaused(in io.Reader, phase, reason string, st *store.Store, now func() time.Time) {
 	sessionID := UnattributedSession
 	cwd := ""
 	if payload, err := hookio.Intake(in); err == nil {
@@ -33,5 +35,5 @@ func RecordPaused(in io.Reader, phase string, st *store.Store, now func() time.T
 			cwd = p.CWD
 		}
 	}
-	_ = st.AppendCoverage(BuildCoverage(st, sessionID, phase, store.ReasonRecordingPaused, cwd, now()))
+	_ = st.AppendCoverage(BuildCoverage(st, sessionID, phase, reason, cwd, now()))
 }

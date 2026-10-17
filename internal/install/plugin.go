@@ -63,6 +63,22 @@ func PluginPresent(event string) (bool, error) {
 	return pluginDeclaresEvent(root, event)
 }
 
+// PluginFires reports whether THIS PROCESS is running as the rashomon
+// plugin's own hook binary, as PluginPresent does, and that plugin runs our
+// command for event at all -- intact or hand edited. It is the question the
+// recap pointer asks: a plugin whose Stop entry has a changed timeout is not
+// the entry watch installs, so PluginPresent and coverage call it absent, but
+// Claude Code still loaded it to run this binary, and its /rashomon:report is
+// there to point at. Plugin.Live reads Declared for the same reason.
+func PluginFires(event string) (bool, error) {
+	root, err := selfPluginRoot()
+	if err != nil || root == "" {
+		return false, err
+	}
+	declared, _, err := pluginDeclaration(root, event)
+	return declared, err
+}
+
 // selfPluginRoot returns the root of the rashomon plugin running this
 // process, or "" if this process is not running from inside one.
 //
@@ -139,21 +155,34 @@ func pluginDefaultEnabled(root string) (bool, error) {
 }
 
 // pluginHooksDoc is hooks/hooks.json's own wrapper shape -- the plugin format,
-// not the settings format Document/matcherGroup read.
+// not the settings format Document/matcherGroup read. Each event's groups stay
+// raw so that every one can be put through intact(), the check a settings
+// entry is held to, before anything in it is believed.
 type pluginHooksDoc struct {
-	Hooks map[string][]struct {
-		Hooks []struct {
-			Type    string   `json:"type"`
-			Command string   `json:"command"`
-			Args    []string `json:"args"`
-		} `json:"hooks"`
+	Hooks map[string][]json.RawMessage `json:"hooks"`
+}
+
+// pluginGroup is the part of one plugin matcher group pluginDeclaresEvent
+// reads once intact() has accepted the group's matcher, hook count, type and
+// timeout: the exec-form command and its argument vector.
+type pluginGroup struct {
+	Hooks []struct {
+		Type    string   `json:"type"`
+		Command string   `json:"command"`
+		Args    []string `json:"args"`
 	} `json:"hooks"`
 }
 
 // pluginDeclaresEvent reports whether the plugin rooted at root declares, for
 // event, an exec-form command hook whose argument vector matches our own
 // subcommand contract and whose command resolves, under root, to a file that
-// exists.
+// exists -- in a group that is intact: the matcher and the timeout watch
+// installs, one hook, of type command.
+//
+// The intact check is what makes present_plugin mean what present_settings
+// means. Without it a hooks.json narrowed to "Bash" read as declaring
+// PreToolUse, Edit, Write and every MCP call went unrecorded, and the run
+// rendered verified over them; a timeout of 600 passed the same way.
 //
 // The resolution check is not redundant with the caller having found root in
 // the first place: root can come from self-identification (which only proves
@@ -162,36 +191,70 @@ type pluginHooksDoc struct {
 // Either way, this is the one place that reads the plugin's own declaration
 // for the SPECIFIC event being asked about.
 func pluginDeclaresEvent(root, event string) (bool, error) {
+	_, whole, err := pluginDeclaration(root, event)
+	return whole, err
+}
+
+// pluginDeclaration reads the plugin rooted at root for event and answers two
+// questions. declared: some group runs our command for event, so Claude Code
+// fires the plugin on it, whatever its matcher or timeout -- the question
+// watch's refusal and status's overlap ask, because a plugin entry edited by
+// hand still records every call it fires on. whole: some such group also
+// fires on every call, coverageIntact's question -- not necessarily the
+// exact entry watch installs, since a different timeout or an extra hook in
+// the group changes neither answer.
+func pluginDeclaration(root, event string) (declared, whole bool, err error) {
 	data, err := os.ReadFile(filepath.Join(root, "hooks", "hooks.json"))
 	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
+		return false, false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	var doc pluginHooksDoc
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	want := strings.Fields(subcommand(event))
-	for _, group := range doc.Hooks[event] {
-		for _, h := range group.Hooks {
-			if h.Type != "command" || !equalStrings(h.Args, want) {
-				continue
-			}
-			resolved := strings.ReplaceAll(h.Command, pluginRootVar, root)
-			if !strings.HasPrefix(resolved, root+string(filepath.Separator)) {
-				// Declares an event of ours but points outside its own tree --
-				// not evidence of anything this plugin shipped.
-				continue
-			}
-			if info, err := os.Stat(resolved); err == nil && info.Mode().IsRegular() {
-				return true, nil
-			}
+	for _, raw := range doc.Hooks[event] {
+		if !runsOurCommand(raw, root, want) {
+			continue
+		}
+		declared = true
+		if coverageIntact(raw, event) == "" {
+			return true, true, nil
+		}
+		// Narrowed to a matcher that does not fire on every call: it still
+		// fires on SOME calls, but not evidence that this event is recorded
+		// for every one.
+	}
+	return declared, false, nil
+}
+
+// runsOurCommand reports whether one plugin matcher group carries an
+// exec-form command hook with our argument vector whose command resolves to a
+// regular file under root.
+func runsOurCommand(raw json.RawMessage, root string, want []string) bool {
+	var group pluginGroup
+	if err := json.Unmarshal(raw, &group); err != nil {
+		return false
+	}
+	for _, h := range group.Hooks {
+		if h.Type != "command" || !equalStrings(h.Args, want) {
+			continue
+		}
+		resolved := strings.ReplaceAll(h.Command, pluginRootVar, root)
+		if !strings.HasPrefix(resolved, root+string(filepath.Separator)) {
+			// Declares an event of ours but points outside its own tree --
+			// not evidence of anything this plugin shipped.
+			continue
+		}
+		if info, err := os.Stat(resolved); err == nil && info.Mode().IsRegular() {
+			return true
 		}
 	}
-	return false, nil
+	return false
 }
 
 func equalStrings(a, b []string) bool {
@@ -221,9 +284,24 @@ type Plugin struct {
 	// Enabled is the resolved enabledPlugins value for Key, falling back to
 	// the manifest's defaultEnabled when settings names no override.
 	Enabled bool
-	// Events lists which of install.Events this installation structurally
-	// declares with a command that resolves to a file under its own bin/.
+	// Events lists which of install.Events() this installation structurally
+	// declares with a command that resolves to a file under its own bin/, in
+	// a group intact() accepts -- the same test PluginPresent applies, so a
+	// narrowed event is absent here as it is in the coverage record.
 	Events []string
+	// Declared lists which of install.Events() this installation fires on at
+	// all: a command that resolves under its own bin/, in any group, intact
+	// or hand edited. It is a superset of Events.
+	Declared []string
+}
+
+// Live reports whether this installation records on its own: enabled, and
+// firing on at least one of our events. It reads Declared, not Events, because
+// a plugin whose entries were all hand edited -- a changed timeout is enough --
+// is absent from coverage and still records every call it fires on, so a
+// settings install beside it records each of those twice.
+func (p *Plugin) Live() bool {
+	return p.Enabled && len(p.Declared) > 0
 }
 
 // installedPluginsFile is installed_plugins.json's own shape. It is Claude
@@ -292,8 +370,23 @@ func FindPlugin(doc *settings.Document) (*Plugin, error) {
 			} else if def, err := pluginDefaultEnabled(rec.InstallPath); err == nil {
 				p.Enabled = def
 			}
-			for _, event := range Events {
-				if ok, err := pluginDeclaresEvent(rec.InstallPath, event); err == nil && ok {
+			for _, event := range Events() {
+				declared, whole, err := pluginDeclaration(rec.InstallPath, event)
+				if err != nil {
+					// Skipping this event and returning the plugin anyway
+					// made an unreadable or unparseable hooks.json read the
+					// same as a plugin that simply declares nothing for it --
+					// indistinguishable from no plugin at all to Live(),
+					// which only ever sees what did get appended below.
+					// Failing the whole lookup lets watch refuse and status
+					// say "unreadable" instead of installing, or reporting,
+					// over a plugin whose actual state was never read.
+					return nil, err
+				}
+				if declared {
+					p.Declared = append(p.Declared, event)
+				}
+				if whole {
 					p.Events = append(p.Events, event)
 				}
 			}

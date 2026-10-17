@@ -25,6 +25,7 @@ package report
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"sort"
 	"time"
 
@@ -61,12 +62,28 @@ import (
 // writes, the same inverse drift TestStoreSchemaMatchesTheAllowlists exists
 // to catch on every other field.
 const (
-	ReasonRunNotClosed          = "run_not_closed"
-	ReasonRecordsUnreadable     = "records_unreadable"
-	ReasonTranscriptMismatch    = "transcript_mismatch"
+	ReasonRunNotClosed       = "run_not_closed"
+	ReasonRecordsUnreadable  = "records_unreadable"
+	ReasonTranscriptMismatch = "transcript_mismatch"
+	// ReasonTranscriptUnreadable: a transcript a declaration named exists
+	// and could not be read, so the H-10 accounting check did not run for
+	// it. A transcript that does not exist adds no reason (see accounting).
+	ReasonTranscriptUnreadable  = "transcript_unreadable"
 	ReasonExecutionMismatch     = "execution_mismatch"
 	ReasonGap                   = "gap"
 	ReasonDuplicateDeclarations = "duplicate_declarations"
+)
+
+// Transcript status words: what a reader meets at one transcript group's
+// own Status field. TranscriptRead and TranscriptMissing both have Readable
+// false in the ordinary case TranscriptRead does not -- the distinction
+// Readable alone cannot carry, and the reason this field exists -- a
+// consumer with several groups otherwise cannot tell which one cost the
+// H-10 check and which was simply never written.
+const (
+	TranscriptRead       = "read"
+	TranscriptMissing    = "missing"
+	TranscriptUnreadable = "unreadable"
 )
 
 // knownLabel clamps a stored file_label to the vocabulary shape.Labels()
@@ -98,6 +115,7 @@ func Reasons() []string {
 		ReasonRunNotClosed,
 		ReasonRecordsUnreadable,
 		ReasonTranscriptMismatch,
+		ReasonTranscriptUnreadable,
 		ReasonExecutionMismatch,
 		ReasonGap,
 		ReasonDuplicateDeclarations,
@@ -191,8 +209,16 @@ type Executions struct {
 // a count. That holds per group: one unreadable transcript renders null beside
 // another's counts.
 type Transcript struct {
-	Path                  string   `json:"path"`
-	Readable              bool     `json:"readable"`
+	Path     string `json:"path"`
+	Readable bool   `json:"readable"`
+	// Status is one of TranscriptRead, TranscriptMissing or
+	// TranscriptUnreadable: the fact Readable alone cannot carry, because
+	// TranscriptMissing and TranscriptUnreadable both leave it false. A
+	// consumer holding several groups needs this to tell which one cost the
+	// H-10 check against this run's own records and which was simply never
+	// written -- the ordinary state of a run past Claude Code's transcript
+	// cleanup period.
+	Status                string   `json:"status"`
 	Files                 *int     `json:"files"`
 	IDsInTranscript       *int     `json:"ids_in_transcript"`
 	IDsRecorded           int      `json:"ids_recorded"`
@@ -502,26 +528,7 @@ func build(run *store.Run) Session {
 	sess.Declarations.ByTool = byTool
 	sess.Declarations.ByLabel = byLabel
 	sess.Declarations.WithoutExecution = withoutExecution
-	// Report-only tallies, beside the shared ones rather than inside them:
-	// the turn digest counts with CountDeclarations and renders no verb
-	// class or program, so these stay out of the rule the two share. The
-	// duplicate tool_use_id check is NOT one of them -- the digest's counts
-	// double on a double-fire exactly as these do -- so it lives in
-	// HasDuplicateToolUseID, which both call.
-	for _, d := range run.Declarations {
-		if d.Shape.VerbClass != "" {
-			sess.Declarations.ByVerbClass[d.Shape.VerbClass]++
-		}
-		switch {
-		case d.Shape.Program != nil:
-			sess.Declarations.ByProgram[*d.Shape.Program]++
-		case d.ToolName == "Bash":
-			// Only a shell tool has a program to miss. Every other tool
-			// legitimately has none, and counting those here would report a
-			// gap where there is nothing to know.
-			sess.Declarations.ProgramsUnknown++
-		}
-	}
+	sess.tally(run)
 
 	// What the run said about itself, phase by phase.
 	facts := RollupCoverage(run.Coverage)
@@ -570,6 +577,39 @@ func build(run *store.Run) Session {
 		sess.Coverage.add(ReasonDuplicateDeclarations)
 	}
 
+	sess.accountTranscripts(run, executed)
+	return sess
+}
+
+// tally adds the counts only the report renders -- verb class and program --
+// to sess's declaration tallies.
+func (sess *Session) tally(run *store.Run) {
+	// Report-only tallies, beside the shared ones rather than inside them:
+	// the turn digest counts with CountDeclarations and renders no verb
+	// class or program, so these stay out of the rule the two share. The
+	// duplicate tool_use_id check is NOT one of them -- the digest's counts
+	// double on a double-fire exactly as these do -- so it lives in
+	// HasDuplicateToolUseID, which both call.
+	for _, d := range run.Declarations {
+		if d.Shape.VerbClass != "" {
+			sess.Declarations.ByVerbClass[d.Shape.VerbClass]++
+		}
+		switch {
+		case d.Shape.Program != nil:
+			sess.Declarations.ByProgram[*d.Shape.Program]++
+		case d.ToolName == "Bash":
+			// Only a shell tool has a program to miss. Every other tool
+			// legitimately has none, and counting those here would report a
+			// gap where there is nothing to know.
+			sess.Declarations.ProgramsUnknown++
+		}
+	}
+}
+
+// accountTranscripts runs the accounting equation against every transcript
+// the run's declarations named, adding each transcript's result to sess and
+// each mismatch or unreadable transcript to its coverage reasons.
+func (sess *Session) accountTranscripts(run *store.Run, executed map[string]bool) {
 	// The accounting equation, once per transcript the run's declarations
 	// named. A declaration naming none is counted rather than grouped.
 	byPath := map[string]map[string]bool{}
@@ -606,6 +646,9 @@ func build(run *store.Run) Session {
 	}
 	for _, path := range paths {
 		t := accounting(path, byPath[path], executed, hooked)
+		if t.Status == TranscriptUnreadable {
+			sess.Coverage.add(ReasonTranscriptUnreadable)
+		}
 		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0) {
 			sess.Coverage.add(ReasonTranscriptMismatch)
 		}
@@ -618,7 +661,6 @@ func build(run *store.Run) Session {
 		}
 		sess.Transcripts = append(sess.Transcripts, t)
 	}
-	return sess
 }
 
 func accounting(path string, recorded, executed, hooked map[string]bool) Transcript {
@@ -631,13 +673,36 @@ func accounting(path string, recorded, executed, hooked map[string]bool) Transcr
 
 	ids, results, denied, unhooked, files, err := TranscriptIDs(path)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			// A transcript that exists but cannot be read is still unreadable;
-			// the distinction is not one the accounting can act on.
-			t.Readable = false
+		// Either way the transcript is unreadable and its counts are null.
+		// Only one of the two is a coverage reason. A transcript that exists
+		// and cannot be read (permissions, an over-long line, a subagent
+		// directory that will not list) took the H-10 check away from a run
+		// whose calls named it, and the run says so. A transcript that does
+		// not exist is the ordinary state of every run older than Claude
+		// Code's transcript cleanup period, and a reason for it would turn
+		// each of those runs unverified after the fact; verified then means
+		// the H-10 check was not available, which the README states.
+		//
+		// TranscriptIDs returns the first error it meets walking the main
+		// file and every subagent file beneath it, so an ErrNotExist here
+		// can come from a subagent file that vanished mid-walk even though
+		// the main transcript this group is named for is right there. The
+		// classification has to ask the main path's own Stat, not reuse
+		// whichever file's error happened to come back: a readable main
+		// transcript with an absent subagent is unreadable, not missing.
+		missing := errors.Is(err, fs.ErrNotExist)
+		if missing {
+			if _, statErr := os.Stat(path); statErr == nil {
+				missing = false
+			}
+		}
+		t.Status = TranscriptMissing
+		if !missing {
+			t.Status = TranscriptUnreadable
 		}
 		return t
 	}
+	t.Status = TranscriptRead
 	t.Readable = true
 	t.Files = &files
 	n := len(ids)
@@ -818,12 +883,31 @@ func RollupCoverage(covs []store.Coverage) CoverageFacts {
 			f.EndRecorded = true
 			f.HookEntryAtEnd = c.HookEntry
 		}
+		// A record this build cannot take at its word -- unverified with no
+		// reason to say why, or a state it never writes -- is an unreadable
+		// record, not a clean one. The branch below collects only reasons a
+		// record names, and on its own it let both of these read verified.
+		if unreadableCoverage(c) && !seen[ReasonRecordsUnreadable] {
+			seen[ReasonRecordsUnreadable] = true
+			f.Reasons = append(f.Reasons, ReasonRecordsUnreadable)
+		}
 		if c.State == store.StateUnverified && c.Reason != nil && !seen[*c.Reason] {
 			seen[*c.Reason] = true
 			f.Reasons = append(f.Reasons, *c.Reason)
 		}
 	}
 	return f
+}
+
+// unreadableCoverage reports whether a coverage record's state cannot be
+// taken at its word: anything other than verified, unless it is unverified
+// and names its reason. store-schema.json allowed a null reason beside
+// unverified, and a newer build or a hand edit can write any state at all.
+func unreadableCoverage(c store.Coverage) bool {
+	if c.State == store.StateVerified {
+		return false
+	}
+	return c.State != store.StateUnverified || c.Reason == nil
 }
 
 func (c *Coverage) add(reason string) {

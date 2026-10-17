@@ -523,7 +523,7 @@
           ]
         },
         "reason": {
-          "description": "Null when the outcome is ok.",
+          "description": "Null when the outcome is ok. recovered_panic: the panic barrier recovered a panic that cost this call's capture -- a bug in this program, as distinct from internal_error's ordinary failure.",
           "type": [
             "string",
             "null"
@@ -533,6 +533,7 @@
             "terminated_by_signal",
             "lock_timeout",
             "internal_error",
+            "recovered_panic",
             "flush_failed"
           ]
         }
@@ -596,7 +597,7 @@
           ]
         },
         "reason": {
-          "description": "Null when the state is verified. Fixed codes, never free text and never derived from input.",
+          "description": "Null when the state is verified, and never null when it is unverified: a reader meets an unverified record with no reason, or a state outside the enum, as records_unreadable. Fixed codes, never free text and never derived from input. recovered_panic: the panic barrier recovered a panic in this invocation -- one that cost the call's capture, or one inside the file-label derivation, whose label then reads unknown.",
           "type": [
             "string",
             "null"
@@ -604,6 +605,7 @@
           "enum": [
             null,
             "internal_error",
+            "recovered_panic",
             "lock_timeout",
             "payload_too_large",
             "terminated_by_signal",
@@ -612,6 +614,7 @@
             "hook_entry_unresolved",
             "probe_absent",
             "recording_paused",
+            "pause_state_unreadable",
             "probe_unresolved"
           ]
         },
@@ -636,7 +639,28 @@
             "unknown"
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unverified"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
     },
     "gap": {
       "title": "gap",
@@ -735,12 +759,13 @@
     },
     "report_reason": {
       "title": "report reason",
-      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file. duplicate_declarations: more declaration records than distinct tool_use_ids in one run, meaning more than one recorder wrote into it -- a statement about records, not about why; report cannot know whether the second writer was a plugin, a settings install, or a duplicated entry, only that there were two.",
+      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file. duplicate_declarations: more declaration records than distinct tool_use_ids in one run, meaning more than one recorder wrote into it -- a statement about records, not about why; report cannot know whether the second writer was a plugin, a settings install, or a duplicated entry, only that there were two. transcript_unreadable: a transcript the run's declarations named exists and could not be read, so the accounting check against it did not run; a transcript that does not exist adds no reason (Claude Code deletes old transcripts), and its group renders readable false. records_unreadable also covers a coverage record whose state is unverified with a null reason, or outside this schema's enum.",
       "type": "string",
       "enum": [
         "run_not_closed",
         "records_unreadable",
         "transcript_mismatch",
+        "transcript_unreadable",
         "execution_mismatch",
         "gap",
         "duplicate_declarations"
