@@ -181,10 +181,13 @@ func TestH17_HandlerOpensNoSockets(t *testing.T) {
 // resisting, where walking up for .git replaced shelling out to
 // `git rev-parse`.
 //
-// Empty since the launcher went with the proxy era: nothing in this module may
-// import any of them. The supervisor and the notifier the specification plans
-// will each take an entry here when they land, and nothing else will.
-var sanctionedSource = map[string]string{}
+// A list per package, because the specification plans two importers of
+// os/exec: the supervisor, which starts this binary's own child for every
+// hook entry and is the only one so far, and a notifier still to come.
+// Nothing else will take an entry.
+var sanctionedSource = map[string][]string{
+	"os/exec": {rashomonModule + "/internal/supervise"},
+}
 
 // rashomonModule is this module's import path.
 const rashomonModule = "github.com/altrace-dev-role/rashomon"
@@ -279,14 +282,14 @@ func TestH17_NoPackageOfOursReachesForANetworkImport(t *testing.T) {
 			if !forbidden {
 				continue
 			}
-			source, sanctioned := sanctionedSource[imp]
-			if sanctioned && source == pkg {
+			sources, sanctioned := sanctionedSource[imp]
+			if slices.Contains(sources, pkg) {
 				continue
 			}
 			allowed := "Nothing in this module may"
 			if sanctioned {
-				allowed = "Only " + source + " may, and it is a separate package for " +
-					"exactly this reason"
+				allowed = "Only " + strings.Join(sources, " and ") + " may, each a separate " +
+					"package for exactly this reason"
 			}
 			t.Errorf("%s imports %s directly, which %s. %s: code that runs inside every "+
 				"tool call must not be able to acquire a socket or a child process.",
@@ -304,28 +307,31 @@ func TestH17_NoPackageOfOursReachesForANetworkImport(t *testing.T) {
 // TestH17_TheSanctionedSourcesAreNotVacuous guards the map above against the
 // two ways it would go quiet: an entry naming a package that no longer imports
 // the thing it is excused for excuses nothing, and the next reader would read
-// it as a live bound; and an empty map, which is the bound at its strongest
-// and must then hold of the whole binary on every release target, not only
-// of this module's own import statements, or a dependency could bring a
-// forbidden package in with nobody here having written the import.
+// it as a live bound; and a forbidden package nothing sanctions, which must
+// then be absent from the whole binary on every release target, not only
+// from this module's own import statements, or a dependency could bring it
+// in with nobody here having written the import. A sanctioned package is
+// held to its importers on every target by TRU-40 instead.
 func TestH17_TheSanctionedSourcesAreNotVacuous(t *testing.T) {
-	for forbidden, source := range sanctionedSource {
-		imports := directImports(t, source)
-		if !imports[forbidden] {
-			t.Errorf("%s is sanctioned to import %s and no longer does. Remove the entry "+
-				"and let the whole-module ban cover it, rather than leaving an exception "+
-				"that reads as though something still needs excusing.", source, forbidden)
+	for forbidden, sources := range sanctionedSource {
+		if len(sources) == 0 {
+			t.Errorf("%s has an entry naming no importer; remove it", forbidden)
 		}
-	}
-	if len(sanctionedSource) > 0 {
-		return
+		for _, source := range sources {
+			imports := directImports(t, source)
+			if !imports[forbidden] {
+				t.Errorf("%s is sanctioned to import %s and no longer does. Remove the entry "+
+					"and let the whole-module ban cover it, rather than leaving an exception "+
+					"that reads as though something still needs excusing.", source, forbidden)
+			}
+		}
 	}
 	binary := map[string]bool{}
 	for _, pkg := range releaseDeps(t) {
 		binary[pkg] = true
 	}
 	for pkg, why := range forbiddenImports {
-		if binary[pkg] {
+		if binary[pkg] && len(sanctionedSource[pkg]) == 0 {
 			t.Errorf("the binary depends on %s, which %s, and nothing sanctions it", pkg, why)
 		}
 	}
