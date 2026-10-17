@@ -27,6 +27,10 @@
 //     relying on a single O_APPEND write. forget takes it to read the file
 //     again and remove only the lines its plan counted (rewriteSpill).
 //   - runs/<dir>/coverage.ndjson: append-only; its lock orders the appends.
+//   - runs/<dir>/steer.ndjson: STEER's lines, append-only (AppendSteer). Its
+//     lock covers one steer append whole -- the caller's decision of which
+//     lines to write, made under it, and every line it admits -- and its
+//     writers wait steerBudget, 150 ms, and then write nothing.
 //   - gaps.ndjson: append-only; its lock orders the appends, and Evict holds
 //     it for a whole pass, so one evictor runs at a time.
 //   - install.key, install.json and the probe marker take no lock: the first
@@ -36,19 +40,20 @@
 // The order is records -> gaps -> spill, and it is never reversed: forget
 // holds a run's records lock, takes the gaps lock to write its gap, and takes
 // the spill lock to rewrite the spill file; Evict holds only the gaps lock;
-// nothing that holds the gaps or the spill lock takes a records lock. A hook
-// invocation's waits share one deadline (LimitLockWaits), so the waits of
-// its three appends cannot add up past the hook timeout.
+// nothing that holds the gaps or the spill lock takes a records lock. The
+// steer lock is taken alone: nothing holding it takes another store lock. A
+// hook invocation's waits share one deadline (LimitLockWaits), so the waits
+// of its three appends cannot add up past the hook timeout.
 //
 // Reads take no lock, except two. ReadRunDir and ReadRun read a run's three
 // files unlocked; their callers read after the fact or accept a line caught
 // mid-write as one counted in Run.Skipped: spend, which reads finished
 // sessions; the end probe, which reads its own session as it ends; and
 // eviction, which reads only runs nobody has written to for an hour. report
-// reads the same way through ReadRunDirForReport. ReadGaps, Runs and
-// NewestRun read unlocked too. ReadRunConsistent, digest's read of a session
-// that may still be running, tries each file's lock inside one short budget
-// for the whole read and reads anyway when it cannot get it
+// reads the same way through ReadRunDirForReport. ReadGaps, ReadSteer, Runs
+// and NewestRun read unlocked too. ReadRunConsistent, digest's read of a
+// session that may still be running, tries each file's lock inside one
+// short budget for the whole read and reads anyway when it cannot get it
 // (eachLineTryLock); ForgottenHost, report's read of the forgotten hosts,
 // does the same with lockBudget; a writer's own read of the records it is
 // about to append to (maxSeq) is under the lock that writer holds. Where
