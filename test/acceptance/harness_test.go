@@ -768,6 +768,17 @@ func (e *env) settings() settingsFile {
 	return sf
 }
 
+// settingsAfterDetach reads settings.json after a detach, which removes the
+// file when watch created it and it is still the file watch left: an absent
+// file holds no entries at all.
+func (e *env) settingsAfterDetach() settingsFile {
+	e.t.Helper()
+	if _, err := os.Lstat(e.settingsPath()); os.IsNotExist(err) {
+		return settingsFile{}
+	}
+	return e.settings()
+}
+
 func (e *env) settingsBytes() []byte {
 	e.t.Helper()
 	data, err := os.ReadFile(e.settingsPath())

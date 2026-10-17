@@ -138,6 +138,46 @@ func danglingLink(path string, cause error) error {
 		"not writing it -- restore the target, or replace the link with a file", path, target, cause)
 }
 
+// Remove deletes the file, under the same rule as Write: if it no longer holds
+// original, nothing is removed and ErrChanged is returned. It is how detach
+// returns a file watch created to not existing, which is the only way to
+// restore the bytes of a file that had none.
+func Remove(path string, original []byte) error {
+	current, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(current, original) {
+		return ErrChanged
+	}
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	// Make the removal durable, best effort, as Write does for its rename.
+	if d, err := os.Open(filepath.Dir(path)); err == nil {
+		d.Sync()  //nolint:errcheck // some filesystems refuse a directory sync
+		d.Close() //nolint:errcheck // read-only handle
+	}
+	return nil
+}
+
+// ReadState reads the file's current bytes and whether it exists at all. An
+// empty file and an absent one read alike through ReadOriginal; watch has to
+// record which it found, because detach restores them differently.
+func ReadState(path string) (data []byte, existed bool, err error) {
+	data, err = os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return data, true, nil
+}
+
 // ReadOriginal reads the file's current bytes for a later Write. An absent
 // file reads as nil, which Write treats as "still absent". A symlink that
 // does not resolve is an error, not an absent file: reading it as empty

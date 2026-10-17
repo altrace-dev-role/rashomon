@@ -759,14 +759,26 @@ func storedInstallID() (string, error) {
 // may rewrite at any moment. Three is generous: the window is one small write.
 const editAttempts = 3
 
+// settingsEdit is what one editSettings call found and left: the file's bytes
+// as the edit read them, whether it existed, and what it holds afterwards.
+type settingsEdit struct {
+	before  []byte
+	existed bool
+	after   []byte // nil when removed
+	changed bool
+	removed bool // the edit left no member, and removeEmpty asked for the file to go
+}
+
 // editSettings applies edit to the user's settings file with optimistic
 // concurrency: the file is re-read and the edit re-applied if it changed
-// underneath. It reports whether anything was written.
-func editSettings(path string, edit func(*settings.Document) (bool, error)) (bool, error) {
+// underneath. When the edit leaves the document empty and removeEmpty says
+// so for the bytes it read, the file is removed rather than written -- the
+// one way detach can restore a settings.json that watch created.
+func editSettings(path string, edit func(*settings.Document) (bool, error), removeEmpty func(before []byte) bool) (settingsEdit, error) {
 	for attempt := 0; attempt < editAttempts; attempt++ {
-		original, err := settings.ReadOriginal(path)
+		original, existed, err := settings.ReadState(path)
 		if err != nil {
-			return false, err
+			return settingsEdit{}, err
 		}
 		// The document names path in every error it raises, the edit's
 		// included: a hook event that is not an array surfaces inside edit,
@@ -774,19 +786,32 @@ func editSettings(path string, edit func(*settings.Document) (bool, error)) (boo
 		// not about the file and are not dressed as if they were.
 		doc, err := settings.ParseNamed(path, original)
 		if err != nil {
-			return false, err
+			return settingsEdit{}, err
 		}
 		changed, err := edit(doc)
-		if err != nil || !changed {
-			return false, err
+		if err != nil {
+			return settingsEdit{}, err
 		}
-		err = settings.Write(path, original, doc.Bytes())
+		res := settingsEdit{before: original, existed: existed, after: original, changed: changed}
+		if !changed {
+			return res, nil
+		}
+		if removeEmpty != nil && doc.Empty() && removeEmpty(original) {
+			res.after, res.removed = nil, true
+			err = settings.Remove(path, original)
+		} else {
+			res.after = doc.Bytes()
+			err = settings.Write(path, original, res.after)
+		}
 		if errors.Is(err, settings.ErrChanged) {
 			continue
 		}
-		return err == nil, err
+		if err != nil {
+			return settingsEdit{}, err
+		}
+		return res, nil
 	}
-	return false, errors.New("settings file kept changing while it was being edited; try again")
+	return settingsEdit{}, errors.New("settings file kept changing while it was being edited; try again")
 }
 
 func cmdWatch(stdout io.Writer) error {
@@ -827,24 +852,45 @@ func cmdWatch(stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	st, err := openStore()
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return err
+	}
+	// Taken before anything is created, so they name exactly what this watch
+	// makes: the store root and its missing parents, the configuration
+	// directory and its missing parents. purge removes them once empty.
+	created, err := missingDirs(root, filepath.Dir(loc.User))
+	if err != nil {
+		return err
+	}
+	st, err := store.Open(root)
 	if err != nil {
 		return err
 	}
 	spec := install.Spec{Executable: exe, InstallID: st.InstallID()}
 
 	var foreign []string
-	changed, err := editSettings(loc.User, func(doc *settings.Document) (bool, error) {
+	hadOurs := false
+	edit, err := editSettings(loc.User, func(doc *settings.Document) (bool, error) {
+		var err error
+		if hadOurs, err = holdsEntriesOf(doc, spec.InstallID); err != nil {
+			return false, err
+		}
 		applied, err := install.Apply(doc, spec)
 		if err != nil {
 			return false, err
 		}
 		foreign, err = install.ForeignOwners(doc, spec.InstallID)
 		return applied, err
-	})
+	}, nil)
 	if err != nil {
 		return err
 	}
+	if err := recordWatch(st.Root(), edit, hadOurs, created); err != nil {
+		return fmt.Errorf("the entries are installed, but recording what watch changed failed: %w; "+
+			"detach still removes them, without its byte-for-byte check", err)
+	}
+	changed := edit.changed
 	if changed {
 		fmt.Fprintf(stdout, "rashomon: watching (install %s) via %s\n", st.InstallID(), loc.User)
 	} else {
@@ -887,16 +933,18 @@ func cmdDetach(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	rec := selfCheckRecord(installID, all)
 	removed := 0
 	var left []install.Modified
-	changed, err := editSettings(path, func(doc *settings.Document) (bool, error) {
+	edit, err := editSettings(path, func(doc *settings.Document) (bool, error) {
 		n, l, err := remove(doc)
 		removed, left = n, l
 		return n > 0, err
-	})
+	}, restoresAbsent(rec))
 	if err != nil {
 		return err
 	}
+	changed := edit.changed
 	// Named before the outcome, because an entry left behind still fires on
 	// every tool call and that is the part the user has to act on.
 	for _, m := range left {
@@ -907,7 +955,9 @@ func cmdDetach(args []string, stdout io.Writer) error {
 		return nil
 	}
 	fmt.Fprintf(stdout, "rashomon: detached (%s, %d entries) from %s\n", who, removed, path)
-
+	if rec != nil {
+		selfCheck(stdout, path, rec, edit, removed)
+	}
 	return nil
 }
 
