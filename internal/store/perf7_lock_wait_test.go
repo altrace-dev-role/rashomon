@@ -4,20 +4,84 @@ package store
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
 
 // holdFor takes path's lock through a handle of its own and releases it
-// after d, as a writer in another process holding it that long would.
-func holdFor(t *testing.T, path string, d time.Duration) {
+// after d, as a writer in another process holding it that long would, or when
+// the test ends, whichever is first. It returns the held file, so a test can
+// name its descriptor.
+//
+// The release at the end of the test is registered after openForAppend's
+// Close, so it runs first, while the descriptor is still the held file's.
+// Once, because the timer's goroutine and the cleanup can both release, and
+// the cleanup must not return while the timer's unlock is still running.
+func holdFor(t *testing.T, path string, d time.Duration) *os.File {
 	t.Helper()
-	unlock, _, err := lockFileWait(openForAppend(t, path), lockBudget)
+	f := openForAppend(t, path)
+	unlock, _, err := lockFileWait(f, lockBudget)
 	if err != nil {
 		t.Fatalf("taking the lock on %s: %v", path, err)
 	}
-	time.AfterFunc(d, unlock)
+	var once sync.Once
+	release := func() { once.Do(unlock) }
+	timer := time.AfterFunc(d, release)
+	t.Cleanup(func() {
+		timer.Stop()
+		release()
+	})
+	return f
+}
+
+// TestHoldForEndsWithItsTest: a hold its test gives up on ends with the test.
+// lockFileWait's unlock releases a descriptor by its number, so a hold whose
+// timer fired after its test had closed the held file released the lock of
+// whichever file had been given that number since.
+// TestNoteLockWaitRespectsTheSharedDeadline gives up 5 ms into a 200 ms hold;
+// under -race the tests after it take about the rest, and the timer fired
+// into TestRubricPERF1_AGiveUpLandsAtItsBudget, whose first descriptor had
+// the number, so its second descriptor took the lock the first one held.
+func TestHoldForEndsWithItsTest(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a new handle is not reliably given a closed one's value, so the reuse this test needs cannot be arranged")
+	}
+	const hold = 20 * time.Millisecond
+	held := -1
+	t.Run("gives up inside the hold", func(t *testing.T) {
+		held = int(holdFor(t, filepath.Join(t.TempDir(), FileRecords), hold).Fd())
+	})
+
+	// open(2) takes the lowest free descriptor, so opening until one comes
+	// back with the held file's number finds it however many lower ones are
+	// free.
+	path := filepath.Join(t.TempDir(), FileRecords)
+	f := openForAppend(t, path)
+	for i := 0; i < 64 && int(f.Fd()) != held; i++ {
+		f = openForAppend(t, path)
+	}
+	if int(f.Fd()) != held {
+		t.Fatalf("no new descriptor was given the held file's number %d", held)
+	}
+	unlock, _, err := lockFileWait(f, lockBudget)
+	if err != nil {
+		t.Fatalf("lockFileWait on an uncontended file: %v", err)
+	}
+	defer unlock()
+
+	time.Sleep(5 * hold)
+	release, _, err := lockFileWait(openForAppend(t, path), time.Millisecond)
+	if err == nil {
+		release()
+		t.Fatal("a hold that outlived its test released the lock of the file that reused its descriptor")
+	}
+	if !errors.Is(err, ErrLockTimeout) {
+		t.Fatalf("contended lockFileWait returned %v, want ErrLockTimeout", err)
+	}
 }
 
 // TestRubricPERF7_LockFileReportsItsWait: lockFileWait says how long it waited.
