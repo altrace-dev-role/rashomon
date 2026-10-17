@@ -163,6 +163,8 @@ func sshCommandHosts(text string) []string {
 }
 
 func sshLineHosts(line string) []string {
+	// On a line it cannot finish, lex still returns the tokens it read before
+	// the fault, and a host among them was named all the same.
 	toks, meta, _ := tokenizeMarked(line)
 
 	var out []string

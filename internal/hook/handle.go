@@ -27,30 +27,53 @@ const MaxPayloadBytes = hookio.MaxPayloadBytes
 // did not produce it would be worse.
 const UnattributedSession = "unattributed"
 
+// LockWaitTotal is how long one invocation may wait for store locks, all of
+// its appends together (store.Store.LimitLockWaits). The hook timeout is five
+// seconds (install.Timeout), and three of them leave two for starting, the
+// payload, the flush and exiting, which measure in milliseconds. It is at
+// least one append's own two-second budget, so a declaration still waits its
+// whole budget, and the terminal and coverage record after it share what is
+// left rather than each waiting two more seconds, which could add up to six
+// (perf-2). install.Timeout itself stays: an install written with any other
+// value reads as edited by hand.
+const LockWaitTotal = 3 * time.Second
+
 // Handler captures one tool call and then closes it out.
 //
 // Capture and Close are separate because Close has to run on paths where
 // Capture did not return normally. Once a declaration is on disk it must be
 // followed by a terminal record on every exit this process controls, and a
 // single function cannot promise that about its own panic.
+//
+// A Handler is for one invocation, used by one goroutine: Capture fills the
+// fields Close reads, and its Store is deferred (Store.DeferDurability).
 type Handler struct {
 	st  *store.Store
 	now func() time.Time
+
+	// lockWaits is LockWaitTotal, which a test shortens.
+	lockWaits time.Duration
 
 	sessionID string
 	toolUseID string
 	cwd       string
 	opened    bool
+	// withheld is set when a payload value was over its cap and left out of
+	// the declaration (store.CapDeclaration); the call's coverage record
+	// then carries record_oversize.
+	withheld bool
 }
 
 // New builds a Handler. now is injectable so a test can pin the clock and
 // compare two records byte for byte.
 func New(st *store.Store, now func() time.Time) *Handler {
-	return &Handler{st: st, now: now, sessionID: UnattributedSession}
+	return &Handler{st: st, now: now, lockWaits: LockWaitTotal, sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the declaration.
 func (h *Handler) Capture(in io.Reader) error {
+	// First, so that Close's appends share the deadline too.
+	h.st.LimitLockWaits(h.lockWaits)
 	fault.Inject(fault.PointHookStart)
 
 	payload, err := hookio.Intake(in)
@@ -65,10 +88,9 @@ func (h *Handler) Capture(in io.Reader) error {
 	// Attribute before anything else can fail. A fault after this point is
 	// still recorded against the session that produced it; only a payload too
 	// malformed to name its session goes to the unattributed bucket.
-	if p.SessionID != "" {
-		h.sessionID = p.SessionID
-	}
-	h.toolUseID = p.ToolUseID
+	h.sessionID = attribute(p.SessionID)
+	h.withheld = len(p.SessionID) > store.MaxIDBytes
+	h.toolUseID = store.CapID(p.ToolUseID)
 	h.cwd = p.CWD
 
 	fault.Inject(fault.PointHookParsed)
@@ -109,6 +131,13 @@ func (h *Handler) Capture(in io.Reader) error {
 	// decides whether it is null or a label.
 	if label := fileLabel(p.ToolName, p.ToolInput); label != "" {
 		decl.FileLabel = &label
+	}
+	// The caps, after every field is filled: a value over its cap is left
+	// out of the record rather than cut, and said so on the coverage record
+	// (REC-52), so no payload inside the intake limit can make a record the
+	// store would refuse.
+	if store.CapDeclaration(&decl) {
+		h.withheld = true
 	}
 
 	fault.Inject(fault.PointStoreWrite)
@@ -157,13 +186,27 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 			Outcome:       outcome,
 			Reason:        nilIfEmpty(reason),
 		}
+		var err error
 		if reason == store.ReasonLockTimeout {
-			_ = h.st.SpillTerminal(term)
+			err = h.st.SpillTerminal(term)
 		} else {
-			_ = h.st.AppendTerminal(term)
+			err = h.st.AppendTerminal(term)
+		}
+		// A call whose terminal did not land must not be covered by a
+		// verified record: the reason was fixed before this write, and the
+		// end probe finds the declaration unterminated only if the session
+		// ever ends. A reason already set says unverified on its own.
+		if err != nil && reason == "" {
+			reason = store.ReasonInternalError
 		}
 	}
 
+	if reason == "" && h.withheld {
+		reason = store.ReasonRecordOversize
+	}
+	// A call-phase coverage record that cannot be written is read as its
+	// absence: the report counts calls against their coverage (H-10), and a
+	// call with none never reads as covered.
 	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.cwd, h.now()))
 }
 
@@ -176,6 +219,8 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 // relative target with no directory to resolve it against is not known, and
 // the directory stays empty until an absolute target names one.
 func startDirectory(cwd, toolName string, toolInput json.RawMessage) string {
+	// The bool says whether the line had a leading run at all; with none,
+	// dirs is empty and the payload's cwd is the answer, so it adds nothing.
 	dirs, _ := shape.LeadingDirectory(toolName, toolInput)
 	for _, dir := range dirs {
 		switch {

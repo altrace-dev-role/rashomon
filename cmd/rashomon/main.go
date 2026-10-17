@@ -197,6 +197,9 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		// it is also before stdout.
 		st.DeferDurability()
 		captureErr := safe.Guard(func() error { return h.Capture(stdin) })
+		// Close returns nothing; Guard is here for its panic, and Flush still
+		// runs after one. What Close did not write reads as its absence: an
+		// unterminated declaration, a call with no coverage (H-10).
 		_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })
 		fault.Inject(fault.PointHookBeforeFlush)
 		if err := safe.Guard(h.Flush); err != nil {
@@ -235,6 +238,8 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		// Group commit, as in cmdHook.
 		st.DeferDurability()
 		captureErr := safe.Guard(func() error { return p.Capture(stdin) })
+		// As in cmdHook: Guard is for Close's panic, and a coverage record
+		// Close did not write reads as its absence (H-10).
 		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
 		if err := safe.Guard(p.Flush); err != nil {
 			fmt.Fprintln(stderr, flushLostLine)
@@ -271,11 +276,19 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		if standsDown(args, st, stderr) {
 			return nil
 		}
-		hook.RunProbe(sig, phase, stdin, st, time.Now)
+		if err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {
+			fmt.Fprintln(stderr, evictionLine)
+		}
 		return nil
 	})
 	return exitOK
 }
+
+// evictionLine is what probe says when eviction could not finish (REC-32): a
+// store that cannot evict grows past its cap, and no session's coverage can
+// say so. Fixed text, like flushLostLine, because hook stderr reaches Claude
+// Code's debug log; `rashomon report` shows the gaps eviction did write.
+const evictionLine = "rashomon: store eviction incomplete"
 
 // recapStdinTimeout bounds how long cmdRecap waits for the Stop/StopFailure
 // payload on stdin before giving up and proceeding as though none arrived.
@@ -368,123 +381,134 @@ func recapPending(args []string) bool {
 // used here: it exits 1 and writes to stderr, which is right for a command a
 // person typed and wrong for this one.
 func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	_ = safe.Guard(func() error {
-		fault.Inject(fault.PointRecapStart)
-
-		now := time.Now()
-		payload := readRecapPayload(stdin, recapStdinTimeout)
-
-		root, err := store.DefaultRoot()
-		if err != nil {
-			return nil
-		}
-
-		st, err := openStoreForRead()
-		if errors.Is(err, store.ErrNoStore) {
-			// A Stop firing before this machine has ever opened a store
-			// cannot happen honestly -- SessionStart's own probe already
-			// opens one -- and minting recap's bookkeeping file here to say
-			// so would be the exact "creating something to say nothing
-			// happened" mistake pause's own rule (Part 2) refuses. There is
-			// also, genuinely, nothing to record a failure against: no
-			// install.json means storeExists(root) is false and Claim/
-			// RecordFailure are already a no-op against it.
-			return nil
-		}
-		if err != nil {
-			// A store that exists but could not be opened -- a malformed
-			// install.key or install.json -- is exactly H-93's second case.
-			// Unlike ErrNoStore, root DOES already hold a store here, so the
-			// failure is recorded where status can show it.
-			recap.RecordFailure(root, now)
-			return nil
-		}
-		if standsDown(args, st, stderr) {
-			return nil
-		}
-
-		sessionID := payload.SessionID
-		if sessionID == "" {
-			// Mirrors digestOrEmpty's own fallback: this process never learns
-			// Claude Code's session id any other way than being told it.
-			newest, _, nerr := st.NewestRun()
-			if nerr != nil {
-				recap.RecordFailure(root, now)
-				return nil
-			}
-			if newest == "" {
-				return nil
-			}
-			sessionID = newest
-		}
-
-		// `recap pending` runs on UserPromptSubmit, before the new prompt has
-		// made a single call, so the newest turn in the store is the one that
-		// just ended. It speaks only when no recap reached that turn: saying
-		// No at a permission prompt interrupts the turn and Claude Code fires
-		// no Stop after an interrupt, so without this a refused call -- the
-		// case the line exists for -- could never be shown at all.
-		pending := recapPending(args)
-		lastMessage := payload.LastAssistantMessage
-		if pending {
-			// An interrupted turn has no final message, and this payload's
-			// prompt field is the NEW prompt's text, never read here.
-			lastMessage = ""
-		}
-		d, derr := digest.Build(st, sessionID, "", lastMessage, now)
-		if derr != nil {
-			recap.RecordFailure(root, now)
-			return nil
-		}
-		if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
-			return nil
-		}
-
-		// Which origin is running decides which command the line can point
-		// at. The invocation says so first: only a settings entry's command
-		// line carries the --install marker (install.Spec.Command appends it;
-		// the plugin's hooks.json passes plain ["recap"]), so a marked
-		// invocation is the settings origin even when the binary it names
-		// sits inside a plugin directory -- which is exactly where a settings
-		// install made with the plugin's own binary puts it, and asking only
-		// where the executable lives would send that user to a slash command
-		// no loaded plugin provides. This is the same precedence coverage's
-		// Resolve gives the settings entry over PluginPresent. Only an
-		// unmarked invocation asks where it is running from; an error there
-		// reads as "not the plugin", which points at the CLI: the settings
-		// install's command, and the only one that exists without a plugin.
-		fromPlugin := false
-		if installArg(args) == "" {
-			if present, perr := install.PluginPresent(install.EventStop); perr == nil {
-				fromPlugin = present
-			}
-		}
-		line, wantSpeak := recap.Line(d, d.SessionID, fromPlugin)
-		// Claim's own error is intentionally ignored: recap.json is
-		// bookkeeping, not evidence, and a failure to persist it must cost at
-		// most a future duplicate or a stale health timestamp, never a
-		// missing line and never a hook error (see Claim's doc).
-		speak, _ := recap.Claim(root, d.SessionID, d.PromptID, now, wantSpeak)
-		if !speak {
-			return nil
-		}
-		if pending {
-			line = recap.PreviousTurn(line)
-		}
-
-		b, merr := json.Marshal(map[string]string{"systemMessage": line})
-		if merr != nil {
-			return nil
-		}
-		// The human channel: systemMessage in JSON on stdout, capped at
-		// 10,000 characters by Claude Code itself. Plain stdout on a hook
-		// goes to the debug log, which is why hook/post above write nothing
-		// there at all -- this is the one entry that has something for a
-		// human to read, and this JSON envelope is how it reaches them.
-		_, _ = stdout.Write(b)
-		return nil
-	})
+	// The body's error and panic are dropped on purpose: this entry prints
+	// nothing on any internal failure (H-93), and recap writes no record whose
+	// loss a reader would have to see. That includes a failure recap could not
+	// record for status: RecordFailure returns it here, to be dropped by this
+	// one rule rather than where it happened.
+	_ = safe.Guard(func() error { return recapTurn(args, stdin, stdout, stderr) })
 	return exitOK
+}
+
+// recapTurn is cmdRecap's body. An error it returns has already been recorded
+// for status where it could be (recap.RecordFailure), or is the failure to
+// record it; cmdRecap drops both.
+func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	fault.Inject(fault.PointRecapStart)
+
+	now := time.Now()
+	payload := readRecapPayload(stdin, recapStdinTimeout)
+
+	root, err := store.DefaultRoot()
+	if err != nil {
+		return nil
+	}
+
+	st, err := openStoreForRead()
+	if errors.Is(err, store.ErrNoStore) {
+		// A Stop firing before this machine has ever opened a store
+		// cannot happen honestly -- SessionStart's own probe already
+		// opens one -- and minting recap's bookkeeping file here to say
+		// so would be the exact "creating something to say nothing
+		// happened" mistake pause's own rule (Part 2) refuses. There is
+		// also, genuinely, nothing to record a failure against: no
+		// install.json means storeExists(root) is false and Claim/
+		// RecordFailure are already a no-op against it.
+		return nil
+	}
+	if err != nil {
+		// A store that exists but could not be opened -- a malformed
+		// install.key or install.json -- is exactly H-93's second case.
+		// Unlike ErrNoStore, root DOES already hold a store here, so the
+		// failure is recorded where status can show it.
+		return recap.RecordFailure(root, now)
+	}
+	if standsDown(args, st, stderr) {
+		return nil
+	}
+
+	sessionID := payload.SessionID
+	if sessionID == "" {
+		// Mirrors digestOrEmpty's own fallback: this process never learns
+		// Claude Code's session id any other way than being told it.
+		newest, _, nerr := st.NewestRun()
+		if nerr != nil {
+			return recap.RecordFailure(root, now)
+		}
+		if newest == "" {
+			return nil
+		}
+		sessionID = newest
+	}
+
+	// `recap pending` runs on UserPromptSubmit, before the new prompt has
+	// made a single call, so the newest turn in the store is the one that
+	// just ended. It speaks only when no recap reached that turn: saying
+	// No at a permission prompt interrupts the turn and Claude Code fires
+	// no Stop after an interrupt, so without this a refused call -- the
+	// case the line exists for -- could never be shown at all.
+	pending := recapPending(args)
+	lastMessage := payload.LastAssistantMessage
+	if pending {
+		// An interrupted turn has no final message, and this payload's
+		// prompt field is the NEW prompt's text, never read here.
+		lastMessage = ""
+	}
+	d, derr := digest.Build(st, sessionID, "", lastMessage, now)
+	if derr != nil {
+		return recap.RecordFailure(root, now)
+	}
+	if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
+		return nil
+	}
+
+	line, wantSpeak := recap.Line(d, d.SessionID, recapFromPlugin(args))
+	// Claim's own error is intentionally ignored: recap.json is
+	// bookkeeping, not evidence, and a failure to persist it must cost at
+	// most a future duplicate or a stale health timestamp, never a
+	// missing line and never a hook error (see Claim's doc).
+	speak, _ := recap.Claim(root, d.SessionID, d.PromptID, now, wantSpeak)
+	if !speak {
+		return nil
+	}
+	if pending {
+		line = recap.PreviousTurn(line)
+	}
+
+	b, merr := json.Marshal(map[string]string{"systemMessage": line})
+	if merr != nil {
+		return nil
+	}
+	// The human channel: systemMessage in JSON on stdout, capped at
+	// 10,000 characters by Claude Code itself. Plain stdout on a hook
+	// goes to the debug log, which is why hook/post above write nothing
+	// there at all -- this is the one entry that has something for a
+	// human to read, and this JSON envelope is how it reaches them.
+	_, _ = stdout.Write(b)
+	return nil
+}
+
+// recapFromPlugin reports whether this recap runs as the plugin's entry.
+//
+// Which origin is running decides which command the line can point
+// at. The invocation says so first: only a settings entry's command
+// line carries the --install marker (install.Spec.Command appends it;
+// the plugin's hooks.json passes plain ["recap"]), so a marked
+// invocation is the settings origin even when the binary it names
+// sits inside a plugin directory -- which is exactly where a settings
+// install made with the plugin's own binary puts it, and asking only
+// where the executable lives would send that user to a slash command
+// no loaded plugin provides. This is the same precedence coverage's
+// Resolve gives the settings entry over PluginPresent. Only an
+// unmarked invocation asks where it is running from; an error there
+// reads as "not the plugin", which points at the CLI: the settings
+// install's command, and the only one that exists without a plugin.
+func recapFromPlugin(args []string) bool {
+	if installArg(args) != "" {
+		return false
+	}
+	present, err := install.PluginPresent(install.EventStop)
+	return err == nil && present
 }
 
 // standDownLine is the whole of what an entry from another install says.
@@ -781,6 +805,7 @@ func cmdWatch(stdout io.Writer) error {
 		fmt.Fprintf(stdout, "rashomon: entries from other installs are present (%s); they will fire in this environment and record nothing\n",
 			strings.Join(foreign, ", "))
 	}
+	capProblem(stdout, "rashomon: ")
 	// Printed in full, on its own line, because it is the line that still works
 	// once this binary or the store is gone: the id cannot be read back from a
 	// store that is not there, and there is nowhere else it is written down.
@@ -906,15 +931,9 @@ func cmdPause(stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err := st.AppendGap(store.Gap{
-			Type:          store.TypeGap,
-			SchemaVersion: store.SessionSchemaVersion,
-			RecordedAtMS:  now.UnixMilli(),
-			SessionID:     store.PausedSessionID,
-			Reason:        store.GapPaused,
-			FromUnixMS:    since.UnixMilli(),
-			ToUnixMS:      since.UnixMilli(),
-		}); err != nil {
+		g := store.NewGap(store.GapPaused, store.PausedSessionID, now)
+		g.FromUnixMS, g.ToUnixMS = since.UnixMilli(), since.UnixMilli()
+		if err := st.AppendGap(g); err != nil {
 			return err
 		}
 	}
@@ -946,15 +965,9 @@ func cmdResume(stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err := st.AppendGap(store.Gap{
-			Type:          store.TypeGap,
-			SchemaVersion: store.SessionSchemaVersion,
-			RecordedAtMS:  now.UnixMilli(),
-			SessionID:     store.PausedSessionID,
-			Reason:        store.GapPaused,
-			FromUnixMS:    since.UnixMilli(),
-			ToUnixMS:      now.UnixMilli(),
-		}); err != nil {
+		g := store.NewGap(store.GapPaused, store.PausedSessionID, now)
+		g.FromUnixMS, g.ToUnixMS = since.UnixMilli(), now.UnixMilli()
+		if err := st.AppendGap(g); err != nil {
 			return err
 		}
 	}
@@ -1022,8 +1035,9 @@ func cmdStatus(stdout io.Writer) error {
 	statusRecording(stdout, root)
 
 	installID := ""
+	var st *store.Store
 	if _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil {
-		st, err := openStore()
+		st, err = openStore()
 		if err != nil {
 			return err
 		}
@@ -1035,9 +1049,12 @@ func cmdStatus(stdout io.Writer) error {
 		} else {
 			fmt.Fprintf(stdout, "  runs: %d\n", len(runs))
 		}
+		statusSize(stdout, st)
+		statusLockWait(stdout, st)
 	} else {
 		fmt.Fprintln(stdout, "  present: no")
 	}
+	statusCapProblem(stdout, "  cap: ", st)
 
 	settingsLive, err := statusSettings(stdout, installID)
 	if err != nil {
@@ -1626,9 +1643,14 @@ func cmdForget(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	gaps, err := st.ForgetWindow(from, to, time.Now())
-	if err != nil {
-		return err
+	// A run forget could not rewrite is in the error, and every other run was
+	// still forgotten (store.forgetEach): say what was done, then fail. A
+	// failure before any run was touched -- store.ErrForgetIncomplete is not
+	// how that one is marked -- must not be followed by a line claiming
+	// otherwise, the same as forgetHost already does.
+	gaps, forgetErr := st.ForgetWindow(from, to, time.Now())
+	if forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {
+		return forgetErr
 	}
 	total := 0
 	for _, g := range gaps {
@@ -1643,7 +1665,7 @@ func cmdForget(args []string, stdout io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "rashomon: forgot %d records across %d runs %s; %d gap records written\n",
 		total, len(gaps), bound, len(gaps))
-	return nil
+	return forgetErr
 }
 
 // parseInstant accepts a duration ("24h", meaning that long ago) or an RFC3339
@@ -1769,7 +1791,16 @@ func forgetHost(host string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// As in cmdForget: what was forgotten is printed, and baselines cleared,
+	// before a run that could not be rewritten fails the command.
 	gaps, forgetErr := st.ForgetHost(host, time.Now())
+	if forgetErr != nil && !errors.Is(forgetErr, store.ErrForgetIncomplete) {
+		// Failed before any run was forgotten, and perhaps before the
+		// store-level record landed: the line below would claim later
+		// reports leave the host out. No baseline is cleared either, so the
+		// command changed nothing it does not say.
+		return forgetErr
+	}
 	total := 0
 	for _, g := range gaps {
 		total += g.RemovedRecords
@@ -1780,11 +1811,11 @@ func forgetHost(host string, stdout io.Writer) error {
 	// is the conservative direction: a host the user asked to forget must not
 	// survive in a baseline they did not think to name.
 	//
-	// Run whether or not ForgetHost above succeeded, and the summary below is
-	// printed from whatever either one managed before either error is
-	// returned. A forget that clears some runs or some baselines and then
-	// fails must still say so: a caller who sees only the error cannot tell
-	// that part of it already happened.
+	// Run after a partial forget too (store.ErrForgetIncomplete), and the
+	// summary below is printed from whatever either step managed before
+	// either error is returned. A forget that clears some runs or some
+	// baselines and then fails must still say so: a caller who sees only the
+	// error cannot tell that part of it already happened.
 	cleared, hadBaselines, clearErr := clearBaselines(st.Root(), host)
 
 	fmt.Fprintf(stdout, "rashomon: forgot %s naming %s across %s; %s written",
@@ -1792,7 +1823,10 @@ func forgetHost(host string, stdout io.Writer) error {
 	// Said when nothing was removed, because that is when "forgot 0 records"
 	// reads as "nothing happened" -- and before #45 it was true: the host came
 	// back under the sandbox heading of the next report. The store-level
-	// record ForgetHost now writes keeps it out, and the line says so.
+	// record ForgetHost now writes keeps it out, and the line says so. It is
+	// true after a partial forget as well: ForgetHost returns
+	// ErrForgetIncomplete only from its pass over the runs, which starts
+	// after that record landed, and every other error returned above.
 	if total == 0 {
 		fmt.Fprint(stdout, "; later reports still leave it out wherever they find it, "+
 			"the sandbox trail included")

@@ -17,9 +17,20 @@ import (
 // mid-flight is written into the run's own coverage while the run is still
 // live, rather than inferred later by a report that has to guess.
 //
-// It never fails. A probe that cannot do its job records that it could not,
-// and returns.
-func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time) {
+// Its lock waits share one deadline, LockWaitTotal, as a hook's do.
+//
+// It never fails the hook. A probe that cannot do its job records that it
+// could not, and returns. The one failure no record can hold is eviction's,
+// which is about the store rather than this session: it is returned, for the
+// caller to say so on stderr.
+func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time) error {
+	return runProbe(sig, phase, in, st, now, LockWaitTotal)
+}
+
+// runProbe is RunProbe with its lock waits bounded by waits, which a test
+// shortens.
+func runProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time, waits time.Duration) error {
+	st.LimitLockWaits(waits)
 	sessionID := UnattributedSession
 	reason := ""
 	cwd := ""
@@ -33,9 +44,7 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 		if err := p.from(payload); err != nil {
 			return err
 		}
-		if p.SessionID != "" {
-			sessionID = p.SessionID
-		}
+		sessionID = attribute(p.SessionID)
 		cwd = p.CWD
 
 		switch phase {
@@ -60,14 +69,25 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 		reason = closeReason(err)
 	}
 
+	// A start or end coverage record that cannot be written is read as its
+	// absence: probe_absent at start, run_not_closed at end (report.build).
 	_ = safe.Guard(func() error {
 		return st.AppendCoverage(BuildCoverage(st, sessionID, phase, reason, cwd, now()))
 	})
 
 	// Eviction runs at session boundaries, off the per-call path. The session
-	// that is starting or ending is never a candidate.
-	_ = safe.Guard(func() error {
-		_, err := st.Evict(store.CapBytes(), sessionID, now())
+	// that is starting or ending is never a candidate. Its error is not this
+	// session's, so it goes to no coverage record; Evict writes each gap
+	// before removing its run, so whatever it did remove is accounted for.
+	//
+	// The cap is resolved here, inside the hook's own environment, and
+	// recorded before Evict runs with it: status reads the record rather
+	// than EnvCapBytes in whatever shell happens to run it, which can
+	// disagree with what Claude Code hands the hooks (hld-7).
+	capSetting := store.ResolveCap()
+	_ = st.RecordResolvedCap(capSetting)
+	return safe.Guard(func() error {
+		_, err := st.Evict(capSetting.Bytes, sessionID, now())
 		return err
 	})
 }

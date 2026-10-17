@@ -67,6 +67,12 @@ const (
 	ReasonExecutionMismatch     = "execution_mismatch"
 	ReasonGap                   = "gap"
 	ReasonDuplicateDeclarations = "duplicate_declarations"
+	// ReasonDeclarationMissing: a terminal closes a declaration this read
+	// does not hold, and the terminal does not say the lock refused it. The
+	// declaration was lost some other way -- a line that could not be read,
+	// a write that failed -- and blaming the lock would name a wait that
+	// never happened (errors-1). See DroppedReasons.
+	ReasonDeclarationMissing = "declaration_missing"
 )
 
 // knownLabel clamps a stored file_label to the vocabulary shape.Labels()
@@ -101,6 +107,7 @@ func Reasons() []string {
 		ReasonExecutionMismatch,
 		ReasonGap,
 		ReasonDuplicateDeclarations,
+		ReasonDeclarationMissing,
 	}
 }
 
@@ -369,7 +376,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 	for _, o := range opts {
 		o(&cfg)
 	}
-	gaps, err := st.ReadGaps()
+	gaps, gapsSkipped, err := st.ReadGaps()
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +438,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 	// marshals the same array a store with runs does. See the field comment.
 	rep := &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
 	for _, name := range names {
-		run, err := st.ReadRunDir(name)
+		run, err := st.ReadRunDirForReport(name)
 		if err != nil {
 			return nil, err
 		}
@@ -461,6 +468,11 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		sess.Gaps = byDir[name]
 		if sess.Gaps == nil {
 			sess.Gaps = []store.Gap{}
+		}
+		// A gap line that could not be read may have been this session's,
+		// and nothing can say it was not (store.ReadGaps).
+		if gapsSkipped > 0 {
+			sess.Coverage.add(ReasonRecordsUnreadable)
 		}
 		if len(sess.Gaps) > 0 {
 			sess.Coverage.add(ReasonGap)
@@ -552,8 +564,8 @@ func build(run *store.Run) Session {
 	if len(sess.Declarations.Unterminated) > 0 {
 		sess.Coverage.add(store.ReasonUnterminatedEntry)
 	}
-	if len(sess.Declarations.Dropped) > 0 {
-		sess.Coverage.add(store.ReasonLockTimeout)
+	for _, r := range DroppedReasons(run, sess.Declarations.Dropped) {
+		sess.Coverage.add(r)
 	}
 	// A hook whose one full sync failed marked its call on the spill file
 	// (REC-34). Its records read back, so nothing above notices them; this is

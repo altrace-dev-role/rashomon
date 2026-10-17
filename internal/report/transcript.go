@@ -100,6 +100,7 @@ func subagentTranscripts(dir string) ([]string, error) {
 		if d.IsDir() {
 			return nil
 		}
+		// Match fails only on a malformed pattern, and this one is a constant.
 		if ok, _ := filepath.Match("agent-*.jsonl", d.Name()); ok {
 			out = append(out, p)
 		}

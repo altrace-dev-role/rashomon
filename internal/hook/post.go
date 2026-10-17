@@ -114,20 +114,25 @@ const FailureEvent = "PostToolUseFailure"
 //
 // It is split in two for the same reason Handler is: Close runs on paths where
 // Capture did not return normally, and a single function cannot promise that
-// about its own panic.
+// about its own panic. Like a Handler, it is for one invocation, used by one
+// goroutine.
 type Post struct {
 	st  *store.Store
 	now func() time.Time
+	// lockWaits is Handler.lockWaits.
+	lockWaits time.Duration
 
 	sessionID string
 	toolUseID string
 	cwd       string
+	// withheld is Handler.withheld for the execution record.
+	withheld bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
 // Handler: a test pins the clock and compares two records byte for byte.
 func NewPost(st *store.Store, now func() time.Time) *Post {
-	return &Post{st: st, now: now, sessionID: UnattributedSession}
+	return &Post{st: st, now: now, lockWaits: LockWaitTotal, sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the execution record.
@@ -138,6 +143,8 @@ func NewPost(st *store.Store, now func() time.Time) *Post {
 // unbounded read of a payload carrying a hundred megabytes of tool output is a
 // runtime fatal error, which recover cannot catch and which exits 2.
 func (p *Post) Capture(in io.Reader) error {
+	// First, as in Handler.Capture.
+	p.st.LimitLockWaits(p.lockWaits)
 	fault.Inject(fault.PointPostStart)
 
 	payload, err := hookio.Intake(in)
@@ -150,10 +157,9 @@ func (p *Post) Capture(in io.Reader) error {
 	}
 
 	// Attribute before anything else can fail, as the declaration path does.
-	if pl.SessionID != "" {
-		p.sessionID = pl.SessionID
-	}
-	p.toolUseID = pl.ToolUseID
+	p.sessionID = attribute(pl.SessionID)
+	p.withheld = len(pl.SessionID) > store.MaxIDBytes
+	p.toolUseID = store.CapID(pl.ToolUseID)
 	p.cwd = pl.CWD
 
 	fault.Inject(fault.PointPostParsed)
@@ -194,6 +200,10 @@ func (p *Post) Capture(in io.Reader) error {
 	// never moved to the background, whatever its payload carries.
 	if pl.ToolName == "Bash" && pl.HookEventName != FailureEvent {
 		rec.Backgrounded = backgroundedCall(payload)
+	}
+	// The caps, as on the declaration path (REC-52).
+	if store.CapExecution(&rec) {
+		p.withheld = true
 	}
 	return p.st.AppendExecution(rec)
 }
@@ -245,6 +255,8 @@ func exitCode(msg string) *int {
 	if !strings.HasPrefix(msg, exitCodePrefix) {
 		return nil
 	}
+	// Only the first line is read; whether a newline was found does not
+	// matter, since a message with none is all first line.
 	first, _, _ := strings.Cut(msg[len(exitCodePrefix):], "\n")
 	digits := strings.TrimSpace(first)
 	if digits == "" {
@@ -275,6 +287,11 @@ func (p *Post) Close(sig *Signals, captureErr error) {
 	if sig.Delivered() {
 		reason = store.ReasonTerminatedBySignal
 	}
+	if reason == "" && p.withheld {
+		reason = store.ReasonRecordOversize
+	}
 
+	// A post-phase coverage record that cannot be written is read as its
+	// absence, as on the call phase (H-10).
 	_ = p.st.AppendCoverage(BuildCoverage(p.st, p.sessionID, store.PhasePost, reason, p.cwd, p.now()))
 }

@@ -606,6 +606,7 @@
             "internal_error",
             "lock_timeout",
             "payload_too_large",
+            "record_oversize",
             "terminated_by_signal",
             "unterminated_entry",
             "hook_entry_absent",
@@ -695,7 +696,9 @@
           "type": "string"
         },
         "removed_records": {
-          "type": "integer"
+          "description": "How many records left the store. -1 means unknown: eviction removed a run it could not read, or one holding a line it could not parse, by its size.",
+          "type": "integer",
+          "minimum": -1
         }
       }
     },
@@ -735,7 +738,7 @@
     },
     "report_reason": {
       "title": "report reason",
-      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file. duplicate_declarations: more declaration records than distinct tool_use_ids in one run, meaning more than one recorder wrote into it -- a statement about records, not about why; report cannot know whether the second writer was a plugin, a settings install, or a duplicated entry, only that there were two.",
+      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file. duplicate_declarations: more declaration records than distinct tool_use_ids in one run, meaning more than one recorder wrote into it -- a statement about records, not about why; report cannot know whether the second writer was a plugin, a settings install, or a duplicated entry, only that there were two. declaration_missing: a terminal record closes a declaration the read does not hold, and the terminal does not say the lock refused it (lock_timeout), so the declaration was lost to a damaged line or a failed write.",
       "type": "string",
       "enum": [
         "run_not_closed",
@@ -743,7 +746,8 @@
         "transcript_mismatch",
         "execution_mismatch",
         "gap",
-        "duplicate_declarations"
+        "duplicate_declarations",
+        "declaration_missing"
       ]
     }
   }

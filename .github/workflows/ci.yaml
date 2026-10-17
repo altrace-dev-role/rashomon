@@ -265,6 +265,51 @@ jobs:
           GOOS: windows
         run: go vet ./...
 
+  # The lock contract on the platform whose lockFile is LockFileEx
+  # (internal/store/lock_windows.go). Cross-build and vet prove it compiles;
+  # this is the only job that runs it (test-11). The tests are the store's
+  # that build on Windows and do not skip there: the one about reading past
+  # a held lock (TestReadRunConsistent_RespectsAHeldLock) is left out,
+  # because Windows' mandatory locks refuse that read and it skips.
+  lock-windows:
+    name: Lock contract (windows)
+    runs-on: windows-latest
+    # Ten store tests; the bound is DEL-17's.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.25.8"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      # Each test must run and pass, not only leave the step green: a name
+      # that matches nothing, a test a build tag leaves out on Windows and a
+      # test that skips all pass go test, and each would leave this job green
+      # having shown nothing about LockFileEx. So the step checks every name
+      # reported PASS.
+      - name: Lock contract tests
+        shell: bash
+        env:
+          TESTS: >-
+            TestLockFileIsExclusiveAndBounded
+            TestAppendExecutionSpillsWhenTheLockIsHeld
+            TestRubricPERF1_AGiveUpLandsAtItsBudget
+            TestRubricPERF7_LockFileReportsItsWait
+            TestRubricPERF7_AContendedInvocationNotesItsLongestWait
+            TestRubricTEST11_AReadRefusedByAHeldLockCountsAsSkipped
+            TestRubricTEST11_AGapsReadRefusedByAHeldLockCountsAsSkipped
+            TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldGapsLock
+            TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldForgetLock
+            TestRubricTEST11_TheReportReadCountsARefusalAsSkipped
+        run: |
+          go test ./internal/store -run "^($(echo $TESTS | tr ' ' '|'))\$" -count=1 -v | tee lock-windows.txt
+          for t in $TESTS; do
+            grep -q -- "--- PASS: $t " lock-windows.txt || { echo "::error::$t did not run and pass on Windows"; exit 1; }
+          done
+
   perf-linux:
     name: Perf gates (linux)
     runs-on: ubuntu-latest
@@ -326,7 +371,7 @@ jobs:
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
-      - name: Peak RSS and init budget
+      - name: Peak RSS, init budget and the 64-way per-process peak (RES-30)
         env:
           RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.
         run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28|TestRES30_' -count=1 -v
@@ -339,3 +384,16 @@ jobs:
       # mutation sweep, which stays on ubuntu-latest in its own job.
       - name: REC-34 group commit (darwin)
         run: go test -race -count=1 -run 'TestREC34' ./internal/store ./test/acceptance
+
+      # darwin is where an append's sync is F_FULLFSYNC, and the store's lock
+      # budgets are derived from its holds (internal/store/lockbudget.go,
+      # BenchmarkOrderedAppendHold), so the 64-way burst runs here and not
+      # only on ubuntu (perf-1). H-16 here and RES-30 in the RSS step above both
+      # gate on what a burst must not lose -- every declaration lands in the
+      # ordered stream, with no spill and no lock_timeout, and the seq is
+      # contiguous -- and neither on wall time, which process spawn
+      # dominates. H-16 is 64 hooks. RES-30, 64 hook-and-post pairs that also
+      # gate their summed and per-process peak memory, runs in the RSS step above
+      # so that it, like every perf-tagged test, runs with every gate owed.
+      - name: 64-way hooks lose nothing to the lock (H-16)
+        run: go test ./test/acceptance -run '^TestH16_' -count=1 -v

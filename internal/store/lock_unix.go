@@ -9,53 +9,58 @@ import (
 	"time"
 )
 
-// lockBudget bounds the wait well under the 5-second hook timeout.
-//
-// There is a real tension here: returning promptly under contention pulls
-// against landing every record. This is the choice, stated plainly -- wait up
-// to two seconds. An ordered append holds the lock for its seq counter and its
-// record, each put behind a barrier rather than synced in full, because the
-// full sync is the hook's one Flush, taken after the lock is released
-// (REC-34). Measured on an Apple M3 under load, that hold is 0.72 ms at p50,
-// 1.3 ms at p90 and 3.6 ms at p99, so the 192 ordered appends of sixty-four
-// hook-and-post pairs hold the lock for about 140 ms in all at the median
-// and under 0.7 s if every one took the p99. That counts the holds alone:
-// the polling backoff below leaves the lock idle between holders, and a
-// barrier waits behind another process's full sync, which drains the
-// device's queue. The whole burst, measured (RES-30, 2026-10-13), takes 0.49
-// to 0.59 s with no lock timeout, so reaching this budget means something is
-// wrong rather than merely busy. With the full sync inside the lock the same
-// hold was 6.9, 7.9 and 11.6 ms, and the holds alone came to 1.3 s at the
-// median and 2.2 s at p99, which is how H-16 failed under load. Linux and Windows have
-// no barrier (sync_other.go), so there the hold still includes a full sync.
-// On give-up the caller writes a terminal record to the spill file, which
-// needs no lock, so the dropped declaration is visible under its own
-// tool_use_id rather than as a success.
-const lockBudget = 2 * time.Second
-
 // lockFile takes an exclusive advisory lock on f, polling so the wait can be
 // bounded. A blocking LOCK_EX cannot be interrupted on a deadline without
 // tearing down the goroutine holding it, and this process must not start
 // goroutines it then has to abandon.
-func lockFile(f *os.File, budget time.Duration) (func(), error) {
+//
+// It returns how long it waited, a wait that gave up included, and nothing
+// when the first try took the lock, so its caller can make contention
+// visible before it costs a record (perf-7, Store.noteLockWait).
+func lockFile(f *os.File, budget time.Duration) (func(), time.Duration, error) {
 	fd := int(f.Fd())
-	deadline := time.Now().Add(budget)
+	start := time.Now()
+	deadline := start.Add(budget)
 	backoff := 200 * time.Microsecond
+	// waited is how long this call has spent on the lock, which it reports
+	// (perf-7): nothing when the first try takes it.
+	var waited time.Duration
 
 	for {
 		err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
-			return func() { _ = syscall.Flock(fd, syscall.LOCK_UN) }, nil
+			return func() { unlockFile(f) }, waited, nil
 		}
 		if !errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, err
+			return nil, waited, err
 		}
-		if time.Now().After(deadline) {
-			return nil, ErrLockTimeout
+		left := time.Until(deadline)
+		if left <= 0 {
+			return nil, waited, ErrLockTimeout
 		}
-		time.Sleep(backoff)
+		// The last sleep is cut to the time left, so the final try lands at
+		// the deadline and a give-up never runs a whole sleep past the
+		// budget (perf-1).
+		time.Sleep(min(backoff, left))
+		waited = time.Since(start)
 		if backoff < 10*time.Millisecond {
 			backoff *= 2
 		}
 	}
+}
+
+// readRefused reports whether a read failed because another handle holds
+// the file's lock. flock is advisory, so a held lock never refuses a read.
+func readRefused(error) bool { return false }
+
+// unlockFile releases f's lock through f itself, not through its descriptor
+// number: once f is closed, Control refuses to run, so a late unlock cannot
+// release the lock of a file that has been given the number since (CWE-672).
+// A release that fails leaves nothing to undo, since closing f releases it.
+func unlockFile(f *os.File) {
+	rc, err := f.SyscallConn()
+	if err != nil {
+		return
+	}
+	_ = rc.Control(func(fd uintptr) { _ = syscall.Flock(int(fd), syscall.LOCK_UN) })
 }
