@@ -2,6 +2,12 @@
 
 package supervise
 
+import (
+	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/budget"
+)
+
 // Supported reports whether hook entries run supervised on this platform.
 //
 // They do not on Windows. os/exec cannot hand a child an inherited pipe
@@ -28,3 +34,9 @@ func Attach(args []string) (c *Child, rest []string, ok bool) {
 
 // StandDown is false: an unsupervised entry never stands down.
 func (c *Child) StandDown() bool { return false }
+
+// SoftClock returns e's soft-deadline Clock starting now: Child is never
+// attached on this platform, so there is no parent start to share.
+func (c *Child) SoftClock(e budget.DeadlineEntry) budget.Clock {
+	return budget.NewClock(time.Now(), e.SoftBudget())
+}
