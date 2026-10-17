@@ -2,7 +2,9 @@ package acceptance
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -10,8 +12,8 @@ import (
 
 // TRU-40: no networking package anywhere in the binary's dependency graph, its
 // own or a dependency's, on any release target, and os/exec only through the
-// importers h17_no_egress_test.go sanctions, of which there are none until
-// the supervisor lands. "Any release target" is every GOOS/GOARCH pair
+// importers h17_no_egress_test.go sanctions: the supervisor, which starts the
+// binary's own child for each hook entry. "Any release target" is every GOOS/GOARCH pair
 // .goreleaser.yml builds, with CGO_ENABLED=0 (release_targets_test.go): the
 // test machine's own build would let a _windows.go file, or one built only
 // without cgo, import net and ship.
@@ -36,16 +38,61 @@ func TestTRU40_BinaryHasNoNetworkingPackage(t *testing.T) {
 
 // TestTRU40_OsExecEntersOnlyThroughSanctionedImporters is the os/exec half.
 // H-17 checks our own import statements against the sanctioned map; this
-// checks the binary's whole graph on every release target, so that a
-// dependency bringing os/exec in with nobody here having written the import
-// still fails. While the map has no entry for it, os/exec must be absent
-// altogether.
+// checks the binary's whole graph on every release target, every package in
+// it that imports os/exec directly, so that a dependency bringing os/exec in
+// with nobody here having written the import still fails.
 func TestTRU40_OsExecEntersOnlyThroughSanctionedImporters(t *testing.T) {
-	for _, pkg := range releaseDeps(t) {
-		if pkg == "os/exec" && sanctionedSource["os/exec"] == "" {
-			t.Errorf("the binary depends on os/exec and nothing sanctions it")
+	byTarget := releaseImporters(t, "os/exec")
+	if len(byTarget) == 0 {
+		t.Fatal("no release target was listed")
+	}
+	for target, importers := range byTarget {
+		for _, imp := range importers {
+			if !slices.Contains(sanctionedSource["os/exec"], imp) {
+				t.Errorf("the %s build links %s, which imports os/exec, and nothing sanctions it", target, imp)
+			}
 		}
 	}
+}
+
+// releaseImporters lists, for every release target, the packages in the
+// binary's graph that import pkg directly.
+func releaseImporters(t *testing.T, pkg string) map[releaseTarget][]string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(moduleRoot, ".goreleaser.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	known, err := distTargets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := parseReleaseMatrix(string(body), known)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[releaseTarget][]string{}
+	for _, target := range m.targets {
+		cmd := exec.Command("go", "list", "-deps", "-f", "{{.ImportPath}} {{join .Imports \",\"}}", "./cmd/rashomon")
+		cmd.Dir = moduleRoot
+		cmd.Env = releaseListEnv(target, m.env)
+		listing, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("listing %s: %v", target, err)
+		}
+		lines := strings.Split(strings.TrimSpace(string(listing)), "\n")
+		if len(lines) < 10 {
+			t.Fatalf("the %s listing names only %d packages; it is not looking at the build", target, len(lines))
+		}
+		out[target] = []string{}
+		for _, line := range lines {
+			path, imports, _ := strings.Cut(line, " ")
+			if slices.Contains(strings.Split(imports, ","), pkg) {
+				out[target] = append(out[target], path)
+			}
+		}
+	}
+	return out
 }
 
 // TestTRU40_ReadmeNetworkSentenceMatchesTheTest pins the README's networking
@@ -64,15 +111,36 @@ func TestTRU40_ReadmeNetworkSentenceMatchesTheTest(t *testing.T) {
 	}
 }
 
-// networkSentence is the README's claim, rendered from the banned set.
+// networkSentence is the README's claim, rendered from the banned set and
+// the sanctioned importers: the packages nothing imports, then each package
+// only its sanctioned importers do, named by their path in this module.
 func networkSentence() string {
-	pkgs := make([]string, 0, len(forbiddenImports))
+	var banned, sanctioned []string
 	for pkg := range forbiddenImports {
-		pkgs = append(pkgs, pkg)
+		if _, ok := sanctionedSource[pkg]; ok {
+			sanctioned = append(sanctioned, pkg)
+			continue
+		}
+		banned = append(banned, pkg)
 	}
-	sort.Strings(pkgs)
-	last := pkgs[len(pkgs)-1]
-	return "No package in the rashomon binary, its own or a dependency's, imports " +
-		strings.Join(pkgs[:len(pkgs)-1], ", ") + " or " + last +
-		", and CI checks that on every pull request, every push to main and every release tag."
+	sort.Strings(banned)
+	sort.Strings(sanctioned)
+	s := "No package in the rashomon binary, its own or a dependency's, imports " + orList(banned)
+	for _, pkg := range sanctioned {
+		var who []string
+		for _, src := range sanctionedSource[pkg] {
+			who = append(who, strings.TrimPrefix(src, rashomonModule+"/"))
+		}
+		sort.Strings(who)
+		s += ", and only " + orList(who) + " imports " + pkg
+	}
+	return s + "; CI checks that on every pull request, every push to main and every release tag."
+}
+
+// orList joins a sorted list as prose: "a", "a or b", "a, b or c".
+func orList(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " or " + items[len(items)-1]
 }

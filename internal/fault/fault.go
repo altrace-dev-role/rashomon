@@ -59,6 +59,21 @@ const (
 	// one that is not ends the process with those records on disk but
 	// nothing yet fully synced.
 	PointHookBeforeFlush = "hook.before_flush"
+	// PointPostAfterFlush is after post's Flush, where a hook that answers
+	// the agent would write its answer. "emit" there writes one to stdout,
+	// which is how REC-34's order -- the full sync, then stdout -- is
+	// observed through the supervisor before any entry writes stdout of its
+	// own.
+	PointPostAfterFlush = "post.after_flush"
+	// PointSuperviseChild is in the supervised child, once it has read its
+	// clock from the supervisor's pipe and before the entry runs. A fault
+	// there -- "fatal=stack" above all, which no recover catches -- is a
+	// child the supervisor has to turn into exit 0.
+	PointSuperviseChild = "supervise.child"
+	// PointSuperviseSpawn is in the supervisor, just before it starts the
+	// child. "fail=1" there is a spawn that failed, the way EAGAIN or ENOMEM
+	// would fail it, without exhausting the machine.
+	PointSuperviseSpawn = "supervise.spawn"
 )
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders
@@ -68,7 +83,11 @@ const (
 // everything written before it durable: F_FULLFSYNC on darwin, fsync
 // elsewhere; a darwin barrier the filesystem refuses falls back to one and
 // is logged as one.
+//
+// SyncStdout is not a sync. The supervisor logs it just before it forwards
+// a child's output, so the log reads in order: every sync, then stdout.
 const (
 	SyncBarrier = "barrier"
 	SyncFull    = "full"
+	SyncStdout  = "stdout"
 )

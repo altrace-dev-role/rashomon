@@ -106,12 +106,13 @@ const (
 	Marker = "--install"
 )
 
-// timeoutFor is the per-event timeout `group` installs and `intact` checks
-// against. A single constant covered every event until the recap needed a
-// wider one; this keeps the exception the two Stop events are, rather than
-// widening Timeout itself and loosening the budget the five recorder entries
-// are held to.
-func timeoutFor(event string) int {
+// TimeoutFor is the per-event timeout `group` installs and `intact` checks
+// against, in seconds. A single constant covered every event until the recap
+// needed a wider one; this keeps the exception the two Stop events are,
+// rather than widening Timeout itself and loosening the budget the five
+// recorder entries are held to. The supervisor derives each entry's hard
+// stop from it, so there is one table, not two.
+func TimeoutFor(event string) int {
 	if event == EventStop || event == EventStopFailure || event == EventUserPromptSubmit {
 		return RecapTimeout
 	}
@@ -122,6 +123,40 @@ func timeoutFor(event string) int {
 type Spec struct {
 	Executable string
 	InstallID  string
+}
+
+// EntryEvents is the inverse of the installed command line: the events
+// whose entry runs args, a hook invocation's arguments after the binary. It
+// matches args against each event's subcommand, and when one subcommand is a
+// prefix of another -- "recap" of "recap pending" -- the longer match wins.
+// Arguments that are not a hook entry give none. The events come back in
+// Events order.
+func EntryEvents(args []string) []string {
+	var (
+		events []string
+		best   int
+	)
+	for _, ev := range Events {
+		words := strings.Fields(subcommand(ev))
+		if len(words) == 0 || len(words) > len(args) || len(words) < best {
+			continue
+		}
+		match := true
+		for i, w := range words {
+			if args[i] != w {
+				match = false
+				break
+			}
+		}
+		if !match {
+			continue
+		}
+		if len(words) > best {
+			best, events = len(words), nil
+		}
+		events = append(events, ev)
+	}
+	return events
 }
 
 // Executable resolves the running binary's path for installation.
@@ -143,6 +178,10 @@ func Executable() (string, error) {
 	}
 	return p, nil
 }
+
+// Subcommand is the installed command line's subcommand for an event:
+// "hook", "post", "probe start", "probe end", "recap" or "recap pending".
+func Subcommand(event string) string { return subcommand(event) }
 
 func subcommand(event string) string {
 	switch event {
@@ -188,7 +227,7 @@ func (s Spec) group(event string) matcherGroup {
 	g := matcherGroup{Hooks: []hookCommand{{
 		Type:    "command",
 		Command: s.Command(event),
-		Timeout: timeoutFor(event),
+		Timeout: TimeoutFor(event),
 	}}}
 	if hasMatcher(event) {
 		m := Matcher
@@ -462,7 +501,7 @@ func intact(raw json.RawMessage, event string) string {
 	if h.Type != "command" {
 		return fmt.Sprintf("hook type is %q, expected \"command\"", h.Type)
 	}
-	if want := timeoutFor(event); h.Timeout != want {
+	if want := TimeoutFor(event); h.Timeout != want {
 		return fmt.Sprintf("timeout is %d, expected %d", h.Timeout, want)
 	}
 	return ""
