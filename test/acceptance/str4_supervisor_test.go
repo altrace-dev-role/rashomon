@@ -1,3 +1,5 @@
+//go:build unix
+
 package acceptance
 
 import (
@@ -15,6 +17,9 @@ import (
 	"testing"
 	"time"
 )
+
+// Hook entries are supervised on unix only (internal/supervise's Supported);
+// elsewhere an entry runs in-process and none of these hold.
 
 // Mirrors internal/fault, internal/supervise and internal/hookio.
 const (
