@@ -9,6 +9,16 @@ m("RES-26 Clock.Soft restarts the clock instead of keeping the shared start",
   "TestClockSoftKeepsStartChangesBudget")
 m("RES-26 a supervised child's SoftClock never shares the parent's start",
   "internal/supervise/run_unix.go",
-  "\treturn c.clock.Soft(e.SoftBudget())\n",
-  "\treturn budget.NewClock(time.Now(), e.SoftBudget())\n",
+  "\treturn c.clock.Soft(soft)\n",
+  "\treturn budget.NewClock(time.Now(), soft)\n",
   "TestChildSoftClockSharesTheParentsStart")
+m("RES-26 SoftClock never clamps the table budget to the child's hard stop",
+  "internal/supervise/run_unix.go",
+  "\tif margin < soft {\n\t\tsoft = margin\n\t}\n",
+  "",
+  "TestChildSoftClockClampsToHardStopMinusShortMargin")
+m("RES-26 SoftClock's clamp margin goes negative instead of flooring at zero",
+  "internal/supervise/run_unix.go",
+  "\tif margin < 0 {\n\t\tmargin = 0\n\t}\n",
+  "",
+  "TestChildSoftClockFloorsAtZeroWhenHardStopIsInsideTheMargin")

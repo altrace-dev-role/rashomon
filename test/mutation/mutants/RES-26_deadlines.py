@@ -17,3 +17,7 @@ m("RES-26 probe start's five fixed phases run out of order",
   "internal/budget/deadlines.go",
   "\treturn []Phase{Labels, Mining, Evict, Compact, Briefing}\n",
   "\treturn []Phase{Mining, Labels, Evict, Compact, Briefing}\n", "TestRES26_")
+m("RES-26 ProbeStartFixedBudget has no guard against a Phase past the end",
+  "internal/budget/deadlines.go",
+  "\tif p >= phaseCount {\n\t\treturn 0\n\t}\n",
+  "", "TestRES26_ProbeStartFixedBudgetGuardsAPhasePastTheEnd")
