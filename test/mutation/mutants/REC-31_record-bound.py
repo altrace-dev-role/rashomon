@@ -49,3 +49,8 @@ m("REC-31 the hook takes a degraded record as a failed append", "internal/hook/p
   "\tif errors.Is(err, store.ErrRecordDegraded) {\n", "\tif false {\n", "TestREC31d_")
 m("REC-31 a degraded record leaves the call verified", "internal/hook/payload.go",
   "\t\t*withheld = true\n\t\treturn nil\n", "\t\treturn nil\n", "TestREC31d_")
+m("REC-31 the derivation counts span rule ids unescaped", "internal/store/limits.go",
+  "\tMaxMaskSpanBytes = MaxMaskRuleBytes*jsonEscapeFactor + maskSpanFrameBytes\n",
+  "\tMaxMaskSpanBytes = MaxMaskRuleBytes + maskSpanFrameBytes\n", "TestREC31_WorstCaseRecordFits")
+m("REC-31 the derivation leaves out a span's keys and offsets", "internal/store/limits.go",
+  "const maskSpanFrameBytes = 38\n", "const maskSpanFrameBytes = 0\n", "TestREC31_WorstCaseRecordFits")

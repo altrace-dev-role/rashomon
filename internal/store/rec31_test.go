@@ -38,7 +38,8 @@ func worstDeclaration() Declaration {
 }
 
 // worstDeclarationV5 is the v5 half of worstDeclaration: the command at its
-// cap with every marker span at its widest, every path and written path at
+// cap with every marker span at its widest (a rule id of '<' at its cap,
+// offsets at the command's length), every path and written path at
 // its cap, every target value at its cap, and the closed-vocabulary fields
 // at their longest values.
 func worstDeclarationV5() DeclarationV5 {
@@ -46,7 +47,7 @@ func worstDeclarationV5() DeclarationV5 {
 	big, yes := 1<<62, true
 	spans := make([]MaskSpan, MaxMaskSpans)
 	for i := range spans {
-		spans[i] = MaskSpan{Rule: strings.Repeat("r", MaxMaskRuleBytes), Start: MaxCommandBytes, End: MaxCommandBytes}
+		spans[i] = MaskSpan{Rule: *esc(MaxMaskRuleBytes), Start: MaxCommandBytes, End: MaxCommandBytes}
 	}
 	written := make([]string, MaxWrittenPaths)
 	for i := range written {
@@ -89,10 +90,10 @@ func TestREC31_WorstCaseRecordFits(t *testing.T) {
 	worst := worstCaseRecordBytes()
 	// The derivation, spelled out: 6 x (7 ids x 256 + 4 paths x 4,096 +
 	// program 256 + hosts 2 x 32 x 253 + command 65,536 + written paths
-	// 16,384 + target 9 x 128 + harness tool name 128) + spans 256 x 64 +
-	// fixed 4,096.
-	if worst != 727424 {
-		t.Errorf("worstCaseRecordBytes = %d, want the derived 727,424; a cap moved, so restate the derivation", worst)
+	// 16,384 + target 9 x 128 + harness tool name 128) + spans 256 x (rule
+	// id 6 x 24 + 38) + fixed 4,096.
+	if worst != 757632 {
+		t.Errorf("worstCaseRecordBytes = %d, want the derived 757,632; a cap moved, so restate the derivation", worst)
 	}
 	if !(worst <= MaxRecordBytes && MaxRecordBytes <= maxLine) {
 		t.Fatalf("worstCaseRecordBytes %d <= MaxRecordBytes %d <= maxLine %d does not hold", worst, MaxRecordBytes, maxLine)

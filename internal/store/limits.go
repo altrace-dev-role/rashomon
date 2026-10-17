@@ -53,13 +53,19 @@ const (
 	// tool name, null over it (tech 6.2.1).
 	MaxHarnessToolNameBytes = 128
 	// MaxMaskSpans caps a command's marker spans, and MaxMaskRuleBytes the
-	// rule id each names. A span is offsets into the stored command, which
-	// is at most MaxCommandBytes, and a rule id, so it marshals to at most
-	// MaxMaskSpanBytes.
+	// rule id each names. A span is a rule id and two offsets into the
+	// stored command, which is at most MaxCommandBytes, so each offset is at
+	// most five digits. It marshals to at most MaxMaskSpanBytes: the rule id
+	// escaped to six bytes a byte (the cap checks its length, not its
+	// charset), plus maskSpanFrameBytes.
 	MaxMaskSpans     = 256
 	MaxMaskRuleBytes = 24
-	MaxMaskSpanBytes = 64
+	MaxMaskSpanBytes = MaxMaskRuleBytes*jsonEscapeFactor + maskSpanFrameBytes
 )
+
+// maskSpanFrameBytes is a span's bytes besides its rule id:
+// {"rule":"","start":65536,"end":65536} and the comma after it in the list.
+const maskSpanFrameBytes = 38
 
 // cappedIDs is how many fields MaxIDBytes caps on a declaration, the widest
 // record: session_id, tool_use_id, prompt_id, agent_id, agent_type,
@@ -102,17 +108,27 @@ var ErrRecordDegraded = errors.New("store: record was over MaxRecordBytes and wa
 // part. The largest record is a declaration.
 //
 // It is computed from the constants CapDeclaration enforces, so it moves
-// with them. Hosts and target values are counted escaped as well, though
-// their extractors keep to charsets that never escape: the caps do not check
-// a charset, so the bound does not lean on one.
+// with them. Hosts, target values and span rule ids are counted escaped as
+// well, though their extractors keep to charsets that never escape: the caps
+// do not check a charset, so the bound does not lean on one.
 //
 // At today's caps the capped bytes are 7*256 + 4*4,096 + 256 + 2*32*253 +
 // 65,536 + 16,384 + 9*128 + 128 = 117,824; escaped, 706,944; with 256 spans
-// of 64 bytes, 723,328; with the fixed part, 727,424, inside the 1 MiB line.
-// Technical spec 1.2.11's 639,936 is 87,488 less: it counts the hosts and the
-// target values at one byte per byte, which holds only if their charsets are
-// checked where they are capped, and they are not, and it leaves out the
-// harness tool name, which schema 5 added after it.
+// of 24*6 + 38 = 182 bytes, 753,536; with the fixed part, 757,632, inside the
+// 1 MiB line. Technical spec 1.2.11's 639,936 is 117,696 less: it counts the
+// hosts and the target values at one byte per byte, which holds only if
+// their charsets are checked where they are capped, and they are not; it
+// leaves out the harness tool name, which schema 5 added after it; and it
+// gives no span width, where a rule id is counted escaped here for the same
+// reason as a host.
+//
+// The bound covers the fields a writer fills today. Some payload-derived
+// schema 5 fields have no cap yet because every writer leaves them null:
+// marker spans and a cut beside a null command, head_after's branch, a
+// target's source and dropped lists, harness_id, declared_via and the keys
+// of edit_marks_before. A change that fills one caps it here and counts it
+// above; until it does, a record made long by one is refused whole
+// (ErrRecordOversize), not degraded.
 func worstCaseRecordBytes() int {
 	capped := cappedIDs*MaxIDBytes + cappedPaths*MaxPathBytes + MaxProgramBytes +
 		2*MaxHosts*MaxHostBytes + MaxCommandBytes + MaxWrittenPathsBytes +
