@@ -55,6 +55,107 @@ func TestOwner(t *testing.T) {
 	}
 }
 
+// TestLUI3_OwnerDoesNotClaimSteerPostAsPost pins LUI-3: identity is read off
+// the whole of the command after its executable, not a suffix of it.
+//
+// "post" is PostToolUse's own subcommand, and it is also the tail of "steer
+// post" -- a longer subcommand a future entry under a different role
+// installs on the very same event. The old implementation searched for
+// " post --install " anywhere in the command, so a "steer post" entry would
+// have read, wrongly, as this install's post entry: detach would have
+// removed somebody's steer entry under the recorder's name, and a second
+// watch would have found "ours" already present and left a stray steer
+// entry untouched. The fix is a whole-remainder comparison, so a longer
+// subcommand that merely ends the same way is never mistaken for a shorter
+// one that is a true suffix of it.
+func TestLUI3_OwnerDoesNotClaimSteerPostAsPost(t *testing.T) {
+	notOurs := json.RawMessage(`{"matcher":"Bash","hooks":[{"type":"command",` +
+		`"command":"/usr/local/bin/rashomon steer post --install ` + oneID + `","timeout":5}]}`)
+	if got := Owner(notOurs, EventPostToolUse); got != "" {
+		t.Errorf("Owner(%s) = %q, want %q: a steer post entry is not the recorder's post entry",
+			notOurs, got, "")
+	}
+
+	// The positive twin, so the fix is a narrowing and not a break: the
+	// recorder's own post entry, same executable and id, is still read.
+	ours := json.RawMessage(mustEntry(t, spec(oneID), EventPostToolUse))
+	if got := Owner(ours, EventPostToolUse); got != oneID {
+		t.Errorf("Owner(%s) = %q, want %q", ours, got, oneID)
+	}
+}
+
+// TestLUI4_WatchThenDetachLeavesNoResidue pins LUI-4's legacy half: Owner
+// recognises a listed legacy subcommand as ours, so an entry a previous
+// release wrote under an older subcommand is refreshed to the current one in
+// place -- never duplicated -- and a later detach removes it exactly as it
+// would the current form. A foreign entry under the same event, and every
+// event watch never touches, stay byte for byte as found; that half of the
+// promise is TestH06_DetachLeavesTheFileByteForByteAsFound's and is
+// unchanged here.
+//
+// No real subcommand has been renamed yet (legacyForms is empty for every
+// production event), so this test supplies its own legacy form rather than
+// one shipped: it proves the mechanism a rename rides on, not a rename.
+func TestLUI4_WatchThenDetachLeavesNoResidue(t *testing.T) {
+	const legacy = "recap-legacy-v1"
+	legacyForms[EventStop] = []string{legacy}
+	t.Cleanup(func() { delete(legacyForms, EventStop) })
+
+	exe := "/usr/local/bin/rashomon"
+	legacyEntry := `{"hooks":[{"type":"command","command":"` +
+		exe + " " + legacy + " " + Marker + " " + oneID + `","timeout":` + fmt.Sprint(RecapTimeout) + `}]}`
+	doc, err := settings.Parse([]byte(`{"hooks":{"Stop":[` + foreignHook + `,` + legacyEntry + `]}}`))
+	if err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+
+	if _, err := Apply(doc, Spec{Executable: exe, InstallID: oneID}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	stopEntries := entriesOf(t, doc, EventStop)
+	if len(stopEntries) != 2 {
+		t.Fatalf("Stop carries %d entries after refresh, want 2 (foreign, plus ours refreshed in place)",
+			len(stopEntries))
+	}
+	var refreshed json.RawMessage
+	for _, e := range stopEntries {
+		if Owner(e, EventStop) == oneID {
+			refreshed = e
+		}
+	}
+	if refreshed == nil {
+		t.Fatal("no entry under Stop reads as ours after Apply refreshed the legacy form")
+	}
+	if detail := intact(refreshed, EventStop); detail != "" {
+		t.Errorf("the refreshed entry is not intact: %s", detail)
+	}
+	if strings.Contains(string(refreshed), legacy) {
+		t.Errorf("the refreshed entry still carries the legacy subcommand %q: %s", legacy, refreshed)
+	}
+
+	removed, modified, err := Remove(doc, Spec{InstallID: oneID}, false)
+	if err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if removed == 0 {
+		t.Error("Remove removed nothing; the refreshed entry should have been recognised and removed")
+	}
+	if len(modified) != 0 {
+		t.Errorf("Remove reported entries it had to leave edited: %v", modified)
+	}
+	remainingStop := entriesOf(t, doc, EventStop)
+	if len(remainingStop) != 1 {
+		t.Fatalf("under Stop, %d entries remain, want 1 (the foreign one)", len(remainingStop))
+	}
+	if id := Owner(remainingStop[0], EventStop); id != "" {
+		t.Errorf("an owned entry survived detach under Stop, reading as %q", id)
+	}
+	if !strings.Contains(string(doc.Bytes()), foreignHook) {
+		t.Errorf("the foreign entry did not survive byte for byte:\n%s", doc.Bytes())
+	}
+}
+
 // TestRemoveIfAnyInstallID is the detach --all path. With the store gone there
 // is no id left to match against, so the predicate accepts every install -- and
 // the entry belonging to no install still has to survive it.
