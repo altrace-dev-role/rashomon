@@ -63,6 +63,9 @@ type Store struct {
 	deferred bool
 	dirty    string
 	flushErr error
+
+	// standDown is asked before every write; see StandDownWhen.
+	standDown func() bool
 }
 
 type installMeta struct {
@@ -310,7 +313,7 @@ func (s *Store) AppendExecution(rec Execution) error {
 // ordered stream, under the same rule as SpillTerminal.
 func (s *Store) SpillExecution(rec Execution) error {
 	rec.Seq = nil
-	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileSpill), rec, spillBudget, true)
+	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileSpill), rec, appendOpts{budget: spillBudget, bestEffort: true})
 }
 
 // AppendTerminal closes a declaration. If the ordered stream's lock cannot be
@@ -332,17 +335,17 @@ func (s *Store) AppendTerminal(rec Terminal) error {
 // failing to write the declaration and must not spend it again.
 func (s *Store) SpillTerminal(rec Terminal) error {
 	rec.Seq = nil
-	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileSpill), rec, spillBudget, true)
+	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileSpill), rec, appendOpts{budget: spillBudget, bestEffort: true})
 }
 
 // AppendCoverage records the configuration state as resolved during this run.
 func (s *Store) AppendCoverage(rec Coverage) error {
-	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, lockBudget, false)
+	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, appendOpts{budget: lockBudget})
 }
 
 // AppendGap records that records left the store.
 func (s *Store) AppendGap(rec Gap) error {
-	return s.appendLine(filepath.Join(s.root, FileGaps), rec, lockBudget, false)
+	return s.appendLine(filepath.Join(s.root, FileGaps), rec, appendOpts{budget: lockBudget})
 }
 
 // DirName is the run directory name a session id maps to.
@@ -352,6 +355,9 @@ func (s *Store) DirName(sessionID string) string { return segment(sessionID) }
 // rather than a record so that a handler can check it with one stat instead of
 // reading a coverage file that grows with every call.
 func (s *Store) MarkProbe(sessionID string, now time.Time) error {
+	if s.stoodDown() {
+		return ErrStoodDown
+	}
 	dir := s.RunDir(sessionID)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return err
@@ -381,6 +387,9 @@ const appendFlags = os.O_CREATE | os.O_RDWR | os.O_APPEND
 // appendOrdered appends one record to records.ndjson under the run's lock,
 // allocating its seq inside the same critical section.
 func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error {
+	if s.stoodDown() {
+		return ErrStoodDown
+	}
 	dir := s.RunDir(sessionID)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return err
@@ -502,11 +511,27 @@ func syncAs(f *os.File, kind string) error {
 // it, is not raced, and given up so that no handler ever blocks on it.
 const spillBudget = 50 * time.Millisecond
 
-// appendLine appends one record to a file that carries no seq, waiting up to
-// budget for its lock. With bestEffort set, a lock timeout is not an error: the
-// record is appended anyway, relying on a single O_APPEND write, which the
-// kernel does not interleave for a regular file.
-func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffort bool) error {
+// appendOpts are appendLine's choices.
+//
+// budget is how long it waits for the file's lock. With bestEffort set, a
+// lock timeout is not an error: the record is appended anyway, relying on a
+// single O_APPEND write, which the kernel does not interleave for a regular
+// file. With sealTail set, a file whose last line has no newline -- a
+// writer that died mid-append -- gets one first, in the same write, so the
+// record cannot join the torn fragment. capBytes, when positive, refuses a
+// line that would take the file over it with ErrSideFileCap.
+type appendOpts struct {
+	budget     time.Duration
+	bestEffort bool
+	sealTail   bool
+	capBytes   int64
+}
+
+// appendLine appends one record to a file that carries no seq.
+func (s *Store) appendLine(path string, rec any, o appendOpts) error {
+	if s.stoodDown() {
+		return ErrStoodDown
+	}
 	line, err := marshalLine(rec)
 	if err != nil {
 		return err
@@ -521,15 +546,27 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockCounted(f, budget)
+	unlock, err := lockCounted(f, o.budget)
 	switch {
 	case err == nil:
 		defer unlock()
-	case bestEffort && errors.Is(err, ErrLockTimeout):
+	case o.bestEffort && errors.Is(err, ErrLockTimeout):
 	default:
 		return err
 	}
 
+	if o.sealTail || o.capBytes > 0 {
+		torn, size, err := tornTail(f)
+		if err != nil {
+			return err
+		}
+		if torn {
+			line = append([]byte{'\n'}, line...)
+		}
+		if o.capBytes > 0 && size+int64(len(line)) > o.capBytes {
+			return ErrSideFileCap
+		}
+	}
 	if _, err := f.Write(line); err != nil {
 		return err
 	}
