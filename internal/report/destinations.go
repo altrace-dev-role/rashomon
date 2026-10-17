@@ -361,32 +361,15 @@ func executedNotAsDeclared(run *store.Run) int {
 	return len(rewrittenCalls(run))
 }
 
-// sshDeclared is the sorted, de-duplicated set of ssh hosts the session named.
-//
-// Always returns a non-nil slice so the JSON carries an empty list rather than
-// null: "no ssh host was named" is a fact, and null would read as "we did not
-// look".
-func sshDeclared(run *store.Run) []string {
-	set := map[string]bool{}
-	for _, d := range run.Declarations {
-		for _, h := range d.SSHHosts {
-			set[h] = true
-		}
-	}
-	out := make([]string, 0, len(set))
-	for h := range set {
-		out = append(out, h)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// sshDeclaredFiltered is sshDeclared with forgotten applied per declaration,
-// before the hosts are merged into one set: a host is dropped only for the
+// sshDeclaredFiltered is the sorted, de-duplicated set of ssh hosts the
+// session named, with forgotten applied per declaration before the hosts are
+// merged into one set: a host is dropped only for the
 // declaration(s) that named it at or before the latest forget of that name,
 // never for a later declaration that happens to share it. forgotten == nil
 // passes every host through, matching the report's nil-means-no-filter
-// convention (see suppressTrail).
+// convention (see suppressTrail). Always non-nil, so the JSON carries an empty
+// list rather than null: "no ssh host was named" is a fact, and null would
+// read as "we did not look".
 func sshDeclaredFiltered(run *store.Run, forgotten func(host string, declaredAtMS int64) bool) []string {
 	set := map[string]bool{}
 	for _, d := range run.Declarations {
@@ -406,7 +389,7 @@ func sshDeclaredFiltered(run *store.Run, forgotten func(host string, declaredAtM
 }
 
 // declaredHosts is the sorted, de-duplicated set of hostnames the session's
-// tool calls named. Never nil, for the same reason as sshDeclared.
+// tool calls named. Never nil, for the same reason as sshDeclaredFiltered.
 //
 // Unfiltered: buildNono's own caller needs the full named set regardless of
 // what has been forgotten, to decide which trail hosts are the client's own.
