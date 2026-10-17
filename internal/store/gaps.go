@@ -208,6 +208,9 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 	if capBytes <= 0 {
 		return nil, nil
 	}
+	if s.stoodDown() {
+		return nil, ErrStoodDown
+	}
 
 	// One evictor at a time. Holding the gaps file's lock for the whole pass
 	// means a second handler that arrives mid-eviction sees the removals and
@@ -276,6 +279,11 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 		}
 		if c.name == protectDir || now.Sub(c.mtime) < evictGrace {
 			continue
+		}
+		// Each run's removal -- its gap, then the run -- is one write, so
+		// the stand-down question is asked before it and never inside it.
+		if s.stoodDown() {
+			return gaps, ErrStoodDown
 		}
 
 		run, err := s.ReadRunDir(c.name)
