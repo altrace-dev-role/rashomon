@@ -55,13 +55,7 @@ func lockFileWait(f *os.File, budget time.Duration) (func(), time.Duration, erro
 			lockfileExclusiveLock|lockfileFailImmediately, 0,
 			lockBytesLow, lockBytesHigh, uintptr(unsafe.Pointer(&overlapped)))
 		if r1 != 0 {
-			return func() {
-				var overlapped syscall.Overlapped
-				// An unlock that fails leaves nothing to undo: closing the
-				// handle, which every caller does next, releases the lock.
-				_, _, _ = procUnlockFileEx.Call(uintptr(h), 0,
-					lockBytesLow, lockBytesHigh, uintptr(unsafe.Pointer(&overlapped)))
-			}, waited, nil
+			return func() { unlockFile(f) }, waited, nil
 		}
 		if !errors.Is(err, errorLockViolation) && !errors.Is(err, syscall.ERROR_IO_PENDING) {
 			return nil, waited, err
@@ -85,3 +79,20 @@ func lockFileWait(f *os.File, budget time.Duration) (func(), time.Duration, erro
 // the file's lock. LockFileEx locks are mandatory: ReadFile on a range
 // another handle has locked fails with ERROR_LOCK_VIOLATION.
 func readRefused(err error) bool { return errors.Is(err, errorLockViolation) }
+
+// unlockFile releases f's lock through f itself, not through its handle
+// value: once f is closed, Control refuses to run, so a late unlock cannot
+// release the lock of a file that has been given the value since (CWE-672).
+// An unlock that fails leaves nothing to undo: closing the handle, which
+// every caller does next, releases the lock.
+func unlockFile(f *os.File) {
+	rc, err := f.SyscallConn()
+	if err != nil {
+		return
+	}
+	_ = rc.Control(func(fd uintptr) {
+		var overlapped syscall.Overlapped
+		_, _, _ = procUnlockFileEx.Call(fd, 0,
+			lockBytesLow, lockBytesHigh, uintptr(unsafe.Pointer(&overlapped)))
+	})
+}
