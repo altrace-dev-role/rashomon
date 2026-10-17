@@ -18,4 +18,4 @@ m("test-5 the baseline is written in place before its rename", "internal/baselin
   "\tif err := os.WriteFile(path, body, 0o600); err != nil {\n\t\treturn err\n\t}\n\tfault.Inject(fault.PointBaselineBeforeRename)\n",
   "TestRubricTEST5_ACrashBeforeTheBaselineRenameKeepsTheOldOne")
 m("test-5 recap's state is written in place", "internal/recap/state.go",
-  "\ttmp := path + \".tmp\"\n", "\ttmp := path\n", "TestRubricTEST5_ACrashBeforeTheRecapRenameKeepsTheOldState")
+  "\ttmp := filepath.Join(filepath.Dir(path), StateTempName)\n", "\ttmp := path\n", "TestRubricTEST5_ACrashBeforeTheRecapRenameKeepsTheOldState")

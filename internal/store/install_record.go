@@ -55,7 +55,7 @@ var installRecordKeys = []string{
 // when there is none, and creates nothing either way.
 func ReadInstallRecord(root string) (InstallRecord, error) {
 	var rec InstallRecord
-	b, err := os.ReadFile(filepath.Join(root, fileInstallMeta))
+	b, err := os.ReadFile(filepath.Join(root, FileInstallMeta))
 	if errors.Is(err, os.ErrNotExist) {
 		return rec, ErrNoStore
 	}
@@ -74,7 +74,7 @@ func ReadInstallRecord(root string) (InstallRecord, error) {
 // one. The install id is not edit's to change, and a store with no
 // install.json is ErrNoStore: this never creates one.
 func UpdateInstallRecord(root string, edit func(*InstallRecord)) error {
-	path := filepath.Join(root, fileInstallMeta)
+	path := filepath.Join(root, FileInstallMeta)
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return ErrNoStore

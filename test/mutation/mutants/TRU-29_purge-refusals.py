@@ -32,3 +32,7 @@ m("TRU-29 WorkTreeTop looks only at the directory itself", "internal/purge/purge
   "\t\tdir = parent\n\t}\n}\n",
   "\t\treturn \"\"\n\t}\n}\n",
   "TestTRU29_")
+m("TRU-29 a root left holding only install.key gets no command", "cmd/rashomon/purge.go",
+  "\tif err != nil || len(entries) != 1 || entries[0].Name() != purge.InstallKey {\n",
+  "\tif true {\n",
+  "TestTRU29_")

@@ -42,7 +42,7 @@ func (r *Run) SessionID() string {
 
 // Runs lists run directory names, oldest first by modification time.
 func (s *Store) Runs() ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(s.root, dirRuns))
+	entries, err := os.ReadDir(filepath.Join(s.root, DirRuns))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -98,7 +98,7 @@ func (s *Store) ReadRunDirForReport(name string) (*Run, error) {
 // readRunDir reads one run's three files unlocked; refused says which read
 // errors count as one skipped line rather than failing the read.
 func (s *Store) readRunDir(name string, refused func(error) bool) (*Run, error) {
-	dir := filepath.Join(s.root, dirRuns, name)
+	dir := filepath.Join(s.root, DirRuns, name)
 	run := &Run{Dir: name}
 	fn := func(line []byte) { classifyRunLine(run, line) }
 
@@ -135,7 +135,7 @@ func (s *Store) readRunDir(name string, refused func(error) bool) (*Run, error) 
 // rather than being counted as something it is not.
 func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run, error) {
 	name := segment(sessionID)
-	dir := filepath.Join(s.root, dirRuns, name)
+	dir := filepath.Join(s.root, DirRuns, name)
 	run := &Run{Dir: name}
 	deadline := time.Now().Add(budget)
 
@@ -447,7 +447,7 @@ func (s *Store) NewestRun() (string, time.Time, error) {
 		// The records file rather than the directory: a directory's mtime moves
 		// when a child is created, which happens once, while the records file
 		// is appended to for the life of the session.
-		info, err := os.Stat(filepath.Join(s.root, dirRuns, name, FileRecords))
+		info, err := os.Stat(filepath.Join(s.root, DirRuns, name, FileRecords))
 		if err != nil {
 			continue
 		}

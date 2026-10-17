@@ -24,7 +24,7 @@ m("H-6  plain detach creates a store to learn the id", "cmd/rashomon/main.go",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err != nil {",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil && false {", "TestH6_PlainDetachLeavesNoStoreBehind")
 m("H-6  watch does not print the undo line", "cmd/rashomon/main.go",
-  "\tfmt.Fprintf(stdout, \"rashomon detach --install %s\\n\", st.InstallID())\n", "", "TestH6_WatchPrintsTheUndoLine")
+  "\tfmt.Fprintf(stdout, \"rashomon detach --install %s\\n\", installID)\n", "", "TestH6_WatchPrintsTheUndoLine")
 
 m("H-6 detach has no way past an entry someone edited", "cmd/rashomon/main.go",
   "\t\tcase \"--force\":", "\t\tcase \"--force-disabled\":", "TestH6_DetachForceRemovesAnEditedEntry")

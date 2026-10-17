@@ -17,26 +17,30 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/recap"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // The two files that make a directory a store. They are removed last, so
 // a purge that stops early leaves a root the next purge still accepts.
 const (
 	// InstallMeta is the install record, removed second to last.
-	InstallMeta = "install.json"
+	InstallMeta = store.FileInstallMeta
 	// InstallKey is the per-install key, removed last.
-	InstallKey = "install.key"
+	InstallKey = store.FileInstallKey
 )
 
 // topFiles are the files rashomon writes directly under the store root, other
 // than the two anchors: the gap log, the forgotten-host digests, the pause
-// marker, and recap's state and its temporary file.
-var topFiles = []string{"gaps.ndjson", "forgotten-hosts.ndjson", "pause", "recap.json", "recap.json.tmp"}
+// marker, and recap's state and its temporary file. Each name is the writing
+// package's own constant, so a rename there cannot strand the file here.
+var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileRecordingPaused, recap.StateFileName, recap.StateTempName}
 
 // topDirs are the directories under the store root that only rashomon
 // writes into: every path under them is planned for removal.
-var topDirs = []string{"runs", "baseline"}
+var topDirs = []string{store.DirRuns, baseline.DirName}
 
 // tempPrefixes are the names of an anchor's temporary file, left by a
 // process that died between writing and renaming it.
@@ -139,6 +143,9 @@ type Plan struct {
 	Foreign []string
 	// CreatedDirs are removed once empty, deepest first, after Root.
 	CreatedDirs []string
+	// NotDirs are created_dirs entries that are no longer a directory --
+	// a symlink the user put in its place, most often. They are left.
+	NotDirs []string
 	// Binary, when set, is removed last.
 	Binary string
 }
@@ -175,7 +182,13 @@ func Build(root string, createdDirs []string, binary string) (Plan, error) {
 	p.Files = append(files, filepath.Join(root, InstallMeta), filepath.Join(root, InstallKey))
 	p.RemoveRoot = len(p.Foreign) == 0
 
-	p.CreatedDirs = append([]string(nil), createdDirs...)
+	for _, d := range createdDirs {
+		if dir, err := realDir(d); err == nil && !dir {
+			p.NotDirs = append(p.NotDirs, d)
+		} else {
+			p.CreatedDirs = append(p.CreatedDirs, d)
+		}
+	}
 	sort.SliceStable(p.CreatedDirs, func(i, j int) bool { return depth(p.CreatedDirs[i]) > depth(p.CreatedDirs[j]) })
 	return p, nil
 }
@@ -205,13 +218,34 @@ func subtree(dir string) ([]string, error) {
 
 func depth(p string) int { return strings.Count(p, string(filepath.Separator)) }
 
-// Outcome is what Execute did: the paths it removed, the planned paths
-// still there afterwards, and the created directories it left because they
-// were not empty or could not be removed.
+// realDir reports whether path is a directory itself, not a symlink to one
+// or a file. A path that does not exist is not one, and is not an error.
+func realDir(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return info.Mode().IsDir(), nil
+}
+
+// Outcome is what Execute did.
 type Outcome struct {
-	Removed   []string
+	// Removed are the paths that went, or were already gone.
+	Removed []string
+	// Remaining are planned paths still there while install.json and
+	// install.key are: a rerun of purge accepts the root and finishes them.
 	Remaining []string
-	Left      []string
+	// Stranded are planned paths still there once the anchors have gone. A
+	// rerun refuses a root without them, so each has to be removed by hand.
+	Stranded []string
+	// Left are created directories left because something is in them.
+	Left []string
+	// NotDir are created directories that had become something else -- a
+	// symlink, most often -- by the time purge reached them. They are left.
+	NotDir []string
 }
 
 // Execute removes the plan, and only the plan. A path that is already gone
@@ -222,53 +256,93 @@ type Outcome struct {
 // hook has written into since the plan was made is the usual one -- the
 // anchors are kept, and so is the root: install.json and install.key are
 // what lets the next purge accept this root, so they go only once
-// everything else has.
+// everything else has, and install.key stays while install.json does.
+// Whatever fails after install.json has gone is Stranded.
 func (p Plan) Execute() Outcome {
 	var o Outcome
 	anchors := p.Files[len(p.Files)-2:]
-	failed := false
 	for _, path := range p.Files[:len(p.Files)-2] {
-		if remove(path, &o) != nil {
-			failed = true
+		if remove(path, &o.Removed) != nil {
+			o.Remaining = append(o.Remaining, path)
 		}
 	}
-	if failed {
-		o.Remaining = append(o.Remaining, anchors...)
+	kept := anchors
+	if len(o.Remaining) == 0 {
+		fault.Inject(fault.PointPurgeBeforeAnchors)
+		if remove(anchors[0], &o.Removed) == nil {
+			kept = nil
+		}
+	}
+	if kept != nil {
+		o.Remaining = append(o.Remaining, kept...)
 		if p.RemoveRoot {
 			o.Remaining = append(o.Remaining, p.Root)
+		}
+		if p.Binary != "" {
+			o.Remaining = append(o.Remaining, p.Binary)
 		}
 		return o
 	}
 
-	fault.Inject(fault.PointPurgeBeforeAnchors)
-	for _, path := range anchors {
-		if remove(path, &o) != nil {
-			failed = true
+	// install.json is gone: from here a rerun refuses the root.
+	strand := func(path string) {
+		if remove(path, &o.Removed) != nil {
+			o.Stranded = append(o.Stranded, path)
 		}
 	}
-	if p.RemoveRoot && !failed {
-		failed = remove(p.Root, &o) != nil
+	strand(anchors[1])
+	if p.RemoveRoot && len(o.Stranded) == 0 {
+		strand(p.Root)
 	}
 	for _, d := range p.CreatedDirs {
-		if err := os.Remove(d); err == nil {
-			o.Removed = append(o.Removed, d)
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			o.Left = append(o.Left, d)
-		}
+		p.removeCreatedDir(d, &o)
 	}
 	if p.Binary != "" {
-		remove(p.Binary, &o) //nolint:errcheck // recorded in o.Remaining
+		strand(p.Binary)
 	}
 	return o
 }
 
-// remove removes one planned path and records the result.
-func remove(path string, o *Outcome) error {
+// removeCreatedDir removes one created directory if it is still a directory
+// and is empty. A symlink in its place is left: os.Remove would unlink it
+// whatever it points at.
+func (p Plan) removeCreatedDir(d string, o *Outcome) {
+	dir, err := realDir(d)
+	switch {
+	case err != nil:
+		o.Stranded = append(o.Stranded, d)
+		return
+	case !dir:
+		if _, err := os.Lstat(d); err == nil {
+			o.NotDir = append(o.NotDir, d)
+		}
+		return
+	}
+	err = os.Remove(d)
+	switch {
+	case err == nil || errors.Is(err, fs.ErrNotExist):
+		o.Removed = append(o.Removed, d)
+	case notEmpty(d):
+		o.Left = append(o.Left, d)
+	default:
+		o.Stranded = append(o.Stranded, d)
+	}
+}
+
+// notEmpty reports whether dir can be read and holds an entry: the one
+// reason a created directory is left without its being a failure.
+func notEmpty(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	return err == nil && len(entries) > 0
+}
+
+// remove removes one planned path and adds it to removed when it went or
+// was already gone.
+func remove(path string, removed *[]string) error {
 	err := os.Remove(path)
 	if err == nil || errors.Is(err, fs.ErrNotExist) {
-		o.Removed = append(o.Removed, path)
+		*removed = append(*removed, path)
 		return nil
 	}
-	o.Remaining = append(o.Remaining, path)
 	return err
 }

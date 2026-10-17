@@ -68,7 +68,7 @@ func missingDirs(dirs ...string) ([]string, error) {
 // holdsEntriesOf reports whether doc already carries an entry claimed by
 // installID, under any event.
 func holdsEntriesOf(doc *settings.Document, installID string) (bool, error) {
-	for _, event := range install.Events {
+	for _, event := range install.Events() {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
 			return false, err
@@ -82,16 +82,11 @@ func holdsEntriesOf(doc *settings.Document, installID string) (bool, error) {
 	return false, nil
 }
 
-// recordWatch writes into install.json what this watch found and left: the
-// directories it created, and the settings file's hashes before and after.
-//
-// The pre-image is the file before the FIRST watch that wrote our entries
-// into it. A later watch that refreshes them keeps it only when the file is
-// still the one the last watch left; when it has changed since, nobody knows
-// what the file held before our entries went in, and the pre-image is
-// cleared rather than guessed, so detach takes the edited-since-watch path.
-func recordWatch(root string, edit settingsEdit, hadOurs bool, created []string) error {
-	if !edit.changed && len(created) == 0 {
+// recordCreatedDirs adds to install.json the directories this watch
+// created, for purge to remove once they are empty. A directory is added
+// once and never dropped by a later watch.
+func recordCreatedDirs(root string, created []string) error {
+	if len(created) == 0 {
 		return nil
 	}
 	return store.UpdateInstallRecord(root, func(r *store.InstallRecord) {
@@ -100,9 +95,22 @@ func recordWatch(root string, edit settingsEdit, hadOurs bool, created []string)
 				r.CreatedDirs = append(r.CreatedDirs, d)
 			}
 		}
-		if !edit.changed {
-			return
-		}
+	})
+}
+
+// recordWatch writes into install.json the settings file's hashes before
+// and after this watch's edit.
+//
+// The pre-image is the file before the FIRST watch that wrote our entries
+// into it. A later watch that refreshes them keeps it only when the file is
+// still the one the last watch left; when it has changed since, nobody knows
+// what the file held before our entries went in, and the pre-image is
+// cleared rather than guessed, so detach takes the edited-since-watch path.
+func recordWatch(root string, edit settingsEdit, hadOurs bool) error {
+	if !edit.changed {
+		return nil
+	}
+	return store.UpdateInstallRecord(root, func(r *store.InstallRecord) {
 		before := sha256Hex(edit.before)
 		switch {
 		case !hadOurs:
@@ -117,6 +125,29 @@ func recordWatch(root string, edit settingsEdit, hadOurs bool, created []string)
 		}
 		r.PostSHA256 = sha256Hex(edit.after)
 	})
+}
+
+// rollBackWatch answers a record of watch's edit that failed (Technical spec
+// 7.4: a failed watch undoes in reverse). It puts settings.json back as watch
+// found it -- the same bytes, or no file where there was none -- provided it
+// still holds what watch wrote. If that fails as well, the entries stay
+// installed, and the undo line is printed so they can still be taken out.
+func rollBackWatch(stdout io.Writer, path string, edit settingsEdit, installID string, cause error) error {
+	if !edit.changed {
+		return fmt.Errorf("recording what watch found failed: %w; settings.json was not changed", cause)
+	}
+	var err error
+	if edit.existed {
+		err = settings.Write(path, edit.after, edit.before)
+	} else {
+		err = settings.Remove(path, edit.after)
+	}
+	if err == nil {
+		return fmt.Errorf("recording what watch changed failed: %w; %s was put back as it was, and nothing is installed", cause, path)
+	}
+	printUndoLine(stdout, installID)
+	return fmt.Errorf("recording what watch changed failed: %w, and putting %s back failed too: %v; "+
+		"the entries are installed, and the line above removes them", cause, path, err)
 }
 
 func contains(list []string, s string) bool {

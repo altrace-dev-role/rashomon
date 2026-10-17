@@ -17,7 +17,7 @@ func TestTRU44_InstallRecordUpdateKeepsTheIDAndUnknownKeys(t *testing.T) {
 	if err := UpdateInstallRecord(root, func(*InstallRecord) {}); !errors.Is(err, ErrNoStore) {
 		t.Fatalf("update with no install.json = %v, want ErrNoStore", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, fileInstallMeta)); err == nil {
+	if _, err := os.Stat(filepath.Join(root, FileInstallMeta)); err == nil {
 		t.Fatal("an update created install.json")
 	}
 
@@ -25,7 +25,7 @@ func TestTRU44_InstallRecordUpdateKeepsTheIDAndUnknownKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, fileInstallMeta)
+	path := filepath.Join(root, FileInstallMeta)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

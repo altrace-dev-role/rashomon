@@ -93,6 +93,11 @@ const (
 	// and install.key is gone: the latest an interrupted purge can stop and
 	// still be run again.
 	PointPurgeBeforeAnchors = "purge.before_anchors"
+	// PointWatchRecord is in watch after its settings write and before it
+	// records what that write changed: a panic there is a watch that died
+	// between the two, and "fail=N" is a record that failed, which watch
+	// answers by putting settings.json back.
+	PointWatchRecord = "watch.record"
 )
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders

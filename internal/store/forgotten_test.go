@@ -214,7 +214,7 @@ func TestForgetHost_AForgetThatFailsPartWayStillSuppresses(t *testing.T) {
 	if err != nil || len(runs) != 1 {
 		t.Fatalf("premise: one run, got %v (%v)", runs, err)
 	}
-	records := filepath.Join(st.Root(), dirRuns, runs[0], FileRecords)
+	records := filepath.Join(st.Root(), DirRuns, runs[0], FileRecords)
 	if err := os.Chmod(records, 0); err != nil {
 		t.Fatal(err)
 	}

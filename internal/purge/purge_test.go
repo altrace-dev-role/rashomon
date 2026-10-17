@@ -242,3 +242,122 @@ func TestTRU28_ExecuteRemovesTheEmptyRootThenCreatedDirsDeepestFirst(t *testing.
 		t.Errorf("Left = %q, want the one created directory that was not empty", out.Left)
 	}
 }
+
+// writeFiles creates each path, and its parents, holding a byte.
+func writeFiles(t *testing.T, paths ...string) {
+	t.Helper()
+	for _, p := range paths {
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestTRU28_ACreatedDirThatIsNowASymlinkIsLeft: watch created the
+// configuration directory, and the user has since replaced it with a link
+// into a dotfiles repository. Removing the link would take Claude Code's
+// configuration away, so it is never planned and never removed -- whether it
+// was a link when the plan was made or became one afterwards.
+func TestTRU28_ACreatedDirThatIsNowASymlinkIsLeft(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "rashomon")
+	config := filepath.Join(home, ".claude")
+	target := filepath.Join(home, "dotfiles", "claude")
+	writeFiles(t, filepath.Join(root, InstallMeta), filepath.Join(root, InstallKey), filepath.Join(target, "settings.json"))
+	if err := os.Symlink(target, config); err != nil {
+		t.Skipf("symlinks are not available here: %v", err)
+	}
+
+	p, err := Build(root, []string{config, root}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(p.CreatedDirs, config) || !slices.Equal(p.NotDirs, []string{config}) {
+		t.Errorf("CreatedDirs = %q, NotDirs = %q; want the link only under NotDirs", p.CreatedDirs, p.NotDirs)
+	}
+
+	// The same directory, a real one when the plan is made and a link by
+	// the time it is carried out.
+	swapped := filepath.Join(home, ".config-dir")
+	if err := os.Mkdir(swapped, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p.CreatedDirs = append(p.CreatedDirs, swapped)
+	if err := os.Remove(swapped); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(home, "dotfiles"), swapped); err != nil {
+		t.Fatal(err)
+	}
+
+	out := p.Execute()
+	for _, link := range []string{config, swapped} {
+		if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("%s is no longer the link it was: %v", link, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(target, "settings.json")); err != nil {
+		t.Errorf("the link's target lost its contents: %v", err)
+	}
+	if !slices.Equal(out.NotDir, []string{swapped}) {
+		t.Errorf("NotDir = %q, want the directory that became a link after the plan", out.NotDir)
+	}
+	if len(out.Remaining)+len(out.Stranded) != 0 {
+		t.Errorf("Remaining = %q, Stranded = %q; a link left on purpose is not a planned path that remains", out.Remaining, out.Stranded)
+	}
+}
+
+// TestTRU28_InstallKeyStaysWhileInstallJSONDoes: install.json that cannot
+// be removed keeps install.key, and the root, so the next purge still
+// accepts the root.
+func TestTRU28_InstallKeyStaysWhileInstallJSONDoes(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "rashomon")
+	// A directory with something in it, so os.Remove of it fails.
+	writeFiles(t, filepath.Join(root, InstallMeta, "held"), filepath.Join(root, InstallKey))
+	p, err := Build(root, []string{root}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := p.Execute()
+	if _, err := os.Stat(filepath.Join(root, InstallKey)); err != nil {
+		t.Errorf("install.key was removed although install.json could not be: %v", err)
+	}
+	for _, want := range []string{filepath.Join(root, InstallMeta), filepath.Join(root, InstallKey), root} {
+		if !slices.Contains(out.Remaining, want) {
+			t.Errorf("Remaining %q does not name %s", out.Remaining, want)
+		}
+	}
+	if len(out.Stranded) != 0 {
+		t.Errorf("Stranded = %q; with both anchors kept a rerun finishes, so nothing is stranded", out.Stranded)
+	}
+}
+
+// TestTRU28_WhatFailsAfterTheAnchorsIsStranded: once install.json and
+// install.key are gone a rerun refuses the root, so a planned path that
+// cannot be removed after them -- the binary here -- is stranded, not
+// remaining: it has to be removed by hand.
+func TestTRU28_WhatFailsAfterTheAnchorsIsStranded(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "rashomon")
+	binary := filepath.Join(dir, "bin", "rashomon")
+	// A directory with something in it stands in for a binary that cannot
+	// be removed.
+	writeFiles(t, filepath.Join(root, InstallMeta), filepath.Join(root, InstallKey), filepath.Join(binary, "held"))
+	p, err := Build(root, []string{root}, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := p.Execute()
+	if len(out.Remaining) != 0 {
+		t.Errorf("Remaining = %q; nothing a rerun could reach is left", out.Remaining)
+	}
+	if !slices.Equal(out.Stranded, []string{binary}) {
+		t.Errorf("Stranded = %q, want the binary", out.Stranded)
+	}
+	if _, err := os.Stat(root); err == nil {
+		t.Errorf("the root is still there")
+	}
+}

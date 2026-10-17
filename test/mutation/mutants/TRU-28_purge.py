@@ -5,8 +5,8 @@ m("TRU-28 the anchors are removed first, not last", "internal/purge/purge.go",
   "\tp.Files = append([]string{filepath.Join(root, InstallMeta), filepath.Join(root, InstallKey)}, files...)\n",
   "TestTRU28_")
 m("TRU-28 a path that could not go does not keep the anchors", "internal/purge/purge.go",
-  "\tif failed {\n\t\to.Remaining = append(o.Remaining, anchors...)\n",
-  "\tif false {\n\t\to.Remaining = append(o.Remaining, anchors...)\n",
+  "\tif kept != nil {\n\t\to.Remaining = append(o.Remaining, kept...)\n",
+  "\tif false {\n\t\to.Remaining = append(o.Remaining, kept...)\n",
   "TestTRU28_")
 m("TRU-28 the root is planned for removal while it holds the user's files", "internal/purge/purge.go",
   "\tp.RemoveRoot = len(p.Foreign) == 0\n",
@@ -29,7 +29,7 @@ m("TRU-28 a detached entry opens, and so creates, the purged store", "cmd/rashom
   "\tif false {\n",
   "TestTRU28_")
 m("TRU-28 purge goes ahead under an enabled plugin", "cmd/rashomon/purge.go",
-  "\tif p != nil && p.Enabled && len(p.Events) > 0 {\n",
+  "\tif p != nil && p.Enabled {\n",
   "\tif false {\n",
   "TestTRU28_")
 m("TRU-28 an empty answer is yes", "cmd/rashomon/purge.go",
@@ -51,4 +51,48 @@ m("TRU-28 purge skips its detach", "cmd/rashomon/purge.go",
 m("TRU-28 watch does not record the configuration directory it creates", "cmd/rashomon/main.go",
   "\tcreated, err := missingDirs(root, filepath.Dir(loc.User))\n",
   "\tcreated, err := missingDirs(root)\n",
+  "TestTRU28_")
+m("TRU-28 purge refuses only a plugin whose hooks it can read", "cmd/rashomon/purge.go",
+  "\tif p != nil && p.Enabled {\n",
+  "\tif p != nil && p.Enabled && len(p.Events) > 0 {\n",
+  "TestTRU28_")
+m("TRU-28 a created dir that is now a symlink is planned for removal", "internal/purge/purge.go",
+  "\t\tif dir, err := realDir(d); err == nil && !dir {\n",
+  "\t\tif dir, err := realDir(d); err == nil && !dir && false {\n",
+  "TestTRU28_")
+m("TRU-28 a created dir that became a symlink after the plan is removed", "internal/purge/purge.go",
+  "\tcase !dir:\n",
+  "\tcase !dir && false:\n",
+  "TestTRU28_")
+m("TRU-28 anything at a created_dirs path counts as a directory", "internal/purge/purge.go",
+  "\treturn info.Mode().IsDir(), nil\n",
+  "\treturn info.Mode().IsDir() || true, nil\n",
+  "TestTRU28_")
+m("TRU-28 an empty created dir that cannot go is left as not empty", "internal/purge/purge.go",
+  "\tcase notEmpty(d):\n",
+  "\tcase true:\n",
+  "TestTRU28_")
+m("TRU-28 install.key goes although install.json stays", "internal/purge/purge.go",
+  "\t\tif remove(anchors[0], &o.Removed) == nil {\n",
+  "\t\tif remove(anchors[0], &o.Removed) == nil || true {\n",
+  "TestTRU28_")
+m("TRU-28 a path that fails after the anchors counts as rerunnable", "internal/purge/purge.go",
+  "\t\t\to.Stranded = append(o.Stranded, path)\n",
+  "\t\t\to.Remaining = append(o.Remaining, path)\n",
+  "TestTRU28_")
+m("TRU-28 a stranded path does not fail the purge", "cmd/rashomon/purge.go",
+  "\tcase len(out.Stranded) > 0:\n",
+  "\tcase false:\n",
+  "TestTRU28_")
+m("TRU-28 --binary is not refused on Windows", "cmd/rashomon/purge.go",
+  "\tif goos == \"windows\" {\n\t\treturn fmt.Errorf(\"--binary: on Windows",
+  "\tif false {\n\t\treturn fmt.Errorf(\"--binary: on Windows",
+  "TestTRU28_")
+m("TRU-28 --binary is not refused when the binary's path is unknown", "cmd/rashomon/purge.go",
+  "\tif binary == \"\" {\n",
+  "\tif false {\n",
+  "TestTRU28_")
+m("TRU-28 watch records no created_dirs before its settings write", "cmd/rashomon/main.go",
+  "\tif err := recordCreatedDirs(st.Root(), created); err != nil {\n",
+  "\tif err := recordCreatedDirs(st.Root(), created[:0]); err != nil {\n",
   "TestTRU28_")

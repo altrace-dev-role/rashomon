@@ -53,6 +53,11 @@ func cmdPurge(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if withBinary {
+		if err := refuseBinary(runtime.GOOS, t.binary, t.binaryErr); err != nil {
+			return err
+		}
+	}
 	plan, err := purge.Build(t.root, t.createdDirs, t.binaryIf(withBinary))
 	if err != nil {
 		return fmt.Errorf("reading %s: %w; nothing was removed", t.root, err)
@@ -81,10 +86,21 @@ func cmdPurge(args []string, stdout io.Writer) error {
 	for _, p := range out.Left {
 		fmt.Fprintf(stdout, "rashomon: left %s -- not empty\n", p)
 	}
-	for _, p := range out.Remaining {
-		fmt.Fprintf(stdout, "rashomon: left %s -- could not be removed\n", p)
+	for _, p := range out.NotDir {
+		fmt.Fprintf(stdout, "rashomon: left %s -- no longer a directory watch created (a symlink or a file now)\n", p)
 	}
-	if len(out.Remaining) > 0 {
+	for _, p := range out.Remaining {
+		fmt.Fprintf(stdout, "rashomon: left %s -- still there; a rerun of purge removes it\n", p)
+	}
+	for _, p := range out.Stranded {
+		fmt.Fprintf(stdout, "rashomon: left %s -- could not be removed; remove it with: %s\n", p, removeExisting(p))
+	}
+	switch {
+	case len(out.Stranded) > 0:
+		// install.json is gone, so a rerun would refuse this root.
+		return fmt.Errorf("purge incomplete: %d planned paths remain after the store was removed (listed above, each with its command); "+
+			"rashomon purge cannot reach them now", len(out.Stranded))
+	case len(out.Remaining) > 0:
 		return fmt.Errorf("purge incomplete: %d planned paths remain (listed above); run `rashomon purge` again once whatever holds them has stopped",
 			len(out.Remaining))
 	}
@@ -139,7 +155,7 @@ func resolvePurgeTarget() (purgeTarget, error) {
 	}
 	for _, anchor := range []string{purge.InstallMeta, purge.InstallKey} {
 		if _, err := os.Lstat(filepath.Join(t.root, anchor)); err != nil {
-			return t, fmt.Errorf("%s holds no %s, so it is not a rashomon store; nothing was removed", t.root, anchor)
+			return t, fmt.Errorf("%s holds no %s, so it is not a rashomon store; nothing was removed%s", t.root, anchor, onlyKeyLeft(t.root))
 		}
 	}
 	if t.rec, err = store.ReadInstallRecord(t.root); err != nil {
@@ -203,7 +219,9 @@ func refuseUnderEnabledPlugin(settingsPath string) error {
 	if err != nil {
 		return fmt.Errorf("reading the plugin install: %w; nothing was removed", err)
 	}
-	if p != nil && p.Enabled && len(p.Events) > 0 {
+	// Enabled alone refuses: a plugin whose hooks.json cannot be read here
+	// may still run hooks, and failing open would let one recreate the store.
+	if p != nil && p.Enabled {
 		return fmt.Errorf("the %s plugin is enabled, and its next hook would create the store again; "+
 			"run `/plugin disable %s` in Claude Code first, then purge; nothing was removed", p.Key, p.Key)
 	}
@@ -260,38 +278,97 @@ func printPurgePlan(w io.Writer, t purgeTarget, p purge.Plan, withBinary bool) {
 	}
 	for _, f := range p.Foreign {
 		info, err := os.Lstat(f)
-		fmt.Fprintf(w, "  %s -- not written by rashomon; remove it yourself if it is not wanted: %s\n", f, removeCommand(f, err == nil && info.IsDir()))
+		kind := file
+		if err == nil && info.IsDir() {
+			kind = tree
+		}
+		fmt.Fprintf(w, "  %s -- not written by rashomon; remove it yourself if it is not wanted: %s\n", f, removeCommand(f, kind))
 	}
 	if !p.RemoveRoot {
-		fmt.Fprintf(w, "  %s -- kept, because it holds what is listed above\n", p.Root)
+		fmt.Fprintf(w, "  %s -- kept, because it holds what is listed above; once that is gone: %s\n", p.Root, removeCommand(p.Root, emptyDir))
+	}
+	for _, d := range p.NotDirs {
+		fmt.Fprintf(w, "  %s -- watch created it, but it is no longer a directory (a symlink or a file now); kept\n", d)
 	}
 	for _, d := range t.refusedDirs {
-		fmt.Fprintf(w, "  %s -- install.json names it, but it is not a directory watch creates\n", d)
+		fmt.Fprintf(w, "  %s -- install.json names it, but it is not a directory watch creates; if it is yours to remove: %s\n", d, removeCommand(d, emptyDir))
 	}
 	if !withBinary {
 		if t.binary != "" {
-			fmt.Fprintf(w, "  %s -- the binary, kept without --binary; remove it with: %s\n", t.binary, removeCommand(t.binary, false))
+			fmt.Fprintf(w, "  %s -- the binary, kept without --binary; remove it with: %s\n", t.binary, removeCommand(t.binary, file))
 		} else {
 			fmt.Fprintf(w, "  the rashomon binary -- kept without --binary (its path is not known: %v)\n", t.binaryErr)
 		}
 	}
 }
 
-// removeCommand is the shell command that removes path, a directory and
-// what is in it when dir is set, quoted for the platform's shell.
-func removeCommand(path string, dir bool) string {
-	if runtime.GOOS == "windows" {
+// What a removal command removes: a file, an empty directory, or a
+// directory and everything in it.
+type removeKind int
+
+const (
+	file removeKind = iota
+	emptyDir
+	tree
+)
+
+// removeCommand is the shell command that removes path, quoted for this
+// platform's shell.
+func removeCommand(path string, kind removeKind) string {
+	return removeCommandOn(runtime.GOOS, path, kind)
+}
+
+// removeCommandOn is removeCommand for goos: PowerShell's Remove-Item on
+// Windows, rm or rmdir elsewhere.
+func removeCommandOn(goos, path string, kind removeKind) string {
+	if goos == "windows" {
 		cmd := "Remove-Item "
-		if dir {
+		if kind == tree {
 			cmd += "-Recurse "
 		}
 		return cmd + `"` + strings.ReplaceAll(path, `"`, "`\"") + `"`
 	}
-	cmd := "rm "
-	if dir {
-		cmd += "-r "
-	}
+	cmd := map[removeKind]string{file: "rm ", emptyDir: "rmdir ", tree: "rm -r "}[kind]
 	return cmd + "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+}
+
+// removeExisting is removeCommand for a path purge could not remove: rmdir
+// for a directory, so nothing in it goes unseen, and rm otherwise.
+func removeExisting(path string) string {
+	if info, err := os.Lstat(path); err == nil && info.IsDir() {
+		return removeCommand(path, emptyDir)
+	}
+	return removeCommand(path, file)
+}
+
+// onlyKeyLeft is the tail of the refusal for a root that holds install.key
+// and nothing else -- what a purge stopped between its two anchors leaves.
+// install.key alone does not prove a store, so the root is still refused;
+// this names the commands that finish the job by hand.
+func onlyKeyLeft(root string) string {
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 1 || entries[0].Name() != purge.InstallKey {
+		return ""
+	}
+	key := filepath.Join(root, purge.InstallKey)
+	return fmt.Sprintf(". It holds only %s, which a purge stopped before its last step leaves; remove it with: %s, then %s",
+		purge.InstallKey, removeCommand(key, file), removeCommand(root, emptyDir))
+}
+
+// refuseBinary refuses `purge --binary` where the binary cannot be removed:
+// on Windows a running program cannot delete its own executable, and
+// nowhere can purge remove a binary whose path it does not know. Refused
+// before anything is printed, so the user runs purge without --binary and
+// removes the binary with the command named here.
+func refuseBinary(goos, binary string, binaryErr error) error {
+	if binary == "" {
+		return fmt.Errorf("--binary: the path of the running binary is not known (%v); run `rashomon purge` without --binary; nothing was removed", binaryErr)
+	}
+	if goos == "windows" {
+		return fmt.Errorf("--binary: on Windows a running program cannot remove its own executable; run `rashomon purge` without --binary, "+
+			"then remove it with: %s; nothing was removed", removeCommandOn(goos, binary, file))
+	}
+	return nil
 }
 
 // confirmOnTerminal asks purgePrompt on the controlling terminal -- never on

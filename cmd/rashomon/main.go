@@ -880,6 +880,12 @@ func cmdWatch(stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// Recorded before settings.json is touched (Technical spec 7.2.3 step
+	// 6), so a watch that dies after its edit has still told purge which
+	// directories it made.
+	if err := recordCreatedDirs(st.Root(), created); err != nil {
+		return fmt.Errorf("recording the directories watch created: %w; settings.json was not touched", err)
+	}
 	spec := install.Spec{Executable: exe, InstallID: st.InstallID()}
 
 	var foreign []string
@@ -899,9 +905,13 @@ func cmdWatch(stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := recordWatch(st.Root(), edit, hadOurs, created); err != nil {
-		return fmt.Errorf("the entries are installed, but recording what watch changed failed: %w; "+
-			"detach still removes them, without its byte-for-byte check", err)
+	fault.Inject(fault.PointWatchRecord)
+	err = fault.Fail(fault.PointWatchRecord)
+	if err == nil {
+		err = recordWatch(st.Root(), edit, hadOurs)
+	}
+	if err != nil {
+		return rollBackWatch(stdout, loc.User, edit, st.InstallID(), err)
 	}
 	changed := edit.changed
 	if changed {
@@ -917,12 +927,17 @@ func cmdWatch(stdout io.Writer) error {
 			strings.Join(foreign, ", "))
 	}
 	capProblem(stdout, "rashomon: ")
-	// Printed in full, on its own line, because it is the line that still works
-	// once this binary or the store is gone: the id cannot be read back from a
-	// store that is not there, and there is nowhere else it is written down.
-	fmt.Fprintln(stdout, "rashomon: undo with this line -- it needs no store, and any rashomon binary will do:")
-	fmt.Fprintf(stdout, "rashomon detach --install %s\n", st.InstallID())
+	printUndoLine(stdout, st.InstallID())
 	return nil
+}
+
+// printUndoLine prints the detach line for installID. It is printed in
+// full, on its own line, because it is the line that still works once this
+// binary or the store is gone: the id cannot be read back from a store that
+// is not there, and there is nowhere else it is written down.
+func printUndoLine(stdout io.Writer, installID string) {
+	fmt.Fprintln(stdout, "rashomon: undo with this line -- it needs no store, and any rashomon binary will do:")
+	fmt.Fprintf(stdout, "rashomon detach --install %s\n", installID)
 }
 
 func cmdDetach(args []string, stdout io.Writer) error {
@@ -2066,7 +2081,7 @@ func countOf(n int, noun string) string {
 // its own doc for why this cannot list the directory itself and call
 // baseline.ForgetFile per file the way it once did.
 func clearBaselines(root, raw string) (int, bool, error) {
-	return baseline.ForgetAll(filepath.Join(root, "baseline"), raw)
+	return baseline.ForgetAll(filepath.Join(root, baseline.DirName), raw)
 }
 
 // storeExistsAt asks whether a root holds a store without opening one.

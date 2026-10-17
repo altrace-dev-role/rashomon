@@ -475,3 +475,99 @@ func TestTRU29_PurgeRefusesANonStoreRoot(t *testing.T) {
 		}
 	})
 }
+
+// TestTRU28_PurgeKeepsAConfigDirReplacedByASymlink: watch created
+// ~/.claude, and the user has since moved it into a dotfiles repository and
+// linked it back. created_dirs still names ~/.claude, but it is a link now:
+// purge plans it as left, removes it neither as a link nor through one, and
+// the directory it points at keeps what is in it.
+func TestTRU28_PurgeKeepsAConfigDirReplacedByASymlink(t *testing.T) {
+	e := newPurgeEnv(t)
+	if res := e.watch(); res.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	target := filepath.Join(e.fakeHome, "dotfiles", "claude")
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(e.configDir, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, e.configDir); err != nil {
+		t.Skipf("symlinks are not available here: %v", err)
+	}
+	writeFiles(t, filepath.Join(target, "keep.json"))
+
+	res := e.purge("--yes")
+	if res.exitCode != 0 {
+		t.Fatalf("purge --yes: exit %d\nstdout:\n%s\nstderr: %q", res.exitCode, res.stdout, res.stderr)
+	}
+	if plannedRemovals(t, res.stdout)[e.configDir] {
+		t.Errorf("the plan removes the link %s:\n%s", e.configDir, res.stdout)
+	}
+	if info, err := os.Lstat(e.configDir); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("purge removed the link %s: %v\nstdout:\n%s", e.configDir, err, res.stdout)
+	}
+	if _, err := os.Stat(filepath.Join(target, "keep.json")); err != nil {
+		t.Errorf("the link's target lost its contents: %v", err)
+	}
+}
+
+// TestTRU28_PurgeRefusesAnEnabledPluginWhoseHooksCannotBeRead: an enabled
+// plugin whose hooks.json cannot be read still runs its hooks as far as
+// purge can tell, and its next one would create the store again, so purge
+// refuses it as it refuses any enabled plugin.
+func TestTRU28_PurgeRefusesAnEnabledPluginWhoseHooksCannotBeRead(t *testing.T) {
+	e := newPurgeEnv(t)
+	e.session(t)
+	p := newPluginFixture(t, "rashomon@local")
+	if err := os.Remove(filepath.Join(p.root, "hooks", "hooks.json")); err != nil {
+		t.Fatal(err)
+	}
+	p.installed(t, e)
+	p.enable(t, e, true)
+	before := snapshot(t, e.fakeHome)
+
+	res := e.purge("--yes")
+	if res.exitCode != 1 || !strings.Contains(res.stderr, "/plugin disable rashomon@local") {
+		t.Fatalf("purge under an enabled plugin with no readable hooks: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if d := diffSnapshots(before, snapshot(t, e.fakeHome)); len(d) > 0 {
+		t.Errorf("a refused purge changed HOME:\n  %s", strings.Join(d, "\n  "))
+	}
+}
+
+// writeFiles creates each path, and its parents, holding a line.
+func writeFiles(t *testing.T, paths ...string) {
+	t.Helper()
+	for _, p := range paths {
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("the user's\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestTRU29_ARootLeftHoldingOnlyInstallKeyNamesItsCommand: a purge stopped
+// between removing install.json and install.key leaves a root holding only
+// the key. That root is still refused -- install.key alone does not prove a
+// store -- but the refusal says what is left and the command that removes it.
+func TestTRU29_ARootLeftHoldingOnlyInstallKeyNamesItsCommand(t *testing.T) {
+	e := newPurgeEnv(t)
+	key := filepath.Join(e.home, "install.key")
+	writeFiles(t, key)
+	res := e.purge("--yes")
+	if res.exitCode != 1 {
+		t.Fatalf("purge of a root holding only install.key: exit %d\nstdout:\n%s", res.exitCode, res.stdout)
+	}
+	for _, want := range []string{"holds no install.json", "rm '" + key + "'", "rmdir '" + e.home + "'"} {
+		if !strings.Contains(res.stderr, want) {
+			t.Errorf("the refusal does not say %q: %q", want, res.stderr)
+		}
+	}
+	if _, err := os.Stat(key); err != nil {
+		t.Errorf("a refused purge removed %s: %v", key, err)
+	}
+}
