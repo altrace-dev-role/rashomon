@@ -421,6 +421,16 @@ const (
 	// second field just for this would let a reader check State and miss it.
 	// checkPaused in cmd/rashomon/main.go is the only writer.
 	ReasonRecordingPaused = "recording_paused"
+	// ReasonHookKilled marks a hook entry whose supervised child failed: it
+	// exited non-zero, a signal ended it, or it was still running at its
+	// hard stop and was killed. The supervisor writes it, never the child,
+	// so it says nothing of what the child recorded before it ended; the
+	// session's record for that entry is incomplete.
+	ReasonHookKilled = "hook_killed"
+	// ReasonSupervisorSpawnFailed marks a hook entry whose child could not be
+	// started, so no hook logic ran and nothing of the call was recorded. The
+	// supervisor drained its stdin and printed nothing.
+	ReasonSupervisorSpawnFailed = "supervisor_spawn_failed"
 )
 
 // Reasons lists every coverage reason code a record can carry. It exists so
@@ -439,6 +449,8 @@ func Reasons() []string {
 		ReasonProbeAbsent,
 		ReasonProbeUnresolved,
 		ReasonRecordingPaused,
+		ReasonHookKilled,
+		ReasonSupervisorSpawnFailed,
 	}
 }
 
