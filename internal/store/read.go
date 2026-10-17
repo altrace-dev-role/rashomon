@@ -13,6 +13,9 @@ import (
 
 // maxLine bounds a single record on read. Records are small by construction;
 // the bound is what stops a corrupted file from being read as one giant line.
+// It counts the record's newline: the scanner needs room for the terminator
+// to find it, so the longest record read is maxLine-1 bytes
+// (TestRubricTEST8_StoreLineAtNAndNPlusOne).
 const maxLine = 16 << 20
 
 // Run is everything recorded for one session.

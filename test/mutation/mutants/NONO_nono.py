@@ -111,8 +111,8 @@ m("NONO the predicate does not read the store-level records", "internal/store/ga
   "\t\tif false && json.Unmarshal(line, &r) == nil {",
   "TestForgetHost_AHost|TestSeam_AHostOnlyTheSandboxSaw")
 m("NONO the store-level record holds the hostname", "internal/store/gaps.go",
-  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {",
-  "\tif err := s.recordForgottenHost(s.HostDigest(host)+host, now); err != nil {",
+  "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {",
+  "\tif err := s.recordForgottenHost(s.HostDigest(name)+name, now); err != nil {",
   "TestForgetHost_TheStoreLevelRecordHoldsNoName")
 m("NONO forget --host does not say a no-op forget still holds", "cmd/rashomon/main.go",
   "\tif total == 0 {\n\t\tfmt.Fprint(stdout, \"; later reports", "\tif false {\n\t\tfmt.Fprint(stdout, \"; later reports",
@@ -123,17 +123,25 @@ m("NONO forget --host does not say a no-op forget still holds", "cmd/rashomon/ma
 # github.com:443, https://github.com/ -- forgot nothing while the line said
 # later reports would leave it out.
 m("NONO the store forgets the host as typed", "internal/store/gaps.go",
-  "\thost, ok := canonicalHost(host)\n", "\tok := host != \"\"\n",
+  "\tname, ok := host.Canonical(raw)\n\tif !ok {\n\t\treturn nil, ErrNotAHostname\n\t}\n\truns, err := s.Runs()\n",
+  "\tname, ok := raw, raw != \"\"\n\tif !ok {\n\t\treturn nil, ErrNotAHostname\n\t}\n\truns, err := s.Runs()\n",
   "TestForgetHost_AnySpelling|TestSeam_AnySpelling")
 m("NONO the store forgets a value that is not a hostname", "internal/store/gaps.go",
   "\tif !ok {\n\t\treturn nil, ErrNotAHostname\n\t}\n", "\tif !ok && false {\n\t\treturn nil, ErrNotAHostname\n\t}\n",
   "TestForgetHost_WhatIsNot")
+# Re-anchored when the rubric's lld-4 fix met this one: forget --host takes the
+# value as typed and canonicalises it once, in forgetHost, which still refuses
+# a non-host before anything is opened; the store and the baselines
+# canonicalise again for their library callers, so the store's own refusal
+# would hide a dropped command-line check from the H25 test alone.
 m("NONO forget --host passes the value on as typed", "cmd/rashomon/main.go",
-  "\t\t\ttarget = h\n", "\t\t\ttarget, _ = args[i+1], h\n",
+  "\tname, ok := host.Canonical(raw)\n\tif !ok {\n\t\treturn errors.New(\"--host is not a hostname",
+  "\t_, ok := host.Canonical(raw)\n\tname := raw\n\tif !ok {\n\t\treturn errors.New(\"--host is not a hostname",
   "TestH25_ForgetHostTakesAnySpelling")
 m("NONO forget --host accepts what is not a hostname", "cmd/rashomon/main.go",
-  "\t\t\th, ok := host.Canonical(args[i+1])\n\t\t\tif !ok {", "\t\t\th, ok := host.Canonical(args[i+1])\n\t\t\tif false && !ok {",
-  "TestH25_ForgetHostRefusesWhatIs")
+  "\tname, ok := host.Canonical(raw)\n\tif !ok {\n\t\treturn errors.New(\"--host is not a hostname",
+  "\tname, ok := host.Canonical(raw)\n\tif false && !ok {\n\t\treturn errors.New(\"--host is not a hostname",
+  "TestH25_ForgetHostRefusesWhatIs|TestRubricLLD4_ForgetCommandAsksInTheRecordedSpelling")
 # A client-plane host one of the session's own tool calls named is the
 # agent's attempt (review of #53): filed as the client's, a refused curl to the
 # Datadog log intake left "refused by the sandbox".
@@ -185,24 +193,25 @@ m("NONO a repeat forget appends a second store-level record", "internal/store/ga
 # error paths is swallowed (review of #53): each of these survived every
 # related test.
 m("NONO the store-level forget record lands after the runs", "internal/store/gaps.go",
-  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\tvar gaps []Gap\n\tfor _, name := range names {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\treturn gaps, nil",
-  "\tvar gaps []Gap\n\tfor _, name := range names {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\treturn gaps, nil",
+  "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n\tvar gaps []Gap\n\tfor _, run := range runs {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, run), name, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\treturn gaps, nil",
+  "\tvar gaps []Gap\n\tfor _, run := range runs {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, run), name, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n\treturn gaps, nil",
   "TestForgetHost_AForgetThatFails")
 m("NONO an unreadable store-level forget file reads as nothing forgotten", "internal/store/gaps.go",
   "\ttimes, err := s.forgottenDigestTimes()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(times) == 0 {\n\t\t// A predicate",
   "\ttimes, err := s.forgottenDigestTimes()\n\t_ = err\n\tif len(times) == 0 {\n\t\t// A predicate",
   "TestForgetHost_AnUn")
 m("NONO a forget whose store-level record failed reports success", "internal/store/gaps.go",
-  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n",
-  "\t_ = s.recordForgottenHost(s.HostDigest(host), now)\n",
+  "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n",
+  "\t_ = s.recordForgottenHost(s.HostDigest(name), now)\n",
   "TestForgetHost_AnUn")
 
 # The client-plane rule has one spelling, clientPlaneHost, and every view
 # that asks it of this session calls it (review of #53): the novelty
 # candidates used to restate it. Re-anchored when the proxy era left: the
-# candidates are the declared hosts, a list of names.
+# candidates are the declared hosts, a list of names. Re-anchored again when
+# loopback came to be decided on the parsed address (host.Loopback).
 m("NONO the novelty candidates drop the MCP transport on an MCP session", "internal/report/destinations.go",
-  "\t\tif loopbackHosts[h] || clientPlaneHost(h, mcpAttributed) {", "\t\tif loopbackHosts[h] || clientPlaneHosts[h] {",
+  "\t\tif host.Loopback(h) || clientPlaneHost(h, mcpAttributed) {", "\t\tif host.Loopback(h) || clientPlaneHosts[h] {",
   "TestClientPlane_EveryView")
 m("NONO the session's MCP calls never reach the novelty candidates", "internal/report/destinations.go",
   "madeMCPCall(run)))", "false))",

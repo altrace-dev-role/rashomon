@@ -13,5 +13,5 @@ m("RES-36 a benchmark loses its budget row", "test/perf/budgets.json",
   '    {"name": "BenchmarkDerive/edit_50k", "measured_bytes_per_op": 63464, "measured_allocs_per_op": 28, "bytes_per_op_max": 63464, "allocs_per_op_max": 28},\n',
   '', "TestRES36_")
 m("RES-36 a benchmark row hides a margin above its measurement", "test/perf/budgets.json",
-  '"measured_bytes_per_op": 4624, "measured_allocs_per_op": 71, "bytes_per_op_max": 4624, "allocs_per_op_max": 71}',
-  '"measured_bytes_per_op": 4624, "measured_allocs_per_op": 71, "bytes_per_op_max": 5086, "allocs_per_op_max": 78}', "TestRES36d_")
+  '"measured_bytes_per_op": 2656, "measured_allocs_per_op": 33, "bytes_per_op_max": 2656, "allocs_per_op_max": 33}',
+  '"measured_bytes_per_op": 2656, "measured_allocs_per_op": 33, "bytes_per_op_max": 2921, "allocs_per_op_max": 36}', "TestRES36d_")

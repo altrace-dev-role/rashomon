@@ -18,9 +18,28 @@ import (
 // exhausting memory is a runtime fatal error, which recover cannot catch and
 // which exits 2 -- and exit 2 from a PreToolUse hook blocks the user's tool
 // call. An unbounded read over an attacker-influenced tool_input is therefore
-// a way to turn this recorder into an enforcer, and the limit is what closes
-// it. hookio.Read enforces it; a refusal is recorded as payload_too_large.
+// a way to turn this recorder into an enforcer. hookio.Read enforces the
+// limit; a refusal is recorded as payload_too_large.
+//
+// The limit bounds the bytes read, not the work done on them, and alone it
+// does not close that path: 8 MiB of one-letter words is four million shell
+// words, and lexed whole the shape of that one line allocated 4.5 GB and
+// drove a hook to about 1.07 GB of RSS. Each reader of the line bounds its
+// own work: the shape package stops lexing at its token bound (RES-9), keeps
+// no more continuation offsets than that and reads ssh lines to the same
+// bound, takes a plain word as a slice of the line, and decodes the command
+// once per reader into a buffer of its size (RES-29); the leading-cd fold
+// below stops at maxLeadingCd (RES-10). That is measured, not proved: on the
+// sixteen 8 MiB line shapes TestRES29_ShapeOfEveryPathologicalLineIsBounded
+// reads, no reader allocates more than five times the payload, and the hook
+// entry stays within RES-29's 64 MiB of RSS on each, which
+// cmd/rashomon's TestRES29_PathologicalInputsStayBounded pins (59.5 MiB at
+// most over three runs, the here-document and the substitutions).
 const MaxPayloadBytes = hookio.MaxPayloadBytes
+
+// maxLeadingCd bounds the leading-cd fold in startDirectory: see
+// shape.MaxLeadingCd, whose bound the masked-status walk shares.
+const maxLeadingCd = shape.MaxLeadingCd
 
 // UnattributedSession buckets records for a payload too malformed to name its
 // own session. Losing the run is bad; silently attributing it to a session that
@@ -175,8 +194,15 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 // on /repo and every repeat on /repo/web, although all of them ran in web. A
 // relative target with no directory to resolve it against is not known, and
 // the directory stays empty until an absolute target names one.
+//
+// Past maxLeadingCd steps the directory is not known, and is returned empty,
+// which CWDDigest records as unknown: not the payload's cwd, which the cds
+// moved away from, and not a fold stopped short of where the line ran.
 func startDirectory(cwd, toolName string, toolInput json.RawMessage) string {
 	dirs, _ := shape.LeadingDirectory(toolName, toolInput)
+	if len(dirs) > maxLeadingCd {
+		return ""
+	}
 	for _, dir := range dirs {
 		switch {
 		case filepath.IsAbs(dir):

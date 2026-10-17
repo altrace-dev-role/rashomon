@@ -117,13 +117,13 @@ func benchDeriveInput(tb testing.TB, name string) (json.RawMessage, string) {
 	tb.Helper()
 	switch name {
 	case "bash_short":
-		return benchBashInput(tb, benchShortCommand), digest(benchKey, "Bash", []byte(benchShortCommand))
+		return benchBashInput(tb, benchShortCommand), digest(benchKey, "Bash", benchShortCommand)
 	case "bash_long_4k":
 		long := benchLongCommand()
 		if len(long) != benchLongBytes {
 			tb.Fatalf("bash_long_4k command is %d bytes, want %d", len(long), benchLongBytes)
 		}
-		return benchBashInput(tb, long), digest(benchKey, "Bash", []byte(long))
+		return benchBashInput(tb, long), digest(benchKey, "Bash", long)
 	case "edit_50k":
 		edit := benchEditInput(tb)
 		return edit, canonicalDigest(benchKey, "Edit", edit)
