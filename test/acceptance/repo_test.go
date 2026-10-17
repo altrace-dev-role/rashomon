@@ -186,9 +186,10 @@ func reasonEnum(t *testing.T, defs map[string]any, def string) map[string]bool {
 // checks only what it was told about. This test restores the discovery and
 // compares at the granularity the lookup has: it records the JSON-pointer
 // path of every key named reason or reasons or ending in _reason across the
-// whole schema, and requires that set to equal the four paths above exactly.
-// A new reason key fails here until the comparison reads it and its path is
-// added to reasonVocabularyPaths.
+// whole schema, and requires that set to equal the four paths above exactly,
+// less a reserved path that declares no enum (reservedReasonPaths). A new
+// reason key fails here until the comparison reads it and its path is added
+// to reasonVocabularyPaths.
 //
 // Its only signal is the key's name: a vocabulary published under a key that
 // is not reason-named is invisible to it, as it was to the walk it replaced.
@@ -215,6 +216,19 @@ var reasonVocabularyPaths = map[string]bool{
 	"/$defs/report_reason":              true,
 }
 
+// reservedReasonPaths are reason-named keys of schema 5 that are not reason
+// codes and that no writer fills yet: why an execution's command was stored
+// (differs | declaration_not_in_tail) and why a gate's output went unread.
+// Each is published as a nullable string with no enum, so the schema states
+// no vocabulary the code could disagree with, and the tripwire passes over
+// it only while that holds: the change that adds the enum adds the
+// comparison and moves the path to reasonVocabularyPaths. A reserved path the
+// schema lacks is not missing, since nothing compares it.
+var reservedReasonPaths = map[string]bool{
+	"/$defs/execution/properties/executed_command_reason": true,
+	"/$defs/gate_output/properties/reason":                true,
+}
+
 // reasonVocabularyMismatches returns, sorted, the reason-named paths in schema
 // that reasonVocabularyPaths does not list (unchecked) and the listed paths
 // the schema does not have (missing). It takes the decoded schema rather than
@@ -222,16 +236,17 @@ var reasonVocabularyPaths = map[string]bool{
 func reasonVocabularyMismatches(schema map[string]any) (unchecked, missing []string) {
 	found := map[string]bool{}
 	collectReasonPaths(schema, "", found)
-	for p := range found {
+	for p, vocabulary := range found {
 		if reasonConstraintPaths[p] && declaresNoReason(pointerNode(schema, p)) {
 			continue
 		}
-		if !reasonVocabularyPaths[p] {
-			unchecked = append(unchecked, p)
+		if reasonVocabularyPaths[p] || (reservedReasonPaths[p] && !vocabulary) {
+			continue
 		}
+		unchecked = append(unchecked, p)
 	}
 	for p := range reasonVocabularyPaths {
-		if !found[p] {
+		if _, ok := found[p]; !ok {
 			missing = append(missing, p)
 		}
 	}
@@ -242,7 +257,8 @@ func reasonVocabularyMismatches(schema map[string]any) (unchecked, missing []str
 
 // collectReasonPaths records the JSON-pointer path (RFC 6901) of every object
 // key under node named reason or reasons or ending in _reason, whatever its
-// value, and descends into every object and array. A string that merely
+// value, and descends into every object and array; the path maps to whether
+// the key's value declares an enum anywhere inside it. A string that merely
 // equals "reason" -- an entry in a required list -- is a value, not a key, and
 // is not recorded.
 func collectReasonPaths(node any, path string, into map[string]bool) {
@@ -251,7 +267,7 @@ func collectReasonPaths(node any, path string, into map[string]bool) {
 		for k, child := range v {
 			p := path + "/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(k)
 			if k == "reason" || k == "reasons" || strings.HasSuffix(k, "_reason") {
-				into[p] = true
+				into[p] = declaresEnum(child)
 			}
 			collectReasonPaths(child, p, into)
 		}
@@ -260,6 +276,32 @@ func collectReasonPaths(node any, path string, into map[string]bool) {
 			collectReasonPaths(child, path+"/"+strconv.Itoa(i), into)
 		}
 	}
+}
+
+// declaresEnum reports whether node, or anything inside it, has an enum or a
+// const key: a const is a vocabulary of one value.
+func declaresEnum(node any) bool {
+	switch v := node.(type) {
+	case map[string]any:
+		if _, ok := v["enum"]; ok {
+			return true
+		}
+		if _, ok := v["const"]; ok {
+			return true
+		}
+		for _, child := range v {
+			if declaresEnum(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range v {
+			if declaresEnum(child) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // TestRubricERRORS5_TheReasonTripwireCatchesWhatTheComparisonSkips mutates a copy of
@@ -317,6 +359,14 @@ func TestRubricERRORS5_TheReasonTripwireCatchesWhatTheComparisonSkips(t *testing
 				}}
 			},
 			wantUnchecked: "/$defs/coverage/allOf/0/else/properties/reason",
+		},
+		{
+			name: "a reserved reason key that gains a vocabulary",
+			mutate: func(s map[string]any) {
+				props := schemaObject(t, s, "$defs", "execution", "properties")
+				props["executed_command_reason"] = map[string]any{"type": []any{"string", "null"}, "enum": []any{nil, "differs"}}
+			},
+			wantUnchecked: "/$defs/execution/properties/executed_command_reason",
 		},
 		{
 			name: "a compared vocabulary removed",
