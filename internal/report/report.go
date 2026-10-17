@@ -808,9 +808,12 @@ func RollupCoverage(covs []store.Coverage) CoverageFacts {
 		// carries was never resolved by a probe. Counting it once rendered
 		// "start recorded: yes" beside probe_absent's "no session start was
 		// recorded". Its reason is still added below.
-		paused := c.Reason != nil && *c.Reason == store.ReasonRecordingPaused
+		//
+		// The supervisor's records for a probe whose child failed or never
+		// started say the same thing -- the probe did not finish -- and are
+		// skipped the same way.
 		switch {
-		case paused:
+		case notAProbeRun(c):
 		case c.Phase == store.PhaseStart:
 			f.StartRecorded = true
 			f.HookEntryAtStart = c.HookEntry
@@ -824,6 +827,20 @@ func RollupCoverage(covs []store.Coverage) CoverageFacts {
 		}
 	}
 	return f
+}
+
+// notAProbeRun reports whether a coverage record of the start or end phase
+// says its probe did not run to the end: it ran while recording was paused,
+// or the supervisor wrote it for a child that failed or never started.
+func notAProbeRun(c store.Coverage) bool {
+	if c.Reason == nil {
+		return false
+	}
+	switch *c.Reason {
+	case store.ReasonRecordingPaused, store.ReasonHookKilled, store.ReasonSupervisorSpawnFailed:
+		return true
+	}
+	return false
 }
 
 func (c *Coverage) add(reason string) {
