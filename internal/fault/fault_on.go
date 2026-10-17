@@ -34,9 +34,9 @@ const EnvVar = "RASHOMON_FAULT"
 // Emit writes an answer to stdout, as an entry that answers the agent does:
 // "emit" one systemMessage object, "emit=junk" a line that is not JSON.
 //
-// Hang holds the process open, until a SIGTERM arrives or a bound expires, so
-// that the signal paths can be exercised: "hang" waits ten seconds, "hang=N"
-// waits N.
+// Hang holds the process open, until a signal the hook entries catch arrives
+// or a bound expires, so that the signal paths can be exercised: "hang"
+// waits ten seconds, "hang=N" waits N.
 //
 // FailN is the exception the package comment names: "fail=N" makes the first N
 // calls at the selected point return ErrInjected, through Fail. It is here for
@@ -193,9 +193,10 @@ func hang(kind string) {
 	}
 
 	// Notified alongside main's own handler: both channels receive the signal,
-	// so main still sees the cancellation once this returns.
+	// so main still sees the cancellation once this returns. Every signal
+	// hook.WatchSignals catches ends it, as one would end a blocked call.
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, os.Interrupt)
+	signal.Notify(sig, syscall.SIGTERM, os.Interrupt, syscall.SIGHUP, syscall.SIGQUIT)
 	defer signal.Stop(sig)
 
 	select {
