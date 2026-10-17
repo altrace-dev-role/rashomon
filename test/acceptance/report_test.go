@@ -124,34 +124,6 @@ func TestReport_JSONFormIsUnchanged(t *testing.T) {
 	}
 }
 
-// reportJSON runs `report --json` with extra environment and decodes it whole.
-func reportJSON(t *testing.T, e *env, extra []string, args ...string) map[string]any {
-	t.Helper()
-	res := e.run("", extra, append([]string{"report", "--json"}, args...)...)
-	if res.exitCode != 0 {
-		t.Fatalf("report --json %v: exit %d, stderr %q", args, res.exitCode, res.stderr)
-	}
-	var doc map[string]any
-	if err := json.Unmarshal([]byte(res.stdout), &doc); err != nil {
-		t.Fatalf("report --json is not JSON: %v\n%s", err, res.stdout)
-	}
-	return doc
-}
-
-// sessionField returns one object field of a decoded report's only session.
-func sessionField(t *testing.T, doc map[string]any, field string) map[string]any {
-	t.Helper()
-	sessions, _ := doc["sessions"].([]any)
-	if len(sessions) != 1 {
-		t.Fatalf("report holds %d sessions, want 1", len(sessions))
-	}
-	v, _ := sessions[0].(map[string]any)[field].(map[string]any)
-	if v == nil {
-		t.Fatalf("the session has no %q object", field)
-	}
-	return v
-}
-
 // fieldLine reads the value of a "label: value" line from the text form.
 func fieldLine(t *testing.T, text, label string) string {
 	t.Helper()

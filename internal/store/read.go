@@ -110,8 +110,10 @@ func (s *Store) ReadRunDir(name string) (*Run, error) {
 //
 // budget is deliberately NOT lockBudget (2s): that number bounds how long a
 // WRITER may starve a hook's own record, and a reader borrowing it could stall
-// for two seconds on every call, which is the opposite of a command with a
-// 50ms ceiling. A lock this reader cannot get within budget is not fatal --
+// for two seconds on every call -- several times what the whole turn digest
+// costs to build (about 50 ms at 3,500 recorded calls and 300 ms at 20,000,
+// BenchmarkBuild in internal/digest). A lock this reader cannot get within
+// budget is not fatal --
 // the read proceeds without it, exactly as ReadRunDir always has, and a line
 // actually caught mid-write still lands in Skipped rather than being counted
 // as something it is not.

@@ -18,7 +18,7 @@ func TestAccounting_AReadableTranscriptRendersEveryEmptyListAsNone(t *testing.T)
 	path := writeTranscriptBlocks(t, []blk{
 		{Type: "tool_result", ToolUseID: "toolu_ran", Content: "ok"},
 	})
-	sess := build(&store.Run{
+	sess := buildFromDisk(&store.Run{
 		Declarations: []store.Declaration{
 			{ToolUseID: "toolu_ran", ToolName: "Bash", SessionID: "s", TranscriptPath: path},
 		},

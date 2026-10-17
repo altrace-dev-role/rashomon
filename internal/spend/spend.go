@@ -78,14 +78,19 @@ type Cost struct {
 // Known reports whether every response behind this cost was priced.
 func (c Cost) Known() bool { return c.Unpriced == 0 }
 
-// Wholly reports whether there is a priced part to show at all. A cost with
-// no responses behind it is a known zero, which is a fact and shown as one.
-func (c Cost) Wholly() bool { return c.Priced > 0 || c.Unpriced == 0 }
+// WhollyUnpriced reports whether responses stand behind this cost and none of
+// them was priced: there is no priced part to show at all. A partly priced
+// cost is not, and neither is a cost with no responses behind it, which is a
+// known zero -- a fact, and shown as one.
+func (c Cost) WhollyUnpriced() bool { return c.Priced == 0 && c.Unpriced > 0 }
 
-func (c *Cost) addPriced(nano int64) { c.Nano += nano; c.Priced++ }
-func (c *Cost) addUnpriced(tokens int64) {
+// addPriced and addUnpriced take the typed amounts price makes, so neither
+// can be handed the other's (nanoUSD); the exported fields stay int64, the
+// JSON's own representation.
+func (c *Cost) addPriced(nano nanoUSD) { c.Nano += int64(nano); c.Priced++ }
+func (c *Cost) addUnpriced(tokens tokenCount) {
 	c.Unpriced++
-	c.UnpricedTokens += tokens
+	c.UnpricedTokens += int64(tokens)
 }
 
 func (c *Cost) addCost(o Cost) {
@@ -111,7 +116,7 @@ func (c Cost) MarshalJSON() ([]byte, error) {
 // usdOrNull is the usd a cost marshals: its priced part, or null when it has
 // none and an unpriced part.
 func (c Cost) usdOrNull() *float64 {
-	if !c.Wholly() {
+	if c.WhollyUnpriced() {
 		return nil
 	}
 	v := c.USD()
@@ -358,43 +363,6 @@ const SavingSilentFailure = "silently_failed_turns"
 // refused.
 const ModelNotRecorded = "not_recorded"
 
-// priced is a response's cost broken down by kind, or ok=false for a model
-// the table does not know.
-type priced struct {
-	input, output, cacheWrite, cacheRead int64
-	ok                                   bool
-}
-
-func (p priced) total() int64 { return p.input + p.output + p.cacheWrite + p.cacheRead }
-
-// price prices a response at its model's rates.
-func price(r *Response) priced {
-	key, ok := PriceKey(r.Model)
-	if !ok {
-		return priced{}
-	}
-	rt, _ := RatesFor(key)
-	t := r.Tokens
-	return priced{
-		input:      t.Input * rt.Input,
-		output:     t.Output * rt.Output,
-		cacheWrite: t.CacheWrite5m*rt.CacheWrite5m() + t.CacheWrite1h*rt.CacheWrite1h(),
-		cacheRead:  t.CacheRead * rt.CacheRead,
-		ok:         true,
-	}
-}
-
-// costOf adds one response to c: its priced total, or an unpriced mark
-// carrying its tokens.
-func costOf(c *Cost, r *Response) {
-	p := price(r)
-	if p.ok {
-		c.addPriced(p.total())
-		return
-	}
-	c.addUnpriced(r.Tokens.Total())
-}
-
 // displayModel is how a model is named in the output.
 //
 // A priced model is named by its table key, which is closed vocabulary. An
@@ -544,11 +512,10 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 			s.CacheExpiry.Tokens += w.CacheWrite5m + w.CacheWrite1h
 			s.CacheExpiry.Tokens5m += w.CacheWrite5m
 			s.CacheExpiry.Tokens1h += w.CacheWrite1h
-			if key, ok := PriceKey(r.Model); ok && !r.costUnknown {
-				rt, _ := RatesFor(key)
-				s.CacheExpiry.Cost.addPriced(w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead))
+			if nano, toks, ok := priceColdWrites(r, w); ok {
+				s.CacheExpiry.Cost.addPriced(nano)
 			} else {
-				s.CacheExpiry.Cost.addUnpriced(w.CacheWrite5m + w.CacheWrite1h)
+				s.CacheExpiry.Cost.addUnpriced(toks)
 			}
 		}
 		s.ExtraAttempts.add(r)
@@ -595,20 +562,20 @@ func Build(sc *Scan, now time.Time, days int) *Summary {
 		costOf(&m.Cost, r)
 
 		p := price(r)
-		kind := func(c *Cost, nano, toks int64) {
-			if toks == 0 {
+		kind := func(c *Cost, k kindCost) {
+			if k.tokens == 0 {
 				return
 			}
 			if p.ok {
-				c.addPriced(nano)
+				c.addPriced(k.nano)
 			} else {
-				c.addUnpriced(toks)
+				c.addUnpriced(k.tokens)
 			}
 		}
-		kind(&s.ByKind.Input, p.input, r.Tokens.Input)
-		kind(&s.ByKind.Output, p.output, r.Tokens.Output)
-		kind(&s.ByKind.CacheWrite, p.cacheWrite, r.Tokens.CacheWrite5m+r.Tokens.CacheWrite1h)
-		kind(&s.ByKind.CacheRead, p.cacheRead, r.Tokens.CacheRead)
+		kind(&s.ByKind.Input, p.input)
+		kind(&s.ByKind.Output, p.output)
+		kind(&s.ByKind.CacheWrite, p.cacheWrite)
+		kind(&s.ByKind.CacheRead, p.cacheRead)
 
 		if r.StopReason == "refusal" {
 			s.Refusals.Responses++

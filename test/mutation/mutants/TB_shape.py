@@ -103,9 +103,9 @@ m("TB the session block drops the limit", "internal/report/text.go",
   "TestTestRuns_|TestTestBending_")
 m("TB the session block is never rendered", "internal/report/text.go",
   "\twriteTestRuns(b, sess.TestRuns, sess.SessionID)\n", "\t_ = writeTestRuns\n", "TestTestBending_")
-m("TB the report never builds the test runs", "internal/report/report.go",
-  "\t\tsess.TestRuns = buildTestRuns(run, executed, denied, tb)\n",
-  "\t\t_ = buildTestRuns\n",
+m("TB the report never builds the test runs", "internal/report/assemble.go",
+  "\tsess.TestRuns = buildTestRuns(run, executed, denied, tb)\n",
+  "\t_ = buildTestRuns\n",
   "TestTestBending_")
 
 m("TB the digest keeps another turn's tests-only pair", "internal/digest/digest.go",
@@ -381,9 +381,9 @@ m("TB GoogleTest suffixes are folded", "internal/shape/label.go",
   "\t\t\t\"_spec.rb\", \"_test.cc\",\n",
   "TestLabelTestFile")
 
-m("TB the report's timeline is built without the patterns", "internal/report/report.go",
-  "\t\tsess.Timeline = timelineFrom(run, executed, denied, tb)\n",
-  "\t\tsess.Timeline = timelineFrom(run, executed, denied, TestBending{})\n",
+m("TB the report's timeline is built without the patterns", "internal/report/assemble.go",
+  "\tsess.Timeline = timelineFrom(run, executed, denied, tb)\n",
+  "\tsess.Timeline = timelineFrom(run, executed, denied, TestBending{})\n",
   "TestTestBending_|TestTimeline")
 
 m("TB the test runs drop the patterns they were given", "internal/report/testbending.go",

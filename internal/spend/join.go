@@ -3,6 +3,7 @@ package spend
 import (
 	"encoding/json"
 	"math"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -392,7 +393,7 @@ func (s *Summary) Join(st *store.Store) error {
 		byFile := make([]map[string]report.TurnFinal, len(mains))
 		for k, p := range mains {
 			if _, ok := finals[p]; !ok {
-				finals[p] = report.FinalAssistantTexts(p, want)
+				finals[p] = finalTextsOfFile(p, want)
 			}
 			byFile[k] = finals[p]
 		}
@@ -706,4 +707,17 @@ func (s *Summary) mayHaveCalled() map[string]bool {
 		}
 	}
 	return out
+}
+
+// finalTextsOfFile opens a main transcript and reads its turns' final words
+// with report.FinalAssistantTexts, which reads and opens nothing itself. A
+// file that cannot be opened has no turn's words, as one that cannot be read
+// to the end has none.
+func finalTextsOfFile(path string, want map[string]bool) map[string]report.TurnFinal {
+	f, err := os.Open(path)
+	if err != nil {
+		return map[string]report.TurnFinal{}
+	}
+	defer f.Close() //nolint:errcheck // read-only
+	return report.FinalAssistantTexts(f, want)
 }

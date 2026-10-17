@@ -122,6 +122,8 @@ type Paragraph struct {
 // row is one rendered line of `rashomon disclose`: the section it sits in,
 // its key, its value and the inventory row or file it was read from, so that
 // a reader can check any line against its source.
+//
+//lint:ignore U1000 a 1.2.0 contract stub (c19f43f); the disclose track renders it.
 type row struct {
 	Section string `json:"section"`
 	Key     string `json:"key"`

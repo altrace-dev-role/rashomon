@@ -7,6 +7,11 @@ import (
 	"os/exec"
 )
 
+// Reaper is never built here: NewReaper always returns ErrUnavailable. The
+// unix build's Reaper (peakrss_unix.go) carries the built binary's path;
+// this platform never builds one.
+type Reaper struct{}
+
 // NewReaper returns ErrUnavailable: this platform's process state carries no
 // ru_maxrss.
 func NewReaper(string) (*Reaper, error) { return nil, ErrUnavailable }

@@ -45,7 +45,7 @@ func ptrStr(s string) *string { return &s }
 func TestAccount_QuotesTheLastAssistantMessage(t *testing.T) {
 	path := transcript(t, "Starting on the task now.", "All done.")
 
-	a := buildAccount(runWithTranscript(path))
+	a := accountFromDisk(runWithTranscript(path))
 
 	if !a.Available {
 		t.Fatal("account not available although the transcript has assistant messages")
@@ -63,7 +63,7 @@ func TestAccount_QuotesTheLastAssistantMessage(t *testing.T) {
 // renders a replacement character.
 func TestAccount_TruncatesInRunesNotBytes(t *testing.T) {
 	long := strings.Repeat("é", accountLimit+50)
-	a := buildAccount(runWithTranscript(transcript(t, long)))
+	a := accountFromDisk(runWithTranscript(transcript(t, long)))
 
 	if !a.Truncated {
 		t.Fatal("a long message was not marked truncated")
@@ -81,7 +81,7 @@ func TestAccount_TruncatesInRunesNotBytes(t *testing.T) {
 // problem from a finding. An agent that said nothing and a transcript that
 // could not be read are different facts.
 func TestAccount_UnreadableTranscriptIsUnknownNotEmpty(t *testing.T) {
-	a := buildAccount(runWithTranscript(filepath.Join(t.TempDir(), "absent.jsonl")))
+	a := accountFromDisk(runWithTranscript(filepath.Join(t.TempDir(), "absent.jsonl")))
 
 	if a.Available {
 		t.Error("available = true for a transcript that does not exist")
@@ -102,7 +102,7 @@ func TestAccount_IgnoresThinkingBlocks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	a := buildAccount(runWithTranscript(path))
+	a := accountFromDisk(runWithTranscript(path))
 	if a.Text != "Done." {
 		t.Errorf("text = %q, want only the text block", a.Text)
 	}
@@ -175,7 +175,7 @@ func TestSilentFailures_FireOnFailuresAndAnUnacknowledgingSummary(t *testing.T) 
 		store.Execution{ToolUseID: "x2", Outcome: store.ExecFailed},
 		store.Execution{ToolUseID: "x3", Outcome: store.ExecOK},
 	)
-	acct := buildAccount(run)
+	acct := accountFromDisk(run)
 
 	sf := BuildSilentFailures(run, acct)
 
@@ -213,7 +213,7 @@ func TestSilentFailures_DoNotFireWhenTheSummaryAcknowledges(t *testing.T) {
 		path := transcript(t, summary)
 		run := runWithTranscript(path, store.Execution{ToolUseID: "x1", Outcome: store.ExecFailed})
 
-		sf := BuildSilentFailures(run, buildAccount(run))
+		sf := BuildSilentFailures(run, accountFromDisk(run))
 		if sf.Fires {
 			t.Errorf("fired on a summary that acknowledges failure: %q", summary)
 		}
@@ -226,7 +226,7 @@ func TestSilentFailures_DoNotFireWithoutFailures(t *testing.T) {
 	path := transcript(t, "All done.")
 	run := runWithTranscript(path, store.Execution{ToolUseID: "x1", Outcome: store.ExecOK})
 
-	sf := BuildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, accountFromDisk(run))
 	if sf.Fires {
 		t.Error("fired with zero failed calls")
 	}
@@ -242,7 +242,7 @@ func TestSilentFailures_InterruptIsNotAFailure(t *testing.T) {
 	path := transcript(t, "All done.")
 	run := runWithTranscript(path, store.Execution{ToolUseID: "x1", Outcome: store.ExecInterrupted})
 
-	sf := BuildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, accountFromDisk(run))
 	if sf.Failed != 0 {
 		t.Errorf("failed = %d, want 0: an interrupt is the user's action", sf.Failed)
 	}
@@ -257,7 +257,7 @@ func TestSilentFailures_UnobservedOutcomeIsCountedSeparately(t *testing.T) {
 	path := transcript(t, "All done.")
 	run := runWithTranscript(path, store.Execution{ToolUseID: "x1"})
 
-	sf := BuildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, accountFromDisk(run))
 	if sf.Unobserved != 1 {
 		t.Errorf("unobserved = %d, want 1", sf.Unobserved)
 	}
@@ -278,7 +278,7 @@ func TestSilentFailures_ABackgroundedCallIsUnobserved(t *testing.T) {
 	path := transcript(t, "All done.")
 	run := runWithTranscript(path, store.Execution{ToolUseID: "x1", Outcome: store.ExecOK, Backgrounded: true})
 
-	sf := BuildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, accountFromDisk(run))
 	if sf.Unobserved != 1 || sf.Failed != 0 {
 		t.Errorf("unobserved/failed = %d/%d, want 1/0: a backgrounded call's ending was not recorded", sf.Unobserved, sf.Failed)
 	}
@@ -321,7 +321,7 @@ func TestSilentFailures_DoNotFireWithoutASummary(t *testing.T) {
 	run := runWithTranscript(filepath.Join(t.TempDir(), "absent.jsonl"),
 		store.Execution{ToolUseID: "x1", Outcome: store.ExecFailed})
 
-	sf := BuildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, accountFromDisk(run))
 	if sf.Fires {
 		t.Error("fired although no final message could be read")
 	}
@@ -362,7 +362,7 @@ func TestSilentFailures_ReadTheWholeMessageNotTheQuotedSample(t *testing.T) {
 	run := runWithTranscript(path, store.Execution{
 		ToolUseID: "toolu_1", Outcome: store.ExecFailed,
 	})
-	acct := buildAccount(run)
+	acct := accountFromDisk(run)
 
 	sf := BuildSilentFailures(run, acct)
 
@@ -392,7 +392,7 @@ func TestSilentFailures_StillFireOnAWholeMessageThatAcknowledgesNothing(t *testi
 		ToolUseID: "toolu_1", Outcome: store.ExecFailed,
 	})
 
-	sf := BuildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, accountFromDisk(run))
 
 	if !sf.Fires {
 		t.Error("a long summary acknowledging nothing did not fire the line")
@@ -413,7 +413,7 @@ func TestSilentFailures_AFailedLookupAloneDoesNotFire(t *testing.T) {
 		path := transcript(t, "All done.")
 		run := runWithTranscript(path, store.Execution{ToolUseID: "x1", ToolName: tool, Outcome: store.ExecFailed})
 
-		sf := BuildSilentFailures(run, buildAccount(run))
+		sf := BuildSilentFailures(run, accountFromDisk(run))
 		if sf.Fires {
 			t.Errorf("%s: a failed lookup alone fired the line", tool)
 		}
@@ -433,7 +433,7 @@ func TestSilentFailures_AFailureOfAnyOtherToolStillFires(t *testing.T) {
 		path := transcript(t, "All done.")
 		run := runWithTranscript(path, store.Execution{ToolUseID: "x1", ToolName: tool, Outcome: store.ExecFailed})
 
-		sf := BuildSilentFailures(run, buildAccount(run))
+		sf := BuildSilentFailures(run, accountFromDisk(run))
 		if !sf.Fires || sf.FailedLookups != 0 {
 			t.Errorf("%q: fires=%v failed_lookups=%d, want true and 0", tool, sf.Fires, sf.FailedLookups)
 		}
@@ -452,7 +452,7 @@ func TestSilentFailures_ALookupBesideAnotherFailureIsNotCounted(t *testing.T) {
 		store.Execution{ToolUseID: "x3", ToolName: "Grep", Outcome: store.ExecFailed},
 	)
 
-	sf := BuildSilentFailures(run, buildAccount(run))
+	sf := BuildSilentFailures(run, accountFromDisk(run))
 	if !sf.Fires {
 		t.Error("a failed Bash call beside failed lookups did not fire")
 	}

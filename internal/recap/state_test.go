@@ -140,7 +140,9 @@ func TestRecordFailureMarksUnhealthy(t *testing.T) {
 	markInstalled(t, root)
 	now := time.Now()
 
-	RecordFailure(root, now)
+	if err := RecordFailure(root, now); err != nil {
+		t.Fatal(err)
+	}
 
 	evaluated, _, healthy, err := Status(root)
 	if err != nil {

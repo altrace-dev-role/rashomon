@@ -27,6 +27,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/report"
+	"github.com/altrace-dev-role/rashomon/internal/report/gather"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spend"
@@ -289,8 +290,9 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 // TIME budget is the only option that is both always-correct on the healthy
 // path and incapable of wedging the turn on a broken one. Three seconds
 // leaves a wide margin inside the entry's own 10-second timeout
-// (install.RecapTimeout) even after the ~120ms this command's own work can
-// cost at several thousand records (the spec's Measurements taken).
+// (install.RecapTimeout) even after this command's own work, which
+// digest.BenchmarkBuild measures at about 50 ms for a 3,500-call session and
+// 300 ms for a 20,000-call one (Apple M3, measured 2026-10-13).
 const recapStdinTimeout = 3 * time.Second
 
 // recapPayload is the slice of the Stop/StopFailure hook payload this command
@@ -315,12 +317,20 @@ type recapPayload struct {
 //
 // safe.Go, not a bare `go`: a panic on this goroutine cannot be recovered by
 // its caller (internal/safe's own doc), and this command's entire contract
-// is that it never produces a non-zero exit -- see cmdRecap. The result
-// travels over a buffered channel rather than a variable the goroutine
-// writes into directly, so there is nothing left to race once the timeout
-// fires, this function has returned, and the abandoned goroutine is still
-// blocked in Read: it can only ever send into a channel nothing is
-// receiving from any more, once, and then it is done.
+// is that it never produces a non-zero exit -- see cmdRecap.
+//
+// THE READER CAN OUTLIVE THIS CALL, AND IS ONLY BOUNDED BY THE PROCESS. When
+// the timeout fires first, the goroutine is still blocked in Read, and
+// nothing here can unblock it: a Read on a blocking pipe takes no deadline
+// and cannot be cancelled. It lives until stdin delivers or closes, which for
+// a pipe Claude Code never closes is until this process exits -- moments
+// later, since cmdRecap is the whole of a short-lived hook process and calls
+// this once. So call it only from such a process, once: a long-lived caller
+// would keep one goroutine and its read buffer per stalled call. The result
+// travels over a channel with room for it, never a variable the goroutine
+// writes into, so once Read returns the goroutine sends without a receiver
+// and ends (TestRubricCONC7_AbandonedStdinReadEndsWhenTheReadReturns); an
+// unbuffered channel would hold it on that send for good.
 func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
 	type parsed struct {
 		payload recapPayload
@@ -396,7 +406,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			// install.key or install.json -- is exactly H-93's second case.
 			// Unlike ErrNoStore, root DOES already hold a store here, so the
 			// failure is recorded where status can show it.
-			recap.RecordFailure(root, now)
+			recap.RecordFailure(root, now) //nolint:errcheck // bookkeeping, never a hook error (recap.Claim)
 			return nil
 		}
 		if standsDown(args, st, stderr) {
@@ -409,7 +419,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			// Claude Code's session id any other way than being told it.
 			newest, _, nerr := st.NewestRun()
 			if nerr != nil {
-				recap.RecordFailure(root, now)
+				recap.RecordFailure(root, now) //nolint:errcheck // bookkeeping, never a hook error (recap.Claim)
 				return nil
 			}
 			if newest == "" {
@@ -433,7 +443,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		d, derr := digest.Build(st, sessionID, "", lastMessage, now)
 		if derr != nil {
-			recap.RecordFailure(root, now)
+			recap.RecordFailure(root, now) //nolint:errcheck // bookkeeping, never a hook error (recap.Claim)
 			return nil
 		}
 		if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
@@ -612,23 +622,14 @@ func reportOrEmpty(sessionID, nonoTrail string, now time.Time) (*report.Report, 
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := []report.Option{report.WithNonoTrail(nonoTrail)}
+	opts := []gather.Option{gather.WithNonoTrail(nonoTrail)}
 	key := st.Key()
 
-	rep, err := report.Build(st, sessionID, now, opts...)
+	rep, err := gather.Build(st, sessionID, now, opts...)
 	if err != nil {
 		return nil, nil, err
 	}
 	return rep, key, nil
-}
-
-// storeKey is the install key, or nil when there is no store to read it from.
-func storeKey() []byte {
-	st, err := openStoreForRead()
-	if err != nil {
-		return nil
-	}
-	return st.Key()
 }
 
 // openStoreForRead opens the store without creating one, and reports

@@ -11,10 +11,10 @@ m("SP the first line of a response is kept, not the completed one", "internal/sp
 m("SP a response starts at its latest line, not its earliest", "internal/spend/scan.go",
   "\tif cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS < prev.StartMS) {",
   "\tif cand.StartMS != 0 && (prev.StartMS == 0 || cand.StartMS > prev.StartMS) {", "TestDedupe_TheCompletedLine")
-m("SP the transcript line decodes message.content", "internal/spend/scan.go",
+m("SP the transcript line decodes message.content", "internal/spend/line.go",
   "\tModel       string       `json:\"model\"`\n", "\tModel       string       `json:\"model\"`\n\tContent     json.RawMessage `json:\"content\"`\n",
   "TestContentHasNoFieldToLandIn")
-IMPORTS["SP the transcript line decodes message.content"] = ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n')
+IMPORTS["SP the transcript line decodes message.content"] = ("internal/spend/line.go", 'import "strings"\n', 'import (\n\t"encoding/json"\n\t"strings"\n)\n')
 m("SP the --days window is ignored", "internal/spend/spend.go",
   "r.StartMS == 0 || r.StartMS < s.FromUnixMS {", "r.StartMS == 0 {", "TestWindow_")
 m("SP an undated response is dropped without being counted", "internal/spend/scan.go",
@@ -39,14 +39,14 @@ m("SP a 1h cache write is priced as a 5m one", "internal/spend/price.go",
   "return r.Input * 2 }", "return r.Input * 5 / 4 }", "TestPricing_")
 m("SP Fable 5.1's cache read is 0.1x input, not the table's 0.25", "internal/spend/price.go",
   "\t\"claude-fable-5-1\": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},", "\t\"claude-fable-5-1\": {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},", "TestPricing_TheTable")
-m("SP an unsplit cache write is priced at the 1h rate", "internal/spend/scan.go",
+m("SP an unsplit cache write is priced at the 1h rate", "internal/spend/line.go",
   "\t\tout.CacheWrite5m += rest", "\t\tout.CacheWrite1h += rest", "TestPricing_CacheWrites")
-m("SP an unknown model is priced at $0", "internal/spend/spend.go",
-  "\tc.addUnpriced(r.Tokens.Total())\n", "\tc.addPriced(0)\n", "TestUnknownModel_")
+m("SP an unknown model is priced at $0", "internal/spend/amounts.go",
+  "\tc.addUnpriced(p.tokens())\n", "\tc.addPriced(0)\n", "TestUnknownModel_")
 m("SP an unpriced total marshals as usd 0 instead of null", "internal/spend/spend.go",
-  "\tif !c.Wholly() {\n\t\treturn nil\n", "\tif false {\n\t\treturn nil\n", "TestUnknownModel_IsUnknown")
+  "\tif c.WhollyUnpriced() {\n\t\treturn nil\n", "\tif false {\n\t\treturn nil\n", "TestUnknownModel_IsUnknown")
 m("SP an unpriced total is headlined as a dollar figure", "internal/spend/text.go",
-  "\tif !c.Wholly() {\n\t\treturn fmt.Sprintf(\"cost unknown (", "\tif false {\n\t\treturn fmt.Sprintf(\"cost unknown (",
+  "\tif c.WhollyUnpriced() {\n\t\treturn fmt.Sprintf(\"cost unknown (", "\tif false {\n\t\treturn fmt.Sprintf(\"cost unknown (",
   "TestUnknownModel_IsUnknown")
 m("SP a non-claude model id is printed verbatim", "internal/spend/spend.go",
   "\treturn \"other\", false", "\treturn model, false", "TestUnknownModel_ANonClaude")
@@ -99,7 +99,7 @@ m("SP a subagent response under another conversation's transcript is priced into
 m("SP a subagent response's prompt is not read from its own transcript", "internal/spend/scan.go",
   "\t\t\tcand.prompt = prompt", "\t\t\tcand.prompt = prompt[:0]", "TestJoin_SpendInside")
 m("SP a subagent transcript's user lines are skipped before their promptId is read", "internal/spend/scan.go",
-  "\t\tif !usageLine && !f.Subagent {", "\t\tif !usageLine {",
+  "\t\tif !mayCarry && !f.Subagent {", "\t\tif !mayCarry {",
   "TestJoin_SpendInside")
 m("SP a subagent user line with no promptId does not end the tie", "internal/spend/scan.go",
   "\t\t\t} else if !l.IsMeta {\n\t\t\t\tprompt = \"\"", "\t\t\t} else if false {\n\t\t\t\tprompt = \"\"",
@@ -111,7 +111,7 @@ m("SP a subagent line that does not decode keeps the tie", "internal/spend/scan.
   "\t\t\tprompt = \"\"\n\t\t\tcontinue\n\t\t}", "\t\t\tcontinue\n\t\t}",
   "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
 m("SP a subagent user line that does not decode is counted as unparsed usage", "internal/spend/scan.go",
-  "\t\t\tif usageLine {\n\t\t\t\tsc.Unparsed++", "\t\t\tif true {\n\t\t\t\tsc.Unparsed++",
+  "\t\t\tif bytes.Contains(raw, usageMarker) {\n\t\t\t\tsc.Unparsed++", "\t\t\tif bytes.Contains(raw, usageMarker) || true {\n\t\t\t\tsc.Unparsed++",
   "TestUnparsed_")
 m("SP a failed turn with no words to judge goes uncounted", "internal/spend/join.go",
   "\t\tif !sf.FinalMessageAvailable {\n\t\t\tj.Unjudged++", "\t\tif !sf.FinalMessageAvailable {\n\t\t\t_ = sf",
@@ -235,15 +235,15 @@ m("SP a session folder that cannot be read is not counted", "internal/spend/scan
 m("SP folders that could not be read are not said", "internal/spend/text.go",
   "\tif s.Read.UnreadableDirs > 0 {", "\tif false {", "TestDiscover_AnUnreadableFolder")
 m("SP a usage line that does not decode is dropped without a count", "internal/spend/scan.go",
-  "\t\t\tif usageLine {\n\t\t\t\tsc.Unparsed++", "\t\t\tif usageLine {\n\t\t\t\t_ = sc",
+  "\t\t\tif bytes.Contains(raw, usageMarker) {\n\t\t\t\tsc.Unparsed++", "\t\t\tif bytes.Contains(raw, usageMarker) {\n\t\t\t\t_ = sc",
   "TestUnparsed_")
 m("SP an implausible usage is priced", "internal/spend/scan.go",
   "\t\tif !l.Message.Usage.plausible() {", "\t\tif false && !l.Message.Usage.plausible() {", "TestUnparsed_")
-m("SP a negative token count is plausible", "internal/spend/scan.go",
+m("SP a negative token count is plausible", "internal/spend/line.go",
   "\t\t\tif v < 0 || v > maxTokens {", "\t\t\tif v > maxTokens {", "TestUnparsed_")
-m("SP an implausibly large token count is plausible", "internal/spend/scan.go",
+m("SP an implausibly large token count is plausible", "internal/spend/line.go",
   "\t\t\tif v < 0 || v > maxTokens {", "\t\t\tif v < 0 {", "TestUnparsed_")
-m("SP an iteration's counts are not checked", "internal/spend/scan.go",
+m("SP an iteration's counts are not checked", "internal/spend/line.go",
   "\tfor _, it := range u.Iterations {\n\t\tif !ok(it.tokens) {", "\tfor _, it := range u.Iterations {\n\t\tif false && !ok(it.tokens) {",
   "TestUnparsed_")
 m("SP unparsed usage lines are not said", "internal/spend/text.go",
@@ -287,7 +287,7 @@ m("SP a firing turn's final words are printed to stderr", "internal/spend/join.g
   "\t\tsf := report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt)))\n",
   "\t\tsf := report.BuildSilentFailures(t.run, report.AccountFromMessage(lastSaid(byFile, t.prompt)))\n\t\tfmt.Fprintln(os.Stderr, lastSaid(byFile, t.prompt))\n",
   "TestSpend_NoMessageTextReachesTheOutput")
-IMPORTS["SP a firing turn's final words are printed to stderr"] = ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n')
+IMPORTS["SP a firing turn's final words are printed to stderr"] = ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n')
 m("SP a firing turn's final words reach the JSON", "internal/spend/join.go",
   "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n",
   "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n\t\tj.Bound = lastSaid(byFile, t.prompt)\n",
@@ -350,11 +350,11 @@ m("SP a declaration with no prompt_id is dereferenced", "internal/spend/join.go"
   "\t\tif d.PromptID == nil || *d.PromptID == \"\" {\n\t\t\tcontinue\n\t\t}", "",
   "TestJoin_ADeclarationWithNoPromptID")
 m("SP a wholly unpriced silent-failure cost reads at least unknown", "internal/spend/text.go",
-  "\tcase !j.Cost.Wholly():\n", "\tcase false:\n", "TestJoin_AWhollyUnpricedTurn")
+  "\tcase j.Cost.WhollyUnpriced():\n", "\tcase false:\n", "TestJoin_AWhollyUnpricedTurn")
 m("SP an empty window reads unknown over 0 transcripts", "internal/spend/text.go",
   "\tcase j.Transcripts == 0:\n", "\tcase false:\n", "TestJoin_NoTranscriptInTheWindow")
 m("SP a fast-mode response is not counted", "internal/spend/scan.go",
-  "\t\t\tFast:       l.Message.Usage.Speed == \"fast\",", "\t\t\tFast:       l.Message.Usage.Speed == \"turbo\",",
+  "\t\tFast:       l.Message.Usage.Speed == \"fast\",", "\t\tFast:       l.Message.Usage.Speed == \"turbo\",",
   "TestFastMode_")
 m("SP fast-mode responses are not said", "internal/spend/text.go",
   "\tif s.FastMode.Responses > 0 {", "\tif false {", "TestFastMode_")
@@ -365,7 +365,7 @@ m("SP the web-search fee is not the dated table's", "internal/spend/price.go",
 m("SP Mythos 5 prices its cache reads at Mythos 5.1's rate", "internal/spend/price.go",
   "\t\"claude-mythos-5\":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(100)},", "\t\"claude-mythos-5\":   {Input: mtok(1000), Output: mtok(5000), CacheRead: mtok(25)},",
   "TestPricing_TheTable")
-m("SP a decoded field under an allowed tag holds whatever it is handed", "internal/spend/scan.go",
+m("SP a decoded field under an allowed tag holds whatever it is handed", "internal/spend/line.go",
   "\tType        string  `json:\"type\"`", "\tType        any     `json:\"type\"`", "TestContentHasNoFieldToLandIn")
 m("SP a zero-usage refusal line is not counted", "internal/spend/spend.go",
   "\t\t\t\ts.Refusals.WithoutUsage++", "\t\t\t\t_ = s", "TestRefusals_")
@@ -390,10 +390,10 @@ m("SP a cold write is counted whole, not its shortfall", "internal/spend/spend.g
 m("SP a write with any cache read is not cold", "internal/spend/spend.go",
   "\t\t\tprev, cur := rs[i-1].Tokens, rs[i].Tokens\n", "\t\t\tprev, cur := rs[i-1].Tokens, rs[i].Tokens\n\t\t\tif cur.CacheRead > 0 {\n\t\t\t\tcontinue\n\t\t\t}\n",
   "TestCacheExpiry_APartialExpiry")
-m("SP a cold write is priced at the full write rate, not over a cache read", "internal/spend/spend.go",
+m("SP a cold write is priced at the full write rate, not over a cache read", "internal/spend/amounts.go",
   "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)", "w.CacheWrite5m*rt.CacheWrite5m() + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)",
   "TestCacheExpiry_")
-m("SP a cold 1h write is priced at the full write rate", "internal/spend/spend.go",
+m("SP a cold 1h write is priced at the full write rate", "internal/spend/amounts.go",
   "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*(rt.CacheWrite1h()-rt.CacheRead)", "w.CacheWrite5m*(rt.CacheWrite5m()-rt.CacheRead) + w.CacheWrite1h*rt.CacheWrite1h()",
   "TestCacheExpiry_")
 m("SP a response keeps only the file it was first seen in", "internal/spend/scan.go",
@@ -408,10 +408,10 @@ m("SP a transcript holding only shared responses is not a transcript", "internal
 m("SP a cold-cache stream holds only the responses first seen in its file", "internal/spend/spend.go",
   "\t\tfor _, f := range r.files {\n\t\t\tk := stream{f.idx, r.Subagent}", "\t\tfor _, f := range r.files[:1] {\n\t\t\tk := stream{f.idx, r.Subagent}",
   "TestJoin_ADuplicatedResponse")
-m("SP an iteration entry's type is decoded as counts only", "internal/spend/scan.go",
+m("SP an iteration entry's type is decoded as counts only", "internal/spend/line.go",
   "\tType string `json:\"type\"`\n\t// Model is the model that ran the attempt.", "\tType string `json:\"-\"`\n\t// Model is the model that ran the attempt.",
   "TestExtraAttempts_")
-m("SP an iteration entry's model is not decoded", "internal/spend/scan.go",
+m("SP an iteration entry's model is not decoded", "internal/spend/line.go",
   "\tModel string `json:\"model\"`\n}", "\tModel string `json:\"-\"`\n}",
   "TestExtraAttempts_")
 m("SP a fallback-served response is not counted", "internal/spend/spend.go",
@@ -420,14 +420,14 @@ m("SP a fallback-served response is not counted", "internal/spend/spend.go",
 m("SP the headline does not say the total leaves out the extra attempts", "internal/spend/text.go",
   "\tif a := s.ExtraAttempts; a.Attempts > 0 {", "\tif a := s.ExtraAttempts; false && a.Attempts > 0 {",
   "TestExtraAttempts_TheFallbackPagesExample|TestRefusalsAndExtraAttempts")
-m("SP a refusal's category is not decoded", "internal/spend/scan.go",
+m("SP a refusal's category is not decoded", "internal/spend/line.go",
   "\tCategory *string `json:\"category\"`", "\tCategory *string `json:\"-\"`",
   "TestRefusals_AreSplitByCategoryAndModel")
-m("SP a category outside the vocabulary is kept as read", "internal/spend/scan.go",
+m("SP a category outside the vocabulary is kept as read", "internal/spend/line.go",
   "\tswitch c := *d.Category; c {\n\tcase CategoryCyber, CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction, CategoryGeneralHarms:\n\t\treturn c\n\t}\n\treturn CategoryOther\n",
   "\treturn *d.Category\n",
   "TestRefusals_AreSplitByCategoryAndModel|TestContentNeverReachesTheOutput")
-m("SP a null category is read as other", "internal/spend/scan.go",
+m("SP a null category is read as other", "internal/spend/line.go",
   "\tif d == nil || d.Category == nil {\n\t\treturn CategoryUncategorized", "\tif d == nil || d.Category == nil {\n\t\treturn CategoryOther",
   "TestRefusals_")
 m("SP a zero-usage refusal is not split by category", "internal/spend/spend.go",
@@ -442,7 +442,7 @@ m("SP a refusal's model is printed as read", "internal/spend/spend.go",
 m("SP the refusal categories are not printed", "internal/spend/text.go",
   "\tfor _, g := range r.ByCategory {\n\t\tvar p []string", "\tfor _, g := range r.ByCategory[:0] {\n\t\tvar p []string",
   "TestRefusals_")
-m("SP a refusal's category reaches the output end to end", "internal/spend/scan.go",
+m("SP a refusal's category reaches the output end to end", "internal/spend/line.go",
   "\tswitch c := *d.Category; c {\n\tcase CategoryCyber, CategoryBio, CategoryFrontierLLM, CategoryReasoningExtraction, CategoryGeneralHarms:\n\t\treturn c\n\t}\n\treturn CategoryOther\n",
   "\treturn *d.Category\n",
   "TestSpend_NoMessageTextReachesTheOutput")
@@ -465,7 +465,7 @@ m("SP a synthetic line is folded into a response in another file", "internal/spe
   "\t\tfor _, f := range r.files {\n\t\t\tbilled[key{f.idx, r.requestID}] = r", "\t\tfor range r.files {\n\t\t\tbilled[key{0, r.requestID}] = r",
   "TestRefusals_AMidStream")
 m("SP a requestId is read whatever its shape", "internal/spend/scan.go",
-  "\t\tif requestIDShaped(l.RequestID) {", "\t\tif l.RequestID != \"\" {", "TestRefusals_AMidStream")
+  "\tif requestIDShaped(l.RequestID) {", "\tif l.RequestID != \"\" {", "TestRefusals_AMidStream")
 m("SP a folded synthetic line does not make its response a refusal", "internal/spend/scan.go",
   "\t\t\t\tif into.StopReason != \"refusal\" {\n", "\t\t\t\tif false {\n", "TestRefusals_AMidStream")
 m("SP a pre-output refusal with usage is priced into the total", "internal/spend/scan.go",
@@ -478,12 +478,13 @@ m("SP a synthetic refusal group reads as a model named other", "internal/spend/s
   "\tif model == \"<synthetic>\" {\n\t\treturn ModelNotRecorded", "\tif false {\n\t\treturn ModelNotRecorded",
   "TestRefusals_")
 m("SP the served model is read from message.model, not the fallback entry", "internal/spend/scan.go",
-  "\t\tif served != \"\" {\n\t\t\tcand.Model = served", "\t\tif false && served != \"\" {\n\t\t\tcand.Model = served",
+  "\tif served != \"\" {\n\t\tcand.Model = served", "\tif false && served != \"\" {\n\t\tcand.Model = served",
   "TestExtraAttempts_TheServedModelIsTheFallbackEntrys")
 m("SP a chain where every model declined is reported as served", "internal/spend/spend.go",
   "\tif r.Fallback && r.StopReason != \"refusal\" {", "\tif r.Fallback {", "TestExtraAttempts_AnAllDeclinedChain")
 m("SP an undecodable line ends the tie only when it holds the byte string user", "internal/report/transcript.go",
-  "\t\tcase LineUndecodable:\n", "\t\tcase LineUndecodable:\n\t\t\tif !bytes.Contains(raw, []byte(`\"user\"`)) {\n\t\t\t\tcontinue\n\t\t\t}\n",
+  "\t\tcase LineUndecodable:\n\t\t\t// A line whose header does not decode",
+  "\t\tcase LineUndecodable:\n\t\t\tif !bytes.Contains(raw, []byte(`\"user\"`)) {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\t// A line whose header does not decode",
   "TestFinalAssistantTexts_AnUndecodableLine")
 m("SP an undecodable sidechain line ends the tie", "internal/report/transcript.go",
   "\tif topLevelSidechain(raw) {", "\tif false && topLevelSidechain(raw) {",
@@ -511,17 +512,17 @@ m("SP an assistant line's content is decoded whole into a RawMessage again", "in
 m("SP a non-firing turn's final words are printed to stderr", "internal/spend/join.go",
   "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n", "\t\tif !sf.Fires {\n\t\t\tfmt.Fprintln(os.Stderr, lastSaid(byFile, t.prompt))\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n",
   "TestSpend_NoMessageTextReachesTheOutput")
-IMPORTS["SP a non-firing turn's final words are printed to stderr"] = ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n\t"os"\n')
+IMPORTS["SP a non-firing turn's final words are printed to stderr"] = ("internal/spend/join.go", '\t"encoding/json"\n', '\t"encoding/json"\n\t"fmt"\n')
 m("SP a non-firing turn's final words reach the JSON", "internal/spend/join.go",
   "\t\tif !sf.Fires {\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n", "\t\tif !sf.Fires {\n\t\t\tj.Bound = lastSaid(byFile, t.prompt)\n\t\t\tcontinue\n\t\t}\n\t\tj.Turns++\n",
   "TestJoin_NoMessageTextReachesTheOutput")
 m("SP cmdSpend reads a 30-day window whatever --days says", "cmd/rashomon/main.go",
   "\tfiles, err := spend.Discover(configDir, spend.WindowStart(now, days))", "\tfiles, err := spend.Discover(configDir, spend.WindowStart(now, 30))",
   "TestSpend_OldTranscriptsAreSkippedAndSaid")
-m("SP the decoded message hands its bytes to its own decoder", "internal/spend/scan.go",
+m("SP the decoded message hands its bytes to its own decoder", "internal/spend/line.go",
   "\tUsage       *usage       `json:\"usage\"`\n}\n", "\tUsage       *usage       `json:\"usage\"`\n}\n\nfunc (m *message) UnmarshalJSON(b []byte) error {\n\ttype plain message\n\treturn json.Unmarshal(b, (*plain)(m))\n}\n",
   "TestContentHasNoFieldToLandIn")
-IMPORTS["SP the decoded message hands its bytes to its own decoder"] = ("internal/spend/scan.go", '\t"bytes"\n', '\t"bytes"\n\t"encoding/json"\n')
+IMPORTS["SP the decoded message hands its bytes to its own decoder"] = ("internal/spend/line.go", 'import "strings"\n', 'import (\n\t"encoding/json"\n\t"strings"\n)\n')
 
 m("SP an unkeyed main-transcript sidechain user line ends the tie", "internal/report/transcript.go",
   "\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tcontinue\n", "\t\t\t\ttie(head.Message.ID)\n\t\t\t}\n\t\t\tif head.Type == \"user\" && head.PromptID == \"\" {\n\t\t\t\tcurrent = \"\"\n\t\t\t}\n\t\t\tcontinue\n",
@@ -549,8 +550,8 @@ m("SP a model-less fallback line replaces a known model", "internal/spend/scan.g
 m("SP a synthetic refusal line is folded after pre-output refusals are marked", "internal/spend/scan.go",
   "\tsc.foldRefusalMessages()\n\tfor _, r := range sc.Responses {", "\tdefer sc.foldRefusalMessages()\n\tfor _, r := range sc.Responses {",
   "TestRefusals_")
-m("SP a cold write is priced on a response whose cost is unknown", "internal/spend/spend.go",
-  "\t\t\tif key, ok := PriceKey(r.Model); ok && !r.costUnknown {", "\t\t\tif key, ok := PriceKey(r.Model); ok {",
+m("SP a cold write is priced on a response whose cost is unknown", "internal/spend/amounts.go",
+  "\tif !ok || r.costUnknown {\n\t\treturn 0, tokens, false", "\tif !ok {\n\t\treturn 0, tokens, false",
   "TestCacheExpiry_")
 m("SP a write on another model is judged against the previous model's cache", "internal/spend/spend.go",
   "\t\t\tif rs[i].Model != rs[i-1].Model || ", "\t\t\tif ",
@@ -562,7 +563,7 @@ m("SP a cold 1h write ignores the 5m write already counted cold", "internal/spen
   "min(cur.CacheWrite1h, short-w.CacheWrite5m)", "min(cur.CacheWrite1h, short)",
   "TestCacheExpiry_")
 m("SP a subagent transcript's lines are prefiltered on the byte string user again", "internal/spend/scan.go",
-  "\t\tif !usageLine && !f.Subagent && fileDated {", "\t\tif !usageLine && (f.Subagent && !bytes.Contains(raw, []byte(`\"user\"`)) || !f.Subagent && fileDated) {",
+  "\t\tif !mayCarry && !f.Subagent && fileDated {", "\t\tif !mayCarry && (f.Subagent && !bytes.Contains(raw, []byte(`\"user\"`)) || !f.Subagent && fileDated) {",
   "TestJoin_ATurnsSpendIsKeyedByItsPrompt")
 m("SP an undecodable line is a sidechain one by its bytes anywhere, not its top-level key", "internal/report/transcript.go",
   "\tif topLevelSidechain(raw) {", "\tif bytes.Contains(raw, []byte(`\"isSidechain\":true`)) {",

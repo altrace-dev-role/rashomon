@@ -4,11 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"sort"
+	"io"
 	"strings"
 	"time"
 )
@@ -33,84 +29,6 @@ const maxLine = 64 << 20
 // that established this prefix printed it, and its own output came back as a
 // tool_result in the same session.
 const deniedPrefix = "The user doesn't want to proceed with this tool use. The tool use was rejected"
-
-// TranscriptIDs reads the distinct tool_use ids from a session transcript and
-// from its subagent transcripts, which live at <session>/subagents/agent-*.jsonl
-// where <session> is the transcript path without its extension, the distinct
-// ids of the tool_result blocks answering them, which of those results are
-// the user having DENIED the call, and which have the shape of a call Claude
-// Code refused before any hook fired (unhooked; see toolUseErrorTag). A
-// transcript cannot show whether a hook fired, so unhooked only marks the
-// shape; the report confirms it against the store.
-//
-// The sets are kept apart because they mean different things: a tool_use block
-// is a call the model asked for, a tool_result block is that call having
-// finished, and a denial is neither -- the call never ran, and the user is why.
-//
-// DENIALS ARE NOT RESULTS. A denial does produce a tool_result block, so
-// counting it as one put every denied call into executed-but-unrecorded, a list
-// that exists to surface the recorder having failed to fire. The user
-// exercising the permission prompt then read as the tool being broken.
-//
-// It reads five fields from each content block -- type, id, tool_use_id,
-// is_error and content -- and nothing else. Content is read to classify the
-// result and is never retained. A line that does not parse is skipped, not
-// fatal: the transcript is Claude Code's file and its shape is not this
-// program's to enforce.
-func TranscriptIDs(path string) (ids, results, denied, unhooked map[string]bool, files int, err error) {
-	ids, results, denied, unhooked = map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
-
-	n, err := collectIDs(path, ids, results, denied, unhooked)
-	if err != nil {
-		return nil, nil, nil, nil, 0, err
-	}
-	files += n
-
-	matches, err := subagentTranscripts(filepath.Join(strings.TrimSuffix(path, ".jsonl"), "subagents"))
-	if err != nil {
-		return nil, nil, nil, nil, 0, err
-	}
-	for _, m := range matches {
-		n, err := collectIDs(m, ids, results, denied, unhooked)
-		if err != nil {
-			return nil, nil, nil, nil, 0, err
-		}
-		files += n
-	}
-	return ids, results, denied, unhooked, files, nil
-}
-
-// subagentTranscripts lists every agent-*.jsonl under dir, at any depth.
-//
-// A plain subagent writes <session>/subagents/agent-*.jsonl, but a workflow's
-// subagents write <session>/subagents/workflows/<run>/agent-*.jsonl, two levels
-// further down. A one-level glob read 35 of a real session's 407 transcripts,
-// and every call the other 372 made then read as recorded-but-not-in-the-
-// transcript -- a gap that was this function's, not the recorder's. A missing
-// directory is the common case, a session with no subagents, and not an error.
-func subagentTranscripts(dir string) ([]string, error) {
-	var out []string
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) && p == dir {
-				return filepath.SkipDir
-			}
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if ok, _ := filepath.Match("agent-*.jsonl", d.Name()); ok {
-			out = append(out, p)
-		}
-		return nil
-	})
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	sort.Strings(out)
-	return out, err
-}
 
 // resultText renders a tool_result's content for classification only.
 //
@@ -212,17 +130,55 @@ const pathDeniedPrefix = "<tool_use_error>File is in a directory that is denied 
 // report excuses the call only when no hook left any record of it (accounting).
 const toolUseErrorTag = "<tool_use_error>"
 
-func collectIDs(path string, into, results, denied, unhooked map[string]bool) (int, error) {
-	f, err := os.Open(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return 0, err
-	}
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close() //nolint:errcheck // read-only
+// TranscriptSet is what TranscriptIDs gathers from one session's transcript
+// files: the distinct tool_use ids, the distinct ids of the tool_result blocks
+// answering them, which of those results are the user having DENIED the call,
+// which have the shape of a call Claude Code refused before any hook fired
+// (unhooked; see toolUseErrorTag), and how many files were read into it.
+//
+// The sets are kept apart because they mean different things: a tool_use block
+// is a call the model asked for, a tool_result block is that call having
+// finished, and a denial is neither -- the call never ran, and the user is why.
+//
+// DENIALS ARE NOT RESULTS. A denial does produce a tool_result block, so
+// counting it as one put every denied call into executed-but-unrecorded, a list
+// that exists to surface the recorder having failed to fire. The user
+// exercising the permission prompt then read as the tool being broken.
+//
+// A transcript cannot show whether a hook fired, so Unhooked only marks the
+// shape; the report confirms it against the store.
+type TranscriptSet struct {
+	IDs, Results, Denied, Unhooked map[string]bool
+	Files                          int
+}
 
-	sc := bufio.NewScanner(f)
+// NewTranscriptSet is an empty set for TranscriptIDs to read into.
+func NewTranscriptSet() *TranscriptSet {
+	return &TranscriptSet{IDs: map[string]bool{}, Results: map[string]bool{}, Denied: map[string]bool{}, Unhooked: map[string]bool{}}
+}
+
+// TranscriptIDs reads one transcript file from r into set and counts it. A
+// session's transcript and each of its subagent transcripts are read into one
+// set, one call each; which files those are, and opening them, is the read
+// step's (internal/report/gather).
+//
+// It reads five fields from each content block -- type, id, tool_use_id,
+// is_error and content -- and nothing else. Content is read to classify the
+// result and is never retained. A line that does not parse is skipped, not
+// fatal: the transcript is Claude Code's file and its shape is not this
+// program's to enforce. An error is r's, and the file is then not counted.
+func TranscriptIDs(r io.Reader, set *TranscriptSet) error {
+	if err := collectIDs(r, set.IDs, set.Results, set.Denied, set.Unhooked); err != nil {
+		return err
+	}
+	set.Files++
+	return nil
+}
+
+// collectIDs reads one transcript's lines from r into the four sets of a
+// TranscriptSet. It reads and opens nothing else.
+func collectIDs(r io.Reader, into, results, denied, unhooked map[string]bool) error {
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
 		var line struct {
@@ -260,7 +216,7 @@ func collectIDs(path string, into, results, denied, unhooked map[string]bool) (i
 			}
 		}
 	}
-	return 1, sc.Err()
+	return sc.Err()
 }
 
 // FinalAssistantText returns the text of the LAST assistant message in a
@@ -279,28 +235,41 @@ func collectIDs(path string, into, results, denied, unhooked map[string]bool) (i
 //
 // Only text blocks of the last assistant message are taken. A thinking block is
 // not the account the user was given, and tool_use blocks are already recorded
-// far more precisely on the declaration side.
-func FinalAssistantText(path string) (string, bool) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", false
-	}
-	defer f.Close() //nolint:errcheck // read-only
-
+// far more precisely on the declaration side. A sidechain line -- a
+// subagent's, written into the main transcript -- is skipped: its words are
+// the subagent's, and FinalAssistantTexts skips it by the same rule
+// (TestRubricNAMING1_BothReadersSkipAFinalSidechainLine).
+//
+// It reads r and nothing else; which file r is, and opening it, is the
+// caller's (gather.finalText for the report).
+func FinalAssistantText(r io.Reader) (string, bool) {
 	var last string
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
 		var line struct {
-			Message struct {
+			IsSidechain bool `json:"isSidechain"`
+			Message     struct {
 				Role    string          `json:"role"`
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
 		}
-		if json.Unmarshal(sc.Bytes(), &line) != nil {
+		switch DecodeHeader(sc.Bytes(), &line) {
+		case LineBlank, LineUndecodableSidechain:
+			// A sidechain line is never the main agent's word, decoded or
+			// not, here as in FinalAssistantTexts.
+			continue
+		case LineUndecodable:
+			// This line could not be placed, so it may be the real final
+			// message; an earlier line's words are then not the last word
+			// either. FinalAssistantTexts ends its tie the same way
+			// (unsay) on the same line.
+			last = ""
 			continue
 		}
-		if line.Message.Role != "assistant" || len(line.Message.Content) == 0 {
+		// A subagent's line written into the main transcript is never the
+		// main agent's word, here as in FinalAssistantTexts.
+		if line.IsSidechain || line.Message.Role != "assistant" || len(line.Message.Content) == 0 {
 			continue
 		}
 		if text, ok := assistantText(line.Message.Content); ok {
@@ -367,7 +336,8 @@ type TurnFinal struct {
 // response that belongs to it. A wanted prompt the file ties no assistant
 // text to is absent, or present with Said false.
 //
-// It is FinalAssistantText narrowed to turns, for `rashomon spend`'s
+// It applies FinalAssistantText's rule -- the last text of the main agent,
+// sidechain lines skipped -- to each wanted turn, for `rashomon spend`'s
 // silent-failure line. A turn's silent_failures verdict is the digest's rule
 // (BuildSilentFailures) applied to that turn's final message, and the digest
 // is handed that message by the Stop hook at the moment the turn ends. spend
@@ -404,24 +374,19 @@ type TurnFinal struct {
 // no verdict -- a floor, never a guess.
 //
 // One pass, decoding only what can matter: every line's header (type,
-// isSidechain, isMeta, promptId, timestamp, message.id); a user line's block
+// isSidechain, isMeta, promptId, timestamp, message.id, and whether
+// message.content is a plain string -- contentShape); a user line's block
 // TYPES only when it carries no promptId (userBlocks); and, when an assistant
-// line's prompt is wanted and the line has a text block at all, its blocks'
-// types and text (assistantLine) -- no other block's contents. Every such
+// line's prompt is wanted and the line may hold text at all (mayHoldText),
+// its blocks' types and text (assistantLine) -- no other block's contents. Every such
 // line of the turn is decoded, in memory, and only the last one's text is
 // kept. The caller hands every wanted prompt of a session in one call, so a
 // transcript is read once however many of its turns need a verdict.
-func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal {
+func FinalAssistantTexts(r io.Reader, want map[string]bool) map[string]TurnFinal {
 	out := map[string]TurnFinal{}
 	if len(want) == 0 {
 		return out
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		return out
-	}
-	defer f.Close() //nolint:errcheck // read-only
-
 	var current string
 	// tie records a response's id as the current prompt's spend.
 	tie := func(id string) {
@@ -442,7 +407,7 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 		tf.Said, tf.Text, tf.AtMS = false, "", 0
 		out[current] = tf
 	}
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
 		raw := sc.Bytes()
@@ -453,7 +418,8 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			PromptID    string `json:"promptId"`
 			Timestamp   string `json:"timestamp"`
 			Message     struct {
-				ID string `json:"id"`
+				ID      string       `json:"id"`
+				Content contentShape `json:"content"`
 			} `json:"message"`
 		}
 		switch DecodeHeader(raw, &head) {
@@ -502,7 +468,7 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			if head.Message.ID != "" {
 				tie(head.Message.ID)
 			}
-			if !bytes.Contains(raw, []byte(`"text"`)) {
+			if !mayHoldText(raw, head.Message.Content) {
 				continue
 			}
 			line, err := decodeAssistantLine(raw)
@@ -536,12 +502,15 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 	return out
 }
 
-// LineKind is how a transcript line's header decoded (DecodeHeader).
+// LineKind is how a transcript line's header decoded (DecodeHeader). Its zero
+// value is no kind at all, never one DecodeHeader returns, so a kind a reader
+// forgot to take cannot read as a blank line to skip.
 type LineKind int
 
 const (
+	_ LineKind = iota // the zero value: no kind
 	// LineBlank is an empty or whitespace-only line: no line at all.
-	LineBlank LineKind = iota
+	LineBlank
 	// LineDecoded is a header that decoded into the reader's shape.
 	LineDecoded
 	// LineUndecodable is a header that did not decode.
@@ -576,30 +545,81 @@ func DecodeHeader(raw []byte, head any) LineKind {
 }
 
 // topLevelSidechain walks a line's top-level object, key by key, and reports
-// whether its isSidechain key is the boolean true. Every other value is
-// stepped over by skipValue, so no value's contents -- a message's content
-// among them -- become a value here. A line cut short ends the walk at the
-// cut, and is a sidechain one only if the key came before it.
+// whether its isSidechain key is the boolean true, by the rule a struct decode
+// of that key applies (FuzzSidechainKey): a key matches in any case under
+// Unicode folding, as encoding/json matches it; the last match wins; and a
+// value that is not a boolean -- null, a string -- leaves the answer as it
+// was. Every other value is stepped over by skipValue, and the key's own
+// value is read as its literal alone (sidechainValue), so no value's contents
+// -- a message's content among them -- become a value here. A line cut short
+// ends the walk at the cut with the answer read so far.
 func topLevelSidechain(raw []byte) bool {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
 		return false
 	}
+	side := false
 	for dec.More() {
 		key, err := dec.Token()
 		if err != nil {
-			return false
+			return side
 		}
-		if key == "isSidechain" {
-			var v bool
-			return dec.Decode(&v) == nil && v
+		if k, ok := key.(string); ok && strings.EqualFold(k, "isSidechain") {
+			var v sidechainValue
+			if dec.Decode(&v) != nil {
+				return side
+			}
+			if v.set {
+				side = v.value
+			}
+			continue
 		}
 		if dec.Decode(&skipValue{}) != nil {
-			return false
+			return side
 		}
 	}
-	return false
+	return side
 }
+
+// sidechainValue is an isSidechain value read as its literal: set only for
+// true or false, which is when a struct decode would write the field.
+type sidechainValue struct{ set, value bool }
+
+func (v *sidechainValue) UnmarshalJSON(b []byte) error {
+	switch string(b) {
+	case "true":
+		v.set, v.value = true, true
+	case "false":
+		v.set, v.value = true, false
+	}
+	return nil
+}
+
+// contentShape is what a line's header keeps of message.content: whether it
+// is a plain string, and nothing of what the string says.
+type contentShape struct{ plain bool }
+
+func (c *contentShape) UnmarshalJSON(b []byte) error {
+	c.plain = len(b) > 0 && b[0] == '"'
+	return nil
+}
+
+// mayHoldText is the turn reader's prefilter: may the full decode of this
+// assistant line (decodeAssistantLine) find text in it? It never answers no
+// to a line the decode would find text in (FuzzTextPrefilter). A plain-string
+// content is text without any text key, which the bytes "text" alone missed.
+// A block counts only when its type decodes to exactly "text", so its bytes
+// hold "text" as written or spelt with a \u escape, the only escape that can
+// spell a letter. A tool_use-only line has neither, and is skipped: decoding
+// its input is most of what this reader would otherwise cost.
+func mayHoldText(raw []byte, content contentShape) bool {
+	return content.plain || bytes.Contains(raw, textMarker) || bytes.Contains(raw, escapeMarker)
+}
+
+var (
+	textMarker   = []byte(`"text"`)
+	escapeMarker = []byte(`\u`)
+)
 
 // skipValue steps over one JSON value and keeps nothing of it.
 type skipValue struct{}
