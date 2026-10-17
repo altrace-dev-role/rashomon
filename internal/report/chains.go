@@ -4,43 +4,11 @@ import (
 	"sort"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
-	"github.com/altrace-dev-role/rashomon/internal/wire"
 )
 
-// The state of one host named by one link.
-//
-// LinkUnknown and LinkNotObserved are deliberately different values. "Not
-// observed" says the wire was watched and this host never appeared, which is a
-// finding. "Unknown" says the wire could not be attributed to this session at
-// all, which is a coverage problem. Collapsing them turns a gap in the
-// recorder into an accusation against the agent.
-const (
-	LinkReached   = "reached"
-	LinkAttempted = "attempted"
-	// LinkNotObserved: the call named this host and no row on the wire matches
-	// it inside the window.
-	LinkNotObserved = "not observed"
-	LinkUnknown     = "unknown"
-
-	// The three below are STRUCTURAL: they are facts about the host or about
-	// an instruction the user gave, not observations of the wire. So they are
-	// decided ABOVE the window gate and survive WindowApplied being false --
-	// there is nothing for a window to bound.
-
-	// LinkForgotten: `forget --host` suppressed this host. Rendered rather
-	// than dropped. A link that silently omitted the host would make the
-	// forget read as undone on the next report, and a silent omission is the
-	// failure this whole program is arranged against -- the destinations
-	// section renders a Suppressed count for exactly this reason.
-	LinkForgotten = "forgotten"
-	// LinkLoopback: loopback is never proxied, so no wire row can exist and
-	// "not observed" would be a finding against every session that ever ran a
-	// local server.
-	LinkLoopback = "loopback"
-	// LinkClientPlane: a host the client contacts on its own behalf every
-	// session, so a row there is not evidence about this call.
-	LinkClientPlane = "client plane"
-)
+// LinkUnknown is the value of a field nothing in the record can fill: a
+// dropped declaration's tool, verb and outcome, where the id is all there is.
+const LinkUnknown = "unknown"
 
 // How one link ended. store.ExecOK, store.ExecFailed and store.ExecInterrupted
 // are the recorded outcomes; these four are the cases where there is no
@@ -78,12 +46,6 @@ const (
 	LinkOutcomeStatusMasked = "ok, but the line did not return a build or test run's exit status"
 )
 
-// LinkHost is one hostname a call named, with what the wire says about it.
-type LinkHost struct {
-	Host  string `json:"host"`
-	State string `json:"state"`
-}
-
 // Link is one tool call, in the position seq gives it.
 type Link struct {
 	Seq       int64  `json:"seq"`
@@ -99,16 +61,16 @@ type Link struct {
 	Outcome          string   `json:"outcome"`
 	Outcomes         []string `json:"outcomes"`
 	ExecutionRecords int      `json:"execution_records"`
-	// Hosts is what this call NAMED, never what it reached. The proxy's store
-	// carries no tool_use_id, so no wire row can be attributed to an individual
-	// call; a host's state here is the state of that host across this session's
-	// window. The renderer says so in its legend, because a per-call reading is
-	// the obvious misreading and it is the kind that overstates what is known.
-	Hosts []LinkHost `json:"hosts"`
-	// SSHHosts is kept APART from Hosts and carries no state, because there is
-	// no observation to carry: the proxy cannot see ssh at all. Joining them
-	// into one list puts a host the wire could never have shown beside hosts it
-	// could, under a column that reads as a verdict on both.
+	// DeclaredHosts is what this call NAMED, never what it reached: nothing
+	// in the record observed whether it got there. The renderer says so in
+	// its legend, because a per-call reading is the obvious misreading and it
+	// is the kind that overstates what is known. Named as the destinations
+	// list is, and renamed from `hosts` rather than retyped, so a consumer
+	// that read the old per-host rows fails on the missing key.
+	DeclaredHosts []string `json:"declared_hosts"`
+	// SSHHosts is kept APART from DeclaredHosts because an ssh host is a
+	// different kind of destination from an HTTPS one, and the family view
+	// treats it so.
 	SSHHosts []string `json:"ssh_hosts"`
 }
 
@@ -161,20 +123,15 @@ func deniedSet(ts []Transcript) map[string]bool {
 
 // buildChains assembles the prompt-to-call spine.
 //
-// It reads `dests` rather than the raw observation on purpose: that view has
-// already had forgotten hosts suppressed and client-plane traffic accounted
-// for, and a second consumer reading around it is how a suppressed host comes
-// back in a different section.
-//
 // executed is run's executions grouped by tool_use_id (executionsByID), which
-// Build groups once for the chains, the timeline and the test runs.
-func buildChains(run *store.Run, executed map[string][]store.Execution, dests Destinations, denied map[string]bool, forgotten func(string) bool) Chains {
+// Build groups once for the chains, the timeline and the test runs. forgotten
+// is applied to each link's own host lists against that link's own
+// declaration time, the same per-declaration rule buildDestinations applies.
+func buildChains(run *store.Run, executed map[string][]store.Execution, denied map[string]bool, forgotten func(host string, declaredAtMS int64) bool) Chains {
 	out := Chains{Prompts: []Chain{}, Unattributed: []Link{}, Dropped: []Link{}}
 	if run == nil {
 		return out
 	}
-
-	state := hostStates(dests)
 
 	type key struct{ transcript, prompt string }
 	byKey := map[key]*Chain{}
@@ -184,7 +141,7 @@ func buildChains(run *store.Run, executed map[string][]store.Execution, dests De
 	for _, d := range run.Declarations {
 		if d.PromptID == nil || *d.PromptID == "" {
 			out.Unattributed = append(out.Unattributed,
-				buildLink(d, executed, denied, state, dests, forgotten))
+				buildLink(d, executed, denied, forgotten))
 			continue
 		}
 		k := key{transcript: d.TranscriptPath, prompt: *d.PromptID}
@@ -198,20 +155,20 @@ func buildChains(run *store.Run, executed map[string][]store.Execution, dests De
 		if d.Seq < first[k] {
 			first[k] = d.Seq
 		}
-		c.Links = append(c.Links, buildLink(d, executed, denied, state, dests, forgotten))
+		c.Links = append(c.Links, buildLink(d, executed, denied, forgotten))
 	}
 
 	// Terminals whose declaration never landed. The id is all there is, and
 	// saying so is the point: these are calls the run made and cannot describe.
 	for _, id := range run.Dropped() {
 		out.Dropped = append(out.Dropped, Link{
-			ToolUseID: id,
-			ToolName:  LinkUnknown,
-			VerbClass: LinkUnknown,
-			Outcome:   LinkUnknown,
-			Outcomes:  []string{},
-			Hosts:     []LinkHost{},
-			SSHHosts:  []string{},
+			ToolUseID:     id,
+			ToolName:      LinkUnknown,
+			VerbClass:     LinkUnknown,
+			Outcome:       LinkUnknown,
+			Outcomes:      []string{},
+			DeclaredHosts: []string{},
+			SSHHosts:      []string{},
 		})
 	}
 	sort.SliceStable(out.Dropped, func(i, j int) bool {
@@ -268,109 +225,41 @@ func execSeq(e store.Execution) int64 {
 	return *e.Seq
 }
 
-func buildLink(
-	d store.Declaration,
-	executed map[string][]store.Execution,
-	denied map[string]bool,
-	state map[string]string,
-	dests Destinations,
-	forgotten func(string) bool,
-) Link {
+func buildLink(d store.Declaration, executed map[string][]store.Execution, denied map[string]bool, forgotten func(host string, declaredAtMS int64) bool) Link {
 	l := Link{
-		Seq:       d.Seq,
-		ToolUseID: d.ToolUseID,
-		ToolName:  d.ToolName,
-		VerbClass: d.Shape.VerbClass,
-		Hosts:     []LinkHost{},
-		SSHHosts:  []string{},
+		Seq:           d.Seq,
+		ToolUseID:     d.ToolUseID,
+		ToolName:      d.ToolName,
+		VerbClass:     d.Shape.VerbClass,
+		DeclaredHosts: []string{},
+		SSHHosts:      []string{},
 	}
 	if d.Shape.Program != nil {
 		l.Program = *d.Shape.Program
 	}
 	l.Outcome, l.Outcomes, l.ExecutionRecords = linkOutcome(d.ToolUseID, executed, denied)
 
+	// Carried as named. Nothing in the record observed whether a call reached
+	// a host, and a column that read as a verdict would be answering a
+	// question nothing was asked. forgotten drops a host this declaration
+	// named at or before the latest forget --host of it -- stale evidence a
+	// failed removal left behind -- and keeps one named after, which is this
+	// call's own current information.
 	for _, h := range d.Hosts {
-		l.Hosts = append(l.Hosts, LinkHost{Host: h, State: hostState(h, state, dests, forgotten)})
+		if forgotten != nil && forgotten(h, d.RecordedAtMS) {
+			continue
+		}
+		l.DeclaredHosts = append(l.DeclaredHosts, h)
 	}
-	// Carried, never joined, and never given a state: the proxy cannot see ssh,
-	// so there is no observation to report and a column that reads as a verdict
-	// would be answering a question nobody could have asked of the wire.
-	l.SSHHosts = append(l.SSHHosts, d.SSHHosts...)
+	sort.Strings(l.DeclaredHosts)
+	for _, h := range d.SSHHosts {
+		if forgotten != nil && forgotten(h, d.RecordedAtMS) {
+			continue
+		}
+		l.SSHHosts = append(l.SSHHosts, h)
+	}
 	sort.Strings(l.SSHHosts)
 	return l
-}
-
-// hostState is the per-link reading of a host.
-//
-// The window gate comes FIRST, above the lookup, and applies to the absent case
-// as well as the present one. With no window enforced, "this host never
-// appeared" is not a thing that was observed -- it is a thing that could not be
-// observed -- and reporting it as the former is the failure this whole package
-// is built to avoid.
-func hostState(h string, state map[string]string, dests Destinations, forgotten func(string) bool) string {
-	// THE THREE STRUCTURAL ANSWERS COME FIRST, above the window gate, because
-	// none of them is an observation and a window bounds observations. Each one
-	// replaced a `not observed` that was a false finding: forgotten made the
-	// forget read as undone, loopback accused every session that ever ran a
-	// local server, and client plane accused the client's own traffic.
-	if forgotten != nil && forgotten(h) {
-		return LinkForgotten
-	}
-	if loopbackHosts[h] {
-		return LinkLoopback
-	}
-	// Read from the view's OWN client-plane list rather than from
-	// clientPlaneHosts directly. The two differ in one case that matters:
-	// mcp-proxy.anthropic.com belongs to the agent on a session that made
-	// mcp__* calls, and the view already knows that. Re-deriving the predicate
-	// here would put the chain and the destinations section into disagreement
-	// about the same host in the same report.
-	for _, c := range dests.ClientPlane {
-		if c == h {
-			return LinkClientPlane
-		}
-	}
-
-	// The window gate applies to the ABSENT case as well as the present one.
-	// With no window enforced, "this host never appeared" is not a thing that
-	// was observed -- it is a thing that could not be observed.
-	if !dests.WindowApplied {
-		return LinkUnknown
-	}
-	if s, ok := state[h]; ok {
-		return s
-	}
-	return LinkNotObserved
-}
-
-// hostStates reduces the destination rows to one state per host.
-func hostStates(dests Destinations) map[string]string {
-	out := map[string]string{}
-	for _, h := range dests.Hosts {
-		out[h.Host] = destinationState(h)
-	}
-	return out
-}
-
-// destinationState reads one destination.
-//
-// Reached wins over failed. The link answers whether this session got to the
-// host, and a session that connected once and was refused three times did get
-// there; reporting that as "attempted" would be false in the direction that
-// understates what the agent did, which is the direction this report must never
-// be wrong in.
-func destinationState(d wire.Destination) string {
-	switch {
-	case d.InWindowReached > 0:
-		return LinkReached
-	case d.InWindowFailed > 0:
-		return LinkAttempted
-	default:
-		// A row exists but neither counter moved: every attempt on it was
-		// inherited, so it is another session's destination and this one has
-		// observed nothing about it.
-		return LinkNotObserved
-	}
 }
 
 // linkOutcome returns the headline outcome, every outcome recorded for the id,

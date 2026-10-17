@@ -118,17 +118,14 @@ type Declaration struct {
 	// Hosts and SSHHosts are the hostnames this call NAMED (v2).
 	//
 	// They are a declaration, not an observation: a host here is one the agent
-	// wrote down, whether or not the call ran and whether or not the wire ever
-	// saw it. That is the entire point -- the report's central line compares
-	// this list against the proxy's, and "reached but never named" is only
-	// meaningful because this side is the naming side.
+	// wrote down, whether or not the call ran and whether or not anything was
+	// ever reached. That is the entire point -- the report lists them as what
+	// was named, and says plainly that nothing here observed whether any was
+	// reached.
 	//
-	// They are separate lists because the two have opposite fates in the
-	// report. A wire-observable host with no record is a finding; an ssh host
-	// with no record is expected, since the proxy cannot see ssh at all, and it
-	// renders under coverage as "not observable" rather than as something the
-	// session hid. Merging them and filtering later is how the second kind ends
-	// up printed as the first.
+	// They are separate lists because an ssh host is a different kind of
+	// destination from an HTTPS one, and the report's family and novelty views
+	// treat it so. Merging them would lose that distinction downstream.
 	//
 	// Both are sorted and de-duplicated by the extractor so two runs of one
 	// command produce byte-identical records. Null when the call named none;
@@ -491,11 +488,11 @@ type Coverage struct {
 // SEPARATE FROM THE GAPS ON PURPOSE. A gap says "records were removed here",
 // and `forget --host` writes one only for a run it actually removed records
 // from. That left a hole the nono adapter made visible (#45): a host that only
-// the sandbox's trail or the proxy's store held -- or one whose every naming
-// call had already left with an earlier forget of another host -- could not be
-// forgotten at all, and the next report listed it again. This record is written
-// on every `forget --host`, so the report's predicate covers every source it
-// reads, and the gaps keep meaning only what they always meant.
+// the sandbox's trail held -- or one whose every naming call had already left
+// with an earlier forget of another host -- could not be forgotten at all, and
+// the next report listed it again. This record is written on every
+// `forget --host`, so the report's predicate covers every source it reads, and
+// the gaps keep meaning only what they always meant.
 //
 // It carries the same keyed digest a gap does and never the name, for the
 // reason set out on Gap.HostDigest.
@@ -551,12 +548,12 @@ type Gap struct {
 	//
 	// A DIGEST and not the hostname, and the reason is a conflict this field
 	// had to resolve. The report needs to keep suppressing the host, because
-	// the proxy's store is not ours to delete from and the destination would
-	// otherwise reappear in the next report as "reached but never named" -- the
-	// forget reading as undone, or as a finding. But `forget --host` also has
-	// to make the hostname LEAVE the store's bytes, which is the whole point of
-	// forgetting it. Writing the name here would have satisfied the first
-	// requirement by breaking the second.
+	// nono's own trail is not ours to delete from and the host would otherwise
+	// reappear in the next report under the sandbox heading -- the forget
+	// reading as undone. But `forget --host` also has to make the hostname
+	// LEAVE the store's bytes, which is the whole point of forgetting it.
+	// Writing the name here would have satisfied the first requirement by
+	// breaking the second.
 	//
 	// Keyed with the same per-install HMAC key the shape digests use, so the
 	// report can recompute it from an observed host while a reader of the store

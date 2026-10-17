@@ -1,9 +1,9 @@
 # Contributing
 
-This program records what a Claude Code session declared, what ran, and what
-the wire saw, and says in fixed vocabulary what it does not know. Two
-properties carry everything else, and a change that weakens either is a change
-that should not land, however much else it improves.
+This program records what a Claude Code session declared and what ran, and
+says in fixed vocabulary what it does not know. Two properties carry
+everything else, and a change that weakens either is a change that should not
+land, however much else it improves.
 
 **It never records content.** No prompt, response, file content, tool output or
 argument value reaches a record or a file in the store. The exceptions are the
@@ -25,9 +25,9 @@ never as a negative finding.
     go build ./cmd/rashomon
     go test ./...
 
-Go 1.25 or later (`go.mod` says 1.25.0). The one non-standard dependency is a
-pure-Go SQLite driver, linked for a proxy-store reader the alpha leaves dormant
-(#28).
+Go 1.25 or later (`go.mod` says 1.25.0). There are no dependencies outside the
+standard library, and a test fails the build if one brings a networking package
+in.
 
 Run the tool against a scratch store rather than your own while you work:
 
@@ -94,7 +94,6 @@ is noise.
 | `internal/store` | the append-only record store and its locking |
 | `internal/settings` | reading and editing Claude Code settings files |
 | `internal/report` | reconciling the three records and rendering them |
-| `internal/wire` | reading the proxy's store |
 | `internal/install` | the hook entries, and what counts as one of ours |
 
 `internal/shape` deserves a note. It is the single file anyone has to audit to
@@ -116,8 +115,6 @@ Stated so nobody rediscovers them as bugs:
 - **Two H-17 halves are Linux-only.** They gate on `unshare` and `strace`, so
   they skip on macOS. CI installs both on the Linux runner and treats a skip as
   a failure, which is where that coverage actually happens.
-- **`TestRead_AgainstARealProxyStore` is opt-in** behind `RASHOMON_REAL_STORE`
-  and has never run against a store the proxy itself wrote.
 
 ## Reporting a security issue
 

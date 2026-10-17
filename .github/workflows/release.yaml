@@ -65,10 +65,10 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # The module gained a dependency graph when it started reading the
-      # proxy's SQLite store. Publishing a binary with a known-vulnerable
-      # module in it is the failure this catches, and a release is the last
-      # moment it is cheap to catch.
+      # go.mod names no module, so this checks the standard library and the
+      # toolchain itself rather than a dependency graph. Publishing a binary
+      # built with a known-vulnerable stdlib version is the failure this
+      # catches, and a release is the last moment it is cheap to catch.
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 

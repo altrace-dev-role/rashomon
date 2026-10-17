@@ -3,7 +3,6 @@ package acceptance
 import (
 	"bufio"
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -13,8 +12,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	_ "modernc.org/sqlite"
 )
 
 // Binaries under test. They are real compiled binaries, exec'd as subprocesses,
@@ -98,13 +95,11 @@ func (e *env) settingsPath() string { return filepath.Join(e.configDir, "setting
 func (e *env) managedPath() string  { return filepath.Join(e.configDir, "managed-settings.json") }
 
 // environ starts from the runner's own environment minus any proxy variables
-// (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, in either case). H-27 asserts on the
-// proxy variables a child does and does not receive, and `run` passes its own
-// environment through, so a corporate proxy or CI egress proxy configured on
-// the machine running the tests would reach the child and read as a failure.
-// The strip belongs HERE and not in `run`: a user's pre-existing proxy
-// variables are not the tool's to remove, and the promise under test is only
-// that run does not add its own when the observe-proxy check fails.
+// (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, in either case). A corporate proxy or a
+// CI egress proxy configured on the machine running the tests must not reach
+// the binary under test: nothing in it makes a network connection, and a test
+// that passed because a proxy variable happened to be set would be proving
+// the wrong thing.
 func (e *env) environ(extra ...string) []string {
 	var base []string
 	for _, kv := range os.Environ() {
@@ -333,14 +328,14 @@ type reportSession struct {
 	SkippedRecords int              `json:"skipped_records"`
 	// The destinations block, as much of it as the acceptance tests assert on.
 	Destinations struct {
-		Observed              bool     `json:"observed"`
-		Reason                string   `json:"reason"`
-		WireOnly              []string `json:"wire_only"`
-		ClientPlane           []string `json:"client_plane"`
-		DeclaredNotObserved   []string `json:"declared_not_observed"`
-		NotObservable         []string `json:"not_observable"`
-		ProxyOnPath           string   `json:"proxy_on_path"`
+		DeclaredHosts         []string `json:"declared_hosts"`
+		SSHHosts              []string `json:"ssh_hosts"`
 		ExecutedNotAsDeclared int      `json:"executed_not_as_declared"`
+		Novelty               struct {
+			Available   bool     `json:"available"`
+			Established bool     `json:"established"`
+			Hosts       []string `json:"hosts"`
+		} `json:"novelty"`
 	} `json:"destinations"`
 	// The causal view: which prompt produced which calls.
 	Chains struct {
@@ -357,10 +352,7 @@ type reportSession struct {
 				Program          string   `json:"program"`
 				VerbClass        string   `json:"verb_class"`
 				Outcome          string   `json:"outcome"`
-				Hosts            []struct {
-					Host  string `json:"host"`
-					State string `json:"state"`
-				} `json:"hosts"`
+				DeclaredHosts    []string `json:"declared_hosts"`
 			} `json:"links"`
 		} `json:"prompts"`
 		Unattributed []struct {
@@ -846,47 +838,6 @@ func (e *env) writeTranscript(t *testing.T, text string) string {
 	return path
 }
 
-// writeProxyStore builds a causal.db in the proxy's shape and returns its path.
-//
-// The timestamp is written the way the PROXY writes it -- Go's time.Time
-// String() rendering with the monotonic suffix attached -- because a fixture in
-// RFC 3339 would let these tests pass against a reader that cannot parse the
-// real thing.
-func (e *env) writeProxyStore(t *testing.T, hosts ...string) string {
-	t.Helper()
-	path := filepath.Join(e.home, "causal.db")
-
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatalf("open proxy store: %v", err)
-	}
-	defer db.Close() //nolint:errcheck // the exec errors below are what matter
-
-	if _, err := db.Exec(`CREATE TABLE causal_records (
-		sequence_num INTEGER PRIMARY KEY,
-		request_id TEXT NOT NULL DEFAULT '',
-		run_id TEXT NOT NULL DEFAULT '',
-		timestamp DATETIME NOT NULL,
-		reason TEXT NOT NULL DEFAULT '',
-		action TEXT NOT NULL DEFAULT '',
-		target_host TEXT NOT NULL DEFAULT ''
-	)`); err != nil {
-		t.Fatalf("create proxy store: %v", err)
-	}
-	for i, h := range hosts {
-		ts := time.Now().Format("2006-01-02 15:04:05.999999999 -0700 MST") +
-			fmt.Sprintf(" m=+%d.000000000", i)
-		if _, err := db.Exec(
-			`INSERT INTO causal_records (sequence_num, request_id, timestamp, reason, action, target_host)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			i+1, fmt.Sprintf("req-%d", i), ts, "host_not_in_allowlist_observed", "WARN", h+":443",
-		); err != nil {
-			t.Fatalf("insert proxy row: %v", err)
-		}
-	}
-	return path
-}
-
 // writeFullTranscript writes a transcript that matches a recorded call: an
 // assistant tool_use block with the given id, a user tool_result answering it,
 // and a final assistant message.
@@ -929,43 +880,6 @@ func (e *env) writeFullTranscript(t *testing.T, toolUseID, final string) string 
 	}
 	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
-	}
-	return path
-}
-
-// writeProxyStoreBadStamps writes a proxy store whose timestamps are in no
-// format this reader parses, which is how the window-not-applied path is
-// reached. The rows are otherwise identical to writeProxyStore's.
-func (e *env) writeProxyStoreBadStamps(t *testing.T, hosts ...string) string {
-	t.Helper()
-	path := filepath.Join(e.home, "causal-badstamps.db")
-
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatalf("open proxy store: %v", err)
-	}
-	defer db.Close() //nolint:errcheck // the exec errors below are what matter
-
-	if _, err := db.Exec(`CREATE TABLE causal_records (
-		sequence_num INTEGER PRIMARY KEY,
-		request_id TEXT NOT NULL DEFAULT '',
-		run_id TEXT NOT NULL DEFAULT '',
-		timestamp DATETIME NOT NULL,
-		reason TEXT NOT NULL DEFAULT '',
-		action TEXT NOT NULL DEFAULT '',
-		target_host TEXT NOT NULL DEFAULT ''
-	)`); err != nil {
-		t.Fatalf("create proxy store: %v", err)
-	}
-	for i, h := range hosts {
-		if _, err := db.Exec(
-			`INSERT INTO causal_records (sequence_num, request_id, timestamp, reason, action, target_host)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			i+1, fmt.Sprintf("req-%d", i), "not-a-timestamp-at-all",
-			"host_not_in_allowlist_observed", "WARN", h+":443",
-		); err != nil {
-			t.Fatalf("insert proxy row: %v", err)
-		}
 	}
 	return path
 }
