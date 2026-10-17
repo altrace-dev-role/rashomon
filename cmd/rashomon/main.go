@@ -45,7 +45,7 @@ const (
 func main() {
 	// os.Exit skips deferred functions, so every path that needs one has to
 	// have returned before this line is reached.
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	os.Exit(dispatch(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -178,6 +178,9 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
+		if standingDown() {
+			return nil
+		}
 		if checkPaused(args, stdin, store.PhaseCall, stderr) {
 			return nil
 		}
@@ -200,7 +203,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })
 		fault.Inject(fault.PointHookBeforeFlush)
 		if err := safe.Guard(h.Flush); err != nil {
-			fmt.Fprintln(stderr, flushLostLine)
+			say(stderr, flushLostLine)
 		}
 		return nil
 	})
@@ -219,6 +222,9 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
+		if standingDown() {
+			return nil
+		}
 		if checkPaused(args, stdin, store.PhasePost, stderr) {
 			return nil
 		}
@@ -237,8 +243,9 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		captureErr := safe.Guard(func() error { return p.Capture(stdin) })
 		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
 		if err := safe.Guard(p.Flush); err != nil {
-			fmt.Fprintln(stderr, flushLostLine)
+			say(stderr, flushLostLine)
 		}
+		fault.Inject(fault.PointPostAfterFlush)
 		return nil
 	})
 	return exitOK
@@ -255,12 +262,15 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		phase = args[0]
 	}
 	if phase != store.PhaseStart && phase != store.PhaseEnd {
-		fmt.Fprintln(stderr, "rashomon: probe expects start or end")
+		say(stderr, probePhaseLine)
 		return exitOK
 	}
 
 	// Guarded whole, for the reason given in cmdHook.
 	_ = safe.Guard(func() error {
+		if standingDown() {
+			return nil
+		}
 		if checkPaused(args, stdin, phase, stderr) {
 			return nil
 		}
@@ -370,6 +380,9 @@ func recapPending(args []string) bool {
 func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	_ = safe.Guard(func() error {
 		fault.Inject(fault.PointRecapStart)
+		if standingDown() {
+			return nil
+		}
 
 		now := time.Now()
 		payload := readRecapPayload(stdin, recapStdinTimeout)
@@ -380,6 +393,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 
 		st, err := openStoreForRead()
+		guardStore(st)
 		if errors.Is(err, store.ErrNoStore) {
 			// A Stop firing before this machine has ever opened a store
 			// cannot happen honestly -- SessionStart's own probe already
@@ -396,7 +410,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			// install.key or install.json -- is exactly H-93's second case.
 			// Unlike ErrNoStore, root DOES already hold a store here, so the
 			// failure is recorded where status can show it.
-			recap.RecordFailure(root, now)
+			recordRecapFailure(root, now)
 			return nil
 		}
 		if standsDown(args, st, stderr) {
@@ -409,7 +423,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			// Claude Code's session id any other way than being told it.
 			newest, _, nerr := st.NewestRun()
 			if nerr != nil {
-				recap.RecordFailure(root, now)
+				recordRecapFailure(root, now)
 				return nil
 			}
 			if newest == "" {
@@ -433,7 +447,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		d, derr := digest.Build(st, sessionID, "", lastMessage, now)
 		if derr != nil {
-			recap.RecordFailure(root, now)
+			recordRecapFailure(root, now)
 			return nil
 		}
 		if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
@@ -460,6 +474,11 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			}
 		}
 		line, wantSpeak := recap.Line(d, d.SessionID, fromPlugin)
+		// A supervised recap whose parent has gone, or whose hard stop has
+		// passed, claims nothing and says nothing.
+		if standingDown() {
+			return nil
+		}
 		// Claim's own error is intentionally ignored: recap.json is
 		// bookkeeping, not evidence, and a failure to persist it must cost at
 		// most a future duplicate or a stale health timestamp, never a
@@ -473,7 +492,7 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 
 		b, merr := json.Marshal(map[string]string{"systemMessage": line})
-		if merr != nil {
+		if merr != nil || standingDown() {
 			return nil
 		}
 		// The human channel: systemMessage in JSON on stdout, capped at
@@ -515,8 +534,26 @@ func standsDown(args []string, st *store.Store, stderr io.Writer) bool {
 	if id == "" || id == st.InstallID() {
 		return false
 	}
-	fmt.Fprintln(stderr, standDownLine)
+	say(stderr, standDownLine)
 	return true
+}
+
+// say writes one of a hook entry's fixed lines to stderr, unless this is a
+// supervised child that has stood down, which prints nothing at all.
+func say(stderr io.Writer, line string) {
+	if standingDown() {
+		return
+	}
+	fmt.Fprintln(stderr, line)
+}
+
+// recordRecapFailure marks the recap unhealthy, unless this is a supervised
+// child that has stood down, which writes nothing.
+func recordRecapFailure(root string, now time.Time) {
+	if standingDown() {
+		return
+	}
+	recap.RecordFailure(root, now)
 }
 
 // installArg returns the install id the command line names, or "" for one that
@@ -537,15 +574,19 @@ func installArg(args []string) string {
 func openForHook(stderr io.Writer) *store.Store {
 	root, err := store.DefaultRoot()
 	if err != nil {
-		fmt.Fprintln(stderr, "rashomon: store location unresolved")
+		say(stderr, storeUnresolvedLine)
+		return nil
+	}
+	// A supervised child that has stood down mints no store either.
+	if standingDown() {
 		return nil
 	}
 	st, err := store.Open(root)
 	if err != nil {
-		fmt.Fprintln(stderr, "rashomon: store unavailable")
+		say(stderr, storeUnavailableLine)
 		return nil
 	}
-	return st
+	return guardStore(st)
 }
 
 // checkPaused is the recording-state gate shared by cmdHook, cmdPost and
@@ -585,6 +626,7 @@ func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer)
 	if err != nil {
 		return true
 	}
+	guardStore(st)
 	if standsDown(args, st, stderr) {
 		return true
 	}
