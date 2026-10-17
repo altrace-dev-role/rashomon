@@ -90,8 +90,10 @@ type Failure struct {
 // Stats are one supervised invocation's figures, for instrumentation.
 type Stats struct {
 	ChildPID int
-	// ParentMaxRSS and ChildMaxRSS are each process's own peak resident
-	// set, in bytes; ChildMaxRSS is 0 when the child was never reaped.
+	// ParentMaxRSS is the supervisor's own peak resident set, in bytes.
+	// ChildMaxRSS is wait4's figure for the child, 0 when it was never
+	// reaped; on Linux it is at least the supervisor's size when it forked,
+	// because Linux counts the image the child's exec replaced.
 	ParentMaxRSS int64
 	ChildMaxRSS  int64
 	// Outcome is empty for an invocation that forwarded or printed nothing
