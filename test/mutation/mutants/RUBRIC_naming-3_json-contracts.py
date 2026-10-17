@@ -19,8 +19,13 @@ m("RUBRIC naming-3 spend's by_kind key is renamed", "internal/spend/spend.go",
   "TestRubricNAMING3_SpendJSONKeysAreTheSnapshot")
 m("RUBRIC naming-3 the version guard lets any removal through",
   "test/acceptance/schema_guard_test.go",
-  "\treturn removed, len(removed) > 0 && oldVersion == newVersion\n",
-  "\treturn removed, false\n",
+  "\treturn removed, len(removed) > 0 && !bumped\n",
+  "\t_ = bumped\n\treturn removed, false\n",
+  "TestGuardDropsAKey_BlocksARemovedKeyWithNoVersionBump")
+m("RUBRIC naming-3 any changed version passes for a bump",
+  "test/acceptance/schema_guard_test.go",
+  "\tbumped := newVersion >= 0 && newVersion > oldVersion\n",
+  "\tbumped := newVersion != oldVersion\n",
   "TestGuardDropsAKey_BlocksARemovedKeyWithNoVersionBump")
 m("RUBRIC naming-3 an unparseable version reads as unchanged",
   "test/acceptance/schema_guard_test.go",

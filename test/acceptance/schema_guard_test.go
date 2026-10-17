@@ -28,9 +28,8 @@ func removedPaths(old, new []byte) []string {
 
 // versionOf reads a document's top-level version field, named key --
 // report_version for the report, schema_version for digest and spend -- or -1
-// when it carries none or does not parse. -1 never equals another document's
-// -1 in the guard's own sense (unknown is never "unchanged"), because a
-// schema the guard cannot read is not one it can say held still.
+// when it carries none or does not parse. -1 is never a bump: a version the
+// guard cannot read is not one it can say moved, so a removal under it blocks.
 func versionOf(raw []byte, key string) int {
 	var doc map[string]json.RawMessage
 	var v *int
@@ -43,8 +42,10 @@ func versionOf(raw []byte, key string) int {
 // guardDropsAKey reports whether writing new over old under -update would
 // drop a key path with no version bump to show for it: the pairing that
 // makes a renamed or removed key invisible, since the committed file simply
-// becomes the new shape with nothing to diff it against.
+// becomes the new shape with nothing to diff it against. A bump is a readable
+// new version higher than the old one; equal, lower, or unreadable is not.
 func guardDropsAKey(oldPaths, newPaths []byte, oldVersion, newVersion int) (removed []string, blocked bool) {
 	removed = removedPaths(oldPaths, newPaths)
-	return removed, len(removed) > 0 && oldVersion == newVersion
+	bumped := newVersion >= 0 && newVersion > oldVersion
+	return removed, len(removed) > 0 && !bumped
 }
