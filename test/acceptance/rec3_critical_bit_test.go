@@ -23,6 +23,8 @@ func TestREC3c_ReportPassesOverANonCriticalRecord(t *testing.T) {
 			e.mustHook(defaultPayload().build(t))
 			e.probe("end", testSession)
 			appendRawLine(t, e.recordsPath(testSession), c.line)
+			e.expectDamagedStore("a record of a kind this build does not know, appended for the reader to pass over",
+				`a "future_kind" record in a file that holds none`, "an ordered record with seq <nil>")
 
 			rep := e.report(testSession)
 			if got := rep.Coverage.State == "verified"; got != c.verified {

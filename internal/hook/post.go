@@ -179,6 +179,7 @@ func (p *Post) Capture(in io.Reader) error {
 		DurationMS:    positive(pl.DurationMS),
 		RulesVersion:  shape.RulesVersion,
 	}
+	rec.Writer = Writer
 	// Derived through the same function the declaration path uses, with the
 	// same per-install key, or the two digests would never be comparable. An
 	// absent tool_input leaves it empty rather than digesting nothing, because

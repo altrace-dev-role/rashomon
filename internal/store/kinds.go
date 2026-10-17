@@ -4,17 +4,13 @@ package store
 // written at: session, prompt, turn_end, turn_cost, human, subagent, batch,
 // task, compact, instructions and model (RECORD), the verify checkpoint
 // (VERIFY), outcome_join and write_observed (BREADTH). Technical spec 1.2.2;
-// Archive 10.2.1.
-//
-// Contract only (P-07): the kinds, the per-kind versions and the acceptance
-// rule are frozen here; the writers that stamp them land with their PRs, and
-// the call-record writer moves from SchemaVersion to KindVersion in P-11.
+// Archive 10.2.1. The kinds, the per-kind versions and the acceptance rule
+// are frozen here; each kind's writer lands with its own change.
 const EventSchemaVersion = 5
 
 // CallSchemaVersion is the version the call records (declaration, execution,
-// terminal) take at 1.2.0, when their v5 fields land (record_v5.go). Until
-// P-11 the writer stamps SchemaVersion, 4, because a record at version 5 with
-// none of the v5 keys filled would be a v5 record that lied about being one.
+// terminal) are written at, now that they carry the v5 keys (record_v5.go).
+// SchemaVersion is the same number under the name the writers use.
 const CallSchemaVersion = 5
 
 // The record kinds introduced at 1.2.0. There is no steer kind (ED-1):
@@ -36,11 +32,10 @@ const (
 	TypeWriteObserved = "write_observed"
 )
 
-// kindVersion is the version each writer stamps on its kind once 1.2.0's
-// writers are in (REC-1): call kinds at 5, coverage and gaps unchanged at 3,
-// every new kind at 5. It is unexported so that only KindVersion can read
-// it: an importer that could write into an exported map could change what
-// AcceptsKind accepts.
+// kindVersion is the version each writer stamps on its kind (REC-1): call
+// kinds at 5, coverage and gaps unchanged at 3, every new kind at 5. It is
+// unexported so that only KindVersion can read it: an importer that could
+// write into an exported map could change what AcceptsKind accepts.
 var kindVersion = map[string]int{
 	TypeDeclaration:   CallSchemaVersion,
 	TypeExecution:     CallSchemaVersion,

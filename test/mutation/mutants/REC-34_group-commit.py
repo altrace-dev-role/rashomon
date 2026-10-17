@@ -214,14 +214,11 @@ m("REC-34 the hook's own flush marks itself as post", "internal/hook/flush.go",
   "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhaseCall)",
   "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhasePost)", "TestREC34_FailedFlushIsMarkedAndNeverRetried",
   platform="darwin")
-# The marker rides its own version, store.FlushFailedSchemaVersion, so that
-# a 1.1.x reader skips only this one line rather than every call record this
-# invocation wrote (record.go's FlushFailedSchemaVersion doc). Collapsing it
-# back onto store.SchemaVersion is the exact regression that doc exists to
-# name, caught here at the one site that writes it.
-m("REC-34 the marker rides the call records' own version", "internal/hook/flush.go",
-  "SchemaVersion: store.FlushFailedSchemaVersion,", "SchemaVersion: store.SchemaVersion,",
-  "TestREC34_FailedFlushIsMarkedAndNeverRetried")
+# The marker rides its own constant, store.FlushFailedSchemaVersion, so an
+# edit to the ordinary records' version never moves it (record.go's doc).
+# Collapsing it onto store.SchemaVersion is an equivalent mutant since P-11
+# moved SchemaVersion to 5 too, so it is not registered; register it again
+# when the two differ.
 
 # A flush_failed marker can name a call whose own record never landed: the
 # seq counter's barrier, the first ordered append issues, is what failed, so

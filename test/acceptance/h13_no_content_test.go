@@ -45,6 +45,20 @@ var (
 		"cwd_digest",
 		// v4. An integer: which runner lists decided the shape.
 		"rules_version",
+		// v5. The writing binary's version, then the declaration's v5 keys
+		// (store.DeclarationV5), every one present and null until the change
+		// that fills it lands. The command and the paths are stored masked
+		// and capped once captured; the objects below them (command_cut,
+		// masked spans, target, edit_marks_before) hold offsets, closed words,
+		// counts and checked values, never free text.
+		"writer",
+		"command", "command_bytes", "command_cut", "masked", "command_withheld",
+		"cwd", "project", "file_path", "written_paths", "written_paths_complete",
+		"target", "edit_marks_before",
+		"written_paths_withheld", "file_path_withheld", "cwd_withheld", "project_withheld",
+		"target_withheld", "edit_marks_before_withheld", "prompt_id_withheld",
+		"agent_id_withheld", "agent_type_withheld", "hosts_withheld", "ssh_hosts_withheld",
+		"harness_id", "harness_tool_name", "declared_via",
 	}
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
@@ -68,6 +82,19 @@ var (
 		"status_masked", "runner_digest",
 		// v4. An integer: which runner lists decided them.
 		"rules_version",
+		// v5. The writing binary's version, then the execution's v5 keys
+		// (store.ExecutionV5), every one present and null until the change
+		// that fills it lands. The failure class, output evidence and gate
+		// output are closed words, booleans and counts computed from text
+		// that is never stored.
+		"writer",
+		"executed_command", "executed_command_reason", "executed_command_bytes",
+		"executed_command_cut", "executed_masked",
+		"failure", "output_evidence", "edit_marks", "head_after", "gate_output", "credmech",
+		"executed_command_withheld", "failure_withheld", "output_evidence_withheld",
+		"edit_marks_withheld", "head_after_withheld",
+		"harness_id", "harness_tool_name", "declared_via", "outcome_source", "failure_type",
+		"mcp_server_source",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
@@ -75,6 +102,8 @@ var (
 		// v5. Which invocation wrote this terminal: call or post, set only
 		// on a flush_failed marker. Null on an ordinary closing terminal.
 		"phase",
+		// v5. The writing binary's version, and nothing else.
+		"writer",
 	}
 	coverageKeys = []string{
 		"type", "schema_version", "recorded_at_unix_ms",

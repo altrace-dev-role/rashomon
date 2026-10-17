@@ -42,6 +42,7 @@ const (
 )
 
 func main() {
+	hook.Writer = version
 	// os.Exit skips deferred functions, so every path that needs one has to
 	// have returned before this line is reached.
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
