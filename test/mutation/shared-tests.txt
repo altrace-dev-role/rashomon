@@ -2,6 +2,6 @@
 # A mutant in a row's file may name only that row's tests, or a pair listed
 # here. sweep.py --check reads this.
 STR-19 TestSTR82_
-LUI-17 TestSTR4b_
+LUI-17 TestSTR4_
 LUI-29 TestTRU51_
 DEL-16 TestMSR39_

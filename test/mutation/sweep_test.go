@@ -560,6 +560,31 @@ func TestSharedTestsEntryShape(t *testing.T) {
 	}
 }
 
+// A suffixed test, TestREC56b_, pins its parent row, and the shared-pair
+// lookup is keyed on the parent's name, so an entry that names the suffixed
+// form is shaped right and can still never match: it has to name the parent.
+// Same real-file edit and restore as TestSharedTestsEntryShape.
+func TestSharedTestsEntryNamesTheParent(t *testing.T) {
+	root := moduleRoot(t)
+	path := filepath.Join(root, "test", "mutation", "shared-tests.txt")
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.WriteFile(path, original, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err := os.WriteFile(path, append(append([]byte{}, original...), []byte("STR-19 TestSTR82b_\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, code := sweep(t, root, "--check", "--files", "mutants/DEL-17_job-timeouts.py")
+	if code == 0 {
+		t.Errorf("--check exited 0 with a shared-tests.txt entry naming a suffixed test:\n%s", out)
+	}
+}
+
 // --strict. Without it, a mutant whose judging test SKIPPED here exits 0:
 // correct on a laptop missing the tooling H-17's socket half needs. With it,
 // the same skip fails the run, which is what the CI sweep job needs so a

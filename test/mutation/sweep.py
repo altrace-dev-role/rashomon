@@ -188,6 +188,11 @@ def check(complete):
         if len(parts) != 2 or not ROW_NAME.match(parts[0]) or not ROW_TEST.fullmatch(parts[1]):
             problems.append(f"{SHARED_TESTS.name}: expected '<PREFIX>-<n> Test<PREFIX><n>[a-z]?_', got {ln!r}")
             continue
+        named = ROW_TEST.fullmatch(parts[1])
+        if parts[1] != f"Test{named.group(1)}{named.group(2)}_":
+            problems.append(f"{SHARED_TESTS.name}: {ln!r} names a suffixed test, which pins its parent row; "
+                            f"name the parent, Test{named.group(1)}{named.group(2)}_, or the pair never matches")
+            continue
         shared.add((parts[0], parts[1]))
     texts = {}
 
