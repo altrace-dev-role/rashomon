@@ -179,6 +179,10 @@ func Executable() (string, error) {
 	return p, nil
 }
 
+// Subcommand is the installed command line's subcommand for an event:
+// "hook", "post", "probe start", "probe end", "recap" or "recap pending".
+func Subcommand(event string) string { return subcommand(event) }
+
 func subcommand(event string) string {
 	switch event {
 	case EventPreToolUse:
