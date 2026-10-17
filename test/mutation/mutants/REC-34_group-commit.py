@@ -5,14 +5,14 @@
 # (rashomonfault) is what sees a missing flush, a full sync back inside the
 # lock, or a marker left behind a barrier.
 m("REC-34 the hook never flushes", "cmd/rashomon/main.go",
-  "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
+  "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tsay(stderr, flushLostLine)\n\t\t}\n",
   "", "TestREC34_")
 m("REC-34 post never flushes", "cmd/rashomon/main.go",
-  "\t\tif err := safe.Guard(p.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
+  "\t\tif err := safe.Guard(p.Flush); err != nil {\n\t\t\tsay(stderr, flushLostLine)\n\t\t}\n",
   "", "TestREC34_")
 m("REC-34 the hook flushes before its last append", "cmd/rashomon/main.go",
-  "\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
-  "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n",
+  "\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tsay(stderr, flushLostLine)\n\t\t}\n",
+  "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tsay(stderr, flushLostLine)\n\t\t}\n\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n",
   "TestREC34_")
 m("REC-34 the ordered append syncs in full inside the lock", "internal/store/store.go",
   "\treturn s.syncAppend(f)\n}\n\n// lockCounted takes", "\treturn syncFull(f)\n}\n\n// lockCounted takes", "TestREC34_")
@@ -37,7 +37,7 @@ m("REC-34 the report renders a flush_failed marker as fine", "internal/report/re
   "\t\tif t.FlushFailed() {\n\t\t\tsess.Coverage.add(store.ReasonFlushFailed)\n", "\t\tif t.FlushFailed() && false {\n\t\t\tsess.Coverage.add(store.ReasonFlushFailed)\n",
   "TestREC34_")
 m("REC-34 the unmarkable failure is silent", "cmd/rashomon/main.go",
-  "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n",
+  "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tsay(stderr, flushLostLine)\n\t\t}\n",
   "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\treturn nil\n\t\t}\n", "TestREC34_")
 m("REC-34 a flush_failed marker closes a declaration", "internal/store/read.go",
   "\t\tif !t.FlushFailed() {\n\t\t\tclosed[t.ToolUseID] = true\n", "\t\tif true {\n\t\t\tclosed[t.ToolUseID] = true\n", "TestREC34d_")

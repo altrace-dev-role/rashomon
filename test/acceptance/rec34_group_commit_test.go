@@ -29,6 +29,12 @@ type syncEvent struct {
 	locked bool
 }
 
+// syncKinds are the recorder's line kinds: a barrier, a full sync, a full
+// sync issued where a barrier was wanted ("barrier-full"), and "stdout",
+// which the supervisor logs just before it forwards an entry's output, so
+// the order of syncs and output can be read from one log.
+var syncKinds = map[string]bool{"barrier": true, "full": true, "barrier-full": true, "stdout": true}
+
 // readSyncLog parses the recorder's log. A missing log is no syncs at all.
 func readSyncLog(t *testing.T, path string) []syncEvent {
 	t.Helper()
@@ -44,7 +50,7 @@ func readSyncLog(t *testing.T, path string) []syncEvent {
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		parts := strings.Fields(sc.Text())
-		if len(parts) != 3 || (parts[0] != "barrier" && parts[0] != "full" && parts[0] != "barrier-full") || !strings.HasPrefix(parts[2], "locked=") {
+		if len(parts) != 3 || !syncKinds[parts[0]] || !strings.HasPrefix(parts[2], "locked=") {
 			t.Fatalf("sync log line %q is not <kind> <file> locked=<bool>", sc.Text())
 		}
 		out = append(out, syncEvent{kind: parts[0], file: parts[1], locked: parts[2] == "locked=true"})
