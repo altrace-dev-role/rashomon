@@ -20,18 +20,20 @@ const FileSteer = "steer.ndjson"
 // renderer made is never withheld by it.
 const MaxSteerTextBytes = 2048
 
-// ErrSteerTextWithheld reports a steer append that landed with a line's
-// text withheld over MaxSteerTextBytes. The lines are in the log, but one of
-// them no longer holds what it was to say, so the caller prints nothing:
-// a note printed is a note the steer log can show (STR-10).
-var ErrSteerTextWithheld = errors.New("store: a steer line was written with its text withheld")
+// ErrSteerTextWithheld reports a steer append refused because a line
+// reached the writer with a text over MaxSteerTextBytes: build did not cap
+// it before deciding its state. Nothing was written, and the caller prints
+// nothing, so the steer log and stdout still agree (STR-10).
+var ErrSteerTextWithheld = errors.New("store: a steer line reached the writer with its text over its cap")
 
 // SteerLine is one line AppendSteer writes. steer.Line is the one kind
 // there is; the store names only what its writer needs of it, because steer
 // is the package that calls the writer and so cannot be imported by it.
 type SteerLine interface {
 	// CapText withholds model_text and user_text over MaxSteerTextBytes
-	// (CapSteerText) and reports whether it withheld either.
+	// (CapSteerText) and reports whether it withheld either. build calls it
+	// before it decides the line's state; AppendSteer calls it again and
+	// refuses the append if it still withholds.
 	CapText() bool
 }
 
@@ -54,6 +56,9 @@ func CapSteerText(text string, withheld **string) (string, bool) {
 // build runs once the lock is held and before anything is written, and
 // returns the lines to append: it is where the router reads and charges its
 // budget, which must be decided under the same hold as the lines it admits.
+// build caps every line (SteerLine.CapText) before it decides that line's
+// state or charges budget for it: a line whose text was withheld did not
+// print, so it is not delivered (Technical spec 7.2.5 G2, output_gate).
 // locked reads the log through the handle that holds the lock; on Windows,
 // where the lock is mandatory, a read through any other handle is refused,
 // even one this process opened (nextSeq reads the records the same way). build
@@ -65,20 +70,21 @@ func CapSteerText(text string, withheld **string) (string, bool) {
 // nothing, and there is no best-effort fallback: a note dropped beats a note
 // said twice (4.2.5).
 //
-// Every line is capped (SteerLine.CapText) and marshalled before any is
+// Every line is checked against its cap and marshalled before any is
 // written, and the lines go out in one write, which starts a line of its
-// own after a torn tail and is cut back if it fails (appendHealed): they
-// land together or not at all. A line over MaxRecordBytes refuses the whole
-// append with ErrRecordOversize. No lines, from build, writes nothing and
-// owes no sync.
+// own after a torn tail and is cut back if it fails (appendHealed). A line
+// whose CapText still withholds refuses the whole append with
+// ErrSteerTextWithheld, and a line over MaxRecordBytes with
+// ErrRecordOversize, each writing nothing. No lines, from build, writes
+// nothing and owes no sync.
 //
 // The append is ordered inside the lock like every other (syncAppend): on a
 // deferred Store the one full sync is Flush's, which the caller issues
 // after its last append, outside the lock, and before it writes to stdout
 // (REC-34, REC-42); an append whose caller then prints nothing does not need
-// it. A returned ErrSteerTextWithheld means the lines landed with a text
-// withheld; any other error means none did, and in either case the caller
-// prints nothing (1.2.9).
+// it. An error from the sync or barrier comes after the write: the lines
+// may be in the log, not yet ordered. Any other error means none were
+// written. On every error the caller prints nothing (1.2.9).
 func (s *Store) AppendSteer(sessionID string, build func(locked io.ReaderAt) ([]SteerLine, error)) error {
 	if err := s.opened(); err != nil {
 		return err
@@ -102,36 +108,31 @@ func (s *Store) AppendSteer(sessionID string, build func(locked io.ReaderAt) ([]
 	if err != nil {
 		return err
 	}
-	batch, withheld, err := marshalSteer(lines)
+	batch, err := marshalSteer(lines)
 	if err != nil || len(batch) == 0 {
 		return err
 	}
 	if err := appendHealed(f, batch, true); err != nil {
 		return err
 	}
-	if err := s.syncAppend(f); err != nil {
-		return err
-	}
-	if withheld {
-		return ErrSteerTextWithheld
-	}
-	return nil
+	return s.syncAppend(f)
 }
 
-// marshalSteer is lines as one NDJSON batch, each capped first, and whether
-// any line's text was withheld. A line over MaxRecordBytes refuses them all.
-func marshalSteer(lines []SteerLine) (batch []byte, withheld bool, err error) {
+// marshalSteer is lines as one NDJSON batch. A line whose text is still
+// over its cap, or a line over MaxRecordBytes, refuses them all.
+func marshalSteer(lines []SteerLine) ([]byte, error) {
+	var batch []byte
 	for _, l := range lines {
 		if l.CapText() {
-			withheld = true
+			return nil, ErrSteerTextWithheld
 		}
-		line, merr := marshalLine(l)
-		if merr != nil {
-			return nil, false, merr
+		line, err := marshalLine(l)
+		if err != nil {
+			return nil, err
 		}
 		batch = append(batch, line...)
 	}
-	return batch, withheld, nil
+	return batch, nil
 }
 
 // ReadSteer returns the lines of a run's steer log, each one JSON object,

@@ -385,32 +385,66 @@ func TestREC42e_SteerLogIsAPrivateSideFile(t *testing.T) {
 	}
 }
 
-// TestREC42g_WithheldTextLandsAndSaysSo: a line whose text is over
-// MaxSteerTextBytes is written with the text withheld, and the append
-// reports it, so the caller does not print a note the log does not hold.
-func TestREC42g_WithheldTextLandsAndSaysSo(t *testing.T) {
+// TestREC42g_ATextOverItsCapIsCappedBeforeItsLineIsDecided: build caps a
+// line's texts before it decides the line's state (Technical spec 7.2.5 G2:
+// the size check runs before the append, so each line's state matches what
+// printed), and such a line lands with its text withheld the store's way. A
+// line that reaches the writer still over its cap refuses the whole append
+// with ErrSteerTextWithheld and writes nothing: the caller prints nothing,
+// so the log must hold nothing of it either (STR-10).
+func TestREC42g_ATextOverItsCapIsCappedBeforeItsLineIsDecided(t *testing.T) {
 	const session = "sess-steer-withheld"
-	st, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	long := func() *testSteerLine {
+		return &testSteerLine{Type: "steer", ID: "long", ModelText: strings.Repeat("x", MaxSteerTextBytes+1)}
 	}
-	long := &testSteerLine{Type: "steer", ID: "long", ModelText: strings.Repeat("x", MaxSteerTextBytes+1)}
-	err = st.AppendSteer(session, fixed(append(steerLines("a"), long)))
-	if !errors.Is(err, ErrSteerTextWithheld) {
-		t.Fatalf("AppendSteer with text over its cap returned %v, want ErrSteerTextWithheld", err)
-	}
-	lines, _, err := st.ReadSteer(session)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(lines) != 2 {
-		t.Fatalf("read %d lines, want both: the withheld line lands", len(lines))
-	}
-	var got testSteerLine
-	if err := json.Unmarshal(lines[1], &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.ModelText != "" || got.ModelTextWithheld == nil || *got.ModelTextWithheld != "oversize" {
-		t.Errorf("the long line reads model_text %d bytes, withheld %v; want empty and oversize", len(got.ModelText), got.ModelTextWithheld)
-	}
+
+	t.Run("a line build did not cap writes none of the batch", func(t *testing.T) {
+		st, err := Open(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.barrier = orderingBarrier
+		st.DeferDurability()
+		err = st.AppendSteer(session, fixed(append(steerLines("a"), long())))
+		if !errors.Is(err, ErrSteerTextWithheld) {
+			t.Fatalf("AppendSteer with an uncapped text over its cap returned %v, want ErrSteerTextWithheld", err)
+		}
+		if ids, skipped := steerIDs(t, st, session); len(ids) != 0 || skipped != 0 {
+			t.Errorf("an append refused for an uncapped text left %v (%d unreadable) in the log", ids, skipped)
+		}
+		if st.dirty != "" {
+			t.Errorf("an append that wrote nothing left %q owed a sync", st.dirty)
+		}
+	})
+
+	t.Run("a line build capped lands withheld", func(t *testing.T) {
+		st, err := Open(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = st.AppendSteer(session, func(io.ReaderAt) ([]SteerLine, error) {
+			l := long()
+			if !l.CapText() {
+				t.Fatal("CapText did not withhold a text one byte over its cap")
+			}
+			return append(steerLines("a"), l), nil
+		})
+		if err != nil {
+			t.Fatalf("AppendSteer of a line build capped returned %v, want nil", err)
+		}
+		lines, _, err := st.ReadSteer(session)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(lines) != 2 {
+			t.Fatalf("read %d lines, want both", len(lines))
+		}
+		var got testSteerLine
+		if err := json.Unmarshal(lines[1], &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.ModelText != "" || got.ModelTextWithheld == nil || *got.ModelTextWithheld != "oversize" {
+			t.Errorf("the long line reads model_text %d bytes, withheld %v; want empty and oversize", len(got.ModelText), got.ModelTextWithheld)
+		}
+	})
 }

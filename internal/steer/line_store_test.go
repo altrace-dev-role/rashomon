@@ -79,10 +79,10 @@ func TestREC42f_StoredLineReadsBackAsALine(t *testing.T) {
 
 // TestREC52f_SteerTextCapsAtNAndNPlusOne: model_text and user_text are each
 // capped at 2,048 bytes (Technical spec 1.2.9). At the cap the text is
-// stored whole; one byte over, it is withheld the store's way -- empty, with
-// its *_withheld key saying "oversize" (1.2.11) -- the other text and the
-// rest of the line are kept, and the append says the line landed with less
-// than it was given.
+// stored whole; one byte over, CapText withholds it the store's way --
+// empty, with its *_withheld key saying "oversize" (1.2.11) -- and keeps
+// the other text and the rest of the line, and a line capped that way
+// before it is appended lands as capped.
 func TestREC52f_SteerTextCapsAtNAndNPlusOne(t *testing.T) {
 	if store.MaxSteerTextBytes != 2048 {
 		t.Fatalf("MaxSteerTextBytes is %d, want 2,048 (Technical spec 1.2.9)", store.MaxSteerTextBytes)
@@ -101,7 +101,13 @@ func TestREC52f_SteerTextCapsAtNAndNPlusOne(t *testing.T) {
 			*text = strings.Repeat("é", n/2) + strings.Repeat("x", n%2)
 			keep := other(l)
 
+			if withheld := l.CapText(); withheld != over {
+				t.Errorf("%s at %d bytes: CapText reported %v, want %v", field, n, withheld, over)
+			}
 			got, err := appendAndRead(t, "sess-cap", &l)
+			if err != nil {
+				t.Fatalf("%s at %d bytes, capped first: AppendSteer returned %v, want nil", field, n, err)
+			}
 			if len(got) != 1 {
 				t.Fatalf("%s at %d bytes: read %d lines, want 1", field, n, len(got))
 			}
@@ -111,14 +117,39 @@ func TestREC52f_SteerTextCapsAtNAndNPlusOne(t *testing.T) {
 				gotText, withheld = g.UserText, g.UserTextWithheld
 			}
 			switch {
-			case !over && (err != nil || len(gotText) != n || withheld != nil):
-				t.Errorf("%s at the cap: err %v, %d bytes stored, withheld %v; want nil, %d, nil", field, err, len(gotText), withheld, n)
-			case over && (!errors.Is(err, store.ErrSteerTextWithheld) || gotText != "" || withheld == nil || *withheld != "oversize"):
-				t.Errorf("%s one over the cap: err %v, %d bytes stored, withheld %v; want ErrSteerTextWithheld, 0, oversize", field, err, len(gotText), withheld)
+			case !over && (len(gotText) != n || withheld != nil):
+				t.Errorf("%s at the cap: %d bytes stored, withheld %v; want %d, nil", field, len(gotText), withheld, n)
+			case over && (gotText != "" || withheld == nil || *withheld != "oversize"):
+				t.Errorf("%s one over the cap: %d bytes stored, withheld %v; want 0, oversize", field, len(gotText), withheld)
 			}
 			if other(g) != keep || g.ID != "id-"+field {
 				t.Errorf("%s at %d bytes: the rest of the line changed: id %q, other text %q", field, n, g.ID, other(g))
 			}
+		}
+	}
+}
+
+// TestREC52g_AnUncappedTextIsNeverStoredAsDelivered: a delivered Line whose
+// text reaches the writer still over its cap is not stored at all, nor is
+// any line appended with it, and the append says why: the caller prints
+// nothing, and the steer log lists exactly the notes that printed (STR-10).
+// Either text alone is enough.
+func TestREC52g_AnUncappedTextIsNeverStoredAsDelivered(t *testing.T) {
+	for _, field := range []string{"model_text", "user_text"} {
+		l := Line{Type: LineType, V: LineVersion, ID: "id-long", State: LineStateDelivered, ModelText: "model", UserText: "user"}
+		text := &l.ModelText
+		if field == "user_text" {
+			text = &l.UserText
+		}
+		*text = strings.Repeat("x", store.MaxSteerTextBytes+1)
+		short := Line{Type: LineType, V: LineVersion, ID: "id-short", State: LineStateDelivered, ModelText: "model", UserText: "user"}
+
+		got, err := appendAndRead(t, "sess-uncapped", &short, &l)
+		if !errors.Is(err, store.ErrSteerTextWithheld) {
+			t.Errorf("%s over its cap, uncapped: AppendSteer returned %v, want ErrSteerTextWithheld", field, err)
+		}
+		if len(got) != 0 {
+			t.Errorf("%s over its cap, uncapped: the log holds %d lines, want none", field, len(got))
 		}
 	}
 }

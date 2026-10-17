@@ -82,7 +82,9 @@ type Line struct {
 	// key. Each is capped at store.MaxSteerTextBytes, 2,048 bytes (tech
 	// 1.2.9), a looser ceiling than render's own 1,200/1,600-byte
 	// rendered-message cap (see internal/steer/render) that leaves room for
-	// UserText's mirror wrapper. The store's writer enforces it (CapText).
+	// UserText's mirror wrapper. The router caps a line (CapText) before
+	// it decides the line's state; the store's writer refuses a line that
+	// reaches it still over the cap.
 	ModelText string `json:"model_text"`
 	UserText  string `json:"user_text"`
 	// ModelTextWithheld and UserTextWithheld say why their text is empty
@@ -157,8 +159,9 @@ func (l Line) MarshalJSON() ([]byte, error) {
 
 // CapText withholds ModelText and UserText over store.MaxSteerTextBytes,
 // each on its own, and reports whether it withheld either. It is
-// store.SteerLine's one method: AppendSteer calls it on every line it
-// writes.
+// store.SteerLine's one method: the router calls it before it decides the
+// line's state, and AppendSteer calls it again on every line it writes,
+// refusing the append if it still withholds.
 func (l *Line) CapText() bool {
 	var model, user bool
 	l.ModelText, model = store.CapSteerText(l.ModelText, &l.ModelTextWithheld)

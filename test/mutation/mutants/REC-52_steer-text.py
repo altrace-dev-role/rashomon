@@ -1,6 +1,6 @@
 # REC-52, the steer texts: model_text and user_text are each capped at 2,048
 # bytes; at the cap a text is kept, over it it is emptied and its *_withheld
-# key says oversize, and the append says so.
+# key says oversize; a line that reaches the writer uncapped is not stored.
 S = "internal/store/steerlog.go"
 L = "internal/steer/line.go"
 m("REC-52 a steer text at its cap is withheld", S,
@@ -13,3 +13,5 @@ m("REC-52 user_text is not capped", L,
   "\tl.UserText, user = store.CapSteerText(l.UserText, &l.UserTextWithheld)\n", "", "TestREC52f_")
 m("REC-52 a withheld user_text is not reported", L,
   "\treturn model || user\n", "\treturn model && user\n", "TestREC52f_")
+m("REC-52 an uncapped delivered line is stored with its text emptied", S,
+  "\t\tif l.CapText() {\n\t\t\treturn nil, ErrSteerTextWithheld\n\t\t}\n", "\t\tl.CapText()\n", "TestREC52g_")

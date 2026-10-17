@@ -436,6 +436,8 @@ jobs:
             TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldGapsLock
             TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldForgetLock
             TestRubricTEST11_TheReportReadCountsARefusalAsSkipped
+            TestREC42c_EveryLineUnderOneHold
+            TestREC42h_ASteerReadRefusedByAHeldLockCountsAsSkipped
         run: |
           go test ./internal/store -run "^($(echo $TESTS | tr ' ' '|'))\$" -count=1 -v | tee lock-windows.txt
           for t in $TESTS; do
