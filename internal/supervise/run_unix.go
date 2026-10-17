@@ -590,6 +590,18 @@ func Attach(args []string) (c *Child, rest []string, ok bool) {
 	return &Child{clock: clock}, rest, true
 }
 
+// SoftClock returns e's soft-deadline Clock, sharing the parent's process
+// start that c's own hard-stop clock already carries -- so a phase's soft
+// deadline counts from when the parent started, not from whenever the
+// phase happens to ask for a Clock. A nil Child is an unsupervised process
+// with no parent start to share, so its Clock starts now.
+func (c *Child) SoftClock(e budget.DeadlineEntry) budget.Clock {
+	if c == nil {
+		return budget.NewClock(time.Now(), e.SoftBudget())
+	}
+	return c.clock.Soft(e.SoftBudget())
+}
+
 // StandDown reports whether the child must start nothing new: its parent has
 // gone, or its hard stop has passed. A nil Child is an unsupervised process,
 // which never stands down.
