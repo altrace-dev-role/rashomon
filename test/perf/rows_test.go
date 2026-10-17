@@ -130,3 +130,42 @@ func TestRES36f_EntryRowsCarryTheirBenchmarksMeasurement(t *testing.T) {
 		}
 	}
 }
+
+// TestRES36l_ColdAllocIsConsistentWithTheWarmRow: every entry row in
+// budgets.json passes ColdAllocConsistent against its own two fields.
+// ColdAllocConsistent's own cases (TestRES36l_ColdAllocConsistentCatchesBadInputs)
+// are what makes this mutation-testable: the real budgets.json never
+// contains a violation today, so a break in ColdAllocConsistent itself would
+// pass this loop silently without a synthetic case to catch it.
+func TestRES36l_ColdAllocIsConsistentWithTheWarmRow(t *testing.T) {
+	b := loadBudgets(t)
+	for _, e := range b.Entries {
+		if problem := ColdAllocConsistent(e.ColdAllocBytesMax, e.AllocBytesMax); problem != "" {
+			t.Errorf("entry %s: %s", e.ID, problem)
+		}
+	}
+}
+
+// TestRES36l_ColdAllocConsistentCatchesBadInputs: ColdAllocConsistent on
+// fabricated figures, independent of what budgets.json happens to hold
+// today -- the loop above alone would stay green if the check inside it
+// were weakened, as long as no real entry happened to trip it.
+func TestRES36l_ColdAllocConsistentCatchesBadInputs(t *testing.T) {
+	for _, c := range []struct {
+		name              string
+		coldAllocBytesMax int64
+		allocBytesMax     int64
+		wantProblem       bool
+	}{
+		{"cold above warm", 200, 100, false},
+		{"cold equal to warm", 100, 100, false},
+		{"cold unmeasured (zero)", 0, 100, false},
+		{"cold below warm", 90, 100, true},
+		{"cold negative", -1, 100, true},
+	} {
+		got := ColdAllocConsistent(c.coldAllocBytesMax, c.allocBytesMax)
+		if (got != "") != c.wantProblem {
+			t.Errorf("%s: ColdAllocConsistent(%d, %d) = %q, want problem %v", c.name, c.coldAllocBytesMax, c.allocBytesMax, got, c.wantProblem)
+		}
+	}
+}

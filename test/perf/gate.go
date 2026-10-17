@@ -17,6 +17,24 @@ import (
 // OverBudget reports whether measured exceeds budget by more than tolerance
 // (a fraction: 0.10 is ten percent). A budget of zero or less is a defect in
 // the budgets file and reads as over, never as unlimited.
+// ColdAllocConsistent reports a problem with an entry's cold_alloc_bytes_max
+// (P-12) against its own alloc_bytes_max row, or "" if there is none. A
+// negative cold figure is always a problem; a measured one (nonzero) that
+// reads below the entry's warm, steady-state figure is too, because a fresh
+// process's one call pays everything the warmed benchmark measures plus the
+// one-time cost the benchmark's own warm-up call exists to exclude -- cold
+// can never be cheaper than warm for the same entry. An unmeasured cold
+// figure (0, recap.* and probe.* today) is not compared with warm.
+func ColdAllocConsistent(coldAllocBytesMax, allocBytesMax int64) string {
+	if coldAllocBytesMax < 0 {
+		return fmt.Sprintf("cold_alloc_bytes_max %d is negative", coldAllocBytesMax)
+	}
+	if coldAllocBytesMax > 0 && coldAllocBytesMax < allocBytesMax {
+		return fmt.Sprintf("cold_alloc_bytes_max %d is below its warm alloc_bytes_max %d", coldAllocBytesMax, allocBytesMax)
+	}
+	return ""
+}
+
 func OverBudget(measured, budget, tolerance float64) bool {
 	if budget <= 0 {
 		return true
