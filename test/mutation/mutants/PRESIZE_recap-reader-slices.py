@@ -13,3 +13,6 @@ m("PRESIZE presizeRun never presizes the call slices", "internal/store/presize.g
 m("PRESIZE countLinesCapped counts past its own limit", "internal/store/presize.go",
   "\t\t\tif count >= limit {\n\t\t\t\treturn limit, nil\n\t\t\t}\n",
   "", "TestCountLinesCappedStopsAtCap")
+m("PRESIZE cappedLineCount skips the file-size floor", "internal/store/presize.go",
+  "\t\tif bySize := int(info.Size() / minPresizeRecordBytes); bySize < limit {\n\t\t\tlimit = bySize\n\t\t}\n",
+  "", "TestPresizeBoundedByFileSizeOnShortLinePadding")
