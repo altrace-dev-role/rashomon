@@ -105,6 +105,14 @@ var ErrRecordDegraded = errors.New("store: record was over MaxRecordBytes and wa
 // with them. Hosts and target values are counted escaped as well, though
 // their extractors keep to charsets that never escape: the caps do not check
 // a charset, so the bound does not lean on one.
+//
+// At today's caps the capped bytes are 7*256 + 4*4,096 + 256 + 2*32*253 +
+// 65,536 + 16,384 + 9*128 + 128 = 117,824; escaped, 706,944; with 256 spans
+// of 64 bytes, 723,328; with the fixed part, 727,424, inside the 1 MiB line.
+// Technical spec 1.2.11's 639,936 is 87,488 less: it counts the hosts and the
+// target values at one byte per byte, which holds only if their charsets are
+// checked where they are capped, and they are not, and it leaves out the
+// harness tool name, which schema 5 added after it.
 func worstCaseRecordBytes() int {
 	capped := cappedIDs*MaxIDBytes + cappedPaths*MaxPathBytes + MaxProgramBytes +
 		2*MaxHosts*MaxHostBytes + MaxCommandBytes + MaxWrittenPathsBytes +
