@@ -370,8 +370,9 @@ func (cfg Config) observe(c *child, r result) {
 	cfg.Observe(s)
 }
 
-// selfMaxRSS is this process's own peak resident set, in bytes.
-func selfMaxRSS() int64 {
+// rusageMaxRSS is getrusage's peak resident set for this process, in bytes.
+// On Linux it also counts the image exec replaced (selfMaxRSS).
+func rusageMaxRSS() int64 {
 	var ru syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
 		return 0

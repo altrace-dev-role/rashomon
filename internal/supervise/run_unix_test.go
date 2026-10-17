@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -94,6 +95,9 @@ func helper(args []string) int {
 		}
 		os.WriteFile(arg(1), []byte(strconv.Itoa(g.Process.Pid)), 0o600) //nolint:errcheck // test helper
 		time.Sleep(30 * time.Second)
+		return 0
+	case "maxrss":
+		fmt.Print(selfMaxRSS())
 		return 0
 	case "standdown":
 		// Poll as an entry does between its phases; say why it stood down.
@@ -499,4 +503,30 @@ func TestTRU50_ArgvAloneDoesNotMakeAChild(t *testing.T) {
 			t.Errorf("the real pipe was refused: %s", got)
 		}
 	})
+}
+
+// TestRES8c_TheParentsOwnPeakLeavesOutTheImageExecReplaced: the figure the
+// supervisor reports for itself is its own image's peak. Linux folds the
+// peak of the image exec replaced -- the forked copy of whatever started it
+// -- into getrusage's maxrss, so a supervisor started by a large process
+// would read as large as that process; the fixture is a 96 MiB parent.
+func TestRES8c_TheParentsOwnPeakLeavesOutTheImageExecReplaced(t *testing.T) {
+	ballast := make([]byte, 96<<20)
+	for i := range ballast {
+		if i%4096 == 0 {
+			ballast[i] = 1
+		}
+	}
+	out, err := exec.Command(os.Args[0], Token, "maxrss").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peak, err := strconv.ParseInt(string(out), 10, 64)
+	if err != nil || peak <= 0 {
+		t.Fatalf("the helper printed %q", out)
+	}
+	if peak >= 48<<20 {
+		t.Errorf("the helper's own peak reads %.1f MiB beside a 96 MiB parent: it is not its own", float64(peak)/(1<<20))
+	}
+	runtime.KeepAlive(ballast)
 }
