@@ -451,11 +451,15 @@ const spillBudget = 50 * time.Millisecond
 // file. With sealTail set, a file whose last line has no newline -- a
 // writer that died mid-append -- gets one first, in the same write, so the
 // record cannot join the torn fragment. capBytes, when positive, refuses a
-// line that would take the file over it with ErrSideFileCap.
+// line that would take the file over it with ErrSideFileCap. With noSync
+// set the line is written and not synced at all, neither in full nor behind
+// a barrier, and leaves Flush nothing: for a diagnostics file whose loss in
+// a crash costs nothing a reader relies on.
 type appendOpts struct {
 	budget     time.Duration
 	bestEffort bool
 	sealTail   bool
+	noSync     bool
 	capBytes   int64
 }
 
@@ -501,6 +505,9 @@ func (s *Store) appendLine(path string, rec any, o appendOpts) error {
 	}
 	if _, err := f.Write(line); err != nil {
 		return err
+	}
+	if o.noSync {
+		return nil
 	}
 	return s.syncAppend(f)
 }

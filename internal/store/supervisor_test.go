@@ -95,10 +95,10 @@ func TestSTR6b_AStoodDownStoreWritesNothing(t *testing.T) {
 	if _, err := os.Stat(st.RunDir(old)); err != nil {
 		t.Errorf("the refused eviction removed a run: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(st.Root(), FileGaps)); err == nil {
-		if gaps, err := st.ReadGaps(); err != nil || len(gaps) != 0 {
-			t.Errorf("the refused eviction left gaps %v (%v)", gaps, err)
-		}
+	// Refused before anything is touched: not even the gaps file it would
+	// lock is created.
+	if _, err := os.Stat(filepath.Join(st.Root(), FileGaps)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the refused eviction touched the gaps file: %v", err)
 	}
 }
 
@@ -224,5 +224,88 @@ func TestRES23b_TheSupervisorLogRefusesAnOverCapWrite(t *testing.T) {
 	}
 	if len(after) > SupervisorLogCap {
 		t.Errorf("the supervisor log is %d bytes, over its %d-byte cap", len(after), SupervisorLogCap)
+	}
+}
+
+// TestSTR6f_TheSupervisorLineTakesNoSync: the supervisor.ndjson line is
+// diagnostics, appended best effort, and is written without a sync of its
+// own. Every supervisor whose child failed appends to the one file, so a
+// barrier inside its lock would queue each of them behind all the others'
+// device round trips on the kill-and-trace path, the path the hard stop's
+// margin has to cover. The coverage record keeps its barrier, and stays the
+// file the one full sync after it covers.
+func TestSTR6f_TheSupervisorLineTakesNoSync(t *testing.T) {
+	const session = "sess-killed"
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var synced []string
+	st.barrier = func(f *os.File) (bool, error) {
+		synced = append(synced, filepath.Base(f.Name()))
+		return false, nil
+	}
+	st.DeferDurability()
+	reason := ReasonHookKilled
+	if err := st.AppendSupervisorCoverage(Coverage{Type: TypeCoverage, SchemaVersion: SessionSchemaVersion, SessionID: session, Reason: &reason}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendSupervisorLine(SupervisorLine{Entry: "hook", Outcome: OutcomeKilledAtHardStop, ChildExit: -1, Signal: "SIGKILL"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(synced) != 1 || synced[0] != FileCoverage {
+		t.Errorf("barriers on %v, want one, on %s only", synced, FileCoverage)
+	}
+	if want := filepath.Join(st.RunDir(session), FileCoverage); st.dirty != want {
+		t.Errorf("the flush would cover %q, want the coverage record's file %q", st.dirty, want)
+	}
+	if got, err := os.ReadFile(filepath.Join(st.Root(), FileSupervisor)); err != nil || !strings.Contains(string(got), OutcomeKilledAtHardStop) {
+		t.Errorf("supervisor.ndjson %q, %v: the line was not written", got, err)
+	}
+}
+
+// TestSTR6g_AStandDownMidEvictionStopsBeforeTheNextRun: eviction asks
+// before each run it removes, not only once at its start, so a child whose
+// parent goes while it evicts removes the run in hand -- its gap, then the
+// run, one write -- and no other.
+func TestSTR6g_AStandDownMidEvictionStopsBeforeTheNextRun(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.UnixMilli(1_700_000_000_000)
+	old := []string{"sess-old-1", "sess-old-2", "sess-old-3"}
+	for i, s := range old {
+		if err := st.AppendDeclaration(Declaration{Type: TypeDeclaration, SchemaVersion: SchemaVersion, ToolUseID: "toolu_1", SessionID: s}); err != nil {
+			t.Fatal(err)
+		}
+		files, err := os.ReadDir(st.RunDir(s))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stale := now.Add(-time.Duration(len(old)-i) * 2 * evictGrace)
+		for _, f := range files {
+			if err := os.Chtimes(filepath.Join(st.RunDir(s), f.Name()), stale, stale); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	gone := func() int {
+		n := 0
+		for _, s := range old {
+			if _, err := os.Stat(st.RunDir(s)); errors.Is(err, os.ErrNotExist) {
+				n++
+			}
+		}
+		return n
+	}
+	st.StandDownWhen(func() bool { return gone() >= 1 })
+
+	gaps, err := st.Evict(1, "", now)
+	if !errors.Is(err, ErrStoodDown) {
+		t.Fatalf("Evict: %v, want ErrStoodDown once the first run was gone", err)
+	}
+	if n := gone(); n != 1 || len(gaps) != 1 {
+		t.Errorf("%d runs removed and %d gaps, want exactly the one in hand when the parent went", n, len(gaps))
 	}
 }
