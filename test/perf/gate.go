@@ -14,9 +14,6 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/budget"
 )
 
-// OverBudget reports whether measured exceeds budget by more than tolerance
-// (a fraction: 0.10 is ten percent). A budget of zero or less is a defect in
-// the budgets file and reads as over, never as unlimited.
 // ColdAllocConsistent reports a problem with an entry's cold_alloc_bytes_max
 // (P-12) against its own alloc_bytes_max row, or "" if there is none. A
 // negative cold figure is always a problem; a measured one (nonzero) that
@@ -35,6 +32,23 @@ func ColdAllocConsistent(coldAllocBytesMax, allocBytesMax int64) string {
 	return ""
 }
 
+// PerProcessColdAllocBytes is a hook-entry process's total allocation
+// budget, the figure neither field alone is (P-12): e's cold_alloc_bytes_max
+// covers the one hook/post call the process makes, and InitBudgetBytes
+// (RES-2) covers everything the Go runtime and this binary's own package
+// inits allocate before that call runs. Returns 0, meaning "not yet
+// measured", for an entry whose cold figure is 0 -- never InitBudgetBytes
+// alone, which would misread as a real per-process figure.
+func PerProcessColdAllocBytes(e budget.Entry) int64 {
+	if e.ColdAllocBytesMax <= 0 {
+		return 0
+	}
+	return e.ColdAllocBytesMax + InitBudgetBytes
+}
+
+// OverBudget reports whether measured exceeds budget by more than tolerance
+// (a fraction: 0.10 is ten percent). A budget of zero or less is a defect in
+// the budgets file and reads as over, never as unlimited.
 func OverBudget(measured, budget, tolerance float64) bool {
 	if budget <= 0 {
 		return true

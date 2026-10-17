@@ -104,6 +104,14 @@ type RSS struct {
 // for recap.* and probe.*, which a fresh-process cold call has not yet been
 // built for (P-12); 0 there is the existing convention AllocBytesMax already
 // uses for probe.*, not a claim of zero cost.
+//
+// Neither ColdAllocBytesMax nor RES-2's init budget (test/perf.InitBudgetBytes,
+// 64 KiB) is, on its own, what a hook-entry process allocates from exec to
+// exit: that figure is the sum of the two -- RES-2 covers everything the Go
+// runtime and this binary's package inits allocate before main's first line
+// runs, and ColdAllocBytesMax covers only the one hook/post call that
+// follows. test/perf.PerProcessColdAllocBytes computes the sum; quoting
+// either field alone as "the per-process cost" understates it by the other.
 type Entry struct {
 	ID                 string   `json:"id"`
 	Events             []string `json:"events"`

@@ -18,21 +18,33 @@ import (
 // been measured on a second platform.
 const coldToleranceFraction = 0.10
 
+// coldRuns is how many fresh processes coldCallAlloc spawns per entry
+// before gating: a single cold measurement carries normal process-start
+// noise (GC pacing, OS scheduling) that can eat most of the 10% margin by
+// itself, so the gate compares the minimum of coldRuns runs, the same
+// "best of three" the budgets.json basis for every cold_alloc_bytes_max
+// entry already claims -- gating a single run would silently be stricter
+// than the figure it is checked against.
+const coldRuns = 3
+
 // TestColdAllocBudget gates budgets.json's cold_alloc_bytes_max entries
 // against a real measurement: for each entry whose field is nonzero, it
-// spawns a fresh `go test -run` process against cmd/rashomon's TestColdCall
-// (one process per entry, so the figure is a genuinely cold one, not a
-// second subtest sharing the first's warmed process state) and reads the one
-// "COLD <id> <bytes>" line the subtest prints to real stdout.
+// spawns coldRuns fresh `go test -run` processes against cmd/rashomon's
+// TestColdCall (one process per run, so the figure is a genuinely cold one,
+// not a second subtest sharing an earlier one's warmed process state),
+// reads the one "COLD <id> <bytes>" line each subtest prints to real
+// stdout, and gates the minimum of the coldRuns.
 //
 // Entries whose cold_alloc_bytes_max is 0 (recap.*, probe.*, and anything
 // with no benchmark row) are skipped: that 0 means "not yet measured" per
-// the field's own doc comment, not a budget of zero.
+// the field's own doc comment, not a budget of zero. Every entry this test
+// gates marks ColdGate(id) run (runs.go), so a -run pattern that stops
+// selecting this test -- or an entry a future change starts measuring --
+// is caught by RASHOMON_PERF_REQUIRE_ALL, not silently skipped.
 //
 // -v is required on the child's `go test` invocation: go test buffers a
-// passing test's stdout and only ever shows it with -v or on failure, a
-// behavior checked here against the assumption in an earlier design note
-// that CombinedOutput alone would see it; it does not.
+// passing test's stdout and only ever shows it with -v or on failure (see
+// TestColdCall's own comment in cmd/rashomon/cold_call_test.go).
 func TestColdAllocBudget(t *testing.T) {
 	bud := loadBudgets(t)
 	for _, e := range bud.Entries {
@@ -41,19 +53,38 @@ func TestColdAllocBudget(t *testing.T) {
 		}
 		e := e
 		t.Run(e.ID, func(t *testing.T) {
-			measured := coldCallAlloc(t, e.ID)
+			ran[ColdGate(e.ID)] = true
+			measured, all := coldCallAlloc(t, e.ID)
 			if OverBudget(float64(measured), float64(e.ColdAllocBytesMax), coldToleranceFraction) {
-				t.Errorf("%s: cold call allocated %d bytes, over budget %d (+%.0f%%)", e.ID, measured, e.ColdAllocBytesMax, coldToleranceFraction*100)
+				t.Errorf("%s: cold call allocated %d bytes (runs %v), over budget %d (+%.0f%%)", e.ID, measured, all, e.ColdAllocBytesMax, coldToleranceFraction*100)
 				return
 			}
-			t.Logf("%s: cold call allocated %d bytes against budget %d (+%.0f%%)", e.ID, measured, e.ColdAllocBytesMax, coldToleranceFraction*100)
+			t.Logf("%s: cold call allocated %d bytes (runs %v) against budget %d (+%.0f%%)", e.ID, measured, all, e.ColdAllocBytesMax, coldToleranceFraction*100)
 		})
 	}
 }
 
-// coldCallAlloc runs cmd/rashomon's TestColdCall/<id> subtest in its own
-// `go test` process and returns the one TotalAlloc delta it printed.
-func coldCallAlloc(t *testing.T, id string) int64 {
+// coldCallAlloc runs cmd/rashomon's TestColdCall/<id> subtest in coldRuns
+// fresh `go test` processes and returns the minimum of the TotalAlloc
+// deltas each one printed, and every run's figure for the failure message.
+func coldCallAlloc(t *testing.T, id string) (int64, []int64) {
+	t.Helper()
+	all := make([]int64, coldRuns)
+	for i := range all {
+		all[i] = coldCallAllocOnce(t, id)
+	}
+	min := all[0]
+	for _, n := range all[1:] {
+		if n < min {
+			min = n
+		}
+	}
+	return min, all
+}
+
+// coldCallAllocOnce runs cmd/rashomon's TestColdCall/<id> subtest in its
+// own `go test` process and returns the one TotalAlloc delta it printed.
+func coldCallAllocOnce(t *testing.T, id string) int64 {
 	t.Helper()
 	pattern := "TestColdCall/" + regexp.QuoteMeta(id)
 	cmd := exec.Command("go", "test", "-run", pattern, "-v", "-count=1", "./cmd/rashomon")
