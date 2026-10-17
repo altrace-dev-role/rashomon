@@ -19,13 +19,19 @@ import (
 // read: a person's own Cursor terminal sets them too, and they would make a
 // Claude Code session run inside one read as foreign.
 //
-// Order matches Technical spec 6.2.2 / Archive 60.2.3 exactly:
+// Order matches Technical spec 6.2.2 / Archive 60.2.3 exactly: the override
+// in step 3 is checked before BOTH step 1 and step 2, not just step 2 --
+// both the spec ("checked before steps 1 and 2") and the archive ("before
+// steps 2 and 3", where its own step 1 is this override) place it ahead of
+// Cursor's check, not only Codex's. Claude Code has never been observed to
+// emit cursor_version, so this ordering has not changed any payload this
+// package has been shown in practice, but a payload that does carry it
+// alongside an allowlisted entrypoint and a Claude transcript follows the
+// documented order rather than a narrower one this file used to carry.
 //
 //  1. Cursor: cursor_version present, or conversation_id and generation_id
-//     both present. Unconditional -- there is no Claude Code override for
-//     this step, because Claude Code never emits the field named
-//     cursor_version and an override here would exist to protect against a
-//     collision that cannot happen.
+//     both present. Subject to the same step-3 override as step 2: the
+//     marker's evidence key is still recorded.
 //  2. Codex: turn_id present on an event where Codex documents it on a tool
 //     or turn call, or model present on any event but SessionStart.
 //     EXCEPT: a payload whose Env.Entrypoint is in step 3's allowlist and
@@ -68,14 +74,14 @@ func Detect(p *hookio.Payload, env Env) Identity {
 
 	var evidence []Evidence
 
-	// Step 1: Cursor. No override: see the function doc.
+	// Step 1: Cursor. Same override as step 2: see the function doc.
 	if hasCursorVersion {
 		evidence = append(evidence, EvCursorVersion)
 	}
 	if hasConvGen {
 		evidence = append(evidence, EvConversationGenID)
 	}
-	if hasCursorVersion || hasConvGen {
+	if (hasCursorVersion || hasConvGen) && !claudeOverride {
 		return finish(Cursor, SurfaceUnknown, versionPtr, evidence)
 	}
 
@@ -175,7 +181,8 @@ func underProjects(transcriptPath, configDir string) bool {
 // versionCharset is cursor_version's charset, checked byte by byte: no
 // regexp compiles at package scope or at all, matching the convention
 // internal/verify/finding.go documents for the same reason (no allocation on
-// a path BenchmarkDetect budgets at 0.2ms p99).
+// a hot path -- Detect's budget is the 6.4 0.2ms p99, measured on the
+// payload as a whole; no BenchmarkDetect exists yet to pin it).
 func versionCharset(c byte) bool {
 	switch {
 	case c >= '0' && c <= '9', c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z':
