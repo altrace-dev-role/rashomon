@@ -91,10 +91,13 @@ func (s *Store) AppendSupervisorCoverage(rec Coverage) error {
 // AppendSupervisorLine appends one line to supervisor.ndjson, refusing it
 // with ErrSideFileCap if it would take the file over SupervisorLogCap. The
 // cap is checked under the file's lock, so the lock is not given up: a line
-// that cannot take it inside the budget is not written.
+// that cannot take it inside the budget is not written. The line is not
+// synced: every supervisor with a failed child appends here, and a sync
+// inside the lock would queue each behind the others' on the path the hard
+// stop's margin covers. A crash can lose it; it is diagnostics.
 func (s *Store) AppendSupervisorLine(line SupervisorLine) error {
 	return s.appendLine(filepath.Join(s.root, FileSupervisor), line,
-		appendOpts{budget: supervisorBudget, sealTail: true, capBytes: SupervisorLogCap})
+		appendOpts{budget: supervisorBudget, sealTail: true, noSync: true, capBytes: SupervisorLogCap})
 }
 
 // tornTail reports whether f, an open record file, ends in the middle of a
