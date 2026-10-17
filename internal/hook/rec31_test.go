@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -80,4 +81,71 @@ func TestREC31d_ADegradedRecordLandsWithheld(t *testing.T) {
 			t.Errorf("landed(%v) = %v with withheld %v; want %v and %v", c.in, got, withheld, c.out, c.withheld)
 		}
 	}
+}
+
+// TestREC31e_AHookAppendTheStoreDegradedLands: the hook's own appends take a
+// degraded record as written, on both call paths. The caps at capture keep a
+// payload from reaching the store's degrade, so the test stands in for a
+// writer that skipped them (capDecl, capExec) and hands the store a record
+// over MaxRecordBytes in a capped field. The declaration must land and be
+// closed by its terminal, the execution must land, and each call's coverage
+// record must say record_oversize; an append taken as failed leaves the
+// declaration without its terminal and the call reading as an internal
+// error.
+func TestREC31e_AHookAppendTheStoreDegradedLands(t *testing.T) {
+	huge := strings.Repeat("<", store.MaxRecordBytes)
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+
+	t.Run("declaration", func(t *testing.T) {
+		st := mustOpen(t)
+		h := New(st, time.Now)
+		h.capDecl = func(d *store.Declaration) bool { d.CWD = &huge; return false }
+		h.Close(&Signals{}, h.Capture(strings.NewReader(capPayload(t, "cwd", "/tmp/project"))))
+		run, err := st.ReadRun("sess-caps")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(run.Declarations) != 1 || len(run.Terminals) != 1 || len(run.Coverage) != 1 {
+			t.Fatalf("read %d declarations, %d terminals, %d coverage records; want 1 each",
+				len(run.Declarations), len(run.Terminals), len(run.Coverage))
+		}
+		if d := run.Declarations[0]; d.CWD != nil || withheldReason(d.CWDWithheld) != "oversize" {
+			t.Errorf("degraded declaration kept cwd %v (reason %q)", d.CWD != nil, withheldReason(d.CWDWithheld))
+		}
+		if term := run.Terminals[0]; term.Outcome != store.OutcomeOK || term.ToolUseID != run.Declarations[0].ToolUseID {
+			t.Errorf("terminal %+v does not close the degraded declaration as ok", term)
+		}
+		if r := run.Coverage[0].Reason; r == nil || *r != store.ReasonRecordOversize {
+			t.Errorf("coverage reason %v, want %q", r, store.ReasonRecordOversize)
+		}
+	})
+
+	t.Run("execution", func(t *testing.T) {
+		st := mustOpen(t)
+		p := NewPost(st, time.Now)
+		p.capExec = func(x *store.Execution) bool { x.ExecutedCommand = &huge; return false }
+		payload := `{"session_id":"s","tool_use_id":"toolu_x","tool_name":"Bash","hook_event_name":"PostToolUse"}`
+		p.Close(&Signals{}, p.Capture(strings.NewReader(payload)))
+		run, err := st.ReadRun("s")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(run.Executions) != 1 || len(run.Coverage) != 1 {
+			t.Fatalf("read %d executions, %d coverage records; want 1 each", len(run.Executions), len(run.Coverage))
+		}
+		if x := run.Executions[0]; x.ExecutedCommand != nil || withheldReason(x.ExecutedCommandWithheld) != "oversize" {
+			t.Errorf("degraded execution kept executed_command %v (reason %q)",
+				x.ExecutedCommand != nil, withheldReason(x.ExecutedCommandWithheld))
+		}
+		if r := run.Coverage[0].Reason; r == nil || *r != store.ReasonRecordOversize {
+			t.Errorf("coverage reason %v, want %q", r, store.ReasonRecordOversize)
+		}
+	})
+}
+
+func withheldReason(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

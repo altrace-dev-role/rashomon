@@ -27,7 +27,7 @@ m("REC-52 the hook skips the tool_use_id cap on its terminal", "internal/hook/ha
 m("REC-52 a withheld field leaves the call verified", "internal/hook/handle.go",
   "\tif reason == \"\" && h.withheld {\n", "\tif false {\n", "TestREC52_")
 m("REC-52 the execution is not capped", "internal/hook/post.go",
-  "\tif store.CapExecution(&rec) {\n\t\tp.withheld = true\n\t}\n", "", "TestREC52_")
+  "\tif p.capExec(&rec) {\n\t\tp.withheld = true\n\t}\n", "", "TestREC52_")
 m("REC-52 a withheld execution field leaves the call verified", "internal/hook/post.go",
   "\tif reason == \"\" && p.withheld {\n", "\tif false {\n", "TestREC52_")
 m("REC-52 an over-cap session id is kept raw instead of digested", "internal/hook/payload.go",

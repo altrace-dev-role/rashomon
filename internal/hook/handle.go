@@ -72,6 +72,9 @@ type Handler struct {
 
 	// lockWaits is LockWaitTotal, which a test shortens.
 	lockWaits time.Duration
+	// capDecl is store.CapDeclaration, which a test replaces to hand the
+	// store a record that skipped the caps, the one way to reach its degrade.
+	capDecl func(*store.Declaration) bool
 
 	sessionID string
 	toolUseID string
@@ -95,7 +98,8 @@ var Writer = "dev"
 // New builds a Handler. now is injectable so a test can pin the clock and
 // compare two records byte for byte.
 func New(st *store.Store, now func() time.Time) *Handler {
-	return &Handler{st: st, now: now, lockWaits: LockWaitTotal, sessionID: UnattributedSession}
+	return &Handler{st: st, now: now, lockWaits: LockWaitTotal, capDecl: store.CapDeclaration,
+		sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the declaration.
@@ -176,7 +180,7 @@ func (h *Handler) Capture(in io.Reader) error {
 	// out of the record rather than cut, and said so on the coverage record
 	// (REC-52), so no payload inside the intake limit can make a record the
 	// store would refuse.
-	if store.CapDeclaration(&decl) {
+	if h.capDecl(&decl) {
 		h.withheld = true
 	}
 

@@ -24,7 +24,7 @@ m("REC-31 the derivation assumes JSON escapes nothing", "internal/store/limits.g
 m("REC-31 a refused record reads as an internal error", "internal/hook/payload.go",
   "\tcase errors.Is(err, store.ErrRecordOversize):\n\t\treturn store.ReasonRecordOversize\n", "", "TestREC31b_")
 m("REC-31 an oversize call is written whole, not degraded", "internal/hook/handle.go",
-  "\tif store.CapDeclaration(&decl) {\n\t\th.withheld = true\n\t}\n", "", "TestREC31_OversizeDegrades")
+  "\tif h.capDecl(&decl) {\n\t\th.withheld = true\n\t}\n", "", "TestREC31_OversizeDegrades")
 m("REC-31 the store refuses instead of degrading", "internal/store/store.go",
   "\tsmaller, withheld := d.degraded()\n\tif !withheld {\n", "\tsmaller, withheld := d.degraded()\n\tif withheld || !withheld {\n",
   "TestREC31c_")
@@ -54,3 +54,9 @@ m("REC-31 the derivation counts span rule ids unescaped", "internal/store/limits
   "\tMaxMaskSpanBytes = MaxMaskRuleBytes + maskSpanFrameBytes\n", "TestREC31_WorstCaseRecordFits")
 m("REC-31 the derivation leaves out a span's keys and offsets", "internal/store/limits.go",
   "const maskSpanFrameBytes = 38\n", "const maskSpanFrameBytes = 0\n", "TestREC31_WorstCaseRecordFits")
+m("REC-31 the hook takes a degraded declaration as a failed append", "internal/hook/handle.go",
+  "\tif err := landed(h.st.AppendDeclaration(decl), &h.withheld); err != nil {\n",
+  "\tif err := h.st.AppendDeclaration(decl); err != nil {\n", "TestREC31e_")
+m("REC-31 the hook takes a degraded execution as a failed append", "internal/hook/post.go",
+  "\treturn landed(p.st.AppendExecution(rec), &p.withheld)\n}\n",
+  "\treturn p.st.AppendExecution(rec)\n}\n", "TestREC31e_")
