@@ -10,3 +10,11 @@ func Fail(string) error { return nil }
 
 // Enabled reports whether fault injection is compiled in.
 func Enabled() bool { return false }
+
+// RecordSync, LockTaken and LockReleased are no-ops in a released binary:
+// the sync recorder exists only under the rashomonfault tag.
+func RecordSync(kind, path string) {}
+
+func LockTaken() {}
+
+func LockReleased() {}

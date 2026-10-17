@@ -223,7 +223,7 @@ func eachLineLocked(path string, budget time.Duration, fn func(line []byte)) err
 	}
 	defer f.Close() //nolint:errcheck // read-only
 
-	if unlock, lerr := lockFile(f, budget); lerr == nil {
+	if unlock, lerr := lockCounted(f, budget); lerr == nil {
 		defer unlock()
 	}
 	return scanLines(f, fn)
@@ -247,10 +247,13 @@ func scanLines(f *os.File, fn func(line []byte)) error {
 
 // Unterminated returns the tool_use_ids of declarations that no terminal
 // record closes: the signature of a handler that was killed between the two.
+// A flush_failed marker closes nothing (Terminal.FlushFailed).
 func (r *Run) Unterminated() []string {
 	closed := map[string]bool{}
 	for _, t := range r.Terminals {
-		closed[t.ToolUseID] = true
+		if !t.FlushFailed() {
+			closed[t.ToolUseID] = true
+		}
 	}
 	var ids []string
 	for _, d := range r.Declarations {
@@ -281,7 +284,8 @@ func (r *Run) Unexecuted() []string {
 
 // Dropped returns the tool_use_ids of terminals that close no declaration: a
 // declaration that could not be written, whose terminal carried its id to the
-// spill file so the drop is visible under its name.
+// spill file so the drop is visible under its name. A flush_failed marker is
+// not such a terminal (Terminal.FlushFailed).
 func (r *Run) Dropped() []string {
 	declared := map[string]bool{}
 	for _, d := range r.Declarations {
@@ -289,7 +293,23 @@ func (r *Run) Dropped() []string {
 	}
 	var ids []string
 	for _, t := range r.Terminals {
-		if !declared[t.ToolUseID] {
+		if !declared[t.ToolUseID] && !t.FlushFailed() {
+			ids = append(ids, t.ToolUseID)
+		}
+	}
+	return ids
+}
+
+// NotDurable returns the tool_use_ids flush_failed markers name, each once,
+// in the order the markers were read: calls whose records a hook or post
+// appended and then could not make durable (REC-34 (c)). A marker naming no
+// call names nothing here; the report still marks its session.
+func (r *Run) NotDurable() []string {
+	seen := map[string]bool{}
+	var ids []string
+	for _, t := range r.Terminals {
+		if t.FlushFailed() && t.ToolUseID != "" && !seen[t.ToolUseID] {
+			seen[t.ToolUseID] = true
 			ids = append(ids, t.ToolUseID)
 		}
 	}

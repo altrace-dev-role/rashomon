@@ -204,7 +204,10 @@ func detectTestBending(run *store.Run, executed map[string][]store.Execution, de
 // declaration in run does, and denied does not hold. The store keeps how such
 // a call ended, not what it was, so it may have been an edit, between any two
 // runs. A terminal alone is the lock-timeout case: the declaration could not
-// be written, and the terminal carries the only trace of the id.
+// be written, and the terminal carries the only trace of the id. A
+// flush_failed marker with no id names no call, and is skipped: the process
+// that wrote it never learned which call it was, which with a successful
+// flush would have left no terminal to count at all.
 func undeclaredCalls(run *store.Run, denied map[string]bool) int {
 	declared := make(map[string]bool, len(run.Declarations))
 	for _, d := range run.Declarations {
@@ -217,6 +220,9 @@ func undeclaredCalls(run *store.Run, denied map[string]bool) int {
 		}
 	}
 	for _, t := range run.Terminals {
+		if t.FlushFailed() && t.ToolUseID == "" {
+			continue
+		}
 		if !declared[t.ToolUseID] && !denied[t.ToolUseID] {
 			lost[t.ToolUseID] = true
 		}

@@ -138,7 +138,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	fmt.Fprintf(b, "  by program: %s\n", programs(d.ByProgram, d.ProgramsUnknown))
 	fmt.Fprintf(b, "  by label: %s\n", byName(d.ByLabel))
 	fmt.Fprintf(b, "  unterminated: %s\n", list(d.Unterminated))
-	fmt.Fprintf(b, "  dropped: %s\n", list(d.Dropped))
+	fmt.Fprintf(b, "  dropped: %s\n  possibly not durable: %s\n", list(d.Dropped), list(d.NotDurable))
 	fmt.Fprintf(b, "  without execution: %s\n", unexecuted(d.WithoutExecution))
 	fmt.Fprintf(b, "  executions recorded: %d\n", sess.Executions.Recorded)
 
@@ -236,6 +236,7 @@ var reasonText = map[string]string{
 	"duplicate_declarations": "more declarations than distinct tool calls: more than one recorder wrote into this run, and the counts here include every copy",
 	"internal_error":         "a hook invocation failed inside this program, so what it should have recorded is missing",
 	"lock_timeout":           "a hook could not take the store lock in time, so its record went to the spill file or was lost",
+	"flush_failed":           "a hook could not flush its records to stable storage before it exited, so they are possibly not durable: a power loss or a crash of the machine could still remove them",
 	"terminated_by_signal":   "a hook was killed by a signal before it finished",
 	"unterminated_entry":     "a declaration was never closed, so the call's end was not observed",
 	"hook_entry_absent":      "the settings file did not hold the recorder's entry for this event as watch installs it, and this hook was not running as a rashomon plugin that declares one",
