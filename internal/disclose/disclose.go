@@ -14,7 +14,11 @@
 // by P-21, which also moves install.Events onto it.
 package disclose
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
+)
 
 // ScopeVersion is bumped on a new capability class. The consent a user gave
 // is recorded against it, so a build that can do a new kind of thing shows
@@ -131,9 +135,126 @@ const (
 	SectionRemove       = "REMOVE"
 )
 
-// Default is the build's inventory. Empty until P-21 fills it; a build whose
-// inventory is empty discloses nothing and so may install nothing, which is
-// the right failure.
+// Default is the build's inventory.
+//
+// P-21 fills Files: every path rashomon's own store package creates, read
+// from that package's own exported names rather than copied as literal
+// strings, so a renamed or added file shows up here by construction instead
+// of by someone remembering to update a second list (TRU-23). The other
+// sections -- Entries, Outputs, SettingsKeys, NeverEmit, NeverWrite,
+// Switches, EnvVars, Paragraphs -- are owned by later PRs (consent screen,
+// output gate, disclose/status CLI) and are empty until each lands; an empty
+// section here is "not yet described", not "this build does nothing".
 func Default() (Inventory, error) {
-	return Inventory{}, ErrNotImplemented
+	return Inventory{
+		ScopeVersion: ScopeVersion,
+		Files:        defaultFiles(),
+	}, nil
+}
+
+// defaultFiles is the FileRule for every path the store package creates,
+// under the store root. Base is a path relative to the store root; Pattern is
+// the file name within it, or a glob when the base itself varies per session
+// (runs/<session>/...).
+//
+// Two files hold a destination's identity and nothing else about it: a host
+// named in records.ndjson travels in the clear because the report has to
+// show it to be useful, but forgetting a host must make the hostname LEAVE
+// the store's bytes while still letting later forgets and the report's
+// suppression recognise it again -- which is what the keyed digest in
+// gaps.ndjson and forgotten-hosts.ndjson is for (store/gaps.go, HostDigest).
+func defaultFiles() []FileRule {
+	const runSegment = store.DirRuns + "/<session>"
+	return []FileRule{
+		{
+			Base:       "",
+			Pattern:    store.FileInstallKey,
+			Mode:       "0600",
+			Purpose:    "the per-install key everything else here digests keyed with",
+			Holds:      "32 bytes from crypto/rand, written once",
+			NeverHolds: "a hostname, a path, or any call's content",
+			RemovedBy:  "purge",
+			Owner:      "store",
+		},
+		{
+			Base:       "",
+			Pattern:    store.FileInstallMeta,
+			Mode:       "0600",
+			Purpose:    "the install's identity and the schema version it writes",
+			Holds:      "install_id, created_at_unix_ms, schema_version",
+			NeverHolds: "a hostname or any call's content",
+			RemovedBy:  "purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileRecords,
+			Mode:       "0600",
+			Purpose:    "the append-only, totally ordered record of one session's declared and executed tool calls",
+			Holds:      "tool name, hosts and ssh_hosts the call named, timing, and keyed digests of its working directory and shape",
+			NeverHolds: "a tool call's arguments in the clear, or any part of a tool response",
+			RemovedBy:  "forget --since, --before or --host; purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileSpill,
+			Mode:       "0600",
+			Purpose:    "an execution or terminal record the ordered append lock could not place in time",
+			Holds:      "the same fields records.ndjson holds, unordered",
+			NeverHolds: "a tool call's arguments in the clear, or any part of a tool response",
+			RemovedBy:  "forget --since, --before or --host; purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileCoverage,
+			Mode:       "0600",
+			Purpose:    "the configuration state resolved for the session",
+			Holds:      "phase, hook outcome, and the session's own working directory",
+			NeverHolds: "a tool call's content",
+			RemovedBy:  "forget --since or --before; purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileProbe,
+			Mode:       "0600",
+			Purpose:    "a liveness marker for the session's hook entries",
+			Holds:      "one Unix-millisecond timestamp",
+			NeverHolds: "anything else",
+			RemovedBy:  "purge",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
+			Pattern:    store.FileSeq,
+			Mode:       "0600",
+			Purpose:    "the session's last allocated record sequence number",
+			Holds:      "one integer",
+			NeverHolds: "anything else",
+			RemovedBy:  "purge",
+			Owner:      "store",
+		},
+		{
+			Base:       "",
+			Pattern:    store.FileGaps,
+			Mode:       "0600",
+			Purpose:    "one record per removal a forget made",
+			Holds:      "the reason, the time window, the count removed, and -- for a host-scoped forget -- the host's keyed digest",
+			NeverHolds: "the removed content, or the host name a host-scoped forget removed",
+			RemovedBy:  "purge",
+			Owner:      "store",
+		},
+		{
+			Base:       "",
+			Pattern:    store.FileForgottenHosts,
+			Mode:       "0600",
+			Purpose:    "every host a `forget --host` has ever named, kept so a later report still suppresses it and a repeat forget recognises it",
+			Holds:      "the host's keyed digest (HMAC-SHA256 under the install key)",
+			NeverHolds: "the host name",
+			RemovedBy:  "purge",
+			Owner:      "store",
+		},
+	}
 }

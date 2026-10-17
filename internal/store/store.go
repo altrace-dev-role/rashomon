@@ -26,15 +26,6 @@ const (
 
 	keyLen       = 32
 	installIDLen = 16
-
-	// FileInstallKey is the per-install HMAC key under the store root.
-	FileInstallKey = "install.key"
-	// FileInstallMeta is install.json, the install record under the store
-	// root. Its presence is what makes a directory a store.
-	FileInstallMeta = "install.json"
-	// DirRuns is the directory under the store root that holds one
-	// directory per run.
-	DirRuns = "runs"
 )
 
 // ErrLockTimeout is returned when a lock could not be taken inside the budget
