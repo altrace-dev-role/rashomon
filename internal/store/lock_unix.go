@@ -29,7 +29,7 @@ func lockFile(f *os.File, budget time.Duration) (func(), time.Duration, error) {
 	for {
 		err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
-			return func() { _ = syscall.Flock(fd, syscall.LOCK_UN) }, waited, nil
+			return func() { unlockFile(f) }, waited, nil
 		}
 		if !errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, waited, err
@@ -52,3 +52,15 @@ func lockFile(f *os.File, budget time.Duration) (func(), time.Duration, error) {
 // readRefused reports whether a read failed because another handle holds
 // the file's lock. flock is advisory, so a held lock never refuses a read.
 func readRefused(error) bool { return false }
+
+// unlockFile releases f's lock through f itself, not through its descriptor
+// number: once f is closed, Control refuses to run, so a late unlock cannot
+// release the lock of a file that has been given the number since (CWE-672).
+// A release that fails leaves nothing to undo, since closing f releases it.
+func unlockFile(f *os.File) {
+	rc, err := f.SyscallConn()
+	if err != nil {
+		return
+	}
+	_ = rc.Control(func(fd uintptr) { _ = syscall.Flock(int(fd), syscall.LOCK_UN) })
+}
