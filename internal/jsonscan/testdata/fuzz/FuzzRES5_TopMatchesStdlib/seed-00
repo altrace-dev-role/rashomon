@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"session_id\":\"s\",\"tool_input\":{\"command\":\"go test ./...\"},\"a\":\"x\\ny\",\"n\":1}")

@@ -11,9 +11,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"hash"
 	"path"
 	"slices"
 	"strings"
+
+	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 )
 
 // Verb classes. A closed set: an unrecognized program is "execute" and an
@@ -115,7 +118,7 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 		cmd, isShell = commandField(toolInput)
 	}
 	if !isShell {
-		s.Digest = digest(key, toolName, canonical(toolInput))
+		s.Digest = canonicalDigest(key, toolName, toolInput)
 		return s
 	}
 
@@ -199,22 +202,11 @@ func dropLeadingAssignments(toks []string) []string {
 // field any tool is read for. A tool input that is not an object, or has no
 // string `command`, simply has no command line.
 func commandField(raw json.RawMessage) (string, bool) {
-	if len(raw) == 0 {
-		return "", false
-	}
-	var obj map[string]json.RawMessage
-	if json.Unmarshal(raw, &obj) != nil {
-		return "", false
-	}
-	v, ok := obj["command"]
+	s, ok := inputField(raw, "command")
 	if !ok {
 		return "", false
 	}
-	var cmd string
-	if json.Unmarshal(v, &cmd) != nil {
-		return "", false
-	}
-	return cmd, true
+	return stringValue(raw, s)
 }
 
 // digest is HMAC-SHA256 over the tool name and a body, hex encoded. Its width
@@ -246,22 +238,36 @@ func CWDDigest(key []byte, cwd string) string {
 }
 
 // canonical re-encodes JSON so that two inputs differing only in key order or
-// insignificant whitespace digest identically. Input that is not valid JSON is
-// digested as received.
-func canonical(raw json.RawMessage) []byte {
+// insignificant whitespace digest identically: it writes to w the bytes
+// json.Marshal gives for raw decoded into any, without building them
+// (canonEncoder), and reports false for input that is not valid JSON, which
+// is digested as received. The decode into any is the one RES-5 allows,
+// kept for digest compatibility until a streaming canonicaliser passes
+// RES-48.
+func canonical(raw json.RawMessage, w hash.Hash) bool {
 	if len(raw) == 0 {
-		return nil
+		return false
 	}
 	var v any
 	if json.Unmarshal(raw, &v) != nil {
-		return raw
+		return false
 	}
-	// encoding/json emits object keys in sorted order.
-	out, err := json.Marshal(v)
-	if err != nil {
-		return raw
+	e := canonEncoder{w: w}
+	e.value(v)
+	e.flush()
+	return true
+}
+
+// canonicalDigest is the digest of a non-shell tool input: the HMAC of the
+// tool name and canonical(toolInput), streamed into the MAC.
+func canonicalDigest(key []byte, toolName string, toolInput json.RawMessage) string {
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte(toolName))
+	m.Write([]byte{0})
+	if !canonical(toolInput, m) {
+		m.Write(toolInput)
 	}
-	return out
+	return hex.EncodeToString(m.Sum(nil))
 }
 
 // programToken finds the index of the token naming the program, if one can be
@@ -1461,14 +1467,8 @@ func wholeCommand(toks []token, i int) bool {
 // measured), and the report reads such a run as outcome unobserved, as it
 // does a launch declared here.
 func backgrounded(raw json.RawMessage) bool {
-	var obj struct {
-		RunInBackground json.RawMessage `json:"run_in_background"`
-	}
-	if json.Unmarshal(raw, &obj) != nil {
-		return false
-	}
-	var b bool
-	return json.Unmarshal(obj.RunInBackground, &b) == nil && b
+	s, ok := inputField(raw, "run_in_background")
+	return ok && s.Kind == jsonscan.True
 }
 
 // mayWrite reports a shell line whose program is the token at i and which may

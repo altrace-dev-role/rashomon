@@ -126,7 +126,7 @@ func benchDeriveInput(tb testing.TB, name string) (json.RawMessage, string) {
 		return benchBashInput(tb, long), digest(benchKey, "Bash", []byte(long))
 	case "edit_50k":
 		edit := benchEditInput(tb)
-		return edit, digest(benchKey, "Edit", canonical(edit))
+		return edit, canonicalDigest(benchKey, "Edit", edit)
 	}
 	tb.Fatalf("BenchmarkDerive has no case %q", name)
 	return nil, ""

@@ -33,10 +33,10 @@ m("H-20 the post path runs outside the panic barrier", "cmd/rashomon/main.go",
   "TestH20_NoFaultOnThePostPathReachesTheAgent")
 
 m("H-20 the post payload declares tool_response, and it reaches the debug log", "internal/hook/post.go",
-  "\tvar pl PostPayload\n", "\tvar pl struct {\n\t\tPostPayload\n\t\tToolResponse json.RawMessage `json:\"tool_response\"`\n\t}\n\tdefer func() { fmt.Fprintln(os.Stderr, string(pl.ToolResponse)) }()\n",
+  "\tvar pl PostPayload\n", "\tvar pl PostPayload\n\tdefer func() { fmt.Fprintln(os.Stderr, string(payload.Value(hookio.ToolResponse))) }()\n",
   "TestH20_ToolResponseNeverReachesDisk")
 IMPORTS["H-20 the post payload declares tool_response, and it reaches the debug log"] = ("internal/hook/post.go", '\t"io"\n', '\t"fmt"\n\t"io"\n\t"os"\n')
 m("H-20 the response is measured, and the measurement moves the record's width", "internal/hook/post.go",
   "\t\tToolName:      pl.ToolName,\n",
-  "\t\tToolName:      pl.ToolName + strconv.Itoa(len(raw)),\n",
+  "\t\tToolName:      pl.ToolName + strconv.Itoa(len(payload.Raw)),\n",
   "TestH20_ExecutionWidthIsIndependentOfTheResponse")

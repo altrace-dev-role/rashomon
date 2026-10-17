@@ -15,7 +15,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -129,38 +128,34 @@ func oneWayPeakMiB(t *testing.T) float64 {
 // peakMiB runs the release binary once on stdin and returns its peak memory
 // in MiB: on darwin the peak memory footprint /usr/bin/time -l reports, which
 // leaves out shared clean pages and so is the figure that sums across
-// concurrent processes (archive 85.3.13); elsewhere peak RSS from rusage,
-// an upper bound for that sum because it counts the binary's text in every
-// process. It runs off the test goroutine, so it returns its failure.
+// concurrent processes (archive 85.3.13); elsewhere peak RSS through the
+// reaper, which keeps this test binary's own peak out of it, an upper bound
+// for that sum because it counts the binary's text in every process. It runs
+// off the test goroutine, so it returns its failure.
 func peakMiB(stdin []byte, env []string, args ...string) (float64, error) {
-	name, argv := rashomonBin, args
-	if runtime.GOOS == "darwin" {
-		name, argv = "/usr/bin/time", append([]string{"-l", rashomonBin}, args...)
-	}
-	cmd := exec.Command(name, argv...)
-	cmd.Stdin = bytes.NewReader(stdin)
-	cmd.Env = env
 	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	fail := func(err error) (float64, error) {
 		return 0, fmt.Errorf("rashomon %s: %v\n%s", strings.Join(args, " "), err, stderr.String())
 	}
-	if runtime.GOOS == "darwin" {
-		n, ok := ParseFootprint(stderr.String())
-		if !ok {
-			return 0, fmt.Errorf("rashomon %s: no %q line in /usr/bin/time's report:\n%s", strings.Join(args, " "), footprintLine, stderr.String())
+	if runtime.GOOS != "darwin" {
+		cmd := exec.Command(rashomonBin, args...)
+		cmd.Stdin, cmd.Env, cmd.Stderr = bytes.NewReader(stdin), env, &stderr
+		rss, err := reaper.Run(cmd)
+		if err != nil {
+			return fail(err)
 		}
-		return float64(n) / (1 << 20), nil
+		return rss, nil
 	}
-	ru, ok := cmd.ProcessState.SysUsage().(*syscall.Rusage)
+	cmd := exec.Command("/usr/bin/time", append([]string{"-l", rashomonBin}, args...)...)
+	cmd.Stdin, cmd.Env, cmd.Stderr = bytes.NewReader(stdin), env, &stderr
+	if err := cmd.Run(); err != nil {
+		return fail(err)
+	}
+	n, ok := ParseFootprint(stderr.String())
 	if !ok {
-		return 0, errors.New("no rusage for the child")
+		return 0, fmt.Errorf("rashomon %s: no %q line in /usr/bin/time's report:\n%s", strings.Join(args, " "), footprintLine, stderr.String())
 	}
-	rss := float64(ru.Maxrss)
-	if runtime.GOOS == "linux" {
-		rss *= 1024
-	}
-	return rss / (1 << 20), nil
+	return float64(n) / (1 << 20), nil
 }
 
 // readBurst counts what the burst left in one run directory: the ordered

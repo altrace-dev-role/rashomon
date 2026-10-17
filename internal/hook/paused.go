@@ -1,10 +1,10 @@
 package hook
 
 import (
-	"encoding/json"
 	"io"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -26,9 +26,9 @@ import (
 func RecordPaused(in io.Reader, phase string, st *store.Store, now func() time.Time) {
 	sessionID := UnattributedSession
 	cwd := ""
-	if raw, err := readPayload(in); err == nil {
+	if payload, err := hookio.Intake(in); err == nil {
 		var p sessionPayload
-		if json.Unmarshal(raw, &p) == nil && p.SessionID != "" {
+		if p.from(payload) == nil && p.SessionID != "" {
 			sessionID = p.SessionID
 			cwd = p.CWD
 		}

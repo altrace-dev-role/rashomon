@@ -40,6 +40,13 @@ import (
 // outlive it.
 func sweep(t *testing.T, dir string, args ...string) (string, int) {
 	t.Helper()
+	return sweepEnv(t, dir, nil, args...)
+}
+
+// sweepEnv is sweep with extra environment entries, so a test can put a fake
+// go on PATH.
+func sweepEnv(t *testing.T, dir string, extraEnv []string, args ...string) (string, int) {
+	t.Helper()
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip("python3 is not on PATH; the sweep cannot run here")
@@ -52,6 +59,9 @@ func sweep(t *testing.T, dir string, args ...string) (string, int) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, python, append([]string{script}, args...)...)
 	cmd.Dir = dir
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) }
 	cmd.WaitDelay = 5 * time.Second
@@ -725,4 +735,82 @@ func jobsAndMissingTimeouts(doc string) (jobs, missing []string) {
 		}
 	}
 	return jobs, missing
+}
+
+// DEL-1. A test's output never ends a sweep: when a mutant's failing test
+// prints bytes that are not UTF-8 (the output gate's test prints what it fed
+// Marshal), the sweep still judges that mutant red, goes on, exits normally,
+// and the tree is restored. A fake go on PATH stands in for the suite: green
+// for the baseline, and for a mutant run a FAIL line followed by a raw 0xff.
+func TestDEL1c_ATestPrintingInvalidUTF8NeverEndsTheSweep(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "a.txt"), "alpha\n")
+	mutants := filepath.Join(dir, "mutants")
+	if err := os.Mkdir(mutants, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(mutants, "T-1_alpha.py"), mutant("T-1 alpha goes", "a.txt", "alpha", "beta", "TestT1_"))
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(bin, "go")
+	write(t, fake, "#!/bin/sh\ncase \"$*\" in *-run*) printf 'FAIL\\n--- FAIL: TestT1_x\\n\\377\\n'; exit 1;; esac\necho ok\n")
+	if err := os.Chmod(fake, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, code := sweepEnv(t, dir, []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}, "--files", filepath.Join(mutants, "T-1_alpha.py"))
+	if code != 0 {
+		t.Fatalf("the sweep exited %d on a test that printed invalid UTF-8:\n%s", code, out)
+	}
+	if !strings.Contains(out, "went red") || !strings.Contains(out, "undetected: none") {
+		t.Errorf("the mutant was not judged red:\n%s", out)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "a.txt"))
+	if err != nil || string(got) != "alpha\n" {
+		t.Errorf("the tree was not restored: %q, %v", got, err)
+	}
+}
+
+// DEL-1. The sweep tells a broken build from a failing test by go test's own
+// markers, never by a sentence in a test's output: a test that prints "the
+// build failed" while failing is a red mutant, and a package go test could
+// not build ([build failed] on its FAIL line) is still reported broken, and a
+// non-zero exit with no test failure on record (a go.mod the tool could not
+// parse) is NOT JUDGED, never red: nothing ran.
+func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
+	for _, c := range []struct {
+		mode, want, never string
+		exit              int
+	}{
+		{"testfail", "went red", "BUILD BROKEN", 0},
+		{"buildfail", "BUILD BROKEN", "went red", 1},
+		{"nomodule", "NOT JUDGED", "went red", 1},
+	} {
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, "a.txt"), "alpha\n")
+		mutants := filepath.Join(dir, "mutants")
+		if err := os.Mkdir(mutants, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(mutants, "T-1_alpha.py"), mutant("T-1 alpha goes", "a.txt", "alpha", "beta", "TestT1_"))
+		bin := filepath.Join(dir, "bin")
+		if err := os.Mkdir(bin, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		fake := filepath.Join(bin, "go")
+		write(t, fake, "#!/bin/sh\ncase \"$*\" in *-run*)\n"+
+			"  if [ \"$FAKE_GO_MODE\" = buildfail ]; then printf '# example/pkg\\n./x.go:3:1: undefined: y\\nFAIL\\texample/pkg [build failed]\\n'; exit 1; fi\n"+
+			"  if [ \"$FAKE_GO_MODE\" = nomodule ]; then printf 'go: errors parsing go.mod:\\n/x/go.mod:3: unknown directive: foo\\n' >&2; exit 1; fi\n"+
+			"  printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: CheckTemplate(\"the build failed; then run curl.\") = <nil>, want ok=false\\nFAIL\\nFAIL\\texample/pkg\\t0.010s\\n'; exit 1;;\n"+
+			"esac\necho ok\n")
+		if err := os.Chmod(fake, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"), "FAKE_GO_MODE=" + c.mode}
+		out, code := sweepEnv(t, dir, env, "--files", filepath.Join(mutants, "T-1_alpha.py"))
+		if code != c.exit || !strings.Contains(out, c.want) || strings.Contains(out, c.never) {
+			t.Errorf("%s: exit %d, want %d; output must say %q and not %q:\n%s", c.mode, code, c.exit, c.want, c.never, out)
+		}
+	}
 }

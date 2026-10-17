@@ -168,11 +168,11 @@ func TestRES28l_SeedAndWorkDone(t *testing.T) {
 // TestRES28m_UngatedNamesEveryGateThatDidNotRun: a perf run that skipped a
 // gate it owed, or ran none (a mistyped -run, a platform missing from the
 // file), is a failure when the run is required to be whole; cases gating
-// from a later PR are not owed.
+// from a PR this tree does not carry are not owed.
 func TestRES28m_UngatedNamesEveryGateThatDidNotRun(t *testing.T) {
 	b := budget.Budgets{
 		Entries:  []budget.Entry{{ID: "hook.a"}, {ID: "post.b"}},
-		RSSCases: []budget.RSSCase{{ID: "hook.400B", GatesFrom: "P-08"}, {ID: "hook.1MiB", GatesFrom: "P-10"}},
+		RSSCases: []budget.RSSCase{{ID: "hook.400B", GatesFrom: "P-08"}, {ID: "hook.1MiB", GatesFrom: "P-11"}},
 	}
 	all := map[string]bool{EntryGate("hook.a"): true, EntryGate("post.b"): true, CaseGate("hook.400B"): true, InitGate: true}
 	if got := Ungated(b, all); len(got) != 0 {

@@ -116,8 +116,9 @@ func EntryGate(id string) string { return "entry " + id }
 func CaseGate(id string) string { return "case " + id }
 
 // CaseGates reports whether a RES-28 case gates in this tree: the 400 B and
-// 40 KB cases from P-08; the 1, 4 and 8 MiB cases switch on with P-10.
-func CaseGates(c budget.RSSCase) bool { return c.GatesFrom == "P-08" }
+// 40 KB cases from P-08, and the 1, 4 and 8 MiB cases from P-10's bounded
+// intake, both of which this tree carries.
+func CaseGates(c budget.RSSCase) bool { return landed[c.GatesFrom] }
 
 // Ungated lists, sorted, every gate b owes on this tree that ran does not
 // hold: every entry row, every case CaseGates admits, and the init budget.

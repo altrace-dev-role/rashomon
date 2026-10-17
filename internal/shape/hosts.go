@@ -514,20 +514,9 @@ func portSuffix(s string) string {
 // one named key, a string or nothing. It never walks the object, so no field
 // whose name we did not write down can be read by accident.
 func stringField(raw json.RawMessage, name string) (string, bool) {
-	if len(raw) == 0 {
-		return "", false
-	}
-	var obj map[string]json.RawMessage
-	if json.Unmarshal(raw, &obj) != nil {
-		return "", false
-	}
-	v, ok := obj[name]
+	s, ok := inputField(raw, name)
 	if !ok {
 		return "", false
 	}
-	var s string
-	if json.Unmarshal(v, &s) != nil {
-		return "", false
-	}
-	return s, true
+	return stringValue(raw, s)
 }
