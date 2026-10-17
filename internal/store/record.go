@@ -90,23 +90,6 @@ const FlushFailedSchemaVersion = 5
 // a declaration that never landed, which is a lock timeout to the reader.
 const SessionSchemaVersion = 3
 
-// Accepts reports whether a reader understands a record's schema version.
-//
-// It is a function over a set rather than an equality against SchemaVersion,
-// because the two are different questions and conflating them is a silent
-// data-loss bug: the reader used to compare `!= SchemaVersion`, so the moment
-// the writer moved to v2 every v1 record already on disk would have been
-// skipped -- a store that had been recording for weeks would have rendered an
-// empty report, and nothing would have said why.
-//
-// v5 is what this build writes; 1 to 4 are accepted so older stores read.
-// Records from a newer schema are skipped without error; the report shows
-// them only as a skipped-records count and the records_unreadable coverage
-// reason, and is empty only when every record is newer.
-func Accepts(version int) bool {
-	return version >= 1 && version <= 5
-}
-
 // Record type discriminators.
 const (
 	TypeDeclaration = "declaration"

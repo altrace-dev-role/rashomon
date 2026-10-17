@@ -197,14 +197,11 @@ func recordProblems(where string, fields map[string]any, spec storeFile) []strin
 
 // readable is whether this build reads a record of this kind at this
 // version, asked of the store rather than written out here so the check moves
-// with the reader. Both terms hold today: store.Accepts is what the reader
-// applies to every record (classifyRunLine), and store.AcceptsKind is the
-// per-kind contract, under which coverage and gaps stop at
-// SessionSchemaVersion. No kind's version is past the 5 Accepts reads, so
-// the first term decides nothing until one is. When P-11 switches the reader
-// to AcceptsKind and retires Accepts, the first term goes with it.
+// with the reader: store.AcceptsKind is what the reader applies to every
+// record (classifyRunLine), under which coverage and gaps stop at
+// SessionSchemaVersion.
 func readable(kind string, version int) bool {
-	return store.Accepts(version) && store.AcceptsKind(kind, version)
+	return store.AcceptsKind(kind, version)
 }
 
 // TestRubricTEST13_TheStoreCheckCatchesEachBreak is the checker's own test: a

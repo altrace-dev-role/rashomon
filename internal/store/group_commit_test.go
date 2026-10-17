@@ -199,8 +199,8 @@ func TestREC34m_FlushFailedRidesANewerSchemaVersionSoOldReadersSkipIt(t *testing
 			"this change (Accepts up to 4) still understands; it would read this marker as an "+
 			"ordinary terminal and close the declaration instead of skipping the line", marker.SchemaVersion)
 	}
-	if !Accepts(marker.SchemaVersion) {
-		t.Fatalf("this build's own Accepts(%d) is false; it cannot read back what it just wrote", marker.SchemaVersion)
+	if !AcceptsKind(TypeTerminal, marker.SchemaVersion) {
+		t.Fatalf("this build's own AcceptsKind(terminal, %d) is false; it cannot read back what it just wrote", marker.SchemaVersion)
 	}
 }
 

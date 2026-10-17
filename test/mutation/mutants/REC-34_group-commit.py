@@ -173,9 +173,9 @@ m("REC-34 the hook never signals before flush", "cmd/rashomon/main.go",
 # must skip the whole line, never read Reason and half-understand it as an
 # ordinary closing terminal. Siblings of "B2 the reader stops accepting
 # schema 3" and "MS the reader stops accepting schema 4".
-m("REC-34 the reader stops accepting schema 5", "internal/store/record.go",
-  "\treturn version >= 1 && version <= 5",
-  "\treturn version >= 1 && version <= 5 && version != 5", "TestAcceptsAdmits")
+m("REC-34 the reader stops accepting schema 5", "internal/store/kinds.go",
+  "\t\treturn version >= 1 && version <= CallSchemaVersion",
+  "\t\treturn version >= 1 && version <= CallSchemaVersion && version != 5", "TestAcceptsAdmits")
 
 # A flush_failed marker (REC-34) sharing a tool_use_id with a real record
 # must not stand in for its recorded time: turnDropped windows a dropped

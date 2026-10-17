@@ -24,23 +24,32 @@ import (
 // either, because the contract is the thing consumers are told to rely on.
 
 // TestAcceptsAdmitsSchema3 is the data-loss guard, and it is the same bug the
-// reader already carries a comment about: `Accepts` used to be an equality
+// reader already carries a comment about: acceptance used to be an equality
 // against SchemaVersion, so the moment the writer moved to v2 every v1 record
 // on disk was skipped and the report rendered empty with nothing saying why.
 // This build writes v4 for its ordinary call records and v5 for the one
-// flush_failed marker (store.FlushFailedSchemaVersion), and Accepts must
-// keep admitting 1 through 4 so that older stores still read.
+// flush_failed marker (store.FlushFailedSchemaVersion). AcceptsKind must keep
+// admitting the call records at 1 to 5 and the session records at 1 to 3, so
+// older stores still read; neither may admit a version that does not exist yet.
 func TestAcceptsAdmitsSchema3(t *testing.T) {
-	for _, v := range []int{1, 2, 3, 4, 5} {
-		if !store.Accepts(v) {
-			t.Errorf("store.Accepts(%d) is false. Records at that version are SKIPPED, not "+
-				"reported as unreadable, so the symptom is an empty report and no reason "+
-				"for it.", v)
+	for _, c := range []struct {
+		kind  string
+		newer int
+	}{
+		{store.TypeDeclaration, 5}, {store.TypeExecution, 5}, {store.TypeTerminal, 5},
+		{store.TypeCoverage, 3}, {store.TypeGap, 3},
+	} {
+		for v := 1; v <= c.newer; v++ {
+			if !store.AcceptsKind(c.kind, v) {
+				t.Errorf("store.AcceptsKind(%s, %d) is false. Records at that version are SKIPPED, not "+
+					"reported as unreadable, so the symptom is an empty report and no reason "+
+					"for it.", c.kind, v)
+			}
 		}
-	}
-	if store.Accepts(6) {
-		t.Error("store.Accepts(6) is true; a reader must not claim to understand a shape " +
-			"that does not exist yet")
+		if store.AcceptsKind(c.kind, c.newer+1) {
+			t.Errorf("store.AcceptsKind(%s, %d) is true; a reader must not claim to understand a shape "+
+				"that does not exist yet", c.kind, c.newer+1)
+		}
 	}
 }
 
