@@ -701,6 +701,124 @@ func TestSeam_APartlyFailedForgetStillSuppressesInDestinationsFamiliesAndChains(
 	}
 }
 
+// legacySpellingOutlivesAForget is the fixture both tests below share: a
+// declaration recorded in a spelling host.Canonical would not write today,
+// forgotten by its canonical name, with the owning run's own records file
+// made unopenable first so forgetHostInRun's physical removal cannot touch
+// it -- the same #45 trick TestSeam_APartlyFailedForgetStillSuppressesIn...
+// uses, here to isolate the forgotten() PREDICATE as the only thing left
+// that could hide the host, rather than the per-run removal that would
+// otherwise also canonicalise-and-match it via host.Same and mask this bug.
+// toolUseID and hosts/sshHosts are mutually exclusive: exactly one of hosts
+// or sshHosts is non-empty, naming the field the fixture populates.
+func legacySpellingOutlivesAForget(t *testing.T, id, toolUseID string, hosts, sshHosts []string, canonical string) *Report {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("a file mode does not stop this process here")
+	}
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.UnixMilli(1_700_000_000_000)
+	if err := st.AppendDeclaration(store.Declaration{
+		Type: "declaration", SchemaVersion: 4, SessionID: id,
+		ToolUseID: toolUseID, ToolName: "Bash",
+		RecordedAtMS: now.UnixMilli(), Hosts: hosts, SSHHosts: sshHosts,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runs, err := st.Runs()
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("premise: one run, got %v (%v)", runs, err)
+	}
+	records := filepath.Join(st.Root(), "runs", runs[0], "records.ndjson")
+	if err := os.Chmod(records, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, forgetErr := st.ForgetHost(canonical, now)
+	// Restored before anything reads the run again: the mode exists only to
+	// fail forgetHostInRun's own open, not every later read, including the
+	// report build below.
+	if err := os.Chmod(records, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if forgetErr == nil {
+		t.Fatal("premise: a forget whose run cannot be opened reported success")
+	}
+	forgotten, err := st.ForgottenHost()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !forgotten(canonical) {
+		t.Fatal("premise: the store-level forget record was not written, so nothing " +
+			"downstream has anything to suppress")
+	}
+
+	// PREMISE: the run's own declaration still names the host in its stored
+	// spelling -- forgetHostInRun never got to remove it. Without this the
+	// test would pass because the record was actually gone, which is the
+	// case the per-run removal path already covers on its own.
+	raw, err := st.ReadRun(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := append(append([]string{}, hosts...), sshHosts...)
+	var stillDeclared bool
+	for _, d := range raw.Declarations {
+		for _, name := range names {
+			if slices.Contains(d.Hosts, name) || slices.Contains(d.SSHHosts, name) {
+				stillDeclared = true
+			}
+		}
+	}
+	if !stillDeclared {
+		t.Fatal("premise: the failed forget actually removed the declaration, so this " +
+			"test exercises nothing beyond the per-run removal path")
+	}
+
+	rep, err := Build(st, id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rep
+}
+
+// TestSeam_ForgetFindsADeclarationStoredInALegacySpelling: a declaration
+// written before host.Canonical folded an IP literal to its one spelling
+// holds the raw string -- "167838211" where a current build would have
+// written "10.1.2.3" for the same curl. declaredHostsFiltered checked
+// forgotten() against that stored spelling before canonicalising it for the
+// output set, so a `forget --host 10.1.2.3` -- which records its digest
+// under the CANONICAL name, never the stored one -- could not recognise the
+// legacy declaration as the host it was asked to forget, and it kept
+// reappearing under destinations.declared_hosts on every later render.
+func TestSeam_ForgetFindsADeclarationStoredInALegacySpelling(t *testing.T) {
+	rep := legacySpellingOutlivesAForget(t, "seam-legacy-host", "toolu_legacy",
+		[]string{"167838211"}, nil, "10.1.2.3")
+	if got := rep.Sessions[0].Destinations.DeclaredHosts; slices.Contains(got, "167838211") || slices.Contains(got, "10.1.2.3") {
+		t.Errorf("destinations.declared_hosts still carries a legacy-spelling declaration "+
+			"after forgetting its canonical name: %v", got)
+	}
+}
+
+// TestSeam_ForgetFindsAnSSHDeclarationStoredInALegacySpelling: the same hole,
+// for sshDeclaredFiltered -- which, unlike declaredHostsFiltered, did not
+// canonicalise an ssh host at all before comparing it to forgotten() or
+// before adding it to the output set. A declaration recorded in mixed case,
+// from before this build's ssh extraction ran every host through
+// host.Canonical, never matched the canonical digest `forget --host`
+// records.
+func TestSeam_ForgetFindsAnSSHDeclarationStoredInALegacySpelling(t *testing.T) {
+	rep := legacySpellingOutlivesAForget(t, "seam-legacy-ssh-host", "toolu_legacy_ssh",
+		nil, []string{"GitHub.com"}, "github.com")
+	if got := rep.Sessions[0].Destinations.SSHHosts; slices.Contains(got, "GitHub.com") || slices.Contains(got, "github.com") {
+		t.Errorf("destinations.ssh_hosts still carries a legacy-spelling ssh declaration "+
+			"after forgetting its canonical name: %v", got)
+	}
+}
+
 // nonoJSON is the sandbox section of the first session as its JSON reader
 // sees it.
 func nonoJSON(t *testing.T, rep *Report) map[string]any {

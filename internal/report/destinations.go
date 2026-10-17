@@ -361,14 +361,28 @@ func sshDeclared(run *store.Run) []string {
 // never for a later declaration that happens to share it. forgotten == nil
 // passes every host through, matching the report's nil-means-no-filter
 // convention (see suppressTrail).
+//
+// Canonicalised before forgotten is asked, the same correction
+// declaredHostsFiltered applies and for the same reason: forget --host
+// records its digest under the CANONICAL spelling, never the one a
+// declaration happens to hold, so asking forgotten about the stored spelling
+// let a legacy or differently-cased ssh host -- "GitHub.com" where today's
+// extraction writes "github.com" -- survive a forget of its canonical name
+// and kept it out of the one spelling every current declaration uses. A host
+// that no longer canonicalises, or that host.Shaped now refuses, is dropped
+// rather than carried forward under whatever it used to be.
 func sshDeclaredFiltered(run *store.Run, forgotten func(host string, declaredAtMS int64) bool) []string {
 	set := map[string]bool{}
 	for _, d := range run.Declarations {
 		for _, h := range d.SSHHosts {
-			if forgotten != nil && forgotten(h, d.RecordedAtMS) {
+			canon, ok := host.Canonical(h)
+			if !ok || !host.Shaped(canon) {
 				continue
 			}
-			set[h] = true
+			if forgotten != nil && forgotten(canon, d.RecordedAtMS) {
+				continue
+			}
+			set[canon] = true
 		}
 	}
 	out := make([]string, 0, len(set))
@@ -396,9 +410,6 @@ func declaredHostsFiltered(run *store.Run, forgotten func(host string, declaredA
 	set := map[string]bool{}
 	for _, d := range run.Declarations {
 		for _, h := range d.Hosts {
-			if forgotten != nil && forgotten(h, d.RecordedAtMS) {
-				continue
-			}
 			// A run stored before host.Canonical folded an IP literal to
 			// its one spelling holds the raw string -- "167838211" where a
 			// current build now writes "10.1.2.3". Re-canonicalising here
@@ -408,8 +419,18 @@ func declaredHostsFiltered(run *store.Run, forgotten func(host string, declaredA
 			// (buildNovelty). A host that no longer canonicalises, or that
 			// host.Shaped now refuses, is dropped rather than carried
 			// forward under whatever it used to be.
+			//
+			// Canonicalised BEFORE forgotten is asked, not after: forget
+			// --host records its digest under the canonical spelling, never
+			// the stored one, so asking forgotten about h here let a legacy
+			// declaration -- 167838211 where a forget named 10.1.2.3 --
+			// escape the check and reappear in every later render of the
+			// same old run.
 			canon, ok := host.Canonical(h)
 			if !ok || !host.Shaped(canon) {
+				continue
+			}
+			if forgotten != nil && forgotten(canon, d.RecordedAtMS) {
 				continue
 			}
 			set[canon] = true
