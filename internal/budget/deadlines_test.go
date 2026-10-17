@@ -38,37 +38,14 @@ func TestRES26_SoftBudgetMatchesTheTable(t *testing.T) {
 	}
 }
 
-func TestRES26_SoftBudgetNeverExceedsTheHardStopMargin(t *testing.T) {
-	// The soft deadline is for optional phases inside the entry; it must
-	// leave the required phase room to finish before the hard stop, so it
-	// is always comfortably under it. The margin used here mirrors the
-	// supervisor's own (85.3.10): entries of 5s+ lose 1s, shorter ones
-	// lose 100ms at most.
-	cases := []struct {
-		e            DeadlineEntry
-		installedS   int
-		shortSession bool
-	}{
-		{EntryHook, 5, false},
-		{EntryPost, 5, false},
-		{EntryEventPostToolBatch, 5, false},
-		{EntryEventOther, 5, false},
-		{EntryRecapPending, 10, false},
-		{EntryRecapStop, 10, false},
-		{EntryProbeStart, 5, false},
-		{EntryProbeEnd, 2, true}, // SessionEnd-style short budget (1.5s default)
-	}
-	for _, c := range cases {
-		hard := time.Duration(c.installedS) * time.Second
-		margin := time.Second
-		if hard < 5*time.Second {
-			margin = 100 * time.Millisecond
-		}
-		if soft := c.e.SoftBudget(); soft >= hard-margin {
-			t.Errorf("%v: soft %v leaves no room before hard stop %v (margin %v)", c.e, soft, hard, margin)
-		}
-	}
-}
+// TestRES26_SoftBudgetNeverExceedsTheHardStopMargin moved to
+// internal/supervise.TestRES26_SoftBudgetNeverExceedsTheRealHardStop,
+// which checks each entry's soft budget against the real HardStop
+// computation for its own event rather than an installedS/shortSession
+// pair invented per case (the old cases checked EntryProbeEnd against an
+// invented 1.9s hard stop; the real one is 1.4s). budget cannot import
+// supervise (supervise already imports budget), so the replacement lives
+// where HardStop does.
 
 func TestRES26_ProbeStartOrderIsTheFiveFixedPhasesInOrder(t *testing.T) {
 	want := []Phase{Labels, Mining, Evict, Compact, Briefing}
@@ -104,6 +81,20 @@ func TestRES26_ProbeStartFixedBudgetMatchesTheTable(t *testing.T) {
 	}
 	if sum != 1200*time.Millisecond {
 		t.Fatalf("the five fixed phases sum to %v, want exactly the entry's 1.2s so the test below's cap is the binding one", sum)
+	}
+}
+
+// TestRES26_ProbeStartFixedBudgetGuardsAPhasePastTheEnd pins
+// ProbeStartFixedBudget's bounds guard: probeStartFixed is now a fixed
+// array indexed by Phase (not a map), so a Phase at or past phaseCount
+// would index out of range and panic without the guard, in the style of
+// DeadlineEntry.SoftBudget's own.
+func TestRES26_ProbeStartFixedBudgetGuardsAPhasePastTheEnd(t *testing.T) {
+	if got := ProbeStartFixedBudget(Phase(phaseCount)); got != 0 {
+		t.Errorf("ProbeStartFixedBudget(phaseCount) = %v, want 0", got)
+	}
+	if got := ProbeStartFixedBudget(Phase(255)); got != 0 {
+		t.Errorf("ProbeStartFixedBudget(255) = %v, want 0", got)
 	}
 }
 

@@ -594,12 +594,30 @@ func Attach(args []string) (c *Child, rest []string, ok bool) {
 // start that c's own hard-stop clock already carries -- so a phase's soft
 // deadline counts from when the parent started, not from whenever the
 // phase happens to ask for a Clock. A nil Child is an unsupervised process
-// with no parent start to share, so its Clock starts now.
+// with no parent start to share, so its Clock starts now and gets the
+// table's own budget unclamped.
+//
+// A supervised child's table budget is clamped to its own hard stop less
+// shortMargin: a lower CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS, or a harness
+// whose SessionEnd budget is already short (Codex, 0.9s), can put an
+// entry's soft deadline past the hard stop that kills the child outright,
+// which would let an optional phase keep running after there is no process
+// left to finish it in. The clamp floors at zero, which stands every
+// optional phase down at once when the hard stop is already inside the
+// margin (build spec 8.2.5).
 func (c *Child) SoftClock(e budget.DeadlineEntry) budget.Clock {
 	if c == nil {
 		return budget.NewClock(time.Now(), e.SoftBudget())
 	}
-	return c.clock.Soft(e.SoftBudget())
+	soft := e.SoftBudget()
+	margin := c.clock.Duration() - shortMargin
+	if margin < 0 {
+		margin = 0
+	}
+	if margin < soft {
+		soft = margin
+	}
+	return c.clock.Soft(soft)
 }
 
 // StandDown reports whether the child must start nothing new: its parent has

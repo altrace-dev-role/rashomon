@@ -78,3 +78,64 @@ func TestChildSoftClockStandsDownAtItsDeadline(t *testing.T) {
 		t.Errorf("reason = %q, want the closed word %q", reason, "deadline")
 	}
 }
+
+// TestChildSoftClockClampsToHardStopMinusShortMargin is the owner's ruling
+// on build spec 8.2.5's gap: a lower CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS
+// (or a harness whose SessionEnd budget is already short, Codex's 0.9s)
+// can put an entry's table-wide soft deadline (EntryProbeEnd's 1.0s) past
+// its own hard stop. SoftClock must clamp the table's budget to the
+// child's real hard stop less shortMargin, never hand out a soft deadline
+// an optional phase could still be running against after the child is
+// already dead.
+func TestChildSoftClockClampsToHardStopMinusShortMargin(t *testing.T) {
+	// A Codex-style SessionEnd budget, lowered further by the env variable,
+	// the way HardStop's own caller would compute it.
+	hard := HardStop(5, []string{"SessionEnd"}, "900") // -> 800ms
+	if hard != 800*time.Millisecond {
+		t.Fatalf("HardStop(...) = %v, want 800ms (test's own assumption wrong)", hard)
+	}
+
+	start := time.Now()
+	c := &Child{clock: budget.NewClock(start, hard)}
+
+	soft := c.SoftClock(budget.EntryProbeEnd) // table budget: 1.0s, well past 800ms
+	want := hard - shortMargin                // 700ms
+	if got := soft.Duration(); got != want {
+		t.Errorf("SoftClock(EntryProbeEnd).Duration() = %v, want %v (hard stop %v minus the short margin)", got, want, hard)
+	}
+	if got := soft.Left(start); got != want {
+		t.Errorf("Left(start) = %v, want %v: the clamp must still share the parent's start", got, want)
+	}
+}
+
+// TestChildSoftClockNeverClampsBelowTheTable is the clamp's other edge: a
+// hard stop comfortably past the table's own soft budget plus the short
+// margin must leave the table's number untouched, not shrink every entry
+// to the same clamp regardless of how much it asked for.
+func TestChildSoftClockNeverClampsBelowTheTable(t *testing.T) {
+	start := time.Now()
+	c := &Child{clock: budget.NewClock(start, 10*time.Second)}
+
+	soft := c.SoftClock(budget.EntryHook)
+	want := budget.EntryHook.SoftBudget() // 50ms, nowhere near 10s - shortMargin
+	if got := soft.Duration(); got != want {
+		t.Errorf("Duration() = %v, want the table's own %v unclamped", got, want)
+	}
+}
+
+// TestChildSoftClockFloorsAtZeroWhenHardStopIsInsideTheMargin is the
+// clamp's floor: a hard stop at or inside the short margin itself must
+// stand every optional phase for that entry down at once (a zero-budget
+// Clock, already expired at its own start), never a negative budget.
+func TestChildSoftClockFloorsAtZeroWhenHardStopIsInsideTheMargin(t *testing.T) {
+	start := time.Now()
+	c := &Child{clock: budget.NewClock(start, 50*time.Millisecond)} // < shortMargin (100ms)
+
+	soft := c.SoftClock(budget.EntryHook)
+	if got := soft.Duration(); got != 0 {
+		t.Errorf("Duration() = %v, want 0: a hard stop inside the short margin must floor at zero, not go negative", got)
+	}
+	if !soft.Expired(start) {
+		t.Error("a zero-budget Clock must already be expired at its own start")
+	}
+}
