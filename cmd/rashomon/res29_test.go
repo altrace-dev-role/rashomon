@@ -58,6 +58,13 @@ func res29Payload(t *testing.T, size int, prefix, unit, suffix string) []byte {
 // a peak RSS cannot attribute.
 func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 	if args := os.Getenv(res29Child); args != "" {
+		// applyHookRuntimeLimits is what run() applies before dispatching to
+		// cmdHook in the installed binary (main.go); calling cmdHook
+		// directly here, as every other branch of this re-exec does,
+		// skipped it, so this 64 MiB RSS budget was measured under
+		// whatever GC/memory-limit settings the child inherited, not the
+		// pin a real hook-entry process runs under.
+		applyHookRuntimeLimits()
 		os.Exit(cmdHook(strings.Fields(args), os.Stdin, os.Stderr))
 	}
 	if testing.Short() {

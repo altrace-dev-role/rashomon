@@ -55,7 +55,7 @@ const (
 	hookMemoryLimitBytes = 32 << 20
 )
 
-// hookRuntimeSubcommands are the five hook-entry processes the pin applies
+// hookRuntimeSubcommands are the four hook-entry processes the pin applies
 // to (hook, post, probe for SessionStart/SessionEnd, recap for Stop and
 // UserPromptSubmit). A command a person types -- disclose, status, report --
 // is not one of them and keeps whatever GC and memory settings its own

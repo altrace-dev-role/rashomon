@@ -50,7 +50,7 @@ func TestHookEntriesPinTheirRuntimeSettings(t *testing.T) {
 
 // TestNonHookEntriesDoNotTouchRuntimeSettings: a command a person types
 // (version is the cheapest one to dispatch) leaves GOGC and the memory
-// limit exactly where they were: the pin is for the five hook-entry
+// limit exactly where they were: the pin is for the four hook-entry
 // processes (archive 85.3.12), not for every subcommand this binary has.
 func TestNonHookEntriesDoNotTouchRuntimeSettings(t *testing.T) {
 	prevGC := debug.SetGCPercent(400)

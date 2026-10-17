@@ -12,9 +12,12 @@ import (
 // TestColdCall measures the allocation of exactly one hook or post call in a
 // freshly started test process: runtime.ReadMemStats brackets a single
 // cmdHook/cmdPost call against a just-opened store, and the TotalAlloc delta
-// is printed to real stdout (fmt.Printf, not t.Log, which buffers and needs
-// -v) as "COLD <id> <bytes>\n" for a harness to parse from a subprocess's
-// CombinedOutput without -v.
+// is printed to real stdout (fmt.Printf, not t.Log) as "COLD <id> <bytes>\n"
+// for a harness to parse from a subprocess's CombinedOutput. `go test`
+// itself still buffers a passing test's stdout and only ever shows it with
+// -v or on failure (test/perf/cold_test.go's child invocation passes -v for
+// exactly that reason) -- fmt.Printf only avoids t.Log's own, separate
+// buffering, which needs -v regardless of how the parent process is run.
 //
 // This is deliberately a *testing.T, not a *testing.B: a cold figure is a
 // property of a fresh process, not of a steady-state loop, and running it
