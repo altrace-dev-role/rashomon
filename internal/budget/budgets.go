@@ -93,6 +93,17 @@ type RSS struct {
 // what it allocated, and the allocation figure is the same on every platform.
 // MaxRSSMiBP95, ParentMaxRSSMiBP50 and the wall-time figures are information
 // only; no gate compares a measurement with them.
+//
+// ColdAllocBytesMax is a third, separate figure: a hook process makes
+// exactly one cold call, in a process that has paid no warm-up, so
+// AllocBytesMax (the steady-state benchmark row) understates it -- that row
+// is deliberately warmed (P-12) precisely so it excludes the one-time cost
+// this field exists to capture. Gated at +10% (test/perf's cold gate)
+// against runtime.MemStats.TotalAlloc of exactly one call in a fresh test
+// process. It is 0, not measured, for every entry with no benchmark row and
+// for recap.* and probe.*, which a fresh-process cold call has not yet been
+// built for (P-12); 0 there is the existing convention AllocBytesMax already
+// uses for probe.*, not a claim of zero cost.
 type Entry struct {
 	ID                 string   `json:"id"`
 	Events             []string `json:"events"`
@@ -101,6 +112,7 @@ type Entry struct {
 	PayloadBytes       int      `json:"payload_bytes"`
 	Benchmark          string   `json:"benchmark"`
 	AllocBytesMax      int64    `json:"alloc_bytes_max"`
+	ColdAllocBytesMax  int64    `json:"cold_alloc_bytes_max"`
 	MaxRSSMiBP50       float64  `json:"maxrss_mib_p50"`
 	MaxRSSMiBP95       float64  `json:"maxrss_mib_p95"`
 	ParentMaxRSSMiBP50 *float64 `json:"parent_maxrss_mib_p50"`
