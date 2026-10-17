@@ -10,13 +10,19 @@
 // inventory cannot drift from what the binary does. Technical spec 7.2.2;
 // Archive 80.3.2.
 //
-// Contract only (P-07): the types and the scope version. Default() is filled
-// by P-21, which also moves install.Events onto it.
+// Contract only (P-07): the types and the scope version. P-21 fills Files.
+// Entries -- moving install.Events onto the inventory -- is NOT part of
+// P-21: an Entries row needs Why, Prints and Owner text per event, and
+// Prints names the output gate's own vocabulary ("nothing" | "user" |
+// "user+model", 7.2.5), which does not exist in this tree yet. Entries stays
+// owned by the PR that builds the output gate; see Default's doc.
 package disclose
 
 import (
 	"errors"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -137,14 +143,23 @@ const (
 
 // Default is the build's inventory.
 //
-// P-21 fills Files: every path rashomon's own store package creates, read
-// from that package's own exported names rather than copied as literal
-// strings, so a renamed or added file shows up here by construction instead
-// of by someone remembering to update a second list (TRU-23). The other
-// sections -- Entries, Outputs, SettingsKeys, NeverEmit, NeverWrite,
-// Switches, EnvVars, Paragraphs -- are owned by later PRs (consent screen,
-// output gate, disclose/status CLI) and are empty until each lands; an empty
-// section here is "not yet described", not "this build does nothing".
+// P-21 fills Files: every path ANY package that writes under a store root
+// creates -- not only internal/store's own, but internal/recap's and
+// internal/baseline's, which write beside it -- read from each package's
+// own exported names rather than copied as literal strings, so a renamed or
+// added file shows up here by construction instead of by someone
+// remembering to update a second list (TRU-23). The other sections --
+// Entries, Outputs, SettingsKeys, NeverEmit, NeverWrite, Switches, EnvVars,
+// Paragraphs -- are owned by later PRs (consent screen, output gate,
+// disclose/status CLI) and are empty until each lands.
+//
+// An empty section here is "not yet described", not "this build does
+// nothing" -- and that distinction currently lives only in this comment, not
+// in the type: Default returns a nil error whether a section is genuinely
+// empty or not yet owned, so a future consumer (a consent screen, `watch`)
+// cannot tell "fully described, zero rows" from "undescribed" by looking at
+// the Inventory alone. No caller does that today, so it is not yet a
+// behaviour gap, only a sharp edge the next caller needs to know about.
 func Default() (Inventory, error) {
 	return Inventory{
 		ScopeVersion: ScopeVersion,
@@ -152,17 +167,25 @@ func Default() (Inventory, error) {
 	}, nil
 }
 
-// defaultFiles is the FileRule for every path the store package creates,
-// under the store root. Base is a path relative to the store root; Pattern is
-// the file name within it, or a glob when the base itself varies per session
-// (runs/<session>/...).
+// defaultFiles is the FileRule for every path any package that writes under
+// a store root creates -- internal/store's own, plus internal/recap's and
+// internal/baseline's, which write beside it rather than through it. Base is
+// a path relative to the store root; Pattern is the file name within it, or
+// a glob when the base itself varies per session (runs/<session>/...) or per
+// project (baseline/<key>.json).
 //
-// Two files hold a destination's identity and nothing else about it: a host
-// named in records.ndjson travels in the clear because the report has to
-// show it to be useful, but forgetting a host must make the hostname LEAVE
-// the store's bytes while still letting later forgets and the report's
+// Three files hold a destination's identity and nothing else about it: a
+// host named in records.ndjson travels in the clear because the report has
+// to show it to be useful, but forgetting a host must make the hostname
+// LEAVE the store's bytes while still letting later forgets and the report's
 // suppression recognise it again -- which is what the keyed digest in
 // gaps.ndjson and forgotten-hosts.ndjson is for (store/gaps.go, HostDigest).
+// baseline/<key>.json is the exception that proves the rule rather than a
+// fourth instance of it: it is the one file here that holds hostnames in the
+// clear, by design, because a novelty baseline has no later-forget path to
+// protect against yet (ForgetFile exists but nothing calls it from a user
+// command in this tree) and a keyed digest cannot answer "which host is new"
+// without the plaintext to compare.
 func defaultFiles() []FileRule {
 	const runSegment = store.DirRuns + "/<session>"
 	return []FileRule{
@@ -191,9 +214,9 @@ func defaultFiles() []FileRule {
 			Pattern:    store.FileRecords,
 			Mode:       "0600",
 			Purpose:    "the append-only, totally ordered record of one session's declared and executed tool calls",
-			Holds:      "tool name, hosts and ssh_hosts the call named, timing, and keyed digests of its working directory and shape",
+			Holds:      "tool name, program, verb class, argc, hosts and ssh_hosts the call named, transcript path, permission mode, agent type, file label, rule match, outcome, exit code and timing, all in the clear, plus keyed digests of its working directory and its shape",
 			NeverHolds: "a tool call's arguments in the clear, or any part of a tool response",
-			RemovedBy:  "forget --since, --before or --host; purge",
+			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
 			Owner:      "store",
 		},
 		{
@@ -203,7 +226,7 @@ func defaultFiles() []FileRule {
 			Purpose:    "an execution or terminal record the ordered append lock could not place in time",
 			Holds:      "the same fields records.ndjson holds, unordered",
 			NeverHolds: "a tool call's arguments in the clear, or any part of a tool response",
-			RemovedBy:  "forget --since, --before or --host; purge",
+			RemovedBy:  "forget --since, --before or --host; size-cap eviction; purge",
 			Owner:      "store",
 		},
 		{
@@ -213,8 +236,13 @@ func defaultFiles() []FileRule {
 			Purpose:    "the configuration state resolved for the session",
 			Holds:      "phase, hook outcome, and the session's own working directory",
 			NeverHolds: "a tool call's content",
-			RemovedBy:  "forget --since or --before; purge",
-			Owner:      "store",
+			// Coverage records stay through a forget on purpose (store/gaps.go:
+			// "Coverage records stay: they describe whether the run could be
+			// trusted"): ForgetWindow never opens coverage.ndjson. What does
+			// remove it is a whole run directory going, which eviction and
+			// purge both do.
+			RemovedBy: "size-cap eviction; purge",
+			Owner:     "store",
 		},
 		{
 			Base:       runSegment,
@@ -223,7 +251,7 @@ func defaultFiles() []FileRule {
 			Purpose:    "a liveness marker for the session's hook entries",
 			Holds:      "one Unix-millisecond timestamp",
 			NeverHolds: "anything else",
-			RemovedBy:  "purge",
+			RemovedBy:  "size-cap eviction; purge",
 			Owner:      "store",
 		},
 		{
@@ -233,8 +261,52 @@ func defaultFiles() []FileRule {
 			Purpose:    "the session's last allocated record sequence number",
 			Holds:      "one integer",
 			NeverHolds: "anything else",
-			RemovedBy:  "purge",
+			RemovedBy:  "size-cap eviction; purge",
 			Owner:      "store",
+		},
+		{
+			Base:       "",
+			Pattern:    store.FileRecordingPaused,
+			Mode:       "0600",
+			Purpose:    "the marker that recording is paused machine-wide, and since when",
+			Holds:      "one Unix-millisecond timestamp",
+			NeverHolds: "anything else",
+			RemovedBy:  "rashomon resume; purge",
+			Owner:      "store",
+		},
+		{
+			Base:       "",
+			Pattern:    recap.StateFileName,
+			Mode:       "0600",
+			Purpose:    "recap's own bookkeeping: the last turn it evaluated, whether that evaluation was healthy, and which (session, prompt) pairs it has already spoken or checked, so a replayed turn is not announced twice",
+			Holds:      "a Unix-millisecond timestamp, a health flag, and session/prompt ids -- never a tool call's content",
+			NeverHolds: "a tool call's content",
+			RemovedBy:  "purge",
+			Owner:      "recap",
+		},
+		{
+			// writeState writes this file by temp-then-rename beside
+			// recap.json itself (internal/recap/state.go), not under the
+			// store's runs/ tree, so it is a root-level sibling like
+			// recap.json rather than a run-segment pattern.
+			Base:       "",
+			Pattern:    recap.StateFileName + ".tmp",
+			Mode:       "0600",
+			Purpose:    "recap.json's own temp-then-rename write target; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "the same fields recap.json holds",
+			NeverHolds: "a tool call's content",
+			RemovedBy:  "the next successful recap write (renamed over); purge",
+			Owner:      "recap",
+		},
+		{
+			Base:       baseline.DirName,
+			Pattern:    baseline.FilePattern,
+			Mode:       "0600",
+			Purpose:    "one project's novelty baseline: every host any of its sessions has named, kept outside the evictable run store so eviction cannot make an old host look new again",
+			Holds:      "every host this project's sessions have named, IN THE CLEAR, with the session and timestamp that first named each",
+			NeverHolds: "a tool call's content, or anything about a host beyond its name and when it was first named",
+			RemovedBy:  "purge",
+			Owner:      "baseline",
 		},
 		{
 			Base:       "",
