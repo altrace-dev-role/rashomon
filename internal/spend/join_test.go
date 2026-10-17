@@ -1543,7 +1543,7 @@ func TestJoin_AnUndatedUsageLineDoesNotReDateItsFile(t *testing.T) {
 // verified, or unverified for reason.
 func (r *recorder) coverage(session, phase string, at time.Time, reason string) {
 	r.t.Helper()
-	c := store.Coverage{Type: store.TypeCoverage, SchemaVersion: store.SchemaVersion, RecordedAtMS: at.UnixMilli(),
+	c := store.Coverage{Type: store.TypeCoverage, SchemaVersion: store.SessionSchemaVersion, RecordedAtMS: at.UnixMilli(),
 		SessionID: session, Phase: phase, State: store.StateVerified, HookEntry: store.EntryPresentSettings, Probe: store.ProbeFresh}
 	if reason != "" {
 		c.State, c.Reason = store.StateUnverified, &reason
