@@ -37,9 +37,17 @@ import (
 // not know rather than guessing at it.
 const Version = 1
 
-// DirName is the directory under the store root that holds one baseline
-// file per project.
+// DirName is the store-root sibling directory holding one file per project
+// key; see Update and fileName. Exported so the disclosure inventory
+// (internal/disclose) and callers outside this package name the same
+// directory from this constant rather than a second copy of the literal
+// string.
 const DirName = "baseline"
+
+// FilePattern is the glob every project's baseline file matches under
+// DirName: fileName's sanitised key, a digest suffix, and the .json
+// extension. Exported for the same reason as DirName.
+const FilePattern = "*.json"
 
 // Basis is what a baseline's hosts are: the hosts a project's sessions NAMED
 // in tool calls. Files from the proxy era held the hosts a session REACHED,

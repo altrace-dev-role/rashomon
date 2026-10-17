@@ -38,6 +38,10 @@ import (
 // A file under the store root reaches every origin a hook can be installed
 // under, plugin included, because every one of them resolves this same store
 // before it does anything else.
+//
+// Exported so a reader outside this package -- the disclosure inventory
+// (internal/disclose) -- names the same constant rather than a second copy of
+// the literal string.
 const FileRecordingPaused = "pause"
 
 // PausedSessionID is the session id the pause and resume commands' own gap
