@@ -33,6 +33,28 @@ func TestPhaseReasonsAreTheFrozenList(t *testing.T) {
 	}
 }
 
+func TestClockSoftKeepsStartChangesBudget(t *testing.T) {
+	start := time.Unix(1_700_000_000, 0)
+	hardStop := NewClock(start, 10*time.Second)
+	soft := hardStop.Soft(100 * time.Millisecond)
+	if soft.Expired(start.Add(99 * time.Millisecond)) {
+		t.Error("the derived Clock expired before its own 100ms budget")
+	}
+	if !soft.Expired(start.Add(100 * time.Millisecond)) {
+		t.Error("the derived Clock did not expire at its own 100ms budget")
+	}
+	// The hard-stop Clock it was derived from is unaffected.
+	if hardStop.Expired(start.Add(100 * time.Millisecond)) {
+		t.Error("Soft mutated the Clock it was called on")
+	}
+	// Soft shares start with the Clock it was derived from, not time.Now:
+	// start is 2023, so if Soft restarted the clock at call time, Left at
+	// start would be clamped to 0 instead of the full 100ms budget.
+	if got := soft.Left(start); got != 100*time.Millisecond {
+		t.Errorf("Left(start) = %v, want 100ms; Soft did not keep the original start", got)
+	}
+}
+
 func TestClockExpiresAtTheSoftDeadline(t *testing.T) {
 	start := time.Unix(1_700_000_000, 0)
 	c := NewClock(start, 100*time.Millisecond)
