@@ -147,6 +147,26 @@ type networkEvent struct {
 	Port            int    `json:"port"`
 }
 
+// Trail scanner sizes.
+//
+// nonoMaxLine is the longest trail line read, 8 MiB. Its provenance, not a
+// worst case: 2 MiB is the longest command line Linux's execve takes by
+// default (ARG_MAX, a quarter of the 8 MiB stack limit; macOS's is 1 MiB), and
+// session_started holds it in event_json, a JSON string holding JSON, where
+// one quote or backslash is written as four bytes; four times ARG_MAX leaves
+// room for that. It does not cover every command: a control byte is written
+// as seven (\\u00XX), so a command line dense in control bytes can need more.
+// A longer line ends the read, and the trail reads as unreadable rather than
+// as a session that went quiet.
+//
+// initialScanBuffer is 64 KiB, bufio's default line limit
+// (bufio.MaxScanTokenSize): a trail whose lines the default scanner would
+// have read never grows its buffer.
+const (
+	nonoMaxLine       = 8 << 20
+	initialScanBuffer = bufio.MaxScanTokenSize
+)
+
 // Read returns the network decisions nono recorded inside the window.
 //
 // path is one audit-events.ndjson. A directory of sessions is the caller's to
@@ -193,7 +213,7 @@ func Read(path string, w Window) Observation {
 	// and a scanner that stopped at the default 64KB would silently truncate
 	// the trail at the first long one -- reading as "the sandbox saw nothing
 	// after this point", which is the failure this package exists to avoid.
-	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
+	sc.Buffer(make([]byte, 0, initialScanBuffer), nonoMaxLine)
 
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())

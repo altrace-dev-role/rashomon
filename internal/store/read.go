@@ -11,9 +11,20 @@ import (
 	"time"
 )
 
-// maxLine bounds a single record on read. Records are small by construction;
-// the bound is what stops a corrupted file from being read as one giant line.
-const maxLine = 16 << 20
+// maxLine bounds a single record on read. It is a ceiling against a corrupt
+// file being read as one giant line, not a size every record is known to fit:
+// nothing bounds a record when it is written. A declaration lists every
+// distinct host its command names, and a command may be as long as a hook
+// payload (hookio.MaxPayloadBytes, 8 MiB), so one record can run to
+// megabytes. A line longer than maxLine fails the read with bufio.ErrTooLong.
+//
+// initialScanBuffer is 64 KiB, bufio's default line limit
+// (bufio.MaxScanTokenSize). Records are typically far smaller; a longer one
+// grows the buffer by doubling, up to maxLine.
+const (
+	maxLine           = 16 << 20
+	initialScanBuffer = bufio.MaxScanTokenSize
+)
 
 // Run is everything recorded for one session.
 type Run struct {
@@ -233,7 +244,7 @@ func eachLineLocked(path string, budget time.Duration, fn func(line []byte)) err
 // so the two differ only in whether a lock was taken first.
 func scanLines(f *os.File, fn func(line []byte)) error {
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
+	sc.Buffer(make([]byte, 0, initialScanBuffer), maxLine)
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {

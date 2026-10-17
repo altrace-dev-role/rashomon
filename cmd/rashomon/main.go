@@ -696,9 +696,13 @@ func editSettings(path string, edit func(*settings.Document) (bool, error)) (boo
 		if err != nil {
 			return false, err
 		}
-		doc, err := settings.Parse(original)
+		// The document names path in every error it raises, the edit's
+		// included: a hook event that is not an array surfaces inside edit,
+		// and reads as path:line:column there. The edit's other errors are
+		// not about the file and are not dressed as if they were.
+		doc, err := settings.ParseNamed(path, original)
 		if err != nil {
-			return false, fmt.Errorf("%s: %w", path, err)
+			return false, err
 		}
 		changed, err := edit(doc)
 		if err != nil || !changed {

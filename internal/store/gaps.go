@@ -366,7 +366,7 @@ func readLines(f *os.File) ([][]byte, error) {
 	}
 	var lines [][]byte
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
+	sc.Buffer(make([]byte, 0, initialScanBuffer), maxLine)
 	for sc.Scan() {
 		if line := sc.Bytes(); len(line) > 0 {
 			lines = append(lines, append([]byte(nil), line...))
