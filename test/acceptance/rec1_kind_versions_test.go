@@ -10,8 +10,8 @@ import (
 // TestREC1_KindVersions: every record a hook path writes carries the version
 // KindVersion names for its kind -- declarations, executions and terminals at
 // 5, coverage and gaps at 3 -- and every call record names the binary that
-// wrote it, so records from before and after an upgrade can be told apart by
-// more than their shape. The v5 keys are all present, null where nothing
+// wrote it -- the build-time version, not the default -- so records from
+// before and after an upgrade can be told apart by more than their shape. The v5 keys are all present, null where nothing
 // looked. Break: stamp a call record at 4, a coverage record at 5, or drop
 // the writer.
 func TestREC1_KindVersions(t *testing.T) {
@@ -29,8 +29,8 @@ func TestREC1_KindVersions(t *testing.T) {
 	e.probe("end", testSession)
 
 	writer := strings.TrimSpace(e.run("", nil, "version").stdout)
-	if writer == "" {
-		t.Fatal("rashomon version printed nothing")
+	if writer != binaryVersion {
+		t.Fatalf("rashomon version printed %q, want the build-time %q", writer, binaryVersion)
 	}
 	all := append(e.records(testSession), e.read(testSession, "coverage.ndjson")...)
 	all = append(all, e.gaps()...)

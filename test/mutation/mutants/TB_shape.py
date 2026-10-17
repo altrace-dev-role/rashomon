@@ -415,11 +415,12 @@ m("TB the session block drops the unlisted-option limit", "internal/report/text.
   "",
   "TestTestRuns_")
 
-# P-11 moved the call records' writer to CallSchemaVersion, 5, once they
-# carry the v5 keys; the mutation this guards is the writer left at 4.
-m("TB the writer stays at schema 4", "internal/store/record.go",
+# Re-anchored when the call records moved to schema 5: the constant is now
+# CallSchemaVersion's name, and the mutation is still "the writer stays at an
+# older version". REC-1 owns the one-version-back case.
+m("TB the writer stays at schema 3", "internal/store/record.go",
   "const SchemaVersion = CallSchemaVersion",
-  "const SchemaVersion = 4",
+  "const SchemaVersion = 3",
   "TestSchema3_")
 m("TB test runs are counted over records that predate the test class", "internal/report/testbending.go",
   "\tif run == nil || !measuresTests(run) {\n",
