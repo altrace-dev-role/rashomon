@@ -5,9 +5,10 @@ import (
 	"time"
 )
 
-// The entry-level soft deadlines of CLAUDE.md 8.2.5 / archive 85.3.10, in
-// the table's order. A literal copy, so a changed number shows up here as a
-// contract change rather than a silent drift between the two documents.
+// The entry-level soft deadlines of Technical spec 8.2.5 / archive 85.3.10,
+// in the table's order. A literal copy, so a changed number shows up here
+// as a contract change rather than a silent drift between the two
+// documents.
 var wantSoftBudgets = map[DeadlineEntry]time.Duration{
 	EntryHook:               50 * time.Millisecond,
 	EntryPost:               150 * time.Millisecond,
@@ -124,46 +125,14 @@ func TestRES26_ProbeStartCostScanBudgetIsWhateverIsLeftCappedAt50ms(t *testing.T
 	}
 }
 
-// TestRES26_OptionalPhaseStandsDownAtItsDeadline is the mechanism RES-26
-// requires: given a Clock built from an DeadlineEntry's soft budget, a phase that
-// checks it between steps stops at the first check past the deadline,
-// records the phase's own closed reason, and the whole run stays bounded
-// by the deadline plus a small, fixed margin -- never by how slow the
-// fault-injected step is. The required phase (passed separately, standing
-// for "declaration", "execution", ...) always completes, because nothing
-// here ever gates it on the clock.
-func TestRES26_OptionalPhaseStandsDownAtItsDeadline(t *testing.T) {
-	start := time.Now()
-	clock := NewClock(start, EntryHook.SoftBudget())
-
-	requiredRan := false
-	runRequired := func() { requiredRan = true } // never checks the clock
-
-	var stepsRun int
-	var reason Reason
-	stoodDown := false
-	slowStep := func() { time.Sleep(20 * time.Millisecond) } // the fault: far slower than the 50ms budget allows in one shot, every step after the first blows it
-	for i := 0; i < 10 && !stoodDown; i++ {
-		if clock.Expired(time.Now()) {
-			reason = Steer.Reason() // stands for whichever phase owns this loop
-			stoodDown = true
-			break
-		}
-		slowStep()
-		stepsRun++
-	}
-	runRequired()
-
-	if !requiredRan {
-		t.Error("the required phase never ran: it must never wait on the optional one")
-	}
-	if !stoodDown {
-		t.Fatalf("the phase never stood down; it ran all %d steps inside a 50ms budget with 20ms steps", stepsRun)
-	}
-	if reason != "deadline" {
-		t.Errorf("reason = %q, want the closed word %q", reason, "deadline")
-	}
-	if elapsed := time.Since(start); elapsed > clock.soft+50*time.Millisecond {
-		t.Errorf("wall clock %v exceeded the soft deadline (%v) by more than the 50ms margin", elapsed, clock.soft)
-	}
-}
+// There is no test here named for RES-26's own acceptance line
+// (TestRES26_OptionalPhasesStandDownAtTheDeadline, "the record lands, exit
+// 0, wall <= deadline + 50ms") because that needs a real optional phase
+// inside a real hook invocation, and none exists in this tree yet (budget
+// is contract-only per the package doc; the deadlines are wired by the PRs
+// that own each phase). RES-26 is therefore only partially met here: the
+// table and its arithmetic are pinned above, and
+// internal/supervise.TestChildSoftClockStandsDownAtItsDeadline demonstrates
+// the stand-down shape against the real production seam (Child.SoftClock),
+// but neither is the named acceptance test, and this file does not claim
+// to be.
