@@ -111,15 +111,36 @@ func TestTRU40_ReadmeNetworkSentenceMatchesTheTest(t *testing.T) {
 	}
 }
 
-// networkSentence is the README's claim, rendered from the banned set.
+// networkSentence is the README's claim, rendered from the banned set and
+// the sanctioned importers: the packages nothing imports, then each package
+// only its sanctioned importers do, named by their path in this module.
 func networkSentence() string {
-	pkgs := make([]string, 0, len(forbiddenImports))
+	var banned, sanctioned []string
 	for pkg := range forbiddenImports {
-		pkgs = append(pkgs, pkg)
+		if _, ok := sanctionedSource[pkg]; ok {
+			sanctioned = append(sanctioned, pkg)
+			continue
+		}
+		banned = append(banned, pkg)
 	}
-	sort.Strings(pkgs)
-	last := pkgs[len(pkgs)-1]
-	return "No package in the rashomon binary, its own or a dependency's, imports " +
-		strings.Join(pkgs[:len(pkgs)-1], ", ") + " or " + last +
-		", and CI checks that on every pull request, every push to main and every release tag."
+	sort.Strings(banned)
+	sort.Strings(sanctioned)
+	s := "No package in the rashomon binary, its own or a dependency's, imports " + orList(banned)
+	for _, pkg := range sanctioned {
+		var who []string
+		for _, src := range sanctionedSource[pkg] {
+			who = append(who, strings.TrimPrefix(src, rashomonModule+"/"))
+		}
+		sort.Strings(who)
+		s += ", and only " + orList(who) + " imports " + pkg
+	}
+	return s + "; CI checks that on every pull request, every push to main and every release tag."
+}
+
+// orList joins a sorted list as prose: "a", "a or b", "a, b or c".
+func orList(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " or " + items[len(items)-1]
 }
