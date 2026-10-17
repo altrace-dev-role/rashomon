@@ -1,6 +1,10 @@
 package steer
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
+)
 
 // Facts carries the record-linkage identifiers a steer.ndjson line can
 // cite (tech 4.2.3: "`facts` (each nullable: `program`, `runner_digest`,
@@ -75,14 +79,18 @@ type Line struct {
 	// ModelText and UserText are "" outside delivered and flag lines
 	// (Technical spec 4.2.3: "text only on delivered and flag lines") --
 	// present as empty strings, not omitted, so every line keeps every
-	// key. Each is capped at 2,048 bytes (tech 1.2.9), a looser ceiling
-	// than render's own 1,200/1,600-byte rendered-message cap (see
-	// internal/steer/render) that leaves room for UserText's mirror
-	// wrapper; enforcing it is a constructor's job in a later wave, not
-	// this contract's.
-	ModelText string    `json:"model_text"`
-	UserText  string    `json:"user_text"`
-	State     LineState `json:"state"`
+	// key. Each is capped at store.MaxSteerTextBytes, 2,048 bytes (tech
+	// 1.2.9), a looser ceiling than render's own 1,200/1,600-byte
+	// rendered-message cap (see internal/steer/render) that leaves room for
+	// UserText's mirror wrapper. The store's writer enforces it (CapText).
+	ModelText string `json:"model_text"`
+	UserText  string `json:"user_text"`
+	// ModelTextWithheld and UserTextWithheld say why their text is empty
+	// when a cap emptied it: "oversize" (tech 1.2.11's *_withheld
+	// convention), null otherwise.
+	ModelTextWithheld *string   `json:"model_text_withheld"`
+	UserTextWithheld  *string   `json:"user_text_withheld"`
+	State             LineState `json:"state"`
 	// SuppressedBy is null unless State is suppressed (or a budget_*
 	// suppression produced one of the other non-delivered states).
 	SuppressedBy    *SuppressedBy `json:"suppressed_by"`
@@ -145,6 +153,17 @@ func (l Line) MarshalJSON() ([]byte, error) {
 		w.Slots = map[string]json.RawMessage{}
 	}
 	return json.Marshal(w)
+}
+
+// CapText withholds ModelText and UserText over store.MaxSteerTextBytes,
+// each on its own, and reports whether it withheld either. It is
+// store.SteerLine's one method: AppendSteer calls it on every line it
+// writes.
+func (l *Line) CapText() bool {
+	var model, user bool
+	l.ModelText, model = store.CapSteerText(l.ModelText, &l.ModelTextWithheld)
+	l.UserText, user = store.CapSteerText(l.UserText, &l.UserTextWithheld)
+	return model || user
 }
 
 // LabelRule names one row of MEASURE's labelling table (tech 5.2.4 B):
