@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // usageKeySpellings are spellings of message.usage that encoding/json's
@@ -100,31 +101,49 @@ func toolResultLine(n int) []byte {
 	return []byte(b.String())
 }
 
-// BenchmarkMayCarryUsage covers the adversarial read raised against this
-// prefilter: a tool-result-heavy line, carrying no usage key, whose \u001b
-// escapes are real transcript content rather than the widening they were
-// first suspected of costing. Isolated from other load on this machine,
-// the escape-heavy case ran several times slower than its same-length
-// escape-free comparison, and the gap tracked to bytes.Contains(raw,
-// usageMarker) -- the check mayCarryUsage runs FIRST, matching neither
-// line -- not to the escape-marker check after it, which matches in a few
-// nanoseconds on its own. Under load from other work this benchmark's own
-// numbers are noisier than that isolated reading; run it alone to see the
-// gap cleanly. Reordering or replacing the usage-marker check is a change
-// this benchmark exists to measure, not one this change makes.
-func BenchmarkMayCarryUsage(b *testing.B) {
+// TestMayCarryUsage_ToolResultHeavyLineStaysBounded covers a read raised
+// against this prefilter: a tool-result-heavy line, carrying no usage key,
+// whose \u001b escapes are real transcript content rather than the widening
+// they were first suspected of costing. It is a Test, not a Benchmark --
+// TestRES36_BudgetsFileCoversEveryBenchmark (test/perf/gates_test.go) and
+// benchgate itself both fail closed on any Benchmark function with no row
+// in test/perf/budgets.json, and this is a one-off check on a worst-case
+// input, not a figure meant to join the tracked budget surface. A direct
+// timing loop here answers the one question that matters without adding a
+// benchmark that would need a row.
+//
+// Isolated from other load on this machine, the escape-heavy case ran
+// several times slower than its same-length escape-free comparison, and
+// the gap tracked to bytes.Contains(raw, usageMarker) -- the check
+// mayCarryUsage runs FIRST, matching neither line -- not to the
+// escape-marker check after it, which matches in a few nanoseconds on its
+// own. Under load from other work on a shared machine the ratio is
+// noisier than that isolated reading, which is why the bound below is
+// generous: it exists to catch a catastrophic regression, not to pin the
+// ratio down.
+func TestMayCarryUsage_ToolResultHeavyLineStaysBounded(t *testing.T) {
 	heavy := toolResultLine(400) // ~8 KB, a realistic single tool_result
 	plain := []byte(strings.Repeat("x", len(heavy)))
-	b.Run("tool_result_with_ansi_escapes", func(b *testing.B) {
-		b.SetBytes(int64(len(heavy)))
-		for i := 0; i < b.N; i++ {
-			mayCarryUsage(heavy)
+	const rounds = 2000
+	timeIt := func(raw []byte) time.Duration {
+		start := time.Now()
+		for i := 0; i < rounds; i++ {
+			mayCarryUsage(raw)
 		}
-	})
-	b.Run("same_length_no_escapes", func(b *testing.B) {
-		b.SetBytes(int64(len(plain)))
-		for i := 0; i < b.N; i++ {
-			mayCarryUsage(plain)
-		}
-	})
+		return time.Since(start) / rounds
+	}
+	heavyPerOp := timeIt(heavy)
+	plainPerOp := timeIt(plain)
+	t.Logf("mayCarryUsage: %v/op on the ANSI-heavy tool_result, %v/op on the same-length escape-free line", heavyPerOp, plainPerOp)
+	// Generous on purpose: measured here (go1.25, Apple M3, native) at
+	// single-digit microseconds, and under GOARCH=amd64 on this machine
+	// (Rosetta, every architecture this module's own tests cross-build
+	// for) at low single-digit milliseconds -- emulation overhead, not a
+	// defect in mayCarryUsage. The ceiling exists to catch a change that
+	// makes this scan unboundedly worse (quadratic in line length, say),
+	// not to pin the measured figure down.
+	const ceiling = 50 * time.Millisecond
+	if heavyPerOp > ceiling {
+		t.Errorf("mayCarryUsage took %v on an 8 KB tool_result; want under %v", heavyPerOp, ceiling)
+	}
 }
