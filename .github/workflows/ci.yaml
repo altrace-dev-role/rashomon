@@ -20,6 +20,14 @@ on:
   # Started by hand to run the mutation sweep, which push and pull_request
   # runs skip.
   workflow_dispatch:
+  # Weekly, so a new OSV advisory against a dependency nobody has touched
+  # surfaces here instead of waiting for the next push, pull request or
+  # tag -- which is how the pre-1.9.0 govulncheck panic on this toolchain
+  # stayed unnoticed until someone looked. Runs the Test job, govulncheck
+  # included; Monday mornings are quiet for both the fleet and the runner
+  # queue.
+  schedule:
+    - cron: "17 6 * * 1"
 
 permissions:
   contents: read
@@ -127,8 +135,20 @@ jobs:
       # break it: under go1.27.2, v1.1.4 panics in go/ssa when it analyses
       # linux/amd64 and passes on darwin. Running it here makes a pull request
       # find that, not a tag. TestDEL21c holds the two copies to one version.
+      #
+      # -scan module, not the default (symbol-level, reachable-only). The
+      # default mode is what this gate ran before and would NOT have caught
+      # the problem the whole toolchain bump exists to fix: go1.25.8's 39
+      # standard-library advisories were all unreachable from this module's
+      # code, so a reachability-gated scan reports zero on that pin same as
+      # on this one, and a future unreachable advisory would pass silently
+      # too. module level fails on anything in the dependency graph,
+      # imported or not, which is the "no known advisory in anything we
+      # ship" bar this step is meant to hold. -C anchors it at a package
+      # directory; module scanning takes no patterns and errors on a bare
+      # repository root, which has none of its own .go files.
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -scan module -C cmd/rashomon
 
       # The sweep's static half runs on every push and pull request even though
       # the sweep itself runs on demand (its step below): every anchor occurs

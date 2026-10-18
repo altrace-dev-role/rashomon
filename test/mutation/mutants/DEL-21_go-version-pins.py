@@ -34,5 +34,5 @@ m("DEL-21 the pin review deadline is in the past", "test/mutation/sweep_test.go"
   "\treviewBy := time.Date(2020, time.July, 1, 0, 0, 0, 0, time.UTC)\n", "TestDEL21f_")
 # The test job's govulncheck drifts from the release job's.
 m("DEL-21 the test job runs an older govulncheck than the release", ".github/workflows/ci.yaml",
-  "        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...\n",
-  "        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...\n", "TestDEL21c_")
+  "        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -scan module -C cmd/rashomon\n",
+  "        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -scan module -C cmd/rashomon\n", "TestDEL21c_")
