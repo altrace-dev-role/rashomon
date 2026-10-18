@@ -238,7 +238,7 @@ func countWriteCallSites(t *testing.T, dir string) int {
 //
 // It is deliberately a blunt instrument, not a semantic one: it counts
 // textual call sites of the four file-creating stdlib functions plus
-// writeSmall across store's, recap's and baseline's own non-test source, and
+// writeSmall across store's, recap's, baseline's and consent's own non-test source, and
 // fails the moment that count moves, in either direction. It cannot tell a
 // new call site that writes an already-covered path from one that writes an
 // uncovered one -- that distinction needs a human, which is the point. A
@@ -276,6 +276,9 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Pinned 2026-08: internal/baseline/baseline.go's save, one
 		// os.CreateTemp.
 		{"baseline", 1},
+		// Pinned 2026-10: internal/consent/record.go's Append, one
+		// os.OpenFile, and replace, one os.CreateTemp.
+		{"consent", 2},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))

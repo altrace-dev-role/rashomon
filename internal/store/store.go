@@ -38,6 +38,17 @@ const FileInstallKey = "install.key"
 // OpenExisting. Its presence is what makes a directory a store.
 const FileInstallMeta = "install.json"
 
+// FileConsent is the store-root file holding every consent the user gave,
+// one record per line (Technical spec 7.2.3). internal/consent writes it;
+// the name lives here beside the store's other root files so the inventory
+// reads every store-root name from one package.
+const FileConsent = "consent.json"
+
+// FileHarnesses is the store-root file holding what watch was told about
+// each harness and surface: today only the Agent SDK answer of the consent
+// screen's second question (Technical spec 6.2, 7.2.3).
+const FileHarnesses = "harnesses.json"
+
 // DirRuns is the store-root directory holding one subdirectory per session,
 // named by segment(sessionID); see RunDir.
 const DirRuns = "runs"

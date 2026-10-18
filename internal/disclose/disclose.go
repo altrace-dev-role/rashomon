@@ -350,6 +350,28 @@ func defaultFiles() []FileRule {
 		},
 		{
 			Base:       "",
+			Pattern:    store.FileConsent,
+			Mode:       "0600",
+			Purpose:    "every consent you gave: one record per line, appended when you answer y to the consent screen or a notice counts as shown, and read by every layer before it records or adds a note",
+			Holds:      "the scope and disclosure versions agreed to, the record scope, whether notes were on, a SHA-256 of the exact text shown, this binary's version and SHA-256, how the consent was given, and when",
+			NeverHolds: "the text shown, or anything about a session",
+			RemovedBy:  "compaction at 64 KiB to the latest record per way of giving it and per scope version; purge",
+			Owner:      "consent",
+		},
+		{
+			// compact writes the compacted file under this name beside
+			// consent.json and renames it over it (internal/consent).
+			Base:       "",
+			Pattern:    "." + store.FileConsent + ".tmp-*",
+			Mode:       "0600",
+			Purpose:    "consent.json's compaction target; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "the records consent.json keeps",
+			NeverHolds: "the text shown, or anything about a session",
+			RemovedBy:  "the compaction that wrote it (renamed over consent.json); purge",
+			Owner:      "consent",
+		},
+		{
+			Base:       "",
 			Pattern:    store.FileForgottenHosts,
 			Mode:       "0600",
 			Purpose:    "every host a `forget --host` has ever named, kept so a later report still suppresses it and a repeat forget recognises it",
