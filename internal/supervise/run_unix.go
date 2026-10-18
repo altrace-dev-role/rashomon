@@ -583,7 +583,11 @@ func Attach(args []string) (c *Child, rest []string, ok bool) {
 	if !valid {
 		return nil, rest, false
 	}
-	return &Child{clock: budget.NewClock(start, stop)}, rest, true
+	clock, err := budget.NewClock(start, stop)
+	if err != nil {
+		return nil, rest, false
+	}
+	return &Child{clock: clock}, rest, true
 }
 
 // StandDown reports whether the child must start nothing new: its parent has
