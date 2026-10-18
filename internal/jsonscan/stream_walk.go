@@ -106,7 +106,7 @@ func (s *streamer) match(m uint64, d int, elem string, long bool) {
 		return
 	}
 	for i, p := range s.paths {
-		if m&(1<<i) == 0 || d >= len(p.Elems) || p.Elems[d] != elem {
+		if m&(1<<i) == 0 || d >= len(p.Elems) || !p.elemIs(d, elem) {
 			continue
 		}
 		if d == len(p.Elems)-1 {

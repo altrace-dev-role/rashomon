@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 )
 
 // CaptureMode says how much of a wanted value Stream copies out.
@@ -33,6 +35,14 @@ type Path struct {
 	// String makes any value at the path other than a string or null stop
 	// the stream with ErrNotString, as decoding it into a string failed.
 	String bool
+	// Fold matches each object key as NewFoldKeySet does, as decoding into
+	// a struct field matches its name; without it a key matches exactly.
+	Fold bool
+}
+
+// elemIs reports whether an unescaped key or "[]" is the path's d-th element.
+func (p *Path) elemIs(d int, elem string) bool {
+	return p.Elems[d] == elem || (p.Fold && strings.EqualFold(p.Elems[d], elem))
 }
 
 // Stream bounds.
@@ -142,9 +152,13 @@ func newStreamer(r io.Reader, paths []Path, fn func(int, []byte, bool) bool) (*s
 			return nil, ErrPaths
 		}
 		for _, e := range p.Elems {
-			if len(e) > s.longest {
-				s.longest = len(e)
+			n := len(e)
+			if p.Fold {
+				// A folded character can take more bytes than the one it
+				// matches, as in KeySet.limit.
+				n *= utf8.UTFMax
 			}
+			s.longest = max(s.longest, n)
 		}
 		if err := s.caps[i].init(s, i, p); err != nil {
 			return nil, err

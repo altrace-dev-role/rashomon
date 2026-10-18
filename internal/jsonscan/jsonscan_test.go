@@ -40,9 +40,8 @@ func TestTopMatchesAnEscapedKey(t *testing.T) {
 	}
 }
 
-// Key matching is exact after unescaping, as a map decode does. encoding/json's
-// case-insensitive struct-field fallback is deliberately not reproduced: a
-// wrong-case key leaves the call unattributed, visibly, rather than folded.
+// A NewKeySet matches keys exactly after unescaping, as a map decode does;
+// the struct-field match is NewFoldKeySet's (fold_test.go).
 func TestTopDoesNotFoldKeyCase(t *testing.T) {
 	if out := top(t, `{"SESSION_ID":"s","Session_Id":"t"}`); out[0].Present() {
 		t.Fatalf("SESSION_ID matched session_id: %+v", out[0])
