@@ -188,6 +188,13 @@ func turnsOf(run *store.Run) (turns []turn, lost []int64) {
 		span(t, x.RecordedAtMS)
 	}
 	for _, x := range run.Terminals {
+		if x.FlushFailed() {
+			// Not an ending (Terminal.FlushFailed's doc), and written at
+			// process exit, long after the call it marks: letting it stand
+			// for the turn's own last recorded time would stretch a turn
+			// Join should treat as old enough to drop into looking current.
+			continue
+		}
 		if t, ok := owner[x.ToolUseID]; ok {
 			span(t, x.RecordedAtMS)
 		}

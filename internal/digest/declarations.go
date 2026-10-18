@@ -40,6 +40,13 @@ func turnDropped(run *store.Run, w turnWindow) []string {
 	}
 	recordedAt := make(map[string]int64, len(run.Terminals))
 	for _, t := range run.Terminals {
+		if t.FlushFailed() {
+			// Not an ending (Terminal.FlushFailed's doc): it must not stand
+			// in for the terminal it shares a tool_use_id with, or that
+			// terminal's own recorded time -- the one `all` was windowed
+			// against -- is overwritten by whenever the marker landed.
+			continue
+		}
 		recordedAt[t.ToolUseID] = t.RecordedAtMS
 	}
 	var out []string

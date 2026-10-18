@@ -1949,3 +1949,36 @@ func TestJoin_ANoneSaysAFailedLookupAloneIsNotCounted(t *testing.T) {
 		})
 	}
 }
+
+// TestREC34o_FlushFailedMarkerDoesNotStretchATurnsSpan: turnsOf's span is
+// what decides whether a turn is even old enough to drop (Join's `t.lastMS <
+// s.FromUnixMS`). A flush_failed marker (REC-34) is written at process exit,
+// long after the call it marks, so letting it stand for the turn's last
+// recorded time would make a turn outside the summary's window read as
+// inside it.
+func TestREC34o_FlushFailedMarkerDoesNotStretchATurnsSpan(t *testing.T) {
+	reason := store.ReasonFlushFailed
+	promptID := "prompt-1"
+	run := &store.Run{
+		Declarations: []store.Declaration{
+			{Seq: 1, ToolUseID: "a1", ToolName: "Bash", SessionID: "s1", PromptID: &promptID, RecordedAtMS: 100},
+		},
+		Executions: []store.Execution{
+			{ToolUseID: "a1", SessionID: "s1", ToolName: "Bash", Outcome: store.ExecOK, RecordedAtMS: 120},
+		},
+		Terminals: []store.Terminal{
+			{ToolUseID: "a1", SessionID: "s1", Outcome: store.OutcomeError, Reason: &reason, RecordedAtMS: 99999},
+		},
+	}
+	turns, lost := turnsOf(run)
+	if len(lost) != 0 {
+		t.Fatalf("lost = %v, want none", lost)
+	}
+	if len(turns) != 1 {
+		t.Fatalf("turnsOf = %d turns, want 1", len(turns))
+	}
+	if turns[0].lastMS != 120 {
+		t.Errorf("lastMS = %d, want 120: the flush_failed marker's own recorded time (99999, long "+
+			"after the real activity) must not stretch the turn's span", turns[0].lastMS)
+	}
+}
