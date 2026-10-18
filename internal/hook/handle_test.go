@@ -3,6 +3,8 @@ package hook
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 )
 
 // startDirectory folds a line's leading cd targets onto the payload's cwd:
@@ -27,7 +29,8 @@ func TestStartDirectory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := startDirectory(tc.cwd, "Bash", in); got != tc.want {
+		dirs, _ := shape.LeadingDirectory("Bash", in)
+		if got := startDirectory(tc.cwd, dirs); got != tc.want {
 			t.Errorf("startDirectory(%q, %q) = %q, want %q", tc.cwd, tc.cmd, got, tc.want)
 		}
 	}

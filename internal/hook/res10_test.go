@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/shape"
 )
 
 // cdLine is n leading `cd a &&` steps and then go test.
@@ -61,11 +63,15 @@ func TestRES10_LeadingCdFoldIsBounded(t *testing.T) {
 		}
 		return raw
 	}
+	dirsOf := func(cmd string) []string {
+		dirs, _ := shape.LeadingDirectory("Bash", in(cmd))
+		return dirs
+	}
 	want := "/repo" + strings.Repeat("/a", 64)
-	if got := startDirectory("/repo", "Bash", in(cdLine(64, " && "))); got != want {
+	if got := startDirectory("/repo", dirsOf(cdLine(64, " && "))); got != want {
 		t.Errorf("64 steps: start directory %q, want %q", got, want)
 	}
-	if got := startDirectory("/repo", "Bash", in(cdLine(65, " && "))); got != "" {
+	if got := startDirectory("/repo", dirsOf(cdLine(65, " && "))); got != "" {
 		t.Errorf("65 steps: start directory %q, want unknown", got)
 	}
 	for _, tc := range []struct {
@@ -81,7 +87,15 @@ func TestRES10_LeadingCdFoldIsBounded(t *testing.T) {
 		var m0, m1 runtime.MemStats
 		runtime.GC()
 		runtime.ReadMemStats(&m0)
-		took := fastest(func() { got = startDirectory("/repo", "Bash", raw) })
+		// LeadingDirectory's own tokenizing is inside the timed and measured
+		// closure, alongside the fold: this bound is on the two of them
+		// together, the same cost startDirectory's caller pays in production
+		// (shape.DeriveWithDirs tokenizes once; this measures that reading,
+		// not a second one of its own).
+		took := fastest(func() {
+			dirs, _ := shape.LeadingDirectory("Bash", raw)
+			got = startDirectory("/repo", dirs)
+		})
 		runtime.ReadMemStats(&m1)
 		t.Logf("%s: the fold took %v", tc.name, took)
 		if alloc := m1.TotalAlloc - m0.TotalAlloc; alloc > tc.bound {
@@ -105,7 +119,7 @@ func TestRES10_LeadingCdFoldIsBounded(t *testing.T) {
 		{"64 steps, then 200,000 words", cdLine(64, " && ") + long, "/repo" + strings.Repeat("/a", 64)},
 		{"100 steps, then 200,000 words", cdLine(100, " && ") + long, ""},
 	} {
-		if got := startDirectory("/repo", "Bash", in(tc.cmd)); got != tc.want {
+		if got := startDirectory("/repo", dirsOf(tc.cmd)); got != tc.want {
 			t.Errorf("%s: start directory %q, want %q", tc.name, got, tc.want)
 		}
 	}

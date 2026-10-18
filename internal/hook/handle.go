@@ -132,10 +132,16 @@ func (h *Handler) Capture(in io.Reader) error {
 		TranscriptPath: p.TranscriptPath,
 		PermissionMode: p.PermissionMode,
 		ToolName:       p.ToolName,
-		Shape:          shape.Derive(p.ToolName, p.ToolInput, h.st.Key()),
-		CWDDigest:      shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),
 		RulesVersion:   shape.RulesVersion,
 	}
+	// DeriveWithDirs, not Derive: it returns the same shape and the same cut
+	// decision, plus the leading-cd directories (shape.LeadingDirectory's own
+	// answer) it already read the command to compute. startDirectory folds
+	// those directly instead of decoding and tokenizing the command a second
+	// time to get them again.
+	var dirs []string
+	decl.Shape, _, dirs = shape.DeriveWithDirs(p.ToolName, p.ToolInput, h.st.Key())
+	decl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))
 	// Hostnames are metadata and are stored verbatim, because the report
 	// lists them and forget --host matches them by the name as written.
 	// Nothing else from tool_input is persisted, and shape is still the only
@@ -250,20 +256,26 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 
 // startDirectory is the directory a call's command starts in: the payload's
 // cwd, which is the shell's directory before the line runs, with the targets
-// of the line's leading plain `cd DIR &&` steps (shape.LeadingDirectory)
-// folded onto it. An absolute target replaces the directory and a relative
-// one joins it. Without it the first `cd /repo/web && go test ./...` is keyed
-// on /repo and every repeat on /repo/web, although all of them ran in web. A
-// relative target with no directory to resolve it against is not known, and
-// the directory stays empty until an absolute target names one.
+// of the line's leading plain `cd DIR &&` steps (shape.LeadingDirectory's
+// own answer, dirs) folded onto it. An absolute target replaces the
+// directory and a relative one joins it. Without it the first
+// `cd /repo/web && go test ./...` is keyed on /repo and every repeat on
+// /repo/web, although all of them ran in web. A relative target with no
+// directory to resolve it against is not known, and the directory stays
+// empty until an absolute target names one.
+//
+// dirs, not toolName and toolInput: the caller already has
+// shape.DeriveWithDirs's dirs, from the SAME read of the program search
+// Derive makes for every other field of the shape. Decoding the command and
+// tokenizing it again here, as a toolName/toolInput signature would need to
+// call shape.LeadingDirectory on its own, was a second and a third reading
+// of a line Hosts then reads once more -- the budget this package derives
+// (RES-9) assumes three readings, not at least five.
 //
 // Past maxLeadingCd steps the directory is not known, and is returned empty,
 // which CWDDigest records as unknown: not the payload's cwd, which the cds
 // moved away from, and not a fold stopped short of where the line ran.
-func startDirectory(cwd, toolName string, toolInput json.RawMessage) string {
-	// The bool says whether the line had a leading run at all; with none,
-	// dirs is empty and the payload's cwd is the answer, so it adds nothing.
-	dirs, _ := shape.LeadingDirectory(toolName, toolInput)
+func startDirectory(cwd string, dirs []string) string {
 	if len(dirs) > maxLeadingCd {
 		return ""
 	}

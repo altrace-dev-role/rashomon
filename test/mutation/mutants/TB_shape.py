@@ -458,8 +458,8 @@ m("TB runs pair across directories", "internal/report/testbending.go",
   "\t\tkey := runKey{d.Shape.Digest, \"\"}\n",
   "TestTestBending")
 m("TB the declaration carries no cwd digest", "internal/hook/handle.go",
-  "\t\tCWDDigest:      shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),\n",
-  "",
+  "\tdecl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))\n",
+  "\t_ = dirs\n",
   "TestTestBending_ARepeatedRelativeCd|TestSchema3_|TestH13_")
 m("TB the cwd digest is the plain path", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd\", cwd)\n",
@@ -605,8 +605,8 @@ m("TB a backgrounded call is not counted as unobserved", "internal/report/accoun
   "TestSilentFailures_")
 
 m("TB a leading cd's target is not the run's directory", "internal/hook/handle.go",
-  "shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),",
-  "shape.CWDDigest(h.st.Key(), p.CWD),",
+  "\tdecl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))\n",
+  "\t_ = dirs\n\tdecl.CWDDigest = shape.CWDDigest(h.st.Key(), p.CWD)\n",
   "TestTestBending_ALeadingAbsoluteCd")
 m("TB a relative leading cd keeps the shell's directory", "internal/hook/handle.go",
   "\t\t\tcwd = filepath.Join(cwd, dir)\n",

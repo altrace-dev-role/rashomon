@@ -123,6 +123,22 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 // 85.3.10, "Token or cd bound"), which P-11 serialises; a v4 record does not
 // carry it. Always false for a tool that is not a shell.
 func DeriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool) {
+	s, cut, _ := deriveCut(toolName, toolInput, key)
+	return s, cut
+}
+
+// DeriveWithDirs is DeriveCut, plus the leading `cd DIR &&` directories
+// (LeadingDirectory's own answer) this already read while deriving the
+// shape. shape.go's own reading of the program search (pshaped, perr) is
+// exactly LeadingDirectory's starting point, so a caller that wants both --
+// the hook's startDirectory, the only one -- does not tokenize the program
+// search a second time just to get what this function already held.
+func DeriveWithDirs(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool, []string) {
+	return deriveCut(toolName, toolInput, key)
+}
+
+// deriveCut is DeriveCut and DeriveWithDirs's shared body.
+func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool, []string) {
 	s := Shape{VerbClass: verbForTool(toolName)}
 
 	// Only a shell tool's input carries a command line. An MCP tool or a
@@ -138,7 +154,7 @@ func DeriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	}
 	if !isShell {
 		s.Digest = canonicalDigest(key, toolName, toolInput)
-		return s, false
+		return s, false, nil
 	}
 
 	// A shell tool digests its command line and nothing else. Claude Code
@@ -185,7 +201,7 @@ func DeriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	dirs, _ := leadingRun(pshaped, perr)
 	s.StatusMasked, s.RunnerDigest = statusMasked(cmd, key, leadingSteps(dirs))
 	cut := err == errTokenBound || perr == errTokenBound || len(dirs) > MaxLeadingCd
-	return s, cut
+	return s, cut, dirs
 }
 
 // controlByte reports a line holding a control byte, in which no word can be
