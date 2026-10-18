@@ -1,7 +1,6 @@
 # Tests that pin two requirement rows on purpose: <row> <test name prefix>.
 # A mutant in a row's file may name only that row's tests, or a pair listed
 # here. sweep.py --check reads this.
-STR-19 TestSTR82_
-LUI-17 TestSTR4_
-LUI-29 TestTRU51_
-DEL-16 TestMSR39_
+#
+# Empty for now: no mutant file on any branch names a pair yet. Add an entry
+# here in the same change that adds the mutant using it.

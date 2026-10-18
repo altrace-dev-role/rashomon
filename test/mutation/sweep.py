@@ -168,25 +168,27 @@ def go_test_names():
     return names
 
 
-def check(complete):
+def check(complete, shared_tests=SHARED_TESTS):
     """The static checks. Returns the problems found.
 
     Every anchor occurs exactly once in its target, so the break lands where
     its author looked. Every import edit's anchor occurs exactly once too. A
     mutant in a row's file names only that row's tests, or a declared shared
     pair. `complete` says the whole set was loaded, which is when a test regex
-    can be checked against every real func Test.
+    can be checked against every real func Test. `shared_tests` is the file
+    declaring shared pairs; a test points it at a fixture instead of writing
+    to the real one.
     """
     problems = []
     shared = set()
-    for ln in read_list(SHARED_TESTS):
+    for ln in read_list(shared_tests):
         parts = ln.split()
         if len(parts) != 2 or not ROW_NAME.match(parts[0]) or not ROW_TEST.fullmatch(parts[1]):
-            problems.append(f"{SHARED_TESTS.name}: expected '<PREFIX>-<n> Test<PREFIX><n>[a-z]?_', got {ln!r}")
+            problems.append(f"{shared_tests.name}: expected '<PREFIX>-<n> Test<PREFIX><n>[a-z]?_', got {ln!r}")
             continue
         named = ROW_TEST.fullmatch(parts[1])
         if parts[1] != f"Test{named.group(1)}{named.group(2)}_":
-            problems.append(f"{SHARED_TESTS.name}: {ln!r} names a suffixed test, which pins its parent row; "
+            problems.append(f"{shared_tests.name}: {ln!r} names a suffixed test, which pins its parent row; "
                             f"name the parent, Test{named.group(1)}{named.group(2)}_, or the pair never matches")
             continue
         shared.add((parts[0], parts[1]))
@@ -237,7 +239,7 @@ def check(complete):
                 parent_test = f"Test{t.group(1)}{t.group(2)}_"
                 if pinned != claimed and (claimed, parent_test) not in shared:
                     problems.append(f"{name!r} in {rel(ORIGIN[name])}: names {t.group(0)}, which pins {pinned}, "
-                                    f"not {claimed}; declare the pair in {SHARED_TESTS.name} if it is shared on purpose")
+                                    f"not {claimed}; declare the pair in {shared_tests.name} if it is shared on purpose")
     mutation_of = {name: (f, old, new) for name, f, old, new, _test in M}
     for name, (f, io_, in_) in IMPORTS.items():
         if outside_cwd(f):
@@ -430,13 +432,17 @@ def main(argv):
                          "directory first and then against test/mutation, unless absolute; repeatable")
     ap.add_argument("--strict", action="store_true",
                     help="exit non-zero if any mutant was not judged here, not only if undetected")
+    ap.add_argument("--shared-tests", metavar="PATH",
+                    help="read declared shared-test pairs from PATH instead of "
+                         "test/mutation/shared-tests.txt (a test points this at a fixture)")
     args = ap.parse_args(argv)
     problems = load(args.files or [MUTANT_GLOB])
     if args.list:
         for name, *_ in M:
             print(name)
         return report(problems)
-    problems += check(complete=not args.files)
+    shared_tests = pathlib.Path(args.shared_tests) if args.shared_tests else SHARED_TESTS
+    problems += check(complete=not args.files, shared_tests=shared_tests)
     if args.check:
         if not problems:
             print(f"check: {len(M)} mutants in {len(set(ORIGIN.values()))} files; every anchor occurs exactly once")

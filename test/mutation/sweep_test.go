@@ -6,9 +6,6 @@
 // against the real tree and against fixtures, and read the workflow files
 // directly. TestStrict_ is one exception: it runs the full sweep, but only
 // against a throwaway module of its own under a TempDir, never this tree.
-// TestSharedTestsEntryShape is the other: shared-tests.txt is a fixed path
-// sweep.py cannot be pointed away from, so it edits that one real file and
-// restores it in a Cleanup.
 package mutation
 
 import (
@@ -336,6 +333,11 @@ func TestDEL2d_ImportAnchorCountedAfterMutation(t *testing.T) {
 func TestDEL2b_TestNameMatchesItsRow(t *testing.T) {
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+	// A fixture, not the real shared-tests.txt: this test's own declared pair
+	// (STR-19 TestSTR82_) is data for THIS test, not a project-wide claim,
+	// and must not depend on what the real file happens to hold.
+	sharedFixture := filepath.Join(t.TempDir(), "shared-tests.txt")
+	write(t, sharedFixture, "STR-19 TestSTR82_\n")
 	cases := []struct {
 		file, test string
 		wantOK     bool
@@ -356,7 +358,7 @@ func TestDEL2b_TestNameMatchesItsRow(t *testing.T) {
 		t.Run(tc.file+" "+tc.test, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), tc.file)
 			write(t, file, mutant("fixture "+tc.file+" "+tc.test, "target.go", "return 1", "return 2", tc.test))
-			_, code := sweep(t, dir, "--check", "--files", file)
+			_, code := sweep(t, dir, "--check", "--files", file, "--shared-tests", sharedFixture)
 			if (code == 0) != tc.wantOK {
 				t.Errorf("--check exited %d for %s naming %s", code, tc.file, tc.test)
 			}
@@ -517,29 +519,17 @@ func TestCheckRejectsATargetOutsideTheCurrentDirectory(t *testing.T) {
 
 // shared-tests.txt's entries must themselves be shaped like what they
 // declare: a <PREFIX>-<n> row paired with a Test<PREFIX><n>[a-z]?_ test, not
-// merely two whitespace-separated fields. This edits the real file briefly
-// and restores it exactly, because SHARED_TESTS is a fixed path sweep.py
-// resolves beside itself and cannot be pointed at a fixture.
+// merely two whitespace-separated fields. --shared-tests points sweep.py at
+// a fixture, so this never touches the real file.
 func TestSharedTestsEntryShape(t *testing.T) {
 	root := moduleRoot(t)
-	path := filepath.Join(root, "test", "mutation", "shared-tests.txt")
-	original, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.WriteFile(path, original, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	})
-	if err := os.WriteFile(path, append(append([]byte{}, original...), []byte("STR19 TestSTR82\n")...), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	fixture := filepath.Join(t.TempDir(), "shared-tests.txt")
+	write(t, fixture, "STR19 TestSTR82\n")
 	// Scoped to one unrelated file: shared-tests.txt is validated
 	// unconditionally, regardless of --files, and scoping avoids loading
 	// this test's own mutant file, whose anchor is the validation line
 	// itself and would otherwise report its own, unrelated problem.
-	out, code := sweep(t, root, "--check", "--files", "mutants/DEL-17_job-timeouts.py")
+	out, code := sweep(t, root, "--check", "--files", "mutants/DEL-17_job-timeouts.py", "--shared-tests", fixture)
 	if code == 0 {
 		t.Errorf("--check exited 0 with a malformed shared-tests.txt entry:\n%s", out)
 	}
@@ -548,23 +538,12 @@ func TestSharedTestsEntryShape(t *testing.T) {
 // A suffixed test, TestREC56b_, pins its parent row, and the shared-pair
 // lookup is keyed on the parent's name, so an entry that names the suffixed
 // form is shaped right and can still never match: it has to name the parent.
-// Same real-file edit and restore as TestSharedTestsEntryShape.
+// Same fixture-pointed check as TestSharedTestsEntryShape.
 func TestSharedTestsEntryNamesTheParent(t *testing.T) {
 	root := moduleRoot(t)
-	path := filepath.Join(root, "test", "mutation", "shared-tests.txt")
-	original, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.WriteFile(path, original, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	})
-	if err := os.WriteFile(path, append(append([]byte{}, original...), []byte("STR-19 TestSTR82b_\n")...), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out, code := sweep(t, root, "--check", "--files", "mutants/DEL-17_job-timeouts.py")
+	fixture := filepath.Join(t.TempDir(), "shared-tests.txt")
+	write(t, fixture, "STR-19 TestSTR82b_\n")
+	out, code := sweep(t, root, "--check", "--files", "mutants/DEL-17_job-timeouts.py", "--shared-tests", fixture)
 	if code == 0 {
 		t.Errorf("--check exited 0 with a shared-tests.txt entry naming a suffixed test:\n%s", out)
 	}
