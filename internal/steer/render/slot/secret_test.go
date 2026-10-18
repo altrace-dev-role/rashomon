@@ -44,6 +44,11 @@ var secretShaped = []string{
 // content-addressed store) is kept.
 func TestSTR13_SecretShapedValuesRefused(t *testing.T) {
 	for _, s := range secretShaped {
+		// The deny list alone, so a rule dropped from it shows here even
+		// where the entropy test would refuse the same value.
+		if err := denied("test", s); !errors.Is(err, ErrSecretShaped) {
+			t.Errorf("denied(%q) = %v, want ErrSecretShaped", s, err)
+		}
 		if err := (FactValue{Kind: FactAWSProfile, Value: s}).Validate(); !errors.Is(err, ErrSecretShaped) {
 			t.Errorf("FactValue(%q) = %v, want ErrSecretShaped", s, err)
 		}
