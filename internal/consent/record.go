@@ -1,7 +1,7 @@
 // Package consent is what the user agreed to and how they were asked: the
 // consent screen rendered from the inventory, the questions asked on the
 // terminal, and consent.json, the one file every layer reads consent from
-// (Technical spec 7.2.3; Archive 80.3.3).
+// (Technical spec 7.2.3).
 //
 // consent.json is newline-delimited: one accepted record per line, appended
 // with O_APPEND and synced, never rewritten in place except by compaction at
