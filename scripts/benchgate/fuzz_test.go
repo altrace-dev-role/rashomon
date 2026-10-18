@@ -9,9 +9,9 @@ import (
 // FuzzParse runs Parse over `go test -bench` output (rubric fix list entry 23,
 // errors-7). Output that parses names only benchmarks, and a well-formed
 // result line appended to it reads back exactly: as written when the output
-// held no run of that benchmark, and as the lower of the two figures, each
-// on its own, when it did. Every other benchmark reads as it did without
-// the line.
+// held no run of that benchmark, and when it did, as whichever of the two
+// runs has the lower B/op, ties broken by allocs/op, kept whole. Every other
+// benchmark reads as it did without the line.
 func FuzzParse(f *testing.F) {
 	for _, s := range parseSeeds {
 		f.Add(s.out, s.name, s.b, s.n)
@@ -27,7 +27,8 @@ var parseSeeds = []struct {
 	{"BenchmarkNoAllocs-8   20   100 ns/op\n", "A", 0, 0},
 	{"Benchmark ns/op 1 B/op 1 allocs/op\n", "B-1", 1, 1},
 	// An earlier run of the same benchmark, better on one figure and worse
-	// on the other: each figure keeps its own lower value.
+	// on the other: the run with the lower B/op is kept whole, never a blend
+	// of the two runs' figures.
 	{"BenchmarkA-8   20   100 ns/op   50 B/op   3 allocs/op\n", "A", 40, 5},
 	{"BenchmarkA-8   20   100 ns/op   50 B/op   3 allocs/op\n", "A", 60, 2},
 }
@@ -64,7 +65,9 @@ func checkParse(t *testing.T, out, name string, b, n uint32) {
 	key := "Benchmark" + name
 	want := Result{int64(b), int64(n)}
 	if prev, ok := got[key]; ok {
-		want = Result{min(prev.BytesPerOp, want.BytesPerOp), min(prev.AllocsPerOp, want.AllocsPerOp)}
+		if prev.BytesPerOp < want.BytesPerOp || (prev.BytesPerOp == want.BytesPerOp && prev.AllocsPerOp <= want.AllocsPerOp) {
+			want = prev
+		}
 	}
 	if r, ok := again[key]; !ok || r != want {
 		t.Fatalf("Parse of %q then %q: %s = %+v (present %v), want %+v", out, ln, key, r, ok, want)
