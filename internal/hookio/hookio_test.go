@@ -83,32 +83,57 @@ func totalAlloc() uint64 {
 	return m.TotalAlloc
 }
 
+// opaqueReader hides a reader's concrete type behind io.Reader, at full
+// speed (unlike iotest.OneByteReader, which throttles to one byte per call
+// and is too slow for this file's multi-megabyte sizes). Read's *bytes.
+// Reader fast path type-switches on the concrete type it is handed; this
+// defeats that switch without changing anything about how the bytes
+// themselves arrive, so a test wrapping one in opaqueReader exercises the
+// general growth loop exactly as a real stdin pipe (never a *bytes.Reader)
+// does in production.
+type opaqueReader struct{ io.Reader }
+
 // TestRES4_ReadAllocBound: Read allocates at most 2.2 times the payload from
 // 40 KB up and at most 8 KiB at 400 B. io.ReadAll's doubling cost about five
 // times. Break: Read through io.ReadAll and every size from 40 KB fails.
+//
+// Run twice per size, once through the *bytes.Reader fast path and once
+// through opaqueReader so neither wrapping can make the other's allocation
+// path a blind spot: TestRead_BytesReaderFastPath above already pins the
+// fast path's own boundaries, but this is the test that pins its allocation
+// BUDGET, and a bound checked only through one path is not checked at all
+// for the other once the two diverge in cost.
 func TestRES4_ReadAllocBound(t *testing.T) {
 	for _, n := range []int{400, 40_000, 1 << 20, 4 << 20, 8 << 20} {
 		p := payloadOf(n)
-		var got []byte
-		allocs := testing.AllocsPerRun(3, func() {
-			var err error
-			if got, err = Read(bytes.NewReader(p)); err != nil {
-				t.Fatal(err)
+		for _, wrap := range []struct {
+			name string
+			mk   func([]byte) io.Reader
+		}{
+			{"bytes.Reader", func(b []byte) io.Reader { return bytes.NewReader(b) }},
+			{"opaque", func(b []byte) io.Reader { return opaqueReader{bytes.NewReader(b)} }},
+		} {
+			var got []byte
+			allocs := testing.AllocsPerRun(3, func() {
+				var err error
+				if got, err = Read(wrap.mk(p)); err != nil {
+					t.Fatal(err)
+				}
+			})
+			before := totalAlloc()
+			out, err := Read(wrap.mk(p))
+			bytesAlloc := totalAlloc() - before
+			if err != nil || !bytes.Equal(out, p) || !bytes.Equal(got, p) {
+				t.Fatalf("%s %d B: read %d bytes, %v", wrap.name, n, len(out), err)
 			}
-		})
-		before := totalAlloc()
-		out, err := Read(bytes.NewReader(p))
-		bytesAlloc := totalAlloc() - before
-		if err != nil || !bytes.Equal(out, p) || !bytes.Equal(got, p) {
-			t.Fatalf("%d B: read %d bytes, %v", n, len(out), err)
-		}
-		limit := uint64(float64(n) * 2.2)
-		if n < 40_000 {
-			limit = 8 << 10
-		}
-		t.Logf("%d B: %d B allocated (%.2fx), %.0f allocations", n, bytesAlloc, float64(bytesAlloc)/float64(n), allocs)
-		if bytesAlloc > limit {
-			t.Errorf("%d B payload: Read allocated %d B, over %d", n, bytesAlloc, limit)
+			limit := uint64(float64(n) * 2.2)
+			if n < 40_000 {
+				limit = 8 << 10
+			}
+			t.Logf("%s %d B: %d B allocated (%.2fx), %.0f allocations", wrap.name, n, bytesAlloc, float64(bytesAlloc)/float64(n), allocs)
+			if bytesAlloc > limit {
+				t.Errorf("%s %d B payload: Read allocated %d B, over %d", wrap.name, n, bytesAlloc, limit)
+			}
 		}
 	}
 }
@@ -209,21 +234,37 @@ func TestRead_BytesReaderFastPath(t *testing.T) {
 	}
 }
 
+// BenchmarkRead keeps its original rows (c.name, the *bytes.Reader fast
+// path a *bytes.Reader argument actually takes in production: internal/
+// hostguard's own replay) and adds a "_opaque" row per size that forces the
+// general growth loop through opaqueReader -- the path every real hook,
+// post or probe invocation's FIRST read of stdin actually runs, since
+// stdin itself is never a *bytes.Reader. Both are production paths now;
+// a single set of rows measuring only one would silently stop pricing the
+// other.
 func BenchmarkRead(b *testing.B) {
 	for _, c := range []struct {
 		name string
 		n    int
 	}{{"400B", 400}, {"40KB", 40_000}, {"1MiB", 1 << 20}, {"4MiB", 4 << 20}, {"8MiB", 8 << 20}} {
 		p := payloadOf(c.n)
-		b.Run(c.name, func(b *testing.B) {
-			b.ReportAllocs()
-			b.SetBytes(int64(c.n))
-			for i := 0; i < b.N; i++ {
-				out, err := Read(bytes.NewReader(p))
-				if err != nil || len(out) != c.n {
-					b.Fatalf("read %d of %d: %v", len(out), c.n, err)
+		for _, wrap := range []struct {
+			suffix string
+			mk     func([]byte) io.Reader
+		}{
+			{"", func(b []byte) io.Reader { return bytes.NewReader(b) }},
+			{"_opaque", func(b []byte) io.Reader { return opaqueReader{bytes.NewReader(b)} }},
+		} {
+			b.Run(c.name+wrap.suffix, func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64(c.n))
+				for i := 0; i < b.N; i++ {
+					out, err := Read(wrap.mk(p))
+					if err != nil || len(out) != c.n {
+						b.Fatalf("read %d of %d: %v", len(out), c.n, err)
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 }

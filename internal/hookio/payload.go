@@ -76,6 +76,17 @@ func Intake(r io.Reader) (*Payload, error) {
 	if err != nil {
 		return nil, err
 	}
+	return IntakeBytes(raw)
+}
+
+// IntakeBytes is Intake for a caller that already has its payload's bytes
+// in hand -- internal/hostguard.EvaluateRaw, whose own doc explains why,
+// and Intake above, which now defers to this for everything past its own
+// Read. It never reads raw through Read a second time: a caller holding
+// raw once must not be charged a second full copy of it just to turn it
+// into a *Payload, the exact doubling internal/hookio's RES-28 doc on Read
+// describes on the host-guard path this exists to close.
+func IntakeBytes(raw []byte) (*Payload, error) {
 	p := &Payload{Raw: raw}
 	if err := jsonscan.Top(raw, payloadKeys, p.Spans[:]); err != nil {
 		return nil, err

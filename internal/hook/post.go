@@ -147,10 +147,7 @@ func NewPost(st *store.Store, now func() time.Time) *Post {
 // unbounded read of a payload carrying a hundred megabytes of tool output is a
 // runtime fatal error, which recover cannot catch and which exits 2.
 func (p *Post) Capture(in io.Reader) error {
-	// First, as in Handler.Capture.
-	p.st.LimitLockWaits(p.lockWaits)
-	fault.Inject(fault.PointPostStart)
-
+	p.prologue()
 	payload, err := hookio.Intake(in)
 	if err != nil {
 		if s, cwd, ok := refusedSession(err); ok {
@@ -158,6 +155,26 @@ func (p *Post) Capture(in io.Reader) error {
 		}
 		return err
 	}
+	return p.capture(payload)
+}
+
+// CapturePayload is Capture for a caller that already has a parsed
+// *hookio.Payload in hand -- see Handler.CapturePayload's doc, which this
+// mirrors exactly.
+func (p *Post) CapturePayload(payload *hookio.Payload) error {
+	p.prologue()
+	return p.capture(payload)
+}
+
+// prologue is Capture and CapturePayload's shared setup; see Handler.
+// prologue's doc, which this mirrors exactly.
+func (p *Post) prologue() {
+	p.st.LimitLockWaits(p.lockWaits)
+	fault.Inject(fault.PointPostStart)
+}
+
+// capture is Capture and CapturePayload's shared body.
+func (p *Post) capture(payload *hookio.Payload) error {
 	var pl PostPayload
 	if err := pl.from(payload); err != nil {
 		return err

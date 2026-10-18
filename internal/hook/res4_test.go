@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -18,6 +19,15 @@ func writePayload(n int, session string) []byte {
 	tail := `"}}`
 	return []byte(head + string(bytes.Repeat([]byte("x"), n-len(head)-len(tail))) + tail)
 }
+
+// opaqueReader hides a *bytes.Reader behind io.Reader so hookio.Read's own
+// *bytes.Reader fast path never fires: a real hook, post or probe
+// invocation reads stdin, never a *bytes.Reader, so a cap test that passes
+// bytes.NewReader straight to Capture/RunProbe tests only the fast path's
+// own boundary (TestRead_BytesReaderFastPath in internal/hookio already
+// does, directly) and leaves the growth loop every production call
+// actually runs through unpinned at this cap.
+type opaqueReader struct{ io.Reader }
 
 // TestRES4_CapAtNAndNPlusOne: a payload of exactly MaxPayloadBytes is accepted
 // and recorded; one byte more is refused after a bounded read, and the refusal
@@ -41,7 +51,7 @@ func TestRES4_CapAtNAndNPlusOne(t *testing.T) {
 		t.Fatalf("payload %d bytes, cap %d", len(at), MaxPayloadBytes)
 	}
 	h := New(st, now)
-	err = h.Capture(bytes.NewReader(at))
+	err = h.Capture(opaqueReader{bytes.NewReader(at)})
 	h.Close(sig, err)
 	if err != nil {
 		t.Fatalf("exactly %d bytes refused: %v", MaxPayloadBytes, err)
@@ -58,7 +68,7 @@ func TestRES4_CapAtNAndNPlusOne(t *testing.T) {
 
 	over := writePayload(MaxPayloadBytes+1, "s-over-cap")
 	h = New(st, now)
-	err = h.Capture(bytes.NewReader(over))
+	err = h.Capture(opaqueReader{bytes.NewReader(over)})
 	h.Close(sig, err)
 	if !errors.Is(err, hookio.ErrTooLarge) {
 		t.Fatalf("%d bytes: %v, want ErrTooLarge", len(over), err)
@@ -109,7 +119,7 @@ func TestRES4_PostRefusesAnOverCapPayload(t *testing.T) {
 
 	over := writePayload(MaxPayloadBytes+1, "s-post-over-cap")
 	p := NewPost(st, now)
-	err = p.Capture(bytes.NewReader(over))
+	err = p.Capture(opaqueReader{bytes.NewReader(over)})
 	p.Close(sig, err)
 	if !errors.Is(err, hookio.ErrTooLarge) {
 		t.Fatalf("%d bytes: %v, want ErrTooLarge", len(over), err)
@@ -132,7 +142,7 @@ func TestRES4_ProbeRefusesAnOverCapPayload(t *testing.T) {
 	sig := &Signals{ch: make(chan os.Signal, 1)}
 
 	over := writePayload(MaxPayloadBytes+1, "s-probe-over-cap")
-	RunProbe(sig, store.PhaseStart, bytes.NewReader(over), st, now)
+	RunProbe(sig, store.PhaseStart, opaqueReader{bytes.NewReader(over)}, st, now)
 	refusedIn(t, st, "s-probe-over-cap")
 }
 

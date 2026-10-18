@@ -44,8 +44,9 @@ func (r *onceErrReader) Read([]byte) (int, error) { return 0, r.err }
 // else).
 //
 // It returns a replay function the caller uses in place of the real stdin
-// for whatever it does next (checkPaused, h.Capture, hook.RunProbe): each
-// call to replay() hands back a fresh reader over the SAME bytes hookio.Read
+// for checkPaused (the one caller that may never need the bytes at all --
+// a non-paused install never reads the reader it is handed): each call to
+// replay() hands back a fresh reader over the SAME bytes hookio.Read
 // already produced, or a onceErrReader reproducing the SAME read error, so
 // nothing downstream can tell the difference from reading the pipe
 // directly -- in particular, a payload hookio.Read itself refused (e.g.
@@ -53,6 +54,18 @@ func (r *onceErrReader) Read([]byte) (int, error) { return 0, r.err }
 // coverage reason, the existing Capture/RunProbe error path already writes
 // for it today. See internal/hostguard.Evaluate's doc for why an unreadable
 // payload must never itself be read as a stand-down.
+//
+// It also returns the *hookio.Payload hostguard.EvaluateRaw already built
+// from raw, non-nil whenever rerr is nil and the bytes parsed. A caller
+// proceeding past standDown == false hands this straight to Handler.
+// CapturePayload, Post.CapturePayload or hook.RunProbeFromPayload instead
+// of calling replay() and reading the same bytes a second time: two live
+// copies of one payload's raw bytes, at the same time, is exactly what
+// TestRES28_MaxRSS pins against (see internal/hostguard.EvaluateRaw's own
+// doc). payload is nil when hostguard.EvaluateRaw itself could not parse
+// raw (malformed JSON, a key of the wrong type) or rerr != nil; either way
+// the caller falls back to replay() so hookio.Intake's own, already-tested
+// error path produces the identical error a second read would have.
 //
 // On standDown, the caller's only remaining job is to return: no
 // checkPaused, no openForHook, no record, no run directory, no output.
@@ -62,7 +75,7 @@ func (r *onceErrReader) Read([]byte) (int, error) { return 0, r.err }
 // skips under contention, never something a stand-down fails over, and
 // because a hook entry point's one hard rule is that it never fails over
 // anything (see cmdHook's own file comment).
-func claudeHostGuard(stdin io.Reader) (replay func() io.Reader, standDown bool) {
+func claudeHostGuard(stdin io.Reader) (payload *hookio.Payload, replay func() io.Reader, standDown bool) {
 	raw, rerr := hookio.Read(stdin)
 	replay = func() io.Reader {
 		if rerr != nil {
@@ -73,15 +86,49 @@ func claudeHostGuard(stdin io.Reader) (replay func() io.Reader, standDown bool) 
 
 	payload, id, down := hostguard.EvaluateRaw(raw, rerr, claudeEnv(), hostguard.FamilyClaude)
 	if !down {
-		return replay, false
+		return payload, replay, false
 	}
 
-	sessionID := ""
-	if payload != nil {
-		sessionID, _ = payload.Str(hookio.SessionID)
+	recordHarnessMismatchBestEffort(harnessSessionKey(payload, id), id)
+	return nil, replay, true
+}
+
+// harnessSessionKey picks the field the DETECTED family (id.ID, never
+// installedFor -- this only ever runs once Evaluate has already decided to
+// stand down against a foreign or unknown one) keys its own sessions by, so
+// RecordHarnessMismatch's dedup digest is computed over a field that
+// family's payloads actually carry. Technical spec 6.2.5 names the two
+// documented ones: Cursor runs under "cursor-<conversation_id>", Codex
+// under "codex-<session_id>". A real Cursor payload carries no session_id
+// at all -- session_id is Claude Code's and Codex's field, not Cursor's --
+// so reading session_id for a Cursor-detected stand-down read every one of
+// them as "", and harnessSessionDigest(hkey, "") digests every "" to the
+// SAME constant: the first session-less Cursor stand-down counted, and
+// every later one, from a different Cursor session entirely, read as
+// already-counted (containsSession) until 256 unrelated sessions pushed the
+// digest back out. Unknown has no documented session field of its own, so
+// it keeps the session_id fallback every other family already used: it is
+// no better founded than before for Unknown specifically, but no worse
+// either, and this function's job is to fix the one family the spec
+// actually names a different field for.
+//
+// "" is a legitimate return here (a payload with neither field, or Detect
+// itself never resolving to Cursor's branch because conversation_id was
+// absent): RecordHarnessMismatch's own doc covers why an empty key must
+// skip the dedup list rather than digest it.
+func harnessSessionKey(payload *hookio.Payload, id harness.Identity) string {
+	if payload == nil {
+		return ""
 	}
-	recordHarnessMismatchBestEffort(sessionID, id)
-	return replay, true
+	if id.ID == harness.Cursor {
+		v, err := payload.Str(hookio.ConversationID)
+		if err != nil {
+			return ""
+		}
+		return v
+	}
+	v, _ := payload.Str(hookio.SessionID)
+	return v
 }
 
 // recordHarnessMismatchBestEffort is claudeHostGuard's and recapHostGuard's

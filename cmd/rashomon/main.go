@@ -201,7 +201,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
-		in, standDown := claudeHostGuard(stdin)
+		payload, in, standDown := claudeHostGuard(stdin)
 		if standDown {
 			return nil
 		}
@@ -224,7 +224,16 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		// of them and outside every lock. Nothing is printed on this path, so
 		// it is also before stdout.
 		st.DeferDurability()
-		captureErr := safe.Guard(func() error { return h.Capture(in()) })
+		// payload, when non-nil, is the exact *hookio.Payload claudeHostGuard
+		// already built from stdin: handing it straight to CapturePayload
+		// skips the second read-and-copy of raw that Capture(in()) would run
+		// (see claudeHostGuard's own doc, TestRES28_MaxRSS).
+		captureErr := safe.Guard(func() error {
+			if payload != nil {
+				return h.CapturePayload(payload)
+			}
+			return h.Capture(in())
+		})
 		// Close returns nothing; Guard is here for its panic, and Flush still
 		// runs after one. What Close did not write reads as its absence: an
 		// unterminated declaration, a call with no coverage (H-10).
@@ -250,7 +259,7 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
-		in, standDown := claudeHostGuard(stdin)
+		payload, in, standDown := claudeHostGuard(stdin)
 		if standDown {
 			return nil
 		}
@@ -270,7 +279,13 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		p := hook.NewPost(st, time.Now)
 		// Group commit, as in cmdHook.
 		st.DeferDurability()
-		captureErr := safe.Guard(func() error { return p.Capture(in()) })
+		// See cmdHook's own comment on payload != nil.
+		captureErr := safe.Guard(func() error {
+			if payload != nil {
+				return p.CapturePayload(payload)
+			}
+			return p.Capture(in())
+		})
 		// As in cmdHook: Guard is for Close's panic, and a coverage record
 		// Close did not write reads as its absence (H-10).
 		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
@@ -304,7 +319,7 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 
-		in, standDown := claudeHostGuard(stdin)
+		payload, in, standDown := claudeHostGuard(stdin)
 		if standDown {
 			return nil
 		}
@@ -319,7 +334,14 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		if standsDown(args, st, stderr) {
 			return nil
 		}
-		if err := hook.RunProbe(sig, phase, in(), st, time.Now); err != nil {
+		// See cmdHook's own comment on payload != nil.
+		var runErr error
+		if payload != nil {
+			runErr = hook.RunProbeFromPayload(sig, phase, payload, st, time.Now)
+		} else {
+			runErr = hook.RunProbe(sig, phase, in(), st, time.Now)
+		}
+		if runErr != nil {
 			fmt.Fprintln(stderr, evictionLine)
 		}
 		return nil

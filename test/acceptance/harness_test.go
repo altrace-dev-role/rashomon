@@ -166,9 +166,9 @@ func (e *env) environ(extra ...string) []string {
 		// spec 6.2.2's entrypoint allowlist); every acceptance test's hook,
 		// post, probe and recap invocations are claiming to BE Claude Code,
 		// so they need to look like it to H1's stand-down check
-		// (internal/hostguard), wired into the five entry points by
-		// P-24b, or every one of them now reads as the unknown harness and
-		// records nothing. A test that wants to exercise the foreign or
+		// (internal/hostguard), wired into all five entry points, or every
+		// one of them now reads as the unknown harness and records
+		// nothing. A test that wants to exercise the foreign or
 		// unknown path overrides this through extraEnv, appended after
 		// base, which wins (os/exec: "the last value ... is used").
 		"CLAUDE_CODE_ENTRYPOINT=cli",
