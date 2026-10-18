@@ -301,7 +301,7 @@ jobs:
   fuzz:
     name: Fuzz
     runs-on: ubuntu-latest
-    # Thirteen targets at 30 s each, plus their builds; the bound is DEL-17's.
+    # Fourteen targets at 30 s each, plus their builds; the bound is DEL-17's.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -334,7 +334,7 @@ jobs:
             found=$((found + 1))
           done < <(grep -rn --include='*_test.go' '^func Fuzz' . | cut -d: -f1,2)
           echo "fuzzed ${found} targets"
-          test "$found" -ge 13
+          test "$found" -ge 14
 
   cross-build:
     name: Cross build (${{ matrix.goos }}/${{ matrix.goarch }})

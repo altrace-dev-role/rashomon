@@ -11,9 +11,10 @@ import (
 // edge. The first line of the real capture is session_started, the record
 // whose command line can be long; it is padded inside the command so the line
 // is exactly the longest the scanner holds (nonoMaxLine less the newline) and
-// then one byte longer. The first reads as an observed session; the second is
-// a read that failed partway, which this package reports as unreadable, never
-// as a session that went quiet after its first line.
+// then one byte longer. The first reads as the capture does. The second is
+// one record not read: counted in Skipped, the session it opened not counted,
+// and every line after it read -- one long command never costs the rest of
+// the trail.
 func TestRubricPerf6_TheLineBoundIsNonoMaxLine(t *testing.T) {
 	raw, err := os.ReadFile(fixture)
 	if err != nil {
@@ -30,14 +31,18 @@ func TestRubricPerf6_TheLineBoundIsNonoMaxLine(t *testing.T) {
 		t.Fatalf("premise: %s does not occur once in the first line", anchor)
 	}
 	window := fixtureWindow(t)
+	whole := Read(fixture, window)
+	if !whole.Observed || whole.Sessions != 1 || len(whole.Events) == 0 {
+		t.Fatalf("premise: the capture reads as %+v, want one observed session with events", whole)
+	}
 	for _, tc := range []struct {
-		length   int
-		observed bool
+		length  int
+		skipped bool
 	}{
 		// The documented bound, written out: a test that read the
 		// constant back would pass whatever value it was given.
-		{8<<20 - 1, true},
-		{8 << 20, false},
+		{8<<20 - 1, false},
+		{8 << 20, true},
 	} {
 		pad := bytes.Repeat([]byte("x"), tc.length-len(first))
 		line := bytes.Replace(first, anchor, append(append([]byte(`[\"sh`), pad...), `\"`...), 1)
@@ -50,12 +55,14 @@ func TestRubricPerf6_TheLineBoundIsNonoMaxLine(t *testing.T) {
 			t.Fatal(err)
 		}
 		obs := Read(path, window)
-		if obs.Observed != tc.observed {
-			t.Errorf("a %d-byte session_started line: observed=%v (%s), want %v",
-				tc.length, obs.Observed, obs.Reason, tc.observed)
+		wantSkipped, wantSessions := whole.Skipped, whole.Sessions
+		if tc.skipped {
+			wantSkipped, wantSessions = whole.Skipped+1, whole.Sessions-1
 		}
-		if !tc.observed && obs.Reason != NotObservedUnreadable {
-			t.Errorf("a line over the bound reads as %q, want %q", obs.Reason, NotObservedUnreadable)
+		if !obs.Observed || obs.Skipped != wantSkipped || obs.Sessions != wantSessions || len(obs.Events) != len(whole.Events) {
+			t.Errorf("a %d-byte session_started line: observed %v (%s), skipped %d, sessions %d, %d events; want observed, %d, %d and %d",
+				tc.length, obs.Observed, obs.Reason, obs.Skipped, obs.Sessions, len(obs.Events),
+				wantSkipped, wantSessions, len(whole.Events))
 		}
 	}
 }

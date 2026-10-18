@@ -147,6 +147,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 		fmt.Fprintf(b, "    readable: %s\n", yesNo(t.Readable))
 		fmt.Fprintf(b, "    status: %s\n", t.Status)
 		fmt.Fprintf(b, "    files: %s\n", count(t.Files))
+		fmt.Fprintf(b, "    lines too long to read: %s\n", count(t.LinesTooLong))
 		fmt.Fprintf(b, "    ids in transcript: %s\n", count(t.IDsInTranscript))
 		fmt.Fprintf(b, "    ids recorded: %d\n", t.IDsRecorded)
 		fmt.Fprintf(b, "    results in transcript: %s\n", count(t.ResultsInTranscript))

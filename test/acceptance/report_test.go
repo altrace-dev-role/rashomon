@@ -24,6 +24,7 @@ import (
 // is "unknown".
 var nullTranscriptFields = map[string]string{
 	"files":                   "not read",
+	"lines too long to read":  "not read",
 	"ids in transcript":       "not read",
 	"results in transcript":   "not read",
 	"missing from store":      "unknown",
@@ -47,7 +48,7 @@ func TestReport_TextRendersUnknownNeverZero(t *testing.T) {
 	if len(rep.Transcripts) != 1 || rep.Transcripts[0].Readable {
 		t.Fatalf("premise broken: want one unreadable transcript group, got %+v", rep.Transcripts)
 	}
-	if rep.Transcripts[0].IDsInTranscript != nil {
+	if rep.Transcripts[0].IDsInTranscript != nil || rep.Transcripts[0].LinesTooLong != nil {
 		t.Fatalf("premise broken: the JSON form renders a count for an unreadable transcript")
 	}
 

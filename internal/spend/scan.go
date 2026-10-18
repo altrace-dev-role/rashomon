@@ -1,7 +1,6 @@
 package spend
 
 import (
-	"bufio"
 	"bytes"
 	"math"
 	"os"
@@ -10,18 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/linescan"
 	"github.com/altrace-dev-role/rashomon/internal/report"
-)
-
-// maxLine and initialScanBuffer are report's transcript scanner sizes, whose
-// doc gives their measurements: lines carry whole messages and can be large,
-// and a real one can pass maxLine. A line longer than this ends that file's
-// read (the scanner cannot step over it) and the file is counted as unreadable
-// rather than silently truncated. It counts the line's newline, which the
-// scanner needs room to find: the longest line read is maxLine-1 bytes.
-const (
-	maxLine           = 64 << 20
-	initialScanBuffer = 256 << 10
 )
 
 // usageMarker is a byte test run before any decoding of a main transcript's
@@ -355,8 +344,9 @@ type Scan struct {
 	// Unparsed counts lines that may carry usage and could not be counted:
 	// a line that does not decode into the usage shape (a token count
 	// written as a string, a timestamp as a number), a usage whose counts
-	// are negative or implausibly large (plausible), or a usage with tokens
-	// on a line with no message.id to deduplicate by. Such a line used to be
+	// are negative or implausibly large (plausible), a usage with tokens
+	// on a line with no message.id to deduplicate by, or a line too long to
+	// read at all (report.TranscriptMaxLine). Such a line used to be
 	// dropped without a word, or -- a negative count -- priced as negative
 	// dollars subtracted from the total.
 	Unparsed int
@@ -529,13 +519,21 @@ func readFile(sc *Scan, byID map[string]*Response, idx int, f TranscriptFile) er
 	// line of a subagent transcript is decoded (report.DecodeHeader), the
 	// header only; its content has no field to land in.
 	var prompt string
-	s := bufio.NewScanner(fh)
-	s.Buffer(make([]byte, 0, initialScanBuffer), maxLine)
+	s := linescan.New(fh, report.TranscriptInitialBuffer, report.TranscriptMaxLine)
 	// The file's first dated line dates it (ownerSessions): a main
 	// transcript's lines are decoded, header only, until one carries a
 	// timestamp, and then only those that may carry usage.
 	fileDated := false
 	for s.Scan() {
+		if s.TooLong() {
+			// A line too long to read (report.TranscriptMaxLine) may have
+			// carried usage, so it is counted as one that could not be,
+			// and, like any line that does not decode, it ends a subagent
+			// transcript's tie. The lines after it are read.
+			prompt = ""
+			sc.Unparsed++
+			continue
+		}
 		raw := s.Bytes()
 		usageLine := bytes.Contains(raw, usageMarker)
 		if !usageLine && !f.Subagent && fileDated {

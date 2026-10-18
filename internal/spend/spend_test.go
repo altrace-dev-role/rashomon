@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -687,48 +688,47 @@ func TestDiscover_AnUnreadableFolderIsCountedNotFatal(t *testing.T) {
 // TestRead_AnUnreadableTranscriptIsCountedAndSaid: a transcript that cannot
 // be read to the end is spend this reader did not count, so it is counted in
 // read.unreadable_files and said in a note, never dropped from the total
-// without a word. Two ways a file fails: it cannot be opened (skipped as
-// root, which permissions do not stop), and a line longer than maxLine, which
-// the scanner cannot step over.
+// without a word. Here it cannot be opened (skipped as root, which
+// permissions do not stop).
 func TestRead_AnUnreadableTranscriptIsCountedAndSaid(t *testing.T) {
-	for _, how := range []string{"not permitted", "a line past maxLine"} {
-		t.Run(how, func(t *testing.T) {
-			c := newConfig(t)
-			c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1000, stop: "end_turn"}.line("text"))
-			bad := c.write("proj/sess-b.jsonl", resp{id: "b", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 7, stop: "end_turn"}.line("text"))
-			switch how {
-			case "not permitted":
-				if os.Geteuid() == 0 {
-					t.Skip("root reads a file whatever its mode")
-				}
-				if err := os.Chmod(bad, 0o000); err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { _ = os.Chmod(bad, 0o600) })
-			default:
-				f, err := os.OpenFile(bad, os.O_APPEND|os.O_WRONLY, 0)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err := f.WriteString(`{"usage":"` + strings.Repeat("x", maxLine) + "\"}\n"); err != nil {
-					t.Fatal(err)
-				}
-				if err := f.Close(); err != nil {
-					t.Fatal(err)
-				}
-			}
-			s := c.summary(30)
-			if s.scan.Unreadable != 1 || s.Read.UnreadableFiles != 1 {
-				t.Errorf("unreadable = %d, read.unreadable_files = %d; want 1 and 1", s.scan.Unreadable, s.Read.UnreadableFiles)
-			}
-			txt, js := render(t, s)
-			if !strings.Contains(js, `"unreadable_files":1`) {
-				t.Errorf("the JSON does not count the unreadable transcript:\n%s", js)
-			}
-			if !strings.Contains(txt, "note: 1 transcript file could not be read to the end; what they hold past that point is not counted") {
-				t.Errorf("the text does not say a transcript could not be read to the end:\n%s", txt)
-			}
-		})
+	c := newConfig(t)
+	c.write("proj/sess-a.jsonl", resp{id: "r", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1000, stop: "end_turn"}.line("text"))
+	bad := c.write("proj/sess-b.jsonl", resp{id: "b", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 7, stop: "end_turn"}.line("text"))
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file whatever its mode")
+	}
+	if err := os.Chmod(bad, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(bad, 0o600) })
+	s := c.summary(30)
+	if s.scan.Unreadable != 1 || s.Read.UnreadableFiles != 1 {
+		t.Errorf("unreadable = %d, read.unreadable_files = %d; want 1 and 1", s.scan.Unreadable, s.Read.UnreadableFiles)
+	}
+	txt, js := render(t, s)
+	if !strings.Contains(js, `"unreadable_files":1`) {
+		t.Errorf("the JSON does not count the unreadable transcript:\n%s", js)
+	}
+	if !strings.Contains(txt, "note: 1 transcript file could not be read to the end; what they hold past that point is not counted") {
+		t.Errorf("the text does not say a transcript could not be read to the end:\n%s", txt)
+	}
+}
+
+// TestRead_ALineTooLongIsSteppedOverAndCounted: a line longer than
+// report.TranscriptMaxLine is stepped over and the lines after it are read,
+// so a response after it is priced. The line itself may have carried usage,
+// so it is counted as a line that could not be (read.unparsed_usage_lines),
+// and the file is not unreadable.
+func TestRead_ALineTooLongIsSteppedOverAndCounted(t *testing.T) {
+	c := newConfig(t)
+	c.write("proj/sess-b.jsonl",
+		resp{id: "b", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 7, stop: "end_turn"}.line("text"),
+		`{"usage":"`+strings.Repeat("x", report.TranscriptMaxLine)+`"}`,
+		resp{id: "c", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 11, stop: "end_turn"}.line("text"))
+	s := c.summary(30)
+	if s.scan.Unreadable != 0 || s.Read.UnparsedUsageLines != 1 || s.Total.Nano != 18*opusIn {
+		t.Errorf("unreadable %d, unparsed usage lines %d, total %d; want 0, 1 and %d: the response after the long line is spend",
+			s.scan.Unreadable, s.Read.UnparsedUsageLines, s.Total.Nano, 18*opusIn)
 	}
 }
 

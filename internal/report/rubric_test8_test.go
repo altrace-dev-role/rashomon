@@ -22,26 +22,32 @@ func TestRubricTEST8_MessageCapAtNAndNPlusOne(t *testing.T) {
 	}
 }
 
-// TestRubricTEST8_TranscriptLineAtNAndNPlusOne: a transcript line of maxLine
-// bytes, counting its newline, is read and its tool call collected; one byte
-// more stops the read with an error rather than a silent truncation.
+// TestRubricTEST8_TranscriptLineAtNAndNPlusOne: a transcript line of
+// TranscriptMaxLine bytes, counting its newline, is read and its tool call
+// collected; one byte more is stepped over and counted, not read and not an
+// error, and the line after it is read.
 func TestRubricTEST8_TranscriptLineAtNAndNPlusOne(t *testing.T) {
 	const head, tail = `{"message":{"content":[{"type":"tool_use","id":"toolu_n"}]},"pad":"`, "\"}\n"
-	if maxLine != 64<<20 {
-		t.Fatalf("maxLine = %d, want 64 MiB", maxLine)
+	const next = `{"message":{"content":[{"type":"tool_use","id":"toolu_next"}]}}` + "\n"
+	if TranscriptMaxLine != 64<<20 {
+		t.Fatalf("TranscriptMaxLine = %d, want 64 MiB", TranscriptMaxLine)
 	}
 	for _, tc := range []struct {
 		n    int
 		read bool
-	}{{maxLine, true}, {maxLine + 1, false}} {
+	}{{TranscriptMaxLine, true}, {TranscriptMaxLine + 1, false}} {
 		path := filepath.Join(t.TempDir(), "t.jsonl")
-		if err := os.WriteFile(path, []byte(head+strings.Repeat("x", tc.n-len(head)-len(tail))+tail), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte(head+strings.Repeat("x", tc.n-len(head)-len(tail))+tail+next), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		ids := map[string]bool{}
-		_, err := collectIDs(path, ids, map[string]bool{}, map[string]bool{}, map[string]bool{})
-		if read := err == nil && ids["toolu_n"]; read != tc.read {
-			t.Errorf("a %d-byte line: collected %v, %v; want read %v", tc.n, ids, err, tc.read)
+		long, err := collectIDs(path, ids, map[string]bool{}, map[string]bool{}, map[string]bool{})
+		wantLong := 0
+		if !tc.read {
+			wantLong = 1
+		}
+		if err != nil || ids["toolu_n"] != tc.read || !ids["toolu_next"] || long != wantLong {
+			t.Errorf("a %d-byte line: collected %v, %d too long, %v; want read %v, %d too long, the next line read", tc.n, ids, long, err, tc.read, wantLong)
 		}
 	}
 }

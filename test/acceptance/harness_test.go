@@ -333,6 +333,7 @@ type reportSession struct {
 		Path                  string   `json:"path"`
 		Readable              bool     `json:"readable"`
 		Files                 *int     `json:"files"`
+		LinesTooLong          *int     `json:"lines_too_long"`
 		IDsInTranscript       *int     `json:"ids_in_transcript"`
 		IDsRecorded           int      `json:"ids_recorded"`
 		MissingFromStore      []string `json:"missing_from_store"`

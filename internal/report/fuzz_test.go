@@ -82,7 +82,7 @@ func checkTranscriptLines(t *testing.T, data []byte) {
 		return p
 	}
 	whole := write("whole.jsonl", data)
-	ids, results, denied, unhooked, files, err := TranscriptIDs(whole)
+	ids, results, denied, unhooked, files, _, err := TranscriptIDs(whole)
 	if err != nil || files != 1 {
 		t.Fatalf("TranscriptIDs: files %d, %v", files, err)
 	}
@@ -98,7 +98,7 @@ func checkTranscriptLines(t *testing.T, data []byte) {
 	for i, l := range lines {
 		checkSidechain(t, l)
 		p := write("line"+strconv.Itoa(i)+".jsonl", append(l, '\n'))
-		a, b, c, d, _, err := TranscriptIDs(p)
+		a, b, c, d, _, _, err := TranscriptIDs(p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -174,7 +174,7 @@ func checkTranscriptBlocks(t *testing.T, id, text string, isError bool) {
 	if err := os.WriteFile(p, []byte(string(asst)+"\n"+string(user)+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	ids, results, denied, unhooked, _, err := TranscriptIDs(p)
+	ids, results, denied, unhooked, _, _, err := TranscriptIDs(p)
 	if err != nil {
 		t.Fatal(err)
 	}
