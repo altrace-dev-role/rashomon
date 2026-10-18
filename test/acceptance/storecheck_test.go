@@ -104,7 +104,7 @@ func fileProblems(path, rel string, spec storeFile) []string {
 	var out []string
 	var last int64
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64<<10), 16<<20)
+	sc.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), store.MaxLine)
 	for n := 1; sc.Scan(); n++ {
 		where := fmt.Sprintf("%s:%d", rel, n)
 		var fields map[string]any

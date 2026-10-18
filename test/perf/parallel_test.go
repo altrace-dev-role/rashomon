@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/store"
 	"github.com/altrace-dev-role/rashomon/test/perf/payload"
 )
 
@@ -234,7 +235,7 @@ func ndjsonLines(t *testing.T, path string) [][]byte {
 	defer f.Close()
 	var out [][]byte
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
+	sc.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), store.MaxLine)
 	for sc.Scan() {
 		if len(sc.Bytes()) > 0 {
 			out = append(out, append([]byte(nil), sc.Bytes()...))

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // Binaries under test. They are real compiled binaries, exec'd as subprocesses,
@@ -568,7 +570,7 @@ func readNDJSON(t *testing.T, path string) []record {
 
 	var out []record
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 8<<20)
+	sc.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), store.MaxLine)
 	for line := 1; sc.Scan(); line++ {
 		raw := sc.Text()
 		// A spill append that gave up on the lock writes a newline ahead of
