@@ -64,12 +64,14 @@ func TestAcceptsKindFollowsTheAcceptanceTable(t *testing.T) {
 	}
 }
 
-// The writer has not moved: a stubs-only change must not change what the
-// store writes. P-11 flips SchemaVersion to CallSchemaVersion with the v5
-// fields, and this test is the one that changes then.
-func TestWriterStillStampsSchemaVersionFour(t *testing.T) {
-	if SchemaVersion != 4 {
-		t.Errorf("SchemaVersion = %d; the call-record writer moves to 5 in P-11, not here", SchemaVersion)
+// The writer moved to 5 with REC-34's flush_failed marker, ahead of the v5
+// fields: a v4 reader closes a declaration on any terminal, so the version
+// is what keeps it from reading one that must not (record.go). P-11 adds the
+// v5 fields to the records written at this version, and this test is the
+// one that changes then.
+func TestWriterStampsSchemaVersionFive(t *testing.T) {
+	if SchemaVersion != 5 {
+		t.Errorf("SchemaVersion = %d; the call-record writer is at 5 since REC-34's flush_failed marker", SchemaVersion)
 	}
 	if CallSchemaVersion != 5 || EventSchemaVersion != 5 || SessionSchemaVersion != 3 {
 		t.Errorf("version constants moved: call %d event %d session %d", CallSchemaVersion, EventSchemaVersion, SessionSchemaVersion)
