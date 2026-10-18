@@ -18,3 +18,9 @@ m("syscall.RawSyscall is dropped from the raw-syscall scan", "test/acceptance/h1
 m("syscall.Syscall is dropped from the raw-syscall scan", "test/acceptance/h17_no_egress_test.go",
   '"syscall.RawSyscall(", "syscall.Syscall(",', '"syscall.RawSyscall(",',
   "TestRawSyscalls_CatchesEachListedCall")
+# The store's fcntl barrier is the one sanctioned raw call, by its exact
+# text: the same trap with another number is a raw call like any other.
+m("the sanctioned fcntl barrier becomes a socket trap", "internal/store/sync_darwin.go",
+  "syscall.Syscall(syscall.SYS_FCNTL, fd, fBarrierFsync, 0)",
+  "syscall.Syscall(syscall.SYS_SOCKET, fd, fBarrierFsync, 0)",
+  "TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport")
