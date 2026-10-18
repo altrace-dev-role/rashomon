@@ -480,10 +480,11 @@ func TestDEL17_EveryJobHasATimeout(t *testing.T) {
 // TestDEL17_ treats "no jobs found" as its own failure, not a silent pass.
 func TestDEL17b_TimeoutParserFailsClosed(t *testing.T) {
 	cases := []struct {
-		name    string
-		doc     string
-		jobs    []string
-		missing []string
+		name     string
+		doc      string
+		jobs     []string
+		missing  []string
+		knownGap string // non-empty: this case pins a known limitation, not a verified-safe result
 	}{
 		{
 			name:    "commented job key is still a job",
@@ -502,10 +503,17 @@ func TestDEL17b_TimeoutParserFailsClosed(t *testing.T) {
 			doc:     "jobs:  # c\n  foo:\n    timeout-minutes: 30\n",
 			jobs:    nil,
 			missing: nil,
+			knownGap: "a `jobs:` line with its own trailing comment is invisible to this parser: every " +
+				"job under it, timed or not, goes unseen. Pinned here as the parser's actual behaviour, " +
+				"not endorsed as safe -- the only reason it doesn't hide an untimed job in a real workflow " +
+				"is that TestDEL17_ treats zero jobs found as a failure in its own right, not a quiet pass.",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.knownGap != "" {
+				t.Logf("known gap, not a verified-safe case: %s", tc.knownGap)
+			}
 			jobs, missing := jobsAndMissingTimeouts(tc.doc)
 			if !slicesEqual(jobs, tc.jobs) {
 				t.Errorf("jobs = %v, want %v", jobs, tc.jobs)
