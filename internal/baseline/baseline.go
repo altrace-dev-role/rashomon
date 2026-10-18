@@ -462,10 +462,13 @@ func ForgetFile(path, host string) (int, error) {
 // one of the file's own keys, such as hosts, still matches that key; the file
 // is unreadable either way, and deleting it re-establishes the project.
 //
-// A file cut off mid-write ends inside the last string it was writing, with
-// no closing quote -- whole or truncated partway through. What survived is
-// matched too: if it is a non-empty prefix of the host, between quotes or
-// not yet closed, the write was cut out of naming this host.
+// A file cut off mid-write ends with no closing quote on whatever string it
+// was writing when it stopped. The check below does not confirm that case
+// over a complete one: it takes whatever bytes follow the body's LAST quote
+// character, truncated or not, and asks whether that is a non-empty prefix
+// of the host. In a file that was never truncated, those trailing bytes are
+// JSON punctuation -- a colon, a brace, a comma -- not the start of a real
+// hostname, so running the same check there is loose but harmless.
 func namesHost(body []byte, host string) bool {
 	quoted := []byte(`"` + host + `"`)
 	if bytes.Contains(body, quoted) {
