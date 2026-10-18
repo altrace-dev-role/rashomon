@@ -433,6 +433,61 @@ func ForgetFile(path, raw string) (int, error) {
 	return forgetLocked(path, raw, name)
 }
 
+// ForgetAll removes a host from every project baseline under dir (the
+// store's baseline directory), the way `forget --host` has to -- it is not
+// told which project the caller meant. It returns how many files held the
+// host, and whether dir holds a baseline directory at all.
+//
+// Listing dir and forgetting each file happen under ONE lock, held for the
+// whole walk, not one lock per file as a caller using ForgetFile in a loop
+// would take. A project baseline that a concurrent render ESTABLISHES
+// between the listing and this walk reaching it is exactly the file a
+// per-file lock cannot see: nothing stops Update from creating it in the gap
+// between two separately-locked steps, and a file that did not exist at
+// listing time is not in the list no matter how fast the forget runs. This
+// function cannot call ForgetFile for the per-file work either -- it already
+// holds the one lock the directory has, and a second store.LockPath call on
+// the same path from this process is a second open file description, which
+// flock() does not treat as already held; it blocks behind the first rather
+// than succeeding. So this calls forgetLocked directly, under the lock this
+// function itself took.
+func ForgetAll(dir, raw string) (cleared int, hadBaselines bool, err error) {
+	name, ok := host.Canonical(raw)
+	if !ok {
+		return 0, false, store.ErrNotAHostname
+	}
+	release, lockErr := store.LockPath(filepath.Join(dir, lockName))
+	if errors.Is(lockErr, fs.ErrNotExist) {
+		// No baseline directory: nothing to clear.
+		return 0, false, nil
+	}
+	if lockErr != nil {
+		return 0, true, lockErr
+	}
+	defer release()
+
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, true, err
+	}
+	var failed []error
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		n, err := forgetLocked(filepath.Join(dir, e.Name()), raw, name)
+		if err != nil {
+			failed = append(failed, err)
+			continue
+		}
+		cleared += n
+	}
+	return cleared, true, errors.Join(failed...)
+}
+
 // forgetLocked is ForgetFile under the lock, for the host raw whose canonical
 // spelling is name.
 func forgetLocked(path, raw, name string) (int, error) {

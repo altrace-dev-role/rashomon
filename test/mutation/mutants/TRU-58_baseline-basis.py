@@ -36,7 +36,7 @@ m("TRU-58 forget deletes an unparseable baseline that does not hold the host", "
 m("TRU-58 forget reads an unreadable baseline as cleared", "internal/baseline/baseline.go",
   "\t\treturn 0, err\n\t}\n\tf, err := decode(body)", "\t\treturn 0, nil\n\t}\n\tf, err := decode(body)",
   "TestTRU58_ForgetFailsOnABaselineItCannotRead")
-m("TRU-58 forget stops at the first baseline it cannot clear", "cmd/rashomon/main.go",
+m("TRU-58 forget stops at the first baseline it cannot clear", "internal/baseline/baseline.go",
   "\t\t\tfailed = append(failed, err)\n\t\t\tcontinue", "\t\t\treturn cleared, true, err",
   "TestTRU58_ForgetClearsEveryBaselineItCanWhenOneFails")
 m("TRU-58 forget matches the host inside another name", "internal/baseline/baseline.go",

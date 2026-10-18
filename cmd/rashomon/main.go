@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1990,30 +1989,12 @@ func countOf(n int, noun string) string {
 // reports whether the store holds a baseline directory at all.
 //
 // A file it cannot clear does not stop it: the host still leaves every other
-// project's baseline, and the failures are returned together.
+// project's baseline, and the failures are returned together. The listing
+// and the per-file work are baseline.ForgetAll's, under its one lock -- see
+// its own doc for why this cannot list the directory itself and call
+// baseline.ForgetFile per file the way it once did.
 func clearBaselines(root, raw string) (int, bool, error) {
-	dir := filepath.Join(root, "baseline")
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, true, err
-	}
-	var cleared int
-	var failed []error
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		n, err := baseline.ForgetFile(filepath.Join(dir, e.Name()), raw)
-		if err != nil {
-			failed = append(failed, err)
-			continue
-		}
-		cleared += n
-	}
-	return cleared, true, errors.Join(failed...)
+	return baseline.ForgetAll(filepath.Join(root, "baseline"), raw)
 }
 
 // storeExistsAt asks whether a root holds a store without opening one.
