@@ -93,11 +93,13 @@ type env struct {
 	home      string
 	configDir string
 	cwd       string
-	// damaged is why this test leaves a store that breaks its invariants on
-	// purpose (expectDamagedStore); empty, the end-of-test check runs.
-	damaged string
-	// checked records that the end-of-test check ran.
-	checked bool
+	// damaged is the problems this test breaks its store's invariants with
+	// on purpose (expectDamagedStore); the end-of-test check holds the
+	// store to exactly those.
+	damaged []string
+	// storeFailf, when set, takes the end-of-test check's reports in place
+	// of the test's Errorf, so the check's own test can feed it a break.
+	storeFailf func(format string, args ...any)
 }
 
 // newEnv makes one machine, and checks its store's invariants when the test

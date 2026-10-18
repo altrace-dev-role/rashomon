@@ -22,3 +22,10 @@ m("test-13  coverage and gaps are not held to their own versions", "test/accepta
 m("test-13  call records pass at a version today's reader skips", "test/acceptance/storecheck_test.go",
   "\treturn store.Accepts(version) && store.AcceptsKind(kind, version)\n",
   "\treturn store.AcceptsKind(kind, version)\n", "TestRubricTest13_")
+m("test-13  the end-of-test check reads no store", "test/acceptance/storecheck_test.go",
+  "\tunexpected, missing := damageProblems(storeProblems(e.home), e.damaged)\n",
+  "\tunexpected, missing := damageProblems(nil, e.damaged)\n", "TestRubricTest13_")
+m("test-13  declared damage stands the whole check down", "test/acceptance/storecheck_test.go",
+  "\t\tif !named {\n", "\t\tif !named && len(declared) == 0 {\n", "TestRubricTest13_")
+m("test-13  declared damage that did not happen passes", "test/acceptance/storecheck_test.go",
+  "\t\tif !matched[i] {\n", "\t\tif false && !matched[i] {\n", "TestRubricTest13_")

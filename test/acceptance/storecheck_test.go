@@ -29,26 +29,57 @@ import (
 //     written without the lock and carries no seq, by design.
 //
 // A test that damages the store on purpose says so with expectDamagedStore,
-// naming why, and the check stands down for that test.
+// naming why and the problems the damage causes. The check then holds that
+// test to exactly those: a declared problem the check did not find fails it,
+// since the damage did not happen, and so does any problem none of them
+// names.
 
-// expectDamagedStore turns the end-of-test store check off for this env.
-func (e *env) expectDamagedStore(reason string) {
+// expectDamagedStore declares the problems this env's store is damaged with
+// on purpose, each a substring of a problem the end-of-test check reports.
+func (e *env) expectDamagedStore(reason string, problems ...string) {
 	e.t.Helper()
-	if strings.TrimSpace(reason) == "" {
-		e.t.Fatal("expectDamagedStore needs a reason")
+	if strings.TrimSpace(reason) == "" || len(problems) == 0 {
+		e.t.Fatal("expectDamagedStore needs a reason and the problems the damage causes")
 	}
-	e.damaged = reason
+	e.damaged = append(e.damaged, problems...)
 }
 
 // checkStore is registered by newEnv and runs after the test.
 func (e *env) checkStore() {
-	e.checked = true
-	if e.damaged != "" {
-		return
+	fail := e.t.Errorf
+	if e.storeFailf != nil {
+		fail = e.storeFailf
 	}
-	for _, p := range storeProblems(e.home) {
-		e.t.Errorf("store invariant: %s", p)
+	unexpected, missing := damageProblems(storeProblems(e.home), e.damaged)
+	for _, p := range unexpected {
+		fail("store invariant: %s", p)
 	}
+	for _, d := range missing {
+		fail("store invariant: the declared damage %q is not in the store", d)
+	}
+}
+
+// damageProblems sets the problems found against those declared: the found
+// ones no declaration names, and the declared ones nothing found matches.
+func damageProblems(found, declared []string) (unexpected, missing []string) {
+	matched := make([]bool, len(declared))
+	for _, p := range found {
+		named := false
+		for i, d := range declared {
+			if strings.Contains(p, d) {
+				named, matched[i] = true, true
+			}
+		}
+		if !named {
+			unexpected = append(unexpected, p)
+		}
+	}
+	for i, d := range declared {
+		if !matched[i] {
+			missing = append(missing, d)
+		}
+	}
+	return unexpected, missing
 }
 
 // storeFile is what one store file may hold.
@@ -280,11 +311,86 @@ func seqOf(t *testing.T, line string) string {
 }
 
 // TestRubricTest13_EveryEnvIsCheckedWhenItsTestEnds holds newEnv to
-// registering the check: the env a finished subtest made has been checked.
+// registering the check, and the check to reading the store: an env whose
+// subtest wrote a line that is not JSON into its store reports it when the
+// subtest ends. The report goes to a capture instead of the subtest, so the
+// break it is fed does not fail this test.
 func TestRubricTest13_EveryEnvIsCheckedWhenItsTestEnds(t *testing.T) {
-	var e *env
-	t.Run("a test that makes an env", func(t *testing.T) { e = newEnv(t) })
-	if e == nil || !e.checked {
-		t.Error("the store of an env whose test has ended was never checked")
+	got := endOfTestReport(t, func(e *env) {
+		writeStoreLine(t, e, `{"type":"declaration",`)
+	})
+	if len(got) != 1 || !strings.Contains(got[0], "records.ndjson:1 is not one JSON object") {
+		t.Errorf("the end-of-test check reported %q, want the torn line", got)
+	}
+	if got := endOfTestReport(t, func(*env) {}); len(got) != 0 {
+		t.Errorf("an env that wrote nothing reported %q", got)
+	}
+}
+
+// TestRubricTest13_DeclaredDamageIsHeldToWhatItSays: expectDamagedStore
+// stands the check down only for the problems it names. A declared problem
+// the store does not have is reported, and so is one it has that the
+// declaration does not name.
+func TestRubricTest13_DeclaredDamageIsHeldToWhatItSays(t *testing.T) {
+	torn := `{"type":"declaration",`
+	for _, tc := range []struct {
+		name     string
+		declared []string
+		lines    []string
+		want     []string
+	}{
+		{"named exactly", []string{"is not one JSON object"}, []string{torn}, nil},
+		{"declared and not done", []string{"schema_version 99"}, nil,
+			[]string{`the declared damage "schema_version 99" is not in the store`}},
+		{"done and not declared", []string{"is not one JSON object"},
+			[]string{torn, `{"type":"declaration","schema_version":99}`},
+			[]string{"schema_version 99", "an ordered record with seq <nil>"}},
+	} {
+		got := endOfTestReport(t, func(e *env) {
+			e.expectDamagedStore("the test's own break", tc.declared...)
+			for _, l := range tc.lines {
+				writeStoreLine(t, e, l)
+			}
+		})
+		if len(got) != len(tc.want) {
+			t.Errorf("%s: reported %q, want %d problems naming %q", tc.name, got, len(tc.want), tc.want)
+			continue
+		}
+		for i, w := range tc.want {
+			if !strings.Contains(got[i], w) {
+				t.Errorf("%s: problem %d is %q, want it to name %q", tc.name, i, got[i], w)
+			}
+		}
+	}
+}
+
+// endOfTestReport runs build in a subtest's env and returns what the store
+// check reported when that subtest ended.
+func endOfTestReport(t *testing.T, build func(*env)) []string {
+	t.Helper()
+	var got []string
+	t.Run("an env", func(t *testing.T) {
+		e := newEnv(t)
+		e.storeFailf = func(format string, args ...any) { got = append(got, fmt.Sprintf(format, args...)) }
+		build(e)
+	})
+	return got
+}
+
+func writeStoreLine(t *testing.T, e *env, line string) {
+	t.Helper()
+	dst := filepath.Join(e.home, "runs", testSession, "records.ndjson")
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(dst, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(line + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
