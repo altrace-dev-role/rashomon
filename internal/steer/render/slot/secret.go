@@ -56,6 +56,20 @@ func denied(slot, s string) error {
 	return nil
 }
 
+// screened runs the deny list and the entropy test over s, the two secret
+// checks every slot a repository, a spec or a payload can name runs after
+// its charset (archive 40.3.8: "same deny list"), because a slot's value
+// is rendered into model text and stored in the steer line's slots.
+func screened(slot, s string) error {
+	if err := denied(slot, s); err != nil {
+		return err
+	}
+	if highEntropy(s) {
+		return fmt.Errorf("%w: %s fails the entropy test", ErrSecretShaped, slot)
+	}
+	return nil
+}
+
 // hasKeyRun reports a 40-character key: a maximal run of exactly 40
 // characters of the base64 alphabet holding an upper-case letter, a
 // lower-case letter and a digit, the shape of an AWS secret access key,

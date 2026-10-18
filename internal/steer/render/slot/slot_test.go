@@ -41,13 +41,13 @@ func checkSlot[T Value](t *testing.T, good, bad []T) {
 
 func TestSTR11b_ProgramCharset(t *testing.T) {
 	checkSlot(t,
-		[]Program{"aws", "go", "npm", "python3", "g++", "x.y_z-1", Program(strings.Repeat("a", 64))},
+		[]Program{"aws", "go", "npm", "python3", "g++", "x.y_z-1", Program(strings.Repeat("x", 64))},
 		[]Program{"", Program(strings.Repeat("a", 65)), "has space", "a/b", "a:b", "it's", "café"})
 }
 
 func TestSTR11b_GateIsOneOrTwoWordsNeverArguments(t *testing.T) {
 	checkSlot(t,
-		[]Gate{"go test", "npm test", "make test", "npm", "my-gate.sh", Gate(strings.Repeat("a", 40))},
+		[]Gate{"go test", "npm test", "make test", "npm", "my-gate.sh", Gate(strings.Repeat("x", 40))},
 		[]Gate{
 			"", Gate(strings.Repeat("a", 41)), "npm test --watch", "rm -rf", "go -v",
 			"npm --watch", "-", "--", ".", "...", ".. ..", "go  test", " go", "go test ",
@@ -126,7 +126,7 @@ func TestSTR11b_MinutesRange(t *testing.T) {
 
 func TestSTR11b_TaskIDCharset(t *testing.T) {
 	checkSlot(t,
-		[]TaskID{"TASK-123", "a.b_c-d", "7", TaskID(strings.Repeat("a", 64))},
+		[]TaskID{"TASK-123", "a.b_c-d", "7", TaskID(strings.Repeat("x", 64))},
 		[]TaskID{"", "has space", "a/b", "a:b", "it's", TaskID(strings.Repeat("a", 65))})
 }
 
@@ -134,7 +134,7 @@ func TestSTR11b_TaskIDCharset(t *testing.T) {
 // agent and the archive's example all pass.
 func TestSTR11b_AgentTypeCharset(t *testing.T) {
 	checkSlot(t,
-		[]AgentType{"general-purpose", "Explore", "Plan", "statusline-setup", "plugin:agent", "code_review", "reviewer", AgentType(strings.Repeat("a", 64))},
+		[]AgentType{"general-purpose", "Explore", "Plan", "statusline-setup", "plugin:agent", "code_review", "reviewer", AgentType(strings.Repeat("x", 64))},
 		[]AgentType{"", "has space", "a/b", "a@b", "it's", AgentType(strings.Repeat("a", 65))})
 }
 
@@ -147,7 +147,7 @@ func TestSTR11b_RuleIDCharset(t *testing.T) {
 // TestSTR11b_ModelCharset: bracketed context-window ids pass.
 func TestSTR11b_ModelCharset(t *testing.T) {
 	checkSlot(t,
-		[]Model{"claude-opus-4-6[1m]", "claude-sonnet-5", "gpt-4o-mini", "claude-3.5-sonnet", Model(strings.Repeat("a", 64))},
+		[]Model{"claude-opus-4-6[1m]", "claude-sonnet-5", "gpt-4o-mini", "claude-3.5-sonnet", Model(strings.Repeat("x", 64))},
 		[]Model{"", "has space", "a/b", "a:b", "it's", "a<b", Model(strings.Repeat("a", 65))})
 }
 

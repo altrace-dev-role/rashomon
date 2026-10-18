@@ -461,3 +461,121 @@ func TestSTR13h_IdentifierPartsAreKept(t *testing.T) {
 		}
 	}
 }
+
+// identifierSlot is one of the slots that name a thing by id, with the
+// charset its Validate checks first.
+type identifierSlot struct {
+	name     string
+	re       *lazyRegexp
+	validate func(string) error
+}
+
+var identifierSlots = []identifierSlot{
+	{"TaskID", taskIDRE, func(s string) error { return TaskID(s).Validate() }},
+	{"Model", modelRE, func(s string) error { return Model(s).Validate() }},
+	{"AgentType", agentTypeRE, func(s string) error { return AgentType(s).Validate() }},
+	{"RuleID", ruleIDRE, func(s string) error { return RuleID(s).Validate() }},
+	{"Program", programRE, func(s string) error { return Program(s).Validate() }},
+	{"Gate", programRE, func(s string) error { return Gate(s).Validate() }},
+	{"Mechanism", factRE, func(s string) error { return Mechanism(s).Validate() }},
+}
+
+// legitimateIdentifiers are real values of each slot: Claude Code's task
+// and background ids, model ids as the payload carries them, built-in and
+// plugin agent types, spec rule ids, program names and mechanisms.
+var legitimateIdentifiers = map[string][]string{
+	"TaskID": {"1", "42", "todo", "bash_1", "b8x2k4q9z", "TASK-123", "3f2504e0-4f89-11d3-9a0c-0305e82c3301"},
+	"Model": {
+		"claude-opus-5-5", "claude-opus-5-5[1m]", "claude-opus-4-6[1m]", "claude-sonnet-4-5-20250929",
+		"claude-haiku-4-5-20251001", "claude-3-5-sonnet-20241022", "us.anthropic.claude-sonnet-4-5-20250929-v1",
+		"global.anthropic.claude-opus-4-1-20250805-v1", "gpt-5-codex", "gemini-2.5-pro",
+	},
+	"AgentType": {
+		"general-purpose", "Explore", "Plan", "statusline-setup", "output-style-setup",
+		"superpowers:code-reviewer", "feature-dev:code-architect", "pr-review-toolkit:silent-failure-hunter",
+	},
+	"RuleID": {
+		"res-13", "no-shell-true", "frozen-migrations", "no-truncate-shared-keyspaces",
+		"forbid-direct-production-database-access-v2", "export-after-verify",
+	},
+	"Program": {
+		"go", "golangci-lint", "python3", "x86_64-w64-mingw32-gcc", "clang++", "g++-13", "pre-commit",
+		"docker-compose", "cargo-nextest", "llvm-objdump-18", "kubectl", "terraform", "aws", "uv",
+	},
+	"Gate": {"go test", "npm test", "make test", "golangci-lint run", "cargo nextest", "pytest"},
+	"Mechanism": {
+		"--password-stdin", "AWS_PROFILE", "aws-vault", "sso", "kubectl-oidc-login",
+		"arn:aws:iam::123456789012:role/deploy", "vault:kv/data/ci/deploy", "env@AWS_PROFILE",
+	},
+}
+
+// TestSTR13i_IdentifierSlotsRefuseSecrets: TaskID, Model, AgentType, RuleID,
+// Program, Gate and Mechanism run the secret deny list and the entropy test
+// after their charset (archive 40.3.8), as Path and FactValue do, so a
+// token never renders and is never stored in a steer line's slots. Every
+// legitimate value above is kept. A ghp_ token, an AWS key id, a Mailgun
+// key, a 40-hex run, low-entropy ghp_ and Mailgun shapes only the deny list
+// knows, and random values drawn from the slot's own charset are refused;
+// wherever the charset alone would admit a value, the refusal is
+// ErrSecretShaped.
+func TestSTR13i_IdentifierSlotsRefuseSecrets(t *testing.T) {
+	for _, sl := range identifierSlots {
+		for _, v := range legitimateIdentifiers[sl.name] {
+			if err := sl.validate(v); err != nil {
+				t.Errorf("%s(%q) = %v, want nil", sl.name, v, err)
+			}
+		}
+	}
+	secrets := []string{
+		"ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+		"AKIAIOSFODNN7EXAMPLE",
+		"key-" + "0123456789abcdef0123456789abcdef",
+		"q8Zr4LmP0xT7vK2nW9yB3cHdJ5sF1gRe",
+		"q8zr4lmp0xt7vk2nw9yb3chdj5sf1gre",
+		"da39a3ee5e6b4b0d3255bfef95601890afd80709",
+		// Low-entropy bodies the entropy test keeps, so only the deny list
+		// refuses them.
+		"ghp_" + strings.Repeat("a", 36),
+		"key-" + strings.Repeat("0", 32),
+	}
+	for _, sl := range identifierSlots {
+		for _, s := range secrets {
+			err := sl.validate(s)
+			if err == nil {
+				t.Errorf("%s(%q) = nil, want it refused", sl.name, s)
+				continue
+			}
+			if sl.re.get().MatchString(s) && !errors.Is(err, ErrSecretShaped) {
+				t.Errorf("%s(%q) = %v; its charset admits the value, so want ErrSecretShaped", sl.name, s, err)
+			}
+		}
+	}
+	r := rand.New(rand.NewPCG(17, 29))
+	for _, c := range []struct {
+		slot, alphabet string
+	}{
+		{"TaskID", "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"},
+		{"Model", "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"},
+		{"AgentType", "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"},
+		{"RuleID", "0123456789abcdefghijklmnopqrstuvwxyz"},
+		{"Program", "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"},
+		{"Mechanism", "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"},
+	} {
+		var validate func(string) error
+		for _, sl := range identifierSlots {
+			if sl.name == c.slot {
+				validate = sl.validate
+			}
+		}
+		const n = 500
+		refused := 0
+		for i := 0; i < n; i++ {
+			if validate(randomString(r, c.alphabet, 40)) != nil {
+				refused++
+			}
+		}
+		if share := float64(refused) / n; share < 0.99 {
+			t.Errorf("%s: %.3f of random 40-character values refused, want at least 0.99", c.slot, share)
+		}
+	}
+}
