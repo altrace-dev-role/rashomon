@@ -256,6 +256,45 @@ func TestMirror_RunsValidateAndRefusesADoubleQuote(t *testing.T) {
 	}
 }
 
+// TestSTR9c_BriefingMirrorSpansItsLines: a continuity briefing, the only
+// multi-line note, is mirrored too, byte for byte, its lines inside the one
+// quote (archive 40.3.8: "a briefing's mirror spans the briefing's lines").
+// MirrorBriefing runs ValidateBriefing, so it takes the line feeds and the
+// 1,600-byte cap Mirror refuses, and still refuses a double quote or an
+// empty line; Mirror stays single-line.
+func TestSTR9c_BriefingMirrorSpansItsLines(t *testing.T) {
+	briefing := MessagePrefix + "state at the compaction.\ngate 'go test' last exited 0 at call 41.\n2 files were written after it."
+	if err := ValidateBriefing(briefing); err != nil {
+		t.Fatalf("the fixture is not a valid briefing: %v", err)
+	}
+	got, err := MirrorBriefing(briefing)
+	if err != nil {
+		t.Fatalf("MirrorBriefing() error = %v", err)
+	}
+	if want := MirrorPrefix + briefing + MirrorSuffix; got != want {
+		t.Errorf("MirrorBriefing() = %q, want %q", got, want)
+	}
+	if _, err := Mirror(briefing); err == nil {
+		t.Error("Mirror accepted a multi-line note; only MirrorBriefing takes a briefing")
+	}
+	long := MessagePrefix + strings.Repeat("a", MaxMessageBytes) + "\nthe record ends."
+	if len(long) > MaxBriefingMessageBytes {
+		t.Fatalf("fixture is %d bytes, over the briefing cap", len(long))
+	}
+	if _, err := MirrorBriefing(long); err != nil {
+		t.Errorf("MirrorBriefing refused a briefing over the single-note cap but under its own: %v", err)
+	}
+	for _, bad := range []string{
+		MessagePrefix + "state at the compaction.\ngate 'go test' said \"ok\".",
+		MessagePrefix + "state at the compaction.\n\n2 files were written.",
+		"state at the compaction.\n2 files were written.",
+	} {
+		if _, err := MirrorBriefing(bad); err == nil {
+			t.Errorf("MirrorBriefing(%q) wrapped text ValidateBriefing refuses", bad)
+		}
+	}
+}
+
 func TestValidate_PrefixAndByteCaps(t *testing.T) {
 	if err := Validate(MessagePrefix + "ok"); err != nil {
 		t.Errorf("Validate(valid) = %v", err)

@@ -39,9 +39,21 @@ const maxBriefingLines = 6
 // for byte, or returns the error that kept it from wrapping unchecked
 // text: Validate already refuses a double quote in modelText (checkLine),
 // so the wrap's own closing quote can never be shifted early by the text
-// it quotes.
+// it quotes. A continuity briefing goes through MirrorBriefing.
 func Mirror(modelText string) (string, error) {
 	if err := Validate(modelText); err != nil {
+		return "", err
+	}
+	return MirrorPrefix + modelText + MirrorSuffix, nil
+}
+
+// MirrorBriefing is Mirror for a continuity briefing, the one multi-line
+// note: it runs ValidateBriefing instead of Validate and wraps the whole
+// briefing, line feeds included, in the one quote, so the mirror spans the
+// briefing's lines byte for byte (archive 40.3.8). ValidateBriefing checks
+// each line as Validate does, double quote included.
+func MirrorBriefing(modelText string) (string, error) {
+	if err := ValidateBriefing(modelText); err != nil {
 		return "", err
 	}
 	return MirrorPrefix + modelText + MirrorSuffix, nil
