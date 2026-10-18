@@ -96,12 +96,19 @@ func quoted(s string) string { return "'" + s + "'" }
 
 // Program is a program name (archive 40.3.8: `^[A-Za-z0-9._+-]{1,64}$`,
 // "from `shape` only"). A repository can name one, so it renders inside a
-// quote (tech 4.2.7: "`program 'aws'`").
+// quote (tech 4.2.7: "`program 'aws'`"). It passes the secret deny list and
+// the entropy test after its charset (screened); Gate's words do too.
 type Program string
 
 var programRE = &lazyRegexp{pattern: `^[A-Za-z0-9._+-]{1,64}$`}
 
-func (p Program) Validate() error      { return charset("program", string(p), programRE) }
+func (p Program) Validate() error {
+	if err := charset("program", string(p), programRE); err != nil {
+		return err
+	}
+	return screened("program", string(p))
+}
+
 func (p Program) Text() string         { return quoted(string(p)) }
 func (p Program) bind() (Value, error) { return checked(p, p.Validate()) }
 
@@ -147,7 +154,8 @@ var factRE = &lazyRegexp{pattern: `^[A-Za-z0-9._:/@+=-]{1,128}$`}
 // Mechanism names the mechanism a note cites -- a profile, a role, an env
 // var name, a vault path -- never its value (archive 40.3.8: the FactValue
 // charset, "no spaces: an identifier"; "from a spec or approved fact only;
-// same deny list").
+// same deny list"). It runs the entropy test FactValue runs as well: a
+// spec can name any value here, whatever its trust.
 type Mechanism string
 
 func (m Mechanism) Validate() error {
@@ -155,7 +163,7 @@ func (m Mechanism) Validate() error {
 	if err := charset("mechanism", s, factRE); err != nil {
 		return err
 	}
-	return denied("mechanism", s)
+	return screened("mechanism", s)
 }
 
 func (m Mechanism) Text() string         { return string(m) }
@@ -274,7 +282,13 @@ type TaskID string
 
 var taskIDRE = &lazyRegexp{pattern: `^[A-Za-z0-9._-]{1,64}$`}
 
-func (t TaskID) Validate() error      { return charset("task id", string(t), taskIDRE) }
+func (t TaskID) Validate() error {
+	if err := charset("task id", string(t), taskIDRE); err != nil {
+		return err
+	}
+	return screened("task id", string(t))
+}
+
 func (t TaskID) Text() string         { return string(t) }
 func (t TaskID) bind() (Value, error) { return checked(t, t.Validate()) }
 
@@ -286,7 +300,13 @@ type AgentType string
 
 var agentTypeRE = &lazyRegexp{pattern: `^[A-Za-z0-9:._-]{1,64}$`}
 
-func (a AgentType) Validate() error      { return charset("agent type", string(a), agentTypeRE) }
+func (a AgentType) Validate() error {
+	if err := charset("agent type", string(a), agentTypeRE); err != nil {
+		return err
+	}
+	return screened("agent type", string(a))
+}
+
 func (a AgentType) Text() string         { return quoted(string(a)) }
 func (a AgentType) bind() (Value, error) { return checked(a, a.Validate()) }
 
@@ -296,7 +316,13 @@ type RuleID string
 
 var ruleIDRE = &lazyRegexp{pattern: `^[a-z0-9][a-z0-9-]{0,47}$`}
 
-func (r RuleID) Validate() error      { return charset("rule id", string(r), ruleIDRE) }
+func (r RuleID) Validate() error {
+	if err := charset("rule id", string(r), ruleIDRE); err != nil {
+		return err
+	}
+	return screened("rule id", string(r))
+}
+
 func (r RuleID) Text() string         { return string(r) }
 func (r RuleID) bind() (Value, error) { return checked(r, r.Validate()) }
 
@@ -307,7 +333,13 @@ type Model string
 
 var modelRE = &lazyRegexp{pattern: `^[A-Za-z0-9._\[\]-]{1,64}$`}
 
-func (m Model) Validate() error      { return charset("model", string(m), modelRE) }
+func (m Model) Validate() error {
+	if err := charset("model", string(m), modelRE); err != nil {
+		return err
+	}
+	return screened("model", string(m))
+}
+
 func (m Model) Text() string         { return string(m) }
 func (m Model) bind() (Value, error) { return checked(m, m.Validate()) }
 
