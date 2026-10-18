@@ -12,8 +12,8 @@ import (
 // `^[A-Za-z0-9._@+-]{1,128}$` joined by '/', at most 256 bytes, no ".." and
 // no leading '-'; it must also pass the secret deny list, and no segment of
 // 20 or more characters may be secret-shaped by the entropy test, except a
-// whole segment of exactly 40 or 64 lowercase hex characters (a commit id or
-// digest), which is kept. A "." segment is refused as well: a canonical
+// digest under the directory that names its algorithm (isDigest), which is
+// kept. A "." segment is refused as well: a canonical
 // relative path never holds one, and VERIFY's path slot refuses it. A
 // repository can name a path, so it renders inside a quote. The secret
 // checks fail with ErrSecretShaped, which PathList uses to leave such a path
@@ -64,18 +64,32 @@ func (p Path) checkSecret() error {
 	if err := denied("path", s); err != nil {
 		return err
 	}
+	parent := ""
 	for _, seg := range strings.Split(s, "/") {
-		if len(seg) >= entropyMinRun && !isDigest(seg) && highEntropy(seg) {
+		if len(seg) >= entropyMinRun && !isDigest(parent, seg) && highEntropy(seg) {
 			return fmt.Errorf("%w: a path segment fails the entropy test", ErrSecretShaped)
 		}
+		parent = seg
 	}
 	return nil
 }
 
-// isDigest reports a whole segment of exactly 40 or 64 lowercase hex
-// characters, the shape of a git object id or a SHA-256 digest.
-func isDigest(seg string) bool {
-	if len(seg) != 40 && len(seg) != 64 {
+// isDigest reports seg as the digest its parent directory names: exactly
+// 40 lowercase hex characters under "sha1", or 64 under "sha256", the
+// layout content-addressed stores use (an OCI image's blobs/sha256/). A
+// bare 40- or 64-hex segment anywhere else is tested like any other: a
+// legacy GitHub token and a Datadog application key are 40 lowercase hex,
+// a Linode token and a hex-encoded 32-byte key 64, and only the location
+// tells a digest from them.
+func isDigest(parent, seg string) bool {
+	n := 0
+	switch parent {
+	case "sha1":
+		n = 40
+	case "sha256":
+		n = 64
+	}
+	if n == 0 || len(seg) != n {
 		return false
 	}
 	for i := 0; i < len(seg); i++ {

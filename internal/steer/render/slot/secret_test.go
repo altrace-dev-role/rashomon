@@ -40,7 +40,8 @@ var secretShaped = []string{
 // TestSTR13_SecretShapedValuesRefused: a secret-shaped value never passes a
 // Path, FactValue or Mechanism check (tech 4.2.7), random hex-40, hex-64 and
 // base62-20 fact values are refused, and a whole lowercase 40- or 64-hex
-// path segment (a commit id or digest) is kept.
+// path segment under the directory that names its algorithm (a digest in a
+// content-addressed store) is kept.
 func TestSTR13_SecretShapedValuesRefused(t *testing.T) {
 	for _, s := range secretShaped {
 		if err := (FactValue{Kind: FactAWSProfile, Value: s}).Validate(); !errors.Is(err, ErrSecretShaped) {
@@ -61,7 +62,7 @@ func TestSTR13_SecretShapedValuesRefused(t *testing.T) {
 		}
 	}
 	for _, p := range []Path{
-		"objects/da39a3ee5e6b4b0d3255bfef95601890afd80709",
+		"store/sha1/da39a3ee5e6b4b0d3255bfef95601890afd80709",
 		"blobs/sha256/" + Path(strings.Repeat("0123456789abcdef", 4)),
 		"internal/steer/render/slot/slot.go", "src/bearer-authentication.go",
 		"docs/api_key_rotation.md", "3f2504e0-4f89-11d3-9a0c-0305e82c3301/config.json",
@@ -577,5 +578,41 @@ func TestSTR13i_IdentifierSlotsRefuseSecrets(t *testing.T) {
 		if share := float64(refused) / n; share < 0.99 {
 			t.Errorf("%s: %.3f of random 40-character values refused, want at least 0.99", c.slot, share)
 		}
+	}
+}
+
+// TestSTR13j_DigestKeptOnlyUnderItsAlgorithm: a whole lowercase 40- or
+// 64-hex path segment is kept only directly under "sha1" or "sha256", the
+// directory that names its algorithm, at that algorithm's length. Anywhere
+// else the same shape is tested like any other segment and refused: a
+// legacy GitHub token and a Datadog application key are 40 lowercase hex,
+// a Linode token and a hex-encoded 32-byte key 64, and only the location
+// tells a digest from them.
+func TestSTR13j_DigestKeptOnlyUnderItsAlgorithm(t *testing.T) {
+	hex40 := "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+	hex64 := strings.Repeat("0123456789abcdef", 4)
+	for _, p := range []string{
+		"sha1/" + hex40, "store/sha1/" + hex40,
+		"sha256/" + hex64, "blobs/sha256/" + hex64, "oci/blobs/sha256/" + hex64 + "/data",
+	} {
+		if err := Path(p).Validate(); err != nil {
+			t.Errorf("Path(%q) = %v, want nil: a digest under its algorithm's directory", p, err)
+		}
+	}
+	for _, p := range []string{
+		hex40, hex64, "objects/" + hex40, "config/" + hex64, ".tokens/" + hex40,
+		"sha256/" + hex40, "sha1/" + hex64, "SHA256/" + hex64, "sha256x/" + hex64,
+		"sha256/" + strings.ToUpper(hex64),
+	} {
+		if err := Path(p).Validate(); !errors.Is(err, ErrSecretShaped) {
+			t.Errorf("Path(%q) = %v, want ErrSecretShaped", p, err)
+		}
+	}
+	bound, err := Bind(NewPathList([]Path{Path("config/" + hex64), "internal/a.go"}, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bound.Text(); got != "'internal/a.go' and 1 more" {
+		t.Errorf("list renders %q, want the hex segment left out and counted", got)
 	}
 }
