@@ -1028,6 +1028,9 @@ func cmdResume(stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
+		if gaps, _, err := st.ReadGaps(); err == nil {
+			since = earlierPauseStart(gaps, since)
+		}
 		g := store.NewGap(store.GapPaused, store.PausedSessionID, now)
 		g.FromUnixMS, g.ToUnixMS = since.UnixMilli(), now.UnixMilli()
 		if err := st.AppendGap(g); err != nil {
@@ -1037,6 +1040,39 @@ func cmdResume(stdout io.Writer) error {
 	fmt.Fprintf(stdout, "rashomon: resumed -- was paused from %s to %s\n",
 		since.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339))
 	return nil
+}
+
+// earlierPauseStart recovers the true pause instant from pause's own gap
+// record when store.Resume could not read or parse the marker and fell back
+// to now: that fallback makes the closing gap this function's caller writes
+// run from now to now, which reads the whole paused window as zero length,
+// though cmdPause already recorded the real instant independently of the
+// marker's content, in its own gap, the moment pause took effect.
+//
+// gaps is the full store-wide ledger; the one this looks for is the LAST
+// entry reasoned paused whose own width is zero -- the signature of an open
+// marker cmdPause wrote and no resume has closed yet. pause is idempotent
+// and only ever writes that marker once per episode (a repeat pause call
+// returns before appending), so at the moment resume goes to close it, it is
+// always the last paused-reasoned entry in the ledger -- unless the episode
+// had no store to write into at pause time, or the marker predates this
+// machine ever having one, in which case nothing matches and since is
+// returned unchanged, exactly as before this existed.
+func earlierPauseStart(gaps []store.Gap, since time.Time) time.Time {
+	for i := len(gaps) - 1; i >= 0; i-- {
+		g := gaps[i]
+		if g.Reason != store.GapPaused {
+			continue
+		}
+		if g.FromUnixMS != g.ToUnixMS {
+			return since
+		}
+		if g.FromUnixMS < since.UnixMilli() {
+			return time.UnixMilli(g.FromUnixMS)
+		}
+		return since
+	}
+	return since
 }
 
 // Recording state words. RecordingState returns exactly one of these four.

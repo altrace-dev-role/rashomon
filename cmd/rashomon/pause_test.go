@@ -356,6 +356,107 @@ func TestCheckPaused_FaultOnStoreRootIsNotAPause(t *testing.T) {
 	}
 }
 
+// TestCmdResume_RecoversTrueStartFromTheGapLedgerWhenTheMarkerCannotBeRead:
+// resume's own closing gap must span the whole paused window, not collapse
+// to the instant resume ran, when the marker it would read the true start
+// from cannot be read. pause already wrote that instant reliably, in its
+// own gap record, independent of the marker's content; resume now reads it
+// back instead of falling all the way to now. Before, the closing gap ran
+// from now to now, so the window read as zero length and a quiet turn that
+// fell inside it -- after pause's own zero-width marker and before the
+// (wrong) instant resume claimed -- intersected no gap at all.
+func TestCmdResume_RecoversTrueStartFromTheGapLedgerWhenTheMarkerCannotBeRead(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 000 does not stop this user reading the file")
+	}
+	root := t.TempDir()
+	t.Setenv("RASHOMON_HOME", root)
+	if _, err := store.Open(root); err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := cmdPause(&buf); err != nil {
+		t.Fatalf("cmdPause: %v", err)
+	}
+
+	marker := filepath.Join(root, "pause")
+	if err := os.Chmod(marker, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(marker, 0o644) }) //nolint:errcheck // TempDir removal follows
+
+	st, err := store.OpenExisting(root)
+	if err != nil {
+		t.Fatalf("store.OpenExisting: %v", err)
+	}
+	before, _, err := st.ReadGaps()
+	if err != nil {
+		t.Fatalf("ReadGaps before resume: %v", err)
+	}
+	if len(before) != 1 {
+		t.Fatalf("got %d gaps after pause, want 1 (pause's own marker): %+v", len(before), before)
+	}
+	trueSince := before[0].FromUnixMS
+
+	buf.Reset()
+	if err := cmdResume(&buf); err != nil {
+		t.Fatalf("cmdResume: %v", err)
+	}
+
+	after, _, err := st.ReadGaps()
+	if err != nil {
+		t.Fatalf("ReadGaps after resume: %v", err)
+	}
+	if len(after) != 2 {
+		t.Fatalf("got %d gaps after resume, want 2: %+v", len(after), after)
+	}
+	closing := after[1]
+	if closing.FromUnixMS != trueSince {
+		t.Errorf("resume's closing gap starts at %d, want %d (pause's own recorded instant); "+
+			"got a window that starts at %d (now), which reads the paused window as zero length",
+			closing.FromUnixMS, trueSince, closing.ToUnixMS)
+	}
+}
+
+// TestEarlierPauseStart_SkipsPastAGapWithADifferentReason: the last entry in
+// the ledger is not cmdPause's own marker, so it must not be read as one,
+// even though its width and timing would otherwise look like a match.
+func TestEarlierPauseStart_SkipsPastAGapWithADifferentReason(t *testing.T) {
+	since := time.UnixMilli(9000)
+	gaps := []store.Gap{{Reason: "something_else", FromUnixMS: 1000, ToUnixMS: 1000}}
+	if got := earlierPauseStart(gaps, since); got != since {
+		t.Errorf("earlierPauseStart = %v, want %v unchanged: the last gap is not reasoned paused", got, since)
+	}
+}
+
+// TestEarlierPauseStart_IgnoresAClosedPriorEpisode: the last paused-reasoned
+// gap is already closed -- a past episode's own wide span, FromUnixMS and
+// ToUnixMS apart -- not cmdPause's open, zero-width marker for the one in
+// progress. Reading its (earlier) start would backdate the current episode
+// into one that already ended.
+func TestEarlierPauseStart_IgnoresAClosedPriorEpisode(t *testing.T) {
+	since := time.UnixMilli(5000)
+	gaps := []store.Gap{
+		{Reason: store.GapPaused, FromUnixMS: 1000, ToUnixMS: 1000},
+		{Reason: store.GapPaused, FromUnixMS: 1000, ToUnixMS: 4000},
+	}
+	if got := earlierPauseStart(gaps, since); got != since {
+		t.Errorf("earlierPauseStart = %v, want %v unchanged: the last paused gap is already closed", got, since)
+	}
+}
+
+// TestEarlierPauseStart_KeepsSinceWhenTheLedgerIsNotEarlier: an open marker
+// that is not actually earlier than since must not override it -- recovering
+// a later or equal instant is not recovering anything.
+func TestEarlierPauseStart_KeepsSinceWhenTheLedgerIsNotEarlier(t *testing.T) {
+	since := time.UnixMilli(1000)
+	gaps := []store.Gap{{Reason: store.GapPaused, FromUnixMS: 2000, ToUnixMS: 2000}}
+	if got := earlierPauseStart(gaps, since); got != since {
+		t.Errorf("earlierPauseStart = %v, want %v unchanged: the marker is not earlier than since", got, since)
+	}
+}
+
 // TestCmdPause_DocCommentIsItsOwn: cmdPause's doc comment must attach to
 // cmdPause, not to pausedCoverageNote. Before, the const and its own short
 // comment sat between cmdPause's comment and cmdPause itself with no blank
