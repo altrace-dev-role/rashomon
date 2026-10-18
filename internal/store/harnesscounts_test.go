@@ -154,6 +154,47 @@ func TestRecordHarnessMismatch_DifferentSessionsIncrement(t *testing.T) {
 	}
 }
 
+// TestRecordHarnessMismatch_EmptySessionIDNeverDedupedAgainstItself: a
+// caller with no field to key a session by (cmd/rashomon's
+// harnessSessionKey, e.g. a Cursor-detected stand-down with no
+// conversation_id) passes sessionID == "". Three such calls must all
+// count: digesting "" and deduping against it, the bug this pins, made
+// the SECOND and every later one read as already-counted, because every
+// empty-sessionID call digests to the same constant and the first call's
+// digest never ages out (it is re-appended to the list's front on every
+// subsequent empty call too, under the old code), so the counter could
+// never move again. Session == "" must therefore never enter the dedup
+// list at all, not just avoid colliding with a real session's digest.
+func TestRecordHarnessMismatch_EmptySessionIDNeverDedupedAgainstItself(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+
+	for i := 0; i < 3; i++ {
+		counted, err := RecordHarnessMismatch(root, "claude@cursor", "", nil, now)
+		if err != nil || !counted {
+			t.Fatalf("call %d: counted=%v err=%v, want true, <nil>", i, counted, err)
+		}
+	}
+	hc := readHarnessCountsFile(t, root)
+	day := hc.Counts["claude@cursor"].Days["2026-10-21"]
+	if day.StoodDown != 3 {
+		t.Errorf("stood_down = %d, want 3 (every session-less call counts)", day.StoodDown)
+	}
+	for _, s := range hc.Sessions {
+		if s == "" {
+			t.Fatalf("sessions = %v, want no entry for an empty sessionID", hc.Sessions)
+		}
+	}
+	// A real session recorded after three session-less calls must dedupe
+	// normally: the fix must not have disabled dedup altogether.
+	if counted, err := RecordHarnessMismatch(root, "claude@cursor", "sess-real", nil, now); err != nil || !counted {
+		t.Fatalf("real session: counted=%v err=%v, want true, <nil>", counted, err)
+	}
+	if counted, err := RecordHarnessMismatch(root, "claude@cursor", "sess-real", nil, now); err != nil || counted {
+		t.Fatalf("real session repeated: counted=%v err=%v, want false, <nil>", counted, err)
+	}
+}
+
 // TestRecordHarnessMismatch_SessionsCapped256: the global session dedup
 // list holds at most the last 256 counted sessions (6.2.1); the oldest is
 // evicted first (FIFO), and the dedup property keeps holding for whichever
@@ -217,11 +258,14 @@ func TestRecordHarnessMismatch_DaysCapped30(t *testing.T) {
 // surface, and never a wait anywhere near the full hold.
 func TestRecordHarnessMismatch_LockTimeoutSkipsWithoutError(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, fileHarnessCounts)
+	// The sidecar, not fileHarnessCounts itself: RecordHarnessMismatch locks
+	// fileHarnessCountsLock (see its own doc), so that is the file a test
+	// simulating contention has to hold.
+	lockPath := filepath.Join(root, fileHarnessCountsLock)
 	if err := os.MkdirAll(root, dirMode); err != nil {
 		t.Fatal(err)
 	}
-	holdFor(t, path, 300*time.Millisecond)
+	holdFor(t, lockPath, 300*time.Millisecond)
 
 	start := time.Now()
 	counted, err := RecordHarnessMismatch(root, "claude@cursor", "sess-1", nil, time.Now())
@@ -234,6 +278,47 @@ func TestRecordHarnessMismatch_LockTimeoutSkipsWithoutError(t *testing.T) {
 	}
 	if elapsed >= 250*time.Millisecond {
 		t.Errorf("elapsed = %v, want bounded near the lock budget, not the full 300ms hold", elapsed)
+	}
+}
+
+// TestRecordHarnessMismatch_AlreadyCountedSessionNeverLocks: a session's
+// SECOND stand-down in this process never touches the sidecar lock at all
+// (6.4: "one read ... and one locked update ... on a session's first
+// stand-down" -- everything after the first costs a read, not a lock).
+// Proof: the sidecar lock is held externally for the whole test, well past
+// harnessCountBudget; a call that still tried to acquire it would block for
+// up to harnessCountBudget before giving up (as
+// TestRecordHarnessMismatch_LockTimeoutSkipsWithoutError measures directly),
+// while a call that skips the lock on an already-counted session returns in
+// microseconds. The cutoff is harnessCountBudget/2: below it only the
+// lock-free path lands, above it only the lock-and-give-up path does, so
+// this is not a tuned guess -- it is the midpoint between the two actual
+// code paths this test tells apart.
+func TestRecordHarnessMismatch_AlreadyCountedSessionNeverLocks(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(root, dirMode); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+
+	// Establish sess-1 as already counted, lock released before the hold
+	// below starts: this call must succeed normally.
+	counted, err := RecordHarnessMismatch(root, "claude@cursor", "sess-1", nil, now)
+	if err != nil || !counted {
+		t.Fatalf("first call: counted=%v err=%v, want true, <nil>", counted, err)
+	}
+
+	lockPath := filepath.Join(root, fileHarnessCountsLock)
+	holdFor(t, lockPath, 10*harnessCountBudget)
+
+	start := time.Now()
+	counted, err = RecordHarnessMismatch(root, "claude@cursor", "sess-1", nil, now)
+	elapsed := time.Since(start)
+	if err != nil || counted {
+		t.Fatalf("already-counted session under a held lock: counted=%v err=%v, want false, <nil>", counted, err)
+	}
+	if elapsed >= harnessCountBudget/2 {
+		t.Errorf("elapsed = %v, want well under %v (an already-counted session must never wait on the lock)", elapsed, harnessCountBudget/2)
 	}
 }
 

@@ -44,6 +44,32 @@ func cursorPayload(t *testing.T, sessionID, event, toolUseID string) string {
 	return string(b)
 }
 
+// cursorPayloadByConversation is a real Cursor shape: conversation_id, not
+// session_id, is the field Cursor keys its own sessions by (Technical spec
+// 6.2.5: "runs/<cursor-+conversation_id>"), so session_id is omitted here
+// rather than filled with a placeholder -- a fixture that always carried
+// one would never exercise the dedup key a session-less Cursor payload
+// actually hits.
+func cursorPayloadByConversation(t *testing.T, conversationID, event, toolUseID string) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{
+		"hook_event_name": event,
+		"conversation_id": conversationID,
+		"generation_id":   "gen-1",
+		"transcript_path": "/tmp/transcripts/" + conversationID + ".jsonl",
+		"cwd":             "/tmp/project",
+		"permission_mode": "default",
+		"tool_name":       "Bash",
+		"tool_input":      map[string]any{"command": "echo hi"},
+		"tool_use_id":     toolUseID,
+		"cursor_version":  "1.2.3",
+	})
+	if err != nil {
+		t.Fatalf("building cursor payload: %v", err)
+	}
+	return string(b)
+}
+
 func runDirExists(e *env, sessionID string) bool {
 	_, err := os.Stat(filepath.Join(e.home, "runs", sessionID))
 	return err == nil
@@ -151,6 +177,68 @@ func TestBRD4_HookStandsDownOnCursorMarker(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("claude@cursor entry's last_evidence = %v, want cursor_version", entry.LastEvidence)
+	}
+}
+
+// TestBRD4_SessionlessCursorStandDownsAreCountedPerConversation: a real
+// Cursor payload carries no session_id at all (Cursor keys its own runs by
+// conversation_id, 6.2.5), so the dedup key RecordHarnessMismatch digests
+// must come from conversation_id for a Cursor-detected stand-down, not from
+// an absent session_id. Two stand-downs with DIFFERENT conversation_ids
+// must both count: digesting the empty string for both (the bug this pins)
+// made the second always read as "already counted", so the total stuck at
+// 1 no matter how many session-less Cursor calls followed the first.
+func TestBRD4_SessionlessCursorStandDownsAreCountedPerConversation(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+
+	for i, conv := range []string{"conv-aaa", "conv-bbb"} {
+		res := e.hook(cursorPayloadByConversation(t, conv, "PreToolUse", "toolu_"+conv))
+		if res.exitCode != 0 {
+			t.Fatalf("hook %d: exit %d, stderr %q", i, res.exitCode, res.stderr)
+		}
+	}
+
+	hc := readHarnessCountsFile(t, e)
+	entry, ok := hc.Counts["claude@cursor"]
+	if !ok {
+		t.Fatalf("harness_counts.json has no claude@cursor entry: %+v", hc.Counts)
+	}
+	var total int
+	for _, d := range entry.Days {
+		total += d.StoodDown
+	}
+	if total != 2 {
+		t.Errorf("claude@cursor stood_down total = %d, want 2 (one per conversation_id)", total)
+	}
+}
+
+// TestBRD4_SessionlessCursorStandDownsDedupeBySameConversation is the
+// companion case: the SAME conversation_id, sent twice, must still
+// dedupe to one count -- the fix for the case above must not simply stop
+// deduping session-less Cursor calls altogether.
+func TestBRD4_SessionlessCursorStandDownsDedupeBySameConversation(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+
+	for i := 0; i < 2; i++ {
+		res := e.hook(cursorPayloadByConversation(t, "conv-same", "PreToolUse", "toolu_same"))
+		if res.exitCode != 0 {
+			t.Fatalf("hook %d: exit %d, stderr %q", i, res.exitCode, res.stderr)
+		}
+	}
+
+	hc := readHarnessCountsFile(t, e)
+	entry, ok := hc.Counts["claude@cursor"]
+	if !ok {
+		t.Fatalf("harness_counts.json has no claude@cursor entry: %+v", hc.Counts)
+	}
+	var total int
+	for _, d := range entry.Days {
+		total += d.StoodDown
+	}
+	if total != 1 {
+		t.Errorf("claude@cursor stood_down total = %d, want 1 (same conversation_id deduped)", total)
 	}
 }
 

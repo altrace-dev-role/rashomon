@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,6 +19,16 @@ import (
 // identity -- this file is written only by a hook entry that has just
 // decided to stand down, and RecordHarnessMismatch is the only writer.
 const fileHarnessCounts = "harness_counts.json"
+
+// fileHarnessCountsLock is a sidecar RecordHarnessMismatch locks instead of
+// fileHarnessCounts itself, so the data file can be replaced by rename
+// while the lock is held: a lock taken on the data file's own inode would
+// be released from under itself the instant a rename swapped that inode out
+// from under the open handle holding it, letting a second writer, which
+// opens the post-rename path fresh, take the same "lock" concurrently. The
+// sidecar's own content is never read; its only job is to exist and be
+// lockable. It is never renamed, so this problem cannot recur on it.
+const fileHarnessCountsLock = "harness_counts.lock"
 
 // maxHarnessCountsBytes is this file's own hard cap (6.2.1: "at most 64
 // KiB"). maxHarnessCountDays and maxHarnessCountSessions already keep it
@@ -84,12 +93,22 @@ func newHarnessCounts() harnessCounts {
 	return harnessCounts{V: harnessCountsVersion, Counts: map[string]*harnessCountEntry{}}
 }
 
-// readHarnessCounts reads the file at root, treating anything it cannot
+// readHarnessCounts reads the file at path, treating anything it cannot
 // parse -- absent, corrupt, or simply never written -- as a fresh, empty
 // document. This is deliberately as forgiving as internal/recap's
 // recap.json read: a counter file that cannot be trusted must not block a
 // hook from standing down, and re-establishing a clean one costs nothing a
 // reader needs.
+//
+// A plain os.ReadFile is safe here, including under RecordHarnessMismatch's
+// own lock, because that lock is taken on fileHarnessCountsLock, a sidecar,
+// never on this file itself (see its own doc): on Windows, LockFileEx locks
+// are mandatory and per-handle (lock_windows.go's own doc), so a read of
+// THIS file while THIS file's own lock was held by any handle -- including
+// one this same process opened -- used to fail with ERROR_LOCK_VIOLATION,
+// which this function's error path turned into "nothing was ever written"
+// and silently discarded every count and the session dedup list on every
+// locked write, on Windows only.
 func readHarnessCounts(path string) harnessCounts {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -195,6 +214,20 @@ var errHarnessCountsTooLarge = errors.New("store: harness_counts.json would exce
 // this session changes nothing here, matching 6.4's "one locked update ...
 // on a session's first stand-down".
 //
+// sessionID is "" when the caller's own family carries no field it can key
+// a session by for this call (cmd/rashomon's harnessSessionKey's own doc:
+// a Cursor-detected stand-down with no conversation_id, or recap's
+// synthetic payload, which never holds a real field value at all). An
+// empty sessionID is never added to the dedup list and never checked
+// against it: harnessSessionDigest("") is one constant digest for every
+// such call, and deduping against a constant made the FIRST session-less
+// stand-down count and every later, genuinely different one read as
+// already-counted -- an undercount with no ceiling, since nothing ever
+// evicts a digest that keeps getting re-appended to the front of its own
+// list. Every session-less call instead always counts: BRD-4's own bias
+// ("fail toward recording, not toward silence") applied to the counter
+// itself, not just the stand-down it is counting.
+//
 // counted reports whether this call actually changed the file: false for
 // an already-counted session, for a held lock the call gave up on inside
 // harnessCountBudget, or for the (currently unreachable) size refusal
@@ -210,16 +243,49 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 	if err != nil {
 		return false, err
 	}
-	digest := harnessSessionDigest(hkey, sessionID)
+	dedup := sessionID != ""
+	var digest string
+	if dedup {
+		digest = harnessSessionDigest(hkey, sessionID)
+	}
 
 	path := filepath.Join(root, fileHarnessCounts)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, fileMode)
+
+	// Lock-free bounded read, checked before the lock is ever touched (6.4:
+	// "one read of harness_counts.json, and one locked update ... on a
+	// session's FIRST stand-down" -- a session's second and later calls in
+	// this process cost the read only). This is the common case: a hook,
+	// post and probe invocation each call this once per stood-down session,
+	// and every one after the first in that session is a dedup hit. Without
+	// this, every one of them opened the sidecar and waited on its lock for
+	// up to harnessCountBudget under contention before ever checking
+	// whether there was anything left to do.
+	//
+	// A hit here is unconditionally correct whether or not a concurrent
+	// writer is mid-update: readHarnessCounts reads whatever is on disk,
+	// either the pre- or post-update document, and this session's digest is
+	// already in BOTH if it is in either (the writer that put it there has
+	// already finished, because a reader never observes a half-written file
+	// -- writeHarnessCountsAtomic's rename is the reason that is true, not
+	// an assumption this function makes on its own). A MISS proves nothing
+	// either way (a concurrent writer could be about to add exactly this
+	// digest) and falls through to the locked path below, which re-checks
+	// under the lock before deciding to write.
+	if dedup && containsSession(readHarnessCounts(path).Sessions, digest) {
+		return false, nil
+	}
+
+	// The lock is taken on the sidecar, never on fileHarnessCounts itself:
+	// see fileHarnessCountsLock's own doc for why the data file has to stay
+	// free to be renamed out from under nothing while this holds it.
+	lockPath := filepath.Join(root, fileHarnessCountsLock)
+	lf, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, fileMode)
 	if err != nil {
 		return false, err
 	}
-	defer f.Close() //nolint:errcheck // nothing left to do with a close error after a completed write or a skip
+	defer lf.Close() //nolint:errcheck // nothing left to do with a close error once the lock below is released
 
-	unlock, _, lockErr := lockCounted(f, harnessCountBudget)
+	unlock, _, lockErr := lockCounted(lf, harnessCountBudget)
 	if lockErr != nil {
 		// Give up quietly: 6.2.1's own rule for exactly this case ("on a
 		// timeout the count is skipped and retried later in the session").
@@ -228,7 +294,10 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 	defer unlock()
 
 	hc := readHarnessCounts(path)
-	if containsSession(hc.Sessions, digest) {
+	if dedup && containsSession(hc.Sessions, digest) {
+		// The re-check the comment above promises: the lock-free read missed
+		// because a concurrent writer had not yet landed this exact digest,
+		// and now has.
 		return false, nil
 	}
 
@@ -246,7 +315,9 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 	entry.LastStoodDown = day
 	entry.LastEvidence = evidence
 
-	hc.Sessions = append(evictOldestSessions(hc.Sessions), digest)
+	if dedup {
+		hc.Sessions = append(evictOldestSessions(hc.Sessions), digest)
+	}
 
 	encoded, merr := json.Marshal(hc)
 	if merr != nil {
@@ -256,16 +327,48 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 		return false, errHarnessCountsTooLarge
 	}
 
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return false, err
-	}
-	if err := f.Truncate(0); err != nil {
-		return false, err
-	}
-	if _, err := f.Write(encoded); err != nil {
+	if err := writeHarnessCountsAtomic(root, path, encoded); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// writeHarnessCountsAtomic replaces path with encoded by temp file plus
+// rename (Technical spec 6.2.1: "by atomic rename"), the same shape
+// internal/settings.Write and internal/recap's writeState use for the same
+// reason: a reader must never observe a half-written file, and a process
+// killed between the old write's Truncate(0) and its Write left exactly
+// that -- a file this package's own reader then read as "nothing was ever
+// written" and replaced wholesale. The rename is safe to do while
+// RecordHarnessMismatch's own lock is held because that lock is on the
+// sidecar (fileHarnessCountsLock), never on this file's own inode.
+func writeHarnessCountsAtomic(root, path string, encoded []byte) error {
+	tmp, err := os.CreateTemp(root, ".harness_counts.json.rashomon-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath) //nolint:errcheck // a no-op after a successful rename; best effort after a failure
+
+	if err := tmp.Chmod(fileMode); err != nil {
+		tmp.Close() //nolint:errcheck // the chmod error is what matters
+		return err
+	}
+	if _, err := tmp.Write(encoded); err != nil {
+		tmp.Close() //nolint:errcheck // the write error is what matters
+		return err
+	}
+	// Through syncFull, not tmp.Sync() directly: every full sync the store
+	// issues is required to (TestREC34h_EveryStoreLockAndSyncIsRecorded),
+	// so the fault build's recorder sees this one too.
+	if err := syncFull(tmp); err != nil {
+		tmp.Close() //nolint:errcheck // the sync error is what matters
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 // A read-only accessor for status/disclose's claude_entries_stood_down
