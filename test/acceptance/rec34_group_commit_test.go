@@ -390,8 +390,16 @@ func TestREC34_FailedBarrierIsMarkedNotRetried(t *testing.T) {
 			if !e.hasReason(sess, "flush_failed") {
 				t.Errorf("report coverage %s %v; want flush_failed", sess.Coverage.State, sess.Coverage.Reasons)
 			}
-			if got := sess.Declarations.NotDurable; len(got) != 1 || got[0] != testToolUseID {
-				t.Errorf("declarations.not_durable = %q; want the marked call, %s", got, testToolUseID)
+			// The failed barrier is the seq counter's, the first ordered
+			// append issues: appendOrdered returns before the declaration
+			// or execution line is ever written, so there is no record of
+			// any kind for testToolUseID beside the marker itself. Naming
+			// it in not_durable would call a declaration possibly not
+			// durable when there never was one -- the session's own
+			// flush_failed reason, asserted above, is what carries this
+			// failure.
+			if got := sess.Declarations.NotDurable; len(got) != 0 {
+				t.Errorf("declarations.not_durable = %q, want none: %s was never declared or executed", got, testToolUseID)
 			}
 		})
 	}

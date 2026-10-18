@@ -304,11 +304,30 @@ func (r *Run) Dropped() []string {
 // in the order the markers were read: calls whose records a hook or post
 // appended and then could not make durable (REC-34 (c)). A marker naming no
 // call names nothing here; the report still marks its session.
+//
+// Nor does one naming a call with no record of any kind. A marker's own
+// write is the LAST thing a failing invocation does: the record it speaks
+// for -- Handler's declaration, or Post's execution, per the marker's Phase
+// -- is appended earlier in the same process, through the same ordered-append
+// path (appendOrdered). When that append's own barrier is what fails -- the
+// shared seq counter's, ahead of the record's own write -- the record is
+// never written at all, and flushOrMark still fires on the sticky failure
+// Flush now returns. Listing that id here would call a declaration or
+// execution possibly not durable when there never was one to lose. Dropped
+// excludes a flush_failed marker for the complementary reason, so the two
+// lists never both name the same call.
 func (r *Run) NotDurable() []string {
+	hasRecord := map[string]bool{}
+	for _, d := range r.Declarations {
+		hasRecord[d.ToolUseID] = true
+	}
+	for _, x := range r.Executions {
+		hasRecord[x.ToolUseID] = true
+	}
 	seen := map[string]bool{}
 	var ids []string
 	for _, t := range r.Terminals {
-		if t.FlushFailed() && t.ToolUseID != "" && !seen[t.ToolUseID] {
+		if t.FlushFailed() && t.ToolUseID != "" && hasRecord[t.ToolUseID] && !seen[t.ToolUseID] {
 			seen[t.ToolUseID] = true
 			ids = append(ids, t.ToolUseID)
 		}
