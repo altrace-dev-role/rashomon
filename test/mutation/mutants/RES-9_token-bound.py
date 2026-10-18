@@ -29,8 +29,11 @@ m("RES-9 an ssh line read to the bound is not reported as cut", "internal/shape/
   "\treturn out, len(toks), err == errTokenBound\n", "\treturn out, len(toks), err == errUncertain\n",
   "TestRES9_HostsSayAnSSHDestinationPastTheBoundWasCut")
 m("RES-9 lines left past the ssh budget are not reported as cut", "internal/shape/hosts.go",
-  "\t\tif lineCut || budget <= 0 && rest != \"\" {\n", "\t\tif lineCut {\n",
+  "\t\tif lineCut || budget <= 0 && strings.TrimSpace(rest) != \"\" {\n", "\t\tif lineCut {\n",
   "TestRES9_HostsSayAnSSHDestinationPastTheBoundWasCut")
+m("RES-9 a blank-whitespace remainder past the ssh budget is still reported as cut", "internal/shape/hosts.go",
+  "\t\tif lineCut || budget <= 0 && strings.TrimSpace(rest) != \"\" {\n", "\t\tif lineCut || budget <= 0 && rest != \"\" {\n",
+  "TestSSHCommandHosts_BlankRemainderIsNotACut")
 m("RES-9 HostsCut drops the ssh reader's cut", "internal/shape/hosts.go",
   "\t\tnamed, cut = sshCommandHosts(text)\n", "\t\tnamed, _ = sshCommandHosts(text)\n",
   "TestRES9_HostsSayAnSSHDestinationPastTheBoundWasCut")

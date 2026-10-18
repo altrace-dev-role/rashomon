@@ -199,7 +199,11 @@ func sshCommandHosts(text string) (out []string, cut bool) {
 		hosts, read, lineCut := sshLineHosts(line)
 		out = append(out, hosts...)
 		budget -= max(read, 1)
-		if lineCut || budget <= 0 && rest != "" {
+		// strings.TrimSpace(rest), not rest != "": a remainder of pure
+		// whitespace -- a trailing newline, a blank line -- names nothing
+		// and could not have held a host no matter how much budget were
+		// left, so leaving it unread is not a cut.
+		if lineCut || budget <= 0 && strings.TrimSpace(rest) != "" {
 			cut = true
 		}
 	}
@@ -209,6 +213,13 @@ func sshCommandHosts(text string) (out []string, cut bool) {
 // sshLineHosts is sshCommandHosts over one line, how many tokens it read, and
 // whether it read the line only to the token bound. Any other tokenizer error
 // is not a cut: the tokens it completed are the line's.
+//
+// errUncertain specifically cannot reach here: tokenizeMarked calls
+// tokenizeShape, which calls lex with program and docs both false, and every
+// branch in lex that returns errUncertain is itself guarded by l.program or
+// l.docs. An unterminated quote (errUnterminated) can reach here, and is
+// correctly not a cut either -- the quote consumes to the end of the line,
+// so there is nothing after it in this line to miss.
 func sshLineHosts(line string) ([]string, int, bool) {
 	// On a line it cannot finish, lex still returns the tokens it read before
 	// the fault, and a host among them was named all the same.

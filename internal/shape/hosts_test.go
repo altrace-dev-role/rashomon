@@ -466,6 +466,33 @@ func TestSSHCommandHosts_LineBudgetIsTheRemainder(t *testing.T) {
 	}
 }
 
+// TestSSHCommandHosts_BlankRemainderIsNotACut: once the budget is spent, a
+// remainder that is pure whitespace -- trailing newlines, a stray blank
+// line -- names nothing and could not have held a host no matter how much
+// budget were left, so it must not report a cut. sshCommandHosts was
+// checking rest != "" rather than whether rest held anything but
+// whitespace, so a command that happened to end in a blank line after
+// exhausting the budget on its real content reported cut=true for content
+// that was never actually missed.
+func TestSSHCommandHosts_BlankRemainderIsNotACut(t *testing.T) {
+	filler := strings.Repeat("x ", maxTokens)
+	_, cut := sshCommandHosts(filler + "\n   ")
+	if cut {
+		t.Error("cut = true, want false: the remainder after the budget ran out was pure whitespace, nothing was actually left unread")
+	}
+}
+
+// TestSSHCommandHosts_RealRemainderIsStillACut pins the case the fix above
+// must not break: a non-blank remainder left unread when the budget runs out
+// is still a cut.
+func TestSSHCommandHosts_RealRemainderIsStillACut(t *testing.T) {
+	filler := strings.Repeat("x ", maxTokens)
+	_, cut := sshCommandHosts(filler + "\nssh real-host.example.com")
+	if !cut {
+		t.Error("cut = false, want true: a real line was left unread when the budget ran out")
+	}
+}
+
 // TestSSHDestinationRefusesACredential is CWE-522 on the positional path.
 //
 // A destination carrying a password is refused, not stripped. Splitting at
