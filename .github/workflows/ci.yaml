@@ -387,3 +387,13 @@ jobs:
       # mutation sweep, which stays on ubuntu-latest in its own job.
       - name: REC-34 group commit (darwin)
         run: go test -race -count=1 -run 'TestREC34' ./internal/store ./test/acceptance
+
+      # sync_darwin.go's own 14 mutants build on no other GOOS, and the one
+      # mutant whose judging test is darwin-only (platform="darwin" in the
+      # mutant file) reports NOT JUDGED (platform) everywhere else too: this
+      # is the only runner where any of them are exercised at all. Scoped to
+      # this one file, not the full sweep, which stays on ubuntu-latest in
+      # its own job and would otherwise run twice for every mutant outside
+      # this file.
+      - name: REC-34 group commit mutants (darwin)
+        run: python3 test/mutation/sweep.py --strict --files mutants/REC-34_group-commit.py

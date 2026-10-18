@@ -131,6 +131,13 @@ func importEntry(name, file, old, new string) string {
 	return fmt.Sprintf("IMPORTS[%q] = (%q, %q, %q)\n", name, file, old, new)
 }
 
+// mutantOnPlatform is mutant with the platform= keyword a mutant adds when
+// its judging test only means something on one GOOS, even though its target
+// builds everywhere.
+func mutantOnPlatform(name, file, old, new, test, platform string) string {
+	return fmt.Sprintf("m(%q, %q, %q, %q, %q, platform=%q)\n", name, file, old, new, test, platform)
+}
+
 func nonEmptyLines(s string) []string {
 	var out []string
 	for _, ln := range strings.Split(s, "\n") {
@@ -527,6 +534,46 @@ func TestDEL18_PlatformExcludedMutantIsNotJudged(t *testing.T) {
 	if code != 0 {
 		t.Errorf("--strict exited %d; a mutant whose target is not built for GOOS=%s must not fail the strict sweep on %s:\n%s",
 			code, foreign, runtime.GOOS, out)
+	}
+}
+
+// TestDEL18b_PlatformDeclaredMutantIsNotJudgedOffItsGOOS: a mutant whose
+// TARGET builds everywhere but whose judging test only means something on
+// one GOOS -- the test itself skips elsewhere by design -- is NOT JUDGED
+// (platform) there too, the same verdict DEL-18 gives a build-excluded
+// target, once the mutant declares platform=. Before that declaration
+// existed, a test like this one put the mutant in the "skipped" bucket,
+// which --strict treats as a failure (TestStrict_NotJudgedFailsOnlyWithTheFlag):
+// that was the bug a real GOOS-only mutant (REC-34's "the hook never signals
+// before flush") hit on Linux, where its judging test is darwin-only.
+func TestDEL18b_PlatformDeclaredMutantIsNotJudgedOffItsGOOS(t *testing.T) {
+	foreign := "linux"
+	if runtime.GOOS == "linux" {
+		foreign = "darwin"
+	}
+
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "go.mod"), "module fixturemod\n\ngo 1.21\n")
+	write(t, filepath.Join(dir, "value.go"), "package fixture\n\nfunc Value() int { return 1 }\n")
+	write(t, filepath.Join(dir, "value_test.go"), fmt.Sprintf(
+		"package fixture\n\nimport (\n\t\"runtime\"\n\t\"testing\"\n)\n\nfunc TestFixtureY_Value(t *testing.T) {\n"+
+			"\tif runtime.GOOS != %q {\n\t\tt.Skip(\"only meaningful on \"+%q)\n\t}\n"+
+			"\tif Value() != 1 {\n\t\tt.Fatalf(\"Value() = %%d, want 1\", Value())\n\t}\n}\n", foreign, foreign))
+
+	const name = "fixture value, judged only on a declared platform"
+	mutantFile := filepath.Join(t.TempDir(), "fixture.py")
+	write(t, mutantFile, mutantOnPlatform(name, "value.go", "return 1", "return 2", "TestFixtureY_", foreign))
+
+	out, code := sweep(t, dir, "--strict", "--files", mutantFile)
+	if code != 0 {
+		t.Fatalf("--strict exited %d; a mutant declaring platform=%q must not fail the strict sweep on GOOS=%s:\n%s",
+			code, foreign, runtime.GOOS, out)
+	}
+	if !strings.Contains(out, "NOT JUDGED (platform)") {
+		t.Errorf("sweep output does not report the declared-platform mutant as NOT JUDGED (platform):\n%s", out)
+	}
+	if strings.Contains(out, "undetected: ["+name) {
+		t.Errorf("the declared-platform mutant was counted undetected, not merely unjudged:\n%s", out)
 	}
 }
 
