@@ -138,14 +138,14 @@ m("REC-34 the barrier constant is F_FULLFSYNC's number", "internal/store/sync_da
 # report renders such a declaration as possibly not durable"; P09-F11), beside
 # the session-level reason it already carried.
 m("REC-34 the run names no call not durable", "internal/store/read.go",
-  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && !seen[t.ToolUseID] {",
-  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && !seen[t.ToolUseID] && false {", "TestREC34k_")
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && hasRecord[t.ToolUseID] && !seen[t.ToolUseID] {",
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && hasRecord[t.ToolUseID] && !seen[t.ToolUseID] && false {", "TestREC34k_")
 m("REC-34 a marker naming no call names an empty one", "internal/store/read.go",
-  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && !seen[t.ToolUseID] {",
-  "\t\tif t.FlushFailed() && !seen[t.ToolUseID] {", "TestREC34k_")
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && hasRecord[t.ToolUseID] && !seen[t.ToolUseID] {",
+  "\t\tif t.FlushFailed() && hasRecord[t.ToolUseID] && !seen[t.ToolUseID] {", "TestREC34r_")
 m("REC-34 a call marked twice is named twice", "internal/store/read.go",
-  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && !seen[t.ToolUseID] {",
-  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" {", "TestREC34k_")
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && hasRecord[t.ToolUseID] && !seen[t.ToolUseID] {",
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && hasRecord[t.ToolUseID] {", "TestREC34k_")
 m("REC-34 the report lists no call not durable", "internal/report/report.go",
   "\t\t\tNotDurable:       nonNil(run.NotDurable()),", "\t\t\tNotDurable:       []string{},", "TestREC34k_")
 m("REC-34 the text never says which call", "internal/report/text.go",
@@ -200,3 +200,12 @@ m("REC-34 the flush_failed marker carries no phase", "internal/hook/flush.go",
 m("REC-34 the hook's own flush marks itself as post", "internal/hook/flush.go",
   "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhaseCall)",
   "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhasePost)", "TestREC34_FailedFlushIsMarkedAndNeverRetried")
+
+# A flush_failed marker can name a call whose own record never landed: the
+# seq counter's barrier, the first ordered append issues, is what failed, so
+# appendOrdered returned before the declaration or execution line was ever
+# written. NotDurable must not call that id possibly not durable when there
+# is no declaration or execution to lose (REC-34).
+m("REC-34 not durable names a call with no record at all", "internal/store/read.go",
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && hasRecord[t.ToolUseID] && !seen[t.ToolUseID] {",
+  "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && !seen[t.ToolUseID] {", "TestREC34r_")

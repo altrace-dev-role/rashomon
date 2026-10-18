@@ -335,6 +335,42 @@ func TestREC34k_NotDurableNamesEveryMarkedCall(t *testing.T) {
 	}
 }
 
+// TestREC34r_NotDurableSkipsAMarkerWithNoDeclaration: a flush_failed marker
+// can name a tool_use_id for which no declaration exists -- the declaration's
+// own append is what failed, before flushOrMark ever ran. Listing that id in
+// NotDurable would say a call's records may be lost when there never were
+// any records for it, declaration included; Dropped skips a flush_failed
+// marker the same way, for the opposite reason, so the two never double-name
+// a call between them.
+func TestREC34r_NotDurableSkipsAMarkerWithNoDeclaration(t *testing.T) {
+	reason := ReasonFlushFailed
+	marker := func(id string) Terminal {
+		return Terminal{Type: TypeTerminal, SchemaVersion: SchemaVersion, ToolUseID: id, Outcome: OutcomeError, Reason: &reason}
+	}
+	run := &Run{
+		Declarations: []Declaration{{ToolUseID: "toolu_a"}},
+		Terminals:    []Terminal{marker("toolu_a"), marker("toolu_never_declared")},
+	}
+	if got := run.NotDurable(); !slices.Equal(got, []string{"toolu_a"}) {
+		t.Errorf("NotDurable() = %q, want [toolu_a]: a marker naming an undeclared call is not a declaration possibly not durable", got)
+	}
+	if got := run.Dropped(); len(got) != 0 {
+		t.Errorf("Dropped() = %q, want none: a flush_failed marker is not a dropped declaration either", got)
+	}
+
+	// A declaration naming no call (ToolUseID "") is itself malformed, but
+	// it makes hasRecord[""] true, which is exactly when the explicit empty
+	// check still earns its keep: without it a marker naming no call would
+	// read as though it named this declaration.
+	withEmptyDeclaration := &Run{
+		Declarations: []Declaration{{ToolUseID: ""}},
+		Terminals:    []Terminal{marker("")},
+	}
+	if got := withEmptyDeclaration.NotDurable(); len(got) != 0 {
+		t.Errorf("NotDurable() = %q, want none: a marker naming no call names nothing, whatever hasRecord[\"\"] is", got)
+	}
+}
+
 // TestREC34q_DeferredStateIsLockGuarded: deferred, dirty and flushErr are
 // documented single-owner state (the Store doc comment, above), never
 // touched by two goroutines in any path this program calls today -- but an
