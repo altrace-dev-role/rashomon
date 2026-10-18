@@ -11,12 +11,12 @@ import (
 // an error only when the flush failed and the marker saying so could not be
 // written either; see flushOrMark.
 func (h *Handler) Flush() error {
-	return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now())
+	return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhaseCall)
 }
 
 // Flush is Handler.Flush for a PostToolUse invocation.
 func (p *Post) Flush() error {
-	return flushOrMark(p.st, p.sessionID, p.toolUseID, p.now())
+	return flushOrMark(p.st, p.sessionID, p.toolUseID, p.now(), store.PhasePost)
 }
 
 // flushOrMark issues the store's one full sync and, when it fails, marks the
@@ -25,13 +25,16 @@ func (p *Post) Flush() error {
 // reader takes the call's records as possibly not durable rather than as
 // fine. The marker is synced in full, because a failed Flush ends the store's
 // deferral: behind a barrier alone it could be lost with the records it
-// speaks for, and say nothing.
+// speaks for, and say nothing. phase is store.PhaseCall from Handler.Flush or
+// store.PhasePost from Post.Flush, naming which invocation's own records the
+// marker speaks for: Handler's declaration, or Post's execution, written by a
+// separate, earlier invocation of this entry.
 //
 // It returns an error when the marker could not be written or its full sync
 // failed: a marker that is not durable is not a marker. There is then no
 // record left to hold the failure, and the caller says so on stderr, as
 // openForHook does when there is no store.
-func flushOrMark(st *store.Store, sessionID, toolUseID string, now time.Time) error {
+func flushOrMark(st *store.Store, sessionID, toolUseID string, now time.Time, phase string) error {
 	if st.Flush() == nil {
 		return nil
 	}
@@ -44,5 +47,6 @@ func flushOrMark(st *store.Store, sessionID, toolUseID string, now time.Time) er
 		SessionID:     sessionID,
 		Outcome:       store.OutcomeError,
 		Reason:        &reason,
+		Phase:         &phase,
 	})
 }

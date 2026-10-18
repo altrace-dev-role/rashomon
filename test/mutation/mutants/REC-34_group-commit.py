@@ -163,6 +163,14 @@ m("REC-34 the hook never signals before flush", "cmd/rashomon/main.go",
   # on Linux and Windows, which --strict treats as a broken environment
   # rather than as the darwin-only mutant it is.
   platform="darwin")
+# The flush_failed marker rides a schema bump instead of a new record type
+# (record.go's SchemaVersion doc): a reader that only understands up to 4
+# must skip the whole line, never read Reason and half-understand it as an
+# ordinary closing terminal. Siblings of "B2 the reader stops accepting
+# schema 3" and "MS the reader stops accepting schema 4".
+m("REC-34 the reader stops accepting schema 5", "internal/store/record.go",
+  "\treturn version >= 1 && version <= 5",
+  "\treturn version >= 1 && version <= 5 && version != 5", "TestAcceptsAdmits")
 
 # flushFile's reopen is ENOENT in two different situations (REC-34): the
 # run was removed whole (forget, eviction), where there is nothing left to
@@ -173,3 +181,13 @@ m("REC-34 the run being gone is a flush failure", "internal/store/store.go",
   '\tif err != nil {\n\t\tif errors.Is(err, fs.ErrNotExist) && runGone(path) {\n\t\t\treturn nil\n\t\t}\n\t\treturn err\n\t}\n', '\tif err != nil {\n\t\treturn err\n\t}\n', "TestREC34p_")
 m("REC-34 any ENOENT is nothing to flush, not just a gone run", "internal/store/store.go",
   "errors.Is(err, fs.ErrNotExist) && runGone(path)", "errors.Is(err, fs.ErrNotExist)", "TestREC34c_")
+
+# A flush_failed marker names which invocation wrote it (REC-34): without
+# phase a reader cannot tell whether the declaration or the execution is
+# the one possibly not durable. TestREC34_FailedFlushIsMarkedAndNeverRetried
+# asserts the marker's phase in both its hook and post subtests.
+m("REC-34 the flush_failed marker carries no phase", "internal/hook/flush.go",
+  "\t\tReason:        &reason,\n\t\tPhase:         &phase,\n", "\t\tReason:        &reason,\n", "TestREC34_FailedFlushIsMarkedAndNeverRetried")
+m("REC-34 the hook's own flush marks itself as post", "internal/hook/flush.go",
+  "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhaseCall)",
+  "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhasePost)", "TestREC34_FailedFlushIsMarkedAndNeverRetried")

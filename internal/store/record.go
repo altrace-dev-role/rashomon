@@ -25,10 +25,27 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // tail` says nothing about it, which a reader must take as "not measured",
 // not as "not hidden". Nothing else changed, and v1 to v3 records still read.
 //
+// v5 is not additive the way v2 to v4 were: no field was added, and nothing
+// a v4 record carries changed meaning. What changed is which terminals a
+// reader may treat as closing a declaration. Terminal.Reason can now be
+// ReasonFlushFailed (REC-34), marking a call whose records a failed flush
+// left possibly not durable -- and such a terminal must NOT close the
+// declaration it names, or a possibly-lost call reads as a finished one.
+// A v4 reader has no FlushFailed check; it closes on any terminal. Bumping
+// the version is what keeps it from reading one of these at all: Accepts
+// runs before the type switch (classifyRunLine), so a v4-or-earlier reader
+// skips the whole line instead of half-understanding it. The alternative --
+// a new record type instead of a version bump -- was rejected here because
+// Terminal is the type every other call-record consumer already walks;
+// moving the marker out of it would have meant auditing every one of them
+// for an assumption that a terminal is the only thing that closes a call,
+// rather than teaching the one function (Accepts) that already exists to
+// gate what a reader understands.
+//
 // SchemaVersion is the version of a call's records: its declaration, the
 // terminal that closes it, and its execution. Coverage and gap records are
 // written at SessionSchemaVersion instead.
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 // SessionSchemaVersion is the version of the records that describe a session
 // rather than one call: coverage and gaps. Neither has changed since v3, so
@@ -52,12 +69,12 @@ const SessionSchemaVersion = 3
 // skipped -- a store that had been recording for weeks would have rendered an
 // empty report, and nothing would have said why.
 //
-// v4 is what this build writes; 1 to 3 are accepted so older stores read.
+// v5 is what this build writes; 1 to 4 are accepted so older stores read.
 // Records from a newer schema are skipped without error; the report shows
 // them only as a skipped-records count and the records_unreadable coverage
 // reason, and is empty only when every record is newer.
 func Accepts(version int) bool {
-	return version >= 1 && version <= 4
+	return version >= 1 && version <= 5
 }
 
 // Record type discriminators.
@@ -351,6 +368,16 @@ type Terminal struct {
 	SessionID     string  `json:"session_id"`
 	Outcome       string  `json:"outcome"`
 	Reason        *string `json:"reason"`
+	// Phase is PhaseCall or PhasePost, naming which invocation wrote this
+	// terminal (v5). It is null for an ordinary closing terminal, which
+	// Handler.Close always writes from the hook's own PreToolUse process
+	// and so carries no ambiguity worth a field for. It is set on a
+	// ReasonFlushFailed marker, where it does: PhaseCall means the
+	// DECLARATION this invocation itself wrote may not be durable; PhasePost
+	// means the EXECUTION post just appended may not be, while the
+	// declaration -- flushed by an earlier, separate hook invocation -- is
+	// unaffected. Without it a reader sees a marker and cannot tell which.
+	Phase *string `json:"phase"`
 }
 
 // FlushFailed reports a terminal that marks its call's records as possibly

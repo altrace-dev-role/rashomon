@@ -72,6 +72,9 @@ var (
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
 		"tool_use_id", "session_id", "outcome", "reason",
+		// v5. Which invocation wrote this terminal: call or post, set only
+		// on a flush_failed marker. Null on an ordinary closing terminal.
+		"phase",
 	}
 	coverageKeys = []string{
 		"type", "schema_version", "recorded_at_unix_ms",
