@@ -37,6 +37,6 @@ m("TRU-23 the baseline directory stops matching baseline/<key>.json", "internal/
 # the only way to show the comparison is load-bearing: a pinned count that
 # silently matched anything would be as useless as no test at all.
 m("TRU-23 the pinned store write-call-site count stops matching the source", "internal/disclose/disclose_test.go",
-  "\t\t{\"store\", 14},",
   "\t\t{\"store\", 15},",
+  "\t\t{\"store\", 16},",
   "TestTRU23_WriteCallSitesArePinned")
