@@ -38,7 +38,7 @@ func cmdConsent(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	ans, err := askConsent("consent", screen, yes, show, stdout, consent.QuestionConsent)
+	ans, err := askConsent("consent", screen, yes, show, workTreeQuestion{}, stdout, consent.QuestionConsent)
 	if err != nil || ans == nil {
 		return err
 	}

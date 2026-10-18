@@ -33,6 +33,9 @@ const (
 	refuseAgent    = "%s was run from an agent session; nothing was written. Read the screen above, then run rashomon %s in your own terminal."
 	refuseNoTTY    = "%s needs a terminal to ask; nothing was written. Read the screen above, then run it in your own terminal."
 	nothingWritten = "nothing was written"
+	// refuseWorkTreeYes is --yes with the store root inside a git work
+	// tree: confirming that takes the person typing the tree's name.
+	refuseWorkTreeYes = "the store root %s is inside the git work tree %s, which has to be confirmed by typing its name; nothing was written. Run rashomon %s in your own terminal, without --yes."
 )
 
 // consentFlags parses watch's and consent's flags: --yes and --show, and
@@ -59,6 +62,7 @@ type watchPlan struct {
 	exe       string
 	exeSHA256 string
 	installID string // "" when there is no store yet
+	workTree  string // the git work tree the root is in, or ""
 	changes   bool   // install.Apply would change settings.json
 	covered   bool   // the consent on file covers this build's scope
 	prior     *consent.Record
@@ -92,7 +96,7 @@ func cmdWatch(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	ans, err := askConsent("watch", screen, yes, show, stdout, consent.QuestionInstall, consent.QuestionSDK)
+	ans, err := askConsent("watch", screen, yes, show, plan.workTreeQuestion(), stdout, consent.QuestionInstall, consent.QuestionSDK)
 	if err != nil || ans == nil {
 		return err
 	}
@@ -102,7 +106,7 @@ func cmdWatch(args []string, stdout io.Writer) error {
 		return err
 	}
 	gate.hold()
-	installID, foreign, err := applyWatch(plan, rec, ans.sdk)
+	installID, foreign, err := applyWatch(plan, rec, ans)
 	if err != nil {
 		// When settings.json could not be put back, the entries stay
 		// installed, and this line is the one way left to take them out.
@@ -142,14 +146,29 @@ type answers struct {
 	via consent.Via
 	tty bool
 	sdk bool
+	// workTree is the work tree top the person confirmed the store root
+	// in by typing its name; "" when the root is in none.
+	workTree string
+}
+
+// workTreeQuestion is watch's third question: whether the store root may
+// sit inside a git work tree. The zero value asks nothing.
+type workTreeQuestion struct {
+	root, top string
+}
+
+func (p *watchPlan) workTreeQuestion() workTreeQuestion {
+	return workTreeQuestion{root: p.root, top: p.workTree}
 }
 
 // askConsent is step 4 and step 5 for watch and consent: print the screen
 // and stop (--show), refuse an agent session, take --yes, or ask on the
 // terminal. It returns nil answers, and a nil error only for --show, when
 // the command is done without writing anything. Every question is asked
-// here, before anything is written.
-func askConsent(verb string, screen []byte, yes, show bool, stdout io.Writer, questions ...string) (*answers, error) {
+// here, before anything is written. When wt names a work tree, a last
+// question asks for its top directory's name; --yes cannot answer that, so
+// it refuses.
+func askConsent(verb string, screen []byte, yes, show bool, wt workTreeQuestion, stdout io.Writer, questions ...string) (*answers, error) {
 	if show {
 		_, err := stdout.Write(screen)
 		return nil, err
@@ -167,6 +186,9 @@ func askConsent(verb string, screen []byte, yes, show bool, stdout io.Writer, qu
 	if yes {
 		if _, err := stdout.Write(screen); err != nil {
 			return nil, err
+		}
+		if wt.top != "" {
+			return nil, fmt.Errorf(refuseWorkTreeYes, wt.root, wt.top, verb)
 		}
 		// Neither question is asked, so the Agent SDK one takes its
 		// default, no.
@@ -199,6 +221,16 @@ func askConsent(verb string, screen []byte, yes, show bool, stdout io.Writer, qu
 			ans.sdk = yes
 		}
 	}
+	if wt.top != "" {
+		reply, eof, err := term.Ask("\n" + fmt.Sprintf(consent.QuestionWorkTree, wt.root, wt.top))
+		if err != nil {
+			return nil, err
+		}
+		if eof || strings.TrimSpace(reply) != filepath.Base(wt.top) {
+			return nil, errors.New(nothingWritten)
+		}
+		ans.workTree = wt.top
+	}
 	return ans, nil
 }
 
@@ -217,6 +249,9 @@ func planWatch() (*watchPlan, error) {
 	doc, err := settings.Parse(original)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", plan.loc.User, err)
+	}
+	if plan.workTree, err = store.WorkTreeTop(plan.root); err != nil {
+		return nil, err
 	}
 	planID := plan.installID
 	if planID == "" {
@@ -408,16 +443,18 @@ var errEntriesLeft = errors.New("the entries are installed, and the line above r
 const (
 	stepStore    = "opening the store"
 	stepCreated  = "recording the directories watch created"
+	stepWorkTree = "recording the confirmed work tree"
 	stepSDK      = "recording the Agent SDK answer"
 	stepSettings = "editing settings.json"
 	stepRecord   = "recording what watch changed"
 	stepConsent  = "recording your consent"
 )
 
-// applyWatch is step 6: open the store, record the Agent SDK answer, edit
-// settings.json, append the consent record. A failure undoes what came
+// applyWatch is step 6: open the store, record a confirmed work tree in
+// install.json, record the Agent SDK answer, edit settings.json, append the
+// consent record. A failure undoes what came
 // before it in reverse.
-func applyWatch(plan *watchPlan, rec consent.Record, sdk bool) (installID string, foreign []string, err error) {
+func applyWatch(plan *watchPlan, rec consent.Record, ans *answers) (installID string, foreign []string, err error) {
 	var w writes
 
 	// Taken before anything is created, so they name exactly what this watch
@@ -439,10 +476,19 @@ func applyWatch(plan *watchPlan, rec consent.Record, sdk bool) (installID string
 	if err := recordCreatedDirs(st.Root(), created); err != nil {
 		return installID, nil, w.fail(stepCreated, err)
 	}
+	if ans.workTree != "" {
+		undo, err = restorable(filepath.Join(plan.root, store.FileInstallMeta), fault.PointWatchWorkTree, func() error {
+			return store.SetRootInWorkTree(plan.root, ans.workTree)
+		})
+		if err != nil {
+			return installID, nil, w.fail(stepWorkTree, err)
+		}
+		w.done = append(w.done, undoStep{stepWorkTree, undo})
+	}
 	fault.Inject(fault.PointWatchWriting)
 
 	undo, err = restorable(consent.HarnessesPath(plan.root), fault.PointWatchSDK, func() error {
-		return consent.WriteSDKAnswer(plan.root, sdk)
+		return consent.WriteSDKAnswer(plan.root, ans.sdk)
 	})
 	if err != nil {
 		return installID, nil, w.fail(stepSDK, err)

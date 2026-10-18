@@ -213,6 +213,18 @@ func defaultFiles() []FileRule {
 			Owner:      "store",
 		},
 		{
+			// SetRootInWorkTree writes the new record under this name and
+			// renames it over install.json (internal/store).
+			Base:       "",
+			Pattern:    "." + store.FileInstallMeta + ".tmp-*",
+			Mode:       "0600",
+			Purpose:    "install.json's replacement; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "what install.json is about to hold",
+			NeverHolds: "a hostname or any call's content",
+			RemovedBy:  "the write that made it (renamed over install.json); purge",
+			Owner:      "store",
+		},
+		{
 			Base:       runSegment,
 			Pattern:    store.FileRecords,
 			Mode:       "0600",

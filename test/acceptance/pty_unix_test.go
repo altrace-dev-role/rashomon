@@ -138,6 +138,15 @@ func (s *ptySession) answer(line string) {
 	}
 }
 
+// typeThenEOF types text and then Ctrl-D twice, never a line feed: the
+// first hands text to the reader, the second is end of file.
+func (s *ptySession) typeThenEOF(text string) {
+	s.t.Helper()
+	if _, err := s.master.Write(append([]byte(text), 4, 4)); err != nil {
+		s.t.Fatalf("typing %q then Ctrl-D: %v", text, err)
+	}
+}
+
 // eof types Ctrl-D at the start of a line: end of file to the reader.
 func (s *ptySession) eof() {
 	s.t.Helper()

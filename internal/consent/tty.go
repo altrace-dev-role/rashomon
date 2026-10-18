@@ -15,6 +15,11 @@ const (
 	QuestionConsent = "Agree to what this screen describes? [y/N] "
 )
 
+// QuestionWorkTree is watch's third question, asked only when the store root
+// is inside a git work tree: it names the root and the work tree's top
+// directory, and the answer must be that directory's name, typed out.
+const QuestionWorkTree = "The store root %s is inside the git work tree %s.\nType that directory's name to confirm: "
+
 // maxAnswerBytes bounds one answer. A longer line is not an answer anyone
 // typed, and reading it whole would let a paste grow memory without limit.
 const maxAnswerBytes = 1024

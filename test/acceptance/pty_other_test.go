@@ -29,6 +29,7 @@ func (s *ptySession) waitFor(string)     {}
 func (s *ptySession) countOf(string) int { return 0 }
 func (s *ptySession) answer(string)      {}
 func (s *ptySession) eof()               {}
+func (s *ptySession) typeThenEOF(string) {}
 func (s *ptySession) wait() result       { return result{} }
 
 // noTerminal is a no-op: a windows process has no /dev/tty to open.

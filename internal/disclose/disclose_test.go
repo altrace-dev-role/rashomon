@@ -73,7 +73,8 @@ func TestDefaultNeverPairsAScopeVersionWithAnEmptyInventory(t *testing.T) {
 // and the two sibling packages that write under the same store root --
 // recap and baseline -- through every write each has: Open's two root
 // files, a declaration, a spilled execution, a coverage record, a probe
-// mark, a gap, a host-scoped forget, a machine pause, a recap claim and
+// mark, a gap, a host-scoped forget, a machine pause, a confirmed work tree
+// (and its replacement file), a recap claim and
 // failure, and a baseline update. It checks every resulting path on disk
 // against Default().Files. A path any of the three writes that is not
 // covered here is the regression this test exists to catch: a FileRule list
@@ -128,6 +129,18 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}
 	if _, _, err := store.Pause(root, time.Now()); err != nil {
 		t.Fatalf("store.Pause: %v", err)
+	}
+	if err := store.SetRootInWorkTree(root, root); err != nil {
+		t.Fatalf("store.SetRootInWorkTree: %v", err)
+	}
+	// Its replacement exists only between the write and the rename; make
+	// one where it would be, to check its rule.
+	tmp, err := os.CreateTemp(root, "."+store.FileInstallMeta+".tmp-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tmp.Close(); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := recap.Claim(root, sessionID, "prompt-1", time.Now(), true); err != nil {
 		t.Fatalf("recap.Claim: %v", err)
