@@ -131,7 +131,7 @@ m("REC-34 the barrier's fcntl is F_FULLFSYNC", "internal/store/sync_darwin.go",
   "fd, fBarrierFsync, 0)", "fd, syscall.F_FULLFSYNC, 0)", "TestREC34h_")
 m("REC-34 the barrier's fcntl command is a bare number", "internal/store/sync_darwin.go",
   "fd, fBarrierFsync, 0)", "fd, 51, 0)", "TestREC34h_")
-m("REC-34 the barrier constant is F_FULLFSYNC's number, judged on every platform", "internal/store/sync_darwin.go",
+m("REC-34 the barrier constant is F_FULLFSYNC's number", "internal/store/sync_darwin.go",
   "const fBarrierFsync = 85", "const fBarrierFsync = 51", "TestREC34h_")
 # The report names each call a flush_failed marker covers (REC-34 (c): "the
 # report renders such a declaration as possibly not durable"; P09-F11), beside
@@ -154,4 +154,11 @@ m("REC-34 the text never says which call", "internal/report/text.go",
 # hook.before_flush exists at all to hang on.
 m("REC-34 the hook never signals before flush", "cmd/rashomon/main.go",
   "\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n",
-  "\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n", "TestREC34_")
+  "\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n", "TestREC34_",
+  # Its only judging test, TestREC34_SignalBeforeFlushReachesTheSyncLog,
+  # calls skipWithoutAFlush and so skips whole off darwin (P09-F9: there is
+  # no Flush to race a signal against when every barrier is already a full
+  # sync). Without platform=, that puts this mutant in the "skipped" bucket
+  # on Linux and Windows, which --strict treats as a broken environment
+  # rather than as the darwin-only mutant it is.
+  platform="darwin")

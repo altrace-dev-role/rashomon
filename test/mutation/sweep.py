@@ -223,12 +223,15 @@ def load(patterns):
     for path in sorted(files):
         before = len(M)
 
-        def m(name, f, old, new, test, _path=path):
+        def m(name, f, old, new, test, _path=path, platform=None):
             if name in ORIGIN:
                 problems.append(f"{rel(_path)}: {name!r} is already declared in {rel(ORIGIN[name])}")
                 return
+            if platform is not None and platform not in _KNOWN_GOOS:
+                problems.append(f"{rel(_path)}: {name!r} declares platform={platform!r}, not a known GOOS")
+                return
             ORIGIN[name] = _path
-            M.append((name, f, old, new, test))
+            M.append((name, f, old, new, test, platform))
 
         declared = {}  # this file's import edits, merged below
         ns = {"m": m, "IMPORTS": declared}
@@ -369,7 +372,7 @@ def check(complete, shared_tests=SHARED_TESTS):
         return texts[f]
 
     go_tests = go_test_names() if complete else None
-    for name, f, old, new, test in M:
+    for name, f, old, new, test, _platform in M:
         top = test.split("/", 1)[0]
         rx = None
         try:
@@ -426,7 +429,7 @@ def check(complete, shared_tests=SHARED_TESTS):
                         problems.append(f"{name!r} in {rel(ORIGIN[name])}: {test!r} matches real test {real_name!r}, "
                                         f"which pins {real_row}, not {claimed}; declare the pair in "
                                         f"{shared_tests.name} if it is shared on purpose")
-    mutation_of = {name: (f, old, new) for name, f, old, new, _test in M}
+    mutation_of = {name: (f, old, new) for name, f, old, new, _test, _platform in M}
     for name, (f, io_, in_) in IMPORTS.items():
         if outside_cwd(f):
             problems.append(f"IMPORTS[{name!r}]: target {f} is outside the current directory")
@@ -487,7 +490,7 @@ def _restore_and_reraise(signum, _frame):
 # restoring it to the wrong bytes.
 def _dirty_targets():
     """Files this run would mutate that git already reports as modified."""
-    targets = sorted({f for _, f, _, _, _ in M} | {f for f, _, _ in IMPORTS.values()})
+    targets = sorted({f for _, f, _, _, _, _ in M} | {f for f, _, _ in IMPORTS.values()})
     r = subprocess.run(["git", "status", "--porcelain", "--"] + targets,
                        capture_output=True, text=True)
     if r.returncode != 0:
@@ -545,15 +548,28 @@ def run_sweep(strict=False):
 
     undetected = []
     skipped = []  # the judging test skipped here; --strict fails on these
-    platform = []  # the target is not built for this GOOS; never a failure
+    platform = []  # the target is not built for this GOOS, or the mutant
+                    # declares a GOOS of its own that this run is not; never
+                    # a failure, strict or not
     goos = host_goos()
     try:
-        for name, f, old, new, test in M:
+        for name, f, old, new, test, mutant_goos in M:
             if _goos_excludes(f, goos):
                 # Mutating f would change nothing a build for this GOOS
                 # compiles, so neither backup nor the judging test runs: a
                 # darwin-only target on a Linux runner, for instance.
                 print(f"  NOT JUDGED (platform) <- {name}   ({rel(f)} is not built for GOOS={goos})")
+                platform.append(name)
+                continue
+            if mutant_goos is not None and mutant_goos != goos:
+                # The target builds everywhere, but the mutant's judging
+                # test only means something on the GOOS it declares -- the
+                # test skips elsewhere by design, not because this run's
+                # tooling is missing something. Without this, the mutant
+                # would land in `skipped` below, which --strict treats as a
+                # broken environment; a test that is SUPPOSED to skip here is
+                # not that, any more than a build-excluded target is.
+                print(f"  NOT JUDGED (platform) <- {name}   (judged on GOOS={mutant_goos}, this run is GOOS={goos})")
                 platform.append(name)
                 continue
             backup(f)
