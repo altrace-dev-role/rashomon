@@ -71,4 +71,10 @@ const (
 const (
 	SyncBarrier = "barrier"
 	SyncFull    = "full"
+	// SyncBarrierFull is a full sync issued where a barrier was wanted: off
+	// darwin, where nothing cheaper exists, or on darwin when the
+	// filesystem refuses F_BARRIERFSYNC. It costs exactly what SyncFull
+	// does and, unlike SyncFull, runs inside the append's lock -- a reader
+	// of the log must not read it as the cheap ordering SyncBarrier names.
+	SyncBarrierFull = "barrier-full"
 )

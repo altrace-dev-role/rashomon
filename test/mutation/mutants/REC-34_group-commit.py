@@ -19,7 +19,7 @@ m("REC-34 the ordered append syncs in full inside the lock", "internal/store/sto
 m("REC-34 the seq counter syncs in full inside the lock", "internal/store/store.go",
   "\tseq, err := nextSeq(dir, s.syncAppend)", "\tseq, err := nextSeq(dir, syncFull)", "TestREC34_")
 m("REC-34 group commit off: a deferred store syncs every append in full", "internal/store/store.go",
-  "\tif !s.deferred {\n\t\treturn syncFull(f)\n\t}\n", "\tif true {\n\t\treturn syncFull(f)\n\t}\n", "TestREC34_")
+  "\tif !deferred {\n\t\treturn syncFull(f)\n\t}\n", "\tif true {\n\t\treturn syncFull(f)\n\t}\n", "TestREC34_")
 m("REC-34 probe defers durability and never flushes", "cmd/rashomon/main.go",
   "\t\thook.RunProbe(sig, phase, stdin, st, time.Now)", "\t\tst.DeferDurability()\n\t\thook.RunProbe(sig, phase, stdin, st, time.Now)",
   "TestREC34_")
@@ -67,7 +67,7 @@ m("REC-34 an accepted barrier also syncs in full, unseen", "internal/store/sync_
   "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, nil\n",
   "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, f.Sync()\n", "TestREC34h_")
 m("REC-34 the barrier's fallback syncs where the recorder cannot see it", "internal/store/sync_darwin.go",
-  "\t\tcase barrierRefused(errno):\n\t\t\tif err := syncFull(f); err != nil {\n",
+  "\t\tcase barrierRefused(errno):\n\t\t\tif err := syncFullAsBarrier(f); err != nil {\n",
   "\t\tcase barrierRefused(errno):\n\t\t\tif err := f.Sync(); err != nil {\n", "TestREC34h_")
 m("REC-34 group commit off inside barrierSync", "internal/store/sync_darwin.go",
   "func barrierSync(f *os.File) (durable bool, err error) {\n\treturn barrierWith(f, fcntlBarrier)\n",
@@ -102,17 +102,18 @@ m("REC-34 a marker naming no call reads as a lost call", "internal/report/testbe
 # judged by TestREC34f_ on darwin and reported NOT JUDGED (platform) by the
 # sweep everywhere else, because the file does not build there.
 m("REC-34 a full-sync barrier still leaves its file to Flush", "internal/store/store.go",
-  "\tif durable {\n\t\ts.dirty = \"\"\n\t}\n", "\tif durable && false {\n\t\ts.dirty = \"\"\n\t}\n", "TestREC34l_")
+  "\tif durable {\n\t\ts.mu.Lock()\n\t\ts.dirty = \"\"\n\t\ts.mu.Unlock()\n\t}\n", "\tif durable && false {\n\t\ts.mu.Lock()\n\t\ts.dirty = \"\"\n\t\ts.mu.Unlock()\n\t}\n", "TestREC34l_")
 m("REC-34 an accepted darwin barrier reports its write durable", "internal/store/sync_darwin.go",
   "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn false, nil\n",
   "\t\t\tfault.RecordSync(fault.SyncBarrier, f.Name())\n\t\t\treturn true, nil\n", "TestREC34f_")
 # The refused barrier's fallback (P09-F9, round 2). It reports durable, so
 # syncAppend clears the dirty file and Flush issues no full sync: the fallback's
-# own syncFull is the only sync a deferred append gets on a volume that refuses
-# barriers (HFS+, exFAT). APFS never refuses, so TestREC34f_ARefusedBarrierSyncsInFull
-# stands a refusing kernel in through barrierWith's fcntl seam.
+# own syncFullAsBarrier is the only sync a deferred append gets on a volume
+# that refuses barriers (HFS+, exFAT). APFS never refuses, so
+# TestREC34f_ARefusedBarrierSyncsInFull stands a refusing kernel in through
+# barrierWith's fcntl seam.
 m("REC-34 a refused barrier reports durable without syncing", "internal/store/sync_darwin.go",
-  "\t\t\tif err := syncFull(f); err != nil {\n\t\t\t\treturn false, err\n\t\t\t}\n\t\t\treturn true, nil\n",
+  "\t\t\tif err := syncFullAsBarrier(f); err != nil {\n\t\t\t\treturn false, err\n\t\t\t}\n\t\t\treturn true, nil\n",
   "\t\t\treturn true, nil\n", "TestREC34f_")
 m("REC-34 a refused barrier's full sync reports the write not durable", "internal/store/sync_darwin.go",
   "\t\t\t\treturn false, err\n\t\t\t}\n\t\t\treturn true, nil\n",
@@ -162,3 +163,13 @@ m("REC-34 the hook never signals before flush", "cmd/rashomon/main.go",
   # on Linux and Windows, which --strict treats as a broken environment
   # rather than as the darwin-only mutant it is.
   platform="darwin")
+
+# flushFile's reopen is ENOENT in two different situations (REC-34): the
+# run was removed whole (forget, eviction), where there is nothing left to
+# flush and marking would recreate the directory that was removed, and a
+# lone file missing from a run that still exists, which TestREC34c_'s own
+# scenario is and must keep failing.
+m("REC-34 the run being gone is a flush failure", "internal/store/store.go",
+  '\tif err != nil {\n\t\tif errors.Is(err, fs.ErrNotExist) && runGone(path) {\n\t\t\treturn nil\n\t\t}\n\t\treturn err\n\t}\n', '\tif err != nil {\n\t\treturn err\n\t}\n', "TestREC34p_")
+m("REC-34 any ENOENT is nothing to flush, not just a gone run", "internal/store/store.go",
+  "errors.Is(err, fs.ErrNotExist) && runGone(path)", "errors.Is(err, fs.ErrNotExist)", "TestREC34c_")
