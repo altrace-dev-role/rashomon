@@ -158,6 +158,30 @@ func TestForgetHost_ASecondForgetOfTheSameHostAddsNoLine(t *testing.T) {
 	}
 }
 
+// TestForgetHost_ADeclarationTimedAtZeroIsForgottenBefore: RecordedAtMS==0 is
+// a valid timestamp, not a sentinel the comparison should special-case --
+// ForgottenHostBefore's declaredAtMS <= forgotMS has to hold for it exactly
+// as it would for any other time at or before the forget.
+func TestForgetHost_ADeclarationTimedAtZeroIsForgottenBefore(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ForgetHost("pypi.org", time.Unix(1_700_000_000, 0)); err != nil {
+		t.Fatal(err)
+	}
+	forgottenBefore, err := st.ForgottenHostBefore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !forgottenBefore("pypi.org", 0) {
+		t.Error("a declaration timed at zero was not suppressed as predating the forget")
+	}
+	if forgottenBefore("pypi.org", 1_700_000_001_000) {
+		t.Error("a declaration timed after the forget must not be suppressed")
+	}
+}
+
 // permissionsBite skips a test whose fault is a file mode: root reads and
 // writes through it, and Windows has no such mode.
 func permissionsBite(t *testing.T) {
