@@ -279,7 +279,7 @@ func TestH17_TheSanctionedSourcesAreNotVacuous(t *testing.T) {
 // This is a scan for the specific calls, not the packages.
 var rawSyscalls = []string{
 	"syscall.Socket(", "syscall.Connect(", "syscall.ForkExec(", "syscall.Exec(",
-	"os.StartProcess(",
+	"os.StartProcess(", "syscall.StartProcess(", "syscall.RawSyscall(", "syscall.Syscall(",
 }
 
 // TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport backs the
@@ -341,6 +341,9 @@ func TestRawSyscalls_CatchesEachListedCall(t *testing.T) {
 		"	syscall.ForkExec(path, args, attr)",
 		"	syscall.Exec(path, args, env)",
 		"	os.StartProcess(path, args, attr)",
+		"	syscall.StartProcess(path, args, attr)",
+		"	syscall.RawSyscall(syscall.SYS_SOCKET, af, typ, proto)",
+		"	syscall.Syscall(syscall.SYS_CONNECT, fd, sa, len)",
 	}
 	for _, src := range fixtures {
 		var caught bool
