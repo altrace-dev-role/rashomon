@@ -270,10 +270,13 @@ func TestH31_NonoTrailReachesTheCLI(t *testing.T) {
 // "Inside a sandbox" says about a trail with nothing in it. nono writes no
 // event for a plain-HTTP request it allows, and none at all when it does not
 // filter the network (measured with 0.78.0 and the claude profile), so the
-// sandbox section counts nothing. The README said such a request "appears
-// nowhere in the report"; the call that named the URL still does, and --chain
-// lists the host under it. The trail here is that capture's shape: the
-// session's start and end and no network event.
+// sandbox section says the trail holds no network events rather than
+// counting zero -- a #53 follow-up: rendering `0 allowed, 0 denied` here
+// read as a filtered session that saw nothing, when no filtering ran. The
+// README said an allowed http:// request "appears nowhere in the report";
+// the call that named the URL still does, and --chain lists the host under
+// it. The trail here is that capture's shape: the session's start and end
+// and no network event.
 func TestH31_ASilentTrailLeavesTheNamedHostInTheChain(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
@@ -292,8 +295,11 @@ func TestH31_ASilentTrailLeavesTheNamedHostInTheChain(t *testing.T) {
 	}
 
 	out := e.run("", nil, "report", "--session", testSession, "--nono-audit", trail, "--chain").stdout
-	if !strings.Contains(out, "sandbox (nono): 0 allowed, 0 denied in this session's window") {
-		t.Errorf("premise: a trail with no network event should count nothing:\n%s", out)
+	if !strings.Contains(out, "sandbox (nono): the trail holds no network events") {
+		t.Errorf("premise: a trail with no network event at all should say so, not count zero:\n%s", out)
+	}
+	if strings.Contains(out, "0 allowed, 0 denied") {
+		t.Errorf("a trail that never wrote a network record rendered as a filtered, quiet session:\n%s", out)
 	}
 	if !regexp.MustCompile(`(?m)^\s+1\s+Bash .*-> example\.com$`).MatchString(out) {
 		t.Errorf("the call that named http://example.com/ does not list the host in its chain:\n%s", out)
@@ -320,7 +326,8 @@ func TestH31_ASilentTrailLeavesTheNamedHostInTheChain(t *testing.T) {
 // TestH31_ASilentTrailLeavesTheNamedHostInTheChain backs, whitespace-folded.
 var readmeSilentTrailClaims = []string{
 	"The sandbox section has something to count only when nono filters the network.",
-	"the section reads `0 allowed, 0 denied` however many hosts the session reached.",
+	"the section says so directly -- `the trail holds no network events` -- rather than " +
+		"`0 allowed, 0 denied`, which would read as a filtered session that saw nothing.",
 	"An allowed `http://` request leaves nothing in the sandbox section.",
 	"`--chain` still lists its host under the call if the command named it",
 }

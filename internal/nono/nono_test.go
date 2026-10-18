@@ -350,3 +350,73 @@ func TestRead_AWindowWithNoEndIsSaidToBeOpen(t *testing.T) {
 			obs.Observed, obs.WindowOpen)
 	}
 }
+
+// TestRead_WindowOpenIsFalseWhenNotObserved. WindowOpen used to be set from
+// w.End.IsZero() in the struct literal, before any read happened, so it
+// carried a value even when the read failed. An all-torn file against an
+// open window reported window_open: true for an observation that has no
+// events and no window to speak of -- a value that answers a question the
+// rest of the record already says cannot be answered. Found during the #44
+// follow-up review: the same open session read window_open: false against a
+// missing trail and window_open: true against an all-torn one.
+func TestRead_WindowOpenIsFalseWhenNotObserved(t *testing.T) {
+	open := Window{Start: time.Unix(0, 0)}
+
+	torn := filepath.Join(t.TempDir(), "torn.ndjson")
+	if err := os.WriteFile(torn, []byte("{not json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if obs := Read(torn, open); obs.Observed || obs.WindowOpen {
+		t.Errorf("an all-torn file against an open window: observed=%v window_open=%v, want false, false",
+			obs.Observed, obs.WindowOpen)
+	}
+
+	missing := filepath.Join(t.TempDir(), "missing.ndjson")
+	if obs := Read(missing, open); obs.Observed || obs.WindowOpen {
+		t.Errorf("a missing trail against an open window: observed=%v window_open=%v, want false, false",
+			obs.Observed, obs.WindowOpen)
+	}
+
+	empty := filepath.Join(t.TempDir(), "empty.ndjson")
+	if err := os.WriteFile(empty, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if obs := Read(empty, open); obs.Observed || obs.WindowOpen {
+		t.Errorf("an empty file against an open window: observed=%v window_open=%v, want false, false",
+			obs.Observed, obs.WindowOpen)
+	}
+}
+
+// TestRead_NetworkEventsInTrailCountsTheWholeFile, not just the window.
+//
+// A trail that holds only session_started and session_ended records is
+// OBSERVED (both are known record types), but it tells a different story
+// from one that observed traffic and filtered it to nothing: the sandbox
+// never wrote a network decision at all, which on nono 0.78.0/0.79 happens
+// whenever the active profile does not filter the network ("network":
+// {"block": false}, no allowlist). Silently rendering that as "0 allowed, 0
+// denied" reads as a quiet, filtered session when no filtering happened.
+// NetworkEventsInTrail counts every network-type record parsed, in or out of
+// the window, so the report can tell the two apart.
+func TestRead_NetworkEventsInTrailCountsTheWholeFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-network.ndjson")
+	body := `{"sequence":0,"event":{"type":"session_started"}}` + "\n" +
+		`{"sequence":1,"event":{"type":"session_ended"}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := Read(path, Window{Start: time.Unix(0, 0)})
+	if !obs.Observed {
+		t.Fatalf("a session_started/session_ended-only trail was not observed: %s", obs.Reason)
+	}
+	if obs.NetworkEventsInTrail != 0 {
+		t.Errorf("network_events_in_trail = %d, want 0", obs.NetworkEventsInTrail)
+	}
+
+	withNet := Read(fixture, fixtureWindow(t))
+	if withNet.NetworkEventsInTrail != 4 {
+		t.Errorf("network_events_in_trail = %d, want 4 (the fixture's four network records)",
+			withNet.NetworkEventsInTrail)
+	}
+}

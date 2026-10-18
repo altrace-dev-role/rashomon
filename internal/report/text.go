@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/nono"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -694,14 +695,34 @@ func writeNono(b *bytes.Buffer, n Nono) {
 		return
 	}
 	if !n.Observed {
-		// The skipped count is said here too. A trail of only torn lines is
-		// "no records" by reason code, and without the count it read as "nono
-		// wrote nothing" -- the JSON carried the number and the text did not.
+		// The skipped count is said here too, but ONLY when it is complete.
+		// nono_audit_no_records means the reader reached end of file, so
+		// Skipped counts the whole trail. nono_audit_unreadable means the
+		// scan stopped at the line that broke it (an oversized line, a read
+		// error): Skipped there counts only the torn lines BEFORE that
+		// point, an undercount of however much of the trail follows. Two
+		// torn lines followed by one line over the scanner's cap used to
+		// print "2 trail records could not be read" regardless of how much
+		// trail came after the point the read gave up.
 		skipped := ""
-		if n.Skipped > 0 {
+		if n.Reason == nono.NotObservedNoRecords && n.Skipped > 0 {
 			skipped = fmt.Sprintf("; %d trail record%s could not be read", n.Skipped, plural(n.Skipped))
 		}
 		fmt.Fprintf(b, "  sandbox (nono): not observed (%s%s)\n", orUnknown(n.Reason), skipped)
+		return
+	}
+	if n.NetworkEventsInTrail == 0 {
+		// Observed is true -- the trail held a session_started and a
+		// session_ended record -- but the sandbox never wrote a single
+		// network decision. That is a different fact from a session the
+		// sandbox filtered and saw nothing on: it happens whenever the
+		// active profile does not filter the network at all. Rendering it
+		// as "0 allowed, 0 denied" reads as a quiet, filtered session when
+		// no filtering ran -- silence read as zero, the failure this
+		// package exists to prevent. Follow-up from #53, applied here.
+		fmt.Fprint(b, "  sandbox (nono): the trail holds no network events (the active "+
+			"profile may not filter the network; this is not the same as a filtered "+
+			"session that saw nothing)\n")
 		return
 	}
 	// An open window is said ON THIS LINE: the two counts are only as bounded

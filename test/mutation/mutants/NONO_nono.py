@@ -42,25 +42,44 @@ m("NONO an empty --nono-audit is read as no trail asked for", "cmd/rashomon/main
 
 # Finding 4: with no end record the window ran to the end of the trail, and
 # the sandbox line presented the counts as bounded.
+#
+# Re-anchored (#44 follow-up item 2): WindowOpen used to be set in the struct
+# literal, before the read could fail, so a missing trail and an all-torn one
+# against the same open window disagreed on it. It is now set once the read
+# has succeeded, next to obs.Observed = true.
 m("NONO the reader never says the window has no end", "internal/nono/nono.go",
-  "WindowOpen: w.End.IsZero()}", "WindowOpen: false}",
+  "\tobs.WindowOpen = w.End.IsZero()\n", "\tobs.WindowOpen = false\n",
   "TestRead_AWindowWithNoEnd")
+m("NONO window_open is set before the read can fail", "internal/nono/nono.go",
+  "\tobs := Observation{Trail: path, Events: []Event{}}\n",
+  "\tobs := Observation{Trail: path, Events: []Event{}, WindowOpen: w.End.IsZero()}\n",
+  "TestRead_WindowOpenIsFalseWhenNotObserved")
 m("NONO the sandbox line does not say the window has no end", "internal/report/text.go",
   "\tif n.WindowOpen {", "\tif false {",
   "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
 m("NONO a bounded window is said to have no end", "internal/report/text.go",
   "\tif n.WindowOpen {", "\tif true {",
   "TestNono_AWindowWithNoEnd")
-# Re-anchored: the proxy-era fields left the literal and gofmt realigned it,
-# so the old anchor matched nothing and the mutant went with them.
+# Re-anchored: NetworkEventsInTrail's addition made gofmt realign the struct
+# literal, so the old anchor's column spacing matched nothing.
 m("NONO an open window does not reach the report", "internal/report/nono.go",
-  "\t\tWindowOpen:         obs.WindowOpen,\n", "",
+  "\t\tWindowOpen:           obs.WindowOpen,\n", "",
   "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
 
 # Finding 5: a trail of only unreadable lines read as "nono wrote nothing".
+#
+# Re-anchored (#44 follow-up item 1): the count is now shown only when
+# n.Reason == nono.NotObservedNoRecords, because that is the only reason the
+# whole file was read -- on nono_audit_unreadable the scan stopped at the
+# line that broke it, so Skipped there undercounts.
 m("NONO a not-observed trail does not say how much it could not read", "internal/report/text.go",
-  "\t\tif n.Skipped > 0 {\n\t\t\tskipped = ", "\t\tif false {\n\t\t\tskipped = ",
+  "\t\tif n.Reason == nono.NotObservedNoRecords && n.Skipped > 0 {\n\t\t\tskipped = ",
+  "\t\t_ = nono.NotObservedNoRecords\n\t\tif false {\n\t\t\tskipped = ",
   "TestNono_AnUnreadableTrail")
+m("NONO a read that stopped partway says how much it could not read", "internal/report/text.go",
+  "\t\tif n.Reason == nono.NotObservedNoRecords && n.Skipped > 0 {",
+  "\t\t_ = nono.NotObservedNoRecords\n\t\tif n.Skipped > 0 {",
+  "TestNono_AReadThatStopsPartwaySaysHowMuchItCouldNotRead")
 m("NONO the unreadable count on a not-observed trail ignores the singular", "internal/report/text.go",
   "\"; %d trail record%s could not be read\", n.Skipped, plural(n.Skipped))",
   "\"; %d trail records could not be read\", n.Skipped)",
@@ -217,3 +236,17 @@ m("NONO the session's MCP calls never reach the novelty candidates", "internal/r
   "\twire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, madeMCPCall(run))\n",
   "\twire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, false)\n",
   "TestNovelty_TheMCPTransport")
+
+# #53 follow-up, applied here: a trail holding only session_started and
+# session_ended is Observed but may have written zero network decisions at
+# all, which is a different fact from a filtered session that saw nothing.
+# NetworkEventsInTrail is the whole-file count that tells the two apart.
+m("NONO network records are never counted toward the whole-file total", "internal/nono/nono.go",
+  "\t\t\tobs.NetworkEventsInTrail++\n", "",
+  "TestRead_NetworkEventsInTrailCountsTheWholeFile")
+m("NONO the whole-file network count never reaches the report", "internal/report/nono.go",
+  "\t\tNetworkEventsInTrail: obs.NetworkEventsInTrail,\n", "",
+  "TestNono_ANoNetworkEventsTrailSaysSoInsteadOfZero")
+m("NONO a trail with no network events renders as a filtered, quiet session", "internal/report/text.go",
+  "\tif n.NetworkEventsInTrail == 0 {", "\tif false {",
+  "TestNono_ANoNetworkEventsTrailSaysSoInsteadOfZero|TestH31_ASilentTrailLeavesTheNamedHostInTheChain")

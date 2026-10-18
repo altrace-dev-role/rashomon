@@ -14,12 +14,19 @@ import (
 )
 
 // trailWith is an observed trail holding the given events, at one instant.
+//
+// NetworkEventsInTrail is set to len(events): every caller here builds a
+// trail that DID write network records, which is the ordinary case this
+// package's other tests check. A test of the zero-network-events case
+// (TestNono_ANoNetworkEventsTrailSaysSoInsteadOfZero) sets it explicitly on
+// a trail it builds itself, because that is the one fact trailWith's
+// default would otherwise hide.
 func trailWith(events ...nono.Event) nono.Observation {
 	at := time.UnixMilli(1790725093166)
 	for i := range events {
 		events[i].At = at
 	}
-	return nono.Observation{Observed: true, Events: events, Sessions: 1}
+	return nono.Observation{Observed: true, Events: events, Sessions: 1, NetworkEventsInTrail: len(events)}
 }
 
 // renderNono is the sandbox section as the text report prints it.
@@ -208,6 +215,72 @@ func TestNono_TheClientsOwnTrafficIsNotTheSessions(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("want %q in:\n%s", want, out)
 		}
+	}
+}
+
+// TestNono_AReadThatStopsPartwaySaysHowMuchItCouldNotRead: on
+// nono_audit_unreadable the scan stopped at the line that broke it, so
+// Skipped counts only the torn lines BEFORE that point. writeNono printed
+// the count on every not-observed reason, so two torn lines followed by a
+// line over the scanner's cap read as "2 trail records could not be read",
+// however much of the trail follows the point where the read gave up. The
+// count is only complete when the reader read the whole file, which is the
+// nono_audit_no_records case alone.
+func TestNono_AReadThatStopsPartwaySaysHowMuchItCouldNotRead(t *testing.T) {
+	trail := filepath.Join(t.TempDir(), "audit-events.ndjson")
+	var body []byte
+	body = append(body, []byte(`{"sequence": 0, "eve`+"\n")...)
+	body = append(body, []byte(`{"sequence": 1, "ev`+"\n")...)
+	body = append(body, bytes.Repeat([]byte("a"), 9*1024*1024)...)
+	body = append(body, '\n')
+	if err := os.WriteFile(trail, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	obs := nono.Read(trail, nono.Window{Start: time.Unix(0, 0)})
+	if obs.Observed || obs.Reason != nono.NotObservedUnreadable {
+		t.Fatalf("premise: observed=%v reason=%q, want false, %q", obs.Observed, obs.Reason, nono.NotObservedUnreadable)
+	}
+	n := buildNono(obs, true, false, nil, nil)
+	want := "  sandbox (nono): not observed (nono_audit_unreadable)\n"
+	if out := renderNono(n); out != want {
+		t.Errorf("a read that stopped partway rendered\n%q\nwant\n%q (no skipped count: it is an undercount)",
+			out, want)
+	}
+}
+
+// TestNono_ANoNetworkEventsTrailSaysSoInsteadOfZero.
+//
+// A trail holding only session_started and session_ended records is
+// Observed (both are known record types), but it is a different fact from a
+// session the sandbox filtered and saw nothing on: the sandbox never wrote a
+// network decision at all, which happens on nono 0.78.0/0.79 whenever the
+// active profile does not filter the network. Rendering it as "0 allowed, 0
+// denied in this session's window" reads as a quiet, filtered session --
+// silence read as zero, the exact failure this package exists to prevent --
+// when no filtering happened. Noted as a follow-up in #53 and not fixed
+// there: "the reader could say 'the trail holds no network events' instead
+// of rendering 0/0 as observed."
+func TestNono_ANoNetworkEventsTrailSaysSoInsteadOfZero(t *testing.T) {
+	obs := nono.Observation{Observed: true, Events: []nono.Event{}, Sessions: 1, NetworkEventsInTrail: 0}
+	n := buildNono(obs, true, false, nil, nil)
+	want := "  sandbox (nono): the trail holds no network events (the active profile may not " +
+		"filter the network; this is not the same as a filtered session that saw nothing)\n"
+	if out := renderNono(n); !strings.Contains(out, want) {
+		t.Errorf("want %q in:\n%s", want, out)
+	}
+	if strings.Contains(renderNono(n), "0 allowed, 0 denied") {
+		t.Errorf("a trail with no network events at all rendered as a filtered, quiet session:\n%s", renderNono(n))
+	}
+
+	// A session that genuinely saw traffic and allowed or denied none of it
+	// in-window still renders the ordinary 0/0 line: NetworkEventsInTrail > 0
+	// says the sandbox did filter, and found nothing for this window.
+	filtered := trailWith()
+	filtered.Observed = true
+	filtered.NetworkEventsInTrail = 3
+	fn := buildNono(filtered, true, false, nil, nil)
+	if out := renderNono(fn); !strings.Contains(out, "0 allowed, 0 denied in this session's window") {
+		t.Errorf("a filtered session with no in-window events lost the ordinary 0/0 line:\n%s", out)
 	}
 }
 
