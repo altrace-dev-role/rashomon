@@ -52,6 +52,32 @@ func resolveExisting(dir string) (string, error) {
 	}
 }
 
+// RecordedRootInWorkTree returns the work tree top that install.json under
+// root records as confirmed, or "" when there is no install.json or it
+// records none. A malformed install.json is an error, not "".
+func RecordedRootInWorkTree(root string) (string, error) {
+	b, err := os.ReadFile(filepath.Join(root, fileInstallMeta))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var meta map[string]json.RawMessage
+	if err := json.Unmarshal(b, &meta); err != nil {
+		return "", errors.New("store: install metadata is malformed")
+	}
+	raw, ok := meta[KeyRootInWorkTree]
+	if !ok {
+		return "", nil
+	}
+	var top string
+	if err := json.Unmarshal(raw, &top); err != nil {
+		return "", errors.New("store: install metadata is malformed")
+	}
+	return top, nil
+}
+
 // SetRootInWorkTree records top as install.json's root_in_work_tree under
 // root. Every other key is kept as it was read. The file is replaced by a
 // temporary file beside it, a full sync and a rename, so a hook reading it

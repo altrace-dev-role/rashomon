@@ -119,6 +119,73 @@ func TestTRU1_AStoreRootInAWorkTreeIsConfirmedByName(t *testing.T) {
 		e.requireInstalled()
 	})
 
+	// A work tree install.json already records as confirmed is not asked
+	// about again when watch shows its screen once more, by --yes or on the
+	// terminal; one it records for another tree still is.
+	t.Run("confirmed before", func(t *testing.T) {
+		e, top := workTreeEnv(t)
+		s := e.watchToTheThirdQuestion()
+		s.answer("project")
+		if res := s.wait(); res.exitCode != 0 {
+			t.Fatalf("watch confirmed: exit %d, stderr %q", res.exitCode, res.stderr)
+		}
+		meta := filepath.Join(e.home, "install.json")
+		confirmed, err := os.ReadFile(meta)
+		if err != nil {
+			t.Fatal(err)
+		}
+		consentFile := filepath.Join(e.home, "consent.json")
+
+		// No consent on file, so watch shows the screen again.
+		if err := os.Remove(consentFile); err != nil {
+			t.Fatal(err)
+		}
+		cmd := e.command("", nil, "watch", "--yes")
+		noTerminal(cmd)
+		if res := e.wait(cmd); res.exitCode != 0 {
+			t.Errorf("watch --yes with the work tree already confirmed: exit %d, stderr %q", res.exitCode, res.stderr)
+		}
+
+		if err := os.Remove(consentFile); err != nil {
+			t.Fatal(err)
+		}
+		s = startOnPTY(t, e.command("", nil, "watch"))
+		s.waitFor(questionInstall)
+		s.answer("y")
+		s.waitFor(questionSDK)
+		s.answer("n")
+		if res := s.wait(); res.exitCode != 0 || strings.Contains(s.out.String(), questionWorkTree) {
+			t.Errorf("watch on the terminal with the work tree already confirmed: exit %d, asked again %v, stderr %q",
+				res.exitCode, strings.Contains(s.out.String(), questionWorkTree), res.stderr)
+		}
+		if now, err := os.ReadFile(meta); err != nil || string(now) != string(confirmed) {
+			t.Errorf("install.json = %s (%v), want it as the confirmation left it: %s", now, err, confirmed)
+		}
+
+		elsewhere := strings.Replace(string(confirmed), top, filepath.Join(filepath.Dir(top), "other"), 1)
+		if err := os.WriteFile(meta, []byte(elsewhere), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(consentFile); err != nil {
+			t.Fatal(err)
+		}
+		cmd = e.command("", nil, "watch", "--yes")
+		noTerminal(cmd)
+		if res := e.wait(cmd); res.exitCode != 1 || !strings.Contains(res.stderr, "inside the git work tree "+top) {
+			t.Errorf("watch --yes with another work tree recorded: exit %d, stderr %q; want the refusal", res.exitCode, res.stderr)
+		}
+
+		unreadable := strings.Replace(string(confirmed), `"`+top+`"`, "7", 1)
+		if err := os.WriteFile(meta, []byte(unreadable), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd = e.command("", nil, "watch", "--yes")
+		noTerminal(cmd)
+		if res := e.wait(cmd); res.exitCode != 1 || !strings.Contains(res.stderr, "malformed") {
+			t.Errorf("watch --yes with an unreadable recorded work tree: exit %d, stderr %q; want it named malformed", res.exitCode, res.stderr)
+		}
+	})
+
 	for _, step := range []struct{ point, name, undid string }{
 		{"watch.work_tree", "recording the confirmed work tree", "opening the store"},
 		{"watch.sdk", "recording the Agent SDK answer", "recording the confirmed work tree, opening the store"},

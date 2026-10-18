@@ -131,3 +131,35 @@ func TestTRU1_SetRootInWorkTreeKeepsTheRestOfInstallJSON(t *testing.T) {
 		}
 	}
 }
+
+// TestTRU1_RecordedRootInWorkTreeReadsTheConfirmation: the reader watch uses
+// to skip a work tree question already answered returns the recorded top,
+// "" for a root with no install.json or none recorded, and an error, never
+// "", for an install.json it cannot read.
+func TestTRU1_RecordedRootInWorkTreeReadsTheConfirmation(t *testing.T) {
+	root := t.TempDir()
+	if got, err := RecordedRootInWorkTree(root); got != "" || err != nil {
+		t.Errorf("no install.json: %q, %v; want \"\", nil", got, err)
+	}
+	if _, err := Open(root); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := RecordedRootInWorkTree(root); got != "" || err != nil {
+		t.Errorf("nothing recorded: %q, %v; want \"\", nil", got, err)
+	}
+	if err := SetRootInWorkTree(root, "/home/u/project"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := RecordedRootInWorkTree(root); got != "/home/u/project" || err != nil {
+		t.Errorf("recorded: %q, %v; want /home/u/project", got, err)
+	}
+	path := filepath.Join(root, FileInstallMeta)
+	for _, bad := range []string{`{"root_in_work_tree":`, `{"root_in_work_tree":7}`} {
+		if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := RecordedRootInWorkTree(root); err == nil {
+			t.Errorf("install.json %s: %q, nil; want an error", bad, got)
+		}
+	}
+}

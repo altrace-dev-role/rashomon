@@ -62,7 +62,7 @@ type watchPlan struct {
 	exe       string
 	exeSHA256 string
 	installID string // "" when there is no store yet
-	workTree  string // the git work tree the root is in, or ""
+	workTree  string // the git work tree the root is in, unless install.json records it confirmed; or ""
 	changes   bool   // install.Apply would change settings.json
 	covered   bool   // the consent on file covers this build's scope
 	prior     *consent.Record
@@ -252,6 +252,17 @@ func planWatch() (*watchPlan, error) {
 	}
 	if plan.workTree, err = store.WorkTreeTop(plan.root); err != nil {
 		return nil, err
+	}
+	// A work tree the user already confirmed for this root is not asked
+	// about again: install.json holds the answer purge and hooks honour.
+	if plan.workTree != "" {
+		recorded, err := store.RecordedRootInWorkTree(plan.root)
+		if err != nil {
+			return nil, err
+		}
+		if recorded == plan.workTree {
+			plan.workTree = ""
+		}
 	}
 	planID := plan.installID
 	if planID == "" {
