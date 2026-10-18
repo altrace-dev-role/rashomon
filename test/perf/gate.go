@@ -208,8 +208,14 @@ type Burst struct {
 	CallCoverage, PostCoverage          int
 	Seqs                                []int64
 	Spilled, LockTimeouts               int
-	PairPeakMiB                         []float64
-	OneWayPeakMiB                       float64
+	// FlushFailed counts spilled terminals carrying ReasonFlushFailed
+	// (REC-34): a group-commit flush that failed under the burst's load,
+	// not a lock that timed out. Spilled already fails the burst on either
+	// cause; this names which one, so a real flush failure under 64-way
+	// load does not read as an ordinary lock timeout.
+	FlushFailed   int
+	PairPeakMiB   []float64
+	OneWayPeakMiB float64
 }
 
 // PerProcessPeakRatio is RES-30's per-process rule, restated from
@@ -259,8 +265,9 @@ func (b Burst) LargestMiB() float64 {
 // (zero where the ratio has been measured; see PerProcessPeakRatio): a record of any kind that did not land in the
 // ordered stream, a seq run that is not 1..n without a gap or a repeat, a
 // spilled line or a lock timeout (each a hook that waited out its lock
-// budget), and every footprint problem footprintProblems names. A burst of no
-// pairs measured nothing and fails.
+// budget), a flush_failed marker (a group-commit flush that failed, not a
+// lock that timed out), and every footprint problem footprintProblems names.
+// A burst of no pairs measured nothing and fails.
 func (b Burst) Problems(budgetMiB, tolerance, ratioTolerance float64) []string {
 	var out []string
 	if b.Ways <= 0 {
@@ -290,6 +297,9 @@ func (b Burst) Problems(budgetMiB, tolerance, ratioTolerance float64) []string {
 	}
 	if b.Spilled > 0 || b.LockTimeouts > 0 {
 		out = append(out, fmt.Sprintf("%d spilled lines and %d lock timeouts, want none", b.Spilled, b.LockTimeouts))
+	}
+	if b.FlushFailed > 0 {
+		out = append(out, fmt.Sprintf("%d flush_failed markers, want none: a hook's group-commit flush failed under the burst's load", b.FlushFailed))
 	}
 	return append(out, b.footprintProblems(budgetMiB, tolerance, ratioTolerance)...)
 }

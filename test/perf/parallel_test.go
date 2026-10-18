@@ -92,10 +92,10 @@ func TestRES30_ParallelHooksStayInBudget(t *testing.T) {
 	median, _ := Median(burst.PairPeakMiB)
 	t.Logf("%d-way on %s: summed pair peak %.1f MiB against %.0f (+%.0f%%); all %d processes %.1f MiB; "+
 		"largest pair peak %.2f MiB (%.3fx) against %.2fx (+%.0f%%) the 1-way %.2f MiB, median %.2f MiB (%.3fx, reported); "+
-		"%d declarations, %d executions, %d spilled, %d lock timeouts; burst %v (reported, not gated)",
+		"%d declarations, %d executions, %d spilled (%d flush_failed), %d lock timeouts; burst %v (reported, not gated)",
 		ways, platform(), sum, b.Parallel.SummedPeakMiBMax, tol*100, 2*ways, all,
 		burst.LargestMiB(), burst.LargestMiB()/oneWay, PerProcessPeakRatio, ratioTol*100, oneWay, median, median/oneWay,
-		burst.Declarations, burst.Executions, burst.Spilled, burst.LockTimeouts, took.Round(time.Millisecond))
+		burst.Declarations, burst.Executions, burst.Spilled, burst.FlushFailed, burst.LockTimeouts, took.Round(time.Millisecond))
 }
 
 // oneWayPeakMiB is the 1-way figure RES-30's per-process rule compares the
@@ -164,8 +164,10 @@ func peakMiB(stdin []byte, env []string, args ...string) (float64, error) {
 }
 
 // readBurst counts what the burst left in one run directory: the ordered
-// stream's records by kind with their seqs, the spill file's lines, and the
-// call and post coverage records, with those that timed out on a lock.
+// stream's records by kind with their seqs, the spill file's lines (and,
+// among them, flush_failed markers specifically, not just the raw count a
+// lock timeout's spill shares), and the call and post coverage records, with
+// those that timed out on a lock.
 func readBurst(t *testing.T, dir string, ways int) Burst {
 	t.Helper()
 	burst := Burst{Ways: ways}
@@ -189,7 +191,20 @@ func readBurst(t *testing.T, dir string, ways int) Burst {
 			burst.Seqs = append(burst.Seqs, *r.Seq)
 		}
 	}
-	burst.Spilled = len(ndjsonLines(t, filepath.Join(dir, "spill.ndjson")))
+	spill := ndjsonLines(t, filepath.Join(dir, "spill.ndjson"))
+	burst.Spilled = len(spill)
+	for _, line := range spill {
+		var s struct {
+			Type   string  `json:"type"`
+			Reason *string `json:"reason"`
+		}
+		if err := json.Unmarshal(line, &s); err != nil {
+			t.Fatalf("spill.ndjson: %v: %s", err, line)
+		}
+		if s.Type == "terminal" && s.Reason != nil && *s.Reason == "flush_failed" {
+			burst.FlushFailed++
+		}
+	}
 	for _, line := range ndjsonLines(t, filepath.Join(dir, "coverage.ndjson")) {
 		var c struct {
 			Phase  string  `json:"phase"`

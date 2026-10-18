@@ -263,6 +263,7 @@ func TestRES30_BurstVerdictCountsEveryLoss(t *testing.T) {
 		{"a post coverage record lost", func(b *Burst) { b.PostCoverage-- }, true},
 		{"a record spilled", func(b *Burst) { b.Spilled = 1 }, true},
 		{"a lock timeout", func(b *Burst) { b.LockTimeouts = 1 }, true},
+		{"a flush_failed marker", func(b *Burst) { b.FlushFailed = 1 }, true},
 		{"a seq skipped", func(b *Burst) { b.Seqs[len(b.Seqs)-1]++ }, true},
 		{"a seq repeated", func(b *Burst) { b.Seqs[1] = b.Seqs[0] }, true},
 		{"a record without a seq", func(b *Burst) { b.Seqs = b.Seqs[:len(b.Seqs)-1] }, true},
