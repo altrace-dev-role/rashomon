@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -410,5 +411,45 @@ func TestUpdate_TheEstablisherCorrectsTowardTheEarlierSession(t *testing.T) {
 		t.Errorf("againLater.Novel = %v, want [a.example]: once an earlier session is "+
 			"known, this session's hosts can be compared and a.example is its own",
 			againLater.Novel)
+	}
+}
+
+// TestFold_SessionIDIsBoundedBeforeStorage: a session id of unbounded length
+// is not hostname-shaped and nothing here rejects it the way a host is
+// rejected, so maxEntryBytes's own math -- a 253-byte name, a session id of
+// up to 256 bytes, two stamps, keys and indentation, 1,024 with room for
+// escaping -- was an assumption nothing enforced. An abnormally long session
+// id, stored once per host it names, could make a single render's file
+// larger than maxBaselineBytes; save refuses to write that file, but the
+// baseline on disk from before the render is untouched either way, which
+// reads as fine right up until a project's baseline genuinely needs that
+// capacity for real hosts and finds it already spent on one session's id.
+// Bounding the id at the point it enters a stored entry makes the comment's
+// own assumption true by construction instead of by convention.
+func TestFold_SessionIDIsBoundedBeforeStorage(t *testing.T) {
+	huge := strings.Repeat("s", 10_000)
+	f, res, changed := Fold(File{}, false, huge, t0, []string{"a.example"})
+	if !changed {
+		t.Fatal("premise: establishing a baseline is a change")
+	}
+	if res.Err != nil {
+		t.Fatalf("Fold with an oversized session id: %v", res.Err)
+	}
+	if n := len(f.EstablishedBySession); n > maxSessionIDBytes {
+		t.Errorf("EstablishedBySession is %d bytes, want at most %d", n, maxSessionIDBytes)
+	}
+	e, ok := f.Hosts["a.example"]
+	if !ok {
+		t.Fatal("a.example was not recorded")
+	}
+	if n := len(e.FirstSeenSession); n > maxSessionIDBytes {
+		t.Errorf("FirstSeenSession is %d bytes, want at most %d", n, maxSessionIDBytes)
+	}
+	// And a second render of the SAME (still huge) id must still recognise
+	// it as the same session: bounding it once, consistently, rather than
+	// comparing the bounded form to the unbounded one.
+	_, res2, _ := Fold(f, true, huge, t0, []string{"a.example"})
+	if !res2.Established {
+		t.Error("a second render of the same oversized session id no longer reads as the establisher")
 	}
 }

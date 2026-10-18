@@ -24,9 +24,35 @@ const lockName = ".lock"
 // whose return is least misleading to call new.
 const maxBaselineHosts = 4096
 
+// maxSessionIDBytes bounds a session id as foldOrigin stores it, in either
+// of the two fields that hold one (entry.FirstSeenSession,
+// File.EstablishedBySession). Nothing upstream caps a session id's length
+// the way a hostname is capped (host.Shaped) -- it is free text from the
+// hook payload, bounded only by hookio.MaxPayloadBytes (8 MiB) -- so
+// maxEntryBytes's own math below used to ASSUME a 256-byte id without this
+// package enforcing it anywhere. clampSessionID makes that assumption true
+// by construction: foldOrigin bounds sessionID once, before either field is
+// set from it, rather than each of the two call sites re-deriving the same
+// bound.
+const maxSessionIDBytes = 256
+
+// clampSessionID bounds a session id to maxSessionIDBytes, which may cut a
+// multi-byte UTF-8 rune in half; that is fine here, because a session id is
+// an opaque comparison key to this package, never displayed, and
+// encoding/json replaces an invalid trailing sequence with U+FFFD on marshal
+// rather than failing to encode. The same input truncates to the same
+// bytes every time, so a later render of the same (still oversized) session
+// id still compares equal to what an earlier render stored.
+func clampSessionID(id string) string {
+	if len(id) > maxSessionIDBytes {
+		return id[:maxSessionIDBytes]
+	}
+	return id
+}
+
 // maxEntryBytes bounds one host's entry as save writes it: a 253-byte name,
-// a session id of up to 256 bytes (RECORD's id cap), two 13-digit stamps,
-// and the keys and indentation, about 140 bytes -- 1,024 with room for JSON
+// a session id of up to maxSessionIDBytes, two 13-digit stamps, and the
+// keys and indentation, about 140 bytes -- 1,024 with room for JSON
 // escaping. maxBaselineBytes is the file at the cap of such entries, plus
 // 64 KiB for the header and its project key, a path. A file larger than that
 // is not one this package wrote, and is read as corrupt rather than read
@@ -69,6 +95,9 @@ func FoldOrigin(f File, existed bool, sessionID string, sessionStart time.Time, 
 }
 
 func foldOrigin(f File, existed bool, sessionID string, sessionStart time.Time, hosts []string, sshHosts map[string]bool) (File, Result, bool) {
+	// Bounded once, here, before establish and the per-host loop below each
+	// store it: see clampSessionID.
+	sessionID = clampSessionID(sessionID)
 	stamp := sessionStart.UTC().UnixMilli()
 	out := f
 	out.Hosts = maps.Clone(f.Hosts)
