@@ -99,6 +99,7 @@ func TestVER52b_SnapshotKeysAreTheVerifyJSONList(t *testing.T) {
 		{Subtask{}, []string{"ref", "from_seq", "to_seq", "ambiguous", "record_green"}},
 		{CheckpointGate{}, []string{"gate", "kind", "source", "required", "state", "reason", "last_run_seq", "last_green_seq", "last_write_seq", "writes_since_green", "unknown_target_writes"}},
 		{BackgroundRef{}, []string{"family", "task_ref", "seq"}},
+		{CheckpointRuleVerdict{}, []string{"rule", "kind", "verdict", "seqs"}},
 		{Checkpoint{}, []string{
 			"type", "schema_version", "critical", "seq", "recorded_at_unix_ms", "session_id", "prompt_id", "agent_id",
 			"point", "point_seq", "point_tool_use_id", "task_ref", "verify_version", "rules_version",
@@ -127,6 +128,58 @@ func TestVER52b_SnapshotKeysAreTheVerifyJSONList(t *testing.T) {
 	}
 	if PracticeVersion != 1 || QuoteHMACPrefix != "hmac-sha256:" || SourceFinalMessage != "final_message" {
 		t.Error("a constant drifted from archive 20.2.14")
+	}
+}
+
+// TestVER52e_CheckpointKeepsNoHardControl: the rule verdicts the checkpoint
+// stores carry the rule id, its kind, the verdict and the violation seqs
+// (archive 20.2.14's checkpoint example), never the spec's hard_control
+// text, which only the snapshot prints beside a no_recorded_violation
+// (2.2.7). Checkpoint is walked by reflection, so a string field added to
+// any type it stores fails here too.
+func TestVER52e_CheckpointKeepsNoHardControl(t *testing.T) {
+	f, _ := reflect.TypeOf(Checkpoint{}).FieldByName("SpecVerdicts")
+	if got, want := f.Type, reflect.TypeOf([]CheckpointRuleVerdict(nil)); got != want {
+		t.Errorf("Checkpoint.SpecVerdicts is %s, want %s", got, want)
+	}
+	var walk func(rt reflect.Type, path string, seen map[reflect.Type]bool)
+	walk = func(rt reflect.Type, path string, seen map[reflect.Type]bool) {
+		for rt.Kind() == reflect.Pointer || rt.Kind() == reflect.Slice {
+			rt = rt.Elem()
+		}
+		if rt.Kind() != reflect.Struct || seen[rt] {
+			return
+		}
+		seen[rt] = true
+		for i := 0; i < rt.NumField(); i++ {
+			fld := rt.Field(i)
+			if tag := strings.Split(fld.Tag.Get("json"), ",")[0]; tag == "hard_control" {
+				t.Errorf("the checkpoint stores hard_control at %s.%s", path, fld.Name)
+			}
+			walk(fld.Type, path+"."+fld.Name, seen)
+		}
+	}
+	walk(reflect.TypeOf(Checkpoint{}), "Checkpoint", map[reflect.Type]bool{})
+
+	// Decoded from the wire rather than built as a literal, so the check
+	// reads the same whatever type the field holds.
+	var cp Checkpoint
+	in := `{"spec_verdicts":[{"rule":"no-shell-true","kind":"forbid_code","verdict":"violation","seqs":[44],"hard_control":"CI scanner job"}]}`
+	if err := json.Unmarshal([]byte(in), &cp); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(cp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "CI scanner job") {
+		t.Errorf("checkpoint marshals the spec's hard_control text: %s", b)
+	}
+	if want := `"spec_verdicts":[{"rule":"no-shell-true","kind":"forbid_code","verdict":"violation","seqs":[44]}]`; !strings.Contains(string(b), want) {
+		t.Errorf("checkpoint marshals %s, want it to hold %s", b, want)
+	}
+	if !slices.Contains(jsonKeys(RuleVerdict{}), "hard_control") {
+		t.Error("RuleVerdict lost hard_control; the snapshot prints it beside no_recorded_violation")
 	}
 }
 
