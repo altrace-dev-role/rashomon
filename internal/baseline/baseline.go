@@ -79,6 +79,15 @@ type entry struct {
 	FirstSeenSession  string `json:"first_seen_session"`
 	FirstSeenAtUnixMS int64  `json:"first_seen_at_unix_ms"`
 	LastSeenAtUnixMS  int64  `json:"last_seen_at_unix_ms,omitempty"`
+	// SSH marks a host named only through an ssh/scp/sftp/rsync destination,
+	// never through a URL a client resolves. canonicalizeHosts reads it to
+	// skip the inet_aton fold for such a host: an ssh destination may be a
+	// config alias nothing here ever resolves (host.CanonicalName's doc), and
+	// folding a numeric one to the address inet_aton would read it as records
+	// a connection under a name nobody typed. A legacy entry with no field at
+	// all reads as false, which keeps the fold for a file old enough to
+	// predate the distinction -- the migration this package's own tests pin.
+	SSH bool `json:"ssh,omitempty"`
 }
 
 // File is one project's baseline.
@@ -224,12 +233,21 @@ func fileName(key string) string {
 // render could each undo the other. A render that learns nothing writes
 // nothing.
 func Update(root, key, sessionID string, sessionStart time.Time, hosts []string) Result {
+	return UpdateOrigin(root, key, sessionID, sessionStart, hosts, nil)
+}
+
+// UpdateOrigin is Update, telling it which of hosts were named only through
+// an ssh-family destination rather than a URL a client resolves (entry.SSH):
+// sshHosts[h] true marks h so a later load does not fold it as an IP
+// literal. A nil map, which is what Update passes, marks nothing -- every
+// host folds exactly as it did before this parameter existed.
+func UpdateOrigin(root, key, sessionID string, sessionStart time.Time, hosts []string, sshHosts map[string]bool) Result {
 	if root == "" || key == "" {
 		return Result{Err: errors.New("baseline: no store root or project key")}
 	}
 	dir := filepath.Join(root, "baseline")
 	path := filepath.Join(dir, fileName(key))
-	res, err := update(dir, path, key, sessionID, sessionStart, hosts)
+	res, err := update(dir, path, key, sessionID, sessionStart, hosts, sshHosts)
 	res.Path = path
 	if err != nil {
 		res.Err = err
@@ -238,7 +256,7 @@ func Update(root, key, sessionID string, sessionStart time.Time, hosts []string)
 }
 
 // update is Update's locked load-fold-save.
-func update(dir, path, key, sessionID string, sessionStart time.Time, hosts []string) (Result, error) {
+func update(dir, path, key, sessionID string, sessionStart time.Time, hosts []string, sshHosts map[string]bool) (Result, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Result{}, err
 	}
@@ -251,7 +269,7 @@ func update(dir, path, key, sessionID string, sessionStart time.Time, hosts []st
 	if err != nil {
 		return Result{}, err
 	}
-	next, res, changed := Fold(f, existed, sessionID, sessionStart, hosts)
+	next, res, changed := FoldOrigin(f, existed, sessionID, sessionStart, hosts, sshHosts)
 	if res.Err != nil || !changed {
 		return res, nil
 	}

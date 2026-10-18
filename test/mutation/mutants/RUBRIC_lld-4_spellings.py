@@ -19,11 +19,9 @@ m("RUBRIC lld-4 loopback is a list of spellings", "internal/host/host.go",
 m("RUBRIC lld-4 a name under .localhost is not loopback", "internal/host/host.go",
   "\tif c == \"localhost\" || strings.HasSuffix(c, \".localhost\") {", "\tif c == \"localhost\" {", "TestRubricLLD4_")
 m("RUBRIC lld-4 the report filters loopback by its old spellings", "internal/report/destinations.go",
-  "\t\tif host.Loopback(h) || clientPlaneHost(h, mcpAttributed) {",
-  "\t\tif h == \"localhost\" || h == \"127.0.0.1\" || h == \"[::1]\" || h == \"0.0.0.0\" || clientPlaneHost(h, mcpAttributed) {",
+  "\t\t\tif loopback(h) || clientPlaneHost(h, mcpAttributed) {\n",
+  "\t\t\tif h == \"localhost\" || h == \"127.0.0.1\" || h == \"[::1]\" || h == \"0.0.0.0\" || clientPlaneHost(h, mcpAttributed) {\n",
   "TestRubricLLD4_")
-IMPORTS["RUBRIC lld-4 the report filters loopback by its old spellings"] = ("internal/report/destinations.go",
-  "\t\"github.com/altrace-dev-role/rashomon/internal/host\"\n", "")
 # forget --host asks in the recorded spelling (fix list 30, the forget half):
 # `curl https://167838211/x` records 10.1.2.3, and a forget that compared the
 # typed value, or a recorded one as stored, left the host on disk while

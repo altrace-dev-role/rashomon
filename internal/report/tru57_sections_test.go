@@ -26,7 +26,7 @@ var allowlist = map[string]keySet{
 	"destinations": {
 		"declared_hosts": nil, "ssh_hosts": nil, "executed_not_as_declared": nil,
 		"rewritten": {"tool_use_id": nil, "tool_name": nil, "program": nil, "verb_class": nil},
-		"novelty":   {"available": nil, "reason": nil, "established": nil, "known_hosts": nil, "hosts": nil},
+		"novelty":   {"available": nil, "reason": nil, "established": nil, "known_hosts": nil, "hosts": nil, "evicted": nil},
 	},
 	"nono": {
 		"configured": nil, "observed": nil, "reason": nil, "allowed": nil, "denied": nil,
@@ -56,6 +56,7 @@ var allowlist = map[string]keySet{
 // there and no program key on its link.
 var omittable = map[string]bool{
 	"destinations.novelty.reason":  true,
+	"destinations.novelty.evicted": true,
 	"nono.reason":                  true,
 	"chains.prompts.links.program": true,
 	"chains.unattributed.program":  true,
@@ -133,8 +134,12 @@ func TestTRU57_AMarshalledReportCarriesExactlyTheAllowlistedKeys(t *testing.T) {
 // non-Bash call and a healthy path; filled, a Bash call and a stated reason.
 func sectionFixture(filled string) Session {
 	link := Link{Program: filled}
+	evicted := 0
+	if filled != "" {
+		evicted = 1
+	}
 	return Session{
-		Destinations: Destinations{Rewritten: []Rewritten{{}}, Novelty: Novelty{Reason: filled}},
+		Destinations: Destinations{Rewritten: []Rewritten{{}}, Novelty: Novelty{Reason: filled, Evicted: evicted}},
 		Nono:         Nono{Reason: filled},
 		Families:     FamilyCoverage{Families: []Family{{}}},
 		Chains: Chains{

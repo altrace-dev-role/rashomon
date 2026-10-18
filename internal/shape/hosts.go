@@ -183,6 +183,19 @@ func sshCommandHosts(text string) (out []string, cut bool) {
 	for rest, budget := text, maxTokens; rest != "" && budget > 0; {
 		var line string
 		line, rest, _ = strings.Cut(rest, "\n")
+		// sshLineHosts's own lexer knows nothing of the budget shared across
+		// lines -- it always reads up to the full maxTokens -- so a line
+		// reached with almost none of the shared budget left could still
+		// cost a whole line's worth of tokenizing: about 2x the stated bound
+		// in total, measured. bytesPerToken is already how a token is priced
+		// in bytes (RES-9's own derivation); capping this line's bytes at
+		// the budget actually left caps the tokens it can cost the same way,
+		// at the price of a cut landing mid-byte on the rare line that
+		// crosses this window, no worse than the token bound already does.
+		if window := budget * bytesPerToken; len(line) > window {
+			line = line[:window]
+			cut = true
+		}
 		hosts, read, lineCut := sshLineHosts(line)
 		out = append(out, hosts...)
 		budget -= max(read, 1)
@@ -364,7 +377,7 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 		if requireRemote && !strings.HasPrefix(rest[end+1:], ":") {
 			return "", false
 		}
-		return host.Canonical(rest[:end+1])
+		return host.CanonicalName(rest[:end+1])
 	}
 
 	hostPart := rest
@@ -405,8 +418,10 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 	// cannot see. It is recorded as the command named it and never resolved:
 	// resolving would mean reading ~/.ssh/config, which is a file this package
 	// is not allowed to open, and guessing would put a name in the store that
-	// the user never typed.
-	return host.Canonical(hostPart)
+	// the user never typed. host.CanonicalName, not Canonical, for the same
+	// reason stated there: `ssh 1234` names the alias "1234", not the address
+	// inet_aton would read it as, because nothing here resolved it.
+	return host.CanonicalName(hostPart)
 }
 
 // collect finds every hostname introduced by one of the given prefixes in

@@ -193,8 +193,8 @@ m("NONO a repeat forget appends a second store-level record", "internal/store/ga
 # error paths is swallowed (review of #53): each of these survived every
 # related test.
 m("NONO the store-level forget record lands after the runs", "internal/store/gaps.go",
-  "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n\treturn s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })",
-  "\tgaps, err := s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })\n\tif err != nil {\n\t\treturn gaps, err\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n\treturn gaps, nil",
+  "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n\tif unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {\n\t\tif err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\treturn s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })",
+  "\tgaps, err := s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })\n\tif err != nil {\n\t\treturn gaps, err\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n\tif unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {\n\t\tif err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\treturn gaps, nil",
   "TestForgetHost_AForgetThatFails")
 m("NONO an unreadable store-level forget file reads as nothing forgotten", "internal/store/gaps.go",
   "\ttimes, err := s.forgottenDigestTimes()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(times) == 0 {\n\t\t// A predicate",
@@ -211,8 +211,9 @@ m("NONO a forget whose store-level record failed reports success", "internal/sto
 # candidates are the declared hosts, a list of names. Re-anchored again when
 # loopback came to be decided on the parsed address (host.Loopback).
 m("NONO the novelty candidates drop the MCP transport on an MCP session", "internal/report/destinations.go",
-  "\t\tif host.Loopback(h) || clientPlaneHost(h, mcpAttributed) {", "\t\tif host.Loopback(h) || clientPlaneHosts[h] {",
+  "\t\t\tif loopback(h) || clientPlaneHost(h, mcpAttributed) {\n", "\t\t\tif loopback(h) || clientPlaneHosts[h] {\n",
   "TestClientPlane_EveryView")
 m("NONO the session's MCP calls never reach the novelty candidates", "internal/report/destinations.go",
-  "madeMCPCall(run)))", "false))",
+  "\twire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, madeMCPCall(run))\n",
+  "\twire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, false)\n",
   "TestNovelty_TheMCPTransport")

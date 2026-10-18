@@ -59,6 +59,16 @@ var errTooLarge = errors.New("baseline: file larger than a baseline can be")
 // in. Each host also records the latest session that named it, which decides
 // eviction at the cap.
 func Fold(f File, existed bool, sessionID string, sessionStart time.Time, hosts []string) (File, Result, bool) {
+	return foldOrigin(f, existed, sessionID, sessionStart, hosts, nil)
+}
+
+// FoldOrigin is Fold, telling it which of hosts were named only through an
+// ssh-family destination; see UpdateOrigin and entry.SSH.
+func FoldOrigin(f File, existed bool, sessionID string, sessionStart time.Time, hosts []string, sshHosts map[string]bool) (File, Result, bool) {
+	return foldOrigin(f, existed, sessionID, sessionStart, hosts, sshHosts)
+}
+
+func foldOrigin(f File, existed bool, sessionID string, sessionStart time.Time, hosts []string, sshHosts map[string]bool) (File, Result, bool) {
 	stamp := sessionStart.UTC().UnixMilli()
 	out := f
 	out.Hosts = maps.Clone(f.Hosts)
@@ -92,6 +102,7 @@ func Fold(f File, existed bool, sessionID string, sessionStart time.Time, hosts 
 			next.FirstSeenSession, next.FirstSeenAtUnixMS = sessionID, stamp
 		}
 		next.LastSeenAtUnixMS = max(next.LastSeenAtUnixMS, stamp)
+		next.SSH = sshHosts[h]
 		if !seen || next != prev {
 			out.Hosts[h] = next
 			changed = true
@@ -206,7 +217,20 @@ func canonicalizeHosts(hosts map[string]entry) map[string]entry {
 	out := make(map[string]entry, len(hosts))
 	for _, h := range keys {
 		e := hosts[h]
-		canon, ok := host.Canonical(h)
+		// An entry marked SSH (entry.SSH) was named only through an
+		// ssh-family destination, never through a URL a client resolves, so
+		// it is re-keyed without the inet_aton fold (host.CanonicalName):
+		// folding "1234" to 0.0.4.210 here would do on every load exactly
+		// what fixing the ssh extraction path alone could not undo. A
+		// legacy entry with no field at all is SSH == false and keeps the
+		// fold, which is what TestUpdate_LegacyIPLiteralIsNotNovelAgain and
+		// TestLoad_MergesCollidingLegacyKeys pin for a file old enough to
+		// predate the distinction.
+		canonicalize := host.Canonical
+		if e.SSH {
+			canonicalize = host.CanonicalName
+		}
+		canon, ok := canonicalize(h)
 		if !ok || !host.Shaped(canon) {
 			continue
 		}
@@ -220,6 +244,10 @@ func canonicalizeHosts(hosts map[string]entry) map[string]entry {
 			next.FirstSeenSession, next.FirstSeenAtUnixMS = e.FirstSeenSession, e.FirstSeenAtUnixMS
 		}
 		next.LastSeenAtUnixMS = max(lastSeen(prev), lastSeen(e))
+		// Conservative once either contributor is SSH: a merged entry stays
+		// un-foldable rather than reverting to a fold neither spelling may
+		// have earned.
+		next.SSH = prev.SSH || e.SSH
 		out[canon] = next
 	}
 	return out

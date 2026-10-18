@@ -255,6 +255,10 @@ func TestSSHDestinations(t *testing.T) {
 		{name: "bare host colon, no user", cmd: "scp host.example.com:/etc/f .", wantSSH: []string{"host.example.com"}},
 		{name: "ssh config alias", cmd: "ssh myserver", wantSSH: []string{"myserver"},
 			why: "recorded as named and never resolved: resolving would mean reading ~/.ssh/config"},
+		{name: "numeric ssh config alias", cmd: "ssh 1234", wantSSH: []string{"1234"},
+			why: "host.Canonical's inet_aton fold would read this as 0.0.4.210; it is an alias, never resolved"},
+		{name: "ssh config alias of 0", cmd: "ssh 0", wantSSH: []string{"0"},
+			why: "host.Canonical folds \"0\" to 0.0.0.0, which Loopback then reads as this machine"},
 
 		// What must NOT be recorded.
 		{name: "remote command is not a host", cmd: "ssh h.example.com ls /etc", wantSSH: []string{"h.example.com"},
@@ -426,6 +430,39 @@ func TestSSHDestinationsAcrossLines(t *testing.T) {
 	want := []string{"h1.example.com", "h2.example.com"}
 	if !reflect.DeepEqual(gotSSH, want) {
 		t.Errorf("ssh hosts across two lines = %v, want %v: the second command's host was lost", gotSSH, want)
+	}
+}
+
+// TestSSHCommandHosts_LineBudgetIsTheRemainder: sshCommandHosts's shared
+// budget across lines only decides whether the NEXT line gets read at all;
+// each line, once started, is lexed by sshLineHosts up to the full maxTokens
+// regardless of how little budget is actually left, so a line near the end
+// of a multi-line command can still cost a full line's worth of tokenizing
+// with almost nothing left to spend.
+//
+// The filler line alone already costs close to maxTokens tokens' worth of
+// allocation -- that is legitimate, budgeted work, not the bug -- so the
+// assertion is on the DELTA a trailing 6 MB line adds on top of it with
+// only 2 tokens of budget left, not on the total.
+func TestSSHCommandHosts_LineBudgetIsTheRemainder(t *testing.T) {
+	// One short word per token, enough of them to leave the shared budget at
+	// 2 tokens (sshLineHosts counts "x" and the line's own single word as
+	// one token each here, well under sshDestPrograms so no host is found,
+	// which is irrelevant to this test -- only the token cost matters).
+	filler := strings.Repeat("x ", maxTokens-2)
+	text := filler + "\n" + strings.Repeat("ssh a;", 1<<20)
+	fillerOnly := allocated(func() { sshCommandHosts(filler) })
+	withTrailer := allocated(func() { sshCommandHosts(text) })
+	// Without the fix, the trailing line is lexed to the full maxTokens
+	// regardless of the 2 tokens of budget left, which costs about as much
+	// again as the filler line itself -- roughly doubling the total, the "2x
+	// the bound" the trailing line's own lexer has no notion of sharing.
+	// 256 KiB is generous for reading only the ~536 bytes (2 tokens'
+	// worth, bytesPerToken) the remaining budget actually allows.
+	if delta := int64(withTrailer) - int64(fillerOnly); delta > 256<<10 {
+		t.Errorf("a trailing 6 MB line with 2 tokens of budget left added %d KiB on top of the "+
+			"filler line's own %d KiB; want at most 256 KiB, not a full line's worth of lexing",
+			delta>>10, fillerOnly>>10)
 	}
 }
 

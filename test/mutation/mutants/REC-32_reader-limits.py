@@ -54,7 +54,9 @@ m("REC-32 forget --host clears baselines after a forget that failed before any r
 # that can end in ErrForgetIncomplete, not only after a pass that finished.
 m("REC-32 forget --host records the host only after every run was rewritten", "internal/store/gaps.go",
   "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n"
+  "\tif unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {\n\t\tif err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n"
   "\treturn s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })\n",
+  "\tif unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {\n\t\tif err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n"
   "\tgaps, err := s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })\n"
   "\tif err != nil {\n\t\treturn gaps, err\n\t}\n\treturn gaps, s.recordForgottenHost(s.HostDigest(name), now)\n",
   "TestForgetHost_APartialForgetSaysLaterReportsLeaveItOutOnlyWithItsRecord")

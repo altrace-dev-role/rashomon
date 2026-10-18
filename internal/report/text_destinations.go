@@ -64,4 +64,11 @@ func writeNovelty(b *bytes.Buffer, n Novelty) {
 		fmt.Fprintf(b, "  not yet in this project's baseline: %s\n", list(n.Hosts))
 		fmt.Fprintf(b, "    (added to this project's baseline by this session; %d hosts known)\n", n.KnownHosts)
 	}
+	if n.Evicted > 0 {
+		// Without this a host that comes back after eviction at the 4,096
+		// cap (baseline.Result.Evicted) reads as "never named before" --
+		// the same words a genuinely new host gets -- rather than "named
+		// before, and the baseline aged it out to make room".
+		fmt.Fprintf(b, "    (%d host%s aged out of the baseline at its cap this render)\n", n.Evicted, plural(n.Evicted))
+	}
 }

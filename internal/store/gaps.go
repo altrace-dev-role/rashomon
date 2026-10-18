@@ -456,6 +456,16 @@ type declHead struct {
 // host's, the spelling the sandbox trail carries. A value Canonical refuses
 // names no destination at all and is refused here, before anything is
 // written.
+//
+// A SECOND digest is recorded too, under host.CanonicalName -- the same
+// spelling without the inet_aton fold -- when it differs from the first.
+// An ssh declaration is stored and read back in that unfolded spelling
+// (host.CanonicalName's doc), so "forget --host 1234" against an ssh alias
+// named exactly that way would otherwise record a digest only the wire
+// side's folded spelling ever matches, and the alias would never read as
+// forgotten. The two spellings agree on everything that is not a bare
+// number, so this is a second write only for the inputs where they can
+// differ at all.
 func (s *Store) ForgetHost(raw string, now time.Time) ([]Gap, error) {
 	name, ok := host.Canonical(raw)
 	if !ok {
@@ -470,6 +480,11 @@ func (s *Store) ForgetHost(raw string, now time.Time) ([]Gap, error) {
 	// (#45).
 	if err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {
 		return nil, err
+	}
+	if unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {
+		if err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {
+			return nil, err
+		}
 	}
 	return s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })
 }

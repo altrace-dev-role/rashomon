@@ -68,6 +68,31 @@ const maxName = 253
 // the existence of. Refusing it means a credential cannot be carried even one
 // function deeper.
 func Canonical(raw string) (string, bool) {
+	return canonical(raw, true)
+}
+
+// CanonicalName is Canonical without the inet_aton fold: every other
+// transformation in Canonical's doc still applies -- case, port, the
+// trailing dot, the length bound, an IPv6 literal's one spelling -- but a
+// name made only of digits is returned as the name it is, not reinterpreted
+// as the address curl or wget would read it as.
+//
+// Folding belongs to a URL authority, where it is a fact about what a real
+// client does before it connects. It does not belong to an ssh, scp, sftp or
+// rsync destination: ssh matches a Host alias in ~/.ssh/config against the
+// exact text the command line named, before any resolution happens, and a
+// numeric alias is ordinary there ("Host 1234" is ssh config nobody has to
+// justify). Canonical("1234") -> "0.0.4.210", and Canonical("0") ->
+// "0.0.0.0", which Loopback then reads as this machine -- right for a URL a
+// client actually folds, wrong for an alias nothing resolved. CanonicalName
+// is what the ssh-destination path (destinationHost) and this package's own
+// Loopback use instead, so a destination this product deliberately never
+// resolves (see destinationHost's doc) is not resolved here either.
+func CanonicalName(raw string) (string, bool) {
+	return canonical(raw, false)
+}
+
+func canonical(raw string, foldNumeric bool) (string, bool) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
 		return "", false
@@ -110,13 +135,17 @@ func Canonical(raw string) (string, bool) {
 	if !plausible(h) {
 		return "", false
 	}
-	return address(h)
+	return address(h, foldNumeric)
 }
 
 // address writes an IP literal h in its one spelling (see Canonical) and
 // returns any other host as it is. A bracket that does not hold an IPv6
 // address, or a colon outside a bracket that does not make one, is refused.
-func address(h string) (string, bool) {
+// foldNumeric gates inet_aton only -- an IPv6 literal is still parsed to its
+// one spelling either way, because a bracket or a bare double colon is
+// unambiguously an address and carries none of the alias ambiguity inet_aton
+// folding has (see CanonicalName).
+func address(h string, foldNumeric bool) (string, bool) {
 	inner, bracketed := h, strings.HasPrefix(h, "[")
 	if bracketed {
 		inner = h[1 : len(h)-1]
@@ -128,8 +157,10 @@ func address(h string) (string, bool) {
 		}
 		return spell(a), true
 	}
-	if a, ok := inetAton(h); ok {
-		return a.String(), true
+	if foldNumeric {
+		if a, ok := inetAton(h); ok {
+			return a.String(), true
+		}
 	}
 	return h, true
 }
@@ -276,9 +307,27 @@ func Same(stored, canonical string) bool {
 // unspecified address, a connection to which reaches this machine. It is
 // decided on the parsed address, so every spelling of one --
 // [0:0:0:0:0:0:0:1], 2130706433, 127.1 -- answers alike, where a list of
-// spellings answered only for the spellings on it.
+// spellings answered only for the spellings on it. The fold (Canonical, not
+// CanonicalName) is wanted here: a URL authority of "2130706433" really does
+// reach this machine, obfuscated decimal form or not, and the whole point is
+// to catch that spelling, not just the dotted one.
 func Loopback(h string) bool {
-	c, ok := Canonical(h)
+	return loopback(Canonical(h))
+}
+
+// LoopbackName is Loopback without the inet_aton fold (host.CanonicalName,
+// not Canonical): for an ssh destination, where "0" is as plausible a config
+// alias as any other name and is never resolved by anything in this
+// package. Loopback("0") folds to 0.0.0.0 and reads as this machine, which
+// is right for a URL a client actually resolves and wrong for an alias
+// nothing here resolved; LoopbackName("0") does not fold and is false.
+func LoopbackName(h string) bool {
+	return loopback(CanonicalName(h))
+}
+
+// loopback is Loopback and LoopbackName's shared tail, given the result of
+// whichever canonicalisation its caller already applied.
+func loopback(c string, ok bool) bool {
 	if !ok {
 		return false
 	}

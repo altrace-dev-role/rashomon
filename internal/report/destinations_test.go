@@ -288,7 +288,8 @@ func TestClientPlane_EveryViewAppliesTheOneRule(t *testing.T) {
 	for _, mcp := range []bool{false, true} {
 		for _, h := range hosts {
 			want := clientPlaneHost(h, mcp)
-			if got := !slices.Contains(novelHostCandidates([]string{h}, mcp), h); got != want {
+			wire, _ := novelHostCandidates([]string{h}, nil, mcp)
+			if got := !slices.Contains(wire, h); got != want {
 				t.Errorf("mcp session %v, %s: left out of the novelty candidates %v, the rule says %v", mcp, h, got, want)
 			}
 			trail := trailWith(nono.Event{Host: h, Port: 443, Decision: nono.DecisionAllow, Mode: "connect"})
