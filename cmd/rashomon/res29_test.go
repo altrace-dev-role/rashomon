@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -38,8 +39,9 @@ func res29Payload(t *testing.T, size int, prefix, unit, suffix string) []byte {
 
 // TestRES29_PathologicalInputsStayBounded: each pathological input the shape
 // of a call reads exits 0 inside the hook's hard stop at peak RSS of at most
-// 64 MiB, and still records the call. It runs the hook entry in a child
-// process, against a started session, as the installed binary runs it.
+// rssMiB (64 on linux, 76 on darwin -- see its own comment), and still
+// records the call. It runs the hook entry in a child process, against a
+// started session, as the installed binary runs it.
 //
 // The rows are RES-29's that the shape of a call owns -- 8 MiB of short words
 // (the token bound, RES-9; the first row, which the RES-9 mutant turns red),
@@ -71,8 +73,22 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 		// (plugin/hooks/hooks.json), so a hook this slow would miss that
 		// external timeout too, not just this test.
 		deadline = 4 * time.Second
-		rssMiB   = 64
 	)
+	// rssMiB is platform-specific, not one portable number: measured
+	// 2026-10-18 on the git@ scheme runs row, the one that runs this test
+	// closest to its ceiling, the same child binary peaks at 54.78 MiB on
+	// linux/amd64 (test/perf/peakrss, docker/colima) against 65.11-65.25 MiB
+	// on darwin/arm64 for the identical payload -- a ~19% gap in resident
+	// memory for the same allocations, which Go's runtime costs more of per
+	// allocation on darwin/arm64, not more work done. A single bound tight
+	// enough to mean something on linux was flaky on darwin by design, not
+	// by regression; a bound loose enough to never flake on darwin stopped
+	// meaning anything on linux, where CI actually runs (-race, go1.25.8).
+	// Each platform keeps its own margin instead.
+	rssMiB := 64.0
+	if runtime.GOOS == "darwin" {
+		rssMiB = 76
+	}
 	type row struct {
 		name    string
 		payload func(*testing.T) []byte
@@ -144,9 +160,9 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 			case reaper == nil:
 				t.Log("this platform reports no peak RSS for a child; the bound is not applied")
 			case raceEnabled:
-				t.Logf("race detector on: %.2f MiB, the %d MiB bound is not applied to an instrumented child", rss, rssMiB)
+				t.Logf("race detector on: %.2f MiB, the %.0f MiB bound is not applied to an instrumented child", rss, rssMiB)
 			case rss > rssMiB:
-				t.Errorf("hook peaked at %.2f MiB, over %d MiB", rss, rssMiB)
+				t.Errorf("hook peaked at %.2f MiB, over %.0f MiB", rss, rssMiB)
 			default:
 				t.Logf("hook: %v, peak RSS %.2f MiB", took.Round(time.Millisecond), rss)
 			}
