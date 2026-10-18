@@ -1,12 +1,12 @@
 # RES-13: Stop flat in session size. store.Fold (internal/store/fold.go) is
-# the streaming visitor B4 adds -- the mechanism RES-13's own
-# TestRES13_StopIsFlatInSessionSize and TestRES13b_OnePromptSessionIsFlat
-# will measure once a later PR wires it into Stop -- and fold.Write is the
-# bound on its persisted form: a fold.json that could grow without limit
-# would undermine the same flatness for whichever Stop reads it next.
-# Nothing calls either in production yet, so these mutants pin the two
-# primitives' own behaviour, not RES-13's production memory ceiling, which
-# this PR does not claim.
+# the streaming visitor that gives a fold its bounded-memory read -- the
+# mechanism RES-13's own TestRES13_StopIsFlatInSessionSize and
+# TestRES13b_OnePromptSessionIsFlat will measure once a later PR wires it
+# into Stop -- and fold.Write is the bound on its persisted form: a
+# fold.json that could grow without limit would undermine the same
+# flatness for whichever Stop reads it next. Nothing calls either in
+# production yet, so these mutants pin the two primitives' own behaviour,
+# not RES-13's production memory ceiling, which this PR does not claim.
 
 m("FOLD a missing file is read as an error instead of folding nothing",
   "internal/store/fold.go",
@@ -45,6 +45,18 @@ m("FOLD a line over maxLine is never reported as oversize",
   "\t\t\tif len(line)+len(chunk) > maxLine {\n",
   "\t\t\tif false {\n",
   "TestFoldStore_FoldOverlongLineReadsAsNil")
+
+m("FOLD an empty line is reported as fn(nil), the same signal as oversize",
+  "internal/store/fold.go",
+  "\t\tcase len(line) > 0:\n\t\t\tfn(line)\n",
+  "\t\tcase true:\n\t\t\tfn(line)\n",
+  "TestFoldStore_FoldDropsEmptyLines")
+
+m("FOLD never lets size catch up to an offset a racing write pushed past it",
+  "internal/store/fold.go",
+  "\tif folded > size {\n\t\tsize = folded\n\t}\n",
+  "\tif false {\n\t\tsize = folded\n\t}\n",
+  "TestFoldStore_SizeNeverTrailsTheOffsetItReturns")
 
 m("FOLD Write never refuses a document over MaxBytes",
   "internal/fold/write.go",

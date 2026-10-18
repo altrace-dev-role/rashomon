@@ -24,7 +24,11 @@ import (
 // function itself knows nothing about records, prompts or a digest.
 //
 // A missing file folds nothing, from offset 0 -- the same outcome eachLine's
-// other callers already give a run with no spill or no coverage yet.
+// other callers already give a run with no spill or no coverage yet. An
+// empty line is dropped rather than passed to fn: forEachLine already skips
+// it (lines.go), and fn(nil) is this function's own signal for a line over
+// maxLine, so reporting an empty line that way would make the two
+// indistinguishable to a caller that counts nil lines as unreadable.
 //
 // A final line with no trailing newline is not folded: an append still in
 // flight (REC-32) leaves a half-written line at the end of the file, and
@@ -79,6 +83,17 @@ func Fold(path string, offset int64, fn func(line []byte)) (newOffset, size int6
 	}
 
 	folded, err := foldLines(f, offset, fn)
+	// folded can run past size: the Stat above is a snapshot, but the read
+	// that follows it sees whatever lands on disk before each underlying
+	// Read call returns, so a write racing the scan can grow the file after
+	// size was captured and still be folded in the same call. size must
+	// never be reported smaller than the offset it comes back paired with
+	// -- a caller saving (folded, size) as a cursor's Offset and SizeSeen
+	// needs SizeSeen >= Offset, or the very check it exists for (Validate's
+	// cursorValid, internal/fold/validate.go) would reject its own cursor.
+	if folded > size {
+		size = folded
+	}
 	return folded, size, err
 }
 
@@ -125,7 +140,7 @@ func foldLines(f *os.File, offset int64, fn func(line []byte)) (int64, error) {
 		switch {
 		case over:
 			fn(nil)
-		default:
+		case len(line) > 0:
 			fn(line)
 		}
 		line, over = nil, false

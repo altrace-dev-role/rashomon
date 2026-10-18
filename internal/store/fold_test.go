@@ -162,6 +162,69 @@ func TestFoldStore_FoldOverlongLineReadsAsNil(t *testing.T) {
 	}
 }
 
+// TestFoldStore_FoldDropsEmptyLines: an empty line carries no record and no
+// over-length signal, so Fold must drop it rather than report it to fn, the
+// same as forEachLine already does for every other NDJSON reader in this
+// package (lines.go: "case len(line) > 0: fn(line)"). Reporting it as
+// fn(nil) would make an empty line indistinguishable from an over-length
+// one to any caller that counts nil as unreadable.
+func TestFoldStore_FoldDropsEmptyLines(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileRecords)
+	write(t, path, "a\n\nb\n")
+
+	var got []string
+	nilCount := 0
+	_, _, err := Fold(path, 0, func(line []byte) {
+		if line == nil {
+			nilCount++
+			return
+		}
+		got = append(got, string(line))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nilCount != 0 {
+		t.Errorf("nilCount = %d, want 0 (a blank line is not oversize)", nilCount)
+	}
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Errorf("folded lines = %v, want [a b] (the blank line dropped)", got)
+	}
+}
+
+// TestFoldStore_SizeNeverTrailsTheOffsetItReturns: Fold stats the file once,
+// before reading, then reads to EOF through a bufio.Reader whose underlying
+// fd sees whatever is on disk at the moment of each read, not the stat
+// snapshot. A write landing between the Stat and the read lets Fold consume
+// bytes past the size it already captured, so a caller saving (newOffset,
+// size) as a cursor's Offset and SizeSeen must never see SizeSeen fall
+// short of Offset -- that is exactly the inconsistent cursor Validate's
+// SizeSeen check (internal/fold/validate.go) exists to catch on the next
+// resume.
+func TestFoldStore_SizeNeverTrailsTheOffsetItReturns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileRecords)
+	write(t, path, "one\n")
+
+	// Simulate growth landing after Fold's initial Stat but before it is
+	// done reading, by growing the file inside the fn callback -- fn runs
+	// mid-scan, before Fold has returned its (offset, size) pair.
+	grown := false
+	offset, size, err := Fold(path, 0, func(line []byte) {
+		if !grown {
+			grown = true
+			appendRaw(t, path, []byte("two\n"))
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size < offset {
+		t.Errorf("size = %d, offset = %d: size must never trail the offset it was returned with", size, offset)
+	}
+}
+
 func write(t *testing.T, path, s string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), dirMode); err != nil {
