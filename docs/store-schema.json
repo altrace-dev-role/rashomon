@@ -691,6 +691,13 @@
                 "type": "string"
               }
             }
+          },
+          "else": {
+            "properties": {
+              "reason": {
+                "const": null
+              }
+            }
           }
         }
       ]
