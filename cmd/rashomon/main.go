@@ -71,6 +71,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	case "watch":
 		return guarded(stderr, func() error { return cmdWatch(rest, stdout) })
+	case "consent":
+		return guarded(stderr, func() error { return cmdConsent(rest, stdout) })
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
 	case "purge":
@@ -1788,6 +1790,11 @@ usage:
                                directories watch created; prints every path
                                first and asks on the terminal unless --yes;
                                --binary also removes this binary
+  rashomon consent [--yes] [--show]
+                               show the screen again, opening with what
+                               changed since you last agreed, and record your
+                               consent after y on the terminal; the one way
+                               to widen an upgraded store's record scope
   rashomon pause                 stop recording on this machine, reaching every
                                installed origin; leaves a record of the change
   rashomon resume                start recording again; closes the paused
