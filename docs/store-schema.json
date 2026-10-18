@@ -185,7 +185,7 @@
           }
         },
         "ssh_hosts": {
-          "description": "Schema 2. Hostnames named behind ssh://, git+ssh:// or git@, canonicalised identically. Separate from hosts because the two have opposite fates in the report: the proxy cannot observe ssh at all, so an ssh host with no wire record is expected and renders under coverage as not observable, never as a finding. Merging the two and filtering downstream is how the second kind gets printed as the first.",
+          "description": "Schema 2. Hostnames named behind ssh://, git+ssh:// or git@, canonicalised identically. Kept apart from hosts because family coverage counts ssh and HTTPS destinations separately, by scheme; novelty does not make that distinction and takes its candidates from this field and hosts combined.",
           "type": [
             "array",
             "null"
@@ -689,7 +689,7 @@
           "type": "integer"
         },
         "host_digest": {
-          "description": "Schema 2. An HMAC under the per-install key identifying the destination a host-scoped forget removed; empty string for a window forget, which removes by time and names no host. A DIGEST and not the hostname, resolving a conflict the field had to settle: the report needs to keep suppressing the destination, because the proxy's store is not this tool's to delete from and the host would otherwise reappear in the next report as reached-but-never-named, yet forget --host also has to make the hostname leave this store's bytes. Writing the name would satisfy the first requirement by breaking the second. Keyed with the same per-install key the shape digests use, so the report can recompute it from an observed host while a reader of the store cannot turn it back into a name or test a guess.",
+          "description": "Schema 2. An HMAC under the per-install key identifying the destination a host-scoped forget removed; empty string for a window forget, which removes by time and names no host. A DIGEST and not the hostname, resolving a conflict the field had to settle: the report needs to keep suppressing the host, because nono's own trail is not this tool's to delete from and the host would otherwise reappear in the next report under the sandbox heading, yet forget --host also has to make the hostname leave this store's bytes. Writing the name would satisfy the first requirement by breaking the second. Keyed with the same per-install key the shape digests use, so the report can recompute it from an observed host while a reader of the store cannot turn it back into a name or test a guess.",
           "type": "string"
         },
         "removed_records": {
@@ -699,7 +699,7 @@
     },
     "forgotten_host": {
       "title": "forgotten_host",
-      "description": "A host-scoped forget, kept at the store root. Written by forget --host whatever it removed, at most once per host, so the report can keep suppressing a host that only the sandbox's trail or the proxy's store held, where no run had a record to remove and so no gap was written. Carries the keyed digest and never the name, for the reason given on gap.host_digest.",
+      "description": "A host-scoped forget, kept at the store root. Written by forget --host whatever it removed, at most once per host, so the report can keep suppressing a host that only the sandbox's trail held, where no run had a record to remove and so no gap was written. Carries the keyed digest and never the name, for the reason given on gap.host_digest.",
       "type": "object",
       "additionalProperties": false,
       "required": [
