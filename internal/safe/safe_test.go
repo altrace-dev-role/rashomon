@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -131,6 +132,9 @@ func TestUnsafeGoroutineStarts_DetectsAfterFuncAndGoStatements(t *testing.T) {
 		{"context.AfterFunc", "package x\n\nimport \"context\"\n\nfunc f(ctx context.Context) { context.AfterFunc(ctx, func() {}) }\n", 1},
 		{"an unrelated call also named AfterFunc", "package x\n\nfunc f() { x.AfterFunc() }\n", 0},
 		{"no goroutine at all", "package x\n\nfunc f() {}\n", 0},
+		{"time imported under an alias", "package x\n\nimport t \"time\"\n\nfunc f() { t.AfterFunc(0, func() {}) }\n", 1},
+		{"context imported under an alias", "package x\n\nimport c \"context\"\n\nfunc f(ctx c.Context) { c.AfterFunc(ctx, func() {}) }\n", 1},
+		{"an import named time that is not the time package", "package x\n\nimport time \"example.com/other\"\n\nfunc f() { time.AfterFunc() }\n", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fset := token.NewFileSet()
@@ -151,6 +155,7 @@ func TestUnsafeGoroutineStarts_DetectsAfterFuncAndGoStatements(t *testing.T) {
 // goroutine outside whatever Guard is on the caller's stack. Each report
 // names rel and the line.
 func unsafeGoroutineStarts(fset *token.FileSet, f *ast.File, rel string) []string {
+	afterFuncImports := afterFuncCapableImports(f)
 	var out []string
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch x := n.(type) {
@@ -163,15 +168,43 @@ func unsafeGoroutineStarts(fset *token.FileSet, f *ast.File, rel string) []strin
 				return true
 			}
 			id, ok := sel.X.(*ast.Ident)
-			if !ok || (id.Name != "time" && id.Name != "context") {
+			if !ok {
+				return true
+			}
+			path, ok := afterFuncImports[id.Name]
+			if !ok {
 				return true
 			}
 			out = append(out, fmt.Sprintf(
-				"%s:%d starts a goroutine with %s.AfterFunc, which carries no recover of its own; use safe.Go",
-				rel, fset.Position(x.Pos()).Line, id.Name))
+				"%s:%d starts a goroutine with %s.AfterFunc (%s), which carries no recover of its own; use safe.Go",
+				rel, fset.Position(x.Pos()).Line, id.Name, path))
 		}
 		return true
 	})
+	return out
+}
+
+// afterFuncCapableImports maps each local identifier this file's imports
+// bind to the real import path behind it, for every import whose path is
+// "time" or "context" -- the two standard library packages whose AfterFunc
+// starts a goroutine with no recover of its own. Matching on the import
+// path rather than the identifier text catches time imported under an
+// alias (import t "time"), which a literal name comparison let slip past,
+// and does not falsely flag an identifier that merely happens to be named
+// "time" or "context" while importing something else entirely.
+func afterFuncCapableImports(f *ast.File) map[string]string {
+	out := map[string]string{}
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil || (path != "time" && path != "context") {
+			continue
+		}
+		local := path
+		if imp.Name != nil {
+			local = imp.Name.Name
+		}
+		out[local] = path
+	}
 	return out
 }
 
