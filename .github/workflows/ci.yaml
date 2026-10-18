@@ -293,11 +293,13 @@ jobs:
   # failing input is then printed less reduced, which is still the input that
   # failed. TestRubricTest1_FuzzJobFloorIsTheTreeCount keeps the floor below
   # at the number of targets the tree holds.
-  # Targets are found by `func Fuzz` rather than listed, so a new one runs
-  # without an edit here, and the count check below fails if the search ever
-  # finds fewer than the tree holds today. A failing input is written under
-  # the target's testdata/fuzz and printed here, so it can be committed as a
-  # seed; each input is handed to a parser only, never run.
+  # Targets are the ones `go test -list` names in each package, so a new one
+  # runs without an edit here and a file this build leaves out is left out
+  # here too, and a run counts only if it printed `fuzz: elapsed`. Every
+  # target runs before the job fails, so one failure hides no other. A
+  # failing input is written under the target's testdata/fuzz, printed here
+  # and kept as an artifact, so it can be committed as a seed; each input is
+  # handed to a parser only, never run.
   fuzz:
     name: Fuzz
     runs-on: ubuntu-latest
@@ -317,24 +319,42 @@ jobs:
         run: |
           set -euo pipefail
           found=0
-          while IFS=: read -r file line; do
-            dir=$(dirname "$file")
-            dir=${dir#./}
-            pkg="./${dir}"
-            name=$(sed -n "${line}p" "$file" | sed -E 's/^func (Fuzz[A-Za-z0-9_]+)\(.*/\1/')
-            echo "::group::${pkg} ${name}"
-            if ! go test "$pkg" -run '^$' -fuzz "^${name}\$" -fuzztime 30s -fuzzminimizetime 10x; then
+          failed=()
+          log=$(mktemp)
+          for pkg in $(go list ./...); do
+            for name in $(go test "$pkg" -list '^Fuzz' | grep '^Fuzz' || true); do
+              echo "::group::${pkg} ${name}"
+              if go test "$pkg" -run '^$' -fuzz "^${name}\$" -fuzztime 30s -fuzzminimizetime 10x 2>&1 | tee "$log"; then
+                if ! grep -q '^fuzz: elapsed' "$log"; then
+                  echo "::error::${name} in ${pkg} passed without fuzzing"
+                  failed+=("${pkg} ${name}")
+                fi
+              else
+                echo "::error::${name} in ${pkg} found a failing input"
+                failed+=("${pkg} ${name}")
+                corpus="$(go list -f '{{.Dir}}' "$pkg")/testdata/fuzz/${name}"
+                if [ -d "$corpus" ]; then
+                  find "$corpus" -type f -newer go.mod -exec sh -c 'echo "== $1"; cat "$1"' _ {} \;
+                fi
+              fi
               echo "::endgroup::"
-              echo "::error::${name} in ${pkg} found a failing input"
-              find "${dir}/testdata/fuzz/${name}" -type f -newer go.mod \
-                -exec sh -c 'echo "== $1"; cat "$1"' _ {} \;
-              exit 1
-            fi
-            echo "::endgroup::"
-            found=$((found + 1))
-          done < <(grep -rn --include='*_test.go' '^func Fuzz' . | cut -d: -f1,2)
+              found=$((found + 1))
+            done
+          done
           echo "fuzzed ${found} targets"
           test "$found" -ge 15
+          if [ "${#failed[@]}" -gt 0 ]; then
+            printf '::error::failed: %s\n' "${failed[@]}"
+            exit 1
+          fi
+
+      - name: Keep the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: fuzz-failing-inputs
+          path: "**/testdata/fuzz/**"
+          if-no-files-found: ignore
 
   cross-build:
     name: Cross build (${{ matrix.goos }}/${{ matrix.goarch }})
