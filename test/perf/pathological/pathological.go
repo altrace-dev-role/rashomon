@@ -38,5 +38,9 @@ func Lines() []Line {
 		{"urls", "curl", " https://a.b/", ""},
 		{"git@ scheme runs", "", "git@", ""},
 		{"unterminated bracket hosts", "", "https://[", ""},
+		// Appended rather than inserted beside the other quoted-blanks rows:
+		// cmd/rashomon's own premise check pins this table's indices, and a
+		// row inserted in the middle would shift them silently.
+		{"blanks inside one quote", "echo '", "a ", "'"},
 	}
 }

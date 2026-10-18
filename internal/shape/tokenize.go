@@ -579,12 +579,35 @@ func (l *lexer) plain(i int) {
 // escaped blank ends no word: 8 MiB of `\ ` is one word, and counted as
 // millions the line was given a slice for the bound's worth of tokens in
 // each of its readings.
+//
+// A blank inside a single or double quote ends no word either, for the same
+// reason: it tracks open/close, not full shell quoting ($(...) nesting
+// inside double quotes among them), because this is an upper bound and a
+// miscount toward UNDER-estimating costs nothing past the grow lex already
+// does for a short line. One 8 MiB single-quoted string full of spaces, with
+// no tracking, estimated maxTokens+1 words for what lex reads as one, and
+// paid for that slice on every one of a line's several readings.
 func tokenEstimate(s string) int {
 	n, inWord := 1, false
+	quote := byte(0) // 0, or the ' or " this position is inside
 	for i := 0; i < len(s) && n <= maxTokens; i++ {
-		switch c := s[i]; {
+		c := s[i]
+		if quote != 0 {
+			switch {
+			case c == quote:
+				quote = 0
+			case quote == '"' && c == '\\': // only a double quote reads an escape
+				i++
+			}
+			inWord = true
+			continue
+		}
+		switch {
 		case c == '\\': // the byte it escapes is the word's, a blank included
 			i++
+			inWord = true
+		case c == '\'' || c == '"':
+			quote = c
 			inWord = true
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
 			if inWord {
