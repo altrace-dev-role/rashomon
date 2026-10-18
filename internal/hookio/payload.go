@@ -1,6 +1,7 @@
 package hookio
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"strconv"
@@ -59,18 +60,67 @@ type Payload struct {
 	Spans [NumKeys]jsonscan.Span
 }
 
-// Intake reads one payload (Read), validates it and scans it once
-// (jsonscan.Top). It serves the buffered entries: hook, post and probe.
+// payloadKeys matches the keys as the payload structs matched their fields:
+// case-insensitively, the last match winning.
+var payloadKeys = jsonscan.NewFoldKeySet(KeyNames()...)
+
+// Intake reads one payload (Read), validates it with json.Valid and records
+// the spans of its top-level keys in one walk (jsonscan.Top). It serves the
+// buffered entries: hook, post and probe. A payload over the cap is refused
+// with a *TooLargeError.
 func Intake(r io.Reader) (*Payload, error) {
-	raw, err := Read(r)
+	raw, head, err := read(r)
+	if errors.Is(err, ErrTooLarge) {
+		return nil, refused(head)
+	}
 	if err != nil {
 		return nil, err
 	}
 	p := &Payload{Raw: raw}
-	if err := jsonscan.Top(raw, jsonscan.NewKeySet(KeyNames()...), p.Spans[:]); err != nil {
+	if err := jsonscan.Top(raw, payloadKeys, p.Spans[:]); err != nil {
 		return nil, err
 	}
 	return p, nil
+}
+
+// TooLargeError is Intake's refusal of a payload over MaxPayloadBytes;
+// errors.Is(err, ErrTooLarge) holds for it. The payload is not parsed, but
+// its first 4 KiB were read before the cap was reached, and SessionID and CWD
+// are read from them so the refusal is recorded in the run that sent it, as
+// the supervisor scans that head (Technical spec 4.2.10). A value that does
+// not end inside the head, or a head that is not one object's valid start,
+// leaves both empty; a key repeated past the head is not seen.
+type TooLargeError struct {
+	SessionID, CWD string
+}
+
+func (e *TooLargeError) Error() string { return ErrTooLarge.Error() }
+
+// Is makes errors.Is(err, ErrTooLarge) hold.
+func (e *TooLargeError) Is(target error) bool { return target == ErrTooLarge }
+
+// refused reads session_id and cwd out of an over-cap payload's head.
+func refused(head []byte) *TooLargeError {
+	var e TooLargeError
+	paths := []jsonscan.Path{
+		{Elems: []string{"session_id"}, Max: len(head), Mode: jsonscan.CaptureHead, String: true, Fold: true},
+		{Elems: []string{"cwd"}, Max: len(head), Mode: jsonscan.CaptureHead, String: true, Fold: true},
+	}
+	err := IntakeStream(bytes.NewReader(head), paths, func(i int, v []byte, _ bool) bool {
+		if i == 0 {
+			e.SessionID = string(v)
+		} else {
+			e.CWD = string(v)
+		}
+		return true
+	})
+	// The head is cut inside the payload, so a sound head ends in the middle
+	// of a value: anything else, or a cut sooner, names nothing.
+	var se *jsonscan.SyntaxError
+	if !errors.As(err, &se) || se.Offset != int64(len(head)) {
+		return &TooLargeError{}
+	}
+	return &e
 }
 
 // Has reports whether key k was present with a value other than null or
@@ -129,18 +179,27 @@ func (p *Payload) Int(k int) (*int64, error) {
 	return &n, nil
 }
 
-// Strs decodes the string fields ks into dst, in order, and returns on the
-// first one of the wrong type. Fields before it may already be written to
-// dst, which is safe because every caller discards dst on error (handle.go,
-// post.go, probe.go, paused.go): one bad field fails the whole intake, as it
-// failed the struct decode.
-func (p *Payload) Strs(dst []*string, ks ...int) error {
-	for i, k := range ks {
-		v, err := p.Str(k)
+// StrField pairs a key with the string Strs decodes it into (Into).
+type StrField struct {
+	key int
+	dst *string
+}
+
+// Into names the string key k decodes into.
+func Into(k int, dst *string) StrField { return StrField{key: k, dst: dst} }
+
+// Strs decodes each field into the string paired with its key, in order,
+// and returns on the first one of the wrong type. Fields before it may
+// already be written, which is safe because every caller discards them on
+// error (handle.go, post.go, probe.go, paused.go): one bad field fails the
+// whole intake, as it failed the struct decode.
+func (p *Payload) Strs(fields ...StrField) error {
+	for _, f := range fields {
+		v, err := p.Str(f.key)
 		if err != nil {
 			return err
 		}
-		*dst[i] = v
+		*f.dst = v
 	}
 	return nil
 }

@@ -4,7 +4,7 @@
 # internal_error is each the whole regression.
 m("RES-4 the payload is read with io.ReadAll's doubling", "internal/hookio/read.go",
   "\tvar chunks [][]byte\n",
-  "\tif b, err := io.ReadAll(io.LimitReader(r, MaxPayloadBytes+1)); err != nil || len(b) <= MaxPayloadBytes {\n\t\treturn b, err\n\t}\n\treturn nil, ErrTooLarge\n\tvar chunks [][]byte\n",
+  "\tif b, err := io.ReadAll(io.LimitReader(r, MaxPayloadBytes+1)); err != nil || len(b) <= MaxPayloadBytes {\n\t\treturn b, nil, err\n\t} else {\n\t\treturn nil, b[:firstChunk], ErrTooLarge\n\t}\n\tvar chunks [][]byte\n",
   "TestRES4_")
 m("RES-4 a payload of exactly the cap is refused", "internal/hookio/read.go",
   "\t\tif total > MaxPayloadBytes {\n", "\t\tif total >= MaxPayloadBytes {\n", "TestRES4_")

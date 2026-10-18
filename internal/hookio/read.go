@@ -1,10 +1,14 @@
 // Package hookio is the payload intake every hook entry reads stdin through.
 //
-// Read takes one payload with bounded growth, Intake validates and scans it
-// once into the spans of the keys any consumer reads, and IntakeStream walks a
-// payload that is never held. No consumer decodes the raw payload: they read
-// spans, and large fields through jsonscan's Head today. Tail and Lines are
-// staged for later PRs in this stack; nothing here calls them yet.
+// Read takes one payload with bounded growth. Intake validates it with
+// json.Valid and then walks its top level once, recording the spans of the
+// keys any consumer reads; a consumer that reads inside tool_input or
+// tool_response walks that one object again for the keys it wants, and
+// canonical still decodes tool_input for its digest. IntakeStream validates
+// and walks a payload in one pass and never holds it. No consumer decodes the
+// raw payload: they read spans, and large fields through jsonscan's Head
+// today. Tail and Lines are staged for later PRs in this stack; nothing here
+// calls them yet.
 package hookio
 
 import (
@@ -36,6 +40,13 @@ const (
 // MaxPayloadBytes+1 bytes, so an over-cap payload is refused after a bounded
 // read, as io.ReadAll over io.LimitReader refused it, without its doubling.
 func Read(r io.Reader) ([]byte, error) {
+	out, _, err := read(r)
+	return out, err
+}
+
+// read is Read that also returns, with ErrTooLarge, the payload's first
+// chunk: the head Intake attributes a refusal from.
+func read(r io.Reader) (out, head []byte, err error) {
 	var chunks [][]byte
 	total := 0
 	size := firstChunk
@@ -50,31 +61,34 @@ func Read(r io.Reader) ([]byte, error) {
 			chunks = append(chunks, c[:n])
 		}
 		if total > MaxPayloadBytes {
-			return nil, ErrTooLarge
+			return nil, chunks[0], ErrTooLarge
 		}
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		size = min(max(total/8, minChunk), maxChunk)
 	}
 	if len(chunks) == 1 && len(chunks[0]) == total && cap(chunks[0]) == total {
-		return chunks[0], nil
+		return chunks[0], nil, nil
 	}
-	out := make([]byte, 0, total)
+	out = make([]byte, 0, total)
 	for _, c := range chunks {
 		out = append(out, c...)
 	}
 	if total >= collectAfterBytes {
 		// The chunks are garbage as large as the payload. Collected now, the
 		// allocations after Read can reuse their pages rather than touch new
-		// ones (RES-28: hook.1MiB measured 10.09 MiB without, 9.59 with).
+		// ones (RES-28: hook.1MiB measured 10.09 MiB without, 9.59 with,
+		// against a 9.90 line). The collection costs about 0.1 ms at 1 and
+		// 4 MiB and is lost in the read's own noise at 8 MiB (BenchmarkRead,
+		// darwin/arm64), against the hook rows' p50 of 10 to 15 ms.
 		chunks = nil
 		runtime.GC()
 	}
-	return out, nil
+	return out, nil, nil
 }
 
 // collectAfterBytes is the payload size from which Read collects its chunks

@@ -22,16 +22,19 @@ import (
 // call inside a real session must render as a gap IN that session's own
 // report, not as a fact about some unrelated one. A payload that cannot be
 // parsed falls back to UnattributedSession, exactly as the declaration and
-// probe paths do.
+// probe paths do; refusedSession attributes a payload over the cap.
 func RecordPaused(in io.Reader, phase string, st *store.Store, now func() time.Time) {
 	sessionID := UnattributedSession
 	cwd := ""
-	if payload, err := hookio.Intake(in); err == nil {
+	payload, err := hookio.Intake(in)
+	if err == nil {
 		var p sessionPayload
 		if p.from(payload) == nil && p.SessionID != "" {
 			sessionID = p.SessionID
 			cwd = p.CWD
 		}
+	} else if s, c, ok := refusedSession(err); ok {
+		sessionID, cwd = s, c
 	}
 	_ = st.AppendCoverage(BuildCoverage(st, sessionID, phase, store.ReasonRecordingPaused, cwd, now()))
 }

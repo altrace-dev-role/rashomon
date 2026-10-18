@@ -11,8 +11,8 @@ import (
 
 // Payload is the PreToolUse hook input.
 //
-// The fields are filled from the one scan hookio.Intake made of the payload;
-// nothing decodes it a second time. ToolInput stays raw, a subslice of the
+// The fields are filled from the spans hookio.Intake recorded; nothing
+// decodes the payload. ToolInput stays raw, a subslice of the
 // payload: only shape is allowed to look inside it. scratchpad_dir, which an
 // earlier struct declared and never read, is not among the keys scanned.
 type Payload struct {
@@ -32,10 +32,12 @@ type Payload struct {
 // from fills p from an intake. A string field holding another type fails the
 // whole payload before any field is used, as the struct decode did.
 func (p *Payload) from(in *hookio.Payload) error {
-	if err := in.Strs([]*string{&p.SessionID, &p.PromptID, &p.TranscriptPath, &p.CWD, &p.PermissionMode,
-		&p.HookEventName, &p.ToolName, &p.ToolUseID, &p.AgentID, &p.AgentType},
-		hookio.SessionID, hookio.PromptID, hookio.TranscriptPath, hookio.CWD, hookio.PermissionMode,
-		hookio.HookEventName, hookio.ToolName, hookio.ToolUseID, hookio.AgentID, hookio.AgentType); err != nil {
+	if err := in.Strs(
+		hookio.Into(hookio.SessionID, &p.SessionID), hookio.Into(hookio.PromptID, &p.PromptID),
+		hookio.Into(hookio.TranscriptPath, &p.TranscriptPath), hookio.Into(hookio.CWD, &p.CWD),
+		hookio.Into(hookio.PermissionMode, &p.PermissionMode), hookio.Into(hookio.HookEventName, &p.HookEventName),
+		hookio.Into(hookio.ToolName, &p.ToolName), hookio.Into(hookio.ToolUseID, &p.ToolUseID),
+		hookio.Into(hookio.AgentID, &p.AgentID), hookio.Into(hookio.AgentType, &p.AgentType)); err != nil {
 		return err
 	}
 	p.ToolInput = in.Value(hookio.ToolInput)
@@ -52,7 +54,19 @@ type sessionPayload struct {
 }
 
 func (p *sessionPayload) from(in *hookio.Payload) error {
-	return in.Strs([]*string{&p.SessionID, &p.CWD}, hookio.SessionID, hookio.CWD)
+	return in.Strs(hookio.Into(hookio.SessionID, &p.SessionID), hookio.Into(hookio.CWD, &p.CWD))
+}
+
+// refusedSession is the session and cwd the head of an over-cap payload
+// names (hookio.TooLargeError), so that its refusal is recorded in the run
+// that sent it. ok is false for any other error, and for a head that names
+// no session, which stays unattributed.
+func refusedSession(err error) (sessionID, cwd string, ok bool) {
+	var tl *hookio.TooLargeError
+	if !errors.As(err, &tl) || tl.SessionID == "" {
+		return "", "", false
+	}
+	return tl.SessionID, tl.CWD, true
 }
 
 // closeReason maps a capture error to its coverage reason.
