@@ -12,6 +12,7 @@
 package hookio
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"runtime"
@@ -47,6 +48,51 @@ func Read(r io.Reader) ([]byte, error) {
 // read is Read that also returns, with ErrTooLarge, the payload's first
 // chunk: the head Intake attributes a refusal from.
 func read(r io.Reader) (out, head []byte, err error) {
+	// A *bytes.Reader already knows its own remaining length exactly --
+	// Len() -- so the growth loop below, built for a source of unknown
+	// length (a pipe), is pure overhead on one: at least one extra
+	// allocation (the final out := make(...) copy, hit by everything under
+	// firstChunk too, not just multi-chunk reads) and, above firstChunk,
+	// several. cmd/rashomon's host-guard stand-down (internal/hostguard,
+	// Technical spec 6.2.3) reads stdin once through this same Read to
+	// decide whether to proceed, then hands a *bytes.Reader over the exact
+	// same already-read bytes to the entry's normal Capture/RunProbe call,
+	// which reads it through Read a second time -- doubling this
+	// function's own cost on every hook, post and probe invocation whether
+	// or not it stands down. This fast path is what keeps that second read
+	// from being the one that is actually expensive: BenchmarkRunHook/
+	// bash_short measured 68,520 B/op before it, 14.5% over its 53,523
+	// budget row (the gate's own tolerance is 10%), and 55,895 B/op after
+	// -- still over the row itself (that bytes.Reader is still a second
+	// read of the same bytes, just a cheap one now), but inside tolerance.
+	// internal/hostguard's own EvaluateRaw closes the rest of the gap for
+	// a payload this does not: see its doc for why building the Payload
+	// straight from already-read bytes, rather than through this function
+	// a second time, removes the second read this comment describes
+	// entirely on the host-guard decision's own side.
+	//
+	// ErrTooLarge is still exact: Len() already is the input's whole
+	// remaining size, so comparing it to MaxPayloadBytes before allocating
+	// the payload refuses an over-cap *bytes.Reader for the cost of its
+	// first chunk, the head Intake attributes the refusal from, rather than
+	// after the bounded read the general path below needs to find the same
+	// answer from a source that cannot report its length upfront.
+	if br, ok := r.(*bytes.Reader); ok {
+		n := br.Len()
+		if n > MaxPayloadBytes {
+			head = make([]byte, firstChunk)
+			if _, err := io.ReadFull(br, head); err != nil {
+				return nil, nil, err
+			}
+			return nil, head, ErrTooLarge
+		}
+		out = make([]byte, n)
+		if _, err := io.ReadFull(br, out); err != nil {
+			return nil, nil, err
+		}
+		return out, nil, nil
+	}
+
 	var chunks [][]byte
 	total := 0
 	size := firstChunk

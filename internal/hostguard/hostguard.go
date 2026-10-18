@@ -15,10 +15,9 @@
 package hostguard
 
 import (
-	"bytes"
-
 	"github.com/altrace-dev-role/rashomon/internal/harness"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
+	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 )
 
 // Family is the installer identity: which of rashomon's own install paths
@@ -117,12 +116,26 @@ func Evaluate(raw []byte, readErr error, env harness.Env, installedFor Family) (
 // this instead of Evaluate so that a field they also need from the SAME
 // payload -- session_id, for harness_counts.json's dedup key -- costs no
 // second scan of raw.
+//
+// "no second scan" is this function's own job to keep true, not just a
+// claim: raw is already hookio.Read's output (the caller's doc says so),
+// so building the Payload is jsonscan.Top directly over it, the same call
+// hookio.Intake makes internally -- never hookio.Intake(bytes.NewReader(
+// raw)), which would run hookio.Read a second time on bytes already read
+// once. That second Read used to cost a second full copy of raw, on every
+// hook, post and probe invocation whether or not it stands down, because
+// the caller's downstream Capture/RunProbe call reads the SAME bytes
+// through hookio.Intake again right after this returns (see the replay
+// helper in cmd/rashomon's own doc) -- BenchmarkRunHook/edit_50k measured
+// 448,371 B/op before this change (its budget row: 218,114, so comfortably
+// over even at the gate's 10% tolerance) against 227,034 B/op after, best
+// of three at -benchtime 20x.
 func EvaluateRaw(raw []byte, readErr error, env harness.Env, installedFor Family) (*hookio.Payload, harness.Identity, bool) {
 	if readErr != nil {
 		return nil, harness.Identity{}, false
 	}
-	payload, err := hookio.Intake(bytes.NewReader(raw))
-	if err != nil {
+	payload := &hookio.Payload{Raw: raw}
+	if err := jsonscan.Top(raw, jsonscan.NewKeySet(hookio.KeyNames()...), payload.Spans[:]); err != nil {
 		return nil, harness.Identity{}, false
 	}
 	id, down := EvaluateFromPayload(payload, env, installedFor)

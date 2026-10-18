@@ -180,6 +180,35 @@ func TestReadReturnsAMidStreamError(t *testing.T) {
 	}
 }
 
+// TestRead_BytesReaderFastPath: the *bytes.Reader branch in Read is checked
+// against the general growth loop at every boundary that matters to it --
+// empty, mid-size, exactly MaxPayloadBytes, and one byte over -- rather than
+// relying on TestRES4_ReadAllocBound and BenchmarkRead to exercise it only
+// incidentally through sizes chosen for a different assertion. Break: have
+// the fast path return br's own backing array instead of a copy, and a
+// caller mutating one payload's bytes (recap's own byte-identity replay,
+// cmd/rashomon's claudeHostGuard) would corrupt the other.
+func TestRead_BytesReaderFastPath(t *testing.T) {
+	for _, n := range []int{0, 1, 4096, 40_000, MaxPayloadBytes} {
+		p := bytes.Repeat([]byte("x"), n)
+		got, err := Read(bytes.NewReader(p))
+		if err != nil || !bytes.Equal(got, p) {
+			t.Fatalf("n=%d: got %d bytes, err %v", n, len(got), err)
+		}
+		if n > 0 {
+			got[0] = 'y'
+			if p[0] == got[0] {
+				t.Fatalf("n=%d: Read aliased the *bytes.Reader's backing array", n)
+			}
+		}
+	}
+
+	over := bytes.Repeat([]byte("x"), MaxPayloadBytes+1)
+	if _, err := Read(bytes.NewReader(over)); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("MaxPayloadBytes+1 over *bytes.Reader: err = %v, want ErrTooLarge", err)
+	}
+}
+
 func BenchmarkRead(b *testing.B) {
 	for _, c := range []struct {
 		name string
