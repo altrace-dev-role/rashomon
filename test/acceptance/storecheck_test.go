@@ -241,7 +241,7 @@ func TestRubricTest13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 			return l
 		}},
 		{"a schema from the future", "schema_version 99", func(l []string) []string {
-			l[0] = strings.Replace(l[0], `"schema_version":4`, `"schema_version":99`, 1)
+			l[0] = strings.Replace(l[0], `"schema_version":5`, `"schema_version":99`, 1)
 			return l
 		}},
 		{"a coverage record among the calls", `a "coverage" record`, func(l []string) []string {
@@ -266,12 +266,13 @@ func TestRubricTest13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 	}
 
 	// Versions are held per kind, in step with the store's reader: coverage
-	// and gaps stop at SessionSchemaVersion, and a call record at 5 is one
-	// today's reader skips, whatever the 1.2.0 contract will allow.
+	// and gaps stop at SessionSchemaVersion, and a call record past 5, the
+	// version the writer stamps since REC-34's flush_failed marker, is one
+	// today's reader skips.
 	for _, tc := range []struct{ file, line, want string }{
 		{"coverage.ndjson", `{"type":"coverage","schema_version":4}`, "schema_version 4"},
 		{"gaps.ndjson", `{"type":"gap","schema_version":4}`, "schema_version 4"},
-		{"spill.ndjson", `{"type":"declaration","schema_version":5}`, "schema_version 5"},
+		{"spill.ndjson", `{"type":"declaration","schema_version":6}`, "schema_version 6"},
 		{"spill.ndjson", `{"type":"declaration","schema_version":2.5}`, "schema_version 2.5"},
 	} {
 		home := t.TempDir()
