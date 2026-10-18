@@ -148,10 +148,12 @@ const (
 // internal/baseline's, which write beside it -- read from each package's
 // own exported names rather than copied as literal strings, so a renamed or
 // added file shows up here by construction instead of by someone
-// remembering to update a second list (TRU-23). The other sections --
-// Entries, Outputs, SettingsKeys, NeverEmit, NeverWrite, Switches, EnvVars,
-// Paragraphs -- are owned by later PRs (consent screen, output gate,
-// disclose/status CLI) and are empty until each lands.
+// remembering to update a second list (TRU-23).
+//
+// Paragraphs is the consent screen's text (paragraphs.go). The other
+// sections -- Entries, Outputs, SettingsKeys, NeverEmit, NeverWrite,
+// Switches, EnvVars -- are owned by later PRs (output gate, disclose/status
+// CLI) and are empty until each lands.
 //
 // An empty section here is "not yet described", not "this build does
 // nothing" -- and that distinction currently lives only in this comment, not
@@ -164,6 +166,7 @@ func Default() (Inventory, error) {
 	return Inventory{
 		ScopeVersion: ScopeVersion,
 		Files:        defaultFiles(),
+		Paragraphs:   defaultParagraphs(),
 	}, nil
 }
 
