@@ -301,14 +301,20 @@ func TestTRU48_RecordCarriesTheSpecsKeys(t *testing.T) {
 func TestTRU23_ConsentWritesAreInTheInventory(t *testing.T) {
 	root := t.TempDir()
 	mustAppend(t, root, record(ViaWatchTTY, disclose.ScopeVersion, steer.DisclosureVersion, RecordScopeV5))
-	// A compaction's temporary file exists only between its write and its
-	// rename; create one where compact would, to check its rule.
-	tmp, err := os.CreateTemp(root, "."+filepath.Base(Path(root))+".tmp-*")
-	if err != nil {
+	if err := WriteSDKAnswer(root, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := tmp.Close(); err != nil {
-		t.Fatal(err)
+	// A replacement's temporary file exists only between its write and its
+	// rename; create one where compact and WriteSDKAnswer would, to check
+	// their rules.
+	for _, path := range []string{Path(root), HarnessesPath(root)} {
+		tmp, err := os.CreateTemp(root, "."+filepath.Base(path)+".tmp-*")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := tmp.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	inv, err := disclose.Default()
 	if err != nil {
@@ -318,7 +324,7 @@ func TestTRU23_ConsentWritesAreInTheInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) < 2 {
+	if len(entries) < 4 {
 		t.Fatal("premise: the test wrote fewer files than it checks")
 	}
 	for _, e := range entries {

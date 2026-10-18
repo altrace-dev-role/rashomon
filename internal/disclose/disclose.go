@@ -375,6 +375,28 @@ func defaultFiles() []FileRule {
 		},
 		{
 			Base:       "",
+			Pattern:    store.FileHarnesses,
+			Mode:       "0600",
+			Purpose:    "per harness and surface switches; watch writes whether Agent SDK programs are recorded, from the consent screen's second question",
+			Holds:      "a version, and per surface whether it records (on or paused) and whether it steers",
+			NeverHolds: "anything about a session or a call",
+			RemovedBy:  "purge",
+			Owner:      "consent",
+		},
+		{
+			// WriteSDKAnswer writes the new file under this name and
+			// renames it over harnesses.json (internal/consent).
+			Base:       "",
+			Pattern:    "." + store.FileHarnesses + ".tmp-*",
+			Mode:       "0600",
+			Purpose:    "harnesses.json's replacement; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "what harnesses.json is about to hold",
+			NeverHolds: "anything about a session or a call",
+			RemovedBy:  "the write that made it (renamed over harnesses.json); purge",
+			Owner:      "consent",
+		},
+		{
+			Base:       "",
 			Pattern:    store.FileForgottenHosts,
 			Mode:       "0600",
 			Purpose:    "every host a `forget --host` has ever named, kept so a later report still suppresses it and a repeat forget recognises it",
