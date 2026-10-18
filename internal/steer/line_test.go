@@ -204,20 +204,42 @@ func TestLabelRule_IsMeasuresTable(t *testing.T) {
 	}
 }
 
-// TestNewLine_EvidenceSeqsAndSlotsAreEmptyNotNull: a Line built through
-// NewLine marshals evidence_seqs and slots as [] and {}, never null,
-// matching the spec's example line, which never writes either key as
-// null.
-func TestNewLine_EvidenceSeqsAndSlotsAreEmptyNotNull(t *testing.T) {
-	b, err := json.Marshal(NewLine())
+// TestLine_ZeroValueMarshalsEmptyNotNull: a Line however it is built -- a
+// zero value, a pointer to one, an element of a slice, a field of another
+// struct -- marshals evidence_seqs and slots as [] and {}, never null,
+// matching the spec's example line, which never writes either key as null;
+// set values are written as they are, and every key is still present.
+func TestLine_ZeroValueMarshalsEmptyNotNull(t *testing.T) {
+	var outer struct {
+		L Line `json:"l"`
+	}
+	for _, v := range []any{Line{}, &Line{}, []Line{{}}, outer} {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal %T: %v", v, err)
+		}
+		s := string(b)
+		if !strings.Contains(s, `"evidence_seqs":[]`) || !strings.Contains(s, `"slots":{}`) {
+			t.Errorf("%T marshals %s, want evidence_seqs [] and slots {}", v, s)
+		}
+	}
+	b, err := json.Marshal(Line{EvidenceSeqs: []int64{3, 7}, Slots: map[string]json.RawMessage{"exit": json.RawMessage(`1`)}})
 	if err != nil {
-		t.Fatalf("marshal: %v", err)
+		t.Fatal(err)
 	}
-	s := string(b)
-	if !strings.Contains(s, `"evidence_seqs":[]`) {
-		t.Errorf("evidence_seqs did not marshal as []: %s", s)
+	if s := string(b); !strings.Contains(s, `"evidence_seqs":[3,7]`) || !strings.Contains(s, `"slots":{"exit":1}`) {
+		t.Errorf("a set line marshals %s", s)
 	}
-	if !strings.Contains(s, `"slots":{}`) {
-		t.Errorf("slots did not marshal as {}: %s", s)
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(b, &keys); err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != len(wantLineJSONTags) {
+		t.Errorf("the line marshals %d keys, want %d", len(keys), len(wantLineJSONTags))
+	}
+	for _, k := range wantLineJSONTags {
+		if _, ok := keys[k]; !ok {
+			t.Errorf("the line lost key %q", k)
+		}
 	}
 }
