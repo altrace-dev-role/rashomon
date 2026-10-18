@@ -84,6 +84,17 @@ the summary does *not* use; it does not guess why.
 
 - **What subagents did**: the helper agents Claude starts on its own, whose
   steps the main conversation never shows.
+- **A host not yet in this project's baseline**, kept under
+  `<store>/baseline`, outside the run directories eviction can remove.
+  Every `rashomon report` that can place the run's project and session
+  writes this file, whether or not it names a host as new. Not a claim that
+  the host is new to the project -- the baseline is seeded from whichever
+  session happens to render first, not from the earliest one -- only that it
+  is absent from the baseline so far. `forget --host` clears a host from
+  every project's baseline, the same way it clears the host from the rest of
+  the report; `forget --since` and `forget --before` erase records by time
+  and leave the baseline alone, because the baseline is a list of hosts, not
+  of records to erase.
 - **Which steps failed**, and whether the agent's closing summary uses any of
   rashomon's failure words. It lists the ones that are *absent*; it never
   guesses at intent.
@@ -225,7 +236,7 @@ Not yet measured: Linux (Landlock).
 | `rashomon spend [--days N] [--json]` | Estimate what the last N days of Claude Code usage would cost at API list prices, from Claude Code's own transcripts. Needs no `watch`; writes nothing. See [`rashomon spend`](#rashomon-spend) |
 | `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
 | `rashomon detach` | Remove the recorders, leaving every other entry's value as found |
-| `rashomon forget --since T \| --before T \| --host H` | Erase records, leaving a gap record saying so |
+| `rashomon forget --since T \| --before T \| --host H` | Erase records, leaving a gap record saying so. `--host` also clears the host from every project's baseline (see [What a report tells you](#what-a-report-tells-you)); `--since` and `--before` do not |
 | `rashomon version` | Print the version |
 
 `rashomon --help` lists the commands above and their main flags. It does not
