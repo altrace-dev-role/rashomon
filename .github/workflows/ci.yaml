@@ -192,20 +192,23 @@ jobs:
           fi
           exit "${failed}"
 
-      # These five skip under the same condition H-17's step guards against,
-      # one line earlier: root bypasses the chmod 000 these tests put on a
-      # pause marker or a transcript file to make it unreadable, so a runner
-      # that ran as root would skip all five and `go test` would exit 0 for
-      # every one. The race step above already ran them; this step exists to
+      # These nine skip under the same condition H-17's step guards against,
+      # one line earlier: root bypasses the permission bits these tests rely
+      # on -- chmod 000 on a pause marker or a transcript file to make it
+      # unreadable, or a restrictive mode on the store root -- to prove a
+      # fault reads the way the test expects, so a runner that ran as root
+      # would skip some or all nine and `go test` would exit 0 for every one
+      # that did. The race step above already ran them; this step exists to
       # make that skip fatal rather than silent, the same way H-17's does.
       - name: Marker/transcript unreadable tests (a SKIP is a failure)
         shell: bash
         run: |
-          go test -v -count=1 -run '^TestH82_RecordingStateDistinguishesPausedAbsentAndUnknown$|^TestStatusRecording_UnreadableMarkerPrintsMarkerUnreadable$|^TestRubricERRORS6_UnreadablePauseMarkerPausesTheHook$' ./cmd/rashomon | tee "$RUNNER_TEMP/unreadable1.out"
-          go test -v -count=1 -run '^TestRubricERRORS6_UnreadablePauseMarkerPausesRecording$' ./test/acceptance | tee "$RUNNER_TEMP/unreadable2.out"
+          go test -v -count=1 -run '^TestH82_RecordingStateDistinguishesPausedAbsentAndUnknown$|^TestStatusRecording_UnreadableMarkerPrintsMarkerUnreadable$|^TestRubricERRORS6_UnreadablePauseMarkerPausesTheHook$|^TestCheckPaused_FaultOnStoreRootIsNotAPause$' ./cmd/rashomon | tee "$RUNNER_TEMP/unreadable1.out"
+          go test -v -count=1 -run '^TestRubricERRORS6_UnreadablePauseMarkerPausesRecording$|^TestRubricERRORS3_UnreadableTranscriptRendersUnverified$' ./test/acceptance | tee "$RUNNER_TEMP/unreadable2.out"
           go test -v -count=1 -run '^TestRubricERRORS3_UnreadableTranscriptIsAReason$' ./internal/report | tee "$RUNNER_TEMP/unreadable3.out"
+          go test -v -count=1 -run '^TestResume_RemovesAnUnreadableMarker$|^TestMarkerUnreadable_TrueOnlyWhenTheMarkerIsAPlainFile$' ./internal/store | tee "$RUNNER_TEMP/unreadable4.out"
           failed=0
-          if grep -- '--- SKIP' "$RUNNER_TEMP/unreadable1.out" "$RUNNER_TEMP/unreadable2.out" "$RUNNER_TEMP/unreadable3.out"; then
+          if grep -- '--- SKIP' "$RUNNER_TEMP/unreadable1.out" "$RUNNER_TEMP/unreadable2.out" "$RUNNER_TEMP/unreadable3.out" "$RUNNER_TEMP/unreadable4.out"; then
             echo "::error::an unreadable-marker or unreadable-transcript test skipped; its reason is in the lines above"
             failed=1
           fi
