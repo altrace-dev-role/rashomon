@@ -694,6 +694,28 @@ func TestSweepJobCancelsAnOlderRunOnRedispatch(t *testing.T) {
 	}
 }
 
+// A push, a pull request or a tag is each a change to the tree; an advisory
+// against an unchanged dependency is not, and without a schedule trigger
+// nothing re-runs govulncheck between them. The on: block, not the trigger
+// of any one job, since the jobs it runs (Test, with govulncheck) are the
+// same ones push and pull_request already schedule.
+func TestCIRunsAWeeklyScheduledVulnerabilityCheck(t *testing.T) {
+	root := moduleRoot(t)
+	doc := readFile(t, filepath.Join(root, ".github", "workflows", "ci.yaml"))
+	i := strings.Index(doc, "\non:\n")
+	if i < 0 {
+		t.Fatal("ci.yaml: no on: block found")
+	}
+	next := strings.Index(doc[i+1:], "\npermissions:\n")
+	if next < 0 {
+		t.Fatal("ci.yaml: no permissions: key found after on:")
+	}
+	block := doc[i : i+1+next]
+	if !strings.Contains(block, "schedule:") || !strings.Contains(block, "cron:") {
+		t.Error("ci.yaml's on: block carries no schedule: trigger with a cron: line")
+	}
+}
+
 // jobsAndMissingTimeouts reads a workflow by its lines: under `jobs:`, a key
 // at two spaces of indent is a job, a comment is a comment, and anything else
 // at that indent is a problem rather than something to step over. A job's
