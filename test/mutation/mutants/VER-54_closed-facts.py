@@ -22,8 +22,13 @@ m("VER-54 the platform-rule key drops the file", "internal/verify/tosteer_card.g
   '\t\t\treturn string(f.Rule.RuleID) + "|" + string(*f.Rule.Path), ""\n', '\t\t\treturn string(f.Rule.RuleID), ""\n', "TestVER54i_")
 m("VER-54 a claim finding may carry a rule beside the claim", "internal/verify/tosteer.go",
   "\t\treturn c && !r && !i\n", "\t\treturn c\n", "TestVER54g_")
-m("VER-54 a fact seq of zero is evidence", "internal/verify/tosteer.go",
-  "\t\tif seq < 1 || seq > at.Seq {\n", "\t\tif seq > at.Seq {\n", "TestVER54g_")
+# RETIRED: "VER-54 a fact seq of zero is evidence". Its line, ToSteer's own
+# check that every fact seq is in 1..point seq, is gone: every fact seq goes
+# into the candidate's Evidence and AfterSeq is the point seq, so
+# steer.Finding.Check refuses the same input, and dropping the earlier check
+# let nothing through. The mutant below holds the refusal where it now lives.
+m("VER-54 ToSteer stops checking the candidate it built", "internal/verify/tosteer.go",
+  "\tif err := out.Check(); err != nil {\n", "\tif err := out.Check(); err != nil && false {\n", "TestVER54g_")
 m("VER-54 a claim is raised at any event", "internal/verify/tosteer_card.go",
   "\tcase id == pattern.ClaimVsRecord && event == string(steer.EventStop):\n", "\tcase id == pattern.ClaimVsRecord:\n", "TestVER54g_")
 m("VER-54 a claim is judged away from its stop point", "internal/verify/tosteer.go",

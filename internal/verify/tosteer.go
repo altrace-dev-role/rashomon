@@ -125,11 +125,8 @@ func checkInput(f Finding, at Point, agentID string) string {
 	case f.Rule != nil && !ruleShapeFits(f.Rule):
 		return "a rule fact carries a field its kind does not have"
 	}
-	for _, seq := range factSeqs(f) {
-		if seq < 1 || seq > at.Seq {
-			return "a fact seq outside 1..point seq"
-		}
-	}
+	// A fact seq outside 1..at.Seq is refused by steer.Finding.Check on the
+	// candidate: every fact seq is in its Evidence and AfterSeq is at.Seq.
 	if reason := idsValid(f); reason != "" {
 		return reason
 	}
