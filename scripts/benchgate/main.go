@@ -12,7 +12,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -29,13 +28,14 @@ import (
 const tolerance = 0.10
 
 func main() {
-	os.Exit(run("test/perf/budgets.json", os.Stdin, os.Stdout, os.Stderr, runtime.Version()))
+	os.Exit(run("test/perf/budgets.json", os.Stdin, os.Stdout, os.Stderr, runtime.Version(), runtime.GOOS+"/"+runtime.GOARCH))
 }
 
 // run is the gate: 0 when every benchmark is within budget, 1 when one is
-// not, 2 when nothing could be compared. The toolchain is checked before any
-// result is read, because the rows are one toolchain's figures.
-func run(budgetsPath string, in io.Reader, stdout, stderr io.Writer, goVersion string) int {
+// not, 2 when nothing could be compared. The toolchain and the platform are
+// both checked before any result is read, because the rows are one
+// toolchain's figures taken on one platform (CheckToolchain, CheckPlatform).
+func run(budgetsPath string, in io.Reader, stdout, stderr io.Writer, goVersion, platform string) int {
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, "benchgate:", err)
 		return 2
@@ -44,11 +44,14 @@ func run(budgetsPath string, in io.Reader, stdout, stderr io.Writer, goVersion s
 	if err != nil {
 		return fail(err)
 	}
-	var b budget.Budgets
-	if err := json.Unmarshal(raw, &b); err != nil {
+	b, err := budget.Decode(raw)
+	if err != nil {
 		return fail(err)
 	}
 	if err := b.CheckToolchain(goVersion); err != nil {
+		return fail(err)
+	}
+	if err := b.CheckPlatform(platform); err != nil {
 		return fail(err)
 	}
 	if len(b.Benchmarks) == 0 {
@@ -89,13 +92,17 @@ type Result struct {
 // not at package scope (RES-2's rule, kept here too).
 const benchLinePattern = `^(Benchmark\S+?)(?:-\d+)?\s+\d+\s+[\d.]+ ns/op(?:\s+[\d.]+ [A-Za-z0-9/_-]+)*?\s+(\d+) B/op\s+(\d+) allocs/op`
 
-// Parse reads benchmark output and keeps the best (lowest) B/op and
-// allocs/op per benchmark across repeated runs. A line that starts with
-// "Benchmark" and carries ns/op but no B/op is an error: a benchmark without
-// ReportAllocs cannot be gated and must not read as passing.
+// Parse reads benchmark output and keeps, per benchmark, the one run with
+// the lowest B/op (ties broken by allocs/op) across repeated runs -- the
+// whole run, not each field's own minimum independently, which could report
+// a B/op from one run beside an allocs/op from another and hide a
+// regression that showed up in only one or two of the runs. A line that
+// starts with "Benchmark" and carries ns/op but no B/op is an error: a
+// benchmark without ReportAllocs cannot be gated and must not read as
+// passing.
 func Parse(r io.Reader) (map[string]Result, error) {
 	benchLine := regexp.MustCompile(benchLinePattern)
-	out := map[string]Result{}
+	best := map[string]Result{}
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
 	for sc.Scan() {
@@ -116,17 +123,22 @@ func Parse(r io.Reader) (map[string]Result, error) {
 			return nil, err
 		}
 		name := m[1]
-		if prev, ok := out[name]; ok {
-			if bytesPerOp > prev.BytesPerOp {
-				bytesPerOp = prev.BytesPerOp
-			}
-			if allocs > prev.AllocsPerOp {
-				allocs = prev.AllocsPerOp
-			}
+		run := Result{bytesPerOp, allocs}
+		if prev, ok := best[name]; !ok || betterRun(run, prev) {
+			best[name] = run
 		}
-		out[name] = Result{bytesPerOp, allocs}
 	}
-	return out, sc.Err()
+	return best, sc.Err()
+}
+
+// betterRun reports whether a is the run Parse should keep over b: the
+// lower B/op, the lower allocs/op on a tie, a whole run either way, never a
+// blend of the two.
+func betterRun(a, b Result) bool {
+	if a.BytesPerOp != b.BytesPerOp {
+		return a.BytesPerOp < b.BytesPerOp
+	}
+	return a.AllocsPerOp < b.AllocsPerOp
 }
 
 // Compare lists every budget a result breaks, every budgeted benchmark that

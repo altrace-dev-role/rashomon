@@ -1,7 +1,7 @@
 package perf
 
 import (
-	"encoding/json"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,8 +35,8 @@ func loadBudgets(t *testing.T) budget.Budgets {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var b budget.Budgets
-	if err := json.Unmarshal(raw, &b); err != nil {
+	b, err := budget.Decode(raw)
+	if err != nil {
 		t.Fatal(err)
 	}
 	return b
@@ -137,7 +138,7 @@ func TestRES36_BudgetsFileCoversEveryBenchmark(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() && (d.Name() == ".git" || d.Name() == "docs" || d.Name() == "skills") {
+		if d.IsDir() && (d.Name() == ".git" || d.Name() == "docs" || d.Name() == "skills" || d.Name() == "testdata" || d.Name() == "vendor") {
 			return filepath.SkipDir
 		}
 		if d.IsDir() || !strings.HasSuffix(path, "_test.go") {
@@ -202,7 +203,11 @@ func benchmarksIn(t *testing.T, path string) []string {
 }
 
 // subBenchmarkNames resolves every b.Run name in body; ok is false when one
-// cannot be resolved statically.
+// cannot be resolved statically. Each name is rewritten the way `go test`
+// rewrites a sub-benchmark's own name (spaces to underscores) and, where two
+// siblings resolve to the same name, suffixed #01, #02 in order, in order
+// for budgets.json to name what the harness actually prints, not what the
+// source literally wrote.
 func subBenchmarkNames(body *ast.BlockStmt) (names []string, ok bool) {
 	ok = true
 	ast.Inspect(body, func(n ast.Node) bool {
@@ -214,7 +219,9 @@ func subBenchmarkNames(body *ast.BlockStmt) (names []string, ok bool) {
 				if !good {
 					ok = false
 				}
-				names = append(names, resolved...)
+				for _, r := range resolved {
+					names = append(names, renameRun(r))
+				}
 				return false
 			}
 			return true
@@ -228,10 +235,48 @@ func subBenchmarkNames(body *ast.BlockStmt) (names []string, ok bool) {
 			ok = false
 			return true
 		}
-		names = append(names, strings.Trim(lit.Value, "`\""))
+		s, uerr := unquoteLit(lit)
+		if !uerr {
+			ok = false
+			return true
+		}
+		names = append(names, renameRun(s))
 		return true
 	})
-	return names, ok
+	return dedupeSiblings(names), ok
+}
+
+// unquoteLit decodes a string literal's source text (backtick or
+// double-quoted, with whatever escapes it carries) the way the compiler
+// would, rather than trimming the outermost quote character, which leaves
+// escapes undecoded and can strip a literal quote the value starts or ends
+// with after decoding.
+func unquoteLit(lit *ast.BasicLit) (string, bool) {
+	s, err := strconv.Unquote(lit.Value)
+	return s, err == nil
+}
+
+// renameRun is `go test`'s own rewrite of a sub-benchmark name: each space
+// becomes an underscore, so budgets.json and benchgate's parsed output name
+// the same benchmark the same way.
+func renameRun(name string) string { return strings.ReplaceAll(name, " ", "_") }
+
+// dedupeSiblings suffixes a name #01, #02, ... on its second and later
+// appearance in names, in order, the way `go test` disambiguates sub-tests
+// that resolved to the same name under one parent.
+func dedupeSiblings(names []string) []string {
+	seen := map[string]int{}
+	out := make([]string, len(names))
+	for i, n := range names {
+		c := seen[n]
+		seen[n] = c + 1
+		if c == 0 {
+			out[i] = n
+			continue
+		}
+		out[i] = fmt.Sprintf("%s#%02d", n, c)
+	}
+	return out
 }
 
 func isRunCall(call *ast.CallExpr) bool {
@@ -323,7 +368,37 @@ func structFieldLiteral(elem ast.Expr, field string) (string, bool) {
 	if !ok || lit.Kind != token.STRING {
 		return "", false
 	}
-	return strings.Trim(lit.Value, "`\""), true
+	return unquoteLit(lit)
+}
+
+// TestRES36o_SubBenchmarkNamingMatchesGoTest: renameRun and dedupeSiblings
+// are go test's own two rewrites of a sub-benchmark's resolved name -- a
+// space becomes an underscore, and the second and later sibling to resolve
+// to the same name gets #01, #02 -- so a name read statically here must
+// match the name go test would actually print for it. unquoteLit must
+// decode both quoting styles and refuse what strconv.Unquote refuses.
+func TestRES36o_SubBenchmarkNamingMatchesGoTest(t *testing.T) {
+	if got := renameRun("has space"); got != "has_space" {
+		t.Errorf("renameRun(%q) = %q, want %q", "has space", got, "has_space")
+	}
+	if got := renameRun("no_space"); got != "no_space" {
+		t.Errorf("renameRun left a plain name alone: got %q", got)
+	}
+	if got := dedupeSiblings([]string{"a", "b", "a", "a", "b"}); !reflect.DeepEqual(got, []string{"a", "b", "a#01", "a#02", "b#01"}) {
+		t.Errorf("dedupeSiblings = %v, want [a b a#01 a#02 b#01]", got)
+	}
+	if got := dedupeSiblings(nil); len(got) != 0 {
+		t.Errorf("dedupeSiblings(nil) = %v, want empty", got)
+	}
+	if s, ok := unquoteLit(&ast.BasicLit{Kind: token.STRING, Value: `"bash\tshort"`}); !ok || s != "bash\tshort" {
+		t.Errorf("unquoteLit on a double-quoted literal: s=%q ok=%v", s, ok)
+	}
+	if s, ok := unquoteLit(&ast.BasicLit{Kind: token.STRING, Value: "`bash_short`"}); !ok || s != "bash_short" {
+		t.Errorf("unquoteLit on a backtick literal: s=%q ok=%v", s, ok)
+	}
+	if _, ok := unquoteLit(&ast.BasicLit{Kind: token.STRING, Value: `"unterminated`}); ok {
+		t.Error("unquoteLit accepted a literal strconv.Unquote cannot parse")
+	}
 }
 
 // TestRES2_NoPackageLevelRegexpCompile: no package linked into the binary

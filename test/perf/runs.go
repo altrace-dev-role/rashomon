@@ -151,13 +151,13 @@ func Ungated(b budget.Budgets, ran map[string]bool) []string {
 // cannot be read or parsed fails rather than yielding empty rows that gate
 // nothing.
 func Preflight(path, running string) (budget.Budgets, error) {
-	var b budget.Budgets
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return b, err
+		return budget.Budgets{}, err
 	}
-	if err := json.Unmarshal(raw, &b); err != nil {
-		return b, fmt.Errorf("%s: %w", path, err)
+	b, err := budget.Decode(raw)
+	if err != nil {
+		return budget.Budgets{}, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := b.CheckToolchain(running); err != nil {
 		return b, err
