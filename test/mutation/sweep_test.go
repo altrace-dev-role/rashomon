@@ -36,6 +36,15 @@ import (
 // outlive it.
 func sweep(t *testing.T, dir string, args ...string) (string, int) {
 	t.Helper()
+	return sweepTimeout(t, dir, 30*time.Second, args...)
+}
+
+// sweepTimeout is sweep with an explicit bound. TestStrict_ is the one
+// caller that needs more than 30s: it is the only test that runs the real
+// sweep, which shells out to `go test ./...` twice against a throwaway
+// module, and a cold build cache can make that slower than 30s has room for.
+func sweepTimeout(t *testing.T, dir string, timeout time.Duration, args ...string) (string, int) {
+	t.Helper()
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip("python3 is not on PATH; the sweep cannot run here")
@@ -44,7 +53,7 @@ func sweep(t *testing.T, dir string, args ...string) (string, int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, python, append([]string{script}, args...)...)
 	cmd.Dir = dir
@@ -56,7 +65,7 @@ func sweep(t *testing.T, dir string, args ...string) (string, int) {
 	cmd.Stderr = &stderr
 	err = cmd.Run()
 	if ctx.Err() != nil {
-		t.Fatalf("sweep.py %s did not finish within 30s; stderr:\n%s", strings.Join(args, " "), stderr.String())
+		t.Fatalf("sweep.py %s did not finish within %s; stderr:\n%s", strings.Join(args, " "), timeout, stderr.String())
 	}
 	// A bad mutant file is a reported problem, never an unhandled Python
 	// exception: a traceback here means a malformed input reached code that
@@ -605,10 +614,15 @@ func TestStrict_NotJudgedFailsOnlyWithTheFlag(t *testing.T) {
 	write(t, filepath.Join(root, "mutants", "a.py"),
 		mutant("mutant whose judging test always skips", "target.go", "return 1", "return 2", "TestFixtureA_"))
 
-	if out, code := sweep(t, root); code != 0 {
+	// 90s, not the usual 30s: this is the one test that runs the real sweep,
+	// which shells out to `go test ./...` twice against this throwaway
+	// module, and a cold build cache can make that run longer than the
+	// read-only modes ever need.
+	const buildBound = 90 * time.Second
+	if out, code := sweepTimeout(t, root, buildBound); code != 0 {
 		t.Errorf("without --strict, a NOT JUDGED mutant exited %d:\n%s", code, out)
 	}
-	out, code := sweep(t, root, "--strict")
+	out, code := sweepTimeout(t, root, buildBound, "--strict")
 	if code == 0 {
 		t.Errorf("--strict exited 0 with a NOT JUDGED mutant:\n%s", out)
 	}
