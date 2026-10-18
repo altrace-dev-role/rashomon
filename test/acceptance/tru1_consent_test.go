@@ -16,6 +16,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/install"
+	"github.com/altrace-dev-role/rashomon/internal/settings"
 )
 
 // TRU-1, TRU-3, TRU-4 and TRU-5 (Technical spec 7.2.3): watch shows the
@@ -325,32 +328,42 @@ func TestTRU1_WatchWritesNothingBeforeYes(t *testing.T) {
 	})
 }
 
-// TestTRU1_SignalDuringTheWriteIsHeld: a SIGINT or SIGHUP that arrives while
-// watch is writing does not stop it part way: the writes complete, every
-// entry and the consent record land, and only then does watch exit 1 and
-// name the signal it held.
+// TestTRU1_SignalDuringTheWriteIsHeld: SIGINT or SIGHUP arriving while the
+// last step writes is held until the writes commit or roll back. Held
+// through a commit, watch exits 1 naming the signal, and settings.json is
+// byte for byte what the install writes, the store root exactly the four
+// files it creates. Held through a rollback -- a later write fails after the
+// signal arrived -- every earlier write is undone and the machine is byte
+// for byte as it was.
 func TestTRU1_SignalDuringTheWriteIsHeld(t *testing.T) {
+	// signalMidWrite runs watch to its writes, held open just after the
+	// store opens, calls during there, then sends sig.
+	signalMidWrite := func(t *testing.T, e *env, sig syscall.Signal, during func()) result {
+		t.Helper()
+		s := e.watchOnPTY("RASHOMON_FAULT=watch.writing:hang=2")
+		s.waitFor(questionInstall)
+		s.answer("y")
+		s.waitFor(questionSDK)
+		s.answer("n")
+		deadline := time.Now().Add(20 * time.Second)
+		for !fileExists(filepath.Join(e.home, "install.json")) {
+			if time.Now().After(deadline) {
+				t.Fatalf("watch never opened the store; terminal:\n%s", s.out.String())
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		during()
+		if err := s.cmd.Process.Signal(sig); err != nil {
+			t.Fatal(err)
+		}
+		return s.wait()
+	}
+
 	for name, sig := range map[string]syscall.Signal{"SIGINT": syscall.SIGINT, "SIGHUP": syscall.SIGHUP} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(name+" through a commit", func(t *testing.T) {
 			e := newEnv(t)
 			e.writeSettings(seededSettings)
-			s := e.watchOnPTY("RASHOMON_FAULT=watch.writing:hang=2")
-			s.waitFor(questionInstall)
-			s.answer("y")
-			s.waitFor(questionSDK)
-			s.answer("n")
-			// The store opens first; the hang holds the step open after it.
-			deadline := time.Now().Add(20 * time.Second)
-			for !fileExists(filepath.Join(e.home, "install.json")) {
-				if time.Now().After(deadline) {
-					t.Fatalf("watch never opened the store; terminal:\n%s", s.out.String())
-				}
-				time.Sleep(5 * time.Millisecond)
-			}
-			if err := s.cmd.Process.Signal(sig); err != nil {
-				t.Fatal(err)
-			}
-			res := s.wait()
+			res := signalMidWrite(t, e, sig, func() {})
 			if res.exitCode != 1 {
 				t.Fatalf("watch signalled mid-write: exit %d, want 1\nstdout:\n%s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
 			}
@@ -358,20 +371,22 @@ func TestTRU1_SignalDuringTheWriteIsHeld(t *testing.T) {
 				t.Errorf("watch does not say it held the signal: %q", res.stderr)
 			}
 			e.requireInstalled()
-			var seeded, now map[string]json.RawMessage
-			if err := json.Unmarshal([]byte(seededSettings), &seeded); err != nil {
+
+			exe, err := filepath.EvalSymlinks(rashomonBin)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if err := json.Unmarshal(e.settingsBytes(), &now); err != nil {
-				t.Fatalf("settings.json after a held signal does not parse: %v", err)
+			doc, err := settings.Parse([]byte(seededSettings))
+			if err != nil {
+				t.Fatal(err)
 			}
-			delete(now, "hooks")
-			if !reflect.DeepEqual(seeded, now) {
-				t.Errorf("settings.json outside hooks changed: %v", now)
+			if _, err := install.Apply(doc, install.Spec{Executable: exe, InstallID: e.installID()}); err != nil {
+				t.Fatal(err)
 			}
-			if recs := e.consentRecords(); len(recs) != 1 {
-				t.Errorf("consent.json holds %d records, want 1", len(recs))
+			if got := e.settingsBytes(); !bytes.Equal(got, doc.Bytes()) {
+				t.Errorf("settings.json after a held signal is not byte for byte the install:\ngot  %s\nwant %s", got, doc.Bytes())
 			}
+
 			entries, err := os.ReadDir(e.home)
 			if err != nil {
 				t.Fatal(err)
@@ -383,6 +398,40 @@ func TestTRU1_SignalDuringTheWriteIsHeld(t *testing.T) {
 			if want := []string{"consent.json", "harnesses.json", "install.json", "install.key"}; !reflect.DeepEqual(names, want) {
 				t.Errorf("store root holds %q, want %q", names, want)
 			}
+			if recs := e.consentRecords(); len(recs) != 1 {
+				t.Errorf("consent.json holds %d records, want 1", len(recs))
+			}
+			const wantHarnesses = `{"surfaces":{"sdk":{"record":"paused","steer":"off"}},"version":1}` + "\n"
+			if got, err := os.ReadFile(filepath.Join(e.home, "harnesses.json")); err != nil || string(got) != wantHarnesses {
+				t.Errorf("harnesses.json = %q (%v), want %q", got, err, wantHarnesses)
+			}
+		})
+
+		t.Run(name+" through a rollback", func(t *testing.T) {
+			if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+				t.Skip("a read-only directory does not stop this user's writes here")
+			}
+			e := newEnv(t)
+			e.writeSettings(seededSettings)
+			before := e.machine()
+			res := signalMidWrite(t, e, sig, func() {
+				// settings.json is replaced through a temporary file beside
+				// it, so a directory it cannot write fails that step.
+				if err := os.Chmod(e.configDir, 0o500); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if err := os.Chmod(e.configDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if res.exitCode != 1 {
+				t.Fatalf("watch signalled, then failing: exit %d, want 1\nstderr: %s", res.exitCode, res.stderr)
+			}
+			if !strings.Contains(res.stderr, "editing settings.json failed") ||
+				!strings.Contains(res.stderr, "nothing was left written") {
+				t.Errorf("watch does not name the failed step and the rollback: %q", res.stderr)
+			}
+			e.requireUnchanged(before, "a signal held through a rollback")
 		})
 	}
 }
