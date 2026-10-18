@@ -39,27 +39,36 @@ func (c *countingReader) Read(p []byte) (int, error) {
 }
 
 // readFinalMessage streams a Stop payload (hookio.IntakeStream): the message
-// is never held whole, only its head and tail. A payload that is not valid,
-// names a field with the wrong type, or is over hookio.MaxPayloadBytes is no
-// payload at all, as it was when the whole of it was decoded.
+// is never held whole, only its head and tail, and at most
+// hookio.MaxPayloadBytes+1 bytes are read, so an endless stdin is refused
+// rather than read forever. A payload that is not one object, is not valid,
+// names a field with the wrong type, or is over the cap is no payload at all,
+// as it was when the whole of it was decoded into a struct; keys are matched
+// as that struct matched them, in any case. A repeated key is read from its
+// last copy. A session_id over sessionIDBytes is no session named: the
+// message is still read, and recap falls back to the newest run, as for a
+// payload with no session_id.
 func readFinalMessage(in io.Reader, withSession bool) (finalMessage, bool) {
 	var fm finalMessage
 	paths := []jsonscan.Path{
-		{Elems: []string{"session_id"}, Max: sessionIDBytes, Mode: jsonscan.CaptureHead, String: true},
-		{Elems: []string{"last_assistant_message"}, Max: messageHeadBytes, Mode: jsonscan.CaptureHead, String: true},
-		{Elems: []string{"last_assistant_message"}, Max: messageTailBytes, Mode: jsonscan.CaptureTail, String: true},
+		{Elems: []string{"session_id"}, Max: sessionIDBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
+		{Elems: []string{"last_assistant_message"}, Max: messageHeadBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
+		{Elems: []string{"last_assistant_message"}, Max: messageTailBytes, Mode: jsonscan.CaptureTail, String: true, Fold: true},
 	}
 	if !withSession {
 		// digest --stdin never read session_id, so its type cannot fail it.
 		paths[0] = jsonscan.Path{Elems: []string{"session_id"}, Mode: jsonscan.CapturePresence}
 	}
-	long, cut := false, false
-	cr := &countingReader{r: in}
+	cut := false
+	cr := &countingReader{r: io.LimitReader(in, hookio.MaxPayloadBytes+1)}
 	// The head is passed before the tail of the same value (path order).
 	err := hookio.IntakeStream(cr, paths, func(i int, v []byte, truncated bool) bool {
 		switch i {
 		case 0:
-			fm.SessionID, long = string(v), long || truncated
+			fm.SessionID = string(v)
+			if truncated {
+				fm.SessionID = ""
+			}
 		case 1:
 			fm.Message, cut = string(v), truncated
 		case 2:
@@ -70,7 +79,7 @@ func readFinalMessage(in io.Reader, withSession bool) (finalMessage, bool) {
 		}
 		return true
 	})
-	if err != nil || long || cr.n == 0 || cr.n > hookio.MaxPayloadBytes {
+	if err != nil || cr.n == 0 || cr.n > hookio.MaxPayloadBytes {
 		return finalMessage{}, false
 	}
 	return fm, true
