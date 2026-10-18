@@ -646,6 +646,30 @@ session on the machine it is run on. It writes to the real
 - An execution that cannot take the append lock goes to `spill.ndjson` with a
   null `seq`, as a terminal does. It is the only record its `tool_use_id` gets,
   and dropping one would read afterwards as a call that never ran.
+- One order over gate states, two readers. The claim comparator's verdict and
+  the end-of-turn value line both reduce a gate list through `verify.Worst`,
+  and nothing else ranks a state. A gate's own `unknown` sits below every
+  non-green state and above green, so it never hides a red and never reads as
+  a pass; a state outside the vocabulary ranks before red, so a defect in the
+  evaluator surfaces as the verdict instead of sinking to green. The test
+  drives every pair of states through both consumers and requires one answer.
+- The verify checkpoint is defined beside the evaluator, not in the store.
+  `Evaluate` takes the store's `Run`, so the store cannot name the
+  evaluator's gate state without an import cycle; the store knows the
+  record's kind and version and nothing of its shape.
+- A stub fails closed or does not exist. Until the evaluator is built,
+  `Evaluate` reports the recording incomplete, which is the one condition that
+  silences the comparator and turns the value line to `unknown`; a stub that
+  returned an empty green snapshot would have been read as a verified turn by
+  every consumer written against it.
+- A freeze test pins meaning, not names. A key-list test over the schema-5
+  records let a `dropped` list become a count and a `resume` object vanish
+  behind the same keys, because it compared tag strings and nothing else; the
+  test now states, as literals, the keys of every kind and nested type, the
+  Go type of every field the archive gives a shape, that no field is
+  `omitempty`, and that no type carries its own marshaller. A review found
+  the gap by asking what a renamed field would do to each test; the answer
+  for a list of strings was "nothing".
 
 ## Where the original design was wrong, and what replaced it
 
