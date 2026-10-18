@@ -25,9 +25,11 @@ never as a negative finding.
     go build ./cmd/rashomon
     go test ./...
 
-Go 1.25 or later (`go.mod` says 1.25.0). The one non-standard dependency is a
-pure-Go SQLite driver, linked for a proxy-store reader the alpha leaves dormant
-(#28).
+`go.mod`'s `go 1.25.0` is the language minimum: the module should build with
+Go 1.25 or later. CI builds and tests with one pinned toolchain only, Go 1.27.2,
+so nothing checks the minimum; a change that breaks only 1.25 or 1.26 will not
+show up there. The one non-standard dependency is a pure-Go SQLite driver,
+linked for a proxy-store reader the alpha leaves dormant (#28).
 
 Run the tool against a scratch store rather than your own while you work:
 
