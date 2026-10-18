@@ -415,11 +415,11 @@ m("TB the session block drops the unlisted-option limit", "internal/report/text.
   "",
   "TestTestRuns_")
 
-# Re-anchored after the masked-status refactor: the writer moved to schema 4,
-# and the mutation is still "the writer stays at the version before".
-m("TB the writer stays at schema 3", "internal/store/record.go",
+# Re-anchored after group commit's schema bump: the writer moved to schema
+# 5, and the mutation is still "the writer stays at the version before".
+m("TB the writer stays at schema 4", "internal/store/record.go",
+  "const SchemaVersion = 5",
   "const SchemaVersion = 4",
-  "const SchemaVersion = 3",
   "TestSchema3_")
 m("TB test runs are counted over records that predate the test class", "internal/report/testbending.go",
   "\tif run == nil || !measuresTests(run) {\n",

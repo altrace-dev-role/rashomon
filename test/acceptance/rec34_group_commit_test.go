@@ -210,12 +210,13 @@ func skipWithoutAFlush(t *testing.T) {
 func TestREC34_FailedFlushIsMarkedAndNeverRetried(t *testing.T) {
 	skipWithoutAFlush(t)
 	for _, c := range []struct {
-		name    string
-		entry   func(*env) func(string, ...string) result
-		payload func(*testing.T) string
+		name      string
+		entry     func(*env) func(string, ...string) result
+		payload   func(*testing.T) string
+		wantPhase string
 	}{
-		{"hook", func(e *env) func(string, ...string) result { return e.hook }, func(t *testing.T) string { return defaultPayload().build(t) }},
-		{"post", func(e *env) func(string, ...string) result { return e.post }, func(t *testing.T) string { return defaultPost().build(t) }},
+		{"hook", func(e *env) func(string, ...string) result { return e.hook }, func(t *testing.T) string { return defaultPayload().build(t) }, "call"},
+		{"post", func(e *env) func(string, ...string) result { return e.post }, func(t *testing.T) string { return defaultPost().build(t) }, "post"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			e := newEnv(t)
@@ -234,6 +235,9 @@ func TestREC34_FailedFlushIsMarkedAndNeverRetried(t *testing.T) {
 			if m.typ() != "terminal" || m.str("reason") != "flush_failed" || m.str("outcome") != "error" ||
 				m.str("tool_use_id") != testToolUseID || m.fields["seq"] != nil {
 				t.Errorf("the marker is %s; want a terminal for %s, outcome error, reason flush_failed, seq null", m.raw, testToolUseID)
+			}
+			if got := m.str("phase"); got != c.wantPhase {
+				t.Errorf("the marker's phase is %q, want %q: a reader cannot tell which invocation's records may not be durable without it", got, c.wantPhase)
 			}
 
 			// The flush, which failed, and after it nothing but the marker's

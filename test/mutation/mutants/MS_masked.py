@@ -1,6 +1,6 @@
 m("MS the reader stops accepting schema 4", "internal/store/record.go",
-  "\treturn version >= 1 && version <= 4",
-  "\treturn version >= 1 && version <= 3", "TestAcceptsAdmits")
+  "\treturn version >= 1 && version <= 5",
+  "\treturn version >= 1 && version <= 5 && version != 4", "TestAcceptsAdmits")
 
 # Masked exit status (shape.status_masked, runner_digest, the report's masked
 # outcome, test runs and masked runs, the turn digest and the end-of-turn
