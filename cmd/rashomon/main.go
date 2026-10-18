@@ -201,7 +201,12 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
-		if checkPaused(args, stdin, store.PhaseCall, stderr) {
+		in, standDown := claudeHostGuard(stdin)
+		if standDown {
+			return nil
+		}
+
+		if checkPaused(args, in(), store.PhaseCall, stderr) {
 			return nil
 		}
 
@@ -219,7 +224,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		// of them and outside every lock. Nothing is printed on this path, so
 		// it is also before stdout.
 		st.DeferDurability()
-		captureErr := safe.Guard(func() error { return h.Capture(stdin) })
+		captureErr := safe.Guard(func() error { return h.Capture(in()) })
 		// Close returns nothing; Guard is here for its panic, and Flush still
 		// runs after one. What Close did not write reads as its absence: an
 		// unterminated declaration, a call with no coverage (H-10).
@@ -245,7 +250,12 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
-		if checkPaused(args, stdin, store.PhasePost, stderr) {
+		in, standDown := claudeHostGuard(stdin)
+		if standDown {
+			return nil
+		}
+
+		if checkPaused(args, in(), store.PhasePost, stderr) {
 			return nil
 		}
 
@@ -260,7 +270,7 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		p := hook.NewPost(st, time.Now)
 		// Group commit, as in cmdHook.
 		st.DeferDurability()
-		captureErr := safe.Guard(func() error { return p.Capture(stdin) })
+		captureErr := safe.Guard(func() error { return p.Capture(in()) })
 		// As in cmdHook: Guard is for Close's panic, and a coverage record
 		// Close did not write reads as its absence (H-10).
 		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
@@ -294,7 +304,12 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 
-		if checkPaused(args, stdin, phase, stderr) {
+		in, standDown := claudeHostGuard(stdin)
+		if standDown {
+			return nil
+		}
+
+		if checkPaused(args, in(), phase, stderr) {
 			return nil
 		}
 		st := openForHook(args, stderr)
@@ -304,7 +319,7 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		if standsDown(args, st, stderr) {
 			return nil
 		}
-		if err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {
+		if err := hook.RunProbe(sig, phase, in(), st, time.Now); err != nil {
 			fmt.Fprintln(stderr, evictionLine)
 		}
 		return nil
@@ -348,6 +363,14 @@ type recapPayload struct {
 	// LastMessageTail is the message's last 64 KiB when it was longer than
 	// the head (readFinalMessage), kept for the comparator (RES-17, P-40).
 	LastMessageTail string
+	// Harness is H1's own slice of this same stdin read (readFinalMessage's
+	// withHarness), and OK is false whenever recap had nothing usable to
+	// decide from: a read error, a malformed or oversized payload, or the
+	// recapStdinTimeout firing first. recapHostGuard treats !OK the same as
+	// claudeHostGuard treats hookio.Read's own error -- never a stand-down,
+	// see recapHostGuard's doc.
+	Harness harnessSignal
+	OK      bool
 }
 
 // readRecapPayload reads and parses stdin within a fixed budget, whatever
@@ -368,12 +391,12 @@ func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
 	}
 	ch := make(chan parsed, 1)
 	safe.Go(func() {
-		fm, ok := readFinalMessage(in, true)
+		fm, ok := readFinalMessage(in, true, true)
 		if !ok {
 			ch <- parsed{}
 			return
 		}
-		ch <- parsed{payload: recapPayload{SessionID: fm.SessionID, LastAssistantMessage: fm.Message, LastMessageTail: fm.Tail}, ok: true}
+		ch <- parsed{payload: recapPayload{SessionID: fm.SessionID, LastAssistantMessage: fm.Message, LastMessageTail: fm.Tail, Harness: fm.Harness, OK: true}, ok: true}
 	}, nil)
 
 	select {
@@ -426,6 +449,11 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 	now := time.Now()
 	payload := readRecapPayload(stdin, recapStdinTimeout)
+
+	if id, down := recapHostGuard(payload.Harness, payload.OK); down {
+		recordHarnessMismatchBestEffort(payload.SessionID, id)
+		return nil
+	}
 
 	root, err := store.DefaultRoot()
 	if err != nil {
@@ -1566,7 +1594,7 @@ func cmdDigest(args []string, stdin io.Reader, stdout io.Writer) error {
 // promise that made this read safe -- see cmdDigest's doc on why sniffing
 // stdin's type cannot make that promise itself.
 func readStdinLastMessage(in io.Reader) (string, bool) {
-	fm, ok := readFinalMessage(in, false)
+	fm, ok := readFinalMessage(in, false, false)
 	return fm.Message, ok && fm.Message != ""
 }
 

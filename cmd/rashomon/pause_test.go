@@ -195,6 +195,12 @@ func TestH78_CheckPausedReReadsOnEveryCallInOneProcess(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("RASHOMON_HOME", root)
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	// CLAUDE_CODE_ENTRYPOINT=cli: this test's payloads carry no
+	// transcript_path under the tempdir above, so without an allowlisted
+	// entrypoint H1 (internal/hostguard) reads them as the unknown harness
+	// and call() never sees a declaration land, which is not what this
+	// test is about.
+	t.Setenv("CLAUDE_CODE_ENTRYPOINT", "cli")
 	if _, err := store.Open(root); err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
@@ -242,6 +248,8 @@ func TestCheckPaused_H80WritesRecordingPausedWithAStore(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("RASHOMON_HOME", root)
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	// CLAUDE_CODE_ENTRYPOINT=cli: see TestH78's identical note above.
+	t.Setenv("CLAUDE_CODE_ENTRYPOINT", "cli")
 
 	// store.Open, not `watch`: watch refuses to install a go-test binary, and
 	// this test needs a store to exist, not a settings.json entry.
