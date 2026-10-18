@@ -55,6 +55,9 @@ func (h *Handler) Capture(in io.Reader) error {
 
 	payload, err := hookio.Intake(in)
 	if err != nil {
+		if s, cwd, ok := refusedSession(err); ok {
+			h.sessionID, h.cwd = s, cwd
+		}
 		return err
 	}
 	var p Payload

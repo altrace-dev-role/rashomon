@@ -4,6 +4,13 @@
 // that exactly one file has to be audited to believe the no-content guarantee.
 // Everything it returns is either drawn from a closed vocabulary, a count, or a
 // keyed digest. No substring of the input reaches the result.
+//
+// Every function here that takes a tool_input (Derive, LeadingDirectory,
+// Hosts, Label) requires one JSON value that json.Valid accepts, as the
+// tool_input span of a payload hookio.Intake returned is. Its fields are
+// located by jsonscan.Field, which trusts that validation: on bytes that did
+// not pass it, a field can be found where a decoder would have refused the
+// whole input, bytes after the object among them.
 package shape
 
 import (
@@ -1467,9 +1474,17 @@ func wholeCommand(toks []token, i int) bool {
 // measured), and the report reads such a run as outcome unobserved, as it
 // does a launch declared here.
 func backgrounded(raw json.RawMessage) bool {
-	s, ok := inputField(raw, "run_in_background")
-	return ok && s.Kind == jsonscan.True
+	var s [1]jsonscan.Span
+	if len(raw) == 0 || jsonscan.Field(raw, jsonscan.ValueSpan(raw), runInBackgroundKey, s[:]) != nil {
+		return false
+	}
+	return s[0].Kind == jsonscan.True
 }
+
+// runInBackgroundKey matches run_in_background in any case, as the struct
+// field it was once decoded into did; command and the other fields shape
+// reads were decoded from a map, and are matched exactly.
+var runInBackgroundKey = jsonscan.NewFoldKeySet("run_in_background")
 
 // mayWrite reports a shell line whose program is the token at i and which may
 // write files whatever class that program gives it: an output redirection to

@@ -27,6 +27,9 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 	err := safe.Guard(func() error {
 		payload, err := hookio.Intake(in)
 		if err != nil {
+			if s, c, ok := refusedSession(err); ok {
+				sessionID, cwd = s, c
+			}
 			return err
 		}
 		var p sessionPayload

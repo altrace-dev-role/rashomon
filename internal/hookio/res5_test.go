@@ -23,8 +23,9 @@ var res5Dirs = []string{
 // streaming canonicaliser passes RES-48. Named by package and function.
 var res5Allowed = map[string]bool{"internal/shape.canonical": true}
 
-// TestRES5_PayloadScannedOnce: each hook process validates and scans its
-// payload once, in hookio.Intake or IntakeStream. No hook-path package calls
+// TestRES5_PayloadScannedOnce: each hook process reads its payload once, in
+// hookio.Intake or IntakeStream, and locates fields rather than decoding
+// them. No hook-path package calls
 // json.Unmarshal or builds a json.Decoder, so neither the raw payload nor a
 // tool_input span is decoded again into any, map[string]json.RawMessage or
 // another map; the one exception is named in res5Allowed. Break: restore the

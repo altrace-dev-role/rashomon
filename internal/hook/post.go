@@ -21,7 +21,7 @@ import (
 // what a file held, what a command printed -- and holding it as a value would
 // put that content into memory this program controls, from where a panic
 // value or a log line carries it to Claude Code's debug log. The payload is
-// scanned once into spans (hookio.Intake) and no field here is filled from
+// walked once into spans (hookio.Intake) and no field here is filled from
 // the response's span. The one thing read from it is read by
 // backgroundedCall, for Bash only: whether two keys are present, as bits on
 // their spans, so stdout, stderr and the task id are never a value here.
@@ -73,8 +73,9 @@ const errorHeadBytes = 8 << 10
 // from fills pl from an intake. A field of the wrong type fails the whole
 // payload before any field is used, as the struct decode did.
 func (pl *PostPayload) from(in *hookio.Payload) error {
-	if err := in.Strs([]*string{&pl.SessionID, &pl.ToolName, &pl.ToolUseID, &pl.HookEventName, &pl.CWD},
-		hookio.SessionID, hookio.ToolName, hookio.ToolUseID, hookio.HookEventName, hookio.CWD); err != nil {
+	if err := in.Strs(hookio.Into(hookio.SessionID, &pl.SessionID), hookio.Into(hookio.ToolName, &pl.ToolName),
+		hookio.Into(hookio.ToolUseID, &pl.ToolUseID), hookio.Into(hookio.HookEventName, &pl.HookEventName),
+		hookio.Into(hookio.CWD, &pl.CWD)); err != nil {
 		return err
 	}
 	var err error
@@ -142,6 +143,9 @@ func (p *Post) Capture(in io.Reader) error {
 
 	payload, err := hookio.Intake(in)
 	if err != nil {
+		if s, cwd, ok := refusedSession(err); ok {
+			p.sessionID, p.cwd = s, cwd
+		}
 		return err
 	}
 	var pl PostPayload
@@ -214,12 +218,15 @@ func (p *Post) Capture(in io.Reader) error {
 // not an object is a foreground call: the flag is set only on evidence.
 func backgroundedCall(in *hookio.Payload) bool {
 	var bits [2]jsonscan.Span
-	keys := jsonscan.NewKeySet("backgroundTaskId", "backgroundedByUser")
-	if jsonscan.Field(in.Raw, in.Spans[hookio.ToolResponse], keys, bits[:]) != nil {
+	if jsonscan.Field(in.Raw, in.Spans[hookio.ToolResponse], backgroundKeys, bits[:]) != nil {
 		return false
 	}
 	return bits[0].Set() || bits[1].Set()
 }
+
+// backgroundKeys are the two keys backgroundedCall reads, matched as the
+// struct that once decoded them matched them: in any case.
+var backgroundKeys = jsonscan.NewFoldKeySet("backgroundTaskId", "backgroundedByUser")
 
 // exitCodePrefix is the whole of what is parsed out of a failure message.
 //
