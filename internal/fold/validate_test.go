@@ -154,6 +154,25 @@ func TestValidate_ZeroOffsetNeverFailsTheBoundaryCheck(t *testing.T) {
 	}
 }
 
+func TestValidate_GapsCursorIsChecked(t *testing.T) {
+	rf := newRunFiles(t)
+	f := validFile(t, rf)
+	// Give gaps.ndjson a real line so a cursor into it is meaningful, then
+	// set the cursor past that file's size: Validate must catch it, the
+	// same as it would for records, spill or coverage (RES-49's cursor is
+	// not a special case this check skips).
+	writeFile(t, rf.gaps, "gap\n")
+	f.Gaps.Offset = 1_000_000
+
+	ok, err := Validate(f, rf.records, rf.spill, rf.coverage, rf.gaps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("a gaps cursor offset past gaps.ndjson's size was accepted")
+	}
+}
+
 func TestValidate_MissingFileWithNonZeroOffsetInvalidates(t *testing.T) {
 	rf := newRunFiles(t)
 	f := validFile(t, rf)
