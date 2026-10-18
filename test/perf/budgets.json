@@ -62,7 +62,8 @@
     {"name": "BenchmarkRead/40KB", "measured_bytes_per_op": 83456, "measured_allocs_per_op": 16, "bytes_per_op_max": 83456, "allocs_per_op_max": 16},
     {"name": "BenchmarkRead/1MiB", "measured_bytes_per_op": 2163596, "measured_allocs_per_op": 48, "bytes_per_op_max": 2163596, "allocs_per_op_max": 48},
     {"name": "BenchmarkRead/4MiB", "measured_bytes_per_op": 8459158, "measured_allocs_per_op": 97, "bytes_per_op_max": 8459158, "allocs_per_op_max": 97},
-    {"name": "BenchmarkRead/8MiB", "measured_bytes_per_op": 16823174, "measured_allocs_per_op": 161, "bytes_per_op_max": 16823174, "allocs_per_op_max": 161}
+    {"name": "BenchmarkRead/8MiB", "measured_bytes_per_op": 16823174, "measured_allocs_per_op": 161, "bytes_per_op_max": 16823174, "allocs_per_op_max": 161},
+    {"name": "BenchmarkDetect", "measured_bytes_per_op": 1600, "measured_allocs_per_op": 14, "bytes_per_op_max": 1600, "allocs_per_op_max": 14}
   ],
   "growth": [],
   "disk": {"bytes_per_call_max": 6000}
