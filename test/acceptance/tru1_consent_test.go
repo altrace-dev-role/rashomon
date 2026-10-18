@@ -270,6 +270,24 @@ func TestTRU1_WatchWritesNothingBeforeYes(t *testing.T) {
 		if got := e.sdkRecording(); got != "on" {
 			t.Errorf("y at the Agent SDK question recorded %q, want on", got)
 		}
+		// A later --yes asks no question, so it has no answer to record:
+		// the y on file stays, byte for byte.
+		harnesses := filepath.Join(e.home, "harnesses.json")
+		before, err := os.ReadFile(harnesses)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(e.home, "consent.json")); err != nil {
+			t.Fatal(err)
+		}
+		cmd := e.command("", nil, "watch", "--yes")
+		noTerminal(cmd)
+		if res := e.wait(cmd); res.exitCode != 0 {
+			t.Fatalf("watch --yes after a y: exit %d, stderr %q", res.exitCode, res.stderr)
+		}
+		if after, err := os.ReadFile(harnesses); err != nil || string(after) != string(before) {
+			t.Errorf("watch --yes rewrote the Agent SDK answer: %s (%v), want %s", after, err, before)
+		}
 	})
 
 	refusals := map[string]struct {

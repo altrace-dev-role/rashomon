@@ -146,6 +146,9 @@ type answers struct {
 	via consent.Via
 	tty bool
 	sdk bool
+	// sdkAsked is whether the Agent SDK question was asked; when it was
+	// not (--yes), sdk is only its default and an answer on file stays.
+	sdkAsked bool
 	// workTree is the work tree top the person confirmed the store root
 	// in by typing its name; "" when the root is in none.
 	workTree string
@@ -218,7 +221,7 @@ func askConsent(verb string, screen []byte, yes, show bool, wt workTreeQuestion,
 		case i == 0 && !yes:
 			return nil, errors.New(nothingWritten)
 		case i == 1:
-			ans.sdk = yes
+			ans.sdk, ans.sdkAsked = yes, true
 		}
 	}
 	if wt.top != "" {
@@ -499,6 +502,9 @@ func applyWatch(plan *watchPlan, rec consent.Record, ans *answers) (installID st
 	fault.Inject(fault.PointWatchWriting)
 
 	undo, err = restorable(consent.HarnessesPath(plan.root), fault.PointWatchSDK, func() error {
+		if !ans.sdkAsked {
+			return consent.WriteSDKDefault(plan.root)
+		}
 		return consent.WriteSDKAnswer(plan.root, ans.sdk)
 	})
 	if err != nil {

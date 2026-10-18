@@ -22,3 +22,6 @@ m("TRU-4 --yes still asks on the terminal", "cmd/rashomon/watch.go",
 m("TRU-4 entries in place are already watching without consent", "cmd/rashomon/watch.go",
   "\tif !plan.changes && plan.covered {\n", "\tif !plan.changes {\n",
   "TestTRU4_")
+m("TRU-4 --yes on a fresh store records no Agent SDK default", "internal/consent/harnesses.go",
+  "\tif _, ok := h.sdk[\"record\"]; ok {\n\t\treturn nil\n\t}\n\treturn h.write(SDKRecordPaused)\n", "\treturn nil\n",
+  "TestTRU4_NonInteractiveWatchNeedsYes")

@@ -12,7 +12,7 @@ m("TRU-1 any answer starting with y is yes", "internal/consent/tty.go",
   "\treturn strings.HasPrefix(strings.ToLower(a), \"y\")\n",
   "TestTRU1_WatchWritesNothingBeforeYes")
 m("TRU-1 the Agent SDK answer is recorded as yes whatever was typed", "cmd/rashomon/watch.go",
-  "\t\t\tans.sdk = yes\n", "\t\t\tans.sdk = true\n",
+  "\t\t\tans.sdk, ans.sdkAsked = yes, true\n", "\t\t\tans.sdk, ans.sdkAsked = true, true\n",
   "TestTRU1_WatchWritesNothingBeforeYes")
 m("TRU-1 answers are read from stdin", "cmd/rashomon/watch.go",
   "\tterm := consent.NewTerminal(tty)\n",
@@ -48,3 +48,12 @@ m("TRU-1 undoing a new file leaves it", "cmd/rashomon/watch.go",
 m("TRU-1 a failure does not name its step", "cmd/rashomon/watch.go",
   "\tmsg := fmt.Sprintf(\"%s failed: %v\", step, err)\n", "\tmsg := fmt.Sprintf(\"a write failed: %v\", err)\n",
   "TestTRU1_AFailedWriteIsUndoneInReverse")
+m("TRU-1 --yes overwrites an Agent SDK answer on file", "cmd/rashomon/watch.go",
+  "\t\tif !ans.sdkAsked {\n\t\t\treturn consent.WriteSDKDefault(plan.root)\n\t\t}\n", "",
+  "TestTRU1_WatchWritesNothingBeforeYes")
+m("TRU-1 an answered Agent SDK question records only the default", "cmd/rashomon/watch.go",
+  "\t\t\tans.sdk, ans.sdkAsked = yes, true\n", "\t\t\tans.sdk = yes\n",
+  "TestTRU1_WatchWritesNothingBeforeYes")
+m("TRU-1 the Agent SDK default overwrites an answer on file", "internal/consent/harnesses.go",
+  "\tif _, ok := h.sdk[\"record\"]; ok {\n\t\treturn nil\n\t}\n", "",
+  "TestTRU1_WatchWritesNothingBeforeYes")

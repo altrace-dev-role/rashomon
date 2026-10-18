@@ -31,52 +31,89 @@ func HarnessesPath(root string) string { return filepath.Join(root, store.FileHa
 // It records the answer only; what a paused surface records is the hook
 // layer's to enforce.
 func WriteSDKAnswer(root string, record bool) error {
-	path := HarnessesPath(root)
-	doc := map[string]json.RawMessage{}
-	b, err := os.ReadFile(path)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		doc["version"] = json.RawMessage("1")
-	case err != nil:
+	h, err := readHarnesses(root)
+	if err != nil {
 		return err
-	default:
-		if err := json.Unmarshal(b, &doc); err != nil || doc == nil {
-			return fmt.Errorf("consent: %s is not a JSON object; leaving it as it is", store.FileHarnesses)
-		}
 	}
-
-	surfaces := map[string]json.RawMessage{}
-	if raw, ok := doc["surfaces"]; ok {
-		if err := json.Unmarshal(raw, &surfaces); err != nil || surfaces == nil {
-			return fmt.Errorf("consent: %s surfaces is not a JSON object; leaving it as it is", store.FileHarnesses)
-		}
-	}
-	sdk := map[string]json.RawMessage{}
-	if raw, ok := surfaces["sdk"]; ok {
-		if err := json.Unmarshal(raw, &sdk); err != nil || sdk == nil {
-			return fmt.Errorf("consent: %s surfaces.sdk is not a JSON object; leaving it as it is", store.FileHarnesses)
-		}
-	}
-
 	state := SDKRecordPaused
 	if record {
 		state = SDKRecordOn
 	}
-	if sdk["record"], err = json.Marshal(state); err != nil {
-		return err
-	}
-	if _, ok := sdk["steer"]; !ok {
-		sdk["steer"] = json.RawMessage(`"off"`)
-	}
-	if surfaces["sdk"], err = json.Marshal(sdk); err != nil {
-		return err
-	}
-	if doc["surfaces"], err = json.Marshal(surfaces); err != nil {
-		return err
-	}
-	out, err := json.Marshal(doc)
+	return h.write(state)
+}
+
+// WriteSDKDefault is WriteSDKAnswer for a consent where the second question
+// was not asked (--yes): it records the default, "paused", only where
+// harnesses.json records no answer yet, and otherwise writes nothing, so an
+// earlier y, or a later rashomon resume --surface sdk, stays as it is.
+func WriteSDKDefault(root string) error {
+	h, err := readHarnesses(root)
 	if err != nil {
 		return err
 	}
-	return replace(path, append(out, '\n'))
+	if _, ok := h.sdk["record"]; ok {
+		return nil
+	}
+	return h.write(SDKRecordPaused)
+}
+
+// harnesses is harnesses.json as read, down to surfaces.sdk, each level kept
+// as raw JSON so a write changes only the keys it sets.
+type harnesses struct {
+	path               string
+	doc, surfaces, sdk map[string]json.RawMessage
+}
+
+func readHarnesses(root string) (*harnesses, error) {
+	h := &harnesses{
+		path:     HarnessesPath(root),
+		doc:      map[string]json.RawMessage{},
+		surfaces: map[string]json.RawMessage{},
+		sdk:      map[string]json.RawMessage{},
+	}
+	b, err := os.ReadFile(h.path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		h.doc["version"] = json.RawMessage("1")
+	case err != nil:
+		return nil, err
+	default:
+		if err := json.Unmarshal(b, &h.doc); err != nil || h.doc == nil {
+			return nil, fmt.Errorf("consent: %s is not a JSON object; leaving it as it is", store.FileHarnesses)
+		}
+	}
+	if raw, ok := h.doc["surfaces"]; ok {
+		if err := json.Unmarshal(raw, &h.surfaces); err != nil || h.surfaces == nil {
+			return nil, fmt.Errorf("consent: %s surfaces is not a JSON object; leaving it as it is", store.FileHarnesses)
+		}
+	}
+	if raw, ok := h.surfaces["sdk"]; ok {
+		if err := json.Unmarshal(raw, &h.sdk); err != nil || h.sdk == nil {
+			return nil, fmt.Errorf("consent: %s surfaces.sdk is not a JSON object; leaving it as it is", store.FileHarnesses)
+		}
+	}
+	return h, nil
+}
+
+// write sets surfaces.sdk.record to state, and surfaces.sdk.steer to "off"
+// where none is recorded, and replaces the file.
+func (h *harnesses) write(state string) error {
+	var err error
+	if h.sdk["record"], err = json.Marshal(state); err != nil {
+		return err
+	}
+	if _, ok := h.sdk["steer"]; !ok {
+		h.sdk["steer"] = json.RawMessage(`"off"`)
+	}
+	if h.surfaces["sdk"], err = json.Marshal(h.sdk); err != nil {
+		return err
+	}
+	if h.doc["surfaces"], err = json.Marshal(h.surfaces); err != nil {
+		return err
+	}
+	out, err := json.Marshal(h.doc)
+	if err != nil {
+		return err
+	}
+	return replace(h.path, append(out, '\n'))
 }
