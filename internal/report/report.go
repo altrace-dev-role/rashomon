@@ -912,12 +912,14 @@ func RollupCoverage(covs []store.Coverage) CoverageFacts {
 }
 
 // unreadableCoverage reports whether a coverage record's state cannot be
-// taken at its word: anything other than verified, unless it is unverified
-// and names its reason. store-schema.json allowed a null reason beside
-// unverified, and a newer build or a hand edit can write any state at all.
+// taken at its word: verified with a reason attached, or anything other than
+// verified unless it is unverified and names its reason. store-schema.json's
+// own conditional only requires a reason when the state is unverified; it
+// says nothing about verified, so a hand edit or a future build can leave a
+// reason on a verified record and this build must not read that as clean.
 func unreadableCoverage(c store.Coverage) bool {
 	if c.State == store.StateVerified {
-		return false
+		return c.Reason != nil
 	}
 	return c.State != store.StateUnverified || c.Reason == nil
 }

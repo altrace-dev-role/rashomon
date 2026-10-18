@@ -14,3 +14,7 @@ m("errors-5 an unknown state is taken as verified", "internal/report/report.go",
   "\treturn c.State != store.StateUnverified || c.Reason == nil\n",
   "\treturn c.State == store.StateUnverified && c.Reason == nil\n",
   "TestRubricERRORS5_")
+m("errors-5 a verified record with a reason is taken at its word", "internal/report/report.go",
+  "\t\treturn c.Reason != nil\n",
+  "\t\treturn false\n",
+  "TestRubricERRORS5_")

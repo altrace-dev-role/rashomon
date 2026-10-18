@@ -20,6 +20,7 @@ var unreadableCoverageCases = []struct {
 	{"an unknown state", "degraded", nil},
 	{"an unknown state with a reason", "degraded", ptr(store.ReasonInternalError)},
 	{"an empty state", "", nil},
+	{"verified with a reason", store.StateVerified, ptr(store.ReasonInternalError)},
 }
 
 // TestRubricERRORS5_RollupFailsClosedOnACoverageRecordItCannotRead: each of
