@@ -55,10 +55,10 @@ m("NONO window_open is set before the read can fail", "internal/nono/nono.go",
   "\tobs := Observation{Trail: path, Events: []Event{}, WindowOpen: w.End.IsZero()}\n",
   "TestRead_WindowOpenIsFalseWhenNotObserved")
 m("NONO the sandbox line does not say the window has no end", "internal/report/text.go",
-  "\tif n.WindowOpen {", "\tif false {",
+  "\t\tif n.WindowOpen {", "\t\tif false {",
   "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
 m("NONO a bounded window is said to have no end", "internal/report/text.go",
-  "\tif n.WindowOpen {", "\tif true {",
+  "\t\tif n.WindowOpen {", "\t\tif true {",
   "TestNono_AWindowWithNoEnd")
 # Re-anchored: NetworkEventsInTrail's addition made gofmt realign the struct
 # literal, so the old anchor's column spacing matched nothing.
@@ -79,7 +79,7 @@ m("NONO a not-observed trail does not say how much it could not read", "internal
 m("NONO a read that stopped partway says how much it could not read", "internal/report/text.go",
   "\t\tif n.Reason == nono.NotObservedNoRecords && n.Skipped > 0 {",
   "\t\t_ = nono.NotObservedNoRecords\n\t\tif n.Skipped > 0 {",
-  "TestNono_AReadThatStopsPartwaySaysHowMuchItCouldNotRead")
+  "TestNono_AReadThatStopsPartwayDoesNotClaimAnUndercount")
 m("NONO the unreadable count on a not-observed trail ignores the singular", "internal/report/text.go",
   "\"; %d trail record%s could not be read\", n.Skipped, plural(n.Skipped))",
   "\"; %d trail records could not be read\", n.Skipped)",
@@ -113,7 +113,7 @@ m("NONO the client's log intake is not on the client-plane list", "internal/repo
   "\t\"http-intake.logs.us5.datadoghq.com\": true,\n", "",
   "TestNono_TheClientsOwnTraffic")
 m("NONO the text never names the client's own traffic", "internal/report/text.go",
-  "\tif len(n.ClientPlaneAllowed)+len(n.ClientPlaneDenied) > 0 {", "\tif false {",
+  "\t\tif len(n.ClientPlaneAllowed)+len(n.ClientPlaneDenied) > 0 {", "\t\tif false {",
   "TestNono_TheClientsOwnTraffic")
 m("NONO --redact passes the client's own allowed hosts through", "internal/report/redact.go",
   "\tout.ClientPlaneAllowed = redactList(n.ClientPlaneAllowed, key)\n", "",
@@ -173,7 +173,7 @@ m("NONO the session's named hosts never reach the sandbox section", "internal/re
 # The client-traffic line says which hosts the sandbox allowed and which it
 # refused (review of #53): one list of both hid the refused log upload.
 m("NONO the client-traffic line does not say what the sandbox refused", "internal/report/text.go",
-  "\t\tif len(n.ClientPlaneDenied) > 0 {\n\t\t\tsaid = append(said, \"refused \"", "\t\tif false {\n\t\t\tsaid = append(said, \"refused \"",
+  "\t\t\tif len(n.ClientPlaneDenied) > 0 {\n\t\t\t\tsaid = append(said, \"refused \"", "\t\t\tif false {\n\t\t\t\tsaid = append(said, \"refused \"",
   "TestSeam_TheClientsOwnTrafficSaysWhat|TestNono_TheClientsOwn")
 m("NONO the client's refused hosts are listed as allowed", "internal/report/nono.go",
   "\tn.Denied, n.ClientPlaneDenied = split(obs.Denied())\n", "\tn.Denied, _ = split(obs.Denied())\n\t_, n.ClientPlaneAllowed = split(append(obs.Hosts(), obs.Denied()...))\n",
@@ -250,3 +250,23 @@ m("NONO the whole-file network count never reaches the report", "internal/report
 m("NONO a trail with no network events renders as a filtered, quiet session", "internal/report/text.go",
   "\tif n.NetworkEventsInTrail == 0 {", "\tif false {",
   "TestNono_ANoNetworkEventsTrailSaysSoInsteadOfZero|TestH31_ASilentTrailLeavesTheNamedHostInTheChain")
+
+# NetworkEventsInTrail's own doc and commit history say
+# it is a WHOLE-FILE count, in the window or out of it, whatever the target's
+# shape -- but nothing pinned that against a mutant that moves the increment
+# past the window and target checks, which still passes every pre-existing
+# test here and in internal/report because every other fixture keeps its
+# network records in-window with parseable targets.
+m("NONO the whole-file network count only counts in-window parseable records",
+  "internal/nono/nono.go",
+  '\t\tcase "network":\n\t\t\tparsed++\n\t\t\tobs.NetworkEventsInTrail++\n\t\tdefault:\n\t\t\t// A type nono has and this reader has not learned. Counted,\n\t\t\t// because schema drift is a measured property of this dependency:\n\t\t\t// its documentation named event types the program does not emit.\n\t\t\tobs.Skipped++\n\t\t\tcontinue\n\t\t}\n\n\t\tn := head.Event\n\t\th, ok := host.Canonical(n.Target)\n\t\tif !ok {\n\t\t\t// The single most interesting record a sandbox can write -- a DENY\n\t\t\t// on a credential-bearing target -- was erased here without a\n\t\t\t// trace. Refusing to carry the string is right; refusing to carry\n\t\t\t// the count was not.\n\t\t\tobs.UnparseableTargets++\n\t\t\t// An unparseable target is dropped rather than guessed at. The\n\t\t\t// canonicaliser refuses anything carrying userinfo or a path, so\n\t\t\t// a credential in a target cannot reach a record from here.\n\t\t\tcontinue\n\t\t}\n\t\tat := time.UnixMilli(n.TimestampUnixMS)\n\t\tif at.Before(w.Start) || (!w.End.IsZero() && at.After(w.End)) {\n\t\t\tobs.Inherited++\n\t\t\tcontinue\n\t\t}\n', '\t\tcase "network":\n\t\t\tparsed++\n\t\tdefault:\n\t\t\t// A type nono has and this reader has not learned. Counted,\n\t\t\t// because schema drift is a measured property of this dependency:\n\t\t\t// its documentation named event types the program does not emit.\n\t\t\tobs.Skipped++\n\t\t\tcontinue\n\t\t}\n\n\t\tn := head.Event\n\t\th, ok := host.Canonical(n.Target)\n\t\tif !ok {\n\t\t\t// The single most interesting record a sandbox can write -- a DENY\n\t\t\t// on a credential-bearing target -- was erased here without a\n\t\t\t// trace. Refusing to carry the string is right; refusing to carry\n\t\t\t// the count was not.\n\t\t\tobs.UnparseableTargets++\n\t\t\t// An unparseable target is dropped rather than guessed at. The\n\t\t\t// canonicaliser refuses anything carrying userinfo or a path, so\n\t\t\t// a credential in a target cannot reach a record from here.\n\t\t\tcontinue\n\t\t}\n\t\tat := time.UnixMilli(n.TimestampUnixMS)\n\t\tif at.Before(w.Start) || (!w.End.IsZero() && at.After(w.End)) {\n\t\t\tobs.Inherited++\n\t\t\tcontinue\n\t\t}\n\t\tobs.NetworkEventsInTrail++\n',
+  "TestRead_NetworkEventsInTrailCountsEventsOutsideTheWindowAndUnparseable")
+
+# The no-network-events branch used to return right
+# after printing its line, hiding the skipped/unparseable and sessions lines
+# below on exactly the trails where schema drift or torn lines matter most.
+m("NONO the no-network-events branch still returns before the shared lines",
+  "internal/report/text.go",
+  "\t\tfmt.Fprintf(b, \"  sandbox (nono): the trail holds no network events (%s; this is \"+\n\t\t\t\"not the same as a filtered session that saw nothing)\\n\", cause)\n\t} else {",
+  "\t\tfmt.Fprintf(b, \"  sandbox (nono): the trail holds no network events (%s; this is \"+\n\t\t\t\"not the same as a filtered session that saw nothing)\\n\", cause)\n\t\treturn\n\t} else {",
+  "TestNono_ZeroNetworkEventsStillReportsSkippedRecords")

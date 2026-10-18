@@ -105,6 +105,14 @@ type Observation struct {
 	//
 	// Both exist because silence is not an answer. Without them a trail that
 	// was three-quarters unreadable rendered identically to a quiet session.
+	//
+	// On NotObservedUnreadable, Skipped is an UNDERCOUNT -- it only counts the
+	// torn lines before the one that broke the scan, not whatever follows it
+	// -- and the text report (writeNono) deliberately omits it there rather
+	// than print a number that understates the damage. This JSON field still
+	// carries that undercount with no such caveat, so the text and JSON
+	// reports disagree on an unreadable trail: see
+	// TestNono_AReadThatStopsPartwayDoesNotClaimAnUndercount.
 	Skipped            int `json:"skipped"`
 	UnparseableTargets int `json:"unparseable_targets"`
 	// WindowOpen is true when the window had no end, so every event after its

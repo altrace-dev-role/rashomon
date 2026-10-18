@@ -720,34 +720,49 @@ func writeNono(b *bytes.Buffer, n Nono) {
 		// as "0 allowed, 0 denied" reads as a quiet, filtered session when
 		// no filtering ran -- silence read as zero, the failure this
 		// package exists to prevent. Follow-up from #53, applied here.
-		fmt.Fprint(b, "  sandbox (nono): the trail holds no network events (the active "+
-			"profile may not filter the network; this is not the same as a filtered "+
-			"session that saw nothing)\n")
-		return
-	}
-	// An open window is said ON THIS LINE: the two counts are only as bounded
-	// as the window, and with no end record they run to the end of the trail,
-	// where a later session's traffic on a shared trail counts as this one's.
-	open := ""
-	if n.WindowOpen {
-		open = " (no end record, so events up to the end of the trail are counted)"
-	}
-	fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied in this session's window%s\n",
-		len(n.Allowed), len(n.Denied), open)
-	if len(n.ClientPlaneAllowed)+len(n.ClientPlaneDenied) > 0 {
-		// Named, not dropped: the sandbox did allow or refuse these, and a
-		// reader comparing against nono's own log should find every host and
-		// what the sandbox did with it. Not counted above, because these are
-		// hosts the client contacts on its own and no tool call of the session
-		// named them; one that a call named is counted above, as the agent's.
-		var said []string
-		if len(n.ClientPlaneAllowed) > 0 {
-			said = append(said, "allowed "+list(n.ClientPlaneAllowed))
+		//
+		// NOT A RETURN. This used to return right after the line below,
+		// which hid the skipped/unparseable, sessions and inherited lines
+		// below on exactly the trails where they are most informative: a
+		// schema-drift record (an event type like log_denied) or a torn
+		// line next to a session_started record both land in Skipped and
+		// never touch NetworkEventsInTrail, so a reader got a confident
+		// "the profile may not filter the network" on a trail this reader
+		// actually failed to read. When Skipped > 0, unreadable records are
+		// named as a possible cause alongside the profile, not displaced by
+		// it.
+		cause := "the active profile may not filter the network"
+		if n.Skipped > 0 {
+			cause = "the active profile may not filter the network, or the events could not be read"
 		}
-		if len(n.ClientPlaneDenied) > 0 {
-			said = append(said, "refused "+list(n.ClientPlaneDenied))
+		fmt.Fprintf(b, "  sandbox (nono): the trail holds no network events (%s; this is "+
+			"not the same as a filtered session that saw nothing)\n", cause)
+	} else {
+		// An open window is said ON THIS LINE: the two counts are only as
+		// bounded as the window, and with no end record they run to the end
+		// of the trail, where a later session's traffic on a shared trail
+		// counts as this one's.
+		open := ""
+		if n.WindowOpen {
+			open = " (no end record, so events up to the end of the trail are counted)"
 		}
-		fmt.Fprintf(b, "    the client's own traffic, not counted above: %s\n", strings.Join(said, "; "))
+		fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied in this session's window%s\n",
+			len(n.Allowed), len(n.Denied), open)
+		if len(n.ClientPlaneAllowed)+len(n.ClientPlaneDenied) > 0 {
+			// Named, not dropped: the sandbox did allow or refuse these, and a
+			// reader comparing against nono's own log should find every host and
+			// what the sandbox did with it. Not counted above, because these are
+			// hosts the client contacts on its own and no tool call of the session
+			// named them; one that a call named is counted above, as the agent's.
+			var said []string
+			if len(n.ClientPlaneAllowed) > 0 {
+				said = append(said, "allowed "+list(n.ClientPlaneAllowed))
+			}
+			if len(n.ClientPlaneDenied) > 0 {
+				said = append(said, "refused "+list(n.ClientPlaneDenied))
+			}
+			fmt.Fprintf(b, "    the client's own traffic, not counted above: %s\n", strings.Join(said, "; "))
+		}
 	}
 	// SAID SEPARATELY, because it is a LIFETIME count beside two windowed ones.
 	// nono's session_started record carries an ISO string and no millisecond

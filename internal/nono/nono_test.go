@@ -1,6 +1,7 @@
 package nono
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -418,5 +419,53 @@ func TestRead_NetworkEventsInTrailCountsTheWholeFile(t *testing.T) {
 	if withNet.NetworkEventsInTrail != 4 {
 		t.Errorf("network_events_in_trail = %d, want 4 (the fixture's four network records)",
 			withNet.NetworkEventsInTrail)
+	}
+}
+
+// TestRead_NetworkEventsInTrailCountsEventsOutsideTheWindowAndUnparseable:
+// NetworkEventsInTrail's own doc and this package's commit history say it is
+// a WHOLE-FILE count, counted "in the window or out of it" and regardless of
+// whether the target parses. A version that moved the increment to just
+// before obs.Events is appended -- after the window check and the target
+// canonicalisation -- would pass every other test in this package and in
+// internal/report, because every other fixture here keeps its records
+// in-window with parseable targets. This trail does not: two records fall
+// outside the window, and one more carries a target this reader cannot
+// canonicalise (a credential-bearing target), so a reader counting only
+// what reached obs.Events would undercount by three.
+func TestRead_NetworkEventsInTrailCountsEventsOutsideTheWindowAndUnparseable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mixed.ndjson")
+	rec := func(ms int64, target string) string {
+		return fmt.Sprintf(`{"sequence":0,"event":{"type":"network","event":{`+
+			`"timestamp_unix_ms":%d,"mode":"connect","decision":"allow","target":%q,"port":443}}}`,
+			ms, target)
+	}
+	body := strings.Join([]string{
+		rec(500, "before.example"),            // before the window: Inherited
+		rec(1_000, "in-window.example"),       // inside the window: counted as an Event
+		rec(1_500, "user@credential.example"), // unparseable target
+		rec(2_000, "after.example"),           // after the window: Inherited
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := Read(path, Window{Start: time.UnixMilli(900), End: time.UnixMilli(1100)})
+	if !obs.Observed {
+		t.Fatalf("premise: not observed (%s)", obs.Reason)
+	}
+	if got, want := len(obs.Events), 1; got != want {
+		t.Fatalf("premise: in-window parseable events = %d, want %d", got, want)
+	}
+	if got, want := obs.Inherited, 2; got != want {
+		t.Fatalf("premise: inherited (out-of-window) = %d, want %d", got, want)
+	}
+	if got, want := obs.UnparseableTargets, 1; got != want {
+		t.Fatalf("premise: unparseable targets = %d, want %d", got, want)
+	}
+	if got, want := obs.NetworkEventsInTrail, 4; got != want {
+		t.Errorf("network_events_in_trail = %d, want %d: it must count every network record "+
+			"in the file, whether it fell inside the window, outside it, or its target could "+
+			"not be parsed", got, want)
 	}
 }
