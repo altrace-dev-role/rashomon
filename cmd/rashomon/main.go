@@ -1457,10 +1457,10 @@ func digestOrEmpty(sessionID, promptID, lastAssistantMessage string, now time.Ti
 		return nil, err
 	}
 	if sessionID == "" {
-		// No session named: the newest run, under the same rule `run` reports
-		// on its child by -- this process never learns Claude Code's session
-		// id any other way. A store with no runs at all is "nothing recorded
-		// here", not an error.
+		// No session named: the newest run, the same fallback `recap pending`
+		// uses -- this process never learns Claude Code's session id any
+		// other way. A store with no runs at all is "nothing recorded here",
+		// not an error.
 		newest, _, err := st.NewestRun()
 		if err != nil {
 			return nil, err
