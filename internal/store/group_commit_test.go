@@ -2,9 +2,12 @@ package store
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -108,6 +111,43 @@ func TestREC34c_AFailedFlushIsNeverRetried(t *testing.T) {
 	}
 }
 
+// TestREC34p_FlushAfterTheRunIsGoneIsNothingToFlush: forget and eviction
+// remove a run's WHOLE directory (gaps.go's os.RemoveAll), not one file
+// inside a run that still exists the way TestREC34c_'s scenario does. Flush
+// reopens its dirty file by path; if that path's run is gone, there is
+// nothing left anywhere to make durable, and marking the call would
+// recreate the very directory that was removed (SpillTerminal's MkdirAll).
+// This must read as nothing to flush, not as a failure.
+func TestREC34p_FlushAfterTheRunIsGoneIsNothingToFlush(t *testing.T) {
+	const session = "sess-evicted"
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.barrier = orderingBarrier
+	st.DeferDurability()
+	cov := Coverage{Type: TypeCoverage, SchemaVersion: SessionSchemaVersion, SessionID: session}
+	if err := st.AppendCoverage(cov); err != nil {
+		t.Fatal(err)
+	}
+	runDir := st.RunDir(session)
+	if err := os.RemoveAll(runDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Flush(); err != nil {
+		t.Errorf("Flush after the run was removed returned %v, want nil: there is nothing left to make durable", err)
+	}
+	if st.dirty != "" {
+		t.Errorf("Flush left %q dirty after finding its run gone", st.dirty)
+	}
+	if !st.deferred {
+		t.Error("a run being gone is not a sync failure; it must not end the deferral")
+	}
+	if _, err := os.Stat(runDir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Flush recreated the run directory that eviction removed: stat = %v", err)
+	}
+}
+
 // TestREC34d_FlushFailedTerminalClosesNothingAndDropsNothing: the terminal
 // that marks a call's records as possibly not durable is not an ending. It
 // must not close a declaration whose own terminal never landed, which would
@@ -135,6 +175,32 @@ func TestREC34d_FlushFailedTerminalClosesNothingAndDropsNothing(t *testing.T) {
 	}
 	if !marker("x").FlushFailed() || (Terminal{Outcome: OutcomeOK}).FlushFailed() {
 		t.Error("FlushFailed does not tell the marker from an ordinary terminal")
+	}
+}
+
+// TestREC34m_FlushFailedRidesANewerSchemaVersionSoOldReadersSkipIt: a reader
+// released before this change never heard of ReasonFlushFailed and does not
+// call Terminal.FlushFailed before deciding a terminal closes its
+// declaration -- it just sees a terminal record it understands and closes
+// the call. The marker must therefore carry a schema_version such a reader
+// does not understand, so it skips the whole line (classifyRunLine's
+// Accepts check runs before the type switch ever reaches Terminal), rather
+// than reading a record it half-understands as an ordinary closing one.
+func TestREC34m_FlushFailedRidesANewerSchemaVersionSoOldReadersSkipIt(t *testing.T) {
+	reason := ReasonFlushFailed
+	marker := Terminal{Type: TypeTerminal, SchemaVersion: SchemaVersion, ToolUseID: "a1", Outcome: OutcomeError, Reason: &reason}
+
+	// Accepts' own history (record.go): 1..3 before the masked-status bump,
+	// 1..4 before this one. A reader from either release knew nothing past
+	// 4.
+	oldAccepts := func(v int) bool { return v >= 1 && v <= 4 }
+	if oldAccepts(marker.SchemaVersion) {
+		t.Fatalf("flush_failed terminal carries schema_version %d, which a reader released before "+
+			"this change (Accepts up to 4) still understands; it would read this marker as an "+
+			"ordinary terminal and close the declaration instead of skipping the line", marker.SchemaVersion)
+	}
+	if !Accepts(marker.SchemaVersion) {
+		t.Fatalf("this build's own Accepts(%d) is false; it cannot read back what it just wrote", marker.SchemaVersion)
 	}
 }
 
@@ -267,4 +333,47 @@ func TestREC34k_NotDurableNamesEveryMarkedCall(t *testing.T) {
 	if got := (&Run{Terminals: []Terminal{{ToolUseID: "toolu_a", Outcome: OutcomeOK}}}).NotDurable(); len(got) != 0 {
 		t.Errorf("NotDurable() with no marker = %q, want none", got)
 	}
+}
+
+// TestREC34q_DeferredStateIsLockGuarded: deferred, dirty and flushErr are
+// documented single-owner state (the Store doc comment, above), never
+// touched by two goroutines in any path this program calls today -- but an
+// unguarded field a future caller could reach from two is a race waiting for
+// whichever refactor adds the second one, found by -race rather than by a
+// customer. Guarding the three with one mutex costs nothing on the only path
+// that exists and catches the one that does not yet.
+func TestREC34q_DeferredStateIsLockGuarded(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.barrier = orderingBarrier
+	st.DeferDurability()
+
+	dir := t.TempDir()
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			f, err := os.Create(filepath.Join(dir, "f"+strconv.Itoa(i)))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer f.Close()
+			if err := st.syncAppend(f); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for j := 0; j < 8; j++ {
+			_ = st.Flush()
+		}
+	}()
+	wg.Wait()
 }

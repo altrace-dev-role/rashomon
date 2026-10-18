@@ -31,11 +31,13 @@ const fBarrierFsync = 85
 //
 // The fault build's sync recorder logs what was issued, not what was meant:
 // a barrier once the kernel has accepted one, and the fallback as the full
-// sync it is, through syncFull. So REC-34's test, which wants barriers inside
-// the lock and one full sync outside it, fails if the barrier falls back on
-// the store's own volume or never reaches the kernel. A wrong command the
-// kernel accepts, F_FULLFSYNC above all, would be logged as a barrier, so
-// TestREC34h_ reads the command from the source.
+// sync it is, through syncFullAsBarrier -- logged as SyncBarrierFull, not
+// SyncFull, since it runs inside the append's lock a true full sync never
+// does. So REC-34's test, which wants cheap barriers inside the lock and one
+// full sync outside it, fails if the barrier falls back on the store's own
+// volume or never reaches the kernel. A wrong command the kernel accepts,
+// F_FULLFSYNC above all, would be logged as a barrier, so TestREC34h_ reads
+// the command from the source.
 //
 // syscall.Syscall on darwin traps straight into the kernel rather than going
 // through libc as os.File.Sync does. Apple does not promise that interface;
@@ -66,7 +68,7 @@ func barrierWith(f *os.File, fcntl func(fd uintptr) syscall.Errno) (durable bool
 		case errno == syscall.EINTR:
 			continue
 		case barrierRefused(errno):
-			if err := syncFull(f); err != nil {
+			if err := syncFullAsBarrier(f); err != nil {
 				return false, err
 			}
 			return true, nil

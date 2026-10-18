@@ -44,7 +44,7 @@ func readSyncLog(t *testing.T, path string) []syncEvent {
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		parts := strings.Fields(sc.Text())
-		if len(parts) != 3 || (parts[0] != "barrier" && parts[0] != "full") || !strings.HasPrefix(parts[2], "locked=") {
+		if len(parts) != 3 || (parts[0] != "barrier" && parts[0] != "full" && parts[0] != "barrier-full") || !strings.HasPrefix(parts[2], "locked=") {
 			t.Fatalf("sync log line %q is not <kind> <file> locked=<bool>", sc.Text())
 		}
 		out = append(out, syncEvent{kind: parts[0], file: parts[1], locked: parts[2] == "locked=true"})
@@ -103,15 +103,26 @@ func TestREC34_GroupCommitFlushesBeforeExit(t *testing.T) {
 
 			events := readSyncLog(t, log)
 			// Each ordered append syncs its seq counter and its record; each
-			// line append syncs its line.
-			wantBarriers := 2*c.records + c.coverage
-			var barriers, fulls int
+			// line append syncs its line. On darwin that ordering sync is
+			// the kernel's own cheap barrier, kind "barrier". Off darwin
+			// there is no barrier to ask for, so the stand-in is a full
+			// sync that still runs inside the append's lock -- kind
+			// "barrier-full", never counted as a plain "barrier", because
+			// it costs what a full sync costs and a reader of the log must
+			// be able to tell the two apart (P09-F9).
+			wantOrderingSyncs := 2*c.records + c.coverage
+			var barriers, barrierFulls, fulls int
 			for i, ev := range events {
 				switch ev.kind {
 				case "barrier":
 					barriers++
 					if !ev.locked {
 						t.Errorf("event %d: a barrier on %s outside its append lock", i, ev.file)
+					}
+				case "barrier-full":
+					barrierFulls++
+					if !ev.locked {
+						t.Errorf("event %d: a barrier-full on %s outside its append lock", i, ev.file)
 					}
 				case "full":
 					fulls++
@@ -126,8 +137,15 @@ func TestREC34_GroupCommitFlushesBeforeExit(t *testing.T) {
 			if fulls != flushesPerProcess() {
 				t.Errorf("%d full syncs, want exactly %d: %v", fulls, flushesPerProcess(), events)
 			}
+			wantBarriers, wantBarrierFulls := wantOrderingSyncs, 0
+			if flushesPerProcess() == 0 {
+				wantBarriers, wantBarrierFulls = 0, wantOrderingSyncs
+			}
 			if barriers != wantBarriers {
 				t.Errorf("%d barriers, want %d, one per sync of every append: %v", barriers, wantBarriers, events)
+			}
+			if barrierFulls != wantBarrierFulls {
+				t.Errorf("%d barrier-full syncs, want %d: %v", barrierFulls, wantBarrierFulls, events)
 			}
 		})
 	}
@@ -343,8 +361,12 @@ func TestREC34_FailedBarrierIsMarkedNotRetried(t *testing.T) {
 			// The failed barrier, then nothing but full syncs, each inside
 			// its own append lock, the marker's last: no barrier relies on a
 			// flush that can no longer succeed, and no flush ran at all.
+			// The first event is the ordering sync for the marked append:
+			// "barrier" on darwin, or off darwin "barrier-full", itself a
+			// full sync standing in for one (P09-F9) -- either way, what
+			// the injected fault failed.
 			events := readSyncLog(t, log)
-			if len(events) < 2 || events[0].kind != "barrier" {
+			if len(events) < 2 || (events[0].kind != "barrier" && events[0].kind != "barrier-full") {
 				t.Fatalf("sync log %v; want the failed barrier first", events)
 			}
 			for i, ev := range events[1:] {

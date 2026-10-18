@@ -17,12 +17,16 @@ import (
 // make it, every one of which must exist. A lock is taken only through
 // lockCounted, which the fault build counts. A full sync -- a Sync() method
 // taking no argument, as os.File's is, or syscall.Fsync -- is issued only by
-// syncFull, which tells the recorder first, and by the stand-in barrier off
-// darwin, which the recorder logs as the barrier it replaces. The darwin
-// barrier's fcntl is issued only by fcntlBarrier.
+// syncAs, which tells the recorder first and which both syncFull and
+// syncFullAsBarrier call rather than syncing directly: syncFull logs it as
+// SyncFull, outside every lock; syncFullAsBarrier, which off darwin stands
+// in for the barrier itself and on darwin is the refused-barrier fallback,
+// logs it as SyncBarrierFull -- a full sync that ran inside the append's
+// lock, which SyncFull's name would misrepresent. The darwin barrier's fcntl
+// is issued only by fcntlBarrier.
 var watchedCalls = map[string][]string{
 	"LockFile":  {"store.go:lockCounted"},
-	"full sync": {"store.go:syncFull", "sync_other.go:barrierSync"},
+	"full sync": {"store.go:syncAs"},
 	"fcntl":     {"sync_darwin.go:fcntlBarrier"},
 }
 
@@ -30,7 +34,7 @@ var watchedCalls = map[string][]string{
 // is only as good as what it is shown. Every lock the store takes goes
 // through lockCounted, so a sync inside any of them -- forget's, eviction's,
 // a reader's -- is logged as inside a lock; every full sync goes through
-// syncFull, so none is invisible (an f.Sync() beside an accepted darwin
+// syncAs, so none is invisible (an f.Sync() beside an accepted darwin
 // barrier would put the device flush back inside the lock while the recorder
 // saw only the barrier); and darwin's barrier is fcntl's F_BARRIERFSYNC,
 // named fBarrierFsync and 85, with no F_FULLFSYNC anywhere in the store's
