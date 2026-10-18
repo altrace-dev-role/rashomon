@@ -18,6 +18,8 @@ import (
 	"errors"
 	"math"
 	"sort"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Kind is the JSON type of a span. Absent means the key was not present.
@@ -72,18 +74,32 @@ var (
 	ErrShortOut  = errors.New("jsonscan: output has fewer slots than keys")
 )
 
-// KeySet is a fixed list of keys a caller wants, built once per entry. Each
-// key's slot in Top's output is its position in the list given to NewKeySet.
+// KeySet is a fixed list of keys a caller wants. Each key's slot in Top's
+// output is its position in the list given to NewKeySet or NewFoldKeySet.
 type KeySet struct {
 	sorted  []string
 	slot    []int
 	longest int
+	fold    bool
 }
 
-// NewKeySet builds a KeySet. Keys must be distinct; a repeated key's later
+// NewKeySet builds a KeySet that matches keys exactly after unescaping, as
+// decoding into a map does. Keys must be distinct; a repeated key's later
 // copies are never filled.
 func NewKeySet(keys ...string) *KeySet {
-	ks := &KeySet{sorted: make([]string, len(keys)), slot: make([]int, len(keys))}
+	return newKeySet(keys, false)
+}
+
+// NewFoldKeySet builds a KeySet that matches keys as decoding into a struct
+// matches a field's name: exactly, or else case-insensitively under Unicode
+// simple folding (strings.EqualFold), so "SESSION_ID" fills session_id's slot.
+// Keys must be distinct when folded.
+func NewFoldKeySet(keys ...string) *KeySet {
+	return newKeySet(keys, true)
+}
+
+func newKeySet(keys []string, fold bool) *KeySet {
+	ks := &KeySet{sorted: make([]string, len(keys)), slot: make([]int, len(keys)), fold: fold}
 	order := make([]int, len(keys))
 	for i := range order {
 		order[i] = i
@@ -107,7 +123,25 @@ func (k *KeySet) find(key []byte) int {
 	if i < len(k.sorted) && k.sorted[i] == string(key) {
 		return k.slot[i]
 	}
+	if k.fold {
+		for i, want := range k.sorted {
+			if equalFold(key, want) {
+				return k.slot[i]
+			}
+		}
+	}
 	return -1
+}
+
+// limit is the longest unescaped key that can match: the longest wanted key,
+// or for a fold set that many characters of up to utf8.UTFMax bytes each,
+// since a folded character can take more bytes than the one it matches.
+func (k *KeySet) limit() int {
+	n := k.longest
+	if k.fold {
+		n *= utf8.UTFMax
+	}
+	return min(n, maxKeyBytes)
 }
 
 // maxKeyBytes bounds the stack buffer an escaped key is unescaped into. A key
@@ -116,17 +150,13 @@ const maxKeyBytes = 128
 
 // lookup finds the slot of a raw key body (the bytes between its quotes).
 // A key with escapes is unescaped first, so "session_id" matches
-// session_id exactly as encoding/json would decode it into a map.
+// session_id as encoding/json would decode it.
 func (k *KeySet) lookup(body []byte) int {
 	if indexByte(body, '\\') < 0 {
 		return k.find(body)
 	}
 	var tmp [maxKeyBytes]byte
-	limit := k.longest
-	if limit > maxKeyBytes {
-		limit = maxKeyBytes
-	}
-	out, truncated := unescapeHead(body, tmp[:0], limit)
+	out, truncated := unescapeHead(body, tmp[:0], k.limit())
 	if truncated {
 		return -1
 	}
@@ -158,6 +188,12 @@ func Top(buf []byte, keys *KeySet, out []Span) error {
 // Field is Top applied inside an object span of the same, already validated,
 // buffer (tool_input, tool_response). An absent or null obj leaves every key
 // absent; any other non-object is ErrNotObject.
+//
+// Precondition: buf has passed json.Valid, as Top's buffer has. Field does
+// not validate: it finds the object's end by bracket matching, so on bytes
+// json.Valid would refuse it may still report keys, and anything after the
+// object's closing brace is never looked at. Lookup and ValueSpan rely on the
+// same precondition.
 func Field(buf []byte, obj Span, keys *KeySet, out []Span) error {
 	if len(out) < keys.Len() {
 		return ErrShortOut
@@ -328,11 +364,49 @@ func ValueSpan(buf []byte) Span {
 	return Span{Off: int32(i), Len: int32(j - i), Kind: kindOf(buf[i])}
 }
 
-// Lookup is Field for one key: the span of key in the object at obj, the
-// last if it repeats, Absent when it is missing.
+// Lookup is Field for one key, matched exactly: the span of key in the
+// object at obj, the last if it repeats, Absent when it is missing. buf must
+// have passed json.Valid (Field).
 func Lookup(buf []byte, obj Span, key string) (Span, error) {
 	ks := KeySet{sorted: []string{key}, slot: []int{0}, longest: len(key)}
 	var out [1]Span
 	err := Field(buf, obj, &ks, out[:])
 	return out[0], err
+}
+
+// equalFold is strings.EqualFold for a byte key against a wanted key, without
+// converting the key to a string.
+func equalFold(b []byte, s string) bool {
+	for len(b) > 0 && len(s) > 0 {
+		r, n := rune(b[0]), 1
+		if r >= utf8.RuneSelf {
+			r, n = utf8.DecodeRune(b)
+		}
+		b = b[n:]
+		t, m := rune(s[0]), 1
+		if t >= utf8.RuneSelf {
+			t, m = utf8.DecodeRuneInString(s)
+		}
+		s = s[m:]
+		if r == t {
+			continue
+		}
+		if t < r {
+			r, t = t, r
+		}
+		if t < utf8.RuneSelf {
+			if 'A' <= r && r <= 'Z' && t == r+'a'-'A' {
+				continue
+			}
+			return false
+		}
+		f := unicode.SimpleFold(r)
+		for f != r && f < t {
+			f = unicode.SimpleFold(f)
+		}
+		if f != t {
+			return false
+		}
+	}
+	return len(b) == 0 && len(s) == 0
 }

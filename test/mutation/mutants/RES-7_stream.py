@@ -7,6 +7,6 @@ m("RES-7 recap reads the Stop payload whole through Intake", "cmd/rashomon/intak
   "TestRES7_")
 IMPORTS["RES-7 recap reads the Stop payload whole through Intake"] = ("cmd/rashomon/intake.go", '\t"io"\n', '\t"bytes"\n\t"io"\n')
 m("RES-7 Stream copies a value at a key nobody asked for", "internal/jsonscan/stream_walk.go",
-  "\t\tif m&(1<<i) == 0 || d >= len(p.Elems) || p.Elems[d] != elem {\n",
+  "\t\tif m&(1<<i) == 0 || d >= len(p.Elems) || !p.elemIs(d, elem) {\n",
   "\t\tif m&(1<<i) == 0 || d >= len(p.Elems) {\n",
   "TestRES7_")
