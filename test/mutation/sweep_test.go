@@ -1,8 +1,8 @@
 //go:build !windows
 
-// The mutation sweep's own tests: the acceptance tests of DEL-1, DEL-2 and
-// DEL-17. sweep.py rewrites tracked source files in place and restores them
-// afterwards, so these tests drive its read-only modes (--list, --check)
+// The mutation sweep's own tests: the acceptance tests of DEL-1, DEL-2,
+// DEL-17 and DEL-21. sweep.py rewrites tracked source files in place and
+// restores them afterwards, so these tests drive its read-only modes (--list, --check)
 // against the real tree and against fixtures, and read the workflow files
 // directly. TestStrict_ is one exception: it runs the full sweep, but only
 // against a throwaway module of its own under a TempDir, never this tree.
@@ -521,6 +521,21 @@ func TestDEL17b_TimeoutParserFailsClosed(t *testing.T) {
 				"not endorsed as safe -- the only reason it doesn't hide an untimed job in a real workflow " +
 				"is that TestDEL17_ treats zero jobs found as a failure in its own right, not a quiet pass.",
 		},
+		// A job key at three spaces is not the two-space depth a job key
+		// lives at. The old parser stepped over it silently: it was not a
+		// job (so never reported missing), and the `current` job variable
+		// stayed on the one above, so the timeout that followed at four
+		// spaces -- meant for the three-space job -- was credited to it
+		// instead. "a" never gets its own timeout and must still show up
+		// as missing, not quietly satisfied by someone else's line.
+		{"a three-space job line is a problem, not a credit to the job above",
+			"jobs:\n  a:\n   b:\n    timeout-minutes: 15\n", []string{"a"}, []string{"a"}, true, ""},
+		{"a one-space line is a problem too",
+			"jobs:\n a:\n  b:\n    timeout-minutes: 15\n", []string{"b"}, nil, true, ""},
+		// \r\n line endings. The exact-string "jobs:" check broke on the
+		// trailing \r, so the whole block was never entered.
+		{"CRLF line endings are tolerated",
+			"jobs:\r\n  a:\r\n    timeout-minutes: 30\r\n", []string{"a"}, nil, false, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -685,14 +700,24 @@ func TestSweepJobCancelsAnOlderRunOnRedispatch(t *testing.T) {
 // bound is a `timeout-minutes:` line at four spaces with a positive integer.
 // No YAML parser, deliberately: the module takes no dependency for a test,
 // and the files are written by hand in exactly this shape.
+//
+// Indent is measured, not assumed to be exactly two or four: a job key typed
+// at three spaces matched neither depth, so the old parser stepped over it
+// -- it was never added to jobs (so never reported missing), and `current`
+// stayed on the job above, so the four-space timeout that followed, meant
+// for the mistyped job, was silently credited to it instead. Any indent that
+// is not 0 (a top-level key), 2 (a job key) or a multiple of 2 at or past 4
+// (content inside a job) is odd and is always a problem; it never becomes a
+// job and never resets to anything but no job, so a timeout line right
+// after it is orphaned rather than credited to whichever job came before.
 func jobsAndMissingTimeouts(doc string) (jobs, missing, problems []string) {
 	jobLine := regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*(#.*)?$`)
 	timeoutLine := regexp.MustCompile(`^    timeout-minutes:\s*([0-9]+)\s*(#.*)?$`)
-	twoSpaces := regexp.MustCompile(`^  [^ ]`)
 	inJobs := false
 	current := ""
 	timed := map[string]bool{}
-	for i, ln := range strings.Split(doc, "\n") {
+	for i, raw := range strings.Split(doc, "\n") {
+		ln := strings.TrimRight(raw, "\r") // tolerate CRLF without treating \r as content
 		if ln == "jobs:" {
 			inJobs = true
 			continue
@@ -708,20 +733,32 @@ func jobsAndMissingTimeouts(doc string) (jobs, missing, problems []string) {
 			inJobs = false // another top-level key ends the jobs block
 			continue
 		}
-		if m := jobLine.FindStringSubmatch(ln); m != nil {
-			current = m[1]
-			jobs = append(jobs, current)
+		indent := len(ln) - len(strings.TrimLeft(ln, " "))
+		if indent%2 != 0 {
+			problems = append(problems, fmt.Sprintf("line %d: unexpected %d-space indent under jobs: %q", i+1, indent, trimmed))
+			current = "" // an orphaned timeout after this must not land on the job above
 			continue
 		}
-		if twoSpaces.MatchString(ln) {
-			problems = append(problems, fmt.Sprintf("line %d: unrecognised line under jobs: %q", i+1, trimmed))
-			continue
-		}
-		if m := timeoutLine.FindStringSubmatch(ln); m != nil && current != "" {
-			if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
-				timed[current] = true
+		if indent == 2 {
+			if m := jobLine.FindStringSubmatch(ln); m != nil {
+				current = m[1]
+				jobs = append(jobs, current)
+				continue
 			}
+			problems = append(problems, fmt.Sprintf("line %d: unrecognised line under jobs: %q", i+1, trimmed))
+			current = ""
+			continue
 		}
+		if indent == 4 {
+			if m := timeoutLine.FindStringSubmatch(ln); m != nil && current != "" {
+				if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
+					timed[current] = true
+				}
+			}
+			continue
+		}
+		// indent >= 6, even: step/key content inside a job, not structure
+		// this parser tracks.
 	}
 	for _, j := range jobs {
 		if !timed[j] {
@@ -779,6 +816,20 @@ func TestDEL21b_PinParserFailsClosed(t *testing.T) {
 		{"unquoted", "      - uses: " + sha + "\n        with:\n          go-version: 1.27.2\n", nil, true},
 		{"from a file", "      - uses: " + sha + "\n        with:\n          go-version-file: go.mod\n", nil, true},
 		{"pin with no step", "          go-version: \"1.27.2\"\n", []string{"1.27.2"}, true},
+		// A quoted `uses:` value, as some actions pin it, carries the same
+		// action and must be recognised as a setup-go step.
+		{"quoted uses line", "      - uses: \"" + sha + "\"\n        with:\n          go-version: \"1.27.2\"\n", []string{"1.27.2"}, false},
+		// Same quoted uses: line, but with no pin at all: this is the case
+		// that actually requires the step to be recognised as setup-go --
+		// the one above still collects the pin even if that recognition
+		// silently failed, so it alone cannot catch a regression there.
+		{"quoted uses line, no pin", "      - uses: \"" + sha + "\"\n        with:\n          cache: true\n", nil, true},
+		// A quoted string is not by itself a version: "stable" and a
+		// wildcard both resolve to whatever toolchain exists when the
+		// runner fetches it, which is exactly the unchosen toolchain this
+		// row exists to refuse.
+		{"stable is not a version", "      - uses: " + sha + "\n        with:\n          go-version: \"stable\"\n", nil, true},
+		{"a wildcard is not a version", "      - uses: " + sha + "\n        with:\n          go-version: \"1.27.x\"\n", nil, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -793,38 +844,205 @@ func TestDEL21b_PinParserFailsClosed(t *testing.T) {
 	}
 }
 
-// goVersionPins counts the setup-go steps and the quoted go-version pins in a
-// workflow, in any step form, and the two counts must agree: a step without a
-// pin, a pin outside a step, an unquoted pin and a go-version-file are each a
-// problem, because each is a toolchain nobody chose here.
+// goVersionPins walks a workflow by its lines and ties each go-version pin to
+// the setup-go step that declares it, rather than merely counting the two: a
+// step with no pin and a stray go-version line elsewhere in the file used to
+// average out to a matching count. A step is the sequence item opened by a
+// line that starts, at any indent, with "- ", running up to the next such
+// line; a step is a setup-go step if any line inside it names
+// actions/setup-go@, quoted or not, in `uses:`-first or `name:`-first form.
+// Exactly one go-version pin is required inside a setup-go step, and it must
+// be a quoted MAJOR.MINOR.PATCH string: unquoted, "stable", a wildcard like
+// "1.27.x", and go-version-file are each a toolchain nobody chose here, and
+// are refused as a problem rather than accepted as a pin.
 func goVersionPins(doc string) (pins []string, problems []string) {
-	setupGo := regexp.MustCompile(`^\s*(- )?uses:\s*actions/setup-go@`)
+	bullet := regexp.MustCompile(`^\s*-\s`)
+	usesLine := regexp.MustCompile(`^\s*(-\s+)?uses:\s*"?([^"\s]+)"?\s*(#.*)?$`)
 	pin := regexp.MustCompile(`^\s*go-version:\s*(.*?)\s*(#.*)?$`)
 	fromFile := regexp.MustCompile(`^\s*go-version-file:`)
-	steps := 0
-	for i, ln := range strings.Split(doc, "\n") {
-		switch {
-		case setupGo.MatchString(ln):
-			steps++
-		case fromFile.MatchString(ln):
+	exactVersion := regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+	type step struct {
+		line      int
+		isSetupGo bool
+		pinSeen   bool
+	}
+	var cur *step
+	closeStep := func() {
+		if cur != nil && cur.isSetupGo && !cur.pinSeen {
+			problems = append(problems, fmt.Sprintf("line %d: setup-go step has no go-version pin", cur.line))
+		}
+		cur = nil
+	}
+	validate := func(i int, v string) {
+		if len(v) < 2 || v[0] != '"' || v[len(v)-1] != '"' || !exactVersion.MatchString(v[1:len(v)-1]) {
+			problems = append(problems, fmt.Sprintf("line %d: go-version %s is not a quoted MAJOR.MINOR.PATCH string", i+1, v))
+			return
+		}
+		pins = append(pins, v[1:len(v)-1])
+	}
+
+	for i, raw := range strings.Split(doc, "\n") {
+		ln := strings.TrimRight(raw, "\r")
+		if bullet.MatchString(ln) {
+			closeStep()
+			cur = &step{line: i + 1}
+		}
+		if m := usesLine.FindStringSubmatch(ln); m != nil {
+			if strings.HasPrefix(m[2], "actions/setup-go@") {
+				if cur == nil {
+					cur = &step{line: i + 1}
+				}
+				cur.isSetupGo = true
+			}
+			continue
+		}
+		if fromFile.MatchString(ln) {
 			problems = append(problems, fmt.Sprintf("line %d: go-version-file reads the pin from a file; the pin is written here", i+1))
-		default:
-			m := pin.FindStringSubmatch(ln)
-			if m == nil {
+			if cur != nil {
+				cur.pinSeen = true
+			}
+			continue
+		}
+		if m := pin.FindStringSubmatch(ln); m != nil {
+			if cur == nil {
+				problems = append(problems, fmt.Sprintf("line %d: go-version pin outside a setup-go step", i+1))
+				validate(i, m[1])
 				continue
 			}
-			v := m[1]
-			if len(v) < 2 || v[0] != '"' || v[len(v)-1] != '"' {
-				problems = append(problems, fmt.Sprintf("line %d: go-version %s is not a quoted string", i+1, v))
-				continue
-			}
-			pins = append(pins, v[1:len(v)-1])
+			cur.pinSeen = true
+			validate(i, m[1])
 		}
 	}
-	if steps != len(pins) {
-		problems = append(problems, fmt.Sprintf("%d setup-go steps, %d quoted go-version pins", steps, len(pins)))
-	}
+	closeStep()
 	return pins, problems
+}
+
+// DEL-21, the floor. A pin below go.mod's own `go` line would build a
+// release with a toolchain older than the module declares it needs, which
+// defeats the pin's purpose even when every workflow agrees with every
+// other. go.mod's directive is unquoted and may carry two components; a
+// workflow pin is quoted and always carries three, so the comparison is
+// numeric, not lexical: a string compare puts "1.9.0" above "1.10.0".
+func TestDEL21d_PinsAreAtLeastGoModsMinimum(t *testing.T) {
+	root := moduleRoot(t)
+	floor := goModLanguageMinimum(t, root)
+	for _, wf := range workflows(t, root) {
+		name := filepath.Base(wf)
+		pins, _ := goVersionPins(readFile(t, wf))
+		for _, p := range pins {
+			atLeast, err := versionAtLeast(p, floor)
+			if err != nil {
+				t.Errorf("%s: go-version %q: %v", name, p, err)
+				continue
+			}
+			if !atLeast {
+				t.Errorf("%s: go-version %q is older than go.mod's minimum %q", name, p, floor)
+			}
+		}
+	}
+}
+
+// goModLanguageMinimum reads go.mod's own `go` directive: the language
+// minimum a consumer needs to build the module, not the build toolchain the
+// workflows pin by hand (see the note beside go-version in ci.yaml).
+func goModLanguageMinimum(t *testing.T, root string) string {
+	t.Helper()
+	re := regexp.MustCompile(`(?m)^go (\d+\.\d+(?:\.\d+)?)\s*$`)
+	m := re.FindStringSubmatch(readFile(t, filepath.Join(root, "go.mod")))
+	if m == nil {
+		t.Fatal("go.mod: no go directive found")
+	}
+	return m[1]
+}
+
+// versionAtLeast compares two Go version strings component by component, not
+// as strings, where "1.9.0" sorts above "1.10.0". A missing patch component
+// compares as zero, so go.mod's two-component line can stand on either side
+// of the comparison.
+func versionAtLeast(version, floor string) (bool, error) {
+	v, err := parseVersion(version)
+	if err != nil {
+		return false, err
+	}
+	f, err := parseVersion(floor)
+	if err != nil {
+		return false, err
+	}
+	for i := 0; i < 3; i++ {
+		if v[i] != f[i] {
+			return v[i] > f[i], nil
+		}
+	}
+	return true, nil
+}
+
+// parseVersion reads a MAJOR.MINOR[.PATCH] string into three components,
+// refusing anything else rather than defaulting a bad component to zero.
+func parseVersion(s string) ([3]int, error) {
+	var out [3]int
+	parts := strings.Split(s, ".")
+	if len(parts) < 2 || len(parts) > 3 {
+		return out, fmt.Errorf("%q is not a MAJOR.MINOR[.PATCH] version", s)
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return out, fmt.Errorf("%q: component %q is not a number", s, p)
+		}
+		out[i] = n
+	}
+	return out, nil
+}
+
+// DEL-21, the comparison. Done as strings, "1.9.0" sorts above "1.10.0";
+// component by component gets it right, and a malformed version on either
+// side is refused rather than silently treated as 0.
+func TestDEL21e_VersionAtLeastFailsClosed(t *testing.T) {
+	cases := []struct {
+		version, floor string
+		want           bool
+		wantErr        bool
+	}{
+		{"1.27.2", "1.25.0", true, false},
+		{"1.25.0", "1.27.2", false, false},
+		{"1.27.0", "1.27.0", true, false},
+		{"1.9.0", "1.10.0", false, false},
+		{"1.27", "1.25.0", true, false},
+		{"1.27.2", "garbage", false, true},
+		{"", "1.25.0", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.version+" vs "+tc.floor, func(t *testing.T) {
+			got, err := versionAtLeast(tc.version, tc.floor)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if err == nil && got != tc.want {
+				t.Errorf("versionAtLeast(%q, %q) = %v, want %v", tc.version, tc.floor, got, tc.want)
+			}
+		})
+	}
+}
+
+// DEL-21, the clock. Go supports security fixes on only the two most recent
+// majors; go1.27.2's window closes when a second newer major ships. Given
+// Go's roughly six-month cadence (1.25 August 2025, 1.26 February 2026,
+// 1.27 August 2026), that is expected around August 2027 with 1.29. Nothing
+// here polls go.dev for that date -- every CI run would then depend on an
+// endpoint nothing else calls, to answer a question that changes twice a
+// year. A dated trip-wire costs nothing until the date and then fails
+// loudly, which beats a security update landing quietly on an unsupported
+// major with nothing here noticing. Pushing past the deadline below is the
+// renewal: move it out another two releases once the pin itself has moved.
+func TestDEL21f_PinReviewIsNotOverdue(t *testing.T) {
+	reviewBy := time.Date(2027, time.July, 1, 0, 0, 0, 0, time.UTC)
+	if time.Now().After(reviewBy) {
+		t.Fatalf("go-version pin not reviewed since %s: go1.27 is expected to leave "+
+			"Go's two-most-recent-majors support window around August 2027 (go1.29); "+
+			"re-pin to a supported major and move this date out another two releases",
+			reviewBy.Format("2006-01-02"))
+	}
 }
 
 // DEL-21, the scanner. govulncheck is a tool built with the pinned toolchain,
