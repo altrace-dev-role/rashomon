@@ -530,11 +530,11 @@ type OutcomeJoin struct {
 
 // WriteObserved is BREADTH's record of a write seen outside a tool call
 // (Cursor afterFileEdit; archive 60): the path, stored as every path is,
-// and the edit count. Path is nullable so that a path over 1.2.11's 4,096 B
-// cap can be withheld, same as file_path.
+// and the edit count. Path is nullable so that it can be withheld as
+// file_path is: over 1.2.11's 4,096 B cap, or with the paths switch off.
 type WriteObserved struct {
 	EventHeader
 	Path         *string `json:"path"`
 	EditCount    int     `json:"edit_count"`
-	PathWithheld *string `json:"path_withheld"` // oversize
+	PathWithheld *string `json:"path_withheld"` // oversize | switched_off (paths)
 }
