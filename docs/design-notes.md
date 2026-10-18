@@ -599,7 +599,7 @@ Three parsers are also tested directly, beside the acceptance suite: the command
 line tokenizer, the settings document parser's refusals and its byte-identity
 round trip, and `shellQuote`. Each is an input-to-output function whose failures
 reach the acceptance suite only as an install that quietly does nothing, and
-`sweep.py` carries a break for each.
+the mutation sweep carries a break for each.
 
 `test/live/l-items.sh` runs the three live items against a real `claude`
 session on the machine it is run on. It writes to the real
@@ -716,7 +716,7 @@ never delivered, so a hook timeout there is the uncontrolled path — no termina
 record, and the run reads `unverified` with `unterminated_entry`. None of this
 was run on Windows. The module builds and vets under `GOOS=windows` for amd64,
 386 and arm64, and `internal/store/lock_test.go` states the lock contract the
-Windows code has to meet, with three breaks in `sweep.py`. Two headless items
+Windows code has to meet, with three breaks in the mutation sweep. Two headless items
 would not pass there as written: H-15 asserts the two modes, and H-17's halves
 skip themselves without `unshare` and `strace`.
 
