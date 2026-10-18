@@ -484,7 +484,8 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			PromptID    string `json:"promptId"`
 			Timestamp   string `json:"timestamp"`
 			Message     struct {
-				ID string `json:"id"`
+				ID      string          `json:"id"`
+				Content contentIsString `json:"content"`
 			} `json:"message"`
 		}
 		switch DecodeHeader(raw, &head) {
@@ -533,7 +534,9 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			if head.Message.ID != "" {
 				tie(head.Message.ID)
 			}
-			if !bytes.Contains(raw, []byte(`"text"`)) {
+			// A line with no text block, and content that is not a plain
+			// string (one text block, textBlocks), has no words to read.
+			if !bool(head.Message.Content) && !bytes.Contains(raw, []byte(`"text"`)) {
 				continue
 			}
 			line, err := decodeAssistantLine(raw)
@@ -630,6 +633,15 @@ func topLevelSidechain(raw []byte) bool {
 		}
 	}
 	return false
+}
+
+// contentIsString is whether a message's content is a JSON string, read
+// from the value's first byte. Nothing of the content is kept.
+type contentIsString bool
+
+func (c *contentIsString) UnmarshalJSON(b []byte) error {
+	*c = len(b) > 0 && b[0] == '"'
+	return nil
 }
 
 // skipValue steps over one JSON value and keeps nothing of it.
