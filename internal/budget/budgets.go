@@ -5,24 +5,42 @@
 package budget
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 )
 
 //go:generate go run ../../scripts/budgetsgen
 
+// Decode reads raw as a Budgets, refusing any field the schema does not
+// name: a misspelled key (case_budget for case_budgets, say) would otherwise
+// decode as a silent zero rather than the override it was meant to be. Every
+// reader of test/perf/budgets.json goes through this, so a schema change
+// only has to be taught here once.
+func Decode(raw []byte) (Budgets, error) {
+	var b Budgets
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&b); err != nil {
+		return Budgets{}, err
+	}
+	return b, nil
+}
+
 // Budgets is the shape of test/perf/budgets.json.
 type Budgets struct {
-	Version       int                 `json:"budgets_version"`
-	GoVersion     string              `json:"go_version"`
-	BenchmarkRows string              `json:"benchmark_rows"`
-	Platforms     map[string]Platform `json:"platforms"`
-	Entries       []Entry             `json:"entries"`
-	RSSCases      []RSSCase           `json:"rss_cases"`
-	PerToolCall   PerToolCall         `json:"per_tool_call"`
-	Benchmarks    []Benchmark         `json:"benchmarks"`
-	Growth        []Growth            `json:"growth"`
-	Disk          Disk                `json:"disk"`
+	Version           int                 `json:"budgets_version"`
+	GoVersion         string              `json:"go_version"`
+	BenchmarkRows     string              `json:"benchmark_rows"`
+	BenchmarkPlatform string              `json:"benchmark_platform"`
+	Platforms         map[string]Platform `json:"platforms"`
+	Entries           []Entry             `json:"entries"`
+	RSSCases          []RSSCase           `json:"rss_cases"`
+	PerToolCall       PerToolCall         `json:"per_tool_call"`
+	Benchmarks        []Benchmark         `json:"benchmarks"`
+	Growth            []Growth            `json:"growth"`
+	Disk              Disk                `json:"disk"`
 }
 
 // Platform is one gated platform: what the figures were measured on, how a
@@ -138,6 +156,23 @@ func (b Budgets) CheckToolchain(running string) error {
 	}
 	if running != b.GoVersion {
 		return fmt.Errorf("budgets.json was measured under %s and this run is %s: nothing compared (run under %s, or remeasure every row under %s)", b.GoVersion, running, b.GoVersion, running)
+	}
+	return nil
+}
+
+// CheckPlatform refuses to compare under any GOOS/GOARCH but the one the
+// benchmark rows were measured on: B/op on darwin carries long $TMPDIR path
+// strings that a differently-rooted platform would not, so a gate reading
+// one platform's run against another's rows judges the platform, the same
+// reason CheckToolchain judges the toolchain. running is
+// runtime.GOOS+"/"+runtime.GOARCH of the process doing the comparison; a
+// file naming no platform fails the same way as one naming no toolchain.
+func (b Budgets) CheckPlatform(running string) error {
+	if b.BenchmarkPlatform == "" {
+		return errors.New("budgets.json names no benchmark_platform, so its benchmark rows cannot be compared with any run")
+	}
+	if running != b.BenchmarkPlatform {
+		return fmt.Errorf("budgets.json's benchmark rows were measured on %s and this run is %s: nothing compared", b.BenchmarkPlatform, running)
 	}
 	return nil
 }
