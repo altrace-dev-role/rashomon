@@ -8,8 +8,11 @@
 // plus the few derived counts the readers need, so a reader starts from the
 // offset and reads only what arrived since. Its identity fields exist because
 // an offset is only meaningful into the file it was taken from: a records
-// file rewritten by eviction or restored from a copy has a new inode, and a
-// reader that trusted the old offset would read from the middle of a line.
+// file restored from a copy has a new inode, and a reader that trusted the
+// old offset would read from the middle of a line. A forget or eviction
+// rewrite does not change the inode -- it compacts the file in place
+// (internal/store/gaps.go's doc on rewrite) -- which is why Cursor also
+// carries SizeSeen: Validate catches that case by size, not by identity.
 // Technical spec 8.2.2; Archive 85.3.3 to 85.3.5.
 //
 // Contract only (P-07): the file's shape and its cap. recap writes fold.json

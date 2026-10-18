@@ -9,11 +9,13 @@ import (
 )
 
 // identity reads path's device and inode, the pair fold.go's Dev/Inode
-// fields guard records.ndjson's cursors with: a rewrite (forget, eviction)
-// removes the old inode and creates a new one at the same path, where a
-// plain append never changes either number. A missing file reports
-// exists=false rather than an error -- "this run has no records.ndjson
-// yet" is not a read failure.
+// fields guard records.ndjson's cursors with: a full replace -- the file
+// at this path removed and a different one written in its place -- gives
+// the new file a different inode, where a plain append, and an in-place
+// rewrite that keeps writing through the same open file (store.rewrite,
+// what forget and eviction actually do), never change either number. A
+// missing file reports exists=false rather than an error -- "this run has
+// no records.ndjson yet" is not a read failure.
 func identity(path string) (dev, inode uint64, exists bool, err error) {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {

@@ -1,10 +1,10 @@
 # RES-15: without a valid fold, Stop runs the full streaming fallback.
 # fold.Validate (internal/fold/validate.go) is the check that decides
-# "valid" for that sentence -- Archive 85.3.5 step 2, and the condition
-# RES-15's own "without a valid fold" clause names. Nothing calls Validate
-# in production yet, so these mutants pin the check's own behaviour, not
-# RES-15's fallback or its 2 s deadline, which this PR does not build or
-# claim (see TestRES15_FallbackPastDeadlineSaysUnavailable, still unwritten).
+# "valid" for that sentence, the condition RES-15's own "without a valid
+# fold" clause names. Nothing calls Validate in production yet, so these
+# mutants pin the check's own behaviour, not RES-15's fallback or its 2 s
+# deadline, which this PR does not build or claim (see
+# TestRES15_FallbackPastDeadlineSaysUnavailable, still unwritten).
 
 m("FOLD Validate ignores a fold's schema version",
   "internal/fold/validate.go",
@@ -32,9 +32,15 @@ m("FOLD cursorValid always checks the file even at offset 0",
 
 m("FOLD cursorValid trusts an offset past its file's size",
   "internal/fold/validate.go",
-  "\tif c.Offset < 0 || c.Offset > info.Size() {\n",
-  "\tif false && (c.Offset < 0 || c.Offset > info.Size()) {\n",
+  "\tif c.Offset < 0 || c.Offset > info.Size() || info.Size() < c.SizeSeen {\n",
+  "\tif false && (c.Offset < 0 || c.Offset > info.Size() || info.Size() < c.SizeSeen) {\n",
   "TestValidate_OffsetPastFileSizeInvalidates")
+
+m("FOLD cursorValid trusts a file a rewrite left shorter than SizeSeen",
+  "internal/fold/validate.go",
+  "\tif c.Offset < 0 || c.Offset > info.Size() || info.Size() < c.SizeSeen {\n",
+  "\tif c.Offset < 0 || c.Offset > info.Size() {\n",
+  "TestValidate_InPlaceRewriteBelowSizeSeenInvalidates")
 
 m("FOLD cursorValid never checks the line-boundary byte",
   "internal/fold/validate.go",

@@ -68,8 +68,13 @@ func TestValidate_FreshFoldIsValid(t *testing.T) {
 func TestValidate_InodeChangeInvalidates(t *testing.T) {
 	rf := newRunFiles(t)
 	f := validFile(t, rf)
-	// A rewrite: forget or eviction removed records.ndjson and wrote a new
-	// one at the same path, so every offset into the old file is void.
+	// A full replace: records.ndjson was removed and a new file written at
+	// the same path (a restore from a copy, say), so every offset into the
+	// old file is void. This is not what forget or eviction's in-place
+	// rewrite does -- see TestValidate_InPlaceRewriteBelowSizeSeenInvalidates
+	// for that -- but a full replace is a real way for the file at this
+	// path to stop being the one the cursor was read from, and the identity
+	// check exists to catch it too.
 	if err := os.Remove(rf.records); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +85,59 @@ func TestValidate_InodeChangeInvalidates(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ok {
-		t.Error("a fold whose records.ndjson was rewritten under it was accepted")
+		t.Error("a fold whose records.ndjson was replaced under it was accepted")
+	}
+}
+
+// TestValidate_InPlaceRewriteBelowSizeSeenInvalidates mirrors store.rewrite
+// (internal/store/gaps.go): forget and eviction compact a records or spill
+// file by writing kept lines from the start of the SAME open file and then
+// truncating, never by removing and recreating it, so the file's identity
+// (Dev/Inode) never changes and the plain offset-vs-current-size check
+// alone does not catch it when the cursor's own offset still lands inside
+// the shrunk file. The cursor here is at offset 4 ("aaa\n"), which is still
+// <= the rewritten file's size of 8 -- it is Cursor.SizeSeen (12, the size
+// at the time the cursor was taken) that must catch this, not the current
+// size comparison the pre-existing check already did.
+func TestValidate_InPlaceRewriteBelowSizeSeenInvalidates(t *testing.T) {
+	rf := newRunFiles(t)
+	writeFile(t, rf.records, "aaa\nbbb\nccc\n") // 12 bytes
+	writeFile(t, rf.spill, "")
+	writeFile(t, rf.coverage, "cov\n")
+	writeFile(t, rf.gaps, "")
+	dev, inode, exists, err := identity(rf.records)
+	if err != nil || !exists {
+		t.Fatalf("identity(%s) = %v, %v, want a real file", rf.records, exists, err)
+	}
+	f := &File{
+		V: Version, Writer: "rashomon-test",
+		Dev: dev, Inode: inode,
+		Records:  Cursor{Offset: 4, Seq: 1, SizeSeen: 12},
+		Spill:    Cursor{},
+		Coverage: Cursor{Offset: int64(len("cov\n")), SizeSeen: int64(len("cov\n"))},
+		Gaps:     Cursor{},
+	}
+
+	fh, err := os.OpenFile(rf.records, os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fh.WriteAt([]byte("bbb\nccc\n"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := fh.Truncate(int64(len("bbb\nccc\n"))); err != nil { // now 8 bytes, below SizeSeen's 12
+		t.Fatal(err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err := Validate(f, rf.records, rf.spill, rf.coverage, rf.gaps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("a fold whose records.ndjson was rewritten in place, below its cursor's SizeSeen, was accepted even though the cursor's own offset still fit the shrunk file")
 	}
 }
 

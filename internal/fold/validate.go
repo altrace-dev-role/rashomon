@@ -5,22 +5,34 @@ import (
 )
 
 // Validate reports whether f is still a trustworthy resume point for one
-// run: step 2 of the Stop algorithm (technical spec 8.2.3; Archive 85.3.5).
+// run: step 2 of the Stop algorithm (technical spec 8.2.3).
 // recordsPath, spillPath, coveragePath and gapsPath are stat'd fresh, never
 // trusted from an earlier read, because the whole point of this check is
 // to catch what changed between the Stop that wrote f and the one asking
 // now.
 //
 // It holds only when every one of these holds:
-//   - f.Dev and f.Inode equal recordsPath's identity right now: a forget or
-//     an eviction rewrite removes the old inode and creates a new one at
-//     the same path, and every offset taken from the old file is void the
-//     moment that happens (fold.go's doc on Dev/Inode);
+//   - f.Dev and f.Inode equal recordsPath's identity right now: a full
+//     replace -- the file at this path removed and a different one written
+//     in its place, as a restore from a copy would -- gives records.ndjson
+//     a new inode, and every offset taken from the old file is void the
+//     moment that happens (fold.go's doc on Dev/Inode). This does NOT catch
+//     a forget or eviction rewrite: store.rewrite compacts records.ndjson
+//     and spill.ndjson in place, through the same open file, specifically
+//     so the inode never changes (internal/store/gaps.go's doc on rewrite
+//     explains why: a rename would orphan a handler already holding the
+//     old descriptor). That rewrite is caught by the next bullet instead;
 //   - f.Records.Offset, f.Spill.Offset, f.Coverage.Offset and f.Gaps.Offset
-//     are each no greater than their file's current size -- a file that
-//     became SHORTER under a saved cursor (Cursor.SizeSeen's doc) is caught
-//     here before that offset is trusted, rather than read from the middle
-//     of whatever is now at that position;
+//     are each no greater than their file's current size, AND no greater
+//     than the size the cursor itself recorded (Cursor.SizeSeen) -- a file
+//     a forget or eviction rewrite left shorter than the cursor it was read
+//     with (Cursor.SizeSeen's doc) is caught here, before that offset is
+//     trusted, rather than read from the middle of whatever is now at that
+//     position. The SizeSeen half of this check only holds when the file
+//     has not since grown back past it: a rewrite followed by enough new
+//     appends to clear the old SizeSeen again is not caught by a size
+//     comparison alone, offset-1 can coincidentally land back on a line
+//     terminator, and nothing here detects that case;
 //   - the byte immediately before each positive offset is '\n', so a fold
 //     can only resume onto a line boundary, never into the middle of one
 //     (an offset of 0 always holds: there is no byte before it to check,
@@ -67,10 +79,11 @@ func Validate(f *File, recordsPath, spillPath, coveragePath, gapsPath string) (b
 
 // cursorValid checks one cursor against the file it was taken from, stat'd
 // and read fresh: its offset must be no greater than the file's current
-// size, and, when the offset is positive, the byte immediately before it
-// must be a line terminator. A zero offset is always valid -- it names the
-// start of the file, never a position inside a line -- even when the file
-// does not exist yet (a run with no spill or no gaps at all).
+// size or the size the cursor itself saw (SizeSeen), and, when the offset
+// is positive, the byte immediately before it must be a line terminator. A
+// zero offset is always valid -- it names the start of the file, never a
+// position inside a line -- even when the file does not exist yet (a run
+// with no spill or no gaps at all).
 func cursorValid(path string, c Cursor) (bool, error) {
 	if c.Offset == 0 {
 		return true, nil
@@ -88,7 +101,7 @@ func cursorValid(path string, c Cursor) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if c.Offset < 0 || c.Offset > info.Size() {
+	if c.Offset < 0 || c.Offset > info.Size() || info.Size() < c.SizeSeen {
 		return false, nil
 	}
 
