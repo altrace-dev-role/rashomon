@@ -11,6 +11,12 @@ m("RES-30 a spilled line is not a loss", "test/perf/gate.go",
   "\tif b.Spilled > 0 || b.LockTimeouts > 0 {", "\tif b.LockTimeouts > 0 {", "TestRES30_")
 m("RES-30 a lock timeout is not a loss", "test/perf/gate.go",
   "\tif b.Spilled > 0 || b.LockTimeouts > 0 {", "\tif b.Spilled > 0 {", "TestRES30_")
+# A flush_failed marker (REC-34) is counted in Spilled too, so it already
+# fails the burst there; this is its own named check, so a real flush
+# failure under load does not read as an ordinary lock timeout.
+m("RES-30 a flush_failed marker is not a loss", "test/perf/gate.go",
+  "\tif b.FlushFailed > 0 {\n\t\tout = append(out, fmt.Sprintf(\"%d flush_failed markers, want none: a hook's group-commit flush failed under the burst's load\", b.FlushFailed))\n\t}\n",
+  "", "TestRES30_")
 m("RES-30 a record kind short of the burst passes", "test/perf/gate.go",
   "\t\tif c.got != b.Ways {", "\t\tif c.got > b.Ways {", "TestRES30_")
 m("RES-30 a gap in the ordered stream passes", "test/perf/gate.go",
