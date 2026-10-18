@@ -234,37 +234,46 @@ func TestRead_BytesReaderFastPath(t *testing.T) {
 	}
 }
 
-// BenchmarkRead keeps its original rows (c.name, the *bytes.Reader fast
-// path a *bytes.Reader argument actually takes in production: internal/
-// hostguard's own replay) and adds a "_opaque" row per size that forces the
-// general growth loop through opaqueReader -- the path every real hook,
-// post or probe invocation's FIRST read of stdin actually runs, since
-// stdin itself is never a *bytes.Reader. Both are production paths now;
-// a single set of rows measuring only one would silently stop pricing the
-// other.
+// BenchmarkRead runs one row per size x path: the plain row is the
+// *bytes.Reader fast path (internal/hostguard's own replay, a *bytes.Reader
+// argument in production) and the "_opaque" row forces the general growth
+// loop through opaqueReader -- the path every real hook, post or probe
+// invocation's FIRST read of stdin actually runs, since stdin itself is
+// never a *bytes.Reader. Both are production paths now; a single set of
+// rows measuring only one would silently stop pricing the other.
+//
+// The table is flat -- one row per full sub-benchmark name -- rather than
+// two nested tables combined with string concatenation, so that each
+// b.Run name is a literal read straight off the row's own "name" field:
+// test/perf's RES-36 budgets gate parses this file statically and cannot
+// resolve a name built by concatenating two loop variables.
 func BenchmarkRead(b *testing.B) {
 	for _, c := range []struct {
 		name string
 		n    int
-	}{{"400B", 400}, {"40KB", 40_000}, {"1MiB", 1 << 20}, {"4MiB", 4 << 20}, {"8MiB", 8 << 20}} {
+		mk   func([]byte) io.Reader
+	}{
+		{"400B", 400, func(b []byte) io.Reader { return bytes.NewReader(b) }},
+		{"400B_opaque", 400, func(b []byte) io.Reader { return opaqueReader{bytes.NewReader(b)} }},
+		{"40KB", 40_000, func(b []byte) io.Reader { return bytes.NewReader(b) }},
+		{"40KB_opaque", 40_000, func(b []byte) io.Reader { return opaqueReader{bytes.NewReader(b)} }},
+		{"1MiB", 1 << 20, func(b []byte) io.Reader { return bytes.NewReader(b) }},
+		{"1MiB_opaque", 1 << 20, func(b []byte) io.Reader { return opaqueReader{bytes.NewReader(b)} }},
+		{"4MiB", 4 << 20, func(b []byte) io.Reader { return bytes.NewReader(b) }},
+		{"4MiB_opaque", 4 << 20, func(b []byte) io.Reader { return opaqueReader{bytes.NewReader(b)} }},
+		{"8MiB", 8 << 20, func(b []byte) io.Reader { return bytes.NewReader(b) }},
+		{"8MiB_opaque", 8 << 20, func(b []byte) io.Reader { return opaqueReader{bytes.NewReader(b)} }},
+	} {
 		p := payloadOf(c.n)
-		for _, wrap := range []struct {
-			suffix string
-			mk     func([]byte) io.Reader
-		}{
-			{"", func(b []byte) io.Reader { return bytes.NewReader(b) }},
-			{"_opaque", func(b []byte) io.Reader { return opaqueReader{bytes.NewReader(b)} }},
-		} {
-			b.Run(c.name+wrap.suffix, func(b *testing.B) {
-				b.ReportAllocs()
-				b.SetBytes(int64(c.n))
-				for i := 0; i < b.N; i++ {
-					out, err := Read(wrap.mk(p))
-					if err != nil || len(out) != c.n {
-						b.Fatalf("read %d of %d: %v", len(out), c.n, err)
-					}
+		b.Run(c.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(c.n))
+			for i := 0; i < b.N; i++ {
+				out, err := Read(c.mk(p))
+				if err != nil || len(out) != c.n {
+					b.Fatalf("read %d of %d: %v", len(out), c.n, err)
 				}
-			})
-		}
+			}
+		})
 	}
 }
