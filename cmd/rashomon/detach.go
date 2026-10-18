@@ -127,29 +127,6 @@ func recordWatch(root string, edit settingsEdit, hadOurs bool) error {
 	})
 }
 
-// rollBackWatch answers a record of watch's edit that failed (Technical spec
-// 7.4: a failed watch undoes in reverse). It puts settings.json back as watch
-// found it -- the same bytes, or no file where there was none -- provided it
-// still holds what watch wrote. If that fails as well, the entries stay
-// installed, and the undo line is printed so they can still be taken out.
-func rollBackWatch(stdout io.Writer, path string, edit settingsEdit, installID string, cause error) error {
-	if !edit.changed {
-		return fmt.Errorf("recording what watch found failed: %w; settings.json was not changed", cause)
-	}
-	var err error
-	if edit.existed {
-		err = settings.Write(path, edit.after, edit.before)
-	} else {
-		err = settings.Remove(path, edit.after)
-	}
-	if err == nil {
-		return fmt.Errorf("recording what watch changed failed: %w; %s was put back as it was, and nothing is installed", cause, path)
-	}
-	printUndoLine(stdout, installID)
-	return fmt.Errorf("recording what watch changed failed: %w, and putting %s back failed too: %v; "+
-		"the entries are installed, and the line above removes them", cause, path, err)
-}
-
 func contains(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {

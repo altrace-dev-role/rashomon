@@ -186,6 +186,15 @@ func OpenExisting(root string) (*Store, error) {
 	return Open(root)
 }
 
+// ReadInstallID reads the install id from root's install.json without
+// opening the store, so it creates nothing: no root, no key, no id. It
+// returns ErrNoStore when there is no install.json, and an error naming the
+// file when it holds no id.
+func ReadInstallID(root string) (string, error) {
+	rec, err := ReadInstallRecord(root)
+	return rec.InstallID, err
+}
+
 // Root is the directory this store occupies.
 func (s *Store) Root() string { return s.root }
 

@@ -16,7 +16,7 @@ m("TRU-2 a long word is not cut at the width", "internal/consent/screen.go",
   "\t\tfor len(cur) == 0 && len(r) > room() {", "\t\tfor false && len(cur) == 0 && len(r) > room() {",
   "TestTRU2_ScreenNamesEveryEntryCarriesEveryParagraphFitsEighty")
 m("TRU-2 section 1 drops an entry", "internal/consent/screen.go",
-  "\"on: \"+strings.Join(install.Events, \" \")", "\"on: \"+strings.Join(install.Events[1:], \" \")",
+  "\"on: \"+strings.Join(install.Events(), \" \")", "\"on: \"+strings.Join(install.Events()[1:], \" \")",
   "TestTRU2_ScreenNamesEveryEntryCarriesEveryParagraphFitsEighty")
 m("TRU-2 section 1 drops the longer time limits", "internal/consent/screen.go",
   "\tif len(others) > 0 {\n\t\tvar parts []string", "\tif false {\n\t\tvar parts []string",

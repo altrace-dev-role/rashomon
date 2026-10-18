@@ -98,10 +98,10 @@ func Screen(inv disclose.Inventory, in ScreenInput) ([]byte, error) {
 		id = NewInstallPlaceholder
 	}
 	w.wrap(indent, indent, fmt.Sprintf("%s (Claude Code reads it for every project here) gets %d entries of rashomon's own under \"hooks\". Other keys and other tools' entries stay byte for byte as they are. Each entry runs",
-		in.SettingsPath, len(install.Events)))
+		in.SettingsPath, len(install.Events())))
 	w.wrap(indent+"  ", indent+"  ", in.Executable+" <step>")
 	w.wrap(indent+"    ", indent+"    ", install.Marker+" "+id)
-	w.wrap(indent, indent+"    ", "on: "+strings.Join(install.Events, " "))
+	w.wrap(indent, indent+"    ", "on: "+strings.Join(install.Events(), " "))
 	w.wrap(indent, indent, limits()+" Each can delay Claude by at most its limit; after that Claude Code carries on.")
 	if err := w.paragraphs(paras[disclose.CiteSection1]); err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func TextSHA256(shown []byte) string {
 // own timeouts: the common limit, and every event with another one.
 func limits() string {
 	byLimit := map[int][]string{}
-	for _, e := range install.Events {
+	for _, e := range install.Events() {
 		t := install.TimeoutFor(e)
 		byLimit[t] = append(byLimit[t], e)
 	}

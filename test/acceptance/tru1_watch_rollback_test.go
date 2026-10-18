@@ -45,7 +45,7 @@ func TestTRU1_AWatchThatCannotRecordItsEditRollsItBack(t *testing.T) {
 					t.Errorf("the rollback left a settings.json where there was none")
 				}
 			}
-			if !strings.Contains(res.stderr, "put back") {
+			if !strings.Contains(res.stderr, "undid, in reverse: editing settings.json") {
 				t.Errorf("watch does not say it put settings.json back: %q", res.stderr)
 			}
 			if strings.Contains(res.stdout, "watching") {

@@ -98,6 +98,18 @@ const (
 	// between the two, and "fail=N" is a record that failed, which watch
 	// answers by putting settings.json back.
 	PointWatchRecord = "watch.record"
+	// PointWatchStore, PointWatchSDK, PointWatchSettings and
+	// PointWatchConsent open the four writes of watch's last step, in
+	// order; "fail=N" at one fails that write, which watch answers by
+	// undoing the writes before it in reverse (Technical spec 7.2.3 step 6).
+	PointWatchStore    = "watch.store"
+	PointWatchSDK      = "watch.sdk"
+	PointWatchSettings = "watch.settings"
+	PointWatchConsent  = "watch.consent"
+	// PointWatchWriting is inside watch's last step, after the store is
+	// open and before settings.json is edited: "hang" there holds the step
+	// open so a signal can be sent while it runs.
+	PointWatchWriting = "watch.writing"
 )
 
 // Sync kinds, as the sync recorder logs them (RecordSync). A barrier orders

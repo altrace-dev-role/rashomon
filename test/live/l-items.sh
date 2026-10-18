@@ -60,7 +60,7 @@ for line in sys.stdin:
 PY
 claude mcp add -s user rashomon-ping -- python3 "$LIVE/mcp_ping.py" >/dev/null
 
-"$BIN" watch
+"$BIN" watch --yes
 cd "$LIVE/work"
 uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
 

@@ -8,5 +8,6 @@ m("hld-7 an invalid cap falls back without saying so", "internal/store/capbytes.
   "\t\tc.Invalid = true\n", "", "TestRubricHLD7_")
 m("hld-7 status does not report an invalid cap", "cmd/rashomon/main.go",
   "\tstatusCapProblem(stdout, \"  cap: \", st)\n", "", "TestRubricHLD7_StatusAndWatchSayACapIsNotAByteCount")
-m("hld-7 watch does not report an invalid cap", "cmd/rashomon/main.go",
-  "\tcapProblem(stdout, \"rashomon: \")\n", "", "TestRubricHLD7_StatusAndWatchSayACapIsNotAByteCount")
+m("hld-7 watch does not report an invalid cap", "cmd/rashomon/watch.go",
+  "\tcapProblem(stdout, \"rashomon: \")\n\tprintUndoLine(stdout, installID)\n", "\tprintUndoLine(stdout, installID)\n",
+  "TestRubricHLD7_StatusAndWatchSayACapIsNotAByteCount")

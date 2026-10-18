@@ -4,7 +4,7 @@ m("H-6  detach removes every install's entries", "internal/install/install.go",
   "\treturn RemoveIf(doc, func(string) bool { return true }, force)", "TestH6_")
 m("H-6  another install's entry records into this store", "cmd/rashomon/main.go",
   "\tif id == \"\" || id == st.InstallID() {", "\tif id == \"\" || true {", "TestH6_ForeignInstallEntryStandsDown")
-m("H-6  watch does not say another install's entries are present", "cmd/rashomon/main.go",
+m("H-6  watch does not say another install's entries are present", "cmd/rashomon/watch.go",
   "\tif len(foreign) > 0 {", "\tif false && len(foreign) > 0 {", "TestH6_ForeignInstallEntryStandsDown")
 m("H-6  detach --install ignores the id it was given", "internal/install/install.go",
   "\t\t\tif id == \"\" || !match(id) {", "\t\t\tif id == \"\" {", "TestH6_DetachByInstallIDNeedsNoStore")
@@ -23,7 +23,7 @@ m("H-6  detach opens the store although it was given the id", "cmd/rashomon/main
 m("H-6  plain detach creates a store to learn the id", "cmd/rashomon/main.go",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err != nil {",
   "\tif _, err := os.Stat(filepath.Join(root, installMetaFile)); err == nil && false {", "TestH6_PlainDetachLeavesNoStoreBehind")
-m("H-6  watch does not print the undo line", "cmd/rashomon/main.go",
+m("H-6  watch does not print the undo line", "cmd/rashomon/watch.go",
   "\tfmt.Fprintf(stdout, \"rashomon detach --install %s\\n\", installID)\n", "", "TestH6_WatchPrintsTheUndoLine")
 
 m("H-6 detach has no way past an entry someone edited", "cmd/rashomon/main.go",

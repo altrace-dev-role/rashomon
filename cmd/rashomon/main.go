@@ -70,7 +70,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdRecap(rest, stdin, stdout, stderr)
 
 	case "watch":
-		return guarded(stderr, noArgs(rest, stdout, cmdWatch))
+		return guarded(stderr, func() error { return cmdWatch(rest, stdout) })
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
 	case "purge":
@@ -825,119 +825,6 @@ func editSettings(path string, edit func(*settings.Document) (bool, error), remo
 		return res, nil
 	}
 	return settingsEdit{}, errors.New("settings file kept changing while it was being edited; try again")
-}
-
-func cmdWatch(stdout io.Writer) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	loc, err := settings.DefaultLocations(cwd)
-	if err != nil {
-		return err
-	}
-	decision, err := settings.HooksDisabled(loc)
-	if err != nil {
-		return err
-	}
-	if decision.Disabled {
-		return fmt.Errorf("hooks are disabled by the %s settings layer; an installed entry would never run", decision.Layer)
-	}
-
-	// A live plugin refuses a settings install, the same shape as the refusal
-	// above: proceeding would produce a configuration that does not work.
-	// standsDown cannot save this arrangement -- it stands down on an
-	// install-id MISMATCH, and a plugin invocation names no id to mismatch
-	// against, so both origins would record every tool call.
-	userDoc, err := settings.Load(loc.User)
-	if err != nil {
-		return err
-	}
-	if p, err := install.FindPlugin(userDoc); err != nil {
-		return err
-	} else if p != nil && p.Live() {
-		return fmt.Errorf("the %s plugin is enabled and already provides these hook entries (%s); "+
-			"installing here would record every tool call twice -- run `/plugin disable %s` first, "+
-			"or skip watch and keep using the plugin", p.Key, strings.Join(p.Declared, ", "), p.Key)
-	}
-
-	exe, err := install.Executable()
-	if err != nil {
-		return err
-	}
-	root, err := store.DefaultRoot()
-	if err != nil {
-		return err
-	}
-	// Taken before anything is created, so they name exactly what this watch
-	// makes: the store root and its missing parents, the configuration
-	// directory and its missing parents. purge removes them once empty.
-	created, err := missingDirs(root, filepath.Dir(loc.User))
-	if err != nil {
-		return err
-	}
-	st, err := store.Open(root)
-	if err != nil {
-		return err
-	}
-	// Recorded before settings.json is touched (Technical spec 7.2.3 step
-	// 6), so a watch that dies after its edit has still told purge which
-	// directories it made.
-	if err := recordCreatedDirs(st.Root(), created); err != nil {
-		return fmt.Errorf("recording the directories watch created: %w; settings.json was not touched", err)
-	}
-	spec := install.Spec{Executable: exe, InstallID: st.InstallID()}
-
-	var foreign []string
-	hadOurs := false
-	edit, err := editSettings(loc.User, func(doc *settings.Document) (bool, error) {
-		var err error
-		if hadOurs, err = holdsEntriesOf(doc, spec.InstallID); err != nil {
-			return false, err
-		}
-		applied, err := install.Apply(doc, spec)
-		if err != nil {
-			return false, err
-		}
-		foreign, err = install.ForeignOwners(doc, spec.InstallID)
-		return applied, err
-	}, nil)
-	if err != nil {
-		return err
-	}
-	fault.Inject(fault.PointWatchRecord)
-	err = fault.Fail(fault.PointWatchRecord)
-	if err == nil {
-		err = recordWatch(st.Root(), edit, hadOurs)
-	}
-	if err != nil {
-		return rollBackWatch(stdout, loc.User, edit, st.InstallID(), err)
-	}
-	changed := edit.changed
-	if changed {
-		fmt.Fprintf(stdout, "rashomon: watching (install %s) via %s\n", st.InstallID(), loc.User)
-	} else {
-		fmt.Fprintf(stdout, "rashomon: already watching (install %s) via %s\n", st.InstallID(), loc.User)
-	}
-	// Said here because there is nowhere else it can be said: the foreign
-	// entries run under this environment, stand down against this store, and
-	// leave nothing behind to notice afterwards.
-	if len(foreign) > 0 {
-		fmt.Fprintf(stdout, "rashomon: entries from other installs are present (%s); they will fire in this environment and record nothing\n",
-			strings.Join(foreign, ", "))
-	}
-	capProblem(stdout, "rashomon: ")
-	printUndoLine(stdout, st.InstallID())
-	return nil
-}
-
-// printUndoLine prints the detach line for installID. It is printed in
-// full, on its own line, because it is the line that still works once this
-// binary or the store is gone: the id cannot be read back from a store that
-// is not there, and there is nowhere else it is written down.
-func printUndoLine(stdout io.Writer, installID string) {
-	fmt.Fprintln(stdout, "rashomon: undo with this line -- it needs no store, and any rashomon binary will do:")
-	fmt.Fprintf(stdout, "rashomon detach --install %s\n", installID)
 }
 
 func cmdDetach(args []string, stdout io.Writer) error {
@@ -1883,11 +1770,15 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `rashomon -- record what a Claude Code session asked to run
 
 usage:
-  rashomon watch                 install the PreToolUse, PostToolUse and
-                               PostToolUseFailure recorders, the
-                               SessionStart/SessionEnd liveness probe, the
+  rashomon watch [--yes] [--show]
+                               show what installing does, then, after y on
+                               the terminal, install the PreToolUse,
+                               PostToolUse and PostToolUseFailure recorders,
+                               the SessionStart/SessionEnd liveness probe, the
                                Stop/StopFailure exception-only recap, and its
-                               UserPromptSubmit catch-up
+                               UserPromptSubmit catch-up; --show prints that
+                               screen and writes nothing, --yes installs
+                               without asking (never from an agent session)
   rashomon detach                remove them, leaving everything else as found
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install

@@ -48,9 +48,9 @@ m("TRU-28 purge skips its detach", "cmd/rashomon/purge.go",
   "\tif err := cmdDetach([]string{\"--install\", t.rec.InstallID}, stdout); err != nil {\n",
   "\tif err := error(nil); err != nil {\n",
   "TestTRU28_")
-m("TRU-28 watch does not record the configuration directory it creates", "cmd/rashomon/main.go",
-  "\tcreated, err := missingDirs(root, filepath.Dir(loc.User))\n",
-  "\tcreated, err := missingDirs(root)\n",
+m("TRU-28 watch does not record the configuration directory it creates", "cmd/rashomon/watch.go",
+  "\tcreated, err := missingDirs(plan.root, filepath.Dir(plan.loc.User))\n",
+  "\tcreated, err := missingDirs(plan.root)\n",
   "TestTRU28_")
 m("TRU-28 purge refuses only a plugin whose hooks it can read", "cmd/rashomon/purge.go",
   "\tif p != nil && p.Enabled {\n",
@@ -92,7 +92,7 @@ m("TRU-28 --binary is not refused when the binary's path is unknown", "cmd/rasho
   "\tif binary == \"\" {\n",
   "\tif false {\n",
   "TestTRU28_")
-m("TRU-28 watch records no created_dirs before its settings write", "cmd/rashomon/main.go",
+m("TRU-28 watch records no created_dirs before its settings write", "cmd/rashomon/watch.go",
   "\tif err := recordCreatedDirs(st.Root(), created); err != nil {\n",
   "\tif err := recordCreatedDirs(st.Root(), created[:0]); err != nil {\n",
   "TestTRU28_")

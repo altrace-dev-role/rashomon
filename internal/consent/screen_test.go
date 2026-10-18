@@ -98,13 +98,13 @@ func TestTRU2_ScreenNamesEveryEntryCarriesEveryParagraphFitsEighty(t *testing.T)
 	}
 
 	one := sectionOf(t, screen, 1)
-	for _, e := range install.Events {
+	for _, e := range install.Events() {
 		if !strings.Contains(flat(one), " "+e) {
 			t.Errorf("section 1 does not name the %s entry", e)
 		}
 	}
-	if !strings.Contains(flat(one), fmt.Sprintf("gets %d entries", len(install.Events))) {
-		t.Errorf("section 1 does not give the entry count %d", len(install.Events))
+	if !strings.Contains(flat(one), fmt.Sprintf("gets %d entries", len(install.Events()))) {
+		t.Errorf("section 1 does not give the entry count %d", len(install.Events()))
 	}
 	if !strings.Contains(flat(one), flat(limits())) || !strings.Contains(limits(), fmt.Sprintf("%d s", install.Timeout)) ||
 		!strings.Contains(limits(), fmt.Sprintf("%d s for %s", install.RecapTimeout, install.EventStop)) {

@@ -143,3 +143,27 @@ func HooksDisabled(loc Locations) (Decision, error) {
 	}
 	return Decision{}, nil
 }
+
+// ManagedHooksOnly reports whether the managed settings layer sets
+// allowManagedHooksOnly, read from that layer the way HooksDisabled reads
+// disableAllHooks. Under it Claude Code runs only the hooks managed policy
+// defines, so an entry in the user's file would never run. Only the managed
+// layer can set it; the key in any other layer is not read.
+func ManagedHooksOnly(loc Locations) (bool, error) {
+	if loc.Managed == "" {
+		return false, nil
+	}
+	doc, err := Load(loc.Managed)
+	if err != nil {
+		return false, fmt.Errorf("%s settings at %s: %w", LayerManaged, loc.Managed, err)
+	}
+	raw, ok := doc.Get("allowManagedHooksOnly")
+	if !ok {
+		return false, nil
+	}
+	var only bool
+	if err := json.Unmarshal(raw, &only); err != nil {
+		return false, fmt.Errorf("%s settings at %s: allowManagedHooksOnly is not a boolean", LayerManaged, loc.Managed)
+	}
+	return only, nil
+}
