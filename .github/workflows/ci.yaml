@@ -335,6 +335,17 @@ jobs:
           set -o pipefail
           go test -run '^$' -bench . -benchtime 20x -count 3 ./... | tee bench.txt | go run ./scripts/benchgate
 
+      # Diagnosing a red gate, or taking this runner's own baseline for
+      # platforms.linux/amd64, means reading the raw benchmark output;
+      # if: always() so a failed benchgate still leaves it to download.
+      - name: Upload bench.txt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: bench-linux
+          path: bench.txt
+          retention-days: 14
+
       # Peak RSS of the release binary per entry and per RES-28 case, the
       # median of nine runs, and the init budget from the runtime's own trace
       # (RES-2). Linux figures are gated against the reference rows until the

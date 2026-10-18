@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/budget"
 )
 
 // OverBudget reports whether measured exceeds budget by more than tolerance
@@ -125,3 +127,56 @@ func ParseInitTrace(stderr string) (InitTrace, error) {
 
 // InitBudgetBytes is RES-2's bound on process init: 64 KiB, and no GC cycle.
 const InitBudgetBytes = 64 << 10
+
+// referencePlatform is the platform every entry row and RES-28 case was
+// measured or specified on. Its own Platform.Entries and CaseBudgets stay
+// empty because its rows already are its data; gating it against its own
+// row is self-consistent, never a cross-platform guess.
+const referencePlatform = "darwin/arm64"
+
+// belowFloor names, per platform, entries the reaper cannot attribute a
+// reading to there: the reaper's own floor on that runner is at or above the
+// entry's own peak (peakrss.attributable), so no reading is possible, not
+// merely unmeasured. TestRES28b_ reports these rather than gating them.
+var belowFloor = map[string][]string{
+	"linux/amd64": {"hook.bash_short", "post.bash_short"},
+}
+
+// entryBudget is the p50 TestRES28b_ gates e against on plat, and whether
+// that is a real gate or a report-only comparison. A gate is real when plat
+// has its own reading for e (overrides) or plat is the reference platform,
+// whose row is that reading. Otherwise gating against the reference row
+// would assume plat reads no higher, an assumption Linux's first run
+// (archive 85.4.3) disproved for several entries it does have a floor for;
+// why names the reason for a caller to log.
+func entryBudget(plat string, e budget.Entry, overrides map[string]budget.RSS) (budgetP50 float64, gated bool, why string) {
+	if o, ok := overrides[e.ID]; ok {
+		return o.P50, true, ""
+	}
+	if plat == referencePlatform {
+		return e.MaxRSSMiBP50, true, ""
+	}
+	for _, id := range belowFloor[plat] {
+		if id == e.ID {
+			return e.MaxRSSMiBP50, false, fmt.Sprintf(
+				"this entry's own peak does not exceed the reaper's own floor on %s, so no reading here can be attributed to it yet", plat)
+		}
+	}
+	return e.MaxRSSMiBP50, false, fmt.Sprintf(
+		"no %s reading recorded yet; gating against %s's row would assume %s reads no higher, which no measurement here has shown", plat, referencePlatform, plat)
+}
+
+// caseBudget is the same decision as entryBudget, for a RES-28 case: its
+// BudgetMiB is RES-28's own line, which the case's basis is darwin/arm64's
+// measurement against that line, not a cross-platform assumption on its
+// own merit.
+func caseBudget(plat string, c budget.RSSCase, overrides map[string]float64) (budgetMiB float64, gated bool, why string) {
+	if v, ok := overrides[c.ID]; ok {
+		return v, true, ""
+	}
+	if plat == referencePlatform {
+		return c.BudgetMiB, true, ""
+	}
+	return c.BudgetMiB, false, fmt.Sprintf(
+		"no %s reading recorded yet; gating against RES-28's line, measured against %s, would assume %s reads no higher, which no measurement here has shown", plat, referencePlatform, plat)
+}

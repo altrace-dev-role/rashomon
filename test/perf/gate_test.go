@@ -185,3 +185,41 @@ func TestRES28m_UngatedNamesEveryGateThatDidNotRun(t *testing.T) {
 		t.Errorf("one entry skipped: Ungated = %q", got)
 	}
 }
+
+// TestRES28q_EntryBudgetGatesOnlyWithAReadingOfItsOwn: the reference
+// platform's row always gates (it is that platform's own measurement); any
+// other platform gates only with its own override, and otherwise reports,
+// naming the reason -- below the reaper's floor there, or simply not
+// measured there yet.
+func TestRES28q_EntryBudgetGatesOnlyWithAReadingOfItsOwn(t *testing.T) {
+	e := budget.Entry{ID: "hook.bash_short", MaxRSSMiBP50: 5.88}
+	if _, gated, why := entryBudget(referencePlatform, e, nil); !gated || why != "" {
+		t.Errorf("reference platform, no override: gated=%v why=%q, want gated with no reason", gated, why)
+	}
+	overrides := map[string]budget.RSS{"hook.bash_short": {P50: 9}}
+	if got, gated, why := entryBudget("linux/amd64", e, overrides); !gated || got != 9 || why != "" {
+		t.Errorf("own override: got=%v gated=%v why=%q, want 9 gated with no reason", got, gated, why)
+	}
+	if _, gated, why := entryBudget("linux/amd64", e, nil); gated || !strings.Contains(why, "reaper's own floor") {
+		t.Errorf("below the floor there, no override: gated=%v why=%q, want report-only naming the floor", gated, why)
+	}
+	other := budget.Entry{ID: "hook.edit_50k", MaxRSSMiBP50: 6.45}
+	if _, gated, why := entryBudget("linux/amd64", other, nil); gated || !strings.Contains(why, "no linux/amd64 reading recorded") {
+		t.Errorf("unmeasured elsewhere, no override: gated=%v why=%q, want report-only naming no reading", gated, why)
+	}
+}
+
+// TestRES28r_CaseBudgetGatesOnlyWithAReadingOfItsOwn: the same decision as
+// entryBudget, for a RES-28 case.
+func TestRES28r_CaseBudgetGatesOnlyWithAReadingOfItsOwn(t *testing.T) {
+	c := budget.RSSCase{ID: "hook.400B", BudgetMiB: 6.5}
+	if got, gated, why := caseBudget(referencePlatform, c, nil); !gated || got != 6.5 || why != "" {
+		t.Errorf("reference platform, no override: got=%v gated=%v why=%q", got, gated, why)
+	}
+	if got, gated, why := caseBudget("linux/amd64", c, map[string]float64{"hook.400B": 7.64}); !gated || got != 7.64 || why != "" {
+		t.Errorf("own override: got=%v gated=%v why=%q, want 7.64 gated", got, gated, why)
+	}
+	if _, gated, why := caseBudget("linux/amd64", c, nil); gated || !strings.Contains(why, "no linux/amd64 reading recorded") {
+		t.Errorf("no override: gated=%v why=%q, want report-only", gated, why)
+	}
+}

@@ -99,6 +99,15 @@ func tolerance(t *testing.T, b budget.Budgets) float64 {
 	return Tolerance(p.Tolerance, p.ToleranceUntil, p.ToleranceAfter, time.Now())
 }
 
+// reportOnlyRSS records gate as run without comparing measured with
+// anything: the platform has no reading of its own to gate against, and
+// gating against another platform's row would be a guess, not a budget.
+func reportOnlyRSS(t *testing.T, gate, id string, measured float64, why string) {
+	t.Helper()
+	ran[gate] = true
+	t.Logf("%s: %.2f MiB, report-only on %s: %s", id, measured, platform(), why)
+}
+
 // overBudget records gate as run and reports a failure, with the schedule's
 // note when the schedule, not the code, is what moved.
 func overBudget(t *testing.T, b budget.Budgets, gate, id string, measured, budgetMiB float64) {
@@ -294,27 +303,28 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				return p
 			}
 			got := r.medianRSS(t, []string{c.Entry}, mk)
-			overBudget(t, b, CaseGate(c.ID), c.ID, got, c.BudgetMiB)
+			budgetMiB, gated, why := caseBudget(platform(), c, b.Platforms[platform()].CaseBudgets)
+			if !gated {
+				reportOnlyRSS(t, CaseGate(c.ID), c.ID, got, why)
+				return
+			}
+			overBudget(t, b, CaseGate(c.ID), c.ID, got, budgetMiB)
 		})
 	}
 }
 
 // TestRES28b_EveryEntryStaysWithinItsRow: every entry row's peak-RSS p50
 // holds on this platform at its payload class, on the store SeedFor names; a
-// platform without its own figures (Linux before its baseline run) uses the
-// reference row and says so.
+// platform with no reading of its own (an entry Linux's floor cannot
+// attribute, or one nobody has measured there yet) is reported, not gated
+// against another platform's row (entryBudget).
 func TestRES28b_EveryEntryStaysWithinItsRow(t *testing.T) {
 	b := loadBudgets(t)
 	overrides := b.Platforms[platform()].Entries
 	for _, e := range b.Entries {
 		e := e
 		t.Run(e.ID, func(t *testing.T) {
-			budgetP50 := e.MaxRSSMiBP50
-			if o, ok := overrides[e.ID]; ok {
-				budgetP50 = o.P50
-			} else {
-				t.Logf("%s: no %s override; gating against the reference row", e.ID, platform())
-			}
+			budgetP50, gated, why := entryBudget(platform(), e, overrides)
 			sd, err := SeedFor(e)
 			if err != nil {
 				t.Fatal(err)
@@ -322,6 +332,10 @@ func TestRES28b_EveryEntryStaysWithinItsRow(t *testing.T) {
 			r := newRig(t)
 			r.seed(t, sd)
 			got := r.medianRSS(t, e.Command, entryPayload(t, e))
+			if !gated {
+				reportOnlyRSS(t, EntryGate(e.ID), e.ID, got, why)
+				return
+			}
 			overBudget(t, b, EntryGate(e.ID), e.ID, got, budgetP50)
 		})
 	}

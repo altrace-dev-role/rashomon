@@ -29,13 +29,23 @@ type Budgets struct {
 // platform without its own measurements derives them, and the fraction over
 // budget its runner is still allowed (archive 85.3.13: 10%, and 15% on the
 // macOS runner until 2026-11-06 while its variance is learned).
+//
+// Entries and CaseBudgets hold this platform's OWN readings, taken through
+// the reaper on this platform's own runner. Both are empty for the reference
+// platform the rest of this file's rows were measured on, because its rows
+// already are that platform's own data; for any other platform, an entry or
+// case absent from these maps has no reading of its own yet, and
+// TestRES28b_ and TestRES28_ gate it report-only rather than assume it reads
+// no higher than the reference platform's row, an assumption Linux's first
+// run (archive 85.4.3) disproved for several of them.
 type Platform struct {
-	Reference      string         `json:"reference"`
-	SetFrom        string         `json:"set_from"`
-	Tolerance      float64        `json:"tolerance"`
-	ToleranceUntil string         `json:"tolerance_until"`
-	ToleranceAfter float64        `json:"tolerance_after"`
-	Entries        map[string]RSS `json:"entries"`
+	Reference      string             `json:"reference"`
+	SetFrom        string             `json:"set_from"`
+	Tolerance      float64            `json:"tolerance"`
+	ToleranceUntil string             `json:"tolerance_until"`
+	ToleranceAfter float64            `json:"tolerance_after"`
+	Entries        map[string]RSS     `json:"entries"`
+	CaseBudgets    map[string]float64 `json:"case_budgets,omitempty"`
 }
 
 // RSS is a peak-RSS budget pair in MiB.

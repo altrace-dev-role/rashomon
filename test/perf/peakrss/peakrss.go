@@ -8,9 +8,12 @@
 // space's high-water mark into the child before replacing it (fs/exec.c,
 // exec_mmap), and Go starts every child with CLONE_VFORK|CLONE_VM. Read that
 // way, every child of the perf test binary reads as at least the test
-// binary's own peak. The reaper holds nothing and peaks at about 2 MiB on
-// linux/arm64, so the child's reading is its own, and a reading that does not
-// exceed the reaper's own peak is refused rather than taken.
+// binary's own peak. The reaper holds nothing, so its own peak is a
+// property of the runner, not a constant: about 2 MiB on a bare linux/arm64
+// VM, about 6 MiB in a GitHub Actions ubuntu-latest container (job
+// 117482527831). A reading that does not exceed the reaper's own peak is
+// refused rather than taken, which is why an entry near that floor cannot be
+// measured on every runner yet (test/perf/rss_test.go's belowFloor).
 //
 // Windows has no ru_maxrss, so there NewReaper returns ErrUnavailable and the
 // caller skips by name rather than failing to build; that is what keeps
