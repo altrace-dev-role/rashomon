@@ -366,6 +366,44 @@ func TestDEL2b_TestNameMatchesItsRow(t *testing.T) {
 	}
 }
 
+// The literal scan above finds a row token by its spelling, so a regex that
+// reaches the same real test through a metacharacter wedged between its
+// letters -- TestRE[C]49_, Test(REC)49_ -- names no literal "TestREC" and
+// passed with no problem reported, even though `go test -run` matches it
+// exactly as it would match the spelled-out form. Checked by matching the
+// regex against the real test corpus, which needs the complete set (no
+// --files) and a real func Test to match against.
+func TestDEL2f_RowCheckMatchesRealTestsNotJustLiteralSpelling(t *testing.T) {
+	cases := []struct {
+		name, test string
+		wantOK     bool
+	}{
+		{"bracket class splits the prefix", "TestRE[C]49_", false},
+		{"group splits the prefix", "Test(REC)49_", false},
+		{"bracket class still pins its own row", "TestRE[C]56_", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			write(t, filepath.Join(dir, "target.go"), "package x\n\nfunc a() int { return 1 }\n")
+			write(t, filepath.Join(dir, "real_test.go"),
+				"package x\n\nimport \"testing\"\n\n"+
+					"func TestREC49_(t *testing.T) {}\n\n"+
+					"func TestREC56_(t *testing.T) {}\n")
+			mdir := filepath.Join(dir, "mutants")
+			if err := os.MkdirAll(mdir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			write(t, filepath.Join(mdir, "REC-56_fixture.py"),
+				mutant("fixture "+tc.name, "target.go", "return 1", "return 2", tc.test))
+			_, code := sweep(t, dir, "--check")
+			if (code == 0) != tc.wantOK {
+				t.Errorf("--check exited %d for REC-56_fixture.py naming %s", code, tc.test)
+			}
+		})
+	}
+}
+
 // check() only validates a mutant's judging test when the whole set was
 // loaded (no --files), the same signal DEL-2's legacy-entry check uses,
 // because a --files fixture directory carries no real *_test.go and every

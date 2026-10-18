@@ -240,6 +240,26 @@ def check(complete, shared_tests=SHARED_TESTS):
                 if pinned != claimed and (claimed, parent_test) not in shared:
                     problems.append(f"{name!r} in {rel(ORIGIN[name])}: names {t.group(0)}, which pins {pinned}, "
                                     f"not {claimed}; declare the pair in {shared_tests.name} if it is shared on purpose")
+            # The scan above finds a row token by its literal spelling, so a
+            # regex that reaches the same test through a metacharacter wedged
+            # between its letters -- TestRE[C]49_, Test(REC)49_ -- names no
+            # literal "TestREC" and passes with no problem reported, even
+            # though it pins REC-49 exactly as the spelled-out form would.
+            # Checked only when the real test corpus is loaded (`complete`):
+            # a regex can match a real test no literal scan of its own text
+            # can name, and matching it against the corpus is the only way to
+            # know which row it actually pins.
+            if go_tests is not None and rx is not None:
+                for real_name in go_tests:
+                    rm = ROW_TEST.match(real_name)
+                    if rm is None or not rx.search(real_name):
+                        continue
+                    real_row = f"{rm.group(1)}-{rm.group(2)}"
+                    real_parent = f"Test{rm.group(1)}{rm.group(2)}_"
+                    if real_row != claimed and (claimed, real_parent) not in shared:
+                        problems.append(f"{name!r} in {rel(ORIGIN[name])}: {test!r} matches real test {real_name!r}, "
+                                        f"which pins {real_row}, not {claimed}; declare the pair in "
+                                        f"{shared_tests.name} if it is shared on purpose")
     mutation_of = {name: (f, old, new) for name, f, old, new, _test in M}
     for name, (f, io_, in_) in IMPORTS.items():
         if outside_cwd(f):
