@@ -328,21 +328,6 @@ func TestDEL2d_ImportAnchorCountedAfterMutation(t *testing.T) {
 	}
 }
 
-// DEL-2, the legacy list. It may only shrink, and it started empty because
-// the four duplicate anchors that existed were pinned instead; so it stays
-// empty, and a pin is the only way past --check for a repeated anchor.
-func TestDEL2c_LegacyListStaysEmpty(t *testing.T) {
-	data, err := os.ReadFile("legacy-duplicate-anchors.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i, ln := range strings.Split(string(data), "\n") {
-		if s := strings.TrimSpace(ln); s != "" && !strings.HasPrefix(s, "#") {
-			t.Errorf("legacy-duplicate-anchors.txt:%d: %q; pin the anchor instead", i+1, s)
-		}
-	}
-}
-
 // DEL-2, second half. A mutant file named <PREFIX>-<n>_... claims that
 // requirement row, and the tests it names must pin the same row -- a suffix
 // letter (TestREC56b_) pins its parent -- unless shared-tests.txt declares the

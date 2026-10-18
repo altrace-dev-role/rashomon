@@ -36,7 +36,6 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 MUTANT_GLOB = "mutants/*.py"
-LEGACY_LIST = HERE / "legacy-duplicate-anchors.txt"
 SHARED_TESTS = HERE / "shared-tests.txt"
 
 # The requirement prefixes of the 1.2.0 specification. A mutant file named
@@ -173,15 +172,12 @@ def check(complete):
     """The static checks. Returns the problems found.
 
     Every anchor occurs exactly once in its target, so the break lands where
-    its author looked; a legacy-listed anchor may occur more than once, and the
-    list may only shrink, so an entry whose anchor has become unique is itself
-    a problem. Every import edit's anchor occurs exactly once too. A mutant in
-    a row's file names only that row's tests, or a declared shared pair.
-    `complete` says the whole set was loaded, which is when a legacy entry that
-    names no mutant can be reported.
+    its author looked. Every import edit's anchor occurs exactly once too. A
+    mutant in a row's file names only that row's tests, or a declared shared
+    pair. `complete` says the whole set was loaded, which is when a test regex
+    can be checked against every real func Test.
     """
     problems = []
-    legacy = set(read_list(LEGACY_LIST))
     shared = set()
     for ln in read_list(SHARED_TESTS):
         parts = ln.split()
@@ -205,10 +201,9 @@ def check(complete):
         return texts[f]
 
     go_tests = go_test_names() if complete else None
-    names = set()
     for name, f, old, new, test in M:
-        names.add(name)
         top = test.split("/", 1)[0]
+        rx = None
         try:
             rx = re.compile(top)
         except re.error as e:
@@ -224,12 +219,7 @@ def check(complete):
             problems.append(f"{name!r}: target {f} cannot be read")
             continue
         count = s.count(old)
-        if name in legacy:
-            if count == 1:
-                problems.append(f"{name!r}: anchor now occurs exactly once; remove it from {LEGACY_LIST.name}")
-            elif count == 0:
-                problems.append(f"{name!r}: anchor missing from {f}")
-        elif count != 1:
+        if count != 1:
             problems.append(f"{name!r}: anchor occurs {count} times in {f}, not exactly once")
         row = ROW_FILE.match(os.path.basename(ORIGIN[name]))
         if row:
@@ -248,9 +238,6 @@ def check(complete):
                 if pinned != claimed and (claimed, parent_test) not in shared:
                     problems.append(f"{name!r} in {rel(ORIGIN[name])}: names {t.group(0)}, which pins {pinned}, "
                                     f"not {claimed}; declare the pair in {SHARED_TESTS.name} if it is shared on purpose")
-    if complete:
-        for name in sorted(legacy - names):
-            problems.append(f"{LEGACY_LIST.name}: {name!r} is not a declared mutant")
     mutation_of = {name: (f, old, new) for name, f, old, new, _test in M}
     for name, (f, io_, in_) in IMPORTS.items():
         if outside_cwd(f):

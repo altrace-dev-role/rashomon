@@ -1,6 +1,0 @@
-# Mutants whose anchor occurs more than once in its target, one name per line.
-# sweep.py --check lets these through; every other anchor must occur exactly
-# once. The list may only shrink, and it started empty: when the one big list
-# was split, the four duplicate anchors that existed were pinned instead, each
-# with one line of context. So a pin is the way past --check for a repeated
-# anchor, and TestDEL2c keeps this list empty.
