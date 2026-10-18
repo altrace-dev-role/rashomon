@@ -491,7 +491,19 @@ func matcherFires(event string, m *string) bool {
 	if m == nil || *m == "" {
 		return true
 	}
-	return hasMatcher(event) && *m == Matcher
+	return matcherCapable(event) && *m == Matcher
+}
+
+// matcherCapable reports whether event has any matcher concept at all --
+// broader than hasMatcher, which answers only whether WATCH's own installed
+// entry carries a literal one. The session events match on source or reason
+// (hasMatcher's doc), so a literal "*" there is match-all exactly as it is
+// on the tool events, even though watch installs them with no matcher field
+// to begin with. Before this distinction existed, a hand-written "*" on
+// SessionStart or SessionEnd read as narrowing, the same false
+// "unverified" a narrowed matcher is supposed to mean.
+func matcherCapable(event string) bool {
+	return hasMatcher(event) || event == EventSessionStart || event == EventSessionEnd
 }
 
 // coverageIntact reports why a matcher group containing one of our command

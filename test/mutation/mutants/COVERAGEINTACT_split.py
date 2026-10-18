@@ -13,8 +13,12 @@ m("coverageintact an absent or empty matcher narrows", "internal/install/install
   "",
   "TestCoverageIntact_")
 m("coverageintact a narrow matcher reads as match-all on any event", "internal/install/install.go",
-  "\treturn hasMatcher(event) && *m == Matcher\n",
+  "\treturn matcherCapable(event) && *m == Matcher\n",
   "\treturn true\n",
+  "TestCoverageIntact_")
+m("coverageintact a session event is read as matcher-incapable", "internal/install/install.go",
+  "\treturn hasMatcher(event) || event == EventSessionStart || event == EventSessionEnd\n",
+  "\treturn hasMatcher(event)\n",
   "TestCoverageIntact_")
 m("coverageintact believes a group with no command hook", "internal/install/install.go",
   "\tfor _, h := range g.Hooks {\n\t\tif h.Type == \"command\" {\n\t\t\treturn \"\"\n\t\t}\n\t}\n\treturn \"no hook in the group is type \\\"command\\\"\"\n",

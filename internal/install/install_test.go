@@ -222,6 +222,8 @@ func TestCoverageIntact_MatcherEquivalenceAndExtraHooksDoNotCostCoverage(t *test
 			`{"matcher":"Bash","hooks":[{"type":"command","command":"x","timeout":5}]}`, "matcher"},
 		{"a matcher on an event with none narrows it", EventSessionStart,
 			`{"matcher":"startup","hooks":[{"type":"command","command":"x","timeout":5}]}`, "matcher"},
+		{"a star matcher on a session event still fires on every call", EventSessionStart,
+			`{"matcher":"*","hooks":[{"type":"command","command":"x","timeout":5}]}`, ""},
 		{"a different timeout does not cost coverage", EventPreToolUse,
 			`{"matcher":"*","hooks":[{"type":"command","command":"x","timeout":600}]}`, ""},
 		{"a second hook in the group does not cost coverage", EventPreToolUse,
@@ -258,6 +260,7 @@ func TestCoverageIntact_MatcherEquivalenceAndExtraHooksDoNotCostCoverage(t *test
 		{EventPreToolUse, ptr("Bash"), false},
 		{EventSessionStart, nil, true},
 		{EventSessionStart, ptr(""), true},
+		{EventSessionStart, ptr(Matcher), true},
 		{EventSessionStart, ptr("startup"), false},
 	} {
 		if got := matcherFires(tc.event, tc.m); got != tc.want {
