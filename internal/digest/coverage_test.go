@@ -190,3 +190,34 @@ func TestREC34g_FlushFailedMarkerLeavesAnUnterminatedTurnUnterminated(t *testing
 		t.Errorf("reasons = %v, want unterminated_entry", tc.Reasons)
 	}
 }
+
+// TestREC34n_FlushFailedMarkerDoesNotStretchADroppedTerminalsRecordedTime:
+// turnDropped windows a dropped terminal by its OWN recorded time, because a
+// dropped declaration never carried a prompt_id to key on (turnDropped's
+// doc). A flush_failed marker (REC-34) sharing that terminal's tool_use_id --
+// written by a later process, long after the terminal it marks -- must not
+// overwrite that time in the attribution map, or the dropped terminal is
+// windowed into whichever turn the MARKER happened to land in instead of the
+// one it actually belongs to.
+func TestREC34n_FlushFailedMarkerDoesNotStretchADroppedTerminalsRecordedTime(t *testing.T) {
+	reason := store.ReasonFlushFailed
+	run := &store.Run{
+		Declarations: []store.Declaration{
+			decl(1, "a1", "Bash", "prompt-1", "/t.jsonl", 100),
+			decl(2, "a2", "Bash", "prompt-2", "/t.jsonl", 1000),
+		},
+		Terminals: []store.Terminal{
+			// The real, genuinely dropped terminal: no declaration names
+			// toolu_dropped, recorded inside prompt-1's window [100, 1000).
+			{ToolUseID: "toolu_dropped", Outcome: store.OutcomeError, RecordedAtMS: 150},
+			// A flush_failed marker for the SAME tool_use_id, recorded well
+			// into prompt-2's window.
+			{ToolUseID: "toolu_dropped", Outcome: store.OutcomeError, Reason: &reason, RecordedAtMS: 5000},
+		},
+	}
+	w := selectTurn(run, "prompt-1")
+	if got := turnDropped(run, w); len(got) != 1 || got[0] != "toolu_dropped" {
+		t.Errorf("turnDropped(prompt-1) = %v, want [toolu_dropped]: the flush_failed marker's later "+
+			"time pushed the dropped terminal's own out of the turn it was actually recorded in", got)
+	}
+}

@@ -172,6 +172,15 @@ m("REC-34 the reader stops accepting schema 5", "internal/store/record.go",
   "\treturn version >= 1 && version <= 5",
   "\treturn version >= 1 && version <= 5 && version != 5", "TestAcceptsAdmits")
 
+# A flush_failed marker (REC-34) sharing a tool_use_id with a real record
+# must not stand in for its recorded time: turnDropped windows a dropped
+# terminal by it, and Join's span decides whether a turn is old enough to
+# drop.
+m("REC-34 the flush_failed marker's time overwrites the dropped terminal's own", "internal/digest/declarations.go",
+  "\t\tif t.FlushFailed() {\n\t\t\t// Not an ending (Terminal.FlushFailed's doc): it must not stand\n\t\t\t// in for the terminal it shares a tool_use_id with, or that\n\t\t\t// terminal's own recorded time -- the one `all` was windowed\n\t\t\t// against -- is overwritten by whenever the marker landed.\n\t\t\tcontinue\n\t\t}\n\t\trecordedAt[t.ToolUseID] = t.RecordedAtMS\n", '\t\trecordedAt[t.ToolUseID] = t.RecordedAtMS\n', "TestREC34n_")
+m("REC-34 the flush_failed marker's time stretches a turn's span", "internal/spend/join.go",
+  "\t\tif x.FlushFailed() {\n\t\t\t// Not an ending (Terminal.FlushFailed's doc), and written at\n\t\t\t// process exit, long after the call it marks: letting it stand\n\t\t\t// for the turn's own last recorded time would stretch a turn\n\t\t\t// Join should treat as old enough to drop into looking current.\n\t\t\tcontinue\n\t\t}\n\t\tif t, ok := owner[x.ToolUseID]; ok {\n\t\t\tspan(t, x.RecordedAtMS)\n\t\t}\n", '\t\tif t, ok := owner[x.ToolUseID]; ok {\n\t\t\tspan(t, x.RecordedAtMS)\n\t\t}\n', "TestREC34o_")
+
 # flushFile's reopen is ENOENT in two different situations (REC-34): the
 # run was removed whole (forget, eviction), where there is nothing left to
 # flush and marking would recreate the directory that was removed, and a
