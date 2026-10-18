@@ -2,10 +2,13 @@ package report
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/nono"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -270,6 +273,57 @@ func TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing(t *testing.T) {
 		t.Errorf("the novelty line does not appear at all when the baseline cannot be "+
 			"located, so a reader cannot tell it from a section that was never built:\n%s",
 			out)
+	}
+}
+
+// TestBaselineErrorReason_DistinctCausesDistinctMessages: a locked baseline,
+// a session naming more hosts than a baseline can hold, and a corrupt or
+// unreadable file are three different situations, and a reader who sees "the
+// project baseline could not be read or written" for all three cannot tell a
+// transient contention from a reason to go look at the file. The first two
+// have their own named errors (baseline.ErrTooManyHosts, store.ErrLockTimeout)
+// precisely so a caller can tell them apart; only the generic message is
+// deliberately silent about which file.
+func TestBaselineErrorReason_DistinctCausesDistinctMessages(t *testing.T) {
+	tooMany := baselineErrorReason(baseline.ErrTooManyHosts)
+	locked := baselineErrorReason(store.ErrLockTimeout)
+	generic := baselineErrorReason(errors.New("baseline: unrecognised file version"))
+	for _, pair := range [][2]string{{tooMany, locked}, {tooMany, generic}, {locked, generic}} {
+		if pair[0] == pair[1] {
+			t.Errorf("two distinct baseline errors produced the same reason %q", pair[0])
+		}
+	}
+	if generic == "" || strings.Contains(generic, "unrecognised file version") {
+		t.Errorf("generic reason %q: must say something, and must not repeat the error text, "+
+			"which can carry the baseline's path", generic)
+	}
+}
+
+// TestNovelty_TooManyHostsSaysSoNotTheGenericMessage: the integration path,
+// not just the mapping function above -- a session that names more hosts
+// than a baseline holds must reach the reader as something more specific
+// than the generic "could not be read or written", which a lock timeout and
+// a corrupt file also produce.
+func TestNovelty_TooManyHostsSaysSoNotTheGenericMessage(t *testing.T) {
+	hosts := make([]string, 5000)
+	for i := range hosts {
+		hosts[i] = fmt.Sprintf("h%d.example", i)
+	}
+	run := &store.Run{
+		Declarations: []store.Declaration{{
+			ToolUseID: "t1", ToolName: "Bash", SessionID: "sess-1", Hosts: hosts,
+		}},
+		Coverage: []store.Coverage{{
+			Phase: store.PhaseStart, RecordedAtMS: t0ms, CWD: t.TempDir(), SessionID: "sess-1",
+		}},
+	}
+	d := buildDestinations(run, t.TempDir(), nil)
+	if d.Novelty.Available {
+		t.Fatal("novelty reports itself available for a session past the baseline's host cap")
+	}
+	if d.Novelty.Reason == "the project baseline could not be read or written" {
+		t.Errorf("reason %q: a session naming too many hosts reads identically to a locked "+
+			"or corrupt baseline", d.Novelty.Reason)
 	}
 }
 

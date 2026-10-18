@@ -1,6 +1,7 @@
 package report
 
 import (
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -245,9 +246,7 @@ func buildNovelty(run *store.Run, storeRoot string, wireHosts, sshHosts []string
 	res := baseline.UpdateOrigin(storeRoot, baseline.Key(cwd), run.SessionID(),
 		time.UnixMilli(runStartMS(run)), hosts, sshSet)
 	if res.Err != nil {
-		// Deliberately not the error text: it carries the baseline path, and a
-		// path carries someone's directory names.
-		n.Reason = "the project baseline could not be read or written"
+		n.Reason = baselineErrorReason(res.Err)
 		return n
 	}
 	n.Available = true
@@ -258,6 +257,27 @@ func buildNovelty(run *store.Run, storeRoot string, wireHosts, sshHosts []string
 		n.Hosts = res.Novel
 	}
 	return n
+}
+
+// baselineErrorReason tells apart the two named baseline errors a caller can
+// act on from the rest, which it describes the same way it always has.
+//
+// A render and `forget --host` both take the baseline's lock, and a reader
+// who sees the same sentence for that as for a corrupt file has no way to
+// tell "try again" from "look at this." baseline.ErrTooManyHosts and
+// store.ErrLockTimeout are named for exactly this reason; everything else --
+// a corrupt file, an unreadable one, a version this build does not know --
+// stays the generic message, deliberately not the error text: it carries
+// the baseline path, and a path carries someone's directory names.
+func baselineErrorReason(err error) string {
+	switch {
+	case errors.Is(err, baseline.ErrTooManyHosts):
+		return "this session named more hosts than a project baseline can hold, so novelty could not be updated this time"
+	case errors.Is(err, store.ErrLockTimeout):
+		return "the project baseline was locked by another render, so novelty could not be checked this time"
+	default:
+		return "the project baseline could not be read or written"
+	}
 }
 
 // runCWD is the working directory the run recorded, preferring the start-phase
