@@ -58,7 +58,8 @@
             1,
             2,
             3,
-            4
+            4,
+            5
           ]
         },
         "seq": {
@@ -334,7 +335,8 @@
             1,
             2,
             3,
-            4
+            4,
+            5
           ]
         },
         "seq": {
@@ -482,7 +484,8 @@
         "tool_use_id",
         "session_id",
         "outcome",
-        "reason"
+        "reason",
+        "phase"
       ],
       "properties": {
         "type": {
@@ -496,7 +499,8 @@
             1,
             2,
             3,
-            4
+            4,
+            5
           ]
         },
         "seq": {
@@ -534,6 +538,18 @@
             "lock_timeout",
             "internal_error",
             "flush_failed"
+          ]
+        },
+        "phase": {
+          "description": "Which invocation wrote this terminal. Null on an ordinary closing terminal, always Handler's own PreToolUse. Set only on a flush_failed marker: call means the declaration this invocation wrote may not be durable, post means the execution a separate, earlier invocation appended may not be.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "call",
+            "post"
           ]
         }
       }
