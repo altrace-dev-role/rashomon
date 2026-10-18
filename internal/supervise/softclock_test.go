@@ -24,3 +24,14 @@ func TestNilChildSoftClockFallsBackToNow(t *testing.T) {
 		t.Error("the fallback Clock never expires")
 	}
 }
+
+// TestNilChildSoftClockPastTheEndHasAlreadyExpired: an entry past the end of
+// the table has no budget, which NewClock refuses; the unsupervised Clock for
+// it has already expired, as SoftBudget documents, rather than running on.
+func TestNilChildSoftClockPastTheEndHasAlreadyExpired(t *testing.T) {
+	var c *Child
+	e := budget.DeadlineEntry(len(budget.Entries()))
+	if !c.SoftClock(e).Expired(time.Now()) {
+		t.Error("an entry with no budget got a Clock that has not expired")
+	}
+}

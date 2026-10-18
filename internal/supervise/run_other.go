@@ -2,11 +2,7 @@
 
 package supervise
 
-import (
-	"time"
-
-	"github.com/altrace-dev-role/rashomon/internal/budget"
-)
+import "github.com/altrace-dev-role/rashomon/internal/budget"
 
 // Supported reports whether hook entries run supervised on this platform.
 //
@@ -38,5 +34,5 @@ func (c *Child) StandDown() bool { return false }
 // SoftClock returns e's soft-deadline Clock starting now: Child is never
 // attached on this platform, so there is no parent start to share.
 func (c *Child) SoftClock(e budget.DeadlineEntry) budget.Clock {
-	return budget.NewClock(time.Now(), e.SoftBudget())
+	return unsupervisedClock(e)
 }

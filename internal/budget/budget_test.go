@@ -35,7 +35,10 @@ func TestPhaseReasonsAreTheFrozenList(t *testing.T) {
 
 func TestClockSoftKeepsStartChangesBudget(t *testing.T) {
 	start := time.Unix(1_700_000_000, 0)
-	hardStop := NewClock(start, 10*time.Second)
+	hardStop, err := NewClock(start, 10*time.Second)
+	if err != nil {
+		t.Fatalf("NewClock: %v", err)
+	}
 	soft := hardStop.Soft(100 * time.Millisecond)
 	if soft.Expired(start.Add(99 * time.Millisecond)) {
 		t.Error("the derived Clock expired before its own 100ms budget")

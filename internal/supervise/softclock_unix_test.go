@@ -15,7 +15,7 @@ import (
 // happens to ask for a soft Clock.
 func TestChildSoftClockSharesTheParentsStart(t *testing.T) {
 	start := time.Unix(1_700_000_000, 0)
-	c := &Child{clock: budget.NewClock(start, 10*time.Second)}
+	c := &Child{clock: hardStop(t, start, 10*time.Second)}
 
 	soft := c.SoftClock(budget.EntryHook)
 	want := budget.EntryHook.SoftBudget()
@@ -44,7 +44,7 @@ func TestChildSoftClockSharesTheParentsStart(t *testing.T) {
 // past.
 func TestChildSoftClockStandsDownAtItsDeadline(t *testing.T) {
 	start := time.Now().Add(-5 * time.Second) // the parent "started" 5s ago
-	c := &Child{clock: budget.NewClock(start, 10*time.Second)}
+	c := &Child{clock: hardStop(t, start, 10*time.Second)}
 	clock := c.SoftClock(budget.EntryHook) // EntryHook's soft budget is 50ms
 
 	requiredRan := false
@@ -96,7 +96,7 @@ func TestChildSoftClockClampsToHardStopMinusShortMargin(t *testing.T) {
 	}
 
 	start := time.Now()
-	c := &Child{clock: budget.NewClock(start, hard)}
+	c := &Child{clock: hardStop(t, start, hard)}
 
 	soft := c.SoftClock(budget.EntryProbeEnd) // table budget: 1.0s, well past 800ms
 	want := hard - shortMargin                // 700ms
@@ -114,7 +114,7 @@ func TestChildSoftClockClampsToHardStopMinusShortMargin(t *testing.T) {
 // to the same clamp regardless of how much it asked for.
 func TestChildSoftClockNeverClampsBelowTheTable(t *testing.T) {
 	start := time.Now()
-	c := &Child{clock: budget.NewClock(start, 10*time.Second)}
+	c := &Child{clock: hardStop(t, start, 10*time.Second)}
 
 	soft := c.SoftClock(budget.EntryHook)
 	want := budget.EntryHook.SoftBudget() // 50ms, nowhere near 10s - shortMargin
@@ -129,7 +129,7 @@ func TestChildSoftClockNeverClampsBelowTheTable(t *testing.T) {
 // Clock, already expired at its own start), never a negative budget.
 func TestChildSoftClockFloorsAtZeroWhenHardStopIsInsideTheMargin(t *testing.T) {
 	start := time.Now()
-	c := &Child{clock: budget.NewClock(start, 50*time.Millisecond)} // < shortMargin (100ms)
+	c := &Child{clock: hardStop(t, start, 50*time.Millisecond)} // < shortMargin (100ms)
 
 	soft := c.SoftClock(budget.EntryHook)
 	if got := soft.Duration(); got != 0 {
@@ -138,4 +138,15 @@ func TestChildSoftClockFloorsAtZeroWhenHardStopIsInsideTheMargin(t *testing.T) {
 	if !soft.Expired(start) {
 		t.Error("a zero-budget Clock must already be expired at its own start")
 	}
+}
+
+// hardStop is the supervised Child's own Clock, as Attach builds it from the
+// parent's clock record.
+func hardStop(t *testing.T, start time.Time, d time.Duration) budget.Clock {
+	t.Helper()
+	c, err := budget.NewClock(start, d)
+	if err != nil {
+		t.Fatalf("NewClock(%v, %v): %v", start, d, err)
+	}
+	return c
 }

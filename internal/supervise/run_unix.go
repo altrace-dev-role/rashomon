@@ -607,7 +607,7 @@ func Attach(args []string) (c *Child, rest []string, ok bool) {
 // margin (build spec 8.2.5).
 func (c *Child) SoftClock(e budget.DeadlineEntry) budget.Clock {
 	if c == nil {
-		return budget.NewClock(time.Now(), e.SoftBudget())
+		return unsupervisedClock(e)
 	}
 	soft := e.SoftBudget()
 	margin := c.clock.Duration() - shortMargin
