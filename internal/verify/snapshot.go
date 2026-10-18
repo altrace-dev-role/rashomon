@@ -166,13 +166,26 @@ const (
 // RuleVerdict is one rule's verdict with the seqs of its executed violations
 // (archive 20.2.14) and the rule's hard_control text, printed beside a
 // no_recorded_violation (2.2.7). P-07 proposal: hard_control travels on the
-// verdict entry so the snapshot can print it without the spec.
+// snapshot's verdict entry so the snapshot can print it without the spec;
+// the checkpoint stores CheckpointRuleVerdict, which has no hard_control.
 type RuleVerdict struct {
 	Rule        SlotID           `json:"rule"`
 	Kind        spec.RuleKind    `json:"kind"`
 	Verdict     RuleVerdictValue `json:"verdict"`
 	Seqs        []int64          `json:"seqs"`
 	HardControl string           `json:"hard_control"`
+}
+
+// CheckpointRuleVerdict is a rule verdict as the checkpoint keeps it
+// (archive 20.2.14's example: rule, kind, verdict, seqs): RuleVerdict
+// without hard_control. That field is the spec's own free text, whatever
+// the spec's trust, so it stays on the Snapshot, which only prints it, and
+// is never written to the record.
+type CheckpointRuleVerdict struct {
+	Rule    SlotID           `json:"rule"`
+	Kind    spec.RuleKind    `json:"kind"`
+	Verdict RuleVerdictValue `json:"verdict"`
+	Seqs    []int64          `json:"seqs"`
 }
 
 // IntegrityKind names the eight lexical integrity checks (2.2.6), in the
@@ -328,36 +341,36 @@ type BackgroundRef struct {
 // count, with Truncated set. It lives here and not in the store because it
 // carries verify's types and the store is this package's import.
 type Checkpoint struct {
-	Type                string           `json:"type"`
-	SchemaVersion       int              `json:"schema_version"`
-	Critical            bool             `json:"critical"`
-	Seq                 *int64           `json:"seq"`
-	RecordedAtUnixMS    int64            `json:"recorded_at_unix_ms"`
-	SessionID           string           `json:"session_id"`
-	PromptID            *string          `json:"prompt_id"`
-	AgentID             *string          `json:"agent_id"`
-	Point               string           `json:"point"`
-	PointSeq            int64            `json:"point_seq"`
-	PointToolUseID      *string          `json:"point_tool_use_id"`
-	TaskRef             *string          `json:"task_ref"`
-	VerifyVersion       int              `json:"verify_version"`
-	RulesVersion        int              `json:"rules_version"`
-	SpecDigest          *string          `json:"spec_digest"`
-	SpecTrust           *spec.Trust      `json:"spec_trust"`
-	Recording           Recording        `json:"recording"`
-	ProjectRoot         string           `json:"project_root"`
-	Gates               []CheckpointGate `json:"gates"`
-	GatesOmitted        int              `json:"gates_omitted"`
-	Claims              []ClaimVerdict   `json:"claims"`
-	ClaimsOmitted       int              `json:"claims_omitted"`
-	SpecVerdicts        []RuleVerdict    `json:"spec_verdicts"`
-	SpecVerdictsOmitted int              `json:"spec_verdicts_omitted"`
-	Integrity           Integrity        `json:"integrity"`
-	IntegrityOmitted    int              `json:"integrity_omitted"`
-	BackgroundInFlight  []BackgroundRef  `json:"background_in_flight"`
-	BackgroundOmitted   int              `json:"background_omitted"`
-	Practice            *Practice        `json:"practice"`
-	PracticeOmitted     int              `json:"practice_omitted"`
-	RecordGreen         bool             `json:"record_green"`
-	Truncated           bool             `json:"truncated"`
+	Type                string                  `json:"type"`
+	SchemaVersion       int                     `json:"schema_version"`
+	Critical            bool                    `json:"critical"`
+	Seq                 *int64                  `json:"seq"`
+	RecordedAtUnixMS    int64                   `json:"recorded_at_unix_ms"`
+	SessionID           string                  `json:"session_id"`
+	PromptID            *string                 `json:"prompt_id"`
+	AgentID             *string                 `json:"agent_id"`
+	Point               string                  `json:"point"`
+	PointSeq            int64                   `json:"point_seq"`
+	PointToolUseID      *string                 `json:"point_tool_use_id"`
+	TaskRef             *string                 `json:"task_ref"`
+	VerifyVersion       int                     `json:"verify_version"`
+	RulesVersion        int                     `json:"rules_version"`
+	SpecDigest          *string                 `json:"spec_digest"`
+	SpecTrust           *spec.Trust             `json:"spec_trust"`
+	Recording           Recording               `json:"recording"`
+	ProjectRoot         string                  `json:"project_root"`
+	Gates               []CheckpointGate        `json:"gates"`
+	GatesOmitted        int                     `json:"gates_omitted"`
+	Claims              []ClaimVerdict          `json:"claims"`
+	ClaimsOmitted       int                     `json:"claims_omitted"`
+	SpecVerdicts        []CheckpointRuleVerdict `json:"spec_verdicts"`
+	SpecVerdictsOmitted int                     `json:"spec_verdicts_omitted"`
+	Integrity           Integrity               `json:"integrity"`
+	IntegrityOmitted    int                     `json:"integrity_omitted"`
+	BackgroundInFlight  []BackgroundRef         `json:"background_in_flight"`
+	BackgroundOmitted   int                     `json:"background_omitted"`
+	Practice            *Practice               `json:"practice"`
+	PracticeOmitted     int                     `json:"practice_omitted"`
+	RecordGreen         bool                    `json:"record_green"`
+	Truncated           bool                    `json:"truncated"`
 }
