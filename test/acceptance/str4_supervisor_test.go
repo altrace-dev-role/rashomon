@@ -482,9 +482,10 @@ func TestRES8_SupervisorStreamsStdin(t *testing.T) {
 	if res := e.hook(body+" ", log.env()); res.exitCode != 0 {
 		t.Fatalf("8 MiB + 1: exit %d", res.exitCode)
 	}
-	// Refused without parsing, the payload names no session to the child.
+	// Refused without parsing, the payload is still recorded in the run its
+	// head names.
 	tooLarge := 0
-	for _, c := range e.coverage("unattributed", "call") {
+	for _, c := range e.coverage(testSession, "call") {
 		if c.str("reason") == "payload_too_large" {
 			tooLarge++
 		}
