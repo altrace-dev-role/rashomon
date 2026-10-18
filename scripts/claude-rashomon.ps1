@@ -5,6 +5,12 @@
 # nothing: --help, --version and the management subcommands pass straight
 # through without watch.
 #
+# This launcher cannot install. watch asks its questions on /dev/tty, which
+# Windows does not have, so on a machine not already watching it prints the
+# consent screen, refuses, and claude starts unrecorded. Install once by
+# reading that screen and running `rashomon watch --yes` yourself; from then
+# on watch here finds the entries in place and claude starts recorded.
+#
 # Install: go install ./cmd/rashomon   (lands rashomon.exe in "$(go env GOPATH)\bin")
 # Run:     powershell -File scripts\claude-rashomon.ps1   (or put scripts\ on PATH)
 
@@ -60,6 +66,11 @@ if ($watch) {
     & $rashomon watch | ForEach-Object { [Console]::Error.WriteLine("$_") }
     if ($LASTEXITCODE -ne 0) {
         [Console]::Error.WriteLine("claude-rashomon: 'rashomon watch' did not install (refused or failed); starting claude UNRECORDED")
+        # Named only to a person: watch never tells an agent session how to
+        # get past its refusal, and neither does this.
+        if (-not $env:CLAUDECODE) {
+            [Console]::Error.WriteLine("claude-rashomon: if watch said it needs a terminal to ask: Windows has none it can ask on. Read the screen above, then install with:  & '$rashomon' watch --yes")
+        }
         Start-Sleep -Seconds 2
     }
 }
