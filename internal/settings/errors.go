@@ -26,7 +26,12 @@ type Error struct {
 	Err    error
 }
 
+// Error renders a nil *Error, or one with no Err, without panicking: the type
+// is exported, so either can reach a caller.
 func (e *Error) Error() string {
+	if e == nil {
+		return "settings: <nil>"
+	}
 	where := e.Path
 	if where == "" {
 		where = "settings"
@@ -34,10 +39,19 @@ func (e *Error) Error() string {
 	if e.Line > 0 {
 		where = fmt.Sprintf("%s:%d:%d", where, e.Line, e.Column)
 	}
-	return where + ": " + e.Err.Error()
+	problem := "invalid settings"
+	if e.Err != nil {
+		problem = e.Err.Error()
+	}
+	return where + ": " + problem
 }
 
-func (e *Error) Unwrap() error { return e.Err }
+func (e *Error) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
 
 // pos is a byte offset into the parsed source plus one, so that the zero value
 // means "nowhere": a member built by this package, or a value rewritten after

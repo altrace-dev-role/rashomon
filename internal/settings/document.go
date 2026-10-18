@@ -18,6 +18,7 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 )
@@ -88,7 +89,11 @@ func Parse(data []byte) (*Document, error) {
 
 // ParseNamed builds a Document from the bytes of the file at path. Every error
 // the document raises, now or from a later edit, is an *Error naming path.
+// The document keeps its own copy of data: every value it carries, and every
+// position a later error reports, is in those bytes, so a caller that reuses
+// its buffer changes neither.
 func ParseNamed(path string, data []byte) (*Document, error) {
+	data = bytes.Clone(data)
 	d := &Document{path: path, src: data}
 	if len(bytes.TrimSpace(data)) == 0 {
 		return d, nil
@@ -118,6 +123,11 @@ func (d *Document) Bytes() []byte {
 
 const hooksKey = "hooks"
 
+// ErrEventNotUTF8 is a hook event name that is not valid UTF-8, refused by
+// SetHookEntries and RemoveHookEvent. JSON cannot carry such a key: written,
+// it would read back as U+FFFD, a different event.
+var ErrEventNotUTF8 = errors.New("hook event name is not valid UTF-8")
+
 // HookEntries returns the raw matcher groups under hooks.<event>, in order.
 func (d *Document) HookEntries(event string) ([]json.RawMessage, error) {
 	events, err := d.hookEvents()
@@ -139,10 +149,13 @@ func (d *Document) HookEntries(event string) ([]json.RawMessage, error) {
 // SetHookEntries replaces hooks.<event> with entries. Every other event under
 // hooks, and every other top-level key, is carried over byte for byte.
 //
-// event is a name Claude Code defines, and must be valid UTF-8: JSON cannot
-// carry any other key, so one that is not would be written as U+FFFD and read
-// back as a different event. A key read from a file always is.
+// event is a name Claude Code defines. One that is not valid UTF-8 is refused
+// with ErrEventNotUTF8 and the document left as it was. A key read from a file
+// always is valid.
 func (d *Document) SetHookEntries(event string, entries []json.RawMessage) error {
+	if err := d.checkEvent(event); err != nil {
+		return err
+	}
 	events, err := d.hookEvents()
 	if err != nil {
 		return err
@@ -183,7 +196,13 @@ func (d *Document) SetHookEntries(event string, entries []json.RawMessage) error
 // Only a key emptied by the caller is removed. An event another tool owns keeps
 // its entries and its key, and an events object that still holds anything keeps
 // both -- tidying those would be editing settings nobody asked us to touch.
+//
+// An event name that is not valid UTF-8 is refused as SetHookEntries refuses
+// it: no key in the file can be that name.
 func (d *Document) RemoveHookEvent(event string) error {
+	if err := d.checkEvent(event); err != nil {
+		return err
+	}
 	events, err := d.hookEvents()
 	if err != nil {
 		return err
@@ -211,6 +230,14 @@ func (d *Document) RemoveHookEvent(event string) error {
 	}
 	h.set(writeObject(kept, 1))
 	return nil
+}
+
+// checkEvent refuses an event name JSON cannot carry (ErrEventNotUTF8).
+func (d *Document) checkEvent(event string) error {
+	if utf8.ValidString(event) {
+		return nil
+	}
+	return &Error{Path: d.path, Err: fmt.Errorf("%w: %q", ErrEventNotUTF8, event)}
 }
 
 func (d *Document) removeMember(key string) {

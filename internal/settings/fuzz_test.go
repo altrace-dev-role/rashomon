@@ -59,7 +59,7 @@ func FuzzDocumentRoundTrip(f *testing.F) {
 // under its own name.
 func TestRubricTest10_RoundTripSeeds(t *testing.T) {
 	for _, s := range roundTripSeeds {
-		for _, event := range []string{"PreToolUse", "Stop", "< \x00>"} {
+		for _, event := range []string{"PreToolUse", "Stop", "< \x00>", "\xbd"} {
 			checkRoundTrip(t, []byte(s), event)
 		}
 	}
@@ -152,7 +152,20 @@ func checkEdit(t *testing.T, doc *Document, before []byte, event string) {
 		return // refused by the editor, which the error tests cover
 	}
 	if !utf8.ValidString(event) {
-		return // outside SetHookEntries' contract; see its doc
+		// No JSON key can be this name, so both edits refuse it and leave
+		// the document as it was.
+		for what, err := range map[string]error{
+			"SetHookEntries":  doc.SetHookEntries(event, nil),
+			"RemoveHookEvent": doc.RemoveHookEvent(event),
+		} {
+			if !errors.Is(err, ErrEventNotUTF8) {
+				t.Fatalf("%s(%q) = %v, want ErrEventNotUTF8", what, event, err)
+			}
+		}
+		if got := doc.Bytes(); !bytes.Equal(got, before) {
+			t.Fatalf("a refused edit of %q changed the document:\n%q\n%q", event, before, got)
+		}
+		return
 	}
 	had, err := doc.HookEntries(event)
 	if err != nil {
