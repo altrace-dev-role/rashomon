@@ -259,8 +259,10 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Pinned 2026-08: internal/store/store.go (writeSmall's own OpenFile,
 		// MarkProbe, two append opens, writeSmall x2, createExclusive's
 		// CreateTemp and its no-link fallback OpenFile) + pause.go (one
-		// writeSmall) + gaps.go (four append/rewrite opens).
-		{"store", 14},
+		// writeSmall) + gaps.go (four append/rewrite opens) +
+		// install_record.go (replaceFile's CreateTemp, which rewrites
+		// install.json in place).
+		{"store", 15},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},
