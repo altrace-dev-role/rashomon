@@ -223,7 +223,7 @@ func reasonVocabularyMismatches(schema map[string]any) (unchecked, missing []str
 	found := map[string]bool{}
 	collectReasonPaths(schema, "", found)
 	for p := range found {
-		if reasonConstraintPaths[p] && typeOnly(pointerNode(schema, p)) {
+		if reasonConstraintPaths[p] && declaresNoReason(pointerNode(schema, p)) {
 			continue
 		}
 		if !reasonVocabularyPaths[p] {
@@ -306,6 +306,17 @@ func TestReasonVocabularyTripwireCatchesWhatTheComparisonSkips(t *testing.T) {
 				}}
 			},
 			wantUnchecked: "/$defs/coverage/allOf/0/then/properties/reason",
+		},
+		{
+			name: "the verified branch pins reason to a value, not to null",
+			mutate: func(s map[string]any) {
+				schemaObject(t, s, "$defs", "coverage")["allOf"] = []any{map[string]any{
+					"else": map[string]any{"properties": map[string]any{
+						"reason": map[string]any{"const": "never_emitted_value"},
+					}},
+				}}
+			},
+			wantUnchecked: "/$defs/coverage/allOf/0/else/properties/reason",
 		},
 		{
 			name: "a compared vocabulary removed",
