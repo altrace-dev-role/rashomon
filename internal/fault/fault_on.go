@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -26,9 +27,16 @@ const EnvVar = "RASHOMON_FAULT"
 // returned an error would exercise error handling, not the panic barrier, and
 // exit code 1 does not block a tool call.
 //
-// Hang holds the process open, until a SIGTERM arrives or a bound expires, so
-// that the signal paths can be exercised: "hang" waits ten seconds, "hang=N"
-// waits N.
+// FatalStack is a Go runtime fatal error, which no recover catches and which
+// exits 2 whatever the code around it does: it lowers the stack limit and
+// recurses past it. Only a parent process can turn it into exit 0.
+//
+// Emit writes an answer to stdout, as an entry that answers the agent does:
+// "emit" one systemMessage object, "emit=junk" a line that is not JSON.
+//
+// Hang holds the process open, until a signal the hook entries catch arrives
+// or a bound expires, so that the signal paths can be exercised: "hang"
+// waits ten seconds, "hang=N" waits N.
 //
 // FailN is the exception the package comment names: "fail=N" makes the first N
 // calls at the selected point return ErrInjected, through Fail. It is here for
@@ -43,7 +51,13 @@ const (
 	PlainPanic          = "plain_panic"
 	Hang                = "hang"
 	FailN               = "fail"
+	FatalStack          = "fatal=stack"
+	Emit                = "emit"
+	EmitJunk            = "emit=junk"
 )
+
+// EmittedOutput is what "emit" writes to stdout.
+const EmittedOutput = `{"systemMessage":"rashomon fault: emitted"}`
 
 // ErrInjected is what a "fail=N" point returns. One fixed value, because what
 // is under test is the caller's response to a failed read and not its reading
@@ -140,6 +154,33 @@ func trigger(kind string) {
 
 	case PlainPanic:
 		panic("injected fault")
+
+	case FatalStack:
+		debug.SetMaxStack(64 << 10)
+		sink = recurse(0)
+
+	case Emit:
+		emit(EmittedOutput)
+
+	case EmitJunk:
+		emit("not json")
+	}
+}
+
+// recurse never returns: each frame holds a buffer so the stack limit is
+// reached in a few hundred calls, and the runtime's response to that is a
+// fatal error, not a panic.
+//
+//go:noinline
+func recurse(n int) byte {
+	var pad [512]byte
+	pad[n%len(pad)] = byte(n)
+	return recurse(n+1) + pad[(n+1)%len(pad)]
+}
+
+func emit(out string) {
+	if _, err := os.Stdout.WriteString(out); err != nil {
+		fmt.Fprintln(os.Stderr, "rashomon: fault emit:", err)
 	}
 }
 
@@ -152,9 +193,10 @@ func hang(kind string) {
 	}
 
 	// Notified alongside main's own handler: both channels receive the signal,
-	// so main still sees the cancellation once this returns.
+	// so main still sees the cancellation once this returns. Every signal
+	// hook.WatchSignals catches ends it, as one would end a blocked call.
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, os.Interrupt)
+	signal.Notify(sig, syscall.SIGTERM, os.Interrupt, syscall.SIGHUP, syscall.SIGQUIT)
 	defer signal.Stop(sig)
 
 	select {
@@ -203,6 +245,34 @@ func RecordSync(kind, path string) {
 		// a passing one: every test that sets the variable requires it empty.
 		fmt.Fprintln(os.Stderr, "rashomon: sync recorder:", err)
 	}
+}
+
+// SupervisorLogEnvVar names the file the supervisor's recorder appends to:
+// one line per supervised invocation, from the supervisor, naming the
+// child's pid and both processes' peak RSS. Unset, nothing is recorded. It
+// is how a test finds the child the supervisor killed, and how RD-2's
+// parent figure is read without folding the child's peak into it.
+const SupervisorLogEnvVar = "RASHOMON_SUPERVISOR_LOG"
+
+// RecordSupervisor appends line to the supervisor's log.
+func RecordSupervisor(line string) {
+	log := os.Getenv(SupervisorLogEnvVar)
+	if log == "" {
+		return
+	}
+	if err := appendLog(log, line+"\n"); err != nil {
+		fmt.Fprintln(os.Stderr, "rashomon: supervisor recorder:", err)
+	}
+}
+
+// RelayedStderr reports whether the supervisor passes a child's stderr line
+// on in this build: the recorders' own failure lines, which their tests
+// require to be seen, so a recorder that could not write cannot pass for
+// one that had nothing to say.
+func RelayedStderr(line string) bool {
+	return strings.HasPrefix(line, "rashomon: sync recorder:") ||
+		strings.HasPrefix(line, "rashomon: supervisor recorder:") ||
+		strings.HasPrefix(line, "rashomon: fault emit:")
 }
 
 func appendLog(path, line string) error {

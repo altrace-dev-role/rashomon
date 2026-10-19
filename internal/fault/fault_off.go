@@ -18,3 +18,10 @@ func RecordSync(kind, path string) {}
 func LockTaken() {}
 
 func LockReleased() {}
+
+// RecordSupervisor is a no-op in a released binary.
+func RecordSupervisor(string) {}
+
+// RelayedStderr is false in a released binary: the supervisor passes on only
+// its own fixed lines.
+func RelayedStderr(string) bool { return false }
