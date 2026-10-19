@@ -26,8 +26,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/budget"
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 )
+
+// unsupervisedClock is e's soft Clock for a process with no parent start to
+// share: it starts now, with the table's budget. NewClock refuses only an
+// entry past the end of the table, which has no budget; that one gets the
+// zero Clock, already expired, as SoftBudget says it has.
+func unsupervisedClock(e budget.DeadlineEntry) budget.Clock {
+	c, err := budget.NewClock(time.Now(), e.SoftBudget())
+	if err != nil {
+		return budget.Clock{}
+	}
+	return c
+}
 
 // Token is the argv word that, with the clock pipe at fd 3, marks the
 // supervised child. It comes first, before the entry's own arguments.

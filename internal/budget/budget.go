@@ -63,6 +63,19 @@ func (c Clock) Left(now time.Time) time.Duration {
 	return left
 }
 
+// Soft returns a Clock with the given budget but c's own start, so a
+// derived deadline (an entry's soft budget, say) shares a shared start
+// rather than restarting it at the moment it is derived. A hard-stop Clock
+// built from the parent's process start and a soft Clock built from it with
+// Soft therefore run from the same instant.
+func (c Clock) Soft(d time.Duration) Clock { return Clock{start: c.start, soft: d} }
+
+// Duration is c's own budget: the span from start past which Expired
+// reports true. A caller deriving a shorter Clock from c with Soft -- a
+// supervised child clamping an entry's table budget to its own hard stop,
+// say -- reads this rather than reaching into an unexported field.
+func (c Clock) Duration() time.Duration { return c.soft }
+
 // Reason is the frozen stood-down reason a phase reports when its budget
 // expires: the string Phase.Reason returns, recorded in turn_end.stood_down
 // and read by MEASURE (8.2.2).
