@@ -376,3 +376,47 @@ func TestH146_WatchCodexDefaultsToHomeDotCodex(t *testing.T) {
 		t.Errorf("wrote %s although CODEX_HOME was unset", e.codexPath())
 	}
 }
+
+// TestH146_StatusReportsCodexOnlyWhereThereIsCodex: no Codex directory, no
+// word about Codex; a directory, the section; an install, its entries as
+// present -- and every time, that trust is not read.
+func TestH146_StatusReportsCodexOnlyWhereThereIsCodex(t *testing.T) {
+	e := newEnv(t)
+	if res := e.watch(); res.exitCode != 0 {
+		t.Fatalf("watch: %q", res.stderr)
+	}
+	res := e.status()
+	// Lines, not the word: the test's own temporary paths carry its name.
+	if res.exitCode != 0 || strings.Contains(res.stdout, "\ncodex: ") || strings.Contains(res.stdout, "  trust: ") {
+		t.Errorf("status with no Codex directory mentions Codex (exit %d):\n%s", res.exitCode, res.stdout)
+	}
+
+	e.makeCodexDir("")
+	res = e.status()
+	for _, want := range []string{
+		"codex: " + e.codexPath() + "\n",
+		"  PreToolUse: absent\n  PostToolUse: absent\n  SessionStart: absent\n",
+		"  trust: not readable by rashomon; Codex skips an entry until it is trusted in /hooks",
+		"  hooks = false in config.toml or requirements.toml: not checked\n",
+	} {
+		if !strings.Contains(res.stdout, want) {
+			t.Errorf("status with an empty Codex directory does not say %q:\n%s", want, res.stdout)
+		}
+	}
+
+	if res := e.watchCodex(); res.exitCode != 0 {
+		t.Fatalf("watch --harness codex: %q", res.stderr)
+	}
+	res = e.status()
+	if !strings.Contains(res.stdout, "  PreToolUse: present\n  PostToolUse: present\n  SessionStart: present\n  other installs: none\n  trust: ") {
+		t.Errorf("status after watch --harness codex:\n%s", res.stdout)
+	}
+
+	if err := os.WriteFile(e.codexPath(), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res = e.status()
+	if res.exitCode != 0 || !strings.Contains(res.stdout, "  PreToolUse: unreadable\n") {
+		t.Errorf("status over an unreadable hooks.json: exit %d\n%s", res.exitCode, res.stdout)
+	}
+}

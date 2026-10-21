@@ -170,3 +170,78 @@ func detachCodex(installID string, all, force bool, stdout io.Writer) error {
 	fmt.Fprintf(stdout, "rashomon: detached from Codex (%s, %d entries) from %s\n", who, removed, path)
 	return nil
 }
+
+// statusCodex reports our entries in Codex's hooks.json, or nothing at all on
+// a machine with no Codex directory and no rashomon Codex entry: a Claude
+// Code-only user's status reads as it did before Codex support.
+//
+// The file is read, never the trust: present means watch's entry is in the
+// file, not that Codex runs it. The last two lines say so, every time.
+func statusCodex(stdout io.Writer, installID string) error {
+	dir, err := settings.CodexHome()
+	if err != nil {
+		return err
+	}
+	path, err := settings.CodexHooksPath()
+	if err != nil {
+		return err
+	}
+	doc, readErr := settings.Load(path)
+	fi, statErr := os.Stat(dir)
+	exists := statErr == nil && fi.IsDir()
+	if !exists {
+		installed := false
+		if readErr == nil {
+			installed, _ = install.CodexInstalled(doc)
+		}
+		if !installed {
+			return nil
+		}
+	}
+
+	fmt.Fprintf(stdout, "codex: %s\n", path)
+	label := "other installs"
+	if installID == "" {
+		label = "install ids present"
+	}
+	if readErr != nil {
+		for _, event := range install.CodexEvents {
+			fmt.Fprintf(stdout, "  %s: %s\n", event, statusUnreadable)
+		}
+		fmt.Fprintf(stdout, "  %s: %s\n", label, statusUnreadable)
+	} else {
+		if installID == "" {
+			fmt.Fprintln(stdout, "  no store here, so no install id is ours and no entry can be called ours")
+		}
+		for _, event := range install.CodexEvents {
+			fmt.Fprintf(stdout, "  %s: %s\n", event, codexEntryState(doc, installID, event))
+		}
+		switch others, err := install.CodexForeignOwners(doc, installID); {
+		case err != nil:
+			fmt.Fprintf(stdout, "  %s: %s\n", label, statusUnreadable)
+		case len(others) == 0:
+			fmt.Fprintf(stdout, "  %s: none\n", label)
+		default:
+			fmt.Fprintf(stdout, "  %s: %s\n", label, strings.Join(others, ", "))
+		}
+	}
+	fmt.Fprintln(stdout, "  trust: not readable by rashomon; Codex skips an entry until it is trusted in /hooks, "+
+		"and Codex runs read coverage: unverified (hook_entry_unresolved)")
+	fmt.Fprintln(stdout, "  hooks = false in config.toml or requirements.toml: not checked")
+	return nil
+}
+
+// codexEntryState is entryState for Codex's file.
+func codexEntryState(doc *settings.Document, installID, event string) string {
+	if installID == "" {
+		return statusUnknown
+	}
+	switch present, err := install.CodexPresent(doc, installID, event); {
+	case err != nil:
+		return statusUnreadable
+	case present:
+		return "present"
+	default:
+		return "absent"
+	}
+}

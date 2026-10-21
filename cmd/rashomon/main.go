@@ -1101,6 +1101,9 @@ func cmdStatus(stdout io.Writer) error {
 	if err := statusHooks(stdout); err != nil {
 		return err
 	}
+	if err := statusCodex(stdout, installID); err != nil {
+		return err
+	}
 	return statusRecap(stdout, root)
 }
 
