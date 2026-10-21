@@ -33,14 +33,14 @@ const (
 	lockBytesHigh = 0xFFFFFFFF
 )
 
-// lockFile takes an exclusive lock on f, polling so the wait can be bounded the
-// way lock_unix.go bounds it. LockFileEx without LOCKFILE_FAIL_IMMEDIATELY
-// blocks in the kernel with no deadline, and this process must not start a
-// goroutine it would then have to abandon.
+// LockFile keeps lock_unix.go's contract on Windows: an exclusive lock on f,
+// polled so the wait can be bounded the way lock_unix.go bounds it. LockFileEx
+// without LOCKFILE_FAIL_IMMEDIATELY blocks in the kernel with no deadline, and
+// this process must not start a goroutine it would then have to abandon.
 //
 // These locks are mandatory rather than advisory: while one is held, every
 // other process is denied read as well as write access to the range.
-func lockFile(f *os.File, budget time.Duration) (func(), error) {
+func LockFile(f *os.File, budget time.Duration) (func(), error) {
 	h := syscall.Handle(f.Fd())
 	deadline := time.Now().Add(budget)
 	backoff := 200 * time.Microsecond

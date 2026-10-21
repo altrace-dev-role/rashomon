@@ -32,8 +32,9 @@ const (
 	dirRuns         = "runs"
 )
 
-// ErrLockTimeout is returned when an append lock could not be taken inside the
-// budget. It is a give-up, and callers record it rather than hiding it.
+// ErrLockTimeout is returned when a lock could not be taken inside the budget
+// (LockFile), and by nothing else: it means busy, never broken. It is a
+// give-up, and callers record it rather than hiding it.
 var ErrLockTimeout = errors.New("store: timed out waiting for the append lock")
 
 // Store is an opened store rooted at a directory.
@@ -247,7 +248,7 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockFile(f, lockBudget)
+	unlock, err := LockFile(f, lockBudget)
 	if err != nil {
 		return err
 	}
@@ -292,7 +293,7 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockFile(f, budget)
+	unlock, err := LockFile(f, budget)
 	switch {
 	case err == nil:
 		defer unlock()

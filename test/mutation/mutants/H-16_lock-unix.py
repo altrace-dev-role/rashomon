@@ -1,5 +1,5 @@
 m("H-16 append lock removed", "internal/store/store.go",
-  "\tunlock, err := lockFile(f, lockBudget)\n\tif err != nil {\n\t\treturn err\n\t}\n\tdefer unlock()\n\n\tseq, err := nextSeq(dir)",
+  "\tunlock, err := LockFile(f, lockBudget)\n\tif err != nil {\n\t\treturn err\n\t}\n\tdefer unlock()\n\n\tseq, err := nextSeq(dir)",
   "\tseq, err := nextSeq(dir)", "TestH16_")
 m("H-16 the lock is shared, not exclusive", "internal/store/lock_unix.go",
   "syscall.LOCK_EX|syscall.LOCK_NB", "syscall.LOCK_SH|syscall.LOCK_NB", "TestLockFileIsExclusiveAndBounded")

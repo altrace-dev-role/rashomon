@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// TestLockFileIsExclusiveAndBounded is the contract every platform's lockFile
+// TestLockFileIsExclusiveAndBounded is the contract every platform's LockFile
 // has to honour, written down where a port can be checked against it.
 //
 // H-16 exercises the lock through 64 processes; this exercises it through two
@@ -21,36 +21,36 @@ func TestLockFileIsExclusiveAndBounded(t *testing.T) {
 	held := openForAppend(t, path)
 	contender := openForAppend(t, path)
 
-	unlock, err := lockFile(held, lockBudget)
+	unlock, err := LockFile(held, lockBudget)
 	if err != nil {
-		t.Fatalf("lockFile on an uncontended file: %v", err)
+		t.Fatalf("LockFile on an uncontended file: %v", err)
 	}
 
 	const budget = 50 * time.Millisecond
 	start := time.Now()
-	release, err := lockFile(contender, budget)
+	release, err := LockFile(contender, budget)
 	waited := time.Since(start)
 	if err == nil {
 		release()
 		t.Fatal("a second descriptor took the lock while the first held it")
 	}
 	if !errors.Is(err, ErrLockTimeout) {
-		t.Fatalf("contended lockFile returned %v, want ErrLockTimeout", err)
+		t.Fatalf("contended LockFile returned %v, want ErrLockTimeout", err)
 	}
 	if waited < budget {
-		t.Fatalf("contended lockFile gave up after %v, before its %v budget", waited, budget)
+		t.Fatalf("contended LockFile gave up after %v, before its %v budget", waited, budget)
 	}
-	// Well under lockBudget: a lockFile that ignored its argument and waited
+	// Well under lockBudget: a LockFile that ignored its argument and waited
 	// the package default would land here instead.
 	if waited > time.Second {
-		t.Fatalf("contended lockFile waited %v for a %v budget", waited, budget)
+		t.Fatalf("contended LockFile waited %v for a %v budget", waited, budget)
 	}
 
 	unlock()
 
-	release, err = lockFile(contender, budget)
+	release, err = LockFile(contender, budget)
 	if err != nil {
-		t.Fatalf("lockFile after the holder released: %v", err)
+		t.Fatalf("LockFile after the holder released: %v", err)
 	}
 	release()
 }
@@ -70,7 +70,7 @@ func TestAppendExecutionSpillsWhenTheLockIsHeld(t *testing.T) {
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		t.Fatal(err)
 	}
-	unlock, err := lockFile(openForAppend(t, filepath.Join(dir, FileRecords)), lockBudget)
+	unlock, err := LockFile(openForAppend(t, filepath.Join(dir, FileRecords)), lockBudget)
 	if err != nil {
 		t.Fatalf("taking the records lock: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestReadRunConsistent_RespectsAHeldLock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	unlock, err := lockFile(openForAppend(t, recordsPath), lockBudget)
+	unlock, err := LockFile(openForAppend(t, recordsPath), lockBudget)
 	if err != nil {
 		t.Fatalf("taking the records lock: %v", err)
 	}

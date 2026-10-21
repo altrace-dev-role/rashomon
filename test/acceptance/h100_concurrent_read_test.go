@@ -23,7 +23,7 @@ import (
 //
 // The fix is two things, both exercised here: store.ReadRunConsistent takes
 // a short, best-effort lock against the same flock a writer holds
-// (store.go's lockFile) before reading each file, sized to digest's own 50ms
+// (store.LockFile) before reading each file, sized to digest's own 50ms
 // budget rather than borrowed from the writer's 2s one; and Run.Skipped --
 // which already counts a line that failed to parse -- is surfaced on the
 // digest and forces Coverage unverified, rather than a torn line being
