@@ -40,7 +40,8 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/rashomon-hc.XXXXXX")
 SIDS=
 # Children HC-4 leaves alive are killed, then every session this script
 # started loses its transcript and its session-env directory, then the scratch
-# goes. The session-env directory goes with rmdir and not rm: these checks set
+# goes. HUP is trapped with INT and TERM: dash runs no EXIT trap for a signal
+# it was not told to trap, and a terminal that closes mid-run sends HUP. The session-env directory goes with rmdir and not rm: these checks set
 # no session environment, so a non-empty one holds something this script did
 # not put there, and it is left for a person to look at.
 cleanup() {
@@ -56,6 +57,7 @@ cleanup() {
   rm -rf "$T"
 }
 trap cleanup EXIT
+trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 # Paths go into JSON and into hook command lines unquoted; refusing an odd one

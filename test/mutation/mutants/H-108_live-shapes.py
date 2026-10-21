@@ -44,3 +44,7 @@ m("H-108 the script leaves a session's transcript", "test/live/hc-items.sh",
   "      rm -rf \"$f\" \"${f%.jsonl}\"; rmdir \"$(dirname \"$f\")\" 2> /dev/null\n",
   "      :\n",
   "TestH108_RecordsTheVersionAndLeavesNothingBehind")
+m("H-108 a hangup skips the cleanup", "test/live/hc-items.sh",
+  "trap 'exit 129' HUP\n",
+  "",
+  "TestH108_AHangupStillRemovesWhatTheRunLeft")

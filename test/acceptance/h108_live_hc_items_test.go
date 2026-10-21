@@ -397,7 +397,9 @@ func TestH108_TheStreamSummariesPrintNoValue(t *testing.T) {
 // and a transcript under the config directory. An earlier stand-in wrote
 // nothing, so "leaves nothing behind" held here while a real run left all
 // three. Each path it writes goes to $HC_STUB_WROTE, so the test can tell a
-// cleanup that removed them from a stand-in that never wrote them.
+// cleanup that removed them from a stand-in that never wrote them. With
+// $HC_STUB_HANG set, a session marks that file once its files are written and
+// then takes three seconds, the window a hangup arrives in.
 const hcStub = `#!/bin/sh
 printf '%s\n' "$*" >> "$HC_STUB_LOG"
 if [ "$1" = --version ]; then echo '0.0.0-stub (H-108)'; exit 0; fi
@@ -414,6 +416,7 @@ if [ -n "$sid" ]; then
   echo '{}' > "$tmpd/cache-break-state-$sid.json"
   : > "$cfg/projects/$slug/$sid.jsonl"
   printf '%s\n' "$tmpd/cache-break-state-$sid.json" "$cfg/session-env/$sid" "$cfg/projects/$slug/$sid.jsonl" >> "$HC_STUB_WROTE"
+  if [ -n "${HC_STUB_HANG:-}" ]; then : > "$HC_STUB_HANG"; sleep 3; fi
 fi
 exit 1
 `
@@ -432,6 +435,24 @@ func hcScript(t *testing.T, home string) (res result, asked []string, tmp string
 		t.Fatal(err)
 	}
 	tmp = t.TempDir()
+	cmd := exec.Command("sh", filepath.Join(moduleRoot, "test", "live", "hc-items.sh"))
+	cmd.Dir = moduleRoot
+	cmd.Env = hcEnviron(home, stub, tmp, "HC_STUB_LOG="+stubLog, "HC_STUB_WROTE="+stubWrote)
+	e := &env{t: t}
+	res = e.wait(cmd)
+	if b, err := os.ReadFile(stubLog); err == nil {
+		asked = strings.Split(strings.TrimSpace(string(b)), "\n")
+	}
+	if b, err := os.ReadFile(stubWrote); err == nil {
+		wrote = strings.Split(strings.TrimSpace(string(b)), "\n")
+	}
+	return res, asked, tmp, wrote
+}
+
+// hcEnviron is this process's environment with the home, PATH and TMPDIR a
+// run of hc-items.sh against the stand-in in stub gets, and nothing of the
+// caller's claude or rashomon configuration.
+func hcEnviron(home, stub, tmp string, extra ...string) []string {
 	var environ []string
 	for _, kv := range os.Environ() {
 		name, _, _ := strings.Cut(kv, "=")
@@ -446,21 +467,8 @@ func hcScript(t *testing.T, home string) (res result, asked []string, tmp string
 		"PATH="+stub+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"TMPDIR="+tmp,
 		"RASHOMON_BIN="+rashomonBin,
-		"HC_STUB_LOG="+stubLog,
-		"HC_STUB_WROTE="+stubWrote,
 	)
-	cmd := exec.Command("sh", filepath.Join(moduleRoot, "test", "live", "hc-items.sh"))
-	cmd.Dir = moduleRoot
-	cmd.Env = environ
-	e := &env{t: t}
-	res = e.wait(cmd)
-	if b, err := os.ReadFile(stubLog); err == nil {
-		asked = strings.Split(strings.TrimSpace(string(b)), "\n")
-	}
-	if b, err := os.ReadFile(stubWrote); err == nil {
-		wrote = strings.Split(strings.TrimSpace(string(b)), "\n")
-	}
-	return res, asked, tmp, wrote
+	return append(environ, extra...)
 }
 
 func filesUnder(t *testing.T, root string) []string {
