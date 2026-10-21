@@ -1067,6 +1067,13 @@ func verbForTool(name string) string {
 		return VerbExecute
 	case "Task", "Agent":
 		return VerbAgent
+	// Codex's file edit, and the spawn and wait of a subagent
+	// (test/fixtures/codex). No Claude Code tool carries these names, so
+	// classing them changes no Claude Code record.
+	case "apply_patch":
+		return VerbWrite
+	case "collaborationspawn_agent", "collaborationwait_agent":
+		return VerbAgent
 	default:
 		return VerbUnknown
 	}
