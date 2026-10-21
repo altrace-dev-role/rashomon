@@ -168,9 +168,25 @@ func subcommand(event string) string {
 	return ""
 }
 
+// harness is what differs between the agents this package installs for: the
+// events it subscribes to, the subcommand each one runs, and what sits between
+// that subcommand and Marker on the command line. The matcher, the timeouts
+// and what counts as tampering are the same for both, and are not in here.
+type harness struct {
+	events     []string
+	subcommand func(event string) string
+	flag       string
+}
+
+// claudeCode is the harness every exported function without "Codex" in its
+// name works on, as it did before there was a second one.
+var claudeCode = harness{events: Events, subcommand: subcommand}
+
 // Command is the shell command line installed for an event.
-func (s Spec) Command(event string) string {
-	return shellQuote(s.Executable) + " " + subcommand(event) + " " + Marker + " " + s.InstallID
+func (s Spec) Command(event string) string { return claudeCode.command(s, event) }
+
+func (h harness) command(s Spec, event string) string {
+	return shellQuote(s.Executable) + " " + h.subcommand(event) + h.flag + " " + Marker + " " + s.InstallID
 }
 
 type hookCommand struct {
@@ -184,10 +200,10 @@ type matcherGroup struct {
 	Hooks   []hookCommand `json:"hooks"`
 }
 
-func (s Spec) group(event string) matcherGroup {
+func (h harness) group(s Spec, event string) matcherGroup {
 	g := matcherGroup{Hooks: []hookCommand{{
 		Type:    "command",
-		Command: s.Command(event),
+		Command: h.command(s, event),
 		Timeout: timeoutFor(event),
 	}}}
 	if hasMatcher(event) {
@@ -207,8 +223,10 @@ func (s Spec) group(event string) matcherGroup {
 // panic in library code is a Law 14 violation, and the recorder's whole
 // contract is that nothing it does can exit 2 and block a tool call. The only
 // caller already returns an error.
-func (s Spec) Entry(event string) (json.RawMessage, error) {
-	b, err := json.MarshalIndent(s.group(event), settings.Indent(3), "  ")
+func (s Spec) Entry(event string) (json.RawMessage, error) { return claudeCode.entry(s, event) }
+
+func (h harness) entry(s Spec, event string) (json.RawMessage, error) {
+	b, err := json.MarshalIndent(h.group(s, event), settings.Indent(3), "  ")
 	if err != nil {
 		return nil, fmt.Errorf("install: rendering the %s entry: %w", event, err)
 	}
@@ -218,7 +236,12 @@ func (s Spec) Entry(event string) (json.RawMessage, error) {
 // Owner returns the install id an entry claims for an event, or "" for an
 // entry that is not ours. Ownership is carried in the command line itself,
 // which survives every round trip a settings file can take.
-func Owner(raw json.RawMessage, event string) string {
+func Owner(raw json.RawMessage, event string) string { return claudeCode.owner(raw, event) }
+
+// owner is Owner for one harness. The suffix it looks for includes the
+// harness's flag, so a Codex command line is not ours in a Claude Code file
+// and a Claude Code one is not ours in Codex's.
+func (h harness) owner(raw json.RawMessage, event string) string {
 	var g struct {
 		Hooks []struct {
 			Command string `json:"command"`
@@ -227,7 +250,7 @@ func Owner(raw json.RawMessage, event string) string {
 	if json.Unmarshal(raw, &g) != nil {
 		return ""
 	}
-	suffix := " " + subcommand(event) + " " + Marker + " "
+	suffix := " " + h.subcommand(event) + h.flag + " " + Marker + " "
 	for _, h := range g.Hooks {
 		if i := strings.LastIndex(h.Command, suffix); i >= 0 {
 			if id := h.Command[i+len(suffix):]; isInstallID(id) {
@@ -243,14 +266,16 @@ func Owner(raw json.RawMessage, event string) string {
 // changed, so a no-op watch writes nothing. An entry of ours that is no longer
 // intact -- a second hook added to the group, a changed matcher -- is refused,
 // not overwritten.
-func Apply(doc *settings.Document, spec Spec) (bool, error) {
+func Apply(doc *settings.Document, spec Spec) (bool, error) { return claudeCode.apply(doc, spec) }
+
+func (h harness) apply(doc *settings.Document, spec Spec) (bool, error) {
 	changed := false
-	for _, event := range Events {
+	for _, event := range h.events {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
 			return false, err
 		}
-		want, err := spec.Entry(event)
+		want, err := h.entry(spec, event)
 		if err != nil {
 			return false, err
 		}
@@ -261,7 +286,7 @@ func Apply(doc *settings.Document, spec Spec) (bool, error) {
 			eventChanged bool
 		)
 		for _, e := range entries {
-			if Owner(e, event) != spec.InstallID {
+			if h.owner(e, event) != spec.InstallID {
 				out = append(out, e)
 				continue
 			}
@@ -333,9 +358,13 @@ func Remove(doc *settings.Document, spec Spec, force bool) (int, []Modified, err
 // predicate written to accept anything would otherwise delete another tool's
 // hooks.
 func RemoveIf(doc *settings.Document, match func(installID string) bool, force bool) (int, []Modified, error) {
+	return claudeCode.removeIf(doc, match, force)
+}
+
+func (h harness) removeIf(doc *settings.Document, match func(installID string) bool, force bool) (int, []Modified, error) {
 	total := 0
 	var left []Modified
-	for _, event := range Events {
+	for _, event := range h.events {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
 			return 0, nil, err
@@ -346,7 +375,7 @@ func RemoveIf(doc *settings.Document, match func(installID string) bool, force b
 			removed int
 		)
 		for _, e := range entries {
-			id := Owner(e, event)
+			id := h.owner(e, event)
 			if id == "" || !match(id) {
 				out = append(out, e)
 				continue
@@ -394,12 +423,16 @@ func RemoveIf(doc *settings.Document, match func(installID string) bool, force b
 // installs it. This is what the coverage record's hook_entry field means: not
 // "some entry exists" but "our entry, with our matcher and our timeout".
 func Present(doc *settings.Document, installID, event string) (bool, error) {
+	return claudeCode.present(doc, installID, event)
+}
+
+func (h harness) present(doc *settings.Document, installID, event string) (bool, error) {
 	entries, err := doc.HookEntries(event)
 	if err != nil {
 		return false, err
 	}
 	for _, e := range entries {
-		if Owner(e, event) == installID && intact(e, event) == "" {
+		if h.owner(e, event) == installID && intact(e, event) == "" {
 			return true, nil
 		}
 	}
@@ -415,15 +448,19 @@ func Present(doc *settings.Document, installID, event string) (bool, error) {
 // one environment and the foreign ones will resolve this store, find another
 // install's id in it, and record nothing.
 func ForeignOwners(doc *settings.Document, installID string) ([]string, error) {
+	return claudeCode.foreignOwners(doc, installID)
+}
+
+func (h harness) foreignOwners(doc *settings.Document, installID string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
-	for _, event := range Events {
+	for _, event := range h.events {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
 			return nil, err
 		}
 		for _, e := range entries {
-			id := Owner(e, event)
+			id := h.owner(e, event)
 			if id == "" || id == installID || seen[id] {
 				continue
 			}

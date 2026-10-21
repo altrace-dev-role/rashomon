@@ -29,7 +29,7 @@ m("H-6  watch does not print the undo line", "cmd/rashomon/main.go",
 m("H-6 detach has no way past an entry someone edited", "cmd/rashomon/main.go",
   "\t\tcase \"--force\":", "\t\tcase \"--force-disabled\":", "TestH6_DetachForceRemovesAnEditedEntry")
 m("H-6 --force also removes hooks that are not ours", "internal/install/install.go",
-  "\t\t\tid := Owner(e, event)\n\t\t\tif id == \"\" || !match(id) {", "\t\t\tid := Owner(e, event)\n\t\t\tif id == \"\" && !force || id != \"\" && !match(id) {",
+  "\t\t\tid := h.owner(e, event)\n\t\t\tif id == \"\" || !match(id) {", "\t\t\tid := h.owner(e, event)\n\t\t\tif id == \"\" && !force || id != \"\" && !match(id) {",
   "TestH6_DetachForceRemovesAnEditedEntry|TestH4_")
 m("settings reads a non-object top level as an empty document", "internal/settings/document.go",
   "\t\treturn nil, errors.New(\"not a JSON object\")", "\t\treturn nil, nil", "TestParseRefuses")
