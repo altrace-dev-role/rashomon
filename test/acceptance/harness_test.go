@@ -80,18 +80,25 @@ func build(dir, name, pkg string, tags ...string) (string, error) {
 }
 
 // env is one isolated machine: its own store, its own Claude configuration
-// directory, its own working directory for project-level settings, and a
-// managed-policy path that does not exist unless a test creates it.
+// directory, its own working directory for project-level settings, a
+// managed-policy path that does not exist unless a test creates it, and a
+// Codex directory that does not exist unless a test creates it either.
+//
+// codexDir is always set, so no child can fall back to the real ~/.codex of
+// whoever runs the suite. It starts absent because that is the machine every
+// test before Codex support was written against: one with no Codex on it.
 type env struct {
 	t         *testing.T
 	home      string
 	configDir string
 	cwd       string
+	codexDir  string
 }
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	return &env{t: t, home: t.TempDir(), configDir: t.TempDir(), cwd: t.TempDir()}
+	return &env{t: t, home: t.TempDir(), configDir: t.TempDir(), cwd: t.TempDir(),
+		codexDir: filepath.Join(t.TempDir(), "codex")}
 }
 
 func (e *env) settingsPath() string { return filepath.Join(e.configDir, "settings.json") }
@@ -119,6 +126,7 @@ func (e *env) environ(extra ...string) []string {
 		"RASHOMON_HOME="+e.home,
 		"CLAUDE_CONFIG_DIR="+e.configDir,
 		"RASHOMON_MANAGED_SETTINGS_PATH="+e.managedPath(),
+		"CODEX_HOME="+e.codexDir,
 	)
 	return append(base, extra...)
 }
