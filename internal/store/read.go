@@ -2,8 +2,10 @@ package store
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -127,6 +129,65 @@ func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run,
 		}
 	}
 	return run, nil
+}
+
+// mainTurnWindow bounds how much of a run's records LatestMainPromptID reads:
+// the tail of the file, never the whole of it. It runs on a hook's own path,
+// inside the agent's hook timeout, against a file that can grow to the
+// store's size cap.
+const mainTurnWindow = 256 << 10
+
+// LatestMainPromptID returns the prompt_id of the last declaration in a run
+// that the main agent made -- one with no agent_id -- and false when the tail
+// of the run holds none.
+//
+// It reads only the last mainTurnWindow bytes of records.ndjson, and takes no
+// lock: a line cut by the window's start, or caught while its write is in
+// flight, does not decode and is passed over. A declaration further back than
+// the window is not found, which reads as "none", the answer the caller must
+// already handle.
+func (s *Store) LatestMainPromptID(sessionID string) (string, bool) {
+	f, err := os.Open(filepath.Join(s.RunDir(sessionID), FileRecords))
+	if err != nil {
+		return "", false
+	}
+	defer f.Close() //nolint:errcheck // read-only
+	info, err := f.Stat()
+	if err != nil {
+		return "", false
+	}
+	off := max(info.Size()-mainTurnWindow, 0)
+	buf := make([]byte, info.Size()-off)
+	n, err := f.ReadAt(buf, off)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", false
+	}
+	buf = buf[:n]
+	if off > 0 {
+		// The window's first line is cut at its start.
+		if i := bytes.IndexByte(buf, '\n'); i >= 0 {
+			buf = buf[i+1:]
+		}
+	}
+	lines := bytes.Split(buf, []byte{'\n'})
+	for i := len(lines) - 1; i >= 0; i-- {
+		var d struct {
+			Type          string  `json:"type"`
+			SchemaVersion int     `json:"schema_version"`
+			PromptID      *string `json:"prompt_id"`
+			AgentID       *string `json:"agent_id"`
+		}
+		if json.Unmarshal(lines[i], &d) != nil || d.Type != TypeDeclaration || !Accepts(d.SchemaVersion) {
+			continue
+		}
+		if d.AgentID != nil && *d.AgentID != "" {
+			continue
+		}
+		if d.PromptID != nil && *d.PromptID != "" {
+			return *d.PromptID, true
+		}
+	}
+	return "", false
 }
 
 // classifyRunLine parses one NDJSON line into the run it belongs to. Shared by

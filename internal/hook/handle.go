@@ -96,6 +96,9 @@ func (h *Handler) Capture(in io.Reader) error {
 		CWDDigest:      shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),
 		RulesVersion:   shape.RulesVersion,
 	}
+	if h.Harness == Codex {
+		decl.PromptID = codexTurn(h.st, h.sessionID, p.AgentID, raw)
+	}
 	// Hostnames are metadata and are stored verbatim, because they are both
 	// the join key against the proxy's record and the finding itself. Nothing
 	// else from tool_input is persisted, and shape is still the only package
