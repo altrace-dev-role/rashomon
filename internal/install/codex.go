@@ -77,20 +77,3 @@ func CodexPresent(doc *settings.Document, installID, event string) (bool, error)
 func CodexForeignOwners(doc *settings.Document, installID string) ([]string, error) {
 	return codex.foreignOwners(doc, installID)
 }
-
-// CodexInstalled reports whether any rashomon Codex entry, of any install, is
-// in the document.
-func CodexInstalled(doc *settings.Document) (bool, error) {
-	for _, event := range CodexEvents {
-		entries, err := doc.HookEntries(event)
-		if err != nil {
-			return false, err
-		}
-		for _, e := range entries {
-			if codex.owner(e, event) != "" {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
-}

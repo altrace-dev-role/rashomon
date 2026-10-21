@@ -172,8 +172,9 @@ func detachCodex(installID string, all, force bool, stdout io.Writer) error {
 }
 
 // statusCodex reports our entries in Codex's hooks.json, or nothing at all on
-// a machine with no Codex directory and no rashomon Codex entry: a Claude
-// Code-only user's status reads as it did before Codex support.
+// a machine with no Codex directory: a Claude Code-only user's status reads as
+// it did before Codex support. hooks.json lives in that directory, so no
+// rashomon Codex entry can be present without it.
 //
 // The file is read, never the trust: present means watch's entry is in the
 // file, not that Codex runs it. The last two lines say so, every time.
@@ -186,18 +187,12 @@ func statusCodex(stdout io.Writer, installID string) error {
 	if err != nil {
 		return err
 	}
-	doc, readErr := settings.Load(path)
 	fi, statErr := os.Stat(dir)
 	exists := statErr == nil && fi.IsDir()
 	if !exists {
-		installed := false
-		if readErr == nil {
-			installed, _ = install.CodexInstalled(doc)
-		}
-		if !installed {
-			return nil
-		}
+		return nil
 	}
+	doc, readErr := settings.Load(path)
 
 	fmt.Fprintf(stdout, "codex: %s\n", path)
 	label := "other installs"

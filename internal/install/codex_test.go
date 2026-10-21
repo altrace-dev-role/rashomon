@@ -156,9 +156,6 @@ func TestRemoveCodex(t *testing.T) {
 	if err != nil || n != len(CodexEvents) {
 		t.Fatalf("RemoveCodexIf removed %d, %v; want %d", n, err, len(CodexEvents))
 	}
-	if installed, _ := CodexInstalled(doc); installed {
-		t.Error("CodexInstalled after removing every install")
-	}
 	want := `{"description":"mine","hooks":{"PreToolUse":[` + foreignHook + `,` + claude + `]}}`
 	if got := compact(t, doc.Bytes()); got != compact(t, []byte(want)) {
 		t.Errorf("after removing every install:\n%s\nwant\n%s", got, want)
