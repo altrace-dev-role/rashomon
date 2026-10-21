@@ -1,0 +1,16 @@
+# Findings a person has read and judged neither a secret nor an account's
+# shape. H-113 skips these and fails on anything else.
+#
+# One entry per line: <path> <fingerprint> <why>. The fingerprint covers the
+# path, the shape and the exact value, so an entry excuses that value in that
+# file and nothing else; change the value, or put another beside it, and it
+# is a finding again. `go run ./test/tools/scrub -review <path>` prints it.
+# An entry that excuses nothing fails H-113 as well.
+#
+# The entropy test errs wide on purpose, and short runs of distinct symbols
+# are where it errs: a format string of 20 characters reaches the threshold
+# a random token is held to. A capture through scrub loses such a token to
+# [redacted]; a real capture committed before scrub existed is recorded here
+# instead of being rewritten, because its bytes are the point of it.
+
+test/fixtures/nono/audit-events.ndjson c882406bbe53b0e6 the session's sh -c script: four curl -w format strings ("ok1=%{http_code}" and the like) to pypi.org, example.com, the metadata address and github.com
