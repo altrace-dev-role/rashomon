@@ -49,6 +49,14 @@ prompts, file contents and tool output.
 
 ## Open questions
 
+- **Does `/hooks` rewrite `hooks.json`?** Unmeasured; to be measured in phase 4
+  against a real Codex session. Codex's 0.163.0 binary carries the message
+  "failed to serialize hooks.json", so it can write the file, and its trust
+  state (`trusted_hash`) appears to live in `config.toml`. If `/hooks` does
+  rewrite `hooks.json`, the tamper rules still recognise our entries by their
+  command line, but an entry Codex marked disabled inside the file would
+  still read as present in `status`.
+
 - **Do `apply_patch` edits fire `PreToolUse` or `PostToolUse`?** Untested.
   These files hold no `apply_patch` call. An earlier conclusion that such an
   edit fires no hook came from misreading this capture, and should not be

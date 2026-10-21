@@ -108,6 +108,12 @@ func Resolve(st *store.Store, sessionID, event string, harness Harness) Resoluti
 // strength of a file Codex never opens. Unknown resolves to
 // hook_entry_unresolved, an unverified run, which is what a run whose
 // configuration nobody read has earned.
+//
+// That holds after watch --harness codex has written Codex's hooks.json.
+// Our entry in that file does not mean Codex runs it: Codex skips an entry
+// until the user trusts it in /hooks, records the trust against a hash of the
+// entry that this program cannot compute, and trusts entries one by one, so a
+// PreToolUse that fires says nothing about PostToolUse.
 func resolveUnread(st *store.Store, sessionID string) Resolution {
 	res := Resolution{HookEntry: store.EntryUnknown, Probe: store.ProbeUnknown}
 	if fresh, err := st.ProbeFresh(sessionID); err == nil {

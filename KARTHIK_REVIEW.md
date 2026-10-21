@@ -1,7 +1,8 @@
-# Codex support, phase 2: items for Karthik's review
+# Codex support, phases 2 and 3: items for Karthik's review
 
 Branch `codex-adapter`, local only. Phase 2 makes the recorder take Codex
-hook payloads under `--harness codex`. Without the flag nothing changes:
+hook payloads under `--harness codex`. Phase 3 installs for Codex; its
+decisions are at the end, and it changes no record format. Without the flag nothing changes:
 H-144 pins every byte the Claude Code paths produced before the work began.
 
 Four items touch the record format or `docs/store-schema.json`. Each is in
@@ -90,15 +91,23 @@ vocabulary.
 **Why.** Reading Claude Code's settings for a Codex run is wrong in the
 dangerous direction. On a machine with both installed, our Claude Code entry
 reads as present, and the Codex run would be `verified` on the strength of a
-file Codex never opens (H-145 installs both and checks this). This program
-does not read Codex's own configuration yet, so "unresolved" is literally
-true.
+file Codex never opens (H-145 installs both and checks this).
+
+Phase 3 changes the reason "unresolved" is true, not its truth. `watch
+--harness codex` now writes Codex's `hooks.json`, but coverage still does not
+read it. Our entry being in the file does not mean Codex runs it. Codex skips
+an entry until the user trusts it in `/hooks`, records that trust against a
+hash of the entry, and the hash recipe is Codex's own. Trust is also per
+entry: a PreToolUse that fires shows nothing about whether PostToolUse is
+trusted. Until trust can be read, "unresolved" is the honest word.
 
 **The alternative.** A new reason, say `harness_config_unread`, would name
 the cause more precisely, at the cost of a schema enum entry and
-`store.Reasons()`.
+`store.Reasons()`. A further one, once trust can be read: a `hook_entry`
+value such as `present_codex`, set only when our entry is in `hooks.json`
+*and* trusted, which would let a Codex run read `verified`.
 
-## Decided in this phase, not format changes
+## Decided in phase 2, not format changes
 
 These were decided with the user rather than left to you; they are listed so
 nothing is a surprise.
@@ -113,10 +122,52 @@ nothing is a surprise.
 - **The three Codex tool names are classed without a harness check.** No
   Claude Code tool carries them.
 
-## Not in phase 2
+## Not in phase 2 or 3
 
-- Installing for Codex: writing Codex's hook configuration.
 - The report reading Codex transcripts. The final-message quote and the H-10
   accounting read Claude Code's transcript format.
 - `SessionEnd`: Codex did not fire it in the capture, so the run-time
   unterminated-entry check never runs for a Codex session.
+
+## Phase 3: installing for Codex
+
+`watch --harness codex` writes `PreToolUse` -> `hook`, `PostToolUse` ->
+`post` and `SessionStart` -> `probe start`, each with `--harness codex`, into
+`$CODEX_HOME/hooks.json` (or `~/.codex/hooks.json`). The marker, install id
+and tamper rules are the Claude Code installer's. `detach --harness codex`
+removes exactly those. No record, schema or reason code changes.
+
+### Decisions made with the user, each reversible
+
+- **A. No recap entries under Codex.** `Stop` and `UserPromptSubmit` are not
+  installed. recap returns before doing anything under Codex, so the entries
+  would cost two trust prompts and a process per turn for nothing. *To
+  reverse:* add both to `install.CodexEvents` with `recap` and `recap
+  pending`. They would need trusting again once recap speaks.
+- **B. A missing Codex directory is refused, not created.** `watch` names the
+  directory and `CODEX_HOME`. *To reverse:* create it. The cost is entries
+  that never run on a machine without Codex.
+- **C. `[features] hooks = false` is not checked.** This build has no TOML
+  reader. `watch` and `status` both say the setting was not checked. *To
+  reverse:* a TOML dependency, or a narrow reader for one key in two files.
+- **D. `status` shows `codex:` only where there is Codex**, meaning the
+  directory exists. A rashomon Codex entry lives inside it, so that covers an
+  install too. A Claude Code-only
+  user's status is unchanged. *To reverse:* always print it.
+
+### Left to you
+
+- **Coverage stays unverifiable for Codex** until trust can be read (item 4,
+  above). Or add `present_codex`.
+- **One install id for both harnesses.** The store is shared, so the same id
+  sits in `settings.json` and `hooks.json`. Each file's detach touches only
+  its own entries.
+- **A moved binary means trusting again.** `watch` refreshes the path, which
+  changes the hash, and says so. The alternative is refusing to rewrite, and
+  telling the user to.
+- **Tamper rules unchanged.** `async` or `commandWindows` added to our Codex
+  entry is not treated as an edit, as Claude Code's rules ignore keys they do
+  not install. `async: true` would run the recorder in the background. Whether
+  that matters is unmeasured.
+- **Open, for phase 4:** whether `/hooks` rewrites `hooks.json` (see
+  `test/fixtures/codex/README.md`).

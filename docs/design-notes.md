@@ -39,6 +39,8 @@ starts carries its own deferred recover, or it starts none.
 ## Installation and restore
 
 The target is `~/.claude/settings.json`, named in code and never inferred.
+Codex's `hooks.json` is the other target, under `--harness codex`; see Codex,
+below.
 Nothing is ever written to a settings file committed to a repository.
 
 The installed entry uses `"matcher": "*"` and `"timeout": 5`.
@@ -751,7 +753,8 @@ What a real capture showed (`test/fixtures/codex`), and what follows from it:
 - **Coverage reads none of Claude Code's configuration under Codex.** With
   both agents installed, our Claude Code entry would otherwise vouch for a
   Codex run. The hook entry is `unknown`, so a Codex run is `unverified` with
-  `hook_entry_unresolved`.
+  `hook_entry_unresolved`. That stays true once `watch --harness codex` has
+  installed: see below.
 - **recap prints nothing under Codex.** How Codex reads a Stop hook's stdout
   is unmeasured.
 - **`apply_patch` is a write, and Codex's spawn and wait tools are agent
@@ -759,8 +762,63 @@ What a real capture showed (`test/fixtures/codex`), and what follows from it:
 - **`SessionEnd` never fired**, so a Codex run has no end-phase coverage
   record, and a killed handler is not flagged while the run is live.
 
-Not yet: installing for Codex, and a report that reads Codex transcripts.
-H-145 replays the capture end to end.
+### Installing for Codex
+
+`rashomon watch --harness codex` writes three entries into Codex's
+`hooks.json`, at `$CODEX_HOME/hooks.json` when the variable is set and
+`~/.codex/hooks.json` otherwise. Codex's hooks page names only `~/.codex`, but
+the CLI resolves `CODEX_HOME` itself. A repository's `.codex/hooks.json` is
+never written, for the reason project settings are not. When the directory is
+missing, `watch` refuses rather than create it.
+
+| Codex event | matcher | command line |
+| --- | --- | --- |
+| `PreToolUse` | `*` | `<exe> hook --harness codex --install <id>` |
+| `PostToolUse` | `*` | `<exe> post --harness codex --install <id>` |
+| `SessionStart` | none | `<exe> probe start --harness codex --install <id>` |
+
+Each entry has a five-second timeout. The marker, the install id and the
+tamper rules are Claude Code's: one entry per event, a moved binary
+refreshed, an edited entry refused until `--force`, foreign hooks left byte
+for byte. Ownership includes the flag, so a Claude Code command line in
+`hooks.json` is not ours, and a Codex one in `settings.json` is not either.
+`detach --harness codex` takes `--install`, `--all` and `--force`, and plain
+`detach` never touches Codex's file.
+
+Left out: `PostToolUseFailure` and `StopFailure`, which Codex does not have;
+`SessionEnd`, which never fired and whose timeout Codex caps at three seconds;
+and `Stop` and `UserPromptSubmit`, because recap prints nothing under Codex,
+and the user would be asked to trust two entries that do nothing.
+
+**Trust.** Codex runs a hook only once the user has trusted it in `/hooks`,
+and it records that trust against a hash of the entry. So:
+
+- `watch` says, every time, that nothing is recorded until the entries are
+  trusted. It cannot read whether they are.
+- A `watch` that rewrites an entry (the binary moved) says so: Codex treats a
+  rewritten entry as new and skips it until it is trusted again. A `watch`
+  that changes nothing writes nothing, so trust survives it.
+- Coverage is unchanged. Our entry being in `hooks.json` says nothing about
+  whether Codex runs it, and trust is per entry: a PreToolUse that fires does
+  not show that PostToolUse is trusted. A Codex run therefore stays
+  `unverified` with `hook_entry_unresolved`, trusted or not.
+
+`[features] hooks = false` in Codex's `config.toml` or `requirements.toml`
+turns every hook off. This build has no TOML reader, so it does not check
+the setting. `watch` and `status` both say so, rather than imply that hooks
+will run.
+
+`status` adds a `codex:` section only when the Codex directory exists. A
+rashomon Codex entry lives in that directory, so none can be present without
+it. It lists our three entries, the other
+installs, and the two things it did not read: trust and `hooks = false`.
+
+H-146 runs each installed command line through a shell with the capture's
+payloads. Every one is silent on stdout, because Codex adds a
+`SessionStart` hook's stdout to the agent's context.
+
+Not yet: a report that reads Codex transcripts. H-145 replays the capture end
+to end.
 
 ## Known limits
 
