@@ -73,7 +73,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdRecap(rest, stdin, stdout, stderr)
 
 	case "watch":
-		return guarded(stderr, noArgs(rest, stdout, cmdWatch))
+		return guarded(stderr, harnessArgs(rest, stdout, cmdWatch, cmdWatchCodex))
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
 	case "pause":
@@ -818,9 +818,12 @@ func cmdWatch(stdout io.Writer) error {
 }
 
 func cmdDetach(args []string, stdout io.Writer) error {
-	installID, all, force, err := detachTarget(args)
+	installID, all, force, codex, err := detachTarget(args)
 	if err != nil {
 		return err
+	}
+	if codex {
+		return detachCodex(installID, all, force, stdout)
 	}
 
 	remove := func(doc *settings.Document) (int, []install.Modified, error) {
@@ -865,14 +868,23 @@ func cmdDetach(args []string, stdout io.Writer) error {
 // detachTarget resolves which entries a detach removes: the install named on
 // the command line, every install that left a marker, or -- for a plain detach
 // -- the one this machine's store records.
-func detachTarget(args []string) (installID string, all, force bool, err error) {
+func detachTarget(args []string) (installID string, all, force, codex bool, err error) {
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--install":
 			if i+1 >= len(args) {
-				return "", false, false, errors.New("--install needs a value")
+				return "", false, false, false, errors.New("--install needs a value")
 			}
 			installID = args[i+1]
+			i++
+		case hook.HarnessFlag:
+			if i+1 >= len(args) {
+				return "", false, false, false, errors.New("--harness needs a value")
+			}
+			if err := knownHarness(args[i+1]); err != nil {
+				return "", false, false, false, err
+			}
+			codex = true
 			i++
 		case "--all":
 			all = true
@@ -882,17 +894,17 @@ func detachTarget(args []string) (installID string, all, force bool, err error) 
 			// remove them.
 			force = true
 		default:
-			return "", false, false, fmt.Errorf("unknown argument %q", args[i])
+			return "", false, false, false, fmt.Errorf("unknown argument %q", args[i])
 		}
 	}
 	if all && installID != "" {
-		return "", false, false, errors.New("--install and --all name different sets of entries; pass one or the other")
+		return "", false, false, false, errors.New("--install and --all name different sets of entries; pass one or the other")
 	}
 	if all || installID != "" {
-		return installID, all, force, nil
+		return installID, all, force, codex, nil
 	}
 	installID, err = storedInstallID()
-	return installID, false, force, err
+	return installID, false, force, codex, err
 }
 
 // cmdPause engages recording state (Part 2). See checkPaused for what a
@@ -1743,6 +1755,13 @@ usage:
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
                                marker, whatever its id
+  rashomon watch --harness codex install the PreToolUse and PostToolUse
+                               recorders and the SessionStart probe into
+                               Codex's hooks.json (CODEX_HOME, or ~/.codex);
+                               Codex runs them only once trusted in /hooks
+  rashomon detach --harness codex [--install <id> | --all] [--force]
+                               remove them from Codex's hooks.json, leaving
+                               everything else as found
   rashomon pause                 stop recording on this machine, reaching every
                                installed origin; leaves a record of the change
   rashomon resume                start recording again; closes the paused
