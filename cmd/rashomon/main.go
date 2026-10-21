@@ -254,7 +254,12 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		return exitOK
 	}
 
-	// Guarded whole, for the reason given in cmdHook.
+	// Guarded from the pause check on, for the reason given in cmdHook: the
+	// pause check, opening the store, the stand-down and the probe itself.
+	// The signal watch and the phase check above run outside the barrier,
+	// which cmdHook and cmdPost do not allow themselves. This comment once
+	// said "guarded whole", and a reader checking the promise in this file's
+	// header would have had no reason to look further.
 	_ = safe.Guard(func() error {
 		if checkPaused(args, stdin, phase, stderr) {
 			return nil
