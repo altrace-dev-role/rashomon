@@ -31,12 +31,16 @@ import (
 // reader that printed nothing at all does not pass. The script itself runs
 // against a stand-in claude: it must refuse a machine with a user settings
 // file before touching anything, record the version before any check, and
-// remove its scratch when it is done.
+// when it is done leave TMPDIR and HOME as it found them -- its scratch gone,
+// and with it what each session wrote outside the scratch (a transcript, a
+// session-env directory, files under $TMPDIR/claude-<uid> that name the
+// session's model and tools).
 //
 // Break: the recorder keeping a raw prompt_id, a failure's error text or a
 // key name it does not recognise; the hook summary printing a hook's stdout
-// instead of its size; the script dropping its refusal, its version line or
-// its cleanup.
+// instead of its size; the script dropping its refusal, its version line, the
+// removal of its scratch, of a session's transcript or session-env directory,
+// or the TMPDIR it points into the scratch.
 
 // leak is the canary. Upper case on purpose: a key name the recorder keeps
 // must look like Claude Code's own, lower case and underscored, so a key made
@@ -386,18 +390,44 @@ func TestH108_TheStreamSummariesPrintNoValue(t *testing.T) {
 	})
 }
 
+// hcStub is the stand-in claude. Every session it is given an id for leaves
+// what a real one left outside the script's scratch when measured on 2.1.305:
+// a cache-break-state file under $TMPDIR/claude-<uid> (the real one holds the
+// account's model, API betas and tool names), an empty session-env directory
+// and a transcript under the config directory. An earlier stand-in wrote
+// nothing, so "leaves nothing behind" held here while a real run left all
+// three. Each path it writes goes to $HC_STUB_WROTE, so the test can tell a
+// cleanup that removed them from a stand-in that never wrote them.
+const hcStub = `#!/bin/sh
+printf '%s\n' "$*" >> "$HC_STUB_LOG"
+if [ "$1" = --version ]; then echo '0.0.0-stub (H-108)'; exit 0; fi
+sid= prev=
+for a in "$@"; do
+  if [ "$prev" = --session-id ]; then sid=$a; fi
+  prev=$a
+done
+if [ -n "$sid" ]; then
+  cfg=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
+  tmpd=${TMPDIR:-/tmp}/claude-$(id -u)
+  slug=$(pwd | tr -c 'A-Za-z0-9\n' '-')
+  mkdir -p "$tmpd" "$cfg/session-env/$sid" "$cfg/projects/$slug"
+  echo '{}' > "$tmpd/cache-break-state-$sid.json"
+  : > "$cfg/projects/$slug/$sid.jsonl"
+  printf '%s\n' "$tmpd/cache-break-state-$sid.json" "$cfg/session-env/$sid" "$cfg/projects/$slug/$sid.jsonl" >> "$HC_STUB_WROTE"
+fi
+exit 1
+`
+
 // hcScript runs test/live/hc-items.sh against a stand-in claude, with a home
-// and a temporary directory of its own, and returns what it printed and what
-// the stand-in was asked.
-func hcScript(t *testing.T, home string) (res result, asked []string, tmp string) {
+// and a temporary directory of its own, and returns what it printed, what the
+// stand-in was asked and the paths the stand-in wrote.
+func hcScript(t *testing.T, home string) (res result, asked []string, tmp string, wrote []string) {
 	t.Helper()
 	needTools(t, "sh", "python3", "git")
 	stub := t.TempDir()
 	stubLog := filepath.Join(t.TempDir(), "asked")
-	writeFile(t, filepath.Join(stub, "claude"), "#!/bin/sh\n"+
-		"printf '%s\\n' \"$*\" >> \"$HC_STUB_LOG\"\n"+
-		"if [ \"$1\" = --version ]; then echo '0.0.0-stub (H-108)'; exit 0; fi\n"+
-		"exit 1\n")
+	stubWrote := filepath.Join(t.TempDir(), "wrote")
+	writeFile(t, filepath.Join(stub, "claude"), hcStub)
 	if err := os.Chmod(filepath.Join(stub, "claude"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -417,6 +447,7 @@ func hcScript(t *testing.T, home string) (res result, asked []string, tmp string
 		"TMPDIR="+tmp,
 		"RASHOMON_BIN="+rashomonBin,
 		"HC_STUB_LOG="+stubLog,
+		"HC_STUB_WROTE="+stubWrote,
 	)
 	cmd := exec.Command("sh", filepath.Join(moduleRoot, "test", "live", "hc-items.sh"))
 	cmd.Dir = moduleRoot
@@ -426,7 +457,10 @@ func hcScript(t *testing.T, home string) (res result, asked []string, tmp string
 	if b, err := os.ReadFile(stubLog); err == nil {
 		asked = strings.Split(strings.TrimSpace(string(b)), "\n")
 	}
-	return res, asked, tmp
+	if b, err := os.ReadFile(stubWrote); err == nil {
+		wrote = strings.Split(strings.TrimSpace(string(b)), "\n")
+	}
+	return res, asked, tmp, wrote
 }
 
 func filesUnder(t *testing.T, root string) []string {
@@ -447,7 +481,7 @@ func TestH108_RefusesAMachineWithAUserSettingsFile(t *testing.T) {
 	const body = `{"hooks": {"SessionStart": []}}` + "\n"
 	writeFile(t, settings, body)
 
-	res, asked, tmp := hcScript(t, home)
+	res, asked, tmp, _ := hcScript(t, home)
 	if res.exitCode == 0 {
 		t.Errorf("the script ran over an existing user settings file:\n%s", res.stdout)
 	}
@@ -466,8 +500,16 @@ func TestH108_RefusesAMachineWithAUserSettingsFile(t *testing.T) {
 }
 
 func TestH108_RecordsTheVersionAndLeavesNothingBehind(t *testing.T) {
+	// A home claude has run in before: the directories its sessions write
+	// into are already there, and they are not the script's to remove.
 	home := t.TempDir()
-	res, asked, tmp := hcScript(t, home)
+	for _, d := range []string{"projects", "session-env"} {
+		if err := os.MkdirAll(filepath.Join(home, ".claude", d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := filesUnder(t, home)
+	res, asked, tmp, wrote := hcScript(t, home)
 	t.Logf("what the script printed with every session failing:\n%s", res.stdout)
 	if res.exitCode != 0 {
 		t.Fatalf("exit %d with a claude whose every session fails; each check should say what it saw and go on\nstdout:\n%s\nstderr:\n%s", res.exitCode, res.stdout, res.stderr)
@@ -489,11 +531,30 @@ func TestH108_RecordsTheVersionAndLeavesNothingBehind(t *testing.T) {
 	if v < 0 || first < 0 || v > first {
 		t.Errorf("the version is not recorded before the first check:\n%s", res.stdout)
 	}
-	if left := filesUnder(t, tmp); len(left) != 0 {
-		t.Errorf("the run left its scratch behind: %v", left)
+	// The positive twin: the stand-in did leave each kind of file a real
+	// session leaves, so the checks below are about a cleanup and not about
+	// a stand-in that wrote nothing.
+	for _, kind := range []string{"/claude-", "/session-env/", "/projects/"} {
+		n := 0
+		for _, w := range wrote {
+			if strings.Contains(w, kind) {
+				n++
+			}
+		}
+		if n == 0 {
+			t.Errorf("the stand-in wrote nothing under %s, so its removal is not tested: %v", kind, wrote)
+		}
 	}
-	if left := filesUnder(t, home); len(left) != 0 {
-		t.Errorf("the run wrote under HOME: %v", left)
+	for _, w := range wrote {
+		if _, err := os.Lstat(w); !os.IsNotExist(err) {
+			t.Errorf("a session's %s is still there after the run", w)
+		}
+	}
+	if left := filesUnder(t, tmp); len(left) != 0 {
+		t.Errorf("the run left its scratch, or Claude Code's temporary files for its sessions, in TMPDIR: %v", left)
+	}
+	if after := filesUnder(t, home); strings.Join(after, "\n") != strings.Join(before, "\n") {
+		t.Errorf("HOME held %v before the run and %v after it", before, after)
 	}
 	assertNoLeak(t, "the script's output", res.stdout+res.stderr)
 }

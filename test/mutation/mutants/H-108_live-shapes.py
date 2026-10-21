@@ -30,3 +30,17 @@ m("H-108 the script leaves its scratch behind", "test/live/hc-items.sh",
   "  rm -rf \"$T\"\n",
   "  :\n",
   "TestH108_RecordsTheVersionAndLeavesNothingBehind")
+# What a real session leaves outside the scratch, each written by the
+# stand-in claude the way 2.1.305 wrote it.
+m("H-108 the script leaves Claude Code's temporary files in the caller's TMPDIR", "test/live/hc-items.sh",
+  "export TMPDIR=\"$T/tmp\"\n",
+  "",
+  "TestH108_RecordsTheVersionAndLeavesNothingBehind")
+m("H-108 the script leaves a session's session-env directory", "test/live/hc-items.sh",
+  "    rmdir \"$CFG/session-env/$s\" 2> /dev/null\n",
+  "    :\n",
+  "TestH108_RecordsTheVersionAndLeavesNothingBehind")
+m("H-108 the script leaves a session's transcript", "test/live/hc-items.sh",
+  "      rm -rf \"$f\" \"${f%.jsonl}\"; rmdir \"$(dirname \"$f\")\" 2> /dev/null\n",
+  "      :\n",
+  "TestH108_RecordsTheVersionAndLeavesNothingBehind")

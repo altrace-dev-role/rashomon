@@ -14,9 +14,13 @@
 # goes through it too; what comes out is key names, counts, sizes, exit codes,
 # yes or no, values from closed lists, and digests it compares but never shows
 # (H-108 holds it to that). All scratch is under one directory from mktemp,
-# removed on exit with the transcripts Claude Code writes for the sessions
-# started here. What Claude Code writes elsewhere for its own use -- its
-# caches of remote settings, for one -- is not this script's to remove.
+# removed on exit with the transcripts and session-env directories Claude Code
+# writes for the sessions started here. TMPDIR points inside that directory
+# while the checks run: Claude Code keeps per-session files under
+# $TMPDIR/claude-<uid>, and the cache-break-state ones record the model, API
+# betas and tool names a session ran with. What Claude Code writes elsewhere
+# for its own use -- its caches of remote settings, for one -- is not this
+# script's to remove.
 #
 # Unlike l-items.sh this never writes ~/.claude/settings.json: every hook goes
 # in through --settings. It refuses to run when that file exists all the same,
@@ -35,7 +39,10 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 T=$(mktemp -d "${TMPDIR:-/tmp}/rashomon-hc.XXXXXX")
 SIDS=
 # Children HC-4 leaves alive are killed, then every session this script
-# started loses its transcript, then the scratch goes.
+# started loses its transcript and its session-env directory, then the scratch
+# goes. The session-env directory goes with rmdir and not rm: these checks set
+# no session environment, so a non-empty one holds something this script did
+# not put there, and it is left for a person to look at.
 cleanup() {
   set +e
   for f in "$T"/hc4/*/*.pid; do [ -f "$f" ] && kill "$(cat "$f")" 2> /dev/null; done
@@ -44,6 +51,7 @@ cleanup() {
       [ -e "$f" ] || continue
       rm -rf "$f" "${f%.jsonl}"; rmdir "$(dirname "$f")" 2> /dev/null
     done
+    rmdir "$CFG/session-env/$s" 2> /dev/null
   done
   rm -rf "$T"
 }
@@ -53,6 +61,8 @@ trap 'exit 143' TERM
 # Paths go into JSON and into hook command lines unquoted; refusing an odd one
 # is cheaper than quoting for both.
 case $T in *[!A-Za-z0-9/._-]*) echo "refusing: the scratch path needs quoting this script does not do" >&2; exit 1 ;; esac
+mkdir "$T/tmp"
+export TMPDIR="$T/tmp"
 cp "$ROOT/test/live/hc_shape.py" "$T/shape.py"
 SHAPE="python3 -I $T/shape.py"
 
@@ -296,4 +306,4 @@ was "2026-10-20, 2.1.304: PreCompact(trigger manual), SessionStart(source compac
   "compact SessionStart carried prompt_id, the startup and resume ones did not"
 
 echo
-echo "every check's scratch was under one directory, removed on exit with the transcripts of the sessions started here"
+echo "every check's scratch, TMPDIR among it, was under one directory, removed on exit with the transcripts and session-env directories of the sessions started here"
