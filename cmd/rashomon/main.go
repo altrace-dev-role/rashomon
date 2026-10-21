@@ -187,6 +187,10 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
+		harness, ok := harnessOrStandDown(args, stderr)
+		if !ok {
+			return nil
+		}
 		if checkPaused(args, stdin, store.PhaseCall, stderr) {
 			return nil
 		}
@@ -200,6 +204,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 
 		h := hook.New(st, time.Now)
+		h.Harness = harness
 		captureErr := safe.Guard(func() error { return h.Capture(stdin) })
 		_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })
 		return nil
@@ -219,6 +224,10 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
+		harness, ok := harnessOrStandDown(args, stderr)
+		if !ok {
+			return nil
+		}
 		if checkPaused(args, stdin, store.PhasePost, stderr) {
 			return nil
 		}
@@ -232,6 +241,7 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 
 		p := hook.NewPost(st, time.Now)
+		p.Harness = harness
 		captureErr := safe.Guard(func() error { return p.Capture(stdin) })
 		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
 		return nil
@@ -256,6 +266,10 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 
 	// Guarded whole, for the reason given in cmdHook.
 	_ = safe.Guard(func() error {
+		harness, ok := harnessOrStandDown(args, stderr)
+		if !ok {
+			return nil
+		}
 		if checkPaused(args, stdin, phase, stderr) {
 			return nil
 		}
@@ -266,7 +280,7 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		if standsDown(args, st, stderr) {
 			return nil
 		}
-		hook.RunProbe(sig, phase, stdin, st, time.Now)
+		hook.RunProbe(sig, phase, harness, stdin, st, time.Now)
 		return nil
 	})
 	return exitOK
@@ -368,6 +382,9 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	_ = safe.Guard(func() error {
 		fault.Inject(fault.PointRecapStart)
 
+		if !recapSpeaksFor(args, stderr) {
+			return nil
+		}
 		now := time.Now()
 		payload := readRecapPayload(stdin, recapStdinTimeout)
 

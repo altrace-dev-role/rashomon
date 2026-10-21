@@ -29,7 +29,7 @@ type sessionPayload struct {
 //
 // It never fails. A probe that cannot do its job records that it could not,
 // and returns.
-func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time) {
+func RunProbe(sig *Signals, phase string, harness Harness, in io.Reader, st *store.Store, now func() time.Time) {
 	sessionID := UnattributedSession
 	reason := ""
 	cwd := ""

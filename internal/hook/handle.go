@@ -39,6 +39,10 @@ type Handler struct {
 	st  *store.Store
 	now func() time.Time
 
+	// Harness is the agent that invoked this handler; ClaudeCode unless the
+	// command line named another.
+	Harness Harness
+
 	sessionID string
 	toolUseID string
 	cwd       string

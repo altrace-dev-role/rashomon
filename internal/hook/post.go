@@ -99,6 +99,9 @@ type Post struct {
 	st  *store.Store
 	now func() time.Time
 
+	// Harness is the agent that invoked this handler; see Handler.Harness.
+	Harness Harness
+
 	sessionID string
 	cwd       string
 }
