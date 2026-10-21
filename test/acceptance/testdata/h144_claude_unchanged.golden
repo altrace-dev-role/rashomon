@@ -1,0 +1,134 @@
+## probe start
+exit 0
+stdout ""
+stderr ""
+## pre ok
+exit 0
+stdout ""
+stderr ""
+## post ok
+exit 0
+stdout ""
+stderr ""
+## pre failing
+exit 0
+stdout ""
+stderr ""
+## post failure
+exit 0
+stdout ""
+stderr ""
+## pre write
+exit 0
+stdout ""
+stderr ""
+## post write
+exit 0
+stdout ""
+stderr ""
+## pre background
+exit 0
+stdout ""
+stderr ""
+## post background
+exit 0
+stdout ""
+stderr ""
+## pre subagent
+exit 0
+stdout ""
+stderr ""
+## post subagent
+exit 0
+stdout ""
+stderr ""
+## pre interrupted
+exit 0
+stdout ""
+stderr ""
+## post interrupted
+exit 0
+stdout ""
+stderr ""
+## pre fetch
+exit 0
+stdout ""
+stderr ""
+## pre mcp
+exit 0
+stdout ""
+stderr ""
+## pre no session
+exit 0
+stdout ""
+stderr ""
+## pre other install
+exit 0
+stdout ""
+stderr "rashomon: entry belongs to another install; standing down\n"
+## recap stop
+exit 0
+stdout "{\"systemMessage\":\"※ rashomon: 1 recorded failure. 2 declarations without recorded execution.\\n            → rashomon report --session sess-1\"}"
+stderr ""
+## recap pending
+exit 0
+stdout ""
+stderr ""
+## pre paused
+exit 0
+stdout ""
+stderr ""
+## probe end
+exit 0
+stdout ""
+stderr ""
+## file runs/sess-1/records.ndjson
+{"type":"declaration","schema_version":4,"seq":1,"recorded_at_unix_ms":0,"tool_use_id":"toolu_1","session_id":"sess-1","prompt_id":"prompt-1","agent_id":null,"agent_type":null,"transcript_path":"/tmp/transcripts/sess-1.jsonl","permission_mode":"default","tool_name":"Bash","shape":{"program":"git","verb_class":"vcs","argc":3,"digest":"b383af45218d5a97499ba1db4f00a7949813e6222c525f897d74305c985643b8","may_write":false,"status_masked":"none","runner_digest":null},"hosts":null,"ssh_hosts":null,"cwd_digest":"9ff2a1f9def4d5ad97c08227fdab7d9bc3e0e9a95dd233735e5525318f517856","file_label":null,"host_source":null,"rule_match":null,"rules_version":1}
+{"type":"terminal","schema_version":4,"seq":2,"recorded_at_unix_ms":0,"tool_use_id":"toolu_1","session_id":"sess-1","outcome":"ok","reason":null}
+{"type":"execution","schema_version":4,"seq":3,"recorded_at_unix_ms":0,"tool_use_id":"toolu_1","session_id":"sess-1","tool_name":"Bash","outcome":"ok","exit_code":null,"is_interrupt":null,"duration_ms":null,"executed_digest":"b383af45218d5a97499ba1db4f00a7949813e6222c525f897d74305c985643b8","rule_match":null,"backgrounded":false,"status_masked":"none","runner_digest":null,"rules_version":1}
+{"type":"declaration","schema_version":4,"seq":4,"recorded_at_unix_ms":0,"tool_use_id":"toolu_2","session_id":"sess-1","prompt_id":"prompt-1","agent_id":null,"agent_type":null,"transcript_path":"/tmp/transcripts/sess-1.jsonl","permission_mode":"default","tool_name":"Bash","shape":{"program":"go","verb_class":"test","argc":3,"digest":"f24e263c5961f9adc9e48cc1b4de0af5e76d7839bdb3131b7ee7567ce252023a","may_write":false,"status_masked":"none","runner_digest":"4e80a164bc38b5e4c69f40623c903d4e78d7b47153b48fc6415fb7ae785a7bff"},"hosts":null,"ssh_hosts":null,"cwd_digest":"9ff2a1f9def4d5ad97c08227fdab7d9bc3e0e9a95dd233735e5525318f517856","file_label":null,"host_source":null,"rule_match":null,"rules_version":1}
+{"type":"terminal","schema_version":4,"seq":5,"recorded_at_unix_ms":0,"tool_use_id":"toolu_2","session_id":"sess-1","outcome":"ok","reason":null}
+{"type":"execution","schema_version":4,"seq":6,"recorded_at_unix_ms":0,"tool_use_id":"toolu_2","session_id":"sess-1","tool_name":"Bash","outcome":"failed","exit_code":1,"is_interrupt":false,"duration_ms":1200,"executed_digest":"f24e263c5961f9adc9e48cc1b4de0af5e76d7839bdb3131b7ee7567ce252023a","rule_match":null,"backgrounded":false,"status_masked":"none","runner_digest":"4e80a164bc38b5e4c69f40623c903d4e78d7b47153b48fc6415fb7ae785a7bff","rules_version":1}
+{"type":"declaration","schema_version":4,"seq":7,"recorded_at_unix_ms":0,"tool_use_id":"toolu_3","session_id":"sess-1","prompt_id":"prompt-1","agent_id":null,"agent_type":null,"transcript_path":"/tmp/transcripts/sess-1.jsonl","permission_mode":"default","tool_name":"Write","shape":{"program":null,"verb_class":"write","argc":null,"digest":"eb091bf4fbfc22f0286390e295c753f3d87c8995baf6fb1b4df88fe0a5336596","may_write":false,"status_masked":null,"runner_digest":null},"hosts":null,"ssh_hosts":null,"cwd_digest":"9ff2a1f9def4d5ad97c08227fdab7d9bc3e0e9a95dd233735e5525318f517856","file_label":"env-file","host_source":null,"rule_match":null,"rules_version":1}
+{"type":"terminal","schema_version":4,"seq":8,"recorded_at_unix_ms":0,"tool_use_id":"toolu_3","session_id":"sess-1","outcome":"ok","reason":null}
+{"type":"execution","schema_version":4,"seq":9,"recorded_at_unix_ms":0,"tool_use_id":"toolu_3","session_id":"sess-1","tool_name":"Write","outcome":"ok","exit_code":null,"is_interrupt":null,"duration_ms":null,"executed_digest":"eb091bf4fbfc22f0286390e295c753f3d87c8995baf6fb1b4df88fe0a5336596","rule_match":null,"backgrounded":false,"status_masked":null,"runner_digest":null,"rules_version":1}
+{"type":"declaration","schema_version":4,"seq":10,"recorded_at_unix_ms":0,"tool_use_id":"toolu_4","session_id":"sess-1","prompt_id":"prompt-1","agent_id":null,"agent_type":null,"transcript_path":"/tmp/transcripts/sess-1.jsonl","permission_mode":"default","tool_name":"Bash","shape":{"program":"sleep","verb_class":"execute","argc":2,"digest":"9b945481b80224a3e08b197cb016b820a57fdd0d2352ecf6dc25821544b5cf0a","may_write":false,"status_masked":"none","runner_digest":null},"hosts":null,"ssh_hosts":null,"cwd_digest":"9ff2a1f9def4d5ad97c08227fdab7d9bc3e0e9a95dd233735e5525318f517856","file_label":null,"host_source":null,"rule_match":null,"rules_version":1}
+{"type":"terminal","schema_version":4,"seq":11,"recorded_at_unix_ms":0,"tool_use_id":"toolu_4","session_id":"sess-1","outcome":"ok","reason":null}
+{"type":"execution","schema_version":4,"seq":12,"recorded_at_unix_ms":0,"tool_use_id":"toolu_4","session_id":"sess-1","tool_name":"Bash","outcome":"ok","exit_code":null,"is_interrupt":null,"duration_ms":null,"executed_digest":"9b945481b80224a3e08b197cb016b820a57fdd0d2352ecf6dc25821544b5cf0a","rule_match":null,"backgrounded":true,"status_masked":"none","runner_digest":null,"rules_version":1}
+{"type":"declaration","schema_version":4,"seq":13,"recorded_at_unix_ms":0,"tool_use_id":"toolu_5","session_id":"sess-1","prompt_id":"prompt-1","agent_id":"agent-7","agent_type":"Explore","transcript_path":"/tmp/transcripts/sess-1/subagents/agent-7.jsonl","permission_mode":"default","tool_name":"Bash","shape":{"program":"ls","verb_class":"read","argc":2,"digest":"d1a15ded1f543c964351226f9d04357379ce9940f4eb35303865de6fbdf1c5cd","may_write":false,"status_masked":"none","runner_digest":null},"hosts":null,"ssh_hosts":null,"cwd_digest":"9ff2a1f9def4d5ad97c08227fdab7d9bc3e0e9a95dd233735e5525318f517856","file_label":null,"host_source":null,"rule_match":null,"rules_version":1}
+{"type":"terminal","schema_version":4,"seq":14,"recorded_at_unix_ms":0,"tool_use_id":"toolu_5","session_id":"sess-1","outcome":"ok","reason":null}
+{"type":"execution","schema_version":4,"seq":15,"recorded_at_unix_ms":0,"tool_use_id":"toolu_5","session_id":"sess-1","tool_name":"Bash","outcome":"ok","exit_code":null,"is_interrupt":null,"duration_ms":null,"executed_digest":"d1a15ded1f543c964351226f9d04357379ce9940f4eb35303865de6fbdf1c5cd","rule_match":null,"backgrounded":false,"status_masked":"none","runner_digest":null,"rules_version":1}
+{"type":"declaration","schema_version":4,"seq":16,"recorded_at_unix_ms":0,"tool_use_id":"toolu_6","session_id":"sess-1","prompt_id":"prompt-1","agent_id":null,"agent_type":null,"transcript_path":"/tmp/transcripts/sess-1.jsonl","permission_mode":"default","tool_name":"Bash","shape":{"program":"make","verb_class":"execute","argc":9,"digest":"798b2c7979abce65970d5eec8121c5a47d2c4edc3984c451e55e902dd3b24e38","may_write":false,"status_masked":"test","runner_digest":"d9a6e84051fcfdb9388651d21fc26e4c6d0dcee6db0ada08a94c9cc3f4203d8e"},"hosts":null,"ssh_hosts":null,"cwd_digest":"9ff2a1f9def4d5ad97c08227fdab7d9bc3e0e9a95dd233735e5525318f517856","file_label":null,"host_source":null,"rule_match":null,"rules_version":1}
+{"type":"terminal","schema_version":4,"seq":17,"recorded_at_unix_ms":0,"tool_use_id":"toolu_6","session_id":"sess-1","outcome":"ok","reason":null}
+{"type":"execution","schema_version":4,"seq":18,"recorded_at_unix_ms":0,"tool_use_id":"toolu_6","session_id":"sess-1","tool_name":"Bash","outcome":"interrupted","exit_code":1,"is_interrupt":true,"duration_ms":1200,"executed_digest":"798b2c7979abce65970d5eec8121c5a47d2c4edc3984c451e55e902dd3b24e38","rule_match":null,"backgrounded":false,"status_masked":"test","runner_digest":"d9a6e84051fcfdb9388651d21fc26e4c6d0dcee6db0ada08a94c9cc3f4203d8e","rules_version":1}
+{"type":"declaration","schema_version":4,"seq":19,"recorded_at_unix_ms":0,"tool_use_id":"toolu_7","session_id":"sess-1","prompt_id":"prompt-1","agent_id":null,"agent_type":null,"transcript_path":"/tmp/transcripts/sess-1.jsonl","permission_mode":"default","tool_name":"WebFetch","shape":{"program":null,"verb_class":"network","argc":null,"digest":"cd3fda6873efb664cb37d3d3833c0d7e50ae960b6163b87a65a8c6768ee6e282","may_write":false,"status_masked":null,"runner_digest":null},"hosts":["example.com"],"ssh_hosts":null,"cwd_digest":"9ff2a1f9def4d5ad97c08227fdab7d9bc3e0e9a95dd233735e5525318f517856","file_label":null,"host_source":null,"rule_match":null,"rules_version":1}
+{"type":"terminal","schema_version":4,"seq":20,"recorded_at_unix_ms":0,"tool_use_id":"toolu_7","session_id":"sess-1","outcome":"ok","reason":null}
+{"type":"declaration","schema_version":4,"seq":21,"recorded_at_unix_ms":0,"tool_use_id":"toolu_8","session_id":"sess-1","prompt_id":"prompt-1","agent_id":null,"agent_type":null,"transcript_path":"/tmp/transcripts/sess-1.jsonl","permission_mode":"default","tool_name":"mcp__srv__tool","shape":{"program":null,"verb_class":"mcp","argc":null,"digest":"cbd5eb729b9d01c5c8c3f87e7cf47a2015e0403a798cb75482302cc48a7b1de8","may_write":false,"status_masked":null,"runner_digest":null},"hosts":null,"ssh_hosts":null,"cwd_digest":"9ff2a1f9def4d5ad97c08227fdab7d9bc3e0e9a95dd233735e5525318f517856","file_label":null,"host_source":null,"rule_match":null,"rules_version":1}
+{"type":"terminal","schema_version":4,"seq":22,"recorded_at_unix_ms":0,"tool_use_id":"toolu_8","session_id":"sess-1","outcome":"ok","reason":null}
+## file runs/sess-1/coverage.ndjson
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"start","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"call","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"post","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"call","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"post","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"call","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"post","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"call","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"post","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"call","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"post","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"call","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"post","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"call","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"call","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"call","state":"unverified","reason":"recording_paused","hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"sess-1","install_id":"0123456789abcdef0123456789abcdef","phase":"end","state":"verified","reason":null,"hook_entry":"present_settings","probe":"fresh","cwd":"/tmp/project"}
+## file runs/sess-1/seq
+22
+## file runs/unattributed/records.ndjson
+{"type":"declaration","schema_version":4,"seq":1,"recorded_at_unix_ms":0,"tool_use_id":"toolu_9","session_id":"unattributed","prompt_id":"prompt-1","agent_id":null,"agent_type":null,"transcript_path":"/tmp/transcripts/sess-1.jsonl","permission_mode":"default","tool_name":"Bash","shape":{"program":"ls","verb_class":"read","argc":2,"digest":"d1a15ded1f543c964351226f9d04357379ce9940f4eb35303865de6fbdf1c5cd","may_write":false,"status_masked":"none","runner_digest":null},"hosts":null,"ssh_hosts":null,"cwd_digest":"9ff2a1f9def4d5ad97c08227fdab7d9bc3e0e9a95dd233735e5525318f517856","file_label":null,"host_source":null,"rule_match":null,"rules_version":1}
+{"type":"terminal","schema_version":4,"seq":2,"recorded_at_unix_ms":0,"tool_use_id":"toolu_9","session_id":"unattributed","outcome":"ok","reason":null}
+## file runs/unattributed/coverage.ndjson
+{"type":"coverage","schema_version":3,"recorded_at_unix_ms":0,"session_id":"unattributed","install_id":"0123456789abcdef0123456789abcdef","phase":"call","state":"unverified","reason":"probe_absent","hook_entry":"present_settings","probe":"absent","cwd":"/tmp/project"}
+## file runs/unattributed/seq
+2
