@@ -71,7 +71,7 @@ func RunProbe(sig *Signals, phase string, harness Harness, in io.Reader, st *sto
 	}
 
 	_ = safe.Guard(func() error {
-		return st.AppendCoverage(BuildCoverage(st, sessionID, phase, reason, cwd, now()))
+		return st.AppendCoverage(BuildCoverage(st, harness, sessionID, phase, reason, cwd, now()))
 	})
 
 	// Eviction runs at session boundaries, off the per-call path. The session

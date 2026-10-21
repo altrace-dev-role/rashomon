@@ -2,6 +2,7 @@ package hook
 
 import (
 	"testing"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -66,5 +67,29 @@ func TestCodexTurn(t *testing.T) {
 	}
 	if got := codexTurn(st, "s", "", []byte(`{}`)); got != nil {
 		t.Errorf("no turn_id: %s, want nil", *got)
+	}
+}
+
+// Under Codex the hook entry is unknown -- Claude Code's settings and plugin
+// say nothing about Codex -- while the probe is still read, and the coverage
+// built on it is unverified with hook_entry_unresolved. Break: resolve Codex
+// through the Claude Code settings path. H-145 is the end-to-end form, with
+// our Claude Code entry installed on the same machine.
+func TestResolve_CodexReadsNoClaudeCodeConfiguration(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MarkProbe("s", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", "/nonexistent/claude-config")
+	res := Resolve(st, "s", "PreToolUse", Codex)
+	if res.HookEntry != store.EntryUnknown || res.Probe != store.ProbeFresh {
+		t.Errorf("resolved %+v; want hook entry unknown, probe fresh", res)
+	}
+	c := BuildCoverage(st, Codex, "s", store.PhaseCall, "", "", time.Now())
+	if c.State != store.StateUnverified || c.Reason == nil || *c.Reason != store.ReasonHookEntryUnresolved {
+		t.Errorf("coverage %+v; want unverified, hook_entry_unresolved", c)
 	}
 }

@@ -286,5 +286,5 @@ func (p *Post) Close(sig *Signals, captureErr error) {
 		reason = store.ReasonInternalError
 	}
 
-	_ = p.st.AppendCoverage(BuildCoverage(p.st, p.sessionID, store.PhasePost, reason, p.cwd, p.now()))
+	_ = p.st.AppendCoverage(BuildCoverage(p.st, p.Harness, p.sessionID, store.PhasePost, reason, p.cwd, p.now()))
 }

@@ -176,7 +176,7 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 		}
 	}
 
-	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.cwd, h.now()))
+	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.Harness, h.sessionID, store.PhaseCall, reason, h.cwd, h.now()))
 }
 
 func readPayload(r io.Reader) ([]byte, error) {

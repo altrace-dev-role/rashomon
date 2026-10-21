@@ -54,7 +54,10 @@ type Resolution struct {
 // worse one than either present value, which is the point: a handler that
 // cannot read its own configuration must not claim to know it. A failure that
 // does not last is a different thing and is retried; see loadSettings.
-func Resolve(st *store.Store, sessionID, event string) Resolution {
+func Resolve(st *store.Store, sessionID, event string, harness Harness) Resolution {
+	if harness != ClaudeCode {
+		return resolveUnread(st, sessionID)
+	}
 	res := Resolution{HookEntry: store.EntryUnknown, Probe: store.ProbeUnknown}
 
 	settingsOK, settingsPresent := false, false
@@ -86,6 +89,27 @@ func Resolve(st *store.Store, sessionID, event string) Resolution {
 		res.HookEntry = store.EntryAbsent
 	}
 
+	if fresh, err := st.ProbeFresh(sessionID); err == nil {
+		res.Probe = store.ProbeAbsent
+		if fresh {
+			res.Probe = store.ProbeFresh
+		}
+	}
+	return res
+}
+
+// resolveUnread is Resolve for a harness whose configuration this build does
+// not read: the hook entry is unknown, and only the probe is checked.
+//
+// Claude Code's settings file and plugin identity say nothing about whether
+// Codex will invoke this binary. Reading them anyway is wrong in the
+// dangerous direction: on a machine with both agents installed, our Claude
+// Code entry would read as present and a Codex run as verified on the
+// strength of a file Codex never opens. Unknown resolves to
+// hook_entry_unresolved, an unverified run, which is what a run whose
+// configuration nobody read has earned.
+func resolveUnread(st *store.Store, sessionID string) Resolution {
+	res := Resolution{HookEntry: store.EntryUnknown, Probe: store.ProbeUnknown}
 	if fresh, err := st.ProbeFresh(sessionID); err == nil {
 		res.Probe = store.ProbeAbsent
 		if fresh {
@@ -138,8 +162,8 @@ func entryEvent(phase string) string {
 // resolved from configuration; after that, the entry's state outranks the
 // probe's, because an absent entry explains an absent probe and not the other
 // way round.
-func BuildCoverage(st *store.Store, sessionID, phase, reason, cwd string, now time.Time) store.Coverage {
-	res := Resolve(st, sessionID, entryEvent(phase))
+func BuildCoverage(st *store.Store, harness Harness, sessionID, phase, reason, cwd string, now time.Time) store.Coverage {
+	res := Resolve(st, sessionID, entryEvent(phase), harness)
 	if phase == store.PhaseStart {
 		// This invocation is the probe; it has just marked itself.
 		res.Probe = store.ProbeFresh

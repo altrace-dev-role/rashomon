@@ -595,7 +595,8 @@ func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer)
 	if standsDown(args, st, stderr) {
 		return true
 	}
-	hook.RecordPaused(stdin, phase, st, time.Now)
+	harness, _ := hook.HarnessArg(args)
+	hook.RecordPaused(stdin, phase, harness, st, time.Now)
 	return true
 }
 

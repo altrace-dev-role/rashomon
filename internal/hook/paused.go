@@ -23,7 +23,7 @@ import (
 // report, not as a fact about some unrelated one. A payload that cannot be
 // parsed falls back to UnattributedSession, exactly as the declaration and
 // probe paths do.
-func RecordPaused(in io.Reader, phase string, st *store.Store, now func() time.Time) {
+func RecordPaused(in io.Reader, phase string, harness Harness, st *store.Store, now func() time.Time) {
 	sessionID := UnattributedSession
 	cwd := ""
 	if raw, err := readPayload(in); err == nil {
@@ -33,5 +33,5 @@ func RecordPaused(in io.Reader, phase string, st *store.Store, now func() time.T
 			cwd = p.CWD
 		}
 	}
-	_ = st.AppendCoverage(BuildCoverage(st, sessionID, phase, store.ReasonRecordingPaused, cwd, now()))
+	_ = st.AppendCoverage(BuildCoverage(st, harness, sessionID, phase, store.ReasonRecordingPaused, cwd, now()))
 }
