@@ -1,5 +1,7 @@
 package hook
 
+import "github.com/altrace-dev-role/rashomon/internal/store"
+
 // Harness names the agent whose hook system invoked this process.
 //
 // It is passed on the installed command line, never inferred from the
@@ -42,4 +44,28 @@ func HarnessArg(args []string) (Harness, bool) {
 		return "", false
 	}
 	return ClaudeCode, true
+}
+
+// unobserved clears everything a Codex execution record would otherwise claim
+// about how the call ended.
+//
+// Codex fires PostToolUse for a call that failed as well as for one that
+// succeeded -- measured: `python3 missing.py` failed and its payload was a
+// plain PostToolUse, with no failure event, no exit code and no interrupt
+// flag (test/fixtures/codex). Only the agent's own closing message named a
+// status. Read under Claude Code's rules that payload is
+// a success, which is the one wrong answer this record exists to prevent. So
+// the outcome is left empty, which every reader already renders as outcome
+// unobserved; the exit code and interrupt bit are null; and the background
+// bit, read from keys Claude Code puts in its tool_response, is false. That
+// holds whatever the event is called: a failure event from Codex would be as
+// unmeasured as the rest.
+//
+// What the record still says is true under both harnesses: that the call
+// ran, its id and tool, and the digest of the input as it ran.
+func unobserved(rec *store.Execution) {
+	rec.Outcome = ""
+	rec.ExitCode = nil
+	rec.IsInterrupt = nil
+	rec.Backgrounded = false
 }

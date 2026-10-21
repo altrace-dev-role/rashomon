@@ -177,6 +177,9 @@ func (p *Post) Capture(in io.Reader) error {
 	if pl.ToolName == "Bash" && pl.HookEventName != FailureEvent {
 		rec.Backgrounded = backgroundedCall(raw)
 	}
+	if p.Harness == Codex {
+		unobserved(&rec)
+	}
 	return p.st.AppendExecution(rec)
 }
 
