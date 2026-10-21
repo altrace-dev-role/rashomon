@@ -1,4 +1,5 @@
-// Package settings reads and edits Claude Code settings files.
+// Package settings reads and edits Claude Code settings files, and the Codex
+// CLI's hooks.json, which has the same hooks member.
 //
 // The user's settings.json is written by Claude Code itself during normal use:
 // every "always allow" the user accepts appends to permissions.allow. It is
