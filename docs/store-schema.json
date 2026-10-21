@@ -75,7 +75,7 @@
           "type": "string"
         },
         "prompt_id": {
-          "description": "Null until the first input of a session.",
+          "description": "Null until the first input of a session. Under --harness codex, the payload's turn_id, which names a turn the same way; a subagent's call carries its main agent's latest turn instead of its own. PROVISIONAL, pending review (KARTHIK_REVIEW.md, item 2).",
           "type": [
             "string",
             "null"
@@ -357,11 +357,12 @@
           "type": "string"
         },
         "outcome": {
-          "description": "Schema 2. How the TOOL CALL ended. Deliberately not the terminal record's vocabulary, which says how the RECORDER's own invocation ended -- two facts about two processes, and one shared vocabulary would let a sentence about the agent be built out of a fact about the recorder. A schema 1 record carries none, and a reader must render that tool_use_id as outcome unobserved rather than as a success: defaulting an unknown ending to ok turns a call nobody recorded the end of into a call claimed to have worked.",
+          "description": "Schema 2. How the TOOL CALL ended. Deliberately not the terminal record's vocabulary, which says how the RECORDER's own invocation ended -- two facts about two processes, and one shared vocabulary would let a sentence about the agent be built out of a fact about the recorder. A schema 1 record carries none, and a reader must render that tool_use_id as outcome unobserved rather than as a success: defaulting an unknown ending to ok turns a call nobody recorded the end of into a call claimed to have worked. The empty string is that same unobserved ending written down: a record from a harness whose payload does not say how a call ended (Codex, under --harness codex) carries outcome \"\" with exit_code and is_interrupt null, and every reader already renders an empty outcome as unobserved. PROVISIONAL, pending review (KARTHIK_REVIEW.md, item 1).",
           "enum": [
             "ok",
             "failed",
-            "interrupted"
+            "interrupted",
+            ""
           ]
         },
         "exit_code": {

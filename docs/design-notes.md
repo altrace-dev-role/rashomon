@@ -720,6 +720,48 @@ Windows code has to meet, with three breaks in the mutation sweep. Two headless 
 would not pass there as written: H-15 asserts the two modes, and H-17's halves
 skip themselves without `unshare` and `strace`.
 
+## Codex
+
+Provisional: the four format items below are listed in `KARTHIK_REVIEW.md`
+for sign-off.
+
+The hook entry points take `--harness codex` on their command line. The
+harness is never inferred from the payload. Codex and Claude Code send
+payloads with the same keys and different meanings, so a guess would be a
+guess at the one thing the record has to get right. No flag is Claude Code,
+and H-144 holds those paths byte for byte to what they produced before the
+flag existed. A value this build does not know stands down and writes
+nothing.
+
+What a real capture showed (`test/fixtures/codex`), and what follows from it:
+
+- **A Codex `PostToolUse` does not say whether the call worked.** A failed
+  `python3 missing.py` fired a plain `PostToolUse`, with no failure event,
+  exit code or interrupt flag. Under Codex an execution's outcome is
+  therefore empty, which every reader renders as outcome unobserved, never
+  as a success. The executed digest is still recorded; `tool_response`, a
+  plain string under Codex, is still never decoded.
+- **`turn_id` is the turn.** It runs from the `UserPromptSubmit` that opens a
+  turn to the `Stop` that closes it, so it is recorded as `prompt_id`.
+- **A subagent's `turn_id` is its own, and nothing it sends names its
+  parent's.** Recorded as given, a subagent's calls would leave the turn that
+  spawned them (the H-89 rule), so a subagent call takes the `prompt_id` of
+  the main agent's latest declaration, read from the tail of the run. That is
+  wrong for a subagent still calling tools after a new turn begins.
+- **Coverage reads none of Claude Code's configuration under Codex.** With
+  both agents installed, our Claude Code entry would otherwise vouch for a
+  Codex run. The hook entry is `unknown`, so a Codex run is `unverified` with
+  `hook_entry_unresolved`.
+- **recap prints nothing under Codex.** How Codex reads a Stop hook's stdout
+  is unmeasured.
+- **`apply_patch` is a write, and Codex's spawn and wait tools are agent
+  calls.** `apply_patch` gets no file label until a capture shows its input.
+- **`SessionEnd` never fired**, so a Codex run has no end-phase coverage
+  record, and a killed handler is not flagged while the run is live.
+
+Not yet: installing for Codex, and a report that reads Codex transcripts.
+H-145 replays the capture end to end.
+
 ## Known limits
 
  The probe detects hook-system death and nothing subtler;
