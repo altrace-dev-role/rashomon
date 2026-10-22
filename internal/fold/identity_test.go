@@ -37,12 +37,17 @@ func TestIdentity_RewriteChangesInode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A rewrite (forget/evict) removes the old inode and creates a new one
-	// at the same path; a plain append must never look like this.
-	if err := os.Remove(path); err != nil {
+	// A replacement: a new file written beside the old one and renamed over
+	// it, so the path names a different inode. The new file is made while
+	// the old one still exists, so the two cannot share an inode number;
+	// removing the old file first let the filesystem hand its freed number
+	// straight to the new one, which ext4 on CI's runners did. A plain
+	// append must never look like this.
+	replacement := path + ".new"
+	if err := os.WriteFile(replacement, []byte("y"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("y"), 0o600); err != nil {
+	if err := os.Rename(replacement, path); err != nil {
 		t.Fatal(err)
 	}
 	_, after, _, err := identity(path)

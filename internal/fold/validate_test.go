@@ -68,17 +68,20 @@ func TestValidate_FreshFoldIsValid(t *testing.T) {
 func TestValidate_InodeChangeInvalidates(t *testing.T) {
 	rf := newRunFiles(t)
 	f := validFile(t, rf)
-	// A full replace: records.ndjson was removed and a new file written at
-	// the same path (a restore from a copy, say), so every offset into the
-	// old file is void. This is not what forget or eviction's in-place
-	// rewrite does -- see TestValidate_InPlaceRewriteBelowSizeSeenInvalidates
-	// for that -- but a full replace is a real way for the file at this
-	// path to stop being the one the cursor was read from, and the identity
-	// check exists to catch it too.
-	if err := os.Remove(rf.records); err != nil {
+	// A full replace: a new file was written and renamed over records.ndjson
+	// (a restore from a copy, say), so every offset into the old file is
+	// void. This is not what forget or eviction's in-place rewrite does --
+	// see TestValidate_InPlaceRewriteBelowSizeSeenInvalidates for that --
+	// but a full replace is a real way for the file at this path to stop
+	// being the one the cursor was read from, and the identity check exists
+	// to catch it too. The new file is written while the old one still
+	// exists, so it cannot be handed the old one's inode number (see
+	// TestIdentity_RewriteChangesInode).
+	replacement := rf.records + ".new"
+	writeFile(t, replacement, "one\ntwo\n")
+	if err := os.Rename(replacement, rf.records); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, rf.records, "one\ntwo\n")
 
 	ok, err := Validate(f, rf.records, rf.spill, rf.coverage, rf.gaps)
 	if err != nil {
