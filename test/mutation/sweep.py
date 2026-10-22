@@ -133,6 +133,46 @@ def load(patterns):
     return problems
 
 
+def run_go_test(argv):
+    """Run go test and return its result with stdout and stderr as text.
+
+    The output is decoded with undecodable bytes replaced: a test that prints
+    the raw bytes it fed the code under test (invalid UTF-8 among them) must
+    not stop the sweep mid-run, which would leave every later mutant
+    unjudged (the finally clause still restores the tree).
+    """
+    r = subprocess.run(argv, capture_output=True)
+    r.stdout = r.stdout.decode("utf-8", errors="replace")
+    r.stderr = r.stderr.decode("utf-8", errors="replace")
+    return r
+
+
+def build_broken(r):
+    """Report a go test run that could not build or set up a package.
+
+    go test marks such a package on its own FAIL line with [build failed] or
+    [setup failed]; a test's output never carries those markers. Searching
+    the whole output for "build failed" read a failing test that printed the
+    sentence it checks as a broken build, and a detected mutant as undetected.
+    """
+    return any(ln.startswith("FAIL") and ("[build failed]" in ln or "[setup failed]" in ln)
+               for ln in (r.stdout + r.stderr).splitlines())
+
+
+def test_failed(r):
+    """Report positive evidence that a test ran and failed.
+
+    go test writes "--- FAIL: Name" for a failing test and "FAIL<TAB>pkg<TAB>time"
+    for a package whose tests ran and failed. A non-zero exit without either (a
+    go.mod the tool could not parse, a pattern that matched no package) is not a
+    red test: nothing ran, and the sweep must not count it as detection.
+    """
+    for ln in (r.stdout + r.stderr).splitlines():
+        if ln.startswith("--- FAIL") or (ln.startswith("FAIL\t") and ln.count("\t") >= 2):
+            return True
+    return False
+
+
 def read_list(path):
     """The entries of a list file: one per line, blank and # lines ignored."""
     if not path.exists():
@@ -367,7 +407,7 @@ def run_sweep(strict=False):
     # the tool whose job is guarding premises, not guarding its own. Found by a
     # review that noticed the tree was red while the sweep would have passed.
     print("baseline: the suite must be green before anything is mutated")
-    _baseline = subprocess.run(["go", "test", "./...", "-count=1"], capture_output=True, text=True)
+    _baseline = run_go_test(["go", "test", "./...", "-count=1"])
     if _baseline.returncode != 0:
         print("BASELINE NOT GREEN. Every mutation below would report as detected, because a\n"
               "mutation is judged by a non-zero exit and the suite already gives one. Fix the\n"
@@ -396,7 +436,7 @@ def run_sweep(strict=False):
                     # way a missing anchor on the main mutation is.
                     print(f"  IMPORT ANCHOR MISSING <- {name}"); undetected.append(name); restore(); continue
                 pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
-            r = subprocess.run(["go", "test", "./...", "-run", test, "-count=1", "-v"], capture_output=True, text=True)
+            r = run_go_test(["go", "test", "./...", "-run", test, "-count=1", "-v"])
             judged = r.stdout + r.stderr
             # "--- SKIP" ONLY, never "no tests to run". The suite is invoked as
             # `go test ./... -run <regex>`, so every package without a matching
@@ -418,10 +458,16 @@ def run_sweep(strict=False):
                 skipped.append(name)
             elif r.returncode == 0:
                 print(f"  NOT DETECTED   <- {name}   (spec defect: the test cannot be made to fail)"); undetected.append(name)
-            elif "build failed" in r.stdout + r.stderr or "cannot" in r.stderr and "FAIL" not in r.stdout:
+            elif test_failed(r):
+                # A red test on record is positive evidence the mutant was
+                # caught, even when the same `go test ./...` run also failed
+                # to build an unrelated package: that package's failure is
+                # not this mutant's to answer for.
+                print(f"  went red       <- {name}")
+            elif build_broken(r):
                 print(f"  BUILD BROKEN   <- {name}\n{r.stdout}{r.stderr}"); undetected.append(name)
             else:
-                print(f"  went red       <- {name}")
+                print(f"  NOT JUDGED     <- {name}   (go test exited {r.returncode} with no test failure on record)\n{r.stdout}{r.stderr}"); undetected.append(name)
             restore()
     finally:
         restore()

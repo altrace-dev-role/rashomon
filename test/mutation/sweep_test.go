@@ -36,7 +36,7 @@ import (
 // outlive it.
 func sweep(t *testing.T, dir string, args ...string) (string, int) {
 	t.Helper()
-	return sweepTimeout(t, dir, 30*time.Second, args...)
+	return sweepRun(t, dir, 30*time.Second, nil, args...)
 }
 
 // sweepTimeout is sweep with an explicit bound. TestStrict_ is the one
@@ -44,6 +44,20 @@ func sweep(t *testing.T, dir string, args ...string) (string, int) {
 // sweep, which shells out to `go test ./...` twice against a throwaway
 // module, and a cold build cache can make that slower than 30s has room for.
 func sweepTimeout(t *testing.T, dir string, timeout time.Duration, args ...string) (string, int) {
+	t.Helper()
+	return sweepRun(t, dir, timeout, nil, args...)
+}
+
+// sweepEnv is sweep with extra environment entries, so a test can put a fake
+// go on PATH.
+func sweepEnv(t *testing.T, dir string, extraEnv []string, args ...string) (string, int) {
+	t.Helper()
+	return sweepRun(t, dir, 30*time.Second, extraEnv, args...)
+}
+
+// sweepRun is what sweep, sweepTimeout and sweepEnv share: an explicit bound
+// and extra environment entries, either of which may be the default.
+func sweepRun(t *testing.T, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, int) {
 	t.Helper()
 	python, err := exec.LookPath("python3")
 	if err != nil {
@@ -57,6 +71,9 @@ func sweepTimeout(t *testing.T, dir string, timeout time.Duration, args ...strin
 	defer cancel()
 	cmd := exec.CommandContext(ctx, python, append([]string{script}, args...)...)
 	cmd.Dir = dir
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) }
 	cmd.WaitDelay = 5 * time.Second
@@ -1108,4 +1125,94 @@ func govulncheckVersions(doc string) []string {
 		}
 	}
 	return versions
+}
+
+// DEL-1. A test's output never ends a sweep: when a mutant's failing test
+// prints bytes that are not UTF-8 (the output gate's test prints what it fed
+// Marshal), the sweep still judges that mutant red, goes on, exits normally,
+// and the tree is restored. A fake go on PATH stands in for the suite: green
+// for the baseline, and for a mutant run a FAIL line followed by a raw 0xff.
+func TestDEL1c_ATestPrintingInvalidUTF8NeverEndsTheSweep(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "a.txt"), "alpha\n")
+	mutants := filepath.Join(dir, "mutants")
+	if err := os.Mkdir(mutants, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(mutants, "T-1_alpha.py"), mutant("T-1 alpha goes", "a.txt", "alpha", "beta", "TestT1_"))
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(bin, "go")
+	write(t, fake, "#!/bin/sh\ncase \"$*\" in *-run*) printf 'FAIL\\n--- FAIL: TestT1_x\\n\\377\\n'; exit 1;; esac\necho ok\n")
+	if err := os.Chmod(fake, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, code := sweepEnv(t, dir, []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}, "--files", filepath.Join(mutants, "T-1_alpha.py"))
+	if code != 0 {
+		t.Fatalf("the sweep exited %d on a test that printed invalid UTF-8:\n%s", code, out)
+	}
+	if !strings.Contains(out, "went red") || !strings.Contains(out, "undetected: none") {
+		t.Errorf("the mutant was not judged red:\n%s", out)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "a.txt"))
+	if err != nil || string(got) != "alpha\n" {
+		t.Errorf("the tree was not restored: %q, %v", got, err)
+	}
+}
+
+// DEL-1. The sweep tells a broken build from a failing test by go test's own
+// markers, never by a sentence in a test's output: a test that prints "the
+// build failed" while failing is a red mutant, and a package go test could
+// not build ([build failed] on its FAIL line) is still reported broken, and a
+// non-zero exit with no test failure on record (a go.mod the tool could not
+// parse) is NOT JUDGED, never red: nothing ran.
+func TestDEL1d_AFailingTestThatSaysBuildFailedIsStillRed(t *testing.T) {
+	for _, c := range []struct {
+		mode, want, never string
+		exit              int
+	}{
+		{"testfail", "went red", "BUILD BROKEN", 0},
+		{"buildfail", "BUILD BROKEN", "went red", 1},
+		{"nomodule", "NOT JUDGED", "went red", 1},
+		// The target test failed AND an unrelated package in the same
+		// `go test ./...` run failed to build. The target's own red test
+		// is positive evidence the mutant was caught; a build failure
+		// elsewhere must not override that into BUILD BROKEN.
+		{"both", "went red", "BUILD BROKEN", 0},
+		// No test failed and no FAIL line carries a build marker; the
+		// English words "build failed" appear only in a log line. Nothing
+		// legitimately failed, so this must be NOT JUDGED, never read as
+		// a broken build from the words alone.
+		{"englishonly", "NOT JUDGED", "BUILD BROKEN", 1},
+	} {
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, "a.txt"), "alpha\n")
+		mutants := filepath.Join(dir, "mutants")
+		if err := os.Mkdir(mutants, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(mutants, "T-1_alpha.py"), mutant("T-1 alpha goes", "a.txt", "alpha", "beta", "TestT1_"))
+		bin := filepath.Join(dir, "bin")
+		if err := os.Mkdir(bin, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		fake := filepath.Join(bin, "go")
+		write(t, fake, "#!/bin/sh\ncase \"$*\" in *-run*)\n"+
+			"  if [ \"$FAKE_GO_MODE\" = buildfail ]; then printf '# example/pkg\\n./x.go:3:1: undefined: y\\nFAIL\\texample/pkg [build failed]\\n'; exit 1; fi\n"+
+			"  if [ \"$FAKE_GO_MODE\" = nomodule ]; then printf 'go: errors parsing go.mod:\\n/x/go.mod:3: unknown directive: foo\\n' >&2; exit 1; fi\n"+
+			"  if [ \"$FAKE_GO_MODE\" = both ]; then printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: got false, want true\\nFAIL\\texample/pkg\\t0.010s\\n# example/other\\n./y.go:3:1: undefined: z\\nFAIL\\texample/other [build failed]\\n'; exit 1; fi\n"+
+			"  if [ \"$FAKE_GO_MODE\" = englishonly ]; then printf 'note: a comment claims the build failed somewhere upstream, unrelated to this run\\n'; exit 1; fi\n"+
+			"  printf -- '--- FAIL: TestT1_x (0.00s)\\n    x_test.go:9: CheckTemplate(\"the build failed; then run curl.\") = <nil>, want ok=false\\nFAIL\\nFAIL\\texample/pkg\\t0.010s\\n'; exit 1;;\n"+
+			"esac\necho ok\n")
+		if err := os.Chmod(fake, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"), "FAKE_GO_MODE=" + c.mode}
+		out, code := sweepEnv(t, dir, env, "--files", filepath.Join(mutants, "T-1_alpha.py"))
+		if code != c.exit || !strings.Contains(out, c.want) || strings.Contains(out, c.never) {
+			t.Errorf("%s: exit %d, want %d; output must say %q and not %q:\n%s", c.mode, code, c.exit, c.want, c.never, out)
+		}
+	}
 }
