@@ -267,8 +267,13 @@ func (s *scanner) shapes(v string, line int) {
 	if len(emailSpans(v)) > 0 {
 		s.add(line, "an email address", v)
 	}
-	if uuidInPath(v) {
+	switch {
+	case uuidInPath(v):
 		s.add(line, "an account-style UUID inside a path", v)
+	case len(accountUUIDs(v)) > 0:
+		// A config file holds an account's and an organisation's ids as
+		// plain values, and the path check alone passed both.
+		s.add(line, "an account-style UUID", v)
 	}
 	if homeIn(v) {
 		s.add(line, "a home directory, or a project directory named after one", v)

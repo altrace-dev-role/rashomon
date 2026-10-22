@@ -28,7 +28,8 @@ m("H-113 an inventory list in a document passes", SCAN,
 m("H-113 email addresses pass", SCAN,
   "\tif len(emailSpans(v)) > 0 {", "\tif false {", H113)
 m("H-113 a UUID inside a path passes", SCAN,
-  "\tif uuidInPath(v) {", "\tif false {", H113)
+  "\tcase uuidInPath(v):\n\t\ts.add(line, \"an account-style UUID inside a path\", v)\n\tcase len(accountUUIDs(v)) > 0:\n",
+  "\tcase false:\n\t\ts.add(line, \"an account-style UUID inside a path\", v)\n\tcase false:\n", H113)
 m("H-113 home directories pass", SCAN,
   "\tif homeIn(v) {", "\tif false {", H113)
 m("H-113 a fingerprint ignores the value", SCAN,
@@ -69,3 +70,17 @@ m("H-113 an environment file is not read", SCAN,
 m("H-113 an environment file is read as text", SCAN,
   '\tif environmentFile(name) {\n\t\twhat := "an environment file',
   '\tif false {\n\t\twhat := "an environment file', H113)
+# A secret-named key's value goes with it however the two are joined: past
+# blanks after the `:` or `=`, and as a quoted JSON member. Stopping the match
+# at the `:`, or not matching a quoted name, kept hunter2 and let Secretish
+# call the line clean. And an account-style UUID is flagged as a plain value,
+# not only inside a path: a config file holds the account and organisation
+# ids that way.
+m("H-113 a secret-named key's match stops at its colon", "internal/secretshape/redact.go",
+  "\t\t\t\tsp[1] = valueEnd(line, sp[1])\n", "", "TestRedact_ASecretNamedKeyTakesItsValue")
+m("H-113 a quoted member name is not the key rule's", "internal/secretshape/redact.go",
+  "\t\t\tspans = append(spans, memberSpans(lower, line)...)\n", "", "TestRedact_ASecretNamedKeyTakesItsValue")
+m("H-113 a quoted value ends at its first blank", "internal/secretshape/redact.go",
+  "\tif q := line[i]; q == '\"' || q == '\\'' {\n", "\tif q := line[i]; q == 0 {\n", "TestRedact_ASecretNamedKeyTakesItsValue")
+m("H-113 an account UUID is flagged only inside a path", "test/tools/hygiene/scan.go",
+  "\tcase len(accountUUIDs(v)) > 0:\n", "\tcase false:\n", "TestH113_")

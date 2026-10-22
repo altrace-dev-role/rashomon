@@ -789,3 +789,36 @@ func TestSecretNamedIsTheKeyRule(t *testing.T) {
 		}
 	}
 }
+
+// TestRedact_ASecretNamedKeyTakesItsValue: a secret-named key's value is
+// redacted however the key and value are joined -- `:` or `=`, with blanks
+// on either side, or as a JSON member whose name is quoted -- and Secretish
+// says so. The key rule's match ended at the `:` or `=`, and widening took
+// only the token holding it, so `password: hunter2` kept hunter2, and a
+// quoted member never matched at all.
+func TestRedact_ASecretNamedKeyTakesItsValue(t *testing.T) {
+	for _, line := range []string{
+		"password: hunter2",
+		"password = hunter2",
+		"password =hunter2",
+		"DB_PASSWORD : hunter2",
+		`{"password": "hunter2"}`,
+		`{"password":"hunter2","user":"x"}`,
+		`"client_secret" = "hunter2"`,
+		`password: "and more hunter2"`,
+		"api_key:\thunter2",
+	} {
+		out, n := Redact(line)
+		if strings.Contains(out, "hunter2") || n == 0 {
+			t.Errorf("Redact(%q) = %q, %d: the value is kept", line, out, n)
+		}
+		if !Secretish(line) {
+			t.Errorf("Secretish(%q) = false", line)
+		}
+	}
+	for _, line := range []string{"the password policy: 12 characters", `{"user": "x"}`} {
+		if out, n := Redact(line); n != 0 {
+			t.Errorf("Redact(%q) = %q, %d; want it unchanged", line, out, n)
+		}
+	}
+}

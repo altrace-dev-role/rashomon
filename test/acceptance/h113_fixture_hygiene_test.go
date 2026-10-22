@@ -165,6 +165,8 @@ func TestH113_APlantedCredentialFailsTheScanAndACleanTreePasses(t *testing.T) {
 			[]byte(`{"text":"mail alice.liddell@acme-corp.io"}` + "\n"), "test/fixtures/demo/transcript.jsonl:1", "alice.liddell"},
 		{"an account-style UUID inside a path", "test/fixtures/demo/payload.json",
 			[]byte(`{"transcript_path":"~/.claude/projects/-project/` + h112Session + `.jsonl"}`), "test/fixtures/demo/payload.json:1", h112Session},
+		{"account and organisation ids as values, as a config file holds them", "test/fixtures/demo/config.json",
+			[]byte(`{"oauthAccount":{"accountUuid":"` + h112Session + `","organizationUuid":"` + h112Session + `"}}`), "test/fixtures/demo/config.json:1", h112Session},
 		{"an inventory list", "test/fixtures/demo/transcript.jsonl",
 			[]byte(`{"type":"system","subtype":"init","skills":["acme-brand"]}` + "\n"), "test/fixtures/demo/transcript.jsonl:1", "acme"},
 		{"an inventory list inside a string", "test/fixtures/demo/transcript.jsonl",

@@ -78,10 +78,9 @@ func Secretish(s string) bool {
 // secret (DB_PASSWORD, api_key, client_secret), with no value after it.
 //
 // The rule matches a name followed by its `=` or `:`, so in text a name and
-// its value go together. A structured payload keeps them apart: in
-// {"password": "hunter2"} neither string holds the other, the rule sees a bare
-// word and a short one, and Redact keeps both. A reader that walks members
-// asks this of the member name and treats a non-empty value as the secret.
+// its value go together, and Redact takes a quoted member's value too
+// (memberSpans). A reader that walks a decoded payload's members sees the
+// name and the value apart, as two strings, and asks this of the name.
 func SecretNamed(key string) bool {
 	return len(keySpans(asciiLower(key)+"=")) > 0
 }
@@ -369,7 +368,11 @@ func denySpans(line string) [][]int {
 			continue
 		}
 		if i == last {
-			spans = append(spans, keySpans(lower)...)
+			for _, sp := range keySpans(lower) {
+				sp[1] = valueEnd(line, sp[1])
+				spans = append(spans, sp)
+			}
+			spans = append(spans, memberSpans(lower, line)...)
 			continue
 		}
 		spans = append(spans, r.re.get().FindAllStringIndex(line, -1)...)
@@ -417,6 +420,68 @@ func keySpans(lower string) [][]int {
 				start--
 			}
 			spans = append(spans, []int{start, q + 1})
+			break
+		}
+	}
+	return spans
+}
+
+// valueEnd extends a secret-named key's match, which ends at its `:` or `=`,
+// over the value after it on the same line: past blanks, to the closing
+// quote of a quoted value, or one byte into a bare one, which widening then
+// takes to the end of its token. Without it the match widened to the token
+// holding the `:` alone, and `password: hunter2` kept hunter2.
+func valueEnd(line string, end int) int {
+	i := end
+	for i < len(line) && isRE2Space(line[i]) {
+		i++
+	}
+	if i == len(line) {
+		return end
+	}
+	if q := line[i]; q == '"' || q == '\'' {
+		for j := i + 1; j < len(line); j++ {
+			if line[j] == '\\' && q == '"' {
+				j++
+				continue
+			}
+			if line[j] == q {
+				return j + 1
+			}
+		}
+		return len(line)
+	}
+	return i + 1
+}
+
+// memberSpans is the key rule for a quoted name, as a JSON member or a quoted
+// assignment writes it: `"password": "hunter2"`. The rule's regexp cannot
+// match one, since the closing quote stands between the name and its `:`,
+// so a structured payload's secret passed Redact whole. Each span runs from
+// the name's word to the end of its value (valueEnd).
+func memberSpans(lower, line string) [][]int {
+	var spans [][]int
+	for q := 0; q < len(lower); q++ {
+		if lower[q] != ':' && lower[q] != '=' {
+			continue
+		}
+		j := q
+		for j > 0 && isRE2Space(lower[j-1]) {
+			j--
+		}
+		if j == 0 || lower[j-1] != '"' && lower[j-1] != '\'' {
+			continue
+		}
+		k := j - 1
+		for _, w := range keyWords {
+			if !strings.HasSuffix(lower[:k], w) {
+				continue
+			}
+			start := k - len(w)
+			for start > 0 && isWordByte(lower[start-1]) {
+				start--
+			}
+			spans = append(spans, []int{start, valueEnd(line, q+1)})
 			break
 		}
 	}
