@@ -1,12 +1,12 @@
 # DEL-21: every setup-go pin across the workflows is one version. A bump that
 # misses one job, by a patch version: the test compares the exact string.
 m("DEL-21 the sweep job pins a different Go patch version", ".github/workflows/ci.yaml",
-  "          go-version: \"1.27.2\"  # See the note in the test job.\n          cache: true\n          cache-dependency-path: go.sum  # See the test job.\n\n      # Same as in Test",
+  "          go-version: \"1.27.3\"  # See the note in the test job.\n          cache: true\n          cache-dependency-path: go.sum  # See the test job.\n\n      # Same as in Test",
   "          go-version: \"1.27.1\"  # See the note in the test job.\n          cache: true\n          cache-dependency-path: go.sum  # See the test job.\n\n      # Same as in Test", "TestDEL21_")
 # The same disagreement, but on the release side: nothing before this mutant
 # broke if the file that drifted was release.yaml rather than ci.yaml.
 m("DEL-21 release.yaml pins a different Go patch version than ci.yaml", ".github/workflows/release.yaml",
-  "          go-version: \"1.27.2\"\n", "          go-version: \"1.27.1\"\n", "TestDEL21_")
+  "          go-version: \"1.27.3\"\n", "          go-version: \"1.27.1\"\n", "TestDEL21_")
 # The parser must refuse a setup-go step with no pin, in any step form, by
 # tying the pin to its own step rather than counting the two across the file.
 m("DEL-21 the pin parser accepts a setup-go step without a pin", "test/mutation/sweep_test.go",
