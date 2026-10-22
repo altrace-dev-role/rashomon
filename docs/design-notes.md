@@ -608,7 +608,7 @@ was first measured. It never writes `~/.claude/settings.json`: its hooks go
 in through `--settings`, and it refuses to run when that file exists, since
 `--settings` adds to it rather than replacing it. Everything a session sends
 goes through `test/live/hc_shape.py`, which keeps and prints key names,
-counts, exit codes and closed-vocabulary values, never a value; H-108 holds
+counts, exit codes and closed-vocabulary values, never a value; H-115 holds
 it to that with canary payloads.
 
 

@@ -9,7 +9,7 @@ printed is a value. What leaves here is a key name Claude Code's schema gives
 it, a count, a size, an exit code, a yes or no, a value from a closed list, or
 a digest that is compared and never printed. A prompt, a command, a tool's
 output, an error's text, a path, the account's tools and plugins: none of it.
-H-108 hands this file inputs whose every value is a canary and fails on any
+H-115 hands this file inputs whose every value is a canary and fails on any
 canary in what it writes.
 
     record LOG TAG          a hook: reads the payload on stdin, appends its shape to LOG

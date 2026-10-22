@@ -12,13 +12,13 @@ import (
 	"time"
 )
 
-// TestH108_AHangupStillRemovesWhatTheRunLeft is the cleanup under the signal a
+// TestH115_AHangupStillRemovesWhatTheRunLeft is the cleanup under the signal a
 // person sends without meaning to. A terminal that closes, or an SSH session
 // that drops, sends SIGHUP to the run's process group. dash runs no EXIT trap
 // for a signal the script has not trapped, so a hangup in the middle of a run
 // would leave the whole scratch behind: the raw streams and debug logs the
 // checks read, Claude Code's per-session files and the sessions' transcripts.
-func TestH108_AHangupStillRemovesWhatTheRunLeft(t *testing.T) {
+func TestH115_AHangupStillRemovesWhatTheRunLeft(t *testing.T) {
 	needTools(t, "sh", "python3", "git")
 	home := t.TempDir()
 	for _, d := range []string{"projects", "session-env"} {

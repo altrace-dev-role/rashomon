@@ -13,7 +13,7 @@
 # its payload to test/live/hc_shape.py, and every stream and log a check reads
 # goes through it too; what comes out is key names, counts, sizes, exit codes,
 # yes or no, values from closed lists, and digests it compares but never shows
-# (H-108 holds it to that). All scratch is under one directory from mktemp,
+# (H-115 holds it to that). All scratch is under one directory from mktemp,
 # removed on exit with the transcripts and session-env directories Claude Code
 # writes for the sessions started here. TMPDIR points inside that directory
 # while the checks run: Claude Code keeps per-session files under
@@ -294,7 +294,7 @@ was "2026-10-21, 2.1.305: exit 0, PONG, no transcript under the projects directo
 
 item "fm-11: rashomon probe start and probe end print nothing on stdout (HC-2's sessions)"
 $SHAPE fm11 "$T/hc2/probe.log" "$T/store" "$S2"
-was "not measured live before; the contract (H-107 holds it offline): stdout 0 bytes and exit 0 from every invocation," \
+was "not measured live before; the contract (H-114 holds it offline): stdout 0 bytes and exit 0 from every invocation," \
   "with a coverage record for each phase. SessionStart's stdout reaches the model (HC-1), so a byte here is a byte of context"
 
 item "fm-12: the Stop payload carries prompt_id (HC-2's sessions)"

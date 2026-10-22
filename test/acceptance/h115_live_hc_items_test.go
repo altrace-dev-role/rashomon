@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// H-108 -- the live hook-contract checks keep and print shapes, never values,
+// H-115 -- the live hook-contract checks keep and print shapes, never values,
 // and leave nothing behind.
 //
 // test/live/hc-items.sh runs real Claude Code sessions, so what it observes is
@@ -184,7 +184,7 @@ func recordSession(t *testing.T, dir string) string {
 	return log
 }
 
-func TestH108_TheRecorderKeepsNoValue(t *testing.T) {
+func TestH115_TheRecorderKeepsNoValue(t *testing.T) {
 	dir := t.TempDir()
 	log := recordSession(t, dir)
 	b, err := os.ReadFile(log)
@@ -225,7 +225,7 @@ func TestH108_TheRecorderKeepsNoValue(t *testing.T) {
 	assertHas(t, "the recorder's log after garbage", string(b), "record-failed")
 }
 
-func TestH108_TheSessionSummariesPrintNoValue(t *testing.T) {
+func TestH115_TheSessionSummariesPrintNoValue(t *testing.T) {
 	dir := t.TempDir()
 	log := recordSession(t, dir)
 
@@ -283,7 +283,7 @@ func hcStream(t *testing.T, sessionID, reply string, tokens ...string) string {
 	return b.String()
 }
 
-func TestH108_TheStreamSummariesPrintNoValue(t *testing.T) {
+func TestH115_TheStreamSummariesPrintNoValue(t *testing.T) {
 	dir := t.TempDir()
 	ctxStart, smStart, ctxUps, smUps := "HC1-CTX-START-"+leak, "HC1-SM-START-"+leak, "HC1-CTX-UPS-"+leak, "HC1-SM-UPS-"+leak
 
@@ -402,7 +402,7 @@ func TestH108_TheStreamSummariesPrintNoValue(t *testing.T) {
 // then takes three seconds, the window a hangup arrives in.
 const hcStub = `#!/bin/sh
 printf '%s\n' "$*" >> "$HC_STUB_LOG"
-if [ "$1" = --version ]; then echo '0.0.0-stub (H-108)'; exit 0; fi
+if [ "$1" = --version ]; then echo '0.0.0-stub (H-115)'; exit 0; fi
 sid= prev=
 for a in "$@"; do
   if [ "$prev" = --session-id ]; then sid=$a; fi
@@ -483,7 +483,7 @@ func filesUnder(t *testing.T, root string) []string {
 	return out
 }
 
-func TestH108_RefusesAMachineWithAUserSettingsFile(t *testing.T) {
+func TestH115_RefusesAMachineWithAUserSettingsFile(t *testing.T) {
 	home := t.TempDir()
 	settings := filepath.Join(home, ".claude", "settings.json")
 	const body = `{"hooks": {"SessionStart": []}}` + "\n"
@@ -507,7 +507,7 @@ func TestH108_RefusesAMachineWithAUserSettingsFile(t *testing.T) {
 	}
 }
 
-func TestH108_RecordsTheVersionAndLeavesNothingBehind(t *testing.T) {
+func TestH115_RecordsTheVersionAndLeavesNothingBehind(t *testing.T) {
 	// A home claude has run in before: the directories its sessions write
 	// into are already there, and they are not the script's to remove.
 	home := t.TempDir()
@@ -534,7 +534,7 @@ func TestH108_RecordsTheVersionAndLeavesNothingBehind(t *testing.T) {
 	if ran == 0 {
 		t.Errorf("no check asked claude for a session; the refusal is not what let this pass: %v", asked)
 	}
-	v := strings.Index(res.stdout, "0.0.0-stub (H-108)")
+	v := strings.Index(res.stdout, "0.0.0-stub (H-115)")
 	first := strings.Index(res.stdout, "HC-1")
 	if v < 0 || first < 0 || v > first {
 		t.Errorf("the version is not recorded before the first check:\n%s", res.stdout)

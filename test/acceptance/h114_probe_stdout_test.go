@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// H-107 -- the probe says nothing on stdout.
+// H-114 -- the probe says nothing on stdout.
 //
 // Claude Code hands a SessionStart hook's stdout to the model. A JSON
 // object's additionalContext arrives as a system reminder, and so does plain
@@ -20,7 +20,7 @@ import (
 // RunProbe's end phase, or in the refusal of a phase the probe does not know.
 // The positive twin is the coverage record each phase writes: a probe that
 // printed nothing because it did nothing would pass the stdout half alone.
-func TestH107_ProbeStartAndEndPrintNothing(t *testing.T) {
+func TestH114_ProbeStartAndEndPrintNothing(t *testing.T) {
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
@@ -39,11 +39,11 @@ func TestH107_ProbeStartAndEndPrintNothing(t *testing.T) {
 	}
 }
 
-// TestH107_ProbeThatDoesNotRecordPrintsNothing covers the two ways a probe
+// TestH114_ProbeThatDoesNotRecordPrintsNothing covers the two ways a probe
 // declines to record -- paused, and an entry belonging to another install --
 // because each has its own early return and its own line to say so, and that
 // line belongs on stderr.
-func TestH107_ProbeThatDoesNotRecordPrintsNothing(t *testing.T) {
+func TestH114_ProbeThatDoesNotRecordPrintsNothing(t *testing.T) {
 	t.Run("paused", func(t *testing.T) {
 		e := newEnv(t)
 		e.watched(testSession)
@@ -77,10 +77,10 @@ func TestH107_ProbeThatDoesNotRecordPrintsNothing(t *testing.T) {
 	})
 }
 
-// TestH107_AnUnknownPhaseSaysSoOnStderrOnly: the phase check runs before the
+// TestH114_AnUnknownPhaseSaysSoOnStderrOnly: the phase check runs before the
 // store is opened, so it is the one place in the probe a refusal could be
 // printed without anything else having happened.
-func TestH107_AnUnknownPhaseSaysSoOnStderrOnly(t *testing.T) {
+func TestH114_AnUnknownPhaseSaysSoOnStderrOnly(t *testing.T) {
 	e := newEnv(t)
 	for _, args := range [][]string{{"probe"}, {"probe", "middle"}} {
 		res := e.run(e.sessionPayload("start", testSession), nil, args...)
