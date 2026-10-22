@@ -6,7 +6,7 @@
 # entry it left behind. The last break goes the other way, setting the
 # disposition for every command, which only the twin can see.
 m("H-111 SIGPIPE keeps its default disposition", "internal/hook/brokenpipe_unix.go",
-  "func IgnoreBrokenPipe() { signal.Ignore(syscall.SIGPIPE) }",
+  "func IgnoreBrokenPipe() { signal.Notify(brokenPipe, syscall.SIGPIPE) }",
   "func IgnoreBrokenPipe() { signal.Reset(syscall.SIGPIPE) }",
   "TestH111_")
 m("H-111 hook does not ignore SIGPIPE", "cmd/rashomon/main.go",
@@ -29,3 +29,9 @@ m("H-111 every command ignores SIGPIPE", "cmd/rashomon/main.go",
   "func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {\n\tif len(args) == 0 {",
   "func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {\n\thook.IgnoreBrokenPipe()\n\tif len(args) == 0 {",
   "TestH111_ACommandAPersonTypesKeepsTheDefault")
+# Ignoring SIGPIPE rather than handling it survives exec, so a process a hook
+# starts could not be ended by a closed pipe.
+m("H-111 SIGPIPE is ignored, which a child inherits", "internal/hook/brokenpipe_unix.go",
+  "func IgnoreBrokenPipe() { signal.Notify(brokenPipe, syscall.SIGPIPE) }",
+  "func IgnoreBrokenPipe() { signal.Ignore(syscall.SIGPIPE) }",
+  "TestH111_AChildOfAHookGetsTheDefaultSIGPIPE")
