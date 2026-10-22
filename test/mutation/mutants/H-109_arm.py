@@ -5,11 +5,11 @@
 ARM = "internal/arm/arm.go"
 
 m("H-109 the holdout share is ignored", ARM,
-  "\tif a.draw(feature, sessionID) < cut(holdout) {",
-  "\tif a.draw(feature, sessionID) < cut(0.5) {", "TestH109_TheSplit")
+  "\tif bucket(a.draw(feature, sessionID)) < uint64(holdoutBP) {",
+  "\tif bucket(a.draw(feature, sessionID)) < 5000 {", "TestH109_TheSplit")
 m("H-109 the complement of the share is held out", ARM,
-  "\tif a.draw(feature, sessionID) < cut(holdout) {",
-  "\tif a.draw(feature, sessionID) >= cut(holdout) {", "TestH109_TheSplit")
+  "\tif bucket(a.draw(feature, sessionID)) < uint64(holdoutBP) {",
+  "\tif bucket(a.draw(feature, sessionID)) >= uint64(holdoutBP) {", "TestH109_TheSplit")
 
 m("H-109 the draw changes from call to call", ARM,
   "\treturn binary.BigEndian.Uint64(m.Sum(nil)[:8])",
@@ -24,8 +24,8 @@ m("H-109 the key is left out of the digest", ARM,
 m("H-109 the feature name is left out of the digest", ARM,
   "\tm.Write([]byte(feature))\n", "", "TestH109_TwoFeatures")
 m("H-109 a layout draws a factor differently from the feature alone", ARM,
-  "got, err := a.Assign(f.Feature, sessionID, f.Holdout)",
-  "got, err := a.Assign(f.Feature+string(rune('0'+i)), sessionID, f.Holdout)", "TestH109_TwoFeatures")
+  "got, err := a.Assign(f.Feature, sessionID, f.HoldoutBP)",
+  "got, err := a.Assign(f.Feature+string(rune('0'+i)), sessionID, f.HoldoutBP)", "TestH109_TwoFeatures")
 m("H-109 a layout may name one feature twice", ARM,
   "\t\t\tif earlier.Feature == f.Feature {",
   "\t\t\tif false && earlier.Feature == f.Feature {", "TestH109_TwoFeatures")
@@ -48,6 +48,12 @@ m("H-109 the caller's key slice is kept rather than copied", ARM,
 m("H-109 a feature name may contain a NUL", ARM,
   "feature == \"\" || strings.IndexByte(feature, 0) >= 0",
   "feature == \"\" || strings.IndexByte(feature, 0) < -1", "TestAssign_RefusesAFeatureName")
-m("H-109 a share of 0, 1 or NaN is accepted", ARM,
-  "\tif !(holdout > 0 && holdout < 1) {", "\tif holdout < 0 || holdout > 1 {",
+m("H-109 a share of 0 or a whole is accepted", ARM,
+  "\tif holdoutBP <= 0 || holdoutBP >= BasisPoints {", "\tif holdoutBP < 0 || holdoutBP > BasisPoints {",
   "TestAssign_RefusesAShare")
+# The share is an integer number of basis points and the boundary between
+# the arms exact: a bucket computed through a float, or off by one, moves the
+# pinned vectors' boundary.
+m("H-109 a draw's bucket is rounded rather than floored", ARM,
+  "\thi, _ := bits.Mul64(draw, BasisPoints)\n\treturn hi\n",
+  "\thi, lo := bits.Mul64(draw, BasisPoints)\n\treturn hi + lo>>63\n", "TestH109_TheDerivationIsPinned")

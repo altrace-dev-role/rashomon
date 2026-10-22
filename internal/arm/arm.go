@@ -29,6 +29,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"math/bits"
 	"strings"
 )
 
@@ -50,8 +51,8 @@ var (
 	ErrNoSession = errors.New("arm: no session id to assign")
 	// ErrFeature: the feature name is empty or contains a NUL.
 	ErrFeature = errors.New("arm: a feature name must be non-empty and contain no NUL")
-	// ErrShare: the holdout share is not strictly between 0 and 1.
-	ErrShare = errors.New("arm: the holdout share must be strictly between 0 and 1")
+	// ErrShare: the holdout share is not strictly between 0 and BasisPoints.
+	ErrShare = errors.New("arm: the holdout share must be 1 to 9999 basis points")
 	// ErrDuplicateFeature: a layout names one feature twice.
 	ErrDuplicateFeature = errors.New("arm: a layout names the same feature twice")
 )
@@ -89,11 +90,14 @@ func New(key []byte) (Assigner, error) {
 // a call errs are not random: a payload with no session id comes from somewhere
 // in particular.
 //
-// A share of 0 or 1 is refused. One has no comparison and the other no
+// The share is in basis points, an integer, so that the boundary between the
+// arms is exact on every platform and in every recorded vector: a session is
+// held out at holdoutBP when its draw's basis point (bucket) is below it. A
+// share of 0 or BasisPoints is refused. One has no comparison and the other no
 // feature, so either is a configuration that measures nothing while looking
 // like a measurement; the feature's own switch is the honest way to say on or
 // off.
-func (a Assigner) Assign(feature, sessionID string, holdout float64) (Arm, error) {
+func (a Assigner) Assign(feature, sessionID string, holdoutBP int) (Arm, error) {
 	if len(a.key) == 0 {
 		return "", ErrNoKey
 	}
@@ -103,11 +107,10 @@ func (a Assigner) Assign(feature, sessionID string, holdout float64) (Arm, error
 	if sessionID == "" {
 		return "", ErrNoSession
 	}
-	// Written so that NaN fails it: every comparison with NaN is false.
-	if !(holdout > 0 && holdout < 1) {
+	if holdoutBP <= 0 || holdoutBP >= BasisPoints {
 		return "", ErrShare
 	}
-	if a.draw(feature, sessionID) < cut(holdout) {
+	if bucket(a.draw(feature, sessionID)) < uint64(holdoutBP) {
 		return Holdout, nil
 	}
 	return Treatment, nil
@@ -128,18 +131,25 @@ func (a Assigner) draw(feature, sessionID string) uint64 {
 	return binary.BigEndian.Uint64(m.Sum(nil)[:8])
 }
 
-// cut is the draw below which a session is held out: that share of the 2^64
-// possible draws. The largest float64 below 1 times 2^64 is 2^64 - 2^11, which
-// a uint64 holds exactly, so no share Assign accepts can wrap. Shares resolve to
-// 2^-64, far below anything a sample of sessions could tell apart.
-func cut(holdout float64) uint64 {
-	return uint64(holdout * (1 << 64))
+// BasisPoints is a whole share: a holdout of BasisPoints would hold out every
+// session.
+const BasisPoints = 10000
+
+// bucket is a draw's basis point, floor(draw * BasisPoints / 2^64), 0 to
+// 9999: the high word of the 128-bit product, so it is exact with no float
+// and no wrap. A draw below k basis points' worth of the 2^64 space is in a
+// bucket below k, so a share of k holds out k / BasisPoints of the draws, to
+// within one draw in 2^64 / BasisPoints.
+func bucket(draw uint64) uint64 {
+	hi, _ := bits.Mul64(draw, BasisPoints)
+	return hi
 }
 
-// Factor is one feature in a layout and the share of sessions it holds out.
+// Factor is one feature in a layout and the share of sessions it holds out,
+// in basis points.
 type Factor struct {
-	Feature string
-	Holdout float64
+	Feature   string
+	HoldoutBP int
 }
 
 // Layout assigns one session in every factor at once and returns the arms in
@@ -162,7 +172,7 @@ func (a Assigner) Layout(sessionID string, factors ...Factor) ([]Arm, error) {
 				return nil, ErrDuplicateFeature
 			}
 		}
-		got, err := a.Assign(f.Feature, sessionID, f.Holdout)
+		got, err := a.Assign(f.Feature, sessionID, f.HoldoutBP)
 		if err != nil {
 			return nil, err
 		}

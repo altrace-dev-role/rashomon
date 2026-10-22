@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"testing"
 )
 
@@ -32,30 +33,35 @@ func testIDs(n int) []string {
 	return ids
 }
 
-// A share Assign refuses is one that would measure nothing, or one a float can
-// carry that is not a share at all.
+// A share Assign refuses is one that would measure nothing, or one that is not
+// a share at all.
 func TestAssign_RefusesAShareThatMeasuresNothing(t *testing.T) {
 	a := testAssigner(t, testKey(1))
-	for _, share := range []float64{0, 1, -0.1, 1.1, math.NaN(), math.Inf(1), math.Inf(-1)} {
+	for _, share := range []int{0, BasisPoints, -1, BasisPoints + 1} {
 		if got, err := a.Assign("f", "s", share); !errors.Is(err, ErrShare) || got != "" {
 			t.Errorf("Assign at share %v = %q, %v; want no arm and ErrShare", share, got, err)
 		}
 	}
 }
 
-// The extremes Assign accepts must not wrap. At the largest share below 1 a
-// cut computed past 2^64 would come back near 0 and send every session to
-// treatment; at the smallest above 0 nothing should be held out.
-func TestAssign_TheExtremeSharesDoNotWrap(t *testing.T) {
-	a := testAssigner(t, testKey(2))
-	nearOne, nearZero := math.Nextafter(1, 0), math.SmallestNonzeroFloat64
-	for _, id := range testIDs(2000) {
-		if got, err := a.Assign("f", id, nearOne); err != nil || got != Holdout {
-			t.Fatalf("Assign(%q) at share %v = %q, %v; want holdout", id, nearOne, got, err)
+// bucket spans 0 to 9999 exactly: the first draw of basis point k is
+// ceil(k * 2^64 / BasisPoints), and the draw before it is in k-1. The ends
+// do not wrap: draw 0 is in bucket 0 and the largest draw in 9999.
+func TestBucket_SpansTheBasisPointsExactly(t *testing.T) {
+	space := new(big.Int).Lsh(big.NewInt(1), 64)
+	for _, k := range []int64{1, 2, 5000, 9998, 9999} {
+		first := new(big.Int).Mul(big.NewInt(k), space)
+		first.Add(first, big.NewInt(BasisPoints-1)).Quo(first, big.NewInt(BasisPoints))
+		d := first.Uint64()
+		if got := bucket(d); got != uint64(k) {
+			t.Errorf("bucket(first draw of %d) = %d", k, got)
 		}
-		if got, err := a.Assign("f", id, nearZero); err != nil || got != Treatment {
-			t.Fatalf("Assign(%q) at share %v = %q, %v; want treatment", id, nearZero, got, err)
+		if got := bucket(d - 1); got != uint64(k-1) {
+			t.Errorf("bucket(the draw before %d's first) = %d, want %d", k, got, k-1)
 		}
+	}
+	if bucket(0) != 0 || bucket(math.MaxUint64) != BasisPoints-1 {
+		t.Errorf("bucket(0) = %d, bucket(max) = %d; want 0 and %d", bucket(0), bucket(math.MaxUint64), BasisPoints-1)
 	}
 }
 
@@ -64,11 +70,11 @@ func TestAssign_TheExtremeSharesDoNotWrap(t *testing.T) {
 func TestAssign_RefusesAFeatureNameThatCouldCollide(t *testing.T) {
 	a := testAssigner(t, testKey(3))
 	for _, feature := range []string{"", "a\x00b", "\x00"} {
-		if got, err := a.Assign(feature, "s", 0.5); !errors.Is(err, ErrFeature) || got != "" {
+		if got, err := a.Assign(feature, "s", 5000); !errors.Is(err, ErrFeature) || got != "" {
 			t.Errorf("Assign(%q) = %q, %v; want no arm and ErrFeature", feature, got, err)
 		}
 	}
-	if _, err := a.Assign("steer-recap", "s", 0.5); err != nil {
+	if _, err := a.Assign("steer-recap", "s", 5000); err != nil {
 		t.Errorf("an ordinary feature name was refused: %v", err)
 	}
 }
@@ -76,7 +82,7 @@ func TestAssign_RefusesAFeatureNameThatCouldCollide(t *testing.T) {
 // The zero Assigner has no key, and draws nothing rather than an unkeyed arm.
 func TestAssign_TheZeroAssignerRefuses(t *testing.T) {
 	var a Assigner
-	if got, err := a.Assign("f", "s", 0.5); !errors.Is(err, ErrNoKey) || got != "" {
+	if got, err := a.Assign("f", "s", 5000); !errors.Is(err, ErrNoKey) || got != "" {
 		t.Errorf("zero Assigner = %q, %v; want no arm and ErrNoKey", got, err)
 	}
 }
@@ -92,16 +98,16 @@ func TestNew_CopiesTheKey(t *testing.T) {
 	ids := testIDs(500)
 	before := make([]Arm, len(ids))
 	for i, id := range ids {
-		before[i], _ = a.Assign("f", id, 0.5)
+		before[i], _ = a.Assign("f", id, 5000)
 	}
 	copy(key, testKey(99))
 	other := testAssigner(t, key)
 	moved := 0
 	for i, id := range ids {
-		if got, _ := a.Assign("f", id, 0.5); got != before[i] {
+		if got, _ := a.Assign("f", id, 5000); got != before[i] {
 			t.Fatalf("session %s moved from %q to %q when the caller's key slice changed", id, before[i], got)
 		}
-		if got, _ := other.Assign("f", id, 0.5); got != before[i] {
+		if got, _ := other.Assign("f", id, 5000); got != before[i] {
 			moved++
 		}
 	}
@@ -114,7 +120,7 @@ func TestNew_CopiesTheKey(t *testing.T) {
 // nothing.
 func TestLayout_PassesRefusalsThrough(t *testing.T) {
 	a := testAssigner(t, testKey(5))
-	if arms, err := a.Layout("s", Factor{"f", 0.5}, Factor{"g", 1}); !errors.Is(err, ErrShare) || arms != nil {
+	if arms, err := a.Layout("s", Factor{"f", 5000}, Factor{"g", BasisPoints}); !errors.Is(err, ErrShare) || arms != nil {
 		t.Errorf("Layout with a bad share = %v, %v; want no arms and ErrShare", arms, err)
 	}
 	if arms, err := a.Layout("s"); err != nil || len(arms) != 0 {

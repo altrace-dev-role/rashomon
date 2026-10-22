@@ -83,14 +83,14 @@ func newArmAssigner(t *testing.T, key []byte) arm.Assigner {
 	return a
 }
 
-func mustAssign(t *testing.T, a arm.Assigner, feature, sessionID string, holdout float64) arm.Arm {
+func mustAssign(t *testing.T, a arm.Assigner, feature, sessionID string, holdout int) arm.Arm {
 	t.Helper()
 	got, err := a.Assign(feature, sessionID, holdout)
 	if err != nil {
-		t.Fatalf("Assign(%q, %q, %g): %v", feature, sessionID, holdout, err)
+		t.Fatalf("Assign(%q, %q, %d): %v", feature, sessionID, holdout, err)
 	}
 	if got != arm.Treatment && got != arm.Holdout {
-		t.Fatalf("Assign(%q, %q, %g) = %q, which is neither arm", feature, sessionID, holdout, got)
+		t.Fatalf("Assign(%q, %q, %d) = %q, which is neither arm", feature, sessionID, holdout, got)
 	}
 	return got
 }
@@ -116,14 +116,14 @@ func withinFiveSigma(t *testing.T, what string, got, n int, p float64) {
 func TestH109_TheSplitOverTenThousandSessionsIsTheHoldoutShare(t *testing.T) {
 	a := newArmAssigner(t, armInstallKey(t))
 	ids := armSessionIDs(armSessions)
-	for _, share := range []float64{0.5, 0.1, 0.25} {
+	for _, share := range []int{5000, 1000, 2500} {
 		held := 0
 		for _, id := range ids {
 			if mustAssign(t, a, "steer-split", id, share) == arm.Holdout {
 				held++
 			}
 		}
-		withinFiveSigma(t, fmt.Sprintf("held out at share %g", share), held, len(ids), share)
+		withinFiveSigma(t, fmt.Sprintf("held out at %d bp", share), held, len(ids), float64(share)/arm.BasisPoints)
 	}
 }
 
@@ -151,10 +151,10 @@ func TestH109_TheSameSessionAlwaysLandsInTheSameArm(t *testing.T) {
 
 	counts := map[arm.Arm]int{}
 	for _, id := range armSessionIDs(armSessions) {
-		want := mustAssign(t, a, "steer-same", id, 0.5)
+		want := mustAssign(t, a, "steer-same", id, 5000)
 		counts[want]++
 		for i, other := range []arm.Assigner{a, a, b, b} {
-			if got := mustAssign(t, other, "steer-same", id, 0.5); got != want {
+			if got := mustAssign(t, other, "steer-same", id, 5000); got != want {
 				t.Fatalf("session %s: asked again (%d), it landed in %q after %q", id, i+1, got, want)
 			}
 		}
@@ -186,22 +186,21 @@ func TestH109_TheDerivationIsPinned(t *testing.T) {
 	a := newArmAssigner(t, key)
 	for _, v := range []struct {
 		feature, session string
-		draw             float64
+		bucket           int // the draw's basis point
 	}{
-		{"steer-recap", "3f2b9c1e-8a4d-4f6b-9c2e-1d7a5b8e0f42", 0.7089283330620607},
-		{"steer-recap", "00000000-0000-4000-8000-000000000000", 0.0356072409235298},
-		{"steer-nudge", "3f2b9c1e-8a4d-4f6b-9c2e-1d7a5b8e0f42", 0.6749280285537669},
-		{"ab", "c-session", 0.7490829035993688},
-		{"a", "bc-session", 0.6728471793752054},
+		{"steer-recap", "3f2b9c1e-8a4d-4f6b-9c2e-1d7a5b8e0f42", 7089},
+		{"steer-recap", "00000000-0000-4000-8000-000000000000", 356},
+		{"steer-nudge", "3f2b9c1e-8a4d-4f6b-9c2e-1d7a5b8e0f42", 6749},
+		{"ab", "c-session", 7490},
+		{"a", "bc-session", 6728},
 	} {
-		const margin = 1e-9
-		if got := mustAssign(t, a, v.feature, v.session, v.draw-margin); got != arm.Treatment {
-			t.Errorf("(%q, %q) at share %.10f: %q, want treatment (its draw is %.10f)",
-				v.feature, v.session, v.draw-margin, got, v.draw)
+		if got := mustAssign(t, a, v.feature, v.session, v.bucket); got != arm.Treatment {
+			t.Errorf("(%q, %q) at %d bp: %q, want treatment (its draw is in bucket %d)",
+				v.feature, v.session, v.bucket, got, v.bucket)
 		}
-		if got := mustAssign(t, a, v.feature, v.session, v.draw+margin); got != arm.Holdout {
-			t.Errorf("(%q, %q) at share %.10f: %q, want holdout (its draw is %.10f)",
-				v.feature, v.session, v.draw+margin, got, v.draw)
+		if got := mustAssign(t, a, v.feature, v.session, v.bucket+1); got != arm.Holdout {
+			t.Errorf("(%q, %q) at %d bp: %q, want holdout (its draw is in bucket %d)",
+				v.feature, v.session, v.bucket+1, got, v.bucket)
 		}
 	}
 }
@@ -227,7 +226,7 @@ func TestH109_ADifferentInstallKeyReshufflesTheAssignment(t *testing.T) {
 
 	agree := 0
 	for _, id := range armSessionIDs(armSessions) {
-		if mustAssign(t, a, "steer-key", id, 0.5) == mustAssign(t, b, "steer-key", id, 0.5) {
+		if mustAssign(t, a, "steer-key", id, 5000) == mustAssign(t, b, "steer-key", id, 5000) {
 			agree++
 		}
 	}
@@ -247,8 +246,8 @@ func TestH109_ADifferentInstallKeyReshufflesTheAssignment(t *testing.T) {
 // arms are the same arm and two cells stay empty.
 func TestH109_TwoFeaturesInATwoByTwoAreAssignedIndependently(t *testing.T) {
 	a := newArmAssigner(t, armInstallKey(t))
-	recap := arm.Factor{Feature: "steer-recap", Holdout: 0.5}
-	nudge := arm.Factor{Feature: "steer-nudge", Holdout: 0.5}
+	recap := arm.Factor{Feature: "steer-recap", HoldoutBP: 5000}
+	nudge := arm.Factor{Feature: "steer-nudge", HoldoutBP: 5000}
 
 	cells := map[[2]arm.Arm]int{}
 	for _, id := range armSessionIDs(armSessions) {
@@ -260,7 +259,7 @@ func TestH109_TwoFeaturesInATwoByTwoAreAssignedIndependently(t *testing.T) {
 			t.Fatalf("Layout(%q) returned %d arms for two factors", id, len(arms))
 		}
 		for i, f := range []arm.Factor{recap, nudge} {
-			if alone := mustAssign(t, a, f.Feature, id, f.Holdout); arms[i] != alone {
+			if alone := mustAssign(t, a, f.Feature, id, f.HoldoutBP); arms[i] != alone {
 				t.Fatalf("session %s: %s is %q in the layout and %q alone", id, f.Feature, arms[i], alone)
 			}
 		}
@@ -288,12 +287,12 @@ func TestH109_TwoFeaturesInATwoByTwoAreAssignedIndependently(t *testing.T) {
 // Break: a session without an id is given an arm.
 func TestH109_ASessionWithoutAnIdGetsNoArm(t *testing.T) {
 	a := newArmAssigner(t, armInstallKey(t))
-	mustAssign(t, a, "steer-noid", "a-session", 0.5)
+	mustAssign(t, a, "steer-noid", "a-session", 5000)
 
-	if got, err := a.Assign("steer-noid", "", 0.5); !errors.Is(err, arm.ErrNoSession) || got != "" {
+	if got, err := a.Assign("steer-noid", "", 5000); !errors.Is(err, arm.ErrNoSession) || got != "" {
 		t.Errorf("Assign with no session id = %q, %v; want no arm and ErrNoSession", got, err)
 	}
-	if arms, err := a.Layout("", arm.Factor{Feature: "steer-noid", Holdout: 0.5}); !errors.Is(err, arm.ErrNoSession) || arms != nil {
+	if arms, err := a.Layout("", arm.Factor{Feature: "steer-noid", HoldoutBP: 5000}); !errors.Is(err, arm.ErrNoSession) || arms != nil {
 		t.Errorf("Layout with no session id = %v, %v; want no arms and ErrNoSession", arms, err)
 	}
 	for _, key := range [][]byte{nil, {}} {
@@ -324,6 +323,8 @@ func TestH109_TheArmDependsOnNothingButTheKeyTheFeatureAndTheSession(t *testing.
 		"encoding/binary": true,
 		"errors":          true,
 		"strings":         true,
+		// The draw's basis point: a 128-bit product, arithmetic only.
+		"math/bits": true,
 	}
 	files, err := filepath.Glob(filepath.Join(moduleRoot, "internal", "arm", "*.go"))
 	if err != nil {
