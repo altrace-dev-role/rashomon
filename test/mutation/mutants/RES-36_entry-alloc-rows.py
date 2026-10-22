@@ -2,6 +2,6 @@
 # benchmark row it names. A figure above the measurement, or a benchmark
 # name with no row, leaves the entry's allocation budget unbacked.
 m("RES-36 an entry row's allocation budget drifts above its benchmark", "test/perf/budgets.json",
-  '"alloc_bytes_max": 49703,', '"alloc_bytes_max": 54673,', "TestRES36f_")
+  '"alloc_bytes_max": 49844,', '"alloc_bytes_max": 54829,', "TestRES36f_")
 m("RES-36 an entry row names a benchmark with no row", "test/perf/budgets.json",
   '"benchmark": "BenchmarkRecap/100",', '"benchmark": "BenchmarkRecap/200",', "TestRES36f_")
