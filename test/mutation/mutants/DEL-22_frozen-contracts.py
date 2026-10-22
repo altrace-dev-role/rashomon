@@ -12,8 +12,11 @@ m("DEL-22 a gate reason is dropped from the vocabulary", "internal/verify/state.
 # compiler now refuses the regression this mutant named.
 m("DEL-22 the session record's resume key is respelled", "internal/store/record_v5.go",
   "`json:\"resume\"`", "`json:\"resumed\"`", "TestDEL22b_")
-m("DEL-22 the target's dropped keys become a count again", "internal/store/record_v5.go",
-  "\tDropped           []string          `json:\"dropped\"`\n", "\tDropped           int               `json:\"dropped\"`\n", "TestDEL22b_")
+# The target's dropped keys becoming a count again is no longer a mutant:
+# rec31_test.go builds a target with Dropped as a slice and appends to it, so
+# the type change stops the store's tests compiling, the package
+# TestDEL22b_SchemaFiveKeyListsAreFrozen lives in, and the sweep can only
+# report it as a broken build. The compiler now refuses the regression.
 # The pattern interface proposal, the nullable steer-line prompt_id and
 # Finding.Check (cross F7, F8(d); P07N-2, P07N-14).
 m("DEL-22 the pattern interface's Revalidate is renamed", "internal/steer/pattern_iface.go",
