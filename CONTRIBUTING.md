@@ -87,6 +87,22 @@ a decision and the failure that motivated it, often with the measurement that
 settled it. That is the house style, and a comment that only restates the code
 is noise.
 
+## Committing a captured payload
+
+A hook payload or a session transcript from your machine carries your
+machine: home and scratchpad paths, session ids, addresses, and the init
+event's list of every skill, plugin and MCP server your account has. Before
+any capture is committed, wherever it goes, run
+
+    go run ./test/tools/scrub -w path/to/capture.ndjson
+
+and read what it wrote. It removes shapes, not meaning: a client's or a
+person's name typed into a prompt survives it. H-113 scans every such file on
+every push and fails on what scrub would have removed; a value it flags that a
+person has read and judged harmless goes in `test/tools/hygiene/reviewed.txt`
+by the fingerprint `scrub -review` prints, never by weakening the scan. An
+environment file is a finding whatever it holds: commit none.
+
 ## Where things are
 
 | package | what it owns |
@@ -97,6 +113,7 @@ is noise.
 | `internal/settings` | reading and editing Claude Code settings files |
 | `internal/report` | reconciling the three records and rendering them |
 | `internal/install` | the hook entries, and what counts as one of ours |
+| `internal/secretshape` | the secret deny list and entropy test: what a secret looks like |
 
 `internal/shape` deserves a note. It is the single file anyone has to audit to
 believe the no-content guarantee, which is why host extraction and file

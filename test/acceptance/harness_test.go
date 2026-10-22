@@ -21,6 +21,7 @@ import (
 var (
 	rashomonBin string
 	panickerBin string
+	scrubBin    string
 	moduleRoot  string
 )
 
@@ -54,6 +55,12 @@ func buildAndRun(m *testing.M) (int, error) {
 		return 0, err
 	}
 	panickerBin, err = build(dir, "panicker", "./test/fixtures/panicker")
+	if err != nil {
+		return 0, err
+	}
+	// H-112's scrubber, a contributor's tool: its exit status says whether the
+	// output still needs a person, which only a real process reports.
+	scrubBin, err = build(dir, "scrub", "./test/tools/scrub")
 	if err != nil {
 		return 0, err
 	}
