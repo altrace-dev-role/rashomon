@@ -1,7 +1,7 @@
 # errors-10: settings.Error renders with no cause and as a nil pointer, and a
 # parsed document keeps its own copy of the bytes it was given.
 m("errors-10  ParseNamed keeps the caller's slice", "internal/settings/document.go",
-  "\tdata = bytes.Clone(data)\n", "", "TestRubricERRORS10_")
+  "\treturn parseOwned(path, bytes.Clone(data))\n", "\treturn parseOwned(path, data)\n", "TestRubricERRORS10_")
 m("errors-10  a nil *Error panics when rendered", "internal/settings/errors.go",
   "\tif e == nil {\n\t\treturn \"settings: <nil>\"\n\t}",
   "\tif false {\n\t\treturn \"settings: <nil>\"\n\t}", "TestRubricERRORS10_")

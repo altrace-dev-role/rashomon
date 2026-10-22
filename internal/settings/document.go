@@ -78,7 +78,10 @@ func Load(path string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ParseNamed(path, data)
+	// data is os.ReadFile's own buffer, which nothing else holds, so the
+	// document takes it rather than copying it: ParseNamed's copy, on every
+	// hook call's Load, was the size of the settings file again.
+	return parseOwned(path, data)
 }
 
 // Parse builds a Document from bytes that have no file name. Its errors say
@@ -93,7 +96,12 @@ func Parse(data []byte) (*Document, error) {
 // position a later error reports, is in those bytes, so a caller that reuses
 // its buffer changes neither.
 func ParseNamed(path string, data []byte) (*Document, error) {
-	data = bytes.Clone(data)
+	return parseOwned(path, bytes.Clone(data))
+}
+
+// parseOwned is ParseNamed over bytes the document may keep as they are:
+// nothing else holds them, or will write into them.
+func parseOwned(path string, data []byte) (*Document, error) {
 	d := &Document{path: path, src: data}
 	if len(bytes.TrimSpace(data)) == 0 {
 		return d, nil
