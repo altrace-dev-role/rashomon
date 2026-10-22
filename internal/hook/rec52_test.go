@@ -219,7 +219,7 @@ func TestREC52_ARefusalCapsItsSessionID(t *testing.T) {
 			RunProbe(&Signals{ch: make(chan os.Signal, 1)}, store.PhaseStart, over(), st, now)
 		},
 		"paused": func(st *store.Store) {
-			RecordPaused(over(), store.PhaseCall, st, now)
+			RecordPaused(over(), store.PhaseCall, store.ReasonRecordingPaused, st, now)
 		},
 	}
 	for name, record := range entries {
