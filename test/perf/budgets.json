@@ -30,7 +30,7 @@
   "parallel": {"ways": 64, "summed_peak_mib_max": 704, "basis": "per-process rule (RES-30, ruling 2026-10-13): largest pair peak at most 1.25x the median of 25 solo pairs, both measured in the same run. Restated from measurement on the reference machine with GOMAXPROCS unchanged: largest 1.08x to 1.21x over six runs with nine solo pairs, 1.10x to 1.19x over eleven runs with 25 (4.02 to 4.31 MiB against solo medians of 3.61 to 3.69 MiB), burst median 1.02x to 1.05x; GOMAXPROCS(1) in hook and post measured 1.03x to 1.09x over twenty runs and was rejected. No tolerance on the reference machine; macos-latest unmeasured, so a CI runner gets the platform tolerance on the ratio until it is measured"},
   "benchmarks": [
     {"name": "BenchmarkDerive/bash_short", "measured_bytes_per_op": 2656, "measured_allocs_per_op": 33, "bytes_per_op_max": 2656, "allocs_per_op_max": 33},
-    {"name": "BenchmarkDerive/bash_long_4k", "measured_bytes_per_op": 285328, "measured_allocs_per_op": 229, "bytes_per_op_max": 285328, "allocs_per_op_max": 229},
+    {"name": "BenchmarkDerive/bash_long_4k", "measured_bytes_per_op": 268944, "measured_allocs_per_op": 229, "bytes_per_op_max": 268944, "allocs_per_op_max": 229},
     {"name": "BenchmarkDerive/edit_50k", "measured_bytes_per_op": 63464, "measured_allocs_per_op": 28, "bytes_per_op_max": 63464, "allocs_per_op_max": 28},
     {"name": "BenchmarkLexTokens", "measured_bytes_per_op": 128544, "measured_allocs_per_op": 750, "bytes_per_op_max": 128544, "allocs_per_op_max": 750},
     {"name": "BenchmarkRecordBytesPerCall", "measured_bytes_per_op": 17838, "measured_allocs_per_op": 95, "bytes_per_op_max": 17838, "allocs_per_op_max": 95},
