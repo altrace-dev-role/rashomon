@@ -48,3 +48,9 @@ const lockBudget = 2 * time.Second
 // once; the lock is taken so that forget, which rewrites the spill file under
 // it, is not raced, and given up so that no handler ever blocks on it.
 const spillBudget = 50 * time.Millisecond
+
+// steerBudget is how long a steer append waits for the steer log's lock
+// (Technical spec 4.2.4 step 10). It is short because what waits is a note,
+// not a record: on a give-up nothing is said and the decision is recorded as
+// lock_timeout (4.2.5), and RES-30b gates the p99 wait below it.
+const steerBudget = 150 * time.Millisecond

@@ -11,7 +11,9 @@ import (
 
 // wantLineJSONTags is tech 4.2.3's Line key list: every key the example
 // line shows, every key the "Also:" sentence adds, `outcome` (its own bullet:
-// "closed, null on every other line") and `mirror_failure` (tech 6.2.1). A change to Line's JSON shape that does not also change
+// "closed, null on every other line"), `mirror_failure` (tech 6.2.1), and
+// `model_text_withheld` and `user_text_withheld`, the *_withheld keys of the
+// two capped texts (tech 1.2.9's 2,048-byte cap, 1.2.11's convention). A change to Line's JSON shape that does not also change
 // this list is exactly the drift this test exists to catch.
 var wantLineJSONTags = []string{
 	"type", "v", "id", "at_unix_ms", "session_id", "prompt_id", "agent_id",
@@ -21,6 +23,7 @@ var wantLineJSONTags = []string{
 	"renderer_version", "rules_version", "steer_id", "label_rule",
 	"delivery", "mirrored_to_user", "facts", "records_offset", "harness_id",
 	"surface", "mirror", "mirror_failure", "outcome",
+	"model_text_withheld", "user_text_withheld",
 }
 
 // TestLine_JSONTagsMatchSpec is a construction-truth test: it reads Line's

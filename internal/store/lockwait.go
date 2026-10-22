@@ -80,7 +80,7 @@ func (s *Store) LongestLockWait() (time.Duration, string, error) {
 	var longest int64
 	var in string
 	for _, name := range runs {
-		f, err := os.Open(filepath.Join(s.root, dirRuns, name, FileLockWait))
+		f, err := os.Open(filepath.Join(s.root, DirRuns, name, FileLockWait))
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}

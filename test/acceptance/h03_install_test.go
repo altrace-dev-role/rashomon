@@ -241,7 +241,7 @@ func TestH6_IdempotentInstallOneOwner(t *testing.T) {
 		if res := e.detach(); res.exitCode != 0 {
 			t.Fatalf("detach: exit %d, stderr %q", res.exitCode, res.stderr)
 		}
-		sf = e.settings()
+		sf = e.settingsAfterDetach()
 		for _, event := range []string{"PreToolUse", "PostToolUse", "SessionStart", "SessionEnd"} {
 			if got := len(ours(sf.Hooks[event])); got != 0 {
 				t.Errorf("after detach, %d entries of ours remain under %s", got, event)
@@ -521,7 +521,7 @@ func TestH3_SpacedExecutablePathRunsAsInstalled(t *testing.T) {
 	e := newEnv(t)
 	exe := copyBinary(t, rashomonBin, filepath.Join(t.TempDir(), "Application Support", "rashomon"))
 
-	if res := e.runBin(exe, "", "watch"); res.exitCode != 0 {
+	if res := e.runBin(exe, "", "watch", "--yes"); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	groups := ours(e.settings().Hooks["PreToolUse"])

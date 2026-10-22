@@ -27,21 +27,41 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 	return runProbe(sig, phase, in, st, now, LockWaitTotal)
 }
 
+// RunProbeFromPayload is RunProbe for a caller that already has a parsed
+// *hookio.Payload in hand -- cmd/rashomon's host-guard check, which hands
+// this the exact value internal/hostguard.EvaluateRaw built, so the bytes
+// it already decided on are never read or copied a second time. See
+// Handler.CapturePayload's doc, which this mirrors.
+func RunProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, st *store.Store, now func() time.Time) error {
+	return runProbeFromPayload(sig, phase, payload, nil, st, now, LockWaitTotal)
+}
+
 // runProbe is RunProbe with its lock waits bounded by waits, which a test
 // shortens.
 func runProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time, waits time.Duration) error {
+	return runProbeFromPayload(sig, phase, nil, in, st, now, waits)
+}
+
+// runProbeFromPayload is runProbe and RunProbeFromPayload's shared body.
+// Exactly one of payload and in is non-nil: payload when the caller has
+// already read and parsed it, in when it still owns an unread io.Reader
+// and runProbeFromPayload must call hookio.Intake itself.
+func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in io.Reader, st *store.Store, now func() time.Time, waits time.Duration) error {
 	st.LimitLockWaits(waits)
 	sessionID := UnattributedSession
 	reason := ""
 	cwd := ""
 
 	err := safe.Guard(func() error {
-		payload, err := hookio.Intake(in)
-		if err != nil {
-			if s, c, ok := refusedSession(err); ok {
-				sessionID, cwd = s, c
+		if payload == nil {
+			var err error
+			payload, err = hookio.Intake(in)
+			if err != nil {
+				if s, c, ok := refusedSession(err); ok {
+					sessionID, cwd = s, c
+				}
+				return err
 			}
-			return err
 		}
 		var p sessionPayload
 		if err := p.from(payload); err != nil {

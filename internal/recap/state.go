@@ -13,11 +13,19 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/fault"
 )
 
-// stateFileName is recap's own bookkeeping, a plain file under the store
+// StateFileName is recap's own bookkeeping, a plain file under the store
 // root beside install.json and baseline/ -- not a store record, because
 // nothing here is evidence about a session; it is evidence about this
 // COMMAND, kept for exactly one reader: status (H-92).
-const stateFileName = "recap.json"
+//
+// Exported so the disclosure inventory (internal/disclose) can name this
+// file from this package's own constant rather than a second copy of the
+// literal string.
+const StateFileName = "recap.json"
+
+// StateTempName is the temporary file recap writes its state to before
+// renaming it over StateFileName.
+const StateTempName = StateFileName + ".tmp"
 
 // maxTrackedSessions bounds the idempotency map. A machine that has run
 // rashomon for a year across many projects has opened many sessions, and
@@ -63,7 +71,7 @@ func newState() state {
 }
 
 func statePath(root string) string {
-	return filepath.Join(root, stateFileName)
+	return filepath.Join(root, StateFileName)
 }
 
 // storeExists reports whether a store has ever been opened at root, using
@@ -115,7 +123,7 @@ func writeState(path string, s state, current string) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
+	tmp := filepath.Join(filepath.Dir(path), StateTempName)
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}

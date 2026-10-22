@@ -3,7 +3,7 @@
 # Saving without the lock, releasing it before the forget's rewrite, or a
 # fold that edits the file it was handed is the regression.
 m("RUBRIC hld-2 a render saves without the lock", "internal/baseline/baseline.go",
-  "\trelease, err := store.LockPath(filepath.Join(dir, lockName))\n\tif err != nil {\n\t\treturn Result{}, err\n\t}\n\tdefer release()\n",
+  "\trelease, err := store.LockPath(filepath.Join(dir, LockName))\n\tif err != nil {\n\t\treturn Result{}, err\n\t}\n\tdefer release()\n",
   "", "TestRubricHLD2_ConcurrentRendersLoseNoHost")
 m("RUBRIC hld-2 a forget rewrites after releasing the lock", "internal/baseline/baseline.go",
   "\tdefer release()\n\treturn forgetLocked(path, raw, name)\n", "\trelease()\n\treturn forgetLocked(path, raw, name)\n",

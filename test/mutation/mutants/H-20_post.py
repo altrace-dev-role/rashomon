@@ -4,7 +4,7 @@ m("H-20 the post entry is installed without a matcher", "internal/install/instal
   "\treturn event == EventPreToolUse ||\n\t\tevent == EventPostToolUse ||\n\t\tevent == EventPostToolUseFailure",
   "\treturn event == EventPreToolUse", "TestH3_")
 m("H-20 the execution record is never written", "internal/hook/post.go",
-  "\treturn p.st.AppendExecution(rec)", "\treturn nil",
+  "\treturn landed(p.st.AppendExecution(rec), &p.withheld)", "\treturn nil",
   "TestH20_PostRecordsTheExecution")
 m("H-20 an execution the lock refuses is dropped", "internal/store/store.go",
   "\treturn s.SpillExecution(rec)", "\treturn err", "TestAppendExecutionSpillsWhenTheLockIsHeld")
@@ -29,7 +29,8 @@ m("H-20 the unexecuted list drops the permission mode", "internal/report/report.
   "Unexecuted{ToolUseID: id, PermissionMode: mode[id]})", "Unexecuted{ToolUseID: id})",
   "TestH20_DeclarationWithoutAnExecutionIsNamed")
 m("H-20 the post path runs outside the panic barrier", "cmd/rashomon/main.go",
-  "\tcaptureErr := safe.Guard(func() error { return p.Capture(stdin) })", "\tcaptureErr := p.Capture(stdin)",
+  "\t\tcaptureErr := safe.Guard(func() error {\n\t\t\tif payload != nil {\n\t\t\t\treturn p.CapturePayload(payload)\n\t\t\t}\n\t\t\treturn p.Capture(in())\n\t\t})",
+  "\t\tvar captureErr error\n\t\tif payload != nil {\n\t\t\tcaptureErr = p.CapturePayload(payload)\n\t\t} else {\n\t\t\tcaptureErr = p.Capture(in())\n\t\t}",
   "TestH20_NoFaultOnThePostPathReachesTheAgent")
 
 m("H-20 the post payload declares tool_response, and it reaches the debug log", "internal/hook/post.go",

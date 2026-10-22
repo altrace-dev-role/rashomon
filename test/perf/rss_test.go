@@ -253,7 +253,12 @@ func newRig(t *testing.T) rig {
 		}
 		env = append(env, kv)
 	}
-	env = append(env, "RASHOMON_HOME="+home, "CLAUDE_CONFIG_DIR="+cfg, "RASHOMON_MANAGED_SETTINGS_PATH="+filepath.Join(cfg, "absent"))
+	// CLAUDE_CODE_ENTRYPOINT=cli: see test/acceptance/harness_test.go's
+	// environ for why every hook-invoking test env needs this now that H1
+	// (internal/hostguard) is wired into the five entry points -- without
+	// it, every rig-driven hook/post/probe call reads as the unknown
+	// harness and stands down before doing the work these RSS gates meter.
+	env = append(env, "RASHOMON_HOME="+home, "CLAUDE_CONFIG_DIR="+cfg, "RASHOMON_MANAGED_SETTINGS_PATH="+filepath.Join(cfg, "absent"), "CLAUDE_CODE_ENTRYPOINT=cli")
 	return rig{home: home, env: env, installID: st.InstallID()}
 }
 

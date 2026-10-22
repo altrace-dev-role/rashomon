@@ -8,8 +8,11 @@
 // plus the few derived counts the readers need, so a reader starts from the
 // offset and reads only what arrived since. Its identity fields exist because
 // an offset is only meaningful into the file it was taken from: a records
-// file rewritten by eviction or restored from a copy has a new inode, and a
-// reader that trusted the old offset would read from the middle of a line.
+// file restored from a copy has a new inode, and a reader that trusted the
+// old offset would read from the middle of a line. A forget or eviction
+// rewrite does not change the inode -- it compacts the file in place
+// (internal/store/gaps.go's doc on rewrite) -- which is why Cursor also
+// carries SizeSeen: Validate catches that case by size, not by identity.
 // Technical spec 8.2.2; Archive 85.3.3 to 85.3.5.
 //
 // Contract only (P-07): the file's shape and its cap. recap writes fold.json
@@ -42,6 +45,15 @@ type File struct {
 	Records  Cursor `json:"records"`
 	Spill    Cursor `json:"spill"`
 	Coverage Cursor `json:"coverage"`
+	// Gaps is how far the root gaps.ndjson has been folded for this run
+	// (RES-49). digest.Build calls ReadGaps for every digest, which decodes
+	// the WHOLE append-only root file (internal/store/read.go's ReadGaps);
+	// without a cursor here, folding the three run files from an offset
+	// would still leave Stop reading every gap ever recorded on every call.
+	// Offset and Size are into gaps.ndjson exactly as Records' are into
+	// records.ndjson; Seq is unused (a gap carries no seq of its own) and
+	// stays zero.
+	Gaps Cursor `json:"gaps"`
 	// Prompts are the last 64 prompt marks, oldest first.
 	Prompts []Mark `json:"prompts"`
 	// Digest is what the digest command needs without a full read.
@@ -63,10 +75,10 @@ type File struct {
 // offset folded before it, including on a file a same-size rewrite leaves
 // at the same length. A writer bumps the generation on every in-place
 // rewrite; a cursor whose Generation is behind the file's current one is
-// stale regardless of what its Offset and SizeSeen say. Records, Spill
-// and Coverage read different files, each with its own generation -- this
-// is also the only identity check Spill and Coverage get, since File's
-// Dev/Inode names records.ndjson alone. Wiring the counter itself is the
+// stale regardless of what its Offset and SizeSeen say. Records, Spill,
+// Coverage and Gaps read different files, each with its own generation --
+// this is also the only identity check Spill, Coverage and Gaps get, since
+// File's Dev/Inode names records.ndjson alone. Wiring the counter itself is the
 // store PR's; this package only names where a cursor keeps its copy.
 type Cursor struct {
 	Offset     int64 `json:"offset"`

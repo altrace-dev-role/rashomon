@@ -23,6 +23,11 @@ type Run struct {
 	// carried a schema version this reader does not understand. They are
 	// counted rather than failed on so that one bad line cannot hide a run.
 	Skipped int
+	// Ignored counts records of a kind or version this reader does not
+	// accept that say `"critical": false`: a record an older reader may pass
+	// over without the session losing anything it reads (1.2.2). They are
+	// not unreadable, and nothing marks the session for them.
+	Ignored int
 }
 
 // SessionID is the session id the run's records carry, or the directory name
@@ -42,7 +47,7 @@ func (r *Run) SessionID() string {
 
 // Runs lists run directory names, oldest first by modification time.
 func (s *Store) Runs() ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(s.root, dirRuns))
+	entries, err := os.ReadDir(filepath.Join(s.root, DirRuns))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -98,8 +103,8 @@ func (s *Store) ReadRunDirForReport(name string) (*Run, error) {
 // readRunDir reads one run's three files unlocked; refused says which read
 // errors count as one skipped line rather than failing the read.
 func (s *Store) readRunDir(name string, refused func(error) bool) (*Run, error) {
-	dir := filepath.Join(s.root, dirRuns, name)
-	run := &Run{Dir: name}
+	dir := filepath.Join(s.root, DirRuns, name)
+	run := presizeRun(dir, name)
 	fn := func(line []byte) { classifyRunLine(run, line) }
 
 	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
@@ -135,8 +140,8 @@ func (s *Store) readRunDir(name string, refused func(error) bool) (*Run, error) 
 // rather than being counted as something it is not.
 func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run, error) {
 	name := segment(sessionID)
-	dir := filepath.Join(s.root, dirRuns, name)
-	run := &Run{Dir: name}
+	dir := filepath.Join(s.root, DirRuns, name)
+	run := presizeRun(dir, name)
 	deadline := time.Now().Add(budget)
 
 	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
@@ -152,49 +157,67 @@ func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run,
 // classifyRunLine parses one NDJSON line into the run it belongs to. Shared by
 // ReadRunDir and ReadRunConsistent so the two read paths cannot drift on what
 // a record type or an unrecognised schema version means.
+//
+// The pair (type, schema_version) decides, through AcceptsKind: an accepted
+// pair is read. Any other is passed over, and the record's own critical key
+// says how (1.2.2): `"critical": false` counts it in Ignored, and true, or no
+// key at all, in Skipped, which the report reads as records_unreadable. A
+// record written before the bit existed carries no key, so it is the
+// must-understand case, which is what every reader before this one did with
+// a record it could not read.
 func classifyRunLine(run *Run, line []byte) {
 	var head struct {
 		Type          string `json:"type"`
 		SchemaVersion int    `json:"schema_version"`
+		Critical      *bool  `json:"critical"`
 	}
-	// Accepts, not equality against SchemaVersion: a store written before
+	// AcceptsKind, not equality against a version: a store written before
 	// the v2 fields existed is still readable, and equality here would have
 	// silently skipped every record already on disk the moment the writer
 	// moved on.
-	if json.Unmarshal(line, &head) != nil || !Accepts(head.SchemaVersion) {
+	if json.Unmarshal(line, &head) != nil {
 		run.Skipped++
 		return
 	}
+	if !AcceptsKind(head.Type, head.SchemaVersion) {
+		if head.Critical != nil && !*head.Critical {
+			run.Ignored++
+		} else {
+			run.Skipped++
+		}
+		return
+	}
+	var err error
 	switch head.Type {
 	case TypeDeclaration:
 		var rec Declaration
-		if json.Unmarshal(line, &rec) != nil {
-			run.Skipped++
-			return
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.Declarations = append(run.Declarations, rec)
 		}
-		run.Declarations = append(run.Declarations, rec)
 	case TypeExecution:
 		var rec Execution
-		if json.Unmarshal(line, &rec) != nil {
-			run.Skipped++
-			return
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.Executions = append(run.Executions, rec)
 		}
-		run.Executions = append(run.Executions, rec)
 	case TypeTerminal:
 		var rec Terminal
-		if json.Unmarshal(line, &rec) != nil {
-			run.Skipped++
-			return
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.Terminals = append(run.Terminals, rec)
 		}
-		run.Terminals = append(run.Terminals, rec)
 	case TypeCoverage:
 		var rec Coverage
-		if json.Unmarshal(line, &rec) != nil {
-			run.Skipped++
-			return
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.Coverage = append(run.Coverage, rec)
 		}
-		run.Coverage = append(run.Coverage, rec)
 	default:
+		// A kind introduced at 1.2.0, at its version. Its readers land
+		// with its writers; until then the record is checked to be the
+		// header every such kind starts with, and passed over without
+		// marking the session, as an older reader passes over it.
+		var rec EventHeader
+		err = json.Unmarshal(line, &rec)
+	}
+	if err != nil {
 		run.Skipped++
 	}
 }
@@ -239,12 +262,14 @@ func readGapsAt(path string, refused func(error) bool) (gaps []Gap, skipped int,
 	return gaps, skipped, err
 }
 
-// gapLines is the line callback of a gaps read: a gap record joins gaps, and
-// any other line, a nil one included, counts in skipped.
+// gapLines is the line callback of a gaps read: a gap record at a version
+// this reader accepts joins gaps, and any other line, a nil one included,
+// counts in skipped. A gap carries no critical key: every gap is one a
+// reader must understand.
 func gapLines(gaps *[]Gap, skipped *int) func(line []byte) {
 	return func(line []byte) {
 		var g Gap
-		if json.Unmarshal(line, &g) != nil || g.Type != TypeGap {
+		if json.Unmarshal(line, &g) != nil || g.Type != TypeGap || !AcceptsKind(TypeGap, g.SchemaVersion) {
 			*skipped++
 			return
 		}
@@ -447,7 +472,7 @@ func (s *Store) NewestRun() (string, time.Time, error) {
 		// The records file rather than the directory: a directory's mtime moves
 		// when a child is created, which happens once, while the records file
 		// is appended to for the life of the session.
-		info, err := os.Stat(filepath.Join(s.root, dirRuns, name, FileRecords))
+		info, err := os.Stat(filepath.Join(s.root, DirRuns, name, FileRecords))
 		if err != nil {
 			continue
 		}

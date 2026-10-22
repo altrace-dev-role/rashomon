@@ -24,23 +24,32 @@ import (
 // either, because the contract is the thing consumers are told to rely on.
 
 // TestAcceptsAdmitsSchema3 is the data-loss guard, and it is the same bug the
-// reader already carries a comment about: `Accepts` used to be an equality
+// reader already carries a comment about: acceptance used to be an equality
 // against SchemaVersion, so the moment the writer moved to v2 every v1 record
 // on disk was skipped and the report rendered empty with nothing saying why.
 // This build writes v4 for its ordinary call records and v5 for the one
-// flush_failed marker (store.FlushFailedSchemaVersion), and Accepts must
-// keep admitting 1 through 4 so that older stores still read.
+// flush_failed marker (store.FlushFailedSchemaVersion). AcceptsKind must keep
+// admitting the call records at 1 to 5 and the session records at 1 to 3, so
+// older stores still read; neither may admit a version that does not exist yet.
 func TestAcceptsAdmitsSchema3(t *testing.T) {
-	for _, v := range []int{1, 2, 3, 4, 5} {
-		if !store.Accepts(v) {
-			t.Errorf("store.Accepts(%d) is false. Records at that version are SKIPPED, not "+
-				"reported as unreadable, so the symptom is an empty report and no reason "+
-				"for it.", v)
+	for _, c := range []struct {
+		kind  string
+		newer int
+	}{
+		{store.TypeDeclaration, 5}, {store.TypeExecution, 5}, {store.TypeTerminal, 5},
+		{store.TypeCoverage, 3}, {store.TypeGap, 3},
+	} {
+		for v := 1; v <= c.newer; v++ {
+			if !store.AcceptsKind(c.kind, v) {
+				t.Errorf("store.AcceptsKind(%s, %d) is false. Records at that version are SKIPPED, not "+
+					"reported as unreadable, so the symptom is an empty report and no reason "+
+					"for it.", c.kind, v)
+			}
 		}
-	}
-	if store.Accepts(6) {
-		t.Error("store.Accepts(6) is true; a reader must not claim to understand a shape " +
-			"that does not exist yet")
+		if store.AcceptsKind(c.kind, c.newer+1) {
+			t.Errorf("store.AcceptsKind(%s, %d) is true; a reader must not claim to understand a shape "+
+				"that does not exist yet", c.kind, c.newer+1)
+		}
 	}
 }
 
@@ -212,13 +221,9 @@ func toAnySlice(v any) []any {
 	return nil
 }
 
-// TestSchema3_WrittenRecordsMeetTheVersion3Gate: an ordinary declaration or
-// execution this build writes is schema 4, additive over 3, and carries each
-// key the published v3 gate requires, and the v4 gate's as well. It is not
-// schema 5: nothing about a v5 record's one piece of content, the
-// flush_failed marker, applies to a declaration or an execution, and
-// store.FlushFailedSchemaVersion names the marker's version precisely so
-// that this one does not drift onto it.
+// TestSchema3_WrittenRecordsMeetTheVersion3Gate: this build writes schema 5,
+// additive over 3 and 4, and every record it writes carries each key the published
+// v3 gate requires, and the v4 and v5 gates' as well.
 // The version is compared against the literal, not against
 // store.SchemaVersion, which would compare the writer with itself. Break:
 // write 2 while the vocabulary is 3's (the test class, the test-file label),
@@ -246,17 +251,22 @@ func TestSchema3_WrittenRecordsMeetTheVersion3Gate(t *testing.T) {
 		if len(v4) < len(gated) {
 			t.Fatalf("$defs.%s's schema 4 gate requires %d keys, fewer than schema 3's %d: v4 is additive", c.def, len(v4), len(gated))
 		}
+		v5 := versionGate(defs[c.def].(map[string]any), 5)
+		if len(v5) <= len(v4) {
+			t.Fatalf("$defs.%s's schema 5 gate requires %d keys, no more than schema 4's %d: v5 adds keys", c.def, len(v5), len(v4))
+		}
 		gated = append(gated, v4...)
+		gated = append(gated, v5...)
 		if len(c.recs) == 0 {
 			t.Fatalf("no %s record written", c.def)
 		}
 		for _, r := range c.recs {
-			if got := r.fields["schema_version"]; got != float64(4) {
-				t.Errorf("%s written at schema_version %v, want 4", c.def, got)
+			if got := r.fields["schema_version"]; got != float64(5) {
+				t.Errorf("%s written at schema_version %v, want 5", c.def, got)
 			}
 			for _, k := range gated {
 				if _, ok := nested(r, k); !ok {
-					t.Errorf("%s lacks %q, which the schema 3 or 4 gate requires", c.def, k)
+					t.Errorf("%s lacks %q, which the schema 3, 4 or 5 gate requires", c.def, k)
 				}
 			}
 		}

@@ -38,7 +38,7 @@ m("hld-1 FindPlugin lists only intact events as declared", "internal/install/plu
   "\t\t\t\tif declared {\n",
   "\t\t\t\tif declared && whole {\n",
   "TestRubricHLD1_")
-m("hld-1 watch refuses only under an intact plugin", "cmd/rashomon/main.go",
+m("hld-1 watch refuses only under an intact plugin", "cmd/rashomon/watch.go",
   "\t} else if p != nil && p.Live() {\n",
   "\t} else if p != nil && p.Enabled && len(p.Events) > 0 {\n",
   "TestRubricHLD1_WatchRefusesUnderAHandEditedPlugin")

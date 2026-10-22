@@ -46,7 +46,7 @@ func TestH102_UnrecognisedSchemaVersionBreaksVerified(t *testing.T) {
 			rep.Coverage.State, rep.SkippedRecords)
 	}
 
-	// Alongside the good record, one this reader's Accepts() does not
+	// Alongside the good record, one this reader's AcceptsKind() does not
 	// recognise -- the shape a store written partly by a newer or older
 	// build, or edited by hand, takes.
 	appendRawLine(t, e.recordsPath(testSession),

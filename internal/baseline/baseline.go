@@ -37,6 +37,18 @@ import (
 // not know rather than guessing at it.
 const Version = 1
 
+// DirName is the store-root sibling directory holding one file per project
+// key; see Update and fileName. Exported so the disclosure inventory
+// (internal/disclose) and callers outside this package name the same
+// directory from this constant rather than a second copy of the literal
+// string.
+const DirName = "baseline"
+
+// FilePattern is the glob every project's baseline file matches under
+// DirName: fileName's sanitised key, a digest suffix, and the .json
+// extension. Exported for the same reason as DirName.
+const FilePattern = "*.json"
+
 // Basis is what a baseline's hosts are: the hosts a project's sessions NAMED
 // in tool calls. Files from the proxy era held the hosts a session REACHED,
 // as the proxy saw them, and were written only on sessions where the proxy
@@ -225,7 +237,7 @@ func fileName(key string) string {
 // that eviction of runs cannot touch it. sessionStart is the session's own
 // start instant, which is what decides ownership.
 //
-// The load, the fold and the save happen under one lock (lockName), which
+// The load, the fold and the save happen under one lock (LockName), which
 // `forget --host` takes too. Without it two renders each loaded the file,
 // folded and renamed their own copy into place, and the second threw away the
 // first's hosts -- in 200 of 200 rounds of a probe -- so a later session was
@@ -245,7 +257,7 @@ func UpdateOrigin(root, key, sessionID string, sessionStart time.Time, hosts []s
 	if root == "" || key == "" {
 		return Result{Err: errors.New("baseline: no store root or project key")}
 	}
-	dir := filepath.Join(root, "baseline")
+	dir := filepath.Join(root, DirName)
 	path := filepath.Join(dir, fileName(key))
 	res, err := update(dir, path, key, sessionID, sessionStart, hosts, sshHosts)
 	res.Path = path
@@ -260,7 +272,7 @@ func update(dir, path, key, sessionID string, sessionStart time.Time, hosts []st
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Result{}, err
 	}
-	release, err := store.LockPath(filepath.Join(dir, lockName))
+	release, err := store.LockPath(filepath.Join(dir, LockName))
 	if err != nil {
 		return Result{}, err
 	}
@@ -421,7 +433,7 @@ func ForgetFile(path, raw string) (int, error) {
 	if path == "" {
 		return 0, nil
 	}
-	release, err := store.LockPath(filepath.Join(filepath.Dir(path), lockName))
+	release, err := store.LockPath(filepath.Join(filepath.Dir(path), LockName))
 	if errors.Is(err, fs.ErrNotExist) {
 		// No baseline directory: nothing to clear.
 		return 0, nil
@@ -456,7 +468,7 @@ func ForgetAll(dir, raw string) (cleared int, hadBaselines bool, err error) {
 	if !ok {
 		return 0, false, store.ErrNotAHostname
 	}
-	release, lockErr := store.LockPath(filepath.Join(dir, lockName))
+	release, lockErr := store.LockPath(filepath.Join(dir, LockName))
 	if errors.Is(lockErr, fs.ErrNotExist) {
 		// No baseline directory: nothing to clear.
 		return 0, false, nil

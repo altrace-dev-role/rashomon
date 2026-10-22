@@ -25,19 +25,27 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // tail` says nothing about it, which a reader must take as "not measured",
 // not as "not hidden". Nothing else changed, and v1 to v3 records still read.
 //
-// v5 exists, but SchemaVersion does not move to it: see
-// FlushFailedSchemaVersion below for what does and why.
+// v5 is additive over v4: every call record names the binary that wrote it
+// (writer), a terminal names the invocation that wrote it (phase), and the
+// declaration and execution carry the keys of DeclarationV5 and ExecutionV5
+// -- the command, paths, targets, git state, failure class and the rest --
+// every one of them always present. Null means not applicable or not looked
+// at, which is what each of them is until the change that fills it lands; a
+// v4 record read back has none of them, and a reader takes that as "not
+// measured" as it does for every earlier step. v5 also has one record that
+// is not additive, the flush_failed marker: see FlushFailedSchemaVersion.
 //
 // SchemaVersion is the version of a call's ordinary records: its
-// declaration, the terminal that actually closes it, and its execution.
-// Coverage and gap records are written at SessionSchemaVersion instead.
-const SchemaVersion = 4
+// declaration, the terminal that actually closes it, and its execution,
+// KindVersion's entry for each. Coverage and gap records are written at
+// SessionSchemaVersion instead.
+const SchemaVersion = CallSchemaVersion
 
-// FlushFailedSchemaVersion is the version the flush_failed marker alone is
-// written at (REC-34). A literal, not SchemaVersion+1: the two are
-// independent facts (one about ordinary call records, one about a single
-// marker type) and tying them arithmetically would move this one the
-// moment someone edited the other for an unrelated reason.
+// FlushFailedSchemaVersion is the version the flush_failed marker is written
+// at (REC-34). A literal, not SchemaVersion: the two are independent facts
+// (one about ordinary call records, one about a single marker type) and
+// tying them would move this one the moment someone edited the other for an
+// unrelated reason.
 //
 // A flush_failed terminal is not additive the way v2 to v4 were: no field
 // was added to the TYPE, and nothing a v4 record carries changed meaning.
@@ -47,34 +55,26 @@ const SchemaVersion = 4
 // terminal must NOT close the declaration it names, or a possibly-lost call
 // reads as a finished one. A v4 reader has no FlushFailed check; it closes
 // on any terminal. Bumping ITS OWN version is what keeps a v4-or-earlier
-// reader from reading one of these at all: Accepts runs before the type
-// switch (classifyRunLine), so such a reader skips the marker's line
-// instead of half-understanding it.
+// reader from reading one of these at all: that reader's Accepts runs before
+// the type switch (classifyRunLine), so it skips the marker's line instead
+// of half-understanding it.
 //
-// It does not move SchemaVersion itself, which is what the first version of
-// this fix did and which this constant exists to stop from happening again.
-// Every declaration, execution and ordinary terminal has none of a v5
-// record's content -- there is no v5 content for an ordinary record to
-// carry, because the only thing v5 added is this marker -- so stamping them
-// at 5 anyway would have been exactly the lie kinds.go's CallSchemaVersion
-// warns against: a record claiming a version none of whose keys it carries.
-// It would also have cost every 1.1.x reader every call record in a run the
-// moment one flush failed anywhere in the store, not only the one marker a
-// 1.2.0 reader understands and an older one correctly cannot: Accepts does
-// not look at type before it looks at schema_version, so a declaration
-// stamped 5 is invisible to a v4 reader whether or not it has anything to
-// do with REC-34.
+// The marker was at 5 alone until the call records' v5 keys landed (P-11):
+// SchemaVersion stayed at 4 while an ordinary record had none of a v5
+// record's content, because stamping it 5 anyway would have been the lie
+// kinds.go's CallSchemaVersion warns against -- a record claiming a version
+// none of whose keys it carries -- and would have cost every 1.1.x reader
+// every call record in a run the moment one flush failed. With DeclarationV5,
+// ExecutionV5 and TerminalV5 embedded, every call record carries the v5 keys
+// and is written at 5 too; a 1.1.x reader skips the calls and reads the
+// session unverified, as it did for v4, and coverage and gaps stay at 3 so
+// it still lists every session.
 //
-// A new record type instead of a second version was rejected for the
-// reason the first version's comment gave: Terminal is the type every other
-// call-record consumer already walks, and moving the marker out of it would
-// have meant auditing every one of them for an assumption that a terminal
-// is the only thing that closes a call. That reasoning is still right; it
-// just does not require moving SchemaVersion along with it, because the
-// marker is the one terminal the "goes with its declaration's version" rule
-// (SessionSchemaVersion's doc) was never describing -- FlushFailed's own doc
-// says it is not an ending, so it is not "the terminal that closes" the
-// declaration either, and SchemaVersion's contract never claimed it.
+// A new record type instead of a version was rejected: Terminal is the type
+// every other call-record consumer already walks, and moving the marker out
+// of it would have meant auditing every one of them for an assumption that
+// a terminal is the only thing that closes a call, rather than teaching the
+// one function (AcceptsKind) that already gates what a reader understands.
 const FlushFailedSchemaVersion = 5
 
 // SessionSchemaVersion is the version of the records that describe a session
@@ -89,23 +89,6 @@ const FlushFailedSchemaVersion = 5
 // it carries. A readable terminal beside an unreadable declaration reads as
 // a declaration that never landed, which is a lock timeout to the reader.
 const SessionSchemaVersion = 3
-
-// Accepts reports whether a reader understands a record's schema version.
-//
-// It is a function over a set rather than an equality against SchemaVersion,
-// because the two are different questions and conflating them is a silent
-// data-loss bug: the reader used to compare `!= SchemaVersion`, so the moment
-// the writer moved to v2 every v1 record already on disk would have been
-// skipped -- a store that had been recording for weeks would have rendered an
-// empty report, and nothing would have said why.
-//
-// v5 is what this build writes; 1 to 4 are accepted so older stores read.
-// Records from a newer schema are skipped without error; the report shows
-// them only as a skipped-records count and the records_unreadable coverage
-// reason, and is empty only when every record is newer.
-func Accepts(version int) bool {
-	return version >= 1 && version <= 5
-}
 
 // Record type discriminators.
 const (
@@ -207,22 +190,18 @@ type Declaration struct {
 	// cwd and no absolute leading cd.
 	CWDDigest string `json:"cwd_digest"`
 
-	// FileLabel is what the file this call named looks like (v3).
+	// FileLabel is what the file this call named looks like (v3), from the
+	// label layer (internal/hook's fileLabel, internal/shape's Label).
 	//
-	// RESERVED AND NOT YET POPULATED, like the two below it. The label layer
-	// lives in internal/shape and internal/hook, which another branch owns;
-	// this declares the field so that branch adds behaviour rather than a
-	// fourth schema version, and can delete its own copy on rebase.
-	//
-	// No omitempty, deliberately. The key is always present and null until
-	// something writes it, because the record allowlist is an exact set in
+	// No omitempty, deliberately. The key is always present, null when the
+	// tool names no file, because the record allowlist is an exact set in
 	// both directions -- a key that appears only sometimes is a key the
 	// allowlist cannot describe, and "sometimes present" is the shape a
 	// reader cannot tell from "absent because nothing looked".
 	//
 	// Three states, all different: null means the tool names no file, so
 	// nobody looked; "none" means a real path matched no row; "unknown" means
-	// a path could not be read at all. The path itself is never stored.
+	// a path could not be read at all. The path itself is never stored here.
 	FileLabel *string `json:"file_label"`
 
 	// HostSource says where each entry of Hosts came from, positionally (v3).
@@ -254,6 +233,9 @@ type Declaration struct {
 	// lists only: the pass words are applied when a report is read, never
 	// stored.
 	RulesVersion int `json:"rules_version"`
+
+	// DeclarationV5 is the declaration's v5 keys (record_v5.go).
+	DeclarationV5
 }
 
 // Execution records that a declared call ran, one per PostToolUse invocation.
@@ -364,6 +346,9 @@ type Execution struct {
 	// RulesVersion is shape.RulesVersion as the writing binary had it (v4):
 	// which runner and build lists decided StatusMasked. See Declaration's.
 	RulesVersion int `json:"rules_version"`
+
+	// ExecutionV5 is the execution's v5 keys (record_v5.go).
+	ExecutionV5
 }
 
 // Execution outcomes (v2).
@@ -417,6 +402,9 @@ type Terminal struct {
 	// declaration -- flushed by an earlier, separate hook invocation -- is
 	// unaffected. Without it a reader sees a marker and cannot tell which.
 	Phase *string `json:"phase"`
+
+	// TerminalV5 is the terminal's other v5 key, its writer.
+	TerminalV5
 }
 
 // FlushFailed reports a terminal that marks its call's records as possibly

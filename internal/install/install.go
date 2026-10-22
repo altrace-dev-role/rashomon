@@ -112,12 +112,12 @@ const (
 	Marker = "--install"
 )
 
-// timeoutFor is the per-event timeout `group` installs and `intact` checks
-// against. A single constant covered every event until the recap needed a
-// wider one; this keeps the exception the two Stop events are, rather than
-// widening Timeout itself and loosening the budget the five recorder entries
-// are held to.
-func timeoutFor(event string) int {
+// TimeoutFor is the per-event timeout, in seconds, that `group` installs,
+// `intact` checks against and the consent screen states. A single constant
+// covered every event until the recap needed a wider one; this keeps the
+// exception the two Stop events are, rather than widening Timeout itself and
+// loosening the budget the five recorder entries are held to.
+func TimeoutFor(event string) int {
 	if event == EventStop || event == EventStopFailure || event == EventUserPromptSubmit {
 		return RecapTimeout
 	}
@@ -194,7 +194,7 @@ func (s Spec) group(event string) matcherGroup {
 	g := matcherGroup{Hooks: []hookCommand{{
 		Type:    "command",
 		Command: s.Command(event),
-		Timeout: timeoutFor(event),
+		Timeout: TimeoutFor(event),
 	}}}
 	if hasMatcher(event) {
 		m := Matcher
@@ -221,9 +221,23 @@ func (s Spec) Entry(event string) (json.RawMessage, error) {
 	return b, nil
 }
 
+// legacyForms maps an event to older subcommands a previous release wrote
+// for it. Owner recognises a listed form as ours, for an entry a release
+// renames: it still refreshes and still detaches, not lost until the user's
+// next watch happens to touch it and not left behind for detach to miss
+// (LUI-3, LUI-4). Nothing has been renamed yet, so every list here is empty.
+var legacyForms = map[string][]string{}
+
 // Owner returns the install id an entry claims for an event, or "" for an
 // entry that is not ours. Ownership is carried in the command line itself,
 // which survives every round trip a settings file can take.
+//
+// A command matches only as a WHOLE: everything after its first shell word
+// (the executable, bare or quoted) must read exactly "<form> --install <id>"
+// for event's current subcommand or one of legacyForms[event] -- never
+// merely END with that text. A suffix check is the trap: "post" is also the
+// tail of "steer post", so a future entry installed under that longer
+// subcommand would have misread as this one's (LUI-3).
 func Owner(raw json.RawMessage, event string) string {
 	var g struct {
 		Hooks []struct {
@@ -233,15 +247,74 @@ func Owner(raw json.RawMessage, event string) string {
 	if json.Unmarshal(raw, &g) != nil {
 		return ""
 	}
-	suffix := " " + subcommand(event) + " " + Marker + " "
+	forms := append([]string{subcommand(event)}, legacyForms[event]...)
 	for _, h := range g.Hooks {
-		if i := strings.LastIndex(h.Command, suffix); i >= 0 {
-			if id := h.Command[i+len(suffix):]; isInstallID(id) {
-				return id
-			}
+		if id := ownerOf(h.Command, forms); id != "" {
+			return id
 		}
 	}
 	return ""
+}
+
+// ownerOf matches cmd against the whole of one of forms, not a suffix of it:
+// see Owner. It returns the claimed install id, or "" if none of forms
+// matches or the command does not parse as "<word> <rest>".
+func ownerOf(cmd string, forms []string) string {
+	rest, ok := afterFirstWord(cmd)
+	if !ok {
+		return ""
+	}
+	for _, form := range forms {
+		prefix := form + " " + Marker + " "
+		if !strings.HasPrefix(rest, prefix) {
+			continue
+		}
+		if id := rest[len(prefix):]; isInstallID(id) {
+			return id
+		}
+	}
+	return ""
+}
+
+// afterFirstWord splits cmd at the end of its first shell word -- the
+// executable, exactly as shellQuote writes it, bare or single-quoted -- and
+// returns what follows the one space after it. It does not reconstruct the
+// word itself: Owner does not care what the executable is (a moved binary is
+// what watch exists to refresh), only where it ends, so a caller can compare
+// everything after it exactly rather than searching for a trailing match.
+//
+// ok is false when cmd does not have the shape "<word> <rest>" at all: no
+// separating space for a bare word, or shellQuote's own escaping of an
+// embedded quote -- close quote, backslash, quote, open quote -- never
+// closes.
+func afterFirstWord(cmd string) (rest string, ok bool) {
+	if cmd == "" {
+		return "", false
+	}
+	if cmd[0] != '\'' {
+		i := strings.IndexByte(cmd, ' ')
+		if i < 0 {
+			return "", false
+		}
+		return cmd[i+1:], true
+	}
+	for i := 1; ; {
+		j := strings.IndexByte(cmd[i:], '\'')
+		if j < 0 {
+			return "", false
+		}
+		end := i + j
+		if strings.HasPrefix(cmd[end:], `'\''`) {
+			// An embedded quote in the executable, escaped as close,
+			// backslash, quote, open -- not the terminator.
+			i = end + 4
+			continue
+		}
+		if end+1 < len(cmd) && cmd[end+1] == ' ' {
+			return cmd[end+2:], true
+		}
+		return "", false
+	}
 }
 
 // Apply ensures exactly one entry of ours per event, refreshing it if the
@@ -472,7 +545,7 @@ func intact(raw json.RawMessage, event string) string {
 	if h.Type != "command" {
 		return fmt.Sprintf("hook type is %q, expected \"command\"", h.Type)
 	}
-	if want := timeoutFor(event); h.Timeout != want {
+	if want := TimeoutFor(event); h.Timeout != want {
 		return fmt.Sprintf("timeout is %d, expected %d", h.Timeout, want)
 	}
 	return ""

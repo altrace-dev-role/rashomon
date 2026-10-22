@@ -258,7 +258,7 @@ func TestH06_DetachLeavesTheFileByteForByteAsFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	watch := e.run("", nil, "watch")
+	watch := e.run("", nil, "watch", "--yes")
 	if watch.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", watch.exitCode, watch.stderr)
 	}
@@ -313,7 +313,7 @@ func TestH06_DetachKeepsAForeignHookEventIntact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if r := e.run("", nil, "watch"); r.exitCode != 0 {
+	if r := e.run("", nil, "watch", "--yes"); r.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", r.exitCode, r.stderr)
 	}
 	if r := e.run("", nil, "detach"); r.exitCode != 0 {

@@ -105,6 +105,14 @@ type Observation struct {
 	//
 	// Both exist because silence is not an answer. Without them a trail that
 	// was three-quarters unreadable rendered identically to a quiet session.
+	//
+	// On NotObservedUnreadable, Skipped is an UNDERCOUNT -- it only counts the
+	// torn lines before the one that broke the scan, not whatever follows it
+	// -- and the text report (writeNono) deliberately omits it there rather
+	// than print a number that understates the damage. This JSON field still
+	// carries that undercount with no such caveat, so the text and JSON
+	// reports disagree on an unreadable trail: see
+	// TestNono_AReadThatStopsPartwayDoesNotClaimAnUndercount.
 	Skipped            int `json:"skipped"`
 	UnparseableTargets int `json:"unparseable_targets"`
 	// WindowOpen is true when the window had no end, so every event after its
@@ -112,6 +120,21 @@ type Observation struct {
 	// trail that includes a later session's traffic, and the report has to say
 	// so rather than present the count as bounded.
 	WindowOpen bool `json:"window_open"`
+	// NetworkEventsInTrail counts every "network" record this reader parsed,
+	// in the window or out of it, whether or not its target parsed. It is a
+	// WHOLE-FILE count, unlike Events (window-filtered) and unlike Inherited
+	// and UnparseableTargets (each a reason a network record did not become
+	// an Event).
+	//
+	// It exists to tell apart two observations that otherwise render
+	// identically: a session the sandbox filtered and saw nothing on, and one
+	// where the sandbox recorded no network decision at all because the
+	// active profile does not filter the network. Both reach parsed > 0 (a
+	// session_started and session_ended record are enough), so both are
+	// Observed; without this count, a trail of the second kind prints "0
+	// allowed, 0 denied" exactly as the first does, which reads as a quiet,
+	// filtered session when no filtering ran.
+	NetworkEventsInTrail int `json:"network_events_in_trail"`
 }
 
 // Window is the watched interval. End zero means "up to the last event".
@@ -195,7 +218,14 @@ func Read(path string, w Window) Observation {
 	}
 	defer func() { _ = f.Close() }()
 
-	obs := Observation{Trail: path, Events: []Event{}, WindowOpen: w.End.IsZero()}
+	// WindowOpen is NOT set here. Setting it on the struct literal gave a
+	// value to every return path, including the ones below that report the
+	// read as failed -- so the same open session read window_open: false
+	// against a missing trail (the zero value, never touched) and
+	// window_open: true against an all-torn one (set here, then returned
+	// unchanged). It is set only once the read has actually succeeded, next
+	// to obs.Observed = true.
+	obs := Observation{Trail: path, Events: []Event{}}
 	// Observed is set only once a record of a type this reader KNOWS parses.
 	// Counting the parse before the type switch let a file of well-formed
 	// records of unlearned types -- log_allowed and log_denied, the exact
@@ -261,6 +291,7 @@ func Read(path string, w Window) Observation {
 			continue
 		case "network":
 			parsed++
+			obs.NetworkEventsInTrail++
 		default:
 			// A type nono has and this reader has not learned. Counted,
 			// because schema drift is a measured property of this dependency:
@@ -319,6 +350,7 @@ func Read(path string, w Window) Observation {
 		return obs
 	}
 	obs.Observed = true
+	obs.WindowOpen = w.End.IsZero()
 
 	sort.SliceStable(obs.Events, func(i, j int) bool {
 		if obs.Events[i].At.Equal(obs.Events[j].At) {

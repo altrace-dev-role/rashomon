@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// fileRecordingPaused is the marker under the store root that Pause writes
+// FileRecordingPaused is the marker under the store root that Pause writes
 // and Resume removes. Its content is the Unix millisecond instant recording
 // was paused, so that Resume can compute the window it closes without
 // consulting anything else.
@@ -38,7 +38,11 @@ import (
 // A file under the store root reaches every origin a hook can be installed
 // under, plugin included, because every one of them resolves this same store
 // before it does anything else.
-const fileRecordingPaused = "pause"
+//
+// Exported so a reader outside this package -- the disclosure inventory
+// (internal/disclose) -- names the same constant rather than a second copy of
+// the literal string.
+const FileRecordingPaused = "pause"
 
 // PausedSessionID is the session id the pause and resume commands' own gap
 // records carry. Pausing and resuming are machine-level decisions with no
@@ -56,7 +60,7 @@ const PausedSessionID = "recording-paused"
 // whether it is paused. A root that does not exist yet is not paused -- there
 // is nothing under it to say so, and that is a real "no", not an error.
 func Paused(root string) (paused bool, since time.Time, err error) {
-	b, err := os.ReadFile(filepath.Join(root, fileRecordingPaused))
+	b, err := os.ReadFile(filepath.Join(root, FileRecordingPaused))
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, time.Time{}, nil
 	}
@@ -82,7 +86,7 @@ func Paused(root string) (paused bool, since time.Time, err error) {
 // to fail closed on the marker or let the underlying error surface on its
 // own, and Resume uses it to decide whether removing the marker is safe.
 func MarkerUnreadable(root string) bool {
-	fi, err := os.Lstat(filepath.Join(root, fileRecordingPaused))
+	fi, err := os.Lstat(filepath.Join(root, FileRecordingPaused))
 	return err == nil && fi.Mode().IsRegular()
 }
 
@@ -115,7 +119,7 @@ func Pause(root string, now time.Time) (since time.Time, alreadyPaused bool, err
 		return time.Time{}, false, err
 	}
 	content := []byte(strconv.FormatInt(now.UnixMilli(), 10) + "\n")
-	if err := writeSmall(filepath.Join(root, fileRecordingPaused), content, syncFull); err != nil {
+	if err := writeSmall(filepath.Join(root, FileRecordingPaused), content, syncFull); err != nil {
 		return time.Time{}, false, err
 	}
 	return now, false, nil
@@ -139,7 +143,7 @@ func Pause(root string, now time.Time) (since time.Time, alreadyPaused bool, err
 func Resume(root string, now time.Time) (wasPaused bool, since time.Time, err error) {
 	paused, existingSince, err := Paused(root)
 	if err != nil {
-		marker := filepath.Join(root, fileRecordingPaused)
+		marker := filepath.Join(root, FileRecordingPaused)
 		if !MarkerUnreadable(root) {
 			return false, time.Time{}, err
 		}
@@ -151,7 +155,7 @@ func Resume(root string, now time.Time) (wasPaused bool, since time.Time, err er
 	if !paused {
 		return false, time.Time{}, nil
 	}
-	if err := os.Remove(filepath.Join(root, fileRecordingPaused)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := os.Remove(filepath.Join(root, FileRecordingPaused)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return false, time.Time{}, err
 	}
 	if existingSince.IsZero() {

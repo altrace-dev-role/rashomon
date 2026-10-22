@@ -52,7 +52,7 @@ func buildAndRun(m *testing.M) (int, error) {
 	// The binary under test carries the fault-injection points. A released
 	// binary does not, which is why the tag exists: the injection path must not
 	// ship, but the panic barrier it exercises is the same code either way.
-	rashomonBin, err = build(dir, "rashomon", "./cmd/rashomon", "rashomonfault")
+	rashomonBin, err = buildVersioned(dir, "rashomon", "./cmd/rashomon", binaryVersion, "rashomonfault")
 	if err != nil {
 		return 0, err
 	}
@@ -69,9 +69,23 @@ func buildAndRun(m *testing.M) (int, error) {
 	return m.Run(), nil
 }
 
+// binaryVersion is the version the binary under test is built with, as a
+// release sets it, so a test can tell the build-time version from the
+// default an unset one leaves.
+const binaryVersion = "0.0.0-acceptance"
+
 func build(dir, name, pkg string, tags ...string) (string, error) {
+	return buildVersioned(dir, name, pkg, "", tags...)
+}
+
+// buildVersioned is build with main.version set to version, as the release
+// build sets it; "" leaves the default.
+func buildVersioned(dir, name, pkg, version string, tags ...string) (string, error) {
 	out := filepath.Join(dir, name)
 	args := []string{"build", "-o", out}
+	if version != "" {
+		args = append(args, "-ldflags", "-X main.version="+version)
+	}
 	if len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}
@@ -100,6 +114,12 @@ type env struct {
 	// storeFailf, when set, takes the end-of-test check's reports in place
 	// of the test's Errorf, so the check's own test can feed it a break.
 	storeFailf func(format string, args ...any)
+	// fakeHome, when set, is the HOME (and on Windows the USERPROFILE) every
+	// invocation sees. Most tests leave it empty: they name the store and
+	// the configuration directory outright and nothing they run reads HOME.
+	// purge does, to refuse a root that is HOME or encloses it, so its tests
+	// set this and never let the binary see the real one.
+	fakeHome string
 }
 
 // newEnv makes one machine, and checks its store's invariants when the test
@@ -129,13 +149,33 @@ func (e *env) environ(extra ...string) []string {
 		case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY":
 			continue
 		}
+		// The suite is often run from inside a Claude Code session, which
+		// sets CLAUDECODE in every process it starts. watch reads that as an
+		// agent signal and refuses, so it must not leak into the binary
+		// under test; the tests that check the refusal set it themselves.
+		if name == "CLAUDECODE" {
+			continue
+		}
 		base = append(base, kv)
 	}
 	base = append(base,
 		"RASHOMON_HOME="+e.home,
 		"CLAUDE_CONFIG_DIR="+e.configDir,
 		"RASHOMON_MANAGED_SETTINGS_PATH="+e.managedPath(),
+		// CLAUDE_CODE_ENTRYPOINT=cli is what the real CLI sets (Technical
+		// spec 6.2.2's entrypoint allowlist); every acceptance test's hook,
+		// post, probe and recap invocations are claiming to BE Claude Code,
+		// so they need to look like it to H1's stand-down check
+		// (internal/hostguard), wired into all five entry points, or every
+		// one of them now reads as the unknown harness and records
+		// nothing. A test that wants to exercise the foreign or
+		// unknown path overrides this through extraEnv, appended after
+		// base, which wins (os/exec: "the last value ... is used").
+		"CLAUDE_CODE_ENTRYPOINT=cli",
 	)
+	if e.fakeHome != "" {
+		base = append(base, "HOME="+e.fakeHome, "USERPROFILE="+e.fakeHome)
+	}
 	return append(base, extra...)
 }
 
@@ -259,7 +299,13 @@ func (e *env) installArgs() []string {
 	return []string{"--install", e.installID()}
 }
 
-func (e *env) watch(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "watch") }
+// watch installs without asking (--yes): the suite runs with no person at
+// a terminal, and the questions themselves are TRU-1's, asked through a
+// pseudo-terminal there.
+func (e *env) watch(extraEnv ...string) result {
+	e.t.Helper()
+	return e.run("", extraEnv, "watch", "--yes")
+}
 func (e *env) detach(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "detach") }
 func (e *env) status(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "status") }
 func (e *env) pause(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "pause") }
@@ -766,6 +812,17 @@ func (e *env) settings() settingsFile {
 		}
 	}
 	return sf
+}
+
+// settingsAfterDetach reads settings.json after a detach, which removes the
+// file when watch created it and it is still the file watch left: an absent
+// file holds no entries at all.
+func (e *env) settingsAfterDetach() settingsFile {
+	e.t.Helper()
+	if _, err := os.Lstat(e.settingsPath()); os.IsNotExist(err) {
+		return settingsFile{}
+	}
+	return e.settings()
 }
 
 func (e *env) settingsBytes() []byte {

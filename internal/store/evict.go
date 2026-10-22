@@ -46,7 +46,7 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 	}
 	defer unlock()
 
-	runsDir := filepath.Join(s.root, dirRuns)
+	runsDir := filepath.Join(s.root, DirRuns)
 	plan, err := evictCandidates(runsDir)
 	if err != nil {
 		return nil, err

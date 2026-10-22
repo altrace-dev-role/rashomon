@@ -73,6 +73,18 @@ func TestSeam_TheNonoTrailReachesTheReport(t *testing.T) {
 	if strings.Contains(b.String(), "sandbox (nono): not observed") {
 		t.Errorf("a readable trail rendered as not observed:\n%s", b.String())
 	}
+	// #44 follow-up item 4: nothing above unit level checked that a FINISHED
+	// session carries no open-window caveat. seamSessionAt builds a run with
+	// both a start and an end coverage record, so its window has an end and
+	// WindowOpen must be false; dropping `End: w.End` from sessionWindow kept
+	// every other assertion in this test green while every finished session
+	// printed the caveat.
+	if n.WindowOpen {
+		t.Error("a finished session's window reads as open")
+	}
+	if strings.Contains(b.String(), "no end record") {
+		t.Errorf("a finished session's report carries the open-window caveat:\n%s", b.String())
+	}
 }
 
 // TestSeam_NoTrailConfiguredIsSilent.

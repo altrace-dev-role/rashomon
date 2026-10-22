@@ -72,6 +72,9 @@ type Handler struct {
 
 	// lockWaits is LockWaitTotal, which a test shortens.
 	lockWaits time.Duration
+	// capDecl is store.CapDeclaration, which a test replaces to hand the
+	// store a record that skipped the caps, the one way to reach its degrade.
+	capDecl func(*store.Declaration) bool
 
 	sessionID string
 	toolUseID string
@@ -86,18 +89,22 @@ type Handler struct {
 	labelRecovered bool
 }
 
+// Writer is the version of the binary writing the records, stamped on every
+// call record as writer, so a reader can tell which release wrote a record
+// as well as which schema it follows. cmd/rashomon sets it from its
+// build-time version before any hook runs; "dev" is an unreleased build.
+var Writer = "dev"
+
 // New builds a Handler. now is injectable so a test can pin the clock and
 // compare two records byte for byte.
 func New(st *store.Store, now func() time.Time) *Handler {
-	return &Handler{st: st, now: now, lockWaits: LockWaitTotal, sessionID: UnattributedSession}
+	return &Handler{st: st, now: now, lockWaits: LockWaitTotal, capDecl: store.CapDeclaration,
+		sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the declaration.
 func (h *Handler) Capture(in io.Reader) error {
-	// First, so that Close's appends share the deadline too.
-	h.st.LimitLockWaits(h.lockWaits)
-	fault.Inject(fault.PointHookStart)
-
+	h.prologue()
 	payload, err := hookio.Intake(in)
 	if err != nil {
 		if s, cwd, ok := refusedSession(err); ok {
@@ -105,6 +112,33 @@ func (h *Handler) Capture(in io.Reader) error {
 		}
 		return err
 	}
+	return h.capture(payload)
+}
+
+// CapturePayload is Capture for a caller that has already read and parsed
+// its payload into a *hookio.Payload -- cmd/rashomon's host-guard check,
+// which hands this the exact value internal/hostguard.EvaluateRaw built,
+// so the already-decided bytes are never read, scanned or copied a second
+// time. It shares the same lock-wait and fault-injection prologue Capture
+// does; only the read in between is skipped.
+func (h *Handler) CapturePayload(payload *hookio.Payload) error {
+	h.prologue()
+	return h.capture(payload)
+}
+
+// prologue is Capture and CapturePayload's shared setup, run first so that
+// Close's appends share the deadline too: there is exactly one of this
+// pair's lock-wait deadline and PointHookStart fault injection, which is
+// what perf-2's and H-17's own mutants pin against -- a caller that reaches
+// capture by any other route must still have run this exactly once.
+func (h *Handler) prologue() {
+	h.st.LimitLockWaits(h.lockWaits)
+	fault.Inject(fault.PointHookStart)
+}
+
+// capture is Capture and CapturePayload's shared body, once each has its
+// own *hookio.Payload in hand.
+func (h *Handler) capture(payload *hookio.Payload) error {
 	var p Payload
 	if err := p.from(payload); err != nil {
 		return err
@@ -142,6 +176,7 @@ func (h *Handler) Capture(in io.Reader) error {
 	var dirs []string
 	decl.Shape, _, dirs = shape.DeriveWithDirs(p.ToolName, p.ToolInput, h.st.Key())
 	decl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))
+	decl.Writer = Writer
 	// Hostnames are metadata and are stored verbatim, because the report
 	// lists them and forget --host matches them by the name as written.
 	// Nothing else from tool_input is persisted, and shape is still the only
@@ -169,13 +204,13 @@ func (h *Handler) Capture(in io.Reader) error {
 	// out of the record rather than cut, and said so on the coverage record
 	// (REC-52), so no payload inside the intake limit can make a record the
 	// store would refuse.
-	if store.CapDeclaration(&decl) {
+	if h.capDecl(&decl) {
 		h.withheld = true
 	}
 
 	fault.Inject(fault.PointStoreWrite)
 
-	if err := h.st.AppendDeclaration(decl); err != nil {
+	if err := landed(h.st.AppendDeclaration(decl), &h.withheld); err != nil {
 		return err
 	}
 	h.opened = true
@@ -218,6 +253,7 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 			SessionID:     h.sessionID,
 			Outcome:       outcome,
 			Reason:        nilIfEmpty(reason),
+			TerminalV5:    store.TerminalV5{Writer: Writer},
 		}
 		var err error
 		if reason == store.ReasonLockTimeout {

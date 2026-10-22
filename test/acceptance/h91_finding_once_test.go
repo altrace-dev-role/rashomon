@@ -124,7 +124,7 @@ func TestH91_TheReportPointerNamesACommandTheOriginHas(t *testing.T) {
 	t.Run("settings install made from the plugin's binary", func(t *testing.T) {
 		e := newEnv(t)
 		fx := newPluginFixture(t, "rashomon@test")
-		if res := e.runBin(fx.bin, "", "watch"); res.exitCode != 0 {
+		if res := e.runBin(fx.bin, "", "watch", "--yes"); res.exitCode != 0 {
 			t.Fatalf("watch via the plugin binary: exit %d, stderr %q", res.exitCode, res.stderr)
 		}
 		line := turn(t, e, fx.bin, e.installArgs()...)

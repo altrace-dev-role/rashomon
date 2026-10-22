@@ -4,8 +4,8 @@
 # does not know -- which runs before the store opens -- and
 # in the stand-down line, which the probe shares with hook and post.
 m("H-107 the probe announces each phase on stdout", "cmd/rashomon/main.go",
-  "\t\tif err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {\n\t\t\tfmt.Fprintln(stderr, evictionLine)\n\t\t}\n",
-  "\t\tif err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {\n\t\t\tfmt.Fprintln(stderr, evictionLine)\n\t\t}\n\t\tfmt.Fprintln(os.Stdout, \"rashomon: probe\", phase)\n",
+  "\t\tif runErr != nil {\n\t\t\tfmt.Fprintln(stderr, evictionLine)\n\t\t}\n",
+  "\t\tif runErr != nil {\n\t\t\tfmt.Fprintln(stderr, evictionLine)\n\t\t}\n\t\tfmt.Fprintln(os.Stdout, \"rashomon: probe\", phase)\n",
   "TestH107_ProbeStartAndEndPrintNothing")
 m("H-107 the end probe reports on stdout", "internal/hook/probe.go",
   "\t\tcase store.PhaseEnd:\n\t\t\trun, err := st.ReadRun(sessionID)\n",

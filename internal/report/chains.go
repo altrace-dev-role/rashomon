@@ -200,7 +200,11 @@ func buildChains(run *store.Run, executed map[string][]store.Execution, denied m
 // spill file when the ordered stream's lock could not be taken lands without a
 // position.
 func executionsByID(run *store.Run) map[string][]store.Execution {
-	out := map[string][]store.Execution{}
+	// The bucket count, not the total: most ids hold one record and a few
+	// hold two, so this undercounts buckets slightly rather than guessing,
+	// but it is never wrong in the expensive direction -- run.Executions is
+	// already read and real, not a size hint over something unread.
+	out := make(map[string][]store.Execution, len(run.Executions))
 	for _, e := range run.Executions {
 		out[e.ToolUseID] = append(out[e.ToolUseID], e)
 	}

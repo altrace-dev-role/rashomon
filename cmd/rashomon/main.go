@@ -42,6 +42,7 @@ const (
 )
 
 func main() {
+	hook.Writer = version
 	// os.Exit skips deferred functions, so every path that needs one has to
 	// have returned before this line is reached.
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
@@ -70,9 +71,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdRecap(rest, stdin, stdout, stderr)
 
 	case "watch":
-		return guarded(stderr, noArgs(rest, stdout, cmdWatch))
+		return guarded(stderr, func() error { return cmdWatch(rest, stdout) })
+	case "consent":
+		return guarded(stderr, func() error { return cmdConsent(rest, stdout) })
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
+	case "purge":
+		return guarded(stderr, func() error { return cmdPurge(rest, stdout) })
 	case "pause":
 		return guarded(stderr, noArgs(rest, stdout, cmdPause))
 	case "resume":
@@ -196,11 +201,16 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
-		if checkPaused(args, stdin, store.PhaseCall, stderr) {
+		payload, in, standDown := claudeHostGuard(stdin)
+		if standDown {
 			return nil
 		}
 
-		st := openForHook(stderr)
+		if checkPaused(args, in(), store.PhaseCall, stderr) {
+			return nil
+		}
+
+		st := openForHook(args, stderr)
 		if st == nil {
 			return nil
 		}
@@ -214,7 +224,16 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		// of them and outside every lock. Nothing is printed on this path, so
 		// it is also before stdout.
 		st.DeferDurability()
-		captureErr := safe.Guard(func() error { return h.Capture(stdin) })
+		// payload, when non-nil, is the exact *hookio.Payload claudeHostGuard
+		// already built from stdin: handing it straight to CapturePayload
+		// skips the second read-and-copy of raw that Capture(in()) would run
+		// (see claudeHostGuard's own doc, TestRES28_MaxRSS).
+		captureErr := safe.Guard(func() error {
+			if payload != nil {
+				return h.CapturePayload(payload)
+			}
+			return h.Capture(in())
+		})
 		// Close returns nothing; Guard is here for its panic, and Flush still
 		// runs after one. What Close did not write reads as its absence: an
 		// unterminated declaration, a call with no coverage (H-10).
@@ -240,11 +259,16 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
-		if checkPaused(args, stdin, store.PhasePost, stderr) {
+		payload, in, standDown := claudeHostGuard(stdin)
+		if standDown {
 			return nil
 		}
 
-		st := openForHook(stderr)
+		if checkPaused(args, in(), store.PhasePost, stderr) {
+			return nil
+		}
+
+		st := openForHook(args, stderr)
 		if st == nil {
 			return nil
 		}
@@ -255,7 +279,13 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		p := hook.NewPost(st, time.Now)
 		// Group commit, as in cmdHook.
 		st.DeferDurability()
-		captureErr := safe.Guard(func() error { return p.Capture(stdin) })
+		// See cmdHook's own comment on payload != nil.
+		captureErr := safe.Guard(func() error {
+			if payload != nil {
+				return p.CapturePayload(payload)
+			}
+			return p.Capture(in())
+		})
 		// As in cmdHook: Guard is for Close's panic, and a coverage record
 		// Close did not write reads as its absence (H-10).
 		_ = safe.Guard(func() error { p.Close(sig, captureErr); return nil })
@@ -289,17 +319,29 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 
-		if checkPaused(args, stdin, phase, stderr) {
+		payload, in, standDown := claudeHostGuard(stdin)
+		if standDown {
 			return nil
 		}
-		st := openForHook(stderr)
+
+		if checkPaused(args, in(), phase, stderr) {
+			return nil
+		}
+		st := openForHook(args, stderr)
 		if st == nil {
 			return nil
 		}
 		if standsDown(args, st, stderr) {
 			return nil
 		}
-		if err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {
+		// See cmdHook's own comment on payload != nil.
+		var runErr error
+		if payload != nil {
+			runErr = hook.RunProbeFromPayload(sig, phase, payload, st, time.Now)
+		} else {
+			runErr = hook.RunProbe(sig, phase, in(), st, time.Now)
+		}
+		if runErr != nil {
 			fmt.Fprintln(stderr, evictionLine)
 		}
 		return nil
@@ -343,6 +385,14 @@ type recapPayload struct {
 	// LastMessageTail is the message's last 64 KiB when it was longer than
 	// the head (readFinalMessage), kept for the comparator (RES-17, P-40).
 	LastMessageTail string
+	// Harness is H1's own slice of this same stdin read (readFinalMessage's
+	// withHarness), and OK is false whenever recap had nothing usable to
+	// decide from: a read error, a malformed or oversized payload, or the
+	// recapStdinTimeout firing first. recapHostGuard treats !OK the same as
+	// claudeHostGuard treats hookio.Read's own error -- never a stand-down,
+	// see recapHostGuard's doc.
+	Harness harnessSignal
+	OK      bool
 }
 
 // readRecapPayload reads and parses stdin within a fixed budget, whatever
@@ -363,12 +413,12 @@ func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
 	}
 	ch := make(chan parsed, 1)
 	safe.Go(func() {
-		fm, ok := readFinalMessage(in, true)
+		fm, ok := readFinalMessage(in, true, true)
 		if !ok {
 			ch <- parsed{}
 			return
 		}
-		ch <- parsed{payload: recapPayload{SessionID: fm.SessionID, LastAssistantMessage: fm.Message, LastMessageTail: fm.Tail}, ok: true}
+		ch <- parsed{payload: recapPayload{SessionID: fm.SessionID, LastAssistantMessage: fm.Message, LastMessageTail: fm.Tail, Harness: fm.Harness, OK: true}, ok: true}
 	}, nil)
 
 	select {
@@ -421,6 +471,11 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 	now := time.Now()
 	payload := readRecapPayload(stdin, recapStdinTimeout)
+
+	if id, down := recapHostGuard(payload.Harness, payload.OK); down {
+		recordHarnessMismatchBestEffort(payload.SessionID, id)
+		return nil
+	}
 
 	root, err := store.DefaultRoot()
 	if err != nil {
@@ -584,10 +639,21 @@ func installArg(args []string) string {
 // openForHook opens the store for a hook-invoked path. It prints a fixed
 // string and returns nil on failure: there is nowhere to record that recording
 // failed, and the absence of any record for the session is the signal.
-func openForHook(stderr io.Writer) *store.Store {
+//
+// An entry that names an install (--install, as watch writes every one) and
+// finds no install.json returns nil and prints nothing: that store was
+// purged, and a live session still runs the entries it started with. Opening
+// one here would create the root, a key and a new install id -- the store
+// purge had just removed, back on the machine (Technical spec 7.2.9, TRU-28).
+// An entry that names none is from before --install existed, and is opened
+// as it always was.
+func openForHook(args []string, stderr io.Writer) *store.Store {
 	root, err := store.DefaultRoot()
 	if err != nil {
 		fmt.Fprintln(stderr, "rashomon: store location unresolved")
+		return nil
+	}
+	if installArg(args) != "" && !storeExistsAt(root) {
 		return nil
 	}
 	st, err := store.Open(root)
@@ -759,14 +825,26 @@ func storedInstallID() (string, error) {
 // may rewrite at any moment. Three is generous: the window is one small write.
 const editAttempts = 3
 
+// settingsEdit is what one editSettings call found and left: the file's bytes
+// as the edit read them, whether it existed, and what it holds afterwards.
+type settingsEdit struct {
+	before  []byte
+	existed bool
+	after   []byte // nil when removed
+	changed bool
+	removed bool // the edit left no member, and removeEmpty asked for the file to go
+}
+
 // editSettings applies edit to the user's settings file with optimistic
 // concurrency: the file is re-read and the edit re-applied if it changed
-// underneath. It reports whether anything was written.
-func editSettings(path string, edit func(*settings.Document) (bool, error)) (bool, error) {
+// underneath. When the edit leaves the document empty and removeEmpty says
+// so for the bytes it read, the file is removed rather than written -- the
+// one way detach can restore a settings.json that watch created.
+func editSettings(path string, edit func(*settings.Document) (bool, error), removeEmpty func(before []byte) bool) (settingsEdit, error) {
 	for attempt := 0; attempt < editAttempts; attempt++ {
-		original, err := settings.ReadOriginal(path)
+		original, existed, err := settings.ReadState(path)
 		if err != nil {
-			return false, err
+			return settingsEdit{}, err
 		}
 		// The document names path in every error it raises, the edit's
 		// included: a hook event that is not an array surfaces inside edit,
@@ -774,96 +852,32 @@ func editSettings(path string, edit func(*settings.Document) (bool, error)) (boo
 		// not about the file and are not dressed as if they were.
 		doc, err := settings.ParseNamed(path, original)
 		if err != nil {
-			return false, err
+			return settingsEdit{}, err
 		}
 		changed, err := edit(doc)
-		if err != nil || !changed {
-			return false, err
+		if err != nil {
+			return settingsEdit{}, err
 		}
-		err = settings.Write(path, original, doc.Bytes())
+		res := settingsEdit{before: original, existed: existed, after: original, changed: changed}
+		if !changed {
+			return res, nil
+		}
+		if removeEmpty != nil && doc.Empty() && removeEmpty(original) {
+			res.after, res.removed = nil, true
+			err = settings.Remove(path, original)
+		} else {
+			res.after = doc.Bytes()
+			err = settings.Write(path, original, res.after)
+		}
 		if errors.Is(err, settings.ErrChanged) {
 			continue
 		}
-		return err == nil, err
-	}
-	return false, errors.New("settings file kept changing while it was being edited; try again")
-}
-
-func cmdWatch(stdout io.Writer) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	loc, err := settings.DefaultLocations(cwd)
-	if err != nil {
-		return err
-	}
-	decision, err := settings.HooksDisabled(loc)
-	if err != nil {
-		return err
-	}
-	if decision.Disabled {
-		return fmt.Errorf("hooks are disabled by the %s settings layer; an installed entry would never run", decision.Layer)
-	}
-
-	// A live plugin refuses a settings install, the same shape as the refusal
-	// above: proceeding would produce a configuration that does not work.
-	// standsDown cannot save this arrangement -- it stands down on an
-	// install-id MISMATCH, and a plugin invocation names no id to mismatch
-	// against, so both origins would record every tool call.
-	userDoc, err := settings.Load(loc.User)
-	if err != nil {
-		return err
-	}
-	if p, err := install.FindPlugin(userDoc); err != nil {
-		return err
-	} else if p != nil && p.Live() {
-		return fmt.Errorf("the %s plugin is enabled and already provides these hook entries (%s); "+
-			"installing here would record every tool call twice -- run `/plugin disable %s` first, "+
-			"or skip watch and keep using the plugin", p.Key, strings.Join(p.Declared, ", "), p.Key)
-	}
-
-	exe, err := install.Executable()
-	if err != nil {
-		return err
-	}
-	st, err := openStore()
-	if err != nil {
-		return err
-	}
-	spec := install.Spec{Executable: exe, InstallID: st.InstallID()}
-
-	var foreign []string
-	changed, err := editSettings(loc.User, func(doc *settings.Document) (bool, error) {
-		applied, err := install.Apply(doc, spec)
 		if err != nil {
-			return false, err
+			return settingsEdit{}, err
 		}
-		foreign, err = install.ForeignOwners(doc, spec.InstallID)
-		return applied, err
-	})
-	if err != nil {
-		return err
+		return res, nil
 	}
-	if changed {
-		fmt.Fprintf(stdout, "rashomon: watching (install %s) via %s\n", st.InstallID(), loc.User)
-	} else {
-		fmt.Fprintf(stdout, "rashomon: already watching (install %s) via %s\n", st.InstallID(), loc.User)
-	}
-	// Said here because there is nowhere else it can be said: the foreign
-	// entries run under this environment, stand down against this store, and
-	// leave nothing behind to notice afterwards.
-	if len(foreign) > 0 {
-		fmt.Fprintf(stdout, "rashomon: entries from other installs are present (%s); they will fire in this environment and record nothing\n",
-			strings.Join(foreign, ", "))
-	}
-	capProblem(stdout, "rashomon: ")
-	// Printed in full, on its own line, because it is the line that still works
-	// once this binary or the store is gone: the id cannot be read back from a
-	// store that is not there, and there is nowhere else it is written down.
-	fmt.Fprintln(stdout, "rashomon: undo with this line -- it needs no store, and any rashomon binary will do:")
-	fmt.Fprintf(stdout, "rashomon detach --install %s\n", st.InstallID())
-	return nil
+	return settingsEdit{}, errors.New("settings file kept changing while it was being edited; try again")
 }
 
 func cmdDetach(args []string, stdout io.Writer) error {
@@ -887,16 +901,18 @@ func cmdDetach(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	rec := selfCheckRecord(installID, all)
 	removed := 0
 	var left []install.Modified
-	changed, err := editSettings(path, func(doc *settings.Document) (bool, error) {
+	edit, err := editSettings(path, func(doc *settings.Document) (bool, error) {
 		n, l, err := remove(doc)
 		removed, left = n, l
 		return n > 0, err
-	})
+	}, restoresAbsent(rec))
 	if err != nil {
 		return err
 	}
+	changed := edit.changed
 	// Named before the outcome, because an entry left behind still fires on
 	// every tool call and that is the part the user has to act on.
 	for _, m := range left {
@@ -907,7 +923,9 @@ func cmdDetach(args []string, stdout io.Writer) error {
 		return nil
 	}
 	fmt.Fprintf(stdout, "rashomon: detached (%s, %d entries) from %s\n", who, removed, path)
-
+	if rec != nil {
+		selfCheck(stdout, path, rec, edit, removed)
+	}
 	return nil
 }
 
@@ -1598,7 +1616,7 @@ func cmdDigest(args []string, stdin io.Reader, stdout io.Writer) error {
 // promise that made this read safe -- see cmdDigest's doc on why sniffing
 // stdin's type cannot make that promise itself.
 func readStdinLastMessage(in io.Reader) (string, bool) {
-	fm, ok := readFinalMessage(in, false)
+	fm, ok := readFinalMessage(in, false, false)
 	return fm.Message, ok && fm.Message != ""
 }
 
@@ -1805,15 +1823,29 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `rashomon -- record what a Claude Code session asked to run
 
 usage:
-  rashomon watch                 install the PreToolUse, PostToolUse and
-                               PostToolUseFailure recorders, the
-                               SessionStart/SessionEnd liveness probe, the
+  rashomon watch [--yes] [--show]
+                               show what installing does, then, after y on
+                               the terminal, install the PreToolUse,
+                               PostToolUse and PostToolUseFailure recorders,
+                               the SessionStart/SessionEnd liveness probe, the
                                Stop/StopFailure exception-only recap, and its
-                               UserPromptSubmit catch-up
+                               UserPromptSubmit catch-up; --show prints that
+                               screen and writes nothing, --yes installs
+                               without asking (never from an agent session)
   rashomon detach                remove them, leaving everything else as found
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
                                marker, whatever its id
+  rashomon purge [--yes] [--binary]
+                               detach, then remove the store and the
+                               directories watch created; prints every path
+                               first and asks on the terminal unless --yes;
+                               --binary also removes this binary
+  rashomon consent [--yes] [--show]
+                               show the screen again, opening with what
+                               changed since you last agreed, and record your
+                               consent after y on the terminal; the one way
+                               to widen an upgraded store's record scope
   rashomon pause                 stop recording on this machine, reaching every
                                installed origin; leaves a record of the change
   rashomon resume                start recording again; closes the paused
@@ -1998,7 +2030,7 @@ func countOf(n int, noun string) string {
 // its own doc for why this cannot list the directory itself and call
 // baseline.ForgetFile per file the way it once did.
 func clearBaselines(root, raw string) (int, bool, error) {
-	return baseline.ForgetAll(filepath.Join(root, "baseline"), raw)
+	return baseline.ForgetAll(filepath.Join(root, baseline.DirName), raw)
 }
 
 // storeExistsAt asks whether a root holds a store without opening one.

@@ -46,11 +46,12 @@ func TestRubricPERF7_StatusShowsTheStoreAgainstItsCap(t *testing.T) {
 // inside a hook, which cannot print, so a value that is not a byte count
 // used to fall back to the default where nobody could see it. status says
 // so using the value the probe actually resolved, and watch, reading its
-// own shell directly, says so for itself.
+// own shell directly, says so for itself: on the install that writes the
+// entries and on the one that finds them already there.
 func TestRubricHLD7_StatusAndWatchSayACapIsNotAByteCount(t *testing.T) {
 	e := newEnv(t)
-	if res := e.watch(); res.exitCode != 0 {
-		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	if res := e.watch("RASHOMON_STORE_CAP_BYTES=1.5e9"); res.exitCode != 0 || !strings.Contains(res.stdout, `RASHOMON_STORE_CAP_BYTES="1.5e9" is not a byte count`) {
+		t.Fatalf("first watch under a malformed cap: exit %d, stderr %q, stdout:\n%s", res.exitCode, res.stderr, res.stdout)
 	}
 	const want = `RASHOMON_STORE_CAP_BYTES="2GB" is not a byte count`
 
@@ -65,8 +66,8 @@ func TestRubricHLD7_StatusAndWatchSayACapIsNotAByteCount(t *testing.T) {
 		t.Errorf("status size line under a malformed cap is %q, want the default cap", got)
 	}
 
-	if w := e.watch("RASHOMON_STORE_CAP_BYTES=-1"); w.exitCode != 0 || !strings.Contains(w.stdout, `RASHOMON_STORE_CAP_BYTES="-1" is not a byte count`) {
-		t.Errorf("watch under a negative cap: exit %d, stdout:\n%s", w.exitCode, w.stdout)
+	if w := e.watch("RASHOMON_STORE_CAP_BYTES=-1"); w.exitCode != 0 || !strings.Contains(w.stdout, `RASHOMON_STORE_CAP_BYTES="-1" is not a byte count`) || !strings.Contains(w.stdout, "already watching") {
+		t.Errorf("watch again under a negative cap: exit %d, stdout:\n%s", w.exitCode, w.stdout)
 	}
 
 	// A store no probe has ever touched has nothing recorded, so status

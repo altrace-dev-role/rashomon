@@ -17,7 +17,7 @@ func jsonTags(t reflect.Type) []string {
 
 func TestFoldFileCarriesTheSpecsKeys(t *testing.T) {
 	cases := map[reflect.Type][]string{
-		reflect.TypeOf(File{}):     {"v", "writer", "dev", "inode", "records", "spill", "coverage", "prompts", "digest", "verify"},
+		reflect.TypeOf(File{}):     {"v", "writer", "dev", "inode", "records", "spill", "coverage", "gaps", "prompts", "digest", "verify"},
 		reflect.TypeOf(Cursor{}):   {"offset", "seq", "size_seen", "generation"},
 		reflect.TypeOf(Mark{}):     {"prompt_id", "first_offset", "first_seq", "last_seq", "stopped"},
 		reflect.TypeOf(DigestSt{}): {"start_recorded", "hook_entry_at_start", "skipped", "calls"},

@@ -123,9 +123,12 @@ func waitForNoGoroutine(t *testing.T, fn string) {
 }
 
 func TestRubricTEST9_RecapReaderAwkwardAndFailingReaders(t *testing.T) {
-	want := recapPayload{SessionID: "s-test9", LastAssistantMessage: "All 12 tests pass."}
+	// Harness is the host guard's slice of the same read, not this test's.
+	want := recapPayload{SessionID: "s-test9", LastAssistantMessage: "All 12 tests pass.", OK: true}
 	for name, wrap := range test9Readers() {
-		if got := readRecapPayload(wrap(strings.NewReader(test9Payload)), time.Second); got != want {
+		got := readRecapPayload(wrap(strings.NewReader(test9Payload)), time.Second)
+		got.Harness = harnessSignal{}
+		if got != want {
 			t.Errorf("%s reader: %+v, want %+v", name, got, want)
 		}
 	}

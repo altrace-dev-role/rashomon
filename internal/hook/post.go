@@ -122,6 +122,8 @@ type Post struct {
 	now func() time.Time
 	// lockWaits is Handler.lockWaits.
 	lockWaits time.Duration
+	// capExec is Handler.capDecl for the execution record.
+	capExec func(*store.Execution) bool
 
 	sessionID string
 	toolUseID string
@@ -133,7 +135,8 @@ type Post struct {
 // NewPost builds a Post. now is injectable for the same reason it is on
 // Handler: a test pins the clock and compares two records byte for byte.
 func NewPost(st *store.Store, now func() time.Time) *Post {
-	return &Post{st: st, now: now, lockWaits: LockWaitTotal, sessionID: UnattributedSession}
+	return &Post{st: st, now: now, lockWaits: LockWaitTotal, capExec: store.CapExecution,
+		sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the execution record.
@@ -144,10 +147,7 @@ func NewPost(st *store.Store, now func() time.Time) *Post {
 // unbounded read of a payload carrying a hundred megabytes of tool output is a
 // runtime fatal error, which recover cannot catch and which exits 2.
 func (p *Post) Capture(in io.Reader) error {
-	// First, as in Handler.Capture.
-	p.st.LimitLockWaits(p.lockWaits)
-	fault.Inject(fault.PointPostStart)
-
+	p.prologue()
 	payload, err := hookio.Intake(in)
 	if err != nil {
 		if s, cwd, ok := refusedSession(err); ok {
@@ -155,6 +155,26 @@ func (p *Post) Capture(in io.Reader) error {
 		}
 		return err
 	}
+	return p.capture(payload)
+}
+
+// CapturePayload is Capture for a caller that already has a parsed
+// *hookio.Payload in hand -- see Handler.CapturePayload's doc, which this
+// mirrors exactly.
+func (p *Post) CapturePayload(payload *hookio.Payload) error {
+	p.prologue()
+	return p.capture(payload)
+}
+
+// prologue is Capture and CapturePayload's shared setup; see Handler.
+// prologue's doc, which this mirrors exactly.
+func (p *Post) prologue() {
+	p.st.LimitLockWaits(p.lockWaits)
+	fault.Inject(fault.PointPostStart)
+}
+
+// capture is Capture and CapturePayload's shared body.
+func (p *Post) capture(payload *hookio.Payload) error {
 	var pl PostPayload
 	if err := pl.from(payload); err != nil {
 		return err
@@ -179,6 +199,7 @@ func (p *Post) Capture(in io.Reader) error {
 		DurationMS:    positive(pl.DurationMS),
 		RulesVersion:  shape.RulesVersion,
 	}
+	rec.Writer = Writer
 	// Derived through the same function the declaration path uses, with the
 	// same per-install key, or the two digests would never be comparable. An
 	// absent tool_input leaves it empty rather than digesting nothing, because
@@ -206,10 +227,10 @@ func (p *Post) Capture(in io.Reader) error {
 		rec.Backgrounded = backgroundedCall(payload)
 	}
 	// The caps, as on the declaration path (REC-52).
-	if store.CapExecution(&rec) {
+	if p.capExec(&rec) {
 		p.withheld = true
 	}
-	return p.st.AppendExecution(rec)
+	return landed(p.st.AppendExecution(rec), &p.withheld)
 }
 
 // backgroundedCall reports a Bash call whose PostToolUse fired while the
