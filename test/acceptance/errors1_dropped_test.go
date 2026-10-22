@@ -25,6 +25,8 @@ func TestRubricERRORS1_OnlyALockTimeoutIsBlamedOnTheLock(t *testing.T) {
 	appendRawLine(t, e.recordsPath(testSession), fmt.Sprintf(
 		`{"type":"terminal","schema_version":4,"seq":null,"recorded_at_unix_ms":%d,"tool_use_id":"toolu_unreadable","session_id":%q,"outcome":"ok","reason":null}`,
 		now, testSession))
+	e.expectDamagedStore("an unreadable declaration and its terminal, appended without the lock",
+		"schema_version 99", "an ordered record with seq <nil>")
 	e.probe("end", testSession)
 
 	rep := e.report(testSession)

@@ -45,6 +45,7 @@ func TestREC33_TornGapUnverifies(t *testing.T) {
 	}
 
 	appendRawBytes(t, filepath.Join(e.home, "gaps.ndjson"), tornGap)
+	e.expectDamagedStore("a torn gap", "gaps.ndjson:1 is not one JSON object")
 
 	rep := e.report(testSession)
 	if rep.Coverage.State == "verified" || !e.hasReason(rep, "records_unreadable") {

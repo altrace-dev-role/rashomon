@@ -310,7 +310,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.2"  # See the note in the test job.
+          go-version: "1.27.3"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 

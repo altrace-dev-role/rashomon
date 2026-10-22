@@ -6,7 +6,7 @@ m("test-13  newEnv does not register the store check", "test/acceptance/harness_
 m("test-13  a repeated seq passes the check", "test/acceptance/storecheck_test.go",
   "\t\tcase int64(seq) <= last:\n", "\t\tcase int64(seq) < last:\n", "TestRubricTEST13_")
 m("test-13  a line that is not JSON passes the check", "test/acceptance/storecheck_test.go",
-  "\t\t\tout = append(out, fmt.Sprintf(\"%s is not one JSON object: %q\", where, sc.Text()))\n",
+  "\t\t\tout = append(out, fmt.Sprintf(\"%s is not one JSON object: %q\", where, sc.Bytes()))\n",
   "", "TestRubricTEST13_")
 m("test-13  keys are not held to the allowlist", "test/acceptance/storecheck_test.go",
   "\t\tif !allow[k] {\n", "\t\tif false && !allow[k] {\n", "TestRubricTEST13_")
@@ -29,3 +29,6 @@ m("test-13  declared damage stands the whole check down", "test/acceptance/store
   "\t\tif !named {\n", "\t\tif !named && len(declared) == 0 {\n", "TestRubricTEST13_")
 m("test-13  declared damage that did not happen passes", "test/acceptance/storecheck_test.go",
   "\t\tif !matched[i] {\n", "\t\tif false && !matched[i] {\n", "TestRubricTEST13_")
+m("test-13  the store check reads a line over the store's bound as one that is not JSON", "test/acceptance/storecheck_test.go",
+  "\t\tif sc.TooLong() {\n\t\t\tout = append(out, fmt.Sprintf(\"%s: a line over store.MaxLine\", where))\n\t\t\tcontinue\n\t\t}\n",
+  "", "TestRubricTEST13_")

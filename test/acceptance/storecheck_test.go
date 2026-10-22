@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/linescan"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -134,13 +135,19 @@ func fileProblems(path, rel string, spec storeFile) []string {
 	defer f.Close()
 	var out []string
 	var last int64
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), store.MaxLine)
+	// A line over the store's bound is stepped over and named, as the store
+	// steps over it (forEachLine), and the lines after it are still checked.
+	// store.MaxLine does not count the newline; linescan's bound does.
+	sc := linescan.New(f, bufio.MaxScanTokenSize, store.MaxLine+1)
 	for n := 1; sc.Scan(); n++ {
 		where := fmt.Sprintf("%s:%d", rel, n)
+		if sc.TooLong() {
+			out = append(out, fmt.Sprintf("%s: a line over store.MaxLine", where))
+			continue
+		}
 		var fields map[string]any
 		if err := json.Unmarshal(sc.Bytes(), &fields); err != nil || fields == nil {
-			out = append(out, fmt.Sprintf("%s is not one JSON object: %q", where, sc.Text()))
+			out = append(out, fmt.Sprintf("%s is not one JSON object: %q", where, sc.Bytes()))
 			continue
 		}
 		if spec.types == nil {
@@ -241,8 +248,11 @@ func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 			return l
 		}},
 		{"a schema from the future", "schema_version 99", func(l []string) []string {
-			l[0] = strings.Replace(l[0], `"schema_version":5`, `"schema_version":99`, 1)
+			l[0] = strings.Replace(l[0], fmt.Sprintf(`"schema_version":%d`, store.SchemaVersion), `"schema_version":99`, 1)
 			return l
+		}},
+		{"a line over the store's bound, before the rest", "a line over store.MaxLine", func(l []string) []string {
+			return append([]string{strings.Repeat("x", store.MaxLine+1)}, l...)
 		}},
 		{"a coverage record among the calls", `a "coverage" record`, func(l []string) []string {
 			return append(l, `{"type":"coverage","schema_version":3}`)
@@ -266,9 +276,9 @@ func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 	}
 
 	// Versions are held per kind, in step with the store's reader: coverage
-	// and gaps stop at SessionSchemaVersion, and a call record past 5, the
-	// version the writer stamps since REC-34's flush_failed marker, is one
-	// today's reader skips.
+	// and gaps stop at SessionSchemaVersion, and a call record past
+	// CallSchemaVersion, 5, the version of REC-34's flush_failed marker, is
+	// one today's reader skips.
 	for _, tc := range []struct{ file, line, want string }{
 		{"coverage.ndjson", `{"type":"coverage","schema_version":4}`, "schema_version 4"},
 		{"gaps.ndjson", `{"type":"gap","schema_version":4}`, "schema_version 4"},
