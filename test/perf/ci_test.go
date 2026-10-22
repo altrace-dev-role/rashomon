@@ -109,3 +109,28 @@ func TestRES36h_PerfJobsRunPinnedAndFailClosed(t *testing.T) {
 		}
 	}
 }
+
+// TestRES29_CIChecksTheRSSBoundPastARedGate: the linux perf job is the only
+// place RES-29's peak-RSS bound is checked (the test job runs under -race,
+// where it skips), and its step runs whatever the steps before it did. With
+// no `if:` it ran only on success, so a benchgate exit -- 2 while
+// budgets.json had no linux rows -- skipped it on every run.
+func TestRES29_CIChecksTheRSSBoundPastARedGate(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range workflowSteps(string(raw))["perf-linux"] {
+		if !strings.Contains(s, "TestRES29_PathologicalInputsStayBounded") {
+			continue
+		}
+		found = true
+		if !regexp.MustCompile(`(?m)^        if: (success\(\) \|\| failure\(\)|always\(\)|\$\{\{ !cancelled\(\) \}\}|!cancelled\(\))\s*$`).MatchString(s) {
+			t.Errorf("perf-linux: the RES-29 step runs only when every step before it passed:\n%s", s)
+		}
+	}
+	if !found {
+		t.Error("perf-linux: no step runs TestRES29_PathologicalInputsStayBounded")
+	}
+}

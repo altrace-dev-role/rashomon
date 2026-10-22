@@ -434,8 +434,11 @@ jobs:
       # `test` job's `go test ./... -race` never actually checks it: every
       # row logs and skips. This is the only place it is checked anywhere,
       # and the only place linux/amd64's own number (not darwin's) is the one
-      # compared.
+      # compared. It runs whatever the steps before it did: a red benchgate
+      # skipped it, and a bound that is checked only while every other gate
+      # is green is not checked.
       - name: RES-29 peak RSS (no race detector)
+        if: success() || failure()
         run: go test ./cmd/rashomon -run '^TestRES29_PathologicalInputsStayBounded$' -count=1 -v
 
   perf-macos:

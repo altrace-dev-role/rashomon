@@ -34,3 +34,8 @@ m("RES-29 an escaped blank ends a word in the token estimate", "internal/shape/t
   "\t\tcase c == '\\\\': // the byte it escapes is the word's, a blank included\n\t\t\ti++\n\t\t\tinWord = true\n",
   "", "TestRES29_")
 
+# The linux perf job is the only place the RSS bound is checked, so its step
+# runs past a red gate before it. Dropping its `if:` is the regression.
+m("RES-29 the CI RSS step runs only when every gate before it passed", ".github/workflows/ci.yaml",
+  "      - name: RES-29 peak RSS (no race detector)\n        if: success() || failure()\n",
+  "      - name: RES-29 peak RSS (no race detector)\n", "TestRES29_CIChecksTheRSSBoundPastARedGate")
