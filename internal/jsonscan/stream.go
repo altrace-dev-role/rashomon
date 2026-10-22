@@ -8,13 +8,16 @@ import (
 	"unicode/utf8"
 )
 
-// CaptureMode says how much of a wanted value Stream copies out.
+// CaptureMode says how much of a wanted value Stream copies out. The zero
+// mode is none: a Path whose Mode was never set is refused with ErrPaths,
+// rather than read as CaptureHead and copied out unasked.
 type CaptureMode uint8
 
 // The capture modes.
 const (
+	_ CaptureMode = iota // the zero value: no mode, refused
 	// CaptureHead keeps the first Max bytes.
-	CaptureHead CaptureMode = iota
+	CaptureHead
 	// CaptureTail keeps the last Max bytes.
 	CaptureTail
 	// CaptureHeadTail keeps the first Max and the last Max bytes.

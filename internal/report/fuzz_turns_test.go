@@ -83,7 +83,7 @@ func checkTurns(t *testing.T, script []byte, words string) {
 				return
 			}
 			cur.ids[id] = true
-			if _, ok := FinalAssistantText(writeTranscript(t, []string{line})); ok {
+			if _, ok := FinalAssistantText(openT(t, writeTranscript(t, []string{line}))); ok {
 				cur.textAt = at.UnixMilli()
 			}
 		}
@@ -125,9 +125,9 @@ func checkTurns(t *testing.T, script []byte, words string) {
 	for _, tw := range turns {
 		want[tw.prompt] = true
 	}
-	got := FinalAssistantTexts(writeTranscript(t, all), want)
+	got := FinalAssistantTexts(openT(t, writeTranscript(t, all)), want)
 	for _, tw := range turns {
-		text, ok := FinalAssistantText(writeTranscript(t, tw.lines))
+		text, ok := FinalAssistantText(openT(t, writeTranscript(t, tw.lines)))
 		g := got[tw.prompt]
 		if g.Said != ok || g.Text != text {
 			t.Fatalf("turn %s: FinalAssistantTexts said %v %q, FinalAssistantText over its lines %v %q\n%s",

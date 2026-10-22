@@ -82,11 +82,11 @@ func checkTranscriptLines(t *testing.T, data []byte) {
 		return p
 	}
 	whole := write("whole.jsonl", data)
-	ids, results, denied, unhooked, files, _, err := TranscriptIDs(whole)
+	ids, results, denied, unhooked, files, _, err := transcriptIDsAt(whole)
 	if err != nil || files != 1 {
 		t.Fatalf("TranscriptIDs: files %d, %v", files, err)
 	}
-	final, finalOK := FinalAssistantText(whole)
+	final, finalOK := FinalAssistantText(openT(t, whole))
 
 	lines := bytes.Split(data, []byte("\n"))
 	if len(lines) > maxFuzzLines {
@@ -98,7 +98,7 @@ func checkTranscriptLines(t *testing.T, data []byte) {
 	for i, l := range lines {
 		checkSidechain(t, l)
 		p := write("line"+strconv.Itoa(i)+".jsonl", append(l, '\n'))
-		a, b, c, d, _, _, err := TranscriptIDs(p)
+		a, b, c, d, _, _, err := transcriptIDsAt(p)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +107,7 @@ func checkTranscriptLines(t *testing.T, data []byte) {
 				union[j][k] = true
 			}
 		}
-		if text, ok := FinalAssistantText(p); ok {
+		if text, ok := FinalAssistantText(openT(t, p)); ok {
 			last, lastOK = text, true
 		}
 	}
@@ -174,7 +174,7 @@ func checkTranscriptBlocks(t *testing.T, id, text string, isError bool) {
 	if err := os.WriteFile(p, []byte(string(asst)+"\n"+string(user)+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	ids, results, denied, unhooked, _, _, err := TranscriptIDs(p)
+	ids, results, denied, unhooked, _, _, err := transcriptIDsAt(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func checkTranscriptBlocks(t *testing.T, id, text string, isError bool) {
 	if wantUnhooked := isError && strings.HasPrefix(text, toolUseErrorTag) && id != ""; wantUnhooked != unhooked[id] || len(unhooked) > 1 {
 		t.Fatalf("unhooked %v for %q (error %v, %q)", unhooked, id, isError, text)
 	}
-	got, ok := FinalAssistantText(p)
+	got, ok := FinalAssistantText(openT(t, p))
 	if wantOK := strings.TrimSpace(text) != ""; ok != wantOK || (ok && got != text) {
 		t.Fatalf("FinalAssistantText %q (%v), want %q (%v)", got, ok, text, wantOK)
 	}

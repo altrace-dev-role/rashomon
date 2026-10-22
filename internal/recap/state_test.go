@@ -140,7 +140,9 @@ func TestRecordFailureMarksUnhealthy(t *testing.T) {
 	markInstalled(t, root)
 	now := time.Now()
 
-	RecordFailure(root, now)
+	if err := RecordFailure(root, now); err != nil {
+		t.Fatal(err)
+	}
 
 	evaluated, _, healthy, err := Status(root)
 	if err != nil {
@@ -178,8 +180,10 @@ func TestClaimSurvivesACorruptStateFile(t *testing.T) {
 func TestRubricERRORS11_RecordFailureReportsAFailedWrite(t *testing.T) {
 	root := t.TempDir()
 	markInstalled(t, root)
-	// A directory where the temporary file goes makes the write fail.
-	if err := os.Mkdir(statePath(root)+".tmp", 0o700); err != nil {
+	// A non-empty directory where the state file goes makes the write's
+	// rename fail. The temporary file's name is unique to the write, so
+	// nothing placed beside the state file can stop the write itself.
+	if err := os.MkdirAll(filepath.Join(statePath(root), "occupied"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 

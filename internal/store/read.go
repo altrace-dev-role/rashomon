@@ -128,16 +128,17 @@ func (s *Store) readRunDir(name string, refused func(error) bool) (*Run, error) 
 //
 // budget is deliberately NOT lockBudget (2s): that number bounds how long a
 // WRITER may starve a hook's own record, and a reader borrowing it could stall
-// for two seconds on every call, which is the opposite of a command with a
-// 50ms ceiling. It is one deadline for the whole read, not a wait per file:
-// each file waits for the time left, and a file with none left tries its
-// lock once, so three held files cost what one does and a single held file
-// may take all of it (perf-1). It should wait out one writer's hold, which
-// BenchmarkOrderedAppendHold measures (lockbudget.go); digest's
-// readLockBudget is derived from it. A lock this reader cannot get within
-// budget is not fatal -- the read proceeds without it, exactly as ReadRunDir
-// always has, and a line actually caught mid-write still lands in Skipped
-// rather than being counted as something it is not.
+// for two seconds on every call -- several times what the whole turn digest
+// costs to build (about 50 ms at 3,500 recorded calls and 300 ms at 20,000,
+// BenchmarkBuild in internal/digest). It is one deadline for the whole read,
+// not a wait per file: each file waits for the time left, and a file with
+// none left tries its lock once, so three held files cost what one does and a
+// single held file may take all of it (perf-1). It should wait out one
+// writer's hold, which BenchmarkOrderedAppendHold measures (lockbudget.go);
+// digest's readLockBudget is derived from it. A lock this reader cannot get
+// within budget is not fatal -- the read proceeds without it, exactly as
+// ReadRunDir always has, and a line actually caught mid-write still lands in
+// Skipped rather than being counted as something it is not.
 func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run, error) {
 	name := segment(sessionID)
 	dir := filepath.Join(s.root, DirRuns, name)

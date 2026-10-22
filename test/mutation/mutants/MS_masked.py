@@ -182,8 +182,8 @@ m("MS masked runs fire with no pass claimed", "internal/report/account.go",
 # report and the digest take it over the declaration's (MaskingAsRan).
 m("MS the post hook keeps no masking", "internal/hook/post.go",
   "\t\trec.StatusMasked, rec.RunnerDigest = s.StatusMasked, s.RunnerDigest\n", "", RP)
-m("MS the report judges the declared line", "internal/report/report.go",
-  "\t\tMaskingAsRan(run)\n", "", RP)
+m("MS the report judges the declared line", "internal/report/assemble.go",
+  "\tMaskingAsRan(run)\n", "", RP)
 m("MS the digest judges the declared line", "internal/digest/digest.go",
   "\treport.MaskingAsRan(run)\n", "", RP)
 m("MS the timeline judges the declared line", "internal/report/timeline.go",

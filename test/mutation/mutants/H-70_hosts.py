@@ -33,8 +33,8 @@ m("H-70 one flag table for all four programs", "internal/shape/hosts.go",
 m("H-70 ssh hosts come from URL schemes only", "internal/shape/hosts.go",
   "\t\tssh = mergeHosts(ssh, named)", "\t\t_ = named", "TestH70_SSH|TestSSHDestinations")
 m("H-70 every non-flag argument is recorded as a host", "internal/shape/hosts.go",
-  "\t\tif prog == \"ssh\" || prog == \"sftp\" {\n\t\t\tif h, ok := destinationHost(a, false); ok {\n\t\t\t\tout = append(out, h)\n\t\t\t}\n\t\t\treturn out\n\t\t}\n\t\tif h, ok := destinationHost(a, true); ok {\n\t\t\tout = append(out, h)\n\t\t}",
-  "\t\tif h, ok := destinationHost(a, false); ok {\n\t\t\tout = append(out, h)\n\t\t}", "TestH70_Local|TestSSHDestinations")
+  "\t\tif prog == \"ssh\" || prog == \"sftp\" {\n\t\t\tif h, ok := destinationHost(a, bareHost); ok {\n\t\t\t\tout = append(out, h)\n\t\t\t}\n\t\t\treturn out\n\t\t}\n\t\tif h, ok := destinationHost(a, remoteOnly); ok {\n\t\t\tout = append(out, h)\n\t\t}",
+  "\t\tif h, ok := destinationHost(a, bareHost); ok {\n\t\t\tout = append(out, h)\n\t\t}", "TestH70_Local|TestSSHDestinations")
 m("H-70 the path is not split off before the user", "internal/shape/hosts.go",
   "\tprefix := tok\n\tif slash := strings.IndexByte(tok, '/'); slash >= 0 {\n\t\tprefix = tok[:slash]\n\t}",
   "\tprefix := tok", "TestSSHFlagTables|TestH70_SSH")

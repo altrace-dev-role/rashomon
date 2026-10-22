@@ -23,7 +23,7 @@ const fixture = "../../test/fixtures/nono/audit-events.ndjson"
 // the file rather than from time.Now().
 func fixtureWindow(t *testing.T) Window {
 	t.Helper()
-	obs := Read(fixture, Window{Start: time.Unix(0, 0)})
+	obs := read(fixture, Window{Start: time.Unix(0, 0)})
 	if !obs.Observed || len(obs.Events) == 0 {
 		t.Fatalf("premise: the fixture yields no events (%s)", obs.Reason)
 	}
@@ -34,7 +34,7 @@ func fixtureWindow(t *testing.T) Window {
 
 // TestRead_TheRealCapture is the shape, asserted against the bytes nono wrote.
 func TestRead_TheRealCapture(t *testing.T) {
-	obs := Read(fixture, fixtureWindow(t))
+	obs := read(fixture, fixtureWindow(t))
 
 	if !obs.Observed {
 		t.Fatalf("not observed: %s", obs.Reason)
@@ -60,7 +60,7 @@ func TestRead_TheRealCapture(t *testing.T) {
 // attempt as a destination -- the same distinction the wire reader's Unreached
 // exists to make, and the same direction of error.
 func TestRead_DeniedHostsAreNotDestinations(t *testing.T) {
-	obs := Read(fixture, fixtureWindow(t))
+	obs := read(fixture, fixtureWindow(t))
 	for _, h := range obs.Hosts() {
 		if h == "github.com" || h == "169.254.169.254" {
 			t.Errorf("%s was denied and appears as a reached destination", h)
@@ -77,7 +77,7 @@ func TestRead_DeniedHostsAreNotDestinations(t *testing.T) {
 // reader comparing the two sources finds a host nono saw and rashomon did not,
 // and reads it as a recording failure rather than as a known boundary.
 func TestRead_TheReverseModeEventIsKept(t *testing.T) {
-	obs := Read(fixture, fixtureWindow(t))
+	obs := read(fixture, fixtureWindow(t))
 
 	var reverse []Event
 	for _, e := range obs.Events {
@@ -103,7 +103,7 @@ func TestRead_TheReverseModeEventIsKept(t *testing.T) {
 // host, and this program does not carry free text from another program's log
 // into its own output.
 func TestRead_DenialCategoriesSurvive(t *testing.T) {
-	obs := Read(fixture, fixtureWindow(t))
+	obs := read(fixture, fixtureWindow(t))
 	for _, e := range obs.Events {
 		switch e.Decision {
 		case DecisionDeny:
@@ -140,7 +140,7 @@ func TestRead_NoCommandLineReachesAnEvent(t *testing.T) {
 			"proves nothing -- recapture it from a session that runs one")
 	}
 
-	obs := Read(fixture, fixtureWindow(t))
+	obs := read(fixture, fixtureWindow(t))
 	for _, e := range obs.Events {
 		for _, got := range []string{e.Host, e.Decision, e.Mode, e.Category} {
 			if strings.Contains(got, canary) || strings.Contains(got, "curl") {
@@ -160,7 +160,7 @@ func TestRead_NoCommandLineReachesAnEvent(t *testing.T) {
 
 // TestRead_AbsentTrailIsCoverageNotAnError.
 func TestRead_AbsentTrailIsCoverageNotAnError(t *testing.T) {
-	obs := Read(filepath.Join(t.TempDir(), "missing.ndjson"), Window{Start: time.Now()})
+	obs := read(filepath.Join(t.TempDir(), "missing.ndjson"), Window{Start: time.Now()})
 	if obs.Observed {
 		t.Error("an absent trail was reported as observed")
 	}
@@ -177,7 +177,7 @@ func TestRead_AbsentTrailIsCoverageNotAnError(t *testing.T) {
 // -- the wire reader learned this by attributing an entire database to an
 // evicted run.
 func TestRead_NoWindowObservesNothing(t *testing.T) {
-	obs := Read(fixture, Window{})
+	obs := read(fixture, Window{})
 	if obs.Observed {
 		t.Error("a trail was read with no window to read it against")
 	}
@@ -188,7 +188,7 @@ func TestRead_NoWindowObservesNothing(t *testing.T) {
 
 // TestRead_EventsOutsideTheWindowAreCountedNotDropped.
 func TestRead_EventsOutsideTheWindowAreCountedNotDropped(t *testing.T) {
-	obs := Read(fixture, Window{Start: time.Now().Add(24 * time.Hour)})
+	obs := read(fixture, Window{Start: time.Now().Add(24 * time.Hour)})
 	if len(obs.Events) != 0 {
 		t.Errorf("events = %d, want 0 for a window after the capture", len(obs.Events))
 	}
@@ -210,8 +210,8 @@ func TestRead_AMalformedLineDoesNotDiscardTheRest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	full := Read(fixture, fixtureWindow(t))
-	obs := Read(torn, fixtureWindow(t))
+	full := read(fixture, fixtureWindow(t))
+	obs := read(torn, fixtureWindow(t))
 	if len(obs.Events) != len(full.Events) {
 		t.Errorf("a torn last line cost %d events", len(full.Events)-len(obs.Events))
 	}
@@ -246,7 +246,7 @@ func TestRead_AnEmptyOrWrongShapedFileIsNotAQuietSession(t *testing.T) {
 			if err := os.WriteFile(path, []byte(c.body), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			obs := Read(path, Window{Start: time.Now().Add(-time.Hour)})
+			obs := read(path, Window{Start: time.Now().Add(-time.Hour)})
 			if obs.Observed {
 				t.Errorf("reported as observed with zero records; a reader cannot tell this "+
 					"from a session where the sandbox genuinely saw nothing (reason=%q)",
@@ -276,7 +276,7 @@ func TestRead_DroppedRecordsAreCounted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	obs := Read(path, fixtureWindow(t))
+	obs := read(path, fixtureWindow(t))
 	if obs.Skipped != 2 {
 		t.Errorf("skipped = %d, want 2 (a torn line and one with no event)", obs.Skipped)
 	}
@@ -298,7 +298,7 @@ func TestRead_ACredentialBearingTargetIsRefusedAndCounted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	obs := Read(path, Window{Start: time.UnixMilli(0)})
+	obs := read(path, Window{Start: time.UnixMilli(0)})
 	for _, e := range obs.Events {
 		if strings.Contains(e.Host, "@") || strings.Contains(e.Host, "hunter2") {
 			t.Errorf("a credential reached an event: %+v", e)
@@ -325,7 +325,7 @@ func TestRead_AFileOfUnlearnedTypesIsNotAQuietSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	obs := Read(path, Window{Start: time.UnixMilli(0)})
+	obs := read(path, Window{Start: time.UnixMilli(0)})
 	if obs.Observed {
 		t.Errorf("a file of only unlearned record types reported as observed; it is "+
 			"indistinguishable from a sandbox that genuinely saw nothing (reason=%q, "+
@@ -341,12 +341,12 @@ func TestRead_AFileOfUnlearnedTypesIsNotAQuietSession(t *testing.T) {
 // carry that fact for the report to say it.
 func TestRead_AWindowWithNoEndIsSaidToBeOpen(t *testing.T) {
 	closed := fixtureWindow(t)
-	if obs := Read(fixture, closed); !obs.Observed || obs.WindowOpen {
+	if obs := read(fixture, closed); !obs.Observed || obs.WindowOpen {
 		t.Errorf("a window with an end: observed=%v window_open=%v, want true, false",
 			obs.Observed, obs.WindowOpen)
 	}
 	open := Window{Start: closed.Start}
-	if obs := Read(fixture, open); !obs.Observed || !obs.WindowOpen {
+	if obs := read(fixture, open); !obs.Observed || !obs.WindowOpen {
 		t.Errorf("a window with no end: observed=%v window_open=%v, want true, true",
 			obs.Observed, obs.WindowOpen)
 	}
@@ -367,13 +367,13 @@ func TestRead_WindowOpenIsFalseWhenNotObserved(t *testing.T) {
 	if err := os.WriteFile(torn, []byte("{not json\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if obs := Read(torn, open); obs.Observed || obs.WindowOpen {
+	if obs := read(torn, open); obs.Observed || obs.WindowOpen {
 		t.Errorf("an all-torn file against an open window: observed=%v window_open=%v, want false, false",
 			obs.Observed, obs.WindowOpen)
 	}
 
 	missing := filepath.Join(t.TempDir(), "missing.ndjson")
-	if obs := Read(missing, open); obs.Observed || obs.WindowOpen {
+	if obs := read(missing, open); obs.Observed || obs.WindowOpen {
 		t.Errorf("a missing trail against an open window: observed=%v window_open=%v, want false, false",
 			obs.Observed, obs.WindowOpen)
 	}
@@ -382,7 +382,7 @@ func TestRead_WindowOpenIsFalseWhenNotObserved(t *testing.T) {
 	if err := os.WriteFile(empty, []byte(""), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if obs := Read(empty, open); obs.Observed || obs.WindowOpen {
+	if obs := read(empty, open); obs.Observed || obs.WindowOpen {
 		t.Errorf("an empty file against an open window: observed=%v window_open=%v, want false, false",
 			obs.Observed, obs.WindowOpen)
 	}
@@ -407,7 +407,7 @@ func TestRead_NetworkEventsInTrailCountsTheWholeFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	obs := Read(path, Window{Start: time.Unix(0, 0)})
+	obs := read(path, Window{Start: time.Unix(0, 0)})
 	if !obs.Observed {
 		t.Fatalf("a session_started/session_ended-only trail was not observed: %s", obs.Reason)
 	}
@@ -415,7 +415,7 @@ func TestRead_NetworkEventsInTrailCountsTheWholeFile(t *testing.T) {
 		t.Errorf("network_events_in_trail = %d, want 0", obs.NetworkEventsInTrail)
 	}
 
-	withNet := Read(fixture, fixtureWindow(t))
+	withNet := read(fixture, fixtureWindow(t))
 	if withNet.NetworkEventsInTrail != 4 {
 		t.Errorf("network_events_in_trail = %d, want 4 (the fixture's four network records)",
 			withNet.NetworkEventsInTrail)
@@ -450,7 +450,7 @@ func TestRead_NetworkEventsInTrailCountsEventsOutsideTheWindowAndUnparseable(t *
 		t.Fatal(err)
 	}
 
-	obs := Read(path, Window{Start: time.UnixMilli(900), End: time.UnixMilli(1100)})
+	obs := read(path, Window{Start: time.UnixMilli(900), End: time.UnixMilli(1100)})
 	if !obs.Observed {
 		t.Fatalf("premise: not observed (%s)", obs.Reason)
 	}

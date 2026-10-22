@@ -106,7 +106,7 @@ func parseOwned(path string, data []byte) (*Document, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return d, nil
 	}
-	members, err := parseObject(data, true)
+	members, err := parseObject(data, wholeDocument)
 	if err != nil {
 		return nil, d.fail(posAt(0), err)
 	}
@@ -266,7 +266,7 @@ func (d *Document) hookEvents() ([]member, error) {
 	if h == nil || isNull(h.raw) {
 		return nil, nil
 	}
-	events, err := parseObject(h.raw, false)
+	events, err := parseObject(h.raw, valueOnly)
 	if err != nil {
 		return nil, d.fail(h.at, fmt.Errorf("hooks: %w", err))
 	}
@@ -289,14 +289,23 @@ func isNull(raw json.RawMessage) bool {
 	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 }
 
-// parseObject splits an object into ordered members with raw values. With
-// whole set, anything after the closing brace is an error. Duplicate keys are
-// refused: an encoder would silently keep one of them, and editing a document
-// whose meaning depends on which is not editing, it is guessing.
+// objectExtent says whether parseObject's input is a whole document, where
+// anything after the closing brace is an error, or one value inside one.
+type objectExtent bool
+
+const (
+	wholeDocument objectExtent = true
+	valueOnly     objectExtent = false
+)
+
+// parseObject splits an object into ordered members with raw values. For a
+// wholeDocument, anything after the closing brace is an error. Duplicate keys
+// are refused: an encoder would silently keep one of them, and editing a
+// document whose meaning depends on which is not editing, it is guessing.
 //
 // Every error comes back as an offsetError holding where in data the decoder
 // stopped, and every member holds where in data its value starts.
-func parseObject(data []byte, whole bool) (_ []member, err error) {
+func parseObject(data []byte, extent objectExtent) (_ []member, err error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	closed := false
 	defer func() {
@@ -340,7 +349,7 @@ func parseObject(data []byte, whole bool) (_ []member, err error) {
 		return nil, err
 	}
 	closed = true
-	if whole {
+	if extent == wholeDocument {
 		if _, err := dec.Token(); err != io.EOF {
 			return nil, errors.New("trailing data after the top-level object")
 		}

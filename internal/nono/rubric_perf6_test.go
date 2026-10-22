@@ -31,7 +31,7 @@ func TestRubricPERF6_TheLineBoundIsNonoMaxLine(t *testing.T) {
 		t.Fatalf("premise: %s does not occur once in the first line", anchor)
 	}
 	window := fixtureWindow(t)
-	whole := Read(fixture, window)
+	whole := read(fixture, window)
 	if !whole.Observed || whole.Sessions != 1 || len(whole.Events) == 0 {
 		t.Fatalf("premise: the capture reads as %+v, want one observed session with events", whole)
 	}
@@ -54,7 +54,7 @@ func TestRubricPERF6_TheLineBoundIsNonoMaxLine(t *testing.T) {
 		if err := os.WriteFile(path, body, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		obs := Read(path, window)
+		obs := read(path, window)
 		wantSkipped, wantSessions := whole.Skipped, whole.Sessions
 		if tc.skipped {
 			wantSkipped, wantSessions = whole.Skipped+1, whole.Sessions-1

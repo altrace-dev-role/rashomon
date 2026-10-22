@@ -4,7 +4,9 @@
 # heal is REC-32's (REC-32_reader-limits.py); this covers the coverage, spill
 # and gaps files and eviction's gap.
 m("errors-1 a locked line append goes on after a torn tail", "internal/store/store.go",
-  "\t\terr = appendHealed(f, line, !bestEffort)\n", "\t\t_, err = f.Write(line)\n", "TestRubricERRORS1_TornTails")
+  "\t\terr = appendHealed(f, line, onTimeout == lockOrFail)\n",
+  "\t\t_, err = f.Write(line)\n",
+  "TestRubricERRORS1_TornTails")
 m("errors-1 eviction's gap goes on after a torn tail", "internal/store/evict.go",
   "\t\tif err := appendHealed(gf, line, true); err != nil {", "\t\tif _, err := gf.Write(line); err != nil {",
   "TestRubricERRORS1_TornTails")

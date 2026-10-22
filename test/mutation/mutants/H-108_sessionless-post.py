@@ -9,15 +9,17 @@ m("H-108 a post that names no session records its execution as ok", "internal/ho
 m("H-108 a failure event that names no session is exempt from the guard", "internal/hook/post.go",
   "\tif pl.SessionID == \"\" {\n\t\treturn nil", "\tif pl.SessionID == \"\" && pl.HookEventName != FailureEvent {\n\t\treturn nil",
   "TestH108_ASessionlessFailureEvent")
-m("H-108 the report never counts the unattributed run", "internal/report/report.go",
-  "\tn := len(run.Declarations)\n\treturn &n", "\tn := 0 * len(run.Declarations)\n\treturn &n",
+m("H-108 the report never counts the unattributed run", "internal/report/gather/gather.go",
+  "\tn := len(run.Declarations)\n\treturn &n",
+  "\tn := 0 * len(run.Declarations)\n\treturn &n",
   "TestH108_ASessionlessCall|TestCallsWithoutSessionID_")
-m("H-108 an unreadable unattributed run is counted as zero", "internal/report/report.go",
+m("H-108 an unreadable unattributed run is counted as zero", "internal/report/gather/gather.go",
   "\tif err != nil || run.Skipped > 0 {\n\t\treturn nil\n\t}\n\tn := len(run.Declarations)",
   "\tif err != nil || run.Skipped > 0 {\n\t\tzero := 0\n\t\treturn &zero\n\t}\n\tn := len(run.Declarations)",
   "TestCallsWithoutSessionID_IsUnknown")
-m("H-108 a run with lines that did not parse is counted as if it were whole", "internal/report/report.go",
-  "\tif err != nil || run.Skipped > 0 {\n\t\treturn nil", "\tif err != nil {\n\t\treturn nil",
+m("H-108 a run with lines that did not parse is counted as if it were whole", "internal/report/gather/gather.go",
+  "\tif err != nil || run.Skipped > 0 {\n\t\treturn nil",
+  "\tif err != nil {\n\t\treturn nil",
   "TestCallsWithoutSessionID_IsUnknownOverLines")
 m("H-108 the count's healthy twin vanishes", "internal/report/text.go",
   "\tcase *n == 0:\n\t\tfmt.Fprintf(b, \"calls without a session id: %s\\n\", none)", "\tcase *n == 0:",

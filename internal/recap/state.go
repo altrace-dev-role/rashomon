@@ -23,8 +23,14 @@ import (
 // literal string.
 const StateFileName = "recap.json"
 
-// StateTempName is the temporary file recap writes its state to before
-// renaming it over StateFileName.
+// StateTempPrefix begins the name of every temporary file recap writes its
+// state to before renaming it over StateFileName: the prefix, then a suffix
+// unique to the write (writeState).
+const StateTempPrefix = "." + StateFileName + ".tmp-"
+
+// StateTempName is the one shared temporary file builds through v1.1.0 wrote
+// recap's state to, and may have left behind if killed before the rename.
+// Nothing writes it now; purge still removes it.
 const StateTempName = StateFileName + ".tmp"
 
 // maxTrackedSessions bounds the idempotency map. A machine that has run
@@ -107,11 +113,21 @@ func readState(path string) (state, error) {
 	return s, nil
 }
 
-// writeState replaces the file atomically. temp+rename, the same shape
-// internal/settings/write.go uses for the same reason: a reader (status, or
-// a concurrent recap) must never observe a half-written file, and a process
-// killed mid-write must leave either the old file or the new one, never a
-// truncated third thing.
+// writeState replaces the file atomically, the shape internal/settings/
+// write.go uses for the same reason: a temporary file of its own in the same
+// directory, written, synced and closed, then renamed over the path. A reader
+// (status, or a concurrent recap) must never observe a half-written file, and
+// a process killed mid-write must leave either the old file or the new one,
+// never a truncated third thing.
+//
+// The temporary name is unique per write (os.CreateTemp), never path+".tmp".
+// Two recap processes overlap -- a Stop still running when the next prompt's
+// catch-up starts -- and with one shared temp path the second writer opened
+// and truncated the inode the first had just renamed into place, so recap.json
+// read as part of one state and status said "unknown (state unreadable)".
+// Last rename wins between overlapping writers: each state is whole, and a
+// lost update costs at most one duplicate line or a stale timestamp, which is
+// this file's documented worst case (Claim).
 //
 // current is the session this write claims for, "" for none; the cap never
 // drops it (capSessions).
@@ -119,16 +135,58 @@ func writeState(path string, s state, current string) error {
 	for _, m := range []map[string]string{s.Spoken, s.Checked} {
 		capSessions(m, current)
 	}
+	removeStaleTemps(filepath.Dir(path))
 	b, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
-	tmp := filepath.Join(filepath.Dir(path), StateTempName)
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), StateTempPrefix+"*")
+	if err != nil {
+		return err
+	}
+	// A no-op after a successful rename; cleanup after any failure before it.
+	defer os.Remove(tmp.Name()) //nolint:errcheck // best effort
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close() //nolint:errcheck // the write error is what matters
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close() //nolint:errcheck // the sync error is what matters
+		return err
+	}
+	if err := tmp.Close(); err != nil {
 		return err
 	}
 	fault.Inject(fault.PointRecapBeforeRename)
-	return os.Rename(tmp, path)
+	return os.Rename(tmp.Name(), path)
+}
+
+// staleTempAge is how old a StateTempPrefix file must be before
+// removeStaleTemps clears it unexamined. A write holds its own temp file for
+// a few syscalls, not a minute, so a file this old was orphaned by a process
+// killed between CreateTemp and the rename -- the one case the temp file's
+// own deferred Remove never runs for -- and a minute leaves no realistic
+// window to mistake a concurrent writer's live file for one.
+const staleTempAge = time.Minute
+
+// removeStaleTemps clears recap's own orphaned temp files from a past killed
+// write, riding this write's own call rather than a goroutine of its own:
+// nothing here is worth a process that runs between writes, and every write
+// is itself best-effort (Claim's doc). Errors are ignored for the same
+// reason the write's own cleanup ignores them.
+func removeStaleTemps(dir string) {
+	matches, err := filepath.Glob(filepath.Join(dir, StateTempPrefix+"*"))
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for _, m := range matches {
+		info, err := os.Stat(m)
+		if err != nil || now.Sub(info.ModTime()) < staleTempAge {
+			continue
+		}
+		os.Remove(m) //nolint:errcheck // best effort
+	}
 }
 
 // capSessions drops sessions from m until it holds maxTrackedSessions, in

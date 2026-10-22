@@ -10,6 +10,6 @@ m("test-1  the first assistant text is taken for the last", "internal/report/tra
   "\t\tif text, ok := assistantText(line.Message.Content); ok && last == \"\" {\n\t\t\tlast = text\n\t\t}",
   "TestRubricTEST1_")
 m("test-1  the sidechain walk stops at the first key", "internal/report/transcript.go",
-  "\t\tif dec.Decode(&skipValue{}) != nil {\n\t\t\treturn false\n\t\t}\n\t}\n\treturn false",
-  "\t\tif dec.Decode(&skipValue{}) != nil {\n\t\t\treturn false\n\t\t}\n\t\treturn false\n\t}\n\treturn false",
+  "\t\tif dec.Decode(&skipValue{}) != nil {\n\t\t\treturn side\n\t\t}\n\t}\n\treturn side",
+  "\t\tif dec.Decode(&skipValue{}) != nil {\n\t\t\treturn side\n\t\t}\n\t\treturn side\n\t}\n\treturn side",
   "TestRubricTEST1_")

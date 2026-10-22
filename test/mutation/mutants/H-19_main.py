@@ -1,6 +1,6 @@
-m("H-19 report re-reads today's config to judge a past run", "internal/report/report.go",
-  "\t\tsess := build(run)\n", "\t\tsess := build(run)\n\t\tif p, err := settings.UserPath(); err == nil {\n\t\t\tif doc, err := settings.Load(p); err == nil {\n\t\t\t\tif ok, _ := install.Present(doc, st.InstallID(), install.EventPreToolUse); !ok {\n\t\t\t\t\tsess.Coverage.add(store.ReasonHookEntryAbsent)\n\t\t\t\t}\n\t\t\t}\n\t\t}\n", "TestH19_")
-IMPORTS["H-19 report re-reads today's config to judge a past run"] = ("internal/report/report.go", '\t"github.com/altrace-dev-role/rashomon/internal/store"\n', '\t"github.com/altrace-dev-role/rashomon/internal/install"\n\t"github.com/altrace-dev-role/rashomon/internal/settings"\n\t"github.com/altrace-dev-role/rashomon/internal/store"\n')
+m("H-19 report re-reads today's config to judge a past run", "internal/report/assemble.go",
+  "\tsess := build(run, in.Transcripts)\n", "\tsess := build(run, in.Transcripts)\n\tif p, err := settings.UserPath(); err == nil {\n\t\tif doc, err := settings.Load(p); err == nil {\n\t\t\tif ok, _ := install.Present(doc, sess.InstallID, install.EventPreToolUse); !ok {\n\t\t\t\tsess.Coverage.add(store.ReasonHookEntryAbsent)\n\t\t\t}\n\t\t}\n\t}\n", "TestH19_")
+IMPORTS["H-19 report re-reads today's config to judge a past run"] = ("internal/report/assemble.go", '\t"github.com/altrace-dev-role/rashomon/internal/store"\n', '\t"github.com/altrace-dev-role/rashomon/internal/install"\n\t"github.com/altrace-dev-role/rashomon/internal/settings"\n\t"github.com/altrace-dev-role/rashomon/internal/store"\n')
 
 m("report text renders a count it does not have as 0", "internal/report/text.go",
   "\tif p == nil {\n\t\treturn notRead\n\t}", "\tif p == nil {\n\t\treturn \"0\"\n\t}", "TestReport_")

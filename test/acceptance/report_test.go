@@ -139,20 +139,6 @@ func reportJSON(t *testing.T, e *env, extra []string, args ...string) map[string
 	return doc
 }
 
-// sessionField returns one object field of a decoded report's only session.
-func sessionField(t *testing.T, doc map[string]any, field string) map[string]any {
-	t.Helper()
-	sessions, _ := doc["sessions"].([]any)
-	if len(sessions) != 1 {
-		t.Fatalf("report holds %d sessions, want 1", len(sessions))
-	}
-	v, _ := sessions[0].(map[string]any)[field].(map[string]any)
-	if v == nil {
-		t.Fatalf("the session has no %q object", field)
-	}
-	return v
-}
-
 // fieldLine reads the value of a "label: value" line from the text form.
 func fieldLine(t *testing.T, text, label string) string {
 	t.Helper()

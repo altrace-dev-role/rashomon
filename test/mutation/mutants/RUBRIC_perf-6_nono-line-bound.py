@@ -5,8 +5,9 @@ m("perf-6  the trail line bound is halved", "internal/nono/nono.go",
   "\tnonoMaxLine       = 8 << 20\n",
   "\tnonoMaxLine       = 4 << 20\n", "TestRubricPERF6_")
 m("perf-6  the trail scanner reads one byte past nonoMaxLine", "internal/nono/nono.go",
-  "\tsc := linescan.New(f, initialScanBuffer, nonoMaxLine)\n",
-  "\tsc := linescan.New(f, initialScanBuffer, nonoMaxLine+1)\n", "TestRubricPERF6_")
+  "\tsc := linescan.New(r, initialScanBuffer, nonoMaxLine)\n",
+  "\tsc := linescan.New(r, initialScanBuffer, nonoMaxLine+1)\n",
+  "TestRubricPERF6_")
 m("perf-6  a trail line over the bound is not counted", "internal/nono/nono.go",
   "\t\t\t// one; the trail after it is still the trail.\n\t\t\tobs.Skipped++\n",
   "\t\t\t// one; the trail after it is still the trail.\n", "TestRubricPERF6_")
