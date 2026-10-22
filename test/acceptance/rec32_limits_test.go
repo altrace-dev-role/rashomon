@@ -119,6 +119,7 @@ func TestREC32e_ForgetSaysWhatItDidAndWhatItCouldNot(t *testing.T) {
 		e.mustHook(p.build(t))
 	}
 	appendRawLine(t, e.recordsPath("sess-damaged"), overlongLine)
+	e.expectDamagedStore("a line over the store's bound", "a line over store.MaxLine")
 
 	res := e.run("", nil, "forget", "--host", "acme-secret.internal")
 	if res.exitCode != 1 {
@@ -149,6 +150,7 @@ func TestREC32f_ForgetHostThatForgotNothingSaysNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(e.home, store.FileForgottenHosts), nil, 0); err != nil {
 		t.Fatal(err)
 	}
+	e.expectDamagedStore("a forgotten-hosts file this process cannot read", store.FileForgottenHosts+": open")
 
 	res := e.run("", nil, "forget", "--host", forgettable)
 	if res.exitCode == 0 {
@@ -174,6 +176,7 @@ func TestREC32_TornTailNeverSwallowsTheNextRecord(t *testing.T) {
 	e.watched(testSession)
 	e.mustHook(defaultPayload().build(t))
 	appendRawBytes(t, e.recordsPath(testSession), `{"type":"declaration","schema_version":4,"tool_use_id":"toolu_cut`)
+	e.expectDamagedStore("a torn append", "is not one JSON object")
 	next := defaultPayload()
 	next.ToolUseID = "toolu_next"
 	e.mustHook(next.build(t))

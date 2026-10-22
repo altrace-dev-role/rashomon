@@ -200,7 +200,7 @@ func finishAccount(text string) Account {
 //
 // A digest never opens a transcript (see AccountFromMessage), so nothing
 // here already bounded the size of what arrives -- the transcript reader's
-// maxLine did that job for buildAccount. 64 KiB is far past any real final
+// TranscriptMaxLine did that job for buildAccount. 64 KiB is far past any real final
 // message and exists only to keep a pathological input from costing more than
 // a bounded string comparison should.
 const messageCap = 64 << 10

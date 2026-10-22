@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -435,6 +436,37 @@ func TestJoin_ATurnsSpendIsKeyedByItsPrompt(t *testing.T) {
 	}
 }
 
+// TestRubricPERF6_ALineTooLongEndsASubagentsTie: a line too long to read in a
+// subagent transcript may be a new prompt this reader cannot key, so, like a
+// line that does not decode, it ends the tie
+// (TestJoin_ATurnsSpendIsKeyedByItsPrompt), and the response after it is not
+// priced into the turn before it. With a short line in its place, the same
+// response is.
+func TestRubricPERF6_ALineTooLongEndsASubagentsTie(t *testing.T) {
+	for _, tc := range []struct {
+		between string
+		priced  bool
+	}{{`{"x":"` + strings.Repeat("x", report.TranscriptMaxLine) + `"}`, false}, {`{"x":"short"}`, true}} {
+		c := newConfig(t)
+		rec := newRecorder(t)
+		t0 := now.Add(-2 * time.Hour)
+		turn := silentSession(t, c, rec, t0, "Ran the command as requested.")
+		rec.transcript = filepath.Join(c.dir, "projects", "proj", "sess-j.jsonl")
+		r := resp{id: "X1", model: "claude-opus-5-5", session: "sess-j", at: t0.Add(2 * time.Second), in: 4242, stop: "end_turn", sidechain: true}
+		c.write("proj/sess-j/subagents/agent-l.jsonl", subUserLine("sess-j", "p1", t0.Add(time.Second)), tc.between, r.line("tool_use"))
+		if tc.priced {
+			turn += 4242 * opusIn
+		}
+		s := c.summary(30)
+		if err := s.Join(rec.st); err != nil {
+			t.Fatal(err)
+		}
+		if got := s.SilentFailureTurns.Cost.Nano; got != turn {
+			t.Errorf("a %d-byte line between p1's prompt and X1: cost = %d, want %d (X1 priced into p1: %v)", len(tc.between), got, turn, tc.priced)
+		}
+	}
+}
+
 // TestJoin_ReadsTheStoreWithoutWritingIt: the join is a read.
 func TestJoin_ReadsTheStoreWithoutWritingIt(t *testing.T) {
 	c := newConfig(t)
@@ -820,9 +852,9 @@ func TestJoin_TheLastWordAcrossTwoMainFilesIsTheLatest(t *testing.T) {
 	}
 }
 
-// TestJoin_ATranscriptCutByAnOversizedLineIsUnjudged: a main transcript that
-// cannot be read to the end may hold a later reply than any read, so none of
-// its words is a turn's final word: the turn is counted as not checked, never
+// TestJoin_ATranscriptCutByAnOversizedLineIsUnjudged: a line too long to read
+// after a turn's words may be a later reply than any read, so none of its
+// words is the turn's final word: the turn is counted as not checked, never
 // judged on the earlier text.
 func TestJoin_ATranscriptCutByAnOversizedLineIsUnjudged(t *testing.T) {
 	c := newConfig(t)
@@ -832,7 +864,7 @@ func TestJoin_ATranscriptCutByAnOversizedLineIsUnjudged(t *testing.T) {
 		userLine("sess-j", "p1", T.Add(-time.Second), false),
 		resp{id: "R1", model: "claude-opus-5-5", session: "sess-j", at: T.Add(2 * time.Second), in: 5, stop: "end_turn",
 			text: "Ran it as requested."}.line("text"),
-		`{"type":"assistant","x":"`+strings.Repeat("x", maxLine)+`"}`)
+		`{"type":"assistant","x":"`+strings.Repeat("x", report.TranscriptMaxLine)+`"}`)
 	rec.call("sess-j", "p1", "toolu_1", T, T.Add(time.Second), store.ExecFailed)
 	s := c.summary(30)
 	if err := s.Join(rec.st); err != nil {
@@ -1748,9 +1780,9 @@ func TestJoin_AWatchedSessionWithACallKeepsTheRecordsRule(t *testing.T) {
 
 // TestJoin_AWatchedSessionNotReadWholeIsNotCovered: a run with no call
 // vouches for a transcript only when the scan read every response in it. A
-// usage line that could not be counted, or the rest of a file past a line too
-// long to read, may be the response that made the call, so the transcript is
-// not covered. Read whole, the same fixture is.
+// usage line that could not be counted, or a line too long to read, may be
+// the response that made the call, so the transcript is not covered. Read
+// whole, the same fixture is.
 func TestJoin_AWatchedSessionNotReadWholeIsNotCovered(t *testing.T) {
 	t0 := now.Add(-2 * time.Hour)
 	q1 := resp{id: "Q1", model: "claude-opus-5-5", session: "sess-q", at: t0.Add(2 * time.Second), in: 1000, stop: "end_turn"}.line("text")
@@ -1767,7 +1799,7 @@ func TestJoin_AWatchedSessionNotReadWholeIsNotCovered(t *testing.T) {
 	}{
 		{"read whole", nil, true, 0, 0},
 		{"a usage line that did not parse", []string{unparsed}, false, 1, 0},
-		{"a line too long to read, and a call after it", []string{`{"type":"assistant","x":"` + strings.Repeat("x", maxLine) + `"}`, q2}, false, 0, 1},
+		{"a line too long to read, and a call after it", []string{`{"type":"assistant","x":"` + strings.Repeat("x", report.TranscriptMaxLine) + `"}`, q2}, false, 1, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newConfig(t)

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
 // TestRubricTEST8_TokenCountAtNAndNPlusOne: a count of exactly maxTokens is a
@@ -32,17 +34,18 @@ func TestRubricTEST8_TokenCountAtNAndNPlusOne(t *testing.T) {
 	}
 }
 
-// TestRubricTEST8_SpendLineAtN: a transcript line of exactly maxLine bytes,
-// counting its newline, is read and its response priced; one byte more ends
-// the file's read, which is counted as unreadable.
+// TestRubricTEST8_SpendLineAtN: a transcript line of exactly
+// report.TranscriptMaxLine bytes, counting its newline, is read and its
+// response priced; one byte more is stepped over and counted as a usage line
+// that could not be read, and the file is not unreadable.
 func TestRubricTEST8_SpendLineAtN(t *testing.T) {
-	if maxLine != 64<<20 {
-		t.Fatalf("maxLine = %d, want 64 MiB", maxLine)
+	if report.TranscriptMaxLine != 64<<20 {
+		t.Fatalf("report.TranscriptMaxLine = %d, want 64 MiB", report.TranscriptMaxLine)
 	}
 	for _, tc := range []struct {
 		n    int
 		read bool
-	}{{maxLine, true}, {maxLine + 1, false}} {
+	}{{report.TranscriptMaxLine, true}, {report.TranscriptMaxLine + 1, false}} {
 		c := newConfig(t)
 		base := resp{id: "big", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 1000, stop: "end_turn"}.line("text")
 		head := strings.TrimSuffix(base, "}") + `,"pad":"`
@@ -52,8 +55,8 @@ func TestRubricTEST8_SpendLineAtN(t *testing.T) {
 			t.Fatalf("built %v bytes, want %d (%v)", fi.Size(), tc.n, err)
 		}
 		s := c.summary(30)
-		if read := s.scan.Unreadable == 0 && s.Responses == 1; read != tc.read {
-			t.Errorf("a %d-byte line: %d unreadable, %d responses; want read %v", tc.n, s.scan.Unreadable, s.Responses, tc.read)
+		if read := s.Responses == 1 && s.scan.Unparsed == 0; read != tc.read || s.scan.Unreadable != 0 {
+			t.Errorf("a %d-byte line: %d unreadable, %d unparsed, %d responses; want read %v, none unreadable", tc.n, s.scan.Unreadable, s.scan.Unparsed, s.Responses, tc.read)
 		}
 	}
 }

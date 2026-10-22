@@ -1,7 +1,6 @@
 package report
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -11,13 +10,27 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/linescan"
 )
 
-// maxLine bounds one transcript line. Transcript lines carry whole messages
-// and can be large; the bound is against a corrupted file, not a real one.
-// It counts the line's newline, which the scanner needs room to find: the
-// longest line read is maxLine-1 bytes.
-const maxLine = 64 << 20
+// Transcript scanner sizes, for every reader of a Claude Code transcript:
+// this package's and spend's.
+//
+// TranscriptMaxLine bounds one transcript line, its newline included. Lines
+// carry whole messages, images included, and a real one can pass it: a user
+// prompt carrying several hundred pasted images measured 178 MiB
+// (2026-10-13, one line among 112,587 in 218 transcripts). A longer line is
+// stepped over and counted (linescan), and the lines after it are read; each
+// reader says what one it could not read costs it.
+//
+// TranscriptInitialBuffer is the read buffer a scan starts with; a longer
+// line is assembled from it, up to TranscriptMaxLine. 256 KiB holds all but
+// 0.4% of the lines in that sample whole (p99 41 KiB, p99.9 1.0 MiB).
+const (
+	TranscriptMaxLine       = 64 << 20
+	TranscriptInitialBuffer = 256 << 10
+)
 
 // deniedPrefix is the text Claude Code writes when the USER refuses a tool
 // call, and the only thing that separates a denial from an ordinary failure.
@@ -58,28 +71,31 @@ const deniedPrefix = "The user doesn't want to proceed with this tool use. The t
 // is_error and content -- and nothing else. Content is read to classify the
 // result and is never retained. A line that does not parse is skipped, not
 // fatal: the transcript is Claude Code's file and its shape is not this
-// program's to enforce.
-func TranscriptIDs(path string) (ids, results, denied, unhooked map[string]bool, files int, err error) {
+// program's to enforce. A line longer than TranscriptMaxLine is stepped over
+// and counted in tooLong, across every file read: the ids it holds are not
+// in the sets, and the caller cannot take the sets as the whole transcript.
+func TranscriptIDs(path string) (ids, results, denied, unhooked map[string]bool, files, tooLong int, err error) {
 	ids, results, denied, unhooked = map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 
-	n, err := collectIDs(path, ids, results, denied, unhooked)
+	long, err := collectIDs(path, ids, results, denied, unhooked)
 	if err != nil {
-		return nil, nil, nil, nil, 0, err
+		return nil, nil, nil, nil, 0, 0, err
 	}
-	files += n
+	files, tooLong = 1, long
 
 	matches, err := subagentTranscripts(filepath.Join(strings.TrimSuffix(path, ".jsonl"), "subagents"))
 	if err != nil {
-		return nil, nil, nil, nil, 0, err
+		return nil, nil, nil, nil, 0, 0, err
 	}
 	for _, m := range matches {
-		n, err := collectIDs(m, ids, results, denied, unhooked)
+		long, err := collectIDs(m, ids, results, denied, unhooked)
 		if err != nil {
-			return nil, nil, nil, nil, 0, err
+			return nil, nil, nil, nil, 0, 0, err
 		}
-		files += n
+		files++
+		tooLong += long
 	}
-	return ids, results, denied, unhooked, files, nil
+	return ids, results, denied, unhooked, files, tooLong, nil
 }
 
 // subagentTranscripts lists every agent-*.jsonl under dir, at any depth.
@@ -215,6 +231,8 @@ const pathDeniedPrefix = "<tool_use_error>File is in a directory that is denied 
 // report excuses the call only when no hook left any record of it (accounting).
 const toolUseErrorTag = "<tool_use_error>"
 
+// collectIDs adds one file's ids to the sets and returns how many of its
+// lines were too long to read.
 func collectIDs(path string, into, results, denied, unhooked map[string]bool) (int, error) {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -225,8 +243,7 @@ func collectIDs(path string, into, results, denied, unhooked map[string]bool) (i
 	}
 	defer f.Close() //nolint:errcheck // read-only
 
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
+	sc := linescan.New(f, TranscriptInitialBuffer, TranscriptMaxLine)
 	for sc.Scan() {
 		var line struct {
 			Message struct {
@@ -263,7 +280,7 @@ func collectIDs(path string, into, results, denied, unhooked map[string]bool) (i
 			}
 		}
 	}
-	return 1, sc.Err()
+	return sc.Skipped(), sc.Err()
 }
 
 // FinalAssistantText returns the text of the LAST assistant message in a
@@ -291,9 +308,14 @@ func FinalAssistantText(path string) (string, bool) {
 	defer f.Close() //nolint:errcheck // read-only
 
 	var last string
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
+	sc := linescan.New(f, TranscriptInitialBuffer, TranscriptMaxLine)
 	for sc.Scan() {
+		if sc.TooLong() {
+			// A line not read may be a later reply, so no text before it
+			// is the last.
+			last = ""
+			continue
+		}
 		var line struct {
 			Message struct {
 				Role    string          `json:"role"`
@@ -445,9 +467,15 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 		tf.Said, tf.Text, tf.AtMS = false, "", 0
 		out[current] = tf
 	}
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
+	sc := linescan.New(f, TranscriptInitialBuffer, TranscriptMaxLine)
 	for sc.Scan() {
+		if sc.TooLong() {
+			// A line too long to read is placed as an undecodable one is:
+			// it may be the next prompt or this turn's last words.
+			unsay()
+			current = ""
+			continue
+		}
 		raw := sc.Bytes()
 		var head struct {
 			Type        string `json:"type"`
@@ -456,7 +484,8 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			PromptID    string `json:"promptId"`
 			Timestamp   string `json:"timestamp"`
 			Message     struct {
-				ID string `json:"id"`
+				ID      string          `json:"id"`
+				Content contentIsString `json:"content"`
 			} `json:"message"`
 		}
 		switch DecodeHeader(raw, &head) {
@@ -505,7 +534,9 @@ func FinalAssistantTexts(path string, want map[string]bool) map[string]TurnFinal
 			if head.Message.ID != "" {
 				tie(head.Message.ID)
 			}
-			if !bytes.Contains(raw, []byte(`"text"`)) {
+			// A line with no text block, and content that is not a plain
+			// string (one text block, textBlocks), has no words to read.
+			if !bool(head.Message.Content) && !bytes.Contains(raw, []byte(`"text"`)) {
 				continue
 			}
 			line, err := decodeAssistantLine(raw)
@@ -602,6 +633,15 @@ func topLevelSidechain(raw []byte) bool {
 		}
 	}
 	return false
+}
+
+// contentIsString is whether a message's content is a JSON string, read
+// from the value's first byte. Nothing of the content is kept.
+type contentIsString bool
+
+func (c *contentIsString) UnmarshalJSON(b []byte) error {
+	*c = len(b) > 0 && b[0] == '"'
+	return nil
 }
 
 // skipValue steps over one JSON value and keeps nothing of it.

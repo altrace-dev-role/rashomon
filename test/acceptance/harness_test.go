@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // Binaries under test. They are real compiled binaries, exec'd as subprocesses,
@@ -91,11 +93,23 @@ type env struct {
 	home      string
 	configDir string
 	cwd       string
+	// damaged is the problems this test breaks its store's invariants with
+	// on purpose (expectDamagedStore); the end-of-test check holds the
+	// store to exactly those.
+	damaged []string
+	// storeFailf, when set, takes the end-of-test check's reports in place
+	// of the test's Errorf, so the check's own test can feed it a break.
+	storeFailf func(format string, args ...any)
 }
 
+// newEnv makes one machine, and checks its store's invariants when the test
+// ends (storecheck_test.go). The check is registered after the directories,
+// so it runs before they are removed.
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	return &env{t: t, home: t.TempDir(), configDir: t.TempDir(), cwd: t.TempDir()}
+	e := &env{t: t, home: t.TempDir(), configDir: t.TempDir(), cwd: t.TempDir()}
+	t.Cleanup(e.checkStore)
+	return e
 }
 
 func (e *env) settingsPath() string { return filepath.Join(e.configDir, "settings.json") }
@@ -321,6 +335,7 @@ type reportSession struct {
 		Path                  string   `json:"path"`
 		Readable              bool     `json:"readable"`
 		Files                 *int     `json:"files"`
+		LinesTooLong          *int     `json:"lines_too_long"`
 		IDsInTranscript       *int     `json:"ids_in_transcript"`
 		IDsRecorded           int      `json:"ids_recorded"`
 		MissingFromStore      []string `json:"missing_from_store"`
@@ -558,7 +573,7 @@ func readNDJSON(t *testing.T, path string) []record {
 
 	var out []record
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 8<<20)
+	sc.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), store.MaxLine)
 	for line := 1; sc.Scan(); line++ {
 		raw := sc.Text()
 		// A spill append that gave up on the lock writes a newline ahead of

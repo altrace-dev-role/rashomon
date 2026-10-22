@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/host"
+	"github.com/altrace-dev-role/rashomon/internal/linescan"
 )
 
 // Reasons the trail could not be read. Fixed codes, never free text and never
@@ -94,9 +95,10 @@ type Observation struct {
 	// it a lifetime count beside two windowed ones, which the renderer has to
 	// say rather than joining all three in one sentence.
 	Sessions int `json:"sessions"`
-	// Skipped counts records this reader COULD NOT READ: a torn line, an
-	// absent or unparseable event, an event type nono emits that this reader
-	// has not learned. It does NOT count session_ended, which is known and
+	// Skipped counts records this reader COULD NOT READ: a torn line, a line
+	// over nonoMaxLine, an absent or unparseable event, an event type nono
+	// emits that this reader has not learned. It does NOT count
+	// session_ended, which is known and
 	// deliberately unused -- a counter that rose on every healthy trail would
 	// be ignored by the time it mattered. UnparseableTargets
 	// counts network events whose target the canonicaliser refused.
@@ -147,6 +149,26 @@ type networkEvent struct {
 	Port            int    `json:"port"`
 }
 
+// Trail scanner sizes.
+//
+// nonoMaxLine is the longest trail line read, 8 MiB. Its provenance, not a
+// worst case: 2 MiB is the longest command line Linux's execve takes by
+// default (ARG_MAX, a quarter of the 8 MiB stack limit; macOS's is 1 MiB), and
+// session_started holds it in event_json, a JSON string holding JSON, where
+// one quote or backslash is written as four bytes; four times ARG_MAX leaves
+// room for that. It does not cover every command: a control byte is written
+// as seven (\\u00XX), so a command line dense in control bytes can need more.
+// A longer line is stepped over and counted in Skipped, and the lines after
+// it are read.
+//
+// initialScanBuffer is 64 KiB, bufio's default line limit
+// (bufio.MaxScanTokenSize): a trail whose lines the default scanner would
+// have read never grows its buffer.
+const (
+	nonoMaxLine       = 8 << 20
+	initialScanBuffer = bufio.MaxScanTokenSize
+)
+
 // Read returns the network decisions nono recorded inside the window.
 //
 // path is one audit-events.ndjson. A directory of sessions is the caller's to
@@ -188,15 +210,20 @@ func Read(path string, w Window) Observation {
 	// produced it: a zero-byte file, blank lines, and valid JSON of the wrong
 	// shape.
 	var parsed int
-	sc := bufio.NewScanner(f)
 	// A generous line cap: nono's session_started carries a whole command line,
 	// and a scanner that stopped at the default 64KB would silently truncate
 	// the trail at the first long one -- reading as "the sandbox saw nothing
 	// after this point", which is the failure this package exists to avoid.
-	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
+	sc := linescan.New(f, initialScanBuffer, nonoMaxLine)
 
 	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
+		if sc.TooLong() {
+			// A record this reader could not read, counted like a malformed
+			// one; the trail after it is still the trail.
+			obs.Skipped++
+			continue
+		}
+		line := strings.TrimSpace(string(sc.Bytes()))
 		if line == "" {
 			continue
 		}

@@ -225,8 +225,14 @@ type Transcript struct {
 	// H-10 check against this run's own records and which was simply never
 	// written -- the ordinary state of a run past Claude Code's transcript
 	// cleanup period.
-	Status                string   `json:"status"`
-	Files                 *int     `json:"files"`
+	Status string `json:"status"`
+	Files  *int   `json:"files"`
+	// LinesTooLong counts the lines, across the transcript and its subagent
+	// files, longer than TranscriptMaxLine: stepped over, so whatever ids
+	// they held are in none of the lists below. A transcript with any is
+	// not one the equation can be checked against, and its group adds
+	// transcript_mismatch.
+	LinesTooLong          *int     `json:"lines_too_long"`
 	IDsInTranscript       *int     `json:"ids_in_transcript"`
 	IDsRecorded           int      `json:"ids_recorded"`
 	MissingFromStore      []string `json:"missing_from_store"`
@@ -661,7 +667,7 @@ func (sess *Session) accountTranscripts(run *store.Run, executed map[string]bool
 		if t.Status == TranscriptUnreadable {
 			sess.Coverage.add(ReasonTranscriptUnreadable)
 		}
-		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0) {
+		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0 || *t.LinesTooLong > 0) {
 			sess.Coverage.add(ReasonTranscriptMismatch)
 		}
 		// A result in the transcript with no execution record beside it is the
@@ -683,12 +689,12 @@ func accounting(path string, recorded, executed, hooked map[string]bool) Transcr
 		}
 	}
 
-	ids, results, denied, unhooked, files, err := TranscriptIDs(path)
+	ids, results, denied, unhooked, files, tooLong, err := TranscriptIDs(path)
 	if err != nil {
 		// Either way the transcript is unreadable and its counts are null.
 		// Only one of the two is a coverage reason. A transcript that exists
-		// and cannot be read (permissions, an over-long line, a subagent
-		// directory that will not list) took the H-10 check away from a run
+		// and cannot be read (permissions, a subagent directory that
+		// will not list) took the H-10 check away from a run
 		// whose calls named it, and the run says so. A transcript that does
 		// not exist is the ordinary state of every run older than Claude
 		// Code's transcript cleanup period, and a reason for it would turn
@@ -717,6 +723,7 @@ func accounting(path string, recorded, executed, hooked map[string]bool) Transcr
 	t.Status = TranscriptRead
 	t.Readable = true
 	t.Files = &files
+	t.LinesTooLong = &tooLong
 	n := len(ids)
 	t.IDsInTranscript = &n
 	nResults := len(results)

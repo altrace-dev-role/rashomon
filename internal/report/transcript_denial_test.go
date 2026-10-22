@@ -99,7 +99,7 @@ func TestTranscript_EveryRealDenialVariantIsRecognised(t *testing.T) {
 			{Type: "tool_result", ToolUseID: id, IsError: true, Content: text},
 		})
 
-		_, results, denied, _, _, err := TranscriptIDs(path)
+		_, results, denied, _, _, _, err := TranscriptIDs(path)
 		if err != nil {
 			t.Fatalf("variant %d: %v", i, err)
 		}
@@ -122,7 +122,7 @@ func TestTranscript_ADenialInABlockListIsRecognised(t *testing.T) {
 		Content: []map[string]any{{"type": "text", "text": denialVariants[0]}},
 	}})
 
-	_, results, denied, _, _, err := TranscriptIDs(path)
+	_, results, denied, _, _, _, err := TranscriptIDs(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestTranscript_AFailureQuotingTheDenialSentenceIsNotADenial(t *testing.T) {
 				{Type: "tool_result", ToolUseID: "toolu_x", IsError: tc.isError, Content: tc.content},
 			})
 
-			_, results, denied, _, _, err := TranscriptIDs(path)
+			_, results, denied, _, _, _, err := TranscriptIDs(path)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -203,7 +203,7 @@ func TestTranscript_IsErrorAloneIsNotEnoughAndThePrefixAloneIsNotEnough(t *testi
 		{Type: "tool_result", ToolUseID: "toolu_txt", IsError: false, Content: denialVariants[0]},
 	})
 
-	_, results, denied, _, _, err := TranscriptIDs(path)
+	_, results, denied, _, _, _, err := TranscriptIDs(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestTranscript_RefusalsOutsideThePromptAreDenials(t *testing.T) {
 		path := writeTranscriptBlocks(t, []blk{
 			{Type: "tool_result", ToolUseID: "toolu_x", IsError: true, Content: text},
 		})
-		_, results, denied, _, _, err := TranscriptIDs(path)
+		_, results, denied, _, _, _, err := TranscriptIDs(path)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -275,7 +275,7 @@ func TestTranscript_OnlyThePathRefusalIsUnhooked(t *testing.T) {
 		path := writeTranscriptBlocks(t, []blk{
 			{Type: "tool_result", ToolUseID: "toolu_x", IsError: true, Content: text},
 		})
-		_, _, _, unhooked, _, err := TranscriptIDs(path)
+		_, _, _, unhooked, _, _, err := TranscriptIDs(path)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -309,7 +309,7 @@ func TestTranscript_EveryInputCheckRefusalIsUnhooked(t *testing.T) {
 		path := writeTranscriptBlocks(t, []blk{
 			{Type: "tool_result", ToolUseID: "toolu_x", IsError: true, Content: text},
 		})
-		_, _, _, unhooked, _, err := TranscriptIDs(path)
+		_, _, _, unhooked, _, _, err := TranscriptIDs(path)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -335,7 +335,7 @@ func TestTranscript_TheToolUseErrorTagMustOpenAnErrorResult(t *testing.T) {
 			path := writeTranscriptBlocks(t, []blk{
 				{Type: "tool_result", ToolUseID: "toolu_x", IsError: c.isError, Content: c.content},
 			})
-			_, _, _, unhooked, _, err := TranscriptIDs(path)
+			_, _, _, unhooked, _, _, err := TranscriptIDs(path)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -451,7 +451,7 @@ func TestTranscript_RefusalWordingInsideARealResultIsNotADenial(t *testing.T) {
 			path := writeTranscriptBlocks(t, []blk{
 				{Type: "tool_result", ToolUseID: "toolu_x", IsError: c.isError, Content: c.content},
 			})
-			_, _, denied, _, _, err := TranscriptIDs(path)
+			_, _, denied, _, _, _, err := TranscriptIDs(path)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -484,7 +484,7 @@ func TestTranscript_WorkflowSubagentTranscriptsAreRead(t *testing.T) {
 	write(filepath.Join(dir, "s", "subagents", "agent-plain.jsonl"), "toolu_plain")
 	write(filepath.Join(dir, "s", "subagents", "workflows", "run1", "agent-deep.jsonl"), "toolu_deep")
 
-	ids, _, _, _, files, err := TranscriptIDs(main)
+	ids, _, _, _, files, _, err := TranscriptIDs(main)
 	if err != nil {
 		t.Fatal(err)
 	}

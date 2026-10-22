@@ -486,6 +486,10 @@ Claude Code refused while checking its input (an `is_error` result wrapped in
 `PreToolUse`, so the store cannot hold it; the report lists it as
 `refused_before_hooks`, and `ids_in_transcript = ids_recorded +
 missing_from_store + refused_before_hooks - missing_from_transcript`.
+A transcript line longer than the reader's 64 MiB bound is stepped over and
+counted in `lines_too_long`, and the lines after it are read. The ids such a line
+held are in none of the lists, so a transcript with any adds
+`transcript_mismatch`: the line may hold a call the store does not.
 
 **H-11 — the uncontrolled path.** A `SIGKILL`ed handler leaves exactly one entry
 with no terminal record, and the run's coverage record carries

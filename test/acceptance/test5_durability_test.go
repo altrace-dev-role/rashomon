@@ -118,6 +118,8 @@ func TestRubricTEST5_ACrashInForgetsRewriteLosesNoKeptRecord(t *testing.T) {
 	}
 
 	res := e.run("", []string{"RASHOMON_FAULT=store.rewrite.partial:plain_panic"}, "forget", "--host", forgettable)
+	e.expectDamagedStore("forget's in-place rewrite stopped part-way, by design leaving duplicates and one damaged line",
+		"is not one JSON object", "follows seq")
 	if res.exitCode == 0 {
 		t.Fatalf("premise: the fault did not fire; forget exited 0")
 	}
