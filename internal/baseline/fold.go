@@ -1,6 +1,8 @@
 package baseline
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"maps"
@@ -36,24 +38,40 @@ const maxBaselineHosts = 4096
 // bound.
 const maxSessionIDBytes = 256
 
-// clampSessionID bounds a session id to maxSessionIDBytes, which may cut a
-// multi-byte UTF-8 rune in half; that is fine here, because a session id is
-// an opaque comparison key to this package, never displayed, and
-// encoding/json replaces an invalid trailing sequence with U+FFFD on marshal
-// rather than failing to encode. The same input truncates to the same
-// bytes every time, so a later render of the same (still oversized) session
-// id still compares equal to what an earlier render stored.
+// clampSessionID is a session id as this package stores it: as it is when
+// it is at most maxSessionIDBytes and JSON writes every byte of it as itself
+// (jsonPlain), and otherwise a 34-byte digest of it. A cap on its length
+// alone did not bound what save writes: JSON writes `<`, a control byte or a
+// byte of invalid UTF-8 as six, so a 256-byte id took 1,536. A session id is
+// an opaque comparison key here, never displayed, and the same input gives
+// the same digest every time, so a later render of the same session still
+// compares equal to what an earlier one stored.
 func clampSessionID(id string) string {
-	if len(id) > maxSessionIDBytes {
-		return id[:maxSessionIDBytes]
+	if len(id) <= maxSessionIDBytes && jsonPlain(id) {
+		return id
 	}
-	return id
+	sum := sha256.Sum256([]byte(id))
+	return "x-" + hex.EncodeToString(sum[:16])
+}
+
+// jsonPlain reports whether encoding/json writes every byte of s as itself:
+// printable ASCII other than the quote and backslash, and the <, > and & it
+// escapes for HTML.
+func jsonPlain(s string) bool {
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c < 0x20 || c > 0x7e, c == '"', c == '\\', c == '<', c == '>', c == '&':
+			return false
+		}
+	}
+	return true
 }
 
 // maxEntryBytes bounds one host's entry as save writes it: a 253-byte name,
-// a session id of up to maxSessionIDBytes, two 13-digit stamps, and the
-// keys and indentation, about 140 bytes -- 1,024 with room for JSON
-// escaping. maxBaselineBytes is the file at the cap of such entries, plus
+// a session id of up to maxSessionIDBytes that JSON writes byte for byte
+// (clampSessionID), two 13-digit stamps, and the keys and indentation, about
+// 140 bytes -- about 680 in all, under 1,024. A host is hostname-shaped
+// (host.Shaped), so it is written byte for byte too. maxBaselineBytes is the file at the cap of such entries, plus
 // 64 KiB for the header and its project key, a path. A file larger than that
 // is not one this package wrote, and is read as corrupt rather than read
 // whole; a save that would write one is refused rather than leaving a file
