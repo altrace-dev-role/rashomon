@@ -56,7 +56,7 @@ func TestTRU28_PurgeNamesTheCommandForWhatItCannotRemoveAfterTheAnchors(t *testi
 	}
 	e := newPurgeEnv(t)
 	bin := copyBinary(t, rashomonBin, filepath.Join(t.TempDir(), "bin", "rashomon"))
-	if res := e.runBin(bin, "", "watch"); res.exitCode != 0 {
+	if res := e.runBin(bin, "", "watch", "--yes"); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	if err := os.Chmod(filepath.Dir(bin), 0o500); err != nil {

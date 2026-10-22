@@ -53,14 +53,16 @@ m("TRU-1 an unreadable recorded work tree is ignored", "cmd/rashomon/watch.go",
   "\t\trecorded, err := store.RecordedRootInWorkTree(plan.root)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n",
   "\t\trecorded, _ := store.RecordedRootInWorkTree(plan.root)\n",
   "TestTRU1_AStoreRoot")
-m("TRU-1 the recorded work tree is read from another key", "internal/store/worktree.go",
-  "\traw, ok := meta[KeyRootInWorkTree]\n", "\traw, ok := meta[\"work_tree\"]\n",
+# RecordedRootInWorkTree reads install.json through ReadInstallRecord, so the
+# key is InstallRecord's tag, and a malformed key and an unparsable file are
+# one error branch; ReadInstallRecord's own malformed check is TRU-44's.
+m("TRU-1 the recorded work tree is read from another key", "internal/store/install_record.go",
+  "\tRootInWorkTree string `json:\"root_in_work_tree,omitempty\"`\n", "\tRootInWorkTree string `json:\"work_tree,omitempty\"`\n",
   "TestTRU1_")
-m("TRU-1 a malformed recorded work tree reads as none", "internal/store/worktree.go",
-  "\tvar top string\n\tif err := json.Unmarshal(raw, &top); err != nil {\n\t\treturn \"\", errors.New(",
-  "\tvar top string\n\tif err := json.Unmarshal(raw, &top); err != nil {\n\t\treturn \"\", nil\n\t\treturn \"\", errors.New(",
+m("TRU-1 an unreadable install.json reads as no recorded work tree", "internal/store/worktree.go",
+  "\tif err != nil {\n\t\treturn \"\", err\n\t}\n\treturn rec.RootInWorkTree, nil\n",
+  "\tif err != nil {\n\t\treturn \"\", nil\n\t}\n\treturn rec.RootInWorkTree, nil\n",
   "TestTRU1_")
-m("TRU-1 an unparsable install.json reads as no recorded work tree", "internal/store/worktree.go",
-  "\tvar meta map[string]json.RawMessage\n\tif err := json.Unmarshal(b, &meta); err != nil {\n\t\treturn \"\", errors.New(",
-  "\tvar meta map[string]json.RawMessage\n\tif err := json.Unmarshal(b, &meta); err != nil {\n\t\treturn \"\", nil\n\t\treturn \"\", errors.New(",
+m("TRU-1 a store with no install.json is an error to the work tree read", "internal/store/worktree.go",
+  "\tif errors.Is(err, ErrNoStore) {\n\t\treturn \"\", nil\n", "\tif false {\n\t\treturn \"\", nil\n",
   "TestTRU1_")

@@ -162,7 +162,14 @@ func TestTRU1_AStoreRootInAWorkTreeIsConfirmedByName(t *testing.T) {
 			t.Errorf("install.json = %s (%v), want it as the confirmation left it: %s", now, err, confirmed)
 		}
 
-		elsewhere := strings.Replace(string(confirmed), top, filepath.Join(filepath.Dir(top), "other"), 1)
+		// The key, not the first occurrence of top: install.json is written
+		// with sorted keys, and created_dirs, which sorts first, holds paths
+		// under top too.
+		recordedKey := `"root_in_work_tree":"` + top + `"`
+		if !strings.Contains(string(confirmed), recordedKey) {
+			t.Fatalf("install.json = %s, want it to record %s", confirmed, recordedKey)
+		}
+		elsewhere := strings.Replace(string(confirmed), recordedKey, `"root_in_work_tree":"`+filepath.Join(filepath.Dir(top), "other")+`"`, 1)
 		if err := os.WriteFile(meta, []byte(elsewhere), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -175,7 +182,7 @@ func TestTRU1_AStoreRootInAWorkTreeIsConfirmedByName(t *testing.T) {
 			t.Errorf("watch --yes with another work tree recorded: exit %d, stderr %q; want the refusal", res.exitCode, res.stderr)
 		}
 
-		unreadable := strings.Replace(string(confirmed), `"`+top+`"`, "7", 1)
+		unreadable := strings.Replace(string(confirmed), recordedKey, `"root_in_work_tree":7`, 1)
 		if err := os.WriteFile(meta, []byte(unreadable), 0o600); err != nil {
 			t.Fatal(err)
 		}

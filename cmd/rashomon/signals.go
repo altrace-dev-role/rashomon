@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"github.com/altrace-dev-role/rashomon/internal/safe"
 )
 
 // signalGate is how watch and consent answer SIGINT and SIGHUP (Technical
@@ -30,7 +32,10 @@ type signalGate struct {
 func startSignalGate(stderr io.Writer) *signalGate {
 	g := &signalGate{ch: make(chan os.Signal, 2), done: make(chan struct{}), stderr: stderr}
 	signal.Notify(g.ch, os.Interrupt, syscall.SIGHUP)
-	go g.loop()
+	// A loop that panics hands the signals back to their default action
+	// rather than leaving them caught with nothing reading them, which
+	// would make watch deaf to ^C for the rest of its run.
+	safe.Go(g.loop, func(error) { signal.Stop(g.ch) })
 	return g
 }
 

@@ -4,6 +4,4 @@
 #
 # Add an entry here in the same change that adds the mutant using it.
 VER-54 TestVER11_
-# TRU-1 records the confirmed work tree through UpdateInstallRecord, whose
-# keep-the-unknown-keys rule TRU-44 pins.
 TRU-1 TestTRU44_

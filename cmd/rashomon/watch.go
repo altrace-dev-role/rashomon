@@ -249,9 +249,11 @@ func planWatch() (*watchPlan, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc, err := settings.Parse(original)
+	// Named, so a parse error, and an edit's error inside the document,
+	// reads as path:line:column (errors-10).
+	doc, err := settings.ParseNamed(plan.loc.User, original)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", plan.loc.User, err)
+		return nil, err
 	}
 	if plan.workTree, err = store.WorkTreeTop(plan.root); err != nil {
 		return nil, err

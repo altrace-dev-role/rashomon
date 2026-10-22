@@ -100,5 +100,21 @@ m("TRU-28 watch records no created_dirs before its settings write", "cmd/rashomo
 # resolves a cap. A purge that does not plan it leaves it, and the store
 # root that holds it, behind.
 m("TRU-28 purge does not plan the resolved cap", "internal/purge/purge.go",
-  "store.FileRecordingPaused, store.FileResolvedCap, ", "store.FileRecordingPaused, ",
+  "store.FileRecordingPaused, store.FileResolvedCap,\n", "store.FileRecordingPaused,\n",
   "TestTRU28_PurgeLeavesHomeAsFound")
+
+# watch writes consent.json and harnesses.json at the root (TRU-1), each
+# replaced through a ".<name>.tmp-" file; the disclosure names purge as what
+# removes all four. A purge that does not plan one leaves it, and the root.
+m("TRU-28 purge does not plan consent.json", "internal/purge/purge.go",
+  "\tstore.FileConsent, store.FileHarnesses, ", "\tstore.FileHarnesses, ",
+  "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
+m("TRU-28 purge does not plan harnesses.json", "internal/purge/purge.go",
+  "\tstore.FileConsent, store.FileHarnesses, ", "\tstore.FileConsent, ",
+  "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
+m("TRU-28 purge does not plan consent.json's temporary file", "internal/purge/purge.go",
+  "\t\".\" + store.FileConsent + \".tmp-\", ", "\t",
+  "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
+m("TRU-28 purge does not plan harnesses.json's temporary file", "internal/purge/purge.go",
+  ", \".\" + store.FileHarnesses + \".tmp-\"}", "}",
+  "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
