@@ -49,10 +49,12 @@ m("TRU-1 a work tree confirmed before is asked about again", "cmd/rashomon/watch
 m("TRU-1 any recorded work tree counts as this one", "cmd/rashomon/watch.go",
   "\t\tif recorded == plan.workTree {\n", "\t\tif recorded != \"\" {\n",
   "TestTRU1_AStoreRoot")
-m("TRU-1 an unreadable recorded work tree is ignored", "cmd/rashomon/watch.go",
-  "\t\trecorded, err := store.RecordedRootInWorkTree(plan.root)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n",
-  "\t\trecorded, _ := store.RecordedRootInWorkTree(plan.root)\n",
-  "TestTRU1_AStoreRoot")
+# Ignoring planWatch's error from RecordedRootInWorkTree is an equivalent
+# mutant, so it is not registered: readPlan's ReadInstallID reads the same
+# install.json through the same ReadInstallRecord first and refuses a
+# malformed one there ("unreadable record" in TestTRU1_AStoreRoot...), so
+# this read fails only for a file changed between the two. Register it again
+# if readPlan stops reading install.json.
 # RecordedRootInWorkTree reads install.json through ReadInstallRecord, so the
 # key is InstallRecord's tag, and a malformed key and an unparsable file are
 # one error branch; ReadInstallRecord's own malformed check is TRU-44's.

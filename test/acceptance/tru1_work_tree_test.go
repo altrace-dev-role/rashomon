@@ -119,6 +119,27 @@ func TestTRU1_AStoreRootInAWorkTreeIsConfirmedByName(t *testing.T) {
 		e.requireInstalled()
 	})
 
+	// install.json is read before anything is asked; a record that cannot
+	// be read refuses watch outright, and is never taken for one that
+	// confirms no work tree.
+	t.Run("unreadable record", func(t *testing.T) {
+		e, top := workTreeEnv(t)
+		if err := os.MkdirAll(e.home, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(e.home, "install.json"), []byte("{"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		before := e.machine()
+		cmd := e.command("", nil, "watch", "--yes")
+		noTerminal(cmd)
+		res := e.wait(cmd)
+		if res.exitCode == 0 || !strings.Contains(res.stderr, "install metadata is malformed") || strings.Contains(res.stderr, "inside the git work tree "+top) {
+			t.Errorf("watch over an unreadable install.json: exit %d, stderr %q; want it refused for the record", res.exitCode, res.stderr)
+		}
+		e.requireUnchanged(before, "an unreadable install.json")
+	})
+
 	// A work tree install.json already records as confirmed is not asked
 	// about again when watch shows its screen once more, by --yes or on the
 	// terminal; one it records for another tree still is.

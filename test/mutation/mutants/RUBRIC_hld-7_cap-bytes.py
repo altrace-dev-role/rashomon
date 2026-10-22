@@ -11,3 +11,6 @@ m("hld-7 status does not report an invalid cap", "cmd/rashomon/main.go",
 m("hld-7 watch does not report an invalid cap", "cmd/rashomon/watch.go",
   "\tcapProblem(stdout, \"rashomon: \")\n\tprintUndoLine(stdout, installID)\n", "\tprintUndoLine(stdout, installID)\n",
   "TestRubricHLD7_StatusAndWatchSayACapIsNotAByteCount")
+m("hld-7 watch does not report an invalid cap when already watching", "cmd/rashomon/watch.go",
+  "\t\tcapProblem(stdout, \"rashomon: \")\n\t\tprintUndoLine(stdout, plan.installID)\n", "\t\tprintUndoLine(stdout, plan.installID)\n",
+  "TestRubricHLD7_StatusAndWatchSayACapIsNotAByteCount")

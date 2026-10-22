@@ -57,3 +57,29 @@ func TestRubricERRORS10_WatchSaysWhereTheSettingsFileIsBroken(t *testing.T) {
 		})
 	}
 }
+
+// TestRubricERRORS10_DetachSaysWhereTheSettingsFileIsBroken: detach edits
+// settings.json through the same re-reading edit watch writes with, and a
+// file broken since watch installed is refused with its own name, line and
+// column, once, and left as it was found.
+func TestRubricERRORS10_DetachSaysWhereTheSettingsFileIsBroken(t *testing.T) {
+	e := newEnv(t)
+	if res := e.watch(); res.exitCode != 0 {
+		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	const broken = "{\n  \"permissions\": {\"allow\": []},\n}\n"
+	e.writeSettings(broken)
+	res := e.detach()
+	if res.exitCode == 0 {
+		t.Fatalf("detach accepted a settings file it cannot edit; stdout %q", res.stdout)
+	}
+	if want := e.settingsPath() + ":3:1: "; !strings.Contains(res.stderr, want) {
+		t.Errorf("stderr %q does not place the problem at %q", res.stderr, want)
+	}
+	if n := strings.Count(res.stderr, e.settingsPath()); n != 1 {
+		t.Errorf("stderr names the file %d times, want once: %q", n, res.stderr)
+	}
+	if got := e.settingsBytes(); !bytes.Equal(got, []byte(broken)) {
+		t.Errorf("detach changed a file it refused:\n%s", got)
+	}
+}
