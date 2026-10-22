@@ -457,24 +457,20 @@ type declHead struct {
 // more here than the extra field survived: the caller asked for that host's
 // records to be gone, and the declaration IS that host's record.
 //
-// The host is matched against both declared lists. An ssh host is not
-// observable on the wire, but it is still something the session named and still
-// something a user can ask to have forgotten.
-//
-// What this canNOT do is delete the row from the PROXY's store. That is the
-// closed product's hash-chained audit database, opened read-only here, and
-// deleting from it would break the chain it exists to provide. The gap record
-// carries the host so the report keeps the destination suppressed from its
-// view instead, and says so rather than implying the row is gone.
+// The host is matched against both declared lists, hosts and ssh_hosts: an
+// ssh host is as much something the session named as an HTTPS one, and the
+// report reads its own lists from exactly these two fields, so a forgotten
+// host returns nowhere. The gap record carries the host's keyed digest, and the
+// sandbox section, whose trail is nono's file and not ours to edit, filters
+// the host out by it rather than implying the trail forgot.
 //
 // THE NAME IS CANONICALISED FIRST, by host.Canonical, the function every host
-// this store and the report hold has been through: the declarations' lists,
-// the proxy's rows and the sandbox's trail. Matched and digested as typed,
-// "GitHub.com", "github.com:443" and "https://github.com/" each named a host
-// nothing held, so the forget removed nothing and suppressed nothing while
-// the command said later reports would leave it out. A value Canonical
-// refuses names no destination at all and is refused here, before anything is
-// written.
+// this store and the report hold has been through: the declarations' lists
+// and the sandbox's trail. Matched and digested as typed, "GitHub.com",
+// "github.com:443" and "https://github.com/" each named a host nothing held,
+// so the forget removed nothing and suppressed nothing while the command said
+// later reports would leave it out. A value Canonical refuses names no
+// destination at all and is refused here, before anything is written.
 func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
 	if host == "" {
 		return nil, errors.New("store: forget --host needs a host")
@@ -490,10 +486,10 @@ func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
 	// The store-level record lands FIRST and ALWAYS, removed records or not.
 	// First, for the reason the gaps land before their rewrites: a failure
 	// after it overstates the forget, which a reader can see, rather than
-	// leaving a host suppressed nowhere. Always, because the report reads
-	// sources this store never held -- the sandbox's trail and the proxy's
-	// store -- and a forget that wrote nothing when it removed nothing left
-	// the host listed there (#45).
+	// leaving a host suppressed nowhere. Always, because the report reads a
+	// source this store never held -- the sandbox's trail -- and a forget
+	// that wrote nothing when it removed nothing left the host listed there
+	// (#45).
 	if err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {
 		return nil, err
 	}
@@ -704,29 +700,85 @@ func (s *Store) HostDigest(host string) string {
 // recoverable: the caller asks about a host it already has, which is exactly
 // what the report does for each destination it observed.
 func (s *Store) ForgottenHost() (func(string) bool, error) {
+	times, err := s.forgottenDigestTimes()
+	if err != nil {
+		return nil, err
+	}
+	if len(times) == 0 {
+		// A predicate that allocates and hashes nothing on the overwhelmingly
+		// common path where nothing has been forgotten.
+		return func(string) bool { return false }, nil
+	}
+	return func(host string) bool { _, ok := times[s.HostDigest(host)]; return ok }, nil
+}
+
+// ForgottenHostBefore is ForgottenHost's time-scoped sibling.
+//
+// A host's own name is forgotten forever once any forget --host names it --
+// ForgottenHost's predicate has no notion of time, because the sandbox trail
+// it exists for has none either: nono's file is not this store's to edit, so
+// every one of its past events stays exactly as reachable as the day they
+// were written, and the predicate's job is to keep them out of the report
+// regardless of when they are read.
+//
+// A declaration is different: it is this store's own record, forget --host
+// removes it on success, and the DECLARATION'S OWN recorded_at_unix_ms says
+// whether that removal had a chance to run before it was written. One a
+// forget already decided to remove but could not -- a run whose file could
+// not be opened, say -- predates the forget and is exactly the stale
+// leftover #45 and TRU-58 exist to stop reappearing. One recorded after the
+// forget is a fresh declaration of a name that happens to be the same, which
+// is real information about THIS session and must not disappear because an
+// earlier, unrelated session once asked to forget it -- the whole reason
+// forget --host clears the project baseline rather than blocking the name.
+func (s *Store) ForgottenHostBefore() (func(host string, declaredAtMS int64) bool, error) {
+	times, err := s.forgottenDigestTimes()
+	if err != nil {
+		return nil, err
+	}
+	if len(times) == 0 {
+		return func(string, int64) bool { return false }, nil
+	}
+	return func(host string, declaredAtMS int64) bool {
+		forgotMS, ok := times[s.HostDigest(host)]
+		return ok && declaredAtMS <= forgotMS
+	}, nil
+}
+
+// forgottenDigestTimes reads both sources ForgottenHost and
+// ForgottenHostBefore share -- the gaps a forget wrote on success, and the
+// store-level record it writes whatever it removed -- and keeps, per digest,
+// the LATEST recorded_at_unix_ms either source carries. Latest, not first,
+// because a host forgotten more than once must compare against the most
+// recent attempt: a declaration from between two forgets of the same host is
+// still stale against the second one.
+func (s *Store) forgottenDigestTimes() (map[string]int64, error) {
 	gaps, err := s.ReadGaps()
 	if err != nil {
 		return nil, err
 	}
-	digests := map[string]bool{}
+	times := map[string]int64{}
+	bump := func(digest string, candidateMS int64) {
+		if digest == "" {
+			return
+		}
+		if cur, ok := times[digest]; !ok || candidateMS > cur {
+			times[digest] = candidateMS
+		}
+	}
 	for _, g := range gaps {
-		if g.Reason == GapForgetHost && g.HostDigest != "" {
-			digests[g.HostDigest] = true
+		if g.Reason == GapForgetHost {
+			bump(g.HostDigest, g.RecordedAtMS)
 		}
 	}
 	err = eachLine(filepath.Join(s.root, FileForgottenHosts), func(line []byte) {
 		var r ForgottenHostRecord
-		if json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest != "" {
-			digests[r.HostDigest] = true
+		if json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost {
+			bump(r.HostDigest, r.RecordedAtMS)
 		}
 	})
 	if err != nil {
 		return nil, err
 	}
-	if len(digests) == 0 {
-		// A predicate that allocates and hashes nothing on the overwhelmingly
-		// common path where nothing has been forgotten.
-		return func(string) bool { return false }, nil
-	}
-	return func(host string) bool { return digests[s.HostDigest(host)] }, nil
+	return times, nil
 }

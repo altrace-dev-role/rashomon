@@ -275,15 +275,19 @@ func TestUpdate_CorruptBaselineReportsAnErrorRatherThanTreatingAllAsNovel(t *tes
 	}
 }
 
-// TestForget_RemovesTheHostFromTheBaseline is what keeps `forget --host` whole:
-// evicting the wire rows while the baseline still remembers the host would
-// leave it suppressed as "seen before" forever, with nothing left to show why.
+// TestForget_RemovesTheHostFromTheBaseline is what keeps `forget --host`
+// whole: erasing a session's records while the baseline still remembers the
+// host it named would leave it reading as "seen before" forever, with
+// nothing left to show why.
 func TestForget_RemovesTheHostFromTheBaseline(t *testing.T) {
 	root := t.TempDir()
-	Update(root, "/proj", "sess-1", t0, []string{"a.example", "gone.example"})
+	first := Update(root, "/proj", "sess-1", t0, []string{"a.example", "gone.example"})
 
-	if err := Forget(root, "/proj", "gone.example"); err != nil {
-		t.Fatalf("Forget: %v", err)
+	// forget --host clears a host from a baseline by path, found by walking
+	// the baseline directory; it does not go through a project key, since it
+	// is not told which project the caller meant.
+	if _, err := ForgetFile(first.Path, "gone.example"); err != nil {
+		t.Fatalf("ForgetFile: %v", err)
 	}
 
 	// A later session reaching it again finds it novel, because the baseline no
@@ -358,36 +362,6 @@ func TestUpdate_ALaterSessionDoesNotInheritEstablished(t *testing.T) {
 	}
 	if !reflect.DeepEqual(later.Novel, []string{"x.example"}) {
 		t.Errorf("later.Novel = %v, want [x.example]", later.Novel)
-	}
-}
-
-// TestUpdate_EstablishedSurvivesAPreFixBaselineFile. A baseline written before
-// the establishing session was recorded names nobody, and the safe reading is
-// that nobody established it: novelty is then computed normally rather than
-// suppressed for a session that cannot be identified as the first.
-func TestUpdate_EstablishedSurvivesAPreFixBaselineFile(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "baseline")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	// A v1 file with no establishing session, as the previous code wrote it.
-	body := `{"version":1,"project":"/proj","hosts":{"a.example":` +
-		`{"first_seen_session":"sess-old","first_seen_at_unix_ms":1}}}`
-	if err := os.WriteFile(filepath.Join(dir, fileName("/proj")), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	res := Update(root, "/proj", "sess-new", t0, []string{"x.example"})
-
-	if res.Err != nil {
-		t.Fatalf("a baseline from the previous version was rejected: %v", res.Err)
-	}
-	if res.Established {
-		t.Error("a session reports establishing a baseline that already existed")
-	}
-	if !reflect.DeepEqual(res.Novel, []string{"x.example"}) {
-		t.Errorf("novel = %v, want [x.example]: novelty must still be computed", res.Novel)
 	}
 }
 

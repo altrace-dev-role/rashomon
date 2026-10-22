@@ -5,8 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
-
-	"github.com/altrace-dev-role/rashomon/internal/wire"
 )
 
 // Redaction exists so a report can be SHARED.
@@ -126,22 +124,11 @@ func Redact(rep *Report, key []byte) *Report {
 		s := sess
 		d := sess.Destinations
 
-		d.WireOnly = redactList(d.WireOnly, key)
-		d.ClientPlane = redactList(d.ClientPlane, key)
-		d.DeclaredNotObserved = redactList(d.DeclaredNotObserved, key)
-		d.NotObservable = redactList(d.NotObservable, key)
-
-		hosts := make([]wire.Destination, 0, len(d.Hosts))
-		for _, h := range d.Hosts {
-			h.Host = redactHost(h.Host, key)
-			hosts = append(hosts, h)
-		}
-		d.Hosts = hosts
-
+		d.DeclaredHosts = redactList(d.DeclaredHosts, key)
+		d.SSHHosts = redactList(d.SSHHosts, key)
 		n := d.Novelty
 		n.Hosts = redactList(n.Hosts, key)
 		d.Novelty = n
-
 		s.Destinations = d
 
 		// The agent's account is CONTENT and cannot be redacted host by host:
@@ -174,7 +161,7 @@ func Redact(rep *Report, key []byte) *Report {
 // Redact returns a new report so the caller can still render the original --
 // `rashomon report --redact` and a plain `report` are the same code path with a
 // different flag -- but Go's value copy of a struct shares its slices. So
-// assigning into `chain.Links[j].Hosts[k].Host` through a shallow copy writes
+// assigning into `chain.Links[j].DeclaredHosts[k]` through a shallow copy writes
 // the digest into the ORIGINAL report's backing array: the unredacted render
 // would then print digests, and, far worse for a function whose users are
 // deciding what to send someone, a second render of the same in-memory report
@@ -201,7 +188,7 @@ func redactChains(c Chains, key []byte) Chains {
 
 // redactLinks rebuilds a link slice and every name-bearing slice inside it.
 //
-// Hosts AND SSHHosts: an ssh host is a hostname like any other, and it is the
+// DeclaredHosts AND SSHHosts: an ssh host is a hostname like any other, and it is the
 // one most likely to be an internal name -- the deploy target, the bastion --
 // so leaving it in clear because it sits in a different field would redact the
 // public names and publish the private ones.
@@ -209,12 +196,7 @@ func redactLinks(links []Link, key []byte) []Link {
 	out := make([]Link, 0, len(links))
 	for _, link := range links {
 		l := link
-		l.Hosts = make([]LinkHost, 0, len(link.Hosts))
-		for _, h := range link.Hosts {
-			// The state is carried through untouched: it is a verdict, not a
-			// name, and it is the only thing left worth reading.
-			l.Hosts = append(l.Hosts, LinkHost{Host: redactHost(h.Host, key), State: h.State})
-		}
+		l.DeclaredHosts = redactList(link.DeclaredHosts, key)
 		l.SSHHosts = make([]string, 0, len(link.SSHHosts))
 		for _, h := range link.SSHHosts {
 			l.SSHHosts = append(l.SSHHosts, redactHost(h, key))
@@ -254,9 +236,5 @@ func redactNono(n Nono, key []byte) Nono {
 	out.Denied = redactList(n.Denied, key)
 	out.ClientPlaneAllowed = redactList(n.ClientPlaneAllowed, key)
 	out.ClientPlaneDenied = redactList(n.ClientPlaneDenied, key)
-	out.SawWhatTheProxyDidNot = redactList(n.SawWhatTheProxyDidNot, key)
-	out.PlainHTTP = redactList(n.PlainHTTP, key)
-	out.DeniedButReached = redactList(n.DeniedButReached, key)
-	out.ProxySawWhatItDidNot = redactList(n.ProxySawWhatItDidNot, key)
 	return out
 }

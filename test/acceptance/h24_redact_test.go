@@ -39,12 +39,17 @@ func TestH24_RedactedReportCarriesNoPlaintextHost(t *testing.T) {
 		p.ToolInput = map[string]any{"command": "curl https://" + h + "/status"}
 		e.mustHook(p.build(t))
 	}
+	// An ssh host beside the HTTPS ones: redaction covers ssh_hosts and the
+	// chain's link hosts too, and the whole JSON is checked below.
+	ssh := defaultPayload()
+	ssh.ToolUseID = "toolu_redact_ssh"
+	ssh.ToolInput = map[string]any{"command": "ssh deploy@" + secretHosts[0] + " uptime"}
+	e.mustHook(ssh.build(t))
 	e.probe("end", testSession)
-	db := e.writeProxyStore(t, secretHosts...)
 
-	plain := e.run("", nil, "report", "--session", testSession, "--proxy-store", db)
-	redacted := e.run("", nil, "report", "--session", testSession, "--proxy-store", db, "--redact")
-	redactedJSON := e.run("", nil, "report", "--json", "--session", testSession, "--proxy-store", db, "--redact")
+	plain := e.run("", nil, "report", "--session", testSession)
+	redacted := e.run("", nil, "report", "--session", testSession, "--redact")
+	redactedJSON := e.run("", nil, "report", "--json", "--session", testSession, "--redact")
 
 	if redacted.exitCode != 0 || redactedJSON.exitCode != 0 {
 		t.Fatalf("--redact exited %d/%d: %q %q",
@@ -80,9 +85,8 @@ func TestH24_RedactionKeepsTheShapeOfTheFinding(t *testing.T) {
 	p.ToolInput = map[string]any{"command": "curl https://acme-migration.internal/x"}
 	e.mustHook(p.build(t))
 	e.probe("end", testSession)
-	db := e.writeProxyStore(t, "acme-migration.internal")
 
-	out := e.run("", nil, "report", "--session", testSession, "--proxy-store", db, "--redact").stdout
+	out := e.run("", nil, "report", "--session", testSession, "--redact").stdout
 
 	// The suffix survives: it says something real about where traffic went
 	// without naming who.
@@ -90,7 +94,7 @@ func TestH24_RedactionKeepsTheShapeOfTheFinding(t *testing.T) {
 		t.Errorf("the public suffix did not survive redaction:\n%s", out)
 	}
 	// And the section structure survives.
-	for _, want := range []string{"declared but not observed", "executed differently from declared"} {
+	for _, want := range []string{"hosts named by tool calls", "executed differently from declared"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the redacted report is missing the %q line:\n%s", want, out)
 		}
@@ -111,10 +115,9 @@ func TestH24_RedactionIsStableAndDistinguishing(t *testing.T) {
 		e.mustHook(p.build(t))
 	}
 	e.probe("end", testSession)
-	db := e.writeProxyStore(t, "one.example", "two.example")
 
-	first := e.run("", nil, "report", "--session", testSession, "--proxy-store", db, "--redact").stdout
-	second := e.run("", nil, "report", "--session", testSession, "--proxy-store", db, "--redact").stdout
+	first := e.run("", nil, "report", "--session", testSession, "--redact").stdout
+	second := e.run("", nil, "report", "--session", testSession, "--redact").stdout
 
 	// Two renders of one store agree, apart from the generated-at line.
 	stripStamp := func(s string) string {

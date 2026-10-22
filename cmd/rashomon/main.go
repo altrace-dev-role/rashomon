@@ -25,8 +25,6 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/host"
 	"github.com/altrace-dev-role/rashomon/internal/install"
-	"github.com/altrace-dev-role/rashomon/internal/launch"
-	"github.com/altrace-dev-role/rashomon/internal/posture"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
@@ -90,13 +88,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, func() error { return cmdForget(rest, stdout) })
 	case "spend":
 		return guarded(stderr, func() error { return cmdSpend(rest, stdout) })
-	case "env":
-		return guarded(stderr, func() error { return cmdEnv(rest, stdout) })
-	case "run":
-		// Not under guarded(): run returns the CHILD's exit code, and a
-		// wrapper that flattened it to 0 or 1 would break every script that
-		// checks the status of the command it thought it was running.
-		return cmdRun(rest, stdin, stdout, stderr)
 
 	// An explicit request for the version or the usage is a successful
 	// command, so it goes to stdout and exits 0. Only a command we did not
@@ -543,7 +534,7 @@ func openForHook(stderr io.Writer) *store.Store {
 // small file directly -- never by opening the store, which is what
 // openForHook does as a side effect of doing its job. A paused machine that
 // has never recorded must not acquire an install identity merely by being
-// asked whether it is paused; storeInstalled, a few hundred lines down, stats
+// asked whether it is paused; storeExistsAt, a few hundred lines down, stats
 // the same kind of marker for the identical reason, and this is why the call
 // sites put it before openForHook rather than after.
 //
@@ -594,7 +585,7 @@ func checkPaused(args []string, stdin io.Reader, phase string, stderr io.Writer)
 // digest is an HMAC under it, so a shared report cannot be dictionary-attacked
 // by a recipient holding a candidate hostname. A location with no store has no
 // key, and also no hosts, so the nil is never used to digest anything.
-func reportOrEmpty(sessionID, proxyStore, nonoTrail string, now time.Time) (*report.Report, []byte, error) {
+func reportOrEmpty(sessionID, nonoTrail string, now time.Time) (*report.Report, []byte, error) {
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {
 		return report.Empty(now), nil, nil
@@ -602,28 +593,8 @@ func reportOrEmpty(sessionID, proxyStore, nonoTrail string, now time.Time) (*rep
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := []report.Option{report.WithProxyStore(proxyStore), report.WithNonoTrail(nonoTrail)}
-	// Only a tag this install signed may be treated as another session's; an
-	// unverifiable run_id is not evidence about anybody and falls back to the
-	// clock.
+	opts := []report.Option{report.WithNonoTrail(nonoTrail)}
 	key := st.Key()
-	opts = append(opts, report.WithTokenVerifier(func(t string) bool {
-		return launch.IsOurs(t, key)
-	}))
-	// A TAG RECOVERED FROM OUR OWN ENVIRONMENT, which is what makes
-	// `eval $(rashomon env --token)` followed by `rashomon report --proxy-store
-	// PATH` do what the flag's help says. (The flag is required: report reads
-	// no proxy store it was not named.) Without this the only path from a tag
-	// to a join was `run`'s in-memory value, so a tagged shell produced rows the
-	// report then declined to use while telling the user no tag was in play.
-	//
-	// Verified before use: an ambient HTTPS_PROXY may be a real corporate proxy
-	// with real credentials, and reading somebody's password as a session tag
-	// would put a live secret into the join. TokenFromProxyURL already refuses
-	// any username but ours; IsOurs then refuses anything we did not sign.
-	if t := launch.TokenFromProxyURL(os.Getenv("HTTPS_PROXY")); t != "" && launch.IsOurs(t, key) {
-		opts = append(opts, report.WithRunToken(t))
-	}
 
 	rep, err := report.Build(st, sessionID, now, opts...)
 	if err != nil {
@@ -993,7 +964,7 @@ const (
 // never as active: the same unresolved-vs-absent distinction statusUnreadable
 // exists for elsewhere in this file.
 //
-// It is a plain read, like storeInstalled above: os.Stat and os.ReadFile,
+// It is a plain read, like storeExistsAt below: os.Stat and os.ReadFile,
 // nothing that opens or creates a store. That is what lets it answer "paused"
 // truthfully on a machine that has never recorded, which is the case the
 // spec requires status be able to report.
@@ -1313,7 +1284,6 @@ func cmdReport(args []string, stdout io.Writer) error {
 	chain := false
 	timeline := false
 	nonoTrail := ""
-	proxyStore := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--session":
@@ -1321,19 +1291,6 @@ func cmdReport(args []string, stdout io.Writer) error {
 				return errors.New("--session needs a value")
 			}
 			sessionID = args[i+1]
-			i++
-		case "--proxy-store":
-			if i+1 >= len(args) {
-				return errors.New("--proxy-store needs a value")
-			}
-			// An empty path is refused, not read as "no store": "" is exactly
-			// what not naming one means below, so `--proxy-store ""` -- an
-			// unset variable in a script -- would collapse the proxy block
-			// silently when the caller asked for it in full.
-			if args[i+1] == "" {
-				return errors.New("--proxy-store needs a non-empty path")
-			}
-			proxyStore = args[i+1]
 			i++
 		case "--json":
 			asJSON = true
@@ -1356,20 +1313,10 @@ func cmdReport(args []string, stdout io.Writer) error {
 			return fmt.Errorf("unknown argument %q", args[i])
 		}
 	}
-	// No fallback when --proxy-store is absent: an empty path is read as "no
-	// proxy store", and the text render states destinations as not observed in
-	// one line. This used to default to ~/.altrace/observe/causal.db, a path
-	// owned by a separate product this repository does not ship, so a report's
-	// content could change because someone else's file happened to sit at a
-	// guessed location, with nothing on the command line to say so. The flag is
-	// now the whole contract. run's automatic report (reportNewest) is the one
-	// caller that still uses the default, and only under a verified posture; see
-	// defaultProxyStore.
-
 	// Opened WITHOUT creating: a command that only asks a question must not mint
 	// an install identity and an HMAC key as a side effect of being asked. The
 	// same rule status follows, and for the same reason.
-	rep, key, err := reportOrEmpty(sessionID, proxyStore, nonoTrail, time.Now())
+	rep, key, err := reportOrEmpty(sessionID, nonoTrail, time.Now())
 	if err != nil {
 		return err
 	}
@@ -1385,11 +1332,7 @@ func cmdReport(args []string, stdout io.Writer) error {
 		// selecting fields, not a person scrolling, and making it pass a flag
 		// to receive a section would mean a consumer could parse a report and
 		// silently miss one.
-		//
-		// The same rule decides the proxy block: the text render is told which
-		// store was named, and with none it collapses that block to one line.
-		// The JSON is untouched either way.
-		opts := []report.TextOption{report.WithNamedProxyStore(proxyStore)}
+		opts := []report.TextOption{}
 		if chain {
 			opts = append(opts, report.WithChain())
 		}
@@ -1514,10 +1457,10 @@ func digestOrEmpty(sessionID, promptID, lastAssistantMessage string, now time.Ti
 		return nil, err
 	}
 	if sessionID == "" {
-		// No session named: the newest run, under the same rule `run` reports
-		// on its child by -- this process never learns Claude Code's session
-		// id any other way. A store with no runs at all is "nothing recorded
-		// here", not an error.
+		// No session named: the newest run, the same fallback `recap pending`
+		// uses -- this process never learns Claude Code's session id any
+		// other way. A store with no runs at all is "nothing recorded here",
+		// not an error.
 		newest, _, err := st.NewestRun()
 		if err != nil {
 			return nil, err
@@ -1705,14 +1648,6 @@ func parseInstant(flag, v string, now time.Time) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("%s %q is neither a duration nor an RFC3339 time", flag, v)
 }
 
-// usage deliberately omits env, run and report's --proxy-store, all of which
-// are still dispatched. They are the bridge to the observing proxy, which is a
-// separate product that does not ship with this alpha, so offering them here
-// would send a reader to commands that refuse (env), run without recording a
-// destination (run), or read a database the reader does not have. env and run
-// each keep their own --help text for whoever reaches them deliberately, and
-// both answer it on any machine, before any status file is read; listing them
-// again is a decision for the release that ships the proxy.
 func usage(w io.Writer) {
 	fmt.Fprint(w, `rashomon -- record what a Claude Code session asked to run
 
@@ -1803,245 +1738,18 @@ another install stands down: it records nothing in this environment.
 `)
 }
 
-// NO_PROXY now comes from launch.NoProxyValue, the single spelling.
-//
-// This file used to carry its own copy, and launch's comment on that constant
-// had already named the hazard: "two spellings of the same list would
-// eventually differ, and the one that differed would be the one somebody
-// debugged for an hour". Routing `env` through launch.Env to carry the session
-// token left this copy unreferenced, so the duplication is gone rather than
-// merely documented.
-//
-// Loopback and *.local are excluded because proxying them breaks local
-// development tooling for no observational gain. Private ranges are
-// deliberately NOT excluded: an agent reaching an internal service is exactly
-// the finding this tool exists to surface, so LAN egress stays on the path.
-
-// cmdEnv prints the variables that put the observe proxy on a session's path,
-// and only when a verified observe-mode proxy is there to receive them.
-//
-// It prints rather than exports, because a process cannot alter its parent's
-// environment; the operator runs `eval $(rashomon env)`. That is why nothing
-// but assignments may reach stdout — one line of prose and eval tries to run
-// it as a command — and why the explanatory text goes to no stream at all
-// rather than being commented into the output.
-//
-// HTTPS only. Plain HTTP is not observed in this release, so exporting
-// HTTP_PROXY would route traffic through a proxy that does not record it and
-// then report nothing: silence read as zero, the one thing the coverage rules
-// forbid. The lowercase form is not a duplicate for tidiness either — curl
-// reads only lowercase https_proxy, and curl is the first thing anyone tests
-// with.
-//
-// It reads no store and creates none. This is the first command an operator
-// runs, and making it depend on having already recorded something would be
-// backwards.
-//
-// ARGUMENTS FIRST. --help, an unknown argument and a bad --port are questions
-// about this command, not about the machine, so they answer on any machine
-// before any file is read. The check below once ran first, and `env --help`
-// on a machine with no proxy answered "no proxy".
-//
-// THEN THE CHECK, and it is run's: posture.Read and its Export, deliberately
-// not a lighter one. env used to print its constants unconditionally, so on a
-// machine with no proxy `eval $(rashomon env)` pointed the shell's HTTPS at a
-// port where nothing listened, and every HTTPS request from that shell failed
-// until the variables were unset by hand -- the command advertised as the easy
-// path was the one that broke the shell. A status file that merely exists
-// also describes an enforcing proxy, which refuses the client's own API
-// tunnels, and a routable address, which sends the traffic off the machine.
-//
-// IT EXPORTS WHAT RUN EXPORTS: the listen address the verified file names. It
-// used to export 127.0.0.1:18080 whatever that file said, so a proxy verified
-// at another address had the shell pointed at a port nothing verified was
-// listening on -- the same broken shell, reached past the check. So --port can
-// only confirm the verified listener, never select another one.
-//
-// And it exports that address as posture PARSED it -- v.Listen, a known host
-// and a number, rebuilt -- never the file's own string. The file is writable
-// by the user the agent runs as, and this output goes to eval: a listen_addr
-// of "127.0.0.1:1;cmd" once passed the loopback check, which reads only the
-// host, and env printed the command into the operator's shell (CWE-78). The
-// ADDRESS can now carry nothing a shell reads as a second word or a second
-// command.
-//
-// The rest of the line is not all that tame, and the residual is stated here
-// rather than implied away: NO_PROXY ends in `*.local`, which is a glob. Under
-// the documented `eval $(rashomon env)` the substitution is unquoted, so the
-// shell expands that word against the CURRENT DIRECTORY before eval sees it: a
-// file there whose name matches the pattern replaces the word, and eval then
-// parses that file name as shell text. The quoted capture form,
-// `vars=$(rashomon env) && eval "$vars"`, does not glob. The value itself is
-// unchanged -- it is pinned byte-identical to what env has always printed --
-// and changing it is deferred, not decided here.
-//
-// A refusal writes nothing to stdout and exits 1 via guarded. The exit status
-// reaches a caller that runs `rashomon env` directly, or captures it with
-// `vars=$(rashomon env) && eval "$vars"`. The documented `eval $(rashomon env)`
-// itself returns 0 whatever env did -- eval of an empty substitution succeeds
-// -- so for that form the protection is the empty stdout, which makes the eval
-// a no-op, and stderr says why.
-func cmdEnv(args []string, stdout io.Writer) error {
-	port, portGiven, err := envPort(args)
-	if err != nil {
-		return err
-	}
-	v := posture.Read(posture.DefaultPath())
-	if !v.Export {
-		return fmt.Errorf("env: printing no proxy variables -- %s", v.Reason)
-	}
-	if portGiven && port != v.Listen.Port {
-		return fmt.Errorf("env: --port %d is not the verified listener %s", port, v.Listen)
-	}
-	token, err := envToken(args, v)
-	if err != nil {
-		return err
-	}
-	for _, kv := range launch.Env(v.Listen.String(), token) {
-		fmt.Fprintf(stdout, "export %s\n", kv)
-	}
-	return nil
-}
-
-// envToken mints a session tag when --token is given, under the SAME gate run
-// uses.
-//
-// It was originally ungated, and that was the defect: the whole justification
-// for the capability check -- a proxy that does not understand the credential
-// may answer 407 to every CONNECT, breaking the session's entire network --
-// applies verbatim to a shell the user is about to export these into, and
-// `eval $(rashomon env --token)` is harder to undo than a single `run`.
-//
-// It needs the install key too, so it opens the store WITHOUT creating one.
-// `env` promises to create nothing, and a flag that minted an install identity
-// as a side effect of asking a question would break that promise.
-//
-// There is deliberately no way to SET a specific tag: one a user can choose is
-// one another user can guess.
-//
-// v is the verdict cmdEnv's check already accepted, not a second read of the
-// file. That is run's shape -- one read, and both the export decision and the
-// capability come from it -- and it closes the gap a second read left open: a
-// status file rewritten between the two could have had the capability judged
-// against a document the check never saw.
-func envToken(args []string, v posture.Verdict) (string, error) {
-	var want bool
-	for _, a := range args {
-		if a == "--token" {
-			want = true
-		}
-	}
-	if !want {
-		return "", nil
-	}
-	st, err := openStoreForRead()
-	if err != nil {
-		return "", errors.New("env --token: nothing is recording yet -- run `rashomon watch` first, " +
-			"so the tag can be signed with this install's key")
-	}
-	if !v.File.SessionToken {
-		return "", errors.New("env --token: the observe proxy does not advertise session_token, " +
-			"so a tagged proxy URL may be refused on every CONNECT; re-run without --token")
-	}
-	return launch.NewToken(st.Key()), nil
-}
-
-// envHelp is env's own --help text.
-//
-// It is returned as the error, so it goes to stderr: env's stdout is for
-// assignments and nothing else, because the one way anyone runs this command
-// is through eval.
-const envHelp = "env: prints the proxy variables to export, and only when a verified " +
-	"observe-mode proxy is running; --port N refuses unless N is that proxy's port; " +
-	"--token tags this shell's traffic, and only `rashomon report --proxy-store PATH` " +
-	"joins on the tag -- plain report reads no proxy store"
-
-// envPort resolves --port, refusing anything that is not a usable port, and
-// says whether --port was given at all.
-//
-// Refusing rather than falling back is the whole point: a silently ignored
-// --port leaves the operator's traffic going somewhere they did not ask for,
-// with no way to tell from the output that their flag was dropped. It reads no
-// file, so every refusal here answers on any machine; whether the port matches
-// the verified listener is cmdEnv's question, asked after the check.
-func envPort(args []string) (port int, given bool, err error) {
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--port":
-			if i+1 >= len(args) {
-				return 0, false, errors.New("env: --port needs a value")
-			}
-			i++
-			n, err := strconv.Atoi(args[i])
-			if err != nil {
-				return 0, false, fmt.Errorf("env: --port %q is not a number", args[i])
-			}
-			if n < 1 || n > 65535 {
-				return 0, false, fmt.Errorf("env: --port %d is outside 1-65535", n)
-			}
-			port, given = n, true
-		case "--token":
-			// Consumed here and read again by envToken. Two readers of one
-			// flag is worth it: envPort's job is to REFUSE what it does not
-			// understand, and a flag it silently ignored would be the same
-			// defect as the dropped --port this function exists to prevent.
-		case "--help", "-h":
-			return 0, false, errors.New(envHelp)
-		default:
-			return 0, false, fmt.Errorf("env: unknown argument %q", args[i])
-		}
-	}
-	return port, given, nil
-}
-
-// defaultProxyStore is where the observe-mode proxy writes its records.
-//
-// The path is a contract between two programs that ship separately: the
-// observe-mode proxy writes causal.db under ~/.altrace/observe. Hard-coding it
-// here rather
-// than reading the proxy's config is deliberate -- this tool must not need to
-// parse the closed product's configuration to do its job.
-//
-// Only run's automatic report uses it, and only under an ACCEPTED posture whose
-// status file named no causal_db. A refused posture reads no store at all, so
-// a stale, crashed, enforcing, non-loopback or unparseable status file cannot
-// steer the report -- to its causal_db, or to whatever sits at this path.
-// That is the whole of what the gate delivers. It does not stop a session
-// choosing the database: the status file is writable by the user the agent
-// runs as, and a forged one naming a live pid, observe mode and a loopback
-// address is accepted, causal_db and all. report does not fall back to this
-// path either; see cmdReport.
-//
-// A home directory that cannot be resolved yields "", which names no store, so
-// the report states destinations as not observed rather than guessing at a
-// relative path.
-func defaultProxyStore() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".altrace", "observe", "causal.db")
-}
-
 // forgetHost removes every call that named a host, and the host's entry in the
 // project baseline.
 //
 // Both halves are required for the operation to mean anything. Removing the
 // records while the baseline still remembers the host would leave it suppressed
 // as "seen before" forever, with nothing left to explain why -- a deletion that
-// silently changes future reports is worse than no deletion.
+// silently changes future reports is worse than no deletion. The gap record
+// carries the host, so the record admits what it no longer holds.
 //
-// It does NOT delete from the proxy's store, and says so -- where one was ever
-// read here. That database is the closed product's hash-chained audit record,
-// opened read-only, and removing a row would break the chain it exists to
-// provide. The gap record carries the host, and the report reads it to keep
-// the destination suppressed from its view.
-//
-// A baseline/ directory is the evidence that a proxy store was read on this
-// machine, because a report writes one only then. Without it, the baseline
-// count and the sentence about the proxy's records describe state that does
-// not exist and a product the reader does not have, so the output is one line
-// saying what was removed. With it, the output is what it always was.
+// A baseline/ directory exists only where a report has run on this machine,
+// because a report writes one only then. Without it the output is one line
+// saying what was removed; with it, the baseline count follows.
 func forgetHost(host string, stdout io.Writer) error {
 	st, err := openStoreForRead()
 	if errors.Is(err, store.ErrNoStore) {
@@ -2051,10 +1759,7 @@ func forgetHost(host string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	gaps, err := st.ForgetHost(host, time.Now())
-	if err != nil {
-		return err
-	}
+	gaps, forgetErr := st.ForgetHost(host, time.Now())
 	total := 0
 	for _, g := range gaps {
 		total += g.RemovedRecords
@@ -2064,10 +1769,13 @@ func forgetHost(host string, stdout io.Writer) error {
 	// the caller meant, so every project that remembers the host loses it. That
 	// is the conservative direction: a host the user asked to forget must not
 	// survive in a baseline they did not think to name.
-	cleared, hadBaselines, err := clearBaselines(st.Root(), host)
-	if err != nil {
-		return err
-	}
+	//
+	// Run whether or not ForgetHost above succeeded, and the summary below is
+	// printed from whatever either one managed before either error is
+	// returned. A forget that clears some runs or some baselines and then
+	// fails must still say so: a caller who sees only the error cannot tell
+	// that part of it already happened.
+	cleared, hadBaselines, clearErr := clearBaselines(st.Root(), host)
 
 	fmt.Fprintf(stdout, "rashomon: forgot %s naming %s across %s; %s written",
 		countOf(total, "record"), host, countOf(len(gaps), "run"), countOf(len(gaps), "gap record"))
@@ -2079,15 +1787,11 @@ func forgetHost(host string, stdout io.Writer) error {
 		fmt.Fprint(stdout, "; later reports still leave it out wherever they find it, "+
 			"the sandbox trail included")
 	}
-	if !hadBaselines {
-		fmt.Fprintln(stdout)
-		return nil
+	if hadBaselines {
+		fmt.Fprintf(stdout, "; %d project baseline(s) cleared", cleared)
 	}
-	fmt.Fprintf(stdout, "; %d project baseline(s) cleared\n", cleared)
-	fmt.Fprintln(stdout, "rashomon: the proxy's own records are not ours to delete "+
-		"(they are a hash-chained audit store, opened read-only), so the report "+
-		"suppresses this destination from its view rather than claiming the row is gone")
-	return nil
+	fmt.Fprintln(stdout)
+	return errors.Join(forgetErr, clearErr)
 }
 
 // countOf is n and the noun, singular for exactly one: "1 run", "2 runs".
@@ -2100,6 +1804,9 @@ func countOf(n int, noun string) string {
 
 // clearBaselines removes a host from every project baseline in the store, and
 // reports whether the store holds a baseline directory at all.
+//
+// A file it cannot clear does not stop it: the host still leaves every other
+// project's baseline, and the failures are returned together.
 func clearBaselines(root, host string) (int, bool, error) {
 	dir := filepath.Join(root, "baseline")
 	entries, err := os.ReadDir(dir)
@@ -2110,241 +1817,26 @@ func clearBaselines(root, host string) (int, bool, error) {
 		return 0, true, err
 	}
 	var cleared int
+	var failed []error
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
 		n, err := baseline.ForgetFile(filepath.Join(dir, e.Name()), host)
 		if err != nil {
-			return cleared, true, err
+			failed = append(failed, err)
+			continue
 		}
 		cleared += n
 	}
-	return cleared, true, nil
+	return cleared, true, errors.Join(failed...)
 }
 
-// cmdRun runs the user's command with the proxy variables set, when it is safe
-// to, and reports on the session afterwards.
-//
-// The whole value of this command is that it makes the SAFE thing the easy
-// thing. Exporting the variables by hand works, and gets you a broken session
-// the day the proxy is in enforce mode or has crashed -- because an
-// enforce-mode proxy refuses the client's own API tunnels, so the failure is
-// not "no destinations recorded" but "the agent cannot reach the API at all".
-// This checks first, and launches WITHOUT the variables when the check fails
-// rather than refusing to launch: the user asked to run their command, and a
-// wrapper that declined because a status file was missing would be worse than
-// one that runs without recording.
-//
-// It returns the child's exit code. The report is rendered after the child
-// exits, which is why the launcher spawns and waits rather than exec-replacing
-// this process -- there would otherwise be nothing left to render it.
-func cmdRun(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	statusPath := posture.DefaultPath()
-	var argv []string
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--":
-			argv = args[i+1:]
-			i = len(args)
-		case "--proxy-status":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "rashomon: --proxy-status needs a value")
-				return exitFail
-			}
-			statusPath = args[i+1]
-			i++
-		case "--help", "-h":
-			fmt.Fprintln(stdout, "Usage: rashomon run [--proxy-status PATH] -- <command> [args...]")
-			return exitOK
-		default:
-			fmt.Fprintf(stderr, "rashomon: unknown argument %q (the command goes after --)\n", args[i])
-			return exitFail
-		}
-	}
-	if len(argv) == 0 {
-		fmt.Fprintln(stderr, "rashomon: run needs a command after --, for example: rashomon run -- claude")
-		return exitFail
-	}
-
-	// Refuse before launching if nothing is recording. Unlike a missing proxy,
-	// this one is worth stopping for: without the hooks installed there will be
-	// no session to report on, so the command would run, finish, and produce
-	// nothing -- and the user would reasonably conclude the tool does not work.
-	if !storeInstalled() {
-		fmt.Fprintln(stderr, "rashomon: nothing is recording -- run `rashomon watch` first, "+
-			"then `rashomon run -- <command>`")
-		return exitFail
-	}
-
-	// The install key, read before the mint. storeInstalled() above proved a
-	// store exists, so this opens without creating one.
-	var runKey []byte
-	if st, err := openStoreForRead(); err == nil {
-		runKey = st.Key()
-	}
-
-	v := posture.Read(statusPath)
-
-	var token string
-	var env []string
-	if v.Export {
-		// The tag is minted HERE, inside the accepted branch, and only when the
-		// proxy says it understands the credential. The refused path cannot
-		// mint one by construction, and it has to be unable to: posture.Read
-		// fills v.File from any parseable JSON and only THEN decides Export,
-		// so an enforce-mode proxy, a dead pid or a status file with a type
-		// error in an unrelated field still yields SessionToken true. A tag
-		// minted there was never exported -- and was still handed to the
-		// report, where it reclassified every foreign run_id in the store.
-		//
-		// A proxy that does not understand the credential is entitled to
-		// answer 407 to a CONNECT carrying one, so an unconditional tag would
-		// break every session against an older build.
-		//
-		// It is never written to disk in the clear and never logged. It is in
-		// the child's environment, which is a DISCLOSURE and not containment:
-		// the observed agent can read its own environment. That is why the tag
-		// carries a MAC -- see internal/launch, and internal/wire's joinOf for
-		// what a tag that does not verify is worth, which is nothing.
-		if v.File.SessionToken {
-			token = launch.NewToken(runKey)
-		}
-		// The parsed address, rebuilt, and not the file's string: the same
-		// rule env follows, so the two cannot export different text for one
-		// verified proxy.
-		env = launch.Env(v.Listen.String(), token)
-		fmt.Fprintf(stderr, "rashomon: %s; destinations will be recorded\n", v.Reason)
-	} else {
-		// One line, on stderr, saying why. This is the difference between a
-		// session that quietly records nothing and one the user knows records
-		// nothing.
-		fmt.Fprintf(stderr, "rashomon: running WITHOUT proxy variables -- %s\n", v.Reason)
-	}
-
-	// Taken before the child starts, so the report can tell a session the
-	// child produced from one that was already in the store.
-	startedAt := time.Now()
-
-	code, runErr := launch.Run(argv, env, stdin, stdout, stderr)
-	if runErr != nil {
-		fmt.Fprintln(stderr, "rashomon:", runErr)
-		return code
-	}
-
-	// The report follows the child, on stderr's side of the conversation: the
-	// child's own stdout is the user's output and must not have a report
-	// appended to it, or piping the command anywhere would corrupt the pipe.
-	if err := reportNewest(stderr, v, startedAt, token); err != nil {
-		fmt.Fprintln(stderr, "rashomon: the session report could not be rendered:", err)
-	}
-	return code
-}
-
-// reportNewest renders the session the child produced, if it produced one.
-//
-// The newest run rather than a named session, because the session id is Claude
-// Code's and this process never sees it: the hooks record it, and the only
-// thing this side knows is that whatever ran last is what just finished.
-//
-// since is when the child was launched, and the comparison against it is the
-// whole point. Without it, a command that records nothing -- anything that is
-// not a Claude Code session, or a session whose hooks never fired -- printed a
-// full report for whatever happened to be newest in the store, from minutes or
-// days earlier, under a heading that reads as though the command just produced
-// it. That is this program's own discipline broken: a claim it has no evidence
-// for, and the one failure it exists to make impossible.
-//
-// The residual limit, stated rather than papered over: a DIFFERENT session
-// writing concurrently with the child can still be the newest when the child
-// exits. Nothing this side sees can separate those two, because the session id
-// belongs to Claude Code and never reaches this process.
-// token is this run's session tag, when the proxy advertised that it accepts
-// one. It reaches the report in memory and is never persisted: the join needs
-// the RAW tag, so retaining it would mean storing a value that identifies a
-// session's traffic.
-func reportNewest(w io.Writer, v posture.Verdict, since time.Time, token string) error {
-	st, err := openStore()
-	if err != nil {
-		return err
-	}
-	newest, writtenAt, err := st.NewestRun()
-	if err != nil {
-		return err
-	}
-	if newest == "" || writtenAt.Before(since) {
-		fmt.Fprintln(w, "rashomon: no session was recorded for that command")
-		return nil
-	}
-
-	// A proxy store is read only under an ACCEPTED posture. posture.Read
-	// fills v.File before it decides, so a refused status file still names a
-	// causal_db; without this gate a stale, crashed, enforcing, non-loopback
-	// or unparseable status file would choose the database this report reads
-	// as the wire. Refused names no store, and the proxy block renders as one
-	// line.
-	//
-	// The gate is not authentication, and nothing here should read as if it
-	// were. The status file is writable by the user the agent runs as, and a
-	// forged one that passes posture -- a live pid (pid 1 answers EPERM, which
-	// posture counts as alive), observe mode, a loopback address -- is
-	// accepted, causal_db and all. The proxy store is evidence from a second
-	// program on the same machine, not a record the agent cannot touch.
-	proxyStore := ""
-	if v.Export {
-		// The proxy told us where it writes, so the report does not have to
-		// guess at a storage layout it should not know.
-		proxyStore = v.File.CausalDB
-		if proxyStore == "" {
-			proxyStore = defaultProxyStore()
-		}
-	}
-	opts := []report.Option{report.WithProxyStore(proxyStore)}
-
-	if token != "" {
-		// Handed over in memory, never persisted. The raw token is what the
-		// join needs -- a digest cannot be compared against the proxy's
-		// run_id column -- so retaining it on disk would mean storing a value
-		// that identifies a session's traffic. It is available exactly while
-		// the process that minted it is alive, which is when the automatic
-		// report runs, and a later `rashomon report` falls back to the window.
-		opts = append(opts, report.WithRunToken(token))
-	}
-	if key := storeKey(); len(key) > 0 {
-		// Only a tag this install signed may be treated as another session's.
-		opts = append(opts, report.WithTokenVerifier(func(t string) bool {
-			return launch.IsOurs(t, key)
-		}))
-	}
-
-	rep, err := report.Build(st, newest, time.Now(), opts...)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(w)
-	return report.Text(w, rep, report.WithNamedProxyStore(proxyStore))
-}
-
-// storeInstalled reports whether watch has ever run, by the presence of the
-// install marker.
-//
-// The marker rather than opening the store, for the same reason a plain detach
-// tests it: opening the store CREATES one, and a command that asks "has this
-// been set up" must not set it up as a side effect of asking.
-func storeInstalled() bool {
-	root, err := store.DefaultRoot()
-	if err != nil {
-		return false
-	}
-	return storeExistsAt(root)
-}
-
-// storeExistsAt is storeInstalled's check, parameterised over a root the
-// caller already has in hand. checkPaused, cmdPause and cmdResume all need to
-// ask this about a root before -- or instead of -- ever opening a *Store, for
-// the same reason storeInstalled asks it about the default one: opening
-// CREATES a store, and none of the three may do that as a side effect of a
-// question about recording state.
+// storeExistsAt asks whether a root holds a store without opening one.
+// checkPaused, cmdPause and cmdResume all need to ask this about a root
+// before -- or instead of -- ever opening a *Store: opening CREATES a store,
+// and none of the three may do that as a side effect of a question about
+// recording state.
 func storeExistsAt(root string) bool {
 	_, err := os.Stat(filepath.Join(root, installMetaFile))
 	return err == nil

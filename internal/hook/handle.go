@@ -92,10 +92,10 @@ func (h *Handler) Capture(in io.Reader) error {
 		CWDDigest:      shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, p.ToolName, p.ToolInput)),
 		RulesVersion:   shape.RulesVersion,
 	}
-	// Hostnames are metadata and are stored verbatim, because they are both
-	// the join key against the proxy's record and the finding itself. Nothing
-	// else from tool_input is persisted, and shape is still the only package
-	// that reads inside it.
+	// Hostnames are metadata and are stored verbatim, because the report
+	// lists them and forget --host matches them by the name as written.
+	// Nothing else from tool_input is persisted, and shape is still the only
+	// package that reads inside it.
 	decl.Hosts, decl.SSHHosts = shape.Hosts(p.ToolName, p.ToolInput)
 
 	// The label is computed on every declaration, and attached only to a

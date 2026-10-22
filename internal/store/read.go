@@ -304,10 +304,10 @@ func (r *Run) Dropped() []string {
 // runs: two overlapping sessions would otherwise be ordered by which started
 // first rather than which just finished.
 //
-// It exists for `rashomon run`, which has to report on the session its child
-// just produced and never learns that session's id -- the id is Claude Code's,
-// the hooks record it, and this side of the process only knows that whatever
-// ran last is what finished.
+// It exists for callers that act without ever being told Claude Code's
+// session id -- `recap pending`'s check at the start of a new prompt, and
+// `digest`'s fallback when none was passed -- each of which only knows that
+// whatever ran last is what finished.
 //
 // The modification time is returned with the name because "whatever ran last"
 // is only the right answer when something ran at all. A caller that launched a

@@ -1,5 +1,5 @@
-// Package baseline remembers which hosts a project has reached before, so the
-// report can say which are new.
+// Package baseline remembers which hosts a project's sessions have named
+// before, so the report can say which are new.
 //
 // It lives OUTSIDE the run store on purpose. The run store is evictable -- a
 // size cap or a `forget` removes runs -- and a novelty baseline that could be
@@ -17,6 +17,7 @@
 package baseline
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -32,6 +33,15 @@ import (
 // Version is carried by the file so a later reader can refuse a shape it does
 // not know rather than guessing at it.
 const Version = 1
+
+// Basis is what a baseline's hosts are: the hosts a project's sessions NAMED
+// in tool calls. Files from the proxy era held the hosts a session REACHED,
+// as the proxy saw them, and were written only on sessions where the proxy
+// store was readable. Comparing one of those against named hosts would call a
+// host "named for the first time" when it was only never reached, so a file
+// without this marker is read as absent and the project is established again,
+// once, from the record.
+const Basis = "declared"
 
 // ubiquitous are hosts that are never novel, whatever the baseline says.
 //
@@ -57,7 +67,7 @@ var ubiquitous = map[string]bool{
 // report can say so rather than silently dropping the host.
 func Ubiquitous(host string) bool { return ubiquitous[host] }
 
-// entry is when a host was first reached in this project, and by which session.
+// entry is when a host was first named in this project, and by which session.
 type entry struct {
 	FirstSeenSession  string `json:"first_seen_session"`
 	FirstSeenAtUnixMS int64  `json:"first_seen_at_unix_ms"`
@@ -67,6 +77,10 @@ type entry struct {
 type File struct {
 	Version int    `json:"version"`
 	Project string `json:"project"`
+	// Basis is what the hosts are; see the constant. Written on every save,
+	// read as the file's identity: a file that does not say "declared" is not
+	// this baseline.
+	Basis string `json:"basis,omitempty"`
 	// EstablishedBySession is the session that created this file.
 	//
 	// Recorded rather than inferred, because "did this session establish the
@@ -99,13 +113,13 @@ type File struct {
 type Result struct {
 	// Established is true when THIS SESSION created the baseline. The first
 	// session in a project has no previous runs to be novel against, so every
-	// host it reached would otherwise be reported as new -- which is true and
+	// host it named would otherwise be reported as new -- which is true and
 	// useless. The report says "baseline established (N hosts)" instead.
 	//
 	// It stays true on every later render of that session, which is what makes a
 	// re-render stable; see File.EstablishedBySession.
 	Established bool
-	// Novel are this session's hosts that no earlier session reached, minus the
+	// Novel are this session's hosts that no earlier session named, minus the
 	// ubiquitous list. Sorted.
 	Novel []string
 	// Known is the size of the baseline AFTER this session -- a property of the
@@ -264,29 +278,54 @@ func Update(root, key, sessionID string, sessionStart time.Time, hosts []string)
 	return res
 }
 
+// load reads a project's baseline. existed is false for a file that is not
+// there and for one without the basis marker, and the File is then a fresh
+// one for the key.
 func load(path, key string) (File, bool, error) {
-	body, err := os.ReadFile(path)
+	fresh := File{Version: Version, Project: key, Basis: Basis, Hosts: map[string]entry{}}
+	f, err := parse(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return File{Version: Version, Project: key, Hosts: map[string]entry{}}, false, nil
+		return fresh, false, nil
 	}
 	if err != nil {
-		return File{}, false, err
-	}
-	var f File
-	if err := json.Unmarshal(body, &f); err != nil {
 		// A corrupt baseline is not a reason to fail a report, and it is not a
 		// reason to silently treat every host as novel either. Starting a fresh
 		// file loses history; saying so is the caller's job, so the error is
 		// returned and novelty renders as unknown.
 		return File{}, false, err
 	}
-	if f.Version != Version {
-		return File{}, false, errors.New("baseline: unrecognised file version")
+	if f.Basis != Basis {
+		// A proxy-era file: hosts reached, not hosts named. Not an error and
+		// not a comparison; the project starts over from the record, and the
+		// session doing it reports the baseline as established.
+		return fresh, false, nil
 	}
 	if f.Hosts == nil {
 		f.Hosts = map[string]entry{}
 	}
 	return f, true, nil
+}
+
+// parse reads one baseline file as written, whatever its basis says.
+func parse(path string) (File, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return File{}, err
+	}
+	return decode(body)
+}
+
+// decode reads a baseline's bytes, refusing a version this build does not
+// know rather than guessing at its shape.
+func decode(body []byte) (File, error) {
+	var f File
+	if err := json.Unmarshal(body, &f); err != nil {
+		return File{}, err
+	}
+	if f.Version != Version {
+		return File{}, errors.New("baseline: unrecognised file version")
+	}
+	return f, nil
 }
 
 // save writes the baseline atomically, 0600 in a 0700 directory.
@@ -334,25 +373,6 @@ func save(dir, path string, f File) error {
 	return os.Rename(name, path)
 }
 
-// Forget removes a host from a project's baseline, so that `forget --host` does
-// not leave the host remembered as seen while its wire rows are gone.
-func Forget(root, key, host string) error {
-	if root == "" || key == "" || host == "" {
-		return nil
-	}
-	dir := filepath.Join(root, "baseline")
-	path := filepath.Join(dir, fileName(key))
-	f, existed, err := load(path, key)
-	if err != nil || !existed {
-		return err
-	}
-	if _, ok := f.Hosts[host]; !ok {
-		return nil
-	}
-	delete(f.Hosts, host)
-	return save(dir, path, f)
-}
-
 // digest is a short SHA-256 of the project key, appended to the sanitised
 // filename so two projects whose names sanitise identically still get two
 // files. It is not a secret and not keyed: the key it hashes is a path already
@@ -375,8 +395,10 @@ func dedupe(xs []string) []string {
 	return out
 }
 
-// ForgetFile removes a host from one baseline file by path, returning 1 when it
-// was present and 0 when it was not.
+// ForgetFile removes a host from one baseline file by path, returning 1 when
+// the file held it and 0 when it did not. A file this build will not rewrite
+// -- one without the basis marker, or one it cannot parse whose bytes hold
+// the host -- is deleted whole.
 //
 // By PATH rather than by project key, because `forget --host` is not told which
 // project the caller meant and must clear the host from every baseline that
@@ -386,18 +408,86 @@ func ForgetFile(path, host string) (int, error) {
 	if path == "" || host == "" {
 		return 0, nil
 	}
-	f, existed, err := load(path, "")
-	if err != nil || !existed {
-		// A corrupt or unreadable baseline is not a reason to fail the forget.
-		// The records are already gone; reporting zero cleared here is honest
-		// and the caller prints the count.
+	body, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		// Listed, then gone before it was read: nothing left to clear.
 		return 0, nil
 	}
-	if _, ok := f.Hosts[host]; !ok {
+	if err != nil {
+		// An unreadable baseline may hold the host, so the forget cannot say
+		// it cleared it. The caller reports the error; it is never a zero.
+		return 0, err
+	}
+	f, err := decode(body)
+	if err != nil {
+		// Bytes that do not parse, or a version this build does not know,
+		// cannot be rewritten without the host -- there is no shape here to
+		// delete one entry from and write back. Holding it, the file goes
+		// whole and the project establishes its baseline again, which is the
+		// conservative direction: refusing would leave the forgotten host
+		// sitting in a file this forget cannot touch any other way. Not
+		// holding it, the file is no business of this forget.
+		if !namesHost(body, host) {
+			return 0, nil
+		}
+		return removeWhole(path)
+	}
+	_, held := f.Hosts[host]
+	if f.Basis == Basis {
+		if !held {
+			return 0, nil
+		}
+		delete(f.Hosts, host)
+		if err := save(filepath.Dir(path), path, f); err != nil {
+			return 0, err
+		}
+		return 1, nil
+	}
+	// A file without the basis marker is not this baseline. load reads it as
+	// absent, so removing it changes no report, and saving it would stamp the
+	// marker onto hosts it held under the old basis -- but only when it holds
+	// the host this forget was asked for. One that does not is no business of
+	// this forget, and must not be deleted just for sharing the directory.
+	if !held {
 		return 0, nil
 	}
-	delete(f.Hosts, host)
-	if err := save(filepath.Dir(path), path, f); err != nil {
+	return removeWhole(path)
+}
+
+// namesHost reports whether a baseline's bytes hold the host as JSON writes
+// it, between quotes, so a short host does not match inside another name or
+// a key: --host io is not in "version". A recorded host is letters, digits,
+// dots, hyphens, underscores, and -- for IPv6 -- brackets and colons, none of
+// which JSON ever escapes, so the quoted form is exact. A host spelled like
+// one of the file's own keys, such as hosts, still matches that key; the file
+// is unreadable either way, and deleting it re-establishes the project.
+//
+// A file cut off mid-write ends with no closing quote on whatever string it
+// was writing when it stopped. The check below does not confirm that case
+// over a complete one: it takes whatever bytes follow the body's LAST quote
+// character, truncated or not, and asks whether that is a non-empty prefix
+// of the host. In a file that was never truncated, those trailing bytes are
+// JSON punctuation -- a colon, a brace, a comma -- not the start of a real
+// hostname, so running the same check there is loose but harmless.
+func namesHost(body []byte, host string) bool {
+	quoted := []byte(`"` + host + `"`)
+	if bytes.Contains(body, quoted) {
+		return true
+	}
+	i := bytes.LastIndexByte(body, '"')
+	if i < 0 {
+		return false
+	}
+	frag := string(body[i+1:])
+	return frag != "" && len(frag) <= len(host) && strings.HasPrefix(host, frag)
+}
+
+// removeWhole deletes a baseline file this build will not rewrite. Called
+// only once the caller has confirmed the file holds the host being forgotten,
+// so a successful removal always counts as clearing it. A file that could not
+// be removed is an error, never a quiet zero: the host is still in it.
+func removeWhole(path string) (int, error) {
+	if err := os.Remove(path); err != nil {
 		return 0, err
 	}
 	return 1, nil

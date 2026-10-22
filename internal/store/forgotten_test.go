@@ -11,9 +11,9 @@ import (
 
 // TestForgetHost_AHostNoRecordNamedIsStillForgotten is #45 at the store: a
 // forget that removed nothing must still make the predicate answer yes, because
-// the report reads sources this store never held -- the sandbox's trail and the
-// proxy's store. Before the store-level record, ForgetHost wrote nothing when
-// it removed nothing, and the host was listed again in the next report.
+// the report reads a source this store never held -- the sandbox's trail.
+// Before the store-level record, ForgetHost wrote nothing when it removed
+// nothing, and the host was listed again in the next report.
 func TestForgetHost_AHostNoRecordNamedIsStillForgotten(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
@@ -155,6 +155,30 @@ func TestForgetHost_ASecondForgetOfTheSameHostAddsNoLine(t *testing.T) {
 	}
 	if !forgotten("acme-secret.internal") || !forgotten("github.com") {
 		t.Error("a host forgotten more than once, or after another, is no longer forgotten")
+	}
+}
+
+// TestForgetHost_ADeclarationTimedAtZeroIsForgottenBefore: RecordedAtMS==0 is
+// a valid timestamp, not a sentinel the comparison should special-case --
+// ForgottenHostBefore's declaredAtMS <= forgotMS has to hold for it exactly
+// as it would for any other time at or before the forget.
+func TestForgetHost_ADeclarationTimedAtZeroIsForgottenBefore(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ForgetHost("pypi.org", time.Unix(1_700_000_000, 0)); err != nil {
+		t.Fatal(err)
+	}
+	forgottenBefore, err := st.ForgottenHostBefore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !forgottenBefore("pypi.org", 0) {
+		t.Error("a declaration timed at zero was not suppressed as predating the forget")
+	}
+	if forgottenBefore("pypi.org", 1_700_000_001_000) {
+		t.Error("a declaration timed after the forget must not be suppressed")
 	}
 }
 

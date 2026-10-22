@@ -80,7 +80,7 @@ var installerTools = []string{"uname", "mktemp", "rm", "grep", "cut", "head", "s
 	"gzip", "shasum", "sha256sum", "perl", "mkdir", "cp", "chmod", "mv", "cat"}
 
 // alphaClosing is the installer's last word on what the alpha does not do.
-const alphaClosing = "Network destinations are not observed in this alpha"
+const alphaClosing = "Network traffic is not observed. The report lists the hosts each command"
 
 func TestInstall_PlacesOnlyTheCLI(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
@@ -210,8 +210,8 @@ func assertOnlyTheCLI(t *testing.T, run installRun, cli, proxy string) {
 			cli, strings.Join(run.requested, "\n"))
 	}
 
-	if m := dormantMentions(run.out); len(m) > 0 {
-		t.Errorf("the installer's closing lines point at the dormant proxy path %q:\n%s", m, run.out)
+	if m := removedCommandMentions(run.out); len(m) > 0 {
+		t.Errorf("the installer's closing lines point at commands that no longer exist %q:\n%s", m, run.out)
 	}
 	if !strings.Contains(run.out, alphaClosing) {
 		t.Errorf("the installer does not say %q, so a new user is not told what the alpha "+
@@ -255,4 +255,22 @@ func writeArchive(t *testing.T, dest, member string) string {
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// shQuote wraps a path for the POSIX shell the child command is handed to. It
+// came from the env test, which retired with the proxy era; the installer test
+// is its one remaining user.
+func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// removedCommandMentions lists the proxy-era commands a text still names. They
+// went with the proxy era, and the one place a new user reads first must not
+// send them to a command that answers "unknown command".
+func removedCommandMentions(text string) []string {
+	var out []string
+	for _, m := range []string{"rashomon env", "rashomon run", "--proxy-store"} {
+		if strings.Contains(text, m) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
