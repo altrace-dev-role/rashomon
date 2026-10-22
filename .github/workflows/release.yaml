@@ -37,7 +37,7 @@ jobs:
           # same reason and at the same version as the test job in ci.yaml:
           # see the note there. TestDEL21_GoVersionPinsAgree holds every
           # pin, in both files, to that one version.
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
           # go.sum: the module has requirements now. See the note in ci.yaml.
           cache-dependency-path: go.sum
