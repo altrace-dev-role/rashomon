@@ -405,7 +405,26 @@ jobs:
         if: success() || failure()
         env:
           RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.
-        run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
+        run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28|TestRES30_' -count=1 -v
+
+      # internal/store and test/acceptance's race suite runs on ubuntu-latest
+      # (the test job) but not here, so the darwin branch of REC-34's group
+      # commit -- sync_darwin.go, and the acceptance tests that exercise a
+      # real barrier and a real flush -- had no CI coverage at all: nothing
+      # ever ran them anywhere automated. This is a plain test, not the
+      # mutation sweep, which stays on ubuntu-latest in its own job.
+      - name: REC-34 group commit (darwin)
+        run: go test -race -count=1 -run 'TestREC34' ./internal/store ./test/acceptance
+
+      # sync_darwin.go's own 14 mutants build on no other GOOS, and the one
+      # mutant whose judging test is darwin-only (platform="darwin" in the
+      # mutant file) reports NOT JUDGED (platform) everywhere else too: this
+      # is the only runner where any of them are exercised at all. Scoped to
+      # this one file, not the full sweep, which stays on ubuntu-latest in
+      # its own job and would otherwise run twice for every mutant outside
+      # this file.
+      - name: REC-34 group commit mutants (darwin)
+        run: python3 test/mutation/sweep.py --strict --files mutants/REC-34_group-commit.py
 
   measure-linux-benchmarks:
     name: Measure linux/amd64 benchmark rows

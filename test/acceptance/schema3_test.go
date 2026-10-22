@@ -27,18 +27,19 @@ import (
 // reader already carries a comment about: `Accepts` used to be an equality
 // against SchemaVersion, so the moment the writer moved to v2 every v1 record
 // on disk was skipped and the report rendered empty with nothing saying why.
-// This build writes v4, and Accepts must keep admitting 1, 2 and 3 so that
-// older stores still read.
+// This build writes v4 for its ordinary call records and v5 for the one
+// flush_failed marker (store.FlushFailedSchemaVersion), and Accepts must
+// keep admitting 1 through 4 so that older stores still read.
 func TestAcceptsAdmitsSchema3(t *testing.T) {
-	for _, v := range []int{1, 2, 3, 4} {
+	for _, v := range []int{1, 2, 3, 4, 5} {
 		if !store.Accepts(v) {
 			t.Errorf("store.Accepts(%d) is false. Records at that version are SKIPPED, not "+
 				"reported as unreadable, so the symptom is an empty report and no reason "+
 				"for it.", v)
 		}
 	}
-	if store.Accepts(5) {
-		t.Error("store.Accepts(5) is true; a reader must not claim to understand a shape " +
+	if store.Accepts(6) {
+		t.Error("store.Accepts(6) is true; a reader must not claim to understand a shape " +
 			"that does not exist yet")
 	}
 }
@@ -211,9 +212,13 @@ func toAnySlice(v any) []any {
 	return nil
 }
 
-// TestSchema3_WrittenRecordsMeetTheVersion3Gate: this build writes schema 4,
-// additive over 3, and every record it writes carries each key the published
-// v3 gate requires, and the v4 gate's as well.
+// TestSchema3_WrittenRecordsMeetTheVersion3Gate: an ordinary declaration or
+// execution this build writes is schema 4, additive over 3, and carries each
+// key the published v3 gate requires, and the v4 gate's as well. It is not
+// schema 5: nothing about a v5 record's one piece of content, the
+// flush_failed marker, applies to a declaration or an execution, and
+// store.FlushFailedSchemaVersion names the marker's version precisely so
+// that this one does not drift onto it.
 // The version is compared against the literal, not against
 // store.SchemaVersion, which would compare the writer with itself. Break:
 // write 2 while the vocabulary is 3's (the test class, the test-file label),

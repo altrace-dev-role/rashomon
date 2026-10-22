@@ -1,6 +1,7 @@
 package perf
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -234,5 +235,185 @@ func TestRES28r_CaseBudgetGatesOnlyWithAReadingOfItsOwn(t *testing.T) {
 	other := budget.RSSCase{ID: "hook.40KB", BudgetMiB: 6.58}
 	if _, gated, reportOnly, why := caseBudget("linux/amd64", other, overrides); gated || reportOnly || !strings.Contains(why, "measured baseline") {
 		t.Errorf("baseline exists but not for this case: gated=%v reportOnly=%v why=%q, want a hard failure naming the baseline", gated, reportOnly, why)
+	}
+}
+
+// healthyBurst is a RES-30 run in which every pair landed every record.
+func healthyBurst(ways int) Burst {
+	b := Burst{Ways: ways, Declarations: ways, Terminals: ways, Executions: ways, CallCoverage: ways, PostCoverage: ways}
+	for i := 1; i <= 3*ways; i++ {
+		b.Seqs = append(b.Seqs, int64(i))
+	}
+	for i := 0; i < ways; i++ {
+		b.PairPeakMiB = append(b.PairPeakMiB, 5)
+	}
+	b.OneWayPeakMiB = 5
+	return b
+}
+
+// setPairs gives every pair the same peak.
+func (b *Burst) setPairs(mib float64) {
+	for i := range b.PairPeakMiB {
+		b.PairPeakMiB[i] = mib
+	}
+}
+
+// TestRES30_BurstVerdictCountsEveryLoss: the verdict the 64-way test reaches
+// fails on every kind of loss and on the footprint sum, and passes only the
+// burst in which nothing was lost (RES-30).
+func TestRES30_BurstVerdictCountsEveryLoss(t *testing.T) {
+	const ways, budget, tol = 4, 30.0, 0.10 // a healthy burst sums 20 MiB
+	for _, c := range []struct {
+		name  string
+		spoil func(*Burst)
+		fails bool
+	}{
+		{"healthy", func(*Burst) {}, false},
+		{"a declaration lost", func(b *Burst) { b.Declarations-- }, true},
+		{"a terminal lost", func(b *Burst) { b.Terminals-- }, true},
+		{"an execution lost", func(b *Burst) { b.Executions-- }, true},
+		{"a call coverage record lost", func(b *Burst) { b.CallCoverage-- }, true},
+		{"a post coverage record lost", func(b *Burst) { b.PostCoverage-- }, true},
+		{"a record spilled", func(b *Burst) { b.Spilled = 1 }, true},
+		{"a lock timeout", func(b *Burst) { b.LockTimeouts = 1 }, true},
+		{"a flush_failed marker", func(b *Burst) { b.FlushFailed = 1 }, true},
+		{"a seq skipped", func(b *Burst) { b.Seqs[len(b.Seqs)-1]++ }, true},
+		{"a seq repeated", func(b *Burst) { b.Seqs[1] = b.Seqs[0] }, true},
+		{"a record without a seq", func(b *Burst) { b.Seqs = b.Seqs[:len(b.Seqs)-1] }, true},
+		{"a pair unmeasured", func(b *Burst) { b.PairPeakMiB = b.PairPeakMiB[1:] }, true},
+		{"a pair measured as nothing", func(b *Burst) { b.PairPeakMiB[0] = 0 }, true},
+		// The sum cases raise the 1-way figure with the pair, so that only
+		// the sum is judged.
+		{"the sum at budget plus tolerance", func(b *Burst) {
+			b.PairPeakMiB[0] += budget*(1+tol) - 20
+			b.OneWayPeakMiB = b.PairPeakMiB[0]
+		}, false},
+		{"the sum over it", func(b *Burst) {
+			b.PairPeakMiB[0] += budget*(1+tol) - 20 + 0.01
+			b.OneWayPeakMiB = b.PairPeakMiB[0]
+		}, true},
+		{"no pairs at all", func(b *Burst) { *b = Burst{} }, true},
+		// The per-process rule, restated from measurement (RES-30, ruling
+		// 2026-10-13): the largest pair peak under the burst, which stands for
+		// every process, is at most PerProcessPeakRatio (1.25) times the
+		// median solo pair. One process in the tail over it fails the burst
+		// however typical the rest; the median is not what is judged.
+		{"every process at the ratio", func(b *Burst) { b.setPairs(PerProcessPeakRatio * b.OneWayPeakMiB) }, false},
+		{"every process over it", func(b *Burst) { b.setPairs(PerProcessPeakRatio*b.OneWayPeakMiB + 0.01) }, true},
+		{"one process at 1.21x, the largest the default measured", func(b *Burst) { b.PairPeakMiB[2] = 1.21 * b.OneWayPeakMiB }, false},
+		{"one process at the ratio, the rest within", func(b *Burst) { b.PairPeakMiB[2] = PerProcessPeakRatio * b.OneWayPeakMiB }, false},
+		{"one process over it, the median within", func(b *Burst) { b.PairPeakMiB[2] = PerProcessPeakRatio*b.OneWayPeakMiB + 0.01 }, true},
+		{"the last process over it", func(b *Burst) { b.PairPeakMiB[len(b.PairPeakMiB)-1] = 2 * b.OneWayPeakMiB }, true},
+		{"the 1-way figure unmeasured", func(b *Burst) { b.OneWayPeakMiB = 0 }, true},
+	} {
+		b := healthyBurst(ways)
+		c.spoil(&b)
+		if got := len(b.Problems(budget, tol, 0)) > 0; got != c.fails {
+			t.Errorf("%s: fails = %v, want %v (%q)", c.name, got, c.fails, b.Problems(budget, tol, 0))
+		}
+	}
+}
+
+// TestRES30_RatioToleranceIsTheRunnersOnly: the per-process ratio takes the
+// tolerance it is handed and no other. The harness hands it none on the
+// reference machine, where the ratio was measured, and the platform's runner
+// tolerance on a CI runner, where it has not been (macos-latest, ruling
+// 2026-10-13); the summed footprint's tolerance never loosens it.
+func TestRES30_RatioToleranceIsTheRunnersOnly(t *testing.T) {
+	const ways, budget, tol = 4, 30.0, 0.10
+	over := func(ratioTol float64) []string {
+		b := healthyBurst(ways)
+		b.PairPeakMiB[1] = PerProcessPeakRatio*b.OneWayPeakMiB + 0.01
+		return b.Problems(budget, tol, ratioTol)
+	}
+	if got := over(0); len(got) == 0 {
+		t.Error("a process over the ratio passed with no ratio tolerance: the sum's tolerance loosened it")
+	}
+	if got := over(0.15); len(got) != 0 {
+		t.Errorf("a process 0.01 MiB over the ratio failed under a 15%% runner tolerance: %q", got)
+	}
+	b := healthyBurst(ways)
+	b.PairPeakMiB[1] = PerProcessPeakRatio * 1.15 * b.OneWayPeakMiB * 1.001
+	if got := b.Problems(budget, tol, 0.15); len(got) == 0 {
+		t.Error("a process over the ratio plus the runner tolerance passed")
+	}
+}
+
+// TestRES30_RatioToleranceOnlyOnARunner: the harness picks the ratio's
+// tolerance by where it runs. On GitHub Actions, where macos-latest's ratio
+// has not been measured, it is the platform's runner tolerance; anywhere else,
+// the reference machine included, it is none, so the 1.25x rule holds as
+// measured and a regression to 1.44x (1.25 x 1.15) cannot hide in it (RES-30,
+// ruling 2026-10-13). Only "true", which is what Actions sets, is a runner.
+func TestRES30_RatioToleranceOnlyOnARunner(t *testing.T) {
+	const platform = 0.15
+	env := func(v string, set bool) func(string) string {
+		return func(k string) string {
+			if k == "GITHUB_ACTIONS" && set {
+				return v
+			}
+			return ""
+		}
+	}
+	for _, c := range []struct {
+		value string
+		set   bool
+		want  float64
+	}{
+		{"true", true, platform},
+		{"", false, 0}, {"", true, 0}, {"false", true, 0}, {"1", true, 0}, {"TRUE", true, 0},
+	} {
+		if got := RatioTolerance(platform, env(c.value, c.set)); got != c.want {
+			t.Errorf("RatioTolerance with GITHUB_ACTIONS=%q (set %v) = %v, want %v", c.value, c.set, got, c.want)
+		}
+	}
+}
+
+// TestRES30_BudgetsRowStatesTheGate: budgets.json's parallel row carries the
+// per-process rule's basis, the measured figures it was restated from, and
+// it names the same bound and sample count the gate uses, so the two cannot
+// drift apart unseen (RES-30, ruling 2026-10-13).
+func TestRES30_BudgetsRowStatesTheGate(t *testing.T) {
+	table, err := budget.Table()
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := table.Parallel
+	for _, want := range []string{
+		fmt.Sprintf("largest pair peak at most %.2fx", PerProcessPeakRatio),
+		fmt.Sprintf("median of %d solo pairs", OneWaySamples),
+		"GOMAXPROCS unchanged",
+		"macos-latest unmeasured",
+	} {
+		if !strings.Contains(row.Basis, want) {
+			t.Errorf("budgets.json parallel.basis does not say %q:\n%s", want, row.Basis)
+		}
+	}
+}
+
+// TestRES30_LargestIsTheLargestPairPeak: the largest process, which the
+// per-process rule judges, is the largest pair peak, each the larger of a
+// pair's hook and post, so the largest of every process (RES-30).
+func TestRES30_LargestIsTheLargestPairPeak(t *testing.T) {
+	b := Burst{PairPeakMiB: []float64{4.1, 4.3, 3.9}}
+	if got := b.LargestMiB(); got != 4.3 {
+		t.Errorf("LargestMiB() = %v, want 4.3", got)
+	}
+	if got := (Burst{}).LargestMiB(); got != 0 {
+		t.Errorf("LargestMiB() of no pairs = %v, want 0", got)
+	}
+}
+
+// TestRES30_ParseFootprintReadsTimeL: the darwin footprint comes from
+// /usr/bin/time -l's report; a report without the line is not a zero.
+func TestRES30_ParseFootprintReadsTimeL(t *testing.T) {
+	report := "        0.01 real         0.00 user         0.00 sys\n" +
+		"             6029312  maximum resident set size\n" +
+		"             2622016  peak memory footprint\n"
+	if got, ok := ParseFootprint(report); !ok || got != 2622016 {
+		t.Errorf("ParseFootprint = %d, %v; want 2622016, true", got, ok)
+	}
+	if _, ok := ParseFootprint("             6029312  maximum resident set size\n"); ok {
+		t.Error("a report with no footprint line parsed as one")
 	}
 }

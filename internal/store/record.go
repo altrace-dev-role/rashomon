@@ -25,10 +25,57 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // tail` says nothing about it, which a reader must take as "not measured",
 // not as "not hidden". Nothing else changed, and v1 to v3 records still read.
 //
-// SchemaVersion is the version of a call's records: its declaration, the
-// terminal that closes it, and its execution. Coverage and gap records are
-// written at SessionSchemaVersion instead.
+// v5 exists, but SchemaVersion does not move to it: see
+// FlushFailedSchemaVersion below for what does and why.
+//
+// SchemaVersion is the version of a call's ordinary records: its
+// declaration, the terminal that actually closes it, and its execution.
+// Coverage and gap records are written at SessionSchemaVersion instead.
 const SchemaVersion = 4
+
+// FlushFailedSchemaVersion is the version the flush_failed marker alone is
+// written at (REC-34). A literal, not SchemaVersion+1: the two are
+// independent facts (one about ordinary call records, one about a single
+// marker type) and tying them arithmetically would move this one the
+// moment someone edited the other for an unrelated reason.
+//
+// A flush_failed terminal is not additive the way v2 to v4 were: no field
+// was added to the TYPE, and nothing a v4 record carries changed meaning.
+// What changed is which terminals a reader may treat as closing a
+// declaration. Terminal.Reason can now be ReasonFlushFailed, marking a call
+// whose records a failed flush left possibly not durable -- and such a
+// terminal must NOT close the declaration it names, or a possibly-lost call
+// reads as a finished one. A v4 reader has no FlushFailed check; it closes
+// on any terminal. Bumping ITS OWN version is what keeps a v4-or-earlier
+// reader from reading one of these at all: Accepts runs before the type
+// switch (classifyRunLine), so such a reader skips the marker's line
+// instead of half-understanding it.
+//
+// It does not move SchemaVersion itself, which is what the first version of
+// this fix did and which this constant exists to stop from happening again.
+// Every declaration, execution and ordinary terminal has none of a v5
+// record's content -- there is no v5 content for an ordinary record to
+// carry, because the only thing v5 added is this marker -- so stamping them
+// at 5 anyway would have been exactly the lie kinds.go's CallSchemaVersion
+// warns against: a record claiming a version none of whose keys it carries.
+// It would also have cost every 1.1.x reader every call record in a run the
+// moment one flush failed anywhere in the store, not only the one marker a
+// 1.2.0 reader understands and an older one correctly cannot: Accepts does
+// not look at type before it looks at schema_version, so a declaration
+// stamped 5 is invisible to a v4 reader whether or not it has anything to
+// do with REC-34.
+//
+// A new record type instead of a second version was rejected for the
+// reason the first version's comment gave: Terminal is the type every other
+// call-record consumer already walks, and moving the marker out of it would
+// have meant auditing every one of them for an assumption that a terminal
+// is the only thing that closes a call. That reasoning is still right; it
+// just does not require moving SchemaVersion along with it, because the
+// marker is the one terminal the "goes with its declaration's version" rule
+// (SessionSchemaVersion's doc) was never describing -- FlushFailed's own doc
+// says it is not an ending, so it is not "the terminal that closes" the
+// declaration either, and SchemaVersion's contract never claimed it.
+const FlushFailedSchemaVersion = 5
 
 // SessionSchemaVersion is the version of the records that describe a session
 // rather than one call: coverage and gaps. Neither has changed since v3, so
@@ -52,12 +99,12 @@ const SessionSchemaVersion = 3
 // skipped -- a store that had been recording for weeks would have rendered an
 // empty report, and nothing would have said why.
 //
-// v4 is what this build writes; 1 to 3 are accepted so older stores read.
+// v5 is what this build writes; 1 to 4 are accepted so older stores read.
 // Records from a newer schema are skipped without error; the report shows
 // them only as a skipped-records count and the records_unreadable coverage
 // reason, and is empty only when every record is newer.
 func Accepts(version int) bool {
-	return version >= 1 && version <= 4
+	return version >= 1 && version <= 5
 }
 
 // Record type discriminators.
@@ -351,6 +398,24 @@ type Terminal struct {
 	SessionID     string  `json:"session_id"`
 	Outcome       string  `json:"outcome"`
 	Reason        *string `json:"reason"`
+	// Phase is PhaseCall or PhasePost, naming which invocation wrote this
+	// terminal (v5). It is null for an ordinary closing terminal, which
+	// Handler.Close always writes from the hook's own PreToolUse process
+	// and so carries no ambiguity worth a field for. It is set on a
+	// ReasonFlushFailed marker, where it does: PhaseCall means the
+	// DECLARATION this invocation itself wrote may not be durable; PhasePost
+	// means the EXECUTION post just appended may not be, while the
+	// declaration -- flushed by an earlier, separate hook invocation -- is
+	// unaffected. Without it a reader sees a marker and cannot tell which.
+	Phase *string `json:"phase"`
+}
+
+// FlushFailed reports a terminal that marks its call's records as possibly
+// not durable (ReasonFlushFailed) rather than closing the call. It is not an
+// ending: a reader must not let it close a declaration whose own terminal
+// never landed, or count it as a declaration the lock dropped.
+func (t Terminal) FlushFailed() bool {
+	return t.Reason != nil && *t.Reason == ReasonFlushFailed
 }
 
 // Coverage states.
@@ -361,8 +426,14 @@ const (
 
 // Coverage reasons. Fixed codes, never free text, and never derived from input.
 const (
-	ReasonInternalError       = "internal_error"
-	ReasonLockTimeout         = "lock_timeout"
+	ReasonInternalError = "internal_error"
+	ReasonLockTimeout   = "lock_timeout"
+	// ReasonFlushFailed marks records a hook appended and then could not
+	// flush to stable storage (REC-34): they read back, and a power loss or
+	// a crash of the machine could still remove them. It rides a spill
+	// terminal for the call, the one record a process can append without
+	// waiting on a lock, because coverage appends take theirs.
+	ReasonFlushFailed         = "flush_failed"
 	ReasonTerminatedBySignal  = "terminated_by_signal"
 	ReasonUnterminatedEntry   = "unterminated_entry"
 	ReasonHookEntryAbsent     = "hook_entry_absent"
@@ -384,6 +455,7 @@ func Reasons() []string {
 	return []string{
 		ReasonInternalError,
 		ReasonLockTimeout,
+		ReasonFlushFailed,
 		ReasonTerminatedBySignal,
 		ReasonUnterminatedEntry,
 		ReasonHookEntryAbsent,

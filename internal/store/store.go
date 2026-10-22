@@ -17,7 +17,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 )
 
 const (
@@ -38,10 +41,29 @@ const (
 var ErrLockTimeout = errors.New("store: timed out waiting for the append lock")
 
 // Store is an opened store rooted at a directory.
+//
+// A Store is safe for concurrent use until DeferDurability. That call gives
+// it mutable state -- the file its one full sync has to cover, and whether
+// that sync failed -- which only one goroutine touches today: a deferred
+// Store belongs to the one hook invocation that opened it. mu guards that
+// state anyway. Nothing in this program holds it across a second goroutine
+// yet, but a field three places read and write as one unit, left unguarded,
+// is a race waiting for whichever future caller reaches it from two; the
+// lock makes that caller's bug a serialised wait instead of an undefined one
+// (REC-34, Go memory model).
 type Store struct {
 	root      string
 	installID string
 	key       []byte
+
+	// Group commit (REC-34); see DeferDurability and Flush. barrier is
+	// barrierSync; a test stands another platform's in for it.
+	barrier func(*os.File) (durable bool, err error)
+
+	mu       sync.Mutex
+	deferred bool
+	dirty    string
+	flushErr error
 }
 
 type installMeta struct {
@@ -92,7 +114,7 @@ func Open(root string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{root: root, installID: meta.InstallID, key: key}, nil
+	return &Store{root: root, installID: meta.InstallID, key: key, barrier: barrierSync}, nil
 }
 
 // ErrNoStore reports that no store has been created at a location. It is a
@@ -137,6 +159,129 @@ func (s *Store) Key() []byte { return s.key }
 // RunDir is the directory holding one session's records.
 func (s *Store) RunDir(sessionID string) string {
 	return filepath.Join(s.root, dirRuns, segment(sessionID))
+}
+
+// DeferDurability is group commit (REC-34). Every later append on this Store
+// orders its write with a barrier inside its lock instead of syncing it in
+// full, and the one full sync is left to Flush, which the caller issues
+// after its last append, outside the lock and before it writes anything to
+// stdout.
+//
+// It is for a process that appends a few records and exits: hook and post.
+// Durability moves from "when each append returns" to "when the process has
+// flushed", and PreToolUse flushes before it exits, so a declaration is still
+// on stable storage before the tool runs -- when the flush succeeds; when it
+// fails the tool runs anyway and the call is marked flush_failed instead.
+//
+// One case weakens, on darwin only, where a barrier is cheaper than a full
+// sync: a process that ends between its barriers and Flush leaves records
+// ordered on the device but not flushed from its cache. SIGINT, SIGTERM,
+// SIGHUP and SIGQUIT are all caught (hook.WatchSignals) and still reach
+// Flush. Anything else that ends the process first opens the window:
+// SIGKILL; SIGPIPE on a write to a closed stderr; and a Go runtime fatal
+// error, which no recover catches. What it leaves exposed stays exposed after
+// the process is gone: until the device next empties its cache, at the next
+// full sync on that volume by any process (usually the next hook's Flush) or
+// the drive's own write-back, a power failure can lose it. Under 1.1.0 such a declaration was durable when
+// its append returned. Linux and Windows have no such window, because there
+// every barrier is a full sync: each append is durable when it returns, as
+// under 1.1.0, and Flush has nothing left to sync.
+//
+// On darwin the one full sync is the only one a hook issues once its store
+// is open, and off darwin a hook issues none beyond its barriers; a
+// first-ever hook, which creates the store, syncs the install files in full
+// before that. probe, recap and the paused path never call this, and keep a
+// full sync per append.
+//
+// After this call the Store is not for concurrent use.
+func (s *Store) DeferDurability() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deferred = true
+}
+
+// Flush is the group commit's one full sync: it makes every append since
+// DeferDurability durable. It syncs the last file appended to, and that one
+// sync covers the others: on darwin F_FULLFSYNC empties the device's whole
+// cache, persisting everything a barrier already pushed to it (fcntl(2)).
+// With nothing left to sync it does nothing: nothing appended, or every
+// append's barrier itself a full sync, as it always is off darwin and is on
+// darwin when the filesystem refuses the barrier (syncAppend). It takes no
+// lock.
+//
+// A failure is final, whether it was this sync's or a barrier's before it
+// (syncFailed): this Store never reports durability again, and a later Flush
+// returns the same error without syncing. A retried fsync can succeed
+// for pages the kernel dropped when the first one failed, which would turn
+// "possibly lost" into "fine". The caller marks the records instead, with
+// ReasonFlushFailed. A failure also ends the deferral: no later Flush can
+// cover a barrier-ordered append, so every append after it -- that marker
+// first -- is synced in full inside its own lock, as an undeferred one is.
+func (s *Store) Flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.flushErr != nil {
+		return s.flushErr
+	}
+	if s.dirty == "" {
+		return nil
+	}
+	if err := flushFile(s.dirty); err != nil {
+		return s.syncFailedLocked(err)
+	}
+	s.dirty = ""
+	return nil
+}
+
+// syncFailed makes a failed sync of a deferred append final, and is the one
+// place a failure is recorded, whether Flush's full sync failed or a barrier
+// inside an append did. The error is sticky: every later Flush returns it and
+// syncs nothing, because a retried sync can succeed for pages the kernel
+// dropped when the first one failed. And the deferral ends, because no later
+// Flush can cover a barrier-ordered append: every append after this one -- the
+// flush_failed marker first -- is synced in full inside its own lock.
+func (s *Store) syncFailed(err error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.syncFailedLocked(err)
+}
+
+// syncFailedLocked is syncFailed's body, for a caller already holding mu.
+func (s *Store) syncFailedLocked(err error) error {
+	s.flushErr = err
+	s.deferred = false
+	return err
+}
+
+// flushFile syncs path in full. It opens the file for writing as well as
+// reading, because Windows' FlushFileBuffers refuses a read-only handle.
+//
+// A reopen that fails because the run is gone -- forget or eviction removed
+// the whole directory (gaps.go's os.RemoveAll) between the append that left
+// this path dirty and this Flush -- is not a sync failure: there is nothing
+// left anywhere to make durable, and the caller marking a failure would
+// recreate the very directory that was removed (SpillTerminal's MkdirAll).
+// A path whose FILE alone is missing, its run directory still there, is a
+// real failure and falls through to the error below, unchanged.
+func flushFile(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) && runGone(path) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close() //nolint:errcheck // the sync reports the failure that matters
+	return syncFull(f)
+}
+
+// runGone reports whether path's parent directory no longer exists: the
+// difference between "this run was removed" and "this one file within a
+// surviving run is missing", which a bare ENOENT from OpenFile cannot tell
+// apart on its own.
+func runGone(path string) bool {
+	_, err := os.Stat(filepath.Dir(path))
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // AppendDeclaration records what the agent asked to run, allocating its seq.
@@ -213,7 +358,7 @@ func (s *Store) MarkProbe(sessionID string, now time.Time) error {
 		return err
 	}
 	content := []byte(strconv.FormatInt(now.UnixMilli(), 10) + "\n")
-	return writeSmall(filepath.Join(dir, FileProbe), content)
+	return writeSmall(filepath.Join(dir, FileProbe), content, syncFull)
 }
 
 // ProbeFresh reports whether the liveness probe ran for a session.
@@ -248,13 +393,13 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := LockFile(f, lockBudget)
+	unlock, err := lockCounted(f, lockBudget)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	seq, err := nextSeq(dir)
+	seq, err := nextSeq(dir, s.syncAppend)
 	if err != nil {
 		return err
 	}
@@ -265,7 +410,91 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	if _, err := f.Write(line); err != nil {
 		return err
 	}
-	return f.Sync()
+	return s.syncAppend(f)
+}
+
+// lockCounted takes f's lock, and every lock the store takes goes through
+// it: the appends', forget's and eviction's, and the readers'. The fault
+// build counts each as held until it is released, so the sync recorder can
+// say whether a sync ran inside any lock at all (REC-34); a released build
+// compiles the count away.
+func lockCounted(f *os.File, budget time.Duration) (func(), error) {
+	unlock, err := LockFile(f, budget)
+	if err != nil {
+		return nil, err
+	}
+	fault.LockTaken()
+	return func() {
+		unlock()
+		fault.LockReleased()
+	}, nil
+}
+
+// syncAppend is the durability step of every append, taken inside its lock:
+// a full sync, or on a deferred Store a barrier, which leaves the full sync
+// to Flush. A barrier that was itself a full sync -- every barrier off
+// darwin, and darwin's fallback -- leaves nothing to Flush: the full sync
+// that made this append durable made every earlier one on the device durable
+// too, so a deferred hook issues no sync an undeferred one would not.
+//
+// A barrier that fails is a sync that failed, and is final the way a failed
+// Flush is (syncFailed): Flush must not full-sync the same file and report it
+// durable, which on Linux, where the barrier is fsync, would be the very
+// retry it refuses.
+func (s *Store) syncAppend(f *os.File) error {
+	s.mu.Lock()
+	deferred := s.deferred
+	if deferred {
+		s.dirty = f.Name()
+	}
+	s.mu.Unlock()
+	if !deferred {
+		return syncFull(f)
+	}
+	durable, err := s.barrier(f)
+	if err == nil {
+		err = fault.Fail(fault.PointStoreBarrier)
+	}
+	if err != nil {
+		return s.syncFailed(err)
+	}
+	if durable {
+		s.mu.Lock()
+		s.dirty = ""
+		s.mu.Unlock()
+	}
+	return nil
+}
+
+// syncFull is a full sync: F_FULLFSYNC on darwin, fsync elsewhere. Every full
+// sync the store issues goes through it, the darwin barrier's fallback
+// included, so the fault build's recorder sees each one.
+func syncFull(f *os.File) error {
+	return syncAs(f, fault.SyncFull)
+}
+
+// syncFullAsBarrier is syncFull's own full sync, issued where a barrier was
+// wanted instead of after the last append: off darwin, where nothing cheaper
+// than a full sync orders a write at all (sync_other.go), and on darwin when
+// the filesystem refuses F_BARRIERFSYNC (sync_darwin.go's barrierRefused
+// fallback). The kernel call is identical to syncFull's -- it shares the
+// same fault point, PointStoreFullSync, because failing one is failing the
+// other -- but it runs INSIDE the append's lock, which is exactly what
+// SyncFull's name promises never happens. Logging it as SyncBarrierFull
+// instead keeps the recorder honest about where a real full sync ran: off
+// darwin every ordered append pays this cost, not the cheap barrier
+// SyncBarrier's name describes, and REC-34's acceptance test reads the
+// difference rather than being unable to see it.
+func syncFullAsBarrier(f *os.File) error {
+	return syncAs(f, fault.SyncBarrierFull)
+}
+
+func syncAs(f *os.File, kind string) error {
+	fault.RecordSync(kind, f.Name())
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	return fault.Fail(fault.PointStoreFullSync)
 }
 
 // spillBudget is how long a spill write waits for the spill file's lock. It is
@@ -293,7 +522,7 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := LockFile(f, budget)
+	unlock, err := lockCounted(f, budget)
 	switch {
 	case err == nil:
 		defer unlock()
@@ -305,7 +534,7 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	if _, err := f.Write(line); err != nil {
 		return err
 	}
-	return f.Sync()
+	return s.syncAppend(f)
 }
 
 func marshalLine(rec any) ([]byte, error) {
@@ -324,13 +553,14 @@ func marshalLine(rec any) ([]byte, error) {
 }
 
 // nextSeq allocates the next sequence number for a run. It must be called with
-// the run's records lock held.
+// the run's records lock held, and sync is that append's own sync.
 //
-// The counter is advanced and synced before the record that uses it is
-// written. A crash between the two skips a number, which is visible and
-// harmless; the other order could hand the same number to two records, which
-// is neither.
-func nextSeq(dir string) (int64, error) {
+// The counter is advanced and ordered before the record that uses it is
+// written: synced in full, or, on a deferred Store, put behind a barrier, so
+// it reaches stable storage no later than the record does. A crash between
+// the two skips a number, which is visible and harmless; the other order
+// could hand the same number to two records, which is neither.
+func nextSeq(dir string, sync func(*os.File) error) (int64, error) {
 	path := filepath.Join(dir, FileSeq)
 
 	last, err := readSeq(path)
@@ -343,7 +573,7 @@ func nextSeq(dir string) (int64, error) {
 	}
 
 	next := last + 1
-	if err := writeSmall(path, []byte(strconv.FormatInt(next, 10)+"\n")); err != nil {
+	if err := writeSmall(path, []byte(strconv.FormatInt(next, 10)+"\n"), sync); err != nil {
 		return 0, err
 	}
 	return next, nil
@@ -370,19 +600,19 @@ func maxSeq(recordsPath string) (int64, error) {
 	return max, err
 }
 
-// writeSmall replaces a small file's content and syncs it. It is for the seq
-// counter and the probe marker, both written under conditions where a torn
-// write is recoverable from other state.
-func writeSmall(path string, content []byte) error {
+// writeSmall replaces a small file's content and syncs it with sync. It is
+// for the seq counter and the probe marker, both written under conditions
+// where a torn write is recoverable from other state.
+func writeSmall(path string, content []byte, sync func(*os.File) error) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fileMode)
 	if err != nil {
 		return err
 	}
-	defer f.Close() //nolint:errcheck // Sync below reports the write failure
+	defer f.Close() //nolint:errcheck // sync below reports the write failure
 	if _, err := f.Write(content); err != nil {
 		return err
 	}
-	return f.Sync()
+	return sync(f)
 }
 
 // segment turns a session id into one path element that cannot escape the store.
@@ -526,7 +756,7 @@ func createExclusive(path string, content []byte) error {
 		tmp.Close() //nolint:errcheck // the write error is what matters
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := syncFull(tmp); err != nil {
 		tmp.Close() //nolint:errcheck // the sync error is what matters
 		return err
 	}
@@ -548,7 +778,7 @@ func createExclusive(path string, content []byte) error {
 	if _, err := f.Write(content); err != nil {
 		return err
 	}
-	return f.Sync()
+	return syncFull(f)
 }
 
 // DefaultCapBytes bounds the store before eviction starts removing the oldest

@@ -415,11 +415,17 @@ m("TB the session block drops the unlisted-option limit", "internal/report/text.
   "",
   "TestTestRuns_")
 
-# Re-anchored after the masked-status refactor: the writer moved to schema 4,
-# and the mutation is still "the writer stays at the version before".
-m("TB the writer stays at schema 3", "internal/store/record.go",
+# Re-anchored after REC-34's flush_failed marker got a version of its own
+# (store.FlushFailedSchemaVersion) instead of moving SchemaVersion again:
+# the call records' writer stays at 4 for good now, so the mutation this
+# guards flips direction from the earlier bumps' -- it is no longer "the
+# writer stays at the version before", it is "the writer drifts onto the
+# marker's version", which is the exact regression the fix in REC-34's own
+# mutants (REC-34_group-commit.py) exists to catch at the other end, in
+# flush.go.
+m("TB the writer moves off schema 4 again", "internal/store/record.go",
   "const SchemaVersion = 4",
-  "const SchemaVersion = 3",
+  "const SchemaVersion = 5",
   "TestSchema3_")
 m("TB test runs are counted over records that predate the test class", "internal/report/testbending.go",
   "\tif run == nil || !measuresTests(run) {\n",
@@ -692,7 +698,7 @@ m("TB a call whose declaration was lost does not stop a pair", "internal/report/
   "",
   "TestTestBending")
 m("TB a lost call with only a terminal does not stop a pair", "internal/report/testbending.go",
-  "\tfor _, t := range run.Terminals {\n\t\tif !declared[t.ToolUseID] && !denied[t.ToolUseID] {\n\t\t\tlost[t.ToolUseID] = true\n\t\t}\n\t}\n",
+  "\tfor _, t := range run.Terminals {\n\t\tif t.FlushFailed() && t.ToolUseID == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tif !declared[t.ToolUseID] && !denied[t.ToolUseID] {\n\t\t\tlost[t.ToolUseID] = true\n\t\t}\n\t}\n",
   "",
   "TestTestBending")
 m("TB a lost call's terminal is counted apart from its execution record", "internal/report/testbending.go",

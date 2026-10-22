@@ -99,7 +99,7 @@ func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
 	}
 	if records != nil {
 		defer records.Close() //nolint:errcheck // Sync reports the write failure
-		unlock, err := LockFile(records, lockBudget)
+		unlock, err := lockCounted(records, lockBudget)
 		if err != nil {
 			return nil, err
 		}
@@ -217,7 +217,7 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 		return nil, err
 	}
 	defer gf.Close() //nolint:errcheck // Sync per record reports write failures
-	unlock, err := LockFile(gf, lockBudget)
+	unlock, err := lockCounted(gf, lockBudget)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +302,7 @@ func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, err
 		if _, err := gf.Write(line); err != nil {
 			return gaps, err
 		}
-		if err := gf.Sync(); err != nil {
+		if err := syncFull(gf); err != nil {
 			return gaps, err
 		}
 		if err := os.RemoveAll(filepath.Join(runsDir, c.name)); err != nil {
@@ -405,7 +405,7 @@ func rewrite(f *os.File, lines [][]byte) error {
 			return err
 		}
 	}
-	return f.Sync()
+	return syncFull(f)
 }
 
 // rewriteAt rewrites the spill file under its lock. Spill writers wait only
@@ -419,7 +419,7 @@ func rewriteAt(path string, lines [][]byte) error {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // Sync reports the write failure
-	unlock, err := LockFile(f, lockBudget)
+	unlock, err := lockCounted(f, lockBudget)
 	if err != nil {
 		return err
 	}
@@ -530,7 +530,7 @@ func (s *Store) recordForgottenHost(digest string, now time.Time) error {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
-	unlock, err := LockFile(f, lockBudget)
+	unlock, err := lockCounted(f, lockBudget)
 	if err != nil {
 		return err
 	}
@@ -549,7 +549,7 @@ func (s *Store) recordForgottenHost(digest string, now time.Time) error {
 	if _, err := f.Write(line); err != nil {
 		return err
 	}
-	return f.Sync()
+	return syncFull(f)
 }
 
 func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
@@ -562,7 +562,7 @@ func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
 	}
 	if records != nil {
 		defer records.Close() //nolint:errcheck // Sync reports the write failure
-		unlock, err := LockFile(records, lockBudget)
+		unlock, err := lockCounted(records, lockBudget)
 		if err != nil {
 			return nil, err
 		}

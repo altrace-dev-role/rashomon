@@ -47,7 +47,8 @@ func TestMasked_APipedTestUnderAPassClaimIsFlagged(t *testing.T) {
 		t.Error("runner_digest is null")
 	}
 	if got := decls[0].fields["schema_version"]; got != float64(4) {
-		t.Errorf("schema_version = %v, want 4", got)
+		t.Errorf("schema_version = %v, want 4: an ordinary declaration carries none of the "+
+			"flush_failed marker's v5 content, and store.FlushFailedSchemaVersion is only for that marker", got)
 	}
 	for _, r := range s.e.records(testSession) {
 		for _, leak := range []string{"tail", "-40", "2>&1"} {

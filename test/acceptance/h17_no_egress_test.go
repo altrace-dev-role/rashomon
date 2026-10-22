@@ -342,6 +342,16 @@ var rawSyscalls = []string{
 	"os.StartProcess(", "syscall.StartProcess(", "syscall.RawSyscall(", "syscall.Syscall(",
 }
 
+// sanctionedRawCalls names, per file, the one raw call it may make, by its
+// exact text. syscall.Syscall is a generic trap, so the scan cannot tell a
+// call that reaches neither a socket nor a process from one that does; the
+// store's darwin barrier is fcntl(F_BARRIERFSYNC), which the syscall package
+// has no wrapper for (internal/store/sync_darwin.go). Any other raw call in
+// that file, or the same trap with another number, is still caught.
+var sanctionedRawCalls = map[string]string{
+	"internal/store/sync_darwin.go": "syscall.Syscall(syscall.SYS_FCNTL, fd, fBarrierFsync, 0)",
+}
+
 // TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport backs the
 // README's "no network code of its own" over the one path the import scan
 // cannot cover. Every *.go file in this module, not only the recorder's: the
@@ -349,6 +359,7 @@ var rawSyscalls = []string{
 // above already covers one process at runtime, which is narrower.
 func TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport(t *testing.T) {
 	var files int
+	sanctioned := map[string]bool{}
 	err := filepath.WalkDir(moduleRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -371,8 +382,16 @@ func TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport(t *testin
 		if err != nil {
 			rel = path
 		}
+		text := string(body)
+		if call, ok := sanctionedRawCalls[filepath.ToSlash(rel)]; ok {
+			sanctioned[filepath.ToSlash(rel)] = true
+			if n := strings.Count(text, call); n != 1 {
+				t.Errorf("%s is sanctioned to make %s once and makes it %d times", rel, call, n)
+			}
+			text = strings.Replace(text, call, "", 1)
+		}
 		for _, call := range rawSyscalls {
-			if strings.Contains(string(body), call) {
+			if strings.Contains(text, call) {
 				t.Errorf("%s calls %s, which reaches a socket or starts a process "+
 					"without going through an import the scan above would catch", rel, call)
 			}
@@ -381,6 +400,11 @@ func TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport(t *testin
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	for file := range sanctionedRawCalls {
+		if !sanctioned[file] {
+			t.Errorf("%s is sanctioned a raw call and is no longer in the tree; remove the entry", file)
+		}
 	}
 	// The failure mode of every source-scanning check is to scan nothing.
 	if files < 50 {

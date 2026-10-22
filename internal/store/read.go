@@ -223,7 +223,7 @@ func eachLineLocked(path string, budget time.Duration, fn func(line []byte)) err
 	}
 	defer f.Close() //nolint:errcheck // read-only
 
-	if unlock, lerr := LockFile(f, budget); lerr == nil {
+	if unlock, lerr := lockCounted(f, budget); lerr == nil {
 		defer unlock()
 	}
 	return scanLines(f, fn)
@@ -247,10 +247,13 @@ func scanLines(f *os.File, fn func(line []byte)) error {
 
 // Unterminated returns the tool_use_ids of declarations that no terminal
 // record closes: the signature of a handler that was killed between the two.
+// A flush_failed marker closes nothing (Terminal.FlushFailed).
 func (r *Run) Unterminated() []string {
 	closed := map[string]bool{}
 	for _, t := range r.Terminals {
-		closed[t.ToolUseID] = true
+		if !t.FlushFailed() {
+			closed[t.ToolUseID] = true
+		}
 	}
 	var ids []string
 	for _, d := range r.Declarations {
@@ -281,7 +284,8 @@ func (r *Run) Unexecuted() []string {
 
 // Dropped returns the tool_use_ids of terminals that close no declaration: a
 // declaration that could not be written, whose terminal carried its id to the
-// spill file so the drop is visible under its name.
+// spill file so the drop is visible under its name. A flush_failed marker is
+// not such a terminal (Terminal.FlushFailed).
 func (r *Run) Dropped() []string {
 	declared := map[string]bool{}
 	for _, d := range r.Declarations {
@@ -289,7 +293,42 @@ func (r *Run) Dropped() []string {
 	}
 	var ids []string
 	for _, t := range r.Terminals {
-		if !declared[t.ToolUseID] {
+		if !declared[t.ToolUseID] && !t.FlushFailed() {
+			ids = append(ids, t.ToolUseID)
+		}
+	}
+	return ids
+}
+
+// NotDurable returns the tool_use_ids flush_failed markers name, each once,
+// in the order the markers were read: calls whose records a hook or post
+// appended and then could not make durable (REC-34 (c)). A marker naming no
+// call names nothing here; the report still marks its session.
+//
+// Nor does one naming a call with no record of any kind. A marker's own
+// write is the LAST thing a failing invocation does: the record it speaks
+// for -- Handler's declaration, or Post's execution, per the marker's Phase
+// -- is appended earlier in the same process, through the same ordered-append
+// path (appendOrdered). When that append's own barrier is what fails -- the
+// shared seq counter's, ahead of the record's own write -- the record is
+// never written at all, and flushOrMark still fires on the sticky failure
+// Flush now returns. Listing that id here would call a declaration or
+// execution possibly not durable when there never was one to lose. Dropped
+// excludes a flush_failed marker for the complementary reason, so the two
+// lists never both name the same call.
+func (r *Run) NotDurable() []string {
+	hasRecord := map[string]bool{}
+	for _, d := range r.Declarations {
+		hasRecord[d.ToolUseID] = true
+	}
+	for _, x := range r.Executions {
+		hasRecord[x.ToolUseID] = true
+	}
+	seen := map[string]bool{}
+	var ids []string
+	for _, t := range r.Terminals {
+		if t.FlushFailed() && t.ToolUseID != "" && hasRecord[t.ToolUseID] && !seen[t.ToolUseID] {
+			seen[t.ToolUseID] = true
 			ids = append(ids, t.ToolUseID)
 		}
 	}

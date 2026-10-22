@@ -471,7 +471,7 @@
     },
     "terminal": {
       "title": "terminal",
-      "description": "Closes a declaration on every exit path the recorder controls: a clean return, an error return, and SIGTERM. SIGKILL is not catchable, so a declaration with no terminal is the signature of the uncontrolled path, and that absence is the only honest record of it.",
+      "description": "Closes a declaration on every exit path the recorder controls: a clean return, an error return, and SIGTERM. SIGKILL is not catchable, so a declaration with no terminal is the signature of the uncontrolled path, and that absence is the only honest record of it. A terminal whose reason is flush_failed is the exception: it closes nothing. It marks the call's records as possibly not durable, because a sync that should have made them durable failed, the hook's one full sync or a barrier before it (REC-34), so a reader must not let it close a declaration whose own terminal never landed, nor count it as a declaration the lock dropped.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -483,6 +483,25 @@
         "session_id",
         "outcome",
         "reason"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 5
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "phase"
+            ]
+          }
+        }
       ],
       "properties": {
         "type": {
@@ -496,7 +515,8 @@
             1,
             2,
             3,
-            4
+            4,
+            5
           ]
         },
         "seq": {
@@ -532,7 +552,20 @@
             null,
             "terminated_by_signal",
             "lock_timeout",
-            "internal_error"
+            "internal_error",
+            "flush_failed"
+          ]
+        },
+        "phase": {
+          "description": "Which invocation wrote this terminal. Null on an ordinary closing terminal, always Handler's own PreToolUse. Set only on a flush_failed marker: call means the declaration this invocation wrote may not be durable, post means the execution a separate, earlier invocation appended may not be.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "call",
+            "post"
           ]
         }
       }
