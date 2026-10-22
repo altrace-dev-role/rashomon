@@ -40,8 +40,16 @@ const (
 // chunks growing to 64 KiB, then one exact-size copy. It reads at most
 // MaxPayloadBytes+1 bytes, so an over-cap payload is refused after a bounded
 // read, as io.ReadAll over io.LimitReader refused it, without its doubling.
+//
+// The refusal is Intake's: a *TooLargeError naming the session id and cwd
+// the payload's head carries, so a caller that reads first and hands the
+// error on -- the host guard's replay -- still lets the refusal be recorded
+// in the run the payload names rather than in the unattributed one.
 func Read(r io.Reader) ([]byte, error) {
-	out, _, err := read(r)
+	out, head, err := read(r)
+	if errors.Is(err, ErrTooLarge) {
+		return nil, refused(head)
+	}
 	return out, err
 }
 

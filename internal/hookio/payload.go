@@ -67,9 +67,15 @@ var payloadKeys = jsonscan.NewFoldKeySet(KeyNames()...)
 // Intake reads one payload (Read), validates it with json.Valid and records
 // the spans of its top-level keys in one walk (jsonscan.Top). It serves the
 // buffered entries: hook, post and probe. A payload over the cap is refused
-// with a *TooLargeError.
+// with a *TooLargeError. A reader whose own error already is one -- the
+// host guard's replay of Read's refusal -- has it passed on as it is: that
+// refusal read the head, and this read, which sees no bytes, has none.
 func Intake(r io.Reader) (*Payload, error) {
 	raw, head, err := read(r)
+	var tl *TooLargeError
+	if errors.As(err, &tl) {
+		return nil, tl
+	}
 	if errors.Is(err, ErrTooLarge) {
 		return nil, refused(head)
 	}

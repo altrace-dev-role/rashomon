@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -74,5 +75,32 @@ func TestHarnessSessionKey_NonCursorUsesSessionID(t *testing.T) {
 func TestHarnessSessionKey_NilPayloadIsEmpty(t *testing.T) {
 	if got := harnessSessionKey(nil, harness.Identity{ID: harness.Cursor}); got != "" {
 		t.Errorf("harnessSessionKey(nil, ...) = %q, want \"\"", got)
+	}
+}
+
+// TestRES4_TheHostGuardKeepsAnOverCapPayloadsSession: the guard reads stdin
+// once, and an over-cap payload's refusal reaches Intake through its replay,
+// as many times as a caller asks; each time it must name the session and
+// cwd the payload's head carries, so the gap is recorded in the run that
+// sent it. Break: Read returns a bare ErrTooLarge, or Intake refuses the
+// replay afresh from the empty head it reads, and the gap lands in the
+// unattributed run.
+func TestRES4_TheHostGuardKeepsAnOverCapPayloadsSession(t *testing.T) {
+	head := `{"session_id":"s-big","cwd":"/p","tool_name":"Write","tool_input":{"content":"`
+	tail := `"}}`
+	raw := head + strings.Repeat("x", hookio.MaxPayloadBytes+1-len(head)-len(tail)) + tail
+	payload, replay, down := claudeHostGuard(strings.NewReader(raw))
+	if down || payload != nil {
+		t.Fatalf("guard: down %v payload %v, want a refusal handed on", down, payload)
+	}
+	for i := 0; i < 2; i++ {
+		_, err := hookio.Intake(replay())
+		var tl *hookio.TooLargeError
+		if !errors.As(err, &tl) {
+			t.Fatalf("replay %d: %v, want a *TooLargeError", i, err)
+		}
+		if tl.SessionID != "s-big" || tl.CWD != "/p" {
+			t.Fatalf("replay %d: session %q cwd %q, want s-big /p", i, tl.SessionID, tl.CWD)
+		}
 	}
 }

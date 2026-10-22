@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 )
@@ -90,6 +91,27 @@ func overCap(head string) []byte {
 	head += `"tool_name":"Write","tool_input":{"content":"`
 	tail := `"}}`
 	return []byte(head + strings.Repeat("x", MaxPayloadBytes+1-len(head)-len(tail)) + tail)
+}
+
+// TestRES4_ReadRefusesAsIntakeDoes: Read's refusal names the session and
+// cwd in the payload's head as Intake's does, and Intake hands on a refusal
+// its reader returns rather than re-deriving one from a head it never saw.
+// The host guard reads with Read and replays the error to Intake. Break
+// either, and every refusal behind the guard lands in the unattributed run.
+func TestRES4_ReadRefusesAsIntakeDoes(t *testing.T) {
+	_, err := Read(bytes.NewBuffer(overCap(`{"session_id":"s-big","cwd":"/p",`)))
+	var tl *TooLargeError
+	if !errors.As(err, &tl) {
+		t.Fatalf("Read: %v (%T), want a *TooLargeError", err, err)
+	}
+	if tl.SessionID != "s-big" || tl.CWD != "/p" {
+		t.Fatalf("Read: session %q cwd %q, want s-big /p", tl.SessionID, tl.CWD)
+	}
+	_, err = Intake(iotest.ErrReader(tl))
+	var got *TooLargeError
+	if !errors.As(err, &got) || got != tl {
+		t.Fatalf("Intake over a replayed refusal: %v, want the refusal itself", err)
+	}
 }
 
 // TestRES4_TooLargeNamesTheSessionInItsHead: a refused payload is not
