@@ -9,7 +9,7 @@
 m("H-146 a Codex command line carries no --harness", "internal/install/codex.go",
   "const CodexFlag = \" --harness codex\"", "const CodexFlag = \"\"", "TestCodexCommand|TestH146_WatchCodexInstalls")
 m("H-146 SessionEnd is installed under Codex", "internal/install/codex.go",
-  "\tEventPostToolUse,\n\tEventSessionStart,\n}", "\tEventPostToolUse,\n\tEventSessionStart,\n\tEventSessionEnd,\n}",
+  "\tEventSessionStart,\n\tEventStop,\n}", "\tEventSessionStart,\n\tEventStop,\n\tEventSessionEnd,\n}",
   "TestCodexEventsLeaveOutWhatCodexCannotUse|TestH146_WatchCodexInstalls")
 m("H-146 detach --harness codex removes by Claude Code's command lines", "internal/install/codex.go",
   "\treturn codex.removeIf(doc, match, force)", "\treturn claudeCode.removeIf(doc, match, force)",

@@ -11,8 +11,16 @@ m("H-149 an exit code that is not an integer is read anyway", "internal/report/c
   "\t\tcode, err := strconv.Atoi(string(bytes.TrimSpace(it.ExitCode)))",
   "\t\tcode, err := strconv.Atoi(string(bytes.Trim(it.ExitCode, \"\\\" \")))", "TestH149_")
 m("H-149 a file change that completed reads as failed", "internal/report/codex.go",
-  "\t\tif json.Unmarshal(it.Status, &status) == nil && status == \"failed\" {",
-  "\t\tif json.Unmarshal(it.Status, &status) == nil && status != \"\" {", "TestH149_")
+  "\t\tcase \"completed\":\n\t\t\treturn store.ExecOK, 0, true", "\t\tcase \"completed\":\n\t\t\treturn store.ExecFailed, 0, true",
+  "TestH149_")
+m("H-149 a file change that completed is not judged", "internal/report/codex.go",
+  "\t\tcase \"completed\":\n\t\t\treturn store.ExecOK, 0, true", "\t\tcase \"Completed\":\n\t\t\treturn store.ExecOK, 0, true",
+  "TestH149_")
+m("H-149 a file change that failed reads as ok", "internal/report/codex.go",
+  "\t\tcase \"failed\":\n\t\t\treturn store.ExecFailed, 0, true", "\t\tcase \"failed\":\n\t\t\treturn store.ExecOK, 0, true",
+  "TestH149_")
+m("H-149 a file change status is matched loosely", "internal/report/codex.go",
+  "\t\tswitch status {", "\t\tswitch string(bytes.ToLower([]byte(status))) {", "TestH149_")
 m("H-149 every item is judged as a command", "internal/report/codex.go",
   "\tswitch it.Type {\n\tcase codexCommand:", "\tswitch codexCommand {\n\tcase codexCommand:", "TestH149_")
 m("H-149 a conflicting second entry wins", "internal/report/codex.go",

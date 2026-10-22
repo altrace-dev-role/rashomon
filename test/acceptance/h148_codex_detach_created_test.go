@@ -73,7 +73,7 @@ func TestH148_DetachDeletesTheHooksFileWatchCreated(t *testing.T) {
 		mustWatchCodex(t, e)
 		withUser := strings.Replace(string(e.codexBytes()), `"hooks": {`,
 			`"hooks": {
-    "Stop": [{"hooks":[{"type":"command","command":"notify-me"}]}],`, 1)
+    "UserPromptSubmit": [{"hooks":[{"type":"command","command":"notify-me"}]}],`, 1)
 		if err := os.WriteFile(e.codexPath(), []byte(withUser), 0o600); err != nil {
 			t.Fatal(err)
 		}

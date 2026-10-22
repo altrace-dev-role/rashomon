@@ -38,6 +38,7 @@ var codexWant = map[string]struct {
 	"PreToolUse":   {"hook", true},
 	"PostToolUse":  {"post", true},
 	"SessionStart": {"probe start", false},
+	"Stop":         {"recap", false},
 }
 
 func (e *env) codexPath() string { return filepath.Join(e.codexDir, "hooks.json") }
@@ -106,7 +107,7 @@ func TestH146_WatchCodexInstallsEntriesThatRecordWhenRun(t *testing.T) {
 	id := e.installID()
 	for _, want := range []string{
 		"watching Codex (install " + id + ") via " + e.codexPath(),
-		"run /hooks, and trust the rashomon entries for PreToolUse, PostToolUse, SessionStart. Until then nothing is recorded.",
+		"run /hooks, and trust the rashomon entries for PreToolUse, PostToolUse, SessionStart, Stop. Until then nothing is recorded.",
 		"coverage: unverified (hook_entry_unresolved), trusted or not",
 		"not checked: whether hooks = false under [features]",
 		"rashomon detach --harness codex --install " + id + "\n",
@@ -135,8 +136,14 @@ func TestH146_WatchCodexInstallsEntriesThatRecordWhenRun(t *testing.T) {
 			continue
 		}
 		h := mine[0].Hooks[0]
-		if !strings.HasSuffix(h.Command, " "+want.sub+" --harness codex --install "+id) || h.Type != "command" || h.Timeout != 5 {
-			t.Errorf("%s: %+v, want a command ending %q with timeout 5", event, h, want.sub+" --harness codex --install "+id)
+		// Stop runs recap, which reads the whole run to find its turn, and has
+		// recap's wider timeout under both harnesses.
+		timeout := 5
+		if event == "Stop" {
+			timeout = 10
+		}
+		if !strings.HasSuffix(h.Command, " "+want.sub+" --harness codex --install "+id) || h.Type != "command" || h.Timeout != timeout {
+			t.Errorf("%s: %+v, want a command ending %q with timeout %d", event, h, want.sub+" --harness codex --install "+id, timeout)
 		}
 		if got := mine[0].Matcher != nil && *mine[0].Matcher == "*"; got != want.matcher {
 			t.Errorf("%s: matcher %v, want \"*\" only on the tool events", event, mine[0].Matcher)
@@ -169,8 +176,10 @@ func TestH146_WatchCodexInstallsEntriesThatRecordWhenRun(t *testing.T) {
 			t.Errorf("%s: exit %d, stdout %q, stderr %q; want 0 and silence", filepath.Base(path), res.exitCode, res.stdout, res.stderr)
 		}
 	}
-	if ran["PreToolUse"] != 7 || ran["PostToolUse"] != 7 || ran["SessionStart"] != 2 {
-		t.Fatalf("ran %v, want 7 PreToolUse, 7 PostToolUse and 2 SessionStart", ran)
+	// Stop runs recap, on turns whose rollouts are not on disk: nothing is
+	// judged, so there is nothing to say, and a clean turn prints nothing.
+	if ran["PreToolUse"] != 7 || ran["PostToolUse"] != 7 || ran["SessionStart"] != 2 || ran["Stop"] != 5 {
+		t.Fatalf("ran %v, want 7 PreToolUse, 7 PostToolUse, 2 SessionStart and 5 Stop", ran)
 	}
 	const session = "01a15f65-82dd-7020-afc6-a28414a29cad"
 	if got := len(e.declarations(session)); got != 7 {
@@ -205,7 +214,7 @@ func TestH146_WatchCodexInstallsEntriesThatRecordWhenRun(t *testing.T) {
 	}
 
 	res = e.detachCodex()
-	if res.exitCode != 0 || !strings.Contains(res.stdout, "detached from Codex (install "+id+", 3 entries)") {
+	if res.exitCode != 0 || !strings.Contains(res.stdout, "detached from Codex (install "+id+", 4 entries)") {
 		t.Fatalf("detach --harness codex: exit %d, stdout %q, stderr %q", res.exitCode, res.stdout, res.stderr)
 	}
 	if got, want := canonicalJSON(t, e.codexBytes()), canonicalJSON(t, []byte(codexSeed)); got != want {
@@ -337,7 +346,7 @@ func TestH146_DetachCodexRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	res = e.detachCodex("--all", "--force")
-	if res.exitCode != 0 || !strings.Contains(res.stdout, "detached from Codex (every install, 3 entries)") ||
+	if res.exitCode != 0 || !strings.Contains(res.stdout, "detached from Codex (every install, 4 entries)") ||
 		!strings.Contains(res.stdout, "removed the Codex PreToolUse entry you had edited") {
 		t.Errorf("detach --all --force: exit %d, stdout %q, stderr %q", res.exitCode, res.stdout, res.stderr)
 	}
@@ -395,7 +404,7 @@ func TestH146_StatusReportsCodexOnlyWhereThereIsCodex(t *testing.T) {
 	res = e.status()
 	for _, want := range []string{
 		"codex: " + e.codexPath() + "\n",
-		"  PreToolUse: absent\n  PostToolUse: absent\n  SessionStart: absent\n",
+		"  PreToolUse: absent\n  PostToolUse: absent\n  SessionStart: absent\n  Stop: absent\n",
 		"  trust: not readable by rashomon; Codex skips an entry until it is trusted in /hooks",
 		"  hooks = false in config.toml or requirements.toml: not checked\n",
 	} {
@@ -408,7 +417,7 @@ func TestH146_StatusReportsCodexOnlyWhereThereIsCodex(t *testing.T) {
 		t.Fatalf("watch --harness codex: %q", res.stderr)
 	}
 	res = e.status()
-	if !strings.Contains(res.stdout, "  PreToolUse: present\n  PostToolUse: present\n  SessionStart: present\n  other installs: none\n  trust: ") {
+	if !strings.Contains(res.stdout, "  PreToolUse: present\n  PostToolUse: present\n  SessionStart: present\n  Stop: present\n  other installs: none\n  trust: ") {
 		t.Errorf("status after watch --harness codex:\n%s", res.stdout)
 	}
 

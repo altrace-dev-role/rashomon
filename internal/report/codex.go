@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -56,10 +58,17 @@ type codexRollout struct {
 	codes map[string]int
 }
 
+// errRolloutBudget is readCodexRollout running out of time.
+var errRolloutBudget = errors.New("report: rollout not read within its time budget")
+
 // readCodexRollout reads the item_completed entries of the rollout at path.
 // A line that is not JSON, or not an item_completed entry, is skipped. An id
 // seen twice with two different outcomes is judged neither.
-func readCodexRollout(path string) (*codexRollout, error) {
+//
+// A non-zero deadline bounds the read, and a read that reaches it fails whole:
+// a call's own item is near the end of the file, and a rollout read in part
+// would judge what it happened to reach, a conflicting later entry included.
+func readCodexRollout(path string, deadline time.Time) (*codexRollout, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -76,6 +85,9 @@ func readCodexRollout(path string) (*codexRollout, error) {
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 256*1024), maxLine)
 	for sc.Scan() {
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			return nil, errRolloutBudget
+		}
 		var line struct {
 			Type    string `json:"type"`
 			Payload struct {
@@ -113,12 +125,12 @@ func readCodexRollout(path string) (*codexRollout, error) {
 // codexOutcome judges one item, and reports false for one it cannot judge.
 //
 // A command is judged by its exit code alone: 0 is ok, any other integer is
-// failed. A file change is judged only when its status is "failed". Every
-// other case -- another item type, a missing field, an exit code that is not
-// an integer, a status this build does not know, a file change that
-// completed -- is not judged, and the execution stays unobserved. Decided by
-// Rishi, for Karthik's review: the rule names what each value means, and
-// guesses nothing it does not name.
+// failed. A file change is judged by its status: "completed" is ok, "failed"
+// is failed. Every other case -- another item type, a missing field, an exit
+// code that is not an integer, a status this build does not know -- is not
+// judged, and the execution stays unobserved. Decided by Rishi, for Karthik's
+// review: the rule names what each value means, and guesses nothing it does
+// not name.
 func codexOutcome(it codexItem) (string, int, bool) {
 	switch it.Type {
 	case codexCommand:
@@ -132,7 +144,13 @@ func codexOutcome(it codexItem) (string, int, bool) {
 		return store.ExecFailed, code, true
 	case codexFileChange:
 		var status string
-		if json.Unmarshal(it.Status, &status) == nil && status == "failed" {
+		if json.Unmarshal(it.Status, &status) != nil {
+			return "", 0, false
+		}
+		switch status {
+		case "completed":
+			return store.ExecOK, 0, true
+		case "failed":
 			return store.ExecFailed, 0, true
 		}
 	}
@@ -140,8 +158,8 @@ func codexOutcome(it codexItem) (string, int, bool) {
 }
 
 // codexRollouts reads every rollout a run's declarations name, by path. A
-// rollout that cannot be read is absent from the map.
-func codexRollouts(run *store.Run) map[string]*codexRollout {
+// rollout that cannot be read, or not before deadline, is absent from the map.
+func codexRollouts(run *store.Run, deadline time.Time) map[string]*codexRollout {
 	out := map[string]*codexRollout{}
 	tried := map[string]bool{}
 	for _, d := range run.Declarations {
@@ -149,11 +167,19 @@ func codexRollouts(run *store.Run) map[string]*codexRollout {
 			continue
 		}
 		tried[d.TranscriptPath] = true
-		if r, err := readCodexRollout(d.TranscriptPath); err == nil {
+		if r, err := readCodexRollout(d.TranscriptPath, deadline); err == nil {
 			out[d.TranscriptPath] = r
 		}
 	}
 	return out
+}
+
+// CodexOutcomesFromRollouts reads a Codex run's rollouts, stopping at
+// deadline, and sets the outcomes they judge (CodexOutcomesAsRan). It is the
+// turn digest's way in: the digest runs inside recap's five-second hook
+// timeout, and a rollout not read in time leaves its calls unobserved.
+func CodexOutcomesFromRollouts(run *store.Run, deadline time.Time) {
+	CodexOutcomesAsRan(run, codexRollouts(run, deadline))
 }
 
 // CodexOutcomesAsRan sets, in memory, the outcome of each Codex execution its

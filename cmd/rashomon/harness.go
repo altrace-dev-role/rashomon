@@ -22,15 +22,21 @@ func harnessOrStandDown(args []string, stderr io.Writer) (hook.Harness, bool) {
 	return h, ok
 }
 
-// recapSpeaksFor reports whether recap may print for this command line.
+// recapSpeaksFor reports whether recap may print for this command line, and
+// under which harness.
 //
-// Under Codex it never does. recap's line is a JSON systemMessage on a Stop
-// hook's stdout, which is how Claude Code shows a hook's words to a person;
-// how Codex reads a Stop hook's stdout has not been measured, and an output
-// it took for an instruction would change what the agent does next -- the one
-// effect this program must never have. An unknown harness stands down, as
-// the recorders do.
-func recapSpeaksFor(args []string, stderr io.Writer) bool {
+// Under Codex it speaks only at Stop. Codex shows a Stop hook's JSON
+// systemMessage to the user as a warning; only a decision to block, or exit
+// 2, would make the agent continue, and recap writes neither (Codex's Stop
+// output schema and its hooks page). The pending catch-up runs on
+// UserPromptSubmit, where Codex adds a hook's plain stdout to the model's
+// context: one malformed line there would reach the agent, which this program
+// must never do, so under Codex it prints nothing, installed or not. An
+// unknown harness stands down, as the recorders do.
+func recapSpeaksFor(args []string, stderr io.Writer) (hook.Harness, bool) {
 	h, ok := harnessOrStandDown(args, stderr)
-	return ok && h == hook.ClaudeCode
+	if !ok || (h == hook.Codex && recapPending(args)) {
+		return h, false
+	}
+	return h, true
 }

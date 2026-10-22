@@ -668,7 +668,7 @@ func build(run *store.Run) Session {
 		// Read once, here, for both uses. The outcomes are set on run, in
 		// memory, before anything that counts them is built: build returns
 		// before the chains, the timeline and the failure counts are.
-		rollouts = codexRollouts(run)
+		rollouts = codexRollouts(run, time.Time{})
 		CodexOutcomesAsRan(run, rollouts)
 	}
 	for _, path := range paths {

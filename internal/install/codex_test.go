@@ -18,6 +18,7 @@ func TestCodexCommand(t *testing.T) {
 		EventPreToolUse:   "/usr/local/bin/rashomon hook --harness codex --install " + oneID,
 		EventPostToolUse:  "/usr/local/bin/rashomon post --harness codex --install " + oneID,
 		EventSessionStart: "/usr/local/bin/rashomon probe start --harness codex --install " + oneID,
+		EventStop:         "/usr/local/bin/rashomon recap --harness codex --install " + oneID,
 	} {
 		if got := spec(oneID).CodexCommand(event); got != want {
 			t.Errorf("%s: %q, want %q", event, got, want)
@@ -27,9 +28,10 @@ func TestCodexCommand(t *testing.T) {
 
 // TestCodexEventsLeaveOutWhatCodexCannotUse: no failure events (Codex has
 // none), no SessionEnd (never fired, and capped under our timeout), and no
-// recap entries (recap is silent under Codex).
+// UserPromptSubmit (where Codex gives a hook's stdout to the model). Stop
+// runs recap.
 func TestCodexEventsLeaveOutWhatCodexCannotUse(t *testing.T) {
-	want := []string{EventPreToolUse, EventPostToolUse, EventSessionStart}
+	want := []string{EventPreToolUse, EventPostToolUse, EventSessionStart, EventStop}
 	if fmt.Sprint(CodexEvents) != fmt.Sprint(want) {
 		t.Errorf("CodexEvents = %v, want %v", CodexEvents, want)
 	}
@@ -73,7 +75,7 @@ func TestApplyCodexIsANoOpTheSecondTime(t *testing.T) {
 			t.Errorf("%s: present %v, %v after ApplyCodex", event, ok, err)
 		}
 	}
-	for _, event := range []string{EventPostToolUseFailure, EventSessionEnd, EventStop, EventStopFailure, EventUserPromptSubmit} {
+	for _, event := range []string{EventPostToolUseFailure, EventSessionEnd, EventStopFailure, EventUserPromptSubmit} {
 		if entries := entriesOf(t, doc, event); len(entries) != 0 {
 			t.Errorf("%s: %d entries installed, want none", event, len(entries))
 		}

@@ -7,18 +7,20 @@ import (
 // CodexEvents are the Codex hook events watch --harness codex installs into,
 // in the order they are installed.
 //
-// Three, where Claude Code gets eight. Codex has no PostToolUseFailure and no
-// StopFailure: a failed call fires a plain PostToolUse, which is why a Codex
-// execution's outcome is left unobserved. SessionEnd is left out because it
-// never fired in the capture (test/fixtures/codex), and because Codex caps
+// Four, where Claude Code gets eight. Codex has no PostToolUseFailure and no
+// StopFailure: a failed call fires a plain PostToolUse, and its outcome is
+// read from the rollout at report time instead. SessionEnd is left out because
+// it never fired in the capture (test/fixtures/codex), and because Codex caps
 // that event's timeout at three seconds, under the five this program's
-// entries are held to. Stop and UserPromptSubmit are left out because recap
-// prints nothing under Codex: the entries would ask the user to trust two
-// commands that do nothing, and put a process on every turn for it.
+// entries are held to. Stop runs recap, which speaks under Codex. Its
+// UserPromptSubmit catch-up is left out: there Codex adds a hook's plain
+// stdout to the model's context, and recap prints nothing on it under Codex
+// anyway, so the entry would be one more to trust for nothing.
 var CodexEvents = []string{
 	EventPreToolUse,
 	EventPostToolUse,
 	EventSessionStart,
+	EventStop,
 }
 
 // CodexFlag is what a Codex command line carries between the subcommand and
@@ -39,6 +41,8 @@ func codexSubcommand(event string) string {
 		return "post"
 	case EventSessionStart:
 		return "probe start"
+	case EventStop:
+		return "recap"
 	}
 	return ""
 }

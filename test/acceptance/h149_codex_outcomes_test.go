@@ -16,7 +16,8 @@ import (
 // command's item_completed entry carrying the record's tool_use_id as item.id,
 // with an integer exit_code and a status. The rule, decided by Rishi for
 // Karthik's review: a command with exit 0 is ok and any other integer is
-// failed; a file change whose status is failed is failed; anything else --
+// failed; a file change whose status is completed is ok, and failed is
+// failed; anything else --
 // no matching id, a missing field, a value not named -- stays unobserved.
 //
 // The first test replays phase 4's eight calls through the real hook entry
@@ -183,7 +184,7 @@ func TestH149_Phase4RunsTakeTheirOutcomesFromTheRollout(t *testing.T) {
 	want := map[string]string{
 		p4FirstRg: "failed", // exit 2: rg could not read directories under ~
 		p4Cat:     "ok",
-		p4Patch:   unobservedLink, // a file change that completed: not a value the rule names
+		p4Patch:   "ok", // a file change that completed
 		p4Calc:    "ok",
 		p4Missing: "failed",       // exit 2
 		p4Spawn:   unobservedLink, // not a command or a file change
@@ -212,9 +213,10 @@ func TestH149_Phase4RunsTakeTheirOutcomesFromTheRollout(t *testing.T) {
 	if text := e.run("", nil, "report", "--timeline", "--session", p4Session2).stdout; !strings.Contains(text, "failed (exit 2)") {
 		t.Errorf("session 2 timeline does not name exit 2:\n%s", text)
 	}
-	// The first session's rg failed, which the hooks could not tell.
-	if s1.SilentFailures.Failed != 1 || s1.SilentFailures.Unobserved != 1 {
-		t.Errorf("session 1: %d failed, %d unobserved; want 1 and 1", s1.SilentFailures.Failed, s1.SilentFailures.Unobserved)
+	// The first session's rg failed, which the hooks could not tell, and the
+	// rest of it, the patch included, is judged.
+	if s1.SilentFailures.Failed != 1 || s1.SilentFailures.Unobserved != 0 {
+		t.Errorf("session 1: %d failed, %d unobserved; want 1 and 0", s1.SilentFailures.Failed, s1.SilentFailures.Unobserved)
 	}
 
 	// The rollout and the store agree, both sessions, all three rollouts.
@@ -299,8 +301,11 @@ func TestH149_AnItemThatDoesNotSayStaysUnobserved(t *testing.T) {
 	got := rep.outcomes()
 	for _, id := range ids {
 		want := unobservedLink
-		if id == "exec-patch-failed" {
-			want = "failed" // the one item here that says how its call ended
+		switch id {
+		case "exec-patch-failed":
+			want = "failed"
+		case "exec-patch-done":
+			want = "ok"
 		}
 		if got[id] != want {
 			t.Errorf("%s: outcome %q, want %q", id, got[id], want)

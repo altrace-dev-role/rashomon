@@ -382,7 +382,8 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	_ = safe.Guard(func() error {
 		fault.Inject(fault.PointRecapStart)
 
-		if !recapSpeaksFor(args, stderr) {
+		harness, speaks := recapSpeaksFor(args, stderr)
+		if !speaks {
 			return nil
 		}
 		now := time.Now()
@@ -472,6 +473,9 @@ func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			if present, perr := install.PluginPresent(install.EventStop); perr == nil {
 				fromPlugin = present
 			}
+		}
+		if harness == hook.Codex {
+			d = recap.ForCodex(d)
 		}
 		line, wantSpeak := recap.Line(d, d.SessionID, fromPlugin)
 		// Claim's own error is intentionally ignored: recap.json is
@@ -1785,9 +1789,10 @@ usage:
   rashomon detach --all          remove every entry carrying a rashomon install
                                marker, whatever its id
   rashomon watch --harness codex install the PreToolUse and PostToolUse
-                               recorders and the SessionStart probe into
-                               Codex's hooks.json (CODEX_HOME, or ~/.codex);
-                               Codex runs them only once trusted in /hooks
+                               recorders, the SessionStart probe and the
+                               Stop recap into Codex's hooks.json
+                               (CODEX_HOME, or ~/.codex); Codex runs them
+                               only once trusted in /hooks
   rashomon detach --harness codex [--install <id> | --all] [--force]
                                remove them from Codex's hooks.json, leaving
                                everything else as found

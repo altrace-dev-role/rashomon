@@ -285,9 +285,25 @@ func Build(st *store.Store, sessionID, promptID, lastAssistantMessage string, no
 	return d, nil
 }
 
+// codexRolloutBudget bounds the rollout read for a Codex run. The digest runs
+// inside recap's hook, which Codex kills at install.RecapTimeout (ten seconds),
+// after recap may already have waited up to recapStdinTimeout (three) for its
+// payload, and the run itself is read whole to find the turn. A rollout not
+// read in time leaves the turn's calls unobserved: the line then says less,
+// never something the rollout did not say.
+const codexRolloutBudget = time.Second
+
 func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage string, now time.Time) *Digest {
 	// Masking is judged on the command that ran.
 	report.MaskingAsRan(run)
+	// A Codex call's outcome is in its rollout, never in its record; read by
+	// the report's rule, so that a turn's line and the session's report count
+	// the same failures.
+	if report.RollupCoverage(run.Coverage).Harness == store.HarnessCodex {
+		// From the clock, not from now: recap took now before it read its
+		// payload, and a slow payload would spend the budget before this read.
+		report.CodexOutcomesFromRollouts(run, time.Now().Add(codexRolloutBudget))
+	}
 	w := selectTurn(run, promptID)
 
 	d := &Digest{
