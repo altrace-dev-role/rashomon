@@ -5,14 +5,14 @@
 # install made from the plugin's binary was sent to /rashomon:report), or
 # replace the decision with either constant.
 m("H-91 the recap pointer ignores the --install marker", "cmd/rashomon/main.go",
-  "\t\tif installArg(args) == \"\" {\n\t\t\tif present, perr := install.PluginPresent(install.EventStop); perr == nil {",
-  "\t\tif true {\n\t\t\tif present, perr := install.PluginPresent(install.EventStop); perr == nil {",
+  "\tif installArg(args) != \"\" {\n\t\treturn false\n\t}\n\tpresent, err := install.PluginFires(install.EventStop)",
+  "\tif false {\n\t\treturn false\n\t}\n\tpresent, err := install.PluginFires(install.EventStop)",
   "TestH91_TheReportPointer")
 m("H-91 the recap pointer is always the CLI command", "cmd/rashomon/main.go",
-  "\t\t\t\tfromPlugin = present\n", "\t\t\t\t_ = present\n", "TestH91_TheReportPointer")
+  "\treturn err == nil && present\n", "\treturn err == nil && present && false\n", "TestH91_TheReportPointer")
 m("H-91 the recap pointer is always the plugin command", "cmd/rashomon/main.go",
-  "\t\tfromPlugin := false\n\t\tif installArg(args) == \"\" {",
-  "\t\tfromPlugin := true\n\t\tif false && installArg(args) == \"\" {", "TestH91_TheReportPointer")
+  "func recapFromPlugin(args []string) bool {\n",
+  "func recapFromPlugin(args []string) bool {\n\tif true {\n\t\treturn true\n\t}\n", "TestH91_TheReportPointer")
 m("a legacy present record is treated with suspicion and renders unverified", "internal/report/report.go",
   "\t\t\tf.Reasons = append(f.Reasons, *c.Reason)\n\t\t}\n\t}\n\treturn f\n}",
   "\t\t\tf.Reasons = append(f.Reasons, *c.Reason)\n\t\t}\n\t\tif c.HookEntry == store.EntryPresent {\n\t\t\tf.Reasons = append(f.Reasons, ReasonRunNotClosed)\n\t\t}\n\t}\n\treturn f\n}",

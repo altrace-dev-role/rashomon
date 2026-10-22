@@ -10,8 +10,6 @@ import (
 	"unsafe"
 )
 
-const lockBudget = 2 * time.Second
-
 var (
 	kernel32         = syscall.NewLazyDLL("kernel32.dll")
 	procLockFileEx   = kernel32.NewProc("LockFileEx")
@@ -33,17 +31,23 @@ const (
 	lockBytesHigh = 0xFFFFFFFF
 )
 
-// lockFile takes an exclusive lock on f, polling so the wait can be bounded the
-// way lock_unix.go bounds it. LockFileEx without LOCKFILE_FAIL_IMMEDIATELY
-// blocks in the kernel with no deadline, and this process must not start a
-// goroutine it would then have to abandon.
+// LockFile keeps lock_unix.go's contract on Windows: an exclusive lock on f,
+// polled so the wait can be bounded the way lock_unix.go bounds it. LockFileEx
+// without LOCKFILE_FAIL_IMMEDIATELY blocks in the kernel with no deadline, and
+// this process must not start a goroutine it would then have to abandon.
 //
 // These locks are mandatory rather than advisory: while one is held, every
 // other process is denied read as well as write access to the range.
-func lockFile(f *os.File, budget time.Duration) (func(), error) {
+//
+// It returns how long it waited, as lock_unix.go's does (perf-7).
+func lockFileWait(f *os.File, budget time.Duration) (func(), time.Duration, error) {
 	h := syscall.Handle(f.Fd())
-	deadline := time.Now().Add(budget)
+	start := time.Now()
+	deadline := start.Add(budget)
 	backoff := 200 * time.Microsecond
+	// waited is how long this call has spent on the lock, which it reports
+	// (perf-7): nothing when the first try takes it.
+	var waited time.Duration
 
 	for {
 		var overlapped syscall.Overlapped
@@ -51,21 +55,44 @@ func lockFile(f *os.File, budget time.Duration) (func(), error) {
 			lockfileExclusiveLock|lockfileFailImmediately, 0,
 			lockBytesLow, lockBytesHigh, uintptr(unsafe.Pointer(&overlapped)))
 		if r1 != 0 {
-			return func() {
-				var overlapped syscall.Overlapped
-				_, _, _ = procUnlockFileEx.Call(uintptr(h), 0,
-					lockBytesLow, lockBytesHigh, uintptr(unsafe.Pointer(&overlapped)))
-			}, nil
+			return func() { unlockFile(f) }, waited, nil
 		}
 		if !errors.Is(err, errorLockViolation) && !errors.Is(err, syscall.ERROR_IO_PENDING) {
-			return nil, err
+			return nil, waited, err
 		}
-		if time.Now().After(deadline) {
-			return nil, ErrLockTimeout
+		left := time.Until(deadline)
+		if left <= 0 {
+			return nil, waited, ErrLockTimeout
 		}
-		time.Sleep(backoff)
+		// The last sleep is cut to the time left, so the final try lands at
+		// the deadline and a give-up never runs a whole sleep past the
+		// budget (perf-1).
+		time.Sleep(min(backoff, left))
+		waited = time.Since(start)
 		if backoff < 10*time.Millisecond {
 			backoff *= 2
 		}
 	}
+}
+
+// readRefused reports whether a read failed because another handle holds
+// the file's lock. LockFileEx locks are mandatory: ReadFile on a range
+// another handle has locked fails with ERROR_LOCK_VIOLATION.
+func readRefused(err error) bool { return errors.Is(err, errorLockViolation) }
+
+// unlockFile releases f's lock through f itself, not through its handle
+// value: once f is closed, Control refuses to run, so a late unlock cannot
+// release the lock of a file that has been given the value since (CWE-672).
+// An unlock that fails leaves nothing to undo: closing the handle, which
+// every caller does next, releases the lock.
+func unlockFile(f *os.File) {
+	rc, err := f.SyscallConn()
+	if err != nil {
+		return
+	}
+	_ = rc.Control(func(fd uintptr) {
+		var overlapped syscall.Overlapped
+		_, _, _ = procUnlockFileEx.Call(fd, 0,
+			lockBytesLow, lockBytesHigh, uintptr(unsafe.Pointer(&overlapped)))
+	})
 }

@@ -25,13 +25,13 @@ package report
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"sort"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/nono"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
-	"github.com/altrace-dev-role/rashomon/internal/wire"
 )
 
 // Coverage reasons a report can add beyond those the run recorded.
@@ -62,12 +62,34 @@ import (
 // writes, the same inverse drift TestStoreSchemaMatchesTheAllowlists exists
 // to catch on every other field.
 const (
-	ReasonRunNotClosed          = "run_not_closed"
-	ReasonRecordsUnreadable     = "records_unreadable"
-	ReasonTranscriptMismatch    = "transcript_mismatch"
+	ReasonRunNotClosed       = "run_not_closed"
+	ReasonRecordsUnreadable  = "records_unreadable"
+	ReasonTranscriptMismatch = "transcript_mismatch"
+	// ReasonTranscriptUnreadable: a transcript a declaration named exists
+	// and could not be read, so the H-10 accounting check did not run for
+	// it. A transcript that does not exist adds no reason (see accounting).
+	ReasonTranscriptUnreadable  = "transcript_unreadable"
 	ReasonExecutionMismatch     = "execution_mismatch"
 	ReasonGap                   = "gap"
 	ReasonDuplicateDeclarations = "duplicate_declarations"
+	// ReasonDeclarationMissing: a terminal closes a declaration this read
+	// does not hold, and the terminal does not say the lock refused it. The
+	// declaration was lost some other way -- a line that could not be read,
+	// a write that failed -- and blaming the lock would name a wait that
+	// never happened (errors-1). See DroppedReasons.
+	ReasonDeclarationMissing = "declaration_missing"
+)
+
+// Transcript status words: what a reader meets at one transcript group's
+// own Status field. TranscriptRead and TranscriptMissing both have Readable
+// false in the ordinary case TranscriptRead does not -- the distinction
+// Readable alone cannot carry, and the reason this field exists -- a
+// consumer with several groups otherwise cannot tell which one cost the
+// H-10 check and which was simply never written.
+const (
+	TranscriptRead       = "read"
+	TranscriptMissing    = "missing"
+	TranscriptUnreadable = "unreadable"
 )
 
 // knownLabel clamps a stored file_label to the vocabulary shape.Labels()
@@ -99,9 +121,11 @@ func Reasons() []string {
 		ReasonRunNotClosed,
 		ReasonRecordsUnreadable,
 		ReasonTranscriptMismatch,
+		ReasonTranscriptUnreadable,
 		ReasonExecutionMismatch,
 		ReasonGap,
 		ReasonDuplicateDeclarations,
+		ReasonDeclarationMissing,
 	}
 }
 
@@ -132,6 +156,7 @@ type Declarations struct {
 	WithoutTranscript int            `json:"without_transcript"`
 	Unterminated      []string       `json:"unterminated"`
 	Dropped           []string       `json:"dropped"`
+	NotDurable        []string       `json:"not_durable"`
 	WithoutExecution  []Unexecuted   `json:"without_execution"`
 	ByTool            map[string]int `json:"by_tool"`
 
@@ -191,9 +216,23 @@ type Executions struct {
 // a count. That holds per group: one unreadable transcript renders null beside
 // another's counts.
 type Transcript struct {
-	Path                  string   `json:"path"`
-	Readable              bool     `json:"readable"`
-	Files                 *int     `json:"files"`
+	Path     string `json:"path"`
+	Readable bool   `json:"readable"`
+	// Status is one of TranscriptRead, TranscriptMissing or
+	// TranscriptUnreadable: the fact Readable alone cannot carry, because
+	// TranscriptMissing and TranscriptUnreadable both leave it false. A
+	// consumer holding several groups needs this to tell which one cost the
+	// H-10 check against this run's own records and which was simply never
+	// written -- the ordinary state of a run past Claude Code's transcript
+	// cleanup period.
+	Status string `json:"status"`
+	Files  *int   `json:"files"`
+	// LinesTooLong counts the lines, across the transcript and its subagent
+	// files, longer than TranscriptMaxLine: stepped over, so whatever ids
+	// they held are in none of the lists below. A transcript with any is
+	// not one the equation can be checked against, and its group adds
+	// transcript_mismatch.
+	LinesTooLong          *int     `json:"lines_too_long"`
 	IDsInTranscript       *int     `json:"ids_in_transcript"`
 	IDsRecorded           int      `json:"ids_recorded"`
 	MissingFromStore      []string `json:"missing_from_store"`
@@ -243,10 +282,10 @@ type Session struct {
 	Transcripts    []Transcript `json:"transcripts"`
 	Gaps           []store.Gap  `json:"gaps"`
 	SkippedRecords int          `json:"skipped_records"`
-	// Destinations is what the proxy observed, reconciled against what this
-	// session declared. Always present: when no proxy store was configured it
-	// carries Observed false with a reason, because a report that simply
-	// omitted the section would read as "nothing was reached".
+	// Destinations is what this session's tool calls named, and the calls that
+	// ran with an input other than the one they were declared with. Always
+	// present, with empty lists rather than an absent section: a report that
+	// simply omitted it would read as "nothing was named".
 	Destinations Destinations `json:"destinations"`
 
 	// Account is the agent's own summary, read from the transcript at render
@@ -266,14 +305,16 @@ type Session struct {
 	// the same bytes as a measured zero.
 	MaskedRuns *MaskedRuns `json:"masked_runs"`
 
-	// Families is which of this session's tool families were confirmed to
-	// transit the proxy, derived from the join rather than from a probe.
+	// Families is which of this session's network-capable tool families ran
+	// and how many hosts each named, derived from the record rather than from
+	// a probe.
 	Families FamilyCoverage `json:"families"`
 
-	// Nono is what a sandbox saw, when one was supervising. A fourth evidence
-	// source, carried because it DISAGREES with the other three in ways that
-	// are informative rather than alarming: it sees plain HTTP, which this
-	// proxy structurally cannot.
+	// Nono is what a sandbox saw, when one was supervising: the hosts nono's
+	// trail allowed and refused in this session's window. It is the one
+	// section that speaks about traffic rather than about what the calls
+	// named, and it is not a complete view of that traffic: nono logs the
+	// plain-HTTP requests it refuses and not the ones it allows.
 	Nono Nono `json:"nono"`
 
 	// Chains is the causal view: which prompt produced which calls. Every other
@@ -308,26 +349,17 @@ type Session struct {
 // Option configures Build.
 //
 // Variadic options rather than a wider signature, so a caller that does not
-// know about the proxy store keeps compiling and keeps getting an honest
-// "not observed" rather than being forced to pass a path it has no opinion
+// know about the nono trail keeps compiling and keeps getting an honest
+// "not configured" rather than being forced to pass a path it has no opinion
 // about.
 type Option func(*options)
 
 type options struct {
-	proxyStore string
-	nonoTrail  string
-	runToken   string
-	// tokenRequested records that a tag WAS in play, separately from whether
-	// any row carried one. Without it the renderer inferred "no token was in
-	// use" from a zero match count, which is a statement about the reporting
-	// process printed as a statement about the session -- and it was false in
-	// the two most interesting cases: a re-render, and a tokened run whose
-	// clients all stripped the credential.
-	tokenRequested bool
-	isOurs         func(string) bool
+	nonoTrail string
 }
 
-// WithNonoTrail names a nono audit-events.ndjson to reconcile against.
+// WithNonoTrail names the nono audit-events.ndjson the sandbox section is read
+// from.
 //
 // An empty path means none was configured, which the report states as a
 // coverage line rather than omitting -- a section that vanishes when it has
@@ -336,39 +368,19 @@ func WithNonoTrail(path string) Option {
 	return func(o *options) { o.nonoTrail = path }
 }
 
-// WithRunToken supplies the session tag this run handed to the proxy.
-//
-// IN MEMORY ONLY, and deliberately not read from disk. The join needs the RAW
-// token -- a digest cannot be compared against the proxy's run_id column -- so
-// retaining it anywhere would mean storing a value that identifies a session's
-// traffic. It is available exactly while the process that minted it is alive,
-// which is when `run` renders its automatic report; a later `rashomon report`
-// has no token and falls back to the window, and says which it used.
-func WithRunToken(token string) Option {
-	return func(o *options) {
-		o.runToken = token
-		o.tokenRequested = token != ""
-	}
-}
-
-// WithTokenVerifier supplies the test for whether a FOREIGN run_id is a tag
-// this install issued.
-//
-// Only a tag that verifies may be treated as another session's and excluded.
-// Anything else is not evidence about anybody and falls back to the clock --
-// see internal/wire's joinOf for the two ways the alternative failed.
-func WithTokenVerifier(isOurs func(string) bool) Option {
-	return func(o *options) { o.isOurs = isOurs }
-}
-
-// WithProxyStore names the proxy's causal store. An empty path means no store
-// was configured, which the destinations section reports as not observed.
-func WithProxyStore(path string) Option {
-	return func(o *options) { o.proxyStore = path }
-}
+// CurrentReportVersion is ReportVersion's value on every report this binary
+// renders. Starts at 2: v1.1.0 shipped the destinations, families and chains
+// keys this version renamed and removed with no version field at all, so 1
+// is reserved for that shape and never written by this binary.
+const CurrentReportVersion = 2
 
 // Report is the rendered output.
 type Report struct {
+	// ReportVersion names the shape of the four sections TRU-57 allowlists.
+	// A typed decoder gets a zero value for a key one of them removed or
+	// renamed, not an error, so this is the field a consumer checks before
+	// trusting that an old integration still reads the current shape.
+	ReportVersion     int   `json:"report_version"`
 	GeneratedAtUnixMS int64 `json:"generated_at_unix_ms"`
 	// Redacted says the hostnames in this report are keyed digests rather than
 	// names. Carried on the report itself so the renderer can print the legend
@@ -387,7 +399,7 @@ type Report struct {
 // store so that asking the question cannot create one. It is the same shape
 // Build returns for a store with no runs.
 func Empty(now time.Time) *Report {
-	return &Report{GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
+	return &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
 }
 
 // Build renders one session, or every session when sessionID is empty.
@@ -396,7 +408,7 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 	for _, o := range opts {
 		o(&cfg)
 	}
-	gaps, err := st.ReadGaps()
+	gaps, gapsSkipped, err := st.ReadGaps()
 	if err != nil {
 		return nil, err
 	}
@@ -435,54 +447,49 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 	// Read once for the whole report: the forgotten set is a property of the
 	// store, not of a session, and re-reading the gaps per session would be the
 	// same answer at more cost.
+	//
+	// Two predicates, because the two readers need different questions
+	// answered. The sandbox's trail is nono's file, not this store's: every
+	// one of its events stays exactly as readable as the day it was written,
+	// so buildNono asks only "is this host forgotten" and never returns one,
+	// at any time, under any session. A declaration is this store's own
+	// record, and forget --host only ever meant to remove the ones that
+	// predate it; buildDestinations, buildFamilies and buildChains ask
+	// "forgotten before THIS declaration was recorded", so a later, genuine
+	// re-use of a once-forgotten name still shows up as what it is.
 	forgotten, err := st.ForgottenHost()
+	if err != nil {
+		return nil, err
+	}
+	forgottenBefore, err := st.ForgottenHostBefore()
 	if err != nil {
 		return nil, err
 	}
 
 	// Sessions starts as an empty slice rather than nil, so a store with no runs
 	// marshals the same array a store with runs does. See the field comment.
-	rep := &Report{GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
+	rep := &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}
 	for _, name := range names {
-		run, err := st.ReadRunDir(name)
+		run, err := st.ReadRunDirForReport(name)
 		if err != nil {
 			return nil, err
 		}
 		MaskingAsRan(run)
 		sess := build(run)
-		// The destinations section is built per session, from the session's own
-		// window. Reading the store once per session rather than once per
-		// report is the cost of that: a window is a property of the run, and
-		// sharing one observation across sessions would attribute each
-		// session's destinations to all of them.
-		w := window(run)
-		w.RunID = cfg.runToken
-		w.IsOurs = cfg.isOurs
-		sess.Destinations = buildDestinations(run, wire.Read(cfg.proxyStore, w), st.Root(), forgotten)
-		// Set here rather than threaded through buildDestinations: it is a fact
-		// about THIS RENDER, not about the observation, and widening that
-		// function's signature would have touched every existing caller to say
-		// "false" -- churn that hides the one call site that matters.
-		sess.Destinations.TokenRequested = cfg.tokenRequested
-		sess.Families = buildFamilies(run, observedHostSet(sess.Destinations),
-			sess.Destinations.Observed, sess.Destinations.Reason)
-		// After Destinations, and reading it rather than the observation: the
-		// chain's host states must be the ones the destinations section already
-		// suppressed and accounted for, or a forgotten host returns in a
-		// different section under a different name for the same row.
-		// After Destinations, and reading it rather than the raw observation:
-		// the comparison must use the view that has already suppressed
-		// forgotten hosts, or a forgotten host returns here under a different
-		// heading.
-		sess.Nono = buildNono(
-			nono.Read(cfg.nonoTrail, nono.Window{Start: w.Start, End: w.End}),
-			sess.Destinations, cfg.nonoTrail != "", madeMCPCall(run), declaredHosts(run), forgotten)
+		sess.Destinations = buildDestinations(run, st.Root(), forgottenBefore)
+		sess.Families = buildFamilies(run, forgottenBefore)
+		// The sandbox section is built per session, from the session's own
+		// window: a window is a property of the run, and sharing one
+		// observation across sessions would attribute each session's sandbox
+		// events to all of them.
+		sess.Nono = buildNono(nono.Read(cfg.nonoTrail, sessionWindow(run)),
+			cfg.nonoTrail != "", madeMCPCall(run), declaredHosts(run), forgotten)
 		denied := deniedSet(sess.Transcripts)
 		// One grouping of the executions, shared by the chains, the timeline
 		// and the test runs, and one detection, shared by the timeline's
 		// annotations and the test runs' pairs.
 		executed := executionsByID(run)
-		sess.Chains = buildChains(run, executed, sess.Destinations, denied, forgotten)
+		sess.Chains = buildChains(run, executed, denied, forgottenBefore)
 		tb := detectTestBending(run, executed, denied)
 		sess.Timeline = timelineFrom(run, executed, denied, tb)
 		sess.TestRuns = buildTestRuns(run, executed, denied, tb)
@@ -493,6 +500,11 @@ func Build(st *store.Store, sessionID string, now time.Time, opts ...Option) (*R
 		sess.Gaps = byDir[name]
 		if sess.Gaps == nil {
 			sess.Gaps = []store.Gap{}
+		}
+		// A gap line that could not be read may have been this session's,
+		// and nothing can say it was not (store.ReadGaps).
+		if gapsSkipped > 0 {
+			sess.Coverage.add(ReasonRecordsUnreadable)
 		}
 		if len(sess.Gaps) > 0 {
 			sess.Coverage.add(ReasonGap)
@@ -515,6 +527,7 @@ func build(run *store.Run) Session {
 			Recorded:         len(run.Declarations),
 			Unterminated:     nonNil(run.Unterminated()),
 			Dropped:          nonNil(run.Dropped()),
+			NotDurable:       nonNil(run.NotDurable()),
 			WithoutExecution: []Unexecuted{},
 			ByTool:           map[string]int{},
 			ByLabel:          map[string]int{},
@@ -533,26 +546,7 @@ func build(run *store.Run) Session {
 	sess.Declarations.ByTool = byTool
 	sess.Declarations.ByLabel = byLabel
 	sess.Declarations.WithoutExecution = withoutExecution
-	// Report-only tallies, beside the shared ones rather than inside them:
-	// the turn digest counts with CountDeclarations and renders no verb
-	// class or program, so these stay out of the rule the two share. The
-	// duplicate tool_use_id check is NOT one of them -- the digest's counts
-	// double on a double-fire exactly as these do -- so it lives in
-	// HasDuplicateToolUseID, which both call.
-	for _, d := range run.Declarations {
-		if d.Shape.VerbClass != "" {
-			sess.Declarations.ByVerbClass[d.Shape.VerbClass]++
-		}
-		switch {
-		case d.Shape.Program != nil:
-			sess.Declarations.ByProgram[*d.Shape.Program]++
-		case d.ToolName == "Bash":
-			// Only a shell tool has a program to miss. Every other tool
-			// legitimately has none, and counting those here would report a
-			// gap where there is nothing to know.
-			sess.Declarations.ProgramsUnknown++
-		}
-	}
+	sess.tally(run)
 
 	// What the run said about itself, phase by phase.
 	facts := RollupCoverage(run.Coverage)
@@ -583,13 +577,57 @@ func build(run *store.Run) Session {
 	if len(sess.Declarations.Unterminated) > 0 {
 		sess.Coverage.add(store.ReasonUnterminatedEntry)
 	}
-	if len(sess.Declarations.Dropped) > 0 {
-		sess.Coverage.add(store.ReasonLockTimeout)
+	for _, r := range DroppedReasons(run, sess.Declarations.Dropped) {
+		sess.Coverage.add(r)
+	}
+	// A hook whose one full sync failed marked its call on the spill file
+	// (REC-34). Its records read back, so nothing above notices them; this is
+	// what keeps the session from rendering as fine, and
+	// Declarations.NotDurable names each call. A marker that names no call
+	// marks the session alone.
+	for _, t := range run.Terminals {
+		if t.FlushFailed() {
+			sess.Coverage.add(store.ReasonFlushFailed)
+			break
+		}
 	}
 	if HasDuplicateToolUseID(run.Declarations) {
 		sess.Coverage.add(ReasonDuplicateDeclarations)
 	}
 
+	sess.accountTranscripts(run, executed)
+	return sess
+}
+
+// tally adds the counts only the report renders -- verb class and program --
+// to sess's declaration tallies.
+func (sess *Session) tally(run *store.Run) {
+	// Report-only tallies, beside the shared ones rather than inside them:
+	// the turn digest counts with CountDeclarations and renders no verb
+	// class or program, so these stay out of the rule the two share. The
+	// duplicate tool_use_id check is NOT one of them -- the digest's counts
+	// double on a double-fire exactly as these do -- so it lives in
+	// HasDuplicateToolUseID, which both call.
+	for _, d := range run.Declarations {
+		if d.Shape.VerbClass != "" {
+			sess.Declarations.ByVerbClass[d.Shape.VerbClass]++
+		}
+		switch {
+		case d.Shape.Program != nil:
+			sess.Declarations.ByProgram[*d.Shape.Program]++
+		case d.ToolName == "Bash":
+			// Only a shell tool has a program to miss. Every other tool
+			// legitimately has none, and counting those here would report a
+			// gap where there is nothing to know.
+			sess.Declarations.ProgramsUnknown++
+		}
+	}
+}
+
+// accountTranscripts runs the accounting equation against every transcript
+// the run's declarations named, adding each transcript's result to sess and
+// each mismatch or unreadable transcript to its coverage reasons.
+func (sess *Session) accountTranscripts(run *store.Run, executed map[string]bool) {
 	// The accounting equation, once per transcript the run's declarations
 	// named. A declaration naming none is counted rather than grouped.
 	byPath := map[string]map[string]bool{}
@@ -626,7 +664,10 @@ func build(run *store.Run) Session {
 	}
 	for _, path := range paths {
 		t := accounting(path, byPath[path], executed, hooked)
-		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0) {
+		if t.Status == TranscriptUnreadable {
+			sess.Coverage.add(ReasonTranscriptUnreadable)
+		}
+		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0 || *t.LinesTooLong > 0) {
 			sess.Coverage.add(ReasonTranscriptMismatch)
 		}
 		// A result in the transcript with no execution record beside it is the
@@ -638,7 +679,6 @@ func build(run *store.Run) Session {
 		}
 		sess.Transcripts = append(sess.Transcripts, t)
 	}
-	return sess
 }
 
 func accounting(path string, recorded, executed, hooked map[string]bool) Transcript {
@@ -649,17 +689,41 @@ func accounting(path string, recorded, executed, hooked map[string]bool) Transcr
 		}
 	}
 
-	ids, results, denied, unhooked, files, err := TranscriptIDs(path)
+	ids, results, denied, unhooked, files, tooLong, err := TranscriptIDs(path)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			// A transcript that exists but cannot be read is still unreadable;
-			// the distinction is not one the accounting can act on.
-			t.Readable = false
+		// Either way the transcript is unreadable and its counts are null.
+		// Only one of the two is a coverage reason. A transcript that exists
+		// and cannot be read (permissions, a subagent directory that
+		// will not list) took the H-10 check away from a run
+		// whose calls named it, and the run says so. A transcript that does
+		// not exist is the ordinary state of every run older than Claude
+		// Code's transcript cleanup period, and a reason for it would turn
+		// each of those runs unverified after the fact; verified then means
+		// the H-10 check was not available, which the README states.
+		//
+		// TranscriptIDs returns the first error it meets walking the main
+		// file and every subagent file beneath it, so an ErrNotExist here
+		// can come from a subagent file that vanished mid-walk even though
+		// the main transcript this group is named for is right there. The
+		// classification has to ask the main path's own Stat, not reuse
+		// whichever file's error happened to come back: a readable main
+		// transcript with an absent subagent is unreadable, not missing.
+		missing := errors.Is(err, fs.ErrNotExist)
+		if missing {
+			if _, statErr := os.Stat(path); statErr == nil {
+				missing = false
+			}
+		}
+		t.Status = TranscriptMissing
+		if !missing {
+			t.Status = TranscriptUnreadable
 		}
 		return t
 	}
+	t.Status = TranscriptRead
 	t.Readable = true
 	t.Files = &files
+	t.LinesTooLong = &tooLong
 	n := len(ids)
 	t.IDsInTranscript = &n
 	nResults := len(results)
@@ -838,12 +902,33 @@ func RollupCoverage(covs []store.Coverage) CoverageFacts {
 			f.EndRecorded = true
 			f.HookEntryAtEnd = c.HookEntry
 		}
+		// A record this build cannot take at its word -- unverified with no
+		// reason to say why, or a state it never writes -- is an unreadable
+		// record, not a clean one. The branch below collects only reasons a
+		// record names, and on its own it let both of these read verified.
+		if unreadableCoverage(c) && !seen[ReasonRecordsUnreadable] {
+			seen[ReasonRecordsUnreadable] = true
+			f.Reasons = append(f.Reasons, ReasonRecordsUnreadable)
+		}
 		if c.State == store.StateUnverified && c.Reason != nil && !seen[*c.Reason] {
 			seen[*c.Reason] = true
 			f.Reasons = append(f.Reasons, *c.Reason)
 		}
 	}
 	return f
+}
+
+// unreadableCoverage reports whether a coverage record's state cannot be
+// taken at its word: verified with a reason attached, or anything other than
+// verified unless it is unverified and names its reason. store-schema.json's
+// own conditional only requires a reason when the state is unverified; it
+// says nothing about verified, so a hand edit or a future build can leave a
+// reason on a verified record and this build must not read that as clean.
+func unreadableCoverage(c store.Coverage) bool {
+	if c.State == store.StateVerified {
+		return c.Reason != nil
+	}
+	return c.State != store.StateUnverified || c.Reason == nil
 }
 
 func (c *Coverage) add(reason string) {
@@ -867,4 +952,41 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// sessionWindow derives the watched interval from the run's own coverage
+// records.
+//
+// The run's account of itself is the only honest source: report must never
+// re-read today's configuration to judge a past run, because that would let a
+// later detach retroactively invalidate every session already captured. An
+// absent end record leaves the window open at that end, which the sandbox
+// section says on its own line.
+func sessionWindow(run *store.Run) nono.Window {
+	var w nono.Window
+	for _, c := range run.Coverage {
+		at := time.UnixMilli(c.RecordedAtMS)
+		switch c.Phase {
+		case store.PhaseStart:
+			if w.Start.IsZero() || at.Before(w.Start) {
+				w.Start = at
+			}
+		case store.PhaseEnd:
+			if at.After(w.End) {
+				w.End = at
+			}
+		}
+	}
+	// A session with no start record still has records; anchor on the earliest
+	// one rather than leaving the window unbounded, which would pull in every
+	// event the trail has ever held.
+	if w.Start.IsZero() {
+		for _, c := range run.Coverage {
+			at := time.UnixMilli(c.RecordedAtMS)
+			if w.Start.IsZero() || at.Before(w.Start) {
+				w.Start = at
+			}
+		}
+	}
+	return w
 }

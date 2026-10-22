@@ -5,24 +5,6 @@
 m("NONO suppressTrail is removed, so forget --host is bypassed",
   "internal/report/nono.go", "\tobs = suppressTrail(obs, forgotten)", "\t_ = forgotten",
   "TestSeam_AForgotten")
-m("NONO plain HTTP stops meaning ONLY plain HTTP", "internal/report/nono.go",
-  "plainOnly[h] && !observable[h]", "plainOnly[h]", "TestSeam_PlainHTTP")
-m("NONO the plain-HTTP list is never populated", "internal/report/nono.go",
-  "n.PlainHTTP = append(n.PlainHTTP, h)", "_ = h", "TestSeam_PlainHTTP")
-m("NONO a denied host is reported as missing from the trail",
-  "internal/report/nono.go", "\t\tif denied[h] {", "\t\tif false {",
-  "TestSeam_TheReconciliation")
-# Re-anchored after the live nono 0.79 pass: the reconciliation's client-plane
-# test is the clientPlane predicate (clientPlaneHost), not a set built from the
-# wire view's list. Each mutation still drops one half of the exclusion.
-m("NONO loopback is reported as traffic the sandbox missed",
-  "internal/report/nono.go",
-  "return loopbackHosts[h] || clientPlane(h) }", "return clientPlane(h) }",
-  "TestSeam_TheReconciliation")
-m("NONO the client plane is reported as traffic the sandbox missed",
-  "internal/report/nono.go",
-  "return loopbackHosts[h] || clientPlane(h) }", "return loopbackHosts[h] }",
-  "TestSeam_TheReconciliation")
 m("NONO redaction skips the sandbox section", "internal/report/redact.go",
   "\t\ts.Nono = redactNono(sess.Nono, key)", "", "TestRedact_EveryDeclared")
 # Simulates the defect the vocabulary exists for: somebody adds a host-bearing
@@ -48,10 +30,6 @@ m("NONO an unknown mode is not counted without a proxy store", "internal/report/
   "\t\tif e.Mode != \"reverse\" && e.Mode != \"connect\" {\n\t\t\tn.UnknownModes++\n\t\t}\n",
   "",
   "TestNono_AnUnknownMode")
-m("NONO an unknown mode is counted twice with a proxy store", "internal/report/nono.go",
-  "\t\t\t// from being excused as plain HTTP.\n\t\t\tobservable[e.Host] = true\n",
-  "\t\t\t// from being excused as plain HTTP.\n\t\t\tn.UnknownModes++\n\t\t\tobservable[e.Host] = true\n",
-  "TestNono_AnUnknownModeIsCountedOnce")
 m("NONO the text never reports an unknown mode", "internal/report/text.go",
   "\tif n.UnknownModes > 0 {", "\tif false {",
   "TestNono_AnUnknownModeIsCountedWithout")
@@ -67,15 +45,17 @@ m("NONO an empty --nono-audit is read as no trail asked for", "cmd/rashomon/main
 m("NONO the reader never says the window has no end", "internal/nono/nono.go",
   "WindowOpen: w.End.IsZero()}", "WindowOpen: false}",
   "TestRead_AWindowWithNoEnd")
-m("NONO an open window does not reach the report", "internal/report/nono.go",
-  "\t\tWindowOpen:            obs.WindowOpen,\n", "",
-  "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
 m("NONO the sandbox line does not say the window has no end", "internal/report/text.go",
   "\tif n.WindowOpen {", "\tif false {",
   "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
 m("NONO a bounded window is said to have no end", "internal/report/text.go",
   "\tif n.WindowOpen {", "\tif true {",
   "TestNono_AWindowWithNoEnd")
+# Re-anchored: the proxy-era fields left the literal and gofmt realigned it,
+# so the old anchor matched nothing and the mutant went with them.
+m("NONO an open window does not reach the report", "internal/report/nono.go",
+  "\t\tWindowOpen:         obs.WindowOpen,\n", "",
+  "TestNono_AWindowWithNoEnd|TestNono_ASessionWithNoEndRecord")
 
 # Finding 5: a trail of only unreadable lines read as "nono wrote nothing".
 m("NONO a not-observed trail does not say how much it could not read", "internal/report/text.go",
@@ -127,12 +107,12 @@ m("NONO a forget that removed nothing writes no store-level record", "internal/s
   "\tf, err := os.OpenFile(filepath.Join(s.root, FileForgottenHosts+\".off\"), appendFlags, fileMode)",
   "TestForgetHost_|TestSeam_AHostOnlyTheSandboxSaw")
 m("NONO the predicate does not read the store-level records", "internal/store/gaps.go",
-  "\t\tif json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest != \"\" {",
+  "\t\tif json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost {",
   "\t\tif false && json.Unmarshal(line, &r) == nil {",
   "TestForgetHost_AHost|TestSeam_AHostOnlyTheSandboxSaw")
 m("NONO the store-level record holds the hostname", "internal/store/gaps.go",
-  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {",
-  "\tif err := s.recordForgottenHost(s.HostDigest(host)+host, now); err != nil {",
+  "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {",
+  "\tif err := s.recordForgottenHost(s.HostDigest(name)+name, now); err != nil {",
   "TestForgetHost_TheStoreLevelRecordHoldsNoName")
 m("NONO forget --host does not say a no-op forget still holds", "cmd/rashomon/main.go",
   "\tif total == 0 {\n\t\tfmt.Fprint(stdout, \"; later reports", "\tif false {\n\t\tfmt.Fprint(stdout, \"; later reports",
@@ -143,17 +123,25 @@ m("NONO forget --host does not say a no-op forget still holds", "cmd/rashomon/ma
 # github.com:443, https://github.com/ -- forgot nothing while the line said
 # later reports would leave it out.
 m("NONO the store forgets the host as typed", "internal/store/gaps.go",
-  "\thost, ok := canonicalHost(host)\n", "\tok := host != \"\"\n",
+  "\tname, ok := host.Canonical(raw)\n\tif !ok {\n\t\treturn nil, ErrNotAHostname\n\t}\n",
+  "\tname, ok := raw, raw != \"\"\n\tif !ok {\n\t\treturn nil, ErrNotAHostname\n\t}\n",
   "TestForgetHost_AnySpelling|TestSeam_AnySpelling")
 m("NONO the store forgets a value that is not a hostname", "internal/store/gaps.go",
   "\tif !ok {\n\t\treturn nil, ErrNotAHostname\n\t}\n", "\tif !ok && false {\n\t\treturn nil, ErrNotAHostname\n\t}\n",
   "TestForgetHost_WhatIsNot")
+# Re-anchored when the rubric's lld-4 fix met this one: forget --host takes the
+# value as typed and canonicalises it once, in forgetHost, which still refuses
+# a non-host before anything is opened; the store and the baselines
+# canonicalise again for their library callers, so the store's own refusal
+# would hide a dropped command-line check from the H25 test alone.
 m("NONO forget --host passes the value on as typed", "cmd/rashomon/main.go",
-  "\t\t\ttarget = h\n", "\t\t\ttarget, _ = args[i+1], h\n",
+  "\tname, ok := host.Canonical(raw)\n\tif !ok {\n\t\treturn errors.New(\"--host is not a hostname",
+  "\t_, ok := host.Canonical(raw)\n\tname := raw\n\tif !ok {\n\t\treturn errors.New(\"--host is not a hostname",
   "TestH25_ForgetHostTakesAnySpelling")
 m("NONO forget --host accepts what is not a hostname", "cmd/rashomon/main.go",
-  "\t\t\th, ok := host.Canonical(args[i+1])\n\t\t\tif !ok {", "\t\t\th, ok := host.Canonical(args[i+1])\n\t\t\tif false && !ok {",
-  "TestH25_ForgetHostRefusesWhatIs")
+  "\tname, ok := host.Canonical(raw)\n\tif !ok {\n\t\treturn errors.New(\"--host is not a hostname",
+  "\tname, ok := host.Canonical(raw)\n\tif false && !ok {\n\t\treturn errors.New(\"--host is not a hostname",
+  "TestH25_ForgetHostRefusesWhatIs|TestRubricLLD4_ForgetCommandAsksInTheRecordedSpelling")
 # A client-plane host one of the session's own tool calls named is the
 # agent's attempt (review of #53): filed as the client's, a refused curl to the
 # Datadog log intake left "refused by the sandbox".
@@ -163,18 +151,6 @@ m("NONO a client-plane host a tool call named is filed as the client's", "intern
 m("NONO the session's named hosts never reach the sandbox section", "internal/report/report.go",
   "madeMCPCall(run), declaredHosts(run), forgotten)", "madeMCPCall(run), nil, forgotten)",
   "TestSeam_AClientPlaneHostAToolCallNamed")
-# The escape line reads every refused host, the client's plane included
-# (review of #53): listing the Datadog intake as the client's had silenced
-# "REFUSED BY THE SANDBOX AND REACHED ANYWAY" for it.
-m("NONO a refused client-plane host reached on the wire is no escape", "internal/report/nono.go",
-  "\t\tif wireReached[h] && !trailAllowed[h] {", "\t\tif wireReached[h] && !trailAllowed[h] && !excluded(h) {",
-  "TestSeam_ARefusedClientHost")
-m("NONO a host the sandbox also allowed is called an escape", "internal/report/nono.go",
-  "\t\tif wireReached[h] && !trailAllowed[h] {", "\t\tif wireReached[h] {",
-  "TestSeam_ARefusedClientHost")
-m("NONO a refused loopback host reached on the wire is an escape", "internal/report/nono.go",
-  "\t\tif !h.Unreached && !loopbackHosts[h.Host] {", "\t\tif !h.Unreached {",
-  "TestSeam_ARefusedClientHost")
 # The client-traffic line says which hosts the sandbox allowed and which it
 # refused (review of #53): one list of both hid the refused log upload.
 m("NONO the client-traffic line does not say what the sandbox refused", "internal/report/text.go",
@@ -217,30 +193,27 @@ m("NONO a repeat forget appends a second store-level record", "internal/store/ga
 # error paths is swallowed (review of #53): each of these survived every
 # related test.
 m("NONO the store-level forget record lands after the runs", "internal/store/gaps.go",
-  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\tvar gaps []Gap\n\tfor _, name := range names {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\treturn gaps, nil",
-  "\tvar gaps []Gap\n\tfor _, name := range names {\n\t\tg, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)\n\t\tif err != nil {\n\t\t\treturn gaps, err\n\t\t}\n\t\tif g != nil {\n\t\t\tgaps = append(gaps, *g)\n\t\t}\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n\treturn gaps, nil",
+  "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n\tif unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {\n\t\tif err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\treturn s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })",
+  "\tgaps, err := s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })\n\tif err != nil {\n\t\treturn gaps, err\n\t}\n\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n\tif unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {\n\t\tif err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\treturn gaps, nil",
   "TestForgetHost_AForgetThatFails")
 m("NONO an unreadable store-level forget file reads as nothing forgotten", "internal/store/gaps.go",
-  "\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(digests) == 0 {", "\t_ = err\n\tif len(digests) == 0 {",
+  "\ttimes, err := s.forgottenDigestTimes()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tif len(times) == 0 {\n\t\t// A predicate",
+  "\ttimes, err := s.forgottenDigestTimes()\n\t_ = err\n\tif len(times) == 0 {\n\t\t// A predicate",
   "TestForgetHost_AnUn")
 m("NONO a forget whose store-level record failed reports success", "internal/store/gaps.go",
-  "\tif err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {\n\t\treturn nil, err\n\t}\n",
-  "\t_ = s.recordForgottenHost(s.HostDigest(host), now)\n",
+  "\tif err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {\n\t\treturn nil, err\n\t}\n",
+  "\t_ = s.recordForgottenHost(s.HostDigest(name), now)\n",
   "TestForgetHost_AnUn")
 
-# The reconciliation's exclusion keeps the MCP qualifier (review of #53):
-# reverting it to the bare list survived every test, on main as well.
-m("NONO the reconciliation files the MCP transport as the client's on an MCP session", "internal/report/nono.go",
-  "\texcluded := func(h string) bool { return loopbackHosts[h] || clientPlane(h) }",
-  "\texcluded := func(h string) bool { return loopbackHosts[h] || clientPlaneHosts[h] }",
-  "TestNono_TheMCPTransportIsReconciled")
-
 # The client-plane rule has one spelling, clientPlaneHost, and every view
-# that asks it of this session calls it (review of #53): the destinations
-# view and the novelty candidates used to restate it.
-m("NONO the destinations view files the MCP transport as the client's on an MCP session", "internal/report/destinations.go",
-  "\t\tcase clientPlaneHost(h.Host, mcpAttributed):\n\t\t\td.ClientPlane", "\t\tcase clientPlaneHosts[h.Host]:\n\t\t\td.ClientPlane",
-  "TestClientPlane_EveryView")
+# that asks it of this session calls it (review of #53): the novelty
+# candidates used to restate it. Re-anchored when the proxy era left: the
+# candidates are the declared hosts, a list of names. Re-anchored again when
+# loopback came to be decided on the parsed address (host.Loopback).
 m("NONO the novelty candidates drop the MCP transport on an MCP session", "internal/report/destinations.go",
-  "\t\tif clientPlaneHost(h.Host, mcpAttributed) {\n\t\t\tcontinue", "\t\tif clientPlaneHosts[h.Host] {\n\t\t\tcontinue",
+  "\t\t\tif loopback(h) || clientPlaneHost(h, mcpAttributed) {\n", "\t\t\tif loopback(h) || clientPlaneHosts[h] {\n",
   "TestClientPlane_EveryView")
+m("NONO the session's MCP calls never reach the novelty candidates", "internal/report/destinations.go",
+  "\twire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, madeMCPCall(run))\n",
+  "\twire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, false)\n",
+  "TestNovelty_TheMCPTransport")

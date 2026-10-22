@@ -22,7 +22,8 @@ func TestCanonical(t *testing.T) {
 		{name: "scheme with port", in: "https://pypi.org:443/simple", want: "pypi.org", ok: true},
 		{name: "trailing dot dropped", in: "pypi.org.", want: "pypi.org", ok: true,
 			why: "the fully-qualified spelling is the same name"},
-		{name: "only one trailing dot dropped", in: "pypi.org..", want: "pypi.org.", ok: true},
+		{name: "two trailing dots refused", in: "pypi.org..", ok: false,
+			why: "an empty final label is not a hostname, and dropping one dot left a name a second pass changed"},
 		{name: "query dropped", in: "https://api.github.com/user?tok=1", want: "api.github.com", ok: true,
 			why: "a query string is the likeliest place for a credential to ride along"},
 		{name: "loopback kept", in: "127.0.0.1:18080", want: "127.0.0.1", ok: true,
@@ -31,8 +32,8 @@ func TestCanonical(t *testing.T) {
 		{name: "ipv6 brackets kept via authority", in: "[::1]:443", want: "[::1]", ok: true},
 		{name: "ipv6 brackets restored via url", in: "https://[2606:4700::1111]/x", want: "[2606:4700::1111]", ok: true,
 			why: "url.Hostname strips the brackets and every consumer here expects them"},
-		{name: "bare ipv6 without port keeps its colons", in: "2606:4700::1111", want: "2606:4700::1111", ok: true,
-			why: "more than one colon cannot be a port separator"},
+		{name: "bare ipv6 without port is bracketed", in: "2606:4700::1111", want: "[2606:4700::1111]", ok: true,
+			why: "more than one colon cannot be a port separator, and the bracketed form is the one spelling"},
 		{name: "wss scheme", in: "wss://gateway.example.com/socket", want: "gateway.example.com", ok: true},
 
 		// Refusals.
@@ -65,6 +66,69 @@ func TestCanonical(t *testing.T) {
 	}
 }
 
+// TestCanonicalName_DoesNotFoldDigits: CanonicalName is Canonical's twin for
+// an ssh destination, where a number is as plausible a config alias as any
+// other name. Canonical("1234") folds to "0.0.4.210" and Canonical("0")
+// folds to "0.0.0.0", which Loopback then reads as this machine -- right for
+// a URL a client actually resolves, wrong for an alias nothing resolved.
+// CanonicalName leaves every one of them as the name it was typed.
+func TestCanonicalName_DoesNotFoldDigits(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"1234", "1234"},
+		{"0", "0"},
+		{"167838211", "167838211"},
+		{"10.1.515", "10.1.515"},
+		{"012.1.2.3", "012.1.2.3"},
+	} {
+		got, ok := CanonicalName(tc.in)
+		if !ok || got != tc.want {
+			t.Errorf("CanonicalName(%q) = %q,%v, want %q,true", tc.in, got, ok, tc.want)
+		}
+	}
+	// A bracketed IPv6 literal is unambiguous either way: CanonicalName still
+	// writes it in its one spelling.
+	if got, ok := CanonicalName("[2606:4700:0:0:0:0:0:1111]"); !ok || got != "[2606:4700::1111]" {
+		t.Errorf("CanonicalName(ipv6) = %q,%v, want [2606:4700::1111],true", got, ok)
+	}
+	// Canonical, unchanged, still folds every one of these: CanonicalName is
+	// an addition, not a behaviour change to the function URL authorities use.
+	for _, tc := range []struct{ in, want string }{
+		{"1234", "0.0.4.210"},
+		{"0", "0.0.0.0"},
+		{"167838211", "10.1.2.3"},
+	} {
+		got, ok := Canonical(tc.in)
+		if !ok || got != tc.want {
+			t.Errorf("Canonical(%q) = %q,%v, want %q,true (unchanged)", tc.in, got, ok, tc.want)
+		}
+	}
+}
+
+// TestLoopbackName_DoesNotFoldDigits: LoopbackName must not read a bare
+// number as this machine, the same bug as CanonicalName's but observed
+// through Loopback's decision rather than through the string it returns.
+// Loopback, unchanged, still does: a URL authority of "0" really does reach
+// this machine.
+func TestLoopbackName_DoesNotFoldDigits(t *testing.T) {
+	for _, in := range []string{"0", "1234", "2130706433", "127.1"} {
+		if LoopbackName(in) {
+			t.Errorf("LoopbackName(%q) = true, want false: not a URL a client resolved", in)
+		}
+	}
+	for _, in := range []string{"0", "2130706433", "127.1"} {
+		if !Loopback(in) {
+			t.Errorf("Loopback(%q) = false, want true (unchanged)", in)
+		}
+	}
+	// What LoopbackName still catches: localhost and a real loopback literal,
+	// neither of which needed the fold to begin with.
+	for _, in := range []string{"localhost", "api.localhost", "127.0.0.1", "[::1]"} {
+		if !LoopbackName(in) {
+			t.Errorf("LoopbackName(%q) = false, want true", in)
+		}
+	}
+}
+
 // TestCanonical_IsIdempotent matters because the wire side canonicalises rows
 // that the declaration side may already have canonicalised, and a second pass
 // that changed the answer would make the two disagree on exactly the hosts that
@@ -80,6 +144,23 @@ func TestCanonical_IsIdempotent(t *testing.T) {
 		twice, ok := Canonical(once)
 		if !ok || twice != once {
 			t.Errorf("Canonical(Canonical(%q)) = %q,%v, want %q,true", in, twice, ok, once)
+		}
+	}
+}
+
+// TestRubricTEST1_CanonicalIsAFixedPoint: a host Canonical accepts is one it
+// returns unchanged. With two trailing dots it dropped one and accepted the
+// rest, so "a.." recorded "a." and a second pass made it "a": the wire side
+// and the declaration side disagreed on the one host both had seen, and
+// FuzzHosts found it from `https://x..` under the CI fuzz command.
+func TestRubricTEST1_CanonicalIsAFixedPoint(t *testing.T) {
+	for _, in := range []string{"pypi.org..", "https://pypi.org../x", "pypi.org..:443", "..", "a...", "pypi.org.", "PyPI.org"} {
+		got, ok := Canonical(in)
+		if !ok {
+			continue
+		}
+		if again, ok := Canonical(got); !ok || again != got {
+			t.Errorf("Canonical(%q) = %q, and Canonical(%q) = %q, %v", in, got, got, again, ok)
 		}
 	}
 }

@@ -1,38 +1,52 @@
 package hook
 
 import (
-	"bytes"
+	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 )
 
-// present decodes a key of tool_response to one bit, and the value is never
-// a Go string: no copy of a task id, however long, is made in this process.
-// Break: trim a string(b) copy, as the first version did, and the decode
-// allocates the value.
-func TestPresent_DecodesABitAndBuildsNoString(t *testing.T) {
+// backgroundedCall reads two presence bits off tool_response's spans, and the
+// value is never a Go string: no copy of a task id, however long, is made.
+// Break: decode the response to read the id, and the allocation grows with it.
+func TestBackgroundedCall_ReadsTwoBitsAndBuildsNoString(t *testing.T) {
 	for _, tc := range []struct {
-		raw  string
-		want bool
+		response string
+		want     bool
 	}{
-		{`"bash_1"`, true},
-		{` "x" `, true},
-		{`{"id":1}`, true},
-		{`true`, true},
-		{`0`, true},
+		{`{"backgroundTaskId":"bash_1"}`, true},
+		{`{"backgroundTaskId": "x" }`, true},
+		{`{"backgroundTaskId":{"id":1}}`, true},
+		{`{"backgroundedByUser":true}`, true},
+		{`{"backgroundTaskId":0}`, true},
+		{`{"backgroundTaskId":null}`, false},
+		{`{"backgroundTaskId":false,"backgroundedByUser":null}`, false},
+		{`{"stdout":"backgroundTaskId"}`, false},
+		{`"backgroundTaskId"`, false},
 		{`null`, false},
-		{` null `, false},
-		{`false`, false},
-		{"\tfalse\n", false},
 	} {
-		var p present
-		if err := p.UnmarshalJSON([]byte(tc.raw)); err != nil || bool(p) != tc.want {
-			t.Errorf("%q: present %v, %v; want %v", tc.raw, p, err, tc.want)
+		in, err := hookio.Intake(strings.NewReader(`{"tool_name":"Bash","tool_response":` + tc.response + `}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := backgroundedCall(in); got != tc.want {
+			t.Errorf("%s: backgrounded %v, want %v", tc.response, got, tc.want)
 		}
 	}
 
-	id := append(append([]byte(`"`), bytes.Repeat([]byte("a"), 4096)...), '"')
-	var p present
-	if n := testing.AllocsPerRun(20, func() { _ = p.UnmarshalJSON(id) }); n != 0 {
-		t.Errorf("decoding a task id allocated %v times, want 0: the value became a string", n)
+	allocs := func(idBytes int) float64 {
+		in, err := hookio.Intake(strings.NewReader(`{"tool_response":{"backgroundTaskId":"` + strings.Repeat("a", idBytes) + `"}}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return testing.AllocsPerRun(20, func() {
+			if !backgroundedCall(in) {
+				t.Fatal("not backgrounded")
+			}
+		})
+	}
+	if small, big := allocs(8), allocs(64<<10); big != small {
+		t.Errorf("reading a 64 KiB task id allocated %v times, an 8-byte one %v: the value became a string", big, small)
 	}
 }

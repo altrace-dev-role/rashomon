@@ -466,6 +466,7 @@ func timelineOutcome(id string, rec *store.Execution, executed map[string][]stor
 	if rec != nil && rec.Outcome == store.ExecFailed {
 		return store.ExecFailed
 	}
+	// The timeline shows the outcome word; the chain listing shows the rest.
 	o, _, _ := linkOutcome(id, executed, denied)
 	return o
 }

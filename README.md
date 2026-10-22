@@ -84,6 +84,17 @@ the summary does *not* use; it does not guess why.
 
 - **What subagents did**: the helper agents Claude starts on its own, whose
   steps the main conversation never shows.
+- **A host not yet in this project's baseline**, kept under
+  `<store>/baseline`, outside the run directories eviction can remove.
+  Every `rashomon report` that can place the run's project and session
+  writes this file, whether or not it names a host as new. Not a claim that
+  the host is new to the project -- the baseline is seeded from whichever
+  session happens to render first, not from the earliest one -- only that it
+  is absent from the baseline so far. `forget --host` clears a host from
+  every project's baseline, the same way it clears the host from the rest of
+  the report; `forget --since` and `forget --before` erase records by time
+  and leave the baseline alone, because the baseline is a list of hosts, not
+  of records to erase.
 - **Which steps failed**, and whether the agent's closing summary uses any of
   rashomon's failure words. It lists the ones that are *absent*; it never
   guesses at intent.
@@ -125,15 +136,25 @@ transcript; that quote is never stored.
 
 **Does it send anything anywhere?**
 It has no account, no telemetry and no network code of its own, and what it
-records is kept in a folder on your machine. No rashomon package imports a
-networking package, and CI checks that on every pull request, every push to
-main and every release tag. On Linux, CI also runs the
+records is kept in a folder on your machine. No package in the rashomon
+binary, its own or a dependency's, imports crypto/tls, net, net/http,
+net/http/httptrace or os/exec, and CI checks that on every pull request, every
+push to main and every release tag. On Linux, CI also runs the
 declaration hook with the network switched off; the other hooks, the report and
 the end-of-turn line have no such runtime test yet.
 
 **Can it break my agent?**
 No. It never stops a command, and if something inside it goes wrong, it exits
 quietly so Claude Code carries on.
+
+**What does `verified` mean once a transcript is gone?**
+The report checks every call in Claude Code's transcript against rashomon's own
+record. Claude Code deletes transcripts after a while (30 days by default, its
+`cleanupPeriodDays` setting), so for an older session there is nothing to check
+against: the report shows `readable: no` beside that transcript, and `verified`
+then means rashomon's own records are complete, without that cross-check. A
+transcript that is still there but cannot be read is different: the run reads
+`unverified`, with the reason `transcript_unreadable`.
 
 **Does it work with Cursor or Codex?**
 No. This release supports Claude Code only. Cursor (by default) and Codex (after
@@ -147,9 +168,10 @@ from changing its records. It is a second, independent account of what happened,
 to set beside the agent's own.
 
 **Can I see network activity?**
-rashomon itself observes no network traffic in this alpha: the report says
-`destinations: not observed in this alpha`, and `--chain` lists only the hosts
-each command *named*. If you run Claude Code inside the
+rashomon itself observes no network traffic: the report lists the hosts each
+command *named* (`hosts named by tool calls`), and `--chain` shows them beside
+the call that named them; nothing in it observed whether a host was reached.
+If you run Claude Code inside the
 [nono](https://github.com/nolabs-ai/nono) sandbox,
 `rashomon report --nono-audit <path to nono's audit-events.ndjson>` adds what
 nono allowed and refused in that session's window. If the session has no end
@@ -161,9 +183,19 @@ Plugin: open `/plugin` in Claude Code and turn it off. Command line:
 `rashomon detach`. Your records stay in `~/.local/state/rashomon` (by default)
 until you delete that folder.
 
+**How much disk does it use?**
+Runs are kept under a 512 MiB cap by default. At each session start and end,
+the oldest runs not written to in the last hour are removed until the store
+fits, each leaving a gap record. Set `RASHOMON_STORE_CAP_BYTES` to a plain number of bytes to change
+the cap, or to `0` to keep everything. Any other value, such as `2GB` or `-1`,
+is not taken: the default applies, and `rashomon status` and `rashomon watch`
+say so. `rashomon status` shows the store's size against the cap, and the
+longest any hook has waited for the store's locks, which shows contention
+before a wait runs out and a call is recorded only as `lock_timeout`.
+
 **Is it finished?**
-No. This is an alpha: Windows is not supported yet, and network destinations are
-not observed in this release.
+No. This is an alpha: Windows is not supported yet, and rashomon observes no
+network traffic; the report lists the hosts commands named.
 
 ## Inside a sandbox
 
@@ -211,8 +243,7 @@ What was measured, on macOS with nono 0.79.0 and Claude Code 2.1.285:
 - `rashomon forget --host` also keeps the host out of the sandbox section, even
   when rashomon's own records never named it.
 
-Not yet measured: Linux (Landlock), and the comparison with the Altrace proxy's
-records.
+Not yet measured: Linux (Landlock).
 
 ## Commands
 
@@ -220,11 +251,11 @@ records.
 | --- | --- |
 | `rashomon watch` | Install the recorders, the liveness probe and the end-of-turn recap (eight entries). **The only command that installs anything.** |
 | `rashomon report [--session S] [--json] [--redact] [--chain] [--timeline]` | Render **every** recorded session, or one named with `--session`. `--chain` adds the causal view: which prompt produced which calls. `--timeline` lists every call, main agent and subagents, in the order they were recorded, keeps failed calls apart from calls that never ran, and says whether a success of the same command, or of the same program for single-purpose programs, was recorded after each failure, and reads "not checked" where a success may exist but cannot be placed or matched, or where the failure itself has no declaration or recorded position; for wrappers and multi-command programs such as git, go, make, npm, python and sudo, and for calls with no program such as Read or Edit, only the same command is looked for, and a fix made with a different command, or a corrected Edit, is not detected |
-| `rashomon status` | Say what is installed here. Reads only; creates nothing |
+| `rashomon status` | Say what is installed here, how big the store is against its cap, and the longest a hook has waited for the store's locks. Reads only; creates nothing |
 | `rashomon spend [--days N] [--json]` | Estimate what the last N days of Claude Code usage would cost at API list prices, from Claude Code's own transcripts. Needs no `watch`; writes nothing. See [`rashomon spend`](#rashomon-spend) |
-| `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change |
+| `rashomon pause` / `rashomon resume` | Stop and restart recording on this machine, leaving a record of the change. A call made while paused is not recorded; it still adds a one-line coverage note (session id, working directory) so the gap shows in the report |
 | `rashomon detach` | Remove the recorders, leaving every other entry's value as found |
-| `rashomon forget --since T \| --before T \| --host H` | Erase records, leaving a gap record saying so |
+| `rashomon forget --since T \| --before T \| --host H` | Erase records, leaving a gap record saying so. `--host` also clears the host from every project's baseline (see [What a report tells you](#what-a-report-tells-you)); `--since` and `--before` do not |
 | `rashomon version` | Print the version |
 
 `rashomon --help` lists the commands above and their main flags. It does not
@@ -255,7 +286,8 @@ Linux are the supported targets.
 **Windows is not usable yet.** The release publishes Windows binaries, but no
 install path has been shown to work there. `watch` quotes the installed command
 line for a POSIX shell, and `scripts/claude-rashomon.ps1` runs the same `watch`.
-CI cross-builds and vets the Windows code; no test runs on Windows.
+CI cross-builds and vets the Windows code, and runs the store's lock tests
+on Windows; no other test runs there.
 
 ## Contributing
 

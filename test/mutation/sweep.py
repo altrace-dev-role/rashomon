@@ -58,6 +58,16 @@ ROW_TOKEN = re.compile(r"Test(" + "|".join(ROW_PREFIXES) + r")")
 # manual sweep, and push/pull_request no longer run one.
 GO_TEST_FUNC = re.compile(r"(?m)^func (Test\w+)\(")
 
+# The v1.1.0 rubric fix list is a named group, constrained like a row by its
+# entry id (DEL-23). A file named RUBRIC_<area>-<n>_<slug>.py claims that
+# entry: every TestRubric<AREA><n>_ test its mutants name must be the same
+# entry's -- a suffix letter pins its parent, as in a row -- and each mutant
+# must name at least one. Other test names claim nothing. A RUBRIC_ file
+# whose name carries no entry id is refused, not read as claiming nothing.
+RUBRIC_PREFIX = "RUBRIC_"
+RUBRIC_FILE = re.compile(r"^RUBRIC_([a-z]+)-(\d+)_")
+RUBRIC_TEST = re.compile(r"TestRubric([A-Z]+)(\d+)[a-z]?_")
+
 M = []  # (name, file, old, new, test regex)
 IMPORTS = {}  # name -> (file, import block as it is, import block with the extra line)
 ORIGIN = {}  # name -> the mutant file that declared it
@@ -81,6 +91,132 @@ def _resolve(pattern):
     return hits if hits else glob.glob(str(HERE / pattern))
 
 
+# GOOS names go/build recognizes, plus the "unix" meta-tag a //go:build line
+# may use in their place. Not every GOOS Go supports is here, only the ones a
+# build constraint in this tree is likely to name; a name outside this set
+# is treated as a non-GOOS tag (see _goos_excludes) rather than guessed at.
+_KNOWN_GOOS = {
+    "aix", "android", "darwin", "dragonfly", "freebsd", "hurd", "illumos",
+    "ios", "js", "linux", "netbsd", "openbsd", "plan9", "solaris", "wasip1",
+    "windows",
+}
+_UNIX_GOOS = {
+    "aix", "android", "darwin", "dragonfly", "freebsd", "hurd", "illumos",
+    "ios", "linux", "netbsd", "openbsd", "solaris",
+}
+_GOOS_FROM_PLATFORM = {"darwin": "darwin", "linux": "linux", "win32": "windows", "cygwin": "windows"}
+
+
+def host_goos():
+    """The GOOS the sweep is judging mutants for: GOOS itself when the
+    caller set it, sys.platform otherwise. The sweep's own CI jobs run `go
+    test` for the host they run on, never a cross-compiled one, so this is
+    always what the mutated binary would actually build for."""
+    return os.environ.get("GOOS") or _GOOS_FROM_PLATFORM.get(sys.platform, sys.platform)
+
+
+def _build_constraint_line(path):
+    """The expression on path's //go:build line, or None if it has none. That
+    line must come before the package clause, after only blank lines and
+    other comments (go help buildconstraint), so reading a handful of lines
+    is enough."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for _ in range(10):
+                line = fh.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if line.startswith("//go:build"):
+                    return line[len("//go:build"):].strip()
+                if line.startswith("package "):
+                    break
+    except OSError:
+        pass
+    return None
+
+
+class _ConstraintError(Exception):
+    """A term in a //go:build expression is not a GOOS name or 'unix': this
+    function knows GOOS constraints and nothing else, so an expression it
+    cannot fully resolve is not guessed at."""
+
+
+def _eval_goos_constraint(expr, goos):
+    """Evaluate a //go:build boolean expression (&&, ||, !, parens, bare
+    identifiers) against goos. Raises _ConstraintError if any identifier is
+    not a GOOS name or the 'unix' meta-tag -- a custom tag such as perf or
+    rashomonfault -- since this function exists to catch a GOOS mismatch, not
+    to model every build tag a mutant's target might carry."""
+    tokens = re.findall(r"&&|\|\||[!()]|[A-Za-z0-9_]+", expr)
+    pos = 0
+
+    def peek():
+        return tokens[pos] if pos < len(tokens) else None
+
+    def take():
+        nonlocal pos
+        t = tokens[pos]
+        pos += 1
+        return t
+
+    def parse_or():
+        v = parse_and()
+        while peek() == "||":
+            take()
+            v = v or parse_and()
+        return v
+
+    def parse_and():
+        v = parse_unary()
+        while peek() == "&&":
+            take()
+            v = v and parse_unary()
+        return v
+
+    def parse_unary():
+        if peek() == "!":
+            take()
+            return not parse_unary()
+        if peek() == "(":
+            take()
+            v = parse_or()
+            if peek() != ")":
+                raise _ConstraintError(f"unbalanced parens in {expr!r}")
+            take()
+            return v
+        if peek() is None:
+            raise _ConstraintError(f"expected a term in {expr!r}")
+        t = take()
+        if t == "unix":
+            return goos in _UNIX_GOOS
+        if t in _KNOWN_GOOS:
+            return t == goos
+        raise _ConstraintError(f"{t!r} in {expr!r} is not a GOOS name or 'unix'")
+
+    v = parse_or()
+    if pos != len(tokens):
+        raise _ConstraintError(f"trailing tokens in {expr!r}")
+    return v
+
+
+def _goos_excludes(path, goos):
+    """True if path declares a //go:build line that is false for goos, so a
+    text mutation to it can never be observed: the file is not part of the
+    build goos compiles, and no test run under goos can see a change to it.
+    A file with no go:build line, or one whose expression this function
+    cannot fully evaluate (a mix of GOOS/unix terms and something else), is
+    never reported excluded -- that would turn an unrelated custom tag into a
+    false NOT JUDGED and hide a mutant the sweep could otherwise detect."""
+    expr = _build_constraint_line(path)
+    if expr is None:
+        return False
+    try:
+        return not _eval_goos_constraint(expr, goos)
+    except _ConstraintError:
+        return False
+
+
 def load(patterns):
     """Exec every mutant file the patterns name, in sorted order.
 
@@ -97,12 +233,15 @@ def load(patterns):
     for path in sorted(files):
         before = len(M)
 
-        def m(name, f, old, new, test, _path=path):
+        def m(name, f, old, new, test, _path=path, platform=None):
             if name in ORIGIN:
                 problems.append(f"{rel(_path)}: {name!r} is already declared in {rel(ORIGIN[name])}")
                 return
+            if platform is not None and platform not in _KNOWN_GOOS:
+                problems.append(f"{rel(_path)}: {name!r} declares platform={platform!r}, not a known GOOS")
+                return
             ORIGIN[name] = _path
-            M.append((name, f, old, new, test))
+            M.append((name, f, old, new, test, platform))
 
         declared = {}  # this file's import edits, merged below
         ns = {"m": m, "IMPORTS": declared}
@@ -131,6 +270,46 @@ def load(patterns):
             else:
                 IMPORTS[name] = entry
     return problems
+
+
+def run_go_test(argv):
+    """Run go test and return its result with stdout and stderr as text.
+
+    The output is decoded with undecodable bytes replaced: a test that prints
+    the raw bytes it fed the code under test (invalid UTF-8 among them) must
+    not stop the sweep mid-run, which would leave every later mutant
+    unjudged (the finally clause still restores the tree).
+    """
+    r = subprocess.run(argv, capture_output=True)
+    r.stdout = r.stdout.decode("utf-8", errors="replace")
+    r.stderr = r.stderr.decode("utf-8", errors="replace")
+    return r
+
+
+def build_broken(r):
+    """Report a go test run that could not build or set up a package.
+
+    go test marks such a package on its own FAIL line with [build failed] or
+    [setup failed]; a test's output never carries those markers. Searching
+    the whole output for "build failed" read a failing test that printed the
+    sentence it checks as a broken build, and a detected mutant as undetected.
+    """
+    return any(ln.startswith("FAIL") and ("[build failed]" in ln or "[setup failed]" in ln)
+               for ln in (r.stdout + r.stderr).splitlines())
+
+
+def test_failed(r):
+    """Report positive evidence that a test ran and failed.
+
+    go test writes "--- FAIL: Name" for a failing test and "FAIL<TAB>pkg<TAB>time"
+    for a package whose tests ran and failed. A non-zero exit without either (a
+    go.mod the tool could not parse, a pattern that matched no package) is not a
+    red test: nothing ran, and the sweep must not count it as detection.
+    """
+    for ln in (r.stdout + r.stderr).splitlines():
+        if ln.startswith("--- FAIL") or (ln.startswith("FAIL\t") and ln.count("\t") >= 2):
+            return True
+    return False
 
 
 def read_list(path):
@@ -168,16 +347,38 @@ def go_test_names():
     return names
 
 
+def rubric_problems(name, origin, test):
+    """The DEL-23 problems of one mutant: none unless its file is a RUBRIC_ one."""
+    base = os.path.basename(origin)
+    if not base.startswith(RUBRIC_PREFIX):
+        return []
+    entry = RUBRIC_FILE.match(base)
+    if not entry:
+        return [f"{rel(origin)}: a rubric file is named RUBRIC_<area>-<n>_<slug>.py, after the entry it claims"]
+    claimed = entry.group(1).upper() + entry.group(2)
+    problems = []
+    pinned = set()
+    for t in RUBRIC_TEST.finditer(test):
+        pinned.add(t.group(1) + t.group(2))
+        if t.group(1) + t.group(2) != claimed:
+            problems.append(f"{name!r} in {rel(origin)}: names {t.group(0)}, another rubric entry's test, "
+                            f"not TestRubric{claimed}_")
+    if claimed not in pinned:
+        problems.append(f"{name!r} in {rel(origin)}: names no TestRubric{claimed}_ test of its own entry")
+    return problems
+
+
 def check(complete, shared_tests=SHARED_TESTS):
     """The static checks. Returns the problems found.
 
     Every anchor occurs exactly once in its target, so the break lands where
     its author looked. Every import edit's anchor occurs exactly once too. A
     mutant in a row's file names only that row's tests, or a declared shared
-    pair. `complete` says the whole set was loaded, which is when a test regex
-    can be checked against every real func Test. `shared_tests` is the file
-    declaring shared pairs; a test points it at a fixture instead of writing
-    to the real one.
+    pair, and a mutant in a rubric entry's file names its own entry's test and
+    no other entry's (rubric_problems). `complete` says the whole set was
+    loaded, which is when a test regex can be checked against every real func
+    Test. `shared_tests` is the file declaring shared pairs; a test points it
+    at a fixture instead of writing to the real one.
     """
     problems = []
     shared = set()
@@ -203,7 +404,7 @@ def check(complete, shared_tests=SHARED_TESTS):
         return texts[f]
 
     go_tests = go_test_names() if complete else None
-    for name, f, old, new, test in M:
+    for name, f, old, new, test, _platform in M:
         top = test.split("/", 1)[0]
         rx = None
         try:
@@ -260,7 +461,8 @@ def check(complete, shared_tests=SHARED_TESTS):
                         problems.append(f"{name!r} in {rel(ORIGIN[name])}: {test!r} matches real test {real_name!r}, "
                                         f"which pins {real_row}, not {claimed}; declare the pair in "
                                         f"{shared_tests.name} if it is shared on purpose")
-    mutation_of = {name: (f, old, new) for name, f, old, new, _test in M}
+        problems += rubric_problems(name, ORIGIN[name], test)
+    mutation_of = {name: (f, old, new) for name, f, old, new, _test, _platform in M}
     for name, (f, io_, in_) in IMPORTS.items():
         if outside_cwd(f):
             problems.append(f"IMPORTS[{name!r}]: target {f} is outside the current directory")
@@ -321,7 +523,7 @@ def _restore_and_reraise(signum, _frame):
 # restoring it to the wrong bytes.
 def _dirty_targets():
     """Files this run would mutate that git already reports as modified."""
-    targets = sorted({f for _, f, _, _, _ in M} | {f for f, _, _ in IMPORTS.values()})
+    targets = sorted({f for _, f, _, _, _, _ in M} | {f for f, _, _ in IMPORTS.values()})
     r = subprocess.run(["git", "status", "--porcelain", "--"] + targets,
                        capture_output=True, text=True)
     if r.returncode != 0:
@@ -367,7 +569,7 @@ def run_sweep(strict=False):
     # the tool whose job is guarding premises, not guarding its own. Found by a
     # review that noticed the tree was red while the sweep would have passed.
     print("baseline: the suite must be green before anything is mutated")
-    _baseline = subprocess.run(["go", "test", "./...", "-count=1"], capture_output=True, text=True)
+    _baseline = run_go_test(["go", "test", "./...", "-count=1"])
     if _baseline.returncode != 0:
         print("BASELINE NOT GREEN. Every mutation below would report as detected, because a\n"
               "mutation is judged by a non-zero exit and the suite already gives one. Fix the\n"
@@ -378,9 +580,31 @@ def run_sweep(strict=False):
     print("baseline: green\n")
 
     undetected = []
-    skipped = []
+    skipped = []  # the judging test skipped here; --strict fails on these
+    platform = []  # the target is not built for this GOOS, or the mutant
+                    # declares a GOOS of its own that this run is not; never
+                    # a failure, strict or not
+    goos = host_goos()
     try:
-        for name, f, old, new, test in M:
+        for name, f, old, new, test, mutant_goos in M:
+            if _goos_excludes(f, goos):
+                # Mutating f would change nothing a build for this GOOS
+                # compiles, so neither backup nor the judging test runs: a
+                # darwin-only target on a Linux runner, for instance.
+                print(f"  NOT JUDGED (platform) <- {name}   ({rel(f)} is not built for GOOS={goos})")
+                platform.append(name)
+                continue
+            if mutant_goos is not None and mutant_goos != goos:
+                # The target builds everywhere, but the mutant's judging
+                # test only means something on the GOOS it declares -- the
+                # test skips elsewhere by design, not because this run's
+                # tooling is missing something. Without this, the mutant
+                # would land in `skipped` below, which --strict treats as a
+                # broken environment; a test that is SUPPOSED to skip here is
+                # not that, any more than a build-excluded target is.
+                print(f"  NOT JUDGED (platform) <- {name}   (judged on GOOS={mutant_goos}, this run is GOOS={goos})")
+                platform.append(name)
+                continue
             backup(f)
             s = pathlib.Path(f).read_text()
             if old not in s:
@@ -396,7 +620,7 @@ def run_sweep(strict=False):
                     # way a missing anchor on the main mutation is.
                     print(f"  IMPORT ANCHOR MISSING <- {name}"); undetected.append(name); restore(); continue
                 pathlib.Path(fi).write_text(t.replace(io_, in_, 1))
-            r = subprocess.run(["go", "test", "./...", "-run", test, "-count=1", "-v"], capture_output=True, text=True)
+            r = run_go_test(["go", "test", "./...", "-run", test, "-count=1", "-v"])
             judged = r.stdout + r.stderr
             # "--- SKIP" ONLY, never "no tests to run". The suite is invoked as
             # `go test ./... -run <regex>`, so every package without a matching
@@ -418,28 +642,39 @@ def run_sweep(strict=False):
                 skipped.append(name)
             elif r.returncode == 0:
                 print(f"  NOT DETECTED   <- {name}   (spec defect: the test cannot be made to fail)"); undetected.append(name)
-            elif "build failed" in r.stdout + r.stderr or "cannot" in r.stderr and "FAIL" not in r.stdout:
+            elif test_failed(r):
+                # A red test on record is positive evidence the mutant was
+                # caught, even when the same `go test ./...` run also failed
+                # to build an unrelated package: that package's failure is
+                # not this mutant's to answer for.
+                print(f"  went red       <- {name}")
+            elif build_broken(r):
                 print(f"  BUILD BROKEN   <- {name}\n{r.stdout}{r.stderr}"); undetected.append(name)
             else:
-                print(f"  went red       <- {name}")
+                print(f"  NOT JUDGED     <- {name}   (go test exited {r.returncode} with no test failure on record)\n{r.stdout}{r.stderr}"); undetected.append(name)
             restore()
     finally:
         restore()
 
     print()
     print("undetected:", undetected if undetected else "none")
-    if skipped:
-        print("not judged here:", skipped)
-        print("  These were not checked because the judging test skipped in this")
-        print("  environment. They are not passes. Run the sweep where those tests")
-        print("  run -- CI installs strace on ubuntu-latest for exactly this reason.")
-        if strict:
-            print("  --strict is set: treating them as failures.")
+    if skipped or platform:
+        print("not judged here:", skipped + platform)
+        print("  These were not checked: either the judging test skipped in this")
+        print("  environment, or the mutant's target is not built under this GOOS at")
+        print("  all. They are not passes. Run the sweep where that coverage runs --")
+        print("  CI installs strace on ubuntu-latest for H-17's sockets, and runs a")
+        print("  darwin-only target's own job on macos-latest.")
+        if strict and skipped:
+            print("  --strict is set: treating the skipped ones as failures.")
     # Without --strict, a NOT JUDGED mutant exits 0: that is correct for a
     # laptop that cannot run the socket half of H-17, where skipping is
     # expected. In CI, where the tooling that lets them run is installed on
     # purpose, the same skip means that tooling broke, and --strict is what
     # turns a green sweep back into the red one that silence would hide.
+    # A target this GOOS does not build is never counted, strict or not: no
+    # tooling installed here can make it build, so it is a fact about the
+    # platform, not a broken environment (DEL-18).
     return 1 if undetected or (strict and skipped) else 0
 
 
@@ -451,7 +686,8 @@ def main(argv):
                     help="load only the mutant files matching GLOB, tried against the current "
                          "directory first and then against test/mutation, unless absolute; repeatable")
     ap.add_argument("--strict", action="store_true",
-                    help="exit non-zero if any mutant was not judged here, not only if undetected")
+                    help="exit non-zero if any mutant's judging test skipped here, not only if undetected; "
+                         "a target not built for this GOOS is reported but never fails")
     ap.add_argument("--shared-tests", metavar="PATH",
                     help="read declared shared-test pairs from PATH instead of "
                          "test/mutation/shared-tests.txt (a test points this at a fixture)")

@@ -24,8 +24,12 @@ type Resolution struct {
 // respectively -- never a bare "present": the two are different strengths of
 // evidence and a coverage record that collapsed them would let the weaker one
 // borrow the stronger one's credibility. An entry that exists but has been
-// narrowed to "Bash" is "absent" for coverage purposes, because that is what
-// it is: a config under which most tool calls produce no record.
+// narrowed to "Bash", or given a timeout other than the one watch installs,
+// is "absent" for coverage purposes, because that is what it is: a config
+// under which most tool calls produce no record. That holds for both origins,
+// because both go through the same check: install.Present puts a settings
+// entry through intact(), and install.PluginPresent puts every group of the
+// plugin's hooks.json through it before reading the command.
 //
 // The settings check is a fresh file read, trustworthy because Claude Code's
 // own file watcher keeps hook edits current for a running session. The plugin
@@ -145,6 +149,13 @@ func BuildCoverage(st *store.Store, sessionID, phase, reason, cwd string, now ti
 		res.Probe = store.ProbeFresh
 	}
 
+	// A cwd no file can be opened at is left out, and said so (REC-52).
+	if len(cwd) > store.MaxPathBytes {
+		cwd = ""
+		if reason == "" {
+			reason = store.ReasonRecordOversize
+		}
+	}
 	if reason == "" {
 		switch {
 		case res.HookEntry == store.EntryAbsent:

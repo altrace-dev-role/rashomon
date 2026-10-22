@@ -1,10 +1,10 @@
 // Package nono reads the audit trail another sandbox wrote.
 //
-// It is a FOURTH EVIDENCE SOURCE, beside the hook's declarations, the
-// transcript, and the proxy's wire rows. Like the wire reader it is read-only
-// over a file another program owns, and an absent or unreadable trail is a
-// coverage statement rather than an error: a report that failed when nono was
-// not running is a report nobody can use to learn that nono was not running.
+// It is a THIRD EVIDENCE SOURCE, beside the hook's declarations and the
+// transcript, and is read-only over a file another program owns: an absent or
+// unreadable trail is a coverage statement rather than an error. A report
+// that failed when nono was not running is a report nobody can use to learn
+// that nono was not running.
 //
 // WHAT IT TAKES, AND NOTHING ELSE: a decision, a transport mode, a host, a
 // port, a denial category and an instant. The shapes below were MEASURED
@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/host"
+	"github.com/altrace-dev-role/rashomon/internal/linescan"
 )
 
 // Reasons the trail could not be read. Fixed codes, never free text and never
@@ -62,13 +63,10 @@ type Event struct {
 	// one is ever added.
 	Decision string `json:"decision"`
 	// Mode is nono's transport: "connect" for a tunnel, "reverse" for a
-	// request that went through its reverse proxy.
-	//
-	// It is kept because it is the one field that explains a DISAGREEMENT with
-	// the wire. rashomon exports no HTTP_PROXY, so plain HTTP is outside what
-	// its proxy can see -- and a reverse-mode event is exactly that traffic.
-	// Without this field, "nono saw a host we did not" reads as a recording
-	// failure instead of as a known boundary.
+	// request that went through its reverse proxy. Kept because it is nono's
+	// own vocabulary for how it saw the traffic, and this package reduces an
+	// event to what a join needs without deciding which fields a reader will
+	// want.
 	Mode string `json:"mode"`
 	// Category is nono's denial_category, empty on an allow. Measured values
 	// include "host_denied" for both an allowlist miss and a deny-list hit;
@@ -85,10 +83,9 @@ type Observation struct {
 	Trail    string `json:"trail,omitempty"`
 	// Events inside the window. Always an array, never null.
 	Events []Event `json:"events"`
-	// Inherited counts events outside it, reported rather than dropped for the
-	// same reason the wire reader reports them: "the sandbox saw traffic that
-	// was not this session's" is a fact, and discarding it makes a shared
-	// audit directory look quiet.
+	// Inherited counts events outside it, reported rather than dropped: "the
+	// sandbox saw traffic that was not this session's" is a fact, and
+	// discarding it makes a shared audit directory look quiet.
 	Inherited int `json:"inherited"`
 	// Sessions counts session_started records seen, so a reader can tell one
 	// sandbox session from several sharing a trail.
@@ -98,9 +95,10 @@ type Observation struct {
 	// it a lifetime count beside two windowed ones, which the renderer has to
 	// say rather than joining all three in one sentence.
 	Sessions int `json:"sessions"`
-	// Skipped counts records this reader COULD NOT READ: a torn line, an
-	// absent or unparseable event, an event type nono emits that this reader
-	// has not learned. It does NOT count session_ended, which is known and
+	// Skipped counts records this reader COULD NOT READ: a torn line, a line
+	// over nonoMaxLine, an absent or unparseable event, an event type nono
+	// emits that this reader has not learned. It does NOT count
+	// session_ended, which is known and
 	// deliberately unused -- a counter that rose on every healthy trail would
 	// be ignored by the time it mattered. UnparseableTargets
 	// counts network events whose target the canonicaliser refused.
@@ -151,6 +149,26 @@ type networkEvent struct {
 	Port            int    `json:"port"`
 }
 
+// Trail scanner sizes.
+//
+// nonoMaxLine is the longest trail line read, 8 MiB. Its provenance, not a
+// worst case: 2 MiB is the longest command line Linux's execve takes by
+// default (ARG_MAX, a quarter of the 8 MiB stack limit; macOS's is 1 MiB), and
+// session_started holds it in event_json, a JSON string holding JSON, where
+// one quote or backslash is written as four bytes; four times ARG_MAX leaves
+// room for that. It does not cover every command: a control byte is written
+// as seven (\\u00XX), so a command line dense in control bytes can need more.
+// A longer line is stepped over and counted in Skipped, and the lines after
+// it are read.
+//
+// initialScanBuffer is 64 KiB, bufio's default line limit
+// (bufio.MaxScanTokenSize): a trail whose lines the default scanner would
+// have read never grows its buffer.
+const (
+	nonoMaxLine       = 8 << 20
+	initialScanBuffer = bufio.MaxScanTokenSize
+)
+
 // Read returns the network decisions nono recorded inside the window.
 //
 // path is one audit-events.ndjson. A directory of sessions is the caller's to
@@ -192,15 +210,20 @@ func Read(path string, w Window) Observation {
 	// produced it: a zero-byte file, blank lines, and valid JSON of the wrong
 	// shape.
 	var parsed int
-	sc := bufio.NewScanner(f)
 	// A generous line cap: nono's session_started carries a whole command line,
 	// and a scanner that stopped at the default 64KB would silently truncate
 	// the trail at the first long one -- reading as "the sandbox saw nothing
 	// after this point", which is the failure this package exists to avoid.
-	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
+	sc := linescan.New(f, initialScanBuffer, nonoMaxLine)
 
 	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
+		if sc.TooLong() {
+			// A record this reader could not read, counted like a malformed
+			// one; the trail after it is still the trail.
+			obs.Skipped++
+			continue
+		}
+		line := strings.TrimSpace(string(sc.Bytes()))
 		if line == "" {
 			continue
 		}

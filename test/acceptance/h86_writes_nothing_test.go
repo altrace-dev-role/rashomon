@@ -12,13 +12,11 @@ import (
 // baseline/<project>.json (internal/report/destinations.go), which is why
 // digest cannot simply call it.
 //
-// The fixture names a host the wire actually saw, exactly as H-28's healthy
-// fixture does, and NOT as an incidental detail: report.Build's baseline write
-// only happens on the path taken when the proxy observation is real
-// (destinations.go returns early, before ever reaching it, when no proxy
-// store was configured) -- a fixture that named no host and configured no
-// proxy would pass this test whether or not digest called report.Build, which
-// would make it decoration rather than a guard.
+// The fixture names a host in a tool call, exactly as H-28's healthy fixture
+// does: report.Build writes baseline/ for any session with a recorded cwd and
+// session id, host or not, but naming one gives the file content, so a
+// premature baseline/ this test would otherwise miss has something in it to
+// diff.
 func TestH86_TheDigestWritesNothing(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
@@ -28,7 +26,6 @@ func TestH86_TheDigestWritesNothing(t *testing.T) {
 	post := defaultPost()
 	post.ToolInput = p.ToolInput
 	e.mustPost(post.build(t))
-	e.writeProxyStore(t, "pypi.org")
 	e.probe("end", testSession)
 
 	if _, ok := walkStore(t, e.home)["baseline"]; ok {

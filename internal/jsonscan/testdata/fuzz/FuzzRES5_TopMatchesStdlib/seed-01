@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"a\":\"\xf0\x9f\x98\x80\xc3\xa9\\\\\\\"\",\"a\":[1,{\"b\":null}],\"tool_input\":\"\\ud800\"}")

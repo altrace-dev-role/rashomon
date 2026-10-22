@@ -72,6 +72,9 @@ var (
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
 		"tool_use_id", "session_id", "outcome", "reason",
+		// v5. Which invocation wrote this terminal: call or post, set only
+		// on a flush_failed marker. Null on an ordinary closing terminal.
+		"phase",
 	}
 	coverageKeys = []string{
 		"type", "schema_version", "recorded_at_unix_ms",
@@ -267,8 +270,9 @@ func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 	}
 }
 
-// TestH12_InternalErrorCoverageCarriesNoCount covers the internal-error half of
-// H-12; the SIGTERM half is in h12_signal_test.go.
+// TestH12_InternalErrorCoverageCarriesNoCount covers the failure half of H-12
+// -- a panic at store.write, which the record names as recovered_panic; the
+// SIGTERM half is in h12_signal_test.go.
 //
 // The guarantee is structural: store.Coverage has no field that could hold a
 // count, so a run whose instrumentation failed cannot report a number even by
@@ -289,7 +293,7 @@ func TestH12_InternalErrorCoverageCarriesNoCount(t *testing.T) {
 	if got := cov[0].str("state"); got != "unverified" {
 		t.Errorf("state is %q, want \"unverified\"", got)
 	}
-	if got := cov[0].str("reason"); got != "internal_error" {
-		t.Errorf("reason is %q, want \"internal_error\"", got)
+	if got := cov[0].str("reason"); got != "recovered_panic" {
+		t.Errorf("reason is %q, want \"recovered_panic\"", got)
 	}
 }

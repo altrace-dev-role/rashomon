@@ -5,12 +5,13 @@ import "github.com/altrace-dev-role/rashomon/internal/store"
 // turnUnterminated is store.Run.Unterminated, scoped to one turn's own
 // declarations against the WHOLE run's terminals -- a terminal answers a
 // tool_use_id directly, so no window is needed to tell whether one of this
-// turn's own declarations was closed.
+// turn's own declarations was closed. A flush_failed marker closes nothing,
+// as there.
 func turnUnterminated(w turnWindow, terms []store.Terminal) []string {
 	ids := turnToolUseIDs(w)
 	closed := map[string]bool{}
 	for _, t := range terms {
-		if ids[t.ToolUseID] {
+		if ids[t.ToolUseID] && !t.FlushFailed() {
 			closed[t.ToolUseID] = true
 		}
 	}
@@ -39,6 +40,13 @@ func turnDropped(run *store.Run, w turnWindow) []string {
 	}
 	recordedAt := make(map[string]int64, len(run.Terminals))
 	for _, t := range run.Terminals {
+		if t.FlushFailed() {
+			// Not an ending (Terminal.FlushFailed's doc): it must not stand
+			// in for the terminal it shares a tool_use_id with, or that
+			// terminal's own recorded time -- the one `all` was windowed
+			// against -- is overwritten by whenever the marker landed.
+			continue
+		}
 		recordedAt[t.ToolUseID] = t.RecordedAtMS
 	}
 	var out []string

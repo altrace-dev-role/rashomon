@@ -1,4 +1,13 @@
-//go:build unix
+//go:build unix || windows
+
+// The lock contract runs on both platforms that ship a LockFile: flock on
+// unix and LockFileEx on Windows (lock_windows.go), which CI's lock-windows
+// job runs. Windows' locks are mandatory, not advisory: while one handle
+// holds the range, a read through any other handle is refused. So a test
+// that holds a lock releases it before it reads back what was written; the
+// test whose subject is a read past a held lock is unix-only, and its
+// Windows half, a read the held lock refuses, is in
+// lock_refused_windows_test.go.
 
 package store
 
@@ -6,11 +15,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
 
-// TestLockFileIsExclusiveAndBounded is the contract every platform's lockFile
+// TestLockFileIsExclusiveAndBounded is the contract every platform's LockFile
 // has to honour, written down where a port can be checked against it.
 //
 // H-16 exercises the lock through 64 processes; this exercises it through two
@@ -21,36 +31,36 @@ func TestLockFileIsExclusiveAndBounded(t *testing.T) {
 	held := openForAppend(t, path)
 	contender := openForAppend(t, path)
 
-	unlock, err := lockFile(held, lockBudget)
+	unlock, _, err := lockFileWait(held, lockBudget)
 	if err != nil {
-		t.Fatalf("lockFile on an uncontended file: %v", err)
+		t.Fatalf("LockFile on an uncontended file: %v", err)
 	}
 
 	const budget = 50 * time.Millisecond
 	start := time.Now()
-	release, err := lockFile(contender, budget)
+	release, _, err := lockFileWait(contender, budget)
 	waited := time.Since(start)
 	if err == nil {
 		release()
 		t.Fatal("a second descriptor took the lock while the first held it")
 	}
 	if !errors.Is(err, ErrLockTimeout) {
-		t.Fatalf("contended lockFile returned %v, want ErrLockTimeout", err)
+		t.Fatalf("contended LockFile returned %v, want ErrLockTimeout", err)
 	}
 	if waited < budget {
-		t.Fatalf("contended lockFile gave up after %v, before its %v budget", waited, budget)
+		t.Fatalf("contended LockFile gave up after %v, before its %v budget", waited, budget)
 	}
-	// Well under lockBudget: a lockFile that ignored its argument and waited
+	// Well under lockBudget: a LockFile that ignored its argument and waited
 	// the package default would land here instead.
 	if waited > time.Second {
-		t.Fatalf("contended lockFile waited %v for a %v budget", waited, budget)
+		t.Fatalf("contended LockFile waited %v for a %v budget", waited, budget)
 	}
 
 	unlock()
 
-	release, err = lockFile(contender, budget)
+	release, _, err = lockFileWait(contender, budget)
 	if err != nil {
-		t.Fatalf("lockFile after the holder released: %v", err)
+		t.Fatalf("LockFile after the holder released: %v", err)
 	}
 	release()
 }
@@ -70,11 +80,10 @@ func TestAppendExecutionSpillsWhenTheLockIsHeld(t *testing.T) {
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		t.Fatal(err)
 	}
-	unlock, err := lockFile(openForAppend(t, filepath.Join(dir, FileRecords)), lockBudget)
+	unlock, _, err := lockFileWait(openForAppend(t, filepath.Join(dir, FileRecords)), lockBudget)
 	if err != nil {
 		t.Fatalf("taking the records lock: %v", err)
 	}
-	defer unlock()
 
 	rec := Execution{
 		Type:          TypeExecution,
@@ -87,6 +96,8 @@ func TestAppendExecutionSpillsWhenTheLockIsHeld(t *testing.T) {
 	if err := st.AppendExecution(rec); err != nil {
 		t.Fatalf("AppendExecution while the lock is held: %v", err)
 	}
+	// Released before the read: on Windows the held lock refuses it.
+	unlock()
 
 	run, err := st.ReadRun(session)
 	if err != nil {
@@ -109,8 +120,14 @@ func TestAppendExecutionSpillsWhenTheLockIsHeld(t *testing.T) {
 // that never tried to lock at all returns near-instantly regardless of who
 // holds the file; one that does spends close to its own budget retrying
 // before it gives up and falls back to reading anyway (see
-// store.eachLineLocked's doc on why giving up is not treated as fatal).
+// store.eachLineTryLock's doc on why giving up is not treated as fatal).
+//
+// It is unix-only. The read it falls back to is a read past a held lock,
+// which Windows' mandatory locks refuse: there the fallback cannot happen.
 func TestReadRunConsistent_RespectsAHeldLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("LockFileEx locks are mandatory: the read past a held lock this test is about is refused on Windows")
+	}
 	st, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -126,7 +143,7 @@ func TestReadRunConsistent_RespectsAHeldLock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	unlock, err := lockFile(openForAppend(t, recordsPath), lockBudget)
+	unlock, _, err := lockFileWait(openForAppend(t, recordsPath), lockBudget)
 	if err != nil {
 		t.Fatalf("taking the records lock: %v", err)
 	}
@@ -146,7 +163,7 @@ func TestReadRunConsistent_RespectsAHeldLock(t *testing.T) {
 	}
 	if waited < budget {
 		t.Fatalf("ReadRunConsistent returned after %v, before its own %v budget -- it did not "+
-			"attempt the lock at all. Break: read unlocked (eachLine instead of eachLineLocked) "+
+			"attempt the lock at all. Break: read unlocked (eachLine instead of eachLineTryLock) "+
 			"and this returns near-instantly regardless of who holds the file.", waited, budget)
 	}
 	if waited > time.Second {

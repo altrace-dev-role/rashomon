@@ -1202,9 +1202,9 @@ func TestText_ToolNameIsPrintableInEveryListing(t *testing.T) {
 	const raw, clean = "Ba\x1b[2Jsh\u202e", "Ba[2Jsh"
 	for name, write := range map[string]func(*bytes.Buffer){
 		"by tool":   func(b *bytes.Buffer) { b.WriteString(byName(map[string]int{raw: 1})) },
-		"chain row": func(b *bytes.Buffer) { writeLink(b, Link{Seq: 1, ToolName: raw, VerbClass: "execute"}, false) },
+		"chain row": func(b *bytes.Buffer) { writeLink(b, Link{Seq: 1, ToolName: raw, VerbClass: "execute"}) },
 		"dropped id": func(b *bytes.Buffer) {
-			writeChainTail(b, Chains{Dropped: []Link{{ToolUseID: raw}}}, true, false)
+			writeChainTail(b, Chains{Dropped: []Link{{ToolUseID: raw}}}, true)
 		},
 		"rewritten id":   func(b *bytes.Buffer) { writeRewritten(b, []Rewritten{{ToolUseID: raw, ToolName: "Edit"}}) },
 		"rewritten tool": func(b *bytes.Buffer) { writeRewritten(b, []Rewritten{{ToolUseID: "toolu_1", ToolName: raw}}) },

@@ -1,3 +1,3 @@
 m("H-5  absent settings file is an error", "internal/settings/document.go",
-  "\tif errors.Is(err, fs.ErrNotExist) {\n\t\treturn &Document{}, nil\n\t}\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\treturn Parse(data)",
-  "\tif err != nil {\n\t\treturn nil, err\n\t}\n\t_ = errors.Is\n\t_ = fs.ErrNotExist\n\treturn Parse(data)", "TestH5_")
+  "\t\treturn &Document{}, nil\n\t}\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\t// data is os.ReadFile's own buffer",
+  "\t\treturn nil, err\n\t}\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\t// data is os.ReadFile's own buffer", "TestH5_")

@@ -19,14 +19,14 @@ m("SP the --days window is ignored", "internal/spend/spend.go",
   "r.StartMS == 0 || r.StartMS < s.FromUnixMS {", "r.StartMS == 0 {", "TestWindow_")
 m("SP an undated response is dropped without being counted", "internal/spend/scan.go",
   "\t\t\tsc.Undated++\n", "", "TestWindow_")
-m("SP a file last written before the window is still read", "internal/spend/scan.go",
+m("SP a file last written before the window is still read", "internal/spend/discover.go",
   "\t\t\tstale[resolved(p)] = true\n\t\t\treturn false", "\t\t\tstale[resolved(p)] = true\n\t\t\treturn true",
   "TestDiscover_Skips")
 m("SP a file under subagents/ is main-agent spend unless its lines say sidechain", "internal/spend/scan.go",
   "Subagent:   f.Subagent || l.IsSidechain,", "Subagent:   l.IsSidechain,", "TestAgent_")
 m("SP a main-file line marked isSidechain is main-agent spend", "internal/spend/scan.go",
   "Subagent:   f.Subagent || l.IsSidechain,", "Subagent:   f.Subagent,", "TestAgent_")
-m("SP a workflow's subagent transcripts two levels down are not read", "internal/spend/scan.go",
+m("SP a workflow's subagent transcripts two levels down are not read", "internal/spend/discover.go",
   "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok {",
   "\t\tif ok, _ := filepath.Match(\"agent-*.jsonl\", d.Name()); ok && filepath.Dir(p) == dir {", "TestAgent_")
 m("SP any trailing hyphenated word is read as a dated suffix", "internal/spend/price.go",
@@ -207,12 +207,12 @@ m("SP a future-dated response counts as the last N days", "internal/spend/spend.
   "TestWindow_AFutureDated")
 m("SP a response written while spend runs is future-dated", "internal/spend/spend.go",
   "\tlatest := now.Add(futureSlack).UnixMilli()", "\tlatest := now.UnixMilli()", "TestWindow_AFutureDated")
-m("SP a transcript last written before the window is not counted", "internal/spend/scan.go",
+m("SP a transcript last written before the window is not counted", "internal/spend/discover.go",
   "\t\t\tstale[resolved(p)] = true\n\t\t\treturn false", "\t\t\treturn false",
   "TestWindow_OldTranscripts|TestDiscover_Skips")
 m("SP old transcripts are reported as no transcripts found", "internal/spend/text.go",
   "\tcase s.Read.Files == 0 && s.Read.FilesBeforeWindow > 0:", "\tcase false:", "TestWindow_OldTranscripts")
-m("SP a symlinked project folder is skipped", "internal/spend/scan.go",
+m("SP a symlinked project folder is skipped", "internal/spend/discover.go",
   "\tif t&fs.ModeSymlink != 0 {", "\tif false && t&fs.ModeSymlink != 0 {", "TestDiscover_ASymlinked")
 m("SP a recorded real path does not cover a transcript reached through a symlink", "internal/spend/join.go",
   "\t\tif real, err := filepath.EvalSymlinks(p); err == nil {", "\t\tif real, err := filepath.EvalSymlinks(p); err == nil && false {",
@@ -223,13 +223,13 @@ m("SP a discovered transcript is resolved as written, not by its absolute spelli
 m("SP a discovered transcript is not indexed by its absolute spelling", "internal/spend/join.go",
   "\tif abs, err := filepath.Abs(f.Path); err == nil {\n\t\t\tp = abs", "\tif abs, err := filepath.Abs(f.Path); err == nil {\n\t\t\t_ = abs",
   "TestDiscover_ASymlinked")
-m("SP one transcript under two spellings is read twice", "internal/spend/scan.go",
+m("SP one transcript under two spellings is read twice", "internal/spend/discover.go",
   "\t\tif seen[real] {\n\t\t\tcontinue", "\t\tif false && seen[real] {\n\t\t\tcontinue",
   "TestDiscover_OneTranscriptUnderTwoSpellings")
-m("SP a project folder that cannot be read is not counted", "internal/spend/scan.go",
+m("SP a project folder that cannot be read is not counted", "internal/spend/discover.go",
   "\t\tif kind == kindUnreadable {\n\t\t\tunreadable[resolved(dir)] = true", "\t\tif kind == kindUnreadable {\n\t\t\t_ = dir",
   "TestDiscover_AnUnreadableFolder")
-m("SP a session folder that cannot be read is not counted", "internal/spend/scan.go",
+m("SP a session folder that cannot be read is not counted", "internal/spend/discover.go",
   "\t\t\tcase kind == kindUnreadable:\n\t\t\t\tunreadable[resolved(path)] = true", "\t\t\tcase kind == kindUnreadable:\n\t\t\t\t_ = path",
   "TestDiscover_AnUnreadableFolder")
 m("SP folders that could not be read are not said", "internal/spend/text.go",
@@ -335,9 +335,9 @@ m("SP an id-less usage line with tokens is dropped without a count", "internal/s
 m("SP an id-less usage line is counted as a usage line", "internal/spend/scan.go",
   "\t\tif l.Message.ID == \"\" {\n\t\t\t// No id to deduplicate against", "\t\tif l.Message.ID == \"\" {\n\t\t\tsc.UsageLines++\n\t\t\t// No id to deduplicate against",
   "TestUnparsed_")
-m("SP a transcript that cannot be stat'ed is dropped without a count", "internal/spend/scan.go",
+m("SP a transcript that cannot be stat'ed is dropped without a count", "internal/spend/discover.go",
   "\t\t\treturn !errors.Is(err, fs.ErrNotExist)", "\t\t\treturn false", "TestDiscover_AFileThatCannotBeStated")
-m("SP a transcript that vanished is still read", "internal/spend/scan.go",
+m("SP a transcript that vanished is still read", "internal/spend/discover.go",
   "\t\t\treturn !errors.Is(err, fs.ErrNotExist)", "\t\t\treturn true", "TestDiscover_AFileThatCannotBeStated")
 m("SP a share's percentage overflows", "internal/spend/text.go",
   "\thi, lo := bits.Mul64(n, 100)\n\treturn bits.Div64(hi, lo, total)", "\t_, _ = bits.Mul64(n, 100)\n\treturn n * 100 / total, n * 100 % total",
@@ -540,7 +540,7 @@ m("SP an extra attempt's tokens are counted in the token total", "internal/spend
 m("SP a pre-output refusal is counted in the breakdowns", "internal/spend/spend.go",
   "\t\t\ts.refused = append(s.refused, r)\n\t\t\tcontinue\n", "\t\t\ts.refused = append(s.refused, r)\n",
   "TestRefusals_APreOutputRefusalIsLeftOutOfTheTotal")
-m("SP an old transcript is counted once per spelling", "internal/spend/scan.go",
+m("SP an old transcript is counted once per spelling", "internal/spend/discover.go",
   "\t\t\tstale[resolved(p)] = true\n", "\t\t\tstale[p] = true\n",
   "TestDiscover_OneTranscriptUnderTwoSpellings")
 m("SP a model-less fallback line replaces a known model", "internal/spend/scan.go",
@@ -689,13 +689,13 @@ m("SP every shared response after the first is not counted", "internal/spend/spe
 m("SP several shared responses read as one that appears", "internal/spend/text.go",
   "\treturn \"appear\"\n}", "\treturn \"appears\"\n}",
   "TestJoin_")
-m("SP an unreadable entry is keyed as written, not resolved", "internal/spend/scan.go",
+m("SP an unreadable entry is keyed as written, not resolved", "internal/spend/discover.go",
   "\t\t\t\tunreadable[resolved(path)] = true", "\t\t\t\tunreadable[path] = true",
   "TestDiscover_OneTranscriptUnderTwoSpellings")
-m("SP a path that does not resolve is keyed as written", "internal/spend/scan.go",
+m("SP a path that does not resolve is keyed as written", "internal/spend/discover.go",
   "\treturn filepath.Join(resolved(dir), filepath.Base(p))", "\treturn p",
   "TestDiscover_OneTranscriptUnderTwoSpellings")
-m("SP a transcript that does not resolve is deduped as written", "internal/spend/scan.go",
+m("SP a transcript that does not resolve is deduped as written", "internal/spend/discover.go",
   "\t\treal := resolved(f.Path)\n", "\t\treal, err := filepath.EvalSymlinks(f.Path)\n\t\tif err != nil {\n\t\t\treal = f.Path\n\t\t}\n",
   "TestDiscover_OneTranscriptUnderTwoSpellings")
 m("SP an undated usage line re-opens its file's dating", "internal/spend/scan.go",

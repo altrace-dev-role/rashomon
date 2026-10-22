@@ -78,8 +78,8 @@ func TestH107_ProbeThatDoesNotRecordPrintsNothing(t *testing.T) {
 }
 
 // TestH107_AnUnknownPhaseSaysSoOnStderrOnly: the phase check runs before the
-// panic barrier and before the store is opened, so it is the one place in the
-// probe a refusal could be printed without anything else having happened.
+// store is opened, so it is the one place in the probe a refusal could be
+// printed without anything else having happened.
 func TestH107_AnUnknownPhaseSaysSoOnStderrOnly(t *testing.T) {
 	e := newEnv(t)
 	for _, args := range [][]string{{"probe"}, {"probe", "middle"}} {

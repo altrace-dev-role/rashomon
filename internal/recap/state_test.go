@@ -170,3 +170,20 @@ func TestClaimSurvivesACorruptStateFile(t *testing.T) {
 		t.Error("a corrupt bookkeeping file suppressed a real finding")
 	}
 }
+
+// TestRubricERRORS11_RecordFailureReportsAFailedWrite: a failure that cannot
+// be recorded is returned, never dropped where it happens (errors-11). The
+// one caller, cmdRecap, still prints nothing (H-93), but it is the caller's
+// rule to apply, in the one place it is written down.
+func TestRubricERRORS11_RecordFailureReportsAFailedWrite(t *testing.T) {
+	root := t.TempDir()
+	markInstalled(t, root)
+	// A directory where the temporary file goes makes the write fail.
+	if err := os.Mkdir(statePath(root)+".tmp", 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordFailure(root, time.Now()); err == nil {
+		t.Fatal("RecordFailure returned nil although the state file could not be written")
+	}
+}

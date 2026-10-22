@@ -1,9 +1,10 @@
 package acceptance
 
 import (
+	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -23,158 +24,169 @@ import (
 // for those would overstate what is in the binary, which is its own kind of
 // wrong.
 
-// releasePlatforms is the matrix .goreleaser.yml builds: three operating
-// systems by two architectures.
-//
-// It is here rather than parsed out of the yaml because a wrong list fails
-// LOUDLY -- TestThirdPartyNotices_MatchesTheReleaseMatrix compares it against
-// the file and goes red on any drift -- whereas a yaml parser that silently
-// read nothing would make this whole check pass by testing an empty set.
-var releasePlatforms = []struct{ goos, goarch string }{
-	{"linux", "amd64"}, {"linux", "arm64"},
-	{"darwin", "amd64"}, {"darwin", "arm64"},
-	{"windows", "amd64"}, {"windows", "arm64"},
-}
-
-// linkedModules is what ends up in the binaries -- the UNION over every
-// platform the release ships, not the one the tests happen to run on.
+// linkedModules is what ends up in the binaries: the union over every target
+// the release builds, from the listings release_targets_test.go takes.
 //
 // THE UNION IS THE WHOLE POINT, and it was learned from this check failing in
-// CI after passing locally. The linked set is platform-dependent: go-isatty
-// and go-strftime are compiled in on darwin and windows and not on linux;
-// google/uuid on darwin and linux and not on windows. So NO single platform's
-// dependency list describes the set of archives a release publishes, and a
-// host-only check is wrong in the stale direction on every platform -- it
-// demanded go-isatty be listed when run on a Mac and demanded it be absent
-// when run on Linux, for one file that has to satisfy both.
-//
-// One notices file ships in all six archives. It therefore has to cover the
-// union, and only a module linked on NO shipped platform is genuinely stale.
+// CI after passing locally. The linked set is platform-dependent -- when the
+// SQLite driver was linked, go-isatty was compiled in on darwin and windows
+// and not on linux, google/uuid on darwin and linux and not on windows -- so
+// no single platform's dependency list describes the archives a release
+// publishes. One notices file ships in all of them; it has to cover the
+// union, and only a module linked on no shipped target is stale.
 func linkedModules(t *testing.T) map[string]string {
 	t.Helper()
+	return modulesIn(releaseListing(t))
+}
+
+// modulesIn is every third-party module any target links, at the version it
+// links. This module's own packages and the standard library's carry no
+// third-party module, so they are not in it.
+func modulesIn(byTarget map[releaseTarget][]listedPackage) map[string]string {
 	mods := map[string]string{}
-	for _, p := range releasePlatforms {
-		cmd := exec.Command("go", "list", "-deps", "-f",
-			"{{if .Module}}{{.Module.Path}} {{.Module.Version}}{{end}}", "./cmd/rashomon")
-		cmd.Dir = moduleRoot
-		cmd.Env = append(os.Environ(), "GOOS="+p.goos, "GOARCH="+p.goarch)
-		out, err := cmd.Output()
-		if err != nil {
-			t.Fatalf("listing linked modules for %s/%s: %v", p.goos, p.goarch, err)
-		}
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			f := strings.Fields(line)
-			if len(f) != 2 || strings.HasPrefix(f[0], "github.com/altrace-dev-role/rashomon") {
+	for _, pkgs := range byTarget {
+		for _, p := range pkgs {
+			if p.module == "" || p.module == modulePath {
 				continue
 			}
-			mods[f[0]] = f[1]
+			mods[p.module] = p.version
 		}
-	}
-	if len(mods) == 0 {
-		t.Fatal("no linked modules found; this check is not looking at the build any more")
 	}
 	return mods
 }
 
-// TestThirdPartyNotices_MatchesTheReleaseMatrix keeps releasePlatforms honest.
-//
-// The union above is only the right answer if it is a union over the platforms
-// actually shipped. If .goreleaser.yml gains an operating system and this list
-// does not, the notices file silently stops covering an archive that ships --
-// and it fails in the direction where nobody notices, because adding a platform
-// can only ADD modules and the existing assertions would stay green.
-func TestThirdPartyNotices_MatchesTheReleaseMatrix(t *testing.T) {
-	body, err := os.ReadFile(filepath.Join(moduleRoot, ".goreleaser.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(body)
-
-	seen := map[string]bool{}
-	for _, p := range releasePlatforms {
-		seen[p.goos] = true
-		if !strings.Contains(text, "      - "+p.goos+"\n") {
-			t.Errorf("releasePlatforms builds %s and .goreleaser.yml does not list it", p.goos)
-		}
-		if !strings.Contains(text, "      - "+p.goarch+"\n") {
-			t.Errorf("releasePlatforms builds %s and .goreleaser.yml does not list it", p.goarch)
-		}
-	}
-	for _, goos := range []string{"linux", "darwin", "windows", "freebsd", "openbsd"} {
-		if strings.Contains(text, "      - "+goos+"\n") && !seen[goos] {
-			t.Errorf(".goreleaser.yml ships %s and releasePlatforms does not cover it, so "+
-				"THIRD_PARTY_NOTICES is not checked against that archive's dependency set",
-				goos)
-		}
+// TestThirdPartyNotices_ReadsEveryLinkedModuleOffTheListings feeds the reader
+// listings of its own, because the tree links no third-party module and a
+// reader that dropped every line would read exactly as a correct one does.
+func TestThirdPartyNotices_ReadsEveryLinkedModuleOffTheListings(t *testing.T) {
+	ours := listedPackage{path: modulePath + "/internal/report", module: modulePath}
+	got := modulesIn(map[releaseTarget][]listedPackage{
+		{"linux", "amd64"}: {{path: "os"}, ours, {path: "example.com/x/a", module: "example.com/x", version: "v1.2.3"}},
+		{"windows", "amd64"}: {{path: "os"}, ours, {path: "example.com/x/b", module: "example.com/x", version: "v1.2.3"},
+			{path: "example.com/w", module: "example.com/w", version: "v0.1.0"}},
+	})
+	want := map[string]string{"example.com/x": "v1.2.3", "example.com/w": "v0.1.0"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("modules = %v, want %v: every module any target links, the windows-only one too, "+
+			"and neither this module nor the standard library", got, want)
 	}
 }
 
-// TestThirdPartyNotices_CoversEveryLinkedModule fails in BOTH directions. A
-// missing module is the licence gap; a stale one is a notice for code that is
-// no longer shipped, which is a different false statement about the artifact.
-func TestThirdPartyNotices_CoversEveryLinkedModule(t *testing.T) {
-	body, err := os.ReadFile(filepath.Join(moduleRoot, "THIRD_PARTY_NOTICES"))
-	if err != nil {
-		t.Fatalf("THIRD_PARTY_NOTICES: %v. The released archive ships it beside a statically "+
-			"linked binary; without it the artifact carries third-party code with no "+
-			"licence.", err)
-	}
-	text := string(body)
-
-	mods := linkedModules(t)
+// noticesProblems is the whole check as a function of the file's text and the
+// linked modules, so that fixtures can run it against a dependency list of
+// their own: with nothing linked in this tree, the clauses that need a module
+// would otherwise never execute, and a clause that never executes cannot be
+// shown to catch anything.
+//
+// It fails in BOTH directions. A missing module is the licence gap; a stale
+// one is a notice for code that does not ship, a false statement about the
+// artifact. Once any module is linked the file must carry licence text, since
+// a bare inventory is not a notice; for modernc.org/libc the musl and TRE
+// notices inside it too. The text is looked for anywhere in the file, not per
+// module: writing each module's licence beside it is the author's job, and
+// this check sees only that some licence is there. With nothing linked, the
+// file has to say so in so many words rather than go quiet: a reader who
+// finds an empty list cannot tell "nothing ships" from "nobody looked".
+func noticesProblems(text string, mods map[string]string) []string {
+	var problems []string
 	for path, ver := range mods {
 		if !strings.Contains(text, path+" "+ver) {
-			t.Errorf("%s %s is linked into the binary and is not listed in "+
-				"THIRD_PARTY_NOTICES at that version. Regenerate the file: its code ships "+
-				"to every user who downloads a release.", path, ver)
+			problems = append(problems, fmt.Sprintf("%s %s is linked into the binary and is not listed at that version", path, ver))
 		}
 	}
-
-	// The other direction: a module listed but no longer linked.
 	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		// Only the summary list at the top has the "path version" shape with
-		// two fields and a dot in the first.
-		f := strings.Fields(line)
+		// Only the summary list has the "path version" shape with two fields
+		// and a dot in the first.
+		f := strings.Fields(strings.TrimSpace(line))
 		if len(f) != 2 || !strings.Contains(f[0], ".") || !strings.HasPrefix(f[1], "v") {
 			continue
 		}
 		if ver, ok := mods[f[0]]; !ok {
-			t.Errorf("THIRD_PARTY_NOTICES lists %s, which is not linked into the binary. A "+
-				"notice for code that does not ship is a false statement about the "+
-				"artifact.", f[0])
+			problems = append(problems, fmt.Sprintf("%s is listed and not linked into the binary", f[0]))
 		} else if ver != f[1] {
-			t.Errorf("THIRD_PARTY_NOTICES lists %s at %s; the build links %s. A licence can "+
-				"change between versions.", f[0], f[1], ver)
+			problems = append(problems, fmt.Sprintf("%s is listed at %s; the build links %s", f[0], f[1], ver))
 		}
 	}
-}
-
-// TestThirdPartyNotices_CarriesActualLicenceText guards against the file
-// degrading into a list of names. A bare inventory is not a notice: the
-// licences themselves require their text to travel with the distribution.
-func TestThirdPartyNotices_CarriesActualLicenceText(t *testing.T) {
-	body, err := os.ReadFile(filepath.Join(moduleRoot, "THIRD_PARTY_NOTICES"))
-	if err != nil {
-		t.Fatal(err)
+	if len(mods) == 0 {
+		if !strings.Contains(text, noNoticesSentence) {
+			problems = append(problems, "no module is linked and the file does not say so")
+		}
+		return problems
 	}
-	text := string(body)
-
+	// Some licence text, not a bare inventory. Any one of the permissive
+	// licences a dependency here could carry; which one is the dependency's.
+	licensed := false
 	for _, want := range []string{
 		"Redistribution and use in source and binary forms", // BSD
 		"Permission is hereby granted, free of charge",      // MIT
+		"Licensed under the Apache License",                 // Apache-2.0
 	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("no %q anywhere in THIRD_PARTY_NOTICES; it has become an inventory "+
-				"rather than a notice", want)
+		if strings.Contains(text, want) {
+			licensed = true
 		}
 	}
+	if !licensed {
+		problems = append(problems, "no licence text anywhere; an inventory rather than a notice")
+	}
+	if _, libc := mods["modernc.org/libc"]; libc && !strings.Contains(text, "LICENSE-3RD-PARTY") {
+		problems = append(problems, "modernc.org/libc is linked and its own third-party notices are not reproduced")
+	}
+	return problems
+}
 
-	// modernc.org/libc is a translation of musl, and its own third-party
-	// notices are the ones most easily lost, being a file inside a file.
-	if !strings.Contains(text, "LICENSE-3RD-PARTY") {
-		t.Error("the modernc.org/libc third-party notices are not reproduced; they cover " +
-			"the musl and TRE derived sources inside the libc translation, which is the " +
-			"part of this binary least likely to be noticed and most likely to matter")
+// noNoticesSentence is what the file says when nothing third-party ships.
+const noNoticesSentence = "No third-party module is linked into ./cmd/rashomon"
+
+func noticesText(t *testing.T) string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(moduleRoot, "THIRD_PARTY_NOTICES"))
+	if err != nil {
+		t.Fatalf("THIRD_PARTY_NOTICES: %v. The released archive ships it beside a statically "+
+			"linked binary, so it has to exist and has to be right.", err)
+	}
+	return string(body)
+}
+
+// TestThirdPartyNotices_CoversEveryLinkedModule runs the check against the
+// real file and the real union of linked modules.
+func TestThirdPartyNotices_CoversEveryLinkedModule(t *testing.T) {
+	for _, p := range noticesProblems(noticesText(t), linkedModules(t)) {
+		t.Error("THIRD_PARTY_NOTICES: " + p)
+	}
+}
+
+// TestThirdPartyNotices_CheckerFailsClosed is the check against dependency
+// lists of its own, which is the only way its module clauses run in a tree
+// that links nothing.
+func TestThirdPartyNotices_CheckerFailsClosed(t *testing.T) {
+	const bsd = "Redistribution and use in source and binary forms, with or without modification"
+	const mit = "Permission is hereby granted, free of charge, to any person"
+	cases := []struct {
+		name string
+		text string
+		mods map[string]string
+		red  bool
+	}{
+		{"nothing linked, said", noNoticesSentence + "\n\n  (none)\n", nil, false},
+		{"nothing linked, not said", "THIRD-PARTY NOTICES\n\n  (none)\n", nil, true},
+		{"linked and listed with its licence", "  example.com/x v1.2.3\n\n" + bsd + "\n", map[string]string{"example.com/x": "v1.2.3"}, false},
+		{"linked and missing", noNoticesSentence + "\n", map[string]string{"example.com/x": "v1.2.3"}, true},
+		// Only the missing-module clause can turn this one red: the licence is
+		// there and the module that is listed is linked at its version.
+		{"two linked, licence present, one not listed", "  example.com/x v1.2.3\n" + bsd + "\n",
+			map[string]string{"example.com/x": "v1.2.3", "example.com/y": "v1.0.0"}, true},
+		{"linked, listed, no licence text", "  example.com/x v1.2.3\n", map[string]string{"example.com/x": "v1.2.3"}, true},
+		{"listed and not linked", "  example.com/x v1.2.3\n" + mit + "\n", map[string]string{"example.com/y": "v1.0.0"}, true},
+		{"listed at another version", "  example.com/x v1.2.4\n" + bsd + "\n", map[string]string{"example.com/x": "v1.2.3"}, true},
+		{"libc without its own notices", "  modernc.org/libc v1.75.7\n" + bsd + "\n", map[string]string{"modernc.org/libc": "v1.75.7"}, true},
+		{"libc with its own notices", "  modernc.org/libc v1.75.7\n" + bsd + "\nLICENSE-3RD-PARTY\n", map[string]string{"modernc.org/libc": "v1.75.7"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			problems := noticesProblems(tc.text, tc.mods)
+			if (len(problems) > 0) != tc.red {
+				t.Errorf("problems = %v, want red: %v", problems, tc.red)
+			}
+		})
 	}
 }

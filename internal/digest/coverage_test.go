@@ -1,6 +1,7 @@
 package digest
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/report"
@@ -165,4 +166,92 @@ func hasReason(reasons []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestREC34g_FlushFailedMarkerLeavesAnUnterminatedTurnUnterminated: a post
+// whose flush failed marks the call with a flush_failed terminal (REC-34).
+// That marker is not the hook's ending, so a declaration whose hook was killed
+// before its own terminal still reads as unterminated once the run has ended.
+func TestREC34g_FlushFailedMarkerLeavesAnUnterminatedTurnUnterminated(t *testing.T) {
+	reason := store.ReasonFlushFailed
+	run := &store.Run{
+		Declarations: []store.Declaration{decl(1, "a1", "Bash", "prompt-1", "/t.jsonl", 100)},
+		Terminals:    []store.Terminal{{ToolUseID: "a1", Outcome: store.OutcomeError, Reason: &reason, RecordedAtMS: 150}},
+		Coverage: []store.Coverage{
+			startCoverage("inst-1"),
+			{Phase: store.PhaseEnd, State: store.StateVerified, InstallID: "inst-1"},
+		},
+	}
+	w := selectTurn(run, "prompt-1")
+	if got := turnUnterminated(w, run.Terminals); len(got) != 1 || got[0] != "a1" {
+		t.Errorf("turnUnterminated = %v, want [a1]: the flush_failed marker closed the declaration", got)
+	}
+	tc, _ := buildTurnCoverage(run, nil, w)
+	if !hasReason(tc.Reasons, store.ReasonUnterminatedEntry) {
+		t.Errorf("reasons = %v, want unterminated_entry", tc.Reasons)
+	}
+}
+
+// TestREC34n_FlushFailedMarkerDoesNotStretchADroppedTerminalsRecordedTime:
+// turnDropped windows a dropped terminal by its OWN recorded time, because a
+// dropped declaration never carried a prompt_id to key on (turnDropped's
+// doc). A flush_failed marker (REC-34) sharing that terminal's tool_use_id --
+// written by a later process, long after the terminal it marks -- must not
+// overwrite that time in the attribution map, or the dropped terminal is
+// windowed into whichever turn the MARKER happened to land in instead of the
+// one it actually belongs to.
+func TestREC34n_FlushFailedMarkerDoesNotStretchADroppedTerminalsRecordedTime(t *testing.T) {
+	reason := store.ReasonFlushFailed
+	run := &store.Run{
+		Declarations: []store.Declaration{
+			decl(1, "a1", "Bash", "prompt-1", "/t.jsonl", 100),
+			decl(2, "a2", "Bash", "prompt-2", "/t.jsonl", 1000),
+		},
+		Terminals: []store.Terminal{
+			// The real, genuinely dropped terminal: no declaration names
+			// toolu_dropped, recorded inside prompt-1's window [100, 1000).
+			{ToolUseID: "toolu_dropped", Outcome: store.OutcomeError, RecordedAtMS: 150},
+			// A flush_failed marker for the SAME tool_use_id, recorded well
+			// into prompt-2's window.
+			{ToolUseID: "toolu_dropped", Outcome: store.OutcomeError, Reason: &reason, RecordedAtMS: 5000},
+		},
+	}
+	w := selectTurn(run, "prompt-1")
+	if got := turnDropped(run, w); len(got) != 1 || got[0] != "toolu_dropped" {
+		t.Errorf("turnDropped(prompt-1) = %v, want [toolu_dropped]: the flush_failed marker's later "+
+			"time pushed the dropped terminal's own out of the turn it was actually recorded in", got)
+	}
+}
+
+// TestRubricERRORS5_TurnCoverageFailsClosedOnACoverageRecordItCannotRead is
+// report's ERRORS5 table through the turn digest, which shares
+// report.RollupCoverage: a call-phase coverage record that is unverified with
+// no reason, or carries a state this build does not write, makes the turn
+// unverified with records_unreadable.
+func TestRubricERRORS5_TurnCoverageFailsClosedOnACoverageRecordItCannotRead(t *testing.T) {
+	internalError := store.ReasonInternalError
+	for _, c := range []struct {
+		name   string
+		state  string
+		reason *string
+	}{
+		{"unverified with a null reason", store.StateUnverified, nil},
+		{"an unknown state", "degraded", nil},
+		{"an unknown state with a reason", "degraded", &internalError},
+		{"an empty state", "", nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			run := &store.Run{
+				Declarations: []store.Declaration{decl(1, "a1", "Bash", "prompt-1", "/t.jsonl", 1000)},
+				Coverage: []store.Coverage{
+					startCoverage("inst-1"),
+					{Phase: store.PhaseCall, State: c.state, Reason: c.reason, RecordedAtMS: 1000},
+				},
+			}
+			tc, _ := buildTurnCoverage(run, nil, selectTurn(run, "prompt-1"))
+			if tc.State != store.StateUnverified || !slices.Contains(tc.Reasons, report.ReasonRecordsUnreadable) {
+				t.Errorf("turn coverage = %s %v, want unverified with %s", tc.State, tc.Reasons, report.ReasonRecordsUnreadable)
+			}
+		})
+	}
 }

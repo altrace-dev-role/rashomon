@@ -4,10 +4,13 @@ package fault
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -165,3 +168,51 @@ func hang(kind string) {
 //
 //go:noinline
 func truncate(b []byte, n int) []byte { return b[:n] }
+
+// SyncLogEnvVar names the file the sync recorder appends to: one line per
+// sync the store issues, "<kind> <file> locked=<true|false>", in the order
+// they happen. Unset, nothing is recorded.
+//
+// It is REC-34's instrument. Durability cannot be observed without a power
+// loss, so its test observes the next best thing: which sync ran, on which
+// file, and whether a store lock was held while it ran. "locked" is counted
+// from LockTaken and LockReleased, around every lock the store takes, append
+// or not, rather than claimed by the code that syncs, so a full sync moved
+// back inside a lock is recorded as exactly that. The count is per process,
+// so with several goroutines it can only err towards "locked".
+const SyncLogEnvVar = "RASHOMON_SYNC_LOG"
+
+// locksHeld counts the store locks this process holds.
+var locksHeld atomic.Int32
+
+// LockTaken and LockReleased bracket every store lock.
+func LockTaken() { locksHeld.Add(1) }
+
+func LockReleased() { locksHeld.Add(-1) }
+
+// RecordSync logs one sync of kind (SyncBarrier or SyncFull) on path.
+func RecordSync(kind, path string) {
+	log := os.Getenv(SyncLogEnvVar)
+	if log == "" {
+		return
+	}
+	line := kind + " " + filepath.Base(path) + " locked=" + strconv.FormatBool(locksHeld.Load() > 0) + "\n"
+	if err := appendLog(log, line); err != nil {
+		// A line the recorder could not write would read as a sync that never
+		// happened. stderr is what turns that into a failing test instead of
+		// a passing one: every test that sets the variable requires it empty.
+		fmt.Fprintln(os.Stderr, "rashomon: sync recorder:", err)
+	}
+}
+
+func appendLog(path, line string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteString(line); err != nil {
+		f.Close() //nolint:errcheck // the write error is what matters
+		return err
+	}
+	return f.Close()
+}

@@ -115,7 +115,7 @@ m("TL tool_name reaches the terminal raw on the timeline", "internal/report/time
   "\tcall := printable(c.ToolName)", "\tcall := c.ToolName", "TestTimeline_")
 m("TL tool_name reaches the terminal raw in the by-tool counts", "internal/report/text.go",
   "fmt.Sprintf(\"%s %d\", printable(name), counts[name])", "fmt.Sprintf(\"%s %d\", name, counts[name])", "TestText_ToolNameIsPrintable")
-m("TL tool_name reaches the terminal raw in a chain row", "internal/report/text.go",
+m("TL tool_name reaches the terminal raw in a chain row", "internal/report/text_chains.go",
   "\t\tl.Seq, printable(l.ToolName), shape,", "\t\tl.Seq, l.ToolName, shape,", "TestText_ToolNameIsPrintable")
 m("TL the capped listing prints every row anyway", "internal/report/timeline_text.go",
   "plural(rest))\n\t\t\tbreak\n", "plural(rest))\n", "TestTimeline_")
@@ -196,7 +196,7 @@ m("TL the rewritten list blanks the tool name", "internal/report/text.go",
   "\t\t\tprintable(r.ToolUseID), printable(r.ToolName), shape, what)", "\t\t\tprintable(r.ToolUseID), \"\", shape, what)", "TestText_ToolNameIsPrintable")
 m("TL the program reaches the terminal raw in the rewritten list", "internal/report/text.go",
   "\t\t\tshape = printable(r.Program) + \", \" + r.VerbClass", "\t\t\tshape = r.Program + \", \" + r.VerbClass", "TestText_ToolNameIsPrintable")
-m("TL a dropped call's id reaches the terminal raw", "internal/report/text.go",
+m("TL a dropped call's id reaches the terminal raw", "internal/report/text_chains.go",
   "everything but the id is unknown\\n\", printable(l.ToolUseID))", "everything but the id is unknown\\n\", l.ToolUseID)", "TestText_ToolNameIsPrintable")
 m("TL the program reaches the terminal raw on the timeline", "internal/report/timeline_text.go",
   "\t\tcall += \" \" + printable(c.Program)", "\t\tcall += \" \" + c.Program", "TestText_ToolNameIsPrintable")

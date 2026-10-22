@@ -1,27 +1,22 @@
 package store
 
 import (
-	"bufio"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 	"github.com/altrace-dev-role/rashomon/internal/host"
 )
-
-// evictGrace keeps a run that was written to recently out of eviction. The
-// current session is protected by name; this protects any other session that
-// is still live, so that eviction never races an append.
-const evictGrace = time.Hour
 
 // window is the half-open range of record instants a forget removes, in Unix
 // milliseconds. An open side is held as the extreme of the range, so one
@@ -63,21 +58,112 @@ func (w window) openAbove() bool { return w.toMS == math.MaxInt64 }
 // handler that was killed.
 func (s *Store) ForgetWindow(from, to *time.Time, now time.Time) ([]Gap, error) {
 	w := newWindow(from, to)
+	return s.forgetEach(func(dir string) (*Gap, error) { return s.forgetRun(dir, w, now) })
+}
+
+// forgetEach applies one forget to every run, oldest first, and goes on past
+// a run it fails on: the gaps it returns are every gap written, and the error
+// joins one per failed run, naming its directory. Stopping at the first
+// failure, as it used to, left every later run unforgotten behind one damaged
+// file, and the caller was told only about the damage. A failed run is left
+// as it was, or with its gap written and its rewrite unfinished -- the
+// overstatement forgetRun's own comment accepts.
+func (s *Store) forgetEach(forget func(dir string) (*Gap, error)) ([]Gap, error) {
+	if err := s.opened(); err != nil {
+		return nil, err
+	}
 	names, err := s.Runs()
 	if err != nil {
 		return nil, err
 	}
-	var gaps []Gap
+	var (
+		gaps []Gap
+		errs []error
+	)
 	for _, name := range names {
-		g, err := s.forgetRun(filepath.Join(s.root, dirRuns, name), w, now)
-		if err != nil {
-			return gaps, err
-		}
+		g, err := forget(filepath.Join(s.root, dirRuns, name))
 		if g != nil {
 			gaps = append(gaps, *g)
 		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("run %s: %w", name, err))
+		}
 	}
-	return gaps, nil
+	if len(errs) == 0 {
+		return gaps, nil
+	}
+	return gaps, fmt.Errorf("%w: %w", ErrForgetIncomplete, errors.Join(errs...))
+}
+
+// ErrForgetIncomplete marks a forget that ran over every run and left some it
+// could not rewrite: the gaps returned with it were written, and the caller
+// may say so. Any other error from a forget came before it changed a run --
+// for forget --host, possibly before its store-level record landed -- and
+// nothing may be reported as forgotten.
+var ErrForgetIncomplete = errors.New("store: forget left runs it could not rewrite")
+
+// runLines is one run's records and spill files as forget reads them: the
+// records file open, and locked until close, and the lines of both.
+type runLines struct {
+	records   *os.File // nil when the run has no records file
+	unlock    func()
+	spillPath string
+	rec       [][]byte
+	spill     [][]byte
+}
+
+// openRunLines opens a run for forget. The ordered stream's lock is held
+// until close, so that no handler appends between the plan and the rewrite.
+// The spill file is read without its lock, because spill writers do not wait
+// for it; rewriteSpill reads it again under the lock and removes only what
+// the plan counted.
+func openRunLines(dir string) (*runLines, error) {
+	rl := &runLines{spillPath: filepath.Join(dir, FileSpill)}
+	f, err := os.OpenFile(filepath.Join(dir, FileRecords), os.O_RDWR, fileMode)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	if err == nil {
+		// forget's waits are its own command's, which prints its result;
+		// the tally noted per run is of hook invocations' (perf-7).
+		unlock, _, err := lockCounted(f, lockBudget)
+		if err != nil {
+			f.Close() //nolint:errcheck // the lock error is what matters
+			return nil, err
+		}
+		rl.records, rl.unlock = f, unlock
+	}
+	if rl.rec, err = readLines(rl.records); err != nil {
+		rl.close()
+		return nil, tooLongHint(FileRecords, err)
+	}
+	if rl.spill, err = readLinesAt(rl.spillPath); err != nil {
+		rl.close()
+		return nil, tooLongHint(FileSpill, err)
+	}
+	return rl, nil
+}
+
+// tooLongHint adds which file and what to do to a read that failed because
+// one of its lines is over the reader's limit (errLineTooLong). forget
+// cannot rewrite a line it never held in order to leave it unchanged, but
+// Evict removes a whole run by size without reading any of its lines, so
+// the run is not stuck unforgettable forever. Any other error passes
+// through as it was.
+func tooLongHint(file string, err error) error {
+	if !errors.Is(err, errLineTooLong) {
+		return err
+	}
+	return fmt.Errorf("%s: %w; Evict still removes the whole run without reading it", file, err)
+}
+
+// close releases the records file's lock and closes it.
+func (rl *runLines) close() {
+	if rl.records == nil {
+		return
+	}
+	rl.unlock()
+	rl.records.Close() //nolint:errcheck // the rewrite's Sync reports a write failure
 }
 
 // lineHead is what forget needs to know about a record to decide its fate.
@@ -88,32 +174,12 @@ type lineHead struct {
 }
 
 func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
-	recordsPath := filepath.Join(dir, FileRecords)
-	spillPath := filepath.Join(dir, FileSpill)
-
-	// The ordered stream's lock is held for the whole operation so that no
-	// handler appends between the plan and the rewrite.
-	records, err := os.OpenFile(recordsPath, os.O_RDWR, fileMode)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
-	}
-	if records != nil {
-		defer records.Close() //nolint:errcheck // Sync reports the write failure
-		unlock, err := lockFile(records, lockBudget)
-		if err != nil {
-			return nil, err
-		}
-		defer unlock()
-	}
-
-	recLines, err := readLines(records)
+	rl, err := openRunLines(dir)
 	if err != nil {
 		return nil, err
 	}
-	spillLines, err := readLinesAt(spillPath)
-	if err != nil {
-		return nil, err
-	}
+	defer rl.close()
+	records, spillPath, recLines, spillLines := rl.records, rl.spillPath, rl.rec, rl.spill
 
 	// Plan: every tool_use_id with any record in the window, from either file.
 	doomed := map[string]bool{}
@@ -174,16 +240,9 @@ func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
 	// The gap lands before anything is removed. A failure between the two
 	// leaves a gap for records that still exist -- an overstatement a reader
 	// can see -- rather than a deletion nothing admits to.
-	g := Gap{
-		Type:           TypeGap,
-		SchemaVersion:  SessionSchemaVersion,
-		RecordedAtMS:   now.UnixMilli(),
-		SessionID:      sessionID,
-		Reason:         GapForget,
-		FromUnixMS:     from,
-		ToUnixMS:       to,
-		RemovedRecords: removedRec + removedSpill,
-	}
+	g := NewGap(GapForget, sessionID, now)
+	g.FromUnixMS, g.ToUnixMS = from, to
+	g.RemovedRecords = removedRec + removedSpill
 	if err := s.AppendGap(g); err != nil {
 		return nil, err
 	}
@@ -194,154 +253,11 @@ func (s *Store) forgetRun(dir string, w window, now time.Time) (*Gap, error) {
 		}
 	}
 	if removedSpill > 0 {
-		if err := rewriteAt(spillPath, keptSpill); err != nil {
+		if err := rewriteSpill(spillPath, spillLines, keptSpill); err != nil {
 			return &g, err
 		}
 	}
 	return &g, nil
-}
-
-// Evict removes whole runs, oldest first, until the store fits under capBytes.
-// The named session and any run written to within evictGrace are never
-// candidates. Every removed run leaves a gap record.
-func (s *Store) Evict(capBytes int64, protect string, now time.Time) ([]Gap, error) {
-	if capBytes <= 0 {
-		return nil, nil
-	}
-
-	// One evictor at a time. Holding the gaps file's lock for the whole pass
-	// means a second handler that arrives mid-eviction sees the removals and
-	// does not write a second gap record for a run that is already gone.
-	gf, err := os.OpenFile(filepath.Join(s.root, FileGaps), appendFlags, fileMode)
-	if err != nil {
-		return nil, err
-	}
-	defer gf.Close() //nolint:errcheck // Sync per record reports write failures
-	unlock, err := lockFile(gf, lockBudget)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
-
-	runsDir := filepath.Join(s.root, dirRuns)
-	entries, err := os.ReadDir(runsDir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	type candidate struct {
-		name  string
-		size  int64
-		mtime time.Time
-	}
-	var (
-		cands []candidate
-		total int64
-	)
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		c := candidate{name: e.Name()}
-		files, err := os.ReadDir(filepath.Join(runsDir, e.Name()))
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range files {
-			info, err := f.Info()
-			if err != nil {
-				return nil, err
-			}
-			c.size += info.Size()
-			if info.ModTime().After(c.mtime) {
-				c.mtime = info.ModTime()
-			}
-		}
-		cands = append(cands, c)
-		total += c.size
-	}
-	if total <= capBytes {
-		return nil, nil
-	}
-	sort.Slice(cands, func(i, j int) bool { return cands[i].mtime.Before(cands[j].mtime) })
-
-	protectDir := segment(protect)
-	var gaps []Gap
-	for _, c := range cands {
-		if total <= capBytes {
-			break
-		}
-		if c.name == protectDir || now.Sub(c.mtime) < evictGrace {
-			continue
-		}
-
-		run, err := s.ReadRunDir(c.name)
-		if err != nil {
-			return gaps, err
-		}
-		from, to := recordSpan(run, c.mtime)
-		g := Gap{
-			Type:           TypeGap,
-			SchemaVersion:  SessionSchemaVersion,
-			RecordedAtMS:   now.UnixMilli(),
-			SessionID:      run.SessionID(),
-			Reason:         GapSizeCap,
-			FromUnixMS:     from,
-			ToUnixMS:       to,
-			RemovedRecords: len(run.Declarations) + len(run.Executions) + len(run.Terminals),
-		}
-
-		// The gap lands before the run goes, for the same reason as in forget.
-		line, err := marshalLine(g)
-		if err != nil {
-			return gaps, err
-		}
-		if _, err := gf.Write(line); err != nil {
-			return gaps, err
-		}
-		if err := gf.Sync(); err != nil {
-			return gaps, err
-		}
-		if err := os.RemoveAll(filepath.Join(runsDir, c.name)); err != nil {
-			return gaps, err
-		}
-
-		total -= c.size
-		gaps = append(gaps, g)
-	}
-	return gaps, nil
-}
-
-// recordSpan is the time range a run's records cover, falling back to the
-// directory's modification time for a run that holds none.
-func recordSpan(run *Run, fallback time.Time) (from, to int64) {
-	first := true
-	consider := func(ms int64) {
-		if first || ms < from {
-			from = ms
-		}
-		if first || ms > to {
-			to = ms
-		}
-		first = false
-	}
-	for _, d := range run.Declarations {
-		consider(d.RecordedAtMS)
-	}
-	for _, x := range run.Executions {
-		consider(x.RecordedAtMS)
-	}
-	for _, t := range run.Terminals {
-		consider(t.RecordedAtMS)
-	}
-	if first {
-		ms := fallback.UnixMilli()
-		return ms, ms
-	}
-	return from, to
 }
 
 func partition(lines [][]byte, keep func([]byte) bool) (kept [][]byte, removed int) {
@@ -357,6 +273,11 @@ func partition(lines [][]byte, keep func([]byte) bool) (kept [][]byte, removed i
 
 // readLines reads every non-empty line of an open file from its start. A nil
 // file has no lines.
+//
+// Its callers rewrite the file from what it returns, so a line it cannot hold
+// is an error here rather than a count: dropping it would delete a record
+// that nothing names in a gap, and writing it back needs the line itself.
+// The run is left as it is, and the forget goes on to the next (forgetEach).
 func readLines(f *os.File) ([][]byte, error) {
 	if f == nil {
 		return nil, nil
@@ -365,14 +286,18 @@ func readLines(f *os.File) ([][]byte, error) {
 		return nil, err
 	}
 	var lines [][]byte
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
-	for sc.Scan() {
-		if line := sc.Bytes(); len(line) > 0 {
-			lines = append(lines, append([]byte(nil), line...))
+	tooLong := false
+	err := forEachLine(f, func(line []byte) {
+		if line == nil {
+			tooLong = true
+			return
 		}
+		lines = append(lines, line)
+	})
+	if err == nil && tooLong {
+		err = errLineTooLong
 	}
-	return lines, sc.Err()
+	return lines, err
 }
 
 func readLinesAt(path string) ([][]byte, error) {
@@ -387,53 +312,110 @@ func readLinesAt(path string) ([][]byte, error) {
 	return readLines(f)
 }
 
-// rewrite replaces an open file's content in place.
+// rewrite replaces an open file's content in place with lines, which are the
+// file's own lines with some left out, in their order.
 //
 // In place rather than temp-and-rename on purpose. The append lock is taken on
 // the file's inode; a handler blocked on that lock holds a descriptor to this
 // inode and will append to it once the lock is released. A rename would leave
 // that handler appending to an orphan.
+//
+// It compacts: each kept line is written from the start of the file, at or
+// before where it already was, and the file is cut to its new length last.
+// A line is only ever written over bytes of itself or of lines before it, so
+// a crash at any point leaves every kept line readable, in its new place or
+// its old one; what it can add is a duplicate of a kept line or one damaged
+// line where the two meet, and readers surface both (duplicate_declarations,
+// records_unreadable). Truncating first, as this used to, lost every kept
+// line to a crash before the writes, while the gap said only the forgotten
+// ones had gone (test-5).
+//
+// A crash before the Truncate can also leave a forgotten line whole past
+// off, since nothing has overwritten or cut it yet, while the gap for it was
+// already synced before rewrite ran. A later forget that reads the same run
+// finds that line again and writes a second gap counting it a second time.
 func rewrite(f *os.File, lines [][]byte) error {
-	if err := f.Truncate(0); err != nil {
-		return err
-	}
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
+	var off int64
 	for _, line := range lines {
-		if _, err := f.Write(append(line, '\n')); err != nil {
+		buf := append(line[:len(line):len(line)], '\n')
+		if _, err := f.WriteAt(buf, off); err != nil {
 			return err
 		}
+		off += int64(len(buf))
+		fault.Inject(fault.PointStoreRewritePartial)
 	}
-	return f.Sync()
+	if err := f.Truncate(off); err != nil {
+		return err
+	}
+	return syncFull(f)
 }
 
-// rewriteAt rewrites the spill file under its lock. Spill writers wait only
-// briefly for that lock and then append regardless, so a rewrite that takes
-// longer than their patience can race one; the rewrite is a few microseconds,
-// their patience is fifty milliseconds, and the loss on the far side of that
-// is one terminal, which reads as unverified rather than as anything false.
-func rewriteAt(path string, lines [][]byte) error {
+// rewriteSpill removes from the spill file the lines forget counted, and
+// only those. snapshot is the file as forget's plan read it, without the
+// spill lock, and kept is what the plan keeps of it; the lines in one and
+// not the other, counted as a multiset, are what the gap already says left.
+//
+// The file is read again under its lock and every line the plan did not
+// count is written back, so a spill that landed after the plan -- a
+// lock_timeout terminal, the only trace of a declaration that could not
+// land -- survives (conc-1). A counted line is dropped once per count, so a
+// duplicate the plan did not count stays. It does not re-decide by
+// tool_use_id under the lock: that could remove a line the gap never
+// counted.
+//
+// Spill writers wait spillBudget for this lock and then append regardless.
+// The hold is one read, one write and one full sync, which is milliseconds:
+// a full sync inside a lock held an ordered append for 6.9 ms at p50 and
+// 11.6 ms at p99 on darwin (lockbudget.go). A writer that gives up during a
+// longer hold can lose its line to the rewrite; that is the accepted risk,
+// and the line it loses reads as unverified rather than as anything false.
+func rewriteSpill(path string, snapshot, kept [][]byte) error {
+	counted := countedLines(snapshot, kept)
 	f, err := os.OpenFile(path, os.O_RDWR, fileMode)
 	if err != nil {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // Sync reports the write failure
-	unlock, err := lockFile(f, lockBudget)
+	// forget's own wait, discarded as in openRunLines.
+	unlock, _, err := lockCounted(f, lockBudget)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	return rewrite(f, lines)
+	lines, err := readLines(f)
+	if err != nil {
+		return err
+	}
+	out := lines[:0]
+	for _, line := range lines {
+		if counted[string(line)] > 0 {
+			counted[string(line)]--
+			continue
+		}
+		out = append(out, line)
+	}
+	return rewrite(f, out)
 }
 
-// canonicalHost is host.Canonical, under a name ForgetHost's parameter does
-// not shadow.
-func canonicalHost(raw string) (string, bool) { return host.Canonical(raw) }
+// countedLines is the multiset of lines in snapshot and not in kept, which
+// partition took from snapshot in order. It holds at most len(snapshot)
+// keys.
+func countedLines(snapshot, kept [][]byte) map[string]int {
+	counted := make(map[string]int, len(snapshot)-len(kept))
+	for _, line := range snapshot {
+		counted[string(line)]++
+	}
+	for _, line := range kept {
+		counted[string(line)]--
+	}
+	return counted
+}
 
-// ErrNotAHostname is ForgetHost's refusal of a value that names no host: a
-// path, a credential, whitespace inside, or nothing left once a scheme and a
-// port are removed. It does not carry the value, which may hold a credential.
+// ErrNotAHostname is a host-scoped forget's refusal of a value that names no
+// host: a path, a credential, whitespace inside, or nothing left once a scheme
+// and a port are removed. host.Canonical refuses it, so no record can match
+// it, and removing nothing must not read as a forget that worked. It does not
+// carry the value, which may hold a credential.
 var ErrNotAHostname = errors.New("store: forget --host: the value is not a hostname")
 
 // declHead is what a host-scoped forget needs from a record: the join key and
@@ -457,57 +439,54 @@ type declHead struct {
 // more here than the extra field survived: the caller asked for that host's
 // records to be gone, and the declaration IS that host's record.
 //
-// The host is matched against both declared lists. An ssh host is not
-// observable on the wire, but it is still something the session named and still
-// something a user can ask to have forgotten.
-//
-// What this canNOT do is delete the row from the PROXY's store. That is the
-// closed product's hash-chained audit database, opened read-only here, and
-// deleting from it would break the chain it exists to provide. The gap record
-// carries the host so the report keeps the destination suppressed from its
-// view instead, and says so rather than implying the row is gone.
+// The host is matched against both declared lists, hosts and ssh_hosts: an
+// ssh host is as much something the session named as an HTTPS one, and the
+// report reads its own lists from exactly these two fields, so a forgotten
+// host returns nowhere. The gap record carries the host's keyed digest, and the
+// sandbox section, whose trail is nono's file and not ours to edit, filters
+// the host out by it rather than implying the trail forgot.
 //
 // THE NAME IS CANONICALISED FIRST, by host.Canonical, the function every host
-// this store and the report hold has been through: the declarations' lists,
-// the proxy's rows and the sandbox's trail. Matched and digested as typed,
-// "GitHub.com", "github.com:443" and "https://github.com/" each named a host
-// nothing held, so the forget removed nothing and suppressed nothing while
-// the command said later reports would leave it out. A value Canonical
-// refuses names no destination at all and is refused here, before anything is
+// this store and the report hold has been through: the declarations' lists
+// and the sandbox's trail. Matched and digested as typed, "GitHub.com",
+// "github.com:443", "https://github.com/" and 167838211 (recorded as
+// 10.1.2.3) each named a host nothing held, so the forget removed nothing and
+// suppressed nothing while the command said later reports would leave it
+// out. The gap's digest and the store-level record's are the canonical
+// host's, the spelling the sandbox trail carries. A value Canonical refuses
+// names no destination at all and is refused here, before anything is
 // written.
-func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
-	if host == "" {
-		return nil, errors.New("store: forget --host needs a host")
-	}
-	host, ok := canonicalHost(host)
+//
+// A SECOND digest is recorded too, under host.CanonicalName -- the same
+// spelling without the inet_aton fold -- when it differs from the first.
+// An ssh declaration is stored and read back in that unfolded spelling
+// (host.CanonicalName's doc), so "forget --host 1234" against an ssh alias
+// named exactly that way would otherwise record a digest only the wire
+// side's folded spelling ever matches, and the alias would never read as
+// forgotten. The two spellings agree on everything that is not a bare
+// number, so this is a second write only for the inputs where they can
+// differ at all.
+func (s *Store) ForgetHost(raw string, now time.Time) ([]Gap, error) {
+	name, ok := host.Canonical(raw)
 	if !ok {
 		return nil, ErrNotAHostname
-	}
-	names, err := s.Runs()
-	if err != nil {
-		return nil, err
 	}
 	// The store-level record lands FIRST and ALWAYS, removed records or not.
 	// First, for the reason the gaps land before their rewrites: a failure
 	// after it overstates the forget, which a reader can see, rather than
-	// leaving a host suppressed nowhere. Always, because the report reads
-	// sources this store never held -- the sandbox's trail and the proxy's
-	// store -- and a forget that wrote nothing when it removed nothing left
-	// the host listed there (#45).
-	if err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {
+	// leaving a host suppressed nowhere. Always, because the report reads a
+	// source this store never held -- the sandbox's trail -- and a forget
+	// that wrote nothing when it removed nothing left the host listed there
+	// (#45).
+	if err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {
 		return nil, err
 	}
-	var gaps []Gap
-	for _, name := range names {
-		g, err := s.forgetHostInRun(filepath.Join(s.root, dirRuns, name), host, now)
-		if err != nil {
-			return gaps, err
-		}
-		if g != nil {
-			gaps = append(gaps, *g)
+	if unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {
+		if err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {
+			return nil, err
 		}
 	}
-	return gaps, nil
+	return s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })
 }
 
 // recordForgottenHost appends the store-level forget record for a digest,
@@ -520,6 +499,9 @@ func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
 // is about to append to, under the lock a concurrent forget would take, so
 // two forgets of one host cannot both find it absent.
 func (s *Store) recordForgottenHost(digest string, now time.Time) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
 	line, err := marshalLine(ForgottenHostRecord{
 		Type:          TypeForgottenHost,
 		SchemaVersion: SessionSchemaVersion,
@@ -534,53 +516,43 @@ func (s *Store) recordForgottenHost(digest string, now time.Time) error {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
-	unlock, err := lockFile(f, lockBudget)
+	// forget's own wait, discarded as in openRunLines.
+	unlock, _, err := lockCounted(f, lockBudget)
 	if err != nil {
 		return err
 	}
 	defer unlock()
 
-	held, err := readLines(f)
-	if err != nil {
+	// Not readLines: this file is only appended to, never rewritten from
+	// what is read, so a line too long to hold is passed over like any line
+	// that does not parse (REC-32). As an error it would refuse every later
+	// forget --host behind one damaged line.
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	for _, l := range held {
+	held := false
+	err = forEachLine(f, func(l []byte) {
 		var r ForgottenHostRecord
 		if json.Unmarshal(l, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest == digest {
-			return nil
+			held = true
 		}
-	}
-	if _, err := f.Write(line); err != nil {
+	})
+	if err != nil || held {
 		return err
 	}
-	return f.Sync()
+	if err := appendHealed(f, line, true); err != nil {
+		return err
+	}
+	return syncFull(f)
 }
 
-func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
-	recordsPath := filepath.Join(dir, FileRecords)
-	spillPath := filepath.Join(dir, FileSpill)
-
-	records, err := os.OpenFile(recordsPath, os.O_RDWR, fileMode)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
-	}
-	if records != nil {
-		defer records.Close() //nolint:errcheck // Sync reports the write failure
-		unlock, err := lockFile(records, lockBudget)
-		if err != nil {
-			return nil, err
-		}
-		defer unlock()
-	}
-
-	recLines, err := readLines(records)
+func (s *Store) forgetHostInRun(dir, name string, now time.Time) (*Gap, error) {
+	rl, err := openRunLines(dir)
 	if err != nil {
 		return nil, err
 	}
-	spillLines, err := readLinesAt(spillPath)
-	if err != nil {
-		return nil, err
-	}
+	defer rl.close()
+	records, spillPath, recLines, spillLines := rl.records, rl.spillPath, rl.rec, rl.spill
 
 	// Plan: every tool_use_id whose DECLARATION named the host. Only a
 	// declaration carries hostnames, so only a declaration can nominate a call
@@ -599,7 +571,7 @@ func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
 		if h.Type != TypeDeclaration {
 			continue
 		}
-		if namesHost(h, host) {
+		if namesHost(h, name) {
 			doomed[h.ToolUseID] = true
 		}
 	}
@@ -633,17 +605,10 @@ func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
 	// The gap spans what was actually removed rather than all of time: a
 	// host-scoped forget names no window, so the records themselves are the
 	// only honest bounds.
-	g := Gap{
-		Type:           TypeGap,
-		SchemaVersion:  SessionSchemaVersion,
-		RecordedAtMS:   now.UnixMilli(),
-		SessionID:      sessionID,
-		Reason:         GapForgetHost,
-		FromUnixMS:     earliest,
-		ToUnixMS:       latest,
-		RemovedRecords: removedRec + removedSpill,
-		HostDigest:     s.HostDigest(host),
-	}
+	g := NewGap(GapForgetHost, sessionID, now)
+	g.FromUnixMS, g.ToUnixMS = earliest, latest
+	g.RemovedRecords = removedRec + removedSpill
+	g.HostDigest = s.HostDigest(name)
 	// The gap lands first, as it does for a window forget: a failure between
 	// the two leaves a gap for records that still exist, an overstatement a
 	// reader can see, rather than a deletion nothing admits to.
@@ -657,18 +622,19 @@ func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
 		}
 	}
 	if removedSpill > 0 {
-		if err := rewriteAt(spillPath, keptSpill); err != nil {
+		if err := rewriteSpill(spillPath, spillLines, keptSpill); err != nil {
 			return &g, err
 		}
 	}
 	return &g, nil
 }
 
-// namesHost reports whether a declaration named the host, in either list.
-func namesHost(h declHead, host string) bool {
+// namesHost reports whether a declaration named the canonical host name, in
+// either list and in any spelling (host.Same).
+func namesHost(h declHead, name string) bool {
 	for _, list := range [][]string{h.Hosts, h.SSHHosts} {
 		for _, got := range list {
-			if got == host {
+			if host.Same(got, name) {
 				return true
 			}
 		}
@@ -683,11 +649,14 @@ func namesHost(h declHead, host string) bool {
 // report has to recognise the host again while the store must not hold its
 // name. Two installs produce different digests for the same host, so a store
 // cannot be tested against a dictionary of hostnames.
+//
+// It is "" for a Store without a key of the install's length: the zero Store
+// would otherwise digest under an empty key, which anyone can recompute.
 func (s *Store) HostDigest(host string) string {
-	if host == "" {
+	if host == "" || len(s.key) != keyLen {
 		return ""
 	}
-	m := hmac.New(sha256.New, s.Key())
+	m := hmac.New(sha256.New, s.key)
 	m.Write([]byte("forget-host\x00"))
 	m.Write([]byte(host))
 	return hex.EncodeToString(m.Sum(nil))
@@ -704,29 +673,100 @@ func (s *Store) HostDigest(host string) string {
 // recoverable: the caller asks about a host it already has, which is exactly
 // what the report does for each destination it observed.
 func (s *Store) ForgottenHost() (func(string) bool, error) {
-	gaps, err := s.ReadGaps()
+	times, err := s.forgottenDigestTimes()
 	if err != nil {
 		return nil, err
 	}
-	digests := map[string]bool{}
-	for _, g := range gaps {
-		if g.Reason == GapForgetHost && g.HostDigest != "" {
-			digests[g.HostDigest] = true
+	if len(times) == 0 {
+		// A predicate that allocates and hashes nothing on the overwhelmingly
+		// common path where nothing has been forgotten.
+		return func(string) bool { return false }, nil
+	}
+	return func(host string) bool { _, ok := times[s.HostDigest(host)]; return ok }, nil
+}
+
+// ForgottenHostBefore is ForgottenHost's time-scoped sibling.
+//
+// A host's own name is forgotten forever once any forget --host names it --
+// ForgottenHost's predicate has no notion of time, because the sandbox trail
+// it exists for has none either: nono's file is not this store's to edit, so
+// every one of its past events stays exactly as reachable as the day they
+// were written, and the predicate's job is to keep them out of the report
+// regardless of when they are read.
+//
+// A declaration is different: it is this store's own record, forget --host
+// removes it on success, and the DECLARATION'S OWN recorded_at_unix_ms says
+// whether that removal had a chance to run before it was written. One a
+// forget already decided to remove but could not -- a run whose file could
+// not be opened, say -- predates the forget and is exactly the stale
+// leftover #45 and TRU-58 exist to stop reappearing. One recorded after the
+// forget is a fresh declaration of a name that happens to be the same, which
+// is real information about THIS session and must not disappear because an
+// earlier, unrelated session once asked to forget it -- the whole reason
+// forget --host clears the project baseline rather than blocking the name.
+func (s *Store) ForgottenHostBefore() (func(host string, declaredAtMS int64) bool, error) {
+	times, err := s.forgottenDigestTimes()
+	if err != nil {
+		return nil, err
+	}
+	if len(times) == 0 {
+		return func(string, int64) bool { return false }, nil
+	}
+	return func(host string, declaredAtMS int64) bool {
+		forgotMS, ok := times[s.HostDigest(host)]
+		return ok && declaredAtMS <= forgotMS
+	}, nil
+}
+
+// forgottenDigestTimes reads both sources ForgottenHost and
+// ForgottenHostBefore share -- the gaps a forget wrote on success, and the
+// store-level record it writes whatever it removed -- and keeps, per digest,
+// the LATEST recorded_at_unix_ms either source carries. Latest, not first,
+// because a host forgotten more than once must compare against the most
+// recent attempt: a declaration from between two forgets of the same host is
+// still stale against the second one.
+//
+// It reads the gaps itself rather than through ReadGaps, because a gaps file
+// it cannot read must fail the caller: ReadGaps counts a read refused by a
+// held lock as a skipped line, and here that would read as "nothing was
+// forgotten" and show a host the user removed. So it waits for the gaps
+// lock first, up to lockBudget, and reads under it: a forget or an eviction
+// holding the lock costs the report a wait rather than, where locks are
+// mandatory (Windows), the report itself (test-11). A hold longer than that
+// is read past where it can be (unix) and fails the report where it cannot.
+// A damaged line is discarded with the count: ReadGaps, which every report
+// reads first, has already marked every session unverified for it (REC-33).
+// The store-level forget records are read the same way, under their own
+// file's lock, which forget --host holds while it checks and appends.
+func (s *Store) forgottenDigestTimes() (map[string]int64, error) {
+	var gaps []Gap
+	var skipped int
+	err := eachLineTryLock(filepath.Join(s.root, FileGaps), lockBudget, neverRefused, gapLines(&gaps, &skipped))
+	if err != nil {
+		return nil, err
+	}
+	times := map[string]int64{}
+	bump := func(digest string, candidateMS int64) {
+		if digest == "" {
+			return
+		}
+		if cur, ok := times[digest]; !ok || candidateMS > cur {
+			times[digest] = candidateMS
 		}
 	}
-	err = eachLine(filepath.Join(s.root, FileForgottenHosts), func(line []byte) {
+	for _, g := range gaps {
+		if g.Reason == GapForgetHost {
+			bump(g.HostDigest, g.RecordedAtMS)
+		}
+	}
+	err = eachLineTryLock(filepath.Join(s.root, FileForgottenHosts), lockBudget, neverRefused, func(line []byte) {
 		var r ForgottenHostRecord
-		if json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost && r.HostDigest != "" {
-			digests[r.HostDigest] = true
+		if json.Unmarshal(line, &r) == nil && r.Type == TypeForgottenHost {
+			bump(r.HostDigest, r.RecordedAtMS)
 		}
 	})
 	if err != nil {
 		return nil, err
 	}
-	if len(digests) == 0 {
-		// A predicate that allocates and hashes nothing on the overwhelmingly
-		// common path where nothing has been forgotten.
-		return func(string) bool { return false }, nil
-	}
-	return func(host string) bool { return digests[s.HostDigest(host)] }, nil
+	return times, nil
 }

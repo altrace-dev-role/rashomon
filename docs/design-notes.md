@@ -104,10 +104,9 @@ Persisted: `tool_use_id`, `session_id`, `prompt_id`, `agent_id`,
 
 Nothing else from inside `tool_input` is persisted. The exception is
 hostnames: `hosts` and `ssh_hosts` carry the hosts a call NAMED, extracted
-from inside `tool_input` and stored in clear, because the whole destinations
-comparison is "what did it say it would reach" against "what did the wire
-see", and a digest cannot be joined against a proxy's rows. Argument values,
-command strings, prompts and responses are not persisted.
+from inside `tool_input` and stored in clear, because the destinations
+section lists them, `forget --host` matches them, and a digest can do neither.
+Argument values, command strings, prompts and responses are not persisted.
 
 The derived shape is `program`, `verb_class`, `argc`, `digest` and
 `may_write` (one bit: whether a shell line may write files whatever its class
@@ -199,42 +198,36 @@ not be read, under the same rule as every count beside them: "no results" and
 "could not look" are different facts.
 
 
-## What the destinations report refuses to claim
+## What the destinations section refuses to claim
 
-Pointing `report` at the observing proxy's database joins two records: the hosts
-a session's tool calls NAMED, against the hosts the wire actually saw. What the
-join declines to assert is as load-bearing as what it shows.
+The report lists the hosts a session's tool calls NAMED, and nothing more: it
+observed no traffic, and it says so beside the list. That restraint is as
+load-bearing as the list.
 
-- `client plane` is listed separately, not as a finding. Claude Code's own
-  model traffic transits the same proxy, so `api.anthropic.com` appears with no
-  declaring tool call in every single session — and an agent's own request to
-  that host is indistinguishable from the client's. Reporting it as a finding
-  would make the `reached but never named` line fire falsely every time, and a reader who saw it
-  be wrong once would discount it when it was right.
-- `proxy on path` has two reachable values and a third reserved. `unknown`
-  is a real answer, and covers two cases: the store could not be read, or the
-  store was readable and held no rows inside this session's window, so whether
-  the proxy was on the path cannot be determined. Collapsing that into `false`
-  would assert an absence that was never measured.
-- `inherited` counts rows from outside the session's window and excludes them
-  from every other number, so another session's traffic through the same proxy
-  cannot enter this one's totals.
-- Tool-family coverage is DERIVED FROM THE JOIN, never probed. Four statuses,
-  because each says something different: `transit measured` (it declared hosts
-  and at least one was observed — proof for this session, not a claim about the
-  program in general), `declared hosts not observed` (it named hosts and none
-  appeared, which does not distinguish "does not honour the variables" from
-  "the calls did not run" from "the response was cached"), `exercised, no hosts
-  declared` (`go build`, `git status` — nothing to join on), and `unknown` (the
-  store could not be read). The last one is the row that matters most: without
-  it every family would read as unobserved when the store was simply missing,
-  which blames the families for the reader's own blindness.
+- A declared host is the agent's own command, so loopback and the client's own
+  hosts are listed like any other when a call names them; what they are not is
+  news. Novelty excludes both: `api.anthropic.com` named on the first session
+  of every project would otherwise read as "named for the first time"
+  everywhere, and a line that fires on a quarter of sessions is read once and
+  ignored afterwards.
+- The chain lists hosts beside the call that named them, with no state beside
+  them: nothing in the record observed whether a call reached a host, and a
+  column that read as a verdict would be answering a question nothing was
+  asked. The legend says so whenever any host is listed.
+- Tool-family coverage is DERIVED FROM THE RECORD, never probed: which
+  network-capable program families ran, and how many hosts each named. The
+  families a session never used are counted and named on one line rather than
+  listed one by one, so that they do not bury the ones that ran.
+- A baseline written before this release held the hosts a session reached, as
+  a proxy saw them, and comparing it against named hosts would call a host new
+  when it was only never reached. Such a file carries no `basis` marker, is
+  read as absent, and the project's baseline is established again, once, from
+  the record.
 
-The proxy's database is opened READ-ONLY and never written to. It belongs to a
-different program, its records are hash-chained, and deleting a row would break
-the chain it exists to provide — which is why `forget --host` suppresses a
-destination from this report's view rather than claiming to have removed it
-from there.
+`forget --host` removes the declarations that named the host, writes a gap
+record for each run it touched, and clears the host from every project
+baseline. A forgotten host returns nowhere in the report: the declared and ssh
+lists are read from exactly the fields the forget deletes.
 
 ## The store
 
@@ -493,6 +486,10 @@ Claude Code refused while checking its input (an `is_error` result wrapped in
 `PreToolUse`, so the store cannot hold it; the report lists it as
 `refused_before_hooks`, and `ids_in_transcript = ids_recorded +
 missing_from_store + refused_before_hooks - missing_from_transcript`.
+A transcript line longer than the reader's 64 MiB bound is stepped over and
+counted in `lines_too_long`, and the lines after it are read. The ids such a line
+held are in none of the lists, so a transcript with any adds
+`transcript_mismatch`: the line may hold a call the store does not.
 
 **H-11 — the uncontrolled path.** A `SIGKILL`ed handler leaves exactly one entry
 with no terminal record, and the run's coverage record carries
@@ -617,15 +614,12 @@ it to that with canary payloads.
 
 ## Design decisions, stated rather than left implicit
 
-- Goroutines: one, and it is not on the recorder's path. `safe.Go` had no
-  production caller when this was written; `rashomon run` now uses it for the
-  signal relay that forwards a `SIGTERM` sent to the wrapper on to the child,
-  so a supervisor or a timeout cannot orphan the command you asked to run. It
-  is cancelled and waited for before the call returns, so it cannot outlive the
-  launch or leave a handler installed for the report. The hook, post and probe
-  paths still start none: a test asserts `internal/hook` cannot reach
-  `internal/launch`, so the recorder cannot acquire a goroutine — or the
-  `os/exec` that package needs — by accident.
+- Goroutines: one, and it is not on the recorder's path. `safe.Go` has one
+  production caller, in `readRecapPayload`, which is cancelled and waited for before
+  the call returns. The hook, post and probe paths start none, and nothing in
+  the binary imports `os/exec` at all: a test asserts that of the whole
+  dependency graph, so the recorder cannot acquire a goroutine or a child
+  process by accident.
 - H-16's tension: the append lock is waited on for at most two seconds against
   the five-second hook timeout. On give-up the terminal record goes to
   `spill.ndjson`, which is written without waiting, and carries the
@@ -665,6 +659,52 @@ it to that with canary payloads.
 - An execution that cannot take the append lock goes to `spill.ndjson` with a
   null `seq`, as a terminal does. It is the only record its `tool_use_id` gets,
   and dropping one would read afterwards as a call that never ran.
+- One order over gate states, two readers. The claim comparator's verdict and
+  the end-of-turn value line both reduce a gate list through `verify.Worst`,
+  and nothing else ranks a state. A gate's own `unknown` sits below every
+  non-green state and above green, so it never hides a red and never reads as
+  a pass; a state outside the vocabulary ranks before red, so a defect in the
+  evaluator surfaces as the verdict instead of sinking to green. The test
+  drives every pair of states through both consumers and requires one answer.
+- The verify checkpoint is defined beside the evaluator, not in the store.
+  `Evaluate` takes the store's `Run`, so the store cannot name the
+  evaluator's gate state without an import cycle; the store knows the
+  record's kind and version and nothing of its shape.
+- A stub fails closed or does not exist. Until the evaluator is built,
+  `Evaluate` reports the recording incomplete, which is the one condition that
+  silences the comparator and turns the value line to `unknown`; a stub that
+  returned an empty green snapshot would have been read as a verified turn by
+  every consumer written against it.
+- A freeze test pins meaning, not names. A key-list test over the schema-5
+  records let a `dropped` list become a count and a `resume` object vanish
+  behind the same keys, because it compared tag strings and nothing else; the
+  test now states, as literals, the keys of every kind and nested type, the
+  Go type of every field the archive gives a shape, that no field is
+  `omitempty`, and that no type carries its own marshaller. A review found
+  the gap by asking what a renamed field would do to each test; the answer
+  for a list of strings was "nothing".
+- Resource budgets are allocated bytes, and the gate never reads a clock. A
+  hook process at the sizes it sees runs no GC cycle, so its peak RSS is the
+  floor plus every byte it allocated; the budget for an entry is therefore
+  the bytes one call allocates (the benchmark's B/op), which is the same
+  number on every platform and under any load, and peak RSS of the release
+  binary is kept as the end-to-end cross-check, the median of nine runs
+  against a per-platform tolerance. Wall time is quoted in release notes
+  with the binaries' SHAs and gates nothing: process spawn and machine load
+  dominate it, and a gate that fails on a busy runner teaches people to
+  re-run until it passes.
+- One budgets file, one direction of generation. `test/perf/budgets.json` is
+  the source; the copy compiled into the binary is the JSON text itself,
+  generated by a tool that does not import the package it writes into, and
+  decoded on first use, so process init pays nothing for it and a test holds
+  the two copies equal. A gate that reads the file and a command that reads
+  the binary cannot disagree.
+- A payload case is sized in code, exactly. A fixture named "8 MiB" once
+  measured the refusal path because it was 263 bytes over the cap; the
+  generators pad a field until the whole payload is the stated size, and a
+  PostToolUse envelope's fixed part puts its smallest honest case at 540
+  bytes rather than the 400 the spec's list says, which the file states
+  rather than trims an envelope to fit.
 
 ## Where the original design was wrong, and what replaced it
 

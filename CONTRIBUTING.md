@@ -1,9 +1,9 @@
 # Contributing
 
-This program records what a Claude Code session declared, what ran, and what
-the wire saw, and says in fixed vocabulary what it does not know. Two
-properties carry everything else, and a change that weakens either is a change
-that should not land, however much else it improves.
+This program records what a Claude Code session declared and what ran, and
+says in fixed vocabulary what it does not know. Two properties carry
+everything else, and a change that weakens either is a change that should not
+land, however much else it improves.
 
 **It never records content.** No prompt, response, file content, tool output or
 argument value reaches a record or a file in the store. The exceptions are the
@@ -25,9 +25,11 @@ never as a negative finding.
     go build ./cmd/rashomon
     go test ./...
 
-Go 1.25 or later (`go.mod` says 1.25.0). The one non-standard dependency is a
-pure-Go SQLite driver, linked for a proxy-store reader the alpha leaves dormant
-(#28).
+`go.mod`'s `go 1.25.0` is the language minimum: the module should build with
+Go 1.25 or later. CI builds and tests with one pinned toolchain only, Go 1.27.2,
+so nothing checks the minimum; a change that breaks only 1.25 or 1.26 will not
+show up there. There are no dependencies outside the standard library, and a
+test fails the build if one brings a networking package in.
 
 Run the tool against a scratch store rather than your own while you work:
 
@@ -85,6 +87,22 @@ a decision and the failure that motivated it, often with the measurement that
 settled it. That is the house style, and a comment that only restates the code
 is noise.
 
+## Committing a captured payload
+
+A hook payload or a session transcript from your machine carries your
+machine: home and scratchpad paths, session ids, addresses, and the init
+event's list of every skill, plugin and MCP server your account has. Before
+any capture is committed, wherever it goes, run
+
+    go run ./test/tools/scrub -w path/to/capture.ndjson
+
+and read what it wrote. It removes shapes, not meaning: a client's or a
+person's name typed into a prompt survives it. H-113 scans every such file on
+every push and fails on what scrub would have removed; a value it flags that a
+person has read and judged harmless goes in `test/tools/hygiene/reviewed.txt`
+by the fingerprint `scrub -review` prints, never by weakening the scan. An
+environment file is a finding whatever it holds: commit none.
+
 ## Where things are
 
 | package | what it owns |
@@ -94,8 +112,8 @@ is noise.
 | `internal/store` | the append-only record store and its locking |
 | `internal/settings` | reading and editing Claude Code settings files |
 | `internal/report` | reconciling the three records and rendering them |
-| `internal/wire` | reading the proxy's store |
 | `internal/install` | the hook entries, and what counts as one of ours |
+| `internal/secretshape` | the secret deny list and entropy test: what a secret looks like |
 
 `internal/shape` deserves a note. It is the single file anyone has to audit to
 believe the no-content guarantee, which is why host extraction and file
@@ -116,8 +134,6 @@ Stated so nobody rediscovers them as bugs:
 - **Two H-17 halves are Linux-only.** They gate on `unshare` and `strace`, so
   they skip on macOS. CI installs both on the Linux runner and treats a skip as
   a failure, which is where that coverage actually happens.
-- **`TestRead_AgainstARealProxyStore` is opt-in** behind `RASHOMON_REAL_STORE`
-  and has never run against a store the proxy itself wrote.
 
 ## Reporting a security issue
 

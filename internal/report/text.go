@@ -34,9 +34,6 @@ type TextOption func(*textOptions)
 type textOptions struct {
 	chain    bool
 	timeline bool
-	// proxyStore is the store the report was built against, "" for none. The
-	// renderer needs only whether one was NAMED; see WithNamedProxyStore.
-	proxyStore string
 }
 
 // WithChain expands the causal view from a count into the per-call listing.
@@ -58,40 +55,13 @@ func WithTimeline() TextOption {
 	return func(o *textOptions) { o.timeline = true }
 }
 
-// WithNamedProxyStore tells the renderer which proxy store the report was
-// built against, "" for none -- the same path the caller passed to Build's
-// WithProxyStore.
-//
-// With none named, the whole proxy block is ONE line, `destinations: not
-// observed in this alpha`: the proxy does not ship with this alpha, and ten
-// lines of instrument detail about a proxy the reader does not have -- proxy
-// on path, novelty, tool families, the not-observable list -- read as a broken
-// install. The fact is still stated, because printing nothing where the truth
-// is "not watching" is the error this program exists to avoid; it is stated
-// once. The --chain listing follows the same rule: with none named, a link
-// lists the hosts its call named with no state beside them and no "(not
-// observable)" beside an ssh host, under one line saying the hosts were only
-// named. With one named, including one that turns out missing or unreadable,
-// every line renders as it always has, since then the reader asked about a
-// proxy and each line answers them. A store that was OBSERVED renders in full
-// even when this option was not passed: forgetting it must not hide a read.
-//
-// A render option rather than a field on Report, because the JSON is a
-// consumer's contract and does not change: it carries the whole not-observed
-// structure whether or not a store was named.
-func WithNamedProxyStore(path string) TextOption {
-	return func(o *textOptions) { o.proxyStore = path }
-}
-
 // Text renders a report for a terminal.
 //
 // No record has a field that carries a command line or a tool response, and
 // nothing is printed beyond the store's fields except what is read from two
 // other places when the report is rendered: the transcript -- tool-use ids and
 // counts for the accounting, and the agent's final message, which --redact
-// drops whole -- and, where an observing proxy's database was named and read,
-// the hosts it recorded, which the destinations section prints and --redact
-// digests. Two things ARE taken from a command line: the program
+// drops whole. Two things ARE taken from a command line: the program
 // name -- the base name of the word in command position -- which `by program`
 // prints for every session, and hostnames and ssh destinations (shape.Hosts),
 // which the destinations section prints and --redact digests.
@@ -143,22 +113,10 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 		writeMaskedRuns(b, *sess.MaskedRuns)
 	}
 	writeTestRuns(b, sess.TestRuns, sess.SessionID)
-	// Whether a proxy store was NAMED for this render, not whether it could be
-	// read: a named store that is missing still renders its reason in full,
-	// because the reader asked about a proxy. See WithNamedProxyStore.
-	//
-	// OR whether one was observed. The option has to be passed in step with
-	// Build's WithProxyStore, and a caller that passed one and forgot the other
-	// would otherwise collapse a store that WAS read into "not observed in
-	// this alpha" -- hiding an observation, which is the direction this report
-	// must never be wrong in.
-	named := cfg.proxyStore != "" || sess.Destinations.Observed
-	writeDestinations(b, sess.Destinations, named)
-	if named {
-		writeFamilies(b, sess.Families)
-	}
+	writeDestinations(b, sess.Destinations)
+	writeFamilies(b, sess.Families)
 	writeNono(b, sess.Nono)
-	writeChains(b, sess.Chains, cfg.chain, named)
+	writeChains(b, sess.Chains, cfg.chain)
 	if cfg.timeline {
 		writeTimeline(b, sess.Timeline)
 	}
@@ -180,14 +138,16 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	fmt.Fprintf(b, "  by program: %s\n", programs(d.ByProgram, d.ProgramsUnknown))
 	fmt.Fprintf(b, "  by label: %s\n", byName(d.ByLabel))
 	fmt.Fprintf(b, "  unterminated: %s\n", list(d.Unterminated))
-	fmt.Fprintf(b, "  dropped: %s\n", list(d.Dropped))
+	fmt.Fprintf(b, "  dropped: %s\n  possibly not durable: %s\n", list(d.Dropped), list(d.NotDurable))
 	fmt.Fprintf(b, "  without execution: %s\n", unexecuted(d.WithoutExecution))
 	fmt.Fprintf(b, "  executions recorded: %d\n", sess.Executions.Recorded)
 
 	for _, t := range sess.Transcripts {
 		fmt.Fprintf(b, "  transcript %s\n", t.Path)
 		fmt.Fprintf(b, "    readable: %s\n", yesNo(t.Readable))
+		fmt.Fprintf(b, "    status: %s\n", t.Status)
 		fmt.Fprintf(b, "    files: %s\n", count(t.Files))
+		fmt.Fprintf(b, "    lines too long to read: %s\n", count(t.LinesTooLong))
 		fmt.Fprintf(b, "    ids in transcript: %s\n", count(t.IDsInTranscript))
 		fmt.Fprintf(b, "    ids recorded: %d\n", t.IDsRecorded)
 		fmt.Fprintf(b, "    results in transcript: %s\n", count(t.ResultsInTranscript))
@@ -220,11 +180,26 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 					g.Reason, stamp(g.FromUnixMS), stamp(g.ToUnixMS))
 				continue
 			}
+			// Eviction removes a run it could not read by size, and then
+			// does not know how many records went (store.RemovedUnknown).
+			if g.RemovedRecords < 0 {
+				fmt.Fprintf(b, "    %s: an unknown number of records removed, covering %s to %s\n",
+					g.Reason, stamp(g.FromUnixMS), stamp(g.ToUnixMS))
+				continue
+			}
 			fmt.Fprintf(b, "    %s: %d records removed, covering %s to %s\n",
 				g.Reason, g.RemovedRecords, stamp(g.FromUnixMS), stamp(g.ToUnixMS))
 		}
 	}
 	fmt.Fprintf(b, "  skipped records: %d\n", sess.SkippedRecords)
+}
+
+// plural is the "s" for a count, for the messages that interpolate a number.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // count renders a count that may not exist. A transcript that could not be read
@@ -262,14 +237,21 @@ var reasonText = map[string]string{
 	"probe_absent":           "a session-start record or marker is missing: the recorder was installed mid-session, its start hook did not run, failed or ran while paused, or the size cap evicted the run",
 	"probe_unresolved":       "the session-start probe could not be read, so the start of this session is unaccounted for",
 	"run_not_closed":         "no session-end was recorded: the session is still open, it ended without one, or its end hook ran while `rashomon pause` was in effect",
-	"records_unreadable":     "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted",
+	"records_unreadable":     "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted, or a coverage record was unverified with no reason or carried a state this build does not know",
 	"transcript_mismatch":    "the transcript and this store disagree about which tool calls were made; see the two `missing from` lines below",
+	"transcript_unreadable":  "a transcript this run's calls named exists but could not be read, so the check that every call in it was recorded did not run",
 	"execution_mismatch":     "the transcript holds results for calls this store recorded no execution for",
 	"gap":                    "a gap record marks a stretch this store does not hold: records removed by `forget` or the size cap, or a window `rashomon pause` left unrecorded",
 	"recording_paused":       "a hook ran while `rashomon pause` was in effect, so what it would have recorded (a tool call, its result, or the session's start or end) was deliberately not recorded",
+	"pause_state_unreadable": "a hook found the pause marker present but could not read it, so it did not record, but the gap is a filesystem fault rather than a deliberate `rashomon pause`",
 	"duplicate_declarations": "more declarations than distinct tool calls: more than one recorder wrote into this run, and the counts here include every copy",
+	"declaration_missing":    "a call's terminal record is here and its declaration is not, and the lock did not refuse it: the declaration was lost to a damaged line or a failed write",
 	"internal_error":         "a hook invocation failed inside this program, so what it should have recorded is missing",
+	"recovered_panic":        "a hook invocation hit a bug in this program and recovered from it, so what it should have recorded is missing, or a file label reads unknown",
 	"lock_timeout":           "a hook could not take the store lock in time, so its record went to the spill file or was lost",
+	"payload_too_large":      "a hook was handed a payload over the 8 MiB intake limit and refused it without parsing, so that call was not recorded",
+	"record_oversize":        "a value in a hook's payload was over its size limit and was left out of the record, or the whole record was over the record limit and was not written, so what was recorded for that call is incomplete",
+	"flush_failed":           "a hook could not flush its records to stable storage before it exited, so they are possibly not durable: a power loss or a crash of the machine could still remove them",
 	"terminated_by_signal":   "a hook was killed by a signal before it finished",
 	"unterminated_entry":     "a declaration was never closed, so the call's end was not observed",
 	"hook_entry_absent":      "the settings file did not hold the recorder's entry for this event as watch installs it, and this hook was not running as a rashomon plugin that declares one",
@@ -457,138 +439,6 @@ func orUnknown(s string) string {
 
 func stamp(ms int64) string {
 	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
-}
-
-// notObservedInAlpha is the whole proxy block of a render that named no proxy
-// store.
-const notObservedInAlpha = "not observed in this alpha"
-
-// writeDestinations renders what the wire saw beside what was declared.
-//
-// The degraded case prints a REASON and never an empty list. "destinations:
-// not observed (no_proxy_store)" and "destinations: none" are different
-// statements, and printing the second when the first is true is the single
-// failure this whole product exists to avoid: silence read as zero.
-//
-// named says whether a proxy store was named for this render. Without one the
-// section is the recorder's own comparison and then a single line stating that
-// destinations were not observed; see WithNamedProxyStore for why one line.
-func writeDestinations(b *bytes.Buffer, d Destinations, named bool) {
-	// BEFORE the not-observed return, because this count compares two records
-	// the recorder wrote itself and has nothing to do with the proxy. Printing
-	// it only when the wire was readable would hide a rewritten call precisely
-	// on the sessions where the proxy was not running.
-	//
-	// Always rendered, including the zero: "executed differently from declared:
-	// 0" tells a reader the comparison ran, where a line that appeared only when
-	// non-zero would leave them unable to tell a clean session from an unchecked
-	// one -- the same silence-as-zero error in a different field.
-	fmt.Fprintf(b, "  executed differently from declared: %d\n", d.ExecutedNotAsDeclared)
-	writeRewritten(b, d.Rewritten)
-
-	if !named {
-		fmt.Fprintf(b, "  destinations: %s\n", notObservedInAlpha)
-		return
-	}
-
-	if !d.Observed {
-		fmt.Fprintf(b, "  destinations: not observed (%s)\n", d.Reason)
-		fmt.Fprintf(b, "  proxy on path: %s -- %s\n", d.ProxyOnPath, d.ProxyNote)
-		// The novelty line prints here too. A section that vanishes when it has
-		// nothing to say cannot be told apart from one that was never built --
-		// the rule this package states for family coverage and broke for
-		// novelty, on the most common path of all.
-		writeNovelty(b, d.Novelty)
-		return
-	}
-
-	fmt.Fprintf(b, "  destinations: %d distinct, %d attempt%s\n",
-		d.DistinctHosts, d.Attempts, plural(d.Attempts))
-	fmt.Fprintf(b, "  proxy on path: %s -- %s\n", d.ProxyOnPath, d.ProxyNote)
-	writeJoin(b, d)
-	if !d.WindowApplied {
-		// Stated whenever it is true. A window that was not enforced means
-		// another session's destinations may be in this list, and a reader who
-		// is not told that will attribute them to this session.
-		fmt.Fprintln(b, "  window: NOT applied (the proxy's timestamps could not be parsed);"+
-			" rows from other sessions may be included")
-	}
-	if d.Suppressed > 0 {
-		fmt.Fprintf(b, "  suppressed: %d destination(s) removed from this view by "+
-			"forget --host (the proxy's own records are not deleted)\n", d.Suppressed)
-	}
-	if d.Inherited > 0 {
-		// WHY they were excluded, not just that they were. This line used to
-		// say "from outside this session's window" unconditionally, which the
-		// token join made false: a row carrying another run's tag is excluded
-		// while sitting squarely INSIDE the window, and telling a reader to go
-		// looking outside it would send them after a session that does not
-		// exist. The two reasons are different facts and now read differently.
-		reason := "from outside this session's window"
-		switch {
-		case d.OtherToken > 0 && d.OtherToken == d.Inherited:
-			reason = "carrying another session's token"
-		case d.OtherToken > 0:
-			reason = fmt.Sprintf("from outside this session's window or carrying "+
-				"another session's token (%d of them)", d.OtherToken)
-		}
-		fmt.Fprintf(b, "  inherited: %d attempt%s %s, excluded from the counts above\n",
-			d.Inherited, plural(d.Inherited), reason)
-		if d.InheritedAllClientPlane {
-			// Says which previous session to go looking for: none. This is the
-			// client's own tunnel, opened before the first hook ran.
-			fmt.Fprintln(b, "    (client-plane traffic before the session's first hook)")
-		}
-	}
-
-	// The finding.
-	if len(d.WireOnly) == 0 {
-		fmt.Fprintln(b, "  reached but never named: none")
-	} else {
-		fmt.Fprintf(b, "  reached but never named: %s\n", list(d.WireOnly))
-		fmt.Fprintln(b, "    (these hosts appear in no tool call's declared hosts;"+
-			" no transcript or hook log can produce this line)")
-	}
-
-	if len(d.ClientPlane) > 0 {
-		fmt.Fprintf(b, "  client plane: %s\n", list(d.ClientPlane))
-		fmt.Fprintln(b, "    (the client's own model traffic transits the same proxy;"+
-			" an agent request to the same host is indistinguishable)")
-	}
-
-	// The comparison's other direction, rendered with its own weakness stated.
-	// Naming the four causes is not hedging: without them a reader takes the
-	// line as "the agent claimed a host it never used", which is one of four
-	// possibilities and the only accusatory one.
-	if len(d.DeclaredNotObserved) == 0 {
-		fmt.Fprintln(b, "  declared but not observed: none")
-	} else {
-		fmt.Fprintf(b, "  declared but not observed: %s\n", list(d.DeclaredNotObserved))
-		fmt.Fprintln(b, "    (a call that was denied, that failed before connecting,"+
-			" that was served from a cache, or a host the proxy did not see)")
-	}
-
-	writeNovelty(b, d.Novelty)
-
-	// Rendered under the destinations block rather than beside the findings,
-	// because these are limitations of the instrument and not facts about the
-	// session. A reader scanning for what the agent did should not meet them
-	// among the findings at all.
-	if len(d.NotObservable) > 0 {
-		fmt.Fprintf(b, "  not observable (ssh/git, outside what a CONNECT proxy sees): %s\n",
-			list(d.NotObservable))
-	}
-
-	for _, h := range d.Hosts {
-		suffix := ""
-		if h.Inherited {
-			suffix = " [inherited]"
-		}
-		if h.Unreached {
-			suffix += " [allowed, never reached]"
-		}
-		fmt.Fprintf(b, "    %s: %d attempt(s)%s\n", h.Host, h.Attempts, suffix)
-	}
 }
 
 // writeAccount renders the agent's own summary.
@@ -781,225 +631,23 @@ func collapse(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// writeNovelty renders the per-project first-seen line.
-//
-// Three distinct states, and collapsing any two of them would make the line
-// worthless: the baseline was just created (nothing to be novel against), the
-// baseline exists and nothing was new, or the baseline could not be read. Only
-// the middle one is "no new hosts"; printing that for either of the others is
-// the silence-as-zero error again, in the field most likely to be skimmed.
-func writeNovelty(b *bytes.Buffer, n Novelty) {
-	switch {
-	case !n.Available:
-		fmt.Fprintf(b, "  new for this project: %s (%s)\n", unknown, n.Reason)
-	case n.Established:
-		// The count says which hosts it counted. The destinations are listed
-		// below this line, and the client plane is excluded from novelty on
-		// purpose, so a bare count reads as disagreeing with the list.
-		fmt.Fprintf(b, "  new for this project: baseline established "+
-			"(%d host%s, client plane excluded)\n", n.KnownHosts, plural(n.KnownHosts))
-	case len(n.Hosts) == 0:
-		fmt.Fprintf(b, "  new for this project: none (%d known)\n", n.KnownHosts)
-	default:
-		fmt.Fprintf(b, "  new for this project: %s\n", list(n.Hosts))
-		fmt.Fprintf(b, "    (first seen in this project by this session; %d hosts known)\n", n.KnownHosts)
-	}
-}
-
-// writeFamilies renders which tool families were confirmed to transit.
-//
-// The not-observable list prints on EVERY report that named a proxy store,
-// including a completely healthy one. These are properties of the instrument
-// rather than of the session, and a reader told only what was observed will
-// read the rest as an absence of traffic rather than an absence of
-// observation. A report that named none has no instrument to describe, and
-// says so in its one destinations line instead.
+// writeFamilies renders which network-capable tool families ran and how many
+// hosts each named. The families that did not run are counted and named on
+// one line rather than one line each: ten "not exercised" lines would bury
+// the ones that ran.
 func writeFamilies(b *bytes.Buffer, fc FamilyCoverage) {
-	if !fc.Available {
-		fmt.Fprintf(b, "  tool families: %s (%s)\n", unknown, fc.Reason)
-	} else if len(fc.Families) == 0 {
+	if len(fc.Families) == 0 {
 		fmt.Fprintln(b, "  tool families: none of the known families ran in this session")
 	} else {
 		fmt.Fprintln(b, "  tool families:")
 		for _, f := range fc.Families {
-			fmt.Fprintf(b, "    %s (%s): %d call(s), %d/%d declared hosts observed -- %s\n",
-				f.Name, strings.Join(f.Programs, " "), f.Calls,
-				f.HostsObserved, f.HostsDeclared, f.Status)
+			fmt.Fprintf(b, "    %s (%s): %d call(s), %d declared host(s)\n",
+				f.Name, strings.Join(f.Programs, " "), f.Calls, f.HostsDeclared)
 		}
 	}
 	if len(fc.NotExercised) > 0 {
-		// Counted and named on one line rather than one line each: ten
-		// "not exercised" lines would bury the families that did run.
 		fmt.Fprintf(b, "    not exercised: %s\n", list(fc.NotExercised))
 	}
-	fmt.Fprintln(b, "  not observable, whatever the session did:")
-	for _, n := range fc.NotObservable {
-		fmt.Fprintf(b, "    %s\n", n)
-	}
-}
-
-// writeChains renders the causal spine: which prompt produced which calls.
-//
-// THE LEGEND IS NOT DECORATION. A host on a link reads as though that call
-// reached it, and it does not mean that: the proxy's store carries no
-// tool_use_id, so no wire row can be attributed to an individual call. The
-// state is that host's state across the session's window, sitting next to the
-// call that named it. That is a genuinely useful join and a genuinely easy
-// misreading, and the misreading overstates what is known -- so a legend saying
-// so is printed whenever the listing is, not once in the documentation.
-//
-// named says whether a proxy store was named for this render, and it chooses
-// WHICH legend. With one, the legend bounds what a host's state means. Without
-// one there is no state: a link lists the hosts its call named and nothing
-// more, with no "(not observable)" beside an ssh host -- a state column over a
-// wire nobody watched is the proxy block this alpha collapses to one line,
-// printed again per call. But a bare `-> pypi.org` beside a call reads as
-// "reached", so whenever the listing shows any host at all, one line says the
-// hosts are only named and nothing here observed whether they were reached.
-func writeChains(b *bytes.Buffer, c Chains, expand, named bool) {
-	extra := len(c.Unattributed) + len(c.Dropped)
-	if len(c.Prompts) == 0 && extra == 0 {
-		return
-	}
-	fmt.Fprintf(b, "  chains: %d\n", len(c.Prompts))
-
-	// The COUNT is unconditional and the listing is not. This section is the
-	// only one whose length grows with the session -- one line per tool call --
-	// so on a long day it buries a report whose other sections are fixed size
-	// and which a reader opens for coverage and findings. Hiding it entirely
-	// behind a flag would be the opposite error: a view nobody knows exists is
-	// the same as one that was never built.
-	if !expand {
-		if len(c.Prompts) > 0 {
-			fmt.Fprintf(b, "    --chain lists the calls under each prompt\n")
-		}
-		writeChainTail(b, c, false, named)
-		return
-	}
-
-	if len(c.Prompts) > 0 && named {
-		fmt.Fprintf(b, "    a host's state is that host's across this session, "+
-			"not proof this call reached it\n")
-	} else if !named && listsAHost(c) {
-		fmt.Fprintln(b, "    hosts are those each call named; nothing here observed whether it reached them")
-	}
-
-	var lastPath string
-	for _, ch := range c.Prompts {
-		if ch.TranscriptPath != lastPath {
-			fmt.Fprintf(b, "    %s\n", ch.TranscriptPath)
-			lastPath = ch.TranscriptPath
-		}
-		fmt.Fprintf(b, "    prompt %s\n", ch.PromptID)
-		for _, l := range ch.Links {
-			writeLink(b, l, named)
-		}
-	}
-	writeChainTail(b, c, true, named)
-}
-
-// listsAHost reports whether the expanded listing shows any host -- named or
-// ssh -- beside any call. Dropped links carry nothing but an id.
-func listsAHost(c Chains) bool {
-	for _, ch := range c.Prompts {
-		for _, l := range ch.Links {
-			if len(l.Hosts) > 0 || len(l.SSHHosts) > 0 {
-				return true
-			}
-		}
-	}
-	for _, l := range c.Unattributed {
-		if len(l.Hosts) > 0 || len(l.SSHHosts) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// writeChainTail renders the two groups that belong to no prompt.
-//
-// Both are announced whether or not the listing is expanded, because both are
-// statements about COMPLETENESS -- how much of the session the chains above do
-// not account for -- and a reader deciding whether to trust the view needs that
-// without having to ask for more output.
-func writeChainTail(b *bytes.Buffer, c Chains, expand, named bool) {
-	if n := len(c.Unattributed); n > 0 {
-		fmt.Fprintf(b, "    %d call%s could not be placed under a prompt "+
-			"(prompt not recorded)\n", n, plural(n))
-		if expand {
-			for _, l := range c.Unattributed {
-				writeLink(b, l, named)
-			}
-		}
-	}
-	if n := len(c.Dropped); n > 0 {
-		// The declaration never landed, so the id is the whole of what is
-		// known. Named anyway: this is a call the session made and cannot
-		// describe, which is worth more to a reader than a tidy omission.
-		fmt.Fprintf(b, "    %d call%s ran with no declaration recorded\n", n, plural(n))
-		if expand {
-			for _, l := range c.Dropped {
-				fmt.Fprintf(b, "      %s  everything but the id is unknown\n", printable(l.ToolUseID))
-			}
-		}
-	}
-}
-
-func writeLink(b *bytes.Buffer, l Link, named bool) {
-	shape := l.VerbClass
-	if l.Program != "" {
-		shape = l.Program + ", " + l.VerbClass
-	}
-	outcome := l.Outcome
-	// Two post records for one id. The headline is the higher-seq one and this
-	// says the other existed, because a link that showed only the winner would
-	// hide precisely the disagreement worth seeing.
-	if l.ExecutionRecords > 1 {
-		outcome = fmt.Sprintf("%s (%d records: %s)", l.Outcome,
-			l.ExecutionRecords, strings.Join(l.Outcomes, ", "))
-	}
-	fmt.Fprintf(b, "      %d  %s (%s)  %s%s%s\n",
-		l.Seq, printable(l.ToolName), shape, outcome, linkHosts(l.Hosts, named), linkSSH(l.SSHHosts, named))
-}
-
-// linkSSH renders the ssh hosts a call named, kept apart from the observable
-// ones and carrying no state: the proxy cannot see ssh, so there is nothing to
-// report about them and a verdict column would be answering a question the wire
-// was never able to be asked.
-//
-// "(not observable)" contrasts ssh with what a proxy CAN observe, so it is
-// printed only where a proxy store was named. Without one no host on the line
-// is observable, and singling out the ssh one would imply the others were.
-func linkSSH(hosts []string, named bool) string {
-	if len(hosts) == 0 {
-		return ""
-	}
-	if !named {
-		return "  ssh: " + strings.Join(hosts, ", ")
-	}
-	return "  ssh: " + strings.Join(hosts, ", ") + " (not observable)"
-}
-
-// linkHosts renders the hosts a call named, or nothing at all when it named
-// none -- which is most calls, and a trailing "->" on every one of them would
-// bury the ones that matter.
-//
-// Each host carries its state only when a proxy store was named. The JSON
-// keeps the state either way; the text drops a column whose every value, with
-// no store, is a fact about the absent proxy rather than about the call.
-func linkHosts(hosts []LinkHost, named bool) string {
-	if len(hosts) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(hosts))
-	for _, h := range hosts {
-		if !named {
-			parts = append(parts, h.Host)
-			continue
-		}
-		parts = append(parts, h.Host+" "+h.State)
-	}
-	return "  -> " + strings.Join(parts, ", ")
 }
 
 // writeRewritten names the calls behind the count above.
@@ -1031,69 +679,12 @@ func writeRewritten(b *bytes.Buffer, rows []Rewritten) {
 	}
 }
 
-// writeJoin says how this session's rows were attributed, and never as one
-// word.
-//
-// "join: token" over a set that is half window-matched is a claim of precision
-// the data does not support, and the mixture is not the exception -- it is what
-// every real tokened session looks like, because not every client carries the
-// credential.
-//
-// THE CLIENT FAMILIES ARE NAMED, with the measurement, because a reader who
-// sees some rows joined by the clock will reasonably wonder whether the token
-// is broken. It is not: git strips proxy userinfo and expects a credential
-// helper. Saying which client and how it was established turns a suspicious
-// number into a known limit.
-func writeJoin(b *bytes.Buffer, d Destinations) {
-	if d.TokenMatched == 0 && d.WindowMatched == 0 && d.OtherToken == 0 {
-		return
-	}
-	switch {
-	case d.TokenMatched == 0 && !d.TokenRequested:
-		// No tag was in play. Said plainly rather than dressed up as a join.
-		fmt.Fprintf(b, "  join: window (%d request%s); no session token was in use\n",
-			d.WindowMatched, plural(d.WindowMatched))
-	case d.TokenMatched == 0:
-		// A tag WAS in play and no row carried it. This is a diagnostic, not a
-		// quiet fallback: either the proxy is not writing run_id, or every
-		// client stripped the credential. Inferring "no token was in use" from
-		// the zero -- as this did -- reported the failure as its own opposite.
-		fmt.Fprintf(b, "  join: window (%d request%s); a session token was in use and NO row "+
-			"carried it -- the proxy may not be recording it\n",
-			d.WindowMatched, plural(d.WindowMatched))
-	default:
-		fmt.Fprintf(b, "  join: token (%d request%s) + window (%d request%s)\n",
-			d.TokenMatched, plural(d.TokenMatched),
-			d.WindowMatched, plural(d.WindowMatched))
-		if d.WindowMatched > 0 {
-			fmt.Fprintln(b, "    some clients do not send the proxy credential and are "+
-				"attributed by time alone:")
-			fmt.Fprintln(b, "    git (measured: no Proxy-Authorization on CONNECT, via "+
-				"HTTPS_PROXY or git -c http.proxy)")
-		}
-	}
-	if d.OtherToken > 0 {
-		// The overlap is visible WITHOUT those rows entering this session's
-		// numbers. Before tokens an operator could not know another session was
-		// active at all; now the report can say so and still refuse to count it.
-		fmt.Fprintf(b, "  other sessions in this window: %d request%s, "+
-			"identified by their own token and excluded from the counts above\n",
-			d.OtherToken, plural(d.OtherToken))
-	}
-}
-
-// writeNono renders what the sandbox saw, and what it disagrees with.
+// writeNono renders what the sandbox saw.
 //
 // ALWAYS PRINTS A LINE, including when no trail was configured. A section that
 // vanishes when it has nothing to say cannot be told apart from one that was
 // never built -- the rule this package states for family coverage and has now
 // broken twice.
-//
-// THE DISAGREEMENT IS NOT PRESENTED AS A FAULT. A host the sandbox saw and the
-// proxy did not is usually plain HTTP, which rashomon structurally cannot see
-// because it exports no HTTP_PROXY. Rendering that as "the proxy missed it"
-// would turn a documented boundary into an accusation against the recorder --
-// the same error as calling loopback "not observed".
 func writeNono(b *bytes.Buffer, n Nono) {
 	if !n.Configured {
 		// SILENT, not "not observed". A sandbox nobody asked for is not a
@@ -1149,28 +740,6 @@ func writeNono(b *bytes.Buffer, n Nono) {
 		// Named, because a denial is the sandbox doing its job and it is
 		// evidence about the AGENT: it tried to go somewhere it could not.
 		fmt.Fprintf(b, "    refused by the sandbox: %s\n", list(n.Denied))
-	}
-	if len(n.SawWhatTheProxyDidNot) > 0 {
-		fmt.Fprintf(b, "    seen by the sandbox and not on the wire: %s\n",
-			list(n.SawWhatTheProxyDidNot))
-		if len(n.PlainHTTP) > 0 {
-			// NAMED, not counted. A bare count beside a list invites the reader
-			// to conclude the whole list is benign when the numbers happen to
-			// match, and leaves the unexplained host -- the only one that
-			// mattered -- unidentifiable.
-			fmt.Fprintf(b, "      plain HTTP, which this proxy does not observe (a known "+
-				"boundary, not a recording gap): %s\n", list(n.PlainHTTP))
-		}
-	}
-	if len(n.ProxySawWhatItDidNot) > 0 {
-		fmt.Fprintf(b, "    on the wire and not in the sandbox's trail: %s\n",
-			list(n.ProxySawWhatItDidNot))
-	}
-	if len(n.DeniedButReached) > 0 {
-		// LOUDEST LINE IN THE SECTION. The sandbox refused it and the wire
-		// recorded reaching it anyway: traffic that escaped the sandbox.
-		fmt.Fprintf(b, "    REFUSED BY THE SANDBOX AND REACHED ANYWAY: %s\n",
-			list(n.DeniedButReached))
 	}
 	if n.Skipped > 0 || n.UnparseableTargets > 0 {
 		fmt.Fprintf(b, "    %d trail record%s could not be read, %d target%s could not be "+

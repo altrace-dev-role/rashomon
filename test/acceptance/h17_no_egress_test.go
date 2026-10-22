@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -40,14 +41,9 @@ func deps(t *testing.T, pattern string) []string {
 }
 
 // TestH17_NoNetworkInTheRecordersDependencyGraph is the structural half of
-// H-17, and it is scoped to the RECORDER rather than to the whole binary.
-//
-// It used to cover ./cmd/rashomon, and that assertion cannot survive the
-// destinations reader: the report needs to read the proxy's SQLite store, the
-// only pure-Go driver transitively imports net and os/exec through
-// modernc.org/libc, and no arrangement of this program makes both true. So the
-// claim is narrowed to the one that matters and the narrowing is made explicit
-// rather than left as a deleted test.
+// H-17, scoped to the RECORDER. TRU-40 makes the same claim of the whole
+// binary now that nothing in it links a networking package; this one stays
+// because it is the claim that matters even if the binary's ever changes.
 //
 // internal/hook is the right root. Every hook entry point lives in it --
 // PreToolUse, PostToolUse, PostToolUseFailure and both probe phases -- so its
@@ -56,10 +52,7 @@ func deps(t *testing.T, pattern string) []string {
 // recorder runs in the agent's own lifecycle, thousands of times a session,
 // and must be unable to phone anywhere.
 //
-// The honest public sentence is now: "the recorder's import graph contains no
-// networking package, checked on every build; the operator-invoked report
-// links a SQLite driver whose dependency graph contains net, and opens no
-// socket." The runtime halves below are stronger evidence still, but they are
+// The runtime halves below are stronger evidence still, but they are
 // Linux-only and SKIP on macOS, so they cannot carry the claim.
 func TestH17_NoNetworkInTheRecordersDependencyGraph(t *testing.T) {
 	pkgs := deps(t, "./internal/hook")
@@ -83,60 +76,6 @@ func TestH17_NoNetworkInTheRecordersDependencyGraph(t *testing.T) {
 		t.Fatalf("the recorder's graph contains only %d of this module's packages; "+
 			"internal/hook no longer reaches the store, shape, settings, safe, fault "+
 			"and host packages, so this test is guarding less than it claims", recorderPkgs)
-	}
-}
-
-// TestH17_NetworkEntersOnlyThroughTheSQLiteDriver bounds the exception the test
-// above carves out.
-//
-// Without this, "the recorder is clean" would be compatible with anything at
-// all being added to the report path. It asserts the opposite direction: net
-// and os/exec ARE in the binary, they are expected, and the only reason they
-// are there is the SQLite driver's subtree. If they ever enter from somewhere
-// else -- an HTTP health check, a telemetry client, a shell-out -- the driver
-// stops being the explanation and this fails.
-//
-// It is deliberately a two-sided assertion. A test that only checked "no new
-// forbidden imports" would pass if the driver were removed and something worse
-// added in its place.
-func TestH17_NetworkEntersOnlyThroughTheSQLiteDriver(t *testing.T) {
-	binary := deps(t, "./cmd/rashomon")
-
-	inBinary := map[string]bool{}
-	for _, pkg := range binary {
-		inBinary[pkg] = true
-	}
-
-	// While the driver is NOT linked into the binary, the original and stronger
-	// assertion still holds and is the one to make: no forbidden import
-	// anywhere in the program. This is not a fallback for convenience -- it
-	// means the test ratchets. The exception only opens when the driver is
-	// actually there, and closes again by itself if it is ever dropped.
-	if !inBinary["modernc.org/libc"] {
-		for pkg, why := range forbiddenImports {
-			if inBinary[pkg] {
-				t.Errorf("the binary depends on %s, which %s, and the SQLite driver is "+
-					"not linked, so nothing sanctions it", pkg, why)
-			}
-		}
-		return
-	}
-
-	// Everything the driver's subtree brings in, by itself.
-	driver := map[string]bool{}
-	for _, pkg := range deps(t, "modernc.org/sqlite") {
-		driver[pkg] = true
-	}
-
-	for pkg, why := range forbiddenImports {
-		if !inBinary[pkg] {
-			continue
-		}
-		if !driver[pkg] {
-			t.Errorf("the binary depends on %s (which %s) and the SQLite driver does "+
-				"NOT, so something else introduced it. The driver is the only "+
-				"sanctioned source of a networking import in this program.", pkg, why)
-		}
 	}
 }
 
@@ -234,55 +173,108 @@ func TestH17_HandlerOpensNoSockets(t *testing.T) {
 // packages allowed to import it DIRECTLY.
 //
 // Direct imports, not transitive ones, and that distinction is the whole
-// difference between a bound and a formality. The membership test above asks
-// whether the forbidden package is in the SQLite driver's dependency set -- and
-// the driver's set contains net AND os/exec, so its predicate is satisfied
-// whoever actually reached for them. Transitive provenance is no better: every
-// package that touches the store inherits the driver's whole subtree, so
-// internal/report and internal/wire "have an explanation" for os/exec without
-// anybody having written a subprocess.
-//
-// What a reviewer actually wants to know is whether anyone in this module
-// reached for one of these, and that is a question about import statements. It
-// is also the question that would catch the temptation internal/baseline
-// documents resisting, where walking up for .git replaced shelling out to
+// difference between a bound and a formality: transitive provenance excuses
+// everything downstream of an import, whoever actually reached for it. What a
+// reviewer wants to know is whether anyone in this module reached for one of
+// these, and that is a question about import statements. It is also the
+// question that would catch the temptation internal/baseline documents
+// resisting, where walking up for .git replaced shelling out to
 // `git rev-parse`.
-var sanctionedSource = map[string]string{
-	"os/exec": "github.com/altrace-dev-role/rashomon/internal/launch",
-}
-
-// TestH17_NoPackageOfOursReachesForANetworkImport is the provenance assertion
-// the prose has been making all along.
 //
-// Every forbidden package is either imported by nobody here, or by exactly the
-// one package sanctioned to. Nothing is said about the driver's own subtree:
-// that code is not ours, it is the reason the exception exists, and the test
-// above is what keeps the exception tied to the driver actually being present.
-func TestH17_NoPackageOfOursReachesForANetworkImport(t *testing.T) {
-	const modulePrefix = "github.com/altrace-dev-role/rashomon"
+// Empty since the launcher went with the proxy era: nothing in this module may
+// import any of them. The supervisor and the notifier the specification plans
+// will each take an entry here when they land, and nothing else will.
+var sanctionedSource = map[string]string{}
 
+// rashomonModule is this module's import path.
+const rashomonModule = "github.com/altrace-dev-role/rashomon"
+
+// moduleImports lists every package of this module with its own import
+// statements: the non-test imports, which are what a binary can link.
+func moduleImports(t *testing.T) map[string][]string {
+	t.Helper()
 	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}} {{join .Imports \",\"}}", "./...")
 	cmd.Dir = moduleRoot
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("listing direct imports: %v", err)
 	}
-
-	packages := 0
+	listing := map[string][]string{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) == 0 {
+		if len(fields) == 0 || !strings.HasPrefix(fields[0], rashomonModule) {
 			continue
 		}
-		pkg := fields[0]
-		if !strings.HasPrefix(pkg, modulePrefix) {
+		var imports []string
+		if len(fields) > 1 {
+			imports = strings.Split(fields[1], ",")
+		}
+		listing[fields[0]] = imports
+	}
+	return listing
+}
+
+// isTestTree reports a package under the module's test/ tree.
+func isTestTree(pkg string) bool {
+	return strings.HasPrefix(pkg, rashomonModule+"/test/")
+}
+
+// shippedScope is the set of packages a shipped binary can link, the scope
+// H-17 and TRU-40 hold (spec run 72): every package outside test/, plus any
+// test/ package that a package outside test/ imports. A test/ package
+// imported only from _test.go files is measurement code that no binary links,
+// and TestH17_TestPackagesStayTestOnly keeps it that way.
+func shippedScope(listing map[string][]string) map[string]bool {
+	scope := map[string]bool{}
+	for pkg, imports := range listing {
+		if isTestTree(pkg) {
+			continue
+		}
+		scope[pkg] = true
+		for _, imp := range imports {
+			if isTestTree(imp) {
+				scope[imp] = true
+			}
+		}
+	}
+	return scope
+}
+
+// testOnlyViolations lists every import of a test/ package by a package
+// outside test/, sorted: each one widens what a binary can link into code
+// written as test-only.
+func testOnlyViolations(listing map[string][]string) []string {
+	var out []string
+	for pkg, imports := range listing {
+		if isTestTree(pkg) {
+			continue
+		}
+		for _, imp := range imports {
+			if isTestTree(imp) {
+				out = append(out, pkg+" imports "+imp)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// TestH17_NoPackageOfOursReachesForANetworkImport is the provenance assertion
+// the prose has been making all along, over the packages a shipped binary can
+// link (shippedScope).
+//
+// Every forbidden package is either imported by nobody in that scope, or by
+// exactly the one package sanctioned to.
+func TestH17_NoPackageOfOursReachesForANetworkImport(t *testing.T) {
+	listing := moduleImports(t)
+	scope := shippedScope(listing)
+	packages := 0
+	for pkg, imports := range listing {
+		if !scope[pkg] {
 			continue
 		}
 		packages++
-		if len(fields) < 2 {
-			continue
-		}
-		for _, imp := range strings.Split(fields[1], ",") {
+		for _, imp := range imports {
 			why, forbidden := forbiddenImports[imp]
 			if !forbidden {
 				continue
@@ -310,9 +302,12 @@ func TestH17_NoPackageOfOursReachesForANetworkImport(t *testing.T) {
 }
 
 // TestH17_TheSanctionedSourcesAreNotVacuous guards the map above against the
-// way it would go quiet: an entry naming a package that no longer imports the
-// thing it is excused for excuses nothing, and the next reader would read it as
-// a live bound.
+// two ways it would go quiet: an entry naming a package that no longer imports
+// the thing it is excused for excuses nothing, and the next reader would read
+// it as a live bound; and an empty map, which is the bound at its strongest
+// and must then hold of the whole binary on every release target, not only
+// of this module's own import statements, or a dependency could bring a
+// forbidden package in with nobody here having written the import.
 func TestH17_TheSanctionedSourcesAreNotVacuous(t *testing.T) {
 	for forbidden, source := range sanctionedSource {
 		imports := directImports(t, source)
@@ -320,6 +315,137 @@ func TestH17_TheSanctionedSourcesAreNotVacuous(t *testing.T) {
 			t.Errorf("%s is sanctioned to import %s and no longer does. Remove the entry "+
 				"and let the whole-module ban cover it, rather than leaving an exception "+
 				"that reads as though something still needs excusing.", source, forbidden)
+		}
+	}
+	if len(sanctionedSource) > 0 {
+		return
+	}
+	binary := map[string]bool{}
+	for _, pkg := range releaseDeps(t) {
+		binary[pkg] = true
+	}
+	for pkg, why := range forbiddenImports {
+		if binary[pkg] {
+			t.Errorf("the binary depends on %s, which %s, and nothing sanctions it", pkg, why)
+		}
+	}
+}
+
+// rawSyscalls are the calls that reach a socket or start a process WITHOUT
+// going through one of forbiddenImports' packages, so the import-based scan
+// above cannot see them at all: syscall and os are themselves legitimately
+// imported here (internal/store's file locks, internal/hook's signal
+// handling), and banning either import would ban code this module needs.
+// This is a scan for the specific calls, not the packages.
+var rawSyscalls = []string{
+	"syscall.Socket(", "syscall.Connect(", "syscall.ForkExec(", "syscall.Exec(",
+	"os.StartProcess(", "syscall.StartProcess(", "syscall.RawSyscall(", "syscall.Syscall(",
+}
+
+// sanctionedRawCalls names, per file, the one raw call it may make, by its
+// exact text. syscall.Syscall is a generic trap, so the scan cannot tell a
+// call that reaches neither a socket nor a process from one that does; the
+// store's darwin barrier is fcntl(F_BARRIERFSYNC), which the syscall package
+// has no wrapper for (internal/store/sync_darwin.go). Any other raw call in
+// that file, or the same trap with another number, is still caught.
+var sanctionedRawCalls = map[string]string{
+	"internal/store/sync_darwin.go": "syscall.Syscall(syscall.SYS_FCNTL, fd, fBarrierFsync, 0)",
+}
+
+// TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport backs the
+// README's "no network code of its own" over the one path the import scan
+// cannot cover. Every *.go file in this module, not only the recorder's: the
+// README's claim is about the whole binary, and TestH17_HandlerOpensNoSockets
+// above already covers one process at runtime, which is narrower.
+func TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport(t *testing.T) {
+	var files int
+	sanctioned := map[string]bool{}
+	err := filepath.WalkDir(moduleRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		files++
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(moduleRoot, path)
+		if err != nil {
+			rel = path
+		}
+		text := string(body)
+		if call, ok := sanctionedRawCalls[filepath.ToSlash(rel)]; ok {
+			sanctioned[filepath.ToSlash(rel)] = true
+			if n := strings.Count(text, call); n != 1 {
+				t.Errorf("%s is sanctioned to make %s once and makes it %d times", rel, call, n)
+			}
+			text = strings.Replace(text, call, "", 1)
+		}
+		for _, call := range rawSyscalls {
+			if strings.Contains(text, call) {
+				t.Errorf("%s calls %s, which reaches a socket or starts a process "+
+					"without going through an import the scan above would catch", rel, call)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for file := range sanctionedRawCalls {
+		if !sanctioned[file] {
+			t.Errorf("%s is sanctioned a raw call and is no longer in the tree; remove the entry", file)
+		}
+	}
+	// The failure mode of every source-scanning check is to scan nothing.
+	if files < 50 {
+		t.Fatalf("scanned only %d non-test .go files; this test is not looking at the "+
+			"module any more", files)
+	}
+}
+
+// TestRawSyscalls_CatchesEachListedCall pins rawSyscalls to its own list,
+// independent of whatever this tree's source happens to contain today: a
+// call dropped from the list, or a pattern narrowed so a real call site no
+// longer matches it, is caught here even on a tree with no such call
+// anywhere in it.
+func TestRawSyscalls_CatchesEachListedCall(t *testing.T) {
+	fixtures := []string{
+		"	syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)",
+		"	syscall.Connect(fd, addr)",
+		"	syscall.ForkExec(path, args, attr)",
+		"	syscall.Exec(path, args, env)",
+		"	os.StartProcess(path, args, attr)",
+		"	syscall.StartProcess(path, args, attr)",
+		"	syscall.RawSyscall(syscall.SYS_SOCKET, af, typ, proto)",
+		"	syscall.Syscall(syscall.SYS_CONNECT, fd, sa, len)",
+	}
+	for _, src := range fixtures {
+		var caught bool
+		for _, call := range rawSyscalls {
+			if strings.Contains(src, call) {
+				caught = true
+			}
+		}
+		if !caught {
+			t.Errorf("rawSyscalls catches none of its own list against %q", src)
+		}
+	}
+	// A benign, legitimate use of both packages -- exactly what store's file
+	// locks and hook's signal handling do -- must not match any entry.
+	safe := "	syscall.Flock(fd, syscall.LOCK_EX)\n\tos.Getpid()"
+	for _, call := range rawSyscalls {
+		if strings.Contains(safe, call) {
+			t.Errorf("rawSyscalls entry %q matches legitimate syscall/os usage", call)
 		}
 	}
 }

@@ -1,10 +1,10 @@
 package hook
 
 import (
-	"encoding/json"
 	"io"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -12,8 +12,10 @@ import (
 // recording paused. It is the paused counterpart of Handler.Close, Post.Close
 // and RunProbe's own coverage write, and it writes nothing else: no
 // declaration, no execution, no terminal, because the whole point of pausing
-// is that none of those happen here on purpose. The reason is fixed --
-// store.ReasonRecordingPaused -- and BuildCoverage's own rule that an
+// is that none of those happen here on purpose. The caller passes the reason
+// -- store.ReasonRecordingPaused for an ordinary `rashomon pause`, or
+// store.ReasonPauseStateUnreadable when the marker that produced this call
+// could not itself be read -- and BuildCoverage's own rule that an
 // invocation's own reason outranks anything resolved from configuration is
 // what keeps it from being overwritten by whatever hook_entry or probe
 // happen to resolve to.
@@ -22,16 +24,22 @@ import (
 // call inside a real session must render as a gap IN that session's own
 // report, not as a fact about some unrelated one. A payload that cannot be
 // parsed falls back to UnattributedSession, exactly as the declaration and
-// probe paths do.
-func RecordPaused(in io.Reader, phase string, st *store.Store, now func() time.Time) {
+// probe paths do; refusedSession attributes a payload over the cap.
+func RecordPaused(in io.Reader, phase, reason string, st *store.Store, now func() time.Time) {
 	sessionID := UnattributedSession
 	cwd := ""
-	if raw, err := readPayload(in); err == nil {
+	payload, err := hookio.Intake(in)
+	if err == nil {
 		var p sessionPayload
-		if json.Unmarshal(raw, &p) == nil && p.SessionID != "" {
-			sessionID = p.SessionID
+		if p.from(payload) == nil && p.SessionID != "" {
+			sessionID = attribute(p.SessionID)
 			cwd = p.CWD
 		}
+	} else if s, c, ok := refusedSession(err); ok {
+		sessionID, cwd = s, c
 	}
-	_ = st.AppendCoverage(BuildCoverage(st, sessionID, phase, store.ReasonRecordingPaused, cwd, now()))
+	// Nothing else can hold this record's loss: the invocation that would
+	// have recorded the call is the one that cannot. Its absence reads as a
+	// call with no coverage, unverified, which is what a paused call is too.
+	_ = st.AppendCoverage(BuildCoverage(st, sessionID, phase, reason, cwd, now()))
 }

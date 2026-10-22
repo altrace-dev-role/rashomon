@@ -1,11 +1,11 @@
 # The probe's stdout is SessionStart's, and Claude Code hands that to the
 # model. One break per place a line could be printed: after the probe runs
 # (both phases), inside the end phase, in the refusal of a phase the probe
-# does not know -- which runs before the barrier and before the store -- and
+# does not know -- which runs before the store opens -- and
 # in the stand-down line, which the probe shares with hook and post.
 m("H-107 the probe announces each phase on stdout", "cmd/rashomon/main.go",
-  "\t\thook.RunProbe(sig, phase, stdin, st, time.Now)\n",
-  "\t\thook.RunProbe(sig, phase, stdin, st, time.Now)\n\t\tfmt.Fprintln(os.Stdout, \"rashomon: probe\", phase)\n",
+  "\t\tif err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {\n\t\t\tfmt.Fprintln(stderr, evictionLine)\n\t\t}\n",
+  "\t\tif err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {\n\t\t\tfmt.Fprintln(stderr, evictionLine)\n\t\t}\n\t\tfmt.Fprintln(os.Stdout, \"rashomon: probe\", phase)\n",
   "TestH107_ProbeStartAndEndPrintNothing")
 m("H-107 the end probe reports on stdout", "internal/hook/probe.go",
   "\t\tcase store.PhaseEnd:\n\t\t\trun, err := st.ReadRun(sessionID)\n",

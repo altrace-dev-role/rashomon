@@ -175,7 +175,7 @@
           }
         },
         "hosts": {
-          "description": "Schema 2. Hostnames this call NAMED, behind http(s):// or ws(s)://, canonicalised: lower-cased, port stripped, one trailing dot dropped, userinfo refused outright rather than stripped (CWE-522). A declaration and not an observation -- the host is here because the agent wrote it down, whether or not the call ran and whether or not the wire ever saw it, which is what makes the report's \"reached but never named\" line meaningful. Sorted and de-duplicated, so two runs of one command produce byte-identical records. Null when the call named none, never an empty array: \"we looked and found none\" must stay distinguishable from a schema 1 record that was never looked at.",
+          "description": "Schema 2. Hostnames this call NAMED, behind http(s):// or ws(s)://, canonicalised: lower-cased, port stripped, one trailing dot dropped, userinfo refused outright rather than stripped (CWE-522), and an IP literal written in its one spelling (IPv6 compressed and bracketed, an IPv4-mapped address as its IPv4 address, every inet_aton form of an IPv4 address as a dotted quad). Only a host-shaped value is recorded: a bracketed IPv6 address or a name of at most 253 bytes of letters, digits, -, _ and ., so text a URL's authority swallowed (api.example.com=...!x) is not. A Unicode name is kept as written, not converted to its xn-- form. A declaration and not an observation -- the host is here because the agent wrote it down, whether or not the call ran and whether or not the wire ever saw it, which is what makes the report's \"reached but never named\" line meaningful. Sorted and de-duplicated, so two runs of one command produce byte-identical records. Null when the call named none, never an empty array: \"we looked and found none\" must stay distinguishable from a schema 1 record that was never looked at.",
           "type": [
             "array",
             "null"
@@ -185,7 +185,7 @@
           }
         },
         "ssh_hosts": {
-          "description": "Schema 2. Hostnames named behind ssh://, git+ssh:// or git@, canonicalised identically. Separate from hosts because the two have opposite fates in the report: the proxy cannot observe ssh at all, so an ssh host with no wire record is expected and renders under coverage as not observable, never as a finding. Merging the two and filtering downstream is how the second kind gets printed as the first.",
+          "description": "Schema 2. Hostnames named behind ssh://, git+ssh:// or git@, or as the destination argument of ssh, scp, sftp or rsync on the command line, canonicalised identically. The command line is read for those arguments line by line up to the shape token bound (62,601 tokens, each line counting at least one), so a destination named past it is not recorded; nothing marks such a list incomplete until schema 5. Kept apart from hosts because family coverage counts ssh and HTTPS destinations separately, by scheme; novelty does not make that distinction and takes its candidates from this field and hosts combined.",
           "type": [
             "array",
             "null"
@@ -195,7 +195,7 @@
           }
         },
         "cwd_digest": {
-          "description": "Schema 3. HMAC under the per-install key of the directory the call's command started in: the PreToolUse payload's cwd, which follows the shell from one call to the next, or where the line's leading plain `cd DIR &&` steps lead (no expansion, quoting, ~ or -; a leading pushd, popd or other cd keeps the payload's cwd): an absolute target replaces the directory and a relative one joins it. Two runs of one command line compare as the same run only when this is equal as well, since the same line in another directory runs other code. A digest and never the path: the declarations do not carry the directory, which the coverage records already keep as the project key. Empty string when that directory is not known: no payload cwd and no absolute leading cd.",
+          "description": "Schema 3. HMAC under the per-install key of the directory the call's command started in: the PreToolUse payload's cwd, which follows the shell from one call to the next, or where the line's leading plain `cd DIR &&` steps lead (no expansion, quoting, ~ or -; a leading pushd, popd or other cd keeps the payload's cwd): an absolute target replaces the directory and a relative one joins it. Two runs of one command line compare as the same run only when this is equal as well, since the same line in another directory runs other code. A digest and never the path: the declarations do not carry the directory, which the coverage records already keep as the project key. Empty string when that directory is not known: no payload cwd and no absolute leading cd, or more than 64 leading cd steps, past which the fold stops.",
           "type": "string"
         },
         "file_label": {
@@ -471,7 +471,7 @@
     },
     "terminal": {
       "title": "terminal",
-      "description": "Closes a declaration on every exit path the recorder controls: a clean return, an error return, and SIGTERM. SIGKILL is not catchable, so a declaration with no terminal is the signature of the uncontrolled path, and that absence is the only honest record of it.",
+      "description": "Closes a declaration on every exit path the recorder controls: a clean return, an error return, and SIGTERM. SIGKILL is not catchable, so a declaration with no terminal is the signature of the uncontrolled path, and that absence is the only honest record of it. A terminal whose reason is flush_failed is the exception: it closes nothing. It marks the call's records as possibly not durable, because a sync that should have made them durable failed, the hook's one full sync or a barrier before it (REC-34), so a reader must not let it close a declaration whose own terminal never landed, nor count it as a declaration the lock dropped.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -483,6 +483,25 @@
         "session_id",
         "outcome",
         "reason"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 5
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "phase"
+            ]
+          }
+        }
       ],
       "properties": {
         "type": {
@@ -496,7 +515,8 @@
             1,
             2,
             3,
-            4
+            4,
+            5
           ]
         },
         "seq": {
@@ -523,7 +543,7 @@
           ]
         },
         "reason": {
-          "description": "Null when the outcome is ok.",
+          "description": "Null when the outcome is ok. recovered_panic: the panic barrier recovered a panic that cost this call's capture -- a bug in this program, as distinct from internal_error's ordinary failure. flush_failed: carried by a spill terminal, it marks records this call appended and could not flush to stable storage -- they read back, and a power loss or a crash of the machine could still remove them.",
           "type": [
             "string",
             "null"
@@ -532,7 +552,21 @@
             null,
             "terminated_by_signal",
             "lock_timeout",
-            "internal_error"
+            "internal_error",
+            "recovered_panic",
+            "flush_failed"
+          ]
+        },
+        "phase": {
+          "description": "Which invocation wrote this terminal. Null on an ordinary closing terminal, always Handler's own PreToolUse. Set only on a flush_failed marker: call means the declaration this invocation wrote may not be durable, post means the execution a separate, earlier invocation appended may not be.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "call",
+            "post"
           ]
         }
       }
@@ -595,7 +629,7 @@
           ]
         },
         "reason": {
-          "description": "Null when the state is verified. Fixed codes, never free text and never derived from input.",
+          "description": "Null when the state is verified, and never null when it is unverified: a reader meets an unverified record with no reason, or a state outside the enum, as records_unreadable. Fixed codes, never free text and never derived from input. recovered_panic: the panic barrier recovered a panic in this invocation -- one that cost the call's capture, or one inside the file-label derivation, whose label then reads unknown. payload_too_large: the invocation's payload was over the 8 MiB intake cap and was refused after a bounded read, so the call went unrecorded; nothing broke inside this program, which is why it is not internal_error.",
           "type": [
             "string",
             "null"
@@ -603,13 +637,17 @@
           "enum": [
             null,
             "internal_error",
+            "recovered_panic",
             "lock_timeout",
+            "payload_too_large",
+            "record_oversize",
             "terminated_by_signal",
             "unterminated_entry",
             "hook_entry_absent",
             "hook_entry_unresolved",
             "probe_absent",
             "recording_paused",
+            "pause_state_unreadable",
             "probe_unresolved"
           ]
         },
@@ -634,7 +672,35 @@
             "unknown"
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unverified"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "reason": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
     },
     "gap": {
       "title": "gap",
@@ -689,17 +755,19 @@
           "type": "integer"
         },
         "host_digest": {
-          "description": "Schema 2. An HMAC under the per-install key identifying the destination a host-scoped forget removed; empty string for a window forget, which removes by time and names no host. A DIGEST and not the hostname, resolving a conflict the field had to settle: the report needs to keep suppressing the destination, because the proxy's store is not this tool's to delete from and the host would otherwise reappear in the next report as reached-but-never-named, yet forget --host also has to make the hostname leave this store's bytes. Writing the name would satisfy the first requirement by breaking the second. Keyed with the same per-install key the shape digests use, so the report can recompute it from an observed host while a reader of the store cannot turn it back into a name or test a guess.",
+          "description": "Schema 2. An HMAC under the per-install key identifying the destination a host-scoped forget removed; empty string for a window forget, which removes by time and names no host. A DIGEST and not the hostname, resolving a conflict the field had to settle: the report needs to keep suppressing the host, because nono's own trail is not this tool's to delete from and the host would otherwise reappear in the next report under the sandbox heading, yet forget --host also has to make the hostname leave this store's bytes. Writing the name would satisfy the first requirement by breaking the second. Keyed with the same per-install key the shape digests use, so the report can recompute it from an observed host while a reader of the store cannot turn it back into a name or test a guess. Computed over the host's one canonical spelling (lower case, no port or root dot, an IP literal as it is recorded), whatever the user typed: forget --host 167838211 removes the records naming 10.1.2.3 and digests 10.1.2.3, the spelling the sandbox trail carries. A gap written before that digests the value as typed.",
           "type": "string"
         },
         "removed_records": {
-          "type": "integer"
+          "description": "How many records left the store. -1 means unknown: eviction removed a run it could not read, or one holding a line it could not parse, by its size.",
+          "type": "integer",
+          "minimum": -1
         }
       }
     },
     "forgotten_host": {
       "title": "forgotten_host",
-      "description": "A host-scoped forget, kept at the store root. Written by forget --host whatever it removed, at most once per host, so the report can keep suppressing a host that only the sandbox's trail or the proxy's store held, where no run had a record to remove and so no gap was written. Carries the keyed digest and never the name, for the reason given on gap.host_digest.",
+      "description": "A host-scoped forget, kept at the store root. Written by forget --host whatever it removed, at most once per host, so the report can keep suppressing a host that only the sandbox's trail held, where no run had a record to remove and so no gap was written. Carries the keyed digest and never the name, for the reason given on gap.host_digest.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -733,15 +801,17 @@
     },
     "report_reason": {
       "title": "report reason",
-      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file. duplicate_declarations: more declaration records than distinct tool_use_ids in one run, meaning more than one recorder wrote into it -- a statement about records, not about why; report cannot know whether the second writer was a plugin, a settings install, or a duplicated entry, only that there were two.",
+      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file. duplicate_declarations: more declaration records than distinct tool_use_ids in one run, meaning more than one recorder wrote into it -- a statement about records, not about why; report cannot know whether the second writer was a plugin, a settings install, or a duplicated entry, only that there were two. declaration_missing: a terminal record closes a declaration the read does not hold, and the terminal does not say the lock refused it (lock_timeout), so the declaration was lost to a damaged line or a failed write. transcript_unreadable: a transcript the run's declarations named exists and could not be read, so the accounting check against it did not run; a transcript that does not exist adds no reason (Claude Code deletes old transcripts), and its group renders readable false. records_unreadable also covers a coverage record whose state is unverified with a null reason, or outside this schema's enum.",
       "type": "string",
       "enum": [
         "run_not_closed",
         "records_unreadable",
         "transcript_mismatch",
+        "transcript_unreadable",
         "execution_mismatch",
         "gap",
-        "duplicate_declarations"
+        "duplicate_declarations",
+        "declaration_missing"
       ]
     }
   }

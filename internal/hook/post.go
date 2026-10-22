@@ -1,82 +1,103 @@
 package hook
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
+	"github.com/altrace-dev-role/rashomon/internal/jsonscan"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// PostPayload is the PostToolUse hook input, reduced to the three fields an
-// execution record carries.
+// PostPayload is the PostToolUse hook input, reduced to the fields an
+// execution record is built from.
 //
 // There is deliberately no tool_response field. That field is tool output --
-// what a file held, what a command printed -- and declaring it would unmarshal
-// that content into memory this program controls, from where a panic value or
-// a log line carries it to Claude Code's debug log. encoding/json discards a
-// key no field claims, so the response is never a value here at all. The
-// guarantee is structural: there is nothing to forget to redact.
+// what a file held, what a command printed -- and holding it as a value would
+// put that content into memory this program controls, from where a panic
+// value or a log line carries it to Claude Code's debug log. The payload is
+// walked once into spans (hookio.Intake) and no field here is filled from
+// the response's span. The one thing read from it is read by
+// backgroundedCall, for Bash only: whether two keys are present, as bits on
+// their spans, so stdout, stderr and the task id are never a value here.
 //
-// The one thing read from it is read by backgroundResponse, for Bash only:
-// whether two keys are present. That struct claims those two keys and no
-// other, and holds a bit for each, not the value -- so stdout, stderr and the
-// task id are still never a value in this process.
-//
-// tool_input IS declared, as of the executed-digest field below. It was absent
-// while post derived no shape; it is present now because the post-rewrite
-// input is the only evidence a rewriting hook leaves anywhere, and only its
-// digest survives this function.
+// tool_input IS held, as a subslice of the payload, for the executed digest:
+// the post-rewrite input is the only evidence a rewriting hook leaves
+// anywhere, and only its digest survives this function. internal/shape is
+// still the only package that looks inside it. A canary test sweeps the
+// store, both report renders and both hook streams for its contents.
 type PostPayload struct {
-	SessionID string `json:"session_id"`
-	ToolName  string `json:"tool_name"`
-	ToolUseID string `json:"tool_use_id"`
+	SessionID string
+	ToolName  string
+	ToolUseID string
 
 	// HookEventName is what makes one subcommand serve two events (v2).
 	// PostToolUse and PostToolUseFailure carry the same shape and are
 	// dispatched here rather than by two separate installed command lines,
 	// because two command lines would be two places for the attribution and
 	// panic-barrier discipline to drift apart.
-	HookEventName string `json:"hook_event_name"`
+	HookEventName string
 
-	// Error is the failure message, and it is the ONE field on this path that
-	// comes close to content. It is read and never stored: only a parsed
-	// integer exit code survives this function. The message itself can carry a
-	// fragment of what the command printed, which is exactly why there is no
-	// record field it could be assigned to.
-	Error string `json:"error"`
+	// Error is the head of the failure message, at most errorHeadBytes, and
+	// it is the ONE field on this path that comes close to content. It is
+	// read and never stored: only a parsed integer exit code survives this
+	// function.
+	Error string
 
-	// IsInterrupt distinguishes a user interrupt from a command that failed on
-	// its own. Measured on Claude Code 2.1.258: present on the failure event,
-	// false for an ordinary non-zero exit.
-	IsInterrupt *bool `json:"is_interrupt"`
+	// IsInterrupt distinguishes a user interrupt from a command that failed
+	// on its own. Measured on Claude Code 2.1.258: present on the failure
+	// event, false for an ordinary non-zero exit.
+	IsInterrupt *bool
 
 	// DurationMS is the client's own measurement of the call.
-	DurationMS *int64 `json:"duration_ms"`
+	DurationMS *int64
 
 	// ToolInput is the input as it ACTUALLY RAN, after any hook rewrote it.
-	//
-	// Declaring it is a deliberate reversal of the original note above, and the
-	// asymmetry with tool_response is the whole reason it is safe. tool_response
-	// is tool OUTPUT, and PostPayload claims no field of it: the guarantee
-	// stays structural. backgroundResponse, a second decode for Bash only,
-	// reads two presence bits from it and nothing else.
-	// tool_input is different -- it is the one field that can show a rewriting
-	// hook, and the declaration path already unmarshals and digests the same
-	// field. Only the digest survives this function; internal/shape is still
-	// the only package that looks inside it. A canary test sweeps the store,
-	// both report renders and both hook streams for this field's contents.
-	ToolInput json.RawMessage `json:"tool_input"`
+	ToolInput json.RawMessage
 
-	// CWD is carried onto the coverage record so the project key is present on
-	// every phase rather than only the two the probe writes.
-	CWD string `json:"cwd"`
+	// CWD is carried onto the coverage record so the project key is present
+	// on every phase rather than only the two the probe writes.
+	CWD string
+}
+
+// errorHeadBytes is how much of a failure message is unescaped. The exit
+// code is on its first line and nothing here reads past the head, so a long
+// message never becomes a long string (RES-6).
+const errorHeadBytes = 8 << 10
+
+// from fills pl from an intake. A field of the wrong type fails the whole
+// payload before any field is used, as the struct decode did.
+func (pl *PostPayload) from(in *hookio.Payload) error {
+	if err := in.Strs(hookio.Into(hookio.SessionID, &pl.SessionID), hookio.Into(hookio.ToolName, &pl.ToolName),
+		hookio.Into(hookio.ToolUseID, &pl.ToolUseID), hookio.Into(hookio.HookEventName, &pl.HookEventName),
+		hookio.Into(hookio.CWD, &pl.CWD)); err != nil {
+		return err
+	}
+	var err error
+	if pl.IsInterrupt, err = in.Bool(hookio.IsInterrupt); err != nil {
+		return err
+	}
+	if pl.DurationMS, err = in.Int(hookio.DurationMS); err != nil {
+		return err
+	}
+	switch s := in.Spans[hookio.Error]; s.Kind {
+	case jsonscan.Absent, jsonscan.Null:
+	case jsonscan.String:
+		head, _, herr := jsonscan.Head(in.Raw, s, errorHeadBytes, make([]byte, 0, errorHeadBytes))
+		if herr != nil {
+			return herr
+		}
+		pl.Error = string(head)
+	default:
+		return hookio.ErrType
+	}
+	pl.ToolInput = in.Value(hookio.ToolInput)
+	return nil
 }
 
 // FailureEvent is the hook event name Claude Code fires instead of
@@ -94,19 +115,25 @@ const FailureEvent = "PostToolUseFailure"
 //
 // It is split in two for the same reason Handler is: Close runs on paths where
 // Capture did not return normally, and a single function cannot promise that
-// about its own panic.
+// about its own panic. Like a Handler, it is for one invocation, used by one
+// goroutine.
 type Post struct {
 	st  *store.Store
 	now func() time.Time
+	// lockWaits is Handler.lockWaits.
+	lockWaits time.Duration
 
 	sessionID string
+	toolUseID string
 	cwd       string
+	// withheld is Handler.withheld for the execution record.
+	withheld bool
 }
 
 // NewPost builds a Post. now is injectable for the same reason it is on
 // Handler: a test pins the clock and compares two records byte for byte.
 func NewPost(st *store.Store, now func() time.Time) *Post {
-	return &Post{st: st, now: now, sessionID: UnattributedSession}
+	return &Post{st: st, now: now, lockWaits: LockWaitTotal, sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the execution record.
@@ -117,22 +144,26 @@ func NewPost(st *store.Store, now func() time.Time) *Post {
 // unbounded read of a payload carrying a hundred megabytes of tool output is a
 // runtime fatal error, which recover cannot catch and which exits 2.
 func (p *Post) Capture(in io.Reader) error {
+	// First, as in Handler.Capture.
+	p.st.LimitLockWaits(p.lockWaits)
 	fault.Inject(fault.PointPostStart)
 
-	raw, err := readPayload(in)
+	payload, err := hookio.Intake(in)
 	if err != nil {
+		if s, cwd, ok := refusedSession(err); ok {
+			p.sessionID, p.cwd = s, cwd
+		}
 		return err
 	}
-
 	var pl PostPayload
-	if err := json.Unmarshal(raw, &pl); err != nil {
+	if err := pl.from(payload); err != nil {
 		return err
 	}
 
 	// Attribute before anything else can fail, as the declaration path does.
-	if pl.SessionID != "" {
-		p.sessionID = pl.SessionID
-	}
+	p.sessionID = attribute(pl.SessionID)
+	p.withheld = len(pl.SessionID) > store.MaxIDBytes
+	p.toolUseID = store.CapID(pl.ToolUseID)
 	p.cwd = pl.CWD
 
 	fault.Inject(fault.PointPostParsed)
@@ -172,53 +203,40 @@ func (p *Post) Capture(in io.Reader) error {
 	// A failure event means the command ended or its launch failed, so it was
 	// never moved to the background, whatever its payload carries.
 	if pl.ToolName == "Bash" && pl.HookEventName != FailureEvent {
-		rec.Backgrounded = backgroundedCall(raw)
+		rec.Backgrounded = backgroundedCall(payload)
+	}
+	// The caps, as on the declaration path (REC-52).
+	if store.CapExecution(&rec) {
+		p.withheld = true
 	}
 	return p.st.AppendExecution(rec)
 }
 
-// backgroundResponse is the whole of what is read from a Bash call's
-// tool_response: whether it names a background task. Measured on Claude Code
-// 2.1.280, a command moved to the background when it reached its timeout and
-// one launched with run_in_background both fire PostToolUse, and the response
-// carries backgroundTaskId (the timeout case timedOutAfterMs as well); a
-// foreground call carries neither. A Ctrl+B background is recognised only if
-// Claude Code marks it with backgroundTaskId or backgroundedByUser, which was
-// not measured; backgroundedByUser is read the same way as the task id.
-//
-// Each key decodes into a presence bit (present), so the task id is compared
-// with null and false and dropped, and no other key of the response --
-// stdout, stderr -- is claimed by any field: encoding/json skips them unread.
-type backgroundResponse struct {
-	ToolResponse struct {
-		BackgroundTaskID   present `json:"backgroundTaskId"`
-		BackgroundedByUser present `json:"backgroundedByUser"`
-	} `json:"tool_response"`
-}
-
-// present is a key's presence: true when the key carries anything but null
-// or false. The raw bytes are compared with those two and not kept or
-// copied, so an id, a string or an object decodes to one bit and never
-// becomes a Go string.
-type present bool
-
-func (p *present) UnmarshalJSON(b []byte) error {
-	v := bytes.TrimSpace(b)
-	*p = present(!bytes.Equal(v, []byte("null")) && !bytes.Equal(v, []byte("false")))
-	return nil
-}
-
 // backgroundedCall reports a Bash call whose PostToolUse fired while the
 // command was still running in the background, so that its outcome is the
-// launch's and not the command's. A response that is not an object, or fails
-// to decode, is a foreground call: the flag is set only on evidence.
-func backgroundedCall(raw []byte) bool {
-	var r backgroundResponse
-	if json.Unmarshal(raw, &r) != nil {
+// launch's and not the command's. Measured on Claude Code 2.1.280, a command
+// moved to the background when it reached its timeout and one launched with
+// run_in_background both fire PostToolUse, and the response carries
+// backgroundTaskId (the timeout case timedOutAfterMs as well); a foreground
+// call carries neither. A Ctrl+B background is recognised only if Claude Code
+// marks it with backgroundTaskId or backgroundedByUser, which was not
+// measured; backgroundedByUser is read the same way as the task id.
+//
+// This is the whole of what is read from tool_response: two presence bits on
+// spans, true when a key carries anything but null or false. The task id is
+// never copied, and stdout and stderr are never touched. A response that is
+// not an object is a foreground call: the flag is set only on evidence.
+func backgroundedCall(in *hookio.Payload) bool {
+	var bits [2]jsonscan.Span
+	if jsonscan.Field(in.Raw, in.Spans[hookio.ToolResponse], backgroundKeys, bits[:]) != nil {
 		return false
 	}
-	return bool(r.ToolResponse.BackgroundTaskID || r.ToolResponse.BackgroundedByUser)
+	return bits[0].Set() || bits[1].Set()
 }
+
+// backgroundKeys are the two keys backgroundedCall reads, matched as the
+// struct that once decoded them matched them: in any case.
+var backgroundKeys = jsonscan.NewFoldKeySet("backgroundTaskId", "backgroundedByUser")
 
 // exitCodePrefix is the whole of what is parsed out of a failure message.
 //
@@ -244,6 +262,8 @@ func exitCode(msg string) *int {
 	if !strings.HasPrefix(msg, exitCodePrefix) {
 		return nil
 	}
+	// Only the first line is read; whether a newline was found does not
+	// matter, since a message with none is all first line.
 	first, _, _ := strings.Cut(msg[len(exitCodePrefix):], "\n")
 	digits := strings.TrimSpace(first)
 	if digits == "" {
@@ -270,15 +290,15 @@ func positive(d *int64) *int64 {
 // record to write: an execution record is not an entry that something later
 // closes, it is the close.
 func (p *Post) Close(sig *Signals, captureErr error) {
-	reason := ""
-	switch {
-	case sig.Delivered():
+	reason := closeReason(captureErr)
+	if sig.Delivered() {
 		reason = store.ReasonTerminatedBySignal
-	case errors.Is(captureErr, store.ErrLockTimeout):
-		reason = store.ReasonLockTimeout
-	case captureErr != nil:
-		reason = store.ReasonInternalError
+	}
+	if reason == "" && p.withheld {
+		reason = store.ReasonRecordOversize
 	}
 
+	// A post-phase coverage record that cannot be written is read as its
+	// absence, as on the call phase (H-10).
 	_ = p.st.AppendCoverage(BuildCoverage(p.st, p.sessionID, store.PhasePost, reason, p.cwd, p.now()))
 }

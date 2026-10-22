@@ -2,7 +2,13 @@ package hook
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/shape"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // startDirectory folds a line's leading cd targets onto the payload's cwd:
@@ -27,8 +33,48 @@ func TestStartDirectory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := startDirectory(tc.cwd, "Bash", in); got != tc.want {
+		dirs, _ := shape.LeadingDirectory("Bash", in)
+		if got := startDirectory(tc.cwd, dirs); got != tc.want {
 			t.Errorf("startDirectory(%q, %q) = %q, want %q", tc.cwd, tc.cmd, got, tc.want)
+		}
+	}
+}
+
+// TestCaptureKeepsTheCWDOfAControlByteLine: a line holding a control byte
+// moves the call's start directory nowhere, so its cwd digest is the
+// payload's cwd. `cd /repo\r && ls` never enters /repo -- the shell reads
+// the carriage return as part of the directory's name -- and the hook folded
+// it in when it read the leading cds through DeriveWithDirs, which had lost
+// LeadingDirectory's guard. The plain line is the control: it does move.
+func TestCaptureKeepsTheCWDOfAControlByteLine(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const cwd = "/tmp/project"
+	for i, tc := range []struct{ cmd, dir string }{
+		{"cd /repo && ls", "/repo"},
+		{"cd /repo\r && ls", cwd},
+		{"cd /repo\x00 && ls", cwd},
+		{"cd /repo\x07 && ls", cwd},
+		{"cd /repo\x1b && ls", cwd},
+	} {
+		payload, err := json.Marshal(map[string]any{
+			"session_id": "s-ctl", "tool_use_id": fmt.Sprintf("toolu_%d", i), "tool_name": "Bash",
+			"cwd": cwd, "hook_event_name": "PreToolUse", "tool_input": map[string]any{"command": tc.cmd},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		h := New(st, time.Now)
+		h.Close(&Signals{}, h.Capture(strings.NewReader(string(payload))))
+		run, err := st.ReadRun("s-ctl")
+		if err != nil || len(run.Declarations) != i+1 {
+			t.Fatalf("%q: %d declarations, %v", tc.cmd, len(run.Declarations), err)
+		}
+		if got, want := run.Declarations[i].CWDDigest, shape.CWDDigest(st.Key(), tc.dir); got != want {
+			t.Errorf("%q: cwd digest is not %s's", tc.cmd, tc.dir)
 		}
 	}
 }

@@ -3,6 +3,7 @@ package acceptance
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -398,5 +399,78 @@ func TestPausedSessionProbeIsNotReportedAsRecorded(t *testing.T) {
 	}
 	if !strings.Contains(res.stdout, "start recorded: no") {
 		t.Errorf("text report does not say \"start recorded: no\" for a paused start:\n%s", res.stdout)
+	}
+}
+
+// TestRubricERRORS6_UnreadablePauseMarkerPausesRecording: with the pause
+// marker present but unreadable (chmod 000), a hook call is not recorded and
+// leaves pause_state_unreadable, the reason a pause from an unreadable
+// marker carries rather than the ordinary recording_paused. It used to
+// record: a read error counted as "not paused", so declarations went from
+// one to two.
+func TestRubricERRORS6_UnreadablePauseMarkerPausesRecording(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 000 does not stop this user reading the file")
+	}
+	e := newEnv(t)
+	e.watched(testSession)
+	before := defaultPayload()
+	before.ToolUseID = "toolu_before"
+	e.mustHook(before.build(t))
+	if res := e.pause(); res.exitCode != 0 {
+		t.Fatalf("pause: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	marker := filepath.Join(e.home, "pause")
+	if err := os.Chmod(marker, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(marker, 0o644) }) //nolint:errcheck // TempDir removal follows
+
+	during := defaultPayload()
+	during.ToolUseID = "toolu_during"
+	if res := e.hook(during.build(t)); res.exitCode != 0 {
+		t.Fatalf("hook under an unreadable marker: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if got := len(e.declarations(testSession)); got != 1 {
+		t.Errorf("got %d declarations, want 1: the call made under an unreadable pause marker was recorded", got)
+	}
+	found := false
+	for _, c := range e.coverage(testSession, "call") {
+		if c.str("reason") == "pause_state_unreadable" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("no call coverage record carries pause_state_unreadable for the call under an unreadable marker")
+	}
+}
+
+// pausedLine is what `rashomon pause` prints on engaging the pause. It says
+// that a paused call still leaves a coverage note, because it does
+// (TestH80_PausedSessionWithAStoreWritesRecordingPaused): the line used to
+// say no tool call would be recorded, and each one still wrote a record.
+const pausedLine = "rashomon: paused -- tool calls are not recorded until `rashomon resume`; " +
+	"each one still writes a coverage record so the gap shows in the report\n"
+
+// TestRubricDOCS2_PauseSaysCoverageNotesAreStillWritten pins the printed line
+// next to the H-80 test that proves what it says.
+func TestRubricDOCS2_PauseSaysCoverageNotesAreStillWritten(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	res := e.pause()
+	if res.exitCode != 0 {
+		t.Fatalf("pause: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res.stdout != pausedLine {
+		t.Errorf("pause printed %q, want %q", res.stdout, pausedLine)
+	}
+
+	// With no store, a paused call writes nothing (H-81), and the line does
+	// not claim a note it will not leave.
+	bare := newEnv(t)
+	res = bare.pause()
+	const noStoreLine = "rashomon: paused -- tool calls are not recorded until `rashomon resume`\n"
+	if res.exitCode != 0 || res.stdout != noStoreLine {
+		t.Errorf("pause with no store: exit %d, printed %q, want %q", res.exitCode, res.stdout, noStoreLine)
 	}
 }

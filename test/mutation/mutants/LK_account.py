@@ -44,14 +44,14 @@ m("LK spend's partial none omits that a lookup alone is not counted", "internal/
   "TestJoin_ANoneSaysAFailedLookupAloneIsNotCounted|TestJoin_AFailedCallWhoseDeclarationWasLostIsNotJudged")
 # One list of lookup tools: a tool added to it, or to the check alone, is
 # silenced and must fail a test; the report must name every one.
-m("LK a tool is added to the read class", "internal/shape/shape.go",
+m("LK a tool is added to the read class", "internal/shape/verb.go",
   "var readTools = []string{\"Read\", \"Glob\", \"Grep\", \"NotebookRead\"}",
   "var readTools = []string{\"Read\", \"Glob\", \"Grep\", \"NotebookRead\", \"LS\"}",
   "TestIsLookup_TheReportNamesExactlyTheToolsItCounts")
-m("LK a tool is classed read beside the list", "internal/shape/shape.go",
+m("LK a tool is classed read beside the list", "internal/shape/verb.go",
   "\tif slices.Contains(readTools, name) {", "\tif slices.Contains(readTools, name) || name == \"LS\" {",
   "TestIsLookup_TheReportNamesExactlyTheToolsItCounts")
-m("LK a tool is classed read in shape's switch", "internal/shape/shape.go",
+m("LK a tool is classed read in shape's switch", "internal/shape/verb.go",
   "\tswitch name {\n\tcase \"Write\", \"Edit\", \"MultiEdit\", \"NotebookEdit\":",
   "\tswitch name {\n\tcase \"LSP\":\n\t\treturn VerbRead\n\tcase \"Write\", \"Edit\", \"MultiEdit\", \"NotebookEdit\":",
   "TestIsLookup_TheReportNamesExactlyTheToolsItCounts")

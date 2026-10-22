@@ -60,16 +60,22 @@ const (
 	EventUserPromptSubmit = "UserPromptSubmit"
 )
 
-// Events in the order they are installed.
-var Events = []string{
-	EventPreToolUse,
-	EventPostToolUse,
-	EventPostToolUseFailure,
-	EventSessionStart,
-	EventSessionEnd,
-	EventStop,
-	EventStopFailure,
-	EventUserPromptSubmit,
+// Events returns the events we install into, in the order they are
+// installed. It decides what watch writes and what detach removes, so it is a
+// function and not a package variable: each call builds a fresh slice, and a
+// caller that edits the one it was handed cannot change what watch, detach,
+// status or the plugin check see next.
+func Events() []string {
+	return []string{
+		EventPreToolUse,
+		EventPostToolUse,
+		EventPostToolUseFailure,
+		EventSessionStart,
+		EventSessionEnd,
+		EventStop,
+		EventStopFailure,
+		EventUserPromptSubmit,
+	}
 }
 
 // hasMatcher reports whether an event's entry carries a matcher. The tool
@@ -245,7 +251,7 @@ func Owner(raw json.RawMessage, event string) string {
 // not overwritten.
 func Apply(doc *settings.Document, spec Spec) (bool, error) {
 	changed := false
-	for _, event := range Events {
+	for _, event := range Events() {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
 			return false, err
@@ -335,7 +341,7 @@ func Remove(doc *settings.Document, spec Spec, force bool) (int, []Modified, err
 func RemoveIf(doc *settings.Document, match func(installID string) bool, force bool) (int, []Modified, error) {
 	total := 0
 	var left []Modified
-	for _, event := range Events {
+	for _, event := range Events() {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
 			return 0, nil, err
@@ -390,16 +396,20 @@ func RemoveIf(doc *settings.Document, match func(installID string) bool, force b
 	return total, left, nil
 }
 
-// Present reports whether our entry for an event is installed as watch
-// installs it. This is what the coverage record's hook_entry field means: not
-// "some entry exists" but "our entry, with our matcher and our timeout".
+// Present reports whether our entry for an event fires on every call this
+// event raises. This is what the coverage record's hook_entry field means:
+// not "some entry exists" but "our command, under a matcher that does not
+// narrow it" -- coverageIntact's question, not intact's. A timeout
+// different from the one watch installs, or another hook added to our
+// group, changes how fast or how often something ELSE there runs, not
+// whether ours does, so neither costs this.
 func Present(doc *settings.Document, installID, event string) (bool, error) {
 	entries, err := doc.HookEntries(event)
 	if err != nil {
 		return false, err
 	}
 	for _, e := range entries {
-		if Owner(e, event) == installID && intact(e, event) == "" {
+		if Owner(e, event) == installID && coverageIntact(e, event) == "" {
 			return true, nil
 		}
 	}
@@ -417,7 +427,7 @@ func Present(doc *settings.Document, installID, event string) (bool, error) {
 func ForeignOwners(doc *settings.Document, installID string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
-	for _, event := range Events {
+	for _, event := range Events() {
 		entries, err := doc.HookEntries(event)
 		if err != nil {
 			return nil, err
@@ -466,6 +476,70 @@ func intact(raw json.RawMessage, event string) string {
 		return fmt.Sprintf("timeout is %d, expected %d", h.Timeout, want)
 	}
 	return ""
+}
+
+// matcherFires reports whether m, a matcher group's own matcher field,
+// leaves the group matching every call event raises. On an event that
+// supports a matcher at all, nil, empty and the literal Matcher ("*") are
+// the three spellings Claude Code itself treats as match-all (the hooks
+// documentation lists all three), so intact's stricter requirement -- the
+// literal string only -- is not this question's answer. On an event with no
+// matcher support, any matcher at all narrows it; omitting intact's other
+// rule here, Owner's inverse (empty matches present AND absent), would be
+// wrong for the same reason hasMatcher exists.
+func matcherFires(event string, m *string) bool {
+	if m == nil || *m == "" {
+		return true
+	}
+	return matcherCapable(event) && *m == Matcher
+}
+
+// matcherCapable reports whether event has any matcher concept at all --
+// broader than hasMatcher, which answers only whether WATCH's own installed
+// entry carries a literal one. The session events match on source or reason
+// (hasMatcher's doc), so a literal "*" there is match-all exactly as it is
+// on the tool events, even though watch installs them with no matcher field
+// to begin with. Before this distinction existed, a hand-written "*" on
+// SessionStart or SessionEnd read as narrowing, the same false
+// "unverified" a narrowed matcher is supposed to mean.
+func matcherCapable(event string) bool {
+	return hasMatcher(event) || event == EventSessionStart || event == EventSessionEnd
+}
+
+// coverageIntact reports why a matcher group containing one of our command
+// hooks, as the caller has already established, would not fire that
+// command on every call event raises, or "" if it does. Present asks this
+// for a settings entry, pluginDeclaration for a plugin's; it is what the
+// coverage record's hook_entry field means, which is a narrower question
+// than intact's.
+//
+// Unlike intact, it does not ask about hook count or timeout: a second hook
+// alongside ours in the group, or a timeout different from the one watch
+// installs, changes how often or how fast something ELSE in the group
+// runs, not whether our command does. Before this distinction existed, an
+// entry carrying either read hook_entry absent even though every call was
+// recorded, because both questions were intact's alone. intact itself is
+// unchanged and is still what Apply and RemoveIf ask, because overwriting
+// or removing either kind of edit without consent is wrong regardless of
+// whether it costs coverage.
+func coverageIntact(raw json.RawMessage, event string) string {
+	var g matcherGroup
+	if err := json.Unmarshal(raw, &g); err != nil {
+		return "entry does not parse as a matcher group"
+	}
+	if !matcherFires(event, g.Matcher) {
+		got := "absent"
+		if g.Matcher != nil {
+			got = fmt.Sprintf("%q", *g.Matcher)
+		}
+		return fmt.Sprintf("matcher is %s, which narrows which calls fire", got)
+	}
+	for _, h := range g.Hooks {
+		if h.Type == "command" {
+			return ""
+		}
+	}
+	return "no hook in the group is type \"command\""
 }
 
 func sameJSON(a, b json.RawMessage) bool {
