@@ -301,6 +301,10 @@ func TestRubricERRORS6_UnreadablePauseMarkerPausesTheHook(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("RASHOMON_HOME", root)
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	// CLAUDE_CODE_ENTRYPOINT=cli: see TestH78's note above. Without it the
+	// host guard stands this Claude-shaped payload down before the pause
+	// marker is read, wherever the suite runs outside Claude Code.
+	t.Setenv("CLAUDE_CODE_ENTRYPOINT", "cli")
 	if _, err := store.Open(root); err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
