@@ -188,7 +188,7 @@ func TestREC34d_FlushFailedTerminalClosesNothingAndDropsNothing(t *testing.T) {
 // than reading a record it half-understands as an ordinary closing one.
 func TestREC34m_FlushFailedRidesANewerSchemaVersionSoOldReadersSkipIt(t *testing.T) {
 	reason := ReasonFlushFailed
-	marker := Terminal{Type: TypeTerminal, SchemaVersion: SchemaVersion, ToolUseID: "a1", Outcome: OutcomeError, Reason: &reason}
+	marker := Terminal{Type: TypeTerminal, SchemaVersion: FlushFailedSchemaVersion, ToolUseID: "a1", Outcome: OutcomeError, Reason: &reason}
 
 	// Accepts' own history (record.go): 1..3 before the masked-status bump,
 	// 1..4 before this one. A reader from either release knew nothing past

@@ -27,8 +27,9 @@ import (
 // reader already carries a comment about: `Accepts` used to be an equality
 // against SchemaVersion, so the moment the writer moved to v2 every v1 record
 // on disk was skipped and the report rendered empty with nothing saying why.
-// This build writes v5, and Accepts must keep admitting 1 through 4 so that
-// older stores still read.
+// This build writes v4 for its ordinary call records and v5 for the one
+// flush_failed marker (store.FlushFailedSchemaVersion), and Accepts must
+// keep admitting 1 through 4 so that older stores still read.
 func TestAcceptsAdmitsSchema3(t *testing.T) {
 	for _, v := range []int{1, 2, 3, 4, 5} {
 		if !store.Accepts(v) {
@@ -211,9 +212,13 @@ func toAnySlice(v any) []any {
 	return nil
 }
 
-// TestSchema3_WrittenRecordsMeetTheVersion3Gate: this build writes schema 5,
-// additive over 3, and every record it writes carries each key the published
-// v3 gate requires, and the v4 gate's as well.
+// TestSchema3_WrittenRecordsMeetTheVersion3Gate: an ordinary declaration or
+// execution this build writes is schema 4, additive over 3, and carries each
+// key the published v3 gate requires, and the v4 gate's as well. It is not
+// schema 5: nothing about a v5 record's one piece of content, the
+// flush_failed marker, applies to a declaration or an execution, and
+// store.FlushFailedSchemaVersion names the marker's version precisely so
+// that this one does not drift onto it.
 // The version is compared against the literal, not against
 // store.SchemaVersion, which would compare the writer with itself. Break:
 // write 2 while the vocabulary is 3's (the test class, the test-file label),
@@ -246,8 +251,8 @@ func TestSchema3_WrittenRecordsMeetTheVersion3Gate(t *testing.T) {
 			t.Fatalf("no %s record written", c.def)
 		}
 		for _, r := range c.recs {
-			if got := r.fields["schema_version"]; got != float64(5) {
-				t.Errorf("%s written at schema_version %v, want 5", c.def, got)
+			if got := r.fields["schema_version"]; got != float64(4) {
+				t.Errorf("%s written at schema_version %v, want 4", c.def, got)
 			}
 			for _, k := range gated {
 				if _, ok := nested(r, k); !ok {

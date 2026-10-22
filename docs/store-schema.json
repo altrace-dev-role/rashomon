@@ -58,8 +58,7 @@
             1,
             2,
             3,
-            4,
-            5
+            4
           ]
         },
         "seq": {
@@ -335,8 +334,7 @@
             1,
             2,
             3,
-            4,
-            5
+            4
           ]
         },
         "seq": {
@@ -484,8 +482,26 @@
         "tool_use_id",
         "session_id",
         "outcome",
-        "reason",
-        "phase"
+        "reason"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 5
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "phase"
+            ]
+          }
+        }
       ],
       "properties": {
         "type": {

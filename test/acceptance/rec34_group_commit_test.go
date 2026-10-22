@@ -236,6 +236,13 @@ func TestREC34_FailedFlushIsMarkedAndNeverRetried(t *testing.T) {
 				m.str("tool_use_id") != testToolUseID || m.fields["seq"] != nil {
 				t.Errorf("the marker is %s; want a terminal for %s, outcome error, reason flush_failed, seq null", m.raw, testToolUseID)
 			}
+			// The marker carries its own version, store.FlushFailedSchemaVersion
+			// (5), never store.SchemaVersion (4, what an ordinary terminal for
+			// this same call would carry): a 1.1.x reader must skip this one
+			// line and nothing else this invocation wrote (schema5_test.go).
+			if got := m.fields["schema_version"]; got != float64(5) {
+				t.Errorf("the marker's schema_version is %v, want 5", got)
+			}
 			if got := m.str("phase"); got != c.wantPhase {
 				t.Errorf("the marker's phase is %q, want %q: a reader cannot tell which invocation's records may not be durable without it", got, c.wantPhase)
 			}

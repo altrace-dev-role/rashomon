@@ -25,27 +25,57 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // tail` says nothing about it, which a reader must take as "not measured",
 // not as "not hidden". Nothing else changed, and v1 to v3 records still read.
 //
-// v5 is not additive the way v2 to v4 were: no field was added, and nothing
-// a v4 record carries changed meaning. What changed is which terminals a
-// reader may treat as closing a declaration. Terminal.Reason can now be
-// ReasonFlushFailed (REC-34), marking a call whose records a failed flush
-// left possibly not durable -- and such a terminal must NOT close the
-// declaration it names, or a possibly-lost call reads as a finished one.
-// A v4 reader has no FlushFailed check; it closes on any terminal. Bumping
-// the version is what keeps it from reading one of these at all: Accepts
-// runs before the type switch (classifyRunLine), so a v4-or-earlier reader
-// skips the whole line instead of half-understanding it. The alternative --
-// a new record type instead of a version bump -- was rejected here because
-// Terminal is the type every other call-record consumer already walks;
-// moving the marker out of it would have meant auditing every one of them
-// for an assumption that a terminal is the only thing that closes a call,
-// rather than teaching the one function (Accepts) that already exists to
-// gate what a reader understands.
+// v5 exists, but SchemaVersion does not move to it: see
+// FlushFailedSchemaVersion below for what does and why.
 //
-// SchemaVersion is the version of a call's records: its declaration, the
-// terminal that closes it, and its execution. Coverage and gap records are
-// written at SessionSchemaVersion instead.
-const SchemaVersion = 5
+// SchemaVersion is the version of a call's ordinary records: its
+// declaration, the terminal that actually closes it, and its execution.
+// Coverage and gap records are written at SessionSchemaVersion instead.
+const SchemaVersion = 4
+
+// FlushFailedSchemaVersion is the version the flush_failed marker alone is
+// written at (REC-34). A literal, not SchemaVersion+1: the two are
+// independent facts (one about ordinary call records, one about a single
+// marker type) and tying them arithmetically would move this one the
+// moment someone edited the other for an unrelated reason.
+//
+// A flush_failed terminal is not additive the way v2 to v4 were: no field
+// was added to the TYPE, and nothing a v4 record carries changed meaning.
+// What changed is which terminals a reader may treat as closing a
+// declaration. Terminal.Reason can now be ReasonFlushFailed, marking a call
+// whose records a failed flush left possibly not durable -- and such a
+// terminal must NOT close the declaration it names, or a possibly-lost call
+// reads as a finished one. A v4 reader has no FlushFailed check; it closes
+// on any terminal. Bumping ITS OWN version is what keeps a v4-or-earlier
+// reader from reading one of these at all: Accepts runs before the type
+// switch (classifyRunLine), so such a reader skips the marker's line
+// instead of half-understanding it.
+//
+// It does not move SchemaVersion itself, which is what the first version of
+// this fix did and which this constant exists to stop from happening again.
+// Every declaration, execution and ordinary terminal has none of a v5
+// record's content -- there is no v5 content for an ordinary record to
+// carry, because the only thing v5 added is this marker -- so stamping them
+// at 5 anyway would have been exactly the lie kinds.go's CallSchemaVersion
+// warns against: a record claiming a version none of whose keys it carries.
+// It would also have cost every 1.1.x reader every call record in a run the
+// moment one flush failed anywhere in the store, not only the one marker a
+// 1.2.0 reader understands and an older one correctly cannot: Accepts does
+// not look at type before it looks at schema_version, so a declaration
+// stamped 5 is invisible to a v4 reader whether or not it has anything to
+// do with REC-34.
+//
+// A new record type instead of a second version was rejected for the
+// reason the first version's comment gave: Terminal is the type every other
+// call-record consumer already walks, and moving the marker out of it would
+// have meant auditing every one of them for an assumption that a terminal
+// is the only thing that closes a call. That reasoning is still right; it
+// just does not require moving SchemaVersion along with it, because the
+// marker is the one terminal the "goes with its declaration's version" rule
+// (SessionSchemaVersion's doc) was never describing -- FlushFailed's own doc
+// says it is not an ending, so it is not "the terminal that closes" the
+// declaration either, and SchemaVersion's contract never claimed it.
+const FlushFailedSchemaVersion = 5
 
 // SessionSchemaVersion is the version of the records that describe a session
 // rather than one call: coverage and gaps. Neither has changed since v3, so

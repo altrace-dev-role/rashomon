@@ -209,6 +209,14 @@ m("REC-34 the hook's own flush marks itself as post", "internal/hook/flush.go",
   "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhaseCall)",
   "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhasePost)", "TestREC34_FailedFlushIsMarkedAndNeverRetried",
   platform="darwin")
+# The marker rides its own version, store.FlushFailedSchemaVersion, so that
+# a 1.1.x reader skips only this one line rather than every call record this
+# invocation wrote (record.go's FlushFailedSchemaVersion doc). Collapsing it
+# back onto store.SchemaVersion is the exact regression that doc exists to
+# name, caught here at the one site that writes it.
+m("REC-34 the marker rides the call records' own version", "internal/hook/flush.go",
+  "SchemaVersion: store.FlushFailedSchemaVersion,", "SchemaVersion: store.SchemaVersion,",
+  "TestREC34_FailedFlushIsMarkedAndNeverRetried")
 
 # A flush_failed marker can name a call whose own record never landed: the
 # seq counter's barrier, the first ordered append issues, is what failed, so
@@ -218,3 +226,12 @@ m("REC-34 the hook's own flush marks itself as post", "internal/hook/flush.go",
 m("REC-34 not durable names a call with no record at all", "internal/store/read.go",
   "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && hasRecord[t.ToolUseID] && !seen[t.ToolUseID] {",
   "\t\tif t.FlushFailed() && t.ToolUseID != \"\" && !seen[t.ToolUseID] {", "TestREC34r_")
+
+# The version gate itself, phase's own twin to "B2 a schema-3 field is
+# required at every version" (B2_store-schema.py): putting phase in
+# terminal's TOP-LEVEL required is the tempting edit, and it invalidates
+# every terminal already on disk from before this field existed.
+m("REC-34 phase is required at every version", "docs/store-schema.json",
+  '        "outcome",\n        "reason"\n      ],\n      "allOf": [',
+  '        "outcome",\n        "reason",\n        "phase"\n      ],\n      "allOf": [',
+  "TestSchema5|TestStoreSchema")

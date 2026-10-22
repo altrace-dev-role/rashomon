@@ -30,6 +30,16 @@ func (p *Post) Flush() error {
 // marker speaks for: Handler's declaration, or Post's execution, written by a
 // separate, earlier invocation of this entry.
 //
+// The marker is stamped store.FlushFailedSchemaVersion, not store.SchemaVersion:
+// it is the one record this build writes that is not an ordinary call
+// record, and the two constants must not drift back onto one value (see
+// FlushFailedSchemaVersion's doc). Everything else this file's caller wrote
+// for this call -- the declaration, or Handler's own earlier one when this is
+// Post's marker -- stays at store.SchemaVersion and reads on a 1.1.x build
+// exactly as it always has; only this one line is new to a reader that does
+// not know FlushFailedSchemaVersion yet, which is the point of giving it a
+// version of its own instead of moving every call record to it.
+//
 // It returns an error when the marker could not be written or its full sync
 // failed: a marker that is not durable is not a marker. There is then no
 // record left to hold the failure, and the caller says so on stderr, as
@@ -41,7 +51,7 @@ func flushOrMark(st *store.Store, sessionID, toolUseID string, now time.Time, ph
 	reason := store.ReasonFlushFailed
 	return st.SpillTerminal(store.Terminal{
 		Type:          store.TypeTerminal,
-		SchemaVersion: store.SchemaVersion,
+		SchemaVersion: store.FlushFailedSchemaVersion,
 		RecordedAtMS:  now.UnixMilli(),
 		ToolUseID:     toolUseID,
 		SessionID:     sessionID,

@@ -64,14 +64,21 @@ func TestAcceptsKindFollowsTheAcceptanceTable(t *testing.T) {
 	}
 }
 
-// The writer moved to 5 with REC-34's flush_failed marker, ahead of the v5
-// fields: a v4 reader closes a declaration on any terminal, so the version
-// is what keeps it from reading one that must not (record.go). P-11 adds the
-// v5 fields to the records written at this version, and this test is the
-// one that changes then.
+// The ordinary call-record writer stays at 4 (kinds.go's CallSchemaVersion
+// doc: "until P-11 the writer stamps SchemaVersion, 4"). REC-34's
+// flush_failed marker is the one record at 5, under its own constant,
+// FlushFailedSchemaVersion -- not SchemaVersion, which would carry every
+// declaration, execution and ordinary terminal to 5 with none of a v5
+// record's content, exactly the record.go doc warns against. P-11 moves
+// SchemaVersion itself to CallSchemaVersion once the v5 fields are added to
+// the records written at that version, and this test is the one that
+// changes then.
 func TestWriterStampsSchemaVersionFive(t *testing.T) {
-	if SchemaVersion != 5 {
-		t.Errorf("SchemaVersion = %d; the call-record writer is at 5 since REC-34's flush_failed marker", SchemaVersion)
+	if SchemaVersion != 4 {
+		t.Errorf("SchemaVersion = %d; the ordinary call-record writer stays at 4 until P-11", SchemaVersion)
+	}
+	if FlushFailedSchemaVersion != 5 {
+		t.Errorf("FlushFailedSchemaVersion = %d; REC-34's flush_failed marker is the one record at 5", FlushFailedSchemaVersion)
 	}
 	if CallSchemaVersion != 5 || EventSchemaVersion != 5 || SessionSchemaVersion != 3 {
 		t.Errorf("version constants moved: call %d event %d session %d", CallSchemaVersion, EventSchemaVersion, SessionSchemaVersion)
