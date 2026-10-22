@@ -37,3 +37,20 @@ func TestAuthorityWindowBoundsTheScan(t *testing.T) {
 		})
 	}
 }
+
+// TestAuthorityWindowRefusesACutAuthority: past the window, authority refuses
+// the candidate rather than handing host.Canonical the window's prefix. A
+// credential longer than the window -- a CI token or a JWT in a clone URL's
+// userinfo runs to hundreds of bytes -- puts the '@' past it, so the prefix
+// is "user:<part of the token>": no '@' left for Canonical to refuse,
+// one colon for its port strip to cut at, and the username recorded as the
+// host the call named, the CWE-522 outcome authority's doc rules out.
+func TestAuthorityWindowRefusesACutAuthority(t *testing.T) {
+	line := "git clone https://x-access-token:" + strings.Repeat("t", 300) + "@github.com/org/repo"
+	wire, ssh := Hosts("Bash", bashInput(t, line))
+	for _, h := range append(wire, ssh...) {
+		if h == "x-access-token" {
+			t.Errorf("Hosts(%q...) = %q, %q: the userinfo's username recorded as a host", line[:40], wire, ssh)
+		}
+	}
+}
