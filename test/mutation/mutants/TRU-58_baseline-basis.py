@@ -16,19 +16,27 @@ m("TRU-58 forget leaves a baseline without the basis marker on disk", "internal/
 # The baseline half of forget --host, end to end. A forget that kept the host
 # in a current baseline would leave it "seen before" there, so a later session
 # naming it again would never be told it is new. Judged by TRU-58b alone: its
-# third session names the host after the forget.
+# third session names the host after the forget. forget --host walks the
+# baseline directory in ForgetAll, under one lock, so a walk that visits no
+# file is where it clears nothing.
 m("TRU-58 forget keeps the host in a current baseline", "internal/baseline/baseline.go",
-  "\t\tdelete(f.Hosts, host)\n", "", "TestTRU58b_")
+  "\t\t\tdelete(f.Hosts, h)\n", "", "TestTRU58b_")
 m("TRU-58 forget clears no baseline at all", "internal/baseline/baseline.go",
-  "\tif path == \"\" || host == \"\" {\n\t\treturn 0, nil\n\t}\n", "\tif true {\n\t\treturn 0, nil\n\t}\n",
+  "\t\tif e.IsDir() || !strings.HasSuffix(e.Name(), \".json\") {\n\t\t\tcontinue\n\t\t}\n\t\tn, err := forgetLocked(",
+  "\t\tif true {\n\t\t\tcontinue\n\t\t}\n\t\tn, err := forgetLocked(",
   "TestTRU58b_")
+# ForgetFile is the one-file form, which forget --host no longer calls; its own
+# tests judge it.
+m("TRU-58 ForgetFile clears no baseline at all", "internal/baseline/baseline.go",
+  "\tif path == \"\" {\n\t\treturn 0, nil\n\t}\n", "\tif true {\n\t\treturn 0, nil\n\t}\n",
+  "TestTRU58_")
 # TRU-58c: a baseline this build cannot parse, or of a version it does not
 # know, cannot be rewritten without the host. Holding the host, it is deleted
 # and counted; not holding it, it is left as it was.
 m("TRU-58 forget leaves an unparseable baseline that holds the host", "internal/baseline/baseline.go",
   "\t\treturn removeWhole(path)\n", "\t\treturn 0, nil\n", "TestTRU58c_")
 m("TRU-58 forget deletes an unparseable baseline that does not hold the host", "internal/baseline/baseline.go",
-  "\t\tif !namesHost(body, host) {\n", "\t\tif false && !namesHost(body, host) {\n", "TestTRU58_")
+  "\t\tif !namesHost(body, name) && !namesHost(body, raw) {\n", "\t\tif false {\n", "TestTRU58_")
 # Round two. An unreadable baseline may hold the host, so it is an error and
 # not a zero; one file the forget cannot clear must not stop it clearing the
 # others; and the byte search matches the whole quoted host, not any run of
@@ -36,7 +44,7 @@ m("TRU-58 forget deletes an unparseable baseline that does not hold the host", "
 m("TRU-58 forget reads an unreadable baseline as cleared", "internal/baseline/baseline.go",
   "\t\treturn 0, err\n\t}\n\tf, err := decode(body)", "\t\treturn 0, nil\n\t}\n\tf, err := decode(body)",
   "TestTRU58_ForgetFailsOnABaselineItCannotRead")
-m("TRU-58 forget stops at the first baseline it cannot clear", "cmd/rashomon/main.go",
+m("TRU-58 forget stops at the first baseline it cannot clear", "internal/baseline/baseline.go",
   "\t\t\tfailed = append(failed, err)\n\t\t\tcontinue", "\t\t\treturn cleared, true, err",
   "TestTRU58_ForgetClearsEveryBaselineItCanWhenOneFails")
 m("TRU-58 forget matches the host inside another name", "internal/baseline/baseline.go",

@@ -33,109 +33,109 @@ m("MS a pass word is added without a rules version bump", "internal/report/accou
 SH = "TestStatusMasked|TestRunnerDigest|TestMasked_"
 # The parser runs the line twice in the abstract, the runner failing and
 # passing (statusMasked); each mutant breaks one rule of that run.
-m("MS a pipe after the runner no longer masks it", "internal/shape/masked.go",
+m("MS a pipe after the runner no longer masks it", "internal/shape/masked_eval.go",
   "\t\ts := statuses[len(statuses)-1]\n", "\t\ts := statuses[0]\n", SH)
-m("MS set -o pipefail is not read", "internal/shape/masked.go",
+m("MS set -o pipefail is not read", "internal/shape/masked_eval.go",
   "\t\t\t\tst.pipefail = o.on\n", "\t\t\t\tst.pipefail = false\n", SH)
-m("MS set -e is not read", "internal/shape/masked.go",
+m("MS set -e is not read", "internal/shape/masked_eval.go",
   "\t\t\t\tst.errexit = o.on\n", "\t\t\t\tst.errexit = false\n", SH)
-m("MS errexit is not ignored before && or ||", "internal/shape/masked.go",
+m("MS errexit is not ignored before && or ||", "internal/shape/masked_eval.go",
   "\t\tignored := noErr || k < len(ao.pipes)-1 || pl.neg\n", "\t\tignored := noErr || pl.neg\n", SH)
-m("MS && masks the runner before it", "internal/shape/masked.go",
+m("MS && masks the runner before it", "internal/shape/masked_eval.go",
   "if ao.ops[k-1] == \"&&\" && st.status != 0 ||", "if ao.ops[k-1] == \"&&\" && false ||", SH)
-m("MS ; and a newline never mask", "internal/shape/masked.go",
+m("MS ; and a newline never mask", "internal/shape/masked_eval.go",
   "\t\tev.andOr(st, it.ao, noErr)\n", "\t\tev.andOr(st, it.ao, noErr)\n\t\tif st.status > 0 {\n\t\t\treturn\n\t\t}\n", SH)
-m("MS a trailing ; masks", "internal/shape/masked.go",
+m("MS a trailing ; masks", "internal/shape/masked_parse.go",
   "\t\tcase p.op(p.pos, \";\"):\n\t\t\tp.pos++\n", "\t\tcase p.op(p.pos, \";\"):\n\t\t\tp.pos++\n\t\t\tit.bg = p.atTerminator()\n", SH)
-m("MS || never masks", "internal/shape/masked.go",
+m("MS || never masks", "internal/shape/masked_eval.go",
   "|| ao.ops[k-1] == \"||\" && st.status == 0 {", "|| ao.ops[k-1] == \"||\" {", SH)
-m("MS an exit after || is not read", "internal/shape/masked.go",
+m("MS an exit after || is not read", "internal/shape/masked_eval.go",
   "\tcase opExit:\n\t\tswitch len(c.args) {", "\tcase -1:\n\t\tswitch len(c.args) {", SH)
-m("MS an exit does not end the line", "internal/shape/masked.go",
+m("MS an exit does not end the line", "internal/shape/masked_eval.go",
   "\t\tst.exited = true\n\tcase opRunner:", "\tcase opRunner:", SH)
-m("MS false after || is not read", "internal/shape/masked.go",
+m("MS false after || is not read", "internal/shape/masked_eval.go",
   "\tcase opFalse:\n\t\tst.status = 1\n", "\tcase opFalse:\n\t\tst.status = 0\n", SH)
-m("MS a group is run apart from the line", "internal/shape/masked.go",
+m("MS a group is run apart from the line", "internal/shape/masked_eval.go",
   "\tcase *group:\n\t\tev.list(st, c.body, noErr)\n", "\tcase *group:\n\t\tev.list(st.copy(), c.body, noErr)\n", SH)
-m("MS a subshell's exit ends the line", "internal/shape/masked.go",
+m("MS a subshell's exit ends the line", "internal/shape/masked_eval.go",
   "\t\tst.status = sub.status\n\tcase *group:", "\t\tst.status, st.exited = sub.status, sub.exited\n\tcase *group:", SH)
-m("MS a failed condition with no else keeps its status", "internal/shape/masked.go",
+m("MS a failed condition with no else keeps its status", "internal/shape/masked_eval.go",
   "\t\t\tev.list(st, *c.els, noErr)\n\t\t\treturn\n\t\t}\n\t\tst.status = 0\n", "\t\t\tev.list(st, *c.els, noErr)\n\t\t\treturn\n\t\t}\n", SH)
-m("MS ! is not read", "internal/shape/masked.go",
+m("MS ! is not read", "internal/shape/masked_eval.go",
   "\tif pl.neg && st.status >= 0 {", "\tif false {", SH)
-m("MS a runner sent to the background with & is not masked", "internal/shape/masked.go",
+m("MS a runner sent to the background with & is not masked", "internal/shape/masked_eval.go",
   "\t\t\tev.andOr(st.copy(), it.ao, true)\n\t\t\tst.status = 0\n", "\t\t\tev.andOr(st, it.ao, noErr)\n", SH)
-m("MS the same runner twice is two runners", "internal/shape/masked.go",
+m("MS the same runner twice is two runners", "internal/shape/masked_simple.go",
   "\tg, seen := p.groups[key]\n", "\tg, seen := p.groups[key]\n\tseen = false\n", SH)
-m("MS a status kept in a variable is not read", "internal/shape/masked.go",
+m("MS a status kept in a variable is not read", "internal/shape/masked_eval.go",
   "\t\t\tst.vars[a.name] = ev.value(st, a.val)\n", "\t\t\tst.vars[a.name] = -1\n", SH)
-m("MS a loop that holds a runner is read as succeeding", "internal/shape/masked.go",
+m("MS a loop that holds a runner is read as succeeding", "internal/shape/masked_parse.go",
   "\t\tcase opRunner, opExit, opStatusRead, opSet, opAssign, opCd:\n\t\t\tl.unsure = true\n", "", SH)
-m("MS a shell's -c line is read as a word", "internal/shape/masked.go",
+m("MS a shell's -c line is read as a word", "internal/shape/masked_simple.go",
   "w[1] != '-' && strings.ContainsRune(w, 'c') {", "w[1] != '-' && strings.ContainsRune(w, 'c') && false {", SH)
 m("MS a line the run is not sure of is none", "internal/shape/masked.go",
   "\t\t\t// Not sure: null.\n\t\t\treturn nil, nil\n", "\t\t\tcontinue\n", SH)
 m("MS a runner the run never reaches is judged", "internal/shape/masked.go",
   "\t\tif f < 0 || pass < 0 || !ran {", "\t\tif f < 0 || pass < 0 || !ran && false {", SH)
-m("MS an exit 0 after || keeps the failure", "internal/shape/masked.go",
+m("MS an exit 0 after || keeps the failure", "internal/shape/masked_eval.go",
   "\t\t\tst.status = ev.value(st, c.args[0])\n", "\t\t\tif v := ev.value(st, c.args[0]); v != 0 {\n\t\t\t\tst.status = v\n\t\t\t}\n", SH)
-m("MS an exit 256 after || keeps the failure", "internal/shape/masked.go",
+m("MS an exit 256 after || keeps the failure", "internal/shape/masked_simple.go",
   "\treturn value{kind: valLiteral, n: int(((n % 256) + 256) % 256)}", "\treturn value{kind: valLiteral, n: int(n)}", SH)
-m("MS an exit in a pipe after || is the line's exit", "internal/shape/masked.go",
+m("MS an exit in a pipe after || is the line's exit", "internal/shape/masked_eval.go",
   "\t\t\tstatuses[n] = sub.status\n", "\t\t\tif sub.exited {\n\t\t\t\tst.status, st.exited = sub.status, true\n\t\t\t\treturn\n\t\t\t}\n\t\t\tstatuses[n] = sub.status\n", SH)
-m("MS false | x after || keeps the failure", "internal/shape/masked.go",
+m("MS false | x after || keeps the failure", "internal/shape/masked_eval.go",
   "\t\tif st.pipefail {\n\t\t\ts = 0\n", "\t\tif true {\n\t\t\ts = 0\n", SH)
-m("MS errexit fires in the zsh run", "internal/shape/masked.go",
+m("MS errexit fires in the zsh run", "internal/shape/masked_eval.go",
   "if st.errexit && !ignored && !ev.zsh && st.status != 0 {", "if st.errexit && !ignored && st.status != 0 {", SH)
-m("MS bash and zsh disagreeing is not null", "internal/shape/masked.go",
+m("MS bash and zsh disagreeing is not null", "internal/shape/masked_eval.go",
   "\tif zf < 0 || zpass < 0 || (f == 0 || f == pass) != (zf == 0 || zf == zpass) {", "\tif zf < 0 || zpass < 0 {", SH)
-m("MS a line that sets errexit skips the zsh run", "internal/shape/masked.go",
+m("MS a line that sets errexit skips the zsh run", "internal/shape/masked_eval.go",
   "\tif !p.errexit {\n\t\t// Without errexit the two shells run it alike.\n", "\tif true {\n\t\t// Without errexit the two shells run it alike.\n", SH)
-m("MS the line runs only as bash runs it", "internal/shape/masked.go",
+m("MS the line runs only as bash runs it", "internal/shape/masked_eval.go",
   "\tev := &evaluator{p: p, target: g, fail: fail, zsh: zsh}\n", "\tev := &evaluator{p: p, target: g, fail: fail}\n", SH)
-m("MS set -opipefail is read as short options", "internal/shape/masked.go",
+m("MS set -opipefail is read as short options", "internal/shape/masked_simple.go",
   "\t\t\t\tif k < len(w)-2 {\n", "\t\t\t\tif k < 0 {\n", SH)
-m("MS the pipeline after && ends at its first stage", "internal/shape/masked.go",
+m("MS the pipeline after && ends at its first stage", "internal/shape/masked_parse.go",
   "\t\tao.pipes = append(ao.pipes, pl)\n", "\t\tif len(ao.pipes) > 0 {\n\t\t\tpl.stages = pl.stages[:1]\n\t\t}\n\t\tao.pipes = append(ao.pipes, pl)\n", SH)
 m("MS a here-string is read as a here-document", "internal/shape/tokenize.go",
-  "\t\t\tif docs && c == '<' && j-i == 2 && (j >= len(s) || s[j] != '<') {", "\t\t\tif docs && c == '<' && j-i == 2 {", SH)
+  "\tif l.docs && c == '<' && j-i == 2 && (j >= len(s) || s[j] != '<') {", "\tif l.docs && c == '<' && j-i == 2 {", SH)
 m("MS a here-document after an expansion is read", "internal/shape/tokenize.go",
-  "\t\t\t\tif grouped || expanded {", "\t\t\t\tif grouped {", SH)
+  "\t\tif l.grouped || l.expanded {", "\t\tif l.grouped {", SH)
 m("MS only the first here-document on a line is skipped", "internal/shape/tokenize.go",
-  "\t\t\t\tpending = append(pending, j)\n", "\t\t\t\tif len(pending) == 0 {\n\t\t\t\t\tpending = append(pending, j)\n\t\t\t\t}\n", SH)
-m("MS a group's close is a word of the runner digest", "internal/shape/masked.go",
+  "\t\tl.pending = append(l.pending, j)\n", "\t\tif len(l.pending) == 0 {\n\t\t\tl.pending = append(l.pending, j)\n\t\t}\n", SH)
+m("MS a group's close is a word of the runner digest", "internal/shape/masked_parse.go",
   "\t\tcase t.text == \")\":\n\t\t\t// A subshell's close: the command ends before it.\n\t\t\treturn j, true\n", "", SH)
 m("MS make is no build runner", "internal/shape/masked.go",
   "\t{\"make\"}, {\"gmake\"},\n", "\t{\"gmake\"},\n", SH)
 m("MS a build masked before a test wins", "internal/shape/masked.go",
   "\t\t\tif p.runners[g].kind == MaskedTest {\n\t\t\t\tk = MaskedTest\n", "\t\t\tif p.runners[g].kind == MaskedTest && false {\n\t\t\t\tk = MaskedTest\n", SH)
-m("MS the runner's arguments run to the end of the line", "internal/shape/shape.go",
+m("MS the runner's arguments run to the end of the line", "internal/shape/verb.go",
   "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])", "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):])", SH)
 m("MS here-document bodies are read as commands", "internal/shape/tokenize.go",
-  "\t\t\t\tpending = append(pending, j)\n", "\t\t\t\t_ = j\n", SH)
+  "\t\tl.pending = append(l.pending, j)\n", "\t\t_ = j\n", SH)
 m("MS a comment is read as words in the list walk", "internal/shape/tokenize.go",
-  "\t\tcase docs && c == '#' && !started:", "\t\tcase false && docs && c == '#' && !started:", SH)
-m("MS the runner digest keeps a redirection's target", "internal/shape/masked.go",
+  "\t\tcase docs && c == '#' && !l.w.started:", "\t\tcase false && docs && c == '#' && !l.w.started:", SH)
+m("MS the runner digest keeps a redirection's target", "internal/shape/masked_parse.go",
   "\t\t\tj = operatorEnd(toks, j) + 1\n", "\t\t\tj = operatorEnd(toks, j)\n", SH)
-m("MS the runner digest runs to the end of the line", "internal/shape/masked.go",
+m("MS the runner digest runs to the end of the line", "internal/shape/masked_simple.go",
   "\tkey := p.runnerWords(ri, e)\n", "\tkey := p.runnerWords(ri, len(toks))\n", SH)
-m("MS the runner digest is not keyed", "internal/shape/masked.go",
+m("MS the runner digest is not keyed", "internal/shape/masked_eval.go",
   "\td := digest(key, \"\\x00runner\",", "\td := digest(nil, \"\\x00runner\",", SH)
 m("MS a runner whose failure reaches the line carries no runner digest", "internal/shape/masked.go",
   "\t\treturn &none, p.runnerDigest(reach, key)", "\t\treturn &none, nil", SH)
 m("MS two hidden runners carry one's digest", "internal/shape/masked.go",
   "\t\tif len(hidden) > 1 {\n\t\t\t// No one later run follows up two runners.\n\t\t\treturn &k, nil\n\t\t}\n", "", SH)
-m("MS a runner after a cd keeps its digest", "internal/shape/masked.go",
+m("MS a runner after a cd keeps its digest", "internal/shape/masked_eval.go",
   "\tif p.runners[g].displaced {\n\t\treturn nil\n\t}\n", "", SH)
-m("MS a folded leading cd displaces the runner", "internal/shape/masked.go",
+m("MS a folded leading cd displaces the runner", "internal/shape/masked_eval.go",
   "\t\tif s.op != opCd || s.start < 3*folded && s.start%3 == 0 {", "\t\tif s.op != opCd {", SH)
-m("MS an expansion in the runner's words loses its digest", "internal/shape/masked.go",
+m("MS an expansion in the runner's words loses its digest", "internal/shape/masked_eval.go",
   "\t\tif t.opaque {\n\t\t\tw = \"\\x02\" + w\n\t\t}\n", "\t\tif t.opaque {\n\t\t\treturn \"\"\n\t\t}\n", SH)
-m("MS a backslash at a comment's end joins the next line", "internal/shape/shape.go",
+m("MS a backslash at a comment's end joins the next line", "internal/shape/join.go",
   "\t\tcase comments && c == '#' && !inSingle && !inDouble && wordStart(b.String()):", "\t\tcase false:", SH)
-m("MS mvn's build row refuses -DskipTests", "internal/shape/shape.go",
+m("MS mvn's build row refuses -DskipTests", "internal/shape/verb.go",
   "\t\tif len(c) == 1 {\n\t\t\t// The build row: a flag that skips the tests still builds.\n\t\t\treturn \"mvn build\"\n\t\t}\n", "", SH)
-m("MS python -m unittest is not a test runner", "internal/shape/shape.go",
+m("MS python -m unittest is not a test runner", "internal/shape/verb.go",
   "\t{\"python\", \"-m\", \"unittest\"}, {\"python3\", \"-m\", \"unittest\"},\n", "", "TestUnittestIsATestRunner")
 
 RP = "TestMasked_"

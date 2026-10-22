@@ -1,6 +1,9 @@
 package shape
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // A $( ) inside double quotes is a context of its own to the shell: quotes
 // inside it nest, parens count by depth, and the string around it goes on
@@ -39,17 +42,31 @@ const maxNest = 32
 type joined struct {
 	s     string
 	joins []int
+	// lost: more were removed than joins keeps (maxJoins), at or past its
+	// last offset, so from there on where one was is not known.
+	lost bool
 }
 
 // joinedIn reports a backslash-newline removed between s[from] and s[to]:
 // just before a byte after from and no later than to.
 func (r joined) joinedIn(from, to int) bool {
-	for _, p := range r.joins {
-		if p > from && p <= to {
-			return true
-		}
-	}
-	return false
+	k := r.after(from)
+	return k < len(r.joins) && r.joins[k] <= to || r.unkept(to)
+}
+
+// unkept reports a span ending at to that may hold a removed backslash-newline
+// joins did not keep: past maxJoins of them, every span that reaches the last
+// kept offset may, and its readers give up.
+func (r joined) unkept(to int) bool {
+	return r.lost && to >= r.joins[len(r.joins)-1]
+}
+
+// after is the index in joins of the first offset past from. The offsets
+// ascend, so it is searched for: a here-document's body is asked about line
+// by line, and a scan of every offset for each line made a line of
+// continuations and a body of short lines take time in their product.
+func (r joined) after(from int) int {
+	return sort.SearchInts(r.joins, from+1)
 }
 
 // continuesAt reports a backslash-newline left at s[i] -- a continuation the
@@ -544,10 +561,13 @@ func (r joined) delimLine(i, e int, d heredoc) (found, ok bool) {
 		}
 		return l
 	}
+	if r.unkept(e) {
+		return false, false
+	}
 	from := i
-	for _, p := range r.joins {
-		if p < i || p > e {
-			continue
+	for _, p := range r.joins[r.after(i-1):] {
+		if p > e {
+			break
 		}
 		if strings.HasPrefix(line(r.s[from:p]), d.delim) {
 			return false, false

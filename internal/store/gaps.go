@@ -411,13 +411,11 @@ func countedLines(snapshot, kept [][]byte) map[string]int {
 	return counted
 }
 
-// canonicalHost is host.Canonical, under a name ForgetHost's parameter does
-// not shadow.
-func canonicalHost(raw string) (string, bool) { return host.Canonical(raw) }
-
-// ErrNotAHostname is ForgetHost's refusal of a value that names no host: a
-// path, a credential, whitespace inside, or nothing left once a scheme and a
-// port are removed. It does not carry the value, which may hold a credential.
+// ErrNotAHostname is a host-scoped forget's refusal of a value that names no
+// host: a path, a credential, whitespace inside, or nothing left once a scheme
+// and a port are removed. host.Canonical refuses it, so no record can match
+// it, and removing nothing must not read as a forget that worked. It does not
+// carry the value, which may hold a credential.
 var ErrNotAHostname = errors.New("store: forget --host: the value is not a hostname")
 
 // declHead is what a host-scoped forget needs from a record: the join key and
@@ -451,15 +449,25 @@ type declHead struct {
 // THE NAME IS CANONICALISED FIRST, by host.Canonical, the function every host
 // this store and the report hold has been through: the declarations' lists
 // and the sandbox's trail. Matched and digested as typed, "GitHub.com",
-// "github.com:443" and "https://github.com/" each named a host nothing held,
-// so the forget removed nothing and suppressed nothing while the command said
-// later reports would leave it out. A value Canonical refuses names no
-// destination at all and is refused here, before anything is written.
-func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
-	if host == "" {
-		return nil, errors.New("store: forget --host needs a host")
-	}
-	host, ok := canonicalHost(host)
+// "github.com:443", "https://github.com/" and 167838211 (recorded as
+// 10.1.2.3) each named a host nothing held, so the forget removed nothing and
+// suppressed nothing while the command said later reports would leave it
+// out. The gap's digest and the store-level record's are the canonical
+// host's, the spelling the sandbox trail carries. A value Canonical refuses
+// names no destination at all and is refused here, before anything is
+// written.
+//
+// A SECOND digest is recorded too, under host.CanonicalName -- the same
+// spelling without the inet_aton fold -- when it differs from the first.
+// An ssh declaration is stored and read back in that unfolded spelling
+// (host.CanonicalName's doc), so "forget --host 1234" against an ssh alias
+// named exactly that way would otherwise record a digest only the wire
+// side's folded spelling ever matches, and the alias would never read as
+// forgotten. The two spellings agree on everything that is not a bare
+// number, so this is a second write only for the inputs where they can
+// differ at all.
+func (s *Store) ForgetHost(raw string, now time.Time) ([]Gap, error) {
+	name, ok := host.Canonical(raw)
 	if !ok {
 		return nil, ErrNotAHostname
 	}
@@ -470,10 +478,15 @@ func (s *Store) ForgetHost(host string, now time.Time) ([]Gap, error) {
 	// source this store never held -- the sandbox's trail -- and a forget
 	// that wrote nothing when it removed nothing left the host listed there
 	// (#45).
-	if err := s.recordForgottenHost(s.HostDigest(host), now); err != nil {
+	if err := s.recordForgottenHost(s.HostDigest(name), now); err != nil {
 		return nil, err
 	}
-	return s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, host, now) })
+	if unfolded, ok := host.CanonicalName(raw); ok && unfolded != name {
+		if err := s.recordForgottenHost(s.HostDigest(unfolded), now); err != nil {
+			return nil, err
+		}
+	}
+	return s.forgetEach(func(dir string) (*Gap, error) { return s.forgetHostInRun(dir, name, now) })
 }
 
 // recordForgottenHost appends the store-level forget record for a digest,
@@ -533,7 +546,7 @@ func (s *Store) recordForgottenHost(digest string, now time.Time) error {
 	return syncFull(f)
 }
 
-func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
+func (s *Store) forgetHostInRun(dir, name string, now time.Time) (*Gap, error) {
 	rl, err := openRunLines(dir)
 	if err != nil {
 		return nil, err
@@ -558,7 +571,7 @@ func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
 		if h.Type != TypeDeclaration {
 			continue
 		}
-		if namesHost(h, host) {
+		if namesHost(h, name) {
 			doomed[h.ToolUseID] = true
 		}
 	}
@@ -595,7 +608,7 @@ func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
 	g := NewGap(GapForgetHost, sessionID, now)
 	g.FromUnixMS, g.ToUnixMS = earliest, latest
 	g.RemovedRecords = removedRec + removedSpill
-	g.HostDigest = s.HostDigest(host)
+	g.HostDigest = s.HostDigest(name)
 	// The gap lands first, as it does for a window forget: a failure between
 	// the two leaves a gap for records that still exist, an overstatement a
 	// reader can see, rather than a deletion nothing admits to.
@@ -616,11 +629,12 @@ func (s *Store) forgetHostInRun(dir, host string, now time.Time) (*Gap, error) {
 	return &g, nil
 }
 
-// namesHost reports whether a declaration named the host, in either list.
-func namesHost(h declHead, host string) bool {
+// namesHost reports whether a declaration named the canonical host name, in
+// either list and in any spelling (host.Same).
+func namesHost(h declHead, name string) bool {
 	for _, list := range [][]string{h.Hosts, h.SSHHosts} {
 		for _, got := range list {
-			if got == host {
+			if host.Same(got, name) {
 				return true
 			}
 		}

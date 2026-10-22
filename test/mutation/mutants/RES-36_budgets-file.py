@@ -15,5 +15,5 @@ m("RES-36 a benchmark loses its budget row", "test/perf/budgets.json",
 # The reference row, on its own indented line: linux/amd64's inline row for the
 # same benchmark can carry the very same figures.
 m("RES-36 a benchmark row hides a margin above its measurement", "test/perf/budgets.json",
-  '    {"name": "BenchmarkDerive/bash_short", "measured_bytes_per_op": 4624, "measured_allocs_per_op": 71, "bytes_per_op_max": 4624, "allocs_per_op_max": 71}',
-  '    {"name": "BenchmarkDerive/bash_short", "measured_bytes_per_op": 4624, "measured_allocs_per_op": 71, "bytes_per_op_max": 5086, "allocs_per_op_max": 78}', "TestRES36d_")
+  '    {"name": "BenchmarkDerive/bash_short", "measured_bytes_per_op": 2656, "measured_allocs_per_op": 33, "bytes_per_op_max": 2656, "allocs_per_op_max": 33}',
+  '    {"name": "BenchmarkDerive/bash_short", "measured_bytes_per_op": 2656, "measured_allocs_per_op": 33, "bytes_per_op_max": 2921, "allocs_per_op_max": 36}', "TestRES36d_")

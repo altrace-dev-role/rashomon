@@ -428,6 +428,19 @@ jobs:
           RASHOMON_PERF_REQUIRE_ALL: "1"
         run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
 
+      # RES-29's own peak-RSS bound (cmd/rashomon/res29_test.go) does not
+      # apply under -race (its own comment explains why -- the detector's
+      # shadow memory inflates RSS the same way it inflates CPU time), so the
+      # `test` job's `go test ./... -race` never actually checks it: every
+      # row logs and skips. This is the only place it is checked anywhere,
+      # and the only place linux/amd64's own number (not darwin's) is the one
+      # compared. It runs whatever the steps before it did: a red benchgate
+      # skipped it, and a bound that is checked only while every other gate
+      # is green is not checked.
+      - name: RES-29 peak RSS (no race detector)
+        if: success() || failure()
+        run: go test ./cmd/rashomon -run '^TestRES29_PathologicalInputsStayBounded$' -count=1 -v
+
   perf-macos:
     name: Perf gates (macos)
     runs-on: macos-latest

@@ -1,11 +1,13 @@
 package report
 
 import (
+	"errors"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/host"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -90,13 +92,13 @@ type Novelty struct {
 	// Hosts are this session's declared hosts that were not yet in the
 	// project's baseline, sorted, excluding the ubiquitous list.
 	Hosts []string `json:"hosts"`
-}
-
-// loopbackHosts are listed among the declared hosts and never counted as
-// novel: a local server is not a new place the project's traffic goes, first
-// baseline entry or not.
-var loopbackHosts = map[string]bool{
-	"localhost": true, "127.0.0.1": true, "0.0.0.0": true, "[::1]": true, "::1": true,
+	// Evicted is how many hosts this render dropped from the baseline at its
+	// 4,096-host cap (baseline.Result.Evicted), least recently seen first.
+	// Without it, a host that returns after its own eviction reads as
+	// "never named before" rather than "named before, and the baseline
+	// aged it out" -- the same bytes, a different sentence. Omitted at
+	// zero, which is every render that never reaches the cap.
+	Evicted int `json:"evicted,omitempty"`
 }
 
 // clientPlaneHosts are the hosts the client contacts on its own behalf,
@@ -166,26 +168,43 @@ func buildDestinations(run *store.Run, storeRoot string, forgotten func(host str
 		ExecutedNotAsDeclared: executedNotAsDeclared(run),
 		Rewritten:             rewrittenCalls(run),
 	}
-	d.Novelty = buildNovelty(run, storeRoot,
-		novelHostCandidates(append(append([]string{}, d.DeclaredHosts...), d.SSHHosts...), madeMCPCall(run)))
+	wire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, madeMCPCall(run))
+	d.Novelty = buildNovelty(run, storeRoot, wire, ssh)
 	return d
 }
 
 // novelHostCandidates are the hosts a novelty baseline should consider: what
 // this session named, whether over https or ssh, minus loopback and minus
-// the client's own plane. Folding the client plane into a baseline would make
+// the client's own plane. Loopback is listed among the declared hosts and
+// never counted as novel: a local server is not a new place the project's
+// traffic goes, first baseline entry or not. It is decided on the parsed
+// address (host.Loopback), so [0:0:0:0:0:0:0:1], 127.0.0.2 and api.localhost
+// are loopback as [::1] is. Folding the client plane into a baseline would make
 // api.anthropic.com a "new destination for this project" on the first session
 // of every project, which is the novelty line's most obvious way to make
 // itself worthless.
-func novelHostCandidates(hosts []string, mcpAttributed bool) []string {
-	var out []string
-	for _, h := range hosts {
-		if loopbackHosts[h] || clientPlaneHost(h, mcpAttributed) {
-			continue
+//
+// wire and ssh are filtered and returned separately, never merged: the
+// baseline has to know which of this session's hosts came from an ssh
+// destination (baseline.UpdateOrigin's sshHosts) to skip the inet_aton fold
+// for them, and that is a fact only the caller still has at this point. The
+// two also ask Loopback differently for the same reason -- host.Loopback
+// folds a wire host's numeric forms before asking, which is right for a URL
+// a client actually resolves; host.LoopbackName does not, because an ssh
+// alias such as "0" is not a URL a client resolves at all, and folding it
+// first would read a destination that named nothing as this machine.
+func novelHostCandidates(wireHosts, sshHosts []string, mcpAttributed bool) (wire, ssh []string) {
+	filter := func(hosts []string, loopback func(string) bool) []string {
+		var out []string
+		for _, h := range hosts {
+			if loopback(h) || clientPlaneHost(h, mcpAttributed) {
+				continue
+			}
+			out = append(out, h)
 		}
-		out = append(out, h)
+		return out
 	}
-	return out
+	return filter(wireHosts, host.Loopback), filter(sshHosts, host.LoopbackName)
 }
 
 // buildNovelty consults the project baseline.
@@ -194,7 +213,11 @@ func novelHostCandidates(hosts []string, mcpAttributed bool) []string {
 // rendering the report: a report run from a different directory must not key a
 // past session to the reader's project. A session with no recorded cwd has no
 // project, and novelty is unavailable rather than guessed.
-func buildNovelty(run *store.Run, storeRoot string, hosts []string) Novelty {
+//
+// wireHosts and sshHosts are passed to baseline.UpdateOrigin separately so a
+// host named only over ssh is marked (entry.SSH) rather than folded as an IP
+// literal on every later load.
+func buildNovelty(run *store.Run, storeRoot string, wireHosts, sshHosts []string) Novelty {
 	n := Novelty{Hosts: []string{}}
 	cwd := runCWD(run)
 	if cwd == "" {
@@ -215,21 +238,46 @@ func buildNovelty(run *store.Run, storeRoot string, hosts []string) Novelty {
 		return n
 	}
 
-	res := baseline.Update(storeRoot, baseline.Key(cwd), run.SessionID(),
-		time.UnixMilli(runStartMS(run)), hosts)
+	sshSet := make(map[string]bool, len(sshHosts))
+	for _, h := range sshHosts {
+		sshSet[h] = true
+	}
+	hosts := append(append([]string{}, wireHosts...), sshHosts...)
+	res := baseline.UpdateOrigin(storeRoot, baseline.Key(cwd), run.SessionID(),
+		time.UnixMilli(runStartMS(run)), hosts, sshSet)
 	if res.Err != nil {
-		// Deliberately not the error text: it carries the baseline path, and a
-		// path carries someone's directory names.
-		n.Reason = "the project baseline could not be read or written"
+		n.Reason = baselineErrorReason(res.Err)
 		return n
 	}
 	n.Available = true
 	n.Established = res.Established
 	n.KnownHosts = res.Known
+	n.Evicted = res.Evicted
 	if res.Novel != nil {
 		n.Hosts = res.Novel
 	}
 	return n
+}
+
+// baselineErrorReason tells apart the two named baseline errors a caller can
+// act on from the rest, which it describes the same way it always has.
+//
+// A render and `forget --host` both take the baseline's lock, and a reader
+// who sees the same sentence for that as for a corrupt file has no way to
+// tell "try again" from "look at this." baseline.ErrTooManyHosts and
+// store.ErrLockTimeout are named for exactly this reason; everything else --
+// a corrupt file, an unreadable one, a version this build does not know --
+// stays the generic message, deliberately not the error text: it carries
+// the baseline path, and a path carries someone's directory names.
+func baselineErrorReason(err error) string {
+	switch {
+	case errors.Is(err, baseline.ErrTooManyHosts):
+		return "this session named more hosts than a project baseline can hold, so novelty could not be updated this time"
+	case errors.Is(err, store.ErrLockTimeout):
+		return "the project baseline was locked by another render, so novelty could not be checked this time"
+	default:
+		return "the project baseline could not be read or written"
+	}
 }
 
 // runCWD is the working directory the run recorded, preferring the start-phase
@@ -363,14 +411,34 @@ func sshDeclared(run *store.Run) []string {
 // never for a later declaration that happens to share it. forgotten == nil
 // passes every host through, matching the report's nil-means-no-filter
 // convention (see suppressTrail).
+//
+// Canonicalised before forgotten is asked, the same correction
+// declaredHostsFiltered applies and for the same reason: forget --host
+// records its digest under the canonical spelling, never the one a
+// declaration happens to hold, so asking forgotten about the stored spelling
+// let a legacy or differently-cased ssh host -- "GitHub.com" where today's
+// extraction writes "github.com" -- survive a forget of its canonical name
+// and kept it out of the one spelling every current declaration uses. A host
+// that no longer canonicalises, or that host.Shaped now refuses, is dropped
+// rather than carried forward under whatever it used to be.
+//
+// host.CanonicalName, not Canonical: these are ssh destinations, and an
+// ssh-config alias made only of digits is not a URL authority a client
+// folds (host.CanonicalName's doc). Store.ForgetHost records a forget's
+// digest under both spellings for exactly this reason, so a forget of
+// either still finds this one.
 func sshDeclaredFiltered(run *store.Run, forgotten func(host string, declaredAtMS int64) bool) []string {
 	set := map[string]bool{}
 	for _, d := range run.Declarations {
 		for _, h := range d.SSHHosts {
-			if forgotten != nil && forgotten(h, d.RecordedAtMS) {
+			canon, ok := host.CanonicalName(h)
+			if !ok || !host.Shaped(canon) {
 				continue
 			}
-			set[h] = true
+			if forgotten != nil && forgotten(canon, d.RecordedAtMS) {
+				continue
+			}
+			set[canon] = true
 		}
 	}
 	out := make([]string, 0, len(set))
@@ -388,18 +456,7 @@ func sshDeclaredFiltered(run *store.Run, forgotten func(host string, declaredAtM
 // what has been forgotten, to decide which trail hosts are the client's own.
 // See declaredHostsFiltered for the view that applies forgotten.
 func declaredHosts(run *store.Run) []string {
-	set := map[string]bool{}
-	for _, d := range run.Declarations {
-		for _, h := range d.Hosts {
-			set[h] = true
-		}
-	}
-	out := make([]string, 0, len(set))
-	for h := range set {
-		out = append(out, h)
-	}
-	sort.Strings(out)
-	return out
+	return declaredHostsFiltered(run, nil)
 }
 
 // declaredHostsFiltered is declaredHosts with forgotten applied per
@@ -409,10 +466,30 @@ func declaredHostsFiltered(run *store.Run, forgotten func(host string, declaredA
 	set := map[string]bool{}
 	for _, d := range run.Declarations {
 		for _, h := range d.Hosts {
-			if forgotten != nil && forgotten(h, d.RecordedAtMS) {
+			// A run stored before host.Canonical folded an IP literal to
+			// its one spelling holds the raw string -- "167838211" where a
+			// current build now writes "10.1.2.3". Re-canonicalising here
+			// is a no-op for every run shape.Hosts already wrote the
+			// canonical form into, and is what lets an old run compare
+			// equal to a new one in the baseline novelty walks this feeds
+			// (buildNovelty). A host that no longer canonicalises, or that
+			// host.Shaped now refuses, is dropped rather than carried
+			// forward under whatever it used to be.
+			//
+			// Canonicalised BEFORE forgotten is asked, not after: forget
+			// --host records its digest under the canonical spelling, never
+			// the stored one, so asking forgotten about h here let a legacy
+			// declaration -- 167838211 where a forget named 10.1.2.3 --
+			// escape the check and reappear in every later render of the
+			// same old run.
+			canon, ok := host.Canonical(h)
+			if !ok || !host.Shaped(canon) {
 				continue
 			}
-			set[h] = true
+			if forgotten != nil && forgotten(canon, d.RecordedAtMS) {
+				continue
+			}
+			set[canon] = true
 		}
 	}
 	out := make([]string, 0, len(set))

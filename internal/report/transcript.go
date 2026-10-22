@@ -15,6 +15,8 @@ import (
 
 // maxLine bounds one transcript line. Transcript lines carry whole messages
 // and can be large; the bound is against a corrupted file, not a real one.
+// It counts the line's newline, which the scanner needs room to find: the
+// longest line read is maxLine-1 bytes.
 const maxLine = 64 << 20
 
 // deniedPrefix is the text Claude Code writes when the USER refuses a tool

@@ -31,8 +31,8 @@ func TestCanonical(t *testing.T) {
 		{name: "ipv6 brackets kept via authority", in: "[::1]:443", want: "[::1]", ok: true},
 		{name: "ipv6 brackets restored via url", in: "https://[2606:4700::1111]/x", want: "[2606:4700::1111]", ok: true,
 			why: "url.Hostname strips the brackets and every consumer here expects them"},
-		{name: "bare ipv6 without port keeps its colons", in: "2606:4700::1111", want: "2606:4700::1111", ok: true,
-			why: "more than one colon cannot be a port separator"},
+		{name: "bare ipv6 without port is bracketed", in: "2606:4700::1111", want: "[2606:4700::1111]", ok: true,
+			why: "more than one colon cannot be a port separator, and the bracketed form is the one spelling"},
 		{name: "wss scheme", in: "wss://gateway.example.com/socket", want: "gateway.example.com", ok: true},
 
 		// Refusals.
@@ -62,6 +62,69 @@ func TestCanonical(t *testing.T) {
 					"yield nothing a caller could record by mistake", tc.in, got)
 			}
 		})
+	}
+}
+
+// TestCanonicalName_DoesNotFoldDigits: CanonicalName is Canonical's twin for
+// an ssh destination, where a number is as plausible a config alias as any
+// other name. Canonical("1234") folds to "0.0.4.210" and Canonical("0")
+// folds to "0.0.0.0", which Loopback then reads as this machine -- right for
+// a URL a client actually resolves, wrong for an alias nothing resolved.
+// CanonicalName leaves every one of them as the name it was typed.
+func TestCanonicalName_DoesNotFoldDigits(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"1234", "1234"},
+		{"0", "0"},
+		{"167838211", "167838211"},
+		{"10.1.515", "10.1.515"},
+		{"012.1.2.3", "012.1.2.3"},
+	} {
+		got, ok := CanonicalName(tc.in)
+		if !ok || got != tc.want {
+			t.Errorf("CanonicalName(%q) = %q,%v, want %q,true", tc.in, got, ok, tc.want)
+		}
+	}
+	// A bracketed IPv6 literal is unambiguous either way: CanonicalName still
+	// writes it in its one spelling.
+	if got, ok := CanonicalName("[2606:4700:0:0:0:0:0:1111]"); !ok || got != "[2606:4700::1111]" {
+		t.Errorf("CanonicalName(ipv6) = %q,%v, want [2606:4700::1111],true", got, ok)
+	}
+	// Canonical, unchanged, still folds every one of these: CanonicalName is
+	// an addition, not a behaviour change to the function URL authorities use.
+	for _, tc := range []struct{ in, want string }{
+		{"1234", "0.0.4.210"},
+		{"0", "0.0.0.0"},
+		{"167838211", "10.1.2.3"},
+	} {
+		got, ok := Canonical(tc.in)
+		if !ok || got != tc.want {
+			t.Errorf("Canonical(%q) = %q,%v, want %q,true (unchanged)", tc.in, got, ok, tc.want)
+		}
+	}
+}
+
+// TestLoopbackName_DoesNotFoldDigits: LoopbackName must not read a bare
+// number as this machine, the same bug as CanonicalName's but observed
+// through Loopback's decision rather than through the string it returns.
+// Loopback, unchanged, still does: a URL authority of "0" really does reach
+// this machine.
+func TestLoopbackName_DoesNotFoldDigits(t *testing.T) {
+	for _, in := range []string{"0", "1234", "2130706433", "127.1"} {
+		if LoopbackName(in) {
+			t.Errorf("LoopbackName(%q) = true, want false: not a URL a client resolved", in)
+		}
+	}
+	for _, in := range []string{"0", "2130706433", "127.1"} {
+		if !Loopback(in) {
+			t.Errorf("Loopback(%q) = false, want true (unchanged)", in)
+		}
+	}
+	// What LoopbackName still catches: localhost and a real loopback literal,
+	// neither of which needed the fold to begin with.
+	for _, in := range []string{"localhost", "api.localhost", "127.0.0.1", "[::1]"} {
+		if !LoopbackName(in) {
+			t.Errorf("LoopbackName(%q) = false, want true", in)
+		}
 	}
 }
 

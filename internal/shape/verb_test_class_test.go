@@ -515,7 +515,10 @@ func TestMayWrite(t *testing.T) {
 // The directories a runner's line moves through before it starts, when the
 // line begins with plain literal `cd DIR &&` steps: the hook keys the run on
 // where they lead rather than on the payload's cwd, which is the shell's
-// directory before the cds.
+// directory before the cds. The hook reads them through DeriveWithDirs, so
+// each case holds it to LeadingDirectory's answer: a line with a control
+// byte names no directory to either, since the shell does not split it where
+// the tokenizer does.
 func TestLeadingDirectory(t *testing.T) {
 	for _, tc := range []struct {
 		cmd  string
@@ -561,10 +564,20 @@ func TestLeadingDirectory(t *testing.T) {
 		{"X=1", nil},
 		{"cd /a && X=1", []string{"/a"}},
 		{"cd /repo/web && GOFLAGS=-count=1 go test ./...", []string{"/repo/web"}},
+		// A control byte anywhere on the line.
+		{"cd /repo\r && ls", nil},
+		{"cd /repo\x00 && ls", nil},
+		{"cd /repo && ls \x07", nil},
+		{"cd /repo && \x1b[0m ls", nil},
+		{"cd /repo\x7f && ls", nil},
 	} {
-		got, ok := LeadingDirectory("Bash", json.RawMessage(`{"command":`+quoteJSON(tc.cmd)+`}`))
+		in := json.RawMessage(`{"command":` + quoteJSON(tc.cmd) + `}`)
+		got, ok := LeadingDirectory("Bash", in)
 		if ok != (tc.want != nil) || !slices.Equal(got, tc.want) {
 			t.Errorf("%q: LeadingDirectory = %q, %v; want %q", tc.cmd, got, ok, tc.want)
+		}
+		if _, _, dirs := DeriveWithDirs("Bash", in, []byte("key")); !slices.Equal(dirs, tc.want) {
+			t.Errorf("%q: DeriveWithDirs dirs = %q; want %q, as LeadingDirectory", tc.cmd, dirs, tc.want)
 		}
 	}
 	if _, ok := LeadingDirectory("mcp__x__run", json.RawMessage(`{"command":"cd /repo && make test"}`)); ok {

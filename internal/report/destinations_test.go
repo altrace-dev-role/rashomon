@@ -2,10 +2,13 @@ package report
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/nono"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -273,6 +276,57 @@ func TestNovelty_UnreadableStoreSaysWhyRatherThanVanishing(t *testing.T) {
 	}
 }
 
+// TestBaselineErrorReason_DistinctCausesDistinctMessages: a locked baseline,
+// a session naming more hosts than a baseline can hold, and a corrupt or
+// unreadable file are three different situations, and a reader who sees "the
+// project baseline could not be read or written" for all three cannot tell a
+// transient contention from a reason to go look at the file. The first two
+// have their own named errors (baseline.ErrTooManyHosts, store.ErrLockTimeout)
+// precisely so a caller can tell them apart; only the generic message is
+// deliberately silent about which file.
+func TestBaselineErrorReason_DistinctCausesDistinctMessages(t *testing.T) {
+	tooMany := baselineErrorReason(baseline.ErrTooManyHosts)
+	locked := baselineErrorReason(store.ErrLockTimeout)
+	generic := baselineErrorReason(errors.New("baseline: unrecognised file version"))
+	for _, pair := range [][2]string{{tooMany, locked}, {tooMany, generic}, {locked, generic}} {
+		if pair[0] == pair[1] {
+			t.Errorf("two distinct baseline errors produced the same reason %q", pair[0])
+		}
+	}
+	if generic == "" || strings.Contains(generic, "unrecognised file version") {
+		t.Errorf("generic reason %q: must say something, and must not repeat the error text, "+
+			"which can carry the baseline's path", generic)
+	}
+}
+
+// TestNovelty_TooManyHostsSaysSoNotTheGenericMessage: the integration path,
+// not just the mapping function above -- a session that names more hosts
+// than a baseline holds must reach the reader as something more specific
+// than the generic "could not be read or written", which a lock timeout and
+// a corrupt file also produce.
+func TestNovelty_TooManyHostsSaysSoNotTheGenericMessage(t *testing.T) {
+	hosts := make([]string, 5000)
+	for i := range hosts {
+		hosts[i] = fmt.Sprintf("h%d.example", i)
+	}
+	run := &store.Run{
+		Declarations: []store.Declaration{{
+			ToolUseID: "t1", ToolName: "Bash", SessionID: "sess-1", Hosts: hosts,
+		}},
+		Coverage: []store.Coverage{{
+			Phase: store.PhaseStart, RecordedAtMS: t0ms, CWD: t.TempDir(), SessionID: "sess-1",
+		}},
+	}
+	d := buildDestinations(run, t.TempDir(), nil)
+	if d.Novelty.Available {
+		t.Fatal("novelty reports itself available for a session past the baseline's host cap")
+	}
+	if d.Novelty.Reason == "the project baseline could not be read or written" {
+		t.Errorf("reason %q: a session naming too many hosts reads identically to a locked "+
+			"or corrupt baseline", d.Novelty.Reason)
+	}
+}
+
 // TestClientPlane_EveryViewAppliesTheOneRule: whether a host is the client's
 // own traffic is asked by two readers -- the novelty candidates and the
 // sandbox section -- and one of them used to restate the rule instead of
@@ -288,7 +342,8 @@ func TestClientPlane_EveryViewAppliesTheOneRule(t *testing.T) {
 	for _, mcp := range []bool{false, true} {
 		for _, h := range hosts {
 			want := clientPlaneHost(h, mcp)
-			if got := !slices.Contains(novelHostCandidates([]string{h}, mcp), h); got != want {
+			wire, _ := novelHostCandidates([]string{h}, nil, mcp)
+			if got := !slices.Contains(wire, h); got != want {
 				t.Errorf("mcp session %v, %s: left out of the novelty candidates %v, the rule says %v", mcp, h, got, want)
 			}
 			trail := trailWith(nono.Event{Host: h, Port: 443, Decision: nono.DecisionAllow, Mode: "connect"})

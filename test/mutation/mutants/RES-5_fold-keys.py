@@ -13,7 +13,7 @@ m("RES-5 intake matches payload keys exactly", "internal/hookio/payload.go",
   "var payloadKeys = jsonscan.NewFoldKeySet(KeyNames()...)\n",
   "var payloadKeys = jsonscan.NewKeySet(KeyNames()...)\n",
   "TestRES5_")
-m("RES-5 run_in_background is matched exactly", "internal/shape/shape.go",
+m("RES-5 run_in_background is matched exactly", "internal/shape/verb.go",
   "var runInBackgroundKey = jsonscan.NewFoldKeySet(\"run_in_background\")\n",
   "var runInBackgroundKey = jsonscan.NewKeySet(\"run_in_background\")\n",
   "TestRES5_")

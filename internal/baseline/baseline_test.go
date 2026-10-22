@@ -1,9 +1,11 @@
 package baseline
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -410,5 +412,87 @@ func TestUpdate_TheEstablisherCorrectsTowardTheEarlierSession(t *testing.T) {
 		t.Errorf("againLater.Novel = %v, want [a.example]: once an earlier session is "+
 			"known, this session's hosts can be compared and a.example is its own",
 			againLater.Novel)
+	}
+}
+
+// TestRubricLLD11_FoldASessionIDThatEscapesStillFitsAFullBaseline: maxEntryBytes
+// allows a session id of maxSessionIDBytes as written, but JSON writes `<`,
+// a control byte or a byte of invalid UTF-8 as six: 256 of them took 1,536
+// bytes, and one session id like that let a baseline fill past
+// maxBaselineBytes at about 2,225 hosts, after which every render's save was
+// refused, for good. A full baseline of 253-byte names, every one first seen
+// by a session whose id escapes, still saves; the same id still reads as the
+// same session on the next render; and an id JSON writes as itself is
+// stored as it is.
+func TestRubricLLD11_FoldASessionIDThatEscapesStillFitsAFullBaseline(t *testing.T) {
+	label := strings.Repeat("a", 63)
+	hosts := make([]string, maxBaselineHosts)
+	for i := range hosts {
+		first := fmt.Sprintf("%05d", i) + label[5:]
+		hosts[i] = first + "." + label + "." + label + "." + label[:61]
+	}
+	if n := len(hosts[0]); n != 253 {
+		t.Fatalf("premise: a %d-byte name, want 253", n)
+	}
+	for _, id := range []string{
+		strings.Repeat("<", maxSessionIDBytes),
+		strings.Repeat("\x01", maxSessionIDBytes),
+		strings.Repeat("\xff", maxSessionIDBytes),
+	} {
+		f, res, _ := Fold(File{}, false, id, t0, hosts)
+		if res.Err != nil {
+			t.Fatalf("%q...: %v", id[:4], res.Err)
+		}
+		dir := t.TempDir()
+		if err := save(dir, filepath.Join(dir, "b.json"), f); err != nil {
+			t.Errorf("%q...: a full baseline does not save: %v", id[:4], err)
+		}
+		if _, res, _ := Fold(f, true, id, t0, hosts[:1]); !res.Established {
+			t.Errorf("%q...: the same id no longer reads as the establisher", id[:4])
+		}
+	}
+	const uuid = "0f8e3c2a-6b1d-4c9e-a7f4-2d5b8e1c3a90"
+	if f, _, _ := Fold(File{}, false, uuid, t0, []string{"a.example"}); f.EstablishedBySession != uuid {
+		t.Errorf("a plain session id is stored as %q, want it as it is", f.EstablishedBySession)
+	}
+}
+
+// TestRubricLLD11_FoldSessionIDIsBoundedBeforeStorage: a session id of unbounded length
+// is not hostname-shaped and nothing here rejects it the way a host is
+// rejected, so maxEntryBytes's own math -- a 253-byte name, a session id of
+// up to 256 bytes, two stamps, keys and indentation, 1,024 with room for
+// escaping -- was an assumption nothing enforced. An abnormally long session
+// id, stored once per host it names, could make a single render's file
+// larger than maxBaselineBytes; save refuses to write that file, but the
+// baseline on disk from before the render is untouched either way, which
+// reads as fine right up until a project's baseline genuinely needs that
+// capacity for real hosts and finds it already spent on one session's id.
+// Bounding the id at the point it enters a stored entry makes the comment's
+// own assumption true by construction instead of by convention.
+func TestRubricLLD11_FoldSessionIDIsBoundedBeforeStorage(t *testing.T) {
+	huge := strings.Repeat("s", 10_000)
+	f, res, changed := Fold(File{}, false, huge, t0, []string{"a.example"})
+	if !changed {
+		t.Fatal("premise: establishing a baseline is a change")
+	}
+	if res.Err != nil {
+		t.Fatalf("Fold with an oversized session id: %v", res.Err)
+	}
+	if n := len(f.EstablishedBySession); n > maxSessionIDBytes {
+		t.Errorf("EstablishedBySession is %d bytes, want at most %d", n, maxSessionIDBytes)
+	}
+	e, ok := f.Hosts["a.example"]
+	if !ok {
+		t.Fatal("a.example was not recorded")
+	}
+	if n := len(e.FirstSeenSession); n > maxSessionIDBytes {
+		t.Errorf("FirstSeenSession is %d bytes, want at most %d", n, maxSessionIDBytes)
+	}
+	// And a second render of the SAME (still huge) id must still recognise
+	// it as the same session: bounding it once, consistently, rather than
+	// comparing the bounded form to the unbounded one.
+	_, res2, _ := Fold(f, true, huge, t0, []string{"a.example"})
+	if !res2.Established {
+		t.Error("a second render of the same oversized session id no longer reads as the establisher")
 	}
 }

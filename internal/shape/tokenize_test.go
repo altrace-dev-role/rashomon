@@ -2,6 +2,7 @@ package shape
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -362,5 +363,28 @@ func TestTokenizeTicks(t *testing.T) {
 		if !slices.Equal(got, tc.want) {
 			t.Errorf("ticks for %q are %v, want %v", tc.in, got, tc.want)
 		}
+	}
+}
+
+// TestTokenEstimate_BlanksInsideOneQuoteAreNotWordBreaks: tokenEstimate
+// counts a blank as ending a word without regard to whether the lexer is
+// inside a quote, so one 8 MiB single-quoted string full of spaces makes it
+// preallocate a slice of maxTokens+1 tokens -- the estimate's own ceiling --
+// for a line whose real word count is tiny: the shell reads the whole
+// quoted string as one word. lex itself is unaffected (it tracks quoting
+// correctly); only the estimate used to size its initial allocation is
+// wrong, and wrong toward over-allocating, not under.
+func TestTokenEstimate_BlanksInsideOneQuoteAreNotWordBreaks(t *testing.T) {
+	s := "echo '" + strings.Repeat("a ", 100_000) + "'"
+	toks, err := tokenizeShape(s)
+	if err != nil {
+		t.Fatalf("tokenizeShape(...): %v", err)
+	}
+	if len(toks) > 4 {
+		t.Fatalf("premise: %d real tokens, want a handful for one program and one quoted word", len(toks))
+	}
+	if got := tokenEstimate(s); got > 10*len(toks)+10 {
+		t.Errorf("tokenEstimate(...) = %d against %d real tokens; a blank inside a quote must not "+
+			"count as a word break", got, len(toks))
 	}
 }
