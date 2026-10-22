@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -31,11 +32,16 @@ type ptyOutput struct {
 	buf bytes.Buffer
 }
 
+// lineEnd is a line feed as the terminal shows it. The terminal turns each
+// one into CR LF on output, and on darwin the CR can come twice: when the
+// output queue fills between the two, the line feed is output again whole.
+// The screen a person sees is the same either way.
+var lineEnd = regexp.MustCompile("\r+\n")
+
 func (o *ptyOutput) String() string {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	// The terminal turns each line feed into CR LF on output.
-	return strings.ReplaceAll(o.buf.String(), "\r\n", "\n")
+	return lineEnd.ReplaceAllLiteralString(o.buf.String(), "\n")
 }
 
 // ptySession is one child process whose controlling terminal is a fresh
