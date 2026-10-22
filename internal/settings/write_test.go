@@ -47,6 +47,10 @@ func TestRubricERRORS4_DanglingSymlinkIsRefused(t *testing.T) {
 	if _, err := ReadOriginal(link); err == nil || !strings.Contains(err.Error(), target) {
 		t.Errorf("ReadOriginal on a dangling link = %v, want an error naming its target %s", err, target)
 	}
+	// ReadState is what watch and detach read the file through.
+	if _, existed, err := ReadState(link); err == nil || !strings.Contains(err.Error(), target) {
+		t.Errorf("ReadState on a dangling link = existed %v, %v; want an error naming its target %s", existed, err, target)
+	}
 	err := Write(link, nil, []byte("{}\n"))
 	if err == nil {
 		t.Fatal("Write over a dangling symlink succeeded")

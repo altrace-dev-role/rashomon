@@ -166,8 +166,14 @@ func Remove(path string, original []byte) error {
 
 // ReadState reads the file's current bytes and whether it exists at all. An
 // empty file and an absent one read alike through ReadOriginal; watch has to
-// record which it found, because detach restores them differently.
+// record which it found, because detach restores them differently. A symlink
+// that does not resolve is an error, as it is for ReadOriginal: read as
+// absent, it would let detach report nothing to detach and watch go on to
+// write.
 func ReadState(path string) (data []byte, existed bool, err error) {
+	if _, err := writeTarget(path); err != nil {
+		return nil, false, err
+	}
 	data, err = os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, false, nil
@@ -184,12 +190,6 @@ func ReadState(path string) (data []byte, existed bool, err error) {
 // would let detach report "nothing to detach" for a file it never saw, and
 // let watch go on to write.
 func ReadOriginal(path string) ([]byte, error) {
-	if _, err := writeTarget(path); err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
+	data, _, err := ReadState(path)
 	return data, err
 }
