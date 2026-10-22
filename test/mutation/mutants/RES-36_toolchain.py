@@ -15,7 +15,7 @@ m("RES-36 the harness preflight reads budgets.json without checking the toolchai
   "\tif err := b.CheckToolchain(running); err != nil {\n\t\treturn b, err\n\t}\n", "", "TestRES36i_")
 m("RES-36 the perf harness compares under any toolchain", "test/perf/rss_test.go",
   'b, err := Preflight(filepath.Join(root, "test", "perf", "budgets.json"), runtime.Version())',
-  'b, err := Preflight(filepath.Join(root, "test", "perf", "budgets.json"), "go1.27.2")', "TestRES36j_")
+  'b, err := Preflight(filepath.Join(root, "test", "perf", "budgets.json"), "go1.27.3")', "TestRES36j_")
 m("RES-36 the perf harness builds and runs after its preflight failed", "test/perf/rss_test.go",
   '"budgets.json"), runtime.Version())\n\tif err != nil {\n\t\treturn 2, err\n\t}\n',
   '"budgets.json"), runtime.Version())\n', "TestRES36j_")

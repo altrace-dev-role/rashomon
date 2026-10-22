@@ -320,7 +320,7 @@ jobs:
           # BenchmarkBuild/188 makes 21,660 allocations per op under 1.25.8
           # and 6,832 under 1.27.2. benchgate and the harness refuse any other
           # toolchain, so this pin moves only with a remeasurement.
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -356,6 +356,7 @@ jobs:
       # unless every entry row, every case gating in this tree and the init
       # budget were compared.
       - name: Peak RSS and init budget
+        if: success() || failure()
         env:
           RASHOMON_PERF_REQUIRE_ALL: "1"
         run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
@@ -372,7 +373,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.2"  # Measured under it; see the perf-linux job.
+          go-version: "1.27.3"  # Measured under it; see the perf-linux job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -401,6 +402,7 @@ jobs:
           retention-days: 14
 
       - name: Peak RSS and init budget
+        if: success() || failure()
         env:
           RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.
         run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
@@ -417,7 +419,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.2"  # Same pin as perf-linux; see the note in the test job.
+          go-version: "1.27.3"  # Same pin as perf-linux; see the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 

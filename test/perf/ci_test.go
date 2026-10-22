@@ -84,6 +84,11 @@ func TestRES36h_PerfJobsRunPinnedAndFailClosed(t *testing.T) {
 			}
 			if strings.Contains(s, "-tags perf") {
 				rss++
+				// A red benchgate before it skipped the RSS gates on every
+				// run while linux had no benchmark rows.
+				if !strings.Contains(s, "        if: success() || failure()\n") {
+					t.Errorf("%s: the RSS step runs only when every step before it passed:\n%s", job, s)
+				}
 				if !strings.Contains(s, RequireAllEnv+`: "1"`) {
 					t.Errorf("%s: the RSS step does not require every gate to run:\n%s", job, s)
 				}
