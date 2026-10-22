@@ -219,11 +219,14 @@ func TestNono_TheClientsOwnTrafficIsNotTheSessions(t *testing.T) {
 }
 
 // TestNono_AReadThatStopsPartwayDoesNotClaimAnUndercount: on
-// nono_audit_unreadable the scan stopped at the line that broke it, so
-// Skipped counts only the torn lines BEFORE that point. writeNono printed
-// the count on every not-observed reason, so two torn lines followed by a
-// line over the scanner's cap read as "2 trail records could not be read",
-// however much of the trail follows the point where the read gave up. The
+// nono_audit_unreadable the scan stopped where the read failed, so Skipped
+// counts only the torn lines BEFORE that point. writeNono printed the count
+// on every not-observed reason, so two torn lines followed by a failed read
+// rendered as "2 trail records could not be read", however much of the trail
+// follows the point where the read gave up. A line over the scanner's cap no
+// longer stops the read (it is stepped over and counted, PERF-6), and a read
+// error partway through a regular file is not something a test can cause, so
+// the observation is the one nono.Read returns on that path. The
 // count is only complete when the reader read the whole file, which is the
 // nono_audit_no_records case alone -- so on nono_audit_unreadable the text
 // says nothing rather than print a number that understates the damage.
@@ -233,19 +236,7 @@ func TestNono_TheClientsOwnTrafficIsNotTheSessions(t *testing.T) {
 // switches from the text report to --json on an unreadable trail meets a
 // number here that this test deliberately keeps off the text line.
 func TestNono_AReadThatStopsPartwayDoesNotClaimAnUndercount(t *testing.T) {
-	trail := filepath.Join(t.TempDir(), "audit-events.ndjson")
-	var body []byte
-	body = append(body, []byte(`{"sequence": 0, "eve`+"\n")...)
-	body = append(body, []byte(`{"sequence": 1, "ev`+"\n")...)
-	body = append(body, bytes.Repeat([]byte("a"), 9*1024*1024)...)
-	body = append(body, '\n')
-	if err := os.WriteFile(trail, body, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	obs := nono.Read(trail, nono.Window{Start: time.Unix(0, 0)})
-	if obs.Observed || obs.Reason != nono.NotObservedUnreadable {
-		t.Fatalf("premise: observed=%v reason=%q, want false, %q", obs.Observed, obs.Reason, nono.NotObservedUnreadable)
-	}
+	obs := nono.Observation{Reason: nono.NotObservedUnreadable, Events: []nono.Event{}, Skipped: 2}
 	n := buildNono(obs, true, false, nil, nil)
 	want := "  sandbox (nono): not observed (nono_audit_unreadable)\n"
 	if out := renderNono(n); out != want {
