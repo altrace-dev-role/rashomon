@@ -16,12 +16,20 @@ m("TRU-58 forget leaves a baseline without the basis marker on disk", "internal/
 # The baseline half of forget --host, end to end. A forget that kept the host
 # in a current baseline would leave it "seen before" there, so a later session
 # naming it again would never be told it is new. Judged by TRU-58b alone: its
-# third session names the host after the forget.
+# third session names the host after the forget. forget --host walks the
+# baseline directory in ForgetAll, under one lock, so a walk that visits no
+# file is where it clears nothing.
 m("TRU-58 forget keeps the host in a current baseline", "internal/baseline/baseline.go",
   "\t\t\tdelete(f.Hosts, h)\n", "", "TestTRU58b_")
 m("TRU-58 forget clears no baseline at all", "internal/baseline/baseline.go",
-  "\tif path == \"\" {\n\t\treturn 0, nil\n\t}\n", "\tif true {\n\t\treturn 0, nil\n\t}\n",
+  "\t\tif e.IsDir() || !strings.HasSuffix(e.Name(), \".json\") {\n\t\t\tcontinue\n\t\t}\n\t\tn, err := forgetLocked(",
+  "\t\tif true {\n\t\t\tcontinue\n\t\t}\n\t\tn, err := forgetLocked(",
   "TestTRU58b_")
+# ForgetFile is the one-file form, which forget --host no longer calls; its own
+# tests judge it.
+m("TRU-58 ForgetFile clears no baseline at all", "internal/baseline/baseline.go",
+  "\tif path == \"\" {\n\t\treturn 0, nil\n\t}\n", "\tif true {\n\t\treturn 0, nil\n\t}\n",
+  "TestTRU58_")
 # TRU-58c: a baseline this build cannot parse, or of a version it does not
 # know, cannot be rewritten without the host. Holding the host, it is deleted
 # and counted; not holding it, it is left as it was.
