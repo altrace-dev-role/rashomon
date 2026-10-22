@@ -30,19 +30,31 @@ func TestRubricPERF1_AGiveUpLandsAtItsBudget(t *testing.T) {
 	// 15.8 on darwin) and early in the seventh, so an uncut seventh sleep
 	// runs at least 8 ms past it. The slack is for the scheduler, and under
 	// that overshoot.
+	//
+	// The best of three give-ups is judged, not each one: a scheduler that
+	// is late once is noise -- a windows-latest runner gave up once at 28.6
+	// ms and at the budget on the runs either side of it -- while an uncut
+	// last sleep is late on every try. A give-up before the budget is wrong
+	// on any try.
 	const budget = 17 * time.Millisecond
 	const slack = 6 * time.Millisecond
-	start := time.Now()
-	release, _, err := lockFileWait(openForAppend(t, path), budget)
-	waited := time.Since(start)
-	if err == nil {
-		release()
-		t.Fatal("a second descriptor took the lock while the first held it")
+	best := time.Duration(-1)
+	for range 3 {
+		start := time.Now()
+		release, _, err := lockFileWait(openForAppend(t, path), budget)
+		waited := time.Since(start)
+		if err == nil {
+			release()
+			t.Fatal("a second descriptor took the lock while the first held it")
+		}
+		if waited < budget {
+			t.Errorf("contended LockFile gave up after %v, before its %v budget", waited, budget)
+		}
+		if best < 0 || waited < best {
+			best = waited
+		}
 	}
-	if waited < budget {
-		t.Errorf("contended LockFile gave up after %v, before its %v budget", waited, budget)
-	}
-	if waited > budget+slack {
-		t.Errorf("contended LockFile gave up after %v for a %v budget: the last polling sleep ran past the deadline", waited, budget)
+	if best > budget+slack {
+		t.Errorf("contended LockFile gave up after %v at best of three for a %v budget: the last polling sleep ran past the deadline", best, budget)
 	}
 }
