@@ -1780,9 +1780,9 @@ func TestJoin_AWatchedSessionWithACallKeepsTheRecordsRule(t *testing.T) {
 
 // TestJoin_AWatchedSessionNotReadWholeIsNotCovered: a run with no call
 // vouches for a transcript only when the scan read every response in it. A
-// usage line that could not be counted, or a line too long to read, may be
-// the response that made the call, so the transcript is not covered. Read
-// whole, the same fixture is.
+// usage line that could not be counted, a line too long to read, or a
+// subagent file that could not be opened may hold the response that made the
+// call, so the transcript is not covered. Read whole, the same fixture is.
 func TestJoin_AWatchedSessionNotReadWholeIsNotCovered(t *testing.T) {
 	t0 := now.Add(-2 * time.Hour)
 	q1 := resp{id: "Q1", model: "claude-opus-5-5", session: "sess-q", at: t0.Add(2 * time.Second), in: 1000, stop: "end_turn"}.line("text")
@@ -1796,10 +1796,12 @@ func TestJoin_AWatchedSessionNotReadWholeIsNotCovered(t *testing.T) {
 		tail                 []string
 		covered              bool
 		unparsed, unreadable int
+		unopenedSubagent     bool
 	}{
-		{"read whole", nil, true, 0, 0},
-		{"a usage line that did not parse", []string{unparsed}, false, 1, 0},
-		{"a line too long to read, and a call after it", []string{`{"type":"assistant","x":"` + strings.Repeat("x", report.TranscriptMaxLine) + `"}`, q2}, false, 1, 0},
+		{"read whole", nil, true, 0, 0, false},
+		{"a usage line that did not parse", []string{unparsed}, false, 1, 0, false},
+		{"a line too long to read, and a call after it", []string{`{"type":"assistant","x":"` + strings.Repeat("x", report.TranscriptMaxLine) + `"}`, q2}, false, 1, 0, false},
+		{"a subagent file that cannot be opened", nil, false, 0, 1, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newConfig(t)
@@ -1807,6 +1809,16 @@ func TestJoin_AWatchedSessionNotReadWholeIsNotCovered(t *testing.T) {
 			rec.coverage("sess-q", store.PhaseStart, t0, "")
 			rec.coverage("sess-q", store.PhaseEnd, t0.Add(10*time.Second), "")
 			c.write("proj/sess-q.jsonl", append([]string{userLine("sess-q", "q1", t0.Add(time.Second), false), q1}, tc.tail...)...)
+			if tc.unopenedSubagent {
+				if os.Geteuid() == 0 {
+					t.Skip("root reads a file whatever its mode")
+				}
+				sub := c.write("proj/sess-q/subagents/agent-x.jsonl", subUserLine("sess-q", "q1", t0.Add(3*time.Second)))
+				if err := os.Chmod(sub, 0o000); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(sub, 0o600) })
+			}
 			s := c.summary(30)
 			if err := s.Join(rec.st); err != nil {
 				t.Fatal(err)
