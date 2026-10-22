@@ -246,6 +246,16 @@ func defaultFiles() []FileRule {
 		},
 		{
 			Base:       runSegment,
+			Pattern:    store.FileSteer,
+			Mode:       "0600",
+			Purpose:    "one line per steer decision in the session, delivered or not, appended under the run's lock",
+			Holds:      "the pattern, its level, channel and arm, the hook event, the seqs of the records it rests on, the slot values its message bound, and on a delivered or flagged line the message text shown, each capped at 2,048 bytes",
+			NeverHolds: "a tool call's arguments or response beyond the slot values a message names",
+			RemovedBy:  "size-cap eviction, with its run; purge. forget --since, --before and --host do not rewrite it",
+			Owner:      "store",
+		},
+		{
+			Base:       runSegment,
 			Pattern:    store.FileCoverage,
 			Mode:       "0600",
 			Purpose:    "the configuration state resolved for the session",

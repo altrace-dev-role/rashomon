@@ -37,8 +37,8 @@ m("TRU-23 the baseline directory stops matching baseline/<key>.json", "internal/
 # the only way to show the comparison is load-bearing: a pinned count that
 # silently matched anything would be as useless as no test at all.
 m("TRU-23 the pinned store write-call-site count stops matching the source", "internal/disclose/disclose_test.go",
-  "\t\t{\"store\", 17},",
   "\t\t{\"store\", 18},",
+  "\t\t{\"store\", 19},",
   "TestTRU23_WriteCallSitesArePinned")
 # Two root-level writes main's store gained: resolved-cap (hld-7) and the
 # baseline directory's lock. The inventory test drives both, so an entry
@@ -48,4 +48,9 @@ m("TRU-23 the inventory does not cover resolved-cap", "internal/disclose/disclos
   "TestTRU23_EveryWrittenPathIsInTheInventory")
 m("TRU-23 the inventory does not cover the baseline lock", "internal/disclose/disclose.go",
   "\t\t\tPattern:    baseline.LockName,\n", "\t\t\tPattern:    baseline.LockName + \"~\",\n",
+  "TestTRU23_EveryWrittenPathIsInTheInventory")
+
+# The steer log (STEER, 1.2.9) is a per-run file the inventory must name.
+m("TRU-23 the inventory does not cover the steer log", "internal/disclose/disclose.go",
+  "\t\t\tPattern:    store.FileSteer,\n", "\t\t\tPattern:    store.FileSteer + \"~\",\n",
   "TestTRU23_EveryWrittenPathIsInTheInventory")
