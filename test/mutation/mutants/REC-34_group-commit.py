@@ -195,11 +195,20 @@ m("REC-34 any ENOENT is nothing to flush, not just a gone run", "internal/store/
 # phase a reader cannot tell whether the declaration or the execution is
 # the one possibly not durable. TestREC34_FailedFlushIsMarkedAndNeverRetried
 # asserts the marker's phase in both its hook and post subtests.
+#
+# Its only judge, that test, calls skipWithoutAFlush and so skips whole off
+# darwin (P09-F9: there is no Flush to fail when every barrier is already a
+# full sync). Without platform=, both land in the "skipped" bucket on Linux
+# and Windows, which --strict treats as a broken environment rather than as
+# the darwin-only mutants they are -- the same fix "REC-34 the hook never
+# signals before flush" already got, above.
 m("REC-34 the flush_failed marker carries no phase", "internal/hook/flush.go",
-  "\t\tReason:        &reason,\n\t\tPhase:         &phase,\n", "\t\tReason:        &reason,\n", "TestREC34_FailedFlushIsMarkedAndNeverRetried")
+  "\t\tReason:        &reason,\n\t\tPhase:         &phase,\n", "\t\tReason:        &reason,\n", "TestREC34_FailedFlushIsMarkedAndNeverRetried",
+  platform="darwin")
 m("REC-34 the hook's own flush marks itself as post", "internal/hook/flush.go",
   "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhaseCall)",
-  "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhasePost)", "TestREC34_FailedFlushIsMarkedAndNeverRetried")
+  "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhasePost)", "TestREC34_FailedFlushIsMarkedAndNeverRetried",
+  platform="darwin")
 
 # A flush_failed marker can name a call whose own record never landed: the
 # seq counter's barrier, the first ordered append issues, is what failed, so
