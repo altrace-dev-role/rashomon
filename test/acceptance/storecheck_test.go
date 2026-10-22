@@ -234,8 +234,8 @@ func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 		{"a torn line", "is not one JSON object", func(l []string) []string {
 			return append(l, l[0][:len(l[0])/2])
 		}},
-		{"a key off the allowlist", `key "command"`, func(l []string) []string {
-			l[0] = strings.Replace(l[0], `{`, `{"command":"rm -rf /",`, 1)
+		{"a key off the allowlist", `key "prompt"`, func(l []string) []string {
+			l[0] = strings.Replace(l[0], `{`, `{"prompt":"rm -rf /",`, 1)
 			return l
 		}},
 		{"a repeated seq", "follows seq", func(l []string) []string {

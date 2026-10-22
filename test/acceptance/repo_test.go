@@ -369,6 +369,14 @@ func TestRubricERRORS5_TheReasonTripwireCatchesWhatTheComparisonSkips(t *testing
 			wantUnchecked: "/$defs/execution/properties/executed_command_reason",
 		},
 		{
+			name: "a reserved reason key pinned to one value",
+			mutate: func(s map[string]any) {
+				props := schemaObject(t, s, "$defs", "execution", "properties")
+				props["executed_command_reason"] = map[string]any{"const": "differs"}
+			},
+			wantUnchecked: "/$defs/execution/properties/executed_command_reason",
+		},
+		{
 			name: "a compared vocabulary removed",
 			mutate: func(s map[string]any) {
 				delete(schemaObject(t, s, "$defs", "terminal", "properties"), "reason")
