@@ -67,8 +67,11 @@ m("DEL-22 the session's git switched off has no key", "internal/store/record_v5.
   "\tGitWithheld       *string `json:\"git_withheld\"`        // switched_off (git)\n", "", "TestDEL22g_")
 m("DEL-22 an oversize instructions path cannot be null", "internal/store/record_v5.go",
   "\tFilePath        *string `json:\"file_path\"`\n", "\tFilePath        string  `json:\"file_path\"`\n", "TestDEL22g_")
+# The withheld root is set by the cap (limits.go), so deleting the field no
+# longer compiles; the key goes missing from the wire instead, as
+# written_paths_withheld's does above.
 m("DEL-22 an oversize git root has no key", "internal/store/record_v5.go",
-  "\tRootWithheld *string `json:\"root_withheld\"`\n", "", "TestDEL22g_")
+  "\tRootWithheld *string `json:\"root_withheld\"`\n", "\tRootWithheld *string `json:\"-\"`\n", "TestDEL22g_")
 m("DEL-22 a finding may name an after_seq below 1", "internal/steer/finding.go",
   "\tif f.AfterSeq < 1 {\n\t\treturn fmt.Errorf(\"%w: after_seq must be at least 1\", ErrFinding)\n\t}\n",
   "", "TestDEL22e_")
