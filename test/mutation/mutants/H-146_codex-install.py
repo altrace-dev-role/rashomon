@@ -23,7 +23,18 @@ m("H-146 watch --harness codex creates a missing Codex directory", "cmd/rashomon
 m("H-146 an unknown harness is installed as Codex", "cmd/rashomon/codex_install.go",
   "\tif hook.Harness(v) != hook.Codex {", "\tif false {", "TestH146_UnknownHarnessIsRefused")
 m("H-146 watch does not say the entries must be trusted", "cmd/rashomon/codex_install.go",
-  "\tfor _, line := range codexTrustLines {", "\tfor _, line := range codexTrustLines[:0] {",
+  "\tfmt.Fprintln(stdout, codexTrustLine)", "\t_ = codexTrustLine",
+  "TestH146_WatchCodexInstalls|TestH146_WatchCodexVerbose")
+m("H-146 watch prints its details without --verbose", "cmd/rashomon/codex_install.go",
+  "\tif verbose {\n\t\tfor _, line := range codexDetailLines {", "\tif true {\n\t\tfor _, line := range codexDetailLines {",
+  "TestH146_WatchCodexInstalls")
+m("H-146 --verbose prints no details", "cmd/rashomon/codex_install.go",
+  "\tif verbose {\n\t\tfor _, line := range codexDetailLines {", "\tif false {\n\t\tfor _, line := range codexDetailLines {",
+  "TestH146_WatchCodexVerbose")
+m("H-146 --verbose is not read", "cmd/rashomon/codex_install.go",
+  "\t\t\tif len(rest) > 0 && rest[0] == verboseFlag {", "\t\t\tif false {", "TestH146_WatchCodexVerbose")
+m("H-146 watch gives no undo line", "cmd/rashomon/codex_install.go",
+  "\tfmt.Fprintln(stdout, \"rashomon: undo: rashomon detach --harness codex\")", "\tfmt.Println()",
   "TestH146_WatchCodexInstalls")
 m("H-146 watch does not say a rewritten entry needs trust again", "cmd/rashomon/codex_install.go",
   "\tif changed && had {", "\tif false {", "TestH146_WatchCodexSaysAMovedBinaryNeedsTrustAgain")

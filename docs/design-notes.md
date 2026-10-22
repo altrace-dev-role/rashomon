@@ -801,6 +801,13 @@ Left out: `PostToolUseFailure` and `StopFailure`, which Codex does not have;
 and `UserPromptSubmit`, where Codex adds a hook's plain stdout to the model's
 context, and recap's catch-up prints nothing under Codex anyway.
 
+`watch --harness codex` prints two lines: what is left to do (trust the
+entries in `/hooks`) and how to undo it. It also says, without being asked,
+the two things that need the user to act: entries rewritten, and other
+installs' entries present. `--verbose` adds the install id, the path, the
+entries, and the two notes `status` also gives (coverage unverifiable, and
+`hooks = false` not checked).
+
 **Trust.** Codex runs a hook only once the user has trusted it in `/hooks`,
 and it records that trust against a hash of the entry. So:
 

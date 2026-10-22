@@ -1788,11 +1788,13 @@ usage:
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
                                marker, whatever its id
-  rashomon watch --harness codex install the PreToolUse and PostToolUse
+  rashomon watch --harness codex [--verbose]
+                               install the PreToolUse and PostToolUse
                                recorders, the SessionStart probe and the
                                Stop recap into Codex's hooks.json
                                (CODEX_HOME, or ~/.codex); Codex runs them
-                               only once trusted in /hooks
+                               only once trusted in /hooks; --verbose says
+                               what else is true of them
   rashomon detach --harness codex [--install <id> | --all] [--force]
                                remove them from Codex's hooks.json, leaving
                                everything else as found

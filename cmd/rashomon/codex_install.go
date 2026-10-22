@@ -13,10 +13,14 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
+// verboseFlag asks watch --harness codex for the details its short message
+// leaves out.
+const verboseFlag = "--verbose"
+
 // harnessArgs is noArgs for a command that also takes --harness codex: that
-// one argument picks codexCmd, no argument picks cmd, and anything else is
-// refused before either runs.
-func harnessArgs(args []string, stdout io.Writer, cmd, codexCmd func(io.Writer) error) func() error {
+// one argument, optionally followed by --verbose, picks codexCmd; no argument
+// picks cmd; and anything else is refused before either runs.
+func harnessArgs(args []string, stdout io.Writer, cmd func(io.Writer) error, codexCmd func(io.Writer, bool) error) func() error {
 	return func() error {
 		if len(args) > 0 && args[0] == hook.HarnessFlag {
 			if len(args) < 2 {
@@ -25,7 +29,11 @@ func harnessArgs(args []string, stdout io.Writer, cmd, codexCmd func(io.Writer) 
 			if err := knownHarness(args[1]); err != nil {
 				return err
 			}
-			return noArgs(args[2:], stdout, codexCmd)()
+			rest, verbose := args[2:], false
+			if len(rest) > 0 && rest[0] == verboseFlag {
+				rest, verbose = rest[1:], true
+			}
+			return noArgs(rest, stdout, func(w io.Writer) error { return codexCmd(w, verbose) })()
 		}
 		return noArgs(args, stdout, cmd)()
 	}
@@ -56,19 +64,26 @@ func codexHome() (string, error) {
 	return dir, nil
 }
 
-// codexTrustLines are what watch --harness codex says after installing, and
-// they are said every time: whether the user has trusted the entries is not
-// something this program can read, so it never assumes they have.
-var codexTrustLines = []string{
-	"rashomon: Codex runs none of these entries until they are trusted: start Codex, run /hooks, " +
-		"and trust the rashomon entries for " + strings.Join(install.CodexEvents, ", ") + ". Until then nothing is recorded.",
+// codexTrustLine is what watch --harness codex says every time, installed or
+// already there: whether the user has trusted the entries is not something
+// this program can read, so it never assumes they have.
+var codexTrustLine = fmt.Sprintf("rashomon: open Codex, run /hooks, and trust the %d rashomon entries; "+
+	"nothing is recorded until you do.", len(install.CodexEvents))
+
+// codexDetailLines are what --verbose adds: true, and not something a person
+// installing has to act on. status says the same two things every time.
+var codexDetailLines = []string{
+	"rashomon: the entries are " + strings.Join(install.CodexEvents, ", ") + ".",
 	"rashomon: Codex runs read coverage: unverified (hook_entry_unresolved), trusted or not -- " +
 		"rashomon cannot read whether Codex trusts an entry.",
 	"rashomon: not checked: whether hooks = false under [features] in Codex's config.toml or requirements.toml " +
 		"turns hooks off; with it set, nothing is recorded.",
 }
 
-func cmdWatchCodex(stdout io.Writer) error {
+// cmdWatchCodex installs our entries into Codex's hooks.json and says, in two
+// lines, the one thing left to do and how to undo it. What else is true goes
+// behind --verbose, and into status.
+func cmdWatchCodex(stdout io.Writer, verbose bool) error {
 	if _, err := codexHome(); err != nil {
 		return err
 	}
@@ -119,13 +134,17 @@ func cmdWatchCodex(stdout io.Writer) error {
 		}
 	}
 	if changed {
-		fmt.Fprintf(stdout, "rashomon: watching Codex (install %s) via %s\n", st.InstallID(), path)
+		fmt.Fprintln(stdout, "rashomon: installed for Codex.")
 	} else {
-		fmt.Fprintf(stdout, "rashomon: already watching Codex (install %s) via %s\n", st.InstallID(), path)
+		fmt.Fprintln(stdout, "rashomon: already installed for Codex.")
 	}
-	// An entry rewritten in place -- the binary moved -- has a new hash, and
-	// Codex skips it until it is trusted again, however long ago the old one
-	// was.
+	if verbose {
+		fmt.Fprintf(stdout, "rashomon: install %s, in %s\n", st.InstallID(), path)
+	}
+	// Both of these ask something of the user, so they are said without
+	// --verbose. An entry rewritten in place -- the binary moved -- has a new
+	// hash, and Codex skips it until it is trusted again, however long ago
+	// the old one was.
 	if changed && had {
 		fmt.Fprintln(stdout, "rashomon: entries already in the file were rewritten, and Codex treats a rewritten entry as new")
 	}
@@ -133,11 +152,16 @@ func cmdWatchCodex(stdout io.Writer) error {
 		fmt.Fprintf(stdout, "rashomon: entries from other installs are present (%s); they will fire in this environment and record nothing\n",
 			strings.Join(foreign, ", "))
 	}
-	for _, line := range codexTrustLines {
-		fmt.Fprintln(stdout, line)
+	fmt.Fprintln(stdout, codexTrustLine)
+	if verbose {
+		for _, line := range codexDetailLines {
+			fmt.Fprintln(stdout, line)
+		}
+		fmt.Fprintln(stdout, "rashomon: undo with this line -- it needs no store, and any rashomon binary will do:")
+		fmt.Fprintf(stdout, "rashomon detach --harness codex --install %s\n", st.InstallID())
+		return nil
 	}
-	fmt.Fprintln(stdout, "rashomon: undo with this line -- it needs no store, and any rashomon binary will do:")
-	fmt.Fprintf(stdout, "rashomon detach --harness codex --install %s\n", st.InstallID())
+	fmt.Fprintln(stdout, "rashomon: undo: rashomon detach --harness codex")
 	return nil
 }
 

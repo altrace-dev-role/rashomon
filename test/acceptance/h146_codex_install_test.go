@@ -105,16 +105,12 @@ func TestH146_WatchCodexInstallsEntriesThatRecordWhenRun(t *testing.T) {
 		t.Fatalf("watch --harness codex: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	id := e.installID()
-	for _, want := range []string{
-		"watching Codex (install " + id + ") via " + e.codexPath(),
-		"run /hooks, and trust the rashomon entries for PreToolUse, PostToolUse, SessionStart, Stop. Until then nothing is recorded.",
-		"coverage: unverified (hook_entry_unresolved), trusted or not",
-		"not checked: whether hooks = false under [features]",
-		"rashomon detach --harness codex --install " + id + "\n",
-	} {
-		if !strings.Contains(res.stdout, want) {
-			t.Errorf("watch output does not say %q:\n%s", want, res.stdout)
-		}
+	// What a person installing has to do, and how to undo it: nothing else.
+	const short = "rashomon: installed for Codex.\n" +
+		"rashomon: open Codex, run /hooks, and trust the 4 rashomon entries; nothing is recorded until you do.\n" +
+		"rashomon: undo: rashomon detach --harness codex\n"
+	if res.stdout != short {
+		t.Errorf("watch output:\n%s\nwant\n%s", res.stdout, short)
 	}
 	if e.settingsBytes() != nil {
 		t.Errorf("watch --harness codex wrote Claude Code's settings:\n%s", e.settingsBytes())
@@ -203,7 +199,7 @@ func TestH146_WatchCodexInstallsEntriesThatRecordWhenRun(t *testing.T) {
 	// A second watch changes nothing, so nothing has to be trusted again.
 	before := e.codexBytes()
 	res = e.watchCodex()
-	if res.exitCode != 0 || !strings.Contains(res.stdout, "already watching Codex") {
+	if res.exitCode != 0 || !strings.HasPrefix(res.stdout, "rashomon: already installed for Codex.\n") {
 		t.Errorf("second watch: exit %d, stdout %q", res.exitCode, res.stdout)
 	}
 	if strings.Contains(res.stdout, "rewritten") {
@@ -374,7 +370,7 @@ func TestH146_WatchCodexDefaultsToHomeDotCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := []string{"HOME=" + home, "CODEX_HOME="}
-	if res := e.watchCodex(env...); res.exitCode != 0 || !strings.Contains(res.stdout, filepath.Join(dir, "hooks.json")) {
+	if res := e.watchCodex(env...); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stdout %q, stderr %q", res.exitCode, res.stdout, res.stderr)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "hooks.json"))
@@ -427,5 +423,46 @@ func TestH146_StatusReportsCodexOnlyWhereThereIsCodex(t *testing.T) {
 	res = e.status()
 	if res.exitCode != 0 || !strings.Contains(res.stdout, "  PreToolUse: unreadable\n") {
 		t.Errorf("status over an unreadable hooks.json: exit %d\n%s", res.exitCode, res.stdout)
+	}
+}
+
+// TestH146_WatchCodexVerboseSaysTheRest: the details the short message leaves
+// out are one flag away, and status says the two that stay true.
+func TestH146_WatchCodexVerboseSaysTheRest(t *testing.T) {
+	e := newEnv(t)
+	e.makeCodexDir("")
+	res := e.run("", nil, "watch", "--harness", "codex", "--verbose")
+	if res.exitCode != 0 {
+		t.Fatalf("watch --harness codex --verbose: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	id := e.installID()
+	for _, want := range []string{
+		"rashomon: installed for Codex.\n",
+		"rashomon: install " + id + ", in " + e.codexPath() + "\n",
+		"trust the 4 rashomon entries",
+		"rashomon: the entries are PreToolUse, PostToolUse, SessionStart, Stop.\n",
+		"coverage: unverified (hook_entry_unresolved), trusted or not",
+		"not checked: whether hooks = false under [features]",
+		"rashomon detach --harness codex --install " + id + "\n",
+	} {
+		if !strings.Contains(res.stdout, want) {
+			t.Errorf("watch --verbose does not say %q:\n%s", want, res.stdout)
+		}
+	}
+	if strings.Contains(res.stdout, "undo: rashomon detach --harness codex\n") {
+		t.Errorf("watch --verbose gives the short undo line too:\n%s", res.stdout)
+	}
+	st := e.status().stdout
+	for _, want := range []string{"Codex runs read coverage: unverified (hook_entry_unresolved)", "hooks = false in config.toml or requirements.toml: not checked"} {
+		if !strings.Contains(st, want) {
+			t.Errorf("status does not say %q:\n%s", want, st)
+		}
+	}
+	if res := e.run("", nil, "watch", "--harness", "codex", "--loud"); res.exitCode == 0 {
+		t.Errorf("watch --harness codex --loud: exit 0; an unknown argument must be refused")
+	}
+	// The short undo line works: detach reads the install id from the store.
+	if res := e.detachCodex(); res.exitCode != 0 || e.codexBytes() != nil {
+		t.Errorf("detach --harness codex: exit %d, stderr %q; hooks.json %q", res.exitCode, res.stderr, e.codexBytes())
 	}
 }
