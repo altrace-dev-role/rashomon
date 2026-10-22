@@ -59,13 +59,23 @@ func TestTRU8b_ScopeVersionIsPinned(t *testing.T) {
 }
 
 // A caller that ignores the error must not see a scope version attached to
-// an otherwise-empty inventory: that reads as consent recorded for a build
-// that has nothing in it. The stub kept to this by returning the zero
-// Inventory; the filled one carries its scope version beside its files.
+// an inventory missing either half: that reads as consent recorded for a
+// build whose files, or whose screen, nobody was shown. The stub kept to
+// this by returning the zero Inventory; the filled one carries its scope
+// version beside its files and its paragraphs. Each half is checked on its
+// own: "nothing else in it" stopped meaning "no files" once the paragraphs
+// joined the inventory, and a check on the whole value passed with the files
+// gone.
 func TestDefaultNeverPairsAScopeVersionWithAnEmptyInventory(t *testing.T) {
 	inv, _ := Default()
-	if inv.ScopeVersion != 0 && reflect.DeepEqual(inv, Inventory{ScopeVersion: inv.ScopeVersion}) {
-		t.Errorf("Default() = %+v: a scope version on an inventory with nothing else in it", inv)
+	if inv.ScopeVersion == 0 {
+		return
+	}
+	if len(inv.Files) == 0 {
+		t.Errorf("Default() carries scope version %d and no files", inv.ScopeVersion)
+	}
+	if len(inv.Paragraphs) == 0 {
+		t.Errorf("Default() carries scope version %d and no screen paragraphs", inv.ScopeVersion)
 	}
 }
 
