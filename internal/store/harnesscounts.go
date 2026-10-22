@@ -141,7 +141,7 @@ func HarnessKey(root string) ([]byte, error) {
 	if err := os.Chmod(root, dirMode); err != nil {
 		return nil, err
 	}
-	return loadOrCreateKey(filepath.Join(root, fileInstallKey))
+	return loadOrCreateKey(filepath.Join(root, FileInstallKey))
 }
 
 // harnessSessionDigest is the keyed digest harness_counts.json's sessions

@@ -43,7 +43,7 @@ func TestRecordHarnessMismatch_FirstCallCreatesFile(t *testing.T) {
 		t.Fatal("counted = false on a fresh file's first mismatch")
 	}
 
-	if _, err := os.Stat(filepath.Join(root, fileInstallMeta)); err == nil {
+	if _, err := os.Stat(filepath.Join(root, FileInstallMeta)); err == nil {
 		t.Fatal("install.json exists: a stand-down must never mint an install identity")
 	}
 
@@ -404,10 +404,10 @@ func TestHarnessKey_NeverCreatesInstallMeta(t *testing.T) {
 	if len(key) != keyLen {
 		t.Errorf("key length = %d, want %d", len(key), keyLen)
 	}
-	if _, err := os.Stat(filepath.Join(root, fileInstallMeta)); err == nil {
+	if _, err := os.Stat(filepath.Join(root, FileInstallMeta)); err == nil {
 		t.Fatal("install.json exists after HarnessKey alone")
 	}
-	if _, err := os.Stat(filepath.Join(root, fileInstallKey)); err != nil {
+	if _, err := os.Stat(filepath.Join(root, FileInstallKey)); err != nil {
 		t.Fatalf("install.key does not exist after HarnessKey: %v", err)
 	}
 }
