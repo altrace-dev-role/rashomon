@@ -10,6 +10,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // harnessArgs is noArgs for a command that also takes --harness codex: that
@@ -89,7 +90,7 @@ func cmdWatchCodex(stdout io.Writer) error {
 		foreign []string
 		had     bool
 	)
-	changed, err := editSettings(path, func(doc *settings.Document) (bool, error) {
+	done, err := editSettingsFile(path, false, func(doc *settings.Document) (bool, error) {
 		had = false
 		for _, event := range install.CodexEvents {
 			present, err := install.CodexPresent(doc, spec.InstallID, event)
@@ -107,6 +108,15 @@ func cmdWatchCodex(stdout io.Writer) error {
 	})
 	if err != nil {
 		return err
+	}
+	changed := done.changed
+	// Recorded so that detach can put the machine back as it was: without it,
+	// detach has removed our entries from a file nobody else wrote, and
+	// leaves "{}" where there was no file.
+	if done.created {
+		if err := store.MarkCodexHooksCreated(st.Root(), path); err != nil {
+			return err
+		}
 	}
 	if changed {
 		fmt.Fprintf(stdout, "rashomon: watching Codex (install %s) via %s\n", st.InstallID(), path)
@@ -133,7 +143,9 @@ func cmdWatchCodex(stdout io.Writer) error {
 
 // detachCodex is cmdDetach for Codex's hooks.json. It never creates the file
 // or its directory: on a machine without them there is nothing to remove, and
-// editSettings writes only when something was.
+// editSettings writes only when something was. It deletes the file when watch
+// created it and our entries were all it held, so the machine is back to
+// having none (measured in phase 4: detach left "{}" where there was no file).
 func detachCodex(installID string, all, force bool, stdout io.Writer) error {
 	remove := func(doc *settings.Document) (int, []install.Modified, error) {
 		return install.RemoveCodex(doc, install.Spec{InstallID: installID}, force)
@@ -150,15 +162,27 @@ func detachCodex(installID string, all, force bool, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// The file goes only if watch recorded creating it, here, at this path,
+	// and our entries were all it held. The marker is read without opening
+	// the store, so a detach on a machine whose store is gone creates none,
+	// and keeps the file.
+	root, rootErr := store.DefaultRoot()
+	created := rootErr == nil && store.CodexHooksCreated(root, path)
 	removed := 0
 	var left []install.Modified
-	changed, err := editSettings(path, func(doc *settings.Document) (bool, error) {
+	done, err := editSettingsFile(path, created, func(doc *settings.Document) (bool, error) {
 		n, l, err := remove(doc)
 		removed, left = n, l
 		return n > 0, err
 	})
 	if err != nil {
 		return err
+	}
+	changed := done.changed
+	if done.removed {
+		if err := store.ClearCodexHooksCreated(root); err != nil {
+			return err
+		}
 	}
 	for _, m := range left {
 		fmt.Fprintf(stdout, "rashomon: removed the Codex %s entry you had edited (%s), because --force was given\n", m.Event, m.Detail)
@@ -168,6 +192,9 @@ func detachCodex(installID string, all, force bool, stdout io.Writer) error {
 		return nil
 	}
 	fmt.Fprintf(stdout, "rashomon: detached from Codex (%s, %d entries) from %s\n", who, removed, path)
+	if done.removed {
+		fmt.Fprintf(stdout, "rashomon: removed %s: watch created it, and nothing else was in it\n", path)
+	}
 	return nil
 }
 

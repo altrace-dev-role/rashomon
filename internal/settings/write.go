@@ -101,6 +101,31 @@ func Write(path string, original, data []byte) error {
 	return nil
 }
 
+// Remove deletes the file at path, if it still holds original, and reports
+// whether it did. A path that is not a regular file is left alone and reported
+// as not removed, for the caller to write instead: a symlink is the user's
+// arrangement (see Write), and deleting it is not ours to do.
+func Remove(path string, original []byte) (bool, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return false, err
+	}
+	if !fi.Mode().IsRegular() {
+		return false, nil
+	}
+	current, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	if !bytes.Equal(current, original) {
+		return false, ErrChanged
+	}
+	if err := os.Remove(path); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ReadOriginal reads the file's current bytes for a later Write. An absent
 // file reads as nil, which Write treats as "still absent".
 func ReadOriginal(path string) ([]byte, error) {

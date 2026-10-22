@@ -719,26 +719,52 @@ const editAttempts = 3
 // concurrency: the file is re-read and the edit re-applied if it changed
 // underneath. It reports whether anything was written.
 func editSettings(path string, edit func(*settings.Document) (bool, error)) (bool, error) {
+	done, err := editSettingsFile(path, false, edit)
+	return done.changed, err
+}
+
+// settingsEdit is what editSettingsFile did to the file.
+type settingsEdit struct {
+	changed bool
+	// created: the file was absent when read, and the write made it. Write
+	// replaces only the bytes it read, so an absent read is an absent file
+	// replaced.
+	created bool
+	// removed: the edit left the document empty and the file was deleted.
+	removed bool
+}
+
+// editSettingsFile is editSettings, saying whether the write created the file.
+// With removeIfEmpty, an edit that leaves no key at all deletes the file
+// rather than writing "{}"; a file that is not a regular file is written
+// instead (settings.Remove).
+func editSettingsFile(path string, removeIfEmpty bool, edit func(*settings.Document) (bool, error)) (settingsEdit, error) {
 	for attempt := 0; attempt < editAttempts; attempt++ {
 		original, err := settings.ReadOriginal(path)
 		if err != nil {
-			return false, err
+			return settingsEdit{}, err
 		}
 		doc, err := settings.Parse(original)
 		if err != nil {
-			return false, fmt.Errorf("%s: %w", path, err)
+			return settingsEdit{}, fmt.Errorf("%s: %w", path, err)
 		}
 		changed, err := edit(doc)
 		if err != nil || !changed {
-			return false, err
+			return settingsEdit{}, err
 		}
-		err = settings.Write(path, original, doc.Bytes())
+		removed := false
+		if removeIfEmpty && original != nil && doc.Empty() {
+			removed, err = settings.Remove(path, original)
+		}
+		if err == nil && !removed {
+			err = settings.Write(path, original, doc.Bytes())
+		}
 		if errors.Is(err, settings.ErrChanged) {
 			continue
 		}
-		return err == nil, err
+		return settingsEdit{changed: err == nil, created: err == nil && original == nil, removed: removed}, err
 	}
-	return false, errors.New("settings file kept changing while it was being edited; try again")
+	return settingsEdit{}, errors.New("settings file kept changing while it was being edited; try again")
 }
 
 func cmdWatch(stdout io.Writer) error {

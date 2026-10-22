@@ -76,6 +76,9 @@ func (d *Document) Get(key string) (json.RawMessage, bool) {
 	return nil, false
 }
 
+// Empty reports whether the document holds no key at all.
+func (d *Document) Empty() bool { return len(d.members) == 0 }
+
 // Bytes renders the document. Values not edited are emitted as they were read.
 func (d *Document) Bytes() []byte {
 	return append(writeObject(d.members, 0), '\n')
