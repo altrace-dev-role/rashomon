@@ -117,7 +117,7 @@ nothing is a surprise.
 
 - **recap prints nothing under Codex.** How Codex reads a Stop hook's stdout
   is unmeasured, and an output it took for an instruction would change what
-  the agent does.
+  the agent does. *Superseded: see decision F at the end.*
 - **An unknown `--harness` value stands down.** It writes nothing, prints one
   fixed stderr line and exits 0.
 - **`apply_patch` is classed as a write but gets no file label** until a
@@ -146,7 +146,8 @@ removes exactly those. No record, schema or reason code changes.
   installed. recap returns before doing anything under Codex, so the entries
   would cost two trust prompts and a process per turn for nothing. *To
   reverse:* add both to `install.CodexEvents` with `recap` and `recap
-  pending`. They would need trusting again once recap speaks.
+  pending`. They would need trusting again once recap speaks. *Partly
+  reversed by decision F: Stop is installed; UserPromptSubmit is not.*
 - **B. A missing Codex directory is refused, not created.** `watch` names the
   directory and `CODEX_HOME`. *To reverse:* create it. The cost is entries
   that never run on a machine without Codex.
@@ -282,10 +283,7 @@ with its id.
 
 **For you to look at.**
 
-- **A file change that completed stays unobserved.** The rule names only
-  `failed` for a file change, so a successful `apply_patch` reads
-  "outcome unobserved". Making `completed` read ok is a one-line change, if
-  you want it.
+- **A file change that completed reads ok.** Decision E, below.
 - **The agent tools stay unobserved.** A `CollabAgentToolCall` has a status,
   and the rule does not name it.
 - **"Missing from store" covers commands and file changes only.**
@@ -295,8 +293,57 @@ with its id.
   one the user runs directly. If it does, that command would read as missing
   from the store.
 - **An id seen twice with two outcomes is judged neither.**
-- **The digest, and so recap, does not read the rollout yet.** The report's
-  failure counts and a turn digest's can differ for a Codex run.
-- **A wording point:** "1 recorded failure" is recap's phrase, and recap
-  prints nothing under Codex. The report says `failed calls: 1`.
+- **The digest reads the rollout too**, by the same rule, under a time budget
+  (decision F), so a turn's line and the report count the same failures.
+
+### E. A file change that completed is ok
+
+**What.** In decision D's rule, a `FileChange` item whose status is
+`completed` now reads ok, as `failed` reads failed. Any other status stays
+unobserved, and the match is exact (`Failed` is not `failed`). On phase 4's
+lines, the `apply_patch` edit reads ok, so session 1 has no unobserved call
+left.
+
+### F. The end-of-turn line under Codex
+
+**What.** `watch --harness codex` installs a fourth entry, `Stop`, running
+`recap --harness codex`; `detach` removes it with the rest. You trust it in
+`/hooks` like the others. Under Codex, recap:
+
+- **speaks at Stop** from the turn digest and the Stop payload's
+  `last_assistant_message`, as under Claude Code. Its stdout is one JSON
+  `systemMessage`, which Codex shows as a warning, or nothing. Codex's Stop
+  output schema allows `decision`, `continue` and `reason`, and those (or exit
+  2) would make the agent continue. recap writes none of them;
+- **prints nothing on the UserPromptSubmit catch-up**, installed or not.
+  There Codex adds plain stdout to the model's context. The entry is not
+  installed, and `recap pending --harness codex` exits silently;
+- **sets aside `hook_entry_unresolved`** before deciding whether to speak.
+  Every Codex turn carries it by design (item 4), and spoken it would put the
+  line on every turn. Any other coverage reason still speaks. The report and
+  the digest keep it;
+- **reads the rollout in the turn digest** by decision D's rule, bounded at
+  one second from when the read starts. A rollout not read in time is dropped
+  whole, so its calls stay unobserved rather than judged on part of the file.
+
+H-150 runs the installed Stop line through a shell. A turn whose
+`python3 missing.py` failed (exit 2, phase 4's rollout) and whose final
+message says "Done." prints `1 recorded failure` and the report pointer. A
+clean turn, a second Stop for the same turn, a turn whose message names the
+failure, and the catch-up print nothing.
+
+**For you to look at.**
+
+- **Stop's timeout is ten seconds, not five.** It is recap's Claude Code
+  timeout (`install.RecapTimeout`): recap reads the whole run to find its
+  turn. The rollout read gets one second of it, after up to three for stdin.
+  A one-line change makes Codex's Stop five, if you want it held to the
+  recorder entries' budget.
+- **Setting aside `hook_entry_unresolved` is recap's only harness-specific
+  judgement.** A Codex turn's line says nothing about coverage unless
+  something beyond the permanent reason went wrong.
+- **Unmeasured until the live check:** whether a turn's items are in the
+  rollout when its Stop fires. If they are not, the line misses that turn's
+  failures and says nothing. It never says something wrong. Also: where the
+  TUI shows the warning, and that it never reaches the model.
 

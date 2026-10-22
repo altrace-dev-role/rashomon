@@ -755,8 +755,8 @@ What a real capture showed (`test/fixtures/codex`), and what follows from it:
   Codex run. The hook entry is `unknown`, so a Codex run is `unverified` with
   `hook_entry_unresolved`. That stays true once `watch --harness codex` has
   installed: see below.
-- **recap prints nothing under Codex.** How Codex reads a Stop hook's stdout
-  is unmeasured.
+- **recap speaks under Codex at Stop only.** See "The end-of-turn line under
+  Codex", below.
 - **`apply_patch` is a write, and Codex's spawn and wait tools are agent
   calls.** `apply_patch` gets no file label until a capture shows its input.
 - **`SessionEnd` never fired**, so a Codex run has no end-phase coverage
@@ -764,7 +764,7 @@ What a real capture showed (`test/fixtures/codex`), and what follows from it:
 
 ### Installing for Codex
 
-`rashomon watch --harness codex` writes three entries into Codex's
+`rashomon watch --harness codex` writes four entries into Codex's
 `hooks.json`, at `$CODEX_HOME/hooks.json` when the variable is set and
 `~/.codex/hooks.json` otherwise. Codex's hooks page names only `~/.codex`, but
 the CLI resolves `CODEX_HOME` itself. A repository's `.codex/hooks.json` is
@@ -776,8 +776,10 @@ missing, `watch` refuses rather than create it.
 | `PreToolUse` | `*` | `<exe> hook --harness codex --install <id>` |
 | `PostToolUse` | `*` | `<exe> post --harness codex --install <id>` |
 | `SessionStart` | none | `<exe> probe start --harness codex --install <id>` |
+| `Stop` | none | `<exe> recap --harness codex --install <id>` |
 
-Each entry has a five-second timeout. The marker, the install id and the
+Each entry has a five-second timeout, except Stop, which has recap's ten, as
+under Claude Code. The marker, the install id and the
 tamper rules are Claude Code's: one entry per event, a moved binary
 refreshed, an edited entry refused until `--force`, foreign hooks left byte
 for byte. Ownership includes the flag, so a Claude Code command line in
@@ -796,8 +798,8 @@ store to ask (H-148).
 
 Left out: `PostToolUseFailure` and `StopFailure`, which Codex does not have;
 `SessionEnd`, which never fired and whose timeout Codex caps at three seconds;
-and `Stop` and `UserPromptSubmit`, because recap prints nothing under Codex,
-and the user would be asked to trust two entries that do nothing.
+and `UserPromptSubmit`, where Codex adds a hook's plain stdout to the model's
+context, and recap's catch-up prints nothing under Codex anyway.
 
 **Trust.** Codex runs a hook only once the user has trusted it in `/hooks`,
 and it records that trust against a hash of the entry. So:
@@ -819,7 +821,7 @@ will run.
 
 `status` adds a `codex:` section only when the Codex directory exists. A
 rashomon Codex entry lives in that directory, so none can be present without
-it. It lists our three entries, the other
+it. It lists our four entries, the other
 installs, and the two things it did not read: trust and `hooks = false`.
 
 H-146 runs each installed command line through a shell with the capture's
@@ -843,10 +845,10 @@ Karthik's review:
 
 - a `CommandExecution` with exit code 0 is ok, and any other integer is
   failed, with that exit code;
-- a `FileChange` whose status is `failed` is failed;
+- a `FileChange` whose status is `completed` is ok, and `failed` is failed;
 - everything else stays unobserved: no matching item, a missing field, an exit
-  code that is not an integer, a status not named, a file change that
-  completed, an agent tool, an id with two different outcomes.
+  code that is not an integer, a status not named, an agent tool, an id with
+  two different outcomes.
 
 The outcome is set in memory at report time. The record keeps its empty
 outcome, because the hook could not observe one (H-149). The hook payload has
@@ -858,7 +860,34 @@ and without a result. A `CommandExecution` or `FileChange` item with no record
 is missing from the store. The agent-tool item types carry a call's id too, but
 `SubAgentActivity` also names things that are not calls, so neither is held to
 the store. Nothing in an item says a call was denied, so no call is excused as
-one. The digest, and so recap, does not read the rollout yet.
+one.
+
+The turn digest reads the rollout by the same rule, so a turn's line and the
+session's report count the same failures. It runs inside recap's hook, so the
+read is bounded: one second from when it starts, after which the rollout is
+dropped whole and its calls stay unobserved. A partial read would judge
+whatever it reached, and a call's own item is near the end of the file.
+
+**The end-of-turn line under Codex.** Codex shows a Stop hook's JSON
+`systemMessage` to the user as a warning (its hooks page, and the Stop output
+schema in its binary). Only `decision: "block"`, `continue`, or exit 2 would
+make the agent continue, and recap writes none of them: its stdout is the one
+`systemMessage` key or nothing. So recap speaks under Codex at Stop, from the
+Stop payload's `last_assistant_message` and `turn_id`, as under Claude Code
+(H-150).
+
+Two differences:
+
+- Its UserPromptSubmit catch-up prints nothing under Codex, installed or not.
+  There Codex adds a hook's plain stdout to the model's context, and nothing
+  this program writes may reach the model.
+- `hook_entry_unresolved`, which every Codex turn carries by design (above),
+  is set aside before the line is decided. Spoken, it would put the line on
+  every turn. Any other coverage reason still speaks, and the report and the
+  digest keep it.
+
+Unmeasured until a live check: whether a turn's items are already in the
+rollout when its Stop fires, and where the TUI shows the warning.
 
 H-145 replays the capture end to end.
 
