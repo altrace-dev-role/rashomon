@@ -1,8 +1,12 @@
 package hook
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -190,6 +194,61 @@ func TestREC52_FieldCapsAtNAndNPlusOne(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestREC52_ARefusalCapsItsSessionID: a payload over MaxPayloadBytes is
+// attributed from its head, and that head's session_id is capped like any
+// other: a 1,000-byte id lands in its own digest bucket, and the raw id
+// reaches no file in the store, from any of the four entries that record a
+// refusal. Break: hand the head's id to the record uncapped, and this fails.
+func TestREC52_ARefusalCapsItsSessionID(t *testing.T) {
+	raw := strings.Repeat("s", 1000)
+	want := store.CapID(raw)
+	over := func() *bytes.Reader { return bytes.NewReader(writePayload(MaxPayloadBytes+1, raw)) }
+	now := func() time.Time { return time.UnixMilli(1_760_000_000_000) }
+	entries := map[string]func(*store.Store){
+		"declaration": func(st *store.Store) {
+			h := New(st, now)
+			h.Close(&Signals{ch: make(chan os.Signal, 1)}, h.Capture(over()))
+		},
+		"execution": func(st *store.Store) {
+			p := NewPost(st, now)
+			p.Close(&Signals{ch: make(chan os.Signal, 1)}, p.Capture(over()))
+		},
+		"probe": func(st *store.Store) {
+			RunProbe(&Signals{ch: make(chan os.Signal, 1)}, store.PhaseStart, over(), st, now)
+		},
+		"paused": func(st *store.Store) {
+			RecordPaused(over(), store.PhaseCall, st, now)
+		},
+	}
+	for name, record := range entries {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+			st := mustOpen(t)
+			record(st)
+			run, err := st.ReadRunDir(st.DirName(want))
+			if err != nil || len(run.Coverage) != 1 {
+				t.Fatalf("refusal: %d coverage records under the capped id, %v", len(run.Coverage), err)
+			}
+			if got := run.Coverage[0].SessionID; got != want {
+				t.Errorf("refusal recorded session_id of %d bytes, want the %d-byte digest %q", len(got), len(want), want)
+			}
+			err = filepath.WalkDir(st.Root(), func(path string, d fs.DirEntry, err error) error {
+				if err != nil || d.IsDir() {
+					return err
+				}
+				b, err := os.ReadFile(path)
+				if err == nil && bytes.Contains(b, []byte(raw)) {
+					t.Errorf("%s carries the raw %d-byte session_id", path, len(raw))
+				}
+				return err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 func mustOpen(t *testing.T) *store.Store {

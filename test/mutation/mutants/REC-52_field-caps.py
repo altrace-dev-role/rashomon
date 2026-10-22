@@ -36,3 +36,6 @@ m("REC-52 an over-long session id leaves the call verified", "internal/hook/hand
   "\th.withheld = len(p.SessionID) > store.MaxIDBytes\n", "", "TestREC52_")
 m("REC-52 no cap on the coverage record's cwd", "internal/hook/coverage.go",
   "\tif len(cwd) > store.MaxPathBytes {\n", "\tif false {\n", "TestREC52_")
+m("REC-52 a refusal hands the head's session id to the record uncapped", "internal/hook/payload.go",
+  "\treturn attribute(tl.SessionID), tl.CWD, true\n", "\treturn tl.SessionID, tl.CWD, true\n",
+  "TestREC52_")

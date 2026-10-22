@@ -59,14 +59,16 @@ func (p *sessionPayload) from(in *hookio.Payload) error {
 
 // refusedSession is the session and cwd the head of an over-cap payload
 // names (hookio.TooLargeError), so that its refusal is recorded in the run
-// that sent it. ok is false for any other error, and for a head that names
-// no session, which stays unattributed.
+// that sent it. The session is attributed as a parsed payload's is, so a head
+// whose id is over store.MaxIDBytes lands in that id's digest bucket and the
+// raw id reaches no record (REC-52). ok is false for any other error, and for
+// a head that names no session, which stays unattributed.
 func refusedSession(err error) (sessionID, cwd string, ok bool) {
 	var tl *hookio.TooLargeError
 	if !errors.As(err, &tl) || tl.SessionID == "" {
 		return "", "", false
 	}
-	return tl.SessionID, tl.CWD, true
+	return attribute(tl.SessionID), tl.CWD, true
 }
 
 // closeReason maps a capture error to its coverage reason.
