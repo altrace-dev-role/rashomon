@@ -7,7 +7,8 @@ m("RES-36 the linux perf job builds with go1.25.8 again", ".github/workflows/ci.
   '          # toolchain, so this pin moves only with a remeasurement.\n          go-version: "1.27.2"\n          cache: true\n',
   '          # toolchain, so this pin moves only with a remeasurement.\n          go-version: "1.25.8"\n          cache: true\n', "TestRES36h_")
 m("RES-36 the bench pipe runs without pipefail", ".github/workflows/ci.yaml",
-  "        shell: bash\n        run: |\n          set -o pipefail\n", "        run: |\n", "TestRES36h_")
+  "      # midway would pass on whatever partial output reached the gate.\n      - name: Benchmark allocations against the budgets\n        shell: bash\n        run: |\n          set -o pipefail\n",
+  "      # midway would pass on whatever partial output reached the gate.\n      - name: Benchmark allocations against the budgets\n        run: |\n", "TestRES36h_")
 m("RES-36 the macOS RSS step passes when every gate skipped", ".github/workflows/ci.yaml",
   '        env:\n          RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.\n', "", "TestRES36h_")
 m("RES-36 budgets.json names a toolchain the perf jobs do not run", "test/perf/budgets.json",

@@ -43,6 +43,39 @@ func TestRES36l_CheckPlatformRefusesAForeignGOOSOrGOARCH(t *testing.T) {
 	}
 }
 
+// TestRES36p_APlatformsOwnMeasuredRowsGateItself: a platform other than
+// BenchmarkPlatform has nothing to compare against until it has measured its
+// own rows (RES-36p, scripts/benchgate -measure); once Platforms[plat].
+// Benchmarks is filled in, CheckPlatform accepts that platform and
+// BenchmarksFor reads its own rows, never the reference platform's.
+func TestRES36p_APlatformsOwnMeasuredRowsGateItself(t *testing.T) {
+	own := []Benchmark{{Name: "BenchmarkLexTokens", BytesPerOpMax: 1, AllocsPerOpMax: 1}}
+	ref := []Benchmark{{Name: "BenchmarkLexTokens", BytesPerOpMax: 2, AllocsPerOpMax: 2}}
+	b := Budgets{
+		BenchmarkPlatform: "darwin/arm64",
+		Benchmarks:        ref,
+		Platforms:         map[string]Platform{"linux/amd64": {Benchmarks: own}},
+	}
+	if err := b.CheckPlatform("linux/amd64"); err != nil {
+		t.Errorf("a platform with its own measured rows refused: %v", err)
+	}
+	if got := b.BenchmarksFor("linux/amd64"); len(got) != 1 || got[0].BytesPerOpMax != 1 {
+		t.Errorf("BenchmarksFor(linux/amd64) = %+v, want its own row, not the reference platform's", got)
+	}
+	if got := b.BenchmarksFor("darwin/arm64"); len(got) != 1 || got[0].BytesPerOpMax != 2 {
+		t.Errorf("BenchmarksFor(darwin/arm64) = %+v, want the reference rows", got)
+	}
+	if err := b.CheckPlatform("windows/amd64"); err == nil || !strings.Contains(err.Error(), "darwin/arm64") || !strings.Contains(err.Error(), "windows/amd64") {
+		t.Errorf("a platform with neither the reference rows nor its own measured ones passed: %v", err)
+	}
+	// An empty Platforms entry (the key present, no rows under it yet) is the
+	// same as no baseline at all: still refused.
+	empty := Budgets{BenchmarkPlatform: "darwin/arm64", Benchmarks: ref, Platforms: map[string]Platform{"linux/amd64": {}}}
+	if err := empty.CheckPlatform("linux/amd64"); err == nil {
+		t.Error("a platform entry with no benchmark rows under it passed")
+	}
+}
+
 // TestRES36m_DecodeRefusesAnUnknownField: a misspelled key (case_budget for
 // case_budgets, say) is a defect in the file, not a silent zero. Decode must
 // refuse it rather than leave the override it was meant to set unfilled.

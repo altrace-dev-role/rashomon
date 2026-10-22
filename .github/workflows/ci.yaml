@@ -376,7 +376,73 @@ jobs:
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
+      # test/perf/budgets.json's benchmark rows were measured on darwin/arm64
+      # (budgets.json's benchmark_platform), which this runner is -- the only
+      # CI job that CAN compare them without fabricating anything. Before
+      # this step existed, the allocation benchmarks were gated on no CI job
+      # at all: perf-linux's own benchgate step runs on linux/amd64, which
+      # CheckPlatform correctly refuses to compare against these rows
+      # (nothing here claims a GOOS/GOARCH it was not measured on), and until
+      # linux/amd64 has committed rows of its own under
+      # platforms.linux/amd64.benchmarks (RES-36p; the "Measure linux/amd64
+      # benchmark rows" job below), that refusal is correct, not a bug.
+      - name: Benchmark allocations against the budgets
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -run '^$' -bench . -benchtime 20x -count 3 ./... | tee bench.txt | go run ./scripts/benchgate
+
+      - name: Upload bench.txt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: bench-macos
+          path: bench.txt
+          retention-days: 14
+
       - name: Peak RSS and init budget
         env:
           RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.
         run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
+
+  measure-linux-benchmarks:
+    name: Measure linux/amd64 benchmark rows
+    runs-on: ubuntu-latest
+    # Started by hand only (Actions > CI > Run workflow), same as the sweep
+    # job above: it does not gate anything, so push and pull_request skip it.
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.2"  # Same pin as perf-linux; see the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      # The "Perf gates (linux)" job fails closed with "budgets.json's
+      # benchmark rows were measured on darwin/arm64 and this run is
+      # linux/amd64: nothing compared" because no row has ever been measured
+      # ON linux/amd64 -- fabricating one from this repository's darwin/arm64
+      # figures would defeat the whole point of CheckPlatform (RES-36). This
+      # job measures the real thing, on the real runner, and prints it; it
+      # does not write test/perf/budgets.json itself, so the rows reach the
+      # file only after a human reads scripts/benchgate -measure's own
+      # warning and pastes the printed array into
+      # platforms.linux/amd64.benchmarks by hand, then commits it.
+      - name: Measure this runner's own benchmark rows
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -run '^$' -bench . -benchtime 20x -count 3 ./... | tee bench.txt | go run ./scripts/benchgate -measure > linux_amd64_benchmarks.json
+
+      - name: Upload the measured rows
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: linux-amd64-benchmark-rows
+          path: |
+            bench.txt
+            linux_amd64_benchmarks.json
+          retention-days: 14

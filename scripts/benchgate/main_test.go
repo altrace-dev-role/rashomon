@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -188,6 +189,78 @@ func TestRES36n_PlatformMismatchFailsClosed(t *testing.T) {
 				t.Errorf("results printed before the platform check:\n%s", stdout.String())
 			}
 		})
+	}
+}
+
+// fixtureWithOverride writes a budgets file whose reference platform is
+// darwin/arm64 (top-level rows, max 1 -- deliberately tighter than
+// BenchmarkLexTokens' real figure, so a run gated against them fails), plus
+// one override row for linux/amd64 at overrideMax under
+// platforms.linux/amd64.benchmarks (RES-36p).
+func fixtureWithOverride(t *testing.T, overrideMax int64) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "budgets.json")
+	doc := `{"budgets_version": 1, "go_version": "go1.27.2", "benchmark_platform": "darwin/arm64", "benchmarks": [` +
+		`{"name": "BenchmarkLexTokens", "measured_bytes_per_op": 1, "measured_allocs_per_op": 1, "bytes_per_op_max": 1, "allocs_per_op_max": 1}` +
+		`], "platforms": {"linux/amd64": {"benchmarks": [` +
+		`{"name": "BenchmarkLexTokens", "measured_bytes_per_op": ` + strconv.FormatInt(overrideMax, 10) + `, "measured_allocs_per_op": 750, "bytes_per_op_max": ` + strconv.FormatInt(overrideMax, 10) + `, "allocs_per_op_max": 750}` +
+		`]}}}`
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestRES36p_RunGatesAPlatformAgainstItsOwnMeasuredRows: once a platform
+// other than benchmark_platform has its own rows committed
+// (platforms.<plat>.benchmarks, RES-36p), the gate compares against those,
+// not the reference platform's: BenchmarkLexTokens' real figures (128544 B,
+// 750 allocs) fail against the reference fixture's deliberately tight max
+// (1) but pass against linux/amd64's own, looser, measured max.
+func TestRES36p_RunGatesAPlatformAgainstItsOwnMeasuredRows(t *testing.T) {
+	path := fixtureWithOverride(t, 128544)
+	var stdout, stderr bytes.Buffer
+	code := run(path, strings.NewReader(lexLine), &stdout, &stderr, "go1.27.2", "linux/amd64")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0\nstdout %s\nstderr %s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "1 benchmarks within budget") {
+		t.Errorf("did not gate against the platform's own row:\n%s", stdout.String())
+	}
+	// The reference platform itself still reads its own (tight) row: proof
+	// the pass above came from linux/amd64's own override, not a change that
+	// made every platform read the loose row.
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(path, strings.NewReader(lexLine), &stdout, &stderr, "go1.27.2", "darwin/arm64"); code != 1 {
+		t.Errorf("reference platform against its own tight row: exit %d, want 1\n%s", code, stderr.String())
+	}
+}
+
+// TestRES36q_MeasurePrintsRowsWithNoBudgetsFileInput: -measure's rows are the
+// run's own measurement, max equal to measured, read from no budgets file
+// (RES-36p): it never refuses a toolchain or a platform, and prints nothing
+// when nothing ran.
+func TestRES36q_MeasurePrintsRowsWithNoBudgetsFileInput(t *testing.T) {
+	got := Measure(map[string]Result{"BenchmarkB": {2000, 20}, "BenchmarkA": {1000, 10}})
+	want := []budget.Benchmark{
+		{Name: "BenchmarkA", MeasuredBytesPerOp: 1000, MeasuredAllocsPerOp: 10, BytesPerOpMax: 1000, AllocsPerOpMax: 10},
+		{Name: "BenchmarkB", MeasuredBytesPerOp: 2000, MeasuredAllocsPerOp: 20, BytesPerOpMax: 2000, AllocsPerOpMax: 20},
+	}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("Measure = %+v, want %+v (sorted, max == measured)", got, want)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := runMeasure(strings.NewReader(lexLine), &stdout, &stderr, "go1.99.9", "plan9/amd64"); code != 0 {
+		t.Fatalf("exit %d, want 0\nstderr %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"name": "BenchmarkLexTokens"`) {
+		t.Errorf("-measure printed no row for the one benchmark that ran:\n%s", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := runMeasure(strings.NewReader(""), &stdout, &stderr, "go1.27.2", fixturePlatform); code != 2 {
+		t.Errorf("-measure with nothing parsed: exit %d, want 2", code)
 	}
 }
 

@@ -3,15 +3,32 @@
 // budget on B/op or allocs/op by more than the tolerance, when a budgeted
 // benchmark did not run, or when a benchmark ran without a row (tech spec
 // 8.2.6; RES-36). It exits 2, comparing nothing, when it runs under a
-// toolchain other than the one budgets.json's go_version names, when the file
-// has no benchmark rows, or when the file or the output cannot be read. It reads the benchmark output from
-// stdin, takes the best of repeated runs, and never looks at wall time.
+// toolchain other than the one budgets.json's go_version names, when the
+// running platform has no rows of its own to compare against (neither the
+// reference platform's rows nor its own measured override, RES-36p), when
+// the file has no benchmark rows at all, or when the file or the output
+// cannot be read. It reads the benchmark output from stdin, takes the best
+// of repeated runs, and never looks at wall time.
 //
 //	go test -run '^$' -bench . -benchtime 20x -count 3 ./... | go run ./scripts/benchgate
+//
+// -measure skips the comparison and instead prints the rows this run's
+// platform would need to gate itself: a JSON array, one Benchmark object per
+// benchmark that ran, with bytes_per_op_max and allocs_per_op_max equal to
+// what was measured (test/perf/budgets.json's own convention). It reads no
+// budgets file, so it never refuses a toolchain or a platform; the printed
+// rows name neither, and a human pastes them into
+// test/perf/budgets.json's platforms.<goos>/<goarch>.benchmarks by hand
+// (RES-36p) -- this command does not write that file itself, so a row
+// reaches it only after someone has read where it came from.
+//
+//	go test -run '^$' -bench . -benchtime 20x -count 3 ./... | go run ./scripts/benchgate -measure
 package main
 
 import (
 	"bufio"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -28,6 +45,12 @@ import (
 const tolerance = 0.10
 
 func main() {
+	measure := flag.Bool("measure", false, "print this platform's own benchmark rows instead of comparing")
+	flag.Parse()
+	if *measure {
+		os.Exit(runMeasure(os.Stdin, os.Stdout, os.Stderr, runtime.Version(), runtime.GOOS+"/"+runtime.GOARCH))
+		return
+	}
 	os.Exit(run("test/perf/budgets.json", os.Stdin, os.Stdout, os.Stderr, runtime.Version(), runtime.GOOS+"/"+runtime.GOARCH))
 }
 
@@ -54,14 +77,15 @@ func run(budgetsPath string, in io.Reader, stdout, stderr io.Writer, goVersion, 
 	if err := b.CheckPlatform(platform); err != nil {
 		return fail(err)
 	}
-	if len(b.Benchmarks) == 0 {
+	benchmarks := b.BenchmarksFor(platform)
+	if len(benchmarks) == 0 {
 		return fail(fmt.Errorf("%s has no benchmark rows, so there is nothing to compare", budgetsPath))
 	}
 	results, err := Parse(in)
 	if err != nil {
 		return fail(err)
 	}
-	problems := Compare(results, b.Benchmarks, tolerance)
+	problems := Compare(results, benchmarks, tolerance)
 	for _, name := range sortedNames(results) {
 		r := results[name]
 		fmt.Fprintf(stdout, "%-48s %10d B/op %6d allocs/op\n", name, r.BytesPerOp, r.AllocsPerOp)
@@ -72,8 +96,54 @@ func run(budgetsPath string, in io.Reader, stdout, stderr io.Writer, goVersion, 
 		}
 		return 1
 	}
-	fmt.Fprintf(stdout, "benchgate: %d benchmarks within budget\n", len(b.Benchmarks))
+	fmt.Fprintf(stdout, "benchgate: %d benchmarks within budget\n", len(benchmarks))
 	return 0
+}
+
+// runMeasure prints in reads as rows for goVersion/platform: 2 when nothing
+// ran or the output could not be parsed, 0 otherwise. It never reads
+// budgets.json, so a row it prints carries no claim about any file; Measure
+// is the pure part, kept separate so a test can check the rows without
+// capturing stdout.
+func runMeasure(in io.Reader, stdout, stderr io.Writer, goVersion, platform string) int {
+	results, err := Parse(in)
+	if err != nil {
+		fmt.Fprintln(stderr, "benchgate:", err)
+		return 2
+	}
+	if len(results) == 0 {
+		fmt.Fprintln(stderr, "benchgate: -measure read no benchmark output, so there is nothing to measure")
+		return 2
+	}
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(Measure(results)); err != nil {
+		fmt.Fprintln(stderr, "benchgate:", err)
+		return 2
+	}
+	fmt.Fprintf(stderr, "benchgate: measured %d benchmarks on %s under %s; paste the array above into "+
+		"test/perf/budgets.json's platforms.%s.benchmarks\n", len(results), platform, goVersion, platform)
+	return 0
+}
+
+// Measure turns results into the rows test/perf/budgets.json commits for a
+// platform: a Benchmark per name, sorted, whose max is the measurement
+// itself (the file's own "a row's max equals its measurement" rule), never
+// a figure read from an existing budgets file -- -measure takes no budgets
+// file as input, so there is nothing here to inflate or shrink one by.
+func Measure(results map[string]Result) []budget.Benchmark {
+	rows := make([]budget.Benchmark, 0, len(results))
+	for _, name := range sortedNames(results) {
+		r := results[name]
+		rows = append(rows, budget.Benchmark{
+			Name:                name,
+			MeasuredBytesPerOp:  r.BytesPerOp,
+			MeasuredAllocsPerOp: r.AllocsPerOp,
+			BytesPerOpMax:       r.BytesPerOp,
+			AllocsPerOpMax:      r.AllocsPerOp,
+		})
+	}
+	return rows
 }
 
 // Result is a benchmark's best allocation figures over its runs.

@@ -56,6 +56,14 @@ type Budgets struct {
 // TestRES28b_ and TestRES28_ gate it report-only rather than assume it reads
 // no higher than the reference platform's row, an assumption Linux's first
 // run (archive 85.4.3) disproved for several of them.
+//
+// Benchmarks is the same idea for RES-36's allocation rows: a platform other
+// than BenchmarkPlatform has none of its own B/op figures (long $TMPDIR
+// paths on darwin skew B/op against the same benchmark on linux, so nothing
+// here is derived from another platform's row), until a measure run on that
+// platform's own CI runner fills it in (RES-36p; `go run ./scripts/benchgate
+// -measure`). Empty for the reference platform, whose rows are the
+// top-level Benchmarks slice.
 type Platform struct {
 	Reference      string             `json:"reference"`
 	SetFrom        string             `json:"set_from"`
@@ -64,6 +72,7 @@ type Platform struct {
 	ToleranceAfter float64            `json:"tolerance_after"`
 	Entries        map[string]RSS     `json:"entries"`
 	CaseBudgets    map[string]float64 `json:"case_budgets,omitempty"`
+	Benchmarks     []Benchmark        `json:"benchmarks,omitempty"`
 }
 
 // RSS is a peak-RSS budget pair in MiB.
@@ -160,21 +169,35 @@ func (b Budgets) CheckToolchain(running string) error {
 	return nil
 }
 
-// CheckPlatform refuses to compare under any GOOS/GOARCH but the one the
-// benchmark rows were measured on: B/op on darwin carries long $TMPDIR path
-// strings that a differently-rooted platform would not, so a gate reading
-// one platform's run against another's rows judges the platform, the same
+// CheckPlatform refuses to compare under any GOOS/GOARCH but one that has
+// its own benchmark rows: B/op on darwin carries long $TMPDIR path strings
+// that a differently-rooted platform would not, so a gate reading one
+// platform's run against another's rows judges the platform, the same
 // reason CheckToolchain judges the toolchain. running is
-// runtime.GOOS+"/"+runtime.GOARCH of the process doing the comparison; a
-// file naming no platform fails the same way as one naming no toolchain.
+// runtime.GOOS+"/"+runtime.GOARCH of the process doing the comparison;
+// running either is BenchmarkPlatform (the reference rows are its own) or
+// names its own measured rows in Platforms[running].Benchmarks (RES-36p) --
+// anything else, including a file naming no platform, fails the same way.
 func (b Budgets) CheckPlatform(running string) error {
 	if b.BenchmarkPlatform == "" {
 		return errors.New("budgets.json names no benchmark_platform, so its benchmark rows cannot be compared with any run")
 	}
-	if running != b.BenchmarkPlatform {
+	if running != b.BenchmarkPlatform && len(b.Platforms[running].Benchmarks) == 0 {
 		return fmt.Errorf("budgets.json's benchmark rows were measured on %s and this run is %s: nothing compared", b.BenchmarkPlatform, running)
 	}
 	return nil
+}
+
+// BenchmarksFor is the rows CheckPlatform already proved running may compare
+// against: its own measured rows (Platforms[running].Benchmarks) when
+// running is not the reference platform, or the reference rows (Benchmarks)
+// when it is -- never a blend, since a platform's own rows, once measured,
+// are what its own CI job should read (RES-36p).
+func (b Budgets) BenchmarksFor(running string) []Benchmark {
+	if running != b.BenchmarkPlatform {
+		return b.Platforms[running].Benchmarks
+	}
+	return b.Benchmarks
 }
 
 // RES28BudgetMiB is RES-28's line: 6.5 MiB plus 2.2 MiB per MiB of payload.
