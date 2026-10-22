@@ -47,6 +47,20 @@ func Load(path string) (*Document, error) {
 
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
+		// A dangling symlink's open fails with the same ErrNotExist a path
+		// with nothing at it gives, and the two are not the same fact: one
+		// has nothing to read, the other names a target that is not there to
+		// read. writeTarget already draws the line Write and ReadOriginal hold
+		// to; Load asking it means a settings file that is a broken link
+		// reads as unreadable, not as an absent one watch would then install
+		// straight over, and status would then report as "not installed"
+		// rather than the link it could not resolve. It is asked only once
+		// the read has failed: a file that reads has resolved, and resolving
+		// it again on every Load walked each element of the path, about 42
+		// of a hook call's allocations (BenchmarkRunHook).
+		if _, err := writeTarget(path); err != nil {
+			return nil, err
+		}
 		return &Document{}, nil
 	}
 	if err != nil {

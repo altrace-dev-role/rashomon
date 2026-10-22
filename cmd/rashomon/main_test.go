@@ -204,3 +204,38 @@ func TestHookPathsAlwaysExitZero(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardedHook_ReportsAPanicButAlwaysExitsOK: a panic guardedHook recovers
+// is named on stderr -- by type only, never its value -- and the return is
+// exitOK whatever fn did. cmdHook, cmdPost and cmdProbe each guard their
+// whole body through this, and exiting anything but 0 there would block the
+// tool call Claude Code is waiting on; before, the outer Guard's error was
+// discarded, and a panic in the prologue -- ahead of any record the store
+// could hold -- left no trace on stderr at all.
+func TestGuardedHook_ReportsAPanicButAlwaysExitsOK(t *testing.T) {
+	var stderr bytes.Buffer
+	got := guardedHook(&stderr, func() error { panic("a secret the caller must never see") })
+	if got != exitOK {
+		t.Errorf("guardedHook returned %d, want %d", got, exitOK)
+	}
+	if !strings.Contains(stderr.String(), "recovered panic of type string") {
+		t.Errorf("stderr = %q, want it to name the recovered panic's type", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "secret") {
+		t.Errorf("stderr = %q, leaked the panic value", stderr.String())
+	}
+}
+
+// TestGuardedHook_NoPanicExitsOKAndPrintsNothing: the ordinary path, so the
+// fix above a panic is reported on does not cost every hook invocation a
+// line on stderr.
+func TestGuardedHook_NoPanicExitsOKAndPrintsNothing(t *testing.T) {
+	var stderr bytes.Buffer
+	got := guardedHook(&stderr, func() error { return nil })
+	if got != exitOK {
+		t.Errorf("guardedHook returned %d, want %d", got, exitOK)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want nothing written on the ordinary path", stderr.String())
+	}
+}

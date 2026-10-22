@@ -436,7 +436,15 @@ const (
 // Coverage reasons. Fixed codes, never free text, and never derived from input.
 const (
 	ReasonInternalError = "internal_error"
-	ReasonLockTimeout   = "lock_timeout"
+	// ReasonRecoveredPanic marks an invocation in which the panic barrier
+	// recovered a panic: a bug in this program, as distinct from
+	// internal_error's ordinary failure (a write the disk refused, a payload
+	// that did not parse). It rides the coverage record and, when the panic
+	// cost the call's capture, its terminal. A panic recovered inside the
+	// file-label derivation costs only the label, which reads unknown, and
+	// is named here so the report can tell that unknown from an ordinary one.
+	ReasonRecoveredPanic = "recovered_panic"
+	ReasonLockTimeout    = "lock_timeout"
 	// ReasonPayloadTooLarge marks an invocation whose payload was over the
 	// 8 MiB intake cap (hookio.MaxPayloadBytes) and was refused after a
 	// bounded read. Nothing broke inside this program, which is why it is
@@ -465,6 +473,14 @@ const (
 	// over MaxRecordBytes and refused (REC-31, REC-52). Nothing broke, which
 	// is why it is not internal_error; what the record holds is incomplete.
 	ReasonRecordOversize = "record_oversize"
+	// ReasonPauseStateUnreadable marks an invocation that found the pause
+	// marker present and could not read it: EACCES on the file itself, or
+	// any other error that is not the file simply not being there. It is
+	// recorded instead of ReasonRecordingPaused because the call really was
+	// paused, but not on purpose the way an ordinary `rashomon pause` is --
+	// a reader needs the two distinguishable rather than folded into one.
+	// checkPaused is the only writer.
+	ReasonPauseStateUnreadable = "pause_state_unreadable"
 )
 
 // Reasons lists every coverage reason code a record can carry. It exists so
@@ -473,6 +489,7 @@ const (
 func Reasons() []string {
 	return []string{
 		ReasonInternalError,
+		ReasonRecoveredPanic,
 		ReasonLockTimeout,
 		ReasonPayloadTooLarge,
 		ReasonFlushFailed,
@@ -484,6 +501,7 @@ func Reasons() []string {
 		ReasonProbeUnresolved,
 		ReasonRecordingPaused,
 		ReasonRecordOversize,
+		ReasonPauseStateUnreadable,
 	}
 }
 

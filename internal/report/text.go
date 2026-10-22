@@ -145,6 +145,7 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	for _, t := range sess.Transcripts {
 		fmt.Fprintf(b, "  transcript %s\n", t.Path)
 		fmt.Fprintf(b, "    readable: %s\n", yesNo(t.Readable))
+		fmt.Fprintf(b, "    status: %s\n", t.Status)
 		fmt.Fprintf(b, "    files: %s\n", count(t.Files))
 		fmt.Fprintf(b, "    ids in transcript: %s\n", count(t.IDsInTranscript))
 		fmt.Fprintf(b, "    ids recorded: %d\n", t.IDsRecorded)
@@ -235,14 +236,17 @@ var reasonText = map[string]string{
 	"probe_absent":           "a session-start record or marker is missing: the recorder was installed mid-session, its start hook did not run, failed or ran while paused, or the size cap evicted the run",
 	"probe_unresolved":       "the session-start probe could not be read, so the start of this session is unaccounted for",
 	"run_not_closed":         "no session-end was recorded: the session is still open, it ended without one, or its end hook ran while `rashomon pause` was in effect",
-	"records_unreadable":     "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted",
+	"records_unreadable":     "some records could not be read (damaged, an unaccepted schema version, or an unknown type), so nothing they held is counted, or a coverage record was unverified with no reason or carried a state this build does not know",
 	"transcript_mismatch":    "the transcript and this store disagree about which tool calls were made; see the two `missing from` lines below",
+	"transcript_unreadable":  "a transcript this run's calls named exists but could not be read, so the check that every call in it was recorded did not run",
 	"execution_mismatch":     "the transcript holds results for calls this store recorded no execution for",
 	"gap":                    "a gap record marks a stretch this store does not hold: records removed by `forget` or the size cap, or a window `rashomon pause` left unrecorded",
 	"recording_paused":       "a hook ran while `rashomon pause` was in effect, so what it would have recorded (a tool call, its result, or the session's start or end) was deliberately not recorded",
+	"pause_state_unreadable": "a hook found the pause marker present but could not read it, so it did not record, but the gap is a filesystem fault rather than a deliberate `rashomon pause`",
 	"duplicate_declarations": "more declarations than distinct tool calls: more than one recorder wrote into this run, and the counts here include every copy",
 	"declaration_missing":    "a call's terminal record is here and its declaration is not, and the lock did not refuse it: the declaration was lost to a damaged line or a failed write",
 	"internal_error":         "a hook invocation failed inside this program, so what it should have recorded is missing",
+	"recovered_panic":        "a hook invocation hit a bug in this program and recovered from it, so what it should have recorded is missing, or a file label reads unknown",
 	"lock_timeout":           "a hook could not take the store lock in time, so its record went to the spill file or was lost",
 	"payload_too_large":      "a hook was handed a payload over the 8 MiB intake limit and refused it without parsing, so that call was not recorded",
 	"record_oversize":        "a value in a hook's payload was over its size limit and was left out of the record, or the whole record was over the record limit and was not written, so what was recorded for that call is incomplete",

@@ -62,6 +62,9 @@ type Handler struct {
 	// the declaration (store.CapDeclaration); the call's coverage record
 	// then carries record_oversize.
 	withheld bool
+	// labelRecovered is set when fileLabel recovered a panic. The label
+	// then reads unknown, and Close names the panic in the coverage record.
+	labelRecovered bool
 }
 
 // New builds a Handler. now is injectable so a test can pin the clock and
@@ -132,9 +135,11 @@ func (h *Handler) Capture(in io.Reader) error {
 	// permitted at every version and required only at schema 3, so there is
 	// no longer a version to gate on: the field is always present, and this
 	// decides whether it is null or a label.
-	if label := fileLabel(p.ToolName, p.ToolInput); label != "" {
+	label, recovered := fileLabel(p.ToolName, p.ToolInput)
+	if label != "" {
 		decl.FileLabel = &label
 	}
+	h.labelRecovered = recovered
 	// The caps, after every field is filled: a value over its cap is left
 	// out of the record rather than cut, and said so on the coverage record
 	// (REC-52), so no payload inside the intake limit can make a record the
@@ -207,10 +212,21 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 	if reason == "" && h.withheld {
 		reason = store.ReasonRecordOversize
 	}
+	// A panic recovered inside the label derivation cost the label and not
+	// the call, so the terminal above stays ok; the coverage record is where
+	// it is named, unless something that cost more already is. BuildCoverage
+	// is given reason, not a pre-substituted one, so it gets the chance to
+	// resolve hook_entry_absent and the rest first; recovered_panic only
+	// takes the record's empty slot, never one BuildCoverage already filled.
+	cov := BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.cwd, h.now())
+	if cov.Reason == nil && h.labelRecovered {
+		cov.Reason = nilIfEmpty(store.ReasonRecoveredPanic)
+		cov.State = store.StateUnverified
+	}
 	// A call-phase coverage record that cannot be written is read as its
 	// absence: the report counts calls against their coverage (H-10), and a
 	// call with none never reads as covered.
-	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.cwd, h.now()))
+	_ = h.st.AppendCoverage(cov)
 }
 
 // startDirectory is the directory a call's command starts in: the payload's
@@ -252,15 +268,18 @@ func nilIfEmpty(s string) *string {
 // answer than an unknown label.
 //
 // The empty string means the tool names no file and the record's field stays
-// null. A panic means the tool did name one and the label could not be derived,
-// which is LabelUnknown; shape.Label returns early for an unlabelled tool, so
-// the two cannot be confused.
-func fileLabel(toolName string, toolInput json.RawMessage) (label string) {
+// null. A panic means the label could not be derived: the label is then
+// LabelUnknown and recovered is true. LabelUnknown alone cannot say so,
+// because shape.Label also returns it for a path field that is absent,
+// non-string or empty; recovered is what lets Close name the panic in the
+// coverage record. No new label value carries it, because the report clamps any
+// label outside shape.Labels() to unknown.
+func fileLabel(toolName string, toolInput json.RawMessage) (label string, recovered bool) {
 	defer func() {
 		if v := recover(); v != nil {
-			label = shape.LabelUnknown
+			label, recovered = shape.LabelUnknown, true
 		}
 	}()
 	fault.Inject(fault.PointLabel)
-	return shape.Label(toolName, toolInput)
+	return shape.Label(toolName, toolInput), false
 }

@@ -65,10 +65,10 @@ func TestRemoveIfAnyInstallID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RemoveIf: %v", err)
 	}
-	if want := 2 * len(Events); n != want {
+	if want := 2 * len(Events()); n != want {
 		t.Errorf("removed %d entries, want %d", n, want)
 	}
-	for _, event := range Events {
+	for _, event := range Events() {
 		remaining := entriesOf(t, doc, event)
 		if len(remaining) != 1 {
 			t.Errorf("under %s, %d entries remain, want 1 (the foreign one)", event, len(remaining))
@@ -93,10 +93,10 @@ func TestRemoveNamedInstallLeavesTheOther(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	if n != len(Events) {
-		t.Errorf("removed %d entries, want %d", n, len(Events))
+	if n != len(Events()) {
+		t.Errorf("removed %d entries, want %d", n, len(Events()))
 	}
-	for _, event := range Events {
+	for _, event := range Events() {
 		remaining := entriesOf(t, doc, event)
 		if len(remaining) != 2 {
 			t.Errorf("under %s, %d entries remain, want 2 (the foreign one and the other install's)", event, len(remaining))
@@ -144,7 +144,7 @@ func seedDocument(t *testing.T) *settings.Document {
 	t.Helper()
 	var b strings.Builder
 	b.WriteString(`{"hooks":{`)
-	for i, event := range Events {
+	for i, event := range Events() {
 		if i > 0 {
 			b.WriteString(",")
 		}
@@ -194,4 +194,113 @@ func mustEntry(t *testing.T, s Spec, event string) json.RawMessage {
 		t.Fatalf("rendering the %s entry: %v", event, err)
 	}
 	return raw
+}
+
+// TestCoverageIntact_MatcherEquivalenceAndExtraHooksDoNotCostCoverage:
+// coverageIntact, unlike intact, asks only whether a group's matcher fires
+// on every call this event raises and whether a command hook is in the
+// group at all. A different timeout and an extra hook alongside ours change
+// how fast or how often something ELSE in the group runs, never whether
+// ours does, so neither is asked here; intact's own job -- catching either
+// one so Apply and RemoveIf do not silently overwrite or remove a hand
+// edit -- is untouched.
+func TestCoverageIntact_MatcherEquivalenceAndExtraHooksDoNotCostCoverage(t *testing.T) {
+	ptr := func(s string) *string { return &s }
+	cases := []struct {
+		name  string
+		event string
+		raw   string
+		want  string // "" means coverageIntact accepts the group
+	}{
+		{"an absent matcher fires on every call", EventPreToolUse,
+			`{"hooks":[{"type":"command","command":"x","timeout":5}]}`, ""},
+		{"an empty matcher fires on every call", EventPreToolUse,
+			`{"matcher":"","hooks":[{"type":"command","command":"x","timeout":5}]}`, ""},
+		{"a star matcher fires on every call", EventPreToolUse,
+			`{"matcher":"*","hooks":[{"type":"command","command":"x","timeout":5}]}`, ""},
+		{"a narrowed matcher does not fire on every call", EventPreToolUse,
+			`{"matcher":"Bash","hooks":[{"type":"command","command":"x","timeout":5}]}`, "matcher"},
+		{"a matcher on an event with none narrows it", EventSessionStart,
+			`{"matcher":"startup","hooks":[{"type":"command","command":"x","timeout":5}]}`, "matcher"},
+		{"a star matcher on a session event still fires on every call", EventSessionStart,
+			`{"matcher":"*","hooks":[{"type":"command","command":"x","timeout":5}]}`, ""},
+		{"a different timeout does not cost coverage", EventPreToolUse,
+			`{"matcher":"*","hooks":[{"type":"command","command":"x","timeout":600}]}`, ""},
+		{"a second hook in the group does not cost coverage", EventPreToolUse,
+			`{"matcher":"*","hooks":[{"type":"command","command":"x","timeout":5},` +
+				`{"type":"command","command":"other","timeout":30}]}`, ""},
+		{"no command hook at all", EventPreToolUse,
+			`{"matcher":"*","hooks":[]}`, "command"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := coverageIntact(json.RawMessage(c.raw), c.event)
+			if c.want == "" && got != "" {
+				t.Errorf("coverageIntact = %q, want accepted", got)
+			}
+			if c.want != "" && !strings.Contains(got, c.want) {
+				t.Errorf("coverageIntact = %q, want it to mention %q", got, c.want)
+			}
+		})
+	}
+
+	// matcherFires itself, the equivalence coverageIntact and intact
+	// disagree on. intact (Apply, RemoveIf) still requires the literal
+	// string "*" and refuses nil or "" as a modification, which is correct
+	// for them: it is deciding whether to overwrite, not whether the group
+	// still fires.
+	for _, tc := range []struct {
+		event string
+		m     *string
+		want  bool
+	}{
+		{EventPreToolUse, nil, true},
+		{EventPreToolUse, ptr(""), true},
+		{EventPreToolUse, ptr(Matcher), true},
+		{EventPreToolUse, ptr("Bash"), false},
+		{EventSessionStart, nil, true},
+		{EventSessionStart, ptr(""), true},
+		{EventSessionStart, ptr(Matcher), true},
+		{EventSessionStart, ptr("startup"), false},
+	} {
+		if got := matcherFires(tc.event, tc.m); got != tc.want {
+			name := "nil"
+			if tc.m != nil {
+				name = *tc.m
+			}
+			t.Errorf("matcherFires(%s, %q) = %v, want %v", tc.event, name, got, tc.want)
+		}
+	}
+}
+
+// TestPresent_TimeoutDifferentFromWatchStillReadsPresent: an entry whose
+// timeout differs from the one watch installs, under our own command and
+// matcher, still reads Present, because that is what coverage asks:
+// whether the command fires on every call, not whether every field of the
+// entry matches byte for byte. Before Present asked intact instead of
+// coverageIntact, a timeout edit -- the most natural edit there is to make
+// to one of these entries -- made a verified run read hook_entry absent.
+func TestPresent_TimeoutDifferentFromWatchStillReadsPresent(t *testing.T) {
+	raw := mustEntry(t, spec(oneID), EventPreToolUse)
+	var g map[string]any
+	if err := json.Unmarshal(raw, &g); err != nil {
+		t.Fatal(err)
+	}
+	g["hooks"].([]any)[0].(map[string]any)["timeout"] = 600
+	retimed, err := json.Marshal(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	doc := &settings.Document{}
+	if err := doc.SetHookEntries(EventPreToolUse, []json.RawMessage{retimed}); err != nil {
+		t.Fatal(err)
+	}
+	present, err := Present(doc, oneID, EventPreToolUse)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !present {
+		t.Error("Present = false for an entry retimed to 600, want true: coverageIntact does not ask about timeout")
+	}
 }

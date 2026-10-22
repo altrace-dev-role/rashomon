@@ -223,6 +223,9 @@ func reasonVocabularyMismatches(schema map[string]any) (unchecked, missing []str
 	found := map[string]bool{}
 	collectReasonPaths(schema, "", found)
 	for p := range found {
+		if reasonConstraintPaths[p] && declaresNoReason(pointerNode(schema, p)) {
+			continue
+		}
 		if !reasonVocabularyPaths[p] {
 			unchecked = append(unchecked, p)
 		}
@@ -259,12 +262,12 @@ func collectReasonPaths(node any, path string, into map[string]bool) {
 	}
 }
 
-// TestReasonVocabularyTripwireCatchesWhatTheComparisonSkips mutates a copy of
+// TestRubricERRORS5_TheReasonTripwireCatchesWhatTheComparisonSkips mutates a copy of
 // the real schema -- never the file -- in each of the ways a reason vocabulary
 // can be added where TestStoreSchemaReasonsAreTheCodeReasons does not look, and
 // requires the tripwire to name the new location. The last case goes the other
 // way: a vocabulary the comparison reads disappears.
-func TestReasonVocabularyTripwireCatchesWhatTheComparisonSkips(t *testing.T) {
+func TestRubricERRORS5_TheReasonTripwireCatchesWhatTheComparisonSkips(t *testing.T) {
 	cases := []struct {
 		name                       string
 		mutate                     func(schema map[string]any)
@@ -292,6 +295,28 @@ func TestReasonVocabularyTripwireCatchesWhatTheComparisonSkips(t *testing.T) {
 				s["properties"] = map[string]any{"top_reason": map[string]any{"enum": []any{"never_emitted_value"}}}
 			},
 			wantUnchecked: "/properties/top_reason",
+		},
+		{
+			name: "the coverage constraint path declares values",
+			mutate: func(s map[string]any) {
+				schemaObject(t, s, "$defs", "coverage")["allOf"] = []any{map[string]any{
+					"then": map[string]any{"properties": map[string]any{
+						"reason": map[string]any{"type": "string", "enum": []any{"never_emitted_value"}},
+					}},
+				}}
+			},
+			wantUnchecked: "/$defs/coverage/allOf/0/then/properties/reason",
+		},
+		{
+			name: "the verified branch pins reason to a value, not to null",
+			mutate: func(s map[string]any) {
+				schemaObject(t, s, "$defs", "coverage")["allOf"] = []any{map[string]any{
+					"else": map[string]any{"properties": map[string]any{
+						"reason": map[string]any{"const": "never_emitted_value"},
+					}},
+				}}
+			},
+			wantUnchecked: "/$defs/coverage/allOf/0/else/properties/reason",
 		},
 		{
 			name: "a compared vocabulary removed",

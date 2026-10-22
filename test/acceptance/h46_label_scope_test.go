@@ -1,6 +1,7 @@
 package acceptance
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -103,6 +104,62 @@ func TestH46_NoFaultInLabellingCostsTheDeclaration(t *testing.T) {
 					t.Errorf("file_label = %q after a recovered fault, want %q", got, "unknown")
 				}
 			}
+			// The unknown label is not the only trace: the call's coverage
+			// record names the recovered panic, so it cannot be mistaken for
+			// a path field that was simply empty.
+			assertCallCoverage(t, e, testSession, "unverified", "recovered_panic")
 		})
 	}
+}
+
+// TestRubricERRORS8_LabelPanicIsNamedInCoverage: a panic recovered inside
+// the label derivation leaves the declaration and an ok terminal, and the
+// call's coverage record carries recovered_panic. Before, the label read
+// unknown and the coverage record read verified, so the panic left no trace
+// a reader could tell from an empty path field.
+func TestRubricERRORS8_LabelPanicIsNamedInCoverage(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	p := defaultPayload()
+	p.ToolName = "Read"
+	p.ToolInput = map[string]any{"file_path": "/home/u/notes.txt"}
+	if res := e.hook(p.build(t), "RASHOMON_FAULT="+pointLabel+":plain_panic"); res.exitCode != 0 {
+		t.Fatalf("exit code %d, want 0", res.exitCode)
+	}
+	if terms := e.terminals(testSession); len(terms) != 1 || terms[0].str("outcome") != "ok" {
+		t.Errorf("terminals %v, want one with outcome ok: the call itself was captured", terms)
+	}
+	assertCallCoverage(t, e, testSession, "unverified", "recovered_panic")
+}
+
+// TestRubricERRORS8_HookEntryAbsentOutranksARecoveredLabelPanic: a call whose
+// own hook entry is absent, and whose label derivation also panics, reads
+// hook_entry_absent -- the costlier problem -- not recovered_panic. Before,
+// Close named recovered_panic whenever the label panicked and the call
+// itself raised no error, which is true whether or not the hook entry that
+// made the call's coverage report possible at all was there, so an absent
+// entry went unnamed behind the cheaper, cosmetic fault.
+func TestRubricERRORS8_HookEntryAbsentOutranksARecoveredLabelPanic(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+
+	var doc map[string]any
+	if err := json.Unmarshal(e.settingsBytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	hooks, ok := doc["hooks"].(map[string]any)
+	if !ok || hooks["PreToolUse"] == nil {
+		t.Fatalf("premise broken: watch installed no PreToolUse entry:\n%s", e.settingsBytes())
+	}
+	delete(hooks, "PreToolUse")
+	out, _ := json.MarshalIndent(doc, "", "  ")
+	e.writeSettings(string(out) + "\n")
+
+	p := defaultPayload()
+	p.ToolName = "Read"
+	p.ToolInput = map[string]any{"file_path": "/home/u/notes.txt"}
+	if res := e.hook(p.build(t), "RASHOMON_FAULT="+pointLabel+":plain_panic"); res.exitCode != 0 {
+		t.Fatalf("exit code %d, want 0", res.exitCode)
+	}
+	assertCallCoverage(t, e, testSession, "unverified", "hook_entry_absent")
 }

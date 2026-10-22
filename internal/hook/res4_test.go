@@ -148,7 +148,7 @@ func TestRES4_PausedAttributesAnOverCapPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := func() time.Time { return time.UnixMilli(1_760_000_000_000) }
-	RecordPaused(bytes.NewReader(writePayload(MaxPayloadBytes+1, "s-paused-over-cap")), store.PhaseCall, st, now)
+	RecordPaused(bytes.NewReader(writePayload(MaxPayloadBytes+1, "s-paused-over-cap")), store.PhaseCall, store.ReasonRecordingPaused, st, now)
 	run, err := st.ReadRun("s-paused-over-cap")
 	if err != nil || len(run.Coverage) != 1 {
 		t.Fatalf("paused over-cap payload: %d coverage records in its run, %v", len(run.Coverage), err)

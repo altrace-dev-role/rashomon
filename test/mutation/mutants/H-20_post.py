@@ -1,5 +1,5 @@
 m("H-20 PostToolUse is not installed", "internal/install/install.go",
-  "\tEventPostToolUse,\n\tEventPostToolUseFailure,\n", "", "TestH3_")
+  "\t\tEventPostToolUse,\n\t\tEventPostToolUseFailure,\n", "", "TestH3_")
 m("H-20 the post entry is installed without a matcher", "internal/install/install.go",
   "\treturn event == EventPreToolUse ||\n\t\tevent == EventPostToolUse ||\n\t\tevent == EventPostToolUseFailure",
   "\treturn event == EventPreToolUse", "TestH3_")
