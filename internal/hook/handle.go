@@ -41,11 +41,6 @@ const MaxPayloadBytes = hookio.MaxPayloadBytes
 // shape.MaxLeadingCd, whose bound the masked-status walk shares.
 const maxLeadingCd = shape.MaxLeadingCd
 
-// UnattributedSession buckets records for a payload too malformed to name its
-// own session. Losing the run is bad; silently attributing it to a session that
-// did not produce it would be worse.
-const UnattributedSession = "unattributed"
-
 // LockWaitTotal is how long one invocation may wait for store locks, all of
 // its appends together (store.Store.LimitLockWaits). The hook timeout is five
 // seconds (install.Timeout), and three of them leave two for starting, the
@@ -99,7 +94,7 @@ var Writer = "dev"
 // compare two records byte for byte.
 func New(st *store.Store, now func() time.Time) *Handler {
 	return &Handler{st: st, now: now, lockWaits: LockWaitTotal, capDecl: store.CapDeclaration,
-		sessionID: UnattributedSession}
+		sessionID: store.UnattributedSession}
 }
 
 // Capture reads one payload and writes the declaration.
@@ -145,8 +140,13 @@ func (h *Handler) capture(payload *hookio.Payload) error {
 	}
 
 	// Attribute before anything else can fail. A fault after this point is
-	// still recorded against the session that produced it; only a payload too
-	// malformed to name its session goes to the unattributed bucket.
+	// still recorded against the session that produced it; a payload too
+	// malformed to name its session, or one that names none, goes to the
+	// unattributed bucket. The second kind still gets its declaration: it is
+	// the evidence that something other than a Claude Code session is running
+	// these hooks, and the report counts it. Its post, by contrast, records
+	// no execution -- see Post.Capture for why an outcome is the one thing a
+	// sessionless payload cannot be trusted to carry.
 	h.sessionID = attribute(p.SessionID)
 	h.withheld = len(p.SessionID) > store.MaxIDBytes
 	h.toolUseID = store.CapID(p.ToolUseID)

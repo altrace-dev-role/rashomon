@@ -1,12 +1,10 @@
 package report
 
 import (
-	"errors"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/host"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -152,8 +150,8 @@ const mcpProxyHost = "mcp-proxy.anthropic.com"
 const mcpTool = "mcp__"
 
 // buildDestinations reads the declarations. Every field but novelty is a
-// property of the record the recorder wrote itself; novelty consults the
-// project baseline beside the store.
+// property of the record the recorder wrote itself; novelty is the project
+// baseline's answer, which the read step asked (NoveltyQueryOf).
 //
 // forgotten excludes a host from the two lists only for a declaration whose
 // own recorded_at_unix_ms is at or before the latest forget --host of that
@@ -161,16 +159,14 @@ const mcpTool = "mcp__"
 // after the forget is this session's own fresh use of the name and is kept,
 // so a project can still name a host it once forgot. See
 // store.Store.ForgottenHostBefore.
-func buildDestinations(run *store.Run, storeRoot string, forgotten func(host string, declaredAtMS int64) bool) Destinations {
-	d := Destinations{
+func buildDestinations(run *store.Run, novelty Novelty, forgotten func(host string, declaredAtMS int64) bool) Destinations {
+	return Destinations{
 		DeclaredHosts:         declaredHostsFiltered(run, forgotten),
 		SSHHosts:              sshDeclaredFiltered(run, forgotten),
 		ExecutedNotAsDeclared: executedNotAsDeclared(run),
 		Rewritten:             rewrittenCalls(run),
+		Novelty:               novelty,
 	}
-	wire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, madeMCPCall(run))
-	d.Novelty = buildNovelty(run, storeRoot, wire, ssh)
-	return d
 }
 
 // novelHostCandidates are the hosts a novelty baseline should consider: what
@@ -207,26 +203,43 @@ func novelHostCandidates(wireHosts, sshHosts []string, mcpAttributed bool) (wire
 	return filter(wireHosts, host.Loopback), filter(sshHosts, host.LoopbackName)
 }
 
-// buildNovelty consults the project baseline.
+// NoveltyQuery is what the read step asks the project baseline for one run:
+// the baseline is keyed by the run's working directory, owned per session id
+// from the session's start, and told the hosts the session named. SSH marks
+// the hosts among them that came from an ssh destination
+// (baseline.UpdateOrigin's sshHosts), so a host named only over ssh is
+// marked (entry.SSH) rather than folded as an IP literal on every later
+// load; that is a fact only the run still has at this point.
+type NoveltyQuery struct {
+	CWD       string
+	SessionID string
+	Start     time.Time
+	Hosts     []string
+	SSH       map[string]bool
+}
+
+// NoveltyQueryOf is the run's question for the project baseline under
+// storeRoot, or, when it cannot be asked, the Novelty that says why.
 //
 // The project key comes from the cwd the RUN recorded, never from the process
 // rendering the report: a report run from a different directory must not key a
 // past session to the reader's project. A session with no recorded cwd has no
 // project, and novelty is unavailable rather than guessed.
 //
-// wireHosts and sshHosts are passed to baseline.UpdateOrigin separately so a
-// host named only over ssh is marked (entry.SSH) rather than folded as an IP
-// literal on every later load.
-func buildNovelty(run *store.Run, storeRoot string, wireHosts, sshHosts []string) Novelty {
+// The hosts asked about are the ones the destinations lists show:
+// buildDestinations' own forgotten predicate applies to them, so a host a
+// failed forget left in a declaration is not fed back into the baseline the
+// forget cleared, and the ssh hosts are candidates as the https ones are.
+func NoveltyQueryOf(run *store.Run, storeRoot string, forgotten func(host string, declaredAtMS int64) bool) (NoveltyQuery, *Novelty) {
 	n := Novelty{Hosts: []string{}}
 	cwd := runCWD(run)
 	if cwd == "" {
 		n.Reason = "the run recorded no working directory, so its project is unknown"
-		return n
+		return NoveltyQuery{}, &n
 	}
 	if storeRoot == "" {
 		n.Reason = "no store root, so the baseline could not be located"
-		return n
+		return NoveltyQuery{}, &n
 	}
 	// Ownership is recorded per session id, so an empty one makes every
 	// comparison vacuous: two unidentified runs would each appear to own the
@@ -235,49 +248,41 @@ func buildNovelty(run *store.Run, storeRoot string, wireHosts, sshHosts []string
 	// session would arrive.
 	if run.SessionID() == "" {
 		n.Reason = "the run has no session id, so baseline ownership cannot be attributed"
-		return n
+		return NoveltyQuery{}, &n
 	}
-
-	sshSet := make(map[string]bool, len(sshHosts))
-	for _, h := range sshHosts {
+	wire, ssh := novelHostCandidates(declaredHostsFiltered(run, forgotten), sshDeclaredFiltered(run, forgotten), madeMCPCall(run))
+	sshSet := make(map[string]bool, len(ssh))
+	for _, h := range ssh {
 		sshSet[h] = true
 	}
-	hosts := append(append([]string{}, wireHosts...), sshHosts...)
-	res := baseline.UpdateOrigin(storeRoot, baseline.Key(cwd), run.SessionID(),
-		time.UnixMilli(runStartMS(run)), hosts, sshSet)
-	if res.Err != nil {
-		n.Reason = baselineErrorReason(res.Err)
+	return NoveltyQuery{
+		CWD:       cwd,
+		SessionID: run.SessionID(),
+		Start:     time.UnixMilli(runStartMS(run)),
+		Hosts:     append(append([]string{}, wire...), ssh...),
+		SSH:       sshSet,
+	}, nil
+}
+
+// AnsweredNovelty is the section from the baseline's answer to a NoveltyQuery:
+// whether this render established the baseline, its size after the session,
+// how many hosts it aged out at its cap, the hosts that were new, and, when
+// it could not answer, failure: the reason the read step names for the
+// error, never the error's own text (see gather's baselineErrorReason).
+func AnsweredNovelty(established bool, known, evicted int, novel []string, failure string) Novelty {
+	n := Novelty{Hosts: []string{}}
+	if failure != "" {
+		n.Reason = failure
 		return n
 	}
 	n.Available = true
-	n.Established = res.Established
-	n.KnownHosts = res.Known
-	n.Evicted = res.Evicted
-	if res.Novel != nil {
-		n.Hosts = res.Novel
+	n.Established = established
+	n.KnownHosts = known
+	n.Evicted = evicted
+	if novel != nil {
+		n.Hosts = novel
 	}
 	return n
-}
-
-// baselineErrorReason tells apart the two named baseline errors a caller can
-// act on from the rest, which it describes the same way it always has.
-//
-// A render and `forget --host` both take the baseline's lock, and a reader
-// who sees the same sentence for that as for a corrupt file has no way to
-// tell "try again" from "look at this." baseline.ErrTooManyHosts and
-// store.ErrLockTimeout are named for exactly this reason; everything else --
-// a corrupt file, an unreadable one, a version this build does not know --
-// stays the generic message, deliberately not the error text: it carries
-// the baseline path, and a path carries someone's directory names.
-func baselineErrorReason(err error) string {
-	switch {
-	case errors.Is(err, baseline.ErrTooManyHosts):
-		return "this session named more hosts than a project baseline can hold, so novelty could not be updated this time"
-	case errors.Is(err, store.ErrLockTimeout):
-		return "the project baseline was locked by another render, so novelty could not be checked this time"
-	default:
-		return "the project baseline could not be read or written"
-	}
 }
 
 // runCWD is the working directory the run recorded, preferring the start-phase
@@ -363,6 +368,7 @@ func rewrittenCalls(run *store.Run) []Rewritten {
 			continue
 		}
 		d, ok := declared[x.ToolUseID]
+		// Not secret: a digest is an equality key between records, so == is right (shape.digest, S1).
 		if !ok || x.ExecutedDigest == d.digest {
 			continue
 		}
@@ -385,32 +391,15 @@ func executedNotAsDeclared(run *store.Run) int {
 	return len(rewrittenCalls(run))
 }
 
-// sshDeclared is the sorted, de-duplicated set of ssh hosts the session named.
-//
-// Always returns a non-nil slice so the JSON carries an empty list rather than
-// null: "no ssh host was named" is a fact, and null would read as "we did not
-// look".
-func sshDeclared(run *store.Run) []string {
-	set := map[string]bool{}
-	for _, d := range run.Declarations {
-		for _, h := range d.SSHHosts {
-			set[h] = true
-		}
-	}
-	out := make([]string, 0, len(set))
-	for h := range set {
-		out = append(out, h)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// sshDeclaredFiltered is sshDeclared with forgotten applied per declaration,
-// before the hosts are merged into one set: a host is dropped only for the
+// sshDeclaredFiltered is the sorted, de-duplicated set of ssh hosts the
+// session named, with forgotten applied per declaration before the hosts are
+// merged into one set: a host is dropped only for the
 // declaration(s) that named it at or before the latest forget of that name,
 // never for a later declaration that happens to share it. forgotten == nil
 // passes every host through, matching the report's nil-means-no-filter
-// convention (see suppressTrail).
+// convention (see suppressTrail). Always non-nil, so the JSON carries an empty
+// list rather than null: "no ssh host was named" is a fact, and null would
+// read as "we did not look".
 //
 // Canonicalised before forgotten is asked, the same correction
 // declaredHostsFiltered applies and for the same reason: forget --host
@@ -450,7 +439,7 @@ func sshDeclaredFiltered(run *store.Run, forgotten func(host string, declaredAtM
 }
 
 // declaredHosts is the sorted, de-duplicated set of hostnames the session's
-// tool calls named. Never nil, for the same reason as sshDeclared.
+// tool calls named. Never nil, for the same reason as sshDeclaredFiltered.
 //
 // Unfiltered: buildNono's own caller needs the full named set regardless of
 // what has been forgotten, to decide which trail hosts are the client's own.

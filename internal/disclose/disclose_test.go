@@ -154,7 +154,8 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}
 	// Their replacements exist only between the write and the rename; make
 	// one where each would be, to check its rule.
-	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*"} {
+	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*",
+		recap.StateTempPrefix + "*"} {
 		tmp, err := os.CreateTemp(root, pattern)
 		if err != nil {
 			t.Fatal(err)
@@ -167,6 +168,11 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 		t.Fatalf("recap.Claim: %v", err)
 	}
 	recap.RecordFailure(root, time.Now())
+	// The one shared temp name builds through v1.1.0 left; nothing writes it
+	// now, and a store one of them wrote may still hold it.
+	if err := os.WriteFile(filepath.Join(root, recap.StateTempName), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if res := baseline.Update(root, "tru23-project", sessionID, time.Now(), []string{"example.org"}); res.Err != nil {
 		t.Fatalf("baseline.Update: %v", res.Err)
 	}

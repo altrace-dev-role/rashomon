@@ -51,7 +51,7 @@ func TestRubricPERF6_LongLineTranscriptIDsStepsOverAndCounts(t *testing.T) {
 		t.Fatalf("premise: the long line and its newline are %d bytes, want %d", n, TranscriptMaxLine+1)
 	}
 	path := writeLines(t, useA, longLine(), useB, resultB)
-	ids, results, _, _, files, tooLong, err := TranscriptIDs(path)
+	ids, results, _, _, files, tooLong, err := transcriptIDsAt(path)
 	if err != nil {
 		t.Fatalf("TranscriptIDs: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestRubricPERF6_LongLineTranscriptIDsStepsOverAndCounts(t *testing.T) {
 // does not, so the group counts it and the session adds transcript_mismatch.
 func TestRubricPERF6_LongLineUnverifiesTheTranscript(t *testing.T) {
 	path := writeLines(t, useA, longLine(), useB, resultB)
-	sess := build(&store.Run{
+	sess := buildFromDisk(&store.Run{
 		Declarations: []store.Declaration{
 			{ToolUseID: "toolu_a", ToolName: "Bash", SessionID: "s", TranscriptPath: path},
 			{ToolUseID: "toolu_b", ToolName: "Bash", SessionID: "s", TranscriptPath: path},
@@ -88,12 +88,12 @@ func TestRubricPERF6_LongLineUnverifiesTheTranscript(t *testing.T) {
 func TestRubricPERF6_LongLineFinalAssistantTextReadsOn(t *testing.T) {
 	first := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"first"}]}}`
 	last := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"last"}]}}`
-	if got, ok := FinalAssistantText(writeLines(t, first, longLine(), last)); !ok || got != "last" {
+	if got, ok := FinalAssistantText(openT(t, writeLines(t, first, longLine(), last))); !ok || got != "last" {
 		t.Errorf("text after a line too long: %q, %v; want \"last\"", got, ok)
 	}
 	// The line not read may be a later reply, so nothing before it is the
 	// last word.
-	if got, ok := FinalAssistantText(writeLines(t, first, longLine())); ok {
+	if got, ok := FinalAssistantText(openT(t, writeLines(t, first, longLine()))); ok {
 		t.Errorf("text before a final line too long: %q, %v; want none", got, ok)
 	}
 }
@@ -111,7 +111,7 @@ func TestRubricPERF6_LongLineFinalAssistantTextsEndsTheTie(t *testing.T) {
 			`","role":"assistant","content":[{"type":"text","text":"` + text + `"}]}}`
 	}
 	path := writeLines(t, user("p1"), say("one"), longLine(), say("stray"), user("p2"), say("two"))
-	got := FinalAssistantTexts(path, map[string]bool{"p1": true, "p2": true})
+	got := FinalAssistantTexts(openT(t, path), map[string]bool{"p1": true, "p2": true})
 	if got["p1"].Said {
 		t.Errorf("p1 kept %q across a line too long", got["p1"].Text)
 	}

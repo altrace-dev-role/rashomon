@@ -13,15 +13,18 @@
 // prompt_id ALONE, and counts subagent calls separately rather than folding
 // them in unmarked -- see Subagents.
 //
-// It is read-only in a way report.Build is not: it opens the store with
+// It is read-only in a way gather.Build is not: it opens the store with
 // store.OpenExisting, never store.Open, so asking for a digest cannot mint an
 // install identity on a machine that has recorded nothing; it never globs a
-// subagent's transcript file, and never writes baseline/. It also never opens the SESSION's own transcript file --
-// report's Account and buildSilentFailures read that for the final assistant
-// message, and that read is both session-wide (wrong scope for a turn) and
-// racy at Stop (the file may not hold the final line yet). A digest's final
-// message, when it has one, is handed in by its caller -- see
-// report.AccountFromMessage.
+// subagent's transcript file, and never writes baseline/. It also never opens
+// the SESSION's own transcript file -- report's Account and
+// BuildSilentFailures read that for the final assistant message, and that read
+// is both session-wide (wrong scope for a turn) and racy at Stop (the file may
+// not hold the final line yet). A digest's final message, when it has one, is
+// handed in by its caller -- see report.AccountFromMessage. That holds by
+// construction, not by convention: opening a transcript is the read step's
+// (internal/report/gather), and nothing this package links reaches it
+// (TestRubricHLD4_TheVerdictPackagesLinkNoReadStep).
 //
 // It carries no new content. Every field here is a projection of something
 // the recorder already wrote; see the spec's Non-goals.
@@ -65,6 +68,15 @@ const (
 	// store.Store.ReadRunConsistent) silently undercounting the turn that
 	// was actually affected.
 	ReasonRecordsSkipped = "records_skipped"
+	// ReasonNoSessionID: asked about a turn whose payload named no session,
+	// so there was no run to read. no_store's sibling, and like it not an
+	// error: a harness other than Claude Code can run Claude Code's hooks
+	// without sending one -- Cursor, per its documentation, names a
+	// conversation_id instead -- and the turn it just finished is one this
+	// program cannot scope. The alternative it replaced -- the newest run in
+	// the store -- is some other session's turn, and a line built from it
+	// describes that session under this one's name.
+	ReasonNoSessionID = "no_session_id"
 )
 
 // TurnCoverage is turn-scoped coverage: the probe fired at start, the entry
@@ -210,8 +222,9 @@ type Digest struct {
 // readLockBudget bounds how long ReadRunConsistent may wait for writers'
 // locks: one deadline for the whole read of a run's three files, not a wait
 // per file. It is NOT store.lockBudget (2s): that number is what a WRITER
-// may cost another writer, and a reader borrowing it could spend the whole
-// 50ms budget this command owes, and more, waiting on one lock.
+// may cost another writer, and a reader borrowing it could wait longer on
+// one lock than Build takes to read a whole 20,000-call session (about
+// 300 ms, BenchmarkBuild on an Apple M3).
 //
 // It is derived from what a writer holds the lock for, measured by
 // store.BenchmarkOrderedAppendHold on the reference machine (Apple M3, three
@@ -241,6 +254,26 @@ const readLockBudget = 30 * time.Millisecond
 // to answer "there is nothing here" without OpenExisting's caller having
 // opened anything.
 func Empty(now time.Time, sessionID, promptID string) *Digest {
+	return unread(now, sessionID, promptID, ReasonNoStore)
+}
+
+// Sessionless is the digest for a turn whose payload named no session: the
+// recap on a Stop that carried no session_id (H-107). It reads nothing --
+// there is no run to read -- and says so with ReasonNoSessionID rather than
+// ReasonNoStore, because a store does exist here and saying otherwise would
+// be false.
+//
+// It takes no store on purpose. The one thing a caller with a store and no
+// session id must not do is go looking for a session in it: the newest run is
+// whichever session wrote last, which is exactly the guess this replaces.
+func Sessionless(now time.Time) *Digest {
+	return unread(now, "", "", ReasonNoSessionID)
+}
+
+// unread is a digest of nothing, for the one reason nothing could be read.
+// Unknown, and never a clean zero: Recorded is 0 because nothing was looked
+// at, and the reason is what says so.
+func unread(now time.Time, sessionID, promptID, reason string) *Digest {
 	d := &Digest{
 		SchemaVersion:     SchemaVersion,
 		GeneratedAtUnixMS: now.UnixMilli(),
@@ -248,7 +281,7 @@ func Empty(now time.Time, sessionID, promptID string) *Digest {
 		PromptID:          promptID,
 		Coverage: TurnCoverage{
 			State:            store.StateUnverified,
-			Reasons:          []string{ReasonNoStore},
+			Reasons:          []string{reason},
 			HookEntryAtStart: store.EntryUnknown,
 		},
 		Declarations: Declarations{

@@ -23,7 +23,7 @@ func ptr(s string) *string { return &s }
 // number of calls that named a file, not the number of declarations. Counting
 // the nulls would make the row a count of something nobody asked about.
 func TestByLabel_CountsOnlyLabelledCalls(t *testing.T) {
-	sess := build(&store.Run{Declarations: []store.Declaration{
+	sess := buildFromDisk(&store.Run{Declarations: []store.Declaration{
 		labelled("t1", ptr(shape.LabelSSHKey)),
 		labelled("t2", ptr(shape.LabelSSHKey)),
 		labelled("t3", ptr(shape.LabelEnvFile)),
@@ -42,7 +42,7 @@ func TestByLabel_CountsOnlyLabelledCalls(t *testing.T) {
 // the rule every other collection on this report follows -- null and [] are
 // the same absence to a reader and different values to a consumer.
 func TestByLabel_IsAlwaysPresent(t *testing.T) {
-	sess := build(&store.Run{Declarations: []store.Declaration{labelled("t1", nil)}})
+	sess := buildFromDisk(&store.Run{Declarations: []store.Declaration{labelled("t1", nil)}})
 	if sess.Declarations.ByLabel == nil {
 		t.Error("by_label is nil, want an empty map")
 	}
@@ -60,7 +60,7 @@ func TestByLabel_IsAlwaysPresent(t *testing.T) {
 func TestByLabel_ClampsAValueOffDiskToTheVocabulary(t *testing.T) {
 	const smuggled = "/home/u/.ssh/id_rsa"
 
-	sess := build(&store.Run{Declarations: []store.Declaration{
+	sess := buildFromDisk(&store.Run{Declarations: []store.Declaration{
 		labelled("t1", ptr(smuggled)),
 		labelled("t2", ptr("a-label-no-build-ever-emitted")),
 		labelled("t3", ptr(shape.LabelSSHKey)),

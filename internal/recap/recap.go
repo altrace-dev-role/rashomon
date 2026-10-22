@@ -15,10 +15,10 @@
 // the report counts the whole session, so it reads higher when an earlier
 // turn also failed a call), one of the store's
 // own fixed vocabulary of reason codes (store.Reasons, report.ReasonGap,
-// digest.ReasonNoStore/ReasonRecordsSkipped), or one of two fixed
-// test-bending sentences with the seqs of the pair the digest found (see
-// pairSentence) -- never a word this package
-// invented and never a byte handed to it by a tool call or a transcript. The
+// digest.ReasonNoStore/ReasonRecordsSkipped/ReasonNoSessionID), or one of
+// two fixed test-bending sentences with the seqs of the pair the digest
+// found (see pairSentence) -- never a word this package invented and never
+// a byte handed to it by a tool call or a transcript. The
 // one caller-supplied value it prints, the session id, is sanitised before
 // it is, on the same rule internal/report/account.go's sanitizeMessage sets
 // for a different field: control and non-graphic runes are attacker-
@@ -47,14 +47,14 @@ var prefix = mark + " rashomon: "
 //
 // The five triggers are the spec's "When it speaks" list, minus one: a
 // destination new for this project needs the per-project baseline
-// (internal/report/destinations.go's buildNovelty), and the digest this
-// package reads deliberately does not open it -- Part 3's whole reason for
-// existing separately from report.Build is that report writes baseline/ on
-// every call, which this path cannot afford to do once per turn without
-// reintroducing exactly the side effects H-86/H-87 exist to rule out. There
-// is therefore no honest way for this package to know a destination is new,
-// and it does not pretend to; see the PR description for the fuller account
-// of this gap.
+// (internal/report/gather's novelty), and the digest this package reads
+// deliberately does not open it -- Part 3's whole reason for existing
+// separately from gather.Build is that the report writes baseline/ on every
+// call, which this path cannot afford to do once per turn without
+// reintroducing exactly the side effects H-86/H-87 exist to rule out. There is
+// therefore no honest way for this package to know a destination is new, and
+// it does not pretend to; see the PR description for the fuller account of
+// this gap.
 //
 // Two triggers join them for test-bending: a failed test command that passed
 // when the only recorded edits between were to files named like tests, and
@@ -146,11 +146,19 @@ func Line(d *digest.Digest, sessionID string, fromPlugin bool) (string, bool) {
 	b.WriteString(".\n")
 	b.WriteString(strings.Repeat(" ", len([]rune(prefix))))
 	if fromPlugin {
-		b.WriteString("→ /rashomon:report --session ") // → RIGHTWARDS ARROW
+		b.WriteString("→ /rashomon:report") // → RIGHTWARDS ARROW
 	} else {
-		b.WriteString("→ rashomon report --session ")
+		b.WriteString("→ rashomon report")
 	}
-	b.WriteString(sanitizeSessionID(sessionID))
+	// A turn that named no session (digest.Sessionless) has no session to
+	// point at, so the pointer is the whole report -- which is also where the
+	// calls that arrived without a session id are counted. Not the sanitiser's
+	// "unknown", which names a session nobody has, and not any real id, which
+	// would be the guess the no_session_id reason exists to refuse.
+	if sessionID != "" {
+		b.WriteString(" --session ")
+		b.WriteString(sanitizeSessionID(sessionID))
+	}
 	return b.String(), true
 }
 

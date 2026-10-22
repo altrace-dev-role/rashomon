@@ -41,7 +41,7 @@ func TestRubricERRORS5_RollupFailsClosedOnACoverageRecordItCannotRead(t *testing
 					facts.Reasons, ReasonRecordsUnreadable, c.state, c.reason)
 			}
 
-			sess := build(&store.Run{Coverage: covs})
+			sess := build(&store.Run{Coverage: covs}, nil)
 			sess.Coverage.finish()
 			if sess.Coverage.State != store.StateUnverified {
 				t.Errorf("the report renders %s (%v), want unverified", sess.Coverage.State, sess.Coverage.Reasons)

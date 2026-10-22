@@ -4,6 +4,6 @@
 # all, and nothing here still observes anything, so there is no reason left
 # to leave it out.
 m("destinations feeds only https hosts to the novelty baseline", "internal/report/destinations.go",
-  "\twire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, madeMCPCall(run))\n",
-  "\twire, ssh := novelHostCandidates(d.DeclaredHosts, nil, madeMCPCall(run))\n",
+  "\twire, ssh := novelHostCandidates(declaredHostsFiltered(run, forgotten), sshDeclaredFiltered(run, forgotten), madeMCPCall(run))\n",
+  "\twire, ssh := novelHostCandidates(declaredHostsFiltered(run, forgotten), nil, madeMCPCall(run))\n",
   "TestNovelty_SSHHostsAreCandidatesToo")

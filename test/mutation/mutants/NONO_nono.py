@@ -22,7 +22,7 @@ m("NONO the drop counters are discarded on the bail-out path",
   "\t\tobs = Observation{Trail: path}\n\t\tobs.Reason = NotObservedNoRecords",
   "TestRead_AFileOfUnlearned")
 m("NONO the trail is not read at all from the CLI", "cmd/rashomon/main.go",
-  "report.WithNonoTrail(nonoTrail)", "report.WithNonoTrail(\"\")", "TestH31_NonoTrail")
+  "gather.WithNonoTrail(nonoTrail)", "gather.WithNonoTrail(\"\")", "TestH31_NonoTrail")
 
 # nono integration test run, finding 1: an unknown transport went uncounted on
 # the default path, because the counter sat below the no-proxy-store guard.
@@ -106,8 +106,8 @@ m("NONO the client's own traffic is dropped rather than named", "internal/report
 m("NONO the MCP transport is the client's on an MCP session", "internal/report/destinations.go",
   "\treturn clientPlaneHosts[h] && !(h == mcpProxyHost && mcpAttributed)", "\treturn clientPlaneHosts[h]",
   "TestNono_TheMCPTransport|TestClientPlane_")
-m("NONO the session's MCP calls never reach the sandbox section", "internal/report/report.go",
-  "cfg.nonoTrail != \"\", madeMCPCall(run), declaredHosts(run), forgotten)", "cfg.nonoTrail != \"\", false, declaredHosts(run), forgotten)",
+m("NONO the session's MCP calls never reach the sandbox section", "internal/report/assemble.go",
+  "nonoConfigured, madeMCPCall(run), declaredHosts(run), forgotten)", "nonoConfigured, false, declaredHosts(run), forgotten)",
   "TestSeam_TheMCPTransportReachesTheSandboxSection")
 m("NONO the client's log intake is not on the client-plane list", "internal/report/destinations.go",
   "\t\"http-intake.logs.us5.datadoghq.com\": true,\n", "",
@@ -167,7 +167,7 @@ m("NONO forget --host accepts what is not a hostname", "cmd/rashomon/main.go",
 m("NONO a client-plane host a tool call named is filed as the client's", "internal/report/nono.go",
   "return clientPlane(h) && !declared[h] }", "return clientPlane(h) }",
   "TestSeam_AClientPlaneHostAToolCallNamed")
-m("NONO the session's named hosts never reach the sandbox section", "internal/report/report.go",
+m("NONO the session's named hosts never reach the sandbox section", "internal/report/assemble.go",
   "madeMCPCall(run), declaredHosts(run), forgotten)", "madeMCPCall(run), nil, forgotten)",
   "TestSeam_AClientPlaneHostAToolCallNamed")
 # The client-traffic line says which hosts the sandbox allowed and which it
@@ -233,8 +233,8 @@ m("NONO the novelty candidates drop the MCP transport on an MCP session", "inter
   "\t\t\tif loopback(h) || clientPlaneHost(h, mcpAttributed) {\n", "\t\t\tif loopback(h) || clientPlaneHosts[h] {\n",
   "TestClientPlane_EveryView")
 m("NONO the session's MCP calls never reach the novelty candidates", "internal/report/destinations.go",
-  "\twire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, madeMCPCall(run))\n",
-  "\twire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, false)\n",
+  "\twire, ssh := novelHostCandidates(declaredHostsFiltered(run, forgotten), sshDeclaredFiltered(run, forgotten), madeMCPCall(run))\n",
+  "\twire, ssh := novelHostCandidates(declaredHostsFiltered(run, forgotten), sshDeclaredFiltered(run, forgotten), false)\n",
   "TestNovelty_TheMCPTransport")
 
 # #53 follow-up, applied here: a trail holding only session_started and

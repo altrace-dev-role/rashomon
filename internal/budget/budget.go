@@ -69,11 +69,14 @@ func (c Clock) Left(now time.Time) time.Duration {
 type Reason string
 
 // Phase is an optional phase of a hook, each with its own stand-down reason.
-// The order is the spec's (8.2.2) and is not meaningful beyond that.
+// The order is the spec's (8.2.2) and is not meaningful beyond that. The zero
+// Phase is none of them: it has no reason, which no writer may record, and
+// Phases does not list it, so a phase never set cannot stand down as Verify.
 type Phase uint8
 
 const (
-	Verify Phase = iota
+	phaseUnset Phase = iota
+	Verify
 	Steer
 	LearnLookup
 	Labels
@@ -122,8 +125,8 @@ func (p Phase) Reason() Reason {
 
 // Phases lists every phase, in the spec's order.
 func Phases() []Phase {
-	out := make([]Phase, 0, phaseCount)
-	for p := Phase(0); p < phaseCount; p++ {
+	out := make([]Phase, 0, phaseCount-1)
+	for p := phaseUnset + 1; p < phaseCount; p++ {
 		out = append(out, p)
 	}
 	return out

@@ -1,4 +1,4 @@
-package report
+package gather
 
 import (
 	"os"
@@ -7,11 +7,13 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// sessionNaming builds a closed run whose one declaration names transcript.
-func sessionNaming(transcript string) Session {
+// sessionNaming assembles a closed run whose one declaration names
+// transcript, over what the read step reads at that path.
+func sessionNaming(transcript string) report.Session {
 	run := &store.Run{
 		Declarations: []store.Declaration{{ToolUseID: "toolu_a", ToolName: "Bash", TranscriptPath: transcript}},
 		Terminals:    []store.Terminal{{ToolUseID: "toolu_a", Outcome: store.OutcomeOK}},
@@ -20,9 +22,8 @@ func sessionNaming(transcript string) Session {
 			{Phase: store.PhaseEnd, State: store.StateVerified},
 		},
 	}
-	sess := build(run)
-	sess.Coverage.finish()
-	return sess
+	in := report.SessionInput{Run: run, Transcripts: readTranscripts(run)}
+	return report.AssembleSession(in, false, nil, nil)
 }
 
 // TestRubricERRORS3_UnreadableTranscriptIsAReason: a transcript that exists
@@ -43,20 +44,20 @@ func TestRubricERRORS3_UnreadableTranscriptIsAReason(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(path, 0o644) }) //nolint:errcheck // TempDir removal follows
 
 	sess := sessionNaming(path)
-	if !slices.Contains(sess.Coverage.Reasons, ReasonTranscriptUnreadable) || sess.Coverage.State != store.StateUnverified {
-		t.Errorf("coverage = %s %v, want unverified with %s", sess.Coverage.State, sess.Coverage.Reasons, ReasonTranscriptUnreadable)
+	if !slices.Contains(sess.Coverage.Reasons, report.ReasonTranscriptUnreadable) || sess.Coverage.State != store.StateUnverified {
+		t.Errorf("coverage = %s %v, want unverified with %s", sess.Coverage.State, sess.Coverage.Reasons, report.ReasonTranscriptUnreadable)
 	}
 	if len(sess.Transcripts) != 1 || sess.Transcripts[0].Readable {
 		t.Errorf("transcripts = %+v, want one, unreadable", sess.Transcripts)
 	}
-	if got := sess.Transcripts[0].Status; got != TranscriptUnreadable {
-		t.Errorf("transcript status = %q, want %q", got, TranscriptUnreadable)
+	if got := sess.Transcripts[0].Status; got != report.TranscriptUnreadable {
+		t.Errorf("transcript status = %q, want %q", got, report.TranscriptUnreadable)
 	}
 }
 
 // TestRubricERRORS3_MainTranscriptReadableButASubagentIsNot: the main
 // transcript exists and reads fine; one of its subagent files is a dangling
-// symlink. TranscriptIDs returns ErrNotExist -- the subagent file's error,
+// symlink. Reading the set returns ErrNotExist -- the subagent file's error,
 // not the main file's -- and before, accounting classified on that error
 // alone, so the whole group read as missing and the H-10 check it names was
 // silently skipped. It must classify on the main transcript's own Stat: the
@@ -78,14 +79,14 @@ func TestRubricERRORS3_MainTranscriptReadableButASubagentIsNot(t *testing.T) {
 	}
 
 	sess := sessionNaming(path)
-	if !slices.Contains(sess.Coverage.Reasons, ReasonTranscriptUnreadable) || sess.Coverage.State != store.StateUnverified {
-		t.Errorf("coverage = %s %v, want unverified with %s", sess.Coverage.State, sess.Coverage.Reasons, ReasonTranscriptUnreadable)
+	if !slices.Contains(sess.Coverage.Reasons, report.ReasonTranscriptUnreadable) || sess.Coverage.State != store.StateUnverified {
+		t.Errorf("coverage = %s %v, want unverified with %s", sess.Coverage.State, sess.Coverage.Reasons, report.ReasonTranscriptUnreadable)
 	}
 	if len(sess.Transcripts) != 1 || sess.Transcripts[0].Readable {
 		t.Errorf("transcripts = %+v, want one, unreadable", sess.Transcripts)
 	}
-	if got := sess.Transcripts[0].Status; got != TranscriptUnreadable {
-		t.Errorf("transcript status = %q, want %q", got, TranscriptUnreadable)
+	if got := sess.Transcripts[0].Status; got != report.TranscriptUnreadable {
+		t.Errorf("transcript status = %q, want %q", got, report.TranscriptUnreadable)
 	}
 }
 
@@ -102,8 +103,8 @@ func TestRubricERRORS3_MissingTranscriptIsNotAReason(t *testing.T) {
 	if len(sess.Transcripts) != 1 || sess.Transcripts[0].Readable {
 		t.Errorf("transcripts = %+v, want one, unreadable", sess.Transcripts)
 	}
-	if got := sess.Transcripts[0].Status; got != TranscriptMissing {
+	if got := sess.Transcripts[0].Status; got != report.TranscriptMissing {
 		t.Errorf("transcript status = %q, want %q: missing and unreadable both leave Readable false, "+
-			"and Status is the field that is supposed to tell them apart", got, TranscriptMissing)
+			"and Status is the field that is supposed to tell them apart", got, report.TranscriptMissing)
 	}
 }

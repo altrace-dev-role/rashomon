@@ -161,6 +161,36 @@ jobs:
       - name: Mutation sweep static checks
         run: python3 test/mutation/sweep.py --check
 
+      # Dead code fails the build (rubric docs-7): an unused function keeps a
+      # contract nobody runs -- a doc comment two releases stale described
+      # one that had no caller left. staticcheck's U1000 check alone, pinned
+      # to v0.8.2: v0.7.0 and v0.8.1 cannot read go1.27's export data
+      # ("export data version 5 is greater than maximum supported"), so under
+      # this job's toolchain they fail on every package; once per build tag,
+      # because code the fault tag compiles is invisible without it. An
+      # intentional exception carries a //lint:ignore U1000 line saying why.
+      #
+      # Installed once with `go install`, not run with `go run`: `GOOS=...
+      # go run` builds a binary FOR that GOOS and then tries to exec it on
+      # this runner, which fails ("exec format error") before staticcheck
+      # ever runs. The installed binary stays this host's own; GOOS set on
+      # its own invocation only changes which platform's files the go/list
+      # it shells out to resolves build tags against, which is what lets a
+      # windows- or darwin-only file be analysed at all on a linux runner.
+      - name: Unused code
+        run: |
+          GOBIN="$RUNNER_TEMP" go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+          staticcheck="$RUNNER_TEMP/staticcheck"
+          "$staticcheck" -checks U1000 ./...
+          "$staticcheck" -checks U1000 -tags rashomonfault ./...
+          "$staticcheck" -checks U1000 -tags perf ./...
+          GOOS=windows "$staticcheck" -checks U1000 ./...
+          GOOS=windows "$staticcheck" -checks U1000 -tags rashomonfault ./...
+          GOOS=windows "$staticcheck" -checks U1000 -tags perf ./...
+          GOOS=darwin "$staticcheck" -checks U1000 ./...
+          GOOS=darwin "$staticcheck" -checks U1000 -tags rashomonfault ./...
+          GOOS=darwin "$staticcheck" -checks U1000 -tags perf ./...
+
       - name: Test with race detector
         run: go test ./... -count=1 -race
 
@@ -205,7 +235,7 @@ jobs:
         run: |
           go test -v -count=1 -run '^TestH82_RecordingStateDistinguishesPausedAbsentAndUnknown$|^TestRubricPAUSE9_StatusPrintsMarkerUnreadable$|^TestRubricERRORS6_UnreadablePauseMarkerPausesTheHook$|^TestRubricPAUSE9_AFaultOnTheStoreRootIsNotAPause$' ./cmd/rashomon | tee "$RUNNER_TEMP/unreadable1.out"
           go test -v -count=1 -run '^TestRubricERRORS6_UnreadablePauseMarkerPausesRecording$|^TestRubricERRORS3_UnreadableTranscriptRendersUnverified$' ./test/acceptance | tee "$RUNNER_TEMP/unreadable2.out"
-          go test -v -count=1 -run '^TestRubricERRORS3_UnreadableTranscriptIsAReason$' ./internal/report | tee "$RUNNER_TEMP/unreadable3.out"
+          go test -v -count=1 -run '^TestRubricERRORS3_UnreadableTranscriptIsAReason$' ./internal/report/gather | tee "$RUNNER_TEMP/unreadable3.out"
           go test -v -count=1 -run '^TestRubricPAUSE9_ResumeRemovesAnUnreadableMarker$|^TestMarkerUnreadable_TrueOnlyWhenTheMarkerIsAPlainFile$' ./internal/store | tee "$RUNNER_TEMP/unreadable4.out"
           failed=0
           if grep -- '--- SKIP' "$RUNNER_TEMP/unreadable1.out" "$RUNNER_TEMP/unreadable2.out" "$RUNNER_TEMP/unreadable3.out" "$RUNNER_TEMP/unreadable4.out"; then
@@ -303,7 +333,7 @@ jobs:
   fuzz:
     name: Fuzz
     runs-on: ubuntu-latest
-    # Eighteen targets at 30 s each, plus their builds; the bound is DEL-17's.
+    # Twenty-two targets at 30 s each, plus their builds; the bound is DEL-17's.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -342,7 +372,7 @@ jobs:
             done
           done
           echo "fuzzed ${found} targets"
-          test "$found" -ge 18
+          test "$found" -ge 22
           if [ "${#failed[@]}" -gt 0 ]; then
             printf '::error::failed: %s\n' "${failed[@]}"
             exit 1
@@ -502,7 +532,7 @@ jobs:
         if: success() || failure()
         env:
           RASHOMON_PERF_REQUIRE_ALL: "1"
-        run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
+        run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28|TestColdAllocBudget' -count=1 -v
 
       # RES-29's own peak-RSS bound (cmd/rashomon/res29_test.go) does not
       # apply under -race (its own comment explains why -- the detector's
@@ -561,7 +591,7 @@ jobs:
         if: success() || failure()
         env:
           RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.
-        run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28|TestRES30_' -count=1 -v
+        run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28|TestRES30_|TestColdAllocBudget' -count=1 -v
 
       # internal/store and test/acceptance's race suite runs on ubuntu-latest
       # (the test job) but not here, so the darwin branch of REC-34's group

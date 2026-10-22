@@ -85,7 +85,7 @@ func TestRES4_CapAtNAndNPlusOne(t *testing.T) {
 	if !errors.Is(err, hookio.ErrTooLarge) {
 		t.Fatalf("no session: %v, want ErrTooLarge", err)
 	}
-	refusedIn(t, st, UnattributedSession)
+	refusedIn(t, st, store.UnattributedSession)
 }
 
 // refusedIn checks that session's run ends with a payload_too_large

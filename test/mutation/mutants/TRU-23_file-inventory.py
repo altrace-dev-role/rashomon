@@ -26,6 +26,14 @@ m("TRU-23 recap.json drops out of the inventory", "internal/disclose/disclose.go
   "\t\t\tPattern:    recap.StateFileName,",
   "\t\t\tPattern:    \"recap-state.json\",",
   "TestTRU23_EveryWrittenPathIsInTheInventory")
+m("TRU-23 recap's temporary files drop out of the inventory", "internal/disclose/disclose.go",
+  "\t\t\tPattern:    recap.StateTempPrefix + \"*\",",
+  "\t\t\tPattern:    \"recap.json.tmp-*\",",
+  "TestTRU23_EveryWrittenPathIsInTheInventory")
+m("TRU-23 the temporary file builds through v1.1.0 left drops out of the inventory", "internal/disclose/disclose.go",
+  "\t\t\tPattern:    recap.StateTempName,",
+  "\t\t\tPattern:    \"recap.json.old\",",
+  "TestTRU23_EveryWrittenPathIsInTheInventory")
 m("TRU-23 the baseline directory stops matching baseline/<key>.json", "internal/disclose/disclose.go",
   "\t\t\tPattern:    baseline.FilePattern,",
   "\t\t\tPattern:    \"*.ndjson\",",

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/budget"
 )
 
 // TestRES28i_ToleranceScheduleIsTheSpecs: the platform tolerances are
@@ -127,6 +129,89 @@ func TestRES36f_EntryRowsCarryTheirBenchmarksMeasurement(t *testing.T) {
 		}
 		if e.AllocBytesMax != m || m <= 0 {
 			t.Errorf("entry %s: alloc_bytes_max %d, its benchmark measured %d B/op", e.ID, e.AllocBytesMax, m)
+		}
+	}
+}
+
+// TestRES36l_ColdAllocIsConsistentWithTheWarmRow: every entry row in
+// budgets.json passes ColdAllocConsistent against its own two fields.
+// ColdAllocConsistent's own cases (TestRES36l_ColdAllocConsistentCatchesBadInputs)
+// are what makes this mutation-testable: the real budgets.json never
+// contains a violation today, so a break in ColdAllocConsistent itself would
+// pass this loop silently without a synthetic case to catch it.
+func TestRES36l_ColdAllocIsConsistentWithTheWarmRow(t *testing.T) {
+	b := loadBudgets(t)
+	for _, e := range b.Entries {
+		if problem := ColdAllocConsistent(e.ColdAllocBytesMax, e.AllocBytesMax); problem != "" {
+			t.Errorf("entry %s: %s", e.ID, problem)
+		}
+	}
+}
+
+// TestRES36l_ColdAllocConsistentCatchesBadInputs: ColdAllocConsistent on
+// fabricated figures, independent of what budgets.json happens to hold
+// today -- the loop above alone would stay green if the check inside it
+// were weakened, as long as no real entry happened to trip it.
+func TestRES36l_ColdAllocConsistentCatchesBadInputs(t *testing.T) {
+	for _, c := range []struct {
+		name              string
+		coldAllocBytesMax int64
+		allocBytesMax     int64
+		wantProblem       bool
+	}{
+		{"cold above warm", 200, 100, false},
+		{"cold equal to warm", 100, 100, false},
+		{"cold unmeasured (zero)", 0, 100, false},
+		{"cold below warm", 90, 100, true},
+		{"cold negative", -1, 100, true},
+	} {
+		got := ColdAllocConsistent(c.coldAllocBytesMax, c.allocBytesMax)
+		if (got != "") != c.wantProblem {
+			t.Errorf("%s: ColdAllocConsistent(%d, %d) = %q, want problem %v", c.name, c.coldAllocBytesMax, c.allocBytesMax, got, c.wantProblem)
+		}
+	}
+}
+
+// TestRES36m_ColdAllocFieldIsMeasuredForEveryHookAndPostRow: a 0
+// cold_alloc_bytes_max turns off TestColdAllocBudget's gate for that entry
+// (it reads as "not yet measured", not as a zero budget, per the field's
+// own doc comment) with nothing else to catch the gate going dark.
+// cmd/rashomon's TestColdCall (test/perf/cold_test.go, behind the perf tag)
+// only covers BenchmarkRunHook and BenchmarkRunPost rows -- recap.* and
+// probe.* have no cold harness yet (P-12) and are rightly 0 -- so every
+// entry whose benchmark names one of those two must carry a measured,
+// nonzero figure. Deliberately untagged, unlike the harness it guards: the
+// check is a budgets.json data-consistency rule, not a measurement, so it
+// runs in the ordinary `go test ./...` job and under the mutation sweep,
+// neither of which builds with -tags perf.
+func TestRES36m_ColdAllocFieldIsMeasuredForEveryHookAndPostRow(t *testing.T) {
+	b := loadBudgets(t)
+	for _, e := range b.Entries {
+		if !strings.HasPrefix(e.Benchmark, "BenchmarkRunHook/") && !strings.HasPrefix(e.Benchmark, "BenchmarkRunPost/") {
+			continue
+		}
+		if e.ColdAllocBytesMax <= 0 {
+			t.Errorf("%s: benchmark %s has a cold harness (TestColdCall) but cold_alloc_bytes_max is %d; the cold gate is silently off for it", e.ID, e.Benchmark, e.ColdAllocBytesMax)
+		}
+	}
+}
+
+// TestRES36o_PerProcessColdAllocBytesIsTheSumNotEitherField: a hook-entry
+// process's per-process allocation is cold_alloc_bytes_max plus RES-2's
+// init budget, never either alone -- the gap budgets.go's comment used to
+// leave open (P-12).
+func TestRES36o_PerProcessColdAllocBytesIsTheSumNotEitherField(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		cold int64
+		want int64
+	}{
+		{"unmeasured reads as unmeasured, not as the init budget alone", 0, 0},
+		{"measured adds the init budget", 138320, 138320 + InitBudgetBytes},
+	} {
+		got := PerProcessColdAllocBytes(budget.Entry{ColdAllocBytesMax: c.cold})
+		if got != c.want {
+			t.Errorf("%s: PerProcessColdAllocBytes(cold=%d) = %d, want %d", c.name, c.cold, got, c.want)
 		}
 	}
 }

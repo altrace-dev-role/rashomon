@@ -48,7 +48,7 @@ func TestREC34k_TheReportNamesEachCallNotDurable(t *testing.T) {
 			{ToolUseID: "toolu_lost", Outcome: store.OutcomeError, Reason: &reason},
 		},
 	}
-	sess := build(run)
+	sess := build(run, nil)
 	if got := sess.Declarations.NotDurable; len(got) != 1 || got[0] != "toolu_lost" {
 		t.Errorf("declarations.not_durable = %q, want [toolu_lost]", got)
 	}
@@ -59,7 +59,7 @@ func TestREC34k_TheReportNamesEachCallNotDurable(t *testing.T) {
 	if !strings.Contains(text.String(), "  possibly not durable: toolu_lost\n") {
 		t.Errorf("the text report does not name the call possibly not durable:\n%s", text.String())
 	}
-	clean := build(&store.Run{Declarations: []store.Declaration{{ToolUseID: "toolu_kept"}}})
+	clean := build(&store.Run{Declarations: []store.Declaration{{ToolUseID: "toolu_kept"}}}, nil)
 	if clean.Declarations.NotDurable == nil || len(clean.Declarations.NotDurable) != 0 {
 		t.Errorf("a session with no marker: not_durable = %#v, want an empty list, never null", clean.Declarations.NotDurable)
 	}

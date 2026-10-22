@@ -577,28 +577,6 @@ func schemaKeyPaths(t *testing.T, def map[string]any, prefix string, gated map[s
 	}
 }
 
-// collectEnums gathers every enum value anywhere in the schema, so that the
-// assertion holds however the vocabularies are arranged across definitions.
-func collectEnums(node any, into map[string]bool) {
-	switch v := node.(type) {
-	case map[string]any:
-		if values, ok := v["enum"].([]any); ok {
-			for _, value := range values {
-				if s, ok := value.(string); ok {
-					into[s] = true
-				}
-			}
-		}
-		for _, child := range v {
-			collectEnums(child, into)
-		}
-	case []any:
-		for _, child := range v {
-			collectEnums(child, into)
-		}
-	}
-}
-
 // TestStoreSchemaLabelsAreTheCodeLabels: file_label is a closed vocabulary
 // like the reason codes, and it needs a check of its own.
 //

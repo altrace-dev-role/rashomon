@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/install"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/report"
+	"github.com/altrace-dev-role/rashomon/internal/report/gather"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
 	"github.com/altrace-dev-role/rashomon/internal/spend"
@@ -41,6 +43,37 @@ const (
 	exitFail = 1
 )
 
+// hookGCPercent and hookMemoryLimitBytes are the runtime bound every hook
+// entry process runs under: GOGC 100 and a 32 MiB soft memory limit (archive
+// 85.3.12's RUNTIME block). Both are set unconditionally, never read from
+// GOGC or GOMEMLIMIT: either variable only sets the runtime's state before
+// main runs, and an explicit call after that always wins, which is the only
+// way "env ignored" can be true -- an operator exporting GOMEMLIMIT=1GiB
+// into Claude Code's own environment must not loosen what a hook process is
+// held to.
+const (
+	hookGCPercent        = 100
+	hookMemoryLimitBytes = 32 << 20
+)
+
+// hookRuntimeSubcommands are the four hook-entry processes the pin applies
+// to (hook, post, probe for SessionStart/SessionEnd, recap for Stop and
+// UserPromptSubmit). A command a person types -- disclose, status, report --
+// is not one of them and keeps whatever GC and memory settings its own
+// environment gave it.
+var hookRuntimeSubcommands = map[string]bool{
+	"hook": true, "post": true, "probe": true, "recap": true,
+}
+
+// applyHookRuntimeLimits pins GOGC and the soft memory limit for a hook
+// entry process. Idempotent: called again with the same two constants, it
+// changes nothing and its return values are the values already in force,
+// which is what lets a test read the pin back without a restore step.
+func applyHookRuntimeLimits() {
+	debug.SetGCPercent(hookGCPercent)
+	debug.SetMemoryLimit(hookMemoryLimitBytes)
+}
+
 func main() {
 	hook.Writer = version
 	// os.Exit skips deferred functions, so every path that needs one has to
@@ -54,6 +87,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitFail
 	}
 	rest := args[1:]
+
+	if hookRuntimeSubcommands[args[0]] {
+		applyHookRuntimeLimits()
+	}
 
 	switch args[0] {
 	case "hook":
@@ -366,8 +403,9 @@ const evictionLine = "rashomon: store eviction incomplete"
 // TIME budget is the only option that is both always-correct on the healthy
 // path and incapable of wedging the turn on a broken one. Three seconds
 // leaves a wide margin inside the entry's own 10-second timeout
-// (install.RecapTimeout) even after the ~120ms this command's own work can
-// cost at several thousand records (the spec's Measurements taken).
+// (install.RecapTimeout) even after this command's own work, which
+// digest.BenchmarkBuild measures at about 50 ms for a 3,500-call session and
+// 300 ms for a 20,000-call one (Apple M3, measured 2026-10-13).
 const recapStdinTimeout = 3 * time.Second
 
 // recapPayload is the slice of the Stop/StopFailure hook payload this command
@@ -400,12 +438,20 @@ type recapPayload struct {
 //
 // safe.Go, not a bare `go`: a panic on this goroutine cannot be recovered by
 // its caller (internal/safe's own doc), and this command's entire contract
-// is that it never produces a non-zero exit -- see cmdRecap. The result
-// travels over a buffered channel rather than a variable the goroutine
-// writes into directly, so there is nothing left to race once the timeout
-// fires, this function has returned, and the abandoned goroutine is still
-// blocked in Read: it can only ever send into a channel nothing is
-// receiving from any more, once, and then it is done.
+// is that it never produces a non-zero exit -- see cmdRecap.
+//
+// THE READER CAN OUTLIVE THIS CALL, AND IS ONLY BOUNDED BY THE PROCESS. When
+// the timeout fires first, the goroutine is still blocked in Read, and
+// nothing here can unblock it: a Read on a blocking pipe takes no deadline
+// and cannot be cancelled. It lives until stdin delivers or closes, which for
+// a pipe Claude Code never closes is until this process exits -- moments
+// later, since cmdRecap is the whole of a short-lived hook process and calls
+// this once. So call it only from such a process, once: a long-lived caller
+// would keep one goroutine and its read buffer per stalled call. The result
+// travels over a channel with room for it, never a variable the goroutine
+// writes into, so once Read returns the goroutine sends without a receiver
+// and ends (TestRubricCONC7_AbandonedStdinReadEndsWhenTheReadReturns); an
+// unbuffered channel would hold it on that send for good.
 func readRecapPayload(in io.Reader, timeout time.Duration) recapPayload {
 	type parsed struct {
 		payload recapPayload
@@ -505,20 +551,6 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return nil
 	}
 
-	sessionID := payload.SessionID
-	if sessionID == "" {
-		// Mirrors digestOrEmpty's own fallback: this process never learns
-		// Claude Code's session id any other way than being told it.
-		newest, _, nerr := st.NewestRun()
-		if nerr != nil {
-			return recap.RecordFailure(root, now)
-		}
-		if newest == "" {
-			return nil
-		}
-		sessionID = newest
-	}
-
 	// `recap pending` runs on UserPromptSubmit, before the new prompt has
 	// made a single call, so the newest turn in the store is the one that
 	// just ended. It speaks only when no recap reached that turn: saying
@@ -532,9 +564,35 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		// prompt field is the NEW prompt's text, never read here.
 		lastMessage = ""
 	}
-	d, derr := digest.Build(st, sessionID, "", lastMessage, now)
-	if derr != nil {
-		return recap.RecordFailure(root, now)
+
+	// A payload that names no session gets the digest that says so --
+	// no_session_id, beside no_store -- and never a session found some
+	// other way (H-107). This used to fall back to the newest run in the
+	// store, on the reasoning that this process learns Claude Code's
+	// session id only by being told it. That is true, and it is the
+	// argument AGAINST guessing. Per Cursor's documentation -- nobody has
+	// run Cursor against this recorder -- Cursor runs these hooks from
+	// ~/.claude/settings.json and names a conversation_id where Claude
+	// Code sends session_id, so on a machine that also runs Claude Code
+	// the newest run is whichever Claude Code session wrote last. The line
+	// described that session's turn, pointed at that session's report, and
+	// claimed that turn in recap.json, so the real Stop for it then stayed
+	// silent as a duplicate -- H-107 reproduces that with a payload of
+	// that shape, without Cursor. A payload this process could not read
+	// lands here too, for the same reason: an id it could not read is not
+	// one it can look up.
+	//
+	// The catch-up goes through the same digest and stops at
+	// recap.Pending, which answers false for a turn with no session id:
+	// it speaks only for a turn it can show no Stop reached, and without
+	// an id it can show nothing. Stating no_session_id is the Stop's job.
+	d := digest.Sessionless(now)
+	if payload.SessionID != "" {
+		built, derr := digest.Build(st, payload.SessionID, "", lastMessage, now)
+		if derr != nil {
+			return recap.RecordFailure(root, now)
+		}
+		d = built
 	}
 	if pending && !recap.Pending(root, d.SessionID, d.PromptID) {
 		return nil
@@ -750,23 +808,14 @@ func reportOrEmpty(sessionID, nonoTrail string, now time.Time) (*report.Report, 
 	if err != nil {
 		return nil, nil, err
 	}
-	opts := []report.Option{report.WithNonoTrail(nonoTrail)}
+	opts := []gather.Option{gather.WithNonoTrail(nonoTrail)}
 	key := st.Key()
 
-	rep, err := report.Build(st, sessionID, now, opts...)
+	rep, err := gather.Build(st, sessionID, now, opts...)
 	if err != nil {
 		return nil, nil, err
 	}
 	return rep, key, nil
-}
-
-// storeKey is the install key, or nil when there is no store to read it from.
-func storeKey() []byte {
-	st, err := openStoreForRead()
-	if err != nil {
-		return nil
-	}
-	return st.Key()
 }
 
 // openStoreForRead opens the store without creating one, and reports

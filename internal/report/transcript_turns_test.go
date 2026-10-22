@@ -1,7 +1,9 @@
 package report
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -72,7 +74,7 @@ func TestFinalAssistantTexts_ATurnIsItsPrompt(t *testing.T) {
 		said(t, "m3", "p2's summary", "2026-09-29T10:00:07.000Z"),
 		user("", "a prompt from an older version", false),
 		said(t, "m4", "the unkeyed reply", "2026-09-29T10:00:09.000Z"))
-	got := FinalAssistantTexts(p, map[string]bool{"p1": true, "p2": true})
+	got := FinalAssistantTexts(openT(t, p), map[string]bool{"p1": true, "p2": true})
 	if got["p1"].Text != "p1's summary" {
 		t.Errorf("p1 = %q, want \"p1's summary\": a tool_result or meta line without promptId ended the turn, "+
 			"or a sidechain line was read as the main agent's", got["p1"].Text)
@@ -132,7 +134,7 @@ func TestFinalAssistantTexts_AnUnreadableLineIsNoTurnsWord(t *testing.T) {
 		said(t, "m10", "On it.", "2026-09-29T10:00:11.000Z"),
 		turnLine(t, map[string]any{"type": "assistant", "timestamp": "2026-09-29T10:00:12.000Z",
 			"message": map[string]any{"id": "m11", "role": "assistant", "content": map[string]any{"type": "text", "text": "The command failed."}}}))
-	got := FinalAssistantTexts(p, map[string]bool{"p1": true, "p2": true, "p3": true, "p4": true, "p5": true})
+	got := FinalAssistantTexts(openT(t, p), map[string]bool{"p1": true, "p2": true, "p3": true, "p4": true, "p5": true})
 	if got["p1"].Said {
 		t.Errorf("p1 = %q, want no words: its last text line could not be dated, so the earlier one is not its last", got["p1"].Text)
 	}
@@ -187,7 +189,7 @@ func TestFinalAssistantTexts_AnUndecodableLineEndsTheTieUnlessItIsASidechain(t *
 				tc.line,
 				side("s1", "2026-09-29T10:00:03.000Z"),
 				side("s2", "2026-09-29T10:00:04.000Z"))
-			got := FinalAssistantTexts(p, map[string]bool{"p1": true})["p1"]
+			got := FinalAssistantTexts(openT(t, p), map[string]bool{"p1": true})["p1"]
 			if tc.ends {
 				if got.Said || got.Responses["s1"] || got.Responses["s2"] {
 					t.Errorf("p1 = %+v: the line after an undecodable one was tied to the turn, or its earlier words kept", got)
@@ -302,7 +304,7 @@ func TestAssistantLine_DecodesOnlyTextBlocks(t *testing.T) {
 		userTurnLine(t, "p1", "a prompt", false),
 		said(t, "m1", "On it.", "2026-09-29T10:00:01.000Z"),
 		said(t, "m2", "Done.", "2026-09-29T10:00:02.000Z"))
-	if got := FinalAssistantTexts(p, map[string]bool{"p1": true})["p1"]; got.Text != "Done." || decoded != 2 {
+	if got := FinalAssistantTexts(openT(t, p), map[string]bool{"p1": true})["p1"]; got.Text != "Done." || decoded != 2 {
 		t.Errorf("p1 = %q after %d decodes through decodeAssistantLine, want \"Done.\" after 2", got.Text, decoded)
 	}
 
@@ -324,4 +326,14 @@ func TestAssistantLine_DecodesOnlyTextBlocks(t *testing.T) {
 			t.Errorf("text(%s) = %q, want %q", tc.line, got, tc.want)
 		}
 	}
+}
+
+// openT reads a transcript fixture for a reader that takes an io.Reader.
+func openT(t *testing.T, path string) io.Reader {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bytes.NewReader(b)
 }

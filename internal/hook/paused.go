@@ -23,10 +23,11 @@ import (
 // The payload is still read, for the session id and cwd it carries: a paused
 // call inside a real session must render as a gap IN that session's own
 // report, not as a fact about some unrelated one. A payload that cannot be
-// parsed falls back to UnattributedSession, exactly as the declaration and
-// probe paths do; refusedSession attributes a payload over the cap.
+// parsed, or that names no session, falls back to store.UnattributedSession,
+// exactly as the declaration and probe paths do; refusedSession attributes a
+// payload over the cap.
 func RecordPaused(in io.Reader, phase, reason string, st *store.Store, now func() time.Time) {
-	sessionID := UnattributedSession
+	sessionID := store.UnattributedSession
 	cwd := ""
 	payload, err := hookio.Intake(in)
 	if err == nil {

@@ -99,11 +99,13 @@ const (
 	Timeout = 5
 	// RecapTimeout is Stop/StopFailure's own timeout, not Timeout: the recap
 	// reads a whole run to find one turn's boundaries -- O(session size), not
-	// O(turn size), per the spec's own measurements -- and 122 ms was already
-	// observed at 4,264 records against a 50 ms hope. Ten seconds is a wide
-	// margin over that, and still nowhere near Claude Code's platform default
-	// of 600 that the ordinary five-second entries are deliberately kept well
-	// under.
+	// O(turn size). digest's BenchmarkBuild measures that read at about 15 us
+	// per recorded call, linear from 188 calls (2.6 ms) to 20,000 (300 ms) on
+	// an Apple M3 (measured 2026-10-13), so the five seconds the tool entries
+	// get would hold a session of some 300,000 calls with nothing left for a
+	// slow disk. Ten seconds is a wide margin over every session measured, and
+	// still nowhere near Claude Code's platform default of 600 that the
+	// ordinary five-second entries are deliberately kept well under.
 	RecapTimeout = 10
 
 	// Marker precedes the install id in an installed command line. The hook

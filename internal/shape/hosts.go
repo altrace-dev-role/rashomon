@@ -164,7 +164,7 @@ func takesValue(prog string, flag byte) bool {
 // on which flags came before it. A regular expression over the whole line
 // cannot know that `key` in `ssh -i key host` is not a host.
 //
-// A tokenizer error is not fatal here. tokenize returns the tokens it
+// A tokenizer error is not fatal here. tokenizeMarkedTo returns the tokens it
 // completed along with the error, and a destination that appeared before an
 // unterminated quote is still a destination the command named.
 //
@@ -206,12 +206,12 @@ func sshCommandHosts(text string) (out []string, cut bool) {
 // how many tokens it read, and whether it read the line only to that bound. Any other tokenizer error
 // is not a cut: the tokens it completed are the line's.
 //
-// errUncertain specifically cannot reach here: tokenizeMarked calls
-// tokenizeShape, which calls lex with program and docs both false, and every
-// branch in lex that returns errUncertain is itself guarded by l.program or
-// l.docs. An unterminated quote (errUnterminated) can reach here, and is
-// correctly not a cut either -- the quote consumes to the end of the line,
-// so there is nothing after it in this line to miss.
+// errUncertain specifically cannot reach here: tokenizeMarkedTo calls lexTo
+// with program and docs both false, and every branch in lexTo that returns
+// errUncertain is itself guarded by l.program or l.docs. An unterminated
+// quote (errUnterminated) can reach here, and is correctly not a cut either
+// -- the quote consumes to the end of the line, so there is nothing after it
+// in this line to miss.
 func sshLineHosts(line string, limit int) ([]string, int, bool) {
 	// On a line it cannot finish, lex still returns the tokens it read before
 	// the fault, and a host among them was named all the same.
@@ -300,17 +300,28 @@ func destinations(prog string, args []string) []string {
 		}
 
 		if prog == "ssh" || prog == "sftp" {
-			if h, ok := destinationHost(a, false); ok {
+			if h, ok := destinationHost(a, bareHost); ok {
 				out = append(out, h)
 			}
 			return out
 		}
-		if h, ok := destinationHost(a, true); ok {
+		if h, ok := destinationHost(a, remoteOnly); ok {
 			out = append(out, h)
 		}
 	}
 	return out
 }
+
+// destinationForm is which programs' destination syntax destinationHost reads.
+type destinationForm bool
+
+const (
+	// bareHost is ssh's and sftp's: the destination may be a host alone.
+	bareHost destinationForm = false
+	// remoteOnly is scp's and rsync's: an argument names a host only in its
+	// host:path form, and anything else is a local path.
+	remoteOnly destinationForm = true
+)
 
 // destinationHost parses one [user[:password]@]host[:path] token and returns
 // the host, or reports that the token names none.
@@ -324,11 +335,12 @@ func destinations(prog string, args []string) []string {
 // authority. A destination that DOES carry a password is refused outright
 // below rather than stripped, which keeps that refusal true of both paths.
 //
-// requireRemote is set for scp and rsync. Each step's reasoning is at the
-// step, not repeated here: this file is the one that has to be cheap to
-// audit, and a rationale in two places is a rationale that can disagree with
-// itself.
-func destinationHost(tok string, requireRemote bool) (string, bool) {
+// form is remoteOnly for scp and rsync, bareHost for ssh and sftp. Each step's
+// reasoning is at the step, not repeated here: this file is the one that has
+// to be cheap to audit, and a rationale in two places is a rationale that can
+// disagree with itself.
+func destinationHost(tok string, form destinationForm) (string, bool) {
+	requireRemote := form == remoteOnly
 	if tok == "" {
 		return "", false
 	}

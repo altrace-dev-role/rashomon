@@ -56,7 +56,7 @@ func realIDs(t *testing.T) (declared, finished map[string]bool, final string) {
 // PostToolUse; its tool_result is the only one a denial.
 func TestRubricTEST7_RealTranscriptAgreesWithTheHooks(t *testing.T) {
 	declared, finished, final := realIDs(t)
-	ids, results, denied, unhooked, files, _, err := TranscriptIDs(realDir + "transcript.jsonl")
+	ids, results, denied, unhooked, files, _, err := transcriptIDsAt(realDir + "transcript.jsonl")
 	if err != nil || files != 1 {
 		t.Fatalf("TranscriptIDs: files %d, %v", files, err)
 	}
@@ -74,7 +74,7 @@ func TestRubricTEST7_RealTranscriptAgreesWithTheHooks(t *testing.T) {
 			t.Errorf("the denial %s is not the call that was declared and never finished", id)
 		}
 	}
-	text, ok := FinalAssistantText(realDir + "transcript.jsonl")
+	text, ok := FinalAssistantText(openT(t, realDir+"transcript.jsonl"))
 	if !ok || text != final {
 		t.Errorf("FinalAssistantText %q (%v), want the Stop payload's %q", text, ok, final)
 	}

@@ -24,7 +24,7 @@ import (
 // A write that fails is cut back to the size the file had before it, when
 // cut is set. cutBack's own size check and its truncate are two syscalls
 // with a gap between them, and a best-effort writer appends without any
-// lock at all (appendLine's bestEffort branch), so a cut-back can still
+// lock at all (appendLine's appendWithoutLock branch), so a cut-back can still
 // land on top of a record that writer put there in that gap. The spill
 // file is the only one a best-effort writer ever targets, and its callers
 // pass cut=false for exactly that reason. Windows refuses the cut on an
