@@ -17,6 +17,10 @@ import (
 // root beside install.json and baseline/ -- not a store record, because
 // nothing here is evidence about a session; it is evidence about this
 // COMMAND, kept for exactly one reader: status (H-92).
+//
+// Exported so the disclosure inventory (internal/disclose) can name this
+// file from this package's own constant rather than a second copy of the
+// literal string.
 const StateFileName = "recap.json"
 
 // StateTempName is the temporary file recap writes its state to before

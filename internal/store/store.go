@@ -26,16 +26,21 @@ const (
 
 	keyLen       = 32
 	installIDLen = 16
-
-	// FileInstallKey is the per-install HMAC key under the store root.
-	FileInstallKey = "install.key"
-	// FileInstallMeta is install.json, the install record under the store
-	// root. Its presence is what makes a directory a store.
-	FileInstallMeta = "install.json"
-	// DirRuns is the directory under the store root that holds one
-	// directory per run.
-	DirRuns = "runs"
 )
+
+// FileInstallKey is the store-root file holding the per-install HMAC key
+// (keyLen random bytes), created once by Open and never rewritten. Everything
+// this store digests keyed -- HostDigest, CWDDigest -- is keyed from it.
+const FileInstallKey = "install.key"
+
+// FileInstallMeta is the store-root file holding the install's identity and
+// schema version (installMeta), created once by Open and read by every
+// OpenExisting. Its presence is what makes a directory a store.
+const FileInstallMeta = "install.json"
+
+// DirRuns is the store-root directory holding one subdirectory per session,
+// named by segment(sessionID); see RunDir.
+const DirRuns = "runs"
 
 // ErrLockTimeout is returned when a lock could not be taken inside the budget
 // (LockFile), and by nothing else: it means busy, never broken. It is a

@@ -12,10 +12,10 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/host"
 )
 
-// lockName is the lock file beside the baselines, taken around every
+// LockName is the lock file beside the baselines, taken around every
 // load-modify-save of one (store.LockPath). One lock for the directory, not
 // one per file: renders and forgets are rare, and a forget walks every file.
-const lockName = ".lock"
+const LockName = ".lock"
 
 // maxBaselineHosts caps one project's baseline (RES-11; spec archive 85.3.7).
 // A project names tens to a few hundred distinct hosts over its life, so the
