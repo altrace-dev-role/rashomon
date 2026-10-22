@@ -20,7 +20,7 @@ func TestRubricTEST8_TrackedSessionsAtNAndNPlusOne(t *testing.T) {
 			s.Spoken[id], s.Checked[id] = "turn", "turn"
 		}
 		path := filepath.Join(t.TempDir(), stateFileName)
-		if err := writeState(path, s); err != nil {
+		if err := writeState(path, s, ""); err != nil {
 			t.Fatal(err)
 		}
 		got, err := readState(path)
