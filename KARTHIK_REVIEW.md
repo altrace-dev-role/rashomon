@@ -68,6 +68,9 @@ started a new turn: its later calls land in the new turn. The alternatives:
 
 ## 3. Nothing records which harness wrote a run
 
+*Superseded after phase 4: coverage records now carry `harness`. See
+"Decided by Rishi, for Karthik's review", decision B, at the end.*
+
 **What.** No record carries the harness. A reader cannot tell a Codex run from
 a Claude Code one, except by the shape of `transcript_path`.
 
@@ -171,3 +174,82 @@ removes exactly those. No record, schema or reason code changes.
   that matters is unmeasured.
 - **Open, for phase 4:** whether `/hooks` rewrites `hooks.json` (see
   `test/fixtures/codex/README.md`).
+
+## Decided by Rishi, for Karthik's review
+
+Made after the phase 4 live test (`test/fixtures/codex/PHASE4.md`). Each is
+in the branch as described, and each is open to your review.
+
+### A. Codex failure detection: investigated, nothing built
+
+**Decision.** Parse only the exit code from Codex's `tool_response` at
+PostToolUse, matching one exact pattern, and keep nothing else. Anything else
+stays unobserved.
+
+**Why it was not built.** There is no exit code to parse:
+
+- In all 7 captured PostToolUse payloads, `tool_response` is a plain string
+  holding only the tool's output. The failed `python3 missing.py` (fixture 17)
+  differs from a passing call only in its text.
+- Codex 0.163.0 (latest stable) and 0.164.0-alpha.12 (latest alpha) embed
+  the PostToolUse input schema: 13 fields, `additionalProperties: false`,
+  none of them an exit code or status. OpenAI's hooks page describes
+  `tool_response` as the tool's model-facing output. No changelog entry adds
+  a status.
+- The `exit_code=N` text seen in the phase 4 rollout was printed by the
+  model's own script, not by Codex.
+
+**What does exist.** Codex's rollout (the session's transcript file) has an
+`event_msg` entry of type `item_completed` per command, with `item.type`
+`CommandExecution`, `item.id` exactly equal to our record's `tool_use_id`,
+`item.exit_code` (an integer) and `item.status` (`completed` or `failed`).
+A `FileChange` (apply_patch) item has `status` and no `exit_code`. So a
+Codex execution's outcome stays `""` (item 1). Reading it from the rollout at
+report time, as the agent's summary is read, is a separate decision not yet
+made.
+
+### B. The harness is stored on coverage records
+
+**What.** Coverage records gain `harness`: `"codex"` on a record Codex's
+hooks wrote, absent for Claude Code. It is additive, at the same
+`SessionSchemaVersion`. A missing key means Claude Code, which every record
+written before it existed already is. H-144 still passes: Claude Code's
+records keep their bytes.
+
+**What it changes.** For a Codex run, the report does not run the transcript
+accounting, and says `transcript check: not supported for Codex yet`. In
+phase 4 that accounting read a Codex rollout as a Claude Code transcript,
+found no ids, and reported every call missing and the run
+`transcript_mismatch`, though every call was in the rollout. The report's
+JSON gains `harness` and `transcript_check`, both absent for Claude Code.
+
+**For you to look at.**
+
+- `harness` is the first optional key in `docs/store-schema.json`. The
+  schema test enforced "no key is optional"; it now names this one key as
+  the exception rather than relaxing the rule.
+- No version bump. Bumping would change every Claude Code coverage record for
+  a key none of them carries. An older reader ignores the key.
+- A Codex run recorded before this change still reads as Claude Code's, and
+  still shows the false mismatch.
+- On coverage records only, not on calls. Every hook invocation writes one,
+  so every run that has records has them.
+
+### C. Detach deletes the hooks.json that watch created
+
+**What.** When `watch --harness codex`'s write creates `hooks.json`, it
+writes the path to a new store-root file, `codex-hooks-created`.
+`detach --harness codex` deletes `hooks.json` only when that file names it
+and the document is empty after our entries are removed. In every other case
+it writes the file as before: it existed before watch, it holds anything of
+the user's, it is a symlink, the marker names another path, or the store is
+gone. Phase 4 had detach leave `{}` where there had been no file.
+
+**For you to look at.**
+
+- A new file in the store layout, read and removed without opening the
+  store, so detach still never creates a store.
+- A stale marker: if the user deletes our `hooks.json` and later makes an
+  empty one of their own, a watch and detach would delete it. Only an empty
+  file can be deleted this way.
+

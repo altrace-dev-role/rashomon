@@ -785,6 +785,15 @@ for byte. Ownership includes the flag, so a Claude Code command line in
 `detach --harness codex` takes `--install`, `--all` and `--force`, and plain
 `detach` never touches Codex's file.
 
+When `watch`'s write is what created `hooks.json`, it records the path in
+`codex-hooks-created` at the store root. `detach --harness codex` deletes the
+file only when that record names it and our entries were all it held, so a
+machine that had no `hooks.json` has none again (phase 4 measured `{}` left
+behind). A file that was there before `watch`, that holds anything of the
+user's, or that is a symlink stays. The record is read without opening the
+store, so a detach whose store is gone keeps the file rather than create a
+store to ask (H-148).
+
 Left out: `PostToolUseFailure` and `StopFailure`, which Codex does not have;
 `SessionEnd`, which never fired and whose timeout Codex caps at three seconds;
 and `Stop` and `UserPromptSubmit`, because recap prints nothing under Codex,
@@ -817,8 +826,21 @@ H-146 runs each installed command line through a shell with the capture's
 payloads. Every one is silent on stdout, because Codex adds a
 `SessionStart` hook's stdout to the agent's context.
 
-Not yet: a report that reads Codex transcripts. H-145 replays the capture end
-to end.
+Not yet: a report that reads Codex transcripts. Coverage records carry
+`harness: "codex"` (absent for Claude Code, so Claude Code's records are
+unchanged), and the report does not run its transcript accounting on such a
+run: read as a Claude Code transcript, a Codex rollout holds no tool ids, and
+phase 4 reported every call missing from a rollout that held them all. It
+says `transcript check: not supported for Codex yet` (H-147). A Codex run
+recorded before the key existed reads as Claude Code's. H-145 replays the
+capture end to end.
+
+What a Codex transcript reader would have to work with, measured in phase 4
+(`test/fixtures/codex/PHASE4.md`): each command's `item_completed` event in
+the rollout carries `item.id`, equal to the record's `tool_use_id`, with
+`item.exit_code` and `item.status`. The hook payload has no exit code in
+Codex 0.163.0 or 0.164.0-alpha.12, so an execution's outcome stays
+unobserved.
 
 ## Known limits
 
