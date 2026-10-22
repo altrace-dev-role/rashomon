@@ -170,6 +170,15 @@ func BenchmarkDerive(b *testing.B) {
 	} {
 		b.Run(c.name, func(b *testing.B) {
 			input, want := benchDeriveInput(b, c.name)
+			// A warm-up call before the timer starts, so a fixed-N run's
+			// B/op does not carry a one-time cost (P-12, archive 85.3.13):
+			// measured negligible on this package specifically (BenchmarkDerive
+			// read the same B/op at -benchtime 20x and 100x, within measurement
+			// noise), unlike cmd/rashomon's entries, but kept for the same
+			// reason the digest buffer in digest() is fixed-size rather than
+			// measured once and assumed -- a future addition to this package
+			// that does build a cache would otherwise land on an uncorrected row.
+			Derive(c.tool, input, benchKey)
 			b.ReportAllocs()
 			b.SetBytes(int64(len(input)))
 			var got Shape
@@ -191,6 +200,7 @@ func BenchmarkDerive(b *testing.B) {
 // the line, so MB/s is the lexer's throughput.
 func BenchmarkLexTokens(b *testing.B) {
 	cmd := benchLongCommand()
+	tokenizeShape(cmd) // warm-up before the timer starts; see BenchmarkDerive
 	b.ReportAllocs()
 	b.SetBytes(int64(len(cmd)))
 	var (

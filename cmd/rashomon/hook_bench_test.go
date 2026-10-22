@@ -34,6 +34,14 @@ const (
 	// digits are a counter, rewritten before each call (benchInput).
 	benchToolUseID = "toolu_010000000000000000000000"
 	benchIDDigits  = 22
+
+	// benchWarmupIndex is next's argument for benchToolCalls' one warm-up
+	// call. A negative index produces an id no non-negative loop index 0..
+	// b.N-1 can ever collide with -- next's digit loop writes one non-digit
+	// byte ('/') for a negative n and '0' for every digit after, which
+	// benchCheckCalls never names as a "last call" id, so it cannot be
+	// mistaken for one of the timed loop's own ids.
+	benchWarmupIndex = -1
 )
 
 // benchHead is the head every hook payload carries, in Claude Code's order.
@@ -301,12 +309,30 @@ func benchCheckCalls(b *testing.B, root string, declarations, executions int, st
 	}
 }
 
-// benchToolCalls runs a tool-call entry b.N times, each time as a new call.
+// benchToolCalls runs a tool-call entry b.N times, each time as a new call,
+// against a store this helper opens and warms once first.
+//
+// A store's first write costs more than every one after it: group commit
+// (REC-34) creates its WAL and coverage files on that call, which every
+// later one on the same store reuses. Measured 2026-10-17, before this
+// warm-up call existed: BenchmarkRunHook/bash_short read about 51,250 B/op
+// at the gate's `-benchtime 20x` and about 48,250 at `100x`, a 1/N curve
+// (114,100 B/op at `1x`) that fits a fixed one-time cost of about 66,500 B
+// on the first call, the rest flat -- a smaller fraction of B/op at a
+// larger N, not a different cost. A 20-iteration row would then move
+// whenever the gate's own iteration count did, which is a property of the
+// harness, not of what P-12's RES R2 bounds. The call below pays that cost
+// on the same store the timed loop then reuses, at an index
+// (benchWarmupIndex) the timed loop never reaches, so the row is
+// iteration-independent (archive 85.3.13, P-12).
 func benchToolCalls(b *testing.B, entry func([]string, io.Reader, io.Writer) int, body []byte, declares bool) {
 	root, installID := benchStarted(b)
 	in := newBenchInput(b, body)
 	args := []string{install.Marker, installID}
 	var stderr benchSink
+	if code := entry(args, in.next(benchWarmupIndex), &stderr); code != exitOK {
+		b.Fatalf("warm-up call exited %d", code)
+	}
 	b.ReportAllocs()
 	b.SetBytes(int64(len(body)))
 	b.ResetTimer()
@@ -316,11 +342,13 @@ func benchToolCalls(b *testing.B, entry func([]string, io.Reader, io.Writer) int
 		}
 	}
 	b.StopTimer()
+	// b.N+1: the warm-up call above wrote one record to the same store
+	// before the timed loop wrote its own b.N.
 	if declares {
-		benchCheckCalls(b, root, b.N, 0, &stderr)
+		benchCheckCalls(b, root, b.N+1, 0, &stderr)
 		return
 	}
-	benchCheckCalls(b, root, 0, b.N, &stderr)
+	benchCheckCalls(b, root, 0, b.N+1, &stderr)
 }
 
 // BenchmarkRunHook is one PreToolUse, in process: payload read, shape,
@@ -342,5 +370,26 @@ func BenchmarkRunPost(b *testing.B) {
 		payload func(testing.TB) []byte
 	}{{"bash_short", benchBashShortPost}, {"edit_314k", benchEdit314kPost}} {
 		b.Run(c.name, func(b *testing.B) { benchToolCalls(b, cmdPost, c.payload(b), false) })
+	}
+}
+
+// TestBenchWarmupIndexIsDistinctFromEveryLoopIndex: benchToolCalls' one
+// warm-up call writes to the same store the timed loop then measures, so
+// its id must never equal one the loop itself could write -- a collision
+// would either double-count that index's record or make benchCheckCalls'
+// "last id" read back the wrong call. A non-negative benchWarmupIndex is
+// the whole regression: at 0 it is the loop's own first id.
+func TestBenchWarmupIndexIsDistinctFromEveryLoopIndex(t *testing.T) {
+	if benchWarmupIndex >= 0 {
+		t.Fatalf("benchWarmupIndex = %d, want negative: a non-negative index can collide with the timed loop's own i", benchWarmupIndex)
+	}
+	in := newBenchInput(t, append([]byte(nil), benchToolUseID...))
+	in.next(benchWarmupIndex)
+	warmupID := string(append([]byte(nil), in.buf[in.at:in.at+benchIDDigits]...))
+	for _, n := range []int{0, 1, 2, 100, 1 << 20} {
+		in.next(n)
+		if got := string(in.buf[in.at : in.at+benchIDDigits]); got == warmupID {
+			t.Errorf("benchWarmupIndex produces the same id as loop index %d: %q", n, got)
+		}
 	}
 }

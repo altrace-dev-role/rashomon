@@ -14,6 +14,38 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/budget"
 )
 
+// ColdAllocConsistent reports a problem with an entry's cold_alloc_bytes_max
+// (P-12) against its own alloc_bytes_max row, or "" if there is none. A
+// negative cold figure is always a problem; a measured one (nonzero) that
+// reads below the entry's warm, steady-state figure is too, because a fresh
+// process's one call pays everything the warmed benchmark measures plus the
+// one-time cost the benchmark's own warm-up call exists to exclude -- cold
+// can never be cheaper than warm for the same entry. An unmeasured cold
+// figure (0, recap.* and probe.* today) is not compared with warm.
+func ColdAllocConsistent(coldAllocBytesMax, allocBytesMax int64) string {
+	if coldAllocBytesMax < 0 {
+		return fmt.Sprintf("cold_alloc_bytes_max %d is negative", coldAllocBytesMax)
+	}
+	if coldAllocBytesMax > 0 && coldAllocBytesMax < allocBytesMax {
+		return fmt.Sprintf("cold_alloc_bytes_max %d is below its warm alloc_bytes_max %d", coldAllocBytesMax, allocBytesMax)
+	}
+	return ""
+}
+
+// PerProcessColdAllocBytes is a hook-entry process's total allocation
+// budget, the figure neither field alone is (P-12): e's cold_alloc_bytes_max
+// covers the one hook/post call the process makes, and InitBudgetBytes
+// (RES-2) covers everything the Go runtime and this binary's own package
+// inits allocate before that call runs. Returns 0, meaning "not yet
+// measured", for an entry whose cold figure is 0 -- never InitBudgetBytes
+// alone, which would misread as a real per-process figure.
+func PerProcessColdAllocBytes(e budget.Entry) int64 {
+	if e.ColdAllocBytesMax <= 0 {
+		return 0
+	}
+	return e.ColdAllocBytesMax + InitBudgetBytes
+}
+
 // OverBudget reports whether measured exceeds budget by more than tolerance
 // (a fraction: 0.10 is ten percent). A budget of zero or less is a defect in
 // the budgets file and reads as over, never as unlimited.

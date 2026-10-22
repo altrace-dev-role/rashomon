@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,37 @@ const (
 	exitFail = 1
 )
 
+// hookGCPercent and hookMemoryLimitBytes are the runtime bound every hook
+// entry process runs under: GOGC 100 and a 32 MiB soft memory limit (archive
+// 85.3.12's RUNTIME block). Both are set unconditionally, never read from
+// GOGC or GOMEMLIMIT: either variable only sets the runtime's state before
+// main runs, and an explicit call after that always wins, which is the only
+// way "env ignored" can be true -- an operator exporting GOMEMLIMIT=1GiB
+// into Claude Code's own environment must not loosen what a hook process is
+// held to.
+const (
+	hookGCPercent        = 100
+	hookMemoryLimitBytes = 32 << 20
+)
+
+// hookRuntimeSubcommands are the four hook-entry processes the pin applies
+// to (hook, post, probe for SessionStart/SessionEnd, recap for Stop and
+// UserPromptSubmit). A command a person types -- disclose, status, report --
+// is not one of them and keeps whatever GC and memory settings its own
+// environment gave it.
+var hookRuntimeSubcommands = map[string]bool{
+	"hook": true, "post": true, "probe": true, "recap": true,
+}
+
+// applyHookRuntimeLimits pins GOGC and the soft memory limit for a hook
+// entry process. Idempotent: called again with the same two constants, it
+// changes nothing and its return values are the values already in force,
+// which is what lets a test read the pin back without a restore step.
+func applyHookRuntimeLimits() {
+	debug.SetGCPercent(hookGCPercent)
+	debug.SetMemoryLimit(hookMemoryLimitBytes)
+}
+
 func main() {
 	hook.Writer = version
 	// os.Exit skips deferred functions, so every path that needs one has to
@@ -54,6 +86,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitFail
 	}
 	rest := args[1:]
+
+	if hookRuntimeSubcommands[args[0]] {
+		applyHookRuntimeLimits()
+	}
 
 	switch args[0] {
 	case "hook":

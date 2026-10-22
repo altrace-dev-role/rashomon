@@ -238,6 +238,29 @@ func TestRES28r_CaseBudgetGatesOnlyWithAReadingOfItsOwn(t *testing.T) {
 	}
 }
 
+// TestRES36n_UngatedOwesTheColdGateOnlyForMeasuredEntries: an entry with a
+// measured cold_alloc_bytes_max (P-12) owes ColdGate(id) beside its
+// EntryGate(id), so TestColdAllocBudget skipping it -- a -run pattern
+// edited to stop selecting it, or a future entry that gains a cold figure
+// with no gate run for it -- fails a required run; an entry whose cold
+// figure is still 0 (not yet measured) owes no cold gate at all.
+func TestRES36n_UngatedOwesTheColdGateOnlyForMeasuredEntries(t *testing.T) {
+	b := budget.Budgets{
+		Entries: []budget.Entry{{ID: "hook.a", ColdAllocBytesMax: 100}, {ID: "post.b"}},
+	}
+	if got := Ungated(b, nil); strings.Join(got, "|") != "cold hook.a|entry hook.a|entry post.b|init" {
+		t.Errorf("nothing ran: Ungated = %q", got)
+	}
+	ran := map[string]bool{InitGate: true, EntryGate("hook.a"): true, EntryGate("post.b"): true}
+	if got := Ungated(b, ran); strings.Join(got, "|") != "cold hook.a" {
+		t.Errorf("the cold gate alone skipped: Ungated = %q", got)
+	}
+	ran[ColdGate("hook.a")] = true
+	if got := Ungated(b, ran); len(got) != 0 {
+		t.Errorf("every owed gate ran, Ungated = %q", got)
+	}
+}
+
 // healthyBurst is a RES-30 run in which every pair landed every record.
 func healthyBurst(ways int) Burst {
 	b := Burst{Ways: ways, Declarations: ways, Terminals: ways, Executions: ways, CallCoverage: ways, PostCoverage: ways}
