@@ -29,7 +29,7 @@ func TestREC42h_ARefusedSteerReadCountsAsSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer holder.Close() //nolint:errcheck // read-only
-	unlock, _, err := lockFile(holder, lockBudget)
+	unlock, _, err := lockFileWait(holder, lockBudget)
 	if err != nil {
 		t.Fatalf("taking the steer lock: %v", err)
 	}

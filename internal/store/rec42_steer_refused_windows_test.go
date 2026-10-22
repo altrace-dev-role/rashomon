@@ -22,7 +22,7 @@ func TestREC42h_ASteerReadRefusedByAHeldLockCountsAsSkipped(t *testing.T) {
 	}
 	path := filepath.Join(st.RunDir(session), FileSteer)
 	holder := openForAppend(t, path)
-	unlock, _, err := lockFile(holder, lockBudget)
+	unlock, _, err := lockFileWait(holder, lockBudget)
 	if err != nil {
 		t.Fatalf("taking the steer lock: %v", err)
 	}

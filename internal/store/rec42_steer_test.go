@@ -72,7 +72,7 @@ func lockHeld(t *testing.T, path string) bool {
 		t.Fatalf("open %s: %v", path, err)
 	}
 	defer f.Close()
-	unlock, _, err := lockFile(f, 0)
+	unlock, _, err := lockFileWait(f, 0)
 	if err == nil {
 		unlock()
 		return false
@@ -182,7 +182,7 @@ func TestREC42_SteerRecordBeforeEmit(t *testing.T) {
 			t.Fatal(err)
 		}
 		holder := openForAppend(t, path)
-		unlock, _, err := lockFile(holder, lockBudget)
+		unlock, _, err := lockFileWait(holder, lockBudget)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -222,7 +222,7 @@ func TestREC42b_SteerLockGivesUpAtItsBudget(t *testing.T) {
 				t.Fatal(err)
 			}
 			holder := openForAppend(t, path)
-			unlock, _, err := lockFile(holder, lockBudget)
+			unlock, _, err := lockFileWait(holder, lockBudget)
 			if err != nil {
 				t.Fatal(err)
 			}
