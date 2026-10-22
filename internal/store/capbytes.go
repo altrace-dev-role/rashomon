@@ -124,7 +124,7 @@ func (s *Store) ResolvedCap() (c RecordedCap, ok bool, err error) {
 // does not have to throw away a correct partial sum because one run's size
 // could not be read.
 func (s *Store) RunsBytes() (bytes int64, unlisted int, err error) {
-	plan, err := evictCandidates(filepath.Join(s.root, dirRuns))
+	plan, err := evictCandidates(filepath.Join(s.root, DirRuns))
 	if err != nil {
 		return 0, 0, err
 	}

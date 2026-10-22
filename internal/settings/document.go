@@ -124,6 +124,10 @@ func (d *Document) Get(key string) (json.RawMessage, bool) {
 	return nil, false
 }
 
+// Empty reports whether the document holds no member at all, which is what a
+// file watch created is left as once its entries are removed.
+func (d *Document) Empty() bool { return len(d.members) == 0 }
+
 // Bytes renders the document. Values not edited are emitted as they were read.
 func (d *Document) Bytes() []byte {
 	return append(writeObject(d.members, 0), '\n')

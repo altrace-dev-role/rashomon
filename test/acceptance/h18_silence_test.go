@@ -99,7 +99,7 @@ func TestH19_DetachDoesNotRewriteHistory(t *testing.T) {
 	if res := e.detach(); res.exitCode != 0 {
 		t.Fatalf("detach: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	if got := len(ours(e.settings().Hooks["PreToolUse"])); got != 0 {
+	if got := len(ours(e.settingsAfterDetach().Hooks["PreToolUse"])); got != 0 {
 		t.Fatalf("premise broken: %d entries of ours remain after detach", got)
 	}
 

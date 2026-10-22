@@ -27,9 +27,14 @@ const (
 	keyLen       = 32
 	installIDLen = 16
 
-	fileInstallKey  = "install.key"
-	fileInstallMeta = "install.json"
-	dirRuns         = "runs"
+	// FileInstallKey is the per-install HMAC key under the store root.
+	FileInstallKey = "install.key"
+	// FileInstallMeta is install.json, the install record under the store
+	// root. Its presence is what makes a directory a store.
+	FileInstallMeta = "install.json"
+	// DirRuns is the directory under the store root that holds one
+	// directory per run.
+	DirRuns = "runs"
 )
 
 // ErrLockTimeout is returned when a lock could not be taken inside the budget
@@ -92,12 +97,6 @@ type Store struct {
 	lockWaited atomic.Int64
 }
 
-type installMeta struct {
-	InstallID       string `json:"install_id"`
-	CreatedAtUnixMS int64  `json:"created_at_unix_ms"`
-	SchemaVersion   int    `json:"schema_version"`
-}
-
 // DefaultRoot resolves the store location.
 //
 // RASHOMON_HOME wins so that a test never has to touch a real home directory, and
@@ -132,11 +131,11 @@ func Open(root string) (*Store, error) {
 		return nil, err
 	}
 
-	key, err := loadOrCreateKey(filepath.Join(root, fileInstallKey))
+	key, err := loadOrCreateKey(filepath.Join(root, FileInstallKey))
 	if err != nil {
 		return nil, err
 	}
-	meta, err := loadOrCreateMeta(filepath.Join(root, fileInstallMeta))
+	meta, err := loadOrCreateMeta(filepath.Join(root, FileInstallMeta))
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +161,7 @@ func OpenExisting(root string) (*Store, error) {
 	if root == "" {
 		return nil, ErrNoStore
 	}
-	if _, err := os.Stat(filepath.Join(root, fileInstallMeta)); err != nil {
+	if _, err := os.Stat(filepath.Join(root, FileInstallMeta)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrNoStore
 		}
@@ -201,7 +200,7 @@ func (s *Store) opened() error {
 
 // RunDir is the directory holding one session's records.
 func (s *Store) RunDir(sessionID string) string {
-	return filepath.Join(s.root, dirRuns, segment(sessionID))
+	return filepath.Join(s.root, DirRuns, segment(sessionID))
 }
 
 // DeferDurability is group commit (REC-34). Every later append on this Store
@@ -821,8 +820,8 @@ func loadOrCreateKey(path string) ([]byte, error) {
 	return key, nil
 }
 
-func loadOrCreateMeta(path string) (installMeta, error) {
-	var meta installMeta
+func loadOrCreateMeta(path string) (InstallRecord, error) {
+	var meta InstallRecord
 	for attempt := 0; ; attempt++ {
 		b, err := os.ReadFile(path)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -844,7 +843,7 @@ func loadOrCreateMeta(path string) (installMeta, error) {
 	if _, err := rand.Read(raw); err != nil {
 		return meta, err
 	}
-	meta = installMeta{
+	meta = InstallRecord{
 		InstallID:       hex.EncodeToString(raw),
 		CreatedAtUnixMS: time.Now().UnixMilli(),
 		SchemaVersion:   SchemaVersion,

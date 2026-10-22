@@ -94,7 +94,7 @@ func TestRubricPERF7_RunsBytesIsWhatTheCapCounts(t *testing.T) {
 	if err := st.AppendDeclaration(testDecl("s", "toolu_1")); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := evictCandidates(st.Root() + "/" + dirRuns)
+	plan, err := evictCandidates(st.Root() + "/" + DirRuns)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestRunsBytes_CountsWhatItCouldNotList(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	fine, err := evictCandidates(st.Root() + "/" + dirRuns)
+	fine, err := evictCandidates(st.Root() + "/" + DirRuns)
 	if err != nil {
 		t.Fatal(err)
 	}

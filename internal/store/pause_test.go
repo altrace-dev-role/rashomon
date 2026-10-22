@@ -77,12 +77,12 @@ func TestPause_CreatesOnlyTheMarkerNotAnInstallIdentity(t *testing.T) {
 	if _, _, err := Pause(root, time.Now()); err != nil {
 		t.Fatalf("Pause: %v", err)
 	}
-	for _, name := range []string{fileInstallMeta, fileInstallKey, dirRuns} {
+	for _, name := range []string{FileInstallMeta, FileInstallKey, DirRuns} {
 		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
 			t.Errorf("Pause created %s, which belongs to an opened store", name)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(root, fileRecordingPaused)); err != nil {
+	if _, err := os.Stat(filepath.Join(root, FileRecordingPaused)); err != nil {
 		t.Errorf("Pause did not create its own marker: %v", err)
 	}
 }
@@ -153,7 +153,7 @@ func TestMarkerUnreadable_TrueOnlyWhenTheMarkerIsAPlainFile(t *testing.T) {
 
 	t.Run("a directory where the marker would be", func(t *testing.T) {
 		root := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(root, fileRecordingPaused), 0o700); err != nil {
+		if err := os.MkdirAll(filepath.Join(root, FileRecordingPaused), 0o700); err != nil {
 			t.Fatal(err)
 		}
 		if MarkerUnreadable(root) {
@@ -169,7 +169,7 @@ func TestMarkerUnreadable_TrueOnlyWhenTheMarkerIsAPlainFile(t *testing.T) {
 		if _, _, err := Pause(root, time.Now()); err != nil {
 			t.Fatalf("Pause: %v", err)
 		}
-		marker := filepath.Join(root, fileRecordingPaused)
+		marker := filepath.Join(root, FileRecordingPaused)
 		if err := os.Chmod(marker, 0); err != nil {
 			t.Fatal(err)
 		}
@@ -194,7 +194,7 @@ func TestRubricPAUSE9_ResumeRemovesAnUnreadableMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Pause: %v", err)
 	}
-	marker := filepath.Join(root, fileRecordingPaused)
+	marker := filepath.Join(root, FileRecordingPaused)
 	if err := os.Chmod(marker, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestRubricPAUSE9_ResumeRemovesAnUnreadableMarker(t *testing.T) {
 // not understand.
 func TestResume_NamesTheMarkerOnAnUnrelatedFault(t *testing.T) {
 	root := t.TempDir()
-	marker := filepath.Join(root, fileRecordingPaused)
+	marker := filepath.Join(root, FileRecordingPaused)
 	if err := os.MkdirAll(marker, 0o700); err != nil {
 		t.Fatal(err)
 	}

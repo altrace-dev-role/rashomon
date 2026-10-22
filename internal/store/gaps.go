@@ -81,7 +81,7 @@ func (s *Store) forgetEach(forget func(dir string) (*Gap, error)) ([]Gap, error)
 		errs []error
 	)
 	for _, name := range names {
-		g, err := forget(filepath.Join(s.root, dirRuns, name))
+		g, err := forget(filepath.Join(s.root, DirRuns, name))
 		if g != nil {
 			gaps = append(gaps, *g)
 		}

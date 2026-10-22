@@ -241,7 +241,7 @@ func TestH6_IdempotentInstallOneOwner(t *testing.T) {
 		if res := e.detach(); res.exitCode != 0 {
 			t.Fatalf("detach: exit %d, stderr %q", res.exitCode, res.stderr)
 		}
-		sf = e.settings()
+		sf = e.settingsAfterDetach()
 		for _, event := range []string{"PreToolUse", "PostToolUse", "SessionStart", "SessionEnd"} {
 			if got := len(ours(sf.Hooks[event])); got != 0 {
 				t.Errorf("after detach, %d entries of ours remain under %s", got, event)

@@ -37,6 +37,10 @@ import (
 // not know rather than guessing at it.
 const Version = 1
 
+// DirName is the directory under the store root that holds one baseline
+// file per project.
+const DirName = "baseline"
+
 // Basis is what a baseline's hosts are: the hosts a project's sessions NAMED
 // in tool calls. Files from the proxy era held the hosts a session REACHED,
 // as the proxy saw them, and were written only on sessions where the proxy
@@ -245,7 +249,7 @@ func UpdateOrigin(root, key, sessionID string, sessionStart time.Time, hosts []s
 	if root == "" || key == "" {
 		return Result{Err: errors.New("baseline: no store root or project key")}
 	}
-	dir := filepath.Join(root, "baseline")
+	dir := filepath.Join(root, DirName)
 	path := filepath.Join(dir, fileName(key))
 	res, err := update(dir, path, key, sessionID, sessionStart, hosts, sshHosts)
 	res.Path = path

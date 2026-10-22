@@ -73,6 +73,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return guarded(stderr, noArgs(rest, stdout, cmdWatch))
 	case "detach":
 		return guarded(stderr, func() error { return cmdDetach(rest, stdout) })
+	case "purge":
+		return guarded(stderr, func() error { return cmdPurge(rest, stdout) })
 	case "pause":
 		return guarded(stderr, noArgs(rest, stdout, cmdPause))
 	case "resume":
@@ -200,7 +202,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 
-		st := openForHook(stderr)
+		st := openForHook(args, stderr)
 		if st == nil {
 			return nil
 		}
@@ -244,7 +246,7 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 
-		st := openForHook(stderr)
+		st := openForHook(args, stderr)
 		if st == nil {
 			return nil
 		}
@@ -292,7 +294,7 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 		if checkPaused(args, stdin, phase, stderr) {
 			return nil
 		}
-		st := openForHook(stderr)
+		st := openForHook(args, stderr)
 		if st == nil {
 			return nil
 		}
@@ -584,10 +586,21 @@ func installArg(args []string) string {
 // openForHook opens the store for a hook-invoked path. It prints a fixed
 // string and returns nil on failure: there is nowhere to record that recording
 // failed, and the absence of any record for the session is the signal.
-func openForHook(stderr io.Writer) *store.Store {
+//
+// An entry that names an install (--install, as watch writes every one) and
+// finds no install.json returns nil and prints nothing: that store was
+// purged, and a live session still runs the entries it started with. Opening
+// one here would create the root, a key and a new install id -- the store
+// purge had just removed, back on the machine (Technical spec 7.2.9, TRU-28).
+// An entry that names none is from before --install existed, and is opened
+// as it always was.
+func openForHook(args []string, stderr io.Writer) *store.Store {
 	root, err := store.DefaultRoot()
 	if err != nil {
 		fmt.Fprintln(stderr, "rashomon: store location unresolved")
+		return nil
+	}
+	if installArg(args) != "" && !storeExistsAt(root) {
 		return nil
 	}
 	st, err := store.Open(root)
@@ -759,14 +772,26 @@ func storedInstallID() (string, error) {
 // may rewrite at any moment. Three is generous: the window is one small write.
 const editAttempts = 3
 
+// settingsEdit is what one editSettings call found and left: the file's bytes
+// as the edit read them, whether it existed, and what it holds afterwards.
+type settingsEdit struct {
+	before  []byte
+	existed bool
+	after   []byte // nil when removed
+	changed bool
+	removed bool // the edit left no member, and removeEmpty asked for the file to go
+}
+
 // editSettings applies edit to the user's settings file with optimistic
 // concurrency: the file is re-read and the edit re-applied if it changed
-// underneath. It reports whether anything was written.
-func editSettings(path string, edit func(*settings.Document) (bool, error)) (bool, error) {
+// underneath. When the edit leaves the document empty and removeEmpty says
+// so for the bytes it read, the file is removed rather than written -- the
+// one way detach can restore a settings.json that watch created.
+func editSettings(path string, edit func(*settings.Document) (bool, error), removeEmpty func(before []byte) bool) (settingsEdit, error) {
 	for attempt := 0; attempt < editAttempts; attempt++ {
-		original, err := settings.ReadOriginal(path)
+		original, existed, err := settings.ReadState(path)
 		if err != nil {
-			return false, err
+			return settingsEdit{}, err
 		}
 		// The document names path in every error it raises, the edit's
 		// included: a hook event that is not an array surfaces inside edit,
@@ -774,19 +799,32 @@ func editSettings(path string, edit func(*settings.Document) (bool, error)) (boo
 		// not about the file and are not dressed as if they were.
 		doc, err := settings.ParseNamed(path, original)
 		if err != nil {
-			return false, err
+			return settingsEdit{}, err
 		}
 		changed, err := edit(doc)
-		if err != nil || !changed {
-			return false, err
+		if err != nil {
+			return settingsEdit{}, err
 		}
-		err = settings.Write(path, original, doc.Bytes())
+		res := settingsEdit{before: original, existed: existed, after: original, changed: changed}
+		if !changed {
+			return res, nil
+		}
+		if removeEmpty != nil && doc.Empty() && removeEmpty(original) {
+			res.after, res.removed = nil, true
+			err = settings.Remove(path, original)
+		} else {
+			res.after = doc.Bytes()
+			err = settings.Write(path, original, res.after)
+		}
 		if errors.Is(err, settings.ErrChanged) {
 			continue
 		}
-		return err == nil, err
+		if err != nil {
+			return settingsEdit{}, err
+		}
+		return res, nil
 	}
-	return false, errors.New("settings file kept changing while it was being edited; try again")
+	return settingsEdit{}, errors.New("settings file kept changing while it was being edited; try again")
 }
 
 func cmdWatch(stdout io.Writer) error {
@@ -827,24 +865,55 @@ func cmdWatch(stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	st, err := openStore()
+	root, err := store.DefaultRoot()
 	if err != nil {
 		return err
+	}
+	// Taken before anything is created, so they name exactly what this watch
+	// makes: the store root and its missing parents, the configuration
+	// directory and its missing parents. purge removes them once empty.
+	created, err := missingDirs(root, filepath.Dir(loc.User))
+	if err != nil {
+		return err
+	}
+	st, err := store.Open(root)
+	if err != nil {
+		return err
+	}
+	// Recorded before settings.json is touched (Technical spec 7.2.3 step
+	// 6), so a watch that dies after its edit has still told purge which
+	// directories it made.
+	if err := recordCreatedDirs(st.Root(), created); err != nil {
+		return fmt.Errorf("recording the directories watch created: %w; settings.json was not touched", err)
 	}
 	spec := install.Spec{Executable: exe, InstallID: st.InstallID()}
 
 	var foreign []string
-	changed, err := editSettings(loc.User, func(doc *settings.Document) (bool, error) {
+	hadOurs := false
+	edit, err := editSettings(loc.User, func(doc *settings.Document) (bool, error) {
+		var err error
+		if hadOurs, err = holdsEntriesOf(doc, spec.InstallID); err != nil {
+			return false, err
+		}
 		applied, err := install.Apply(doc, spec)
 		if err != nil {
 			return false, err
 		}
 		foreign, err = install.ForeignOwners(doc, spec.InstallID)
 		return applied, err
-	})
+	}, nil)
 	if err != nil {
 		return err
 	}
+	fault.Inject(fault.PointWatchRecord)
+	err = fault.Fail(fault.PointWatchRecord)
+	if err == nil {
+		err = recordWatch(st.Root(), edit, hadOurs)
+	}
+	if err != nil {
+		return rollBackWatch(stdout, loc.User, edit, st.InstallID(), err)
+	}
+	changed := edit.changed
 	if changed {
 		fmt.Fprintf(stdout, "rashomon: watching (install %s) via %s\n", st.InstallID(), loc.User)
 	} else {
@@ -858,12 +927,17 @@ func cmdWatch(stdout io.Writer) error {
 			strings.Join(foreign, ", "))
 	}
 	capProblem(stdout, "rashomon: ")
-	// Printed in full, on its own line, because it is the line that still works
-	// once this binary or the store is gone: the id cannot be read back from a
-	// store that is not there, and there is nowhere else it is written down.
-	fmt.Fprintln(stdout, "rashomon: undo with this line -- it needs no store, and any rashomon binary will do:")
-	fmt.Fprintf(stdout, "rashomon detach --install %s\n", st.InstallID())
+	printUndoLine(stdout, st.InstallID())
 	return nil
+}
+
+// printUndoLine prints the detach line for installID. It is printed in
+// full, on its own line, because it is the line that still works once this
+// binary or the store is gone: the id cannot be read back from a store that
+// is not there, and there is nowhere else it is written down.
+func printUndoLine(stdout io.Writer, installID string) {
+	fmt.Fprintln(stdout, "rashomon: undo with this line -- it needs no store, and any rashomon binary will do:")
+	fmt.Fprintf(stdout, "rashomon detach --install %s\n", installID)
 }
 
 func cmdDetach(args []string, stdout io.Writer) error {
@@ -887,16 +961,18 @@ func cmdDetach(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	rec := selfCheckRecord(installID, all)
 	removed := 0
 	var left []install.Modified
-	changed, err := editSettings(path, func(doc *settings.Document) (bool, error) {
+	edit, err := editSettings(path, func(doc *settings.Document) (bool, error) {
 		n, l, err := remove(doc)
 		removed, left = n, l
 		return n > 0, err
-	})
+	}, restoresAbsent(rec))
 	if err != nil {
 		return err
 	}
+	changed := edit.changed
 	// Named before the outcome, because an entry left behind still fires on
 	// every tool call and that is the part the user has to act on.
 	for _, m := range left {
@@ -907,7 +983,9 @@ func cmdDetach(args []string, stdout io.Writer) error {
 		return nil
 	}
 	fmt.Fprintf(stdout, "rashomon: detached (%s, %d entries) from %s\n", who, removed, path)
-
+	if rec != nil {
+		selfCheck(stdout, path, rec, edit, removed)
+	}
 	return nil
 }
 
@@ -1814,6 +1892,11 @@ usage:
   rashomon detach --install <id> remove one install's entries, reading no store
   rashomon detach --all          remove every entry carrying a rashomon install
                                marker, whatever its id
+  rashomon purge [--yes] [--binary]
+                               detach, then remove the store and the
+                               directories watch created; prints every path
+                               first and asks on the terminal unless --yes;
+                               --binary also removes this binary
   rashomon pause                 stop recording on this machine, reaching every
                                installed origin; leaves a record of the change
   rashomon resume                start recording again; closes the paused
@@ -1998,7 +2081,7 @@ func countOf(n int, noun string) string {
 // its own doc for why this cannot list the directory itself and call
 // baseline.ForgetFile per file the way it once did.
 func clearBaselines(root, raw string) (int, bool, error) {
-	return baseline.ForgetAll(filepath.Join(root, "baseline"), raw)
+	return baseline.ForgetAll(filepath.Join(root, baseline.DirName), raw)
 }
 
 // storeExistsAt asks whether a root holds a store without opening one.

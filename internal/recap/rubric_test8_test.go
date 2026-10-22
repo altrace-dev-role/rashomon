@@ -19,7 +19,7 @@ func TestRubricTEST8_TrackedSessionsAtNAndNPlusOne(t *testing.T) {
 			id := fmt.Sprintf("sess-%03d", i)
 			s.Spoken[id], s.Checked[id] = "turn", "turn"
 		}
-		path := filepath.Join(t.TempDir(), stateFileName)
+		path := filepath.Join(t.TempDir(), StateFileName)
 		if err := writeState(path, s, ""); err != nil {
 			t.Fatal(err)
 		}
