@@ -138,21 +138,30 @@ func TestRES28i_RunKeepsTheChildsExitStatus(t *testing.T) {
 // is the larger of its own peak and the reaper's, so a reading at or under
 // the reaper's is not the child's and fails closed; elsewhere the reading is
 // the child's alone. A report that is not one well-formed peak line is an
-// error, never a zero peak a gate would pass.
+// error, never a zero peak a gate would pass. A caller tells "the reaper's
+// own floor rules this reading out" apart from "there is no reading at all"
+// (a zero child) only through errors.Is(err, ErrBelowFloor): the floor case
+// alone wraps it, so a static per-platform guess (test/perf/rss_test.go's
+// old belowFloor list) is never needed to report it.
 func TestRES28i_AReadingAtTheReapersFloorIsRefused(t *testing.T) {
 	for _, c := range []struct {
-		child, reaper float64
-		goos          string
-		ok            bool
+		child, reaper  float64
+		goos           string
+		ok, belowFloor bool
 	}{
-		{6.5, 2.1, "linux", true},
-		{2.1, 2.1, "linux", false},
-		{1.9, 2.1, "linux", false},
-		{1.1, 2.1, "darwin", true},
-		{0, 2.1, "darwin", false},
+		{6.5, 2.1, "linux", true, false},
+		{2.1, 2.1, "linux", false, true},
+		{1.9, 2.1, "linux", false, true},
+		{1.1, 2.1, "darwin", true, false},
+		{0, 2.1, "darwin", false, false},
 	} {
-		if err := attributable(c.child, c.reaper, c.goos); (err == nil) != c.ok {
+		err := attributable(c.child, c.reaper, c.goos)
+		if (err == nil) != c.ok {
 			t.Errorf("attributable(%v, %v, %s) = %v, want ok=%v", c.child, c.reaper, c.goos, err, c.ok)
+		}
+		if errors.Is(err, ErrBelowFloor) != c.belowFloor {
+			t.Errorf("attributable(%v, %v, %s): errors.Is(err, ErrBelowFloor) = %v, want %v (err=%v)",
+				c.child, c.reaper, c.goos, errors.Is(err, ErrBelowFloor), c.belowFloor, err)
 		}
 	}
 	for _, c := range []struct {

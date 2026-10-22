@@ -143,23 +143,75 @@ func TestRES28p_AReadingLeavesOutTheHarnesssOwnPeak(t *testing.T) {
 	t.Logf("rashomon version: %.2f MiB beside a 96 MiB harness", got)
 }
 
-// maxRSSMiB runs the binary once with stdin and env, requires exit 0, and
-// returns its peak RSS in MiB and what it printed.
-func maxRSSMiB(t *testing.T, stdin []byte, env []string, args ...string) (float64, []byte) {
+// runOnce runs the binary once with stdin and env and returns its peak RSS
+// in MiB, what it printed, what it wrote to stderr, and the reaper's error,
+// if any. A platform with no ru_maxrss skips by name (peakrss.ErrUnavailable,
+// which no caller can usefully act on); any other error, including one
+// errors.Is(err, peakrss.ErrBelowFloor) (the reaper could not attribute this
+// particular reading to the child, test/perf/peakrss), is returned for the
+// caller to decide rather than failed here.
+func runOnce(t *testing.T, stdin []byte, env []string, args ...string) (rss float64, stdout, stderr []byte, err error) {
 	t.Helper()
 	cmd := exec.Command(rashomonBin, args...)
 	cmd.Stdin = bytes.NewReader(stdin)
 	cmd.Env = env
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	rss, err := reaper.Run(cmd)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &outBuf, &errBuf
+	rss, err = reaper.Run(cmd)
 	if errors.Is(err, peakrss.ErrUnavailable) {
 		t.Skip(err)
 	}
+	return rss, outBuf.Bytes(), errBuf.Bytes(), err
+}
+
+// maxRSSMiB runs the binary once with stdin and env, requires a reading the
+// reaper could attribute to it, and returns its peak RSS in MiB and what it
+// printed. Callers that measure the harness's own mechanism (TestRES28p_) or
+// seed a store (rig.seed) want exactly this all-or-nothing behaviour; a run
+// gated per platform (rig.medianRSS) wants runOnce directly, so it can tell
+// "the reaper's own floor rules this out" apart from a real failure.
+func maxRSSMiB(t *testing.T, stdin []byte, env []string, args ...string) (float64, []byte) {
+	t.Helper()
+	rss, stdout, stderr, err := runOnce(t, stdin, env, args...)
 	if err != nil {
-		t.Fatalf("rashomon %s: %v\n%s", strings.Join(args, " "), err, stderr.String())
+		t.Fatalf("rashomon %s: %v\n%s", strings.Join(args, " "), err, stderr)
 	}
-	return rss, stdout.Bytes()
+	return rss, stdout
+}
+
+// floorOutcome reports whether err is the reaper refusing to attribute this
+// one reading to the child (peakrss.ErrBelowFloor): true with the reaper's
+// own reason to report, rather than a per-platform list guessed in advance
+// of ever measuring (archive 85.4.4 found that list reporting two entries as
+// unmeasurable on a runner where they had, in fact, read above its floor).
+// false, "" for every other outcome, nil included -- the caller still Fatals
+// on any other error.
+func floorOutcome(err error) (notAttributable bool, why string) {
+	if errors.Is(err, peakrss.ErrBelowFloor) {
+		return true, err.Error()
+	}
+	return false, ""
+}
+
+// TestRES28s_FloorOutcomeNamesTheReapersOwnReason: nil and an ordinary error
+// are not the floor (medianRSS still Fatals on those); only
+// peakrss.ErrBelowFloor, wrapped or bare, reports with the reaper's own
+// reason. This is checked against synthetic errors, not a real low-floor
+// runner, which this harness cannot manufacture on demand (RES-28s).
+func TestRES28s_FloorOutcomeNamesTheReapersOwnReason(t *testing.T) {
+	if got, why := floorOutcome(nil); got || why != "" {
+		t.Errorf("floorOutcome(nil) = %v, %q, want false, \"\"", got, why)
+	}
+	if got, why := floorOutcome(fmt.Errorf("some other failure")); got || why != "" {
+		t.Errorf("floorOutcome(other) = %v, %q, want false, \"\"", got, why)
+	}
+	if got, _ := floorOutcome(peakrss.ErrBelowFloor); !got {
+		t.Error("floorOutcome(peakrss.ErrBelowFloor) = false, want true")
+	}
+	wrapped := fmt.Errorf("peakrss: the child's peak 2.10 MiB does not exceed the reaper's own 2.10 MiB, so it may be the reaper's: %w", peakrss.ErrBelowFloor)
+	if got, why := floorOutcome(wrapped); !got || !strings.Contains(why, "reaper's own") {
+		t.Errorf("floorOutcome(wrapped) = %v, %q, want true naming the reaper's own peak", got, why)
+	}
 }
 
 // rig is one measurement's isolated world: a store pinned to payload's
@@ -252,7 +304,13 @@ func added(before, after map[string][][]byte) [][]byte {
 // peak RSS. Every run must pass runs.go's WorkDone on what it added to the
 // store and printed; recap.json is removed before each, so each recap is the
 // turn's first, as the recap benchmarks do.
-func (r rig) medianRSS(t *testing.T, command []string, mk func(i int) []byte) float64 {
+//
+// attributable is false, with why from the reaper (RES-28s), the moment any
+// run's reading cannot be told apart from the reaper's own (peakrss.
+// ErrBelowFloor): the caller must report that run-only rather than gate or
+// fail on it, and nothing further is measured, since every run on this
+// platform hits the same floor.
+func (r rig) medianRSS(t *testing.T, command []string, mk func(i int) []byte) (median float64, attributable bool, why string) {
 	t.Helper()
 	var xs []float64
 	for i := 0; i < runs; i++ {
@@ -261,7 +319,13 @@ func (r rig) medianRSS(t *testing.T, command []string, mk func(i int) []byte) fl
 		}
 		in := mk(i)
 		recs, cov := r.lines(t, store.FileRecords), r.lines(t, store.FileCoverage)
-		rss, stdout := maxRSSMiB(t, in, r.env, r.args(command)...)
+		rss, stdout, stderr, err := runOnce(t, in, r.env, r.args(command)...)
+		if notAttributable, floorWhy := floorOutcome(err); notAttributable {
+			return 0, false, floorWhy
+		}
+		if err != nil {
+			t.Fatalf("rashomon %s: %v\n%s", strings.Join(command, " "), err, stderr)
+		}
 		a := Added{Records: len(added(recs, r.lines(t, store.FileRecords))), Coverage: added(cov, r.lines(t, store.FileCoverage)), Stdout: stdout}
 		if err := WorkDone(command, payload.Session, a); err != nil {
 			t.Fatalf("run %d of %s did not do its work: %v", i, strings.Join(command, " "), err)
@@ -269,7 +333,7 @@ func (r rig) medianRSS(t *testing.T, command []string, mk func(i int) []byte) fl
 		xs = append(xs, rss)
 	}
 	m, _ := Median(xs)
-	return m
+	return m, true, ""
 }
 
 // TestRES28_MaxRSSFollowsThePayloadBudget: hook and post peak RSS stay within
@@ -302,13 +366,21 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				}
 				return p
 			}
-			got := r.medianRSS(t, []string{c.Entry}, mk)
-			budgetMiB, gated, why := caseBudget(platform(), c, b.Platforms[platform()].CaseBudgets)
-			if !gated {
-				reportOnlyRSS(t, CaseGate(c.ID), c.ID, got, why)
+			got, attributable, floorWhy := r.medianRSS(t, []string{c.Entry}, mk)
+			if !attributable {
+				reportOnlyRSS(t, CaseGate(c.ID), c.ID, got, floorWhy)
 				return
 			}
-			overBudget(t, b, CaseGate(c.ID), c.ID, got, budgetMiB)
+			budgetMiB, gated, reportOnly, why := caseBudget(platform(), c, b.Platforms[platform()].CaseBudgets)
+			switch {
+			case gated:
+				overBudget(t, b, CaseGate(c.ID), c.ID, got, budgetMiB)
+			case reportOnly:
+				reportOnlyRSS(t, CaseGate(c.ID), c.ID, got, why)
+			default:
+				ran[CaseGate(c.ID)] = true
+				t.Errorf("%s: %s", c.ID, why)
+			}
 		})
 	}
 }
@@ -324,19 +396,27 @@ func TestRES28b_EveryEntryStaysWithinItsRow(t *testing.T) {
 	for _, e := range b.Entries {
 		e := e
 		t.Run(e.ID, func(t *testing.T) {
-			budgetP50, gated, why := entryBudget(platform(), e, overrides)
 			sd, err := SeedFor(e)
 			if err != nil {
 				t.Fatal(err)
 			}
 			r := newRig(t)
 			r.seed(t, sd)
-			got := r.medianRSS(t, e.Command, entryPayload(t, e))
-			if !gated {
-				reportOnlyRSS(t, EntryGate(e.ID), e.ID, got, why)
+			got, attributable, floorWhy := r.medianRSS(t, e.Command, entryPayload(t, e))
+			if !attributable {
+				reportOnlyRSS(t, EntryGate(e.ID), e.ID, got, floorWhy)
 				return
 			}
-			overBudget(t, b, EntryGate(e.ID), e.ID, got, budgetP50)
+			budgetP50, gated, reportOnly, why := entryBudget(platform(), e, overrides)
+			switch {
+			case gated:
+				overBudget(t, b, EntryGate(e.ID), e.ID, got, budgetP50)
+			case reportOnly:
+				reportOnlyRSS(t, EntryGate(e.ID), e.ID, got, why)
+			default:
+				ran[EntryGate(e.ID)] = true
+				t.Errorf("%s: %s", e.ID, why)
+			}
 		})
 	}
 }

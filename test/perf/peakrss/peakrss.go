@@ -34,6 +34,15 @@ import (
 // carries no ru_maxrss.
 var ErrUnavailable = errors.New("peak RSS is not reported on this platform")
 
+// ErrBelowFloor is attributable's error, wrapped, when a reading is at or
+// under the reaper's own peak and so cannot be told apart from it: the
+// reaper's own peak is a property of the runner (test/perf/rss_test.go's
+// belowFloor used to guess this in advance from a fixed per-runner list; a
+// caller should instead run the measurement and test errors.Is(err,
+// ErrBelowFloor), which is true only when this specific attempt could not
+// be attributed, never a guess about ones that have not run yet).
+var ErrBelowFloor = errors.New("peakrss: the child's reading does not exceed the reaper's own floor here")
+
 // Reaper is a built reaper binary; Run measures a child through it.
 type Reaper struct{ path string }
 
@@ -59,7 +68,7 @@ func attributable(child, reaper float64, goos string) error {
 		return fmt.Errorf("peakrss: the child's peak read %.2f MiB", child)
 	}
 	if goos == "linux" && child <= reaper {
-		return fmt.Errorf("peakrss: the child's peak %.2f MiB does not exceed the reaper's own %.2f MiB, so it may be the reaper's", child, reaper)
+		return fmt.Errorf("peakrss: the child's peak %.2f MiB does not exceed the reaper's own %.2f MiB, so it may be the reaper's: %w", child, reaper, ErrBelowFloor)
 	}
 	return nil
 }

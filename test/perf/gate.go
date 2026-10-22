@@ -134,49 +134,52 @@ const InitBudgetBytes = 64 << 10
 // row is self-consistent, never a cross-platform guess.
 const referencePlatform = "darwin/arm64"
 
-// belowFloor names, per platform, entries the reaper cannot attribute a
-// reading to there: the reaper's own floor on that runner is at or above the
-// entry's own peak (peakrss.attributable), so no reading is possible, not
-// merely unmeasured. TestRES28b_ reports these rather than gating them.
-var belowFloor = map[string][]string{
-	"linux/amd64": {"hook.bash_short", "post.bash_short"},
-}
-
-// entryBudget is the p50 TestRES28b_ gates e against on plat, and whether
-// that is a real gate or a report-only comparison. A gate is real when plat
-// has its own reading for e (overrides) or plat is the reference platform,
-// whose row is that reading. Otherwise gating against the reference row
-// would assume plat reads no higher, an assumption Linux's first run
-// (archive 85.4.3) disproved for several entries it does have a floor for;
-// why names the reason for a caller to log.
-func entryBudget(plat string, e budget.Entry, overrides map[string]budget.RSS) (budgetP50 float64, gated bool, why string) {
+// entryBudget is the p50 TestRES28b_ gates e against on plat, once the
+// reaper has already attributed a reading to e there (a caller reaches this
+// only after that; whether the reaper's own floor rules a reading out at
+// all is a fact about one measurement attempt, from peakrss.ErrBelowFloor,
+// never a guess made in advance -- the fixed per-platform belowFloor list
+// this replaced reported two entries as unmeasurable on a runner where they
+// had in fact read above the floor, archive 85.4.4).
+//
+// Three outcomes: gated (plat has its own reading for e, an override, or
+// plat is the reference platform, whose row is that reading); report-only
+// (plat has never measured anything of its own, so gating against the
+// reference row would assume plat reads no higher, an assumption Linux's
+// first run, archive 85.4.3, disproved for several entries); or neither --
+// plat has measured SOME of its own entries (len(overrides) > 0) but not
+// this one, which is a measurement debt, not a new platform, and fails
+// closed with why naming it.
+func entryBudget(plat string, e budget.Entry, overrides map[string]budget.RSS) (budgetP50 float64, gated, reportOnly bool, why string) {
 	if o, ok := overrides[e.ID]; ok {
-		return o.P50, true, ""
+		return o.P50, true, false, ""
 	}
 	if plat == referencePlatform {
-		return e.MaxRSSMiBP50, true, ""
+		return e.MaxRSSMiBP50, true, false, ""
 	}
-	for _, id := range belowFloor[plat] {
-		if id == e.ID {
-			return e.MaxRSSMiBP50, false, fmt.Sprintf(
-				"this entry's own peak does not exceed the reaper's own floor on %s, so no reading here can be attributed to it yet", plat)
-		}
+	if len(overrides) == 0 {
+		return e.MaxRSSMiBP50, false, true, fmt.Sprintf(
+			"no %s reading recorded yet; gating against %s's row would assume %s reads no higher, which no measurement here has shown", plat, referencePlatform, plat)
 	}
-	return e.MaxRSSMiBP50, false, fmt.Sprintf(
-		"no %s reading recorded yet; gating against %s's row would assume %s reads no higher, which no measurement here has shown", plat, referencePlatform, plat)
+	return e.MaxRSSMiBP50, false, false, fmt.Sprintf(
+		"%s has a measured baseline on %s, but no row of its own for %s: measure it and commit an override (or, if the reaper could never attribute a reading to it there, let that report-only instead)", plat, plat, e.ID)
 }
 
 // caseBudget is the same decision as entryBudget, for a RES-28 case: its
 // BudgetMiB is RES-28's own line, which the case's basis is darwin/arm64's
 // measurement against that line, not a cross-platform assumption on its
 // own merit.
-func caseBudget(plat string, c budget.RSSCase, overrides map[string]float64) (budgetMiB float64, gated bool, why string) {
+func caseBudget(plat string, c budget.RSSCase, overrides map[string]float64) (budgetMiB float64, gated, reportOnly bool, why string) {
 	if v, ok := overrides[c.ID]; ok {
-		return v, true, ""
+		return v, true, false, ""
 	}
 	if plat == referencePlatform {
-		return c.BudgetMiB, true, ""
+		return c.BudgetMiB, true, false, ""
 	}
-	return c.BudgetMiB, false, fmt.Sprintf(
-		"no %s reading recorded yet; gating against RES-28's line, measured against %s, would assume %s reads no higher, which no measurement here has shown", plat, referencePlatform, plat)
+	if len(overrides) == 0 {
+		return c.BudgetMiB, false, true, fmt.Sprintf(
+			"no %s reading recorded yet; gating against RES-28's line, measured against %s, would assume %s reads no higher, which no measurement here has shown", plat, referencePlatform, plat)
+	}
+	return c.BudgetMiB, false, false, fmt.Sprintf(
+		"%s has a measured baseline on %s, but no row of its own for case %s: measure it and commit an override", plat, plat, c.ID)
 }
