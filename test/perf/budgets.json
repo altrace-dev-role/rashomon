@@ -58,11 +58,17 @@
     {"name": "BenchmarkLines/4MiB", "measured_bytes_per_op": 24, "measured_allocs_per_op": 2, "bytes_per_op_max": 24, "allocs_per_op_max": 2},
     {"name": "BenchmarkStream/64MiB_batch", "measured_bytes_per_op": 158322, "measured_allocs_per_op": 17, "bytes_per_op_max": 158322, "allocs_per_op_max": 17},
     {"name": "BenchmarkStream/187MB_line", "measured_bytes_per_op": 349380, "measured_allocs_per_op": 30, "bytes_per_op_max": 349380, "allocs_per_op_max": 30},
-    {"name": "BenchmarkRead/400B", "measured_bytes_per_op": 4584, "measured_allocs_per_op": 4, "bytes_per_op_max": 4584, "allocs_per_op_max": 4},
-    {"name": "BenchmarkRead/40KB", "measured_bytes_per_op": 83456, "measured_allocs_per_op": 16, "bytes_per_op_max": 83456, "allocs_per_op_max": 16},
-    {"name": "BenchmarkRead/1MiB", "measured_bytes_per_op": 2163596, "measured_allocs_per_op": 48, "bytes_per_op_max": 2163596, "allocs_per_op_max": 48},
-    {"name": "BenchmarkRead/4MiB", "measured_bytes_per_op": 8459158, "measured_allocs_per_op": 97, "bytes_per_op_max": 8459158, "allocs_per_op_max": 97},
-    {"name": "BenchmarkRead/8MiB", "measured_bytes_per_op": 16823174, "measured_allocs_per_op": 161, "bytes_per_op_max": 16823174, "allocs_per_op_max": 161}
+    {"name": "BenchmarkRead/400B", "measured_bytes_per_op": 464, "measured_allocs_per_op": 2, "bytes_per_op_max": 464, "allocs_per_op_max": 2, "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 4584 B/op, 4 allocs/op"},
+    {"name": "BenchmarkRead/40KB", "measured_bytes_per_op": 41008, "measured_allocs_per_op": 2, "bytes_per_op_max": 41008, "allocs_per_op_max": 2, "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 83456 B/op, 16 allocs/op"},
+    {"name": "BenchmarkRead/1MiB", "measured_bytes_per_op": 1048636, "measured_allocs_per_op": 2, "bytes_per_op_max": 1048636, "allocs_per_op_max": 2, "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 2163585 B/op, 48 allocs/op"},
+    {"name": "BenchmarkRead/4MiB", "measured_bytes_per_op": 4194352, "measured_allocs_per_op": 2, "bytes_per_op_max": 4194352, "allocs_per_op_max": 2, "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 8459141 B/op, 97 allocs/op"},
+    {"name": "BenchmarkRead/8MiB", "measured_bytes_per_op": 8388656, "measured_allocs_per_op": 2, "bytes_per_op_max": 8388656, "allocs_per_op_max": 2, "basis": "best of three on the reference machine (-benchtime 20x) after hookio's *bytes.Reader fast path (internal/hookio/read.go); max lowered 2026-10-17 to match the measurement, down from 16823173 B/op, 161 allocs/op"},
+    {"name": "BenchmarkRead/400B_opaque", "measured_bytes_per_op": 4600, "measured_allocs_per_op": 5, "bytes_per_op_max": 4600, "allocs_per_op_max": 5},
+    {"name": "BenchmarkRead/40KB_opaque", "measured_bytes_per_op": 83472, "measured_allocs_per_op": 17, "bytes_per_op_max": 83472, "allocs_per_op_max": 17},
+    {"name": "BenchmarkRead/1MiB_opaque", "measured_bytes_per_op": 2163605, "measured_allocs_per_op": 49, "bytes_per_op_max": 2163605, "allocs_per_op_max": 49},
+    {"name": "BenchmarkRead/4MiB_opaque", "measured_bytes_per_op": 8459152, "measured_allocs_per_op": 98, "bytes_per_op_max": 8459152, "allocs_per_op_max": 98},
+    {"name": "BenchmarkRead/8MiB_opaque", "measured_bytes_per_op": 16823184, "measured_allocs_per_op": 162, "bytes_per_op_max": 16823184, "allocs_per_op_max": 162},
+    {"name": "BenchmarkDetect", "measured_bytes_per_op": 1600, "measured_allocs_per_op": 14, "bytes_per_op_max": 1600, "allocs_per_op_max": 14}
   ],
   "growth": [],
   "disk": {"bytes_per_call_max": 6000}

@@ -161,6 +161,9 @@ type Benchmark struct {
 	MeasuredAllocsPerOp int64  `json:"measured_allocs_per_op"`
 	BytesPerOpMax       int64  `json:"bytes_per_op_max"`
 	AllocsPerOpMax      int64  `json:"allocs_per_op_max"`
+	// Basis says why a row's max moved, when it is not self-evident from
+	// the measurement beside it.
+	Basis string `json:"basis,omitempty"`
 }
 
 // Growth bounds an order-of-growth test's allocation ratio.

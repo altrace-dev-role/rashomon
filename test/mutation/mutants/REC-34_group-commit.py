@@ -22,8 +22,8 @@ m("REC-34 the seq counter syncs in full inside the lock", "internal/store/store.
 m("REC-34 group commit off: a deferred store syncs every append in full", "internal/store/store.go",
   "\tif !deferred {\n\t\treturn syncFull(f)\n\t}\n", "\tif true {\n\t\treturn syncFull(f)\n\t}\n", "TestREC34_")
 m("REC-34 probe defers durability and never flushes", "cmd/rashomon/main.go",
-  "\t\tif err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {",
-  "\t\tst.DeferDurability()\n\t\tif err := hook.RunProbe(sig, phase, stdin, st, time.Now); err != nil {",
+  "\t\t// See cmdHook's own comment on payload != nil.\n\t\tvar runErr error\n\t\tif payload != nil {",
+  "\t\tst.DeferDurability()\n\t\t// See cmdHook's own comment on payload != nil.\n\t\tvar runErr error\n\t\tif payload != nil {",
   "TestREC34_")
 m("REC-34 a failed flush leaves no marker", "internal/hook/flush.go",
   "\treturn st.SpillTerminal(store.Terminal{", "\treturn nil\n\treturn st.SpillTerminal(store.Terminal{", "TestREC34_")

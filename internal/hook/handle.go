@@ -104,10 +104,7 @@ func New(st *store.Store, now func() time.Time) *Handler {
 
 // Capture reads one payload and writes the declaration.
 func (h *Handler) Capture(in io.Reader) error {
-	// First, so that Close's appends share the deadline too.
-	h.st.LimitLockWaits(h.lockWaits)
-	fault.Inject(fault.PointHookStart)
-
+	h.prologue()
 	payload, err := hookio.Intake(in)
 	if err != nil {
 		if s, cwd, ok := refusedSession(err); ok {
@@ -115,6 +112,33 @@ func (h *Handler) Capture(in io.Reader) error {
 		}
 		return err
 	}
+	return h.capture(payload)
+}
+
+// CapturePayload is Capture for a caller that has already read and parsed
+// its payload into a *hookio.Payload -- cmd/rashomon's host-guard check,
+// which hands this the exact value internal/hostguard.EvaluateRaw built,
+// so the already-decided bytes are never read, scanned or copied a second
+// time. It shares the same lock-wait and fault-injection prologue Capture
+// does; only the read in between is skipped.
+func (h *Handler) CapturePayload(payload *hookio.Payload) error {
+	h.prologue()
+	return h.capture(payload)
+}
+
+// prologue is Capture and CapturePayload's shared setup, run first so that
+// Close's appends share the deadline too: there is exactly one of this
+// pair's lock-wait deadline and PointHookStart fault injection, which is
+// what perf-2's and H-17's own mutants pin against -- a caller that reaches
+// capture by any other route must still have run this exactly once.
+func (h *Handler) prologue() {
+	h.st.LimitLockWaits(h.lockWaits)
+	fault.Inject(fault.PointHookStart)
+}
+
+// capture is Capture and CapturePayload's shared body, once each has its
+// own *hookio.Payload in hand.
+func (h *Handler) capture(payload *hookio.Payload) error {
 	var p Payload
 	if err := p.from(payload); err != nil {
 		return err

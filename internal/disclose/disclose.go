@@ -427,5 +427,37 @@ func defaultFiles() []FileRule {
 			RemovedBy:  "purge",
 			Owner:      "store",
 		},
+		{
+			Base:       "",
+			Pattern:    store.FileHarnessCounts,
+			Mode:       "0600",
+			Purpose:    "how often a hook entry stood down because the agent harness calling it was not the one this install is for, written only by the entry that stood down",
+			Holds:      "a version; per harness pair, a count per day for at most 30 days, when it last stood down and the evidence kinds that decided it; a keyed digest of each counted session, at most 256, so a session counts once",
+			NeverHolds: "a session id in the clear, a path, or anything about a call",
+			RemovedBy:  "purge",
+			Owner:      "store",
+		},
+		{
+			// RecordHarnessMismatch locks this sidecar, never the data file,
+			// so the data file can be replaced by rename under the lock.
+			Base:       "",
+			Pattern:    store.FileHarnessCountsLock,
+			Mode:       "0600",
+			Purpose:    "the lock harness_counts.json's writer takes; its content is never read",
+			Holds:      "nothing",
+			NeverHolds: "anything",
+			RemovedBy:  "purge",
+			Owner:      "store",
+		},
+		{
+			Base:       "",
+			Pattern:    "." + store.FileHarnessCounts + ".rashomon-*",
+			Mode:       "0600",
+			Purpose:    "harness_counts.json's replacement; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "what harness_counts.json is about to hold",
+			NeverHolds: "a session id in the clear, a path, or anything about a call",
+			RemovedBy:  "the write that made it (renamed over harness_counts.json); purge",
+			Owner:      "store",
+		},
 	}
 }

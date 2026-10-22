@@ -67,15 +67,32 @@ var payloadKeys = jsonscan.NewFoldKeySet(KeyNames()...)
 // Intake reads one payload (Read), validates it with json.Valid and records
 // the spans of its top-level keys in one walk (jsonscan.Top). It serves the
 // buffered entries: hook, post and probe. A payload over the cap is refused
-// with a *TooLargeError.
+// with a *TooLargeError. A reader whose own error already is one -- the
+// host guard's replay of Read's refusal -- has it passed on as it is: that
+// refusal read the head, and this read, which sees no bytes, has none.
 func Intake(r io.Reader) (*Payload, error) {
 	raw, head, err := read(r)
+	var tl *TooLargeError
+	if errors.As(err, &tl) {
+		return nil, tl
+	}
 	if errors.Is(err, ErrTooLarge) {
 		return nil, refused(head)
 	}
 	if err != nil {
 		return nil, err
 	}
+	return IntakeBytes(raw)
+}
+
+// IntakeBytes is Intake for a caller that already has its payload's bytes
+// in hand -- internal/hostguard.EvaluateRaw, whose own doc explains why,
+// and Intake above, which now defers to this for everything past its own
+// Read. It never reads raw through Read a second time: a caller holding
+// raw once must not be charged a second full copy of it just to turn it
+// into a *Payload, the exact doubling internal/hookio's RES-28 doc on Read
+// describes on the host-guard path this exists to close.
+func IntakeBytes(raw []byte) (*Payload, error) {
 	p := &Payload{Raw: raw}
 	if err := jsonscan.Top(raw, payloadKeys, p.Spans[:]); err != nil {
 		return nil, err

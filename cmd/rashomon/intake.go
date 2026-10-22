@@ -18,12 +18,60 @@ const (
 	messageTailBytes = 64 << 10
 )
 
+// Harness-signal capture sizes, read only when readFinalMessage is asked for
+// them (withHarness). hookEventNameBytes and transcriptPathBytes are
+// generous metadata caps, not content caps: 2.1.280's event names are a
+// handful of bytes and sessionIDBytes already sets the precedent for a path,
+// not a message, field. cursorVersionBytes gives internal/harness.Detect's
+// own checkedVersion (a 32-byte ceiling before it drops the value) room to
+// see a too-long value and reject it, rather than this capture silently
+// truncating one into a false accept.
+const (
+	hookEventNameBytes  = 128
+	transcriptPathBytes = 4 << 10
+	cursorVersionBytes  = 64
+)
+
 // finalMessage is the slice of a Stop or StopFailure payload recap and
 // digest --stdin read.
 type finalMessage struct {
 	SessionID string
 	Message   string // the head: the whole message up to messageHeadBytes
 	Tail      string // the last messageTailBytes when the head was cut
+	Harness   harnessSignal
+}
+
+// harnessSignal is the slice of a Stop payload internal/harness.Detect
+// reads, captured by the same single stream pass as the rest of
+// finalMessage so recap's one read of stdin never happens twice -- see
+// readFinalMessage's withHarness. It carries exactly what Detect's own doc
+// lists: HookEventName, TranscriptPath and CursorVersion as values (Detect
+// calls Str on all three), and the other four as presence only (Detect
+// calls Has, never Str, on conversation_id, generation_id, turn_id and
+// model -- see Detect's doc on why user_email is read the same way and
+// never appears here at all: nothing downstream of this capture needs it).
+//
+// HasCursorVersion is captured separately from CursorVersion's value
+// (rather than inferred from an empty value) because the two differ for
+// internal/hookio.Payload.Has: a payload carrying `"cursor_version":""`
+// must still read as present, a bit Str's own empty-string return cannot
+// distinguish from absent.
+//
+// One divergence from Has's own definition (internal/jsonscan.Span.Set,
+// "present with a value other than null or false") is accepted here: the
+// four presence-only fields are captured with jsonscan.CapturePresence,
+// which (unlike Set) does not exclude a literal JSON false -- see
+// cmd/rashomon's own doc on syntheticHarnessPayload for why that is a safe
+// direction to be wrong in.
+type harnessSignal struct {
+	HookEventName     string
+	TranscriptPath    string
+	CursorVersion     string
+	HasCursorVersion  bool
+	HasConversationID bool
+	HasGenerationID   bool
+	HasTurnID         bool
+	HasModel          bool
 }
 
 // countingReader counts what passes through it.
@@ -48,7 +96,13 @@ func (c *countingReader) Read(p []byte) (int, error) {
 // last copy. A session_id over sessionIDBytes is no session named: the
 // message is still read, and recap falls back to the newest run, as for a
 // payload with no session_id.
-func readFinalMessage(in io.Reader, withSession bool) (finalMessage, bool) {
+//
+// withHarness adds the harnessSignal paths (recapTurn's own call), so H1's
+// recap entry point gets what internal/harness.Detect reads from the same
+// single stream pass that reads the message -- recap has no second read of
+// stdin to spend on it (see cmd/rashomon's recapHostGuard). digest --stdin's
+// call passes false: it has no installed-for to stand down against.
+func readFinalMessage(in io.Reader, withSession, withHarness bool) (finalMessage, bool) {
 	var fm finalMessage
 	paths := []jsonscan.Path{
 		{Elems: []string{"session_id"}, Max: sessionIDBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
@@ -58,6 +112,18 @@ func readFinalMessage(in io.Reader, withSession bool) (finalMessage, bool) {
 	if !withSession {
 		// digest --stdin never read session_id, so its type cannot fail it.
 		paths[0] = jsonscan.Path{Elems: []string{"session_id"}, Mode: jsonscan.CapturePresence}
+	}
+	if withHarness {
+		paths = append(paths,
+			jsonscan.Path{Elems: []string{"hook_event_name"}, Max: hookEventNameBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
+			jsonscan.Path{Elems: []string{"transcript_path"}, Max: transcriptPathBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
+			jsonscan.Path{Elems: []string{"cursor_version"}, Max: cursorVersionBytes, Mode: jsonscan.CaptureHead, String: true, Fold: true},
+			jsonscan.Path{Elems: []string{"cursor_version"}, Mode: jsonscan.CapturePresence, Fold: true},
+			jsonscan.Path{Elems: []string{"conversation_id"}, Mode: jsonscan.CapturePresence, Fold: true},
+			jsonscan.Path{Elems: []string{"generation_id"}, Mode: jsonscan.CapturePresence, Fold: true},
+			jsonscan.Path{Elems: []string{"turn_id"}, Mode: jsonscan.CapturePresence, Fold: true},
+			jsonscan.Path{Elems: []string{"model"}, Mode: jsonscan.CapturePresence, Fold: true},
+		)
 	}
 	cut := false
 	cr := &countingReader{r: io.LimitReader(in, hookio.MaxPayloadBytes+1)}
@@ -76,6 +142,22 @@ func readFinalMessage(in io.Reader, withSession bool) (finalMessage, bool) {
 			if cut {
 				fm.Tail = string(v)
 			}
+		case 3:
+			fm.Harness.HookEventName = string(v)
+		case 4:
+			fm.Harness.TranscriptPath = string(v)
+		case 5:
+			fm.Harness.CursorVersion = string(v)
+		case 6:
+			fm.Harness.HasCursorVersion = true
+		case 7:
+			fm.Harness.HasConversationID = true
+		case 8:
+			fm.Harness.HasGenerationID = true
+		case 9:
+			fm.Harness.HasTurnID = true
+		case 10:
+			fm.Harness.HasModel = true
 		}
 		return true
 	})

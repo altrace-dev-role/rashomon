@@ -162,6 +162,16 @@ func (e *env) environ(extra ...string) []string {
 		"RASHOMON_HOME="+e.home,
 		"CLAUDE_CONFIG_DIR="+e.configDir,
 		"RASHOMON_MANAGED_SETTINGS_PATH="+e.managedPath(),
+		// CLAUDE_CODE_ENTRYPOINT=cli is what the real CLI sets (Technical
+		// spec 6.2.2's entrypoint allowlist); every acceptance test's hook,
+		// post, probe and recap invocations are claiming to BE Claude Code,
+		// so they need to look like it to H1's stand-down check
+		// (internal/hostguard), wired into all five entry points, or every
+		// one of them now reads as the unknown harness and records
+		// nothing. A test that wants to exercise the foreign or
+		// unknown path overrides this through extraEnv, appended after
+		// base, which wins (os/exec: "the last value ... is used").
+		"CLAUDE_CODE_ENTRYPOINT=cli",
 	)
 	if e.fakeHome != "" {
 		base = append(base, "HOME="+e.fakeHome, "USERPROFILE="+e.fakeHome)

@@ -140,6 +140,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AppendSteer: %v", err)
 	}
+	if _, err := store.RecordHarnessMismatch(root, "claude@cursor", sessionID, []string{"cursor_version"}, time.Now()); err != nil {
+		t.Fatalf("RecordHarnessMismatch: %v", err)
+	}
 	if err := s.RecordResolvedCap(store.CapSetting{Bytes: store.DefaultCapBytes, Raw: "lots", Invalid: true}); err != nil {
 		t.Fatalf("RecordResolvedCap: %v", err)
 	}
@@ -149,14 +152,16 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if err := store.SetRootInWorkTree(root, root); err != nil {
 		t.Fatalf("store.SetRootInWorkTree: %v", err)
 	}
-	// Its replacement exists only between the write and the rename; make
-	// one where it would be, to check its rule.
-	tmp, err := os.CreateTemp(root, "."+store.FileInstallMeta+".tmp-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tmp.Close(); err != nil {
-		t.Fatal(err)
+	// Their replacements exist only between the write and the rename; make
+	// one where each would be, to check its rule.
+	for _, pattern := range []string{"." + store.FileInstallMeta + ".tmp-*", "." + store.FileHarnessCounts + ".rashomon-*"} {
+		tmp, err := os.CreateTemp(root, pattern)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := tmp.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if _, err := recap.Claim(root, sessionID, "prompt-1", time.Now(), true); err != nil {
 		t.Fatalf("recap.Claim: %v", err)
@@ -298,8 +303,10 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// (noteLockWait's open, runs/<session>/lockwait, written only after a
 		// contended lock, so the inventory test does not reach it) +
 		// lockpath.go (LockPath's open, baseline/.lock) + steerlog.go
-		// (AppendSteer's append open, runs/<session>/steer.ndjson).
-		{"store", 18},
+		// (AppendSteer's append open, runs/<session>/steer.ndjson) +
+		// harnesscounts.go (the lock sidecar's open, harness_counts.lock,
+		// and the replacement's CreateTemp, harness_counts.json).
+		{"store", 20},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

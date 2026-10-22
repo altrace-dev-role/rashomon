@@ -205,6 +205,13 @@ func benchSetenv(b testing.TB, root, cfg string) {
 	b.Setenv("RASHOMON_HOME", root)
 	b.Setenv("CLAUDE_CONFIG_DIR", cfg)
 	b.Setenv("RASHOMON_MANAGED_SETTINGS_PATH", filepath.Join(cfg, "absent"))
+	// CLAUDE_CODE_ENTRYPOINT=cli: these benchmarks run cmdHook/cmdPost in
+	// process on payloads with no transcript_path under cfg, so without an
+	// allowlisted entrypoint H1 (internal/hostguard, wired into all five
+	// entry points, Technical spec 6.2.3) reads every one of them as the
+	// unknown harness and stands down before the work this benchmark
+	// measures.
+	b.Setenv("CLAUDE_CODE_ENTRYPOINT", "cli")
 }
 
 // benchInstall opens the store, with payload's fixed identity, and writes the

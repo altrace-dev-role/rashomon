@@ -29,7 +29,8 @@ m("H-20 the unexecuted list drops the permission mode", "internal/report/report.
   "Unexecuted{ToolUseID: id, PermissionMode: mode[id]})", "Unexecuted{ToolUseID: id})",
   "TestH20_DeclarationWithoutAnExecutionIsNamed")
 m("H-20 the post path runs outside the panic barrier", "cmd/rashomon/main.go",
-  "\tcaptureErr := safe.Guard(func() error { return p.Capture(stdin) })", "\tcaptureErr := p.Capture(stdin)",
+  "\t\tcaptureErr := safe.Guard(func() error {\n\t\t\tif payload != nil {\n\t\t\t\treturn p.CapturePayload(payload)\n\t\t\t}\n\t\t\treturn p.Capture(in())\n\t\t})",
+  "\t\tvar captureErr error\n\t\tif payload != nil {\n\t\t\tcaptureErr = p.CapturePayload(payload)\n\t\t} else {\n\t\t\tcaptureErr = p.Capture(in())\n\t\t}",
   "TestH20_NoFaultOnThePostPathReachesTheAgent")
 
 m("H-20 the post payload declares tool_response, and it reaches the debug log", "internal/hook/post.go",
