@@ -148,12 +148,12 @@ func TestCanonical_IsIdempotent(t *testing.T) {
 	}
 }
 
-// TestRubricTest1_CanonicalIsAFixedPoint: a host Canonical accepts is one it
+// TestRubricTEST1_CanonicalIsAFixedPoint: a host Canonical accepts is one it
 // returns unchanged. With two trailing dots it dropped one and accepted the
 // rest, so "a.." recorded "a." and a second pass made it "a": the wire side
 // and the declaration side disagreed on the one host both had seen, and
 // FuzzHosts found it from `https://x..` under the CI fuzz command.
-func TestRubricTest1_CanonicalIsAFixedPoint(t *testing.T) {
+func TestRubricTEST1_CanonicalIsAFixedPoint(t *testing.T) {
 	for _, in := range []string{"pypi.org..", "https://pypi.org../x", "pypi.org..:443", "..", "a...", "pypi.org.", "PyPI.org"} {
 		got, ok := Canonical(in)
 		if !ok {

@@ -16,10 +16,10 @@ const initTraceSeed = "init internal/bytealg @0.008 ms, 0.001 ms clock, 0 bytes,
 	"init errors @0.11 ms, 0.003 ms clock, 160 bytes, 2 allocs\n" +
 	"gc 1 @0.6 ms 0%: 0.010+0.2+0.004 ms clock, 0.10+0/0.3/0+0.04 ms cpu, 4->4->0 MB, 4 MB goal, 0 MB stacks, 0 MB globals, 8 P\n"
 
-// TestRubricErrors7_ShortInitLineIsAnErrorNotAPanic: an init line of ten
+// TestRubricERRORS7_ShortInitLineIsAnErrorNotAPanic: an init line of ten
 // fields passed the length check and was then indexed at its eleventh, so a
 // trace the runtime truncated mid-line crashed the gate rather than failing it.
-func TestRubricErrors7_ShortInitLineIsAnErrorNotAPanic(t *testing.T) {
+func TestRubricERRORS7_ShortInitLineIsAnErrorNotAPanic(t *testing.T) {
 	for _, ln := range []string{
 		"init a @0 ms, 0 ms clock, 0 bytes, 0\n",
 		"init a @0 ms, 0 ms clock, 0 bytes,\n",
@@ -30,11 +30,11 @@ func TestRubricErrors7_ShortInitLineIsAnErrorNotAPanic(t *testing.T) {
 	}
 }
 
-// TestRubricErrors7_MalformedFootprintLineFailsClosed: /usr/bin/time -l writes
+// TestRubricERRORS7_MalformedFootprintLineFailsClosed: /usr/bin/time -l writes
 // one footprint line. When the first line shaped like it does not hold a
 // number, the report is not trusted for a later one: the read fails, so the
 // gate records no measurement rather than whichever figure came after.
-func TestRubricErrors7_MalformedFootprintLineFailsClosed(t *testing.T) {
+func TestRubricERRORS7_MalformedFootprintLineFailsClosed(t *testing.T) {
 	for _, report := range []string{
 		"oo2 peak memory\ffootprint\n             2622016  peak memory footprint\n",
 		"99999999999999999999  peak memory footprint\n             2622016  peak memory footprint\n",

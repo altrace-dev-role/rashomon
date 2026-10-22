@@ -5,7 +5,7 @@
 m("test-7 a live message id back in the fixture", "test/fixtures/claude-code/2.1.280/transcript.jsonl",
   "5ed3f4ea8d8\",\"isSidechain\":false,\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_fixture01\"",
   "5ed3f4ea8d8\",\"isSidechain\":false,\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_011CmadeUpFakeId00000001\"",
-  "TestRubricTest7_")
+  "TestRubricTEST7_")
 m("test-7 a live tool-use id back in a hook payload", "test/fixtures/claude-code/2.1.280/payloads.ndjson",
   "\"tool_use_id\":\"toolu_fixture01\"}", "\"tool_use_id\":\"toolu_01madeUpFakeId0000000001\"}",
-  "TestRubricTest7_")
+  "TestRubricTEST7_")

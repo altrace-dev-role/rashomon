@@ -52,10 +52,10 @@ func sameSteps(a, b []step) bool {
 	return true
 }
 
-// TestLinescan_ReadsWhatBufioReads: with no line over the bound, the lines
+// TestRubricPERF6_LinescanReadsWhatBufioReads: with no line over the bound, the lines
 // are bufio.Scanner's ScanLines lines exactly -- a final line with no newline
 // included, a trailing \r dropped, an empty line kept.
-func TestLinescan_ReadsWhatBufioReads(t *testing.T) {
+func TestRubricPERF6_LinescanReadsWhatBufioReads(t *testing.T) {
 	for _, in := range []string{
 		"", "\n", "a", "a\n", "a\nb", "a\r\nb\r\n", "\r\n\r\n", "a\n\nb\n", "x\ry\n", "\r",
 		strings.Repeat("abc\n", 50), strings.Repeat("y", 63) + "\n" + strings.Repeat("z", 63),
@@ -71,11 +71,11 @@ func TestLinescan_ReadsWhatBufioReads(t *testing.T) {
 	}
 }
 
-// TestLinescan_ALineOverTheBoundIsSteppedOver: the bound is bufio.Scanner's,
+// TestRubricPERF6_LinescanALineOverTheBoundIsSteppedOver: the bound is bufio.Scanner's,
 // max counting the newline, so a line of max-1 bytes is read and one of max
 // is not -- with or without a newline after it. The line over it is one step,
 // marked TooLong and counted, and every line after it reads as usual.
-func TestLinescan_ALineOverTheBoundIsSteppedOver(t *testing.T) {
+func TestRubricPERF6_LinescanALineOverTheBoundIsSteppedOver(t *testing.T) {
 	const max = 64
 	fits, over := strings.Repeat("f", max-1), strings.Repeat("o", max)
 	for _, tc := range []struct {
@@ -104,10 +104,10 @@ func TestLinescan_ALineOverTheBoundIsSteppedOver(t *testing.T) {
 	}
 }
 
-// TestLinescan_HoldsNoMoreThanItsBound: a line over the bound is discarded as
+// TestRubricPERF6_LinescanHoldsNoMoreThanItsBound: a line over the bound is discarded as
 // it is read, never assembled, so what the scanner holds stays at max however
 // long the line.
-func TestLinescan_HoldsNoMoreThanItsBound(t *testing.T) {
+func TestRubricPERF6_LinescanHoldsNoMoreThanItsBound(t *testing.T) {
 	// Not a power of two, so doubling from the read buffer would pass it.
 	const max = 1000
 	in := strings.Repeat("f", max-1) + "\n" + strings.Repeat("x", 1<<20) + "\nok\n"
@@ -144,10 +144,10 @@ func (r *failOnce) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// TestLinescan_AReadErrorEndsTheScan: an error from the reader is not a line;
+// TestRubricPERF6_LinescanAReadErrorEndsTheScan: an error from the reader is not a line;
 // Scan stops and Err says why, as bufio.Scanner does. The lines before it are
 // read, and the partial line the error cut short is not handed back.
-func TestLinescan_AReadErrorEndsTheScan(t *testing.T) {
+func TestRubricPERF6_LinescanAReadErrorEndsTheScan(t *testing.T) {
 	boom := errors.New("boom")
 	s := New(io.MultiReader(strings.NewReader("a\nb\npart"), iotest.ErrReader(boom)), 16, 64)
 	var got []string

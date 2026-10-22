@@ -9,14 +9,14 @@ import (
 	"testing/iotest"
 )
 
-// TestRubricTest9_ReadThroughAwkwardAndFailingReaders drives Read, the
+// TestRubricTEST9_ReadThroughAwkwardAndFailingReaders drives Read, the
 // buffered intake every recording hook reads stdin through, with the readers
 // a healthy pipe never is. A reader that delivers the whole payload a byte or
 // half a buffer at a time, or with EOF on its last data, gives the same bytes
 // as a plain one. A reader that fails partway gives an error, never the part
 // it read as if it were the payload: a hook that recorded a cut payload would
 // record a call that was not the one made.
-func TestRubricTest9_ReadThroughAwkwardAndFailingReaders(t *testing.T) {
+func TestRubricTEST9_ReadThroughAwkwardAndFailingReaders(t *testing.T) {
 	payload := []byte(`{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"` + strings.Repeat("ls ", 3000) + `"}}`)
 	for name, wrap := range map[string]func(io.Reader) io.Reader{
 		"one byte":   iotest.OneByteReader,

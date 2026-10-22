@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-// TestRubricErrors10_WatchSaysWhereTheSettingsFileIsBroken runs watch over two
+// TestRubricERRORS10_WatchSaysWhereTheSettingsFileIsBroken runs watch over two
 // settings files it has to refuse, and holds the message to what a person
 // needs to fix them: the file, the line and column, and for a hook event the
 // event's name. The file itself is left as it was found.
-func TestRubricErrors10_WatchSaysWhereTheSettingsFileIsBroken(t *testing.T) {
+func TestRubricERRORS10_WatchSaysWhereTheSettingsFileIsBroken(t *testing.T) {
 	for _, tc := range []struct {
 		name, content, at string
 		says              []string

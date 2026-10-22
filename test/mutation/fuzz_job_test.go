@@ -45,13 +45,13 @@ func ciWorkflow(t *testing.T) string {
 	return string(data)
 }
 
-// TestRubricTest1_FuzzJobBoundsMinimization: every new interesting input is
+// TestRubricTEST1_FuzzJobBoundsMinimization: every new interesting input is
 // minimized before the fuzzer moves on, for up to a minute by default. On
 // FuzzTranscriptLines, whose inputs each write a file a line, one such input
 // took the whole 30-second window: 112 execs and nothing new, against 28,363
 // execs and 167 new inputs with minimization bounded to ten runs. A target
 // that spends its window minimizing is a target CI does not fuzz.
-func TestRubricTest1_FuzzJobBoundsMinimization(t *testing.T) {
+func TestRubricTEST1_FuzzJobBoundsMinimization(t *testing.T) {
 	cmd := fuzzCommand(t, ciWorkflow(t))
 	fuzzTime := regexp.MustCompile(`-fuzztime (\d+)s\b`).FindStringSubmatch(cmd)
 	if fuzzTime == nil {
@@ -77,14 +77,14 @@ func TestRubricTest1_FuzzJobBoundsMinimization(t *testing.T) {
 	}
 }
 
-// TestRubricTest1_FuzzJobFloorIsTheTreeCount: the job fails if it fuzzes
+// TestRubricTEST1_FuzzJobFloorIsTheTreeCount: the job fails if it fuzzes
 // fewer targets than its floor, which only means something while the floor
 // is the number the tree holds. A floor left behind when targets are added
 // lets the job lose that many unnoticed. The tree's count is the targets go
 // test would run on the job's runner (fuzzTargets), not lines that read
 // "func Fuzz": a file a build tag leaves out of linux, or a function with the
 // name and not the signature, is no target.
-func TestRubricTest1_FuzzJobFloorIsTheTreeCount(t *testing.T) {
+func TestRubricTEST1_FuzzJobFloorIsTheTreeCount(t *testing.T) {
 	m := regexp.MustCompile(`(?m)^\s*test "\$found" -ge (\d+)\s*$`).FindStringSubmatch(ciWorkflow(t))
 	if m == nil {
 		t.Fatal(`the fuzz job has no 'test "$found" -ge N' floor`)
@@ -184,9 +184,9 @@ func isFuzzName(name string) bool {
 	return !unicode.IsLower(r)
 }
 
-// TestRubricTest1_FuzzTargetsIsGoTestsRule: the count above takes what go
+// TestRubricTEST1_FuzzTargetsIsGoTestsRule: the count above takes what go
 // test takes and nothing else.
-func TestRubricTest1_FuzzTargetsIsGoTestsRule(t *testing.T) {
+func TestRubricTEST1_FuzzTargetsIsGoTestsRule(t *testing.T) {
 	src := `package p
 
 import (
@@ -211,12 +211,12 @@ func (x) FuzzMethod(f *testing.F) {}
 	}
 }
 
-// TestRubricTest1_FuzzJobRunsEveryTargetAndKeepsItsFailures: the job takes
+// TestRubricTEST1_FuzzJobRunsEveryTargetAndKeepsItsFailures: the job takes
 // its targets from go test -list, counts a run only when it printed
 // "fuzz: elapsed", runs every target before failing, prints a failing input
 // only from a corpus directory that exists, and keeps the inputs as an
 // artifact when it fails.
-func TestRubricTest1_FuzzJobRunsEveryTargetAndKeepsItsFailures(t *testing.T) {
+func TestRubricTEST1_FuzzJobRunsEveryTargetAndKeepsItsFailures(t *testing.T) {
 	doc := ciWorkflow(t)
 	job := doc[strings.Index(doc, "\n  fuzz:\n"):]
 	job = job[:strings.Index(job[1:], "\n  cross-build:")+1]

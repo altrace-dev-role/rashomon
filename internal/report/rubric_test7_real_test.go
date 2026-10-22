@@ -49,12 +49,12 @@ func realIDs(t *testing.T) (declared, finished map[string]bool, final string) {
 	return declared, finished, final
 }
 
-// TestRubricTest7_RealTranscriptAgreesWithTheHooks reads a transcript Claude
+// TestRubricTEST7_RealTranscriptAgreesWithTheHooks reads a transcript Claude
 // Code wrote and checks it against the hook payloads the same session sent: two
 // independent outputs of the sender, which a hand-built fixture cannot stand
 // in for. The call a --disallowedTools rule refused fired PreToolUse and no
 // PostToolUse; its tool_result is the only one a denial.
-func TestRubricTest7_RealTranscriptAgreesWithTheHooks(t *testing.T) {
+func TestRubricTEST7_RealTranscriptAgreesWithTheHooks(t *testing.T) {
 	declared, finished, final := realIDs(t)
 	ids, results, denied, unhooked, files, _, err := TranscriptIDs(realDir + "transcript.jsonl")
 	if err != nil || files != 1 {
@@ -92,7 +92,7 @@ func sameSet(a, b map[string]bool) bool {
 	return true
 }
 
-// TestRubricTest7_FixtureHoldsNoLiveRequestIDsOrSignatures: the fixture is
+// TestRubricTEST7_FixtureHoldsNoLiveRequestIDsOrSignatures: the fixture is
 // in a public repository, and the API request ids, message ids, tool-use
 // ids and thinking signatures a live session carries name that account's
 // requests to Anthropic. Nothing here reads any of them for what they are:
@@ -102,7 +102,7 @@ func sameSet(a, b map[string]bool) bool {
 // req_fixture, msg_fixture and toolu_fixture each with a two-digit number,
 // distinct where the originals were, and fixture-signature the same -- and
 // this test holds every value in both files, at any depth, to that form.
-func TestRubricTest7_FixtureHoldsNoLiveRequestIDsOrSignatures(t *testing.T) {
+func TestRubricTEST7_FixtureHoldsNoLiveRequestIDsOrSignatures(t *testing.T) {
 	want := map[string]*regexp.Regexp{
 		"requestId":   regexp.MustCompile(`^req_fixture[0-9]{2}$`),
 		"signature":   regexp.MustCompile(`^fixture-signature-[0-9]{2}$`),

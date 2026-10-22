@@ -46,7 +46,7 @@ const sidechainSeed = `{"parentUuid":null,"isSidechain":true,"type":"assistant",
 // execs in 20 s and then 0/s (2026-10-13, an M-series Mac), and 1,330 with
 // maxFuzzBytes alone. With both, the same 20 s ran 216,016 execs and kept 79 new
 // inputs. The whole transcript is still checked, once, by
-// TestRubricTest1_TranscriptSeeds; the fuzzer gets its lines singly and in
+// TestRubricTEST1_TranscriptSeeds; the fuzzer gets its lines singly and in
 // runs of three, which keep the across-line cases at a few KB.
 const maxFuzzBytes = 16 << 10
 
@@ -202,9 +202,9 @@ func checkTranscriptBlocks(t *testing.T, id, text string, isError bool) {
 	}
 }
 
-// TestRubricTest1_TranscriptSeeds runs both fuzz properties over their seeds
+// TestRubricTEST1_TranscriptSeeds runs both fuzz properties over their seeds
 // as a plain test, which is what a mutant names.
-func TestRubricTest1_TranscriptSeeds(t *testing.T) {
+func TestRubricTEST1_TranscriptSeeds(t *testing.T) {
 	lines := realLines(t)
 	checkTranscriptLines(t, []byte(strings.Join(lines, "\n")))
 	for _, l := range append(lines, sidechainSeed) {

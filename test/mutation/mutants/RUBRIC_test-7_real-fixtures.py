@@ -2,12 +2,12 @@
 # session drive hook, post, recap, report and spend (rubric fix list entry 37).
 m("test-7  a settings deny rule's refusal reads as a result", "internal/report/transcript.go",
   "\tif strings.HasPrefix(text, \"Permission to use \") && strings.Contains(text, \" has been denied\") {\n\t\treturn true\n\t}",
-  "\tif false && strings.HasPrefix(text, \"Permission to use \") {\n\t\treturn true\n\t}", "TestRubricTest7_")
+  "\tif false && strings.HasPrefix(text, \"Permission to use \") {\n\t\treturn true\n\t}", "TestRubricTEST7_")
 m("test-7  every line of a response is priced again", "internal/spend/scan.go",
   "\t\tprev, seen := byID[cand.ID]\n\t\tif !seen {",
-  "\t\tprev, seen := byID[cand.ID]\n\t\tseen = false\n\t\tif !seen {", "TestRubricTest7_")
+  "\t\tprev, seen := byID[cand.ID]\n\t\tseen = false\n\t\tif !seen {", "TestRubricTEST7_")
 m("test-7  the exit code is read past the first line", "internal/hook/post.go",
   "\tfirst, _, _ := strings.Cut(msg[len(exitCodePrefix):], \"\\n\")\n",
-  "\tfirst := msg[len(exitCodePrefix):]\n", "TestRubricTest7_")
+  "\tfirst := msg[len(exitCodePrefix):]\n", "TestRubricTEST7_")
 m("test-7  digest --stdin drops the Stop payload's final message", "cmd/rashomon/main.go",
-  "\treturn fm.Message, ok && fm.Message != \"\"\n", "\treturn fm.Message, ok && false\n", "TestRubricTest7_")
+  "\treturn fm.Message, ok && fm.Message != \"\"\n", "\treturn fm.Message, ok && false\n", "TestRubricTEST7_")

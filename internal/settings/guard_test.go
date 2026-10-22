@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-// TestRubricTest10_AnEventNameThatIsNotUTF8IsRefused: JSON cannot carry a key
+// TestRubricTEST10_AnEventNameThatIsNotUTF8IsRefused: JSON cannot carry a key
 // that is not UTF-8, so writing one would put U+FFFD in the file and read back
 // as a different event. Both edits refuse it with ErrEventNotUTF8, and the
 // document is left as it was.
-func TestRubricTest10_AnEventNameThatIsNotUTF8IsRefused(t *testing.T) {
+func TestRubricTEST10_AnEventNameThatIsNotUTF8IsRefused(t *testing.T) {
 	in := []byte(`{"hooks": {"Stop": []}}`)
 	entries := []json.RawMessage{json.RawMessage(`{"matcher":"*"}`)}
 	for name, edit := range map[string]func(*Document, string) error{
@@ -39,10 +39,10 @@ func TestRubricTest10_AnEventNameThatIsNotUTF8IsRefused(t *testing.T) {
 	}
 }
 
-// TestRubricErrors10_ParseNamedKeepsItsOwnCopy: a caller that reuses its
+// TestRubricERRORS10_ParseNamedKeepsItsOwnCopy: a caller that reuses its
 // buffer after parsing changes neither what the document renders nor where a
 // later error places itself.
-func TestRubricErrors10_ParseNamedKeepsItsOwnCopy(t *testing.T) {
+func TestRubricERRORS10_ParseNamedKeepsItsOwnCopy(t *testing.T) {
 	in := []byte("{\n  \"keep\": 1,\n  \"hooks\": {\"Stop\": {}}\n}\n")
 	buf := bytes.Clone(in)
 	doc, err := ParseNamed("settings.json", buf)
@@ -76,9 +76,9 @@ func mustParse(t *testing.T, in []byte) *Document {
 	return d
 }
 
-// TestRubricErrors10_AnErrorWithNoCauseStillRenders: Error is exported, so a
+// TestRubricERRORS10_AnErrorWithNoCauseStillRenders: Error is exported, so a
 // caller can build one with no Err, or hold a nil *Error; neither panics.
-func TestRubricErrors10_AnErrorWithNoCauseStillRenders(t *testing.T) {
+func TestRubricERRORS10_AnErrorWithNoCauseStillRenders(t *testing.T) {
 	for _, tc := range []struct {
 		e    *Error
 		want string

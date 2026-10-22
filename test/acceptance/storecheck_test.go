@@ -199,11 +199,11 @@ func readable(kind string, version int) bool {
 	return store.Accepts(version) && store.AcceptsKind(kind, version)
 }
 
-// TestRubricTest13_TheStoreCheckCatchesEachBreak is the checker's own test: a
+// TestRubricTEST13_TheStoreCheckCatchesEachBreak is the checker's own test: a
 // healthy recorded call passes, and each hand-made break of a copy of it is
 // named. Without it the check could pass everything and every test would
 // still be green.
-func TestRubricTest13_TheStoreCheckCatchesEachBreak(t *testing.T) {
+func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 	e.mustHook(defaultPayload().build(t))
@@ -311,12 +311,12 @@ func seqOf(t *testing.T, line string) string {
 	return r.Seq.String()
 }
 
-// TestRubricTest13_EveryEnvIsCheckedWhenItsTestEnds holds newEnv to
+// TestRubricTEST13_EveryEnvIsCheckedWhenItsTestEnds holds newEnv to
 // registering the check, and the check to reading the store: an env whose
 // subtest wrote a line that is not JSON into its store reports it when the
 // subtest ends. The report goes to a capture instead of the subtest, so the
 // break it is fed does not fail this test.
-func TestRubricTest13_EveryEnvIsCheckedWhenItsTestEnds(t *testing.T) {
+func TestRubricTEST13_EveryEnvIsCheckedWhenItsTestEnds(t *testing.T) {
 	got := endOfTestReport(t, func(e *env) {
 		writeStoreLine(t, e, `{"type":"declaration",`)
 	})
@@ -328,11 +328,11 @@ func TestRubricTest13_EveryEnvIsCheckedWhenItsTestEnds(t *testing.T) {
 	}
 }
 
-// TestRubricTest13_DeclaredDamageIsHeldToWhatItSays: expectDamagedStore
+// TestRubricTEST13_DeclaredDamageIsHeldToWhatItSays: expectDamagedStore
 // stands the check down only for the problems it names. A declared problem
 // the store does not have is reported, and so is one it has that the
 // declaration does not name.
-func TestRubricTest13_DeclaredDamageIsHeldToWhatItSays(t *testing.T) {
+func TestRubricTEST13_DeclaredDamageIsHeldToWhatItSays(t *testing.T) {
 	torn := `{"type":"declaration",`
 	for _, tc := range []struct {
 		name     string

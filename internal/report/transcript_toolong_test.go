@@ -46,7 +46,7 @@ const (
 	resultB = `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_b","content":"ok"}]}}`
 )
 
-func TestLongLine_TranscriptIDsStepsOverAndCounts(t *testing.T) {
+func TestRubricPERF6_LongLineTranscriptIDsStepsOverAndCounts(t *testing.T) {
 	if n := len(longLine()) + 1; n != TranscriptMaxLine+1 {
 		t.Fatalf("premise: the long line and its newline are %d bytes, want %d", n, TranscriptMaxLine+1)
 	}
@@ -61,10 +61,10 @@ func TestLongLine_TranscriptIDsStepsOverAndCounts(t *testing.T) {
 	}
 }
 
-// TestLongLine_UnverifiesTheTranscript: every id and result
+// TestRubricPERF6_LongLineUnverifiesTheTranscript: every id and result
 // matches the store, but a line was not read and may hold a call the store
 // does not, so the group counts it and the session adds transcript_mismatch.
-func TestLongLine_UnverifiesTheTranscript(t *testing.T) {
+func TestRubricPERF6_LongLineUnverifiesTheTranscript(t *testing.T) {
 	path := writeLines(t, useA, longLine(), useB, resultB)
 	sess := build(&store.Run{
 		Declarations: []store.Declaration{
@@ -85,7 +85,7 @@ func TestLongLine_UnverifiesTheTranscript(t *testing.T) {
 	}
 }
 
-func TestLongLine_FinalAssistantTextReadsOn(t *testing.T) {
+func TestRubricPERF6_LongLineFinalAssistantTextReadsOn(t *testing.T) {
 	first := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"first"}]}}`
 	last := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"last"}]}}`
 	if got, ok := FinalAssistantText(writeLines(t, first, longLine(), last)); !ok || got != "last" {
@@ -98,11 +98,11 @@ func TestLongLine_FinalAssistantTextReadsOn(t *testing.T) {
 	}
 }
 
-// TestLongLine_FinalAssistantTextsEndsTheTie: a line not read
+// TestRubricPERF6_LongLineFinalAssistantTextsEndsTheTie: a line not read
 // may be the next prompt, or the turn's last words, so it is taken as an
 // undecodable line is: the turn's words so far are dropped and the tie ends.
 // The prompts after it are read.
-func TestLongLine_FinalAssistantTextsEndsTheTie(t *testing.T) {
+func TestRubricPERF6_LongLineFinalAssistantTextsEndsTheTie(t *testing.T) {
 	user := func(p string) string {
 		return `{"type":"user","promptId":"` + p + `","message":{"role":"user","content":"go"}}`
 	}

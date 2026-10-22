@@ -10,14 +10,14 @@ import (
 	"time"
 )
 
-// TestRubricTest7_RealTranscriptPricesLikeClaudeCode prices a transcript
+// TestRubricTEST7_RealTranscriptPricesLikeClaudeCode prices a transcript
 // Claude Code 2.1.280 wrote (test/fixtures/claude-code/2.1.280, captured as
 // test/acceptance/rubric_test7_real_payloads_test.go describes) and compares
 // the sum with the cost Claude Code itself recorded for the same model at the
 // end of the session, in the transcript's cost-state line. Every line is
 // read, every response is dated and priced, and the two figures agree to a
 // hundredth of a cent.
-func TestRubricTest7_RealTranscriptPricesLikeClaudeCode(t *testing.T) {
+func TestRubricTEST7_RealTranscriptPricesLikeClaudeCode(t *testing.T) {
 	raw, err := os.ReadFile("../../test/fixtures/claude-code/2.1.280/transcript.jsonl")
 	if err != nil {
 		t.Fatal(err)

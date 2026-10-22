@@ -52,9 +52,9 @@ func split(in []byte, max int) ([]step, int) {
 	return out, long
 }
 
-// TestLinescan_FuzzSeeds runs FuzzScan's oracles over a fixed set of inputs
+// TestRubricPERF6_LinescanFuzzSeeds runs FuzzScan's oracles over a fixed set of inputs
 // and every bound up to 64, as a plain test a mutant can name.
-func TestLinescan_FuzzSeeds(t *testing.T) {
+func TestRubricPERF6_LinescanFuzzSeeds(t *testing.T) {
 	for _, s := range []string{"", "a\nb", "a\r\n\r\nb\r", strings.Repeat("x", 70) + "\nok\n", "\n\n\n", "\r\r\n", "ab\ncd\r\nef"} {
 		for max := 1; max <= 64; max++ {
 			got, skipped, err := scanAll(t, s, 16, max)

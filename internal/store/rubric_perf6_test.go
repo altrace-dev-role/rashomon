@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-// TestRubricPerf6_ARecordLongerThanTheInitialBufferReadsBack: readChunk is
+// TestRubricPERF6_ARecordLongerThanTheInitialBufferReadsBack: readChunk is
 // where a read starts, not a size every record fits. A declaration naming
 // thousands of hosts is written as one line far over 64 KiB, and it must read
 // back whole, with nothing skipped (rubric fix list entry 68).
-func TestRubricPerf6_ARecordLongerThanTheInitialBufferReadsBack(t *testing.T) {
+func TestRubricPERF6_ARecordLongerThanTheInitialBufferReadsBack(t *testing.T) {
 	const session = "sess-perf6"
 	hosts := make([]string, 8000)
 	for i := range hosts {

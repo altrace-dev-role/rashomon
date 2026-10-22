@@ -29,7 +29,7 @@ func errorOf(t *testing.T, err error) *Error {
 	return e
 }
 
-func TestRubricErrors10_SyntaxErrorsNameLineAndColumn(t *testing.T) {
+func TestRubricERRORS10_SyntaxErrorsNameLineAndColumn(t *testing.T) {
 	for _, tc := range []struct {
 		name, in   string
 		line, col  int
@@ -71,9 +71,9 @@ func TestRubricErrors10_SyntaxErrorsNameLineAndColumn(t *testing.T) {
 
 func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
 
-// TestRubricErrors10_LoadNamesTheFile is the path half through the entry most
+// TestRubricERRORS10_LoadNamesTheFile is the path half through the entry most
 // callers use.
-func TestRubricErrors10_LoadNamesTheFile(t *testing.T) {
+func TestRubricERRORS10_LoadNamesTheFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	if err := os.WriteFile(path, []byte("{\n  \"a\": 1,\n}\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -88,10 +88,10 @@ func TestRubricErrors10_LoadNamesTheFile(t *testing.T) {
 	}
 }
 
-// TestRubricErrors10_HookEventErrorsNameTheEventAndPlace covers the errors
+// TestRubricERRORS10_HookEventErrorsNameTheEventAndPlace covers the errors
 // Parse cannot raise, because it holds hooks as raw bytes: they surface only
 // when an edit looks inside, and then they must still say where.
-func TestRubricErrors10_HookEventErrorsNameTheEventAndPlace(t *testing.T) {
+func TestRubricERRORS10_HookEventErrorsNameTheEventAndPlace(t *testing.T) {
 	const path = "/p/settings.json"
 	for _, tc := range []struct {
 		name, in, event string
@@ -131,12 +131,12 @@ func TestRubricErrors10_HookEventErrorsNameTheEventAndPlace(t *testing.T) {
 	}
 }
 
-// TestRubricErrors10_AnEditedHooksObjectHasNoPlace pins the rule that a
+// TestRubricERRORS10_AnEditedHooksObjectHasNoPlace pins the rule that a
 // position is never a wrong one. Once SetHookEntries rewrites the hooks object,
 // the events it carried over sit at offsets of their own in the rewritten
 // bytes, not in the file; an error about one of them names the file and the
 // event, and no line or column at all.
-func TestRubricErrors10_AnEditedHooksObjectHasNoPlace(t *testing.T) {
+func TestRubricERRORS10_AnEditedHooksObjectHasNoPlace(t *testing.T) {
 	// The permissions member after hooks keeps the file longer than the
 	// rewritten hooks object, so a stale offset would land inside the file and
 	// read as a real place rather than fall off its end.
@@ -159,9 +159,9 @@ func TestRubricErrors10_AnEditedHooksObjectHasNoPlace(t *testing.T) {
 	}
 }
 
-// TestRubricErrors10_UnnamedDocumentsStillSaySettings keeps Parse, which has
+// TestRubricERRORS10_UnnamedDocumentsStillSaySettings keeps Parse, which has
 // no file name, from producing a bare "3:1: ..." that reads as nothing.
-func TestRubricErrors10_UnnamedDocumentsStillSaySettings(t *testing.T) {
+func TestRubricERRORS10_UnnamedDocumentsStillSaySettings(t *testing.T) {
 	_, err := Parse([]byte("{\n  \"a\": 1,\n}"))
 	if e := errorOf(t, err); e.Path != "" || !strings.HasPrefix(err.Error(), "settings:3:1: ") {
 		t.Errorf("Parse error %q, want it to start %q", err, "settings:3:1: ")

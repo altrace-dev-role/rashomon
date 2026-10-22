@@ -54,10 +54,10 @@ func FuzzDocumentRoundTrip(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte, event string) { checkRoundTrip(t, data, event) })
 }
 
-// TestRubricTest10_RoundTripSeeds runs the properties over the seed corpus as
+// TestRubricTEST10_RoundTripSeeds runs the properties over the seed corpus as
 // a plain test, which is what a mutant names: a fuzz target's seeds run only
 // under its own name.
-func TestRubricTest10_RoundTripSeeds(t *testing.T) {
+func TestRubricTEST10_RoundTripSeeds(t *testing.T) {
 	for _, s := range roundTripSeeds {
 		for _, event := range []string{"PreToolUse", "Stop", "< \x00>", "\xbd"} {
 			checkRoundTrip(t, []byte(s), event)

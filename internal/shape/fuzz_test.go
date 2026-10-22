@@ -207,9 +207,9 @@ func checkLeadingDirectory(t *testing.T, cmd string) {
 	}
 }
 
-// TestRubricTest1_ShapeSeeds runs every fuzz property over the seeds as a
+// TestRubricTEST1_ShapeSeeds runs every fuzz property over the seeds as a
 // plain test, which is what a mutant names and what runs without -fuzz.
-func TestRubricTest1_ShapeSeeds(t *testing.T) {
+func TestRubricTEST1_ShapeSeeds(t *testing.T) {
 	for _, s := range shapeSeeds() {
 		checkDerive(t, s)
 		checkHosts(t, s)

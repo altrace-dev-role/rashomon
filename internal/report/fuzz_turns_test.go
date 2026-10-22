@@ -24,9 +24,9 @@ func FuzzFinalAssistantTexts(f *testing.F) {
 	f.Fuzz(func(t *testing.T, script []byte, words string) { checkTurns(t, script, words) })
 }
 
-// TestRubricTest1_TurnSeeds runs FuzzFinalAssistantTexts' property over its
+// TestRubricTEST1_TurnSeeds runs FuzzFinalAssistantTexts' property over its
 // seeds as a plain test, which is what a mutant names.
-func TestRubricTest1_TurnSeeds(t *testing.T) {
+func TestRubricTEST1_TurnSeeds(t *testing.T) {
 	for _, s := range []struct {
 		script []byte
 		words  string

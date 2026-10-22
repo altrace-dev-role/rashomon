@@ -36,7 +36,7 @@ import (
 // against another in the same pair of files, never against its own text),
 // and every thinking block's opaque signature (fixture-signature-01 to -12);
 // the thinking text itself was empty.
-// TestRubricTest7_FixtureHoldsNoLiveRequestIDsOrSignatures holds both files
+// TestRubricTEST7_FixtureHoldsNoLiveRequestIDsOrSignatures holds both files
 // to those forms. Nothing else was changed: session and prompt ids,
 // timestamps, usage and example.com are as Claude Code wrote them.
 const (
@@ -129,13 +129,13 @@ func (e *env) replayReal(t *testing.T) []realPayload {
 	return payloads
 }
 
-// TestRubricTest7_RealSessionReplays replays the captured session through the
+// TestRubricTEST7_RealSessionReplays replays the captured session through the
 // binary, as watch installs it, and holds the store and the report to what
 // Claude Code sent: every PreToolUse a declaration, every PostToolUse and
 // PostToolUseFailure an execution, the transcript's ids all accounted for,
 // the refused rm a denial rather than a gap, and the agent's own account the
 // final message the Stop payload carried.
-func TestRubricTest7_RealSessionReplays(t *testing.T) {
+func TestRubricTEST7_RealSessionReplays(t *testing.T) {
 	e := newEnv(t)
 	payloads := e.replayReal(t)
 
@@ -241,7 +241,7 @@ func (e *env) reportAccount(sessionID string) string {
 	return rep.Sessions[0].Account.Text
 }
 
-// TestRubricTest7_RealSessionDigests drives digest from the captured session:
+// TestRubricTEST7_RealSessionDigests drives digest from the captured session:
 // the store the replay left, and the Stop payload Claude Code sent, piped in
 // whole as a Stop hook would pipe it. The turn's declarations and executions
 // are the payloads', the refused rm is the one declaration without an
@@ -252,7 +252,7 @@ func (e *env) reportAccount(sessionID string) string {
 // and for a reason worth knowing: the final message never mentions the cat
 // that failed, but it says the rm was "denied", which is in the failure
 // vocabulary, and the vocabulary is matched across the whole message.
-func TestRubricTest7_RealSessionDigests(t *testing.T) {
+func TestRubricTEST7_RealSessionDigests(t *testing.T) {
 	e := newEnv(t)
 	payloads := e.replayReal(t)
 	var stopRaw, denied string

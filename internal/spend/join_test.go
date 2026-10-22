@@ -419,10 +419,6 @@ func TestJoin_ATurnsSpendIsKeyedByItsPrompt(t *testing.T) {
 	c.write("proj/sess-j/subagents/agent-t.jsonl", subUserLine("sess-j", "p1", T.Add(time.Second)),
 		strings.Replace(sub("T0", 1), `"timestamp":"`, `"timestamp":5,"x":"`, 1),
 		sub("T1", 11111))
-	// So does a line too long to read: it may be that prompt too.
-	c.write("proj/sess-j/subagents/agent-l.jsonl", subUserLine("sess-j", "p1", T.Add(time.Second)),
-		`{"x":"`+strings.Repeat("x", report.TranscriptMaxLine)+`"}`,
-		sub("L1", 9999))
 	// A blank or whitespace-only line is no line at all: it keeps the tie,
 	// so B1 is p1's.
 	c.write("proj/sess-j/subagents/agent-b.jsonl", subUserLine("sess-j", "p1", T.Add(time.Second)), "", " \t ", sub("B1", 8888))
@@ -437,6 +433,37 @@ func TestJoin_ATurnsSpendIsKeyedByItsPrompt(t *testing.T) {
 		t.Errorf("cost = %d, want %d: a response not tied to p1 was priced into it -- the tool-less prompt's reply "+
 			"inside p1's recorded span, or a subagent response its own transcript does not tie to p1 -- or one after a "+
 			"blank line was left out", got, turn)
+	}
+}
+
+// TestRubricPERF6_ALineTooLongEndsASubagentsTie: a line too long to read in a
+// subagent transcript may be a new prompt this reader cannot key, so, like a
+// line that does not decode, it ends the tie
+// (TestJoin_ATurnsSpendIsKeyedByItsPrompt), and the response after it is not
+// priced into the turn before it. With a short line in its place, the same
+// response is.
+func TestRubricPERF6_ALineTooLongEndsASubagentsTie(t *testing.T) {
+	for _, tc := range []struct {
+		between string
+		priced  bool
+	}{{`{"x":"` + strings.Repeat("x", report.TranscriptMaxLine) + `"}`, false}, {`{"x":"short"}`, true}} {
+		c := newConfig(t)
+		rec := newRecorder(t)
+		t0 := now.Add(-2 * time.Hour)
+		turn := silentSession(t, c, rec, t0, "Ran the command as requested.")
+		rec.transcript = filepath.Join(c.dir, "projects", "proj", "sess-j.jsonl")
+		r := resp{id: "X1", model: "claude-opus-5-5", session: "sess-j", at: t0.Add(2 * time.Second), in: 4242, stop: "end_turn", sidechain: true}
+		c.write("proj/sess-j/subagents/agent-l.jsonl", subUserLine("sess-j", "p1", t0.Add(time.Second)), tc.between, r.line("tool_use"))
+		if tc.priced {
+			turn += 4242 * opusIn
+		}
+		s := c.summary(30)
+		if err := s.Join(rec.st); err != nil {
+			t.Fatal(err)
+		}
+		if got := s.SilentFailureTurns.Cost.Nano; got != turn {
+			t.Errorf("a %d-byte line between p1's prompt and X1: cost = %d, want %d (X1 priced into p1: %v)", len(tc.between), got, turn, tc.priced)
+		}
 	}
 }
 

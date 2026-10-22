@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// TestRubricPerf6_TheLineBoundIsNonoMaxLine pins the trail's line bound at its
+// TestRubricPERF6_TheLineBoundIsNonoMaxLine pins the trail's line bound at its
 // edge. The first line of the real capture is session_started, the record
 // whose command line can be long; it is padded inside the command so the line
 // is exactly the longest the scanner holds (nonoMaxLine less the newline) and
@@ -15,7 +15,7 @@ import (
 // one record not read: counted in Skipped, the session it opened not counted,
 // and every line after it read -- one long command never costs the rest of
 // the trail.
-func TestRubricPerf6_TheLineBoundIsNonoMaxLine(t *testing.T) {
+func TestRubricPERF6_TheLineBoundIsNonoMaxLine(t *testing.T) {
 	raw, err := os.ReadFile(fixture)
 	if err != nil {
 		t.Fatal(err)

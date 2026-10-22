@@ -58,7 +58,7 @@ func sizedStop(t *testing.T, n int) []byte {
 	return p
 }
 
-func TestRubricTest9_RecapReaderGivesUpOnAWriterThatNeverCloses(t *testing.T) {
+func TestRubricTEST9_RecapReaderGivesUpOnAWriterThatNeverCloses(t *testing.T) {
 	pr, pw := io.Pipe()
 	t.Cleanup(func() {
 		// The reader goroutine is parked in Read on the open pipe. Seeing it
@@ -122,7 +122,7 @@ func waitForNoGoroutine(t *testing.T, fn string) {
 	}
 }
 
-func TestRubricTest9_RecapReaderAwkwardAndFailingReaders(t *testing.T) {
+func TestRubricTEST9_RecapReaderAwkwardAndFailingReaders(t *testing.T) {
 	want := recapPayload{SessionID: "s-test9", LastAssistantMessage: "All 12 tests pass."}
 	for name, wrap := range test9Readers() {
 		if got := readRecapPayload(wrap(strings.NewReader(test9Payload)), time.Second); got != want {
@@ -136,7 +136,7 @@ func TestRubricTest9_RecapReaderAwkwardAndFailingReaders(t *testing.T) {
 	}
 }
 
-func TestRubricTest9_DigestStdinAwkwardAndFailingReaders(t *testing.T) {
+func TestRubricTEST9_DigestStdinAwkwardAndFailingReaders(t *testing.T) {
 	for name, wrap := range test9Readers() {
 		msg, ok := readStdinLastMessage(wrap(strings.NewReader(test9Payload)))
 		if !ok || msg != "All 12 tests pass." {
@@ -150,10 +150,10 @@ func TestRubricTest9_DigestStdinAwkwardAndFailingReaders(t *testing.T) {
 	}
 }
 
-// TestRubricTest9_TheCapIsMaxPayloadBytes: both readers take a payload of
+// TestRubricTEST9_TheCapIsMaxPayloadBytes: both readers take a payload of
 // exactly hookio.MaxPayloadBytes and refuse one byte more, as the buffered
 // hook entries do (TestRES4_CapAtNAndNPlusOne).
-func TestRubricTest9_TheCapIsMaxPayloadBytes(t *testing.T) {
+func TestRubricTEST9_TheCapIsMaxPayloadBytes(t *testing.T) {
 	at := sizedStop(t, hookio.MaxPayloadBytes)
 	over := sizedStop(t, hookio.MaxPayloadBytes+1)
 	if got := readRecapPayload(bytes.NewReader(at), 5*time.Second); got.SessionID != "s-test9" {

@@ -33,9 +33,9 @@ var parseSeeds = []struct {
 	{"BenchmarkA-8   20   100 ns/op   50 B/op   3 allocs/op\n", "A", 60, 2},
 }
 
-// TestRubricErrors7_ParseSeeds runs FuzzParse's property over its seeds as a
+// TestRubricERRORS7_ParseSeeds runs FuzzParse's property over its seeds as a
 // plain test, which is what a mutant names.
-func TestRubricErrors7_ParseSeeds(t *testing.T) {
+func TestRubricERRORS7_ParseSeeds(t *testing.T) {
 	for _, s := range parseSeeds {
 		checkParse(t, s.out, s.name, s.b, s.n)
 	}

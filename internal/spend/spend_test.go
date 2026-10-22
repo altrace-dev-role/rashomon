@@ -714,12 +714,12 @@ func TestRead_AnUnreadableTranscriptIsCountedAndSaid(t *testing.T) {
 	}
 }
 
-// TestRead_ALineTooLongIsSteppedOverAndCounted: a line longer than
+// TestRubricPERF6_ReadStepsOverALineTooLongAndCountsIt: a line longer than
 // report.TranscriptMaxLine is stepped over and the lines after it are read,
 // so a response after it is priced. The line itself may have carried usage,
 // so it is counted as a line that could not be (read.unparsed_usage_lines),
 // and the file is not unreadable.
-func TestRead_ALineTooLongIsSteppedOverAndCounted(t *testing.T) {
+func TestRubricPERF6_ReadStepsOverALineTooLongAndCountsIt(t *testing.T) {
 	c := newConfig(t)
 	c.write("proj/sess-b.jsonl",
 		resp{id: "b", model: "claude-opus-5-5", at: now.Add(-time.Hour), in: 7, stop: "end_turn"}.line("text"),

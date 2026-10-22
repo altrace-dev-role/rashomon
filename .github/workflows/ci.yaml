@@ -291,7 +291,7 @@ jobs:
   # reducing one input took FuzzTranscriptLines' whole window (5,584 execs in
   # 20 s, then 0/s; with the bound, 216,016 execs and 79 new inputs). A
   # failing input is then printed less reduced, which is still the input that
-  # failed. TestRubricTest1_FuzzJobFloorIsTheTreeCount keeps the floor below
+  # failed. TestRubricTEST1_FuzzJobFloorIsTheTreeCount keeps the floor below
   # at the number of targets the tree holds.
   # Targets are the ones `go test -list` names in each package, so a new one
   # runs without an edit here and a file this build leaves out is left out
