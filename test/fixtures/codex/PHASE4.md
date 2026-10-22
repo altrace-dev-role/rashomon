@@ -80,10 +80,14 @@ command line. Codex leaves these behind after detach (below).
    Code transcript. This was out of scope for phases 2–3, but the output asserts
    a disagreement that does not exist, and it cannot be suppressed without
    knowing the harness (review item 3).
-2. **Ids do not join for shell and patch calls.** Their `tool_use_id` is
-   `exec-<uuid>`, but the rollout's `call_id` is `call_<hex>`. The
-   `spawn_agent`/`wait_agent` ids do match. A Codex transcript reader cannot
-   join records to the rollout by id for `exec_command` or `apply_patch` calls.
+2. **Ids join through Codex's completion events, not its tool calls.**
+   *Corrected; this first said the ids do not join.* A shell or patch call's
+   `tool_use_id` (`exec-<uuid>`) is not the `call_id` (`call_<hex>`) of the
+   model's tool call in the rollout, because that call is the model's script,
+   which may run several tools. It is, exactly, the `item.id` of the rollout's
+   `event_msg` / `item_completed` entry for the command or file change; every
+   one of the six `exec-` ids in these runs has one. The
+   `spawn_agent`/`wait_agent` ids match the tool call's `call_id`.
 3. **The hooks run in Codex's app-server daemon, not in the TUI.** The daemon
    is shared and long-lived, so any variable set when launching `codex`
    (`RASHOMON_HOME`, `XDG_STATE_HOME`) never reaches the hooks. A user who sets
@@ -95,10 +99,19 @@ command line. Codex leaves these behind after detach (below).
 4. **SessionStart fires with the first turn, not when the TUI starts.** A
    trusted SessionStart did not run on launch; the probe record arrived with
    the first prompt.
-5. **The exit code is in the rollout.** Codex's tool output text ends
-   `exit_code=0` or `exit_code=2`. The hook payload still has no exit code, so
-   outcome stays unobserved in the records. A Codex transcript reader could
-   supply it later.
+5. **The exit code is in the rollout as a field, not in the hook.**
+   *Corrected; this first said Codex's tool output text ends `exit_code=N`.*
+   That text was printed by the model's own script
+   (`` text(`exit_code=${r.exit_code}`) ``), so it appears only when a model
+   chooses to print it. The structured value is in the `item_completed` entry
+   for each command: `item.type` `CommandExecution`, `item.exit_code` (an
+   integer) and `item.status` (`completed` or `failed`), keyed by the same
+   `item.id` as the record. A `FileChange` item has a `status` and no
+   `exit_code`. By that field, the first call of session 1 (`pwd && rg …`)
+   also failed, with exit 2, on unreadable directories under `~`. The hook
+   payload has no exit code (all 7 captured PostToolUse payloads, and the
+   payload schema in Codex 0.163.0 and 0.164.0-alpha.12), so outcomes stay
+   unobserved in the records.
 6. **Detach leaves `{}` behind.** Where no `hooks.json` existed before
    `watch`, `detach --harness codex` leaves a 3-byte file, `{}` plus a newline,
    mode 0600. It is neither the absent file nor `{"hooks": {}}`. The three
