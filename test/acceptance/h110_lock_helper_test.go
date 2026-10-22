@@ -117,3 +117,42 @@ func openLockable(t *testing.T, path string) *os.File {
 	t.Cleanup(func() { _ = f.Close() })
 	return f
 }
+
+// TestH110_ABudgetOfZeroIsATryLock: a budget of 0 tries the lock once and
+// returns at once, store.ErrLockTimeout under contention and the lock when it
+// is free. The history fold takes it that way: a render that finds the fold
+// running skips it rather than queueing behind it. Reading 0 as "no budget,
+// wait until free" -- as some lock APIs do -- would hang that render, so the
+// contended call has 10 s to return before this fails rather than hangs.
+func TestH110_ABudgetOfZeroIsATryLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lock")
+	held := openLockable(t, path)
+	contender := openLockable(t, path)
+
+	unlock, err := store.LockFile(held, time.Second)
+	if err != nil {
+		t.Fatalf("LockFile on a file nobody holds: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		release, err := store.LockFile(contender, 0)
+		if err == nil {
+			release()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, store.ErrLockTimeout) {
+			t.Fatalf("a contended LockFile with budget 0 returned %v, want store.ErrLockTimeout", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a contended LockFile with budget 0 waited for the lock instead of trying it once")
+	}
+	unlock()
+	release, err := store.LockFile(contender, 0)
+	if err != nil {
+		t.Fatalf("LockFile with budget 0 on a free lock: %v", err)
+	}
+	release()
+}

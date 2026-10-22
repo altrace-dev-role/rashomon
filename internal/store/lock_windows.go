@@ -60,7 +60,7 @@ func LockFile(f *os.File, budget time.Duration) (func(), error) {
 		if !errors.Is(err, errorLockViolation) && !errors.Is(err, syscall.ERROR_IO_PENDING) {
 			return nil, err
 		}
-		if time.Now().After(deadline) {
+		if !time.Now().Before(deadline) {
 			return nil, ErrLockTimeout
 		}
 		time.Sleep(backoff)

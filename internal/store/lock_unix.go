@@ -35,8 +35,15 @@ const lockBudget = 2 * time.Second
 // sooner; any other failure returns its own error at once, because the hooks
 // record a timeout as lock_timeout and a broken descriptor is not a busy
 // lock; f needs read or write access, which LockFileEx demands (appendFlags);
-// and the caller releases before it closes f. Where no lock is implemented,
-// lock_other.go refuses.
+// and the caller releases before it closes f. A budget of 0 is a try-lock:
+// one attempt, ErrLockTimeout at once if the lock is held. Where no lock is
+// implemented, lock_other.go refuses.
+//
+// Lock a file kept for the lock alone, not the data it guards. Under
+// LockFileEx the lock is mandatory: while it is held, a read or write of the
+// locked range through any other descriptor fails, so a reader that never
+// takes the lock still cannot read a data file another process has locked on
+// Windows, where under flock it reads freely.
 //
 // Here it is flock, advisory, polled so the wait can be bounded. A blocking
 // LOCK_EX cannot be interrupted on a deadline without tearing down the
@@ -55,7 +62,7 @@ func LockFile(f *os.File, budget time.Duration) (func(), error) {
 		if !errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, err
 		}
-		if time.Now().After(deadline) {
+		if !time.Now().Before(deadline) {
 			return nil, ErrLockTimeout
 		}
 		time.Sleep(backoff)
