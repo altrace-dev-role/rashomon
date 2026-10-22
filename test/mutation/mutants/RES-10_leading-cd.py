@@ -25,7 +25,7 @@ m("RES-10 a line past the leading-cd fold is not reported as cut", "internal/sha
 # own allocation, in package hook, which is what lets TestRES10_LeadingCdFoldIsBounded
 # gate on TotalAlloc instead of wall time (85.3.10 is not a clock this test
 # can hold an uninstrumented build to, let alone a -race one). 20000 still
-# compiles (maxTokens is 62601 today; 3*(20000+1) = 60003 clears it, where
+# compiles (maxTokens is 66576 today; 3*(20000+1) = 60003 clears it, where
 # 3*(129) does not clear it at the old spec's 41,700 estimate -- this is why
 # the sibling mutant above stops at 128), and it is far past the 14,000 cds
 # TestRES10_LeadingCdFoldIsBounded's "14,000 steps, under the token bound"

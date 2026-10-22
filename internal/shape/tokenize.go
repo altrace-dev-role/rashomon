@@ -32,20 +32,20 @@ var errTokenBound = errors.New("token bound")
 // of one token. That cost is the whole Derive's, not the lexer's: Derive reads
 // a line three times (tokenizeShape for argc, tokenizeProgram for the program
 // and the leading-cd count, tokenizeList for the masked status), so a token
-// costs about 268 bytes where one reading of it costs about 101
+// costs about 252 bytes where one reading of it costs about 93
 // (BenchmarkLexTokens). The hook's LeadingDirectory reads the line once more,
-// outside Derive. bytesPerToken is BenchmarkDerive/bash_long_4k's 285,328
+// outside Derive. bytesPerToken is BenchmarkDerive/bash_long_4k's 268,944
 // B/op over that line's 1,068 tokens (test/perf/budgets.json, measured
-// 2026-10-13 under go1.27.2), 267.2, rounded up; it was 395 while a word's
+// 2026-10-22 under go1.27.3), 251.8, rounded up; it was 395 while a word's
 // text was copied byte by byte and the leading-cd count read the line a
 // fourth time. TestRES9_BoundMatchesItsArithmetic holds the constant to that
 // row, so a change that moves Derive's cost per token restates the bound
-// with the row. The bound is 62,601 tokens: a script handed to an
+// with the row. The bound is 66,576 tokens: a script handed to an
 // interpreter as a here-document, which the program search reads word by
 // word, runs to a few thousand.
 const (
 	shapeBudget   = 16 << 20
-	bytesPerToken = 268
+	bytesPerToken = 252
 	maxTokens     = shapeBudget / bytesPerToken
 )
 
