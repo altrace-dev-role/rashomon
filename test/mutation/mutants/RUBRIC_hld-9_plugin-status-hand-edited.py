@@ -6,4 +6,4 @@
 m("hld-9 a hand-edited plugin event drops to the absent case", "cmd/rashomon/main.go",
   "\t\tcase declared[event]:\n",
   "\t\tcase false && declared[event]:\n",
-  "TestRubricHLD1_StatusNamesTheOverlapUnderAHandEditedPlugin")
+  "TestRubricHLD9_AHandEditedPluginEventReadsPresent")

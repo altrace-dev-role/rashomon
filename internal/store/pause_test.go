@@ -180,12 +180,12 @@ func TestMarkerUnreadable_TrueOnlyWhenTheMarkerIsAPlainFile(t *testing.T) {
 	})
 }
 
-// TestResume_RemovesAnUnreadableMarker: a pause marker that exists and
+// TestRubricPAUSE9_ResumeRemovesAnUnreadableMarker: a pause marker that exists and
 // cannot be read is exactly the state checkPaused fails closed on, which
 // makes it sticky -- Resume used to return Paused's raw read error before
 // ever reaching the file, leaving the caller unable to clear the one state
 // checkPaused treats as a pause.
-func TestResume_RemovesAnUnreadableMarker(t *testing.T) {
+func TestRubricPAUSE9_ResumeRemovesAnUnreadableMarker(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("chmod 000 does not stop this user reading the file")
 	}

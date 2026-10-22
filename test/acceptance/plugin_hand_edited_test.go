@@ -48,11 +48,31 @@ func TestRubricHLD1_WatchRefusesUnderAHandEditedPlugin(t *testing.T) {
 
 // TestRubricHLD1_StatusNamesTheOverlapUnderAHandEditedPlugin: a settings
 // install beside an enabled, hand-edited plugin records every call twice,
-// and status says so. The plugin's per-event lines say present too, because
-// the plugin does fire on every call -- "absent" there read as a
-// contradiction of the overlap line below it, which is what Live() (reading
-// Declared, the fires-at-all list) already reported.
+// and status says so.
 func TestRubricHLD1_StatusNamesTheOverlapUnderAHandEditedPlugin(t *testing.T) {
+	res := statusBesideAHandEditedPlugin(t)
+	if !strings.Contains(res.stdout, "overlap:") {
+		t.Errorf("status does not name the overlap with a hand-edited plugin that still fires:\n%s", res.stdout)
+	}
+}
+
+// TestRubricHLD9_AHandEditedPluginEventReadsPresent: the plugin's per-event
+// lines under the same install say present too, because the plugin does
+// fire on every call -- "absent" there read as a contradiction of the
+// overlap line below it, which is what Live() (reading Declared, the
+// fires-at-all list) already reported.
+func TestRubricHLD9_AHandEditedPluginEventReadsPresent(t *testing.T) {
+	res := statusBesideAHandEditedPlugin(t)
+	want := "present (hand edited, not counted for coverage)"
+	if got := fieldLine(t, res.stdout, "plugin PreToolUse"); got != want {
+		t.Errorf("plugin PreToolUse reads %q for a hand-edited entry, want %q", got, want)
+	}
+}
+
+// statusBesideAHandEditedPlugin runs status with a settings install beside
+// an enabled plugin whose every group is hand edited.
+func statusBesideAHandEditedPlugin(t *testing.T) result {
+	t.Helper()
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
@@ -66,13 +86,7 @@ func TestRubricHLD1_StatusNamesTheOverlapUnderAHandEditedPlugin(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("status: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	want := "present (hand edited, not counted for coverage)"
-	if got := fieldLine(t, res.stdout, "plugin PreToolUse"); got != want {
-		t.Errorf("plugin PreToolUse reads %q for a hand-edited entry, want %q", got, want)
-	}
-	if !strings.Contains(res.stdout, "overlap:") {
-		t.Errorf("status does not name the overlap with a hand-edited plugin that still fires:\n%s", res.stdout)
-	}
+	return res
 }
 
 // TestRubricHLD1_AHandEditedPluginStillRecords: with no store yet, an enabled

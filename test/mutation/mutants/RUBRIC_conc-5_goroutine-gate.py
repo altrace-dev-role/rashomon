@@ -8,8 +8,8 @@ m("conc-5 the hook package starts a bare goroutine", "internal/hook/signals.go",
 m("conc-5 an import that only looks like time or context is flagged anyway", "internal/safe/safe_test.go",
   "\t\tif err != nil || (path != \"time\" && path != \"context\") {\n",
   "\t\tif err != nil {\n",
-  "TestUnsafeGoroutineStarts_")
+  "TestRubricCONC5_TheDetectorFinds")
 m("conc-5 an aliased time or context import is read under its default name", "internal/safe/safe_test.go",
   "\t\tif imp.Name != nil {\n\t\t\tlocal = imp.Name.Name\n\t\t}\n",
   "",
-  "TestUnsafeGoroutineStarts_")
+  "TestRubricCONC5_TheDetectorFinds")

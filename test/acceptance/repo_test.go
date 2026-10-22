@@ -262,12 +262,12 @@ func collectReasonPaths(node any, path string, into map[string]bool) {
 	}
 }
 
-// TestReasonVocabularyTripwireCatchesWhatTheComparisonSkips mutates a copy of
+// TestRubricERRORS5_TheReasonTripwireCatchesWhatTheComparisonSkips mutates a copy of
 // the real schema -- never the file -- in each of the ways a reason vocabulary
 // can be added where TestStoreSchemaReasonsAreTheCodeReasons does not look, and
 // requires the tripwire to name the new location. The last case goes the other
 // way: a vocabulary the comparison reads disappears.
-func TestReasonVocabularyTripwireCatchesWhatTheComparisonSkips(t *testing.T) {
+func TestRubricERRORS5_TheReasonTripwireCatchesWhatTheComparisonSkips(t *testing.T) {
 	cases := []struct {
 		name                       string
 		mutate                     func(schema map[string]any)

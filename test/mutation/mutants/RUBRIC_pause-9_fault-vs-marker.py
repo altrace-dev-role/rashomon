@@ -11,7 +11,7 @@
 m("pause-9 checkPaused folds an unrelated fault into the marker case", "cmd/rashomon/main.go",
   "\tcase pausedErr != nil && !store.MarkerUnreadable(root):\n\t\treturn false\n",
   "",
-  "TestCheckPaused_FaultOnStoreRootIsNotAPause")
+  "TestRubricPAUSE9_AFaultOnTheStoreRootIsNotAPause")
 
 # Resume used to return store.Paused's raw read error before ever reaching
 # the marker file, so an unreadable marker -- the one state checkPaused now
@@ -20,7 +20,7 @@ m("pause-9 checkPaused folds an unrelated fault into the marker case", "cmd/rash
 m("pause-9 Resume cannot clear an unreadable marker", "internal/store/pause.go",
   "\t\tif !MarkerUnreadable(root) {\n\t\t\treturn false, time.Time{}, err\n\t\t}\n",
   "\t\treturn false, time.Time{}, err\n",
-  "TestResume_RemovesAnUnreadableMarker")
+  "TestRubricPAUSE9_ResumeRemovesAnUnreadableMarker")
 
 # RecordingState used to render an unreadable marker as a Go error, which
 # statusRecording then printed as "unknown" -- even though checkPaused was
@@ -29,7 +29,7 @@ m("pause-9 Resume cannot clear an unreadable marker", "internal/store/pause.go",
 m("pause-9 RecordingState renders an unreadable marker as unknown", "cmd/rashomon/main.go",
   "\t\tif store.MarkerUnreadable(root) {\n\t\t\treturn RecordingPausedUnreadable, time.Time{}, nil\n\t\t}\n",
   "",
-  "TestH82_RecordingStateDistinguishesPausedAbsentAndUnknown")
+  "TestH82_RecordingStateDistinguishesPausedAbsentAndUnknown|TestRubricPAUSE9_StatusPrintsMarkerUnreadable")
 
 # Even with RecordingState correct, statusRecording's own switch has to act
 # on RecordingPausedUnreadable -- dropping the case sends it through the
@@ -38,4 +38,4 @@ m("pause-9 RecordingState renders an unreadable marker as unknown", "cmd/rashomo
 m("pause-9 statusRecording has no case for an unreadable marker", "cmd/rashomon/main.go",
   "\tcase state == RecordingPausedUnreadable:\n\t\tfmt.Fprintf(stdout, \"  recording: %s\\n\", RecordingPausedUnreadable)\n",
   "",
-  "TestStatusRecording_UnreadableMarkerPrintsMarkerUnreadable")
+  "TestRubricPAUSE9_StatusPrintsMarkerUnreadable")

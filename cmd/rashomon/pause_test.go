@@ -148,12 +148,12 @@ func TestH82_RecordingStateDistinguishesPausedAbsentAndUnknown(t *testing.T) {
 	})
 }
 
-// TestStatusRecording_UnreadableMarkerPrintsMarkerUnreadable pins the status
+// TestRubricPAUSE9_StatusPrintsMarkerUnreadable pins the status
 // line itself, not just the state RecordingState resolves to: an unreadable
 // pause marker must render as "paused (marker unreadable)", never as
 // statusUnknown, because checkPaused is already treating the call as paused
 // and status has an answer rather than nothing to report.
-func TestStatusRecording_UnreadableMarkerPrintsMarkerUnreadable(t *testing.T) {
+func TestRubricPAUSE9_StatusPrintsMarkerUnreadable(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("chmod 000 does not stop this user reading the file")
 	}
@@ -326,13 +326,13 @@ func TestRubricERRORS6_UnreadablePauseMarkerPausesTheHook(t *testing.T) {
 	}
 }
 
-// TestCheckPaused_FaultOnStoreRootIsNotAPause: when store.Paused fails for a
+// TestRubricPAUSE9_AFaultOnTheStoreRootIsNotAPause: when store.Paused fails for a
 // reason that has nothing to do with the pause marker -- here, a store root
 // this process cannot search -- checkPaused must not treat the call as
 // paused. Before, any error from store.Paused read as a pause, so an EACCES
 // or ENOTDIR fault on the store root silently stopped recording with no
 // coverage record and nothing on stderr.
-func TestCheckPaused_FaultOnStoreRootIsNotAPause(t *testing.T) {
+func TestRubricPAUSE9_AFaultOnTheStoreRootIsNotAPause(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("root bypasses a directory's permission bits")
 	}

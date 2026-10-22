@@ -113,7 +113,7 @@ var mustWalk = []string{
 	"internal/hook/handle.go",
 }
 
-// TestUnsafeGoroutineStarts_DetectsAfterFuncAndGoStatements: the detector
+// TestRubricCONC5_TheDetectorFindsAfterFuncAndGoStatements: the detector
 // behind TestRubricCONC5_OnlySafeStartsGoroutines must also catch
 // time.AfterFunc and context.AfterFunc, not just a go statement. Both run
 // their function in a new goroutine with no recover of its own, exactly
@@ -121,7 +121,7 @@ var mustWalk = []string{
 // alone, so either call escaped it with no error and no test failure, in
 // this package or anywhere else a contributor reached for one instead of
 // safe.Go.
-func TestUnsafeGoroutineStarts_DetectsAfterFuncAndGoStatements(t *testing.T) {
+func TestRubricCONC5_TheDetectorFindsAfterFuncAndGoStatements(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		src  string
