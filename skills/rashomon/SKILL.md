@@ -4,7 +4,10 @@ description: 'Start recording what this Claude Code session asks to run. Use whe
 ---
 
 Install the rashomon recorder so every tool call from now on is recorded as a
-declaration (identifiers and shape only — never content).
+declaration (identifiers; shape, including a command's program name; the
+hostnames the call names, meaning URL hosts and ssh/scp/sftp/rsync
+destinations; and the working directory and transcript path. No prompts,
+responses, file contents or other argument values).
 
 1. Resolve the binary, in this order. Set `$RASHOMON` to the first absolute
    path that works:
@@ -25,13 +28,13 @@ declaration (identifiers and shape only — never content).
    Never install from a `go run` path — `watch` refuses temporary build
    directories because the installed hook entry records the absolute path.
 
-2. Run `$RASHOMON watch`. It writes five hook entries (PreToolUse,
-   PostToolUse, PostToolUseFailure, SessionStart, SessionEnd) into
-   `~/.claude/settings.json` and prints an install id plus the exact
-   `detach --install <id>` line that undoes it. Quote that undo line back to
-   the user verbatim.
+2. Run `$RASHOMON watch`. It writes eight hook entries (PreToolUse,
+   PostToolUse, PostToolUseFailure, SessionStart, SessionEnd, Stop,
+   StopFailure, UserPromptSubmit) into `~/.claude/settings.json` and prints an install id plus
+   the exact `detach --install <id>` line that undoes it. Quote that undo
+   line back to the user verbatim.
 
-3. Run `$RASHOMON status` and show the result, so the user sees the five
+3. Run `$RASHOMON status` and show the result, so the user sees the eight
    entries as present and where the store lives.
 
 4. Tell the user, briefly, and say the SCOPE first — it is the part they are
@@ -50,6 +53,14 @@ declaration (identifiers and shape only — never content).
      the probe is in place from their first moment; the report is the proof.
    - `/rashomon-report` renders what was recorded; `/rashomon-stop` removes
      the hooks and keeps the store; `/rashomon-forget` erases records.
+   - After a turn, they may occasionally see a short line starting `※
+     rashomon:` in Claude Code's own output. That is the recap: exception-only,
+     so it says nothing on a clean turn and prints once when a turn has a
+     recorded failure (a failed Read, Glob, Grep or NotebookRead alone does
+     not count, whatever its error), a declaration without recorded
+     execution, coverage that did not verify, or a truncated projection. It
+     always points at `/rashomon-report --session <id>` for the detail
+     rather than trying to say more itself.
 
 5. Offer the one-word launcher once, if it is not already on their PATH.
    From the rashomon repo, on macOS or Linux:
@@ -70,5 +81,5 @@ declaration (identifiers and shape only — never content).
    subcommands such as `doctor` pass through without running `watch`.
 
 Do not edit `~/.claude/settings.json` by hand and do not install the hook
-entries yourself — `watch` is the only writer, and it preserves foreign
-entries byte for byte.
+entries yourself — `watch` is the only writer, and it preserves the value of
+every foreign entry byte for byte (indentation may change).

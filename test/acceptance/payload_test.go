@@ -90,6 +90,26 @@ func (o postOpts) build(t *testing.T) string {
 	return string(b)
 }
 
+// stopPayload builds a Stop/StopFailure hook body. last_assistant_message is
+// the field Part 3's digest and Part 4's recap both read straight off stdin
+// -- never a transcript path this reader opens itself (see internal/digest's
+// package doc). stopHookActive is carried for completeness; recap does not
+// gate on it (the spec is explicit that it guards recursion, not duplicate
+// output -- see H-101's idempotency key instead).
+func stopPayload(sessionID, lastAssistantMessage string, stopHookActive bool) string {
+	b, err := json.Marshal(map[string]any{
+		"hook_event_name":        "Stop",
+		"session_id":             sessionID,
+		"transcript_path":        "/tmp/transcripts/" + sessionID + ".jsonl",
+		"stop_hook_active":       stopHookActive,
+		"last_assistant_message": lastAssistantMessage,
+	})
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
 func (o payloadOpts) build(t *testing.T) string {
 	t.Helper()
 

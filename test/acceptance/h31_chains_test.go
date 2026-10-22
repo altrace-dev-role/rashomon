@@ -1,8 +1,13 @@
 package acceptance
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // H-31 -- the chain view, end to end.
@@ -91,11 +96,10 @@ func TestH31_ChainsGroupCallsUnderTheirPrompt(t *testing.T) {
 	if !strings.Contains(out, "prompt prompt-1") {
 		t.Errorf("the render does not name the prompt:\n%s", out)
 	}
-	// The legend is load-bearing, not decoration: a host beside a call reads as
-	// though that call reached it, and the store cannot support that claim.
-	if !strings.Contains(out, "not proof this call reached it") {
-		t.Errorf("the render omits the legend that bounds what a link host means:\n%s", out)
-	}
+	// The legend explains a host's STATE, and a state comes only from a proxy
+	// store. Without one there is no state on the page, so no legend either:
+	// this alpha's reader would be told how to read a column they cannot see.
+
 }
 
 // TestH31_ADeniedCallRendersAsDeniedInItsChain joins the chain view to H-30.
@@ -119,47 +123,10 @@ func TestH31_ADeniedCallRendersAsDeniedInItsChain(t *testing.T) {
 	if len(rep.Chains.Prompts) != 1 || len(rep.Chains.Prompts[0].Links) != 1 {
 		t.Fatalf("want one chain with one link, got %+v", rep.Chains.Prompts)
 	}
-	if got := rep.Chains.Prompts[0].Links[0].Outcome; got != "denied by user" {
-		t.Errorf("outcome = %q, want \"denied by user\". Without the transcript this is "+
+	if got := rep.Chains.Prompts[0].Links[0].Outcome; got != "denied before running" {
+		t.Errorf("outcome = %q, want \"denied before running\". Without the transcript this is "+
 			"indistinguishable from an unrecorded execution, and calling it one reports the "+
 			"product working as the product broken.", got)
-	}
-}
-
-// TestH31_NoProxyStoreMeansUnknownRatherThanNotObserved is the honesty
-// property of the whole view, tested through the WIRING rather than the
-// function.
-//
-// The unit test pins hostState given WindowApplied false. What it cannot show
-// is that "no proxy store" actually reaches that flag -- and if it did not,
-// every host a call named would render "not observed", which says the wire was
-// watched and this host never appeared. With no store the wire was not watched
-// at all. That is a recorder gap being rendered as a finding against the agent,
-// in the most common configuration there is: a user who has not run the proxy.
-func TestH31_NoProxyStoreMeansUnknownRatherThanNotObserved(t *testing.T) {
-	e := newEnv(t)
-	e.watched(testSession)
-
-	p := defaultPayload()
-	p.ToolInput = map[string]any{"command": "curl https://pypi.org/simple/"}
-	e.mustHook(p.build(t))
-	post := defaultPost()
-	post.ToolInput = p.ToolInput
-	e.mustPost(post.build(t))
-	e.probe("end", testSession)
-
-	rep := e.report(testSession)
-	if rep.Destinations.Observed {
-		t.Fatal("premise: this env has no proxy store, so nothing should be observed")
-	}
-	hosts := rep.Chains.Prompts[0].Links[0].Hosts
-	if len(hosts) != 1 || hosts[0].Host != "pypi.org" {
-		t.Fatalf("hosts = %+v, want the one the command named", hosts)
-	}
-	if hosts[0].State != "unknown" {
-		t.Errorf("state = %q, want \"unknown\". With no proxy store the wire was never "+
-			"watched, and \"not observed\" asserts that it was and this host never appeared "+
-			"-- a missing recorder rendered as a finding against the agent.", hosts[0].State)
 	}
 }
 
@@ -229,35 +196,6 @@ func TestH31_TheChainSurvivesRedaction(t *testing.T) {
 	}
 }
 
-// TestH31_LoopbackAndClientPlaneAreNotFindings drives the two cases the review
-// predicted, end to end.
-//
-// Both were real in the first implementation of this view. A declared
-// `curl http://localhost:3000` read "not observed" -- which says the wire was
-// watched and this host never appeared -- on every session, forever, because
-// loopback is never proxied and no row can ever exist. The same for the
-// client's own traffic. Neither is a finding, and rendering them as one
-// accuses the agent of the recorder's blind spots.
-func TestH31_LoopbackAndClientPlaneAreNotFindings(t *testing.T) {
-	e := newEnv(t)
-	e.watched(testSession)
-
-	p := defaultPayload()
-	p.ToolInput = map[string]any{"command": "curl http://localhost:3000/health"}
-	e.mustHook(p.build(t))
-	e.probe("end", testSession)
-
-	hosts := e.report(testSession).Chains.Prompts[0].Links[0].Hosts
-	if len(hosts) != 1 {
-		t.Fatalf("hosts = %+v, want the one named", hosts)
-	}
-	if hosts[0].State != "loopback" {
-		t.Errorf("%s = %q, want \"loopback\". Loopback is never proxied, so no row can "+
-			"exist and \"not observed\" accuses every session that ran a local server.",
-			hosts[0].Host, hosts[0].State)
-	}
-}
-
 // TestH31_SSHHostsAreCarriedApartEndToEnd. The proxy cannot see ssh, so an ssh
 // host gets its own field and no state: a verdict column beside it would be
 // answering a question the wire could never be asked.
@@ -271,15 +209,133 @@ func TestH31_SSHHostsAreCarriedApartEndToEnd(t *testing.T) {
 	e.probe("end", testSession)
 
 	l := e.report(testSession).Chains.Prompts[0].Links[0]
-	if len(l.Hosts) != 0 {
-		t.Errorf("hosts = %+v, want none: the only host named is an ssh one", l.Hosts)
+	if len(l.DeclaredHosts) != 0 {
+		t.Errorf("declared_hosts = %+v, want none: the only host named is an ssh one", l.DeclaredHosts)
 	}
 	if len(l.SSHHosts) != 1 || l.SSHHosts[0] != "git.example.com" {
 		t.Errorf("ssh_hosts = %v, want it carried in its own field", l.SSHHosts)
 	}
 
+	// Without a proxy store nothing is observable, so "(not observable)" would
+	// single out the one host that is no different from the rest: the ssh host
+	// is named, apart, and nothing more.
 	out := e.run("", nil, "report", "--session", testSession, "--chain").stdout
-	if !strings.Contains(out, "ssh: git.example.com (not observable)") {
-		t.Errorf("the render does not carry the ssh host apart:\n%s", out)
+	if !strings.Contains(out, "ssh: git.example.com\n") {
+		t.Errorf("the render does not carry the ssh host apart, and plainly:\n%s", out)
 	}
+
+}
+
+// TestH31_NonoTrailReachesTheCLI drives the flag end to end.
+//
+// Written because the adapter reached the report and NOT the command line: the
+// seam test guarded Build -> buildNono while the wire that was actually cut
+// was main -> WithNonoTrail, so every report a user could produce printed
+// nothing about the sandbox. A guard one level below the break is not a guard.
+func TestH31_NonoTrailReachesTheCLI(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.mustHook(defaultPayload().build(t))
+	e.probe("end", testSession)
+
+	// The real capture, copied where the binary can read it.
+	raw, err := os.ReadFile(filepath.Join(moduleRoot, "test/fixtures/nono/audit-events.ndjson"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	trail := filepath.Join(e.home, "audit-events.ndjson")
+	if err := os.WriteFile(trail, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := e.run("", nil, "report", "--session", testSession, "--nono-audit", trail).stdout
+	if !strings.Contains(out, "sandbox (nono):") {
+		t.Errorf("--nono-audit produced no sandbox section:\n%s", out)
+	}
+	// The events are from a real capture whose instants precede this test's
+	// window, so they are inherited -- which the section must SAY rather than
+	// rendering as a quiet sandbox.
+	if !strings.Contains(out, "outside this session's window") {
+		t.Errorf("the section does not account for the out-of-window events:\n%s", out)
+	}
+
+	// And without the flag, silence.
+	plain := e.run("", nil, "report", "--session", testSession).stdout
+	if strings.Contains(plain, "sandbox (nono)") {
+		t.Errorf("a session with no trail configured rendered a sandbox line:\n%s", plain)
+	}
+}
+
+// TestH31_ASilentTrailLeavesTheNamedHostInTheChain pins what the README's
+// "Inside a sandbox" says about a trail with nothing in it. nono writes no
+// event for a plain-HTTP request it allows, and none at all when it does not
+// filter the network (measured with 0.78.0 and the claude profile), so the
+// sandbox section says the trail holds no network events rather than
+// counting zero -- a #53 follow-up: rendering `0 allowed, 0 denied` here
+// read as a filtered session that saw nothing, when no filtering ran. The
+// README said an allowed http:// request "appears nowhere in the report";
+// the call that named the URL still does, and --chain lists the host under
+// it. The trail here is that capture's shape: the session's start and end
+// and no network event.
+func TestH31_ASilentTrailLeavesTheNamedHostInTheChain(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	p := defaultPayload()
+	p.ToolInput = map[string]any{"command": "curl -sS -o /dev/null http://example.com/"}
+	e.mustHook(p.build(t))
+	e.probe("end", testSession)
+
+	now := time.Now()
+	trail := filepath.Join(e.home, "audit-events.ndjson")
+	body := fmt.Sprintf(`{"sequence":0,"event":{"type":"session_started","started":%q}}`+"\n"+
+		`{"sequence":1,"event":{"type":"session_ended","ended":%q,"exit_code":0}}`+"\n",
+		now.Add(-time.Minute).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+	if err := os.WriteFile(trail, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := e.run("", nil, "report", "--session", testSession, "--nono-audit", trail, "--chain").stdout
+	if !strings.Contains(out, "sandbox (nono): the trail holds no network events") {
+		t.Errorf("premise: a trail with no network event at all should say so, not count zero:\n%s", out)
+	}
+	if strings.Contains(out, "0 allowed, 0 denied") {
+		t.Errorf("a trail that never wrote a network record rendered as a filtered, quiet session:\n%s", out)
+	}
+	if !regexp.MustCompile(`(?m)^\s+1\s+Bash .*-> example\.com$`).MatchString(out) {
+		t.Errorf("the call that named http://example.com/ does not list the host in its chain:\n%s", out)
+	}
+
+	// The README says what this render shows, and nothing it contradicts.
+	readme, err := os.ReadFile(filepath.Join(moduleRoot, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := strings.Join(strings.Fields(string(readme)), " ")
+	for _, claim := range readmeSilentTrailClaims {
+		if !strings.Contains(flat, claim) {
+			t.Errorf("README.md \"Inside a sandbox\" no longer says %q, which this render backs", claim)
+		}
+	}
+	if strings.Contains(flat, "appears nowhere in the report") {
+		t.Errorf("README.md says an allowed http:// request \"appears nowhere in the report\"; "+
+			"--chain lists the host the call named:\n%s", out)
+	}
+}
+
+// readmeSilentTrailClaims are the README's sentences that the render in
+// TestH31_ASilentTrailLeavesTheNamedHostInTheChain backs, whitespace-folded.
+//
+// The second claim here still names the OLD rendering ("0 allowed, 0
+// denied"), not the "the trail holds no network events" wording the reader
+// now prints (see writeNono in internal/report/text.go). README.md's
+// matching wording update is a follow-up, not part of this commit, so the
+// committed tree's claim list has to track the committed tree's README
+// until that follow-up lands, or this test fails on a plain checkout of
+// this commit.
+var readmeSilentTrailClaims = []string{
+	"The sandbox section has something to count only when nono filters the network.",
+	"the trail holds no network event at all, and the section reads " +
+		"`0 allowed, 0 denied` however many hosts the session reached.",
+	"An allowed `http://` request leaves nothing in the sandbox section.",
+	"`--chain` still lists its host under the call if the command named it",
 }

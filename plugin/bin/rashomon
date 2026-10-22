@@ -1,0 +1,28 @@
+#!/bin/sh
+# Every hook entry in hooks.json runs this file. It picks the recorder built
+# for this machine and replaces itself with it, so the recorder sees the same
+# arguments and stdin Claude Code sent.
+#
+# A plugin cannot compile Go when it is installed, so the release ships one
+# binary per platform beside this launcher (scripts/build-plugin.sh). The
+# binary keeps living in this bin/ directory, which is what lets it recognise
+# itself as the plugin's recorder.
+#
+# A platform with no binary here exits 0 with a note on stderr, which Claude
+# Code keeps in its debug log. A missing binary must not put a hook error on
+# every tool call, and it must never block one.
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 0
+os=$(uname -s | tr '[:upper:]' '[:lower:]')
+case $(uname -m) in
+	x86_64 | amd64) arch=amd64 ;;
+	arm64 | aarch64) arch=arm64 ;;
+	*) arch=$(uname -m) ;;
+esac
+bin="$dir/rashomon-$os-$arch"
+if [ ! -f "$bin" ]; then
+	echo "rashomon: this plugin has no recorder for $os-$arch, so nothing is recorded" >&2
+	exit 0
+fi
+# An archive install is not documented to keep executable bits.
+[ -x "$bin" ] || chmod +x "$bin" 2>/dev/null
+exec "$bin" "$@"

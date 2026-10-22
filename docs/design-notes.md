@@ -1,0 +1,780 @@
+# Design notes
+
+Engineering detail behind the behaviour described in the [README](../README.md):
+why the guarantees are structural rather than conventional, what the acceptance
+criteria are, and where the limits sit.
+
+This document is long on purpose. `rashomon` makes claims about what it did and
+did not observe, and a claim of that kind is only worth what the reasoning
+behind it is worth.
+
+---
+
+## The constraint that shapes everything
+
+Exit code 2 from a `PreToolUse` hook **blocks the tool call**. Claude Code's hook
+documentation is explicit that this is not advisory: a JSON `permissionDecision`
+of `allow` cannot override it.
+
+In Go, exit code 2 is what a panic does. Measured with compiled binaries:
+
+| Failure | Exit code | Effect on the agent |
+| --- | --- | --- |
+| `panic("boom")` | 2 | tool call blocked |
+| nil-map write | 2 | tool call blocked |
+| nil-pointer dereference | 2 | tool call blocked |
+| index out of range | 2 | tool call blocked |
+| send on a closed channel | 2 | tool call blocked |
+| panic in a spawned goroutine | 2 | tool call blocked |
+| `os.Exit(1)` / `log.Fatal` | 1 | none |
+
+`recover()` in `main` does not catch a panic raised in another goroutine.
+
+So the only Go failure that turns an observability tool into an enforcer is an
+unrecovered panic — and the first unexpected payload is enough to cause one. The
+user would see their tool calls being blocked and would reasonably conclude that
+Claude Code was broken, not that this program was. Every goroutine this program
+starts carries its own deferred recover, or it starts none.
+
+## Installation and restore
+
+The target is `~/.claude/settings.json`, named in code and never inferred.
+Nothing is ever written to a settings file committed to a repository.
+
+The installed entry uses `"matcher": "*"` and `"timeout": 5`.
+
+`watch` installs FIVE entries in total: `PreToolUse`, `PostToolUse`,
+`PostToolUseFailure`, `SessionStart` and `SessionEnd`. The failure event is
+subscribed because without it a call that failed left an execution record
+claiming it succeeded — the outcome was not unknown, it was wrong. The timeout field
+is in seconds; the documented default is 600.
+
+The matcher is not a tuning knob. A `Bash` matcher produces no declaration for
+`Edit`, `Write`, `WebFetch`, or any `mcp__*` call, while the report goes on
+claiming full coverage — a confident number that is wrong, which is worse than no
+number at all. This mistake is common enough in real configurations that it is
+worth naming as the default failure mode rather than a hypothetical one.
+
+Install identity is a stable install id, not a session id. `watch` runs before
+any Claude Code session exists, so `session_id` is unavailable at install time.
+`detach` removes our entry when no other install claims it, and removes only its
+own claim otherwise.
+
+`detach` preserves concurrent edits. Claude Code writes to this file during
+normal use — every "always allow" the user accepts appends to `permissions.allow`
+— so a `detach` that aborted on any change to the file would make the tool
+uninstallable within minutes of first use. Abort is reserved for a change inside
+our own entry's region, and when it aborts it says so.
+
+Writes are atomic: temp file, `fsync`, then `rename(2)` within the same
+directory.
+
+`watch` refuses when hooks are disabled, and the precedence matters in both
+directions. A managed `disableAllHooks: true` beats a project-level `false`, so
+`watch` refuses. A user-level `true` does not beat a project-level `false`,
+because in that arrangement hooks do run, so `watch` must not refuse. Getting
+this right means implementing Claude Code's settings precedence including the
+managed path, which is more work than a single file read.
+
+Recovering when the binary or the store is gone. The installed command line is
+an absolute path to the binary. Delete the binary and Claude Code errors on
+every tool call, and `detach` — which is that binary — cannot run: install
+`rashomon` again, anywhere, and run the line `watch` printed at install time,
+`rashomon detach --install <id>`. An entry is recognised by the marker in its
+command line and never by the path, which is what lets a binary at a new path
+remove the old install's entries. Delete the store and the install id goes with
+it; `rashomon detach --all` is for that case, and removes every entry carrying an
+rashomon install marker whatever its id. Neither form opens the store, so neither
+can create one. A plain `rashomon detach` does read the id from the store, and on
+a machine that has none it names the two forms above rather than creating a
+store to answer its own question. Both refuse, naming the field, when an entry
+they would remove has been edited, and both leave every foreign entry byte for
+byte as it was found.
+
+## What is captured
+
+The `PreToolUse` payload carries twelve fields: `session_id`, `prompt_id`
+(absent until first input), `transcript_path`, `cwd`, `scratchpad_dir`,
+`permission_mode`, `hook_event_name`, `tool_name`, `tool_input`, `tool_use_id`,
+and — inside a subagent call only — `agent_id` and `agent_type`.
+
+Persisted: `tool_use_id`, `session_id`, `prompt_id`, `agent_id`,
+`transcript_path`, `permission_mode`, `tool_name`, and the derived shape of
+`tool_input`.
+
+Nothing else from inside `tool_input` is persisted. The exception is
+hostnames: `hosts` and `ssh_hosts` carry the hosts a call NAMED, extracted
+from inside `tool_input` and stored in clear, because the destinations
+section lists them, `forget --host` matches them, and a digest can do neither.
+Argument values, command strings, prompts and responses are not persisted.
+
+The derived shape is `program`, `verb_class`, `argc`, `digest` and
+`may_write` (one bit: whether a shell line may write files whatever its class
+says); the record
+that carries it carries `schema_version`. A command that will not tokenize records `argc: null`, never
+`0` — zero is a count, and in that case we do not have one. `digest` is an HMAC
+under a per-install random key, so the same command digests differently on two
+installs and the store cannot be run as a dictionary attack against known command
+strings. The key file is mode `0600`.
+
+The digest covers the command line alone for a shell tool, and the whole
+canonical `tool_input` for every other tool. Claude Code attaches a free-text
+`description` to a `Bash` call and the wording differs from call to call, so a
+digest over the whole input would give the same `git status` a fresh value on
+every call and group nothing. A `Write` call has no command line, and there the
+whole input is all there is to tell two of them apart.
+
+A command line is split as a shell would split it, without expanding anything.
+The token an unterminated quote interrupts is not among the tokens returned: it
+was never completed, and emitting it would carry bytes from inside the quoted
+string out into `program`.
+
+The `PostToolUse` payload carries the same session fields plus `tool_name`,
+`tool_use_id`, `tool_input` and `tool_response`. The execution record persists
+`tool_use_id`, `session_id` and `tool_name` beside its own `seq`,
+`recorded_at_unix_ms` and `schema_version`, and — since schema 2 — how the call
+ENDED: `outcome`, `exit_code`, `is_interrupt`, `duration_ms`, and
+`executed_digest`; since schema 3, `backgrounded` as well.
+
+That last one is why the post path reads `tool_input` at all. It derives the
+same shape digest the declaration derived, under the same per-install key, so
+the two can be compared: a call whose executed digest differs from its declared
+one is reported as having executed differently from what was declared. The
+input itself is not persisted — only the digest of it survives.
+
+`tool_response` is tool output: the file a `Read` returned, the bytes a command
+printed. The payload struct has no field for it, so `encoding/json` discards it
+and it is never a value in this process. Since schema 3 one bit is taken from a
+Bash call's response: whether `backgroundTaskId` or `backgroundedByUser` is
+present, which says the call's `PostToolUse` fired while the command was still
+running in the background. A second decode claims those two keys and no other,
+each into a presence bit: the task id is compared with null and false and
+dropped, and `stdout` and `stderr` are skipped unread. The record's
+`backgrounded` is that bit. The guarantee is structural rather than a matter of
+remembering to redact. The record's width depends on the response only through
+that one bit, never on the response's size or content: a 20-byte response and a
+20-KB one with the same keys serialize to the same number of bytes.
+`tool_input` has no field there either — the post handler derives no shape, and
+the declaration it answers already carries the one derived at `PreToolUse`.
+
+## Terminal records
+
+Every entry is followed by a terminal record on every exit path the program
+controls: clean return, error return, and `SIGTERM` — which is what a hook
+timeout cancellation delivers, and which is catchable.
+
+`SIGKILL` is not catchable. That is the definition of the uncontrolled path: an
+entry with no terminal record. It is not papered over. The run's coverage record
+carries `state: "unverified"` and `reason: "unterminated_entry"`.
+
+When the instrumentation itself fails, the coverage record carries `state` and
+`reason` and no count field of any kind. A run that could not measure itself does
+not get to report a number.
+
+## Declarations, executions, and three lists that are not the same claim
+
+`report` renders three lists about executions, and reading any of them as
+another is the mistake this section exists to prevent.
+
+`declarations.without_execution` names the declared `tool_use_id`s with no
+execution record, each with the `permission_mode` it was declared in. It is not
+a list of denials. It holds the denied, the failed, and the calls whose
+`PostToolUse` invocation recorded nothing, together; the mode is carried so
+that a consumer can exclude the modes in which nothing is ever denied, which is
+as close to a verdict as this store can honestly get.
+
+`executed_but_unrecorded` names the ids the transcript holds a `tool_result`
+for and this store holds no execution record for. That is a coverage failure —
+the tool finished and the recorder did not fire or did not land — and it adds
+`execution_mismatch` to the run's coverage reasons.
+
+`declared_without_result` names the declared ids the transcript holds no
+`tool_result` for. That is not a coverage failure. It is a denial, a tool
+error, or a transcript that has not caught up, and it is never to be rendered
+as a count of denials.
+
+Both transcript lists are `null` rather than empty when the transcript could
+not be read, under the same rule as every count beside them: "no results" and
+"could not look" are different facts.
+
+
+## What the destinations section refuses to claim
+
+The report lists the hosts a session's tool calls NAMED, and nothing more: it
+observed no traffic, and it says so beside the list. That restraint is as
+load-bearing as the list.
+
+- A declared host is the agent's own command, so loopback and the client's own
+  hosts are listed like any other when a call names them; what they are not is
+  news. Novelty excludes both: `api.anthropic.com` named on the first session
+  of every project would otherwise read as "named for the first time"
+  everywhere, and a line that fires on a quarter of sessions is read once and
+  ignored afterwards.
+- The chain lists hosts beside the call that named them, with no state beside
+  them: nothing in the record observed whether a call reached a host, and a
+  column that read as a verdict would be answering a question nothing was
+  asked. The legend says so whenever any host is listed.
+- Tool-family coverage is DERIVED FROM THE RECORD, never probed: which
+  network-capable program families ran, and how many hosts each named. The
+  families a session never used are counted and named on one line rather than
+  listed one by one, so that they do not bury the ones that ran.
+- A baseline written before this release held the hosts a session reached, as
+  a proxy saw them, and comparing it against named hosts would call a host new
+  when it was only never reached. Such a file carries no `basis` marker, is
+  read as absent, and the project's baseline is established again, once, from
+  the record.
+
+`forget --host` removes the declarations that named the host, writes a gap
+record for each run it touched, and clears the host from every project
+baseline. A forgotten host returns nowhere in the report: the declared and ssh
+lists are read from exactly the fields the forget deletes.
+
+## The store
+
+Directory `0700`, files `0600`, one JSON object per line, `schema_version` on
+every record. The two modes are a Unix guarantee. Windows cannot express them —
+`CreateDirectory` ignores the mode argument and `Chmod` toggles only the
+read-only attribute — so there the store is protected by the ACL its parent
+directory hands down, and by nothing this program set. Same store, weaker claim,
+stated rather than quietly dropped.
+
+`forget` and size-cap eviction each write a coverage gap record. Records leave
+the store only with a marker saying they did.
+
+[`store-schema.json`](store-schema.json) is that contract in a form a
+machine can check: a JSON Schema (draft 2020-12) with one definition per record
+type, every key required, nullable keys typed as such, closed vocabularies as
+enums, and `additionalProperties: false` so a key nobody declared is a
+validation failure rather than a surprise. It cannot drift from the tests:
+`TestStoreSchemaMatchesTheAllowlists` holds each definition's property set equal
+to the key allowlist H-13 enforces on the records themselves, and
+`TestStoreSchemaReasonsAreTheCodeReasons` holds every reason code in the
+implementation to appearing in an enum there.
+
+## Coverage is decided at run time
+
+The resolved-config state — our entry present, probe fresh — is written into the
+run's own coverage record at start and at end. `report` reads that record. It
+never re-reads today's configuration to judge a past run.
+
+The alternative is a trap worth stating explicitly. If a run rendered unverified
+because our entry is absent *at report time*, then `detach` would retroactively
+invalidate every run ever captured, and the one action documented as safe would
+destroy everything the user had collected.
+
+`watch` installs a liveness probe alongside the recorder. Its limit belongs in
+the documentation rather than in a footnote: the probe detects hook-system death.
+It cannot detect a recorder that runs and drops records. H-10 below is what
+catches that, and the probe should not be credited with more than it does.
+
+VERIFIED COVERAGE IS SCOPED TO A PERSISTENT INSTALL. The probe resolves the
+settings file Claude Code itself resolves, and asks whether OUR entry — our
+matcher, our timeout, our install id — is in it. So coverage reads `verified`
+only for a session whose recorder was installed in that file by `watch`. A
+session started with `claude --settings <some other file>`, or under a
+`CLAUDE_CONFIG_DIR` that differs from the one the probe resolves, records its
+declarations perfectly well and still reports `hook_entry_absent`: the probe
+honestly cannot confirm an entry that is not in the file it reads. That is the
+right failure direction — it under-claims — but it means a temporary or
+side-loaded install cannot produce a verified report, by construction.
+
+## `rashomon spend`
+
+`spend` answers "what did the last N days of Claude Code usage cost at API list
+prices, and where could it be saved". It cannot depend on `watch` having run, so
+its source is Claude Code's transcripts, not the store. The store is consulted
+for one line only, and read through `store.OpenExisting` (H-87's rule), so
+asking the question never mints an install identity.
+
+**The transcript read.** The usage read decodes a narrow shape: `message.id`,
+`model`, `stop_reason`, `stop_details.category`, `usage`'s token counts and
+`speed`, each `usage.iterations` entry's counts, `type` and `model`, and the
+line's `type`, `timestamp`, `sessionId`, `isSidechain`, `isMeta`, `promptId`
+and `requestId` (a closed shape, `req_` and letters and digits). The category
+and an entry's type are closed words; a model reaches output only through the
+closed-shape rule `displayModel` applies. Every non-blank line of a subagent
+transcript, each main-transcript line up to the first dated one and, after
+it, every main-transcript line that may carry usage is decoded into this
+shape, header only; a line that does not decode is walked token by token only
+for a top-level isSidechain key. No field exists for `message.content`, so `encoding/json` steps over those bytes, and
+`TestContentHasNoFieldToLandIn` holds the shape: no unlisted tag, and no
+`RawMessage`, interface or map field. Four rules decide the figures:
+
+- A response is counted once by `message.id`. Claude Code writes one response
+  as a line per content block, each with the full usage, and summing lines
+  overstated a real transcript 2.1x.
+- Of a response's lines, the most complete one is kept. A streaming line comes
+  first with a partial output count.
+- Where a reader cannot place a line, it counts and names what it skipped,
+  never drops it silently: a malformed or implausible usage, a line with no
+  id, an unreadable file or folder, a future-dated response.
+- A response keeps every file it was seen in, with the session its line
+  carries there. Coverage reads all of them: a response is not covered when
+  any transcript holding it is not, and its cost is counted once, and not at
+  all when a covered turn already counted it. Each transcript is tallied by
+  its own session. A shared response belongs to the session of the file whose
+  first dated line is earliest, and on a tie to each tied session: `/branch`
+  keeps the original timestamps on every copied line, so a copy and its
+  original tie, and a tie broken by session id gave the original's responses
+  to whichever random id sorted first. Every session holding a response has a
+  row, so per-session rows can sum to more than the total. A row reads
+  recorded only when its own transcripts were recorded and it holds no
+  not-covered dollars, and the not-covered sessions named are exactly the rows
+  holding those dollars. So coverage, the
+  not-covered cost, the sessions, and cold writes for a copied prefix depend
+  on neither the path sort order nor the session ids. The cold-cache heuristic
+  judges a response once, in the file it was first seen in, against every
+  response that file holds, so the cold figure for a shared response whose
+  predecessor differs between the two files does depend on the path order.
+
+**Departing from "never `message.content`".** The design said spend never
+reads message content. The silent-failure line needs the final message it
+judges, and the only surviving copy is the transcript. So for a recorded turn
+with a failed call other than a lookup, `report.FinalAssistantTexts` does two
+things, all in memory. Of every assistant line tied to the turn, it decodes
+each block's type, and a text block's text, and keeps only the last line's
+text. On a user line with no `promptId`, it decodes the content block types
+to tell a tool result from a prompt. Separately, spend's usage read (`readFile` in
+`internal/spend/scan.go`) reads a subagent transcript's user-line `type`,
+`isMeta` and `promptId`, the key that ties a subagent's responses to a turn.
+Each of these is reduced to the digest's verdict and its counts. None is
+written or output. A content canary is planted in a firing turn's final words, so the
+end-to-end test does reach the read. A turn belongs to the prompt of the user
+line before it, and a line the reader cannot place drops the turn's words, so
+it takes no verdict rather than a wrong one.
+
+**The price table.** The rates are a dated snapshot compiled into the binary
+(`internal/spend/price.go`). Every rendering names the snapshot's date and says
+a plan subscription is not billed per token. Rates are integers in nanodollars
+per token, so every figure is exact. A model id matches a row exactly, or with
+one dated suffix. A looser match would price Opus 5.5 at Opus 5's rates. A
+model the table lacks is priced as unknown, never at $0. Retired models keep
+their rows, because a transcript in the window can still name one. Out of
+scope, and said to be: fast mode's premium (fast responses are counted and
+priced at standard rates), Batch and partner pricing, long-context premiums,
+and web-search fees.
+
+**Refusals and fallback.** The last `usage.iterations` entry produced the
+message and is the top-level usage. Every earlier entry is an extra attempt:
+it is shown in tokens with the cost unknown, kept out of the total and every
+breakdown, and the header says how many tokens on how many attempts the total
+leaves out. A `fallback_message` last entry marks a fallback chain, and that
+entry's model ran the attempt: it prices the response and gets its by-model
+row, since a streamed line's `message.model` can name the model asked;
+`message.model` is used only when the entry names none. The chain served the
+response unless its `stop_reason` is `refusal`, when every model declined;
+the responses a fallback served are counted. Refusals are counted by
+`stop_details.category` and model. Whether a refusal came before any output
+is read from `output_tokens` 0, never from the line's shape: Claude Code
+writes a zero-usage `<synthetic>` refusal line with the response's
+`requestId` after a mid-stream refusal too, and such a line is folded into
+the usage-bearing response with that `requestId` in the same file. A refusal
+with output is priced like any response, since the refusals-and-fallback page
+bills a mid-stream refusal "at normal rates". Whether a pre-output one was
+billed depends on its category, so its tokens are shown with the cost
+unknown and kept out of the total, and the header says how many there are. A
+zero-usage refusal line with no such response is counted as a pre-output
+refusal written without usage. The fixture is the page's own JSON example,
+until a real fallback transcript is captured.
+
+**The savings list.** A suggestion is printed only with the figure it rests
+on, and one is: the spend in turns with a failed call the summary never
+mentioned, a floor with its bound printed beside it. The rule does not check
+which call came last, so the label does not say the turn ended with a
+failure. A turn whose only failed calls are lookups (a Read, Glob, Grep or
+NotebookRead, whatever the error) is neither counted nor counted as
+unchecked, and a "none found" says so.
+
+The cache re-write figure is a heuristic, labelled as one. Only the shortfall
+is cold -- what the previous response read and wrote to the cache, less what
+this one read back -- so a response that reads a still-warm prefix and
+re-writes the expired rest is counted for the rest, and a write past the
+previous cache is new content. The shortfall assumes each prompt extends the
+previous one, which is false after compaction, a model switch, a rewind, or a
+second sidechain agent in the stream, so a response on another model, or
+whose whole prompt is smaller than what the previous response cached, is not
+counted. A rewind or a second agent is skipped only when its request is
+smaller than the previous cache: one that grew past it is counted. So the
+heuristic skips a model switch and any request smaller than the previous
+cache, so it misses some true expiries, and can still count new content in a
+request that grew past the previous cache. It is priced as the write rate minus the read
+rate, since the alternative was a cache read. Measured on one real machine's
+last 30 days to 2026-10-02, it was $92.06 of $288.94. It is shown as a
+figure, not offered as a saving. Pre-output refusals and extra attempts are
+tokens with the cost unknown, so they carry no saving; a refusal with output
+is priced like any response. Subagents on the top
+model for read-heavy work would need the tool pattern from
+`message.content`, so that suggestion is not made either.
+
+## Acceptance
+
+Two lists, and the split is deliberate.
+
+Headless items (**H-n**) are automated, need no Claude Code process, and must be
+shown to fail before they pass. An H-item that cannot be made to fail by breaking the
+implementation is not a test, and is reported as such.
+
+Live items (**L-n**) need a real Claude Code session. There are three, they are
+manual, and are verified by hand against pasted terminal output.
+
+### Headless
+
+**H-1 — no fault reaches the agent as a 2.** Table-driven, exec'ing the compiled
+binary: not a function under test, and not `go run`, which masks the child's exit
+code as 1. The injected faults panic rather than return an error — nil-map write,
+nil-pointer dereference, index out of range on a truncated payload, send on a
+closed channel, and a panic inside a spawned goroutine. `ExitCode() == 0` for
+every case. The suite also runs a fixture binary that panics without recovery and
+asserts the harness reports 2; without that control, the test cannot distinguish
+"robust" from "never observed an exit code".
+
+**H-2 — the healthy path.** Valid payload, writable store: exit 0, exactly one
+entry and one terminal record. Without this, H-1 is passed by a shell script that
+does nothing but `exit 0`.
+
+**H-3 — the installed entry, read back in full.** After `watch`: the entry is
+under `hooks.PreToolUse` and not a sibling event, `type == "command"`,
+`matcher == "*"`, `timeout == 5`, and the command path resolves to a file that
+exists and is executable. The `PostToolUse` entry is read back the same way.
+Installed from a copy of the binary in a directory whose name contains a space,
+the command line still splits with that path as its first field and still
+records a declaration when run through `sh -c`.
+
+**H-4 — foreign hooks survive.** Seed the target with a foreign `PreToolUse`
+entry under a *different* matcher, which is the arrangement that actually occurs.
+After `watch` it is byte-identical and still present; after `detach`, likewise.
+This catches an installer that assigns where it should append.
+
+**H-5 — first run on a clean machine.** With `~/.claude/settings.json` absent,
+and separately empty, and separately present without a `hooks` key: `watch`
+succeeds and produces a valid config. A rule of "parse before writing, abort on
+failure", read literally, means refusing to install on any machine that has never
+run Claude Code.
+
+**H-6 — idempotent install, one owner concept.** `watch` twice installs exactly
+one entry of ours. `detach` removes our entry when no other install claims it,
+and removes only its own claim otherwise. Both paths asserted. Both installs'
+entries then fire against one store, and only ours records; the other's leaves
+no run directory at all, and `watch` says it is there.
+
+**H-7 — detach preserves concurrent edits.** Install, append an entry to
+`permissions.allow` simulating an accepted "always allow", `detach`, then assert
+both halves: the appended entry survives and our entry is gone. A `detach` that
+aborts fails this test.
+
+**H-8 — atomic write, with the window forced.** A deterministic fault injected
+between write and rename, not a randomized kill against a sub-millisecond write.
+After every iteration the config equals either the exact pre-state or the exact
+fully-installed post-state and nothing else, and the loop is asserted to have
+reached both — otherwise it never exercised the window. `fsync` is required and
+is review-only: a process kill cannot verify it, because the page cache survives.
+
+**H-9 — refuse when hooks are disabled, in both directions.** Managed
+`disableAllHooks: true` over a project-level `false`: `watch` refuses. User-level
+`true` over a project-level `false`: hooks do run, so `watch` must not refuse. The
+second is the false-positive direction and is the one that matters.
+
+**H-10 — the accounting equation.** Set equality, not per-record shape: the
+recorded `tool_use_id` set equals the distinct-id set parsed from
+`transcript_path`, unioned with `<session>/subagents/agent-*.jsonl`. An assertion
+of the form "one entry per recorded `tool_use_id`" quantifies over the ids the
+handler recorded, and is therefore passed by a handler that records one call in
+fifty. Driven by a fixture transcript and a scripted sequence of payloads; no
+live session required. One kind of id is exempt, and named rather than dropped: a call
+Claude Code refused while checking its input (an `is_error` result wrapped in
+`<tool_use_error>`) for which no hook left any record. The check runs before
+`PreToolUse`, so the store cannot hold it; the report lists it as
+`refused_before_hooks`, and `ids_in_transcript = ids_recorded +
+missing_from_store + refused_before_hooks - missing_from_transcript`.
+A transcript line longer than the reader's 64 MiB bound is stepped over and
+counted in `lines_too_long`, and the lines after it are read. The ids such a line
+held are in none of the lists, so a transcript with any adds
+`transcript_mismatch`: the line may hold a call the store does not.
+
+**H-11 — the uncontrolled path.** A `SIGKILL`ed handler leaves exactly one entry
+with no terminal record, and the run's coverage record carries
+`state: "unverified"`, `reason: "unterminated_entry"`.
+
+**H-12 — instrumentation failure writes no count.** On the `SIGTERM` path and the
+internal-error path, the coverage record's key set equals an explicit allowlist
+containing `state` and `reason` and containing no count field of any kind. The
+assertion is on the key set. Asserting that one named key is absent is vacuously
+true whenever the code never produces that key, which is exactly when the
+assertion is least useful.
+
+**H-13 — content cannot be present, asserted by shape.** The record's key set
+equals the allowlist, and the serialized record's byte length is identical for a
+20-byte command and a 20-KB command. A canary search then runs over the store,
+created files, stdout, and stderr as a second line of defence — but only as that:
+absence of a literal proves nothing against an encoding. Hook stdout and stderr
+reach Claude Code's debug log, so a traceback carrying the payload would write
+command strings to disk.
+
+**H-14 — shape fields degrade honestly.** `program`, `verb_class`, `argc`,
+`digest`, and `schema_version` are present. A command that will not tokenize
+records `argc: null`, never `0`. Two separate installs produce different digests
+for the same command, and the key file is mode `0600`. The same command under
+two different `description` values digests identically, and two `Write` calls
+differing only in `content` digest differently.
+
+**H-15 — the store contract.** Directory `0700`, files `0600`, one JSON object
+per line, `schema_version` on every record. `forget` and size-cap eviction
+each write a coverage gap record, asserted after each. Never a silent
+deletion.
+
+**H-16 — concurrency, with the window actually opened.** 64 concurrent handlers,
+then the same run again with records padded past whatever buffer the
+implementation uses (> 4 KiB). All 64 parse, ids distinct and complete. Then the
+lock is deleted and the test is confirmed to go red: a concurrency test that
+cannot be made to fail is not testing anything. One tension has to be resolved
+here and stated in the implementation — returning 0 promptly under lock
+contention pulls against landing all 64 records. The wait is bounded well under
+the 5-second hook timeout, and a terminal record is written on give-up.
+
+**H-17 — no phone-home.** A full capture cycle with outbound network denied
+behaves identically, and the handler opens zero non-loopback sockets.
+
+**H-18 — nothing installs silently.** Installing the package into a clean `HOME`
+leaves `~/.claude/settings.json` absent or unchanged.
+
+**H-19 — detach does not rewrite history.** `watch`, one tool call, `detach`,
+`report`: the completed run still renders its true coverage.
+
+**H-20 — the execution record.** One record per `PostToolUse` invocation,
+carrying ids and the tool name and nothing else: its key set equals an explicit
+allowlist, and its serialized width is identical for a 20-byte and a 20-KB
+`tool_response`. A canary nested inside a 20-KB response reaches neither the
+store, nor stdout, nor stderr, nor `report`. A transcript `tool_result` with no
+execution record renders `execution_mismatch`; a declaration with no
+`tool_result` renders nothing that reads as a denial. The five panicking faults
+at both post-path injection points exit 0 with no traceback, and an entry
+belonging to another install writes nothing at all.
+
+### Live
+
+**L-1 — real tools, real ids.** After `watch`, a session containing at least a
+`Bash`, a `Write`, and an `mcp__*` call. For each of the three, a record exists
+with the matching `tool_name`, and the recorded id set equals the
+transcript-derived set. The count is deliberately not asserted: with
+`matcher: "*"` the hook fires on every tool, so a real session produces many more
+than three, and a test demanding exactly three would push the implementer toward
+narrowing the matcher — the precise bug the matcher rule exists to prevent.
+
+**L-2 — coexistence.** A foreign `PreToolUse` hook still fires during a watched
+session; its sentinel appears alongside our record for the same `tool_use_id`.
+
+**L-3 — mid-session removal.** Remove our entry from the configuration while a
+session is running. The run renders coverage unverified, not an empty declaration
+list.
+
+## Building and testing
+
+    go build ./cmd/rashomon
+    go test ./...
+    python3 test/mutation/sweep.py
+
+The acceptance suite compiles the binary with `-tags rashomonfault` and execs it.
+That tag adds the fault injection points H-1, H-8, H-11, H-12 and H-20 need,
+and one kind, `fail=N`, that returns an error instead of panicking because it
+exercises a retry a panic would never let run; a released binary carries no
+injection path at all, because an environment variable that made the recorder
+abandon a run would attack the one guarantee this program exists to provide.
+
+`sweep.py` is the other half of the contract: it applies deliberate breaks and
+confirms the corresponding tests go red. An item it reports as undetected is a
+gap in the test, and is treated as one.
+
+Its coverage is not uniform, and the boundary is worth stating: the breaks
+cover the items documented in this section, plus the settings and tokenizer
+parsers. The later items — the destinations join, the launcher, the redaction
+and baseline work — are covered by their own tests and by construction-truth
+assertions, not yet by a mutation. The sweep now refuses to run at all unless
+the suite is green first, and reports a mutation whose judging test SKIPPED as
+"not judged" rather than as a pass.
+
+Three parsers are also tested directly, beside the acceptance suite: the command
+line tokenizer, the settings document parser's refusals and its byte-identity
+round trip, and `shellQuote`. Each is an input-to-output function whose failures
+reach the acceptance suite only as an install that quietly does nothing, and
+the mutation sweep carries a break for each.
+
+`test/live/l-items.sh` runs the three live items against a real `claude`
+session on the machine it is run on. It writes to the real
+`~/.claude/settings.json` — that is the test — and removes what it wrote.
+
+
+## Design decisions, stated rather than left implicit
+
+- Goroutines: one, and it is not on the recorder's path. `safe.Go` has one
+  production caller, in `readRecapPayload`, which is cancelled and waited for before
+  the call returns. The hook, post and probe paths start none, and nothing in
+  the binary imports `os/exec` at all: a test asserts that of the whole
+  dependency graph, so the recorder cannot acquire a goroutine or a child
+  process by accident.
+- H-16's tension: the append lock is waited on for at most two seconds against
+  the five-second hook timeout. On give-up the terminal record goes to
+  `spill.ndjson`, which is written without waiting, and carries the
+  `tool_use_id` of the declaration that was dropped. A handler that has already
+  spent the budget does not spend it again.
+- H-16's "delete the lock": on Linux and macOS a single `write(2)` under
+  `O_APPEND` is serialised by the kernel, so with one write per record the lock
+  protected nothing and removing it could not make the test go red. Records now
+  carry a per-run `seq` allocated inside the critical section, which gives the
+  file a total order and gives the lock an invariant. The lock is on the data
+  file's inode rather than a separate file, so the check is done by removing
+  the acquisition, not by deleting a file.
+- "At start and at end": `watch` installs `SessionStart` and `SessionEnd` hooks
+  alongside the recorder. They are the liveness probe, and their coverage
+  records are the start and end of the run, written by the run itself. The
+  end-phase record is where an unterminated entry is recorded, at run time.
+- Byte identity for foreign entries: the settings file is held as ordered raw
+  members and only the `hooks → event → array` levels this program edits are
+  re-encoded. Everything else, including every foreign matcher group, is
+  written back as the bytes it was read as.
+- `detach` and `watch` refuse to touch an entry of ours whose matcher, hook
+  count, type or timeout has changed. The executable path is not protected:
+  refreshing a moved binary is what `watch` is for.
+- Fault injection is a build tag, not an environment variable, for the reason
+  given above.
+- Standing down: two installs' entries can sit in one `settings.json` — the
+  arrangement H-6 models, and the one `detach` preserves by removing only its
+  own claim — and Claude Code runs both with one environment. Both therefore
+  resolve the same store, and every tool call would be recorded twice. An entry
+  that does not belong to the store it resolves writes nothing at all rather
+  than a record saying it declined: a run directory for a session this install
+  never saw is itself a false trace. The stderr line is a constant, because
+  hook stderr is written to Claude Code's debug log.
+- The post phase's coverage record resolves the `PostToolUse` entry, not the
+  recorder's. A configuration carrying one and not the other is exactly the
+  arrangement in which reading the wrong one lies.
+- An execution that cannot take the append lock goes to `spill.ndjson` with a
+  null `seq`, as a terminal does. It is the only record its `tool_use_id` gets,
+  and dropping one would read afterwards as a call that never ran.
+- One order over gate states, two readers. The claim comparator's verdict and
+  the end-of-turn value line both reduce a gate list through `verify.Worst`,
+  and nothing else ranks a state. A gate's own `unknown` sits below every
+  non-green state and above green, so it never hides a red and never reads as
+  a pass; a state outside the vocabulary ranks before red, so a defect in the
+  evaluator surfaces as the verdict instead of sinking to green. The test
+  drives every pair of states through both consumers and requires one answer.
+- The verify checkpoint is defined beside the evaluator, not in the store.
+  `Evaluate` takes the store's `Run`, so the store cannot name the
+  evaluator's gate state without an import cycle; the store knows the
+  record's kind and version and nothing of its shape.
+- A stub fails closed or does not exist. Until the evaluator is built,
+  `Evaluate` reports the recording incomplete, which is the one condition that
+  silences the comparator and turns the value line to `unknown`; a stub that
+  returned an empty green snapshot would have been read as a verified turn by
+  every consumer written against it.
+- A freeze test pins meaning, not names. A key-list test over the schema-5
+  records let a `dropped` list become a count and a `resume` object vanish
+  behind the same keys, because it compared tag strings and nothing else; the
+  test now states, as literals, the keys of every kind and nested type, the
+  Go type of every field the archive gives a shape, that no field is
+  `omitempty`, and that no type carries its own marshaller. A review found
+  the gap by asking what a renamed field would do to each test; the answer
+  for a list of strings was "nothing".
+- Resource budgets are allocated bytes, and the gate never reads a clock. A
+  hook process at the sizes it sees runs no GC cycle, so its peak RSS is the
+  floor plus every byte it allocated; the budget for an entry is therefore
+  the bytes one call allocates (the benchmark's B/op), which is the same
+  number on every platform and under any load, and peak RSS of the release
+  binary is kept as the end-to-end cross-check, the median of nine runs
+  against a per-platform tolerance. Wall time is quoted in release notes
+  with the binaries' SHAs and gates nothing: process spawn and machine load
+  dominate it, and a gate that fails on a busy runner teaches people to
+  re-run until it passes.
+- One budgets file, one direction of generation. `test/perf/budgets.json` is
+  the source; the copy compiled into the binary is the JSON text itself,
+  generated by a tool that does not import the package it writes into, and
+  decoded on first use, so process init pays nothing for it and a test holds
+  the two copies equal. A gate that reads the file and a command that reads
+  the binary cannot disagree.
+- A payload case is sized in code, exactly. A fixture named "8 MiB" once
+  measured the refusal path because it was 263 bytes over the cap; the
+  generators pad a field until the whole payload is the stated size, and a
+  PostToolUse envelope's fixed part puts its smallest honest case at 540
+  bytes rather than the 400 the spec's list says, which the file states
+  rather than trims an envelope to fit.
+
+## Where the original design was wrong, and what replaced it
+
+- H-13's width assertion is not achievable as written. `argc` is a count that
+  legitimately varies with the command, and its decimal width changes the
+  record's width, so a 20 KB command with spaces cannot serialise to the same
+  length as a 20-byte one. The invariant that holds — and is tested — is that
+  width does not move when argument *bytes* grow with the shape held constant.
+- The inventory of exit-2 causes under "The constraint that shapes everything" is incomplete. Runtime fatal errors also exit
+  2 and `recover()` cannot catch them: concurrent map access, stack exhaustion,
+  out of memory, all-goroutine deadlock. An unbounded read of `tool_input` is
+  therefore a path to blocking the user's tool call with no panic involved.
+  stdin is capped at 8 MiB for that reason, and the barrier against this class
+  is structural, not `recover`.
+- H-16's red-check, as above, does not work against an implementation that
+  writes each record in one call.
+- H-14's digest stability is not achievable over the whole `tool_input`. Claude
+  Code attaches a free-text `description` to a `Bash` call, so the same command
+  arrives with different bytes on every call and the digest groups nothing. A
+  shell tool digests its command line alone; the fixture that made the
+  whole-input digest look stable carried no description.
+
+## What the live runs showed
+
+ `claude -p` fires `SessionStart`, `PreToolUse`
+and `SessionEnd` hooks. Claude Code applies a change to `~/.claude/settings.json`
+inside a running session in both directions: the recorder started firing in the
+session that wrote the file, and stopped firing in a session it was detached
+from, which is what L-3 relies on. A nested `claude -p` inherits the parent
+session's id from the environment unless `--session-id` is given. It also
+writes its own transcript, so one run directory holds declarations against more
+than one `transcript_path`. H-10's equation is therefore computed per transcript
+and rendered as `transcripts`, an array sorted by path: checked against a single
+transcript, the same records read as a mismatch in both directions and a run
+that had captured every call rendered unverified for nothing. Declarations
+naming no transcript join no group and are counted in
+`declarations.without_transcript`.
+
+## Windows
+
+ The append lock is `LockFileEx` with
+`LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY` over the maximum byte
+range, polled on the same budget and backoff as the `flock` path — a lock
+covers a range rather than a file, and a range fixed at acquisition would leave
+every appended byte outside it. Record files are opened `O_RDWR` rather than
+`O_WRONLY` for one Windows reason: an `O_APPEND` handle is granted
+`FILE_APPEND_DATA` and neither `FILE_READ_DATA` nor `FILE_WRITE_DATA`, and
+`LockFileEx` refuses a handle holding neither, so every append would have
+failed to lock. Four differences from Unix survive and none is hidden: `0700`
+and `0600` are inexpressible, as above; byte-range locks are mandatory rather
+than advisory, so while a handler holds the append lock a reader of that range
+is refused rather than served a partial line, and `report` can fail where on
+Unix it would read; a file another process has open cannot be deleted, so
+size-cap eviction can fail against a live run, and because the gap record is
+written before the removal a failed removal leaves a gap naming records that
+are still there, returned as an error rather than swallowed; and `SIGTERM` is
+never delivered, so a hook timeout there is the uncontrolled path — no terminal
+record, and the run reads `unverified` with `unterminated_entry`. None of this
+was run on Windows. The module builds and vets under `GOOS=windows` for amd64,
+386 and arm64, and `internal/store/lock_test.go` states the lock contract the
+Windows code has to meet, with three breaks in the mutation sweep. Two headless items
+would not pass there as written: H-15 asserts the two modes, and H-17's halves
+skip themselves without `unshare` and `strace`.
+
+## Known limits
+
+ The probe detects hook-system death and nothing subtler;
+H-10 is what catches a recorder that runs and drops records. `forget` rewriting
+`spill.ndjson` can race a spill write that waited out its fifty-millisecond
+patience; the loss is one terminal, which reads as unverified and never as
+verified. `watch` refuses to install a `go run` binary, and the command line it
+installs is quoted for a POSIX shell, which is a second thing to fix before a
+Windows install is usable. Locking is implemented for Unix and Windows; on any
+other platform the store refuses to open rather than corrupt itself. A failed
+settings read is retried three times a few milliseconds apart before
+`hook_entry` resolves to `unknown`, so another tool's non-atomic rewrite of
+`settings.json` no longer taints a run, and a rewrite that outlasts the retry
+still reads as unverified rather than as present. A foreign install's entry
+firing where this environment's store does not yet exist still creates the
+empty store to learn that the id does not match; an `--install` given with no
+store present cannot be ours, and standing down before opening would avoid even
+that trace.

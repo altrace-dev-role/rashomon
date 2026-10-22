@@ -27,8 +27,8 @@ func TestH2_TransientSettingsReadIsRetried(t *testing.T) {
 	if len(recs) == 0 {
 		t.Fatalf("no call-phase coverage record for session %q", testSession)
 	}
-	if got := recs[len(recs)-1].str("hook_entry"); got != "present" {
-		t.Errorf("hook_entry is %q, want \"present\": a later attempt read the file the first one missed", got)
+	if got := recs[len(recs)-1].str("hook_entry"); got != "present_settings" {
+		t.Errorf("hook_entry is %q, want \"present_settings\": a later attempt read the file the first one missed", got)
 	}
 	assertCallCoverage(t, e, testSession, "verified", "")
 

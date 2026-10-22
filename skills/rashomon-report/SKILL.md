@@ -17,7 +17,12 @@ creates no store.
    - machine-readable: `--json`
    - to share outside the team: `--redact` (hostnames become keyed digests
      and the agent's prose summary is dropped)
-   - joined against an observing Altrace proxy: `--proxy-store <path>`
+   - which prompt produced which calls: `--chain` (lists each call under its
+     prompt, with the hosts the call named; JSON always carries this)
+   - every call in order: `--timeline` (lists every call, main agent and
+     subagents, in the order they were recorded, by seq; the `#N` seqs the
+     end-of-turn line and the `test runs` block cite are its rows; JSON
+     always carries this)
 
 3. Show the output. If it is long, show the coverage block and the
    per-transcript accounting in full and summarize the id lists; never
@@ -26,6 +31,9 @@ creates no store.
    - `without execution` is not a list of denials — it holds denied, failed,
      and unrecorded calls together, each with its permission mode.
    - `unknown` and `not read` are never `0`.
+   - `masked exit status`, and a test run whose line did not return its exit
+     status, is neither a failure nor a pass: the call's exit status was not
+     the runner's, so the runner's own result was never recorded.
    - `coverage: unverified` with `probe_absent` is expected for any session
      the recorder joined mid-way (including the session that ran `watch`).
 

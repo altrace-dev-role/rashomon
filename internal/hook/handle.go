@@ -2,11 +2,12 @@ package hook
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
+	"path/filepath"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -16,17 +17,45 @@ import (
 // This is a panic-barrier concern, not a tidiness one. Go's response to
 // exhausting memory is a runtime fatal error, which recover cannot catch and
 // which exits 2 -- and exit 2 from a PreToolUse hook blocks the user's tool
-// call. An unbounded ReadAll over an attacker-influenced tool_input is
-// therefore a way to turn this recorder into an enforcer, and the limit is what
-// closes it.
-const MaxPayloadBytes = 8 << 20
+// call. An unbounded read over an attacker-influenced tool_input is therefore
+// a way to turn this recorder into an enforcer. hookio.Read enforces the
+// limit; a refusal is recorded as payload_too_large.
+//
+// The limit bounds the bytes read, not the work done on them, and alone it
+// does not close that path: 8 MiB of one-letter words is four million shell
+// words, and lexed whole the shape of that one line allocated 4.5 GB and
+// drove a hook to about 1.07 GB of RSS. Each reader of the line bounds its
+// own work: the shape package stops lexing at its token bound (RES-9), keeps
+// no more continuation offsets than that and reads ssh lines to the same
+// bound, takes a plain word as a slice of the line, and decodes the command
+// once per reader into a buffer of its size (RES-29); the leading-cd fold
+// below stops at maxLeadingCd (RES-10). That is measured, not proved: on the
+// sixteen 8 MiB line shapes TestRES29_ShapeOfEveryPathologicalLineIsBounded
+// reads, no reader allocates more than five times the payload, and the hook
+// entry stays within RES-29's 64 MiB of RSS on each, which
+// cmd/rashomon's TestRES29_PathologicalInputsStayBounded pins (59.5 MiB at
+// most over three runs, the here-document and the substitutions).
+const MaxPayloadBytes = hookio.MaxPayloadBytes
+
+// maxLeadingCd bounds the leading-cd fold in startDirectory: see
+// shape.MaxLeadingCd, whose bound the masked-status walk shares.
+const maxLeadingCd = shape.MaxLeadingCd
 
 // UnattributedSession buckets records for a payload too malformed to name its
 // own session. Losing the run is bad; silently attributing it to a session that
 // did not produce it would be worse.
 const UnattributedSession = "unattributed"
 
-var errPayloadTooLarge = errors.New("hook: payload exceeds the read limit")
+// LockWaitTotal is how long one invocation may wait for store locks, all of
+// its appends together (store.Store.LimitLockWaits). The hook timeout is five
+// seconds (install.Timeout), and three of them leave two for starting, the
+// payload, the flush and exiting, which measure in milliseconds. It is at
+// least one append's own two-second budget, so a declaration still waits its
+// whole budget, and the terminal and coverage record after it share what is
+// left rather than each waiting two more seconds, which could add up to six
+// (perf-2). install.Timeout itself stays: an install written with any other
+// value reads as edited by hand.
+const LockWaitTotal = 3 * time.Second
 
 // Handler captures one tool call and then closes it out.
 //
@@ -34,43 +63,93 @@ var errPayloadTooLarge = errors.New("hook: payload exceeds the read limit")
 // Capture did not return normally. Once a declaration is on disk it must be
 // followed by a terminal record on every exit this process controls, and a
 // single function cannot promise that about its own panic.
+//
+// A Handler is for one invocation, used by one goroutine: Capture fills the
+// fields Close reads, and its Store is deferred (Store.DeferDurability).
 type Handler struct {
 	st  *store.Store
 	now func() time.Time
+
+	// lockWaits is LockWaitTotal, which a test shortens.
+	lockWaits time.Duration
+	// capDecl is store.CapDeclaration, which a test replaces to hand the
+	// store a record that skipped the caps, the one way to reach its degrade.
+	capDecl func(*store.Declaration) bool
 
 	sessionID string
 	toolUseID string
 	cwd       string
 	opened    bool
+	// withheld is set when a payload value was over its cap and left out of
+	// the declaration (store.CapDeclaration); the call's coverage record
+	// then carries record_oversize.
+	withheld bool
+	// labelRecovered is set when fileLabel recovered a panic. The label
+	// then reads unknown, and Close names the panic in the coverage record.
+	labelRecovered bool
 }
+
+// Writer is the version of the binary writing the records, stamped on every
+// call record as writer, so a reader can tell which release wrote a record
+// as well as which schema it follows. cmd/rashomon sets it from its
+// build-time version before any hook runs; "dev" is an unreleased build.
+var Writer = "dev"
 
 // New builds a Handler. now is injectable so a test can pin the clock and
 // compare two records byte for byte.
 func New(st *store.Store, now func() time.Time) *Handler {
-	return &Handler{st: st, now: now, sessionID: UnattributedSession}
+	return &Handler{st: st, now: now, lockWaits: LockWaitTotal, capDecl: store.CapDeclaration,
+		sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the declaration.
 func (h *Handler) Capture(in io.Reader) error {
-	fault.Inject(fault.PointHookStart)
-
-	raw, err := readPayload(in)
+	h.prologue()
+	payload, err := hookio.Intake(in)
 	if err != nil {
+		if s, cwd, ok := refusedSession(err); ok {
+			h.sessionID, h.cwd = s, cwd
+		}
 		return err
 	}
+	return h.capture(payload)
+}
 
+// CapturePayload is Capture for a caller that has already read and parsed
+// its payload into a *hookio.Payload -- cmd/rashomon's host-guard check,
+// which hands this the exact value internal/hostguard.EvaluateRaw built,
+// so the already-decided bytes are never read, scanned or copied a second
+// time. It shares the same lock-wait and fault-injection prologue Capture
+// does; only the read in between is skipped.
+func (h *Handler) CapturePayload(payload *hookio.Payload) error {
+	h.prologue()
+	return h.capture(payload)
+}
+
+// prologue is Capture and CapturePayload's shared setup, run first so that
+// Close's appends share the deadline too: there is exactly one of this
+// pair's lock-wait deadline and PointHookStart fault injection, which is
+// what perf-2's and H-17's own mutants pin against -- a caller that reaches
+// capture by any other route must still have run this exactly once.
+func (h *Handler) prologue() {
+	h.st.LimitLockWaits(h.lockWaits)
+	fault.Inject(fault.PointHookStart)
+}
+
+// capture is Capture and CapturePayload's shared body, once each has its
+// own *hookio.Payload in hand.
+func (h *Handler) capture(payload *hookio.Payload) error {
 	var p Payload
-	if err := json.Unmarshal(raw, &p); err != nil {
+	if err := p.from(payload); err != nil {
 		return err
 	}
 
 	// Attribute before anything else can fail. A fault after this point is
 	// still recorded against the session that produced it; only a payload too
 	// malformed to name its session goes to the unattributed bucket.
-	if p.SessionID != "" {
-		h.sessionID = p.SessionID
-	}
-	h.toolUseID = p.ToolUseID
+	h.sessionID = attribute(p.SessionID)
+	h.withheld = len(p.SessionID) > store.MaxIDBytes
+	h.toolUseID = store.CapID(p.ToolUseID)
 	h.cwd = p.CWD
 
 	fault.Inject(fault.PointHookParsed)
@@ -87,12 +166,21 @@ func (h *Handler) Capture(in io.Reader) error {
 		TranscriptPath: p.TranscriptPath,
 		PermissionMode: p.PermissionMode,
 		ToolName:       p.ToolName,
-		Shape:          shape.Derive(p.ToolName, p.ToolInput, h.st.Key()),
+		RulesVersion:   shape.RulesVersion,
 	}
-	// Hostnames are metadata and are stored verbatim, because they are both
-	// the join key against the proxy's record and the finding itself. Nothing
-	// else from tool_input is persisted, and shape is still the only package
-	// that reads inside it.
+	// DeriveWithDirs, not Derive: it returns the same shape and the same cut
+	// decision, plus the leading-cd directories (shape.LeadingDirectory's own
+	// answer) it already read the command to compute. startDirectory folds
+	// those directly instead of decoding and tokenizing the command a second
+	// time to get them again.
+	var dirs []string
+	decl.Shape, _, dirs = shape.DeriveWithDirs(p.ToolName, p.ToolInput, h.st.Key())
+	decl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))
+	decl.Writer = Writer
+	// Hostnames are metadata and are stored verbatim, because the report
+	// lists them and forget --host matches them by the name as written.
+	// Nothing else from tool_input is persisted, and shape is still the only
+	// package that reads inside it.
 	decl.Hosts, decl.SSHHosts = shape.Hosts(p.ToolName, p.ToolInput)
 
 	// The label is computed on every declaration, and attached only to a
@@ -107,13 +195,22 @@ func (h *Handler) Capture(in io.Reader) error {
 	// permitted at every version and required only at schema 3, so there is
 	// no longer a version to gate on: the field is always present, and this
 	// decides whether it is null or a label.
-	if label := fileLabel(p.ToolName, p.ToolInput); label != "" {
+	label, recovered := fileLabel(p.ToolName, p.ToolInput)
+	if label != "" {
 		decl.FileLabel = &label
+	}
+	h.labelRecovered = recovered
+	// The caps, after every field is filled: a value over its cap is left
+	// out of the record rather than cut, and said so on the coverage record
+	// (REC-52), so no payload inside the intake limit can make a record the
+	// store would refuse.
+	if h.capDecl(&decl) {
+		h.withheld = true
 	}
 
 	fault.Inject(fault.PointStoreWrite)
 
-	if err := h.st.AppendDeclaration(decl); err != nil {
+	if err := landed(h.st.AppendDeclaration(decl), &h.withheld); err != nil {
 		return err
 	}
 	h.opened = true
@@ -135,10 +232,8 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 	switch {
 	case sig.Delivered():
 		outcome, reason = store.OutcomeSignal, store.ReasonTerminatedBySignal
-	case errors.Is(captureErr, store.ErrLockTimeout):
-		outcome, reason = store.OutcomeError, store.ReasonLockTimeout
 	case captureErr != nil:
-		outcome, reason = store.OutcomeError, store.ReasonInternalError
+		outcome, reason = store.OutcomeError, closeReason(captureErr)
 	}
 
 	// A terminal closes a declaration that landed, whatever its id. It is also
@@ -148,6 +243,8 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 	// its full budget once, and a second wait would push the handler past the
 	// hook timeout.
 	if h.opened || (h.toolUseID != "" && reason == store.ReasonLockTimeout) {
+		// A call record, at its declaration's version: a reader that skips
+		// the one must skip the other (store.SessionSchemaVersion).
 		term := store.Terminal{
 			Type:          store.TypeTerminal,
 			SchemaVersion: store.SchemaVersion,
@@ -156,26 +253,77 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 			SessionID:     h.sessionID,
 			Outcome:       outcome,
 			Reason:        nilIfEmpty(reason),
+			TerminalV5:    store.TerminalV5{Writer: Writer},
 		}
+		var err error
 		if reason == store.ReasonLockTimeout {
-			_ = h.st.SpillTerminal(term)
+			err = h.st.SpillTerminal(term)
 		} else {
-			_ = h.st.AppendTerminal(term)
+			err = h.st.AppendTerminal(term)
+		}
+		// A call whose terminal did not land must not be covered by a
+		// verified record: the reason was fixed before this write, and the
+		// end probe finds the declaration unterminated only if the session
+		// ever ends. A reason already set says unverified on its own.
+		if err != nil && reason == "" {
+			reason = store.ReasonInternalError
 		}
 	}
 
-	_ = h.st.AppendCoverage(BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.cwd, h.now()))
+	if reason == "" && h.withheld {
+		reason = store.ReasonRecordOversize
+	}
+	// A panic recovered inside the label derivation cost the label and not
+	// the call, so the terminal above stays ok; the coverage record is where
+	// it is named, unless something that cost more already is. BuildCoverage
+	// is given reason, not a pre-substituted one, so it gets the chance to
+	// resolve hook_entry_absent and the rest first; recovered_panic only
+	// takes the record's empty slot, never one BuildCoverage already filled.
+	cov := BuildCoverage(h.st, h.sessionID, store.PhaseCall, reason, h.cwd, h.now())
+	if cov.Reason == nil && h.labelRecovered {
+		cov.Reason = nilIfEmpty(store.ReasonRecoveredPanic)
+		cov.State = store.StateUnverified
+	}
+	// A call-phase coverage record that cannot be written is read as its
+	// absence: the report counts calls against their coverage (H-10), and a
+	// call with none never reads as covered.
+	_ = h.st.AppendCoverage(cov)
 }
 
-func readPayload(r io.Reader) ([]byte, error) {
-	b, err := io.ReadAll(io.LimitReader(r, MaxPayloadBytes+1))
-	if err != nil {
-		return nil, err
+// startDirectory is the directory a call's command starts in: the payload's
+// cwd, which is the shell's directory before the line runs, with the targets
+// of the line's leading plain `cd DIR &&` steps (shape.LeadingDirectory's
+// own answer, dirs) folded onto it. An absolute target replaces the
+// directory and a relative one joins it. Without it the first
+// `cd /repo/web && go test ./...` is keyed on /repo and every repeat on
+// /repo/web, although all of them ran in web. A relative target with no
+// directory to resolve it against is not known, and the directory stays
+// empty until an absolute target names one.
+//
+// dirs, not toolName and toolInput: the caller already has
+// shape.DeriveWithDirs's dirs, from the SAME read of the program search
+// Derive makes for every other field of the shape. Decoding the command and
+// tokenizing it again here, as a toolName/toolInput signature would need to
+// call shape.LeadingDirectory on its own, was a second and a third reading
+// of a line Hosts then reads once more -- the budget this package derives
+// (RES-9) assumes three readings, not at least five.
+//
+// Past maxLeadingCd steps the directory is not known, and is returned empty,
+// which CWDDigest records as unknown: not the payload's cwd, which the cds
+// moved away from, and not a fold stopped short of where the line ran.
+func startDirectory(cwd string, dirs []string) string {
+	if len(dirs) > maxLeadingCd {
+		return ""
 	}
-	if len(b) > MaxPayloadBytes {
-		return nil, errPayloadTooLarge
+	for _, dir := range dirs {
+		switch {
+		case filepath.IsAbs(dir):
+			cwd = filepath.Clean(dir)
+		case cwd != "":
+			cwd = filepath.Join(cwd, dir)
+		}
 	}
-	return b, nil
+	return cwd
 }
 
 func nilIfEmpty(s string) *string {
@@ -194,15 +342,18 @@ func nilIfEmpty(s string) *string {
 // answer than an unknown label.
 //
 // The empty string means the tool names no file and the record's field stays
-// null. A panic means the tool did name one and the label could not be derived,
-// which is LabelUnknown; shape.Label returns early for an unlabelled tool, so
-// the two cannot be confused.
-func fileLabel(toolName string, toolInput json.RawMessage) (label string) {
+// null. A panic means the label could not be derived: the label is then
+// LabelUnknown and recovered is true. LabelUnknown alone cannot say so,
+// because shape.Label also returns it for a path field that is absent,
+// non-string or empty; recovered is what lets Close name the panic in the
+// coverage record. No new label value carries it, because the report clamps any
+// label outside shape.Labels() to unknown.
+func fileLabel(toolName string, toolInput json.RawMessage) (label string, recovered bool) {
 	defer func() {
 		if v := recover(); v != nil {
-			label = shape.LabelUnknown
+			label, recovered = shape.LabelUnknown, true
 		}
 	}()
 	fault.Inject(fault.PointLabel)
-	return shape.Label(toolName, toolInput)
+	return shape.Label(toolName, toolInput), false
 }

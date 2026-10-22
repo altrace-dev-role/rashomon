@@ -16,8 +16,12 @@ package acceptance
 // each destination it observed.
 
 import (
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 const forgettable = "acme-secret.internal"
@@ -80,6 +84,11 @@ func TestH25_ForgetHostRemovesTheRecordsAndLeavesAGap(t *testing.T) {
 	if g.fields["removed_records"] == float64(0) {
 		t.Error("gap says 0 records removed")
 	}
+	// A gap is a session record: written at SessionSchemaVersion, so a binary
+	// that reads only up to it still reads the gap.
+	if got, want := g.fields["schema_version"], float64(store.SessionSchemaVersion); got != want {
+		t.Errorf("gap schema_version = %v, want %v", got, want)
+	}
 }
 
 // TestH25_HostIsGoneFromTheFileBytes is the assertion that survives an
@@ -115,37 +124,70 @@ func TestH25_HostIsGoneFromTheFileBytes(t *testing.T) {
 
 // TestH25_ForgottenHostStaysSuppressedInTheReport is the third half, and the
 // one the proxy boundary forces.
-func TestH25_ForgottenHostStaysSuppressedInTheReport(t *testing.T) {
+func TestH25_ForgottenHostStaysOutOfTheReport(t *testing.T) {
 	e := newEnv(t)
 	seedHostSession(t, e)
-	db := e.writeProxyStore(t, forgettable, "keep-me.example")
 
 	// Premise: before the forget, the wire shows it.
-	plain := e.run("", nil, "report", "--session", testSession, "--proxy-store", db).stdout
+	plain := e.run("", nil, "report", "--session", testSession).stdout
 	if !strings.Contains(plain, forgettable) {
 		t.Fatalf("premise: the report does not mention %q before the forget:\n%s",
 			forgettable, plain)
 	}
 
-	if res := e.run("", nil, "forget", "--host", forgettable); res.exitCode != 0 {
+	res := e.run("", nil, "forget", "--host", forgettable)
+	if res.exitCode != 0 {
 		t.Fatalf("forget --host: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
+	// A proxy store WAS read here -- the report above wrote a project baseline
+	// -- so forget's output is exactly what it always was: the baseline count,
+	// and the sentence saying the proxy's rows are not ours to delete.
+	// The render above wrote the project's baseline, so the forget clears it
+	// and says so; a baseline that still remembered the host would read it as
+	// seen before, forever.
+	if !strings.Contains(res.stdout, "project baseline(s) cleared\n") {
+		t.Errorf("forget --host after a report does not say the baseline was cleared:\n%s", res.stdout)
+	}
 
-	after := e.run("", nil, "report", "--session", testSession, "--proxy-store", db)
+	after := e.run("", nil, "report", "--session", testSession)
 	if strings.Contains(after.stdout, forgettable) {
 		t.Errorf("the forgotten host is back in the report. The proxy's row still exists "+
 			"-- it is not ours to delete -- so the report must suppress it from the "+
 			"view or the forget reads as undone:\n%s", after.stdout)
 	}
 	// And it says something was withheld, rather than silently omitting rows.
-	if !strings.Contains(after.stdout, "suppressed") {
-		t.Errorf("the report does not say a destination was suppressed; a view that "+
-			"silently omits rows is the same failure as one that prints nothing when "+
-			"it was not watching:\n%s", after.stdout)
-	}
 	// The host that was not forgotten is still reported.
 	if !strings.Contains(after.stdout, "keep-me.example") {
 		t.Errorf("the forget removed more than it was asked to:\n%s", after.stdout)
+	}
+}
+
+// TestH25_ForgetHostIsOneLineBeforeAnyReport: on a machine where no report
+// has run, forget --host says what it removed in one line. The baseline count
+// explains state that exists only after a report has written the project's
+// baseline, and printed before one it describes a file the reader does not
+// have. The baseline directory is the evidence that a report ran, because a
+// report writes it only then.
+func TestH25_ForgetHostIsOneLineBeforeAnyReport(t *testing.T) {
+	e := newEnv(t)
+	seedHostSession(t, e)
+
+	res := e.run("", nil, "forget", "--host", forgettable)
+	if res.exitCode != 0 {
+		t.Fatalf("forget --host: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	// The record count is the store's business (a call leaves more than its
+	// declaration behind); the shape of the line is this item's, and so is its
+	// grammar: one run is "1 run", never "1 runs".
+	want := regexp.MustCompile(`^rashomon: forgot ([1-9][0-9]*) (records?) naming ` +
+		regexp.QuoteMeta(forgettable) + ` across 1 run; 1 gap record written\n$`)
+	m := want.FindStringSubmatch(res.stdout)
+	if m == nil {
+		t.Fatalf("forget --host with no proxy store ever read printed\n%q\nwant one line "+
+			"matching\n%s", res.stdout, want)
+	}
+	if (m[1] == "1") != (m[2] == "record") {
+		t.Errorf("forget --host says %q %q: the noun does not agree with the count", m[1], m[2])
 	}
 }
 
@@ -184,5 +226,126 @@ func TestH25_ForgetUnknownHostIsNotAnError(t *testing.T) {
 	if len(e.gaps()) != 0 {
 		t.Error("forgetting an unknown host wrote a gap record; a gap must mean records " +
 			"actually left")
+	}
+}
+
+// TestH25_AForgetThatRemovedNothingSaysTheHostStaysOut is #45 at the command
+// line. "forgot 0 records" read as "nothing happened", and before the
+// store-level record it was true: a host only the sandbox's trail held came
+// back in the next report. The command now records the forget whatever it
+// removed, and says so when it removed nothing.
+func TestH25_AForgetThatRemovedNothingSaysTheHostStaysOut(t *testing.T) {
+	e := newEnv(t)
+	seedHostSession(t, e)
+
+	res := e.run("", nil, "forget", "--host", "never-named.example")
+	if res.exitCode != 0 {
+		t.Fatalf("forget --host: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	want := "rashomon: forgot 0 records naming never-named.example across 0 runs; " +
+		"0 gap records written; later reports still leave it out wherever they find it, " +
+		"the sandbox trail included\n"
+	if res.stdout != want {
+		t.Errorf("forget --host that removed nothing printed\n%q\nwant\n%q", res.stdout, want)
+	}
+}
+
+// TestH25_TheStoreLevelForgetRecordIsClosed: forgotten-hosts.ndjson is a
+// record file like the others, so it gets what they get -- a closed key set
+// (H-13) and the store's file mode (H-15). The only check it had was that the
+// hostname's bytes were absent, and a field carrying the name in any encoding,
+// base64 included, passed it.
+func TestH25_TheStoreLevelForgetRecordIsClosed(t *testing.T) {
+	e := newEnv(t)
+	seedHostSession(t, e)
+
+	if res := e.run("", nil, "forget", "--host", forgettable); res.exitCode != 0 {
+		t.Fatalf("forget --host: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	f, ok := walkStore(t, e.home)[store.FileForgottenHosts]
+	if !ok {
+		t.Fatalf("forget --host wrote no %s", store.FileForgottenHosts)
+	}
+	if f.mode.Perm() != 0o600 {
+		t.Errorf("%s has mode %v, want 0600", store.FileForgottenHosts, f.mode.Perm())
+	}
+	recs := readNDJSON(t, filepath.Join(e.home, store.FileForgottenHosts))
+	if len(recs) != 1 {
+		t.Fatalf("%s holds %d records after one forget, want 1", store.FileForgottenHosts, len(recs))
+	}
+	assertKeySet(t, recs[0], forgottenHostKeys)
+	if recs[0].typ() != store.TypeForgottenHost || recs[0].fields["schema_version"] != float64(store.SessionSchemaVersion) {
+		t.Errorf("the record is %v, want type %s at schema_version %d", recs[0].fields, store.TypeForgottenHost, store.SessionSchemaVersion)
+	}
+	if d, _ := recs[0].fields["host_digest"].(string); !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(d) {
+		t.Errorf("host_digest = %q, want 64 hex characters", d)
+	}
+}
+
+// TestH25_ForgetHostTakesAnySpellingOfTheHost: every host rashomon holds -- in
+// its records, its baselines and the sandbox's trail -- has been through
+// host.Canonical. `forget --host` digested and matched the value
+// as typed, so any other spelling removed nothing, cleared no baseline,
+// suppressed nothing, and the line said later reports would leave it out.
+func TestH25_ForgetHostTakesAnySpellingOfTheHost(t *testing.T) {
+	e := newEnv(t)
+	seedHostSession(t, e)
+	if plain := e.run("", nil, "report", "--session", testSession).stdout; !strings.Contains(plain, forgettable) {
+		t.Fatalf("premise: the report does not mention %q before the forget:\n%s", forgettable, plain)
+	}
+
+	const spelled = "https://ACME-Secret.Internal:443/"
+	res := e.run("", nil, "forget", "--host", spelled)
+	if res.exitCode != 0 {
+		t.Fatalf("forget --host %q: exit %d, stderr %q", spelled, res.exitCode, res.stderr)
+	}
+	if want := " naming " + forgettable + " across 1 run;"; !strings.Contains(res.stdout, want) {
+		t.Errorf("forget --host %q does not name what it forgot (%q):\n%s", spelled, want, res.stdout)
+	}
+	if got := len(e.declarations(testSession)); got != 1 {
+		t.Errorf("forget --host %q left %d declarations, want 1", spelled, got)
+	}
+	// Everything under the store root, the project baseline included, must
+	// have let the name go.
+	for rel, f := range walkStore(t, e.home) {
+		if strings.Contains(string(f.body), forgettable) {
+			t.Errorf("%s still holds %q after forget --host %q", rel, forgettable, spelled)
+		}
+	}
+	if after := e.run("", nil, "report", "--session", testSession).stdout; strings.Contains(after, forgettable) {
+		t.Errorf("forget --host %q: the host is back in the report:\n%s", spelled, after)
+	}
+}
+
+// TestH25_ForgetHostRefusesWhatIsNotAHostname: a value with a path, a
+// credential or whitespace names no destination, so forgetting it can only be
+// a no-op that reads as a success. Refused, without echoing the value -- a
+// credential in it would otherwise land in whatever captures stderr, a
+// session transcript included -- and without touching the store.
+func TestH25_ForgetHostRefusesWhatIsNotAHostname(t *testing.T) {
+	e := newEnv(t)
+	seedHostSession(t, e)
+
+	res := e.run("", nil, "forget", "--host", "deploy:s3cret@"+forgettable)
+	if res.exitCode == 0 {
+		t.Errorf("forget --host with a credential in it was accepted:\n%s", res.stdout)
+	}
+	if !strings.Contains(res.stderr, "is not a hostname") {
+		t.Errorf("the refusal does not say why: stderr %q", res.stderr)
+	}
+	if strings.Contains(res.stderr, "s3cret") {
+		t.Errorf("the refusal echoes the credential it refused: stderr %q", res.stderr)
+	}
+	if got := len(e.declarations(testSession)); got != 2 {
+		t.Errorf("the refused command removed records: %d declarations left, want 2", got)
+	}
+	if _, ok := walkStore(t, e.home)[store.FileForgottenHosts]; ok {
+		t.Error("the refused command wrote a store-level forget record")
+	}
+
+	// Refused as an argument, not as a store operation: with no store here it
+	// is still an error, rather than "nothing recorded here" and exit 0.
+	if res := newEnv(t).run("", nil, "forget", "--host", "py pi.example"); res.exitCode == 0 {
+		t.Errorf("forget --host with a space in it was accepted on a machine with no store:\n%s", res.stdout)
 	}
 }

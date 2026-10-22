@@ -75,7 +75,11 @@ func TestH15_NDJSONFraming(t *testing.T) {
 }
 
 // TestH15_SchemaVersionOnEveryRecord is what lets a reader skip a record it does
-// not understand instead of guessing at it.
+// not understand instead of guessing at it. The version is per kind: a call's
+// records (declaration, terminal, execution) carry store.SchemaVersion, and
+// the session's (coverage, gap) store.SessionSchemaVersion, which moves only
+// when they change. One version on every record is how a change to the call
+// records cost an older binary the whole session.
 func TestH15_SchemaVersionOnEveryRecord(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
@@ -90,18 +94,38 @@ func TestH15_SchemaVersionOnEveryRecord(t *testing.T) {
 	if len(all) == 0 {
 		t.Fatal("no records were written")
 	}
-	// Asserted against the writer's own constant rather than a literal. The
-	// invariant is "every record carries the version the writer was at", not
-	// "every record says 1", and a literal here is a line to chase on every
-	// schema bump -- which is how a bump ends up landing with some records
-	// carrying the new version and some the old.
-	want := float64(store.SchemaVersion)
+	// Asserted against the writer's own constants rather than literals. The
+	// invariant is "every record carries the version the writer was at for
+	// its kind", and a literal here is a line to chase on every schema bump
+	// -- which is how a bump ends up landing with some records carrying the
+	// new version and some the old.
+	want := map[string]float64{
+		"declaration": float64(store.SchemaVersion),
+		"terminal":    float64(store.SchemaVersion),
+		"execution":   float64(store.SchemaVersion),
+		"coverage":    float64(store.SessionSchemaVersion),
+		"gap":         float64(store.SessionSchemaVersion),
+	}
+	seen := map[string]bool{}
 	for i, r := range all {
-		if r.fields["schema_version"] != want {
-			t.Errorf("record %d (type %q) has schema_version %v, want %v", i, r.typ(), r.fields["schema_version"], want)
-		}
 		if r.typ() == "" {
 			t.Errorf("record %d has no type discriminator", i)
+			continue
+		}
+		w, ok := want[r.typ()]
+		if !ok {
+			t.Errorf("record %d has type %q, which has no schema version here", i, r.typ())
+			continue
+		}
+		seen[r.typ()] = true
+		if r.fields["schema_version"] != w {
+			t.Errorf("record %d (type %q) has schema_version %v, want %v", i, r.typ(), r.fields["schema_version"], w)
+		}
+	}
+	// The forget removes the calls; their versions are TestSchema4's.
+	for _, k := range []string{"coverage", "gap"} {
+		if !seen[k] {
+			t.Errorf("no %s record was written, so its version went unchecked", k)
 		}
 	}
 }
@@ -379,6 +403,34 @@ func TestH15_SizeCapEvictionLeavesAGap(t *testing.T) {
 	// record type the run held, not the two that existed when it was written.
 	if gaps[0].fields["removed_records"] != float64(3) {
 		t.Errorf("gap says %v records removed, want 3", gaps[0].fields["removed_records"])
+	}
+	// A gap is a session record: written at SessionSchemaVersion, so a binary
+	// that reads only up to it still reads the gap.
+	if got, want := gaps[0].fields["schema_version"], float64(store.SessionSchemaVersion); got != want {
+		t.Errorf("gap schema_version = %v, want %v", got, want)
+	}
+}
+
+// TestRubricDOCS3_ZeroCapDisablesEviction: a cap of zero turns eviction off. It is
+// the value a user sets to keep everything, so a regression here deletes
+// every run older than an hour for exactly the user who asked for none to go
+// (docs-3).
+func TestRubricDOCS3_ZeroCapDisablesEviction(t *testing.T) {
+	e := newEnv(t)
+	e.watched("old-session")
+	p := defaultPayload()
+	p.SessionID = "old-session"
+	e.mustHook(p.build(t))
+	e.ageRun("old-session", 3*time.Hour)
+
+	if res := e.probe("start", "new-session", "RASHOMON_STORE_CAP_BYTES=0"); res.exitCode != 0 {
+		t.Fatalf("probe start: exit %d", res.exitCode)
+	}
+	if _, err := os.Stat(filepath.Join(e.home, "runs", "old-session")); err != nil {
+		t.Errorf("a run was evicted under a zero cap, which turns eviction off: %v", err)
+	}
+	if gaps := e.gaps(); len(gaps) != 0 {
+		t.Errorf("a zero cap wrote %d gap records, want none", len(gaps))
 	}
 }
 

@@ -99,7 +99,7 @@ func TestH19_DetachDoesNotRewriteHistory(t *testing.T) {
 	if res := e.detach(); res.exitCode != 0 {
 		t.Fatalf("detach: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
-	if got := len(ours(e.settings().Hooks["PreToolUse"])); got != 0 {
+	if got := len(ours(e.settingsAfterDetach().Hooks["PreToolUse"])); got != 0 {
 		t.Fatalf("premise broken: %d entries of ours remain after detach", got)
 	}
 
@@ -107,8 +107,8 @@ func TestH19_DetachDoesNotRewriteHistory(t *testing.T) {
 	if after.Coverage.State != "verified" {
 		t.Errorf("detach retroactively invalidated a completed run: %v", after.Coverage.Reasons)
 	}
-	if after.Coverage.HookEntryAtStart != "present" || after.Coverage.HookEntryAtEnd != "present" {
-		t.Errorf("hook entry renders %s/%s after detach; the run recorded present at both ends",
+	if after.Coverage.HookEntryAtStart != "present_settings" || after.Coverage.HookEntryAtEnd != "present_settings" {
+		t.Errorf("hook entry renders %s/%s after detach; the run recorded present_settings at both ends",
 			after.Coverage.HookEntryAtStart, after.Coverage.HookEntryAtEnd)
 	}
 	if !reflect.DeepEqual(before, after) {

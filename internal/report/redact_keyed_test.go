@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
-	"github.com/altrace-dev-role/rashomon/internal/wire"
 )
 
 // B3 -- the redaction digest is keyed.
@@ -123,12 +122,8 @@ func TestRedact_WithoutAKeyNothingIsDigested(t *testing.T) {
 // gets shared, not only in a README the recipient never sees.
 func TestRedact_ReportCarriesTheLegend(t *testing.T) {
 	rep := &Report{Sessions: []Session{{
-		SessionID: "s1",
-		Destinations: Destinations{
-			Observed: true,
-			Hosts:    []wire.Destination{{Host: "pypi.org", Attempts: 1}},
-			WireOnly: []string{"pypi.org"},
-		},
+		SessionID:    "s1",
+		Destinations: Destinations{DeclaredHosts: []string{"pypi.org"}},
 	}}}
 
 	plain := renderText(t, rep)
@@ -150,10 +145,10 @@ func TestRedact_ReportCarriesTheLegend(t *testing.T) {
 }
 
 // renderText renders a whole report to text, for the assertions above.
-func renderText(t *testing.T, rep *Report) string {
+func renderText(t *testing.T, rep *Report, opts ...TextOption) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := Text(&b, rep); err != nil {
+	if err := Text(&b, rep, opts...); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	return b.String()

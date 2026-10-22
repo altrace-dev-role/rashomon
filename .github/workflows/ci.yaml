@@ -4,8 +4,10 @@
 # repository root: rashomon ships as its own repository, and go.mod sits
 # beside this file's .github directory.
 #
-# Stages: gofmt -> vet (both build tags) -> race tests -> H-17 skip gate ->
-# mutation sweep, with a cross-build matrix alongside.
+# Stages: gofmt -> vet (both build tags) -> sweep static checks -> race tests
+# -> H-17 skip gate, with a cross-build matrix and a fuzz job alongside. The
+# mutation sweep is a job of its own and runs only when the workflow is
+# started by hand (Actions > CI > Run workflow).
 name: CI
 
 on:
@@ -15,6 +17,17 @@ on:
   # another feature branch schedules none of these jobs and merges on a green
   # rollup that proves only that it links.
   pull_request:
+  # Started by hand to run the mutation sweep, which push and pull_request
+  # runs skip.
+  workflow_dispatch:
+  # Weekly, so a new OSV advisory against a dependency nobody has touched
+  # surfaces here instead of waiting for the next push, pull request or
+  # tag -- which is how the pre-1.9.0 govulncheck panic on this toolchain
+  # stayed unnoticed until someone looked. Runs the Test job, govulncheck
+  # included; Monday mornings are quiet for both the fleet and the runner
+  # queue.
+  schedule:
+    - cron: "17 6 * * 1"
 
 permissions:
   contents: read
@@ -23,6 +36,10 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    # Every job carries a bound (DEL-17): one run in October 2026 went 1,212
+    # minutes with nothing to stop it. This job's work takes minutes; the
+    # sweep, which does not, has a job and a bound of its own below.
+    timeout-minutes: 30
     env:
       # The race detector requires cgo. Nothing in this module needs cgo to
       # build -- the released binaries are CGO_ENABLED=0 -- so it is enabled on
@@ -35,7 +52,7 @@ jobs:
         with:
           # BUILD TOOLCHAIN, pinned here and NOT read from go.mod.
           #
-          # go.mod's `go 1.24.0` is the LANGUAGE MINIMUM -- the oldest Go a
+          # go.mod's `go 1.25.0` is the LANGUAGE MINIMUM -- the oldest Go a
           # consumer needs to build this module. It is not a statement about
           # what the release should be built WITH, and reading the build
           # version from it conflated the two: setup-go treats that string as
@@ -48,9 +65,20 @@ jobs:
           # go1.25.8, and both clear at that version. A released artifact is
           # the wrong place to ship the oldest toolchain that compiles.
           #
-          # Bump this when a stdlib advisory lands; go.mod moves only when the
-          # module actually needs newer language features.
-          go-version: "1.25.8"
+          # The pin follows the newest stable release of a SUPPORTED major,
+          # not the newest patch of the major go.mod names. Go fixes
+          # security issues in the two most recent majors only; with 1.27
+          # out, 1.25 gets no fix at all, and a 1.25.x pin would carry every
+          # stdlib advisory from here on. Measured with govulncheck v1.9.0 on
+          # the 2026-10-08 database: under go1.25.8 the dependency graph
+          # carries 39 standard-library advisories (none reachable from this
+          # module's code); the newest 1.25 patch, 1.25.14, still carries 13,
+          # every one fixed only in 1.26.9 or later; go1.27.2 carried none
+          # until GO-2026-6809 (crypto/x509, 2026-10-22), fixed in go1.27.3,
+          # which carries none.
+          # go.mod moves only when the module actually needs newer language
+          # features.
+          go-version: "1.27.3"
           cache: true
           # go.sum, not go.mod. This module declared no requirements when these
           # workflows were written and now depends on modernc.org/sqlite plus
@@ -104,6 +132,35 @@ jobs:
       - name: Vet (rashomonfault build tag)
         run: go vet -tags rashomonfault ./...
 
+      # The same line the release job runs, at the same version. govulncheck
+      # is compiled and run with the pinned toolchain, so a toolchain bump can
+      # break it: under go1.27.2, v1.1.4 panics in go/ssa when it analyses
+      # linux/amd64 and passes on darwin. Running it here makes a pull request
+      # find that, not a tag. TestDEL21c holds the two copies to one version.
+      #
+      # -scan module, not the default (symbol-level, reachable-only). The
+      # default mode is what this gate ran before and would NOT have caught
+      # the problem the whole toolchain bump exists to fix: go1.25.8's 39
+      # standard-library advisories were all unreachable from this module's
+      # code, so a reachability-gated scan reports zero on that pin same as
+      # on this one, and a future unreachable advisory would pass silently
+      # too. module level fails on anything in the dependency graph,
+      # imported or not, which is the "no known advisory in anything we
+      # ship" bar this step is meant to hold. -C anchors it at a package
+      # directory; module scanning takes no patterns and errors on a bare
+      # repository root, which has none of its own .go files.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -scan module -C cmd/rashomon
+
+      # The sweep's static half runs on every push and pull request even though
+      # the sweep itself runs on demand (its step below): every anchor occurs
+      # exactly once in its target, and a mutant in a requirement row's file
+      # names that row's tests. A stale anchor is a defect the author can fix
+      # in the same change; the next manual sweep is the wrong time to learn
+      # of it.
+      - name: Mutation sweep static checks
+        run: python3 test/mutation/sweep.py --check
+
       - name: Test with race detector
         run: go test ./... -count=1 -race
 
@@ -118,14 +175,6 @@ jobs:
       #     message in the log right above it;
       #   - each dynamic test must positively `--- PASS`, so renaming or
       #     deleting one cannot slip past a grep that only hunts skips.
-      #
-      # What this job still does NOT cover: TestRead_AgainstARealProxyStore
-      # (internal/wire/real_store_check_test.go) stays opt-in behind
-      # RASHOMON_REAL_STORE=/path/to/causal.db and has never run, here or
-      # anywhere. It is the one test that would catch the Altrace proxy
-      # drifting causal.db's schema out from under internal/wire's reader,
-      # and it needs a store the real proxy wrote, which the proxy team has
-      # yet to provide. When such a fixture lands, wire it into this job.
       - name: H-17 dynamic tests (a SKIP is a failure)
         shell: bash
         run: |
@@ -143,11 +192,27 @@ jobs:
           fi
           exit "${failed}"
 
-      # The other half of the acceptance contract: break the implementation one
-      # item at a time and confirm each item's tests go red. Exits non-zero if
-      # any break goes undetected.
-      - name: Mutation sweep
-        run: python3 test/mutation/sweep.py
+      # These nine skip under the same condition H-17's step guards against,
+      # one line earlier: root bypasses the permission bits these tests rely
+      # on -- chmod 000 on a pause marker or a transcript file to make it
+      # unreadable, or a restrictive mode on the store root -- to prove a
+      # fault reads the way the test expects, so a runner that ran as root
+      # would skip some or all nine and `go test` would exit 0 for every one
+      # that did. The race step above already ran them; this step exists to
+      # make that skip fatal rather than silent, the same way H-17's does.
+      - name: Marker/transcript unreadable tests (a SKIP is a failure)
+        shell: bash
+        run: |
+          go test -v -count=1 -run '^TestH82_RecordingStateDistinguishesPausedAbsentAndUnknown$|^TestRubricPAUSE9_StatusPrintsMarkerUnreadable$|^TestRubricERRORS6_UnreadablePauseMarkerPausesTheHook$|^TestRubricPAUSE9_AFaultOnTheStoreRootIsNotAPause$' ./cmd/rashomon | tee "$RUNNER_TEMP/unreadable1.out"
+          go test -v -count=1 -run '^TestRubricERRORS6_UnreadablePauseMarkerPausesRecording$|^TestRubricERRORS3_UnreadableTranscriptRendersUnverified$' ./test/acceptance | tee "$RUNNER_TEMP/unreadable2.out"
+          go test -v -count=1 -run '^TestRubricERRORS3_UnreadableTranscriptIsAReason$' ./internal/report | tee "$RUNNER_TEMP/unreadable3.out"
+          go test -v -count=1 -run '^TestRubricPAUSE9_ResumeRemovesAnUnreadableMarker$|^TestMarkerUnreadable_TrueOnlyWhenTheMarkerIsAPlainFile$' ./internal/store | tee "$RUNNER_TEMP/unreadable4.out"
+          failed=0
+          if grep -- '--- SKIP' "$RUNNER_TEMP/unreadable1.out" "$RUNNER_TEMP/unreadable2.out" "$RUNNER_TEMP/unreadable3.out" "$RUNNER_TEMP/unreadable4.out"; then
+            echo "::error::an unreadable-marker or unreadable-transcript test skipped; its reason is in the lines above"
+            failed=1
+          fi
+          exit "${failed}"
 
       # .goreleaser.yml advertises this command in its own header, and until
       # the brews block was removed it failed against its own file -- exit 2 on
@@ -169,14 +234,133 @@ jobs:
       # releaser can certify a config the releaser then rejects, which is the
       # failure this step exists to prevent -- a tag cannot be cleanly re-cut.
       - name: GoReleaser config check
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7.2.3
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de  # v7.3.0
         with:
           version: "v2.18.2"
           args: check
 
+  # The other half of the acceptance contract: break the implementation one
+  # item at a time and confirm each item's tests go red. Exits non-zero if any
+  # break goes undetected.
+  #
+  # ON DEMAND ONLY. The sweep took 45 to 77 minutes per run at 1,053 mutants
+  # and grows with every change, so push and pull_request runs skip it and the
+  # race tests in Test are the merge gate. Run it by hand (Actions > CI > Run
+  # workflow) before cutting a release, since a tag does not run CI, and
+  # locally with `python3 test/mutation/sweep.py` when a change adds or moves
+  # mutants.
+  #
+  # A job of its own so that its bound is its own: sharing Test's would cancel
+  # the sweep once it outgrew a bound sized for tests that take minutes. At
+  # about 4 s a mutant, 300 minutes holds about 4,000.
+  sweep:
+    name: Mutation sweep
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    # Two manual dispatches share no state and would only waste a second
+    # runner's minutes side by side; cancelling the older one when a newer
+    # dispatch starts is strictly better than letting both run to the end.
+    concurrency:
+      group: sweep-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      # Same as in Test, for the same reason: the sweep judges the H-17
+      # mutants by running their tests, and without strace and the unshare
+      # grant it reports them as not judged rather than detected.
+      - name: Install strace, and let unshare create network namespaces
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends strace
+          sudo setcap cap_sys_admin+ep "$(command -v unshare)"
+
+      - name: Mutation sweep
+        run: python3 test/mutation/sweep.py --strict
+
+  # Every fuzz target in the tree, 30 seconds each. The Test job runs their
+  # seed corpora as plain tests; this is the part that looks for new inputs.
+  # Minimization is bounded to ten runs per input: at its one-minute default,
+  # reducing one input took FuzzTranscriptLines' whole window (5,584 execs in
+  # 20 s, then 0/s; with the bound, 216,016 execs and 79 new inputs). A
+  # failing input is then printed less reduced, which is still the input that
+  # failed. TestRubricTEST1_FuzzJobFloorIsTheTreeCount keeps the floor below
+  # at the number of targets the tree holds.
+  # Targets are the ones `go test -list` names in each package, so a new one
+  # runs without an edit here and a file this build leaves out is left out
+  # here too, and a run counts only if it printed `fuzz: elapsed`. Every
+  # target runs before the job fails, so one failure hides no other. A
+  # failing input is written under the target's testdata/fuzz, printed here
+  # and kept as an artifact, so it can be committed as a seed; each input is
+  # handed to a parser only, never run.
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    # Eighteen targets at 30 s each, plus their builds; the bound is DEL-17's.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      - name: Fuzz every target
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          failed=()
+          log=$(mktemp)
+          for pkg in $(go list ./...); do
+            for name in $(go test "$pkg" -list '^Fuzz' | grep '^Fuzz' || true); do
+              echo "::group::${pkg} ${name}"
+              if go test "$pkg" -run '^$' -fuzz "^${name}\$" -fuzztime 30s -fuzzminimizetime 10x 2>&1 | tee "$log"; then
+                if ! grep -q '^fuzz: elapsed' "$log"; then
+                  echo "::error::${name} in ${pkg} passed without fuzzing"
+                  failed+=("${pkg} ${name}")
+                fi
+              else
+                echo "::error::${name} in ${pkg} found a failing input"
+                failed+=("${pkg} ${name}")
+                corpus="$(go list -f '{{.Dir}}' "$pkg")/testdata/fuzz/${name}"
+                if [ -d "$corpus" ]; then
+                  find "$corpus" -type f -newer go.mod -exec sh -c 'echo "== $1"; cat "$1"' _ {} \;
+                fi
+              fi
+              echo "::endgroup::"
+              found=$((found + 1))
+            done
+          done
+          echo "fuzzed ${found} targets"
+          test "$found" -ge 18
+          if [ "${#failed[@]}" -gt 0 ]; then
+            printf '::error::failed: %s\n' "${failed[@]}"
+            exit 1
+          fi
+
+      - name: Keep the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: fuzz-failing-inputs
+          path: "**/testdata/fuzz/**"
+          if-no-files-found: ignore
+
   cross-build:
     name: Cross build (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
+    # One build and one vet; the bound is DEL-17's.
+    timeout-minutes: 15
     env:
       # Matches the release build: pure Go, so cross-compiling all six targets
       # needs no C toolchain.
@@ -192,7 +376,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.25.8"  # See the note in the test job.
+          go-version: "1.27.3"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -212,3 +396,249 @@ jobs:
         env:
           GOOS: windows
         run: go vet ./...
+
+  # The lock contract on the platform whose lockFile is LockFileEx
+  # (internal/store/lock_windows.go). Cross-build and vet prove it compiles;
+  # this is the only job that runs it (test-11). The tests are the store's
+  # that build on Windows and do not skip there: the one about reading past
+  # a held lock (TestReadRunConsistent_RespectsAHeldLock) is left out,
+  # because Windows' mandatory locks refuse that read and it skips.
+  lock-windows:
+    name: Lock contract (windows)
+    runs-on: windows-latest
+    # Thirteen store tests; the bound is DEL-17's.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"  # See the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      # Each test must run and pass, not only leave the step green: a name
+      # that matches nothing, a test a build tag leaves out on Windows and a
+      # test that skips all pass go test, and each would leave this job green
+      # having shown nothing about LockFileEx. So the step checks every name
+      # reported PASS.
+      - name: Lock contract tests
+        shell: bash
+        env:
+          TESTS: >-
+            TestLockFileIsExclusiveAndBounded
+            TestAppendExecutionSpillsWhenTheLockIsHeld
+            TestRubricPERF1_AGiveUpLandsAtItsBudget
+            TestRubricPERF7_LockFileReportsItsWait
+            TestRubricPERF7_AContendedInvocationNotesItsLongestWait
+            TestRubricTEST11_AReadRefusedByAHeldLockCountsAsSkipped
+            TestRubricTEST11_AGapsReadRefusedByAHeldLockCountsAsSkipped
+            TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldGapsLock
+            TestRubricTEST11_TheForgottenHostReadWaitsOutAHeldForgetLock
+            TestRubricTEST11_TheReportReadCountsARefusalAsSkipped
+            TestREC42c_EveryLineUnderOneHold
+            TestREC42h_ASteerReadRefusedByAHeldLockCountsAsSkipped
+            TestRecordHarnessMismatch_DifferentSessionsIncrement
+            TestRecordHarnessMismatch_SameSessionSameKeyDeduped
+            TestRecordHarnessMismatch_AlreadyCountedSessionNeverLocks
+        run: |
+          go test ./internal/store -run "^($(echo $TESTS | tr ' ' '|'))\$" -count=1 -v | tee lock-windows.txt
+          for t in $TESTS; do
+            grep -q -- "--- PASS: $t " lock-windows.txt || { echo "::error::$t did not run and pass on Windows"; exit 1; }
+          done
+
+  perf-linux:
+    name: Perf gates (linux)
+    runs-on: ubuntu-latest
+    # Benchmarks run 3x20 iterations, the RSS harness runs the release binary
+    # some three hundred times; the bound is DEL-17's.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          # The rows in test/perf/budgets.json were measured under go1.27.2
+          # (its go_version), and allocation figures are the toolchain's:
+          # BenchmarkBuild/188 makes 21,660 allocations per op under 1.25.8
+          # and 6,832 under 1.27.2. benchgate and the harness refuse any other
+          # toolchain, so this pin moves only with a remeasurement.
+          go-version: "1.27.3"
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      # Allocations and allocation counts do not depend on the runner's load,
+      # which is why they gate on every PR and wall time never does (RES-36).
+      # The best of three runs is compared against test/perf/budgets.json at
+      # ten percent over.
+      # shell: bash runs with -o pipefail; without it the step's status is
+      # benchgate's alone, and a go test that failed to build or crashed
+      # midway would pass on whatever partial output reached the gate.
+      - name: Benchmark allocations against the budgets
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -run '^$' -bench . -benchtime 20x -count 3 ./... | tee bench.txt | go run ./scripts/benchgate
+
+      # Diagnosing a red gate, or taking this runner's own baseline for
+      # platforms.linux/amd64, means reading the raw benchmark output;
+      # if: always() so a failed benchgate still leaves it to download.
+      - name: Upload bench.txt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: bench-linux
+          path: bench.txt
+          retention-days: 14
+
+      # Peak RSS of the release binary per entry and per RES-28 case, the
+      # median of nine runs, and the init budget from the runtime's own trace
+      # (RES-2). Linux figures are gated against the reference rows until the
+      # platform's own baseline is recorded in budgets.json. `go test` passes
+      # a run in which every gate skipped; RASHOMON_PERF_REQUIRE_ALL fails it
+      # unless every entry row, every case gating in this tree and the init
+      # budget were compared.
+      - name: Peak RSS and init budget
+        if: success() || failure()
+        env:
+          RASHOMON_PERF_REQUIRE_ALL: "1"
+        run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28' -count=1 -v
+
+      # RES-29's own peak-RSS bound (cmd/rashomon/res29_test.go) does not
+      # apply under -race (its own comment explains why -- the detector's
+      # shadow memory inflates RSS the same way it inflates CPU time), so the
+      # `test` job's `go test ./... -race` never actually checks it: every
+      # row logs and skips. This is the only place it is checked anywhere,
+      # and the only place linux/amd64's own number (not darwin's) is the one
+      # compared. It runs whatever the steps before it did: a red benchgate
+      # skipped it, and a bound that is checked only while every other gate
+      # is green is not checked.
+      - name: RES-29 peak RSS (no race detector)
+        if: success() || failure()
+        run: go test ./cmd/rashomon -run '^TestRES29_PathologicalInputsStayBounded$' -count=1 -v
+
+  perf-macos:
+    name: Perf gates (macos)
+    runs-on: macos-latest
+    # The macOS runner is a 3-core M1 with 7 GB, not the M3 reference; its
+    # tolerance is 15% until 2026-11-06 while its variance is learned, then
+    # 10% (test/perf/budgets.json, platforms.darwin/arm64).
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"  # Measured under it; see the perf-linux job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      # test/perf/budgets.json's benchmark rows were measured on darwin/arm64
+      # (budgets.json's benchmark_platform), which this runner is -- the only
+      # CI job that CAN compare them without fabricating anything. Before
+      # this step existed, the allocation benchmarks were gated on no CI job
+      # at all: perf-linux's own benchgate step runs on linux/amd64, which
+      # CheckPlatform correctly refuses to compare against these rows
+      # (nothing here claims a GOOS/GOARCH it was not measured on), and until
+      # linux/amd64 has committed rows of its own under
+      # platforms.linux/amd64.benchmarks (RES-36p; the "Measure linux/amd64
+      # benchmark rows" job below), that refusal is correct, not a bug.
+      - name: Benchmark allocations against the budgets
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -run '^$' -bench . -benchtime 20x -count 3 ./... | tee bench.txt | go run ./scripts/benchgate
+
+      - name: Upload bench.txt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: bench-macos
+          path: bench.txt
+          retention-days: 14
+
+      - name: Peak RSS, init budget and the 64-way per-process peak (RES-30)
+        if: success() || failure()
+        env:
+          RASHOMON_PERF_REQUIRE_ALL: "1"  # See the perf-linux job.
+        run: go test -tags perf ./test/perf -run 'TestRES2_|TestRES28|TestRES30_' -count=1 -v
+
+      # internal/store and test/acceptance's race suite runs on ubuntu-latest
+      # (the test job) but not here, so the darwin branch of REC-34's group
+      # commit -- sync_darwin.go, and the acceptance tests that exercise a
+      # real barrier and a real flush -- had no CI coverage at all: nothing
+      # ever ran them anywhere automated. This is a plain test, not the
+      # mutation sweep, which stays on ubuntu-latest in its own job.
+      - name: REC-34 group commit (darwin)
+        run: go test -race -count=1 -run 'TestREC34' ./internal/store ./test/acceptance
+
+      # sync_darwin.go's own 14 mutants build on no other GOOS, and the one
+      # mutant whose judging test is darwin-only (platform="darwin" in the
+      # mutant file) reports NOT JUDGED (platform) everywhere else too: this
+      # is the only runner where any of them are exercised at all. Scoped to
+      # this one file, not the full sweep, which stays on ubuntu-latest in
+      # its own job and would otherwise run twice for every mutant outside
+      # this file.
+      - name: REC-34 group commit mutants (darwin)
+        run: python3 test/mutation/sweep.py --strict --files mutants/REC-34_group-commit.py
+
+      # darwin is where an append's sync is F_FULLFSYNC, and the store's lock
+      # budgets are derived from its holds (internal/store/lockbudget.go,
+      # BenchmarkOrderedAppendHold), so the 64-way burst runs here and not
+      # only on ubuntu (perf-1). H-16 here and RES-30 in the RSS step above both
+      # gate on what a burst must not lose -- every declaration lands in the
+      # ordered stream, with no spill and no lock_timeout, and the seq is
+      # contiguous -- and neither on wall time, which process spawn
+      # dominates. H-16 is 64 hooks. RES-30, 64 hook-and-post pairs that also
+      # gate their summed and per-process peak memory, runs in the RSS step above
+      # so that it, like every perf-tagged test, runs with every gate owed.
+      - name: 64-way hooks lose nothing to the lock (H-16)
+        run: go test ./test/acceptance -run '^TestH16_' -count=1 -v
+
+      # watch and consent ask on /dev/tty, and these tests drive a real
+      # pseudo-terminal opened by ioctl -- a darwin branch (TIOCPTYGRANT,
+      # TIOCPTYGNAME) the ubuntu job never takes.
+      - name: TRU-1, 3, 4, 5 consent on a terminal (darwin)
+        run: go test -race -count=1 -run 'TestTRU(1|3|4|5)_' ./test/acceptance
+
+  measure-linux-benchmarks:
+    name: Measure linux/amd64 benchmark rows
+    runs-on: ubuntu-latest
+    # Started by hand only (Actions > CI > Run workflow), same as the sweep
+    # job above: it does not gate anything, so push and pull_request skip it.
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"  # Same pin as perf-linux; see the note in the test job.
+          cache: true
+          cache-dependency-path: go.sum  # See the test job.
+
+      # The "Perf gates (linux)" job fails closed with "budgets.json's
+      # benchmark rows were measured on darwin/arm64 and this run is
+      # linux/amd64: nothing compared" because no row has ever been measured
+      # ON linux/amd64 -- fabricating one from this repository's darwin/arm64
+      # figures would defeat the whole point of CheckPlatform (RES-36). This
+      # job measures the real thing, on the real runner, and prints it; it
+      # does not write test/perf/budgets.json itself, so the rows reach the
+      # file only after a human reads scripts/benchgate -measure's own
+      # warning and pastes the printed array into
+      # platforms.linux/amd64.benchmarks by hand, then commits it.
+      - name: Measure this runner's own benchmark rows
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -run '^$' -bench . -benchtime 20x -count 3 ./... | tee bench.txt | go run ./scripts/benchgate -measure > linux_amd64_benchmarks.json
+
+      - name: Upload the measured rows
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: linux-amd64-benchmark-rows
+          path: |
+            bench.txt
+            linux_amd64_benchmarks.json
+          retention-days: 14

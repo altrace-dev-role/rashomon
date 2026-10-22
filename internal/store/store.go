@@ -1,12 +1,6 @@
-// Package store is the on-disk record of declarations.
-//
-// records.ndjson is append-only and totally ordered by seq. Nothing rewrites a
-// line in it except forget, and forget leaves a gap record behind, because a
-// record that can be quietly corrected is worth nothing as evidence.
 package store
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
@@ -19,7 +13,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/altrace-dev-role/rashomon/internal/fault"
 )
 
 const (
@@ -28,27 +26,91 @@ const (
 
 	keyLen       = 32
 	installIDLen = 16
-
-	fileInstallKey  = "install.key"
-	fileInstallMeta = "install.json"
-	dirRuns         = "runs"
 )
 
-// ErrLockTimeout is returned when an append lock could not be taken inside the
-// budget. It is a give-up, and callers record it rather than hiding it.
+// FileInstallKey is the store-root file holding the per-install HMAC key
+// (keyLen random bytes), created once by Open and never rewritten. Everything
+// this store digests keyed -- HostDigest, CWDDigest -- is keyed from it.
+const FileInstallKey = "install.key"
+
+// FileInstallMeta is the store-root file holding the install's identity and
+// schema version (installMeta), created once by Open and read by every
+// OpenExisting. Its presence is what makes a directory a store.
+const FileInstallMeta = "install.json"
+
+// FileConsent is the store-root file holding every consent the user gave,
+// one record per line (Technical spec 7.2.3). internal/consent writes it;
+// the name lives here beside the store's other root files so the inventory
+// reads every store-root name from one package.
+const FileConsent = "consent.json"
+
+// FileHarnesses is the store-root file holding what watch was told about
+// each harness and surface: today only the Agent SDK answer of the consent
+// screen's second question (Technical spec 6.2, 7.2.3).
+const FileHarnesses = "harnesses.json"
+
+// DirRuns is the store-root directory holding one subdirectory per session,
+// named by segment(sessionID); see RunDir.
+const DirRuns = "runs"
+
+// ErrLockTimeout is returned when a lock could not be taken inside the budget
+// (LockFile), and by nothing else: it means busy, never broken. It is a
+// give-up, and callers record it rather than hiding it.
 var ErrLockTimeout = errors.New("store: timed out waiting for the append lock")
 
 // Store is an opened store rooted at a directory.
+//
+// A Store comes from Open, which creates the store on first use, or from
+// OpenExisting, which never does; its root, install id and key are set there
+// and never changed. Every path it writes is joined onto that root, so the
+// zero Store has none: it would write under the process's working directory
+// and digest under an empty key, and every writer refuses it with
+// errUnopenedStore instead.
+//
+// Appends from separate processes -- every hook invocation is one -- are
+// serialised by an advisory lock on each file they write, taken through a
+// descriptor of the append's own, which is also what orders appends from
+// goroutines sharing one Store. A Store is safe for concurrent use until
+// DeferDurability or LimitLockWaits (TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines,
+// run under -race centrally). Either call gives it mutable state --
+// DeferDurability the file its one full sync has to cover and whether that
+// sync failed, LimitLockWaits the deadline its lock waits share -- which only
+// one goroutine may touch: a Store after either belongs to the one hook
+// invocation that opened it. mu guards DeferDurability's state anyway.
+// Nothing in this program holds it across a second goroutine yet, but a
+// field three places read and write as one unit, left unguarded, is a race
+// waiting for whichever future caller reaches it from two; the lock makes
+// that caller's bug a serialised wait instead of an undefined one (REC-34,
+// Go memory model).
 type Store struct {
 	root      string
 	installID string
 	key       []byte
-}
 
-type installMeta struct {
-	InstallID       string `json:"install_id"`
-	CreatedAtUnixMS int64  `json:"created_at_unix_ms"`
-	SchemaVersion   int    `json:"schema_version"`
+	// Group commit (REC-34); see DeferDurability and Flush. barrier is
+	// barrierSync; a test stands another platform's in for it.
+	barrier func(*os.File) (durable bool, err error)
+
+	mu       sync.Mutex
+	deferred bool
+	dirty    string
+	flushErr error
+
+	// waitUntil is the deadline every lock wait shares, zero for none
+	// (LimitLockWaits).
+	waitUntil time.Time
+
+	// readRefusal says which read errors mean another handle's lock refused
+	// the read; nil is readRefused, the platform's own answer. On unix a held
+	// flock never refuses a read, so this is how a unix test drives the
+	// refusal handling through the readers production calls (test-11).
+	readRefusal func(error) bool
+
+	// lockWaited is how long this Store's appends have waited for their
+	// locks, in all, in nanoseconds (perf-7). Atomic, because it is the one
+	// thing every append writes, and a Store before DeferDurability or
+	// LimitLockWaits is shared between goroutines.
+	lockWaited atomic.Int64
 }
 
 // DefaultRoot resolves the store location.
@@ -85,15 +147,15 @@ func Open(root string) (*Store, error) {
 		return nil, err
 	}
 
-	key, err := loadOrCreateKey(filepath.Join(root, fileInstallKey))
+	key, err := loadOrCreateKey(filepath.Join(root, FileInstallKey))
 	if err != nil {
 		return nil, err
 	}
-	meta, err := loadOrCreateMeta(filepath.Join(root, fileInstallMeta))
+	meta, err := loadOrCreateMeta(filepath.Join(root, FileInstallMeta))
 	if err != nil {
 		return nil, err
 	}
-	return &Store{root: root, installID: meta.InstallID, key: key}, nil
+	return &Store{root: root, installID: meta.InstallID, key: key, barrier: barrierSync}, nil
 }
 
 // ErrNoStore reports that no store has been created at a location. It is a
@@ -115,13 +177,22 @@ func OpenExisting(root string) (*Store, error) {
 	if root == "" {
 		return nil, ErrNoStore
 	}
-	if _, err := os.Stat(filepath.Join(root, fileInstallMeta)); err != nil {
+	if _, err := os.Stat(filepath.Join(root, FileInstallMeta)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrNoStore
 		}
 		return nil, err
 	}
 	return Open(root)
+}
+
+// ReadInstallID reads the install id from root's install.json without
+// opening the store, so it creates nothing: no root, no key, no id. It
+// returns ErrNoStore when there is no install.json, and an error naming the
+// file when it holds no id.
+func ReadInstallID(root string) (string, error) {
+	rec, err := ReadInstallRecord(root)
+	return rec.InstallID, err
 }
 
 // Root is the directory this store occupies.
@@ -133,11 +204,151 @@ func (s *Store) InstallID() string { return s.installID }
 // Key is the per-install HMAC key used to digest tool input. Two installs hold
 // different keys, so the same command digests differently in each, and a store
 // cannot be matched against a dictionary of digests built elsewhere.
-func (s *Store) Key() []byte { return s.key }
+//
+// It returns a copy: a caller that wrote into the Store's own slice would
+// change every digest the Store made after it (lld-8).
+func (s *Store) Key() []byte { return bytes.Clone(s.key) }
+
+// errUnopenedStore is a write to a Store that did not come from Open or
+// OpenExisting. It is not ErrNoStore, which a read command shows the user as
+// "nothing recorded here": this is a bug in the caller, never a state of the
+// disk.
+var errUnopenedStore = errors.New("store: write to a Store that was never opened")
+
+// opened refuses the zero Store before it writes anything (see Store).
+func (s *Store) opened() error {
+	if s.root == "" {
+		return errUnopenedStore
+	}
+	return nil
+}
 
 // RunDir is the directory holding one session's records.
 func (s *Store) RunDir(sessionID string) string {
-	return filepath.Join(s.root, dirRuns, segment(sessionID))
+	return filepath.Join(s.root, DirRuns, segment(sessionID))
+}
+
+// DeferDurability is group commit (REC-34). Every later append on this Store
+// orders its write with a barrier inside its lock instead of syncing it in
+// full, and the one full sync is left to Flush, which the caller issues
+// after its last append, outside the lock and before it writes anything to
+// stdout.
+//
+// It is for a process that appends a few records and exits: hook and post.
+// Durability moves from "when each append returns" to "when the process has
+// flushed", and PreToolUse flushes before it exits, so a declaration is still
+// on stable storage before the tool runs -- when the flush succeeds; when it
+// fails the tool runs anyway and the call is marked flush_failed instead.
+//
+// One case weakens, on darwin only, where a barrier is cheaper than a full
+// sync: a process that ends between its barriers and Flush leaves records
+// ordered on the device but not flushed from its cache. SIGINT, SIGTERM,
+// SIGHUP and SIGQUIT are all caught (hook.WatchSignals) and still reach
+// Flush. Anything else that ends the process first opens the window:
+// SIGKILL; SIGPIPE on a write to a closed stderr; and a Go runtime fatal
+// error, which no recover catches. What it leaves exposed stays exposed after
+// the process is gone: until the device next empties its cache, at the next
+// full sync on that volume by any process (usually the next hook's Flush) or
+// the drive's own write-back, a power failure can lose it. Under 1.1.0 such a declaration was durable when
+// its append returned. Linux and Windows have no such window, because there
+// every barrier is a full sync: each append is durable when it returns, as
+// under 1.1.0, and Flush has nothing left to sync.
+//
+// On darwin the one full sync is the only one a hook issues once its store
+// is open, and off darwin a hook issues none beyond its barriers; a
+// first-ever hook, which creates the store, syncs the install files in full
+// before that. probe, recap and the paused path never call this, and keep a
+// full sync per append.
+//
+// After this call the Store is not for concurrent use.
+func (s *Store) DeferDurability() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deferred = true
+}
+
+// Flush is the group commit's one full sync: it makes every append since
+// DeferDurability durable. It syncs the last file appended to, and that one
+// sync covers the others: on darwin F_FULLFSYNC empties the device's whole
+// cache, persisting everything a barrier already pushed to it (fcntl(2)).
+// With nothing left to sync it does nothing: nothing appended, or every
+// append's barrier itself a full sync, as it always is off darwin and is on
+// darwin when the filesystem refuses the barrier (syncAppend). It takes no
+// lock.
+//
+// A failure is final, whether it was this sync's or a barrier's before it
+// (syncFailed): this Store never reports durability again, and a later Flush
+// returns the same error without syncing. A retried fsync can succeed
+// for pages the kernel dropped when the first one failed, which would turn
+// "possibly lost" into "fine". The caller marks the records instead, with
+// ReasonFlushFailed. A failure also ends the deferral: no later Flush can
+// cover a barrier-ordered append, so every append after it -- that marker
+// first -- is synced in full inside its own lock, as an undeferred one is.
+func (s *Store) Flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.flushErr != nil {
+		return s.flushErr
+	}
+	if s.dirty == "" {
+		return nil
+	}
+	if err := flushFile(s.dirty); err != nil {
+		return s.syncFailedLocked(err)
+	}
+	s.dirty = ""
+	return nil
+}
+
+// syncFailed makes a failed sync of a deferred append final, and is the one
+// place a failure is recorded, whether Flush's full sync failed or a barrier
+// inside an append did. The error is sticky: every later Flush returns it and
+// syncs nothing, because a retried sync can succeed for pages the kernel
+// dropped when the first one failed. And the deferral ends, because no later
+// Flush can cover a barrier-ordered append: every append after this one -- the
+// flush_failed marker first -- is synced in full inside its own lock.
+func (s *Store) syncFailed(err error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.syncFailedLocked(err)
+}
+
+// syncFailedLocked is syncFailed's body, for a caller already holding mu.
+func (s *Store) syncFailedLocked(err error) error {
+	s.flushErr = err
+	s.deferred = false
+	return err
+}
+
+// flushFile syncs path in full. It opens the file for writing as well as
+// reading, because Windows' FlushFileBuffers refuses a read-only handle.
+//
+// A reopen that fails because the run is gone -- forget or eviction removed
+// the whole directory (gaps.go's os.RemoveAll) between the append that left
+// this path dirty and this Flush -- is not a sync failure: there is nothing
+// left anywhere to make durable, and the caller marking a failure would
+// recreate the very directory that was removed (SpillTerminal's MkdirAll).
+// A path whose FILE alone is missing, its run directory still there, is a
+// real failure and falls through to the error below, unchanged.
+func flushFile(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) && runGone(path) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close() //nolint:errcheck // the sync reports the failure that matters
+	return syncFull(f)
+}
+
+// runGone reports whether path's parent directory no longer exists: the
+// difference between "this run was removed" and "this one file within a
+// surviving run is missing", which a bare ENOENT from OpenFile cannot tell
+// apart on its own.
+func runGone(path string) bool {
+	_, err := os.Stat(filepath.Dir(path))
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // AppendDeclaration records what the agent asked to run, allocating its seq.
@@ -193,13 +404,34 @@ func (s *Store) SpillTerminal(rec Terminal) error {
 }
 
 // AppendCoverage records the configuration state as resolved during this run.
+//
+// A hook invocation writes one coverage record, after its other appends, so
+// this is also where the invocation's lock waits are noted (noteLockWait):
+// how long its appends, this one included, waited for their locks.
 func (s *Store) AppendCoverage(rec Coverage) error {
-	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, lockBudget, false)
+	err := s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, lockBudget, false)
+	s.noteLockWait(rec.SessionID)
+	return err
 }
 
-// AppendGap records that records left the store.
+// NewGap is a gap record of reason for a session, recorded at now: the one
+// constructor every gap is built with, so each carries its type and version
+// (naming-10). The caller sets the span, the count and the host digest.
+func NewGap(reason, sessionID string, now time.Time) Gap {
+	return stampGap(Gap{RecordedAtMS: now.UnixMilli(), SessionID: sessionID, Reason: reason})
+}
+
+// stampGap sets what every gap carries whoever built it: its type, and the
+// version of the session records, which a gap is.
+func stampGap(g Gap) Gap {
+	g.Type, g.SchemaVersion = TypeGap, SessionSchemaVersion
+	return g
+}
+
+// AppendGap records that records left the store. It stamps the gap's type
+// and version itself, so a caller cannot write a gap a reader skips.
 func (s *Store) AppendGap(rec Gap) error {
-	return s.appendLine(filepath.Join(s.root, FileGaps), rec, lockBudget, false)
+	return s.appendLine(filepath.Join(s.root, FileGaps), stampGap(rec), lockBudget, false)
 }
 
 // DirName is the run directory name a session id maps to.
@@ -209,12 +441,15 @@ func (s *Store) DirName(sessionID string) string { return segment(sessionID) }
 // rather than a record so that a handler can check it with one stat instead of
 // reading a coverage file that grows with every call.
 func (s *Store) MarkProbe(sessionID string, now time.Time) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
 	dir := s.RunDir(sessionID)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return err
 	}
 	content := []byte(strconv.FormatInt(now.UnixMilli(), 10) + "\n")
-	return writeSmall(filepath.Join(dir, FileProbe), content)
+	return writeSmall(filepath.Join(dir, FileProbe), content, syncFull)
 }
 
 // ProbeFresh reports whether the liveness probe ran for a session.
@@ -238,6 +473,9 @@ const appendFlags = os.O_CREATE | os.O_RDWR | os.O_APPEND
 // appendOrdered appends one record to records.ndjson under the run's lock,
 // allocating its seq inside the same critical section.
 func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
 	dir := s.RunDir(sessionID)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return err
@@ -249,38 +487,138 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockFile(f, lockBudget)
+	unlock, err := s.lockAppend(f, s.lockWait(lockBudget))
 	if err != nil {
 		return err
 	}
 	defer unlock()
-
-	seq, err := nextSeq(dir, f)
-	if err != nil {
-		return err
-	}
-	line, err := marshalLine(build(seq))
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(line); err != nil {
-		return err
-	}
-	return f.Sync()
+	return s.writeOrderedLocked(f, dir, build)
 }
 
-// spillBudget is how long a spill write waits for the spill file's lock. It is
-// short because the spill path exists for a handler that has already waited
-// once; the lock is taken so that forget, which rewrites the spill file under
-// it, is not raced, and given up so that no handler ever blocks on it.
-const spillBudget = 50 * time.Millisecond
+// writeOrderedLocked is an ordered append's critical section: it allocates
+// the seq, writes the record and syncs it, with the caller holding f's lock.
+// It is all the lock is held for, and BenchmarkOrderedAppendHold times
+// exactly this function.
+func (s *Store) writeOrderedLocked(f *os.File, dir string, build func(seq int64) any) error {
+	seq, err := nextSeq(f, dir, s.syncAppend)
+	if err != nil {
+		return err
+	}
+	line, degraded, err := fitLine(build(seq))
+	if err != nil {
+		return err
+	}
+	if err := appendHealed(f, line, true); err != nil {
+		return err
+	}
+	if err := s.syncAppend(f); err != nil {
+		return err
+	}
+	return degraded
+}
+
+// lockAppend takes f's append lock through lockCounted, and adds how long it
+// waited for it to the Store's tally, a wait that gave up included (perf-7).
+func (s *Store) lockAppend(f *os.File, budget time.Duration) (func(), error) {
+	unlock, waited, err := lockCounted(f, budget)
+	s.lockWaited.Add(int64(waited))
+	return unlock, err
+}
+
+// lockCounted takes f's lock, and every lock the store takes goes through
+// it: the appends', forget's and eviction's, the readers', and the lock-wait
+// note's. The fault build counts each as held until it is released, so the
+// sync recorder can say whether a sync ran inside any lock at all (REC-34); a
+// released build compiles the count away. It returns how long lockFileWait
+// waited, which only an append adds to its Store's tally (lockAppend).
+func lockCounted(f *os.File, budget time.Duration) (func(), time.Duration, error) {
+	unlock, waited, err := lockFileWait(f, budget)
+	if err != nil {
+		return nil, waited, err
+	}
+	fault.LockTaken()
+	return func() {
+		unlock()
+		fault.LockReleased()
+	}, waited, nil
+}
+
+// syncAppend is the durability step of every append, taken inside its lock:
+// a full sync, or on a deferred Store a barrier, which leaves the full sync
+// to Flush. A barrier that was itself a full sync -- every barrier off
+// darwin, and darwin's fallback -- leaves nothing to Flush: the full sync
+// that made this append durable made every earlier one on the device durable
+// too, so a deferred hook issues no sync an undeferred one would not.
+//
+// A barrier that fails is a sync that failed, and is final the way a failed
+// Flush is (syncFailed): Flush must not full-sync the same file and report it
+// durable, which on Linux, where the barrier is fsync, would be the very
+// retry it refuses.
+func (s *Store) syncAppend(f *os.File) error {
+	s.mu.Lock()
+	deferred := s.deferred
+	if deferred {
+		s.dirty = f.Name()
+	}
+	s.mu.Unlock()
+	if !deferred {
+		return syncFull(f)
+	}
+	durable, err := s.barrier(f)
+	if err == nil {
+		err = fault.Fail(fault.PointStoreBarrier)
+	}
+	if err != nil {
+		return s.syncFailed(err)
+	}
+	if durable {
+		s.mu.Lock()
+		s.dirty = ""
+		s.mu.Unlock()
+	}
+	return nil
+}
+
+// syncFull is a full sync: F_FULLFSYNC on darwin, fsync elsewhere. Every full
+// sync the store issues goes through it, the darwin barrier's fallback
+// included, so the fault build's recorder sees each one.
+func syncFull(f *os.File) error {
+	return syncAs(f, fault.SyncFull)
+}
+
+// syncFullAsBarrier is syncFull's own full sync, issued where a barrier was
+// wanted instead of after the last append: off darwin, where nothing cheaper
+// than a full sync orders a write at all (sync_other.go), and on darwin when
+// the filesystem refuses F_BARRIERFSYNC (sync_darwin.go's barrierRefused
+// fallback). The kernel call is identical to syncFull's -- it shares the
+// same fault point, PointStoreFullSync, because failing one is failing the
+// other -- but it runs INSIDE the append's lock, which is exactly what
+// SyncFull's name promises never happens. Logging it as SyncBarrierFull
+// instead keeps the recorder honest about where a real full sync ran: off
+// darwin every ordered append pays this cost, not the cheap barrier
+// SyncBarrier's name describes, and REC-34's acceptance test reads the
+// difference rather than being unable to see it.
+func syncFullAsBarrier(f *os.File) error {
+	return syncAs(f, fault.SyncBarrierFull)
+}
+
+func syncAs(f *os.File, kind string) error {
+	fault.RecordSync(kind, f.Name())
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	return fault.Fail(fault.PointStoreFullSync)
+}
 
 // appendLine appends one record to a file that carries no seq, waiting up to
 // budget for its lock. With bestEffort set, a lock timeout is not an error: the
 // record is appended anyway, relying on a single O_APPEND write, which the
 // kernel does not interleave for a regular file.
 func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffort bool) error {
-	line, err := marshalLine(rec)
+	if err := s.opened(); err != nil {
+		return err
+	}
+	line, degraded, err := fitLine(rec)
 	if err != nil {
 		return err
 	}
@@ -294,25 +632,68 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockFile(f, budget)
+	unlock, err := s.lockAppend(f, s.lockWait(budget))
 	switch {
 	case err == nil:
 		defer unlock()
+		// cut is false wherever bestEffort is true: the spill file is the
+		// only one with a lockless writer, and a cut-back there can erase
+		// a record that writer just put down (store.go's bestEffort branch
+		// below, tail.go's appendHealed doc).
+		err = appendHealed(f, line, !bestEffort)
 	case bestEffort && errors.Is(err, ErrLockTimeout):
+		// Without the lock the last byte could change under the read, so
+		// this append does not heal a torn tail by checking it -- but it
+		// still guards against gluing onto one unconditionally, the same
+		// single O_APPEND write a healed append would have made.
+		_, err = f.Write(append([]byte{'\n'}, line...))
 	default:
 		return err
 	}
-
-	if _, err := f.Write(line); err != nil {
+	if err != nil {
 		return err
 	}
-	return f.Sync()
+	if err := s.syncAppend(f); err != nil {
+		return err
+	}
+	return degraded
 }
 
+// fitLine is marshalLine for an append: a call record over MaxRecordBytes is
+// marshalled once more with its capped fields withheld (degrader), and only
+// one still over the limit is refused (lld-3). degraded is ErrRecordDegraded
+// when the line is the second marshal, nil otherwise; the append returns it
+// once the line is written, so the caller learns the record landed with less
+// than the call held.
+func fitLine(rec any) (line []byte, degraded, err error) {
+	line, err = marshalLine(rec)
+	if !errors.Is(err, ErrRecordOversize) {
+		return line, nil, err
+	}
+	d, ok := rec.(degrader)
+	if !ok {
+		return nil, nil, err
+	}
+	smaller, withheld := d.degraded()
+	if !withheld {
+		return nil, nil, err
+	}
+	line, err = marshalLine(smaller)
+	if err != nil {
+		return nil, nil, err
+	}
+	return line, ErrRecordDegraded, nil
+}
+
+// marshalLine is rec as one NDJSON line, or ErrRecordOversize when that line
+// would be over MaxRecordBytes (limits.go).
 func marshalLine(rec any) ([]byte, error) {
 	line, err := json.Marshal(rec)
 	if err != nil {
 		return nil, err
+	}
+	if len(line)+1 > MaxRecordBytes {
+		return nil, ErrRecordOversize
 	}
 	// encoding/json escapes control characters, so a newline cannot appear
 	// inside a marshalled record and NDJSON framing cannot be broken by input.
@@ -324,60 +705,38 @@ func marshalLine(rec any) ([]byte, error) {
 	return append(line, '\n'), nil
 }
 
-// nextSeq allocates the next sequence number for a run. It must be called with
-// the run's records lock held. f is the already-open, locked records file.
+// nextSeq allocates the next sequence number for a run. It must be called
+// with f, the run's already-open records handle, and with that handle's lock
+// held; sync is that append's own sync.
 //
-// The counter is advanced and synced before the record that uses it is
-// written. A crash between the two skips a number, which is visible and
-// harmless; the other order could hand the same number to two records, which
-// is neither.
-func nextSeq(dir string, f *os.File) (int64, error) {
+// The counter is advanced and ordered before the record that uses it is
+// written: synced in full, or, on a deferred Store, put behind a barrier, so
+// it reaches stable storage no later than the record does. A crash between
+// the two skips a number, which is visible and harmless; the other order
+// could hand the same number to two records, which is neither.
+func nextSeq(f *os.File, dir string, sync func(*os.File) error) (int64, error) {
 	path := filepath.Join(dir, FileSeq)
 
 	last, err := readSeq(path)
 	if err != nil {
 		// Missing or unreadable: the records themselves are the authority.
-		// Must use the caller's already-open handle rather than opening a new
-		// one: on Windows, LockFileEx holds a mandatory lock that prevents any
-		// other handle — including one opened by the same process — from reading
-		// the locked range.
-		last, err = maxSeqFromFile(f)
+		// That read is through f, the handle whose lock this call already
+		// holds, not a second os.Open of the same path: on Windows a
+		// LockFileEx lock refuses a read through any other handle, including
+		// one opened by the lock's own holder (doc.go's "under the lock that
+		// writer holds" names f, not the path).
+		last, err = maxSeq(f)
 		if err != nil {
 			return 0, err
 		}
 	}
 
 	next := last + 1
-	if err := writeSmall(path, []byte(strconv.FormatInt(next, 10)+"\n")); err != nil {
+	if err := writeSmall(path, []byte(strconv.FormatInt(next, 10)+"\n"), sync); err != nil {
 		return 0, err
 	}
+	fault.Inject(fault.PointStoreSeqAdvanced)
 	return next, nil
-}
-
-// maxSeqFromFile scans an already-open records file for the highest seq,
-// seeking to the start first and leaving the position at the end.
-// It is used by nextSeq when the seq counter file is absent, and must go
-// through the caller's locked handle rather than a fresh os.Open.
-func maxSeqFromFile(f *os.File) (int64, error) {
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return 0, err
-	}
-	var max int64
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
-	for sc.Scan() {
-		line := sc.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var probe struct {
-			Seq int64 `json:"seq"`
-		}
-		if json.Unmarshal(line, &probe) == nil && probe.Seq > max {
-			max = probe.Seq
-		}
-	}
-	return max, sc.Err()
 }
 
 func readSeq(path string) (int64, error) {
@@ -388,9 +747,19 @@ func readSeq(path string) (int64, error) {
 	return strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
 }
 
-func maxSeq(recordsPath string) (int64, error) {
+// maxSeq reads the highest seq already in f, seeking to its start first. f is
+// the caller's own locked records handle (nextSeq): reading through it, with
+// no seek back afterwards, is safe on both platforms a writer runs on. Every
+// write that follows goes through appendHealed's f.Write, and f was opened
+// with appendFlags (O_APPEND), so unix's kernel and Windows's
+// FILE_APPEND_DATA-only access both place that write at the file's true end
+// regardless of the seek this leaves behind, not wherever this read stopped.
+func maxSeq(f *os.File) (int64, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return 0, err
+	}
 	var max int64
-	err := eachLine(recordsPath, func(line []byte) {
+	err := scanLines(f, func(line []byte) {
 		var probe struct {
 			Seq int64 `json:"seq"`
 		}
@@ -401,19 +770,19 @@ func maxSeq(recordsPath string) (int64, error) {
 	return max, err
 }
 
-// writeSmall replaces a small file's content and syncs it. It is for the seq
-// counter and the probe marker, both written under conditions where a torn
-// write is recoverable from other state.
-func writeSmall(path string, content []byte) error {
+// writeSmall replaces a small file's content and syncs it with sync. It is
+// for the seq counter and the probe marker, both written under conditions
+// where a torn write is recoverable from other state.
+func writeSmall(path string, content []byte, sync func(*os.File) error) error {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fileMode)
 	if err != nil {
 		return err
 	}
-	defer f.Close() //nolint:errcheck // Sync below reports the write failure
+	defer f.Close() //nolint:errcheck // sync below reports the write failure
 	if _, err := f.Write(content); err != nil {
 		return err
 	}
-	return f.Sync()
+	return sync(f)
 }
 
 // segment turns a session id into one path element that cannot escape the store.
@@ -426,12 +795,30 @@ func segment(id string) string {
 	if isPlainSegment(id) {
 		return id
 	}
+	return digestID(id)
+}
+
+// digestID is a stable substitute for a value this program must not use
+// verbatim: "x-" and the first 16 bytes of its SHA-256, hex-encoded. segment
+// uses it for an id unsafe as a path element; CapID uses it for a
+// tool_use_id over MaxIDBytes, so an over-cap call still pairs its
+// declaration, execution and terminal on one key instead of colliding
+// every over-cap call through "".
+func digestID(id string) string {
 	sum := sha256.Sum256([]byte(id))
 	return "x-" + hex.EncodeToString(sum[:16])
 }
 
+// maxPlainSegment is the longest session id used verbatim as a run directory
+// name; a longer one is digested like any other unsafe id. A Claude Code
+// session id is a 36-character UUID, so a real one is never digested. 128
+// keeps the name at half of NAME_MAX (255 on Linux and darwin), and keeps a
+// run's longest path -- the root, \runs\, the name and \records.ndjson --
+// inside Windows' 260-character MAX_PATH for any root up to 110 characters.
+const maxPlainSegment = 128
+
 func isPlainSegment(id string) bool {
-	if id == "" || id == "." || id == ".." || len(id) > 128 {
+	if id == "" || id == "." || id == ".." || len(id) > maxPlainSegment {
 		return false
 	}
 	return strings.IndexFunc(id, func(r rune) bool {
@@ -490,8 +877,8 @@ func loadOrCreateKey(path string) ([]byte, error) {
 	return key, nil
 }
 
-func loadOrCreateMeta(path string) (installMeta, error) {
-	var meta installMeta
+func loadOrCreateMeta(path string) (InstallRecord, error) {
+	var meta InstallRecord
 	for attempt := 0; ; attempt++ {
 		b, err := os.ReadFile(path)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -513,7 +900,7 @@ func loadOrCreateMeta(path string) (installMeta, error) {
 	if _, err := rand.Read(raw); err != nil {
 		return meta, err
 	}
-	meta = installMeta{
+	meta = InstallRecord{
 		InstallID:       hex.EncodeToString(raw),
 		CreatedAtUnixMS: time.Now().UnixMilli(),
 		SchemaVersion:   SchemaVersion,
@@ -557,7 +944,7 @@ func createExclusive(path string, content []byte) error {
 		tmp.Close() //nolint:errcheck // the write error is what matters
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := syncFull(tmp); err != nil {
 		tmp.Close() //nolint:errcheck // the sync error is what matters
 		return err
 	}
@@ -579,19 +966,5 @@ func createExclusive(path string, content []byte) error {
 	if _, err := f.Write(content); err != nil {
 		return err
 	}
-	return f.Sync()
-}
-
-// DefaultCapBytes bounds the store before eviction starts removing the oldest
-// runs. RASHOMON_STORE_CAP_BYTES overrides it; zero disables eviction.
-const DefaultCapBytes = 512 << 20
-
-// CapBytes resolves the store size cap.
-func CapBytes() int64 {
-	if v := os.Getenv("RASHOMON_STORE_CAP_BYTES"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-			return n
-		}
-	}
-	return DefaultCapBytes
+	return syncFull(f)
 }

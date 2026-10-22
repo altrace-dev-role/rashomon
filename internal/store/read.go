@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -10,10 +9,6 @@ import (
 	"sort"
 	"time"
 )
-
-// maxLine bounds a single record on read. Records are small by construction;
-// the bound is what stops a corrupted file from being read as one giant line.
-const maxLine = 16 << 20
 
 // Run is everything recorded for one session.
 type Run struct {
@@ -28,6 +23,11 @@ type Run struct {
 	// carried a schema version this reader does not understand. They are
 	// counted rather than failed on so that one bad line cannot hide a run.
 	Skipped int
+	// Ignored counts records of a kind or version this reader does not
+	// accept that say `"critical": false`: a record an older reader may pass
+	// over without the session losing anything it reads (1.2.2). They are
+	// not unreadable, and nothing marks the session for them.
+	Ignored int
 }
 
 // SessionID is the session id the run's records carry, or the directory name
@@ -47,7 +47,7 @@ func (r *Run) SessionID() string {
 
 // Runs lists run directory names, oldest first by modification time.
 func (s *Store) Runs() ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(s.root, dirRuns))
+	entries, err := os.ReadDir(filepath.Join(s.root, DirRuns))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -84,76 +84,197 @@ func (s *Store) ReadRun(sessionID string) (*Run, error) {
 	return s.ReadRunDir(segment(sessionID))
 }
 
-// ReadRunDir reads one session's records by run directory name.
+// ReadRunDir reads one session's records by run directory name. Any read
+// error fails it: the end probe and eviction count what it returns, and a
+// file they could not read must not count as one that held nothing.
 func (s *Store) ReadRunDir(name string) (*Run, error) {
-	dir := filepath.Join(s.root, dirRuns, name)
-	run := &Run{Dir: name}
+	return s.readRunDir(name, neverRefused)
+}
 
-	classify := func(line []byte) {
-		var head struct {
-			Type          string `json:"type"`
-			SchemaVersion int    `json:"schema_version"`
-		}
-		// Accepts, not equality against SchemaVersion: a store written before
-		// the v2 fields existed is still readable, and equality here would have
-		// silently skipped every record already on disk the moment the writer
-		// moved on.
-		if json.Unmarshal(line, &head) != nil || !Accepts(head.SchemaVersion) {
-			run.Skipped++
-			return
-		}
-		switch head.Type {
-		case TypeDeclaration:
-			var rec Declaration
-			if json.Unmarshal(line, &rec) != nil {
-				run.Skipped++
-				return
-			}
-			run.Declarations = append(run.Declarations, rec)
-		case TypeExecution:
-			var rec Execution
-			if json.Unmarshal(line, &rec) != nil {
-				run.Skipped++
-				return
-			}
-			run.Executions = append(run.Executions, rec)
-		case TypeTerminal:
-			var rec Terminal
-			if json.Unmarshal(line, &rec) != nil {
-				run.Skipped++
-				return
-			}
-			run.Terminals = append(run.Terminals, rec)
-		case TypeCoverage:
-			var rec Coverage
-			if json.Unmarshal(line, &rec) != nil {
-				run.Skipped++
-				return
-			}
-			run.Coverage = append(run.Coverage, rec)
-		default:
-			run.Skipped++
-		}
-	}
+// ReadRunDirForReport is ReadRunDir for report, which reads every run while
+// hooks may be appending to it. Where locks are mandatory (Windows), a hook
+// holding a run's records lock refuses the read, and that refusal failed the
+// whole report; here it counts as one line that could not be read, so the
+// session reads unverified instead (test-11), as a digest's read does.
+func (s *Store) ReadRunDirForReport(name string) (*Run, error) {
+	return s.readRunDir(name, s.refusal())
+}
 
-	for _, name := range []string{FileRecords, FileSpill, FileCoverage} {
-		if err := eachLine(filepath.Join(dir, name), classify); err != nil {
+// readRunDir reads one run's three files unlocked; refused says which read
+// errors count as one skipped line rather than failing the read.
+func (s *Store) readRunDir(name string, refused func(error) bool) (*Run, error) {
+	dir := filepath.Join(s.root, DirRuns, name)
+	run := presizeRun(dir, name)
+	fn := func(line []byte) { classifyRunLine(run, line) }
+
+	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
+		if err := refusedAsSkipped(eachLine(filepath.Join(dir, fname), fn), refused, fn); err != nil {
 			return nil, err
 		}
 	}
 	return run, nil
 }
 
-// ReadGaps reads every gap record in the store.
-func (s *Store) ReadGaps() ([]Gap, error) {
-	var gaps []Gap
-	err := eachLine(filepath.Join(s.root, FileGaps), func(line []byte) {
-		var g Gap
-		if json.Unmarshal(line, &g) == nil && g.Type == TypeGap {
-			gaps = append(gaps, g)
+// ReadRunConsistent reads one session's records the same way ReadRunDir does,
+// except each file is read under a short, best-effort lock against the same
+// flock a writer takes in appendOrdered/appendLine.
+//
+// ReadRunDir takes no lock at all, which suits its callers (the package doc
+// names them): each reads a run after the fact, or accepts a line caught
+// mid-write as one counted in Skipped. A turn digest is read at Stop, while a
+// backgrounded tool call or a concurrent subagent can still be appending to
+// this exact run directory, and a reader with no lock can observe a line
+// while its write is in flight.
+//
+// budget is deliberately NOT lockBudget (2s): that number bounds how long a
+// WRITER may starve a hook's own record, and a reader borrowing it could stall
+// for two seconds on every call, which is the opposite of a command with a
+// 50ms ceiling. It is one deadline for the whole read, not a wait per file:
+// each file waits for the time left, and a file with none left tries its
+// lock once, so three held files cost what one does and a single held file
+// may take all of it (perf-1). It should wait out one writer's hold, which
+// BenchmarkOrderedAppendHold measures (lockbudget.go); digest's
+// readLockBudget is derived from it. A lock this reader cannot get within
+// budget is not fatal -- the read proceeds without it, exactly as ReadRunDir
+// always has, and a line actually caught mid-write still lands in Skipped
+// rather than being counted as something it is not.
+func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run, error) {
+	name := segment(sessionID)
+	dir := filepath.Join(s.root, DirRuns, name)
+	run := presizeRun(dir, name)
+	deadline := time.Now().Add(budget)
+
+	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
+		left := max(0, time.Until(deadline))
+		err := eachLineTryLock(filepath.Join(dir, fname), left, s.refusal(), func(line []byte) { classifyRunLine(run, line) })
+		if err != nil {
+			return nil, err
 		}
-	})
-	return gaps, err
+	}
+	return run, nil
+}
+
+// classifyRunLine parses one NDJSON line into the run it belongs to. Shared by
+// ReadRunDir and ReadRunConsistent so the two read paths cannot drift on what
+// a record type or an unrecognised schema version means.
+//
+// The pair (type, schema_version) decides, through AcceptsKind: an accepted
+// pair is read. Any other is passed over, and the record's own critical key
+// says how (1.2.2): `"critical": false` counts it in Ignored, and true, or no
+// key at all, in Skipped, which the report reads as records_unreadable. A
+// record written before the bit existed carries no key, so it is the
+// must-understand case, which is what every reader before this one did with
+// a record it could not read.
+func classifyRunLine(run *Run, line []byte) {
+	var head struct {
+		Type          string `json:"type"`
+		SchemaVersion int    `json:"schema_version"`
+		Critical      *bool  `json:"critical"`
+	}
+	// AcceptsKind, not equality against a version: a store written before
+	// the v2 fields existed is still readable, and equality here would have
+	// silently skipped every record already on disk the moment the writer
+	// moved on.
+	if json.Unmarshal(line, &head) != nil {
+		run.Skipped++
+		return
+	}
+	if !AcceptsKind(head.Type, head.SchemaVersion) {
+		if head.Critical != nil && !*head.Critical {
+			run.Ignored++
+		} else {
+			run.Skipped++
+		}
+		return
+	}
+	var err error
+	switch head.Type {
+	case TypeDeclaration:
+		var rec Declaration
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.Declarations = append(run.Declarations, rec)
+		}
+	case TypeExecution:
+		var rec Execution
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.Executions = append(run.Executions, rec)
+		}
+	case TypeTerminal:
+		var rec Terminal
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.Terminals = append(run.Terminals, rec)
+		}
+	case TypeCoverage:
+		var rec Coverage
+		if err = json.Unmarshal(line, &rec); err == nil {
+			run.Coverage = append(run.Coverage, rec)
+		}
+	default:
+		// A kind introduced at 1.2.0, at its version. Its readers land
+		// with its writers; until then the record is checked to be the
+		// header every such kind starts with, and passed over without
+		// marking the session, as an older reader passes over it.
+		var rec EventHeader
+		err = json.Unmarshal(line, &rec)
+	}
+	if err != nil {
+		run.Skipped++
+	}
+}
+
+// ReadGaps reads every gap record in the store, and counts the lines it
+// could not read as one: damaged, too long, or not a gap.
+//
+// The count is the gaps' Run.Skipped, and a reader must not drop it. A gap
+// line that does not parse cannot be attributed to a session -- its session
+// id is part of what failed to read -- so a reader marks every session
+// unverified when it is not zero (REC-33). Dropping the line silently, as
+// this did, let the one record saying "records were removed here" vanish,
+// and the session it described read verified.
+//
+// The file is read unlocked. Where locks are mandatory (Windows), a forget
+// or an eviction holding the gaps lock refuses that read, and the refusal
+// counts as one line that could not be read, so every session reads
+// unverified rather than digest.Build failing outright (test-11).
+func (s *Store) ReadGaps() (gaps []Gap, skipped int, err error) {
+	return readGapsAt(filepath.Join(s.root, FileGaps), s.refusal())
+}
+
+// refusal is the predicate this store's readers count a refused read by:
+// readRefused, unless a test set Store.readRefusal.
+func (s *Store) refusal() func(error) bool {
+	if s.readRefusal != nil {
+		return s.readRefusal
+	}
+	return readRefused
+}
+
+// neverRefused is the refusal predicate of a read that must fail rather than
+// count a refused read as a skipped line (ForgottenHost).
+func neverRefused(error) bool { return false }
+
+// readGapsAt is ReadGaps on one path. refused says which read errors mean
+// another handle holds the file's lock; a read failing that way reaches the
+// line callback as one nil line, which counts as skipped.
+func readGapsAt(path string, refused func(error) bool) (gaps []Gap, skipped int, err error) {
+	fn := gapLines(&gaps, &skipped)
+	err = refusedAsSkipped(eachLine(path, fn), refused, fn)
+	return gaps, skipped, err
+}
+
+// gapLines is the line callback of a gaps read: a gap record at a version
+// this reader accepts joins gaps, and any other line, a nil one included,
+// counts in skipped. A gap carries no critical key: every gap is one a
+// reader must understand.
+func gapLines(gaps *[]Gap, skipped *int) func(line []byte) {
+	return func(line []byte) {
+		var g Gap
+		if json.Unmarshal(line, &g) != nil || g.Type != TypeGap || !AcceptsKind(TypeGap, g.SchemaVersion) {
+			*skipped++
+			return
+		}
+		*gaps = append(*gaps, g)
+	}
 }
 
 // eachLine calls fn for every non-empty line of an NDJSON file. A missing file
@@ -167,26 +288,81 @@ func eachLine(path string, fn func(line []byte)) error {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // read-only
+	return scanLines(f, fn)
+}
 
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
-	for sc.Scan() {
-		line := sc.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		// The scanner reuses its buffer; hand fn a copy it may keep.
-		fn(append([]byte(nil), line...))
+// eachLineTryLock is eachLine under a short, best-effort exclusive lock against
+// the same flock a writer takes -- see ReadRunConsistent's doc for why a
+// digest needs this, and ForgottenHost's for why report's read of the
+// forgotten hosts does. report's reads of the runs themselves never have.
+//
+// It takes the lock itself, and tries rather than requires it: the name says
+// so, because by the Go convention a name ending in Locked is a function
+// that expects its caller to hold the lock already (naming-8).
+//
+// A lock this reader could not get within budget is not treated as a reason
+// to fail: the scan below then runs exactly as eachLine's always has, and a
+// line actually caught mid-write still lands in Skipped rather than being
+// silently mis-read as something it is not. Where the writer's lock is
+// mandatory (Windows), that unlocked scan is itself refused; the refusal
+// reaches fn as one nil line, which every caller counts as a line it could
+// not read, so the run reads as incomplete rather than the read failing
+// (test-11). A read error after the lock was taken is not a refusal by it,
+// and is returned.
+func eachLineTryLock(path string, budget time.Duration, refused func(error) bool, fn func(line []byte)) error {
+	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
 	}
-	return sc.Err()
+	if err != nil {
+		return err
+	}
+	defer f.Close() //nolint:errcheck // read-only
+
+	// A read's wait is bounded by its own budget and costs only its own
+	// command; the tally noted per run is of hook invocations' (perf-7).
+	unlock, _, lerr := lockCounted(f, budget)
+	if lerr == nil {
+		defer unlock()
+	}
+	err = scanLines(f, fn)
+	if lerr != nil {
+		return refusedAsSkipped(err, refused, fn)
+	}
+	return err
+}
+
+// refusedAsSkipped turns a read that another handle's lock refused into one
+// nil line passed to fn, which every caller counts as a line it could not
+// read, and returns any other error as it is. refused is the store's
+// refusal predicate (Store.refusal), readRefused in production; a parameter
+// so the handling can be driven on a platform whose locks never refuse a
+// read.
+func refusedAsSkipped(err error, refused func(error) bool, fn func(line []byte)) error {
+	if err != nil && refused(err) {
+		fn(nil)
+		return nil
+	}
+	return err
+}
+
+// scanLines is the NDJSON scan itself, shared by eachLine and eachLineTryLock
+// so the two differ only in whether a lock was taken first. A line too long
+// to read reaches fn as nil (forEachLine), which every caller counts as a
+// line that does not parse.
+func scanLines(f *os.File, fn func(line []byte)) error {
+	return forEachLine(f, fn)
 }
 
 // Unterminated returns the tool_use_ids of declarations that no terminal
 // record closes: the signature of a handler that was killed between the two.
+// A flush_failed marker closes nothing (Terminal.FlushFailed).
 func (r *Run) Unterminated() []string {
 	closed := map[string]bool{}
 	for _, t := range r.Terminals {
-		closed[t.ToolUseID] = true
+		if !t.FlushFailed() {
+			closed[t.ToolUseID] = true
+		}
 	}
 	var ids []string
 	for _, d := range r.Declarations {
@@ -217,7 +393,8 @@ func (r *Run) Unexecuted() []string {
 
 // Dropped returns the tool_use_ids of terminals that close no declaration: a
 // declaration that could not be written, whose terminal carried its id to the
-// spill file so the drop is visible under its name.
+// spill file so the drop is visible under its name. A flush_failed marker is
+// not such a terminal (Terminal.FlushFailed).
 func (r *Run) Dropped() []string {
 	declared := map[string]bool{}
 	for _, d := range r.Declarations {
@@ -225,7 +402,42 @@ func (r *Run) Dropped() []string {
 	}
 	var ids []string
 	for _, t := range r.Terminals {
-		if !declared[t.ToolUseID] {
+		if !declared[t.ToolUseID] && !t.FlushFailed() {
+			ids = append(ids, t.ToolUseID)
+		}
+	}
+	return ids
+}
+
+// NotDurable returns the tool_use_ids flush_failed markers name, each once,
+// in the order the markers were read: calls whose records a hook or post
+// appended and then could not make durable (REC-34 (c)). A marker naming no
+// call names nothing here; the report still marks its session.
+//
+// Nor does one naming a call with no record of any kind. A marker's own
+// write is the LAST thing a failing invocation does: the record it speaks
+// for -- Handler's declaration, or Post's execution, per the marker's Phase
+// -- is appended earlier in the same process, through the same ordered-append
+// path (appendOrdered). When that append's own barrier is what fails -- the
+// shared seq counter's, ahead of the record's own write -- the record is
+// never written at all, and flushOrMark still fires on the sticky failure
+// Flush now returns. Listing that id here would call a declaration or
+// execution possibly not durable when there never was one to lose. Dropped
+// excludes a flush_failed marker for the complementary reason, so the two
+// lists never both name the same call.
+func (r *Run) NotDurable() []string {
+	hasRecord := map[string]bool{}
+	for _, d := range r.Declarations {
+		hasRecord[d.ToolUseID] = true
+	}
+	for _, x := range r.Executions {
+		hasRecord[x.ToolUseID] = true
+	}
+	seen := map[string]bool{}
+	var ids []string
+	for _, t := range r.Terminals {
+		if t.FlushFailed() && t.ToolUseID != "" && hasRecord[t.ToolUseID] && !seen[t.ToolUseID] {
+			seen[t.ToolUseID] = true
 			ids = append(ids, t.ToolUseID)
 		}
 	}
@@ -240,14 +452,19 @@ func (r *Run) Dropped() []string {
 // runs: two overlapping sessions would otherwise be ordered by which started
 // first rather than which just finished.
 //
-// It exists for `rashomon run`, which has to report on the session its child
-// just produced and never learns that session's id -- the id is Claude Code's,
-// the hooks record it, and this side of the process only knows that whatever
-// ran last is what finished.
-func (s *Store) NewestRun() (string, error) {
+// It exists for callers that act without ever being told Claude Code's
+// session id -- `recap pending`'s check at the start of a new prompt, and
+// `digest`'s fallback when none was passed -- each of which only knows that
+// whatever ran last is what finished.
+//
+// The modification time is returned with the name because "whatever ran last"
+// is only the right answer when something ran at all. A caller that launched a
+// child has to be able to tell a session that child produced from one that was
+// already in the store, and the name alone cannot say.
+func (s *Store) NewestRun() (string, time.Time, error) {
 	names, err := s.Runs()
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	var newest string
 	var newestAt time.Time
@@ -255,7 +472,7 @@ func (s *Store) NewestRun() (string, error) {
 		// The records file rather than the directory: a directory's mtime moves
 		// when a child is created, which happens once, while the records file
 		// is appended to for the life of the session.
-		info, err := os.Stat(filepath.Join(s.root, dirRuns, name, FileRecords))
+		info, err := os.Stat(filepath.Join(s.root, DirRuns, name, FileRecords))
 		if err != nil {
 			continue
 		}
@@ -263,5 +480,5 @@ func (s *Store) NewestRun() (string, error) {
 			newest, newestAt = name, info.ModTime()
 		}
 	}
-	return newest, nil
+	return newest, newestAt, nil
 }

@@ -18,6 +18,16 @@ coverage.html
 .idea/
 .vscode/
 
+# plugin/bin/ holds the plugin's launcher, plugin/bin/rashomon, which is
+# source, and the per-platform recorders scripts/build-plugin.sh writes beside
+# it, which are build artefacts at eleven megabytes each. The directory is
+# re-included so the launcher is tracked, and the recorders are excluded by
+# name -- the negation alone re-included them too, so a built recorder showed
+# up as committable.
+!/plugin/bin/
+!/plugin/bin/.gitkeep
+/plugin/bin/rashomon-*
+
 # .claude/ itself is NOT ignored: this repository tracks its own project
 # settings and skills. Only the per-machine file is ignored.
 .claude/settings.local.json

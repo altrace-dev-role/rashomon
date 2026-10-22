@@ -1,0 +1,95 @@
+package store
+
+// EventSchemaVersion is the version every record kind introduced at 1.2.0 is
+// written at: session, prompt, turn_end, turn_cost, human, subagent, batch,
+// task, compact, instructions and model (RECORD), the verify checkpoint
+// (VERIFY), outcome_join and write_observed (BREADTH). Technical spec 1.2.2;
+// Archive 10.2.1. The kinds, the per-kind versions and the acceptance rule
+// are frozen here; each kind's writer lands with its own change.
+const EventSchemaVersion = 5
+
+// CallSchemaVersion is the version the call records (declaration, execution,
+// terminal) are written at, now that they carry the v5 keys (record_v5.go).
+// SchemaVersion is the same number under the name the writers use.
+const CallSchemaVersion = 5
+
+// The record kinds introduced at 1.2.0. There is no steer kind (ED-1):
+// STEER's lines live in their own side file, runs/<dir>/steer.ndjson.
+const (
+	TypeSession       = "session"
+	TypePrompt        = "prompt"
+	TypeTurnEnd       = "turn_end"
+	TypeTurnCost      = "turn_cost"
+	TypeHuman         = "human"
+	TypeSubagent      = "subagent"
+	TypeBatch         = "batch"
+	TypeTask          = "task"
+	TypeCompact       = "compact"
+	TypeInstructions  = "instructions"
+	TypeModel         = "model"
+	TypeVerify        = "verify"
+	TypeOutcomeJoin   = "outcome_join"
+	TypeWriteObserved = "write_observed"
+)
+
+// kindVersion is the version each writer stamps on its kind (REC-1): call
+// kinds at 5, coverage and gaps unchanged at 3, every new kind at 5. It is
+// unexported so that only KindVersion can read it: an importer that could
+// write into an exported map could change what AcceptsKind accepts.
+var kindVersion = map[string]int{
+	TypeDeclaration:   CallSchemaVersion,
+	TypeExecution:     CallSchemaVersion,
+	TypeTerminal:      CallSchemaVersion,
+	TypeCoverage:      SessionSchemaVersion,
+	TypeGap:           SessionSchemaVersion,
+	TypeSession:       EventSchemaVersion,
+	TypePrompt:        EventSchemaVersion,
+	TypeTurnEnd:       EventSchemaVersion,
+	TypeTurnCost:      EventSchemaVersion,
+	TypeHuman:         EventSchemaVersion,
+	TypeSubagent:      EventSchemaVersion,
+	TypeBatch:         EventSchemaVersion,
+	TypeTask:          EventSchemaVersion,
+	TypeCompact:       EventSchemaVersion,
+	TypeInstructions:  EventSchemaVersion,
+	TypeModel:         EventSchemaVersion,
+	TypeVerify:        EventSchemaVersion,
+	TypeOutcomeJoin:   EventSchemaVersion,
+	TypeWriteObserved: EventSchemaVersion,
+}
+
+// KindVersion returns the version a writer stamps on kind, and whether kind
+// is in the table at all.
+func KindVersion(kind string) (int, bool) {
+	v, ok := kindVersion[kind]
+	return v, ok
+}
+
+// AcceptsKind reports whether this reader parses a record of this kind at
+// this version. It replaced Accepts, which knew only the call records'
+// versions and so could not tell a coverage record at 4 from a declaration
+// at 4.
+//
+// It is a rule over (kind, version) pairs rather than an equality against
+// the version a writer stamps, because the two are different questions and
+// conflating them is a silent data-loss bug: the reader once compared
+// `!= SchemaVersion`, so the moment the writer moved to v2 every v1 record
+// on disk would have been skipped, and a store that had recorded for weeks
+// would have rendered an empty report with nothing saying why.
+//
+// Call kinds are accepted from 1 to 5, so a store that recorded before the
+// upgrade still reads whole. Coverage and gaps are accepted from 1 to 3,
+// their own history. A new kind is accepted at 5 only: it has no older
+// version to read. An unknown kind is never accepted here; whether it is
+// ignored or unverifies the session is the reader's decision from the
+// record's `critical` key (1.2.2, classifyRunLine), not this function's.
+func AcceptsKind(kind string, version int) bool {
+	switch kind {
+	case TypeDeclaration, TypeExecution, TypeTerminal:
+		return version >= 1 && version <= CallSchemaVersion
+	case TypeCoverage, TypeGap:
+		return version >= 1 && version <= SessionSchemaVersion
+	}
+	v, known := kindVersion[kind]
+	return known && version == v
+}

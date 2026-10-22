@@ -255,6 +255,10 @@ func TestSSHDestinations(t *testing.T) {
 		{name: "bare host colon, no user", cmd: "scp host.example.com:/etc/f .", wantSSH: []string{"host.example.com"}},
 		{name: "ssh config alias", cmd: "ssh myserver", wantSSH: []string{"myserver"},
 			why: "recorded as named and never resolved: resolving would mean reading ~/.ssh/config"},
+		{name: "numeric ssh config alias", cmd: "ssh 1234", wantSSH: []string{"1234"},
+			why: "host.Canonical's inet_aton fold would read this as 0.0.4.210; it is an alias, never resolved"},
+		{name: "ssh config alias of 0", cmd: "ssh 0", wantSSH: []string{"0"},
+			why: "host.Canonical folds \"0\" to 0.0.0.0, which Loopback then reads as this machine"},
 
 		// What must NOT be recorded.
 		{name: "remote command is not a host", cmd: "ssh h.example.com ls /etc", wantSSH: []string{"h.example.com"},
@@ -429,6 +433,65 @@ func TestSSHDestinationsAcrossLines(t *testing.T) {
 	}
 }
 
+// TestSSHCommandHosts_LineBudgetIsTheRemainder: sshCommandHosts's shared
+// budget across lines only decides whether the NEXT line gets read at all;
+// each line, once started, is lexed by sshLineHosts up to the full maxTokens
+// regardless of how little budget is actually left, so a line near the end
+// of a multi-line command can still cost a full line's worth of tokenizing
+// with almost nothing left to spend.
+//
+// The filler line alone already costs close to maxTokens tokens' worth of
+// allocation -- that is legitimate, budgeted work, not the bug -- so the
+// assertion is on the DELTA a trailing 6 MB line adds on top of it with
+// only 2 tokens of budget left, not on the total.
+func TestSSHCommandHosts_LineBudgetIsTheRemainder(t *testing.T) {
+	// One short word per token, enough of them to leave the shared budget at
+	// 2 tokens (sshLineHosts counts "x" and the line's own single word as
+	// one token each here, well under sshDestPrograms so no host is found,
+	// which is irrelevant to this test -- only the token cost matters).
+	filler := strings.Repeat("x ", maxTokens-2)
+	text := filler + "\n" + strings.Repeat("ssh a;", 1<<20)
+	fillerOnly := allocated(func() { sshCommandHosts(filler) })
+	withTrailer := allocated(func() { sshCommandHosts(text) })
+	// Without the fix, the trailing line is lexed to the full maxTokens
+	// regardless of the 2 tokens of budget left, which costs about as much
+	// again as the filler line itself -- roughly doubling the total, the "2x
+	// the bound" the trailing line's own lexer has no notion of sharing.
+	// 256 KiB is generous for the 2 tokens the remaining budget allows.
+	if delta := int64(withTrailer) - int64(fillerOnly); delta > 256<<10 {
+		t.Errorf("a trailing 6 MB line with 2 tokens of budget left added %d KiB on top of the "+
+			"filler line's own %d KiB; want at most 256 KiB, not a full line's worth of lexing",
+			delta>>10, fillerOnly>>10)
+	}
+}
+
+// TestSSHCommandHosts_BlankRemainderIsNotACut: once the budget is spent, a
+// remainder that is pure whitespace -- trailing newlines, a stray blank
+// line -- names nothing and could not have held a host no matter how much
+// budget were left, so it must not report a cut. sshCommandHosts was
+// checking rest != "" rather than whether rest held anything but
+// whitespace, so a command that happened to end in a blank line after
+// exhausting the budget on its real content reported cut=true for content
+// that was never actually missed.
+func TestSSHCommandHosts_BlankRemainderIsNotACut(t *testing.T) {
+	filler := strings.Repeat("x ", maxTokens)
+	_, cut := sshCommandHosts(filler + "\n   ")
+	if cut {
+		t.Error("cut = true, want false: the remainder after the budget ran out was pure whitespace, nothing was actually left unread")
+	}
+}
+
+// TestSSHCommandHosts_RealRemainderIsStillACut pins the case the fix above
+// must not break: a non-blank remainder left unread when the budget runs out
+// is still a cut.
+func TestSSHCommandHosts_RealRemainderIsStillACut(t *testing.T) {
+	filler := strings.Repeat("x ", maxTokens)
+	_, cut := sshCommandHosts(filler + "\nssh real-host.example.com")
+	if !cut {
+		t.Error("cut = false, want true: a real line was left unread when the budget ran out")
+	}
+}
+
 // TestSSHDestinationRefusesACredential is CWE-522 on the positional path.
 //
 // A destination carrying a password is refused, not stripped. Splitting at
@@ -512,5 +575,46 @@ func TestSSHHostsAreSortedAndDeduped(t *testing.T) {
 		if !reflect.DeepEqual(gotSSH, want) {
 			t.Fatalf("run %d: ssh hosts = %v, want %v", i, gotSSH, want)
 		}
+	}
+}
+
+// TestRubricLLD2_URLHostsAreHostnameShaped: a URL's host is cut out of a
+// command line at the line's punctuation, and what is cut has to be a host
+// before it is recorded as one. `=` and `!` end neither a URL nor a host, so
+// without the shape check `curl https://api.example.com=ghp_...!x/` recorded
+// the host "api.example.com=ghp_q4br7xyzsecrettok3n!x", and an authority of
+// 300,000 bytes was recorded whole. A name of 253 bytes is a host; 254 is not.
+func TestRubricLLD2_URLHostsAreHostnameShaped(t *testing.T) {
+	label := strings.Repeat("a", 63)
+	long := func(n int) string {
+		var b strings.Builder
+		for b.Len() < n {
+			if b.Len() > 0 {
+				b.WriteByte('.')
+			}
+			b.WriteString(label[:min(63, n-b.Len())])
+		}
+		return b.String()
+	}
+	for _, tc := range []struct {
+		cmd  string
+		want []string
+	}{
+		{"curl https://api.example.com=ghp_q4br7xyzsecrettok3n!x/", nil},
+		{"curl https://h.example.com!x/path", nil},
+		{"curl https://ok.example.com/a https://bad.example.com=x/", []string{"ok.example.com"}},
+		{"curl https://" + strings.Repeat("x", 300_000) + "/", nil},
+		{"curl https://" + long(253) + "/", []string{long(253)}},
+		{"curl https://" + long(254) + "/", nil},
+		{"curl https://bücher.example/", []string{"bücher.example"}},
+		{"curl 'https://[2606:4700:0:0:0:0:0:1111]:443/'", []string{"[2606:4700::1111]"}},
+		{"curl https://167838211/", []string{"10.1.2.3"}},
+	} {
+		if got, _ := Hosts("Bash", bashInput(t, tc.cmd)); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("hosts of %.80q = %.80q, want %q", tc.cmd, got, tc.want)
+		}
+	}
+	if got, _ := Hosts("WebFetch", json.RawMessage(`{"url":"https://api.example.com=tok!x/"}`)); got != nil {
+		t.Errorf("WebFetch hosts = %q, want none", got)
 	}
 }

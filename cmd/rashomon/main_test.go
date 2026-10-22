@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -41,9 +42,16 @@ func TestRunNeverReturnsTwo(t *testing.T) {
 		{"probe", "start", "--install", "--install"},
 		{"probe", "sideways"},
 		{"version"},
+		{"version", "--help"},
 		{"watch"},
+		{"watch", "--help"},
 		{"detach"},
+		{"pause"},
+		{"pause", "-h"},
+		{"resume"},
+		{"resume", "--help"},
 		{"status"},
+		{"status", "--help"},
 		{"report"},
 		{"report", "--json"},
 		{"report", "--session"},
@@ -70,6 +78,84 @@ func TestRunNeverReturnsTwo(t *testing.T) {
 				t.Errorf("run(%q) returned %d, want %d or %d", args, got, exitOK, exitFail)
 			}
 		})
+	}
+}
+
+// dormantCommand matches a usage line that offers env or run as a COMMAND.
+//
+// A word boundary, never the bare substring: "rashomon run" is a prefix of
+// "rashomon running", and a check that could not tell the two apart once
+// forced a skill's trigger phrase to be renamed to satisfy it.
+var dormantCommand = regexp.MustCompile(`\brashomon (run|env)\b`)
+
+// TestUsage_AdvertisesNoDormantProxyPath keeps the help text to what this
+// alpha can serve.
+//
+// run, env and --proxy-store are removed commands, not dormant ones: the
+// packages behind them are gone from the binary along with the proxy they
+// bridged to. A usage screen that still named them would send a reader to
+// paths that no longer exist at all.
+//
+// The positive half is not decoration: a usage that printed nothing would
+// pass every absence check below.
+func TestUsage_AdvertisesNoDormantProxyPath(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if got := run([]string{"--help"}, strings.NewReader(""), &stdout, &stderr); got != exitOK {
+		t.Fatalf("--help returned %d, want %d", got, exitOK)
+	}
+	out := stdout.String()
+
+	for _, want := range []string{"rashomon watch", "rashomon report", "--nono-audit", "rashomon forget"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("usage no longer names %q, so the absences below prove nothing:\n%s", want, out)
+		}
+	}
+	if m := dormantCommand.FindString(out); m != "" {
+		t.Errorf("usage advertises %q, a command this alpha does not serve:\n%s", m, out)
+	}
+	for _, gone := range []string{"--proxy-store", "--proxy-status"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("usage advertises %q, a path this alpha does not serve:\n%s", gone, out)
+		}
+	}
+}
+
+// TestDormantCommandMatchesCommandsNotWords holds dormantCommand to its
+// reason -- named for when run and env were dispatched but hidden from
+// --help; both are gone now, and the regex stays as the usage test's own
+// proof that it is not passing vacuously. Without the negative rows a regex
+// that matched nothing would make the usage test above pass vacuously.
+func TestDormantCommandMatchesCommandsNotWords(t *testing.T) {
+	for line, want := range map[string]bool{
+		"  rashomon run -- claude":          true,
+		"  rashomon run [--proxy-status P]": true,
+		"  rashomon env [--port N]":         true,
+		"  rashomon env":                    true,
+		"is rashomon running":               false,
+		"rashomon environment":              false,
+		"  rashomon report":                 false,
+	} {
+		if got := dormantCommand.MatchString(line); got != want {
+			t.Errorf("dormantCommand.MatchString(%q) = %v, want %v", line, got, want)
+		}
+	}
+}
+
+// TestReport_RefusesAnEmptyNonoAudit: an empty --nono-audit was read as no
+// trail asked for, so `--nono-audit "$NONO_TRAIL"` with the variable unset
+// printed no sandbox section and no reason. It is refused the way a missing
+// value is, before any store is opened.
+func TestReport_RefusesAnEmptyNonoAudit(t *testing.T) {
+	t.Setenv("RASHOMON_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	if got := run([]string{"report", "--nono-audit", ""}, strings.NewReader(""), &stdout, &stderr); got != exitFail {
+		t.Errorf("report --nono-audit \"\" returned %d, want %d", got, exitFail)
+	}
+	if !strings.Contains(stderr.String(), "--nono-audit needs a value") {
+		t.Errorf("the refusal does not say the flag needs a value; stderr %q", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("report --nono-audit \"\" rendered a report:\n%s", stdout.String())
 	}
 }
 
@@ -116,5 +202,40 @@ func TestHookPathsAlwaysExitZero(t *testing.T) {
 				t.Errorf("run(%q) wrote to stdout, which Claude Code parses as control output: %q", args, stdout.String())
 			}
 		}
+	}
+}
+
+// TestGuardedHook_ReportsAPanicButAlwaysExitsOK: a panic guardedHook recovers
+// is named on stderr -- by type only, never its value -- and the return is
+// exitOK whatever fn did. cmdHook, cmdPost and cmdProbe each guard their
+// whole body through this, and exiting anything but 0 there would block the
+// tool call Claude Code is waiting on; before, the outer Guard's error was
+// discarded, and a panic in the prologue -- ahead of any record the store
+// could hold -- left no trace on stderr at all.
+func TestGuardedHook_ReportsAPanicButAlwaysExitsOK(t *testing.T) {
+	var stderr bytes.Buffer
+	got := guardedHook(&stderr, func() error { panic("a secret the caller must never see") })
+	if got != exitOK {
+		t.Errorf("guardedHook returned %d, want %d", got, exitOK)
+	}
+	if !strings.Contains(stderr.String(), "recovered panic of type string") {
+		t.Errorf("stderr = %q, want it to name the recovered panic's type", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "secret") {
+		t.Errorf("stderr = %q, leaked the panic value", stderr.String())
+	}
+}
+
+// TestGuardedHook_NoPanicExitsOKAndPrintsNothing: the ordinary path, so the
+// fix above a panic is reported on does not cost every hook invocation a
+// line on stderr.
+func TestGuardedHook_NoPanicExitsOKAndPrintsNothing(t *testing.T) {
+	var stderr bytes.Buffer
+	got := guardedHook(&stderr, func() error { return nil })
+	if got != exitOK {
+		t.Errorf("guardedHook returned %d, want %d", got, exitOK)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want nothing written on the ordinary path", stderr.String())
 	}
 }

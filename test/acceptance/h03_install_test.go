@@ -24,10 +24,10 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	sf := e.settings()
 
 	// Under hooks.PreToolUse: not a sibling event, not a typo. The set is
-	// install.Events rather than a literal list, so adding an event has to be a
+	// install.Events() rather than a literal list, so adding an event has to be a
 	// deliberate change to the installer and not something a test tolerated.
 	allowed := map[string]bool{}
-	for _, ev := range install.Events {
+	for _, ev := range install.Events() {
 		allowed[ev] = true
 	}
 	for event := range sf.Hooks {
@@ -37,8 +37,10 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 	}
 	// Guard the premise: an empty Events slice would make the loop above
 	// accept nothing and pass anyway on a settings file with no entries.
-	if len(allowed) < 5 {
-		t.Fatalf("install.Events lists %d events; watch installs five", len(allowed))
+	// Eight: the five recorder entries, Stop and StopFailure for the recap
+	// (Part 4), and UserPromptSubmit for its catch-up.
+	if len(allowed) < 8 {
+		t.Fatalf("install.Events() lists %d events; watch installs eight", len(allowed))
 	}
 	groups := ours(sf.Hooks["PreToolUse"])
 	if len(groups) != 1 {
@@ -114,6 +116,27 @@ func TestH3_InstalledEntryReadBackInFull(t *testing.T) {
 		}
 		if len(pg[0].Hooks) != 1 || pg[0].Hooks[0].Timeout != 5 || pg[0].Hooks[0].Type != "command" {
 			t.Errorf("%s entry is %+v, want one command hook with timeout 5", event, pg[0].Hooks)
+		}
+	}
+
+	// The recap (Part 4): no matcher, like the probe, but its own ten-second
+	// timeout -- not five -- because it reads a whole run to find one turn's
+	// boundaries and the spec's own measurements say that costs more than the
+	// per-call recorder entries ever do.
+	for _, event := range []string{"Stop", "StopFailure"} {
+		pg := ours(sf.Hooks[event])
+		if len(pg) != 1 {
+			t.Errorf("got %d entries of ours under hooks.%s, want 1", len(pg), event)
+			continue
+		}
+		if pg[0].Matcher != nil {
+			t.Errorf("%s entry has matcher %q; Claude Code documents no matcher for it", event, *pg[0].Matcher)
+		}
+		if len(pg[0].Hooks) != 1 || pg[0].Hooks[0].Timeout != 10 || pg[0].Hooks[0].Type != "command" {
+			t.Errorf("%s entry is %+v, want one command hook with timeout 10", event, pg[0].Hooks)
+		}
+		if want := " recap --install " + e.installID(); len(pg[0].Hooks) == 1 && !strings.HasSuffix(pg[0].Hooks[0].Command, want) {
+			t.Errorf("%s command %q does not end with %q", event, pg[0].Hooks[0].Command, want)
 		}
 	}
 }
@@ -220,7 +243,7 @@ func TestH6_IdempotentInstallOneOwner(t *testing.T) {
 		if res := e.detach(); res.exitCode != 0 {
 			t.Fatalf("detach: exit %d, stderr %q", res.exitCode, res.stderr)
 		}
-		sf = e.settings()
+		sf = e.settingsAfterDetach()
 		for _, event := range []string{"PreToolUse", "PostToolUse", "SessionStart", "SessionEnd"} {
 			if got := len(ours(sf.Hooks[event])); got != 0 {
 				t.Errorf("after detach, %d entries of ours remain under %s", got, event)
@@ -506,7 +529,7 @@ func TestH3_SpacedExecutablePathRunsAsInstalled(t *testing.T) {
 	e := newEnv(t)
 	exe := copyBinary(t, rashomonBin, filepath.Join(t.TempDir(), "Application Support", "rashomon"))
 
-	if res := e.runBin(exe, "", "watch"); res.exitCode != 0 {
+	if res := e.runBin(exe, "", "watch", "--yes"); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	groups := ours(e.settings().Hooks["PreToolUse"])

@@ -258,7 +258,7 @@ func TestH06_DetachLeavesTheFileByteForByteAsFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	watch := e.run("", nil, "watch")
+	watch := e.run("", nil, "watch", "--yes")
 	if watch.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", watch.exitCode, watch.stderr)
 	}
@@ -313,7 +313,7 @@ func TestH06_DetachKeepsAForeignHookEventIntact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if r := e.run("", nil, "watch"); r.exitCode != 0 {
+	if r := e.run("", nil, "watch", "--yes"); r.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", r.exitCode, r.stderr)
 	}
 	if r := e.run("", nil, "detach"); r.exitCode != 0 {
@@ -327,5 +327,56 @@ func TestH06_DetachKeepsAForeignHookEventIntact(t *testing.T) {
 	if !bytes.Equal(after, original) {
 		t.Errorf("a file with a foreign hook was not left as found.\n--- before ---\n%s\n"+
 			"--- after ---\n%s", original, after)
+	}
+}
+
+// TestH6_DetachForceRemovesAnEditedEntry is the way out of the refusal above.
+//
+// Refusing to clobber an entry someone edited is right, and it is what the two
+// items above assert. Refusing with no override is a different thing: a single
+// edited timeout -- the most natural edit there is to these entries -- left
+// detach, detach --all and watch all failing, every entry still installed and
+// firing on every tool call, and no supported way to remove them. The refusal
+// now names the way out, and this item is the way out.
+//
+// Break: make --force an unknown argument again.
+func TestH6_DetachForceRemovesAnEditedEntry(t *testing.T) {
+	e := newEnv(t)
+	seedInstalls(e, installA, installB)
+
+	var doc map[string]any
+	if err := json.Unmarshal(e.settingsBytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	pre := doc["hooks"].(map[string]any)["PreToolUse"].([]any)
+	pre[2].(map[string]any)["matcher"] = "Bash" // narrowed by hand
+	out, _ := json.MarshalIndent(doc, "", "  ")
+	e.writeSettings(string(out) + "\n")
+
+	// The refusal stands by default, and now says how to get past it.
+	res := e.run("", nil, "detach", "--all")
+	if res.exitCode != 1 {
+		t.Fatalf("detach --all: exit %d, want 1; the default still refuses", res.exitCode)
+	}
+	if !strings.Contains(res.stderr, "--force") {
+		t.Errorf("the refusal does not name the way out:\n%s", res.stderr)
+	}
+
+	res = e.run("", nil, "detach", "--all", "--force")
+	if res.exitCode != 0 {
+		t.Fatalf("detach --all --force: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if !strings.Contains(res.stdout, "you had edited") {
+		t.Errorf("--force removed the edited entry without saying so:\n%s", res.stdout)
+	}
+	// Ours are gone; the foreign entry seeded alongside them is untouched,
+	// because --force is permission to remove an edited entry OF OURS and
+	// never permission to touch somebody else's.
+	body := string(e.settingsBytes())
+	if strings.Contains(body, "--install") {
+		t.Errorf("an entry of ours survived detach --all --force:\n%s", body)
+	}
+	if !strings.Contains(body, "foreign-sentinel") {
+		t.Errorf("--force removed a hook that was not ours:\n%s", body)
 	}
 }

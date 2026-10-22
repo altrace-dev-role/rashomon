@@ -1,0 +1,10 @@
+# DEL-2: --check refuses an anchor that occurs other than exactly once, and a
+# mutant that names another row's test without a declared shared pair.
+m("DEL-2 --check accepts an anchor that occurs more than once", "test/mutation/sweep.py",
+  "        count = s.count(old)\n        if count != 1:\n",
+  "        count = s.count(old)\n        if count < 1:\n", "TestDEL2_")
+m("DEL-2 --check accepts a mutant that pins another row's test", "test/mutation/sweep.py",
+  "                if pinned != claimed and (claimed, parent_test) not in shared:\n",
+  "                if False and (claimed, parent_test) not in shared:\n", "TestDEL2b_")
+m("DEL-2 --check accepts an import anchor that occurs more than once", "test/mutation/sweep.py",
+  "        count = s.count(io_)\n        if count != 1:\n", "        count = s.count(io_)\n        if count < 1:\n", "TestDEL2_")

@@ -18,19 +18,17 @@ import (
 // What crosses the boundary out of here is a list of hostnames and nothing
 // else. Not the URL, not the path, not the query, not the surrounding command.
 
-// Scheme prefixes that introduce a network host we can observe on the wire.
+// Scheme prefixes that introduce a network host.
 //
-// Plain http:// is included in the SEARCH even though v0.1 does not observe
-// plain HTTP through the proxy. A host the agent named is a declaration
-// whatever scheme it named it under, and the report's "declared but not
-// observed" line is the honest place for it -- dropping it here would instead
-// make that host silently absent from both sides.
+// A host the agent named is a declaration whatever scheme it named it under,
+// so plain http:// is included in the search alongside https:// -- dropping
+// it here would make that host silently absent from the record.
 var wireSchemes = []string{"https://", "http://", "wss://", "ws://"}
 
-// Scheme prefixes that introduce a host reached over ssh, which the proxy
-// cannot see. These render under coverage as "not observable", never as a
-// finding, so they are collected separately rather than mixed in and then
-// filtered by guesswork downstream.
+// Scheme prefixes that introduce a host reached over ssh, which is a
+// different kind of destination from an HTTPS one (internal/report's family
+// and novelty views treat it so). Collected separately rather than mixed in
+// and then filtered by guesswork downstream.
 var sshSchemes = []string{"ssh://", "git+ssh://", "git@"}
 
 // Hosts returns the wire-observable and ssh hostnames named by a tool call.
@@ -47,6 +45,20 @@ var sshSchemes = []string{"ssh://", "git+ssh://", "git@"}
 // some MCP server's unrelated schema ends up recorded as a destination this
 // session reached.
 func Hosts(toolName string, toolInput json.RawMessage) (wire []string, ssh []string) {
+	// A record below schema 5 has no field for the cut, and the hook writes
+	// those: see HostsCut, which is what a writer that can carry it calls.
+	wire, ssh, _ = HostsCut(toolName, toolInput)
+	return wire, ssh
+}
+
+// HostsCut is Hosts, and whether the ssh list is short because the command
+// was read only to the token bound (RES-9): an ssh, scp, sftp or rsync
+// destination named past it is not read, so the list holds what came before
+// the cut and nothing says the rest is absent. The wire list is never cut --
+// the URL scan reads the whole text -- and neither list is for WebFetch. It
+// is the hosts half of schema 5's shape.truncated (Archive 85.3.10), which
+// P-11 serialises; a v4 record does not carry it.
+func HostsCut(toolName string, toolInput json.RawMessage) (wire, ssh []string, cut bool) {
 	var text string
 	switch {
 	case toolName == "WebFetch":
@@ -59,13 +71,17 @@ func Hosts(toolName string, toolInput json.RawMessage) (wire []string, ssh []str
 		}
 	}
 	if text == "" {
-		return nil, nil
+		return nil, nil, false
 	}
-	ssh = collect(text, sshSchemes)
+	// One lowered copy serves both readings of the text: see collect.
+	lower := strings.ToLower(text)
+	ssh = collect(lower, sshSchemes)
 	if verbForTool(toolName) == VerbExecute {
-		ssh = mergeHosts(ssh, sshCommandHosts(text))
+		var named []string
+		named, cut = sshCommandHosts(text)
+		ssh = mergeHosts(ssh, named)
 	}
-	return collect(text, wireSchemes), ssh
+	return collect(lower, wireSchemes), ssh, cut
 }
 
 // mergeHosts unions two host lists, sorted and de-duplicated, preserving the
@@ -151,21 +167,55 @@ func takesValue(prog string, flag byte) bool {
 // A tokenizer error is not fatal here. tokenize returns the tokens it
 // completed along with the error, and a destination that appeared before an
 // unterminated quote is still a destination the command named.
-func sshCommandHosts(text string) []string {
-	var out []string
+//
+// The lines are read to the token bound (RES-9) between them, each line
+// costing at least one: tokenized one by one, each line was within the bound
+// and the line as a whole was not, and 8 MiB of `ssh a` lines allocated
+// 452 MiB. A host named past the bound is not read, as the program search
+// reads no word past it, and cut says so: a line read only to the bound, or
+// lines left when the budget ran out.
+func sshCommandHosts(text string) (out []string, cut bool) {
 	// A newline separates two commands, and the tokenizer treats it as
 	// whitespace -- deliberately, because Derive counts arguments over the
 	// whole line and that count is its own contract. Splitting here rather
 	// than changing the tokenizer keeps `ssh a` and `ssh b` on two lines from
 	// collapsing into one invocation whose second host is never seen.
-	for _, line := range strings.Split(text, "\n") {
-		out = append(out, sshLineHosts(line)...)
+	for rest, budget := text, maxTokens; rest != "" && budget > 0; {
+		var line string
+		line, rest, _ = strings.Cut(rest, "\n")
+		// The line is lexed to the budget left and no further. Lexed to the
+		// full maxTokens, a line reached with a few hundred tokens left cost
+		// a whole line's worth again: about 2x the bound over the command.
+		// Its bytes are no proxy for its tokens -- `a;` is two -- so the cap
+		// is on the tokens themselves.
+		hosts, read, lineCut := sshLineHosts(line, budget)
+		out = append(out, hosts...)
+		budget -= max(read, 1)
+		// strings.TrimSpace(rest), not rest != "": a remainder of pure
+		// whitespace -- a trailing newline, a blank line -- names nothing
+		// and could not have held a host no matter how much budget were
+		// left, so leaving it unread is not a cut.
+		if lineCut || budget <= 0 && strings.TrimSpace(rest) != "" {
+			cut = true
+		}
 	}
-	return out
+	return out, cut
 }
 
-func sshLineHosts(line string) []string {
-	toks, meta, _ := tokenizeMarked(line)
+// sshLineHosts is sshCommandHosts over one line read to at most limit tokens,
+// how many tokens it read, and whether it read the line only to that bound. Any other tokenizer error
+// is not a cut: the tokens it completed are the line's.
+//
+// errUncertain specifically cannot reach here: tokenizeMarked calls
+// tokenizeShape, which calls lex with program and docs both false, and every
+// branch in lex that returns errUncertain is itself guarded by l.program or
+// l.docs. An unterminated quote (errUnterminated) can reach here, and is
+// correctly not a cut either -- the quote consumes to the end of the line,
+// so there is nothing after it in this line to miss.
+func sshLineHosts(line string, limit int) ([]string, int, bool) {
+	// On a line it cannot finish, lex still returns the tokens it read before
+	// the fault, and a host among them was named all the same.
+	toks, meta, err := tokenizeMarkedTo(line, limit)
 
 	var out []string
 	atCommand := true
@@ -198,7 +248,7 @@ func sshLineHosts(line string) []string {
 		out = append(out, destinations(prog, toks[i+1:end])...)
 		i = end - 1
 	}
-	return out
+	return out, len(toks), err == errTokenBound
 }
 
 // destinations returns the hosts named by one ssh-family invocation's
@@ -330,7 +380,7 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 		if requireRemote && !strings.HasPrefix(rest[end+1:], ":") {
 			return "", false
 		}
-		return host.Canonical(rest[:end+1])
+		return host.CanonicalName(rest[:end+1])
 	}
 
 	hostPart := rest
@@ -360,57 +410,25 @@ func destinationHost(tok string, requireRemote bool) (string, bool) {
 	if remoteByColon && !hadUser && len(hostPart) < 2 {
 		return "", false
 	}
-	if !hostnameShaped(hostPart) {
+	// The token IS the destination here, so the question is not where the
+	// host ends but whether it is a host at all, and only a whitelist
+	// answers that: `ssh HOST=bad` recorded "host=bad" and `ssh
+	// h.example.com!x` recorded itself before it (host.Shaped).
+	if !host.Shaped(hostPart) {
 		return "", false
 	}
 	// An ssh-config alias has no dots and resolves to something this function
 	// cannot see. It is recorded as the command named it and never resolved:
 	// resolving would mean reading ~/.ssh/config, which is a file this package
 	// is not allowed to open, and guessing would put a name in the store that
-	// the user never typed.
-	return host.Canonical(hostPart)
+	// the user never typed. host.CanonicalName, not Canonical, for the same
+	// reason stated there: `ssh 1234` names the alias "1234", not the address
+	// inet_aton would read it as, because nothing here resolved it.
+	return host.CanonicalName(hostPart)
 }
 
-// hostnameShaped reports whether every byte of s could appear in a hostname.
-//
-// A whitelist, not a terminator set, and that is the point. authority() stops
-// at the punctuation a URL is surrounded by in a command line, which is right
-// where a host is embedded in text; it does not stop at '=' or '!', so
-// `ssh HOST=bad` recorded "host=bad" and `ssh h.example.com!x` recorded itself
-// -- raw command text passing as a canonical hostname. Here the token IS the
-// destination, so the question is not "where does the host end" but "is this a
-// host at all", and only a whitelist answers that one.
-//
-// The length bound is the longest a hostname can be. Without it a
-// several-hundred byte fragment of a command line can be persisted as one.
-func hostnameShaped(s string) bool {
-	if s == "" || len(s) > 253 {
-		return false
-	}
-	if s[0] == '-' || s[0] == '.' || s[len(s)-1] == '-' {
-		return false
-	}
-	// An empty label is not a hostname. One TRAILING dot is: "pypi.org." is
-	// the fully-qualified spelling of the same name, and host.Canonical drops
-	// it. Two in a row are never right.
-	if strings.Contains(s, "..") {
-		return false
-	}
-	alnum := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-			alnum = true
-		case c == '-' || c == '.' || c == '_':
-		default:
-			return false
-		}
-	}
-	return alnum
-}
-
-// collect finds every hostname in text introduced by one of the given prefixes.
+// collect finds every hostname introduced by one of the given prefixes in
+// lower, a command line Hosts lowered once for both of its calls.
 //
 // The scan and the slice both read `lower`, and they have to be the same
 // string. strings.ToLower is NOT length-preserving in UTF-8 -- U+212A KELVIN
@@ -425,9 +443,14 @@ func hostnameShaped(s string) bool {
 //
 // Reading the lowered copy costs nothing: host.Canonical lower-cases what it
 // returns, and DNS is case-insensitive, so the original case was never wanted.
-func collect(text string, prefixes []string) []string {
+//
+// What authority cuts is a host only if host.Shaped says so. authority stops
+// at the punctuation a URL is surrounded by in a command line, which is not
+// where a host ends: `=` and `!` are neither, so `https://api.example.com=
+// ghp_...!x/` came back as the host "api.example.com=ghp_...!x", a token
+// recorded in the field that holds the hostnames a call named.
+func collect(lower string, prefixes []string) []string {
 	seen := map[string]struct{}{}
-	lower := strings.ToLower(text)
 
 	for _, p := range prefixes {
 		from := 0
@@ -438,7 +461,7 @@ func collect(text string, prefixes []string) []string {
 			}
 			at := from + i + len(p)
 			from = at
-			if h, ok := host.Canonical(authority(lower[at:])); ok {
+			if h, ok := host.Canonical(authority(lower[at:])); ok && host.Shaped(h) {
 				seen[h] = struct{}{}
 			}
 		}
@@ -472,26 +495,51 @@ func collect(text string, prefixes []string) []string {
 // authority instead lets Canonical see the '@' and refuse the input outright
 // (CWE-522). Port stripping is Canonical's job, and it does it after that
 // check, which is the only order in which both answers are right.
+//
+// The scan is bounded to authorityWindow bytes, not the rest of the command
+// line. Neither '@' nor, inside a bracket, ']' is in the terminator set
+// above, so a line of nothing but one scheme repeated -- "git@git@git@...",
+// "https://[https://[..." -- gave this function no terminator before the
+// line's own end, and collect calls it once per match: a line of N matches
+// scanned the whole remaining line N times. Past the window, no terminator
+// has been found by the point a real host:port would already have ended, so
+// the candidate is refused (""), not truncated at the window -- truncating
+// would hand Canonical a prefix that may have lost the '@' or ']' the scan
+// was widened to find, which is the property the comment above describes.
 func authority(s string) string {
-	if strings.HasPrefix(s, "[") {
-		if end := strings.Index(s, "]"); end >= 0 {
+	limit, cut := s, false
+	if len(limit) > authorityWindow {
+		limit, cut = limit[:authorityWindow], true
+	}
+	if strings.HasPrefix(limit, "[") {
+		if end := strings.Index(limit, "]"); end >= 0 {
 			// Keep any :port after the bracket; Canonical strips it.
-			return s[:end+1] + portSuffix(s[end+1:])
+			return limit[:end+1] + portSuffix(limit[end+1:])
 		}
 		return ""
 	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
+	for i := 0; i < len(limit); i++ {
+		c := limit[i]
 		if c <= ' ' || c == 0x7f {
-			return s[:i]
+			return limit[:i]
 		}
 		switch c {
 		case '/', '?', '#', '\\', '"', '\'', '`', '$', '|', '&', ';', '(', ')', '{', '}', '<', '>', ',', '*':
-			return s[:i]
+			return limit[:i]
 		}
 	}
-	return s
+	if cut {
+		return ""
+	}
+	return limit
 }
+
+// authorityWindow is how far authority looks for its terminator: host.maxName
+// (253, unexported there) plus 8 bytes of margin for a ":" and a port, which
+// is more room than the 5 digits a real port needs. A host:port this product
+// will ever accept ends inside it; TestRubricLLD2_URLHostsAreHostnameShaped's
+// 253- and 254-byte cases pin the boundary against host.Canonical directly.
+const authorityWindow = 253 + 8
 
 // portSuffix returns a leading ":digits" run, and nothing else. It exists so a
 // bracketed IPv6 authority keeps its port for Canonical to strip, without
@@ -516,20 +564,9 @@ func portSuffix(s string) string {
 // one named key, a string or nothing. It never walks the object, so no field
 // whose name we did not write down can be read by accident.
 func stringField(raw json.RawMessage, name string) (string, bool) {
-	if len(raw) == 0 {
-		return "", false
-	}
-	var obj map[string]json.RawMessage
-	if json.Unmarshal(raw, &obj) != nil {
-		return "", false
-	}
-	v, ok := obj[name]
+	s, ok := inputField(raw, name)
 	if !ok {
 		return "", false
 	}
-	var s string
-	if json.Unmarshal(v, &s) != nil {
-		return "", false
-	}
-	return s, true
+	return stringValue(raw, s)
 }

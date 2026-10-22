@@ -3,8 +3,11 @@ package acceptance
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/report"
 )
 
 // report has two forms and one set of facts. --json is the consumer's form and
@@ -21,10 +24,12 @@ import (
 // is "unknown".
 var nullTranscriptFields = map[string]string{
 	"files":                   "not read",
+	"lines too long to read":  "not read",
 	"ids in transcript":       "not read",
 	"results in transcript":   "not read",
 	"missing from store":      "unknown",
 	"missing from transcript": "unknown",
+	"refused before any hook": "unknown",
 	"executed but unrecorded": "unknown",
 	"declared without result": "unknown",
 }
@@ -43,7 +48,7 @@ func TestReport_TextRendersUnknownNeverZero(t *testing.T) {
 	if len(rep.Transcripts) != 1 || rep.Transcripts[0].Readable {
 		t.Fatalf("premise broken: want one unreadable transcript group, got %+v", rep.Transcripts)
 	}
-	if rep.Transcripts[0].IDsInTranscript != nil {
+	if rep.Transcripts[0].IDsInTranscript != nil || rep.Transcripts[0].LinesTooLong != nil {
 		t.Fatalf("premise broken: the JSON form renders a count for an unreadable transcript")
 	}
 
@@ -112,12 +117,40 @@ func TestReport_JSONFormIsUnchanged(t *testing.T) {
 	}
 	// The encoding itself, not just what it decodes to: two-space indentation,
 	// and a null where the fact is missing rather than a rendering of it.
-	if !strings.HasPrefix(res.stdout, "{\n  \"generated_at_unix_ms\":") {
+	if !strings.HasPrefix(res.stdout, "{\n  \"report_version\": "+strconv.Itoa(report.CurrentReportVersion)+",\n  \"generated_at_unix_ms\":") {
 		t.Errorf("report --json is not the indented object it was:\n%s", res.stdout)
 	}
 	if !strings.Contains(res.stdout, `"ids_in_transcript": null`) {
 		t.Errorf("report --json renders no null for the unreadable transcript:\n%s", res.stdout)
 	}
+}
+
+// reportJSON runs `report --json` with extra environment and decodes it whole.
+func reportJSON(t *testing.T, e *env, extra []string, args ...string) map[string]any {
+	t.Helper()
+	res := e.run("", extra, append([]string{"report", "--json"}, args...)...)
+	if res.exitCode != 0 {
+		t.Fatalf("report --json %v: exit %d, stderr %q", args, res.exitCode, res.stderr)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(res.stdout), &doc); err != nil {
+		t.Fatalf("report --json is not JSON: %v\n%s", err, res.stdout)
+	}
+	return doc
+}
+
+// sessionField returns one object field of a decoded report's only session.
+func sessionField(t *testing.T, doc map[string]any, field string) map[string]any {
+	t.Helper()
+	sessions, _ := doc["sessions"].([]any)
+	if len(sessions) != 1 {
+		t.Fatalf("report holds %d sessions, want 1", len(sessions))
+	}
+	v, _ := sessions[0].(map[string]any)[field].(map[string]any)
+	if v == nil {
+		t.Fatalf("the session has no %q object", field)
+	}
+	return v
 }
 
 // fieldLine reads the value of a "label: value" line from the text form.

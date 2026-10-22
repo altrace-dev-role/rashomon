@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/altrace-dev-role/rashomon/docs/store-schema.json",
   "title": "rashomon store records",
-  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. No field here carries content: no prompt, no response, no argument value, no command string. Identifiers are not content and are stored verbatim.",
+  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. forgotten-hosts.ndjson at the store root holds forgotten_host records, one per host a forget --host was given. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. Through schema 4 no field carries content: no prompt, no response, no argument value, no command string. Schema 5 adds the command as typed and the paths a call names, masked and capped, and null with a *_withheld reason when consent, a switch, the masker or a cap kept them out; no prompt or response is stored at any version. Identifiers are not content and are stored verbatim.",
   "oneOf": [
     {
       "$ref": "#/$defs/declaration"
@@ -18,6 +18,9 @@
     },
     {
       "$ref": "#/$defs/gap"
+    },
+    {
+      "$ref": "#/$defs/forgotten_host"
     }
   ],
   "$defs": {
@@ -54,7 +57,9 @@
           "enum": [
             1,
             2,
-            3
+            3,
+            4,
+            5
           ]
         },
         "seq": {
@@ -129,7 +134,8 @@
                 "package",
                 "agent",
                 "mcp",
-                "unknown"
+                "unknown",
+                "test"
               ]
             },
             "argc": {
@@ -142,11 +148,35 @@
             "digest": {
               "description": "HMAC under a per-install key, so the same command digests differently on two installs.",
               "type": "string"
+            },
+            "may_write": {
+              "description": "Schema 3. True on a shell call whose line may write files whatever its verb_class says: an output redirection to a file (not a descriptor duplication, not /dev/null), find's -delete, -exec, -execdir, -ok or -okdir, xargs, tee, wget, rsync or scp anywhere on the line, curl with an output flag (-o or -O alone, combined with other short flags, or with the file attached, as in -o./x), a command or process substitution ($( ), backticks, <( ), >( ), whose command is not looked into), or a later pipeline or list stage whose program is not of class read or cannot be named -- and on a shell line whose program cannot be named at all. One bit: the words that set it are compared and dropped. Always false on a tool that is not a shell.",
+              "type": "boolean"
+            },
+            "status_masked": {
+              "description": "Schema 4. A record before schema 4 does not carry it: it was not measured, which is not `none`. Whether a recognised build or test runner on a shell line has an exit status the line does not return, so that the call's ok is not the runner's pass: `test` for a test runner (the verb_class test list) and `build` for a build runner (make with any target, go build or vet, cargo build, check or clippy, npm, yarn or pnpm run, tsc, mvn, gradle, dotnet build, cmake --build, ninja, bazel build or test) when the line, run with that runner failing and then passing and every other command succeeding, exits 0 on the failure or with the same status either way: `make test 2>&1 | tail -40`, `go test ./...; echo $?`, `npm test || true`, `set -e; make test | tail`, `if make test; then echo ok; fi`, `! make test`, `make test &`. `none` when the line was read to its end and every runner's failure is the line's (`make test && echo ok`, `make test || exit 1`, `set -o pipefail; make test | tail`, `set -euo pipefail; make test | tail`), or there is no runner. `set -e`, `set -o pipefail` and their `+` forms, `exit`, `$?`, a variable holding it, groups, subshells, `!`, `if` and `&` are followed. Claude Code runs a line in the user's shell, zsh on a stock macOS, inside a wrapper where errexit never fires and PIPESTATUS is empty, and the record does not say which shell ran it: a line where a `set` turns errexit on is also run with errexit never firing. Null on a tool that is not a shell, on a line that could not be read to its end, and wherever the parser is not sure the runner's status reaches the line's: a line whose answer differs between the two runs (`set -e; make test; echo done`), a status read from `PIPESTATUS` (`make test | tail; exit ${PIPESTATUS[0]}`), a test of a status, a loop holding a runner, an exit or a status read, `case`, a function, `eval`, `trap`, `exec`, or a shell's `-c`, whose line is not looked into. The call's own outcome is recorded as it was. A closed word: the words that decided it are compared and dropped.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                null,
+                "none",
+                "test",
+                "build"
+              ]
+            },
+            "runner_digest": {
+              "description": "Schema 4. HMAC under the per-install key of the words of the runner whose status is hidden, or, when none is, of the runner whose failure the line returns (the last, if several): its program and arguments without redirections or a `timeout N` or `time` prefix, so that `make test 2>&1 | tail` and a later `make test` or `make test && echo ok` compare equal. Null when there is no such runner, when two runners are hidden, and when a `cd`, `pushd` or `popd` other than the leading plain `cd DIR &&` steps the cwd digest folds in ran before it. A digest and never the words.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         },
         "hosts": {
-          "description": "Schema 2. Hostnames this call NAMED, behind http(s):// or ws(s)://, canonicalised: lower-cased, port stripped, one trailing dot dropped, userinfo refused outright rather than stripped (CWE-522). A declaration and not an observation -- the host is here because the agent wrote it down, whether or not the call ran and whether or not the wire ever saw it, which is what makes the report's \"reached but never named\" line meaningful. Sorted and de-duplicated, so two runs of one command produce byte-identical records. Null when the call named none, never an empty array: \"we looked and found none\" must stay distinguishable from a schema 1 record that was never looked at.",
+          "description": "Schema 2. Hostnames this call NAMED, behind http(s):// or ws(s)://, canonicalised: lower-cased, port stripped, one trailing dot dropped, userinfo refused outright rather than stripped (CWE-522), and an IP literal written in its one spelling (IPv6 compressed and bracketed, an IPv4-mapped address as its IPv4 address, every inet_aton form of an IPv4 address as a dotted quad). Only a host-shaped value is recorded: a bracketed IPv6 address or a name of at most 253 bytes of letters, digits, -, _ and ., so text a URL's authority swallowed (api.example.com=...!x) is not. A Unicode name is kept as written, not converted to its xn-- form. A declaration and not an observation -- the host is here because the agent wrote it down, whether or not the call ran and whether or not the wire ever saw it, which is what makes the report's \"reached but never named\" line meaningful. Sorted and de-duplicated, so two runs of one command produce byte-identical records. Null when the call named none, never an empty array: \"we looked and found none\" must stay distinguishable from a schema 1 record that was never looked at.",
           "type": [
             "array",
             "null"
@@ -156,7 +186,7 @@
           }
         },
         "ssh_hosts": {
-          "description": "Schema 2. Hostnames named behind ssh://, git+ssh:// or git@, canonicalised identically. Separate from hosts because the two have opposite fates in the report: the proxy cannot observe ssh at all, so an ssh host with no wire record is expected and renders under coverage as not observable, never as a finding. Merging the two and filtering downstream is how the second kind gets printed as the first.",
+          "description": "Schema 2. Hostnames named behind ssh://, git+ssh:// or git@, or as the destination argument of ssh, scp, sftp or rsync on the command line, canonicalised identically. The command line is read for those arguments line by line up to the shape token bound (62,601 tokens, each line counting at least one), so a destination named past it is not recorded; nothing marks such a list incomplete until schema 5. Kept apart from hosts because family coverage counts ssh and HTTPS destinations separately, by scheme; novelty does not make that distinction and takes its candidates from this field and hosts combined.",
           "type": [
             "array",
             "null"
@@ -164,6 +194,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "cwd_digest": {
+          "description": "Schema 3. HMAC under the per-install key of the directory the call's command started in: the PreToolUse payload's cwd, which follows the shell from one call to the next, or where the line's leading plain `cd DIR &&` steps lead (no expansion, quoting, ~ or -; a leading pushd, popd or other cd keeps the payload's cwd): an absolute target replaces the directory and a relative one joins it. Two runs of one command line compare as the same run only when this is equal as well, since the same line in another directory runs other code. A digest and never the path: the declarations do not carry the directory, which the coverage records already keep as the project key. Empty string when that directory is not known: no payload cwd and no absolute leading cd, or more than 64 leading cd steps, past which the fold stops.",
+          "type": "string"
         },
         "file_label": {
           "description": "Schema 3, RESERVED. What the file this call named looks like, derived at hook time from the path's basename and suffix alone; the path itself is never stored. A LABEL and not a finding: it says what the path looks like, not what the call did to it. `none` is a real answer about a real path that matched no row; `unknown` is a path that could not be read at all, absent, non-string or empty -- and the two are kept apart because the first is a measurement and the second is its absence. Null on a tool that names no file, which is a third thing again: nobody looked, because there was nothing to look at. The vocabulary is closed and lives in shape.Labels(); it is declared here so the layer that populates it adds behaviour rather than a fourth schema version.",
@@ -178,12 +212,13 @@
             "cloud-config",
             "env-file",
             "certificate",
+            "test-file",
             "none",
             "unknown"
           ]
         },
         "host_source": {
-          "description": "Schema 3. Where each entry of `hosts` came from. STRUCTURED means the host was read from a field whose value is a URL -- WebFetch's `url`, for instance -- so the call names that host by construction. LEXICAL means it was extracted from command text, where a mention and a destination are not the same thing: `curl https://example.com` and `echo see https://example.com` both yield the host. Both satisfy the destinations join and `forget --host` applies to both; the distinction is rendered so a reader can tell 'named in a tool argument' from 'mentioned in command text'. Null on records written before schema 3, which is not the same as an empty list: it means nobody looked.",
+          "description": "Schema 3. Where each entry of `hosts` came from. STRUCTURED means the host was read from a field whose value is a URL -- WebFetch's `url`, for instance -- so the call names that host by construction. LEXICAL means it was extracted from command text, where a mention and a destination are not the same thing: `curl https://example.com` and `echo see https://example.com` both yield the host. Both satisfy the destinations join and `forget --host` applies to both; the distinction is rendered so a reader can tell 'named in a tool argument' from 'mentioned in command text'. Null when not computed: on every record this build writes, and on records before schema 3.",
           "type": [
             "array",
             "null"
@@ -202,6 +237,208 @@
             "null"
           ],
           "additionalProperties": true
+        },
+        "rules_version": {
+          "description": "Schema 4. Which lists decided this record's shape: the test runners and build runners that set shape.verb_class and shape.status_masked, as the writing binary had them (shape.RulesVersion). Records written before and after a list changed carry different values. It names the writer's lists only: the pass words that decide when the masked-runs line fires are applied when a report is read and never stored.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "writer": {
+          "description": "Schema 5. The version of the rashomon binary that wrote this record (\"dev\" for an unreleased build), so a reader can tell which release wrote it as well as which schema it follows.",
+          "type": "string"
+        },
+        "command": {
+          "description": "Schema 5. The command as typed, masked: every value a masker rule matched is replaced by a marker, and the text is stored whole up to 64 KiB or as a head and a tail (1.2.3). Null when it was not captured, and command_withheld then says why.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "command_bytes": {
+          "description": "Schema 5. The byte length of the command as typed, before masking and any cut.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "command_cut": {
+          "description": "Schema 5. Where command was shortened to its head and tail windows; null when it was stored whole. An object of offset, where the cut is in the stored text, and removed_bytes, how many bytes went between the head and the tail.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "masked": {
+          "description": "Schema 5. One object per masked value in command: the rule id that masked it and the start and end byte offsets of its marker in the stored text. The masked value itself is never stored.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object"
+          }
+        },
+        "command_withheld": {
+          "description": "Schema 5. Why command is null. Null when command is present or the tool has no command. One of: no_consent, switched_off, masker_error, oversize, forgotten; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cwd": {
+          "description": "Schema 5. The directory the call started in.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "project": {
+          "description": "Schema 5. The project key of the start directory, baseline.Key's, which every layer shares.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_path": {
+          "description": "Schema 5. The file path a file tool named.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "written_paths": {
+          "description": "Schema 5. The lexical write targets of a Bash call that may write, at most 64 entries and 16 KiB; over either bound the list is null and written_paths_withheld is oversize.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "written_paths_complete": {
+          "description": "Schema 5. True only when every write-capable segment of the line yielded a target; false when written_paths is withheld.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "target": {
+          "description": "Schema 5. Where a failing call was pointed, from its arguments and inline env prefixes only, never the hook's environment (1.2.5): aws_profile, aws_region, aws_account, endpoint_host, s3_bucket, kube_context, kube_namespace, gcp_project and azure_subscription, each a value that passed the charset, every masker rule and the entropy test; source, where each present key came from (arg, env_prefix or subcommand); and dropped, the keys whose value failed a check, the value never stored.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "edit_marks_before": {
+          "description": "Schema 5. The count per closed integrity-mark id in the file a Write overwrites, taken at PreToolUse from the one pre-read (1.2.5); null for every other tool.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "written_paths_withheld": {
+          "description": "Schema 5. Why written_paths is null when it is null by rule: oversize, over its cap (1.2.11), or switched_off, under the paths switch of config.json. Null when written_paths is present or simply not applicable. One of: oversize, switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_path_withheld": {
+          "description": "Schema 5. Why file_path is null when it is null by rule: oversize, over its cap (1.2.11), or switched_off, under the paths switch of config.json. Null when file_path is present or simply not applicable. One of: oversize, switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cwd_withheld": {
+          "description": "Schema 5. Why cwd is null when it is null by rule: oversize, over its cap (1.2.11), or switched_off, under the paths switch of config.json. Null when cwd is present or simply not applicable. One of: oversize, switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "project_withheld": {
+          "description": "Schema 5. Why project is null when it is null by rule: oversize, over its cap (1.2.11). Null when project is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_withheld": {
+          "description": "Schema 5. Why target is null when it is null by rule: switched_off, under the targets switch of config.json. Null when target is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edit_marks_before_withheld": {
+          "description": "Schema 5. Why edit_marks_before is null when it is null by rule: switched_off, under the edit_marks switch of config.json. Null when edit_marks_before is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_id_withheld": {
+          "description": "Schema 5. Why prompt_id is null when it is null by rule: oversize, over its cap (1.2.11). Null when prompt_id is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agent_id_withheld": {
+          "description": "Schema 5. Why agent_id is null when it is null by rule: oversize, over its cap (1.2.11). Null when agent_id is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agent_type_withheld": {
+          "description": "Schema 5. Why agent_type is null when it is null by rule: oversize, over its cap (1.2.11). Null when agent_type is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hosts_withheld": {
+          "description": "Schema 5. Why hosts is null when it is null by rule: oversize, over 32 entries. Null when hosts is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ssh_hosts_withheld": {
+          "description": "Schema 5. Why ssh_hosts is null when it is null by rule: oversize, over 32 entries. Null when ssh_hosts is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harness_id": {
+          "description": "Schema 5. Which agent harness declared this call (BREADTH, tech 6.2.1). Null until harness detection fills it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harness_tool_name": {
+          "description": "Schema 5. The harness's own name for the tool when it differs from the canonical tool_name; null when it does not differ or does not match ^[A-Za-z0-9_:.\\-]{1,128}$.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "declared_via": {
+          "description": "Schema 5. Whether the declaration came from a pre or a post hook (BREADTH, tech 6.2.1). One of: pre, post; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "allOf": [
@@ -220,8 +457,103 @@
             "required": [
               "host_source",
               "rule_match",
-              "file_label"
+              "file_label",
+              "cwd_digest"
+            ],
+            "properties": {
+              "shape": {
+                "required": [
+                  "may_write"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 4
+              }
+            },
+            "required": [
+              "schema_version"
             ]
+          },
+          "then": {
+            "required": [
+              "host_source",
+              "rule_match",
+              "file_label",
+              "cwd_digest",
+              "rules_version"
+            ],
+            "properties": {
+              "shape": {
+                "required": [
+                  "may_write",
+                  "status_masked",
+                  "runner_digest"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 5
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "host_source",
+              "rule_match",
+              "file_label",
+              "cwd_digest",
+              "rules_version",
+              "writer",
+              "command",
+              "command_bytes",
+              "command_cut",
+              "masked",
+              "command_withheld",
+              "cwd",
+              "project",
+              "file_path",
+              "written_paths",
+              "written_paths_complete",
+              "target",
+              "edit_marks_before",
+              "written_paths_withheld",
+              "file_path_withheld",
+              "cwd_withheld",
+              "project_withheld",
+              "target_withheld",
+              "edit_marks_before_withheld",
+              "prompt_id_withheld",
+              "agent_id_withheld",
+              "agent_type_withheld",
+              "hosts_withheld",
+              "ssh_hosts_withheld",
+              "harness_id",
+              "harness_tool_name",
+              "declared_via"
+            ],
+            "properties": {
+              "shape": {
+                "required": [
+                  "may_write",
+                  "status_masked",
+                  "runner_digest"
+                ]
+              }
+            }
           }
         }
       ]
@@ -256,7 +588,9 @@
           "enum": [
             1,
             2,
-            3
+            3,
+            4,
+            5
           ]
         },
         "seq": {
@@ -311,6 +645,30 @@
           "description": "Schema 2. The shape digest of the input as it ACTUALLY RAN. Measured on Claude Code 2.1.258: PreToolUse carries tool_input as the model asked for it and PostToolUse carries it after any hook rewrote it, under the same tool_use_id, so comparing this against the declaration's shape.digest is the only way a rewriting hook is visible at all -- the transcript keeps only the pre-rewrite input. HMAC'd with the same per-install key as the declared digest, so the two are comparable to each other and to nothing else: a reader can say the executed call differed from the declared one and cannot say how. Empty string when the payload carried no tool_input; empty must NOT compare unequal to a declared digest, because an unknown digest counted as a difference would report every such call as rewritten.",
           "type": "string"
         },
+        "backgrounded": {
+          "description": "Schema 3. True when this record was written while the command was still running in the background: Claude Code moved it there at its timeout (unless it starts with sleep), or it was launched with run_in_background, or on Ctrl+B -- recognised only if Claude Code marks it with backgroundTaskId or backgroundedByUser, which was not measured. Its PostToolUse fires then, so outcome is the launch's and not the command's, and a reader treats the call's ending as unobserved. Read from whether a Bash call's tool_response carries the key backgroundTaskId or backgroundedByUser, as one bit: the task id and every other key of the response are never decoded. False on every other tool, and on PostToolUseFailure, which means the command ended or its launch failed.",
+          "type": "boolean"
+        },
+        "status_masked": {
+          "description": "Schema 4. The shape's status_masked for the input as it ACTUALLY RAN, from the same derivation as executed_digest: whether a recognised build or test runner on the executed shell line has an exit status the line does not return. A hook that rewrote the line before it ran -- to pipe test output into `grep | head`, say -- leaves the declaration's status_masked describing a line that never ran, so a reader judges masking on this one wherever the record saw a tool_input. Null when the payload carried no tool_input, on a tool that is not a shell, and where the declaration's would be null. A record before schema 4 does not carry it.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "none",
+            "test",
+            "build"
+          ]
+        },
+        "runner_digest": {
+          "description": "Schema 4. The shape's runner_digest for the input as it ACTUALLY RAN, from the same derivation as executed_digest. A digest and never the words.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "rule_match": {
           "description": "Schema 3. The rule-match layer's verdict for this record. Its SHAPE IS DEFINED BY THAT LAYER and is deliberately left open here, so the layer can add fields without a fourth schema version; this entry reserves the key and the null. NULL MEANS NOT COMPUTED BY THIS VERSION -- not 'no rule matched', which is a result and will be expressed inside the object. A reader that cannot tell those apart will report an absence of rules as an absence of matches.",
           "type": [
@@ -318,6 +676,178 @@
             "null"
           ],
           "additionalProperties": true
+        },
+        "rules_version": {
+          "description": "Schema 4. Which lists decided this record's status_masked, as the writing binary had them (shape.RulesVersion); see the declaration's rules_version.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "writer": {
+          "description": "Schema 5. The version of the rashomon binary that wrote this record (\"dev\" for an unreleased build), so a reader can tell which release wrote it as well as which schema it follows.",
+          "type": "string"
+        },
+        "executed_command": {
+          "description": "Schema 5. The command as it ran, masked and capped as the declaration's command is, when it differs from the declaration's; executed_command_reason says why it is here.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executed_command_reason": {
+          "description": "Schema 5. Why executed_command is recorded: differs, the command that ran is not the one declared; declaration_not_in_tail, the declaration could not be read back to compare. One of: differs, declaration_not_in_tail; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executed_command_bytes": {
+          "description": "Schema 5. The byte length of the executed command, before masking and any cut.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "executed_command_cut": {
+          "description": "Schema 5. Where executed_command was shortened to its head and tail windows; null when it was stored whole. An object of offset, where the cut is in the stored text, and removed_bytes, how many bytes went between the head and the tail.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "executed_masked": {
+          "description": "Schema 5. executed_command's masked spans, as the declaration's masked.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object"
+          }
+        },
+        "failure": {
+          "description": "Schema 5. The failure class of a PostToolUseFailure (1.2.5), computed in memory from text that is never stored: origin (exit, no_exit_line, timeout, interrupt, file_tool, mcp, web, agent or other_tool), class, source (program_table, text, exit_only or none), counts_as_failure, counts_for_learning, class_table_version and error_bytes.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "output_evidence": {
+          "description": "Schema 5. What one output scan found in a gate run: family, success_line, fail_line, scanned_bytes and version. A masked run verifies only when success_line holds and fail_line does not.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "edit_marks": {
+          "description": "Schema 5. The deltas per closed integrity-mark id in an edit, from the shared 1 MiB pre-read: added and removed, each a count per mark id; basis (edit_delta, write_vs_before, write_before_unread or notebook_added_only); and version.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "head_after": {
+          "description": "Schema 5. The git state after a HEAD-moving vcs call, read without running git (1.2.6): root, head (40 or 64 hex), branch (null when detached), detached, state (ok, no_repo, unborn or unreadable) and root_withheld.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "gate_output": {
+          "description": "Schema 5. VERIFY's classification of a gate-family call's output (2.2.3): kind (summary_pass, summary_fail, fail_line, empty_run, no_summary, unattributable or unread), parser, and for unread the reason (budget, too_large, decode or verify_off).",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "credmech": {
+          "description": "Schema 5. The credential mechanism a call used -- a profile, a role, an env var name or a vault path, never a value. Null until the change that fills it lands.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executed_command_withheld": {
+          "description": "Schema 5. Why executed_command is null when it is null by rule; command_withheld's values. One of: no_consent, switched_off, masker_error, oversize, forgotten; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure_withheld": {
+          "description": "Schema 5. Why failure is null when it is null by rule: switched_off, under the failure_classes switch of config.json. Null when failure is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "output_evidence_withheld": {
+          "description": "Schema 5. Why output_evidence is null when it is null by rule: switched_off, under the output_evidence switch of config.json. Null when output_evidence is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edit_marks_withheld": {
+          "description": "Schema 5. Why edit_marks is null when it is null by rule: switched_off, under the edit_marks switch of config.json. Null when edit_marks is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "head_after_withheld": {
+          "description": "Schema 5. Why head_after is null when it is null by rule: switched_off, under the git switch of config.json. Null when head_after is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harness_id": {
+          "description": "Schema 5. Which agent harness declared this call (BREADTH, tech 6.2.1). Null until harness detection fills it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harness_tool_name": {
+          "description": "Schema 5. The harness's own name for the tool when it differs from the canonical tool_name; null when it does not differ or does not match ^[A-Za-z0-9_:.\\-]{1,128}$.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "declared_via": {
+          "description": "Schema 5. Whether the declaration came from a pre or a post hook (BREADTH, tech 6.2.1). One of: pre, post; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome_source": {
+          "description": "Schema 5. Where the outcome came from (BREADTH, tech 6.2.1). One of: claude_post, claude_failure, cursor_tool_output, cursor_failure, codex_mcp_is_error, codex_rollout_join, none; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure_type": {
+          "description": "Schema 5. The failure's type, when the harness says (BREADTH, tech 6.2.1). One of: error, timeout, permission_denied; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mcp_server_source": {
+          "description": "Schema 5. Where an MCP call's server was configured (BREADTH, tech 6.2.1). One of: plugin, sdk, user, project, local, managed, claudeai, other; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "allOf": [
@@ -334,7 +864,73 @@
           },
           "then": {
             "required": [
-              "rule_match"
+              "rule_match",
+              "backgrounded"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 4
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "rule_match",
+              "backgrounded",
+              "status_masked",
+              "runner_digest",
+              "rules_version"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 5
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "rule_match",
+              "backgrounded",
+              "status_masked",
+              "runner_digest",
+              "rules_version",
+              "writer",
+              "executed_command",
+              "executed_command_reason",
+              "executed_command_bytes",
+              "executed_command_cut",
+              "executed_masked",
+              "failure",
+              "output_evidence",
+              "edit_marks",
+              "head_after",
+              "gate_output",
+              "credmech",
+              "executed_command_withheld",
+              "failure_withheld",
+              "output_evidence_withheld",
+              "edit_marks_withheld",
+              "head_after_withheld",
+              "harness_id",
+              "harness_tool_name",
+              "declared_via",
+              "outcome_source",
+              "failure_type",
+              "mcp_server_source"
             ]
           }
         }
@@ -342,7 +938,7 @@
     },
     "terminal": {
       "title": "terminal",
-      "description": "Closes a declaration on every exit path the recorder controls: a clean return, an error return, and SIGTERM. SIGKILL is not catchable, so a declaration with no terminal is the signature of the uncontrolled path, and that absence is the only honest record of it.",
+      "description": "Closes a declaration on every exit path the recorder controls: a clean return, an error return, and SIGTERM. SIGKILL is not catchable, so a declaration with no terminal is the signature of the uncontrolled path, and that absence is the only honest record of it. A terminal whose reason is flush_failed is the exception: it closes nothing. It marks the call's records as possibly not durable, because a sync that should have made them durable failed, the hook's one full sync or a barrier before it (REC-34), so a reader must not let it close a declaration whose own terminal never landed, nor count it as a declaration the lock dropped.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -355,6 +951,26 @@
         "outcome",
         "reason"
       ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 5
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "phase",
+              "writer"
+            ]
+          }
+        }
+      ],
       "properties": {
         "type": {
           "enum": [
@@ -366,7 +982,9 @@
           "enum": [
             1,
             2,
-            3
+            3,
+            4,
+            5
           ]
         },
         "seq": {
@@ -393,7 +1011,7 @@
           ]
         },
         "reason": {
-          "description": "Null when the outcome is ok.",
+          "description": "Null when the outcome is ok. recovered_panic: the panic barrier recovered a panic that cost this call's capture -- a bug in this program, as distinct from internal_error's ordinary failure. flush_failed: carried by a spill terminal, it marks records this call appended and could not flush to stable storage -- they read back, and a power loss or a crash of the machine could still remove them.",
           "type": [
             "string",
             "null"
@@ -402,8 +1020,26 @@
             null,
             "terminated_by_signal",
             "lock_timeout",
-            "internal_error"
+            "internal_error",
+            "recovered_panic",
+            "flush_failed"
           ]
+        },
+        "phase": {
+          "description": "Which invocation wrote this terminal. Null on an ordinary closing terminal, always Handler's own PreToolUse. Set only on a flush_failed marker: call means the declaration this invocation wrote may not be durable, post means the execution a separate, earlier invocation appended may not be.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "call",
+            "post"
+          ]
+        },
+        "writer": {
+          "description": "Schema 5. The version of the rashomon binary that wrote this record (\"dev\" for an unreleased build), so a reader can tell which release wrote it as well as which schema it follows.",
+          "type": "string"
         }
       }
     },
@@ -436,7 +1072,8 @@
           "enum": [
             1,
             2,
-            3
+            3,
+            4
           ]
         },
         "recorded_at_unix_ms": {
@@ -464,7 +1101,7 @@
           ]
         },
         "reason": {
-          "description": "Null when the state is verified. Fixed codes, never free text and never derived from input.",
+          "description": "Null when the state is verified, and never null when it is unverified: a reader meets an unverified record with no reason, or a state outside the enum, as records_unreadable. Fixed codes, never free text and never derived from input. recovered_panic: the panic barrier recovered a panic in this invocation -- one that cost the call's capture, or one inside the file-label derivation, whose label then reads unknown. payload_too_large: the invocation's payload was over the 8 MiB intake cap and was refused after a bounded read, so the call went unrecorded; nothing broke inside this program, which is why it is not internal_error.",
           "type": [
             "string",
             "null"
@@ -472,18 +1109,25 @@
           "enum": [
             null,
             "internal_error",
+            "recovered_panic",
             "lock_timeout",
+            "payload_too_large",
+            "record_oversize",
             "terminated_by_signal",
             "unterminated_entry",
             "hook_entry_absent",
             "hook_entry_unresolved",
             "probe_absent",
+            "recording_paused",
+            "pause_state_unreadable",
             "probe_unresolved"
           ]
         },
         "hook_entry": {
-          "description": "Whether our entry for this phase's event was installed as watch installs it. An entry narrowed by hand is absent, because that is what it is.",
+          "description": "Whether a recorder of ours is configured to run here, and which of two origins answered: present_settings when our entry for this phase's event is installed in settings.json as watch installs it; present_plugin when this process is itself running as the rashomon plugin's own hook binary for that event. An entry narrowed by hand is absent, because that is what it is. \"present\" is a legacy value: every binary shipped before the plugin existed wrote it for what is now called present_settings, and those schema-2 records are still on disk and still valid -- a reader that meets it should treat it as \"present, origin unknown\".",
           "enum": [
+            "present_settings",
+            "present_plugin",
             "present",
             "absent",
             "unknown"
@@ -500,11 +1144,39 @@
             "unknown"
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unverified"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "reason": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
     },
     "gap": {
       "title": "gap",
-      "description": "That records left the store, and why. It is the only way records leave: a deletion with no gap record is a silent deletion, and a store that can be silently edited is worth nothing as evidence.",
+      "description": "That records left the store, or that a deliberate pause meant none were made, and why either way. A deletion with no gap record is a silent deletion, and a store that can be silently edited is worth nothing as evidence.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -529,7 +1201,8 @@
           "enum": [
             1,
             2,
-            3
+            3,
+            4
           ]
         },
         "recorded_at_unix_ms": {
@@ -542,6 +1215,7 @@
           "enum": [
             "forget",
             "forget_host",
+            "paused",
             "size_cap"
           ]
         },
@@ -553,23 +1227,63 @@
           "type": "integer"
         },
         "host_digest": {
-          "description": "Schema 2. An HMAC under the per-install key identifying the destination a host-scoped forget removed; empty string for a window forget, which removes by time and names no host. A DIGEST and not the hostname, resolving a conflict the field had to settle: the report needs to keep suppressing the destination, because the proxy's store is not this tool's to delete from and the host would otherwise reappear in the next report as reached-but-never-named, yet forget --host also has to make the hostname leave this store's bytes. Writing the name would satisfy the first requirement by breaking the second. Keyed with the same per-install key the shape digests use, so the report can recompute it from an observed host while a reader of the store cannot turn it back into a name or test a guess.",
+          "description": "Schema 2. An HMAC under the per-install key identifying the destination a host-scoped forget removed; empty string for a window forget, which removes by time and names no host. A DIGEST and not the hostname, resolving a conflict the field had to settle: the report needs to keep suppressing the host, because nono's own trail is not this tool's to delete from and the host would otherwise reappear in the next report under the sandbox heading, yet forget --host also has to make the hostname leave this store's bytes. Writing the name would satisfy the first requirement by breaking the second. Keyed with the same per-install key the shape digests use, so the report can recompute it from an observed host while a reader of the store cannot turn it back into a name or test a guess. Computed over the host's one canonical spelling (lower case, no port or root dot, an IP literal as it is recorded), whatever the user typed: forget --host 167838211 removes the records naming 10.1.2.3 and digests 10.1.2.3, the spelling the sandbox trail carries. A gap written before that digests the value as typed.",
           "type": "string"
         },
         "removed_records": {
+          "description": "How many records left the store. -1 means unknown: eviction removed a run it could not read, or one holding a line it could not parse, by its size.",
+          "type": "integer",
+          "minimum": -1
+        }
+      }
+    },
+    "forgotten_host": {
+      "title": "forgotten_host",
+      "description": "A host-scoped forget, kept at the store root. Written by forget --host whatever it removed, at most once per host, so the report can keep suppressing a host that only the sandbox's trail held, where no run had a record to remove and so no gap was written. Carries the keyed digest and never the name, for the reason given on gap.host_digest.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_version",
+        "recorded_at_unix_ms",
+        "host_digest"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "forgotten_host"
+          ]
+        },
+        "schema_version": {
+          "description": "Stamped at the session-level version, as coverage and gap records are. The record first exists at 3.",
+          "type": "integer",
+          "enum": [
+            3
+          ]
+        },
+        "recorded_at_unix_ms": {
           "type": "integer"
+        },
+        "host_digest": {
+          "description": "An HMAC under the per-install key of the canonical host name, the same digest a forget_host gap carries. Never empty.",
+          "type": "string",
+          "minLength": 1
         }
       }
     },
     "report_reason": {
       "title": "report reason",
-      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file.",
+      "description": "Coverage reason codes report derives from the records rather than reading off one. No stored record carries them -- they appear only in report's output -- and they are listed here so that the whole vocabulary a reader can meet lives in one file. duplicate_declarations: more declaration records than distinct tool_use_ids in one run, meaning more than one recorder wrote into it -- a statement about records, not about why; report cannot know whether the second writer was a plugin, a settings install, or a duplicated entry, only that there were two. declaration_missing: a terminal record closes a declaration the read does not hold, and the terminal does not say the lock refused it (lock_timeout), so the declaration was lost to a damaged line or a failed write. transcript_unreadable: a transcript the run's declarations named exists and could not be read, so the accounting check against it did not run; a transcript that does not exist adds no reason (Claude Code deletes old transcripts), and its group renders readable false. records_unreadable also covers a coverage record whose state is unverified with a null reason, or outside this schema's enum.",
       "type": "string",
       "enum": [
         "run_not_closed",
+        "records_unreadable",
         "transcript_mismatch",
+        "transcript_unreadable",
         "execution_mismatch",
-        "gap"
+        "gap",
+        "duplicate_declarations",
+        "declaration_missing"
       ]
     }
   }

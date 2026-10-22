@@ -1,88 +1,37 @@
 package report
 
 import (
-	"fmt"
+	"errors"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/host"
 	"github.com/altrace-dev-role/rashomon/internal/store"
-	"github.com/altrace-dev-role/rashomon/internal/wire"
 )
 
-// Destinations is what the wire saw, set against what the session declared.
+// Destinations is what the session declared it would reach.
 //
-// The comparison is the product, not the inventory. A list of hosts is
-// something several tools already print; the line that cannot be produced from
-// a transcript or a hook log is "this host was reached and no tool call ever
-// named it", and that line exists only because two independent records are
-// being reconciled here.
+// It used to set the wire's observation against the declarations, and the
+// comparison was the product: "this host was reached and no tool call ever
+// named it" is the line no transcript can produce. The proxy that made the
+// observation was a separate product that never shipped, so every report
+// rendered the comparison as not observed, and the proxy-era code is gone.
+// What remains is the half the recorder can stand behind on its own: an
+// inventory of what the calls named, and the calls that ran with an input
+// other than the one they were declared with.
 type Destinations struct {
-	// Observed is false when the proxy's store could not be read, and Reason
-	// says which of the fixed reasons applied. The report then prints
-	// "destinations: not observed (<reason>)" rather than an empty list: an
-	// empty list is the answer to "where did it go" and this is the answer to
-	// "were we looking".
-	Observed bool   `json:"observed"`
-	Reason   string `json:"reason,omitempty"`
+	// DeclaredHosts is the sorted, de-duplicated set of hostnames tool calls
+	// named. It is the record as written: a call to localhost or to the
+	// client's own API host is listed like any other, because a declaration is
+	// the agent's own command, and a list is not a finding.
+	DeclaredHosts []string `json:"declared_hosts"`
 
-	Hosts         []wire.Destination `json:"hosts"`
-	Attempts      int                `json:"attempts"`
-	DistinctHosts int                `json:"distinct_hosts"`
-	Inherited     int                `json:"inherited"`
-	// InheritedAllClientPlane is true when every inherited attempt is on a
-	// client-plane host.
-	//
-	// One inherited attempt appears on a COMPLETELY FRESH proxy store, every
-	// time: the client opens its own API tunnel before the SessionStart hook has
-	// written the window's left edge. The exclusion is right and the count is
-	// honest, but a reader who sees it on a store that never held anything else
-	// goes looking for a previous session that does not exist. When an AGENT
-	// destination is inherited the bare line stays, because then another session
-	// really did run.
-	InheritedAllClientPlane bool `json:"inherited_all_client_plane"`
-
-	// WindowApplied is false when the proxy's timestamps could not be parsed,
-	// in which case rows from other sessions may be included and the report has
-	// to say so rather than imply a window it did not enforce.
-	WindowApplied bool `json:"window_applied"`
-
-	// WireOnly is the finding: hosts the proxy saw that no declaration named.
-	// Loopback and the client's own control-plane hosts are excluded, because
-	// neither is the agent going somewhere nobody wrote down.
-	WireOnly []string `json:"wire_only"`
-
-	// ClientPlane is rendered separately and never as a finding. Claude Code's
-	// own model traffic transits the same proxy, and an agent request to
-	// api.anthropic.com is indistinguishable from the client's, so calling
-	// either one a hidden destination would be a false accusation in one
-	// direction and a blind spot in the other.
-	ClientPlane []string `json:"client_plane"`
-
-	// DeclaredNotObserved is the comparison's other direction: hosts a tool
-	// call named that no wire row inside this window shows.
-	//
-	// It is a WEAKER claim than WireOnly by nature, and the rendering says so.
-	// A declared host with no row may have been a call the user denied, a call
-	// that failed before it connected, a response served from a cache, or a
-	// host the proxy did not see. The report names the hosts and not the cause.
-	//
-	// It is EMPTY whenever the store could not be read. Without a store every
-	// declared host trivially has no row, so listing them would turn "we were
-	// not watching" into a finding against the agent for every host it honestly
-	// named -- firing hardest on exactly the sessions where the tool observed
-	// least.
-	DeclaredNotObserved []string `json:"declared_not_observed"`
-
-	// NotObservable are declared destinations outside what a CONNECT proxy can
-	// see at all: ssh and git+ssh hosts.
-	//
-	// They are neither finding: an ssh host with no wire row is not a gap in
-	// the record, it is a limitation of the instrument, and reporting a
-	// limitation of the tool as a property of the session is the error this
-	// field exists to prevent.
-	NotObservable []string `json:"not_observable"`
+	// SSHHosts are the ssh and git+ssh hosts the session named, kept apart
+	// because an ssh host is a different kind of destination from an HTTPS
+	// one, and the family view treats it so.
+	SSHHosts []string `json:"ssh_hosts"`
 
 	// ExecutedNotAsDeclared counts calls whose executed input digest differs
 	// from the digest of the input they were declared with.
@@ -104,32 +53,29 @@ type Destinations struct {
 	// empty session from an unbuilt field.
 	Rewritten []Rewritten `json:"rewritten"`
 
-	// Suppressed counts destinations removed from this view by a host-scoped
-	// forget. It is rendered, because a view that silently omitted rows would
-	// be the same failure as a report that printed nothing when it was not
-	// watching: the reader has to be able to see that something was withheld.
-	Suppressed int `json:"suppressed"`
-
-	// Novelty says which of this session's destinations are new for this
-	// project. See internal/baseline for why ownership is earliest-session-wins
-	// and why the file lives outside the evictable run store.
+	// Novelty says which of this session's declared hosts are not yet in
+	// this project's baseline. See internal/baseline for why ownership is
+	// earliest-session-wins and why the file lives outside the evictable run
+	// store.
 	Novelty Novelty `json:"novelty"`
-
-	// ProxyOnPath answers "was the proxy actually observing this session":
-	// true, false, or unknown. Derived from the join rather than from a probe,
-	// so it is a statement about records that exist rather than about
-	// configuration that was read.
-	ProxyOnPath string `json:"proxy_on_path"`
-	ProxyNote   string `json:"proxy_note"`
 }
 
-// Novelty is the per-project first-seen line.
+// Novelty is the per-project baseline-membership line.
 //
 // Its value depends entirely on not crying wolf. A novelty line that fires on
 // a quarter of sessions is read once and ignored afterwards, which is why the
 // ubiquitous list exists, why the first session in a project establishes rather
 // than reports, and why an unreadable baseline renders unknown instead of
 // treating every host as new.
+//
+// NOT a claim that a host is new to the project, whatever Hosts is named:
+// the baseline is seeded from whichever session happens to be rendered
+// first, which Runs() orders by directory mtime and --session can pin to any
+// one session at all, not from the project's actual earliest session in
+// start-time order. A host a genuinely earlier, not-yet-rendered session
+// already named can still show up here as absent from the baseline. "Absent
+// from the baseline" is the fact this type can back; "named for the first
+// time" is a claim about history this type cannot make.
 type Novelty struct {
 	// Available is false when the baseline could not be read or written.
 	// Novelty then renders as unknown: "no new hosts" and "we could not tell"
@@ -143,239 +89,229 @@ type Novelty struct {
 	Established bool `json:"established"`
 	// KnownHosts is the size of the baseline after this session.
 	KnownHosts int `json:"known_hosts"`
-	// Hosts are this session's novel destinations, sorted, excluding the
-	// ubiquitous list.
+	// Hosts are this session's declared hosts that were not yet in the
+	// project's baseline, sorted, excluding the ubiquitous list.
 	Hosts []string `json:"hosts"`
-}
-
-// Proxy-on-path verdicts. Three values, not two: "we could not tell" is a real
-// answer and collapsing it into false would print "the proxy was not on the
-// path" for a session where the store simply could not be read.
-const (
-	ProxyOnPathTrue    = "true"
-	ProxyOnPathFalse   = "false"
-	ProxyOnPathUnknown = "unknown"
-)
-
-// loopbackHosts never count as a destination the agent reached. They are
-// excluded at report time rather than in the canonicaliser, so the wire layer
-// can still see them and this layer excludes them knowingly.
-var loopbackHosts = map[string]bool{
-	"localhost": true, "127.0.0.1": true, "0.0.0.0": true, "[::1]": true, "::1": true,
+	// Evicted is how many hosts this render dropped from the baseline at its
+	// 4,096-host cap (baseline.Result.Evicted), least recently seen first.
+	// Without it, a host that returns after its own eviction reads as
+	// "never named before" rather than "named before, and the baseline
+	// aged it out" -- the same bytes, a different sentence. Omitted at
+	// zero, which is every render that never reaches the cap.
+	Evicted int `json:"evicted,omitempty"`
 }
 
 // clientPlaneHosts are the hosts the client contacts on its own behalf,
 // regardless of the agent's tool calls.
 //
 // A fixed list, and it grows only by a RECORDED DECISION, never by an agent's
-// judgement in the moment. That rule is the important part: a host wrongly
-// placed here is a real finding permanently suppressed, which is the one error
-// this report must not make, and the cost of leaving a client host out is only
-// that it renders as a finding until somebody rules on it.
+// judgement in the moment. Listed among the declared hosts like any other,
+// since a declaration is the agent's own command, and excluded from novelty
+// and from the sandbox section's agent columns: the client contacts these on
+// every session of every project, so a first mention is not news, and an
+// attempt on one in the sandbox's trail is the client's unless a call named
+// it.
 //
-// mcp-proxy.anthropic.com was added after the first real session reported six
-// attempts of it as "reached but never named" -- true of the bytes, false about
-// the agent. See mcpProxyHost for the case where it belongs to the agent after
-// all.
+// http-intake.logs.us5.datadoghq.com was added on a recorded measurement
+// (2026-10-09, Claude Code 2.1.285 inside nono 0.79.0 on macOS): the client
+// posted its logs there during a session whose every tool call was a curl to
+// other hosts or a WebFetch of example.com, and the sandbox, with that host
+// off its allowlist, refused it. The sandbox section then read "refused by the
+// sandbox: http-intake.logs.us5.datadoghq.com", an attempt the agent never
+// made. The exact host, as measured; another region's intake is not assumed.
 var clientPlaneHosts = map[string]bool{
-	"api.anthropic.com":       true,
-	"statsig.anthropic.com":   true,
-	"statsig.com":             true,
-	"sentry.io":               true,
-	"mcp-proxy.anthropic.com": true,
+	"api.anthropic.com":                  true,
+	"statsig.anthropic.com":              true,
+	"statsig.com":                        true,
+	"sentry.io":                          true,
+	"mcp-proxy.anthropic.com":            true,
+	"http-intake.logs.us5.datadoghq.com": true,
+}
+
+// clientPlaneHost is the one rule for whether a host is the client's own
+// traffic in a given session: on the list, except the MCP transport on a
+// session that made mcp__* calls, which is then the agent's. Every reader that
+// asks it of this session calls it -- novelHostCandidates and the sandbox
+// section -- rather than restating it, so the views cannot drift apart;
+// TestClientPlane_EveryViewAppliesTheOneRule holds them together.
+func clientPlaneHost(h string, mcpAttributed bool) bool {
+	return clientPlaneHosts[h] && !(h == mcpProxyHost && mcpAttributed)
 }
 
 // mcpProxyHost is the one client-plane host that can belong to the agent.
 //
 // It is the transport an mcp__* tool call travels over. On a session that made
 // such a call, filing its traffic under the client plane would bury the only
-// destination an MCP call can be observed at; on a session that made none, the
-// client contacted it anyway and calling it a finding would accuse the agent of
-// traffic it did not cause. Which of the two is true is decided by the
-// declarations, not by the host.
+// destination an MCP call can be seen at; on a session that made none, the
+// client contacted it anyway and counting it as the agent's would accuse the
+// agent of traffic it did not cause. Which of the two is true is decided by
+// the declarations, not by the host.
 const mcpProxyHost = "mcp-proxy.anthropic.com"
 
 // mcpTool is the prefix every MCP tool name carries.
 const mcpTool = "mcp__"
 
-// buildDestinations reconciles the proxy's observation against the session's
-// declarations.
-func buildDestinations(run *store.Run, obs wire.Observation, storeRoot string, forgotten func(string) bool) Destinations {
+// buildDestinations reads the declarations. Every field but novelty is a
+// property of the record the recorder wrote itself; novelty consults the
+// project baseline beside the store.
+//
+// forgotten excludes a host from the two lists only for a declaration whose
+// own recorded_at_unix_ms is at or before the latest forget --host of that
+// name: stale evidence a failed removal left behind. A declaration from
+// after the forget is this session's own fresh use of the name and is kept,
+// so a project can still name a host it once forgot. See
+// store.Store.ForgottenHostBefore.
+func buildDestinations(run *store.Run, storeRoot string, forgotten func(host string, declaredAtMS int64) bool) Destinations {
 	d := Destinations{
-		Observed:            obs.Observed,
-		Reason:              obs.Reason,
-		Hosts:               obs.Hosts,
-		Attempts:            obs.Attempts,
-		DistinctHosts:       obs.DistinctHosts,
-		Inherited:           obs.Inherited,
-		WindowApplied:       obs.WindowApplied,
-		WireOnly:            []string{},
-		ClientPlane:         []string{},
-		DeclaredNotObserved: []string{},
-		NotObservable:       sshDeclared(run),
-		// Computed whether or not the proxy store was read: it compares two
-		// records the recorder wrote itself and has nothing to do with the
-		// wire.
+		DeclaredHosts:         declaredHostsFiltered(run, forgotten),
+		SSHHosts:              sshDeclaredFiltered(run, forgotten),
 		ExecutedNotAsDeclared: executedNotAsDeclared(run),
 		Rewritten:             rewrittenCalls(run),
-		ProxyOnPath:           ProxyOnPathUnknown,
 	}
-	// Forgotten destinations are dropped from the whole view before anything
-	// else looks at them. The proxy's store is not ours to delete from, so
-	// without this a host whose records were forgotten reappears in the next
-	// report as a destination reached and never named -- the forget reading as
-	// though it had been undone, or worse, as a finding.
-	d.Hosts, d.Suppressed = suppress(d.Hosts, forgotten)
-	if d.Hosts == nil {
-		d.Hosts = []wire.Destination{}
-	}
-	// The counts must follow, or the totals keep describing rows the report no
-	// longer shows.
-	if d.Suppressed > 0 {
-		d.Attempts, d.DistinctHosts, d.Inherited = recount(d.Hosts)
-	}
-	if !obs.Observed {
-		// DeclaredNotObserved stays empty. See its field comment: without a
-		// store every declared host trivially has no row, and listing them
-		// would accuse the agent for every host it honestly named. The
-		// NotObservable list is still correct, because it is a property of the
-		// declarations rather than of the observation.
-		d.ProxyNote = "the proxy's store could not be read, so whether it was on the path is unknown"
-		// Novelty is assigned HERE as well as below, because this return is
-		// above the assignment and the zero value it used to leave behind was a
-		// degraded state carrying no reason -- rendering as neither "nothing was
-		// new" nor "we could not tell". This is also the most common case rather
-		// than an edge: no proxy store at all is what a user without the proxy
-		// running has.
-		d.Novelty = Novelty{
-			Hosts: []string{},
-			Reason: "the proxy store could not be read, so no destination could be " +
-				"compared against this project's baseline",
-		}
-		return d
-	}
-
-	// Whether every inherited attempt is the client's own traffic. Read from the
-	// suppressed list, like everything below it.
-	d.InheritedAllClientPlane = inheritedIsAllClientPlane(d.Hosts)
-
-	declared := declaredHosts(run)
-	// An mcp__* declaration attributes the MCP transport to the agent's work.
-	// Computed once: it is a property of the session, not of a host.
-	mcpAttributed := madeMCPCall(run)
-
-	// d.Hosts, NOT obs.Hosts. The comment above suppress() says forgotten
-	// destinations are dropped from the whole view before anything else looks
-	// at them; reading the observation here meant they were dropped from the
-	// per-host list alone, and a forgotten host came back as a wire-only
-	// finding and as a novelty candidate. The suppressed list is the view.
-	var matched int
-	for _, h := range d.Hosts {
-		if h.Inherited {
-			continue
-		}
-		switch {
-		case loopbackHosts[h.Host]:
-			continue
-		case h.Host == mcpProxyHost && mcpAttributed:
-			// Accounted for by the mcp__* declarations, so neither a finding
-			// nor client-plane traffic. It stays in the per-host list; only
-			// the section it is filed under changes.
-			matched++
-			continue
-		case clientPlaneHosts[h.Host]:
-			d.ClientPlane = append(d.ClientPlane, h.Host)
-			// A client-plane host that WAS declared still counts as evidence
-			// the proxy was on the path: the agent named it and the wire saw
-			// it, whatever else also reaches that host.
-			if declared[h.Host] {
-				matched++
-			}
-			continue
-		}
-		if declared[h.Host] {
-			matched++
-			continue
-		}
-		d.WireOnly = append(d.WireOnly, h.Host)
-	}
-	// The other direction, computed only now that the observation is known to
-	// be real. A host counts as observed only through a NON-inherited row: its
-	// only rows belonging to an earlier session means this session did not
-	// observe it.
-	seen := map[string]bool{}
-	for _, h := range obs.Hosts {
-		if !h.Inherited && h.Attempts > 0 {
-			seen[h.Host] = true
-		}
-	}
-	for h := range declared {
-		if !seen[h] {
-			d.DeclaredNotObserved = append(d.DeclaredNotObserved, h)
-		}
-	}
-
-	sort.Strings(d.WireOnly)
-	sort.Strings(d.ClientPlane)
-	sort.Strings(d.DeclaredNotObserved)
-
-	// Novelty is folded in only from hosts this session actually reached, with
-	// loopback and the client plane excluded -- a session should not be told
-	// that the client's own control plane is a new destination for its project.
-	d.Novelty = buildNovelty(run, storeRoot, novelHostCandidates(d.Hosts, mcpAttributed))
-
-	// Derived from the join, in three cases, because each says something
-	// different and one boolean cannot carry them.
-	switch {
-	case matched > 0:
-		d.ProxyOnPath = ProxyOnPathTrue
-		d.ProxyNote = pluralHosts("measured: %d declared host%s observed on the wire", matched)
-	case obs.Attempts > 0:
-		// Rows exist in the window, so the proxy was observing something, but
-		// nothing it saw was named by a tool call. That is still "on the path"
-		// -- and it is the most interesting version of it.
-		d.ProxyOnPath = ProxyOnPathTrue
-		// Leads with the evidence that makes the verdict true. Leading with the
-		// negative rendered as "true -- no declared host matched", which reads as
-		// a contradiction and invites the reader to distrust the verdict; the
-		// interesting half follows it rather than replacing it.
-		d.ProxyNote = fmt.Sprintf("measured: %d attempt%s inside this session's window, "+
-			"none of them named by a tool call", obs.Attempts, plural(obs.Attempts))
-	default:
-		d.ProxyOnPath = ProxyOnPathUnknown
-		d.ProxyNote = "the store was readable and held no rows inside this session's window, so whether the proxy was on the path is unknown"
-	}
+	wire, ssh := novelHostCandidates(d.DeclaredHosts, d.SSHHosts, madeMCPCall(run))
+	d.Novelty = buildNovelty(run, storeRoot, wire, ssh)
 	return d
 }
 
-// declaredHosts is the set of wire-observable hostnames the session named.
+// novelHostCandidates are the hosts a novelty baseline should consider: what
+// this session named, whether over https or ssh, minus loopback and minus
+// the client's own plane. Loopback is listed among the declared hosts and
+// never counted as novel: a local server is not a new place the project's
+// traffic goes, first baseline entry or not. It is decided on the parsed
+// address (host.Loopback), so [0:0:0:0:0:0:0:1], 127.0.0.2 and api.localhost
+// are loopback as [::1] is. Folding the client plane into a baseline would make
+// api.anthropic.com a "new destination for this project" on the first session
+// of every project, which is the novelty line's most obvious way to make
+// itself worthless.
 //
-// ssh_hosts are deliberately NOT included. They are unobservable by this
-// proxy, so folding them in would let an ssh host suppress a wire-only finding
-// for the same name reached over https -- and they belong under coverage as
-// "not observable", never in this comparison.
-// executedNotAsDeclared counts calls that ran with a different input from the
-// one they were declared with, joined on tool_use_id.
+// wire and ssh are filtered and returned separately, never merged: the
+// baseline has to know which of this session's hosts came from an ssh
+// destination (baseline.UpdateOrigin's sshHosts) to skip the inet_aton fold
+// for them, and that is a fact only the caller still has at this point. The
+// two also ask Loopback differently for the same reason -- host.Loopback
+// folds a wire host's numeric forms before asking, which is right for a URL
+// a client actually resolves; host.LoopbackName does not, because an ssh
+// alias such as "0" is not a URL a client resolves at all, and folding it
+// first would read a destination that named nothing as this machine.
+func novelHostCandidates(wireHosts, sshHosts []string, mcpAttributed bool) (wire, ssh []string) {
+	filter := func(hosts []string, loopback func(string) bool) []string {
+		var out []string
+		for _, h := range hosts {
+			if loopback(h) || clientPlaneHost(h, mcpAttributed) {
+				continue
+			}
+			out = append(out, h)
+		}
+		return out
+	}
+	return filter(wireHosts, host.Loopback), filter(sshHosts, host.LoopbackName)
+}
+
+// buildNovelty consults the project baseline.
 //
-// Three cases are deliberately NOT counted, and each would inflate the number
-// on ordinary sessions:
+// The project key comes from the cwd the RUN recorded, never from the process
+// rendering the report: a report run from a different directory must not key a
+// past session to the reader's project. A session with no recorded cwd has no
+// project, and novelty is unavailable rather than guessed.
 //
-//   - an execution with no digest, because the payload carried no tool_input.
-//     Unknown is not a difference.
-//   - an execution whose declaration is absent from this run. There is nothing
-//     to compare it against, and comparing it against nothing would make every
-//     spilled or evicted declaration look like a rewrite.
-//   - a declaration with no shape digest at all, which a schema 1 record can
-//     be.
+// wireHosts and sshHosts are passed to baseline.UpdateOrigin separately so a
+// host named only over ssh is marked (entry.SSH) rather than folded as an IP
+// literal on every later load.
+func buildNovelty(run *store.Run, storeRoot string, wireHosts, sshHosts []string) Novelty {
+	n := Novelty{Hosts: []string{}}
+	cwd := runCWD(run)
+	if cwd == "" {
+		n.Reason = "the run recorded no working directory, so its project is unknown"
+		return n
+	}
+	if storeRoot == "" {
+		n.Reason = "no store root, so the baseline could not be located"
+		return n
+	}
+	// Ownership is recorded per session id, so an empty one makes every
+	// comparison vacuous: two unidentified runs would each appear to own the
+	// other's hosts and every host would read as novel. Found by a fixture that
+	// omitted the id, which is exactly how a real run with an unattributed
+	// session would arrive.
+	if run.SessionID() == "" {
+		n.Reason = "the run has no session id, so baseline ownership cannot be attributed"
+		return n
+	}
+
+	sshSet := make(map[string]bool, len(sshHosts))
+	for _, h := range sshHosts {
+		sshSet[h] = true
+	}
+	hosts := append(append([]string{}, wireHosts...), sshHosts...)
+	res := baseline.UpdateOrigin(storeRoot, baseline.Key(cwd), run.SessionID(),
+		time.UnixMilli(runStartMS(run)), hosts, sshSet)
+	if res.Err != nil {
+		n.Reason = baselineErrorReason(res.Err)
+		return n
+	}
+	n.Available = true
+	n.Established = res.Established
+	n.KnownHosts = res.Known
+	n.Evicted = res.Evicted
+	if res.Novel != nil {
+		n.Hosts = res.Novel
+	}
+	return n
+}
+
+// baselineErrorReason tells apart the two named baseline errors a caller can
+// act on from the rest, which it describes the same way it always has.
 //
-// Rewritten is one call whose executed input differed from its declared input.
-//
-// EVERY FIELD IS ALREADY IN THE STORE. There is no command string here because
-// there is none anywhere: the declaration keeps a program name, a verb class,
-// an argument count and a keyed digest, and this row is assembled from exactly
-// those. The digests themselves are deliberately not carried -- they are keyed,
-// so they are not content, but two opaque hashes side by side invite a reader
-// to treat them as evidence of WHAT changed, which they are not.
+// A render and `forget --host` both take the baseline's lock, and a reader
+// who sees the same sentence for that as for a corrupt file has no way to
+// tell "try again" from "look at this." baseline.ErrTooManyHosts and
+// store.ErrLockTimeout are named for exactly this reason; everything else --
+// a corrupt file, an unreadable one, a version this build does not know --
+// stays the generic message, deliberately not the error text: it carries
+// the baseline path, and a path carries someone's directory names.
+func baselineErrorReason(err error) string {
+	switch {
+	case errors.Is(err, baseline.ErrTooManyHosts):
+		return "this session named more hosts than a project baseline can hold, so novelty could not be updated this time"
+	case errors.Is(err, store.ErrLockTimeout):
+		return "the project baseline was locked by another render, so novelty could not be checked this time"
+	default:
+		return "the project baseline could not be read or written"
+	}
+}
+
+// runCWD is the working directory the run recorded, preferring the start-phase
+// record because that is the one written before any tool call could change it.
+func runCWD(run *store.Run) string {
+	for _, c := range run.Coverage {
+		if c.Phase == store.PhaseStart && c.CWD != "" {
+			return c.CWD
+		}
+	}
+	for _, c := range run.Coverage {
+		if c.CWD != "" {
+			return c.CWD
+		}
+	}
+	return ""
+}
+
+// runStartMS is the session's own start instant, which decides baseline
+// ownership. Falling back to the earliest record keeps a run with no start
+// probe comparable rather than sorting it before everything.
+func runStartMS(run *store.Run) int64 {
+	var earliest int64
+	for _, c := range run.Coverage {
+		if c.Phase == store.PhaseStart {
+			return c.RecordedAtMS
+		}
+		if earliest == 0 || c.RecordedAtMS < earliest {
+			earliest = c.RecordedAtMS
+		}
+	}
+	return earliest
+}
+
 type Rewritten struct {
 	ToolUseID string `json:"tool_use_id"`
 	ToolName  string `json:"tool_name"`
@@ -383,6 +319,17 @@ type Rewritten struct {
 	Program string `json:"program"`
 	// VerbClass is the derived class of the action: read, write, network...
 	VerbClass string `json:"verb_class"`
+}
+
+// inputCompletedByHarness names the tools whose tool_input Claude Code itself
+// completes between PreToolUse and PostToolUse: the user's answers are written
+// into AskUserQuestion's input, and the approved plan into ExitPlanMode's. A
+// different digest there is the harness doing its job, not a rewrite. Measured
+// on a real 2,353-call session: every one of its four "executed differently"
+// rows was one of these two tools, and no other tool produced one.
+var inputCompletedByHarness = map[string]bool{
+	"AskUserQuestion": true,
+	"ExitPlanMode":    true,
 }
 
 // rewrittenCalls is executedNotAsDeclared with the ids kept.
@@ -398,7 +345,7 @@ func rewrittenCalls(run *store.Run) []Rewritten {
 	}
 	declared := make(map[string]decl, len(run.Declarations))
 	for _, d := range run.Declarations {
-		if d.Shape.Digest == "" {
+		if d.Shape.Digest == "" || inputCompletedByHarness[d.ToolName] {
 			continue
 		}
 		e := decl{digest: d.Shape.Digest, tool: d.ToolName, verb: d.Shape.VerbClass}
@@ -458,11 +405,106 @@ func sshDeclared(run *store.Run) []string {
 	return out
 }
 
+// sshDeclaredFiltered is sshDeclared with forgotten applied per declaration,
+// before the hosts are merged into one set: a host is dropped only for the
+// declaration(s) that named it at or before the latest forget of that name,
+// never for a later declaration that happens to share it. forgotten == nil
+// passes every host through, matching the report's nil-means-no-filter
+// convention (see suppressTrail).
+//
+// Canonicalised before forgotten is asked, the same correction
+// declaredHostsFiltered applies and for the same reason: forget --host
+// records its digest under the canonical spelling, never the one a
+// declaration happens to hold, so asking forgotten about the stored spelling
+// let a legacy or differently-cased ssh host -- "GitHub.com" where today's
+// extraction writes "github.com" -- survive a forget of its canonical name
+// and kept it out of the one spelling every current declaration uses. A host
+// that no longer canonicalises, or that host.Shaped now refuses, is dropped
+// rather than carried forward under whatever it used to be.
+//
+// host.CanonicalName, not Canonical: these are ssh destinations, and an
+// ssh-config alias made only of digits is not a URL authority a client
+// folds (host.CanonicalName's doc). Store.ForgetHost records a forget's
+// digest under both spellings for exactly this reason, so a forget of
+// either still finds this one.
+func sshDeclaredFiltered(run *store.Run, forgotten func(host string, declaredAtMS int64) bool) []string {
+	set := map[string]bool{}
+	for _, d := range run.Declarations {
+		for _, h := range d.SSHHosts {
+			canon, ok := host.CanonicalName(h)
+			if !ok || !host.Shaped(canon) {
+				continue
+			}
+			if forgotten != nil && forgotten(canon, d.RecordedAtMS) {
+				continue
+			}
+			set[canon] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// declaredHosts is the sorted, de-duplicated set of hostnames the session's
+// tool calls named. Never nil, for the same reason as sshDeclared.
+//
+// Unfiltered: buildNono's own caller needs the full named set regardless of
+// what has been forgotten, to decide which trail hosts are the client's own.
+// See declaredHostsFiltered for the view that applies forgotten.
+func declaredHosts(run *store.Run) []string {
+	return declaredHostsFiltered(run, nil)
+}
+
+// declaredHostsFiltered is declaredHosts with forgotten applied per
+// declaration; see sshDeclaredFiltered for why that is per declaration and
+// not over the merged set.
+func declaredHostsFiltered(run *store.Run, forgotten func(host string, declaredAtMS int64) bool) []string {
+	set := map[string]bool{}
+	for _, d := range run.Declarations {
+		for _, h := range d.Hosts {
+			// A run stored before host.Canonical folded an IP literal to
+			// its one spelling holds the raw string -- "167838211" where a
+			// current build now writes "10.1.2.3". Re-canonicalising here
+			// is a no-op for every run shape.Hosts already wrote the
+			// canonical form into, and is what lets an old run compare
+			// equal to a new one in the baseline novelty walks this feeds
+			// (buildNovelty). A host that no longer canonicalises, or that
+			// host.Shaped now refuses, is dropped rather than carried
+			// forward under whatever it used to be.
+			//
+			// Canonicalised BEFORE forgotten is asked, not after: forget
+			// --host records its digest under the canonical spelling, never
+			// the stored one, so asking forgotten about h here let a legacy
+			// declaration -- 167838211 where a forget named 10.1.2.3 --
+			// escape the check and reappear in every later render of the
+			// same old run.
+			canon, ok := host.Canonical(h)
+			if !ok || !host.Shaped(canon) {
+				continue
+			}
+			if forgotten != nil && forgotten(canon, d.RecordedAtMS) {
+				continue
+			}
+			set[canon] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // madeMCPCall reports whether the session declared any MCP tool call.
 //
 // The declaration is the evidence, not the host: an MCP call names no hostname
-// of its own, so the transport is the only place it can be observed, and this
-// is what connects the two.
+// of its own, so the transport is the only place it can be seen, and this is
+// what connects the two.
 func madeMCPCall(run *store.Run) bool {
 	for _, d := range run.Declarations {
 		if strings.HasPrefix(d.ToolName, mcpTool) {
@@ -470,220 +512,4 @@ func madeMCPCall(run *store.Run) bool {
 		}
 	}
 	return false
-}
-
-func declaredHosts(run *store.Run) map[string]bool {
-	out := map[string]bool{}
-	for _, decl := range run.Declarations {
-		for _, h := range decl.Hosts {
-			out[h] = true
-		}
-	}
-	return out
-}
-
-// plural is the "s" for a count, for the messages that interpolate more than
-// one number and so cannot use pluralHosts.
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
-// inheritedIsAllClientPlane reports whether the inherited attempts are entirely
-// the client's own. False when there are none: a clause explaining traffic that
-// does not exist would be noise.
-func inheritedIsAllClientPlane(hosts []wire.Destination) bool {
-	var inherited, clientPlane int
-	for _, h := range hosts {
-		if h.InheritedAttempts == 0 {
-			continue
-		}
-		inherited += h.InheritedAttempts
-		if clientPlaneHosts[h.Host] {
-			clientPlane += h.InheritedAttempts
-		}
-	}
-	return inherited > 0 && inherited == clientPlane
-}
-
-func pluralHosts(format string, n int) string {
-	s := "s"
-	if n == 1 {
-		s = ""
-	}
-	return fmt.Sprintf(format, n, s)
-}
-
-// window derives the watched interval from the run's own coverage records.
-//
-// The run's account of itself is the only honest source: report must never
-// re-read today's configuration to judge a past run, because that would let a
-// later detach retroactively invalidate every session already captured. An
-// absent start record leaves the window open at that end, which the wire layer
-// reports as "window not applied" rather than silently treating everything as
-// in-window.
-//
-// RunID is left empty on purpose. The proxy's run_id is the agent's own
-// identifier and shares no namespace with a Claude Code session id, so
-// matching on it would exclude every row. The window is the join.
-func window(run *store.Run) wire.Window {
-	var w wire.Window
-	for _, c := range run.Coverage {
-		at := time.UnixMilli(c.RecordedAtMS)
-		switch c.Phase {
-		case store.PhaseStart:
-			if w.Start.IsZero() || at.Before(w.Start) {
-				w.Start = at
-			}
-		case store.PhaseEnd:
-			if at.After(w.End) {
-				w.End = at
-			}
-		}
-	}
-	// A session with no start record still has records; anchor on the earliest
-	// one rather than leaving the window unbounded, which would pull in every
-	// row the store has ever held.
-	if w.Start.IsZero() {
-		for _, c := range run.Coverage {
-			at := time.UnixMilli(c.RecordedAtMS)
-			if w.Start.IsZero() || at.Before(w.Start) {
-				w.Start = at
-			}
-		}
-	}
-	return w
-}
-
-// novelHostCandidates are the hosts a novelty baseline should consider: what
-// this session reached, minus loopback and minus the client's own plane.
-//
-// Folding the client plane into a baseline would make api.anthropic.com a
-// "new destination for this project" on the first session of every project,
-// which is the novelty line's most obvious way to make itself worthless.
-// It takes the SUPPRESSED host list rather than the observation, because a
-// host the user asked to forget must not be handed to the baseline: doing so
-// re-adds the entry forget --host just cleared, and the next report calls it
-// new.
-func novelHostCandidates(hosts []wire.Destination, mcpAttributed bool) []string {
-	var out []string
-	for _, h := range hosts {
-		if h.Inherited || h.Attempts == 0 || loopbackHosts[h.Host] {
-			continue
-		}
-		if clientPlaneHosts[h.Host] && !(h.Host == mcpProxyHost && mcpAttributed) {
-			continue
-		}
-		out = append(out, h.Host)
-	}
-	return out
-}
-
-// buildNovelty consults the project baseline.
-//
-// The project key comes from the cwd the RUN recorded, never from the process
-// rendering the report: a report run from a different directory must not key a
-// past session to the reader's project. A session with no recorded cwd has no
-// project, and novelty is unavailable rather than guessed.
-func buildNovelty(run *store.Run, storeRoot string, hosts []string) Novelty {
-	n := Novelty{Hosts: []string{}}
-	cwd := runCWD(run)
-	if cwd == "" {
-		n.Reason = "the run recorded no working directory, so its project is unknown"
-		return n
-	}
-	if storeRoot == "" {
-		n.Reason = "no store root, so the baseline could not be located"
-		return n
-	}
-	// Ownership is recorded per session id, so an empty one makes every
-	// comparison vacuous: two unidentified runs would each appear to own the
-	// other's hosts and every host would read as novel. Found by a fixture that
-	// omitted the id, which is exactly how a real run with an unattributed
-	// session would arrive.
-	if run.SessionID() == "" {
-		n.Reason = "the run has no session id, so baseline ownership cannot be attributed"
-		return n
-	}
-
-	res := baseline.Update(storeRoot, baseline.Key(cwd), run.SessionID(),
-		time.UnixMilli(runStartMS(run)), hosts)
-	if res.Err != nil {
-		// Deliberately not the error text: it carries the baseline path, and a
-		// path carries someone's directory names.
-		n.Reason = "the project baseline could not be read or written"
-		return n
-	}
-	n.Available = true
-	n.Established = res.Established
-	n.KnownHosts = res.Known
-	if res.Novel != nil {
-		n.Hosts = res.Novel
-	}
-	return n
-}
-
-// runCWD is the working directory the run recorded, preferring the start-phase
-// record because that is the one written before any tool call could change it.
-func runCWD(run *store.Run) string {
-	for _, c := range run.Coverage {
-		if c.Phase == store.PhaseStart && c.CWD != "" {
-			return c.CWD
-		}
-	}
-	for _, c := range run.Coverage {
-		if c.CWD != "" {
-			return c.CWD
-		}
-	}
-	return ""
-}
-
-// runStartMS is the session's own start instant, which decides baseline
-// ownership. Falling back to the earliest record keeps a run with no start
-// probe comparable rather than sorting it before everything.
-func runStartMS(run *store.Run) int64 {
-	var earliest int64
-	for _, c := range run.Coverage {
-		if c.Phase == store.PhaseStart {
-			return c.RecordedAtMS
-		}
-		if earliest == 0 || c.RecordedAtMS < earliest {
-			earliest = c.RecordedAtMS
-		}
-	}
-	return earliest
-}
-
-// suppress drops forgotten destinations from the observed list, returning how
-// many went.
-func suppress(hosts []wire.Destination, forgotten func(string) bool) ([]wire.Destination, int) {
-	if forgotten == nil || len(hosts) == 0 {
-		return hosts, 0
-	}
-	kept := make([]wire.Destination, 0, len(hosts))
-	var gone int
-	for _, h := range hosts {
-		if forgotten(h.Host) {
-			gone++
-			continue
-		}
-		kept = append(kept, h)
-	}
-	return kept, gone
-}
-
-// recount recomputes the totals after suppression, so the headline numbers
-// describe the rows the report actually shows.
-func recount(hosts []wire.Destination) (attempts, distinct, inherited int) {
-	for _, h := range hosts {
-		attempts += h.Attempts
-		inherited += h.InheritedAttempts
-		if h.Attempts > 0 {
-			distinct++
-		}
-	}
-	return attempts, distinct, inherited
 }

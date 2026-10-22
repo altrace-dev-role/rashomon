@@ -1,23 +1,13 @@
 package hook
 
 import (
-	"encoding/json"
 	"io"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
-
-// sessionPayload is the part of a SessionStart or SessionEnd payload this
-// program reads. The rest -- source, reason, cwd -- is not needed and not kept.
-type sessionPayload struct {
-	SessionID string `json:"session_id"`
-	// CWD is read now: the novelty baseline is per project and the project is
-	// derived from this path. The rest of a session payload -- source, reason
-	// -- is still not needed and not kept.
-	CWD string `json:"cwd"`
-}
 
 // RunProbe handles a SessionStart or SessionEnd invocation.
 //
@@ -27,25 +17,57 @@ type sessionPayload struct {
 // mid-flight is written into the run's own coverage while the run is still
 // live, rather than inferred later by a report that has to guess.
 //
-// It never fails. A probe that cannot do its job records that it could not,
-// and returns.
-func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time) {
+// Its lock waits share one deadline, LockWaitTotal, as a hook's do.
+//
+// It never fails the hook. A probe that cannot do its job records that it
+// could not, and returns. The one failure no record can hold is eviction's,
+// which is about the store rather than this session: it is returned, for the
+// caller to say so on stderr.
+func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time) error {
+	return runProbe(sig, phase, in, st, now, LockWaitTotal)
+}
+
+// RunProbeFromPayload is RunProbe for a caller that already has a parsed
+// *hookio.Payload in hand -- cmd/rashomon's host-guard check, which hands
+// this the exact value internal/hostguard.EvaluateRaw built, so the bytes
+// it already decided on are never read or copied a second time. See
+// Handler.CapturePayload's doc, which this mirrors.
+func RunProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, st *store.Store, now func() time.Time) error {
+	return runProbeFromPayload(sig, phase, payload, nil, st, now, LockWaitTotal)
+}
+
+// runProbe is RunProbe with its lock waits bounded by waits, which a test
+// shortens.
+func runProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now func() time.Time, waits time.Duration) error {
+	return runProbeFromPayload(sig, phase, nil, in, st, now, waits)
+}
+
+// runProbeFromPayload is runProbe and RunProbeFromPayload's shared body.
+// Exactly one of payload and in is non-nil: payload when the caller has
+// already read and parsed it, in when it still owns an unread io.Reader
+// and runProbeFromPayload must call hookio.Intake itself.
+func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in io.Reader, st *store.Store, now func() time.Time, waits time.Duration) error {
+	st.LimitLockWaits(waits)
 	sessionID := UnattributedSession
 	reason := ""
 	cwd := ""
 
 	err := safe.Guard(func() error {
-		raw, err := readPayload(in)
-		if err != nil {
-			return err
+		if payload == nil {
+			var err error
+			payload, err = hookio.Intake(in)
+			if err != nil {
+				if s, c, ok := refusedSession(err); ok {
+					sessionID, cwd = s, c
+				}
+				return err
+			}
 		}
 		var p sessionPayload
-		if err := json.Unmarshal(raw, &p); err != nil {
+		if err := p.from(payload); err != nil {
 			return err
 		}
-		if p.SessionID != "" {
-			sessionID = p.SessionID
-		}
+		sessionID = attribute(p.SessionID)
 		cwd = p.CWD
 
 		switch phase {
@@ -67,17 +89,28 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 	case sig.Delivered():
 		reason = store.ReasonTerminatedBySignal
 	case err != nil:
-		reason = store.ReasonInternalError
+		reason = closeReason(err)
 	}
 
+	// A start or end coverage record that cannot be written is read as its
+	// absence: probe_absent at start, run_not_closed at end (report.build).
 	_ = safe.Guard(func() error {
 		return st.AppendCoverage(BuildCoverage(st, sessionID, phase, reason, cwd, now()))
 	})
 
 	// Eviction runs at session boundaries, off the per-call path. The session
-	// that is starting or ending is never a candidate.
-	_ = safe.Guard(func() error {
-		_, err := st.Evict(store.CapBytes(), sessionID, now())
+	// that is starting or ending is never a candidate. Its error is not this
+	// session's, so it goes to no coverage record; Evict writes each gap
+	// before removing its run, so whatever it did remove is accounted for.
+	//
+	// The cap is resolved here, inside the hook's own environment, and
+	// recorded before Evict runs with it: status reads the record rather
+	// than EnvCapBytes in whatever shell happens to run it, which can
+	// disagree with what Claude Code hands the hooks (hld-7).
+	capSetting := store.ResolveCap()
+	_ = st.RecordResolvedCap(capSetting)
+	return safe.Guard(func() error {
+		_, err := st.Evict(capSetting.Bytes, sessionID, now())
 		return err
 	})
 }

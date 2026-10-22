@@ -1,0 +1,33 @@
+# Findings a person has read and judged neither a secret nor an account's
+# shape. H-113 skips these and fails on anything else.
+#
+# One entry per line: <path> <fingerprint> <why>. The fingerprint covers the
+# path, the shape and the exact value, so an entry excuses that value in that
+# file and nothing else; change the value, or put another beside it, and it
+# is a finding again. `go run ./test/tools/scrub -review <path>` prints it.
+# An entry that excuses nothing fails H-113 as well.
+#
+# The entropy test errs wide on purpose, and short runs of distinct symbols
+# are where it errs: a format string of 20 characters reaches the threshold
+# a random token is held to. A capture through scrub loses such a token to
+# [redacted]; a real capture committed before scrub existed is recorded here
+# instead of being rewritten, because its bytes are the point of it.
+
+test/fixtures/nono/audit-events.ndjson c882406bbe53b0e6 the session's sh -c script: four curl -w format strings ("ok1=%{http_code}" and the like) to pypi.org, example.com, the metadata address and github.com
+test/perf/budgets.json 63bd5a6a8f130ccb the parent peak RSS field name every entry row carries: an identifier the entropy test reads as a run of distinct symbols
+test/perf/budgets.json 312674104c805a4e the post-failure hook event and a recap benchmark name in the RSS rows: identifiers
+test/perf/budgets.json 7cba8a10097cace4 the pending recap row's basis note: prose saying how the row was measured; it holds no credential and no account value
+test/perf/budgets.json dadc6c7e35d1b83e the benchmark platform field name: an identifier
+test/perf/budgets.json ae8a06cbdbbff470 the benchmark row names: identifiers
+internal/jsonscan/testdata/fuzz/FuzzRES5_TopMatchesStdlib/seed-00 be4d013d0dccbd1f a fuzz seed: a Go-escaped hook payload with one-letter placeholder values; no credential and no account value
+internal/jsonscan/testdata/fuzz/FuzzRES5_TopMatchesStdlib/seed-03 13b28886815303b1 a fuzz seed: Go-escaped JSON with a duplicate key and a run of digits then letters as a placeholder; no credential and no account value
+internal/jsonscan/testdata/fuzz/FuzzRES5_TopMatchesStdlib/seed-04 71ae96498d07753c a fuzz seed: Go-escaped JSON with escaped key letters and surrogate pairs; no credential and no account value
+internal/jsonscan/testdata/fuzz/FuzzRES7_StreamMatchesStdlib/seed-00 43ff94f50713cc21 a fuzz seed: a Go-escaped hook payload with one-letter placeholder values; no credential and no account value
+internal/jsonscan/testdata/fuzz/FuzzRES7_StreamMatchesStdlib/seed-03 2cd9cbca1523bcbf a fuzz seed: Go-escaped JSON with a duplicate key and a run of digits then letters as a placeholder; no credential and no account value
+internal/jsonscan/testdata/fuzz/FuzzRES7_StreamMatchesStdlib/seed-04 865ed506f1dc104d a fuzz seed: Go-escaped JSON with escaped key letters and surrogate pairs; no credential and no account value
+test/tools/hygiene/reviewed.txt 5a6bf24071db2b70 a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
+test/tools/hygiene/reviewed.txt 5cb84c90618c3b6f a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
+test/tools/hygiene/reviewed.txt 443d1f66631eae2a a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
+test/tools/hygiene/reviewed.txt 5fff17de04496d85 a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
+test/tools/hygiene/reviewed.txt 883aa8477c75131f a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value
+test/tools/hygiene/reviewed.txt 43454ff9356cb927 a fuzz seed's entry in this file: its path and its reason, which the entropy test reads as one value

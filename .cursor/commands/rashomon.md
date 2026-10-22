@@ -6,9 +6,10 @@ Be precise with the user about what this does and does not do: rashomon
 records **Claude Code sessions only** ("Claude Code only: the hooks, the
 store and the report describe Claude Code sessions and nothing else" —
 README). Running this from Cursor installs the
-recorder for the machine's *Claude Code* sessions. **This Cursor session is
-not recorded**, and rashomon has no hook into Cursor's agent loop today.
-Never imply otherwise.
+recorder for the machine's *Claude Code* sessions. **Cursor's own sessions
+are not supported yet.** Cursor loads Claude Code's hooks by default, so its tool
+calls can reach the recorder, but what gets recorded for them can be wrong. Say
+exactly that, and never imply more or less.
 
 1. Resolve the binary: `~/.local/bin/rashomon`, then `~/go/bin/rashomon`,
    then `/opt/homebrew/bin/rashomon` or `/usr/local/bin/rashomon`, then
@@ -19,6 +20,6 @@ Never imply otherwise.
 2. Confirm with the user that they want Claude Code sessions on this machine
    recorded, then run `rashomon watch`. Quote back the printed install id and
    the exact `detach --install <id>` undo line.
-3. Confirm with `rashomon status` (all five entries `present`), and tell the
+3. Confirm with `rashomon status` (all eight entries `present`), and tell the
    user: recording starts with their next Claude Code session; `rashomon
    report` in any terminal renders what was captured.

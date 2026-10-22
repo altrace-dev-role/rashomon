@@ -1,0 +1,471 @@
+package nono
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+)
+
+// The fixture is a REAL capture: nono v0.78.0, a real session, its real
+// audit-events.ndjson, redacted only of the local home path and checked in.
+// Hand-built JSON would have encoded what I believed the format to be -- and
+// the documentation described event types the program does not emit, so a
+// hand-built fixture would have been wrong in exactly the way a test cannot
+// notice.
+const fixture = "../../test/fixtures/nono/audit-events.ndjson"
+
+// fixtureWindow spans the captured session. The events carry real wall-clock
+// instants from the machine that recorded them, so the window is derived from
+// the file rather than from time.Now().
+func fixtureWindow(t *testing.T) Window {
+	t.Helper()
+	obs := Read(fixture, Window{Start: time.Unix(0, 0)})
+	if !obs.Observed || len(obs.Events) == 0 {
+		t.Fatalf("premise: the fixture yields no events (%s)", obs.Reason)
+	}
+	first := obs.Events[0].At
+	last := obs.Events[len(obs.Events)-1].At
+	return Window{Start: first.Add(-time.Second), End: last.Add(time.Second)}
+}
+
+// TestRead_TheRealCapture is the shape, asserted against the bytes nono wrote.
+func TestRead_TheRealCapture(t *testing.T) {
+	obs := Read(fixture, fixtureWindow(t))
+
+	if !obs.Observed {
+		t.Fatalf("not observed: %s", obs.Reason)
+	}
+	if obs.Sessions != 1 {
+		t.Errorf("sessions = %d, want 1", obs.Sessions)
+	}
+	if len(obs.Events) != 4 {
+		t.Fatalf("events = %d, want 4 (two allowed, two denied): %+v",
+			len(obs.Events), obs.Events)
+	}
+
+	if got, want := obs.Hosts(), []string{"example.com", "pypi.org"}; !eq(got, want) {
+		t.Errorf("allowed hosts = %v, want %v", got, want)
+	}
+	if got, want := obs.Denied(), []string{"169.254.169.254", "github.com"}; !eq(got, want) {
+		t.Errorf("denied hosts = %v, want %v", got, want)
+	}
+}
+
+// TestRead_DeniedHostsAreNotDestinations. A denied host is one the agent TRIED
+// to reach and did not. Folding it in with the allowed ones would report an
+// attempt as a destination -- the same distinction the wire reader's Unreached
+// exists to make, and the same direction of error.
+func TestRead_DeniedHostsAreNotDestinations(t *testing.T) {
+	obs := Read(fixture, fixtureWindow(t))
+	for _, h := range obs.Hosts() {
+		if h == "github.com" || h == "169.254.169.254" {
+			t.Errorf("%s was denied and appears as a reached destination", h)
+		}
+	}
+}
+
+// TestRead_TheReverseModeEventIsKept is the one that explains a DISAGREEMENT
+// with the wire, and it is why Mode is carried at all.
+//
+// rashomon exports no HTTP_PROXY -- plain HTTP is outside what its proxy can
+// see. nono's reverse-proxy path does see it: the captured session's attempt on
+// the cloud metadata endpoint is port 80, mode "reverse". Without this field a
+// reader comparing the two sources finds a host nono saw and rashomon did not,
+// and reads it as a recording failure rather than as a known boundary.
+func TestRead_TheReverseModeEventIsKept(t *testing.T) {
+	obs := Read(fixture, fixtureWindow(t))
+
+	var reverse []Event
+	for _, e := range obs.Events {
+		if e.Mode == "reverse" {
+			reverse = append(reverse, e)
+		}
+	}
+	if len(reverse) != 1 {
+		t.Fatalf("reverse-mode events = %d, want 1: %+v", len(reverse), obs.Events)
+	}
+	if reverse[0].Port != 80 {
+		t.Errorf("port = %d, want 80: the point of this event is that it is plain HTTP",
+			reverse[0].Port)
+	}
+	if reverse[0].Host != "169.254.169.254" {
+		t.Errorf("host = %q, want the metadata endpoint", reverse[0].Host)
+	}
+}
+
+// TestRead_DenialCategoriesSurvive. nono distinguishes an allowlist miss from a
+// deny-list hit by its reason string; both carry denial_category host_denied.
+// The category is kept and the reason is NOT -- it is free text embedding the
+// host, and this program does not carry free text from another program's log
+// into its own output.
+func TestRead_DenialCategoriesSurvive(t *testing.T) {
+	obs := Read(fixture, fixtureWindow(t))
+	for _, e := range obs.Events {
+		switch e.Decision {
+		case DecisionDeny:
+			if e.Category == "" {
+				t.Errorf("%s denied with no category: %+v", e.Host, e)
+			}
+		case DecisionAllow:
+			if e.Category != "" {
+				t.Errorf("%s allowed and carries a denial category %q", e.Host, e.Category)
+			}
+		default:
+			t.Errorf("unknown decision %q", e.Decision)
+		}
+	}
+}
+
+// TestRead_NoCommandLineReachesAnEvent is the invariant, and it is the reason
+// this package can exist at all.
+//
+// nono's session_started record carries the FULL COMMAND LINE of the sandboxed
+// process. rashomon stores no content. A fourth evidence source that quietly
+// became the first one to record a command would undo the property the whole
+// codebase is arranged around, and would do it while looking like an
+// integration.
+func TestRead_NoCommandLineReachesAnEvent(t *testing.T) {
+	raw, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A fragment that appears ONLY inside the captured command line.
+	const canary = "dev/null"
+	if !strings.Contains(string(raw), canary) {
+		t.Fatalf("premise: the fixture no longer carries a command line, so this test " +
+			"proves nothing -- recapture it from a session that runs one")
+	}
+
+	obs := Read(fixture, fixtureWindow(t))
+	for _, e := range obs.Events {
+		for _, got := range []string{e.Host, e.Decision, e.Mode, e.Category} {
+			if strings.Contains(got, canary) || strings.Contains(got, "curl") {
+				t.Errorf("a command-line fragment reached an event: %+v", e)
+			}
+		}
+	}
+
+	// And the type has nowhere to put one. Counted rather than named: a new
+	// field is a new place for content to land, and this goes red until
+	// somebody adds it deliberately and says so here.
+	if n := reflect.TypeOf(Event{}).NumField(); n != 6 {
+		t.Errorf("Event has %d fields, not 6. Adding one widens what this package can "+
+			"carry out of another program's log; do it deliberately.", n)
+	}
+}
+
+// TestRead_AbsentTrailIsCoverageNotAnError.
+func TestRead_AbsentTrailIsCoverageNotAnError(t *testing.T) {
+	obs := Read(filepath.Join(t.TempDir(), "missing.ndjson"), Window{Start: time.Now()})
+	if obs.Observed {
+		t.Error("an absent trail was reported as observed")
+	}
+	if obs.Reason != NotObservedNoTrail {
+		t.Errorf("reason = %q, want %q", obs.Reason, NotObservedNoTrail)
+	}
+	if obs.Events == nil {
+		t.Error("Events is nil; it must always marshal as an array, because null and [] " +
+			"are the same absence to a reader and different values to a consumer")
+	}
+}
+
+// TestRead_NoWindowObservesNothing. With no interval nothing can be attributed
+// -- the wire reader learned this by attributing an entire database to an
+// evicted run.
+func TestRead_NoWindowObservesNothing(t *testing.T) {
+	obs := Read(fixture, Window{})
+	if obs.Observed {
+		t.Error("a trail was read with no window to read it against")
+	}
+	if obs.Reason != NotObservedNoWindow {
+		t.Errorf("reason = %q, want %q", obs.Reason, NotObservedNoWindow)
+	}
+}
+
+// TestRead_EventsOutsideTheWindowAreCountedNotDropped.
+func TestRead_EventsOutsideTheWindowAreCountedNotDropped(t *testing.T) {
+	obs := Read(fixture, Window{Start: time.Now().Add(24 * time.Hour)})
+	if len(obs.Events) != 0 {
+		t.Errorf("events = %d, want 0 for a window after the capture", len(obs.Events))
+	}
+	if obs.Inherited != 4 {
+		t.Errorf("inherited = %d, want 4. Dropping them silently would make a shared "+
+			"audit directory look quiet.", obs.Inherited)
+	}
+}
+
+// TestRead_AMalformedLineDoesNotDiscardTheRest. A trail is append-only and a
+// torn final write is the ordinary case, not an exception.
+func TestRead_AMalformedLineDoesNotDiscardTheRest(t *testing.T) {
+	raw, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	torn := filepath.Join(t.TempDir(), "torn.ndjson")
+	if err := os.WriteFile(torn, append(raw, []byte(`{"sequence": 9, "eve`)...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	full := Read(fixture, fixtureWindow(t))
+	obs := Read(torn, fixtureWindow(t))
+	if len(obs.Events) != len(full.Events) {
+		t.Errorf("a torn last line cost %d events", len(full.Events)-len(obs.Events))
+	}
+}
+
+func eq(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestRead_AnEmptyOrWrongShapedFileIsNotAQuietSession.
+//
+// Observed used to be set on a successful open, so three different broken
+// inputs all reported "the sandbox watched and saw nothing" -- silence read as
+// zero, which is the failure this package's own doc says it exists to prevent.
+func TestRead_AnEmptyOrWrongShapedFileIsNotAQuietSession(t *testing.T) {
+	for _, c := range []struct{ name, body string }{
+		{"empty", ""},
+		{"blank lines", "\n   \n\t\n"},
+		{"not ndjson", "hello\nworld\n"},
+		{"valid json, wrong shape", `{"foo":1}` + "\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "audit-events.ndjson")
+			if err := os.WriteFile(path, []byte(c.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			obs := Read(path, Window{Start: time.Now().Add(-time.Hour)})
+			if obs.Observed {
+				t.Errorf("reported as observed with zero records; a reader cannot tell this "+
+					"from a session where the sandbox genuinely saw nothing (reason=%q)",
+					obs.Reason)
+			}
+			if obs.Reason != NotObservedNoRecords {
+				t.Errorf("reason = %q, want %q", obs.Reason, NotObservedNoRecords)
+			}
+		})
+	}
+}
+
+// TestRead_DroppedRecordsAreCounted. Four paths used to drop a record with no
+// trace, so a trail that was three-quarters unreadable rendered identically to
+// a quiet one.
+func TestRead_DroppedRecordsAreCounted(t *testing.T) {
+	raw, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "mixed.ndjson")
+	body := string(raw) +
+		"{\"sequence\": 90, \"eve\n" + // torn
+		`{"sequence": 91}` + "\n" + // no event
+		`{"sequence": 92, "event": {"type": "network", "event": {"target": "", "decision": "allow"}}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := Read(path, fixtureWindow(t))
+	if obs.Skipped != 2 {
+		t.Errorf("skipped = %d, want 2 (a torn line and one with no event)", obs.Skipped)
+	}
+	if obs.UnparseableTargets != 1 {
+		t.Errorf("unparseable_targets = %d, want 1. A DENY on a credential-bearing target "+
+			"is the most interesting record a sandbox can write, and it used to vanish here.",
+			obs.UnparseableTargets)
+	}
+}
+
+// TestRead_ACredentialBearingTargetIsRefusedAndCounted.
+func TestRead_ACredentialBearingTargetIsRefusedAndCounted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "creds.ndjson")
+	body := `{"sequence":0,"event":{"type":"session_started"}}` + "\n" +
+		`{"sequence":1,"event":{"type":"network","event":{"timestamp_unix_ms":1,` +
+		`"mode":"connect","decision":"deny","denial_category":"host_denied",` +
+		`"target":"user:hunter2@internal.example","port":443}}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := Read(path, Window{Start: time.UnixMilli(0)})
+	for _, e := range obs.Events {
+		if strings.Contains(e.Host, "@") || strings.Contains(e.Host, "hunter2") {
+			t.Errorf("a credential reached an event: %+v", e)
+		}
+	}
+	if obs.UnparseableTargets != 1 {
+		t.Errorf("unparseable_targets = %d, want 1", obs.UnparseableTargets)
+	}
+}
+
+// TestRead_AFileOfUnlearnedTypesIsNotAQuietSession is the drift case, and it
+// is the one the first version of the Observed guard missed.
+//
+// `parsed++` ran above the type switch, so a well-formed record of a type this
+// reader has not learned counted as parsed. log_allowed and log_denied are not
+// hypothetical names: this package's doc records them as what nono's own
+// documentation claims the program emits, and it does not. A future version
+// that does emit them would have rendered as a quiet sandbox.
+func TestRead_AFileOfUnlearnedTypesIsNotAQuietSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "drift.ndjson")
+	body := `{"sequence":0,"event":{"type":"log_allowed","target":"x.example"}}` + "\n" +
+		`{"sequence":1,"event":{"type":"log_denied","target":"y.example"}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := Read(path, Window{Start: time.UnixMilli(0)})
+	if obs.Observed {
+		t.Errorf("a file of only unlearned record types reported as observed; it is "+
+			"indistinguishable from a sandbox that genuinely saw nothing (reason=%q, "+
+			"skipped=%d)", obs.Reason, obs.Skipped)
+	}
+	if obs.Skipped != 2 {
+		t.Errorf("skipped = %d, want 2", obs.Skipped)
+	}
+}
+
+// TestRead_AWindowWithNoEndIsSaidToBeOpen: with no end instant every later
+// event in the trail counts as this session's, so the observation has to
+// carry that fact for the report to say it.
+func TestRead_AWindowWithNoEndIsSaidToBeOpen(t *testing.T) {
+	closed := fixtureWindow(t)
+	if obs := Read(fixture, closed); !obs.Observed || obs.WindowOpen {
+		t.Errorf("a window with an end: observed=%v window_open=%v, want true, false",
+			obs.Observed, obs.WindowOpen)
+	}
+	open := Window{Start: closed.Start}
+	if obs := Read(fixture, open); !obs.Observed || !obs.WindowOpen {
+		t.Errorf("a window with no end: observed=%v window_open=%v, want true, true",
+			obs.Observed, obs.WindowOpen)
+	}
+}
+
+// TestRead_WindowOpenIsFalseWhenNotObserved. WindowOpen used to be set from
+// w.End.IsZero() in the struct literal, before any read happened, so it
+// carried a value even when the read failed. An all-torn file against an
+// open window reported window_open: true for an observation that has no
+// events and no window to speak of -- a value that answers a question the
+// rest of the record already says cannot be answered. Found during the #44
+// follow-up review: the same open session read window_open: false against a
+// missing trail and window_open: true against an all-torn one.
+func TestRead_WindowOpenIsFalseWhenNotObserved(t *testing.T) {
+	open := Window{Start: time.Unix(0, 0)}
+
+	torn := filepath.Join(t.TempDir(), "torn.ndjson")
+	if err := os.WriteFile(torn, []byte("{not json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if obs := Read(torn, open); obs.Observed || obs.WindowOpen {
+		t.Errorf("an all-torn file against an open window: observed=%v window_open=%v, want false, false",
+			obs.Observed, obs.WindowOpen)
+	}
+
+	missing := filepath.Join(t.TempDir(), "missing.ndjson")
+	if obs := Read(missing, open); obs.Observed || obs.WindowOpen {
+		t.Errorf("a missing trail against an open window: observed=%v window_open=%v, want false, false",
+			obs.Observed, obs.WindowOpen)
+	}
+
+	empty := filepath.Join(t.TempDir(), "empty.ndjson")
+	if err := os.WriteFile(empty, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if obs := Read(empty, open); obs.Observed || obs.WindowOpen {
+		t.Errorf("an empty file against an open window: observed=%v window_open=%v, want false, false",
+			obs.Observed, obs.WindowOpen)
+	}
+}
+
+// TestRead_NetworkEventsInTrailCountsTheWholeFile, not just the window.
+//
+// A trail that holds only session_started and session_ended records is
+// OBSERVED (both are known record types), but it tells a different story
+// from one that observed traffic and filtered it to nothing: the sandbox
+// never wrote a network decision at all, which on nono 0.78.0/0.79 happens
+// whenever the active profile does not filter the network ("network":
+// {"block": false}, no allowlist). Silently rendering that as "0 allowed, 0
+// denied" reads as a quiet, filtered session when no filtering happened.
+// NetworkEventsInTrail counts every network-type record parsed, in or out of
+// the window, so the report can tell the two apart.
+func TestRead_NetworkEventsInTrailCountsTheWholeFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-network.ndjson")
+	body := `{"sequence":0,"event":{"type":"session_started"}}` + "\n" +
+		`{"sequence":1,"event":{"type":"session_ended"}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := Read(path, Window{Start: time.Unix(0, 0)})
+	if !obs.Observed {
+		t.Fatalf("a session_started/session_ended-only trail was not observed: %s", obs.Reason)
+	}
+	if obs.NetworkEventsInTrail != 0 {
+		t.Errorf("network_events_in_trail = %d, want 0", obs.NetworkEventsInTrail)
+	}
+
+	withNet := Read(fixture, fixtureWindow(t))
+	if withNet.NetworkEventsInTrail != 4 {
+		t.Errorf("network_events_in_trail = %d, want 4 (the fixture's four network records)",
+			withNet.NetworkEventsInTrail)
+	}
+}
+
+// TestRead_NetworkEventsInTrailCountsEventsOutsideTheWindowAndUnparseable:
+// NetworkEventsInTrail's own doc and this package's commit history say it is
+// a WHOLE-FILE count, counted "in the window or out of it" and regardless of
+// whether the target parses. A version that moved the increment to just
+// before obs.Events is appended -- after the window check and the target
+// canonicalisation -- would pass every other test in this package and in
+// internal/report, because every other fixture here keeps its records
+// in-window with parseable targets. This trail does not: two records fall
+// outside the window, and one more carries a target this reader cannot
+// canonicalise (a credential-bearing target), so a reader counting only
+// what reached obs.Events would undercount by three.
+func TestRead_NetworkEventsInTrailCountsEventsOutsideTheWindowAndUnparseable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mixed.ndjson")
+	rec := func(ms int64, target string) string {
+		return fmt.Sprintf(`{"sequence":0,"event":{"type":"network","event":{`+
+			`"timestamp_unix_ms":%d,"mode":"connect","decision":"allow","target":%q,"port":443}}}`,
+			ms, target)
+	}
+	body := strings.Join([]string{
+		rec(500, "before.example"),            // before the window: Inherited
+		rec(1_000, "in-window.example"),       // inside the window: counted as an Event
+		rec(1_500, "user@credential.example"), // unparseable target
+		rec(2_000, "after.example"),           // after the window: Inherited
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := Read(path, Window{Start: time.UnixMilli(900), End: time.UnixMilli(1100)})
+	if !obs.Observed {
+		t.Fatalf("premise: not observed (%s)", obs.Reason)
+	}
+	if got, want := len(obs.Events), 1; got != want {
+		t.Fatalf("premise: in-window parseable events = %d, want %d", got, want)
+	}
+	if got, want := obs.Inherited, 2; got != want {
+		t.Fatalf("premise: inherited (out-of-window) = %d, want %d", got, want)
+	}
+	if got, want := obs.UnparseableTargets, 1; got != want {
+		t.Fatalf("premise: unparseable targets = %d, want %d", got, want)
+	}
+	if got, want := obs.NetworkEventsInTrail, 4; got != want {
+		t.Errorf("network_events_in_trail = %d, want %d: it must count every network record "+
+			"in the file, whether it fell inside the window, outside it, or its target could "+
+			"not be parsed", got, want)
+	}
+}

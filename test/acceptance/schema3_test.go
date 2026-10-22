@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/store"
@@ -11,35 +12,44 @@ import (
 
 // B2 -- schema 3 reserves fields a later layer will populate.
 //
-// The rule-match layer is being built on another branch and needs three things
-// in the record shape: which SOURCE a declared host came from, and a
-// rule-match object on declarations and executions. Reserving them here means
-// that branch adds behaviour rather than a second schema bump, and there is
-// exactly one version increment rather than two racing ones.
+// This build writes schema 3. Among its fields are three a later rule-match
+// layer will populate: which SOURCE a declared host came from, and a
+// rule-match object on declarations and executions. Reserving them now means
+// that layer adds behaviour rather than a second schema bump.
 //
-// The two hazards this guards are opposite. Reserve too little and the other
-// branch has to bump the schema again. Reserve too strictly -- put the new
+// The two hazards this guards are opposite. Reserve too little and that layer
+// has to bump the schema again. Reserve too strictly -- put the new
 // fields in the top-level `required` -- and every record already on disk
 // stops validating against its own published contract, which is worse than
 // either, because the contract is the thing consumers are told to rely on.
 
 // TestAcceptsAdmitsSchema3 is the data-loss guard, and it is the same bug the
-// reader already carries a comment about: `Accepts` used to be an equality
+// reader already carries a comment about: acceptance used to be an equality
 // against SchemaVersion, so the moment the writer moved to v2 every v1 record
 // on disk was skipped and the report rendered empty with nothing saying why.
-// A v3 writer lands on another branch; if this reader does not admit 3 first,
-// that branch's records are silently dropped by this one.
+// This build writes v4 for its ordinary call records and v5 for the one
+// flush_failed marker (store.FlushFailedSchemaVersion). AcceptsKind must keep
+// admitting the call records at 1 to 5 and the session records at 1 to 3, so
+// older stores still read; neither may admit a version that does not exist yet.
 func TestAcceptsAdmitsSchema3(t *testing.T) {
-	for _, v := range []int{1, 2, 3} {
-		if !store.Accepts(v) {
-			t.Errorf("store.Accepts(%d) is false. Records at that version are SKIPPED, not "+
-				"reported as unreadable, so the symptom is an empty report and no reason "+
-				"for it.", v)
+	for _, c := range []struct {
+		kind  string
+		newer int
+	}{
+		{store.TypeDeclaration, 5}, {store.TypeExecution, 5}, {store.TypeTerminal, 5},
+		{store.TypeCoverage, 3}, {store.TypeGap, 3},
+	} {
+		for v := 1; v <= c.newer; v++ {
+			if !store.AcceptsKind(c.kind, v) {
+				t.Errorf("store.AcceptsKind(%s, %d) is false. Records at that version are SKIPPED, not "+
+					"reported as unreadable, so the symptom is an empty report and no reason "+
+					"for it.", c.kind, v)
+			}
 		}
-	}
-	if store.Accepts(4) {
-		t.Error("store.Accepts(4) is true; a reader must not claim to understand a shape " +
-			"that does not exist yet")
+		if store.AcceptsKind(c.kind, c.newer+1) {
+			t.Errorf("store.AcceptsKind(%s, %d) is true; a reader must not claim to understand a shape "+
+				"that does not exist yet", c.kind, c.newer+1)
+		}
 	}
 }
 
@@ -55,8 +65,8 @@ func TestSchema3FieldsAreDeclaredButNotGloballyRequired(t *testing.T) {
 		def    string
 		fields []string
 	}{
-		{"declaration", []string{"host_source", "rule_match"}},
-		{"execution", []string{"rule_match"}},
+		{"declaration", []string{"host_source", "rule_match", "cwd_digest"}},
+		{"execution", []string{"rule_match", "backgrounded"}},
 	} {
 		t.Run(c.def, func(t *testing.T) {
 			def, ok := defs[c.def].(map[string]any)
@@ -93,7 +103,10 @@ func TestSchema3IsRequiredOnlyAtVersion3(t *testing.T) {
 	}{
 		{"declaration", "host_source"},
 		{"declaration", "rule_match"},
+		{"declaration", "cwd_digest"},
+		{"declaration", "shape.may_write"},
 		{"execution", "rule_match"},
+		{"execution", "backgrounded"},
 	} {
 		t.Run(c.def+"."+c.field, func(t *testing.T) {
 			def := defs[c.def].(map[string]any)
@@ -124,6 +137,15 @@ func TestSchema3IsRequiredOnlyAtVersion3(t *testing.T) {
 				}
 				if toStringSet(then["required"])[c.field] {
 					found = true
+				}
+				// A key inside the shape object is gated through
+				// then.properties.shape.required.
+				if parent, key, ok := strings.Cut(c.field, "."); ok {
+					props, _ := then["properties"].(map[string]any)
+					child, _ := props[parent].(map[string]any)
+					if toStringSet(child["required"])[key] {
+						found = true
+					}
 				}
 			}
 			if !found {
@@ -156,7 +178,7 @@ func TestSchemaVersionEnumAdmits3(t *testing.T) {
 				vals[int(n)] = true
 			}
 		}
-		for _, want := range []int{1, 2, 3} {
+		for _, want := range []int{1, 2, 3, 4} {
 			if !vals[want] {
 				t.Errorf("$defs.%s.schema_version does not admit %d; a record at that version "+
 					"fails the contract even though the reader accepts it", name, want)
@@ -197,4 +219,85 @@ func toAnySlice(v any) []any {
 		return s
 	}
 	return nil
+}
+
+// TestSchema3_WrittenRecordsMeetTheVersion3Gate: this build writes schema 5,
+// additive over 3 and 4, and every record it writes carries each key the published
+// v3 gate requires, and the v4 and v5 gates' as well.
+// The version is compared against the literal, not against
+// store.SchemaVersion, which would compare the writer with itself. Break:
+// write 2 while the vocabulary is 3's (the test class, the test-file label),
+// and an older reader buckets the new words as unknown; or drop a gated key,
+// and a validator using the published schema rejects the record.
+func TestSchema3_WrittenRecordsMeetTheVersion3Gate(t *testing.T) {
+	e := newEnv(t)
+	e.watched(testSession)
+	e.mustHook(defaultPayload().build(t))
+	e.mustPost(defaultPost().build(t))
+
+	defs := schemaDefs(t)
+	for _, c := range []struct {
+		def  string
+		recs []record
+	}{
+		{"declaration", e.declarations(testSession)},
+		{"execution", e.executions(testSession)},
+	} {
+		gated := versionGate(defs[c.def].(map[string]any), 3)
+		if len(gated) == 0 {
+			t.Fatalf("$defs.%s has no schema 3 gate", c.def)
+		}
+		v4 := versionGate(defs[c.def].(map[string]any), 4)
+		if len(v4) < len(gated) {
+			t.Fatalf("$defs.%s's schema 4 gate requires %d keys, fewer than schema 3's %d: v4 is additive", c.def, len(v4), len(gated))
+		}
+		v5 := versionGate(defs[c.def].(map[string]any), 5)
+		if len(v5) <= len(v4) {
+			t.Fatalf("$defs.%s's schema 5 gate requires %d keys, no more than schema 4's %d: v5 adds keys", c.def, len(v5), len(v4))
+		}
+		gated = append(gated, v4...)
+		gated = append(gated, v5...)
+		if len(c.recs) == 0 {
+			t.Fatalf("no %s record written", c.def)
+		}
+		for _, r := range c.recs {
+			if got := r.fields["schema_version"]; got != float64(5) {
+				t.Errorf("%s written at schema_version %v, want 5", c.def, got)
+			}
+			for _, k := range gated {
+				if _, ok := nested(r, k); !ok {
+					t.Errorf("%s lacks %q, which the schema 3, 4 or 5 gate requires", c.def, k)
+				}
+			}
+		}
+	}
+}
+
+// versionGate lists the dotted keys a definition requires at schema_version
+// v: its gate's `then.required`, and each `then.properties.<key>.required`
+// as `<key>.<nested>` -- how a key inside the shape object is gated, since
+// the shape carries no version of its own.
+func versionGate(def map[string]any, v int) []string {
+	var out []string
+	for _, entry := range toAnySlice(def["allOf"]) {
+		e, _ := entry.(map[string]any)
+		cond, _ := e["if"].(map[string]any)
+		then, _ := e["then"].(map[string]any)
+		cp, _ := cond["properties"].(map[string]any)
+		sv, _ := cp["schema_version"].(map[string]any)
+		if n, ok := sv["const"].(float64); !ok || int(n) != v || then == nil {
+			continue
+		}
+		for k := range toStringSet(then["required"]) {
+			out = append(out, k)
+		}
+		props, _ := then["properties"].(map[string]any)
+		for parent, raw := range props {
+			child, _ := raw.(map[string]any)
+			for k := range toStringSet(child["required"]) {
+				out = append(out, parent+"."+k)
+			}
+		}
+	}
+	return out
 }

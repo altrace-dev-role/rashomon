@@ -2,6 +2,7 @@ package settings
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,24 +28,34 @@ type Locations struct {
 	Local   string
 }
 
+// ConfigDir resolves Claude Code's configuration directory: CLAUDE_CONFIG_DIR
+// when it is set, and ~/.claude otherwise.
+//
+// CLAUDE_CONFIG_DIR relocates the whole directory, not one file in it --
+// settings.json and plugins/ both live under it, and a reader that special-
+// cased settings.json alone would look for a plugin install in ~/.claude/plugins
+// on a machine that has moved its entire configuration elsewhere.
+func ConfigDir() (string, error) {
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		return dir, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".claude"), nil
+}
+
 // UserPath is the file watch writes: settings.json under the user's Claude
 // configuration directory. It is named here and nowhere else.
-//
-// CLAUDE_CONFIG_DIR is Claude Code's own relocation mechanism, not a guess: when
-// it is set, Claude Code reads settings from there and not from ~/.claude, so
-// an entry written to ~/.claude would never run.
 //
 // This is the only settings file this program ever writes. Project files are
 // committed to repositories; a hook entry there would ship to everyone who
 // clones the repo, pointing at a binary on one person's machine.
 func UserPath() (string, error) {
-	dir := os.Getenv("CLAUDE_CONFIG_DIR")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(home, ".claude")
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(dir, "settings.json"), nil
 }
@@ -112,6 +123,11 @@ func HooksDisabled(loc Locations) (Decision, error) {
 			continue
 		}
 		doc, err := Load(l.path)
+		var located *Error
+		if errors.As(err, &located) {
+			// It names the file, and the line and column, already.
+			return Decision{}, fmt.Errorf("%s settings: %w", l.name, err)
+		}
 		if err != nil {
 			return Decision{}, fmt.Errorf("%s settings at %s: %w", l.name, l.path, err)
 		}
@@ -126,4 +142,28 @@ func HooksDisabled(loc Locations) (Decision, error) {
 		return Decision{Disabled: disabled, Layer: l.name}, nil
 	}
 	return Decision{}, nil
+}
+
+// ManagedHooksOnly reports whether the managed settings layer sets
+// allowManagedHooksOnly, read from that layer the way HooksDisabled reads
+// disableAllHooks. Under it Claude Code runs only the hooks managed policy
+// defines, so an entry in the user's file would never run. Only the managed
+// layer can set it; the key in any other layer is not read.
+func ManagedHooksOnly(loc Locations) (bool, error) {
+	if loc.Managed == "" {
+		return false, nil
+	}
+	doc, err := Load(loc.Managed)
+	if err != nil {
+		return false, fmt.Errorf("%s settings at %s: %w", LayerManaged, loc.Managed, err)
+	}
+	raw, ok := doc.Get("allowManagedHooksOnly")
+	if !ok {
+		return false, nil
+	}
+	var only bool
+	if err := json.Unmarshal(raw, &only); err != nil {
+		return false, fmt.Errorf("%s settings at %s: allowManagedHooksOnly is not a boolean", LayerManaged, loc.Managed)
+	}
+	return only, nil
 }

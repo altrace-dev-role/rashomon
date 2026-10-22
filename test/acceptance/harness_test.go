@@ -3,7 +3,6 @@ package acceptance
 import (
 	"bufio"
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -15,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // Binaries under test. They are real compiled binaries, exec'd as subprocesses,
@@ -25,6 +24,7 @@ import (
 var (
 	rashomonBin string
 	panickerBin string
+	scrubBin    string
 	moduleRoot  string
 )
 
@@ -53,7 +53,7 @@ func buildAndRun(m *testing.M) (int, error) {
 	// The binary under test carries the fault-injection points. A released
 	// binary does not, which is why the tag exists: the injection path must not
 	// ship, but the panic barrier it exercises is the same code either way.
-	rashomonBin, err = build(dir, "rashomon", "./cmd/rashomon", "rashomonfault")
+	rashomonBin, err = buildVersioned(dir, "rashomon", "./cmd/rashomon", binaryVersion, "rashomonfault")
 	if err != nil {
 		return 0, err
 	}
@@ -61,15 +61,35 @@ func buildAndRun(m *testing.M) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	// H-112's scrubber, a contributor's tool: its exit status says whether the
+	// output still needs a person, which only a real process reports.
+	scrubBin, err = build(dir, "scrub", "./test/tools/scrub")
+	if err != nil {
+		return 0, err
+	}
 	return m.Run(), nil
 }
 
+// binaryVersion is the version the binary under test is built with, as a
+// release sets it, so a test can tell the build-time version from the
+// default an unset one leaves.
+const binaryVersion = "0.0.0-acceptance"
+
 func build(dir, name, pkg string, tags ...string) (string, error) {
+	return buildVersioned(dir, name, pkg, "", tags...)
+}
+
+// buildVersioned is build with main.version set to version, as the release
+// build sets it; "" leaves the default.
+func buildVersioned(dir, name, pkg, version string, tags ...string) (string, error) {
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
 	out := filepath.Join(dir, name)
 	args := []string{"build", "-o", out}
+	if version != "" {
+		args = append(args, "-ldflags", "-X main.version="+version)
+	}
 	if len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}
@@ -91,24 +111,40 @@ type env struct {
 	home      string
 	configDir string
 	cwd       string
+	// damaged is the problems this test breaks its store's invariants with
+	// on purpose (expectDamagedStore); the end-of-test check holds the
+	// store to exactly those.
+	damaged []string
+	// storeFailf, when set, takes the end-of-test check's reports in place
+	// of the test's Errorf, so the check's own test can feed it a break.
+	storeFailf func(format string, args ...any)
+	// fakeHome, when set, is the HOME (and on Windows the USERPROFILE) every
+	// invocation sees. Most tests leave it empty: they name the store and
+	// the configuration directory outright and nothing they run reads HOME.
+	// purge does, to refuse a root that is HOME or encloses it, so its tests
+	// set this and never let the binary see the real one.
+	fakeHome string
 }
 
+// newEnv makes one machine, and checks its store's invariants when the test
+// ends (storecheck_test.go). The check is registered after the directories,
+// so it runs before they are removed.
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	return &env{t: t, home: t.TempDir(), configDir: t.TempDir(), cwd: t.TempDir()}
+	e := &env{t: t, home: t.TempDir(), configDir: t.TempDir(), cwd: t.TempDir()}
+	t.Cleanup(e.checkStore)
+	return e
 }
 
 func (e *env) settingsPath() string { return filepath.Join(e.configDir, "settings.json") }
 func (e *env) managedPath() string  { return filepath.Join(e.configDir, "managed-settings.json") }
 
 // environ starts from the runner's own environment minus any proxy variables
-// (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, in either case). H-27 asserts on the
-// proxy variables a child does and does not receive, and `run` passes its own
-// environment through, so a corporate proxy or CI egress proxy configured on
-// the machine running the tests would reach the child and read as a failure.
-// The strip belongs HERE and not in `run`: a user's pre-existing proxy
-// variables are not the tool's to remove, and the promise under test is only
-// that run does not add its own when the observe-proxy check fails.
+// (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, in either case). A corporate proxy or a
+// CI egress proxy configured on the machine running the tests must not reach
+// the binary under test: nothing in it makes a network connection, and a test
+// that passed because a proxy variable happened to be set would be proving
+// the wrong thing.
 func (e *env) environ(extra ...string) []string {
 	var base []string
 	for _, kv := range os.Environ() {
@@ -117,13 +153,33 @@ func (e *env) environ(extra ...string) []string {
 		case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY":
 			continue
 		}
+		// The suite is often run from inside a Claude Code session, which
+		// sets CLAUDECODE in every process it starts. watch reads that as an
+		// agent signal and refuses, so it must not leak into the binary
+		// under test; the tests that check the refusal set it themselves.
+		if name == "CLAUDECODE" {
+			continue
+		}
 		base = append(base, kv)
 	}
 	base = append(base,
 		"RASHOMON_HOME="+e.home,
 		"CLAUDE_CONFIG_DIR="+e.configDir,
 		"RASHOMON_MANAGED_SETTINGS_PATH="+e.managedPath(),
+		// CLAUDE_CODE_ENTRYPOINT=cli is what the real CLI sets (Technical
+		// spec 6.2.2's entrypoint allowlist); every acceptance test's hook,
+		// post, probe and recap invocations are claiming to BE Claude Code,
+		// so they need to look like it to H1's stand-down check
+		// (internal/hostguard), wired into all five entry points, or every
+		// one of them now reads as the unknown harness and records
+		// nothing. A test that wants to exercise the foreign or
+		// unknown path overrides this through extraEnv, appended after
+		// base, which wins (os/exec: "the last value ... is used").
+		"CLAUDE_CODE_ENTRYPOINT=cli",
 	)
+	if e.fakeHome != "" {
+		base = append(base, "HOME="+e.fakeHome, "USERPROFILE="+e.fakeHome)
+	}
 	return append(base, extra...)
 }
 
@@ -240,6 +296,38 @@ func (e *env) post(payload string, extraEnv ...string) result {
 	return e.run(payload, extraEnv, append([]string{"post"}, e.installArgs()...)...)
 }
 
+// recap runs the Stop/StopFailure path, as watch installs it.
+func (e *env) recap(payload string, extraEnv ...string) result {
+	e.t.Helper()
+	return e.run(payload, extraEnv, append([]string{"recap"}, e.installArgs()...)...)
+}
+
+// recapOutput is the JSON envelope cmdRecap writes to stdout when it has
+// something to say: `systemMessage`, the one field Claude Code shows a
+// human on a hook's stdout.
+type recapOutput struct {
+	SystemMessage string `json:"systemMessage"`
+}
+
+// recapLine runs recap and reports the line it printed, if any. It fails the
+// test on a non-zero exit or on stdout that is neither empty nor valid JSON,
+// which recap's own contract (H-93) says it must never produce.
+func (e *env) recapLine(payload string, extraEnv ...string) (string, bool) {
+	e.t.Helper()
+	res := e.recap(payload, extraEnv...)
+	if res.exitCode != 0 {
+		e.t.Fatalf("recap: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	if res.stdout == "" {
+		return "", false
+	}
+	var out recapOutput
+	if err := json.Unmarshal([]byte(res.stdout), &out); err != nil {
+		e.t.Fatalf("recap stdout is not JSON: %v\n%s", err, res.stdout)
+	}
+	return out.SystemMessage, true
+}
+
 func (e *env) probe(phase, sessionID string, extraEnv ...string) result {
 	e.t.Helper()
 	return e.run(e.sessionPayload(phase, sessionID), extraEnv, append([]string{"probe", phase}, e.installArgs()...)...)
@@ -262,9 +350,17 @@ func (e *env) installArgs() []string {
 	return []string{"--install", e.installID()}
 }
 
-func (e *env) watch(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "watch") }
+// watch installs without asking (--yes): the suite runs with no person at
+// a terminal, and the questions themselves are TRU-1's, asked through a
+// pseudo-terminal there.
+func (e *env) watch(extraEnv ...string) result {
+	e.t.Helper()
+	return e.run("", extraEnv, "watch", "--yes")
+}
 func (e *env) detach(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "detach") }
 func (e *env) status(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "status") }
+func (e *env) pause(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "pause") }
+func (e *env) resume(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "resume") }
 func (e *env) forget(since string) result {
 	e.t.Helper()
 	return e.run("", nil, "forget", "--since", since)
@@ -318,12 +414,16 @@ type reportSession struct {
 		WithoutTranscript int      `json:"without_transcript"`
 		Unterminated      []string `json:"unterminated"`
 		Dropped           []string `json:"dropped"`
+		NotDurable        []string `json:"not_durable"`
 		WithoutExecution  []struct {
 			ToolUseID      string `json:"tool_use_id"`
 			PermissionMode string `json:"permission_mode"`
 		} `json:"without_execution"`
-		ByTool  map[string]int `json:"by_tool"`
-		ByLabel map[string]int `json:"by_label"`
+		ByTool          map[string]int `json:"by_tool"`
+		ByLabel         map[string]int `json:"by_label"`
+		ByProgram       map[string]int `json:"by_program"`
+		ByVerbClass     map[string]int `json:"by_verb_class"`
+		ProgramsUnknown int            `json:"programs_unknown"`
 	} `json:"declarations"`
 	Executions struct {
 		Recorded int `json:"recorded"`
@@ -332,27 +432,30 @@ type reportSession struct {
 		Path                  string   `json:"path"`
 		Readable              bool     `json:"readable"`
 		Files                 *int     `json:"files"`
+		LinesTooLong          *int     `json:"lines_too_long"`
 		IDsInTranscript       *int     `json:"ids_in_transcript"`
 		IDsRecorded           int      `json:"ids_recorded"`
 		MissingFromStore      []string `json:"missing_from_store"`
 		MissingFromTranscript []string `json:"missing_from_transcript"`
+		RefusedBeforeHooks    []string `json:"refused_before_hooks"`
 		IDsExecuted           int      `json:"ids_executed"`
 		ResultsInTranscript   *int     `json:"results_in_transcript"`
 		ExecutedButUnrecorded []string `json:"executed_but_unrecorded"`
 		DeniedByUser          []string `json:"denied_by_user"`
 		DeclaredWithoutResult []string `json:"declared_without_result"`
 	} `json:"transcripts"`
-	Gaps []map[string]any `json:"gaps"`
+	Gaps           []map[string]any `json:"gaps"`
+	SkippedRecords int              `json:"skipped_records"`
 	// The destinations block, as much of it as the acceptance tests assert on.
 	Destinations struct {
-		Observed              bool     `json:"observed"`
-		Reason                string   `json:"reason"`
-		WireOnly              []string `json:"wire_only"`
-		ClientPlane           []string `json:"client_plane"`
-		DeclaredNotObserved   []string `json:"declared_not_observed"`
-		NotObservable         []string `json:"not_observable"`
-		ProxyOnPath           string   `json:"proxy_on_path"`
+		DeclaredHosts         []string `json:"declared_hosts"`
+		SSHHosts              []string `json:"ssh_hosts"`
 		ExecutedNotAsDeclared int      `json:"executed_not_as_declared"`
+		Novelty               struct {
+			Available   bool     `json:"available"`
+			Established bool     `json:"established"`
+			Hosts       []string `json:"hosts"`
+		} `json:"novelty"`
 	} `json:"destinations"`
 	// The causal view: which prompt produced which calls.
 	Chains struct {
@@ -369,10 +472,7 @@ type reportSession struct {
 				Program          string   `json:"program"`
 				VerbClass        string   `json:"verb_class"`
 				Outcome          string   `json:"outcome"`
-				Hosts            []struct {
-					Host  string `json:"host"`
-					State string `json:"state"`
-				} `json:"hosts"`
+				DeclaredHosts    []string `json:"declared_hosts"`
 			} `json:"links"`
 		} `json:"prompts"`
 		Unattributed []struct {
@@ -403,6 +503,87 @@ func (e *env) report(sessionID string) reportSession {
 		e.t.Fatalf("report returned %d sessions, want 1", len(rep.Sessions))
 	}
 	return rep.Sessions[0]
+}
+
+// digestOutput is the digest command's output contract, as a test reads it.
+type digestOutput struct {
+	SchemaVersion int    `json:"schema_version"`
+	SessionID     string `json:"session_id"`
+	PromptID      string `json:"prompt_id"`
+	InstallID     string `json:"install_id"`
+	Coverage      struct {
+		State            string   `json:"state"`
+		Reasons          []string `json:"reasons"`
+		StartRecorded    bool     `json:"start_recorded"`
+		HookEntryAtStart string   `json:"hook_entry_at_start"`
+	} `json:"coverage"`
+	Declarations struct {
+		Recorded         int `json:"recorded"`
+		WithoutExecution []struct {
+			ToolUseID      string `json:"tool_use_id"`
+			PermissionMode string `json:"permission_mode"`
+		} `json:"without_execution"`
+		WithoutExecutionOmitted int            `json:"without_execution_omitted"`
+		Unterminated            []string       `json:"unterminated"`
+		UnterminatedOmitted     int            `json:"unterminated_omitted"`
+		Dropped                 []string       `json:"dropped"`
+		DroppedOmitted          int            `json:"dropped_omitted"`
+		ByTool                  map[string]int `json:"by_tool"`
+		ByToolOmitted           int            `json:"by_tool_omitted"`
+		ByLabel                 map[string]int `json:"by_label"`
+		ByLabelOmitted          int            `json:"by_label_omitted"`
+	} `json:"declarations"`
+	Unknown    bool `json:"unknown"`
+	Executions struct {
+		Recorded int `json:"recorded"`
+	} `json:"executions"`
+	SilentFailures struct {
+		Fires                 bool     `json:"fires"`
+		Failed                int      `json:"failed"`
+		FailedLookups         int      `json:"failed_lookups"`
+		Unobserved            int      `json:"outcome_unobserved"`
+		AbsentWords           []string `json:"absent_words"`
+		FinalMessageAvailable bool     `json:"final_message_available"`
+	} `json:"silent_failures"`
+	Subagents struct {
+		Declarations int `json:"declarations"`
+		Executions   int `json:"executions"`
+	} `json:"subagents"`
+	Gaps           []map[string]any `json:"gaps"`
+	SkippedRecords int              `json:"skipped_records"`
+	Truncated      bool             `json:"truncated"`
+}
+
+// digestRaw runs `rashomon digest` and returns the raw result, for a test
+// that wants to assert on the exit code or on stderr rather than on parsed
+// JSON.
+func (e *env) digestRaw(args ...string) result {
+	e.t.Helper()
+	return e.run("", nil, append([]string{"digest"}, args...)...)
+}
+
+// digest runs `rashomon digest` and parses its JSON, failing the test on a
+// non-zero exit or unparseable output.
+func (e *env) digest(args ...string) digestOutput {
+	e.t.Helper()
+	res := e.digestRaw(args...)
+	if res.exitCode != 0 {
+		e.t.Fatalf("digest: exit %d, stderr %q", res.exitCode, res.stderr)
+	}
+	var d digestOutput
+	if err := json.Unmarshal([]byte(res.stdout), &d); err != nil {
+		e.t.Fatalf("digest output is not JSON: %v\n%s", err, res.stdout)
+	}
+	return d
+}
+
+func (e *env) hasCoverageReason(d digestOutput, reason string) bool {
+	for _, r := range d.Coverage.Reasons {
+		if r == reason {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *env) hasReason(sess reportSession, reason string) bool {
@@ -489,9 +670,18 @@ func readNDJSON(t *testing.T, path string) []record {
 
 	var out []record
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 8<<20)
+	sc.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), store.MaxLine)
 	for line := 1; sc.Scan(); line++ {
 		raw := sc.Text()
+		// A spill append that gave up on the lock writes a newline ahead of
+		// its record, a guard against a torn tail it could not check
+		// (store.appendLine's bestEffort branch), so over an intact tail it
+		// leaves a blank line. The store's readers skip one (forEachLine), and
+		// so does this, in a spill file only: anywhere else no writer puts
+		// one down, and a blank line is still not one JSON object.
+		if raw == "" && filepath.Base(path) == "spill.ndjson" {
+			continue
+		}
 		var fields map[string]any
 		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
 			t.Fatalf("%s line %d is not one JSON object: %v", path, line, err)
@@ -675,6 +865,17 @@ func (e *env) settings() settingsFile {
 	return sf
 }
 
+// settingsAfterDetach reads settings.json after a detach, which removes the
+// file when watch created it and it is still the file watch left: an absent
+// file holds no entries at all.
+func (e *env) settingsAfterDetach() settingsFile {
+	e.t.Helper()
+	if _, err := os.Lstat(e.settingsPath()); os.IsNotExist(err) {
+		return settingsFile{}
+	}
+	return e.settings()
+}
+
 func (e *env) settingsBytes() []byte {
 	e.t.Helper()
 	data, err := os.ReadFile(e.settingsPath())
@@ -777,47 +978,6 @@ func (e *env) writeTranscript(t *testing.T, text string) string {
 	return path
 }
 
-// writeProxyStore builds a causal.db in the proxy's shape and returns its path.
-//
-// The timestamp is written the way the PROXY writes it -- Go's time.Time
-// String() rendering with the monotonic suffix attached -- because a fixture in
-// RFC 3339 would let these tests pass against a reader that cannot parse the
-// real thing.
-func (e *env) writeProxyStore(t *testing.T, hosts ...string) string {
-	t.Helper()
-	path := filepath.Join(e.home, "causal.db")
-
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatalf("open proxy store: %v", err)
-	}
-	defer db.Close() //nolint:errcheck // the exec errors below are what matter
-
-	if _, err := db.Exec(`CREATE TABLE causal_records (
-		sequence_num INTEGER PRIMARY KEY,
-		request_id TEXT NOT NULL DEFAULT '',
-		run_id TEXT NOT NULL DEFAULT '',
-		timestamp DATETIME NOT NULL,
-		reason TEXT NOT NULL DEFAULT '',
-		action TEXT NOT NULL DEFAULT '',
-		target_host TEXT NOT NULL DEFAULT ''
-	)`); err != nil {
-		t.Fatalf("create proxy store: %v", err)
-	}
-	for i, h := range hosts {
-		ts := time.Now().Format("2006-01-02 15:04:05.999999999 -0700 MST") +
-			fmt.Sprintf(" m=+%d.000000000", i)
-		if _, err := db.Exec(
-			`INSERT INTO causal_records (sequence_num, request_id, timestamp, reason, action, target_host)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			i+1, fmt.Sprintf("req-%d", i), ts, "host_not_in_allowlist_observed", "WARN", h+":443",
-		); err != nil {
-			t.Fatalf("insert proxy row: %v", err)
-		}
-	}
-	return path
-}
-
 // writeFullTranscript writes a transcript that matches a recorded call: an
 // assistant tool_use block with the given id, a user tool_result answering it,
 // and a final assistant message.
@@ -860,43 +1020,6 @@ func (e *env) writeFullTranscript(t *testing.T, toolUseID, final string) string 
 	}
 	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
-	}
-	return path
-}
-
-// writeProxyStoreBadStamps writes a proxy store whose timestamps are in no
-// format this reader parses, which is how the window-not-applied path is
-// reached. The rows are otherwise identical to writeProxyStore's.
-func (e *env) writeProxyStoreBadStamps(t *testing.T, hosts ...string) string {
-	t.Helper()
-	path := filepath.Join(e.home, "causal-badstamps.db")
-
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatalf("open proxy store: %v", err)
-	}
-	defer db.Close() //nolint:errcheck // the exec errors below are what matter
-
-	if _, err := db.Exec(`CREATE TABLE causal_records (
-		sequence_num INTEGER PRIMARY KEY,
-		request_id TEXT NOT NULL DEFAULT '',
-		run_id TEXT NOT NULL DEFAULT '',
-		timestamp DATETIME NOT NULL,
-		reason TEXT NOT NULL DEFAULT '',
-		action TEXT NOT NULL DEFAULT '',
-		target_host TEXT NOT NULL DEFAULT ''
-	)`); err != nil {
-		t.Fatalf("create proxy store: %v", err)
-	}
-	for i, h := range hosts {
-		if _, err := db.Exec(
-			`INSERT INTO causal_records (sequence_num, request_id, timestamp, reason, action, target_host)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			i+1, fmt.Sprintf("req-%d", i), "not-a-timestamp-at-all",
-			"host_not_in_allowlist_observed", "WARN", h+":443",
-		); err != nil {
-			t.Fatalf("insert proxy row: %v", err)
-		}
 	}
 	return path
 }

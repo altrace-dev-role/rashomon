@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -316,5 +317,32 @@ func TestH10_DeclarationsWithoutATranscript(t *testing.T) {
 	}
 	if rep.Coverage.State != "verified" {
 		t.Errorf("coverage is %s (%v), want verified", rep.Coverage.State, rep.Coverage.Reasons)
+	}
+}
+
+// TestRubricERRORS3_UnreadableTranscriptRendersUnverified: a transcript the
+// run's calls named, still on disk but unreadable (chmod 000), takes the H-10
+// check away, and the report says so instead of rendering verified beside
+// "missing from store: unknown".
+func TestRubricERRORS3_UnreadableTranscriptRendersUnverified(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 000 does not stop this user reading the file")
+	}
+	e := newEnv(t)
+	e.watched(testSession)
+	transcript := writeTranscript(t, t.TempDir(), testSession, []string{"toolu_a"}, nil, nil)
+	e.hookIDs(transcript, "toolu_a")
+	e.probe("end", testSession)
+	if err := os.Chmod(transcript, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(transcript, 0o644) }) //nolint:errcheck // TempDir removal follows
+
+	rep := e.report(testSession)
+	if rep.Coverage.State != "unverified" || !e.hasReason(rep, "transcript_unreadable") {
+		t.Errorf("coverage is %s %v, want unverified with transcript_unreadable", rep.Coverage.State, rep.Coverage.Reasons)
+	}
+	if len(rep.Transcripts) != 1 || rep.Transcripts[0].Readable {
+		t.Errorf("transcripts = %+v, want one group, unreadable", rep.Transcripts)
 	}
 }

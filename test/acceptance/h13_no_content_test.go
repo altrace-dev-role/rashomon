@@ -18,6 +18,12 @@ var (
 		"tool_use_id", "session_id", "prompt_id", "agent_id", "agent_type",
 		"transcript_path", "permission_mode", "tool_name",
 		"shape", "shape.program", "shape.verb_class", "shape.argc", "shape.digest",
+		// v3. One bit: the line may write files whatever its program's class.
+		"shape.may_write",
+		// v4. A closed word -- none, test or build -- saying a
+		// recognised runner's exit status is not the line's, and a keyed
+		// digest of that runner's words: 64 hex characters, never the words.
+		"shape.status_masked", "shape.runner_digest",
 		// v2. Hostnames only: the extractor returns a canonical hostname or
 		// nothing, so neither list can carry a path, a query or a credential.
 		// They are here rather than under shape because the report joins on
@@ -34,6 +40,25 @@ var (
 		// named LOOKS LIKE, from a closed vocabulary, never the path. Null on
 		// every record this build writes.
 		"host_source", "rule_match", "file_label",
+		// v3. A keyed digest of the directory its command starts in: 64 hex
+		// characters, never the path.
+		"cwd_digest",
+		// v4. An integer: which runner lists decided the shape.
+		"rules_version",
+		// v5. The writing binary's version, then the declaration's v5 keys
+		// (store.DeclarationV5), every one present and null until the change
+		// that fills it lands. The command and the paths are stored masked
+		// and capped once captured; the objects below them (command_cut,
+		// masked spans, target, edit_marks_before) hold offsets, closed words,
+		// counts and checked values, never free text.
+		"writer",
+		"command", "command_bytes", "command_cut", "masked", "command_withheld",
+		"cwd", "project", "file_path", "written_paths", "written_paths_complete",
+		"target", "edit_marks_before",
+		"written_paths_withheld", "file_path_withheld", "cwd_withheld", "project_withheld",
+		"target_withheld", "edit_marks_before_withheld", "prompt_id_withheld",
+		"agent_id_withheld", "agent_type_withheld", "hosts_withheld", "ssh_hosts_withheld",
+		"harness_id", "harness_tool_name", "declared_via",
 	}
 	executionKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
@@ -49,10 +74,36 @@ var (
 		"executed_digest",
 		// v3, RESERVED. See the note on the declaration list.
 		"rule_match",
+		// v3. One bit: whether a Bash call's tool_response names a background
+		// task. The id and the rest of the response are never decoded.
+		"backgrounded",
+		// v4. The shape's status_masked and runner_digest for the line as it
+		// ran: a closed word and a keyed digest, never the words.
+		"status_masked", "runner_digest",
+		// v4. An integer: which runner lists decided them.
+		"rules_version",
+		// v5. The writing binary's version, then the execution's v5 keys
+		// (store.ExecutionV5), every one present and null until the change
+		// that fills it lands. The failure class, output evidence and gate
+		// output are closed words, booleans and counts computed from text
+		// that is never stored.
+		"writer",
+		"executed_command", "executed_command_reason", "executed_command_bytes",
+		"executed_command_cut", "executed_masked",
+		"failure", "output_evidence", "edit_marks", "head_after", "gate_output", "credmech",
+		"executed_command_withheld", "failure_withheld", "output_evidence_withheld",
+		"edit_marks_withheld", "head_after_withheld",
+		"harness_id", "harness_tool_name", "declared_via", "outcome_source", "failure_type",
+		"mcp_server_source",
 	}
 	terminalKeys = []string{
 		"type", "schema_version", "seq", "recorded_at_unix_ms",
 		"tool_use_id", "session_id", "outcome", "reason",
+		// v5. Which invocation wrote this terminal: call or post, set only
+		// on a flush_failed marker. Null on an ordinary closing terminal.
+		"phase",
+		// v5. The writing binary's version, and nothing else.
+		"writer",
 	}
 	coverageKeys = []string{
 		"type", "schema_version", "recorded_at_unix_ms",
@@ -71,6 +122,12 @@ var (
 		// Not the hostname: the report must recognise the host again while
 		// `forget --host` must make the name leave the store's bytes.
 		"host_digest",
+	}
+	// forgotten-hosts.ndjson at the store root: one record per forget --host,
+	// whatever it removed. The keyed digest and nothing else -- the name it
+	// was given must leave the store, as it does for a gap.
+	forgottenHostKeys = []string{
+		"type", "schema_version", "recorded_at_unix_ms", "host_digest",
 	}
 )
 
@@ -143,49 +200,108 @@ func TestH13_RecordWidthIsIndependentOfInputSize(t *testing.T) {
 }
 
 // TestH13_CanaryNeverReachesDisk is the second line of defence, and only that.
+//
+// The canary is placed everywhere a command line carries a value that is not
+// the program. An argument is the obvious place, and was once the only one
+// here -- which left blind the place a parser that finds the program by
+// skipping what cannot be one is likeliest to go wrong: a redirect whose
+// operator the tokenizer emits as two tokens, so that skipping "the operator
+// and the word after it" skips the operator's second half and keeps the word.
+// That shipped once, and put a redirect target's filename in the program field
+// of the store and of every render.
 func TestH13_CanaryNeverReachesDisk(t *testing.T) {
 	const canary = "CANARY-7f3a1e2b-must-not-persist"
-	e := newEnv(t)
-	e.watched(testSession)
-
-	p := defaultPayload()
-	p.ToolInput = map[string]any{
-		"command":     "echo " + canary,
-		"description": canary,
-		"nested":      map[string]any{"deep": canary},
-	}
-	res := e.hook(p.build(t))
-	if res.exitCode != 0 {
-		t.Fatalf("exit code %d, want 0", res.exitCode)
-	}
-	e.probe("end", testSession)
-	// Both forms of the report: they render the same records through different
-	// code, and a renderer is exactly where a field nobody meant to print gets
-	// printed.
-	repJSON := e.run("", nil, "report", "--json", "--session", testSession)
-	repText := e.run("", nil, "report", "--session", testSession)
-
-	for rel, f := range walkStore(t, e.home) {
-		if bytes.Contains(f.body, []byte(canary)) {
-			t.Errorf("%s contains the canary", rel)
-		}
-	}
-	// Hook stdout and stderr are written to Claude Code's debug log, which puts
-	// them on disk just as surely as the store does. And report is output.
-	for name, s := range map[string]string{
-		"hook stdout":   res.stdout,
-		"hook stderr":   res.stderr,
-		"report --json": repJSON.stdout,
-		"report text":   repText.stdout,
+	for _, tc := range []struct{ name, command string }{
+		{"argument", "echo " + canary},
+		{"redirect target after >&", ">& /tmp/" + canary + " ls"},
+		{"redirect target after >|", ">| /tmp/" + canary + " ls"},
+		{"redirect target after <>", "<> /tmp/" + canary + " ls"},
+		{"here-string", "<<< " + canary + " cat"},
+		{"process substitution", "<(cat /tmp/" + canary + ") ls"},
+		// Each of these put data in the program field once, from inside a
+		// construct the program search skipped into without parsing.
+		{"array assignment", "arr=(/tmp/" + canary + " /x) ; ls"},
+		{"heredoc body", "<<EOF\n" + canary + " line\nEOF"},
+		{"redirect then heredoc body", "> /tmp/out.txt <<'EOF'\n" + canary + "\nEOF"},
+		{"arithmetic substitution", "n=$(( " + canary + " % 97 ))"},
+		{"arithmetic command", "(( " + canary + " > 3 ))"},
+		{"zsh >>| target", ">>| /tmp/" + canary + " ls"},
+		{"zsh >&| target", ">&| /tmp/" + canary + " ls"},
+		{"backtick in assignment", "x=`cat /tmp/" + canary + "`"},
+		{"append assignment", "PATH+=:/tmp/" + canary},
+		{"quoted brace", "'{' /tmp/" + canary},
+		{"comment", "#" + canary + " comment"},
+		// Each of these is a word the tokenizer split where the shell does
+		// not, or two operators it joined across a blank.
+		{"numeric glob inside the command word", "/tmp/" + canary + "-<1-3>/run.sh --prod"},
+		{"process substitution glued to the command word", "/tmp/" + canary + "<(true) --flag"},
+		{"computed command word", "$x:gs/" + canary + "//"},
+		{"blank between > and |", "> | grep " + canary + " f"},
+		{"a NUL before a comment", "\x00#" + canary + " ls"},
+		{"a line joined by U+00A0", "git\u00a0push\u00a0" + canary},
+		{"function definition with a redirect between the names", canary + " >x deploy_prod () { ls; }"},
+		// A redirect with no target, words that can never name a program, a
+		// separator inside a group, and a control byte that is not a NUL.
+		{"a redirect with ; for its target", "> ; /tmp/" + canary + " x"},
+		{"a directory in command position", "/tmp/" + canary + "/ --prod"},
+		{"a user's home directory", "~" + canary},
+		{"zsh's ^ negation", "/usr/bin/^" + canary},
+		{"a separator inside $( ) between function names", canary + " $(x; y) () { ls; }"},
+		{"a C0 control where a redirect target belongs", ">\x01 /tmp/" + canary},
+		// A redirect whose target is another redirect, and a quote bash and
+		// zsh read differently hiding a function definition's ().
+		{"a redirect then a redirect", "> > /tmp/x " + canary},
+		{"$$' read two ways", canary + " $$'\\' () { ls; }'"},
 	} {
-		if strings.Contains(s, canary) {
-			t.Errorf("%s contains the canary", name)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.watched(testSession)
+
+			p := defaultPayload()
+			p.ToolInput = map[string]any{
+				"command":     tc.command,
+				"description": canary,
+				"nested":      map[string]any{"deep": canary},
+			}
+			res := e.hook(p.build(t))
+			if res.exitCode != 0 {
+				t.Fatalf("exit code %d, want 0", res.exitCode)
+			}
+			e.probe("end", testSession)
+			// Every form of the report: they render the same records through
+			// different code, and a renderer is exactly where a field nobody
+			// meant to print gets printed. --redact is the one written to be
+			// pasted somewhere public.
+			repJSON := e.run("", nil, "report", "--json", "--session", testSession)
+			repText := e.run("", nil, "report", "--session", testSession)
+			repRedact := e.run("", nil, "report", "--redact", "--session", testSession)
+
+			for rel, f := range walkStore(t, e.home) {
+				if bytes.Contains(f.body, []byte(canary)) {
+					t.Errorf("%s contains the canary", rel)
+				}
+			}
+			// Hook stdout and stderr are written to Claude Code's debug log,
+			// which puts them on disk just as surely as the store does. And
+			// report is output.
+			for name, s := range map[string]string{
+				"hook stdout":     res.stdout,
+				"hook stderr":     res.stderr,
+				"report --json":   repJSON.stdout,
+				"report text":     repText.stdout,
+				"report --redact": repRedact.stdout,
+			} {
+				if strings.Contains(s, canary) {
+					t.Errorf("%s contains the canary", name)
+				}
+			}
+		})
 	}
 }
 
-// TestH12_InternalErrorCoverageCarriesNoCount covers the internal-error half of
-// H-12; the SIGTERM half is in h12_signal_test.go.
+// TestH12_InternalErrorCoverageCarriesNoCount covers the failure half of H-12
+// -- a panic at store.write, which the record names as recovered_panic; the
+// SIGTERM half is in h12_signal_test.go.
 //
 // The guarantee is structural: store.Coverage has no field that could hold a
 // count, so a run whose instrumentation failed cannot report a number even by
@@ -206,7 +322,7 @@ func TestH12_InternalErrorCoverageCarriesNoCount(t *testing.T) {
 	if got := cov[0].str("state"); got != "unverified" {
 		t.Errorf("state is %q, want \"unverified\"", got)
 	}
-	if got := cov[0].str("reason"); got != "internal_error" {
-		t.Errorf("reason is %q, want \"internal_error\"", got)
+	if got := cov[0].str("reason"); got != "recovered_panic" {
+		t.Errorf("reason is %q, want \"recovered_panic\"", got)
 	}
 }

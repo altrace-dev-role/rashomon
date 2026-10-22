@@ -274,3 +274,95 @@ func TestLabelEdgeCasesFromTheHunt(t *testing.T) {
 		})
 	}
 }
+
+// TestLabelTestFile: the test-file row names each framework's own convention,
+// by basename alone, and sits after every sensitive row. The negatives are the
+// point as much as the positives: a source file read as a test turns "the code
+// was fixed" into "only the tests were edited", which is the over-claim the
+// detections built on this label must never make.
+func TestLabelTestFile(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want string
+		why  string
+	}{
+		{path: "/repo/pkg/calc_test.go", want: LabelTestFile, why: "go test"},
+		{path: "/repo/tests/test_login.py", want: LabelTestFile, why: "pytest's test_*.py"},
+		{path: "/repo/app/login_test.py", want: LabelTestFile, why: "pytest's *_test.py"},
+		{path: "/repo/conftest.py", want: LabelTestFile, why: "pytest's fixture file"},
+		{path: "/web/src/App.test.tsx", want: LabelTestFile, why: "Jest"},
+		{path: "/web/src/util.spec.ts", want: LabelTestFile, why: "Jasmine, Vitest"},
+		{path: "/web/src/util.test.mjs", want: LabelTestFile},
+		{path: "/web/src/util.spec.cjs", want: LabelTestFile},
+		{path: "/rb/spec/user_spec.rb", want: LabelTestFile, why: "RSpec"},
+		{path: "/j/src/test/java/CalcTest.java", want: LabelTestFile, why: "JUnit"},
+		{path: "/j/src/test/java/CalcTests.java", want: LabelTestFile},
+		{path: "/k/CalcTest.kt", want: LabelTestFile},
+		{path: "/n/CalcTests.cs", want: LabelTestFile},
+		{path: "/php/tests/CalcTest.php", want: LabelTestFile, why: "PHPUnit, which is on the runner list"},
+		{path: "/n/CalcTest.cs", want: LabelTestFile, why: "dotnet test"},
+		{path: "/k/CalcTests.kt", want: LabelTestFile},
+		{path: "/web/src/util.test.mts", want: LabelTestFile, why: "Vitest"},
+		{path: "/web/src/util.test.cts", want: LabelTestFile},
+		{path: "/web/src/util.spec.mts", want: LabelTestFile},
+		{path: "/web/src/util.spec.cts", want: LabelTestFile},
+		{path: "/cc/calc_test.cc", want: LabelTestFile, why: "GoogleTest, run by ctest"},
+		{path: "/cc/calc_unittest.cc", want: LabelTestFile},
+		{path: "/cc/calc_test.cpp", want: LabelTestFile, why: "GoogleTest's names with the other C++ extensions"},
+		{path: "/cc/calc_unittest.cpp", want: LabelTestFile},
+		{path: "/cc/calc_test.cxx", want: LabelTestFile},
+		{path: `C:\web\src\APP.TEST.TSX`, want: LabelTestFile, why: "the JS infixes still fold"},
+
+		// go test and pytest match their names as written, so these are not
+		// tests to either runner, and a label that folded them would call a
+		// source file a test.
+		{path: `C:\repo\pkg\CALC_TEST.GO`, want: LabelNone, why: "go test reads _test.go as written"},
+		{path: "/repo/pkg/calc_TEST.go", want: LabelNone},
+		{path: "/repo/pkg/calc_test.Go", want: LabelNone},
+		{path: "/repo/tests/TEST_login.py", want: LabelNone, why: "pytest's test_*.py is case-sensitive"},
+		{path: "/repo/tests/Test_login.py", want: LabelNone},
+		{path: "/repo/tests/test_login.PY", want: LabelNone},
+		{path: "/repo/app/login_TEST.py", want: LabelNone},
+		{path: "/repo/CONFTEST.PY", want: LabelNone},
+		{path: "/php/Latest.php", want: LabelNone, why: "*Test.php is a class name, cased like the JUnit ones"},
+		{path: "/php/calctest.php", want: LabelNone},
+
+		{path: "/repo/pkg/calc.go", want: LabelNone},
+		{path: "/repo/pkg/testing.go", want: LabelNone},
+		{path: "/repo/pkg/test.go", want: LabelNone, why: "no _test suffix"},
+		{path: "/repo/test_data.json", want: LabelNone, why: "test_ is a prefix only together with .py"},
+		{path: "/repo/test.py", want: LabelNone},
+		{path: "/repo/contest.py", want: LabelNone},
+		{path: "/j/Latest.java", want: LabelNone, why: "folded, *Test.java would swallow this"},
+		{path: "/j/Contest.java", want: LabelNone},
+		{path: "/j/LATESTTEST.JAVA", want: LabelNone, why: "the JUnit suffixes are cased: a class name"},
+		{path: "/n/Contests.cs", want: LabelNone},
+		{path: "/k/Protest.kt", want: LabelNone},
+		{path: "/n/Contest.cs", want: LabelNone, why: "Test.cs is cased like the other class-name suffixes"},
+		{path: "/k/Protests.kt", want: LabelNone},
+		{path: "/cc/contest.cc", want: LabelNone, why: "_test.cc needs its underscore"},
+		{path: "/cc/calc_TEST.cc", want: LabelNone, why: "cased, like _test.go"},
+		{path: "/cc/contest.cpp", want: LabelNone},
+		{path: "/cc/calc_TEST.cpp", want: LabelNone},
+		{path: "/web/src/util.mts", want: LabelNone},
+		{path: "/repo/tests/fixture.json", want: LabelNone, why: "no directory rule: a fixture in tests/ is not a test"},
+		{path: "/web/src/util.test.css", want: LabelNone},
+
+		// The sensitive rows come first.
+		{path: "/repo/.env.test.js", want: LabelEnvFile, why: "an env file named like a test is an env file"},
+		{path: "/repo/secrets.test.ts", want: LabelCredentialShaped},
+		{path: "/repo/id_rsa_test.go", want: LabelSSHKey},
+		{path: "/repo/credentials.spec.js", want: LabelCredentialShaped},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			for _, tool := range []string{"Edit", "Write", "Read"} {
+				if got := Label(tool, pathInput(t, "file_path", tc.path)); got != tc.want {
+					t.Errorf("Label(%s, %q) = %q, want %q%s", tool, tc.path, got, tc.want, because(tc.why))
+				}
+			}
+			if got := Label("NotebookEdit", pathInput(t, "notebook_path", tc.path)); got != tc.want {
+				t.Errorf("Label(NotebookEdit, %q) = %q, want %q", tc.path, got, tc.want)
+			}
+		})
+	}
+}

@@ -9,24 +9,86 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // gained outcome, exit_code, is_interrupt, duration_ms and executed_digest;
 // coverage gained cwd. No v1 field changed meaning and none was removed, which
 // is what makes reading both safe.
-const SchemaVersion = 2
-
-// Accepts reports whether a reader understands a record's schema version.
 //
-// It is a function over a set rather than an equality against SchemaVersion,
-// because the two are different questions and conflating them is a silent
-// data-loss bug: the reader used to compare `!= SchemaVersion`, so the moment
-// the writer moved to v2 every v1 record already on disk would have been
-// skipped -- a store that had been recording for weeks would have rendered an
-// empty report, and nothing would have said why.
-// Schema 3 is admitted BEFORE anything writes it. The rule-match layer lands
-// on another branch and will write v3 records; a reader that did not accept
-// them yet would skip every one, and skipping is silent by design -- the
-// symptom is an empty report, not an error. Accepting a version this writer
-// does not yet produce costs nothing and closes that window.
-func Accepts(version int) bool {
-	return version == 1 || version == 2 || version == 3
-}
+// v3 is additive over v2 as well: declaration gained file_label, host_source,
+// rule_match, cwd_digest and shape.may_write; execution gained rule_match and
+// backgrounded. And the test verb class, with the test-file label, is a v3
+// vocabulary: a v2 record says package or execute for `go test`, so a reader
+// that meets one knows its test runs were never measured, not that there were
+// none. rule_match is null on every record this build writes; the rule-match
+// layer adds behaviour on v3, not another version.
+//
+// v4 is additive over v3: the declaration's shape gained status_masked and
+// runner_digest, and the execution the same two keys, for the line as it ran;
+// both gained rules_version, which lists decided them (shape.RulesVersion). Whether a build or test runner's exit status was hidden by
+// the rest of its line is a v4 measurement: a v3 record of `make test |
+// tail` says nothing about it, which a reader must take as "not measured",
+// not as "not hidden". Nothing else changed, and v1 to v3 records still read.
+//
+// v5 is additive over v4: every call record names the binary that wrote it
+// (writer), a terminal names the invocation that wrote it (phase), and the
+// declaration and execution carry the keys of DeclarationV5 and ExecutionV5
+// -- the command, paths, targets, git state, failure class and the rest --
+// every one of them always present. Null means not applicable or not looked
+// at, which is what each of them is until the change that fills it lands; a
+// v4 record read back has none of them, and a reader takes that as "not
+// measured" as it does for every earlier step. v5 also has one record that
+// is not additive, the flush_failed marker: see FlushFailedSchemaVersion.
+//
+// SchemaVersion is the version of a call's ordinary records: its
+// declaration, the terminal that actually closes it, and its execution,
+// KindVersion's entry for each. Coverage and gap records are written at
+// SessionSchemaVersion instead.
+const SchemaVersion = CallSchemaVersion
+
+// FlushFailedSchemaVersion is the version the flush_failed marker is written
+// at (REC-34). A literal, not SchemaVersion: the two are independent facts
+// (one about ordinary call records, one about a single marker type) and
+// tying them would move this one the moment someone edited the other for an
+// unrelated reason.
+//
+// A flush_failed terminal is not additive the way v2 to v4 were: no field
+// was added to the TYPE, and nothing a v4 record carries changed meaning.
+// What changed is which terminals a reader may treat as closing a
+// declaration. Terminal.Reason can now be ReasonFlushFailed, marking a call
+// whose records a failed flush left possibly not durable -- and such a
+// terminal must NOT close the declaration it names, or a possibly-lost call
+// reads as a finished one. A v4 reader has no FlushFailed check; it closes
+// on any terminal. Bumping ITS OWN version is what keeps a v4-or-earlier
+// reader from reading one of these at all: that reader's Accepts runs before
+// the type switch (classifyRunLine), so it skips the marker's line instead
+// of half-understanding it.
+//
+// The marker was at 5 alone until the call records' v5 keys landed (P-11):
+// SchemaVersion stayed at 4 while an ordinary record had none of a v5
+// record's content, because stamping it 5 anyway would have been the lie
+// kinds.go's CallSchemaVersion warns against -- a record claiming a version
+// none of whose keys it carries -- and would have cost every 1.1.x reader
+// every call record in a run the moment one flush failed. With DeclarationV5,
+// ExecutionV5 and TerminalV5 embedded, every call record carries the v5 keys
+// and is written at 5 too; a 1.1.x reader skips the calls and reads the
+// session unverified, as it did for v4, and coverage and gaps stay at 3 so
+// it still lists every session.
+//
+// A new record type instead of a version was rejected: Terminal is the type
+// every other call-record consumer already walks, and moving the marker out
+// of it would have meant auditing every one of them for an assumption that
+// a terminal is the only thing that closes a call, rather than teaching the
+// one function (AcceptsKind) that already gates what a reader understands.
+const FlushFailedSchemaVersion = 5
+
+// SessionSchemaVersion is the version of the records that describe a session
+// rather than one call: coverage and gaps. Neither has changed since v3, so
+// they stay at 3 when the call records move on. A released reader accepts
+// only the versions it knows and skips the rest; a coverage record it skips
+// reads as `start recorded: no` and `probe_absent`, a gap it skips as no
+// gap at all. Stamping them with the call records' version would lose the
+// whole session to an older binary for a change that is only in the calls.
+//
+// A terminal is a call record: it goes with its declaration, whose version
+// it carries. A readable terminal beside an unreadable declaration reads as
+// a declaration that never landed, which is a lock timeout to the reader.
+const SessionSchemaVersion = 3
 
 // Record type discriminators.
 const (
@@ -35,6 +97,8 @@ const (
 	TypeTerminal    = "terminal"
 	TypeCoverage    = "coverage"
 	TypeGap         = "gap"
+	// TypeForgottenHost is a store-level forget: see ForgottenHostRecord.
+	TypeForgottenHost = "forgotten_host"
 )
 
 // Files within a run directory, and at the store root.
@@ -45,6 +109,18 @@ const (
 	FileProbe    = "probe"
 	FileSeq      = "seq"
 	FileGaps     = "gaps.ndjson"
+	// FileForgottenHosts is at the store root: one ForgottenHostRecord per
+	// `forget --host`, whatever it removed.
+	FileForgottenHosts = "forgotten-hosts.ndjson"
+	// FileLockWait holds, as decimal milliseconds, the longest any one hook
+	// invocation of the run waited for store locks (perf-7). It is a note
+	// about the store, like probe and seq, and not a record.
+	FileLockWait = "lockwait"
+	// FileResolvedCap is at the store root: the size cap the last hook
+	// invocation resolved, written so status can show the value eviction
+	// actually runs with instead of reading EnvCapBytes in its own,
+	// possibly different, environment (hld-7).
+	FileResolvedCap = "resolved-cap"
 )
 
 // Declaration is what the agent asked to run.
@@ -81,17 +157,14 @@ type Declaration struct {
 	// Hosts and SSHHosts are the hostnames this call NAMED (v2).
 	//
 	// They are a declaration, not an observation: a host here is one the agent
-	// wrote down, whether or not the call ran and whether or not the wire ever
-	// saw it. That is the entire point -- the report's central line compares
-	// this list against the proxy's, and "reached but never named" is only
-	// meaningful because this side is the naming side.
+	// wrote down, whether or not the call ran and whether or not anything was
+	// ever reached. That is the entire point -- the report lists them as what
+	// was named, and says plainly that nothing here observed whether any was
+	// reached.
 	//
-	// They are separate lists because the two have opposite fates in the
-	// report. A wire-observable host with no record is a finding; an ssh host
-	// with no record is expected, since the proxy cannot see ssh at all, and it
-	// renders under coverage as "not observable" rather than as something the
-	// session hid. Merging them and filtering later is how the second kind ends
-	// up printed as the first.
+	// They are separate lists because an ssh host is a different kind of
+	// destination from an HTTPS one, and the report's family and novelty views
+	// treat it so. Merging them would lose that distinction downstream.
 	//
 	// Both are sorted and de-duplicated by the extractor so two runs of one
 	// command produce byte-identical records. Null when the call named none;
@@ -100,22 +173,35 @@ type Declaration struct {
 	Hosts    []string `json:"hosts"`
 	SSHHosts []string `json:"ssh_hosts"`
 
-	// FileLabel is what the file this call named looks like (v3).
+	// CWDDigest is the keyed digest of the directory its command starts in
+	// (v3): the reported cwd, or where its leading plain `cd DIR &&` steps
+	// lead (shape.LeadingDirectory, folded onto the PreToolUse payload's cwd).
+	// shape.CWDDigest, under the per-install key, so two calls' directories
+	// compare equal or not and nothing else. Measured on Claude Code 2.1.280,
+	// the payload's cwd follows the shell: after `cd sub && pwd` the next
+	// call's reads .../sub, so the cwd is where the shell was before the line
+	// ran, and where its leading cds lead is where the rest of the line ran. Two
+	// runs of one command line in two directories are two different runs,
+	// and the test-bending pairs compare this as well as the shape digest.
 	//
-	// RESERVED AND NOT YET POPULATED, like the two below it. The label layer
-	// lives in internal/shape and internal/hook, which another branch owns;
-	// this declares the field so that branch adds behaviour rather than a
-	// fourth schema version, and can delete its own copy on rebase.
+	// A digest and never the path. The coverage records carry the plain cwd
+	// already, as the novelty baseline's project key; the declarations do
+	// not gain it. Empty string when that directory is not known: no payload
+	// cwd and no absolute leading cd.
+	CWDDigest string `json:"cwd_digest"`
+
+	// FileLabel is what the file this call named looks like (v3), from the
+	// label layer (internal/hook's fileLabel, internal/shape's Label).
 	//
-	// No omitempty, deliberately. The key is always present and null until
-	// something writes it, because the record allowlist is an exact set in
+	// No omitempty, deliberately. The key is always present, null when the
+	// tool names no file, because the record allowlist is an exact set in
 	// both directions -- a key that appears only sometimes is a key the
 	// allowlist cannot describe, and "sometimes present" is the shape a
 	// reader cannot tell from "absent because nothing looked".
 	//
 	// Three states, all different: null means the tool names no file, so
 	// nobody looked; "none" means a real path matched no row; "unknown" means
-	// a path could not be read at all. The path itself is never stored.
+	// a path could not be read at all. The path itself is never stored here.
 	FileLabel *string `json:"file_label"`
 
 	// HostSource says where each entry of Hosts came from, positionally (v3).
@@ -139,6 +225,17 @@ type Declaration struct {
 	// expressed inside the object. A reader that cannot tell those apart
 	// reports an absence of rules as an absence of matches.
 	RuleMatch map[string]any `json:"rule_match"`
+
+	// RulesVersion is shape.RulesVersion as the writing binary had it (v4):
+	// which runner and build lists decided this record's shape.verb_class
+	// and shape.status_masked. Records written before and after a list
+	// changed are told apart by it, and by nothing else. It names the writer's
+	// lists only: the pass words are applied when a report is read, never
+	// stored.
+	RulesVersion int `json:"rules_version"`
+
+	// DeclarationV5 is the declaration's v5 keys (record_v5.go).
+	DeclarationV5
 }
 
 // Execution records that a declared call ran, one per PostToolUse invocation.
@@ -149,8 +246,9 @@ type Declaration struct {
 //
 // It carries the join key, the clock and the tool name, and no field that could
 // hold any part of a tool response. The PostToolUse payload carries the
-// response; internal/hook does not declare a field for it, so it is never a
+// response; internal/hook declares no field for its content, so it is never a
 // value in this process, and there is nowhere here for it to be put if it were.
+// The one bit taken from it is Backgrounded: whether two keys are present.
 //
 // Seq is null when the record was written to the spill file because the
 // ordered stream's lock could not be taken. The id lands either way; what a
@@ -176,7 +274,9 @@ type Execution struct {
 	Outcome string `json:"outcome"`
 
 	// ExitCode is the process exit status, parsed from the failure payload's
-	// `error: "Exit code N"` (v2).
+	// `error: "Exit code N"` (v2). Only the first line is read: a command that
+	// printed anything fails with "Exit code N\n<its output>", and the output
+	// is never looked at.
 	//
 	// Null on success and on any other error shape, and NEVER 0: zero is an
 	// exit status meaning success, so writing it for "we could not parse one"
@@ -215,6 +315,40 @@ type Execution struct {
 	// RuleMatch is the rule-match layer's verdict for the call as it RAN (v3).
 	// Reserved and not yet populated; see the note on Declaration.RuleMatch.
 	RuleMatch map[string]any `json:"rule_match"`
+
+	// Backgrounded is true when this record was written while the command was
+	// still running in the background (v3): Claude Code moved it there at its
+	// timeout, or it was launched with run_in_background (both measured), or
+	// on Ctrl+B, recognised only if Claude Code marks it with
+	// backgroundTaskId or backgroundedByUser, which was not measured. Its
+	// PostToolUse fires then, so Outcome is the launch's, not the command's,
+	// and a reader treats the call's ending as unobserved (see
+	// report.LinkOutcomeBackgrounded).
+	//
+	// Read from the presence of two keys of a Bash call's tool_response and
+	// nothing else of it; see internal/hook's backgroundResponse. False on
+	// every other tool, on a failure event, which means the command ended or
+	// its launch failed, and on a record written before v3, which could not
+	// tell.
+	Backgrounded bool `json:"backgrounded"`
+
+	// StatusMasked and RunnerDigest are the shape's two fields of the same
+	// names (v4), derived from the input as it ACTUALLY RAN, by the same
+	// Derive call that gives ExecutedDigest. A hook that rewrites the line
+	// before it runs -- to pipe test output into `grep | head`, say -- makes
+	// the declaration's the wrong line to judge masking on; a reader takes
+	// these instead wherever the record saw a tool_input (report.MaskingAsRan).
+	// Null when the payload carried no tool_input, and on a tool that is not
+	// a shell.
+	StatusMasked *string `json:"status_masked"`
+	RunnerDigest *string `json:"runner_digest"`
+
+	// RulesVersion is shape.RulesVersion as the writing binary had it (v4):
+	// which runner and build lists decided StatusMasked. See Declaration's.
+	RulesVersion int `json:"rules_version"`
+
+	// ExecutionV5 is the execution's v5 keys (record_v5.go).
+	ExecutionV5
 }
 
 // Execution outcomes (v2).
@@ -258,6 +392,27 @@ type Terminal struct {
 	SessionID     string  `json:"session_id"`
 	Outcome       string  `json:"outcome"`
 	Reason        *string `json:"reason"`
+	// Phase is PhaseCall or PhasePost, naming which invocation wrote this
+	// terminal (v5). It is null for an ordinary closing terminal, which
+	// Handler.Close always writes from the hook's own PreToolUse process
+	// and so carries no ambiguity worth a field for. It is set on a
+	// ReasonFlushFailed marker, where it does: PhaseCall means the
+	// DECLARATION this invocation itself wrote may not be durable; PhasePost
+	// means the EXECUTION post just appended may not be, while the
+	// declaration -- flushed by an earlier, separate hook invocation -- is
+	// unaffected. Without it a reader sees a marker and cannot tell which.
+	Phase *string `json:"phase"`
+
+	// TerminalV5 is the terminal's other v5 key, its writer.
+	TerminalV5
+}
+
+// FlushFailed reports a terminal that marks its call's records as possibly
+// not durable (ReasonFlushFailed) rather than closing the call. It is not an
+// ending: a reader must not let it close a declaration whose own terminal
+// never landed, or count it as a declaration the lock dropped.
+func (t Terminal) FlushFailed() bool {
+	return t.Reason != nil && *t.Reason == ReasonFlushFailed
 }
 
 // Coverage states.
@@ -268,14 +423,52 @@ const (
 
 // Coverage reasons. Fixed codes, never free text, and never derived from input.
 const (
-	ReasonInternalError       = "internal_error"
-	ReasonLockTimeout         = "lock_timeout"
+	ReasonInternalError = "internal_error"
+	// ReasonRecoveredPanic marks an invocation in which the panic barrier
+	// recovered a panic: a bug in this program, as distinct from
+	// internal_error's ordinary failure (a write the disk refused, a payload
+	// that did not parse). It rides the coverage record and, when the panic
+	// cost the call's capture, its terminal. A panic recovered inside the
+	// file-label derivation costs only the label, which reads unknown, and
+	// is named here so the report can tell that unknown from an ordinary one.
+	ReasonRecoveredPanic = "recovered_panic"
+	ReasonLockTimeout    = "lock_timeout"
+	// ReasonPayloadTooLarge marks an invocation whose payload was over the
+	// 8 MiB intake cap (hookio.MaxPayloadBytes) and was refused after a
+	// bounded read. Nothing broke inside this program, which is why it is
+	// not internal_error; the call itself went unrecorded.
+	ReasonPayloadTooLarge = "payload_too_large"
+	// ReasonFlushFailed marks records a hook appended and then could not
+	// flush to stable storage (REC-34): they read back, and a power loss or
+	// a crash of the machine could still remove them. It rides a spill
+	// terminal for the call, the one record a process can append without
+	// waiting on a lock, because coverage appends take theirs.
+	ReasonFlushFailed         = "flush_failed"
 	ReasonTerminatedBySignal  = "terminated_by_signal"
 	ReasonUnterminatedEntry   = "unterminated_entry"
 	ReasonHookEntryAbsent     = "hook_entry_absent"
 	ReasonHookEntryUnresolved = "hook_entry_unresolved"
 	ReasonProbeAbsent         = "probe_absent"
 	ReasonProbeUnresolved     = "probe_unresolved"
+	// ReasonRecordingPaused marks an invocation that found recording paused
+	// (Part 2). It is not a failure -- nothing here is broken -- but reason is
+	// the only field a coverage record has to say "no, and here is why", and a
+	// second field just for this would let a reader check State and miss it.
+	// checkPaused in cmd/rashomon/main.go is the only writer.
+	ReasonRecordingPaused = "recording_paused"
+	// ReasonRecordOversize marks a call whose record was over a size limit:
+	// a field over its cap was withheld from it, or the whole record was
+	// over MaxRecordBytes and refused (REC-31, REC-52). Nothing broke, which
+	// is why it is not internal_error; what the record holds is incomplete.
+	ReasonRecordOversize = "record_oversize"
+	// ReasonPauseStateUnreadable marks an invocation that found the pause
+	// marker present and could not read it: EACCES on the file itself, or
+	// any other error that is not the file simply not being there. It is
+	// recorded instead of ReasonRecordingPaused because the call really was
+	// paused, but not on purpose the way an ordinary `rashomon pause` is --
+	// a reader needs the two distinguishable rather than folded into one.
+	// checkPaused is the only writer.
+	ReasonPauseStateUnreadable = "pause_state_unreadable"
 )
 
 // Reasons lists every coverage reason code a record can carry. It exists so
@@ -284,13 +477,19 @@ const (
 func Reasons() []string {
 	return []string{
 		ReasonInternalError,
+		ReasonRecoveredPanic,
 		ReasonLockTimeout,
+		ReasonPayloadTooLarge,
+		ReasonFlushFailed,
 		ReasonTerminatedBySignal,
 		ReasonUnterminatedEntry,
 		ReasonHookEntryAbsent,
 		ReasonHookEntryUnresolved,
 		ReasonProbeAbsent,
 		ReasonProbeUnresolved,
+		ReasonRecordingPaused,
+		ReasonRecordOversize,
+		ReasonPauseStateUnreadable,
 	}
 }
 
@@ -304,10 +503,41 @@ const (
 
 // Resolved states of the installed hook entry and of the liveness probe, as
 // they were at the moment the record was written.
+//
+// EntryPresentSettings and EntryPresentPlugin are two different questions with
+// two different kinds of answer, not two spellings of one "present". A
+// settings entry is verified by a fresh read of a file Claude Code's own file
+// watcher keeps current; a plugin's is verified by this process itself running
+// as that plugin's hook binary, because there is no documented guarantee that
+// enabling a plugin reaches an already-running session before its next call.
+// Collapsing them into one value would let a coverage record claim the
+// stronger kind of evidence while holding the weaker kind -- see
+// internal/hook/coverage.go's Resolve for where each is decided.
+//
+// EntryPresent is never written by this code -- Resolve always picks one of
+// the two origin-specific values above, or Absent, or Unknown -- but it is
+// not retired, because every binary shipped before Part 1 wrote it, into
+// records that are schema version 2 and are not going anywhere. Removing it
+// from this list would make the enum describe a narrower store than the one
+// actually on disk: a real consumer validating a real store against
+// docs/store-schema.json would fail on records this program itself wrote,
+// which is the exact failure TestStoreSchemaMatchesTheAllowlists exists to
+// catch in the other direction. A reader that meets it should treat it as
+// "present, origin unknown" -- true of both origins before this document
+// existed to tell them apart -- and it costs nothing to keep meaning that:
+// report.go copies HookEntry through unexamined for display, and nothing
+// re-derives a stored record's own State from HookEntry at read time (that
+// decision was made once, by whichever binary wrote the record, and is
+// carried in State itself) -- so a legacy Present value was frozen as
+// verified the day it was written and renders that way today, unchanged.
+// TestLegacyPresentRendersVerified pins that rather than leaving it
+// incidental.
 const (
-	EntryPresent = "present"
-	EntryAbsent  = "absent"
-	EntryUnknown = "unknown"
+	EntryPresentSettings = "present_settings"
+	EntryPresentPlugin   = "present_plugin"
+	EntryPresent         = "present"
+	EntryAbsent          = "absent"
+	EntryUnknown         = "unknown"
 
 	ProbeFresh   = "fresh"
 	ProbeAbsent  = "absent"
@@ -352,16 +582,55 @@ type Coverage struct {
 	CWD string `json:"cwd"`
 }
 
+// ForgottenHostRecord is a host-scoped forget, kept at the store level.
+//
+// SEPARATE FROM THE GAPS ON PURPOSE. A gap says "records were removed here",
+// and `forget --host` writes one only for a run it actually removed records
+// from. That left a hole the nono adapter made visible (#45): a host that only
+// the sandbox's trail held -- or one whose every naming call had already left
+// with an earlier forget of another host -- could not be forgotten at all, and
+// the next report listed it again. This record is written on every
+// `forget --host`, so the report's predicate covers every source it reads, and
+// the gaps keep meaning only what they always meant.
+//
+// It carries the same keyed digest a gap does and never the name, for the
+// reason set out on Gap.HostDigest.
+//
+// STAMPED AT SessionSchemaVersion, decided rather than inherited. It is a
+// store-level record, like a gap, and no released reader opens this file: a
+// version of its own would version a record no older binary can meet. Its
+// key set is closed by forgottenHostKeys in the acceptance tests.
+type ForgottenHostRecord struct {
+	Type          string `json:"type"`
+	SchemaVersion int    `json:"schema_version"`
+	RecordedAtMS  int64  `json:"recorded_at_unix_ms"`
+	HostDigest    string `json:"host_digest"`
+}
+
 // Gap reasons.
 const (
 	GapForget     = "forget"
 	GapForgetHost = "forget_host"
 	GapSizeCap    = "size_cap"
+	// GapPaused marks a window pause and resume opened together, rather than
+	// one either removed anything from. Every other reason above describes
+	// records that existed and left; this one describes records that were
+	// never made, on purpose -- RemovedRecords is legitimately 0 for it. It is
+	// written twice per pause/resume cycle: once by pause, zero-width, as
+	// evidence the window began even if resume never follows; once by resume,
+	// spanning the whole window, which is the one a reader actually wants. See
+	// cmd/rashomon's cmdPause and cmdResume.
+	GapPaused = "paused"
 )
 
-// Gap records that records left the store, and why. It is the only way records
-// leave: a deletion with no gap record is a silent deletion, and a store that
-// can be silently edited is worth nothing as evidence.
+// Gap records that records left the store, or that a deliberate pause meant
+// none were made, and why either way. Before Part 2 it was only the first of
+// those, and "the only way records leave" was a complete description; a
+// paused window is the one case a Gap records where nothing left because
+// nothing was ever there, and reusing this type rather than inventing a
+// second one keeps "is there a hole here, and why" answerable from one place.
+// A deletion with no gap record is a silent deletion, and a store that can be
+// silently edited is worth nothing as evidence.
 type Gap struct {
 	Type           string `json:"type"`
 	SchemaVersion  int    `json:"schema_version"`
@@ -378,12 +647,12 @@ type Gap struct {
 	//
 	// A DIGEST and not the hostname, and the reason is a conflict this field
 	// had to resolve. The report needs to keep suppressing the host, because
-	// the proxy's store is not ours to delete from and the destination would
-	// otherwise reappear in the next report as "reached but never named" -- the
-	// forget reading as undone, or as a finding. But `forget --host` also has
-	// to make the hostname LEAVE the store's bytes, which is the whole point of
-	// forgetting it. Writing the name here would have satisfied the first
-	// requirement by breaking the second.
+	// nono's own trail is not ours to delete from and the host would otherwise
+	// reappear in the next report under the sandbox heading -- the forget
+	// reading as undone. But `forget --host` also has to make the hostname
+	// LEAVE the store's bytes, which is the whole point of forgetting it.
+	// Writing the name here would have satisfied the first requirement by
+	// breaking the second.
 	//
 	// Keyed with the same per-install HMAC key the shape digests use, so the
 	// report can recompute it from an observed host while a reader of the store
