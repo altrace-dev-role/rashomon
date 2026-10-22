@@ -25,4 +25,4 @@ m("ForgetAll lists the baseline directory before taking the lock", "internal/bas
   "\t}\n"
   "\tdefer release()\n"
   "\terr = listErr\n",
-  "TestForgetAll_SeesAFileCreatedWhileItWasBlockedOnTheLock")
+  "TestRubricLLD11_ForgetAllSeesAFileCreatedWhileItWasBlockedOnTheLock")

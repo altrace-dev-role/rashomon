@@ -30,12 +30,12 @@ func writeLegacyBaseline(t *testing.T, root, key string, hosts map[string]entry)
 	return path
 }
 
-// TestUpdate_LegacyIPLiteralIsNotNovelAgain: a baseline written before
+// TestRubricLLD11_UpdateLegacyIPLiteralIsNotNovelAgain: a baseline written before
 // host.Canonical folded an IP literal to its one spelling holds the
 // uncanonicalised string. A session naming the same host in its canonical
 // form must not read as novel, and the two keys must merge into one host,
 // not two.
-func TestUpdate_LegacyIPLiteralIsNotNovelAgain(t *testing.T) {
+func TestRubricLLD11_UpdateLegacyIPLiteralIsNotNovelAgain(t *testing.T) {
 	root := t.TempDir()
 	writeLegacyBaseline(t, root, "/proj", map[string]entry{
 		"167838211": {FirstSeenSession: "sess-0", FirstSeenAtUnixMS: t0.UnixMilli()},
@@ -51,7 +51,7 @@ func TestUpdate_LegacyIPLiteralIsNotNovelAgain(t *testing.T) {
 	}
 }
 
-// TestLoad_MergesCollidingLegacyKeys: two pre-upgrade keys that canonicalise
+// TestRubricLLD11_LoadMergesCollidingLegacyKeys: two pre-upgrade keys that canonicalise
 // to the same host merge into one entry, keeping the earlier
 // FirstSeenSession and the later LastSeenAtUnixMS, as Fold's own ownership
 // rule decides both.
@@ -60,7 +60,7 @@ func TestUpdate_LegacyIPLiteralIsNotNovelAgain(t *testing.T) {
 // has to correct away from it: the later session landed in the map first,
 // and the earlier one -- read second -- has to displace it, which is the
 // direction a map walked in insertion order would never need to.
-func TestLoad_MergesCollidingLegacyKeys(t *testing.T) {
+func TestRubricLLD11_LoadMergesCollidingLegacyKeys(t *testing.T) {
 	root := t.TempDir()
 	path := writeLegacyBaseline(t, root, "/proj", map[string]entry{
 		// "10.1.2.3" sorts first and carries the later FirstSeenAtUnixMS and
@@ -94,10 +94,10 @@ func TestLoad_MergesCollidingLegacyKeys(t *testing.T) {
 	}
 }
 
-// TestLoad_RefusesAnUnshapedLegacyKey: a key host.Canonical maps to
+// TestRubricLLD11_LoadRefusesAnUnshapedLegacyKey: a key host.Canonical maps to
 // something host.Shaped refuses -- or that it refuses outright -- is
 // dropped rather than carried forward under a new spelling.
-func TestLoad_RefusesAnUnshapedLegacyKey(t *testing.T) {
+func TestRubricLLD11_LoadRefusesAnUnshapedLegacyKey(t *testing.T) {
 	root := t.TempDir()
 	path := writeLegacyBaseline(t, root, "/proj", map[string]entry{
 		"api.example.com=ghp_x": {FirstSeenSession: "sess-0", FirstSeenAtUnixMS: t0.UnixMilli()},

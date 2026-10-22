@@ -43,7 +43,7 @@ func TestForgetAll_ListingIsUnderTheLock(t *testing.T) {
 	}
 }
 
-// TestForgetAll_SeesAFileCreatedWhileItWasBlockedOnTheLock makes the race the
+// TestRubricLLD11_ForgetAllSeesAFileCreatedWhileItWasBlockedOnTheLock makes the race the
 // previous test proves impossible concrete and deterministic: a project
 // baseline that comes into existence WHILE ForgetAll is waiting for the
 // lock must still be visited once it gets in. A version that lists the
@@ -52,7 +52,7 @@ func TestForgetAll_ListingIsUnderTheLock(t *testing.T) {
 // known it was there -- not because it raced and lost, but because listing
 // before locking means there is nothing to race: the file simply postdates
 // the decision of what to look at.
-func TestForgetAll_SeesAFileCreatedWhileItWasBlockedOnTheLock(t *testing.T) {
+func TestRubricLLD11_ForgetAllSeesAFileCreatedWhileItWasBlockedOnTheLock(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "baseline")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

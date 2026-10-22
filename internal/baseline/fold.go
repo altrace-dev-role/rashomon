@@ -270,8 +270,8 @@ func canonicalizeHosts(hosts map[string]entry) map[string]entry {
 		// folding "1234" to 0.0.4.210 here would do on every load exactly
 		// what fixing the ssh extraction path alone could not undo. A
 		// legacy entry with no field at all is SSH == false and keeps the
-		// fold, which is what TestUpdate_LegacyIPLiteralIsNotNovelAgain and
-		// TestLoad_MergesCollidingLegacyKeys pin for a file old enough to
+		// fold, which is what TestRubricLLD11_UpdateLegacyIPLiteralIsNotNovelAgain and
+		// TestRubricLLD11_LoadMergesCollidingLegacyKeys pin for a file old enough to
 		// predate the distinction.
 		canonicalize := host.Canonical
 		if e.SSH {

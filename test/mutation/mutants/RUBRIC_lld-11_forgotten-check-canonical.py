@@ -18,7 +18,7 @@ m("RUBRIC lld-11b declaredHostsFiltered asks forgotten about the stored spelling
   "\t\t\t// same old run.\n"
   "\t\t\tcanon, ok := host.Canonical(h)\n\t\t\tif !ok || !host.Shaped(canon) {\n\t\t\t\tcontinue\n\t\t\t}\n"
   "\t\t\tif forgotten != nil && forgotten(h, d.RecordedAtMS) {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tset[canon] = true\n",
-  "TestSeam_ForgetFindsADeclarationStoredInALegacySpelling")
+  "TestRubricLLD11b_ForgetFindsADeclarationStoredInALegacySpelling")
 m("RUBRIC lld-11b sshDeclaredFiltered asks forgotten about the stored spelling", "internal/report/destinations.go",
   "for _, h := range d.SSHHosts {\n"
   "\t\t\tcanon, ok := host.CanonicalName(h)\n\t\t\tif !ok || !host.Shaped(canon) {\n\t\t\t\tcontinue\n\t\t\t}\n"
@@ -26,4 +26,4 @@ m("RUBRIC lld-11b sshDeclaredFiltered asks forgotten about the stored spelling",
   "for _, h := range d.SSHHosts {\n"
   "\t\t\tcanon, ok := host.CanonicalName(h)\n\t\t\tif !ok || !host.Shaped(canon) {\n\t\t\t\tcontinue\n\t\t\t}\n"
   "\t\t\tif forgotten != nil && forgotten(h, d.RecordedAtMS) {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tset[canon] = true\n",
-  "TestSeam_ForgetFindsAnSSHDeclarationStoredInALegacySpelling")
+  "TestRubricLLD11b_ForgetFindsAnSSHDeclarationStoredInALegacySpelling")

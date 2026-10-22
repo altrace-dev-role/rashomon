@@ -785,7 +785,7 @@ func legacySpellingOutlivesAForget(t *testing.T, id, toolUseID string, hosts, ss
 	return rep
 }
 
-// TestSeam_ForgetFindsADeclarationStoredInALegacySpelling: a declaration
+// TestRubricLLD11b_ForgetFindsADeclarationStoredInALegacySpelling: a declaration
 // written before host.Canonical folded an IP literal to its one spelling
 // holds the raw string -- "167838211" where a current build would have
 // written "10.1.2.3" for the same curl. declaredHostsFiltered checked
@@ -794,7 +794,7 @@ func legacySpellingOutlivesAForget(t *testing.T, id, toolUseID string, hosts, ss
 // under the CANONICAL name, never the stored one -- could not recognise the
 // legacy declaration as the host it was asked to forget, and it kept
 // reappearing under destinations.declared_hosts on every later render.
-func TestSeam_ForgetFindsADeclarationStoredInALegacySpelling(t *testing.T) {
+func TestRubricLLD11b_ForgetFindsADeclarationStoredInALegacySpelling(t *testing.T) {
 	rep := legacySpellingOutlivesAForget(t, "seam-legacy-host", "toolu_legacy",
 		[]string{"167838211"}, nil, "10.1.2.3")
 	if got := rep.Sessions[0].Destinations.DeclaredHosts; slices.Contains(got, "167838211") || slices.Contains(got, "10.1.2.3") {
@@ -803,14 +803,14 @@ func TestSeam_ForgetFindsADeclarationStoredInALegacySpelling(t *testing.T) {
 	}
 }
 
-// TestSeam_ForgetFindsAnSSHDeclarationStoredInALegacySpelling: the same hole,
+// TestRubricLLD11b_ForgetFindsAnSSHDeclarationStoredInALegacySpelling: the same hole,
 // for sshDeclaredFiltered -- which, unlike declaredHostsFiltered, did not
 // canonicalise an ssh host at all before comparing it to forgotten() or
 // before adding it to the output set. A declaration recorded in mixed case,
 // from before this build's ssh extraction ran every host through
 // host.Canonical, never matched the canonical digest `forget --host`
 // records.
-func TestSeam_ForgetFindsAnSSHDeclarationStoredInALegacySpelling(t *testing.T) {
+func TestRubricLLD11b_ForgetFindsAnSSHDeclarationStoredInALegacySpelling(t *testing.T) {
 	rep := legacySpellingOutlivesAForget(t, "seam-legacy-ssh-host", "toolu_legacy_ssh",
 		nil, []string{"GitHub.com"}, "github.com")
 	if got := rep.Sessions[0].Destinations.SSHHosts; slices.Contains(got, "GitHub.com") || slices.Contains(got, "github.com") {

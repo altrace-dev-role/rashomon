@@ -5,13 +5,13 @@
 # merge is the regression.
 m("RUBRIC lld-11 load does not re-key legacy hosts", "internal/baseline/baseline.go",
   "\tf.Hosts = canonicalizeHosts(f.Hosts)\n\treturn f, true, nil\n",
-  "\treturn f, true, nil\n", "TestUpdate_LegacyIPLiteralIsNotNovelAgain|TestLoad_")
+  "\treturn f, true, nil\n", "TestRubricLLD11_UpdateLegacyIPLiteralIsNotNovelAgain|TestRubricLLD11_Load|TestLoad_")
 m("RUBRIC lld-11 an unshaped legacy key is kept", "internal/baseline/fold.go",
   "\t\tcanon, ok := canonicalize(h)\n\t\tif !ok || !host.Shaped(canon) {\n\t\t\tcontinue\n\t\t}\n",
-  "\t\tcanon, ok := canonicalize(h)\n\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n", "TestLoad_RefusesAnUnshapedLegacyKey")
+  "\t\tcanon, ok := canonicalize(h)\n\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n", "TestRubricLLD11_LoadRefusesAnUnshapedLegacyKey")
 m("RUBRIC lld-11 a colliding legacy key loses the later LastSeenAtUnixMS", "internal/baseline/fold.go",
   "\t\tnext.LastSeenAtUnixMS = max(lastSeen(prev), lastSeen(e))\n",
-  "\t\tnext.LastSeenAtUnixMS = lastSeen(prev)\n", "TestLoad_MergesCollidingLegacyKeys")
+  "\t\tnext.LastSeenAtUnixMS = lastSeen(prev)\n", "TestRubricLLD11_LoadMergesCollidingLegacyKeys")
 m("RUBRIC lld-11 a colliding legacy key loses the earlier FirstSeenSession", "internal/baseline/fold.go",
   "\t\tif e.FirstSeenAtUnixMS > 0 && (prev.FirstSeenAtUnixMS == 0 || e.FirstSeenAtUnixMS < prev.FirstSeenAtUnixMS) {\n",
-  "\t\tif false {\n", "TestLoad_MergesCollidingLegacyKeys")
+  "\t\tif false {\n", "TestRubricLLD11_LoadMergesCollidingLegacyKeys")

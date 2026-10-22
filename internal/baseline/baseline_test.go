@@ -415,7 +415,7 @@ func TestUpdate_TheEstablisherCorrectsTowardTheEarlierSession(t *testing.T) {
 	}
 }
 
-// TestFold_ASessionIDThatEscapesStillFitsAFullBaseline: maxEntryBytes
+// TestRubricLLD11_FoldASessionIDThatEscapesStillFitsAFullBaseline: maxEntryBytes
 // allows a session id of maxSessionIDBytes as written, but JSON writes `<`,
 // a control byte or a byte of invalid UTF-8 as six: 256 of them took 1,536
 // bytes, and one session id like that let a baseline fill past
@@ -424,7 +424,7 @@ func TestUpdate_TheEstablisherCorrectsTowardTheEarlierSession(t *testing.T) {
 // by a session whose id escapes, still saves; the same id still reads as the
 // same session on the next render; and an id JSON writes as itself is
 // stored as it is.
-func TestFold_ASessionIDThatEscapesStillFitsAFullBaseline(t *testing.T) {
+func TestRubricLLD11_FoldASessionIDThatEscapesStillFitsAFullBaseline(t *testing.T) {
 	label := strings.Repeat("a", 63)
 	hosts := make([]string, maxBaselineHosts)
 	for i := range hosts {
@@ -457,7 +457,7 @@ func TestFold_ASessionIDThatEscapesStillFitsAFullBaseline(t *testing.T) {
 	}
 }
 
-// TestFold_SessionIDIsBoundedBeforeStorage: a session id of unbounded length
+// TestRubricLLD11_FoldSessionIDIsBoundedBeforeStorage: a session id of unbounded length
 // is not hostname-shaped and nothing here rejects it the way a host is
 // rejected, so maxEntryBytes's own math -- a 253-byte name, a session id of
 // up to 256 bytes, two stamps, keys and indentation, 1,024 with room for
@@ -469,7 +469,7 @@ func TestFold_ASessionIDThatEscapesStillFitsAFullBaseline(t *testing.T) {
 // capacity for real hosts and finds it already spent on one session's id.
 // Bounding the id at the point it enters a stored entry makes the comment's
 // own assumption true by construction instead of by convention.
-func TestFold_SessionIDIsBoundedBeforeStorage(t *testing.T) {
+func TestRubricLLD11_FoldSessionIDIsBoundedBeforeStorage(t *testing.T) {
 	huge := strings.Repeat("s", 10_000)
 	f, res, changed := Fold(File{}, false, huge, t0, []string{"a.example"})
 	if !changed {

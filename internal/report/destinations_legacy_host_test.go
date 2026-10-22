@@ -6,12 +6,12 @@ import (
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
-// TestNovelty_LegacyIPLiteralDeclarationIsNotNovelAgain: a run recorded
+// TestRubricLLD11_NoveltyLegacyIPLiteralDeclarationIsNotNovelAgain: a run recorded
 // before host.Canonical folded an IP literal to its one spelling holds the
 // uncanonicalised string. Read today, under the one spelling a current
 // build now writes for the same host, it must not read as a new
 // destination.
-func TestNovelty_LegacyIPLiteralDeclarationIsNotNovelAgain(t *testing.T) {
+func TestRubricLLD11_NoveltyLegacyIPLiteralDeclarationIsNotNovelAgain(t *testing.T) {
 	project := t.TempDir()
 	root := t.TempDir()
 	mk := func(id string, at int64, hosts ...string) *store.Run {

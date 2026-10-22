@@ -16,4 +16,4 @@ m("RUBRIC lld-11 declaredHosts does not canonicalise its keys", "internal/report
   "\t\t\t// escape the check and reappear in every later render of the\n"
   "\t\t\t// same old run.\n"
   "\t\t\tif forgotten != nil && forgotten(h, d.RecordedAtMS) {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tset[h] = true\n",
-  "TestNovelty_LegacyIPLiteralDeclarationIsNotNovelAgain|TestNovelty_RerenderingAPreUpgradeRunIsNotNovel")
+  "TestRubricLLD11_NoveltyLegacyIPLiteralDeclarationIsNotNovelAgain|TestNovelty_RerenderingAPreUpgradeRunIsNotNovel")
