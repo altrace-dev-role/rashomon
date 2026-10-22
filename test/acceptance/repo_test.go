@@ -65,7 +65,7 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 		{"declaration", declarationKeys},
 		{"execution", executionKeys},
 		{"terminal", terminalKeys},
-		{"coverage", coverageKeys},
+		{"coverage", append(append([]string{}, coverageKeys...), coverageOptionalKeys...)},
 		{"gap", gapKeys},
 		{"forgotten_host", forgottenHostKeys},
 	} {
@@ -75,7 +75,25 @@ func TestStoreSchemaMatchesTheAllowlists(t *testing.T) {
 				t.Fatalf("$defs.%s is missing", c.def)
 			}
 			got := map[string]bool{}
-			schemaKeyPaths(t, def, "", nil, got)
+			// coverage's harness is the one key a record may omit: its absence
+			// is Claude Code's value (internal/store/record.go), on every
+			// record written before the key existed. It is named here rather
+			// than exempted by a rule, so a second optional key still fails
+			// until someone names it. It must stay out of the schema's
+			// required list, or every Claude Code record would stop validating.
+			var optional map[string]bool
+			if c.def == "coverage" {
+				optional = map[string]bool{}
+				for _, k := range coverageOptionalKeys {
+					optional[k] = true
+				}
+				for k := range toStringSet(def["required"]) {
+					if optional[k] {
+						t.Errorf("the schema requires %q, which Claude Code's records never carry", k)
+					}
+				}
+			}
+			schemaKeyPaths(t, def, "", optional, got)
 			want := map[string]bool{}
 			for _, k := range c.allowed {
 				want[k] = true

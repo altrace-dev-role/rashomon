@@ -204,5 +204,6 @@ func BuildCoverage(st *store.Store, harness Harness, sessionID, phase, reason, c
 		HookEntry:     res.HookEntry,
 		Probe:         res.Probe,
 		CWD:           cwd,
+		Harness:       string(harness),
 	}
 }

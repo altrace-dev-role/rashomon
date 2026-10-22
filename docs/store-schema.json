@@ -628,6 +628,12 @@
           "description": "Schema 2. The working directory the session ran in. It is here because the novelty baseline is per PROJECT and the project is derived from this path; without it a reader would have to guess the project from the transcript path's mangled form, or key every session on the machine to one baseline. Metadata of the same class as transcript_path, which this store has always kept verbatim: a path the client supplied, used as a join key. Empty on a record written by a path that had no cwd to report. Note what the coverage record still cannot hold -- it has no numeric field and gains none here, so a run whose instrumentation failed remains unable to report a count.",
           "type": "string"
         },
+        "harness": {
+          "description": "The agent whose hook system wrote the record. Absent for Claude Code, on every record written before the key existed and every one written since; \"codex\" for a record written by an entry installed with --harness codex. Optional, at the same schema version: it is the only optional key in this record. A reader uses it to know whose transcript format the run's transcript_path names.",
+          "enum": [
+            "codex"
+          ]
+        },
         "probe": {
           "enum": [
             "fresh",

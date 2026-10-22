@@ -70,6 +70,22 @@ const (
 	ReasonDuplicateDeclarations = "duplicate_declarations"
 )
 
+// TranscriptCheckUnsupported is Session.TranscriptCheck for a run recorded
+// under a harness whose transcript format this build does not read.
+const TranscriptCheckUnsupported = "not_supported"
+
+// knownHarness clamps a stored harness to the one this build writes, for the
+// reason knownLabel gives: the value comes off disk and is rendered. Anything
+// else is "unknown", and still not Claude Code: a run some other build marked
+// as another agent's is not one whose transcript this build knows how to read.
+func knownHarness(v string) string {
+	switch v {
+	case "", store.HarnessCodex:
+		return v
+	}
+	return store.EntryUnknown
+}
+
 // knownLabel clamps a stored file_label to the vocabulary shape.Labels()
 // defines, mapping anything else to unknown.
 //
@@ -243,6 +259,16 @@ type Session struct {
 	Transcripts    []Transcript `json:"transcripts"`
 	Gaps           []store.Gap  `json:"gaps"`
 	SkippedRecords int          `json:"skipped_records"`
+
+	// Harness is the agent whose hooks recorded the run, as its coverage
+	// records say: "codex", or absent for Claude Code.
+	Harness string `json:"harness,omitempty"`
+	// TranscriptCheck is TranscriptCheckUnsupported when Transcripts is empty
+	// because the accounting was not run, and absent when it was. An empty
+	// Transcripts alone would read as a run whose declarations named no
+	// transcript.
+	TranscriptCheck string `json:"transcript_check,omitempty"`
+
 	// Destinations is what the proxy observed, reconciled against what this
 	// session declared. Always present: when no proxy store was configured it
 	// carries Observed false with a reason, because a report that simply
@@ -557,6 +583,7 @@ func build(run *store.Run) Session {
 	// What the run said about itself, phase by phase.
 	facts := RollupCoverage(run.Coverage)
 	sess.InstallID = facts.InstallID
+	sess.Harness = knownHarness(facts.Harness)
 	sess.Coverage.StartRecorded = facts.StartRecorded
 	sess.Coverage.EndRecorded = facts.EndRecorded
 	sess.Coverage.HookEntryAtStart = facts.HookEntryAtStart
@@ -610,6 +637,15 @@ func build(run *store.Run) Session {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
+	// The accounting reads Claude Code's transcript format. A Codex rollout
+	// read that way holds no tool ids, so every call would be "missing from
+	// transcript" and the run would carry transcript_mismatch, a disagreement
+	// that does not exist (measured in phase 4: every call was in the
+	// rollout). Not running it is said, not left as an empty list.
+	if sess.Harness != "" {
+		sess.TranscriptCheck = TranscriptCheckUnsupported
+		return sess
+	}
 	// Every id any hook left a record of, under any transcript path: a
 	// declaration, a terminal (which outlives a declaration lost to the lock),
 	// or an execution. Only a call outside this set can have been refused
@@ -807,6 +843,8 @@ type CoverageFacts struct {
 	// Reasons is de-duplicated, in first-seen order, from every record whose
 	// State is Unverified.
 	Reasons []string
+	// Harness is the first harness any record names, or "" for Claude Code.
+	Harness string
 }
 
 // RollupCoverage reduces a set of coverage records to CoverageFacts. covs may
@@ -820,6 +858,9 @@ func RollupCoverage(covs []store.Coverage) CoverageFacts {
 	for _, c := range covs {
 		if f.InstallID == "" {
 			f.InstallID = c.InstallID
+		}
+		if f.Harness == "" {
+			f.Harness = c.Harness
 		}
 		// A start or end probe that found recording paused still writes a
 		// record of that phase, so the skip shows up in this session's own

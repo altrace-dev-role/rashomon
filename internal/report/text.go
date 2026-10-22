@@ -184,6 +184,9 @@ func writeSession(b *bytes.Buffer, sess Session, cfg textOptions) {
 	fmt.Fprintf(b, "  without execution: %s\n", unexecuted(d.WithoutExecution))
 	fmt.Fprintf(b, "  executions recorded: %d\n", sess.Executions.Recorded)
 
+	if sess.TranscriptCheck == TranscriptCheckUnsupported {
+		fmt.Fprintf(b, "  transcript check: not supported for %s yet\n", harnessName(sess.Harness))
+	}
 	for _, t := range sess.Transcripts {
 		fmt.Fprintf(b, "  transcript %s\n", t.Path)
 		fmt.Fprintf(b, "    readable: %s\n", yesNo(t.Readable))
@@ -436,6 +439,14 @@ func programs(counts map[string]int, untold int) string {
 		return out
 	}
 	return fmt.Sprintf("%s (and %d shell call(s) whose program could not be told)", out, untold)
+}
+
+// harnessName is how a sentence names the harness a run was recorded under.
+func harnessName(h string) string {
+	if h == store.HarnessCodex {
+		return "Codex"
+	}
+	return "this harness"
 }
 
 func yesNo(b bool) string {

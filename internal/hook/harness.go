@@ -20,7 +20,7 @@ const (
 	// installed before the flag existed, and every one watch installs.
 	ClaudeCode Harness = ""
 	// Codex is the Codex CLI.
-	Codex Harness = "codex"
+	Codex Harness = store.HarnessCodex
 )
 
 // HarnessFlag introduces the harness on a hook command line.

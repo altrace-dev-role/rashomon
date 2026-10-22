@@ -83,6 +83,14 @@ var (
 		// cannot report a count is untouched.
 		"cwd",
 	}
+	// coverageOptionalKeys may be absent from a coverage record, and are absent
+	// from every one Claude Code's hooks write, which is why coverageKeys, the
+	// set every record must carry in full, does not hold them. The schema
+	// declares both sets.
+	coverageOptionalKeys = []string{
+		// "codex", from a closed set of one, on a record Codex's hooks wrote.
+		"harness",
+	}
 	gapKeys = []string{
 		"type", "schema_version", "recorded_at_unix_ms",
 		"session_id", "reason", "from_unix_ms", "to_unix_ms", "removed_records",

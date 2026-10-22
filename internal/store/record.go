@@ -448,6 +448,10 @@ const (
 	ProbeUnknown = "unknown"
 )
 
+// HarnessCodex is Coverage.Harness for a record Codex's hooks wrote. Claude
+// Code's records carry no harness, so it has no value here.
+const HarnessCodex = "codex"
+
 // Coverage records the resolved configuration state as it was when the handler
 // ran. report reads these; it never re-reads today's configuration to judge a
 // past run, because that would let detach retroactively invalidate every run
@@ -484,6 +488,22 @@ type Coverage struct {
 	//
 	// Empty on a record written by a path that had no cwd to report.
 	CWD string `json:"cwd"`
+
+	// Harness is the agent whose hook system wrote the record: "codex", or
+	// absent for Claude Code.
+	//
+	// Absent rather than "claude_code" so that a Claude Code run's records stay
+	// the bytes they were (H-144), and so that every record written before the
+	// key existed already says the right thing: no Codex run was recorded
+	// before it. A reader needs it to know whose transcript format a run's
+	// transcript_path names; Codex's rollout read as a Claude Code transcript
+	// holds no tool ids, and the accounting reports every call missing.
+	//
+	// Additive, at the same SessionSchemaVersion. Bumping the version would
+	// change every Claude Code coverage record for a key none of them carries,
+	// and an older reader decodes the key into nothing and loses no other field.
+	// Decided by Rishi, for Karthik's review (KARTHIK_REVIEW.md).
+	Harness string `json:"harness,omitempty"`
 }
 
 // ForgottenHostRecord is a host-scoped forget, kept at the store level.
