@@ -19,9 +19,9 @@ func TestUnlockAfterCloseReleasesNothing(t *testing.T) {
 	}
 	dir := t.TempDir()
 	first := openForAppend(t, filepath.Join(dir, "first"))
-	unlockFirst, _, err := lockFile(first, lockBudget)
+	unlockFirst, _, err := lockFileWait(first, lockBudget)
 	if err != nil {
-		t.Fatalf("lockFile on an uncontended file: %v", err)
+		t.Fatalf("lockFileWait on an uncontended file: %v", err)
 	}
 	held := int(first.Fd())
 	if err := first.Close(); err != nil {
@@ -38,14 +38,14 @@ func TestUnlockAfterCloseReleasesNothing(t *testing.T) {
 	if int(f.Fd()) != held {
 		t.Fatalf("no new descriptor was given the closed file's number %d", held)
 	}
-	unlock, _, err := lockFile(f, lockBudget)
+	unlock, _, err := lockFileWait(f, lockBudget)
 	if err != nil {
-		t.Fatalf("lockFile on an uncontended file: %v", err)
+		t.Fatalf("lockFileWait on an uncontended file: %v", err)
 	}
 	defer unlock()
 
 	unlockFirst()
-	release, _, err := lockFile(openForAppend(t, path), time.Millisecond)
+	release, _, err := lockFileWait(openForAppend(t, path), time.Millisecond)
 	if err == nil {
 		release()
 		t.Fatal("an unlock after Close released the lock of the file that reused its descriptor")

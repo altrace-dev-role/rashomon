@@ -1,5 +1,5 @@
 m("H-110 the exported lock's release leaves it held", "internal/store/lock_unix.go",
-  "return func() { _ = syscall.Flock(fd, syscall.LOCK_UN) }, waited, nil", "return func() {}, waited, nil", "TestH110_")
+  "return func() { unlockFile(f) }, waited, nil", "return func() {}, waited, nil", "TestH110_")
 m("H-110 every lock error reads as contention", "internal/store/lock_unix.go",
   "if !errors.Is(err, syscall.EWOULDBLOCK) {", "if !errors.Is(err, err) {", "TestH110_")
 m("H-110 the exported lock is shared, not exclusive", "internal/store/lock_unix.go",
