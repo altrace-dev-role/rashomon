@@ -104,7 +104,7 @@ func (s *Store) ReadRunDirForReport(name string) (*Run, error) {
 // errors count as one skipped line rather than failing the read.
 func (s *Store) readRunDir(name string, refused func(error) bool) (*Run, error) {
 	dir := filepath.Join(s.root, DirRuns, name)
-	run := &Run{Dir: name}
+	run := presizeRun(dir, name)
 	fn := func(line []byte) { classifyRunLine(run, line) }
 
 	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
@@ -141,7 +141,7 @@ func (s *Store) readRunDir(name string, refused func(error) bool) (*Run, error) 
 func (s *Store) ReadRunConsistent(sessionID string, budget time.Duration) (*Run, error) {
 	name := segment(sessionID)
 	dir := filepath.Join(s.root, DirRuns, name)
-	run := &Run{Dir: name}
+	run := presizeRun(dir, name)
 	deadline := time.Now().Add(budget)
 
 	for _, fname := range []string{FileRecords, FileSpill, FileCoverage} {
