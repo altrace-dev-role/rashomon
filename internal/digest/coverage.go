@@ -91,8 +91,8 @@ func buildTurnCoverage(run *store.Run, gaps []store.Gap, w turnWindow) (TurnCove
 		if len(turnUnterminated(w, run.Terminals)) > 0 {
 			tc.add(store.ReasonUnterminatedEntry)
 		}
-		if len(turnDropped(run, w)) > 0 {
-			tc.add(store.ReasonLockTimeout)
+		for _, r := range report.DroppedReasons(run, turnDropped(run, w)) {
+			tc.add(r)
 		}
 	}
 

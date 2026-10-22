@@ -145,6 +145,13 @@ func BuildCoverage(st *store.Store, sessionID, phase, reason, cwd string, now ti
 		res.Probe = store.ProbeFresh
 	}
 
+	// A cwd no file can be opened at is left out, and said so (REC-52).
+	if len(cwd) > store.MaxPathBytes {
+		cwd = ""
+		if reason == "" {
+			reason = store.ReasonRecordOversize
+		}
+	}
 	if reason == "" {
 		switch {
 		case res.HookEntry == store.EntryAbsent:

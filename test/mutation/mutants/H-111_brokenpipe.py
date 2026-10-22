@@ -22,8 +22,8 @@ m("H-111 probe does not ignore SIGPIPE", "cmd/rashomon/main.go",
   "\t// stderr before the guarded body starts.\n",
   "TestH111_AnEntryWhoseReaderIsGoneStillExitsZero/^probe$")
 m("H-111 recap does not ignore SIGPIPE", "cmd/rashomon/main.go",
-  "\t\thook.IgnoreBrokenPipe()\n\t\tfault.Inject(fault.PointRecapStart)\n",
-  "\t\tfault.Inject(fault.PointRecapStart)\n",
+  "\thook.IgnoreBrokenPipe()\n\tfault.Inject(fault.PointRecapStart)\n",
+  "\tfault.Inject(fault.PointRecapStart)\n",
   "TestH111_AnEntryWhoseReaderIsGoneStillExitsZero/^recap$")
 m("H-111 every command ignores SIGPIPE", "cmd/rashomon/main.go",
   "func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {\n\tif len(args) == 0 {",

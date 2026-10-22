@@ -42,14 +42,14 @@ type toolPayload struct {
 
 // BashPre is a short PreToolUse Bash payload.
 func BashPre(command, toolUseID string) []byte {
-	in, _ := json.Marshal(map[string]string{"command": command, "description": "Show working tree status"})
+	in := must(map[string]string{"command": command, "description": "Show working tree status"})
 	return must(toolPayload{envelope: head("PreToolUse"), ToolName: "Bash", ToolInput: in, ToolUseID: toolUseID})
 }
 
 // BashPost is the PostToolUse payload for BashPre's call.
 func BashPost(command, toolUseID, stdout string) []byte {
-	in, _ := json.Marshal(map[string]string{"command": command, "description": "Show working tree status"})
-	resp, _ := json.Marshal(map[string]any{"stdout": stdout, "stderr": "", "interrupted": false, "isImage": false})
+	in := must(map[string]string{"command": command, "description": "Show working tree status"})
+	resp := must(map[string]any{"stdout": stdout, "stderr": "", "interrupted": false, "isImage": false})
 	return must(toolPayload{envelope: head("PostToolUse"), ToolName: "Bash", ToolInput: in, ToolUseID: toolUseID, ToolResponse: resp})
 }
 
@@ -90,7 +90,7 @@ func Post(total int, toolUseID string) ([]byte, error) {
 // part; the error says how much that is.
 func EditPre(total int, toolUseID string) ([]byte, error) {
 	build := func(pad string) []byte {
-		in, _ := json.Marshal(map[string]any{
+		in := must(map[string]any{
 			"file_path":   cwd + "/internal/batch/handle.go",
 			"old_string":  "// handle1 processes one batch of records\n",
 			"new_string":  pad,
@@ -105,13 +105,13 @@ func EditPre(total int, toolUseID string) ([]byte, error) {
 // file's new content, padded so the whole payload is exactly total bytes.
 func EditPost(total int, toolUseID string) ([]byte, error) {
 	build := func(pad string) []byte {
-		in, _ := json.Marshal(map[string]any{
+		in := must(map[string]any{
 			"file_path":   cwd + "/internal/batch/handle.go",
 			"old_string":  "// handle1 processes one batch of records\n",
 			"new_string":  "// handle1 processes one batch of records, in order\n",
 			"replace_all": false,
 		})
-		resp, _ := json.Marshal(map[string]any{
+		resp := must(map[string]any{
 			"filePath":     cwd + "/internal/batch/handle.go",
 			"oldString":    "// handle1 processes one batch of records\n",
 			"newString":    "// handle1 processes one batch of records, in order\n",

@@ -10,20 +10,10 @@ m("MS the reader stops accepting schema 4", "internal/store/record.go",
 SV = "TestSchema4_|TestH15_SchemaVersion"
 m("MS coverage is written at the call records' version", "internal/hook/coverage.go",
   "\t\tSchemaVersion: store.SessionSchemaVersion,\n", "\t\tSchemaVersion: store.SchemaVersion,\n", SV)
-m("MS a gap is written at the call records' version", "internal/store/gaps.go",
-  "\t\tSchemaVersion:  SessionSchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      sessionID,\n\t\tReason:         GapForget,\n",
-  "\t\tSchemaVersion:  SchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      sessionID,\n\t\tReason:         GapForget,\n", SV)
-m("MS a size-cap gap is written at the call records' version", "internal/store/gaps.go",
-  "\t\t\tSchemaVersion:  SessionSchemaVersion,\n\t\t\tRecordedAtMS:   now.UnixMilli(),\n\t\t\tSessionID:      run.SessionID(),\n\t\t\tReason:         GapSizeCap,\n",
-  "\t\t\tSchemaVersion:  SchemaVersion,\n\t\t\tRecordedAtMS:   now.UnixMilli(),\n\t\t\tSessionID:      run.SessionID(),\n\t\t\tReason:         GapSizeCap,\n",
-  "TestH15_SizeCapEvictionLeavesAGap")
-m("MS a forget --host gap is written at the call records' version", "internal/store/gaps.go",
-  "\t\tSchemaVersion:  SessionSchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      sessionID,\n\t\tReason:         GapForgetHost,\n",
-  "\t\tSchemaVersion:  SchemaVersion,\n\t\tRecordedAtMS:   now.UnixMilli(),\n\t\tSessionID:      sessionID,\n\t\tReason:         GapForgetHost,\n",
-  "TestH25_ForgetHostRemovesTheRecordsAndLeavesAGap")
-m("MS a pause gap is written at the call records' version", "cmd/rashomon/main.go",
-  "\t\t\tSchemaVersion: store.SessionSchemaVersion,\n\t\t\tRecordedAtMS:  now.UnixMilli(),\n\t\t\tSessionID:     store.PausedSessionID,\n\t\t\tReason:        store.GapPaused,\n\t\t\tFromUnixMS:    since.UnixMilli(),\n\t\t\tToUnixMS:      now.UnixMilli(),",
-  "\t\t\tSchemaVersion: store.SchemaVersion,\n\t\t\tRecordedAtMS:  now.UnixMilli(),\n\t\t\tSessionID:     store.PausedSessionID,\n\t\t\tReason:        store.GapPaused,\n\t\t\tFromUnixMS:    since.UnixMilli(),\n\t\t\tToUnixMS:      now.UnixMilli(),", SV)
+m("MS a gap is written at the call records' version", "internal/store/store.go",
+  "\tg.Type, g.SchemaVersion = TypeGap, SessionSchemaVersion\n",
+  "\tg.Type, g.SchemaVersion = TypeGap, SchemaVersion\n",
+  SV + "|TestH15_SizeCapEvictionLeavesAGap|TestH25_ForgetHostRemovesTheRecordsAndLeavesAGap")
 m("MS a terminal is written at another version than its declaration", "internal/hook/handle.go",
   "\t\t\tSchemaVersion: store.SchemaVersion,\n\t\t\tRecordedAtMS:  h.now().UnixMilli(),\n\t\t\tToolUseID:     h.toolUseID,",
   "\t\t\tSchemaVersion: store.SessionSchemaVersion,\n\t\t\tRecordedAtMS:  h.now().UnixMilli(),\n\t\t\tToolUseID:     h.toolUseID,", SV)

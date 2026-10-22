@@ -407,6 +407,29 @@ func TestH15_SizeCapEvictionLeavesAGap(t *testing.T) {
 	}
 }
 
+// TestRubricDOCS3_ZeroCapDisablesEviction: a cap of zero turns eviction off. It is
+// the value a user sets to keep everything, so a regression here deletes
+// every run older than an hour for exactly the user who asked for none to go
+// (docs-3).
+func TestRubricDOCS3_ZeroCapDisablesEviction(t *testing.T) {
+	e := newEnv(t)
+	e.watched("old-session")
+	p := defaultPayload()
+	p.SessionID = "old-session"
+	e.mustHook(p.build(t))
+	e.ageRun("old-session", 3*time.Hour)
+
+	if res := e.probe("start", "new-session", "RASHOMON_STORE_CAP_BYTES=0"); res.exitCode != 0 {
+		t.Fatalf("probe start: exit %d", res.exitCode)
+	}
+	if _, err := os.Stat(filepath.Join(e.home, "runs", "old-session")); err != nil {
+		t.Errorf("a run was evicted under a zero cap, which turns eviction off: %v", err)
+	}
+	if gaps := e.gaps(); len(gaps) != 0 {
+		t.Errorf("a zero cap wrote %d gap records, want none", len(gaps))
+	}
+}
+
 // TestH15_LiveRunsAreNotEvicted: a run written to recently may still be in use.
 func TestH15_LiveRunsAreNotEvicted(t *testing.T) {
 	e := newEnv(t)

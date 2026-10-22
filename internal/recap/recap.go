@@ -235,6 +235,10 @@ func plural(n int) string {
 // this allowlist can never contain a space, a newline or an escape byte to be
 // quoted against.
 func sanitizeSessionID(s string) string {
+	// The store's bound on an id it keeps verbatim (store.isPlainSegment),
+	// so an id the store kept as its run directory's name is printed whole,
+	// and anything longer, which is no Claude Code session id, adds at most
+	// this much to the line a reader sees.
 	const maxLen = 128
 	var b strings.Builder
 	for _, r := range s {

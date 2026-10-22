@@ -58,6 +58,16 @@ ROW_TOKEN = re.compile(r"Test(" + "|".join(ROW_PREFIXES) + r")")
 # manual sweep, and push/pull_request no longer run one.
 GO_TEST_FUNC = re.compile(r"(?m)^func (Test\w+)\(")
 
+# The v1.1.0 rubric fix list is a named group, constrained like a row by its
+# entry id (DEL-23). A file named RUBRIC_<area>-<n>_<slug>.py claims that
+# entry: every TestRubric<AREA><n>_ test its mutants name must be the same
+# entry's -- a suffix letter pins its parent, as in a row -- and each mutant
+# must name at least one. Other test names claim nothing. A RUBRIC_ file
+# whose name carries no entry id is refused, not read as claiming nothing.
+RUBRIC_PREFIX = "RUBRIC_"
+RUBRIC_FILE = re.compile(r"^RUBRIC_([a-z]+)-(\d+)_")
+RUBRIC_TEST = re.compile(r"TestRubric([A-Z]+)(\d+)[a-z]?_")
+
 M = []  # (name, file, old, new, test regex)
 IMPORTS = {}  # name -> (file, import block as it is, import block with the extra line)
 ORIGIN = {}  # name -> the mutant file that declared it
@@ -337,16 +347,38 @@ def go_test_names():
     return names
 
 
+def rubric_problems(name, origin, test):
+    """The DEL-23 problems of one mutant: none unless its file is a RUBRIC_ one."""
+    base = os.path.basename(origin)
+    if not base.startswith(RUBRIC_PREFIX):
+        return []
+    entry = RUBRIC_FILE.match(base)
+    if not entry:
+        return [f"{rel(origin)}: a rubric file is named RUBRIC_<area>-<n>_<slug>.py, after the entry it claims"]
+    claimed = entry.group(1).upper() + entry.group(2)
+    problems = []
+    pinned = set()
+    for t in RUBRIC_TEST.finditer(test):
+        pinned.add(t.group(1) + t.group(2))
+        if t.group(1) + t.group(2) != claimed:
+            problems.append(f"{name!r} in {rel(origin)}: names {t.group(0)}, another rubric entry's test, "
+                            f"not TestRubric{claimed}_")
+    if claimed not in pinned:
+        problems.append(f"{name!r} in {rel(origin)}: names no TestRubric{claimed}_ test of its own entry")
+    return problems
+
+
 def check(complete, shared_tests=SHARED_TESTS):
     """The static checks. Returns the problems found.
 
     Every anchor occurs exactly once in its target, so the break lands where
     its author looked. Every import edit's anchor occurs exactly once too. A
     mutant in a row's file names only that row's tests, or a declared shared
-    pair. `complete` says the whole set was loaded, which is when a test regex
-    can be checked against every real func Test. `shared_tests` is the file
-    declaring shared pairs; a test points it at a fixture instead of writing
-    to the real one.
+    pair, and a mutant in a rubric entry's file names its own entry's test and
+    no other entry's (rubric_problems). `complete` says the whole set was
+    loaded, which is when a test regex can be checked against every real func
+    Test. `shared_tests` is the file declaring shared pairs; a test points it
+    at a fixture instead of writing to the real one.
     """
     problems = []
     shared = set()
@@ -429,6 +461,7 @@ def check(complete, shared_tests=SHARED_TESTS):
                         problems.append(f"{name!r} in {rel(ORIGIN[name])}: {test!r} matches real test {real_name!r}, "
                                         f"which pins {real_row}, not {claimed}; declare the pair in "
                                         f"{shared_tests.name} if it is shared on purpose")
+        problems += rubric_problems(name, ORIGIN[name], test)
     mutation_of = {name: (f, old, new) for name, f, old, new, _test, _platform in M}
     for name, (f, io_, in_) in IMPORTS.items():
         if outside_cwd(f):

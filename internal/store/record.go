@@ -129,6 +129,15 @@ const (
 	// FileForgottenHosts is at the store root: one ForgottenHostRecord per
 	// `forget --host`, whatever it removed.
 	FileForgottenHosts = "forgotten-hosts.ndjson"
+	// FileLockWait holds, as decimal milliseconds, the longest any one hook
+	// invocation of the run waited for store locks (perf-7). It is a note
+	// about the store, like probe and seq, and not a record.
+	FileLockWait = "lockwait"
+	// FileResolvedCap is at the store root: the size cap the last hook
+	// invocation resolved, written so status can show the value eviction
+	// actually runs with instead of reading EnvCapBytes in its own,
+	// possibly different, environment (hld-7).
+	FileResolvedCap = "resolved-cap"
 )
 
 // Declaration is what the agent asked to run.
@@ -451,6 +460,11 @@ const (
 	// second field just for this would let a reader check State and miss it.
 	// checkPaused in cmd/rashomon/main.go is the only writer.
 	ReasonRecordingPaused = "recording_paused"
+	// ReasonRecordOversize marks a call whose record was over a size limit:
+	// a field over its cap was withheld from it, or the whole record was
+	// over MaxRecordBytes and refused (REC-31, REC-52). Nothing broke, which
+	// is why it is not internal_error; what the record holds is incomplete.
+	ReasonRecordOversize = "record_oversize"
 )
 
 // Reasons lists every coverage reason code a record can carry. It exists so
@@ -469,6 +483,7 @@ func Reasons() []string {
 		ReasonProbeAbsent,
 		ReasonProbeUnresolved,
 		ReasonRecordingPaused,
+		ReasonRecordOversize,
 	}
 }
 

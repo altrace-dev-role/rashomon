@@ -561,6 +561,15 @@ func readNDJSON(t *testing.T, path string) []record {
 	sc.Buffer(make([]byte, 0, 64*1024), 8<<20)
 	for line := 1; sc.Scan(); line++ {
 		raw := sc.Text()
+		// A spill append that gave up on the lock writes a newline ahead of
+		// its record, a guard against a torn tail it could not check
+		// (store.appendLine's bestEffort branch), so over an intact tail it
+		// leaves a blank line. The store's readers skip one (forEachLine), and
+		// so does this, in a spill file only: anywhere else no writer puts
+		// one down, and a blank line is still not one JSON object.
+		if raw == "" && filepath.Base(path) == "spill.ndjson" {
+			continue
+		}
 		var fields map[string]any
 		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
 			t.Fatalf("%s line %d is not one JSON object: %v", path, line, err)

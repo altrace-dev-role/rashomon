@@ -1,8 +1,3 @@
-// Package store is the on-disk record of declarations.
-//
-// records.ndjson is append-only and totally ordered by seq. Nothing rewrites a
-// line in it except forget, and forget leaves a gap record behind, because a
-// record that can be quietly corrected is worth nothing as evidence.
 package store
 
 import (
@@ -12,12 +7,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/fault"
@@ -42,15 +39,28 @@ var ErrLockTimeout = errors.New("store: timed out waiting for the append lock")
 
 // Store is an opened store rooted at a directory.
 //
-// A Store is safe for concurrent use until DeferDurability. That call gives
-// it mutable state -- the file its one full sync has to cover, and whether
-// that sync failed -- which only one goroutine touches today: a deferred
-// Store belongs to the one hook invocation that opened it. mu guards that
-// state anyway. Nothing in this program holds it across a second goroutine
-// yet, but a field three places read and write as one unit, left unguarded,
-// is a race waiting for whichever future caller reaches it from two; the
-// lock makes that caller's bug a serialised wait instead of an undefined one
-// (REC-34, Go memory model).
+// A Store comes from Open, which creates the store on first use, or from
+// OpenExisting, which never does; its root, install id and key are set there
+// and never changed. Every path it writes is joined onto that root, so the
+// zero Store has none: it would write under the process's working directory
+// and digest under an empty key, and every writer refuses it with
+// errUnopenedStore instead.
+//
+// Appends from separate processes -- every hook invocation is one -- are
+// serialised by an advisory lock on each file they write, taken through a
+// descriptor of the append's own, which is also what orders appends from
+// goroutines sharing one Store. A Store is safe for concurrent use until
+// DeferDurability or LimitLockWaits (TestRubricDOCS9_OneStoreIsSafeAcrossGoroutines,
+// run under -race centrally). Either call gives it mutable state --
+// DeferDurability the file its one full sync has to cover and whether that
+// sync failed, LimitLockWaits the deadline its lock waits share -- which only
+// one goroutine may touch: a Store after either belongs to the one hook
+// invocation that opened it. mu guards DeferDurability's state anyway.
+// Nothing in this program holds it across a second goroutine yet, but a
+// field three places read and write as one unit, left unguarded, is a race
+// waiting for whichever future caller reaches it from two; the lock makes
+// that caller's bug a serialised wait instead of an undefined one (REC-34,
+// Go memory model).
 type Store struct {
 	root      string
 	installID string
@@ -64,6 +74,22 @@ type Store struct {
 	deferred bool
 	dirty    string
 	flushErr error
+
+	// waitUntil is the deadline every lock wait shares, zero for none
+	// (LimitLockWaits).
+	waitUntil time.Time
+
+	// readRefusal says which read errors mean another handle's lock refused
+	// the read; nil is readRefused, the platform's own answer. On unix a held
+	// flock never refuses a read, so this is how a unix test drives the
+	// refusal handling through the readers production calls (test-11).
+	readRefusal func(error) bool
+
+	// lockWaited is how long this Store's appends have waited for their
+	// locks, in all, in nanoseconds (perf-7). Atomic, because it is the one
+	// thing every append writes, and a Store before DeferDurability or
+	// LimitLockWaits is shared between goroutines.
+	lockWaited atomic.Int64
 }
 
 type installMeta struct {
@@ -154,7 +180,24 @@ func (s *Store) InstallID() string { return s.installID }
 // Key is the per-install HMAC key used to digest tool input. Two installs hold
 // different keys, so the same command digests differently in each, and a store
 // cannot be matched against a dictionary of digests built elsewhere.
-func (s *Store) Key() []byte { return s.key }
+//
+// It returns a copy: a caller that wrote into the Store's own slice would
+// change every digest the Store made after it (lld-8).
+func (s *Store) Key() []byte { return bytes.Clone(s.key) }
+
+// errUnopenedStore is a write to a Store that did not come from Open or
+// OpenExisting. It is not ErrNoStore, which a read command shows the user as
+// "nothing recorded here": this is a bug in the caller, never a state of the
+// disk.
+var errUnopenedStore = errors.New("store: write to a Store that was never opened")
+
+// opened refuses the zero Store before it writes anything (see Store).
+func (s *Store) opened() error {
+	if s.root == "" {
+		return errUnopenedStore
+	}
+	return nil
+}
 
 // RunDir is the directory holding one session's records.
 func (s *Store) RunDir(sessionID string) string {
@@ -337,13 +380,34 @@ func (s *Store) SpillTerminal(rec Terminal) error {
 }
 
 // AppendCoverage records the configuration state as resolved during this run.
+//
+// A hook invocation writes one coverage record, after its other appends, so
+// this is also where the invocation's lock waits are noted (noteLockWait):
+// how long its appends, this one included, waited for their locks.
 func (s *Store) AppendCoverage(rec Coverage) error {
-	return s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, lockBudget, false)
+	err := s.appendLine(filepath.Join(s.RunDir(rec.SessionID), FileCoverage), rec, lockBudget, false)
+	s.noteLockWait(rec.SessionID)
+	return err
 }
 
-// AppendGap records that records left the store.
+// NewGap is a gap record of reason for a session, recorded at now: the one
+// constructor every gap is built with, so each carries its type and version
+// (naming-10). The caller sets the span, the count and the host digest.
+func NewGap(reason, sessionID string, now time.Time) Gap {
+	return stampGap(Gap{RecordedAtMS: now.UnixMilli(), SessionID: sessionID, Reason: reason})
+}
+
+// stampGap sets what every gap carries whoever built it: its type, and the
+// version of the session records, which a gap is.
+func stampGap(g Gap) Gap {
+	g.Type, g.SchemaVersion = TypeGap, SessionSchemaVersion
+	return g
+}
+
+// AppendGap records that records left the store. It stamps the gap's type
+// and version itself, so a caller cannot write a gap a reader skips.
 func (s *Store) AppendGap(rec Gap) error {
-	return s.appendLine(filepath.Join(s.root, FileGaps), rec, lockBudget, false)
+	return s.appendLine(filepath.Join(s.root, FileGaps), stampGap(rec), lockBudget, false)
 }
 
 // DirName is the run directory name a session id maps to.
@@ -353,6 +417,9 @@ func (s *Store) DirName(sessionID string) string { return segment(sessionID) }
 // rather than a record so that a handler can check it with one stat instead of
 // reading a coverage file that grows with every call.
 func (s *Store) MarkProbe(sessionID string, now time.Time) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
 	dir := s.RunDir(sessionID)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return err
@@ -382,6 +449,9 @@ const appendFlags = os.O_CREATE | os.O_RDWR | os.O_APPEND
 // appendOrdered appends one record to records.ndjson under the run's lock,
 // allocating its seq inside the same critical section.
 func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
 	dir := s.RunDir(sessionID)
 	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return err
@@ -393,13 +463,20 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockCounted(f, lockBudget)
+	unlock, err := s.lockAppend(f, s.lockWait(lockBudget))
 	if err != nil {
 		return err
 	}
 	defer unlock()
+	return s.writeOrderedLocked(f, dir, build)
+}
 
-	seq, err := nextSeq(dir, s.syncAppend)
+// writeOrderedLocked is an ordered append's critical section: it allocates
+// the seq, writes the record and syncs it, with the caller holding f's lock.
+// It is all the lock is held for, and BenchmarkOrderedAppendHold times
+// exactly this function.
+func (s *Store) writeOrderedLocked(f *os.File, dir string, build func(seq int64) any) error {
+	seq, err := nextSeq(f, dir, s.syncAppend)
 	if err != nil {
 		return err
 	}
@@ -407,27 +484,36 @@ func (s *Store) appendOrdered(sessionID string, build func(seq int64) any) error
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(line); err != nil {
+	if err := appendHealed(f, line, true); err != nil {
 		return err
 	}
 	return s.syncAppend(f)
 }
 
+// lockAppend takes f's append lock through lockCounted, and adds how long it
+// waited for it to the Store's tally, a wait that gave up included (perf-7).
+func (s *Store) lockAppend(f *os.File, budget time.Duration) (func(), error) {
+	unlock, waited, err := lockCounted(f, budget)
+	s.lockWaited.Add(int64(waited))
+	return unlock, err
+}
+
 // lockCounted takes f's lock, and every lock the store takes goes through
-// it: the appends', forget's and eviction's, and the readers'. The fault
-// build counts each as held until it is released, so the sync recorder can
-// say whether a sync ran inside any lock at all (REC-34); a released build
-// compiles the count away.
-func lockCounted(f *os.File, budget time.Duration) (func(), error) {
-	unlock, err := LockFile(f, budget)
+// it: the appends', forget's and eviction's, the readers', and the lock-wait
+// note's. The fault build counts each as held until it is released, so the
+// sync recorder can say whether a sync ran inside any lock at all (REC-34); a
+// released build compiles the count away. It returns how long lockFileWait
+// waited, which only an append adds to its Store's tally (lockAppend).
+func lockCounted(f *os.File, budget time.Duration) (func(), time.Duration, error) {
+	unlock, waited, err := lockFileWait(f, budget)
 	if err != nil {
-		return nil, err
+		return nil, waited, err
 	}
 	fault.LockTaken()
 	return func() {
 		unlock()
 		fault.LockReleased()
-	}, nil
+	}, waited, nil
 }
 
 // syncAppend is the durability step of every append, taken inside its lock:
@@ -497,17 +583,14 @@ func syncAs(f *os.File, kind string) error {
 	return fault.Fail(fault.PointStoreFullSync)
 }
 
-// spillBudget is how long a spill write waits for the spill file's lock. It is
-// short because the spill path exists for a handler that has already waited
-// once; the lock is taken so that forget, which rewrites the spill file under
-// it, is not raced, and given up so that no handler ever blocks on it.
-const spillBudget = 50 * time.Millisecond
-
 // appendLine appends one record to a file that carries no seq, waiting up to
 // budget for its lock. With bestEffort set, a lock timeout is not an error: the
 // record is appended anyway, relying on a single O_APPEND write, which the
 // kernel does not interleave for a regular file.
 func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffort bool) error {
+	if err := s.opened(); err != nil {
+		return err
+	}
 	line, err := marshalLine(rec)
 	if err != nil {
 		return err
@@ -522,25 +605,39 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	}
 	defer f.Close() //nolint:errcheck // Sync below reports the write failure
 
-	unlock, err := lockCounted(f, budget)
+	unlock, err := s.lockAppend(f, s.lockWait(budget))
 	switch {
 	case err == nil:
 		defer unlock()
+		// cut is false wherever bestEffort is true: the spill file is the
+		// only one with a lockless writer, and a cut-back there can erase
+		// a record that writer just put down (store.go's bestEffort branch
+		// below, tail.go's appendHealed doc).
+		err = appendHealed(f, line, !bestEffort)
 	case bestEffort && errors.Is(err, ErrLockTimeout):
+		// Without the lock the last byte could change under the read, so
+		// this append does not heal a torn tail by checking it -- but it
+		// still guards against gluing onto one unconditionally, the same
+		// single O_APPEND write a healed append would have made.
+		_, err = f.Write(append([]byte{'\n'}, line...))
 	default:
 		return err
 	}
-
-	if _, err := f.Write(line); err != nil {
+	if err != nil {
 		return err
 	}
 	return s.syncAppend(f)
 }
 
+// marshalLine is rec as one NDJSON line, or ErrRecordOversize when that line
+// would be over MaxRecordBytes (limits.go).
 func marshalLine(rec any) ([]byte, error) {
 	line, err := json.Marshal(rec)
 	if err != nil {
 		return nil, err
+	}
+	if len(line)+1 > MaxRecordBytes {
+		return nil, ErrRecordOversize
 	}
 	// encoding/json escapes control characters, so a newline cannot appear
 	// inside a marshalled record and NDJSON framing cannot be broken by input.
@@ -552,21 +649,27 @@ func marshalLine(rec any) ([]byte, error) {
 	return append(line, '\n'), nil
 }
 
-// nextSeq allocates the next sequence number for a run. It must be called with
-// the run's records lock held, and sync is that append's own sync.
+// nextSeq allocates the next sequence number for a run. It must be called
+// with f, the run's already-open records handle, and with that handle's lock
+// held; sync is that append's own sync.
 //
 // The counter is advanced and ordered before the record that uses it is
 // written: synced in full, or, on a deferred Store, put behind a barrier, so
 // it reaches stable storage no later than the record does. A crash between
 // the two skips a number, which is visible and harmless; the other order
 // could hand the same number to two records, which is neither.
-func nextSeq(dir string, sync func(*os.File) error) (int64, error) {
+func nextSeq(f *os.File, dir string, sync func(*os.File) error) (int64, error) {
 	path := filepath.Join(dir, FileSeq)
 
 	last, err := readSeq(path)
 	if err != nil {
 		// Missing or unreadable: the records themselves are the authority.
-		last, err = maxSeq(filepath.Join(dir, FileRecords))
+		// That read is through f, the handle whose lock this call already
+		// holds, not a second os.Open of the same path: on Windows a
+		// LockFileEx lock refuses a read through any other handle, including
+		// one opened by the lock's own holder (doc.go's "under the lock that
+		// writer holds" names f, not the path).
+		last, err = maxSeq(f)
 		if err != nil {
 			return 0, err
 		}
@@ -576,6 +679,7 @@ func nextSeq(dir string, sync func(*os.File) error) (int64, error) {
 	if err := writeSmall(path, []byte(strconv.FormatInt(next, 10)+"\n"), sync); err != nil {
 		return 0, err
 	}
+	fault.Inject(fault.PointStoreSeqAdvanced)
 	return next, nil
 }
 
@@ -587,9 +691,19 @@ func readSeq(path string) (int64, error) {
 	return strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
 }
 
-func maxSeq(recordsPath string) (int64, error) {
+// maxSeq reads the highest seq already in f, seeking to its start first. f is
+// the caller's own locked records handle (nextSeq): reading through it, with
+// no seek back afterwards, is safe on both platforms a writer runs on. Every
+// write that follows goes through appendHealed's f.Write, and f was opened
+// with appendFlags (O_APPEND), so unix's kernel and Windows's
+// FILE_APPEND_DATA-only access both place that write at the file's true end
+// regardless of the seek this leaves behind, not wherever this read stopped.
+func maxSeq(f *os.File) (int64, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return 0, err
+	}
 	var max int64
-	err := eachLine(recordsPath, func(line []byte) {
+	err := scanLines(f, func(line []byte) {
 		var probe struct {
 			Seq int64 `json:"seq"`
 		}
@@ -625,12 +739,30 @@ func segment(id string) string {
 	if isPlainSegment(id) {
 		return id
 	}
+	return digestID(id)
+}
+
+// digestID is a stable substitute for a value this program must not use
+// verbatim: "x-" and the first 16 bytes of its SHA-256, hex-encoded. segment
+// uses it for an id unsafe as a path element; CapID uses it for a
+// tool_use_id over MaxIDBytes, so an over-cap call still pairs its
+// declaration, execution and terminal on one key instead of colliding
+// every over-cap call through "".
+func digestID(id string) string {
 	sum := sha256.Sum256([]byte(id))
 	return "x-" + hex.EncodeToString(sum[:16])
 }
 
+// maxPlainSegment is the longest session id used verbatim as a run directory
+// name; a longer one is digested like any other unsafe id. A Claude Code
+// session id is a 36-character UUID, so a real one is never digested. 128
+// keeps the name at half of NAME_MAX (255 on Linux and darwin), and keeps a
+// run's longest path -- the root, \runs\, the name and \records.ndjson --
+// inside Windows' 260-character MAX_PATH for any root up to 110 characters.
+const maxPlainSegment = 128
+
 func isPlainSegment(id string) bool {
-	if id == "" || id == "." || id == ".." || len(id) > 128 {
+	if id == "" || id == "." || id == ".." || len(id) > maxPlainSegment {
 		return false
 	}
 	return strings.IndexFunc(id, func(r rune) bool {
@@ -779,18 +911,4 @@ func createExclusive(path string, content []byte) error {
 		return err
 	}
 	return syncFull(f)
-}
-
-// DefaultCapBytes bounds the store before eviction starts removing the oldest
-// runs. RASHOMON_STORE_CAP_BYTES overrides it; zero disables eviction.
-const DefaultCapBytes = 512 << 20
-
-// CapBytes resolves the store size cap.
-func CapBytes() int64 {
-	if v := os.Getenv("RASHOMON_STORE_CAP_BYTES"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-			return n
-		}
-	}
-	return DefaultCapBytes
 }

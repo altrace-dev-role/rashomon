@@ -207,14 +207,33 @@ type Digest struct {
 	Truncated bool `json:"truncated"`
 }
 
-// readLockBudget bounds how long ReadRunConsistent may wait for a writer's
-// lock, per file. It is NOT store.lockBudget (2s): that number is what a
-// WRITER may cost another writer, and a reader borrowing it could spend
-// three-quarters of the whole 50ms budget this command owes waiting on a lock
-// for a single file. lock_unix.go's own comment measures a real append at
-// sub-millisecond; 5ms is generous headroom above that, not a real expected
-// wait.
-const readLockBudget = 5 * time.Millisecond
+// readLockBudget bounds how long ReadRunConsistent may wait for writers'
+// locks: one deadline for the whole read of a run's three files, not a wait
+// per file. It is NOT store.lockBudget (2s): that number is what a WRITER
+// may cost another writer, and a reader borrowing it could spend the whole
+// 50ms budget this command owes, and more, waiting on one lock.
+//
+// It is derived from what a writer holds the lock for, measured by
+// store.BenchmarkOrderedAppendHold on the reference machine (Apple M3, three
+// runs at -benchtime 20x; store/lockbudget.go has the figures). The appends
+// a digest races with are a turn's hooks. In a 64-way burst on a quiet
+// machine a deferred hook's append holds the records lock for 5.8 to 9.4 ms
+// at p99 on darwin, and an append that syncs in full inside the lock -- every
+// append on Linux and Windows, and an undeferred Store's on darwin -- for
+// 11.1 to 14.1 ms; while other processes load the disk the p99s reach 7.7 to
+// 41 ms. 30 ms waits out both quiet p99s with twice the longer to spare,
+// and the loaded tail up to that point. A hold longer still is not waited
+// out: this read gives up and reads unlocked, where a line caught mid-write
+// is counted as skipped and the turn unverified, never misread (perf-1).
+//
+// One deadline is what makes 30 ms affordable. Per file, the old 10 ms gave
+// up at the end of whichever polling sleep crossed it, 12.6 ms by the sleeps'
+// lengths and 15.8 ms measured on darwin, so three held files cost up to
+// about 47 ms and a longer budget could not fit; now a give-up lands at its
+// deadline (lock_unix.go) and three held files cost what one does. Linux's
+// holds are the same benchmark's output in CI's perf-linux job; no Linux
+// figure is quoted here because none has been read from it yet.
+const readLockBudget = 30 * time.Millisecond
 
 // Empty is the digest for a location that has recorded nothing, built
 // without a store so that asking the question cannot create one -- the same
@@ -264,7 +283,7 @@ func Build(st *store.Store, sessionID, promptID, lastAssistantMessage string, no
 		return nil, err
 	}
 
-	allGaps, err := st.ReadGaps()
+	allGaps, gapsSkipped, err := st.ReadGaps()
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +296,13 @@ func Build(st *store.Store, sessionID, promptID, lastAssistantMessage string, no
 	}
 
 	d := build(run, gaps, promptID, lastAssistantMessage, now)
+	// A gap line that could not be read may have been this session's, and
+	// nothing can say it was not (store.ReadGaps): the same reason as a
+	// record line of the run that could not be read.
+	if gapsSkipped > 0 {
+		d.Coverage.add(ReasonRecordsSkipped)
+		d.Coverage.State = store.StateUnverified
+	}
 	if d.SessionID == "" {
 		d.SessionID = sessionID
 	}
@@ -301,6 +327,7 @@ func build(run *store.Run, gaps []store.Gap, promptID, lastAssistantMessage stri
 	// else -- built once and shared by CountDeclarations and
 	// BuildSilentFailures below, the same currency both already take.
 	turnRun := &store.Run{Declarations: w.declarations, Executions: turnExecs}
+	// The digest counts declarations; it has no use for the executed set.
 	byTool, byLabel, withoutExec, _ := report.CountDeclarations(turnRun)
 	d.Declarations = Declarations{
 		Recorded:         len(w.declarations),

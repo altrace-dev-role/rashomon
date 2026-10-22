@@ -249,6 +249,7 @@ func (c *capture) finishHeadTail() {
 	if !c.deliver(c.head, true) {
 		return
 	}
+	// The bool says whether the ring wrapped, and it has: total is over max.
 	out, _ := c.ring.bytes()
 	c.deliver(out, true)
 }
