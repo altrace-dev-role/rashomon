@@ -1,8 +1,8 @@
 //go:build !windows
 
-// The mutation sweep's own tests: the acceptance tests of DEL-1, DEL-2 and
-// DEL-17. sweep.py rewrites tracked source files in place and restores them
-// afterwards, so these tests drive its read-only modes (--list, --check)
+// The mutation sweep's own tests: the acceptance tests of DEL-1, DEL-2,
+// DEL-17 and DEL-21. sweep.py rewrites tracked source files in place and
+// restores them afterwards, so these tests drive its read-only modes (--list, --check)
 // against the real tree and against fixtures, and read the workflow files
 // directly. TestStrict_ is one exception: it runs the full sweep, but only
 // against a throwaway module of its own under a TempDir, never this tree.
@@ -445,81 +445,112 @@ func TestCheckValidatesJudgingTestExists(t *testing.T) {
 	}
 }
 
+// workflows is every workflow file, and there must be some.
+func workflows(t *testing.T, root string) []string {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.y*ml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no workflow files under .github/workflows")
+	}
+	return files
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 // DEL-17. Every job in every workflow carries timeout-minutes. One run in
 // October 2026 lasted 1,212 minutes; a job without a bound holds a runner for
 // as long as GitHub's six-hour default allows, and the sweep job in particular
 // has nothing else to stop it.
 func TestDEL17_EveryJobHasATimeout(t *testing.T) {
-	root := moduleRoot(t)
-	workflows, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.y*ml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(workflows) == 0 {
-		t.Fatal("no workflow files under .github/workflows")
-	}
-	for _, wf := range workflows {
-		data, err := os.ReadFile(wf)
-		if err != nil {
-			t.Fatal(err)
-		}
-		jobs, missing := jobsAndMissingTimeouts(string(data))
+	for _, wf := range workflows(t, moduleRoot(t)) {
+		name := filepath.Base(wf)
+		jobs, missing, problems := jobsAndMissingTimeouts(readFile(t, wf))
 		if len(jobs) == 0 {
-			t.Errorf("%s: no jobs found", filepath.Base(wf))
+			t.Errorf("%s: no jobs found", name)
 		}
 		for _, j := range missing {
-			t.Errorf("%s: job %q has no timeout-minutes", filepath.Base(wf), j)
+			t.Errorf("%s: job %q has no timeout-minutes", name, j)
+		}
+		for _, p := range problems {
+			t.Errorf("%s: %s", name, p)
 		}
 	}
 }
 
-// DEL-17, second half. A job key is still a job key with a trailing comment,
-// and a job whose bound is written as 0 has no bound at all. Separately, a
-// `jobs:` line with its own trailing comment is not matched either, so the
-// whole block is missed and the caller sees zero jobs -- which is why
-// TestDEL17_ treats "no jobs found" as its own failure, not a silent pass.
+// DEL-17, the parser. A line parser that skips what it does not recognise
+// turns "unrecognised" into "fine": a job key with a trailing comment was not
+// a job, and its timeout was credited to the job above. The real-tree test
+// cannot go red on a well-formed tree, so these fixtures are the only red
+// the parser ever shows. A job whose bound is written as 0 has no bound at
+// all. Separately, a `jobs:` line with its own trailing comment is not
+// matched either, so the whole block is missed and the caller sees zero jobs
+// -- which is why TestDEL17_ treats "no jobs found" as its own failure, not a
+// silent pass.
 func TestDEL17b_TimeoutParserFailsClosed(t *testing.T) {
 	cases := []struct {
-		name     string
-		doc      string
-		jobs     []string
-		missing  []string
-		knownGap string // non-empty: this case pins a known limitation, not a verified-safe result
+		name, doc             string
+		wantJobs, wantMissing []string
+		wantProblem           bool
+		knownGap              string // non-empty: this case pins a known limitation, not a verified-safe result
 	}{
+		{"both bounded", "jobs:\n  a:\n    timeout-minutes: 30\n  b:\n    timeout-minutes: 15\n", []string{"a", "b"}, nil, false, ""},
+		{"one unbounded", "jobs:\n  a:\n    runs-on: x\n  b:\n    timeout-minutes: 15\n", []string{"a", "b"}, []string{"a"}, false, ""},
+		{"commented key is a job", "jobs:\n  a:\n    runs-on: x\n  b:  # slow one\n    timeout-minutes: 30\n", []string{"a", "b"}, []string{"a"}, false, ""},
+		{"commented job key is still a job", "jobs:\n  test:\n    timeout-minutes: 30\n  sweep:  # on demand\n    runs-on: x\n", []string{"test", "sweep"}, []string{"sweep"}, false, ""},
+		{"comment line is not a job", "jobs:\n  # the jobs\n  a:\n    timeout-minutes: 30\n", []string{"a"}, nil, false, ""},
+		{"unrecognised line fails closed", "jobs:\n  a:\n    timeout-minutes: 30\n  b: {timeout-minutes: 30}\n", []string{"a"}, nil, true, ""},
+		{"zero is no bound", "jobs:\n  a:\n    timeout-minutes: 0\n", []string{"a"}, []string{"a"}, false, ""},
+		{"a zero bound is no bound", "jobs:\n  foo:\n    timeout-minutes: 0\n", []string{"foo"}, []string{"foo"}, false, ""},
+		{"bound with a comment", "jobs:\n  a:\n    timeout-minutes: 30  # minutes\n", []string{"a"}, nil, false, ""},
+		{"next top-level key ends the jobs", "jobs:\n  a:\n    timeout-minutes: 30\nenv:\n  b: 1\n", []string{"a"}, nil, false, ""},
 		{
-			name:    "commented job key is still a job",
-			doc:     "jobs:\n  test:\n    timeout-minutes: 30\n  sweep:  # on demand\n    runs-on: x\n",
-			jobs:    []string{"test", "sweep"},
-			missing: []string{"sweep"},
-		},
-		{
-			name:    "a zero bound is no bound",
-			doc:     "jobs:\n  foo:\n    timeout-minutes: 0\n",
-			jobs:    []string{"foo"},
-			missing: []string{"foo"},
-		},
-		{
-			name:    "a commented jobs line is not recognised at all",
-			doc:     "jobs:  # c\n  foo:\n    timeout-minutes: 30\n",
-			jobs:    nil,
-			missing: nil,
+			name: "a commented jobs line is not recognised at all",
+			doc:  "jobs:  # c\n  foo:\n    timeout-minutes: 30\n",
 			knownGap: "a `jobs:` line with its own trailing comment is invisible to this parser: every " +
 				"job under it, timed or not, goes unseen. Pinned here as the parser's actual behaviour, " +
 				"not endorsed as safe -- the only reason it doesn't hide an untimed job in a real workflow " +
 				"is that TestDEL17_ treats zero jobs found as a failure in its own right, not a quiet pass.",
 		},
+		// A job key at three spaces is not the two-space depth a job key
+		// lives at. The old parser stepped over it silently: it was not a
+		// job (so never reported missing), and the `current` job variable
+		// stayed on the one above, so the timeout that followed at four
+		// spaces -- meant for the three-space job -- was credited to it
+		// instead. "a" never gets its own timeout and must still show up
+		// as missing, not quietly satisfied by someone else's line.
+		{"a three-space job line is a problem, not a credit to the job above",
+			"jobs:\n  a:\n   b:\n    timeout-minutes: 15\n", []string{"a"}, []string{"a"}, true, ""},
+		{"a one-space line is a problem too",
+			"jobs:\n a:\n  b:\n    timeout-minutes: 15\n", []string{"b"}, nil, true, ""},
+		// \r\n line endings. The exact-string "jobs:" check broke on the
+		// trailing \r, so the whole block was never entered.
+		{"CRLF line endings are tolerated",
+			"jobs:\r\n  a:\r\n    timeout-minutes: 30\r\n", []string{"a"}, nil, false, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.knownGap != "" {
 				t.Logf("known gap, not a verified-safe case: %s", tc.knownGap)
 			}
-			jobs, missing := jobsAndMissingTimeouts(tc.doc)
-			if !slicesEqual(jobs, tc.jobs) {
-				t.Errorf("jobs = %v, want %v", jobs, tc.jobs)
+			jobs, missing, problems := jobsAndMissingTimeouts(tc.doc)
+			if !slicesEqual(jobs, tc.wantJobs) {
+				t.Errorf("jobs = %v, want %v", jobs, tc.wantJobs)
 			}
-			if !slicesEqual(missing, tc.missing) {
-				t.Errorf("missing = %v, want %v", missing, tc.missing)
+			if !slicesEqual(missing, tc.wantMissing) {
+				t.Errorf("missing = %v, want %v", missing, tc.wantMissing)
+			}
+			if (len(problems) > 0) != tc.wantProblem {
+				t.Errorf("problems = %v, want a problem: %v", problems, tc.wantProblem)
 			}
 		})
 	}
@@ -663,18 +694,52 @@ func TestSweepJobCancelsAnOlderRunOnRedispatch(t *testing.T) {
 	}
 }
 
-// jobsAndMissingTimeouts reads a workflow by its lines: a job is a key at two
-// spaces of indent under `jobs:`, and its timeout is a `timeout-minutes:` line
-// at four spaces with a positive integer. No YAML parser, deliberately: the
-// module takes no dependency for a test, and the files are written by hand in
-// exactly this shape.
-func jobsAndMissingTimeouts(doc string) (jobs, missing []string) {
+// A push, a pull request or a tag is each a change to the tree; an advisory
+// against an unchanged dependency is not, and without a schedule trigger
+// nothing re-runs govulncheck between them. The on: block, not the trigger
+// of any one job, since the jobs it runs (Test, with govulncheck) are the
+// same ones push and pull_request already schedule.
+func TestCIRunsAWeeklyScheduledVulnerabilityCheck(t *testing.T) {
+	root := moduleRoot(t)
+	doc := readFile(t, filepath.Join(root, ".github", "workflows", "ci.yaml"))
+	i := strings.Index(doc, "\non:\n")
+	if i < 0 {
+		t.Fatal("ci.yaml: no on: block found")
+	}
+	next := strings.Index(doc[i+1:], "\npermissions:\n")
+	if next < 0 {
+		t.Fatal("ci.yaml: no permissions: key found after on:")
+	}
+	block := doc[i : i+1+next]
+	if !strings.Contains(block, "schedule:") || !strings.Contains(block, "cron:") {
+		t.Error("ci.yaml's on: block carries no schedule: trigger with a cron: line")
+	}
+}
+
+// jobsAndMissingTimeouts reads a workflow by its lines: under `jobs:`, a key
+// at two spaces of indent is a job, a comment is a comment, and anything else
+// at that indent is a problem rather than something to step over. A job's
+// bound is a `timeout-minutes:` line at four spaces with a positive integer.
+// No YAML parser, deliberately: the module takes no dependency for a test,
+// and the files are written by hand in exactly this shape.
+//
+// Indent is measured, not assumed to be exactly two or four: a job key typed
+// at three spaces matched neither depth, so the old parser stepped over it
+// -- it was never added to jobs (so never reported missing), and `current`
+// stayed on the job above, so the four-space timeout that followed, meant
+// for the mistyped job, was silently credited to it instead. Any indent that
+// is not 0 (a top-level key), 2 (a job key) or a multiple of 2 at or past 4
+// (content inside a job) is odd and is always a problem; it never becomes a
+// job and never resets to anything but no job, so a timeout line right
+// after it is orphaned rather than credited to whichever job came before.
+func jobsAndMissingTimeouts(doc string) (jobs, missing, problems []string) {
 	jobLine := regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*(#.*)?$`)
 	timeoutLine := regexp.MustCompile(`^    timeout-minutes:\s*([0-9]+)\s*(#.*)?$`)
 	inJobs := false
 	current := ""
 	timed := map[string]bool{}
-	for _, ln := range strings.Split(doc, "\n") {
+	for i, raw := range strings.Split(doc, "\n") {
+		ln := strings.TrimRight(raw, "\r") // tolerate CRLF without treating \r as content
 		if ln == "jobs:" {
 			inJobs = true
 			continue
@@ -682,25 +747,365 @@ func jobsAndMissingTimeouts(doc string) (jobs, missing []string) {
 		if !inJobs {
 			continue
 		}
-		if strings.TrimSpace(ln) != "" && !strings.HasPrefix(ln, " ") && !strings.HasPrefix(ln, "#") {
+		trimmed := strings.TrimSpace(ln)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if !strings.HasPrefix(ln, " ") {
 			inJobs = false // another top-level key ends the jobs block
 			continue
 		}
-		if m := jobLine.FindStringSubmatch(ln); m != nil {
-			current = m[1]
-			jobs = append(jobs, current)
+		indent := len(ln) - len(strings.TrimLeft(ln, " "))
+		if indent%2 != 0 {
+			problems = append(problems, fmt.Sprintf("line %d: unexpected %d-space indent under jobs: %q", i+1, indent, trimmed))
+			current = "" // an orphaned timeout after this must not land on the job above
 			continue
 		}
-		if m := timeoutLine.FindStringSubmatch(ln); m != nil && current != "" {
-			if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
-				timed[current] = true
+		if indent == 2 {
+			if m := jobLine.FindStringSubmatch(ln); m != nil {
+				current = m[1]
+				jobs = append(jobs, current)
+				continue
 			}
+			problems = append(problems, fmt.Sprintf("line %d: unrecognised line under jobs: %q", i+1, trimmed))
+			current = ""
+			continue
 		}
+		if indent == 4 {
+			if m := timeoutLine.FindStringSubmatch(ln); m != nil && current != "" {
+				if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
+					timed[current] = true
+				}
+			}
+			continue
+		}
+		// indent >= 6, even: step/key content inside a job, not structure
+		// this parser tracks.
 	}
 	for _, j := range jobs {
 		if !timed[j] {
 			missing = append(missing, j)
 		}
 	}
-	return jobs, missing
+	return jobs, missing, problems
+}
+
+// DEL-21. Every setup-go step carries a quoted go-version, and every pin across
+// the workflows is the same version: the build toolchain is pinned by hand in
+// each job, so a bump that misses one job leaves that job building with a
+// toolchain nobody chose. Found when a job added on one branch kept the old
+// pin while another branch bumped the rest.
+func TestDEL21_GoVersionPinsAgree(t *testing.T) {
+	var pins []string // "file: version"
+	for _, wf := range workflows(t, moduleRoot(t)) {
+		name := filepath.Base(wf)
+		found, problems := goVersionPins(readFile(t, wf))
+		for _, p := range problems {
+			t.Errorf("%s: %s", name, p)
+		}
+		for _, v := range found {
+			pins = append(pins, name+": "+v)
+		}
+	}
+	if len(pins) < 2 {
+		t.Fatalf("expected go-version pins in more than one place, found %v", pins)
+	}
+	version := func(pin string) string { return strings.SplitN(pin, ": ", 2)[1] }
+	for _, p := range pins[1:] {
+		if version(p) != version(pins[0]) {
+			t.Errorf("go-version pins disagree: %s vs %s", pins[0], p)
+		}
+	}
+}
+
+// DEL-21, the parser. The first version opened a step only on
+// `- uses: actions/setup-go@` and never saw the name-first form, so a step
+// written as `- name:` then `uses:` could carry an old pin unseen. Counting
+// steps and pins in any form, and refusing the forms a pin must not take,
+// is what these fixtures hold.
+func TestDEL21b_PinParserFailsClosed(t *testing.T) {
+	const sha = "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+	cases := []struct {
+		name, doc   string
+		wantPins    []string
+		wantProblem bool
+	}{
+		{"uses first", "      - uses: " + sha + "\n        with:\n          go-version: \"1.27.2\"\n", []string{"1.27.2"}, false},
+		{"name first", "      - name: Set up Go\n        uses: " + sha + "\n        with:\n          go-version: \"1.27.2\"\n", []string{"1.27.2"}, false},
+		{"pin with a comment", "      - uses: " + sha + "\n        with:\n          go-version: \"1.27.2\"  # see the note\n", []string{"1.27.2"}, false},
+		{"name first, no pin", "      - name: Set up Go\n        uses: " + sha + "\n        with:\n          cache: true\n", nil, true},
+		{"two steps, one pin", "      - uses: " + sha + "\n        with:\n          go-version: \"1.27.2\"\n      - uses: " + sha + "\n        with:\n          cache: true\n", []string{"1.27.2"}, true},
+		{"unquoted", "      - uses: " + sha + "\n        with:\n          go-version: 1.27.2\n", nil, true},
+		{"from a file", "      - uses: " + sha + "\n        with:\n          go-version-file: go.mod\n", nil, true},
+		{"pin with no step", "          go-version: \"1.27.2\"\n", []string{"1.27.2"}, true},
+		// A quoted `uses:` value, as some actions pin it, carries the same
+		// action and must be recognised as a setup-go step.
+		{"quoted uses line", "      - uses: \"" + sha + "\"\n        with:\n          go-version: \"1.27.2\"\n", []string{"1.27.2"}, false},
+		// Same quoted uses: line, but with no pin at all: this is the case
+		// that actually requires the step to be recognised as setup-go --
+		// the one above still collects the pin even if that recognition
+		// silently failed, so it alone cannot catch a regression there.
+		{"quoted uses line, no pin", "      - uses: \"" + sha + "\"\n        with:\n          cache: true\n", nil, true},
+		// A quoted string is not by itself a version: "stable" and a
+		// wildcard both resolve to whatever toolchain exists when the
+		// runner fetches it, which is exactly the unchosen toolchain this
+		// row exists to refuse.
+		{"stable is not a version", "      - uses: " + sha + "\n        with:\n          go-version: \"stable\"\n", nil, true},
+		{"a wildcard is not a version", "      - uses: " + sha + "\n        with:\n          go-version: \"1.27.x\"\n", nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pins, problems := goVersionPins(tc.doc)
+			if strings.Join(pins, ",") != strings.Join(tc.wantPins, ",") {
+				t.Errorf("pins = %v, want %v", pins, tc.wantPins)
+			}
+			if (len(problems) > 0) != tc.wantProblem {
+				t.Errorf("problems = %v, want a problem: %v", problems, tc.wantProblem)
+			}
+		})
+	}
+}
+
+// goVersionPins walks a workflow by its lines and ties each go-version pin to
+// the setup-go step that declares it, rather than merely counting the two: a
+// step with no pin and a stray go-version line elsewhere in the file used to
+// average out to a matching count. A step is the sequence item opened by a
+// line that starts, at any indent, with "- ", running up to the next such
+// line; a step is a setup-go step if any line inside it names
+// actions/setup-go@, quoted or not, in `uses:`-first or `name:`-first form.
+// Exactly one go-version pin is required inside a setup-go step, and it must
+// be a quoted MAJOR.MINOR.PATCH string: unquoted, "stable", a wildcard like
+// "1.27.x", and go-version-file are each a toolchain nobody chose here, and
+// are refused as a problem rather than accepted as a pin.
+func goVersionPins(doc string) (pins []string, problems []string) {
+	bullet := regexp.MustCompile(`^\s*-\s`)
+	usesLine := regexp.MustCompile(`^\s*(-\s+)?uses:\s*"?([^"\s]+)"?\s*(#.*)?$`)
+	pin := regexp.MustCompile(`^\s*go-version:\s*(.*?)\s*(#.*)?$`)
+	fromFile := regexp.MustCompile(`^\s*go-version-file:`)
+	exactVersion := regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+	type step struct {
+		line      int
+		isSetupGo bool
+		pinSeen   bool
+	}
+	var cur *step
+	closeStep := func() {
+		if cur != nil && cur.isSetupGo && !cur.pinSeen {
+			problems = append(problems, fmt.Sprintf("line %d: setup-go step has no go-version pin", cur.line))
+		}
+		cur = nil
+	}
+	validate := func(i int, v string) {
+		if len(v) < 2 || v[0] != '"' || v[len(v)-1] != '"' || !exactVersion.MatchString(v[1:len(v)-1]) {
+			problems = append(problems, fmt.Sprintf("line %d: go-version %s is not a quoted MAJOR.MINOR.PATCH string", i+1, v))
+			return
+		}
+		pins = append(pins, v[1:len(v)-1])
+	}
+
+	for i, raw := range strings.Split(doc, "\n") {
+		ln := strings.TrimRight(raw, "\r")
+		if bullet.MatchString(ln) {
+			closeStep()
+			cur = &step{line: i + 1}
+		}
+		if m := usesLine.FindStringSubmatch(ln); m != nil {
+			if strings.HasPrefix(m[2], "actions/setup-go@") {
+				if cur == nil {
+					cur = &step{line: i + 1}
+				}
+				cur.isSetupGo = true
+			}
+			continue
+		}
+		if fromFile.MatchString(ln) {
+			problems = append(problems, fmt.Sprintf("line %d: go-version-file reads the pin from a file; the pin is written here", i+1))
+			if cur != nil {
+				cur.pinSeen = true
+			}
+			continue
+		}
+		if m := pin.FindStringSubmatch(ln); m != nil {
+			if cur == nil {
+				problems = append(problems, fmt.Sprintf("line %d: go-version pin outside a setup-go step", i+1))
+				validate(i, m[1])
+				continue
+			}
+			cur.pinSeen = true
+			validate(i, m[1])
+		}
+	}
+	closeStep()
+	return pins, problems
+}
+
+// DEL-21, the floor. A pin below go.mod's own `go` line would build a
+// release with a toolchain older than the module declares it needs, which
+// defeats the pin's purpose even when every workflow agrees with every
+// other. go.mod's directive is unquoted and may carry two components; a
+// workflow pin is quoted and always carries three, so the comparison is
+// numeric, not lexical: a string compare puts "1.9.0" above "1.10.0".
+func TestDEL21d_PinsAreAtLeastGoModsMinimum(t *testing.T) {
+	root := moduleRoot(t)
+	floor := goModLanguageMinimum(t, root)
+	for _, wf := range workflows(t, root) {
+		name := filepath.Base(wf)
+		pins, _ := goVersionPins(readFile(t, wf))
+		for _, p := range pins {
+			atLeast, err := versionAtLeast(p, floor)
+			if err != nil {
+				t.Errorf("%s: go-version %q: %v", name, p, err)
+				continue
+			}
+			if !atLeast {
+				t.Errorf("%s: go-version %q is older than go.mod's minimum %q", name, p, floor)
+			}
+		}
+	}
+}
+
+// goModLanguageMinimum reads go.mod's own `go` directive: the language
+// minimum a consumer needs to build the module, not the build toolchain the
+// workflows pin by hand (see the note beside go-version in ci.yaml).
+func goModLanguageMinimum(t *testing.T, root string) string {
+	t.Helper()
+	re := regexp.MustCompile(`(?m)^go (\d+\.\d+(?:\.\d+)?)\s*$`)
+	m := re.FindStringSubmatch(readFile(t, filepath.Join(root, "go.mod")))
+	if m == nil {
+		t.Fatal("go.mod: no go directive found")
+	}
+	return m[1]
+}
+
+// versionAtLeast compares two Go version strings component by component, not
+// as strings, where "1.9.0" sorts above "1.10.0". A missing patch component
+// compares as zero, so go.mod's two-component line can stand on either side
+// of the comparison.
+func versionAtLeast(version, floor string) (bool, error) {
+	v, err := parseVersion(version)
+	if err != nil {
+		return false, err
+	}
+	f, err := parseVersion(floor)
+	if err != nil {
+		return false, err
+	}
+	for i := 0; i < 3; i++ {
+		if v[i] != f[i] {
+			return v[i] > f[i], nil
+		}
+	}
+	return true, nil
+}
+
+// parseVersion reads a MAJOR.MINOR[.PATCH] string into three components,
+// refusing anything else rather than defaulting a bad component to zero.
+func parseVersion(s string) ([3]int, error) {
+	var out [3]int
+	parts := strings.Split(s, ".")
+	if len(parts) < 2 || len(parts) > 3 {
+		return out, fmt.Errorf("%q is not a MAJOR.MINOR[.PATCH] version", s)
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return out, fmt.Errorf("%q: component %q is not a number", s, p)
+		}
+		out[i] = n
+	}
+	return out, nil
+}
+
+// DEL-21, the comparison. Done as strings, "1.9.0" sorts above "1.10.0";
+// component by component gets it right, and a malformed version on either
+// side is refused rather than silently treated as 0.
+func TestDEL21e_VersionAtLeastFailsClosed(t *testing.T) {
+	cases := []struct {
+		version, floor string
+		want           bool
+		wantErr        bool
+	}{
+		{"1.27.2", "1.25.0", true, false},
+		{"1.25.0", "1.27.2", false, false},
+		{"1.27.0", "1.27.0", true, false},
+		{"1.9.0", "1.10.0", false, false},
+		{"1.27", "1.25.0", true, false},
+		{"1.27.2", "garbage", false, true},
+		{"", "1.25.0", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.version+" vs "+tc.floor, func(t *testing.T) {
+			got, err := versionAtLeast(tc.version, tc.floor)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if err == nil && got != tc.want {
+				t.Errorf("versionAtLeast(%q, %q) = %v, want %v", tc.version, tc.floor, got, tc.want)
+			}
+		})
+	}
+}
+
+// DEL-21, the clock. Go supports security fixes on only the two most recent
+// majors; go1.27.2's window closes when a second newer major ships. Given
+// Go's roughly six-month cadence (1.25 August 2025, 1.26 February 2026,
+// 1.27 August 2026), that is expected around August 2027 with 1.29. Nothing
+// here polls go.dev for that date -- every CI run would then depend on an
+// endpoint nothing else calls, to answer a question that changes twice a
+// year. A dated trip-wire costs nothing until the date and then fails
+// loudly, which beats a security update landing quietly on an unsupported
+// major with nothing here noticing. Pushing past the deadline below is the
+// renewal: move it out another two releases once the pin itself has moved.
+func TestDEL21f_PinReviewIsNotOverdue(t *testing.T) {
+	reviewBy := time.Date(2027, time.July, 1, 0, 0, 0, 0, time.UTC)
+	if time.Now().After(reviewBy) {
+		t.Fatalf("go-version pin not reviewed since %s: go1.27 is expected to leave "+
+			"Go's two-most-recent-majors support window around August 2027 (go1.29); "+
+			"re-pin to a supported major and move this date out another two releases",
+			reviewBy.Format("2006-01-02"))
+	}
+}
+
+// DEL-21, the scanner. govulncheck is a tool built with the pinned toolchain,
+// so a toolchain bump can break it: v1.1.4 panics in go/ssa under go1.27.2
+// when it analyses linux/amd64, and only a tag would have run it. The test
+// job runs the same line as the release job, so a pull request runs it first,
+// and the two versions must agree.
+func TestDEL21c_GovulncheckRunsInCIAtTheReleaseVersion(t *testing.T) {
+	found := map[string][]string{}
+	for _, wf := range workflows(t, moduleRoot(t)) {
+		found[filepath.Base(wf)] = govulncheckVersions(readFile(t, wf))
+	}
+	for _, name := range []string{"ci.yaml", "release.yaml"} {
+		if len(found[name]) != 1 {
+			t.Errorf("%s: %d govulncheck steps, want 1: %v", name, len(found[name]), found[name])
+		}
+	}
+	var first string
+	for name, versions := range found {
+		for _, v := range versions {
+			if first == "" {
+				first = v
+			} else if v != first {
+				t.Errorf("govulncheck versions disagree: %s runs %s, another workflow runs %s", name, v, first)
+			}
+		}
+	}
+}
+
+// govulncheckVersions is the version of every govulncheck run in a workflow,
+// read from `govulncheck@<version>` on lines that are not comments.
+func govulncheckVersions(doc string) []string {
+	re := regexp.MustCompile(`govulncheck@(\S+)`)
+	var versions []string
+	for _, ln := range strings.Split(doc, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(ln), "#") {
+			continue
+		}
+		if m := re.FindStringSubmatch(ln); m != nil {
+			versions = append(versions, m[1])
+		}
+	}
+	return versions
 }

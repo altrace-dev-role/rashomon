@@ -20,6 +20,14 @@ on:
   # Started by hand to run the mutation sweep, which push and pull_request
   # runs skip.
   workflow_dispatch:
+  # Weekly, so a new OSV advisory against a dependency nobody has touched
+  # surfaces here instead of waiting for the next push, pull request or
+  # tag -- which is how the pre-1.9.0 govulncheck panic on this toolchain
+  # stayed unnoticed until someone looked. Runs the Test job, govulncheck
+  # included; Monday mornings are quiet for both the fleet and the runner
+  # queue.
+  schedule:
+    - cron: "17 6 * * 1"
 
 permissions:
   contents: read
@@ -44,7 +52,7 @@ jobs:
         with:
           # BUILD TOOLCHAIN, pinned here and NOT read from go.mod.
           #
-          # go.mod's `go 1.24.0` is the LANGUAGE MINIMUM -- the oldest Go a
+          # go.mod's `go 1.25.0` is the LANGUAGE MINIMUM -- the oldest Go a
           # consumer needs to build this module. It is not a statement about
           # what the release should be built WITH, and reading the build
           # version from it conflated the two: setup-go treats that string as
@@ -57,9 +65,18 @@ jobs:
           # go1.25.8, and both clear at that version. A released artifact is
           # the wrong place to ship the oldest toolchain that compiles.
           #
-          # Bump this when a stdlib advisory lands; go.mod moves only when the
-          # module actually needs newer language features.
-          go-version: "1.25.8"
+          # The pin follows the newest stable release of a SUPPORTED major,
+          # not the newest patch of the major go.mod names. Go fixes
+          # security issues in the two most recent majors only; with 1.27
+          # out, 1.25 gets no fix at all, and a 1.25.x pin would carry every
+          # stdlib advisory from here on. Measured with govulncheck v1.9.0 on
+          # the 2026-10-08 database: under go1.25.8 the dependency graph
+          # carries 39 standard-library advisories (none reachable from this
+          # module's code); the newest 1.25 patch, 1.25.14, still carries 13,
+          # every one fixed only in 1.26.9 or later; go1.27.2 carries none.
+          # go.mod moves only when the module actually needs newer language
+          # features.
+          go-version: "1.27.2"
           cache: true
           # go.sum, not go.mod. This module declared no requirements when these
           # workflows were written and now depends on modernc.org/sqlite plus
@@ -112,6 +129,26 @@ jobs:
       # compiles. Vet them under the tag rather than letting them rot.
       - name: Vet (rashomonfault build tag)
         run: go vet -tags rashomonfault ./...
+
+      # The same line the release job runs, at the same version. govulncheck
+      # is compiled and run with the pinned toolchain, so a toolchain bump can
+      # break it: under go1.27.2, v1.1.4 panics in go/ssa when it analyses
+      # linux/amd64 and passes on darwin. Running it here makes a pull request
+      # find that, not a tag. TestDEL21c holds the two copies to one version.
+      #
+      # -scan module, not the default (symbol-level, reachable-only). The
+      # default mode is what this gate ran before and would NOT have caught
+      # the problem the whole toolchain bump exists to fix: go1.25.8's 39
+      # standard-library advisories were all unreachable from this module's
+      # code, so a reachability-gated scan reports zero on that pin same as
+      # on this one, and a future unreachable advisory would pass silently
+      # too. module level fails on anything in the dependency graph,
+      # imported or not, which is the "no known advisory in anything we
+      # ship" bar this step is meant to hold. -C anchors it at a package
+      # directory; module scanning takes no patterns and errors on a bare
+      # repository root, which has none of its own .go files.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -scan module -C cmd/rashomon
 
       # The sweep's static half runs on every push and pull request even though
       # the sweep itself runs on demand (its step below): every anchor occurs
@@ -216,7 +253,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.25.8"  # See the note in the test job.
+          go-version: "1.27.2"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 
@@ -252,7 +289,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.25.8"  # See the note in the test job.
+          go-version: "1.27.2"  # See the note in the test job.
           cache: true
           cache-dependency-path: go.sum  # See the test job.
 

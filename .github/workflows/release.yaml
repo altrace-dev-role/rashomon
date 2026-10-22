@@ -33,24 +33,11 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          # BUILD TOOLCHAIN, pinned here and NOT read from go.mod.
-          #
-          # go.mod's `go 1.24.0` is the LANGUAGE MINIMUM -- the oldest Go a
-          # consumer needs to build this module. It is not a statement about
-          # what the release should be built WITH, and reading the build
-          # version from it conflated the two: setup-go treats that string as
-          # an exact version, so the released binary was pinned to the oldest
-          # toolchain the module tolerates.
-          #
-          # That is not cosmetic. Measured with govulncheck: building with
-          # go1.25.6 leaves two REACHABLE standard-library vulnerabilities in
-          # the binary (GO-2026-4601 net/url, GO-2026-4602 os), both fixed in
-          # go1.25.8, and both clear at that version. A released artifact is
-          # the wrong place to ship the oldest toolchain that compiles.
-          #
-          # Bump this when a stdlib advisory lands; go.mod moves only when the
-          # module actually needs newer language features.
-          go-version: "1.25.8"
+          # BUILD TOOLCHAIN, pinned here and NOT read from go.mod, for the
+          # same reason and at the same version as the test job in ci.yaml:
+          # see the note there. TestDEL21_GoVersionPinsAgree holds every
+          # pin, in both files, to that one version.
+          go-version: "1.27.2"
           cache: true
           # go.sum: the module has requirements now. See the note in ci.yaml.
           cache-dependency-path: go.sum
@@ -68,9 +55,12 @@ jobs:
       # The module gained a dependency graph when it started reading the
       # proxy's SQLite store. Publishing a binary with a known-vulnerable
       # module in it is the failure this catches, and a release is the last
-      # moment it is cheap to catch.
+      # moment it is cheap to catch. ci.yaml runs the same line (-scan
+      # module, and why, is explained there), and TestDEL21c holds the two
+      # to one version. Under go1.27.2, v1.1.4 panics when it analyses
+      # linux/amd64 and passes on darwin.
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -scan module -C cmd/rashomon
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7.2.3
