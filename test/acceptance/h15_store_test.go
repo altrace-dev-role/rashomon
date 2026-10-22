@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,9 @@ import (
 // records name every tool a session invoked and the path of its transcript,
 // which together describe what someone was working on.
 func TestH15_Permissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce POSIX permission bits")
+	}
 	e := newEnv(t)
 	e.watched(testSession)
 	e.mustHook(defaultPayload().build(t))

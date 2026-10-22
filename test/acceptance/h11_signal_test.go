@@ -2,6 +2,7 @@ package acceptance
 
 import (
 	"reflect"
+	"runtime"
 	"syscall"
 	"testing"
 )
@@ -31,6 +32,12 @@ func (e *env) process(payload string) (signal func(syscall.Signal), wait func() 
 // end-of-run probe reads that absence into the run's own coverage record,
 // while the run is still the run, rather than leaving it for a report to guess.
 func TestH11_UncontrolledPathIsRecordedAtRunTime(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows uses mandatory file locks (LockFileEx): the hung process holds
+		// an exclusive lock that blocks even readers, so the test's declaration
+		// poll never sees the store. Tracked separately.
+		t.Skip("Windows mandatory locking prevents declaration reads while process is hung")
+	}
 	e := newEnv(t)
 	e.watched(testSession)
 
@@ -71,6 +78,11 @@ func TestH11_UncontrolledPathIsRecordedAtRunTime(t *testing.T) {
 // that it was cancelled, exits 0 -- and the coverage record it writes on that
 // path carries no count of any kind.
 func TestH12_SIGTERMIsAControlledExit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Same mandatory-lock issue as H11; SIGTERM semantics also differ on
+		// Windows (no POSIX signal delivery). Tracked separately.
+		t.Skip("Windows mandatory locking and signal semantics differ")
+	}
 	e := newEnv(t)
 	e.watched(testSession)
 
