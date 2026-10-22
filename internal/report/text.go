@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/nono"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
@@ -694,39 +695,74 @@ func writeNono(b *bytes.Buffer, n Nono) {
 		return
 	}
 	if !n.Observed {
-		// The skipped count is said here too. A trail of only torn lines is
-		// "no records" by reason code, and without the count it read as "nono
-		// wrote nothing" -- the JSON carried the number and the text did not.
+		// The skipped count is said here too, but ONLY when it is complete.
+		// nono_audit_no_records means the reader reached end of file, so
+		// Skipped counts the whole trail. nono_audit_unreadable means the
+		// scan stopped at the line that broke it (an oversized line, a read
+		// error): Skipped there counts only the torn lines BEFORE that
+		// point, an undercount of however much of the trail follows. Two
+		// torn lines followed by one line over the scanner's cap used to
+		// print "2 trail records could not be read" regardless of how much
+		// trail came after the point the read gave up.
 		skipped := ""
-		if n.Skipped > 0 {
+		if n.Reason == nono.NotObservedNoRecords && n.Skipped > 0 {
 			skipped = fmt.Sprintf("; %d trail record%s could not be read", n.Skipped, plural(n.Skipped))
 		}
 		fmt.Fprintf(b, "  sandbox (nono): not observed (%s%s)\n", orUnknown(n.Reason), skipped)
 		return
 	}
-	// An open window is said ON THIS LINE: the two counts are only as bounded
-	// as the window, and with no end record they run to the end of the trail,
-	// where a later session's traffic on a shared trail counts as this one's.
-	open := ""
-	if n.WindowOpen {
-		open = " (no end record, so events up to the end of the trail are counted)"
-	}
-	fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied in this session's window%s\n",
-		len(n.Allowed), len(n.Denied), open)
-	if len(n.ClientPlaneAllowed)+len(n.ClientPlaneDenied) > 0 {
-		// Named, not dropped: the sandbox did allow or refuse these, and a
-		// reader comparing against nono's own log should find every host and
-		// what the sandbox did with it. Not counted above, because these are
-		// hosts the client contacts on its own and no tool call of the session
-		// named them; one that a call named is counted above, as the agent's.
-		var said []string
-		if len(n.ClientPlaneAllowed) > 0 {
-			said = append(said, "allowed "+list(n.ClientPlaneAllowed))
+	if n.NetworkEventsInTrail == 0 {
+		// Observed is true -- the trail held a session_started and a
+		// session_ended record -- but the sandbox never wrote a single
+		// network decision. That is a different fact from a session the
+		// sandbox filtered and saw nothing on: it happens whenever the
+		// active profile does not filter the network at all. Rendering it
+		// as "0 allowed, 0 denied" reads as a quiet, filtered session when
+		// no filtering ran -- silence read as zero, the failure this
+		// package exists to prevent. Follow-up from #53, applied here.
+		//
+		// NOT A RETURN. This used to return right after the line below,
+		// which hid the skipped/unparseable, sessions and inherited lines
+		// below on exactly the trails where they are most informative: a
+		// schema-drift record (an event type like log_denied) or a torn
+		// line next to a session_started record both land in Skipped and
+		// never touch NetworkEventsInTrail, so a reader got a confident
+		// "the profile may not filter the network" on a trail this reader
+		// actually failed to read. When Skipped > 0, unreadable records are
+		// named as a possible cause alongside the profile, not displaced by
+		// it.
+		cause := "the active profile may not filter the network"
+		if n.Skipped > 0 {
+			cause = "the active profile may not filter the network, or the events could not be read"
 		}
-		if len(n.ClientPlaneDenied) > 0 {
-			said = append(said, "refused "+list(n.ClientPlaneDenied))
+		fmt.Fprintf(b, "  sandbox (nono): the trail holds no network events (%s; this is "+
+			"not the same as a filtered session that saw nothing)\n", cause)
+	} else {
+		// An open window is said ON THIS LINE: the two counts are only as
+		// bounded as the window, and with no end record they run to the end
+		// of the trail, where a later session's traffic on a shared trail
+		// counts as this one's.
+		open := ""
+		if n.WindowOpen {
+			open = " (no end record, so events up to the end of the trail are counted)"
 		}
-		fmt.Fprintf(b, "    the client's own traffic, not counted above: %s\n", strings.Join(said, "; "))
+		fmt.Fprintf(b, "  sandbox (nono): %d allowed, %d denied in this session's window%s\n",
+			len(n.Allowed), len(n.Denied), open)
+		if len(n.ClientPlaneAllowed)+len(n.ClientPlaneDenied) > 0 {
+			// Named, not dropped: the sandbox did allow or refuse these, and a
+			// reader comparing against nono's own log should find every host and
+			// what the sandbox did with it. Not counted above, because these are
+			// hosts the client contacts on its own and no tool call of the session
+			// named them; one that a call named is counted above, as the agent's.
+			var said []string
+			if len(n.ClientPlaneAllowed) > 0 {
+				said = append(said, "allowed "+list(n.ClientPlaneAllowed))
+			}
+			if len(n.ClientPlaneDenied) > 0 {
+				said = append(said, "refused "+list(n.ClientPlaneDenied))
+			}
+			fmt.Fprintf(b, "    the client's own traffic, not counted above: %s\n", strings.Join(said, "; "))
+		}
 	}
 	// SAID SEPARATELY, because it is a LIFETIME count beside two windowed ones.
 	// nono's session_started record carries an ISO string and no millisecond

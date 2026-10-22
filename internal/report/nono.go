@@ -54,6 +54,18 @@ type Nono struct {
 	// Inherited counts trail events outside this session's window.
 	Inherited int `json:"inherited"`
 	Sessions  int `json:"sessions"`
+	// NetworkEventsInTrail is the trail's whole-file count of "network"
+	// records, in or out of the window. A trail can be Observed (it holds a
+	// session_started and session_ended record) and still carry zero of
+	// them, which means the sandbox never recorded a network decision at
+	// all -- not that it filtered the session and saw nothing. The text
+	// renders the two differently; see writeNono.
+	//
+	// NOT JSON: TRU-57 freezes this section's key set. New information goes
+	// into an existing key or into the text report, never a new JSON key --
+	// so this is `json:"-"` and the distinction reaches a reader through the
+	// sandbox line's wording alone.
+	NetworkEventsInTrail int `json:"-"`
 
 	// WindowOpen is true when the session has no end record, so the window
 	// runs to the end of the trail and a later session's events on a shared
@@ -67,18 +79,19 @@ type Nono struct {
 // client's own traffic.
 func buildNono(obs nono.Observation, configured, mcpAttributed bool, named []string, forgotten func(string) bool) Nono {
 	n := Nono{
-		Configured:         configured,
-		Observed:           obs.Observed,
-		Reason:             obs.Reason,
-		Allowed:            []string{},
-		Denied:             []string{},
-		ClientPlaneAllowed: []string{},
-		ClientPlaneDenied:  []string{},
-		Inherited:          obs.Inherited,
-		WindowOpen:         obs.WindowOpen,
-		Sessions:           obs.Sessions,
-		Skipped:            obs.Skipped,
-		UnparseableTargets: obs.UnparseableTargets,
+		Configured:           configured,
+		Observed:             obs.Observed,
+		Reason:               obs.Reason,
+		Allowed:              []string{},
+		Denied:               []string{},
+		ClientPlaneAllowed:   []string{},
+		ClientPlaneDenied:    []string{},
+		Inherited:            obs.Inherited,
+		WindowOpen:           obs.WindowOpen,
+		Sessions:             obs.Sessions,
+		Skipped:              obs.Skipped,
+		UnparseableTargets:   obs.UnparseableTargets,
+		NetworkEventsInTrail: obs.NetworkEventsInTrail,
 	}
 	if !obs.Observed {
 		return n
