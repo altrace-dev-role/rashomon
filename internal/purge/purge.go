@@ -34,9 +34,10 @@ const (
 
 // topFiles are the files rashomon writes directly under the store root, other
 // than the two anchors: the gap log, the forgotten-host digests, the pause
-// marker, and recap's state and its temporary file. Each name is the writing
-// package's own constant, so a rename there cannot strand the file here.
-var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileRecordingPaused, recap.StateFileName, recap.StateTempName}
+// marker, the size cap the last hook resolved, and recap's state and its
+// temporary file. Each name is the writing package's own constant, so a
+// rename there cannot strand the file here.
+var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileRecordingPaused, store.FileResolvedCap, recap.StateFileName, recap.StateTempName}
 
 // topDirs are the directories under the store root that only rashomon
 // writes into: every path under them is planned for removal.

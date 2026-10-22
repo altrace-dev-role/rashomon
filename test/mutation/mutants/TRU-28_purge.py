@@ -96,3 +96,9 @@ m("TRU-28 watch records no created_dirs before its settings write", "cmd/rashomo
   "\tif err := recordCreatedDirs(st.Root(), created); err != nil {\n",
   "\tif err := recordCreatedDirs(st.Root(), created[:0]); err != nil {\n",
   "TestTRU28_")
+# The store writes resolved-cap at its root (hld-7) on every hook call that
+# resolves a cap. A purge that does not plan it leaves it, and the store
+# root that holds it, behind.
+m("TRU-28 purge does not plan the resolved cap", "internal/purge/purge.go",
+  "store.FileRecordingPaused, store.FileResolvedCap, ", "store.FileRecordingPaused, ",
+  "TestTRU28_PurgeLeavesHomeAsFound")
