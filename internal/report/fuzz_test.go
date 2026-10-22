@@ -20,7 +20,9 @@ import (
 //
 //   - lines are independent: what TranscriptIDs and FinalAssistantText read
 //     from a file is what they read from its lines one at a time, so a line
-//     that does not parse costs that line and nothing after it;
+//     that does not parse costs that line and nothing after it -- and, for
+//     FinalAssistantText, the words before it, since it may have been the
+//     final message;
 //   - an id or text written by encoding/json reads back as written;
 //   - topLevelSidechain agrees with encoding/json about a valid line's
 //     top-level isSidechain.
@@ -109,6 +111,10 @@ func checkTranscriptLines(t *testing.T, data []byte) {
 		}
 		if text, ok := FinalAssistantText(openT(t, p)); ok {
 			last, lastOK = text, true
+		} else if DecodeHeader(l, &struct{}{}) == LineUndecodable {
+			// A line that cannot be placed may be the real final message,
+			// so read whole, the file has no last word before it either.
+			last, lastOK = "", false
 		}
 	}
 	for j, got := range []map[string]bool{ids, results, denied, unhooked} {
