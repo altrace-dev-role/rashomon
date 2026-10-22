@@ -27,7 +27,7 @@ func TestRubricTEST7_RealTranscriptPricesLikeClaudeCode(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "3cb822fe-8dcf-48d0-b9ca-725c8eed47f9.jsonl"), raw, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "00000000-0000-4000-8000-000000000001.jsonl"), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 

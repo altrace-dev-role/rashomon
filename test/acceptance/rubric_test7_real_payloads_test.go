@@ -34,15 +34,22 @@ import (
 // is all spend asks of them), every message id and tool-use id (msg_fixtureNN
 // and toolu_fixtureNN, same rule -- every reader here matches one of these
 // against another in the same pair of files, never against its own text),
-// and every thinking block's opaque signature (fixture-signature-01 to -12);
-// the thinking text itself was empty.
+// and every thinking block's opaque signature, first fixture-signature-01 to
+// -12 and then [redacted], below; the thinking text itself was empty.
 // TestRubricTEST7_FixtureHoldsNoLiveRequestIDsOrSignatures holds both files
-// to those forms. Nothing else was changed: session and prompt ids,
-// timestamps, usage and example.com are as Claude Code wrote them.
+// to those forms. Then test/tools/scrub -w, which H-113 holds every committed
+// fixture to, replaced every UUID with its placeholder, the home and sandbox
+// directories with ~ and $TMPDIR, and what its secret shapes take for a
+// secret with [redacted]: the signatures, the total-tokens reminder's count,
+// and the key sourceToolAssistantUUID, which nothing here reads. It wrote
+// two cache-token keys of the last line's modelUsage as [redacted] twice in
+// one object; those two counts, which nothing reads either, were dropped
+// rather than leave a duplicate key. Timestamps, usage and example.com are
+// as Claude Code wrote them.
 const (
 	realFixtureDir     = "../fixtures/claude-code/2.1.280"
-	realSession        = "3cb822fe-8dcf-48d0-b9ca-725c8eed47f9"
-	realTranscriptPath = "/Users/user/.claude/projects/-private-tmp-rashomon-fixture-wd/" + realSession + ".jsonl"
+	realSession        = "00000000-0000-4000-8000-000000000001"
+	realTranscriptPath = "~/.claude/projects/-private-tmp-rashomon-fixture-wd/" + realSession + ".jsonl"
 )
 
 type realPayload struct {

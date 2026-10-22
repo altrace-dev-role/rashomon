@@ -100,12 +100,13 @@ func sameSet(a, b map[string]bool) bool {
 // id against another id in the same pair of files, and no reader looks at a
 // signature. Each is replaced by a stable fake of its own kind --
 // req_fixture, msg_fixture and toolu_fixture each with a two-digit number,
-// distinct where the originals were, and fixture-signature the same -- and
-// this test holds every value in both files, at any depth, to that form.
+// distinct where the originals were -- and every signature [redacted],
+// test/tools/scrub's form, which H-113 holds the fixture to; and this test
+// holds every value in both files, at any depth, to that form.
 func TestRubricTEST7_FixtureHoldsNoLiveRequestIDsOrSignatures(t *testing.T) {
 	want := map[string]*regexp.Regexp{
 		"requestId":   regexp.MustCompile(`^req_fixture[0-9]{2}$`),
-		"signature":   regexp.MustCompile(`^fixture-signature-[0-9]{2}$`),
+		"signature":   regexp.MustCompile(`^\[redacted\]$`),
 		"id":          regexp.MustCompile(`^(msg|toolu)_fixture[0-9]{2}$`),
 		"tool_use_id": regexp.MustCompile(`^toolu_fixture[0-9]{2}$`),
 	}
