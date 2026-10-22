@@ -125,3 +125,58 @@ command line. Codex leaves these behind after detach (below).
 A second `watch` after a moved binary (re-trust); `async: true`; `hooks = false`
 in `config.toml`; the default shared-daemon setup with the store variable set on
 the daemon.
+
+## Live check: the end-of-turn line (2026-10-22)
+
+Run against the branch at `5bf981b`, built to the same separate path, with
+the same separate store, the same private app-server started from the work
+folder, and the TUI attached with `--remote`. `watch --harness codex`
+installed four entries, Stop running `recap --harness codex` among them, and
+the user trusted all four in `/hooks`. Two prompts, one turn each, in session
+`01a16536-fcf0-7211-bbef-b0029df18c86`:
+
+| turn | prompt | what happened | line |
+| --- | --- | --- | --- |
+| `…072d33` | run `python3 missing.py`, then reply only "Done" | exit 2 | shown |
+| `…ea5fdc` | run `python3 calc.py`, then reply only "Done" | exit 0 | none |
+
+**The line appeared for the failed turn and not for the clean one.** recap's
+own bookkeeping agrees: turn `…072d33` is recorded as spoken, and `…ea5fdc`
+as checked and silent. The user saw it as a one-line warning in the TUI. Its
+exact place on screen is still to be confirmed.
+
+**A turn's items are in the rollout before its Stop fires.** Measured two
+ways:
+
+- By outcome: with "Done" as the final message, the line can say
+  `1 recorded failure` only if recap read the command's `item_completed`
+  entry, failed with exit 2, from the rollout. The hook payload has no exit
+  code.
+- By time, from the rollout and the `hook/started` and `hook/completed`
+  events Codex's app-server logged:
+
+  | turn | command item written | Stop hook ran |
+  | --- | --- | --- |
+  | `…072d33` | 20:04:47.431 | 20:04:48.624 to 48.644 |
+  | `…ea5fdc` | 20:05:04.988 | 20:05:05.950 to 05.978 |
+
+  recap's evaluation of the second turn is stamped 20:05:05.971, inside its
+  Stop window. Stop ran about a second after the turn's last command item,
+  once the agent's reply was written. Both Stops ran in about 20 ms each.
+
+**The line never reached the model.** The session's rollout holds every
+message, tool call and tool output Codex sends the model. It contains none of
+the line's text (`recorded failure`, `※`, `rashomon:`,
+`rashomon report --session`, `systemMessage`): 0 matches for each. The word
+"rashomon" appears only inside paths (`~/rashomon-phase4/work`). Turn 2 was
+sent after the line appeared, and what Codex sent the model for it holds none
+of the line either.
+
+**Detach.** `detach --harness codex` removed the four entries and deleted
+`~/.codex/hooks.json`, which watch had created, as H-148 requires. Codex
+left four `trusted_hash` entries in `config.toml`. The three for the entries
+unchanged since phase 4 carry the same hashes as on 2026-10-21: an identical
+entry hashes the same.
+
+The September install was not touched: binary and settings checksums
+unchanged, and no live-check run in its store.
