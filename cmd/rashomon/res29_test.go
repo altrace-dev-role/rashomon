@@ -89,20 +89,26 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		rssMiB = 76
 	}
+	// withheld marks the row whose record holds a value over its store cap:
+	// the git@ line is one 8 MiB word, which is its program, and a program
+	// over store.MaxProgramBytes is left out of the declaration and said on
+	// the coverage record (REC-52). That run is recorded once and is not
+	// verified, for that reason and no other.
 	type row struct {
-		name    string
-		payload func(*testing.T) []byte
+		name     string
+		payload  func(*testing.T) []byte
+		withheld bool
 	}
 	var rows []row
 	for _, l := range pathological.Lines() {
 		rows = append(rows, row{"8 MiB of " + l.Name, func(t *testing.T) []byte {
 			return res29Payload(t, 8<<20, l.Prefix, l.Unit, l.Suffix)
-		}})
+		}, l.Name == "git@ scheme runs"})
 	}
 	nested := `cd "` + strings.Repeat(`$(echo "`, 17) + "x" + strings.Repeat(`")`, 17) + `" && ls`
 	rows = append(rows,
-		row{"a 1 MB cd a&&", func(t *testing.T) []byte { return res29Payload(t, 1_000_000, "", "cd a&&", "") }},
-		row{"nesting one past maxNest", func(t *testing.T) []byte { return res29Payload(t, len(nested)+1024, nested, " ", "") }},
+		row{"a 1 MB cd a&&", func(t *testing.T) []byte { return res29Payload(t, 1_000_000, "", "cd a&&", "") }, false},
+		row{"nesting one past maxNest", func(t *testing.T) []byte { return res29Payload(t, len(nested)+1024, nested, " ", "") }, false},
 	)
 	if rows[0].name != "8 MiB of short words" || rows[7].name != "8 MiB of redirections" {
 		t.Fatalf("premise: the table's first row is %q and its eighth %q; RES-29 names short words and `<`", rows[0].name, rows[7].name)
@@ -174,8 +180,21 @@ func TestRES29_PathologicalInputsStayBounded(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := benchCounts(run); got != [5]int{1, 1, 0, 1, 0} {
-				t.Errorf("store holds %v declarations, terminals, executions, verified coverage and skipped lines; want the call recorded once", got)
+			want := [5]int{1, 1, 0, 1, 0}
+			if tc.withheld {
+				want[3] = 0
+				var reasons []string
+				for _, c := range run.Coverage {
+					if c.Reason != nil {
+						reasons = append(reasons, *c.Reason)
+					}
+				}
+				if len(reasons) != 1 || reasons[0] != store.ReasonRecordOversize {
+					t.Errorf("coverage reasons %q; want only %s", reasons, store.ReasonRecordOversize)
+				}
+			}
+			if got := benchCounts(run); got != want {
+				t.Errorf("store holds %v declarations, terminals, executions, verified coverage and skipped lines; want %v, the call recorded once", got, want)
 			}
 		})
 	}
