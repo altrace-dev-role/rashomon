@@ -12,6 +12,8 @@ m("RES-36 the bench gate parses a benchmark without allocation figures as gateab
 m("RES-36 a benchmark loses its budget row", "test/perf/budgets.json",
   '    {"name": "BenchmarkDerive/edit_50k", "measured_bytes_per_op": 63464, "measured_allocs_per_op": 28, "bytes_per_op_max": 63464, "allocs_per_op_max": 28},\n',
   '', "TestRES36_")
+# The reference row, on its own indented line: linux/amd64's inline row for the
+# same benchmark can carry the very same figures.
 m("RES-36 a benchmark row hides a margin above its measurement", "test/perf/budgets.json",
-  '"measured_bytes_per_op": 4624, "measured_allocs_per_op": 71, "bytes_per_op_max": 4624, "allocs_per_op_max": 71}',
-  '"measured_bytes_per_op": 4624, "measured_allocs_per_op": 71, "bytes_per_op_max": 5086, "allocs_per_op_max": 78}', "TestRES36d_")
+  '    {"name": "BenchmarkDerive/bash_short", "measured_bytes_per_op": 4624, "measured_allocs_per_op": 71, "bytes_per_op_max": 4624, "allocs_per_op_max": 71}',
+  '    {"name": "BenchmarkDerive/bash_short", "measured_bytes_per_op": 4624, "measured_allocs_per_op": 71, "bytes_per_op_max": 5086, "allocs_per_op_max": 78}', "TestRES36d_")
