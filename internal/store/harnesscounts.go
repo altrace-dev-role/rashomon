@@ -12,23 +12,23 @@ import (
 	"time"
 )
 
-// fileHarnessCounts is H1's hook-written mismatch counter (Technical spec
+// FileHarnessCounts is H1's hook-written mismatch counter (Technical spec
 // 6.2.1, 6.2.3), held at the store root beside install.json and
 // harnesses.json. Unlike those two -- harnesses.json is command-written
 // only (watch, detach, steer, pause) and install.json names an install's
 // identity -- this file is written only by a hook entry that has just
 // decided to stand down, and RecordHarnessMismatch is the only writer.
-const fileHarnessCounts = "harness_counts.json"
+const FileHarnessCounts = "harness_counts.json"
 
-// fileHarnessCountsLock is a sidecar RecordHarnessMismatch locks instead of
-// fileHarnessCounts itself, so the data file can be replaced by rename
+// FileHarnessCountsLock is a sidecar RecordHarnessMismatch locks instead of
+// FileHarnessCounts itself, so the data file can be replaced by rename
 // while the lock is held: a lock taken on the data file's own inode would
 // be released from under itself the instant a rename swapped that inode out
 // from under the open handle holding it, letting a second writer, which
 // opens the post-rename path fresh, take the same "lock" concurrently. The
 // sidecar's own content is never read; its only job is to exist and be
 // lockable. It is never renamed, so this problem cannot recur on it.
-const fileHarnessCountsLock = "harness_counts.lock"
+const FileHarnessCountsLock = "harness_counts.lock"
 
 // maxHarnessCountsBytes is this file's own hard cap (6.2.1: "at most 64
 // KiB"). maxHarnessCountDays and maxHarnessCountSessions already keep it
@@ -101,7 +101,7 @@ func newHarnessCounts() harnessCounts {
 // reader needs.
 //
 // A plain os.ReadFile is safe here, including under RecordHarnessMismatch's
-// own lock, because that lock is taken on fileHarnessCountsLock, a sidecar,
+// own lock, because that lock is taken on FileHarnessCountsLock, a sidecar,
 // never on this file itself (see its own doc): on Windows, LockFileEx locks
 // are mandatory and per-handle (lock_windows.go's own doc), so a read of
 // THIS file while THIS file's own lock was held by any handle -- including
@@ -249,7 +249,7 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 		digest = harnessSessionDigest(hkey, sessionID)
 	}
 
-	path := filepath.Join(root, fileHarnessCounts)
+	path := filepath.Join(root, FileHarnessCounts)
 
 	// Lock-free bounded read, checked before the lock is ever touched (6.4:
 	// "one read of harness_counts.json, and one locked update ... on a
@@ -275,10 +275,10 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 		return false, nil
 	}
 
-	// The lock is taken on the sidecar, never on fileHarnessCounts itself:
-	// see fileHarnessCountsLock's own doc for why the data file has to stay
+	// The lock is taken on the sidecar, never on FileHarnessCounts itself:
+	// see FileHarnessCountsLock's own doc for why the data file has to stay
 	// free to be renamed out from under nothing while this holds it.
-	lockPath := filepath.Join(root, fileHarnessCountsLock)
+	lockPath := filepath.Join(root, FileHarnessCountsLock)
 	lf, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, fileMode)
 	if err != nil {
 		return false, err
@@ -341,9 +341,9 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 // that -- a file this package's own reader then read as "nothing was ever
 // written" and replaced wholesale. The rename is safe to do while
 // RecordHarnessMismatch's own lock is held because that lock is on the
-// sidecar (fileHarnessCountsLock), never on this file's own inode.
+// sidecar (FileHarnessCountsLock), never on this file's own inode.
 func writeHarnessCountsAtomic(root, path string, encoded []byte) error {
-	tmp, err := os.CreateTemp(root, ".harness_counts.json.rashomon-*")
+	tmp, err := os.CreateTemp(root, "."+FileHarnessCounts+".rashomon-*")
 	if err != nil {
 		return err
 	}

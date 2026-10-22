@@ -105,6 +105,7 @@ func storeAt(t *testing.T) string {
 		InstallMeta, InstallKey, "gaps.ndjson", "forgotten-hosts.ndjson", "pause", "recap.json",
 		".install.json.tmp-123", "runs/s1/records.ndjson", "runs/s1/seq", "baseline/k.json",
 		"consent.json", ".consent.json.tmp-1", "harnesses.json", ".harnesses.json.tmp-1",
+		"harness_counts.json", "harness_counts.lock", ".harness_counts.json.rashomon-1",
 		"mine.txt", "other/x",
 	} {
 		p := filepath.Join(root, filepath.FromSlash(f))
@@ -137,7 +138,8 @@ func TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast(t *testing.T) {
 	}
 	for _, rel := range []string{"gaps.ndjson", "forgotten-hosts.ndjson", "pause", "recap.json", ".install.json.tmp-123",
 		"runs/s1/records.ndjson", "runs/s1/seq", "runs/s1", "runs", "baseline/k.json", "baseline",
-		"consent.json", ".consent.json.tmp-1", "harnesses.json", ".harnesses.json.tmp-1"} {
+		"consent.json", ".consent.json.tmp-1", "harnesses.json", ".harnesses.json.tmp-1",
+		"harness_counts.json", "harness_counts.lock", ".harness_counts.json.rashomon-1"} {
 		if at(rel) < 0 {
 			t.Errorf("the plan does not list %s", rel)
 		}

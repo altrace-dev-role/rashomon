@@ -14,13 +14,13 @@ import (
 
 func readHarnessCountsFile(t *testing.T, root string) harnessCounts {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(root, fileHarnessCounts))
+	b, err := os.ReadFile(filepath.Join(root, FileHarnessCounts))
 	if err != nil {
-		t.Fatalf("reading %s: %v", fileHarnessCounts, err)
+		t.Fatalf("reading %s: %v", FileHarnessCounts, err)
 	}
 	var hc harnessCounts
 	if err := json.Unmarshal(b, &hc); err != nil {
-		t.Fatalf("unmarshal %s: %v", fileHarnessCounts, err)
+		t.Fatalf("unmarshal %s: %v", FileHarnessCounts, err)
 	}
 	return hc
 }
@@ -47,9 +47,9 @@ func TestRecordHarnessMismatch_FirstCallCreatesFile(t *testing.T) {
 		t.Fatal("install.json exists: a stand-down must never mint an install identity")
 	}
 
-	info, err := os.Stat(filepath.Join(root, fileHarnessCounts))
+	info, err := os.Stat(filepath.Join(root, FileHarnessCounts))
 	if err != nil {
-		t.Fatalf("stat %s: %v", fileHarnessCounts, err)
+		t.Fatalf("stat %s: %v", FileHarnessCounts, err)
 	}
 	if perm := info.Mode().Perm(); perm != fileMode {
 		t.Errorf("mode = %o, want %o", perm, fileMode)
@@ -258,10 +258,10 @@ func TestRecordHarnessMismatch_DaysCapped30(t *testing.T) {
 // surface, and never a wait anywhere near the full hold.
 func TestRecordHarnessMismatch_LockTimeoutSkipsWithoutError(t *testing.T) {
 	root := t.TempDir()
-	// The sidecar, not fileHarnessCounts itself: RecordHarnessMismatch locks
-	// fileHarnessCountsLock (see its own doc), so that is the file a test
+	// The sidecar, not FileHarnessCounts itself: RecordHarnessMismatch locks
+	// FileHarnessCountsLock (see its own doc), so that is the file a test
 	// simulating contention has to hold.
-	lockPath := filepath.Join(root, fileHarnessCountsLock)
+	lockPath := filepath.Join(root, FileHarnessCountsLock)
 	if err := os.MkdirAll(root, dirMode); err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestRecordHarnessMismatch_AlreadyCountedSessionNeverLocks(t *testing.T) {
 		t.Fatalf("first call: counted=%v err=%v, want true, <nil>", counted, err)
 	}
 
-	lockPath := filepath.Join(root, fileHarnessCountsLock)
+	lockPath := filepath.Join(root, FileHarnessCountsLock)
 	holdFor(t, lockPath, 10*harnessCountBudget)
 
 	start := time.Now()
@@ -452,7 +452,7 @@ func TestRecordHarnessMismatch_FileNeverExceedsCap(t *testing.T) {
 			t.Fatalf("call %d: %v", i, err)
 		}
 	}
-	b, err := os.ReadFile(filepath.Join(root, fileHarnessCounts))
+	b, err := os.ReadFile(filepath.Join(root, FileHarnessCounts))
 	if err != nil {
 		t.Fatal(err)
 	}

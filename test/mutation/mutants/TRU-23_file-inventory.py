@@ -37,8 +37,8 @@ m("TRU-23 the baseline directory stops matching baseline/<key>.json", "internal/
 # the only way to show the comparison is load-bearing: a pinned count that
 # silently matched anything would be as useless as no test at all.
 m("TRU-23 the pinned store write-call-site count stops matching the source", "internal/disclose/disclose_test.go",
-  "\t\t{\"store\", 18},",
-  "\t\t{\"store\", 19},",
+  "\t\t{\"store\", 20},",
+  "\t\t{\"store\", 21},",
   "TestTRU23_WriteCallSitesArePinned")
 # Two root-level writes main's store gained: resolved-cap (hld-7) and the
 # baseline directory's lock. The inventory test drives both, so an entry
@@ -53,4 +53,15 @@ m("TRU-23 the inventory does not cover the baseline lock", "internal/disclose/di
 # The steer log (STEER, 1.2.9) is a per-run file the inventory must name.
 m("TRU-23 the inventory does not cover the steer log", "internal/disclose/disclose.go",
   "\t\t\tPattern:    store.FileSteer,\n", "\t\t\tPattern:    store.FileSteer + \"~\",\n",
+  "TestTRU23_EveryWrittenPathIsInTheInventory")
+# The harness mismatch counts (H1, 6.2.1) live at the root with a lock
+# sidecar and a replacement file, each a path the inventory must name.
+m("TRU-23 the inventory does not cover harness_counts.json", "internal/disclose/disclose.go",
+  "\t\t\tPattern:    store.FileHarnessCounts,\n", "\t\t\tPattern:    store.FileHarnessCounts + \"~\",\n",
+  "TestTRU23_EveryWrittenPathIsInTheInventory")
+m("TRU-23 the inventory does not cover harness_counts.lock", "internal/disclose/disclose.go",
+  "\t\t\tPattern:    store.FileHarnessCountsLock,\n", "\t\t\tPattern:    store.FileHarnessCountsLock + \"~\",\n",
+  "TestTRU23_EveryWrittenPathIsInTheInventory")
+m("TRU-23 the inventory does not cover harness_counts.json's replacement", "internal/disclose/disclose.go",
+  "\t\t\tPattern:    \".\" + store.FileHarnessCounts + \".rashomon-*\",\n", "\t\t\tPattern:    \".\" + store.FileHarnessCounts + \".tmp-*\",\n",
   "TestTRU23_EveryWrittenPathIsInTheInventory")

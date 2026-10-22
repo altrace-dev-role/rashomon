@@ -116,5 +116,18 @@ m("TRU-28 purge does not plan consent.json's temporary file", "internal/purge/pu
   "\t\".\" + store.FileConsent + \".tmp-\", ", "\t",
   "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
 m("TRU-28 purge does not plan harnesses.json's temporary file", "internal/purge/purge.go",
-  ", \".\" + store.FileHarnesses + \".tmp-\"}", "}",
+  ", \".\" + store.FileHarnesses + \".tmp-\",\n", ",\n",
+  "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
+
+# A hook that stood down writes harness_counts.json at the root, under its
+# harness_counts.lock sidecar, through a ".harness_counts.json.rashomon-"
+# replacement; the disclosure names purge as what removes all three.
+m("TRU-28 purge does not plan harness_counts.json", "internal/purge/purge.go",
+  " store.FileHarnessCounts, store.FileHarnessCountsLock,\n", " store.FileHarnessCountsLock,\n",
+  "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
+m("TRU-28 purge does not plan harness_counts.lock", "internal/purge/purge.go",
+  " store.FileHarnessCounts, store.FileHarnessCountsLock,\n", " store.FileHarnessCounts,\n",
+  "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
+m("TRU-28 purge does not plan harness_counts.json's temporary file", "internal/purge/purge.go",
+  "\n\t\".\" + store.FileHarnessCounts + \".rashomon-\"}", "}",
   "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
