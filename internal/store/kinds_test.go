@@ -64,21 +64,20 @@ func TestAcceptsKindFollowsTheAcceptanceTable(t *testing.T) {
 	}
 }
 
-// The ordinary call-record writer stays at 4 (kinds.go's CallSchemaVersion
-// doc: "until P-11 the writer stamps SchemaVersion, 4"). REC-34's
-// flush_failed marker is the one record at 5, under its own constant,
-// FlushFailedSchemaVersion -- not SchemaVersion, which would carry every
-// declaration, execution and ordinary terminal to 5 with none of a v5
-// record's content, exactly the record.go doc warns against. P-11 moves
-// SchemaVersion itself to CallSchemaVersion once the v5 fields are added to
-// the records written at that version, and this test is the one that
-// changes then.
-func TestWriterStampsSchemaVersionFive(t *testing.T) {
-	if SchemaVersion != 4 {
-		t.Errorf("SchemaVersion = %d; the ordinary call-record writer stays at 4 until P-11", SchemaVersion)
+// TestREC1_WriterStampsTheCallKindsAtFive: the call records are written at
+// CallSchemaVersion, which is KindVersion's entry for each of them, and the
+// session records stay at 3, so an older reader keeps every session (1.2.2).
+func TestREC1_WriterStampsTheCallKindsAtFive(t *testing.T) {
+	if SchemaVersion != CallSchemaVersion {
+		t.Errorf("SchemaVersion = %d, want CallSchemaVersion %d", SchemaVersion, CallSchemaVersion)
+	}
+	for _, kind := range []string{TypeDeclaration, TypeExecution, TypeTerminal} {
+		if v, _ := KindVersion(kind); v != SchemaVersion {
+			t.Errorf("KindVersion(%s) = %d, but the writer stamps %d", kind, v, SchemaVersion)
+		}
 	}
 	if FlushFailedSchemaVersion != 5 {
-		t.Errorf("FlushFailedSchemaVersion = %d; REC-34's flush_failed marker is the one record at 5", FlushFailedSchemaVersion)
+		t.Errorf("FlushFailedSchemaVersion = %d; REC-34's flush_failed marker is written at 5", FlushFailedSchemaVersion)
 	}
 	if CallSchemaVersion != 5 || EventSchemaVersion != 5 || SessionSchemaVersion != 3 {
 		t.Errorf("version constants moved: call %d event %d session %d", CallSchemaVersion, EventSchemaVersion, SessionSchemaVersion)

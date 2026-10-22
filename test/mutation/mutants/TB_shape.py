@@ -415,17 +415,12 @@ m("TB the session block drops the unlisted-option limit", "internal/report/text.
   "",
   "TestTestRuns_")
 
-# Re-anchored after REC-34's flush_failed marker got a version of its own
-# (store.FlushFailedSchemaVersion) instead of moving SchemaVersion again:
-# the call records' writer stays at 4 for good now, so the mutation this
-# guards flips direction from the earlier bumps' -- it is no longer "the
-# writer stays at the version before", it is "the writer drifts onto the
-# marker's version", which is the exact regression the fix in REC-34's own
-# mutants (REC-34_group-commit.py) exists to catch at the other end, in
-# flush.go.
-m("TB the writer moves off schema 4 again", "internal/store/record.go",
-  "const SchemaVersion = 4",
-  "const SchemaVersion = 5",
+# Re-anchored when the call records moved to schema 5: the constant is now
+# CallSchemaVersion's name, and the mutation is still "the writer stays at an
+# older version". REC-1 owns the one-version-back case.
+m("TB the writer stays at schema 3", "internal/store/record.go",
+  "const SchemaVersion = CallSchemaVersion",
+  "const SchemaVersion = 3",
   "TestSchema3_")
 m("TB test runs are counted over records that predate the test class", "internal/report/testbending.go",
   "\tif run == nil || !measuresTests(run) {\n",

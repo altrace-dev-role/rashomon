@@ -65,14 +65,14 @@ func TestSchema5PhaseIsRequiredOnlyAtVersion5(t *testing.T) {
 	}
 }
 
-// TestSchemaVersionEnumAdmits5OnTerminalOnly: a terminal declaring
-// schema_version 5 -- the flush_failed marker -- must be allowed to say so.
-// Declaration and execution make no such claim: this build never writes
-// either of them at 5, and admitting a version nothing writes is a contract
-// nobody can rely on (the same reasoning TestSchema3_WrittenRecordsMeetTheVersion3Gate's
-// comment gives for comparing against a literal rather than the writer's
-// own constant).
-func TestSchemaVersionEnumAdmits5OnTerminalOnly(t *testing.T) {
+// TestSchemaVersionEnumAdmits5OnEveryCallRecord: the declaration, the
+// execution and the terminal are all written at 5 since their v5 keys landed
+// (P-11), and the flush_failed marker before them, so each must be allowed to
+// say so; none may admit 6, a version nothing writes, which would be a
+// contract nobody can rely on (the same reasoning
+// TestSchema3_WrittenRecordsMeetTheVersion3Gate's comment gives for comparing
+// against a literal rather than the writer's own constant).
+func TestSchemaVersionEnumAdmits5OnEveryCallRecord(t *testing.T) {
 	defs := schemaDefs(t)
 
 	admits := func(name string, v int) bool {
@@ -93,28 +93,26 @@ func TestSchemaVersionEnumAdmits5OnTerminalOnly(t *testing.T) {
 		return false
 	}
 
-	if !admits("terminal", 5) {
-		t.Error("$defs.terminal.schema_version does not admit 5; the flush_failed marker " +
-			"fails the contract even though the reader accepts it")
-	}
-	for _, name := range []string{"declaration", "execution"} {
-		if admits(name, 5) {
-			t.Errorf("$defs.%s.schema_version admits 5, but this build never writes one at "+
-				"that version; the contract should not claim a shape nothing produces", name)
+	for _, name := range []string{"declaration", "execution", "terminal"} {
+		if !admits(name, 5) {
+			t.Errorf("$defs.%s.schema_version does not admit 5; a record this build writes "+
+				"fails the contract even though the reader accepts it", name)
+		}
+		if admits(name, 6) {
+			t.Errorf("$defs.%s.schema_version admits 6, but nothing writes one at that "+
+				"version; the contract should not claim a shape nothing produces", name)
 		}
 	}
 }
 
-// TestSchema5_OrdinaryCallRecordsStayAtSchemaFour is the direct regression
-// test for the hazard this file's own doc comment names: an ordinary call,
-// with no flush failure anywhere near it, must write its declaration,
-// execution and terminal at schema 4, never 5. Compared against the
-// literal, not store.SchemaVersion, for the reason
+// TestSchema5_OrdinaryCallRecordsAreWrittenAtFive: an ordinary call, with no
+// flush failure anywhere near it, writes its declaration, execution and
+// terminal at schema 5, each naming the binary that wrote it. Compared
+// against the literal, not store.SchemaVersion, for the reason
 // TestSchema3_WrittenRecordsMeetTheVersion3Gate's comment gives: comparing
-// the writer with itself cannot catch the writer moving. Break: stamp any
-// of the three at store.FlushFailedSchemaVersion, or collapse
-// FlushFailedSchemaVersion back onto SchemaVersion.
-func TestSchema5_OrdinaryCallRecordsStayAtSchemaFour(t *testing.T) {
+// the writer with itself cannot catch the writer moving. Break: leave
+// SchemaVersion at 4, or drop writer from any of the three.
+func TestSchema5_OrdinaryCallRecordsAreWrittenAtFive(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
 	e.mustHook(defaultPayload().build(t))
@@ -132,8 +130,11 @@ func TestSchema5_OrdinaryCallRecordsStayAtSchemaFour(t *testing.T) {
 			t.Fatalf("no %s record was written", c.kind)
 		}
 		for i, r := range c.recs {
-			if got := r.fields["schema_version"]; got != float64(4) {
-				t.Errorf("%s %d written at schema_version %v, want 4", c.kind, i, got)
+			if got := r.fields["schema_version"]; got != float64(5) {
+				t.Errorf("%s %d written at schema_version %v, want 5", c.kind, i, got)
+			}
+			if w, _ := r.fields["writer"].(string); w == "" {
+				t.Errorf("%s %d names no writer: %v", c.kind, i, r.fields["writer"])
 			}
 		}
 	}

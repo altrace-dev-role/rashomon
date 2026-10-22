@@ -12,8 +12,11 @@ m("DEL-22 a gate reason is dropped from the vocabulary", "internal/verify/state.
 # compiler now refuses the regression this mutant named.
 m("DEL-22 the session record's resume key is respelled", "internal/store/record_v5.go",
   "`json:\"resume\"`", "`json:\"resumed\"`", "TestDEL22b_")
-m("DEL-22 the target's dropped keys become a count again", "internal/store/record_v5.go",
-  "\tDropped           []string          `json:\"dropped\"`\n", "\tDropped           int               `json:\"dropped\"`\n", "TestDEL22b_")
+# The target's dropped keys becoming a count again is no longer a mutant:
+# rec31_test.go builds a target with Dropped as a slice and appends to it, so
+# the type change stops the store's tests compiling, the package
+# TestDEL22b_SchemaFiveKeyListsAreFrozen lives in, and the sweep can only
+# report it as a broken build. The compiler now refuses the regression.
 # The pattern interface proposal, the nullable steer-line prompt_id and
 # Finding.Check (cross F7, F8(d); P07N-2, P07N-14).
 m("DEL-22 the pattern interface's Revalidate is renamed", "internal/steer/pattern_iface.go",
@@ -64,8 +67,11 @@ m("DEL-22 the session's git switched off has no key", "internal/store/record_v5.
   "\tGitWithheld       *string `json:\"git_withheld\"`        // switched_off (git)\n", "", "TestDEL22g_")
 m("DEL-22 an oversize instructions path cannot be null", "internal/store/record_v5.go",
   "\tFilePath        *string `json:\"file_path\"`\n", "\tFilePath        string  `json:\"file_path\"`\n", "TestDEL22g_")
+# The withheld root is set by the cap (limits.go), so deleting the field no
+# longer compiles; the key goes missing from the wire instead, as
+# written_paths_withheld's does above.
 m("DEL-22 an oversize git root has no key", "internal/store/record_v5.go",
-  "\tRootWithheld *string `json:\"root_withheld\"`\n", "", "TestDEL22g_")
+  "\tRootWithheld *string `json:\"root_withheld\"`\n", "\tRootWithheld *string `json:\"-\"`\n", "TestDEL22g_")
 m("DEL-22 a finding may name an after_seq below 1", "internal/steer/finding.go",
   "\tif f.AfterSeq < 1 {\n\t\treturn fmt.Errorf(\"%w: after_seq must be at least 1\", ErrFinding)\n\t}\n",
   "", "TestDEL22e_")

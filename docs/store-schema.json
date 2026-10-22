@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/altrace-dev-role/rashomon/docs/store-schema.json",
   "title": "rashomon store records",
-  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. forgotten-hosts.ndjson at the store root holds forgotten_host records, one per host a forget --host was given. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. No field here carries content: no prompt, no response, no argument value, no command string. Identifiers are not content and are stored verbatim.",
+  "description": "One record of a rashomon store, as one JSON object on one line. Layout: runs/<dir>/records.ndjson holds declaration, execution and terminal records ordered by seq; runs/<dir>/spill.ndjson holds terminal and execution records whose seq is null, written when the ordered stream's lock could not be taken; runs/<dir>/coverage.ndjson holds coverage records; gaps.ndjson at the store root holds gap records. forgotten-hosts.ndjson at the store root holds forgotten_host records, one per host a forget --host was given. <dir> is the session id when that id is a plain path element and a digest of it otherwise. Every record carries schema_version, and a reader that does not recognise a version -- or cannot parse a line at all -- skips that record rather than guessing at it. Every key of every record is required: a field that has no value is null, never absent, because an absent key and a null one would otherwise be two spellings of one fact. Through schema 4 no field carries content: no prompt, no response, no argument value, no command string. Schema 5 adds the command as typed and the paths a call names, masked and capped, and null with a *_withheld reason when consent, a switch, the masker or a cap kept them out; no prompt or response is stored at any version. Identifiers are not content and are stored verbatim.",
   "oneOf": [
     {
       "$ref": "#/$defs/declaration"
@@ -58,7 +58,8 @@
             1,
             2,
             3,
-            4
+            4,
+            5
           ]
         },
         "seq": {
@@ -241,6 +242,203 @@
           "description": "Schema 4. Which lists decided this record's shape: the test runners and build runners that set shape.verb_class and shape.status_masked, as the writing binary had them (shape.RulesVersion). Records written before and after a list changed carry different values. It names the writer's lists only: the pass words that decide when the masked-runs line fires are applied when a report is read and never stored.",
           "type": "integer",
           "minimum": 1
+        },
+        "writer": {
+          "description": "Schema 5. The version of the rashomon binary that wrote this record (\"dev\" for an unreleased build), so a reader can tell which release wrote it as well as which schema it follows.",
+          "type": "string"
+        },
+        "command": {
+          "description": "Schema 5. The command as typed, masked: every value a masker rule matched is replaced by a marker, and the text is stored whole up to 64 KiB or as a head and a tail (1.2.3). Null when it was not captured, and command_withheld then says why.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "command_bytes": {
+          "description": "Schema 5. The byte length of the command as typed, before masking and any cut.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "command_cut": {
+          "description": "Schema 5. Where command was shortened to its head and tail windows; null when it was stored whole. An object of offset, where the cut is in the stored text, and removed_bytes, how many bytes went between the head and the tail.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "masked": {
+          "description": "Schema 5. One object per masked value in command: the rule id that masked it and the start and end byte offsets of its marker in the stored text. The masked value itself is never stored.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object"
+          }
+        },
+        "command_withheld": {
+          "description": "Schema 5. Why command is null. Null when command is present or the tool has no command. One of: no_consent, switched_off, masker_error, oversize, forgotten; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cwd": {
+          "description": "Schema 5. The directory the call started in.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "project": {
+          "description": "Schema 5. The project key of the start directory, baseline.Key's, which every layer shares.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_path": {
+          "description": "Schema 5. The file path a file tool named.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "written_paths": {
+          "description": "Schema 5. The lexical write targets of a Bash call that may write, at most 64 entries and 16 KiB; over either bound the list is null and written_paths_withheld is oversize.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "written_paths_complete": {
+          "description": "Schema 5. True only when every write-capable segment of the line yielded a target; false when written_paths is withheld.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "target": {
+          "description": "Schema 5. Where a failing call was pointed, from its arguments and inline env prefixes only, never the hook's environment (1.2.5): aws_profile, aws_region, aws_account, endpoint_host, s3_bucket, kube_context, kube_namespace, gcp_project and azure_subscription, each a value that passed the charset, every masker rule and the entropy test; source, where each present key came from (arg, env_prefix or subcommand); and dropped, the keys whose value failed a check, the value never stored.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "edit_marks_before": {
+          "description": "Schema 5. The count per closed integrity-mark id in the file a Write overwrites, taken at PreToolUse from the one pre-read (1.2.5); null for every other tool.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "written_paths_withheld": {
+          "description": "Schema 5. Why written_paths is null when it is null by rule: oversize, over its cap (1.2.11), or switched_off, under the paths switch of config.json. Null when written_paths is present or simply not applicable. One of: oversize, switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_path_withheld": {
+          "description": "Schema 5. Why file_path is null when it is null by rule: oversize, over its cap (1.2.11), or switched_off, under the paths switch of config.json. Null when file_path is present or simply not applicable. One of: oversize, switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cwd_withheld": {
+          "description": "Schema 5. Why cwd is null when it is null by rule: oversize, over its cap (1.2.11), or switched_off, under the paths switch of config.json. Null when cwd is present or simply not applicable. One of: oversize, switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "project_withheld": {
+          "description": "Schema 5. Why project is null when it is null by rule: oversize, over its cap (1.2.11). Null when project is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_withheld": {
+          "description": "Schema 5. Why target is null when it is null by rule: switched_off, under the targets switch of config.json. Null when target is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edit_marks_before_withheld": {
+          "description": "Schema 5. Why edit_marks_before is null when it is null by rule: switched_off, under the edit_marks switch of config.json. Null when edit_marks_before is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_id_withheld": {
+          "description": "Schema 5. Why prompt_id is null when it is null by rule: oversize, over its cap (1.2.11). Null when prompt_id is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agent_id_withheld": {
+          "description": "Schema 5. Why agent_id is null when it is null by rule: oversize, over its cap (1.2.11). Null when agent_id is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agent_type_withheld": {
+          "description": "Schema 5. Why agent_type is null when it is null by rule: oversize, over its cap (1.2.11). Null when agent_type is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hosts_withheld": {
+          "description": "Schema 5. Why hosts is null when it is null by rule: oversize, over 32 entries. Null when hosts is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ssh_hosts_withheld": {
+          "description": "Schema 5. Why ssh_hosts is null when it is null by rule: oversize, over 32 entries. Null when ssh_hosts is present or simply not applicable. One of: oversize; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harness_id": {
+          "description": "Schema 5. Which agent harness declared this call (BREADTH, tech 6.2.1). Null until harness detection fills it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harness_tool_name": {
+          "description": "Schema 5. The harness's own name for the tool when it differs from the canonical tool_name; null when it does not differ or does not match ^[A-Za-z0-9_:.\\-]{1,128}$.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "declared_via": {
+          "description": "Schema 5. Whether the declaration came from a pre or a post hook (BREADTH, tech 6.2.1). One of: pre, post; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "allOf": [
@@ -300,6 +498,63 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 5
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "host_source",
+              "rule_match",
+              "file_label",
+              "cwd_digest",
+              "rules_version",
+              "writer",
+              "command",
+              "command_bytes",
+              "command_cut",
+              "masked",
+              "command_withheld",
+              "cwd",
+              "project",
+              "file_path",
+              "written_paths",
+              "written_paths_complete",
+              "target",
+              "edit_marks_before",
+              "written_paths_withheld",
+              "file_path_withheld",
+              "cwd_withheld",
+              "project_withheld",
+              "target_withheld",
+              "edit_marks_before_withheld",
+              "prompt_id_withheld",
+              "agent_id_withheld",
+              "agent_type_withheld",
+              "hosts_withheld",
+              "ssh_hosts_withheld",
+              "harness_id",
+              "harness_tool_name",
+              "declared_via"
+            ],
+            "properties": {
+              "shape": {
+                "required": [
+                  "may_write",
+                  "status_masked",
+                  "runner_digest"
+                ]
+              }
+            }
+          }
         }
       ]
     },
@@ -334,7 +589,8 @@
             1,
             2,
             3,
-            4
+            4,
+            5
           ]
         },
         "seq": {
@@ -425,6 +681,173 @@
           "description": "Schema 4. Which lists decided this record's status_masked, as the writing binary had them (shape.RulesVersion); see the declaration's rules_version.",
           "type": "integer",
           "minimum": 1
+        },
+        "writer": {
+          "description": "Schema 5. The version of the rashomon binary that wrote this record (\"dev\" for an unreleased build), so a reader can tell which release wrote it as well as which schema it follows.",
+          "type": "string"
+        },
+        "executed_command": {
+          "description": "Schema 5. The command as it ran, masked and capped as the declaration's command is, when it differs from the declaration's; executed_command_reason says why it is here.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executed_command_reason": {
+          "description": "Schema 5. Why executed_command is recorded: differs, the command that ran is not the one declared; declaration_not_in_tail, the declaration could not be read back to compare. One of: differs, declaration_not_in_tail; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executed_command_bytes": {
+          "description": "Schema 5. The byte length of the executed command, before masking and any cut.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "executed_command_cut": {
+          "description": "Schema 5. Where executed_command was shortened to its head and tail windows; null when it was stored whole. An object of offset, where the cut is in the stored text, and removed_bytes, how many bytes went between the head and the tail.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "executed_masked": {
+          "description": "Schema 5. executed_command's masked spans, as the declaration's masked.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object"
+          }
+        },
+        "failure": {
+          "description": "Schema 5. The failure class of a PostToolUseFailure (1.2.5), computed in memory from text that is never stored: origin (exit, no_exit_line, timeout, interrupt, file_tool, mcp, web, agent or other_tool), class, source (program_table, text, exit_only or none), counts_as_failure, counts_for_learning, class_table_version and error_bytes.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "output_evidence": {
+          "description": "Schema 5. What one output scan found in a gate run: family, success_line, fail_line, scanned_bytes and version. A masked run verifies only when success_line holds and fail_line does not.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "edit_marks": {
+          "description": "Schema 5. The deltas per closed integrity-mark id in an edit, from the shared 1 MiB pre-read: added and removed, each a count per mark id; basis (edit_delta, write_vs_before, write_before_unread or notebook_added_only); and version.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "head_after": {
+          "description": "Schema 5. The git state after a HEAD-moving vcs call, read without running git (1.2.6): root, head (40 or 64 hex), branch (null when detached), detached, state (ok, no_repo, unborn or unreadable) and root_withheld.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "gate_output": {
+          "description": "Schema 5. VERIFY's classification of a gate-family call's output (2.2.3): kind (summary_pass, summary_fail, fail_line, empty_run, no_summary, unattributable or unread), parser, and for unread the reason (budget, too_large, decode or verify_off).",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "credmech": {
+          "description": "Schema 5. The credential mechanism a call used -- a profile, a role, an env var name or a vault path, never a value. Null until the change that fills it lands.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executed_command_withheld": {
+          "description": "Schema 5. Why executed_command is null when it is null by rule; command_withheld's values. One of: no_consent, switched_off, masker_error, oversize, forgotten; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure_withheld": {
+          "description": "Schema 5. Why failure is null when it is null by rule: switched_off, under the failure_classes switch of config.json. Null when failure is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "output_evidence_withheld": {
+          "description": "Schema 5. Why output_evidence is null when it is null by rule: switched_off, under the output_evidence switch of config.json. Null when output_evidence is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "edit_marks_withheld": {
+          "description": "Schema 5. Why edit_marks is null when it is null by rule: switched_off, under the edit_marks switch of config.json. Null when edit_marks is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "head_after_withheld": {
+          "description": "Schema 5. Why head_after is null when it is null by rule: switched_off, under the git switch of config.json. Null when head_after is present or simply not applicable. One of: switched_off; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harness_id": {
+          "description": "Schema 5. Which agent harness declared this call (BREADTH, tech 6.2.1). Null until harness detection fills it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "harness_tool_name": {
+          "description": "Schema 5. The harness's own name for the tool when it differs from the canonical tool_name; null when it does not differ or does not match ^[A-Za-z0-9_:.\\-]{1,128}$.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "declared_via": {
+          "description": "Schema 5. Whether the declaration came from a pre or a post hook (BREADTH, tech 6.2.1). One of: pre, post; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome_source": {
+          "description": "Schema 5. Where the outcome came from (BREADTH, tech 6.2.1). One of: claude_post, claude_failure, cursor_tool_output, cursor_failure, codex_mcp_is_error, codex_rollout_join, none; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure_type": {
+          "description": "Schema 5. The failure's type, when the harness says (BREADTH, tech 6.2.1). One of: error, timeout, permission_denied; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mcp_server_source": {
+          "description": "Schema 5. Where an MCP call's server was configured (BREADTH, tech 6.2.1). One of: plugin, sdk, user, project, local, managed, claudeai, other; or null.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "allOf": [
@@ -466,6 +889,50 @@
               "rules_version"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 5
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "rule_match",
+              "backgrounded",
+              "status_masked",
+              "runner_digest",
+              "rules_version",
+              "writer",
+              "executed_command",
+              "executed_command_reason",
+              "executed_command_bytes",
+              "executed_command_cut",
+              "executed_masked",
+              "failure",
+              "output_evidence",
+              "edit_marks",
+              "head_after",
+              "gate_output",
+              "credmech",
+              "executed_command_withheld",
+              "failure_withheld",
+              "output_evidence_withheld",
+              "edit_marks_withheld",
+              "head_after_withheld",
+              "harness_id",
+              "harness_tool_name",
+              "declared_via",
+              "outcome_source",
+              "failure_type",
+              "mcp_server_source"
+            ]
+          }
         }
       ]
     },
@@ -498,7 +965,8 @@
           },
           "then": {
             "required": [
-              "phase"
+              "phase",
+              "writer"
             ]
           }
         }
@@ -568,6 +1036,10 @@
             "call",
             "post"
           ]
+        },
+        "writer": {
+          "description": "Schema 5. The version of the rashomon binary that wrote this record (\"dev\" for an unreleased build), so a reader can tell which release wrote it as well as which schema it follows.",
+          "type": "string"
         }
       }
     },

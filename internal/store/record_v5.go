@@ -1,16 +1,16 @@
 package store
 
 // The schema-5 field list (technical spec 1.2.3 to 1.2.10; archive 10.2.2 to
-// 10.2.14, 10.2.17; BREADTH's two kinds at archive 60), frozen here as types
-// the writer does not emit yet.
+// 10.2.14, 10.2.17; BREADTH's two kinds at archive 60).
 //
 // Every v5 key is always present on a v5 record: null means not applicable
 // or not looked at, [] means looked and found none, and a reader that meets
 // either knows which. That rule is why these are pointer and slice fields
-// without omitempty, and why they are kept apart from the v4 structs until
-// P-11 embeds them and moves the writer to CallSchemaVersion: a v4 record
-// carrying v5 keys as null would be a v4 record that lied about what was
-// measured.
+// without omitempty. The call records embed DeclarationV5, ExecutionV5 and
+// TerminalV5 and are written at CallSchemaVersion; each key stays null until
+// the change that fills it lands, which is "not looked at", the truth. The
+// kinds introduced at 1.2.0 are frozen here as types their writers emit when
+// they land.
 //
 // Where the spec names a key without its shape, the field says so with
 // "P-07 proposal" and the PR body lists it; everything else is the spec's.
@@ -73,10 +73,10 @@ type DeclarationV5 struct {
 	// kind switched off writes no record, and the session's
 	// scopes.switches says so. The v4 call record's nullable capped fields
 	// (prompt_id, agent_id, agent_type, hosts, ssh_hosts) take their keys
-	// here, since P-11 embeds this struct beside them. Deferred, with the
+	// here, since the declaration embeds this struct beside them. Deferred, with the
 	// reason in TestDEL22g: the v4 call record's non-nullable capped fields
 	// (tool_use_id, transcript_path, permission_mode, tool_name,
-	// shape.program), whose null half needs P-11 to retype the v4 structs,
+	// shape.program), whose null half needs the v4 structs retyped,
 	// and outcome_join's tool_use_id, BREADTH's join key.
 	WrittenPathsWithheld    *string `json:"written_paths_withheld"`     // oversize | switched_off (paths)
 	FilePathWithheld        *string `json:"file_path_withheld"`         // oversize | switched_off (paths)

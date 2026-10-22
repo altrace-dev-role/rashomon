@@ -504,14 +504,17 @@ func (s *Store) writeOrderedLocked(f *os.File, dir string, build func(seq int64)
 	if err != nil {
 		return err
 	}
-	line, err := marshalLine(build(seq))
+	line, degraded, err := fitLine(build(seq))
 	if err != nil {
 		return err
 	}
 	if err := appendHealed(f, line, true); err != nil {
 		return err
 	}
-	return s.syncAppend(f)
+	if err := s.syncAppend(f); err != nil {
+		return err
+	}
+	return degraded
 }
 
 // lockAppend takes f's append lock through lockCounted, and adds how long it
@@ -615,7 +618,7 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	if err := s.opened(); err != nil {
 		return err
 	}
-	line, err := marshalLine(rec)
+	line, degraded, err := fitLine(rec)
 	if err != nil {
 		return err
 	}
@@ -650,7 +653,36 @@ func (s *Store) appendLine(path string, rec any, budget time.Duration, bestEffor
 	if err != nil {
 		return err
 	}
-	return s.syncAppend(f)
+	if err := s.syncAppend(f); err != nil {
+		return err
+	}
+	return degraded
+}
+
+// fitLine is marshalLine for an append: a call record over MaxRecordBytes is
+// marshalled once more with its capped fields withheld (degrader), and only
+// one still over the limit is refused (lld-3). degraded is ErrRecordDegraded
+// when the line is the second marshal, nil otherwise; the append returns it
+// once the line is written, so the caller learns the record landed with less
+// than the call held.
+func fitLine(rec any) (line []byte, degraded, err error) {
+	line, err = marshalLine(rec)
+	if !errors.Is(err, ErrRecordOversize) {
+		return line, nil, err
+	}
+	d, ok := rec.(degrader)
+	if !ok {
+		return nil, nil, err
+	}
+	smaller, withheld := d.degraded()
+	if !withheld {
+		return nil, nil, err
+	}
+	line, err = marshalLine(smaller)
+	if err != nil {
+		return nil, nil, err
+	}
+	return line, ErrRecordDegraded, nil
 }
 
 // marshalLine is rec as one NDJSON line, or ErrRecordOversize when that line

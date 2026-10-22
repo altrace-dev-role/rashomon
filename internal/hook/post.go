@@ -122,6 +122,8 @@ type Post struct {
 	now func() time.Time
 	// lockWaits is Handler.lockWaits.
 	lockWaits time.Duration
+	// capExec is Handler.capDecl for the execution record.
+	capExec func(*store.Execution) bool
 
 	sessionID string
 	toolUseID string
@@ -133,7 +135,8 @@ type Post struct {
 // NewPost builds a Post. now is injectable for the same reason it is on
 // Handler: a test pins the clock and compares two records byte for byte.
 func NewPost(st *store.Store, now func() time.Time) *Post {
-	return &Post{st: st, now: now, lockWaits: LockWaitTotal, sessionID: UnattributedSession}
+	return &Post{st: st, now: now, lockWaits: LockWaitTotal, capExec: store.CapExecution,
+		sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the execution record.
@@ -179,6 +182,7 @@ func (p *Post) Capture(in io.Reader) error {
 		DurationMS:    positive(pl.DurationMS),
 		RulesVersion:  shape.RulesVersion,
 	}
+	rec.Writer = Writer
 	// Derived through the same function the declaration path uses, with the
 	// same per-install key, or the two digests would never be comparable. An
 	// absent tool_input leaves it empty rather than digesting nothing, because
@@ -206,10 +210,10 @@ func (p *Post) Capture(in io.Reader) error {
 		rec.Backgrounded = backgroundedCall(payload)
 	}
 	// The caps, as on the declaration path (REC-52).
-	if store.CapExecution(&rec) {
+	if p.capExec(&rec) {
 		p.withheld = true
 	}
-	return p.st.AppendExecution(rec)
+	return landed(p.st.AppendExecution(rec), &p.withheld)
 }
 
 // backgroundedCall reports a Bash call whose PostToolUse fired while the

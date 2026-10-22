@@ -17,14 +17,8 @@ m("test-13  a schema version this build does not read passes", "test/acceptance/
 m("test-13  a fractional schema version passes", "test/acceptance/storecheck_test.go",
   "!ok || float64(int(v)) != v || !readable(", "!ok || !readable(", "TestRubricTEST13_")
 m("test-13  coverage and gaps are not held to their own versions", "test/acceptance/storecheck_test.go",
-  "\treturn store.Accepts(version) && store.AcceptsKind(kind, version)\n",
-  "\treturn store.Accepts(version)\n", "TestRubricTEST13_")
-# Dropping readable's store.Accepts term is an equivalent mutant today, so it
-# is not registered: Accepts reads 1 to 5, and no kind's version is past 5
-# (calls and events at 5, coverage and gaps at 3), so every version
-# AcceptsKind reads is one Accepts reads. It went equivalent when the reader
-# was widened to 5 for REC-34's flush_failed marker. Register it again when a
-# kind's version passes the range Accepts reads.
+  "\treturn store.AcceptsKind(kind, version)\n",
+  "\treturn version >= 1 && version <= 5\n", "TestRubricTEST13_")
 m("test-13  the end-of-test check reads no store", "test/acceptance/storecheck_test.go",
   "\tunexpected, missing := damageProblems(storeProblems(e.home), e.damaged)\n",
   "\tunexpected, missing := damageProblems(nil, e.damaged)\n", "TestRubricTEST13_")

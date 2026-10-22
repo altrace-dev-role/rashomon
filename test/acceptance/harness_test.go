@@ -52,7 +52,7 @@ func buildAndRun(m *testing.M) (int, error) {
 	// The binary under test carries the fault-injection points. A released
 	// binary does not, which is why the tag exists: the injection path must not
 	// ship, but the panic barrier it exercises is the same code either way.
-	rashomonBin, err = build(dir, "rashomon", "./cmd/rashomon", "rashomonfault")
+	rashomonBin, err = buildVersioned(dir, "rashomon", "./cmd/rashomon", binaryVersion, "rashomonfault")
 	if err != nil {
 		return 0, err
 	}
@@ -69,9 +69,23 @@ func buildAndRun(m *testing.M) (int, error) {
 	return m.Run(), nil
 }
 
+// binaryVersion is the version the binary under test is built with, as a
+// release sets it, so a test can tell the build-time version from the
+// default an unset one leaves.
+const binaryVersion = "0.0.0-acceptance"
+
 func build(dir, name, pkg string, tags ...string) (string, error) {
+	return buildVersioned(dir, name, pkg, "", tags...)
+}
+
+// buildVersioned is build with main.version set to version, as the release
+// build sets it; "" leaves the default.
+func buildVersioned(dir, name, pkg, version string, tags ...string) (string, error) {
 	out := filepath.Join(dir, name)
 	args := []string{"build", "-o", out}
+	if version != "" {
+		args = append(args, "-ldflags", "-X main.version="+version)
+	}
 	if len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}

@@ -58,5 +58,6 @@ func flushOrMark(st *store.Store, sessionID, toolUseID string, now time.Time, ph
 		Outcome:       store.OutcomeError,
 		Reason:        &reason,
 		Phase:         &phase,
+		TerminalV5:    store.TerminalV5{Writer: Writer},
 	})
 }

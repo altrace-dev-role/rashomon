@@ -72,6 +72,9 @@ type Handler struct {
 
 	// lockWaits is LockWaitTotal, which a test shortens.
 	lockWaits time.Duration
+	// capDecl is store.CapDeclaration, which a test replaces to hand the
+	// store a record that skipped the caps, the one way to reach its degrade.
+	capDecl func(*store.Declaration) bool
 
 	sessionID string
 	toolUseID string
@@ -86,10 +89,17 @@ type Handler struct {
 	labelRecovered bool
 }
 
+// Writer is the version of the binary writing the records, stamped on every
+// call record as writer, so a reader can tell which release wrote a record
+// as well as which schema it follows. cmd/rashomon sets it from its
+// build-time version before any hook runs; "dev" is an unreleased build.
+var Writer = "dev"
+
 // New builds a Handler. now is injectable so a test can pin the clock and
 // compare two records byte for byte.
 func New(st *store.Store, now func() time.Time) *Handler {
-	return &Handler{st: st, now: now, lockWaits: LockWaitTotal, sessionID: UnattributedSession}
+	return &Handler{st: st, now: now, lockWaits: LockWaitTotal, capDecl: store.CapDeclaration,
+		sessionID: UnattributedSession}
 }
 
 // Capture reads one payload and writes the declaration.
@@ -142,6 +152,7 @@ func (h *Handler) Capture(in io.Reader) error {
 	var dirs []string
 	decl.Shape, _, dirs = shape.DeriveWithDirs(p.ToolName, p.ToolInput, h.st.Key())
 	decl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))
+	decl.Writer = Writer
 	// Hostnames are metadata and are stored verbatim, because the report
 	// lists them and forget --host matches them by the name as written.
 	// Nothing else from tool_input is persisted, and shape is still the only
@@ -169,13 +180,13 @@ func (h *Handler) Capture(in io.Reader) error {
 	// out of the record rather than cut, and said so on the coverage record
 	// (REC-52), so no payload inside the intake limit can make a record the
 	// store would refuse.
-	if store.CapDeclaration(&decl) {
+	if h.capDecl(&decl) {
 		h.withheld = true
 	}
 
 	fault.Inject(fault.PointStoreWrite)
 
-	if err := h.st.AppendDeclaration(decl); err != nil {
+	if err := landed(h.st.AppendDeclaration(decl), &h.withheld); err != nil {
 		return err
 	}
 	h.opened = true
@@ -218,6 +229,7 @@ func (h *Handler) Close(sig *Signals, captureErr error) {
 			SessionID:     h.sessionID,
 			Outcome:       outcome,
 			Reason:        nilIfEmpty(reason),
+			TerminalV5:    store.TerminalV5{Writer: Writer},
 		}
 		var err error
 		if reason == store.ReasonLockTimeout {

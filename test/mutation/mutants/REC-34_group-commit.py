@@ -15,7 +15,8 @@ m("REC-34 the hook flushes before its last append", "cmd/rashomon/main.go",
   "\t\tif err := safe.Guard(h.Flush); err != nil {\n\t\t\tfmt.Fprintln(stderr, flushLostLine)\n\t\t}\n\t\t_ = safe.Guard(func() error { h.Close(sig, captureErr); return nil })\n\t\tfault.Inject(fault.PointHookBeforeFlush)\n",
   "TestREC34_")
 m("REC-34 the ordered append syncs in full inside the lock", "internal/store/store.go",
-  "\treturn s.syncAppend(f)\n}\n\n// lockAppend takes", "\treturn syncFull(f)\n}\n\n// lockAppend takes", "TestREC34_")
+  "\tif err := s.syncAppend(f); err != nil {\n\t\treturn err\n\t}\n\treturn degraded\n}\n\n// lockAppend takes",
+  "\tif err := syncFull(f); err != nil {\n\t\treturn err\n\t}\n\treturn degraded\n}\n\n// lockAppend takes", "TestREC34_")
 m("REC-34 the seq counter syncs in full inside the lock", "internal/store/store.go",
   "\tseq, err := nextSeq(f, dir, s.syncAppend)", "\tseq, err := nextSeq(f, dir, syncFull)", "TestREC34_")
 m("REC-34 group commit off: a deferred store syncs every append in full", "internal/store/store.go",
@@ -173,9 +174,9 @@ m("REC-34 the hook never signals before flush", "cmd/rashomon/main.go",
 # must skip the whole line, never read Reason and half-understand it as an
 # ordinary closing terminal. Siblings of "B2 the reader stops accepting
 # schema 3" and "MS the reader stops accepting schema 4".
-m("REC-34 the reader stops accepting schema 5", "internal/store/record.go",
-  "\treturn version >= 1 && version <= 5",
-  "\treturn version >= 1 && version <= 5 && version != 5", "TestAcceptsAdmits")
+m("REC-34 the reader stops accepting schema 5", "internal/store/kinds.go",
+  "\t\treturn version >= 1 && version <= CallSchemaVersion",
+  "\t\treturn version >= 1 && version <= CallSchemaVersion && version != 5", "TestAcceptsAdmits")
 
 # A flush_failed marker (REC-34) sharing a tool_use_id with a real record
 # must not stand in for its recorded time: turnDropped windows a dropped
@@ -214,14 +215,11 @@ m("REC-34 the hook's own flush marks itself as post", "internal/hook/flush.go",
   "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhaseCall)",
   "return flushOrMark(h.st, h.sessionID, h.toolUseID, h.now(), store.PhasePost)", "TestREC34_FailedFlushIsMarkedAndNeverRetried",
   platform="darwin")
-# The marker rides its own version, store.FlushFailedSchemaVersion, so that
-# a 1.1.x reader skips only this one line rather than every call record this
-# invocation wrote (record.go's FlushFailedSchemaVersion doc). Collapsing it
-# back onto store.SchemaVersion is the exact regression that doc exists to
-# name, caught here at the one site that writes it.
-m("REC-34 the marker rides the call records' own version", "internal/hook/flush.go",
-  "SchemaVersion: store.FlushFailedSchemaVersion,", "SchemaVersion: store.SchemaVersion,",
-  "TestREC34_FailedFlushIsMarkedAndNeverRetried")
+# The marker rides its own constant, store.FlushFailedSchemaVersion, so an
+# edit to the ordinary records' version never moves it (record.go's doc).
+# Collapsing it onto store.SchemaVersion is an equivalent mutant since P-11
+# moved SchemaVersion to 5 too, so it is not registered; register it again
+# when the two differ.
 
 # A flush_failed marker can name a call whose own record never landed: the
 # seq counter's barrier, the first ordered append issues, is what failed, so
