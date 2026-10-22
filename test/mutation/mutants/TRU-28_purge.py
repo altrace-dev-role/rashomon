@@ -129,5 +129,11 @@ m("TRU-28 purge does not plan harness_counts.lock", "internal/purge/purge.go",
   " store.FileHarnessCounts, store.FileHarnessCountsLock,\n", " store.FileHarnessCounts,\n",
   "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
 m("TRU-28 purge does not plan harness_counts.json's temporary file", "internal/purge/purge.go",
-  "\n\t\".\" + store.FileHarnessCounts + \".rashomon-\"}", "}",
+  "\n\t\".\" + store.FileHarnessCounts + \".rashomon-\", recap.StateTempPrefix}", "\n\trecap.StateTempPrefix}",
+  "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
+m("TRU-28 purge does not plan recap.json's temporary files", "internal/purge/purge.go",
+  ", recap.StateTempPrefix}", "}",
+  "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")
+m("TRU-28 purge does not plan the temporary file builds through v1.1.0 left", "internal/purge/purge.go",
+  "\trecap.StateFileName, recap.StateTempName}", "\trecap.StateFileName}",
   "TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast")

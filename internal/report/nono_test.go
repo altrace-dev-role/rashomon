@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/nono"
-	"github.com/altrace-dev-role/rashomon/internal/store"
 )
 
 // trailWith is an observed trail holding the given events, at one instant.
@@ -94,39 +93,6 @@ func TestNono_AWindowWithNoEndIsSaidOnTheSandboxLine(t *testing.T) {
 	}
 }
 
-// TestNono_ASessionWithNoEndRecordReportsAnOpenWindow drives Build: the
-// window comes from the run's coverage records, and a run with a start and
-// no end must reach the sandbox line as open.
-func TestNono_ASessionWithNoEndRecordReportsAnOpenWindow(t *testing.T) {
-	at := firstNonoEvent(t)
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	const id = "no-end-session"
-	if err := st.AppendCoverage(store.Coverage{
-		Type: "coverage", SchemaVersion: 2, SessionID: id, Phase: store.PhaseStart,
-		RecordedAtMS: at.Add(-time.Minute).UnixMilli(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	rep, err := Build(st, id, at.Add(time.Hour), WithNonoTrail(nonoFixture))
-	if err != nil {
-		t.Fatal(err)
-	}
-	n := rep.Sessions[0].Nono
-	if !n.Observed || !n.WindowOpen {
-		t.Errorf("observed=%v window_open=%v, want true, true (%s)", n.Observed, n.WindowOpen, n.Reason)
-	}
-	var b strings.Builder
-	if err := Text(&b, rep); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(b.String(), openWindowCaveat) {
-		t.Errorf("the rendered report does not say the window has no end:\n%s", b.String())
-	}
-}
-
 // TestNono_AnUnreadableTrailSaysHowMuchItCouldNotRead: a trail of only torn
 // lines printed "not observed (nono_audit_no_records)", which reads as "nono
 // wrote nothing". The JSON carried the skipped count and the text did not.
@@ -135,7 +101,12 @@ func TestNono_AnUnreadableTrailSaysHowMuchItCouldNotRead(t *testing.T) {
 	if err := os.WriteFile(trail, []byte(`{"sequence": 0, "eve`+"\n"+`{"sequence": 1, "ev`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	obs := nono.Read(trail, nono.Window{Start: time.Unix(0, 0)})
+	f, err := os.Open(trail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	obs := nono.Observe(f, trail, nono.Window{Start: time.Unix(0, 0)})
 	n := buildNono(obs, true, false, nil, nil)
 	want := "  sandbox (nono): not observed (nono_audit_no_records; 2 trail records could not be read)\n"
 	if out := renderNono(n); out != want {

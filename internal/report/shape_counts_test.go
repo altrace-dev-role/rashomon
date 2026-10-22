@@ -26,7 +26,7 @@ func bashCall(id, program, verb string) store.Declaration {
 // program and the verb class are on every record already; before this they
 // were reachable only from --chain, one call at a time.
 func TestByProgramAndVerb(t *testing.T) {
-	sess := build(&store.Run{Declarations: []store.Declaration{
+	sess := buildFromDisk(&store.Run{Declarations: []store.Declaration{
 		bashCall("a", "git", "vcs"),
 		bashCall("b", "git", "vcs"),
 		bashCall("c", "go", "package"),
@@ -51,7 +51,7 @@ func TestByProgramAndVerb(t *testing.T) {
 // "unknown" is not a program. A reader scanning the list for what ran must
 // not meet it sitting between git and go as though it were one more command.
 func TestProgramsUnknownIsCountedApart(t *testing.T) {
-	sess := build(&store.Run{Declarations: []store.Declaration{
+	sess := buildFromDisk(&store.Run{Declarations: []store.Declaration{
 		bashCall("a", "git", "vcs"),
 		bashCall("b", "", "execute"), // would not tokenize
 	}})
@@ -74,7 +74,7 @@ func TestProgramsUnknownIsCountedApart(t *testing.T) {
 // program to miss. Counting Read or WebFetch as "unknown" would report a gap
 // where there is nothing to know.
 func TestNonShellToolsAreNotCountedAsMissingAProgram(t *testing.T) {
-	sess := build(&store.Run{Declarations: []store.Declaration{
+	sess := buildFromDisk(&store.Run{Declarations: []store.Declaration{
 		{ToolUseID: "a", ToolName: "Read", SessionID: "s", Shape: shape.Shape{VerbClass: "read"}},
 		{ToolUseID: "b", ToolName: "WebFetch", SessionID: "s", Shape: shape.Shape{VerbClass: "network"}},
 	}})
@@ -94,7 +94,7 @@ func TestNonShellToolsAreNotCountedAsMissingAProgram(t *testing.T) {
 // is true of only some of those, and asserts a fact about a line we could not
 // read.
 func TestProgramsAllUntoldSaysSo(t *testing.T) {
-	sess := build(&store.Run{Declarations: []store.Declaration{
+	sess := buildFromDisk(&store.Run{Declarations: []store.Declaration{
 		bashCall("a", "", "execute"),
 		bashCall("b", "", "execute"),
 	}})
@@ -113,7 +113,7 @@ func TestByProgramLineIsBounded(t *testing.T) {
 	for i := 0; i < 60; i++ {
 		decls = append(decls, bashCall(fmt.Sprintf("t%02d", i), fmt.Sprintf("program-%02d", i), "execute"))
 	}
-	sess := build(&store.Run{Declarations: decls})
+	sess := buildFromDisk(&store.Run{Declarations: decls})
 	if got := len(sess.Declarations.ByProgram); got != 60 {
 		t.Fatalf("premise broken: by_program has %d entries, want 60", got)
 	}

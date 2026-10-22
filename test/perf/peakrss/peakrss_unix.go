@@ -13,6 +13,14 @@ import (
 	"syscall"
 )
 
+// Reaper is a built reaper binary; Run measures a child through it. Its
+// path is unix-only: the !unix build's Reaper (peakrss_other.go) never
+// builds or runs one, since NewReaper there returns ErrUnavailable first.
+type Reaper struct{ path string }
+
+// reaperPkg is the reaper's import path, built by NewReaper.
+const reaperPkg = "github.com/altrace-dev-role/rashomon/test/perf/peakrss/reaper"
+
 // NewReaper builds the reaper into dir with the release flags, so its own
 // peak is the smallest a Go binary that starts a child has.
 func NewReaper(dir string) (*Reaper, error) {

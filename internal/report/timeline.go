@@ -290,7 +290,7 @@ func timelineFrom(run *store.Run, executed map[string][]store.Execution, denied 
 			call:      c,
 			digest:    effectiveDigest(d.Shape.Digest, rec),
 			pos:       outcomeSeq(rec),
-			rewritten: rec != nil && rec.ExecutedDigest != "" && rec.ExecutedDigest != d.Shape.Digest,
+			rewritten: rec != nil && rec.ExecutedDigest != "" && rec.ExecutedDigest != d.Shape.Digest, // not secret (shape.digest, S1)
 			ok:        failedCallOK(c, d.Shape.Digest, executed[d.ToolUseID]),
 		})
 	}
@@ -489,7 +489,7 @@ func maskedOutcome(d store.Declaration, outcome string) string {
 // hook rewrote it -- to pipe the test output into `grep | head`, say -- and
 // the outcome is the line that ran's. A record before v4, or one that saw no
 // input, leaves the declaration's as it is. Applied once to a run as it is
-// read, before anything reads masking (report.Build, digest's build).
+// read, before anything reads masking (Assemble, digest's build).
 func MaskingAsRan(run *store.Run) {
 	if run == nil {
 		return
@@ -615,6 +615,7 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 			if tool != failed.call.ToolName && tool != LinkUnknown {
 				continue
 			}
+			// Not secret: a digest is an equality key between records, so == is right (shape.digest, S1).
 			if tool == failed.call.ToolName && digest != "" && digest != failed.digest && !programTier {
 				continue
 			}
@@ -632,6 +633,7 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 		// point at. It counts as one that cannot be ruled out, never as a match.
 		if c.Group == GroupFailed {
 			if ok := e.ok; ok != nil && (ok.pos == nil || *ok.pos > *failed.pos) {
+				// Not secret: a digest is an equality key between records, so == is right (shape.digest, S1).
 				command := failed.digest != "" && ok.digest == failed.digest
 				program := programTier && c.Program == failed.call.Program
 				if command || program {
@@ -643,6 +645,7 @@ func laterSuccess(entries []timelineEntry, i int) (*LaterSuccess, bool) {
 		if c.Group != GroupOK {
 			continue
 		}
+		// Not secret: a digest is an equality key between records, so == is right (shape.digest, S1).
 		command := failed.digest != "" && e.digest == failed.digest
 		program := !command && programTier && c.Program == failed.call.Program
 		if !command && !program {

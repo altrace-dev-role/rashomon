@@ -4,7 +4,7 @@
 # lists. Each kept its pre-filter line; these three mutants restore it.
 m("destinations drop the per-declaration forgotten-host filter", "internal/report/destinations.go",
   "DeclaredHosts:         declaredHostsFiltered(run, forgotten),\n\t\tSSHHosts:              sshDeclaredFiltered(run, forgotten),",
-  "DeclaredHosts:         declaredHosts(run),\n\t\tSSHHosts:              sshDeclared(run),",
+  "DeclaredHosts:         declaredHosts(run),\n\t\tSSHHosts:              sshDeclaredFiltered(run, nil),",
   "TestSeam_APartlyFailedForgetStillSuppressesInDestinationsFamiliesAndChains")
 m("families never exclude a forgotten host from the count", "internal/report/families.go",
   "\tif forgotten == nil {\n\t\tforgotten = func(string, int64) bool { return false }\n\t}",

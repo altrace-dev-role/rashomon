@@ -1,4 +1,4 @@
-package report
+package gather
 
 import (
 	"encoding/json"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/nono"
+	"github.com/altrace-dev-role/rashomon/internal/report"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -26,8 +27,9 @@ import (
 // not see from the function alone -- a guard one level below the actual break
 // is not a guard.
 //
-// These go through report.Build against a real recorded trail, which is the
-// only path that proves the pieces are actually joined.
+// These go through Build -- the read step and then report.Assemble -- against
+// a real recorded trail, which is the only path that proves the pieces are
+// actually joined.
 
 // TestSeam_TheNonoTrailReachesTheReport.
 //
@@ -64,7 +66,7 @@ func TestSeam_TheNonoTrailReachesTheReport(t *testing.T) {
 	}
 
 	var b strings.Builder
-	if err := Text(&b, rep); err != nil {
+	if err := report.Text(&b, rep); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), "sandbox (nono):") {
@@ -102,7 +104,7 @@ func TestSeam_NoTrailConfiguredIsSilent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	if err := Text(&b, rep); err != nil {
+	if err := report.Text(&b, rep); err != nil {
 		t.Fatal(err)
 	}
 	// SILENT, and that is the corrected rule. H-28 asserts a healthy run shows
@@ -143,13 +145,13 @@ func seamSession(t *testing.T) (*store.Store, string, time.Time) {
 	return st, id, now
 }
 
-const nonoFixture = "../../test/fixtures/nono/audit-events.ndjson"
+const nonoFixture = "../../../test/fixtures/nono/audit-events.ndjson"
 
 // firstNonoEvent reads the fixture's earliest instant, so a window can be
 // built around data rather than around the clock.
 func firstNonoEvent(t *testing.T) time.Time {
 	t.Helper()
-	obs := nono.Read(nonoFixture, nono.Window{Start: time.Unix(0, 0)})
+	obs := readNono(nonoFixture, nono.Window{Start: time.Unix(0, 0)})
 	if !obs.Observed || len(obs.Events) == 0 {
 		t.Fatalf("premise: the nono fixture yields no events (%s)", obs.Reason)
 	}
@@ -263,7 +265,7 @@ func TestSeam_AForgottenHostDoesNotReturnUnderTheSandboxHeading(t *testing.T) {
 	}
 
 	var b strings.Builder
-	if err := Text(&b, rep); err != nil {
+	if err := report.Text(&b, rep); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(b.String(), "pypi.org") {
@@ -324,7 +326,7 @@ func TestSeam_AHostOnlyTheSandboxSawCanBeForgotten(t *testing.T) {
 				t.Fatal(err)
 			}
 			var b strings.Builder
-			if err := Text(&b, rep); err != nil {
+			if err := report.Text(&b, rep); err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(b.String(), "sandbox (nono):") {
@@ -388,6 +390,10 @@ func TestSeam_TheMCPTransportReachesTheSandboxSection(t *testing.T) {
 	}
 }
 
+// mcpProxyHost is the MCP transport, the one client-plane host a session's
+// mcp__* calls make the agent's (report's mcpProxyHost).
+const mcpProxyHost = "mcp-proxy.anthropic.com"
+
 // ev builds one nono network record.
 func ev(seq int, ms int64, mode, decision, target string, port int) string {
 	return fmt.Sprintf(
@@ -421,7 +427,7 @@ func TestSeam_AnySpellingOfAForgottenHostLeavesTheSandboxSection(t *testing.T) {
 				t.Fatal(err)
 			}
 			var b strings.Builder
-			if err := Text(&b, rep); err != nil {
+			if err := report.Text(&b, rep); err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(b.String(), "sandbox (nono):") {
@@ -488,7 +494,7 @@ func TestSeam_AClientPlaneHostAToolCallNamedIsTheAgents(t *testing.T) {
 						"agent's column: allowed %v, denied %v", decision, h, n.Allowed, n.Denied)
 				}
 				var b strings.Builder
-				if err := Text(&b, rep); err != nil {
+				if err := report.Text(&b, rep); err != nil {
 					t.Fatal(err)
 				}
 				if !strings.Contains(b.String(), want) {
@@ -519,7 +525,7 @@ func TestSeam_TheClientsOwnTrafficSaysWhatTheSandboxDid(t *testing.T) {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	if err := Text(&b, rep); err != nil {
+	if err := report.Text(&b, rep); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
@@ -546,10 +552,15 @@ func TestSeam_TheClientsOwnTrafficSaysWhatTheSandboxDid(t *testing.T) {
 // millisecond later than the one before, so the trail reader's own ordering
 // (by time, then host) keeps them reversed, and only the sort can put them
 // back.
+//
+// The hosts are report's client-plane list, spelled out here because the list
+// is unexported and this test is on the far side of the read step. A host the
+// list loses moves to the agent's column and fails the comparison; a host it
+// gains is not needed to show the order.
 func TestSeam_TheClientsOwnTrafficIsListedInOrder(t *testing.T) {
-	var hosts []string
-	for h := range clientPlaneHosts {
-		hosts = append(hosts, h)
+	hosts := []string{
+		"api.anthropic.com", "statsig.anthropic.com", "statsig.com", "sentry.io",
+		mcpProxyHost, "http-intake.logs.us5.datadoghq.com",
 	}
 	slices.Sort(hosts)
 	want := fmt.Sprint(hosts)
@@ -573,6 +584,16 @@ func TestSeam_TheClientsOwnTrafficIsListedInOrder(t *testing.T) {
 			t.Fatalf("run %d: client_plane_allowed = %s, want %s", i, got, want)
 		}
 	}
+}
+
+// familyByName finds one family in a session's family coverage.
+func familyByName(fc report.FamilyCoverage, name string) (report.Family, bool) {
+	for _, f := range fc.Families {
+		if f.Name == name {
+			return f, true
+		}
+	}
+	return report.Family{}, false
 }
 
 // TestSeam_APartlyFailedForgetStillSuppressesInDestinationsFamiliesAndChains:
@@ -723,7 +744,7 @@ func TestSeam_APartlyFailedForgetStillSuppressesInDestinationsFamiliesAndChains(
 // otherwise also canonicalise-and-match it via host.Same and mask this bug.
 // toolUseID and hosts/sshHosts are mutually exclusive: exactly one of hosts
 // or sshHosts is non-empty, naming the field the fixture populates.
-func legacySpellingOutlivesAForget(t *testing.T, id, toolUseID string, hosts, sshHosts []string, canonical string) *Report {
+func legacySpellingOutlivesAForget(t *testing.T, id, toolUseID string, hosts, sshHosts []string, canonical string) *report.Report {
 	t.Helper()
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("a file mode does not stop this process here")
@@ -833,7 +854,7 @@ func TestRubricLLD11b_ForgetFindsAnSSHDeclarationStoredInALegacySpelling(t *test
 
 // nonoJSON is the sandbox section of the first session as its JSON reader
 // sees it.
-func nonoJSON(t *testing.T, rep *Report) map[string]any {
+func nonoJSON(t *testing.T, rep *report.Report) map[string]any {
 	t.Helper()
 	raw, err := json.Marshal(rep.Sessions[0].Nono)
 	if err != nil {

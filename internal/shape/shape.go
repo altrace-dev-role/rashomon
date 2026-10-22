@@ -265,6 +265,14 @@ func commandField(raw json.RawMessage) (string, bool) {
 // whole: []byte(body) would copy the whole command line, 8 MiB at the payload
 // cap, to hash it once (RES-9's memory test counts that copy). A body that
 // fits is copied once, as the conversion did.
+//
+// A digest is not a secret and authenticates nothing, which is why the report
+// compares digests with == rather than hmac.Equal (S1 review, 2026-10-13). The
+// key hides a command's text from whoever reads the store; the digest itself
+// is an equality key between two records of the same install, both already
+// in the reader's hands. No comparison of two digests decides access, and a
+// timing difference could tell its observer only whether two records it has
+// already read match -- which the comparison's result tells it anyway.
 func digest(key []byte, toolName, body string) string {
 	m := hmac.New(sha256.New, key)
 	m.Write([]byte(toolName))

@@ -34,25 +34,6 @@ func TestBuildTurnCoverage_NeverAddsRunNotClosed(t *testing.T) {
 	}
 }
 
-// TestBuildTurnCoverage_BreakOnSessionCoverageAddsRunNotClosed demonstrates
-// the break H-84 names: projecting SESSION coverage (report.build's own
-// rule) onto an open run adds run_not_closed to every healthy turn.
-func TestBuildTurnCoverage_BreakOnSessionCoverageAddsRunNotClosed(t *testing.T) {
-	run := &store.Run{Coverage: []store.Coverage{startCoverage("inst-1")}}
-	facts := report.RollupCoverage(run.Coverage)
-	if facts.EndRecorded {
-		t.Fatal("premise: no PhaseEnd record was written")
-	}
-	// This is exactly what report.build does with that fact; digest must not.
-	var reasons []string
-	if !facts.EndRecorded {
-		reasons = append(reasons, report.ReasonRunNotClosed)
-	}
-	if len(reasons) == 0 {
-		t.Fatal("premise: the session-coverage rule adds run_not_closed here")
-	}
-}
-
 // TestBuildTurnCoverage_GapIntersectingTheWindowIsAReason.
 func TestBuildTurnCoverage_GapIntersectingTheWindowIsAReason(t *testing.T) {
 	run := &store.Run{

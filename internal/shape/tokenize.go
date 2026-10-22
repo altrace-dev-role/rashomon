@@ -63,27 +63,6 @@ func boundedTo(toks []token, err error, limit int) ([]token, error) {
 	return toks, err
 }
 
-// tokenize splits a command line the way a POSIX shell would split it, as far
-// as quoting and metacharacters go. It does not expand anything: no variables,
-// no globs, no command substitution. Expansion would mean evaluating the input,
-// and the count of tokens before expansion is both well defined and the only
-// count obtainable without running anything.
-//
-// Argument count is over the whole line, so a pipeline counts its operators and
-// every stage. `ls | wc -l` is four tokens. The first token is the program,
-// which is why unquoted metacharacters have to break a token: without that,
-// `ls|wc` would name a program that does not exist.
-//
-// On an unterminated quote it returns the tokens completed so far along with
-// the error, so a caller can still name the program of a line it could not
-// finish counting. The token the quote interrupted is not one of them: it was
-// never completed, and for a double quote emitting it would carry bytes from
-// inside the quoted string out to the program name.
-func tokenize(s string) ([]string, error) {
-	toks, _, err := tokenizeMarked(s)
-	return toks, err
-}
-
 // token is one word or operator of a command line as the tokenizer saw it.
 //
 // Each field is something the text alone cannot tell. meta: a QUOTED `;` and
@@ -182,22 +161,34 @@ func (w *word) string(s string) string {
 	return s[w.from:w.to]
 }
 
-// tokenizeMarked is tokenize plus one bit per token: whether the tokenizer
-// emitted it for an unquoted metacharacter.
+// tokenizeMarkedTo splits a command line the way a POSIX shell would split it,
+// as far as quoting and metacharacters go, and returns one bit per token:
+// whether the tokenizer emitted it for an unquoted metacharacter. It does not
+// expand anything: no variables, no globs, no command substitution. Expansion
+// would mean evaluating the input, and the count of tokens before expansion is
+// both well defined and the only count obtainable without running anything.
+//
+// Argument count is over the whole line, so a pipeline counts its operators and
+// every stage. `ls | wc -l` is four tokens. The first token is the program,
+// which is why unquoted metacharacters have to break a token: without that,
+// `ls|wc` would name a program that does not exist.
+//
+// On an unterminated quote it returns the tokens completed so far along with
+// the error, so a caller can still name the program of a line it could not
+// finish counting. The token the quote interrupted is not one of them: it was
+// never completed, and for a double quote emitting it would carry bytes from
+// inside the quoted string out to the program name.
 //
 // The bit cannot be recovered from the token text afterwards. A quoted ';' and
 // an operator ';' are the same two bytes, so a reader that re-derives the
 // answer by looking at the string treats `echo ';' ssh host` as though a new
 // command began, and reads ssh as a program that was never run. Only the
 // tokenizer knows which it saw, so only the tokenizer can say.
-func tokenizeMarked(s string) ([]string, []bool, error) {
-	return tokenizeMarkedTo(s, maxTokens)
-}
-
-// tokenizeMarkedTo is tokenizeMarked lexing no more than limit tokens, for a
-// reader whose budget is shared across lines and has less than maxTokens left
-// for this one (sshCommandHosts). A line that goes on past limit ends in
-// errTokenBound, as one past maxTokens does.
+//
+// It lexes no more than limit tokens, at most maxTokens: a reader's budget is
+// shared across lines and may have less than maxTokens left for this one
+// (sshCommandHosts). A line that goes on past limit ends in errTokenBound, as
+// one past maxTokens does.
 func tokenizeMarkedTo(s string, limit int) ([]string, []bool, error) {
 	ts, err := lexTo(joined{s: s}, false, false, limit)
 	ts, err = boundedTo(ts, err, limit)
@@ -209,7 +200,7 @@ func tokenizeMarkedTo(s string, limit int) ([]string, []bool, error) {
 	return toks, meta, err
 }
 
-// tokenizeShape splits a command line as tokenize does and reports, per
+// tokenizeShape splits a command line as tokenizeMarkedTo does and reports, per
 // token, what the text cannot: see token.
 func tokenizeShape(s string) ([]token, error) {
 	return bounded(lex(joined{s: s}, false, false))

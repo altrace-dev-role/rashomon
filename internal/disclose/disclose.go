@@ -330,17 +330,31 @@ func defaultFiles() []FileRule {
 			Owner:      "recap",
 		},
 		{
-			// writeState writes this file by temp-then-rename beside
-			// recap.json itself (internal/recap/state.go), not under the
-			// store's runs/ tree, so it is a root-level sibling like
-			// recap.json rather than a run-segment pattern.
+			// writeState writes recap.json by temp-then-rename beside it
+			// (internal/recap/state.go), one uniquely named temp file per
+			// write, not under the store's runs/ tree, so it is a
+			// root-level sibling like recap.json rather than a run-segment
+			// pattern.
 			Base:       "",
-			Pattern:    recap.StateFileName + ".tmp",
+			Pattern:    recap.StateTempPrefix + "*",
 			Mode:       "0600",
 			Purpose:    "recap.json's own temp-then-rename write target; present only for the instant between the write and the rename, or after a crash in between",
 			Holds:      "the same fields recap.json holds",
 			NeverHolds: "a tool call's content",
-			RemovedBy:  "the next successful recap write (renamed over); purge",
+			RemovedBy:  "the write that made it (renamed over recap.json); the next recap write, once it is a minute old; purge",
+			Owner:      "recap",
+		},
+		{
+			// recap.StateTempName: the one shared temp name builds through
+			// v1.1.0 wrote, which a store written by one of them may still
+			// hold. Nothing writes it now.
+			Base:       "",
+			Pattern:    recap.StateTempName,
+			Mode:       "0600",
+			Purpose:    "recap.json's temp-then-rename write target in builds through v1.1.0; present only after such a build crashed between the write and the rename",
+			Holds:      "the same fields recap.json holds",
+			NeverHolds: "a tool call's content",
+			RemovedBy:  "purge",
 			Owner:      "recap",
 		},
 		{

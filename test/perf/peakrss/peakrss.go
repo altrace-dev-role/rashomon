@@ -47,12 +47,6 @@ var ErrUnavailable = errors.New("peak RSS is not reported on this platform")
 // be attributed, never a guess about ones that have not run yet).
 var ErrBelowFloor = errors.New("peakrss: the child's reading does not exceed the reaper's own floor here")
 
-// Reaper is a built reaper binary; Run measures a child through it.
-type Reaper struct{ path string }
-
-// reaperPkg is the reaper's import path, built by NewReaper.
-const reaperPkg = "github.com/altrace-dev-role/rashomon/test/perf/peakrss/reaper"
-
 // fromMaxrss converts ru_maxrss to MiB: darwin and ios report bytes, every
 // other Unix reports KiB (getrusage(2) on each).
 func fromMaxrss(maxrss int64, goos string) float64 {

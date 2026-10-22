@@ -13,15 +13,18 @@
 // prompt_id ALONE, and counts subagent calls separately rather than folding
 // them in unmarked -- see Subagents.
 //
-// It is read-only in a way report.Build is not: it opens the store with
+// It is read-only in a way gather.Build is not: it opens the store with
 // store.OpenExisting, never store.Open, so asking for a digest cannot mint an
 // install identity on a machine that has recorded nothing; it never globs a
-// subagent's transcript file, and never writes baseline/. It also never opens the SESSION's own transcript file --
-// report's Account and buildSilentFailures read that for the final assistant
-// message, and that read is both session-wide (wrong scope for a turn) and
-// racy at Stop (the file may not hold the final line yet). A digest's final
-// message, when it has one, is handed in by its caller -- see
-// report.AccountFromMessage.
+// subagent's transcript file, and never writes baseline/. It also never opens
+// the SESSION's own transcript file -- report's Account and
+// BuildSilentFailures read that for the final assistant message, and that read
+// is both session-wide (wrong scope for a turn) and racy at Stop (the file may
+// not hold the final line yet). A digest's final message, when it has one, is
+// handed in by its caller -- see report.AccountFromMessage. That holds by
+// construction, not by convention: opening a transcript is the read step's
+// (internal/report/gather), and nothing this package links reaches it
+// (TestRubricHLD4_TheVerdictPackagesLinkNoReadStep).
 //
 // It carries no new content. Every field here is a projection of something
 // the recorder already wrote; see the spec's Non-goals.
@@ -219,8 +222,9 @@ type Digest struct {
 // readLockBudget bounds how long ReadRunConsistent may wait for writers'
 // locks: one deadline for the whole read of a run's three files, not a wait
 // per file. It is NOT store.lockBudget (2s): that number is what a WRITER
-// may cost another writer, and a reader borrowing it could spend the whole
-// 50ms budget this command owes, and more, waiting on one lock.
+// may cost another writer, and a reader borrowing it could wait longer on
+// one lock than Build takes to read a whole 20,000-call session (about
+// 300 ms, BenchmarkBuild on an Apple M3).
 //
 // It is derived from what a writer holds the lock for, measured by
 // store.BenchmarkOrderedAppendHold on the reference machine (Apple M3, three

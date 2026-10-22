@@ -1,6 +1,7 @@
 package jsonscan
 
 import (
+	"fmt"
 	"unicode/utf16"
 	"unicode/utf8"
 )
@@ -158,11 +159,11 @@ func (c *capture) init(s *streamer, idx int, p Path) error {
 	case CaptureHead, CaptureTail, CaptureHeadTail, CapturePresence:
 	case CaptureLines:
 		if p.Max < utf8.UTFMax {
-			return ErrPaths
+			return fmt.Errorf("%w: a CaptureLines path's Max (%d) must be at least %d, to hold one rune", ErrPaths, p.Max, utf8.UTFMax)
 		}
 		c.lines.fn = func(line []byte, more bool) bool { return c.deliver(line, more) }
 	default:
-		return ErrPaths
+		return fmt.Errorf("%w: capture mode %d is not set or not a mode Stream knows", ErrPaths, p.Mode)
 	}
 	return nil
 }

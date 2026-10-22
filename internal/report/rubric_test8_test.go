@@ -41,7 +41,7 @@ func TestRubricTEST8_TranscriptLineAtNAndNPlusOne(t *testing.T) {
 			t.Fatal(err)
 		}
 		ids := map[string]bool{}
-		long, err := collectIDs(path, ids, map[string]bool{}, map[string]bool{}, map[string]bool{})
+		long, err := collectIDs(openT(t, path), ids, map[string]bool{}, map[string]bool{}, map[string]bool{})
 		wantLong := 0
 		if !tc.read {
 			wantLong = 1

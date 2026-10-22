@@ -155,7 +155,7 @@ func TestStreamDepthMatchesEncodingJSON(t *testing.T) {
 
 func TestStreamStopsWhenTheCallbackSaysSo(t *testing.T) {
 	n := 0
-	_, err := Stream(strings.NewReader(`{"a":"1","a":"2"} garbage`), []Path{{Elems: []string{"a"}, Max: 4}},
+	_, err := Stream(strings.NewReader(`{"a":"1","a":"2"} garbage`), []Path{{Elems: []string{"a"}, Max: 4, Mode: CaptureHead}},
 		func(int, []byte, bool) bool { n++; return false })
 	if err != nil || n != 1 {
 		t.Fatalf("n=%d err=%v", n, err)
