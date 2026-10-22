@@ -29,12 +29,48 @@ import (
 // writing here, and the report counts those declarations at read time --
 // from the store's unattributed run, with no new record type or field.
 //
+// The host guard (BRD-4) now runs first, and it stands Cursor's documented
+// payloads down before capture -- conversation_id with generation_id, or
+// cursor_version, is Cursor's marker -- so they record nothing at all and
+// are counted in harness_counts.json, not here. What still reaches this path
+// is a payload the guard admits as Claude Code's that names no session. No
+// documented harness sends one; the rule holds anyway, because the ok/failed
+// pairing it refuses to assume was measured on payloads that name their
+// session, and a payload that does not is not one of those.
+//
 // Break: drop the guard and a sessionless PostToolUse is recorded as ok.
+
+// sessionlessToolPayload is a PreToolUse or PostToolUse body in Claude
+// Code's field names with no session_id key: the shape the host guard admits
+// as Claude Code's (the acceptance env runs as its CLI entrypoint) and the
+// post path's guard then refuses to record an outcome for.
+func sessionlessToolPayload(t *testing.T, event, toolUseID string) string {
+	t.Helper()
+	body := map[string]any{
+		"hook_event_name": event,
+		"cwd":             "/tmp/project",
+		"permission_mode": "default",
+		"tool_name":       "Bash",
+		"tool_input":      map[string]any{"command": "go test ./..."},
+		"tool_use_id":     toolUseID,
+	}
+	if event == "PostToolUse" {
+		// A failed command. The response is never read for an outcome -- the
+		// post payload declares no field for it -- so nothing in it could
+		// tell this program the call failed.
+		body["tool_response"] = map[string]any{"stdout": "FAIL\tgithub.com/example/project\t0.012s"}
+	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
 
 // cursorToolPayload is a PreToolUse or PostToolUse body shaped the way the
 // release spec reads Cursor's hook documentation: conversation_id and
 // generation_id where Claude Code sends session_id. Every other field is
-// illustrative; what the test depends on is that no session_id key exists.
+// illustrative. The host guard stands it down before capture.
 func cursorToolPayload(t *testing.T, event, toolUseID string) string {
 	t.Helper()
 	body := map[string]any{
@@ -47,11 +83,7 @@ func cursorToolPayload(t *testing.T, event, toolUseID string) string {
 		"workspace_roots": []string{"/tmp/project"},
 	}
 	if event == "PostToolUse" {
-		// A failed command, in the one form a Cursor failure could take here
-		// if it reaches this path at all: PostToolUse, the only post event in
-		// Cursor's documented mapping. The output is never read here -- the
-		// post payload declares no field for it -- so nothing in it could
-		// have told this program the call failed.
+		// PostToolUse is the only post event in Cursor's documented mapping.
 		body["tool_output"] = "FAIL\tgithub.com/example/project\t0.012s"
 	}
 	b, err := json.Marshal(body)
@@ -92,7 +124,7 @@ func callsWithoutSessionID(t *testing.T, e *env, args ...string) int {
 
 const unattributedRun = "unattributed"
 
-func TestH108_ACursorShapedCallWritesNoExecutionAndIsCounted(t *testing.T) {
+func TestH108_ASessionlessCallWritesNoExecutionAndIsCounted(t *testing.T) {
 	e := newEnv(t)
 	// A Claude Code session on the same machine, so the count is shown to be
 	// store-wide and the session beside it untouched.
@@ -105,7 +137,7 @@ func TestH108_ACursorShapedCallWritesNoExecutionAndIsCounted(t *testing.T) {
 		if event == "PostToolUse" {
 			run = e.post
 		}
-		res := run(cursorToolPayload(t, event, "toolu_cursor_1"))
+		res := run(sessionlessToolPayload(t, event, "toolu_sessionless_1"))
 		if res.exitCode != 0 {
 			t.Fatalf("%s: exit %d, want 0 -- a recorder never blocks the agent", event, res.exitCode)
 		}
@@ -117,7 +149,7 @@ func TestH108_ACursorShapedCallWritesNoExecutionAndIsCounted(t *testing.T) {
 	// No execution record, never ok: not in the unattributed bucket and not
 	// anywhere else. The Claude Code session's own execution is the one.
 	for _, x := range e.executionsInEveryRun() {
-		if x.str("tool_use_id") == "toolu_cursor_1" || x.str("session_id") != testSession {
+		if x.str("tool_use_id") == "toolu_sessionless_1" || x.str("session_id") != testSession {
 			t.Errorf("an execution was recorded for a payload that named no session: %s", x.raw)
 		}
 	}
@@ -127,8 +159,8 @@ func TestH108_ACursorShapedCallWritesNoExecutionAndIsCounted(t *testing.T) {
 
 	// The declaration stays, in the unattributed bucket, as the evidence.
 	decls := e.declarations(unattributedRun)
-	if len(decls) != 1 || decls[0].str("tool_use_id") != "toolu_cursor_1" {
-		t.Fatalf("unattributed declarations = %v, want the Cursor call's one", decls)
+	if len(decls) != 1 || decls[0].str("tool_use_id") != "toolu_sessionless_1" {
+		t.Fatalf("unattributed declarations = %v, want the sessionless call's one", decls)
 	}
 	// And the post invocation is not silent: its coverage record says it ran.
 	if got := len(e.coverage(unattributedRun, "post")); got != 1 {
@@ -164,21 +196,27 @@ func TestH108_ACursorShapedCallWritesNoExecutionAndIsCounted(t *testing.T) {
 	}
 
 	// And the turn's recap names the reason rather than another session.
-	line, ok := e.recapLine(cursorStopPayload())
+	line, ok := e.recapLine(stopPayload("", "Ran it.", false))
 	if !ok || !strings.Contains(line, "no_session_id") {
-		t.Errorf("the Cursor turn's recap printed %q (spoke: %v), want no_session_id", line, ok)
+		t.Errorf("the sessionless turn's recap printed %q (spoke: %v), want no_session_id", line, ok)
 	}
 }
 
-// TestH108_ACodexShapedCallIsRecordedOK pins a KNOWN GAP, deliberately.
+// TestH108_ACodexShapedCallIsRecordedOK pins a KNOWN GAP, deliberately, and
+// pins how far the host guard has narrowed it.
 //
 // A Codex-shaped payload, as the release spec describes Codex's hooks --
 // nobody has run Codex against this recorder either -- carries a session_id
-// and Claude Code's own field names, and nothing in the command line marks
-// which harness ran it: the only installer is watch, which writes Claude
-// Code's entries, and a Codex hook is wired by hand with no flag of its own.
-// So this payload is indistinguishable from a Claude Code PostToolUse, and it
-// is recorded exactly like one -- outcome ok. If Codex reports a failed call
+// and Claude Code's own field names. Codex documents turn_id on its tool
+// events, and a payload carrying it (or model, off SessionStart) is Codex's
+// to the host guard (BRD-4), which stands it down before capture: no
+// declaration, no execution, nothing to count. That half is asserted first.
+//
+// The gap is the payload carrying neither marker. Nothing in the command
+// line marks which harness ran it: the only installer is watch, which writes
+// Claude Code's entries, and a Codex hook is wired by hand with no flag of
+// its own. So that payload is indistinguishable from a Claude Code
+// PostToolUse, and it is recorded exactly like one -- outcome ok. If Codex reports a failed call
 // on PostToolUse, that failure lands here as ok, and no field this program
 // reads could say otherwise: tool_response is output, and the post payload
 // deliberately declares no field for it.
@@ -190,9 +228,9 @@ func TestH108_ACursorShapedCallWritesNoExecutionAndIsCounted(t *testing.T) {
 // whose failure event it has not measured. Until one exists, the README is
 // the only place this gap is covered.
 //
-// When that adapter lands, this test is expected to change: the assertion
-// below moves from outcome ok to no execution record, the way H-108's Cursor
-// case already reads.
+// When that adapter lands, this test is expected to change: the unmarked
+// payload's assertion moves from outcome ok to no execution record, the way
+// the marked one already reads.
 func TestH108_ACodexShapedCallIsRecordedOK(t *testing.T) {
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
@@ -200,7 +238,7 @@ func TestH108_ACodexShapedCallIsRecordedOK(t *testing.T) {
 	}
 
 	const codexSession = "019a2b3c-4d5e-7f60-8a9b-codex0session"
-	payload := func(event string) string {
+	payload := func(event string, marked bool) string {
 		body := map[string]any{
 			"session_id":      codexSession,
 			"transcript_path": "/tmp/codex/rollout.jsonl",
@@ -209,10 +247,12 @@ func TestH108_ACodexShapedCallIsRecordedOK(t *testing.T) {
 			"tool_name":       "Bash",
 			"tool_input":      map[string]any{"command": "go test ./..."},
 			"tool_use_id":     "call_codex_1",
-			// Keys Claude Code does not send, illustrative of a second
-			// harness's additions. Unknown keys, discarded unread.
-			"turn_id": "turn-1",
-			"model":   "gpt-5-codex",
+		}
+		if marked {
+			// The keys Codex documents and Claude Code does not send on a
+			// tool event: the host guard's evidence that this is Codex.
+			body["turn_id"] = "turn-1"
+			body["model"] = "gpt-5-codex"
 		}
 		if event == "PostToolUse" {
 			body["tool_response"] = map[string]any{"exit_code": 1, "output": "FAIL"}
@@ -225,11 +265,23 @@ func TestH108_ACodexShapedCallIsRecordedOK(t *testing.T) {
 	}
 	// Invoked with no flag at all: the hand-wired shape, which is also how an
 	// entry written before --install existed arrives.
-	for _, c := range []struct{ sub, event string }{{"hook", "PreToolUse"}, {"post", "PostToolUse"}} {
-		if res := e.run(payload(c.event), nil, c.sub); res.exitCode != 0 || res.stdout != "" {
-			t.Fatalf("%s: exit %d, stdout %q", c.sub, res.exitCode, res.stdout)
+	call := func(marked bool) {
+		t.Helper()
+		for _, c := range []struct{ sub, event string }{{"hook", "PreToolUse"}, {"post", "PostToolUse"}} {
+			if res := e.run(payload(c.event, marked), nil, c.sub); res.exitCode != 0 || res.stdout != "" {
+				t.Fatalf("%s: exit %d, stdout %q", c.sub, res.exitCode, res.stdout)
+			}
 		}
 	}
+
+	// The documented shape stands down: nothing recorded, so no outcome.
+	call(true)
+	if got := len(e.runDirs()); got != 0 {
+		t.Fatalf("a Codex payload carrying turn_id and model left %d run(s); the host guard "+
+			"stands it down before capture", got)
+	}
+
+	call(false)
 
 	// THE GAP, pinned: one execution, outcome ok, whatever the call did.
 	execs := e.executions(codexSession)
@@ -300,7 +352,12 @@ func cursorSessionPayload(t *testing.T, event string) string {
 // zero over something this program did not watch is the one number it
 // exists never to print.
 //
-// Break: record a start or end that names a conversation, and the
+// The host guard (BRD-4) now stands the whole conversation down -- start,
+// calls and end all carry Cursor's marker -- so the store holds nothing for
+// it: no session, and no unattributed calls either. The stand-downs are
+// counted in harness_counts.json, which BRD-4's own tests pin.
+//
+// Break: let a Cursor-shaped start or end through the guard, and the
 // conversation appears as a verified session with zero calls.
 func TestH108_ACursorConversationIsNotACleanEmptySession(t *testing.T) {
 	e := newEnv(t)
@@ -323,14 +380,11 @@ func TestH108_ACursorConversationIsNotACleanEmptySession(t *testing.T) {
 	}
 	probe("end", "sessionEnd")
 
-	for _, dir := range e.runDirs() {
-		if dir == cursorConversation {
-			t.Errorf("a run exists for conversation %s, which no call was recorded under", cursorConversation)
-		}
+	if dirs := e.runDirs(); len(dirs) != 0 {
+		t.Errorf("runs = %v, want none: every part of the conversation stands down", dirs)
 	}
 
-	// The whole report holds the unattributed calls and nothing else: no
-	// session for the conversation, clean or otherwise.
+	// No session for the conversation, clean or otherwise.
 	doc := reportJSON(t, e, nil)
 	sessions, _ := doc["sessions"].([]any)
 	var names []string
@@ -338,30 +392,31 @@ func TestH108_ACursorConversationIsNotACleanEmptySession(t *testing.T) {
 		id, _ := s.(map[string]any)["session_id"].(string)
 		names = append(names, id)
 	}
-	if strings.Join(names, ",") != unattributedRun {
-		t.Errorf("sessions = %v, want only %q: the conversation must not render as a session "+
-			"of its own", names, unattributedRun)
+	if len(names) != 0 {
+		t.Errorf("sessions = %v, want none: the conversation must not render as a session", names)
 	}
-	if got := callsWithoutSessionID(t, e); got != 2 {
-		t.Errorf("calls_without_session_id = %d, want the conversation's 2", got)
+	if got := callsWithoutSessionID(t, e); got != 0 {
+		t.Errorf("calls_without_session_id = %d, want 0: a call that stood down was never recorded", got)
 	}
 	if text := e.run("", nil, "report").stdout; strings.Contains(text, "session "+cursorConversation) {
 		t.Errorf("the text report renders the conversation as a session:\n%s", text)
 	}
 }
 
-// TestH108_AClaudeCodeSessionStillRecordsItsStartAndEnd pins the assumption
-// the rule above rests on: Claude Code sends no conversation_id today.
+// TestH108_AClaudeCodeSessionStillRecordsItsStartAndEnd pins the other side
+// of the stand-down above: the guard's markers are ones Claude Code does not
+// send, and SessionStart's model is not Codex's marker.
 //
 // The payloads are Claude Code's SessionStart and SessionEnd with the fields
 // its hooks documentation (code.claude.com/docs/en/hooks) lists for them --
 // documented, not captured -- and they must still record the start and the
 // end. This cannot notice Claude Code changing on its own; nothing here runs
-// Claude Code. What it does is make the assumption a fixture: a rule that
-// grows past conversation_id goes red here, and if Claude Code ever
-// documents a conversation_id on these events, adding it to this fixture
-// turns this red -- the moment to replace the rule with a harness marker in
-// the installed command line, the flag the Codex gap above needs too.
+// Claude Code. What it does is make the assumption a fixture: a marker rule
+// that grows past what Claude Code documents goes red here, and if Claude
+// Code ever documents a marker field on these events, adding it to this
+// fixture turns this red -- the moment to replace payload markers with a
+// harness marker in the installed command line, the flag the Codex gap
+// above needs too.
 func TestH108_AClaudeCodeSessionStillRecordsItsStartAndEnd(t *testing.T) {
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
