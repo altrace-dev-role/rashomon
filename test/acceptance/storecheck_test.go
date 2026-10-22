@@ -200,8 +200,9 @@ func recordProblems(where string, fields map[string]any, spec storeFile) []strin
 // with the reader. Both terms hold today: store.Accepts is what the reader
 // applies to every record (classifyRunLine), and store.AcceptsKind is the
 // per-kind contract, under which coverage and gaps stop at
-// SessionSchemaVersion. When P-11 switches the reader to AcceptsKind and
-// retires Accepts, the first term goes with it.
+// SessionSchemaVersion. No kind's version is past the 5 Accepts reads, so
+// the first term decides nothing until one is. When P-11 switches the reader
+// to AcceptsKind and retires Accepts, the first term goes with it.
 func readable(kind string, version int) bool {
 	return store.Accepts(version) && store.AcceptsKind(kind, version)
 }

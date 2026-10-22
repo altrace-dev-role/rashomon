@@ -20,7 +20,7 @@ m("test-1  argc counts one fewer word than the line has", "internal/shape/shape.
   "\t\tn := len(dropLeadingAssignments(toks)) - 1\n", "TestRubricTEST1_")
 m("test-1  the shape digest is written in upper case", "internal/shape/shape.go",
   "\t\tbody = body[n:]\n\t}\n\treturn hex.EncodeToString(m.Sum(nil))\n",
-  "\t\tbody = body[n:]\n\t}\n\treturn strings.ToUpper(hex.EncodeToString(m.Sum(nil)))\n", "TestRubricTEST1_")
+  "\t\tbody = body[n:]\n\t}\n\tout := []byte(hex.EncodeToString(m.Sum(nil)))\n\tfor i, c := range out {\n\t\tif c >= 'a' {\n\t\t\tout[i] = c - 'a' + 'A'\n\t\t}\n\t}\n\treturn string(out)\n", "TestRubricTEST1_")
 # Round 3: the FuzzHosts property holds the hostname whitelist to the hosts a
 # command argument names, which is where hosts.go applies it; the seed
 # `ssh h.example.com!x` is what a reader without the whitelist records.
