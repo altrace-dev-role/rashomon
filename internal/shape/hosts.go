@@ -183,20 +183,12 @@ func sshCommandHosts(text string) (out []string, cut bool) {
 	for rest, budget := text, maxTokens; rest != "" && budget > 0; {
 		var line string
 		line, rest, _ = strings.Cut(rest, "\n")
-		// sshLineHosts's own lexer knows nothing of the budget shared across
-		// lines -- it always reads up to the full maxTokens -- so a line
-		// reached with almost none of the shared budget left could still
-		// cost a whole line's worth of tokenizing: about 2x the stated bound
-		// in total, measured. bytesPerToken is already how a token is priced
-		// in bytes (RES-9's own derivation); capping this line's bytes at
-		// the budget actually left caps the tokens it can cost the same way,
-		// at the price of a cut landing mid-byte on the rare line that
-		// crosses this window, no worse than the token bound already does.
-		if window := budget * bytesPerToken; len(line) > window {
-			line = line[:window]
-			cut = true
-		}
-		hosts, read, lineCut := sshLineHosts(line)
+		// The line is lexed to the budget left and no further. Lexed to the
+		// full maxTokens, a line reached with a few hundred tokens left cost
+		// a whole line's worth again: about 2x the bound over the command.
+		// Its bytes are no proxy for its tokens -- `a;` is two -- so the cap
+		// is on the tokens themselves.
+		hosts, read, lineCut := sshLineHosts(line, budget)
 		out = append(out, hosts...)
 		budget -= max(read, 1)
 		// strings.TrimSpace(rest), not rest != "": a remainder of pure
@@ -210,8 +202,8 @@ func sshCommandHosts(text string) (out []string, cut bool) {
 	return out, cut
 }
 
-// sshLineHosts is sshCommandHosts over one line, how many tokens it read, and
-// whether it read the line only to the token bound. Any other tokenizer error
+// sshLineHosts is sshCommandHosts over one line read to at most limit tokens,
+// how many tokens it read, and whether it read the line only to that bound. Any other tokenizer error
 // is not a cut: the tokens it completed are the line's.
 //
 // errUncertain specifically cannot reach here: tokenizeMarked calls
@@ -220,10 +212,10 @@ func sshCommandHosts(text string) (out []string, cut bool) {
 // l.docs. An unterminated quote (errUnterminated) can reach here, and is
 // correctly not a cut either -- the quote consumes to the end of the line,
 // so there is nothing after it in this line to miss.
-func sshLineHosts(line string) ([]string, int, bool) {
+func sshLineHosts(line string, limit int) ([]string, int, bool) {
 	// On a line it cannot finish, lex still returns the tokens it read before
 	// the fault, and a host among them was named all the same.
-	toks, meta, err := tokenizeMarked(line)
+	toks, meta, err := tokenizeMarkedTo(line, limit)
 
 	var out []string
 	atCommand := true

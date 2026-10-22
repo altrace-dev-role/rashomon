@@ -6,15 +6,15 @@
 m("RES-9 the token bound is lifted", "internal/shape/tokenize.go",
   "\tmaxTokens     = shapeBudget / bytesPerToken\n", "\tmaxTokens     = 1 << 30\n", "TestRES9_")
 m("RES-9 the lexer reads on past the bound", "internal/shape/tokenize.go",
-  "\t\tif len(l.toks) > maxTokens {\n\t\t\t// Past the token bound: see bounded.\n",
+  "\t\tif len(l.toks) > limit {\n\t\t\t// Past the token bound: see bounded.\n",
   "\t\tif false {\n\t\t\t// Past the token bound: see bounded.\n", "TestRES9_TokenBoundCapsShapeMemory")
 m("RES-9 the token past the bound is handed back", "internal/shape/tokenize.go",
-  "\t\treturn toks[:maxTokens], errTokenBound\n", "\t\treturn toks, errTokenBound\n", "TestRES9_LexerStopsAtTheBound")
+  "\t\treturn toks[:limit], errTokenBound\n", "\t\treturn toks, errTokenBound\n", "TestRES9_LexerStopsAtTheBound")
 m("RES-9 a line read to the bound is read as certain", "internal/shape/shape.go",
   "\tuncertain := perr == errUncertain || perr == errTokenBound\n", "\tuncertain := perr == errUncertain\n",
   "TestRES9_TokenBoundCapsShapeMemory")
 m("RES-9 the token slice is grown, not sized", "internal/shape/tokenize.go",
-  "\tl.toks = make([]token, 0, tokenEstimate(s))\n", "\tl.toks = []token(nil)\n", "TestRES9_TokenBoundCapsShapeMemory")
+  "\tl.toks = make([]token, 0, min(tokenEstimate(s), limit+1))\n", "\tl.toks = []token(nil)\n", "TestRES9_TokenBoundCapsShapeMemory")
 
 # A line read only to the bound is reported as cut, by Derive and by the ssh
 # destination reader, so a writer that can carry schema 5's shape.truncated
@@ -37,3 +37,19 @@ m("RES-9 a blank-whitespace remainder past the ssh budget is still reported as c
 m("RES-9 HostsCut drops the ssh reader's cut", "internal/shape/hosts.go",
   "\t\tnamed, cut = sshCommandHosts(text)\n", "\t\tnamed, _ = sshCommandHosts(text)\n",
   "TestRES9_HostsSayAnSSHDestinationPastTheBoundWasCut")
+
+# The ssh reader's budget is shared across a command's lines, and a line is
+# lexed to what is left of it, not to maxTokens: a line reached with a few
+# hundred tokens left lexed a whole line's worth again, about 2x the bound.
+# Lexing the line to maxTokens, letting the lexer run on to maxTokens under a
+# smaller limit, or sizing the token slice for maxTokens under one is each
+# the regression.
+m("RES-9 an ssh line is lexed to maxTokens, not the budget left", "internal/shape/hosts.go",
+  "\t\thosts, read, lineCut := sshLineHosts(line, budget)\n", "\t\thosts, read, lineCut := sshLineHosts(line, maxTokens)\n",
+  "TestRES9_")
+m("RES-9 the lexer runs on to maxTokens under a smaller limit", "internal/shape/tokenize.go",
+  "\t\tif len(l.toks) > limit {\n", "\t\tif len(l.toks) > maxTokens {\n",
+  "TestRES9_SSHLineIsLexedOnlyToTheBudgetLeft")
+m("RES-9 the token slice is sized for maxTokens under a smaller limit", "internal/shape/tokenize.go",
+  "\tl.toks = make([]token, 0, min(tokenEstimate(s), limit+1))\n", "\tl.toks = make([]token, 0, tokenEstimate(s))\n",
+  "TestRES9_SSHLineIsLexedOnlyToTheBudgetLeft")

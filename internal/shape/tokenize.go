@@ -52,8 +52,13 @@ const (
 // bounded is a lex result held to maxTokens: see errTokenBound. lex stops
 // at most one token past the bound, and this takes that one back.
 func bounded(toks []token, err error) ([]token, error) {
-	if len(toks) > maxTokens {
-		return toks[:maxTokens], errTokenBound
+	return boundedTo(toks, err, maxTokens)
+}
+
+// boundedTo is bounded for a lex held to limit tokens rather than maxTokens.
+func boundedTo(toks []token, err error, limit int) ([]token, error) {
+	if len(toks) > limit {
+		return toks[:limit], errTokenBound
 	}
 	return toks, err
 }
@@ -186,7 +191,16 @@ func (w *word) string(s string) string {
 // command began, and reads ssh as a program that was never run. Only the
 // tokenizer knows which it saw, so only the tokenizer can say.
 func tokenizeMarked(s string) ([]string, []bool, error) {
-	ts, err := tokenizeShape(s)
+	return tokenizeMarkedTo(s, maxTokens)
+}
+
+// tokenizeMarkedTo is tokenizeMarked lexing no more than limit tokens, for a
+// reader whose budget is shared across lines and has less than maxTokens left
+// for this one (sshCommandHosts). A line that goes on past limit ends in
+// errTokenBound, as one past maxTokens does.
+func tokenizeMarkedTo(s string, limit int) ([]string, []bool, error) {
+	ts, err := lexTo(joined{s: s}, false, false, limit)
+	ts, err = boundedTo(ts, err, limit)
 	toks := make([]string, len(ts))
 	meta := make([]bool, len(ts))
 	for i, t := range ts {
@@ -263,11 +277,17 @@ func tokenizeList(s string) ([]token, error) {
 // a continuation where it stands. docs selects tokenizeList's reading of
 // here-documents and comments.
 func lex(r joined, program, docs bool) ([]token, error) {
+	return lexTo(r, program, docs, maxTokens)
+}
+
+// lexTo is lex stopping one token past limit rather than past maxTokens, and
+// presizing for no more than that; limit is at most maxTokens.
+func lexTo(r joined, program, docs bool, limit int) ([]token, error) {
 	s := r.s
 	l := &lexer{s: s, r: r, program: program, docs: docs, w: newWord(), dollarAt: -1}
-	l.toks = make([]token, 0, tokenEstimate(s))
+	l.toks = make([]token, 0, min(tokenEstimate(s), limit+1))
 	for i := 0; i < len(s); i++ {
-		if len(l.toks) > maxTokens {
+		if len(l.toks) > limit {
 			// Past the token bound: see bounded.
 			return l.toks, errTokenBound
 		}

@@ -457,8 +457,7 @@ func TestSSHCommandHosts_LineBudgetIsTheRemainder(t *testing.T) {
 	// regardless of the 2 tokens of budget left, which costs about as much
 	// again as the filler line itself -- roughly doubling the total, the "2x
 	// the bound" the trailing line's own lexer has no notion of sharing.
-	// 256 KiB is generous for reading only the ~536 bytes (2 tokens'
-	// worth, bytesPerToken) the remaining budget actually allows.
+	// 256 KiB is generous for the 2 tokens the remaining budget allows.
 	if delta := int64(withTrailer) - int64(fillerOnly); delta > 256<<10 {
 		t.Errorf("a trailing 6 MB line with 2 tokens of budget left added %d KiB on top of the "+
 			"filler line's own %d KiB; want at most 256 KiB, not a full line's worth of lexing",
