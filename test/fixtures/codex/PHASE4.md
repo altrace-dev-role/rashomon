@@ -142,8 +142,8 @@ the user trusted all four in `/hooks`. Two prompts, one turn each, in session
 
 **The line appeared for the failed turn and not for the clean one.** recap's
 own bookkeeping agrees: turn `…072d33` is recorded as spoken, and `…ea5fdc`
-as checked and silent. The user saw it as a one-line warning in the TUI. Its
-exact place on screen is still to be confirmed.
+as checked and silent. The user saw it as a one-line warning in the TUI's
+chat, directly below Codex's reply.
 
 **A turn's items are in the rollout before its Stop fires.** Measured two
 ways:
@@ -176,7 +176,8 @@ of the line either.
 `~/.codex/hooks.json`, which watch had created, as H-148 requires. Codex
 left four `trusted_hash` entries in `config.toml`. The three for the entries
 unchanged since phase 4 carry the same hashes as on 2026-10-21: an identical
-entry hashes the same.
+entry hashes the same. They were then removed, with the user's approval, and
+`config.toml` is back to the version approved on 2026-10-21.
 
 The September install was not touched: binary and settings checksums
 unchanged, and no live-check run in its store.
