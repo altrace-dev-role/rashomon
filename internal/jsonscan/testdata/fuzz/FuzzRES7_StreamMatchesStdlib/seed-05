@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"a\":\"line one\\nline two that is longer than eight\\n\\nend\\n\"}")

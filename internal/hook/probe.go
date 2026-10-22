@@ -1,23 +1,13 @@
 package hook
 
 import (
-	"encoding/json"
 	"io"
 	"time"
 
+	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/safe"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
-
-// sessionPayload is the part of a SessionStart or SessionEnd payload this
-// program reads. The rest -- source, reason, cwd -- is not needed and not kept.
-type sessionPayload struct {
-	SessionID string `json:"session_id"`
-	// CWD is read now: the novelty baseline is per project and the project is
-	// derived from this path. The rest of a session payload -- source, reason
-	// -- is still not needed and not kept.
-	CWD string `json:"cwd"`
-}
 
 // RunProbe handles a SessionStart or SessionEnd invocation.
 //
@@ -35,12 +25,15 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 	cwd := ""
 
 	err := safe.Guard(func() error {
-		raw, err := readPayload(in)
+		payload, err := hookio.Intake(in)
 		if err != nil {
+			if s, c, ok := refusedSession(err); ok {
+				sessionID, cwd = s, c
+			}
 			return err
 		}
 		var p sessionPayload
-		if err := json.Unmarshal(raw, &p); err != nil {
+		if err := p.from(payload); err != nil {
 			return err
 		}
 		if p.SessionID != "" {
@@ -67,7 +60,7 @@ func RunProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 	case sig.Delivered():
 		reason = store.ReasonTerminatedBySignal
 	case err != nil:
-		reason = store.ReasonInternalError
+		reason = closeReason(err)
 	}
 
 	_ = safe.Guard(func() error {

@@ -82,11 +82,50 @@ func TestDEL7_EveryEntryHasABudgetRow(t *testing.T) {
 		}
 	}
 	for _, c := range b.RSSCases {
-		if c.BudgetMiB != round4(budget.RES28BudgetMiB(c.PayloadBytes)) {
-			t.Errorf("rss case %s: budget %v, RES-28's line gives %v", c.ID, c.BudgetMiB, round4(budget.RES28BudgetMiB(c.PayloadBytes)))
+		if want := round4(budget.RES28BudgetMiB(c.PayloadBytes, c.SlopeMiBPerMiB)); c.BudgetMiB != want {
+			t.Errorf("rss case %s: budget %v, its line gives %v", c.ID, c.BudgetMiB, want)
+		}
+		if c.SlopeMiBPerMiB != 0 && c.Basis == "" {
+			t.Errorf("rss case %s: slope %v off RES-28's line with no basis", c.ID, c.SlopeMiBPerMiB)
 		}
 		if c.GatesFrom != "P-08" && c.GatesFrom != "P-10" {
 			t.Errorf("rss case %s: gates_from %q", c.ID, c.GatesFrom)
+		}
+	}
+}
+
+// TestRES28b_EveryEntryRowIsMeasured: every entry row's peak-RSS p50 is a
+// median of nine measured on the reference machine (TestRES28b_ under the
+// perf tag), never a figure carried over from the archive; a row whose p50
+// was derived says so in its basis and fails here. The archive's derivation
+// stays in the basis after the measurement, as the record of where p95 came
+// from.
+func TestRES28b_EveryEntryRowIsMeasured(t *testing.T) {
+	for _, e := range loadBudgets(t).Entries {
+		if !strings.HasPrefix(e.Basis, "measured ") {
+			t.Errorf("entry %s: basis %q: its p50 is not a measurement", e.ID, e.Basis)
+		}
+	}
+}
+
+// TestRES28b_NoBasisWaitsOnALandedPR: a basis that still reads "until P-10"
+// on the tree that carries P-10 contradicts the measured figure beside it, as
+// post.edit_314k's did ("8 / 10 MiB until P-10" beside a measured 6.80).
+// Break: restore that basis, and this fails.
+func TestRES28b_NoBasisWaitsOnALandedPR(t *testing.T) {
+	b := loadBudgets(t)
+	bases := map[string]string{}
+	for _, e := range b.Entries {
+		bases["entry "+e.ID] = e.Basis
+	}
+	for _, c := range b.RSSCases {
+		bases["rss case "+c.ID] = c.Basis
+	}
+	for id, basis := range bases {
+		for pr := range landed {
+			if strings.Contains(basis, "until "+pr) {
+				t.Errorf("%s: basis %q waits on %s, which this tree carries", id, basis, pr)
+			}
 		}
 	}
 }
@@ -456,4 +495,33 @@ func parseNonTest(t *testing.T, fset *token.FileSet, dir string) []*ast.File {
 		t.Fatalf("%s: no Go files", dir)
 	}
 	return files
+}
+
+// TestRES28h_EveryLineHoldsOnTheReferenceMachine: every rss case records the
+// median of nine measured on the reference machine when its line was set,
+// and that figure sits at or under the line. A line that holds only through
+// the platform tolerance is not within RES-28; it is restated from the
+// measurement instead (budgets.json carries both).
+func TestRES28h_EveryLineHoldsOnTheReferenceMachine(t *testing.T) {
+	b := loadBudgets(t)
+	for _, c := range b.RSSCases {
+		if err := LineHolds(c.ID, c.MeasuredMiB, c.BudgetMiB); err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+// TestRES28h_LineHoldsTakesNoTolerance: the comparison pads nothing and
+// refuses a case with no measurement. Break: pad the line with the
+// tolerance, or let a zero measurement through, and this fails.
+func TestRES28h_LineHoldsTakesNoTolerance(t *testing.T) {
+	for _, c := range []struct {
+		measured, line float64
+		ok             bool
+	}{{9.9, 9.9, true}, {5.97, 6.5008, true}, {9.91, 9.9, false}, {10.5, 9.9, false}, {0, 9.9, false}} {
+		err := LineHolds("hook.1MiB", c.measured, c.line)
+		if (err == nil) != c.ok {
+			t.Errorf("LineHolds(%v, %v) = %v, want ok=%v", c.measured, c.line, err, c.ok)
+		}
+	}
 }
