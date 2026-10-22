@@ -376,7 +376,7 @@ func TestREC42e_SteerLogIsAPrivateSideFile(t *testing.T) {
 	if err := st.AppendSteer(session, fixed(steerLines("a"))); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(filepath.Join(st.Root(), dirRuns, session, "steer.ndjson"))
+	info, err := os.Stat(filepath.Join(st.Root(), DirRuns, session, "steer.ndjson"))
 	if err != nil {
 		t.Fatal(err)
 	}
