@@ -324,8 +324,9 @@ m("SP a tie between two main files' final words goes to the first", "internal/sp
 m("SP an earlier main file's final word beats a later one", "internal/spend/join.go",
   "t.Said && t.AtMS >= bestMS {", "t.Said && (bestMS == math.MinInt64 || t.AtMS < bestMS) {", "TestJoin_TheLastWord")
 m("SP a transcript not read to the end still gives a turn its words", "internal/report/transcript.go",
-  "\tif sc.Err() != nil {\n\t\t// A file that cannot be read to the end may hold a later reply", "\tif false {\n\t\t// A file that cannot be read to the end may hold a later reply",
-  "TestJoin_ATranscriptCut")
+  "\tif sc.Err() != nil {\n\t\t// A file that cannot be read to the end may hold a later reply",
+  "\tif false {\n\t\t// A file that cannot be read to the end may hold a later reply",
+  "TestFinalAssistantTexts_AReadErrorDropsEveryTurnsWords")
 m("SP a turn's final word carries no time", "internal/report/transcript.go",
   "\t\t\ttf.Said, tf.Text, tf.AtMS = true, text, at.UnixMilli()", "\t\t\ttf.Said, tf.Text, tf.AtMS = true, text, 0*at.UnixMilli()",
   "TestFinalAssistantTexts_ATurnIsItsPrompt")
