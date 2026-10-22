@@ -104,14 +104,14 @@ func closeReason(err error) string {
 	return store.ReasonInternalError
 }
 
-// attribute is the session a payload's id names: UnattributedSession for a
+// attribute is the session a payload's id names: store.UnattributedSession for a
 // payload that names none. An id over store.MaxIDBytes gets its own digest
-// bucket via store.CapID rather than UnattributedSession, so distinct
+// bucket via store.CapID rather than store.UnattributedSession, so distinct
 // over-cap ids do not land in the same run and mix unrelated sessions
 // (REC-52).
 func attribute(id string) string {
 	if id == "" {
-		return UnattributedSession
+		return store.UnattributedSession
 	}
 	return store.CapID(id)
 }

@@ -144,7 +144,7 @@ func TestREC52_FieldCapsAtNAndNPlusOne(t *testing.T) {
 			switch {
 			case !over && (decl == nil || decl.SessionID != want || session != want):
 				t.Errorf("session_id at %d: recorded under %q, want %q", n, session, want)
-			case over && (decl == nil || session == "" || session == raw || session == UnattributedSession || decl.SessionID != session):
+			case over && (decl == nil || session == "" || session == raw || session == store.UnattributedSession || decl.SessionID != session):
 				t.Errorf("session_id at %d: recorded under %q, want its own digest bucket", n, session)
 			}
 			if got := reason == store.ReasonRecordOversize; got != over {

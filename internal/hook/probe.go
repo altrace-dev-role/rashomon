@@ -48,7 +48,7 @@ func runProbe(sig *Signals, phase string, in io.Reader, st *store.Store, now fun
 // and runProbeFromPayload must call hookio.Intake itself.
 func runProbeFromPayload(sig *Signals, phase string, payload *hookio.Payload, in io.Reader, st *store.Store, now func() time.Time, waits time.Duration) error {
 	st.LimitLockWaits(waits)
-	sessionID := UnattributedSession
+	sessionID := store.UnattributedSession
 	reason := ""
 	cwd := ""
 

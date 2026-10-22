@@ -3,10 +3,10 @@
 # shape; these two mutants are the two places it is actually set rather
 # than merely declared.
 m("Build renders a report with no version", "internal/report/report.go",
-  "rep := &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}",
-  "rep := &Report{GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}",
+  "\trep := &Report{\n\t\tReportVersion:         CurrentReportVersion,\n",
+  "\trep := &Report{\n",
   "TestReportVersion_IsCarriedOnEveryReport")
 m("Empty renders a report with no version", "internal/report/report.go",
-  "return &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}",
-  "return &Report{GeneratedAtUnixMS: now.UnixMilli(), Sessions: []Session{}}",
+  "return &Report{ReportVersion: CurrentReportVersion, GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &none, Sessions: []Session{}}",
+  "return &Report{GeneratedAtUnixMS: now.UnixMilli(), CallsWithoutSessionID: &none, Sessions: []Session{}}",
   "TestReportVersion_IsCarriedOnEveryReport")

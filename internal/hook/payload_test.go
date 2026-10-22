@@ -8,8 +8,8 @@ import (
 )
 
 func TestAttribute_OverCapSessionIDGetsItsOwnBucket(t *testing.T) {
-	if got := attribute(""); got != UnattributedSession {
-		t.Errorf("attribute(\"\") = %q, want %q", got, UnattributedSession)
+	if got := attribute(""); got != store.UnattributedSession {
+		t.Errorf("attribute(\"\") = %q, want %q", got, store.UnattributedSession)
 	}
 	within := strings.Repeat("s", store.MaxIDBytes)
 	if got := attribute(within); got != within {
@@ -18,7 +18,7 @@ func TestAttribute_OverCapSessionIDGetsItsOwnBucket(t *testing.T) {
 	a := strings.Repeat("a", store.MaxIDBytes+1)
 	b := strings.Repeat("b", store.MaxIDBytes+1)
 	ga, gb := attribute(a), attribute(b)
-	if ga == UnattributedSession || gb == UnattributedSession {
+	if ga == store.UnattributedSession || gb == store.UnattributedSession {
 		t.Fatalf("attribute(a)=%q attribute(b)=%q: an over-cap id must not share the unattributed bucket", ga, gb)
 	}
 	if ga == gb {
