@@ -826,21 +826,41 @@ H-146 runs each installed command line through a shell with the capture's
 payloads. Every one is silent on stdout, because Codex adds a
 `SessionStart` hook's stdout to the agent's context.
 
-Not yet: a report that reads Codex transcripts. Coverage records carry
-`harness: "codex"` (absent for Claude Code, so Claude Code's records are
-unchanged), and the report does not run its transcript accounting on such a
-run: read as a Claude Code transcript, a Codex rollout holds no tool ids, and
-phase 4 reported every call missing from a rollout that held them all. It
-says `transcript check: not supported for Codex yet` (H-147). A Codex run
-recorded before the key existed reads as Claude Code's. H-145 replays the
-capture end to end.
+**Reading a Codex run.** Coverage records carry `harness: "codex"` (absent
+for Claude Code, so Claude Code's records are unchanged), and the report reads
+such a run's transcript_path as a Codex rollout, not as a Claude Code
+transcript (H-147). Read as Claude Code's, a rollout holds no tool ids, and
+phase 4 reported every call missing from a rollout that held them all. A
+harness this build does not know gets no check, and the report says so. A
+Codex run recorded before the key existed reads as Claude Code's.
 
-What a Codex transcript reader would have to work with, measured in phase 4
-(`test/fixtures/codex/PHASE4.md`): each command's `item_completed` event in
-the rollout carries `item.id`, equal to the record's `tool_use_id`, with
-`item.exit_code` and `item.status`. The hook payload has no exit code in
-Codex 0.163.0 or 0.164.0-alpha.12, so an execution's outcome stays
-unobserved.
+From the rollout the report reads only `item_completed` entries, and only
+their item's `id`, `type`, `exit_code` and `status`. Measured in phase 4
+(`test/fixtures/codex/phase4`): a tool call's `item.id` is exactly the
+`tool_use_id` the hooks got, and the join is on that equality alone, within
+the rollout the call's own declaration names. The rule, decided by Rishi for
+Karthik's review:
+
+- a `CommandExecution` with exit code 0 is ok, and any other integer is
+  failed, with that exit code;
+- a `FileChange` whose status is `failed` is failed;
+- everything else stays unobserved: no matching item, a missing field, an exit
+  code that is not an integer, a status not named, a file change that
+  completed, an agent tool, an id with two different outcomes.
+
+The outcome is set in memory at report time. The record keeps its empty
+outcome, because the hook could not observe one (H-149). The hook payload has
+no exit code in Codex 0.163.0 or 0.164.0-alpha.12.
+
+The same items drive the transcript check. An item is written when the call
+completes, so a recorded call with no item is both missing from the transcript
+and without a result. A `CommandExecution` or `FileChange` item with no record
+is missing from the store. The agent-tool item types carry a call's id too, but
+`SubAgentActivity` also names things that are not calls, so neither is held to
+the store. Nothing in an item says a call was denied, so no call is excused as
+one. The digest, and so recap, does not read the rollout yet.
+
+H-145 replays the capture end to end.
 
 ## Known limits
 

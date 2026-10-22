@@ -203,10 +203,9 @@ stays unobserved.
 `event_msg` entry of type `item_completed` per command, with `item.type`
 `CommandExecution`, `item.id` exactly equal to our record's `tool_use_id`,
 `item.exit_code` (an integer) and `item.status` (`completed` or `failed`).
-A `FileChange` (apply_patch) item has `status` and no `exit_code`. So a
-Codex execution's outcome stays `""` (item 1). Reading it from the rollout at
-report time, as the agent's summary is read, is a separate decision not yet
-made.
+A `FileChange` (apply_patch) item has `status` and no `exit_code`. The
+record's outcome stays `""` (item 1). Reading it from the rollout at report
+time is decision D.
 
 ### B. The harness is stored on coverage records
 
@@ -216,12 +215,14 @@ hooks wrote, absent for Claude Code. It is additive, at the same
 written before it existed already is. H-144 still passes: Claude Code's
 records keep their bytes.
 
-**What it changes.** For a Codex run, the report does not run the transcript
-accounting, and says `transcript check: not supported for Codex yet`. In
-phase 4 that accounting read a Codex rollout as a Claude Code transcript,
-found no ids, and reported every call missing and the run
-`transcript_mismatch`, though every call was in the rollout. The report's
-JSON gains `harness` and `transcript_check`, both absent for Claude Code.
+**What it changes.** The report reads a run's transcript in its harness's
+format. In phase 4 the Claude Code accounting read a Codex rollout, found no
+ids, and reported every call missing and the run `transcript_mismatch`,
+though every call was in the rollout. A Codex run now gets decision D's
+check. A harness value this build does not know is shown as `unknown`, gets
+no check, and the report says `transcript check: not supported for this
+harness (unknown)`. The report's JSON gains `harness` and
+`transcript_check`, both absent for Claude Code.
 
 **For you to look at.**
 
@@ -252,4 +253,50 @@ gone. Phase 4 had detach leave `{}` where there had been no file.
 - A stale marker: if the user deletes our `hooks.json` and later makes an
   empty one of their own, a watch and detach would delete it. Only an empty
   file can be deleted this way.
+
+### D. Codex outcomes and the transcript check, read from the rollout
+
+**What.** At report time, for a run with `harness: "codex"`, the report reads
+the rollout each declaration names. It takes only `item_completed` entries,
+and only their item's `id`, `type`, `exit_code` and `status`. An execution
+joins an item only on exact `item.id` = `tool_use_id`, in its own
+declaration's rollout:
+
+- `CommandExecution`: exit 0 is ok, any other integer is failed, with that
+  exit code;
+- `FileChange`: status `failed` is failed;
+- anything else stays unobserved.
+
+The outcome is set in memory. The stored record keeps `""`. Measured on
+phase 4's lines (`test/fixtures/codex/phase4`, scrubbed): `python3 missing.py`
+reads failed (exit 2), and so does session 1's first call, `pwd && rg …`.
+Its exit 2 came from unreadable directories under `~`, which no hook could
+tell. The session with `missing.py` reports `failed calls: 1`, and its
+timeline says `failed (exit 2)`.
+
+The same items drive the transcript check: a recorded call with no item is
+missing from the transcript, and a command or file-change item with no record
+is missing from the store. All eight phase 4 calls agree. The ids make that
+possible because every hooked tool, the agent tools included, has an item
+with its id.
+
+**For you to look at.**
+
+- **A file change that completed stays unobserved.** The rule names only
+  `failed` for a file change, so a successful `apply_patch` reads
+  "outcome unobserved". Making `completed` read ok is a one-line change, if
+  you want it.
+- **The agent tools stay unobserved.** A `CollabAgentToolCall` has a status,
+  and the rule does not name it.
+- **"Missing from store" covers commands and file changes only.**
+  `SubAgentActivity` also names non-calls (`subagent-completed-…`), so the
+  agent-tool types are not held to the store. Unmeasured: whether Codex
+  writes a `CommandExecution` item for a command that fires no hook, such as
+  one the user runs directly. If it does, that command would read as missing
+  from the store.
+- **An id seen twice with two outcomes is judged neither.**
+- **The digest, and so recap, does not read the rollout yet.** The report's
+  failure counts and a turn digest's can differ for a Codex run.
+- **A wording point:** "1 recorded failure" is recap's phrase, and recap
+  prints nothing under Codex. The report says `failed calls: 1`.
 
