@@ -29,7 +29,7 @@ func TestForgetAll_ListingIsUnderTheLock(t *testing.T) {
 		t.Fatalf("establishing a baseline to list: %v", r.Err)
 	}
 	dir := filepath.Join(root, "baseline")
-	release, err := store.LockPath(filepath.Join(dir, lockName))
+	release, err := store.LockPath(filepath.Join(dir, LockName))
 	if err != nil {
 		t.Fatalf("taking the baseline lock ahead of ForgetAll: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestRubricLLD11_ForgetAllSeesAFileCreatedWhileItWasBlockedOnTheLock(t *test
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	release, err := store.LockPath(filepath.Join(dir, lockName))
+	release, err := store.LockPath(filepath.Join(dir, LockName))
 	if err != nil {
 		t.Fatalf("taking the baseline lock ahead of ForgetAll: %v", err)
 	}

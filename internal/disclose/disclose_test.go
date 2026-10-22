@@ -123,6 +123,9 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	if _, err := s.ForgetHost("example.com", time.Now()); err != nil {
 		t.Fatalf("ForgetHost: %v", err)
 	}
+	if err := s.RecordResolvedCap(store.CapSetting{Bytes: store.DefaultCapBytes, Raw: "lots", Invalid: true}); err != nil {
+		t.Fatalf("RecordResolvedCap: %v", err)
+	}
 	if _, _, err := store.Pause(root, time.Now()); err != nil {
 		t.Fatalf("store.Pause: %v", err)
 	}
@@ -256,13 +259,17 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		pkg   string
 		count int
 	}{
-		// Pinned 2026-08: internal/store/store.go (writeSmall's own OpenFile,
-		// MarkProbe, two append opens, writeSmall x2, createExclusive's
-		// CreateTemp and its no-link fallback OpenFile) + pause.go (one
-		// writeSmall) + gaps.go (four append/rewrite opens) +
-		// install_record.go (replaceFile's CreateTemp, which rewrites
-		// install.json in place).
-		{"store", 15},
+		// Pinned 2026-10-22: internal/store/store.go (writeSmall's own
+		// OpenFile, MarkProbe, two append opens, writeSmall x2,
+		// createExclusive's CreateTemp and its no-link fallback OpenFile) +
+		// pause.go (one writeSmall) + gaps.go (three append/rewrite opens) +
+		// evict.go (the gap log's open) + install_record.go (replaceFile's
+		// CreateTemp, which rewrites install.json in place) + capbytes.go
+		// (RecordResolvedCap's writeSmall, resolved-cap) + lockwait.go
+		// (noteLockWait's open, runs/<session>/lockwait, written only after a
+		// contended lock, so the inventory test does not reach it) +
+		// lockpath.go (LockPath's open, baseline/.lock).
+		{"store", 17},
 		// Pinned 2026-08: internal/recap/state.go's writeState, one
 		// os.WriteFile.
 		{"recap", 1},

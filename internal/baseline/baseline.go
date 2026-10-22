@@ -237,7 +237,7 @@ func fileName(key string) string {
 // that eviction of runs cannot touch it. sessionStart is the session's own
 // start instant, which is what decides ownership.
 //
-// The load, the fold and the save happen under one lock (lockName), which
+// The load, the fold and the save happen under one lock (LockName), which
 // `forget --host` takes too. Without it two renders each loaded the file,
 // folded and renamed their own copy into place, and the second threw away the
 // first's hosts -- in 200 of 200 rounds of a probe -- so a later session was
@@ -272,7 +272,7 @@ func update(dir, path, key, sessionID string, sessionStart time.Time, hosts []st
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Result{}, err
 	}
-	release, err := store.LockPath(filepath.Join(dir, lockName))
+	release, err := store.LockPath(filepath.Join(dir, LockName))
 	if err != nil {
 		return Result{}, err
 	}
@@ -433,7 +433,7 @@ func ForgetFile(path, raw string) (int, error) {
 	if path == "" {
 		return 0, nil
 	}
-	release, err := store.LockPath(filepath.Join(filepath.Dir(path), lockName))
+	release, err := store.LockPath(filepath.Join(filepath.Dir(path), LockName))
 	if errors.Is(err, fs.ErrNotExist) {
 		// No baseline directory: nothing to clear.
 		return 0, nil
@@ -468,7 +468,7 @@ func ForgetAll(dir, raw string) (cleared int, hadBaselines bool, err error) {
 	if !ok {
 		return 0, false, store.ErrNotAHostname
 	}
-	release, lockErr := store.LockPath(filepath.Join(dir, lockName))
+	release, lockErr := store.LockPath(filepath.Join(dir, LockName))
 	if errors.Is(lockErr, fs.ErrNotExist) {
 		// No baseline directory: nothing to clear.
 		return 0, false, nil
