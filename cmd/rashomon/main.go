@@ -175,6 +175,9 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 	// comment says "not for a panic", and three of the four entry points took
 	// it on faith for the first few statements.
 	_ = safe.Guard(func() error {
+		// Before anything can write: a write nobody reads must not kill the
+		// process (H-111).
+		hook.IgnoreBrokenPipe()
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
@@ -207,6 +210,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 	// Guarded whole, for the reason given in cmdHook.
 	_ = safe.Guard(func() error {
+		hook.IgnoreBrokenPipe()
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
@@ -233,6 +237,9 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 // cmdProbe handles SessionStart and SessionEnd, under the same rule as hook:
 // it is invoked by Claude Code and it always succeeds.
 func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
+	// Outside the barrier, as WatchSignals is: the phase check below writes to
+	// stderr before the guarded body starts.
+	hook.IgnoreBrokenPipe()
 	sig := hook.WatchSignals()
 	defer sig.Stop()
 
@@ -357,6 +364,7 @@ func recapPending(args []string) bool {
 // person typed and wrong for this one.
 func cmdRecap(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	_ = safe.Guard(func() error {
+		hook.IgnoreBrokenPipe()
 		fault.Inject(fault.PointRecapStart)
 
 		now := time.Now()
