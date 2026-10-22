@@ -59,13 +59,23 @@ func TestTRU8b_ScopeVersionIsPinned(t *testing.T) {
 }
 
 // A caller that ignores the error must not see a scope version attached to
-// an otherwise-empty inventory: that reads as consent recorded for a build
-// that has nothing in it. The stub kept to this by returning the zero
-// Inventory; the filled one carries its scope version beside its files.
+// an inventory missing either half: that reads as consent recorded for a
+// build whose files, or whose screen, nobody was shown. The stub kept to
+// this by returning the zero Inventory; the filled one carries its scope
+// version beside its files and its paragraphs. Each half is checked on its
+// own: "nothing else in it" stopped meaning "no files" once the paragraphs
+// joined the inventory, and a check on the whole value passed with the files
+// gone.
 func TestDefaultNeverPairsAScopeVersionWithAnEmptyInventory(t *testing.T) {
 	inv, _ := Default()
-	if inv.ScopeVersion != 0 && reflect.DeepEqual(inv, Inventory{ScopeVersion: inv.ScopeVersion}) {
-		t.Errorf("Default() = %+v: a scope version on an inventory with nothing else in it", inv)
+	if inv.ScopeVersion == 0 {
+		return
+	}
+	if len(inv.Files) == 0 {
+		t.Errorf("Default() carries scope version %d and no files", inv.ScopeVersion)
+	}
+	if len(inv.Paragraphs) == 0 {
+		t.Errorf("Default() carries scope version %d and no screen paragraphs", inv.ScopeVersion)
 	}
 }
 
@@ -73,7 +83,8 @@ func TestDefaultNeverPairsAScopeVersionWithAnEmptyInventory(t *testing.T) {
 // and the two sibling packages that write under the same store root --
 // recap and baseline -- through every write each has: Open's two root
 // files, a declaration, a spilled execution, a coverage record, a probe
-// mark, a gap, a host-scoped forget, a machine pause, a recap claim and
+// mark, a gap, a host-scoped forget, a machine pause, a confirmed work tree
+// (and its replacement file), a recap claim and
 // failure, and a baseline update. It checks every resulting path on disk
 // against Default().Files. A path any of the three writes that is not
 // covered here is the regression this test exists to catch: a FileRule list
@@ -128,6 +139,18 @@ func TestTRU23_EveryWrittenPathIsInTheInventory(t *testing.T) {
 	}
 	if _, _, err := store.Pause(root, time.Now()); err != nil {
 		t.Fatalf("store.Pause: %v", err)
+	}
+	if err := store.SetRootInWorkTree(root, root); err != nil {
+		t.Fatalf("store.SetRootInWorkTree: %v", err)
+	}
+	// Its replacement exists only between the write and the rename; make
+	// one where it would be, to check its rule.
+	tmp, err := os.CreateTemp(root, "."+store.FileInstallMeta+".tmp-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tmp.Close(); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := recap.Claim(root, sessionID, "prompt-1", time.Now(), true); err != nil {
 		t.Fatalf("recap.Claim: %v", err)
@@ -238,7 +261,7 @@ func countWriteCallSites(t *testing.T, dir string) int {
 //
 // It is deliberately a blunt instrument, not a semantic one: it counts
 // textual call sites of the four file-creating stdlib functions plus
-// writeSmall across store's, recap's and baseline's own non-test source, and
+// writeSmall across store's, recap's, baseline's and consent's own non-test source, and
 // fails the moment that count moves, in either direction. It cannot tell a
 // new call site that writes an already-covered path from one that writes an
 // uncovered one -- that distinction needs a human, which is the point. A
@@ -276,6 +299,9 @@ func TestTRU23_WriteCallSitesArePinned(t *testing.T) {
 		// Pinned 2026-08: internal/baseline/baseline.go's save, one
 		// os.CreateTemp.
 		{"baseline", 1},
+		// Pinned 2026-10: internal/consent/record.go's Append, one
+		// os.OpenFile, and replace, one os.CreateTemp.
+		{"consent", 2},
 	}
 	for _, c := range cases {
 		got := countWriteCallSites(t, filepath.Join(internalDir, c.pkg))

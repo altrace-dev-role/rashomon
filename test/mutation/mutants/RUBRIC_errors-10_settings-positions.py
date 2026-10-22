@@ -18,7 +18,12 @@ m("errors-10  the hook event error names no event", "internal/settings/document.
 m("errors-10  a named document forgets its path", "internal/settings/document.go",
   "\td := &Document{path: path, src: data}",
   "\td := &Document{src: data}", "TestRubricERRORS10_")
-m("errors-10  watch edits a document that does not know its file", "cmd/rashomon/main.go",
+m("errors-10  watch edits a document that does not know its file", "cmd/rashomon/watch.go",
+  "\tdoc, err := settings.ParseNamed(plan.loc.User, original)",
+  "\tdoc, err := settings.Parse(original)", "TestRubricERRORS10_")
+# watch refuses a broken file at its plan, before editSettings reads it again;
+# detach's edit is the one a broken file reaches editSettings through.
+m("errors-10  the settings edit parses a document that does not know its file", "cmd/rashomon/main.go",
   "\t\tdoc, err := settings.ParseNamed(path, original)",
   "\t\tdoc, err := settings.Parse(original)", "TestRubricERRORS10_")
 m("errors-10  the layer resolver names the file twice", "internal/settings/locate.go",

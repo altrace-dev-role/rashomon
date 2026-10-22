@@ -112,12 +112,12 @@ const (
 	Marker = "--install"
 )
 
-// timeoutFor is the per-event timeout `group` installs and `intact` checks
-// against. A single constant covered every event until the recap needed a
-// wider one; this keeps the exception the two Stop events are, rather than
-// widening Timeout itself and loosening the budget the five recorder entries
-// are held to.
-func timeoutFor(event string) int {
+// TimeoutFor is the per-event timeout, in seconds, that `group` installs,
+// `intact` checks against and the consent screen states. A single constant
+// covered every event until the recap needed a wider one; this keeps the
+// exception the two Stop events are, rather than widening Timeout itself and
+// loosening the budget the five recorder entries are held to.
+func TimeoutFor(event string) int {
 	if event == EventStop || event == EventStopFailure || event == EventUserPromptSubmit {
 		return RecapTimeout
 	}
@@ -194,7 +194,7 @@ func (s Spec) group(event string) matcherGroup {
 	g := matcherGroup{Hooks: []hookCommand{{
 		Type:    "command",
 		Command: s.Command(event),
-		Timeout: timeoutFor(event),
+		Timeout: TimeoutFor(event),
 	}}}
 	if hasMatcher(event) {
 		m := Matcher
@@ -545,7 +545,7 @@ func intact(raw json.RawMessage, event string) string {
 	if h.Type != "command" {
 		return fmt.Sprintf("hook type is %q, expected \"command\"", h.Type)
 	}
-	if want := timeoutFor(event); h.Timeout != want {
+	if want := TimeoutFor(event); h.Timeout != want {
 		return fmt.Sprintf("timeout is %d, expected %d", h.Timeout, want)
 	}
 	return ""

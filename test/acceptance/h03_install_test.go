@@ -521,7 +521,7 @@ func TestH3_SpacedExecutablePathRunsAsInstalled(t *testing.T) {
 	e := newEnv(t)
 	exe := copyBinary(t, rashomonBin, filepath.Join(t.TempDir(), "Application Support", "rashomon"))
 
-	if res := e.runBin(exe, "", "watch"); res.exitCode != 0 {
+	if res := e.runBin(exe, "", "watch", "--yes"); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	groups := ours(e.settings().Hooks["PreToolUse"])

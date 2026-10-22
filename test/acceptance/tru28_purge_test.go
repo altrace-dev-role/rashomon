@@ -352,7 +352,7 @@ func TestTRU28_DetachedEntryCreatesNoStore(t *testing.T) {
 func TestTRU28_PurgeBinaryAlsoRemovesTheBinary(t *testing.T) {
 	e := newPurgeEnv(t)
 	bin := copyBinary(t, rashomonBin, filepath.Join(t.TempDir(), "bin", "rashomon"))
-	if res := e.runBin(bin, "", "watch"); res.exitCode != 0 {
+	if res := e.runBin(bin, "", "watch", "--yes"); res.exitCode != 0 {
 		t.Fatalf("watch: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	res := e.runBin(bin, "", "purge", "--yes", "--binary")

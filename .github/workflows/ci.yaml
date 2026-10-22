@@ -590,6 +590,12 @@ jobs:
       - name: 64-way hooks lose nothing to the lock (H-16)
         run: go test ./test/acceptance -run '^TestH16_' -count=1 -v
 
+      # watch and consent ask on /dev/tty, and these tests drive a real
+      # pseudo-terminal opened by ioctl -- a darwin branch (TIOCPTYGRANT,
+      # TIOCPTYGNAME) the ubuntu job never takes.
+      - name: TRU-1, 3, 4, 5 consent on a terminal (darwin)
+        run: go test -race -count=1 -run 'TestTRU(1|3|4|5)_' ./test/acceptance
+
   measure-linux-benchmarks:
     name: Measure linux/amd64 benchmark rows
     runs-on: ubuntu-latest

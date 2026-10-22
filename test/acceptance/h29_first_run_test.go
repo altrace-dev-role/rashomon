@@ -69,7 +69,7 @@ func TestH29_ReportJSONIsTheSameShapeWithAndWithoutAStore(t *testing.T) {
 		t.Fatalf("report --json on a fresh home: exit %d, stderr %q", noStore.exitCode, noStore.stderr)
 	}
 	// An existing store with no runs: watch creates it, nothing records into it.
-	e.run("", nil, "watch")
+	e.run("", nil, "watch", "--yes")
 	withStore := e.run("", nil, "report", "--json")
 	if withStore.exitCode != 0 {
 		t.Fatalf("report --json on an empty store: exit %d, stderr %q", withStore.exitCode, withStore.stderr)

@@ -4,3 +4,4 @@
 #
 # Add an entry here in the same change that adds the mutant using it.
 VER-54 TestVER11_
+TRU-1 TestTRU44_

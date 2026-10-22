@@ -148,10 +148,12 @@ const (
 // internal/baseline's, which write beside it -- read from each package's
 // own exported names rather than copied as literal strings, so a renamed or
 // added file shows up here by construction instead of by someone
-// remembering to update a second list (TRU-23). The other sections --
-// Entries, Outputs, SettingsKeys, NeverEmit, NeverWrite, Switches, EnvVars,
-// Paragraphs -- are owned by later PRs (consent screen, output gate,
-// disclose/status CLI) and are empty until each lands.
+// remembering to update a second list (TRU-23).
+//
+// Paragraphs is the consent screen's text (paragraphs.go). The other
+// sections -- Entries, Outputs, SettingsKeys, NeverEmit, NeverWrite,
+// Switches, EnvVars -- are owned by later PRs (output gate, disclose/status
+// CLI) and are empty until each lands.
 //
 // An empty section here is "not yet described", not "this build does
 // nothing" -- and that distinction currently lives only in this comment, not
@@ -164,6 +166,7 @@ func Default() (Inventory, error) {
 	return Inventory{
 		ScopeVersion: ScopeVersion,
 		Files:        defaultFiles(),
+		Paragraphs:   defaultParagraphs(),
 	}, nil
 }
 
@@ -207,6 +210,18 @@ func defaultFiles() []FileRule {
 			Holds:      "install_id, created_at_unix_ms, schema_version; once watch has run, settings_existed, the sha256 of settings.json before and after watch, the directories watch created, and the work tree a confirmed store root sits in",
 			NeverHolds: "a hostname or any call's content",
 			RemovedBy:  "purge",
+			Owner:      "store",
+		},
+		{
+			// SetRootInWorkTree writes the new record under this name and
+			// renames it over install.json (internal/store).
+			Base:       "",
+			Pattern:    "." + store.FileInstallMeta + ".tmp-*",
+			Mode:       "0600",
+			Purpose:    "install.json's replacement; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "what install.json is about to hold",
+			NeverHolds: "a hostname or any call's content",
+			RemovedBy:  "the write that made it (renamed over install.json); purge",
 			Owner:      "store",
 		},
 		{
@@ -347,6 +362,50 @@ func defaultFiles() []FileRule {
 			NeverHolds: "the removed content, or the host name a host-scoped forget removed",
 			RemovedBy:  "purge",
 			Owner:      "store",
+		},
+		{
+			Base:       "",
+			Pattern:    store.FileConsent,
+			Mode:       "0600",
+			Purpose:    "every consent you gave: one record per line, appended when you answer y to the consent screen or a notice counts as shown, and read by every layer before it records or adds a note",
+			Holds:      "the scope and disclosure versions agreed to, the record scope, whether notes were on, a SHA-256 of the exact text shown, this binary's version and SHA-256, how the consent was given, and when",
+			NeverHolds: "the text shown, or anything about a session",
+			RemovedBy:  "compaction at 64 KiB to the latest record per way of giving it and per scope version; purge",
+			Owner:      "consent",
+		},
+		{
+			// compact writes the compacted file under this name beside
+			// consent.json and renames it over it (internal/consent).
+			Base:       "",
+			Pattern:    "." + store.FileConsent + ".tmp-*",
+			Mode:       "0600",
+			Purpose:    "consent.json's compaction target; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "the records consent.json keeps",
+			NeverHolds: "the text shown, or anything about a session",
+			RemovedBy:  "the compaction that wrote it (renamed over consent.json); purge",
+			Owner:      "consent",
+		},
+		{
+			Base:       "",
+			Pattern:    store.FileHarnesses,
+			Mode:       "0600",
+			Purpose:    "per harness and surface switches; watch writes whether Agent SDK programs are recorded, from the consent screen's second question",
+			Holds:      "a version, and per surface whether it records (on or paused) and whether it steers",
+			NeverHolds: "anything about a session or a call",
+			RemovedBy:  "purge",
+			Owner:      "consent",
+		},
+		{
+			// WriteSDKAnswer writes the new file under this name and
+			// renames it over harnesses.json (internal/consent).
+			Base:       "",
+			Pattern:    "." + store.FileHarnesses + ".tmp-*",
+			Mode:       "0600",
+			Purpose:    "harnesses.json's replacement; present only for the instant between the write and the rename, or after a crash in between",
+			Holds:      "what harnesses.json is about to hold",
+			NeverHolds: "anything about a session or a call",
+			RemovedBy:  "the write that made it (renamed over harnesses.json); purge",
+			Owner:      "consent",
 		},
 		{
 			Base:       "",

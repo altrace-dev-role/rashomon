@@ -135,6 +135,13 @@ func (e *env) environ(extra ...string) []string {
 		case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY":
 			continue
 		}
+		// The suite is often run from inside a Claude Code session, which
+		// sets CLAUDECODE in every process it starts. watch reads that as an
+		// agent signal and refuses, so it must not leak into the binary
+		// under test; the tests that check the refusal set it themselves.
+		if name == "CLAUDECODE" {
+			continue
+		}
 		base = append(base, kv)
 	}
 	base = append(base,
@@ -268,7 +275,13 @@ func (e *env) installArgs() []string {
 	return []string{"--install", e.installID()}
 }
 
-func (e *env) watch(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "watch") }
+// watch installs without asking (--yes): the suite runs with no person at
+// a terminal, and the questions themselves are TRU-1's, asked through a
+// pseudo-terminal there.
+func (e *env) watch(extraEnv ...string) result {
+	e.t.Helper()
+	return e.run("", extraEnv, "watch", "--yes")
+}
 func (e *env) detach(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "detach") }
 func (e *env) status(extraEnv ...string) result { e.t.Helper(); return e.run("", extraEnv, "status") }
 func (e *env) pause(extraEnv ...string) result  { e.t.Helper(); return e.run("", extraEnv, "pause") }
