@@ -71,7 +71,8 @@ const (
 )
 
 // TranscriptCheckUnsupported is Session.TranscriptCheck for a run recorded
-// under a harness whose transcript format this build does not read.
+// under a harness whose transcript format this build does not read: one
+// knownHarness clamped to unknown. Claude Code's and Codex's are both read.
 const TranscriptCheckUnsupported = "not_supported"
 
 // knownHarness clamps a stored harness to the one this build writes, for the
@@ -637,12 +638,14 @@ func build(run *store.Run) Session {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
-	// The accounting reads Claude Code's transcript format. A Codex rollout
-	// read that way holds no tool ids, so every call would be "missing from
-	// transcript" and the run would carry transcript_mismatch, a disagreement
-	// that does not exist (measured in phase 4: every call was in the
-	// rollout). Not running it is said, not left as an empty list.
-	if sess.Harness != "" {
+	// The accounting reads the transcript format of the harness that wrote
+	// the run. A Codex rollout read as Claude Code's holds no tool ids, so
+	// every call would be "missing from transcript" and the run would carry
+	// transcript_mismatch, a disagreement that does not exist (measured in
+	// phase 4: every call was in the rollout). A harness this build does not
+	// know is not read at all, and that is said rather than left as an empty
+	// list.
+	if sess.Harness != "" && sess.Harness != store.HarnessCodex {
 		sess.TranscriptCheck = TranscriptCheckUnsupported
 		return sess
 	}
@@ -660,8 +663,21 @@ func build(run *store.Run) Session {
 	for id := range executed {
 		hooked[id] = true
 	}
+	var rollouts map[string]*codexRollout
+	if sess.Harness == store.HarnessCodex {
+		// Read once, here, for both uses. The outcomes are set on run, in
+		// memory, before anything that counts them is built: build returns
+		// before the chains, the timeline and the failure counts are.
+		rollouts = codexRollouts(run)
+		CodexOutcomesAsRan(run, rollouts)
+	}
 	for _, path := range paths {
-		t := accounting(path, byPath[path], executed, hooked)
+		var t Transcript
+		if rollouts != nil {
+			t = codexAccounting(path, rollouts[path], byPath[path], executed, hooked)
+		} else {
+			t = accounting(path, byPath[path], executed, hooked)
+		}
 		if t.Readable && (len(t.MissingFromStore) > 0 || len(t.MissingFromTranscript) > 0) {
 			sess.Coverage.add(ReasonTranscriptMismatch)
 		}
