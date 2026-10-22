@@ -713,3 +713,16 @@ m("TB the session block does not say why no pair is looked for", "internal/repor
   "\tif t.Undeclared > 0 {\n\t\tfmt.Fprintf(b, \"    no pair is looked for",
   "\tif false {\n\t\tfmt.Fprintf(b, \"    no pair is looked for",
   "TestTestRuns_")
+
+# A line holding a control byte names no leading directory to the hook,
+# which reads them through DeriveWithDirs, as to LeadingDirectory: the shell
+# does not split it where the tokenizer does. Folding its cds is the
+# regression.
+m("TB DeriveWithDirs folds the leading cds of a control-byte line", "internal/shape/shape.go",
+  "\tif !ctl {\n\t\tdirs, _ = leadingRun(pshaped, perr)\n\t}\n",
+  "\tdirs, _ = leadingRun(pshaped, perr)\n",
+  "TestLeadingDirectory|TestCaptureKeepsTheCWDOfAControlByteLine")
+m("TB LeadingDirectory reads the cds of a control-byte line", "internal/shape/leading.go",
+  "\tif !ok || controlByte(cmd) {\n\t\treturn nil, false\n\t}\n\treturn leadingDirectories(cmd)\n",
+  "\tif !ok {\n\t\treturn nil, false\n\t}\n\treturn leadingDirectories(cmd)\n",
+  "TestLeadingDirectory")

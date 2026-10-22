@@ -18,7 +18,7 @@ m("RES-29 dropped offsets are forgotten", "internal/shape/join.go",
 m("RES-29 a span past the kept offsets is read as certain", "internal/shape/comsub.go",
   "\treturn r.lost && to >= r.joins[len(r.joins)-1]\n", "\treturn false\n", "TestRES29_")
 m("RES-29 the leading cds are read again for the masked status", "internal/shape/shape.go",
-  "\tdirs, _ := leadingRun(pshaped, perr)\n", "\tdirs, _ := leadingDirectories(cmd)\n", "TestRES29_")
+  "\t\tdirs, _ = leadingRun(pshaped, perr)\n", "\t\tdirs, _ = leadingDirectories(cmd)\n", "TestRES29_")
 m("RES-29 ssh lines are read past the token bound", "internal/shape/hosts.go",
   "\tfor rest, budget := text, maxTokens; rest != \"\" && budget > 0; {\n",
   "\tfor rest, budget := text, maxTokens; rest != \"\"; {\n", "TestRES29_")
@@ -33,3 +33,4 @@ m("RES-29 the command is decoded into a buffer grown from nothing", "internal/js
 m("RES-29 an escaped blank ends a word in the token estimate", "internal/shape/tokenize.go",
   "\t\tcase c == '\\\\': // the byte it escapes is the word's, a blank included\n\t\t\ti++\n\t\t\tinWord = true\n",
   "", "TestRES29_")
+

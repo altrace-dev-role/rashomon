@@ -179,10 +179,11 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	// A line read only to the token bound is as uncertain as one the lexer
 	// stopped in: what follows is unknown, not absent.
 	uncertain := perr == errUncertain || perr == errTokenBound
+	ctl := controlByte(cmd)
 	// A line whose program cannot be named, or which the lexer could not
 	// read to its end, may write: nobody saw what it runs.
 	s.MayWrite = true
-	if i, ok := programToken(pshaped, uncertain); ok && !controlByte(cmd) {
+	if i, ok := programToken(pshaped, uncertain); ok && !ctl {
 		if i, ok = pastDirectoryChange(pshaped, i, uncertain); ok {
 			prog := path.Base(pshaped[i].text)
 			s.Program = &prog
@@ -197,8 +198,14 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 		n := len(dropLeadingAssignments(toks))
 		s.Argc = &n
 	}
-	// Where the line cannot be read, dirs is empty and no step is folded.
-	dirs, _ := leadingRun(pshaped, perr)
+	// A line holding a control byte names no directory, as LeadingDirectory
+	// says: the shell does not split it where the tokenizer does, so `cd
+	// /repo\r` never enters /repo. Where the line cannot be read, dirs is
+	// empty too, and no step is folded.
+	var dirs []string
+	if !ctl {
+		dirs, _ = leadingRun(pshaped, perr)
+	}
 	s.StatusMasked, s.RunnerDigest = statusMasked(cmd, key, leadingSteps(dirs))
 	cut := err == errTokenBound || perr == errTokenBound || len(dirs) > MaxLeadingCd
 	return s, cut, dirs
