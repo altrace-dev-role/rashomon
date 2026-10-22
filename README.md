@@ -283,11 +283,12 @@ no `watch`, and it writes nothing.
 Alpha: v1.1.0. No signed binaries, no Homebrew formula. macOS and
 Linux are the supported targets.
 
-**Windows is not usable yet.** The release publishes Windows binaries, but no
-install path has been shown to work there. `watch` quotes the installed command
-line for a POSIX shell, and `scripts/claude-rashomon.ps1` runs the same `watch`.
-CI cross-builds and vets the Windows code, and runs the store's lock tests
-on Windows; no other test runs there.
+**Windows is not supported yet.** The release publishes Windows binaries.
+There `watch` quotes the installed command line for cmd.exe, the shell Claude
+Code runs hook commands through, and `scripts/claude-rashomon.ps1` runs the same
+`watch`. The acceptance suite was run by hand on Windows 11 when that quoting
+landed; CI cross-builds and vets the Windows code, and runs the store's lock
+tests on Windows; no other test runs there.
 
 ## Contributing
 

@@ -278,19 +278,26 @@ func ownerOf(cmd string, forms []string) string {
 }
 
 // afterFirstWord splits cmd at the end of its first shell word -- the
-// executable, exactly as shellQuote writes it, bare or single-quoted -- and
-// returns what follows the one space after it. It does not reconstruct the
+// executable, exactly as shellQuote writes it, bare, single-quoted for a
+// POSIX shell or double-quoted for cmd.exe -- and returns what follows the
+// one space after it. It does not reconstruct the
 // word itself: Owner does not care what the executable is (a moved binary is
 // what watch exists to refresh), only where it ends, so a caller can compare
 // everything after it exactly rather than searching for a trailing match.
 //
 // ok is false when cmd does not have the shape "<word> <rest>" at all: no
-// separating space for a bare word, or shellQuote's own escaping of an
-// embedded quote -- close quote, backslash, quote, open quote -- never
-// closes.
+// separating space for a bare word, or a quoted word that never closes --
+// shellQuote's own escaping of an embedded quote (close, backslash, quote,
+// open for POSIX; a doubled quote for cmd.exe) included.
+//
+// Both quoted forms are read on every OS: an install a build before cmd.exe
+// quoting made on Windows holds the POSIX form, and is still ours to refresh.
 func afterFirstWord(cmd string) (rest string, ok bool) {
 	if cmd == "" {
 		return "", false
+	}
+	if cmd[0] == '"' {
+		return afterDoubleQuoted(cmd)
 	}
 	if cmd[0] != '\'' {
 		i := strings.IndexByte(cmd, ' ')
@@ -309,6 +316,27 @@ func afterFirstWord(cmd string) (rest string, ok bool) {
 			// An embedded quote in the executable, escaped as close,
 			// backslash, quote, open -- not the terminator.
 			i = end + 4
+			continue
+		}
+		if end+1 < len(cmd) && cmd[end+1] == ' ' {
+			return cmd[end+2:], true
+		}
+		return "", false
+	}
+}
+
+// afterDoubleQuoted is afterFirstWord for an executable windowsQuote wrote:
+// double-quoted, an embedded quote doubled.
+func afterDoubleQuoted(cmd string) (rest string, ok bool) {
+	for i := 1; ; {
+		j := strings.IndexByte(cmd[i:], '"')
+		if j < 0 {
+			return "", false
+		}
+		end := i + j
+		if strings.HasPrefix(cmd[end:], `""`) {
+			// An embedded quote, doubled -- not the terminator.
+			i = end + 2
 			continue
 		}
 		if end+1 < len(cmd) && cmd[end+1] == ' ' {
@@ -645,6 +673,8 @@ func shellQuote(s string) string {
 	return shellQuoteForOS(s, runtime.GOOS)
 }
 
+// shellQuoteForOS is shellQuote for the shell goos runs hook commands
+// through, so both forms can be tested on any OS.
 func shellQuoteForOS(s, goos string) string {
 	if goos == "windows" {
 		return windowsQuote(s)
