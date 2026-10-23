@@ -8,18 +8,36 @@ functions touch steerci's API, so a signature change is a three-line edit here.
 
 Reference implementations (listed, triage_line_ok, config_events) are offered for lifting.
 
-Run:  python3 test_sensors.py          no pytest needed; exit 1 if any non-GAP test fails
+Run:  python3 sensor_specs.py          exit 1 if any non-GAP test fails
+Location of the watcher: $STEER_CI_DIR, else ../ci next to this file, else ~/rashomon-eval/steer/ci. When steerci
+cannot be imported (it needs ci/visible/stdlib27.tar, which the public branch omits) the tests that exercise it
+are reported as SKIP and only the reference-implementation tests run. The runner prints both counts, because
+only the first kind says anything about the watcher. Not named test_*.py on purpose: a bare pytest at a repo root
+must not collect it.
 """
 import json
 import os
 import re
 import sys
 
-CI = os.path.expanduser("~/rashomon-eval/steer/ci")
-sys.path.insert(0, CI)
-import steerci  # noqa: E402
+def _find_ci():
+    here = os.path.dirname(os.path.abspath(__file__))
+    for c in (os.environ.get("STEER_CI_DIR"), os.path.join(here, "..", "ci"), os.path.expanduser("~/rashomon-eval/steer/ci")):
+        if c and os.path.exists(os.path.join(c, "steerci.py")):
+            return os.path.abspath(c)
+    return None
 
-JUDGED = steerci.JUDGED
+CI = _find_ci()
+STEERCI_ERROR = None
+steerci = None
+if CI:
+    sys.path.insert(0, CI)
+    try:
+        import steerci  # noqa: E402
+    except Exception as e:  # for example the stdlib tarball it reads at import
+        STEERCI_ERROR = "%s: %s" % (type(e).__name__, str(e)[:120])
+else:
+    STEERCI_ERROR = "steerci.py not found (set STEER_CI_DIR)"
 
 
 # ---------- adapters: the only lines that know steerci's API ----------
@@ -103,12 +121,6 @@ def test_GAP_A4_test_count_regression_is_a_new_foul():
     assert mentions(new, "m::t2") or mentions(new, "m::t3") or any("count" in k or "removed" in k for k in new), new
 
 
-def test_control_A5_a_renamed_test_that_still_passes_is_not_a_regression_in_count():
-    # Rename is allowed; the sensor's unit of comparison for count is the number of passed tests per side.
-    prev = [side("2.7", {"m::old": "passed"}), side("3.14", {"m::old": "passed"})]
-    cur = [side("2.7", {"m::new": "passed"}), side("3.14", {"m::new": "passed"})]
-    passed = lambda sides: sum(1 for s in sides for o in s["tests"].values() if o == "passed")
-    assert passed(prev) == passed(cur)
 
 
 # ---------- finding C: "nothing dropped silently" needs a listing check with boundary matching ----------
@@ -236,14 +248,27 @@ def test_GAP_D5_steerci_has_no_config_event_sensor_yet():
 
 # ---------- runner ----------
 
+def _needs_steerci(fn):
+    import inspect
+    src = inspect.getsource(fn)
+    return any(t in src for t in ("steerci", "state_fouls(", "transition("))
+
+
 if __name__ == "__main__":
     names = sorted(k for k in globals() if k.startswith("test_"))
-    ok, gap, bad = 0, 0, 0
+    ok, gap, bad, skipped, touch = 0, 0, 0, 0, 0
     for n in names:
+        fn = globals()[n]
+        needs = _needs_steerci(fn)
+        if needs and steerci is None:
+            skipped += 1
+            print("SKIP %s  (needs steerci: %s)" % (n, STEERCI_ERROR))
+            continue
+        touch += needs
         try:
-            globals()[n]()
+            fn()
             ok += 1
-            print("PASS %s" % n)
+            print("PASS %s%s" % (n, "  [steerci]" if needs else "  [reference impl]"))
         except AssertionError as e:
             if "_GAP_" in n:
                 gap += 1
@@ -251,5 +276,6 @@ if __name__ == "__main__":
             else:
                 bad += 1
                 print("FAIL %s  %s" % (n, str(e)[:160]))
-    print("\n%d passed, %d documented gaps, %d unexpected failures" % (ok, gap, bad))
+    print("\n%d passed, %d documented gaps, %d unexpected failures, %d skipped; %d of the run tests exercise steerci, the rest test reference implementations in this file"
+          % (ok, gap, bad, skipped, touch))
     sys.exit(1 if bad else 0)

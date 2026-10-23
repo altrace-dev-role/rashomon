@@ -17,7 +17,7 @@ per call (the boundary budget). Nothing here runs project code (I1). Content is 
 """
 import json, os, sys, time
 
-ROOT = os.path.expanduser("~/rashomon-eval/steer/ci/pending")
+ROOT = os.environ.get("STEER_PENDING_DIR") or os.path.expanduser("~/rashomon-eval/steer/ci/pending")
 MAX_NOTES = 3
 
 def main():
