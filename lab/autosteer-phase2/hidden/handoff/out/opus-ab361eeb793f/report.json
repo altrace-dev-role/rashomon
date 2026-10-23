@@ -1,0 +1,775 @@
+{
+ "arm": "opus",
+ "commit": "ab361eeb793f0ba2968a236952a5cbf25e78bb4f",
+ "elapsed_sec": 436,
+ "item_2b_byte_identical_corpus": true,
+ "item_2b_corpus_diff": null,
+ "item_2b_hostile_cases_differing": [],
+ "sides": {
+  "2.7": {
+   "H1_builtin": [
+    "control ok; files with truth 1027, star-import files excluded 77, unparsable 0, true builtin uses 513",
+    "opus   flagged  545  missed real uses (FN)   32  flagged non-uses (FP)    0  FN e.g. ['code.py raw_input', 'bsddb/dbtables.py StandardError', 'gettext.py unicode']  FP e.g. []"
+   ],
+   "H2_H8_false_ready_by_version": {
+    "3.10": 0,
+    "3.11": 0,
+    "3.12": 0,
+    "3.13": 0,
+    "3.14": 0,
+    "3.15": 0,
+    "3.6": 0,
+    "3.7": 0,
+    "3.8": 0,
+    "3.9": 0
+   },
+   "H2b_H8s": {
+    "ambiguous_lines_excluded": 6287,
+    "except_comma_clauses": 497,
+    "except_comma_examples": [],
+    "except_comma_missing_blocker": 0,
+    "stdlib_exact": 223,
+    "stdlib_examples": {
+     "extra": [],
+     "missed": [
+      "stdlib/runpy.py:13",
+      "stdlib/idlelib/CodeContext.py:13",
+      "stdlib/sunau.py:395",
+      "moin/MoinMoin/formatter/__init__.py:373",
+      "moin/MoinMoin/formatter/__init__.py:373",
+      "stdlib/ihooks.py:67"
+     ],
+     "severity": [
+      "stdlib/xml/dom/pulldom.py:343 want warning got blocker",
+      "moin/MoinMoin/support/werkzeug/test.py:52 want warning got blocker",
+      "stdlib/cgi.py:54 want warning got blocker",
+      "stdlib/httplib.py:83 want warning got blocker",
+      "stdlib/csv.py:16 want warning got blocker",
+      "moin/MoinMoin/support/passlib/utils/compat/_ordered_dict.py:9 want warning got blocker"
+     ]
+    },
+    "stdlib_expected": 413,
+    "stdlib_extra": 0,
+    "stdlib_missed": 131,
+    "stdlib_severity_wrong": 59,
+    "stdlib_versions_wrong": 0,
+    "unparsable_on_27": 0
+   },
+   "H3_hostile": {
+    "bom_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.09
+    },
+    "bom_utf8_cookie": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "canary": {
+     "findings": [
+      [
+       "__init__.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "__main__.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "conftest.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "mod.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "setup.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.09
+    },
+    "cr_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "deep_dirs": {
+     "findings": [
+      [
+       "d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.09
+    },
+    "dirlink": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "escape": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "exec_free": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-EXEC-STMT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "fifo": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.07
+    },
+    "future_print": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "html": {
+     "findings": [
+      [
+       "<img src=x onerror=alert(1)>.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.09
+    },
+    "huge_line": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "timeout 60 s",
+      "exit 124"
+     ],
+     "rc": 124,
+     "sec": 60.03
+    },
+    "odd_names": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.28
+    },
+    "shebang_cookie": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.19
+    },
+    "tabs_py2_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-SYNTAX",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.12
+    },
+    "unlistable": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 2,
+     "sec": 0.12
+    }
+   },
+   "R6_files_not_named": {
+    "count": 0,
+    "examples": [],
+    "of": 2331
+   },
+   "corpus_scan": {
+    "files": 2331,
+    "findings": 5959,
+    "json_valid": true,
+    "rc": 1,
+    "rules": {
+     "PY3-BACKTICK": 9,
+     "PY3-BUILTIN": 1443,
+     "PY3-DICT-ITER": 414,
+     "PY3-DIVISION": 234,
+     "PY3-EXCEPT-COMMA": 497,
+     "PY3-EXEC-STMT": 54,
+     "PY3-LONG-SUFFIX": 135,
+     "PY3-METACLASS": 19,
+     "PY3-NE-OP": 6,
+     "PY3-OCTAL": 108,
+     "PY3-PRINT": 1569,
+     "PY3-RAISE-COMMA": 772,
+     "PY3-STDLIB": 427,
+     "PY3-SYNTAX": 272
+    },
+    "sec": 67.4,
+    "traceback": false
+   },
+   "determinism_jobs1_vs_default": true,
+   "false_ready_examples": {},
+   "html": {
+    "bytes": 5720,
+    "ok": true,
+    "raw_injections_found": []
+   },
+   "interpreter": "2.7.18",
+   "item_2c_canary": []
+  },
+  "3.14": {
+   "H1_builtin": [
+    "control ok; files with truth 1027, star-import files excluded 77, unparsable 0, true builtin uses 513",
+    "opus   flagged  545  missed real uses (FN)   32  flagged non-uses (FP)    0  FN e.g. ['code.py raw_input', 'bsddb/dbtables.py StandardError', 'gettext.py unicode']  FP e.g. []"
+   ],
+   "H2_H8_false_ready_by_version": {
+    "3.10": 0,
+    "3.11": 0,
+    "3.12": 0,
+    "3.13": 0,
+    "3.14": 0,
+    "3.15": 0,
+    "3.6": 0,
+    "3.7": 0,
+    "3.8": 0,
+    "3.9": 0
+   },
+   "H2b_H8s": {
+    "ambiguous_lines_excluded": 6287,
+    "except_comma_clauses": 497,
+    "except_comma_examples": [],
+    "except_comma_missing_blocker": 0,
+    "stdlib_exact": 223,
+    "stdlib_examples": {
+     "extra": [],
+     "missed": [
+      "stdlib/runpy.py:13",
+      "stdlib/idlelib/CodeContext.py:13",
+      "stdlib/sunau.py:395",
+      "moin/MoinMoin/formatter/__init__.py:373",
+      "moin/MoinMoin/formatter/__init__.py:373",
+      "stdlib/ihooks.py:67"
+     ],
+     "severity": [
+      "stdlib/xml/dom/pulldom.py:343 want warning got blocker",
+      "moin/MoinMoin/support/werkzeug/test.py:52 want warning got blocker",
+      "stdlib/cgi.py:54 want warning got blocker",
+      "stdlib/httplib.py:83 want warning got blocker",
+      "stdlib/csv.py:16 want warning got blocker",
+      "moin/MoinMoin/support/passlib/utils/compat/_ordered_dict.py:9 want warning got blocker"
+     ]
+    },
+    "stdlib_expected": 413,
+    "stdlib_extra": 0,
+    "stdlib_missed": 131,
+    "stdlib_severity_wrong": 59,
+    "stdlib_versions_wrong": 0,
+    "unparsable_on_27": 0
+   },
+   "H3_hostile": {
+    "bom_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.33
+    },
+    "bom_utf8_cookie": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.26
+    },
+    "canary": {
+     "findings": [
+      [
+       "__init__.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "__main__.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "conftest.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "mod.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "setup.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.29
+    },
+    "cr_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.21
+    },
+    "deep_dirs": {
+     "findings": [
+      [
+       "d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.22
+    },
+    "dirlink": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.17
+    },
+    "escape": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.14
+    },
+    "exec_free": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-EXEC-STMT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.14
+    },
+    "fifo": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "future_print": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.14
+    },
+    "html": {
+     "findings": [
+      [
+       "<img src=x onerror=alert(1)>.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.16
+    },
+    "huge_line": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 1.61
+    },
+    "odd_names": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.2
+    },
+    "shebang_cookie": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.15
+    },
+    "tabs_py2_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-SYNTAX",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.15
+    },
+    "unlistable": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 2,
+     "sec": 0.08
+    }
+   },
+   "R6_files_not_named": {
+    "count": 0,
+    "examples": [],
+    "of": 2331
+   },
+   "corpus_scan": {
+    "files": 2331,
+    "findings": 5959,
+    "json_valid": true,
+    "rc": 1,
+    "rules": {
+     "PY3-BACKTICK": 9,
+     "PY3-BUILTIN": 1443,
+     "PY3-DICT-ITER": 414,
+     "PY3-DIVISION": 234,
+     "PY3-EXCEPT-COMMA": 497,
+     "PY3-EXEC-STMT": 54,
+     "PY3-LONG-SUFFIX": 135,
+     "PY3-METACLASS": 19,
+     "PY3-NE-OP": 6,
+     "PY3-OCTAL": 108,
+     "PY3-PRINT": 1569,
+     "PY3-RAISE-COMMA": 772,
+     "PY3-STDLIB": 427,
+     "PY3-SYNTAX": 272
+    },
+    "sec": 56.62,
+    "traceback": false
+   },
+   "determinism_jobs1_vs_default": true,
+   "false_ready_examples": {},
+   "html": {
+    "bytes": 5720,
+    "ok": true,
+    "raw_injections_found": []
+   },
+   "interpreter": "3.14.9",
+   "item_2c_canary": []
+  }
+ },
+ "started": "2026-10-23T08:08:09"
+}

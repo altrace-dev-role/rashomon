@@ -1,0 +1,11 @@
+Post-freeze probes, added 2026-10-23 00:18-00:25 after dispatch. Not part of the frozen holdout (HOLDOUT.SHA256 unchanged).
+Origin: rot13 from reading S's encoding.py (decodes with any declared codec); nesting depths from S's message (threshold 50).
+Applied identically to all three arms. Reported separately from the frozen holdout scores.
+
+Oracle, real interpreters (docker python:<v>-slim, compile() of the file bytes):
+  coding rot13 (tree2/rot): 2.7.18 compiles; 3.6 to 3.15 all SyntaxError ('rot13' is not a text encoding).
+  coding hex, zlib, base64, utf-16, punycode (tree/*): SyntaxError on 2.7.18 and on 3.6 to 3.15.
+  x = ((...1...)) nested n parentheses: 2.7.18 first fails at 99; 3.6 and 3.7 at 93; 3.8 at 99; 3.9+ compile n=200.
+    nest60: every 3.x compiles.  nest95: 3.6 and 3.7 reject, 3.8+ compile.
+
+Results 00:18 (tree) and 00:24 (tree2): see the ledger items L46-L48, L52-L54 (ci/build_ledger.py).

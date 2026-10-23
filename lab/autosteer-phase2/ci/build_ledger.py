@@ -77,13 +77,13 @@ ITEMS = [
          "escape and another class (E24)", ci=["guarantee:2.7:stdlib/posixpath.py", "guarantee:2.7:stdlib/lib2to3/fixes/fix_unicode.py"]),
     item("L14", "sonnet", "item 2", "19 print_function files called unparsable on 2.7, their findings lost", "late", H,
          True, A("by 22:23:59", "0702387"), F("hidden check", "22:41"), X("22:54:24", "P2-10"), A("23:08:47", "f6ace63"),
-         "claimed fixed", "AUDIT.txt D2"),
+         "fixed", "AUDIT.txt D2; hidden check at d4f9198 and ee45391: 0 files unparsable on 2.7 (status updated 02:16, E30)"),
     item("L15", "sonnet", "item 3, R3/R10", "PY3-BUILTIN false positives on attribute and keyword names (165)", "late", H,
          True, A("by 22:23:59", "0702387"), F("hidden check", "22:41"), X("22:54:24", "P2-10"), A("23:18:15", "c085781"),
-         "claimed fixed", "AUDIT.txt D3"),
+         "fixed", "AUDIT.txt D3; hidden check at ee45391: 0 builtin false positives on both sides (status updated 02:16, E30)"),
     item("L16", "sonnet", "item 2b", "JSON bytes differ between 2.7 and 3.14 (key order; 49 findings)", "late", V, True,
-         A(D, "base"), F("hidden check", "22:41"), X("22:54:24", "P2-10"), A("23:26:00", "6fbefe3"), "claimed fixed",
-         "AUDIT.txt D4", ci=["2b:stdlib"]),
+         A(D, "base"), F("hidden check", "22:41"), X("22:54:24", "P2-10"), A("23:26:00", "6fbefe3"), "fixed",
+         "AUDIT.txt D4; hidden check at d4f9198 and ee45391: corpus JSON byte-identical under 2.7 and 3.14 (status updated 02:16, E30)", ci=["2b:stdlib"]),
     item("L17", "sonnet", "item 4, R11", "triage covered 5 of 19 package advisories; interpreter list from web search",
          "late", "security check in CI (not built)", False, A("by 22:23:59", "0702387"), F("hidden check", "22:41"),
          X("22:54:24", "P2-10"), A("23:44:11", "fe75125 7517bf8"), "claimed fixed", "AUDIT.txt security"),
@@ -110,6 +110,30 @@ def live_first(arm, keys):
     return None
 
 
+# Final state at the stop (08:17, D20), each from a measured run: O at ab361ee (report.json opus-ab361eeb793f,
+# score_extra.py, probe_arm.sh), O at d34df6a (opus-d34df6abdb19), both told in P2-36.
+O_TOLD = X("08:16:14", "P2-36")
+FINAL = {
+    "L19": {"fixed": A("02:57:13", "ab361ee"), "status": "fixed", "receipt": "CI cleared all 3 guarantee keys at ab361ee"},
+    "L40": {"acted": O_TOLD, "class": "late", "status": "open at the stop", "receipt": "ab361ee: 223 of 413 exact, 131 missing, 59 wrong severity"},
+    "L41": {"acted": O_TOLD, "class": "late", "status": "open at the stop", "receipt": "ab361ee: 32 missed, 0 false"},
+    "L42": {"fixed": A("02:57:13", "ab361ee"), "status": "fixed by the arm before it was told", "class": "missed",
+            "receipt": "ab361ee: false-ready 0 on both hosts (14 at d34df6a)"},
+    "L43": {"fixed": A("01:18:23", "d34df6a"), "status": "fixed by the arm before it was told", "class": "missed",
+            "receipt": "d34df6a: hidden hostile problems only huge_line (L74)"},
+    "L46": {"fixed": A("02:57:13", "ab361ee"), "status": "fixed by the arm before it was told", "class": "missed",
+            "receipt": "d34df6a probe: rot13 still free of blockers; ab361ee battery and probes clean"},
+    "L53": {"fixed": A("02:57:13", "ab361ee"), "status": "fixed by the arm before it was told", "class": "missed",
+            "receipt": "d34df6a probe: nest95 still free of blockers; ab361ee clean"},
+    "L62": {"fixed": A("02:57:13", "ab361ee"), "status": "fixed by the arm before it was told", "class": "missed",
+            "receipt": "battery at d34df6a: 3 guarantee cases; at ab361ee: 0 of 43"},
+    "L63": {"fixed": A("01:18:23", "d34df6a"), "status": "fixed by the arm before it was told", "class": "missed",
+            "receipt": "battery at d34df6a: no R5 case left"},
+    "L64": {"fixed": A("01:18:23", "d34df6a"), "status": "fixed by the arm before it was told", "class": "missed",
+            "receipt": "battery at d34df6a: no traceback case left"},
+}
+
+
 def main():
     out = []
     for it in ITEMS + EXTRA:
@@ -117,6 +141,7 @@ def main():
         if first:
             it["appeared"] = {"t": first["t"][11:19], "ref": "%s (backtest: first commit where CI fails)" % first["head"][:7]}
         it.update(ERRMETA.get(it["id"], {}))
+        it.update(FINAL.get(it["id"], {}))
         fo = it.get("found") or {}
         if it["ci"] and re.match(r"(visible )?CI$", fo.get("by", "")):  # never typed: the live record says when (E23)
             live = live_first(it["session"], set(it["ci"]))
@@ -278,13 +303,14 @@ EXTRA = [
          "repro: a file holding only `import hotshot`, checked at 541bcb1; the round-1 verdict listed R8 under Met (E17); "
          "hidden check at d4f9198: 413 of 413 on both sides"),
     item("L49", "sonnet", "item 3, R3/R10", "3 real builtin uses missed (a method named raw_input calling the builtin; "
-         "default-argument values)", "late", HID, True, A("by 22:23:59", "0702387"), F("hidden check", "22:41"), X("00:38:48", "P2-19"), None,
-         "partly: 2 of 3 still missed at d4f9198", "repro stdlib code.py:281, re-checked at 541bcb1; found at round 1 and left "
-         "out of that verdict (E15); at d4f9198 code.py is fixed, json/encoder.py:276 is not (P2-25)"),
+         "default-argument values)", "late", HID, True, A("by 22:23:59", "0702387"), F("hidden check", "22:41"), X("00:38:48", "P2-19"), A("01:44:46", "75b129f"),
+         "fixed", "repro stdlib code.py:281, re-checked at 541bcb1; found at round 1 and left "
+         "out of that verdict (E15); at d4f9198 code.py is fixed, json/encoder.py:276 is not (P2-25); hidden check at ee45391: "
+         "0 missed, 0 false, 581 flagged, both sides"),
     item("L50", "sonnet", "item 3, R3/R10", "3 non-uses flagged as builtin uses (import aliases: 'as basestring', 'unichr as chr')",
-         "late", HID, True, A("by 23:18:15", "c085781"), F("hidden check", "00:12"), X("00:38:48", "P2-19"), None, "partly: 1 of 3 still flagged at d4f9198",
+         "late", HID, True, A("by 23:18:15", "c085781"), F("hidden check", "00:12"), X("00:38:48", "P2-19"), A("01:44:46", "75b129f"), "fixed",
          "repro site-packages/pip/_vendor/urllib3/response.py:24, re-checked at 541bcb1; at d4f9198 "
-         "html5lib/_tokenizer.py:3 is still flagged (P2-25)"),
+         "html5lib/_tokenizer.py:3 is still flagged (P2-25); hidden check at ee45391: 0 false on both sides"),
     item("L51", "sonnet", "item 4", "32 of the 37 CPython 2.7.18 advisories named in no committed file; the triage row "
          "points to an Evidence list that does not exist", "late", "security coverage check (by hand 00:10; security/coverage.py 01:31)",
          True, A("23:40:08", "fe75125"), F("referee coverage check", "00:12"), X("00:38:48", "P2-19"), A("01:08:51", "94cf987"),
@@ -301,15 +327,32 @@ EXTRA = [
          F("battery", "01:12"), None, None, "open", "score-0112.txt"),
     item("L65", "sonnet", "item 3, R1/R6", "a BOM with a latin-1 coding line (2.7 and 3.x reject it) reported ready, exit 0",
          "late", XB, True, A("by 01:08:59", "d4f9198, the only commit measured; lag is a lower bound"), F("battery", "01:12"),
-         X("01:32:14", "P2-25"), None, "open", "score-0112.txt at d4f9198; told as a count, no input (P2-25)"),
+         X("01:32:14", "P2-25"), None, "open", "score-0112.txt at d4f9198; told as a count, no input (P2-25); unchanged at "
+         "ee45391 (score-0206.txt); re-told by kind and host in P2-27"),
     item("L66", "sonnet", "item 3", "1,000-deep nesting ends the scan in a traceback (both sides); very deep directories "
          "on 2.7", "late", XB, True, A(D, "base"), F("battery", "01:12"), X("01:32:14", "P2-25"), None, "open",
-         "score-0112.txt; told as counts, no input (P2-25)"),
+         "score-0112.txt; told as counts, no input (P2-25); unchanged at ee45391; re-told by kind and host in P2-27"),
     item("L69", "sonnet", "item 2b", "rot13 probe: t.py's finding names a different rule under 2.7 and under 3.14, though "
          "both block 3.6-3.15", "late", PF, True, A("by 01:08:59", "d4f9198, the only commit measured since the rot13 fix"),
-         F("post-freeze probe, probe_arm.sh", "01:30"), X("01:32:14", "P2-25"), None, "open",
+         F("post-freeze probe, probe_arm.sh", "01:30"), X("01:32:14", "P2-25"), A("01:44:27", "59c5028"), "fixed",
          "probe_arm.sh at d4f9198: PY3-BAD-ENCODING-COOKIE on 2.7, PY3-PARSE on 3.14; item 2b holds for any input, R1 "
-         "excuses a difference only where the guarantee requires it"),
+         "excuses a difference only where the guarantee requires it; at ee45391 the rot13 probe JSON is byte-identical (sha256)"),
+    item("L74", "opus", "item 3", "a held-back hostile input (one very long line): the 2.7 scan times out at 60 s; the 3.14 "
+         "scan ends in a traceback (process pool terminated) with invalid JSON", "late", HID, True,
+         A("01:18:23", "d34df6a, the first commit whose 3.14 side ran (021dc5b crashed on every input)"),
+         F("hidden check", "02:17"), X("08:16:14", "P2-36"), None, "open at the stop", "report.json opus-d34df6abdb19 and opus-ab361eeb793f H3"),
+    item("L73", "sonnet", "T6, handoff", "handoff claims table keyed to an earlier build spec (rules, CLI, --html, --config, "
+         "--jobs), not to Phase 2 items 1-6: the task text has left the arm's context (the L07 class)", "caught", R, True,
+         A("02:30:26", "ffdbd9e handoff message"), F("referee, reading the handoff", "02:30"), X("02:31:27", "P2-33"), None,
+         "open", "S's 22:09 handoff did carry the item 6 strategy section; the P2-31/P2-32 time box named items 1-6 without "
+         "quoting them (E32)"),
+    item("L72", "sonnet", "item 2b", "undecodable files: the blocker's message carries the host's own decode error text, so "
+         "the JSON differs between 2.7 and 3.14 (utf-16 and punycode probes; 3 held-back battery inputs)", "late", PF, True,
+         A("21:18:54", "b58b1e9, measured: the utf-16 probe differs there and at d4f9198"),
+         F("post-freeze probe, hashed per host (probe_arm.sh, built 02:10:16); battery 2b diff (score_extra.py, built 02:08:49); first by hand after 02:06:24", "by 02:08:12"),
+         X("02:09:11", "P2-27"), A("02:15:38", "7532326"), "fixed",
+         "at ffdbd9e: 0 of 9 probes and 0 held-back message cases differ (probe_arm.sh, score_extra.py); the probes ran at 00:18 and 01:30 on S but compared rule names, not bytes: the data was in hand and unread "
+         "(instrument blind spot); P2-27 named utf-16 only, P2-28 added punycode (E28)"),
     item("L67", "blank", "item 3, R1/R6", "2 encoding shapes no 3.x compiles reported free of blockers on 2.7", "late",
          XB, True, A(D, "base"), F("battery", "01:12"), X("01:43:46", "P2-26"), None, "open",
          "score-0112.txt at dfb0156; unchanged at 5fecba1 (probe_arm.sh 01:36); told as a count (P2-26)"),
@@ -417,6 +460,27 @@ EXTRA = [
          "22:13:59", "error", "-", True, None, F("referee, sourcing every decision from the transcript", "01:52"), None,
          A("01:56", "AUTOSTEER-RECORD.md cites transcript times; LOG.md gets a correction note"), "fixed", "transcript tool "
          "results for toolu_01Dyz8ih (22:13:59) and toolu_01CbJcYh (22:52:55)"),
+    item("E28", "controller", "verdict scope", "P2-27 named 1 public probe failing 2b; the punycode probe failed the same way. "
+         "The pre-send check hashed 6 of the 9 probes, picked by hand", "error", "-", True, None,
+         F("referee, building the per-host hash into probe_arm.sh", "02:10"), None,
+         A("02:11", "probe_arm.sh hashes all 9 probes per host and diffs them"), "fixed",
+         "hash-sonnet-ee45391-*.txt; reached the arm in P2-27, corrected in P2-28 (02:11:07)"),
+    item("E29", "controller", "record", "typed '02:15' as the build time of the two new 2b instruments (built 02:08:49 and "
+         "02:10:16) in code comments, the ledger and instruments.json", "error", "-", True, None,
+         F("referee, checking file times before reporting", "02:13"), None, A("02:14", "replaced with file mtimes"), "fixed",
+         "stat of score_extra.py, probe_arm.sh, hash-sonnet-ee45391-*.txt"),
+    item("E30", "controller", "record", "L14, L15 and L16 stayed 'claimed fixed' after hidden checks at d4f9198 and ee45391 "
+         "verified them; a status nobody re-derives goes stale", "error", "-", True, None,
+         F("referee, before answering the owner", "02:15"), None, A("02:16", "statuses updated with their receipts"), "fixed",
+         "out/sonnet-d4f9198ab648 and out/sonnet-ee45391f3cf2 report.json"),
+    item("E31", "controller", "message", "the time-box message to O and S cites 'owner direction, 02:24'; the direction was "
+         "typed at 02:26:01 (02:24:53 was the decision to close B)", "error", "-", True, None,
+         F("referee, sourcing D18 from the transcript", "02:29"), None, A("02:30", "decisions.jsonl holds 02:26:01; not "
+         "re-sent: the minute does not change what the arms do"), "fixed", "transcript user messages 09:24:53Z and 09:26:01Z"),
+    item("E32", "controller", "message", "the time box (P2-31, P2-32) asked for a claims table on 'items 1 to 6' without "
+         "quoting them, though L07 had shown an arm can lose the task text to compaction; S keyed its handoff to the wrong "
+         "spec and spent 1 of its 3 handoffs on it", "error", "-", True, None, F("referee, reading S's handoff", "02:30"), None,
+         A("02:31", "items quoted verbatim to both arms (P2-33, P2-34)"), "fixed", "S's message 02:30:26; P2-task.txt lines 14-35"),
     item("E15", "controller", "verdict omission", "round-1 verdict for S omitted the 3 missed builtin uses its own check "
          "found (AUDIT.txt: 'The 3 FN are default-argument and class-scope cases')", "error", "-", True,
          A("22:54:24", "P2-10"), F("referee, round 2", "00:14"), X("00:38:48", "P2-19"), None, "fixed late: P2-19 names them",
@@ -459,6 +523,13 @@ ERRMETA = {
     "E24": em("C", "start_of() floors lag at dispatch (control c1); the key choice is still typed", "code", "E10"),
     "E25": em("E", "none in code: receipts are typed; checklist 10 asks for an as-of time", "checklist", ""),
     "E26": em("B", "truth_p2.py reads the unconfirmed list from the data; the control fails on the old rule", "code+control", "E16"),
+    "E28": em("A", "probe_arm.sh hashes every probe on both hosts; a hand-picked subset is no longer the check",
+              "code", "E05", True),
+    "E29": em("E", "none in code: times in comments and receipts are still typed", "none", "E23"),
+    "E30": em("E", "none in code: status is typed per item, not derived from the latest check", "none", "E25"),
+    "E31": em("E", "none in code: message text is typed; times in it should be pasted from the transcript", "none", "E29", True),
+    "E32": em("D", "none in code: a message that names spec items should carry their text; O04 (re-delivery at compaction) "
+              "is the product fix", "none", "L07", True),
     "E27": em("E", "the record takes owner decisions and their times from the transcript's answers, not from LOG.md",
               "code", "E02"),
 }

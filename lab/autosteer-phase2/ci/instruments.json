@@ -69,11 +69,12 @@
    "file": "~/.k-hidden-accept/phase2/postfreeze/probe_arm.sh (a file since 01:30)",
    "built": "00:18 (codings) and 00:24 (nesting, rot13)",
    "measures": "codings hex, zlib, base64, rot13, utf-16, punycode; nesting 60 and 95 deep; rot13 again on its own",
-   "control": "ORACLE.txt: real 2.7.18 and 3.6 to 3.15 on each input",
+   "control": "ORACLE.txt: real 2.7.18 and 3.6 to 3.15 on each input; 2b hash diff (02:10): utf-16 differs at S ee45391 (positive), rot13 identical (negative)",
    "oracle": "3.6 and 3.7 first reject nesting at 93, 3.8 and 2.7.18 at 99, 3.9+ compile 200; rot13: 2.7 compiles, every 3.x rejects",
    "blind": [
     "hindsight: invented after dispatch, so counted apart from the spec-named inputs",
-    "outside the frozen holdout score"
+    "outside the frozen holdout score",
+    "until 02:10 compared rule names and readiness per host, not JSON bytes across hosts: item 2b on the probes went unseen from 00:18 (L72, E28)"
    ]
   },
   {
@@ -83,11 +84,12 @@
    "file": "~/.k-hidden-accept/phase2/postfreeze/extra (hostile_extra.sh, oracle_extra.py, score_extra.py)",
    "built": "run 01:10 (all arms), 01:36 (B 5fecba1)",
    "measures": "43 hostile shapes: encodings and cookies, prefixes, deep nesting, deep directories, links, sockets, FIFOs, unreadable entries",
-   "control": "per-version oracles oracle-<v>.json from real 2.7.18 and 3.6 to 3.15",
+   "control": "per-version oracles oracle-<v>.json from real 2.7.18 and 3.6 to 3.15; two_b_control() plants one message-only and one exit-code difference",
    "oracle": "real interpreters",
    "blind": [
     "told as counts only: no input, cause or fix",
-    "scored on .py names only"
+    "scored on .py names only",
+    "until 02:08 scored crash, R5, guarantee and precision per host, not item 2b across hosts"
    ]
   },
   {

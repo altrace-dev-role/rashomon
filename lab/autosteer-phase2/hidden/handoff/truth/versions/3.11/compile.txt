@@ -1,0 +1,454 @@
+FAIL	moin/setup.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	moin/wikiconfig.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/wikiserverconfig.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/Page.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/PageEditor.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/caching.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	moin/MoinMoin/log.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/packages.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	moin/MoinMoin/user.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/version.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/wikisync.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/wikiutil.py	SyntaxError: invalid decimal literal
+FAIL	moin/MoinMoin/wsgiapp.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	moin/MoinMoin/_tests/ldap_testbase.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/_tests/maketestwiki.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/_tests/pep8.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/_tests/test_PageEditor.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/_tests/test_wikiutil.py	SyntaxError: invalid decimal literal
+FAIL	moin/MoinMoin/_tests/test_wsgiapp.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/action/AttachFile.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/CopyPage.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/DeletePage.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/Despam.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/Load.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/PackagePages.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/RenamePage.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/SlideShow.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/SubscribeUser.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/action/SyncPages.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/edit.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/newaccount.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/pollsistersites.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/revert.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/serveopenid.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/action/twikidraw.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/auth/_PHPsessionParser.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/auth/ldap_login.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/auth/openidrp_ext/openidrp_teams.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/config/__init__.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	moin/MoinMoin/config/multiconfig.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/config/_tests/test_multiconfig.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/converter/text_html_text_moin_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/converter/_tests/test_text_html_text_moin_wiki.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/datastruct/backends/wiki_dicts.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/events/jabbernotify.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/events/_tests/test_events.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/filter/EXIF.py	SyntaxError: invalid decimal literal
+FAIL	moin/MoinMoin/filter/application_vnd_oasis_opendocument.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/filter/application_vnd_sun_xml.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/filter/text_xml.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/formatter/__init__.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/formatter/_tests/test_formatter.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/i18n/__init__.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/i18n/msgfmt.py	SyntaxError: invalid hexadecimal literal
+FAIL	moin/MoinMoin/i18n/tools/check_i18n.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/i18n/tools/mk_POTFILES.py	SyntaxError: Function parameters cannot be parenthesized
+FAIL	moin/MoinMoin/i18n/tools/po2wiki.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/i18n/tools/recode.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/i18n/tools/wiki2po.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/logfile/__init__.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/logfile/_tests/test_logfile.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/macro/TeudView.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/macro/__init__.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/mail/mailimport.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/mail/sendmail.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/parser/_ParserBase.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/parser/_creole.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/parser/text_html.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/parser/text_moin_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/parser/text_xslt.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/parser/_tests/test_text_creole.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/parser/_tests/test_text_moin_wiki.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/__init__.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/account/check.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/account/create.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/account/disable.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/account/homepage.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/account/inactive.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/account/resetpw.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/export/dump.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/script/import/irclog.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/script/import/wikipage.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/script/index/build.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/script/maint/cleanpage.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/maint/cleansessions.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/maint/globaledit.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/maint/mailtranslators.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/maint/mkpagepacks.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/migration/1059998.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/migration/1059999.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/migration/1089999.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/script/migration/_conv160.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/migration/_conv160_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/_conv160a.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/script/migration/_conv160a_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/data.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/migration/migutil.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/migration/text_moin158_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/text_moin160a_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/wikiutil160a.py	SyntaxError: invalid decimal literal
+FAIL	moin/MoinMoin/script/old/print_stats.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/repair_language.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig01.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig02.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig03.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig04.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig05.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig06.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig07.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig08.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig09.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig10.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig11.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/migration/152_to_1050300.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/old/xmlrpc-tools/HelloWorld.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/server/standalone.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/xmlrpc/remote.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/xmlrpc/retrieve.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/script/xmlrpc/write.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/search/__init__.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/search/builtin.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/search/Xapian/indexing.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/search/_tests/test_search.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/search/queryparser/__init__.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/security/antispam.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/security/textcha.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/security/_tests/test_security.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/support/md5crypt.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/support/flup/client/fcgi_app.py	SyntaxError: invalid hexadecimal literal
+FAIL	moin/MoinMoin/support/flup/server/ajp.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/support/flup/server/ajp_base.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/support/flup/server/ajp_fork.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/support/flup/server/cgi.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/fcgi.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/fcgi_base.py	SyntaxError: invalid hexadecimal literal
+FAIL	moin/MoinMoin/support/flup/server/fcgi_fork.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/fcgi_single.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/preforkserver.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/scgi.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/support/flup/server/scgi_base.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/support/flup/server/scgi_fork.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/support/flup/server/singleserver.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/support/flup/server/threadedserver.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/support/xappy/fieldactions.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/support/xappy/replaylog.py	SyntaxError: Function parameters cannot be parenthesized
+FAIL	moin/MoinMoin/support/xappy/searchconnection.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/theme/__init__.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/userprefs/changepass.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/util/SubProcess.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/util/bdiff.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/util/chartypes_create.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/util/daemon.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	moin/MoinMoin/util/filesys.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/util/lock.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/util/profile.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/util/rpc_aggregator.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/util/_tests/test_pysupport.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/web/_fallback_cgi.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/web/contexts.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/web/frontend.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/web/profile.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/web/session.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/config.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/connector.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/fckcommands.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/fckutil.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/upload.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/zope.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/xmlrpc/ProcessMail.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/xmlrpc/RemoteScript.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/xmlrpc/UpdateGroup.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/xmlrpc/__init__.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/MoinMoin/xmlrpc/_tests/test_xmlrpc.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/contrib/raw_wsgi_bench.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/contrib/googleimport/driver.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/jabberbot/bot.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/jabberbot/commands.py	SyntaxError: invalid syntax
+FAIL	moin/jabberbot/i18n.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/jabberbot/xmlrpcbot.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	moin/jabberbot/xmppbot.py	SyntaxError: invalid syntax
+FAIL	moin/jabberbot/_tests/test_xmlrpcbot.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/jabberbot/_tests/test_xmppbot.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	moin/wiki/config/wikiconfig.py	SyntaxError: invalid syntax
+FAIL	moin/wiki/config/wikifarm/farmconfig.py	SyntaxError: invalid syntax
+FAIL	moin/wiki/server/wikiserverconfig.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/BaseHTTPServer.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/Bastion.py	SyntaxError: invalid syntax
+FAIL	stdlib/CGIHTTPServer.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/ConfigParser.py	SyntaxError: invalid syntax
+FAIL	stdlib/DocXMLRPCServer.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/SimpleXMLRPCServer.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/SocketServer.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/StringIO.py	SyntaxError: invalid syntax
+FAIL	stdlib/UserDict.py	SyntaxError: invalid syntax
+FAIL	stdlib/UserString.py	SyntaxError: invalid syntax
+FAIL	stdlib/_strptime.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/aifc.py	SyntaxError: invalid hexadecimal literal
+FAIL	stdlib/anydbm.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/asynchat.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/asyncore.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/atexit.py	SyntaxError: invalid syntax
+FAIL	stdlib/audiodev.py	SyntaxError: invalid syntax
+FAIL	stdlib/base64.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/bdb.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/binhex.py	SyntaxError: invalid syntax
+FAIL	stdlib/cProfile.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/calendar.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/cgi.py	SyntaxError: invalid syntax
+FAIL	stdlib/chunk.py	SyntaxError: invalid syntax
+FAIL	stdlib/cmd.py	SyntaxError: invalid syntax
+FAIL	stdlib/code.py	SyntaxError: Missing parentheses in call to 'exec'. Did you mean exec(...)?
+FAIL	stdlib/codecs.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/codeop.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/collections.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/compileall.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/contextlib.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/copy.py	SyntaxError: invalid decimal literal
+FAIL	stdlib/copy_reg.py	SyntaxError: invalid syntax
+FAIL	stdlib/csv.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/dbhash.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/decimal.py	SyntaxError: invalid decimal literal
+FAIL	stdlib/difflib.py	SyntaxError: invalid syntax
+FAIL	stdlib/dis.py	SyntaxError: invalid decimal literal
+FAIL	stdlib/doctest.py	SyntaxError: invalid syntax
+FAIL	stdlib/dumbdbm.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/filecmp.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/fileinput.py	SyntaxError: invalid syntax
+FAIL	stdlib/formatter.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/fpformat.py	SyntaxError: invalid syntax
+FAIL	stdlib/ftplib.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/getopt.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/getpass.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/gettext.py	SyntaxError: invalid hexadecimal literal
+FAIL	stdlib/gzip.py	SyntaxError: invalid hexadecimal literal
+FAIL	stdlib/heapq.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/htmllib.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/httplib.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/ihooks.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/imaplib.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/imghdr.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/imputil.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/locale.py	SyntaxError: invalid syntax
+FAIL	stdlib/macpath.py	SyntaxError: invalid syntax
+FAIL	stdlib/macurl2path.py	SyntaxError: invalid syntax
+FAIL	stdlib/mailbox.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/mailcap.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/mhlib.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/mimetools.py	SyntaxError: invalid syntax
+FAIL	stdlib/mimetypes.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/mimify.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/modulefinder.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/multifile.py	SyntaxError: invalid syntax
+FAIL	stdlib/netrc.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/nntplib.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/nturl2path.py	SyntaxError: invalid syntax
+FAIL	stdlib/optparse.py	SyntaxError: invalid syntax
+FAIL	stdlib/os.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/pdb.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/pickle.py	SyntaxError: invalid decimal literal
+FAIL	stdlib/pickletools.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/pipes.py	SyntaxError: invalid syntax
+FAIL	stdlib/pkgutil.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/platform.py	SyntaxError: invalid syntax
+FAIL	stdlib/plistlib.py	SyntaxError: invalid syntax
+FAIL	stdlib/poplib.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/posixfile.py	SyntaxError: invalid syntax
+FAIL	stdlib/posixpath.py	SyntaxError: invalid syntax
+FAIL	stdlib/pprint.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/profile.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/pstats.py	SyntaxError: invalid syntax
+FAIL	stdlib/pty.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/py_compile.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/pyclbr.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/pydoc.py	SyntaxError: invalid syntax
+FAIL	stdlib/quopri.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/random.py	SyntaxError: invalid decimal literal
+FAIL	stdlib/re.py	SyntaxError: invalid syntax
+FAIL	stdlib/rexec.py	SyntaxError: Missing parentheses in call to 'exec'. Did you mean exec(...)?
+FAIL	stdlib/rfc822.py	SyntaxError: invalid syntax
+FAIL	stdlib/rlcompleter.py	SyntaxError: invalid syntax
+FAIL	stdlib/runpy.py	SyntaxError: Missing parentheses in call to 'exec'. Did you mean exec(...)?
+FAIL	stdlib/sets.py	SyntaxError: invalid syntax
+FAIL	stdlib/sgmllib.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/shlex.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/shutil.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/site.py	SyntaxError: Missing parentheses in call to 'exec'. Did you mean exec(...)?
+FAIL	stdlib/smtpd.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/smtplib.py	SyntaxError: invalid syntax
+FAIL	stdlib/sndhdr.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/socket.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/sre_compile.py	SyntaxError: invalid hexadecimal literal
+FAIL	stdlib/sre_constants.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/sre_parse.py	SyntaxError: invalid syntax
+FAIL	stdlib/stat.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/string.py	SyntaxError: invalid syntax
+FAIL	stdlib/stringold.py	SyntaxError: invalid syntax
+FAIL	stdlib/subprocess.py	SyntaxError: invalid syntax
+FAIL	stdlib/sunau.py	SyntaxError: invalid hexadecimal literal
+FAIL	stdlib/sunaudio.py	SyntaxError: invalid syntax
+FAIL	stdlib/symtable.py	SyntaxError: invalid syntax
+FAIL	stdlib/sysconfig.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/tabnanny.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/tarfile.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/telnetlib.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/tempfile.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/textwrap.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/this.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/threading.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/timeit.py	SyntaxError: Missing parentheses in call to 'exec'. Did you mean exec(...)?
+FAIL	stdlib/toaiff.py	SyntaxError: invalid syntax
+FAIL	stdlib/token.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/tokenize.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/trace.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/urllib.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/urllib2.py	SyntaxError: invalid syntax
+FAIL	stdlib/urlparse.py	SyntaxError: invalid syntax
+FAIL	stdlib/uu.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/uuid.py	SyntaxError: invalid decimal literal
+FAIL	stdlib/warnings.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/wave.py	SyntaxError: invalid syntax
+FAIL	stdlib/weakref.py	SyntaxError: invalid syntax
+FAIL	stdlib/webbrowser.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/whichdb.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/xdrlib.py	SyntaxError: invalid hexadecimal literal
+FAIL	stdlib/xmllib.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/xmlrpclib.py	SyntaxError: invalid decimal literal
+FAIL	stdlib/zipfile.py	SyntaxError: invalid hexadecimal literal
+FAIL	stdlib/bsddb/__init__.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/bsddb/dbrecio.py	SyntaxError: invalid syntax
+FAIL	stdlib/bsddb/dbshelve.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/bsddb/dbtables.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/compiler/future.py	SyntaxError: invalid syntax
+FAIL	stdlib/compiler/pyassem.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/compiler/pycodegen.py	SyntaxError: invalid syntax
+FAIL	stdlib/compiler/symbols.py	SyntaxError: invalid syntax
+FAIL	stdlib/compiler/syntax.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/compiler/transformer.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/compiler/visitor.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/ctypes/util.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/ctypes/macholib/dyld.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/curses/has_key.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/curses/textpad.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/distutils/archive_util.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/bcppcompiler.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/distutils/ccompiler.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/distutils/cmd.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/distutils/config.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/distutils/core.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/distutils/cygwinccompiler.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/distutils/dep_util.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/dir_util.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/distutils/dist.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/distutils/emxccompiler.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/distutils/fancy_getopt.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/file_util.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/distutils/filelist.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/distutils/msvc9compiler.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/distutils/msvccompiler.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/spawn.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/text_file.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/unixccompiler.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/distutils/util.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/version.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/bdist.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/bdist_dumb.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/bdist_msi.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/bdist_rpm.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/bdist_wininst.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/build_clib.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/build_ext.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/build_scripts.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/distutils/command/install.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/distutils/command/install_lib.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/install_scripts.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/distutils/command/register.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/distutils/command/sdist.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/upload.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/encodings/__init__.py	SyntaxError: invalid syntax
+FAIL	stdlib/encodings/punycode.py	SyntaxError: invalid syntax
+FAIL	stdlib/encodings/utf_16.py	SyntaxError: invalid syntax
+FAIL	stdlib/encodings/utf_32.py	SyntaxError: invalid syntax
+FAIL	stdlib/encodings/uu_codec.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAIL	stdlib/hotshot/log.py	SyntaxError: invalid syntax
+FAIL	stdlib/hotshot/stats.py	SyntaxError: invalid syntax
+FAIL	stdlib/hotshot/stones.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/idlelib/ColorDelegator.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/idlelib/EditorWindow.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/FileList.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/idlelib/IOBinding.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/MultiCall.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/idlelib/Percolator.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/idlelib/PyShell.py	SyntaxError: Missing parentheses in call to 'exec'. Did you mean exec(...)?
+FAIL	stdlib/idlelib/RemoteDebugger.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/ScrolledList.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/idlelib/TreeWidget.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/UndoDelegator.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/idlelib/WindowList.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/idlelib/rpc.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/run.py	SyntaxError: Missing parentheses in call to 'exec'. Did you mean exec(...)?
+FAIL	stdlib/json/__init__.py	SyntaxError: (unicode error) 'unicodeescape' codec can't decode bytes in position 421-422: truncated \uXXXX escape
+FAIL	stdlib/json/encoder.py	SyntaxError: (unicode error) 'unicodeescape' codec can't decode bytes in position 362-363: truncated \uXXXX escape
+FAIL	stdlib/json/tool.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/lib-tk/Dialog.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib-tk/FileDialog.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib-tk/SimpleDialog.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib-tk/Tix.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/Tkinter.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/lib-tk/tkColorChooser.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib-tk/tkCommonDialog.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/tkFileDialog.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib-tk/tkFont.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/tkMessageBox.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib-tk/tkSimpleDialog.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib-tk/turtle.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib2to3/main.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/lib2to3/fixes/fix_unicode.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib2to3/pgen2/conv.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/lib2to3/pgen2/grammar.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib2to3/pgen2/literals.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib2to3/pgen2/pgen.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/lib2to3/pgen2/tokenize.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/multiprocessing/connection.py	SyntaxError: invalid syntax
+FAIL	stdlib/multiprocessing/forking.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/multiprocessing/managers.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/multiprocessing/pool.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/multiprocessing/process.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/multiprocessing/sharedctypes.py	SyntaxError: Missing parentheses in call to 'exec'. Did you mean exec(...)?
+FAIL	stdlib/multiprocessing/util.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/plat-linux2/DLFCN.py	SyntaxError: invalid decimal literal
+FAIL	stdlib/plat-linux2/IN.py	SyntaxError: invalid decimal literal
+FAIL	stdlib/plat-linux2/TYPES.py	SyntaxError: invalid decimal literal
+FAIL	stdlib/unittest/case.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/unittest/loader.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/unittest/main.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/unittest/suite.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/wsgiref/handlers.py	SyntaxError: invalid syntax
+FAIL	stdlib/wsgiref/simple_server.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/xml/dom/NodeFilter.py	SyntaxError: invalid hexadecimal literal
+FAIL	stdlib/xml/dom/domreg.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/dom/expatbuilder.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/dom/minidom.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/dom/pulldom.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/xml/dom/xmlbuilder.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/etree/ElementTree.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/xml/sax/__init__.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/xml/sax/expatreader.py	SyntaxError: multiple exception types must be parenthesized
+FAIL	stdlib/xml/sax/handler.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+FAIL	stdlib/xml/sax/xmlreader.py	SyntaxError: invalid syntax
+FAIL	trac/trac/db/pool.py	SyntaxError: invalid syntax
+FAIL	trac/trac/web/_fcgi.py	SyntaxError: invalid syntax
+FAIL	trac/trac/web/main.py	SyntaxError: invalid syntax
+FAIL	trac/trac/web/wsgi.py	SyntaxError: invalid syntax
+FAIL	trac/tracopt/versioncontrol/git/git_fs.py	SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+TOTAL	2331

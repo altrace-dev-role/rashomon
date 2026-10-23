@@ -278,8 +278,11 @@ def main(out_path):
             o += ["#### %s" % s["name"], "", "- File: %s." % s["file"], "- Measures: %s." % s["measures"],
                   "- Blind spots: %s." % "; ".join(s["blind"]), ""]
     o += ["## 5. Every owner decision, direction and open question", ""]
-    for kind, title in (("decision", "Decided"), ("direction", "Directions"), ("request", "Requests"),
-                        ("open", "Open, awaiting the owner")):
+    kinds = (("decision", "Decided"), ("direction", "Directions"), ("request", "Requests"),
+             ("open", "Open, awaiting the owner"), ("closed", "Closed without an answer (moot)"))
+    unrendered = {d["kind"] for d in dec} - {k for k, _ in kinds}
+    assert not unrendered, "decision kinds the record would drop silently: %s" % unrendered
+    for kind, title in kinds:
         sel = [d for d in dec if d["kind"] == kind]
         o += ["### %s: %d" % (title, len(sel)), ""]
         for d in sel:

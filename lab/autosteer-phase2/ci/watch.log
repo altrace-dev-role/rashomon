@@ -161,3 +161,24 @@ blank 5fecba17f93e (from dfb0156bde36): 13 fouls, 3 new, 3 cleared
 controls ok
 sonnet 75b129f491d3 (from d4f9198ab648): 0 fouls, 0 new, 0 cleared
 sonnet ee45391f3cf2 (from 75b129f491d3): 0 fouls, 0 new, 0 cleared
+sonnet 753232606491 (from ee45391f3cf2): 0 fouls, 0 new, 0 cleared
+blank 3dd6f1961dda (from 5fecba17f93e): 18 fouls, 7 new, 2 cleared
+  NEW tests   tests.test_rules::test_ambiguous_tab_space_indentation_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  NEW tests   tests.test_rules::test_exec_call_alone_is_not_found_by_in_clause_check runs on one side only (2.7 skipped, 3.14 passed)
+  NEW tests   tests.test_rules::test_exec_call_with_tuple_args_is_not_found_by_in_clause_check runs on one side only (2.7 skipped, 3.14 passed)
+  NEW tests   tests.test_rules::test_exec_in_clause_is_found runs on one side only (2.7 skipped, 3.14 passed)
+  NEW tests   tests.test_rules::test_print_call_is_not_found_by_redirect_check runs on one side only (2.7 skipped, 3.14 passed)
+  NEW tests   tests.test_rules::test_print_redirect_is_found runs on one side only (2.7 skipped, 3.14 passed)
+  NEW tests   tests.test_rules::test_print_statement_is_not_found_by_redirect_check runs on one side only (2.7 skipped, 3.14 passed)
+  CLEARED tests   tests.test_rules::test_raise_comma_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  CLEARED tests   tests.test_rules::test_raise_comma_with_traceback_is_found runs on one side only (2.7 passed, 3.14 skipped)
+controls ok
+sonnet cb0d66ffd784 (from 753232606491): 0 fouls, 0 new, 0 cleared
+sonnet ffdbd9e337d7 (from cb0d66ffd784): 0 fouls, 0 new, 0 cleared
+opus ab361eeb793f (from d34df6abdb19): 0 fouls, 0 new, 6 cleared
+  CLEARED guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15

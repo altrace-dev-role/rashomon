@@ -1,0 +1,3 @@
+FAIL	async_kw.py	SyntaxError: invalid syntax
+FAIL	fail_all.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+TOTAL	4
