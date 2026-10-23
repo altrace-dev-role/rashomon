@@ -602,6 +602,15 @@ the mutation sweep carries a break for each.
 session on the machine it is run on. It writes to the real
 `~/.claude/settings.json` — that is the test — and removes what it wrote.
 
+`test/live/hc-items.sh` runs the hook-contract checks (HC-1 to HC-6, with
+fm-11 to fm-13) the same way, and prints beside each what was seen when it
+was first measured. It never writes `~/.claude/settings.json`: its hooks go
+in through `--settings`, and it refuses to run when that file exists, since
+`--settings` adds to it rather than replacing it. Everything a session sends
+goes through `test/live/hc_shape.py`, which keeps and prints key names,
+counts, exit codes and closed-vocabulary values, never a value; H-115 holds
+it to that with canary payloads.
+
 
 ## Design decisions, stated rather than left implicit
 
