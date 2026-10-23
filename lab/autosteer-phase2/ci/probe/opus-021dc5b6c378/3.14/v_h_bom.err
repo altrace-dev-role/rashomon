@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/tmp/in/src/py2scan/__main__.py", line 1, in <module>
+    from py2scan.cli import main
+  File "/tmp/in/src/py2scan/cli.py", line 4, in <module>
+    from py2scan.config import Config, ConfigError, load_config
+  File "/tmp/in/src/py2scan/config.py", line 10, in <module>
+    from py2scan.rules import BLOCKER, RULES, WARNING
+  File "/tmp/in/src/py2scan/rules.py", line 10, in <module>
+    import symbol
+ModuleNotFoundError: No module named 'symbol'

@@ -1,0 +1,3 @@
+{"blank": ["oneside:tests.test_rules::test_backtick_is_found", "oneside:tests.test_rules::test_exec_statement_is_found",
+           "oneside:tests.test_rules::test_print_statement_is_found", "oneside:tests.test_rules::test_raise_comma_is_found",
+           "oneside:tests.test_rules::test_raise_comma_with_traceback_is_found"]}

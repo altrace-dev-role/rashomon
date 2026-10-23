@@ -1,0 +1,114 @@
+{
+ "blank": {
+  "head": "5fecba17f93e01f405f0e642b14600cf2b26df3c",
+  "open": {
+   "2b:hostile/deep_nesting": {
+    "check": "2b",
+    "detail": "hostile/deep_nesting: JSON differs between 2.7 and 3.14 (key file_readiness differs)",
+    "since": "49d1499db411"
+   },
+   "2b:hostile/non_utf8_name": {
+    "check": "2b",
+    "detail": "hostile/non_utf8_name: JSON differs between 2.7 and 3.14 (key file_readiness differs)",
+    "since": "dfb0156bde36"
+   },
+   "2b:stdlib": {
+    "check": "2b",
+    "detail": "stdlib: JSON differs between 2.7 and 3.14 (key file_readiness differs)",
+    "since": "49d1499db411"
+   },
+   "oneside:tests.test_rules::test_backtick_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_backtick_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "d34399939623"
+   },
+   "oneside:tests.test_rules::test_every_non_text_codec_alias_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_every_non_text_codec_alias_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "5fecba17f93e"
+   },
+   "oneside:tests.test_rules::test_exec_statement_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_exec_statement_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "d34399939623"
+   },
+   "oneside:tests.test_rules::test_print_statement_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_print_statement_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "d34399939623"
+   },
+   "oneside:tests.test_rules::test_raise_comma_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_raise_comma_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "d34399939623"
+   },
+   "oneside:tests.test_rules::test_raise_comma_with_traceback_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_raise_comma_with_traceback_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "d34399939623"
+   },
+   "oneside:tests.test_rules::test_rot13_coding_declaration_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_rot13_coding_declaration_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "5fecba17f93e"
+   },
+   "oneside:tests.test_rules::test_ur_string_every_u_before_r_ordering_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_ur_string_every_u_before_r_ordering_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "c5568e801faa"
+   },
+   "oneside:tests.test_rules::test_ur_string_is_found": {
+    "check": "tests",
+    "detail": "tests.test_rules::test_ur_string_is_found runs on one side only (2.7 passed, 3.14 skipped)",
+    "since": "c5568e801faa"
+   },
+   "oneside:tests.test_scanner::test_deep_nesting_still_blocks_versions_whose_own_limit_is_lower": {
+    "check": "tests",
+    "detail": "tests.test_scanner::test_deep_nesting_still_blocks_versions_whose_own_limit_is_lower runs on one side only (2.7 skipped, 3.14 passed)",
+    "since": "5fecba17f93e"
+   }
+  },
+  "pending_deps": []
+ },
+ "opus": {
+  "head": "d34df6abdb19b001e9c941df0c2a7e788ed2681e",
+  "open": {
+   "guarantee:2.7:stdlib/json/__init__.py": {
+    "check": "guarantee",
+    "detail": "stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15",
+    "since": "021dc5b6c378"
+   },
+   "guarantee:2.7:stdlib/lib2to3/fixes/fix_unicode.py": {
+    "check": "guarantee",
+    "detail": "stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15",
+    "since": "021dc5b6c378"
+   },
+   "guarantee:2.7:stdlib/posixpath.py": {
+    "check": "guarantee",
+    "detail": "stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15",
+    "since": "021dc5b6c378"
+   },
+   "guarantee:3.14:stdlib/json/__init__.py": {
+    "check": "guarantee",
+    "detail": "stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15",
+    "since": "42e7b7dd2d41"
+   },
+   "guarantee:3.14:stdlib/lib2to3/fixes/fix_unicode.py": {
+    "check": "guarantee",
+    "detail": "stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15",
+    "since": "42e7b7dd2d41"
+   },
+   "guarantee:3.14:stdlib/posixpath.py": {
+    "check": "guarantee",
+    "detail": "stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15",
+    "since": "42e7b7dd2d41"
+   }
+  },
+  "pending_deps": []
+ },
+ "sonnet": {
+  "head": "ee45391f3cf25e2a8db331a2162bbbedf230d418",
+  "open": {},
+  "pending_deps": []
+ }
+}

@@ -1,0 +1,9 @@
+...............................s.s................sss................... [ 60%]
+...............................................                          [100%]
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_rules.py:47: syntax is Python-2-only; see R1
+SKIPPED [1] tests/test_rules.py:57: syntax is Python-2-only; see R1
+SKIPPED [1] tests/test_rules.py:135: syntax is Python-2-only; see R1
+SKIPPED [1] tests/test_rules.py:140: syntax is Python-2-only; see R1
+SKIPPED [1] tests/test_rules.py:145: syntax is Python-2-only; see R1
+114 passed, 5 skipped in 4.29s
