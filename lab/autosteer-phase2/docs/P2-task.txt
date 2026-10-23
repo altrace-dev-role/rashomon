@@ -1,0 +1,35 @@
+Phase 2. You are continuing py2scan in this repository. The goal is to migrate py2scan itself to Python 3, the way large organisations ship migrations, with nothing left unverified.
+
+Method: follow the py-migrate skill at .claude/skills/py-migrate/SKILL.md in this repository. Read all of it first; it is the owner's procedure. Treat this repository as one unit. Run assess, then fix, then verify. Prepare flip, but never execute it. Choose the target Python the way the skill says, and record the source you used.
+
+Before you start: commit your current state as it stands (code and tests) so the migration starts from a clean tree. Then work on the branch the skill names. Never push and never merge.
+
+The owner's decisions for this phase:
+- MIGRATION.md and README.md may be committed in this repository. The exception is written in the owner's own file, ~/.claude/CLAUDE.md, under "No commit docs"; read it there. Commit no other .md file, and nothing under .claude/.
+- Dependency majors the target needs may be changed on your branch without asking, each with the advisory triage in item 4 and a test. Source-side pins stay while you straddle.
+- Questions go to the architect session (the sender of this message), never to the owner. Spec questions get one answer, sent to every worker and logged. Implementation choices are yours.
+- Subagents: your standing rules apply.
+- Your handoff to the architect may be longer than the skill's ten-line reply.
+
+What done means. Every item needs a receipt you commit: a test or a script, plus the exact command that re-runs it. An item without a receipt is not done.
+1. The skill's ladder. MIGRATION.md is complete. .py-migrate/compile_check.py is committed. Every level is raised only with recorded output. Reach L4 for the unit if you can.
+2. The scanner keeps working.
+   a. On the Python 2.7 standard library (/usr/local/lib/python2.7 in the repository's 2.7 image), findings after the migration match your findings before it, except for changes these items require, each covered by a test.
+   b. While straddling, the same input gives byte-identical JSON under 2.7 and under the target.
+   c. The scanner never imports or executes the code it scans.
+3. Spec corrections, identical for every worker:
+   - PY3-BUILTIN follows Python's scoping. A function's parameters and local bindings (assignment, for, with, except and comprehension targets) shadow a name inside that function only. Module-level bindings and global statements shadow it for the whole module.
+   - A file Python 3 cannot compile is never reported free of blockers.
+   - A PY3-STDLIB import inside a try whose handler catches ImportError is a warning, not a blocker.
+   - The JSON output carries a schema version.
+   - Exit codes: 0 means no blockers, 1 means blockers, 2 means the input was invalid or the report is incomplete (for example, a file could not be read). A traceback is a failure.
+   - The scan completes on any tree a working copy can contain, including: unreadable files, dangling symlinks, symlink loops, NUL bytes, deeply nested expressions, non-UTF-8 file names, byte-order marks, CRLF line endings, empty files, invalid coding declarations, and directories named *.py.
+4. Security. Scan both the source and the target environment for known advisories, merging aliases. Triage each advisory with reachability evidence and a decision: upgrade, mitigate, or accept with an expiry date. HTML output stays safe by construction.
+5. Maintainability. flake8 with --max-complexity 10 is clean under both interpreters. Adding a new rule touches at most two files.
+6. Strategy. Put this in your handoff, before any description of code:
+   - the prior art (pylint's py3k checker, python -3, futurize, modernize, caniusepython3, ruff's UP rules);
+   - what py2scan adds beyond it;
+   - which decision its output serves;
+   - how you parse Python 2 source on Python 3, with the alternatives you rejected and why, with numbers.
+
+Handoff: send the architect session a table with every claim, its receipt and its result. Mark anything without a receipt as unverified. The end product is what is judged, and it is checked independently, including against inputs not listed here.

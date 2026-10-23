@@ -1,0 +1,453 @@
+FAIL	moin/setup.py	SyntaxError: invalid syntax
+FAIL	moin/wikiconfig.py	SyntaxError: invalid syntax
+FAIL	moin/wikiserverconfig.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/Page.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/PageEditor.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/caching.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/log.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/packages.py	SyntaxError: invalid token
+FAIL	moin/MoinMoin/user.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/version.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(project, release, revision)?
+FAIL	moin/MoinMoin/wikisync.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/wikiutil.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/wsgiapp.py	SyntaxError: invalid token
+FAIL	moin/MoinMoin/_tests/ldap_testbase.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/_tests/maketestwiki.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('removing old wiki ...')?
+FAIL	moin/MoinMoin/_tests/pep8.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(text)?
+FAIL	moin/MoinMoin/_tests/test_PageEditor.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/_tests/test_wikiutil.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/_tests/test_wsgiapp.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(output)?
+FAIL	moin/MoinMoin/action/AttachFile.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/CopyPage.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/DeletePage.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/Despam.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/Load.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/PackagePages.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/RenamePage.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/SlideShow.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/SubscribeUser.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/SyncPages.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/edit.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/newaccount.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/pollsistersites.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/revert.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/serveopenid.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/action/twikidraw.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/auth/_PHPsessionParser.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/auth/ldap_login.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/auth/openidrp_ext/openidrp_teams.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/config/__init__.py	SyntaxError: invalid token
+FAIL	moin/MoinMoin/config/multiconfig.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/config/_tests/test_multiconfig.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/converter/text_html_text_moin_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/converter/_tests/test_text_html_text_moin_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/datastruct/backends/wiki_dicts.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/events/jabbernotify.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/events/_tests/test_events.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("A proper event handler must be called and an 1-element list of results returned")?
+FAIL	moin/MoinMoin/filter/EXIF.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/filter/application_vnd_oasis_opendocument.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/filter/application_vnd_sun_xml.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/filter/text_xml.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/formatter/__init__.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/formatter/_tests/test_formatter.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Formatting using %r" % formatter)?
+FAIL	moin/MoinMoin/i18n/__init__.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/i18n/msgfmt.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/i18n/tools/check_i18n.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("<!> Warning: non-constant _ call:")?
+FAIL	moin/MoinMoin/i18n/tools/mk_POTFILES.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/i18n/tools/po2wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/i18n/tools/recode.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/i18n/tools/wiki2po.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(pagename)?
+FAIL	moin/MoinMoin/logfile/__init__.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/logfile/_tests/test_logfile.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/macro/TeudView.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/macro/__init__.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/mail/mailimport.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/mail/sendmail.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/parser/_ParserBase.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/parser/_creole.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/parser/text_html.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/parser/text_moin_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/parser/text_xslt.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/parser/_tests/test_text_creole.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(output)?
+FAIL	moin/MoinMoin/parser/_tests/test_text_moin_wiki.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(expected, result)?
+FAIL	moin/MoinMoin/script/__init__.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/account/check.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/account/create.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('This username "%s" exists already!' % self.options.uname)?
+FAIL	moin/MoinMoin/script/account/disable.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('This user "%s" does not exists!' % u.name)?
+FAIL	moin/MoinMoin/script/account/homepage.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("INFO homepage for %s created." % account.name)?
+FAIL	moin/MoinMoin/script/account/inactive.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/account/resetpw.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("This wiki is not enabled for mail processing. The --notify option requires this. Aborting...")?
+FAIL	moin/MoinMoin/script/export/dump.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/import/irclog.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/import/wikipage.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/index/build.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/maint/cleanpage.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/maint/cleansessions.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('User "%s" does not exist!' % self.options.username)?
+FAIL	moin/MoinMoin/script/maint/globaledit.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/maint/mailtranslators.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/maint/mkpagepacks.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/1059998.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("You must first edit %s." % rename1_map)?
+FAIL	moin/MoinMoin/script/migration/1059999.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("You must first edit %s." % rename1_map)?
+FAIL	moin/MoinMoin/script/migration/1089999.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/_conv160.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Reading event-log. Depending on the size of event-log this may take a long time and")?
+FAIL	moin/MoinMoin/script/migration/_conv160_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/_conv160a.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/_conv160a_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/data.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/migutil.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Fatal error:", msg)?
+FAIL	moin/MoinMoin/script/migration/text_moin158_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/text_moin160a_wiki.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/migration/wikiutil160a.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/old/print_stats.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(__doc__)?
+FAIL	moin/MoinMoin/script/old/repair_language.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('Error: %s: missing revisions directory' % page)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig01.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig02.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig03.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig04.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("You need to be in the directory where your copy of the 'data' directory is located.")?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig05.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Warning: Win32 daylight saving bug encountered & fixed!")?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig06.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig07.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("You need to be in the directory where your copy of the 'data' directory is located.")?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig08.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("You need to be in the directory where your copy of the 'data' directory is located.")?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig09.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig10.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('renamed', f, '\n ->', fnew, ' in dir:', root)?
+FAIL	moin/MoinMoin/script/old/migration/12_to_13_mig11.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("You need to be in the directory where your copy of the 'data' directory is located.")?
+FAIL	moin/MoinMoin/script/old/migration/152_to_1050300.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Error: Skipping %s - does not look like a data_dir" % dir)?
+FAIL	moin/MoinMoin/script/old/xmlrpc-tools/HelloWorld.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/server/standalone.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/xmlrpc/remote.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(url, secret, self.argv)?
+FAIL	moin/MoinMoin/script/xmlrpc/retrieve.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/script/xmlrpc/write.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('Invalid username/password')?
+FAIL	moin/MoinMoin/search/__init__.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/search/builtin.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/search/Xapian/indexing.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/search/_tests/test_search.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/search/queryparser/__init__.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/security/antispam.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/security/textcha.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/security/_tests/test_security.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/md5crypt.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/client/fcgi_app.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/ajp.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/ajp_base.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/ajp_fork.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/cgi.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/fcgi.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/fcgi_base.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/fcgi_fork.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/fcgi_single.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/preforkserver.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/scgi.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/scgi_base.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/scgi_fork.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/singleserver.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/flup/server/threadedserver.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/xappy/fieldactions.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/xappy/replaylog.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/support/xappy/searchconnection.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/theme/__init__.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/userprefs/changepass.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/util/SubProcess.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/util/bdiff.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/util/chartypes_create.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/util/daemon.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/util/filesys.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/util/lock.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/util/profile.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(__doc__)?
+FAIL	moin/MoinMoin/util/rpc_aggregator.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/util/_tests/test_pysupport.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/web/_fallback_cgi.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/web/contexts.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/web/frontend.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/web/profile.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/web/session.py	SyntaxError: invalid token
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/config.py	SyntaxError: invalid token
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/connector.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('%s: %s' % header)?
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/fckcommands.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/fckutil.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/upload.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('%s: %s' % header)?
+FAIL	moin/MoinMoin/web/static/htdocs/applets/FCKeditor/editor/filemanager/connectors/py/zope.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/xmlrpc/ProcessMail.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/xmlrpc/RemoteScript.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/xmlrpc/UpdateGroup.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/xmlrpc/__init__.py	SyntaxError: invalid syntax
+FAIL	moin/MoinMoin/xmlrpc/_tests/test_xmlrpc.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("""If a XML RPC method returns a Fault, we should get a failure response
+    instead of a serialized Fault, as it happened in the past. See revision
+    8b7d6d70fc95 for details""")?
+FAIL	moin/contrib/raw_wsgi_bench.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('=== Run with page "%s" ===' % page)?
+FAIL	moin/contrib/googleimport/driver.py	SyntaxError: invalid syntax
+FAIL	moin/jabberbot/bot.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('Your version of pyxmpp is too old!')?
+FAIL	moin/jabberbot/i18n.py	SyntaxError: invalid syntax
+FAIL	moin/jabberbot/xmlrpcbot.py	SyntaxError: invalid syntax
+FAIL	moin/jabberbot/_tests/test_xmlrpcbot.py	SyntaxError: invalid syntax
+FAIL	moin/jabberbot/_tests/test_xmppbot.py	SyntaxError: invalid syntax
+FAIL	moin/wiki/config/wikiconfig.py	SyntaxError: invalid syntax
+FAIL	moin/wiki/config/wikifarm/farmconfig.py	SyntaxError: invalid syntax
+FAIL	moin/wiki/server/wikiserverconfig.py	SyntaxError: invalid syntax
+FAIL	stdlib/BaseHTTPServer.py	SyntaxError: invalid syntax
+FAIL	stdlib/Bastion.py	SyntaxError: invalid syntax
+FAIL	stdlib/CGIHTTPServer.py	SyntaxError: invalid token
+FAIL	stdlib/ConfigParser.py	SyntaxError: invalid syntax
+FAIL	stdlib/DocXMLRPCServer.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('Content-Type: text/html')?
+FAIL	stdlib/SimpleXMLRPCServer.py	SyntaxError: invalid syntax
+FAIL	stdlib/SocketServer.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('-'*40)?
+FAIL	stdlib/StringIO.py	SyntaxError: invalid syntax
+FAIL	stdlib/UserDict.py	SyntaxError: invalid syntax
+FAIL	stdlib/UserString.py	SyntaxError: invalid syntax
+FAIL	stdlib/_strptime.py	SyntaxError: invalid token
+FAIL	stdlib/aifc.py	SyntaxError: invalid syntax
+FAIL	stdlib/anydbm.py	SyntaxError: invalid syntax
+FAIL	stdlib/asynchat.py	SyntaxError: invalid syntax
+FAIL	stdlib/asyncore.py	SyntaxError: invalid syntax
+FAIL	stdlib/atexit.py	SyntaxError: invalid syntax
+FAIL	stdlib/audiodev.py	SyntaxError: invalid syntax
+FAIL	stdlib/base64.py	SyntaxError: invalid syntax
+FAIL	stdlib/bdb.py	SyntaxError: invalid syntax
+FAIL	stdlib/binhex.py	SyntaxError: invalid syntax
+FAIL	stdlib/cProfile.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Documentation for the profile/cProfile modules can be found ")?
+FAIL	stdlib/calendar.py	SyntaxError: invalid syntax
+FAIL	stdlib/cgi.py	SyntaxError: invalid syntax
+FAIL	stdlib/chunk.py	SyntaxError: invalid syntax
+FAIL	stdlib/cmd.py	SyntaxError: invalid syntax
+FAIL	stdlib/code.py	SyntaxError: Missing parentheses in call to 'exec'
+FAIL	stdlib/codecs.py	SyntaxError: invalid syntax
+FAIL	stdlib/codeop.py	SyntaxError: invalid syntax
+FAIL	stdlib/collections.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(class_definition)?
+FAIL	stdlib/compileall.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('Listing', dir, '...')?
+FAIL	stdlib/contextlib.py	SyntaxError: invalid syntax
+FAIL	stdlib/copy.py	SyntaxError: invalid syntax
+FAIL	stdlib/copy_reg.py	SyntaxError: invalid syntax
+FAIL	stdlib/csv.py	SyntaxError: invalid syntax
+FAIL	stdlib/dbhash.py	SyntaxError: invalid token
+FAIL	stdlib/decimal.py	SyntaxError: invalid syntax
+FAIL	stdlib/difflib.py	SyntaxError: invalid syntax
+FAIL	stdlib/dis.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Disassembly of %s:" % name)?
+FAIL	stdlib/doctest.py	SyntaxError: invalid syntax
+FAIL	stdlib/dumbdbm.py	SyntaxError: invalid syntax
+FAIL	stdlib/filecmp.py	SyntaxError: invalid syntax
+FAIL	stdlib/fileinput.py	SyntaxError: invalid syntax
+FAIL	stdlib/formatter.py	SyntaxError: invalid syntax
+FAIL	stdlib/fpformat.py	SyntaxError: invalid syntax
+FAIL	stdlib/ftplib.py	SyntaxError: invalid syntax
+FAIL	stdlib/getopt.py	SyntaxError: invalid syntax
+FAIL	stdlib/getpass.py	SyntaxError: invalid syntax
+FAIL	stdlib/gettext.py	SyntaxError: invalid syntax
+FAIL	stdlib/gzip.py	SyntaxError: invalid syntax
+FAIL	stdlib/heapq.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(sort)?
+FAIL	stdlib/htmllib.py	SyntaxError: invalid syntax
+FAIL	stdlib/httplib.py	SyntaxError: invalid syntax
+FAIL	stdlib/ihooks.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(format%args)?
+FAIL	stdlib/imaplib.py	SyntaxError: invalid syntax
+FAIL	stdlib/imghdr.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(filename + '/:', end=" ")?
+FAIL	stdlib/imputil.py	SyntaxError: invalid syntax
+FAIL	stdlib/locale.py	SyntaxError: invalid syntax
+FAIL	stdlib/macpath.py	SyntaxError: invalid syntax
+FAIL	stdlib/macurl2path.py	SyntaxError: invalid syntax
+FAIL	stdlib/mailbox.py	SyntaxError: invalid token
+FAIL	stdlib/mailcap.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("usage: mailcap [MIMEtype file] ...")?
+FAIL	stdlib/mhlib.py	SyntaxError: invalid token
+FAIL	stdlib/mimetools.py	SyntaxError: invalid syntax
+FAIL	stdlib/mimetypes.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(USAGE)?
+FAIL	stdlib/mimify.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(usage)?
+FAIL	stdlib/modulefinder.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("   ", end=" ")?
+FAIL	stdlib/multifile.py	SyntaxError: invalid syntax
+FAIL	stdlib/netrc.py	SyntaxError: invalid syntax
+FAIL	stdlib/nntplib.py	SyntaxError: invalid syntax
+FAIL	stdlib/nturl2path.py	SyntaxError: invalid syntax
+FAIL	stdlib/optparse.py	SyntaxError: invalid syntax
+FAIL	stdlib/os.py	SyntaxError: invalid syntax
+FAIL	stdlib/pdb.py	SyntaxError: invalid syntax
+FAIL	stdlib/pickle.py	SyntaxError: invalid syntax
+FAIL	stdlib/pickletools.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("skipping %r: it doesn't look like an opcode name" % name)?
+FAIL	stdlib/pipes.py	SyntaxError: invalid syntax
+FAIL	stdlib/pkgutil.py	SyntaxError: invalid syntax
+FAIL	stdlib/platform.py	SyntaxError: invalid syntax
+FAIL	stdlib/plistlib.py	SyntaxError: invalid syntax
+FAIL	stdlib/poplib.py	SyntaxError: invalid syntax
+FAIL	stdlib/posixfile.py	SyntaxError: invalid syntax
+FAIL	stdlib/posixpath.py	SyntaxError: invalid syntax
+FAIL	stdlib/pprint.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("_safe_repr:", t2 - t1)?
+FAIL	stdlib/profile.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Documentation for the profile module can be found ")?
+FAIL	stdlib/pstats.py	SyntaxError: invalid syntax
+FAIL	stdlib/pty.py	SyntaxError: invalid token
+FAIL	stdlib/py_compile.py	SyntaxError: invalid syntax
+FAIL	stdlib/pyclbr.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("class", obj.name, obj.super, obj.lineno)?
+FAIL	stdlib/pydoc.py	SyntaxError: invalid syntax
+FAIL	stdlib/quopri.py	SyntaxError: invalid syntax
+FAIL	stdlib/random.py	SyntaxError: invalid syntax
+FAIL	stdlib/re.py	SyntaxError: invalid syntax
+FAIL	stdlib/rexec.py	SyntaxError: invalid syntax
+FAIL	stdlib/rfc822.py	SyntaxError: invalid syntax
+FAIL	stdlib/rlcompleter.py	SyntaxError: invalid syntax
+FAIL	stdlib/runpy.py	SyntaxError: Missing parentheses in call to 'exec'
+FAIL	stdlib/sets.py	SyntaxError: invalid syntax
+FAIL	stdlib/sgmllib.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('*** Unbalanced </' + tag + '>')?
+FAIL	stdlib/shlex.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('shlex: reading from %s, line %d' \)?
+FAIL	stdlib/shutil.py	SyntaxError: invalid syntax
+FAIL	stdlib/site.py	SyntaxError: Missing parentheses in call to 'exec'
+FAIL	stdlib/smtpd.py	SyntaxError: invalid syntax
+FAIL	stdlib/smtplib.py	SyntaxError: invalid syntax
+FAIL	stdlib/sndhdr.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(filename + '/:', end=" ")?
+FAIL	stdlib/socket.py	SyntaxError: invalid syntax
+FAIL	stdlib/sre_compile.py	SyntaxError: invalid syntax
+FAIL	stdlib/sre_constants.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("done")?
+FAIL	stdlib/sre_parse.py	SyntaxError: invalid syntax
+FAIL	stdlib/stat.py	SyntaxError: invalid token
+FAIL	stdlib/string.py	SyntaxError: invalid syntax
+FAIL	stdlib/stringold.py	SyntaxError: invalid syntax
+FAIL	stdlib/subprocess.py	SyntaxError: invalid syntax
+FAIL	stdlib/sunau.py	SyntaxError: invalid syntax
+FAIL	stdlib/sunaudio.py	SyntaxError: invalid syntax
+FAIL	stdlib/symtable.py	SyntaxError: invalid syntax
+FAIL	stdlib/sysconfig.py	SyntaxError: invalid syntax
+FAIL	stdlib/tabnanny.py	SyntaxError: invalid syntax
+FAIL	stdlib/tarfile.py	SyntaxError: invalid token
+FAIL	stdlib/telnetlib.py	SyntaxError: invalid syntax
+FAIL	stdlib/tempfile.py	SyntaxError: invalid syntax
+FAIL	stdlib/textwrap.py	SyntaxError: invalid syntax
+FAIL	stdlib/this.py	SyntaxError: invalid syntax
+FAIL	stdlib/threading.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(item)?
+FAIL	stdlib/timeit.py	SyntaxError: invalid syntax
+FAIL	stdlib/toaiff.py	SyntaxError: invalid syntax
+FAIL	stdlib/token.py	SyntaxError: invalid syntax
+FAIL	stdlib/tokenize.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("%d,%d-%d,%d:\t%s\t%s" % \)?
+FAIL	stdlib/trace.py	SyntaxError: invalid syntax
+FAIL	stdlib/urllib.py	SyntaxError: invalid syntax
+FAIL	stdlib/urllib2.py	SyntaxError: invalid syntax
+FAIL	stdlib/urlparse.py	SyntaxError: invalid syntax
+FAIL	stdlib/uu.py	SyntaxError: invalid token
+FAIL	stdlib/uuid.py	SyntaxError: invalid syntax
+FAIL	stdlib/warnings.py	SyntaxError: invalid syntax
+FAIL	stdlib/wave.py	SyntaxError: invalid syntax
+FAIL	stdlib/weakref.py	SyntaxError: invalid syntax
+FAIL	stdlib/webbrowser.py	SyntaxError: invalid syntax
+FAIL	stdlib/whichdb.py	SyntaxError: invalid syntax
+FAIL	stdlib/xdrlib.py	SyntaxError: invalid syntax
+FAIL	stdlib/xmllib.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('xml: encoding =',encoding,'standalone =',standalone)?
+FAIL	stdlib/xmlrpclib.py	SyntaxError: invalid syntax
+FAIL	stdlib/zipfile.py	SyntaxError: invalid syntax
+FAIL	stdlib/bsddb/__init__.py	SyntaxError: invalid syntax
+FAIL	stdlib/bsddb/dbrecio.py	SyntaxError: invalid syntax
+FAIL	stdlib/bsddb/dbshelve.py	SyntaxError: invalid token
+FAIL	stdlib/bsddb/dbtables.py	SyntaxError: invalid token
+FAIL	stdlib/compiler/future.py	SyntaxError: invalid syntax
+FAIL	stdlib/compiler/pyassem.py	SyntaxError: invalid syntax
+FAIL	stdlib/compiler/pycodegen.py	SyntaxError: invalid syntax
+FAIL	stdlib/compiler/symbols.py	SyntaxError: invalid syntax
+FAIL	stdlib/compiler/syntax.py	SyntaxError: invalid syntax
+FAIL	stdlib/compiler/transformer.py	SyntaxError: invalid syntax
+FAIL	stdlib/compiler/visitor.py	SyntaxError: invalid syntax
+FAIL	stdlib/ctypes/util.py	SyntaxError: invalid syntax
+FAIL	stdlib/ctypes/macholib/dyld.py	SyntaxError: invalid syntax
+FAIL	stdlib/curses/has_key.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(i)?
+FAIL	stdlib/curses/textpad.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/archive_util.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/bcppcompiler.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/ccompiler.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/cmd.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/config.py	SyntaxError: invalid token
+FAIL	stdlib/distutils/core.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/cygwinccompiler.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/dep_util.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/dir_util.py	SyntaxError: invalid token
+FAIL	stdlib/distutils/dist.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/emxccompiler.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/fancy_getopt.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/file_util.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/filelist.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(msg)?
+FAIL	stdlib/distutils/msvc9compiler.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/msvccompiler.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/spawn.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/text_file.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/unixccompiler.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/util.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/version.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/bdist.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/bdist_dumb.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/bdist_msi.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/bdist_rpm.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/bdist_wininst.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/build_clib.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/build_ext.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/build_scripts.py	SyntaxError: invalid token
+FAIL	stdlib/distutils/command/install.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/install_lib.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/install_scripts.py	SyntaxError: invalid token
+FAIL	stdlib/distutils/command/register.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('Please choose one of the four options!')?
+FAIL	stdlib/distutils/command/sdist.py	SyntaxError: invalid syntax
+FAIL	stdlib/distutils/command/upload.py	SyntaxError: invalid syntax
+FAIL	stdlib/encodings/__init__.py	SyntaxError: invalid syntax
+FAIL	stdlib/encodings/punycode.py	SyntaxError: invalid syntax
+FAIL	stdlib/encodings/utf_16.py	SyntaxError: invalid syntax
+FAIL	stdlib/encodings/utf_32.py	SyntaxError: invalid syntax
+FAIL	stdlib/encodings/uu_codec.py	SyntaxError: invalid token
+FAIL	stdlib/hotshot/log.py	SyntaxError: invalid syntax
+FAIL	stdlib/hotshot/stats.py	SyntaxError: invalid syntax
+FAIL	stdlib/hotshot/stones.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/ColorDelegator.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print('tagdefs',self.tagdefs)?
+FAIL	stdlib/idlelib/EditorWindow.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/FileList.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/IOBinding.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/MultiCall.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(seq)?
+FAIL	stdlib/idlelib/Percolator.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(self.name, ": insert", args)?
+FAIL	stdlib/idlelib/PyShell.py	SyntaxError: Missing parentheses in call to 'exec'
+FAIL	stdlib/idlelib/RemoteDebugger.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/ScrolledList.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/TreeWidget.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/UndoDelegator.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("pointer:", self.pointer, end=" ")?
+FAIL	stdlib/idlelib/WindowList.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("warning: callback failed in WindowList", \)?
+FAIL	stdlib/idlelib/rpc.py	SyntaxError: invalid syntax
+FAIL	stdlib/idlelib/run.py	SyntaxError: Missing parentheses in call to 'exec'
+FAIL	stdlib/json/__init__.py	SyntaxError: (unicode error) 'unicodeescape' codec can't decode bytes in position 421-422: truncated \uXXXX escape
+FAIL	stdlib/json/encoder.py	SyntaxError: (unicode error) 'unicodeescape' codec can't decode bytes in position 362-363: truncated \uXXXX escape
+FAIL	stdlib/json/tool.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/Dialog.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(d.num)?
+FAIL	stdlib/lib-tk/FileDialog.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(loadfile, savefile)?
+FAIL	stdlib/lib-tk/SimpleDialog.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/Tix.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/Tkinter.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/tkColorChooser.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/tkCommonDialog.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/tkFileDialog.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Could not open File: ")?
+FAIL	stdlib/lib-tk/tkFont.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/tkMessageBox.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/tkSimpleDialog.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib-tk/turtle.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib2to3/main.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib2to3/fixes/fix_unicode.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib2to3/pgen2/conv.py	SyntaxError: invalid syntax
+FAIL	stdlib/lib2to3/pgen2/grammar.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("s2n")?
+FAIL	stdlib/lib2to3/pgen2/literals.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(i, c, s, e)?
+FAIL	stdlib/lib2to3/pgen2/pgen.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Dump of NFA for", name)?
+FAIL	stdlib/lib2to3/pgen2/tokenize.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("%d,%d-%d,%d:\t%s\t%s" % \)?
+FAIL	stdlib/multiprocessing/connection.py	SyntaxError: invalid syntax
+FAIL	stdlib/multiprocessing/forking.py	SyntaxError: invalid syntax
+FAIL	stdlib/multiprocessing/managers.py	SyntaxError: invalid syntax
+FAIL	stdlib/multiprocessing/pool.py	SyntaxError: invalid syntax
+FAIL	stdlib/multiprocessing/process.py	SyntaxError: invalid syntax
+FAIL	stdlib/multiprocessing/sharedctypes.py	SyntaxError: invalid syntax
+FAIL	stdlib/multiprocessing/util.py	SyntaxError: invalid syntax
+FAIL	stdlib/plat-linux2/DLFCN.py	SyntaxError: invalid syntax
+FAIL	stdlib/plat-linux2/IN.py	SyntaxError: invalid syntax
+FAIL	stdlib/plat-linux2/TYPES.py	SyntaxError: invalid syntax
+FAIL	stdlib/unittest/case.py	SyntaxError: invalid syntax
+FAIL	stdlib/unittest/loader.py	SyntaxError: invalid syntax
+FAIL	stdlib/unittest/main.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(msg)?
+FAIL	stdlib/unittest/suite.py	SyntaxError: invalid syntax
+FAIL	stdlib/wsgiref/handlers.py	SyntaxError: invalid syntax
+FAIL	stdlib/wsgiref/simple_server.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print("Serving HTTP on", sa[0], "port", sa[1], "...")?
+FAIL	stdlib/xml/dom/NodeFilter.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/dom/domreg.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/dom/expatbuilder.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/dom/minidom.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/dom/pulldom.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(exception)?
+FAIL	stdlib/xml/etree/ElementTree.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/sax/__init__.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/sax/expatreader.py	SyntaxError: invalid syntax
+FAIL	stdlib/xml/sax/handler.py	SyntaxError: Missing parentheses in call to 'print'. Did you mean print(exception)?
+FAIL	stdlib/xml/sax/xmlreader.py	SyntaxError: invalid syntax
+FAIL	trac/trac/db/pool.py	SyntaxError: invalid syntax
+FAIL	trac/trac/web/_fcgi.py	SyntaxError: invalid syntax
+FAIL	trac/trac/web/main.py	SyntaxError: invalid syntax
+FAIL	trac/trac/web/wsgi.py	SyntaxError: invalid syntax
+FAIL	trac/tracopt/versioncontrol/git/git_fs.py	SyntaxError: invalid token
+TOTAL	2331

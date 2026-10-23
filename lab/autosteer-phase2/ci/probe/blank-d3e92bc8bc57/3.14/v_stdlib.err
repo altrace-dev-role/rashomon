@@ -1,0 +1,63 @@
+HTMLParser.py:29: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+HTMLParser.py:54: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+_osx_support.py:213: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+  
+_osx_support.py:235: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+  elif os.path.basename(cc).startswith('gcc'):
+_osx_support.py:254: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+  cv_split[0] = cc if cv != 'CXX' else cc + '++'
+_osx_support.py:270: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+  
+_osx_support.py:468: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+  _remove_universal_flags(_config_vars)
+cookielib.py:192: SyntaxWarning: "\d" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\d"? A raw string is also an option.
+cookielib.py:409: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+distutils/command/build_scripts.py:56: SyntaxWarning: "\#" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\#"? A raw string is also an option.
+distutils/msvc9compiler.py:729: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+distutils/sysconfig.py:291: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+distutils/versionpredicate.py:156: SyntaxWarning: "\w" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\w"? A raw string is also an option.
+email/feedparser.py:31: SyntaxWarning: "\Z" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\Z"? A raw string is also an option.
+  NLCRE = re.compile(r'\r\n|\r|\n')
+fnmatch.py:120: SyntaxWarning: "\Z" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\Z"? A raw string is also an option.
+  star_indices.append(len(res))
+idlelib/CallTips.py:197: SyntaxWarning: "\d" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\d"? A raw string is also an option.
+idlelib/FormatParagraph.py:132: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+imaplib.py:130: SyntaxWarning: "\D" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\D"? A raw string is also an option.
+  br'\* (?P<data>\d+) (?P<type>[A-Z-]+)( (?P<data2>.*))?', re.ASCII)
+imaplib.py:1464: SyntaxWarning: "\D" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\D"? A raw string is also an option.
+  def _quote(self, arg):
+platform.py:170: SyntaxWarning: "\w" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\w"? A raw string is also an option.
+  only usable for executables compiled using gcc.
+platform.py:281: SyntaxWarning: "\d" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\d"? A raw string is also an option.
+  # Windows versions.
+platform.py:282: SyntaxWarning: "\(" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\("? A raw string is also an option.
+  
+platform.py:285: SyntaxWarning: "\d" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\d"? A raw string is also an option.
+  supported_platforms=('win32', 'win16', 'dos')):
+platform.py:286: SyntaxWarning: "\(" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\("? A raw string is also an option.
+  
+rfc822.py:36: SyntaxWarning: "\c" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\c"? A raw string is also an option.
+string.py:33: SyntaxWarning: "\]" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\]"? A raw string is also an option.
+sysconfig.py:205: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+xml/etree/ElementPath.py:66: SyntaxWarning: "\." is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\."? A raw string is also an option.
+  r"\.\.|"
+xml/etree/ElementPath.py:67: SyntaxWarning: "\(" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\("? A raw string is also an option.
+  r"\(\)|"
+xml/etree/ElementPath.py:68: SyntaxWarning: "\[" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\["? A raw string is also an option.
+  r"!=|"
+xml/etree/ElementPath.py:69: SyntaxWarning: "\{" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\{"? A raw string is also an option.
+  r"[/.*:\[\]\(\)@=])|"
+xml/etree/ElementPath.py:70: SyntaxWarning: "\s" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\s"? A raw string is also an option.
+  r"((?:\{[^}]+\})?[^/\[\]\(\)@!=\s]+)|"
+xml/etree/ElementPath.py:179: SyntaxWarning: "\d" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\d"? A raw string is also an option.
+  def select(context, result):
+xml/etree/ElementPath.py:187: SyntaxWarning: "\d" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\d"? A raw string is also an option.
+  return
+xml/etree/ElementTree.py:1030: SyntaxWarning: "\d" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\d"? A raw string is also an option.
+  # it's worth avoiding do-nothing calls for strings that are
+xmllib.py:37: SyntaxWarning: "\(" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\("? A raw string is also an option.
+xmllib.py:53: SyntaxWarning: "\(" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\("? A raw string is also an option.
+xmllib.py:54: SyntaxWarning: "\(" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\("? A raw string is also an option.
+xmllib.py:60: SyntaxWarning: "\?" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\?"? A raw string is also an option.
+xmllib.py:67: SyntaxWarning: "\?" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\?"? A raw string is also an option.
+xmllib.py:67: SyntaxWarning: "\?" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\?"? A raw string is also an option.

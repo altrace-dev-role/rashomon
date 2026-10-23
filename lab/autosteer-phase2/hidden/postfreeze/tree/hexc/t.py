@@ -1,0 +1,2 @@
+# -*- coding: hex -*-
+print 'x'

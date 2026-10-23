@@ -1,0 +1,29 @@
+s_push: parser stack overflow
+Traceback (most recent call last):
+  File "/usr/local/lib/python2.7/runpy.py", line 174, in _run_module_as_main
+    "__main__", fname, loader, pkg_name)
+  File "/usr/local/lib/python2.7/runpy.py", line 72, in _run_code
+    exec code in run_globals
+  File "/tmp/in/src/py2scan/__main__.py", line 3, in <module>
+    main()
+  File "/usr/local/lib/python2.7/site-packages/click/core.py", line 829, in __call__
+    return self.main(*args, **kwargs)
+  File "/usr/local/lib/python2.7/site-packages/click/core.py", line 782, in main
+    rv = self.invoke(ctx)
+  File "/usr/local/lib/python2.7/site-packages/click/core.py", line 1259, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "/usr/local/lib/python2.7/site-packages/click/core.py", line 1066, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "/usr/local/lib/python2.7/site-packages/click/core.py", line 610, in invoke
+    return callback(*args, **kwargs)
+  File "py2scan/cli.py", line 59, in scan_cmd
+    path, jobs=jobs, config=config, judged_versions=judged_versions)
+  File "py2scan/scanner.py", line 128, in scan
+    files, executor.map(worker, files)):
+  File "/usr/local/lib/python2.7/site-packages/concurrent/futures/_base.py", line 641, in result_iterator
+    yield fs.pop().result()
+  File "/usr/local/lib/python2.7/site-packages/concurrent/futures/_base.py", line 455, in result
+    return self.__get_result()
+  File "/usr/local/lib/python2.7/site-packages/concurrent/futures/_base.py", line 414, in __get_result
+    raise exception_type, self._exception, self._traceback
+MemoryError

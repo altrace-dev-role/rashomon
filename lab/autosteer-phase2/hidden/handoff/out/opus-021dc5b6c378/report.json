@@ -1,0 +1,752 @@
+{
+ "arm": "opus",
+ "commit": "021dc5b6c3783a559cc65693476238eb5d98ef5a",
+ "elapsed_sec": 34,
+ "item_2b_byte_identical_corpus": false,
+ "item_2b_corpus_diff": "unparsable JSON on one side",
+ "item_2b_hostile_cases_differing": [
+  "bom_only",
+  "bom_utf8_cookie",
+  "canary",
+  "cr_only",
+  "deep_dirs",
+  "dirlink",
+  "escape",
+  "exec_free",
+  "fifo",
+  "future_print",
+  "html",
+  "huge_line",
+  "odd_names",
+  "shebang_cookie",
+  "tabs_py2_only",
+  "unlistable"
+ ],
+ "sides": {
+  "2.7": {
+   "H1_builtin": [
+    "control ok; files with truth 1027, star-import files excluded 77, unparsable 0, true builtin uses 513",
+    "opus   flagged  545  missed real uses (FN)   32  flagged non-uses (FP)    0  FN e.g. ['code.py raw_input', 'bsddb/dbtables.py StandardError', 'gettext.py unicode']  FP e.g. []"
+   ],
+   "H2_H8_false_ready_by_version": {
+    "3.10": 14,
+    "3.11": 14,
+    "3.12": 14,
+    "3.13": 14,
+    "3.14": 14,
+    "3.15": 14,
+    "3.6": 14,
+    "3.7": 14,
+    "3.8": 14,
+    "3.9": 14
+   },
+   "H2b_H8s": {
+    "ambiguous_lines_excluded": 6287,
+    "except_comma_clauses": 497,
+    "except_comma_examples": [],
+    "except_comma_missing_blocker": 0,
+    "stdlib_exact": 223,
+    "stdlib_examples": {
+     "extra": [],
+     "missed": [
+      "stdlib/runpy.py:13",
+      "stdlib/idlelib/CodeContext.py:13",
+      "stdlib/sunau.py:395",
+      "moin/MoinMoin/formatter/__init__.py:373",
+      "moin/MoinMoin/formatter/__init__.py:373",
+      "stdlib/ihooks.py:67"
+     ],
+     "severity": [
+      "stdlib/xml/dom/pulldom.py:343 want warning got blocker",
+      "moin/MoinMoin/support/werkzeug/test.py:52 want warning got blocker",
+      "stdlib/cgi.py:54 want warning got blocker",
+      "stdlib/httplib.py:83 want warning got blocker",
+      "stdlib/csv.py:16 want warning got blocker",
+      "moin/MoinMoin/support/passlib/utils/compat/_ordered_dict.py:9 want warning got blocker"
+     ]
+    },
+    "stdlib_expected": 413,
+    "stdlib_extra": 0,
+    "stdlib_missed": 131,
+    "stdlib_severity_wrong": 59,
+    "stdlib_versions_wrong": 0,
+    "unparsable_on_27": 0
+   },
+   "H3_hostile": {
+    "bom_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.1
+    },
+    "bom_utf8_cookie": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "canary": {
+     "findings": [
+      [
+       "__init__.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "__main__.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "conftest.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "mod.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "setup.py",
+       2,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "cr_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "deep_dirs": {
+     "findings": [
+      [
+       "d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.09
+    },
+    "dirlink": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": false,
+     "problems": [
+      "not listed in the report (R5): pkg.py"
+     ],
+     "rc": 1,
+     "sec": 0.09
+    },
+    "escape": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.07
+    },
+    "exec_free": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-EXEC-STMT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "fifo": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": false,
+     "problems": [
+      "not listed in the report (R5): t.py"
+     ],
+     "rc": 1,
+     "sec": 0.06
+    },
+    "future_print": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.09
+    },
+    "html": {
+     "findings": [
+      [
+       "<img src=x onerror=alert(1)>.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.1
+    },
+    "huge_line": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.82
+    },
+    "odd_names": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.1
+    },
+    "shebang_cookie": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ],
+      [
+       "t.py",
+       3,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.09
+    },
+    "tabs_py2_only": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": true,
+     "problems": [],
+     "rc": 1,
+     "sec": 0.08
+    },
+    "unlistable": {
+     "findings": [
+      [
+       "ok.py",
+       1,
+       "PY3-PRINT",
+       "blocker"
+      ]
+     ],
+     "ok": false,
+     "problems": [
+      "exit 1, want 2 (an entry cannot be read)",
+      "not listed in the report (R5): d"
+     ],
+     "rc": 1,
+     "sec": 0.07
+    }
+   },
+   "R6_files_not_named": {
+    "count": 1457,
+    "examples": [
+     "moin/MoinMoin/__init__.py",
+     "moin/MoinMoin/_template.py",
+     "moin/MoinMoin/_tests/__init__.py",
+     "moin/MoinMoin/_tests/_test_template.py"
+    ],
+    "of": 2331
+   },
+   "corpus_scan": {
+    "files": 2331,
+    "findings": 5687,
+    "json_valid": true,
+    "rc": 1,
+    "rules": {
+     "PY3-BACKTICK": 9,
+     "PY3-BUILTIN": 1443,
+     "PY3-DICT-ITER": 414,
+     "PY3-DIVISION": 234,
+     "PY3-EXCEPT-COMMA": 497,
+     "PY3-EXEC-STMT": 54,
+     "PY3-LONG-SUFFIX": 135,
+     "PY3-METACLASS": 19,
+     "PY3-NE-OP": 6,
+     "PY3-OCTAL": 108,
+     "PY3-PRINT": 1569,
+     "PY3-RAISE-COMMA": 772,
+     "PY3-STDLIB": 427
+    },
+    "sec": 9.28,
+    "traceback": false
+   },
+   "determinism_jobs1_vs_default": true,
+   "false_ready_examples": {
+    "3.10": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.11": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.12": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.13": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.14": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.15": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.6": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.7": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.8": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ],
+    "3.9": [
+     "moin/MoinMoin/action/CopyPage.py",
+     "moin/MoinMoin/action/DeletePage.py",
+     "moin/MoinMoin/action/RenamePage.py",
+     "moin/MoinMoin/action/twikidraw.py"
+    ]
+   },
+   "html": {
+    "bytes": 4936,
+    "ok": true,
+    "raw_injections_found": []
+   },
+   "interpreter": "2.7.18",
+   "item_2c_canary": []
+  },
+  "3.14": {
+   "H1_builtin": [
+    "control ok; files with truth 1027, star-import files excluded 77, unparsable 0, true builtin uses 513"
+   ],
+   "H2_H8_false_ready_by_version": {
+    "3.10": 453,
+    "3.11": 453,
+    "3.12": 453,
+    "3.13": 453,
+    "3.14": 372,
+    "3.15": 372,
+    "3.6": 450,
+    "3.7": 453,
+    "3.8": 453,
+    "3.9": 453
+   },
+   "H2b_H8s": {
+    "error": "Traceback (most recent call last):\n  File \"t/truth_p2.py\", line 243, in <module>\n    res = score(root, data[\"removed\"], json.load(open(arm)))\n  File \"/usr/local/lib/python2.7/json/__init__.py\", line 291, in load\n    **kw)\n  File \"/usr/local/lib/python2.7/json/__init__.py\", line 339, in loads\n    return _default_decoder.decode(s)\n  File \"/usr/local/lib/python2.7/json/decoder.py\", line 364, in decode\n    obj, end = self.raw_decode(s, idx=_w(s, 0).end())\n  File \"/usr/local/lib/python2.7/json/decoder.py\", line 382, in raw_decode\n    raise ValueError(\"No JSON object could be decoded\")\nValueError: No JSON object could be decoded\n"
+   },
+   "H3_hostile": {
+    "bom_only": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    },
+    "bom_utf8_cookie": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    },
+    "canary": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    },
+    "cr_only": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.06
+    },
+    "deep_dirs": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.05
+    },
+    "dirlink": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.06
+    },
+    "escape": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.04
+    },
+    "exec_free": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    },
+    "fifo": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    },
+    "future_print": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    },
+    "html": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    },
+    "huge_line": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    },
+    "odd_names": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.04
+    },
+    "shebang_cookie": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    },
+    "tabs_py2_only": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    },
+    "unlistable": {
+     "findings": [],
+     "ok": false,
+     "problems": [
+      "traceback: ModuleNotFoundError: No module named 'symbol'",
+      "invalid JSON",
+      "exit 1, want 2 (an entry cannot be read)"
+     ],
+     "rc": 1,
+     "sec": 0.03
+    }
+   },
+   "R6_files_not_named": {
+    "count": 2331,
+    "examples": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/PageEditor.py",
+     "moin/MoinMoin/PageGraphicalEditor.py",
+     "moin/MoinMoin/__init__.py"
+    ],
+    "of": 2331
+   },
+   "corpus_scan": {
+    "files": null,
+    "findings": 0,
+    "json_valid": false,
+    "rc": 1,
+    "rules": {},
+    "sec": 0.06,
+    "traceback": true
+   },
+   "determinism_jobs1_vs_default": false,
+   "false_ready_examples": {
+    "3.10": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/PageEditor.py",
+     "moin/MoinMoin/_tests/ldap_testbase.py",
+     "moin/MoinMoin/_tests/maketestwiki.py"
+    ],
+    "3.11": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/PageEditor.py",
+     "moin/MoinMoin/_tests/ldap_testbase.py",
+     "moin/MoinMoin/_tests/maketestwiki.py"
+    ],
+    "3.12": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/PageEditor.py",
+     "moin/MoinMoin/_tests/ldap_testbase.py",
+     "moin/MoinMoin/_tests/maketestwiki.py"
+    ],
+    "3.13": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/PageEditor.py",
+     "moin/MoinMoin/_tests/ldap_testbase.py",
+     "moin/MoinMoin/_tests/maketestwiki.py"
+    ],
+    "3.14": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/_tests/maketestwiki.py",
+     "moin/MoinMoin/_tests/pep8.py",
+     "moin/MoinMoin/_tests/test_PageEditor.py"
+    ],
+    "3.15": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/_tests/maketestwiki.py",
+     "moin/MoinMoin/_tests/pep8.py",
+     "moin/MoinMoin/_tests/test_PageEditor.py"
+    ],
+    "3.6": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/PageEditor.py",
+     "moin/MoinMoin/_tests/ldap_testbase.py",
+     "moin/MoinMoin/_tests/maketestwiki.py"
+    ],
+    "3.7": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/PageEditor.py",
+     "moin/MoinMoin/_tests/ldap_testbase.py",
+     "moin/MoinMoin/_tests/maketestwiki.py"
+    ],
+    "3.8": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/PageEditor.py",
+     "moin/MoinMoin/_tests/ldap_testbase.py",
+     "moin/MoinMoin/_tests/maketestwiki.py"
+    ],
+    "3.9": [
+     "moin/MoinMoin/Page.py",
+     "moin/MoinMoin/PageEditor.py",
+     "moin/MoinMoin/_tests/ldap_testbase.py",
+     "moin/MoinMoin/_tests/maketestwiki.py"
+    ]
+   },
+   "html": {
+    "ok": false,
+    "rc": 1,
+    "why": "no HTML written"
+   },
+   "interpreter": "3.14.9",
+   "item_2c_canary": []
+  }
+ },
+ "started": "2026-10-23T01:41:49"
+}

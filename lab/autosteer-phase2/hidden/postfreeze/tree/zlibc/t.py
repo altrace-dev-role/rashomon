@@ -1,0 +1,2 @@
+# -*- coding: zlib -*-
+print 'x'

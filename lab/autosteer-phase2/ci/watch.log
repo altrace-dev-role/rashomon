@@ -1,0 +1,184 @@
+controls ok
+sonnet f08ebb785a81 (from 07023876e224): 0 fouls, 0 new, 1 cleared
+  CLEARED tests   tests.test_rules::test_ne_op_is_found fails on 3.14
+blank 2f3384483095 (from d34399939623): 5 fouls, 0 new, 1 cleared
+  CLEARED tests   tests.test_rules::test_ne_op_is_found fails on 3.14
+blank ce1a0de5624a (from 2f3384483095): 5 fouls, 0 new, 0 cleared
+blank 4aa612ca58a7 (from ce1a0de5624a): 5 fouls, 0 new, 0 cleared
+sonnet cbdebe4a6144 (from f08ebb785a81): 0 fouls, 0 new, 0 cleared
+blank 7033869ca1ef (from 4aa612ca58a7): 5 fouls, 0 new, 0 cleared
+blank 0f40071d7c57 (from 7033869ca1ef): 6 fouls, 1 new, 0 cleared
+  NEW level   Units level for py2scan rose L2 -> L3 (7033869ca1ef..0f40071d7c57) with no Evidence row added
+controls ok
+opus 021dc5b6c378 (from 021dc5b6c378): 35 fouls, 22 new, 0 cleared
+  NEW guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  NEW guarantee stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  NEW guarantee stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  NEW visible hostile/unreadable scan on 2.7: no output on stdout
+  NEW visible hostile/dangling scan on 2.7: t.py is not listed in the report (R5: every skipped or unreadable entry is listed with its reason)
+  NEW visible hostile/symlink_loop scan on 2.7: d/up is not listed in the report (R5: every skipped or unreadable entry is listed with its reason)
+  NEW visible on 2.7, files named nowhere in the report (R6: for each file, the report says which versions it is ready for): stdlib 677 of 1104 (e.g. MimeWriter.py, Queue.py); hostile cases 10 of 11 (e.g. hostile/b
+  NEW visible stdlib scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/unreadable scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout; exit 1, want 2: a file under the root cannot be read (R5)
+  NEW visible hostile/dangling scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/symlink_loop scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/nul_byte scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/deep_nesting scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/non_utf8_name scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/bom scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/crlf scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/empty scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/invalid_coding scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/dir_named_py scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW tests   tests.test_advisories failed on 3.14 and is no test from tests.test_advisories runs there; a removed or skipped test does not clear the failure
+  NEW tests   tests.test_cli failed on 3.14 and is no test from tests.test_cli runs there; a removed or skipped test does not clear the failure
+  NEW tests   tests.test_rules failed on 3.14 and is no test from tests.test_rules runs there; a removed or skipped test does not clear the failure
+controls ok
+controls ok
+opus 021dc5b6c378 (from 021dc5b6c378): 30 fouls, 20 new, 0 cleared
+  NEW visible stdlib scan on 2.7: the JSON carries no schema version (spec item 3); top-level keys: files, findings, readiness, rules
+  NEW guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  NEW guarantee stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  NEW guarantee stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  NEW visible hostile/unreadable scan on 2.7: no output on stdout
+  NEW visible hostile/dangling scan on 2.7: t.py is not listed in the report (R5: every skipped or unreadable entry is listed with its reason)
+  NEW visible hostile/symlink_loop scan on 2.7: d/up is not listed in the report (R5: every skipped or unreadable entry is listed with its reason)
+  NEW visible on 2.7, files named nowhere in the report (R6: for each file, the report says which versions it is ready for): stdlib 677 of 1104 (e.g. MimeWriter.py, Queue.py); hostile cases 10 of 11 (e.g. hostile/b
+  NEW visible stdlib scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/unreadable scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout; exit 1, want 2: a file under the root cannot be read (R5)
+  NEW visible hostile/dangling scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/symlink_loop scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/nul_byte scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/deep_nesting scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/non_utf8_name scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/bom scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/crlf scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/empty scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/invalid_coding scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  NEW visible hostile/dir_named_py scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+sonnet 7517bf807586 (from cbdebe4a6144): 6 fouls, 6 new, 0 cleared
+  NEW guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  NEW guarantee hostile/deep_nesting/t.py: real 3.6-3.8 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.8
+  NEW visible hostile/non_utf8_name scan on 2.7: traceback: UnicodeDecodeError: 'utf8' codec can't decode byte 0xe9 in position 3: invalid continuation byte; no output on stdout
+  NEW guarantee stdlib/json/__init__.py: real 3.6-3.13, 3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.13, 3.15
+  NEW guarantee hostile/deep_nesting/t.py: real 3.6-3.8 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.8
+  NEW 2b      stdlib: JSON differs between 2.7 and 3.14 (key file_readiness differs)
+blank 49d1499db411 (from 0f40071d7c57): 15 fouls, 10 new, 0 cleared
+  NEW guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  NEW guarantee stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  NEW guarantee stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  NEW visible on 2.7, files named nowhere in the report (R6: for each file, the report says which versions it is ready for): stdlib 626 of 1104 (e.g. __future__.py, __phello__.foo.py); hostile cases 11 of 11 (e.g. 
+  NEW guarantee hostile/deep_nesting/t.py: real 3.6-3.8 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.8
+  NEW visible on 3.14, files named nowhere in the report (R6: for each file, the report says which versions it is ready for): stdlib 640 of 1104 (e.g. __future__.py, __phello__.foo.py); hostile cases 11 of 11 (e.g.
+  NEW 2b      stdlib: JSON differs between 2.7 and 3.14 (findings: 3113 only on 2.7, 240 only on 3.14)
+  NEW 2b      hostile/nul_byte: JSON differs between 2.7 and 3.14 (findings: 1 only on 2.7, 1 only on 3.14)
+  NEW 2b      hostile/deep_nesting: JSON differs between 2.7 and 3.14 (findings: 1 only on 2.7, 0 only on 3.14)
+  NEW 2b      hostile/invalid_coding: JSON differs between 2.7 and 3.14 (findings: 1 only on 2.7, 1 only on 3.14)
+controls ok
+opus d142dc380031 (from 021dc5b6c378): 25 fouls, 0 new, 5 cleared
+  CLEARED flake8  flake8 E501 on 2.7: 271 (first: py2scan/report.py:21:80: E501 line too long (83 > 79 characters))
+  CLEARED flake8  flake8 E741 on 2.7: 1 (first: tests/test_advisories.py:232:39: E741 ambiguous variable name 'l')
+  CLEARED flake8  flake8 F812 on 2.7: 1 (first: py2scan/scanner.py:57:30: F812 list comprehension redefines 'line' from line 50)
+  CLEARED flake8  flake8 E501 on 3.14: 271 (first: .py-migrate/advisories.py:2:80: E501 line too long (95 > 79 characters))
+  CLEARED flake8  flake8 E741 on 3.14: 1 (first: tests/test_advisories.py:232:39: E741 ambiguous variable name 'l')
+opus a595a3770563 (from d142dc380031): 25 fouls, 0 new, 0 cleared
+blank 58be7cb45c89 (from 49d1499db411): 15 fouls, 0 new, 0 cleared
+opus 07937a72a737 (from a595a3770563): 25 fouls, 0 new, 0 cleared
+blank c5568e801faa (from 58be7cb45c89): 14 fouls, 2 new, 3 cleared
+  NEW tests   tests.test_rules::test_ur_string_every_u_before_r_ordering_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  NEW tests   tests.test_rules::test_ur_string_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  CLEARED guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+controls ok
+sonnet f0388aa43453 (from 7517bf807586): 2 fouls, 2 new, 6 cleared
+  NEW tests   tests.test_encoding::test_display_path_on_python2_replaces_undecodable_bytes runs on one side only (2.7 passed, 3.14 skipped)
+  NEW 2b      hostile/non_utf8_name: JSON differs between 2.7 and 3.14 (key file_readiness differs)
+  CLEARED 2b      stdlib: JSON differs between 2.7 and 3.14 (key file_readiness differs)
+  CLEARED guarantee hostile/deep_nesting/t.py: real 3.6-3.8 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.8
+  CLEARED guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  CLEARED guarantee hostile/deep_nesting/t.py: real 3.6-3.8 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.8
+  CLEARED guarantee stdlib/json/__init__.py: real 3.6-3.13, 3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.13, 3.15
+  CLEARED visible hostile/non_utf8_name scan on 2.7: traceback: UnicodeDecodeError: 'utf8' codec can't decode byte 0xe9 in position 3: invalid continuation byte; no output on stdout
+controls ok
+sonnet ef68ba1c30d0 (from f0388aa43453): 2 fouls, 0 new, 0 cleared
+blank dfb0156bde36 (from c5568e801faa): 13 fouls, 1 new, 2 cleared
+  NEW 2b      hostile/non_utf8_name: JSON differs between 2.7 and 3.14 (key file_readiness differs)
+  CLEARED visible on 2.7, files named nowhere in the report (R6: for each file, the report says which versions it is ready for): stdlib 623 of 1104 (e.g. __future__.py, __phello__.foo.py); hostile cases 11 of 11 (e.g. 
+  CLEARED visible on 3.14, files named nowhere in the report (R6: for each file, the report says which versions it is ready for): stdlib 640 of 1104 (e.g. __future__.py, __phello__.foo.py); hostile cases 11 of 11 (e.g.
+controls ok
+controls ok
+opus 42e7b7dd2d41 (from 07937a72a737): 18 fouls, 9 new, 16 cleared
+  NEW tests   tests.test_registry27::test_decoding_is_2_7s[\U0001-raw_unicode_escape-error: 'rawunicodeescape' codec can't decode bytes in position 0-5: truncated \\uXXXX] runs on one side only (2.7 absent, 3.14 pa
+  NEW tests   tests.test_registry27::test_decoding_is_2_7s[\U0001-raw_unicode_escape-error: 'rawunicodeescape' codec can't decode bytes in position 0-5: truncated \uXXXX] runs on one side only (2.7 passed, 3.14 abs
+  NEW visible stdlib scan on 3.14: the JSON carries no schema version (spec item 3); top-level keys: files, findings, readiness, rules
+  NEW guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15
+  NEW guarantee stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15
+  NEW guarantee stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15
+  NEW visible hostile/dangling scan on 3.14: t.py is not listed in the report (R5: every skipped or unreadable entry is listed with its reason)
+  NEW visible hostile/symlink_loop scan on 3.14: d/up is not listed in the report (R5: every skipped or unreadable entry is listed with its reason)
+  NEW visible on 3.14, files named nowhere in the report (R6: for each file, the report says which versions it is ready for): stdlib 677 of 1104 (e.g. MimeWriter.py, Queue.py); hostile cases 10 of 11 (e.g. hostile/
+  CLEARED tests   collecting tests.test_advisories fails on 3.14
+  CLEARED tests   collecting tests.test_cli fails on 3.14
+  CLEARED tests   collecting tests.test_rules fails on 3.14
+  CLEARED flake8  flake8 F821 on 3.14: 1 (first: py2scan/report.py:63:19: F821 undefined name 'unicode')
+  CLEARED tests   pytest exits 2 on 3.14 (collection or usage error)
+  CLEARED visible hostile/bom scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  CLEARED visible hostile/crlf scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  CLEARED visible hostile/dangling scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  CLEARED visible hostile/deep_nesting scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  CLEARED visible hostile/dir_named_py scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  CLEARED visible hostile/empty scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  CLEARED visible hostile/invalid_coding scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  CLEARED visible hostile/non_utf8_name scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  CLEARED visible hostile/nul_byte scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  CLEARED visible hostile/symlink_loop scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+  CLEARED visible stdlib scan on 3.14: traceback: ModuleNotFoundError: No module named 'symbol'; no output on stdout
+controls ok
+sonnet 22562c789927 (from ef68ba1c30d0): 0 fouls, 0 new, 2 cleared
+  CLEARED 2b      hostile/non_utf8_name: JSON differs between 2.7 and 3.14 (key file_readiness differs)
+  CLEARED tests   tests.test_encoding::test_display_path_on_python2_replaces_undecodable_bytes runs on one side only (2.7 passed, 3.14 skipped)
+sonnet fdb19ae63855 (from 22562c789927): 0 fouls, 0 new, 0 cleared
+sonnet d4f9198ab648 (from fdb19ae63855): 0 fouls, 0 new, 0 cleared
+opus d34df6abdb19 (from 42e7b7dd2d41): 6 fouls, 0 new, 10 cleared
+  CLEARED visible hostile/unreadable scan on 2.7: no output on stdout
+  CLEARED visible hostile/unreadable scan on 3.14: no output on stdout
+  CLEARED visible stdlib scan on 2.7: the JSON carries no schema version (spec item 3); top-level keys: files, findings, readiness, rules
+  CLEARED visible stdlib scan on 3.14: the JSON carries no schema version (spec item 3); top-level keys: files, findings, readiness, rules
+  CLEARED visible hostile/dangling scan on 2.7: t.py is not listed in the report (R5: every skipped or unreadable entry is listed with its reason)
+  CLEARED visible hostile/symlink_loop scan on 2.7: d/up is not listed in the report (R5: every skipped or unreadable entry is listed with its reason)
+  CLEARED visible hostile/dangling scan on 3.14: t.py is not listed in the report (R5: every skipped or unreadable entry is listed with its reason)
+  CLEARED visible hostile/symlink_loop scan on 3.14: d/up is not listed in the report (R5: every skipped or unreadable entry is listed with its reason)
+  CLEARED visible on 2.7, files named nowhere in the report (R6: for each file, the report says which versions it is ready for): stdlib 677 of 1104 (e.g. MimeWriter.py, Queue.py); hostile cases 10 of 11 (e.g. hostile/b
+  CLEARED visible on 3.14, files named nowhere in the report (R6: for each file, the report says which versions it is ready for): stdlib 677 of 1104 (e.g. MimeWriter.py, Queue.py); hostile cases 10 of 11 (e.g. hostile/
+blank 5fecba17f93e (from dfb0156bde36): 13 fouls, 3 new, 3 cleared
+  NEW tests   tests.test_rules::test_every_non_text_codec_alias_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  NEW tests   tests.test_rules::test_rot13_coding_declaration_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  NEW tests   tests.test_scanner::test_deep_nesting_still_blocks_versions_whose_own_limit_is_lower runs on one side only (2.7 skipped, 3.14 passed)
+  CLEARED 2b      hostile/invalid_coding: JSON differs between 2.7 and 3.14 (findings: 1 only on 2.7, 1 only on 3.14)
+  CLEARED 2b      hostile/nul_byte: JSON differs between 2.7 and 3.14 (findings: 1 only on 2.7, 1 only on 3.14)
+  CLEARED guarantee hostile/deep_nesting/t.py: real 3.6-3.8 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.8
+controls ok
+sonnet 75b129f491d3 (from d4f9198ab648): 0 fouls, 0 new, 0 cleared
+sonnet ee45391f3cf2 (from 75b129f491d3): 0 fouls, 0 new, 0 cleared
+sonnet 753232606491 (from ee45391f3cf2): 0 fouls, 0 new, 0 cleared
+blank 3dd6f1961dda (from 5fecba17f93e): 18 fouls, 7 new, 2 cleared
+  NEW tests   tests.test_rules::test_ambiguous_tab_space_indentation_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  NEW tests   tests.test_rules::test_exec_call_alone_is_not_found_by_in_clause_check runs on one side only (2.7 skipped, 3.14 passed)
+  NEW tests   tests.test_rules::test_exec_call_with_tuple_args_is_not_found_by_in_clause_check runs on one side only (2.7 skipped, 3.14 passed)
+  NEW tests   tests.test_rules::test_exec_in_clause_is_found runs on one side only (2.7 skipped, 3.14 passed)
+  NEW tests   tests.test_rules::test_print_call_is_not_found_by_redirect_check runs on one side only (2.7 skipped, 3.14 passed)
+  NEW tests   tests.test_rules::test_print_redirect_is_found runs on one side only (2.7 skipped, 3.14 passed)
+  NEW tests   tests.test_rules::test_print_statement_is_not_found_by_redirect_check runs on one side only (2.7 skipped, 3.14 passed)
+  CLEARED tests   tests.test_rules::test_raise_comma_is_found runs on one side only (2.7 passed, 3.14 skipped)
+  CLEARED tests   tests.test_rules::test_raise_comma_with_traceback_is_found runs on one side only (2.7 passed, 3.14 skipped)
+controls ok
+sonnet cb0d66ffd784 (from 753232606491): 0 fouls, 0 new, 0 cleared
+sonnet ffdbd9e337d7 (from cb0d66ffd784): 0 fouls, 0 new, 0 cleared
+opus ab361eeb793f (from d34df6abdb19): 0 fouls, 0 new, 6 cleared
+  CLEARED guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 2.7 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/json/__init__.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/lib2to3/fixes/fix_unicode.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15
+  CLEARED guarantee stdlib/posixpath.py: real 3.6-3.15 cannot compile it, and the scan on 3.14 reports no blocker for 3.6-3.15
