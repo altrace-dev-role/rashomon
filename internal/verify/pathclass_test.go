@@ -240,6 +240,20 @@ func TestRC3f_EcosystemTable(t *testing.T) {
 		{"MODULE.bazel", ClassConfig},
 		{"WORKSPACE.bazel", ClassConfig},
 		{"ios/Runner.xcodeproj/project.pbxproj", ClassConfig},
+		// go.work is go.mod's sibling, the workspace's build input. go.work.sum
+		// is config already, by the .sum extension, so the go.work row is the
+		// whole fix and not half of one.
+		{"go.work", ClassConfig},
+		{"go.work.sum", ClassConfig},
+		// The generators' own suffixes: graphql-code-generator's .generated.ts
+		// and Dart build_runner's .g.dart, beside .dart, which is source; the
+		// suffix needs its dot, so debug.dart stays source.
+		{"src/types.generated.ts", ClassGenerated},
+		{"lib/user.g.dart", ClassGenerated},
+		{"lib/debug.dart", ClassSource},
+		// A bare script named build reads as config, a deliberate label: config
+		// and source are both relevant, and Bazel's BUILD needs the basename.
+		{"build", ClassConfig},
 
 		// ACCEPTED GAP: an absolute Windows path's first element is the drive
 		// letter, so no root-segment rule fires on one and dist here reads as

@@ -12,7 +12,7 @@ m("RC-3 generated segments match nothing", F,
 m("RC-3 generated root segments match nothing", F,
   'set("dist", "target")', 'set()', "TestRC3c_")
 m("RC-3 generated suffixes match nothing", F,
-  '[]string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css"}', '[]string{}', "TestRC3c_")
+  '[]string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css", ".generated.ts", ".g.dart"}', '[]string{}', "TestRC3c_")
 m("RC-3 CI segments match nothing", F,
   'set(".github", ".gitlab", ".circleci", ".buildkite")', 'set()', "TestRC3c_")
 m("RC-3 CI basenames match nothing", F,
@@ -46,7 +46,7 @@ m("RC-3 docs basenames match nothing", F,
 m("RC-3 config extensions match nothing", F,
   'set(".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".lock", ".sum", ".properties", ".xml", ".pbxproj")', 'set()', "TestRC3c_")
 m("RC-3 config basenames match nothing", F,
-  'set("makefile", "dockerfile", "go.mod", "cmakelists.txt",\n'
+  'set("makefile", "dockerfile", "go.mod", "go.work", "cmakelists.txt",\n'
   '\t\t"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", "package.swift")', 'set()', "TestRC3c_")
 m("RC-3 requirements*.txt stops being config", F,
   'strings.HasPrefix(base, "requirements") || ', '', "TestRC3c_")
@@ -74,6 +74,9 @@ m("RC-3 the generated prefix loses its dot", F,
   '[]string{"zz_generated."}', '[]string{"zz_generated"}', "TestRC3f_")
 m("RC-3 .gen.ts stops being generated", F, '".gen.ts", ', '', "TestRC3f_")
 m("RC-3 .gen.js stops being generated", F, '".gen.js", ', '', "TestRC3f_")
+m("RC-3 .generated.ts stops being generated", F, '".generated.ts", ', '', "TestRC3f_")
+m("RC-3 .g.dart stops being generated", F, ', ".g.dart"}', '}', "TestRC3f_")
+m("RC-3 the .g.dart suffix loses its dot", F, '".g.dart"}', '"g.dart"}', "TestRC3f_")
 m("RC-3 the CamelCase extensions are .java alone", F,
   'set(".java", ".kt", ".cs", ".swift", ".scala")', 'set(".java")', "TestRC3f_")
 m("RC-3 the CamelCase stem is cut by the folded extension's length", F,
@@ -83,6 +86,7 @@ m("RC-3 a basename of dots alone is a dotfile again", F,
 m("RC-3 the Bazel basenames match nothing", F,
   '"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", ', '', "TestRC3f_")
 m("RC-3 Package.swift stops being config", F, ', "package.swift")', ')', "TestRC3f_")
+m("RC-3 go.work stops being config", F, '"go.work", ', '', "TestRC3f_")
 m("RC-3 .pbxproj stops being config", F, ', ".pbxproj")', ')', "TestRC3f_")
 
 # Precedence: each adjacent pair of rules swapped.

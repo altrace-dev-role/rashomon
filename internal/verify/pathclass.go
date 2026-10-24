@@ -52,7 +52,7 @@ var (
 	// one repository, hand-written scripts in another, and an ambiguous word
 	// errs toward relevance (D4, D7).
 	generatedRootSegments = set("dist", "target")
-	generatedSuffixes     = []string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css"}
+	generatedSuffixes     = []string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css", ".generated.ts", ".g.dart"}
 	// Kubernetes and operator-sdk codegen writes zz_generated.<kind>.go, a
 	// basename prefix no segment, basename, suffix or extension expresses.
 	generatedPrefixes = []string{"zz_generated."}
@@ -89,7 +89,7 @@ var (
 	// config too, which is relevant either way. .pbxproj is Xcode's project
 	// file, a build input.
 	configExtensions = set(".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".lock", ".sum", ".properties", ".xml", ".pbxproj")
-	configBasenames  = set("makefile", "dockerfile", "go.mod", "cmakelists.txt",
+	configBasenames  = set("makefile", "dockerfile", "go.mod", "go.work", "cmakelists.txt",
 		"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", "package.swift")
 
 	// Rule 6, source.
@@ -115,9 +115,13 @@ var (
 // extension lookups, so O(k); no allocation when the path is already lower
 // case with forward slashes.
 //
-// Input is bounded upstream: the store caps every path field at MaxPathBytes
-// and written_paths at MaxWrittenPathsBytes at capture (REC-52), so ClassOf
-// has no cap of its own.
+// Input is bounded upstream: the hook caps every path field at MaxPathBytes
+// and written_paths at MaxWrittenPathsBytes with store.CapDeclaration, called
+// from the handler's capture in internal/hook/handle.go before the record is
+// written; the store's own write path checks the whole line against
+// MaxRecordBytes only. ClassOf has no cap of its own and trusts that every
+// path it classifies came through the hook; a Declaration built directly can
+// hand it any length, which costs O(len) and nothing else.
 func ClassOf(p string) PathClass {
 	n := normalise(p)
 	switch {
