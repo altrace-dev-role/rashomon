@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/altrace-dev-role/rashomon/internal/shape"
@@ -25,6 +26,18 @@ const (
 	// benchDurationMS is how long the call ran: its execution and post
 	// coverage are recorded that long after its declaration.
 	benchDurationMS = 1200
+
+	// benchSpread is how many consecutive declaration lengths the store
+	// benchmarks cycle through: at least one whole size-class width at the
+	// store's declaration lengths, where the allocator's classes are 128 to
+	// 256 B apart (1,408, 1,536, 1,792). A line that fills its class is
+	// copied once more by marshalLine's newline append, so a whole cycle pays
+	// that at its expected rate, one declaration in 128 to 256, and no single
+	// boundary decides a row the way one fixed-length declaration on the
+	// 1,408 B edge did, in every op at once. At the gate's 20 iterations a
+	// row sees 20 consecutive lengths, so a boundary can still move it by one
+	// copy in 20, never by every one.
+	benchSpread = 256
 )
 
 // benchCall is what one Bash tool call writes, as the hook path builds it: a
@@ -61,6 +74,19 @@ func newBenchCall(st *Store) benchCall {
 			State: StateVerified, HookEntry: EntryPresentSettings, Probe: ProbeFresh, CWD: benchCWD,
 		},
 	}
+}
+
+// benchCalls is n copies of newBenchCall(st) whose declarations are n
+// consecutive lengths: copy i's transcript path is benchTranscript with "-"
+// and i x's after it. Every one stays under MaxPathBytes for n up to
+// benchSpread.
+func benchCalls(st *Store, n int) []benchCall {
+	calls := make([]benchCall, n)
+	for i := range calls {
+		calls[i] = newBenchCall(st)
+		calls[i].decl.TranscriptPath = benchTranscript + "-" + strings.Repeat("x", i)
+	}
+	return calls
 }
 
 // appendBenchCall writes one call's five records through the append API, in
@@ -106,7 +132,7 @@ func BenchmarkRecordBytesPerCall(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	call := newBenchCall(st)
+	calls := benchCalls(st, benchSpread)
 	ids := make([]string, b.N)
 	for i := range ids {
 		ids[i] = fmt.Sprintf("toolu_01%022d", i)
@@ -114,7 +140,7 @@ func BenchmarkRecordBytesPerCall(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := appendBenchCall(st, call, ids[i], benchStartMS+int64(i)); err != nil {
+		if err := appendBenchCall(st, calls[i%benchSpread], ids[i], benchStartMS+int64(i)); err != nil {
 			b.Fatal(err)
 		}
 	}

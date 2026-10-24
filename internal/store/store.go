@@ -711,6 +711,17 @@ func fitLine(rec any) (line []byte, degraded, err error) {
 
 // marshalLine is rec as one NDJSON line, or ErrRecordOversize when that line
 // would be over MaxRecordBytes (limits.go).
+//
+// A line whose JSON exactly fills the size class json.Marshal allocated it
+// in has no room for the newline, and the append below copies it once more.
+// Nothing encoding/json's API offers avoids that on every toolchain: under
+// json/v2, go1.27's default, json.Encoder appends its newline the same way,
+// to a buffer it borrows, and copying the line into one sized for the
+// newline costs an allocation on every line. The copy falls on one line in
+// as many as its size class is wide -- one declaration in 128 to 256 at the
+// store's lengths -- and costs one more copy of that line, so it stays; the
+// store benchmarks spread their declaration lengths (benchSpread) so a row
+// measures that expected cost rather than one length's boundary.
 func marshalLine(rec any) ([]byte, error) {
 	line, err := json.Marshal(rec)
 	if err != nil {

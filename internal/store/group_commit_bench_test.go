@@ -53,12 +53,12 @@ func BenchmarkHookStoreSequence(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			call := newBenchCall(st)
+			calls := benchCalls(st, benchSpread)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				id := fmt.Sprintf("toolu_01%022d", i)
-				if err := hookStoreSequence(root, call, id, benchStartMS+int64(i), c.deferred); err != nil {
+				if err := hookStoreSequence(root, calls[i%benchSpread], id, benchStartMS+int64(i), c.deferred); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -88,7 +88,7 @@ func BenchmarkAppendDeclarationParallel(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	call := newBenchCall(st)
+	calls := benchCalls(st, benchSpread)
 	timeouts := 0
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -105,7 +105,7 @@ func BenchmarkAppendDeclarationParallel(b *testing.B) {
 					return
 				}
 				one.DeferDurability()
-				d := call.decl
+				d := calls[(i*burstWays+w)%benchSpread].decl
 				d.ToolUseID, d.RecordedAtMS = fmt.Sprintf("toolu_01%016d%06d", i, w), benchStartMS+int64(i)
 				if err := one.AppendDeclaration(d); err != nil {
 					errs[w] = err
