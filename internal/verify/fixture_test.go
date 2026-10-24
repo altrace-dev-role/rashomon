@@ -99,10 +99,11 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 	r := &store.Run{Dir: sessionID}
 	var last int64
 	// next numbers the records as the store does, one Seq per record from 1,
-	// in the hook's order for one call: its PreToolUse records (the
-	// declaration, then the terminal Close writes) before its PostToolUse
-	// record (the execution). Records of other calls interleaving in a real
-	// run are not modelled.
+	// in the hook's order for one call (pinned end to end by
+	// TestHookOrder_DeclarationTerminalThenExecution in internal/hook): its
+	// PreToolUse records (the declaration, then the terminal Close writes)
+	// before its PostToolUse record (the execution). Records of other calls
+	// interleaving in a real run are not modelled.
 	next := int64(1)
 	for i, c := range calls {
 		if c.seq <= last {
