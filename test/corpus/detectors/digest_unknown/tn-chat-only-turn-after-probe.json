@@ -1,0 +1,8 @@
+{
+  "detector": "digest_unknown",
+  "label": "true_negative",
+  "reason": "The turn used no tool and the session's start was recorded: a verified zero, not an unknown.",
+  "labelled_by": "seed",
+  "provenance": "constructed: watched() of harness_test.go and a Stop with no calls",
+  "final_message": "Yes, that regular expression is valid."
+}

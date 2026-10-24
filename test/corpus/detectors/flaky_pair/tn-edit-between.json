@@ -1,0 +1,38 @@
+{
+  "detector": "flaky_pair",
+  "label": "true_negative",
+  "reason": "A source file was edited between a failing and a passing run: that is a fix, not a flaky pair.",
+  "labelled_by": "seed",
+  "provenance": "built from the repo's acceptance-test payloads: the stop rule of test_bending_test.go (any edit between the runs)",
+  "final_message": "The first test run failed; after the change the tests pass.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1,
+      "output": "--- FAIL: TestAdd (0.00s)\n    calc_test.go:9: Add(2, 2) = 5, want 4\nFAIL\nFAIL\tcalc\t0.003s"
+    },
+    {
+      "tool": "Edit",
+      "input": {
+        "file_path": "/tmp/project/calc.go",
+        "old_string": "return a - b",
+        "new_string": "return a + b"
+      },
+      "outcome": "ok"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": "ok  \tcalc\t0.004s"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "detector": "silent_failure",
+  "label": "false_positive",
+  "reason": "git diff --quiet exits 1 to say there are local changes; it answers a question and failed nothing.",
+  "labelled_by": "seed",
+  "fp_class": "status_query",
+  "provenance": "constructed: a shell call whose exit status is its answer, in the shape of h21_failure_test.go",
+  "final_message": "Two files have local edits; nothing is committed yet.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "git diff --quiet",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1
+    }
+  ]
+}

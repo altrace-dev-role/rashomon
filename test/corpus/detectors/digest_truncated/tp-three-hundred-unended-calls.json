@@ -1,0 +1,19 @@
+{
+  "detector": "digest_truncated",
+  "label": "true_positive",
+  "reason": "Three hundred declarations with no ending outgrow the digest's size ceiling and its lists are cut; the line says so, which is what happened.",
+  "labelled_by": "seed",
+  "provenance": "constructed: a repeated PreToolUse with no PostToolUse, enough of them to pass the ceiling",
+  "final_message": "Started the batch.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "sleep 1",
+        "description": "run it"
+      },
+      "outcome": "unrecorded",
+      "repeat": 300
+    }
+  ]
+}

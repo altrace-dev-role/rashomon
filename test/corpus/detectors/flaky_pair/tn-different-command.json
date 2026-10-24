@@ -1,0 +1,29 @@
+{
+  "detector": "flaky_pair",
+  "label": "true_negative",
+  "reason": "The two runs are different commands (a package narrowed), so they are not the same test command.",
+  "labelled_by": "seed",
+  "provenance": "constructed: two go test lines with different arguments",
+  "final_message": "The first test run failed; after the change the tests pass.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1,
+      "output": "--- FAIL: TestAdd (0.00s)\n    calc_test.go:9: Add(2, 2) = 5, want 4\nFAIL\nFAIL\tcalc\t0.003s"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./calc",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": "ok  \tcalc\t0.004s"
+    }
+  ]
+}
