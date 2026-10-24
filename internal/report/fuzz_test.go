@@ -52,6 +52,11 @@ const sidechainSeed = `{"parentUuid":null,"isSidechain":true,"type":"assistant",
 // runs of three, which keep the across-line cases at a few KB.
 const maxFuzzBytes = 16 << 10
 
+// The corpus file testdata/fuzz/FuzzTranscriptLines/cdc8d08df98870a4 cannot
+// carry a comment (the Go fuzz corpus parser reads every line after the
+// version line as a Go expression), so this is where it is explained: its JSON
+// is spaced so that TestH113's fixture scanner does not read a long run as a
+// secret shape, so it must not be compacted.
 func FuzzTranscriptLines(f *testing.F) {
 	lines := realLines(f)
 	for i, l := range lines {
