@@ -238,7 +238,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
-		payload, in, standDown := claudeHostGuard(stdin)
+		payload, in, standDown, hid := claudeHostGuard(stdin)
 		if standDown {
 			return nil
 		}
@@ -255,7 +255,7 @@ func cmdHook(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 
-		h := hook.New(st, time.Now)
+		h := newHandler(st, hid)
 		// Group commit (REC-34): the appends below are ordered with barriers
 		// inside their locks, and Flush is the one full sync, after the last
 		// of them and outside every lock. Nothing is printed on this path, so
@@ -296,7 +296,7 @@ func cmdPost(args []string, stdin io.Reader, stderr io.Writer) int {
 		sig := hook.WatchSignals()
 		defer sig.Stop()
 
-		payload, in, standDown := claudeHostGuard(stdin)
+		payload, in, standDown, _ := claudeHostGuard(stdin)
 		if standDown {
 			return nil
 		}
@@ -356,7 +356,7 @@ func cmdProbe(args []string, stdin io.Reader, stderr io.Writer) int {
 			return nil
 		}
 
-		payload, in, standDown := claudeHostGuard(stdin)
+		payload, in, standDown, _ := claudeHostGuard(stdin)
 		if standDown {
 			return nil
 		}
@@ -518,8 +518,7 @@ func recapTurn(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	now := time.Now()
 	payload := readRecapPayload(stdin, recapStdinTimeout)
 
-	if id, down := recapHostGuard(payload.Harness, payload.OK); down {
-		recordHarnessMismatchBestEffort(payload.SessionID, id)
+	if id, down := recapHostGuard(payload.Harness, payload.OK); noteHarness(payload.SessionID, id, down) {
 		return nil
 	}
 

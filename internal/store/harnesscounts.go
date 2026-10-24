@@ -239,6 +239,21 @@ var errHarnessCountsTooLarge = errors.New("store: harness_counts.json would exce
 // values entirely -- RecordHarnessMismatch never has to run for "no
 // record, no run directory, no output" to hold.
 func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now time.Time) (counted bool, err error) {
+	return recordHarness(root, key, sessionID, evidence, now, true)
+}
+
+// RecordHarnessSeen is RecordHarnessMismatch for a detection that did not
+// stand down (an Unknown harness, recorded under the 10-23 default): the
+// same locked, deduplicated update, moving seen only -- stood_down and
+// last_stood_down are untouched, so the counter still says how often each
+// outcome happened.
+func RecordHarnessSeen(root, key, sessionID string, now time.Time) (counted bool, err error) {
+	return recordHarness(root, key, sessionID, nil, now, false)
+}
+
+// recordHarness is the body both share; standDown says whether the call
+// also counts as a stand-down.
+func recordHarness(root, key, sessionID string, evidence []string, now time.Time, standDown bool) (counted bool, err error) {
 	hkey, err := HarnessKey(root)
 	if err != nil {
 		return false, err
@@ -309,11 +324,13 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 	}
 	c := entry.Days[day]
 	c.Seen++
-	c.StoodDown++
+	if standDown {
+		c.StoodDown++
+		entry.LastStoodDown = day
+		entry.LastEvidence = evidence
+	}
 	entry.Days[day] = c
 	evictOldestDays(entry)
-	entry.LastStoodDown = day
-	entry.LastEvidence = evidence
 
 	if dedup {
 		hc.Sessions = append(evictOldestSessions(hc.Sessions), digest)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/altrace-dev-role/rashomon/internal/harness"
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/hookio"
 	"github.com/altrace-dev-role/rashomon/internal/hostguard"
 	"github.com/altrace-dev-role/rashomon/internal/settings"
@@ -75,7 +76,7 @@ func (r *onceErrReader) Read([]byte) (int, error) { return 0, r.err }
 // skips under contention, never something a stand-down fails over, and
 // because a hook entry point's one hard rule is that it never fails over
 // anything (see cmdHook's own file comment).
-func claudeHostGuard(stdin io.Reader) (payload *hookio.Payload, replay func() io.Reader, standDown bool) {
+func claudeHostGuard(stdin io.Reader) (payload *hookio.Payload, replay func() io.Reader, standDown bool, id harness.Identity) {
 	raw, rerr := hookio.Read(stdin)
 	replay = func() io.Reader {
 		if rerr != nil {
@@ -85,12 +86,15 @@ func claudeHostGuard(stdin io.Reader) (payload *hookio.Payload, replay func() io
 	}
 
 	payload, id, down := hostguard.EvaluateRaw(raw, rerr, claudeEnv(), hostguard.FamilyClaude)
-	if !down {
-		return payload, replay, false
+	if !down && id.ID != harness.Unknown {
+		return payload, replay, false, id
 	}
 
-	recordHarnessMismatchBestEffort(harnessSessionKey(payload, id), id)
-	return nil, replay, true
+	recordHarnessBestEffort(harnessSessionKey(payload, id), id, down)
+	if !down {
+		return payload, replay, false, id
+	}
+	return nil, replay, true, id
 }
 
 // harnessSessionKey picks the field the DETECTED family (id.ID, never
@@ -131,20 +135,37 @@ func harnessSessionKey(payload *hookio.Payload, id harness.Identity) string {
 	return v
 }
 
-// recordHarnessMismatchBestEffort is claudeHostGuard's and recapHostGuard's
-// shared write half. sessionID is each caller's own: claudeHostGuard's
+// newHandler is cmdHook's hook.New plus the harness stamp: an Unknown
+// detection that went on to be recorded carries harness_id "unknown" on its
+// declaration (the 10-23 default); every other call leaves it null.
+func newHandler(st *store.Store, id harness.Identity) *hook.Handler {
+	h := hook.New(st, time.Now)
+	if id.ID == harness.Unknown {
+		h.HarnessID = string(id.ID)
+	}
+	return h
+}
+
+// noteHarness is recapTurn's write half: it records a stand-down or an
+// Unknown detection and reports whether the caller must stand down.
+func noteHarness(sessionID string, id harness.Identity, down bool) bool {
+	if down || id.ID == harness.Unknown {
+		recordHarnessBestEffort(sessionID, id, down)
+	}
+	return down
+}
+
+// recordHarnessBestEffort is claudeHostGuard's and recapTurn's shared write
+// half: a stand-down moves stood_down, an Unknown detection that went on to
+// be recorded moves seen only. sessionID is each caller's own: claudeHostGuard's
 // comes from the *hookio.Payload hookio.Read produced; recapHostGuard's
 // comes from the session_id readRecapPayload already captured, never from
 // syntheticHarnessPayload, which carries no session_id field at all (see
 // its own doc on why -- Detect never reads one).
-func recordHarnessMismatchBestEffort(sessionID string, id harness.Identity) {
+func recordHarnessBestEffort(sessionID string, id harness.Identity, standDown bool) {
 	root, err := store.DefaultRoot()
 	if err != nil {
 		return
-	}
-	evidence := make([]string, len(id.Evidence))
-	for i, e := range id.Evidence {
-		evidence[i] = string(e)
 	}
 	key := hostguard.CounterKey(hostguard.FamilyClaude, id)
 	// Best-effort, by design -- see claudeHostGuard's doc. Nothing here is
@@ -152,6 +173,14 @@ func recordHarnessMismatchBestEffort(sessionID string, id harness.Identity) {
 	// mismatch write that fails leaves the stand-down itself unaffected,
 	// which is the one outcome that actually matters (no record, no run
 	// directory, no output).
+	if !standDown {
+		_, _ = store.RecordHarnessSeen(root, key, sessionID, time.Now())
+		return
+	}
+	evidence := make([]string, len(id.Evidence))
+	for i, e := range id.Evidence {
+		evidence[i] = string(e)
+	}
 	_, _ = store.RecordHarnessMismatch(root, key, sessionID, evidence, time.Now())
 }
 
