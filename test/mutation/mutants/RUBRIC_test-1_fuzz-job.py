@@ -6,7 +6,7 @@
 m("test-1  fuzz minimization left at its one-minute default", ".github/workflows/ci.yaml",
   " -fuzztime 30s -fuzzminimizetime 10x 2>&1 | tee", " -fuzztime 30s 2>&1 | tee", "TestRubricTEST1_")
 m("test-1  the fuzz job's floor is left behind the tree", ".github/workflows/ci.yaml",
-  "          test \"$found\" -ge 22\n", "          test \"$found\" -ge 10\n", "TestRubricTEST1_")
+  "          test \"$found\" -ge 23\n", "          test \"$found\" -ge 10\n", "TestRubricTEST1_")
 m("test-1  the fuzz job finds its targets by grep", ".github/workflows/ci.yaml",
   "for name in $(go test \"$pkg\" -list '^Fuzz' | grep '^Fuzz' || true); do",
   "for name in $(grep -rho '^func Fuzz[A-Za-z0-9_]*' \"${pkg#github.com/altrace-dev-role/rashomon/}\" | cut -c6-); do", "TestRubricTEST1_")

@@ -372,7 +372,7 @@ jobs:
             done
           done
           echo "fuzzed ${found} targets"
-          test "$found" -ge 22
+          test "$found" -ge 23
           if [ "${#failed[@]}" -gt 0 ]; then
             printf '::error::failed: %s\n' "${failed[@]}"
             exit 1
