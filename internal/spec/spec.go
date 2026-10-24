@@ -1,7 +1,8 @@
 // Package spec holds the repository spec's contract: the compiled form VERIFY
 // evaluates against (tech spec 2.2.7). P-07 freezes the names and the limits
-// the spec text states; schema parsing, the digest, discovery and the trust
-// binding land in the SPEC PRs.
+// the spec text states. Parse reads one spec.json under those limits and
+// returns its Compiled form; discovery, the managed spec and the trust binding
+// land in the later SPEC PRs.
 package spec
 
 // Trust is how far a spec's text may travel (2.2.7, Trust).
@@ -64,12 +65,17 @@ type Source struct {
 // SHA-256 over the source digests in that order, the one value the
 // checkpoint's spec_digest carries; Trust is the lowest among the sources,
 // the checkpoint's spec_trust, while each rule keeps its own source's trust
-// on the fact it raises. Gates, rules and facts are added by the PR that
-// parses them (2.2.7; archive 20.2.8).
+// on the fact it raises. Gates, CICommands, Rules and Facts are the parsed
+// file's, in file order, with the schema's defaults applied (Parse); with
+// several sources the later PR merges them.
 type Compiled struct {
-	Sources []Source
-	Digest  string
-	Trust   Trust
+	Sources    []Source
+	Digest     string
+	Trust      Trust
+	Gates      []Gate
+	CICommands [][]string
+	Rules      []Rule
+	Facts      []Fact
 }
 
 // Lowest is the lower of two trusts in the order untrusted < trusted <
