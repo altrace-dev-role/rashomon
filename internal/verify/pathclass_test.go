@@ -102,11 +102,17 @@ func TestRC3d_RelevanceIsSourceTestConfig(t *testing.T) {
 	}
 }
 
-// TestRC3e_GOROOTHandWrittenSourceIsRelevant checks the tables against a tree
-// they were not written from: the Go source every go test run has (D10, B28).
-// A hand-written source file classed not relevant is an edit that hides
-// behind a green gate, the miss D7 exists to prevent.
-func TestRC3e_GOROOTHandWrittenSourceIsRelevant(t *testing.T) {
+// TestRC3e_GOROOTNonTestGoIsRelevant checks the tables against a tree they
+// were not written from: the Go source every go test run has (D10, B28). It
+// walks every non-test .go file under GOROOT/src outside vendor and testdata,
+// generated files included -- the zerrors_* and ztypes_* families and every
+// file with a "Code generated ... DO NOT EDIT." header -- and requires all but
+// one in a thousand to read as relevant: a source file classed not relevant
+// is an edit that hides behind a green gate, the miss D7 exists to prevent.
+// It does not show that generated files are recognised: a path classifier
+// cannot tell a generated file from a hand-written one when its name carries
+// no marker the tables know.
+func TestRC3e_GOROOTNonTestGoIsRelevant(t *testing.T) {
 	// runtime.GOROOT's deprecation is about a binary copied to another
 	// machine; a test binary runs where the toolchain that built it lives.
 	root := filepath.Join(runtime.GOROOT(), "src")
@@ -139,12 +145,116 @@ func TestRC3e_GOROOTHandWrittenSourceIsRelevant(t *testing.T) {
 		t.Fatalf("walking %s: %v", root, err)
 	}
 	if total == 0 {
-		t.Fatalf("no hand-written .go files under %s: the walk proves nothing", root)
+		t.Fatalf("no non-test .go files under %s: the walk proves nothing", root)
 	}
 	ratio := float64(len(hidden)) / float64(total)
-	t.Logf("%d of %d hand-written .go files under %s are not relevant (%.4f)", len(hidden), total, root, ratio)
+	t.Logf("%d of %d non-test .go files under %s are not relevant (%.4f)", len(hidden), total, root, ratio)
 	if ratio > 0.001 {
-		t.Fatalf("%d of %d (%.4f) hand-written .go files are not relevant, over 0.001; first ten: %v", len(hidden), total, ratio, hidden[:min(10, len(hidden))])
+		t.Fatalf("%d of %d (%.4f) non-test .go files are not relevant, over 0.001; first ten: %v", len(hidden), total, ratio, hidden[:min(10, len(hidden))])
+	}
+}
+
+// TestRC3f_EcosystemTable checks the tables against the conventions of stacks
+// the GOROOT walk cannot see, each row the class a maintainer of that stack
+// would give the path. Each table entry or guard added for these rows has two
+// rows of distinct values, so no one hard-coded path passes it.
+func TestRC3f_EcosystemTable(t *testing.T) {
+	cases := []struct {
+		path string
+		want PathClass
+	}{
+		// ACCEPTED GAP: setuptools writes build/lib as output, but build names
+		// hand-written scripts in other trees, so it matches nowhere and an
+		// ambiguous word errs toward relevance: this reads as source.
+		{"build/lib/pkg/mod.py", ClassSource},
+		{"target/classes/Foo.class", ClassGenerated},
+		{"src/docs/guide.md", ClassDocs},
+		{"notes.txt", ClassSource},
+		{"docs/notes.txt", ClassDocs},
+		{"requirements-dev.txt", ClassConfig},
+		{"constraints.txt", ClassConfig},
+		{"CMakeLists.txt", ClassConfig},
+		{"FooTest.java", ClassTest},
+		{"Testing.java", ClassSource},
+		{"TestUtils.java", ClassSource},
+		{"ContestResult.java", ClassSource},
+		{"FooTests.cs", ClassTest},
+		{"foo.spec.ts", ClassTest},
+		{"foo.test.tsx", ClassTest},
+		{"__tests__/foo.js", ClassTest},
+		{"test_foo.py", ClassTest},
+		{"conftest.py", ClassTest},
+		{"foo_test.go", ClassTest},
+		{"FooTest.kt", ClassTest},
+		{"spec/foo_spec.rb", ClassTest},
+		{".github/workflows/ci.yaml", ClassCI},
+		{"Jenkinsfile", ClassCI},
+		{".gitlab-ci.yml", ClassCI},
+		{"Makefile", ClassConfig},
+		{"go.sum", ClassConfig},
+		// Machine-written, but it changes what is installed.
+		{"package-lock.json", ClassConfig},
+		{"Cargo.lock", ClassConfig},
+		{"vendor/x/y.go", ClassGenerated},
+		{"node_modules/x/index.js", ClassGenerated},
+		{"foo.pb.go", ClassGenerated},
+		{"zz_generated.deepcopy.go", ClassGenerated},
+		{"foo_generated.go", ClassGenerated},
+		{"foo.min.js", ClassGenerated},
+		{"dist/app.js", ClassGenerated},
+		{"foo.gen.ts", ClassGenerated},
+		{"Dockerfile", ClassConfig},
+		{"main.tf", ClassSource},
+		{"BUILD.bazel", ClassConfig},
+		{"WORKSPACE", ClassConfig},
+		{"Package.swift", ClassConfig},
+		{"App.xcodeproj/project.pbxproj", ClassConfig},
+		{"src/main.rs", ClassSource},
+		{"tests/integration_test.rs", ClassTest},
+		{".cargo/config.toml", ClassConfig},
+
+		// A basename of dots alone is path syntax, not a hidden file.
+		{".", ClassSource},
+		{"..", ClassSource},
+		{"...", ClassSource},
+		{".env", ClassConfig},
+		// The CamelCase test names: the extension compares without case, the
+		// stem with it.
+		{"FooTest.KT", ClassTest},
+		{"FooTests.swift", ClassTest},
+		{"FooTest.scala", ClassTest},
+		{"Latest.kt", ClassSource},
+		{"Contest.cs", ClassSource},
+		// The Kelvin sign folds to a one-byte k, so this extension is .kt and
+		// two bytes shorter folded than as written: the stem is cut by the
+		// extension as written.
+		{"FooTest.\u212At", ClassTest},
+		// zz_generated.go is generated by the _generated.go suffix, not by the
+		// prefix, which needs its dot: zz_generated_test.go is a test.
+		{"zz_generated.go", ClassGenerated},
+		{"zz_generated_test.go", ClassTest},
+		{"api/v1/zz_generated.conversion.go", ClassGenerated},
+		{"api.gen.ts", ClassGenerated},
+		{"client.gen.js", ClassGenerated},
+		{"BUILD", ClassConfig},
+		{"MODULE.bazel", ClassConfig},
+		{"WORKSPACE.bazel", ClassConfig},
+		{"ios/Runner.xcodeproj/project.pbxproj", ClassConfig},
+
+		// ACCEPTED GAP: an absolute Windows path's first element is the drive
+		// letter, so no root-segment rule fires on one and dist here reads as
+		// source, not generated; the basename rules still fire, so a_test.go
+		// is a test. The caller relativises a path before classifying it.
+		{`C:\dist\app.js`, ClassSource},
+		{`C:\repo\a_test.go`, ClassTest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			if got := ClassOf(tc.path); got != tc.want {
+				// %+q, so the Kelvin row reads as K and not as a K.
+				t.Errorf("ClassOf(%+q) = %s, want %s", tc.path, got, tc.want)
+			}
+		})
 	}
 }
 

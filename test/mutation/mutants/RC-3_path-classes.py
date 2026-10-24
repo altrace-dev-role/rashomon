@@ -1,9 +1,9 @@
 # RC-3 (PF-RC3, D7, D8, D10): a written path's closed class and whether it
-# stales a gate. One break per table, per adjacent precedence pair, per
-# normalisation step, per Relevant class and per vocabulary word. Rule 6's
-# extension table has no break: under D7 it returns what the fallback returns,
-# so removing it is an equivalent mutant (the comment at its case says why it
-# stays).
+# stales a gate. One break per table, per guard, per adjacent precedence
+# pair, per normalisation step, per Relevant class and per vocabulary word.
+# Rule 6's extension table has no break: under D7 it returns what the fallback
+# returns, so removing it is an equivalent mutant (the comment at its case
+# says why it stays).
 F = "internal/verify/pathclass.go"
 
 # The tables.
@@ -12,7 +12,7 @@ m("RC-3 generated segments match nothing", F,
 m("RC-3 generated root segments match nothing", F,
   'set("dist", "target")', 'set()', "TestRC3c_")
 m("RC-3 generated suffixes match nothing", F,
-  '[]string{".pb.go", ".gen.go", "_generated.go", ".min.js", ".min.css"}', '[]string{}', "TestRC3c_")
+  '[]string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css"}', '[]string{}', "TestRC3c_")
 m("RC-3 CI segments match nothing", F,
   'set(".github", ".gitlab", ".circleci", ".buildkite")', 'set()', "TestRC3c_")
 m("RC-3 CI basenames match nothing", F,
@@ -28,15 +28,15 @@ m("RC-3 test_*.py stops being a test name", F,
   'n.base == "conftest.py"', "TestRC3c_")
 m("RC-3 conftest.py stops being a test name", F,
   'n.base == "conftest.py" || ', 'false || ', "TestRC3c_")
-m("RC-3 the Java test names match nothing", F,
-  'strings.EqualFold(ext, ".java") {', 'false {', "TestRC3c_")
-m("RC-3 the Java test names fold case and match Latest.java", F,
+m("RC-3 the CamelCase test names match nothing", F,
+  'inSet(n.ext, camelTestExtensions) {', 'false {', "TestRC3c_")
+m("RC-3 the CamelCase test names fold case and match Latest.java", F,
   'strings.HasSuffix(stem, "Test") || strings.HasSuffix(stem, "Tests")',
   'strings.HasSuffix(strings.ToLower(stem), "test") || strings.HasSuffix(strings.ToLower(stem), "tests")', "TestRC3c_")
 m("RC-3 *Tests.java stops being a test name", F,
   ' || strings.HasSuffix(stem, "Tests")', '', "TestRC3c_")
-m("RC-3 the Java extension compares with case", F,
-  'strings.EqualFold(ext, ".java")', 'ext == ".java"', "TestRC3c_")
+m("RC-3 the CamelCase extension compares with case", F,
+  'inSet(n.ext, camelTestExtensions)', 'inSet(ext, camelTestExtensions)', "TestRC3c_")
 m("RC-3 docs root segments match nothing", F,
   'set("docs", "doc")', 'set()', "TestRC3c_")
 m("RC-3 docs extensions match nothing", F,
@@ -44,15 +44,16 @@ m("RC-3 docs extensions match nothing", F,
 m("RC-3 docs basenames match nothing", F,
   'set("license", "changelog", "authors", "notice")', 'set()', "TestRC3c_")
 m("RC-3 config extensions match nothing", F,
-  'set(".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".lock", ".sum", ".properties", ".xml")', 'set()', "TestRC3c_")
+  'set(".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".lock", ".sum", ".properties", ".xml", ".pbxproj")', 'set()', "TestRC3c_")
 m("RC-3 config basenames match nothing", F,
-  'set("makefile", "dockerfile", "go.mod", "cmakelists.txt")', 'set()', "TestRC3c_")
+  'set("makefile", "dockerfile", "go.mod", "cmakelists.txt",\n'
+  '\t\t"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", "package.swift")', 'set()', "TestRC3c_")
 m("RC-3 requirements*.txt stops being config", F,
   'strings.HasPrefix(base, "requirements") || ', '', "TestRC3c_")
 m("RC-3 constraints*.txt stops being config", F,
   ' || strings.HasPrefix(base, "constraints")', '', "TestRC3c_")
 m("RC-3 a dotfile stops being config", F,
-  ' || strings.HasPrefix(n.base, ".")', '', "TestRC3c_")
+  ' || isDotfile(n.base)', '', "TestRC3c_")
 
 # D10: the root-only words, build and .txt.
 m("RC-3 dist and target match below the root again", F,
@@ -66,8 +67,26 @@ m("RC-3 .txt is a docs extension again", F,
 m("RC-3 build is a generated segment again", F,
   'set("vendor", "node_modules", "__pycache__", ".next")', 'set("vendor", "node_modules", "__pycache__", ".next", "build")', "TestRC3[ce]_")
 
+# The cross-ecosystem rows: one break per added table entry group and guard.
+m("RC-3 generated prefixes match nothing", F,
+  '[]string{"zz_generated."}', '[]string{}', "TestRC3f_")
+m("RC-3 the generated prefix loses its dot", F,
+  '[]string{"zz_generated."}', '[]string{"zz_generated"}', "TestRC3f_")
+m("RC-3 .gen.ts stops being generated", F, '".gen.ts", ', '', "TestRC3f_")
+m("RC-3 .gen.js stops being generated", F, '".gen.js", ', '', "TestRC3f_")
+m("RC-3 the CamelCase extensions are .java alone", F,
+  'set(".java", ".kt", ".cs", ".swift", ".scala")', 'set(".java")', "TestRC3f_")
+m("RC-3 the CamelCase stem is cut by the folded extension's length", F,
+  'if ext := path.Ext(n.raw);', 'if ext := n.ext;', "TestRC3f_")
+m("RC-3 a basename of dots alone is a dotfile again", F,
+  ' && strings.TrimLeft(base, ".") != ""', '', "TestRC3f_")
+m("RC-3 the Bazel basenames match nothing", F,
+  '"build", "build.bazel", "workspace", "workspace.bazel", "module.bazel", ', '', "TestRC3f_")
+m("RC-3 Package.swift stops being config", F, ', "package.swift")', ')', "TestRC3f_")
+m("RC-3 .pbxproj stops being config", F, ', ".pbxproj")', ')', "TestRC3f_")
+
 # Precedence: each adjacent pair of rules swapped.
-GEN = ("\tcase hasSegment(n.dir, generatedSegments) || inSet(n.first, generatedRootSegments) || hasAnySuffix(n.base, generatedSuffixes):\n"
+GEN = ("\tcase hasSegment(n.dir, generatedSegments) || inSet(n.first, generatedRootSegments) || hasAnySuffix(n.base, generatedSuffixes) || hasAnyPrefix(n.base, generatedPrefixes):\n"
        "\t\treturn ClassGenerated\n")
 CI = ("\tcase hasSegment(n.dir, ciSegments) || inSet(n.base, ciBasenames):\n"
       "\t\treturn ClassCI\n")
@@ -75,7 +94,7 @@ TEST = ("\tcase hasSegment(n.dir, testSegments) || isTestName(n):\n"
         "\t\treturn ClassTest\n")
 DOCS = ("\tcase inSet(n.first, docsRootSegments) || inSet(n.ext, docsExtensions) || inSet(n.base, docsBasenames):\n"
         "\t\treturn ClassDocs\n")
-CONFIG = ("\tcase inSet(n.ext, configExtensions) || isConfigName(n.base) || strings.HasPrefix(n.base, \".\"):\n"
+CONFIG = ("\tcase inSet(n.ext, configExtensions) || isConfigName(n.base) || isDotfile(n.base):\n"
           "\t\treturn ClassConfig\n")
 SOURCE = ("\tcase inSet(n.ext, sourceExtensions):\n"
           "\t\t// Rule 6 returns what the fallback returns, so under D7 it changes no\n"
@@ -98,7 +117,7 @@ m("RC-3 a trailing slash is trimmed and the directory read as a basename", F,
   '\tp = strings.ReplaceAll(p, `\\`, "/")\n\tp = strings.TrimRight(p, "/")\n', "TestRC3c_")
 m("RC-3 the basename counts as a directory segment", F,
   'dir, base := lower[:j+1], lower[j+1:]', 'dir, base := lower, lower[j+1:]', "TestRC3c_")
-m("RC-3 the Java names read a lower-cased basename", F,
+m("RC-3 the CamelCase names read a lower-cased basename", F,
   'raw := p[i+1:]', 'raw := strings.ToLower(p[i+1:])', "TestRC3c_")
 m("RC-3 a path no rule matches falls back to docs", F,
   '\t}\n\treturn ClassSource\n}\n', '\t}\n\treturn ClassDocs\n}\n', "TestRC3c_")
