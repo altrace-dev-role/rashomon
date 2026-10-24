@@ -18,23 +18,29 @@ const (
 )
 
 // RulesVersion names every table this build decides a recorded shape field
-// with (verb_class, status_masked, may_write), and moves whenever one of them
-// changes. The tables are the test runners (testCommands) and the build
-// runners (buildCommands), which set verb_class and status_masked; the
-// in-place tables (inPlaceEditors, checkOnly, shortClusters), which set
-// may_write; and the pass words (the report's passVocabulary), which decide
-// when the masked-runs line fires. Written on every declaration and execution
-// as rules_version, so records written before and after a table changed can
+// with (verb_class, status_masked, runner_kind, may_write), and the matchers
+// that read them, and moves whenever one of them changes. The tables are the
+// test runners (testCommands) and the build runners (buildCommands), with the
+// arguments that refuse one (notARun, notARunAny) and the flags that may stand
+// before its words (leadingFlags), which set verb_class, status_masked and
+// runner_kind; the in-place tables (inPlaceEditors, checkOnly, shortClusters),
+// which set may_write; and the pass words (the report's passVocabulary), which
+// decide when the masked-runs line fires. Written on every declaration and
+// execution as rules_version, so records written before and after a change can
 // be told apart.
 //
-// Bump it whenever one of those tables changes, and add the new tables' pin
-// to the tests that hold one (rules_version_test.go here and in report): each
-// fails when its table changes without a bump. The exception: mayWrite's
-// inline writer-word checks (xargs, tee, wget, rsync, scp, find's -delete
-// and -exec words, curl's output flags with curlArgumentOptions) also decide
-// may_write and are not yet under a pin; the first change to any of them
-// brings them under one.
-const RulesVersion = 3
+// Bump it whenever a table, or a matcher that decides a recorded shape field,
+// changes -- version 4 is the first bump for a matcher, runnerOn passing over
+// leadingFlags before a runner's words -- and add the new pins to the tests
+// that hold one (rules_version_test.go here and in report): a table's pin
+// fails when the table changes without a bump, and the matcher pin when a
+// field moves on one of its corpus lines without one. The exceptions: notARun,
+// notARunAny and leadingFlags have no table pin, and are held only as far as
+// the matcher pin's lines read them; and mayWrite's inline writer-word checks
+// (xargs, tee, wget, rsync, scp, find's -delete and -exec words, curl's output
+// flags with curlArgumentOptions) also decide may_write and are not yet under
+// a pin. The first change to any of them brings it under one.
+const RulesVersion = 4
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {

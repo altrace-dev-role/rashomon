@@ -16,6 +16,7 @@ var passListPins = map[int]string{
 	1: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1",
 	2: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1", // shape.RulesVersion 2 changed runner lists only; the pass words are unchanged
 	3: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1", // shape.RulesVersion 3 changed the in-place tables only; the pass words are unchanged
+	4: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1", // shape.RulesVersion 4 changed how the runner lists are matched; the pass words are unchanged
 }
 
 // TestRulesVersion_PassList: the pass words cannot change without a
@@ -27,6 +28,6 @@ func TestRulesVersion_PassList(t *testing.T) {
 	want, ok := passListPins[shape.RulesVersion]
 	if !ok || want != got {
 		t.Fatalf("the pass words digest to %s, and RulesVersion %d pins %q: the list changed without a bump. "+
-			"Bump shape.RulesVersion and add its pin here (and the shape package's runner-list pin).", got, shape.RulesVersion, want)
+			"Bump shape.RulesVersion and add its pin here (and the shape package's runner-list, write-table and matcher pins).", got, shape.RulesVersion, want)
 	}
 }

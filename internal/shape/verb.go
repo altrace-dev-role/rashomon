@@ -72,49 +72,6 @@ var programVerb = map[string]string{
 	"apt-get": VerbPackage, "uv": VerbPackage, "poetry": VerbPackage,
 }
 
-// testCommands are the test runners the test verb class recognises: the
-// program, as path.Base names it, and then the plain words that must follow
-// it exactly. A runner that is its own program is a list of one.
-//
-// A fixed list, compared and discarded. Nothing from the line is kept but the
-// class; an argument is looked at only to be told equal to one of these.
-// Anything this list does not name -- `make -C dir test`, `npx --yes jest`,
-// `go test` behind `nice` -- stays what it was before: execute, or package
-// for go and cargo. That is an under-claim, and the detections built on this
-// class are worth only as much as their refusal to over-claim.
-//
-// The wrappers on the list are the ones whose exit status is the runner's:
-// a project's own gradlew and mvnw, npm's `t` alias, `npx jest` and `npx
-// vitest`, `uv run pytest`, `poetry run pytest` and `bundle exec rspec`. So
-// are the `timeout N` and `time` prefixes (runnerPrefix), except for
-// timeout's own 124, which the report reads as no result. A pipe or a list
-// after the runner is still refused (wholeCommand): without pipefail its
-// status is the last stage's.
-//
-// The rule applied: a runner is on the list when it is a known test tool, a
-// build tool or launcher given its test command (`go test`, `npm t`,
-// `npm run test`, `python -m pytest`, `python -m unittest`), or a listed
-// wrapper that passes its runner's exit status through. `make check` is not,
-// since check is not make's test command. That rule does not keep lint out:
-// go test runs vet first, an npm `pretest` script runs before `npm test`,
-// tox's default envlist and a make `test` target can each include lint, and
-// a lint failure fixed only in a file named like a test then reads as the
-// tests-only pattern.
-var testCommands = [][]string{
-	{"pytest"}, {"jest"}, {"vitest"}, {"mocha"}, {"rspec"}, {"phpunit"},
-	{"ctest"}, {"tox"}, {"nox"},
-
-	{"go", "test"}, {"cargo", "test"}, {"npm", "test"}, {"npm", "t"}, {"npm", "run", "test"},
-	{"yarn", "test"}, {"pnpm", "test"}, {"bun", "test"}, {"dotnet", "test"},
-	{"mvn", "test"}, {"mvnw", "test"}, {"gradle", "test"}, {"gradlew", "test"}, {"make", "test"},
-	{"python", "-m", "pytest"}, {"python3", "-m", "pytest"},
-	{"python", "-m", "unittest"}, {"python3", "-m", "unittest"},
-
-	{"npx", "jest"}, {"npx", "vitest"}, {"uv", "run", "pytest"}, {"poetry", "run", "pytest"},
-	{"bundle", "exec", "rspec"},
-	{"rake", "test"}, {"composer", "test"}, {"mix", "test"}, {"bazel", "test"},
-}
-
 // refusalsOf names the notARun entry a testCommands row is checked against:
 // its own program's, or for a wrapper the runner it wraps, since `npx jest
 // --listTests` lists as `jest --listTests` does. gradlew and mvnw take
@@ -140,14 +97,21 @@ func refusalsOf(c []string) string {
 // --no-run`), list them (`-list`, `--collect-only`, `--listTests`), print or
 // check what it would do (`make -n`, `make -q`, `--dry-run`), skip them
 // (`-DskipTests`, `tox --notest`, `nox --install-only`), set up an
-// environment instead (`tox devenv`), watch for changes (`gradle -t`), or
-// show its version (`-v` where that is what -v means). Each of those ends ok
-// or failed on something no test decided, and as a test run it would
-// complete a pattern on that outcome. A word ending in * is a prefix:
-// `-list=Foo`, `-elint`, matched whatever follows it. A flag is matched in
-// its `flag=value` form too (`-c=true`, `--watch=true`), unless the value is
-// false (onList). Maven's skip properties are refused by a rule of their own
-// (mavenSkip): `-DskipTests=false` runs the tests.
+// environment instead (`tox devenv`), watch for changes (`gradle -t`), show
+// its version (`-v` where that is what -v means), or end ok whatever the
+// tests did (`make -i`, `mvn --fail-never`, `npm --if-present` where there is
+// no test script). Each of those ends ok or failed on something no test
+// decided, and as a test run it would complete a pattern on that outcome. A
+// word ending in * is a prefix: `-list=Foo`, `-elint`, matched whatever
+// follows it. A flag is matched in its `flag=value` form too (`-c=true`,
+// `--watch=true`), unless the value is false (onList). Maven's skip
+// properties are refused by a rule of their own (mavenSkip):
+// `-DskipTests=false` runs the tests. One set in MAVEN_OPTS or
+// .mvn/maven.config is not on the line and is not seen.
+//
+// The arguments read are the ones after the row's words. Before them only
+// leadingFlags may stand (runnerOn), none of which is on these lists, so
+// `make -n test` matches no row at all.
 //
 // The lists are the spellings named here, not every spelling a runner
 // accepts: a combined short flag (`make -nk`), an option set in a config file
@@ -166,6 +130,7 @@ func refusalsOf(c []string) string {
 var notARun = map[string][]string{
 	"go":      {"-c", "--c", "-n", "--n", "-list*", "--list*"},
 	"cargo":   {"--no-run", "--list", "-V"},
+	"npm":     {"--if-present"},
 	"pytest":  pytestNotARun,
 	"python":  pytestNotARun,
 	"python3": pytestNotARun,
@@ -176,9 +141,10 @@ var notARun = map[string][]string{
 	"phpunit": {"--list-*", "--generate-configuration", "--migrate-configuration", "--check-version"},
 	"ctest":   {"-N", "--show-only*"},
 	"dotnet":  {"--list-tests", "-t"},
-	"mvn":     {"-v"},
+	"mvn":     {"-v", "-fn", "--fail-never"},
 	"gradle":  {"--dry-run", "-m", "-v", "-t", "--continuous"},
-	"make":    {"-n", "--just-print", "--dry-run", "--recon", "-q", "--question", "-t", "--touch", "-v"},
+	"make": {"-n", "--just-print", "--dry-run", "--recon", "-q", "--question", "-t", "--touch", "-v",
+		"-i", "--ignore-errors"},
 	"tox": {"-e*", "--env*", "-m", "-f", "-l", "-a", "--listenvs*", "--showconfig", "--help-ini", "--notest",
 		"--devenv*", "list", "l", "config", "c", "depends", "de", "quickstart", "q", "exec", "e", "devenv", "d"},
 	"nox": {"-s*", "--session*", "-e*", "-k*", "--keywords*", "-t*", "--tags*", "-l", "--list*", "--install-only"},
@@ -263,18 +229,20 @@ func isFalse(v string) bool {
 	return false
 }
 
-// mavenSkip reports a Maven property that skips the tests: -DskipTests,
-// -Dmaven.test.skip or -Dmaven.test.skip.exec, with no `=value` or with a
+// mavenSkipProperties are the Maven properties mavenSkip reads: the ones
+// that skip the tests, -DskipTests, -Dmaven.test.skip and
+// -Dmaven.test.skip.exec, and the one that ignores their failures,
+// -Dmaven.test.failure.ignore (Surefire's testFailureIgnore). A list, so
+// that TestLeadingFlagsAreNotRefusals tries each against leadingFlags.
+var mavenSkipProperties = []string{"-DskipTests", "-Dmaven.test.skip", "-Dmaven.test.skip.exec", "-Dmaven.test.failure.ignore"}
+
+// mavenSkip reports one of mavenSkipProperties with no `=value` or with a
 // value equal to true ignoring case. Maven reads them with Java's
 // Boolean.valueOf, where nothing else is true, so `-DskipTests=false`, `=1`
 // and `=no` all run the tests.
 func mavenSkip(word string) bool {
 	name, value, hasValue := strings.Cut(word, "=")
-	switch name {
-	case "-DskipTests", "-Dmaven.test.skip", "-Dmaven.test.skip.exec":
-		return !hasValue || strings.EqualFold(value, "true")
-	}
-	return false
+	return slices.Contains(mavenSkipProperties, name) && (!hasValue || strings.EqualFold(value, "true"))
 }
 
 // runsTests reports whether the command whose program is the token at i,
@@ -305,33 +273,6 @@ func runsTests(toks []token, i int, prog string, whole bool) bool {
 		return false
 	}
 	return runnerOn(toks, i, prog, len(toks), testCommands) && wholeCommand(toks, i)
-}
-
-// runnerOn reports whether the command whose program, past runnerPrefix, is
-// the token at i, named prog, and which ends before toks[end], is a row of
-// list -- testCommands, or buildCommands -- and is not refused by notARun:
-// the comparison runsTests makes, over one command's words rather than the
-// whole line's, so that a `-v` given to the grep after a pipe is not read as
-// make's.
-func runnerOn(toks []token, i int, prog string, end int, list [][]string) bool {
-next:
-	for _, c := range list {
-		if c[0] != prog {
-			continue
-		}
-		for n, want := range c[1:] {
-			k := i + 1 + n
-			if k >= end {
-				continue next
-			}
-			t := toks[k]
-			if t.quotedAt >= 0 || t.text != want || runsOn(toks, k) {
-				continue next
-			}
-		}
-		return !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])
-	}
-	return false
 }
 
 // runnerPrefix steps past the prefixes that pass a runner's exit status

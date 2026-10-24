@@ -3,6 +3,7 @@ package shape
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"maps"
 	"slices"
 	"strings"
@@ -16,6 +17,7 @@ var runnerListPins = map[int]string{
 	1: "522cdda1bbddd626a4bb17c200854d3b31ab80bfb1c87d356bf638c9ee2d2aea",
 	2: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // rake, composer, mix, bazel test as test runners (2026-10-23)
 	3: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 3 changed the in-place tables only; the runner lists are unchanged
+	4: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 4 changed how the lists are matched (matcherPins); the lists are unchanged
 }
 
 // runnerListsDigest digests testCommands, then buildCommands: each row's
@@ -43,7 +45,7 @@ func TestRulesVersion_RunnerLists(t *testing.T) {
 	want, ok := runnerListPins[RulesVersion]
 	if !ok || want != got {
 		t.Fatalf("the runner lists digest to %s, and RulesVersion %d pins %q: a list changed without a bump. "+
-			"Bump RulesVersion and add its pin here (and the report's pass-list pin).", got, RulesVersion, want)
+			"Bump RulesVersion and add its pin here (and the write-table, matcher and report's pass-list pins).", got, RulesVersion, want)
 	}
 }
 
@@ -55,6 +57,7 @@ func TestRulesVersion_RunnerLists(t *testing.T) {
 var writeTablePins = map[int]string{
 	2: "9c73ce1ce2a8d00e67481165c1adbecf0e55f0e1dfd7a1f314d62e2ba05168c5",
 	3: "71c7a0e23ac2a79834dbf5d78e18ef67f4f5bc3ea663cac77aec017c38f0f7f7", // short-option clusters for sed and perl, BSD sed's -I; help and version words clear an editor (2026-10-24)
+	4: "71c7a0e23ac2a79834dbf5d78e18ef67f4f5bc3ea663cac77aec017c38f0f7f7", // RulesVersion 4 changed how the runner lists are matched; the in-place tables are unchanged
 }
 
 // writeTablesDigest digests inPlaceEditors (each editor in sorted order, then
@@ -90,6 +93,88 @@ func TestRulesVersion_WriteTables(t *testing.T) {
 	want, ok := writeTablePins[RulesVersion]
 	if !ok || want != got {
 		t.Fatalf("the in-place tables digest to %s, and RulesVersion %d pins %q: a table changed without a bump. "+
-			"Bump RulesVersion and add its pin here (and the runner-list and pass-list pins).", got, RulesVersion, want)
+			"Bump RulesVersion and add its pin here (and the runner-list, matcher and pass-list pins).", got, RulesVersion, want)
+	}
+}
+
+// matcherPins is, per RulesVersion, the sha256 of the shape fields Derive
+// decides for the lines of matcherCorpus (matcherDigest). The pins above see
+// a table change; this one sees a change in the code that reads the tables
+// -- runnerOn, refusesRun, the program search, the masked parser -- on these
+// lines only, so a matcher change that moves none of them still needs its
+// bump made by hand. A bump adds a pin; a pin is never edited, and the corpus
+// grows only with a bump. Version 3's pin was computed with version 3's
+// verb.go and masked.go when this test was added.
+var matcherPins = map[int]string{
+	3: "3b37daf2498f1bfed509f7f0bcc4b9b44381e6a56ab537abfb3b553d4b90ea9a",
+	4: "d8ce2f1af01d7dbec051b928d5ac03ccf16830cb432ab1f36c972466f6ccebb0", // a listed flag may stand before a runner's row words (leadingFlags); a flag that hides the runner's failure refuses it (2026-10-24)
+}
+
+// matcherCorpus is the lines matcherPins digests, a frozen copy: the lines
+// whose runner the verb class and the masked parser read apart when version
+// 4 was made, then the rows that version's tests added. A row a test gains
+// later is not copied here without a bump, so it cannot move a pin.
+var matcherCorpus = []string{
+	"make -j4 test", "mvn -B test", "bazel --output_base=/tmp test //...", "cargo +nightly test",
+	"! go test ./...", "if go test ./...; then :; fi", "(cd /tmp && go test ./...)",
+
+	"mvn -B -q test", "gradle --no-daemon test", "python -u -m pytest", "npx --yes jest", "npx -y jest",
+	"python3 -u -m pytest", "./mvnw -B test", "./gradlew --no-daemon test",
+	"python -m pytest", "cmake --build .", "make -C sub test", "go -C sub test ./...", "go test ./...", "make test",
+
+	"make -n test", "make -j4 -n test", "mvn -B -DskipTests test", "make -Cdir test", "make --directory=sub test",
+	"go -C=sub test ./...", "python -W ignore -m pytest", "bazel --bazelrc=ci.bazelrc test //...", "make +x test",
+	"mvn -B=true test", "make -j$N test", `make "-j4" test`, "make -j 4 test", "make -j4x test",
+	"cargo +nonesuch test",
+	"make -C test test", "go -C test test ./...", "gradle -p test test", "mvn -P test compile", "mvn -pl test compile",
+	"make -i test", "make test -i", "make --ignore-errors test", "make -i build", "mvn -fn test", "mvn test -fn",
+	"mvn --fail-never test", "npm --if-present test", "npm test --if-present",
+	"mvn test -Dmaven.test.failure.ignore", "mvn -Dmaven.test.failure.ignore=true test",
+	"mvn -Dmaven.test.failure.ignore=true package", "mvn package -Dmaven.test.failure.ignore=true",
+	"mvn test -Dmaven.test.failure.ignore=false", "npm test --if-present=false",
+	"bazel --output_base /tmp test //...", "npm --prefix web test",
+	"make test -C sub", "cargo test --manifest-path sub/Cargo.toml", "npm test --prefix web", "go test -C sub ./...",
+
+	"echo hi && go test ./...", "true && go test ./...", "go build ./... && go test ./...", "make lint; go test ./...",
+	"if [[ -d x ]]; then go test ./...; fi", "cd /tmp && echo hi && go test ./...",
+	strings.Repeat("cd a && ", 64) + "go test ./...", strings.Repeat("cd a && ", 65) + "go test ./...",
+}
+
+// matcherDigest digests, for each line of matcherCorpus in order, the line,
+// its verb_class, status_masked and runner_kind (a NUL byte for null) and
+// whether runner_digest is set, with runnerListsDigest's separators.
+func matcherDigest() string {
+	orNull := func(p *string) string {
+		if p == nil {
+			return "\x00"
+		}
+		return *p
+	}
+	var b strings.Builder
+	for _, cmd := range matcherCorpus {
+		raw, _ := json.Marshal(map[string]string{"command": cmd})
+		s := Derive("Bash", raw, []byte("key"))
+		digest := "nil"
+		if s.RunnerDigest != nil {
+			digest = "set"
+		}
+		b.WriteString(strings.Join([]string{cmd, s.VerbClass, orNull(s.StatusMasked), orNull(s.RunnerKind), digest}, "\x1f"))
+		b.WriteByte('\x1e')
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
+}
+
+// TestRulesVersion_Matchers: a change in how the tables are read that moves
+// a recorded field on a corpus line cannot ship without a RulesVersion bump,
+// or records written before and after it carry the same rules_version. Break:
+// pass over, or stop passing over, a flag before a runner's row words and
+// leave RulesVersion as it was.
+func TestRulesVersion_Matchers(t *testing.T) {
+	got := matcherDigest()
+	want, ok := matcherPins[RulesVersion]
+	if !ok || want != got {
+		t.Fatalf("the matcher corpus digests to %s, and RulesVersion %d pins %q: a matcher changed without a bump. "+
+			"Bump RulesVersion and add its pin here (and the runner-list, write-table and pass-list pins).", got, RulesVersion, want)
 	}
 }

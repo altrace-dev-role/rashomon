@@ -105,6 +105,26 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 		{"go test ./... > out.txt 2>&1", VerbTest, ""},
 		{"go test ./...\n", VerbTest, "a trailing newline starts no command"},
 
+		// A flag leadingFlags lists may stand before the row's words
+		// (runnerOn); each row names the entry that admits it.
+		{"make -j4 test", VerbTest, "make -j*: the job count, attached"},
+		{"mvn -B -q test", VerbTest, "mvn -B, -q: batch mode, quiet output"},
+		{"bazel --output_base=/tmp test //...", VerbTest, "bazel --output_base=*: the output location"},
+		{"cargo +nightly test", VerbTest, "cargo +*: rustup's toolchain word"},
+		{"gradle --no-daemon test", VerbTest, "gradle --no-daemon"},
+		{"python -u -m pytest", VerbTest, "python -u: unbuffered output"},
+		{"npx --yes jest", VerbTest, "npx --yes: install without asking"},
+		{"npx -y jest", VerbTest, "npx -y, --yes's short form"},
+		{"python3 -u -m pytest", VerbTest, "python3 shares python's slice"},
+		{"./mvnw -B test", VerbTest, "mvnw shares mvn's slice"},
+		{"./gradlew --no-daemon test", VerbTest, "gradlew shares gradle's slice"},
+		{"python -m pytest", VerbTest, "matched at the first position, before any list is read"},
+		{"cmake --build .", VerbExecute, "cmake is a build runner, and --build its row's word"},
+		// ACCEPTED GAP: an unlisted flag before the row's words stops the
+		// match, though each of these runs the tests (in sub).
+		{"make -C sub test", VerbExecute, "-C is not listed"},
+		{"go -C sub test ./...", VerbPackage, ""},
+
 		// The runner is not the whole line, so the outcome is another
 		// program's: the class stays what the program gave it.
 		{"go test ./... 2>&1 | tail -20", VerbPackage, "the status is tail's"},
@@ -154,7 +174,6 @@ func TestTestRunnerIsRecognised(t *testing.T) {
 		{"timeout 1m5 go test", VerbExecute, "not a duration"},
 		{"time timeout 60 go test", VerbExecute, "timeout only as the outer prefix"},
 		{"time", VerbExecute, ""},
-		{"npx --yes jest", VerbPackage, "the word after npx must be the runner"},
 		{"npx mocha", VerbPackage, "only jest and vitest behind npx"},
 		{"uv run python -m pytest", VerbPackage, ""},
 		{"bundle exec rake test", VerbPackage, ""},
@@ -304,6 +323,207 @@ func TestTestClassRefusesWhatDoesNotRunTests(t *testing.T) {
 		if got := verbOf(t, tc.cmd).VerbClass; got != tc.want {
 			t.Errorf("%q: verb class %q, want %q", tc.cmd, got, tc.want)
 		}
+	}
+
+	// The lines a flag before the row's words could reach, with the masked
+	// side asserted beside the class: kind is the runner_kind, "" for null.
+	// Unless a comment says otherwise, each row reads as it did before
+	// leadingFlags existed.
+	for _, tc := range []struct{ cmd, class, masked, kind string }{
+		// An unlisted flag stops the match.
+		{"make -n test", VerbExecute, MaskedNone, ""},
+		{"make -j4 -n test", VerbExecute, MaskedNone, ""},
+		{"mvn -B -DskipTests test", VerbExecute, MaskedNone, RunnerBuild},
+		{"make -Cdir test", VerbExecute, MaskedNone, RunnerBuild},
+		{"make --directory=sub test", VerbExecute, MaskedNone, RunnerBuild},
+		{"go -C=sub test ./...", VerbPackage, MaskedNone, ""},
+		{"go -C sub test ./...", VerbPackage, MaskedNone, ""},
+		{"python -W ignore -m pytest", VerbExecute, MaskedNone, ""},
+		{"bazel --bazelrc=ci.bazelrc test //...", VerbExecute, MaskedNone, ""},
+		{"make +x test", VerbExecute, MaskedNone, RunnerBuild},     // the toolchain word is cargo's alone
+		{"mvn -B=true test", VerbExecute, MaskedNone, RunnerBuild}, // a listed word with =value is unlisted
+		{"make -j$N test", VerbExecute, MaskedNone, RunnerBuild},   // an expansion may be more words than one
+		{`make "-j4" test`, VerbExecute, MaskedNone, RunnerBuild},  // a quoted word is not read as a listed flag
+		// ACCEPTED GAP: make reads a separate job count, which stops the
+		// match at the 4.
+		{"make -j 4 test", VerbExecute, MaskedNone, RunnerBuild},
+		// ACCEPTED GAP: a prefix entry admits whatever follows it, and make
+		// exits 2 before any recipe, so a line that ran no test records a
+		// failed test run, a false red that never greens, the class of `go
+		// test ./nonexistent`. A digits-only form would need an entry shape
+		// the table does not have. Before leadingFlags it read execute and
+		// build.
+		{"make -j4x test", VerbTest, MaskedNone, RunnerTest},
+		// ACCEPTED GAP: the same false red where cargo cannot run the
+		// toolchain: rustup's proxy on one it does not have, and a cargo
+		// installed without rustup on any toolchain word, which it reads as
+		// an unknown command. A toolchain name has no grammar a manual could
+		// give the table. Before leadingFlags it read package and null.
+		{"cargo +nonesuch test", VerbTest, MaskedNone, RunnerTest},
+
+		// A value spelled like the row's word is not reached: its flag is
+		// unlisted.
+		{"make -C test test", VerbExecute, MaskedNone, RunnerBuild},
+		{"go -C test test ./...", VerbPackage, MaskedNone, ""},
+		{"gradle -p test test", VerbExecute, MaskedNone, RunnerBuild},
+		{"mvn -P test compile", VerbExecute, MaskedNone, RunnerBuild},
+		{"mvn -pl test compile", VerbExecute, MaskedNone, RunnerBuild},
+
+		// A run that ends 0 when the tests fail, or when there are none
+		// (notARun), before or after the row's words: the runner is refused
+		// on both sides, so each of these but `npm --if-present test`, which
+		// matched no row before, moves from a test or build runner to none.
+		// ACCEPTED GAP: the line's status hides the runner's, which
+		// status_masked would call masked test (masked build for `make -i
+		// build`); a refused runner is no runner, so it records none.
+		{"make -i test", VerbExecute, MaskedNone, ""},
+		{"make test -i", VerbExecute, MaskedNone, ""},
+		{"make --ignore-errors test", VerbExecute, MaskedNone, ""},
+		{"make -i build", VerbExecute, MaskedNone, ""},
+		{"mvn -fn test", VerbExecute, MaskedNone, ""},
+		{"mvn test -fn", VerbExecute, MaskedNone, ""},
+		{"mvn --fail-never test", VerbExecute, MaskedNone, ""},
+		{"npm --if-present test", VerbPackage, MaskedNone, ""},
+		{"npm test --if-present", VerbPackage, MaskedNone, ""},
+		// Ignoring the tests' failures refuses the test row and still
+		// builds, so the tail form moves from a test runner to Maven's build
+		// row: refusesRun reads mavenSkip on the test row only, not on the
+		// build row (`mvn build`). Before the row's words the property is an
+		// unlisted flag.
+		{"mvn test -Dmaven.test.failure.ignore", VerbExecute, MaskedNone, RunnerBuild},
+		{"mvn -Dmaven.test.failure.ignore=true test", VerbExecute, MaskedNone, RunnerBuild},
+		{"mvn -Dmaven.test.failure.ignore=true package", VerbExecute, MaskedNone, RunnerBuild},
+		{"mvn package -Dmaven.test.failure.ignore=true", VerbExecute, MaskedNone, RunnerBuild},
+		{"mvn test -Dmaven.test.failure.ignore=false", VerbTest, MaskedNone, RunnerTest},
+		{"npm test --if-present=false", VerbTest, MaskedNone, RunnerTest},
+
+		// ACCEPTED GAP: an unlisted flag whose value is a separate word.
+		{"bazel --output_base /tmp test //...", VerbExecute, MaskedNone, ""},
+		{"npm --prefix web test", VerbPackage, MaskedNone, ""},
+		// ACCEPTED GAP: a directory option after the row's words is not
+		// read, so these runs in sub record the line's directory as the
+		// runner's. make reads its options anywhere, cargo after the
+		// subcommand only, go before the command or first after it.
+		{"make test -C sub", VerbTest, MaskedNone, RunnerTest},
+		{"cargo test --manifest-path sub/Cargo.toml", VerbTest, MaskedNone, RunnerTest},
+		{"npm test --prefix web", VerbTest, MaskedNone, RunnerTest},
+		{"go test -C sub ./...", VerbTest, MaskedNone, RunnerTest},
+	} {
+		s := verbOf(t, tc.cmd)
+		masked, kind := "", ""
+		if s.StatusMasked != nil {
+			masked = *s.StatusMasked
+		}
+		if s.RunnerKind != nil {
+			kind = *s.RunnerKind
+		}
+		if s.VerbClass != tc.class || masked != tc.masked || kind != tc.kind {
+			t.Errorf("%q: class %q, masked %q, kind %q; want %q, %q, %q", tc.cmd, s.VerbClass, masked, kind, tc.class, tc.masked, tc.kind)
+		}
+	}
+}
+
+// TestLeadingFlagsAreNotRefusals: runnerOn passes over a listed flag without
+// reading it, so a flag that refuses a row of its program (refusesRun: its
+// notARun entry, notARunAny, mavenSkip) would make a line that runs no tests
+// read as a test run. Every word notARun, notARunAny, mavenSkipProperties
+// and leadingFlags name is tried as both, for every program the table keys,
+// aliases among them. Break: list make's -n, or `-D*` for mvn.
+func TestLeadingFlagsAreNotRefusals(t *testing.T) {
+	var words []string
+	for _, list := range notARun {
+		words = append(words, list...)
+	}
+	words = append(words, notARunAny...)
+	words = append(words, mavenSkipProperties...)
+	for _, list := range leadingFlags {
+		words = append(words, list...)
+	}
+	for prog := range leadingFlags {
+		for _, rows := range [][][]string{testCommands, buildCommands} {
+			for _, c := range rows {
+				if c[0] != prog {
+					continue
+				}
+				for _, w := range words {
+					tok := []token{{text: strings.TrimSuffix(w, "*"), quotedAt: -1}}
+					if leadingFlag(tok, 0, prog) && refusesRun(refusalsOf(c), nil, tok) {
+						t.Errorf("%s's leadingFlags %q admit %q, which refuses the row %q", prog, leadingFlags[prog], tok[0].text, c)
+					}
+				}
+			}
+		}
+	}
+}
+
+// TestLeadingOptionsOneMatcher: the verb class and the masked parser find a
+// line's runner through one matcher (runnerOn), so a listed flag before the
+// row's words moves the class and the runner kind together, and the lines
+// the two read apart for other reasons stay apart. Each row is the line's
+// verb_class, status_masked, runner_kind ("" for null) and whether
+// runner_digest is set.
+func TestLeadingOptionsOneMatcher(t *testing.T) {
+	for _, tc := range []struct {
+		cmd, class, masked, kind string
+		digest                   bool
+	}{
+		{"make -j4 test", VerbTest, MaskedNone, RunnerTest, true},
+		{"mvn -B test", VerbTest, MaskedNone, RunnerTest, true},
+		{"gradle --no-daemon test", VerbTest, MaskedNone, RunnerTest, true},
+		{"bazel --output_base=/tmp test //...", VerbTest, MaskedNone, RunnerTest, true},
+		{"cargo +nightly test", VerbTest, MaskedNone, RunnerTest, true},
+		{"python -u -m pytest", VerbTest, MaskedNone, RunnerTest, true},
+		{"python3 -u -m pytest", VerbTest, MaskedNone, RunnerTest, true},
+		{"./mvnw -B test", VerbTest, MaskedNone, RunnerTest, true},
+		{"./gradlew --no-daemon test", VerbTest, MaskedNone, RunnerTest, true},
+
+		// The program search does not step past `!` or `if`: the negation
+		// inverts the runner's status and the condition swallows it, and
+		// status_masked records both.
+		{"! go test ./...", VerbExecute, MaskedTest, RunnerTest, true},
+		{"if go test ./...; then :; fi", VerbExecute, MaskedTest, RunnerTest, true},
+
+		// ACCEPTED GAP: a test run with no runner identity. The program
+		// search folds the subshell's cd; the runner digest declines a
+		// directory the call's directory digest does not hold.
+		{"(cd /tmp && go test ./...)", VerbTest, MaskedNone, "", false},
+
+		// ACCEPTED GAP: a chain with the runner last is not a test run,
+		// though the runner's kind and digest are recorded. status_masked
+		// answers "when the runner fails, does the line?", and the test
+		// class needs "when the line passes, did the runner run and pass?":
+		// the last row is masked none and runs nothing when x is absent, so
+		// no check shared with status_masked can grant the class.
+		{"echo hi && go test ./...", VerbExecute, MaskedNone, RunnerTest, true},
+		{"true && go test ./...", VerbExecute, MaskedNone, RunnerTest, true},
+		{"go build ./... && go test ./...", VerbPackage, MaskedNone, RunnerTest, true},
+		{"make lint; go test ./...", VerbExecute, MaskedBuild, RunnerBuild, true},
+		{"if [[ -d x ]]; then go test ./...; fi", VerbExecute, MaskedNone, RunnerTest, true},
+	} {
+		s := verbOf(t, tc.cmd)
+		masked, kind := "", ""
+		if s.StatusMasked != nil {
+			masked = *s.StatusMasked
+		}
+		if s.RunnerKind != nil {
+			kind = *s.RunnerKind
+		}
+		if s.VerbClass != tc.class || masked != tc.masked || kind != tc.kind || (s.RunnerDigest != nil) != tc.digest {
+			t.Errorf("%q: class %q, masked %q, kind %q, digest set %v; want %q, %q, %q, %v",
+				tc.cmd, s.VerbClass, masked, kind, s.RunnerDigest != nil, tc.class, tc.masked, tc.kind, tc.digest)
+		}
+	}
+}
+
+// TestLeadingOptionsKeepRunnerIdentity: the runner digest keys on the
+// runner's words, its options with them, so passing over -j4 moves `make -j4
+// test`'s kind and not its identity: it stays a runner apart from `make
+// test`.
+func TestLeadingOptionsKeepRunnerIdentity(t *testing.T) {
+	a, b := verbOf(t, "make -j4 test").RunnerDigest, verbOf(t, "make test").RunnerDigest
+	if a == nil || b == nil || *a == *b {
+		t.Errorf("make -j4 test digest set %v, make test digest set %v, equal %v: want both set and unequal",
+			a != nil, b != nil, a != nil && b != nil && *a == *b)
 	}
 }
 
@@ -523,61 +743,86 @@ func TestLeadingDirectory(t *testing.T) {
 	for _, tc := range []struct {
 		cmd  string
 		want []string // nil for none
+		cut  bool     // DeriveWithDirs's cut
 	}{
-		{"cd /repo/web && go test ./...", []string{"/repo/web"}},
-		{"cd sub && go test ./...", []string{"sub"}},
-		{"cd ../x && npm test", []string{"../x"}},
-		{"cd /repo/web/ && go test ./...", []string{"/repo/web/"}},
+		{"cd /repo/web && go test ./...", []string{"/repo/web"}, false},
+		{"cd sub && go test ./...", []string{"sub"}, false},
+		{"cd ../x && npm test", []string{"../x"}, false},
+		{"cd /repo/web/ && go test ./...", []string{"/repo/web/"}, false},
 		// Every step of the leading run, in order.
-		{"cd /a && cd b && go test", []string{"/a", "b"}},
+		{"cd /a && cd b && go test", []string{"/a", "b"}, false},
 		// Not a plain literal step: the shell computes the directory, or the
 		// runner may run without the cd having happened.
-		{"cd $HOME/x && go test ./...", nil},
-		{"cd ~/x && go test ./...", nil},
-		{"cd - && go test ./...", nil},
-		{"cd \"/repo/web\" && go test ./...", nil},
-		{"cd 'a b' && go test ./...", nil},
-		{"cd `pwd`/x && go test ./...", nil},
-		{"cd *web && go test ./...", nil},
-		{"cd /repo; go test ./...", nil},
-		{"cd /repo || go test ./...", nil},
-		{"cd /repo", nil},
-		{"cd && go test ./...", nil},
-		{"go test ./...", nil},
-		{"X=1 cd /repo && go test ./...", nil},
+		{"cd $HOME/x && go test ./...", nil, false},
+		{"cd ~/x && go test ./...", nil, false},
+		{"cd - && go test ./...", nil, false},
+		{"cd \"/repo/web\" && go test ./...", nil, false},
+		{"cd 'a b' && go test ./...", nil, false},
+		{"cd `pwd`/x && go test ./...", nil, false},
+		{"cd *web && go test ./...", nil, false},
+		{"cd /repo; go test ./...", nil, false},
+		{"cd /repo || go test ./...", nil, false},
+		{"cd /repo", nil, false},
+		{"cd && go test ./...", nil, false},
+		{"go test ./...", nil, false},
+		{"X=1 cd /repo && go test ./...", nil, false},
 		// A later step that cannot be resolved spoils the whole run: the
 		// first target is not where the runner starts.
-		{"cd /a && cd - && go test", nil},
-		{"cd /a && cd ~ && go test", nil},
-		{"cd /a && pushd b && go test", nil},
-		{"cd /a && popd && go test", nil},
-		{"pushd /a && go test", nil},
+		{"cd /a && cd - && go test", nil, false},
+		{"cd /a && cd ~ && go test", nil, false},
+		{"cd /a && pushd b && go test", nil, false},
+		{"cd /a && popd && go test", nil, false},
+		{"pushd /a && go test", nil, false},
 		// A cd behind an assignment is still a directory change.
-		{"cd /a && CDPATH= cd - && go test ./...", nil},
-		{"cd /a && X=1 cd b && go test ./...", nil},
+		{"cd /a && CDPATH= cd - && go test ./...", nil, false},
+		{"cd /a && X=1 cd b && go test ./...", nil, false},
 		// So is one behind a redirection, a subshell's ( or an
 		// assignment-only step.
-		{"cd /a && >/dev/null cd - && go test ./...", nil},
-		{"cd /a && (cd - && go test ./...)", nil},
-		{"cd /a && X=1 && cd - && go test ./...", nil},
+		{"cd /a && >/dev/null cd - && go test ./...", nil, false},
+		{"cd /a && (cd - && go test ./...)", nil, false},
+		{"cd /a && X=1 && cd - && go test ./...", nil, false},
 		// An assignment in front of no cd ends the run where it stands.
-		{"X=1", nil},
-		{"cd /a && X=1", []string{"/a"}},
-		{"cd /repo/web && GOFLAGS=-count=1 go test ./...", []string{"/repo/web"}},
+		{"X=1", nil, false},
+		{"cd /a && X=1", []string{"/a"}, false},
+		{"cd /repo/web && GOFLAGS=-count=1 go test ./...", []string{"/repo/web"}, false},
 		// A control byte anywhere on the line.
-		{"cd /repo\r && ls", nil},
-		{"cd /repo\x00 && ls", nil},
-		{"cd /repo && ls \x07", nil},
-		{"cd /repo && \x1b[0m ls", nil},
-		{"cd /repo\x7f && ls", nil},
+		{"cd /repo\r && ls", nil, false},
+		{"cd /repo\x00 && ls", nil, false},
+		{"cd /repo && ls \x07", nil, false},
+		{"cd /repo && \x1b[0m ls", nil, false},
+		{"cd /repo\x7f && ls", nil, false},
+		// The lines the runner matcher and the masked parser have read
+		// apart: the directories are not read through runnerOn, so none of
+		// them moves when it does.
+		{"make -j4 test", nil, false},
+		{"mvn -B test", nil, false},
+		{"bazel --output_base=/tmp test //...", nil, false},
+		{"cargo +nightly test", nil, false},
+		{"make -Cdir test", nil, false},
+		{"! go test ./...", nil, false},
+		{"if go test ./...; then :; fi", nil, false},
+		{"(cd /tmp && go test ./...)", nil, false},
+		{"echo hi && go test ./...", nil, false},
+		{"true && go test ./...", nil, false},
+		{"go build ./... && go test ./...", nil, false},
+		{"make lint; go test ./...", nil, false},
+		{"cd /tmp && echo hi && go test ./...", []string{"/tmp"}, false},
+		// MaxLeadingCd steps are all folded and the line is not cut; at one
+		// more the read stops, holding that step too, and the line is cut.
+		{strings.Repeat("cd a && ", MaxLeadingCd) + "go test ./...", slices.Repeat([]string{"a"}, MaxLeadingCd), false},
+		{strings.Repeat("cd a && ", MaxLeadingCd+1) + "go test ./...", slices.Repeat([]string{"a"}, MaxLeadingCd+1), true},
 	} {
 		in := json.RawMessage(`{"command":` + quoteJSON(tc.cmd) + `}`)
 		got, ok := LeadingDirectory("Bash", in)
 		if ok != (tc.want != nil) || !slices.Equal(got, tc.want) {
 			t.Errorf("%q: LeadingDirectory = %q, %v; want %q", tc.cmd, got, ok, tc.want)
 		}
-		if _, _, dirs := DeriveWithDirs("Bash", in, []byte("key")); !slices.Equal(dirs, tc.want) {
+		_, cut, dirs := DeriveWithDirs("Bash", in, []byte("key"))
+		if !slices.Equal(dirs, tc.want) {
 			t.Errorf("%q: DeriveWithDirs dirs = %q; want %q, as LeadingDirectory", tc.cmd, dirs, tc.want)
+		}
+		if cut != tc.cut {
+			t.Errorf("%q: DeriveWithDirs cut = %v; want %v", tc.cmd, cut, tc.cut)
 		}
 	}
 	if _, ok := LeadingDirectory("mcp__x__run", json.RawMessage(`{"command":"cd /repo && make test"}`)); ok {

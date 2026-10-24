@@ -109,8 +109,8 @@ m("MS make is no build runner", "internal/shape/masked.go",
   "\t{\"make\"}, {\"gmake\"},\n", "\t{\"gmake\"},\n", SH)
 m("MS a build masked before a test wins", "internal/shape/masked.go",
   "\t\t\tif p.runners[g].kind == MaskedTest {\n\t\t\t\tk = MaskedTest\n", "\t\t\tif p.runners[g].kind == MaskedTest && false {\n\t\t\t\tk = MaskedTest\n", SH)
-m("MS the runner's arguments run to the end of the line", "internal/shape/verb.go",
-  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):end])", "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[i+len(c):])", SH)
+m("MS the runner's arguments run to the end of the line", "internal/shape/runner.go",
+  "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])", "\t\treturn !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:])", SH)
 m("MS here-document bodies are read as commands", "internal/shape/tokenize.go",
   "\t\tl.pending = append(l.pending, j)\n", "\t\t_ = j\n", SH)
 m("MS a comment is read as words in the list walk", "internal/shape/tokenize.go",
@@ -135,7 +135,7 @@ m("MS a backslash at a comment's end joins the next line", "internal/shape/join.
   "\t\tcase comments && c == '#' && !inSingle && !inDouble && wordStart(b.String()):", "\t\tcase false:", SH)
 m("MS mvn's build row refuses -DskipTests", "internal/shape/verb.go",
   "\t\tif len(c) == 1 {\n\t\t\t// The build row: a flag that skips the tests still builds.\n\t\t\treturn \"mvn build\"\n\t\t}\n", "", SH)
-m("MS python -m unittest is not a test runner", "internal/shape/verb.go",
+m("MS python -m unittest is not a test runner", "internal/shape/runner.go",
   "\t{\"python\", \"-m\", \"unittest\"}, {\"python3\", \"-m\", \"unittest\"},\n", "", "TestUnittestIsATestRunner")
 
 RP = "TestMasked_"

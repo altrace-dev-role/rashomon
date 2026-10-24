@@ -143,19 +143,25 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 			!(c.masked == shape.MaskedTest && c.kind == shape.RunnerTest) && !(c.masked == shape.MaskedBuild && c.kind == shape.RunnerBuild) {
 			t.Fatalf("runOf: call %d masked %q with runner kind %q: with a runner the masked word is none or the runner's own kind (shape: statusMasked and runnerOf take both from one runner group)", i, c.masked, c.kind)
 		}
-		// Derive reclasses a shell line test only when runsTests holds, and no
-		// route to a hidden status reaches it: a later stage on the line,
-		// which wholeCommand refuses; or a leading word the masked parser
-		// reads as syntax, a `!` negation (parsePipeline) or a compound such
-		// as `if` (parseCommand), while the program search takes that word as
-		// the program, so runsTests never sees a test runner. Re-derived in
-		// 0.2a if the program search skips `!` or a compound's keyword.
-		// And runsTests matches a testCommands row at the program position,
-		// the row the runner grouping kinds as test. Not tied here: the class
-		// against bg (the input and the response are two sources), and class
-		// test against a runner being present (runsTests and the runner
-		// grouping are two matchers that disagree on leading options; revisit
-		// in 0.2a).
+		// Both refusals below follow from one invariant of Derive, not from a
+		// list of cases: the class is test only when the line, past the
+		// leading cd steps the program search folds, is one whole simple
+		// command (wholeCommand) whose program position holds a testCommands
+		// row (runsTests, through runnerOn, the matcher the runner grouping
+		// reads too). That command's status is the line's, so status_masked is
+		// none or null, never a hidden kind; and a runner grouped there is
+		// grouped as test. The program search takes a leading `!` or a
+		// compound's keyword (`if`) as the program, so those lines are never
+		// test. The converse is not claimed. The proof leans on wholeCommand
+		// being conservative: commandEnd ends a command at `&` and at every
+		// other separator, and wholeCommand refuses one with anything after
+		// it, so a change to commandEnd walks this invariant again. Not tied
+		// here: the class against bg (the input and the response are two
+		// sources), and class test against a runner being recorded: a
+		// test-class line records no runner kind where the program search
+		// folds a cd that leadingCd does not read (`cd ~/x && go test ./...`,
+		// whose runner the masked parser marks displaced), or where the masked
+		// parser cannot read the line at all (a stray `)`).
 		if c.class == shape.VerbTest && c.masked != "" && c.masked != shape.MaskedNone {
 			t.Fatalf("runOf: call %d is class %q with masked %q: a hidden status never reaches the test class (shape: runsTests, wholeCommand and the program search)", i, c.class, c.masked)
 		}
