@@ -8,7 +8,7 @@ m("H-150 recap stands down under Codex", "cmd/rashomon/harness.go",
 m("H-150 recap pending speaks under Codex", "cmd/rashomon/harness.go",
   "\tif !ok || (h == hook.Codex && recapPending(args)) {", "\tif !ok {", "TestH150_")
 m("H-150 Codex's permanent coverage reason is spoken", "cmd/rashomon/main.go",
-  "\t\tif harness == hook.Codex {\n\t\t\td = recap.ForCodex(d)", "\t\tif false {\n\t\t\td = recap.ForCodex(d)",
+  "\t\tif harness == hook.Codex {\n\t\t\td = recap.ForCodex(d)", "\t\tif harness == hook.Codex && false {\n\t\t\td = recap.ForCodex(d)",
   "TestH150_|TestH146_WatchCodexInstalls")
 m("H-150 ForCodex sets aside nothing", "internal/recap/codex.go",
   "\t\tif r != store.ReasonHookEntryUnresolved {", "\t\tif true {", "TestForCodex|TestH150_")
