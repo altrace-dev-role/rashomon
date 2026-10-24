@@ -21,6 +21,17 @@ package fold
 
 import "encoding/json"
 
+// The names rashomon writes in a run directory (runs/<dir>), exported so
+// purge lists the same spellings the writers use. FileName is the fold,
+// MidFileName the one post advances from P-50 on, and TempPrefix the start of
+// the temporary name Write leaves between writing and renaming (its
+// os.CreateTemp pattern is TempPrefix + "*").
+const (
+	FileName    = "fold.json"
+	MidFileName = "fold.mid.json"
+	TempPrefix  = "." + FileName + ".rashomon-"
+)
+
 // MaxBytes is the size past which a fold is not written: a fold that grew
 // without bound would be the O(session) read it exists to replace.
 const MaxBytes = 256 << 10

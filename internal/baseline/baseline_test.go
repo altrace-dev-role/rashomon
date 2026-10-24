@@ -496,3 +496,27 @@ func TestRubricLLD11_FoldSessionIDIsBoundedBeforeStorage(t *testing.T) {
 		t.Error("a second render of the same oversized session id no longer reads as the establisher")
 	}
 }
+
+// TestIsFileNameAcceptsEveryNameFileNameWrites: IsFileName and fileName share
+// one alphabet, so purge recognises every baseline file a save can leave:
+// keys with characters fileName replaces (which put '_' in the name), keys
+// long enough to be cut, and the empty key.
+func TestIsFileNameAcceptsEveryNameFileNameWrites(t *testing.T) {
+	keys := []string{"", "/a/b", "/a-b", "/home/me/my project", "/tmp/x.y/z", "C:\\work\\p", "/h\u00e9llo/\u4e16\u754c",
+		"/" + strings.Repeat("deep/", 40), "plain"}
+	for _, k := range keys {
+		name := fileName(k)
+		if !IsFileName(name) {
+			t.Errorf("IsFileName(fileName(%q)) = false for %q", k, name)
+		}
+	}
+	if !strings.Contains(fileName("/a/b"), "_") {
+		t.Errorf("fileName(%q) = %q: a separator is no longer written as '_'", "/a/b", fileName("/a/b"))
+	}
+	for _, name := range []string{"", ".json", "proj-0123456789ab", "proj-0123456789AB.json",
+		"proj-0123456789a.json", "proj0123456789ab.json", "pro j-0123456789ab.json", "proj-0123456789ab.json.bak", "mine.txt"} {
+		if IsFileName(name) {
+			t.Errorf("IsFileName(%q) = true", name)
+		}
+	}
+}

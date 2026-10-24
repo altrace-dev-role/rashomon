@@ -21,6 +21,7 @@ import (
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/fold"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -56,37 +57,9 @@ var topDirs = []string{store.DirRuns, baseline.DirName}
 // runFiles are the files rashomon writes in a run directory, runs/<session>,
 // and runTempPrefixes the temporary names its atomic writes leave.
 var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, store.FileSteer,
-	store.FileProbe, store.FileSeq, store.FileLockWait, "fold.json", "fold.mid.json"}
+	store.FileProbe, store.FileSeq, store.FileLockWait, fold.FileName, fold.MidFileName}
 
-var runTempPrefixes = []string{".fold.json.rashomon-"}
-
-// baselineTempPrefix is the temporary name a baseline save leaves.
-const baselineTempPrefix = ".baseline-"
-
-// isBaselineFile reports whether name has the shape of a baseline file's own:
-// a sanitised project key, "-", a 12-digit hex digest and ".json"
-// (baseline.fileName).
-func isBaselineFile(name string) bool {
-	stem, ok := strings.CutSuffix(name, ".json")
-	if !ok || len(stem) < len("-")+12 {
-		return false
-	}
-	key, digest := stem[:len(stem)-12], stem[len(stem)-12:]
-	if !strings.HasSuffix(key, "-") {
-		return false
-	}
-	for _, r := range digest {
-		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
-			return false
-		}
-	}
-	for _, r := range key {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '.' || r == '_') {
-			return false
-		}
-	}
-	return true
-}
+var runTempPrefixes = []string{fold.TempPrefix}
 
 // tempPrefixes are the names of an anchor's, consent.json's,
 // harnesses.json's, harness_counts.json's and recap.json's temporary file,
@@ -310,7 +283,7 @@ func ownedTree(top string, isRuns bool) (own, foreign []string, err error) {
 // below runs or baseline, is one rashomon writes.
 func ownTreeFile(name string, isRuns bool, level int) bool {
 	if !isRuns {
-		return isBaselineFile(name) || name == baseline.LockName || strings.HasPrefix(name, baselineTempPrefix)
+		return baseline.IsFileName(name) || name == baseline.LockName || strings.HasPrefix(name, baseline.TempPrefix)
 	}
 	if level != 1 {
 		return false

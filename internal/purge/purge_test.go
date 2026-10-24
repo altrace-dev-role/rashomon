@@ -1,11 +1,18 @@
 package purge
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/fold"
 )
 
 // fsRoot is the filesystem root of the volume t.TempDir is on: "/" on Unix,
@@ -506,5 +513,86 @@ func TestTRU28_PurgeLeavesALinkInsideARunDirectory(t *testing.T) {
 		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(kept))); err != nil {
 			t.Errorf("purge removed %s, which is not a regular file rashomon wrote: %v", kept, err)
 		}
+	}
+}
+
+// storeFileConsts returns every string constant internal/store declares with a
+// File prefix -- the names the store writes -- keyed by constant name. They
+// are read from the source, so a constant added tomorrow is found without
+// anyone adding it here.
+func storeFileConsts(t *testing.T) map[string]string {
+	t.Helper()
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, filepath.Join("..", "store"), func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]string{}
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, d := range f.Decls {
+				gd, ok := d.(*ast.GenDecl)
+				if !ok || gd.Tok != token.CONST {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs := spec.(*ast.ValueSpec)
+					for i, id := range vs.Names {
+						if !strings.HasPrefix(id.Name, "File") || i >= len(vs.Values) {
+							continue
+						}
+						lit, ok := vs.Values[i].(*ast.BasicLit)
+						if !ok || lit.Kind != token.STRING {
+							continue
+						}
+						v, err := strconv.Unquote(lit.Value)
+						if err != nil {
+							t.Fatal(err)
+						}
+						found[id.Name] = v
+					}
+				}
+			}
+		}
+	}
+	return found
+}
+
+// TestTRU28_PurgeListsEveryNameItsWritersExport: a name a writer exports and
+// purge's lists lack would be left behind as "foreign" -- every purge noisy,
+// and nobody told. Every File* constant of internal/store is either an anchor,
+// a root file or a run file in purge's lists, and the names fold and baseline
+// export are owned where those packages write them. internal/store is read
+// from its source, so a constant added there fails this test until purge lists
+// it.
+func TestTRU28_PurgeListsEveryNameItsWritersExport(t *testing.T) {
+	consts := storeFileConsts(t)
+	if len(consts) < 15 {
+		t.Fatalf("found %d File constants in internal/store, fewer than the 17 it had: the scan is broken: %v", len(consts), consts)
+	}
+	for name, v := range consts {
+		anchor := v == InstallMeta || v == InstallKey
+		if !anchor && !ownName(v) && !ownTreeFile(v, true, 1) {
+			t.Errorf("store.%s = %q is written by the store but purge does not list it", name, v)
+		}
+	}
+
+	run := func(name string) bool { return ownTreeFile(name, true, 1) }
+	for _, name := range []string{fold.FileName, fold.MidFileName, fold.TempPrefix + "123456"} {
+		if !run(name) {
+			t.Errorf("fold writes %q in a run directory and purge does not list it", name)
+		}
+	}
+	base := func(name string) bool { return ownTreeFile(name, false, 0) }
+	for _, name := range []string{baseline.LockName, baseline.TempPrefix + "123456", "proj-0123456789ab" + baseline.FileExt} {
+		if !base(name) {
+			t.Errorf("baseline writes %q in its directory and purge does not list it", name)
+		}
+	}
+	// Each belongs to its own directory only.
+	if base(fold.FileName) || run(baseline.LockName) {
+		t.Errorf("a run file is taken as a baseline file, or the reverse")
 	}
 }
