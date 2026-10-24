@@ -155,7 +155,11 @@ func TestTRU48_OneConsentFileThreeReaders(t *testing.T) {
 	t.Run("every via parses", func(t *testing.T) {
 		root := t.TempDir()
 		for _, v := range Vias {
-			mustAppend(t, root, record(v, disclose.ScopeVersion, 0, RecordScopeV5))
+			r := record(v, disclose.ScopeVersion, 0, RecordScopeV5)
+			if v == ViaUnitTTY {
+				r.Unit, r.TTY = UnitBodies, true
+			}
+			mustAppend(t, root, r)
 		}
 		recs, err := Read(root)
 		if err != nil {

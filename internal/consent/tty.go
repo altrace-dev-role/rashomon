@@ -13,6 +13,7 @@ const (
 	QuestionInstall = "Install? [y/N] "
 	QuestionSDK     = "Also record Agent SDK programs on this machine? [y/N] "
 	QuestionConsent = "Agree to what this screen describes? [y/N] "
+	QuestionUnit    = "Turn this on? [y/N] "
 )
 
 // QuestionWorkTree is watch's third question, asked only when the store root

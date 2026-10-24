@@ -12,6 +12,11 @@
 //   - RecordScope: which record shape may RECORD write?
 //   - ScopeCovered: does the consent on file cover this build's capability
 //     classes, so watch can say "already watching" instead of asking again?
+//
+// A fourth, Has, answers a question per unit (units.go): installing consents
+// to record, and every other unit needs its own unit_tty record, written by
+// `rashomon consent <unit>`. A unit_tty line is skipped by a build that does
+// not know it, which leaves that unit off: the failure is closed.
 package consent
 
 import (
@@ -70,12 +75,16 @@ const (
 	ViaConsentTTY     Via = "consent_tty"
 	ViaConsentYes     Via = "consent_yes"
 	ViaSteerOn        Via = "steer_on"
+	// ViaUnitTTY is a grant of one consent unit (Task 4.2), answered at a
+	// terminal. It follows the specification's list and has no non-terminal
+	// form: no flag stands in for the person's answer to a unit's notice.
+	ViaUnitTTY Via = "unit_tty"
 )
 
 // Vias is every Via value, in the order the specification lists them.
 var Vias = []Via{
 	ViaWatchTTY, ViaWatchYes, ViaPluginEnable, ViaFirstRunNotice,
-	ViaUpgradeNotice, ViaConsentTTY, ViaConsentYes, ViaSteerOn,
+	ViaUpgradeNotice, ViaConsentTTY, ViaConsentYes, ViaSteerOn, ViaUnitTTY,
 }
 
 // Valid reports whether v is one of Vias.
@@ -109,13 +118,28 @@ type Record struct {
 	InvocationID         string `json:"invocation_id"`
 	// At is when the record was appended, in Unix milliseconds.
 	At int64 `json:"at"`
+	// Unit is the unit a ViaUnitTTY record grants, and absent from every
+	// other record, so a record written before units existed marshals to the
+	// same bytes it always did.
+	Unit Unit `json:"unit,omitempty"`
 }
 
 // parses reports whether a decoded line is a record a reader may count: the
-// version this build reads and a Via from the closed set. Anything else is
-// skipped like a torn line, never read as consent.
+// version this build reads, a Via from the closed set, and a unit that agrees
+// with the via -- a unit_tty record names one grantable unit and was answered
+// at a terminal, every other record names none. Anything else is skipped like
+// a torn line, never read as consent.
 func (r Record) parses() bool {
-	return r.V == RecordVersion && r.Via.Valid()
+	return r.V == RecordVersion && r.Via.Valid() && r.unitAgrees()
+}
+
+// unitAgrees is parses' rule for the unit: a unit_tty record names one
+// grantable unit and was answered at a terminal, every other record names none.
+func (r Record) unitAgrees() bool {
+	if r.Via == ViaUnitTTY {
+		return r.TTY && r.Unit.grantable()
+	}
+	return r.Unit == ""
 }
 
 // Path is consent.json under a store root.
@@ -302,7 +326,7 @@ func compact(root string) error {
 	if err != nil {
 		return err
 	}
-	keep := keepForCompaction(recs)
+	keep := keepWithGrants(recs)
 	var buf bytes.Buffer
 	for _, r := range keep {
 		line, err := json.Marshal(r)
@@ -313,6 +337,31 @@ func compact(root string) error {
 		buf.WriteByte('\n')
 	}
 	return replace(Path(root), buf.Bytes())
+}
+
+// keepWithGrants is keepForCompaction over the records that are not unit
+// grants, then the latest grant of each unit, in file order, after them. A
+// grant's place among the other records decides no reader's answer, but
+// keepForCompaction's one record per (via, scope_version) would keep one
+// grant of several and compaction would turn the others off.
+func keepWithGrants(recs []Record) []Record {
+	var plain, grants []Record
+	latest := map[Unit]int{}
+	for _, r := range recs {
+		if r.Via != ViaUnitTTY {
+			plain = append(plain, r)
+			continue
+		}
+		grants = append(grants, r)
+		latest[r.Unit] = len(grants) - 1
+	}
+	out := keepForCompaction(plain)
+	for i, g := range grants {
+		if latest[g.Unit] == i {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // keepForCompaction returns the records compact keeps, in file order.

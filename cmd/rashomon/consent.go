@@ -15,7 +15,13 @@ import (
 // changed since the consent on file, under watch's terminal rule. y appends
 // a consent record and nothing else; it is the one command that widens the
 // record scope of a store installed by an older release.
+//
+// With a unit name -- `rashomon consent <unit> [--show]` -- it is the notice
+// for that unit instead of the install screen (cmdConsentUnit).
 func cmdConsent(args []string, stdout io.Writer) error {
+	if units := consentUnitArgs(args); len(units) > 0 {
+		return cmdConsentUnit(args, units, stdout)
+	}
 	yes, show, err := consentFlags(args)
 	if err != nil {
 		return err
