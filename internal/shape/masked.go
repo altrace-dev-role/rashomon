@@ -27,7 +27,7 @@ const (
 // Bump it whenever one of those lists changes, and add the new lists' pin to
 // the tests that hold one (rules_version_test.go here and in report): each
 // fails when its list changes without a bump.
-const RulesVersion = 1
+const RulesVersion = 2
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {
@@ -49,7 +49,7 @@ var buildCommands = [][]string{
 	{"go", "build"}, {"go", "vet"}, {"cargo", "build"}, {"cargo", "check"}, {"cargo", "clippy"},
 	{"npm", "run"}, {"yarn", "run"}, {"yarn", "build"}, {"pnpm", "run"}, {"pnpm", "build"},
 	{"tsc"}, {"npx", "tsc"}, {"mvn"}, {"mvnw"}, {"gradle"}, {"gradlew"},
-	{"dotnet", "build"}, {"cmake", "--build"}, {"ninja"}, {"bazel", "build"}, {"bazel", "test"},
+	{"dotnet", "build"}, {"cmake", "--build"}, {"ninja"}, {"bazel", "build"},
 }
 
 // maxRunnerGroups bounds how many distinctly-worded runners statusMasked

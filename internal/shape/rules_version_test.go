@@ -12,6 +12,7 @@ import (
 // bump adds a pin; a pin is never edited.
 var runnerListPins = map[int]string{
 	1: "522cdda1bbddd626a4bb17c200854d3b31ab80bfb1c87d356bf638c9ee2d2aea",
+	2: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // rake, composer, mix, bazel test as test runners (2026-10-23)
 }
 
 // runnerListsDigest digests testCommands, then buildCommands: each row's

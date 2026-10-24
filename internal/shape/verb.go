@@ -112,6 +112,7 @@ var testCommands = [][]string{
 
 	{"npx", "jest"}, {"npx", "vitest"}, {"uv", "run", "pytest"}, {"poetry", "run", "pytest"},
 	{"bundle", "exec", "rspec"},
+	{"rake", "test"}, {"composer", "test"}, {"mix", "test"}, {"bazel", "test"},
 }
 
 // refusalsOf names the notARun entry a testCommands row is checked against:
@@ -467,6 +468,9 @@ var runInBackgroundKey = jsonscan.NewFoldKeySet("run_in_background")
 // and a directory change is told apart by the declarations' directory
 // digests, not as a write.
 func mayWrite(toks []token, i int) bool {
+	if inPlaceEdit(toks) {
+		return true
+	}
 	curl, curlOut := false, false
 	for j, t := range toks {
 		if opensSubstitution(toks, j) {
@@ -686,4 +690,66 @@ func verbForProgram(prog string) string {
 		return v
 	}
 	return VerbExecute
+}
+
+// inPlaceEditors are programs that rewrite files in place, with the words
+// that make them do so: a flag (`sed -i`, `perl -pi`, `gofmt -w`,
+// `prettier --write`, `clang-format -i`, `eslint --fix`), a subcommand
+// (`go fmt`, `cargo fmt`, `ruff format`), or nothing, for a formatter that
+// writes unless told to check (black, isort, rustfmt). A trailing `*` matches
+// a prefix, as onList reads it, so `-i.bak` and `-pie` count.
+var inPlaceEditors = map[string][]string{
+	"sed":          {"-i*", "--in-place*"},
+	"perl":         {"-i*", "-pi*", "-ni*", "-0pi*"},
+	"gofmt":        {"-w"},
+	"go":           {"fmt"},
+	"cargo":        {"fmt"},
+	"ruff":         {"format"},
+	"prettier":     {"--write", "-w"},
+	"clang-format": {"-i"},
+	"eslint":       {"--fix"},
+	"black":        {},
+	"isort":        {},
+	"rustfmt":      {},
+}
+
+// checkOnly are the words under which a formatter reads and reports instead
+// of writing; one of them anywhere in the stage clears the editor.
+var checkOnly = []string{"--check", "--check-only", "--diff", "-l", "--list-different", "--dry-run"}
+
+// inPlaceEdit reports a line with a stage on which an in-place editor stands
+// with a word that makes it write (inPlaceEditors) and no word that makes it
+// only check (checkOnly). Words are compared wherever they stand in the
+// stage, as mayWrite compares its own: the direction to be wrong in. A stage
+// separator starts the search over, so `sed -n p a | grep -i x` is a read.
+func inPlaceEdit(toks []token) bool {
+	var flags []string
+	armed, checking := false, false
+	for j, t := range toks {
+		if stageSeparator(toks, j) {
+			if armed && !checking {
+				return true
+			}
+			flags, armed, checking = nil, false, false
+			continue
+		}
+		if t.meta {
+			continue
+		}
+		if f, ok := inPlaceEditors[path.Base(t.text)]; ok {
+			flags = f
+			armed = len(f) == 0
+			continue
+		}
+		if flags == nil {
+			continue
+		}
+		switch {
+		case onList(t.text, checkOnly):
+			checking = true
+		case onList(t.text, flags):
+			armed = true
+		}
+	}
+	return armed && !checking
 }
