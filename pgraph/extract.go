@@ -1,19 +1,18 @@
 package pgraph
 
 import (
-	"fmt"
 	"go/ast"
-	"go/token"
 	"go/types"
-	"path/filepath"
 	"sort"
 
 	"golang.org/x/tools/go/types/typeutil"
 )
 
 // ExtractorVersion names the rules below. A change to what Extract emits for
-// the same source takes a new version.
-const ExtractorVersion = "v0"
+// the same source takes a new version: v1 replaced the position-bearing symbol
+// spelling with the ids of identity.go, so the next Sync of a v0 log tombstones
+// its facts and asserts the v1 ones.
+const ExtractorVersion = "v1"
 
 func gotypesProducer() Producer {
 	p, err := newProducer("gotypes", ExtractorVersion, Proven)
@@ -23,45 +22,11 @@ func gotypesProducer() Producer {
 	return p
 }
 
-// Sync extracts the PROVEN facts of p and reconciles the log to them under
+// Sync extracts the PROVEN facts of p (SyncCHA does the ALGORITHMIC ones) and reconciles the log to them under
 // p's config at the given commit. Facts that no longer hold are retracted; the
 // resulting view equals the view of a log built from nothing at this commit.
 func Sync(l *Log, p *Program, commit string) (Delta, error) {
 	return l.Reconcile(gotypesProducer(), p.cfg.String(), commit, Extract(p))
-}
-
-// symbolID names an object for use as a subject or object: a kind, a colon and
-// a qualified name. Methods use types.Func.FullName, which spells the receiver,
-// so a method and a function never collide. Functions that may repeat in one
-// package (init, and the blank identifier) carry their file and byte offset.
-// The name is unique within one build; carrying it across commits is a later
-// slice's problem.
-func symbolID(obj types.Object, fset *token.FileSet) string {
-	switch o := obj.(type) {
-	case *types.Func:
-		if o.Type().(*types.Signature).Recv() != nil {
-			return "method:" + o.FullName()
-		}
-		if o.Name() == "init" || o.Name() == "_" {
-			pos := fset.Position(o.Pos())
-			return fmt.Sprintf("func:%s.%s#%s@%d", o.Pkg().Path(), o.Name(), filepath.Base(pos.Filename), pos.Offset)
-		}
-		return "func:" + o.FullName()
-	case *types.TypeName:
-		return "type:" + qualified(o)
-	case *types.Var:
-		return "var:" + qualified(o)
-	case *types.Const:
-		return "const:" + qualified(o)
-	}
-	return "object:" + qualified(obj)
-}
-
-func qualified(o types.Object) string {
-	if o.Pkg() == nil {
-		return o.Name()
-	}
-	return o.Pkg().Path() + "." + o.Name()
 }
 
 // Extract returns the PROVEN facts of p, sorted and without duplicates. All
@@ -83,6 +48,7 @@ func qualified(o types.Object) string {
 // methods; sorting adds O(n log n) in facts.
 func Extract(p *Program) []Triple {
 	var out []Triple
+	nm := newNamer(p)
 	add := func(s string, pr Predicate, o string) { out = append(out, Triple{s, pr, o}) }
 	var concretes, ifaces []*types.Named
 	for _, pkg := range p.pkgs {
@@ -90,7 +56,7 @@ func Extract(p *Program) []Triple {
 		info, sc := pkg.TypesInfo, pkg.Types.Scope()
 		for _, name := range sc.Names() {
 			obj := sc.Lookup(name)
-			add(pk, Declares, symbolID(obj, p.fset))
+			add(pk, Declares, nm.id(obj))
 			tn, ok := obj.(*types.TypeName)
 			if !ok || tn.IsAlias() {
 				continue
@@ -100,7 +66,7 @@ func Extract(p *Program) []Triple {
 				continue
 			}
 			for i := 0; i < n.NumMethods(); i++ {
-				add(symbolID(tn, p.fset), Declares, symbolID(n.Method(i), p.fset))
+				add(nm.id(tn), Declares, nm.id(n.Method(i)))
 			}
 			if n.TypeParams().Len() > 0 {
 				continue
@@ -115,7 +81,7 @@ func Extract(p *Program) []Triple {
 		}
 		for _, obj := range info.Defs {
 			if fn, ok := obj.(*types.Func); ok && fn.Name() == "init" && fn.Type().(*types.Signature).Recv() == nil {
-				add(pk, Declares, symbolID(fn, p.fset))
+				add(pk, Declares, nm.id(fn))
 			}
 		}
 		for _, f := range pkg.Syntax {
@@ -123,14 +89,14 @@ func Extract(p *Program) []Triple {
 				switch d := d.(type) {
 				case *ast.FuncDecl:
 					if fn, ok := info.Defs[d.Name].(*types.Func); ok && d.Body != nil {
-						callsIn(d.Body, info, symbolID(fn, p.fset), p.fset, add)
+						callsIn(d.Body, info, nm, nm.id(fn), add)
 					}
 				case *ast.GenDecl:
 					for _, s := range d.Specs {
 						switch s := s.(type) {
 						case *ast.ValueSpec:
 							for _, v := range s.Values {
-								callsIn(v, info, pk, p.fset, add)
+								callsIn(v, info, nm, pk, add)
 							}
 						case *ast.TypeSpec:
 							tn, ok := info.Defs[s.Name].(*types.TypeName)
@@ -138,7 +104,7 @@ func Extract(p *Program) []Triple {
 								continue
 							}
 							for _, e := range embeddedOf(tn.Type()) {
-								add(symbolID(tn, p.fset), Embeds, symbolID(e.Obj(), p.fset))
+								add(nm.id(tn), Embeds, nm.id(e.Obj()))
 							}
 						}
 					}
@@ -151,9 +117,9 @@ func Extract(p *Program) []Triple {
 			it := i.Underlying().(*types.Interface)
 			switch {
 			case types.Implements(c, it):
-				add(symbolID(c.Obj(), p.fset), Implements, symbolID(i.Obj(), p.fset))
+				add(nm.id(c.Obj()), Implements, nm.id(i.Obj()))
 			case types.Implements(types.NewPointer(c), it):
-				add(symbolID(c.Obj(), p.fset), ImplementsViaPointer, symbolID(i.Obj(), p.fset))
+				add(nm.id(c.Obj()), ImplementsViaPointer, nm.id(i.Obj()))
 			}
 		}
 	}
@@ -167,13 +133,13 @@ func Extract(p *Program) []Triple {
 	return uniq
 }
 
-func callsIn(n ast.Node, info *types.Info, caller string, fset *token.FileSet, add func(string, Predicate, string)) {
+func callsIn(n ast.Node, info *types.Info, nm *namer, caller string, add func(string, Predicate, string)) {
 	ast.Inspect(n, func(n ast.Node) bool {
 		if call, ok := n.(*ast.CallExpr); ok {
 			// Callee already names a generic function or method by its
 			// origin, so every instantiation is one edge.
 			if fn, ok := typeutil.Callee(info, call).(*types.Func); ok {
-				add(caller, Calls, symbolID(fn, fset))
+				add(caller, Calls, nm.id(fn))
 			}
 		}
 		return true

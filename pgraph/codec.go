@@ -104,6 +104,9 @@ func decodeRecord(line string) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
+	if err := admitted(t, p); err != nil {
+		return Record{}, err
+	}
 	if name, ver, ok := strings.Cut(c[7], "@"); !ok || name == "" || ver == "" {
 		return Record{}, fmt.Errorf("extractor %q is not name@version", c[7])
 	}

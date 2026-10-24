@@ -17,7 +17,8 @@ const (
 	// Proven facts are read from go/types: the compiler's own resolution.
 	Proven Tier = iota + 1
 	// Algorithmic facts come from a sound-but-imprecise algorithm and may
-	// include spurious edges. No producer of this tier exists yet.
+	// include spurious edges. Class hierarchy analysis (Dispatch) is the
+	// producer of this tier.
 	Algorithmic
 	// Proposed facts come from a model and are never evidence by themselves.
 	Proposed
@@ -60,12 +61,15 @@ const (
 	Implements
 	// ImplementsViaPointer: only the pointer type's method set satisfies it.
 	ImplementsViaPointer
+	// MayCall: a function contains a call on an interface method that class
+	// hierarchy analysis says can reach the concrete method. Never PROVEN.
+	MayCall
 )
 
-var predicateNames = [...]string{Declares: "declares", Calls: "calls", Embeds: "embeds", Implements: "implements", ImplementsViaPointer: "implements-via-pointer"}
+var predicateNames = [...]string{Declares: "declares", Calls: "calls", Embeds: "embeds", Implements: "implements", ImplementsViaPointer: "implements-via-pointer", MayCall: "may-call"}
 
 func (p Predicate) String() string {
-	if p < Declares || p > ImplementsViaPointer {
+	if p < Declares || p > MayCall {
 		return fmt.Sprintf("invalid-predicate(%d)", uint8(p))
 	}
 	return predicateNames[p]
@@ -73,7 +77,7 @@ func (p Predicate) String() string {
 
 // ParsePredicate accepts exactly the spellings String produces.
 func ParsePredicate(s string) (Predicate, error) {
-	for p := Declares; p <= ImplementsViaPointer; p++ {
+	for p := Declares; p <= MayCall; p++ {
 		if predicateNames[p] == s {
 			return p, nil
 		}

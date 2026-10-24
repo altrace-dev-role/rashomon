@@ -75,6 +75,8 @@ func FuzzDecodeLog(f *testing.F) {
 	f.Add([]byte(LogHeader + "\n"))
 	f.Add([]byte(""))
 	f.Add([]byte(LogHeader + "\n+\t\x00\tcalls\tb\tPROVEN\tc\tc\te@1\n"))
+	f.Add([]byte(LogHeader + "\n+\tfunc:a.F\tmay-call\tmethod:a.T.M\tALGORITHMIC\t" + cfgA + "\tc\tcha@v0\n"))
+	f.Add([]byte(LogHeader + "\n+\tfunc:a.F\tmay-call\tmethod:a.T.M\tPROVEN\t" + cfgA + "\tc\tgotypes@v1\n"))
 	f.Fuzz(func(t *testing.T, in []byte) {
 		l, err := DecodeLog(in)
 		if err != nil {
