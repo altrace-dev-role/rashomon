@@ -28,6 +28,14 @@ type call struct {
 	bg       bool
 	paths    []string
 	mayWrite bool // Bash write with no lexical target, the unnamed-write case; paths empty
+	// term is the call's terminal outcome, store.OutcomeOK | store.OutcomeError
+	// | store.OutcomeSignal; empty builds no terminal, the signature of an
+	// uncontrolled exit (record.go, Terminal).
+	term string
+	// incomplete marks a named Bash write whose extraction did not yield a
+	// target for every write-capable segment: WrittenPathsComplete false
+	// (record_v5.go). Only a Bash write with paths can carry it.
+	incomplete bool
 }
 
 func gateRun(seq int64, runner, outcome string) call {
@@ -44,23 +52,44 @@ func bashWrite(seq int64, paths ...string) call {
 	return call{seq: seq, tool: "Bash", prog: "sed", class: shape.VerbExecute, outcome: store.ExecOK, paths: paths}
 }
 
-// runOf writes one Declaration and one Execution per call, and fails the test
-// on a run the store could not have written: a fixture the store forbids makes
-// every evaluator test built on it prove nothing. It enforces these invariants
-// and no others:
-//   - Declarations and executions pair by index and by ToolUseID.
-//   - Seq strictly increases, so it is at least 1, as the store allocates it.
-//   - An Edit or Write names its path.
-//   - A call that is not Bash names no runner, is not backgrounded and does not set mayWrite.
-//   - A call that is not Bash, Edit or Write names no paths.
-//   - A runner's masked word is one of shape.MaskedKinds.
-//   - A runner's kind is one of shape.RunnerKinds, and a call with no runner has none (shape: RunnerKind is set exactly when RunnerDigest is).
-//   - The execution's runner fields mirror the declaration's.
-//   - ExitCode is set only on a failure with a known code.
-//   - A Bash write that names paths is complete; one that names none carries MayWrite alone.
+// runOf is runOfSession for the session "s1", the one most tests need.
 func runOf(t testing.TB, calls ...call) *store.Run {
 	t.Helper()
-	r := &store.Run{Dir: "s1"}
+	return runOfSession(t, "s1", calls...)
+}
+
+// runOfSession writes one Declaration and one Execution per call and a
+// Terminal for each call with a term, and fails the test on a run the store
+// could not read back as built, or whose records break an invariant the hook
+// and shape keep; the one shape no writer produces yet, a named Bash write, is
+// marked below. A fixture that breaks one makes every evaluator test built on
+// it prove nothing. It enforces these invariants and no others, each where it
+// comes from:
+//   - Declarations and executions pair by index and by ToolUseID, and a terminal pairs by ToolUseID.
+//   - Seq strictly increases, so it is at least 1 (store.appendOrdered allocates it).
+//   - An Edit or Write names its path (the payload's file_path, which the hook records).
+//   - A call that is not Bash names no runner, is not backgrounded and does not set mayWrite (shape.Derive sets them for a shell only).
+//   - A call that is not Bash, Edit or Write names no paths.
+//   - A runner's masked word is one of shape.MaskedKinds and its kind one of shape.RunnerKinds, and a call with no runner has neither (shape.statusMasked sets them together).
+//   - The execution's runner fields mirror the declaration's (post.go copies them from the shape it derives).
+//   - ExitCode is set only on a failure with a known code (post.go).
+//   - A Bash write that names paths is complete unless incomplete says otherwise, and one that names none carries MayWrite alone. This is the schema's written_paths_complete (record_v5.go): no writer fills written_paths yet, so a named Bash write is the schema's shape, not the hook's.
+//   - No field is over the cap the hook would withhold it at (store.CapDeclaration and store.CapExecution, which the hook applies before its write).
+//   - A terminal's outcome is one of the Terminal outcomes (record.go).
+//   - The session id is its own run directory name (the store's DirName method, over segment): the builder does not digest.
+//
+// The cap functions guarantee caps and nothing else. The derived fields
+// (VerbClass, RunnerDigest, RunnerKind, StatusMasked, MayWrite) are what the
+// call literal says, not what shape.Derive would derive from any command, and
+// CWDDigest, Hosts, SSHHosts and FileLabel are never set, since the hook
+// computes them before its cap and the builder does not.
+func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
+	t.Helper()
+	var zero store.Store
+	if zero.DirName(sessionID) != sessionID {
+		t.Fatalf("runOf: session id %q is not its own run directory name: the store digests it (Store.DirName), and the builder does not digest", sessionID)
+	}
+	r := &store.Run{Dir: sessionID}
 	var last int64
 	for i, c := range calls {
 		if c.seq <= last {
@@ -93,8 +122,14 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 		if c.runner == "" && c.kind != "" {
 			t.Fatalf("runOf: call %d has runner kind %q and no runner (shape: RunnerKind is set exactly when RunnerDigest is)", i, c.kind)
 		}
+		if c.term != "" && c.term != store.OutcomeOK && c.term != store.OutcomeError && c.term != store.OutcomeSignal {
+			t.Fatalf("runOf: call %d terminal outcome %q is not one of %q, %q and %q (store: Terminal outcomes)", i, c.term, store.OutcomeOK, store.OutcomeError, store.OutcomeSignal)
+		}
+		if c.incomplete && (c.tool != "Bash" || len(c.paths) == 0) {
+			t.Fatalf("runOf: call %d is incomplete but is not a named Bash write (written_paths_complete describes a Bash write's named targets; the unnamed write carries MayWrite alone)", i)
+		}
 		id := "t" + strconv.FormatInt(c.seq, 10)
-		d := store.Declaration{Seq: c.seq, ToolUseID: id, SessionID: "s1", ToolName: c.tool}
+		d := store.Declaration{Type: store.TypeDeclaration, SchemaVersion: store.SchemaVersion, Seq: c.seq, ToolUseID: id, SessionID: sessionID, ToolName: c.tool}
 		d.Shape.VerbClass = c.class
 		if c.prog != "" {
 			p := c.prog
@@ -112,21 +147,43 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 			p := c.paths[0]
 			d.FilePath = &p
 		} else if len(c.paths) > 0 {
-			complete := true // every write-capable segment yielded a target (record_v5.go WrittenPathsComplete)
+			// Complete when every write-capable segment yielded a target
+			// (record_v5.go WrittenPathsComplete).
+			complete := !c.incomplete
 			d.WrittenPaths, d.WrittenPathsComplete = append([]string(nil), c.paths...), &complete
 			d.Shape.MayWrite = true
 		} else if c.mayWrite {
 			d.Shape.MayWrite = true // a Bash write with no known target: the unnamed-write case
 		}
+		probe := d
+		if store.CapDeclaration(&probe) {
+			t.Fatalf("runOf: call %d: the hook would withhold a field over its cap (store.CapDeclaration): %+v", i, c)
+		}
 		seq := c.seq
-		e := store.Execution{Seq: &seq, ToolUseID: id, SessionID: "s1", ToolName: c.tool, Outcome: c.outcome, Backgrounded: c.bg}
+		e := store.Execution{Type: store.TypeExecution, SchemaVersion: store.SchemaVersion, Seq: &seq, ToolUseID: id, SessionID: sessionID, ToolName: c.tool, Outcome: c.outcome, Backgrounded: c.bg}
 		e.RunnerDigest, e.StatusMasked, e.RunnerKind = d.Shape.RunnerDigest, d.Shape.StatusMasked, d.Shape.RunnerKind
 		if c.outcome == store.ExecFailed && c.exit != 0 {
 			ex := c.exit // store.Execution: null on success, null on a failure without a code; never 0
 			e.ExitCode = &ex
 		}
+		// Every field CapExecution caps that the builder sets (ToolUseID,
+		// ToolName) is capped the same on the declaration, probed first, so
+		// this probe refuses nothing yet: it guards the execution-only fields
+		// the builder does not set today (ExecutedCommand and its cut and
+		// masked fields, HeadAfter.Root, HarnessToolName). Dropping it is an
+		// equivalent mutant today; when one is added, add its twin rows and
+		// this mutant dies.
+		probeE := e
+		if store.CapExecution(&probeE) {
+			t.Fatalf("runOf: call %d: the hook would withhold a field over its cap (store.CapExecution): %+v", i, c)
+		}
 		r.Declarations = append(r.Declarations, d)
 		r.Executions = append(r.Executions, e)
+		if c.term != "" {
+			tseq := c.seq
+			r.Terminals = append(r.Terminals, store.Terminal{Type: store.TypeTerminal, SchemaVersion: store.SchemaVersion, Seq: &tseq,
+				ToolUseID: id, SessionID: sessionID, Outcome: c.term, TerminalV5: store.TerminalV5{Writer: "fixture"}})
+		}
 	}
 	return r
 }
@@ -136,6 +193,11 @@ func intOr0(p *int) int {
 		return 0
 	}
 	return *p
+}
+
+// samePtr reports whether a and b are both nil or point at equal values.
+func samePtr[T comparable](a, b *T) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
 }
 
 func TestFixture_RunOfPairsEveryDeclarationWithItsExecution(t *testing.T) {
@@ -306,28 +368,76 @@ func (f *fakeTB) Fatalf(format string, args ...any) {
 	panic(f)
 }
 
-func TestFixture_RunOfRejectsRunsTheStoreForbids(t *testing.T) {
-	// Each row breaks exactly one rule; runOf reports the first rule a call breaks.
+// TestFixture_RunOfRejectsRunsTheHookNeverWrites builds each row through a
+// fakeTB, whose Fatalf panics: that panic is what makes a refusal observable,
+// since runOf never returns past it. A row with a want breaks exactly one
+// rule, and runOf reports the first rule a call breaks; a row without one is
+// the accepted twin at a boundary.
+func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
+	long := func(n int) string { return strings.Repeat("x", n) }
+	numbered := func(n int) []string {
+		ps := make([]string, n)
+		for i := range ps {
+			ps[i] = fmt.Sprintf("p%d.go", i)
+		}
+		return ps
+	}
+	// The written-path cap counts entries and bytes in all, nothing per path
+	// (limits.go, writtenPathsFit), so the byte twins split the total in two.
+	half := store.MaxWrittenPathsBytes / 2
+	errEdit := edit(1, "a.go")
+	errEdit.term = store.OutcomeError
+	closedEdit := edit(1, "a.go")
+	closedEdit.term = "closed"
+	incompleteWrite := bashWrite(1, "a.go")
+	incompleteWrite.incomplete = true
+	incompleteEdit := edit(1, "a.go")
+	incompleteEdit.incomplete = true
 	cases := []struct {
-		name  string
-		calls []call
-		want  string
+		name    string
+		session string
+		calls   []call
+		want    string // a substring of the refusal; empty for a run runOf must accept
 	}{
-		{"duplicate seq", []call{edit(2, "a.go"), edit(2, "b.go")}, "seq"},
-		{"decreasing seq", []call{edit(3, "a.go"), edit(1, "b.go")}, "seq"},
-		{"pathless edit", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK}}, "no path"},
-		{"runner on edit", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, runner: "go-test", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, paths: []string{"a.go"}}}, "not a shell"},
-		{"bg on edit", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, bg: true, paths: []string{"a.go"}}}, "every tool but a shell"},
-		{"mayWrite on edit", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, mayWrite: true, paths: []string{"a.go"}}}, "shell-line"},
-		{"runner with bad masked", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: shape.RunnerTest, outcome: store.ExecOK}}, "masked \"\" is not one of"},
-		{"runner with bad kind", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: "lint", masked: shape.MaskedNone, outcome: store.ExecOK}}, "runner kind \"lint\" is not one of"},
-		{"kind without runner", []call{call{seq: 1, tool: "Bash", prog: "ls", class: shape.VerbRead, kind: shape.RunnerTest, outcome: store.ExecOK}}, "and no runner"},
-		{"paths on read", []call{call{seq: 1, tool: "Read", class: shape.VerbRead, outcome: store.ExecOK, paths: []string{"a.go"}}}, "names paths"},
+		{"duplicate seq", "s1", []call{edit(2, "a.go"), edit(2, "b.go")}, "seq"},
+		{"decreasing seq", "s1", []call{edit(3, "a.go"), edit(1, "b.go")}, "seq"},
+		{"pathless edit", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK}}, "no path"},
+		{"runner on edit", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, runner: "go-test", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, paths: []string{"a.go"}}}, "not a shell"},
+		{"bg on edit", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, bg: true, paths: []string{"a.go"}}}, "every tool but a shell"},
+		{"mayWrite on edit", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, mayWrite: true, paths: []string{"a.go"}}}, "shell-line"},
+		{"runner with bad masked", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: shape.RunnerTest, outcome: store.ExecOK}}, "masked \"\" is not one of"},
+		{"runner with bad kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: "lint", masked: shape.MaskedNone, outcome: store.ExecOK}}, "runner kind \"lint\" is not one of"},
+		{"kind without runner", "s1", []call{call{seq: 1, tool: "Bash", prog: "ls", class: shape.VerbRead, kind: shape.RunnerTest, outcome: store.ExecOK}}, "and no runner"},
+		{"paths on read", "s1", []call{call{seq: 1, tool: "Read", class: shape.VerbRead, outcome: store.ExecOK, paths: []string{"a.go"}}}, "names paths"},
+
+		{"file path at MaxPathBytes", "s1", []call{edit(1, long(store.MaxPathBytes))}, ""},
+		{"file path one byte over", "s1", []call{edit(1, long(store.MaxPathBytes+1))}, "store.CapDeclaration"},
+		{"written paths at MaxWrittenPathsBytes", "s1", []call{bashWrite(1, long(half), long(store.MaxWrittenPathsBytes-half))}, ""},
+		{"written paths one byte over", "s1", []call{bashWrite(1, long(half), long(store.MaxWrittenPathsBytes-half+1))}, "store.CapDeclaration"},
+		{"MaxWrittenPaths written paths", "s1", []call{bashWrite(1, numbered(store.MaxWrittenPaths)...)}, ""},
+		{"one written path too many", "s1", []call{bashWrite(1, numbered(store.MaxWrittenPaths+1)...)}, "store.CapDeclaration"},
+
+		// The store keeps a session id of up to 128 bytes of [A-Za-z0-9._-] as
+		// its run directory's name and digests any other (store.go, segment).
+		{"session s2", "s2", []call{edit(1, "a.go")}, ""},
+		{"session of 128 bytes", long(128), []call{edit(1, "a.go")}, ""},
+		{"session of 129 bytes", long(129), []call{edit(1, "a.go")}, "session id"},
+		{"empty session", "", []call{edit(1, "a.go")}, "session id"},
+		{"dot session", ".", []call{edit(1, "a.go")}, "session id"},
+		{"session with a slash", "a/b", []call{edit(1, "a.go")}, "session id"},
+		{"session with a space", "a b", []call{edit(1, "a.go")}, "session id"},
+
+		{"error terminal", "s1", []call{errEdit}, ""},
+		{"terminal word outside the three", "s1", []call{closedEdit}, "terminal outcome \"closed\""},
+		{"incomplete named write", "s1", []call{incompleteWrite}, ""},
+		{"incomplete write naming no paths", "s1", []call{call{seq: 1, tool: "Bash", prog: "sh", class: shape.VerbExecute, outcome: store.ExecOK, mayWrite: true, incomplete: true}}, "not a named Bash write"},
+		{"incomplete edit", "s1", []call{incompleteEdit}, "not a named Bash write"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := &fakeTB{}
 			called := false
+			var r *store.Run
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -337,11 +447,173 @@ func TestFixture_RunOfRejectsRunsTheStoreForbids(t *testing.T) {
 						called = true
 					}
 				}()
-				runOf(f, tc.calls...)
+				r = runOfSession(f, tc.session, tc.calls...)
 			}()
+			if tc.want == "" {
+				if called || r == nil {
+					t.Fatalf("refused a run the hook writes: %q", f.fatal)
+				}
+				return
+			}
 			if !called || !strings.Contains(f.fatal, tc.want) {
 				t.Fatalf("called %t, message %q", called, f.fatal)
 			}
 		})
+	}
+}
+
+// TestFixture_RunOfRoundTripsThroughTheStore appends every record of a built
+// run to a real store and reads the run back: the run an evaluator test is
+// given is the run it would read.
+func TestFixture_RunOfRoundTripsThroughTheStore(t *testing.T) {
+	gate := gateRun(1, "go-test", store.ExecOK)
+	gate.term = store.OutcomeOK
+	ed := edit(2, "a.go")
+	ed.term = store.OutcomeOK
+	complete := bashWrite(3, "b.go", "c.go")
+	incomplete := bashWrite(4, "d.go")
+	incomplete.incomplete, incomplete.term = true, store.OutcomeError
+	calls := []call{gate, ed, complete, incomplete}
+	r := runOfSession(t, "s2", calls...)
+
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	terms := make(map[string]store.Terminal, len(r.Terminals))
+	for _, term := range r.Terminals {
+		terms[term.ToolUseID] = term
+	}
+	for i := range calls {
+		d, e := r.Declarations[i], r.Executions[i]
+		if err := st.AppendDeclaration(d); err != nil {
+			t.Fatalf("call %d: AppendDeclaration: %v", i, err)
+		}
+		if err := st.AppendExecution(e); err != nil {
+			t.Fatalf("call %d: AppendExecution: %v", i, err)
+		}
+		if term, ok := terms[d.ToolUseID]; ok {
+			if err := st.AppendTerminal(term); err != nil {
+				t.Fatalf("call %d: AppendTerminal: %v", i, err)
+			}
+		}
+	}
+	got, err := st.ReadRun("s2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Skipped != 0 || got.Ignored != 0 {
+		t.Fatalf("read back with Skipped %d and Ignored %d, want 0 and 0: the store could not read a record as built", got.Skipped, got.Ignored)
+	}
+	// The store files a record by its SessionID, so Dir is compared on both
+	// sides: a built Dir that is not the session's would pass got.Dir alone.
+	if r.Dir != "s2" || got.Dir != r.Dir {
+		t.Fatalf("Dir %q built and %q read back, want %q for both", r.Dir, got.Dir, "s2")
+	}
+	if len(got.Declarations) != len(r.Declarations) || len(got.Executions) != len(r.Executions) || len(got.Terminals) != len(r.Terminals) {
+		t.Fatalf("read back %d declarations, %d executions and %d terminals, built %d, %d and %d",
+			len(got.Declarations), len(got.Executions), len(got.Terminals), len(r.Declarations), len(r.Executions), len(r.Terminals))
+	}
+	if len(r.Terminals) != 3 {
+		t.Fatalf("built %d terminals, want 3: three of the four calls name a term", len(r.Terminals))
+	}
+	for i, w := range r.Declarations {
+		g := got.Declarations[i]
+		if g.ToolUseID != w.ToolUseID {
+			t.Fatalf("declaration %d: ToolUseID %q read back, %q built", i, g.ToolUseID, w.ToolUseID)
+		}
+		for _, f := range []struct {
+			name string
+			same bool
+		}{
+			{"FilePath", samePtr(g.FilePath, w.FilePath)},
+			{"WrittenPaths", slices.Equal(g.WrittenPaths, w.WrittenPaths)},
+			{"WrittenPathsComplete", samePtr(g.WrittenPathsComplete, w.WrittenPathsComplete)},
+			{"Shape.VerbClass", g.Shape.VerbClass == w.Shape.VerbClass},
+			{"Shape.MayWrite", g.Shape.MayWrite == w.Shape.MayWrite},
+			{"Shape.RunnerKind", samePtr(g.Shape.RunnerKind, w.Shape.RunnerKind)},
+			{"Shape.RunnerDigest", samePtr(g.Shape.RunnerDigest, w.Shape.RunnerDigest)},
+			{"Shape.StatusMasked", samePtr(g.Shape.StatusMasked, w.Shape.StatusMasked)},
+		} {
+			if !f.same {
+				t.Errorf("declaration %d (%s): %s differs after the round trip", i, w.ToolUseID, f.name)
+			}
+		}
+	}
+	for i, w := range r.Executions {
+		g := got.Executions[i]
+		if g.ToolUseID != w.ToolUseID {
+			t.Fatalf("execution %d: ToolUseID %q read back, %q built", i, g.ToolUseID, w.ToolUseID)
+		}
+		for _, f := range []struct {
+			name string
+			same bool
+		}{
+			{"Outcome", g.Outcome == w.Outcome},
+			{"ExitCode", samePtr(g.ExitCode, w.ExitCode)},
+			{"Backgrounded", g.Backgrounded == w.Backgrounded},
+			{"RunnerDigest", samePtr(g.RunnerDigest, w.RunnerDigest)},
+			{"StatusMasked", samePtr(g.StatusMasked, w.StatusMasked)},
+			{"RunnerKind", samePtr(g.RunnerKind, w.RunnerKind)},
+		} {
+			if !f.same {
+				t.Errorf("execution %d (%s): %s differs after the round trip", i, w.ToolUseID, f.name)
+			}
+		}
+	}
+	for i, w := range r.Terminals {
+		if g := got.Terminals[i]; g.ToolUseID != w.ToolUseID || g.Outcome != w.Outcome {
+			t.Errorf("terminal %d: %s %q read back, %s %q built", i, g.ToolUseID, g.Outcome, w.ToolUseID, w.Outcome)
+		}
+	}
+	// Against the calls, not the built run: a builder that ignored incomplete
+	// would build and read back true for both writes.
+	if c := got.Declarations[2].WrittenPathsComplete; c == nil || !*c {
+		t.Errorf("the complete write reads back WrittenPathsComplete set %t, want true", c != nil)
+	}
+	if c := got.Declarations[3].WrittenPathsComplete; c == nil || *c {
+		t.Errorf("the incomplete write reads back WrittenPathsComplete set %t value %t, want false", c != nil, c != nil && *c)
+	}
+
+	// Seq is the store's: in append order, which is call order with each
+	// call's declaration, execution and terminal, it strictly increases.
+	var seqs []int64
+	k := 0
+	for i, c := range calls {
+		seqs = append(seqs, got.Declarations[i].Seq)
+		if s := got.Executions[i].Seq; s == nil {
+			t.Fatalf("execution %d read back with no Seq: it was spilled, not ordered", i)
+		} else {
+			seqs = append(seqs, *s)
+		}
+		if c.term != "" {
+			if s := got.Terminals[k].Seq; s == nil {
+				t.Fatalf("terminal %d read back with no Seq: it was spilled, not ordered", k)
+			} else {
+				seqs = append(seqs, *s)
+			}
+			k++
+		}
+	}
+	for i := 1; i < len(seqs); i++ {
+		if seqs[i] <= seqs[i-1] {
+			t.Fatalf("Seq in append order %v does not strictly increase at %d", seqs, i)
+		}
+	}
+}
+
+func TestFixture_TerminalIsBuiltOnlyWhenAsked(t *testing.T) {
+	c := gateRun(1, "go-test", store.ExecOK)
+	if r := runOf(t, c); len(r.Terminals) != 0 {
+		t.Fatalf("a call with no term built %d terminals, want none: a missing terminal is the uncontrolled exit's signature", len(r.Terminals))
+	}
+	c.term = store.OutcomeOK
+	r := runOf(t, c)
+	if len(r.Terminals) != 1 {
+		t.Fatalf("a call with term %q built %d terminals, want 1", c.term, len(r.Terminals))
+	}
+	if term := r.Terminals[0]; term.ToolUseID != r.Declarations[0].ToolUseID || term.Outcome != store.OutcomeOK {
+		t.Fatalf("terminal %s %q, want %s %q", term.ToolUseID, term.Outcome, r.Declarations[0].ToolUseID, store.OutcomeOK)
 	}
 }
