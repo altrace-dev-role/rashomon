@@ -72,8 +72,9 @@ type Handler struct {
 	capDecl func(*store.Declaration) bool
 
 	// HarnessID, when non-empty, is stamped on the declaration as harness_id.
-	// The caller sets it to "unknown" for an Unknown detection (the 10-23
-	// default: recorded, not stood down); it stays null otherwise.
+	// The caller sets it to "unknown" for an Unknown detection, which this
+	// build records rather than stands down on (policy pending Karthik's BRD-4
+	// ruling); it stays null otherwise.
 	HarnessID string
 
 	sessionID string

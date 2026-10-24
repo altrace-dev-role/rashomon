@@ -136,8 +136,9 @@ func harnessSessionKey(payload *hookio.Payload, id harness.Identity) string {
 }
 
 // newHandler is cmdHook's hook.New plus the harness stamp: an Unknown
-// detection that went on to be recorded carries harness_id "unknown" on its
-// declaration (the 10-23 default); every other call leaves it null.
+// detection, which this build records rather than stands down on, carries
+// harness_id "unknown" on its declaration; every other call leaves it null.
+// Recording Unknown is a policy pending Karthik's BRD-4 ruling.
 func newHandler(st *store.Store, id harness.Identity) *hook.Handler {
 	h := hook.New(st, time.Now)
 	if id.ID == harness.Unknown {

@@ -128,9 +128,10 @@ func seenNotStoodDown(t *testing.T, e *env) {
 
 // TestBRD4_HookRecordsUnknownHarness: a Claude-shaped payload with no
 // CLAUDE_CODE_ENTRYPOINT and a transcript outside the config dir satisfies
-// none of Detect's steps but the last -- Unknown. Under the 10-23 default
-// (record Unknown, stand down only on a positive foreign marker) the call is
-// recorded with harness_id "unknown" and the counter moves as seen.
+// none of Detect's steps but the last -- Unknown. The code records Unknown and
+// stands down only on a positive foreign marker (policy pending Karthik's
+// BRD-4 ruling), so the call is recorded with harness_id "unknown" and the
+// counter moves as seen.
 func TestBRD4_HookRecordsUnknownHarness(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
@@ -141,7 +142,7 @@ func TestBRD4_HookRecordsUnknownHarness(t *testing.T) {
 	}
 	decls := e.declarations(testSession)
 	if len(decls) != 1 {
-		t.Fatalf("got %d declarations, want 1: the 10-23 default records an Unknown harness", len(decls))
+		t.Fatalf("got %d declarations, want 1: the code records an Unknown harness (policy pending BRD-4 ruling)", len(decls))
 	}
 	if got := decls[0].str("harness_id"); got != "unknown" {
 		t.Errorf("declaration harness_id = %q, want %q", got, "unknown")
@@ -250,8 +251,8 @@ func TestBRD4_SessionlessCursorStandDownsDedupeBySameConversation(t *testing.T) 
 }
 
 // TestBRD4_PostRecordsUnknownHarness mirrors the hook case for
-// PostToolUse (the 10-23 default): the execution is recorded and the counter
-// moves as seen.
+// PostToolUse: the execution is recorded and the counter moves as seen
+// (policy pending Karthik's BRD-4 ruling).
 func TestBRD4_PostRecordsUnknownHarness(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)
@@ -262,13 +263,14 @@ func TestBRD4_PostRecordsUnknownHarness(t *testing.T) {
 		t.Fatalf("post: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	if len(e.executions(testSession)) != 1 {
-		t.Errorf("post under an Unknown harness recorded %d executions, want 1 (the 10-23 default)", len(e.executions(testSession)))
+		t.Errorf("post under an Unknown harness recorded %d executions, want 1 (policy pending BRD-4 ruling)", len(e.executions(testSession)))
 	}
 	seenNotStoodDown(t, e)
 }
 
 // TestBRD4_ProbeRecordsUnknownHarness: probe's start phase under an Unknown
-// harness proceeds and creates its run directory (the 10-23 default).
+// harness proceeds and creates its run directory (policy pending Karthik's
+// BRD-4 ruling).
 func TestBRD4_ProbeRecordsUnknownHarness(t *testing.T) {
 	e := newEnv(t)
 	if res := e.watch(); res.exitCode != 0 {
@@ -281,7 +283,7 @@ func TestBRD4_ProbeRecordsUnknownHarness(t *testing.T) {
 		t.Fatalf("probe: exit %d, stderr %q", res.exitCode, res.stderr)
 	}
 	if !runDirExists(e, sessionID) {
-		t.Errorf("probe under an Unknown harness created no run directory for %s (the 10-23 default records it)", sessionID)
+		t.Errorf("probe under an Unknown harness created no run directory for %s (the code records it; policy pending BRD-4 ruling)", sessionID)
 	}
 	seenNotStoodDown(t, e)
 }
@@ -320,7 +322,7 @@ func TestBRD4_RecapStandsDownOnCursorMarker(t *testing.T) {
 }
 
 // TestBRD4_RecapRecordsUnknownHarness: recap under an Unknown harness still
-// runs (the 10-23 default) and counts it as seen.
+// runs and counts it as seen (policy pending Karthik's BRD-4 ruling).
 func TestBRD4_RecapRecordsUnknownHarness(t *testing.T) {
 	e := newEnv(t)
 	e.watched(testSession)

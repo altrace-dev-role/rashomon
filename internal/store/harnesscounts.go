@@ -243,7 +243,8 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 }
 
 // RecordHarnessSeen is RecordHarnessMismatch for a detection that did not
-// stand down (an Unknown harness, recorded under the 10-23 default): the
+// stand down (an Unknown harness, which this build records; policy pending
+// Karthik's BRD-4 ruling): the
 // same locked, deduplicated update, moving seen only -- stood_down and
 // last_stood_down are untouched, so the counter still says how often each
 // outcome happened.

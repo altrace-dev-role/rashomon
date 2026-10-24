@@ -1,5 +1,6 @@
 # BRD-4: Claude entry points stand down on a positively detected foreign
-# harness (Cursor, Codex) and record Unknown (the 10-23 default): StandsDown's
+# harness (Cursor, Codex) and record Unknown (Unknown's policy is pending
+# Karthik's BRD-4 ruling; this is what the code does): StandsDown's
 # own comparison and its Unknown guard, the seen-only counter write, and the
 # harness_id stamp on the declaration.
 
