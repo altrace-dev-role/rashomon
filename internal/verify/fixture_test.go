@@ -75,6 +75,7 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 //   - A call that is not Bash names no runner, is not backgrounded and does not set mayWrite (deriveCut derives the runner and mayWrite only for a tool whose class is execute and whose input carries a command field, shape.go:158-163; of the three execute tools, verb.go:39, only Bash carries one; post.go reads Backgrounded for Bash alone).
 //   - A call that is not Bash, Edit or Write names no paths.
 //   - A runner's masked word is one of shape.MaskedKinds and its kind one of shape.RunnerKinds; with a runner the word is none or the runner's own kind (statusMasked and runnerOf take both from the runner group); a runner-less Bash call carries its word, none unless the line hid two runners or a displaced one (masked.go:177-178; runnerDigest, masked_eval.go:34-39); a tool that is not Bash carries no word (deriveCut returns before statusMasked). A line statusMasked could not parse (StatusMasked nil on a shell call) is not built: no evaluator test needs it yet.
+//   - A call classed test has masked none and, when it names a kind, a test kind: Derive reclasses a shell line test only through runsTests, which no route to a hidden status reaches (the checks say why).
 //   - The execution's runner fields mirror the declaration's (post.go copies them from the shape it derives).
 //   - The outcome is one of the Execution outcomes (record.go). A backgrounded call's outcome is ok: post.go reads Backgrounded on the success event only.
 //   - ExitCode is set only on the failure event, whose outcome is failed or interrupted, with a known code (post.go parses it before the interrupt check); an exit on an ok call is refused.
@@ -140,6 +141,25 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		if c.runner != "" && c.masked != shape.MaskedNone &&
 			!(c.masked == shape.MaskedTest && c.kind == shape.RunnerTest) && !(c.masked == shape.MaskedBuild && c.kind == shape.RunnerBuild) {
 			t.Fatalf("runOf: call %d masked %q with runner kind %q: with a runner the masked word is none or the runner's own kind (shape: statusMasked and runnerOf take both from one runner group)", i, c.masked, c.kind)
+		}
+		// Derive reclasses a shell line test only when runsTests holds, and no
+		// route to a hidden status reaches it: a later stage on the line,
+		// which wholeCommand refuses; or a leading word the masked parser
+		// reads as syntax, a `!` negation (parsePipeline) or a compound such
+		// as `if` (parseCommand), while the program search takes that word as
+		// the program, so runsTests never sees a test runner. Re-derived in
+		// 0.2a if the program search skips `!` or a compound's keyword.
+		// And runsTests matches a testCommands row at the program position,
+		// the row the runner grouping kinds as test. Not tied here: the class
+		// against bg (the input and the response are two sources), and class
+		// test against a runner being present (runsTests and the runner
+		// grouping are two matchers that disagree on leading options; revisit
+		// in 0.2a).
+		if c.class == shape.VerbTest && c.masked != "" && c.masked != shape.MaskedNone {
+			t.Fatalf("runOf: call %d is class %q with masked %q: a hidden status never reaches the test class (shape: runsTests, wholeCommand and the program search)", i, c.class, c.masked)
+		}
+		if c.class == shape.VerbTest && c.kind != "" && c.kind != shape.RunnerTest {
+			t.Fatalf("runOf: call %d is class %q with runner kind %q: the test class needs a test command at the program position, which the runner grouping kinds test (shape: runsTests over testCommands)", i, c.class, c.kind)
 		}
 		if c.outcome != store.ExecOK && c.outcome != store.ExecFailed && c.outcome != store.ExecInterrupted {
 			t.Fatalf("runOf: call %d outcome %q is not one of %q, %q and %q (store: Execution outcomes)", i, c.outcome, store.ExecOK, store.ExecFailed, store.ExecInterrupted)
@@ -251,6 +271,20 @@ func samePtr[T comparable](a, b *T) bool {
 	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
 }
 
+// gateKind and gateReason read a GateOutput's Kind and Reason, empty for nil.
+func gateKind(g *store.GateOutput) string {
+	if g == nil {
+		return ""
+	}
+	return g.Kind
+}
+func gateReason(g *store.GateOutput) string {
+	if g == nil || g.Reason == nil {
+		return ""
+	}
+	return *g.Reason
+}
+
 // sameGateOutput is samePtr for a GateOutput, whose Reason is itself a pointer.
 func sameGateOutput(a, b *store.GateOutput) bool {
 	return (a == nil && b == nil) || (a != nil && b != nil && a.Kind == b.Kind && a.Parser == b.Parser && samePtr(a.Reason, b.Reason))
@@ -266,7 +300,7 @@ func TestFixture_RunOfPairsEveryDeclarationWithItsExecution(t *testing.T) {
 		gateRun(2, "go-test", store.ExecOK),
 		failed,
 		bgRun,
-		call{seq: 5, tool: "Bash", prog: "make", class: shape.VerbTest, runner: "make-test", kind: shape.RunnerTest, masked: shape.MaskedTest, outcome: store.ExecOK},
+		call{seq: 5, tool: "Bash", prog: "make", class: shape.VerbExecute, runner: "make-test", kind: shape.RunnerTest, masked: shape.MaskedTest, outcome: store.ExecOK},
 		call{seq: 6, tool: "Write", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"w.go"}},
 		call{seq: 7, tool: "Bash", prog: "make", class: shape.VerbExecute, runner: "make-release", kind: shape.RunnerBuild, masked: shape.MaskedBuild, outcome: store.ExecOK},
 		bashWrite(8, "z.go"),
@@ -435,6 +469,18 @@ func TestFixture_BuiltRecordsDoNotAliasTheCallersPaths(t *testing.T) {
 	}
 }
 
+func TestFixture_BuiltRecordsDoNotAliasTheCallersGateOutput(t *testing.T) {
+	reason := "budget"
+	out := &store.GateOutput{Kind: "unread", Parser: "go", Reason: &reason}
+	c := gateRun(1, "go-test", store.ExecOK)
+	c.gateOutput = out
+	r := runOf(t, c)
+	out.Kind, reason = "summary_pass", "decode"
+	if g := r.Executions[0].GateOutput; g == nil || g.Kind != "unread" || g.Reason == nil || *g.Reason != "budget" {
+		t.Fatalf("record follows the caller's gate_output: set %t, kind %q, reason %q", g != nil, gateKind(g), gateReason(g))
+	}
+}
+
 // fakeTB records Fatalf and unwinds by panicking with itself, so a test can
 // prove that runOf rejects an impossible run. runOf may call only Helper and
 // Fatalf on its TB; the embedded nil TB makes any other call a loud failure.
@@ -474,8 +520,8 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 	incompleteWrite.incomplete = true
 	incompleteEdit := edit(1, "a.go")
 	incompleteEdit.incomplete = true
-	gate := func(masked, kind, outcome string, exit int, bg bool) call {
-		return call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: kind, masked: masked, outcome: outcome, exit: exit, bg: bg}
+	gate := func(class, masked, kind, outcome string, exit int, bg bool) call {
+		return call{seq: 1, tool: "Bash", prog: "go", class: class, runner: "go-test", kind: kind, masked: masked, outcome: outcome, exit: exit, bg: bg}
 	}
 	cases := []struct {
 		name    string
@@ -518,18 +564,25 @@ func TestFixture_RunOfRejectsRunsTheHookNeverWrites(t *testing.T) {
 		{"incomplete edit", "s1", []call{incompleteEdit}, "not a named Bash write"},
 
 		// The pairings the hook keeps between fields, each with its accepted twin.
-		{"masked test on a build runner", "s1", []call{gate(shape.MaskedTest, shape.RunnerBuild, store.ExecOK, 0, false)}, "the runner's own kind"},
-		{"masked build on a build runner", "s1", []call{gate(shape.MaskedBuild, shape.RunnerBuild, store.ExecOK, 0, false)}, ""},
-		{"backgrounded failure", "s1", []call{gate(shape.MaskedNone, shape.RunnerTest, store.ExecFailed, 0, true)}, "backgrounded"},
-		{"backgrounded success", "s1", []call{gate(shape.MaskedNone, shape.RunnerTest, store.ExecOK, 0, true)}, ""},
-		{"exit code on success", "s1", []call{gate(shape.MaskedNone, shape.RunnerTest, store.ExecOK, 3, false)}, "exit code 3"},
-		{"exit code on failure", "s1", []call{gate(shape.MaskedNone, shape.RunnerTest, store.ExecFailed, 3, false)}, ""},
-		{"exit code on interrupt", "s1", []call{gate(shape.MaskedNone, shape.RunnerTest, store.ExecInterrupted, 130, false)}, ""},
-		{"outcome outside the three", "s1", []call{gate(shape.MaskedNone, shape.RunnerTest, "done", 0, false)}, "outcome \"done\""},
+		// A hidden status keeps go's base class, package (a stage after the
+		// runner is never reclassed test).
+		{"masked test on a build runner", "s1", []call{gate(shape.VerbPackage, shape.MaskedTest, shape.RunnerBuild, store.ExecOK, 0, false)}, "the runner's own kind"},
+		{"masked build on a build runner", "s1", []call{gate(shape.VerbPackage, shape.MaskedBuild, shape.RunnerBuild, store.ExecOK, 0, false)}, ""},
+		{"backgrounded failure", "s1", []call{gate(shape.VerbTest, shape.MaskedNone, shape.RunnerTest, store.ExecFailed, 0, true)}, "backgrounded"},
+		{"backgrounded success", "s1", []call{gate(shape.VerbTest, shape.MaskedNone, shape.RunnerTest, store.ExecOK, 0, true)}, ""},
+		{"exit code on success", "s1", []call{gate(shape.VerbTest, shape.MaskedNone, shape.RunnerTest, store.ExecOK, 3, false)}, "exit code 3"},
+		{"exit code on failure", "s1", []call{gate(shape.VerbTest, shape.MaskedNone, shape.RunnerTest, store.ExecFailed, 3, false)}, ""},
+		{"exit code on interrupt", "s1", []call{gate(shape.VerbTest, shape.MaskedNone, shape.RunnerTest, store.ExecInterrupted, 130, false)}, ""},
+		{"outcome outside the three", "s1", []call{gate(shape.VerbTest, shape.MaskedNone, shape.RunnerTest, "done", 0, false)}, "outcome \"done\""},
+		{"class test with masked test", "s1", []call{gate(shape.VerbTest, shape.MaskedTest, shape.RunnerTest, store.ExecOK, 0, false)}, "class \"test\" with masked"},
+		{"class package with masked test", "s1", []call{gate(shape.VerbPackage, shape.MaskedTest, shape.RunnerTest, store.ExecOK, 0, false)}, ""},
+		{"class test with masked test and no runner", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, masked: shape.MaskedTest, outcome: store.ExecOK}}, "class \"test\" with masked"},
+		{"class test with a build kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-build", kind: shape.RunnerBuild, masked: shape.MaskedNone, outcome: store.ExecOK}}, "class \"test\" with runner kind"},
+		{"class execute with a build kind", "s1", []call{call{seq: 1, tool: "Bash", prog: "make", class: shape.VerbExecute, runner: "make-release", kind: shape.RunnerBuild, masked: shape.MaskedNone, outcome: store.ExecOK}}, ""},
 		{"masked word on an edit", "s1", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, masked: shape.MaskedNone, outcome: store.ExecOK, paths: []string{"a.go"}}}, "masked word"},
 		{"masked word on a runner-less Bash call", "s1", []call{call{seq: 1, tool: "Bash", prog: "ls", class: shape.VerbRead, masked: shape.MaskedNone, outcome: store.ExecOK}}, ""},
 		// Two hidden runners, or one a cd displaced: the word without a runner.
-		{"masked test on a runner-less Bash call", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, masked: shape.MaskedTest, outcome: store.ExecOK}}, ""},
+		{"masked test on a runner-less Bash call", "s1", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbPackage, masked: shape.MaskedTest, outcome: store.ExecOK}}, ""},
 		{"runner-less Bash call with a bad masked word", "s1", []call{call{seq: 1, tool: "Bash", prog: "ls", class: shape.VerbRead, masked: "hidden", outcome: store.ExecOK}}, "masked \"hidden\" is not one of"},
 	}
 	for _, tc := range cases {
@@ -578,12 +631,18 @@ func TestFixture_RunOfRoundTripsThroughTheStore(t *testing.T) {
 	// tool ran anyway.
 	hidden := gateRun(5, "go-test", store.ExecOK)
 	hidden.bg, hidden.masked, hidden.kind, hidden.term = true, shape.MaskedTest, shape.RunnerTest, store.OutcomeSignal
+	hidden.class = shape.VerbPackage // a stage after the runner is never reclassed test (wholeCommand), so go's base class stays
 	// A `go build ./... | tail -1; exit 2`: the build runner's status hidden,
 	// the line failing on the failure event with "Exit code 2".
 	build := gateRun(6, "go-build", store.ExecFailed)
 	build.class, build.exit, build.masked, build.kind = shape.VerbPackage, 2, shape.MaskedBuild, shape.RunnerBuild
 	build.gateOutput = &store.GateOutput{Kind: "summary_fail", Parser: "go"}
-	calls := []call{gate, ed, complete, incomplete, hidden, build}
+	// A gate run whose output was not read for want of budget: the one
+	// gate_output that carries a Reason (record_v5.go GateOutput).
+	reason := "budget"
+	unread := gateRun(7, "go-test", store.ExecOK)
+	unread.gateOutput = &store.GateOutput{Kind: "unread", Parser: "go", Reason: &reason}
+	calls := []call{gate, ed, complete, incomplete, hidden, build, unread}
 	r := runOfSession(t, "s2", calls...)
 
 	st, err := store.Open(t.TempDir())
@@ -628,7 +687,7 @@ func TestFixture_RunOfRoundTripsThroughTheStore(t *testing.T) {
 			len(got.Declarations), len(got.Executions), len(got.Terminals), len(r.Declarations), len(r.Executions), len(r.Terminals))
 	}
 	if len(r.Terminals) != 4 {
-		t.Fatalf("built %d terminals, want 4: four of the six calls name a term", len(r.Terminals))
+		t.Fatalf("built %d terminals, want 4: four of the seven calls name a term", len(r.Terminals))
 	}
 	for i, w := range r.Declarations {
 		g := got.Declarations[i]
@@ -706,6 +765,9 @@ func TestFixture_RunOfRoundTripsThroughTheStore(t *testing.T) {
 	}
 	if g := got.Executions[5].GateOutput; g == nil || g.Kind != "summary_fail" || g.Parser != "go" {
 		t.Errorf("the failed build reads back GateOutput set %t, want kind %q parser %q", g != nil, "summary_fail", "go")
+	}
+	if g := got.Executions[6].GateOutput; g == nil || g.Kind != "unread" || g.Reason == nil || *g.Reason != "budget" {
+		t.Errorf("the unread run reads back GateOutput set %t, Reason set %t, want kind %q reason %q", g != nil, g != nil && g.Reason != nil, "unread", "budget")
 	}
 
 	// Seq is the store's, one per record in append order, and the builder
