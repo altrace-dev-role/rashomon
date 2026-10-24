@@ -338,6 +338,11 @@ func (r rig) medianRSS(t *testing.T, command []string, mk func(i int) []byte) (m
 		xs = append(xs, rss)
 	}
 	m, _ := Median(xs)
+	// The nine readings, not only their median: a median that sits in one of
+	// two modes (post.edit_314k and recap.pending read about 2 MiB apart on
+	// ubuntu-latest across CI runs) cannot be told from a drift of the floor
+	// by one number.
+	t.Logf("%s: nine peak RSS readings in MiB: %.2f", strings.Join(command, " "), xs)
 	return m, true, ""
 }
 
@@ -386,7 +391,10 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				reportOnlyRSS(t, CaseGate(c.ID), c.ID, got, why)
 			default:
 				ran[CaseGate(c.ID)] = true
-				t.Errorf("%s: %s", c.ID, why)
+				// The reading rides in the failure: the row this asks for is
+				// the platform's own measurement, and a failure that did not
+				// say what was read left nobody a way to write it.
+				t.Errorf("%s: read %.2f MiB; %s", c.ID, got, why)
 			}
 		})
 	}
@@ -422,7 +430,7 @@ func TestRES28b_EveryEntryStaysWithinItsRow(t *testing.T) {
 				reportOnlyRSS(t, EntryGate(e.ID), e.ID, got, why)
 			default:
 				ran[EntryGate(e.ID)] = true
-				t.Errorf("%s: %s", e.ID, why)
+				t.Errorf("%s: read %.2f MiB; %s", e.ID, got, why)
 			}
 		})
 	}
