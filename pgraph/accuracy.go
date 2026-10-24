@@ -16,7 +16,8 @@ const (
 )
 
 // Accuracy is a count of facts against a hand-labelled truth, as sets of
-// distinct triples: Got facts claimed, Want facts true, Hit in both.
+// distinct triples: Got facts claimed, Want facts true, Hit in both. A ratio
+// of these is never quoted without them or without the corpus (Describe).
 type Accuracy struct{ Got, Want, Hit int }
 
 // Score compares a producer's facts with the labelled truth. Time is
@@ -40,11 +41,34 @@ func Score(got, want []Triple) Accuracy {
 
 // Precision is the share of claimed facts that are true. It is NaN when
 // nothing was claimed: a figure over no claims is undefined, never 0 or 1.
+// The figure says nothing without its counts and its corpus's size; Describe
+// prints all three, and is what a published figure goes through.
 func (a Accuracy) Precision() float64 { return ratio(a.Hit, a.Got) }
 
 // Recall is the share of true facts that were claimed; NaN when there is no
-// truth.
+// truth. Want is the size of the labelled corpus it was scored against.
 func (a Accuracy) Recall() float64 { return ratio(a.Hit, a.Want) }
+
+// Describe is the one way a figure is printed: precision and recall each with
+// the counts they are a ratio of, then the corpus by name and its size in
+// labelled edges, for example
+//
+//	precision 0.368 (14 of 38 CHA edges are true), recall 1.000 (14 of 14 labelled edges found), corpus dispatch-v1: 14 labelled edges
+//
+// An undefined ratio prints as "undefined", with its counts. a must be the
+// Score of a producer's facts against the corpus's own labels, so that Want
+// is the corpus's size.
+func (a Accuracy) Describe(corpus string) string {
+	return fmt.Sprintf("precision %s (%d of %d CHA edges are true), recall %s (%d of %d labelled edges found), corpus %s: %d labelled edges",
+		fixed3(a.Precision()), a.Hit, a.Got, fixed3(a.Recall()), a.Hit, a.Want, corpus, a.Want)
+}
+
+func fixed3(x float64) string {
+	if math.IsNaN(x) {
+		return "undefined"
+	}
+	return fmt.Sprintf("%.3f", x)
+}
 
 func ratio(n, d int) float64 {
 	if d == 0 {

@@ -19,6 +19,19 @@ import (
 // (thirty and up); a body of six `_ = 1` statements has 19 and one of seven
 // has 22. The floor decides only renames: a symbol that keeps its id keeps
 // its identity at any size.
+//
+// Measured once, on this repository's history: origin/main at 323e4075, its 84
+// first-parent commits, 78 consecutive pairs (the oldest five commits import
+// modernc.org/sqlite, which the offline loader cannot resolve, so five pairs
+// are out). Rule 3 had 7 candidates in all, a vanished symbol and one
+// newcomer of the same shape and body, and not one was ambiguous. Read by hand
+// every one is a true rename or move, none a false link. Links by floor: 10: 7
+// of 7, 15: 7 of 7, 20: 6 of 7, 25: 6 of 7, 30: 5 of 7. At 20 the miss is
+// install.timeoutFor to TimeoutFor (18 nodes); at 30 it also loses
+// gather.baselineErrorReason (28). The sample is seven renames, so it neither
+// argues for moving the floor (no false link at any floor, one 18-node miss at
+// 20) nor shows what the floor itself prevents here: the uniqueness test of
+// rule 3 refused nothing in this history. 20 stays as the value PF-PL10 chose.
 const MinLinkNodes = 20
 
 // Fingerprint is what Link knows of one declared function or method at one

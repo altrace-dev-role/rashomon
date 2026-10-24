@@ -35,6 +35,24 @@ func TestPL3_ScoreCountsDistinctTriples(t *testing.T) {
 	}
 }
 
+// A figure is never printed without the counts it is a ratio of and the
+// corpus's size, and an undefined one says so instead of printing NaN.
+func TestPL3_DescribeCarriesCountsAndCorpusSize(t *testing.T) {
+	for _, k := range []struct {
+		acc    Accuracy
+		corpus string
+		want   string
+	}{
+		{Accuracy{Got: 38, Want: 14, Hit: 14}, "dispatch-v1", "precision 0.368 (14 of 38 CHA edges are true), recall 1.000 (14 of 14 labelled edges found), corpus dispatch-v1: 14 labelled edges"},
+		{Accuracy{Got: 0, Want: 3, Hit: 0}, "demo-v1", "precision undefined (0 of 0 CHA edges are true), recall 0.000 (0 of 3 labelled edges found), corpus demo-v1: 3 labelled edges"},
+		{Accuracy{Got: 2, Want: 0, Hit: 0}, "demo-v2", "precision 0.000 (0 of 2 CHA edges are true), recall undefined (0 of 0 labelled edges found), corpus demo-v2: 0 labelled edges"},
+	} {
+		if got := k.acc.Describe(k.corpus); got != k.want {
+			t.Errorf("Describe(%+v, %q) = %q, want %q", k.acc, k.corpus, got, k.want)
+		}
+	}
+}
+
 const goodLabels = "pgraph-labels v0\ncorpus demo-v1\n# a comment\nfunc:a.F\tmethod:a.T.M\nfunc:a.G\tmethod:a.T.M\n"
 
 func TestPL3_ParseLabels(t *testing.T) {

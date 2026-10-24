@@ -31,7 +31,9 @@ func dispatchOf(t *testing.T, p *Program) []Triple {
 }
 
 // PL3 done-when: precision and recall against a hand-labelled set, published
-// with the corpus named. The label file's 14 edges were read from the source.
+// with the corpus named and sized: precision 0.368 (14 of 38 CHA edges are
+// true) and recall 1.000 (14 of 14 labelled edges found) on dispatch-v1, whose
+// 14 labelled edges were read from the source.
 // Expected CHA size, from the algorithm applied by hand to testdata/dispatch:
 // the five Area sites (Total, Closure, UseHolder, the package initialiser and
 // Vol, which reaches Shape.Area through Holder's embedded interface) each
@@ -45,10 +47,13 @@ func TestPL3_CorpusPrecisionRecall(t *testing.T) {
 	lab := dispatchLabels(t)
 	got := dispatchOf(t, p)
 	acc := Score(got, lab.Truth)
-	t.Logf("PL3 corpus %q: precision %.3f (%d of %d CHA edges are true), recall %.3f (%d of %d labelled edges found)",
-		lab.Corpus, acc.Precision(), acc.Hit, acc.Got, acc.Recall(), acc.Hit, acc.Want)
+	t.Logf("PL3 %s", acc.Describe(lab.Corpus))
 	if lab.Corpus != "dispatch-v1" {
 		t.Errorf("corpus named %q", lab.Corpus)
+	}
+	const published = "precision 0.368 (14 of 38 CHA edges are true), recall 1.000 (14 of 14 labelled edges found), corpus dispatch-v1: 14 labelled edges"
+	if got := acc.Describe(lab.Corpus); got != published {
+		t.Errorf("published figure = %q, want %q", got, published)
 	}
 	if acc != (Accuracy{Got: 38, Want: 14, Hit: 14}) {
 		t.Errorf("accuracy = %+v, want {Got:38 Want:14 Hit:14}", acc)
@@ -88,6 +93,65 @@ func TestPL3_CorpusPrecisionRecall(t *testing.T) {
 	for _, x := range got {
 		if !strings.HasPrefix(x.Object, "method:"+dm+"/") {
 			t.Errorf("target outside the scan root: %v", x)
+		}
+	}
+}
+
+// ACCEPTED GAP (v0): an interface call made inside a dependency is invisible.
+// sort.Sort calls Len, Less and Swap on whatever sort.Interface it is given,
+// so a repo type's Less is reached through the standard library, but
+// dependencies are read from export data and their bodies are not part of the
+// program (see Dispatch), so no edge is made from sort.Sort into byLen's
+// methods, and none from Sorted, whose own call is a static call to sort.Sort
+// and not an interface call. A reader of the graph must not take the absence
+// of an edge into such a method as proof that nothing calls it. The control
+// below shows the fixture is not blind: an interface call in the repo's own
+// code does make its edge.
+func TestPL3_AcceptedGap_DependencyInternalDispatchIsInvisible(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("go.mod", "module example.test/gap\n\ngo 1.25.0\n")
+	write("p.go", `package p
+
+import "sort"
+
+// byLen is sorted by sort.Sort, which calls Len, Less and Swap through
+// sort.Interface from inside the standard library.
+type byLen []string
+
+func (b byLen) Len() int           { return len(b) }
+func (b byLen) Less(i, j int) bool { return len(b[i]) < len(b[j]) }
+func (b byLen) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+
+func Sorted(s []string) { sort.Sort(byLen(s)) }
+
+// Sizer and Box are the control: an interface call in this module's own code.
+type Sizer interface{ Size() int }
+
+type Box struct{}
+
+func (Box) Size() int { return 1 }
+
+func Measure(s Sizer) int { return s.Size() }
+`)
+	got := dispatchOf(t, loadT(t, dir))
+	const gp = "example.test/gap"
+	control := Triple{"func:" + gp + ".Measure", MayCall, "method:" + gp + ".Box.Size"}
+	if !set(got)[control] {
+		t.Fatalf("the control edge %v is missing, so the absence below proves nothing: %v", control, got)
+	}
+	for _, x := range got {
+		for _, m := range []string{"Len", "Less", "Swap"} {
+			if x.Object == "method:"+gp+".byLen."+m {
+				t.Errorf("sort.Sort's dispatch became visible, the v0 accepted gap is closed: %v. Update the gap's comments, the doc of Dispatch and this test together", x)
+			}
+		}
+		if x.Subject == "func:"+gp+".Sorted" {
+			t.Errorf("an edge from Sorted, which makes no interface call of its own: %v", x)
 		}
 	}
 }
