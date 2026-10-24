@@ -24,8 +24,8 @@ import (
 //     FinalAssistantText, the words before it, since it may have been the
 //     final message;
 //   - an id or text written by encoding/json reads back as written;
-//   - topLevelSidechain agrees with encoding/json about a valid line's
-//     top-level isSidechain.
+//   - topLevelSidechain agrees with a struct decode of isSidechain on a line
+//     that decodes: the same top-level isSidechain, key matched as the readers do.
 
 func realLines(t testing.TB) []string {
 	t.Helper()
@@ -127,22 +127,15 @@ func checkTranscriptLines(t *testing.T, data []byte) {
 	}
 }
 
-// checkSidechain compares topLevelSidechain with encoding/json on a valid
-// object whose top level can name isSidechain at most once: with no \u escape
-// the key can only be spelled one way, and one occurrence of the word bounds
-// it to one key. Duplicate keys are where the two may differ, and Claude Code
-// writes none.
+// checkSidechain holds topLevelSidechain to what the readers do with a line:
+// a struct decode of isSidechain (checkSidechainKey). That decode matches the
+// key in any case under Unicode folding, takes the last match, and ignores a
+// value that is not a boolean, so a line spelling the key "isSidechAin" is a
+// sidechain one. A map lookup of the exact key "isSidechain" is not that
+// decode, and read such a line as not one.
 func checkSidechain(t *testing.T, line []byte) {
 	t.Helper()
-	var m map[string]any
-	if json.Unmarshal(line, &m) != nil || bytes.Contains(line, []byte(`\u`)) ||
-		bytes.Count(line, []byte("isSidechain")) > 1 {
-		return
-	}
-	want := m["isSidechain"] == true
-	if got := topLevelSidechain(line); got != want {
-		t.Fatalf("topLevelSidechain(%q) = %v, encoding/json says %v", line, got, want)
-	}
+	checkSidechainKey(t, line)
 }
 
 func FuzzTranscriptBlocks(f *testing.F) {
