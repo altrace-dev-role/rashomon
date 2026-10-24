@@ -1,0 +1,68 @@
+PATH CORPUS LABELLING RULES (written before labelling; applied by tools/build_paths.py)
+
+Vocabulary: exactly shape.Labels() minus "unknown": ssh-key, credential-shaped,
+cloud-config, env-file, certificate, test-file, none. A label says what a path
+LOOKS LIKE by the naming convention of the tool that reads it; it is not a
+finding about the file's content.
+
+Rows are decided by the FIRST rule below that matches, on the repository-relative
+path. The rule id is stored in each row so a disagreement can be traced to the
+convention it contests. Case is significant where the convention's own tool is
+case-sensitive (class names, go test, pytest, Cargo, Dart, XCTest) and folded
+for file-system-level names (.env, id_rsa, extensions).
+
+  S1  ssh-key             basename (folded) is authorized_keys, or starts with
+                          id_rsa, id_dsa, id_ecdsa, id_ed25519 (ssh-keygen(1),
+                          including .pub and _sk variants), or ends .ppk (PuTTY).
+  E1  env-file            basename is .env or .envrc, or starts with ".env."
+                          or ".env-" (dotenv, direnv).
+  C1  cloud-config        basename is kubeconfig, .boto, .s3cfg or
+                          application_default_credentials.json, or ends .tfstate,
+                          .tfstate.backup, .tfvars (Terraform).
+  K1  credential-shaped   basename is .netrc, _netrc, .pgpass, .htpasswd,
+                          .git-credentials, .npmrc, .pypirc, .dockercfg, or is /
+                          starts with "credentials", "secret", "secrets" followed
+                          by "." or end of name, unless the extension is a source-code one (go py js
+                          jsx ts tsx mjs cjs java kt swift dart rs c h rb php cs: secret.go is code
+                          that mentions secrets, not a secret); or ends .kdbx,
+                          .keychain, .gpg.
+  X1  certificate         extension (folded) is .pem .crt .cer .der .p12 .pfx
+                          .p7b .jks .keystore .truststore .key .csr .p8.
+  T-go      test-file     basename ends _test.go                    (go test)
+  T-py      test-file     basename is conftest.py, test_*.py or *_test.py (pytest)
+  T-js      test-file     basename (folded) has an infix .test. or .spec. before
+                          an extension in js jsx ts tsx mjs cjs mts cts, or
+                          .test-d. / .spec-d. (Vitest typecheck tests)
+  T-java    test-file     basename ends Test.java, Tests.java, IT.java or
+                          TestCase.java (Surefire/Failsafe class-name suffixes)
+  T-kt      test-file     basename ends Test.kt, Tests.kt or IT.kt
+  T-dart    test-file     basename ends _test.dart                  (dart test)
+  T-swift   test-file     basename ends Tests.swift or Test.swift   (XCTest)
+  T-rs-dir  test-file     Rust: path matches (^|/)tests/[^/]+\.rs$ or
+                          (^|/)tests/[^/]+/main\.rs$  (Cargo integration-test
+                          targets). A DIRECTORY rule: the classifier's table is
+                          basename-only by design, so a disagreement on this
+                          rule is a design boundary, not a bug; reported apart.
+  T-rs-name test-file     Rust: basename is tests.rs (the out-of-line
+                          #[cfg(test)] module name)
+  N0  none                everything else.
+
+Rows the rules cannot decide are EXCLUDED and counted, never guessed:
+  AMBIG-TestPrefix  Java/Kotlin basename starts with "Test" but matches no
+                    suffix rule above (TestUtil.java: a helper or a test).
+  AMBIG-SwiftHelper Swift file under a Tests/ directory whose basename contains
+                    "Test" but matches no rule (BaseTestCase.swift).
+Paths containing a tab, newline, or non-UTF-8 byte are excluded and counted.
+
+Sampling (deterministic, no RNG): per repository, files from `git ls-files` at the
+pinned commit. Stratum "dir": group by first two path components (one
+component for a root file); order each group by sha256(repo + "\0" + path);
+take round-robin across groups in group-name order until DIR_CAP (90) rows.
+Stratum "cand": further files, not already taken, whose basename matches a loose
+regex of names the classes care about (test|spec|secret|cred|token|key|env|cert|
+pem|kube|tf|rc$|id_|npmrc|netrc|gpg|keystore); same hash order; up to CAND_CAP
+(40). Stratum "sens": every file of the repository not already taken that rules
+S1, E1, C1, K1 or X1 label (no cap), so the sensitive classes are covered whole.
+The candidate and sens strata over-sample the interesting classes on purpose, so
+the corpus agreement rate is NOT an estimate of the rate on a random tree; the
+report states agreement per stratum.

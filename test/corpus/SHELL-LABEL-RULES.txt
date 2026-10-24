@@ -1,0 +1,87 @@
+SHELL-LINE CORPUS LABELLING RULES (written before labelling; applied by tools/build_shell.py)
+
+Vocabulary: the verb classes a shell line can take, a subset of shape.VerbClasses():
+read, write, network, execute, vcs, package, test. (agent, mcp, unknown name tools,
+not shell lines.) The class is that of the line's LEADING COMMAND. The classifier
+documents itself as coarse; this label is the human reading of the same question:
+what is the first thing this line asks the machine to do?
+
+Finding the leading command, in order:
+  1. A logical line joins backslash continuations; comments, blank lines, heredoc
+     bodies and shell structure (if/then/else/elif/fi/for/while/until/do/done/case/
+     esac/function, a line ending { or starting { ( }) are not rows.
+  2. Leading VAR=value assignments are skipped. A line that is only assignments is
+     not a row.
+  3. Leading `cd DIR &&` (or `;`) steps are skipped.
+  4. Transparent wrappers are skipped with their own options: sudo, time, nice,
+     nohup, command, exec, env, timeout DURATION.
+  5. A leading word that contains `$` or `${{` (program unknown until run time) makes
+     the line EXCLUDED. A line the lexer (Python shlex, punctuation_chars) cannot
+     read to its end is EXCLUDED.
+  5b. A leading word that is not made of letters, digits and _ . / ~ + @ - (case
+     patterns like `*)`, brace lists, JSON keys) makes the line EXCLUDED, as does a
+     README line whose leading program this list does not name (prose and program
+     output cannot be told from commands there).
+  5c. A README line holding a <placeholder> or an ellipsis is documentation syntax,
+     not a command, and is EXCLUDED; so is a Makefile line holding an automatic
+     variable ($@ $< $^ $? $* $%), which make expands before any shell sees it.
+  6. Pipelines and lists (| && || ;) are classed by their FIRST command only.
+     Redirections and substitutions do not change the class.
+
+Class by leading program P and its first non-flag argument S (rule id in brackets):
+  vcs      P in git, gh, hg, svn                                              [vcs]
+  network  P in curl, wget, ssh, scp, sftp, rsync, nc, ncat, dig, nslookup, host,
+           ping, telnet, ftp, aws, gcloud, az (cloud CLIs talk to a service) [net]
+  read     P in cat less more head tail ls ll find grep egrep fgrep rg ag wc stat
+           file tree diff cmp realpath readlink pwd sort uniq cut awk jq yq
+           sha256sum shasum md5sum base64 which whoami uname id hostname date df du ps
+           printenv basename dirname nproc; sed and perl WITHOUT in-place flag;
+           tar with t and without x/c; find without -delete/-exec/-execdir/-ok  [read]
+  write    P in rm mv cp install mkdir rmdir touch tee ln chmod chown chgrp truncate dd
+           patch mktemp unzip zip gzip gunzip bzip2 xz unxz 7z; sed or perl with an
+           in-place flag (-i, -pi, --in-place); tar with x or c; find -delete   [write]
+  test     a recognised test invocation (the line's PURPOSE is running tests):
+           go test | cargo test, cargo nextest | swift test | dart test |
+           flutter test | dotnet test | npm|pnpm|yarn|bun test|t, and `run` of a
+           script whose name starts with "test" | pytest, py.test, jest, vitest,
+           mocha, rspec, phpunit, ctest, karma | python -m pytest, python -m
+           unittest | tox and nox unless an environment/session argument names
+           lint, docs, mypy, type, fmt, format, style, build, coverage-report,
+           pre-commit | make with S = test, tests or test-* | rake test, rake spec
+           | gradle/gradlew/mvn/mvnw whose task/goal (after the last ":") starts or
+           ends with "test"/"tests" (-x TASK values skipped), or is surefire:test or
+           integration-test | xcodebuild with an action word test or
+           test-without-building | wrappers (npx, pnpx, bunx, uv run, poetry run,
+           pipx run, bundle exec) whose wrapped command is one of the above   [test-*]
+  package  package managers and language-toolchain drivers when not running tests:
+           npm npx pnpm pnpx yarn bun bunx pip pip3 pipx uv poetry conda gem bundle
+           brew apt apt-get apk dnf yum choco winget go cargo rustup swift dart
+           flutter dotnet gradle gradlew mvn mvnw pod xcodebuild; python -m pip,
+           python -m build; a wrapper (npx, uv run, ...) whose wrapped command is
+           not a test runner                                                [pkg]
+  execute  everything else: shell builtins (echo printf cd export set source . true
+           false exit sleep [ [[ test trap unset eval read), interpreters and
+           scripts (bash sh python node ruby java ./script), compilers, linters and
+           formatters (gcc rustc javac tsc eslint prettier ruff black mypy
+           golangci-lint shellcheck pre-commit), make with any other target,
+           docker podman kubectl helm terraform xargs, and any program this list
+           does not name                              [exec] / [exec-default]
+
+Lines the rules call AMBIGUOUS are EXCLUDED and counted, never guessed: make/gradle/
+mvn with check, verify, ci or an `all` target (they run tests and more); find
+-exec; a tar with none of t, x, c.
+
+Sources, per repository at the pinned commit: workflow `run:` steps (.github/
+workflows/*.yml|yaml and .github/actions/**/action.yml; steps whose `shell:` is
+pwsh, powershell, cmd or python, and unset-shell steps in a job that runs on
+windows, are skipped because they are not bash), Makefile/GNUmakefile/*.mk recipe
+lines (lines holding `$(` are skipped: make, not the shell, expands them), *.sh and
+*.bash scripts, and fenced code blocks tagged sh, bash, shell, zsh or console in
+*.md (console blocks: only lines that start with "$ "; the prompt is stripped).
+Per repository and source kind, rows are taken in sha256 order up to a cap
+(workflow 60, make 30, script 40, readme 30); a line longer than 400 bytes is
+skipped; identical lines are merged globally and carry `count`.
+
+Scrub: every kept row passes secretshape.Secretish == false and an empty
+hygiene.Scan, in cmd/scrubfilter; a flagged line is dropped, not rewritten, and the
+number dropped is recorded in the generation log.

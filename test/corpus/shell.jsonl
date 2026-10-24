@@ -1,0 +1,501 @@
+{"id":"s0001","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"brew install alamofire/alamofire/firewalk || brew upgrade alamofire/alamofire/firewalk && firewalk &","label":"package","rule":"pkg","count":1}
+{"id":"s0002","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"brew install alamofire/alamofire/firewalk || brew upgrade alamofire/alamofire/firewalk xcbeautify && firewalk &","label":"package","rule":"pkg","count":1}
+{"id":"s0003","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"brew update && brew install alamofire/alamofire/firewalk || brew upgrade alamofire/alamofire/firewalk && firewalk &","label":"package","rule":"pkg","count":1}
+{"id":"s0004","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"sed -i'' 's;@MainActor;;g' Tests/*.swift","label":"write","rule":"write-inplace","count":1}
+{"id":"s0005","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"set -o pipefail && env NSUnbufferedIO=YES xcodebuild -project \"Alamofire.xcodeproj\" -scheme \"Alamofire iOS\" -destination \"${{ matrix.destination }}\" -destination-timeout 60 -testPlan iOS -resultBundlePath \"${{ matrix.name }}.xcresult\" clean test 2>&1 | xcbeautify --renderer github-actions","label":"execute","rule":"exec","count":1}
+{"id":"s0006","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"set -o pipefail && env NSUnbufferedIO=YES xcodebuild -project \"Alamofire.xcodeproj\" -scheme \"Alamofire iOS\" -destination \"platform=macOS\" -testPlan iOS -resultBundlePath \"${{ matrix.name }}.xcresult\" clean test 2>&1 | xcbeautify --renderer github-actions","label":"execute","rule":"exec","count":1}
+{"id":"s0007","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"set -o pipefail && env NSUnbufferedIO=YES xcodebuild -project \"Alamofire.xcodeproj\" -scheme \"Alamofire macOS\" -destination \"platform=macOS\" -testPlan macOS -resultBundlePath \"${{ matrix.name }}.xcresult\" clean test 2>&1 | xcbeautify --renderer github-actions","label":"execute","rule":"exec","count":1}
+{"id":"s0008","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"set -o pipefail && env NSUnbufferedIO=YES xcodebuild -project \"Alamofire.xcodeproj\" -scheme \"Alamofire macOS\" -destination \"platform=macOS\" clean build | xcbeautify --renderer github-actions","label":"execute","rule":"exec","count":1}
+{"id":"s0009","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"set -o pipefail && env NSUnbufferedIO=YES xcodebuild -project \"Alamofire.xcodeproj\" -scheme \"Alamofire tvOS\" -destination \"${{ matrix.destination }}\" -destination-timeout 60 -testPlan tvOS -resultBundlePath \"${{ matrix.name }}.xcresult\" clean test 2>&1 | xcbeautify --renderer github-actions","label":"execute","rule":"exec","count":1}
+{"id":"s0010","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"set -o pipefail && env NSUnbufferedIO=YES xcodebuild -project \"Alamofire.xcodeproj\" -scheme \"Alamofire visionOS\" -destination \"${{ matrix.destination }}\" -destination-timeout 60 -testPlan visionOS -resultBundlePath \"${{ matrix.name }}.xcresult\" clean test 2>&1 | xcbeautify --renderer github-actions","label":"execute","rule":"exec","count":1}
+{"id":"s0011","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"set -o pipefail && env NSUnbufferedIO=YES xcodebuild -project \"Alamofire.xcodeproj\" -scheme \"Alamofire watchOS\" -destination \"${{ matrix.destination }}\" -destination-timeout 60 -testPlan watchOS -resultBundlePath \"${{ matrix.name }}.xcresult\" clean test 2>&1 | xcbeautify --renderer github-actions","label":"execute","rule":"exec","count":1}
+{"id":"s0012","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"set -o pipefail && swift test -c debug 2>&1 | xcbeautify --renderer github-actions","label":"execute","rule":"exec","count":1}
+{"id":"s0013","repo":"Alamofire/Alamofire","source":"workflow","file":".github/workflows/ci.yml","line":"swift build --build-tests -c debug","label":"package","rule":"pkg","count":1}
+{"id":"s0014","repo":"BurntSushi/ripgrep","source":"readme","file":"fuzz/README.md","line":"cargo fuzz list","label":"package","rule":"pkg-cargo","count":1}
+{"id":"s0015","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"amd64) return 0 ;;","label":"execute","rule":"exec-default","count":1}
+{"id":"s0016","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"amd64|i386) return 0 ;;","label":"execute","rule":"exec-default","count":1}
+{"id":"s0017","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"armhf)","label":"execute","rule":"exec-default","count":1}
+{"id":"s0018","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"armhf) return 0 ;;","label":"execute","rule":"exec-default","count":1}
+{"id":"s0019","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"cargo install cross","label":"package","rule":"pkg-cargo","count":1}
+{"id":"s0020","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"die \"architecture: unexpected target $TARGET\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0021","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"echo \"cargo\"","label":"execute","rule":"exec","count":1}
+{"id":"s0022","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"echo \"cross\"","label":"execute","rule":"exec","count":1}
+{"id":"s0023","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"echo amd64","label":"execute","rule":"exec","count":1}
+{"id":"s0025","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"echo armhf","label":"execute","rule":"exec","count":1}
+{"id":"s0026","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"echo i386","label":"execute","rule":"exec","count":1}
+{"id":"s0028","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"echo x86_64-unknown-linux-gnu","label":"execute","rule":"exec","count":1}
+{"id":"s0029","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"find \"$target_dir\" -name ripgrep-stamp -print0 | xargs -0 ls -t | head -n1 | xargs dirname","label":"read","rule":"read","count":1}
+{"id":"s0030","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"linux)","label":"execute","rule":"exec-default","count":1}
+{"id":"s0031","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"linux) return 0 ;;","label":"execute","rule":"exec-default","count":1}
+{"id":"s0032","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"osx)","label":"execute","rule":"exec-default","count":1}
+{"id":"s0033","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"osx) return 0 ;;","label":"execute","rule":"exec-default","count":1}
+{"id":"s0034","repo":"BurntSushi/ripgrep","source":"script","file":"ci/utils.sh","line":"return","label":"execute","rule":"exec-default","count":1}
+{"id":"s0035","repo":"BurntSushi/ripgrep","source":"script","file":"crates/core/flags/complete/encodings.sh","line":"866 ibm{819,866} csibm866","label":"execute","rule":"exec-default","count":1}
+{"id":"s0036","repo":"BurntSushi/ripgrep","source":"script","file":"crates/core/flags/complete/encodings.sh","line":"logical visual mac {,cs}macintosh x-mac-{cyrillic,roman,ukrainian}","label":"execute","rule":"exec-default","count":1}
+{"id":"s0037","repo":"BurntSushi/ripgrep","source":"script","file":"crates/core/flags/complete/encodings.sh","line":"x-user-defined auto none","label":"execute","rule":"exec-default","count":1}
+{"id":"s0038","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"cargo +nightly test -p ignore --benches","label":"test","rule":"test-cargo","count":1}
+{"id":"s0039","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"cargo build --verbose","label":"package","rule":"pkg-cargo","count":1}
+{"id":"s0040","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"cargo check","label":"package","rule":"pkg-cargo","count":1}
+{"id":"s0041","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"cargo doc --no-deps --document-private-items --workspace","label":"package","rule":"pkg-cargo","count":1}
+{"id":"s0042","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"cargo fmt --all --check","label":"package","rule":"pkg-cargo","count":1}
+{"id":"s0043","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"cargo install cargo-fuzz","label":"package","rule":"pkg-cargo","count":2}
+{"id":"s0044","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"cat \"$stderr\"","label":"read","rule":"read","count":1}
+{"id":"s0045","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"cd \"$dir\"","label":"execute","rule":"exec","count":1}
+{"id":"s0046","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"ci/test-complete","label":"execute","rule":"exec-default","count":1}
+{"id":"s0047","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"ci/ubuntu-install-packages","label":"execute","rule":"exec-default","count":1}
+{"id":"s0048","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"$dir\" >> $GITHUB_PATH","label":"execute","rule":"exec","count":1}
+{"id":"s0049","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"===== $stderr ===== \"","label":"execute","rule":"exec","count":1}
+{"id":"s0050","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"=====\"","label":"execute","rule":"exec","count":1}
+{"id":"s0051","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"CARGO=cross\" >> $GITHUB_ENV","label":"execute","rule":"exec","count":1}
+{"id":"s0052","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"target dir is: ${{ env.TARGET_DIR }}\"","label":"execute","rule":"exec","count":1}
+{"id":"s0053","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"target flag is: ${{ env.TARGET_FLAGS }}\"","label":"execute","rule":"exec","count":1}
+{"id":"s0054","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"rustup target add wasm32-wasip1","label":"package","rule":"pkg","count":1}
+{"id":"s0055","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"set -x","label":"execute","rule":"exec","count":1}
+{"id":"s0056","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"stderr=\"$(find \"${{ env.TARGET_DIR }}/debug\" -name stderr -print0 | xargs -0 ls -t | head -n1)\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0057","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/ci.yml","line":"sudo apt-get install g++ --yes","label":"package","rule":"pkg","count":1}
+{"id":"s0058","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"7z a \"$ARCHIVE.zip\" \"$ARCHIVE\"","label":"write","rule":"write","count":1}
+{"id":"s0059","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"cargo deb --profile deb --target ${{ env.TARGET }}","label":"package","rule":"pkg-cargo","count":1}
+{"id":"s0060","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"cargo install cargo-deb","label":"package","rule":"pkg-cargo","count":1}
+{"id":"s0061","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"cd \"$DEB_DIR\"","label":"execute","rule":"exec","count":1}
+{"id":"s0062","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"cp \"$BIN\" \"$ARCHIVE\"/","label":"write","rule":"write","count":1}
+{"id":"s0063","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"cp {CHANGELOG.md,FAQ.md,GUIDE.md} \"$ARCHIVE\"/doc/","label":"write","rule":"write","count":1}
+{"id":"s0064","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"cp {README.md,COPYING,UNLICENSE,LICENSE-MIT} \"$ARCHIVE\"/","label":"write","rule":"write","count":1}
+{"id":"s0065","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"curl -LO \"https://github.com/cross-rs/cross/releases/download/$CROSS_VERSION/cross-x86_64-unknown-linux-musl.tar.gz\"","label":"network","rule":"net","count":1}
+{"id":"s0066","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"docker run --rm -v \"$PWD/target:/target:Z\" \"ghcr.io/cross-rs/${{ matrix.target }}:main\" \"${{ matrix.qemu }}\" \"/$BIN\" --generate complete-bash > \"$ARCHIVE/complete/rg.bash\"","label":"execute","rule":"exec","count":1}
+{"id":"s0067","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"docker run --rm -v \"$PWD/target:/target:Z\" \"ghcr.io/cross-rs/${{ matrix.target }}:main\" \"${{ matrix.qemu }}\" \"/$BIN\" --generate complete-fish > \"$ARCHIVE/complete/rg.fish\"","label":"execute","rule":"exec","count":1}
+{"id":"s0068","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"docker run --rm -v \"$PWD/target:/target:Z\" \"ghcr.io/cross-rs/${{ matrix.target }}:main\" \"${{ matrix.qemu }}\" \"/$BIN\" --generate complete-powershell > \"$ARCHIVE/complete/_rg.ps1\"","label":"execute","rule":"exec","count":1}
+{"id":"s0069","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"docker run --rm -v \"$PWD/target:/target:Z\" \"ghcr.io/cross-rs/${{ matrix.target }}:main\" \"${{ matrix.qemu }}\" \"/$BIN\" --generate complete-zsh > \"$ARCHIVE/complete/_rg\"","label":"execute","rule":"exec","count":1}
+{"id":"s0070","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"docker run --rm -v \"$PWD/target:/target:Z\" \"ghcr.io/cross-rs/${{ matrix.target }}:main\" \"${{ matrix.qemu }}\" \"/$BIN\" --version","label":"execute","rule":"exec","count":1}
+{"id":"s0071","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"docker run --rm -v \"$PWD/target:/target:Z\" \"ghcr.io/cross-rs/${{ matrix.target }}:main\" \"${{ matrix.strip }}\" \"/$BIN\"","label":"execute","rule":"exec","count":1}
+{"id":"s0073","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"echo \"ASSET=$ARCHIVE.tar.gz\" >> $GITHUB_ENV","label":"execute","rule":"exec","count":1}
+{"id":"s0074","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"echo \"ASSET=$ARCHIVE.zip\" >> $GITHUB_ENV","label":"execute","rule":"exec","count":1}
+{"id":"s0076","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"echo \"DEB_DIR=target/${{ env.TARGET }}/debian\" >> $GITHUB_ENV","label":"execute","rule":"exec","count":1}
+{"id":"s0078","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"echo \"DEPLOY_DIR=$dir\" >> $GITHUB_ENV","label":"execute","rule":"exec","count":1}
+{"id":"s0079","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"echo \"SUM=$sum\" >> $GITHUB_ENV","label":"execute","rule":"exec","count":1}
+{"id":"s0080","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"echo \"TARGET_DIR=./target/${{ matrix.target }}\" >> $GITHUB_ENV","label":"execute","rule":"exec","count":1}
+{"id":"s0082","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"echo \"VERSION=${{ github.ref_name }}\" >> $GITHUB_ENV","label":"execute","rule":"exec","count":1}
+{"id":"s0083","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"echo \"cargo command is: ${{ env.CARGO }}\"","label":"execute","rule":"exec","count":1}
+{"id":"s0084","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"echo \"version does not match Cargo.toml\" >&2","label":"execute","rule":"exec","count":1}
+{"id":"s0085","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"echo \"version is: $VERSION\"","label":"execute","rule":"exec","count":1}
+{"id":"s0086","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"gh release create $VERSION --draft --verify-tag --title $VERSION","label":"vcs","rule":"vcs","count":1}
+{"id":"s0087","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"gh release upload \"$version\" \"$DEB_NAME\" \"$SUM\"","label":"vcs","rule":"vcs","count":1}
+{"id":"s0088","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"gh release upload \"$version\" ${{ env.ASSET }} ${{ env.ASSET_SUM }}","label":"vcs","rule":"vcs","count":1}
+{"id":"s0089","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"mkdir \"$dir\"","label":"write","rule":"write","count":1}
+{"id":"s0090","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"mkdir -p \"$ARCHIVE\"/{complete,doc}","label":"write","rule":"write","count":1}
+{"id":"s0091","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"mkdir -p \"$dir\"","label":"write","rule":"write","count":1}
+{"id":"s0092","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"shasum -a 256 \"$ARCHIVE.tar.gz\" > \"$ARCHIVE.tar.gz.sha256\"","label":"read","rule":"read","count":1}
+{"id":"s0093","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"shasum -a 256 \"$DEB_NAME\" > \"$sum\"","label":"read","rule":"read","count":1}
+{"id":"s0094","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"strip \"$BIN\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0095","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"tar czf \"$ARCHIVE.tar.gz\" \"$ARCHIVE\"","label":"write","rule":"write-tar","count":1}
+{"id":"s0096","repo":"BurntSushi/ripgrep","source":"workflow","file":".github/workflows/release.yml","line":"tar xf cross-x86_64-unknown-linux-musl.tar.gz","label":"write","rule":"write-tar","count":1}
+{"id":"s0097","repo":"cli/cli","source":"make","file":"Makefile","line":"./script/licenses --check","label":"execute","rule":"exec-default","count":1}
+{"id":"s0098","repo":"cli/cli","source":"make","file":"Makefile","line":"cp ./share/zsh/site-functions/_gh ./share/zsh/vendor-completions/_gh","label":"write","rule":"write","count":1}
+{"id":"s0099","repo":"cli/cli","source":"make","file":"Makefile","line":"git -C site add 'manual/gh*.md'","label":"vcs","rule":"vcs","count":1}
+{"id":"s0100","repo":"cli/cli","source":"make","file":"Makefile","line":"git -C site commit -m 'update help docs' || true","label":"vcs","rule":"vcs","count":1}
+{"id":"s0101","repo":"cli/cli","source":"make","file":"Makefile","line":"git -C site pull","label":"vcs","rule":"vcs","count":1}
+{"id":"s0102","repo":"cli/cli","source":"make","file":"Makefile","line":"git -C site rm 'manual/gh*.md' 2>/dev/null || true","label":"vcs","rule":"vcs","count":1}
+{"id":"s0103","repo":"cli/cli","source":"make","file":"Makefile","line":"go run ./cmd/gen-docs --website --doc-path site/manual","label":"package","rule":"pkg-go","count":1}
+{"id":"s0104","repo":"cli/cli","source":"make","file":"Makefile","line":"go test -tags acceptance ./acceptance","label":"test","rule":"test-go","count":1}
+{"id":"s0105","repo":"cli/cli","source":"make","file":"Makefile","line":"go test ./...","label":"test","rule":"test-go","count":1}
+{"id":"s0106","repo":"cli/cli","source":"make","file":"Makefile","line":"golangci-lint run ./...","label":"execute","rule":"exec","count":1}
+{"id":"s0111","repo":"cli/cli","source":"make","file":"Makefile","line":"install -d ${DESTDIR}${mandir}/man1","label":"write","rule":"write","count":1}
+{"id":"s0114","repo":"cli/cli","source":"make","file":"Makefile","line":"install -m644 ./share/man/man1/* ${DESTDIR}${mandir}/man1/","label":"write","rule":"write","count":1}
+{"id":"s0116","repo":"cli/cli","source":"make","file":"Makefile","line":"install -m755 bin/gh ${DESTDIR}${bindir}/","label":"write","rule":"write","count":1}
+{"id":"s0117","repo":"cli/cli","source":"make","file":"Makefile","line":"mkdir -p ./share/bash-completion/completions ./share/fish/vendor_completions.d ./share/zsh/site-functions ./share/zsh/vendor-completions","label":"write","rule":"write","count":1}
+{"id":"s0118","repo":"cli/cli","source":"make","file":"Makefile","line":"rm -f ${DESTDIR}${bindir}/gh ${DESTDIR}${mandir}/man1/gh.1 ${DESTDIR}${mandir}/man1/gh-*.1","label":"write","rule":"write","count":1}
+{"id":"s0122","repo":"cli/cli","source":"make","file":"Makefile","line":"rm -f site/manual/*.bak","label":"write","rule":"write","count":1}
+{"id":"s0124","repo":"cli/cli","source":"readme","file":".github/agents/agentic-workflows.md","line":"gh aw compile --validate","label":"vcs","rule":"vcs","count":1}
+{"id":"s0125","repo":"cli/cli","source":"readme","file":".github/agents/agentic-workflows.md","line":"gh aw fix --write","label":"vcs","rule":"vcs","count":1}
+{"id":"s0126","repo":"cli/cli","source":"readme","file":".github/agents/agentic-workflows.md","line":"gh aw init","label":"vcs","rule":"vcs","count":1}
+{"id":"s0127","repo":"cli/cli","source":"readme","file":".github/skills/cli-exercise/references/maintenance.md","line":"bin/gh skill publish --dry-run .github","label":"vcs","rule":"vcs","count":1}
+{"id":"s0128","repo":"cli/cli","source":"readme","file":".github/skills/tech-debt-burndown/SKILL.md","line":"git checkout -- . && git clean -fd && git status --porcelain   # must be empty","label":"vcs","rule":"vcs","count":1}
+{"id":"s0129","repo":"cli/cli","source":"readme","file":".github/skills/tech-debt-burndown/SKILL.md","line":"grep -rhoE \"// TODO [a-zA-Z][a-zA-Z0-9_-]+\" --include=*.go . | sort | uniq -c | sort -rn","label":"read","rule":"read","count":1}
+{"id":"s0130","repo":"cli/cli","source":"readme","file":".github/skills/tech-debt-burndown/SKILL.md","line":"grep -rn \"ghinstance.Default()\" --include=*.go .","label":"read","rule":"read","count":1}
+{"id":"s0131","repo":"cli/cli","source":"readme","file":".github/skills/tech-debt-burndown/SKILL.md","line":"make lint 2>&1 | tee /tmp/baseline-lint.txt","label":"execute","rule":"exec-make","count":1}
+{"id":"s0132","repo":"cli/cli","source":"readme","file":"README.md","line":"gh skill update gh","label":"vcs","rule":"vcs","count":1}
+{"id":"s0133","repo":"cli/cli","source":"readme","file":"docs/api-host-test-harness.md","line":"go build -o /tmp/gateway ./script/api-host-gateway/gateway","label":"package","rule":"pkg-go","count":1}
+{"id":"s0134","repo":"cli/cli","source":"readme","file":"docs/install_linux.md","line":"apk add github-cli@community","label":"package","rule":"pkg","count":1}
+{"id":"s0135","repo":"cli/cli","source":"readme","file":"docs/install_linux.md","line":"cd /usr/mports/devel/gh/ && make install clean","label":"execute","rule":"exec-make","count":1}
+{"id":"s0136","repo":"cli/cli","source":"readme","file":"docs/install_linux.md","line":"cd /usr/ports/devel/gh/ && make install clean","label":"execute","rule":"exec-make","count":1}
+{"id":"s0137","repo":"cli/cli","source":"readme","file":"docs/install_linux.md","line":"sudo apt install extrepo","label":"package","rule":"pkg","count":1}
+{"id":"s0138","repo":"cli/cli","source":"readme","file":"docs/install_linux.md","line":"sudo apt install gh","label":"package","rule":"pkg","count":1}
+{"id":"s0139","repo":"cli/cli","source":"readme","file":"docs/install_linux.md","line":"sudo dnf install 'dnf-command(config-manager)'","label":"package","rule":"pkg","count":1}
+{"id":"s0140","repo":"cli/cli","source":"readme","file":"docs/install_linux.md","line":"sudo yum install gh","label":"package","rule":"pkg","count":1}
+{"id":"s0141","repo":"cli/cli","source":"readme","file":"docs/install_macos.md","line":"curl -sS https://webi.sh/gh | sh","label":"network","rule":"net","count":1}
+{"id":"s0142","repo":"cli/cli","source":"readme","file":"docs/install_windows.md","line":"conda install gh --channel conda-forge","label":"package","rule":"pkg","count":1}
+{"id":"s0143","repo":"cli/cli","source":"readme","file":"docs/install_windows.md","line":"conda update gh --channel conda-forge","label":"package","rule":"pkg","count":1}
+{"id":"s0144","repo":"cli/cli","source":"readme","file":"docs/primer/components/README.md","line":"gh help","label":"vcs","rule":"vcs","count":1}
+{"id":"s0145","repo":"cli/cli","source":"readme","file":"docs/primer/components/README.md","line":"gh pr {view | create}","label":"vcs","rule":"vcs","count":1}
+{"id":"s0146","repo":"cli/cli","source":"readme","file":"docs/release-process-deep-dive.md","line":"base64 -d <<<\"$DEVELOPER_ID_CERT\" > \"$RUNNER_TEMP/cert.p12\"","label":"read","rule":"read","count":1}
+{"id":"s0147","repo":"cli/cli","source":"readme","file":"docs/release-process-deep-dive.md","line":"base64 -d <<<\"$GPG_PASSPHRASE_2026\" | /usr/lib/gnupg2/gpg-preset-passphrase --preset \"$GPG_KEYGRIP_2026\"","label":"read","rule":"read","count":1}
+{"id":"s0148","repo":"cli/cli","source":"readme","file":"docs/release-process-deep-dive.md","line":"echo \"allow-preset-passphrase\" > ~/.gnupg/gpg-agent.conf","label":"execute","rule":"exec","count":1}
+{"id":"s0149","repo":"cli/cli","source":"readme","file":"skills/gh-skill/SKILL.md","line":"gh skill publish --dry-run                 # validate only, no release","label":"vcs","rule":"vcs","count":1}
+{"id":"s0150","repo":"cli/cli","source":"readme","file":"skills/gh-skill/SKILL.md","line":"gh skill publish --dry-run ./path/to/repo  # validate a specific dir","label":"vcs","rule":"vcs","count":1}
+{"id":"s0151","repo":"cli/cli","source":"readme","file":"skills/gh-skill/SKILL.md","line":"gh skill update --all          # update every installed skill","label":"vcs","rule":"vcs","count":1}
+{"id":"s0152","repo":"cli/cli","source":"readme","file":"skills/gh-skill/SKILL.md","line":"gh skill update --unpin        # drop the pin and move to latest","label":"vcs","rule":"vcs","count":1}
+{"id":"s0153","repo":"cli/cli","source":"script","file":".github/scripts/dependabot-triage.sh","line":"echo \"::error::Failed to dispatch Dependabot triage for PR #$number\"","label":"execute","rule":"exec","count":1}
+{"id":"s0154","repo":"cli/cli","source":"script","file":".github/scripts/dependabot-triage.sh","line":"echo \"PR #$number: already assessed at $head, skipping\"","label":"execute","rule":"exec","count":1}
+{"id":"s0155","repo":"cli/cli","source":"script","file":".github/scripts/dependabot-triage.sh","line":"exit 2","label":"execute","rule":"exec","count":1}
+{"id":"s0156","repo":"cli/cli","source":"script","file":".github/skills/vhs-demo/scripts/inspect.sh","line":"ffmpeg -v error -y -i \"$gif\" -frames:v 1 \"$inspection_dir/first.png\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0157","repo":"cli/cli","source":"script","file":".github/skills/vhs-demo/scripts/inspect.sh","line":"printf 'GIF does not exist or is empty: %s\\n' \"$gif\" >&2","label":"execute","rule":"exec","count":1}
+{"id":"s0158","repo":"cli/cli","source":"script","file":".github/skills/vhs-demo/scripts/inspect.sh","line":"set -eu","label":"execute","rule":"exec","count":1}
+{"id":"s0159","repo":"cli/cli","source":"script","file":".github/skills/vhs-demo/scripts/preflight.sh","line":"fail \"missing required tool: $tool\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0160","repo":"cli/cli","source":"script","file":".github/skills/vhs-demo/scripts/preflight.sh","line":"probe ffprobe -version","label":"execute","rule":"exec-default","count":1}
+{"id":"s0161","repo":"cli/cli","source":"script","file":".github/workflows/scripts/bump-go.sh","line":"[[ -f \"$GO_MOD\" ]] || { echo \"Error: '$GO_MOD' not found\" >&2; exit 1; }","label":"execute","rule":"exec","count":1}
+{"id":"s0162","repo":"cli/cli","source":"script","file":".github/workflows/scripts/bump-go.sh","line":"echo \"  • running go fix...\"","label":"execute","rule":"exec","count":1}
+{"id":"s0163","repo":"cli/cli","source":"script","file":".github/workflows/scripts/bump-go.sh","line":"echo \"  • set golangci-lint → v$LINTER_VERSION\"","label":"execute","rule":"exec","count":1}
+{"id":"s0164","repo":"cli/cli","source":"script","file":"internal/codespaces/rpc/generate.sh","line":"generate jupyter jupyter_server_host_service.v1.proto","label":"execute","rule":"exec-default","count":1}
+{"id":"s0165","repo":"cli/cli","source":"script","file":"script/api-host-gateway/run.sh","line":"printf 'error: docker is required\\n' >&2","label":"execute","rule":"exec","count":1}
+{"id":"s0167","repo":"cli/cli","source":"script","file":"script/api-host-gateway/test.sh","line":"heading \"Gateway log for phase 1\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0168","repo":"cli/cli","source":"script","file":"script/api-host-gateway/test.sh","line":"printf '    git_protocol: https\\n'","label":"execute","rule":"exec","count":1}
+{"id":"s0169","repo":"cli/cli","source":"script","file":"script/api-host-gateway/test.sh","line":"printf '  FAIL %s\\n' \"$1\"","label":"execute","rule":"exec","count":1}
+{"id":"s0170","repo":"cli/cli","source":"script","file":"script/api-host-gateway/test.sh","line":"printf '127.0.0.1 %s\\n' \"$UPSTREAM_HOST\" >>/etc/hosts","label":"execute","rule":"exec","count":1}
+{"id":"s0171","repo":"cli/cli","source":"script","file":"script/api-host-gateway/test.sh","line":"run_subset auth      auth-status.txtar                       \"$ORG_TOKEN\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0172","repo":"cli/cli","source":"script","file":"script/refreshable-token-e2e.sh","line":"2) THEME=\"config\" ;;","label":"execute","rule":"exec-default","count":1}
+{"id":"s0173","repo":"cli/cli","source":"script","file":"script/refreshable-token-e2e.sh","line":"assert_no_refresh() { if refresh_happened; then fail \"$1\"; else pass \"$1\"; fi; }","label":"execute","rule":"exec-default","count":1}
+{"id":"s0174","repo":"cli/cli","source":"script","file":"script/refreshable-token-e2e.sh","line":"cmdline \"$GH_DISPLAY auth refresh --hostname $HOST --expiring --clipboard $STORE_FLAG\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0175","repo":"cli/cli","source":"script","file":"script/refreshable-token-e2e.sh","line":"cmdline \"$GH_DISPLAY auth token --secure-storage\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0177","repo":"cli/cli","source":"script","file":"script/refreshable-token-e2e.sh","line":"heading() { printf \"%s%s%s\\n\" \"$BOLD\" \"$1\" \"$RESET\"; }","label":"execute","rule":"exec-default","count":1}
+{"id":"s0178","repo":"cli/cli","source":"script","file":"script/refreshable-token-e2e.sh","line":"label \"Then\" \"gh ignores GH_TOKEN, refreshes the stored credential, and prints that value\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0179","repo":"cli/cli","source":"script","file":"script/refreshable-token-e2e.sh","line":"note   \"  (With --expiring unset, refresh keeps the kind of the current token, so it asks for an expiring one.)\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0180","repo":"cli/cli","source":"script","file":"script/refreshable-token-e2e.sh","line":"require_gh","label":"execute","rule":"exec-default","count":1}
+{"id":"s0181","repo":"cli/cli","source":"script","file":"script/refreshable-token-e2e.sh","line":"run_batch \"$GH_DISPLAY auth token\" \"GH_DEBUG=api \\\"$GH\\\" auth token\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0182","repo":"cli/cli","source":"script","file":"script/refreshable-token-e2e.sh","line":"run_batch() { # run_batch <display> <exec>","label":"execute","rule":"exec-default","count":1}
+{"id":"s0184","repo":"cli/cli","source":"script","file":"script/refreshable-token-gitcredential-e2e.sh","line":"heading \"stderr:\" >&2","label":"execute","rule":"exec-default","count":1}
+{"id":"s0185","repo":"cli/cli","source":"script","file":"script/refreshable-token-gitcredential-e2e.sh","line":"heading \"stdout:\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0186","repo":"cli/cli","source":"script","file":"script/refreshable-token-gitcredential-e2e.sh","line":"note   \"   shadow your global gh credential helper.)\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0187","repo":"cli/cli","source":"script","file":"script/refreshable-token-gitcredential-e2e.sh","line":"note   \"  (HTTPS is required: the git credential helper only applies to https remotes.)\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0188","repo":"cli/cli","source":"script","file":"script/refreshable-token-gitcredential-e2e.sh","line":"run_gh \"$GH_DISPLAY auth setup-git --hostname $HOST\" \"\\\"$GH\\\" auth setup-git --hostname \\\"$HOST\\\"\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0189","repo":"cli/cli","source":"script","file":"test/integration/attestation-cmd/download/download.sh","line":"echo \"Build the expected filename accordingly\"","label":"execute","rule":"exec","count":1}
+{"id":"s0190","repo":"cli/cli","source":"script","file":"test/integration/attestation-cmd/download/download.sh","line":"set -euo pipefail","label":"execute","rule":"exec","count":1}
+{"id":"s0192","repo":"cli/cli","source":"workflow","file":".github/workflows/agentics-maintenance.yml","line":"exit 0","label":"execute","rule":"exec","count":2}
+{"id":"s0193","repo":"cli/cli","source":"workflow","file":".github/workflows/agentics-maintenance.yml","line":"exit 1","label":"execute","rule":"exec","count":5}
+{"id":"s0194","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"bash \"${RUNNER_TEMP}/gh-aw/actions/check_otlp_default_credentials.sh\"","label":"execute","rule":"exec","count":1}
+{"id":"s0195","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"bash \"${RUNNER_TEMP}/gh-aw/actions/create_gh_aw_tmp_dir.sh\"","label":"execute","rule":"exec","count":1}
+{"id":"s0196","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"bash \"${RUNNER_TEMP}/gh-aw/actions/install_copilot_cli.sh\"","label":"execute","rule":"exec","count":1}
+{"id":"s0197","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"bash \"${RUNNER_TEMP}/gh-aw/actions/restore_inline_sub_agents.sh\"","label":"execute","rule":"exec","count":1}
+{"id":"s0199","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"bash \"${RUNNER_TEMP}/gh-aw/actions/stop_mcp_gateway.sh\" \"$GATEWAY_PID\"","label":"execute","rule":"exec","count":1}
+{"id":"s0200","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"cat << GH_AW_MCP_CONFIG_58fccd6f846303ff_EOF | \"$GH_AW_NODE\" \"${RUNNER_TEMP}/gh-aw/actions/start_mcp_gateway.cjs\"","label":"read","rule":"read","count":1}
+{"id":"s0204","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"echo \"GH_AW_AGENT_OUTPUT=/tmp/gh-aw/agent_output.json\" >> \"$GITHUB_OUTPUT\"","label":"execute","rule":"exec","count":1}
+{"id":"s0205","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"echo \"GH_AW_SAFE_OUTPUTS_CONFIG_PATH=${RUNNER_TEMP}/gh-aw/safeoutputs/config.json\"","label":"execute","rule":"exec","count":1}
+{"id":"s0206","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"echo \"GH_AW_SAFE_OUTPUTS_TOOLS_PATH=${RUNNER_TEMP}/gh-aw/safeoutputs/tools.json\"","label":"execute","rule":"exec","count":1}
+{"id":"s0208","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"export GH_AW_PR_HEAD_BASE_REPO=\"${GH_AW_PR_HEAD_BASE_REPO:-}\"","label":"execute","rule":"exec","count":1}
+{"id":"s0209","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"export GH_AW_PR_HEAD_BASE_SHA=\"${GH_AW_PR_HEAD_BASE_SHA:-}\"","label":"execute","rule":"exec","count":1}
+{"id":"s0210","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"export GOTOOLCHAIN=auto","label":"execute","rule":"exec","count":1}
+{"id":"s0211","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"mkdir -p \"${RUNNER_TEMP}/gh-aw/bin\"","label":"write","rule":"write","count":1}
+{"id":"s0212","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"mkdir -p \"${RUNNER_TEMP}/gh-aw/mcp-config\"","label":"write","rule":"write","count":1}
+{"id":"s0213","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"mkdir -p \"${RUNNER_TEMP}/gh-aw/safeoutputs\"","label":"write","rule":"write","count":1}
+{"id":"s0214","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"mkdir -p /tmp/gh-aw/","label":"write","rule":"write","count":1}
+{"id":"s0215","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"mv \"$evidence_tmp\" \"/tmp/gh-aw/agent_execution.json\"","label":"write","rule":"write","count":1}
+{"id":"s0216","repo":"cli/cli","source":"workflow","file":".github/workflows/dependabot-triage.lock.yml","line":"set -eo pipefail","label":"execute","rule":"exec","count":1}
+{"id":"s0217","repo":"cli/cli","source":"workflow","file":".github/workflows/deployment.yml","line":"base64 -d <<< \"$DEVELOPER_ID_CERT\" > \"$RUNNER_TEMP/cert.p12\"","label":"read","rule":"read","count":1}
+{"id":"s0219","repo":"cli/cli","source":"workflow","file":".github/workflows/deployment.yml","line":"echo \"Invalid tag name format. Must be in the form v1.2.3 or v1.2.3-rc.1\"","label":"execute","rule":"exec","count":1}
+{"id":"s0220","repo":"cli/cli","source":"workflow","file":".github/workflows/deployment.yml","line":"git push","label":"vcs","rule":"vcs","count":1}
+{"id":"s0223","repo":"cli/cli","source":"workflow","file":".github/workflows/deployment.yml","line":"reprepro --confdir=\"+b/script\" includedeb \"$release\" \"$file\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0224","repo":"cli/cli","source":"workflow","file":".github/workflows/deployment.yml","line":"rm -f site/index.html.bak","label":"write","rule":"write","count":2}
+{"id":"s0225","repo":"cli/cli","source":"workflow","file":".github/workflows/deployment.yml","line":"rm -rf dist","label":"write","rule":"write","count":1}
+{"id":"s0226","repo":"cli/cli","source":"workflow","file":".github/workflows/deployment.yml","line":"rpmsign --addsign dist/*.rpm","label":"execute","rule":"exec-default","count":1}
+{"id":"s0227","repo":"cli/cli","source":"workflow","file":".github/workflows/deployment.yml","line":"script/label-assets dist/gh_* | xargs $guard gh release create \"${release_args[@]}\" --","label":"execute","rule":"exec-default","count":1}
+{"id":"s0228","repo":"cli/cli","source":"workflow","file":".github/workflows/deployment.yml","line":"security create-keychain -p $PW \"$RUNNER_TEMP/build.keychain\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0229","repo":"cli/cli","source":"workflow","file":".github/workflows/deployment.yml","line":"security default-keychain -s \"$RUNNER_TEMP/build.keychain\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0231","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"bash \"${RUNNER_TEMP}/gh-aw/actions/copy_copilot_session_state.sh\"","label":"execute","rule":"exec","count":1}
+{"id":"s0232","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"bash \"${RUNNER_TEMP}/gh-aw/actions/install_awf_binary.sh\" v0.28.23 --rootless","label":"execute","rule":"exec","count":1}
+{"id":"s0234","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"bash \"${RUNNER_TEMP}/gh-aw/actions/validate_prompt_placeholders.sh\"","label":"execute","rule":"exec","count":1}
+{"id":"s0236","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"cp -a \"${RUNNER_TEMP}/gh-aw/aw-prompts/.\" /tmp/gh-aw/aw-prompts/","label":"write","rule":"write","count":1}
+{"id":"s0237","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"echo \"RUNNER_TOOL_CACHE=${GH_AW_RUNNER_TOOL_CACHE}\" >> \"$GITHUB_ENV\"","label":"execute","rule":"exec","count":1}
+{"id":"s0238","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"export DEBUG=\"*\"","label":"execute","rule":"exec","count":1}
+{"id":"s0240","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"export GH_AW_NODE_BIN","label":"execute","rule":"exec","count":1}
+{"id":"s0241","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"export MCP_GATEWAY_ALLOWED_MOUNT_ROOTS=\"${GITHUB_WORKSPACE}:rw,${RUNNER_TEMP}/gh-aw:ro,${RUNNER_TEMP}/gh-aw/safeoutputs:rw,/opt:ro,/tmp:rw,/usr/bin/gh:ro\"","label":"execute","rule":"exec","count":1}
+{"id":"s0243","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"find \"/tmp/gh-aw/\" -type f -print","label":"read","rule":"read","count":1}
+{"id":"s0244","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"mkdir -p \"$HOME/.copilot\"","label":"write","rule":"write","count":1}
+{"id":"s0247","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"rm -f \"$GITHUB_WORKSPACE/.gemini/settings.json\"","label":"write","rule":"write","count":1}
+{"id":"s0248","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"rm -rf /tmp/gh-aw/sandbox/agent/logs/copilot-session-state","label":"write","rule":"write","count":1}
+{"id":"s0249","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"rm -rf /tmp/gh-aw/sandbox/firewall/audit","label":"write","rule":"write","count":1}
+{"id":"s0250","repo":"cli/cli","source":"workflow","file":".github/workflows/issue-triage.lock.yml","line":"source \"${RUNNER_TEMP}/gh-aw/actions/resolve_docker_socket_gid.sh\"","label":"execute","rule":"exec","count":1}
+{"id":"s0251","repo":"cli/cli","source":"workflow","file":".github/workflows/lint.yml","line":"make licenses-check","label":"execute","rule":"exec-make","count":1}
+{"id":"s0252","repo":"dart-lang/http","source":"readme","file":"pkgs/cupertino_http/DEVELOPMENT.md","line":"cd example","label":"execute","rule":"exec","count":1}
+{"id":"s0253","repo":"dart-lang/http","source":"readme","file":"pkgs/cupertino_http/DEVELOPMENT.md","line":"flutter test integration_test","label":"test","rule":"test-flutter","count":1}
+{"id":"s0254","repo":"dart-lang/http","source":"script","file":"pkgs/http_multi_server/tools/regenerate_cert.sh","line":"openssl genpkey -algorithm RSA -out localhost.key -aes256 -pass pass:dartdart 2>/dev/null","label":"execute","rule":"exec-default","count":1}
+{"id":"s0255","repo":"dart-lang/http","source":"script","file":"pkgs/http_multi_server/tools/regenerate_cert.sh","line":"openssl req -new -x509 -key localhost.key -days 36500 -out localhost.crt -config tools/openssl.cfg -extensions v3_req -passin pass:dartdart 2>/dev/null","label":"execute","rule":"exec-default","count":1}
+{"id":"s0256","repo":"dart-lang/http","source":"script","file":"pkgs/ok_http/example/test_certs/generate_test_combined.sh","line":"cd \"$(dirname \"$0\")\"","label":"execute","rule":"exec","count":1}
+{"id":"s0257","repo":"dart-lang/http","source":"script","file":"pkgs/ok_http/example/test_certs/generate_test_combined.sh","line":"openssl pkcs12 -export -inkey \"$tmp_dir/key.pem\" -in \"$tmp_dir/cert.pem\" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 -passout pass:1234 -out test-combined.p12","label":"execute","rule":"exec-default","count":1}
+{"id":"s0258","repo":"dart-lang/http","source":"script","file":"pkgs/ok_http/example/test_certs/generate_test_combined.sh","line":"openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 36500 -subj '/C=US/ST=CA/O=Internet Widgits Pty Ltd' -keyout \"$tmp_dir/key.pem\" -out \"$tmp_dir/cert.pem\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0259","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"analyze_0)","label":"execute","rule":"exec-default","count":1}
+{"id":"s0260","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"command dart analyze \"$@\"","label":"package","rule":"pkg","count":1}
+{"id":"s0261","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"command dart format \"$@\"","label":"package","rule":"pkg","count":1}
+{"id":"s0262","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"command dart pub \"$@\"","label":"package","rule":"pkg","count":1}
+{"id":"s0263","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"command flutter analyze \"$@\"","label":"package","rule":"pkg","count":1}
+{"id":"s0264","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"command flutter pub \"$@\"","label":"package","rule":"pkg","count":1}
+{"id":"s0265","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"command_0)","label":"execute","rule":"exec-default","count":1}
+{"id":"s0266","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"dart analyze --fatal-infos || EXIT_CODE=$?","label":"package","rule":"pkg","count":1}
+{"id":"s0267","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"dart pub upgrade || EXIT_CODE=$?","label":"package","rule":"pkg","count":1}
+{"id":"s0268","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"dart run --define=no_default_http_client=true test/no_default_http_client_test.dart || EXIT_CODE=$?","label":"package","rule":"pkg","count":1}
+{"id":"s0269","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"dart test --platform vm || EXIT_CODE=$?","label":"test","rule":"test-dart","count":1}
+{"id":"s0270","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"dart test --test-randomize-ordering-seed=random -p chrome -c dart2js,dart2wasm || EXIT_CODE=$?","label":"test","rule":"test-dart","count":1}
+{"id":"s0271","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"dart test --test-randomize-ordering-seed=random -p vm || EXIT_CODE=$?","label":"test","rule":"test-dart","count":1}
+{"id":"s0272","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo","label":"execute","rule":"exec","count":1}
+{"id":"s0273","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo 'dart analyze --fatal-infos'","label":"execute","rule":"exec","count":1}
+{"id":"s0274","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo 'dart format --output=none --set-exit-if-changed .'","label":"execute","rule":"exec","count":1}
+{"id":"s0275","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo 'dart test --platform vm'","label":"execute","rule":"exec","count":1}
+{"id":"s0276","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo 'dart update_readme.dart --validate'","label":"execute","rule":"exec","count":1}
+{"id":"s0277","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo 'flutter test --platform chrome'","label":"execute","rule":"exec","count":1}
+{"id":"s0278","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo 'flutter test'","label":"execute","rule":"exec","count":1}
+{"id":"s0279","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo -e \"\\033[1mPKG: ${PKG}; TASK: ${TASK}\\033[22m\"","label":"execute","rule":"exec","count":1}
+{"id":"s0280","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo -e \"\\033[1mPKG: ${PKG}\\033[22m\"","label":"execute","rule":"exec","count":1}
+{"id":"s0281","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo -e \"\\033[31m  $i\\033[0m\"","label":"execute","rule":"exec","count":1}
+{"id":"s0283","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo -e \"\\033[32mPKG: ${PKG}; TASK: ${TASK} - SUCCEEDED\\033[0m\"","label":"execute","rule":"exec","count":1}
+{"id":"s0284","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"echo -e '\\033[31mAt least one task argument must be provided! - TERMINATING JOB\\033[0m'","label":"execute","rule":"exec","count":1}
+{"id":"s0285","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"flutter analyze --fatal-infos || EXIT_CODE=$?","label":"package","rule":"pkg","count":1}
+{"id":"s0286","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"flutter test --platform chrome || EXIT_CODE=$?","label":"test","rule":"test-flutter","count":1}
+{"id":"s0287","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"format)","label":"execute","rule":"exec-default","count":1}
+{"id":"s0288","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"popd >/dev/null || exit 70","label":"execute","rule":"exec-default","count":1}
+{"id":"s0289","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"pushd \"${PKG}\" >/dev/null || EXIT_CODE=$?","label":"execute","rule":"exec-default","count":1}
+{"id":"s0290","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"test_5)","label":"execute","rule":"exec-default","count":1}
+{"id":"s0291","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"test_7)","label":"execute","rule":"exec-default","count":1}
+{"id":"s0292","repo":"dart-lang/http","source":"script","file":"tool/ci.sh","line":"xvfb-run -s \"-screen 0 1024x768x24\" dart test --test-randomize-ordering-seed=random --platform firefox || EXIT_CODE=$?","label":"execute","rule":"exec-default","count":1}
+{"id":"s0293","repo":"dart-lang/http","source":"workflow","file":".github/workflows/cronet.yml","line":"dart pub upgrade --major-versions jnigen jni","label":"package","rule":"pkg","count":1}
+{"id":"s0294","repo":"dart-lang/http","source":"workflow","file":".github/workflows/cronet.yml","line":"dart run tool/jnigen.dart","label":"package","rule":"pkg","count":1}
+{"id":"s0296","repo":"dart-lang/http","source":"workflow","file":".github/workflows/cronet.yml","line":"git diff --exit-code lib/src/jni/jni_bindings.dart","label":"vcs","rule":"vcs","count":1}
+{"id":"s0297","repo":"dart-lang/http","source":"workflow","file":".github/workflows/cronet.yml","line":"sudo udevadm control --reload-rules","label":"execute","rule":"exec-default","count":2}
+{"id":"s0298","repo":"dart-lang/http","source":"workflow","file":".github/workflows/cupertino.yml","line":"cd ios_test","label":"execute","rule":"exec","count":1}
+{"id":"s0299","repo":"dart-lang/http","source":"workflow","file":".github/workflows/cupertino.yml","line":"cd ios_test && flutter pub get","label":"package","rule":"pkg","count":1}
+{"id":"s0300","repo":"dart-lang/http","source":"workflow","file":".github/workflows/cupertino.yml","line":"dart test --test-randomize-ordering-seed=random","label":"test","rule":"test-dart","count":1}
+{"id":"s0301","repo":"dart-lang/http","source":"workflow","file":".github/workflows/cupertino.yml","line":"flutter analyze --fatal-infos","label":"package","rule":"pkg","count":1}
+{"id":"s0302","repo":"dart-lang/http","source":"workflow","file":".github/workflows/cupertino.yml","line":"flutter pub get","label":"package","rule":"pkg","count":1}
+{"id":"s0303","repo":"dart-lang/http","source":"workflow","file":".github/workflows/cupertino.yml","line":"flutter test integration_test/combined_test.dart --test-randomize-ordering-seed=random","label":"test","rule":"test-flutter","count":1}
+{"id":"s0304","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"dart pub global activate mono_repo 6.7.3","label":"package","rule":"pkg","count":1}
+{"id":"s0305","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"dart pub global run mono_repo generate --validate","label":"package","rule":"pkg","count":1}
+{"id":"s0306","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"dart pub upgrade","label":"package","rule":"pkg","count":1}
+{"id":"s0307","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"dart run --define=no_default_http_client=true test/no_default_http_client_test.dart","label":"package","rule":"pkg","count":1}
+{"id":"s0308","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"dart test --test-randomize-ordering-seed=random --platform chrome -c dart2js,dart2wasm","label":"test","rule":"test-dart","count":1}
+{"id":"s0309","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"dart test --test-randomize-ordering-seed=random --platform vm","label":"test","rule":"test-dart","count":1}
+{"id":"s0310","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"dart test --test-randomize-ordering-seed=random -p chrome -c dart2js,dart2wasm","label":"test","rule":"test-dart","count":1}
+{"id":"s0311","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"dart test --test-randomize-ordering-seed=random -p node","label":"test","rule":"test-dart","count":1}
+{"id":"s0312","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"dart test --test-randomize-ordering-seed=random -p vm","label":"test","rule":"test-dart","count":1}
+{"id":"s0313","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"dart update_readme.dart --validate","label":"package","rule":"pkg","count":1}
+{"id":"s0314","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"flutter pub upgrade","label":"package","rule":"pkg","count":1}
+{"id":"s0315","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"flutter test","label":"test","rule":"test-flutter","count":1}
+{"id":"s0316","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"flutter test --platform chrome","label":"test","rule":"test-flutter","count":1}
+{"id":"s0317","repo":"dart-lang/http","source":"workflow","file":".github/workflows/dart.yml","line":"xvfb-run -s \"-screen 0 1024x768x24\" dart test --test-randomize-ordering-seed=random --platform firefox","label":"execute","rule":"exec-default","count":1}
+{"id":"s0318","repo":"dart-lang/http","source":"workflow","file":".github/workflows/http2.yaml","line":"dart format --output=none --set-exit-if-changed .","label":"package","rule":"pkg","count":1}
+{"id":"s0319","repo":"dart-lang/http","source":"workflow","file":".github/workflows/http_multi_server.yaml","line":"dart analyze --fatal-infos","label":"package","rule":"pkg","count":1}
+{"id":"s0320","repo":"dart-lang/http","source":"workflow","file":".github/workflows/http_multi_server.yaml","line":"dart test --platform vm","label":"test","rule":"test-dart","count":1}
+{"id":"s0321","repo":"dart-lang/http","source":"workflow","file":".github/workflows/http_parser.yaml","line":"dart test --platform chrome --compiler dart2wasm","label":"test","rule":"test-dart","count":1}
+{"id":"s0322","repo":"dart-lang/http","source":"workflow","file":".github/workflows/okhttp.yaml","line":"sudo udevadm trigger --name-match=kvm","label":"execute","rule":"exec-default","count":2}
+{"id":"s0323","repo":"dart-lang/http","source":"workflow","file":".github/workflows/web_socket_channel.yaml","line":"dart analyze","label":"package","rule":"pkg","count":1}
+{"id":"s0324","repo":"dart-lang/http","source":"workflow","file":".github/workflows/web_socket_channel.yaml","line":"dart pub downgrade","label":"package","rule":"pkg","count":1}
+{"id":"s0325","repo":"dart-lang/http","source":"workflow","file":".github/workflows/web_socket_channel.yaml","line":"dart pub get","label":"package","rule":"pkg","count":1}
+{"id":"s0326","repo":"dart-lang/http","source":"workflow","file":".github/workflows/web_socket_channel.yaml","line":"dart test --platform chrome","label":"test","rule":"test-dart","count":1}
+{"id":"s0327","repo":"google/gson","source":"readme","file":"ReleaseProcess.md","line":"git init --bare --initial-branch=main .","label":"vcs","rule":"vcs","count":1}
+{"id":"s0328","repo":"google/gson","source":"readme","file":"ReleaseProcess.md","line":"git push origin main","label":"vcs","rule":"vcs","count":1}
+{"id":"s0329","repo":"google/gson","source":"workflow","file":".github/workflows/build.yml","line":"mvn artifact:check-buildplan --projects '!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'","label":"package","rule":"pkg","count":1}
+{"id":"s0330","repo":"google/gson","source":"workflow","file":".github/workflows/build.yml","line":"mvn clean install -Dmaven.test.skip --projects '!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'","label":"package","rule":"pkg","count":1}
+{"id":"s0331","repo":"google/gson","source":"workflow","file":".github/workflows/build.yml","line":"mvn clean test --projects gson --activate-profiles gson-subset","label":"test","rule":"test-mvn","count":1}
+{"id":"s0332","repo":"google/gson","source":"workflow","file":".github/workflows/build.yml","line":"mvn test --activate-profiles native-image-test --projects test-graal-native-image --also-make ${{ matrix.extra-mvn-args || '' }}","label":"test","rule":"test-mvn","count":1}
+{"id":"s0334","repo":"google/gson","source":"workflow","file":".github/workflows/check-api-compatibility.yml","line":"cd gson-old-japicmp","label":"execute","rule":"exec","count":1}
+{"id":"s0335","repo":"google/gson","source":"workflow","file":".github/workflows/check-api-compatibility.yml","line":"mvn install -Dmaven.test.skip --projects '!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'","label":"package","rule":"pkg","count":1}
+{"id":"s0337","repo":"google/gson","source":"workflow","file":".github/workflows/check-api-compatibility.yml","line":"mvn package japicmp:cmp --fail-at-end -Dmaven.test.skip --projects '!extras,!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'","label":"package","rule":"pkg","count":1}
+{"id":"s0338","repo":"google/gson","source":"workflow","file":".github/workflows/codeql-analysis.yml","line":"mvn compile","label":"package","rule":"pkg","count":1}
+{"id":"s0339","repo":"pallets/flask","source":"script","file":".devcontainer/on-create-command.sh","line":". .venv/bin/activate","label":"execute","rule":"exec","count":1}
+{"id":"s0340","repo":"pallets/flask","source":"script","file":".devcontainer/on-create-command.sh","line":"pip install -e .","label":"package","rule":"pkg","count":1}
+{"id":"s0341","repo":"pallets/flask","source":"script","file":".devcontainer/on-create-command.sh","line":"pip install -r requirements/dev.txt","label":"package","rule":"pkg","count":1}
+{"id":"s0342","repo":"pallets/flask","source":"script","file":".devcontainer/on-create-command.sh","line":"pre-commit install --install-hooks","label":"execute","rule":"exec","count":1}
+{"id":"s0343","repo":"pallets/flask","source":"script","file":".devcontainer/on-create-command.sh","line":"python3 -m venv --upgrade-deps .venv","label":"execute","rule":"exec","count":1}
+{"id":"s0344","repo":"pallets/flask","source":"script","file":".devcontainer/on-create-command.sh","line":"set -e","label":"execute","rule":"exec","count":1}
+{"id":"s0345","repo":"pallets/flask","source":"workflow","file":".github/workflows/pre-commit.yaml","line":"uv run --locked --no-default-groups --group pre-commit pre-commit run --show-diff-on-failure --color=always --all-files","label":"package","rule":"pkg","count":1}
+{"id":"s0348","repo":"pallets/flask","source":"workflow","file":".github/workflows/publish.yaml","line":"uv build","label":"package","rule":"pkg","count":1}
+{"id":"s0349","repo":"pallets/flask","source":"workflow","file":".github/workflows/tests.yaml","line":"uv run --locked --no-default-groups --group dev tox run","label":"test","rule":"test-wrapper","count":1}
+{"id":"s0350","repo":"pallets/flask","source":"workflow","file":".github/workflows/tests.yaml","line":"uv run --locked --no-default-groups --group dev tox run -e typing","label":"test","rule":"test-wrapper","count":1}
+{"id":"s0351","repo":"psf/requests","source":"make","file":"Makefile","line":".publishenv/bin/python -m twine upload --skip-existing dist/*","label":"execute","rule":"exec","count":1}
+{"id":"s0352","repo":"psf/requests","source":"make","file":"Makefile","line":"echo \"\\033[95m\\n\\nBuild successful! View the docs homepage at docs/_build/html/index.html.\\n\\033[0m\"","label":"execute","rule":"exec","count":1}
+{"id":"s0353","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  applehelp  to make an Apple Help Book\"","label":"execute","rule":"exec","count":1}
+{"id":"s0354","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  coverage   to run coverage check of the documentation (if enabled)\"","label":"execute","rule":"exec","count":1}
+{"id":"s0355","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  devhelp    to make HTML files and a Devhelp project\"","label":"execute","rule":"exec","count":1}
+{"id":"s0356","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  dirhtml    to make HTML files named index.html in directories\"","label":"execute","rule":"exec","count":1}
+{"id":"s0357","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  epub       to make an epub\"","label":"execute","rule":"exec","count":1}
+{"id":"s0358","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  html       to make standalone HTML files\"","label":"execute","rule":"exec","count":1}
+{"id":"s0359","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  htmlhelp   to make HTML files and a HTML help project\"","label":"execute","rule":"exec","count":1}
+{"id":"s0360","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  info       to make Texinfo files and run them through makeinfo\"","label":"execute","rule":"exec","count":1}
+{"id":"s0361","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  latexpdf   to make LaTeX files and run them through pdflatex\"","label":"execute","rule":"exec","count":1}
+{"id":"s0362","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  linkcheck  to check all external links for integrity\"","label":"execute","rule":"exec","count":1}
+{"id":"s0363","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  pickle     to make pickle files\"","label":"execute","rule":"exec","count":1}
+{"id":"s0364","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  qthelp     to make HTML files and a qthelp project\"","label":"execute","rule":"exec","count":1}
+{"id":"s0365","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  texinfo    to make Texinfo files\"","label":"execute","rule":"exec","count":1}
+{"id":"s0366","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"  text       to make text files\"","label":"execute","rule":"exec","count":1}
+{"id":"s0367","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"# devhelp\"","label":"execute","rule":"exec","count":1}
+{"id":"s0368","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"Build finished; now you can process the pickle files.\"","label":"execute","rule":"exec","count":1}
+{"id":"s0369","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"Please use \\`make <target>' where <target> is one of\"","label":"execute","rule":"exec","count":1}
+{"id":"s0370","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"Run \\`make' in that directory to run these through (pdf)latex\" \"(use \\`make latexpdf' here to do that automatically).\"","label":"execute","rule":"exec","count":1}
+{"id":"s0371","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"Run \\`make' in that directory to run these through makeinfo\" \"(use \\`make info' here to do that automatically).\"","label":"execute","rule":"exec","count":1}
+{"id":"s0372","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"Running LaTeX files through pdflatex...\"","label":"execute","rule":"exec","count":1}
+{"id":"s0373","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"Running LaTeX files through platex and dvipdfmx...\"","label":"execute","rule":"exec","count":1}
+{"id":"s0374","repo":"psf/requests","source":"make","file":"docs/Makefile","line":"echo \"Running Texinfo files through makeinfo...\"","label":"execute","rule":"exec","count":1}
+{"id":"s0375","repo":"psf/requests","source":"make","file":"tests/certs/expired/Makefile","line":"make -C server clean","label":"execute","rule":"exec-make","count":1}
+{"id":"s0376","repo":"psf/requests","source":"make","file":"tests/certs/expired/ca/Makefile","line":"ln -s ca.crt cacert.pem","label":"write","rule":"write","count":1}
+{"id":"s0377","repo":"psf/requests","source":"make","file":"tests/certs/expired/ca/Makefile","line":"openssl req -x509 -sha256 -days 7300 -key ca-private.key -out ca.crt -config ca.cnf","label":"execute","rule":"exec-default","count":1}
+{"id":"s0378","repo":"psf/requests","source":"make","file":"tests/certs/expired/server/Makefile","line":"openssl x509 -req -CA ../ca/ca.crt -CAkey ../ca/ca-private.key -in server.csr -outform PEM -out server.pem -days 0 -CAcreateserial","label":"execute","rule":"exec-default","count":1}
+{"id":"s0379","repo":"psf/requests","source":"make","file":"tests/certs/mtls/client/Makefile","line":"rm -f client.*","label":"write","rule":"write","count":1}
+{"id":"s0380","repo":"psf/requests","source":"make","file":"tests/certs/valid/server/Makefile","line":"openssl x509 -req -CA ../ca/ca.crt -CAkey ../ca/ca-private.key -in server.csr -outform PEM -out server.pem -extfile cert.cnf -extensions v3_ca -days 7200 -CAcreateserial","label":"execute","rule":"exec-default","count":1}
+{"id":"s0381","repo":"psf/requests","source":"readme","file":"HISTORY.md","line":"pip install \"requests[use_chardet_on_py3]\"","label":"package","rule":"pkg","count":1}
+{"id":"s0382","repo":"psf/requests","source":"readme","file":"README.md","line":"git clone -c fetch.fsck.badTimezone=ignore https://github.com/psf/requests.git","label":"vcs","rule":"vcs","count":1}
+{"id":"s0383","repo":"psf/requests","source":"readme","file":"README.md","line":"git config --global fetch.fsck.badTimezone ignore","label":"vcs","rule":"vcs","count":1}
+{"id":"s0384","repo":"psf/requests","source":"readme","file":"README.md","line":"python -m pip install requests","label":"package","rule":"pkg-python-m","count":1}
+{"id":"s0385","repo":"psf/requests","source":"workflow","file":".github/workflows/close-issues.yml","line":"gh issue close $ISSUE_URL --comment \"As described in the template, Requests is not accepting feature requests\" --reason \"not planned\"","label":"vcs","rule":"vcs","count":1}
+{"id":"s0386","repo":"psf/requests","source":"workflow","file":".github/workflows/close-issues.yml","line":"gh issue close $ISSUE_URL --comment \"As described in the template, we won't be able to answer questions on this issue tracker. Please use [Stack Overflow](https://stackoverflow.com/)\" --reason completed","label":"vcs","rule":"vcs","count":1}
+{"id":"s0387","repo":"psf/requests","source":"workflow","file":".github/workflows/close-issues.yml","line":"gh issue lock $ISSUE_URL --reason off_topic","label":"vcs","rule":"vcs","count":1}
+{"id":"s0388","repo":"psf/requests","source":"workflow","file":".github/workflows/codeql-analysis.yml","line":"git checkout HEAD^2","label":"vcs","rule":"vcs","count":1}
+{"id":"s0389","repo":"psf/requests","source":"workflow","file":".github/workflows/lint.yml","line":"pre-commit run --show-diff-on-failure --color=always --all-files","label":"execute","rule":"exec","count":1}
+{"id":"s0390","repo":"psf/requests","source":"workflow","file":".github/workflows/lint.yml","line":"python -m pip install pre-commit==4.6.0","label":"package","rule":"pkg-python-m","count":1}
+{"id":"s0391","repo":"psf/requests","source":"workflow","file":".github/workflows/publish.yml","line":"python -m pip install build==1.4.0","label":"package","rule":"pkg-python-m","count":1}
+{"id":"s0392","repo":"psf/requests","source":"workflow","file":".github/workflows/run-tests.yml","line":"python  -m pip install \"urllib3<2\"","label":"package","rule":"pkg-python-m","count":1}
+{"id":"s0394","repo":"psf/requests","source":"workflow","file":".github/workflows/typecheck.yml","line":"python -m pip install -e . --group typecheck","label":"package","rule":"pkg-python-m","count":1}
+{"id":"s0395","repo":"psf/requests","source":"workflow","file":".github/workflows/typecheck.yml","line":"python -m pip install pip==26.0.1","label":"package","rule":"pkg-python-m","count":1}
+{"id":"s0396","repo":"psf/requests","source":"workflow","file":".github/workflows/typecheck.yml","line":"python -m pyright src/requests/","label":"execute","rule":"exec","count":1}
+{"id":"s0397","repo":"spf13/cobra","source":"make","file":"Makefile","line":"go get -v ./...","label":"package","rule":"pkg-go","count":1}
+{"id":"s0398","repo":"spf13/cobra","source":"make","file":"Makefile","line":"golangci-lint run -v","label":"execute","rule":"exec","count":1}
+{"id":"s0399","repo":"spf13/cobra","source":"readme","file":"site/content/active_help.md","line":"bin/helm install myrelease --version 2.0.[tab]","label":"execute","rule":"exec","count":1}
+{"id":"s0400","repo":"spf13/cobra","source":"readme","file":"site/content/active_help.md","line":"bin/helm install myrelease bitnami/solr --version 2.0.[tab][tab]","label":"execute","rule":"exec","count":1}
+{"id":"s0401","repo":"spf13/cobra","source":"readme","file":"site/content/active_help.md","line":"bin/helm package [tab]","label":"execute","rule":"exec","count":1}
+{"id":"s0402","repo":"spf13/cobra","source":"readme","file":"site/content/active_help.md","line":"bin/helm package [tab][tab]","label":"execute","rule":"exec","count":1}
+{"id":"s0403","repo":"spf13/cobra","source":"readme","file":"site/content/active_help.md","line":"helm repo add [tab]","label":"execute","rule":"exec","count":1}
+{"id":"s0404","repo":"spf13/cobra","source":"readme","file":"site/content/active_help.md","line":"helm repo add grafana [tab]","label":"execute","rule":"exec","count":1}
+{"id":"s0405","repo":"spf13/cobra","source":"readme","file":"site/content/active_help.md","line":"helm repo add grafana https://grafana.github.io/helm-charts [tab]","label":"execute","rule":"exec","count":1}
+{"id":"s0406","repo":"spf13/cobra","source":"readme","file":"site/content/completions/_index.md","line":"bash        (generate autocompletion script for bash)        powershell  (generate autocompletion script for powershell)","label":"execute","rule":"exec","count":1}
+{"id":"s0407","repo":"spf13/cobra","source":"readme","file":"site/content/completions/_index.md","line":"bash        fish        powershell  zsh","label":"execute","rule":"exec","count":1}
+{"id":"s0408","repo":"spf13/cobra","source":"readme","file":"site/content/completions/_index.md","line":"node   pod   replicationcontroller   service","label":"execute","rule":"exec","count":1}
+{"id":"s0409","repo":"spf13/cobra","source":"readme","file":"site/content/user_guide.md","line":"kubectl myplugin","label":"execute","rule":"exec","count":1}
+{"id":"s0410","repo":"spf13/cobra","source":"readme","file":"site/content/user_guide.md","line":"kubectl remove","label":"execute","rule":"exec","count":1}
+{"id":"s0411","repo":"spf13/cobra","source":"workflow","file":".github/workflows/test.yml","line":"RICHGO_FORCE_COLOR=1 PATH=$HOME/go/bin/:$PATH make richtest","label":"execute","rule":"exec-make","count":1}
+{"id":"s0412","repo":"spf13/cobra","source":"workflow","file":".github/workflows/test.yml","line":"RICHGO_FORCE_COLOR=1 PATH=$HOME/go/bin:$PATH make richtest","label":"execute","rule":"exec-make","count":1}
+{"id":"s0413","repo":"spf13/cobra","source":"workflow","file":".github/workflows/test.yml","line":"docker run -v $(pwd):/wrk -w /wrk ghcr.io/google/addlicense -c 'The Cobra Authors' -y '2013-2023' -l apache -ignore '.github/**' -check .","label":"execute","rule":"exec","count":1}
+{"id":"s0414","repo":"spf13/cobra","source":"workflow","file":".github/workflows/test.yml","line":"export GOBIN=$HOME/go/bin","label":"execute","rule":"exec","count":1}
+{"id":"s0415","repo":"spf13/cobra","source":"workflow","file":".github/workflows/test.yml","line":"git config --global core.autocrlf input","label":"vcs","rule":"vcs","count":1}
+{"id":"s0416","repo":"spf13/cobra","source":"workflow","file":".github/workflows/test.yml","line":"go install github.com/kyoh86/richgo@latest","label":"package","rule":"pkg-go","count":1}
+{"id":"s0417","repo":"spf13/cobra","source":"workflow","file":".github/workflows/test.yml","line":"go install github.com/mitchellh/gox@latest","label":"package","rule":"pkg-go","count":1}
+{"id":"s0418","repo":"square/okhttp","source":"readme","file":"docs/changelogs/upgrading_to_okhttp_4.md","line":"sed -i \"\" 's/^\\(import okhttp3\\.[^.]*\\)\\.\\([a-z][a-zA-Z]*\\)$/\\1.Companion.\\2/g' `find . -name \"*.kt\"`","label":"write","rule":"write-inplace","count":1}
+{"id":"s0419","repo":"square/okhttp","source":"readme","file":"samples/android/README.md","line":"./gradlew :samples:android:connectedDebugAndroidTest","label":"test","rule":"test-gradle","count":1}
+{"id":"s0420","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"./gradlew dokkaGeneratePublicationHtml -PokhttpDokka=true","label":"package","rule":"pkg","count":1}
+{"id":"s0421","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"cat README.md | grep -v 'project website' > docs/index.md","label":"read","rule":"read","count":1}
+{"id":"s0422","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"cd $DIR","label":"execute","rule":"exec","count":1}
+{"id":"s0423","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"cd ..","label":"execute","rule":"exec","count":1}
+{"id":"s0424","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"cp CHANGELOG.md docs/changelogs/changelog.md","label":"write","rule":"write","count":1}
+{"id":"s0425","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"git checkout gh-pages","label":"vcs","rule":"vcs","count":1}
+{"id":"s0429","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"git clone $REPO $DIR","label":"vcs","rule":"vcs","count":1}
+{"id":"s0430","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"git push --set-upstream origin gh-pages","label":"vcs","rule":"vcs","count":1}
+{"id":"s0431","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"mkdocs gh-deploy","label":"execute","rule":"exec-default","count":1}
+{"id":"s0432","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"mv ./build/dokka/html docs/5.x","label":"write","rule":"write","count":1}
+{"id":"s0433","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"python3 -m venv venv","label":"execute","rule":"exec","count":1}
+{"id":"s0434","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"rm -rf $DIR","label":"write","rule":"write","count":1}
+{"id":"s0435","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"set -ex","label":"execute","rule":"exec","count":1}
+{"id":"s0436","repo":"square/okhttp","source":"script","file":"deploy_website.sh","line":"source venv/bin/activate","label":"execute","rule":"exec","count":1}
+{"id":"s0437","repo":"square/okhttp","source":"script","file":"fuzzing/fuzzingserver-test.sh","line":"cd \"$SCRIPT_DIR\"","label":"execute","rule":"exec","count":1}
+{"id":"s0439","repo":"square/okhttp","source":"script","file":"fuzzing/fuzzingserver-test.sh","line":"echo \"Run 'brew install jq'\"","label":"execute","rule":"exec","count":1}
+{"id":"s0440","repo":"square/okhttp","source":"script","file":"fuzzing/fuzzingserver-test.sh","line":"echo \"Run 'pip install autobahntestsuite', maybe with 'sudo'.\"","label":"execute","rule":"exec","count":1}
+{"id":"s0441","repo":"square/okhttp","source":"script","file":"fuzzing/fuzzingserver-test.sh","line":"java -jar target/okhttp-tests-*-jar-with-dependencies.jar","label":"execute","rule":"exec","count":1}
+{"id":"s0443","repo":"square/okhttp","source":"script","file":"fuzzing/fuzzingserver-test.sh","line":"sleep 2 # wait for wstest to start","label":"execute","rule":"exec","count":1}
+{"id":"s0444","repo":"square/okhttp","source":"script","file":"fuzzing/fuzzingserver-test.sh","line":"trap 'kill $(jobs -pr)' SIGINT SIGTERM EXIT","label":"execute","rule":"exec","count":1}
+{"id":"s0445","repo":"square/okhttp","source":"script","file":"fuzzing/fuzzingserver-test.sh","line":"which jq","label":"read","rule":"read","count":1}
+{"id":"s0446","repo":"square/okhttp","source":"script","file":"fuzzing/fuzzingserver-test.sh","line":"which wstest","label":"read","rule":"read","count":1}
+{"id":"s0449","repo":"square/okhttp","source":"script","file":"fuzzing/fuzzingserver-update-expected.sh","line":"echo \"File not found. Did you run the Autobahn test script?\"","label":"execute","rule":"exec","count":1}
+{"id":"s0450","repo":"square/okhttp","source":"script","file":"test_docs.sh","line":"./gradlew publishToMavenLocal -DRELEASE_SIGNING_ENABLED=false -PokhttpDokka=true","label":"package","rule":"pkg","count":1}
+{"id":"s0451","repo":"square/okhttp","source":"script","file":"test_docs.sh","line":"cp CONTRIBUTING.md docs/contribute/contributing.md","label":"write","rule":"write","count":1}
+{"id":"s0452","repo":"square/okhttp","source":"script","file":"test_docs.sh","line":"mkdocs build","label":"execute","rule":"exec-default","count":1}
+{"id":"s0453","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"./gradlew -PgraalBuild=true native-image-tests:nativeTest","label":"test","rule":"test-gradle","count":1}
+{"id":"s0455","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"./gradlew android-test-app:lint android-test-app:assembleRelease","label":"package","rule":"pkg","count":1}
+{"id":"s0456","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"./gradlew clean publish --stacktrace","label":"package","rule":"pkg","count":1}
+{"id":"s0459","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"./gradlew okcurl:nativeBuild","label":"package","rule":"pkg","count":1}
+{"id":"s0461","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"./gradlew test allTests -Pokhttp.platform=${{ matrix.provider }} -Ptest.java.version=${{ matrix.java-version }}","label":"test","rule":"test-gradle","count":1}
+{"id":"s0462","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"./gradlew test allTests -Ptest.java.version=${{ matrix.java-version }}","label":"test","rule":"test-gradle","count":1}
+{"id":"s0463","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"./gradlew test allTests -Ptest.java.version=24","label":"test","rule":"test-gradle","count":1}
+{"id":"s0464","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"./gradlew test allTests -Ptest.java.version=25","label":"test","rule":"test-gradle","count":1}
+{"id":"s0465","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"./gradlew test allTests -Ptest.java.version=8 -Pokhttp.platform=jdk8alpn -Palpn.boot.version=8.1.13.v20181017 -Dorg.gradle.java.installations.paths=/opt/hostedtoolcache/Java_Adopt_jdk/8.0.242-8.1/x64","label":"test","rule":"test-gradle","count":1}
+{"id":"s0466","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"echo \"version=$(\"$SDK/cmdline-tools/latest/bin/sdkmanager\" --version 2>/dev/null | grep -Eo '^[0-9][0-9.]*' | head -1)\" >> \"$GITHUB_OUTPUT\"","label":"execute","rule":"exec","count":1}
+{"id":"s0467","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"echo 'kotlin.jvm.target.validation.mode=ignore' >> ./gradle.properties","label":"execute","rule":"exec","count":1}
+{"id":"s0468","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"kvm-ok || echo \"KVM is not accelerated\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0469","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"kvm-ok || exit 1","label":"execute","rule":"exec-default","count":1}
+{"id":"s0470","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"mv \"$SDK/cmdline-tools/latest-2\" \"$SDK/cmdline-tools/latest\"","label":"write","rule":"write","count":1}
+{"id":"s0471","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"rm -rf \"$SDK/cmdline-tools/latest\"","label":"write","rule":"write","count":1}
+{"id":"s0472","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"sudo apt-get install -y cpu-checker","label":"package","rule":"pkg","count":1}
+{"id":"s0473","repo":"square/okhttp","source":"workflow","file":".github/workflows/build.yml","line":"yes | \"$SDK/cmdline-tools/latest/bin/sdkmanager\" --install \"cmdline-tools;latest\" > /dev/null","label":"execute","rule":"exec-default","count":1}
+{"id":"s0474","repo":"square/okhttp","source":"workflow","file":".github/workflows/docs.yml","line":"./test_docs.sh","label":"execute","rule":"exec-default","count":1}
+{"id":"s0475","repo":"square/okhttp","source":"workflow","file":".github/workflows/docs.yml","line":"pip install mkdocs-material mkdocs-redirects","label":"package","rule":"pkg","count":2}
+{"id":"s0476","repo":"square/okhttp","source":"workflow","file":".github/workflows/publish.yml","line":"./gradlew publish","label":"package","rule":"pkg","count":1}
+{"id":"s0477","repo":"vitest-dev/vitest","source":"readme","file":"docs/blog/vitest-4-1.md","line":"vitest --tags-filter=\"api/*\"","label":"test","rule":"test-runner","count":1}
+{"id":"s0478","repo":"vitest-dev/vitest","source":"readme","file":"docs/config/fsmodulecache.md","line":"DEBUG=vitest:cache:fs vitest --fsModuleCache","label":"test","rule":"test-runner","count":1}
+{"id":"s0479","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/benchmarking.md","line":"vitest bench parser","label":"test","rule":"test-runner","count":1}
+{"id":"s0480","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/browser/index.md","line":"npm install -D vitest @vitest/browser-playwright","label":"package","rule":"pkg","count":1}
+{"id":"s0481","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/browser/index.md","line":"npm install -D vitest @vitest/browser-preview","label":"package","rule":"pkg","count":1}
+{"id":"s0482","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/browser/index.md","line":"npx vitest --browser=chromium","label":"test","rule":"test-wrapper","count":1}
+{"id":"s0483","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/browser/index.md","line":"pnpm add -D vitest @vitest/browser-playwright","label":"package","rule":"pkg","count":1}
+{"id":"s0484","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/browser/index.md","line":"yarn add -D vitest vite @vitest/browser-webdriverio","label":"package","rule":"pkg","count":1}
+{"id":"s0485","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/browser/index.md","line":"yarn exec vitest init browser","label":"package","rule":"pkg","count":1}
+{"id":"s0486","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/browser/visual-regression-testing.md","line":"npm install -D @chromatic-com/vitest","label":"package","rule":"pkg","count":1}
+{"id":"s0487","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/browser/visual-regression-testing.md","line":"yarn add -D @chromatic-com/vitest","label":"package","rule":"pkg","count":1}
+{"id":"s0488","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/debugging.md","line":"vitest --inspect-brk --browser --no-file-parallelism","label":"test","rule":"test-runner","count":1}
+{"id":"s0489","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/filtering.md","line":"vitest --experimental.preParse -t \"handles empty input\"","label":"test","rule":"test-runner","count":1}
+{"id":"s0490","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/filtering.md","line":"vitest --tags-filter=frontend","label":"test","rule":"test-runner","count":1}
+{"id":"s0492","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/improving-performance.md","line":"vitest --no-file-parallelism","label":"test","rule":"test-runner","count":1}
+{"id":"s0493","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/index.md","line":"pnpm add -D vitest","label":"package","rule":"pkg","count":1}
+{"id":"s0494","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/profiling-test-performance.md","line":"vitest --experimental.importDurations.print","label":"test","rule":"test-runner","count":1}
+{"id":"s0495","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/projects.md","line":"yarn test","label":"test","rule":"test-js","count":1}
+{"id":"s0496","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/projects.md","line":"yarn test --project e2e --project unit","label":"test","rule":"test-js","count":1}
+{"id":"s0497","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/recipes/affected-tests.md","line":"vitest run --changed              # uncommitted changes, staged and unstaged","label":"test","rule":"test-runner","count":1}
+{"id":"s0498","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/recipes/disable-isolation.md","line":"vitest --shuffle --run --project='Unit tests'","label":"test","rule":"test-runner","count":1}
+{"id":"s0499","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/reporters.md","line":"npx vitest --reporter=./path/to/reporter.ts","label":"test","rule":"test-wrapper","count":1}
+{"id":"s0500","repo":"vitest-dev/vitest","source":"readme","file":"docs/guide/ui.md","line":"npm i -D @vitest/ui","label":"package","rule":"pkg","count":1}
+{"id":"s0501","repo":"vitest-dev/vitest","source":"readme","file":"packages/browser-playwright/README.md","line":"yarn add -D @vitest/browser-playwright","label":"package","rule":"pkg","count":1}
+{"id":"s0502","repo":"vitest-dev/vitest","source":"readme","file":"packages/browser-preview/README.md","line":"pnpm add -D @vitest/browser-preview","label":"package","rule":"pkg","count":1}
+{"id":"s0503","repo":"vitest-dev/vitest","source":"readme","file":"packages/coverage-v8/README.md","line":"npx vitest --coverage","label":"test","rule":"test-wrapper","count":1}
+{"id":"s0504","repo":"vitest-dev/vitest","source":"readme","file":"packages/ui/CONTRIBUTING.md","line":"VITE_PORT=3023 pnpm -C packages/ui dev:client","label":"package","rule":"pkg","count":1}
+{"id":"s0505","repo":"vitest-dev/vitest","source":"readme","file":"test/browser/README.md","line":"pnpm run test:playwright","label":"test","rule":"test-js","count":1}
+{"id":"s0506","repo":"vitest-dev/vitest","source":"readme","file":"test/ui/README.md","line":"pnpm test","label":"test","rule":"test-js","count":1}
+{"id":"s0508","repo":"vitest-dev/vitest","source":"workflow","file":".github/actions/setup-playwright/action.yml","line":"const fs = require('fs');","label":"execute","rule":"exec-default","count":1}
+{"id":"s0509","repo":"vitest-dev/vitest","source":"workflow","file":".github/actions/setup-playwright/action.yml","line":"const pattern = (name) => new RegExp(name + ':\\\\\\s+specifier: [\\\\\\s\\\\\\w\\\\\\.^]+version: (\\\\\\d+\\\\\\.\\\\\\d+\\\\\\.\\\\\\d+)');","label":"execute","rule":"exec-default","count":1}
+{"id":"s0511","repo":"vitest-dev/vitest","source":"workflow","file":".github/actions/setup-playwright/action.yml","line":"echo \"Failed to resolve package versions. See log above.\" && exit 1","label":"execute","rule":"exec","count":1}
+{"id":"s0512","repo":"vitest-dev/vitest","source":"workflow","file":".github/actions/setup-playwright/action.yml","line":"pnpm --filter @vitest/test-browser exec playwright install --only-shell","label":"package","rule":"pkg","count":1}
+{"id":"s0513","repo":"vitest-dev/vitest","source":"workflow","file":".github/actions/setup-playwright/action.yml","line":"pnpm --filter @vitest/test-browser exec playwright install chromium --only-shell","label":"package","rule":"pkg","count":1}
+{"id":"s0514","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"./actionlint -color -shellcheck=\"\"","label":"execute","rule":"exec-default","count":1}
+{"id":"s0515","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)","label":"execute","rule":"exec","count":1}
+{"id":"s0516","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"console.log(match[1]);","label":"execute","rule":"exec-default","count":1}
+{"id":"s0517","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"const lockfile = fs.readFileSync('./pnpm-lock.yaml', 'utf8');","label":"execute","rule":"exec-default","count":1}
+{"id":"s0518","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"cp -rf ./test/e2e/.vitest/index.html ./test/e2e/.vitest/test-e2e.html || rc=1","label":"write","rule":"write","count":1}
+{"id":"s0519","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"cp -rf ./test/unit/.vitest/index.html ./test/unit/.vitest/test-unit.html || rc=1","label":"write","rule":"write","count":1}
+{"id":"s0520","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"docker build --build-arg \"PLAYWRIGHT_VERSION=$PLAYWRIGHT_VERSION\" -t \"$IMAGE\" .github/docker","label":"execute","rule":"exec","count":1}
+{"id":"s0521","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"$GH_TOKEN\" | docker login ghcr.io -u \"$GITHUB_ACTOR\" --password-stdin","label":"execute","rule":"exec","count":1}
+{"id":"s0522","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"$IMAGE already exists, skipping build\"","label":"execute","rule":"exec","count":1}
+{"id":"s0523","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"::error::Failed to publish $IMAGE. Fork PRs cannot push to GHCR - a Vitest maintainer needs to run CI from a vitest-dev/vitest branch to publish the playwright-deps:$PLAYWRIGHT_VERSION image.\"","label":"execute","rule":"exec","count":1}
+{"id":"s0524","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"::notice title=CI reports::packages/ui: ${STEPS_UPLOAD_UI_REPORT_OUTPUTS_ARTIFACT_URL}\"","label":"execute","rule":"exec","count":1}
+{"id":"s0525","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"::notice title=CI reports::test/e2e: ${STEPS_UPLOAD_E2E_REPORT_OUTPUTS_ARTIFACT_URL}\"","label":"execute","rule":"exec","count":1}
+{"id":"s0526","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"echo \"version=${version}\" >> \"$GITHUB_OUTPUT\"","label":"execute","rule":"exec","count":1}
+{"id":"s0527","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"exit $rc","label":"execute","rule":"exec","count":1}
+{"id":"s0530","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"pnpm --filter=./packages/ui --no-bail test:ui --merge-reports || rc=1","label":"package","rule":"pkg","count":1}
+{"id":"s0531","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"pnpm --filter=./test/unit --filter=./test/e2e --no-bail --sequential test --merge-reports || rc=1","label":"test","rule":"test-js","count":1}
+{"id":"s0532","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"pnpm -C docs run cli-table","label":"package","rule":"pkg","count":1}
+{"id":"s0533","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"pnpm -C packages/ui test:ui","label":"package","rule":"pkg","count":1}
+{"id":"s0534","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"pnpm i --filter '!docs'","label":"package","rule":"pkg","count":1}
+{"id":"s0535","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"pnpm run lint","label":"package","rule":"pkg","count":1}
+{"id":"s0536","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"pnpm run test:browser:playwright runner.test.ts","label":"test","rule":"test-js","count":1}
+{"id":"s0537","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"pnpm run test:ci:${{ matrix.suite }}","label":"test","rule":"test-js","count":1}
+{"id":"s0538","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/ci.yml","line":"pnpm run test:examples","label":"test","rule":"test-js","count":1}
+{"id":"s0539","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/cr.yml","line":"pnpx pkg-pr-new publish --compact --commentWithSha --no-template --pnpm './packages/*'","label":"package","rule":"pkg","count":1}
+{"id":"s0540","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/knip.yml","line":"pnpm install --frozen-lockfile","label":"package","rule":"pkg","count":1}
+{"id":"s0541","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/knip.yml","line":"pnpm run build","label":"package","rule":"pkg","count":1}
+{"id":"s0542","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/knip.yml","line":"pnpm run knip","label":"package","rule":"pkg","count":1}
+{"id":"s0545","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/prepare-publish.yml","line":"git switch -c \"$PREPARE_BRANCH\"","label":"vcs","rule":"vcs","count":1}
+{"id":"s0546","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/prepare-publish.yml","line":"pnpm install --frozen-lockfile --prefer-offline","label":"package","rule":"pkg","count":1}
+{"id":"s0547","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/prepare-publish.yml","line":"pnpm run release","label":"package","rule":"pkg","count":1}
+{"id":"s0548","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/promote-docs.yml","line":"echo \"Cannot promote prerelease version $VERSION\"","label":"execute","rule":"exec","count":1}
+{"id":"s0549","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/promote-docs.yml","line":"echo \"Target does not contain stable release tag $TAG\"","label":"execute","rule":"exec","count":1}
+{"id":"s0550","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/promote-docs.yml","line":"echo \"Target is not a fast-forward of the release branch\"","label":"execute","rule":"exec","count":1}
+{"id":"s0551","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/promote-docs.yml","line":"git fetch origin \"+refs/heads/release:refs/remotes/origin/release\" \"+refs/tags/$TAG:refs/tags/$TAG\"","label":"vcs","rule":"vcs","count":1}
+{"id":"s0553","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/publish.yml","line":"echo \"Detected release v$VERSION\"","label":"execute","rule":"exec","count":1}
+{"id":"s0554","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/publish.yml","line":"echo \"No release commit found at HEAD\"","label":"execute","rule":"exec","count":1}
+{"id":"s0555","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/publish.yml","line":"echo \"Tag $TAG already exists\"","label":"execute","rule":"exec","count":1}
+{"id":"s0556","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/publish.yml","line":"echo \"release=false\" >> \"$GITHUB_OUTPUT\"","label":"execute","rule":"exec","count":1}
+{"id":"s0557","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/publish.yml","line":"echo \"release=true\" >> \"$GITHUB_OUTPUT\"","label":"execute","rule":"exec","count":1}
+{"id":"s0559","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/publish.yml","line":"git config user.name \"vitest-release-bot[bot]\"","label":"vcs","rule":"vcs","count":1}
+{"id":"s0561","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/publish.yml","line":"git tag \"$TAG\" \"$GITHUB_SHA\"","label":"vcs","rule":"vcs","count":1}
+{"id":"s0562","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/publish.yml","line":"npx changelogithub --to \"$TAG\" --name \"$TAG\"","label":"package","rule":"pkg","count":1}
+{"id":"s0563","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/publish.yml","line":"pnpm build","label":"package","rule":"pkg","count":1}
+{"id":"s0564","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/publish.yml","line":"pnpm run publish-ci \"$VERSION\"","label":"package","rule":"pkg","count":1}
+{"id":"s0565","repo":"vitest-dev/vitest","source":"workflow","file":".github/workflows/semgrep.yml","line":"semgrep scan --quiet --sarif --config auto --exclude-rule javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp > semgrep-results.sarif","label":"execute","rule":"exec-default","count":1}

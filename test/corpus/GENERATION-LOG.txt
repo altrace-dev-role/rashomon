@@ -1,0 +1,48 @@
+test/corpus generation log. Counts only; no value from a dropped row is kept here.
+
+Provenance. Each repository in repos.json was shallow-cloned (depth 1) and the
+checkout verified to be at its commit_sha before any row was read (both builders
+refuse otherwise). Licences were read from each repository's licence file; all
+ten are MIT, Apache-2.0, BSD-3-Clause, or MIT OR Unlicense.
+
+Rebuild, from the repository root, with CLONES holding one checkout per
+repository named <owner>_<repo>:
+  python3 -I test/corpus/tools/build_paths.py $CLONES /tmp/path-cand.jsonl
+  python3 -I test/corpus/tools/build_shell.py $CLONES /tmp/shell-cand.jsonl
+  go run ./test/corpus/cmd/scrubfilter -field path /tmp/path-cand.jsonl > test/corpus/paths.jsonl
+  go run ./test/corpus/cmd/scrubfilter -field line /tmp/shell-cand.jsonl > test/corpus/shell.jsonl
+  go run ./test/corpus/cmd/report -commit <classifier commit> -out test/corpus/reports
+Both builders are deterministic (no RNG, no clock, sorted output); two runs were
+compared byte for byte.
+
+Path corpus.
+  candidates written by build_paths.py: 1195 (strata: dir 875, cand 288, sens 34)
+  excluded by the labelling rules as undecidable: 2 (AMBIG-TestPrefix 1,
+    AMBIG-SwiftHelper 1); excluded for tab/newline/non-UTF-8: 0
+  dropped by cmd/scrubfilter because the fixture scanner (test/tools/hygiene,
+    the scan H-113 runs over every JSON Lines file) flags the row or the report
+    line it would print: 50
+  kept: 1145
+  The 50 dropped rows are ordinary file names, not secrets: the scanner's entropy
+  test flags long identifier-like names (long CamelCase class files such as
+  *Tests.swift and *Test.java names, hash-named snapshots) and an email address
+  in two file names. Dropping them removes some long test-file names from the
+  corpus; it is a known bias, and it is the cost of keeping H-113 green without
+  touching test/tools/hygiene/reviewed.txt, which is outside this task.
+
+Shell corpus.
+  extracted and labelled by build_shell.py: 565 distinct lines
+  skipped before labelling (lexer or rule): assign-only 303, structure 679,
+    dynamic program word 173, not-a-program-word 180, README line whose program
+    the rules do not name 160, placeholder 61, make automatic variable 17,
+    lexer failure 3; over 400 bytes 19
+  excluded as ambiguous: make all/ci 9, gradle check 1, mvn verify 3
+  dropped by cmd/scrubfilter: 53 by secretshape.Secretish, 11 by hygiene.Scan
+  kept: 501
+  Read by eye after the run (counts by kind, no values): most of the 64 dropped
+  lines are the scrubber's deny list or entropy test over-matching ordinary
+  lines: install -d and rm -f of DESTDIR paths (a Makefile install recipe), echo of NAME=value appended to GITHUB_ENV, mkdir -p of a braced variable,
+  40-hex commit ids in `git cherry-pick` lines. A minority are true shapes: a
+  git push to a URL carrying a token, a bot e-mail address, a
+  gpg key id. The drops bias the corpus away from install recipes (class write),
+  GitHub-Actions environment plumbing, and authenticated git lines (class vcs).

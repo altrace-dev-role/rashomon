@@ -1,0 +1,121 @@
+Path corpus: disagreement report
+classifier: shape.Label (Read file_path)
+classifier commit (first 12 digits; full SHA in the .json): 323e4075c6d5
+stratum: dir = stratified over directories, cand = name resembles a class of interest, sens = every sensitive-class file
+
+rows: 1145
+agree: 1075/1145 = 93.89%
+disagree: 70
+
+disagreements by (label -> classifier answer):
+     70  test-file -> none
+
+agreement by label:
+  certificate                  39/39 = 100.00%
+  credential-shaped            2/2 = 100.00%
+  env-file                     5/5 = 100.00%
+  none                         800/800 = 100.00%
+  test-file                    229/299 = 76.59%
+
+agreement by repository:
+  Alamofire/Alamofire          118/138 = 85.51%
+  BurntSushi/ripgrep           85/94 = 90.43%
+  cli/cli                      128/128 = 100.00%
+  dart-lang/http               93/133 = 69.92%
+  google/gson                  116/117 = 99.15%
+  pallets/flask                119/119 = 100.00%
+  psf/requests                 107/107 = 100.00%
+  spf13/cobra                  63/63 = 100.00%
+  square/okhttp                114/114 = 100.00%
+  vitest-dev/vitest            132/132 = 100.00%
+
+agreement by stratum:
+  cand                         224/269 = 83.27%
+  dir                          819/844 = 97.04%
+  sens                         32/32 = 100.00%
+
+agreement by labelling rule:
+  E1                           5/5 = 100.00%
+  K1                           2/2 = 100.00%
+  N0                           800/800 = 100.00%
+  T-dart                       0/38 = 0.00%
+  T-go                         68/68 = 100.00%
+  T-java                       51/52 = 98.08%
+  T-js                         36/36 = 100.00%
+  T-kt                         34/34 = 100.00%
+  T-py                         40/40 = 100.00%
+  T-rs-dir                     0/9 = 0.00%
+  T-swift                      0/22 = 0.00%
+  X1                           39/39 = 100.00%
+
+every disagreement (id, repo, rule, label -> classifier, subject):
+  p0048  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/AuthenticationInterceptorTests.swift"
+  p0050  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/CombineTests.swift"
+  p0051  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/ConcurrencyTests.swift"
+  p0052  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/DataStreamTests.swift"
+  p0054  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/DownloadTests.swift"
+  p0056  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/InstantTests.swift"
+  p0057  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/InternalRequestTests.swift"
+  p0058  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/LeaksTests.swift"
+  p0059  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/MultipartFormDataTests.swift"
+  p0060  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/OfflineRetrierTests.swift"
+  p0061  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/ParameterEncoderTests.swift"
+  p0062  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/RedirectHandlerTests.swift"
+  p0064  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/RequestInterceptorTests.swift"
+  p0065  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/RequestTests.swift"
+  p0093  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/ResponseTests.swift"
+  p0094  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/RetryPolicyTests.swift"
+  p0095  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/ServerTrustEvaluatorTests.swift"
+  p0096  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/SessionDelegateTests.swift"
+  p0101  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/URLProtocolTests.swift"
+  p0102  Alamofire/Alamofire  [T-swift]  test-file -> none  "Tests/ValidationTests.swift"
+  p0195  BurntSushi/ripgrep  [T-rs-dir]  test-file -> none  "crates/ignore/tests/gitignore_matched_path_or_any_parents_tests.rs"
+  p0200  BurntSushi/ripgrep  [T-rs-dir]  test-file -> none  "crates/matcher/tests/test_matcher.rs"
+  p0201  BurntSushi/ripgrep  [T-rs-dir]  test-file -> none  "crates/matcher/tests/tests.rs"
+  p0202  BurntSushi/ripgrep  [T-rs-dir]  test-file -> none  "crates/matcher/tests/util.rs"
+  p0233  BurntSushi/ripgrep  [T-rs-dir]  test-file -> none  "tests/binary.rs"
+  p0238  BurntSushi/ripgrep  [T-rs-dir]  test-file -> none  "tests/misc.rs"
+  p0239  BurntSushi/ripgrep  [T-rs-dir]  test-file -> none  "tests/regression.rs"
+  p0240  BurntSushi/ripgrep  [T-rs-dir]  test-file -> none  "tests/tests.rs"
+  p0241  BurntSushi/ripgrep  [T-rs-dir]  test-file -> none  "tests/util.rs"
+  p0403  dart-lang/http  [T-dart]  test-file -> none  "pkgs/cupertino_http/test/client_profile_test.dart"
+  p0405  dart-lang/http  [T-dart]  test-file -> none  "pkgs/cupertino_http/test/url_session_configuration_test.dart"
+  p0406  dart-lang/http  [T-dart]  test-file -> none  "pkgs/cupertino_http/test/url_session_delegate_test.dart"
+  p0407  dart-lang/http  [T-dart]  test-file -> none  "pkgs/cupertino_http/test/url_session_task_test.dart"
+  p0408  dart-lang/http  [T-dart]  test-file -> none  "pkgs/cupertino_http/test/url_session_test.dart"
+  p0409  dart-lang/http  [T-dart]  test-file -> none  "pkgs/cupertino_http/test/web_socket_test.dart"
+  p0411  dart-lang/http  [T-swift]  test-file -> none  "pkgs/flutter_http_example/ios/RunnerTests/RunnerTests.swift"
+  p0412  dart-lang/http  [T-swift]  test-file -> none  "pkgs/flutter_http_example/macos/RunnerTests/RunnerTests.swift"
+  p0420  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http/test/html/streamed_request_test.dart"
+  p0421  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http/test/http_retry_test.dart"
+  p0422  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http/test/io/client_conformance_test.dart"
+  p0423  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http/test/io/multipart_test.dart"
+  p0424  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http/test/mock_client_test.dart"
+  p0425  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http/test/multipart_test.dart"
+  p0426  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http/test/response_test.dart"
+  p0434  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/client_pool_test.dart"
+  p0435  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/flow_control_test.dart"
+  p0436  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/multiprotocol_server_test.dart"
+  p0437  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/server_test.dart"
+  p0438  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/src/async_utils/async_utils_test.dart"
+  p0439  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/src/connection_preface_test.dart"
+  p0440  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/src/flowcontrol/connection_queues_test.dart"
+  p0441  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/src/flowcontrol/stream_queues_test.dart"
+  p0442  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/src/frames/frame_defragmenter_test.dart"
+  p0443  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/src/frames/frame_writer_reader_test.dart"
+  p0444  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/src/frames/frame_writer_test.dart"
+  p0445  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/src/hpack/hpack_test.dart"
+  p0446  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http2/test/src/ping/ping_handler_test.dart"
+  p0449  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http_client_conformance_tests/lib/src/isolate_test.dart"
+  p0454  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http_client_conformance_tests/lib/src/request_cookies_test.dart"
+  p0459  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http_client_conformance_tests/lib/src/response_cookies_test.dart"
+  p0461  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http_client_conformance_tests/lib/src/server_errors_test.dart"
+  p0471  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http_parser/test/authentication_challenge_test.dart"
+  p0475  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http_profile/test/close_test.dart"
+  p0476  dart-lang/http  [T-dart]  test-file -> none  "pkgs/http_profile/test/http_client_request_profile_test.dart"
+  p0480  dart-lang/http  [T-dart]  test-file -> none  "pkgs/ok_http/example/integration_test/client_configuration_test.dart"
+  p0481  dart-lang/http  [T-dart]  test-file -> none  "pkgs/ok_http/example/integration_test/client_test.dart"
+  p0488  dart-lang/http  [T-dart]  test-file -> none  "pkgs/web_socket/test/exceptions_test.dart"
+  p0489  dart-lang/http  [T-dart]  test-file -> none  "pkgs/web_socket/test/fake_web_socket_test.dart"
+  p0494  dart-lang/http  [T-dart]  test-file -> none  "pkgs/web_socket_channel/test/adapter_web_socket_channel_test.dart"
+  p0636  google/gson  [T-java]  test-file -> none  "test-shrinker/src/test/java/com/google/gson/it/ShrinkingIT.java"

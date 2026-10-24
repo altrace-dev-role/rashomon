@@ -1,0 +1,172 @@
+Shell-line corpus: disagreement report
+classifier: shape.Derive (Bash command) VerbClass
+classifier commit (first 12 digits; full SHA in the .json): 323e4075c6d5
+stratum here is the line's source: workflow, make, script, readme
+
+rows: 501
+agree: 398/501 = 79.44%
+disagree: 103
+
+disagreements by (label -> classifier answer):
+     55  package -> execute
+     25  test -> execute
+      8  write -> execute
+      7  read -> execute
+      7  test -> package
+      1  vcs -> execute
+
+agreement by label:
+  execute                      252/252 = 100.00%
+  network                      2/2 = 100.00%
+  package                      49/104 = 47.12%
+  read                         7/14 = 50.00%
+  test                         20/52 = 38.46%
+  vcs                          36/37 = 97.30%
+  write                        32/40 = 80.00%
+
+agreement by repository:
+  Alamofire/Alamofire          11/13 = 84.62%
+  BurntSushi/ripgrep           67/77 = 87.01%
+  cli/cli                      112/125 = 89.60%
+  dart-lang/http               31/73 = 42.47%
+  google/gson                  3/10 = 30.00%
+  pallets/flask                8/10 = 80.00%
+  psf/requests                 39/45 = 86.67%
+  spf13/cobra                  21/21 = 100.00%
+  square/okhttp                34/48 = 70.83%
+  vitest-dev/vitest            72/79 = 91.14%
+
+agreement by stratum:
+  make                         45/48 = 93.75%
+  readme                       66/81 = 81.48%
+  script                       109/126 = 86.51%
+  workflow                     178/246 = 72.36%
+
+agreement by labelling rule:
+  exec                         171/171 = 100.00%
+  exec-default                 74/74 = 100.00%
+  exec-make                    7/7 = 100.00%
+  net                          2/2 = 100.00%
+  pkg                          36/84 = 42.86%
+  pkg-cargo                    8/9 = 88.89%
+  pkg-go                       5/5 = 100.00%
+  pkg-python-m                 0/6 = 0.00%
+  read                         7/14 = 50.00%
+  test-cargo                   0/1 = 0.00%
+  test-dart                    0/12 = 0.00%
+  test-flutter                 0/5 = 0.00%
+  test-go                      2/2 = 100.00%
+  test-gradle                  3/7 = 42.86%
+  test-js                      3/8 = 37.50%
+  test-mvn                     0/2 = 0.00%
+  test-runner                  9/10 = 90.00%
+  test-wrapper                 3/5 = 60.00%
+  vcs                          36/37 = 97.30%
+  write                        32/36 = 88.89%
+  write-inplace                0/2 = 0.00%
+  write-tar                    0/2 = 0.00%
+
+every disagreement (id, repo, rule, label -> classifier, subject):
+  s0004  Alamofire/Alamofire  [write-inplace]  write -> execute  "sed -i'' 's;@MainActor;;g' Tests/*.swift"
+  s0013  Alamofire/Alamofire  [pkg]  package -> execute  "swift build --build-tests -c debug"
+  s0038  BurntSushi/ripgrep  [test-cargo]  test -> package  "cargo +nightly test -p ignore --benches"
+  s0054  BurntSushi/ripgrep  [pkg]  package -> execute  "rustup target add wasm32-wasip1"
+  s0057  BurntSushi/ripgrep  [pkg]  package -> execute  "sudo apt-get install g++ --yes"
+  s0058  BurntSushi/ripgrep  [write]  write -> execute  "7z a \"$ARCHIVE.zip\" \"$ARCHIVE\""
+  s0059  BurntSushi/ripgrep  [pkg-cargo]  package -> execute  "cargo deb --profile deb --target ${{ env.TARGET }}"
+  s0088  BurntSushi/ripgrep  [vcs]  vcs -> execute  "gh release upload \"$version\" ${{ env.ASSET }} ${{ env.ASSET_SUM }}"
+  s0092  BurntSushi/ripgrep  [read]  read -> execute  "shasum -a 256 \"$ARCHIVE.tar.gz\" > \"$ARCHIVE.tar.gz.sha256\""
+  s0093  BurntSushi/ripgrep  [read]  read -> execute  "shasum -a 256 \"$DEB_NAME\" > \"$sum\""
+  s0095  BurntSushi/ripgrep  [write-tar]  write -> execute  "tar czf \"$ARCHIVE.tar.gz\" \"$ARCHIVE\""
+  s0096  BurntSushi/ripgrep  [write-tar]  write -> execute  "tar xf cross-x86_64-unknown-linux-musl.tar.gz"
+  s0111  cli/cli  [write]  write -> execute  "install -d ${DESTDIR}${mandir}/man1"
+  s0114  cli/cli  [write]  write -> execute  "install -m644 ./share/man/man1/* ${DESTDIR}${mandir}/man1/"
+  s0116  cli/cli  [write]  write -> execute  "install -m755 bin/gh ${DESTDIR}${bindir}/"
+  s0134  cli/cli  [pkg]  package -> execute  "apk add github-cli@community"
+  s0137  cli/cli  [pkg]  package -> execute  "sudo apt install extrepo"
+  s0138  cli/cli  [pkg]  package -> execute  "sudo apt install gh"
+  s0139  cli/cli  [pkg]  package -> execute  "sudo dnf install 'dnf-command(config-manager)'"
+  s0140  cli/cli  [pkg]  package -> execute  "sudo yum install gh"
+  s0142  cli/cli  [pkg]  package -> execute  "conda install gh --channel conda-forge"
+  s0143  cli/cli  [pkg]  package -> execute  "conda update gh --channel conda-forge"
+  s0146  cli/cli  [read]  read -> execute  "base64 -d <<<\"$DEVELOPER_ID_CERT\" > \"$RUNNER_TEMP/cert.p12\""
+  s0147  cli/cli  [read]  read -> execute  "base64 -d <<<\"$GPG_PASSPHRASE_2026\" | /usr/lib/gnupg2/gpg-preset-passphrase --preset \"$GPG_KEYGRIP_2026\""
+  s0217  cli/cli  [read]  read -> execute  "base64 -d <<< \"$DEVELOPER_ID_CERT\" > \"$RUNNER_TEMP/cert.p12\""
+  s0253  dart-lang/http  [test-flutter]  test -> execute  "flutter test integration_test"
+  s0260  dart-lang/http  [pkg]  package -> execute  "command dart analyze \"$@\""
+  s0261  dart-lang/http  [pkg]  package -> execute  "command dart format \"$@\""
+  s0262  dart-lang/http  [pkg]  package -> execute  "command dart pub \"$@\""
+  s0263  dart-lang/http  [pkg]  package -> execute  "command flutter analyze \"$@\""
+  s0264  dart-lang/http  [pkg]  package -> execute  "command flutter pub \"$@\""
+  s0266  dart-lang/http  [pkg]  package -> execute  "dart analyze --fatal-infos || EXIT_CODE=$?"
+  s0267  dart-lang/http  [pkg]  package -> execute  "dart pub upgrade || EXIT_CODE=$?"
+  s0268  dart-lang/http  [pkg]  package -> execute  "dart run --define=no_default_http_client=true test/no_default_http_client_test.dart || EXIT_CODE=$?"
+  s0269  dart-lang/http  [test-dart]  test -> execute  "dart test --platform vm || EXIT_CODE=$?"
+  s0270  dart-lang/http  [test-dart]  test -> execute  "dart test --test-randomize-ordering-seed=random -p chrome -c dart2js,dart2wasm || EXIT_CODE=$?"
+  s0271  dart-lang/http  [test-dart]  test -> execute  "dart test --test-randomize-ordering-seed=random -p vm || EXIT_CODE=$?"
+  s0285  dart-lang/http  [pkg]  package -> execute  "flutter analyze --fatal-infos || EXIT_CODE=$?"
+  s0286  dart-lang/http  [test-flutter]  test -> execute  "flutter test --platform chrome || EXIT_CODE=$?"
+  s0293  dart-lang/http  [pkg]  package -> execute  "dart pub upgrade --major-versions jnigen jni"
+  s0294  dart-lang/http  [pkg]  package -> execute  "dart run tool/jnigen.dart"
+  s0299  dart-lang/http  [pkg]  package -> execute  "cd ios_test && flutter pub get"
+  s0300  dart-lang/http  [test-dart]  test -> execute  "dart test --test-randomize-ordering-seed=random"
+  s0301  dart-lang/http  [pkg]  package -> execute  "flutter analyze --fatal-infos"
+  s0302  dart-lang/http  [pkg]  package -> execute  "flutter pub get"
+  s0303  dart-lang/http  [test-flutter]  test -> execute  "flutter test integration_test/combined_test.dart --test-randomize-ordering-seed=random"
+  s0304  dart-lang/http  [pkg]  package -> execute  "dart pub global activate mono_repo 6.7.3"
+  s0305  dart-lang/http  [pkg]  package -> execute  "dart pub global run mono_repo generate --validate"
+  s0306  dart-lang/http  [pkg]  package -> execute  "dart pub upgrade"
+  s0307  dart-lang/http  [pkg]  package -> execute  "dart run --define=no_default_http_client=true test/no_default_http_client_test.dart"
+  s0308  dart-lang/http  [test-dart]  test -> execute  "dart test --test-randomize-ordering-seed=random --platform chrome -c dart2js,dart2wasm"
+  s0309  dart-lang/http  [test-dart]  test -> execute  "dart test --test-randomize-ordering-seed=random --platform vm"
+  s0310  dart-lang/http  [test-dart]  test -> execute  "dart test --test-randomize-ordering-seed=random -p chrome -c dart2js,dart2wasm"
+  s0311  dart-lang/http  [test-dart]  test -> execute  "dart test --test-randomize-ordering-seed=random -p node"
+  s0312  dart-lang/http  [test-dart]  test -> execute  "dart test --test-randomize-ordering-seed=random -p vm"
+  s0313  dart-lang/http  [pkg]  package -> execute  "dart update_readme.dart --validate"
+  s0314  dart-lang/http  [pkg]  package -> execute  "flutter pub upgrade"
+  s0315  dart-lang/http  [test-flutter]  test -> execute  "flutter test"
+  s0316  dart-lang/http  [test-flutter]  test -> execute  "flutter test --platform chrome"
+  s0318  dart-lang/http  [pkg]  package -> execute  "dart format --output=none --set-exit-if-changed ."
+  s0319  dart-lang/http  [pkg]  package -> execute  "dart analyze --fatal-infos"
+  s0320  dart-lang/http  [test-dart]  test -> execute  "dart test --platform vm"
+  s0321  dart-lang/http  [test-dart]  test -> execute  "dart test --platform chrome --compiler dart2wasm"
+  s0323  dart-lang/http  [pkg]  package -> execute  "dart analyze"
+  s0324  dart-lang/http  [pkg]  package -> execute  "dart pub downgrade"
+  s0325  dart-lang/http  [pkg]  package -> execute  "dart pub get"
+  s0326  dart-lang/http  [test-dart]  test -> execute  "dart test --platform chrome"
+  s0329  google/gson  [pkg]  package -> execute  "mvn artifact:check-buildplan --projects '!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'"
+  s0330  google/gson  [pkg]  package -> execute  "mvn clean install -Dmaven.test.skip --projects '!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'"
+  s0331  google/gson  [test-mvn]  test -> execute  "mvn clean test --projects gson --activate-profiles gson-subset"
+  s0332  google/gson  [test-mvn]  test -> execute  "mvn test --activate-profiles native-image-test --projects test-graal-native-image --also-make ${{ matrix.extra-mvn-args || '' }}"
+  s0335  google/gson  [pkg]  package -> execute  "mvn install -Dmaven.test.skip --projects '!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'"
+  s0337  google/gson  [pkg]  package -> execute  "mvn package japicmp:cmp --fail-at-end -Dmaven.test.skip --projects '!extras,!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'"
+  s0338  google/gson  [pkg]  package -> execute  "mvn compile"
+  s0349  pallets/flask  [test-wrapper]  test -> package  "uv run --locked --no-default-groups --group dev tox run"
+  s0350  pallets/flask  [test-wrapper]  test -> package  "uv run --locked --no-default-groups --group dev tox run -e typing"
+  s0384  psf/requests  [pkg-python-m]  package -> execute  "python -m pip install requests"
+  s0390  psf/requests  [pkg-python-m]  package -> execute  "python -m pip install pre-commit==4.6.0"
+  s0391  psf/requests  [pkg-python-m]  package -> execute  "python -m pip install build==1.4.0"
+  s0392  psf/requests  [pkg-python-m]  package -> execute  "python  -m pip install \"urllib3<2\""
+  s0394  psf/requests  [pkg-python-m]  package -> execute  "python -m pip install -e . --group typecheck"
+  s0395  psf/requests  [pkg-python-m]  package -> execute  "python -m pip install pip==26.0.1"
+  s0418  square/okhttp  [write-inplace]  write -> execute  "sed -i \"\" 's/^\\(import okhttp3\\.[^.]*\\)\\.\\([a-z][a-zA-Z]*\\)$/\\1.Companion.\\2/g' `find . -name \"*.kt\"`"
+  s0419  square/okhttp  [test-gradle]  test -> execute  "./gradlew :samples:android:connectedDebugAndroidTest"
+  s0420  square/okhttp  [pkg]  package -> execute  "./gradlew dokkaGeneratePublicationHtml -PokhttpDokka=true"
+  s0445  square/okhttp  [read]  read -> execute  "which jq"
+  s0446  square/okhttp  [read]  read -> execute  "which wstest"
+  s0450  square/okhttp  [pkg]  package -> execute  "./gradlew publishToMavenLocal -DRELEASE_SIGNING_ENABLED=false -PokhttpDokka=true"
+  s0453  square/okhttp  [test-gradle]  test -> execute  "./gradlew -PgraalBuild=true native-image-tests:nativeTest"
+  s0455  square/okhttp  [pkg]  package -> execute  "./gradlew android-test-app:lint android-test-app:assembleRelease"
+  s0456  square/okhttp  [pkg]  package -> execute  "./gradlew clean publish --stacktrace"
+  s0459  square/okhttp  [pkg]  package -> execute  "./gradlew okcurl:nativeBuild"
+  s0461  square/okhttp  [test-gradle]  test -> execute  "./gradlew test allTests -Pokhttp.platform=${{ matrix.provider }} -Ptest.java.version=${{ matrix.java-version }}"
+  s0462  square/okhttp  [test-gradle]  test -> execute  "./gradlew test allTests -Ptest.java.version=${{ matrix.java-version }}"
+  s0472  square/okhttp  [pkg]  package -> execute  "sudo apt-get install -y cpu-checker"
+  s0476  square/okhttp  [pkg]  package -> execute  "./gradlew publish"
+  s0479  vitest-dev/vitest  [test-runner]  test -> execute  "vitest bench parser"
+  s0505  vitest-dev/vitest  [test-js]  test -> package  "pnpm run test:playwright"
+  s0531  vitest-dev/vitest  [test-js]  test -> package  "pnpm --filter=./test/unit --filter=./test/e2e --no-bail --sequential test --merge-reports || rc=1"
+  s0536  vitest-dev/vitest  [test-js]  test -> package  "pnpm run test:browser:playwright runner.test.ts"
+  s0537  vitest-dev/vitest  [test-js]  test -> execute  "pnpm run test:ci:${{ matrix.suite }}"
+  s0538  vitest-dev/vitest  [test-js]  test -> package  "pnpm run test:examples"
+  s0539  vitest-dev/vitest  [pkg]  package -> execute  "pnpx pkg-pr-new publish --compact --commentWithSha --no-template --pnpm './packages/*'"

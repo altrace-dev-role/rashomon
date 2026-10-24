@@ -1,0 +1,12 @@
+[
+ {"id":"cli/cli","url":"https://github.com/cli/cli","commit_sha":"4f2cfe92e3499f8581bf39db77e0a1431fa7b55c","licence":"MIT","languages":["Go"]},
+ {"id":"spf13/cobra","url":"https://github.com/spf13/cobra","commit_sha":"adbc8813901bba65827259daa8e22ff94ec1f30e","licence":"Apache-2.0","languages":["Go"]},
+ {"id":"dart-lang/http","url":"https://github.com/dart-lang/http","commit_sha":"9cdb8daf7b579745520c5b854afd3a70df5f9b2a","licence":"BSD-3-Clause","languages":["Dart"]},
+ {"id":"vitest-dev/vitest","url":"https://github.com/vitest-dev/vitest","commit_sha":"867a5e41c30167a936a7ba27ad95b47529952c88","licence":"MIT","languages":["TypeScript"]},
+ {"id":"pallets/flask","url":"https://github.com/pallets/flask","commit_sha":"d086db856be187255b8ec61ef409357393020f32","licence":"BSD-3-Clause","languages":["Python"]},
+ {"id":"psf/requests","url":"https://github.com/psf/requests","commit_sha":"611c6162cbc4ac2020a2f91c7cfa4f3abf9bbb60","licence":"Apache-2.0","languages":["Python"]},
+ {"id":"BurntSushi/ripgrep","url":"https://github.com/BurntSushi/ripgrep","commit_sha":"6892bc2b7efe5909cbbeec8f757ed2c4c76b1d30","licence":"MIT OR Unlicense","languages":["Rust"]},
+ {"id":"google/gson","url":"https://github.com/google/gson","commit_sha":"57731049da3e415be3d5d34db1ca3b80f3c73810","licence":"Apache-2.0","languages":["Java"]},
+ {"id":"square/okhttp","url":"https://github.com/square/okhttp","commit_sha":"c3179301fc7d0266c5bf154870c2b0b9da01e7e7","licence":"Apache-2.0","languages":["Kotlin","Java"]},
+ {"id":"Alamofire/Alamofire","url":"https://github.com/Alamofire/Alamofire","commit_sha":"bda9ed57d72988a3a2ada33d824583541f86eac6","licence":"MIT","languages":["Swift"]}
+]

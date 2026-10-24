@@ -1,0 +1,806 @@
+{
+ "corpus": "Path corpus",
+ "classifier": "shape.Label (Read file_path)",
+ "classifier_commit_sha": "323e4075c6d5725741747b7ffc70cf8ae875fd8d",
+ "summary": {
+  "total": 1145,
+  "agree": 1075,
+  "disagreements": [
+   {
+    "id": "p0048",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/AuthenticationInterceptorTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0050",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/CombineTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0051",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/ConcurrencyTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0052",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/DataStreamTests.swift",
+    "rule": "T-swift",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0054",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/DownloadTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0056",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/InstantTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0057",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/InternalRequestTests.swift",
+    "rule": "T-swift",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0058",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/LeaksTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0059",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/MultipartFormDataTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0060",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/OfflineRetrierTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0061",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/ParameterEncoderTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0062",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/RedirectHandlerTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0064",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/RequestInterceptorTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0065",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/RequestTests.swift",
+    "rule": "T-swift",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0093",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/ResponseTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0094",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/RetryPolicyTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0095",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/ServerTrustEvaluatorTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0096",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/SessionDelegateTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0101",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/URLProtocolTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0102",
+    "repo": "Alamofire/Alamofire",
+    "subject": "Tests/ValidationTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0195",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "crates/ignore/tests/gitignore_matched_path_or_any_parents_tests.rs",
+    "rule": "T-rs-dir",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0200",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "crates/matcher/tests/test_matcher.rs",
+    "rule": "T-rs-dir",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0201",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "crates/matcher/tests/tests.rs",
+    "rule": "T-rs-dir",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0202",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "crates/matcher/tests/util.rs",
+    "rule": "T-rs-dir",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0233",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "tests/binary.rs",
+    "rule": "T-rs-dir",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0238",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "tests/misc.rs",
+    "rule": "T-rs-dir",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0239",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "tests/regression.rs",
+    "rule": "T-rs-dir",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0240",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "tests/tests.rs",
+    "rule": "T-rs-dir",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0241",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "tests/util.rs",
+    "rule": "T-rs-dir",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0403",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/cupertino_http/test/client_profile_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0405",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/cupertino_http/test/url_session_configuration_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0406",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/cupertino_http/test/url_session_delegate_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0407",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/cupertino_http/test/url_session_task_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0408",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/cupertino_http/test/url_session_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0409",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/cupertino_http/test/web_socket_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0411",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/flutter_http_example/ios/RunnerTests/RunnerTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0412",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/flutter_http_example/macos/RunnerTests/RunnerTests.swift",
+    "rule": "T-swift",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0420",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http/test/html/streamed_request_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0421",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http/test/http_retry_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0422",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http/test/io/client_conformance_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0423",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http/test/io/multipart_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0424",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http/test/mock_client_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0425",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http/test/multipart_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0426",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http/test/response_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0434",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/client_pool_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0435",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/flow_control_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0436",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/multiprotocol_server_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0437",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/server_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0438",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/src/async_utils/async_utils_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0439",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/src/connection_preface_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0440",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/src/flowcontrol/connection_queues_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0441",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/src/flowcontrol/stream_queues_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0442",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/src/frames/frame_defragmenter_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0443",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/src/frames/frame_writer_reader_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0444",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/src/frames/frame_writer_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0445",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/src/hpack/hpack_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0446",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http2/test/src/ping/ping_handler_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0449",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http_client_conformance_tests/lib/src/isolate_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0454",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http_client_conformance_tests/lib/src/request_cookies_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0459",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http_client_conformance_tests/lib/src/response_cookies_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0461",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http_client_conformance_tests/lib/src/server_errors_test.dart",
+    "rule": "T-dart",
+    "stratum": "cand",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0471",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http_parser/test/authentication_challenge_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0475",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http_profile/test/close_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0476",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/http_profile/test/http_client_request_profile_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0480",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/ok_http/example/integration_test/client_configuration_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0481",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/ok_http/example/integration_test/client_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0488",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/web_socket/test/exceptions_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0489",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/web_socket/test/fake_web_socket_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0494",
+    "repo": "dart-lang/http",
+    "subject": "pkgs/web_socket_channel/test/adapter_web_socket_channel_test.dart",
+    "rule": "T-dart",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   },
+   {
+    "id": "p0636",
+    "repo": "google/gson",
+    "subject": "test-shrinker/src/test/java/com/google/gson/it/ShrinkingIT.java",
+    "rule": "T-java",
+    "stratum": "dir",
+    "want": "test-file",
+    "got": "none"
+   }
+  ],
+  "pairs": [
+   {
+    "want": "test-file",
+    "got": "none",
+    "n": 70
+   }
+  ],
+  "by_repo": [
+   {
+    "key": "Alamofire/Alamofire",
+    "total": 138,
+    "agree": 118
+   },
+   {
+    "key": "BurntSushi/ripgrep",
+    "total": 94,
+    "agree": 85
+   },
+   {
+    "key": "cli/cli",
+    "total": 128,
+    "agree": 128
+   },
+   {
+    "key": "dart-lang/http",
+    "total": 133,
+    "agree": 93
+   },
+   {
+    "key": "google/gson",
+    "total": 117,
+    "agree": 116
+   },
+   {
+    "key": "pallets/flask",
+    "total": 119,
+    "agree": 119
+   },
+   {
+    "key": "psf/requests",
+    "total": 107,
+    "agree": 107
+   },
+   {
+    "key": "spf13/cobra",
+    "total": 63,
+    "agree": 63
+   },
+   {
+    "key": "square/okhttp",
+    "total": 114,
+    "agree": 114
+   },
+   {
+    "key": "vitest-dev/vitest",
+    "total": 132,
+    "agree": 132
+   }
+  ],
+  "by_stratum": [
+   {
+    "key": "cand",
+    "total": 269,
+    "agree": 224
+   },
+   {
+    "key": "dir",
+    "total": 844,
+    "agree": 819
+   },
+   {
+    "key": "sens",
+    "total": 32,
+    "agree": 32
+   }
+  ],
+  "by_rule": [
+   {
+    "key": "E1",
+    "total": 5,
+    "agree": 5
+   },
+   {
+    "key": "K1",
+    "total": 2,
+    "agree": 2
+   },
+   {
+    "key": "N0",
+    "total": 800,
+    "agree": 800
+   },
+   {
+    "key": "T-dart",
+    "total": 38,
+    "agree": 0
+   },
+   {
+    "key": "T-go",
+    "total": 68,
+    "agree": 68
+   },
+   {
+    "key": "T-java",
+    "total": 52,
+    "agree": 51
+   },
+   {
+    "key": "T-js",
+    "total": 36,
+    "agree": 36
+   },
+   {
+    "key": "T-kt",
+    "total": 34,
+    "agree": 34
+   },
+   {
+    "key": "T-py",
+    "total": 40,
+    "agree": 40
+   },
+   {
+    "key": "T-rs-dir",
+    "total": 9,
+    "agree": 0
+   },
+   {
+    "key": "T-swift",
+    "total": 22,
+    "agree": 0
+   },
+   {
+    "key": "X1",
+    "total": 39,
+    "agree": 39
+   }
+  ],
+  "by_label": [
+   {
+    "key": "certificate",
+    "total": 39,
+    "agree": 39
+   },
+   {
+    "key": "credential-shaped",
+    "total": 2,
+    "agree": 2
+   },
+   {
+    "key": "env-file",
+    "total": 5,
+    "agree": 5
+   },
+   {
+    "key": "none",
+    "total": 800,
+    "agree": 800
+   },
+   {
+    "key": "test-file",
+    "total": 299,
+    "agree": 229
+   }
+  ]
+ }
+}

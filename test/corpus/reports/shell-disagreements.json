@@ -1,0 +1,1193 @@
+{
+ "corpus": "Shell-line corpus",
+ "classifier": "shape.Derive (Bash command) VerbClass",
+ "classifier_commit_sha": "323e4075c6d5725741747b7ffc70cf8ae875fd8d",
+ "summary": {
+  "total": 501,
+  "agree": 398,
+  "disagreements": [
+   {
+    "id": "s0004",
+    "repo": "Alamofire/Alamofire",
+    "subject": "sed -i'' 's;@MainActor;;g' Tests/*.swift",
+    "rule": "write-inplace",
+    "stratum": "workflow",
+    "want": "write",
+    "got": "execute"
+   },
+   {
+    "id": "s0013",
+    "repo": "Alamofire/Alamofire",
+    "subject": "swift build --build-tests -c debug",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0038",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "cargo +nightly test -p ignore --benches",
+    "rule": "test-cargo",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "package"
+   },
+   {
+    "id": "s0054",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "rustup target add wasm32-wasip1",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0057",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "sudo apt-get install g++ --yes",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0058",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "7z a \"$ARCHIVE.zip\" \"$ARCHIVE\"",
+    "rule": "write",
+    "stratum": "workflow",
+    "want": "write",
+    "got": "execute"
+   },
+   {
+    "id": "s0059",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "cargo deb --profile deb --target ${{ env.TARGET }}",
+    "rule": "pkg-cargo",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0088",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "gh release upload \"$version\" ${{ env.ASSET }} ${{ env.ASSET_SUM }}",
+    "rule": "vcs",
+    "stratum": "workflow",
+    "want": "vcs",
+    "got": "execute"
+   },
+   {
+    "id": "s0092",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "shasum -a 256 \"$ARCHIVE.tar.gz\" \u003e \"$ARCHIVE.tar.gz.sha256\"",
+    "rule": "read",
+    "stratum": "workflow",
+    "want": "read",
+    "got": "execute"
+   },
+   {
+    "id": "s0093",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "shasum -a 256 \"$DEB_NAME\" \u003e \"$sum\"",
+    "rule": "read",
+    "stratum": "workflow",
+    "want": "read",
+    "got": "execute"
+   },
+   {
+    "id": "s0095",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "tar czf \"$ARCHIVE.tar.gz\" \"$ARCHIVE\"",
+    "rule": "write-tar",
+    "stratum": "workflow",
+    "want": "write",
+    "got": "execute"
+   },
+   {
+    "id": "s0096",
+    "repo": "BurntSushi/ripgrep",
+    "subject": "tar xf cross-x86_64-unknown-linux-musl.tar.gz",
+    "rule": "write-tar",
+    "stratum": "workflow",
+    "want": "write",
+    "got": "execute"
+   },
+   {
+    "id": "s0111",
+    "repo": "cli/cli",
+    "subject": "install -d ${DESTDIR}${mandir}/man1",
+    "rule": "write",
+    "stratum": "make",
+    "want": "write",
+    "got": "execute"
+   },
+   {
+    "id": "s0114",
+    "repo": "cli/cli",
+    "subject": "install -m644 ./share/man/man1/* ${DESTDIR}${mandir}/man1/",
+    "rule": "write",
+    "stratum": "make",
+    "want": "write",
+    "got": "execute"
+   },
+   {
+    "id": "s0116",
+    "repo": "cli/cli",
+    "subject": "install -m755 bin/gh ${DESTDIR}${bindir}/",
+    "rule": "write",
+    "stratum": "make",
+    "want": "write",
+    "got": "execute"
+   },
+   {
+    "id": "s0134",
+    "repo": "cli/cli",
+    "subject": "apk add github-cli@community",
+    "rule": "pkg",
+    "stratum": "readme",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0137",
+    "repo": "cli/cli",
+    "subject": "sudo apt install extrepo",
+    "rule": "pkg",
+    "stratum": "readme",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0138",
+    "repo": "cli/cli",
+    "subject": "sudo apt install gh",
+    "rule": "pkg",
+    "stratum": "readme",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0139",
+    "repo": "cli/cli",
+    "subject": "sudo dnf install 'dnf-command(config-manager)'",
+    "rule": "pkg",
+    "stratum": "readme",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0140",
+    "repo": "cli/cli",
+    "subject": "sudo yum install gh",
+    "rule": "pkg",
+    "stratum": "readme",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0142",
+    "repo": "cli/cli",
+    "subject": "conda install gh --channel conda-forge",
+    "rule": "pkg",
+    "stratum": "readme",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0143",
+    "repo": "cli/cli",
+    "subject": "conda update gh --channel conda-forge",
+    "rule": "pkg",
+    "stratum": "readme",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0146",
+    "repo": "cli/cli",
+    "subject": "base64 -d \u003c\u003c\u003c\"$DEVELOPER_ID_CERT\" \u003e \"$RUNNER_TEMP/cert.p12\"",
+    "rule": "read",
+    "stratum": "readme",
+    "want": "read",
+    "got": "execute"
+   },
+   {
+    "id": "s0147",
+    "repo": "cli/cli",
+    "subject": "base64 -d \u003c\u003c\u003c\"$GPG_PASSPHRASE_2026\" | /usr/lib/gnupg2/gpg-preset-passphrase --preset \"$GPG_KEYGRIP_2026\"",
+    "rule": "read",
+    "stratum": "readme",
+    "want": "read",
+    "got": "execute"
+   },
+   {
+    "id": "s0217",
+    "repo": "cli/cli",
+    "subject": "base64 -d \u003c\u003c\u003c \"$DEVELOPER_ID_CERT\" \u003e \"$RUNNER_TEMP/cert.p12\"",
+    "rule": "read",
+    "stratum": "workflow",
+    "want": "read",
+    "got": "execute"
+   },
+   {
+    "id": "s0253",
+    "repo": "dart-lang/http",
+    "subject": "flutter test integration_test",
+    "rule": "test-flutter",
+    "stratum": "readme",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0260",
+    "repo": "dart-lang/http",
+    "subject": "command dart analyze \"$@\"",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0261",
+    "repo": "dart-lang/http",
+    "subject": "command dart format \"$@\"",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0262",
+    "repo": "dart-lang/http",
+    "subject": "command dart pub \"$@\"",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0263",
+    "repo": "dart-lang/http",
+    "subject": "command flutter analyze \"$@\"",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0264",
+    "repo": "dart-lang/http",
+    "subject": "command flutter pub \"$@\"",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0266",
+    "repo": "dart-lang/http",
+    "subject": "dart analyze --fatal-infos || EXIT_CODE=$?",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0267",
+    "repo": "dart-lang/http",
+    "subject": "dart pub upgrade || EXIT_CODE=$?",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0268",
+    "repo": "dart-lang/http",
+    "subject": "dart run --define=no_default_http_client=true test/no_default_http_client_test.dart || EXIT_CODE=$?",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0269",
+    "repo": "dart-lang/http",
+    "subject": "dart test --platform vm || EXIT_CODE=$?",
+    "rule": "test-dart",
+    "stratum": "script",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0270",
+    "repo": "dart-lang/http",
+    "subject": "dart test --test-randomize-ordering-seed=random -p chrome -c dart2js,dart2wasm || EXIT_CODE=$?",
+    "rule": "test-dart",
+    "stratum": "script",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0271",
+    "repo": "dart-lang/http",
+    "subject": "dart test --test-randomize-ordering-seed=random -p vm || EXIT_CODE=$?",
+    "rule": "test-dart",
+    "stratum": "script",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0285",
+    "repo": "dart-lang/http",
+    "subject": "flutter analyze --fatal-infos || EXIT_CODE=$?",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0286",
+    "repo": "dart-lang/http",
+    "subject": "flutter test --platform chrome || EXIT_CODE=$?",
+    "rule": "test-flutter",
+    "stratum": "script",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0293",
+    "repo": "dart-lang/http",
+    "subject": "dart pub upgrade --major-versions jnigen jni",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0294",
+    "repo": "dart-lang/http",
+    "subject": "dart run tool/jnigen.dart",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0299",
+    "repo": "dart-lang/http",
+    "subject": "cd ios_test \u0026\u0026 flutter pub get",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0300",
+    "repo": "dart-lang/http",
+    "subject": "dart test --test-randomize-ordering-seed=random",
+    "rule": "test-dart",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0301",
+    "repo": "dart-lang/http",
+    "subject": "flutter analyze --fatal-infos",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0302",
+    "repo": "dart-lang/http",
+    "subject": "flutter pub get",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0303",
+    "repo": "dart-lang/http",
+    "subject": "flutter test integration_test/combined_test.dart --test-randomize-ordering-seed=random",
+    "rule": "test-flutter",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0304",
+    "repo": "dart-lang/http",
+    "subject": "dart pub global activate mono_repo 6.7.3",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0305",
+    "repo": "dart-lang/http",
+    "subject": "dart pub global run mono_repo generate --validate",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0306",
+    "repo": "dart-lang/http",
+    "subject": "dart pub upgrade",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0307",
+    "repo": "dart-lang/http",
+    "subject": "dart run --define=no_default_http_client=true test/no_default_http_client_test.dart",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0308",
+    "repo": "dart-lang/http",
+    "subject": "dart test --test-randomize-ordering-seed=random --platform chrome -c dart2js,dart2wasm",
+    "rule": "test-dart",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0309",
+    "repo": "dart-lang/http",
+    "subject": "dart test --test-randomize-ordering-seed=random --platform vm",
+    "rule": "test-dart",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0310",
+    "repo": "dart-lang/http",
+    "subject": "dart test --test-randomize-ordering-seed=random -p chrome -c dart2js,dart2wasm",
+    "rule": "test-dart",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0311",
+    "repo": "dart-lang/http",
+    "subject": "dart test --test-randomize-ordering-seed=random -p node",
+    "rule": "test-dart",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0312",
+    "repo": "dart-lang/http",
+    "subject": "dart test --test-randomize-ordering-seed=random -p vm",
+    "rule": "test-dart",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0313",
+    "repo": "dart-lang/http",
+    "subject": "dart update_readme.dart --validate",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0314",
+    "repo": "dart-lang/http",
+    "subject": "flutter pub upgrade",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0315",
+    "repo": "dart-lang/http",
+    "subject": "flutter test",
+    "rule": "test-flutter",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0316",
+    "repo": "dart-lang/http",
+    "subject": "flutter test --platform chrome",
+    "rule": "test-flutter",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0318",
+    "repo": "dart-lang/http",
+    "subject": "dart format --output=none --set-exit-if-changed .",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0319",
+    "repo": "dart-lang/http",
+    "subject": "dart analyze --fatal-infos",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0320",
+    "repo": "dart-lang/http",
+    "subject": "dart test --platform vm",
+    "rule": "test-dart",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0321",
+    "repo": "dart-lang/http",
+    "subject": "dart test --platform chrome --compiler dart2wasm",
+    "rule": "test-dart",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0323",
+    "repo": "dart-lang/http",
+    "subject": "dart analyze",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0324",
+    "repo": "dart-lang/http",
+    "subject": "dart pub downgrade",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0325",
+    "repo": "dart-lang/http",
+    "subject": "dart pub get",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0326",
+    "repo": "dart-lang/http",
+    "subject": "dart test --platform chrome",
+    "rule": "test-dart",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0329",
+    "repo": "google/gson",
+    "subject": "mvn artifact:check-buildplan --projects '!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0330",
+    "repo": "google/gson",
+    "subject": "mvn clean install -Dmaven.test.skip --projects '!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0331",
+    "repo": "google/gson",
+    "subject": "mvn clean test --projects gson --activate-profiles gson-subset",
+    "rule": "test-mvn",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0332",
+    "repo": "google/gson",
+    "subject": "mvn test --activate-profiles native-image-test --projects test-graal-native-image --also-make ${{ matrix.extra-mvn-args || '' }}",
+    "rule": "test-mvn",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0335",
+    "repo": "google/gson",
+    "subject": "mvn install -Dmaven.test.skip --projects '!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0337",
+    "repo": "google/gson",
+    "subject": "mvn package japicmp:cmp --fail-at-end -Dmaven.test.skip --projects '!extras,!metrics,!test-graal-native-image,!test-jpms,!test-shrinker'",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0338",
+    "repo": "google/gson",
+    "subject": "mvn compile",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0349",
+    "repo": "pallets/flask",
+    "subject": "uv run --locked --no-default-groups --group dev tox run",
+    "rule": "test-wrapper",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "package"
+   },
+   {
+    "id": "s0350",
+    "repo": "pallets/flask",
+    "subject": "uv run --locked --no-default-groups --group dev tox run -e typing",
+    "rule": "test-wrapper",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "package"
+   },
+   {
+    "id": "s0384",
+    "repo": "psf/requests",
+    "subject": "python -m pip install requests",
+    "rule": "pkg-python-m",
+    "stratum": "readme",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0390",
+    "repo": "psf/requests",
+    "subject": "python -m pip install pre-commit==4.6.0",
+    "rule": "pkg-python-m",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0391",
+    "repo": "psf/requests",
+    "subject": "python -m pip install build==1.4.0",
+    "rule": "pkg-python-m",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0392",
+    "repo": "psf/requests",
+    "subject": "python  -m pip install \"urllib3\u003c2\"",
+    "rule": "pkg-python-m",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0394",
+    "repo": "psf/requests",
+    "subject": "python -m pip install -e . --group typecheck",
+    "rule": "pkg-python-m",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0395",
+    "repo": "psf/requests",
+    "subject": "python -m pip install pip==26.0.1",
+    "rule": "pkg-python-m",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0418",
+    "repo": "square/okhttp",
+    "subject": "sed -i \"\" 's/^\\(import okhttp3\\.[^.]*\\)\\.\\([a-z][a-zA-Z]*\\)$/\\1.Companion.\\2/g' `find . -name \"*.kt\"`",
+    "rule": "write-inplace",
+    "stratum": "readme",
+    "want": "write",
+    "got": "execute"
+   },
+   {
+    "id": "s0419",
+    "repo": "square/okhttp",
+    "subject": "./gradlew :samples:android:connectedDebugAndroidTest",
+    "rule": "test-gradle",
+    "stratum": "readme",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0420",
+    "repo": "square/okhttp",
+    "subject": "./gradlew dokkaGeneratePublicationHtml -PokhttpDokka=true",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0445",
+    "repo": "square/okhttp",
+    "subject": "which jq",
+    "rule": "read",
+    "stratum": "script",
+    "want": "read",
+    "got": "execute"
+   },
+   {
+    "id": "s0446",
+    "repo": "square/okhttp",
+    "subject": "which wstest",
+    "rule": "read",
+    "stratum": "script",
+    "want": "read",
+    "got": "execute"
+   },
+   {
+    "id": "s0450",
+    "repo": "square/okhttp",
+    "subject": "./gradlew publishToMavenLocal -DRELEASE_SIGNING_ENABLED=false -PokhttpDokka=true",
+    "rule": "pkg",
+    "stratum": "script",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0453",
+    "repo": "square/okhttp",
+    "subject": "./gradlew -PgraalBuild=true native-image-tests:nativeTest",
+    "rule": "test-gradle",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0455",
+    "repo": "square/okhttp",
+    "subject": "./gradlew android-test-app:lint android-test-app:assembleRelease",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0456",
+    "repo": "square/okhttp",
+    "subject": "./gradlew clean publish --stacktrace",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0459",
+    "repo": "square/okhttp",
+    "subject": "./gradlew okcurl:nativeBuild",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0461",
+    "repo": "square/okhttp",
+    "subject": "./gradlew test allTests -Pokhttp.platform=${{ matrix.provider }} -Ptest.java.version=${{ matrix.java-version }}",
+    "rule": "test-gradle",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0462",
+    "repo": "square/okhttp",
+    "subject": "./gradlew test allTests -Ptest.java.version=${{ matrix.java-version }}",
+    "rule": "test-gradle",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0472",
+    "repo": "square/okhttp",
+    "subject": "sudo apt-get install -y cpu-checker",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0476",
+    "repo": "square/okhttp",
+    "subject": "./gradlew publish",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   },
+   {
+    "id": "s0479",
+    "repo": "vitest-dev/vitest",
+    "subject": "vitest bench parser",
+    "rule": "test-runner",
+    "stratum": "readme",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0505",
+    "repo": "vitest-dev/vitest",
+    "subject": "pnpm run test:playwright",
+    "rule": "test-js",
+    "stratum": "readme",
+    "want": "test",
+    "got": "package"
+   },
+   {
+    "id": "s0531",
+    "repo": "vitest-dev/vitest",
+    "subject": "pnpm --filter=./test/unit --filter=./test/e2e --no-bail --sequential test --merge-reports || rc=1",
+    "rule": "test-js",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "package"
+   },
+   {
+    "id": "s0536",
+    "repo": "vitest-dev/vitest",
+    "subject": "pnpm run test:browser:playwright runner.test.ts",
+    "rule": "test-js",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "package"
+   },
+   {
+    "id": "s0537",
+    "repo": "vitest-dev/vitest",
+    "subject": "pnpm run test:ci:${{ matrix.suite }}",
+    "rule": "test-js",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "execute"
+   },
+   {
+    "id": "s0538",
+    "repo": "vitest-dev/vitest",
+    "subject": "pnpm run test:examples",
+    "rule": "test-js",
+    "stratum": "workflow",
+    "want": "test",
+    "got": "package"
+   },
+   {
+    "id": "s0539",
+    "repo": "vitest-dev/vitest",
+    "subject": "pnpx pkg-pr-new publish --compact --commentWithSha --no-template --pnpm './packages/*'",
+    "rule": "pkg",
+    "stratum": "workflow",
+    "want": "package",
+    "got": "execute"
+   }
+  ],
+  "pairs": [
+   {
+    "want": "package",
+    "got": "execute",
+    "n": 55
+   },
+   {
+    "want": "test",
+    "got": "execute",
+    "n": 25
+   },
+   {
+    "want": "write",
+    "got": "execute",
+    "n": 8
+   },
+   {
+    "want": "read",
+    "got": "execute",
+    "n": 7
+   },
+   {
+    "want": "test",
+    "got": "package",
+    "n": 7
+   },
+   {
+    "want": "vcs",
+    "got": "execute",
+    "n": 1
+   }
+  ],
+  "by_repo": [
+   {
+    "key": "Alamofire/Alamofire",
+    "total": 13,
+    "agree": 11
+   },
+   {
+    "key": "BurntSushi/ripgrep",
+    "total": 77,
+    "agree": 67
+   },
+   {
+    "key": "cli/cli",
+    "total": 125,
+    "agree": 112
+   },
+   {
+    "key": "dart-lang/http",
+    "total": 73,
+    "agree": 31
+   },
+   {
+    "key": "google/gson",
+    "total": 10,
+    "agree": 3
+   },
+   {
+    "key": "pallets/flask",
+    "total": 10,
+    "agree": 8
+   },
+   {
+    "key": "psf/requests",
+    "total": 45,
+    "agree": 39
+   },
+   {
+    "key": "spf13/cobra",
+    "total": 21,
+    "agree": 21
+   },
+   {
+    "key": "square/okhttp",
+    "total": 48,
+    "agree": 34
+   },
+   {
+    "key": "vitest-dev/vitest",
+    "total": 79,
+    "agree": 72
+   }
+  ],
+  "by_stratum": [
+   {
+    "key": "make",
+    "total": 48,
+    "agree": 45
+   },
+   {
+    "key": "readme",
+    "total": 81,
+    "agree": 66
+   },
+   {
+    "key": "script",
+    "total": 126,
+    "agree": 109
+   },
+   {
+    "key": "workflow",
+    "total": 246,
+    "agree": 178
+   }
+  ],
+  "by_rule": [
+   {
+    "key": "exec",
+    "total": 171,
+    "agree": 171
+   },
+   {
+    "key": "exec-default",
+    "total": 74,
+    "agree": 74
+   },
+   {
+    "key": "exec-make",
+    "total": 7,
+    "agree": 7
+   },
+   {
+    "key": "net",
+    "total": 2,
+    "agree": 2
+   },
+   {
+    "key": "pkg",
+    "total": 84,
+    "agree": 36
+   },
+   {
+    "key": "pkg-cargo",
+    "total": 9,
+    "agree": 8
+   },
+   {
+    "key": "pkg-go",
+    "total": 5,
+    "agree": 5
+   },
+   {
+    "key": "pkg-python-m",
+    "total": 6,
+    "agree": 0
+   },
+   {
+    "key": "read",
+    "total": 14,
+    "agree": 7
+   },
+   {
+    "key": "test-cargo",
+    "total": 1,
+    "agree": 0
+   },
+   {
+    "key": "test-dart",
+    "total": 12,
+    "agree": 0
+   },
+   {
+    "key": "test-flutter",
+    "total": 5,
+    "agree": 0
+   },
+   {
+    "key": "test-go",
+    "total": 2,
+    "agree": 2
+   },
+   {
+    "key": "test-gradle",
+    "total": 7,
+    "agree": 3
+   },
+   {
+    "key": "test-js",
+    "total": 8,
+    "agree": 3
+   },
+   {
+    "key": "test-mvn",
+    "total": 2,
+    "agree": 0
+   },
+   {
+    "key": "test-runner",
+    "total": 10,
+    "agree": 9
+   },
+   {
+    "key": "test-wrapper",
+    "total": 5,
+    "agree": 3
+   },
+   {
+    "key": "vcs",
+    "total": 37,
+    "agree": 36
+   },
+   {
+    "key": "write",
+    "total": 36,
+    "agree": 32
+   },
+   {
+    "key": "write-inplace",
+    "total": 2,
+    "agree": 0
+   },
+   {
+    "key": "write-tar",
+    "total": 2,
+    "agree": 0
+   }
+  ],
+  "by_label": [
+   {
+    "key": "execute",
+    "total": 252,
+    "agree": 252
+   },
+   {
+    "key": "network",
+    "total": 2,
+    "agree": 2
+   },
+   {
+    "key": "package",
+    "total": 104,
+    "agree": 49
+   },
+   {
+    "key": "read",
+    "total": 14,
+    "agree": 7
+   },
+   {
+    "key": "test",
+    "total": 52,
+    "agree": 20
+   },
+   {
+    "key": "vcs",
+    "total": 37,
+    "agree": 36
+   },
+   {
+    "key": "write",
+    "total": 40,
+    "agree": 32
+   }
+  ]
+ }
+}
