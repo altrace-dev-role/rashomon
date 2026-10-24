@@ -35,6 +35,14 @@ import "github.com/altrace-dev-role/rashomon/internal/shape"
 // measured" as it does for every earlier step. v5 also has one record that
 // is not additive, the flush_failed marker: see FlushFailedSchemaVersion.
 //
+// v6 is additive over v5: the declaration's shape and the execution gained
+// runner_kind, the list the runner runner_digest digests is on (D9), set
+// exactly when runner_digest is. It is a version of its own rather than a
+// v5 key because v5 records are already on disk without it (D11): a v5
+// record's runner digest has no recorded kind, which a reader must not take
+// for either list. The terminal gained nothing and is written at 6 with its
+// declaration.
+//
 // SchemaVersion is the version of a call's ordinary records: its
 // declaration, the terminal that actually closes it, and its execution,
 // KindVersion's entry for each. Coverage and gap records are written at
@@ -66,8 +74,9 @@ const SchemaVersion = CallSchemaVersion
 // none of whose keys it carries -- and would have cost every 1.1.x reader
 // every call record in a run the moment one flush failed. With DeclarationV5,
 // ExecutionV5 and TerminalV5 embedded, every call record carries the v5 keys
-// and is written at 5 too; a 1.1.x reader skips the calls and reads the
-// session unverified, as it did for v4, and coverage and gaps stay at 3 so
+// and was written at 5 too, and at 6 once runner_kind landed (D11); the
+// marker stays at 5. A 1.1.x reader skips the calls and reads the session
+// unverified, as it did for v4, and coverage and gaps stay at 3 so
 // it still lists every session.
 //
 // A new record type instead of a version was rejected: Terminal is the type
@@ -342,6 +351,9 @@ type Execution struct {
 	// a shell.
 	StatusMasked *string `json:"status_masked"`
 	RunnerDigest *string `json:"runner_digest"`
+	// RunnerKind is the shape's runner_kind for the line as it ran (v6), from
+	// the same Derive, so it is set exactly when RunnerDigest is.
+	RunnerKind *string `json:"runner_kind"`
 
 	// RulesVersion is shape.RulesVersion as the writing binary had it (v4):
 	// which runner and build lists decided StatusMasked. See Declaration's.

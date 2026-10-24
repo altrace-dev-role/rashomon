@@ -21,6 +21,7 @@ type call struct {
 	prog     string
 	class    string
 	runner   string // non-empty marks a recognised runner; becomes RunnerDigest
+	kind     string // shape.RunnerTest | shape.RunnerBuild, with a runner only; becomes RunnerKind
 	masked   string // shape.MaskedNone | shape.MaskedTest | shape.MaskedBuild
 	outcome  string // store.ExecOK | store.ExecFailed
 	exit     int
@@ -34,7 +35,7 @@ func gateRun(seq int64, runner, outcome string) call {
 	if outcome == store.ExecFailed {
 		exit = 1 // a plain failed run; a failure with an unknown code is a call literal with exit 0
 	}
-	return call{seq: seq, tool: "Bash", prog: "go", class: shape.VerbTest, runner: runner, masked: shape.MaskedNone, outcome: outcome, exit: exit}
+	return call{seq: seq, tool: "Bash", prog: "go", class: shape.VerbTest, runner: runner, kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: outcome, exit: exit}
 }
 func edit(seq int64, path string) call {
 	return call{seq: seq, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{path}}
@@ -53,6 +54,7 @@ func bashWrite(seq int64, paths ...string) call {
 //   - A call that is not Bash names no runner, is not backgrounded and does not set mayWrite.
 //   - A call that is not Bash, Edit or Write names no paths.
 //   - A runner's masked word is one of shape.MaskedKinds.
+//   - A runner's kind is one of shape.RunnerKinds, and a call with no runner has none (shape: RunnerKind is set exactly when RunnerDigest is).
 //   - The execution's runner fields mirror the declaration's.
 //   - ExitCode is set only on a failure with a known code.
 //   - A Bash write that names paths is complete; one that names none carries MayWrite alone.
@@ -85,6 +87,12 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 		if c.runner != "" && !slices.Contains(shape.MaskedKinds(), c.masked) {
 			t.Fatalf("runOf: call %d masked %q is not one of %v", i, c.masked, shape.MaskedKinds())
 		}
+		if c.runner != "" && !slices.Contains(shape.RunnerKinds(), c.kind) {
+			t.Fatalf("runOf: call %d runner kind %q is not one of %v", i, c.kind, shape.RunnerKinds())
+		}
+		if c.runner == "" && c.kind != "" {
+			t.Fatalf("runOf: call %d has runner kind %q and no runner (shape: RunnerKind is set exactly when RunnerDigest is)", i, c.kind)
+		}
 		id := "t" + strconv.FormatInt(c.seq, 10)
 		d := store.Declaration{Seq: c.seq, ToolUseID: id, SessionID: "s1", ToolName: c.tool}
 		d.Shape.VerbClass = c.class
@@ -97,6 +105,8 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 			d.Shape.RunnerDigest = &rd
 			m := c.masked
 			d.Shape.StatusMasked = &m
+			k := c.kind
+			d.Shape.RunnerKind = &k
 		}
 		if c.tool == "Edit" || c.tool == "Write" {
 			p := c.paths[0]
@@ -110,7 +120,7 @@ func runOf(t testing.TB, calls ...call) *store.Run {
 		}
 		seq := c.seq
 		e := store.Execution{Seq: &seq, ToolUseID: id, SessionID: "s1", ToolName: c.tool, Outcome: c.outcome, Backgrounded: c.bg}
-		e.RunnerDigest, e.StatusMasked = d.Shape.RunnerDigest, d.Shape.StatusMasked
+		e.RunnerDigest, e.StatusMasked, e.RunnerKind = d.Shape.RunnerDigest, d.Shape.StatusMasked, d.Shape.RunnerKind
 		if c.outcome == store.ExecFailed && c.exit != 0 {
 			ex := c.exit // store.Execution: null on success, null on a failure without a code; never 0
 			e.ExitCode = &ex
@@ -136,8 +146,9 @@ func TestFixture_RunOfPairsEveryDeclarationWithItsExecution(t *testing.T) {
 		gateRun(2, "go-test", store.ExecOK),
 		gateRun(3, "go-test", store.ExecFailed),
 		bgRun,
-		call{seq: 5, tool: "Bash", prog: "make", class: shape.VerbTest, runner: "make-test", masked: shape.MaskedTest, outcome: store.ExecOK},
+		call{seq: 5, tool: "Bash", prog: "make", class: shape.VerbTest, runner: "make-test", kind: shape.RunnerTest, masked: shape.MaskedTest, outcome: store.ExecOK},
 		call{seq: 6, tool: "Write", class: shape.VerbWrite, outcome: store.ExecOK, paths: []string{"w.go"}},
+		call{seq: 7, tool: "Bash", prog: "make", class: shape.VerbExecute, runner: "make-release", kind: shape.RunnerBuild, masked: shape.MaskedBuild, outcome: store.ExecOK},
 	}
 	r := runOf(t, calls...)
 	if len(r.Declarations) != len(calls) || len(r.Executions) != len(calls) {
@@ -202,12 +213,27 @@ func TestFixture_RunOfPairsEveryDeclarationWithItsExecution(t *testing.T) {
 		} else if *dm != c.masked || *em != c.masked {
 			t.Fatalf("call %d: StatusMasked %q on the declaration, %q on the execution, want %q", i, *dm, *em, c.masked)
 		}
+		dk, ek := d.Shape.RunnerKind, e.RunnerKind
+		if c.runner == "" {
+			if dk != nil || ek != nil {
+				t.Fatalf("call %d: RunnerKind set %t on the declaration and %t on the execution of a non-runner, want neither", i, dk != nil, ek != nil)
+			}
+		} else if dk == nil || ek == nil {
+			t.Fatalf("call %d: RunnerKind set %t on the declaration and %t on the execution, want both", i, dk != nil, ek != nil)
+		} else if *dk != c.kind || *ek != c.kind {
+			t.Fatalf("call %d: RunnerKind %q on the declaration, %q on the execution, want %q", i, *dk, *ek, c.kind)
+		}
 	}
 	if r.Executions[1].RunnerDigest == nil {
 		t.Fatal("gate execution has no RunnerDigest")
 	}
-	if e := r.Executions[0]; e.RunnerDigest != nil || e.StatusMasked != nil || e.ExitCode != nil {
-		t.Fatalf("edit execution carries runner fields: RunnerDigest set %t, StatusMasked set %t, ExitCode set %t", e.RunnerDigest != nil, e.StatusMasked != nil, e.ExitCode != nil)
+	// The rows compare a record against its own call's kind, so gateRun's
+	// default is pinned here or nowhere.
+	if k := r.Executions[1].RunnerKind; k == nil || *k != shape.RunnerTest {
+		t.Fatalf("gateRun's execution: RunnerKind set %t, want %q", k != nil, shape.RunnerTest)
+	}
+	if e := r.Executions[0]; e.RunnerDigest != nil || e.StatusMasked != nil || e.RunnerKind != nil || e.ExitCode != nil {
+		t.Fatalf("edit execution carries runner fields: RunnerDigest set %t, StatusMasked set %t, RunnerKind set %t, ExitCode set %t", e.RunnerDigest != nil, e.StatusMasked != nil, e.RunnerKind != nil, e.ExitCode != nil)
 	}
 }
 
@@ -229,7 +255,7 @@ func TestFixture_RunnerDigestIsOneFamilyPerRunnerWord(t *testing.T) {
 }
 
 func TestFixture_FailedGateRunCarriesItsCodeAndOKCarriesNone(t *testing.T) {
-	r := runOf(t, gateRun(1, "go-test", store.ExecOK), gateRun(2, "go-test", store.ExecFailed), call{seq: 3, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", masked: shape.MaskedNone, outcome: store.ExecFailed}, call{seq: 4, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", masked: shape.MaskedNone, outcome: store.ExecOK, exit: 3}, call{seq: 5, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", masked: shape.MaskedNone, outcome: store.ExecFailed, exit: 2})
+	r := runOf(t, gateRun(1, "go-test", store.ExecOK), gateRun(2, "go-test", store.ExecFailed), call{seq: 3, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecFailed}, call{seq: 4, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, exit: 3}, call{seq: 5, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecFailed, exit: 2})
 	if r.Executions[0].ExitCode != nil {
 		t.Fatalf("ok run carries an exit code: %d", *r.Executions[0].ExitCode)
 	}
@@ -290,10 +316,12 @@ func TestFixture_RunOfRejectsRunsTheStoreForbids(t *testing.T) {
 		{"duplicate seq", []call{edit(2, "a.go"), edit(2, "b.go")}, "seq"},
 		{"decreasing seq", []call{edit(3, "a.go"), edit(1, "b.go")}, "seq"},
 		{"pathless edit", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK}}, "no path"},
-		{"runner on edit", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, runner: "go-test", masked: shape.MaskedNone, outcome: store.ExecOK, paths: []string{"a.go"}}}, "not a shell"},
+		{"runner on edit", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, runner: "go-test", kind: shape.RunnerTest, masked: shape.MaskedNone, outcome: store.ExecOK, paths: []string{"a.go"}}}, "not a shell"},
 		{"bg on edit", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, bg: true, paths: []string{"a.go"}}}, "every tool but a shell"},
 		{"mayWrite on edit", []call{call{seq: 1, tool: "Edit", class: shape.VerbWrite, outcome: store.ExecOK, mayWrite: true, paths: []string{"a.go"}}}, "shell-line"},
-		{"runner with bad masked", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", outcome: store.ExecOK}}, "is not one of"},
+		{"runner with bad masked", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: shape.RunnerTest, outcome: store.ExecOK}}, "masked \"\" is not one of"},
+		{"runner with bad kind", []call{call{seq: 1, tool: "Bash", prog: "go", class: shape.VerbTest, runner: "go-test", kind: "lint", masked: shape.MaskedNone, outcome: store.ExecOK}}, "runner kind \"lint\" is not one of"},
+		{"kind without runner", []call{call{seq: 1, tool: "Bash", prog: "ls", class: shape.VerbRead, kind: shape.RunnerTest, outcome: store.ExecOK}}, "and no runner"},
 		{"paths on read", []call{call{seq: 1, tool: "Read", class: shape.VerbRead, outcome: store.ExecOK, paths: []string{"a.go"}}}, "names paths"},
 	}
 	for _, tc := range cases {

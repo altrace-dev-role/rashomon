@@ -67,7 +67,7 @@ func newBenchCall(st *Store) benchCall {
 		exec: Execution{
 			Type: TypeExecution, SchemaVersion: SchemaVersion, SessionID: benchSession, ToolName: "Bash",
 			Outcome: ExecOK, DurationMS: &duration, ExecutedDigest: s.Digest,
-			StatusMasked: s.StatusMasked, RunnerDigest: s.RunnerDigest, RulesVersion: shape.RulesVersion,
+			StatusMasked: s.StatusMasked, RunnerDigest: s.RunnerDigest, RunnerKind: s.RunnerKind, RulesVersion: shape.RulesVersion,
 		},
 		cov: Coverage{
 			Type: TypeCoverage, SchemaVersion: SessionSchemaVersion, SessionID: benchSession, InstallID: st.InstallID(),

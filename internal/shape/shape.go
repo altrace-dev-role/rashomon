@@ -100,6 +100,15 @@ type Shape struct {
 	// later run follows both up), and when a cd that the call's cwd digest
 	// does not hold ran before it, since where it ran is then not known.
 	RunnerDigest *string `json:"runner_digest"`
+
+	// RunnerKind names the list RunnerDigest's runner is on: RunnerTest or
+	// RunnerBuild. Set exactly when RunnerDigest is, from the same runner, so
+	// a reader that finds the digest finds the kind (D9). It is the field
+	// that says a line ran a test runner whatever followed the runner:
+	// `go test ./... && echo ok` is class package and masked none (B27).
+	// Null wherever RunnerDigest is, and on a record written before schema
+	// 6, which could not say.
+	RunnerKind *string `json:"runner_kind"`
 }
 
 // Derive builds the shape of a call to toolName with the given raw tool_input.
@@ -206,7 +215,7 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	if !ctl {
 		dirs, _ = leadingRun(pshaped, perr)
 	}
-	s.StatusMasked, s.RunnerDigest = statusMasked(cmd, key, leadingSteps(dirs))
+	s.StatusMasked, s.RunnerDigest, s.RunnerKind = statusMasked(cmd, key, leadingSteps(dirs))
 	cut := err == errTokenBound || perr == errTokenBound || len(dirs) > MaxLeadingCd
 	return s, cut, dirs
 }

@@ -346,6 +346,57 @@ func TestMasked_AsRan(t *testing.T) {
 	MaskingAsRan(nil)
 }
 
+// TestMasked_AsRanCarriesTheKindWithTheDigest: the swap moves runner_kind
+// with the runner_digest it names (D9, B39). A declaration of `make test`
+// whose call ran `make release | tail` ends with the release's digest and
+// kind build, never make test's kind beside the release's digest; and an
+// execution before schema 6, which carries no kind, leaves a nil kind beside
+// the digest it swapped in, which reads as a record before the field. Break:
+// swap the digest and not the kind.
+func TestMasked_AsRanCarriesTheKindWithTheDigest(t *testing.T) {
+	key := []byte("key")
+	derive := func(cmd string) shape.Shape {
+		raw, err := json.Marshal(map[string]string{"command": cmd})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return shape.Derive("Bash", raw, key)
+	}
+	declared, ran := derive("make test"), derive("make release | tail")
+	if declared.RunnerKind == nil || *declared.RunnerKind != shape.RunnerTest || ran.RunnerKind == nil || *ran.RunnerKind != shape.RunnerBuild || ran.RunnerDigest == nil {
+		t.Fatal("the derived lines do not carry kinds test and build; the case below proves nothing")
+	}
+	str := func(s string) *string { return &s }
+	run := &store.Run{
+		Declarations: []store.Declaration{
+			{SchemaVersion: store.SchemaVersion, ToolUseID: "a", ToolName: "Bash", Shape: declared},
+			{SchemaVersion: store.SchemaVersion, ToolUseID: "b", ToolName: "Bash", Shape: declared},
+		},
+		Executions: []store.Execution{
+			{SchemaVersion: store.SchemaVersion, ToolUseID: "a", Outcome: store.ExecOK, ExecutedDigest: ran.Digest,
+				StatusMasked: ran.StatusMasked, RunnerDigest: ran.RunnerDigest, RunnerKind: ran.RunnerKind},
+			{SchemaVersion: 5, ToolUseID: "b", Outcome: store.ExecOK, ExecutedDigest: "x",
+				StatusMasked: str(shape.MaskedNone), RunnerDigest: str("ran")},
+		},
+	}
+	MaskingAsRan(run)
+	a, b := run.Declarations[0].Shape, run.Declarations[1].Shape
+	if a.RunnerDigest == nil || *a.RunnerDigest != *ran.RunnerDigest || a.RunnerKind == nil || *a.RunnerKind != shape.RunnerBuild {
+		t.Errorf("rewritten line: digest is the ran line's %t, kind %q; want the ran line's digest and kind %q",
+			a.RunnerDigest != nil && *a.RunnerDigest == *ran.RunnerDigest, orNone(a.RunnerKind), shape.RunnerBuild)
+	}
+	if b.RunnerDigest == nil || *b.RunnerDigest != "ran" || b.RunnerKind != nil {
+		t.Errorf("v5 execution: digest %q, kind %q; want the execution's digest and no kind", orNone(b.RunnerDigest), orNone(b.RunnerKind))
+	}
+}
+
+func orNone(p *string) string {
+	if p == nil {
+		return "<nil>"
+	}
+	return *p
+}
+
 // TestMasked_NotMeasuredBeforeSchema4: a session whose declarations are all
 // from before schema 4 never measured masking, so its masked runs and its
 // test runs' masked count are null, never 0 -- the same bytes as a measured

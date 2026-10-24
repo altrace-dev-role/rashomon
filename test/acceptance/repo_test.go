@@ -660,6 +660,58 @@ func TestStoreSchemaMaskedKindsAreTheCodeMaskedKinds(t *testing.T) {
 	}
 }
 
+// TestStoreSchemaRunnerKindsAreTheCodeRunnerKinds: runner_kind is a closed
+// vocabulary too, checked both ways for the reason verb_class is, and per
+// enum: the declaration's shape and the execution each publish one, and a
+// pooled set would let one of them lose a word the other still has.
+func TestStoreSchemaRunnerKindsAreTheCodeRunnerKinds(t *testing.T) {
+	var enums []map[string]bool
+	collectNamedEnums(readSchema(t), "", "runner_kind", &enums)
+	if len(enums) != 2 {
+		t.Fatalf("%d runner_kind enums in %s, want 2: the declaration's shape and the execution", len(enums), schemaPath)
+	}
+	inCode := map[string]bool{}
+	for _, v := range shape.RunnerKinds() {
+		inCode[v] = true
+	}
+	for i, inSchema := range enums {
+		for v := range inCode {
+			if !inSchema[v] {
+				t.Errorf("shape.RunnerKinds() carries %q, which runner_kind enum %d in %s does not", v, i, schemaPath)
+			}
+		}
+		for v := range inSchema {
+			if !inCode[v] {
+				t.Errorf("runner_kind enum %d in %s offers %q, which shape.RunnerKinds() cannot emit", i, schemaPath, v)
+			}
+		}
+	}
+}
+
+// collectNamedEnums is collectNamedEnum with one set per property, so that
+// each enum is compared on its own.
+func collectNamedEnums(node any, key, want string, into *[]map[string]bool) {
+	switch v := node.(type) {
+	case map[string]any:
+		if key == want {
+			set := map[string]bool{}
+			for _, e := range toAnySlice(v["enum"]) {
+				if s, ok := e.(string); ok {
+					set[s] = true
+				}
+			}
+			*into = append(*into, set)
+		}
+		for k, child := range v {
+			collectNamedEnums(child, k, want, into)
+		}
+	case []any:
+		for _, child := range v {
+			collectNamedEnums(child, key, want, into)
+		}
+	}
+}
+
 // collectNamedEnum gathers the string members of the enum on every property
 // with the given name. Null members are skipped: the nullability is carried
 // by the type, and Labels() is a list of labels rather than of states.

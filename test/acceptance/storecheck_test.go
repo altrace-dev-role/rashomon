@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -280,7 +281,8 @@ func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 	for _, tc := range []struct{ file, line, want string }{
 		{"coverage.ndjson", `{"type":"coverage","schema_version":4}`, "schema_version 4"},
 		{"gaps.ndjson", `{"type":"gap","schema_version":4}`, "schema_version 4"},
-		{"spill.ndjson", `{"type":"declaration","schema_version":6}`, "schema_version 6"},
+		// One above CallSchemaVersion: a declaration version this build does not read.
+		{"spill.ndjson", `{"type":"declaration","schema_version":` + strconv.Itoa(store.CallSchemaVersion+1) + `}`, "schema_version " + strconv.Itoa(store.CallSchemaVersion+1)},
 		{"spill.ndjson", `{"type":"declaration","schema_version":2.5}`, "schema_version 2.5"},
 	} {
 		home := t.TempDir()

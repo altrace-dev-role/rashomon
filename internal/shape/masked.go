@@ -34,6 +34,23 @@ func MaskedKinds() []string {
 	return []string{MaskedNone, MaskedTest, MaskedBuild}
 }
 
+// Runner kinds: what shape.runner_kind says of the runner runner_digest
+// digests, which is the list it is on. A closed set that shares two words
+// with the masked kinds and is a different fact: status_masked is none on a
+// line that returns its runner's status, and runner_kind still names the
+// runner.
+const (
+	// RunnerTest: the runner is on testCommands.
+	RunnerTest = "test"
+	// RunnerBuild: the runner is on buildCommands and not on testCommands.
+	RunnerBuild = "build"
+)
+
+// RunnerKinds is the vocabulary of runner_kind, for the schema enum test.
+func RunnerKinds() []string {
+	return []string{RunnerTest, RunnerBuild}
+}
+
 // buildCommands are the build and check runners status_masked recognises
 // besides testCommands, in the same form: the program, as path.Base names it,
 // then the plain words that must follow it. make is any target -- `make
@@ -61,7 +78,8 @@ const maxRunnerGroups = 64
 // statusMasked reports, for a shell line, whether a recognised build or test
 // runner on it has an exit status the line does not return, and the keyed
 // digest of that runner's own words -- or, when none does, of a runner whose
-// status the line does return (runnerDigest).
+// status the line does return (runnerDigest) -- with the kind of the runner
+// digested (runnerOf).
 //
 // The question is the one a failing runner asks of the line: when it fails,
 // does the line? The line is parsed (lists, && and ||, pipelines, `!`, ( ),
@@ -102,18 +120,18 @@ const maxRunnerGroups = 64
 // held is how many of the line's leading cd steps the call's cwd digest
 // holds (leadingSteps), which Derive counts from the program search's
 // reading of the line rather than this function reading it again.
-func statusMasked(cmd string, key []byte, held int) (kind, runner *string) {
+func statusMasked(cmd string, key []byte, held int) (kind, runner, runnerKind *string) {
 	if controlByte(cmd) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	toks, err := tokenizeList(cmd)
 	if err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	p := &lineParser{toks: toks, groups: map[string]int{}, assigned: map[string]bool{}}
 	body, ok := p.parseLine()
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if len(p.runners) > maxRunnerGroups {
 		// Not sure: null. runShells below re-runs the whole parsed line for
@@ -124,7 +142,7 @@ func statusMasked(cmd string, key []byte, held int) (kind, runner *string) {
 		// square of the payload: 16,000 `make tN;` groups took 4.5s and
 		// 4,000 `make tN|tail;` ones allocated 4.4 GB. A line this shaped is
 		// already past what a build or test script looks like.
-		return nil, nil
+		return nil, nil, nil
 	}
 	p.displace(held)
 
@@ -136,7 +154,7 @@ func statusMasked(cmd string, key []byte, held int) (kind, runner *string) {
 		f, pass, ran := p.runShells(body, g)
 		if f < 0 || pass < 0 || !ran {
 			// Not sure: null.
-			return nil, nil
+			return nil, nil, nil
 		}
 		if f == 0 || f == pass {
 			hidden = append(hidden, g)
@@ -157,13 +175,30 @@ func statusMasked(cmd string, key []byte, held int) (kind, runner *string) {
 		}
 		if len(hidden) > 1 {
 			// No one later run follows up two runners.
-			return &k, nil
+			return &k, nil, nil
 		}
-		return &k, p.runnerDigest(hidden[0], key)
+		d, rk := p.runnerOf(hidden[0], key)
+		return &k, d, rk
 	case reach >= 0:
-		return &none, p.runnerDigest(reach, key)
+		d, rk := p.runnerOf(reach, key)
+		return &none, d, rk
 	}
-	return &none, nil
+	return &none, nil, nil
+}
+
+// runnerOf is runner group g's digest and kind, the one place either is
+// decided: the kind is set exactly when the digest is, and names the list
+// of the runner the digest is of (D9), so the two never disagree.
+func (p *lineParser) runnerOf(g int, key []byte) (digest, kind *string) {
+	d := p.runnerDigest(g, key)
+	if d == nil {
+		return nil, nil
+	}
+	k := RunnerBuild
+	if p.runners[g].kind == MaskedTest {
+		k = RunnerTest
+	}
+	return d, &k
 }
 
 // The parsed line. A list is and-or lists separated by `;`, `&` or a

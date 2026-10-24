@@ -59,7 +59,8 @@
             2,
             3,
             4,
-            5
+            5,
+            6
           ]
         },
         "seq": {
@@ -171,6 +172,18 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "runner_kind": {
+              "description": "Schema 6. The list the runner runner_digest digests is on: `test` for a test runner (the verb_class test list), `build` for a build runner (the status_masked build list). Set exactly when runner_digest is, from the same runner, and null exactly when it is null. The record names the runner's list because status_masked is `none` on a line that returns the runner's status and verb_class changes when the runner is sequenced: `go test ./... && echo ok` is class package and masked none. A record before schema 6 does not carry it, and its runner digest has no recorded kind, which is not `build`. A closed word: the words that decided it are compared and dropped.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                null,
+                "test",
+                "build"
               ]
             }
           }
@@ -555,6 +568,64 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 6
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "host_source",
+              "rule_match",
+              "file_label",
+              "cwd_digest",
+              "rules_version",
+              "writer",
+              "command",
+              "command_bytes",
+              "command_cut",
+              "masked",
+              "command_withheld",
+              "cwd",
+              "project",
+              "file_path",
+              "written_paths",
+              "written_paths_complete",
+              "target",
+              "edit_marks_before",
+              "written_paths_withheld",
+              "file_path_withheld",
+              "cwd_withheld",
+              "project_withheld",
+              "target_withheld",
+              "edit_marks_before_withheld",
+              "prompt_id_withheld",
+              "agent_id_withheld",
+              "agent_type_withheld",
+              "hosts_withheld",
+              "ssh_hosts_withheld",
+              "harness_id",
+              "harness_tool_name",
+              "declared_via"
+            ],
+            "properties": {
+              "shape": {
+                "required": [
+                  "may_write",
+                  "status_masked",
+                  "runner_digest",
+                  "runner_kind"
+                ]
+              }
+            }
+          }
         }
       ]
     },
@@ -590,7 +661,8 @@
             2,
             3,
             4,
-            5
+            5,
+            6
           ]
         },
         "seq": {
@@ -667,6 +739,18 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "runner_kind": {
+          "description": "Schema 6. The shape's runner_kind for the input as it ACTUALLY RAN, from the same derivation as runner_digest, and set exactly when it is.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "test",
+            "build"
           ]
         },
         "rule_match": {
@@ -933,6 +1017,51 @@
               "mcp_server_source"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 6
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "rule_match",
+              "backgrounded",
+              "status_masked",
+              "runner_digest",
+              "runner_kind",
+              "rules_version",
+              "writer",
+              "executed_command",
+              "executed_command_reason",
+              "executed_command_bytes",
+              "executed_command_cut",
+              "executed_masked",
+              "failure",
+              "output_evidence",
+              "edit_marks",
+              "head_after",
+              "gate_output",
+              "credmech",
+              "executed_command_withheld",
+              "failure_withheld",
+              "output_evidence_withheld",
+              "edit_marks_withheld",
+              "head_after_withheld",
+              "harness_id",
+              "harness_tool_name",
+              "declared_via",
+              "outcome_source",
+              "failure_type",
+              "mcp_server_source"
+            ]
+          }
         }
       ]
     },
@@ -969,6 +1098,24 @@
               "writer"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 6
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "required": [
+              "phase",
+              "writer"
+            ]
+          }
         }
       ],
       "properties": {
@@ -984,7 +1131,8 @@
             2,
             3,
             4,
-            5
+            5,
+            6
           ]
         },
         "seq": {

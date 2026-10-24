@@ -18,7 +18,7 @@ m("test-13  a fractional schema version passes", "test/acceptance/storecheck_tes
   "!ok || float64(int(v)) != v || !readable(", "!ok || !readable(", "TestRubricTEST13_")
 m("test-13  coverage and gaps are not held to their own versions", "test/acceptance/storecheck_test.go",
   "\treturn store.AcceptsKind(kind, version)\n",
-  "\treturn version >= 1 && version <= 5\n", "TestRubricTEST13_")
+  "\treturn version >= 1 && version <= store.CallSchemaVersion\n", "TestRubricTEST13_")
 m("test-13  the end-of-test check reads no store", "test/acceptance/storecheck_test.go",
   "\tunexpected, missing := damageProblems(storeProblems(e.home), e.damaged)\n",
   "\tunexpected, missing := damageProblems(nil, e.damaged)\n", "TestRubricTEST13_")
