@@ -45,14 +45,14 @@ func Relevant(c PathClass) bool {
 // of it.
 var (
 	// Rule 1, generated. These words name build output wherever they appear.
-	generatedSegments = set("vendor", "node_modules", "__pycache__", ".next")
+	generatedSegments = set("vendor", "node_modules", "__pycache__", ".next", "__generated__")
 	// dist and target name build output at the project root only: deeper in a
 	// tree they are hand-written source, as Go's own cmd/dist and a package
 	// named target are (D10, B28). build is in neither list: Gradle output in
 	// one repository, hand-written scripts in another, and an ambiguous word
 	// errs toward relevance (D4, D7).
 	generatedRootSegments = set("dist", "target")
-	generatedSuffixes     = []string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css", ".generated.ts", ".g.dart"}
+	generatedSuffixes     = []string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css", ".generated.ts", ".g.dart", ".freezed.dart", ".pb.dart", ".pbenum.dart", ".pbjson.dart", ".pbserver.dart", ".pbgrpc.dart"}
 	// Kubernetes and operator-sdk codegen writes zz_generated.<kind>.go, a
 	// basename prefix no segment, basename, suffix or extension expresses.
 	generatedPrefixes = []string{"zz_generated."}

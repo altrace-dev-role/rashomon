@@ -8,11 +8,11 @@ F = "internal/verify/pathclass.go"
 
 # The tables.
 m("RC-3 generated segments match nothing", F,
-  'set("vendor", "node_modules", "__pycache__", ".next")', 'set()', "TestRC3c_")
+  'set("vendor", "node_modules", "__pycache__", ".next", "__generated__")', 'set()', "TestRC3c_")
 m("RC-3 generated root segments match nothing", F,
   'set("dist", "target")', 'set()', "TestRC3c_")
 m("RC-3 generated suffixes match nothing", F,
-  '[]string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css", ".generated.ts", ".g.dart"}', '[]string{}', "TestRC3c_")
+  '[]string{".pb.go", ".gen.go", ".gen.ts", ".gen.js", "_generated.go", ".min.js", ".min.css", ".generated.ts", ".g.dart", ".freezed.dart", ".pb.dart", ".pbenum.dart", ".pbjson.dart", ".pbserver.dart", ".pbgrpc.dart"}', '[]string{}', "TestRC3c_")
 m("RC-3 CI segments match nothing", F,
   'set(".github", ".gitlab", ".circleci", ".buildkite")', 'set()', "TestRC3c_")
 m("RC-3 CI basenames match nothing", F,
@@ -65,7 +65,7 @@ m("RC-3 the first element is the whole directory", F,
 m("RC-3 .txt is a docs extension again", F,
   'set(".md", ".rst", ".adoc")', 'set(".md", ".rst", ".adoc", ".txt")', "TestRC3c_")
 m("RC-3 build is a generated segment again", F,
-  'set("vendor", "node_modules", "__pycache__", ".next")', 'set("vendor", "node_modules", "__pycache__", ".next", "build")', "TestRC3[ce]_")
+  'set("vendor", "node_modules", "__pycache__", ".next", "__generated__")', 'set("vendor", "node_modules", "__pycache__", ".next", "__generated__", "build")', "TestRC3[ce]_")
 
 # The cross-ecosystem rows: one break per added table entry group and guard.
 m("RC-3 generated prefixes match nothing", F,
@@ -75,8 +75,17 @@ m("RC-3 the generated prefix loses its dot", F,
 m("RC-3 .gen.ts stops being generated", F, '".gen.ts", ', '', "TestRC3f_")
 m("RC-3 .gen.js stops being generated", F, '".gen.js", ', '', "TestRC3f_")
 m("RC-3 .generated.ts stops being generated", F, '".generated.ts", ', '', "TestRC3f_")
-m("RC-3 .g.dart stops being generated", F, ', ".g.dart"}', '}', "TestRC3f_")
-m("RC-3 the .g.dart suffix loses its dot", F, '".g.dart"}', '"g.dart"}', "TestRC3f_")
+m("RC-3 .g.dart stops being generated", F, '".g.dart", ', '', "TestRC3f_")
+m("RC-3 the .g.dart suffix loses its dot", F, '".g.dart", ', '"g.dart", ', "TestRC3f_")
+m("RC-3 .freezed.dart stops being generated", F, '".freezed.dart", ', '', "TestRC3f_")
+m("RC-3 .pb.dart stops being generated", F, '".pb.dart", ', '', "TestRC3f_")
+m("RC-3 .pbenum.dart stops being generated", F, '".pbenum.dart", ', '', "TestRC3f_")
+m("RC-3 .pbjson.dart stops being generated", F, '".pbjson.dart", ', '', "TestRC3f_")
+m("RC-3 .pbserver.dart stops being generated", F, '".pbserver.dart", ', '', "TestRC3f_")
+m("RC-3 .pbgrpc.dart stops being generated", F, ', ".pbgrpc.dart"}', '}', "TestRC3f_")
+m("RC-3 the .freezed.dart suffix loses its dot", F, '".freezed.dart", ', '"freezed.dart", ', "TestRC3f_")
+m("RC-3 the .pb.dart suffix loses its dot", F, '".pb.dart", ', '"pb.dart", ', "TestRC3f_")
+m("RC-3 __generated__ stops being a generated segment", F, ', "__generated__")', ')', "TestRC3f_")
 m("RC-3 the CamelCase extensions are .java alone", F,
   'set(".java", ".kt", ".cs", ".swift", ".scala")', 'set(".java")', "TestRC3f_")
 m("RC-3 the CamelCase stem is cut by the folded extension's length", F,

@@ -31,6 +31,7 @@ func TestRC3c_PathClassTable(t *testing.T) {
 		{"tests/fixtures/a.json", ClassTest, "test segment beats config ext"},
 		{"vendor/a/b.go", ClassGenerated, "generated segment"},
 		{"vendor/x_test.go", ClassGenerated, "generated beats test"},
+		{"vendor/go.work", ClassGenerated, "generated beats config"},
 		{"dist/app.min.js", ClassGenerated, "generated root segment and suffix together (web/app.min.js tests the suffix alone)"},
 		{"build/report.md", ClassDocs, "build is not generated (D10); docs ext"},
 		{"image.png", ClassSource, "fallback is source (D7)"},
@@ -246,11 +247,31 @@ func TestRC3f_EcosystemTable(t *testing.T) {
 		{"go.work", ClassConfig},
 		{"go.work.sum", ClassConfig},
 		// The generators' own suffixes: graphql-code-generator's .generated.ts
-		// and Dart build_runner's .g.dart, beside .dart, which is source; the
-		// suffix needs its dot, so debug.dart stays source.
+		// and Dart build_runner's .g.dart, beside .dart, which is source.
 		{"src/types.generated.ts", ClassGenerated},
 		{"lib/user.g.dart", ClassGenerated},
+		// The suffix needs its dot, and user.g.dart also ends in the dotless
+		// g.dart, so this row alone kills the dotless mutant: keep it.
 		{"lib/debug.dart", ClassSource},
+		// A dotfile named by the suffix alone: rule 1 is checked before the
+		// dotfile rule, so it reads as generated, not config.
+		{".g.dart", ClassGenerated},
+		// freezed's part files, and the Dart protoc plugin's outputs, the last
+		// under its grpc option.
+		{"lib/model.freezed.dart", ClassGenerated},
+		{"lib/proto/msg.pb.dart", ClassGenerated},
+		{"lib/proto/msg.pbenum.dart", ClassGenerated},
+		{"lib/proto/msg.pbjson.dart", ClassGenerated},
+		{"lib/proto/msg.pbserver.dart", ClassGenerated},
+		{"lib/proto/msg.pbgrpc.dart", ClassGenerated},
+		// The dotless controls, hand-written files named after the package:
+		// each suffix needs its dot, and each row alone kills its dotless
+		// mutant.
+		{"lib/freezed.dart", ClassSource},
+		{"lib/pb.dart", ClassSource},
+		// The Relay compiler writes into a __generated__ directory beside its
+		// input when no artifactDirectory is set.
+		{"src/__generated__/UserQuery.graphql.ts", ClassGenerated},
 		// A bare script named build reads as config, a deliberate label: config
 		// and source are both relevant, and Bazel's BUILD needs the basename.
 		{"build", ClassConfig},
