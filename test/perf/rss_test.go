@@ -126,21 +126,65 @@ func overBudget(t *testing.T, b budget.Budgets, gate, id string, measured, budge
 	t.Errorf("%s: median peak RSS %.2f MiB over budget %.2f MiB (+%.0f%%)%s", id, measured, budgetMiB, tol*100, note)
 }
 
+// leakBytes is what the harness holds while it measures, and leakLimitMiB is
+// where a reading would show it: a child whose reading carried the harness's
+// peak would read 96 MiB or more, so a reading under half of that is a
+// reading that left the harness out.
+const (
+	leakBytes    = 96 << 20
+	leakLimitMiB = 48
+	// leakPayload is the child's work: `rashomon hook` on a 4 MiB payload
+	// reads 16.5 to 21.2 MiB on ubuntu-latest (budgets.json, hook.4MiB) and
+	// 14 to 18 on this repository's reference Linux VM, which is over 10 MiB
+	// above the reaper's own peak wherever that peak has been read (about 6
+	// MiB on ubuntu-latest, 2.6 on the VM) and under half the limit.
+	leakPayload = 4 << 20
+)
+
 // TestRES28p_AReadingLeavesOutTheHarnesssOwnPeak: the harness's reading of
-// `rashomon version` stays under 48 MiB while the harness itself holds 96 MiB.
-// On Linux a child's ru_maxrss is at least its vforking parent's peak, so a
-// harness that read the child's rusage itself would read its own size.
+// `rashomon hook` on a 4 MiB payload stays under 48 MiB while the harness
+// itself holds 96 MiB. On Linux a child's ru_maxrss is at least its vforking
+// parent's peak, so a harness that read the child's rusage itself would read
+// its own size.
+//
+// The child is one whose own peak clears the reaper's by a wide margin, and
+// the reading must be attributable (maxRSSMiB fails on a floor reading, as it
+// is meant to here): a reading at the reaper's floor is the reaper's, proves
+// nothing about the harness, and is what `rashomon version` gave on
+// ubuntu-latest in three of eleven runs: a process that does almost nothing
+// peaks there within 0.2 MiB of the reaper (5.77 to 5.91 MiB against 5.97 to
+// 5.98 in the three; 5.23 and 7.24 to 7.38 in the others, the 2 MiB steps
+// every row on that runner shows). The test is not relaxed to accept a floor
+// reading: it still fails on one, and a harness that leaks its peak reads far
+// above the floor, so it is the attributable reading that tells the two
+// apart.
 func TestRES28p_AReadingLeavesOutTheHarnesssOwnPeak(t *testing.T) {
-	ballast := make([]byte, 96<<20)
+	ballast := make([]byte, leakBytes)
 	for i := 0; i < len(ballast); i += os.Getpagesize() {
 		ballast[i] = 1
 	}
-	got, _ := maxRSSMiB(t, nil, newRig(t).env, "version")
-	runtime.KeepAlive(ballast)
-	if got >= 48 {
-		t.Errorf("rashomon version read %.2f MiB beside a harness holding 96 MiB: the harness's peak is in the reading", got)
+	r := newRig(t)
+	in, err := payload.Pre(leakPayload, "toolu_00")
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Logf("rashomon version: %.2f MiB beside a 96 MiB harness", got)
+	if len(in) != leakPayload {
+		t.Fatalf("payload is %d bytes, want %d", len(in), leakPayload)
+	}
+	command := []string{"hook"}
+	before := r.lines(t, store.FileRecords)
+	got, stdout := maxRSSMiB(t, in, r.env, r.args(command)...)
+	runtime.KeepAlive(ballast)
+	// A reading of a call that stood down early would be a small child's, not
+	// the one this measures.
+	a := Added{Records: len(added(before, r.lines(t, store.FileRecords))), Stdout: stdout}
+	if err := WorkDone(command, payload.Session, a); err != nil {
+		t.Fatalf("the measured call did not do its work: %v", err)
+	}
+	if got >= leakLimitMiB {
+		t.Errorf("rashomon hook read %.2f MiB beside a harness holding 96 MiB: the harness's peak is in the reading", got)
+	}
+	t.Logf("rashomon hook on %d MiB: %.2f MiB beside a 96 MiB harness", leakPayload>>20, got)
 }
 
 // runOnce runs the binary once with stdin and env and returns its peak RSS
