@@ -17,17 +17,24 @@ const (
 	MaskedBuild = "build"
 )
 
-// RulesVersion names the lists this build decides a shape with: the test
-// runners (testCommands) and the build runners (buildCommands), which set
-// verb_class and status_masked, and the pass words (the report's
-// passVocabulary), which decide when the masked-runs line fires. Written on
-// every declaration and execution as rules_version, so records written before
-// and after a list changed can be told apart.
+// RulesVersion names every table this build decides a recorded shape field
+// with (verb_class, status_masked, may_write), and moves whenever one of them
+// changes. The tables are the test runners (testCommands) and the build
+// runners (buildCommands), which set verb_class and status_masked; the
+// in-place tables (inPlaceEditors, checkOnly, shortClusters), which set
+// may_write; and the pass words (the report's passVocabulary), which decide
+// when the masked-runs line fires. Written on every declaration and execution
+// as rules_version, so records written before and after a table changed can
+// be told apart.
 //
-// Bump it whenever one of those lists changes, and add the new lists' pin to
-// the tests that hold one (rules_version_test.go here and in report): each
-// fails when its list changes without a bump.
-const RulesVersion = 2
+// Bump it whenever one of those tables changes, and add the new tables' pin
+// to the tests that hold one (rules_version_test.go here and in report): each
+// fails when its table changes without a bump. The exception: mayWrite's
+// inline writer-word checks (xargs, tee, wget, rsync, scp, find's -delete
+// and -exec words, curl's output flags with curlArgumentOptions) also decide
+// may_write and are not yet under a pin; the first change to any of them
+// brings them under one.
+const RulesVersion = 3
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {

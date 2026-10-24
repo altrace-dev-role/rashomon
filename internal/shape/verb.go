@@ -230,6 +230,12 @@ func refusesRun(runner string, before, args []token) bool {
 // --show-only, pytest --cache-show) or is a no-value switch whose parser
 // rejects any =value (pytest --fixtures, nox --list, tox --listenvs, phpunit
 // --list-*), so the line runs no test either way.
+//
+// A combined short flag is not split (notARun's lists name spellings, not
+// clusters): that is safe for notARun, where a missed refusal still counts as
+// a test run, and for the in-place editors shortClusters closes the
+// letter-clustering case only; a new caller re-justifies it against its
+// own safe direction.
 func onList(word string, list []string) bool {
 	name, value, hasValue := strings.Cut(word, "=")
 	for _, w := range list {
@@ -697,9 +703,11 @@ func verbForProgram(prog string) string {
 // `prettier --write`, `clang-format -i`, `eslint --fix`), a subcommand
 // (`go fmt`, `cargo fmt`, `ruff format`), or nothing, for a formatter that
 // writes unless told to check (black, isort, rustfmt). A trailing `*` matches
-// a prefix, as onList reads it, so `-i.bak` and `-pie` count.
+// a prefix, as onList reads it, so `-i.bak` and `-pie` count. BSD sed's -I
+// edits in place as -i does (its man page's SYNOPSIS: `[-I extension] [-i
+// extension]`); GNU sed has no -I, so the prefix reads nothing else.
 var inPlaceEditors = map[string][]string{
-	"sed":          {"-i*", "--in-place*"},
+	"sed":          {"-i*", "-I*", "--in-place*"},
 	"perl":         {"-i*", "-pi*", "-ni*", "-0pi*"},
 	"gofmt":        {"-w"},
 	"go":           {"fmt"},
@@ -713,24 +721,55 @@ var inPlaceEditors = map[string][]string{
 	"rustfmt":      {},
 }
 
+// shortClusters are the in-place editors whose option grammar bundles
+// single-letter options into one word, with the letters that edit in place:
+// i for both, and BSD sed's I. sed's grammar (GNU sed's Command-Line
+// Options, and the BSD sed man page) and perl's (perlrun) both bundle, and
+// both let the in-place letter take an attached suffix, so it is found by
+// scanning the cluster's letters in order (clusterHas): `sed -ni`, `sed
+// -nI.bak`, `sed -li` and `perl -lpi` edit in place. A letter
+// in consumes takes the rest of the word as its value (`-escript`,
+// `-Mmodule`) and ends the scan, so `sed -ne` and `perl -Mstrict` do not.
+// sed's -l is not a consumer: BSD sed, the sed macOS ships, reads it as
+// line-buffered output with no argument. GNU sed's -l N does take one, and
+// the word where the two collide, `-l5i`, reads as a write: the over-claim.
+// perl's -l[octnum] takes digits only and is not a consumer either;
+// -x[directory] is, since whatever follows x in the word is its directory.
+// gofmt and clang-format are not clustered (Go's flag package and LLVM read
+// -w and -i whole) and are not here.
+var shortClusters = map[string]shortCluster{
+	"sed":  {letters: "iI", consumes: "ef"},
+	"perl": {letters: "i", consumes: "eEMmIFx"},
+}
+
+type shortCluster struct {
+	letters  string
+	consumes string
+}
+
 // checkOnly are the words under which a formatter reads and reports instead
-// of writing; one of them anywhere in the stage clears the editor.
-var checkOnly = []string{"--check", "--check-only", "--diff", "-l", "--list-different", "--dry-run"}
+// of writing, or prints its help or version; one of them anywhere in the
+// stage clears the editor.
+var checkOnly = []string{"--check", "--check-only", "--diff", "-l", "--list-different", "--dry-run",
+	"--help", "--version", "-h"}
 
 // inPlaceEdit reports a line with a stage on which an in-place editor stands
 // with a word that makes it write (inPlaceEditors) and no word that makes it
 // only check (checkOnly). Words are compared wherever they stand in the
-// stage, as mayWrite compares its own: the direction to be wrong in. A stage
-// separator starts the search over, so `sed -n p a | grep -i x` is a read.
+// stage, as mayWrite compares its own: the direction to be wrong in. A
+// clustered editor's word is also scanned as a cluster (shortClusters). A
+// stage separator starts the search over, so `sed -n p a | grep -i x` is a
+// read.
 func inPlaceEdit(toks []token) bool {
 	var flags []string
-	armed, checking := false, false
+	var cluster shortCluster
+	armed, checking, clustered := false, false, false
 	for j, t := range toks {
 		if stageSeparator(toks, j) {
 			if armed && !checking {
 				return true
 			}
-			flags, armed, checking = nil, false, false
+			flags, armed, checking, clustered = nil, false, false, false
 			continue
 		}
 		if t.meta {
@@ -739,6 +778,7 @@ func inPlaceEdit(toks []token) bool {
 		if f, ok := inPlaceEditors[path.Base(t.text)]; ok {
 			flags = f
 			armed = len(f) == 0
+			cluster, clustered = shortClusters[path.Base(t.text)]
 			continue
 		}
 		if flags == nil {
@@ -749,7 +789,29 @@ func inPlaceEdit(toks []token) bool {
 			checking = true
 		case onList(t.text, flags):
 			armed = true
+		case clustered && clusterHas(t.text, cluster):
+			armed = true
 		}
 	}
 	return armed && !checking
+}
+
+// clusterHas reports a word that is a cluster of short options (one dash,
+// then a letter, and no =) in which one of c.letters stands before any
+// letter of c.consumes: the walk stops at the first of either, since a
+// consuming letter takes the rest of the word as its value.
+func clusterHas(tok string, c shortCluster) bool {
+	if len(tok) < 2 || tok[0] != '-' || !('a' <= tok[1] && tok[1] <= 'z' || 'A' <= tok[1] && tok[1] <= 'Z') ||
+		strings.Contains(tok, "=") {
+		return false
+	}
+	for i := 1; i < len(tok); i++ {
+		switch {
+		case strings.IndexByte(c.letters, tok[i]) >= 0:
+			return true
+		case strings.IndexByte(c.consumes, tok[i]) >= 0:
+			return false
+		}
+	}
+	return false
 }

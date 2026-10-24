@@ -721,3 +721,32 @@ m("TB LeadingDirectory reads the cds of a control-byte line", "internal/shape/le
   "\tif !ok || controlByte(cmd) {\n\t\treturn nil, false\n\t}\n\treturn leadingDirectories(cmd)\n",
   "\tif !ok {\n\t\treturn nil, false\n\t}\n\treturn leadingDirectories(cmd)\n",
   "TestLeadingDirectory")
+
+# The in-place letter inside a cluster of short options, and the words that
+# clear a formatter. Each table mutant runs TestRC3b_ alone, so the row it is
+# written for kills it; TestRulesVersion_WriteTables would also kill each,
+# by the digest, and is the RulesVersion mutant's own killer. The emptied
+# table and the scan never called are equivalent for these rows (both leave
+# every cluster unread); both stay, one per line they break.
+m("TB no editor's short options are scanned as a cluster", "internal/shape/verb.go",
+  "var shortClusters = map[string]shortCluster{\n\t\"sed\":  {letters: \"iI\", consumes: \"ef\"},\n\t\"perl\": {letters: \"i\", consumes: \"eEMmIFx\"},\n}\n",
+  "var shortClusters = map[string]shortCluster{}\n", "TestRC3b_")
+m("TB sed's -l takes the rest of the word again", "internal/shape/verb.go",
+  "\t\"sed\":  {letters: \"iI\", consumes: \"ef\"},\n", "\t\"sed\":  {letters: \"iI\", consumes: \"efl\"},\n", "TestRC3b_")
+m("TB BSD sed's I is not an in-place letter in a cluster", "internal/shape/verb.go",
+  "\t\"sed\":  {letters: \"iI\", consumes: \"ef\"},\n", "\t\"sed\":  {letters: \"i\", consumes: \"ef\"},\n", "TestRC3b_")
+m("TB BSD sed's -I is not an in-place word", "internal/shape/verb.go",
+  "\t\"sed\":          {\"-i*\", \"-I*\", \"--in-place*\"},\n", "\t\"sed\":          {\"-i*\", \"--in-place*\"},\n", "TestRC3b_")
+m("TB a consuming letter does not end the cluster scan", "internal/shape/verb.go",
+  "\t\tcase strings.IndexByte(c.consumes, tok[i]) >= 0:\n\t\t\treturn false\n", "", "TestRC3b_")
+m("TB a clustered editor's words are never scanned", "internal/shape/verb.go",
+  "\t\tcase clustered && clusterHas(t.text, cluster):\n",
+  "\t\tcase false && clustered && clusterHas(t.text, cluster):\n", "TestRC3b_")
+m("TB --version does not clear an editor", "internal/shape/verb.go",
+  "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"-h\"}", "TestRC3b_")
+m("TB --help does not clear an editor", "internal/shape/verb.go",
+  "\"--help\", \"--version\", \"-h\"}", "\"--version\", \"-h\"}", "TestRC3b_")
+m("TB -h does not clear an editor", "internal/shape/verb.go",
+  "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"--version\"}", "TestRC3b_")
+m("TB the rules version stays at 2 when the in-place tables change", "internal/shape/masked.go",
+  "const RulesVersion = 3\n", "const RulesVersion = 2\n", "TestRulesVersion_")

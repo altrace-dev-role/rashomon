@@ -27,6 +27,18 @@ func TestRC3b_InPlaceEditorsSetMayWrite(t *testing.T) {
 		"perl -pi -e 's/a/b/' x.go", "perl -i -pe 's/a/b/' x.go",
 		"gofmt -w .", "go fmt ./...", "cargo fmt", "black .", "ruff format .", "isort .", "rustfmt src/main.rs",
 		"npx prettier --write .", "clang-format -i a.cc", "npx eslint --fix .",
+		// The in-place letter inside a cluster of short options.
+		"sed -ni p a.go", "sed -Ei.bak s/x/y/ a.go", "perl -lpi -e s/x/y/ a.go",
+		// BSD sed's -l takes no argument, so the i after it is reached.
+		"sed -li s/x/y/ a.go",
+		// BSD sed's -I: alone, in a cluster, and with =. clusterHas refuses a
+		// word holding =, so only the prefix entry reads the last, and BSD
+		// sed edits on it, keeping a.go=.bak as the backup.
+		"sed -I '' s/x/y/ a.go", "sed -nI.bak s/x/y/ a.go", "sed -I=.bak s/x/y/ a.go",
+		// ACCEPTED GAP: neither sed edits on -l5i (BSD rejects -5, GNU takes
+		// 5i as -l's number); the scan does not know -l's number and arms on
+		// the i, an over-claim on a spelling not in use.
+		"sed -l5i p a.go",
 	} {
 		if sh := verbOf(t, cmd); !sh.MayWrite {
 			t.Errorf("%q: may_write false, want true", cmd)
@@ -35,6 +47,10 @@ func TestRC3b_InPlaceEditorsSetMayWrite(t *testing.T) {
 	for _, cmd := range []string{
 		"sed 's/a/b/' x.go", "gofmt -l .", "cargo fmt --check", "black --check .", "ruff format --diff .",
 		"npx prettier --check .", "sed -n '1,3p' x.go | grep -i foo",
+		// A cluster whose option takes the rest of the word before any i, and
+		// a formatter asked for its help or version.
+		"sed -ne p a.go", "perl -Mstrict -e print a.go", "perl -ne print a.go",
+		"black --version", "black --help", "rustfmt -h", "sed -n p a.go | grep -i x",
 	} {
 		if sh := verbOf(t, cmd); sh.MayWrite {
 			t.Errorf("%q: may_write true, want false (a check or a read does not write)", cmd)

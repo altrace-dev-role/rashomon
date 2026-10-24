@@ -15,6 +15,7 @@ import (
 var passListPins = map[int]string{
 	1: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1",
 	2: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1", // shape.RulesVersion 2 changed runner lists only; the pass words are unchanged
+	3: "59f8b278949ee9da2257c5ca139381bc0ea341c29f05278f39a7f0e1a354cab1", // shape.RulesVersion 3 changed the in-place tables only; the pass words are unchanged
 }
 
 // TestRulesVersion_PassList: the pass words cannot change without a
