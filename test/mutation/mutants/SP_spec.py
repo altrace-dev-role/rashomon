@@ -189,6 +189,7 @@ for level, old, new, row in [
     m(f"SP {level} objects accept an unknown key", PARSE, old, new, f"TestSP3_UnknownKeyRefusedAtEveryLevel/^{row}$")
 m("SP keys match case-insensitively", PARSE, "\t\tif !slices.Contains(allowed, k) {\n", "\t\tif !slices.ContainsFunc(allowed, func(a string) bool { return strings.EqualFold(a, k) }) {\n",
   "TestSP3_UnknownKeyRefusedAtEveryLevel/^case_variant$")
+IMPORTS["SP keys match case-insensitively"] = (PARSE, "import (\n\t\"crypto/sha256\"\n", "import (\n\t\"strings\"\n\t\"crypto/sha256\"\n")
 m("SP a duplicate key takes the last value", LEX, "\t\tif _, dup := seen[key]; dup {\n", "\t\tif _, dup := seen[key]; dup && false {\n",
   "TestSP3_UnknownKeyRefusedAtEveryLevel")  # {"rashomon_spec":1,"rashomon_spec":1} duplicate_key
 
