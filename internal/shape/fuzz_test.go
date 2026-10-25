@@ -100,8 +100,9 @@ func FuzzHosts(f *testing.F) {
 }
 
 // checkHosts reads text both as a Bash command line and as a WebFetch url.
-// Every wire and ssh host is already canonical (host.Canonical is a fixed
-// point on it), every host a command ARGUMENT names is hostname-shaped and in
+// Every wire host is already canonical (host.Canonical is a fixed point on
+// it), every ssh host is (host.CanonicalName is: the destination reader
+// deliberately does not fold a numeric alias), every host a command ARGUMENT names is hostname-shaped and in
 // the ssh list, and both lists are sorted and de-duplicated, as the record's
 // determinism needs.
 //
@@ -121,9 +122,17 @@ func checkHosts(t *testing.T, text string) {
 		raw  json.RawMessage
 	}{{"Bash", bashInput(t, text)}, {"WebFetch", url}} {
 		wire, ssh := Hosts(call.tool, call.raw)
-		for _, h := range slices.Concat(wire, ssh) {
+		for _, h := range wire {
 			if c, ok := host.Canonical(h); !ok || c != h {
-				t.Fatalf("%s %q: host %q is not canonical (%q, %v)", call.tool, text, h, c, ok)
+				t.Fatalf("%s %q: wire host %q is not canonical (%q, %v)", call.tool, text, h, c, ok)
+			}
+		}
+		// An ssh destination is a fixed point of host.CanonicalName, not of
+		// Canonical: a numeric alias is recorded as typed (`ssh -p 222 2`
+		// names "2", which Canonical would fold to 0.0.0.2).
+		for _, h := range ssh {
+			if c, ok := host.CanonicalName(h); !ok || c != h {
+				t.Fatalf("%s %q: ssh host %q is not canonical (%q, %v)", call.tool, text, h, c, ok)
 			}
 		}
 		if cmd, ok := commandField(call.raw); ok && call.tool == "Bash" {

@@ -423,35 +423,69 @@ func TestREC34_FailedBarrierIsMarkedNotRetried(t *testing.T) {
 func TestREC34_SignalBeforeFlushReachesTheSyncLog(t *testing.T) {
 	skipWithoutAFlush(t)
 
-	hangingHook := func(t *testing.T, e *env, log string) *exec.Cmd {
+	// hangingHook starts a hook held at hook.before_flush and returns only
+	// once it is positively there: the fault point has created its marker,
+	// which it does after catching SIGTERM and before waiting, and the process
+	// has not exited. Close's records landing (the coverage line) is not that
+	// evidence. It is what a hook with no injection point writes too, and that
+	// hook goes straight on to Flush, so a signal sent on seeing the line can
+	// land before Flush or after it, depending on how slow a darwin barrier
+	// is. With the marker the signal always lands on a hook that has not
+	// started Flush, and a build without the point never writes it, so the
+	// test fails there every time instead of passing when it loses the race.
+	//
+	// exited closes when the process has been reaped; ProcessState is valid
+	// once it has.
+	hangingHook := func(t *testing.T, e *env, log string) (cmd *exec.Cmd, exited <-chan struct{}) {
 		t.Helper()
-		cmd := e.command(defaultPayload().build(t), []string{
-			"RASHOMON_FAULT=" + pointHookBeforeFlush + ":hang",
+		marker := filepath.Join(t.TempDir(), "hung")
+		cmd = e.command(defaultPayload().build(t), []string{
+			// Long enough that the hang's own bound cannot end it first.
+			"RASHOMON_FAULT=" + pointHookBeforeFlush + ":hang=60",
+			"RASHOMON_FAULT_HANG_MARKER=" + marker,
 			syncLogEnv + "=" + log,
 		}, "hook")
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
+		done := make(chan struct{})
+		go func() {
+			// The exit status is read from ProcessState by the caller.
+			_ = cmd.Wait()
+			close(done)
+		}()
+		t.Cleanup(func() { _ = cmd.Process.Kill() })
 		waitFor(t, 5e9, "the entry to close before flush", func() bool {
 			return len(e.coverage(testSession, "call")) == 1
 		})
-		return cmd
+		waitFor(t, 5e9, "the hook to reach the hang at hook.before_flush", func() bool {
+			select {
+			case <-done:
+				t.Fatalf("the hook exited without reaching the hang at %s: the injection point is gone or was skipped", pointHookBeforeFlush)
+			default:
+			}
+			_, err := os.Stat(marker)
+			return err == nil
+		})
+		select {
+		case <-done:
+			t.Fatal("the hook exited while held at hook.before_flush")
+		default:
+		}
+		return cmd, done
 	}
 
 	t.Run("SIGTERM lets Flush run", func(t *testing.T) {
 		e := newEnv(t)
 		e.watched(testSession)
 		log := filepath.Join(t.TempDir(), "sync.log")
-		cmd := hangingHook(t, e, log)
-		// The process is already exiting by the time this runs in the common
-		// case, so a failure here just means Kill found nothing to kill.
-		t.Cleanup(func() { _ = cmd.Process.Kill() })
+		cmd, exited := hangingHook(t, e, log)
 		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
 			t.Fatal(err)
 		}
 		// Wait's error is expected whenever the exit code is non-zero; the
 		// exit code is read from ProcessState below, which is what matters.
-		_ = cmd.Wait()
+		<-exited
 		if code := cmd.ProcessState.ExitCode(); code != 0 {
 			t.Fatalf("exit %d after SIGTERM before flush, want 0: Flush still had to run", code)
 		}
@@ -483,13 +517,13 @@ func TestREC34_SignalBeforeFlushReachesTheSyncLog(t *testing.T) {
 		e.watched(testSession)
 		log := filepath.Join(t.TempDir(), "sync.log")
 		r0, c0, _ := e.runFiles(testSession)
-		cmd := hangingHook(t, e, log)
+		cmd, exited := hangingHook(t, e, log)
 		if err := cmd.Process.Kill(); err != nil {
 			t.Fatal(err)
 		}
 		// Wait's error is expected: SIGKILL makes this exit by signal, and
 		// nothing below reads the exit code.
-		_ = cmd.Wait()
+		<-exited
 
 		r1, c1, s1 := e.runFiles(testSession)
 		if r1-r0 != 2 || c1-c0 != 1 {

@@ -80,10 +80,31 @@ func buildAndRun(m *testing.M) (int, error) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return 0, fmt.Errorf("building the release binary: %v\n%s", err, out)
 	}
+	// Before the reaper exists, so it and every child inherit the flag; see
+	// peakrss.DisableTHP for what it takes out of a reading. A host that
+	// refuses it fails the run rather than measuring with 2 MiB steps in.
+	if err := peakrss.DisableTHP(); err != nil {
+		return 0, err
+	}
+	fmt.Fprintln(os.Stderr, "perf:", hostSettings())
 	if reaper, err = peakrss.NewReaper(dir); err != nil && !errors.Is(err, peakrss.ErrUnavailable) {
 		return 0, err
 	}
 	return Settle(m.Run(), os.Getenv(RequireAllEnv) == "1", b, ran)
+}
+
+// hostSettings is one line naming what a reading depends on that the harness
+// does not set: the kernel's THP mode and the CPUs the test process may use,
+// so a bimodal row's runner can be read from its log rather than guessed
+// (budgets.json, linux/amd64's set_from). Off Linux, or where sysfs is
+// absent, the THP part says so.
+func hostSettings() string {
+	thp := "not read"
+	if b, err := os.ReadFile("/sys/kernel/mm/transparent_hugepage/enabled"); err == nil {
+		thp = strings.TrimSpace(string(b))
+	}
+	return fmt.Sprintf("%s, THP sysfs %s (disabled for the harness and its children), GOMAXPROCS %d of %d CPUs, measured children under %v",
+		platform(), thp, runtime.GOMAXPROCS(0), runtime.NumCPU(), measuredEnv(nil, runtime.GOOS))
 }
 
 // platform is this runner's budgets platform key.
@@ -126,21 +147,100 @@ func overBudget(t *testing.T, b budget.Budgets, gate, id string, measured, budge
 	t.Errorf("%s: median peak RSS %.2f MiB over budget %.2f MiB (+%.0f%%)%s", id, measured, budgetMiB, tol*100, note)
 }
 
+// leakBytes is what the harness holds while it measures, and leakLimitMiB is
+// where a reading would show it: a child whose reading carried the harness's
+// peak would read 96 MiB or more, so a reading under half of that is a
+// reading that left the harness out.
+const (
+	leakBytes    = 96 << 20
+	leakLimitMiB = 48
+	// leakPayload is the child's work: `rashomon hook` on a 4 MiB payload
+	// reads 16.5 to 21.2 MiB on ubuntu-latest (budgets.json, hook.4MiB) and
+	// 14 to 18 on this repository's reference Linux VM, which is over 10 MiB
+	// above the reaper's own peak wherever that peak has been read (about 6
+	// MiB on ubuntu-latest, 2.6 on the VM) and under half the limit.
+	leakPayload = 4 << 20
+)
+
 // TestRES28p_AReadingLeavesOutTheHarnesssOwnPeak: the harness's reading of
-// `rashomon version` stays under 48 MiB while the harness itself holds 96 MiB.
-// On Linux a child's ru_maxrss is at least its vforking parent's peak, so a
-// harness that read the child's rusage itself would read its own size.
+// `rashomon hook` on a 4 MiB payload stays under 48 MiB while the harness
+// itself holds 96 MiB. On Linux a child's ru_maxrss is at least its vforking
+// parent's peak, so a harness that read the child's rusage itself would read
+// its own size.
+//
+// The child is one whose own peak clears the reaper's by a wide margin, and
+// the reading must be attributable (maxRSSMiB fails on a floor reading, as it
+// is meant to here): a reading at the reaper's floor is the reaper's, proves
+// nothing about the harness, and is what `rashomon version` gave on
+// ubuntu-latest in three of eleven runs: a process that does almost nothing
+// peaks there within 0.2 MiB of the reaper (5.77 to 5.91 MiB against 5.97 to
+// 5.98 in the three; 5.23 and 7.24 to 7.38 in the others, the 2 MiB steps
+// every row on that runner shows). The test is not relaxed to accept a floor
+// reading: it still fails on one, and a harness that leaks its peak reads far
+// above the floor, so it is the attributable reading that tells the two
+// apart.
 func TestRES28p_AReadingLeavesOutTheHarnesssOwnPeak(t *testing.T) {
-	ballast := make([]byte, 96<<20)
+	ballast := make([]byte, leakBytes)
 	for i := 0; i < len(ballast); i += os.Getpagesize() {
 		ballast[i] = 1
 	}
-	got, _ := maxRSSMiB(t, nil, newRig(t).env, "version")
-	runtime.KeepAlive(ballast)
-	if got >= 48 {
-		t.Errorf("rashomon version read %.2f MiB beside a harness holding 96 MiB: the harness's peak is in the reading", got)
+	r := newRig(t)
+	in, err := payload.Pre(leakPayload, "toolu_00")
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Logf("rashomon version: %.2f MiB beside a 96 MiB harness", got)
+	if len(in) != leakPayload {
+		t.Fatalf("payload is %d bytes, want %d", len(in), leakPayload)
+	}
+	command := []string{"hook"}
+	before := r.lines(t, store.FileRecords)
+	got, stdout := maxRSSMiB(t, in, r.env, r.args(command)...)
+	runtime.KeepAlive(ballast)
+	// A reading of a call that stood down early would be a small child's, not
+	// the one this measures.
+	a := Added{Records: len(added(before, r.lines(t, store.FileRecords))), Stdout: stdout}
+	if err := WorkDone(command, payload.Session, a); err != nil {
+		t.Fatalf("the measured call did not do its work: %v", err)
+	}
+	if got >= leakLimitMiB {
+		t.Errorf("rashomon hook read %.2f MiB beside a harness holding 96 MiB: the harness's peak is in the reading", got)
+	}
+	t.Logf("rashomon hook on %d MiB: %.2f MiB beside a 96 MiB harness", leakPayload>>20, got)
+}
+
+// measuredEnv is env plus the runtime settings every Linux reading is taken
+// under: GOMAXPROCS=1 and GODEBUG=gcstoptheworld=2. They take out the second
+// source of bimodal readings besides transparent huge pages
+// (peakrss.DisableTHP). With a second P the runtime's background GC workers,
+// sweeper and scavenger run beside the goroutine that reads the payload, and
+// whether a cycle (and its sweep) has freed the chunk buffers before the next
+// allocation touches new pages decides whether `rashomon hook` peaks one
+// payload higher. On this repository's 4-core VM hook.8MiB read 22.1 to 22.9
+// MiB in 17 of 40 runs and 28.9 to 30.6 in 23 (the second mode is one 8 MiB
+// buffer more) and hook.4MiB 13.8 to 14.7 or 16.0 to 18.6. GOMAXPROCS=1
+// alone collapses those two but leaves hook.1MiB in two clusters 0.7 MiB apart
+// (7.3 to 7.5 and 8.0 to 8.3, about even) and an occasional 17.5 at 4 MiB (1
+// to 2 of 40), presumably because the background sweeper still interleaves
+// with the reader on one P. gcstoptheworld=2 stops the concurrent mark and the
+// concurrent sweep, and with both set all 18 cases and entries read one cluster
+// in 60 runs each (at most 0.9 MiB wide), with THP "always" and "madvise".
+// GOGC pinned does nothing here (the binary pins GOGC 100 and a 32 MiB limit
+// itself, applyHookRuntimeLimits), and a forced collection is already in the
+// binary (hookio.Read, from 1 MiB), so neither is a control.
+//
+// This is not what a user runs: users have cores and a concurrent collector,
+// and the concurrent peak is the one they can see (up to one payload higher
+// at 4 and 8 MiB). The gate holds the serialised peak, the one a change in
+// what the code holds moves, not a change in when the runtime frees it.
+// Darwin is left as it was: its rows are the reference machine's and
+// Karthik re-measures them (budgets.json, platforms.darwin/arm64). GODEBUG is
+// stripped from the rig's env (newRig), so this is the only GODEBUG a
+// measured child has.
+func measuredEnv(env []string, goos string) []string {
+	if goos != "linux" {
+		return env
+	}
+	return append(append([]string(nil), env...), "GOMAXPROCS=1", "GODEBUG=gcstoptheworld=2")
 }
 
 // runOnce runs the binary once with stdin and env and returns its peak RSS
@@ -154,7 +254,7 @@ func runOnce(t *testing.T, stdin []byte, env []string, args ...string) (rss floa
 	t.Helper()
 	cmd := exec.Command(rashomonBin, args...)
 	cmd.Stdin = bytes.NewReader(stdin)
-	cmd.Env = env
+	cmd.Env = measuredEnv(env, runtime.GOOS)
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &outBuf, &errBuf
 	rss, err = reaper.Run(cmd)
@@ -338,7 +438,32 @@ func (r rig) medianRSS(t *testing.T, command []string, mk func(i int) []byte) (m
 		xs = append(xs, rss)
 	}
 	m, _ := Median(xs)
+	// The nine readings, not only their median: a median that sits in one of
+	// two modes (post.edit_314k and recap.pending read about 2 MiB apart on
+	// ubuntu-latest across CI runs) cannot be told from a drift of the floor
+	// by one number.
+	t.Logf("%s: nine peak RSS readings in MiB: %.2f", strings.Join(command, " "), xs)
 	return m, true, ""
+}
+
+// TestRES28u_MeasuredEnvPinsOneProcOnLinuxOnly: every Linux reading is taken
+// under GOMAXPROCS=1 and GODEBUG=gcstoptheworld=2 (measuredEnv), the
+// caller's own environment is not altered, and darwin's is exactly what the
+// caller passed, since its rows are the reference machine's. Break: set them on
+// every platform, or drop either, and this fails.
+func TestRES28u_MeasuredEnvPinsOneProcOnLinuxOnly(t *testing.T) {
+	in := make([]string, 1, 4) // spare capacity: an append in place would show in in[:2]
+	in[0] = "A=1"
+	got := measuredEnv(in, "linux")
+	if len(got) != 3 || got[0] != "A=1" || got[1] != "GOMAXPROCS=1" || got[2] != "GODEBUG=gcstoptheworld=2" {
+		t.Errorf("linux env = %q, want A=1, GOMAXPROCS=1 and GODEBUG=gcstoptheworld=2 last", got)
+	}
+	if in[:3][1] != "" {
+		t.Errorf("the caller's slice was changed: %q", in[:3])
+	}
+	if got := measuredEnv(in, "darwin"); len(got) != 1 || got[0] != "A=1" {
+		t.Errorf("darwin env = %q, want it untouched", got)
+	}
 }
 
 // TestRES28_MaxRSSFollowsThePayloadBudget: hook and post peak RSS stay within
@@ -386,7 +511,10 @@ func TestRES28_MaxRSSFollowsThePayloadBudget(t *testing.T) {
 				reportOnlyRSS(t, CaseGate(c.ID), c.ID, got, why)
 			default:
 				ran[CaseGate(c.ID)] = true
-				t.Errorf("%s: %s", c.ID, why)
+				// The reading rides in the failure: the row this asks for is
+				// the platform's own measurement, and a failure that did not
+				// say what was read left nobody a way to write it.
+				t.Errorf("%s: read %.2f MiB; %s", c.ID, got, why)
 			}
 		})
 	}
@@ -422,7 +550,7 @@ func TestRES28b_EveryEntryStaysWithinItsRow(t *testing.T) {
 				reportOnlyRSS(t, EntryGate(e.ID), e.ID, got, why)
 			default:
 				ran[EntryGate(e.ID)] = true
-				t.Errorf("%s: %s", e.ID, why)
+				t.Errorf("%s: read %.2f MiB; %s", e.ID, got, why)
 			}
 		})
 	}
