@@ -158,10 +158,11 @@ func runOfSession(t testing.TB, sessionID string, calls ...call) *store.Run {
 		// it, so a change to commandEnd walks this invariant again. Not tied
 		// here: the class against bg (the input and the response are two
 		// sources), and class test against a runner being recorded: a
-		// test-class line records no runner kind where the program search
-		// folds a cd that leadingCd does not read (`cd ~/x && go test ./...`,
-		// whose runner the masked parser marks displaced), or where the masked
-		// parser cannot read the line at all (a stray `)`).
+		// test-class line records no runner kind past shape.MaxLeadingCd
+		// leading cd steps, which the program search folds and the masked
+		// parser does not (65 `cd a && ` steps before `go test ./...`,
+		// RES-10), or where the masked parser cannot read the line at all (a
+		// stray `)`).
 		if c.class == shape.VerbTest && c.masked != "" && c.masked != shape.MaskedNone {
 			t.Fatalf("runOf: call %d is class %q with masked %q: a hidden status never reaches the test class (shape: runsTests, wholeCommand and the program search)", i, c.class, c.masked)
 		}

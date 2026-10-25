@@ -2,6 +2,7 @@ package shape
 
 import (
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -127,6 +128,20 @@ func programToken(toks []token, uncertain bool) (int, bool) {
 // after `cd` cannot be told, neither can the program -- the answer is null,
 // not "cd", which would be a confident wrong answer.
 //
+// The steps are directoryChanges', the one fold the masked parser passes over
+// as well (leadingFold), where its own reading steps over the same ones
+// (agreedFold).
+func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
+	_, _, prog, ok := directoryChanges(toks, i, uncertain)
+	return prog, ok
+}
+
+// directoryChanges steps from the command whose program is toks[i] over each
+// leading `cd ARGS &&` or `cd ARGS;`, and returns after, the index past the
+// last separator it stepped over (0 when none), steps, how many it stepped
+// over, and prog and ok, pastDirectoryChange's answer. after and steps are
+// set even where the program after the last step cannot be told.
+//
 // The separator is found by commandEnd, the scan that decides where a
 // command ends for definesFunctions, so a `;` inside `$( )` or backticks ends
 // nothing here either. The command after it is searched by programToken and
@@ -136,27 +151,63 @@ func programToken(toks []token, uncertain bool) (int, bool) {
 // It is a loop, one step per cd, rather than a call per cd: a line of tens
 // of thousands of them is within the token bound, and its depth is the
 // input's to choose (RES-10, CWE-674).
-func pastDirectoryChange(toks []token, i int, uncertain bool) (int, bool) {
+func directoryChanges(toks []token, i int, uncertain bool) (after, steps, prog int, ok bool) {
 	for toks[i].text == "cd" && toks[i].quotedAt < 0 {
 		sep, ok := commandEnd(toks, i, uncertain)
 		if !ok {
-			return 0, false
+			return after, steps, 0, false
 		}
 		if sep < 0 || toks[sep].text != "&&" && toks[sep].text != ";" {
-			return i, true
+			return after, steps, i, true
 		}
 		for j := i + 1; j < sep; j++ {
 			if isComment(toks[j]) {
-				return i, true
+				return after, steps, i, true
 			}
 		}
-		k, ok := programToken(toks[sep+1:], uncertain)
+		after, steps = sep+1, steps+1
+		k, ok := programToken(toks[after:], uncertain)
 		if !ok {
-			return 0, false
+			return after, steps, 0, false
 		}
-		i = sep + 1 + k
+		i = after + k
 	}
-	return i, true
+	return after, steps, i, true
+}
+
+// leadingFold is the index past the leading cd steps of the line toks that
+// the program search steps over (directoryChanges from the line's first
+// program), and 0 where there are none. Past MaxLeadingCd steps it is 0: the
+// hook records the directory as unknown there, and a runner after the steps
+// is not paired (RES-10). The masked parser calls it over its own reading of
+// the line (tokenizeList), and the program search steps over the same steps
+// in its own (tokenizeProgram), where the two readings agree (agreedFold).
+func leadingFold(toks []token, uncertain bool) int {
+	i, ok := programToken(toks, uncertain)
+	if !ok {
+		return 0
+	}
+	after, steps, _, _ := directoryChanges(toks, i, uncertain)
+	if steps > MaxLeadingCd {
+		return 0
+	}
+	return after
+}
+
+// agreedFold is leadingFold over the masked parser's reading of the line,
+// toks, where its steps are the program search's, fold, token for token, and
+// 0 where they are not. The two readings differ at a comment and at a
+// here-document (tokenizeList): a comment ending in a backslash continues
+// nothing to the shell or to tokenizeList, and tokenizeProgram joins the next
+// line to it, so the one would step over a cd the other does not. Folding
+// none there displaces the runner after any cd, so the runner whose identity
+// the masked parser records is always the command the program search names.
+func agreedFold(toks, fold []token) int {
+	after := leadingFold(toks, false)
+	if !slices.Equal(toks[:after], fold) {
+		return 0
+	}
+	return after
 }
 
 // plainWord reports whether a word in command position is one the search can

@@ -29,8 +29,9 @@ func (p *lineParser) runnerWords(i, end int) string {
 
 // runnerDigest is the keyed digest of runner group g's words. Like the shape
 // digest, compared and never printed; the domain is a name no tool has. Nil
-// when a cd the start directory does not hold ran before it: where it ran is
-// not known, so it neither is nor gets a follow-up.
+// when a cd, pushd or popd past the line's leading fold ran before it: where
+// it ran is then not known to either digest, so it neither is nor gets a
+// follow-up.
 func (p *lineParser) runnerDigest(g int, key []byte) *string {
 	if p.runners[g].displaced {
 		return nil
@@ -40,11 +41,12 @@ func (p *lineParser) runnerDigest(g int, key []byte) *string {
 }
 
 // displace marks each runner that a cd, pushd or popd ran before on the
-// line, other than the leading plain `cd DIR &&` steps the call's start
-// directory folds in (folded of them, three tokens each).
-func (p *lineParser) displace(folded int) {
+// line, other than the leading cd steps the program search steps over, which
+// all start before after, the index past them where both readings step over
+// the same ones (agreedFold).
+func (p *lineParser) displace(after int) {
 	for _, s := range p.simples {
-		if s.op != opCd || s.start < 3*folded && s.start%3 == 0 {
+		if s.op != opCd || s.start < after {
 			continue
 		}
 		for g := range p.runners {

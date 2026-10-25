@@ -126,9 +126,12 @@ m("MS a runner whose failure reaches the line carries no runner digest", "intern
 m("MS two hidden runners carry one's digest", "internal/shape/masked.go",
   "\t\tif len(hidden) > 1 {\n\t\t\t// No one later run follows up two runners.\n\t\t\treturn &k, nil, nil\n\t\t}\n", "", SH)
 m("MS a runner after a cd keeps its digest", "internal/shape/masked_eval.go",
-  "\tif p.runners[g].displaced {\n\t\treturn nil\n\t}\n", "", SH)
+  "\tif p.runners[g].displaced {\n\t\treturn nil\n\t}\n", "", SH + "|TestFoldKeepsRunnerIdentity")
 m("MS a folded leading cd displaces the runner", "internal/shape/masked_eval.go",
-  "\t\tif s.op != opCd || s.start < 3*folded && s.start%3 == 0 {", "\t\tif s.op != opCd {", SH)
+  "\t\tif s.op != opCd || s.start < after {", "\t\tif s.op != opCd {", SH)
+m("MS a fold the two readings step over apart is passed over", "internal/shape/program.go",
+  "\tif !slices.Equal(toks[:after], fold) {\n", "\tif false && !slices.Equal(toks[:after], fold) {\n",
+  "TestFoldKeepsRunnerIdentity|TestRubricTEST1_LeadingFoldSeeds")
 m("MS an expansion in the runner's words loses its digest", "internal/shape/masked_eval.go",
   "\t\tif t.opaque {\n\t\t\tw = \"\\x02\" + w\n\t\t}\n", "\t\tif t.opaque {\n\t\t\treturn \"\"\n\t\t}\n", SH)
 m("MS a backslash at a comment's end joins the next line", "internal/shape/join.go",

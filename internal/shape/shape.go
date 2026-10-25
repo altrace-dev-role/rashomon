@@ -97,8 +97,13 @@ type Shape struct {
 	// that a later `make test` or `make test && echo ok` ran the same runner
 	// as an earlier `make test 2>&1 | tail`, whose whole lines digest apart.
 	// Null when there is no such runner, when two runners are hidden (no one
-	// later run follows both up), and when a cd that the call's cwd digest
-	// does not hold ran before it, since where it ran is then not known.
+	// later run follows both up), and when a cd, pushd or popd ran before it
+	// past the line's leading fold, since where it ran is then not known. The
+	// leading cd steps the program search steps over are passed over, read
+	// or not, at most MaxLeadingCd of them: past that bound no step is, and
+	// a runner after the steps is null (RES-10); nor is any step where the
+	// line's two readings step over different ones (agreedFold). Where it ran
+	// is the cwd digest's to say.
 	RunnerDigest *string `json:"runner_digest"`
 
 	// RunnerKind names the list RunnerDigest's runner is on: RunnerTest or
@@ -132,22 +137,26 @@ func Derive(toolName string, toolInput json.RawMessage, key []byte) Shape {
 // 85.3.10, "Token or cd bound"), which P-11 serialises; a v4 record does not
 // carry it. Always false for a tool that is not a shell.
 func DeriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool) {
-	s, cut, _ := deriveCut(toolName, toolInput, key)
+	s, cut, _, _ := deriveCut(toolName, toolInput, key)
 	return s, cut
 }
 
 // DeriveWithDirs is DeriveCut, plus the leading `cd DIR &&` directories
 // (LeadingDirectory's own answer) this already read while deriving the
-// shape. shape.go's own reading of the program search (pshaped, perr) is
-// exactly LeadingDirectory's starting point, so a caller that wants both --
-// the hook's startDirectory, the only one -- does not tokenize the program
-// search a second time just to get what this function already held.
-func DeriveWithDirs(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool, []string) {
+// shape, and unread, the view of the leading cd steps the program search
+// steps over where leadingRun reads none of them (unreadFold): "" where the
+// steps are read, past MaxLeadingCd or not, and where there are none.
+// shape.go's own reading of the program search (pshaped, perr) is exactly
+// LeadingDirectory's starting point, so a caller that wants both -- the
+// hook's Locate, the only one -- does not tokenize the program search a
+// second time just to get what this function already held. A fifth result
+// would make these a struct.
+func DeriveWithDirs(toolName string, toolInput json.RawMessage, key []byte) (s Shape, cut bool, dirs []string, unread string) {
 	return deriveCut(toolName, toolInput, key)
 }
 
 // deriveCut is DeriveCut and DeriveWithDirs's shared body.
-func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool, []string) {
+func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, bool, []string, string) {
 	s := Shape{VerbClass: verbForTool(toolName)}
 
 	// Only a shell tool's input carries a command line. An MCP tool or a
@@ -163,7 +172,7 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	}
 	if !isShell {
 		s.Digest = canonicalDigest(key, toolName, toolInput)
-		return s, false, nil
+		return s, false, nil, ""
 	}
 
 	// A shell tool digests its command line and nothing else. Claude Code
@@ -209,15 +218,22 @@ func deriveCut(toolName string, toolInput json.RawMessage, key []byte) (Shape, b
 	}
 	// A line holding a control byte names no directory, as LeadingDirectory
 	// says: the shell does not split it where the tokenizer does, so `cd
-	// /repo\r` never enters /repo. Where the line cannot be read, dirs is
-	// empty too, and no step is folded.
+	// /repo\r` never enters /repo, and it has no unread fold either, since
+	// the program search does not read it. Where the line cannot be read,
+	// dirs is empty too.
 	var dirs []string
 	if !ctl {
 		dirs, _ = leadingRun(pshaped, perr)
 	}
-	s.StatusMasked, s.RunnerDigest, s.RunnerKind = statusMasked(cmd, key, leadingSteps(dirs))
+	// leadingRun reads every step of a leading run or none of it, so where it
+	// reads none, any step the program search stepped over is unread.
+	var unread string
+	if !ctl && len(dirs) == 0 {
+		unread = unreadFold(pshaped, uncertain)
+	}
+	s.StatusMasked, s.RunnerDigest, s.RunnerKind = statusMasked(cmd, key, pshaped[:leadingFold(pshaped, uncertain)])
 	cut := err == errTokenBound || perr == errTokenBound || len(dirs) > MaxLeadingCd
-	return s, cut, dirs
+	return s, cut, dirs, unread
 }
 
 // controlByte reports a line holding a control byte, in which no word can be
@@ -309,6 +325,26 @@ func CWDDigest(key []byte, cwd string) string {
 		return ""
 	}
 	return digest(key, "\x00cwd", cwd)
+}
+
+// UnreadCWDDigest is the location of a call whose leading cd steps the
+// program search steps over and LeadingDirectory does not read: fold is
+// DeriveWithDirs's unread view of them. Where the runner started is then not
+// known, so the location is keyed on what is, the payload's cwd and the fold,
+// under the same key as CWDDigest, in a domain of its own. The two domains'
+// streams differ at their fourth byte -- CWDDigest's name is followed by the
+// NUL digest writes, this one's by "-unread" -- so no read directory's digest
+// equals an unread one. The same fold from the same cwd is one location;
+// another cwd or another fold is another. Never "": where there is no
+// payload cwd its caller, hook.Locate, records "" itself and does not call
+// it, since keyed on the fold alone one line run in two projects would be
+// one location. The body is the cwd, a NUL,
+// then the fold: a path holds no NUL, so the cwd decodes one way, and the
+// fold's words hold none either, since a line holding a control byte folds
+// nothing (controlByte). Only a payload cwd no directory can have, one with a
+// NUL in it, could make two bodies alike.
+func UnreadCWDDigest(key []byte, cwd, fold string) string {
+	return digest(key, "\x00cwd-unread", cwd+"\x00"+fold)
 }
 
 // canonical re-encodes JSON so that two inputs differing only in key order or

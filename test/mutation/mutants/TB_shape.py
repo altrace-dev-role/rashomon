@@ -454,8 +454,8 @@ m("TB runs pair across directories", "internal/report/testbending.go",
   "\t\tkey := runKey{d.Shape.Digest, \"\"}\n",
   "TestTestBending")
 m("TB the declaration carries no cwd digest", "internal/hook/handle.go",
-  "\tdecl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))\n",
-  "\t_ = dirs\n",
+  "\tdecl.Shape, decl.CWDDigest = Locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD)\n",
+  "\tdecl.Shape, _ = Locate(h.st.Key(), p.ToolName, p.ToolInput, p.CWD)\n",
   "TestTestBending_ARepeatedRelativeCd|TestSchema3_|TestH13_")
 m("TB the cwd digest is the plain path", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd\", cwd)\n",
@@ -601,8 +601,8 @@ m("TB a backgrounded call is not counted as unobserved", "internal/report/accoun
   "TestSilentFailures_")
 
 m("TB a leading cd's target is not the run's directory", "internal/hook/handle.go",
-  "\tdecl.CWDDigest = shape.CWDDigest(h.st.Key(), startDirectory(p.CWD, dirs))\n",
-  "\t_ = dirs\n\tdecl.CWDDigest = shape.CWDDigest(h.st.Key(), p.CWD)\n",
+  "\treturn s, shape.CWDDigest(key, startDirectory(cwd, dirs))\n",
+  "\t_ = dirs\n\treturn s, shape.CWDDigest(key, cwd)\n",
   "TestTestBending_ALeadingAbsoluteCd")
 m("TB a relative leading cd keeps the shell's directory", "internal/hook/handle.go",
   "\t\t\tcwd = filepath.Join(cwd, dir)\n",
@@ -750,7 +750,7 @@ m("TB --help does not clear an editor", "internal/shape/verb.go",
 m("TB -h does not clear an editor", "internal/shape/verb.go",
   "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"--version\"}", "TestRC3b_")
 m("TB the rules version stays at 2 when the in-place tables change", "internal/shape/masked.go",
-  "const RulesVersion = 4\n", "const RulesVersion = 2\n", "TestRulesVersion_")
+  "const RulesVersion = 5\n", "const RulesVersion = 2\n", "TestRulesVersion_")
 
 # The flags that may stand before a runner's row words (leadingFlags), and the
 # spellings that make a failed run end 0 (notARun). The RulesVersion mutant
@@ -799,4 +799,31 @@ m("TB ignoring the tests' failures is a test run", "internal/shape/verb.go",
   "{\"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\"}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the rules version stays at 3 when a matcher changes", "internal/shape/masked.go",
-  "const RulesVersion = 4\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 5\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
+
+# Version 5: the masked parser passes over the leading cd steps the program
+# search steps over, `~` is read, and a fold that is not read has a location
+# of its own (shape.UnreadCWDDigest, hook.Locate). Leaving the version at 4,
+# or giving an unread fold a read location, is the regression.
+m("TB the rules version stays at 4 when the fold and the location rule change", "internal/shape/masked.go",
+  "const RulesVersion = 5\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+m("TB an unread fold's location is the payload cwd's", "internal/shape/shape.go",
+  "\treturn digest(key, \"\\x00cwd-unread\", cwd+\"\\x00\"+fold)\n", "\treturn CWDDigest(key, cwd)\n",
+  "TestLocation|TestUnreadLocationDomain")
+m("TB an unread fold's location drops its quoting", "internal/shape/leading.go",
+  "\t\tif t.quotedAt >= 0 {\n\t\t\tq = 'q'\n\t\t}\n", "",
+  "TestUnreadLocationDomain|TestDeriveWithDirsUnread")
+m("TB an unread fold is counted to the fold's bound", "internal/shape/leading.go",
+  "\tafter, _, _, _ := directoryChanges(toks, i, uncertain)\n\tif after == 0 {\n",
+  "\t_ = i\n\tafter := leadingFold(toks, uncertain)\n\tif after == 0 {\n",
+  "TestLocation|TestDeriveWithDirsUnread")
+m("TB a leading cd before ; is read as a location", "internal/shape/leading.go",
+  "\tif !and.meta || and.text != \"&&\" || and.nlBefore {\n",
+  "\tif !and.meta || and.text != \"&&\" && and.text != \";\" || and.nlBefore {\n",
+  "TestLocation|TestLeadingDirectory")
+m("TB an unread fold with no payload cwd is keyed on the fold alone", "internal/hook/handle.go",
+  "\t\tif cwd == \"\" {\n\t\t\treturn s, \"\"\n\t\t}\n\t\treturn s, shape.UnreadCWDDigest(key, cwd, unread)\n",
+  "\t\treturn s, shape.UnreadCWDDigest(key, cwd, unread)\n", "TestLocation")
+m("TB ~ is not expanded with the hook's home", "internal/hook/handle.go",
+  "\t\tcase dir == \"~\" || strings.HasPrefix(dir, \"~/\"):\n", "\t\tcase false:\n",
+  "TestLocation|TestStartDirectory")

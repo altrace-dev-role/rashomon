@@ -440,11 +440,14 @@ type MaskedRuns struct {
 	// call followed up: one whose line returns the same runner's failure
 	// (status_masked none, the same runner_digest), started in the same
 	// directory (cwd digest), and recorded ok or failed, not in the
-	// background. A line that hid two runners, or ran its runner after a cd
-	// its cwd digest does not hold, carries no runner digest, and nothing
-	// follows it up. A masked
-	// call that recorded failed is not here: it is a failed call, counted by
-	// SilentFailures.
+	// background. A line that hid two runners, or ran its runner after a cd,
+	// pushd or popd past its leading fold (or past shape.MaxLeadingCd leading
+	// steps, or in a line whose two readings fold apart), carries no runner
+	// digest, and nothing follows it up. A runner
+	// after a leading fold the hook cannot read keeps its digest, and its cwd
+	// digest is the unread fold's, which only the same fold from the same cwd
+	// matches. A masked call that recorded failed is not here: it is a failed
+	// call, counted by SilentFailures.
 	Runs int `json:"runs"`
 	// PassClaimed: the final message claims a pass (claimsPass).
 	PassClaimed bool `json:"pass_claimed"`

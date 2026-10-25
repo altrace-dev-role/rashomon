@@ -12,9 +12,9 @@ m("test-1  a wire host is kept as written, not canonical", "internal/shape/hosts
 m("test-1  an unreadable path gets a word outside Labels()", "internal/shape/label.go",
   "\tif !ok || p == \"\" {\n\t\treturn LabelUnknown\n\t}",
   "\tif !ok || p == \"\" {\n\t\treturn \"unreadable\"\n\t}", "TestRubricTEST1_")
-m("test-1  a leading cd into ~ is folded as written", "internal/shape/leading.go",
-  "strings.HasPrefix(dir.text, \"-\") || strings.HasPrefix(dir.text, \"~\") ||",
-  "strings.HasPrefix(dir.text, \"-\") ||", "TestRubricTEST1_")
+m("test-1  a leading cd into a named home is folded as written", "internal/shape/leading.go",
+  "\t\tstrings.HasPrefix(dir.text, \"~\") && dir.text != \"~\" && !strings.HasPrefix(dir.text, \"~/\") ||\n",
+  "", "TestRubricTEST1_")
 m("test-1  argc counts one fewer word than the line has", "internal/shape/shape.go",
   "\t\tn := len(dropLeadingAssignments(toks))\n",
   "\t\tn := len(dropLeadingAssignments(toks)) - 1\n", "TestRubricTEST1_")

@@ -512,7 +512,8 @@ func TestTestBending_ALeadingAbsoluteCdKeysTheRunOnItsTarget(t *testing.T) {
 // previous directory, which the line does not name. Keyed on the first cd's
 // target, the line run from /tmp/a and then from /tmp/b paired as the same
 // command having both outcomes. A leading run with any step that cannot be
-// resolved now keeps the payload's cwd.
+// resolved now has a location of its own, keyed on the payload's cwd and the
+// steps as the tokenizer reads them, so the two runs stay apart.
 func TestTestBending_ACdBackKeepsTheShellsDirectory(t *testing.T) {
 	s := newTBSession(t)
 	s.cwd = "/tmp/a"

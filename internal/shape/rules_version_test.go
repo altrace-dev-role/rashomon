@@ -18,6 +18,7 @@ var runnerListPins = map[int]string{
 	2: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // rake, composer, mix, bazel test as test runners (2026-10-23)
 	3: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 3 changed the in-place tables only; the runner lists are unchanged
 	4: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 4 changed how the lists are matched (matcherPins); the lists are unchanged
+	5: "57769de023e65afb569bcd71d1c3ccc7fe5a4b33b9b2b3a8e50e5919b8b6467e", // RulesVersion 5 changed the leading-cd fold and the location rule; the lists are unchanged
 }
 
 // runnerListsDigest digests testCommands, then buildCommands: each row's
@@ -45,7 +46,7 @@ func TestRulesVersion_RunnerLists(t *testing.T) {
 	want, ok := runnerListPins[RulesVersion]
 	if !ok || want != got {
 		t.Fatalf("the runner lists digest to %s, and RulesVersion %d pins %q: a list changed without a bump. "+
-			"Bump RulesVersion and add its pin here (and the write-table, matcher and report's pass-list pins).", got, RulesVersion, want)
+			"Bump RulesVersion and add its pin here (and the write-table, matcher, report's pass-list and hook's location pins).", got, RulesVersion, want)
 	}
 }
 
@@ -58,6 +59,7 @@ var writeTablePins = map[int]string{
 	2: "9c73ce1ce2a8d00e67481165c1adbecf0e55f0e1dfd7a1f314d62e2ba05168c5",
 	3: "71c7a0e23ac2a79834dbf5d78e18ef67f4f5bc3ea663cac77aec017c38f0f7f7", // short-option clusters for sed and perl, BSD sed's -I; help and version words clear an editor (2026-10-24)
 	4: "71c7a0e23ac2a79834dbf5d78e18ef67f4f5bc3ea663cac77aec017c38f0f7f7", // RulesVersion 4 changed how the runner lists are matched; the in-place tables are unchanged
+	5: "71c7a0e23ac2a79834dbf5d78e18ef67f4f5bc3ea663cac77aec017c38f0f7f7", // RulesVersion 5 changed the leading-cd fold and the location rule; the in-place tables are unchanged
 }
 
 // writeTablesDigest digests inPlaceEditors (each editor in sorted order, then
@@ -93,7 +95,7 @@ func TestRulesVersion_WriteTables(t *testing.T) {
 	want, ok := writeTablePins[RulesVersion]
 	if !ok || want != got {
 		t.Fatalf("the in-place tables digest to %s, and RulesVersion %d pins %q: a table changed without a bump. "+
-			"Bump RulesVersion and add its pin here (and the runner-list, matcher and pass-list pins).", got, RulesVersion, want)
+			"Bump RulesVersion and add its pin here (and the runner-list, matcher, pass-list and location pins).", got, RulesVersion, want)
 	}
 }
 
@@ -108,6 +110,7 @@ func TestRulesVersion_WriteTables(t *testing.T) {
 var matcherPins = map[int]string{
 	3: "3b37daf2498f1bfed509f7f0bcc4b9b44381e6a56ab537abfb3b553d4b90ea9a",
 	4: "d8ce2f1af01d7dbec051b928d5ac03ccf16830cb432ab1f36c972466f6ccebb0", // a listed flag may stand before a runner's row words (leadingFlags); a flag that hides the runner's failure refuses it (2026-10-24)
+	5: "a6b4f738864bca26e64502c754ade947cef3f0d4eca78ab34c5a3f4fff89fb38", // the masked parser passes over every leading cd step the program search does where both readings fold alike (agreedFold): `(cd /tmp && go test ./...)` gains its runner (2026-10-24)
 }
 
 // matcherCorpus is the lines matcherPins digests, a frozen copy: the lines
@@ -175,6 +178,6 @@ func TestRulesVersion_Matchers(t *testing.T) {
 	want, ok := matcherPins[RulesVersion]
 	if !ok || want != got {
 		t.Fatalf("the matcher corpus digests to %s, and RulesVersion %d pins %q: a matcher changed without a bump. "+
-			"Bump RulesVersion and add its pin here (and the runner-list, write-table and pass-list pins).", got, RulesVersion, want)
+			"Bump RulesVersion and add its pin here (and the runner-list, write-table, pass-list and location pins).", got, RulesVersion, want)
 	}
 }

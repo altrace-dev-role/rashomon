@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/altrace-dev-role/rashomon/internal/hook"
 	"github.com/altrace-dev-role/rashomon/internal/shape"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -226,8 +226,8 @@ func TestMasked_SessionText(t *testing.T) {
 }
 
 // derivedRun is a session of shell calls as the hooks record them: each
-// call's shape from shape.Derive, its cwd digest from the payload's cwd with
-// the line's leading `cd DIR &&` steps folded in, and its execution's outcome.
+// call's shape and cwd digest from hook.Locate, which is what the hook's
+// Capture records, and its execution's outcome.
 func derivedRun(t *testing.T, calls ...[3]string) *store.Run {
 	t.Helper()
 	key := []byte("install key")
@@ -238,23 +238,16 @@ func derivedRun(t *testing.T, calls ...[3]string) *store.Run {
 		if err != nil {
 			t.Fatal(err)
 		}
-		dirs, _ := shape.LeadingDirectory("Bash", raw)
-		for _, d := range dirs {
-			if filepath.IsAbs(d) {
-				cwd = filepath.Clean(d)
-			} else {
-				cwd = filepath.Join(cwd, d)
-			}
-		}
+		s, loc := hook.Locate(key, "Bash", raw, cwd)
 		id := fmt.Sprintf("toolu_%d", n+1)
 		seq := int64(n + 1)
 		run.Declarations = append(run.Declarations, store.Declaration{
 			SchemaVersion: store.SchemaVersion, Seq: seq, ToolUseID: id, ToolName: "Bash", SessionID: "s1",
-			Shape: shape.Derive("Bash", raw, key), CWDDigest: shape.CWDDigest(key, cwd),
+			Shape: s, CWDDigest: loc,
 		})
 		run.Executions = append(run.Executions, store.Execution{
 			SchemaVersion: store.SchemaVersion, ToolUseID: id, ToolName: "Bash", Outcome: outcome,
-			ExecutedDigest: shape.Derive("Bash", raw, key).Digest,
+			ExecutedDigest: s.Digest,
 		})
 	}
 	return run
@@ -267,9 +260,9 @@ func derivedRun(t *testing.T, calls ...[3]string) *store.Run {
 // directory. Break: carry no runner digest on `make test && echo ok`, or
 // none for words the tokenizer cannot vouch for; carry one runner's digest
 // for a line that hid two; read `make test &` as returning make's status;
-// give a runner after an unfolded cd a digest; or read as none a line that
-// returns make's failure only in a shell where errexit fires or PIPESTATUS
-// is set.
+// give the run after a `cd DIR;` fold, which is not read, the location of a
+// read one (the payload's cwd, or DIR); or read as none a line that returns
+// make's failure only in a shell where errexit fires or PIPESTATUS is set.
 func TestMasked_RunsFromDerive(t *testing.T) {
 	const ok = store.ExecOK
 	const msg = "Done. All tests pass."
@@ -290,7 +283,7 @@ func TestMasked_RunsFromDerive(t *testing.T) {
 			[3]string{"make test | tail", "/repo", ok}, [3]string{"make test &", "/repo", ok}, true},
 		{"the later run is in another directory",
 			[3]string{"cd sub; make test | tail", "/repo", ok}, [3]string{"cd /repo && make test", "/repo/sub", ok}, true},
-		{"after an unfolded cd the runner's directory is not known",
+		{"after an unread `cd DIR;` fold the runner's directory is not known",
 			[3]string{"cd sub; make test | tail", "/repo", ok}, [3]string{"make test", "/repo/sub", ok}, true},
 		{"a plain re-run",
 			[3]string{"make test 2>&1 | tail -40", "/repo", ok}, [3]string{"make test", "/repo", ok}, false},

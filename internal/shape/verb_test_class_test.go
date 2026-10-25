@@ -400,10 +400,13 @@ func TestTestClassRefusesWhatDoesNotRunTests(t *testing.T) {
 		// ACCEPTED GAP: an unlisted flag whose value is a separate word.
 		{"bazel --output_base /tmp test //...", VerbExecute, MaskedNone, ""},
 		{"npm --prefix web test", VerbPackage, MaskedNone, ""},
-		// ACCEPTED GAP: a directory option after the row's words is not
-		// read, so these runs in sub record the line's directory as the
-		// runner's. make reads its options anywhere, cargo after the
-		// subcommand only, go before the command or first after it.
+		// A directory option after the row's words: the runner's identity
+		// carries it, since the runner digest is the runner's words, so each
+		// is a runner apart from the bare row and from `cd sub && RUNNER`;
+		// and the location is the line's start directory, which is the
+		// directory a gate declared with the same words names. make reads
+		// its options anywhere, cargo after the subcommand only, go before
+		// the command or first after it.
 		{"make test -C sub", VerbTest, MaskedNone, RunnerTest},
 		{"cargo test --manifest-path sub/Cargo.toml", VerbTest, MaskedNone, RunnerTest},
 		{"npm test --prefix web", VerbTest, MaskedNone, RunnerTest},
@@ -483,10 +486,10 @@ func TestLeadingOptionsOneMatcher(t *testing.T) {
 		{"! go test ./...", VerbExecute, MaskedTest, RunnerTest, true},
 		{"if go test ./...; then :; fi", VerbExecute, MaskedTest, RunnerTest, true},
 
-		// ACCEPTED GAP: a test run with no runner identity. The program
-		// search folds the subshell's cd; the runner digest declines a
-		// directory the call's directory digest does not hold.
-		{"(cd /tmp && go test ./...)", VerbTest, MaskedNone, "", false},
+		// The program search folds the subshell's cd, and the masked parser
+		// passes over the same fold, so the runner keeps its identity; where
+		// it ran is the cwd digest's to say.
+		{"(cd /tmp && go test ./...)", VerbTest, MaskedNone, RunnerTest, true},
 
 		// ACCEPTED GAP: a chain with the runner last is not a test run,
 		// though the runner's kind and digest are recorded. status_masked
@@ -733,12 +736,12 @@ func TestMayWrite(t *testing.T) {
 }
 
 // The directories a runner's line moves through before it starts, when the
-// line begins with plain literal `cd DIR &&` steps: the hook keys the run on
-// where they lead rather than on the payload's cwd, which is the shell's
-// directory before the cds. The hook reads them through DeriveWithDirs, so
-// each case holds it to LeadingDirectory's answer: a line with a control
-// byte names no directory to either, since the shell does not split it where
-// the tokenizer does.
+// line begins with plain literal `cd DIR &&` steps, `~` and `~/...` among
+// them: the hook keys the run on where they lead rather than on the payload's
+// cwd, which is the shell's directory before the cds. The hook reads them
+// through DeriveWithDirs, so each case holds it to LeadingDirectory's answer:
+// a line with a control byte names no directory to either, since the shell
+// does not split it where the tokenizer does.
 func TestLeadingDirectory(t *testing.T) {
 	for _, tc := range []struct {
 		cmd  string
@@ -751,10 +754,17 @@ func TestLeadingDirectory(t *testing.T) {
 		{"cd /repo/web/ && go test ./...", []string{"/repo/web/"}, false},
 		// Every step of the leading run, in order.
 		{"cd /a && cd b && go test", []string{"/a", "b"}, false},
+		// The home, `~` alone or before a slash, as written: the hook
+		// expands it with its own home.
+		{"cd ~/x && go test ./...", []string{"~/x"}, false},
+		{"cd ~ && go test ./...", []string{"~"}, false},
 		// Not a plain literal step: the shell computes the directory, or the
-		// runner may run without the cd having happened.
+		// runner may run without the cd having happened. A named home and
+		// the directory stack's `~+` and `~-` are the shell's to resolve.
 		{"cd $HOME/x && go test ./...", nil, false},
-		{"cd ~/x && go test ./...", nil, false},
+		{"cd ~user/x && go test ./...", nil, false},
+		{"cd ~+/x && go test ./...", nil, false},
+		{"cd ~-/x && go test ./...", nil, false},
 		{"cd - && go test ./...", nil, false},
 		{"cd \"/repo/web\" && go test ./...", nil, false},
 		{"cd 'a b' && go test ./...", nil, false},
@@ -769,7 +779,7 @@ func TestLeadingDirectory(t *testing.T) {
 		// A later step that cannot be resolved spoils the whole run: the
 		// first target is not where the runner starts.
 		{"cd /a && cd - && go test", nil, false},
-		{"cd /a && cd ~ && go test", nil, false},
+		{"cd /a && cd ~user && go test", nil, false},
 		{"cd /a && pushd b && go test", nil, false},
 		{"cd /a && popd && go test", nil, false},
 		{"pushd /a && go test", nil, false},
@@ -785,6 +795,8 @@ func TestLeadingDirectory(t *testing.T) {
 		{"X=1", nil, false},
 		{"cd /a && X=1", []string{"/a"}, false},
 		{"cd /repo/web && GOFLAGS=-count=1 go test ./...", []string{"/repo/web"}, false},
+		// A later step into the home is read like any other.
+		{"cd /a && cd ~ && go test", []string{"/a", "~"}, false},
 		// A control byte anywhere on the line.
 		{"cd /repo\r && ls", nil, false},
 		{"cd /repo\x00 && ls", nil, false},
@@ -811,13 +823,14 @@ func TestLeadingDirectory(t *testing.T) {
 		// more the read stops, holding that step too, and the line is cut.
 		{strings.Repeat("cd a && ", MaxLeadingCd) + "go test ./...", slices.Repeat([]string{"a"}, MaxLeadingCd), false},
 		{strings.Repeat("cd a && ", MaxLeadingCd+1) + "go test ./...", slices.Repeat([]string{"a"}, MaxLeadingCd+1), true},
+		{strings.Repeat("cd ~/a && ", MaxLeadingCd+1) + "go test ./...", slices.Repeat([]string{"~/a"}, MaxLeadingCd+1), true},
 	} {
 		in := json.RawMessage(`{"command":` + quoteJSON(tc.cmd) + `}`)
 		got, ok := LeadingDirectory("Bash", in)
 		if ok != (tc.want != nil) || !slices.Equal(got, tc.want) {
 			t.Errorf("%q: LeadingDirectory = %q, %v; want %q", tc.cmd, got, ok, tc.want)
 		}
-		_, cut, dirs := DeriveWithDirs("Bash", in, []byte("key"))
+		_, cut, dirs, _ := DeriveWithDirs("Bash", in, []byte("key"))
 		if !slices.Equal(dirs, tc.want) {
 			t.Errorf("%q: DeriveWithDirs dirs = %q; want %q, as LeadingDirectory", tc.cmd, dirs, tc.want)
 		}

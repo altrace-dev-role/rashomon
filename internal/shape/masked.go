@@ -19,28 +19,37 @@ const (
 
 // RulesVersion names every table this build decides a recorded shape field
 // with (verb_class, status_masked, runner_kind, may_write), and the matchers
-// that read them, and moves whenever one of them changes. The tables are the
-// test runners (testCommands) and the build runners (buildCommands), with the
-// arguments that refuse one (notARun, notARunAny) and the flags that may stand
-// before its words (leadingFlags), which set verb_class, status_masked and
+// that read them, and the rule that decides a declaration's cwd_digest, and
+// moves whenever one of them changes. The tables are the test runners
+// (testCommands) and the build runners (buildCommands), with the arguments
+// that refuse one (notARun, notARunAny) and the flags that may stand before
+// its words (leadingFlags), which set verb_class, status_masked and
 // runner_kind; the in-place tables (inPlaceEditors, checkOnly, shortClusters),
 // which set may_write; and the pass words (the report's passVocabulary), which
-// decide when the masked-runs line fires. Written on every declaration and
-// execution as rules_version, so records written before and after a change can
-// be told apart.
+// decide when the masked-runs line fires. cwd_digest's producers are which
+// leading cd steps are read (leadingCd), how the hook folds them onto the
+// payload's cwd (its startDirectory, `~` expanded with its own home), and the
+// domain of a fold that is not read (UnreadCWDDigest). Written on every
+// declaration and execution as rules_version, so records written before and
+// after a change can be told apart.
 //
-// Bump it whenever a table, or a matcher that decides a recorded shape field,
-// changes -- version 4 is the first bump for a matcher, runnerOn passing over
-// leadingFlags before a runner's words -- and add the new pins to the tests
-// that hold one (rules_version_test.go here and in report): a table's pin
-// fails when the table changes without a bump, and the matcher pin when a
-// field moves on one of its corpus lines without one. The exceptions: notARun,
-// notARunAny and leadingFlags have no table pin, and are held only as far as
-// the matcher pin's lines read them; and mayWrite's inline writer-word checks
-// (xargs, tee, wget, rsync, scp, find's -delete and -exec words, curl's output
-// flags with curlArgumentOptions) also decide may_write and are not yet under
-// a pin. The first change to any of them brings it under one.
-const RulesVersion = 4
+// Bump it whenever a table, or a matcher or rule that decides a recorded
+// field, changes -- version 4 is the first bump for a matcher, runnerOn
+// passing over leadingFlags before a runner's words; version 5 passes the
+// masked parser over the leading cd steps the program search steps over
+// where its reading agrees (agreedFold), reads `~`, and gives an unread fold
+// a location of its own --
+// and add the new pins to the tests that hold one (rules_version_test.go here,
+// in report and in hook): a table's pin fails when the table changes without
+// a bump, the matcher pin when a field moves on one of its corpus lines
+// without one, and the hook's location pin when a cwd digest moves on one of
+// its pairs without one. The exceptions: notARun, notARunAny and leadingFlags
+// have no table pin, and are held only as far as the matcher pin's lines read
+// them; and mayWrite's inline writer-word checks (xargs, tee, wget, rsync,
+// scp, find's -delete and -exec words, curl's output flags with
+// curlArgumentOptions) also decide may_write and are not yet under a pin. The
+// first change to any of them brings it under one.
+const RulesVersion = 5
 
 // MaskedKinds is the vocabulary of status_masked, for the schema enum test.
 func MaskedKinds() []string {
@@ -130,10 +139,13 @@ const maxRunnerGroups = 64
 // it says nothing: null, never a kind and never "none". So does a line that
 // cannot be read to its end (tokenizeList, parseLine).
 //
-// held is how many of the line's leading cd steps the call's cwd digest
-// holds (leadingSteps), which Derive counts from the program search's
-// reading of the line rather than this function reading it again.
-func statusMasked(cmd string, key []byte, held int) (kind, runner, runnerKind *string) {
+// The leading cd steps the program search steps over, fold, its own reading
+// of them, are passed over here too, read or not, where this reading's steps
+// are the same tokens (agreedFold): the runner after them keeps its digest,
+// which is its words, and where it ran is the cwd digest's to say. A cd,
+// pushd or popd past them, past MaxLeadingCd steps, or in a line the two
+// readings fold apart, displaces the runners after it (displace).
+func statusMasked(cmd string, key []byte, fold []token) (kind, runner, runnerKind *string) {
 	if controlByte(cmd) {
 		return nil, nil, nil
 	}
@@ -157,7 +169,7 @@ func statusMasked(cmd string, key []byte, held int) (kind, runner, runnerKind *s
 		// already past what a build or test script looks like.
 		return nil, nil, nil
 	}
-	p.displace(held)
+	p.displace(agreedFold(toks, fold))
 
 	var (
 		hidden []int
@@ -302,7 +314,7 @@ type runnerGroup struct {
 	kind      string
 	starts    []int // the first token of each command that runs it
 	last      int
-	displaced bool // a cd the start directory does not hold ran before it
+	displaced bool // a cd, pushd or popd past the leading fold ran before it
 }
 
 type lineParser struct {

@@ -5,19 +5,27 @@ import (
 	"testing"
 )
 
-// TestRES10_RunnerPastTheFoldIsNotPaired: the cwd digest holds at most
-// MaxLeadingCd leading cd steps (the hook folds no more, and records the
-// directory as unknown past them), so the masked-status walk counts no more
-// as held either. At 64 steps the runner after them is digested as running
-// where the cwd digest says; at 65 where it ran is not known, and its runner
-// digest is null rather than one that pairs with a run somewhere else.
+// TestRES10_RunnerPastTheFoldIsNotPaired: the hook folds at most
+// MaxLeadingCd leading cd steps into the cwd digest, and records the
+// directory as unknown past them, so the masked-status walk passes over no
+// more either (leadingFold). At 64 steps the runner after them keeps its
+// digest, and the cwd digest says where it ran; at 65 where it ran is not
+// known, and its runner digest is null rather than one that pairs with a run
+// somewhere else.
 func TestRES10_RunnerPastTheFoldIsNotPaired(t *testing.T) {
 	line := func(n int) string { return strings.Repeat("cd a && ", n) + "make test" }
-	if got := leadingSteps(dirsOf(line(MaxLeadingCd))); got != MaxLeadingCd {
-		t.Errorf("%d steps: leadingSteps %d", MaxLeadingCd, got)
+	fold := func(n int) int {
+		toks, err := tokenizeList(line(n))
+		if err != nil {
+			t.Fatalf("%d steps: the list reads with %v", n, err)
+		}
+		return leadingFold(toks, false)
 	}
-	if got := leadingSteps(dirsOf(line(MaxLeadingCd + 1))); got != 0 {
-		t.Errorf("%d steps: leadingSteps %d, want 0: past the bound no step is held", MaxLeadingCd+1, got)
+	if got := fold(MaxLeadingCd); got != 3*MaxLeadingCd {
+		t.Errorf("%d steps: leadingFold %d, want %d", MaxLeadingCd, got, 3*MaxLeadingCd)
+	}
+	if got := fold(MaxLeadingCd + 1); got != 0 {
+		t.Errorf("%d steps: leadingFold %d, want 0: past the bound no step is folded", MaxLeadingCd+1, got)
 	}
 	if s := Derive("Bash", bashInput(t, line(MaxLeadingCd)), benchKey); s.RunnerDigest == nil {
 		t.Errorf("%d steps: no runner digest", MaxLeadingCd)
@@ -41,18 +49,22 @@ func TestRES10_ProgramPastManyDirectoryChanges(t *testing.T) {
 // TestRES10_LeadingStepsPastTheTokenBound: a line that runs on past the
 // token bound (RES-9) still has its leading steps read, since they come first
 // and the longest run read, MaxLeadingCd+1 steps of three tokens, lies far
-// inside the bound. The masked-status walk counts the same steps the hook
+// inside the bound. The masked-status walk folds the same steps the hook
 // folds into the cwd digest: one cd in front of a here-document longer than
-// the bound is one step held, and 100 in front of as many words are past the
-// fold.
+// the bound is one step (the list reading skips the body), and 100 in front
+// of as many words are past the fold.
 func TestRES10_LeadingStepsPastTheTokenBound(t *testing.T) {
 	long := strings.TrimSpace(strings.Repeat("word ", maxTokens+10_000))
 	heredoc := "cd sub && python3 - <<'EOF'\n" + long + "\nEOF\nmake test"
 	if _, err := tokenizeProgram(heredoc); err != errTokenBound {
 		t.Fatalf("the here-document line reads with %v, want errTokenBound", err)
 	}
-	if got := leadingSteps(dirsOf(heredoc)); got != 1 {
-		t.Errorf("one cd before a long here-document: leadingSteps %d, want 1", got)
+	toks, err := tokenizeList(heredoc)
+	if err != nil {
+		t.Fatalf("the here-document line's list reads with %v", err)
+	}
+	if got, dirs := leadingFold(toks, false), dirsOf(heredoc); got != 3 || len(dirs) != 1 {
+		t.Errorf("one cd before a long here-document: leadingFold %d and %d directories, want 3 and 1", got, len(dirs))
 	}
 	dirs, ok := leadingDirectories(strings.Repeat("cd a && ", 100) + long)
 	if !ok || len(dirs) != MaxLeadingCd+1 {
