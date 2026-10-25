@@ -477,12 +477,12 @@ m("TB a line whose program cannot be named may not write", "internal/shape/shape
   "\ts.MayWrite = false\n\tif i, ok := programToken",
   "TestMayWrite")
 m("TB find -delete and -exec do not write", "internal/shape/verb.go",
-  "\t\tcase \"-delete\", \"-exec\", \"-execdir\", \"-ok\", \"-okdir\":\n",
-  "\t\tcase \"-okdir\":\n",
+  "var findWriteWords = []string{\"-delete\", \"-exec\", \"-execdir\", \"-ok\", \"-okdir\"}\n",
+  "var findWriteWords = []string{\"-okdir\"}\n",
   "TestMayWrite|TestTestBending_WriteCapable")
 m("TB xargs, tee, rsync and scp do not write", "internal/shape/verb.go",
-  "\t\tcase \"xargs\", \"tee\", \"wget\", \"rsync\", \"scp\":\n",
-  "\t\tcase \"wget\":\n",
+  "var inlineWriters = []string{\"xargs\", \"tee\", \"wget\", \"rsync\", \"scp\"}\n",
+  "var inlineWriters = []string{\"wget\"}\n",
   "TestMayWrite|TestTestBending_WriteCapable")
 m("TB curl with an output flag does not write", "internal/shape/verb.go",
   "\tif curl && curlOut {\n",
@@ -750,7 +750,7 @@ m("TB --help does not clear an editor", "internal/shape/verb.go",
 m("TB -h does not clear an editor", "internal/shape/verb.go",
   "\"--help\", \"--version\", \"-h\"}", "\"--help\", \"--version\"}", "TestRC3b_")
 m("TB the rules version stays at 2 when the in-place tables change", "internal/shape/masked.go",
-  "const RulesVersion = 5\n", "const RulesVersion = 2\n", "TestRulesVersion_")
+  "const RulesVersion = 6\n", "const RulesVersion = 2\n", "TestRulesVersion_")
 
 # The flags that may stand before a runner's row words (leadingFlags), and the
 # spellings that make a failed run end 0 (notARun). The RulesVersion mutant
@@ -765,7 +765,7 @@ m("TB no flag may stand before the row's words", "internal/shape/runner.go",
   "var leadingFlags = map[string][]string{}\n\nvar _ = map[string][]string{\n",
   "TestTestRunnerIsRecognised|TestLeadingOptionsOneMatcher")
 m("TB make's -i may stand before the row's words", "internal/shape/runner.go",
-  "\t\"make\":    {\"-j*\"},\n", "\t\"make\":    {\"-j*\", \"-i\"},\n",
+  "\t\"make\":    {\"-j#\"},\n", "\t\"make\":    {\"-j#\", \"-i\"},\n",
   "TestLeadingFlagsAreNotRefusals|TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a Maven property prefix may stand before the row's words", "internal/shape/runner.go",
   "\tmavenLeadingFlags  = []string{\"-B\", \"-q\"}\n", "\tmavenLeadingFlags  = []string{\"-B\", \"-q\", \"-D*\"}\n",
@@ -778,12 +778,12 @@ m("TB a toolchain word may stand before any program's row", "internal/shape/runn
   "\tfor _, f := range append(leadingFlags[prog], \"+*\") {\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB a quoted word is read as a listed flag", "internal/shape/runner.go",
-  "\tif t.meta || t.quotedAt >= 0 || t.opaque || t.ticks > 0 || runsOn(toks, k) ||\n",
-  "\tif t.meta || t.opaque || t.ticks > 0 || runsOn(toks, k) ||\n",
+  "\treturn !(t.meta || t.quotedAt >= 0 || t.opaque || t.ticks > 0 || runsOn(toks, k) ||\n",
+  "\treturn !(t.meta || t.opaque || t.ticks > 0 || runsOn(toks, k) ||\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB an expansion is read as a listed flag", "internal/shape/runner.go",
-  "\t\tstrings.ContainsAny(t.text, \"$`*?[{\\\\\") {\n\t\treturn false\n\t}\n\tfor _, f := range leadingFlags[prog] {\n",
-  "\t\tfalse {\n\t\treturn false\n\t}\n\tfor _, f := range leadingFlags[prog] {\n",
+  "\t\tstrings.ContainsAny(t.text, \"$`*?[{\\\\\"))\n}\n",
+  "\t\tfalse)\n}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB make test -i is a test run", "internal/shape/verb.go",
   "\t\t\"-i\", \"--ignore-errors\"},\n", "\t\t\"--ignore-errors\"},\n",
@@ -799,14 +799,14 @@ m("TB ignoring the tests' failures is a test run", "internal/shape/verb.go",
   "{\"-DskipTests\", \"-Dmaven.test.skip\", \"-Dmaven.test.skip.exec\"}\n",
   "TestTestClassRefusesWhatDoesNotRunTests")
 m("TB the rules version stays at 3 when a matcher changes", "internal/shape/masked.go",
-  "const RulesVersion = 5\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
+  "const RulesVersion = 6\n", "const RulesVersion = 3\n", "TestRulesVersion_Matchers")
 
 # Version 5: the masked parser passes over the leading cd steps the program
 # search steps over, `~` is read, and a fold that is not read has a location
 # of its own (shape.UnreadCWDDigest, hook.Locate). Leaving the version at 4,
 # or giving an unread fold a read location, is the regression.
 m("TB the rules version stays at 4 when the fold and the location rule change", "internal/shape/masked.go",
-  "const RulesVersion = 5\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
+  "const RulesVersion = 6\n", "const RulesVersion = 4\n", "TestRulesVersion_Matchers|TestRulesVersion_Locations")
 m("TB an unread fold's location is the payload cwd's", "internal/shape/shape.go",
   "\treturn digest(key, \"\\x00cwd-unread\", cwd+\"\\x00\"+fold)\n", "\treturn CWDDigest(key, cwd)\n",
   "TestLocation|TestUnreadLocationDomain")
@@ -827,3 +827,55 @@ m("TB an unread fold with no payload cwd is keyed on the fold alone", "internal/
 m("TB ~ is not expanded with the hook's home", "internal/hook/handle.go",
   "\t\tcase dir == \"~\" || strings.HasPrefix(dir, \"~/\"):\n", "\t\tcase false:\n",
   "TestLocation|TestStartDirectory")
+
+# Version 6: -l leaves checkOnly (gofmt's -l lists files and does not stop a
+# -w beside it; for sed, perl, black and isort it is not a check at all),
+# make's -j admits digits only, and the flag tables are under a pin. Each
+# comment names the test that kills the mutant and the assertion that fails.
+#
+# -l put back: TestRC3b_InPlaceEditorsSetMayWrite, `"gofmt -l -w .": may_write
+# false, want true` (and the sed, perl, black and isort rows beside it).
+# `gofmt -l .` stays a read in the same test: no word arms the stage.
+m("TB -l clears an editor again", "internal/shape/verb.go",
+  "\"--diff\", \"--list-different\"", "\"--diff\", \"-l\", \"--list-different\"",
+  "TestRC3b_")
+m("TB the rules version stays at 5 when -l leaves checkOnly", "internal/shape/masked.go",
+  "const RulesVersion = 6\n", "const RulesVersion = 5\n", "TestRulesVersion_")
+
+# The -j# entry: TestTestClassRefusesWhatDoesNotRunTests, whose rows `make
+# -j4x test` and `make -j=4 test` read verb_class test where execute is
+# wanted (the glob restored), `make -j test` and `make -j 4 test` read execute
+# where test is wanted (a count required; the separate count not passed over).
+m("TB make's -j admits whatever follows it", "internal/shape/runner.go",
+  "\t\"make\":    {\"-j#\"},\n", "\t\"make\":    {\"-j*\"},\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB make's -j needs a count", "internal/shape/runner.go",
+  "ok && allDigits(n) {", "ok && n != \"\" && allDigits(n) {",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB a digits entry admits a letter after the digits", "internal/shape/runner.go",
+  "\t\tif s[i] < '0' || '9' < s[i] {\n", "\t\tif s[i] < '0' || 'z' < s[i] {\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB make's separate job count stops the match", "internal/shape/runner.go",
+  "\t\t\tif from < end && countFollows(toks, from-1, prog) {\n",
+  "\t\t\tif false && from < end && countFollows(toks, from-1, prog) {\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+m("TB any word after make's -j is its count", "internal/shape/runner.go",
+  "\treturn literalWord(toks, k+1) && n != \"\" && allDigits(n)\n", "\treturn literalWord(toks, k+1) && n != \"\"\n",
+  "TestTestClassRefusesWhatDoesNotRunTests")
+
+# A flag table edited with RulesVersion left at 6: TestRulesVersion_FlagTables,
+# `the flag tables digest to ..., and RulesVersion 6 pins ...: a table changed
+# without a bump`. No behaviour row reads the words these drop, so the pin
+# alone kills each.
+m("TB the flag tables stay at the same pin when notARunAny drops --watchAll", "internal/shape/verb.go",
+  "\"--version\", \"--watch\", \"--watchAll\"}", "\"--version\", \"--watch\"}",
+  "TestRulesVersion_FlagTables")
+m("TB the flag tables stay at the same pin when make leaves --just-print out", "internal/shape/verb.go",
+  "\"-n\", \"--just-print\", \"--dry-run\", \"--recon\"", "\"-n\", \"--dry-run\", \"--recon\"",
+  "TestRulesVersion_FlagTables")
+m("TB the flag tables stay at the same pin when curl's argument options change", "internal/shape/verb.go",
+  "const curlArgumentOptions = \"AbcCdDeEFhHKmPQrtTuUwxXyYz\"", "const curlArgumentOptions = \"AbcCdDeEFhHKmPQrtTuUwxXyY\"",
+  "TestRulesVersion_FlagTables")
+m("TB the flag tables stay at the same pin when make's -j entry changes", "internal/shape/runner.go",
+  "\t\"make\":    {\"-j#\"},\n", "\t\"make\":    {\"-j#\", \"-s\"},\n",
+  "TestRulesVersion_FlagTables")

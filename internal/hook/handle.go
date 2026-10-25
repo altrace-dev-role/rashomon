@@ -341,6 +341,20 @@ func Locate(key []byte, toolName string, toolInput json.RawMessage, cwd string) 
 // not see. The home is only an input to CWDDigest: no path is written. With
 // no home to expand it with, the directory is not known.
 //
+// CDPATH is not seen either, and for the same reason: a relative target
+// `cd web` is looked for under each CDPATH entry before the working
+// directory, and the shell's environment is not the hook's, so the fold
+// joins it to the cwd as if CDPATH were unset. The fold is lexical:
+// filepath.Join cleans `..` without looking at the disk, which is how the
+// shell's default `cd -L` reads it. A physical cwd (`cd -P`, or a payload cwd
+// already resolved through a symlink) names another directory for `cd
+// link/..` than the one the fold reaches, and the hook cannot tell the two
+// apart; the digest is still one value per spelling, never a path.
+//
+// rules_version, written on every declaration and execution (shape.RulesVersion,
+// set where each is built), is written and not consulted: no reader branches on it,
+// which holds while the stores are dev stores with nothing older to read.
+//
 // dirs, not toolName and toolInput: the caller already has
 // shape.DeriveWithDirs's dirs, from the SAME read of the program search
 // Derive makes for every other field of the shape. Decoding the command and

@@ -5,7 +5,10 @@
 
 package shape
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // testCommands are the test runners the test verb class recognises: the
 // program, as path.Base names it, and then the plain words that must follow
@@ -54,7 +57,8 @@ var testCommands = [][]string{
 // leadingFlags are, per program, the flags that may stand between the program
 // and a row's first word (runnerOn). A flag is listed only when the program's
 // own reference shows all three: it takes no separate value (an attached one
-// is matched by an entry ending in *, a prefix); it changes neither the
+// is matched by an entry ending in *, a prefix, or in #, a prefix and then
+// digits only, with none required); it changes neither the
 // directory nor the file the runner reads; and it changes neither whether the
 // run happens nor how its result reaches the exit status. No entry may be on
 // notARun or notARunAny (TestLeadingFlagsAreNotRefusals): a listed flag is
@@ -63,12 +67,15 @@ var testCommands = [][]string{
 // search, and the line reads as it would with nothing listed: an
 // under-claim, which a later entry moves (a table change, and a RulesVersion
 // bump). An exact entry written `flag=value` is unlisted (`mvn -B=true
-// test`); a prefix entry admits whatever follows it, so `make -j=4 test` and
-// `make -j4x test` are admitted, and make rejects both with exit 2 before
-// any recipe. An alias is the same program and shares its slice, as notARun's
-// pytestNotARun is shared: python3 python's, mvnw mvn's, gradlew gradle's.
+// test`); a prefix entry admits whatever follows it, as cargo's +* admits any
+// toolchain make-believe, while a digits entry admits only a number, so `make
+// -j=4 test` and `make -j4x test`, which make rejects with exit 2 before any
+// recipe, are unlisted (version 5 admitted both, as `-j*`). An alias is the
+// same program and shares its slice, as notARun's pytestNotARun is shared: python3 python's, mvnw mvn's, gradlew gradle's.
 //
-//   - make -j*: the job count, attached or left out (GNU make's --help: `-j
+//   - make -j#: the job count, attached, or left out, or a number as the
+//     next word, which make reads as the count (`make -j 4 test`, passed
+//     over with the flag by countFollows) (GNU make's --help: `-j
 //     [N], --jobs[=N]`). A separate count, `make -j 4 test`, is read by make
 //     and stops the search at the 4.
 //   - mvn -B, -q: batch mode and quiet output (Maven's CLIManager).
@@ -87,7 +94,7 @@ var testCommands = [][]string{
 //     --bazelrc is not listed: an rc file holds options of every kind, the
 //     ones that decide a test's verdict among them.
 var leadingFlags = map[string][]string{
-	"make":    {"-j*"},
+	"make":    {"-j#"},
 	"mvn":     mavenLeadingFlags,
 	"mvnw":    mavenLeadingFlags,
 	"cargo":   {"+*"},
@@ -130,6 +137,9 @@ next:
 				continue next
 			}
 			from++
+			if from < end && countFollows(toks, from-1, prog) {
+				from++
+			}
 		}
 		return !refusesRun(refusalsOf(c), toks[:i], toks[from+len(c)-1:end])
 	}
@@ -158,14 +168,17 @@ func rowAt(toks []token, from, end int, c []string) bool {
 // not running into a process substitution, and with no expansion, glob or
 // escape in it, any of which may make it more words than one, or none.
 func leadingFlag(toks []token, k int, prog string) bool {
-	t := toks[k]
-	if t.meta || t.quotedAt >= 0 || t.opaque || t.ticks > 0 || runsOn(toks, k) ||
-		strings.ContainsAny(t.text, "$`*?[{\\") {
+	if !literalWord(toks, k) {
 		return false
 	}
+	t := toks[k]
 	for _, f := range leadingFlags[prog] {
 		if p, ok := strings.CutSuffix(f, "*"); ok {
 			if strings.HasPrefix(t.text, p) {
+				return true
+			}
+		} else if p, ok := strings.CutSuffix(f, "#"); ok {
+			if n, ok := strings.CutPrefix(t.text, p); ok && allDigits(n) {
 				return true
 			}
 		} else if t.text == f {
@@ -173,4 +186,34 @@ func leadingFlag(toks []token, k int, prog string) bool {
 		}
 	}
 	return false
+}
+
+// literalWord reports a token that is one literal word of the command: not a
+// separator, quoted, an expansion, a glob or a run of backticks.
+func literalWord(toks []token, k int) bool {
+	t := toks[k]
+	return !(t.meta || t.quotedAt >= 0 || t.opaque || t.ticks > 0 || runsOn(toks, k) ||
+		strings.ContainsAny(t.text, "$`*?[{\\"))
+}
+
+// countFollows reports a digits entry (`-j#`) that stands bare at toks[k],
+// with a count of digits after it as a word of its own: make reads `-j 4` as
+// `-j4` (GNU make's `-j [N]`), so the 4 is passed over with the flag. The
+// caller has checked toks[k+1] is in range.
+func countFollows(toks []token, k int, prog string) bool {
+	if !slices.ContainsFunc(leadingFlags[prog], func(f string) bool { return strings.HasSuffix(f, "#") && toks[k].text == strings.TrimSuffix(f, "#") }) {
+		return false
+	}
+	n := toks[k+1].text
+	return literalWord(toks, k+1) && n != "" && allDigits(n)
+}
+
+// allDigits reports whether s is ASCII digits only; the empty string is.
+func allDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || '9' < s[i] {
+			return false
+		}
+	}
+	return true
 }

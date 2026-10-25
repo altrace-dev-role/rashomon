@@ -2,6 +2,7 @@ package verify
 
 import (
 	"io/fs"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -103,6 +104,26 @@ func TestRC3d_RelevanceIsSourceTestConfig(t *testing.T) {
 	}
 }
 
+// goroot is the toolchain's root: runtime.GOROOT's, and, where that is empty
+// (a binary built with -trimpath has none, and the deprecation concerns a
+// binary copied to another machine, which a test binary is not), `go env
+// GOROOT`. The test fails naming what is missing, not walking nothing.
+func goroot(t *testing.T) string {
+	t.Helper()
+	if r := runtime.GOROOT(); r != "" {
+		return r
+	}
+	out, err := exec.Command("go", "env", "GOROOT").Output()
+	if err != nil {
+		t.Fatalf("runtime.GOROOT() is empty and `go env GOROOT` failed (%v): no go toolchain on PATH to find GOROOT/src, which this test walks", err)
+	}
+	r := strings.TrimSpace(string(out))
+	if r == "" {
+		t.Fatalf("runtime.GOROOT() and `go env GOROOT` are both empty: no GOROOT/src to walk")
+	}
+	return r
+}
+
 // TestRC3e_GOROOTNonTestGoIsRelevant checks the tables against a tree they
 // were not written from: the Go source every go test run has (D10, B28). It
 // walks every non-test .go file under GOROOT/src outside vendor and testdata,
@@ -114,9 +135,7 @@ func TestRC3d_RelevanceIsSourceTestConfig(t *testing.T) {
 // cannot tell a generated file from a hand-written one when its name carries
 // no marker the tables know.
 func TestRC3e_GOROOTNonTestGoIsRelevant(t *testing.T) {
-	// runtime.GOROOT's deprecation is about a binary copied to another
-	// machine; a test binary runs where the toolchain that built it lives.
-	root := filepath.Join(runtime.GOROOT(), "src")
+	root := filepath.Join(goroot(t), "src")
 	var total int
 	var hidden []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
