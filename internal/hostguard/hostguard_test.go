@@ -14,8 +14,8 @@ func identity(id harness.ID) harness.Identity {
 // TestBRD4_ClaudeEntriesStandDownUnderCursor: a Claude-installed entry must
 // stand down on a positively detected foreign family (Cursor, Codex) and
 // must NOT stand down on either Claude identity, confirmed or presumed, nor
-// on Unknown, which is recorded instead. Unknown's treatment is pending
-// Karthik's BRD-4 ruling; this pins what the code does until then.
+// on Unknown, which is recorded instead. BRD-4 ruling, 2026-10-24: stand
+// down on positive foreign evidence only; Unknown is recorded and counted.
 func TestBRD4_ClaudeEntriesStandDownUnderCursor(t *testing.T) {
 	cases := []struct {
 		name string
@@ -26,7 +26,7 @@ func TestBRD4_ClaudeEntriesStandDownUnderCursor(t *testing.T) {
 		{"claude code presumed matches installed-for", harness.ClaudeCodePresumed, false},
 		{"cursor is foreign", harness.Cursor, true},
 		{"codex is foreign", harness.Codex, true},
-		{"unknown is no positive evidence of a foreign harness: recorded, not stood down (policy pending BRD-4 ruling)", harness.Unknown, false},
+		{"unknown is no positive evidence of a foreign harness: recorded, not stood down (BRD-4 ruling, 2026-10-24)", harness.Unknown, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -42,8 +42,7 @@ func TestBRD4_ClaudeEntriesStandDownUnderCursor(t *testing.T) {
 // StandsDown implements, not just the claude-specific BRD-4 row: an entry
 // never stands down against its own family, and always stands down against
 // every other detected family; Unknown belongs to none and is never a
-// reason to stand down in the current code (policy pending Karthik's BRD-4
-// ruling).
+// reason to stand down (BRD-4 ruling, 2026-10-24).
 func TestStandsDown_EveryFamilyMatchesItsOwnDetected(t *testing.T) {
 	families := map[Family]harness.ID{
 		FamilyClaude: harness.ClaudeCode,
@@ -180,6 +179,6 @@ func TestEvaluate_UnknownPayloadIsRecorded(t *testing.T) {
 		t.Fatalf("id.ID = %s, want %s", id.ID, harness.Unknown)
 	}
 	if down {
-		t.Error("Evaluate stood down on an Unknown detection; the current code records it (policy pending BRD-4 ruling)")
+		t.Error("Evaluate stood down on an Unknown detection; Unknown is recorded, not stood down (BRD-4 ruling, 2026-10-24)")
 	}
 }

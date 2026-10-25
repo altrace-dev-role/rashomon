@@ -64,11 +64,10 @@ func familyOf(id harness.ID) string {
 // StandsDown reports whether an entry installed for installedFor must stand
 // down given what Detect decided about this invocation (6.2.3, BRD-4): true
 // on a positively detected foreign family (Cursor, Codex) and false on
-// Unknown, so the caller records it and counts it as seen (a Claude Code
-// build whose entrypoint is outside the allowlist, or whose transcript lies
-// outside the config dir, detects as Unknown). Whether Unknown should stand
-// down is a policy pending Karthik's BRD-4 ruling; this is what the code does
-// until it is made. It never reads id.Evidence or
+// Unknown, so the caller records it and counts it as seen (a session that
+// shows no Claude Code signal and no foreign marker detects as Unknown). BRD-4 ruling, 2026-10-24:
+// stand down on positive foreign evidence only; Unknown is recorded and
+// counted, and the report shows the count. It never reads id.Evidence or
 // id.Surface -- only id.ID, the one field a family is defined over -- so a
 // caller cannot accidentally widen or narrow the comparison by passing a
 // differently-shaped Identity than Detect itself produces.

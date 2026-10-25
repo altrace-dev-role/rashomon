@@ -42,7 +42,6 @@ var overLimit = map[string]int{
 // main while it waited on its branch.
 var filesOverLimit = map[string]int{
 	"cmd/rashomon/main.go":    1299,
-	"internal/report/text.go": 505,
 	"internal/store/store.go": 563,
 	"cmd/rashomon/watch.go":   545,
 }

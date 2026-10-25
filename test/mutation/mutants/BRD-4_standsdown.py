@@ -1,8 +1,8 @@
 # BRD-4: Claude entry points stand down on a positively detected foreign
-# harness (Cursor, Codex) and record Unknown (Unknown's policy is pending
-# Karthik's BRD-4 ruling; this is what the code does): StandsDown's
-# own comparison and its Unknown guard, the seen-only counter write, and the
-# harness_id stamp on the declaration.
+# harness (Cursor, Codex) and record Unknown (BRD-4 ruling, 2026-10-24: stand
+# down on positive foreign evidence only; Unknown is recorded and counted):
+# StandsDown's own comparison and its Unknown guard, the seen-only counter
+# write, and the harness_id stamp on the declaration.
 
 m("BRD-4 StandsDown never fires: every entry matches every harness",
   "internal/hostguard/hostguard.go",

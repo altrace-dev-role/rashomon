@@ -124,6 +124,34 @@ func readHarnessCounts(path string) harnessCounts {
 	return hc
 }
 
+// HarnessSeenCount is how many sessions harness_counts.json has counted as
+// seen under key across the daily slots it still holds (at most
+// maxHarnessCountDays of them): the read half of RecordHarnessSeen, for the
+// report's "harness unknown" line. A file that was never written is zero, a
+// real zero, because nothing has been counted here; a file that exists and
+// cannot be read or parsed is an error and never zero, so a reader cannot
+// print "none" over a counter it could not open.
+func HarnessSeenCount(root, key string) (int, error) {
+	b, err := os.ReadFile(filepath.Join(root, FileHarnessCounts))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	var hc harnessCounts
+	if err := json.Unmarshal(b, &hc); err != nil {
+		return 0, err
+	}
+	n := 0
+	if entry := hc.Counts[key]; entry != nil {
+		for _, d := range entry.Days {
+			n += d.Seen
+		}
+	}
+	return n, nil
+}
+
 // HarnessKey loads or creates the per-root HMAC key harness_counts.json
 // digests session ids with -- the SAME key HostDigest signs with -- without
 // creating install.json, Store.Open's other file. A hook entry that is
@@ -243,8 +271,8 @@ func RecordHarnessMismatch(root, key, sessionID string, evidence []string, now t
 }
 
 // RecordHarnessSeen is RecordHarnessMismatch for a detection that did not
-// stand down (an Unknown harness, which this build records; policy pending
-// Karthik's BRD-4 ruling): the
+// stand down (an Unknown harness, which is recorded and counted: BRD-4 ruling,
+// 2026-10-24): the
 // same locked, deduplicated update, moving seen only -- stood_down and
 // last_stood_down are untouched, so the counter still says how often each
 // outcome happened.

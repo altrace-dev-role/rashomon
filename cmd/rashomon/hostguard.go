@@ -16,15 +16,19 @@ import (
 )
 
 // claudeEnv resolves harness.Detect's Env from this process's own
-// environment: CLAUDE_CODE_ENTRYPOINT verbatim (Env's own doc: Detect never
-// calls os.Getenv itself) and settings.ConfigDir(), which is
+// environment: CLAUDE_CODE_ENTRYPOINT and CLAUDE_PROJECT_DIR verbatim (Env's
+// own doc: Detect never calls os.Getenv itself) and settings.ConfigDir(), which is
 // CLAUDE_CONFIG_DIR when set and ~/.claude otherwise. A ConfigDir error
 // (os.UserHomeDir failing) resolves to "", which Detect's own
 // underProjects already treats as "no transcript match" rather than a
 // crash -- this entry point must never fail on that account.
 func claudeEnv() harness.Env {
 	dir, _ := settings.ConfigDir()
-	return harness.Env{Entrypoint: os.Getenv("CLAUDE_CODE_ENTRYPOINT"), ConfigDir: dir}
+	return harness.Env{
+		Entrypoint: os.Getenv("CLAUDE_CODE_ENTRYPOINT"),
+		ConfigDir:  dir,
+		ProjectDir: os.Getenv("CLAUDE_PROJECT_DIR"),
+	}
 }
 
 // onceErrReader is an io.Reader whose first Read always returns (0, err)
@@ -138,7 +142,8 @@ func harnessSessionKey(payload *hookio.Payload, id harness.Identity) string {
 // newHandler is cmdHook's hook.New plus the harness stamp: an Unknown
 // detection, which this build records rather than stands down on, carries
 // harness_id "unknown" on its declaration; every other call leaves it null.
-// Recording Unknown is a policy pending Karthik's BRD-4 ruling.
+// BRD-4 ruling, 2026-10-24: stand down on positive foreign evidence only;
+// Unknown is recorded and counted.
 func newHandler(st *store.Store, id harness.Identity) *hook.Handler {
 	h := hook.New(st, time.Now)
 	if id.ID == harness.Unknown {

@@ -1,6 +1,9 @@
 package harness
 
 import (
+	"bufio"
+	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -551,4 +554,186 @@ func strPtrEqual(a, b *string) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+// BRD-4 ruling, 2026-10-24: the detector gap is a bug. The Claude family was
+// recognised by two signals only, so a real session with neither read as
+// Unknown. The rows below admit one more signal each, and each row shows that
+// signal ALONE yields the Claude family. They decide ClaudeCodePresumed, never
+// ClaudeCode: only an allowlisted entrypoint is positive evidence, and none of
+// these widens the step-3 override that lets Claude Code beat a foreign marker.
+
+const sessionUUID = "00000000-0000-4000-8000-000000000001"
+
+type brd4Case struct {
+	name         string
+	raw          string
+	env          Env
+	wantID       ID
+	wantEvidence []Evidence
+}
+
+var brd4Cases = []brd4Case{
+	{
+		name:         "CLAUDE_PROJECT_DIR alone, no entrypoint, no transcript",
+		raw:          `{"session_id":"s","hook_event_name":"PreToolUse"}`,
+		env:          Env{ProjectDir: "/work/p"},
+		wantID:       ClaudeCodePresumed,
+		wantEvidence: []Evidence{EvClaudeProjectDirEnv},
+	},
+	{
+		name:         "projects/<dir>/<uuid>.jsonl alone, config dir elsewhere, no entrypoint",
+		raw:          `{"session_id":"` + sessionUUID + `","hook_event_name":"PreToolUse","transcript_path":"/ci/state/projects/-work-p/` + sessionUUID + `.jsonl"}`,
+		env:          Env{ConfigDir: claudeConfigDir},
+		wantID:       ClaudeCodePresumed,
+		wantEvidence: []Evidence{EvClaudeTranscriptShape},
+	},
+	{
+		name:         "the same shape with Windows separators",
+		raw:          `{"session_id":"s","hook_event_name":"PreToolUse","transcript_path":"C:\\Users\\u\\.claude\\projects\\C--work-p\\` + sessionUUID + `.jsonl"}`,
+		env:          Env{ConfigDir: "/unrelated"},
+		wantID:       ClaudeCodePresumed,
+		wantEvidence: []Evidence{EvClaudeTranscriptShape},
+	},
+	{
+		name:         "both new signals name themselves",
+		raw:          `{"session_id":"s","hook_event_name":"PreToolUse","transcript_path":"/ci/state/projects/-work-p/` + sessionUUID + `.jsonl"}`,
+		env:          Env{ProjectDir: "/work/p"},
+		wantID:       ClaudeCodePresumed,
+		wantEvidence: []Evidence{EvClaudeProjectDirEnv, EvClaudeTranscriptShape},
+	},
+	{
+		name:         "foreign evidence still wins: cursor_version beside CLAUDE_PROJECT_DIR",
+		raw:          `{"session_id":"s","hook_event_name":"preToolUse","cursor_version":"1.4.2"}`,
+		env:          Env{ProjectDir: "/work/p"},
+		wantID:       Cursor,
+		wantEvidence: []Evidence{EvCursorVersion},
+	},
+	{
+		name:         "foreign evidence still wins: conversation_id+generation_id beside the transcript shape",
+		raw:          `{"hook_event_name":"afterFileEdit","conversation_id":"c","generation_id":"g","transcript_path":"/x/projects/-w/` + sessionUUID + `.jsonl"}`,
+		env:          Env{},
+		wantID:       Cursor,
+		wantEvidence: []Evidence{EvConversationGenID},
+	},
+	{
+		name:         "foreign evidence still wins: Codex turn_id beside CLAUDE_PROJECT_DIR",
+		raw:          `{"session_id":"s","hook_event_name":"PreToolUse","turn_id":"t1"}`,
+		env:          Env{ProjectDir: "/work/p"},
+		wantID:       Codex,
+		wantEvidence: []Evidence{EvTurnIDOnToolEvent},
+	},
+	{
+		name:         "foreign evidence still wins: Codex model beside the transcript shape",
+		raw:          `{"session_id":"s","hook_event_name":"PostToolUse","model":"gpt-5","transcript_path":"/x/projects/-w/` + sessionUUID + `.jsonl"}`,
+		env:          Env{ProjectDir: "/work/p"},
+		wantID:       Codex,
+		wantEvidence: []Evidence{EvModelOffSessionStart},
+	},
+	{
+		name:         "CLAUDE_PROJECT_DIR does not widen the step-3 override: an allowlisted entrypoint with no Claude transcript still loses to turn_id",
+		raw:          `{"session_id":"s","hook_event_name":"PreToolUse","turn_id":"t1"}`,
+		env:          Env{Entrypoint: "cli", ConfigDir: claudeConfigDir, ProjectDir: "/work/p"},
+		wantID:       Codex,
+		wantEvidence: []Evidence{EvTurnIDOnToolEvent},
+	},
+	{
+		name:   "shape needs a non-empty directory between projects and the file",
+		raw:    `{"session_id":"s","hook_event_name":"PreToolUse","transcript_path":"/x/projects//` + sessionUUID + `.jsonl"}`,
+		env:    Env{},
+		wantID: Unknown,
+	},
+	{
+		name:   "an empty CLAUDE_PROJECT_DIR is not a signal",
+		raw:    `{"session_id":"s","hook_event_name":"PreToolUse"}`,
+		env:    Env{ProjectDir: ""},
+		wantID: Unknown,
+	},
+	{
+		name:   "shape needs a uuid file name",
+		raw:    `{"session_id":"s","hook_event_name":"PreToolUse","transcript_path":"/x/projects/-w/s.jsonl"}`,
+		env:    Env{},
+		wantID: Unknown,
+	},
+	{
+		name:   "shape needs .jsonl",
+		raw:    `{"session_id":"s","hook_event_name":"PreToolUse","transcript_path":"/x/projects/-w/` + sessionUUID + `.txt"}`,
+		env:    Env{},
+		wantID: Unknown,
+	},
+	{
+		name:   "shape needs exactly one directory between projects and the file (a Cursor-style agent-transcripts layout is not it)",
+		raw:    `{"session_id":"s","hook_event_name":"PreToolUse","transcript_path":"/home/u/.cursor/projects/w/agent-transcripts/` + sessionUUID + `.jsonl"}`,
+		env:    Env{},
+		wantID: Unknown,
+	},
+	{
+		name:   "shape needs the directory to be named projects",
+		raw:    `{"session_id":"s","hook_event_name":"PreToolUse","transcript_path":"/x/sessions/-w/` + sessionUUID + `.jsonl"}`,
+		env:    Env{},
+		wantID: Unknown,
+	},
+	{
+		name:   "a transcript directly under projects/ has no project directory",
+		raw:    `{"session_id":"s","hook_event_name":"PreToolUse","transcript_path":"/x/projects/` + sessionUUID + `.jsonl"}`,
+		env:    Env{},
+		wantID: Unknown,
+	},
+}
+
+func TestBRD4_EachAdmittedSignalAloneYieldsTheClaudeFamily(t *testing.T) {
+	for _, c := range brd4Cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := Detect(intake(t, c.raw), c.env)
+			if got.ID != c.wantID {
+				t.Fatalf("Detect() ID = %s (evidence %v), want %s", got.ID, got.Evidence, c.wantID)
+			}
+			if len(got.Evidence) != len(c.wantEvidence) {
+				t.Fatalf("evidence = %v, want %v", got.Evidence, c.wantEvidence)
+			}
+			want := append([]Evidence(nil), c.wantEvidence...)
+			sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
+			for i := range want {
+				if got.Evidence[i] != want[i] {
+					t.Fatalf("evidence = %v, want %v", got.Evidence, want)
+				}
+			}
+		})
+	}
+}
+
+// TestBRD4_CapturedSessionWithNoEntrypointAndATranscriptOutsideTheConfigDirReadsAsClaude
+// is the case CI hit: a real 2.1.280 capture (test/fixtures/claude-code),
+// replayed with CLAUDE_CODE_ENTRYPOINT unset, a config directory that is not
+// the one the capture's transcript_path sits under, and no CLAUDE_PROJECT_DIR.
+// Every one of its 25 payloads, SessionStart and SessionEnd included, used to
+// read as Unknown. The payload alone now decides the Claude family.
+func TestBRD4_CapturedSessionWithNoEntrypointAndATranscriptOutsideTheConfigDirReadsAsClaude(t *testing.T) {
+	f, err := os.Open("../../test/fixtures/claude-code/2.1.280/payloads.ndjson")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<24)
+	n := 0
+	for sc.Scan() {
+		n++
+		raw := sc.Text()
+		p := intake(t, raw)
+		event, _ := p.Str(hookio.HookEventName)
+		got := Detect(p, Env{Entrypoint: "", ConfigDir: "/ci/not-the-capture-config-dir"})
+		if got.ID != ClaudeCodePresumed {
+			t.Errorf("payload %d (%s): Detect() ID = %s, want %s", n, event, got.ID, ClaudeCodePresumed)
+		}
+		if len(got.Evidence) != 1 || got.Evidence[0] != EvClaudeTranscriptShape {
+			t.Errorf("payload %d (%s): evidence = %v, want [%s]", n, event, got.Evidence, EvClaudeTranscriptShape)
+		}
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if n != 25 {
+		t.Fatalf("the capture holds %d payloads, want 25", n)
+	}
 }

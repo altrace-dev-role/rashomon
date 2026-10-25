@@ -73,8 +73,9 @@ type Handler struct {
 
 	// HarnessID, when non-empty, is stamped on the declaration as harness_id.
 	// The caller sets it to "unknown" for an Unknown detection, which this
-	// build records rather than stands down on (policy pending Karthik's BRD-4
-	// ruling); it stays null otherwise.
+	// build records rather than stands down on (BRD-4 ruling, 2026-10-24: stand
+	// down on positive foreign evidence only; Unknown is recorded and counted);
+	// it stays null otherwise.
 	HarnessID string
 
 	sessionID string
