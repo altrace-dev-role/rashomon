@@ -12,26 +12,43 @@ import (
 )
 
 // MinLinkNodes is the body-complexity floor (PF-PL10): a function whose body
-// has fewer AST nodes than this is never linked across a rename, because a
-// stub's body is the same as every other stub's and "the same body" says
+// has fewer AST nodes than this is never linked, by rule 3 or rule 4, because
+// a stub's body is the same as every other stub's and "the same body" says
 // nothing about who it is. Twenty nodes is more than a getter or a one-line
-// forwarder (about a dozen) and fewer than a loop with a branch in it
-// (thirty and up); a body of six `_ = 1` statements has 19 and one of seven
-// has 22. The floor decides only renames: a symbol that keeps its id keeps
+// forwarder (about a dozen) and fewer than a loop with a branch in it (thirty
+// and up); a body of six `_ = 1` statements has 19 and one of seven has 22.
+// The floor decides only renames and edits: a symbol that keeps its id keeps
 // its identity at any size.
 //
-// Measured once, on this repository's history: origin/main at 323e4075, its 84
-// first-parent commits, 78 consecutive pairs (the oldest five commits import
-// modernc.org/sqlite, which the offline loader cannot resolve, so five pairs
-// are out). Rule 3 had 7 candidates in all, a vanished symbol and one
-// newcomer of the same shape and body, and not one was ambiguous. Read by hand
-// every one is a true rename or move, none a false link. Links by floor: 10: 7
-// of 7, 15: 7 of 7, 20: 6 of 7, 25: 6 of 7, 30: 5 of 7. At 20 the miss is
-// install.timeoutFor to TimeoutFor (18 nodes); at 30 it also loses
-// gather.baselineErrorReason (28). The sample is seven renames, so it neither
-// argues for moving the floor (no false link at any floor, one 18-node miss at
-// 20) nor shows what the floor itself prevents here: the uniqueness test of
-// rule 3 refused nothing in this history. 20 stays as the value PF-PL10 chose.
+// Measured on this repository's history under the identity scheme with
+// fingerprints: origin/main at 323e4075, its 84 first-parent commits, 78
+// consecutive pairs (the oldest five commits import modernc.org/sqlite, which
+// the offline loader cannot resolve, so five pairs are out; 56,412 same-id
+// links across the 78). With no floor rule 3 had 7 candidates (a symbol gone
+// and one of the same shape and body new, unique in both snapshots), none
+// ambiguous, and rule 4 had none: this history has no init or blank function
+// outside test files. Each of the 7 was read against its commit: all are true
+// renames or moves (byTool to byName, buildSilentFailures and sessionWindow
+// capitalised, timeoutFor to TimeoutFor, and baselineErrorReason,
+// callsWithoutSessionID and subagentTranscripts from internal/report to
+// internal/report/gather, bodies unchanged).
+//
+//	floor   rule-3 links   missed (true, not linked)        false links
+//	  10          7        0                                     0
+//	  20          6        1  timeoutFor (18 nodes)              0
+//	  40          4        3  timeoutFor (18), baselineErrorReason (28),
+//	                          callsWithoutSessionID (34)         0
+//
+// On missed links the data prefers 10 and rejects 40. On false links it cannot
+// speak: the smallest of the 7 candidates has 18 nodes, so floors 10 and 0
+// behave the same here, and no floor refused anything. What 10 would admit
+// that 20 refuses is exactly what the floor exists for, a getter or forwarder
+// of a dozen nodes that some other stub equals, and this history has no such
+// pair to show it. A false link merges two symbols' histories and a missed link
+// costs one retraction and one assertion, so the floor stays at the lowest
+// value that keeps clear of that range and has a measured cost of one link: 20.
+// The one-character change to 10 would have linked timeoutFor and nothing
+// else.
 const MinLinkNodes = 20
 
 // LinkSimilarityPercent is the least similarity, in percent, at which Link's
