@@ -80,10 +80,31 @@ func buildAndRun(m *testing.M) (int, error) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return 0, fmt.Errorf("building the release binary: %v\n%s", err, out)
 	}
+	// Before the reaper exists, so it and every child inherit the flag; see
+	// peakrss.DisableTHP for what it takes out of a reading. A host that
+	// refuses it fails the run rather than measuring with 2 MiB steps in.
+	if err := peakrss.DisableTHP(); err != nil {
+		return 0, err
+	}
+	fmt.Fprintln(os.Stderr, "perf:", hostSettings())
 	if reaper, err = peakrss.NewReaper(dir); err != nil && !errors.Is(err, peakrss.ErrUnavailable) {
 		return 0, err
 	}
 	return Settle(m.Run(), os.Getenv(RequireAllEnv) == "1", b, ran)
+}
+
+// hostSettings is one line naming what a reading depends on that the harness
+// does not set: the kernel's THP mode and the CPUs the test process may use,
+// so a bimodal row's runner can be read from its log rather than guessed
+// (budgets.json, linux/amd64's set_from). Off Linux, or where sysfs is
+// absent, the THP part says so.
+func hostSettings() string {
+	thp := "not read"
+	if b, err := os.ReadFile("/sys/kernel/mm/transparent_hugepage/enabled"); err == nil {
+		thp = strings.TrimSpace(string(b))
+	}
+	return fmt.Sprintf("%s, THP sysfs %s (disabled for the harness and its children), GOMAXPROCS %d of %d CPUs, measured children under %v",
+		platform(), thp, runtime.GOMAXPROCS(0), runtime.NumCPU(), measuredEnv(nil, runtime.GOOS))
 }
 
 // platform is this runner's budgets platform key.
@@ -187,6 +208,41 @@ func TestRES28p_AReadingLeavesOutTheHarnesssOwnPeak(t *testing.T) {
 	t.Logf("rashomon hook on %d MiB: %.2f MiB beside a 96 MiB harness", leakPayload>>20, got)
 }
 
+// measuredEnv is env plus the runtime settings every Linux reading is taken
+// under: GOMAXPROCS=1 and GODEBUG=gcstoptheworld=2. They take out the second
+// source of bimodal readings besides transparent huge pages
+// (peakrss.DisableTHP). With a second P the runtime's background GC workers,
+// sweeper and scavenger run beside the goroutine that reads the payload, and
+// whether a cycle (and its sweep) has freed the chunk buffers before the next
+// allocation touches new pages decides whether `rashomon hook` peaks one
+// payload higher. On this repository's 4-core VM hook.8MiB read 22.1 to 22.9
+// MiB in 17 of 40 runs and 28.9 to 30.6 in 23 (the second mode is one 8 MiB
+// buffer more) and hook.4MiB 13.8 to 14.7 or 16.0 to 18.6. GOMAXPROCS=1
+// alone collapses those two but leaves hook.1MiB in two clusters 0.7 MiB apart
+// (7.3 to 7.5 and 8.0 to 8.3, about even) and an occasional 17.5 at 4 MiB (1
+// to 2 of 40), presumably because the background sweeper still interleaves
+// with the reader on one P. gcstoptheworld=2 stops the concurrent mark and the
+// concurrent sweep, and with both set all 18 cases and entries read one cluster
+// in 60 runs each (at most 0.9 MiB wide), with THP "always" and "madvise".
+// GOGC pinned does nothing here (the binary pins GOGC 100 and a 32 MiB limit
+// itself, applyHookRuntimeLimits), and a forced collection is already in the
+// binary (hookio.Read, from 1 MiB), so neither is a control.
+//
+// This is not what a user runs: users have cores and a concurrent collector,
+// and the concurrent peak is the one they can see (up to one payload higher
+// at 4 and 8 MiB). The gate holds the serialised peak, the one a change in
+// what the code holds moves, not a change in when the runtime frees it.
+// Darwin is left as it was: its rows are the reference machine's and
+// Karthik re-measures them (budgets.json, platforms.darwin/arm64). GODEBUG is
+// stripped from the rig's env (newRig), so this is the only GODEBUG a
+// measured child has.
+func measuredEnv(env []string, goos string) []string {
+	if goos != "linux" {
+		return env
+	}
+	return append(append([]string(nil), env...), "GOMAXPROCS=1", "GODEBUG=gcstoptheworld=2")
+}
+
 // runOnce runs the binary once with stdin and env and returns its peak RSS
 // in MiB, what it printed, what it wrote to stderr, and the reaper's error,
 // if any. A platform with no ru_maxrss skips by name (peakrss.ErrUnavailable,
@@ -198,7 +254,7 @@ func runOnce(t *testing.T, stdin []byte, env []string, args ...string) (rss floa
 	t.Helper()
 	cmd := exec.Command(rashomonBin, args...)
 	cmd.Stdin = bytes.NewReader(stdin)
-	cmd.Env = env
+	cmd.Env = measuredEnv(env, runtime.GOOS)
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &outBuf, &errBuf
 	rss, err = reaper.Run(cmd)
@@ -388,6 +444,26 @@ func (r rig) medianRSS(t *testing.T, command []string, mk func(i int) []byte) (m
 	// by one number.
 	t.Logf("%s: nine peak RSS readings in MiB: %.2f", strings.Join(command, " "), xs)
 	return m, true, ""
+}
+
+// TestRES28u_MeasuredEnvPinsOneProcOnLinuxOnly: every Linux reading is taken
+// under GOMAXPROCS=1 and GODEBUG=gcstoptheworld=2 (measuredEnv), the
+// caller's own environment is not altered, and darwin's is exactly what the
+// caller passed, since its rows are the reference machine's. Break: set them on
+// every platform, or drop either, and this fails.
+func TestRES28u_MeasuredEnvPinsOneProcOnLinuxOnly(t *testing.T) {
+	in := make([]string, 1, 4) // spare capacity: an append in place would show in in[:2]
+	in[0] = "A=1"
+	got := measuredEnv(in, "linux")
+	if len(got) != 3 || got[0] != "A=1" || got[1] != "GOMAXPROCS=1" || got[2] != "GODEBUG=gcstoptheworld=2" {
+		t.Errorf("linux env = %q, want A=1, GOMAXPROCS=1 and GODEBUG=gcstoptheworld=2 last", got)
+	}
+	if in[:3][1] != "" {
+		t.Errorf("the caller's slice was changed: %q", in[:3])
+	}
+	if got := measuredEnv(in, "darwin"); len(got) != 1 || got[0] != "A=1" {
+		t.Errorf("darwin env = %q, want it untouched", got)
+	}
 }
 
 // TestRES28_MaxRSSFollowsThePayloadBudget: hook and post peak RSS stay within
