@@ -82,7 +82,9 @@ func TestRES36h_PerfJobsRunPinnedAndFailClosed(t *testing.T) {
 			if strings.Contains(s, "actions/setup-go@") {
 				pinned = strings.Contains(s, pin)
 			}
-			if strings.Contains(s, "-tags perf") {
+			// The harness is ./test/perf. Another package built with the tag,
+			// the detector replay of test/acceptance, owes it no gates.
+			if strings.Contains(s, "-tags perf ./test/perf") {
 				rss++
 				// A red benchgate before it skipped the RSS gates on every
 				// run while linux had no benchmark rows.

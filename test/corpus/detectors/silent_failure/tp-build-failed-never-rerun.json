@@ -1,0 +1,20 @@
+{
+  "detector": "silent_failure",
+  "label": "true_positive",
+  "reason": "make build failed with exit 2 and was never rerun; the message calls the refactor complete.",
+  "labelled_by": "seed",
+  "provenance": "built from the repo's acceptance-test payloads: the make failure text of h21_failure_test.go (make: *** No rule to make target)",
+  "final_message": "The refactor is complete and the module is ready for review.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "make build",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 2,
+      "output": "make: *** No rule to make target 'build'.  Stop."
+    }
+  ]
+}

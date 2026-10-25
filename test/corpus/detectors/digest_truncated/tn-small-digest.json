@@ -1,0 +1,19 @@
+{
+  "detector": "digest_truncated",
+  "label": "true_negative",
+  "reason": "One call: far under the ceiling, nothing cut.",
+  "labelled_by": "seed",
+  "provenance": "constructed: defaultPost of payload_test.go",
+  "final_message": "Done.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "git status --short",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": " M README.md"
+    }
+  ]
+}

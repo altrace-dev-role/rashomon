@@ -1,0 +1,30 @@
+{
+  "detector": "flaky_pair",
+  "label": "false_positive",
+  "reason": "The first run failed because the database was not up; the user started it in another terminal (so no edit is recorded) and the rerun passed. Environmental, not a flaky test.",
+  "labelled_by": "seed",
+  "fp_class": "external_fix",
+  "provenance": "constructed: the go test pair of test_bending_test.go; the failure text is a connection refused",
+  "final_message": "The first run failed on the database connection; it passed on the rerun once the database was up.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1,
+      "output": "dial tcp 127.0.0.1:5432: connect: connection refused"
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "go test ./...",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": "ok  \tcalc\t0.004s"
+    }
+  ]
+}

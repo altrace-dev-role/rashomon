@@ -1,0 +1,19 @@
+{
+  "detector": "silent_failure",
+  "label": "true_negative",
+  "reason": "Every call succeeded.",
+  "labelled_by": "seed",
+  "provenance": "constructed: defaultPost of payload_test.go, one successful call",
+  "final_message": "Done.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "git status --short",
+        "description": "run it"
+      },
+      "outcome": "ok",
+      "output": " M README.md"
+    }
+  ]
+}

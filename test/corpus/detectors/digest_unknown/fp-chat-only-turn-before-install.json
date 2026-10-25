@@ -1,0 +1,10 @@
+{
+  "detector": "digest_unknown",
+  "label": "false_positive",
+  "reason": "The turn used no tool and the session began before rashomon was installed (no start probe): nothing ran that should have been recorded, so nothing is unknown that matters.",
+  "labelled_by": "seed",
+  "fp_class": "session_predates_install",
+  "provenance": "constructed: a Stop with no calls and no SessionStart, the cold-session shape of h107_no_session_recap_test.go",
+  "probe_start": false,
+  "final_message": "Yes, that regular expression is valid."
+}

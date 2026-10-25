@@ -1,0 +1,20 @@
+{
+  "detector": "silent_failure",
+  "label": "false_positive",
+  "reason": "grep exits 1 when nothing matches; the call is recorded failed but the search simply came back empty, as the message says.",
+  "labelled_by": "seed",
+  "fp_class": "empty_search",
+  "provenance": "constructed: grep's exit-1-on-no-match, a failed shell call in the shape of h21_failure_test.go",
+  "final_message": "There are no TODO comments left in src.",
+  "calls": [
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "grep -rn \"TODO\" src/",
+        "description": "run it"
+      },
+      "outcome": "failed",
+      "exit_code": 1
+    }
+  ]
+}

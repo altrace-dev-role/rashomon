@@ -1,0 +1,18 @@
+{
+  "detector": "silent_failure",
+  "label": "true_negative",
+  "reason": "The Grep tool reports success on a search that matches nothing, so nothing failed.",
+  "labelled_by": "seed",
+  "provenance": "constructed: the Grep tool shape of the 2.1.280 capture, with an empty result",
+  "final_message": "No matches.",
+  "calls": [
+    {
+      "tool": "Grep",
+      "input": {
+        "pattern": "legacy_flag"
+      },
+      "outcome": "ok",
+      "output": "No matches found"
+    }
+  ]
+}
