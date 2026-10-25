@@ -44,10 +44,59 @@ const Version = 1
 // string.
 const DirName = "baseline"
 
-// FilePattern is the glob every project's baseline file matches under
-// DirName: fileName's sanitised key, a digest suffix, and the .json
-// extension. Exported for the same reason as DirName.
-const FilePattern = "*.json"
+// FileExt is the extension of a project's baseline file, and FilePattern the
+// glob every one matches under DirName: fileName's sanitised key, a digest
+// suffix, and FileExt. Exported for the same reason as DirName.
+const (
+	FileExt     = ".json"
+	FilePattern = "*" + FileExt
+)
+
+// TempPrefix is the start of the temporary name a save leaves in DirName
+// between writing a file and renaming it into place; the name is TempPrefix
+// and a random suffix (os.CreateTemp's pattern is TempPrefix + "*").
+// Exported so purge names the same spelling.
+const TempPrefix = ".baseline-"
+
+// digestLen is the length of the hex digest fileName appends to a key.
+const digestLen = 12
+
+// unsafeRune is what fileName writes for every character of a key that is not
+// plainly safe (safeNameRune).
+const unsafeRune = '_'
+
+// safeNameRune reports whether fileName copies r from the key as it is. It is
+// the alphabet of the readable part of a baseline file name, with unsafeRune.
+func safeNameRune(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '.'
+}
+
+// IsFileName reports whether name has the shape fileName gives a baseline
+// file: characters of fileName's alphabet (safeNameRune, or unsafeRune where
+// it replaced one), "-", a digestLen-digit lower-case hex digest and FileExt.
+// It checks shape only, not that the digest belongs to any key. A file is
+// named like this only if rashomon, or something imitating it, wrote it.
+func IsFileName(name string) bool {
+	stem, ok := strings.CutSuffix(name, FileExt)
+	if !ok || len(stem) < len("-")+digestLen {
+		return false
+	}
+	key, dig := stem[:len(stem)-digestLen], stem[len(stem)-digestLen:]
+	if !strings.HasSuffix(key, "-") {
+		return false
+	}
+	for _, r := range dig {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			return false
+		}
+	}
+	for _, r := range key {
+		if !safeNameRune(r) && r != unsafeRune {
+			return false
+		}
+	}
+	return true
+}
 
 // Basis is what a baseline's hosts are: the hosts a project's sessions NAMED
 // in tool calls. Files from the proxy era held the hosts a session REACHED,
@@ -216,18 +265,17 @@ func Key(cwd string) string {
 func fileName(key string) string {
 	var b strings.Builder
 	for _, r := range key {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '.':
+		if safeNameRune(r) {
 			b.WriteRune(r)
-		default:
-			b.WriteByte('_')
+		} else {
+			b.WriteRune(unsafeRune)
 		}
 	}
 	name := b.String()
 	if len(name) > 80 {
 		name = name[len(name)-80:]
 	}
-	return name + "-" + digest(key) + ".json"
+	return name + "-" + digest(key) + FileExt
 }
 
 // Update folds this session's hosts into the project's baseline and reports
@@ -369,7 +417,7 @@ func save(dir, path string, f File) error {
 		return errTooLarge
 	}
 
-	tmp, err := os.CreateTemp(dir, ".baseline-*")
+	tmp, err := os.CreateTemp(dir, TempPrefix+"*")
 	if err != nil {
 		return err
 	}
@@ -404,7 +452,7 @@ func save(dir, path string, f File) error {
 // on this machine, and its only job is collision resistance.
 func digest(key string) string {
 	sum := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(sum[:])[:12]
+	return hex.EncodeToString(sum[:])[:digestLen]
 }
 
 // ForgetFile removes a host from one baseline file by path, returning 1 when

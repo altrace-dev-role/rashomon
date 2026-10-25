@@ -51,6 +51,18 @@ func TestPeakRSSChild(t *testing.T) {
 		touch(48)
 	case "exit3":
 		os.Exit(3)
+	case "thpstatus":
+		// The kernel's own report of this process's THP flag.
+		b, err := os.ReadFile("/proc/self/status")
+		if err != nil {
+			fmt.Println("error:", err)
+			os.Exit(0)
+		}
+		for _, l := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(l, "THP_enabled:") {
+				fmt.Println(l)
+			}
+		}
 	}
 	os.Exit(0)
 }
@@ -196,5 +208,33 @@ func TestRES28i_VmHWMIsReadInMiB(t *testing.T) {
 		if got, err := vmHWM(strings.NewReader(bad)); err == nil {
 			t.Errorf("vmHWM(%q) = %v with no error", bad, got)
 		}
+	}
+}
+
+// TestRES28t_DisableTHPReachesTheChild: after DisableTHP, a child the reaper
+// runs reads THP_enabled 0 in its own /proc/self/status, so the flag crossed
+// the reaper's fork and exec; the 2 MiB steps of a THP=always host (RES-28,
+// budgets.json linux/amd64) are then not in what the child reads. Break:
+// leave the call out, or set the flag on a thread rather than the process,
+// and the child reads THP_enabled 1 (read so on this repository's
+// VM with sysfs at "madvise").
+func TestRES28t_DisableTHPReachesTheChild(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		if err := DisableTHP(); err != nil {
+			t.Errorf("DisableTHP off Linux = %v, want nil", err)
+		}
+		t.Skip("THP is a Linux setting")
+	}
+	if err := DisableTHP(); err != nil {
+		t.Fatal(err)
+	}
+	cmd := child("thpstatus")
+	var out strings.Builder
+	cmd.Stdout = &out
+	if _, err := runOrSkip(t, cmd); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "THP_enabled:\t0") {
+		t.Errorf("the child's status reported %q, want THP_enabled 0", out.String())
 	}
 }

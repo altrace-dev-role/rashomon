@@ -346,10 +346,13 @@ var rawSyscalls = []string{
 // exact text. syscall.Syscall is a generic trap, so the scan cannot tell a
 // call that reaches neither a socket nor a process from one that does; the
 // store's darwin barrier is fcntl(F_BARRIERFSYNC), which the syscall package
-// has no wrapper for (internal/store/sync_darwin.go). Any other raw call in
-// that file, or the same trap with another number, is still caught.
+// has no wrapper for (internal/store/sync_darwin.go); the perf harness's
+// prctl(PR_SET_THP_DISABLE), which the same package lacks and which opens
+// nothing (test/perf/peakrss/thp_linux.go). Any other raw call in those
+// files, or the same trap with another number, is still caught.
 var sanctionedRawCalls = map[string]string{
-	"internal/store/sync_darwin.go": "syscall.Syscall(syscall.SYS_FCNTL, fd, fBarrierFsync, 0)",
+	"internal/store/sync_darwin.go":  "syscall.Syscall(syscall.SYS_FCNTL, fd, fBarrierFsync, 0)",
+	"test/perf/peakrss/thp_linux.go": "syscall.Syscall6(syscall.SYS_PRCTL, option, arg, 0, 0, 0, 0)",
 }
 
 // TestH17_NoSourceCallsASocketOrStartsAProcessOutsideASyscallImport backs the

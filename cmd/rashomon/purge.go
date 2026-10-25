@@ -23,8 +23,12 @@ import (
 const (
 	purgeRemovesHeader = "rashomon purge removes:"
 	purgeLeavesHeader  = "rashomon purge leaves:"
-	purgeIfEmpty       = " (if empty)"
-	purgePrompt        = "Remove all of this? [y/N] "
+	// purgeRootStays is why the root is kept when a path is left in it: it,
+	// and each runs or baseline directory above a file listed as left,
+	// holds that file, so they stay too. install.json and install.key still go.
+	purgeRootStays = "kept, with every directory above the files listed above, because of those files"
+	purgeIfEmpty   = " (if empty)"
+	purgePrompt    = "Remove all of this? [y/N] "
 )
 
 // errPurgeDeclined is a purge the user answered no to.
@@ -285,7 +289,7 @@ func printPurgePlan(w io.Writer, t purgeTarget, p purge.Plan, withBinary bool) {
 		fmt.Fprintf(w, "  %s -- not written by rashomon; remove it yourself if it is not wanted: %s\n", f, removeCommand(f, kind))
 	}
 	if !p.RemoveRoot {
-		fmt.Fprintf(w, "  %s -- kept, because it holds what is listed above; once that is gone: %s\n", p.Root, removeCommand(p.Root, emptyDir))
+		fmt.Fprintf(w, "  %s -- %s; once that is gone: %s\n", p.Root, purgeRootStays, removeCommand(p.Root, emptyDir))
 	}
 	for _, d := range p.NotDirs {
 		fmt.Fprintf(w, "  %s -- watch created it, but it is no longer a directory (a symlink or a file now); kept\n", d)

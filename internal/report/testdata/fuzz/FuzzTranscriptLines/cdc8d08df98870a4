@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{ \"parentUuid\": null, \"isSidechAin\": true, \"type\": \"assistant\", \"message\": {\"role\": \"assistant\", \"content\": 7} }")

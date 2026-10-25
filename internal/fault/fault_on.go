@@ -22,6 +22,13 @@ import (
 // point.
 const EnvVar = "RASHOMON_FAULT"
 
+// HangMarkerEnvVar names a file that a "hang" fault creates once the process is
+// parked: after the signal handler is registered and before the wait begins.
+// Unset, nothing is written. A test that has to act on a process while it is
+// held waits for this file instead of inferring the hold from other records on
+// disk, which a build without the injection point writes just the same.
+const HangMarkerEnvVar = "RASHOMON_FAULT_HANG_MARKER"
+
 // Fault kinds. Every one of these except Hang and FailN panics. A fault that
 // returned an error would exercise error handling, not the panic barrier, and
 // exit code 1 does not block a tool call.
@@ -62,7 +69,7 @@ var sink byte
 // Inject fires the configured fault if this is the selected point.
 func Inject(point string) {
 	if kind, ok := selected(point); ok {
-		trigger(kind)
+		trigger(point, kind)
 	}
 }
 
@@ -108,9 +115,9 @@ func selected(point string) (string, bool) {
 	return kind, true
 }
 
-func trigger(kind string) {
+func trigger(point, kind string) {
 	if strings.HasPrefix(kind, Hang) {
-		hang(kind)
+		hang(point, kind)
 		return
 	}
 
@@ -145,7 +152,7 @@ func trigger(kind string) {
 	}
 }
 
-func hang(kind string) {
+func hang(point, kind string) {
 	wait := 10 * time.Second
 	if _, secs, ok := strings.Cut(kind, "="); ok {
 		if n, err := strconv.Atoi(secs); err == nil {
@@ -159,9 +166,25 @@ func hang(kind string) {
 	signal.Notify(sig, syscall.SIGTERM, os.Interrupt)
 	defer signal.Stop(sig)
 
+	markHung(point)
+
 	select {
 	case <-time.After(wait):
 	case <-sig:
+	}
+}
+
+// markHung creates the HangMarkerEnvVar file, if one is named. It runs after
+// signal.Notify so that a signal sent on seeing the file is already caught
+// here, and it is a failure the test must see rather than a silent skip: with
+// no marker the test would wait out its deadline and name the wrong cause.
+func markHung(point string) {
+	path := os.Getenv(HangMarkerEnvVar)
+	if path == "" {
+		return
+	}
+	if err := os.WriteFile(path, []byte(point+"\n"), 0o600); err != nil {
+		fmt.Fprintln(os.Stderr, "rashomon: hang marker:", err)
 	}
 }
 

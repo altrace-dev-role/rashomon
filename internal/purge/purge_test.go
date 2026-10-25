@@ -1,11 +1,18 @@
 package purge
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/altrace-dev-role/rashomon/internal/baseline"
+	"github.com/altrace-dev-role/rashomon/internal/fold"
 )
 
 // fsRoot is the filesystem root of the volume t.TempDir is on: "/" on Unix,
@@ -103,7 +110,7 @@ func storeAt(t *testing.T) string {
 	root := filepath.Join(t.TempDir(), "rashomon")
 	for _, f := range []string{
 		InstallMeta, InstallKey, "gaps.ndjson", "forgotten-hosts.ndjson", "pause", "recap.json",
-		".install.json.tmp-123", "runs/s1/records.ndjson", "runs/s1/seq", "baseline/k.json",
+		".install.json.tmp-123", "runs/s1/records.ndjson", "runs/s1/seq", "baseline/proj-0123456789ab.json",
 		"consent.json", ".consent.json.tmp-1", "harnesses.json", ".harnesses.json.tmp-1",
 		"harness_counts.json", "harness_counts.lock", ".harness_counts.json.rashomon-1",
 		"recap.json.tmp", ".recap.json.tmp-1", "mine.txt", "other/x",
@@ -137,7 +144,7 @@ func TestTRU28_PlanListsRashomonsNamesWithTheAnchorsLast(t *testing.T) {
 		return slices.Index(p.Files, filepath.Join(root, filepath.FromSlash(rel)))
 	}
 	for _, rel := range []string{"gaps.ndjson", "forgotten-hosts.ndjson", "pause", "recap.json", ".install.json.tmp-123",
-		"runs/s1/records.ndjson", "runs/s1/seq", "runs/s1", "runs", "baseline/k.json", "baseline",
+		"runs/s1/records.ndjson", "runs/s1/seq", "runs/s1", "runs", "baseline/proj-0123456789ab.json", "baseline",
 		"consent.json", ".consent.json.tmp-1", "harnesses.json", ".harnesses.json.tmp-1",
 		"harness_counts.json", "harness_counts.lock", ".harness_counts.json.rashomon-1",
 		"recap.json.tmp", ".recap.json.tmp-1"} {
@@ -364,5 +371,228 @@ func TestTRU28_WhatFailsAfterTheAnchorsIsStranded(t *testing.T) {
 	}
 	if _, err := os.Stat(root); err == nil {
 		t.Errorf("the root is still there")
+	}
+}
+
+// TestTRU28_PurgeLeavesUserFilesInsideRunsAndBaseline: RASHOMON_HOME may name a
+// directory the user already keeps things in, "runs" and "baseline" being
+// ordinary names for them. Purge removes the entries rashomon writes in
+// those two directories and nothing else: a file or directory of the user's
+// there, beside or inside a run directory, is left with every directory
+// above it, and the plan names it as foreign.
+func TestTRU28_PurgeLeavesUserFilesInsideRunsAndBaseline(t *testing.T) {
+	root := storeAt(t)
+	mine := []string{
+		"runs/notes.txt",            // a file beside the run directories
+		"runs/s1/my-analysis.md",    // a file inside one of them
+		"runs/experiment-7/log.csv", // a whole directory that is not a session's
+		"baseline/mine.txt",
+	}
+	for _, f := range mine {
+		p := filepath.Join(root, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("user data"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, err := Build(root, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o := p.Execute(); len(o.Remaining)+len(o.Stranded) > 0 {
+		t.Errorf("a plan that leaves user files must still complete: remaining %q, stranded %q", o.Remaining, o.Stranded)
+	}
+	for _, f := range mine {
+		abs := filepath.Join(root, filepath.FromSlash(f))
+		if b, err := os.ReadFile(abs); err != nil || string(b) != "user data" {
+			t.Errorf("purge removed %s, which rashomon did not write (%v)", f, err)
+		}
+		if !slices.Contains(p.Foreign, abs) {
+			t.Errorf("the plan does not name %s as foreign: %q", f, p.Foreign)
+		}
+	}
+	// What rashomon wrote beside them still goes.
+	for _, gone := range []string{"runs/s1/records.ndjson", "runs/s1/seq", "baseline/proj-0123456789ab.json", "gaps.ndjson"} {
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(gone))); err == nil {
+			t.Errorf("purge left %s, which rashomon wrote", gone)
+		}
+	}
+	if p.RemoveRoot {
+		t.Errorf("the root is planned for removal while it holds the user's files")
+	}
+}
+
+// TestTRU28_PurgeDoesNotTakeASymlinkAsRashomonsDirectory: a "runs" or "baseline"
+// that is a link into the user's own tree was not made by rashomon. The
+// files behind it are never touched, and the link is left as the user's.
+func TestTRU28_PurgeDoesNotTakeASymlinkAsRashomonsDirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "rashomon")
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere")
+	for _, d := range []string{root, filepath.Join(elsewhere, "run1")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []string{filepath.Join(root, InstallMeta), filepath.Join(root, InstallKey),
+		filepath.Join(elsewhere, "run1", "records.ndjson")} {
+		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(root, "runs")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	p, err := Build(root, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Execute()
+	if _, err := os.Stat(filepath.Join(elsewhere, "run1", "records.ndjson")); err != nil {
+		t.Errorf("purge removed a file behind a symlink: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "runs")); err != nil {
+		t.Errorf("purge removed the user's symlink %s: %v", filepath.Join(root, "runs"), err)
+	}
+}
+
+// TestTRU28_PurgeLeavesALinkNamedLikeOneOfItsFiles: a symlink or a directory at
+// the name of a file rashomon writes is not a file rashomon wrote, at the
+// store root and inside runs and baseline alike.
+func TestTRU28_PurgeLeavesALinkNamedLikeOneOfItsFiles(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "rashomon")
+	if err := os.MkdirAll(filepath.Join(root, "consent.json"), 0o700); err != nil { // an empty directory
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "users-gaps")
+	for _, f := range []string{filepath.Join(root, InstallMeta), filepath.Join(root, InstallKey), target} {
+		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(target, filepath.Join(root, "gaps.ndjson")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	p, err := Build(root, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Execute()
+	for _, kept := range []string{"consent.json", "gaps.ndjson"} {
+		if _, err := os.Lstat(filepath.Join(root, kept)); err != nil {
+			t.Errorf("purge removed %s, which is not a regular file rashomon wrote: %v", kept, err)
+		}
+	}
+}
+
+// TestTRU28_PurgeLeavesALinkInsideARunDirectory: a link at the name of a run
+// file, and a directory at the name of a baseline file, are the user's.
+func TestTRU28_PurgeLeavesALinkInsideARunDirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "rashomon")
+	target := filepath.Join(t.TempDir(), "users-seq")
+	for _, d := range []string{filepath.Join(root, "runs", "s1"), filepath.Join(root, "baseline", "proj-0123456789ab.json")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []string{filepath.Join(root, InstallMeta), filepath.Join(root, InstallKey), target} {
+		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(target, filepath.Join(root, "runs", "s1", "seq")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	p, err := Build(root, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Execute()
+	for _, kept := range []string{"runs/s1/seq", "baseline/proj-0123456789ab.json", "runs/s1", "runs", "baseline"} {
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(kept))); err != nil {
+			t.Errorf("purge removed %s, which is not a regular file rashomon wrote: %v", kept, err)
+		}
+	}
+}
+
+// storeFileConsts returns every string constant internal/store declares with a
+// File prefix -- the names the store writes -- keyed by constant name. They
+// are read from the source, so a constant added tomorrow is found without
+// anyone adding it here.
+func storeFileConsts(t *testing.T) map[string]string {
+	t.Helper()
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, filepath.Join("..", "store"), func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]string{}
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, d := range f.Decls {
+				gd, ok := d.(*ast.GenDecl)
+				if !ok || gd.Tok != token.CONST {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs := spec.(*ast.ValueSpec)
+					for i, id := range vs.Names {
+						if !strings.HasPrefix(id.Name, "File") || i >= len(vs.Values) {
+							continue
+						}
+						lit, ok := vs.Values[i].(*ast.BasicLit)
+						if !ok || lit.Kind != token.STRING {
+							continue
+						}
+						v, err := strconv.Unquote(lit.Value)
+						if err != nil {
+							t.Fatal(err)
+						}
+						found[id.Name] = v
+					}
+				}
+			}
+		}
+	}
+	return found
+}
+
+// TestTRU28_PurgeListsEveryNameItsWritersExport: a name a writer exports and
+// purge's lists lack would be left behind as "foreign" -- every purge noisy,
+// and nobody told. Every File* constant of internal/store is either an anchor,
+// a root file or a run file in purge's lists, and the names fold and baseline
+// export are owned where those packages write them. internal/store is read
+// from its source, so a constant added there fails this test until purge lists
+// it.
+func TestTRU28_PurgeListsEveryNameItsWritersExport(t *testing.T) {
+	consts := storeFileConsts(t)
+	if len(consts) < 15 {
+		t.Fatalf("found %d File constants in internal/store, fewer than the 17 it had: the scan is broken: %v", len(consts), consts)
+	}
+	for name, v := range consts {
+		anchor := v == InstallMeta || v == InstallKey
+		if !anchor && !ownName(v) && !ownTreeFile(v, true, 1) {
+			t.Errorf("store.%s = %q is written by the store but purge does not list it", name, v)
+		}
+	}
+
+	run := func(name string) bool { return ownTreeFile(name, true, 1) }
+	for _, name := range []string{fold.FileName, fold.MidFileName, fold.TempPrefix + "123456"} {
+		if !run(name) {
+			t.Errorf("fold writes %q in a run directory and purge does not list it", name)
+		}
+	}
+	base := func(name string) bool { return ownTreeFile(name, false, 0) }
+	for _, name := range []string{baseline.LockName, baseline.TempPrefix + "123456", "proj-0123456789ab" + baseline.FileExt} {
+		if !base(name) {
+			t.Errorf("baseline writes %q in its directory and purge does not list it", name)
+		}
+	}
+	// Each belongs to its own directory only.
+	if base(fold.FileName) || run(baseline.LockName) {
+		t.Errorf("a run file is taken as a baseline file, or the reverse")
 	}
 }
