@@ -11,7 +11,11 @@ m("test-13  a line that is not JSON passes the check", "test/acceptance/storeche
 m("test-13  keys are not held to the allowlist", "test/acceptance/storecheck_test.go",
   "\t\tif !allow[k] {\n", "\t\tif false && !allow[k] {\n", "TestRubricTEST13_")
 m("test-13  spilled records are held to the seq rule", "test/acceptance/storecheck_test.go",
-  "\t\t\"spill.ndjson\":    {types: call},\n", "\t\t\"spill.ndjson\":    {types: call, ordered: true},\n", "TestRubricTEST13_")
+  "\t\t\"spill.ndjson\":    {types: call, blanks: true},\n", "\t\t\"spill.ndjson\":    {types: call, blanks: true, ordered: true},\n", "TestRubricTEST13_")
+m("test-13  a blank line in the spill file reads as a break", "test/acceptance/storecheck_test.go",
+  "\t\t\"spill.ndjson\":    {types: call, blanks: true},\n", "\t\t\"spill.ndjson\":    {types: call},\n", "TestRubricTEST13_")
+m("test-13  a blank line in any file passes the check", "test/acceptance/storecheck_test.go",
+  "\t\tif spec.blanks && len(sc.Bytes()) == 0 {\n", "\t\tif len(sc.Bytes()) == 0 {\n", "TestRubricTEST13_")
 m("test-13  a schema version this build does not read passes", "test/acceptance/storecheck_test.go",
   "!ok || float64(int(v)) != v || !readable(typ, int(v)) {", "!ok && v == 0 {", "TestRubricTEST13_")
 m("test-13  a fractional schema version passes", "test/acceptance/storecheck_test.go",

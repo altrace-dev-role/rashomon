@@ -27,7 +27,12 @@ import (
 //   - in records.ndjson, the ordered stream, every record carries a seq, and
 //     the seqs are strictly increasing in file order, which is the order the
 //     run's lock gave them. spill.ndjson is exempt: a spilled record is
-//     written without the lock and carries no seq, by design.
+//     written without the lock and carries no seq, by design;
+//   - a blank line is a break everywhere but spill.ndjson, where a spill
+//     append that gave up on the lock writes a newline ahead of its record
+//     (store.appendLine's appendWithoutLock branch) and so leaves one over an
+//     intact tail. The store's readers skip it (forEachLine) and so does the
+//     harness's (readNDJSON, which names this case), so the check does too.
 //
 // A test that damages the store on purpose says so with expectDamagedStore,
 // naming why and the problems the damage causes. The check then holds that
@@ -87,13 +92,14 @@ func damageProblems(found, declared []string) (unexpected, missing []string) {
 type storeFile struct {
 	types   map[string][]string // record type -> its key allowlist
 	ordered bool                // seq present and strictly increasing
+	blanks  bool                // a blank line is the lockless writer's guard, not a break
 }
 
 func storeFiles() map[string]storeFile {
 	call := map[string][]string{"declaration": declarationKeys, "execution": executionKeys, "terminal": terminalKeys}
 	return map[string]storeFile{
 		"records.ndjson":  {types: call, ordered: true},
-		"spill.ndjson":    {types: call},
+		"spill.ndjson":    {types: call, blanks: true},
 		"coverage.ndjson": {types: map[string][]string{"coverage": coverageKeys}},
 		"gaps.ndjson":     {types: map[string][]string{"gap": gapKeys}},
 	}
@@ -143,6 +149,9 @@ func fileProblems(path, rel string, spec storeFile) []string {
 		where := fmt.Sprintf("%s:%d", rel, n)
 		if sc.TooLong() {
 			out = append(out, fmt.Sprintf("%s: a line over store.MaxLine", where))
+			continue
+		}
+		if spec.blanks && len(sc.Bytes()) == 0 {
 			continue
 		}
 		var fields map[string]any
@@ -305,6 +314,34 @@ func TestRubricTEST13_TheStoreCheckCatchesEachBreak(t *testing.T) {
 	}
 	if p := storeProblems(e.home); len(p) != 0 {
 		t.Errorf("a spilled record without a seq reads as a break: %v", p)
+	}
+
+	// A lockless spill append leaves a blank line ahead of its record, and
+	// that is not a break; a blank line in any other file still is, and a
+	// torn line in the spill file still is.
+	for _, tc := range []struct {
+		file, body, want string
+	}{
+		{"spill.ndjson", "\n" + unordered + "\n\n" + unordered + "\n", ""},
+		{"records.ndjson", lines[0] + "\n\n" + lines[1] + "\n", "records.ndjson:2 is not one JSON object"},
+		{"coverage.ndjson", "\n", "coverage.ndjson:1 is not one JSON object"},
+		{"spill.ndjson", unordered + "\n\n" + unordered[:len(unordered)/2] + "\n", "spill.ndjson:3 is not one JSON object"},
+	} {
+		home := t.TempDir()
+		dst := filepath.Join(home, "runs", testSession, tc.file)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dst, []byte(tc.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		p := strings.Join(storeProblems(home), "\n")
+		switch {
+		case tc.want == "" && p != "":
+			t.Errorf("%s with a blank line ahead of its records reads as a break: %s", tc.file, p)
+		case tc.want != "" && !strings.Contains(p, tc.want):
+			t.Errorf("%s: the check did not name %q; it said %q", tc.file, tc.want, p)
+		}
 	}
 }
 

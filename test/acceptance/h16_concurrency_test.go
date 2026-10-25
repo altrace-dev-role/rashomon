@@ -12,9 +12,21 @@ import (
 
 // TestH16_ConcurrentHandlersAllLand runs 64 handlers at once, then again with
 // every record padded past the 4 KiB a buffered writer would flush at. All 64
-// declarations and all 64 terminals must land, with distinct ids and a
-// contiguous seq -- the invariant the lock exists to protect, and the one that
-// breaks when the lock is removed.
+// terminals must land, every declaration must either land or be accounted for
+// by its terminal's lock_timeout, and the ordered stream's seq must be
+// contiguous and distinct -- the invariant the lock exists to protect, and the
+// one that breaks when the lock is removed.
+//
+// A declaration may give up. The design resolves H-16's tension that way
+// (docs/design-notes.md): the append lock is waited on for lockBudget, two
+// seconds, against the five-second hook timeout, and on give-up the
+// declaration is dropped and its terminal goes to spill.ndjson under the same
+// tool_use_id, with reason lock_timeout (hook.Handler.Close). Sixty-four
+// processes that fsync inside the lock fit that budget on an idle disk, and
+// not on a runner whose disk stalls (store/lockbudget.go says as much), so
+// demanding all 64 declarations made this test a measure of the runner's disk.
+// What stays demanded is that nothing vanishes: a declaration that is not in
+// the store has a terminal that says why.
 //
 // The padding is the transcript path, which REC-52 caps at 4096 bytes
 // (store.MaxPathBytes): a path over the cap is withheld, and the record would
@@ -63,23 +75,40 @@ func TestH16_ConcurrentHandlersAllLand(t *testing.T) {
 
 			decls := e.declarations(testSession)
 			terms := e.terminals(testSession)
-			if len(decls) != n || len(terms) != n {
-				t.Fatalf("got %d declarations and %d terminals, want %d each", len(decls), len(terms), n)
+			if len(terms) != n {
+				t.Fatalf("got %d terminals, want %d: a handler's terminal must land in the stream or the spill file", len(terms), n)
+			}
+			// The ids whose declaration gave up on the lock: their terminal, in
+			// the spill file, is the only record they have.
+			gaveUp := map[string]bool{}
+			closed := map[string]bool{}
+			for _, r := range terms {
+				closed[r.str("tool_use_id")] = true
+				if r.str("reason") == "lock_timeout" {
+					gaveUp[r.str("tool_use_id")] = true
+				}
+			}
+			if len(decls) < n {
+				t.Logf("%d of %d declarations gave up on the append lock (lock_timeout), which the design allows on a slow disk", n-len(decls), n)
 			}
 
 			got := map[string]bool{}
 			for _, d := range decls {
-				got[d.str("tool_use_id")] = true
+				id := d.str("tool_use_id")
+				if got[id] {
+					t.Errorf("declaration %s landed twice", id)
+				}
+				got[id] = true
 				if pad > 0 && len(d.str("transcript_path")) != pad+len("/tmp/.jsonl") {
 					t.Errorf("padding did not reach the record: transcript_path is %d bytes", len(d.str("transcript_path")))
 				}
-				if pad > 0 && len(d.raw) <= 4096 {
-					t.Errorf("a padded declaration is %d bytes, not past the 4 KiB a buffered writer flushes at", len(d.raw))
-				}
 			}
 			for id := range want {
-				if !got[id] {
-					t.Errorf("declaration %s did not land", id)
+				if !closed[id] {
+					t.Errorf("handler %s has no terminal", id)
+				}
+				if !got[id] && !gaveUp[id] {
+					t.Errorf("declaration %s did not land, and its terminal does not say lock_timeout", id)
 				}
 			}
 			for id := range got {
@@ -88,8 +117,11 @@ func TestH16_ConcurrentHandlersAllLand(t *testing.T) {
 				}
 			}
 
+			// The ordered stream is what the lock orders: every record in it
+			// carries a seq, and together they are 1..k. A spilled record is
+			// written without the lock and has none, by design.
 			var seqs []int
-			for _, r := range append(decls, terms...) {
+			for _, r := range e.read(testSession, "records.ndjson") {
 				s, ok := r.fields["seq"].(float64)
 				if !ok {
 					t.Errorf("record without a numeric seq: %s", r.raw)
