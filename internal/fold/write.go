@@ -36,7 +36,7 @@ func Write(path string, f *File) error {
 		return err
 	}
 
-	tmp, err := os.CreateTemp(dir, ".fold.json.rashomon-*")
+	tmp, err := os.CreateTemp(dir, TempPrefix+"*")
 	if err != nil {
 		return err
 	}

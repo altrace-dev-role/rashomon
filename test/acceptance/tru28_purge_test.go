@@ -249,6 +249,45 @@ func TestTRU28_PurgeRemovesNothingOutsideThePlan(t *testing.T) {
 	}
 }
 
+// TestTRU28_PurgeKeepsAUsersFilesInsideRunsAndBaseline: RASHOMON_HOME may
+// name a directory the user already keeps things in, and "runs" and
+// "baseline" are ordinary names for them. After a real session, a file of the
+// user's beside the run directories, one inside a run directory, a directory
+// of theirs under runs, and a file in baseline all survive purge, byte for
+// byte, and the plan names each as left. What rashomon wrote there goes.
+func TestTRU28_PurgeKeepsAUsersFilesInsideRunsAndBaseline(t *testing.T) {
+	e := newPurgeEnv(t)
+	e.session(t)
+	mine := []string{
+		filepath.Join(e.home, "runs", "notes.txt"),
+		filepath.Join(e.home, "runs", testSession, "my-analysis.md"),
+		filepath.Join(e.home, "runs", "experiment-7", "log.csv"),
+		filepath.Join(e.home, "baseline", "mine.txt"),
+	}
+	writeFiles(t, mine...)
+	before := snapshot(t, e.fakeHome)
+
+	res := e.purge("--yes")
+	if res.exitCode != 0 {
+		t.Fatalf("purge --yes: exit %d\nstdout:\n%s\nstderr: %q", res.exitCode, res.stdout, res.stderr)
+	}
+	after := snapshot(t, e.fakeHome)
+	for _, f := range mine {
+		if after[f] != before[f] || after[f] == "" {
+			t.Errorf("purge removed or changed %s, which rashomon did not write\nstdout:\n%s", f, res.stdout)
+		}
+		if !strings.Contains(res.stdout, f) {
+			t.Errorf("purge did not name %s as a file it leaves:\n%s", f, res.stdout)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(e.home, "runs", testSession, "records.ndjson")); err == nil {
+		t.Errorf("purge left records.ndjson, which rashomon wrote")
+	}
+	if _, err := os.Lstat(filepath.Join(e.home, "install.json")); err == nil {
+		t.Errorf("purge left install.json in a root it could finish")
+	}
+}
+
 // TestTRU28_InterruptedPurgeCompletesOnRerun: a purge that dies after its
 // detach, or with every data file gone but install.json and install.key,
 // can be run again, and the second run finishes the job.

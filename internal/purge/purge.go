@@ -4,8 +4,9 @@
 // interrupted can be run again to completion.
 //
 // It removes nothing it did not list in a Plan first, and a Plan lists only
-// names rashomon writes. A file a user put in the store root is left, and so
-// is the root that holds it.
+// names rashomon writes. A file a user put in the store root, or in runs or
+// baseline beside or inside what rashomon wrote, is left, and so is every
+// directory that holds it.
 package purge
 
 import (
@@ -14,11 +15,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/altrace-dev-role/rashomon/internal/baseline"
 	"github.com/altrace-dev-role/rashomon/internal/fault"
+	"github.com/altrace-dev-role/rashomon/internal/fold"
 	"github.com/altrace-dev-role/rashomon/internal/recap"
 	"github.com/altrace-dev-role/rashomon/internal/store"
 )
@@ -44,9 +47,19 @@ var topFiles = []string{store.FileGaps, store.FileForgottenHosts, store.FileReco
 	store.FileConsent, store.FileHarnesses, store.FileHarnessCounts, store.FileHarnessCountsLock,
 	recap.StateFileName, recap.StateTempName}
 
-// topDirs are the directories under the store root that only rashomon
-// writes into: every path under them is planned for removal.
+// topDirs are the directories under the store root that rashomon writes
+// into. Only the entries it writes there are planned for removal (see
+// ownedTree): the directory can be shared with the user's own files when
+// RASHOMON_HOME names a directory they already use, and "runs" and
+// "baseline" are ordinary names for such a directory.
 var topDirs = []string{store.DirRuns, baseline.DirName}
+
+// runFiles are the files rashomon writes in a run directory, runs/<session>,
+// and runTempPrefixes the temporary names its atomic writes leave.
+var runFiles = []string{store.FileRecords, store.FileSpill, store.FileCoverage, store.FileSteer,
+	store.FileProbe, store.FileSeq, store.FileLockWait, fold.FileName, fold.MidFileName}
+
+var runTempPrefixes = []string{fold.TempPrefix}
 
 // tempPrefixes are the names of an anchor's, consent.json's,
 // harnesses.json's, harness_counts.json's and recap.json's temporary file,
@@ -175,12 +188,13 @@ func Build(root string, createdDirs []string, binary string) (Plan, error) {
 		case name == InstallMeta || name == InstallKey:
 			// Added last, below.
 		case isTopDir(name):
-			sub, err := subtree(path)
+			sub, foreign, err := ownedTree(path, name == store.DirRuns)
 			if err != nil {
 				return p, err
 			}
 			files = append(files, sub...)
-		case ownName(name):
+			p.Foreign = append(p.Foreign, foreign...)
+		case ownName(name) && ent.Type().IsRegular():
 			files = append(files, path)
 		default:
 			p.Foreign = append(p.Foreign, path)
@@ -211,18 +225,78 @@ func isTopDir(name string) bool {
 	return false
 }
 
-// subtree lists dir and every path under it. A symlink is listed as itself
-// and never followed: removing it removes the link.
-func subtree(dir string) ([]string, error) {
-	var out []string
-	err := filepath.WalkDir(dir, func(path string, _ fs.DirEntry, err error) error {
+// ownedTree splits what is under top, one of topDirs, into the paths
+// rashomon wrote -- returned deepest first, a directory after what is in it
+// -- and the paths it did not, which are left, along with every directory
+// above one. top is runs when isRuns is set (runs/<session>/<file>) and
+// baseline otherwise (baseline/<file>). A symlink is never followed and never
+// taken as rashomon's: a link, a device or a directory where only a regular
+// file rashomon writes can be, is foreign, and so is a top that is not itself
+// a directory.
+func ownedTree(top string, isRuns bool) (own, foreign []string, err error) {
+	info, err := os.Lstat(top)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !info.IsDir() {
+		return nil, []string{top}, nil
+	}
+	var walk func(dir string, level int) (bool, error)
+	walk = func(dir string, level int) (bool, error) {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			return err
+			return false, err
 		}
-		out = append(out, path)
-		return nil
-	})
-	return out, err
+		clean := true
+		for _, ent := range entries {
+			path := filepath.Join(dir, ent.Name())
+			switch {
+			case ent.IsDir() && isRuns && level == 0:
+				ok, err := walk(path, level+1)
+				if err != nil {
+					return false, err
+				}
+				if ok {
+					own = append(own, path)
+				}
+				clean = clean && ok
+			case ent.Type().IsRegular() && ownTreeFile(ent.Name(), isRuns, level):
+				own = append(own, path)
+			default:
+				foreign = append(foreign, path)
+				clean = false
+			}
+		}
+		return clean, nil
+	}
+	ok, err := walk(top, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ok {
+		own = append(own, top)
+	}
+	return own, foreign, nil
+}
+
+// ownTreeFile reports whether a regular file of this name, at this level
+// below runs or baseline, is one rashomon writes.
+func ownTreeFile(name string, isRuns bool, level int) bool {
+	if !isRuns {
+		return baseline.IsFileName(name) || name == baseline.LockName || strings.HasPrefix(name, baseline.TempPrefix)
+	}
+	if level != 1 {
+		return false
+	}
+	if slices.Contains(runFiles, name) {
+		return true
+	}
+	for _, p := range runTempPrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func depth(p string) int { return strings.Count(p, string(filepath.Separator)) }
