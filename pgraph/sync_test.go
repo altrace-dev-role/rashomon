@@ -117,7 +117,8 @@ func mustRead(t *testing.T, p string) []byte {
 func TestPL5_TwoTiersIncrementalViewByteIdenticalToFull(t *testing.T) {
 	dir, commits := idRepo(t)
 	both := func(l *Log, commit string) (Delta, Delta) {
-		prog := loadAt(t, dir, commit)
+		git(t, dir, "checkout", "-q", commit)
+		prog := loadDepsT(t, dir)
 		dp, err := Sync(l, prog, commit)
 		if err != nil {
 			t.Fatal(err)
@@ -232,5 +233,49 @@ func TestPL5_OldExtractorFactsAreTombstonedOnSync(t *testing.T) {
 	}
 	if mine != 1 {
 		t.Error("another producer's fact was disturbed")
+	}
+}
+
+// The same migration for the second tier: the facts of cha@v0, which could not
+// see a call made inside a dependency, are tombstoned by the next SyncCHA and
+// the cha@v1 ones asserted, and no PROVEN fact is touched.
+func TestPL5_OldDispatchFactsAreTombstonedOnSyncCHA(t *testing.T) {
+	prog := loadDepsT(t, dispatchRoot)
+	var l Log
+	v0, err := newProducer("cha", "v0", Algorithmic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A fact v1 does not derive (Total calls Area, not Name), so it must go.
+	old := Triple{"func:" + dm + "/app.Total", MayCall, "method:" + dm + "/extra.Dog.Name"}
+	if _, err := l.Reconcile(v0, prog.Config().String(), "c0", []Triple{old}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Sync(&l, prog, "c0"); err != nil {
+		t.Fatal(err)
+	}
+	proven := 0
+	for _, f := range l.Live() {
+		if f.Tier() == Proven {
+			proven++
+		}
+	}
+	d, err := SyncCHA(&l, prog, "c1")
+	if err != nil || d.Retracted != 1 || d.Asserted != 38 {
+		t.Fatalf("%+v %v", d, err)
+	}
+	after := 0
+	for _, f := range l.Live() {
+		switch f.Tier() {
+		case Algorithmic:
+			if f.Extractor() != "cha@v1" {
+				t.Errorf("live ALGORITHMIC fact from %s", f.Extractor())
+			}
+		case Proven:
+			after++
+		}
+	}
+	if after != proven || proven == 0 {
+		t.Errorf("PROVEN facts went from %d to %d", proven, after)
 	}
 }

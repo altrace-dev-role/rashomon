@@ -26,7 +26,22 @@ func repoRoot(t *testing.T) string {
 	return ".."
 }
 
+// loadT loads the scan root only (LoadScanRoot): enough for Extract,
+// Fingerprints and Link, and a tenth of the cost of Load. Tests of Dispatch
+// load with loadDepsT.
 func loadT(t *testing.T, root string) *Program {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	p, err := LoadScanRoot(ctx, root, Config{})
+	if err != nil {
+		t.Fatalf("LoadScanRoot(%s): %v", root, err)
+	}
+	return p
+}
+
+// loadDepsT is Load: dependency bodies included.
+func loadDepsT(t *testing.T, root string) *Program {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()

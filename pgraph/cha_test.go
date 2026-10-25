@@ -1,6 +1,7 @@
 package pgraph
 
 import (
+	"go/ast"
 	"math"
 	"os"
 	"path/filepath"
@@ -43,7 +44,7 @@ func dispatchOf(t *testing.T, p *Program) []Triple {
 // another package's method) = 2; Fail's Error reaches Bad = 1. Total 38,
 // of which the 14 labelled edges are true.
 func TestPL3_CorpusPrecisionRecall(t *testing.T) {
-	p := loadT(t, dispatchRoot)
+	p := loadDepsT(t, dispatchRoot)
 	lab := dispatchLabels(t)
 	got := dispatchOf(t, p)
 	acc := Score(got, lab.Truth)
@@ -97,17 +98,18 @@ func TestPL3_CorpusPrecisionRecall(t *testing.T) {
 	}
 }
 
-// ACCEPTED GAP (v0): an interface call made inside a dependency is invisible.
-// sort.Sort calls Len, Less and Swap on whatever sort.Interface it is given,
-// so a repo type's Less is reached through the standard library, but
-// dependencies are read from export data and their bodies are not part of the
-// program (see Dispatch), so no edge is made from sort.Sort into byLen's
-// methods, and none from Sorted, whose own call is a static call to sort.Sort
-// and not an interface call. A reader of the graph must not take the absence
-// of an edge into such a method as proof that nothing calls it. The control
-// below shows the fixture is not blind: an interface call in the repo's own
-// code does make its edge.
-func TestPL3_AcceptedGap_DependencyInternalDispatchIsInvisible(t *testing.T) {
+// REQUIREMENT (Karthik, 2026-10-24): an interface call made inside a
+// dependency is dispatch like any other. sort.Sort calls Len, Less and Swap
+// through sort.Interface from inside the standard library, so a repo type's
+// Less is reached through sort, and the graph must say so: a controller that
+// asks what a change to byLen.Less owes has to find sort.Sort among its
+// callers. The caller of such an edge is the dependency function, named in
+// the vocabulary of every other id (func:sort.Sort); the target is still a
+// method in the scan root, and the repo function that merely calls sort.Sort
+// makes no interface call of its own, so it gets no dispatch edge (its static
+// call to sort.Sort is a Calls fact). The control shows the fixture is not
+// blind: an interface call in the repo's own code makes its edge.
+func TestPL3_DependencyInternalDispatchIsVisible(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, src string) {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
@@ -138,21 +140,42 @@ func (Box) Size() int { return 1 }
 
 func Measure(s Sizer) int { return s.Size() }
 `)
-	got := dispatchOf(t, loadT(t, dir))
+	got := dispatchOf(t, loadDepsT(t, dir))
 	const gp = "example.test/gap"
+	g := set(got)
 	control := Triple{"func:" + gp + ".Measure", MayCall, "method:" + gp + ".Box.Size"}
-	if !set(got)[control] {
-		t.Fatalf("the control edge %v is missing, so the absence below proves nothing: %v", control, got)
+	if !g[control] {
+		t.Fatalf("the control edge %v is missing, so the rest proves nothing: %v", control, got)
+	}
+	for _, m := range []string{"Len", "Less", "Swap"} {
+		want := Triple{"func:sort.Sort", MayCall, "method:" + gp + ".byLen." + m}
+		if !g[want] {
+			t.Errorf("missing %v: sort.Sort reaches byLen.%s through sort.Interface", want, m)
+		}
 	}
 	for _, x := range got {
-		for _, m := range []string{"Len", "Less", "Swap"} {
-			if x.Object == "method:"+gp+".byLen."+m {
-				t.Errorf("sort.Sort's dispatch became visible, the v0 accepted gap is closed: %v. Update the gap's comments, the doc of Dispatch and this test together", x)
-			}
+		if strings.HasPrefix(x.Subject, "func:sort.") && !ast.IsExported(strings.TrimPrefix(x.Subject, "func:sort.")) {
+			t.Errorf("a dependency's internal helper is a caller: %v", x)
 		}
 		if x.Subject == "func:"+gp+".Sorted" {
 			t.Errorf("an edge from Sorted, which makes no interface call of its own: %v", x)
 		}
+		if !strings.HasPrefix(x.Object, "method:"+gp+".") {
+			t.Errorf("target outside the scan root: %v", x)
+		}
+	}
+}
+
+// A Program without dependency bodies must not answer: every call made inside
+// a dependency would be silently absent, which reads as a graph that says
+// nothing calls through them.
+func TestPL3_DispatchRefusesAProgramWithoutDependencyBodies(t *testing.T) {
+	if _, err := Dispatch(loadT(t, dispatchRoot)); err == nil {
+		t.Fatal("Dispatch answered on a scan-root-only Program")
+	}
+	var l Log
+	if _, err := SyncCHA(&l, loadT(t, dispatchRoot), "c"); err == nil || l.Len() != 0 {
+		t.Fatalf("SyncCHA on a scan-root-only Program: %v, %d facts", err, l.Len())
 	}
 }
 
@@ -162,17 +185,75 @@ func TestPL3_AgreesWithRederivation(t *testing.T) {
 			if name == "repo" {
 				root = repoRoot(t)
 			}
-			p := loadT(t, root)
-			got, want := dispatchOf(t, p), rederiveDispatch(t, p)
-			if name == "dispatch" && len(got) != 38 {
+			p := loadDepsT(t, root)
+			all := dispatchOf(t, p)
+			// The oracle reads the syntax of the scan root, so it speaks for
+			// the edges whose caller is in the scan root; the edges whose
+			// caller is a dependency function are checked by
+			// TestPL3_DependencyEdgesNameEntryPoints and the sort fixture.
+			got := onlyRootCallers(p, all)
+			want := rederiveDispatch(t, p)
+			if name == "dispatch" && len(all) != 38 {
 				t.Errorf("%d edges on the corpus, want 38", len(got))
 			}
 			if len(got) == 0 {
 				t.Fatal("no edges: two empty answers would agree")
 			}
 			diffTriples(t, got, want)
-			t.Logf("%s: %d may-call edges agree", name, len(got))
+			t.Logf("%s: %d may-call edges from the scan root agree (%d more have a dependency function as caller)", name, len(got), len(all)-len(got))
 		})
+	}
+}
+
+// inRoot reports whether a symbol id (kind:PKG.Name, or pkg:PKG) names
+// something declared in one of p's scanned packages.
+func inRoot(p *Program, id string) bool {
+	_, rest, _ := strings.Cut(id, ":")
+	for _, pkg := range p.pkgs {
+		if rest == pkg.PkgPath || strings.HasPrefix(rest, pkg.PkgPath+".") {
+			return true
+		}
+	}
+	return false
+}
+
+func onlyRootCallers(p *Program, ts []Triple) []Triple {
+	var out []Triple
+	for _, x := range ts {
+		if inRoot(p, x.Subject) {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// A dependency function is a caller only as the entry point scanned code can
+// reach it by: an exported function, a method with an exported name on an
+// exported type, or the package. Its internal helpers (sort.insertionSort,
+// which is where Less is really called) never appear as callers.
+func TestPL3_DependencyEdgesNameEntryPoints(t *testing.T) {
+	p := loadDepsT(t, repoRoot(t))
+	n := 0
+	for _, x := range dispatchOf(t, p) {
+		if inRoot(p, x.Subject) {
+			continue
+		}
+		n++
+		kind, rest, _ := strings.Cut(x.Subject, ":")
+		if kind == "pkg" {
+			continue
+		}
+		parts := strings.Split(rest[strings.LastIndex(rest, "/")+1:], ".")
+		if kind == "func" && len(parts) == 2 && ast.IsExported(parts[1]) {
+			continue
+		}
+		if kind == "method" && len(parts) == 3 && ast.IsExported(parts[1]) && ast.IsExported(parts[2]) {
+			continue
+		}
+		t.Errorf("a dependency caller that is not an entry point: %v", x)
+	}
+	if n < 100 {
+		t.Errorf("only %d edges from dependency callers on this repository", n)
 	}
 }
 
@@ -182,7 +263,7 @@ func TestPL3_AgreesWithRederivation(t *testing.T) {
 // from five sites, Dog.Name from Label); without package app the only site
 // left is Seal's.
 func TestPL3_SoundOnPartialPrograms(t *testing.T) {
-	full := set(dispatchOf(t, loadT(t, dispatchRoot)))
+	full := set(dispatchOf(t, loadDepsT(t, dispatchRoot)))
 	for _, c := range []struct {
 		drop    string
 		missing int
@@ -192,7 +273,7 @@ func TestPL3_SoundOnPartialPrograms(t *testing.T) {
 		if err := os.RemoveAll(filepath.Join(dir, c.drop)); err != nil {
 			t.Fatal(err)
 		}
-		part := dispatchOf(t, loadT(t, dir))
+		part := dispatchOf(t, loadDepsT(t, dir))
 		if len(part) != c.keep {
 			t.Errorf("without %s: %d edges, want %d", c.drop, len(part), c.keep)
 		}
@@ -215,7 +296,7 @@ func TestPL3_SoundOnPartialPrograms(t *testing.T) {
 }
 
 func TestPL3_DispatchDeterministicSortedUnique(t *testing.T) {
-	p := loadT(t, dispatchRoot)
+	p := loadDepsT(t, dispatchRoot)
 	a, b := dispatchOf(t, p), dispatchOf(t, p)
 	if len(a) == 0 || len(a) != len(b) {
 		t.Fatalf("lens %d %d", len(a), len(b))
@@ -237,7 +318,7 @@ func TestPL3_DispatchDeterministicSortedUnique(t *testing.T) {
 // PROVEN ones, and neither can write the other's.
 func TestPL3_FactsAreAlgorithmicNeverProven(t *testing.T) {
 	var l Log
-	prog := loadT(t, dispatchRoot)
+	prog := loadDepsT(t, dispatchRoot)
 	if _, err := Sync(&l, prog, "c1"); err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +341,7 @@ func TestPL3_FactsAreAlgorithmicNeverProven(t *testing.T) {
 			}
 		case Algorithmic:
 			algo++
-			if f.Triple().Predicate != MayCall || f.Extractor() != "cha@v0" || f.Commit() != "c1" || f.Config() != prog.Config().String() {
+			if f.Triple().Predicate != MayCall || f.Extractor() != "cha@v1" || f.Commit() != "c1" || f.Config() != prog.Config().String() {
 				t.Errorf("ALGORITHMIC fact %v from %s", f.Triple(), f.Extractor())
 			}
 		default:
