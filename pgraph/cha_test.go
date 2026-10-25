@@ -1,12 +1,15 @@
 package pgraph
 
 import (
+	"context"
 	"go/ast"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 const dm = "example.test/dispatch"
@@ -20,6 +23,32 @@ func dispatchLabels(t *testing.T) Labels {
 		t.Fatal(err)
 	}
 	return l
+}
+
+// repoDispatch loads this repository once, with dependency bodies, and answers
+// Dispatch on it once: the two tests that read it share the cost.
+var repoDisp struct {
+	once sync.Once
+	p    *Program
+	ts   []Triple
+	err  error
+}
+
+func repoDispatch(t *testing.T) (*Program, []Triple) {
+	t.Helper()
+	root := repoRoot(t)
+	repoDisp.once.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		repoDisp.p, repoDisp.err = Load(ctx, root, Config{})
+		if repoDisp.err == nil {
+			repoDisp.ts, repoDisp.err = Dispatch(repoDisp.p)
+		}
+	})
+	if repoDisp.err != nil {
+		t.Fatal(repoDisp.err)
+	}
+	return repoDisp.p, repoDisp.ts
 }
 
 func dispatchOf(t *testing.T, p *Program) []Triple {
@@ -185,8 +214,14 @@ func TestPL3_AgreesWithRederivation(t *testing.T) {
 			if name == "repo" {
 				root = repoRoot(t)
 			}
-			p := loadDepsT(t, root)
-			all := dispatchOf(t, p)
+			var p *Program
+			var all []Triple
+			if name == "repo" {
+				p, all = repoDispatch(t)
+			} else {
+				p = loadDepsT(t, root)
+				all = dispatchOf(t, p)
+			}
 			// The oracle reads the syntax of the scan root, so it speaks for
 			// the edges whose caller is in the scan root; the edges whose
 			// caller is a dependency function are checked by
@@ -232,9 +267,9 @@ func onlyRootCallers(p *Program, ts []Triple) []Triple {
 // exported type, or the package. Its internal helpers (sort.insertionSort,
 // which is where Less is really called) never appear as callers.
 func TestPL3_DependencyEdgesNameEntryPoints(t *testing.T) {
-	p := loadDepsT(t, repoRoot(t))
+	p, all := repoDispatch(t)
 	n := 0
-	for _, x := range dispatchOf(t, p) {
+	for _, x := range all {
 		if inRoot(p, x.Subject) {
 			continue
 		}
@@ -336,7 +371,7 @@ func TestPL3_FactsAreAlgorithmicNeverProven(t *testing.T) {
 		switch f.Tier() {
 		case Proven:
 			proven++
-			if f.Extractor() != "gotypes@v1" {
+			if f.Extractor() != "gotypes@v2" {
 				t.Errorf("PROVEN fact from %s", f.Extractor())
 			}
 		case Algorithmic:
